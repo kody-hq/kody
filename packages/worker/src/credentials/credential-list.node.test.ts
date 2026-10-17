@@ -235,6 +235,31 @@ test('lists Keys, OAuth integrations, and MCP servers as one shape', async () =>
 		mcp: { url: 'https://mcp.linear.app/sse', enabled: true },
 	})
 	expect(JSON.stringify(beaItems)).not.toMatch(/sk-value|ann-value|pkg-value/)
+	expect(byName.stripeKey?.placement).toBeNull()
+	expect(byName.github?.placement).toBeNull()
+	expect(byName.linear?.placement).toBeNull()
+})
+
+test('listCredentialsForViewer preserves non-null fill placement on Keys and OAuth', async () => {
+	const t = await setup()
+	t.sqlite
+		.prepare(
+			`UPDATE secret_entries SET placement_json = ? WHERE name = 'stripeKey'`,
+		)
+		.run(JSON.stringify({ headers: true, body: true }))
+	t.sqlite
+		.prepare(
+			`UPDATE user_integrations SET placement_json = ? WHERE id = 'i-github'`,
+		)
+		.run(JSON.stringify({ headers: ['Authorization'] }))
+	const beaItems = await listCredentialsForViewer({
+		env: t.env,
+		request: t.requestAs(t.bea, 'owner'),
+	})
+	const byName = Object.fromEntries(beaItems.map((item) => [item.name, item]))
+	expect(byName.stripeKey?.placement).toEqual({ headers: true, body: true })
+	expect(byName.github?.placement).toEqual({ headers: ['Authorization'] })
+	expect(byName.linear?.placement).toBeNull()
 })
 
 test('a member sees the org credentials granted to them plus their own granted personal ones', async () => {
