@@ -178,7 +178,8 @@ export function renderAccountEmailDestinationsPanel(
 						/>
 						<span mix={css(accountFieldNoteCss)}>
 							Up to {additionalLimit} extras besides your account email. We send
-							a verification link before emailSend can use this address.
+							a verification link before emailSend can use this address. New
+							accounts can add an address 24 hours after signup.
 						</span>
 					</label>
 					<button

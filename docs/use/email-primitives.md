@@ -66,7 +66,14 @@ Use the MCP `email` domain:
   message is sent from your platform address (`{username}@<platform domain>`) on
   the same Cloudflare Email binding path as `emailSend` / `emailReply` — not
   from the apex transactional sender. Unused links from earlier sends stay valid
-  until they expire or the address is verified.
+  until they expire or the address is verified. The account must be at least 24
+  hours old (`users.created_at`). Verification mail is also limited to 3
+  requests every 15 minutes per account, 10 per account per rolling 24 hours,
+  and 3 per recipient address per rolling 24 hours across all accounts. A
+  blocked request names which limit was hit and the UTC time to retry. Use a
+  different address when the recipient cap is hit. Contact support if a new
+  account needs a destination sooner. `adminEmailDestinationVerify` marks an
+  address verified without sending mail, so it is not subject to these caps.
 - `emailDestinationSetDefault` picks the destination used when `emailSend` omits
   `to`.
 - `emailDestinationRemove` removes an extra destination. The identity email

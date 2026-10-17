@@ -27,20 +27,23 @@ function createMigratedDb() {
 
 async function seedUser(
 	sqlite: DatabaseSync,
-	input: { verified?: boolean } = {},
+	input: { verified?: boolean; createdAtSql?: string } = {},
 ) {
 	const email = 'owner@example.com'
 	const stableUserId = testStableUserIdFromEmail(email)
+	const createdAtSql = input.createdAtSql ?? "datetime('now', '-48 hours')"
 	sqlite.exec(`
 		INSERT INTO users (
-			id, username, email, stable_user_id, password_hash, email_verified_at
+			id, username, email, stable_user_id, password_hash, email_verified_at,
+			created_at
 		) VALUES (
 			1,
 			'owner',
 			${quoteSqlString(email)},
 			${quoteSqlString(stableUserId)},
 			'test-password-hash',
-			${input.verified === false ? 'NULL' : 'CURRENT_TIMESTAMP'}
+			${input.verified === false ? 'NULL' : 'CURRENT_TIMESTAMP'},
+			${createdAtSql}
 		);
 	`)
 	await provisionPersonalOrgForSqliteUser(sqlite, {
@@ -179,4 +182,29 @@ test('account destination API lists identity, adds a pending extra, and blocks u
 		}),
 	)
 	expect(unverified.status).toBe(403)
+})
+
+test('account destination API blocks new accounts with the signup wait', async () => {
+	const { sqlite, db } = createMigratedDb()
+	await seedUser(sqlite, { createdAtSql: "datetime('now', '-30 minutes')" })
+	const handler = createAccountEmailDestinationsHandler(createAppEnv(db))
+	const response = await runHandler(
+		handler,
+		await createRequest({
+			session: {
+				stableUserId: testStableUserIdFromEmail('owner@example.com'),
+				email: 'owner@example.com',
+				rememberMe: false,
+			},
+			body: { action: 'add', email: 'phone@example.com' },
+		}),
+	)
+	expect(response.status).toBe(403)
+	expect(response.headers.get('Retry-After')).toMatch(/^\d+$/)
+	expect(await response.json()).toMatchObject({
+		ok: false,
+		error: expect.stringMatching(
+			/New accounts can add email destinations 24 hours after signup\. Try again after .+ UTC/,
+		),
+	})
 })
