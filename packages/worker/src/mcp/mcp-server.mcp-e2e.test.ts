@@ -79,7 +79,9 @@ test('authenticated MCP search shows admin capabilities only to admin users', as
 				const adminSearch = await adminClient.client.callTool({
 					name: 'search',
 					arguments: {
-						query: 'admin users roles audit',
+						// Exact-ish capability name so ranking stays stable as
+						// the admin catalog grows (limit 10 is otherwise brittle).
+						query: 'adminUserList',
 						limit: 10,
 					},
 				})

@@ -56,7 +56,16 @@ const inputSchema = z
 				'Plaintext client secret; stored encrypted and never returned by any capability. Omit to keep the stored value, pass null to clear it (public PKCE apps). Confidential apps may stage without a secret while enabled is false — the operator pastes credentials in /admin/platform-integrations before enabling.',
 			),
 		tokenUrl: z.string().url(),
-		authorizeUrl: z.string().url(),
+		/** Empty string allowed for device-only apps (no authorization_code URL). */
+		authorizeUrl: z.union([z.string().url(), z.literal('')]),
+		deviceAuthorizationUrl: z
+			.string()
+			.url()
+			.nullable()
+			.optional()
+			.describe(
+				'RFC 8628 device authorization endpoint. Required when flow is "device"; omit to keep the stored value, pass null to clear.',
+			),
 		apiBaseUrl: z.string().url().nullable().optional(),
 		flow: z.enum(integrationFlowValues),
 		usePkce: z.boolean().nullable().optional(),
@@ -159,6 +168,7 @@ export const adminPlatformOauthAppSaveCapability = defineDomainCapability(
 								clientSecret: args.clientSecret,
 								tokenUrl: args.tokenUrl,
 								authorizeUrl: args.authorizeUrl,
+								deviceAuthorizationUrl: args.deviceAuthorizationUrl,
 								apiBaseUrl: args.apiBaseUrl,
 								flow: args.flow,
 								usePkce: args.usePkce,

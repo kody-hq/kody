@@ -72,9 +72,10 @@ const appSelectColumns = `
 		THEN 1
 		ELSE 0
 	END AS has_client_secret,
-	token_url, authorize_url, api_base_url, flow, use_pkce, token_exchange_style,
-	scope_separator, extra_authorize_params_json, logo_key, logo_content_type,
-	logo_source, favicon_source_host, created_at, updated_at
+	token_url, authorize_url, device_authorization_url, api_base_url, flow,
+	use_pkce, token_exchange_style, scope_separator, extra_authorize_params_json,
+	logo_key, logo_content_type, logo_source, favicon_source_host, created_at,
+	updated_at
 `
 
 const joinedSelectColumns = `
@@ -92,6 +93,7 @@ const joinedSelectColumns = `
 	END AS a_has_client_secret,
 	a.token_url AS a_token_url,
 	a.authorize_url AS a_authorize_url,
+	a.device_authorization_url AS a_device_authorization_url,
 	a.api_base_url AS a_api_base_url,
 	a.flow AS a_flow,
 	a.use_pkce AS a_use_pkce,
@@ -112,6 +114,7 @@ const joinedSelectColumns = `
 	p.client_secret_encrypted AS p_client_secret_encrypted,
 	p.token_url AS p_token_url,
 	p.authorize_url AS p_authorize_url,
+	p.device_authorization_url AS p_device_authorization_url,
 	p.api_base_url AS p_api_base_url,
 	p.flow AS p_flow,
 	p.use_pkce AS p_use_pkce,
@@ -258,6 +261,7 @@ export async function findOauthAppByAppTuple(input: {
 	clientId: string
 	tokenUrl: string
 	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
 	apiBaseUrl: string | null
 	flow: UserOauthAppRow['flow']
 	usePkce: number | null
@@ -273,6 +277,7 @@ export async function findOauthAppByAppTuple(input: {
 				AND client_id = ?
 				AND token_url = ?
 				AND authorize_url IS ?
+				AND device_authorization_url IS ?
 				AND api_base_url IS ?
 				AND flow = ?
 				AND use_pkce IS ?
@@ -286,6 +291,7 @@ export async function findOauthAppByAppTuple(input: {
 			input.clientId,
 			input.tokenUrl,
 			input.authorizeUrl,
+			input.deviceAuthorizationUrl,
 			input.apiBaseUrl,
 			input.flow,
 			input.usePkce,
@@ -311,7 +317,7 @@ export async function listOauthAppsWithConnectionCounts(input: {
 					THEN 1
 					ELSE 0
 				END AS has_client_secret,
-				a.token_url, a.authorize_url,
+				a.token_url, a.authorize_url, a.device_authorization_url,
 				a.api_base_url, a.flow, a.use_pkce, a.token_exchange_style,
 				a.scope_separator, a.extra_authorize_params_json,
 				a.logo_key, a.logo_content_type, a.logo_source,
@@ -369,10 +375,10 @@ export async function upsertOauthApp(input: {
 		.prepare(
 			`INSERT INTO user_oauth_apps (
 				user_id, slug, provider, label, client_id,
-				token_url, authorize_url, api_base_url, flow, use_pkce,
-				token_exchange_style, scope_separator, extra_authorize_params_json,
-				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				token_url, authorize_url, device_authorization_url, api_base_url,
+				flow, use_pkce, token_exchange_style, scope_separator,
+				extra_authorize_params_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(user_id, slug)
 			DO UPDATE SET
 				provider = excluded.provider,
@@ -380,6 +386,7 @@ export async function upsertOauthApp(input: {
 				client_id = excluded.client_id,
 				token_url = excluded.token_url,
 				authorize_url = excluded.authorize_url,
+				device_authorization_url = excluded.device_authorization_url,
 				api_base_url = excluded.api_base_url,
 				flow = excluded.flow,
 				use_pkce = excluded.use_pkce,
@@ -396,6 +403,7 @@ export async function upsertOauthApp(input: {
 			input.row.client_id,
 			input.row.token_url,
 			input.row.authorize_url,
+			input.row.device_authorization_url,
 			input.row.api_base_url,
 			input.row.flow,
 			input.row.use_pkce,
@@ -698,6 +706,7 @@ export function mapOauthAppRow(row: UserOauthAppRow): UserOauthApp {
 		hasClientSecret: row.has_client_secret === 1,
 		tokenUrl: row.token_url,
 		authorizeUrl: row.authorize_url,
+		deviceAuthorizationUrl: row.device_authorization_url ?? null,
 		apiBaseUrl: row.api_base_url,
 		flow: row.flow,
 		usePkce: row.use_pkce == null ? null : row.use_pkce === 1,
@@ -972,6 +981,7 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 				client_secret_encrypted: row.p_client_secret_encrypted,
 				token_url: row.p_token_url ?? '',
 				authorize_url: row.p_authorize_url ?? '',
+				device_authorization_url: row.p_device_authorization_url ?? null,
 				api_base_url: row.p_api_base_url,
 				flow: row.p_flow ?? 'pkce',
 				use_pkce: row.p_use_pkce,
@@ -1007,6 +1017,7 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 			has_client_secret: row.a_has_client_secret,
 			token_url: row.a_token_url ?? '',
 			authorize_url: row.a_authorize_url,
+			device_authorization_url: row.a_device_authorization_url ?? null,
 			api_base_url: row.a_api_base_url,
 			flow: row.a_flow ?? 'pkce',
 			use_pkce: row.a_use_pkce,

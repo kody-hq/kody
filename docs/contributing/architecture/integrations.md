@@ -354,6 +354,16 @@ and asks for the user's own client credentials. Reconnect with
 `?provider=<integration-name>` reuses saved authorize metadata (scopes,
 `scopeSeparator`, `extraAuthorizeParams`) from a user-lane app.
 
+RFC 8628 **device authorization** is one server backend with two entry points:
+`device_start` / `device_poll` on `/account/secrets.json` (browser
+`/connect/oauth?flow=device`) and MCP `integrationDeviceConnectStart` /
+`integrationDeviceConnectPoll`. Shared resolve + persist lives in
+`packages/worker/src/integrations/device-connect.ts` and
+`connect-oauth-persist.ts`. The provider `device_code` and client secret never
+leave the server; callers see an opaque session id, `user_code`, and
+verification URI. App config stores optional `device_authorization_url`
+additively — existing rows need no backfill.
+
 The hosted page leads with the provider mark, credentials or a connect button, a
 terms note, and a **Change scopes** disclosure. Endpoints, host allowlists, and
 stored config stay behind an advanced disclosure. A `?provider=` visit that
@@ -410,15 +420,16 @@ connections instead.
 Domain: `integrations`
 (`packages/worker/src/mcp/capabilities/integrations/domain.ts`).
 
-| Capability                                       | Role                                                                              |
-| ------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                       |
-| `integrationLock`                                | Tighten-only usage lock: packages mode + add a package id; unlock is website-only |
-| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                          |
-| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                 |
-| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                 |
-| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list        |
-| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                |
+| Capability                                       | Role                                                                               |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                        |
+| `integrationLock`                                | Tighten-only usage lock: packages mode + add a package id; unlock is website-only  |
+| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                           |
+| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                  |
+| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                  |
+| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list         |
+| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                 |
+| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out |
 
 ## Account deletion order
 

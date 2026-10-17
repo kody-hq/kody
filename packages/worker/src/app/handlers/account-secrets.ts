@@ -56,6 +56,10 @@ import {
 	resolveUserOauthAppClientSecret,
 } from '#worker/integrations/credentials.ts'
 import {
+	pollIntegrationDeviceConnect,
+	startIntegrationDeviceConnect,
+} from '#worker/integrations/device-connect.ts'
+import {
 	buildOAuthTokenExchangeFailurePayload,
 	buildOAuthTokenExchangeRequest,
 	isOAuthTokenExchangeSoftFailure,
@@ -113,6 +117,8 @@ export async function saveAccountOAuthApp(input: {
 	const tokenUrl = input.fields.tokenUrl?.trim() ?? null
 	const apiBaseUrl = input.fields.apiBaseUrl?.trim() ?? null
 	const authorizeUrl = input.fields.authorizeUrl?.trim() ?? null
+	const deviceAuthorizationUrl =
+		input.fields.deviceAuthorizationUrl?.trim() ?? null
 	const flow = input.fields.flow?.trim() ?? null
 	const usePkce = input.fields.usePkce ?? null
 	const clientId = input.fields.clientId?.trim() ?? null
@@ -128,14 +134,31 @@ export async function saveAccountOAuthApp(input: {
 	if (!clientId) {
 		return operationResult({ ok: false, error: 'Client ID is required.' }, 400)
 	}
-	if (flow && flow !== 'pkce' && flow !== 'confidential') {
+	if (flow && flow !== 'pkce' && flow !== 'confidential' && flow !== 'device') {
 		return operationResult({ ok: false, error: 'Invalid OAuth flow.' }, 400)
+	}
+	const resolvedFlow =
+		flow === 'confidential' || flow === 'device' ? flow : 'pkce'
+	if (resolvedFlow === 'device' && !deviceAuthorizationUrl) {
+		return operationResult(
+			{ ok: false, error: 'Device authorization URL is required.' },
+			400,
+		)
 	}
 	if (authorizeUrl) {
 		const authorizeHost = safeParseHost(authorizeUrl)
 		if (!authorizeHost) {
 			return operationResult(
 				{ ok: false, error: 'Authorize URL is invalid.' },
+				400,
+			)
+		}
+	}
+	if (deviceAuthorizationUrl) {
+		const deviceHost = safeParseHost(deviceAuthorizationUrl)
+		if (!deviceHost) {
+			return operationResult(
+				{ ok: false, error: 'Device authorization URL is invalid.' },
 				400,
 			)
 		}
@@ -153,13 +176,14 @@ export async function saveAccountOAuthApp(input: {
 				name: provider,
 				tokenUrl,
 				apiBaseUrl,
-				flow: flow === 'confidential' ? 'confidential' : 'pkce',
+				flow: resolvedFlow,
 				...(usePkce == null ? {} : { usePkce }),
 				clientId,
 				tokenExchangeStyle: resolveTokenExchangeStyle({
 					tokenUrl,
 					tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
 				}),
+				...(deviceAuthorizationUrl ? { deviceAuthorizationUrl } : {}),
 				authorization: authorizeUrl
 					? {
 							authorizeUrl,
@@ -199,6 +223,7 @@ export async function saveAccountOAuthApp(input: {
 				hasClientSecret: Boolean(clientSecret) || app.hasClientSecret,
 				tokenUrl: app.tokenUrl,
 				authorizeUrl: app.authorizeUrl,
+				deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 				apiBaseUrl: app.apiBaseUrl,
 				flow: app.flow,
 				usePkce: app.usePkce,
@@ -248,6 +273,9 @@ export async function connectAccountOAuth(input: {
 	const authorizeUrl = platformApp
 		? platformApp.authorizeUrl
 		: (input.fields.authorizeUrl?.trim() ?? null)
+	const deviceAuthorizationUrl = platformApp
+		? platformApp.deviceAuthorizationUrl
+		: (input.fields.deviceAuthorizationUrl?.trim() ?? null)
 	const flow = platformApp
 		? platformApp.flow
 		: (input.fields.flow?.trim() ?? null)
@@ -290,7 +318,7 @@ export async function connectAccountOAuth(input: {
 			400,
 		)
 	}
-	if (flow && flow !== 'pkce' && flow !== 'confidential') {
+	if (flow && flow !== 'pkce' && flow !== 'confidential' && flow !== 'device') {
 		return operationResult({ ok: false, error: 'Invalid OAuth flow.' }, 400)
 	}
 	if (!clientId) {
@@ -351,7 +379,8 @@ export async function connectAccountOAuth(input: {
 				provider,
 				tokenUrl,
 				apiBaseUrl,
-				flow: flow === 'confidential' ? 'confidential' : 'pkce',
+				flow:
+					flow === 'confidential' || flow === 'device' ? flow : 'pkce',
 				usePkce,
 				clientId,
 				tokenExchangeStyle: resolveTokenExchangeStyle({
@@ -359,6 +388,7 @@ export async function connectAccountOAuth(input: {
 					tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
 				}),
 				allowedHosts,
+				...(deviceAuthorizationUrl ? { deviceAuthorizationUrl } : {}),
 				authorization: authorizeUrl
 					? {
 							authorizeUrl,
@@ -477,6 +507,115 @@ async function emitConnectOauthAuthSucceeded(input: {
 			},
 		)
 	}
+}
+
+
+export async function startAccountDeviceConnect(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: {
+		provider: string
+		platformAppSlug?: string | null
+		tokenUrl?: string | null
+		apiBaseUrl?: string | null
+		authorizeUrl?: string | null
+		deviceAuthorizationUrl?: string | null
+		clientId?: string | null
+		clientSecret?: string | null
+		usePkce?: boolean | null
+		scopes?: Array<string>
+		scopeSeparator?: string | null
+		extraAuthorizeParams?: Record<string, string>
+		allowedHosts?: Array<string>
+		tokenExchangeStyle?: string | null
+	}
+}) {
+	const started = await startIntegrationDeviceConnect({
+		env: input.env,
+		request: input.user.request,
+		mcpUser: input.user.mcpUser,
+		provider: input.fields.provider ?? '',
+		platformAppSlug: input.fields.platformAppSlug,
+		tokenUrl: input.fields.tokenUrl,
+		apiBaseUrl: input.fields.apiBaseUrl,
+		authorizeUrl: input.fields.authorizeUrl,
+		deviceAuthorizationUrl: input.fields.deviceAuthorizationUrl,
+		clientId: input.fields.clientId,
+		clientSecret: input.fields.clientSecret,
+		usePkce: input.fields.usePkce,
+		scopes: input.fields.scopes,
+		scopeSeparator: input.fields.scopeSeparator,
+		extraAuthorizeParams: input.fields.extraAuthorizeParams,
+		allowedHosts: input.fields.allowedHosts,
+		tokenExchangeStyle: input.fields.tokenExchangeStyle,
+	})
+	if (!started.ok) {
+		return operationResult(
+			{ ok: false, error: started.error },
+			started.status === 429 && started.retryAfterSeconds
+				? {
+						status: started.status,
+						headers: {
+							'Retry-After': String(started.retryAfterSeconds),
+						},
+					}
+				: started.status,
+		)
+	}
+	return operationResult({
+		ok: true,
+		sessionId: started.sessionId,
+		userCode: started.userCode,
+		verificationUri: started.verificationUri,
+		verificationUriComplete: started.verificationUriComplete,
+		expiresIn: started.expiresIn,
+		interval: started.interval,
+	})
+}
+
+export async function pollAccountDeviceConnect(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: { sessionId: string }
+}) {
+	const sessionId = input.fields.sessionId?.trim() ?? ''
+	if (!sessionId) {
+		return operationResult({ ok: false, error: 'Session id is required.' }, 400)
+	}
+	const polled = await pollIntegrationDeviceConnect({
+		env: input.env,
+		request: input.user.request,
+		mcpUser: input.user.mcpUser,
+		sessionId,
+	})
+	if (!polled.ok) {
+		return operationResult(
+			{
+				ok: false,
+				status: polled.status,
+				error: polled.error,
+			},
+			polled.httpStatus,
+		)
+	}
+	if (polled.status !== 'approved') {
+		return operationResult({
+			ok: true,
+			status: polled.status,
+			interval: polled.interval,
+			expiresIn: polled.expiresIn,
+		})
+	}
+	return operationResult({
+		ok: true,
+		status: 'approved',
+		accessTokenSaved: true,
+		refreshTokenSaved: polled.refreshTokenSaved,
+		allowedHosts: polled.allowedHosts,
+		hostApprovalLinks: polled.hostApprovalLinks,
+		integrationName: polled.integrationName,
+		nextSteps: polled.nextSteps,
+	})
 }
 
 export async function exchangeAccountOAuthToken(input: {
@@ -689,11 +828,12 @@ async function saveIntegrationConfig(input: {
 	provider: string
 	tokenUrl: string
 	apiBaseUrl: string | null
-	flow: 'pkce' | 'confidential'
+	flow: 'pkce' | 'confidential' | 'device'
 	usePkce: boolean | null
 	clientId: string
 	tokenExchangeStyle: TokenExchangeStyle | null
 	allowedHosts: Array<string>
+	deviceAuthorizationUrl?: string | null
 	authorization: {
 		authorizeUrl: string
 		scopes: Array<string>
@@ -715,6 +855,9 @@ async function saveIntegrationConfig(input: {
 		requiredHosts: input.allowedHosts,
 		...(input.tokenExchangeStyle && input.tokenExchangeStyle !== 'form'
 			? { tokenExchangeStyle: input.tokenExchangeStyle }
+			: {}),
+		...(input.deviceAuthorizationUrl
+			? { deviceAuthorizationUrl: input.deviceAuthorizationUrl }
 			: {}),
 		...(input.authorization ? { authorization: input.authorization } : {}),
 	})

@@ -8,6 +8,8 @@ import { integrationOauthAppDeleteCapability } from './integration-oauth-app-del
 import { integrationOauthAppListCapability } from './integration-oauth-app-list.ts'
 import { integrationOauthAppRotateCredentialsCapability } from './integration-oauth-app-rotate-credentials.ts'
 import { integrationPlatformAppListCapability } from './integration-platform-app-list.ts'
+import { integrationDeviceConnectPollCapability } from './integration-device-connect-poll.ts'
+import { integrationDeviceConnectStartCapability } from './integration-device-connect-start.ts'
 import { integrationSaveCapability } from './integration-save.ts'
 import { integrationTokenRefreshCapability } from './integration-token-refresh.ts'
 
@@ -24,6 +26,7 @@ export const integrationsDomain = defineDomain({
 		'third-party',
 		'oauth app',
 		'client credentials',
+		'device',
 		'lock',
 		'usage',
 	],
@@ -38,5 +41,7 @@ export const integrationsDomain = defineDomain({
 		integrationOauthAppRotateCredentialsCapability,
 		integrationPlatformAppListCapability,
 		integrationTokenRefreshCapability,
+		integrationDeviceConnectStartCapability,
+		integrationDeviceConnectPollCapability,
 	],
 })

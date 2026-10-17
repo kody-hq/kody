@@ -2,7 +2,7 @@
 import { useRouter } from '@tanstack/react-router'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from 'react'
 import {
 	type ConnectOauthExistingConnection,
 	type ConnectOauthLoaderData,
@@ -29,6 +29,7 @@ import {
 	renderRedirectUriCard,
 	renderSuccessAdvancedDetails,
 } from './connect-oauth-detail.tsx'
+import { createConnectOauthDeviceStep } from './connect-oauth-device-step.tsx'
 import {
 	ConnectOauthCredentialsForm,
 	renderConnectStep as ConnectStep,
@@ -334,6 +335,45 @@ export function ConnectOauthRoute({
 	) {
 		update({ statusMessage, statusTone })
 	}
+	const stateRef = useRef(state)
+	stateRef.current = state
+	const [, setDeviceTick] = useState(0)
+	const deviceStep = useMemo(
+		() =>
+			createConnectOauthDeviceStep({
+				getConfig: () => stateRef.current.config,
+				getSubmitting: () =>
+					stateRef.current.submitting || inFlight.current,
+				setSubmitting: (value) => {
+					inFlight.current = value
+					setState((previous) => ({ ...previous, submitting: value }))
+				},
+				setStatus: (message, tone = 'info') => {
+					setState((previous) => ({
+						...previous,
+						statusMessage: message,
+						statusTone: tone,
+					}))
+				},
+				setStep: (step) => {
+					setState((previous) => ({ ...previous, currentStep: step }))
+				},
+				onSuccess: (result) => {
+					setState((previous) => ({
+						...previous,
+						accessTokenSaved: result.accessTokenSaved,
+						refreshTokenSaved: result.refreshTokenSaved,
+						nextSteps: result.nextSteps,
+					}))
+					void invalidatePages()
+				},
+				update: () => {
+					setDeviceTick((tick) => tick + 1)
+				},
+			}),
+		[invalidatePages],
+	)
+	useEffect(() => () => deviceStep.dispose(), [deviceStep])
 	useEffect(() => {
 		mounted.current = true
 		const unsubscribe = router.subscribe('onBeforeNavigate', ({ toLocation }) =>
@@ -430,6 +470,10 @@ export function ConnectOauthRoute({
 	}
 	async function handleConnect() {
 		if (!config || inFlight.current) return
+		if (config.flow === 'device') {
+			await deviceStep.handleDeviceConnect()
+			return
+		}
 		inFlight.current = true
 		update({ submitting: true })
 		try {
@@ -731,6 +775,7 @@ export function ConnectOauthRoute({
 					}}
 				/>
 			) : null}
+			{currentStep === 'device' ? deviceStep.render(currentConfig) : null}
 			{currentStep === 'success' ? (
 				<SuccessCard
 					connectionHref={

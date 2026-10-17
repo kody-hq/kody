@@ -144,6 +144,7 @@ const mockModule = vi.hoisted(() => ({
 		hasClientSecret: false,
 		tokenUrl: input.config.tokenUrl,
 		authorizeUrl: null,
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: input.config.apiBaseUrl ?? null,
 		flow: input.config.flow,
 		usePkce: input.config.usePkce ?? null,
@@ -198,6 +199,7 @@ const mockModule = vi.hoisted(() => ({
 					hasClientSecret: false,
 					tokenUrl: 'https://example.com/oauth/token',
 					authorizeUrl: null,
+					deviceAuthorizationUrl: null,
 					apiBaseUrl: null,
 					flow: 'pkce',
 					usePkce: null,
@@ -704,27 +706,30 @@ test('connect oauth saves tokens via the secret store and persists app+connectio
 })
 
 test('connect oauth rejects invalid authorization metadata', async () => {
-	await expect(
-		createHandler()(
-			postRequest({
-				action: 'connect_oauth',
-				provider: 'GitHub',
-				authorizeUrl: 'ftp://github.com/login/oauth/authorize',
-				tokenUrl: 'https://github.com/login/oauth/access_token',
-				apiBaseUrl: 'https://api.github.com',
-				scopes: ['repo'],
-				flow: 'pkce',
-				clientId: 'github-client-id-value',
-				accessTokenSecretName: 'githubAccessToken',
-				refreshTokenSecretName: 'githubRefreshToken',
-				allowedHosts: ['api.github.com'],
-				tokenPayload: {
-					access_token: 'access-token',
-					refresh_token: 'refresh-token',
-				},
-			}),
-		),
-	).rejects.toThrow('OAuth integration configuration is invalid.')
+	const response = await createHandler()(
+		postRequest({
+			action: 'connect_oauth',
+			provider: 'GitHub',
+			authorizeUrl: 'ftp://github.com/login/oauth/authorize',
+			tokenUrl: 'https://github.com/login/oauth/access_token',
+			apiBaseUrl: 'https://api.github.com',
+			scopes: ['repo'],
+			flow: 'pkce',
+			clientId: 'github-client-id-value',
+			accessTokenSecretName: 'githubAccessToken',
+			refreshTokenSecretName: 'githubRefreshToken',
+			allowedHosts: ['api.github.com'],
+			tokenPayload: {
+				access_token: 'access-token',
+				refresh_token: 'refresh-token',
+			},
+		}),
+	)
+	expect(response.status).toBe(400)
+	expect(await response.json()).toMatchObject({
+		ok: false,
+		error: 'OAuth integration configuration is invalid.',
+	})
 	expect(mockModule.upsertIntegration).not.toHaveBeenCalled()
 })
 
@@ -1802,6 +1807,7 @@ const publishedGithubPlatformApp = {
 	hasClientSecret: true,
 	tokenUrl: 'https://github.com/login/oauth/access_token',
 	authorizeUrl: 'https://github.com/login/oauth/authorize',
+	deviceAuthorizationUrl: null,
 	apiBaseUrl: 'https://api.github.com',
 	flow: 'confidential' as const,
 	usePkce: true,

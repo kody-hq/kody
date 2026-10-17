@@ -22,6 +22,7 @@ export async function loadAdminPlatformIntegrationsData(
 			hasClientSecret: app.hasClientSecret,
 			tokenUrl: app.tokenUrl,
 			authorizeUrl: app.authorizeUrl,
+			deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 			apiBaseUrl: app.apiBaseUrl,
 			flow: app.flow,
 			usePkce: app.usePkce,

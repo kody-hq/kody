@@ -6,7 +6,7 @@ import {
 } from '#universal/connection-trouble.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 
-export const integrationFlowValues = ['pkce', 'confidential'] as const
+export const integrationFlowValues = ['pkce', 'confidential', 'device'] as const
 
 /**
  * Integration identity is the canonical provider key (lowercase kebab via
@@ -59,12 +59,24 @@ export const integrationConfigSchema = z.object({
 	/**
 	 * PKCE is orthogonal to `flow`. Absent means the flow default: PKCE on for
 	 * `pkce` flow, off for `confidential`. Canva-style providers store
-	 * `usePkce: true` with `confidential` flow.
+	 * `usePkce: true` with `confidential` flow. Device flow ignores PKCE.
 	 */
 	usePkce: z.boolean().optional().nullable(),
 	clientId: z.string().min(1),
 	requiredHosts: z.array(z.string()).optional(),
 	tokenExchangeStyle: z.enum(tokenExchangeStyleValues).optional().nullable(),
+	/**
+	 * RFC 8628 device authorization endpoint. Required when `flow` is
+	 * `device`; unused for authorization_code flows.
+	 */
+	deviceAuthorizationUrl: z
+		.string()
+		.url()
+		.refine(isHttpUrl, {
+			message: 'Device authorization URL must use http or https.',
+		})
+		.optional()
+		.nullable(),
 	authorization: integrationAuthorizationSchema.optional().nullable(),
 	/**
 	 * True when the connection uses a platform (built-in) OAuth app. The
@@ -112,6 +124,14 @@ export const integrationSaveSchema = z
 		clientId: z.string().min(1).optional(),
 		requiredHosts: z.array(z.string()).optional(),
 		tokenExchangeStyle: z.enum(tokenExchangeStyleValues).nullable().optional(),
+		deviceAuthorizationUrl: z
+			.string()
+			.url()
+			.refine(isHttpUrl, {
+				message: 'Device authorization URL must use http or https.',
+			})
+			.nullable()
+			.optional(),
 		authorization: integrationAuthorizationSchema.nullable().optional(),
 		accountLabel: z.string().min(1).nullable().optional(),
 		logoBase64: z
@@ -146,6 +166,7 @@ function normalizeIntegrationConfigFields(
 		| 'usePkce'
 		| 'requiredHosts'
 		| 'tokenExchangeStyle'
+		| 'deviceAuthorizationUrl'
 		| 'authorization'
 		| 'usageMode'
 		| 'allowedPackageIds'
@@ -155,13 +176,16 @@ function normalizeIntegrationConfigFields(
 		? normalizeIntegrationAuthorization(value.authorization)
 		: null
 	const tokenExchangeStyle = value.tokenExchangeStyle ?? null
+	const deviceAuthorizationUrl = value.deviceAuthorizationUrl?.trim() || null
 	// Store usePkce only when it differs from the flow default so existing
-	// integration records keep their canonical shape.
+	// integration records keep their canonical shape. Device flow has no PKCE.
 	const usePkce =
-		typeof value.usePkce === 'boolean' &&
-		value.usePkce !== (value.flow === 'pkce')
-			? value.usePkce
-			: null
+		value.flow === 'device'
+			? null
+			: typeof value.usePkce === 'boolean' &&
+				  value.usePkce !== (value.flow === 'pkce')
+				? value.usePkce
+				: null
 	return {
 		name: canonicalIntegrationName(value.name),
 		tokenUrl: value.tokenUrl.trim(),
@@ -170,6 +194,7 @@ function normalizeIntegrationConfigFields(
 		...(usePkce == null ? {} : { usePkce }),
 		requiredHosts: normalizeAllowedHosts(value.requiredHosts ?? []),
 		...(tokenExchangeStyle ? { tokenExchangeStyle } : {}),
+		...(deviceAuthorizationUrl ? { deviceAuthorizationUrl } : {}),
 		...(authorization ? { authorization } : {}),
 		...(value.usageMode === 'packages'
 			? {

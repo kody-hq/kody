@@ -92,12 +92,17 @@ function toPlatformAppPrefillRecord(
 		...(app.tokenExchangeStyle
 			? { tokenExchangeStyle: app.tokenExchangeStyle }
 			: {}),
-		authorization: {
-			authorizeUrl: app.authorizeUrl,
-			scopes: app.defaultScopes,
-			scopeSeparator: app.scopeSeparator,
-			extraAuthorizeParams: app.extraAuthorizeParams,
-		},
+		...(app.deviceAuthorizationUrl
+			? { deviceAuthorizationUrl: app.deviceAuthorizationUrl }
+			: {}),
+		authorization: app.authorizeUrl.trim()
+			? {
+					authorizeUrl: app.authorizeUrl,
+					scopes: app.defaultScopes,
+					scopeSeparator: app.scopeSeparator,
+					extraAuthorizeParams: app.extraAuthorizeParams,
+				}
+			: null,
 		platform: true,
 		platformAllowedScopes: app.allowedScopes,
 		platformLogoPath: buildPlatformOauthAppLogoPath(app),
@@ -186,6 +191,9 @@ function toAppOnlyIntegrationRecord(
 		...(prefill.tokenExchangeStyle
 			? { tokenExchangeStyle: prefill.tokenExchangeStyle }
 			: {}),
+		...(prefill.deviceAuthorizationUrl
+			? { deviceAuthorizationUrl: prefill.deviceAuthorizationUrl }
+			: {}),
 		authorization: prefill.authorizeUrl
 			? {
 					authorizeUrl: prefill.authorizeUrl,
@@ -260,6 +268,7 @@ function buildPlatformOauthAppRecords(
 		hasClientSecret: false,
 		tokenUrl: app.tokenUrl,
 		authorizeUrl: app.authorizeUrl,
+		deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 		apiBaseUrl: app.apiBaseUrl,
 		flow: app.flow,
 		usePkce: app.usePkce,

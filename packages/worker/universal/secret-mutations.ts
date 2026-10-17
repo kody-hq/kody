@@ -22,6 +22,7 @@ const oauthFields = {
 	tokenUrl: text,
 	apiBaseUrl: text,
 	authorizeUrl: text,
+	deviceAuthorizationUrl: text,
 	flow: text,
 	usePkce: z.boolean().nullish(),
 	clientId: text,

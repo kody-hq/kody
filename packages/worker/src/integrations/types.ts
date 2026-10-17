@@ -19,6 +19,7 @@ export const userOauthAppSchema = z.object({
 	hasClientSecret: z.boolean(),
 	tokenUrl: z.string().url(),
 	authorizeUrl: z.string().url().nullable(),
+	deviceAuthorizationUrl: z.string().url().nullable(),
 	apiBaseUrl: z.string().url().nullable(),
 	flow: oauthAppFlowSchema,
 	usePkce: z.boolean().nullable(),
@@ -93,6 +94,7 @@ export type UserOauthAppRow = {
 	has_client_secret?: number | null
 	token_url: string
 	authorize_url: string | null
+	device_authorization_url: string | null
 	api_base_url: string | null
 	flow: (typeof integrationFlowValues)[number]
 	use_pkce: number | null

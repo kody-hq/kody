@@ -58,6 +58,7 @@ function createJoinedIntegration(input: {
 				input.authorizeUrl === undefined
 					? 'https://accounts.google.com/o/oauth2/v2/auth'
 					: input.authorizeUrl,
+			deviceAuthorizationUrl: null,
 			apiBaseUrl: input.apiBaseUrl ?? 'https://www.googleapis.com',
 			flow: 'confidential',
 			usePkce: null,

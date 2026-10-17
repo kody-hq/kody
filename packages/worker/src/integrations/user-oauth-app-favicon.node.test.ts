@@ -65,6 +65,7 @@ test('shouldFetchUserOauthAppFavicon skips explicit uploads and stale-host refet
 		hasClientSecret: false,
 		tokenUrl: 'https://api.dropboxapi.com/oauth2/token',
 		authorizeUrl: 'https://www.dropbox.com/oauth2/authorize',
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: 'https://api.dropboxapi.com/2',
 		flow: 'pkce',
 		usePkce: null,

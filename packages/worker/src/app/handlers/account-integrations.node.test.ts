@@ -26,6 +26,7 @@ const mockModule = vi.hoisted(() => {
 		hasClientSecret: true,
 		tokenUrl: 'https://oauth2.googleapis.com/token',
 		authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: 'https://www.googleapis.com' as string | null,
 		flow: 'pkce' as 'pkce' | 'confidential',
 		usePkce: null,
@@ -41,6 +42,7 @@ const mockModule = vi.hoisted(() => {
 		clientId: 'github-client-id-value',
 		tokenUrl: 'https://github.com/login/oauth/access_token',
 		authorizeUrl: 'https://github.com/login/oauth/authorize',
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: 'https://api.github.com',
 		flow: 'confidential' as const,
 		extraAuthorizeParams: {},
@@ -476,6 +478,7 @@ test('integrations API resolves named connections for connect OAuth, including m
 		hasClientSecret: false,
 		tokenUrl: 'https://accounts.spotify.com/api/token',
 		authorizeUrl: 'https://accounts.spotify.com/authorize',
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: null,
 		extraAuthorizeParams: {},
 	} as never)

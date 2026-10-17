@@ -9,7 +9,7 @@ import {
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
 
-export type OAuthFlow = 'pkce' | 'confidential'
+export type OAuthFlow = 'pkce' | 'confidential' | 'device'
 export type TokenExchangeStyle = 'form' | 'basic-json' | 'basic-form'
 
 export type ConnectOauthQueryConfig = {
@@ -17,6 +17,7 @@ export type ConnectOauthQueryConfig = {
 	providerKey: string
 	authorizeHost: string | null
 	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
 	tokenUrl: string | null
 	apiBaseUrl: string | null
 	scopes: Array<string> | null
@@ -37,7 +38,8 @@ export type ConnectOauthConfig = {
 	providerKey: string
 	authorizeHost: string
 	tokenHost: string
-	authorizeUrl: string
+	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
 	tokenUrl: string
 	apiBaseUrl: string | null
 	scopes: Array<string>
@@ -113,6 +115,14 @@ export type StoredIntegrationConfig = Omit<
 	catalogLogoPath?: string | null
 	/** Operator-authored provider note (limitations, caveats). */
 	platformDescription?: string | null
+	/** RFC 8628 device authorization endpoint when flow is `device`. */
+	deviceAuthorizationUrl?: string | null
+}
+
+export type ConnectOauthHostApprovalLink = {
+	secretName: string
+	host: string
+	approvalUrl: string
 }
 
 export type ConnectOauthNextSteps = {
@@ -167,6 +177,9 @@ export function toStoredIntegrationConfig(
 		...(integration.tokenExchangeStyle
 			? { tokenExchangeStyle: integration.tokenExchangeStyle }
 			: {}),
+		...(integration.deviceAuthorizationUrl
+			? { deviceAuthorizationUrl: integration.deviceAuthorizationUrl }
+			: {}),
 		authorization: integration.authorization
 			? {
 					authorizeUrl: integration.authorization.authorizeUrl,
@@ -190,6 +203,144 @@ export function toStoredIntegrationConfig(
 	}
 }
 
+/**
+ * Parses a stored/server integration payload for reconnect helpers and tests.
+ * Accepts either a JSON string or an already-decoded object with inline
+ * `clientId` (the first-class integrations table shape).
+ */
+export function parseStoredIntegrationConfig(
+	raw: string | Record<string, unknown>,
+	fallbackProvider: string | null,
+): StoredIntegrationConfig | null {
+	try {
+		const parsed =
+			typeof raw === 'string'
+				? (JSON.parse(raw) as Record<string, unknown>)
+				: raw
+		const name =
+			typeof parsed.name === 'string' && parsed.name.trim()
+				? parsed.name.trim()
+				: (fallbackProvider?.trim() ?? '')
+		const tokenUrl =
+			typeof parsed.tokenUrl === 'string' ? parsed.tokenUrl.trim() : ''
+		const flow =
+			parsed.flow === 'confidential' || parsed.flow === 'device'
+				? parsed.flow
+				: 'pkce'
+		const usePkce = typeof parsed.usePkce === 'boolean' ? parsed.usePkce : null
+		const clientId =
+			typeof parsed.clientId === 'string' ? parsed.clientId.trim() : ''
+		const hasClientSecret = parsed.hasClientSecret === true
+		const tokenExchangeStyle = parseTokenExchangeStyle(
+			parsed.tokenExchangeStyle,
+		)
+		const deviceAuthorizationUrl =
+			typeof parsed.deviceAuthorizationUrl === 'string' &&
+			parsed.deviceAuthorizationUrl.trim() &&
+			isSafeExternalUrl(parsed.deviceAuthorizationUrl.trim())
+				? parsed.deviceAuthorizationUrl.trim()
+				: null
+		const requiredHosts = Array.isArray(parsed.requiredHosts)
+			? parsed.requiredHosts.filter(
+					(value): value is string => typeof value === 'string',
+				)
+			: []
+		const authorization = parseStoredIntegrationAuthorization(
+			parsed.authorization,
+		)
+		const platformAppSlug =
+			typeof parsed.platformAppSlug === 'string' &&
+			parsed.platformAppSlug.trim()
+				? parsed.platformAppSlug.trim()
+				: null
+		const platformAllowedScopes = Array.isArray(parsed.platformAllowedScopes)
+			? parsed.platformAllowedScopes.filter(
+					(value): value is string =>
+						typeof value === 'string' && Boolean(value),
+				)
+			: []
+		const platformLogoPath = parsePlatformLogoPath(parsed.platformLogoPath)
+		const platformDescription =
+			typeof parsed.platformDescription === 'string' &&
+			parsed.platformDescription.trim()
+				? parsed.platformDescription.trim()
+				: null
+		if (!name || !tokenUrl || !clientId) {
+			return null
+		}
+		return {
+			...(platformAppSlug
+				? {
+						platformAppSlug,
+						platformAllowedScopes,
+						platformLogoPath,
+						platformDescription,
+					}
+				: {}),
+			name,
+			tokenUrl,
+			apiBaseUrl:
+				typeof parsed.apiBaseUrl === 'string' && parsed.apiBaseUrl.trim()
+					? parsed.apiBaseUrl.trim()
+					: null,
+			flow,
+			usePkce,
+			clientId,
+			hasClientSecret,
+			requiredHosts: normalizeHosts(requiredHosts),
+			...(tokenExchangeStyle ? { tokenExchangeStyle } : {}),
+			...(deviceAuthorizationUrl ? { deviceAuthorizationUrl } : {}),
+			authorization,
+		}
+	} catch {
+		return null
+	}
+}
+
+function parseStoredIntegrationAuthorization(
+	raw: unknown,
+): StoredIntegrationAuthorization | null {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+	const parsed = raw as Record<string, unknown>
+	const authorizeUrl =
+		typeof parsed.authorizeUrl === 'string' ? parsed.authorizeUrl.trim() : ''
+	if (
+		!authorizeUrl ||
+		!isSafeExternalUrl(authorizeUrl) ||
+		!safeParseHost(authorizeUrl)
+	) {
+		return null
+	}
+	const scopes = Array.isArray(parsed.scopes)
+		? parsed.scopes.filter(
+				(value): value is string => typeof value === 'string' && Boolean(value),
+			)
+		: []
+	const scopeSeparator =
+		typeof parsed.scopeSeparator === 'string' && parsed.scopeSeparator
+			? parsed.scopeSeparator
+			: null
+	const extraAuthorizeParams =
+		parsed.extraAuthorizeParams &&
+		typeof parsed.extraAuthorizeParams === 'object' &&
+		!Array.isArray(parsed.extraAuthorizeParams)
+			? Object.fromEntries(
+					Object.entries(parsed.extraAuthorizeParams)
+						.filter(
+							(entry): entry is [string, string] =>
+								typeof entry[1] === 'string',
+						)
+						.map(([key, value]) => [key, value]),
+				)
+			: {}
+	return {
+		authorizeUrl,
+		scopes,
+		scopeSeparator,
+		extraAuthorizeParams,
+	}
+}
+
 export function mergeConnectOauthConfig(input: {
 	queryConfig: ConnectOauthQueryConfig
 	storedIntegration: StoredIntegrationConfig | null
@@ -203,7 +354,10 @@ export function mergeConnectOauthConfig(input: {
 		input.queryConfig.authorizeUrl ??
 		input.storedIntegration?.authorization?.authorizeUrl ??
 		null
-	const authorizeHost = authorizeUrl ? safeParseHost(authorizeUrl) : null
+	const deviceAuthorizationUrl =
+		input.queryConfig.deviceAuthorizationUrl ??
+		input.storedIntegration?.deviceAuthorizationUrl ??
+		null
 	// Empty string means "family prefill could not agree" — fall through to
 	// the query/default rather than wiping a known endpoint.
 	const tokenUrl =
@@ -211,20 +365,42 @@ export function mergeConnectOauthConfig(input: {
 		input.queryConfig.tokenUrl ||
 		null
 	const tokenHost = tokenUrl ? safeParseHost(tokenUrl) : null
-	if (
+	const flow =
+		input.storedIntegration?.flow ??
+		input.queryConfig.flow ??
+		(tokenUrl ? defaultConnectOauthFlow(tokenUrl) : 'pkce')
+	const isDevice = flow === 'device'
+	if (isDevice) {
+		if (
+			!provider ||
+			!deviceAuthorizationUrl ||
+			!isSafeExternalUrl(deviceAuthorizationUrl) ||
+			!tokenUrl ||
+			!tokenHost ||
+			!providerKey
+		) {
+			return null
+		}
+		if (authorizeUrl && !isSafeExternalUrl(authorizeUrl)) {
+			return null
+		}
+	} else if (
 		!provider ||
 		!authorizeUrl ||
-		!authorizeHost ||
+		!isSafeExternalUrl(authorizeUrl) ||
 		!tokenUrl ||
 		!tokenHost ||
 		!providerKey
 	) {
 		return null
 	}
-	const flow =
-		input.storedIntegration?.flow ??
-		input.queryConfig.flow ??
-		defaultConnectOauthFlow(tokenUrl)
+	const authorizeHost =
+		(authorizeUrl ? safeParseHost(authorizeUrl) : null) ||
+		(deviceAuthorizationUrl ? safeParseHost(deviceAuthorizationUrl) : null)
+	if (!authorizeHost) return null
+	const deviceHost = deviceAuthorizationUrl
+		? safeParseHost(deviceAuthorizationUrl)
+		: null
 	const usePkce =
 		input.queryConfig.usePkce ??
 		input.storedIntegration?.usePkce ??
@@ -251,6 +427,7 @@ export function mergeConnectOauthConfig(input: {
 	}
 	const allowedHosts = normalizeHosts([
 		tokenHost,
+		...(deviceHost ? [deviceHost] : []),
 		...input.queryConfig.allowedHosts,
 		...(input.storedIntegration?.requiredHosts ?? []),
 	])
@@ -272,6 +449,7 @@ export function mergeConnectOauthConfig(input: {
 		authorizeHost,
 		tokenHost,
 		authorizeUrl,
+		deviceAuthorizationUrl,
 		tokenUrl,
 		apiBaseUrl:
 			input.storedIntegration?.apiBaseUrl ?? input.queryConfig.apiBaseUrl,
@@ -335,14 +513,34 @@ export function parseSessionConnectOauthConfig(
 	}
 	if (!parsed || typeof parsed !== 'object') return null
 	const record = parsed as Record<string, unknown>
+	const flowOk =
+		record.flow === 'pkce' ||
+		record.flow === 'confidential' ||
+		record.flow === 'device'
+	const authorizeUrlOk =
+		record.authorizeUrl == null || typeof record.authorizeUrl === 'string'
+	const deviceUrlOk =
+		record.deviceAuthorizationUrl == null ||
+		typeof record.deviceAuthorizationUrl === 'string'
+	const deviceRequiresDeviceUrl =
+		record.flow !== 'device' ||
+		(typeof record.deviceAuthorizationUrl === 'string' &&
+			Boolean(record.deviceAuthorizationUrl.trim()))
+	const codeFlowRequiresAuthorize =
+		record.flow === 'device' ||
+		(typeof record.authorizeUrl === 'string' &&
+			Boolean(record.authorizeUrl.trim()))
 	const isValid =
 		typeof record.provider === 'string' &&
 		typeof record.providerKey === 'string' &&
-		typeof record.authorizeUrl === 'string' &&
+		authorizeUrlOk &&
+		deviceUrlOk &&
+		deviceRequiresDeviceUrl &&
+		codeFlowRequiresAuthorize &&
 		typeof record.tokenUrl === 'string' &&
 		typeof record.authorizeHost === 'string' &&
 		typeof record.tokenHost === 'string' &&
-		(record.flow === 'pkce' || record.flow === 'confidential') &&
+		flowOk &&
 		typeof record.usePkce === 'boolean' &&
 		typeof record.scopeSeparator === 'string' &&
 		typeof record.clientId === 'string' &&
@@ -355,6 +553,12 @@ export function parseSessionConnectOauthConfig(
 	if (!isValid) return null
 	return {
 		...(record as unknown as ConnectOauthConfig),
+		authorizeUrl:
+			typeof record.authorizeUrl === 'string' ? record.authorizeUrl : null,
+		deviceAuthorizationUrl:
+			typeof record.deviceAuthorizationUrl === 'string'
+				? record.deviceAuthorizationUrl
+				: null,
 		hasClientSecret: record.hasClientSecret === true,
 		platformAppSlug:
 			typeof record.platformAppSlug === 'string'
@@ -428,6 +632,8 @@ export function summarizeStoredSetupState(input: {
 	}
 	const missingFields: Array<string> = []
 	if (!input.clientId?.trim()) missingFields.push('client ID')
+	// Device grant allows public clients (no secret). Confidential still
+	// requires a stored client secret.
 	if (input.flow === 'confidential' && !input.hasStoredClientSecret) {
 		missingFields.push('client secret')
 	}
@@ -451,6 +657,39 @@ export function formatConnectOauthCaughtError(
 	const message = error instanceof Error ? error.message.trim() : ''
 	if (message) return message
 	return fallback
+}
+
+/**
+ * Distinguish real Kody session expiry (401 Unauthorized) from provider token
+ * exchange failures that historically leaked through as HTTP 401.
+ */
+export function formatOAuthExchangeFailure(input: {
+	status: number
+	data: Record<string, unknown> | null
+}): { treatAsSessionExpired: boolean; error: string } {
+	if (isOAuthExchangeSessionExpired(input)) {
+		return { treatAsSessionExpired: true, error: 'Session expired.' }
+	}
+	const errorDescription =
+		typeof input.data?.error_description === 'string' &&
+		input.data.error_description.trim()
+			? input.data.error_description.trim()
+			: typeof input.data?.error === 'string' && input.data.error.trim()
+				? input.data.error.trim()
+				: null
+	return {
+		treatAsSessionExpired: false,
+		error: errorDescription ?? 'Token exchange failed.',
+	}
+}
+
+export function isOAuthExchangeSessionExpired(input: {
+	status: number
+	data: Record<string, unknown> | null
+}) {
+	if (input.status !== 401) return false
+	if (hasProviderOAuthExchangeError(input.data)) return false
+	return true
 }
 
 function hasProviderOAuthExchangeError(data: Record<string, unknown> | null) {
@@ -494,6 +733,7 @@ function defaultConnectOauthUsePkce(input: {
 	flow: OAuthFlow
 	tokenUrl: string
 }): boolean {
+	if (input.flow === 'device') return false
 	if (input.flow === 'pkce') return true
 	return safeParseHost(input.tokenUrl) === 'api.canva.com'
 }
@@ -545,6 +785,21 @@ export function parseAllowedHosts(raw: string | null) {
 		.filter(Boolean)
 }
 
+export function parseHostApprovalLinks(
+	raw: unknown,
+): Array<ConnectOauthHostApprovalLink> {
+	if (!Array.isArray(raw)) return []
+	return raw.filter(
+		(entry): entry is ConnectOauthHostApprovalLink =>
+			Boolean(entry) &&
+			typeof entry === 'object' &&
+			typeof (entry as { secretName?: unknown }).secretName === 'string' &&
+			typeof (entry as { host?: unknown }).host === 'string' &&
+			typeof (entry as { approvalUrl?: unknown }).approvalUrl === 'string' &&
+			isSafeExternalUrl((entry as { approvalUrl?: string }).approvalUrl ?? ''),
+	)
+}
+
 export function parseConnectOauthNextSteps(
 	raw: unknown,
 ): ConnectOauthNextSteps | null {
@@ -593,7 +848,7 @@ export function parseProviderSetupInstructions(raw: string | null) {
 	return decoded && isMostlyPrintable(decoded) ? decoded : trimmed
 }
 
-function decodeBase64Payload(raw: string) {
+export function decodeBase64Payload(raw: string) {
 	if (!/^[A-Za-z0-9+/=_-]+$/.test(raw)) return null
 	try {
 		return new TextDecoder().decode(base64UrlToBytes(raw))
@@ -602,7 +857,7 @@ function decodeBase64Payload(raw: string) {
 	}
 }
 
-function isMostlyPrintable(text: string) {
+export function isMostlyPrintable(text: string) {
 	if (!text) return false
 	let printable = 0
 	for (const char of text) {

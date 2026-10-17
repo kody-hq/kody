@@ -601,6 +601,10 @@
 			"sha256": "20ef74d467821c4be5f931062c1469670ee1a5e8209aa8d1423904c40b1c2d06"
 		},
 		{
+			"filename": "0161-oauth-device-authorization.sql",
+			"sha256": "6eef245a600d256662793ed97f3e39686bdc92887f03a55d360b253e41a035b5"
+		},
+		{
 			"filename": "0163-credential-fill-placement.sql",
 			"sha256": "30299910d05b6602684b0fbecd3c5d842e0a124c16609e0d40b609aa846fef99"
 		}

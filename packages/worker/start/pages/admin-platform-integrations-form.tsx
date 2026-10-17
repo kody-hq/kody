@@ -238,6 +238,7 @@ export function IntegrationForm(input: {
 						>
 							<option value="pkce">pkce</option>
 							<option value="confidential">confidential</option>
+							<option value="device">device</option>
 						</select>
 					</label>
 					<label css={fieldCss}>
@@ -284,14 +285,32 @@ export function IntegrationForm(input: {
 						/>
 					</label>
 					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Authorize URL</span>
+						<span css={fieldLabelCss}>
+							Authorize URL
+							{(editingApp?.flow ?? 'pkce') === 'device'
+								? ' (optional for device flow)'
+								: ''}
+						</span>
 						<input
 							data-field-ring
 							name="authorizeUrl"
 							type="url"
-							required
+							required={(editingApp?.flow ?? 'pkce') !== 'device'}
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.authorizeUrl ?? ''}
+							css={accountInputCss}
+						/>
+					</label>
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Device authorization URL</span>
+						<input
+							data-field-ring
+							name="deviceAuthorizationUrl"
+							type="url"
+							required={(editingApp?.flow ?? 'pkce') === 'device'}
+							disabled={actionState !== 'idle'}
+							defaultValue={editingApp?.deviceAuthorizationUrl ?? ''}
+							placeholder="Required when flow is device"
 							css={accountInputCss}
 						/>
 					</label>

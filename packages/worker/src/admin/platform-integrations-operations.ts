@@ -30,22 +30,41 @@ export async function saveAdminPlatformIntegration(input: {
 	const clientId = record.clientId.trim()
 	const tokenUrl = record.tokenUrl.trim()
 	const authorizeUrl = record.authorizeUrl.trim()
+	const deviceAuthorizationUrl =
+		typeof record.deviceAuthorizationUrl === 'string'
+			? record.deviceAuthorizationUrl.trim() || null
+			: (record.deviceAuthorizationUrl ?? null)
 	const flow = record.flow
 	if (!slug) {
 		return adminOperationResult({ ok: false, error: 'Slug is required.' }, 400)
 	}
-	if (!clientId || !tokenUrl || !authorizeUrl) {
+	if (!clientId || !tokenUrl) {
 		return adminOperationResult(
 			{
 				ok: false,
-				error: 'Client id, token URL, and authorize URL are required.',
+				error: 'Client id and token URL are required.',
 			},
 			400,
 		)
 	}
-	if (flow !== 'pkce' && flow !== 'confidential') {
+	if (flow !== 'pkce' && flow !== 'confidential' && flow !== 'device') {
 		return adminOperationResult(
 			{ ok: false, error: 'Invalid OAuth flow.' },
+			400,
+		)
+	}
+	if (flow !== 'device' && !authorizeUrl) {
+		return adminOperationResult(
+			{ ok: false, error: 'Authorize URL is required.' },
+			400,
+		)
+	}
+	if (flow === 'device' && !deviceAuthorizationUrl) {
+		return adminOperationResult(
+			{
+				ok: false,
+				error: 'Device authorization URL is required for device flow.',
+			},
 			400,
 		)
 	}
@@ -85,6 +104,7 @@ export async function saveAdminPlatformIntegration(input: {
 				clientSecret: optionalText(record.clientSecret),
 				tokenUrl,
 				authorizeUrl,
+				deviceAuthorizationUrl,
 				apiBaseUrl: optionalText(record.apiBaseUrl),
 				flow,
 				usePkce: record.usePkce,

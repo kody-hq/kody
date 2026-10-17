@@ -119,10 +119,18 @@ function renderProviderDetails(config: ConnectOauthConfig) {
 		<section css={insetCardCss}>
 			<h3 css={sectionTitleCss}>Provider details</h3>
 			<div css={detailGridCss}>
-				<div css={detailItemCss}>
-					<span css={detailLabelCss}>Authorize URL</span>
-					<code css={detailValueCss}>{config.authorizeUrl}</code>
-				</div>
+				{config.authorizeUrl ? (
+					<div css={detailItemCss}>
+						<span css={detailLabelCss}>Authorize URL</span>
+						<code css={detailValueCss}>{config.authorizeUrl}</code>
+					</div>
+				) : null}
+				{config.deviceAuthorizationUrl ? (
+					<div css={detailItemCss}>
+						<span css={detailLabelCss}>Device authorization URL</span>
+						<code css={detailValueCss}>{config.deviceAuthorizationUrl}</code>
+					</div>
+				) : null}
 				<div css={detailItemCss}>
 					<span css={detailLabelCss}>Token URL</span>
 					<code css={detailValueCss}>{config.tokenUrl}</code>

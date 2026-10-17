@@ -206,6 +206,10 @@ Open these before proposing a new primitive, surface, or storage home.
   — `POST /v1/tokens/device` exchanges official CLI OAuth for a user-owned
   `kody_at_…`; `POST /v1/execute` is that token with `org:execute`; MCP and
   local-execute OAuth stay for older CLIs
+- [0077 — OAuth device authorization grant (RFC 8628)](./0077-oauth-device-authorization-grant.md)
+  — one server backend (`device_start` / `device_poll`), two entry points
+  (`/connect/oauth` + MCP); `device_code` and client secret stay server-side;
+  additive `device_authorization_url` + `flow=device`
 
 ## Historical / UI / implementation
 

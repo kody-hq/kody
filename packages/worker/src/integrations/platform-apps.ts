@@ -9,6 +9,9 @@ import {
 	type integrationFlowValues,
 	type tokenExchangeStyleValues,
 } from '#mcp/capabilities/integrations/integration-shared.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { assertSafeDeviceAuthorizationUrl } from './device-flow.ts'
+import { providerFromSlug } from './provider-from-slug.ts'
 
 /**
  * Operator-fixable input rejection while saving a platform OAuth app
@@ -16,8 +19,6 @@ import {
  * MCP capabilities re-wrap this as `McpCallerError` so agent staging mistakes
  * stay on `mcp-event` lines and out of Sentry.
  */
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { providerFromSlug } from './provider-from-slug.ts'
 export class PlatformOauthAppValidationError extends Error {
 	constructor(message: string) {
 		super(message)
@@ -57,6 +58,7 @@ export type PlatformOauthApp = {
 	hasClientSecret: boolean
 	tokenUrl: string
 	authorizeUrl: string
+	deviceAuthorizationUrl: string | null
 	apiBaseUrl: string | null
 	flow: (typeof integrationFlowValues)[number]
 	usePkce: boolean | null
@@ -84,6 +86,7 @@ export type PlatformOauthAppRow = {
 	client_secret_encrypted: string | null
 	token_url: string
 	authorize_url: string
+	device_authorization_url: string | null
 	api_base_url: string | null
 	flow: (typeof integrationFlowValues)[number]
 	use_pkce: number | null
@@ -103,8 +106,8 @@ export type PlatformOauthAppRow = {
 
 const platformAppSelectColumns = `
 	slug, provider, label, description, client_id, client_secret_encrypted,
-	token_url, authorize_url, api_base_url, flow, use_pkce,
-	token_exchange_style, scope_separator, extra_authorize_params_json,
+	token_url, authorize_url, device_authorization_url, api_base_url, flow,
+	use_pkce, token_exchange_style, scope_separator, extra_authorize_params_json,
 	allowed_scopes_json, default_scopes_json, required_hosts_json, enabled,
 	visibility, logo_key, logo_content_type, created_at, updated_at
 `
@@ -203,6 +206,7 @@ export type PlatformOauthAppSaveInput = {
 	clientSecret?: string | null
 	tokenUrl: string
 	authorizeUrl: string
+	deviceAuthorizationUrl?: string | null
 	apiBaseUrl?: string | null
 	flow: (typeof integrationFlowValues)[number]
 	usePkce?: boolean | null
@@ -237,11 +241,36 @@ export async function upsertPlatformOauthApp(input: {
 	if (!tokenUrl) {
 		throw new PlatformOauthAppValidationError('Token URL is required.')
 	}
-	if (!authorizeUrl) {
-		throw new PlatformOauthAppValidationError('Authorize URL is required.')
+	const existing = await getPlatformOauthAppRowBySlug({ db: input.db, slug })
+	const deviceAuthorizationUrl =
+		input.app.deviceAuthorizationUrl === undefined
+			? (existing?.device_authorization_url ?? null)
+			: input.app.deviceAuthorizationUrl?.trim() || null
+	switch (input.app.flow) {
+		case 'device': {
+			const deviceUrlError = assertSafeDeviceAuthorizationUrl(
+				deviceAuthorizationUrl ?? '',
+			)
+			if (deviceUrlError) {
+				throw new PlatformOauthAppValidationError(deviceUrlError)
+			}
+			break
+		}
+		case 'pkce':
+		case 'confidential': {
+			if (!authorizeUrl) {
+				throw new PlatformOauthAppValidationError('Authorize URL is required.')
+			}
+			break
+		}
+		default: {
+			const exhaustiveCheck: never = input.app.flow
+			throw new PlatformOauthAppValidationError(
+				`Unhandled OAuth flow: ${String(exhaustiveCheck)}`,
+			)
+		}
 	}
 
-	const existing = await getPlatformOauthAppRowBySlug({ db: input.db, slug })
 	const clientSecretEncrypted =
 		input.app.clientSecret === undefined
 			? (existing?.client_secret_encrypted ?? null)
@@ -258,10 +287,10 @@ export async function upsertPlatformOauthApp(input: {
 			: input.app.enabled
 				? 1
 				: 0
-	// Disabled apps may omit the secret so an agent can stage the full
+	// Disabled apps may omit credentials so an agent can stage the full
 	// provider config through MCP and an operator pastes credentials (and
-	// enables) later; the secret becomes mandatory the moment the app is
-	// reachable by users.
+	// enables) later. Confidential flow requires a client secret once
+	// enabled; device flow allows public (no-secret) clients.
 	if (enabled && input.app.flow === 'confidential' && !clientSecretEncrypted) {
 		throw new PlatformOauthAppValidationError(
 			'Confidential flow requires a client secret before the app can be enabled. Save it with enabled: false to stage the config first.',
@@ -294,12 +323,13 @@ export async function upsertPlatformOauthApp(input: {
 		.prepare(
 			`INSERT INTO platform_oauth_apps (
 				slug, provider, label, description, client_id,
-				client_secret_encrypted, token_url, authorize_url, api_base_url,
-				flow, use_pkce, token_exchange_style, scope_separator,
+				client_secret_encrypted, token_url, authorize_url,
+				device_authorization_url, api_base_url, flow, use_pkce,
+				token_exchange_style, scope_separator,
 				extra_authorize_params_json, allowed_scopes_json,
 				default_scopes_json, required_hosts_json, enabled, visibility,
 				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(slug)
 			DO UPDATE SET
 				provider = excluded.provider,
@@ -309,6 +339,7 @@ export async function upsertPlatformOauthApp(input: {
 				client_secret_encrypted = excluded.client_secret_encrypted,
 				token_url = excluded.token_url,
 				authorize_url = excluded.authorize_url,
+				device_authorization_url = excluded.device_authorization_url,
 				api_base_url = excluded.api_base_url,
 				flow = excluded.flow,
 				use_pkce = excluded.use_pkce,
@@ -337,6 +368,7 @@ export async function upsertPlatformOauthApp(input: {
 			clientSecretEncrypted,
 			tokenUrl,
 			authorizeUrl,
+			deviceAuthorizationUrl,
 			input.app.apiBaseUrl === undefined
 				? (existing?.api_base_url ?? null)
 				: input.app.apiBaseUrl?.trim() || null,
@@ -440,19 +472,20 @@ export async function renamePlatformOauthApp(input: {
 			.prepare(
 				`INSERT INTO platform_oauth_apps (
 					slug, provider, label, description, client_id,
-					client_secret_encrypted, token_url, authorize_url, api_base_url,
-					flow, use_pkce, token_exchange_style, scope_separator,
+					client_secret_encrypted, token_url, authorize_url,
+					device_authorization_url, api_base_url, flow, use_pkce,
+					token_exchange_style, scope_separator,
 					extra_authorize_params_json, allowed_scopes_json,
 					default_scopes_json, required_hosts_json, enabled, visibility,
 					logo_key, logo_content_type, created_at, updated_at
 				)
 				SELECT
 					?, provider, label, description, client_id,
-					?, token_url, authorize_url, api_base_url,
-					flow, use_pkce, token_exchange_style, scope_separator,
-					extra_authorize_params_json, allowed_scopes_json,
-					default_scopes_json, required_hosts_json, enabled, visibility,
-					logo_key, logo_content_type, created_at, ?
+					?, token_url, authorize_url, device_authorization_url,
+					api_base_url, flow, use_pkce, token_exchange_style,
+					scope_separator, extra_authorize_params_json,
+					allowed_scopes_json, default_scopes_json, required_hosts_json,
+					enabled, visibility, logo_key, logo_content_type, created_at, ?
 				FROM platform_oauth_apps WHERE slug = ?`,
 			)
 			.bind(newSlug, reboundSecret, new Date().toISOString(), slug),
@@ -564,6 +597,7 @@ export function mapPlatformOauthAppRow(
 		hasClientSecret: row.client_secret_encrypted != null,
 		tokenUrl: row.token_url,
 		authorizeUrl: row.authorize_url,
+		deviceAuthorizationUrl: row.device_authorization_url ?? null,
 		apiBaseUrl: row.api_base_url,
 		flow: row.flow,
 		usePkce: row.use_pkce == null ? null : row.use_pkce === 1,
