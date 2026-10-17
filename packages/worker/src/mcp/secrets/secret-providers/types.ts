@@ -1,3 +1,5 @@
+import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+
 export type SecretProviderBindingRecord = {
 	/** Stable credential id, assigned by the database on insert. */
 	credentialId: string
@@ -7,12 +9,7 @@ export type SecretProviderBindingRecord = {
 	doorSecretName: string
 	config: Record<string, string>
 	/** Null means anywhere. Distinct from inject. */
-	placement: {
-		headers?: true | Array<string>
-		query?: true
-		path?: true
-		body?: true
-	} | null
+	placement: CredentialFillPlacement | null
 	createdAt: string
 	updatedAt: string
 }
