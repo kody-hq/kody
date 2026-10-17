@@ -21,7 +21,8 @@ import {
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
-	consumeDevicePendingSession,
+	completeDevicePendingSession,
+	loadDevicePendingSession,
 	pollDeviceAuthorization,
 	startDeviceAuthorization,
 	type DevicePollFailure,
@@ -226,6 +227,27 @@ export async function pollIntegrationDeviceConnect(
 		request: input.request,
 		user: input.mcpUser,
 	})
+
+	// Completion receipt: persist already succeeded; a lost response retries here.
+	const existing = await loadDevicePendingSession({
+		env: input.env,
+		userId: ownerId,
+		sessionId,
+	})
+	if (existing?.completion) {
+		return {
+			ok: true,
+			status: 'approved',
+			accessTokenSaved: true,
+			refreshTokenSaved: existing.completion.refreshTokenSaved,
+			allowedHosts: existing.completion.allowedHosts,
+			hostApprovalLinks: existing.completion.hostApprovalLinks,
+			integrationName: existing.completion.integrationName,
+			nextSteps: existing.completion
+				.nextSteps as DeviceConnectPollApproved['nextSteps'],
+		}
+	}
+
 	const polled = await pollDeviceAuthorization({
 		env: input.env,
 		userId: ownerId,
@@ -283,12 +305,7 @@ export async function pollIntegrationDeviceConnect(
 			httpStatus: persisted.status,
 		}
 	}
-	await consumeDevicePendingSession({
-		env: input.env,
-		userId: ownerId,
-		sessionId,
-	})
-	return {
+	const approved: DeviceConnectPollApproved = {
 		ok: true,
 		status: 'approved',
 		accessTokenSaved: true,
@@ -298,4 +315,17 @@ export async function pollIntegrationDeviceConnect(
 		integrationName: persisted.integrationName,
 		nextSteps: persisted.nextSteps,
 	}
+	await completeDevicePendingSession({
+		env: input.env,
+		userId: ownerId,
+		sessionId,
+		completion: {
+			refreshTokenSaved: approved.refreshTokenSaved,
+			allowedHosts: approved.allowedHosts,
+			hostApprovalLinks: approved.hostApprovalLinks,
+			integrationName: approved.integrationName,
+			nextSteps: approved.nextSteps,
+		},
+	})
+	return approved
 }

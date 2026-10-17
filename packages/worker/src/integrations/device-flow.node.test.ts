@@ -5,6 +5,7 @@ import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
 	DEVICE_DEFAULT_INTERVAL_SECONDS,
 	DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
+	completeDevicePendingSession,
 	consumeDevicePendingSession,
 	loadDevicePendingSession,
 	pollDeviceAuthorization,
@@ -184,6 +185,39 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	expect(cached.tokenPayload.access_token).toBe('at-1')
 	// Cached approve must not re-hit the provider with device_code.
 	expect(fetchImpl).toHaveBeenCalledTimes(4)
+
+	await completeDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		completion: {
+			refreshTokenSaved: true,
+			allowedHosts: ['api.example.com'],
+			hostApprovalLinks: [],
+			integrationName: 'example-device',
+			nextSteps: { service: 'example-device' },
+		},
+	})
+	const completed = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(completed?.completion?.integrationName).toBe('example-device')
+	expect(completed?.deviceCode).toBe('')
+	expect(completed?.clientSecret).toBeNull()
+	expect(completed?.approvedTokenPayload).toBeNull()
+	// Raw poll after completion is invalid; connect-layer reads the receipt.
+	const afterComplete = await pollDeviceAuthorization({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		fetchImpl,
+		nowMs: Date.now() + 200_000,
+	})
+	expect(afterComplete.ok).toBe(false)
+	if (afterComplete.ok) return
+	expect(afterComplete.status).toBe('invalid_session')
 
 	await consumeDevicePendingSession({
 		env,

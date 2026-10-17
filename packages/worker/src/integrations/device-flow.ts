@@ -51,6 +51,19 @@ export function resolveDeviceClientAuthFlow(input: {
 	return 'pkce'
 }
 
+/** User-facing success payload retained after secrets are stripped from KV. */
+export type DeviceCompletionReceipt = {
+	refreshTokenSaved: boolean
+	allowedHosts: Array<string>
+	hostApprovalLinks: Array<{
+		secretName: string
+		host: string
+		approvalUrl: string
+	}>
+	integrationName: string
+	nextSteps: unknown
+}
+
 export type DevicePendingSession = {
 	userId: string
 	deviceCode: string
@@ -76,10 +89,15 @@ export type DevicePendingSession = {
 	clientSecret: string | null
 	/**
 	 * Set once the provider returns tokens. Later polls return this payload
-	 * without re-using `device_code` at the provider. Cleared only by
-	 * `consumeDevicePendingSession` after persist succeeds.
+	 * without re-using `device_code` at the provider. Cleared when
+	 * `completeDevicePendingSession` writes the completion receipt.
 	 */
 	approvedTokenPayload?: Record<string, unknown> | null
+	/**
+	 * Written after tokens are persisted. Survives lost `approved` responses so
+	 * a retry poll returns success instead of `invalid_session`.
+	 */
+	completion?: DeviceCompletionReceipt | null
 }
 
 export type DeviceStartSuccess = {
@@ -125,7 +143,7 @@ export type DevicePollSuccess = {
 	/** Session fields needed to persist the connection. */
 	session: Omit<
 		DevicePendingSession,
-		'deviceCode' | 'clientSecret' | 'approvedTokenPayload'
+		'deviceCode' | 'clientSecret' | 'approvedTokenPayload' | 'completion'
 	>
 	clientSecret: string | null
 }
@@ -261,13 +279,40 @@ export async function deleteDevicePendingSession(input: {
 	)
 }
 
-/** Delete the pending session after tokens have been persisted successfully. */
+/** Delete the pending session (tests / hard abort). Prefer completion receipt. */
 export async function consumeDevicePendingSession(input: {
 	env: Pick<Env, 'OAUTH_KV'>
 	userId: string
 	sessionId: string
 }): Promise<void> {
 	await deleteDevicePendingSession(input)
+}
+
+/**
+ * After persist succeeds: strip secrets and keep a completion receipt so a lost
+ * `approved` response can be retried without becoming `invalid_session`.
+ */
+export async function completeDevicePendingSession(input: {
+	env: Pick<Env, 'OAUTH_KV'>
+	userId: string
+	sessionId: string
+	completion: DeviceCompletionReceipt
+}): Promise<void> {
+	const session = await loadDevicePendingSession({
+		env: input.env,
+		userId: input.userId,
+		sessionId: input.sessionId,
+	})
+	if (!session || session.userId !== input.userId) return
+	session.deviceCode = ''
+	session.clientSecret = null
+	session.approvedTokenPayload = null
+	session.completion = input.completion
+	await storeDevicePendingSession({
+		env: input.env,
+		sessionId: input.sessionId,
+		session,
+	})
 }
 
 function toApprovedPollResult(
@@ -278,6 +323,7 @@ function toApprovedPollResult(
 		deviceCode: _deviceCode,
 		clientSecret,
 		approvedTokenPayload: _approved,
+		completion: _completion,
 		...safeSession
 	} = session
 	return {
@@ -492,6 +538,16 @@ export async function pollDeviceAuthorization(input: {
 			ok: false,
 			status: 'invalid_session',
 			error: 'Device authorization session was not found or has expired.',
+			httpStatus: 404,
+		}
+	}
+
+	// Tokens already persisted — connect-layer poll returns the receipt instead.
+	if (session.completion) {
+		return {
+			ok: false,
+			status: 'invalid_session',
+			error: 'Device authorization session was already completed.',
 			httpStatus: 404,
 		}
 	}
