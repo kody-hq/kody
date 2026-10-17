@@ -342,3 +342,57 @@ test('pollDeviceAuthorization enforces interval without hitting the provider', a
 	expect(second.ok && second.status === 'authorization_pending').toBe(true)
 	expect(fetchImpl).toHaveBeenCalledTimes(2)
 })
+
+test('pollDeviceAuthorization increases interval after connection timeout', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi
+		.fn()
+		.mockResolvedValueOnce(
+			jsonResponse({
+				device_code: 'dc-timeout',
+				user_code: 'TIME-0001',
+				verification_uri: 'https://auth.example.com/verify',
+				expires_in: 600,
+				interval: 5,
+			}),
+		)
+		.mockRejectedValueOnce(new Error('The operation was aborted'))
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		provider: 'timeout-provider',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	if (!started.ok) return
+	const t0 = Date.now() + 10_000
+	const timedOut = await pollDeviceAuthorization({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		fetchImpl,
+		nowMs: t0,
+	})
+	expect(timedOut.ok).toBe(false)
+	if (timedOut.ok) return
+	expect(timedOut.status).toBe('provider_error')
+	const stored = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(stored?.intervalSeconds).toBe(5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS)
+	expect(stored?.nextPollAtMs).toBe(
+		t0 + (5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS) * 1000,
+	)
+	// Interval gate must block another provider hit until nextPollAtMs.
+	const gated = await pollDeviceAuthorization({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		fetchImpl,
+		nowMs: t0 + 1_000,
+	})
+	expect(gated.ok && gated.status === 'authorization_pending').toBe(true)
+	expect(fetchImpl).toHaveBeenCalledTimes(2)
+})

@@ -632,6 +632,14 @@ export async function pollDeviceAuthorization(input: {
 			signal: AbortSignal.timeout(30_000),
 		})
 	} catch (error) {
+		// RFC 8628 §3.5: increase the interval after a connection timeout.
+		session.intervalSeconds += DEVICE_SLOW_DOWN_INCREMENT_SECONDS
+		session.nextPollAtMs = now + session.intervalSeconds * 1000
+		await storeDevicePendingSession({
+			env: input.env,
+			sessionId: input.sessionId,
+			session,
+		})
 		return {
 			ok: false,
 			status: 'provider_error',

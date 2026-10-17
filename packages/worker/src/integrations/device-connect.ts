@@ -275,27 +275,41 @@ export async function pollIntegrationDeviceConnect(
 		}
 	}
 
-	const persisted = await persistConnectOauthTokens({
-		env: input.env,
-		request: input.request,
-		mcpUser: input.mcpUser,
-		provider: polled.session.provider,
-		platformApp,
-		tokenUrl: polled.session.tokenUrl,
-		apiBaseUrl: polled.session.apiBaseUrl,
-		authorizeUrl: polled.session.authorizeUrl,
-		deviceAuthorizationUrl: polled.session.deviceAuthorizationUrl,
-		flow: 'device',
-		usePkce: polled.session.usePkce,
-		clientId: polled.session.clientId,
-		tokenExchangeStyle: polled.session.tokenExchangeStyle,
-		allowedHosts: polled.session.allowedHosts,
-		scopes: polled.session.scopes,
-		scopeSeparator: polled.session.scopeSeparator,
-		extraAuthorizeParams: polled.session.extraAuthorizeParams,
-		tokenRecord: polled.tokenPayload,
-		clientSecret: polled.clientSecret,
-	})
+	let persisted: Awaited<ReturnType<typeof persistConnectOauthTokens>>
+	try {
+		persisted = await persistConnectOauthTokens({
+			env: input.env,
+			request: input.request,
+			mcpUser: input.mcpUser,
+			provider: polled.session.provider,
+			platformApp,
+			tokenUrl: polled.session.tokenUrl,
+			apiBaseUrl: polled.session.apiBaseUrl,
+			authorizeUrl: polled.session.authorizeUrl,
+			deviceAuthorizationUrl: polled.session.deviceAuthorizationUrl,
+			flow: 'device',
+			usePkce: polled.session.usePkce,
+			clientId: polled.session.clientId,
+			tokenExchangeStyle: polled.session.tokenExchangeStyle,
+			allowedHosts: polled.session.allowedHosts,
+			scopes: polled.session.scopes,
+			scopeSeparator: polled.session.scopeSeparator,
+			extraAuthorizeParams: polled.session.extraAuthorizeParams,
+			tokenRecord: polled.tokenPayload,
+			clientSecret: polled.clientSecret,
+		})
+	} catch (error) {
+		// Leave the approved session in KV so a retry poll can re-read tokens.
+		return {
+			ok: false,
+			status: 'persist_failed',
+			error:
+				error instanceof Error
+					? error.message
+					: 'Unable to save OAuth connection.',
+			httpStatus: 500,
+		}
+	}
 	if (!persisted.ok) {
 		// Leave the approved session in KV so a retry poll can re-read tokens.
 		return {
