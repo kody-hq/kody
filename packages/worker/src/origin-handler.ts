@@ -1,21 +1,14 @@
 import * as Sentry from '@sentry/cloudflare'
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
 import { getWorkerSentryOptions } from './sentry-options.ts'
-import { handleRequest } from '#app/handler.ts'
-import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import {
-	handlePackageAppOauthHostAuth,
-	isPackageAppOauthHostAuthPath,
-} from '#app/package-app-oauth-host-auth.ts'
+import { handleRequest } from '../start/http-entry.ts'
+import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	handleAuthorizeRouteException,
-	handleAuthorizeRequest,
 	handleAuthorizeInfo,
-	handleOAuthCallback,
 	handleOAuthProtectedApiMe,
 	oauthPaths,
 } from './oauth-handlers.ts'
-import { handlePackageAppOauthAuthorizeRequest } from '#app/package-app-oauth-authorize.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import {
 	createSharedOAuthProviderOptions,
@@ -69,7 +62,7 @@ import {
 	resolveVerifiedCustomHostnameIfEnabled,
 } from '#app/package-app-origin.ts'
 import { refuseNonCanonicalProductionHost } from '#app/canonical-host.ts'
-import { serveAnonymousHtmlFromCache } from '#app/anonymous-html-edge-cache.ts'
+import { deliverAnonymousDocument } from '#app/anonymous-html-edge-cache.ts'
 import { handleInboundEmail } from '#worker/email/inbound.ts'
 import { handleQueueBatch } from '#worker/queue-handler.ts'
 import { handleDrRestoreRequest } from '#worker/dr/dr-restore.ts'
@@ -149,18 +142,10 @@ const rateLimitedAuthPaths = new Set([
 	...socialLoginStartPaths,
 	'/oauth/authorize',
 	packageAppOauthPaths.authorize,
-	'/password-reset',
-	'/password-reset/confirm',
-	'/verify/2fa.json',
-	'/account/two-factor.json',
-	'/account/password.json',
 	'/webauthn/authentication',
 ])
 
-const protectedPublicJsonFormPaths = new Set([
-	'/verify/2fa.json',
-	'/webauthn/authentication',
-])
+const protectedPublicJsonFormPaths = new Set(['/webauthn/authentication'])
 
 const appHandler = withCors({
 	getCorsHeaders(request): Record<string, string> | null {
@@ -315,65 +300,6 @@ const appHandler = withCors({
 			)
 		}
 
-		if (url.pathname === packageAppOauthPaths.authorize) {
-			try {
-				return await handlePackageAppOauthAuthorizeRequest(request, env)
-			} catch (error) {
-				Sentry.captureException(error)
-				return new Response('Authorization failed.', {
-					status: 500,
-					headers: { 'Cache-Control': 'no-store' },
-				})
-			}
-		}
-
-		// Preview / path-based inline package apps leave PACKAGE_APP_BASE_URL
-		// unset and allowlist the app-origin callback. Dispatch `/_kody/auth/*`
-		// here so consent redirects land on a live handler (subdomain / custom
-		// host dispatch lives in package-app-origin instead).
-		if (
-			isPackageAppOauthHostAuthPath(url.pathname) &&
-			!getPackageAppBaseUrl({ env })
-		) {
-			const hostAuth = await handlePackageAppOauthHostAuth({
-				request,
-				env,
-				url,
-			})
-			if (hostAuth) return hostAuth
-		}
-
-		if (url.pathname === oauthPaths.authorize) {
-			try {
-				if (
-					request.method === 'POST' &&
-					request.headers
-						.get('Content-Type')
-						?.includes('application/x-www-form-urlencoded')
-				) {
-					const formData = await request.clone().formData()
-					// Only the signed-out inline-login form accepts credentials.
-					// Signed-in approval/denial posts remain protected by session
-					// and OAuth request state rather than a public bot challenge.
-					if (formData.has('email') || formData.has('password')) {
-						const protection = await verifyPublicFormProtection({
-							env,
-							request,
-							body: Object.fromEntries(formData),
-						})
-						if (!protection.ok) {
-							await discardUnreadRequestBody(request)
-							return protection.response
-						}
-					}
-				}
-				return await handleAuthorizeRequest(request, env)
-			} catch (error) {
-				Sentry.captureException(error)
-				return handleAuthorizeRouteException(request)
-			}
-		}
-
 		if (url.pathname === oauthPaths.authorizeInfo) {
 			try {
 				return await handleAuthorizeInfo(request, env)
@@ -381,10 +307,6 @@ const appHandler = withCors({
 				Sentry.captureException(error)
 				return handleAuthorizeRouteException(request)
 			}
-		}
-
-		if (url.pathname === oauthPaths.callback) {
-			return handleOAuthCallback(request, env)
 		}
 
 		if (url.pathname === '/.well-known/appspecific/com.chrome.devtools.json') {
@@ -926,8 +848,9 @@ async function fetchWithDynamicWorkerBudget(
 		if (gitResponse) return gitResponse
 	}
 
-	return serveAnonymousHtmlFromCache(request, env, ctx, () =>
-		handleOriginAppFetch(request, env, ctx, url),
+	return deliverAnonymousDocument(
+		request,
+		await handleOriginAppFetch(request, env, ctx, url),
 	)
 }
 

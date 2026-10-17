@@ -66,9 +66,6 @@ import { isExecutedDirectly } from './node-runtime.ts'
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const guidesSourceDir = path.join(repoRoot, 'docs/guides')
 const generatedDir = path.join(repoRoot, 'packages/worker/src/generated')
-const stampPath = path.join(generatedDir, 'guide-catalog.stamp.json')
-const metadataOutputPath = path.join(generatedDir, 'guide-metadata.mjs')
-const catalogOutputPath = path.join(generatedDir, 'guide-catalog.mjs')
 
 // Outside `src/generated` on purpose: that tree is still inside wrangler's
 // additional-modules watch root (bundler wasm is not; see
@@ -76,10 +73,13 @@ const catalogOutputPath = path.join(generatedDir, 'guide-catalog.mjs')
 // churning there could retrigger reload. Keyed by a hash of `generatedDir`
 // (not a fixed name) so unrelated checkouts/worktrees on the same machine
 // never contend on the same lock.
-export const lockPath = path.join(
-	tmpdir(),
-	`kody-guide-catalog-modules-${createHash('sha256').update(generatedDir).digest('hex').slice(0, 16)}.lock`,
-)
+export function guideCatalogLockPath(outputDir: string) {
+	return path.join(
+		tmpdir(),
+		`kody-guide-catalog-modules-${createHash('sha256').update(path.resolve(outputDir)).digest('hex').slice(0, 16)}.lock`,
+	)
+}
+const lockPath = guideCatalogLockPath(generatedDir)
 const lockAcquireTimeoutMs = 30_000
 const lockRetryIntervalMs = 20
 // A lock older than this (or whose owning pid is gone) is assumed abandoned
@@ -91,17 +91,17 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function isLockStale(): Promise<boolean> {
+export async function isLockStale(targetLockPath = lockPath): Promise<boolean> {
 	let lockStat
 	try {
-		lockStat = await stat(lockPath)
+		lockStat = await stat(targetLockPath)
 	} catch {
 		// Lock disappeared since our failed create attempt; not stale, just
 		// gone — the next create attempt will simply succeed.
 		return false
 	}
 	try {
-		const ownerPid = Number.parseInt(await readFile(lockPath, 'utf8'), 10)
+		const ownerPid = Number.parseInt(await readFile(targetLockPath, 'utf8'), 10)
 		if (Number.isInteger(ownerPid)) {
 			// Signal 0 probes liveness without actually sending a signal. A
 			// live owner keeps its lock regardless of age; a slow build must
@@ -127,7 +127,7 @@ export async function isLockStale(): Promise<boolean> {
  * same output files at once. Returns a release function; callers must call
  * it from a `finally` block.
  */
-async function acquireLock(): Promise<() => Promise<void>> {
+async function acquireLock(lockPath: string): Promise<() => Promise<void>> {
 	const deadline = Date.now() + lockAcquireTimeoutMs
 	const ownerToken = String(process.pid)
 	for (;;) {
@@ -148,7 +148,7 @@ async function acquireLock(): Promise<() => Promise<void>> {
 			}
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-			if (await isLockStale()) {
+			if (await isLockStale(lockPath)) {
 				await rm(lockPath, { force: true }).catch(() => {})
 				continue
 			}
@@ -307,7 +307,7 @@ async function buildStampContent(filePaths: ReadonlyArray<string>) {
 	return JSON.stringify({ hash }, null, '\t')
 }
 
-async function readStamp(): Promise<string | null> {
+async function readStamp(stampPath: string): Promise<string | null> {
 	try {
 		return await readFile(stampPath, 'utf8')
 	} catch {
@@ -315,7 +315,10 @@ async function readStamp(): Promise<string | null> {
 	}
 }
 
-async function generatedOutputsExist() {
+async function generatedOutputsExist(
+	metadataOutputPath: string,
+	catalogOutputPath: string,
+) {
 	try {
 		await Promise.all([access(metadataOutputPath), access(catalogOutputPath)])
 		return true
@@ -324,7 +327,7 @@ async function generatedOutputsExist() {
 	}
 }
 
-async function fsyncGeneratedDir() {
+async function fsyncGeneratedDir(generatedDir: string) {
 	const handle = await open(generatedDir, 'r')
 	try {
 		await handle.sync()
@@ -343,14 +346,23 @@ async function fsyncGeneratedDir() {
  * watcher, a vitest worker's dynamic `import()`) never observes a stamp that
  * matches before the catalog/metadata files it describes are fully written.
  */
-export async function ensureGuideCatalogModules() {
+export async function ensureGuideCatalogModules(
+	options: { outputDir?: string } = {},
+) {
+	const outputDir = path.resolve(options.outputDir ?? generatedDir)
+	const stampPath = path.join(outputDir, 'guide-catalog.stamp.json')
+	const metadataOutputPath = path.join(outputDir, 'guide-metadata.mjs')
+	const catalogOutputPath = path.join(outputDir, 'guide-catalog.mjs')
 	let filePaths = await findGuideMarkdownFiles()
 	let stampContent = await buildStampContent(filePaths)
-	if ((await readStamp()) === stampContent && (await generatedOutputsExist())) {
+	if (
+		(await readStamp(stampPath)) === stampContent &&
+		(await generatedOutputsExist(metadataOutputPath, catalogOutputPath))
+	) {
 		return
 	}
 
-	const release = await acquireLock()
+	const release = await acquireLock(guideCatalogLockPath(outputDir))
 	try {
 		// The guide tree may have changed while this process waited. Refresh
 		// the snapshot under the lock so the cache check and generated output
@@ -358,8 +370,8 @@ export async function ensureGuideCatalogModules() {
 		filePaths = await findGuideMarkdownFiles()
 		stampContent = await buildStampContent(filePaths)
 		if (
-			(await readStamp()) === stampContent &&
-			(await generatedOutputsExist())
+			(await readStamp(stampPath)) === stampContent &&
+			(await generatedOutputsExist(metadataOutputPath, catalogOutputPath))
 		) {
 			return
 		}
@@ -368,7 +380,7 @@ export async function ensureGuideCatalogModules() {
 		const fullCatalog = buildFullCatalog(sources)
 		const metadata = toMetadata(fullCatalog)
 
-		await mkdir(generatedDir, { recursive: true })
+		await mkdir(outputDir, { recursive: true })
 		await writeFileAtomic(
 			metadataOutputPath,
 			renderGeneratedModule('guideMetadata', metadata),
@@ -381,7 +393,7 @@ export async function ensureGuideCatalogModules() {
 		// Flush before `wrangler dev` starts watching `src/` (guide catalog
 		// stays under the additional-module watch root; bundler wasm does
 		// not — see tools/build-worker-bundler-modules.ts / Friction #1789).
-		await fsyncGeneratedDir()
+		await fsyncGeneratedDir(outputDir)
 	} finally {
 		await release()
 	}

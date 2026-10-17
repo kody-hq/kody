@@ -1,14 +1,12 @@
-import { type Action } from 'remix/router'
-import { z } from 'zod'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	inviteCreateCapability,
 	inviteRevokeCapability,
 } from '#mcp/capabilities/access/invites.ts'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
 import {
 	packageCollaboratorRemoveCapability,
-	packageCollaboratorSetCapability,
+	setPackageCollaboratorAccess,
 } from '#mcp/capabilities/access/package-collaborators.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -19,7 +17,7 @@ import {
 	computeEffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '../operation-result.ts'
 import { getInviteById } from '#worker/orgs/access-writes.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
@@ -29,14 +27,13 @@ import {
 import { loadOrgBindingForSlug, type OrgBinding } from '#worker/orgs/repo.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
-	type PackageCollaboratorInviteCreated,
 	type PackageCollaboratorsView,
 	type PackageCollaboratorsWriteResult,
-	packageCollaboratorInviteeLabel,
-	packageCollaboratorPresets,
+	type PackageCollaboratorInviteCreated,
 	readPackageCollaboratorInvitee,
+	packageCollaboratorInviteeLabel,
+	type PackageCollaboratorPreset,
 } from '#universal/package-collaborators.ts'
-import { type routes } from '#universal/routes.ts'
 
 type AppUser = NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 
@@ -46,38 +43,6 @@ export type CollaboratorsScope = {
 	orgSlug: string
 	personal: boolean
 	savedPackage: { id: string; kodyId: string; name: string }
-}
-
-const presetSchema = z.enum(packageCollaboratorPresets)
-
-const changeSchema = z.discriminatedUnion('intent', [
-	z.strictObject({
-		intent: z.literal('grant'),
-		subjectType: z.enum(['user', 'team']),
-		subjectId: z.string().trim().min(1),
-		preset: presetSchema,
-	}),
-	z.strictObject({
-		intent: z.literal('revoke'),
-		grantId: z.string().trim().min(1),
-	}),
-	z.strictObject({
-		intent: z.literal('invite'),
-		invitee: z.string().trim().min(1),
-		preset: presetSchema,
-	}),
-	z.strictObject({
-		intent: z.literal('revoke-invite'),
-		inviteId: z.string().trim().min(1),
-	}),
-])
-
-class CollaboratorChangeRefused extends Error {
-	readonly status: 400 | 404
-	constructor(message: string, status: 400 | 404 = 400) {
-		super(message)
-		this.status = status
-	}
 }
 
 /**
@@ -167,6 +132,77 @@ async function buildCollaboratorsView(
 	}
 }
 
+type CollaboratorsInput = {
+	env: Env
+	request: Request
+	user: AppUser
+	username: string
+	kodyId: string
+}
+async function authorizedScope(input: CollaboratorsInput) {
+	const loaded = await loadCollaboratorsScope(input)
+	if (loaded.kind === 'not_found')
+		return {
+			error: operationResult(
+				{ ok: false as const, error: 'Package not found.' },
+				404,
+			),
+		}
+	if (loaded.kind === 'forbidden')
+		return {
+			error: operationResult(
+				{
+					ok: false as const,
+					error:
+						'You need Manage on this package to see and change who can use it.',
+				},
+				403,
+			),
+		}
+	return { scope: loaded.scope }
+}
+export async function readPackageCollaborators(input: CollaboratorsInput) {
+	const loaded = await authorizedScope(input)
+	if (loaded.error) return loaded.error
+	return operationResult(await buildCollaboratorsView(loaded.scope))
+}
+export function grantPackageCollaborator(
+	input: CollaboratorsInput & {
+		subjectType: 'user' | 'team'
+		subjectId: string
+		preset: PackageCollaboratorPreset
+	},
+) {
+	return changeCollaborator(input, async ({ ctx, savedPackage }) => {
+		await setPackageCollaboratorAccess(
+			{
+				package_id: savedPackage.id,
+				...(input.subjectType === 'team'
+					? { team_id: input.subjectId }
+					: { user_id: input.subjectId }),
+				preset: input.preset,
+			},
+			ctx,
+		)
+	})
+}
+export function revokePackageCollaborator(
+	input: CollaboratorsInput & { grantId: string },
+) {
+	return changeCollaborator(input, async ({ ctx, savedPackage }) => {
+		await packageCollaboratorRemoveCapability.handler(
+			{ package_id: savedPackage.id, grant_id: input.grantId },
+			ctx,
+		)
+	})
+}
+class CollaboratorChangeRefused extends Error {
+	readonly status: 400 | 404
+	constructor(message: string, status: 400 | 404 = 400) {
+		super(message)
+		this.status = status
+	}
+}
 function requirePersonalOrg(scope: CollaboratorsScope) {
 	if (scope.personal) return
 	throw new CollaboratorChangeRefused(
@@ -174,165 +210,88 @@ function requirePersonalOrg(scope: CollaboratorsScope) {
 	)
 }
 
-async function applyChange(
-	scope: CollaboratorsScope,
-	change: z.infer<typeof changeSchema>,
-): Promise<PackageCollaboratorInviteCreated | null> {
-	const { ctx, savedPackage } = scope
-	const intent = change.intent
-	switch (intent) {
-		case 'grant':
-			await packageCollaboratorSetCapability.handler(
-				{
-					package_id: savedPackage.id,
-					...(change.subjectType === 'team'
-						? { team_id: change.subjectId }
-						: { user_id: change.subjectId }),
-					preset: change.preset,
-				},
-				ctx,
-			)
-			return null
-		case 'revoke':
-			await packageCollaboratorRemoveCapability.handler(
-				{ package_id: savedPackage.id, grant_id: change.grantId },
-				ctx,
-			)
-			return null
-		case 'invite': {
-			requirePersonalOrg(scope)
-			const created = await inviteCreateCapability.handler(
-				{
-					kind: 'grant',
-					...readPackageCollaboratorInvitee(change.invitee),
-					resource_type: 'package',
-					resource_id: savedPackage.id,
-					preset: change.preset,
-				},
-				ctx,
-			)
-			return {
-				id: created.invite.id,
-				expiresAt: created.invite.expires_at,
-				inviteeLabel: packageCollaboratorInviteeLabel({
-					inviteeEmail: created.invite.invitee_email,
-					inviteeUsername: created.invite.invitee_username,
-				}),
-				preset: change.preset,
-				prompt: created.prompt,
-			}
+export function createPackageCollaboratorInvite(
+	input: CollaboratorsInput & {
+		invitee: string
+		preset: PackageCollaboratorPreset
+	},
+) {
+	return changeCollaborator(input, async (scope) => {
+		requirePersonalOrg(scope)
+		const created = await inviteCreateCapability.handler(
+			{
+				kind: 'grant',
+				...readPackageCollaboratorInvitee(input.invitee),
+				resource_type: 'package',
+				resource_id: scope.savedPackage.id,
+				preset: input.preset,
+			},
+			scope.ctx,
+		)
+		return {
+			id: created.invite.id,
+			expiresAt: created.invite.expires_at,
+			inviteeLabel: packageCollaboratorInviteeLabel({
+				inviteeEmail: created.invite.invitee_email,
+				inviteeUsername: created.invite.invitee_username,
+			}),
+			preset: input.preset,
+			prompt: created.prompt,
 		}
-		case 'revoke-invite': {
-			requirePersonalOrg(scope)
-			const invite = await getInviteById({
-				db: ctx.env.APP_DB,
-				orgId: scope.org.id,
-				inviteId: change.inviteId,
-			})
-			if (
-				!invite ||
-				invite.kind !== 'grant' ||
-				invite.resourceType !== 'package' ||
-				invite.resourceId !== savedPackage.id ||
-				invite.status !== 'pending'
-			) {
-				throw new CollaboratorChangeRefused(
-					'That invite is no longer pending.',
-					404,
-				)
-			}
-			await inviteRevokeCapability.handler({ invite_id: invite.id }, ctx)
-			return null
-		}
-		default: {
-			const exhaustive: never = intent
-			throw new Error(`Unknown collaborator change: ${String(exhaustive)}`)
-		}
-	}
+	})
 }
 
-/**
- * `/profiles/:username/packages/:kodyId/collaborators.json`: the package
- * Collaborators tab. GET returns the `PackageCollaboratorsView`; POST one
- * `PackageCollaboratorsChange` and get the updated view back (plus the invite
- * prompt, once, after an invite). Writes go through `packageCollaboratorSet`,
- * `packageCollaboratorRemove`, `inviteCreate`, and `inviteRevoke`, the same
- * capabilities the Open API exposes, so they are authorized and audited alike.
- */
-export function createPackageCollaboratorsApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			if (request.method !== 'GET' && request.method !== 'POST') {
-				return jsonResponse(
-					{ ok: false, error: 'Method not allowed.' },
-					{ status: 405, headers: { Allow: 'GET, POST' } },
-				)
-			}
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const loaded = await loadCollaboratorsScope({
-				env,
-				request,
-				user,
-				username: params.username,
-				kodyId: params.kodyId,
-			})
-			if (loaded.kind === 'not_found') {
-				return jsonResponse({ ok: false, error: 'Package not found.' }, 404)
-			}
-			if (loaded.kind === 'forbidden') {
-				return jsonResponse(
-					{
-						ok: false,
-						error:
-							'You need Manage on this package to see and change who can use it.',
-					},
-					403,
-				)
-			}
-			const { scope } = loaded
-			if (request.method === 'GET') {
-				return jsonResponse(await buildCollaboratorsView(scope))
-			}
-			const parsed = changeSchema.safeParse(
-				await request.json().catch(() => null),
+export function revokePackageCollaboratorInvite(
+	input: CollaboratorsInput & { inviteId: string },
+) {
+	return changeCollaborator(input, async (scope) => {
+		requirePersonalOrg(scope)
+		const invite = await getInviteById({
+			db: scope.ctx.env.APP_DB,
+			orgId: scope.org.id,
+			inviteId: input.inviteId,
+		})
+		if (
+			!invite ||
+			invite.kind !== 'grant' ||
+			invite.resourceType !== 'package' ||
+			invite.resourceId !== scope.savedPackage.id ||
+			invite.status !== 'pending'
+		) {
+			throw new CollaboratorChangeRefused(
+				'That invite is no longer pending.',
+				404,
 			)
-			if (!parsed.success) {
-				return jsonResponse(
-					{
-						ok: false,
-						error: `Invalid request body: ${parsed.error.issues[0]?.message ?? 'expected one change'}.`,
-					},
-					400,
-				)
-			}
-			let invite: PackageCollaboratorInviteCreated | null
-			try {
-				invite = await applyChange(scope, parsed.data)
-			} catch (error) {
-				if (error instanceof CollaboratorChangeRefused) {
-					return jsonResponse({ ok: false, error: error.message }, error.status)
-				}
-				if (error instanceof AuthorizationError) {
-					return jsonResponse({ ok: false, error: error.message }, 403)
-				}
-				if (isMcpCallerError(error) && error instanceof Error) {
-					return jsonResponse({ ok: false, error: error.message }, 400)
-				}
-				throw error
-			}
-			const view = await buildCollaboratorsView(scope)
-			return jsonResponse(
-				(invite
-					? { ...view, invite }
-					: view) satisfies PackageCollaboratorsWriteResult,
+		}
+		await inviteRevokeCapability.handler({ invite_id: invite.id }, scope.ctx)
+	})
+}
+
+async function changeCollaborator(
+	input: CollaboratorsInput,
+	apply: (
+		scope: CollaboratorsScope,
+	) => Promise<PackageCollaboratorInviteCreated | void>,
+) {
+	const loaded = await authorizedScope(input)
+	if (loaded.error) return loaded.error
+	let invite: PackageCollaboratorInviteCreated | void
+	try {
+		invite = await apply(loaded.scope)
+	} catch (error) {
+		if (error instanceof CollaboratorChangeRefused)
+			return operationResult(
+				{ ok: false as const, error: error.message },
+				error.status,
 			)
-		},
-	} satisfies Action<
-		| typeof routes.communityPackageCollaboratorsApi
-		| typeof routes.communityPackageCollaboratorsApiPost
-	>
+		if (error instanceof AuthorizationError)
+			return operationResult({ ok: false as const, error: error.message }, 403)
+		if (isMcpCallerError(error) && error instanceof Error)
+			return operationResult({ ok: false as const, error: error.message }, 400)
+		throw error
+	}
+	const result: PackageCollaboratorsWriteResult = invite
+		? { ok: true, invite }
+		: { ok: true }
+	return operationResult(result)
 }

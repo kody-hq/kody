@@ -60,6 +60,7 @@ function noticeWith(env: Env, oauthProvider?: Record<string, unknown>) {
 			? { ...env, OAUTH_PROVIDER: oauthProvider }
 			: env) as Env,
 		userId,
+		personId: userId,
 		baseUrl: 'https://kody.example',
 	})
 }
@@ -71,6 +72,7 @@ test('checklist derives wizard steps from grants and an access win, not integrat
 	const fresh = await deriveOnboardingChecklist({
 		env,
 		userId,
+		personId: userId,
 		emailVerified: true,
 		hasMcpClient: true,
 	})
@@ -86,6 +88,7 @@ test('checklist derives wizard steps from grants and an access win, not integrat
 	const progressed = await deriveOnboardingChecklist({
 		env,
 		userId,
+		personId: userId,
 		emailVerified: true,
 		hasMcpClient: true,
 		hasAccessWin: true,
@@ -103,7 +106,7 @@ test('checklist derives wizard steps from grants and an access win, not integrat
 	)
 		.bind(new Date().toISOString(), userId)
 		.run()
-	expect(await loadOnboardingAccessWin(env, userId)).toBe(true)
+	expect(await loadOnboardingAccessWin(env, userId, userId)).toBe(true)
 
 	// Two grants alone still ask for a second agent; the notice clears only
 	// once grants resolve to two distinct client ecosystems.
@@ -187,13 +190,13 @@ test('checklist derives wizard steps from grants and an access win, not integrat
 		{ label: 'two ecosystems', notice: null },
 	])
 
-	expect(await readOnboardingChecklistDismissed({ env, userId: userId })).toBe(
-		false,
-	)
-	await dismissOnboardingChecklist({ env, userId: userId })
-	expect(await readOnboardingChecklistDismissed({ env, userId: userId })).toBe(
-		true,
-	)
+	expect(
+		await readOnboardingChecklistDismissed({ env, personId: userId }),
+	).toBe(false)
+	await dismissOnboardingChecklist({ env, personId: userId })
+	expect(
+		await readOnboardingChecklistDismissed({ env, personId: userId }),
+	).toBe(true)
 	expect(await readDismissedAt(env.APP_DB)).toMatch(/^\d{4}-\d{2}-\d{2}T/)
 })
 
@@ -205,9 +208,9 @@ test('search onboarding notice lists remaining steps without writing dismissal a
 	const notice = await noticeWith(env, noGrants)
 	expect(notice).toContain('3 steps left')
 	expect(notice).toContain('/onboarding')
-	expect(await readOnboardingChecklistDismissed({ env, userId: userId })).toBe(
-		false,
-	)
+	expect(
+		await readOnboardingChecklistDismissed({ env, personId: userId }),
+	).toBe(false)
 	expect(await readDismissedAt(env.APP_DB)).toBe(null)
 
 	expect(
@@ -219,7 +222,7 @@ test('search onboarding notice lists remaining steps without writing dismissal a
 	).toBe(null)
 	expect(await noticeWith(env)).toBe(null)
 
-	await dismissOnboardingChecklist({ env, userId: userId })
+	await dismissOnboardingChecklist({ env, personId: userId })
 	expect(await noticeWith(env, noGrants)).toBe(null)
 })
 
@@ -255,4 +258,41 @@ test('access-win memory subject is the newest active subject and fails open', as
 	expect(
 		await loadOnboardingAccessWinMemorySubject(missingDb, userId),
 	).toBeNull()
+})
+
+test('distinct personal orgs read owner resources but person activation and dismissal', async () => {
+	const { env } = createEnv()
+	const orgId = ownerIdFromStored('b'.repeat(64))
+	await seedUser(env.APP_DB)
+	await env.APP_DB.prepare(
+		'UPDATE users SET personal_org_id = ? WHERE stable_user_id = ?',
+	)
+		.bind(orgId, userId)
+		.run()
+	expect(await loadOnboardingAccessWin(env, orgId, userId)).toBe(false)
+	await env.APP_DB.prepare(
+		'UPDATE users SET first_search_at = ? WHERE stable_user_id = ?',
+	)
+		.bind(new Date().toISOString(), userId)
+		.run()
+	expect(await loadOnboardingAccessWin(env, orgId, userId)).toBe(true)
+	await env.APP_DB.prepare(
+		'UPDATE users SET first_search_at = NULL WHERE stable_user_id = ?',
+	)
+		.bind(userId)
+		.run()
+	await env.APP_DB.prepare(
+		'INSERT INTO mcp_memories (id,user_id,subject,summary) VALUES (?,?,?,?)',
+	)
+		.bind('distinct-memory', orgId, 'Org memory', 'Owned by the separate org')
+		.run()
+	expect(await loadOnboardingAccessWin(env, orgId, userId)).toBe(true)
+	expect(await loadOnboardingAccessWin(env, userId, userId)).toBe(false)
+	await dismissOnboardingChecklist({ env, personId: userId })
+	expect(
+		await readOnboardingChecklistDismissed({ env, personId: userId }),
+	).toBe(true)
+	expect(await readOnboardingChecklistDismissed({ env, personId: orgId })).toBe(
+		false,
+	)
 })

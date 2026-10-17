@@ -1,19 +1,19 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createAccountSecretProvidersApiHandler } from '#app/handlers/account-secret-providers.ts'
-import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { testAccountSecretProvidersApiHandler } from '#app/handlers/account-secret-providers.test-support.ts'
 import { grantSecretProviderToPackage } from '#mcp/secrets/secret-providers/service.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test } from 'vitest'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
@@ -77,11 +77,13 @@ function createAppEnv(db: D1Database) {
 }
 
 type Handler = {
-	handler(context: never): Promise<Response>
+	execute(
+		context: never,
+	): Promise<{ data: unknown; status: number; headers?: HeadersInit }>
 }
 
 async function runHandler(handler: Handler, request: Request) {
-	return handler.handler({
+	return handler.execute({
 		request,
 		url: new URL(request.url),
 		params: {},
@@ -130,7 +132,7 @@ test('secret providers API lists grants and revokes them on the website', async 
 		ref: canonicalRef,
 		packageId: 'pkg-consumer',
 	})
-	const handler = createAccountSecretProvidersApiHandler(env)
+	const handler = testAccountSecretProvidersApiHandler(env)
 	const cookie = await createAuthCookie(ownerSession, false)
 
 	const listed = await runHandler(
@@ -140,7 +142,7 @@ test('secret providers API lists grants and revokes them on the website', async 
 		}),
 	)
 	expect(listed.status).toBe(200)
-	const listedPayload = (await listed.json()) as {
+	const listedPayload = listed.data as {
 		ok: boolean
 		grants: Array<{
 			provider: string
@@ -184,7 +186,7 @@ test('secret providers API lists grants and revokes them on the website', async 
 			headers: { Cookie: cookie, Accept: 'application/json' },
 		}),
 	)
-	const afterPayload = (await afterRevoke.json()) as {
+	const afterPayload = afterRevoke.data as {
 		grants: Array<unknown>
 	}
 	expect(afterPayload.grants).toEqual([])

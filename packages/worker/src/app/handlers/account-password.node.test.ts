@@ -1,23 +1,23 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { beforeAll, expect, test, vi } from 'vitest'
 import {
 	createAuthCookie,
 	readParsedAuthSession,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createAccountPasswordHandler } from './account-password.ts'
+import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
 	createPasswordHash,
 	verifyPassword,
 } from '@kody-internal/shared/password-hash.ts'
-import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { beforeAll, expect, test, vi } from 'vitest'
+import { testAccountPasswordHandler } from './account-password.test-support.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -95,7 +95,7 @@ function createAppEnv(db: D1Database, overrides: Record<string, unknown> = {}) {
 }
 function createPasswordClient(db: D1Database, session: AuthSession) {
 	const { helpers, revokedGrantIds } = createTrackingGrantHelpers()
-	const { handler } = createAccountPasswordHandler(
+	const { execute } = testAccountPasswordHandler(
 		createAppEnv(db, { OAUTH_PROVIDER: helpers }),
 	)
 	const post = async (body: unknown, signedIn = true) => {
@@ -108,7 +108,7 @@ function createPasswordClient(db: D1Database, session: AuthSession) {
 			},
 			body: JSON.stringify(body),
 		})
-		const response = await handler({
+		const response = await execute({
 			request,
 			url: new URL(request.url),
 			params: {},
@@ -191,17 +191,13 @@ test('signed-in password change requires the current password, revokes MCP grant
 	] as const
 	for (const [body, status, want] of rejections) {
 		const { response } = await post(body)
-		expect([body, response.status, await response.json()]).toEqual([
-			body,
-			status,
-			want,
-		])
+		expect([body, response.status, response.data]).toEqual([body, status, want])
 	}
 
 	const { cookie: oldCookie, response } = await post(change)
 	const oldSession = await readSession(oldCookie)
 	expect(response.status).toBe(200)
-	await expect(response.json()).resolves.toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: true,
 		message: expect.stringContaining('Password updated.'),
 	})
@@ -234,7 +230,7 @@ test('signed-in password change requires the current password, revokes MCP grant
 		false,
 	)
 
-	const setCookie = response.headers.get('Set-Cookie')
+	const setCookie = new Headers(response.headers).get('Set-Cookie')
 	expect(setCookie).toContain('kody_session=')
 	const newSession = await readSession(setCookie?.split(';', 1)[0] ?? '')
 	expect(newSession?.session.rememberMe).toBe(true)
@@ -284,5 +280,7 @@ test('oauth-only accounts can set a first password without a current password', 
 	expect(await verifyPassword('first-password-ok', row.password_hash)).toBe(
 		true,
 	)
-	expect(response.headers.get('Set-Cookie')).toContain('kody_session=')
+	expect(new Headers(response.headers).get('Set-Cookie')).toContain(
+		'kody_session=',
+	)
 })

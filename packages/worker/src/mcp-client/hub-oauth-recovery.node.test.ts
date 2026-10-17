@@ -1,3 +1,4 @@
+import { mcpReadSnapshotStorageKey } from './read-snapshot.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
@@ -1463,4 +1464,49 @@ test('a restarted hub reads stored client ids back into snapshots', async () => 
 	expect((await restarted.hub.getSnapshot()).servers[0]?.oauthClientId).toBe(
 		'gh-client',
 	)
+})
+
+test('cold website reads do not restore legacy hubs or consume stored authorization', async () => {
+	const { hub, manager, state, values } = createHub()
+	seedServer(manager, {
+		authUrl: 'https://provider.example/authorize?secret=hidden',
+	})
+	const before = {
+		connects: manager.connectCount,
+		discovers: manager.discoverCount,
+	}
+	vi.mocked(state.storage.put).mockClear()
+	expect(await hub.readSnapshot()).toEqual({ servers: [] })
+	expect(manager.connectCount).toBe(before.connects)
+	expect(manager.discoverCount).toBe(before.discovers)
+	expect(state.storage.put).not.toHaveBeenCalled()
+	expect(values.has(mcpReadSnapshotStorageKey)).toBe(false)
+})
+
+test('operational snapshots persist sanitized cards and warm reads never recover or write', async () => {
+	const { hub, manager, state, values } = createHub()
+	const connection = await seedReadyHomeServer(hub, manager)
+	const projection = values.get(mcpReadSnapshotStorageKey)
+	expect(projection).toMatchObject({
+		servers: [{ serverId: 'server-1', state: 'ready' }],
+	})
+	expect(JSON.stringify(projection)).not.toContain('authUrl')
+	connection.connectionState = 'disconnected'
+	const before = {
+		connects: manager.connectCount,
+		discovers: manager.discoverCount,
+	}
+	vi.mocked(state.storage.put).mockClear()
+	const read = await hub.readSnapshot()
+	expect(read.servers[0]?.state).not.toBe('ready')
+	expect(manager.connectCount).toBe(before.connects)
+	expect(manager.discoverCount).toBe(before.discovers)
+	expect(state.storage.put).not.toHaveBeenCalled()
+	const cold = createHub()
+	cold.values.set(mcpReadSnapshotStorageKey, projection)
+	expect((await cold.hub.readSnapshot()).servers[0]).toMatchObject({
+		state: 'unknown',
+		authorizationPending: false,
+	})
+	expect(cold.manager.connectCount).toBe(0)
 })

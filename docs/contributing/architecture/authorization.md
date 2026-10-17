@@ -492,8 +492,8 @@ error, so the request stops. See [MCP context](#mcp-context).
 | `GET /admin/system-email.json`         | `requireUserWithRole('admin')`                     |
 | `POST /admin/system-email.json`        | `requireUserWithRole('admin')`                     |
 
-Handlers: `packages/worker/src/app/handlers/admin-users.ts`,
-`packages/worker/src/app/handlers/admin-roles.ts`.
+Handlers: `packages/worker/src/admin/users-operations.ts`,
+`packages/worker/start/server/admin-roles.ts`.
 
 The users list accepts `q` (username/email substring), `role`, and
 `verification=stalled` (unverified person accounts whose latest signup/verify
@@ -527,11 +527,12 @@ account creation can be retried once the environment is fixed.
 `POST /session` (`packages/worker/src/app/handlers/session.ts`) includes `roles`
 and `permissions` in the session payload when the cookie is valid.
 
-The client session store (`packages/worker/client/session.ts`) parses and
-exposes them as `SessionInfo`. Pure helpers `userHasPermission` and
-`userHasRole` from `permissions.ts` work on the client payload for conditional
-rendering — for example, the Admin nav link in `packages/worker/client/app.tsx`
-is shown only when `userHasRole(session, 'admin')`.
+The Start root loads request-scoped identity and shell data through
+`packages/worker/start/routes/__root.tsx` and
+`packages/worker/start/server/shell.ts`. Query keys include the actor, and
+identity changes clear actor-owned cached data. The native header in
+`packages/worker/start/components/site-header.tsx` uses the authorized shell
+presentation to decide whether to show administrative navigation.
 
 Client checks are cosmetic only; every mutation is re-checked server-side.
 
@@ -953,8 +954,8 @@ assignment happens through the admin UI.
 - `packages/worker/src/identity/permissions-db.ts` — D1 queries
 - `packages/worker/src/app/permissions-server.ts` — request guards
 - `packages/worker/migrations/0001-squashed-init.sql` — schema and seed data
-- `packages/worker/src/app/handlers/admin-users.ts` — users admin API
-- `packages/worker/src/app/handlers/admin-roles.ts` — roles admin API
+- `packages/worker/src/admin/users-operations.ts` — users admin API
+- `packages/worker/start/server/admin-roles.ts` — roles admin API
 - `packages/worker/src/mcp-auth-user-context.ts` — MCP role loading
 - `packages/worker/src/identity/background-mcp-user.ts` — background package
   caller role loading

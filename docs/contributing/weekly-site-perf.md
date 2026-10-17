@@ -91,11 +91,11 @@ on production and the collector agrees.
 
 `htmlBytes` counts the full anonymous document, including the intentionally
 inlined `styles.css` `<style>` block (see
-[`inline-stylesheet.ts`](../../packages/worker/src/app/inline-stylesheet.ts)).
-Inlining strips comments and collapses authoring whitespace before the `<style>`
-is emitted. That trade removes a render-blocking stylesheet round trip; do not
-"fix" an `html-over-budget` finding by switching back to a
-`<link rel="stylesheet">` without a product call. When landing CSS or below-fold
-marketing markup grows for real product work (hero agents, testimonials, factory
-loop, primitive widgets, and so on), raise `htmlBytes` to the new honest
-production size instead of cutting the page.
+[the native document shell](../../packages/worker/start/routes/__root.tsx)). The
+Vite build minifies raw CSS imports with esbuild, preserving public asset URLs.
+That trade removes a render-blocking stylesheet round trip; do not "fix" an
+`html-over-budget` finding by switching back to a `<link rel="stylesheet">`
+without a product call. When landing CSS or below-fold marketing markup grows
+for real product work (hero agents, testimonials, factory loop, primitive
+widgets, and so on), raise `htmlBytes` to the new honest production size instead
+of cutting the page.

@@ -33,6 +33,8 @@ export type AuthenticatedAppUser = {
 
 export type ReadAuthenticatedAppUserOptions = {
 	prefetchFeatureFlags?: boolean
+	/** Bind organization access to this resource while authenticating the original HTTP request. */
+	resourceRequest?: Request
 }
 
 async function readAuthenticatedAppUserInternal(
@@ -40,6 +42,7 @@ async function readAuthenticatedAppUserInternal(
 	env: Env,
 	allowDeleting: boolean,
 	prefetchFeatureFlags: boolean,
+	resourceRequest: Request = request,
 ) {
 	setAuthSessionSecret(env.COOKIE_SECRET)
 	const resolved = await loadResolvedRequestAuth(request, env)
@@ -50,7 +53,7 @@ async function readAuthenticatedAppUserInternal(
 	if (resolved.user.accountSuspended) return null
 
 	const resolution = await loadRequestOrgResolution(
-		request,
+		resourceRequest,
 		env,
 		resolved.user.mcpUser.userId,
 	)
@@ -73,10 +76,9 @@ async function readAuthenticatedAppUserInternal(
 		}
 		throw error
 	}
-	const orgBinding =
-		resolution === 'personal' || resolution === 'denied'
-			? personalBinding
-			: resolution
+	// Denied resources cannot inherit the personal workspace.
+	if (resolution === 'denied') return null
+	const orgBinding = resolution === 'personal' ? personalBinding : resolution
 	const user = {
 		sessionUserId: resolved.sessionUserId,
 		userId: resolved.user.userId,
@@ -96,7 +98,7 @@ async function readAuthenticatedAppUserInternal(
 		}),
 	} satisfies AuthenticatedAppUser
 	if (prefetchFeatureFlags) {
-		prefetchRequestFeatureFlagsForHtmlPage(request, env, {
+		prefetchRequestFeatureFlagsForHtmlPage(resourceRequest, env, {
 			userId: user.userId,
 			stableUserId: user.mcpUser.userId,
 		})
@@ -114,6 +116,7 @@ export async function readAuthenticatedAppUser(
 		env,
 		false,
 		options?.prefetchFeatureFlags === true,
+		options?.resourceRequest,
 	)
 }
 

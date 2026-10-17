@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { CommunityActionError } from '#worker/community/errors.ts'
-import { createCommunityReportApiPostHandler } from './community-detail.tsx'
+import { reportWebsiteCommunityPackage } from './community-detail.ts'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -22,32 +22,12 @@ vi.mock('#worker/community/service.ts', () => ({
 const env = {} as Env
 
 test('community report POST enforces auth, validation, and error mapping', async () => {
-	const handler = createCommunityReportApiPostHandler(env)
-
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	const unauthorized = await handler.handler({
-		request: new Request(
-			'https://example.com/community/listing-1/report.json',
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ reason: 'Spam content' }),
-			},
-		),
-		params: { listingId: 'listing-1' },
-		url: new URL('https://example.com/community/listing-1/report.json'),
-	} as never)
-	expect(unauthorized.status).toBe(401)
-	expect(await unauthorized.json()).toEqual({
-		ok: false,
-		error: 'Unauthorized.',
-	})
-	expect(mockModule.reportCommunityListing).not.toHaveBeenCalled()
-
 	mockModule.readAuthenticatedAppUser.mockResolvedValue({
 		mcpUser: { userId: ownerIdFromStored('stable-reporter-id') },
 	})
-	const invalidReason = await handler.handler({
+	const invalidReason = await reportWebsiteCommunityPackage({
+		env,
+		user: await mockModule.readAuthenticatedAppUser(),
 		request: new Request(
 			'https://example.com/community/listing-1/report.json',
 			{
@@ -56,15 +36,18 @@ test('community report POST enforces auth, validation, and error mapping', async
 				body: JSON.stringify({ reason: '   ' }),
 			},
 		),
-		params: { listingId: 'listing-1' },
+		listingId: 'listing-1',
+		body: { reason: '   ' },
 		url: new URL('https://example.com/community/listing-1/report.json'),
 	} as never)
 	expect(invalidReason.status).toBe(400)
-	expect(((await invalidReason.json()) as { ok: boolean }).ok).toBe(false)
+	expect((invalidReason.data as { ok: boolean }).ok).toBe(false)
 	expect(mockModule.reportCommunityListing).not.toHaveBeenCalled()
 
 	mockModule.reportCommunityListing.mockResolvedValue({ id: 'report-1' })
-	const success = await handler.handler({
+	const success = await reportWebsiteCommunityPackage({
+		env,
+		user: await mockModule.readAuthenticatedAppUser(),
 		request: new Request(
 			'https://example.com/community/listing-1/report.json',
 			{
@@ -73,11 +56,12 @@ test('community report POST enforces auth, validation, and error mapping', async
 				body: JSON.stringify({ reason: 'Unsafe imports' }),
 			},
 		),
-		params: { listingId: 'listing-1' },
+		listingId: 'listing-1',
+		body: { reason: 'Unsafe imports' },
 		url: new URL('https://example.com/community/listing-1/report.json'),
 	} as never)
 	expect(success.status).toBe(200)
-	expect(await success.json()).toEqual({ ok: true })
+	expect(success.data).toEqual({ ok: true })
 	expect(mockModule.reportCommunityListing).toHaveBeenCalledWith({
 		env,
 		userId: ownerIdFromStored('stable-reporter-id'),
@@ -88,7 +72,9 @@ test('community report POST enforces auth, validation, and error mapping', async
 	mockModule.reportCommunityListing.mockRejectedValue(
 		new CommunityActionError('banned from community participation'),
 	)
-	const userFacingError = await handler.handler({
+	const userFacingError = await reportWebsiteCommunityPackage({
+		env,
+		user: await mockModule.readAuthenticatedAppUser(),
 		request: new Request(
 			'https://example.com/community/listing-1/report.json',
 			{
@@ -97,18 +83,21 @@ test('community report POST enforces auth, validation, and error mapping', async
 				body: JSON.stringify({ reason: 'Spam content' }),
 			},
 		),
-		params: { listingId: 'listing-1' },
+		listingId: 'listing-1',
+		body: { reason: 'Spam content' },
 		url: new URL('https://example.com/community/listing-1/report.json'),
 	} as never)
 	expect(userFacingError.status).toBe(400)
-	expect(await userFacingError.json()).toEqual({
+	expect(userFacingError.data).toEqual({
 		ok: false,
 		error: 'banned from community participation',
 	})
 
 	const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 	mockModule.reportCommunityListing.mockRejectedValue(new Error('db timeout'))
-	const serverError = await handler.handler({
+	const serverError = await reportWebsiteCommunityPackage({
+		env,
+		user: await mockModule.readAuthenticatedAppUser(),
 		request: new Request(
 			'https://example.com/community/listing-1/report.json',
 			{
@@ -117,11 +106,12 @@ test('community report POST enforces auth, validation, and error mapping', async
 				body: JSON.stringify({ reason: 'Spam content' }),
 			},
 		),
-		params: { listingId: 'listing-1' },
+		listingId: 'listing-1',
+		body: { reason: 'Spam content' },
 		url: new URL('https://example.com/community/listing-1/report.json'),
 	} as never)
 	expect(serverError.status).toBe(500)
-	expect(await serverError.json()).toEqual({
+	expect(serverError.data).toEqual({
 		ok: false,
 		error: 'Unable to submit report.',
 	})

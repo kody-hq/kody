@@ -66,9 +66,18 @@ function createMemoryTestDb() {
 								normalizedQuery.includes('from mcp_memories') &&
 								normalizedQuery.includes('where user_id = ? and id = ?')
 							) {
-								const [userId, memoryId] = params as [string, string]
+								const [userId, memoryId, includeDeleted] = params as [
+									string,
+									string,
+									number,
+								]
 								const row = memories.get(memoryId)
-								if (!row || row.user_id !== userId) return null
+								if (
+									!row ||
+									row.user_id !== userId ||
+									(row.deleted_at !== null && includeDeleted !== 1)
+								)
+									return null
 								return { ...row } as T
 							}
 							return null
@@ -234,9 +243,17 @@ function createMemoryTestDb() {
 								}
 							}
 							if (normalizedQuery.startsWith('delete from mcp_memories')) {
-								const [userId, memoryId] = params as [string, string]
+								const [userId, memoryId, force] = params as [
+									string,
+									string,
+									number,
+								]
 								const existing = memories.get(memoryId)
-								if (!existing || existing.user_id !== userId) {
+								if (
+									!existing ||
+									existing.user_id !== userId ||
+									(existing.deleted_at !== null && force !== 1)
+								) {
 									return { meta: { changes: 0 } }
 								}
 								memories.delete(memoryId)
@@ -390,7 +407,12 @@ test('memory service upserts, verifies, soft deletes, and validates source uris'
 		force: false,
 	})
 	expect(deleted?.status).toBe('deleted')
-	const loaded = await getMemory({ ...base, memoryId: created.memory.id })
+	expect(await getMemory({ ...base, memoryId: created.memory.id })).toBeNull()
+	const loaded = await getMemory({
+		...base,
+		memoryId: created.memory.id,
+		includeDeleted: true,
+	})
 	expect(loaded?.status).toBe('deleted')
 	expect(loaded?.sourceUris).toEqual([editorThemeUri, memoryDocsUri])
 
@@ -779,4 +801,38 @@ test('rankMemoryVectorIdsWithin orders by similarity and drops other owners', as
 		embedText: async () => [1, 0],
 	})
 	expect(ranked).toEqual(['close', 'far'])
+})
+
+test('force deletion removes an already soft-deleted memory only for its authorized owner', async () => {
+	const testDb = createMemoryTestDb()
+	const base = { env: env(testDb.db), userId: ownerIdFromStored('owner') }
+	const created = await upsertMemory({
+		...base,
+		subject: 'Delete fixture',
+		summary: 'Delete fixture',
+		verificationReference: 'verified',
+	})
+	const memoryId = created.memory.id
+	expect(
+		(await deleteMemory({ ...base, memoryId, force: false }))?.status,
+	).toBe('deleted')
+	expect(await getMemory({ ...base, memoryId })).toBeNull()
+	expect(await deleteMemory({ ...base, memoryId, force: false })).toBeNull()
+	expect(
+		await deleteMemory({
+			...base,
+			userId: ownerIdFromStored('foreign'),
+			memoryId,
+			force: true,
+		}),
+	).toBeNull()
+	expect(
+		await getMemory({ ...base, memoryId, includeDeleted: true }),
+	).not.toBeNull()
+	expect((await deleteMemory({ ...base, memoryId, force: true }))?.id).toBe(
+		memoryId,
+	)
+	expect(
+		await getMemory({ ...base, memoryId, includeDeleted: true }),
+	).toBeNull()
 })

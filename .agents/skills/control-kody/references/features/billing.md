@@ -9,16 +9,17 @@ Plan, checkout, portal, prepaid credits, and entitlement usage.
 `#credits` section). Billing and usage belong to the organization in the URL.
 Owners and billing admins subscribe and manage; members get 403 from checkout,
 the portal, and usage. Team organizations buy one Pro seat per owner and member.
-`/account/usage` and `/account/credits` redirect to the personal org's usage
-page (credits keeps `#credits` and the query). Billing also shows the signed-in
-user's referral share link and reward status.
+`/account/usage` redirects to the personal org's usage page. `/account/credits`
+redirects to its credits ledger, preserving the query. Historical top-up return
+URLs still reach the usage Credits section to confirm the Stripe session.
+Billing also shows the signed-in user's referral share link and reward status.
 
 `/@:orgSlug/-/credits` is the organization's credits page and is open to every
 member. Owners and billing admins (`billing:read`) see the balance, the
 organization's default per-person and automation budgets with this month's
 spend, and the full credit ledger (purchases, auto-refills, grants, and usage
 debits with the meter, units, and month) with the balance after each row, newest
-first. **Load older** pages via `/@:orgSlug/-/credits.json?cursor=`. Free
+first. **Load older** uses the native credits read with a cursor. Free
 organizations still see any balance and history they have. Members and
 collaborators without `billing:read` see only their own monthly budget and its
 spend. The workspace rail lists **Credits** for everyone in the organization.
@@ -26,15 +27,15 @@ spend. The workspace rail lists **Credits** for everyone in the organization.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /@user-me/-/billing.json
-node tools/control-kody.ts request GET /@user-me/-/usage.json
-node tools/control-kody.ts request GET /@user-me/-/credits.json
+npm run control-kody -- browse --origin <preview> --path /@user-me/-/billing
+npm run control-kody -- browse --origin <preview> --path /@user-me/-/usage
+npm run control-kody -- browse --origin <preview> --path /@user-me/-/credits
 ```
 
 Do not complete a real Stripe checkout or credit top-up from a Cloud Agent.
-Preview deploys have no Stripe keys, so checkout answers 409 there. Checkout
-sells only Pro ($12/month or $120/year). Promo codes are typed on the Kody
-billing page (Stripe Checkout has no code box), apply to new monthly
+Preview deploys have no Stripe keys, so checkout reports unavailable billing
+there. Checkout sells only Pro ($12/month or $120/year). Promo codes are typed
+on the Kody billing page (Stripe Checkout has no code box), apply to new monthly
 subscriptions only, and are rejected on annual before any Stripe call. Retired
 Standard and $49 Pro subscribers keep their plan and see a prorated **Switch to
 Pro** through the Stripe portal. Deleting an account refunds unused paid
@@ -45,8 +46,8 @@ balance, packs ($10 / $25 /
 $50) or a custom amount, auto-refill (threshold at
 least $5, amount, and monthly
 cap), notification checkboxes, How far credits go, the How credits are charged
-rate card (Worker compute and Rows read debit rates), and credit history.
-`/@:orgSlug/-/usage.json` carries it as `credits`. Other plans see a single
+rate card (Worker compute and Rows read debit rates), and credit history. The
+native usage read carries it as `credits`. Other plans see a single
 switch-to-Pro prompt with no purchase UI; operator plans have no Credits
 section. Top-up Stripe returns land on `/@:orgSlug/-/usage?topup=success`, which
 confirms and redirects to `/@:orgSlug/-/usage?credits=added#credits`. Usage
@@ -76,13 +77,7 @@ Stripe invoice (not a trial) after both emails are verified; do not invent a
 paid invoice from this environment. Package credit attribution for the usage
 dashboard filter is `usageByPackageGet` (`GET /v1/account/usage/by-package`).
 
-## APIs
+## Transport
 
-- `GET /@:orgSlug/-/billing.json`
-- `POST /@:orgSlug/-/billing/checkout.json` (`{ plan, interval, promoCode? }`)
-- `POST /account/billing/cancellation-feedback.json`
-- `POST /account/credits/top-up.json`
-- `POST /account/credits/settings.json`
-- `GET /@:orgSlug/-/usage.json`
-- `GET /@:orgSlug/-/credits.json` (`?cursor=` for older ledger rows)
-- `GET /v1/account/usage/by-package` (`usageByPackageGet`)
+Billing and credits forms use native Start server functions. The official API
+`GET /v1/account/usage/by-package` (`usageByPackageGet`) remains supported.

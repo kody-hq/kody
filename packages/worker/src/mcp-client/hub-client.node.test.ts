@@ -6,6 +6,8 @@ import {
 } from './connection-episodes.ts'
 import {
 	getCachedMcpClientHubServers,
+	getCachedMcpClientHubReadSnapshot,
+	createMcpClientHubClient,
 	getCachedMcpClientHubSnapshot,
 	invalidateMcpClientHubSnapshotCache,
 } from './hub-client.ts'
@@ -13,6 +15,9 @@ import type * as packageSubscriptionsModule from './package-subscriptions.ts'
 import { type McpHubServerSnapshot, type McpHubSnapshot } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
+	readSnapshot: vi.fn(async () => ({ servers: [] })),
+	saveReadSnapshot: vi.fn(async () => undefined),
+	removeServer: vi.fn(async () => undefined),
 	emitMcpServerConnectionEventsIfNeeded: vi.fn<
 		typeof packageSubscriptionsModule.emitMcpServerConnectionEventsIfNeeded
 	>(async () => true),
@@ -68,6 +73,9 @@ function createServerSnapshot(
 
 function createEnv() {
 	const stub = {
+		readSnapshot: mocks.readSnapshot,
+		saveReadSnapshot: mocks.saveReadSnapshot,
+		removeServer: mocks.removeServer,
 		peekServers: mocks.peekServers,
 		peekConnectionEvents: mocks.peekConnectionEvents,
 		ackConnectionEvents: mocks.ackConnectionEvents,
@@ -175,4 +183,39 @@ test('waiting peek does not ack when dispatch reports incomplete', async () => {
 	})
 	expect(mocks.emitMcpServerConnectionEventsIfNeeded).toHaveBeenCalledTimes(1)
 	expect(mocks.ackConnectionEvents).not.toHaveBeenCalled()
+})
+
+test('website snapshots do not observe, deliver events, or persist and writes invalidate them', async () => {
+	resetHub('read-only')
+	const input = { env: createEnv(), userId: ownerIdFromStored('read-only') }
+	vi.clearAllMocks()
+	await getCachedMcpClientHubReadSnapshot(input)
+	await getCachedMcpClientHubReadSnapshot(input)
+	expect(mocks.readSnapshot).toHaveBeenCalledTimes(1)
+	expect(mocks.getSnapshot).not.toHaveBeenCalled()
+	expect(mocks.peekServers).not.toHaveBeenCalled()
+	expect(mocks.peekConnectionEvents).not.toHaveBeenCalled()
+	expect(mocks.ackConnectionEvents).not.toHaveBeenCalled()
+	expect(mocks.emitMcpServerConnectionEventsIfNeeded).not.toHaveBeenCalled()
+	expect(mocks.saveReadSnapshot).not.toHaveBeenCalled()
+	await createMcpClientHubClient(input).removeServer({
+		serverId: 'server-home',
+	})
+	expect(mocks.saveReadSnapshot).toHaveBeenCalledTimes(1)
+	await getCachedMcpClientHubReadSnapshot(input)
+	expect(mocks.readSnapshot).toHaveBeenCalledTimes(2)
+})
+
+test('failed operation still refreshes the projection and discards cached website status', async () => {
+	const input = { env: createEnv(), userId: ownerIdFromStored('lost-response') }
+	invalidateMcpClientHubSnapshotCache(input)
+	vi.clearAllMocks()
+	await getCachedMcpClientHubReadSnapshot(input)
+	mocks.removeServer.mockRejectedValueOnce(new Error('Response lost'))
+	await expect(
+		createMcpClientHubClient(input).removeServer({ serverId: 'server-home' }),
+	).rejects.toThrow('Response lost')
+	expect(mocks.saveReadSnapshot).toHaveBeenCalledTimes(1)
+	await getCachedMcpClientHubReadSnapshot(input)
+	expect(mocks.readSnapshot).toHaveBeenCalledTimes(2)
 })

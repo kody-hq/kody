@@ -134,6 +134,21 @@ test('authorize-oidc gate handles prompt and max_age combinations', async () => 
 	}
 })
 
+test('native authorization parameters do not come from the RPC transport query', () => {
+	const request = new Request(
+		'https://kody.test/_serverFn/oauth?prompt=none&max_age=999',
+	)
+	const params = new URLSearchParams(
+		'prompt=login&max_age=0&nonce=first&nonce=second',
+	)
+	expect(parseOidcAuthorizeParams(request, params)).toMatchObject({
+		prompt: 'login',
+		maxAge: 0,
+		nonce: 'first',
+	})
+	expect(request.url).toContain('/_serverFn/oauth?prompt=none')
+})
+
 test('authorize-oidc accepts expired id_token_hint when sub matches the session', async () => {
 	const now = Math.floor(Date.now() / 1000)
 	const expiredHint = await mintHint({

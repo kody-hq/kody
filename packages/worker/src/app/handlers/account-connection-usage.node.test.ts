@@ -1,15 +1,15 @@
-import { DatabaseSync } from 'node:sqlite'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
-import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('#worker/usage/connection-usage.ts', () => ({
 		mocks.loadConnectionUsage(input),
 }))
 
-const { createAccountConnectionUsageApiHandler } =
+const { loadAccountConnectionUsageData } =
 	await import('./account-connection-usage.ts')
 
 const now = '2026-10-07T00:00:00.000Z'
@@ -138,13 +138,28 @@ function signInAs(person: Person | null, team?: { role: OrgRole }) {
 	})
 }
 
-async function getUsage(headers?: Record<string, string>) {
-	const url = new URL('https://example.com/account/connection-usage.json')
-	return (await createAccountConnectionUsageApiHandler(createEnv()).handler({
-		request: new Request(url, { headers }),
-		params: {},
-		url,
-	} as never)) as Response
+async function getUsage(orgSlug?: string) {
+	const user =
+		(await mocks.readAuthenticatedAppUser()) as AuthenticatedAppUser | null
+	if (!user) return { status: 401, error: 'Unauthorized.' }
+	if (orgSlug) {
+		const binding = await loadOrgBindingForSlug(
+			db,
+			user.mcpUser.userId,
+			orgSlug,
+		)
+		if (!binding || binding.role == null)
+			return { status: 404, error: 'Organization not found.' }
+		user.request = deriveRequestContext({
+			user: user.mcpUser,
+			source: { kind: 'session' },
+			orgBinding: binding,
+		})
+	}
+	return {
+		status: 200,
+		data: await loadAccountConnectionUsageData({ env: createEnv(), user }),
+	}
 }
 
 test('signed-out requests are rejected', async () => {
@@ -196,18 +211,14 @@ test('team org: only owners and billing admins see teammates and Automation', as
 	}
 })
 
-test('the org Connections page binds its org through Referer, and non-members get 404', async () => {
-	const fromAcme = { referer: 'https://example.com/@acme/-/agents/usage' }
-	const request = new Request(
-		'https://example.com/account/connection-usage.json',
-		{ headers: fromAcme },
-	)
+test('explicit org binding rejects non-members before reading usage', async () => {
 	expect(
-		await loadRequestOrgResolution(request, createEnv(), 'person-bob'),
+		await loadOrgBindingForSlug(db, personIdFromStored('person-bob'), 'acme'),
 	).toMatchObject({ org: { slug: 'acme' }, role: 'member' })
-
 	signInAs('dan')
-	const response = await getUsage(fromAcme)
-	expect(response.status).toBe(404)
+	expect(await getUsage('acme')).toEqual({
+		status: 404,
+		error: 'Organization not found.',
+	})
 	expect(mocks.loadConnectionUsage).not.toHaveBeenCalled()
 })

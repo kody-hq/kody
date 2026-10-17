@@ -314,7 +314,7 @@ async function loadPlainRepoPage(input: {
 			username: identity.handle,
 			repo,
 			// Keep sourceId server-side for owner README. Public JSON strips it
-			// (see communityPackageApi) so guests never see internal ids.
+			// so guests never see internal ids.
 			sourceId: source?.id ?? '',
 			iconCommit,
 		}),

@@ -1,3 +1,4 @@
+import { type Route } from '@playwright/test'
 import { seedStableUserIdFromEmail } from '../tools/seed-sql.ts'
 import { executeE2eD1Command } from './d1-utils.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
@@ -190,10 +191,28 @@ INSERT INTO saved_packages (
 	await expect(ready).toContainText(`Invite ready for @${friend.username}`)
 	await expect(invites).toHaveCount(1)
 
-	await pending.getByRole('button', { name: 'Revoke' }).click()
-	await pending.getByRole('button', { name: 'Confirm revoke' }).click()
-	await expect(invites).toHaveCount(0)
-	await expect(ready).toHaveCount(0)
+	let droppedRevoke = false
+	const loseRevokeResponse = async (route: Route) => {
+		if (
+			route.request().method() !== 'POST' ||
+			!route.request().postData()?.includes('inviteId')
+		)
+			return route.fallback()
+		const response = await route.fetch()
+		expect(response.ok()).toBe(true)
+		droppedRevoke = true
+		await route.abort('failed')
+	}
+	await page.route('**/_serverFn/**', loseRevokeResponse)
+	try {
+		await pending.getByRole('button', { name: 'Revoke' }).click()
+		await pending.getByRole('button', { name: 'Confirm revoke' }).click()
+		await expect(invites).toHaveCount(0)
+		await expect(ready).toHaveCount(0)
+		expect(droppedRevoke).toBe(true)
+	} finally {
+		await page.unroute('**/_serverFn/**', loseRevokeResponse)
+	}
 
 	await form
 		.getByRole('textbox', { name: 'Email or username' })
@@ -229,3 +248,94 @@ INSERT INTO grant_permissions (grant_id, permission) VALUES
 	await expect(row).toHaveCount(0)
 	await expect(page.getByTestId('package-collaborators-empty')).toBeVisible()
 })
+
+for (const failed of [false, true]) {
+	test(`addressed invite ${failed ? 'failure' : 'success'} stays with its submitted package after navigation`, async ({
+		page,
+		seedE2eUser,
+		login,
+	}) => {
+		const id = Date.now()
+		const owner = await seedE2eUser({
+			email: `invite-scope-${id}@example.com`,
+			username: `invite-scope-${id}`,
+		})
+		const ownerId = seedStableUserIdFromEmail(owner.email)
+		for (const name of ['invite-a', 'invite-b']) {
+			executeE2eD1Command(
+				`INSERT INTO saved_packages (id,user_id,name,kody_id,description,tags_json,search_text,source_id,has_app,hidden,is_private) VALUES (${sqlString(`${name}-${id}`)},${sqlString(ownerId)},${sqlString(name)},${sqlString(name)},'Invite scope fixture','[]',${sqlString(name)},${sqlString(`src-${name}-${id}`)},0,0,1);`,
+			)
+		}
+		await login({ ...owner, mode: 'login' })
+		const pathA = `/@${owner.username}/invite-a/collaborators`
+		const pathB = `/@${owner.username}/invite-b/collaborators`
+		await page.goto(pathA)
+		await waitForClientHydration(page)
+		const target = failed ? 'not a username!' : `friend-${id}@example.com`
+		let release!: () => void
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		let held = false
+		let captured = false
+		let delivered = false
+		await page.route('**/_serverFn/**', async (route) => {
+			if (
+				captured ||
+				route.request().method() !== 'POST' ||
+				!route.request().postData()?.includes(target)
+			)
+				return route.fallback()
+			captured = true
+			const response = await route.fetch()
+			held = true
+			await barrier
+			await route.fulfill({ response })
+			delivered = true
+		})
+		try {
+			const form = page.getByTestId('package-collaborators-invite')
+			await form
+				.getByRole('textbox', { name: 'Email or username' })
+				.fill(target)
+			await form.getByRole('button', { name: 'Create invite' }).click()
+			await expect.poll(() => held).toBe(true)
+			// Router owns this same-document transition, retaining the pending mutation.
+			await page.evaluate(
+				(next) => window.history.pushState(null, '', next),
+				pathB,
+			)
+			await expect(page).toHaveURL(new RegExp(`${pathB}$`))
+			await expect(page.getByTestId('package-title-name')).toHaveText(
+				'invite-b',
+			)
+			release()
+			await expect.poll(() => delivered).toBe(true)
+			await expect(
+				form.getByRole('button', { name: 'Create invite' }),
+			).toBeDisabled()
+			await expect(
+				page.getByTestId('package-collaborators-invite-ready'),
+			).toHaveCount(0)
+			await expect(
+				page.getByText('Invite created.', { exact: true }),
+			).toHaveCount(0)
+			await expect(page.getByRole('alert')).toHaveCount(0)
+			await page.reload()
+			await waitForClientHydration(page)
+			await expect(page.getByTestId('package-collaborator-invite')).toHaveCount(
+				0,
+			)
+			await page.goto(pathA)
+			await waitForClientHydration(page)
+			await expect(page.getByTestId('package-collaborator-invite')).toHaveCount(
+				failed ? 0 : 1,
+			)
+			await expect(
+				page.getByTestId('package-collaborators-invite-ready'),
+			).toHaveCount(0)
+		} finally {
+			release()
+		}
+	})
+}

@@ -1,0 +1,61 @@
+{
+	"targets": [
+		{
+			"label": "remix",
+			"origin": "http://127.0.0.1:4177",
+			"root": "/tmp/kody-framework-baseline",
+			"framework": "remix",
+			"sourceGitRevision": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83"
+		},
+		{
+			"label": "query-before",
+			"origin": "http://127.0.0.1:4178",
+			"root": "/tmp/kody-start-query",
+			"sourceManifestSha256": "047036b630248158fc9e2988592671969f1e4e3e2473561efab05ace83ed404d"
+		},
+		{
+			"label": "query-optimized",
+			"origin": "http://127.0.0.1:4191",
+			"root": "/tmp/kody-start-query-optimized",
+			"sourceManifestSha256": "3f2594764d43afc3f9437b47c5516a9acdc395dfc3106f72ad24db9400458a59"
+		}
+	],
+	"rounds": 3,
+	"coldObservationMs": 30000,
+	"sessionMs": 60000,
+	"accountStartMs": 20000,
+	"hoverMs": 500,
+	"dwellMs": 1500,
+	"historyEvery": 4,
+	"raceEvery": 6,
+	"raceSettleMs": 1500,
+	"accountCheckEvery": 6,
+	"routes": [
+		{
+			"path": "/pricing",
+			"heading": "Start free."
+		},
+		{
+			"path": "/docs",
+			"heading": "What is Kody?"
+		},
+		{
+			"path": "/",
+			"heading": "You shouldn\u2019t have to start over"
+		}
+	],
+	"accountRoutes": [
+		{
+			"path": "/account",
+			"heading": "Account"
+		},
+		{
+			"path": "/account/jobs",
+			"heading": "Jobs"
+		},
+		{
+			"path": "/account/memories",
+			"heading": "Memories"
+		}
+	]
+}

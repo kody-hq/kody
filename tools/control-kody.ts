@@ -141,13 +141,8 @@ const usageLines = [
 	'request spec is METHOD /path [status] [json-body] [--form name=value]...',
 	"[--multipart] [--header 'Name: value']... Separate arguments are joined, so",
 	'POST /path 400 \'{"action":"add"}\' sends JSON and',
-	'POST /account/organizations/new --form slug=x-org --form displayName=X',
-	'sends application/x-www-form-urlencoded. --multipart sends',
-	'multipart/form-data; a --form value starting with @ is a file path',
-	'(POST /account/profile/avatar.json --multipart --form avatar=@./avatar.png).',
-	'Repeat --header for extra headers (not Cookie or Content-Type). Org-bound',
-	'/account/<section>.json routes bind the org from a same-origin Referer:',
-	"GET /account/connected-agents.json --header 'Referer: <origin>/@<slug>/-/agents'.",
+	'Use execute for business mutations through the official API, or browse to test website actions.',
+	'Website reads and mutations use Start server functions, not public JSON action URLs.',
 	'request fetches GET/HEAD first and only POSTs /auth when the response is',
 	'401 or login HTML. Public pages such as /pricing do not need a session.',
 	'Mutating methods log in first when no cookie exists. --email keys the',
@@ -1269,7 +1264,7 @@ export function repoRootFromHere(here = import.meta.dirname) {
 }
 
 export function defaultRoutesPath(root: string) {
-	return path.join(root, 'packages/worker/universal/routes.ts')
+	return path.join(root, 'packages/worker/start/routeTree.gen.ts')
 }
 
 export function defaultFeaturesDir(root: string) {
@@ -1392,7 +1387,7 @@ async function runCommand(options: ControlKodyOptions) {
 		case 'request': {
 			if (!options.request) {
 				throw new ControlKodyError(
-					"request needs METHOD /path [status] [json-body] [--form name=value]... [--multipart] [--header 'Name: value']... Example: request GET /account/waiting.json",
+					"request needs METHOD /path [status] [json-body] [--form name=value]... [--multipart] [--header 'Name: value']... Example: request GET /session",
 				)
 			}
 			const origin = await resolveOrigin(options)
@@ -1772,7 +1767,8 @@ async function runCommand(options: ControlKodyOptions) {
 					featuresDir: defaultFeaturesDir(root),
 				})
 				if (options.json) printJson(report)
-				else if (report.ok) console.log('Feature Map matches routes.ts')
+				else if (report.ok)
+					console.log('Feature Map matches the native Start route tree')
 				else {
 					for (const issue of report.issues) {
 						console.error(issue.detail)

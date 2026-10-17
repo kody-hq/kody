@@ -10,14 +10,10 @@ import {
 } from '#universal/onboarding-mcp-clients.ts'
 import { routes } from '#universal/routes.ts'
 
-export const onboardingStepPaths = {
-	index: '/onboarding',
+const onboardingStepPaths = {
 	step1: '/onboarding/step-1',
-	step1Agent: '/onboarding/step-1/:agent',
 	step2: '/onboarding/step-2',
-	step2Service: '/onboarding/step-2/:service',
 	step3: '/onboarding/step-3',
-	step3Agent: '/onboarding/step-3/:agent',
 } as const
 
 const onboardingNotListedSegment = 'not-listed'
@@ -360,23 +356,13 @@ export function onboardingChecklistItemHref(
 	return onboardingWizardStepHref(item.wizardStep)
 }
 
-export function isOnboardingPagePath(pathname: string) {
-	return (
-		pathname === onboardingStepPaths.index ||
-		pathname === onboardingStepPaths.step1 ||
-		pathname === onboardingStepPaths.step2 ||
-		pathname === onboardingStepPaths.step3 ||
-		pathname.startsWith(`${onboardingStepPaths.step1}/`) ||
-		pathname.startsWith(`${onboardingStepPaths.step2}/`) ||
-		pathname.startsWith(`${onboardingStepPaths.step3}/`)
-	)
-}
-
 function onboardingAgentPathSegment(agent: McpClientKind) {
 	return agent === 'other' ? onboardingNotListedSegment : agent
 }
 
-function readOnboardingAgentSegment(segment: string): McpClientKind | null {
+export function readOnboardingAgentSegment(
+	segment: string,
+): McpClientKind | null {
 	if (segment === onboardingNotListedSegment) return 'other'
 	return isMcpClientKind(segment) ? segment : null
 }
@@ -400,47 +386,4 @@ export function onboardingSecondAgentHref(
 	return `${routes.onboardingStep3Agent.href({
 		agent: onboardingAgentPathSegment(agent),
 	})}${search}`
-}
-
-export function parseOnboardingPathname(
-	pathname: string,
-): OnboardingLocation | null {
-	if (
-		pathname === onboardingStepPaths.index ||
-		pathname === onboardingStepPaths.step1
-	) {
-		return { step: 1, agent: null, valid: true }
-	}
-	if (pathname === onboardingStepPaths.step2) {
-		return { step: 2, agent: null, valid: true }
-	}
-	if (pathname === onboardingStepPaths.step3) {
-		return { step: 3, agent: null, valid: true }
-	}
-	const step1Prefix = `${onboardingStepPaths.step1}/`
-	if (pathname.startsWith(step1Prefix)) {
-		const segment = pathname.slice(step1Prefix.length)
-		if (!segment || segment.includes('/')) {
-			return { step: 1, agent: null, valid: false }
-		}
-		const agent = readOnboardingAgentSegment(segment)
-		return { step: 1, agent, valid: agent != null }
-	}
-	const step2Prefix = `${onboardingStepPaths.step2}/`
-	if (pathname.startsWith(step2Prefix)) {
-		// Former service-picker URLs land on the rewritten Step 2.
-		return { step: 2, agent: null, valid: false }
-	}
-	const step3Prefix = `${onboardingStepPaths.step3}/`
-	if (pathname.startsWith(step3Prefix)) {
-		const segment = pathname.slice(step3Prefix.length)
-		if (!segment || segment.includes('/')) {
-			return { step: 3, agent: null, valid: false }
-		}
-		const agent = readOnboardingAgentSegment(segment)
-		// Bookmarks to Step 3 Not listed fall back to the ecosystem picker.
-		if (agent === 'other') return { step: 3, agent: null, valid: false }
-		return { step: 3, agent, valid: agent != null }
-	}
-	return null
 }

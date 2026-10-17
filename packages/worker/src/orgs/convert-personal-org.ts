@@ -56,7 +56,7 @@ import {
 	loadPersonalOrgIdForPerson,
 	mintOwnerId,
 } from '#worker/orgs/personal-org-id.ts'
-import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import { personalOrgProvisionStatements } from '#worker/orgs/provision.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export class ConvertPersonalOrgError extends Error {
@@ -89,6 +89,7 @@ export type ConvertPersonalOrgResult = {
 	convertedSlug: string
 	newPersonalOrgId: OwnerId
 	newUsername: string
+	followUpFailures: Array<'oauth_grants' | 'email_inbox' | 'memory_index'>
 	moved: {
 		memories: number
 		userSecrets: number
@@ -141,7 +142,7 @@ async function listCredentialOrgGrantNames(db: D1Database, personId: string) {
 		.filter(Boolean)
 }
 
-async function resealUserSecretEntries(input: {
+async function prepareUserSecretEntries(input: {
 	env: CryptoEnv
 	db: D1Database
 	fromId: OwnerId
@@ -163,6 +164,7 @@ async function resealUserSecretEntries(input: {
 			name: string
 			encrypted_value: string
 		}>()
+	const statements: Array<D1PreparedStatement> = []
 	let moved = 0
 	for (const row of results ?? []) {
 		if (!row.encrypted_value) continue
@@ -176,30 +178,29 @@ async function resealUserSecretEntries(input: {
 			plaintext,
 			userSecretContext(input.toId),
 		)
-		await input.db
-			.prepare(
-				`UPDATE secret_entries SET encrypted_value = ?
-				 WHERE rowid = ? AND deleted_at IS NULL`,
-			)
-			.bind(ciphertext, row.rowid)
-			.run()
+		statements.push(
+			input.db
+				.prepare(
+					`UPDATE secret_entries SET encrypted_value = ? WHERE rowid = ? AND deleted_at IS NULL`,
+				)
+				.bind(ciphertext, row.rowid),
+		)
 		moved += 1
 	}
-	await input.db
-		.prepare(
-			`UPDATE secret_buckets SET user_id = ?
-			 WHERE user_id = ? AND scope = 'user' AND deleted_at IS NULL`,
-		)
-		.bind(input.toId, input.fromId)
-		.run()
-	return moved
+	statements.push(
+		input.db
+			.prepare(`UPDATE secret_buckets SET user_id = ?
+ WHERE user_id = ? AND scope = 'user' AND deleted_at IS NULL`)
+			.bind(input.toId, input.fromId),
+	)
+	return { statements, moved }
 }
 
 /**
  * Move BYO OAuth apps and integrations together. They share a composite FK, so
  * the re-points run in one deferred-FK batch after ciphertext is resealed.
  */
-async function moveOauthAppsAndIntegrations(input: {
+async function prepareOauthAppsAndIntegrations(input: {
 	env: CryptoEnv
 	db: D1Database
 	fromId: OwnerId
@@ -232,9 +233,7 @@ async function moveOauthAppsAndIntegrations(input: {
 			refresh_token_encrypted: string | null
 		}>()
 
-	const statements: Array<D1PreparedStatement> = [
-		input.db.prepare('PRAGMA defer_foreign_keys = ON'),
-	]
+	const statements: Array<D1PreparedStatement> = []
 
 	for (const row of apps.results ?? []) {
 		const updates: Array<string> = []
@@ -313,10 +312,7 @@ async function moveOauthAppsAndIntegrations(input: {
 		)
 	}
 
-	if (statements.length > 1) {
-		await input.db.batch(statements)
-	}
-	return (integrations.results ?? []).length
+	return { statements, moved: (integrations.results ?? []).length }
 }
 
 type ConvertMcpServerRow = { id: string; name: string }
@@ -409,12 +405,12 @@ async function discardStagedMcpServerTransfers(input: {
 	}
 }
 
-async function rewriteMcpServerOwnership(input: {
+function mcpServerOwnershipStatements(input: {
 	db: D1Database
 	fromId: OwnerId
 	toId: OwnerId
 }) {
-	await input.db.batch([
+	return [
 		input.db
 			.prepare(
 				`UPDATE mcp_server_settings SET user_id = ?
@@ -427,7 +423,7 @@ async function rewriteMcpServerOwnership(input: {
 				 WHERE user_id = ? AND deleted_at IS NULL`,
 			)
 			.bind(input.toId, input.fromId),
-	])
+	]
 }
 
 /**
@@ -511,6 +507,7 @@ async function reindexMovedMemories(input: {
 		)
 		.bind(input.toId)
 		.all<McpMemoryRow & { user_id: string }>()
+	let failed = false
 	for (const row of results ?? []) {
 		try {
 			await deleteMemoryVector(input.env, row.id)
@@ -522,9 +519,11 @@ async function reindexMovedMemories(input: {
 				embedText: buildMemoryEmbedTextFromRow(row),
 			})
 		} catch {
-			// Best-effort: D1 already moved; vectors heal on next write.
+			// D1 already moved. Report incomplete indexing without retrying conversion.
+			failed = true
 		}
 	}
+	return !failed
 }
 
 /**
@@ -658,182 +657,160 @@ export async function convertPersonalOrg(input: {
 	const displayName = person.display_name ?? convertedOrg.display_name
 	const avatarKey = person.avatar_key ?? convertedOrg.avatar_key
 
-	// Hub stage before irreversible identity writes (org-transfer pattern).
+	// Prepare every ciphertext before provisioning or changing any D1 ownership.
+	const userSecrets = await prepareUserSecretEntries({
+		env: input.env,
+		db,
+		fromId: convertedOrgId,
+		toId: newPersonalOrgId,
+	})
+	const integrations = await prepareOauthAppsAndIntegrations({
+		env: input.env,
+		db,
+		fromId: convertedOrgId,
+		toId: newPersonalOrgId,
+	})
+	const movedCredentialIds = await listLiveCredentialIdsForOwner(
+		db,
+		convertedOrgId,
+	)
 	const stagedMcpServers = await stageMcpServerTransfers({
 		env: input.env,
 		db,
 		fromId: convertedOrgId,
 		toId: newPersonalOrgId,
 	})
-	let mcpOwnershipRewritten = false
-
+	let committed = false
 	try {
-		await provisionPersonalOrg(db, {
-			stableUserId: input.personId,
-			orgId: newPersonalOrgId,
-			username: newUsername,
-			createdAt: now,
-			displayName,
-			avatarKey,
-			plan: 'free',
-		})
-
-		// Detach the person from the old handle row so @old is org-only.
-		await db
-			.prepare(
-				`UPDATE handles SET user_id = NULL WHERE handle = ? AND org_id = ?`,
-			)
-			.bind(convertedOrg.slug, convertedOrgId)
-			.run()
-
-		await db
-			.prepare(
-				`UPDATE users
-				 SET username = ?, personal_org_id = ?, updated_at = ?
-				 WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(newUsername, newPersonalOrgId, now, input.personId)
-			.run()
-
-		// provisionPersonalOrg inserted a handle with user_id; keep it.
-		// Owner membership on the converted org already exists — no members added.
-
-		const memories = await db
-			.prepare(
-				`UPDATE mcp_memories SET user_id = ?
-				 WHERE user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(newPersonalOrgId, convertedOrgId)
-			.run()
-		await db
-			.prepare(
-				`UPDATE mcp_memory_conversation_suppressions SET user_id = ?
-				 WHERE user_id = ?`,
-			)
-			.bind(newPersonalOrgId, convertedOrgId)
-			.run()
-
-		const movedCredentialIds = await listLiveCredentialIdsForOwner(
-			db,
-			convertedOrgId,
-		)
-
-		const userSecrets = await resealUserSecretEntries({
-			env: input.env,
-			db,
-			fromId: convertedOrgId,
-			toId: newPersonalOrgId,
-		})
-		const integrations = await moveOauthAppsAndIntegrations({
-			env: input.env,
-			db,
-			fromId: convertedOrgId,
-			toId: newPersonalOrgId,
-		})
-
-		await rewriteMcpServerOwnership({
-			db,
-			fromId: convertedOrgId,
-			toId: newPersonalOrgId,
-		})
-		mcpOwnershipRewritten = true
-		// Finalize hub remove/connect immediately after D1 ownership rewrite so
-		// later OAuth/email/reindex failures cannot leave MCP split.
+		const statements = [
+			db.prepare('PRAGMA defer_foreign_keys = ON'),
+			...personalOrgProvisionStatements(db, {
+				stableUserId: input.personId,
+				orgId: newPersonalOrgId,
+				username: newUsername,
+				createdAt: now,
+				displayName,
+				avatarKey,
+				plan: 'free',
+			}),
+			db
+				.prepare(
+					`UPDATE handles SET user_id = NULL WHERE handle = ? AND org_id = ?`,
+				)
+				.bind(convertedOrg.slug, convertedOrgId),
+			db
+				.prepare(
+					`UPDATE users SET username = ?, personal_org_id = ?, updated_at = ? WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
+				)
+				.bind(newUsername, newPersonalOrgId, now, input.personId),
+			db
+				.prepare(
+					`UPDATE mcp_memories SET user_id = ? WHERE user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(newPersonalOrgId, convertedOrgId),
+			db
+				.prepare(
+					`UPDATE mcp_memory_conversation_suppressions SET user_id = ? WHERE user_id = ?`,
+				)
+				.bind(newPersonalOrgId, convertedOrgId),
+			...userSecrets.statements,
+			...integrations.statements,
+			...mcpServerOwnershipStatements({
+				db,
+				fromId: convertedOrgId,
+				toId: newPersonalOrgId,
+			}),
+			db
+				.prepare(
+					`UPDATE grants SET deleted_at = ?, updated_at = ? WHERE org_id = ? AND resource_type = 'credential' AND deleted_at IS NULL AND resource_id IN (SELECT value FROM json_each(?))`,
+				)
+				.bind(now, now, convertedOrgId, JSON.stringify(movedCredentialIds)),
+			db
+				.prepare(
+					`UPDATE api_tokens SET org_id = ?, updated_at = ? WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(newPersonalOrgId, now, convertedOrgId, input.personId),
+			db
+				.prepare(
+					`UPDATE cli_credential_bootstrap_codes SET org_id = ? WHERE org_id = ? AND user_id = ?`,
+				)
+				.bind(newPersonalOrgId, convertedOrgId, input.personId),
+			db
+				.prepare(
+					`UPDATE follows SET target_owner_id = ?, updated_at = ? WHERE target_owner_id = ? AND target_owner_id != ?`,
+				)
+				.bind(convertedOrgId, now, input.personId, convertedOrgId),
+			bumpAccessEpochStatement(db, convertedOrgId),
+			bumpAccessEpochStatement(db, newPersonalOrgId),
+		]
+		// The variable-length reseal plan precedes these fixed trailing writes.
+		const tokenResultIndex = statements.length - 5
+		const followsResultIndex = statements.length - 3
+		const results = await db.batch(statements)
+		committed = true
 		await finalizeMcpServerTransfers({
 			env: input.env,
 			fromId: convertedOrgId,
 			toId: newPersonalOrgId,
 			servers: stagedMcpServers,
 		})
-
-		// Credentials left the converted org; drop that org's live grants to them
-		// so team members cannot keep using the person's private credentials.
-		if (movedCredentialIds.length > 0) {
-			await db
-				.prepare(
-					`UPDATE grants SET deleted_at = ?, updated_at = ?
-					 WHERE org_id = ?
-					   AND resource_type = 'credential'
-					   AND deleted_at IS NULL
-					   AND resource_id IN (SELECT value FROM json_each(?))`,
-				)
-				.bind(now, now, convertedOrgId, JSON.stringify(movedCredentialIds))
-				.run()
+		const followUpFailures: ConvertPersonalOrgResult['followUpFailures'] = []
+		let oauthGrants = 0
+		try {
+			oauthGrants = await retargetOauthGrantMetadata({
+				env: input.env,
+				personId: input.personId,
+				fromOrgId: convertedOrgId,
+				toOrgId: newPersonalOrgId,
+			})
+		} catch {
+			followUpFailures.push('oauth_grants')
 		}
-
-		const apiTokens = await db
-			.prepare(
-				`UPDATE api_tokens SET org_id = ?, updated_at = ?
-				 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(newPersonalOrgId, now, convertedOrgId, input.personId)
-			.run()
-
-		// Passkeys are person-only (no org_id). CLI bootstrap codes bound to the
-		// old personal org follow API tokens.
-		await db
-			.prepare(
-				`UPDATE cli_credential_bootstrap_codes SET org_id = ?
-				 WHERE org_id = ? AND user_id = ?`,
-			)
-			.bind(newPersonalOrgId, convertedOrgId, input.personId)
-			.run()
-
-		const followsRetargeted = await db
-			.prepare(
-				`UPDATE follows SET target_owner_id = ?, updated_at = ?
-				 WHERE target_owner_id = ? AND target_owner_id != ?`,
-			)
-			.bind(convertedOrgId, now, input.personId, convertedOrgId)
-			.run()
-
-		// Person-subject grants stay person-keyed (`subject_type` is user|team only).
-		// Follows that targeted the person id under a distinct personal org are
-		// retargeted above to the converted org. Invalidate access caches on both.
-		await db.batch([
-			bumpAccessEpochStatement(db, convertedOrgId),
-			bumpAccessEpochStatement(db, newPersonalOrgId),
-		])
-
-		const oauthGrants = await retargetOauthGrantMetadata({
-			env: input.env,
-			personId: input.personId,
-			fromOrgId: convertedOrgId,
-			toOrgId: newPersonalOrgId,
-		})
 
 		if (convertPersonalOrgKeepEmailOnConvertedOrg && emailDomain) {
-			await ensureDefaultEmailInbox({
-				db,
-				userId: newPersonalOrgId,
-				username: newUsername,
-				domain: emailDomain,
-			})
+			try {
+				const inbox = await ensureDefaultEmailInbox({
+					db,
+					userId: newPersonalOrgId,
+					actorPersonId: input.personId,
+					username: newUsername,
+					domain: emailDomain,
+				})
+				if (!inbox) followUpFailures.push('email_inbox')
+			} catch {
+				followUpFailures.push('email_inbox')
+			}
 		}
 
-		await reindexMovedMemories({
-			env: input.env,
-			db,
-			toId: newPersonalOrgId,
-		})
+		try {
+			const indexed = await reindexMovedMemories({
+				env: input.env,
+				db,
+				toId: newPersonalOrgId,
+			})
+			if (!indexed) followUpFailures.push('memory_index')
+		} catch {
+			followUpFailures.push('memory_index')
+		}
 
 		return {
 			convertedOrgId,
 			convertedSlug: convertedOrg.slug,
 			newPersonalOrgId,
 			newUsername,
+			followUpFailures,
 			moved: {
-				memories: memories.meta.changes ?? 0,
-				userSecrets,
-				integrations,
+				memories: results[6]!.meta.changes ?? 0,
+				userSecrets: userSecrets.moved,
+				integrations: integrations.moved,
 				mcpServers: stagedMcpServers.length,
-				apiTokens: apiTokens.meta.changes ?? 0,
+				apiTokens: results[tokenResultIndex]!.meta.changes ?? 0,
 				oauthGrants,
-				followsRetargeted: followsRetargeted.meta.changes ?? 0,
+				followsRetargeted: results[followsResultIndex]!.meta.changes ?? 0,
 			},
 		}
 	} catch (error) {
-		if (!mcpOwnershipRewritten) {
+		if (!committed) {
 			await discardStagedMcpServerTransfers({
 				env: input.env,
 				toId: newPersonalOrgId,

@@ -1,8 +1,9 @@
+import { defaultParseSearch } from '@tanstack/react-router'
+import { collectionSearch } from '../../start/filter-search.ts'
 import { expect, test } from 'vitest'
 import {
 	filterAccountWorkflows,
 	isActiveAccountWorkflow,
-	readWorkflowsViewFilter,
 	type FilterableAccountWorkflow,
 } from './account-workflows-filter.ts'
 
@@ -29,9 +30,14 @@ test('account workflows filters cover active/history views and search', () => {
 		['/account/workflows?view=all', 'all'],
 		['/account/workflows?view=nope', 'active'],
 	] as const
-	expect(views.map(([href]) => [href, readWorkflowsViewFilter(href)])).toEqual(
-		views,
-	)
+	expect(
+		views.map(([href]) => [
+			href,
+			collectionSearch(
+				defaultParseSearch(new URL(href, 'https://kody.local').search),
+			).view,
+		]),
+	).toEqual(views)
 
 	const workflows = [
 		workflow('live-queued', 'Send digest', 'queued'),

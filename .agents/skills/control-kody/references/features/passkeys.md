@@ -10,14 +10,12 @@ authenticator.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/passkeys.json
+npm run control-kody -- browse --origin <preview> --path /account/passkeys
 ```
 
-HTTP can assert the empty list. Do not fail a ship because computerUse cannot
-complete a WebAuthn ceremony.
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-## APIs
-
-- `GET|POST /account/passkeys.json`
-- `/webauthn/registration`
-- `/webauthn/authentication`
+Registration and authentication use native server functions from the browser. A
+supported authenticator is required to verify a complete WebAuthn ceremony.

@@ -1,8 +1,12 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { createProfileApiHandler, createProfileHandler } from './profile.tsx'
+import { loadProfileData } from '#app/profile-data.ts'
+import { loadProfile } from '../../../start/server/public-data.ts'
+import {
+	toProfileShellLoaderData,
+	toProfileListLoaderData,
+} from '#universal/loader-data.ts'
 import { type CommunityProfileRecord } from '#worker/community/types.ts'
-import type * as FrameRegistry from '#app/frame-registry.ts'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -31,36 +35,53 @@ vi.mock('#worker/community/profile-service.ts', () => ({
 		mockModule.listProfileRepositories(...args),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: vi.fn(
-		async (input: { title?: string; status?: number; loaderData?: unknown }) =>
-			new Response(JSON.stringify(input), {
-				status: input.status ?? 200,
-				headers: { 'Content-Type': 'application/json' },
-			}),
-	),
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/login'),
+	setResponseHeader: vi.fn(),
 }))
-
-vi.mock('#app/frames/community-listings.ts', () => ({}))
-vi.mock('#app/frames/community-detail.ts', () => ({}))
-vi.mock('#app/frame-registrations.ts', () => ({}))
-
-vi.mock('#app/frame-registry.ts', async (importOriginal) => {
-	const actual = await importOriginal<typeof FrameRegistry>()
-	return {
-		...actual,
-		handleFrameRequest: vi.fn(
-			async (request: Request, _env: Env, _pathname: string) => {
-				if (request.headers.get('x-remix-target') === 'profile') {
-					return actual.createFrameHtmlResponse(
-						'<div data-testid="profile-frame"><p data-testid="profile-packages-empty">No public packages to take yet.</p></div>',
-					)
-				}
-				return null
+vi.mock('@tanstack/react-start', () => ({
+	createServerOnlyFn: <T>(fn: T) => fn,
+	createServerFn: () => {
+		let validate = (data: unknown) => data
+		const builder = {
+			validator: (fn: typeof validate | { parse(data: unknown): unknown }) => {
+				validate = typeof fn === 'function' ? fn : (data) => fn.parse(data)
+				return builder
 			},
-		),
-	}
-})
+			handler:
+				(fn: (input: { data: unknown }) => unknown) =>
+				(input: { data: unknown }) =>
+					fn({ data: validate(input.data) }),
+		}
+		return builder
+	},
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: () => native.env }))
+
+vi.mock('#app/session-info.ts', () => ({
+	loadSessionInfo: async () => ({
+		session: { organizations: await mockModule.listOrganizationsForPerson() },
+		setCookie: undefined,
+	}),
+}))
+async function nativeProfile(username: string) {
+	native.env = {
+		COOKIE_SECRET: 'test-cookie-secret-0123456789abcdef0123456789',
+	} as Env
+	native.request = new Request(`https://example.com/@${username}`)
+	return loadProfile({ data: { username, query: '' } })
+}
 
 const publicProfile = {
 	userId: ownerIdFromStored('stable-alice'),
@@ -140,21 +161,30 @@ function setupPublicProfileMocks() {
 	mockModule.getProfileActivity.mockResolvedValue(activityFixture)
 }
 
-async function call(
-	create: typeof createProfileApiHandler | typeof createProfileHandler,
-	path: string,
-	username = 'alice',
-) {
+async function call(path: string, username = 'alice') {
 	mockModule.listProfileRepositories.mockClear()
 	const url = new URL(`https://example.com${path}`)
-	const response = await create(env).handler({
-		request: new Request(url),
-		params: { username },
-		url,
-	} as never)
+	const data = await loadProfileData(
+		env,
+		new Request(url),
+		username,
+		undefined,
+		{
+			query: url.searchParams.get('q')?.trim() ?? '',
+			limit: (() => {
+				const value = Number.parseInt(url.searchParams.get('limit') ?? '', 10)
+				return Number.isFinite(value) && value > 0
+					? Math.min(100, value)
+					: undefined
+			})(),
+		},
+	)
 	return {
-		status: response.status,
-		body: (await response.json()) as ProfileResponseBody,
+		status: data ? 200 : 404,
+		body: (data ?? {
+			ok: false,
+			error: "This profile isn't available.",
+		}) as ProfileResponseBody,
 	}
 }
 
@@ -164,7 +194,7 @@ function lastPackagesQuery() {
 
 test('profile API respects visibility, ignores owner-only filters for guests, and forwards search limits', async () => {
 	setupPublicProfileMocks()
-	const guest = await call(createProfileApiHandler, '/profiles/alice.json')
+	const guest = await call('/profiles/alice.json')
 	expect(guest.status).toBe(200)
 	expect(Object.keys(guest.body).sort()).toEqual(apiKeys)
 	expect(guest.body).toMatchObject({
@@ -184,27 +214,20 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 	expect(lastPackagesQuery()).not.toHaveProperty('limit')
 
 	const guestFilter = await call(
-		createProfileApiHandler,
 		'/profiles/alice.json?visibility=private&listing=published&hidden=yes',
 	)
 	expect(guestFilter.status).toBe(200)
 	expect(Object.keys(guestFilter.body).sort()).toEqual(apiKeys)
 	expect(lastPackagesQuery()).toMatchObject({ includePrivate: false })
 
-	const search = await call(
-		createProfileApiHandler,
-		'/profiles/alice.json?q=helper',
-	)
+	const search = await call('/profiles/alice.json?q=helper')
 	expect(search.status).toBe(200)
 	expect(search.body.query).toBe('helper')
 	expect(search.body.packages).toHaveLength(1)
 	expect(lastPackagesQuery()).toMatchObject({ includePrivate: false })
 	expect(lastPackagesQuery()).not.toHaveProperty('query')
 
-	const capped = await call(
-		createProfileApiHandler,
-		'/profiles/alice.json?q=helper&limit=10',
-	)
+	const capped = await call('/profiles/alice.json?q=helper&limit=10')
 	expect(capped.status).toBe(200)
 	expect(lastPackagesQuery()).toMatchObject({
 		includePrivate: false,
@@ -216,16 +239,12 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 		...publicProfile,
 		visibility: 'private',
 	})
-	const hidden = await call(createProfileApiHandler, '/profiles/alice.json')
+	const hidden = await call('/profiles/alice.json')
 	expect(hidden.status).toBe(404)
 	expect(hidden.body.ok).toBe(false)
 
 	mockModule.getCommunityProfileByUsername.mockResolvedValueOnce(null)
-	const unknown = await call(
-		createProfileApiHandler,
-		'/profiles/missing.json',
-		'missing',
-	)
+	const unknown = await call('/profiles/missing.json', 'missing')
 	expect(unknown.status).toBe(404)
 
 	// Own private profile is visible to self, including private packages.
@@ -236,7 +255,6 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 	mockModule.listProfileRepositories.mockResolvedValue([])
 	mockModule.getProfileActivity.mockResolvedValue([])
 	const own = await call(
-		createProfileApiHandler,
 		'/profiles/alice.json?visibility=private&listing=ahead&hidden=yes',
 	)
 	expect(own.status).toBe(200)
@@ -254,9 +272,9 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 
 test('profile page shell embeds the person and the unfiltered package list, or 404s when unavailable', async () => {
 	setupPublicProfileMocks()
-	const page = await call(createProfileHandler, '/@alice')
-	expect(page.status).toBe(200)
-	expect(page.body.loaderData?.profileShell).toEqual({
+	const page = await nativeProfile('alice')
+	if (!page.data) throw new Error('Expected public profile')
+	expect(toProfileShellLoaderData(page.data)).toEqual({
 		ok: true,
 		username: 'alice',
 		displayName: 'Alice',
@@ -267,7 +285,7 @@ test('profile page shell embeds the person and the unfiltered package list, or 4
 		loggedIn: false,
 		visibility: 'public',
 	})
-	expect(page.body.loaderData?.profileList).toEqual({
+	expect(toProfileListLoaderData(page.data)).toEqual({
 		profile: {
 			username: 'alice',
 			displayName: 'Alice',
@@ -312,11 +330,9 @@ test('profile page shell embeds the person and the unfiltered package list, or 4
 	})
 
 	mockModule.getCommunityProfileByUsername.mockResolvedValue(null)
-	const missing = await call(createProfileHandler, '/@missing', 'missing')
-	expect(missing.status).toBe(404)
-	expect(missing.body.loaderData?.profileShell).toEqual({
-		ok: false,
-		unavailable: true,
+	mockModule.listOrganizationsForPerson.mockResolvedValue([])
+	await expect(nativeProfile('missing')).rejects.toMatchObject({
+		isNotFound: true,
 	})
 })
 
@@ -333,24 +349,21 @@ test('an organization handle is a home for everyone its switcher lists and a 404
 		{ slug: 'globex', displayName: 'Globex', role: null, personal: false },
 	])
 
-	const member = await call(createProfileHandler, '/@acme', 'acme')
-	expect(member.status).toBe(200)
-	expect(member.body).toMatchObject({
-		title: 'Acme',
-		loaderData: { profileShell: { ok: false, unavailable: true } },
+	const member = await nativeProfile('acme')
+	expect(member).toMatchObject({
+		data: null,
+		orgHome: { slug: 'acme', role: 'member' },
+		head: { title: 'Acme' },
 	})
-	expect(mockModule.listOrganizationsForPerson).toHaveBeenCalledWith(
-		undefined,
-		'stable-alice',
-	)
-
-	const collaborator = await call(createProfileHandler, '/@globex', 'globex')
-	expect(collaborator.status).toBe(200)
-	expect(collaborator.body).toMatchObject({ title: 'Globex' })
-
-	const outsider = await call(createProfileHandler, '/@zeta', 'zeta')
-	expect(outsider.status).toBe(404)
-	expect(outsider.body).toMatchObject({ title: 'Profile unavailable' })
+	const collaborator = await nativeProfile('globex')
+	expect(collaborator).toMatchObject({
+		data: null,
+		orgHome: { slug: 'globex', role: null },
+		head: { title: 'Globex' },
+	})
+	await expect(nativeProfile('zeta')).rejects.toMatchObject({
+		isNotFound: true,
+	})
 })
 
 test('organization homes and public profiles never remember an org in a cookie', async () => {
@@ -363,16 +376,56 @@ test('organization homes and public profiles never remember an org in a cookie',
 		{ slug: 'alice', displayName: null, role: 'owner', personal: true },
 		{ slug: 'acme', displayName: 'Acme', role: 'member', personal: false },
 	])
-	const render = (username: string) =>
-		createProfileHandler(env).handler({
-			request: new Request(`https://example.com/@${username}`),
-			params: { username },
-			url: new URL(`https://example.com/@${username}`),
-		} as never)
-
-	expect((await render('alice')).headers.get('Set-Cookie')).toBeNull()
-
+	native.setResponseHeader.mockClear()
+	await nativeProfile('alice')
+	expect(native.setResponseHeader).not.toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.anything(),
+	)
 	mockModule.getCommunityProfileByUsername.mockResolvedValue(null)
-	expect((await render('acme')).headers.get('Set-Cookie')).toBeNull()
-	expect((await render('zeta')).headers.get('Set-Cookie')).toBeNull()
+	await nativeProfile('acme')
+	expect(native.setResponseHeader).not.toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.anything(),
+	)
+	native.setResponseHeader.mockClear()
+	await expect(nativeProfile('zeta')).rejects.toMatchObject({
+		isNotFound: true,
+	})
+	expect(native.setResponseHeader).not.toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.anything(),
+	)
+})
+
+test('explicit repository filters ignore RPC URL state and remain distinct in the request cache', async () => {
+	setupPublicProfileMocks()
+	const request = new Request(
+		'https://example.com/_serverFn/profile?q=wrong&limit=99',
+	)
+	const first = await loadProfileData(env, request, 'alice', undefined, {
+		query: 'first',
+		limit: 2,
+	})
+	expect(first?.query).toBe('first')
+	expect(lastPackagesQuery()).toMatchObject({
+		query: 'first',
+		limit: 2,
+		includePrivate: false,
+	})
+	const second = await loadProfileData(env, request, 'alice', undefined, {
+		query: 'second',
+		limit: 3,
+	})
+	expect(second?.query).toBe('second')
+	expect(lastPackagesQuery()).toMatchObject({
+		query: 'second',
+		limit: 3,
+		includePrivate: false,
+	})
+	expect(mockModule.readAuthenticatedAppUser).toHaveBeenLastCalledWith(
+		request,
+		env,
+		undefined,
+	)
 })

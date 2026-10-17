@@ -11,7 +11,7 @@ vi.mock('./request-auth-cache.ts', () => ({
 	loadResolvedRequestAuth: authMock.loadResolvedRequestAuth,
 }))
 
-const { createAccountWriteLeaseMiddleware } =
+const { withProtocolAccountWriteLease } =
 	await import('./account-write-lease-middleware.ts')
 
 test('authenticated delayed mutation holds web lease through handler completion', async () => {
@@ -60,19 +60,12 @@ test('authenticated delayed mutation holds web lease through handler completion'
 	const finish = new Promise<void>((resolve) => {
 		finishHandler = resolve
 	})
-	const middleware = createAccountWriteLeaseMiddleware({
-		APP_DB: db,
-		USER_METER: meter.env.USER_METER,
-	} as Env)
-	const responsePromise = middleware(
+	const responsePromise = withProtocolAccountWriteLease(
+		new Request('https://example.com/auth', { method: 'POST' }),
 		{
-			request: new Request('https://example.com/account/mcp-servers.json', {
-				method: 'POST',
-			}),
-			url: new URL('https://example.com/account/mcp-servers.json'),
-			params: {},
-			context: new Map(),
-		} as never,
+			APP_DB: db,
+			USER_METER: meter.env.USER_METER,
+		} as Env,
 		async () => {
 			expect(await meterA.countActiveWriteLeases()).toEqual({ count: 1 })
 			startHandler()
@@ -87,25 +80,71 @@ test('authenticated delayed mutation holds web lease through handler completion'
 	expect(await meterA.countActiveWriteLeases()).toEqual({ count: 0 })
 })
 
-test('logout is not blocked while an account is deleting', async () => {
-	authMock.loadResolvedRequestAuth.mockResolvedValue({
-		sessionUserId: '1',
-		user: {
-			accountDeleting: true,
-			mcpUser: { userId: ownerIdFromStored('user-a') },
-		},
-	})
-	const next = vi.fn(async () => new Response(null, { status: 302 }))
-	const middleware = createAccountWriteLeaseMiddleware({} as Env)
-	const response = await middleware(
-		{
-			request: new Request('https://example.com/logout', { method: 'POST' }),
-			url: new URL('https://example.com/logout'),
-			params: {},
-			context: new Map(),
-		} as never,
-		next,
-	)
-	expect(next).toHaveBeenCalledOnce()
-	expect(response.status).toBe(302)
+test('nonmutating documents preserve the native middleware result without auth or a lease', async () => {
+	authMock.loadResolvedRequestAuth.mockClear()
+	const result = {
+		response: new Response('document'),
+		context: { requestId: 'request-1' },
+	}
+	expect(
+		await withProtocolAccountWriteLease(
+			new Request('https://example.com/docs'),
+			{} as Env,
+			async () => result,
+		),
+	).toBe(result)
+	expect(authMock.loadResolvedRequestAuth).not.toHaveBeenCalled()
 })
+
+test.each([
+	['POST', '/auth'],
+	['GET', '/account/mcp-servers/oauth/callback'],
+	['POST', '/logout'],
+	['POST', '/account/delete'],
+	['PUT', '/protocol-write'],
+	['PATCH', '/protocol-write'],
+	['DELETE', '/protocol-write'],
+])(
+	'deleting accounts cannot enter mutating protocol %s %s',
+	async (method, path) => {
+		authMock.loadResolvedRequestAuth.mockResolvedValue({
+			user: {
+				accountDeleting: true,
+				mcpUser: { userId: ownerIdFromStored('user-a') },
+			},
+		})
+		const next = vi.fn(async () => ({ response: new Response('unsafe') }))
+		const result = await withProtocolAccountWriteLease(
+			new Request(`https://example.com${path}`, { method }),
+			{} as Env,
+			next,
+		)
+		expect(result).toBeInstanceOf(Response)
+		if (!(result instanceof Response))
+			throw new Error('Expected an account deletion denial')
+		expect(result.status).toBe(409)
+		expect(await result.json()).toMatchObject({
+			error: { code: 'account_deleting' },
+		})
+		expect(next).not.toHaveBeenCalled()
+	},
+)
+
+test.each([
+	'/account/billing/success',
+	'/@acme/-/billing/success',
+	'/@acme/-/billing/portal',
+])(
+	'GET %s does not claim a protocol lease for a native mutation',
+	async (path) => {
+		authMock.loadResolvedRequestAuth.mockClear()
+		const next = vi.fn(async () => ({ response: new Response('checkout') }))
+		await withProtocolAccountWriteLease(
+			new Request(`https://example.com${path}`),
+			{} as Env,
+			next,
+		)
+		expect(next).toHaveBeenCalledOnce()
+		expect(authMock.loadResolvedRequestAuth).not.toHaveBeenCalled()
+	},
+)

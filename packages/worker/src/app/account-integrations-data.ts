@@ -294,7 +294,8 @@ export async function loadAccountIntegrationsData(
 	user: AuthenticatedUser,
 	options?: {
 		waitUntil?: (promise: Promise<unknown>) => void
-		searchParams?: URLSearchParams
+		approvalName?: string
+		approvalPackageId?: string
 	},
 ): Promise<{
 	ok: true
@@ -346,9 +347,8 @@ export async function loadAccountIntegrationsData(
 		id: entry.id,
 		kodyId: entry.kodyId,
 	}))
-	const approvalName = options?.searchParams?.get('name')?.trim() ?? ''
-	const approvalPackageId =
-		options?.searchParams?.get('package_id')?.trim() ?? ''
+	const approvalName = options?.approvalName?.trim() ?? ''
+	const approvalPackageId = options?.approvalPackageId?.trim() ?? ''
 	let approval: {
 		name: string
 		packageId: string

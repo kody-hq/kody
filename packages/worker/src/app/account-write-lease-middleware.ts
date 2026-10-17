@@ -1,5 +1,4 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { type Middleware } from 'remix/router'
 import {
 	AccountDeletionInProgressError,
 	AccountWriteLeaseLostError,
@@ -9,8 +8,6 @@ import { loadResolvedRequestAuth } from './request-auth-cache.ts'
 
 const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const mutatingGetPaths = new Set(['/account/mcp-servers/oauth/callback'])
-/** Checkout return links the Stripe customer; the portal can change plans. */
-const mutatingBillingGetPath = /^\/@[^/]+\/-\/billing\/(?:success|portal)$/
 
 function accountDeletingResponse(status: number) {
 	return Response.json(
@@ -25,38 +22,46 @@ function accountDeletingResponse(status: number) {
 	)
 }
 
-export function createAccountWriteLeaseMiddleware(env: Env): Middleware {
-	return async ({ request, url }, next) => {
-		const mutating =
-			unsafeMethods.has(request.method) ||
-			mutatingGetPaths.has(url.pathname) ||
-			mutatingBillingGetPath.test(url.pathname)
-		if (
-			!mutating ||
-			url.pathname === '/account/delete' ||
-			url.pathname === '/logout'
-		) {
-			return await next()
+/** Called only for protocol requests. Native server functions own their write leases. */
+export async function withProtocolAccountWriteLease<T>(
+	request: Request,
+	env: Env,
+	next: () => Promise<T>,
+): Promise<T | Response> {
+	const url = new URL(request.url)
+	const mutating =
+		unsafeMethods.has(request.method) || mutatingGetPaths.has(url.pathname)
+	if (!mutating) {
+		return await next()
+	}
+	return withAccountRequestWriteLease(request, env, next)
+}
+
+/** Share deletion fencing between explicit native writes and HTTP protocols. */
+export async function withAccountRequestWriteLease<T>(
+	request: Request,
+	env: Env,
+	write: () => Promise<T>,
+): Promise<T | Response> {
+	const url = new URL(request.url)
+	const auth = await loadResolvedRequestAuth(request, env)
+	if (!auth.user) return await write()
+	if (auth.user.accountDeleting) return accountDeletingResponse(409)
+	try {
+		return await withAccountWriteLease({
+			db: env.APP_DB,
+			stableUserId: personalOrgIdForPerson(auth.user.mcpUser),
+			holder: `web:${request.method} ${url.pathname}`,
+			env,
+			write,
+		})
+	} catch (error) {
+		if (error instanceof AccountDeletionInProgressError) {
+			return accountDeletingResponse(409)
 		}
-		const auth = await loadResolvedRequestAuth(request, env)
-		if (!auth.user) return await next()
-		if (auth.user.accountDeleting) return accountDeletingResponse(409)
-		try {
-			return await withAccountWriteLease({
-				db: env.APP_DB,
-				stableUserId: personalOrgIdForPerson(auth.user.mcpUser),
-				holder: `web:${request.method} ${url.pathname}`,
-				env,
-				write: next,
-			})
-		} catch (error) {
-			if (error instanceof AccountDeletionInProgressError) {
-				return accountDeletingResponse(409)
-			}
-			if (error instanceof AccountWriteLeaseLostError) {
-				return accountDeletingResponse(503)
-			}
-			throw error
+		if (error instanceof AccountWriteLeaseLostError) {
+			return accountDeletingResponse(503)
 		}
+		throw error
 	}
 }

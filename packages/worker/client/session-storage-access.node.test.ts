@@ -26,10 +26,8 @@ test('sessionStorage helpers tolerate SecurityError and round-trip when storage 
 				throw new DOMException('The operation is insecure.', 'SecurityError')
 			},
 		})
-		expect(getSessionStorageItem('kody:router-scroll-positions')).toBeNull()
-		expect(setSessionStorageItem('kody:router-scroll-positions', '{}')).toBe(
-			false,
-		)
+		expect(getSessionStorageItem('storage-access-test')).toBeNull()
+		expect(setSessionStorageItem('storage-access-test', '{}')).toBe(false)
 
 		const store = new Map<string, string>()
 		Object.defineProperty(globalThis, 'sessionStorage', {

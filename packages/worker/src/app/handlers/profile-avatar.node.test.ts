@@ -52,7 +52,7 @@ async function runHandler(
 	params: { username: string; hash: string; ext: string },
 ) {
 	const handler = createProfileAvatarHandler(createEnv())
-	return handler.handler({
+	return handler({
 		request,
 		params,
 		url: new URL(request.url),

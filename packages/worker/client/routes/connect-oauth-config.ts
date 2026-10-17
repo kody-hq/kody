@@ -9,8 +9,6 @@ import {
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
 
-export { isBrowserFetchNetworkError }
-
 export type OAuthFlow = 'pkce' | 'confidential'
 export type TokenExchangeStyle = 'form' | 'basic-json' | 'basic-form'
 
@@ -117,12 +115,6 @@ export type StoredIntegrationConfig = Omit<
 	platformDescription?: string | null
 }
 
-export type ConnectOauthHostApprovalLink = {
-	secretName: string
-	host: string
-	approvalUrl: string
-}
-
 export type ConnectOauthNextSteps = {
 	service: string
 	connectionName: string
@@ -195,134 +187,6 @@ export function toStoredIntegrationConfig(
 					platformDescription: integration.platformDescription ?? null,
 				}
 			: {}),
-	}
-}
-
-/**
- * Parses a stored/server integration payload for reconnect helpers and tests.
- * Accepts either a JSON string or an already-decoded object with inline
- * `clientId` (the first-class integrations table shape).
- */
-export function parseStoredIntegrationConfig(
-	raw: string | Record<string, unknown>,
-	fallbackProvider: string | null,
-): StoredIntegrationConfig | null {
-	try {
-		const parsed =
-			typeof raw === 'string'
-				? (JSON.parse(raw) as Record<string, unknown>)
-				: raw
-		const name =
-			typeof parsed.name === 'string' && parsed.name.trim()
-				? parsed.name.trim()
-				: (fallbackProvider?.trim() ?? '')
-		const tokenUrl =
-			typeof parsed.tokenUrl === 'string' ? parsed.tokenUrl.trim() : ''
-		const flow = parsed.flow === 'confidential' ? 'confidential' : 'pkce'
-		const usePkce = typeof parsed.usePkce === 'boolean' ? parsed.usePkce : null
-		const clientId =
-			typeof parsed.clientId === 'string' ? parsed.clientId.trim() : ''
-		const hasClientSecret = parsed.hasClientSecret === true
-		const tokenExchangeStyle = parseTokenExchangeStyle(
-			parsed.tokenExchangeStyle,
-		)
-		const requiredHosts = Array.isArray(parsed.requiredHosts)
-			? parsed.requiredHosts.filter(
-					(value): value is string => typeof value === 'string',
-				)
-			: []
-		const authorization = parseStoredIntegrationAuthorization(
-			parsed.authorization,
-		)
-		const platformAppSlug =
-			typeof parsed.platformAppSlug === 'string' &&
-			parsed.platformAppSlug.trim()
-				? parsed.platformAppSlug.trim()
-				: null
-		const platformAllowedScopes = Array.isArray(parsed.platformAllowedScopes)
-			? parsed.platformAllowedScopes.filter(
-					(value): value is string =>
-						typeof value === 'string' && Boolean(value),
-				)
-			: []
-		const platformLogoPath = parsePlatformLogoPath(parsed.platformLogoPath)
-		const platformDescription =
-			typeof parsed.platformDescription === 'string' &&
-			parsed.platformDescription.trim()
-				? parsed.platformDescription.trim()
-				: null
-		if (!name || !tokenUrl || !clientId) {
-			return null
-		}
-		return {
-			...(platformAppSlug
-				? {
-						platformAppSlug,
-						platformAllowedScopes,
-						platformLogoPath,
-						platformDescription,
-					}
-				: {}),
-			name,
-			tokenUrl,
-			apiBaseUrl:
-				typeof parsed.apiBaseUrl === 'string' && parsed.apiBaseUrl.trim()
-					? parsed.apiBaseUrl.trim()
-					: null,
-			flow,
-			usePkce,
-			clientId,
-			hasClientSecret,
-			requiredHosts: normalizeHosts(requiredHosts),
-			...(tokenExchangeStyle ? { tokenExchangeStyle } : {}),
-			authorization,
-		}
-	} catch {
-		return null
-	}
-}
-
-function parseStoredIntegrationAuthorization(
-	raw: unknown,
-): StoredIntegrationAuthorization | null {
-	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-	const parsed = raw as Record<string, unknown>
-	const authorizeUrl =
-		typeof parsed.authorizeUrl === 'string' ? parsed.authorizeUrl.trim() : ''
-	if (
-		!authorizeUrl ||
-		!isSafeExternalUrl(authorizeUrl) ||
-		!safeParseHost(authorizeUrl)
-	) {
-		return null
-	}
-	const scopes = Array.isArray(parsed.scopes)
-		? parsed.scopes.filter(
-				(value): value is string => typeof value === 'string' && Boolean(value),
-			)
-		: []
-	const scopeSeparator =
-		typeof parsed.scopeSeparator === 'string' && parsed.scopeSeparator
-			? parsed.scopeSeparator
-			: null
-	const extraAuthorizeParams =
-		parsed.extraAuthorizeParams &&
-		typeof parsed.extraAuthorizeParams === 'object' &&
-		!Array.isArray(parsed.extraAuthorizeParams)
-			? Object.fromEntries(
-					Object.entries(parsed.extraAuthorizeParams)
-						.filter(
-							(entry): entry is [string, string] =>
-								typeof entry[1] === 'string',
-						)
-						.map(([key, value]) => [key, value]),
-				)
-			: {}
-	return {
-		authorizeUrl,
-		scopes,
-		scopeSeparator,
-		extraAuthorizeParams,
 	}
 }
 
@@ -589,39 +453,6 @@ export function formatConnectOauthCaughtError(
 	return fallback
 }
 
-/**
- * Distinguish real Kody session expiry (401 Unauthorized) from provider token
- * exchange failures that historically leaked through as HTTP 401.
- */
-export function formatOAuthExchangeFailure(input: {
-	status: number
-	data: Record<string, unknown> | null
-}): { treatAsSessionExpired: boolean; error: string } {
-	if (isOAuthExchangeSessionExpired(input)) {
-		return { treatAsSessionExpired: true, error: 'Session expired.' }
-	}
-	const errorDescription =
-		typeof input.data?.error_description === 'string' &&
-		input.data.error_description.trim()
-			? input.data.error_description.trim()
-			: typeof input.data?.error === 'string' && input.data.error.trim()
-				? input.data.error.trim()
-				: null
-	return {
-		treatAsSessionExpired: false,
-		error: errorDescription ?? 'Token exchange failed.',
-	}
-}
-
-export function isOAuthExchangeSessionExpired(input: {
-	status: number
-	data: Record<string, unknown> | null
-}) {
-	if (input.status !== 401) return false
-	if (hasProviderOAuthExchangeError(input.data)) return false
-	return true
-}
-
 function hasProviderOAuthExchangeError(data: Record<string, unknown> | null) {
 	if (!data) return false
 	if (typeof data.providerStatus === 'number') return true
@@ -714,21 +545,6 @@ export function parseAllowedHosts(raw: string | null) {
 		.filter(Boolean)
 }
 
-export function parseHostApprovalLinks(
-	raw: unknown,
-): Array<ConnectOauthHostApprovalLink> {
-	if (!Array.isArray(raw)) return []
-	return raw.filter(
-		(entry): entry is ConnectOauthHostApprovalLink =>
-			Boolean(entry) &&
-			typeof entry === 'object' &&
-			typeof (entry as { secretName?: unknown }).secretName === 'string' &&
-			typeof (entry as { host?: unknown }).host === 'string' &&
-			typeof (entry as { approvalUrl?: unknown }).approvalUrl === 'string' &&
-			isSafeExternalUrl((entry as { approvalUrl?: string }).approvalUrl ?? ''),
-	)
-}
-
 export function parseConnectOauthNextSteps(
 	raw: unknown,
 ): ConnectOauthNextSteps | null {
@@ -777,7 +593,7 @@ export function parseProviderSetupInstructions(raw: string | null) {
 	return decoded && isMostlyPrintable(decoded) ? decoded : trimmed
 }
 
-export function decodeBase64Payload(raw: string) {
+function decodeBase64Payload(raw: string) {
 	if (!/^[A-Za-z0-9+/=_-]+$/.test(raw)) return null
 	try {
 		return new TextDecoder().decode(base64UrlToBytes(raw))
@@ -786,7 +602,7 @@ export function decodeBase64Payload(raw: string) {
 	}
 }
 
-export function isMostlyPrintable(text: string) {
+function isMostlyPrintable(text: string) {
 	if (!text) return false
 	let printable = 0
 	for (const char of text) {

@@ -24,7 +24,6 @@ import {
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
@@ -239,22 +238,6 @@ async function loadConsentPackageMeta(input: {
 	return { packageName, publisherDisplayName, iconUrl }
 }
 
-async function renderConsentPage(input: {
-	request: Request
-	env: Env
-	consent: PackageAppOauthConsentLoaderData
-}) {
-	const response = await renderAppPage({
-		request: input.request,
-		env: input.env,
-		title: `Allow ${input.consent.packageName} — Kody`,
-		loaderData: { packageAppOauthConsent: input.consent },
-	})
-	response.headers.set('Cache-Control', 'no-store')
-	response.headers.set('Referrer-Policy', 'no-referrer')
-	return response
-}
-
 async function parseAndValidateAuthorizeRequest(input: {
 	env: Env
 	query: AuthorizeQuery
@@ -390,7 +373,8 @@ function isSameOriginAuthorizePost(request: Request, env: Env) {
 export async function handlePackageAppOauthAuthorizeRequest(
 	request: Request,
 	env: Env,
-) {
+	options: { allowConsentSkip?: boolean } = {},
+): Promise<Response | { consent: PackageAppOauthConsentLoaderData }> {
 	const url = new URL(request.url)
 	if (url.pathname !== packageAppOauthPaths.authorize) {
 		return new Response('Not found.', { status: 404 })
@@ -477,7 +461,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		scopes: validated.scopes,
 		viewer: user,
 	})
-	if (skip) {
+	if (skip && options.allowConsentSkip !== false) {
 		return await issueCodeAndRedirect({
 			env,
 			request,
@@ -514,11 +498,9 @@ export async function handlePackageAppOauthAuthorizeRequest(
 	}
 	if (validated.state) hiddenFields.state = validated.state
 
-	return renderConsentPage({
-		request,
-		env,
+	return {
 		consent: {
-			ok: true,
+			ok: true as const,
 			packageName: meta.packageName,
 			iconUrl: meta.iconUrl,
 			publisherDisplayName: meta.publisherDisplayName,
@@ -532,5 +514,5 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			claimLabels: packageAppOauthClaimLabels(validated.scopes),
 			hiddenFields,
 		},
-	})
+	}
 }

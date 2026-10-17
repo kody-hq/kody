@@ -1,6 +1,4 @@
-import { type Action } from 'remix/router'
 import { resolveLegacyDocSlug } from '#universal/docs-nav.ts'
-import { type routes } from '#universal/routes.ts'
 
 /**
  * The docs lived under `/guides` before they became `/docs`. Every old URL
@@ -33,50 +31,4 @@ export function resolveLegacyGuidesLocation(url: URL): string {
 	const twin = twinMatch[2] ?? ''
 	const fragment = twin === '' && alias.fragment ? `#${alias.fragment}` : ''
 	return `/docs/${alias.slug}${twin}${search}${fragment}`
-}
-
-function redirectResponse(request: Request): Response {
-	return new Response(null, {
-		status: 308,
-		headers: {
-			Location: resolveLegacyGuidesLocation(new URL(request.url)),
-			'Cache-Control': 'public, max-age=3600',
-		},
-	})
-}
-
-export function createLegacyGuidesRedirectHandler(_env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			return redirectResponse(request)
-		},
-	} satisfies Action<typeof routes.legacyGuides>
-}
-
-export function createLegacyGuidesApiRedirectHandler(_env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			return redirectResponse(request)
-		},
-	} satisfies Action<typeof routes.legacyGuidesApi>
-}
-
-export function createLegacyGuidesMarkdownRedirectHandler(_env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			return redirectResponse(request)
-		},
-	} satisfies Action<typeof routes.legacyGuidesMarkdown>
-}
-
-export function createLegacyGuidesPathRedirectHandler(_env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			return redirectResponse(request)
-		},
-	} satisfies Action<typeof routes.legacyGuidesPath>
 }

@@ -1,21 +1,22 @@
-import { DatabaseSync } from 'node:sqlite'
-import {
-	ownerIdFromStored,
-	personIdFromStored,
-} from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import type * as OrgBilling from '#worker/orgs/billing.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
 	createAuditTestDb,
 	createTestOrgAuditWriter,
 } from '#worker/test-support/create-audit-db.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -37,8 +38,7 @@ vi.mock('#worker/orgs/seat-sync-after-membership.ts', () => ({
 		mocks.syncSeatsAfterMembershipChange(...args),
 }))
 vi.mock('#worker/orgs/billing.ts', async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import('#worker/orgs/billing.ts')>()
+	const actual = await importOriginal<typeof OrgBilling>()
 	return {
 		...actual,
 		assertCanAcceptFreeOrgOwnership: (...args: Array<unknown>) =>
@@ -47,14 +47,14 @@ vi.mock('#worker/orgs/billing.ts', async (importOriginal) => {
 })
 
 const {
-	createOrgMembersApiHandler,
-	createOrgMembersInviteLinksPostHandler,
-	createOrgMembersInviteLinksRevokePostHandler,
-	createOrgMembersInvitePostHandler,
-	createOrgMembersInviteRevokePostHandler,
-	createOrgMembersRemovePostHandler,
-	createOrgMembersRolePostHandler,
-} = await import('./org-members.ts')
+	testOrgMembersInviteRevokePostHandler,
+	testOrgMembersApiHandler,
+	testOrgMembersInviteLinksPostHandler,
+	testOrgMembersInviteLinksRevokePostHandler,
+	testOrgMembersInvitePostHandler,
+	testOrgMembersRemovePostHandler,
+	testOrgMembersRolePostHandler,
+} = await import('./org-members.test-support.ts')
 
 const people = {
 	ada: { id: 9, personId: 'a'.repeat(64) },
@@ -175,25 +175,25 @@ beforeEach(async () => {
 	await seed()
 })
 
-test('members JSON is 404 for collaborators and readable by billing', async () => {
+test('member reads are 404 for collaborators and readable by billing', async () => {
 	const env = createEnv()
-	const collab = new Request('https://kody.test/@zeta-co/-/members.json')
+	const collab = new Request('https://kody.test/@zeta-co/-/members')
 	await signIn('dan', collab)
 	expect(
 		(
-			await createOrgMembersApiHandler(env).handler({
+			await testOrgMembersApiHandler(env).execute({
 				request: collab,
 			} as never)
 		).status,
 	).toBe(404)
 
-	const billing = new Request('https://kody.test/@zeta-co/-/members.json')
+	const billing = new Request('https://kody.test/@zeta-co/-/members')
 	await signIn('cara', billing)
-	const readable = await createOrgMembersApiHandler(env).handler({
+	const readable = await testOrgMembersApiHandler(env).execute({
 		request: billing,
 	} as never)
 	expect(readable.status).toBe(200)
-	const payload = (await readable.json()) as {
+	const payload = readable.data as {
 		canManage: boolean
 		members: Array<{ username: string; role: string }>
 	}
@@ -209,42 +209,36 @@ test('members JSON is 404 for collaborators and readable by billing', async () =
 
 test('member cannot change roles, invite, or remove; owner can; last owner is protected', async () => {
 	const env = createEnv()
-	const roleReq = new Request(
-		'https://kody.test/@zeta-co/-/members/role.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ userId: people.bob.personId, role: 'billing' }),
-		},
-	)
+	const roleReq = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ userId: people.bob.personId, role: 'billing' }),
+	})
 	await signIn('bob', roleReq)
 	expect(
 		(
-			await createOrgMembersRolePostHandler(env).handler({
+			await testOrgMembersRolePostHandler(env).execute({
 				request: roleReq,
 			} as never)
 		).status,
 	).toBe(403)
 
-	const billingInvite = new Request(
-		'https://kody.test/@zeta-co/-/members/invite.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ invitee: 'eve@example.com', role: 'member' }),
-		},
-	)
+	const billingInvite = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ invitee: 'eve@example.com', role: 'member' }),
+	})
 	await signIn('cara', billingInvite)
 	expect(
 		(
-			await createOrgMembersInvitePostHandler(env).handler({
+			await testOrgMembersInvitePostHandler(env).execute({
 				request: billingInvite,
 			} as never)
 		).status,
 	).toBe(403)
 
 	const invalidRoleInvite = new Request(
-		'https://kody.test/@zeta-co/-/members/invite.json',
+		'https://kody.test/@zeta-co/-/members',
 		{
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -252,167 +246,149 @@ test('member cannot change roles, invite, or remove; owner can; last owner is pr
 		},
 	)
 	await signIn('ada', invalidRoleInvite)
-	const rejectedRole = await createOrgMembersInvitePostHandler(env).handler({
+	const rejectedRole = await testOrgMembersInvitePostHandler(env).execute({
 		request: invalidRoleInvite,
 	} as never)
 	expect(rejectedRole.status).toBe(400)
-	expect(await rejectedRole.json()).toMatchObject({
+	expect(rejectedRole.data).toMatchObject({
 		ok: false,
 		error: 'Choose a valid role.',
 	})
 
-	const ownerInvite = new Request(
-		'https://kody.test/@zeta-co/-/members/invite.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ invitee: 'eve@example.com', role: 'member' }),
-		},
-	)
+	const ownerInvite = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ invitee: 'eve@example.com', role: 'member' }),
+	})
 	await signIn('ada', ownerInvite)
-	const invited = await createOrgMembersInvitePostHandler(env).handler({
+	const invited = await testOrgMembersInvitePostHandler(env).execute({
 		request: ownerInvite,
 	} as never)
 	expect(invited.status).toBe(200)
-	expect(await invited.json()).toMatchObject({
+	expect(invited.data).toMatchObject({
 		ok: true,
 		invite: { prompt: expect.stringContaining('inviteAccept') },
 	})
 
-	const ownerRole = new Request(
-		'https://kody.test/@zeta-co/-/members/role.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ userId: people.bob.personId, role: 'billing' }),
-		},
-	)
+	const ownerRole = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ userId: people.bob.personId, role: 'billing' }),
+	})
 	await signIn('ada', ownerRole)
 	expect(
 		(
-			await createOrgMembersRolePostHandler(env).handler({
+			await testOrgMembersRolePostHandler(env).execute({
 				request: ownerRole,
 			} as never)
 		).status,
 	).toBe(200)
 
-	const lastOwner = new Request(
-		'https://kody.test/@zeta-co/-/members/remove.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ userId: people.ada.personId }),
-		},
-	)
+	const lastOwner = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ userId: people.ada.personId }),
+	})
 	await signIn('ada', lastOwner)
-	const blocked = await createOrgMembersRemovePostHandler(env).handler({
+	const blocked = await testOrgMembersRemovePostHandler(env).execute({
 		request: lastOwner,
 	} as never)
 	expect(blocked.status).toBe(400)
-	expect(await blocked.json()).toMatchObject({
+	expect(blocked.data).toMatchObject({
 		error: 'The last Owner cannot be removed.',
 	})
 })
 
 test('owner can create invite links; member and billing cannot; owner role is rejected', async () => {
 	const env = createEnv()
-	const billingCreate = new Request(
-		'https://kody.test/@zeta-co/-/members/invite-links.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role: 'member' }),
-		},
-	)
+	const billingCreate = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ role: 'member' }),
+	})
 	await signIn('cara', billingCreate)
 	expect(
 		(
-			await createOrgMembersInviteLinksPostHandler(env).handler({
+			await testOrgMembersInviteLinksPostHandler(env).execute({
 				request: billingCreate,
 			} as never)
 		).status,
 	).toBe(403)
 
-	const memberCreate = new Request(
-		'https://kody.test/@zeta-co/-/members/invite-links.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role: 'member' }),
-		},
-	)
+	const memberCreate = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ role: 'member' }),
+	})
 	await signIn('bob', memberCreate)
 	expect(
 		(
-			await createOrgMembersInviteLinksPostHandler(env).handler({
+			await testOrgMembersInviteLinksPostHandler(env).execute({
 				request: memberCreate,
 			} as never)
 		).status,
 	).toBe(403)
 
-	const ownerRole = new Request(
-		'https://kody.test/@zeta-co/-/members/invite-links.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role: 'owner' }),
-		},
-	)
+	const ownerRole = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ role: 'owner' }),
+	})
 	await signIn('ada', ownerRole)
-	const rejectedOwner = await createOrgMembersInviteLinksPostHandler(
-		env,
-	).handler({ request: ownerRole } as never)
+	const rejectedOwner = await testOrgMembersInviteLinksPostHandler(env).execute(
+		{ request: ownerRole } as never,
+	)
 	expect(rejectedOwner.status).toBe(400)
-	expect(await rejectedOwner.json()).toMatchObject({
+	expect(rejectedOwner.data).toMatchObject({
 		ok: false,
 		error: 'Invite links cannot grant the Owner role.',
 	})
 
-	const create = new Request(
-		'https://kody.test/@zeta-co/-/members/invite-links.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				role: 'member',
-				allowedEmailDomains: 'example.com',
-				maxUses: 3,
-				expiresInDays: 7,
-			}),
-		},
-	)
+	const create = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			role: 'member',
+			allowedEmailDomains: 'example.com',
+			maxUses: 3,
+			expiresInDays: 7,
+		}),
+	})
 	await signIn('ada', create)
-	const created = await createOrgMembersInviteLinksPostHandler(env).handler({
+	const created = await testOrgMembersInviteLinksPostHandler(env).execute({
 		request: create,
 	} as never)
 	expect(created.status).toBe(200)
-	const payload = (await created.json()) as {
+	const payload = created.data as {
 		ok: boolean
-		inviteLinks: Array<{ id: string; useCount: number }>
 		inviteLink: { id: string; url: string; token: string }
 	}
 	expect(payload.ok).toBe(true)
 	expect(payload.inviteLink.url).toContain('/join/')
 	expect(payload.inviteLink.url).toContain(payload.inviteLink.token)
-	expect(payload.inviteLinks).toHaveLength(1)
-
-	const revoke = new Request(
-		'https://kody.test/@zeta-co/-/members/invite-links-revoke.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ linkId: payload.inviteLink.id }),
-		},
-	)
-	await signIn('ada', revoke)
-	const revoked = await createOrgMembersInviteLinksRevokePostHandler(
-		env,
-	).handler({ request: revoke } as never)
-	expect(revoked.status).toBe(200)
-	expect(await revoked.json()).toMatchObject({
-		ok: true,
-		inviteLinks: [],
+	expect(created.data).not.toHaveProperty('inviteLinks')
+	expect(
+		(await testOrgMembersApiHandler(env).execute({ request: create } as never))
+			.data,
+	).toMatchObject({
+		inviteLinks: [expect.objectContaining({ id: payload.inviteLink.id })],
 	})
+
+	const revoke = new Request('https://kody.test/@zeta-co/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ linkId: payload.inviteLink.id }),
+	})
+	await signIn('ada', revoke)
+	const revoked = await testOrgMembersInviteLinksRevokePostHandler(env).execute(
+		{ request: revoke } as never,
+	)
+	expect(revoked.status).toBe(200)
+	expect(revoked.data).toEqual({ ok: true })
+	expect(
+		(await testOrgMembersApiHandler(env).execute({ request: revoke } as never))
+			.data,
+	).toMatchObject({ inviteLinks: [] })
 })
 
 test('signup org membership writes stay off the web even for a second owner', async () => {
@@ -424,52 +400,49 @@ test('signup org membership writes stay off the web even for a second owner', as
 		)
 		.run(people.ada.personId, people.bob.personId, '2026-01-02T00:00:00.000Z')
 
-	const list = new Request('https://kody.test/@ada/-/members.json')
+	const list = new Request('https://kody.test/@ada/-/members')
 	await signIn('bob', list)
 	expect(
 		await (
-			await createOrgMembersApiHandler(env).handler({ request: list } as never)
-		).json(),
+			await testOrgMembersApiHandler(env).execute({ request: list } as never)
+		).data,
 	).toMatchObject({
 		ok: true,
 		org: { personal: true },
 		canManage: false,
 	})
 
-	const invite = new Request('https://kody.test/@ada/-/members/invite.json', {
+	const invite = new Request('https://kody.test/@ada/-/members', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ invitee: 'eve@example.com', role: 'member' }),
 	})
 	await signIn('bob', invite)
-	const invited = await createOrgMembersInvitePostHandler(env).handler({
+	const invited = await testOrgMembersInvitePostHandler(env).execute({
 		request: invite,
 	} as never)
 	expect(invited.status).toBe(400)
-	expect(await invited.json()).toMatchObject({
+	expect(invited.data).toMatchObject({
 		error: expect.stringMatching(/personal organization/),
 	})
 
-	const link = new Request(
-		'https://kody.test/@ada/-/members/invite-links.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role: 'member' }),
-		},
-	)
+	const link = new Request('https://kody.test/@ada/-/members', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ role: 'member' }),
+	})
 	await signIn('bob', link)
-	const linked = await createOrgMembersInviteLinksPostHandler(env).handler({
+	const linked = await testOrgMembersInviteLinksPostHandler(env).execute({
 		request: link,
 	} as never)
 	expect(linked.status).toBe(400)
-	expect(await linked.json()).toMatchObject({
+	expect(linked.data).toMatchObject({
 		error: expect.stringMatching(/personal organization/),
 	})
 })
 
-function postJson(path: string, body: Record<string, unknown>) {
-	return new Request(`https://kody.test/@zeta-co/-/members/${path}`, {
+function postJson(body: Record<string, unknown>) {
+	return new Request('https://kody.test/@zeta-co/-/members', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
@@ -478,58 +451,58 @@ function postJson(path: string, body: Record<string, unknown>) {
 
 test('pending invites list as Pending and an owner can revoke them', async () => {
 	const env = createEnv()
-	const invite = postJson('invite.json', {
+	const invite = postJson({
 		invitee: 'eve@example.com',
 		role: 'member',
 	})
 	await signIn('ada', invite)
-	await createOrgMembersInvitePostHandler(env).handler({
+	await testOrgMembersInvitePostHandler(env).execute({
 		request: invite,
 	} as never)
-	const listed = await createOrgMembersApiHandler(env).handler({
-		request: new Request('https://kody.test/@zeta-co/-/members.json'),
+	const listed = await testOrgMembersApiHandler(env).execute({
+		request: new Request('https://kody.test/@zeta-co/-/members'),
 	} as never)
-	const { invites } = (await listed.json()) as {
+	const { invites } = listed.data as {
 		invites: Array<{ id: string; inviteeEmail: string | null }>
 	}
 	expect(invites).toMatchObject([{ inviteeEmail: 'eve@example.com' }])
 	const inviteId = invites[0]!.id
 
-	const asMember = postJson('invite-revoke.json', { inviteId })
+	const asMember = postJson({ inviteId })
 	await signIn('bob', asMember)
 	expect(
 		(
-			await createOrgMembersInviteRevokePostHandler(env).handler({
+			await testOrgMembersInviteRevokePostHandler(env).execute({
 				request: asMember,
 			} as never)
 		).status,
 	).toBe(403)
 
-	const asOwner = postJson('invite-revoke.json', { inviteId })
+	const asOwner = postJson({ inviteId })
 	await signIn('ada', asOwner)
-	const revoked = await createOrgMembersInviteRevokePostHandler(env).handler({
+	const revoked = await testOrgMembersInviteRevokePostHandler(env).execute({
 		request: asOwner,
 	} as never)
 	expect(revoked.status).toBe(200)
-	expect(await revoked.json()).toMatchObject({ ok: true, invites: [] })
+	expect(revoked.data).toEqual({ ok: true })
 	expect(
 		sqlite.prepare(`SELECT status FROM invites WHERE id = ?`).get(inviteId),
 	).toEqual({ status: 'revoked' })
 
-	const again = postJson('invite-revoke.json', { inviteId })
+	const again = postJson({ inviteId })
 	await signIn('ada', again)
 	expect(
 		(
-			await createOrgMembersInviteRevokePostHandler(env).handler({
+			await testOrgMembersInviteRevokePostHandler(env).execute({
 				request: again,
 			} as never)
 		).status,
 	).toBe(400)
-	const missing = postJson('invite-revoke.json', { inviteId: 'nope' })
+	const missing = postJson({ inviteId: 'nope' })
 	await signIn('ada', missing)
 	expect(
 		(
-			await createOrgMembersInviteRevokePostHandler(env).handler({
+			await testOrgMembersInviteRevokePostHandler(env).execute({
 				request: missing,
 			} as never)
 		).status,

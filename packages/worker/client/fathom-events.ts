@@ -44,15 +44,23 @@ export function trackFathomEvent(name: FathomEventName | string): boolean {
  * strip the query only after Fathom accepts the event. When Fathom is not
  * ready yet, leave the query so a later hydration pass can retry.
  */
-export function consumeAccountCreatedFathomSignal(): boolean {
+const acceptedAccountCreatedDocuments = new WeakSet<Window>()
+
+export function consumeAccountCreatedFathomSignal(
+	replaceHref: (href: string) => void,
+): boolean {
 	if (typeof window === 'undefined') return false
 	try {
 		const url = new URL(window.location.href)
 		if (url.searchParams.get(accountCreatedQueryParam) !== '1') return false
-		if (!trackFathomEvent(fathomEventNames.accountCreated)) return false
+		if (!acceptedAccountCreatedDocuments.has(window)) {
+			if (!trackFathomEvent(fathomEventNames.accountCreated)) return false
+			// Acceptance outlives effect remounts and failed URL cleanup.
+			acceptedAccountCreatedDocuments.add(window)
+		}
 		url.searchParams.delete(accountCreatedQueryParam)
 		const next = `${url.pathname}${url.search}${url.hash}`
-		window.history.replaceState(window.history.state, '', next)
+		replaceHref(next)
 		return true
 	} catch {
 		return false
@@ -67,7 +75,8 @@ const accountCreatedRetryAttempts = 40
  * deferred Fathom script may still be loading. No-ops when the query is
  * absent. Returns a cancel function for tests / unmount.
  */
-export function scheduleConsumeAccountCreatedFathomSignal(options?: {
+export function scheduleConsumeAccountCreatedFathomSignal(options: {
+	replaceHref: (href: string) => void
 	intervalMs?: number
 	maxAttempts?: number
 }): () => void {
@@ -80,12 +89,15 @@ export function scheduleConsumeAccountCreatedFathomSignal(options?: {
 	}
 	const intervalMs = options?.intervalMs ?? accountCreatedRetryIntervalMs
 	const maxAttempts = options?.maxAttempts ?? accountCreatedRetryAttempts
-	if (consumeAccountCreatedFathomSignal()) return () => {}
+	if (consumeAccountCreatedFathomSignal(options.replaceHref)) return () => {}
 
 	let attempts = 0
 	const timer = window.setInterval(() => {
 		attempts += 1
-		if (consumeAccountCreatedFathomSignal() || attempts >= maxAttempts) {
+		if (
+			consumeAccountCreatedFathomSignal(options.replaceHref) ||
+			attempts >= maxAttempts
+		) {
 			window.clearInterval(timer)
 		}
 	}, intervalMs)

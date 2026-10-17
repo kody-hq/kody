@@ -196,13 +196,6 @@ export function approvalBundlePath(input: {
 	return `/@${encodeURIComponent(input.orgSlug)}/-/approvals/${encodeURIComponent(input.bundleId)}`
 }
 
-export function approvalBundleApiPath(input: {
-	orgSlug: string
-	bundleId: string
-}) {
-	return `${approvalBundlePath(input)}.json`
-}
-
 /** Groups items by package, in the order each package first appears. */
 export function groupApprovalItems(
 	items: ReadonlyArray<ApprovalItemView>,

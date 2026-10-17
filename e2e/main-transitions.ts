@@ -111,7 +111,7 @@ export function expectSingleCommitTransition(
 }
 
 /**
- * Collect same-origin `.json` payload requests so a spec can assert the
+ * Collect JSON API and native server-function payload requests so a spec can assert the
  * destination payload is requested once (the router preloads it) and never
  * refetched by the route after commit.
  */
@@ -119,10 +119,29 @@ export function collectJsonRequests(page: Page) {
 	const paths: Array<string> = []
 	page.on('request', (request) => {
 		const url = new URL(request.url())
-		if (url.pathname.endsWith('.json')) paths.push(url.pathname)
+		if (url.pathname.endsWith('.json'))
+			paths.push(`${url.pathname}${url.search}`)
+		else if (request.headers()['x-tsr-serverfn'] === 'true') {
+			// Keep function identity and serialized arguments. Different route inputs
+			// are distinct requests even when they use the same server function.
+			paths.push(
+				`${request.method()} ${url.pathname}${url.search}${request.postData() ?? ''}`,
+			)
+		}
 	})
 	return {
 		paths,
+		forDoc(slug: string) {
+			return paths.filter((path) => {
+				if (path === `/docs/${slug}.json`) return true
+				// Start serializes doc loader input with a slug string. The shell
+				// loader has a full pathname, so it is counted separately.
+				return (
+					path.startsWith('GET ') &&
+					decodeURIComponent(path).includes(JSON.stringify(slug))
+				)
+			})
+		},
 		reset() {
 			paths.splice(0)
 		},

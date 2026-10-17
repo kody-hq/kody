@@ -10,22 +10,16 @@ inbox list at `/@<slug>/-/email#email-destinations`.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/email.json
-node tools/control-kody.ts request GET /account/email-destinations.json
-node tools/control-kody.ts request POST /account/email.json --json '{"action":"delete","message_id":"<id>"}'
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/email
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET /account/email.json`
-- `POST /account/email.json`
-  `{ "action": "classify", "message_id", "classification" }`
-- `POST /account/email.json` `{ "action": "delete", "message_id" }`
-- `GET|POST /account/email-destinations.json` (`add` / `resend` / `setDefault` /
-  `remove`), then confirm extras at `/verify-email-destination`
-
-Delete confirms in the UI with a second click, then returns the inbox list and
-updated `usage.stored_messages` count.
+Classify and delete messages and manage destinations through the UI. Delete
+requires a second click. Additional destinations still confirm through
+`/verify-email-destination`.
 
 ## Gotchas
 

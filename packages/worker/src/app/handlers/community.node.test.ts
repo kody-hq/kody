@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { createCommunityApiHandler } from './community.tsx'
+import { loadCommunityIndexData } from '#app/community-data.ts'
 import { type CommunityIndexLoaderData } from '#universal/loader-data.ts'
 import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
 
@@ -93,14 +93,12 @@ test('community API lists active listings and searches when q is provided', asyn
 	])
 	mockModule.searchCommunityListings.mockResolvedValue([sampleListing])
 
-	const handler = createCommunityApiHandler(env)
-
-	const listResponse = await handler.handler({
-		request: new Request('https://example.com/community.json'),
-		params: {},
-		url: new URL('https://example.com/community.json'),
-	} as never)
-	const listBody = (await listResponse.json()) as CommunityIndexLoaderData
+	const listResponse = await loadCommunityIndexData(
+		env,
+		new Request('https://example.com/community.json'),
+		{ query: '', sort: null, category: null, limit: 50 },
+	)
+	const listBody = listResponse as CommunityIndexLoaderData
 
 	expect(listBody.ok).toBe(true)
 	expect(listBody.listings).toHaveLength(1)
@@ -116,12 +114,12 @@ test('community API lists active listings and searches when q is provided', asyn
 		sort: 'best',
 	})
 
-	const searchResponse = await handler.handler({
-		request: new Request('https://example.com/community.json?q=github'),
-		params: {},
-		url: new URL('https://example.com/community.json?q=github'),
-	} as never)
-	const searchBody = (await searchResponse.json()) as CommunityIndexLoaderData
+	const searchResponse = await loadCommunityIndexData(
+		env,
+		new Request('https://example.com/community.json?q=github'),
+		{ query: 'github', sort: null, category: null, limit: 50 },
+	)
+	const searchBody = searchResponse as CommunityIndexLoaderData
 
 	expect(searchBody.ok).toBe(true)
 	expect(searchBody.query).toBe('github')
@@ -133,12 +131,12 @@ test('community API lists active listings and searches when q is provided', asyn
 		category: null,
 	})
 
-	const newestResponse = await handler.handler({
-		request: new Request('https://example.com/community.json?sort=newest'),
-		params: {},
-		url: new URL('https://example.com/community.json?sort=newest'),
-	} as never)
-	const newestBody = (await newestResponse.json()) as CommunityIndexLoaderData
+	const newestResponse = await loadCommunityIndexData(
+		env,
+		new Request('https://example.com/community.json?sort=newest'),
+		{ query: '', sort: 'newest', category: null, limit: 50 },
+	)
+	const newestBody = newestResponse as CommunityIndexLoaderData
 	expect(newestBody.sort).toBe('newest')
 	expect(mockModule.listCommunityIndexOverview).toHaveBeenCalledWith({
 		env,

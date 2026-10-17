@@ -20,19 +20,15 @@ linked from account.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts preview -- \
-  --request 'GET /onboarding.json' \
-  --check /onboarding/step-1 \
-  --check /onboarding/step-2 \
-  --check /onboarding/step-3 \
-  --request 'POST /onboarding/checklist-dismiss.json {}' \
-  --request 'GET /onboarding.json'
+npm run control-kody -- browse --origin <preview> --path /onboarding
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET /onboarding.json`
-- `POST /onboarding/checklist-dismiss.json`
+Check all three step pages and dismiss the checklist through its browser
+control. Refresh to verify the saved state.
 
 ## Gotchas
 
@@ -46,7 +42,7 @@ node tools/control-kody.ts preview -- \
   tabs stay available. A Cursor Cloud grant also marks Grok Bot connected.
   Account → Connections is the grouped inbound list (logos for known kinds,
   newest-first). That first second ecosystem also records the one-time 14-day
-  Pro gift (`secondAgentStandardGift` on `/onboarding.json`).
+  Pro gift (`secondAgentStandardGift` in the native onboarding read).
 - The Discord invite sits below the step wizard. First-use setup (search,
   memory, execute, package, job, integration, secret, Discord membership) is on
   Waiting.

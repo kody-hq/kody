@@ -3,7 +3,6 @@ import {
 	anonymousHtmlCacheControl,
 	anonymousPersonalizedJsonCacheHeaders,
 	anonymousVisibilityGatedCacheControl,
-	isCacheableAnonymousPath,
 	publicSharedJsonCacheHeaders,
 	requestHasSessionCookie,
 	resolveAppPageCacheControl,
@@ -20,7 +19,7 @@ function request(url: string, cookie?: string) {
 /** Anonymous GET of `pathname` on example.com unless overridden. */
 function pageCache(pathname: string, overrides: Partial<PageCacheInput> = {}) {
 	return resolveAppPageCacheControl({
-		pathname,
+		policy: 'marketing',
 		session: null,
 		request: request(`https://example.com${pathname}`),
 		responseSetsCookie: false,
@@ -29,7 +28,10 @@ function pageCache(pathname: string, overrides: Partial<PageCacheInput> = {}) {
 }
 
 const noStore = { cacheControl: 'no-store' }
-const sharedHtml = { cacheControl: anonymousHtmlCacheControl, vary: 'Cookie' }
+const sharedHtml = {
+	cacheControl: 'public, max-age=60, stale-while-revalidate=300',
+	vary: 'Cookie',
+}
 
 test('requestHasSessionCookie matches only the kody_session name', () => {
 	const cases = [
@@ -67,10 +69,6 @@ test('anonymous marketing HTML is cacheable only without a session', () => {
 		sharedPaths.map((pathname) => [pathname, pageCache(pathname)]),
 	).toEqual(sharedPaths.map((pathname) => [pathname, sharedHtml]))
 
-	expect(isCacheableAnonymousPath('/docs/how-kody-works.json')).toBe(true)
-	expect(isCacheableAnonymousPath('/docs/connect')).toBe(true)
-	expect(isCacheableAnonymousPath('/docs/nested/path')).toBe(false)
-	expect(isCacheableAnonymousPath('/onboarding/step-2/notion')).toBe(true)
 	// Cookie-bearing auth requests stay private even though the paths are
 	// on the anonymous allowlist.
 	expect(
@@ -88,23 +86,7 @@ test('anonymous marketing HTML is cacheable only without a session', () => {
 		// Local dev: a browser-cached document would be what Vite's post-HMR page
 		// reload shows instead of the edit.
 		['/', { localDev: true }],
-		[
-			'/community',
-			{
-				request: new Request(
-					'https://kody.codes/community?__frame=community-listings',
-				),
-			},
-		],
-		[
-			'/community',
-			{
-				request: new Request('https://kody.codes/community', {
-					headers: { 'x-remix-target': 'community-listings' },
-				}),
-			},
-		],
-		['/account', {}],
+		['/account', { policy: undefined }],
 		['/', { session: { id: 'user-1' } }],
 		['/', { request: request('https://example.com/', 'kody_session=stale') }],
 		['/', { responseSetsCookie: true }],
@@ -148,15 +130,15 @@ test('anonymous package pages are cacheable, but only successful documents', () 
 		'/community/0e75b90a-1fd7-4a4a-9ae1-167384bbd227',
 		'/community/0e75b90a-1fd7-4a4a-9ae1-167384bbd227/files/src',
 	]
-	expect(
-		packagePaths.filter((pathname) => !isCacheableAnonymousPath(pathname)),
-	).toEqual([])
 	const visibilityGated = {
 		cacheControl: anonymousVisibilityGatedCacheControl,
 		vary: 'Cookie',
 	}
 	expect(
-		packagePaths.map((pathname) => [pathname, pageCache(pathname)]),
+		packagePaths.map((pathname) => [
+			pathname,
+			pageCache(pathname, { policy: 'visibility' }),
+		]),
 	).toEqual(packagePaths.map((pathname) => [pathname, visibilityGated]))
 	expect(
 		anonymousPersonalizedJsonCacheHeaders({
@@ -168,18 +150,6 @@ test('anonymous package pages are cacheable, but only successful documents', () 
 		'Cache-Control': anonymousVisibilityGatedCacheControl,
 		Vary: 'Cookie',
 	})
-	// Owner-only and JSON shapes stay private.
-	expect(
-		[
-			'/@kentcdodds/sentry/settings',
-			'/profiles/kentcdodds/packages/sentry.json',
-			'/account/packages/abc/files',
-			'/@kentcdodds/sentry.git',
-			'/@kentcdodds/sentry.git/info/refs',
-			'/@kentcdodds/sentry.git/git-upload-pack',
-		].filter(isCacheableAnonymousPath),
-	).toEqual([])
-
 	// A private package answers 401/404 to strangers; that answer changes the
 	// moment the owner makes it public, so it is never shared.
 	for (const status of [401, 404]) {

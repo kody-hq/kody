@@ -1,12 +1,10 @@
-import { type Action } from 'remix/router'
+import { type EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
 import { verifyEmailClaimReleaseToken } from '#app/email-claim-release.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
-import { type routes } from '#universal/routes.ts'
 
 function getVerifyEmailClaimReleaseError(
 	reason:
@@ -37,64 +35,55 @@ function getVerifyEmailClaimReleaseError(
 	}
 }
 
-export function createVerifyEmailClaimReleaseHandler(env: Env) {
+export async function executeVerifyEmailClaimRelease({
+	request,
+	env,
+	token,
+}: {
+	request: Request
+	env: Env
+	token: string | null
+}): Promise<EmailVerificationResult> {
+	const result = await verifyEmailClaimReleaseToken({
+		db: env.APP_DB,
+		token: token,
+	})
+	const requestIp = getRequestIp(request) ?? undefined
+
+	if (!result.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: 'email_claim_release_verify',
+			result: result.reason === 'daily_cap' ? 'rate_limited' : 'failure',
+			ip: requestIp,
+			path: '/verify-email-claim-release',
+			reason: result.reason,
+		})
+		return {
+			title: 'Release email',
+			status: result.reason === 'daily_cap' ? 429 : 400,
+			ok: false,
+			error: getVerifyEmailClaimReleaseError(result.reason),
+		}
+	}
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'email_claim_release_verify',
+		result: 'success',
+		ip: requestIp,
+		path: '/verify-email-claim-release',
+		reason: 'released',
+	})
 	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const result = await verifyEmailClaimReleaseToken({
-				db: env.APP_DB,
-				token: url.searchParams.get('token'),
-			})
-			const requestIp = getRequestIp(request) ?? undefined
-
-			if (!result.ok) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'account',
-					action: 'email_claim_release_verify',
-					result: result.reason === 'daily_cap' ? 'rate_limited' : 'failure',
-					ip: requestIp,
-					path: url.pathname,
-					reason: result.reason,
-				})
-				return renderAppPage({
-					request,
-					env,
-					title: 'Release email',
-					status: result.reason === 'daily_cap' ? 429 : 400,
-					loaderData: {
-						emailVerification: {
-							ok: false,
-							error: getVerifyEmailClaimReleaseError(result.reason),
-						},
-					},
-				})
-			}
-
-			void logAuditEvent({
-				db: auditDatabaseFromEnv(env),
-				category: 'account',
-				action: 'email_claim_release_verify',
-				result: 'success',
-				ip: requestIp,
-				path: url.pathname,
-				reason: 'released',
-			})
-			return renderAppPage({
-				request,
-				env,
-				title: 'Email released',
-				loaderData: {
-					emailVerification: {
-						ok: true,
-						kind: 'email_claim_release',
-						message:
-							'That former address is no longer tied to this account. It can be used to create a new Kody account.',
-						ctaHref: '/account',
-						ctaLabel: 'Go to account',
-					},
-				},
-			})
-		},
-	} satisfies Action<typeof routes.verifyEmailClaimRelease>
+		title: 'Email released',
+		ok: true,
+		kind: 'email_claim_release',
+		message:
+			'That former address is no longer tied to this account. It can be used to create a new Kody account.',
+		ctaHref: '/account',
+		ctaLabel: 'Go to account',
+	}
 }

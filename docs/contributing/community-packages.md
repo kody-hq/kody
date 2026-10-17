@@ -335,7 +335,7 @@ surface community listings through the general capability/package search path.
 App handlers: `packages/worker/src/app/handlers/community*` (index, detail,
 og:image).
 
-Client routes: `packages/worker/client/routes/community*`
+Client pages: `packages/worker/start/pages/community*`
 
 - `/community` — searchable index of active listings, grouped by category on the
   unfiltered browse page (`?category=` filters to one category). Empty

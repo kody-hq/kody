@@ -8,20 +8,13 @@ import {
 } from '#worker/webhooks/apply-destination-approval.ts'
 import { parseWebhookUrlHandle } from '#worker/webhooks/handle.ts'
 
-function readApprovalQuery(requestUrl: string) {
-	const url = new URL(requestUrl)
-	return {
-		handle: url.searchParams.get('handle')?.trim() || null,
-		fingerprint: url.searchParams.get('fingerprint')?.trim() || null,
-	}
-}
-
 export async function loadConnectWebhookApplyData(input: {
 	env: Env
 	user: AuthenticatedAppUser
-	requestUrl: string
+	handle: string | null
+	fingerprint: string | null
 }): Promise<ConnectWebhookApplyLoaderData> {
-	const { handle, fingerprint } = readApprovalQuery(input.requestUrl)
+	const { handle, fingerprint } = input
 	if (!handle || !fingerprint) {
 		return {
 			ok: false,
@@ -90,7 +83,8 @@ export async function approveConnectWebhookApply(input: {
 	return loadConnectWebhookApplyData({
 		env: input.env,
 		user: input.user,
-		requestUrl: `https://kody.invalid/connect/webhook-apply?handle=${encodeURIComponent(input.handle)}&fingerprint=${encodeURIComponent(input.fingerprint)}`,
+		handle: input.handle,
+		fingerprint: input.fingerprint,
 	})
 }
 

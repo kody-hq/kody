@@ -1145,58 +1145,60 @@ test('control-kody request keeps form POST redirects manual with Location', asyn
 	)
 })
 
-test('control-kody request --skip-login --email does not reuse another user cookie', async () => {
-	const dir = await mkdtemp(
-		path.join(tmpdir(), 'control-kody-skip-login-email-'),
-	)
-	try {
-		const cookieFile = path.join(dir, 'cookie')
-		const seen: Array<{ url?: string; cookie?: string }> = []
-		await withAuthServer(
-			(request, response) => {
-				const url = request.url ?? '/'
-				if (url === '/admin') {
-					seen.push({ url, cookie: request.headers.cookie })
-					response.statusCode = request.headers.cookie ? 200 : 403
-					response.setHeader('Content-Type', 'text/plain')
-					response.end(request.headers.cookie ? 'admin' : 'forbidden')
-					return
-				}
-				response.statusCode = 404
-				response.end('missing')
-			},
-			async (origin) => {
-				await writeFile(
-					cookieFile,
-					formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
-				)
-				const code = await runCommand(
-					parseControlArgs([
-						'request',
-						'GET',
-						'/admin',
-						'403',
-						'--origin',
-						origin,
-						'--email',
-						'kody@example.com',
-						'--skip-login',
-						'--cookie-file',
-						cookieFile,
-						'--json',
-					]),
-				)
-				expect(code).toBe(0)
-				expect(seen).toEqual([{ url: '/admin', cookie: undefined }])
-				expect(readFileSync(cookieFile, 'utf8')).toBe(
-					formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
-				)
-			},
+test.each([undefined, 'jane@example.com', 'kody@example.com'])(
+	'control-kody request --skip-login never reuses a cookie (email %s)',
+	async (email) => {
+		const dir = await mkdtemp(
+			path.join(tmpdir(), 'control-kody-skip-login-email-'),
 		)
-	} finally {
-		await rm(dir, { recursive: true, force: true })
-	}
-})
+		try {
+			const cookieFile = path.join(dir, 'cookie')
+			const seen: Array<{ url?: string; cookie?: string }> = []
+			await withAuthServer(
+				(request, response) => {
+					const url = request.url ?? '/'
+					if (url === '/admin') {
+						seen.push({ url, cookie: request.headers.cookie })
+						response.statusCode = request.headers.cookie ? 200 : 403
+						response.setHeader('Content-Type', 'text/plain')
+						response.end(request.headers.cookie ? 'admin' : 'forbidden')
+						return
+					}
+					response.statusCode = 404
+					response.end('missing')
+				},
+				async (origin) => {
+					await writeFile(
+						cookieFile,
+						formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
+					)
+					const code = await runCommand(
+						parseControlArgs([
+							'request',
+							'GET',
+							'/admin',
+							'403',
+							'--origin',
+							origin,
+							...(email ? ['--email', email] : []),
+							'--skip-login',
+							'--cookie-file',
+							cookieFile,
+							'--json',
+						]),
+					)
+					expect(code).toBe(0)
+					expect(seen).toEqual([{ url: '/admin', cookie: undefined }])
+					expect(readFileSync(cookieFile, 'utf8')).toBe(
+						formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
+					)
+				},
+			)
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	},
+)
 
 test('control-kody request logs in before a mutating call when no cookie exists', async () => {
 	await using temp = await createTempDir()
@@ -1331,8 +1333,13 @@ test('control-kody map --check reports unmapped /account pages and stale Feature
 		await writeFile(path.join(temp.dir, feature.file), `# ${feature.file}\n`)
 	}
 	const unmapped = runMapCheck({
-		routeSource: `${readFileSync(defaultRoutesPath(repoRootFromHere()), 'utf8')}
-export const extra = '/account/new-surface'`,
+		routeSource: readFileSync(
+			defaultRoutesPath(repoRootFromHere()),
+			'utf8',
+		).replace(
+			'export interface FileRoutesByFullPath {',
+			"export interface FileRoutesByFullPath {\n  '/account/new-surface': unknown",
+		),
 		featuresDir: temp.dir,
 	})
 	expect(unmapped.ok).toBe(false)
@@ -1347,9 +1354,15 @@ export const extra = '/account/new-surface'`,
 	await using staleDir = await createTempDir()
 	await writeFile(path.join(staleDir.dir, 'waiting.md'), '# Waiting\n')
 	const stale = runMapCheck({
-		routeSource: `export const routes = { waiting: '/account/waiting' }`,
+		routeSource: `export interface FileRoutesByFullPath {\n '/account/waiting': unknown\n}`,
 		featuresDir: staleDir.dir,
 	})
 	expect(stale.ok).toBe(false)
 	expect(stale.issues.some((issue) => issue.kind === 'missing-file')).toBe(true)
+	expect(stale.issues.some((issue) => issue.kind === 'stale-path')).toBe(true)
+	const incidental = runMapCheck({
+		routeSource: `${readFileSync(defaultRoutesPath(repoRootFromHere()), 'utf8')}\nexport const unrelated = '/account/not-a-route'`,
+		featuresDir: temp.dir,
+	})
+	expect(incidental.ok).toBe(true)
 })

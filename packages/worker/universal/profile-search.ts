@@ -92,7 +92,7 @@ export function defaultProfilePackageSortDirection(
 	}
 }
 
-export function readProfilePackageFiltersFromUrl(
+function readProfilePackageFiltersFromUrl(
 	url: URL,
 	options?: { allowOwnerFilters?: boolean },
 ): ProfilePackageFilters {

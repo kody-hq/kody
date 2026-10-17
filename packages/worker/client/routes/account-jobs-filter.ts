@@ -30,18 +30,6 @@ export function isActiveAccountJob(
 	return Number.isFinite(runAtMs) && runAtMs > nowMs
 }
 
-export function readJobsViewFilter(href: string): AccountJobsViewFilter {
-	const value = new URL(href, 'http://localhost').searchParams
-		.get('view')
-		?.trim()
-	if (value === 'history' || value === 'all') return value
-	return 'active'
-}
-
-export function readJobsSearchFilter(href: string) {
-	return new URL(href, 'http://localhost').searchParams.get('q')?.trim() ?? ''
-}
-
 export function filterAccountJobs<Job extends FilterableAccountJob>(
 	jobs: ReadonlyArray<Job>,
 	input: {

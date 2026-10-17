@@ -1,6 +1,11 @@
-import { env, exports } from 'cloudflare:workers'
+import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
+import {
+	handlePackageAppOauthHostAuth,
+	isPackageAppOauthHostAuthPath,
+} from '#app/package-app-oauth-host-auth.ts'
+import { handlePackageAppOauthAuthorizeRequest } from '#app/package-app-oauth-authorize.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { createS256CodeChallenge } from '#app/package-app-oauth-pkce-cookie.ts'
 import {
@@ -10,10 +15,6 @@ import {
 } from '#worker/test-support/workers-seed.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
-import {
-	silenceExpectedConsoleErrors,
-	silenceExpectedConsoleWarns,
-} from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
@@ -26,15 +27,25 @@ function configureOrigins() {
 	const mutableEnv = env as unknown as Record<string, string | undefined>
 	mutableEnv.APP_BASE_URL = appOrigin
 	mutableEnv.PACKAGE_APP_BASE_URL = packageAppOrigin
-	// `test` (not production): consent SSR calls getEnv, which requires
-	// AUTH_RATE_LIMITER only when SENTRY_ENVIRONMENT is production.
+	// The shared protocol test uses the test bindings, not the SSR build entry.
 	mutableEnv.SENTRY_ENVIRONMENT = 'test'
 }
 
 async function workerFetch(url: string | URL, init: RequestInit = {}) {
-	return await exports.default.fetch(
-		new Request(url, { redirect: 'manual', ...init }),
-	)
+	const request = new Request(url, { redirect: 'manual', ...init })
+	if (isPackageAppOauthHostAuthPath(new URL(request.url).pathname)) {
+		const response = await handlePackageAppOauthHostAuth({
+			request,
+			env,
+			url: new URL(request.url),
+		})
+		if (!response)
+			throw new Error('Expected package app host protocol response')
+		return response
+	}
+	return handlePackageAppOauthAuthorizeRequest(request, env, {
+		allowConsentSkip: false,
+	})
 }
 
 async function ensureOauthGrantSchema() {
@@ -47,40 +58,6 @@ async function ensureOauthGrantSchema() {
 			scopes TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			revoked_at TEXT
-		)`,
-	).run()
-	// Consent SSR loads session feature flags.
-	await env.APP_DB.prepare(
-		`CREATE TABLE IF NOT EXISTS feature_flags (
-			key TEXT PRIMARY KEY NOT NULL,
-			enabled INTEGER NOT NULL DEFAULT 0,
-			rollout_percent INTEGER,
-			note TEXT NOT NULL DEFAULT '',
-			audience TEXT NOT NULL DEFAULT 'everyone',
-			updated_by INTEGER,
-			updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-		)`,
-	).run()
-	await env.APP_DB.prepare(
-		`CREATE TABLE IF NOT EXISTS feature_flag_user_overrides (
-			flag_key TEXT NOT NULL,
-			user_id INTEGER NOT NULL,
-			enabled INTEGER NOT NULL,
-			updated_by INTEGER,
-			updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-			PRIMARY KEY (flag_key, user_id)
-		)`,
-	).run()
-	await env.APP_DB.prepare(
-		`CREATE TABLE IF NOT EXISTS feature_flag_exposure_rollups (
-			flag_key TEXT NOT NULL,
-			user_id TEXT NOT NULL,
-			day TEXT NOT NULL,
-			enabled INTEGER NOT NULL,
-			source TEXT NOT NULL,
-			exposure_count INTEGER NOT NULL DEFAULT 0,
-			updated_at TEXT NOT NULL,
-			PRIMARY KEY (flag_key, user_id, day, enabled, source)
 		)`,
 	).run()
 }
@@ -170,20 +147,14 @@ test('package-app OAuth authorize refuses unallowlisted redirect_uri', async () 
 	const response = await workerFetch(url, {
 		headers: { Cookie: sessionCookie },
 	})
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected redirect refusal')
 	expect(response.status).toBe(400)
 	await expect(response.text()).resolves.toMatch(/redirect_uri/)
 })
 
-test('package-app OAuth authorize shows consent for email scope', async () => {
-	// Consent SSR records flag exposures; missing rollup columns in an empty
-	// workers D1 are operational noise for this authorize HTML assertion.
-	silenceExpectedConsoleErrors([
-		'Failed to load feature flags for authenticated user:',
-	])
-	silenceExpectedConsoleWarns([
-		'flag-exposure-record-failed',
-		'flag-exposure-rollup-failed',
-	])
+test('package-app OAuth authorize returns authenticated consent claims without issuing a code', async () => {
 	configureOrigins()
 	const sessionCookie = await seedOwnerSessionCookie()
 	const verifier = 'oauth-workers-test-verifier-32chars!!'
@@ -201,14 +172,58 @@ test('package-app OAuth authorize shows consent for email scope', async () => {
 	const response = await workerFetch(url, {
 		headers: { Cookie: sessionCookie },
 	})
-	const body = await response.text()
-	expect(response.status).toBe(200)
-	expect(response.headers.get('Referrer-Policy')).toBe('no-referrer')
-	expect(body).toMatch(/package-app-oauth-consent/)
-	expect(body).toContain('See your email address')
-	expect(body).toContain('Allow')
-	expect(body).toContain('Cancel')
-	expect(body).toContain('data-account-shell')
+	expect(response).not.toBeInstanceOf(Response)
+	if (response instanceof Response)
+		throw new Error('Expected authenticated consent data')
+	expect(response.consent).toMatchObject({
+		ok: true,
+		clientId: `${ownerUsername}/demo`,
+		redirectUri,
+		publisherUsername: ownerUsername,
+		claimLabels: expect.arrayContaining(['See your email address']),
+		hiddenFields: {
+			state: 'state-2',
+			code_challenge: challenge,
+			code_challenge_method: 'S256',
+			redirect_uri: redirectUri,
+		},
+	})
+})
+
+test('authenticated consent decisions reject a foreign origin before creating a grant', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const response = await workerFetch(
+		new URL(packageAppOauthPaths.authorize, appOrigin),
+		{
+			method: 'POST',
+			headers: {
+				Cookie: cookie,
+				Origin: 'https://evil.example',
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({
+				response_type: 'code',
+				client_id: `${ownerUsername}/demo`,
+				redirect_uri: `https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+				code_challenge: challenge,
+				code_challenge_method: 'S256',
+				scope: 'email',
+				decision: 'approve',
+			}),
+		},
+	)
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected origin refusal')
+	expect(response.status).toBe(403)
+	const row = await env.APP_DB.prepare(
+		'SELECT COUNT(*) AS count FROM package_app_oauth_grants',
+	).first<{ count: number }>()
+	expect(row?.count).toBe(0)
 })
 
 test('package-app OAuth authorize rejects client_id that is not a published package app', async () => {
@@ -232,6 +247,8 @@ test('package-app OAuth authorize rejects client_id that is not a published pack
 	const response = await workerFetch(url, {
 		headers: { Cookie: sessionCookie },
 	})
+	if (!(response instanceof Response))
+		throw new Error('Expected OAuth protocol response')
 	expect(response.status).toBe(400)
 	await expect(response.text()).resolves.toMatch(
 		/invalid_client|published package app/,
@@ -246,6 +263,8 @@ test('package-app OAuth login on unverified subdomain label rejects without trus
 	)
 	loginUrl.searchParams.set('app', 'world-builder')
 	const response = await workerFetch(loginUrl)
+	if (!(response instanceof Response))
+		throw new Error('Expected OAuth protocol response')
 	expect(response.status).toBe(400)
 	const body = await response.text()
 	expect(body).toMatch(/Unknown or unpublished package app/)
@@ -260,6 +279,8 @@ test('package-app OAuth login on a real owner subdomain redirects to authorize w
 	)
 	loginUrl.searchParams.set('app', 'demo')
 	const response = await workerFetch(loginUrl)
+	if (!(response instanceof Response))
+		throw new Error('Expected OAuth protocol response')
 	expect(response.status).toBe(302)
 	const location = response.headers.get('Location')
 	expect(location).toBeTruthy()

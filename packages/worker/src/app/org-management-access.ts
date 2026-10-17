@@ -1,15 +1,15 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
-import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import {
-	authorize,
 	AuthorizationError,
+	authorize,
 } from '#worker/authorization/authorize.ts'
-import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
-import { getOrgById } from '#worker/orgs/repo.ts'
+import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
+import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 
 export type ManagedOrg = {
 	id: OwnerId
@@ -33,6 +33,7 @@ export type OrgManagementAccess =
  */
 export async function resolveOrgManagementAccess(input: {
 	request: Request
+	orgSlug?: string
 	env: Env
 	user: AuthenticatedAppUser
 	permission: Extract<
@@ -48,11 +49,17 @@ export async function resolveOrgManagementAccess(input: {
 		| 'team:delete'
 	>
 }): Promise<OrgManagementAccess> {
-	const resolution = await loadRequestOrgResolution(
-		input.request,
-		input.env,
-		input.user.mcpUser.userId,
-	)
+	const resolution = input.orgSlug
+		? ((await loadOrgBindingForSlug(
+				input.env.APP_DB,
+				input.user.mcpUser.userId,
+				input.orgSlug,
+			)) ?? 'denied')
+		: await loadRequestOrgResolution(
+				input.request,
+				input.env,
+				input.user.mcpUser.userId,
+			)
 	if (typeof resolution === 'string' || resolution.role === null) {
 		return { ok: false, status: 404, error: 'Organization unavailable.' }
 	}

@@ -1,10 +1,6 @@
 import { expect, test } from 'vitest'
 import { type CredentialListItem } from '#universal/credential-contracts.ts'
-import {
-	credentialManageHref,
-	credentialsDataKey,
-	writeCredentialListFilters,
-} from './account-credentials-shared.ts'
+import { credentialManageHref } from './account-credentials-shared.ts'
 
 function credential(
 	overrides: Partial<CredentialListItem> & { id: string; name: string },
@@ -58,28 +54,4 @@ test('rows open the page that edits each kind, in the org that owns it', () => {
 			page,
 		),
 	).toBe('/@ann/-/secrets/user/mine')
-})
-
-test('filters write into the page URL without touching its path', () => {
-	expect(
-		writeCredentialListFilters('/@acme/-/credentials?kind=oauth', {
-			q: 'git',
-			scope: 'personal',
-		}),
-	).toBe('/@acme/-/credentials?q=git&scope=personal')
-	expect(writeCredentialListFilters('/@acme/-/credentials?q=x', {})).toBe(
-		'/@acme/-/credentials',
-	)
-})
-
-test('each org keeps its own cached list and selection, whatever the filters', () => {
-	expect(credentialsDataKey('/@acme/-/credentials?kind=secret')).toBe(
-		credentialsDataKey('/@acme/-/credentials'),
-	)
-	expect(credentialsDataKey('/@acme/-/credentials')).not.toBe(
-		credentialsDataKey('/@jane/-/credentials'),
-	)
-	expect(credentialsDataKey('/@acme/-/credentials/cred-1?kind=secret')).toBe(
-		'/account/credentials?org=acme&selected=cred-1',
-	)
 })

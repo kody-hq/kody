@@ -1,11 +1,8 @@
-import { homeSoftwareApplicationJsonLdCspHash } from '#app/agent-discovery.ts'
-import { scrollRestorationInlineScriptCspHash } from '#universal/router-scroll-restoration.ts'
-
 /**
  * First-party HTTP security headers.
  *
- * These are applied to the trusted account/auth UI shell (see
- * `packages/worker/src/app/render.ts`). They are intentionally NOT applied to
+ * These are applied to the trusted website responses by Start's server entry.
+ * They are intentionally NOT applied to
  * untrusted, dynamically-authored surfaces such as hosted package apps
  * (`/@username/packages/*`), which execute author-supplied HTML/JS and need
  * their own, looser policies.
@@ -14,11 +11,9 @@ import { scrollRestorationInlineScriptCspHash } from '#universal/router-scroll-r
  * - `script-src 'self'` (no `'unsafe-inline'`) is the important protection: the
  *   client bundle is loaded as an external module from the same origin, so an
  *   injected inline `<script>` cannot execute. Do NOT add `'unsafe-inline'` to
- *   `script-src`. First-party exceptions are the scroll-restoration restore
- *   script in the SSR body (React Router's `<ScrollRestoration />` pattern so
- *   a refresh can restore `scrollY` before paint) and the homepage
- *   `application/ld+json` SoftwareApplication block — each allowed only by its
- *   sha256 hash.
+ *   `script-src`. Start document responses add a request-specific nonce for
+ *   framework scripts, including native Router scroll restoration. The base
+ *   policy has no static inline-script hash allowance.
  * - `style-src` allows `'unsafe-inline'` because SSR streamed styles arrive as
  *   inline `<style>` tags; style injection is far lower risk than script
  *   injection. Client-side styles use constructable stylesheets, which CSP does
@@ -64,7 +59,7 @@ const contentSecurityPolicy = [
 	"img-src 'self' data: blob: https://cdn.usefathom.com https://static.scarf.sh",
 	"font-src 'self' data:",
 	"style-src 'self' 'unsafe-inline'",
-	`script-src 'self' ${scrollRestorationInlineScriptCspHash} ${homeSoftwareApplicationJsonLdCspHash} https://cdn.usefathom.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
+	`script-src 'self' https://cdn.usefathom.com https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
 	"connect-src 'self' https://cdn.usefathom.com https://cloudflareinsights.com https://challenges.cloudflare.com",
 	'frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com',
 	"worker-src 'self' blob:",

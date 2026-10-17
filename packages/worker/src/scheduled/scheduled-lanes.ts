@@ -1,3 +1,4 @@
+import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
@@ -104,6 +105,11 @@ export async function runScheduledLane(input: {
 				db: input.env.APP_DB,
 				env: input.env,
 				jobs: jobsData(input.env),
+				now: input.scheduledAt,
+			})
+		case 'second_agent_gift_reconciliation':
+			return reconcileSecondAgentStandardGifts({
+				env: input.env,
 				now: input.scheduledAt,
 			})
 		case 'oauth_purge_expired': {

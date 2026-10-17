@@ -1,11 +1,3 @@
-import { readJson } from '#client/routes/account-approval-shared.ts'
-import {
-	routeLoaderRedirect,
-	type RouteLoaderResult,
-} from '#client/route-loader.ts'
-import { type AdminCodemodsLoaderData } from '#universal/loader-data.ts'
-
-export type PageStatus = 'loading' | 'ready' | 'error'
 export type RunMode = 'scan' | 'dry-run' | 'apply' | 'revert'
 export type RunPhase = 'idle' | 'running' | 'complete' | 'error'
 
@@ -19,10 +11,6 @@ export type LiveRunItem = {
 	findings: Array<{ path: string | null; message: string }>
 	error: string | null
 }
-
-export const adminCodemodsApiPath = '/admin/codemods.json'
-export const adminCodemodsRunApiPath = '/admin/codemods/run.json'
-export const adminCodemodsRunStopApiPath = '/admin/codemods/run/stop.json'
 export const maxRunSteps = 200
 
 export const runModes = [
@@ -68,26 +56,4 @@ export function formatFindings(
 			finding.path ? `${finding.path}: ${finding.message}` : finding.message,
 		)
 		.join('; ')
-}
-
-export async function adminCodemodsRouteLoader(
-	_url: URL,
-	signal: AbortSignal,
-): Promise<RouteLoaderResult> {
-	const response = await fetch(adminCodemodsApiPath, {
-		headers: { Accept: 'application/json' },
-		credentials: 'include',
-		signal,
-	})
-	if (response.status === 401) {
-		return routeLoaderRedirect('/login')
-	}
-	if (response.status === 403) {
-		throw new Error('You do not have permission to view package codemods.')
-	}
-	const payload = await readJson<AdminCodemodsLoaderData>(response)
-	if (!response.ok || !payload?.ok) {
-		throw new Error('Unable to load package codemods.')
-	}
-	return { adminCodemods: payload }
 }

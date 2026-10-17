@@ -1,0 +1,17 @@
+{
+	"extends": "./tsconfig-worker-typecheck.json",
+	"compilerOptions": {
+		"composite": false,
+		"noEmit": true,
+		"types": ["node", "@pitlane/dev/assets"]
+	},
+	"include": [
+		"start/server/**/*.node.test.ts",
+		"start/http-entry.node.test.ts",
+		"start/server-isolation.node.test.ts",
+		"env.d.ts",
+		"worker-configuration.d.ts",
+		"src/**/*.d.ts"
+	],
+	"exclude": []
+}

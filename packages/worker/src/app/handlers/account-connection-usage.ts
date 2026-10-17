@@ -1,17 +1,13 @@
-import { type Action } from 'remix/router'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
-	authorize,
 	AuthorizationError,
+	authorize,
 	canSeeResource,
 	computeEffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
-import { jsonResponse } from '#worker/json-response.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { loadConnectionUsage } from '#worker/usage/connection-usage.ts'
-import { type routes } from '#universal/routes.ts'
 
 /**
  * Org-wide usage (other people, Automation) is billing data: owners and
@@ -30,47 +26,28 @@ async function canReadOrgWideUsage(
 	}
 }
 
-export function createAccountConnectionUsageApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const resolution = await loadRequestOrgResolution(
-				request,
-				env,
-				user.mcpUser.userId,
-			)
-			if (resolution === 'denied') {
-				return jsonResponse(
-					{ ok: false, error: 'Organization not found.' },
-					404,
-				)
-			}
-			const orgId = ownerIdFromCaller({
-				request: user.request,
-				user: user.mcpUser,
-			})
-			const access = await computeEffectivePermissions({
-				env,
-				request: user.request,
-			})
-			return jsonResponse(
-				await loadConnectionUsage({
-					env,
-					orgId,
-					orgSlug: user.request.org.slug ?? user.username,
-					viewerPersonId: user.mcpUser.userId,
-					includeOrgWide: await canReadOrgWideUsage(env, user.request),
-					canSeePackage: (packageId) =>
-						canSeeResource(
-							access,
-							packageResource({ id: packageId, userId: orgId }),
-						),
-				}),
-			)
-		},
-	} satisfies Action<typeof routes.accountConnectionUsageApi>
+export async function loadAccountConnectionUsageData({
+	env,
+	user,
+}: {
+	env: Env
+	user: AuthenticatedAppUser
+}) {
+	const orgId = ownerIdFromCaller({
+		request: user.request,
+		user: user.mcpUser,
+	})
+	const access = await computeEffectivePermissions({
+		env,
+		request: user.request,
+	})
+	return loadConnectionUsage({
+		env,
+		orgId,
+		orgSlug: user.request.org.slug ?? user.username,
+		viewerPersonId: user.mcpUser.userId,
+		includeOrgWide: await canReadOrgWideUsage(env, user.request),
+		canSeePackage: (packageId) =>
+			canSeeResource(access, packageResource({ id: packageId, userId: orgId })),
+	})
 }

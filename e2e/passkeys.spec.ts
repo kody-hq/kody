@@ -35,19 +35,23 @@ async function gotoLocalhost(
 async function addVirtualAuthenticator(page: Page) {
 	const client = await page.context().newCDPSession(page)
 	await client.send('WebAuthn.enable')
-	await client.send('WebAuthn.addVirtualAuthenticator', {
-		options: {
-			protocol: 'ctap2',
-			transport: 'internal',
-			hasResidentKey: true,
-			hasUserVerification: true,
-			isUserVerified: true,
-			automaticPresenceSimulation: true,
+	const { authenticatorId } = await client.send(
+		'WebAuthn.addVirtualAuthenticator',
+		{
+			options: {
+				protocol: 'ctap2',
+				transport: 'internal',
+				hasResidentKey: true,
+				hasUserVerification: true,
+				isUserVerified: true,
+				automaticPresenceSimulation: true,
+			},
 		},
-	})
+	)
+	return { client, authenticatorId }
 }
 
-test('passkey lifecycle: register, skip TOTP when 2FA enabled, sign in, delete', async ({
+test('passkey lifecycle: reject unverified registration, retry, skip TOTP, sign in, delete', async ({
 	page,
 	seedE2eUser,
 	login,
@@ -63,15 +67,47 @@ test('passkey lifecycle: register, skip TOTP when 2FA enabled, sign in, delete',
 	// Cross from the 127.0.0.1 API origin onto localhost before WebAuthn work so
 	// later relative navigations stay on the relying-party domain.
 	await gotoLocalhost(page, baseURL, '/account')
-	await addVirtualAuthenticator(page)
+	const { client, authenticatorId } = await addVirtualAuthenticator(page)
 
 	// Register a passkey from account settings.
 	await gotoLocalhost(page, baseURL, '/account/passkeys')
 	await expect(
 		page.getByRole('heading', { name: 'No passkeys yet' }),
 	).toBeVisible()
+	// Fail actual authenticator user verification, without replacing browser or
+	// server responses. This is verification failure, not prompt cancellation.
+	await client.send('WebAuthn.setUserVerified', {
+		authenticatorId,
+		isUserVerified: false,
+	})
+	await page.getByRole('button', { name: 'Register a passkey' }).click()
+	await expect(page.getByRole('alert')).toBeVisible()
+	await expect(page.getByRole('alert')).not.toHaveText('')
+	await expect(
+		page.getByRole('button', { name: 'Register a passkey' }),
+	).toBeEnabled()
+	expect(
+		(await client.send('WebAuthn.getCredentials', { authenticatorId }))
+			.credentials,
+	).toEqual([])
+	// Reload proves the server did not retain a credential from the failed attempt.
+	await gotoLocalhost(page, baseURL, '/account/passkeys')
+	await expect(
+		page.getByRole('heading', { name: 'No passkeys yet' }),
+	).toBeVisible()
+	await expect(
+		page.getByRole('heading', { name: 'Registered passkeys' }),
+	).toHaveCount(0)
+	await client.send('WebAuthn.setUserVerified', {
+		authenticatorId,
+		isUserVerified: true,
+	})
 	await page.getByRole('button', { name: 'Register a passkey' }).click()
 	await expect(page.getByText('Passkey registered.')).toBeVisible()
+	expect(
+		(await client.send('WebAuthn.getCredentials', { authenticatorId }))
+			.credentials,
+	).toHaveLength(1)
 	await expect(
 		page.getByRole('heading', { name: 'Registered passkeys' }),
 	).toBeVisible()
@@ -120,4 +156,37 @@ test('passkey lifecycle: register, skip TOTP when 2FA enabled, sign in, delete',
 	await expect(
 		page.getByRole('heading', { name: 'No passkeys yet' }),
 	).toBeVisible()
+})
+
+test('expired passkey session reloads identity before opening the authenticator', async ({
+	page,
+	seedE2eUser,
+	login,
+	baseURL,
+}) => {
+	const id = Date.now()
+	const user = await seedE2eUser({
+		email: `passkey-expired-${id}@example.com`,
+		username: `passkey-expired-${id}`,
+		password: 'passkey-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+	await gotoLocalhost(page, baseURL, '/account/passkeys')
+	const { client, authenticatorId } = await addVirtualAuthenticator(page)
+	await expect(
+		page.getByRole('button', { name: 'Register a passkey' }),
+	).toBeEnabled()
+	// Expire the session without replacing the currently hydrated document.
+	await page.context().clearCookies()
+	const documentReload = page.waitForRequest((request) =>
+		request.isNavigationRequest(),
+	)
+	await page.getByRole('button', { name: 'Register a passkey' }).click()
+	await documentReload
+	await expect(page).toHaveURL(/\/login(?:\?|$)/)
+	expect(
+		(await client.send('WebAuthn.getCredentials', { authenticatorId }))
+			.credentials,
+	).toEqual([])
+	await client.detach()
 })

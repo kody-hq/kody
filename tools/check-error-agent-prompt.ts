@@ -11,6 +11,7 @@ import { isExecutedDirectly } from './node-runtime.ts'
 
 const skipDirNames = new Set([
 	'.git',
+	'.generated',
 	'.tmp',
 	'.wrangler',
 	'build',

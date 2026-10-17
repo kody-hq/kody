@@ -74,7 +74,7 @@ export function storageSummary(entry: CapabilityEntry) {
 		: 'This package can save and read its own data.'
 }
 
-export const credentialValuesNote = 'Credential values never appear here.'
+const credentialValuesNote = 'Credential values never appear here.'
 
 function sentence(text: string) {
 	const trimmed = text.trim()

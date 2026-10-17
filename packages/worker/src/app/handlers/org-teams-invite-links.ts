@@ -1,9 +1,5 @@
-import { type Action } from 'remix/router'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import {
-	loadOrgTeamsData,
-	personalOrgTeamWriteResponse,
-} from '#app/handlers/org-teams.ts'
+import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { personalOrgTeamWriteResponse } from '#app/handlers/org-teams.ts'
 import {
 	inviteLinkUrl,
 	readInviteLinkOptions,
@@ -12,7 +8,7 @@ import {
 	orgHasPermission,
 	resolveOrgManagementAccess,
 } from '#app/org-management-access.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '#app/operation-result.ts'
 import {
 	createOrgInviteLink,
 	generateInviteLinkToken,
@@ -20,36 +16,31 @@ import {
 	revokeOrgInviteLink,
 } from '#worker/orgs/invite-links.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
-import { type routes } from '#universal/routes.ts'
-
-async function readJsonObject(request: Request) {
-	const body = await request.json().catch(() => null)
-	if (!body || typeof body !== 'object') return null
-	return body as Record<string, unknown>
-}
 
 /**
  * Team links add the person to the org (as Member when they are not one yet)
  * and to one team, so managing them takes both team:write and member:write.
  */
-async function resolveTeamLinkAccess(request: Request, env: Env) {
-	const user = await readAuthenticatedAppUser(request, env)
-	if (!user) {
-		return {
-			ok: false as const,
-			response: jsonResponse({ ok: false, error: 'Unauthorized.' }, 401),
-		}
-	}
+async function resolveTeamLinkAccess(
+	request: Request,
+	env: Env,
+	user: InviteOperationContext['user'],
+	orgSlug: string,
+) {
 	const access = await resolveOrgManagementAccess({
 		request,
 		env,
 		user,
 		permission: 'team:write',
+		orgSlug,
 	})
 	if (!access.ok) {
 		return {
 			ok: false as const,
-			response: jsonResponse({ ok: false, error: access.error }, access.status),
+			response: operationResult(
+				{ ok: false, error: access.error },
+				access.status,
+			),
 		}
 	}
 	if (access.org.personal) {
@@ -58,7 +49,7 @@ async function resolveTeamLinkAccess(request: Request, env: Env) {
 	if (!(await orgHasPermission(env, user, 'member:write'))) {
 		return {
 			ok: false as const,
-			response: jsonResponse(
+			response: operationResult(
 				{
 					ok: false,
 					error:
@@ -71,99 +62,121 @@ async function resolveTeamLinkAccess(request: Request, env: Env) {
 	return { ok: true as const, user, org: access.org }
 }
 
-export function createOrgTeamsInviteLinksPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const access = await resolveTeamLinkAccess(request, env)
-			if (!access.ok) return access.response
-			const { user, org } = access
-			const body = await readJsonObject(request)
-			const teamId = typeof body?.teamId === 'string' ? body.teamId.trim() : ''
-			if (!teamId) {
-				return jsonResponse({ ok: false, error: 'Choose a team.' }, 400)
-			}
-			const parsedOptions = readInviteLinkOptions(body)
-			if (!parsedOptions.ok) {
-				return jsonResponse({ ok: false, error: parsedOptions.error }, 400)
-			}
-			const { allowedEmailDomains, maxUses, expiresAt } = parsedOptions.options
-			const token = generateInviteLinkToken()
-			const tokenHash = await hashInviteLinkToken(token)
-			try {
-				const created = await createOrgInviteLink({
-					db: env.APP_DB,
-					orgId: org.id,
-					target: { kind: 'team', teamId },
-					createdByUserId: user.mcpUser.userId,
-					tokenHash,
-					allowedEmailDomains,
-					maxUses,
-					expiresAt,
-					audit: orgAuditWriterFromRequest(env, user.request),
-				})
-				return jsonResponse({
-					...(await loadOrgTeamsData({ env, user, org })),
-					inviteLink: {
-						id: created.id,
-						teamId,
-						expiresAt: created.expiresAt,
-						maxUses: created.maxUses,
-						url: inviteLinkUrl(request, token),
-					},
-				})
-			} catch (error) {
-				return jsonResponse(
-					{
-						ok: false,
-						error:
-							error instanceof Error
-								? error.message
-								: 'Unable to create that invite link.',
-					},
-					400,
-				)
-			}
-		},
-	} satisfies Action<typeof routes.orgTeamsInviteLinksPost>
+export async function createTeamInviteLink({
+	env,
+	request,
+	user,
+	orgSlug,
+	...fields
+}: InviteOperationContext & {
+	orgSlug: string
+	teamId?: string
+	linkId?: string
+	maxUses?: string | number | null
+	expiresInDays?: string | number | null
+	allowedEmailDomains?: string | string[]
+}) {
+	const access = await resolveTeamLinkAccess(request, env, user, orgSlug)
+	if (!access.ok) return access.response
+	const { org } = access
+	const body = fields
+	const teamId = typeof body?.teamId === 'string' ? body.teamId.trim() : ''
+	if (!teamId) {
+		return operationResult({ ok: false, error: 'Choose a team.' }, 400)
+	}
+	const parsedOptions = readInviteLinkOptions(body)
+	if (!parsedOptions.ok) {
+		return operationResult({ ok: false, error: parsedOptions.error }, 400)
+	}
+	const { allowedEmailDomains, maxUses, expiresAt } = parsedOptions.options
+	const token = generateInviteLinkToken()
+	const tokenHash = await hashInviteLinkToken(token)
+	try {
+		const created = await createOrgInviteLink({
+			db: env.APP_DB,
+			orgId: org.id,
+			target: { kind: 'team', teamId },
+			createdByUserId: user.mcpUser.userId,
+			tokenHash,
+			allowedEmailDomains,
+			maxUses,
+			expiresAt,
+			audit: orgAuditWriterFromRequest(env, user.request),
+		})
+		return operationResult({
+			ok: true,
+			inviteLink: {
+				id: created.id,
+				teamId,
+				expiresAt: created.expiresAt,
+				maxUses: created.maxUses,
+				url: inviteLinkUrl(request, token),
+			},
+		})
+	} catch (error) {
+		return operationResult(
+			{
+				ok: false,
+				error:
+					error instanceof Error
+						? error.message
+						: 'Unable to create that invite link.',
+			},
+			400,
+		)
+	}
 }
 
-export function createOrgTeamsInviteLinksRevokePostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const access = await resolveTeamLinkAccess(request, env)
-			if (!access.ok) return access.response
-			const { user, org } = access
-			const body = await readJsonObject(request)
-			const linkId = typeof body?.linkId === 'string' ? body.linkId.trim() : ''
-			if (!linkId) {
-				return jsonResponse(
-					{ ok: false, error: 'An invite link is required.' },
-					400,
-				)
-			}
-			try {
-				await revokeOrgInviteLink({
-					db: env.APP_DB,
-					orgId: org.id,
-					linkId,
-					scope: { kind: 'team' },
-					audit: orgAuditWriterFromRequest(env, user.request),
-				})
-			} catch (error) {
-				return jsonResponse(
-					{
-						ok: false,
-						error:
-							error instanceof Error
-								? error.message
-								: 'Unable to revoke that invite link.',
-					},
-					400,
-				)
-			}
-			return jsonResponse(await loadOrgTeamsData({ env, user, org }))
-		},
-	} satisfies Action<typeof routes.orgTeamsInviteLinksRevokePost>
+export async function revokeTeamInviteLink({
+	env,
+	request,
+	user,
+	orgSlug,
+	...fields
+}: InviteOperationContext & {
+	orgSlug: string
+	teamId?: string
+	linkId?: string
+	maxUses?: string | number | null
+	expiresInDays?: string | number | null
+	allowedEmailDomains?: string | string[]
+}) {
+	const access = await resolveTeamLinkAccess(request, env, user, orgSlug)
+	if (!access.ok) return access.response
+	const { org } = access
+	const body = fields
+	const linkId = typeof body?.linkId === 'string' ? body.linkId.trim() : ''
+	if (!linkId) {
+		return operationResult(
+			{ ok: false, error: 'An invite link is required.' },
+			400,
+		)
+	}
+	try {
+		await revokeOrgInviteLink({
+			db: env.APP_DB,
+			orgId: org.id,
+			linkId,
+			scope: { kind: 'team' },
+			audit: orgAuditWriterFromRequest(env, user.request),
+		})
+	} catch (error) {
+		return operationResult(
+			{
+				ok: false,
+				error:
+					error instanceof Error
+						? error.message
+						: 'Unable to revoke that invite link.',
+			},
+			400,
+		)
+	}
+	return operationResult({ ok: true, revokedLinkId: linkId })
+}
+
+type InviteOperationContext = {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 }

@@ -1,3 +1,5 @@
+import type * as OrgRepo from '#worker/orgs/repo.ts'
+import type * as CloudflareWorkers from 'cloudflare:workers'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -151,6 +153,7 @@ vi.mock('#app/authenticated-user.ts', () => ({
 
 vi.mock('#app/auth-session.ts', () => ({
 	readAuthSessionResult: async () => ({ session: null, setCookie: null }),
+	setAuthSessionSecret: vi.fn(),
 }))
 
 vi.mock('#app/auth-redirect.ts', () => ({
@@ -171,10 +174,21 @@ vi.mock('#worker/community/repo.ts', () => ({
 	) => mockModule.getCommunityListingByOwnerAndPackage(...args),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async (input: { status?: number }) =>
-		new Response('ok', { status: input.status ?? 200 }),
+vi.mock('@tanstack/react-start', async () => ({
+	createServerFn: (
+		await import('#worker/test-support/start-server-function.ts')
+	).createTestServerFn,
+	createServerOnlyFn: <T>(fn: T) => fn,
 }))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<typeof CloudflareWorkers>()),
+	env: { APP_DB: {}, COOKIE_SECRET: 'test' },
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => new Request('https://example.com/_serverFn/alias'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: (env: unknown) => env }))
 
 vi.mock('#worker/app-base-url.ts', () => ({
 	getAppBaseUrl: () => mockModule.getAppBaseUrl(),
@@ -190,10 +204,11 @@ vi.mock('#worker/community/fork-listing-relation.ts', () => ({
 
 vi.mock('#app/package-viewer-access.ts', () => ({
 	viewerCanReadSavedPackage: vi.fn(async () => true),
+	viewerCanManageSavedPackage: vi.fn(async () => true),
 }))
 
 vi.mock('#worker/orgs/repo.ts', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('#worker/orgs/repo.ts')>()
+	const actual = await importOriginal<typeof OrgRepo>()
 	return {
 		...actual,
 		loadOrgBindingForOrg: vi.fn(async () => ({
@@ -243,8 +258,9 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 	) => mockModule.getEntitySourceById(...args),
 }))
 
-const { createAccountPackagesApiHandler, createAccountPackagesHandler } =
-	await import('./account-packages.ts')
+const { loadAccountPackagesData } = await import('../account-packages-data.ts')
+const { loadAccountPackageAlias } =
+	await import('../../../start/server/package-alias.ts')
 
 function createEnv() {
 	return {
@@ -255,30 +271,21 @@ function createEnv() {
 
 function createPackagesClient() {
 	const env = createEnv()
-	const { handler } = createAccountPackagesApiHandler(env)
 	return {
 		env,
-		get: (search = '') =>
-			handler({
-				request: new Request(
-					`https://example.com/account/packages.json${search}`,
-				),
-				params: {},
-			} as never),
-		post: (body: Record<string, unknown>) =>
-			handler({
-				request: new Request('https://example.com/account/packages.json', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(body),
-				}),
-				params: {},
-			} as never),
+		get: async (search = '') => {
+			const request = new Request(
+				`https://example.com/account/packages${search}`,
+			)
+			const user = await mockModule.readAuthenticatedAppUser(request, env)
+			if (!user) throw new Error('Sign in required.')
+			return loadAccountPackagesData({ env, request, user })
+		},
 	}
 }
 
 test('packages API lists with filters, ignores invalid values, and rejects unknown actions', async () => {
-	const { env, get, post } = createPackagesClient()
+	const { env, get } = createPackagesClient()
 	const searchCall = (input: Record<string, unknown>) =>
 		expect(mockModule.searchSavedPackagesByUserId).toHaveBeenLastCalledWith(
 			env.APP_DB,
@@ -286,8 +293,6 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 		)
 
 	const defaults = await get()
-	expect(defaults.status).toBe(200)
-	expect(defaults.headers.get('Cache-Control')).toBe('no-store')
 	searchCall({
 		query: '',
 		hasApp: null,
@@ -296,7 +301,7 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 		offset: 0,
 	})
 	expect(mockModule.getSavedPackageById).not.toHaveBeenCalled()
-	await expect(defaults.json()).resolves.toMatchObject({
+	expect(defaults).toMatchObject({
 		ok: true,
 		email: 'user@example.com',
 		username: 'test-user',
@@ -320,7 +325,6 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 	const filtered = await get(
 		'?q=discord&app=with&sort=name&page=3&pageSize=10&selected=pkg-1',
 	)
-	expect(filtered.status).toBe(200)
 	searchCall({
 		query: 'discord',
 		hasApp: true,
@@ -334,7 +338,7 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 		userId: 'stable-user-1' as OwnerId,
 		packageId: 'pkg-1',
 	})
-	const filteredPayload = await filtered.json()
+	const filteredPayload = filtered
 	expect(filteredPayload).toMatchObject({
 		ok: true,
 		page: 3,
@@ -364,7 +368,7 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 	mockModule.loadPublishedEntityManifest.mockRejectedValueOnce(
 		new Error('Saved package source bindings are not available.'),
 	)
-	await expect((await get('?selected=pkg-1')).json()).resolves.toMatchObject({
+	expect(await get('?selected=pkg-1')).toMatchObject({
 		ok: true,
 		selectedPackage: {
 			id: 'pkg-1',
@@ -377,22 +381,19 @@ test('packages API lists with filters, ignores invalid values, and rejects unkno
 		null as never,
 	)
 	const invalid = await get('?app=bogus&sort=bogus&selected=missing-package')
-	expect(invalid.status).toBe(200)
 	expect(mockModule.searchSavedPackagesByUserId).toHaveBeenLastCalledWith(
 		env.APP_DB,
 		expect.objectContaining({ hasApp: null, sort: 'updated' }),
 	)
-	await expect(invalid.json()).resolves.toMatchObject({
+	expect(invalid).toMatchObject({
 		ok: true,
 		selectedPackage: null,
 		appFilter: 'all',
 		sort: 'updated',
 	})
 
-	expect((await post({ action: 'anything' })).status).toBe(400)
-
 	mockModule.readAuthenticatedAppUser.mockResolvedValueOnce(null as never)
-	expect((await get()).status).toBe(401)
+	await expect(get()).rejects.toThrow('Sign in required.')
 })
 
 test('account package detail redirects the owner to the canonical package URL', async () => {
@@ -406,29 +407,61 @@ test('account package detail redirects the owner to the canonical package URL', 
 			displayName: 'user',
 		},
 	})
-	const { handler } = createAccountPackagesHandler(createEnv())
-	const visit = (path: string, params: Record<string, string> = {}) =>
-		handler({
-			request: new Request(`https://example.com/account/packages${path}`),
-			params,
-		} as never)
-
-	const indexRedirect = await visit('?q=discord')
-	expect(indexRedirect.status).toBe(302)
-	expect(indexRedirect.headers.get('location')).toBe(
-		'https://example.com/@test-user?q=discord',
-	)
-
-	const redirect = await visit('/pkg-1?q=discord', {
-		packageId: 'pkg-1',
+	await expect(
+		loadAccountPackageAlias({
+			data: { packageId: 'pkg-1', search: '?q=discord' },
+		}),
+	).rejects.toMatchObject({
+		options: {
+			href: '/@test-user/discord-gateway?q=discord',
+			statusCode: 302,
+		},
 	})
-	expect(redirect.status).toBe(302)
-	expect(redirect.headers.get('location')).toBe(
-		'https://example.com/@test-user/discord-gateway?q=discord',
-	)
+	mockModule.getSavedPackageById.mockResolvedValueOnce(null)
+	mockModule.getSavedPackageByIdInAnyOrg.mockResolvedValueOnce(null)
+	await expect(
+		loadAccountPackageAlias({ data: { packageId: 'missing', search: '' } }),
+	).rejects.toMatchObject({ isNotFound: true })
+})
 
-	mockModule.getSavedPackageByIdInAnyOrg.mockResolvedValue(null as never)
-	expect((await visit('/missing', { packageId: 'missing' })).status).toBe(404)
+test('native package alias redirects accessible team packages to their owning organization and requires manage access for approval', async () => {
+	mockModule.requireAuthenticatedPageUser.mockResolvedValue({
+		username: 'test-user',
+		mcpUser: { userId: personIdFromStored('stable-user-1') },
+	})
+	const { loadOrgBindingForOrg } = await import('#worker/orgs/repo.ts')
+	const { viewerCanManageSavedPackage, viewerCanReadSavedPackage } =
+		await import('#app/package-viewer-access.ts')
+	const binding = await loadOrgBindingForOrg(
+		{} as D1Database,
+		personIdFromStored('stable-user-1'),
+		ownerIdFromStored('stable-user-1'),
+	)
+	if (!binding) throw new Error('Missing fixture binding')
+	vi.mocked(loadOrgBindingForOrg).mockResolvedValueOnce({
+		...binding,
+		org: { ...binding.org, slug: 'shared-team' },
+	})
+	await expect(
+		loadAccountPackageAlias({
+			data: { packageId: 'pkg-1', search: '?q=discord' },
+		}),
+	).rejects.toMatchObject({
+		options: {
+			href: '/@shared-team/discord-gateway?q=discord',
+			statusCode: 302,
+		},
+	})
+	vi.mocked(viewerCanManageSavedPackage).mockResolvedValueOnce(false)
+	await expect(
+		loadAccountPackageAlias({
+			data: { packageId: 'pkg-1', approval: 'publish', search: '' },
+		}),
+	).rejects.toMatchObject({ isNotFound: true })
+	vi.mocked(viewerCanReadSavedPackage).mockResolvedValueOnce(false)
+	await expect(
+		loadAccountPackageAlias({ data: { packageId: 'pkg-1', search: '' } }),
+	).rejects.toMatchObject({ isNotFound: true })
 })
 
 test('packages API loads the selected package detail while list provenance is still loading', async () => {
@@ -449,8 +482,7 @@ test('packages API loads the selected package detail while list provenance is st
 	})
 	releaseProvenance()
 	const response = await responding
-	expect(response.status).toBe(200)
-	await expect(response.json()).resolves.toMatchObject({
+	expect(response).toMatchObject({
 		selectedPackage: expect.objectContaining({
 			id: 'pkg-1',
 			publishedVersion: '1.2.3',

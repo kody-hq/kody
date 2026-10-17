@@ -178,9 +178,10 @@ metadata. See [OAuth integrations](./integrations.md).
 - Runtime entrypoint: `packages/worker/src/runtime-worker.ts`
 - Jobs entrypoint: `packages/jobs-worker/src/index.ts`
 - Highlight entrypoint: `packages/highlight-worker/src/index.ts`
-- App request handler: `packages/worker/src/app/handler.ts`
-- Router and HTTP route mapping: `packages/worker/src/app/router.ts` and
-  `packages/worker/universal/routes.ts`
+- App request handler: `packages/worker/start/http-entry.ts`
+- HTTP protocol services: `packages/worker/start/server/protocol-handlers.ts`
+  and `packages/worker/universal/routes.ts`
+- Web document routes: `packages/worker/start/routes`
 - OAuth handlers: `packages/worker/src/oauth-handlers.ts`
 - MCP auth checks: `packages/worker/src/mcp-auth.ts`
 - MCP capability catalog: domain modules under

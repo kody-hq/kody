@@ -1,9 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
-import {
-	ownerIdFromStored,
-	personIdFromStored,
-} from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -16,6 +10,12 @@ import {
 } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -31,11 +31,28 @@ vi.mock('#app/page-auth.ts', () => ({
 		mocks.requireAuthenticatedPageUser(...args),
 }))
 
-const { createOrgCollaboratorsApiHandler } =
-	await import('./org-collaborators.ts')
-const { createOrgGrantsApiHandler, createOrgGrantsRevokePostHandler } =
-	await import('./org-grants.ts')
+const { loadOrgCollaboratorsData } = await import('./org-collaborators.ts')
+const { testOrgGrantsApiHandler, testOrgGrantsRevokePostHandler } =
+	await import('./org-grants.test-support.ts')
 
+async function readCollaborators(env: Env, { request }: { request: Request }) {
+	const { resolveOrgManagementAccess } =
+		await import('#app/org-management-access.ts')
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	const access = await resolveOrgManagementAccess({
+		env,
+		request,
+		user,
+		orgSlug: 'zeta-co',
+		permission: 'member:read',
+	})
+	return access.ok
+		? {
+				status: 200,
+				data: await loadOrgCollaboratorsData({ env, user, org: access.org }),
+			}
+		: { status: access.status, data: { ok: false, error: access.error } }
+}
 const people = {
 	ada: { id: 9, personId: 'a'.repeat(64) },
 	bob: { id: 10, personId: 'b'.repeat(64) },
@@ -165,13 +182,13 @@ beforeEach(async () => {
 
 test('grants list includes outside collaborator grants; collaborators page lists them', async () => {
 	const env = createEnv()
-	const grantsReq = new Request('https://kody.test/@zeta-co/-/grants.json')
+	const grantsReq = new Request('https://kody.test/@zeta-co/-/grants')
 	await signIn('ada', grantsReq)
-	const grantsRes = await createOrgGrantsApiHandler(env).handler({
+	const grantsRes = await testOrgGrantsApiHandler(env).execute({
 		request: grantsReq,
 	} as never)
 	expect(grantsRes.status).toBe(200)
-	const grantsPayload = (await grantsRes.json()) as {
+	const grantsPayload = grantsRes.data as {
 		canManage: boolean
 		grants: Array<{ id: string; subjectLabel: string; presetLabel: string }>
 	}
@@ -181,15 +198,13 @@ test('grants list includes outside collaborator grants; collaborators page lists
 	expect(grantsPayload.grants[0]?.presetLabel).toBe('Use')
 	expect(grantsPayload.grants[0]).toMatchObject({ canRevoke: true })
 
-	const collabReq = new Request(
-		'https://kody.test/@zeta-co/-/collaborators.json',
-	)
+	const collabReq = new Request('https://kody.test/@zeta-co/-/collaborators')
 	await signIn('ada', collabReq)
-	const collabRes = await createOrgCollaboratorsApiHandler(env).handler({
+	const collabRes = await readCollaborators(env, {
 		request: collabReq,
 	} as never)
 	expect(collabRes.status).toBe(200)
-	const collabPayload = (await collabRes.json()) as {
+	const collabPayload = collabRes.data as {
 		collaborators: Array<{ username: string; grants: Array<{ id: string }> }>
 	}
 	expect(collabPayload.collaborators).toHaveLength(1)
@@ -225,13 +240,13 @@ test('member:write without manage access on the resource cannot revoke; owner ca
 		)
 		.run()
 
-	const listReq = new Request('https://kody.test/@zeta-co/-/grants.json')
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
 	await signIn('bob', listReq)
-	const listed = await createOrgGrantsApiHandler(env).handler({
+	const listed = await testOrgGrantsApiHandler(env).execute({
 		request: listReq,
 	} as never)
 	expect(listed.status).toBe(200)
-	const listedPayload = (await listed.json()) as {
+	const listedPayload = listed.data as {
 		canManage: boolean
 		grants: Array<{ id: string; canRevoke: boolean }>
 	}
@@ -246,20 +261,17 @@ test('member:write without manage access on the resource cannot revoke; owner ca
 		]),
 	)
 
-	const revokeReq = new Request(
-		'https://kody.test/@zeta-co/-/grants/revoke.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ grantId: 'grant-1' }),
-		},
-	)
+	const revokeReq = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ grantId: 'grant-1' }),
+	})
 	await signIn('bob', revokeReq)
-	const denied = await createOrgGrantsRevokePostHandler(env).handler({
+	const denied = await testOrgGrantsRevokePostHandler(env).execute({
 		request: revokeReq,
 	} as never)
 	expect(denied.status).toBe(403)
-	const deniedPayload = (await denied.json()) as { ok: false; error: string }
+	const deniedPayload = denied.data as { ok: false; error: string }
 	expect(deniedPayload.ok).toBe(false)
 	expect(deniedPayload.error).toMatch(/package:manage_access/)
 	const stillLive = await db
@@ -270,20 +282,20 @@ test('member:write without manage access on the resource cannot revoke; owner ca
 		.first<{ deleted_at: string | null }>()
 	expect(stillLive?.deleted_at).toBeNull()
 
-	const ownerReq = new Request(
-		'https://kody.test/@zeta-co/-/grants/revoke.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ grantId: 'grant-1' }),
-		},
-	)
+	const ownerReq = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ grantId: 'grant-1' }),
+	})
 	await signIn('ada', ownerReq)
-	const revoked = await createOrgGrantsRevokePostHandler(env).handler({
+	const revoked = await testOrgGrantsRevokePostHandler(env).execute({
 		request: ownerReq,
 	} as never)
 	expect(revoked.status).toBe(200)
-	const payload = (await revoked.json()) as { grants: Array<{ id: string }> }
+	expect(revoked.data).toEqual({ ok: true })
+	const payload = (
+		await testOrgGrantsApiHandler(env).execute({ request: ownerReq } as never)
+	).data as { grants: Array<{ id: string }> }
 	expect(payload.grants.map((grant) => grant.id)).not.toContain('grant-1')
 	const gone = await db
 		.prepare(
@@ -296,20 +308,20 @@ test('member:write without manage access on the resource cannot revoke; owner ca
 
 test('owner can revoke a grant', async () => {
 	const env = createEnv()
-	const revokeReq = new Request(
-		'https://kody.test/@zeta-co/-/grants/revoke.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ grantId: 'grant-1' }),
-		},
-	)
+	const revokeReq = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ grantId: 'grant-1' }),
+	})
 	await signIn('ada', revokeReq)
-	const revoked = await createOrgGrantsRevokePostHandler(env).handler({
+	const revoked = await testOrgGrantsRevokePostHandler(env).execute({
 		request: revokeReq,
 	} as never)
 	expect(revoked.status).toBe(200)
-	const payload = (await revoked.json()) as { grants: Array<unknown> }
+	expect(revoked.data).toEqual({ ok: true })
+	const payload = (
+		await testOrgGrantsApiHandler(env).execute({ request: revokeReq } as never)
+	).data as { grants: Array<unknown> }
 	expect(payload.grants).toEqual([])
 })
 
@@ -326,13 +338,13 @@ test('personal org owner can list and revoke grants', async () => {
 		)
 		.run(personalOrgId, people.dan.personId, people.ada.personId, now, now)
 
-	const listReq = new Request('https://kody.test/@ada/-/grants.json')
+	const listReq = new Request('https://kody.test/@ada/-/grants')
 	await signIn('ada', listReq)
-	const listRes = await createOrgGrantsApiHandler(env).handler({
+	const listRes = await testOrgGrantsApiHandler(env).execute({
 		request: listReq,
 	} as never)
 	expect(listRes.status).toBe(200)
-	const listPayload = (await listRes.json()) as {
+	const listPayload = listRes.data as {
 		canManage: boolean
 		grants: Array<{ id: string }>
 	}
@@ -341,27 +353,30 @@ test('personal org owner can list and revoke grants', async () => {
 		expect.objectContaining({ id: 'grant-personal-1', canRevoke: true }),
 	)
 
-	const revokeReq = new Request('https://kody.test/@ada/-/grants/revoke.json', {
+	const revokeReq = new Request('https://kody.test/@ada/-/grants', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ grantId: 'grant-personal-1' }),
 	})
 	await signIn('ada', revokeReq)
-	const revoked = await createOrgGrantsRevokePostHandler(env).handler({
+	const revoked = await testOrgGrantsRevokePostHandler(env).execute({
 		request: revokeReq,
 	} as never)
 	expect(revoked.status).toBe(200)
-	const payload = (await revoked.json()) as { grants: Array<{ id: string }> }
+	expect(revoked.data).toEqual({ ok: true })
+	const payload = (
+		await testOrgGrantsApiHandler(env).execute({ request: revokeReq } as never)
+	).data as { grants: Array<{ id: string }> }
 	expect(payload.grants.map((g) => g.id)).not.toContain('grant-personal-1')
 })
 
 test('collaborators JSON is 404 for grant-only people', async () => {
 	const env = createEnv()
-	const req = new Request('https://kody.test/@zeta-co/-/collaborators.json')
+	const req = new Request('https://kody.test/@zeta-co/-/collaborators')
 	await signIn('dan', req)
 	expect(
 		(
-			await createOrgCollaboratorsApiHandler(env).handler({
+			await readCollaborators(env, {
 				request: req,
 			} as never)
 		).status,

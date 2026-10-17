@@ -61,6 +61,10 @@ test('follow a repo for pushes, see it on Follows, and unfollow there', async ({
 	)
 	await expect(toggle).toHaveText(/Following/)
 
+	await page.evaluate(() => {
+		document.documentElement.dataset.followsNavigation = 'retained'
+	})
+
 	await Promise.all([
 		page.waitForURL(new RegExp(`/@${user.username}/-/follows$`)),
 		panel.getByTestId('package-follow-manage').click(),
@@ -68,6 +72,11 @@ test('follow a repo for pushes, see it on Follows, and unfollow there', async ({
 	await expect(
 		page.getByRole('heading', { level: 1, name: 'Follows' }),
 	).toBeVisible()
+	await expect(page.locator('html')).toHaveAttribute(
+		'data-follows-navigation',
+		'retained',
+	)
+	await waitForClientHydration(page)
 	const row = page.getByTestId('org-follow').filter({ hasText: repoName })
 	await expect(row.getByTestId('org-follow-status')).toHaveText('Active')
 	await expect(row).toContainText('Repository · Pushes')

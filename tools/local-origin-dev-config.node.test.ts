@@ -34,6 +34,19 @@ test('does not serialize Worker secrets or a live Cloudflare token', () => {
 	})
 })
 
+test('forwards explicitly configured local email domains without inventing them', () => {
+	expect(
+		collectLocalOriginDevVars({
+			USER_EMAIL_DOMAIN: 'inbox.localhost',
+			SYSTEM_EMAIL_DOMAIN: 'localhost',
+		}),
+	).toEqual({
+		WRANGLER_IS_LOCAL_DEV: 'true',
+		USER_EMAIL_DOMAIN: 'inbox.localhost',
+		SYSTEM_EMAIL_DOMAIN: 'localhost',
+	})
+})
+
 test('always injects WRANGLER_IS_LOCAL_DEV and copies mock Cloudflare vars', () => {
 	expect(
 		collectLocalOriginDevVars(
@@ -96,4 +109,27 @@ test('writes local-dev vars onto the selected env without dropping committed var
 	} finally {
 		await rm(dir, { recursive: true, force: true })
 	}
+})
+
+test('Stripe simulator config is restricted to the isolated test runner', () => {
+	const values = {
+		KODY_E2E_WEB_SERVER: '1',
+		CLOUDFLARE_ENV: 'test',
+		KODY_E2E_STRIPE_TOKEN: 'sk_test_e2e_fixture',
+		STRIPE_API_BASE_URL: 'http://127.0.0.1:1234',
+		STRIPE_SECRET_KEY: 'never-use-live-key',
+	}
+	expect(collectLocalOriginDevVars(values)).toMatchObject({
+		STRIPE_SECRET_KEY: 'sk_test_e2e_fixture',
+		STRIPE_API_BASE_URL: 'http://127.0.0.1:1234',
+	})
+	expect(
+		collectLocalOriginDevVars({ ...values, CLOUDFLARE_ENV: 'production' }),
+	).not.toHaveProperty('STRIPE_SECRET_KEY')
+	expect(() =>
+		collectLocalOriginDevVars({
+			...values,
+			STRIPE_API_BASE_URL: 'https://api.stripe.com',
+		}),
+	).toThrow('loopback')
 })

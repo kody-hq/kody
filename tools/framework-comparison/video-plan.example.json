@@ -1,0 +1,171 @@
+{
+	"accessFile": "/private/tmp/kody-private-access/headers.json",
+	"accountFile": "/private/tmp/kody-video-account.json",
+	"outputDirectory": "/private/tmp/kody-video-comparison-run-1",
+	"captureDevice": "4",
+	"actionTimeoutMs": 5000,
+	"durationMs": 176000,
+	"targets": [
+		{
+			"label": "remix",
+			"origin": "https://kody-branch-compare-remix.thetanstack.workers.dev",
+			"deploymentVersion": "RECORD_BEFORE_RUNNING"
+		},
+		{
+			"label": "start",
+			"origin": "https://kody-branch-compare-start.thetanstack.workers.dev",
+			"deploymentVersion": "RECORD_BEFORE_RUNNING"
+		}
+	],
+	"steps": [
+		{
+			"id": "cold-home",
+			"atMs": 2000,
+			"action": "open",
+			"path": "/"
+		},
+		{
+			"id": "docs-first",
+			"atMs": 8000,
+			"action": "navigate",
+			"path": "/docs",
+			"heading": "What is Kody?"
+		},
+		{
+			"id": "pricing-first",
+			"atMs": 16000,
+			"action": "navigate",
+			"path": "/pricing",
+			"heading": "Start free. Pay when Kody earns it."
+		},
+		{
+			"id": "blog-first",
+			"atMs": 24000,
+			"action": "navigate",
+			"path": "/blog",
+			"heading": "Notes from the eucalyptus"
+		},
+		{
+			"id": "docs-revisit",
+			"atMs": 32000,
+			"action": "navigate",
+			"path": "/docs",
+			"heading": "What is Kody?"
+		},
+		{
+			"id": "blog-revisit",
+			"atMs": 40000,
+			"action": "navigate",
+			"path": "/blog",
+			"heading": "Notes from the eucalyptus"
+		},
+		{
+			"id": "login-page",
+			"atMs": 48000,
+			"action": "navigate",
+			"path": "/login",
+			"field": "Email"
+		},
+		{
+			"id": "login",
+			"atMs": 56000,
+			"action": "login"
+		},
+		{
+			"id": "profile-first",
+			"atMs": 64000,
+			"action": "navigate",
+			"path": "/@{username}"
+		},
+		{
+			"id": "account-before-save",
+			"atMs": 72000,
+			"action": "navigate",
+			"path": "/account",
+			"field": "Display name"
+		},
+		{
+			"id": "profile-save",
+			"atMs": 80000,
+			"action": "profile-fast-visit",
+			"value": "Video comparison saved"
+		},
+		{
+			"id": "account-after-save",
+			"atMs": 88000,
+			"action": "navigate",
+			"path": "/account",
+			"field": "Display name"
+		},
+		{
+			"id": "jobs-first",
+			"atMs": 96000,
+			"action": "navigate",
+			"path": "/account/jobs",
+			"heading": "Jobs"
+		},
+		{
+			"id": "retention-save",
+			"atMs": 104000,
+			"action": "retention",
+			"value": 15
+		},
+		{
+			"id": "memories-first",
+			"atMs": 112000,
+			"action": "navigate",
+			"path": "/account/memories",
+			"heading": "Memories"
+		},
+		{
+			"id": "waiting-first",
+			"atMs": 120000,
+			"action": "navigate",
+			"path": "/account/waiting",
+			"heading": "Waiting"
+		},
+		{
+			"id": "jobs-revisit",
+			"atMs": 128000,
+			"action": "navigate",
+			"path": "/account/jobs",
+			"heading": "Jobs",
+			"expectRetention": 15
+		},
+		{
+			"id": "account-revisit",
+			"atMs": 136000,
+			"action": "navigate",
+			"path": "/account",
+			"field": "Display name"
+		},
+		{
+			"id": "other-tab-save",
+			"atMs": 144000,
+			"action": "second-tab-profile",
+			"value": "Video comparison other tab"
+		},
+		{
+			"id": "focus-refresh",
+			"atMs": 152000,
+			"action": "return-main",
+			"value": "Video comparison other tab",
+			"freshnessTimeoutMs": 3000
+		},
+		{
+			"id": "jobs-third",
+			"atMs": 160000,
+			"action": "navigate",
+			"path": "/account/jobs",
+			"heading": "Jobs",
+			"expectRetention": 15
+		},
+		{
+			"id": "account-third",
+			"atMs": 168000,
+			"action": "navigate",
+			"path": "/account",
+			"field": "Display name"
+		}
+	]
+}

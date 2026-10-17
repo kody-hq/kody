@@ -56,8 +56,8 @@ type GiftUserRow = {
 }
 
 /**
- * Safe evaluator for authorize completion and grant-list pages. Missing
- * `prepare` skips both write and read. A failed listing or an ecosystem
+ * Safe evaluator for authorize completion. Website reads load the persisted ledger.
+ * Missing `prepare` skips both write and read. A failed listing or an ecosystem
  * count below 2 skips the write but still returns the persisted ledger so
  * `/onboarding.json` does not hide an already-granted gift.
  */
@@ -171,18 +171,26 @@ export async function evaluateSecondAgentStandardGift(input: {
 				     second_agent_standard_gift_expires_at = ?,
 				     updated_at = ?`,
 		values: [grantedAt, write.expiresAt, updatedAt],
-		orgWhereSuffix: ' AND second_agent_standard_gift_granted_at IS NULL',
+		orgWhereSuffix: ` AND second_agent_standard_gift_granted_at IS NULL
+			AND deleting_at IS NULL
+			AND EXISTS (
+				SELECT 1 FROM users u
+				WHERE (u.stable_user_id = ? OR u.personal_org_id = ?)
+				AND ${personalOrgIdSql} = orgs.id
+				${andLiveDeletedAtSql('u')} AND u.deleting_at IS NULL
+			)`,
+		orgWhereValues: [input.stableUserId, input.stableUserId],
 	})
 
 	if ((updated?.meta.changes ?? 0) === 0) {
-		return {
-			outcome: 'already_granted',
-			gift: await loadSecondAgentStandardGift(
-				input.db,
-				input.stableUserId,
-				now,
-			),
-		}
+		const gift = await loadSecondAgentStandardGift(
+			input.db,
+			input.stableUserId,
+			now,
+		)
+		return gift.received
+			? { outcome: 'already_granted', gift }
+			: { outcome: 'no_user' }
 	}
 
 	return {

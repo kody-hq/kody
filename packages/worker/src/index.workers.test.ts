@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import * as Sentry from '@sentry/cloudflare'
 import { env, runInDurableObject } from 'cloudflare:test'
 import type * as SystemEmail from '#worker/email/system-email.ts'
+import type * as SecondAgentGiftReconciliation from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import type * as D1StorageReconciliation from '#worker/entitlements/d1-storage-reconciliation.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
@@ -52,6 +53,13 @@ const mocks = vi.hoisted(() => ({
 		updated: 0,
 		failed: 0,
 	})),
+	reconcileSecondAgentStandardGifts: vi.fn(
+		async (
+			_input: Parameters<
+				typeof SecondAgentGiftReconciliation.reconcileSecondAgentStandardGifts
+			>[0],
+		) => ({ scanned: 0, granted: 0, failed: 0 }),
+	),
 	reconcileD1StorageBytes: vi.fn(
 		async (
 			_input: Parameters<
@@ -109,6 +117,10 @@ vi.mock('#worker/admin/insights-runlog-snapshot.ts', () => ({
 
 vi.mock('#worker/storage-buckets/estimate-backfill.ts', () => ({
 	backfillStorageBucketEstimates: mocks.backfillStorageBucketEstimates,
+}))
+
+vi.mock('#worker/entitlements/second-agent-gift-reconciliation.ts', () => ({
+	reconcileSecondAgentStandardGifts: mocks.reconcileSecondAgentStandardGifts,
 }))
 
 vi.mock('#worker/entitlements/d1-storage-reconciliation.ts', () => ({
@@ -169,6 +181,7 @@ test('platform lanes execute with their expected inputs and jobs-owned lanes are
 		'system_email_retention',
 		'storage_bucket_estimate_backfill',
 		'd1_storage_reconciliation',
+		'second_agent_gift_reconciliation',
 		'retention',
 		'usage_aggregation',
 		'auth_denial_alert',
@@ -214,6 +227,9 @@ test('platform lanes execute with their expected inputs and jobs-owned lanes are
 		env,
 		now: scheduledAt,
 	})
+	expect(
+		mocks.reconcileSecondAgentStandardGifts,
+	).toHaveBeenCalledExactlyOnceWith({ env, now: scheduledAt })
 	expect(mocks.reconcileD1StorageBytes).toHaveBeenCalledTimes(1)
 	const reconciliationInput = mocks.reconcileD1StorageBytes.mock.calls[0]?.[0]
 	expect(reconciliationInput?.db).toBe(env.APP_DB)

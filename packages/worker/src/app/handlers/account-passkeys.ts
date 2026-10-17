@@ -1,148 +1,20 @@
-import { jsonResponse } from '#worker/json-response.ts'
-import { type Action } from 'remix/router'
-import { enum_, object, optional, parseSafe, string } from 'remix/data-schema'
-import {
-	auditDatabaseFromEnv,
-	getRequestIp,
-	logAuditEvent,
-} from '#worker/audit-log.ts'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildDefaultPasskeyName,
 	validatePasskeyName,
 } from '#app/passkey-label.ts'
-import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
 import {
 	deletePasskeyForUser,
 	listPasskeysForUser,
 	renamePasskeyForUser,
 	type PasskeyRow,
 } from '#app/passkeys.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { type AccountPasskeysLoaderData } from '#universal/loader-data.ts'
-import { type routes } from '#universal/routes.ts'
-
-export function createAccountPasskeysHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await requireAuthenticatedPageUser(request, env)
-			if (user instanceof Response) {
-				return user
-			}
-
-			// Embed the same payload the .json endpoint serves so the page
-			// server-renders its real state instead of "Loading passkeys…"
-			// plus a client fetch.
-			return renderAppPage({
-				request,
-				env,
-				title: 'Passkeys',
-				loaderData: {
-					accountPasskeys: await loadPasskeysPayload(env.APP_DB, user.userId),
-				},
-			})
-		},
-	} satisfies Action<typeof routes.accountPasskeys>
-}
-
-const passkeyActionSchema = object({
-	intent: enum_(['delete', 'rename'] as const),
-	passkeyId: string(),
-	name: optional(string()),
-})
-
-export function createAccountPasskeysApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-
-			if (request.method === 'GET') {
-				return jsonResponse(await loadPasskeysPayload(env.APP_DB, user.userId))
-			}
-
-			if (request.method !== 'POST') {
-				return jsonResponse({ ok: false, error: 'Method not allowed.' }, 405)
-			}
-
-			const body = await request.json().catch(() => null)
-			const parsed = parseSafe(passkeyActionSchema, body)
-			if (!parsed.success) {
-				return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
-			}
-
-			const requestIp = getRequestIp(request) ?? undefined
-			const intent = parsed.value.intent
-
-			switch (intent) {
-				case 'delete': {
-					const deleted = await deletePasskeyForUser(
-						env.APP_DB,
-						parsed.value.passkeyId,
-						user.userId,
-					)
-					if (!deleted) {
-						return jsonResponse({ ok: false, error: 'Passkey not found.' }, 404)
-					}
-
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'account',
-						action: 'passkey_delete',
-						result: 'success',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-					})
-					return jsonResponse(
-						await loadPasskeysPayload(env.APP_DB, user.userId),
-					)
-				}
-				case 'rename': {
-					const validated = validatePasskeyName(parsed.value.name)
-					if (!validated.ok) {
-						return jsonResponse({ ok: false, error: validated.error }, 400)
-					}
-
-					const renamed = await renamePasskeyForUser(
-						env.APP_DB,
-						parsed.value.passkeyId,
-						user.userId,
-						validated.name,
-					)
-					if (!renamed) {
-						return jsonResponse({ ok: false, error: 'Passkey not found.' }, 404)
-					}
-
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'account',
-						action: 'passkey_rename',
-						result: 'success',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-					})
-					return jsonResponse(
-						await loadPasskeysPayload(env.APP_DB, user.userId),
-					)
-				}
-				default: {
-					const _exhaustive: never = intent
-					void _exhaustive
-					return jsonResponse(
-						{ ok: false, error: 'Invalid request body.' },
-						400,
-					)
-				}
-			}
-		},
-	} satisfies Action<typeof routes.accountPasskeysApi>
-}
+import {
+	auditDatabaseFromEnv,
+	getRequestIp,
+	logAuditEvent,
+} from '#worker/audit-log.ts'
 
 function displayPasskeyName(passkey: PasskeyRow) {
 	const stored = passkey.name.trim()
@@ -153,7 +25,7 @@ function displayPasskeyName(passkey: PasskeyRow) {
 	})
 }
 
-async function loadPasskeysPayload(
+export async function loadPasskeysPayload(
 	db: D1Database,
 	userId: number,
 ): Promise<AccountPasskeysLoaderData> {
@@ -169,4 +41,81 @@ async function loadPasskeysPayload(
 			lastUsedAt: passkey.last_used_at,
 		})),
 	}
+}
+
+export async function deleteAccountPasskey({
+	env,
+	request,
+	user,
+	passkeyId,
+}: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	passkeyId: string
+}) {
+	const requestIp = getRequestIp(request) ?? undefined
+	const deleted = await deletePasskeyForUser(env.APP_DB, passkeyId, user.userId)
+	if (!deleted) {
+		return {
+			ok: false,
+			code: 'not_found' as const,
+			error: 'Passkey not found.',
+		}
+	}
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'passkey_delete',
+		result: 'success',
+		email: user.email,
+		ip: requestIp,
+		path: '/account/passkeys',
+	})
+	return { ok: true as const }
+}
+export async function renameAccountPasskey({
+	env,
+	request,
+	user,
+	passkeyId,
+	name,
+}: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	passkeyId: string
+	name?: string
+}) {
+	const requestIp = getRequestIp(request) ?? undefined
+	const validated = validatePasskeyName(name)
+	if (!validated.ok) {
+		return { ok: false, error: validated.error }
+	}
+
+	const renamed = await renamePasskeyForUser(
+		env.APP_DB,
+		passkeyId,
+		user.userId,
+		validated.name,
+	)
+	if (!renamed) {
+		return {
+			ok: false,
+			code: 'not_found' as const,
+			error: 'Passkey not found.',
+		}
+	}
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'passkey_rename',
+		result: 'success',
+		email: user.email,
+		ip: requestIp,
+		path: '/account/passkeys',
+	})
+	return { ok: true as const }
 }

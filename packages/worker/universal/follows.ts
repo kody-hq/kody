@@ -15,10 +15,6 @@ export type FollowPauseReason = (typeof followPauseReasons)[number]
 export const followCreateLimitPerHour = 30
 export const followPausedRetentionDays = 30
 
-export function isFollowEvent(value: unknown): value is FollowEvent {
-	return value === 'published' || value === 'pushed'
-}
-
 export function isFollowPauseReason(
 	value: unknown,
 ): value is FollowPauseReason {
@@ -102,12 +98,6 @@ export function followPausedDeleteAt(pausedAt: string | null) {
 
 export type FollowTargetKindName = 'package' | 'repo'
 
-export function isFollowTargetKindName(
-	value: unknown,
-): value is FollowTargetKindName {
-	return value === 'package' || value === 'repo'
-}
-
 type FollowStatusName = 'active' | 'paused'
 
 /** One org's follow of one target, as the web UI shows it. */
@@ -119,7 +109,7 @@ export type FollowSummary = {
 	lastDeliverySkipReason: string | null
 }
 
-/** `GET /profiles/:username/packages/:kodyId/follow.json`. */
+/** Authorized target and workspace choices returned by loadPackageFollow. */
 export type PackageFollowStatePayload = {
 	ok: true
 	target: { name: string; kind: FollowTargetKindName }
@@ -156,32 +146,17 @@ export type OrgFollowsLoaderData = {
 	follows: Array<OrgFollowRow>
 }
 
-/** Body of `POST /@:orgSlug/-/follows.json`. */
-export type OrgFollowsPostBody =
-	| {
-			intent: 'follow'
-			name: string
-			kind: FollowTargetKindName
-			/** Omit to keep the current choice (both events for a new follow). */
-			events?: Array<FollowEvent>
-	  }
-	/** Resume a listed follow by id; the name it was stored under may be stale. */
-	| { intent: 'follow'; id: string }
-	| { intent: 'unfollow'; id: string }
-	| { intent: 'unfollow'; name: string; kind: FollowTargetKindName }
-
-type OrgFollowsPostErrorCode =
+type FollowOperationErrorCode =
 	| 'invalid'
 	| 'not_found'
 	| 'rate_limited'
 	| 'unauthorized'
 
-export type OrgFollowsPostPayload =
+export type FollowOperationResult =
 	| {
 			ok: true
-			intent: 'follow' | 'unfollow'
 			name: string
 			kind: FollowTargetKindName
 			follow: FollowSummary | null
 	  }
-	| { ok: false; code: OrgFollowsPostErrorCode; error: string }
+	| { ok: false; code: FollowOperationErrorCode; error: string }

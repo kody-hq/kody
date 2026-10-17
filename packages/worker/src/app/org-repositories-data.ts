@@ -12,15 +12,6 @@ import { type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { type ProfileLoaderData } from '#universal/loader-data.ts'
 
-const maxOrgRepositoriesLimit = 100
-
-function readOptionalLimit(raw: string | null) {
-	if (raw == null || raw === '') return undefined
-	const parsed = Number.parseInt(raw, 10)
-	if (!Number.isFinite(parsed) || parsed < 1) return undefined
-	return Math.min(parsed, maxOrgRepositoriesLimit)
-}
-
 /**
  * Repositories owned by a team org (`saved_packages` and `user_repos` with
  * `user_id = org.id`), for `/@slug/-/repositories`. Packages pass `canSeeResource`
@@ -30,15 +21,15 @@ function readOptionalLimit(raw: string | null) {
  */
 export async function loadOrgRepositoriesData(input: {
 	env: Env
-	request: Request
+	query: string
+	limit?: number
 	user: { mcpUser: McpUserContext }
 	binding: OrgBinding
 }): Promise<ProfileLoaderData> {
 	const orgId = input.binding.org.id
 	const slug = input.binding.org.slug ?? ''
-	const url = new URL(input.request.url)
-	const query = url.searchParams.get('q')?.trim() ?? ''
-	const limit = readOptionalLimit(url.searchParams.get('limit'))
+	const query = input.query.trim()
+	const limit = input.limit
 	const [org, access, repositories] = await Promise.all([
 		input.env.APP_DB.prepare(
 			`SELECT display_name, avatar_key, created_at FROM orgs WHERE id = ? AND deleted_at IS NULL`,

@@ -29,7 +29,9 @@ export type ProvisionedDefaultInbox = {
  */
 export async function ensureDefaultEmailInbox(input: {
 	db: D1Database
+	// Mailbox owner, which may differ from the person who owns sender identities.
 	userId: string
+	actorPersonId: string
 	username: string
 	domain: string
 }): Promise<ProvisionedDefaultInbox | null> {
@@ -39,7 +41,7 @@ export async function ensureDefaultEmailInbox(input: {
 	})
 	await ensurePlatformSenderIdentity({
 		db: input.db,
-		userId: input.userId,
+		userId: input.actorPersonId,
 		email: address,
 		domain: input.domain,
 	})

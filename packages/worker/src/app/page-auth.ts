@@ -29,14 +29,16 @@ export async function requirePageSession(
 export async function requireAuthenticatedPageUser(
 	request: Request,
 	env: Env,
+	options: { redirectTo?: string; resourceRequest?: Request } = {},
 ): Promise<AuthenticatedAppUser | Response> {
 	const { session } = await readAuthSessionResult(request)
 	if (!session) {
-		return redirectToLogin(request)
+		return redirectToLogin(request, options)
 	}
 
 	const user = await readAuthenticatedAppUser(request, env, {
 		prefetchFeatureFlags: true,
+		resourceRequest: options.resourceRequest,
 	})
 	if (user) {
 		return user
@@ -45,11 +47,12 @@ export async function requireAuthenticatedPageUser(
 	const resolved = await loadResolvedRequestAuth(request, env)
 	if (resolved.user?.accountDeleting) {
 		return redirectToLogin(request, {
+			...options,
 			setCookie: await destroyAuthCookie(isSecureRequest(request)),
 		})
 	}
 
-	return redirectToLoginWhenUnauthenticated(request, env)
+	return redirectToLoginWhenUnauthenticated(request, env, options)
 }
 
 export async function requirePageUserWithRole(

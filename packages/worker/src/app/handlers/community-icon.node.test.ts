@@ -55,7 +55,7 @@ const listing = {
 
 function callHandler(iconCommit = listing.iconCommit) {
 	const handler = createCommunityIconHandler({ APP_DB: {} } as Env)
-	return handler.handler({
+	return handler({
 		request: new Request(
 			`https://example.com/community/${listing.id}/icon/${iconCommit}`,
 		),

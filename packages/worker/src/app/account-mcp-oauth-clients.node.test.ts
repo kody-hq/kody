@@ -1,7 +1,7 @@
-import { expect, test, vi } from 'vitest'
-import { DatabaseSync } from 'node:sqlite'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 import {
 	listActiveUserMcpOauthClientIds,
 	listUserMcpOauthClients,

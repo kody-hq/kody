@@ -1,7 +1,14 @@
+import {
+	dismissAdminCommunityReport,
+	delistAdminCommunityReport,
+	deleteAdminCommunityReport,
+	banAdminReportReporter,
+	banAdminReportOwner,
+} from '#worker/admin/community-reports-operations.ts'
+import { type CommunityReportRecord } from '#worker/community/types.ts'
+import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { createAdminCommunityReportsApiHandler } from './admin-community-reports.ts'
-import { type CommunityReportRecord } from '#worker/community/types.ts'
 
 const mockModule = vi.hoisted(() => ({
 	requireUserWithRole: vi.fn(),
@@ -57,23 +64,39 @@ test('admin community reports POST dispatches moderation intents', async () => {
 	mockModule.resolveCommunityReport.mockResolvedValue(undefined)
 	mockModule.banCommunityUser.mockResolvedValue(undefined)
 
-	const handler = createAdminCommunityReportsApiHandler(env)
+	const mutate = (body: {
+		intent: 'dismiss' | 'delist' | 'delete' | 'ban_reporter' | 'ban_reportee'
+		reportId: string
+		note?: string
+	}) =>
+		adminOperationOutcome(() => {
+			const { intent, ...fields } = body
+			const input = {
+				env,
+				request: new Request('https://example.com/admin/community-reports'),
+				...fields,
+			}
+			switch (intent) {
+				case 'dismiss':
+					return dismissAdminCommunityReport(input)
+				case 'delist':
+					return delistAdminCommunityReport(input)
+				case 'delete':
+					return deleteAdminCommunityReport(input)
+				case 'ban_reporter':
+					return banAdminReportReporter(input)
+				case 'ban_reportee':
+					return banAdminReportOwner(input)
+			}
+		})
 
-	const dismiss = await handler.handler({
-		request: new Request('https://example.com/admin/community-reports.json', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				intent: 'dismiss',
-				reportId: 'report-1',
-				note: 'Looks fine',
-			}),
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/community-reports.json'),
-	} as never)
+	const dismiss = await mutate({
+		intent: 'dismiss',
+		reportId: 'report-1',
+		note: 'Looks fine',
+	})
 	expect(dismiss.status).toBe(200)
-	expect(await dismiss.json()).toEqual({ ok: true })
+	expect(dismiss.data).toEqual({ ok: true })
 	expect(mockModule.resolveCommunityReport).toHaveBeenCalledWith({
 		env,
 		adminUserId: 'admin-mcp-id',
@@ -86,18 +109,10 @@ test('admin community reports POST dispatches moderation intents', async () => {
 	mockModule.resolveCommunityReport.mockClear()
 	mockModule.banCommunityUser.mockClear()
 
-	const banReporter = await handler.handler({
-		request: new Request('https://example.com/admin/community-reports.json', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				intent: 'ban_reporter',
-				reportId: 'report-1',
-			}),
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/community-reports.json'),
-	} as never)
+	const banReporter = await mutate({
+		intent: 'ban_reporter',
+		reportId: 'report-1',
+	})
 	expect(banReporter.status).toBe(200)
 	expect(mockModule.banCommunityUser).toHaveBeenCalledWith({
 		env,
@@ -109,19 +124,11 @@ test('admin community reports POST dispatches moderation intents', async () => {
 
 	mockModule.banCommunityUser.mockClear()
 
-	const banReportee = await handler.handler({
-		request: new Request('https://example.com/admin/community-reports.json', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				intent: 'ban_reportee',
-				reportId: 'report-1',
-				note: 'Repeated abuse',
-			}),
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/community-reports.json'),
-	} as never)
+	const banReportee = await mutate({
+		intent: 'ban_reportee',
+		reportId: 'report-1',
+		note: 'Repeated abuse',
+	})
 	expect(banReportee.status).toBe(200)
 	expect(mockModule.banCommunityUser).toHaveBeenCalledWith({
 		env,
@@ -132,18 +139,10 @@ test('admin community reports POST dispatches moderation intents', async () => {
 
 	mockModule.resolveCommunityReport.mockClear()
 
-	await handler.handler({
-		request: new Request('https://example.com/admin/community-reports.json', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				intent: 'delete',
-				reportId: 'report-1',
-			}),
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/community-reports.json'),
-	} as never)
+	await mutate({
+		intent: 'delete',
+		reportId: 'report-1',
+	})
 
 	expect(mockModule.resolveCommunityReport).toHaveBeenCalledWith({
 		env,

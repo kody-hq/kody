@@ -1,4 +1,3 @@
-import { createMatcher, createMultiMatcher } from 'remix/route-pattern/match'
 import {
 	classifyPackageFileMedia,
 	type PackageFilesContentKind,
@@ -126,89 +125,6 @@ export function packageFileLanguageLabel(path: string | null | undefined) {
 	if (javascriptExtensions.has(extension)) return 'JavaScript'
 	const language = languageFromFilePath(path)
 	return languageLabels[language] ?? language
-}
-
-/**
- * The `/files` explorer routes, in every public shape.
- */
-const packageFilesPathMatcher = (() => {
-	const matcher = createMultiMatcher<true>()
-	matcher.add(routes.communityPackageTree.pattern, true)
-	matcher.add(routes.communityPackageFiles.pattern, true)
-	matcher.add(routes.communityDetailFiles.pattern, true)
-	matcher.add(routes.accountPackageFiles.pattern, true)
-	return matcher
-})()
-
-export function isPackageFilesPathname(pathname: string) {
-	return (
-		packageFilesPathMatcher.match(new URL(pathname, 'http://localhost')) != null
-	)
-}
-
-/**
- * Every package detail tab (Repo / Files / Settings, plus listing-uuid and
- * account-files shapes). The app shell asks this so `<main>` stays unpadded:
- * these pages share `packageDetailPageCss` and own their gutters. Files used
- * to be the only special case; treating all tabs the same keeps width and
- * background consistent when switching.
- */
-const packageDetailPathMatcher = (() => {
-	const matcher = createMultiMatcher<true>()
-	matcher.add(routes.communityPackage.pattern, true)
-	matcher.add(routes.communityPackageSettings.pattern, true)
-	matcher.add(routes.communityPackageCollaborators.pattern, true)
-	matcher.add(routes.communityPackageTree.pattern, true)
-	matcher.add(routes.communityPackageFiles.pattern, true)
-	matcher.add(routes.communityDetail.pattern, true)
-	matcher.add(routes.communityDetailFiles.pattern, true)
-	matcher.add(routes.accountPackageFiles.pattern, true)
-	return matcher
-})()
-
-export function isPackageDetailPathname(pathname: string) {
-	return (
-		packageDetailPathMatcher.match(new URL(pathname, 'http://localhost')) !=
-		null
-	)
-}
-
-const packageRepoChromeMatchers = [
-	createMatcher(routes.communityPackage.pattern),
-	createMatcher(routes.communityPackageSettings.pattern),
-	createMatcher(routes.communityPackageTree.pattern),
-	createMatcher(routes.communityPackageFiles.pattern),
-	createMatcher(routes.communityPackageCredentials.pattern),
-	createMatcher(routes.communityPackageMappings.pattern),
-	createMatcher(routes.communityPackageTriggers.pattern),
-	createMatcher(routes.communityPackageCollaborators.pattern),
-] as const
-
-/**
- * Same `@owner/name` Repo / Files / Settings chrome. Tab clicks should not
- * run a page view-transition — the previous tab stays until the next
- * loader commits.
- */
-export function getPackageRepoChromeKey(pathname: string) {
-	const url = new URL(pathname, 'http://localhost')
-	for (const matcher of packageRepoChromeMatchers) {
-		const match = matcher.match(url)
-		// `/@org/-/…` are org pages, not a package named `-`.
-		if (match && match.params.kodyId !== '-') {
-			return `${match.params.username.toLowerCase()}/${match.params.kodyId.toLowerCase()}`
-		}
-	}
-	return null
-}
-
-export function isSamePackageRepoChromeHref(from: string, to: string) {
-	const fromKey = getPackageRepoChromeKey(
-		new URL(from, 'http://localhost').pathname,
-	)
-	const toKey = getPackageRepoChromeKey(
-		new URL(to, 'http://localhost').pathname,
-	)
-	return fromKey != null && fromKey === toKey
 }
 
 export function isReservedPackageFilesKodyId(kodyId: string) {

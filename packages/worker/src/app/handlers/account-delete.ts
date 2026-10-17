@@ -1,21 +1,19 @@
-import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type Action } from 'remix/router'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
+import { isAccountDeletionConfirmation } from '#universal/account-deletion-confirmation.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { readAuthenticatedAppUserForDeletion } from '#app/authenticated-user.ts'
-import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
-import { isAccountDeletionConfirmation } from '#universal/account-deletion-confirmation.ts'
-import { type routes } from '#universal/routes.ts'
+import { createDb, usersTable } from '#worker/db.ts'
+import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
+import { isUsablePasswordHash } from '#worker/identity/usable-password.ts'
 import {
 	UserDeleteBlockedSoleOwnerError,
 	softDeleteUserAccount,
 } from '#worker/orgs/soft-delete.ts'
-import { createDb, usersTable } from '#worker/db.ts'
-import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
-import { isUsablePasswordHash } from '#worker/identity/usable-password.ts'
+import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { verifyPassword } from '@kody-internal/shared/password-hash.ts'
 
 function readDeleteRequestFields(body: unknown) {
@@ -30,159 +28,133 @@ function readDeleteRequestFields(body: unknown) {
 	}
 }
 
-export function createAccountDeleteHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const requestIp = getRequestIp(request) ?? undefined
-			const user = await readAuthenticatedAppUserForDeletion(request, env)
-			if (!user) {
-				return Response.json(
-					{ error: 'Authentication required.' },
-					{ status: 401 },
-				)
-			}
+export async function deleteAccount({
+	env,
+	request,
+	user,
+	body,
+}: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	body: unknown
+}) {
+	const requestIp = getRequestIp(request) ?? undefined
+	const url = new URL(request.url)
+	const { confirmation, password } = readDeleteRequestFields(body)
+	if (!confirmation || !isAccountDeletionConfirmation(confirmation)) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'account_delete',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: 'invalid_confirmation',
+		})
+		return {
+			status: 400,
+			payload: {
+				error: 'Account deletion requires typing GOODBYE KODY to confirm.',
+			},
+		}
+	}
 
-			let body: unknown
-			try {
-				body = await request.json()
-			} catch {
-				return Response.json(
-					{ error: 'Invalid JSON payload.' },
-					{ status: 400 },
-				)
-			}
+	const db = createDb(env.APP_DB)
+	const userRow = await db.findOne(usersTable, {
+		where: { id: user.userId },
+	})
+	if (!userRow) {
+		return { status: 404, payload: { error: 'User not found.' } }
+	}
 
-			const { confirmation, password } = readDeleteRequestFields(body)
-			if (!confirmation || !isAccountDeletionConfirmation(confirmation)) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'auth',
-					action: 'account_delete',
-					result: 'failure',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-					reason: 'invalid_confirmation',
-				})
-				return Response.json(
-					{
-						error: 'Account deletion requires typing GOODBYE KODY to confirm.',
-					},
-					{ status: 400 },
-				)
-			}
-
-			const db = createDb(env.APP_DB)
-			const userRow = await db.findOne(usersTable, {
-				where: { id: user.userId },
-			})
-			if (!userRow) {
-				return Response.json({ error: 'User not found.' }, { status: 404 })
-			}
-
-			if (isUsablePasswordHash(userRow.password_hash)) {
-				if (!password) {
-					return Response.json(
-						{
-							error:
-								'Account deletion requires re-entering the current password.',
-						},
-						{ status: 400 },
-					)
-				}
-				const passwordValid = await verifyPassword(
-					password,
-					userRow.password_hash,
-				)
-				if (!passwordValid) {
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'auth',
-						action: 'account_delete',
-						result: 'failure',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-						reason: 'invalid_password',
-					})
-					return Response.json(
-						{ error: 'Current password did not match.' },
-						{ status: 401 },
-					)
-				}
-			}
-
-			let result: Awaited<ReturnType<typeof softDeleteUserAccount>>
-			try {
-				result = await softDeleteUserAccount({
-					env,
-					// person-keyed (not personal org)
-					userId: personalOrgId(user.mcpUser.userId),
-					actorUserId: personalOrgId(user.mcpUser.userId),
-					actorUsername: user.username,
-				})
-			} catch (error) {
-				if (error instanceof UserDeleteBlockedSoleOwnerError) {
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'auth',
-						action: 'account_delete',
-						result: 'failure',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-						reason: 'sole_owner_with_members',
-					})
-					const orgList = error.blockers
-						.map((blocker) => `@${blocker.orgSlug}`)
-						.join(', ')
-					return Response.json(
-						{
-							error: `Account deletion is blocked while you are the only Owner of ${orgList}. Promote another Owner or remove the other members first.`,
-							blockers: error.blockers,
-						},
-						{ status: 409 },
-					)
-				}
-				throw error
-			}
-
-			scheduleUserDeletedEvent({
-				env,
-				user: {
-					id: personalOrgId(user.mcpUser.userId),
-					username: user.username,
-					email: user.email,
+	if (isUsablePasswordHash(userRow.password_hash)) {
+		if (!password) {
+			return {
+				status: 400,
+				payload: {
+					error: 'Account deletion requires re-entering the current password.',
 				},
-			})
-
+			}
+		}
+		const passwordValid = await verifyPassword(password, userRow.password_hash)
+		if (!passwordValid) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',
 				action: 'account_delete',
-				result: 'success',
+				result: 'failure',
 				email: user.email,
 				ip: requestIp,
 				path: url.pathname,
-				reason: 'soft_deleted',
+				reason: 'invalid_password',
 			})
+			return {
+				status: 401,
+				payload: { error: 'Current password did not match.' },
+			}
+		}
+	}
 
-			const headers = new Headers({ 'Content-Type': 'application/json' })
-			headers.set(
-				'Set-Cookie',
-				await destroyAuthCookie(isSecureRequest(request)),
-			)
+	let result: Awaited<ReturnType<typeof softDeleteUserAccount>>
+	try {
+		result = await softDeleteUserAccount({
+			env,
+			// Account deletion targets the person, not their personal org.
+			userId: personalOrgId(user.mcpUser.userId),
+			actorUserId: personalOrgId(user.mcpUser.userId),
+			actorUsername: user.username,
+		})
+	} catch (error) {
+		if (error instanceof UserDeleteBlockedSoleOwnerError) {
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'account_delete',
+				result: 'failure',
+				email: user.email,
+				ip: requestIp,
+				path: url.pathname,
+				reason: 'sole_owner_with_members',
+			})
+			const orgList = error.blockers
+				.map((blocker) => `@${blocker.orgSlug}`)
+				.join(', ')
+			return {
+				status: 409,
+				payload: {
+					error: `Account deletion is blocked while you are the only Owner of ${orgList}. Promote another Owner or remove the other members first.`,
+					blockers: error.blockers,
+				},
+			}
+		}
+		throw error
+	}
 
-			return new Response(
-				JSON.stringify({
-					ok: true,
-					softDeleted: true,
-					restoreWindowDays: 30,
-					...result,
-				}),
-				{ status: 200, headers },
-			)
+	scheduleUserDeletedEvent({
+		env,
+		user: {
+			id: personalOrgId(user.mcpUser.userId),
+			username: user.username,
+			email: user.email,
 		},
-	} satisfies Action<typeof routes.accountDelete>
+	})
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'auth',
+		action: 'account_delete',
+		result: 'success',
+		email: user.email,
+		ip: requestIp,
+		path: url.pathname,
+		reason: 'soft_deleted',
+	})
+
+	return {
+		status: 200,
+		payload: { ok: true, softDeleted: true, restoreWindowDays: 30, ...result },
+		sessionCookie: await destroyAuthCookie(isSecureRequest(request)),
+	}
 }

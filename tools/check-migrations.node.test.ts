@@ -660,3 +660,48 @@ test('the next free prefix skips open-PR claims and still allows gaps', () => {
 		'Next prefix free of this checkout and those claims: 0099.',
 	])
 })
+
+test('open PR claims cannot require renaming shipped migrations but still block new collisions', () => {
+	const migrationsDir = 'packages/worker/migrations'
+	const scan = {
+		status: 'ok' as const,
+		claims: [
+			{
+				number: 3768,
+				filenames: [
+					`${migrationsDir}/0142-other.sql`,
+					`${migrationsDir}/0143-other.sql`,
+				],
+			},
+		],
+	}
+	const input = {
+		migrationsDir,
+		localFilenames: ['0142-users-personal-org-id.sql', '0143-new-change.sql'],
+		trustedFilenames: ['0142-users-personal-org-id.sql'],
+		localNextPrefix: '0144',
+		scan,
+	}
+	const result = formatOpenPullRequestMigrationAdvisory(input)
+	expect(result.overlaps).toEqual([{ prefix: '0143', pullNumbers: [3768] }])
+	expect(
+		formatOpenPullRequestMigrationAdvisory({
+			...input,
+			localFilenames: input.trustedFilenames,
+		}).overlaps,
+	).toEqual([])
+	// Only exact trusted filenames qualify, never every file with a shipped prefix.
+	expect(
+		formatOpenPullRequestMigrationAdvisory({
+			...input,
+			localFilenames: ['0142-different-new-file.sql'],
+		}).overlaps,
+	).toEqual([{ prefix: '0142', pullNumbers: [3768] }])
+	// Without trusted history the check remains conservative.
+	expect(
+		formatOpenPullRequestMigrationAdvisory({
+			...input,
+			trustedFilenames: undefined,
+		}).overlaps,
+	).toHaveLength(2)
+})

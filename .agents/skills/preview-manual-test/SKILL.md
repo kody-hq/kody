@@ -17,7 +17,7 @@ Prefer [`control-kody`](../control-kody/SKILL.md) when you also need `doctor`,
 local login, Feature Map lookup, or a `/health` SHA check:
 
 ```bash
-npm run control-kody -- preview --pr 42 --request 'GET /onboarding.json' --check /onboarding/step-2
+npm run control-kody -- preview --pr 42 --request 'GET /session' --check /onboarding/step-2
 ```
 
 ## Command
@@ -33,21 +33,23 @@ assertions as the same logged-in user:
 
 ```bash
 npm run preview:manual-test -- \
-  --request 'POST /onboarding/checklist-dismiss.json {}' \
-  --request 'GET /onboarding.json' \
+  --request 'GET /session' \
   --check /onboarding/step-2
 ```
 
 `--request` spec:
 `METHOD /path [status] [json-body] [--dump] [--contains <text>]` (default
 success: 2xx). `--dump` / `--contains` match `control-kody request`, e.g.
-`--request 'GET /pricing --dump --contains Worker compute'`. Use the JSON APIs
-the UI uses (`/account/*.json` in `packages/worker/universal/routes.ts`).
-`GET /account/export.json` is a metadata manifest only — do not `--contains`
-user data there; verify rows with MCP `accountExportSection` via
-`control-kody execute` (see the contributing doc). For more authenticated HTTP
-after login, use `control-kody request` (`--dump` / `--contains` for HTML). Do
-not cat the session cookie into `curl` or Python.
+`--request 'GET /pricing --dump --contains Worker compute'`. Create fixtures
+through supported MCP capabilities with `control-kody execute` or the browser
+UI. Website-only reads and mutations use Start server functions; exercise those
+through the browser, not retired JSON action URLs. `/session`, `/auth`, and
+`/account/export.json` remain HTTP protocols. `GET /account/export.json` is a
+metadata manifest only — do not `--contains` user data there; verify rows with
+MCP `accountExportSection` via `control-kody execute` (see the contributing
+doc). For more authenticated HTTP after login, use `control-kody request`
+(`--dump` / `--contains` for HTML). Do not cat the session cookie into `curl` or
+Python.
 
 `--pr`, `--url`, `--no-wait`, `--skip-login`, `--help` as documented.
 
@@ -67,8 +69,12 @@ connection profiles:
 # node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
 #   --email me@kentcdodds.com --password ilikecode \
 #   --enable-flag connection-profiles
-npm run control-kody -- preview --pr 42 --request 'GET /account/connected-agents.json --dump --contains "connectionProfilesEnabled":true'
+npm run control-kody -- preview --pr 42 --check /account/connected-agents
 ```
+
+Open `/account/connected-agents` in the signed-in browser and verify the
+connection profile controls. A successful HTML check alone does not prove the
+flag-gated interaction works.
 
 `--enable-flag` with `--remote` fails unless the wrangler env is `preview`.
 

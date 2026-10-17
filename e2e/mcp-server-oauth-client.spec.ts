@@ -1,3 +1,4 @@
+import { addMcpServerThroughUi } from './account-fixtures.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
 test('an admin types, saves, replaces, and removes an MCP server OAuth client', async ({
@@ -15,16 +16,7 @@ test('an admin types, saves, replaces, and removes an MCP server OAuth client', 
 	await login({ email: user.email, password: user.password, mode: 'login' })
 
 	const serverName = `oauth-client-${runId}`
-	const added = await page.request.post('/account/mcp-servers.json', {
-		data: { action: 'add', name: serverName, url: 'http://127.0.0.1:9/mcp' },
-		headers: { 'Content-Type': 'application/json' },
-	})
-	expect(added.ok()).toBe(true)
-	const { servers } = (await added.json()) as {
-		servers: Array<{ id: string; name: string }>
-	}
-	const serverId = servers.find((server) => server.name === serverName)?.id
-	expect(serverId).toBeTruthy()
+	const serverId = await addMcpServerThroughUi(page, user.username, serverName)
 
 	await page.goto(`/@${user.username}/-/mcp-servers/${serverId}`)
 	await waitForClientHydration(page)

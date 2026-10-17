@@ -19,7 +19,6 @@ import {
 	onboardingStep2Prompt,
 	onboardingWizardStepHref,
 	onboardingWizardSteps,
-	parseOnboardingPathname,
 	portabilityGuideEntity,
 	remainingOnboardingWizardLabels,
 	resolveOnboardingFirstAgentKind,
@@ -89,22 +88,6 @@ test('the derived checklist covers verify-email plus each wizard step', () => {
 		'/community',
 	])
 
-	const parsed: Array<[string, 1 | 2 | 3, string | null, boolean]> = [
-		['/onboarding', 1, null, true],
-		['/onboarding/step-1/cursor', 1, 'cursor', true],
-		['/onboarding/step-1/not-listed', 1, 'other', true],
-		['/onboarding/step-2', 2, null, true],
-		['/onboarding/step-2/notion', 2, null, false],
-		['/onboarding/step-3', 3, null, true],
-		['/onboarding/step-3/claude-code', 3, 'claude-code', true],
-		['/onboarding/step-3/not-listed', 3, null, false],
-	]
-	expect(parsed.map(([path]) => [path, parseOnboardingPathname(path)])).toEqual(
-		parsed.map(([path, step, agent, valid]) => [path, { step, agent, valid }]),
-	)
-	expect(parseOnboardingPathname('/onboarding/step-1/nope')?.valid).toBe(false)
-	expect(parseOnboardingPathname('/onboarding/step-3/nope')?.valid).toBe(false)
-	expect(parseOnboardingPathname('/account')).toBeNull()
 	expect(onboardingWizardSteps.map((step) => step.path)).toEqual([
 		'/onboarding/step-1',
 		'/onboarding/step-2',

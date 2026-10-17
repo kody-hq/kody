@@ -1,3 +1,4 @@
+import { requestHasMutationDataFields } from './server-function-requests.ts'
 import { createHash, randomBytes } from 'node:crypto'
 import { type APIRequestContext } from '@playwright/test'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
@@ -93,12 +94,29 @@ test('GitHub-only account authorizes while already signed in', async ({
 		page.getByRole('button', { name: 'Continue with GitHub' }),
 	).toHaveCount(0)
 
+	const protocolPosts: string[] = []
+	page.on('request', (request) => {
+		if (
+			request.method() === 'POST' &&
+			new URL(request.url()).pathname === '/oauth/authorize'
+		)
+			protocolPosts.push(request.url())
+	})
+	const decisionSearch = new URL(page.url()).search
+	const decisionRequest = page.waitForRequest((request) =>
+		requestHasMutationDataFields(request, {
+			search: decisionSearch,
+		}),
+	)
 	await page.getByTestId('oauth-authorize-approve').click()
+	await decisionRequest
+
 	await expect(page).toHaveURL(
 		new RegExp(
 			`^${callbackRedirectUri.replace(/\./g, '\\.')}\\?.*code=.*state=${state}`,
 		),
 	)
+	expect(protocolPosts).toEqual([])
 })
 
 test('GitHub sign-in from authorize returns with OAuth params intact', async ({
@@ -118,8 +136,22 @@ test('GitHub sign-in from authorize returns with OAuth params intact', async ({
 		prompt: 'login',
 	})
 
+	const configReads: string[] = []
+	page.on('request', (request) => {
+		if (new URL(request.url()).pathname === '/auth/providers.json')
+			configReads.push(request.url())
+	})
 	await page.goto(authorizePath)
 	await waitForClientHydration(page)
+	await page.waitForLoadState('networkidle')
+	expect(configReads).toEqual([])
+	await expect(page.getByTestId('oauth-authorize-passkey')).toBeEnabled()
+	await page.getByRole('button', { name: 'Show password', exact: true }).click()
+	await expect(page.locator('input[name="password"]')).toHaveAttribute(
+		'type',
+		'text',
+	)
+	await page.getByRole('button', { name: 'Hide password', exact: true }).click()
 
 	await expect(
 		page.getByRole('heading', { name: 'Authorize access' }),
@@ -154,4 +186,134 @@ test('GitHub sign-in from authorize returns with OAuth params intact', async ({
 			`^${callbackRedirectUri.replace(/\./g, '\\.')}\\?.*code=.*state=${state}`,
 		),
 	)
+})
+
+for (const change of ['expired', 'switched'] as const) {
+	test(`consent reloads before approving when the session ${change}`, async ({
+		page,
+		request,
+		seedE2eUser,
+		login,
+	}) => {
+		const suffix = randomBytes(6).toString('hex')
+		const user = await seedE2eUser({
+			email: `consent-${suffix}@example.com`,
+			username: `consent-${suffix}`,
+			password: 'consent-session-password',
+		})
+		await login({ email: user.email, password: user.password, mode: 'login' })
+		const authorizePath = buildAuthorizePath({
+			clientId: await registerPublicClient(request),
+			verifier: createCodeVerifier(),
+			state: `identity-${suffix}`,
+		})
+		await page.goto(authorizePath)
+		await waitForClientHydration(page)
+		await expect(page.getByTestId('oauth-authorize-approve')).toBeVisible()
+
+		let nextUsername: string | undefined
+		if (change === 'expired') {
+			await page.context().clearCookies()
+		} else {
+			const other = await seedE2eUser({
+				email: `consent-other-${suffix}@example.com`,
+				username: `consent-other-${suffix}`,
+				password: 'consent-other-password',
+			})
+			nextUsername = other.username
+			await login({
+				email: other.email,
+				password: other.password,
+				mode: 'login',
+			})
+		}
+		const callbackRequests: string[] = []
+		page.on('request', (outgoing) => {
+			if (outgoing.url().startsWith(callbackRedirectUri)) {
+				callbackRequests.push(outgoing.url())
+			}
+		})
+		const reloaded = page.waitForRequest(
+			(outgoing) =>
+				outgoing.isNavigationRequest() &&
+				new URL(outgoing.url()).pathname === '/oauth/authorize',
+		)
+		await page.getByTestId('oauth-authorize-approve').click()
+		await reloaded
+		await expect(page).toHaveURL(
+			(url) => `${url.pathname}${url.search}` === authorizePath,
+		)
+		await waitForClientHydration(page)
+		if (nextUsername) {
+			await expect(
+				page.getByText(`Signed in as ${nextUsername}`, { exact: true }),
+			).toBeVisible()
+		} else {
+			await expect(page.locator('input[name="password"]')).toBeVisible()
+		}
+		expect(callbackRequests).toEqual([])
+	})
+}
+
+test('consent reset forwards both cookie deletions through Start and clears the legacy path', async ({
+	page,
+	request,
+	seedE2eUser,
+	login,
+}) => {
+	const suffix = randomBytes(6).toString('hex')
+	const user = await seedE2eUser({
+		email: `consent-reset-${suffix}@example.com`,
+		username: `consent-reset-${suffix}`,
+		password: 'consent-reset-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+	const params = new URLSearchParams(
+		buildAuthorizePath({
+			clientId: await registerPublicClient(request),
+			verifier: createCodeVerifier(),
+			state: `reset-${suffix}`,
+		}).split('?')[1],
+	)
+	// A genuine registered-URI mismatch is the existing reset eligibility path.
+	params.set('redirect_uri', 'https://example.com/changed-callback')
+	await page.goto(`/oauth/authorize?${params}`)
+	await waitForClientHydration(page)
+	const reset = page.getByRole('button', {
+		name: 'Reset this connection',
+		exact: true,
+	})
+	await expect(reset).toBeVisible()
+	const cookieName = 'kody_oauth_client_reset'
+	await page.context().addCookies(
+		['/', '/oauth'].map((path) => ({
+			name: cookieName,
+			value: `obsolete-${path === '/' ? 'root' : 'legacy'}`,
+			domain: new URL(page.url()).hostname,
+			path,
+			httpOnly: true,
+			sameSite: 'Lax' as const,
+		})),
+	)
+	const rpc = page.waitForRequest(
+		(outgoing) =>
+			outgoing.method() === 'POST' &&
+			requestHasMutationDataFields(outgoing, { search: `?${params}` }),
+	)
+	await reset.click()
+	const sent = await rpc
+	expect(await sent.headerValue('cookie')).toContain(
+		`${cookieName}=obsolete-root`,
+	)
+	expect(await sent.headerValue('cookie')).not.toContain('obsolete-legacy')
+	await expect(
+		page.getByText(/Revoked this account's grants for the client/),
+	).toBeVisible()
+	await expect
+		.poll(async () =>
+			(await page.context().cookies()).filter(
+				(cookie) => cookie.name === cookieName,
+			),
+		)
+		.toEqual([])
 })

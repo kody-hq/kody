@@ -1,6 +1,8 @@
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { createAccountUsageHandler } from './account-usage.ts'
+import { personalUsageSlug } from './account-usage.ts'
+import { personalOrgUsageRedirectUrl } from './org-usage.ts'
 
 const mockModule = vi.hoisted(() => ({
 	requireAuthenticatedPageUser: vi.fn<() => Promise<unknown>>(),
@@ -29,26 +31,23 @@ beforeEach(() => {
 
 async function getUsage(search = '') {
 	const request = new Request(`https://kody.codes/account/usage${search}`)
-	return createAccountUsageHandler(env).handler({
-		request,
-		url: new URL(request.url),
-		params: {},
-	} as never)
+	const user =
+		(await mockModule.requireAuthenticatedPageUser()) as AuthenticatedAppUser
+	return personalOrgUsageRedirectUrl({
+		requestUrl: request.url,
+		slug: await personalUsageSlug(env, user),
+	})
 }
 
 test('legacy /account/usage redirects to the personal org usage page', async () => {
 	const response = await getUsage()
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toBe(
-		'https://kody.codes/@ada/-/usage',
-	)
+	expect(response).toBe('https://kody.codes/@ada/-/usage')
 	expect(mockModule.getOrgById).toHaveBeenCalledWith(env.APP_DB, 'stable-7')
 })
 
 test('the redirect keeps Stripe return and notice query params', async () => {
 	const response = await getUsage('?topup=success&session_id=cs_123')
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toBe(
+	expect(response).toBe(
 		'https://kody.codes/@ada/-/usage?topup=success&session_id=cs_123',
 	)
 })
@@ -56,7 +55,5 @@ test('the redirect keeps Stripe return and notice query params', async () => {
 test('missing signup org slug falls back to the username', async () => {
 	mockModule.getOrgById.mockResolvedValueOnce(null)
 	const response = await getUsage('?credits=added')
-	expect(response.headers.get('Location')).toBe(
-		'https://kody.codes/@ada/-/usage?credits=added',
-	)
+	expect(response).toBe('https://kody.codes/@ada/-/usage?credits=added')
 })

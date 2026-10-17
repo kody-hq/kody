@@ -1,0 +1,50 @@
+{
+	"targets": [
+		{
+			"label": "query-optimized",
+			"origin": "http://127.0.0.1:4191",
+			"root": "/tmp/kody-start-query-optimized",
+			"sourceManifestSha256": "3f2594764d43afc3f9437b47c5516a9acdc395dfc3106f72ad24db9400458a59"
+		}
+	],
+	"rounds": 1,
+	"coldObservationMs": 30000,
+	"sessionMs": 1800000,
+	"accountStartMs": 300000,
+	"hoverMs": 500,
+	"dwellMs": 10000,
+	"historyEvery": 4,
+	"raceEvery": 6,
+	"raceSettleMs": 1500,
+	"accountCheckEvery": 12,
+	"routes": [
+		{
+			"path": "/pricing",
+			"heading": "Start free."
+		},
+		{
+			"path": "/docs",
+			"heading": "What is Kody?"
+		},
+		{
+			"path": "/",
+			"heading": "You shouldn\u2019t have to start over"
+		}
+	],
+	"accountRoutes": [
+		{
+			"path": "/account",
+			"heading": "Account"
+		},
+		{
+			"path": "/account/jobs",
+			"heading": "Jobs"
+		},
+		{
+			"path": "/account/memories",
+			"heading": "Memories"
+		}
+	],
+	"idleMs": 360000,
+	"finalForcedGc": true
+}

@@ -1,19 +1,19 @@
+import type * as authenticatedUserModule from '#app/authenticated-user.ts'
+import type * as AllowedHosts from '#mcp/secrets/allowed-hosts.ts'
+import type * as HostApproval from '#mcp/secrets/host-approval.ts'
+import type * as secretsService from '#mcp/secrets/service.ts'
+import type * as CredentialFields from '#worker/credentials/credential-fields.ts'
+import type * as IntegrationsCredentials from '#worker/integrations/credentials.ts'
+import type * as packageSubscriptions from '#worker/integrations/package-subscriptions.ts'
+import type * as platformApps from '#worker/integrations/platform-apps.ts'
+import type * as IntegrationsService from '#worker/integrations/service.ts'
+import type * as packageRepo from '#worker/package-registry/repo.ts'
+import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import type * as authenticatedUserModule from '#app/authenticated-user.ts'
-import type * as secretsService from '#mcp/secrets/service.ts'
-import type * as packageRepo from '#worker/package-registry/repo.ts'
-import type * as platformApps from '#worker/integrations/platform-apps.ts'
-import type * as packageSubscriptions from '#worker/integrations/package-subscriptions.ts'
-import type * as AllowedHosts from '#mcp/secrets/allowed-hosts.ts'
-import type * as HostApproval from '#mcp/secrets/host-approval.ts'
-import type * as IntegrationsService from '#worker/integrations/service.ts'
-import type * as IntegrationsCredentials from '#worker/integrations/credentials.ts'
-import type * as CredentialFields from '#worker/credentials/credential-fields.ts'
-import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn<
 		typeof authenticatedUserModule.readAuthenticatedAppUser
@@ -385,17 +385,18 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	) => mockModule.listSavedPackagesByUserId(...args),
 }))
 
-const { createAccountSecretsApiHandler } = await import('./account-secrets.ts')
+const { testAccountSecretsApiHandler } =
+	await import('./account-secrets.test-support.ts')
 
 const secretsUrl = 'https://example.com/account/secrets.json'
 const epoch = new Date(0).toISOString()
 
 function createHandler() {
-	const { handler } = createAccountSecretsApiHandler({
+	const { execute } = testAccountSecretsApiHandler({
 		APP_DB: {} as D1Database,
 		COOKIE_SECRET: 'secret',
 	} as Env)
-	return (request: Request) => handler({ request, params: {} } as never)
+	return (request: Request) => execute({ request, params: {} } as never)
 }
 
 function postRequest(body: Record<string, unknown>, search = '') {
@@ -485,7 +486,7 @@ test('account secrets save reports rename cleanup failure without failing the sa
 	)
 
 	expect(response.status).toBe(200)
-	await expect(response.json()).resolves.toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: true,
 		renameCleanupError: 'delete prior secret failed',
 		selectedSecret: { name: 'oldApiKey', scope: 'package' },
@@ -531,9 +532,6 @@ test('account secrets save renames opt-in credentials in place without their kin
 	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
 	mockModule.saveSecret.mockClear()
 	mockModule.renameSecret.mockClear()
-	mockModule.listSecrets
-		.mockResolvedValueOnce([makeSecret('webhook')])
-		.mockResolvedValueOnce([makeSecret('webhook2')])
 	const renamed = await save({ name: 'webhook2', allowedHosts: [] })
 	expect(renamed.status).toBe(200)
 	expect(mockModule.renameSecret).toHaveBeenCalledWith(
@@ -552,9 +550,6 @@ test('account secrets save renames opt-in credentials in place without their kin
 	mockSecretsListing([makeSecret('Henry')])
 	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
 	mockModule.renameSecret.mockClear()
-	mockModule.listSecrets
-		.mockResolvedValueOnce([makeSecret('Henry')])
-		.mockResolvedValueOnce([makeSecret('henry')])
 	const caseOnly = await createHandler()(
 		postRequest({
 			action: 'save',
@@ -570,7 +565,7 @@ test('account secrets save renames opt-in credentials in place without their kin
 	expect(mockModule.renameSecret).toHaveBeenCalledWith(
 		expect.objectContaining({ fromName: 'Henry', toName: 'henry' }),
 	)
-	await expect(caseOnly.json()).resolves.toMatchObject({
+	expect(caseOnly.data).toMatchObject({
 		ok: true,
 		selectedSecret: { name: 'henry', id: 'user::::henry' },
 	})
@@ -584,7 +579,7 @@ test('account secrets save renames opt-in credentials in place without their kin
 		allowedHosts: ['other.example.com'],
 	})
 	expect(rehosted.status).toBe(400)
-	await expect(rehosted.json()).resolves.toMatchObject({
+	expect(rehosted.data).toMatchObject({
 		error: expect.stringContaining('take hosts, not approved hosts'),
 	})
 	expect(mockModule.saveSecret).not.toHaveBeenCalled()
@@ -646,7 +641,7 @@ test('account secrets save rolls back an in-place rename when the later write fa
 		}),
 	)
 	expect(response.status).toBe(400)
-	await expect(response.json()).resolves.toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: false,
 		error: 'value write failed',
 	})
@@ -705,9 +700,43 @@ test('account secrets save still refuses moving an opt-in credential across scop
 		}),
 	)
 	expect(moved.status).toBe(400)
-	await expect(moved.json()).resolves.toMatchObject({
+	expect(moved.data).toMatchObject({
 		error: expect.stringContaining('would drop its kind'),
 	})
 	expect(mockModule.renameSecret).not.toHaveBeenCalled()
 	expect(mockModule.saveSecret).not.toHaveBeenCalled()
+})
+
+test('a failed rollback reports the committed casing so native editors can retarget without retrying a create', async () => {
+	mockSecretsListing([makeSecret('Henry')])
+	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce({
+		id: 'cred-Henry',
+		kind: 'url',
+		allowedHosts: ['hooks.example.com'],
+		loginExchange: null,
+		provider: null,
+		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+	})
+	mockModule.renameSecret
+		.mockResolvedValueOnce(makeSecret('henry') as never)
+		.mockRejectedValueOnce(new Error('rollback unavailable'))
+	mockModule.saveSecret.mockRejectedValueOnce(new Error('value write failed'))
+	const response = await createHandler()(
+		postRequest({
+			action: 'save',
+			currentId: 'user::::Henry',
+			name: 'henry',
+			scope: 'user',
+			value: 'https://hooks.example.com/new',
+			allowedHosts: [],
+			allowedPackages: [],
+		}),
+	)
+	expect(response.status).toBe(400)
+	expect(response.data).toMatchObject({
+		ok: false,
+		error: 'value write failed',
+		selectedSecret: { id: 'user::::henry', name: 'henry' },
+	})
+	expect(response.data).not.toHaveProperty('secrets')
 })

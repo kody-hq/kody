@@ -23,21 +23,22 @@ import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 export async function buildOnboardingSearchNotice(input: {
 	env: Env
 	userId: OwnerId
+	personId: OwnerId
 	/** Deployment origin for the details link, e.g. https://kody.codes */
 	baseUrl: string
 }): Promise<string | null> {
 	try {
 		const dismissed = await readOnboardingChecklistDismissed({
 			env: input.env,
-			userId: input.userId,
+			personId: input.personId,
 		})
 		if (dismissed) return null
 
 		const helpers = await resolveOAuthHelpers<OAuthGrantListHelpers>(input.env)
 		if (!helpers) return null
 		const [inbound, hasAccessWin] = await Promise.all([
-			loadInboundMcpConnectionState(helpers, input.userId),
-			loadOnboardingAccessWin(input.env, input.userId),
+			loadInboundMcpConnectionState(helpers, input.personId),
+			loadOnboardingAccessWin(input.env, input.userId, input.personId),
 		])
 		if (inbound.listingFailed) return null
 		const remaining = remainingOnboardingWizardLabels({

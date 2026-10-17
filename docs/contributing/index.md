@@ -62,7 +62,7 @@ style, tests, MCP capabilities, and runtime architecture.
   [dependency overrides](./dependency-overrides.md)
   (`typescript/no-explicit-any`, `TODO`/`FIXME`/`HACK`, file-size ratchet,
   vanished-copy `kody-custom/no-tautological-absence`, knip)
-- [Remix skills and page checklist](./remix.md), [frames](./frames.md)
+- [Web app rendering and server state](./tanstack-start.md)
 - [No-flash navigation](./no-flash-navigation.md) (load-before-commit router,
   `createRouteData` keeps the previous page until the next one is ready)
 - [Cloudflare Agents SDK usage](./cloudflare-agents-sdk.md)

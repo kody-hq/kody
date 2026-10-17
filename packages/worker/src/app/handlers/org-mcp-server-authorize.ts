@@ -1,20 +1,15 @@
-import { waitUntil } from 'cloudflare:workers'
-import { type Action } from 'remix/router'
-import { redirectToLogin } from '#app/auth-redirect.ts'
 import {
 	type AuthenticatedAppUser,
 	readAuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
+import { operationResult } from '#app/operation-result.ts'
+import { orgSectionDenial } from '#app/org-request-binding.ts'
+import { type McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
+import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import {
-	orgSectionDenial,
-	loadRequestOrgResolution,
-} from '#app/org-request-binding.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
-import {
-	authorize,
 	AuthorizationError,
+	authorize,
 } from '#worker/authorization/authorize.ts'
-import { jsonResponse } from '#worker/json-response.ts'
 import {
 	createMcpServerAuthorizeConsentToken,
 	verifyMcpServerAuthorizeConsentToken,
@@ -24,18 +19,16 @@ import { mcpOAuthAttemptActorFromIds } from '#worker/mcp-client/oauth-attempt.ts
 import { mcpOAuthAttemptIdentityInvalidMessage } from '#worker/mcp-client/oauth-identity.ts'
 import { getMcpServerSettingById } from '#worker/mcp-client/settings-service.ts'
 import { type McpServerPendingAuthorization } from '#worker/mcp-client/types.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import {
-	type McpServerAuthorizeContinueResponse,
-	type McpServerAuthorizeLoaderData,
-} from '#universal/loader-data.ts'
-import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
-import { type routes } from '#universal/routes.ts'
+import { waitUntil } from 'cloudflare:workers'
 
 type AuthorizeParams = { orgSlug: string; serverId: string }
 
 const expiredFormMessage =
 	'This approval form expired. Review the details and click Continue again.'
+
 const notPendingMessage =
 	'This server is not waiting for approval. Reconnect it to start a new authorization.'
 
@@ -51,26 +44,43 @@ type ConsentRefusal =
 	| { kind: 'not-found'; title: string }
 	| { kind: 'forbidden'; title: string }
 
-/**
- * Resolve the signed-in member, the organization in the URL, and the server
- * it owns, or why this request may not see them.
- */
-async function loadConsentContext(input: {
+export async function loadConsentContext(input: {
 	env: Env
 	request: Request
 	params: AuthorizeParams
+	user?: AuthenticatedAppUser
 }): Promise<ConsentContext | ConsentRefusal> {
 	const { env, request, params } = input
-	const user = await readAuthenticatedAppUser(request, env)
-	if (!user) return { kind: 'signed-out' }
-	const resolution = await loadRequestOrgResolution(
-		request,
-		env,
-		user.mcpUser.userId,
+	const authenticated =
+		input.user ??
+		(await readAuthenticatedAppUser(request, env, {
+			// Authenticate the person first; params below own resource authorization.
+			resourceRequest: new Request(new URL('/', request.url)),
+		}))
+	if (!authenticated) return { kind: 'signed-out' }
+	const resolution =
+		(await loadOrgBindingForSlug(
+			env.APP_DB,
+			authenticated.mcpUser.userId,
+			params.orgSlug,
+		)) ?? 'denied'
+	if (
+		input.user &&
+		typeof resolution !== 'string' &&
+		resolution.org.id !== input.user.request.org.id
 	)
+		return { kind: 'not-found', title: 'Organization unavailable' }
 	const denial = orgSectionDenial(resolution, 'mcp-servers')
 	if (denial || typeof resolution === 'string') {
 		return { kind: 'not-found', title: denial ?? 'Organization unavailable' }
+	}
+	const user = {
+		...authenticated,
+		request: deriveRequestContext({
+			user: authenticated.mcpUser,
+			source: { kind: 'session' },
+			orgBinding: resolution,
+		}),
 	}
 	try {
 		await authorize({ env, request: user.request }, 'integration:write')
@@ -98,25 +108,10 @@ async function loadConsentContext(input: {
 	}
 }
 
-function isConsentRefusal(
+export function isConsentRefusal(
 	value: ConsentContext | ConsentRefusal,
 ): value is ConsentRefusal {
 	return 'kind' in value
-}
-
-function refusalStatus(refusal: ConsentRefusal) {
-	switch (refusal.kind) {
-		case 'signed-out':
-			return 401
-		case 'not-found':
-			return 404
-		case 'forbidden':
-			return 403
-		default: {
-			const exhaustive: never = refusal
-			throw new Error(`Unhandled consent refusal: ${String(exhaustive)}`)
-		}
-	}
 }
 
 function consentTokenBinding(
@@ -131,7 +126,7 @@ function consentTokenBinding(
 	}
 }
 
-async function buildConsentLoaderData(input: {
+export async function buildConsentLoaderData(input: {
 	env: Env
 	context: ConsentContext
 	error?: string | null
@@ -163,151 +158,127 @@ async function buildConsentLoaderData(input: {
 	}
 }
 
-/**
- * The page every MCP server `authUrl` opens. It names the server, the
- * authorization server host, and the client mode, and sends nobody to the
- * provider until they click Continue.
- */
-export function createOrgMcpServerAuthorizeHandler(env: Env) {
+/** Shared consent read for the document and Start route. */
+export async function loadMcpServerAuthorizeData(input: {
+	env: Env
+	request: Request
+	params: AuthorizeParams
+}) {
+	const context = await loadConsentContext(input)
+	if (isConsentRefusal(context)) return context
 	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const context = await loadConsentContext({ env, request, params })
-			if (isConsentRefusal(context)) {
-				if (context.kind === 'signed-out') return redirectToLogin(request)
-				return renderAppPage({
-					request,
-					env,
-					title: context.title,
-					notFound: true,
-					status: refusalStatus(context),
-				})
-			}
-			return renderAppPage({
-				request,
-				env,
-				title: `Authorize ${context.setting.name}`,
-				loaderData: {
-					mcpServerAuthorize: await buildConsentLoaderData({ env, context }),
-				},
-			})
-		},
-	} satisfies Action<typeof routes.orgMcpServerAuthorize>
+		kind: 'ready' as const,
+		payload: await buildConsentLoaderData({ env: input.env, context }),
+	}
 }
 
-/**
- * Continue on the consent page. The form token must match this person, org,
- * server, and pending authorization before Kody hands back the provider URL.
- */
-export function createOrgMcpServerAuthorizePostHandler(env: Env) {
-	function respond(body: McpServerAuthorizeContinueResponse, status = 200) {
-		return jsonResponse(body, {
-			status,
-			headers: { 'Cache-Control': 'private, no-store' },
-		})
+export function refusalStatus(refusal: ConsentRefusal) {
+	switch (refusal.kind) {
+		case 'signed-out':
+			return 401
+		case 'not-found':
+			return 404
+		case 'forbidden':
+			return 403
+		default: {
+			const exhaustive: never = refusal
+			throw new Error(`Unhandled consent refusal: ${String(exhaustive)}`)
+		}
 	}
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const context = await loadConsentContext({ env, request, params })
-			if (isConsentRefusal(context)) {
-				return respond(
-					{
-						ok: false,
-						error:
-							context.kind === 'signed-out'
-								? 'Sign in to Kody, then open this page again.'
-								: context.title,
-						consent: null,
-					},
-					refusalStatus(context),
-				)
-			}
-			const form = await request.formData().catch(() => null)
-			const token = form?.get('_csrf')
-			const { pending } = context
-			if (!pending) {
-				return respond(
-					{
-						ok: false,
-						error: notPendingMessage,
-						consent: await buildConsentLoaderData({
-							env,
-							context,
-							error: notPendingMessage,
-						}),
-					},
-					409,
-				)
-			}
-			const valid =
-				typeof token === 'string' &&
-				token.length > 0 &&
-				(await verifyMcpServerAuthorizeConsentToken({
-					secret: env.COOKIE_SECRET,
-					token,
-					binding: consentTokenBinding(context, pending),
-				}))
-			if (!valid) {
-				return respond(
-					{
-						ok: false,
-						error: expiredFormMessage,
-						consent: await buildConsentLoaderData({
-							env,
-							context,
-							error: expiredFormMessage,
-						}),
-					},
-					403,
-				)
-			}
-			const actor = mcpOAuthAttemptActorFromIds({
-				ownerOrgId: context.user.request.org.id,
-				personId: context.user.mcpUser.userId,
-			})
-			const bindFailedMessage = mcpOAuthAttemptIdentityInvalidMessage(
-				context.setting.name,
-			)
-			if (!actor) {
-				return respond(
-					{
-						ok: false,
-						error: bindFailedMessage,
-						consent: await buildConsentLoaderData({
-							env,
-							context,
-							error: bindFailedMessage,
-						}),
-					},
-					409,
-				)
-			}
-			const hub = createMcpClientHubClient({
-				env,
-				userId: context.user.request.org.id,
-			})
-			const bound = await hub
-				.bindOAuthAttemptActor({
-					serverId: context.setting.id,
-					actor,
-				})
-				.catch(() => ({ ok: false as const }))
-			if (!bound.ok) {
-				return respond(
-					{
-						ok: false,
-						error: bindFailedMessage,
-						consent: await buildConsentLoaderData({
-							env,
-							context,
-							error: bindFailedMessage,
-						}),
-					},
-					409,
-				)
-			}
-			return respond({ ok: true, authorizationUrl: pending.authorizationUrl })
-		},
-	} satisfies Action<typeof routes.orgMcpServerAuthorizePost>
+}
+export async function continueMcpServerAuthorization({
+	env,
+	context,
+	token,
+}: {
+	env: Env
+	context: ConsentContext
+	token: unknown
+}) {
+	const { pending } = context
+	if (!pending) {
+		return operationResult(
+			{
+				ok: false,
+				error: notPendingMessage,
+				consent: await buildConsentLoaderData({
+					env,
+					context,
+					error: notPendingMessage,
+				}),
+			},
+			409,
+		)
+	}
+	const valid =
+		typeof token === 'string' &&
+		token.length > 0 &&
+		(await verifyMcpServerAuthorizeConsentToken({
+			secret: env.COOKIE_SECRET,
+			token,
+			binding: consentTokenBinding(context, pending),
+		}))
+	if (!valid) {
+		return operationResult(
+			{
+				ok: false,
+				error: expiredFormMessage,
+				consent: await buildConsentLoaderData({
+					env,
+					context,
+					error: expiredFormMessage,
+				}),
+			},
+			403,
+		)
+	}
+	const actor = mcpOAuthAttemptActorFromIds({
+		ownerOrgId: context.user.request.org.id,
+		personId: context.user.mcpUser.userId,
+	})
+	const bindFailedMessage = mcpOAuthAttemptIdentityInvalidMessage(
+		context.setting.name,
+	)
+	if (!actor) {
+		return operationResult(
+			{
+				ok: false,
+				error: bindFailedMessage,
+				consent: await buildConsentLoaderData({
+					env,
+					context,
+					error: bindFailedMessage,
+				}),
+			},
+			409,
+		)
+	}
+	const hub = createMcpClientHubClient({
+		env,
+		userId: context.user.request.org.id,
+	})
+	const bound = await hub
+		.bindOAuthAttemptActor({
+			serverId: context.setting.id,
+			actor,
+		})
+		.catch(() => ({ ok: false as const }))
+	if (!bound.ok) {
+		return operationResult(
+			{
+				ok: false,
+				error: bindFailedMessage,
+				consent: await buildConsentLoaderData({
+					env,
+					context,
+					error: bindFailedMessage,
+				}),
+			},
+			409,
+		)
+	}
+	return operationResult({
+		ok: true,
+		authorizationUrl: pending.authorizationUrl,
+	})
 }

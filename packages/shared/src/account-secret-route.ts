@@ -1,10 +1,9 @@
-import { createHref } from 'remix/route-pattern/href'
-
 type AccountSecretRouteScope = 'package' | 'session' | 'user'
 const accountSecretsBasePath = '/account/secrets'
-const accountSecretUserPathPattern = `${accountSecretsBasePath}/user/:secretName`
-const accountSecretPackagePathPattern = `${accountSecretsBasePath}/package/:packageId/:secretName`
-const accountSecretSessionPathPattern = `${accountSecretsBasePath}/session/:sessionId/:secretName`
+function secretPathSegment(value: string) {
+	if (!value) throw new Error('Secret path identifiers cannot be empty.')
+	return encodeURIComponent(value).replace(/\./g, '%2E')
+}
 
 export type AccountSecretRouteIdInput = {
 	name: string
@@ -62,7 +61,7 @@ export function parseAccountSecretId(
 
 export function buildAccountSecretPath(input: AccountSecretRouteIdInput) {
 	if (input.scope === 'user') {
-		return createHref(accountSecretUserPathPattern, { secretName: input.name })
+		return `${accountSecretsBasePath}/user/${secretPathSegment(input.name)}`
 	}
 	if (input.scope === 'package') {
 		if (!input.packageId) {
@@ -70,29 +69,17 @@ export function buildAccountSecretPath(input: AccountSecretRouteIdInput) {
 				'packageId is required for package-scoped account secret paths',
 			)
 		}
-		return createHref(accountSecretPackagePathPattern, {
-			packageId: input.packageId,
-			secretName: input.name,
-		})
+		return `${accountSecretsBasePath}/package/${secretPathSegment(input.packageId)}/${secretPathSegment(input.name)}`
 	}
 	if (!input.sessionId) {
 		throw new Error(
 			'sessionId is required for session-scoped account secret paths',
 		)
 	}
-	return createHref(accountSecretSessionPathPattern, {
-		sessionId: input.sessionId,
-		secretName: input.name,
-	})
+	return `${accountSecretsBasePath}/session/${secretPathSegment(input.sessionId)}/${secretPathSegment(input.name)}`
 }
 
-/**
- * Absolute URL that keeps Remix path encoding.
- *
- * `createHref` encodes `.` as `%2E` because Remix treats `.` as a route
- * delimiter. `new URL(pathname, baseUrl).toString()` decodes that unreserved
- * escape back to `.`, and the secret route 404s.
- */
+/** Preserve already encoded path segments when attaching an origin. */
 export function joinOriginAndEncodedPath(baseUrl: string, pathname: string) {
 	return `${new URL(baseUrl).origin}${pathname}`
 }

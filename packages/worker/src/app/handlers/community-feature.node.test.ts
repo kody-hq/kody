@@ -1,7 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { CommunityActionError } from '#worker/community/errors.ts'
-import { createCommunityFeatureApiPostHandler } from './community-feature.ts'
+import { featureWebsiteCommunityPackage } from './community-feature.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -41,18 +41,18 @@ function buildFeatureRequest(body: unknown) {
 				body: JSON.stringify(body),
 			},
 		),
-		params: { listingId: 'listing-1' },
+		env,
+		listingId: 'listing-1',
+		body,
 		url: new URL('https://example.com/community/listing-1/feature.json'),
 	} as never
 }
 
 test('community feature POST enforces admin role, validation, and error mapping', async () => {
-	const handler = createCommunityFeatureApiPostHandler(env)
-
 	mockModule.requireUserWithRole.mockRejectedValue(
 		new Response('Forbidden', { status: 403 }),
 	)
-	const forbidden = await handler.handler(
+	const forbidden = await featureWebsiteCommunityPackage(
 		buildFeatureRequest({ featured: true }),
 	)
 	expect(forbidden.status).toBe(403)
@@ -63,7 +63,7 @@ test('community feature POST enforces admin role, validation, and error mapping'
 		mcpUser: { userId: ownerIdFromStored('stable-admin-id') },
 	})
 
-	const invalidBody = await handler.handler(
+	const invalidBody = await featureWebsiteCommunityPackage(
 		buildFeatureRequest({ featured: 'yes' }),
 	)
 	expect(invalidBody.status).toBe(400)
@@ -73,9 +73,11 @@ test('community feature POST enforces admin role, validation, and error mapping'
 		id: 'listing-1',
 		featured: true,
 	})
-	const success = await handler.handler(buildFeatureRequest({ featured: true }))
+	const success = await featureWebsiteCommunityPackage(
+		buildFeatureRequest({ featured: true }),
+	)
 	expect(success.status).toBe(200)
-	expect(await success.json()).toEqual({ ok: true, featured: true })
+	expect(success.data).toEqual({ ok: true, featured: true })
 	expect(mockModule.setCommunityListingFeatured).toHaveBeenCalledWith({
 		env,
 		listingId: 'listing-1',
@@ -93,11 +95,11 @@ test('community feature POST enforces admin role, validation, and error mapping'
 	mockModule.setCommunityListingFeatured.mockRejectedValue(
 		new CommunityActionError('Catalog entry "listing-1" was not found.'),
 	)
-	const userFacingError = await handler.handler(
+	const userFacingError = await featureWebsiteCommunityPackage(
 		buildFeatureRequest({ featured: true }),
 	)
 	expect(userFacingError.status).toBe(400)
-	expect(await userFacingError.json()).toEqual({
+	expect(userFacingError.data).toEqual({
 		ok: false,
 		error: 'Catalog entry "listing-1" was not found.',
 	})
@@ -106,11 +108,11 @@ test('community feature POST enforces admin role, validation, and error mapping'
 	mockModule.setCommunityListingFeatured.mockRejectedValue(
 		new Error('db timeout'),
 	)
-	const serverError = await handler.handler(
+	const serverError = await featureWebsiteCommunityPackage(
 		buildFeatureRequest({ featured: false }),
 	)
 	expect(serverError.status).toBe(500)
-	expect(await serverError.json()).toEqual({
+	expect(serverError.data).toEqual({
 		ok: false,
 		error: 'Unable to update featuring for this listing.',
 	})

@@ -9,12 +9,12 @@ Deferred one-shot runs (`workflows.create({ runAt })`).
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/workflows.json
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/workflows
 ```
 
-## APIs
-
-- `GET|POST /account/workflows.json`
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
 ## Gotchas
 

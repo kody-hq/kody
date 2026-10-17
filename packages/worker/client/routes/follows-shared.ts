@@ -1,4 +1,3 @@
-import { readJson } from '#client/routes/account-approval-shared.ts'
 import {
 	followCreateLimitPerHour,
 	followEventCopy,
@@ -7,11 +6,9 @@ import {
 	normalizeFollowEvents,
 	type FollowEvent,
 	type FollowSummary,
-	type OrgFollowsPostBody,
-	type OrgFollowsPostPayload,
+	type FollowOperationResult,
 	type PackageFollowStatePayload,
 } from '#universal/follows.ts'
-import { routes } from '#universal/routes.ts'
 
 export const followDeliveryNote = `Deliveries are free. Handlers that run on them use this workspace’s credits. A workspace can start following up to ${followCreateLimitPerHour} new things an hour.`
 
@@ -99,8 +96,8 @@ export function followEventsToSubmit(
 }
 
 /** Copy for a failed follow change. Rate limits name the workspace's hourly cap. */
-export function followPostErrorMessage(
-	payload: Extract<OrgFollowsPostPayload, { ok: false }>,
+export function followErrorMessage(
+	payload: Extract<FollowOperationResult, { ok: false }>,
 ) {
 	switch (payload.code) {
 		case 'rate_limited':
@@ -114,41 +111,4 @@ export function followPostErrorMessage(
 			throw new Error(`Unhandled follow error code: ${String(exhaustive)}`)
 		}
 	}
-}
-
-export async function postOrgFollow(
-	orgSlug: string,
-	body: OrgFollowsPostBody,
-): Promise<OrgFollowsPostPayload> {
-	const response = await fetch(routes.orgFollowsApiPost.href({ orgSlug }), {
-		method: 'POST',
-		headers: {
-			Accept: 'application/json',
-			'Content-Type': 'application/json',
-		},
-		credentials: 'include',
-		body: JSON.stringify(body),
-	})
-	const payload = await readJson<
-		OrgFollowsPostPayload | { ok: false; code?: undefined; error?: string }
-	>(response)
-	if (payload?.ok) return payload
-	if (payload?.code) return payload
-	return {
-		ok: false,
-		code: followPostCodeForStatus(response.status),
-		error:
-			payload?.error ??
-			(response.status === 401
-				? 'Sign in to follow.'
-				: 'Unable to update this follow.'),
-	}
-}
-
-/** Org gate failures (not a member, unknown org) carry no follow error code. */
-function followPostCodeForStatus(status: number) {
-	if (status === 401) return 'unauthorized' as const
-	if (status === 404 || status === 403) return 'not_found' as const
-	if (status === 429) return 'rate_limited' as const
-	return 'invalid' as const
 }

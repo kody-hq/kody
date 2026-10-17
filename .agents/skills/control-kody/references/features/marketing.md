@@ -16,11 +16,11 @@ the nav. The docs shell opts out of overflow anchoring so replacing the article
 does not bump the rail. After hydrate it independently prefetches every sidebar
 href (one loader request per slug, including `/docs/connect`) so a click adopts
 a warm payload instead of waiting on a cold fetch. `/docs/package-skills` opens
-with a flag callout for `mcp-skills-extension`: signed-in visitors POST
-`/docs/package-skills/opt-in` to turn it on for themselves; signed-out visitors
+with a flag callout for `mcp-skills-extension`: signed-in visitors use its
+native opt-in server function to turn it on for themselves; signed-out visitors
 log in with `redirectTo` back to that page. `/docs/mcp-events` does the same for
-`mcp-events-extension` via `/docs/mcp-events/opt-in`. Custom secret providers
-are documented at `/docs/secret-providers`. Open API is documented at
+`mcp-events-extension` through its native opt-in server function. Custom secret
+providers are documented at `/docs/secret-providers`. Open API is documented at
 `/docs/open-api`; versioning at `/docs/api-versioning`; local CLI execute at
 `/docs/local-execute`.
 
@@ -51,18 +51,18 @@ for any session. Below the hero come "Primitives for your agents" cards, "What
 Kody is and is not", the agent orbit beside the example walkthrough,
 testimonials, the team git/npm section, the first-party YouTube light player
 with a horizontal video chooser, and the "Invisible software" close linking to
-`/believe`. The five-orb lantern lives on `/features`, not the homepage. Feature
-pages are `/features/memory`, `/features/packages`, `/features/triggers`,
-`/features/credentials`, and `/features/apps`; `/features/secrets` and
-`/features/integrations` 301 to `/features/credentials`. Signed-in visitors
-still see the player and chooser. Chooser membership and order come from the
-unlisted playlist `PLBPBUA8boGLA`. Client navigations load
-`GET /landing-hero-videos.json`. The lite player embeds the selected chooser
-video only, without a playlist id, so YouTube chrome uses that video's title.
-Chooser ids are on the YouTube allowlist for `/youtube-thumb` without a playlist
-round-trip on plain documents. `/?youtubeId=<id>` opens the site-wide
-allowlisted YouTube overlay on those routes; unknown or disallowed ids do not
-open the player.
+`/believe`. The interactive five-orb lantern lives on `/features`; the homepage
+orbit keeps its decorative lantern. Feature pages are `/features/memory`,
+`/features/packages`, `/features/triggers`, `/features/credentials`, and
+`/features/apps`; `/features/secrets` and `/features/integrations` 301 to
+`/features/credentials`. Signed-in visitors still see the player and chooser.
+Chooser membership and order come from the unlisted playlist `PLBPBUA8boGLA`.
+Client navigations use the native landing video read. The lite player embeds the
+selected chooser video only, without a playlist id, so YouTube chrome uses that
+video's title. Chooser ids are on the YouTube allowlist for `/youtube-thumb`
+without a playlist round-trip on plain documents. `/?youtubeId=<id>` opens the
+site-wide allowlisted YouTube overlay on those routes; unknown or disallowed ids
+do not open the player.
 
 ## APIs
 

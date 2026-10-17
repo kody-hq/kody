@@ -35,13 +35,16 @@ export type OnboardingChecklistEnv = Pick<Env, 'APP_DB'> & EntitlementUsageEnv
  * done" so a storage blip never breaks onboarding surfaces. The optional
  * first-win email loop is not a checklist item.
  */
+// Activation and dismissal are person-keyed. Resources are org-keyed.
+// OAuth and activation APIs still brand their person storage keys as OwnerId.
 export async function loadOnboardingAccessWin(
 	env: OnboardingChecklistEnv,
 	userId: OwnerId,
+	personId: OwnerId,
 ): Promise<boolean> {
 	const [firstSearch, execute, memories, savedPackages] = await Promise.all([
-		userHasFirstSearch(env.APP_DB, userId).catch(() => false),
-		userHasFirstExecute(env.APP_DB, userId).catch(() => false),
+		userHasFirstSearch(env.APP_DB, personId).catch(() => false),
+		userHasFirstExecute(env.APP_DB, personId).catch(() => false),
 		listMemoriesByUserId(env.APP_DB, userId, { limit: 1 })
 			.then((rows) => rows.length > 0)
 			.catch(() => false),
@@ -83,6 +86,7 @@ export async function loadOnboardingAccessWinMemorySubject(
 export async function deriveOnboardingChecklist(input: {
 	env: OnboardingChecklistEnv
 	userId: OwnerId
+	personId: OwnerId
 	emailVerified: boolean
 	hasMcpClient: boolean
 	hasAccessWin?: boolean
@@ -94,7 +98,7 @@ export async function deriveOnboardingChecklist(input: {
 	const now = input.now ?? new Date()
 	const [hasAccessWin, savedPackages] = await Promise.all([
 		input.hasAccessWin === undefined
-			? loadOnboardingAccessWin(env, userId)
+			? loadOnboardingAccessWin(env, userId, input.personId)
 			: input.hasAccessWin,
 		input.savedPackageCount ??
 			readCurrentEntitlementResourceUsage({
@@ -124,12 +128,12 @@ export async function deriveOnboardingChecklist(input: {
 
 export async function readOnboardingChecklistDismissed(input: {
 	env: Pick<Env, 'APP_DB'>
-	userId: OwnerId
+	personId: OwnerId
 }): Promise<boolean> {
 	try {
 		const dismissedAt = await readDismissedAtColumn(
 			input.env.APP_DB,
-			input.userId,
+			input.personId,
 		)
 		return Boolean(dismissedAt)
 	} catch {
@@ -139,16 +143,16 @@ export async function readOnboardingChecklistDismissed(input: {
 
 export async function dismissOnboardingChecklist(input: {
 	env: Pick<Env, 'APP_DB'>
-	userId: OwnerId
+	personId: OwnerId
 }): Promise<void> {
 	await writeDismissedAtColumn(
 		input.env.APP_DB,
-		input.userId,
+		input.personId,
 		new Date().toISOString(),
 	)
 }
 
-async function readDismissedAtColumn(db: D1Database, userId: OwnerId) {
+async function readDismissedAtColumn(db: D1Database, personId: OwnerId) {
 	const row = await db
 		.prepare(
 			`SELECT onboarding_checklist_dismissed_at
@@ -156,7 +160,7 @@ async function readDismissedAtColumn(db: D1Database, userId: OwnerId) {
 			 WHERE stable_user_id = ?
 			 ${andLiveDeletedAtSql()} LIMIT 1`,
 		)
-		.bind(userId)
+		.bind(personId)
 		.first<{ onboarding_checklist_dismissed_at: string | null }>()
 	const dismissedAt = row?.onboarding_checklist_dismissed_at?.trim()
 	return dismissedAt ? dismissedAt : null
@@ -164,7 +168,7 @@ async function readDismissedAtColumn(db: D1Database, userId: OwnerId) {
 
 async function writeDismissedAtColumn(
 	db: D1Database,
-	userId: OwnerId,
+	personId: OwnerId,
 	dismissedAt: string,
 ) {
 	await db
@@ -174,6 +178,6 @@ async function writeDismissedAtColumn(
 			     updated_at = CURRENT_TIMESTAMP
 			 WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
 		)
-		.bind(dismissedAt, userId)
+		.bind(dismissedAt, personId)
 		.run()
 }

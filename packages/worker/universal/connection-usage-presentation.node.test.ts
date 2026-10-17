@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	accountConnectionsUsageHref,
-	parseAccountConnectionsPathname,
-} from './account-connections.ts'
+import { accountConnectionsUsageHref } from './account-connections.ts'
 import {
 	connectionUsageEntryLabel,
 	connectionUsageHasActivity,
@@ -29,12 +26,6 @@ test('usage drill-in stays on the org page and encodes the focused connection', 
 	expect(
 		accountConnectionsUsageHref('/@acme/-/agents', 'mcp-oauth:p1:client/a'),
 	).toBe('/@acme/-/agents/usage?connection=mcp-oauth%3Ap1%3Aclient%2Fa')
-	expect(parseAccountConnectionsPathname('/account/agents/usage')).toEqual({
-		kind: 'usage',
-	})
-	expect(parseAccountConnectionsPathname('/@acme/-/agents/usage/')).toEqual({
-		kind: 'usage',
-	})
 })
 
 test('quantities pluralize on the rounded value', () => {

@@ -1,4 +1,5 @@
 import {
+	collectJsonRequests,
 	expectSingleCommitTransition,
 	observeMainTransitions,
 	readMainTransitions,
@@ -9,27 +10,24 @@ test('docs guide switches keep the current article on screen until the next one 
 	page,
 }) => {
 	await page.context().clearCookies()
-	const docRequests: Array<string> = []
-	page.on('request', (request) => {
-		if (request.url().includes('/docs/') && request.url().endsWith('.json')) {
-			docRequests.push(new URL(request.url()).pathname)
-		}
-	})
+	const docRequests = collectJsonRequests(page)
 
 	await page.goto('/docs/memory')
 	await waitForClientHydration(page)
 	await expect(
 		page.getByRole('heading', { level: 1, name: 'Shared memory' }),
 	).toBeVisible()
-	await expect
-		.poll(
-			() => docRequests.filter((path) => path === '/docs/secrets.json').length,
-		)
-		.toBe(1)
+	const sidebar = page.getByRole('navigation', { name: 'Docs' }).first()
+	const secretsLink = sidebar.getByRole('link', {
+		name: 'Secrets',
+		exact: true,
+	})
+	// Both render-prefetch and intent-prefetch must reuse a warmed payload.
+	await secretsLink.hover()
+	await expect.poll(() => docRequests.forDoc('secrets').length).toBe(1)
 
 	await observeMainTransitions(page)
-	const sidebar = page.getByRole('navigation', { name: 'Docs' }).first()
-	await sidebar.getByRole('link', { name: 'Secrets', exact: true }).click()
+	await secretsLink.click()
 	await expect(page).toHaveURL(/\/docs\/secrets$/)
 	await expect(
 		page.getByRole('heading', { level: 1, name: 'Secrets' }),
@@ -39,11 +37,10 @@ test('docs guide switches keep the current article on screen until the next one 
 		fromHeading: 'Shared memory',
 		toHeading: 'Secrets',
 	})
-	// Render-prefetch already warmed every sidebar href. Click must adopt
-	// that snapshot — a second /docs/secrets.json is the loading-flash refetch.
-	expect(docRequests.filter((path) => path === '/docs/secrets.json')).toEqual([
-		'/docs/secrets.json',
-	])
+	// Wait through a possible post-commit fetch before checking the count.
+	await page.waitForTimeout(250)
+	expect(docRequests.forDoc('secrets')).toHaveLength(1)
+	expect(docRequests.duplicates(), docRequests.paths.join(', ')).toEqual([])
 })
 
 test('docs site: header says Docs, /docs opens the introduction with a sidebar, and legacy /guides redirects', async ({

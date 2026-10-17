@@ -1,0 +1,100 @@
+{
+	"targets": [
+		{
+			"label": "remix",
+			"origin": "http://127.0.0.1:4177",
+			"root": "/tmp/kody-framework-baseline",
+			"framework": "remix",
+			"sourceGitRevision": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83"
+		},
+		{
+			"label": "query-before",
+			"origin": "http://127.0.0.1:4178",
+			"root": "/tmp/kody-start-query",
+			"sourceManifestSha256": "047036b630248158fc9e2988592671969f1e4e3e2473561efab05ace83ed404d"
+		},
+		{
+			"label": "query-optimized",
+			"origin": "http://127.0.0.1:4191",
+			"root": "/tmp/kody-start-query-optimized",
+			"sourceManifestSha256": "3f2594764d43afc3f9437b47c5516a9acdc395dfc3106f72ad24db9400458a59"
+		}
+	],
+	"rounds": 1,
+	"latencyMs": [0, 100],
+	"authenticated": false,
+	"entry": "/pricing",
+	"steps": [
+		{
+			"name": "blog-first",
+			"path": "/blog",
+			"marker": {
+				"selector": "main a[href=\"/blog/openclaw-2-needs-a-home\"] h2",
+				"text": "OpenClaw 2 needs a home"
+			}
+		},
+		{
+			"name": "docs-first",
+			"path": "/docs",
+			"marker": {
+				"selector": "main article p",
+				"text": "Kody is the home your agents share. You keep using the AI agent you already have (Claude, ChatGPT, Cursor, Codex, Copilot, Grok, OpenClaw, or any other MCP-capable host) and connect it to your Kody account. That agent gains durable state that outlives the conversation and keeps working while your computer is off. Connect a second agent tomorrow and it finds the same home already furnished."
+			}
+		},
+		{
+			"name": "blog-warm",
+			"path": "/blog",
+			"marker": {
+				"selector": "main a[href=\"/blog/openclaw-2-needs-a-home\"] h2",
+				"text": "OpenClaw 2 needs a home"
+			}
+		},
+		{
+			"name": "docs-warm",
+			"path": "/docs",
+			"marker": {
+				"selector": "main article p",
+				"text": "Kody is the home your agents share. You keep using the AI agent you already have (Claude, ChatGPT, Cursor, Codex, Copilot, Grok, OpenClaw, or any other MCP-capable host) and connect it to your Kody account. That agent gains durable state that outlives the conversation and keeps working while your computer is off. Connect a second agent tomorrow and it finds the same home already furnished."
+			}
+		},
+		{
+			"name": "blog-after-31s",
+			"path": "/blog",
+			"marker": {
+				"selector": "main a[href=\"/blog/openclaw-2-needs-a-home\"] h2",
+				"text": "OpenClaw 2 needs a home"
+			},
+			"waitBeforeMs": 31000
+		},
+		{
+			"name": "docs-after-31s",
+			"path": "/docs",
+			"marker": {
+				"selector": "main article p",
+				"text": "Kody is the home your agents share. You keep using the AI agent you already have (Claude, ChatGPT, Cursor, Codex, Copilot, Grok, OpenClaw, or any other MCP-capable host) and connect it to your Kody account. That agent gains durable state that outlives the conversation and keeps working while your computer is off. Connect a second agent tomorrow and it finds the same home already furnished."
+			}
+		},
+		{
+			"name": "blog-after-301s",
+			"path": "/blog",
+			"marker": {
+				"selector": "main a[href=\"/blog/openclaw-2-needs-a-home\"] h2",
+				"text": "OpenClaw 2 needs a home"
+			},
+			"waitBeforeMs": 301000
+		},
+		{
+			"name": "docs-after-301s",
+			"path": "/docs",
+			"marker": {
+				"selector": "main article p",
+				"text": "Kody is the home your agents share. You keep using the AI agent you already have (Claude, ChatGPT, Cursor, Codex, Copilot, Grok, OpenClaw, or any other MCP-capable host) and connect it to your Kody account. That agent gains durable state that outlives the conversation and keeps working while your computer is off. Connect a second agent tomorrow and it finds the same home already furnished."
+			}
+		}
+	],
+	"policySeconds": {
+		"before": 30,
+		"optimizedPublished": 300,
+		"optimizedPublishedGc": 1800
+	}
+}

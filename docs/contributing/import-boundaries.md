@@ -33,9 +33,6 @@ That config includes `client/**` and `universal/**` only.
   or `packages/worker/universal/**` (except client test files that assert
   server/client parity)
 - any `#client/*` import from `packages/worker/universal/**`
-- any `#client/route-load-latch.ts` import from
-  `packages/worker/client/routes/**` (routes read loader payloads through
-  `createRouteData`; see [no-flash navigation](./no-flash-navigation.md))
 
 The rule covers static imports, re-exports (`export … from`), dynamic
 `import()`, and `vi.mock` / `vi.unmock` specifiers, so tests cannot route around

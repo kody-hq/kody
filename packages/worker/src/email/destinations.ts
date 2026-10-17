@@ -323,11 +323,11 @@ export async function markEmailNotificationDestinationVerified(input: {
 	}
 }
 
-export async function setDefaultEmailNotificationDestination(input: {
+export async function changeDefaultEmailNotificationDestination(input: {
 	db: D1Database
 	dbUserId: number
 	destinationId: string
-}): Promise<Array<EmailNotificationDestination>> {
+}): Promise<void> {
 	const account = await requireEmailDestinationAccount({
 		db: input.db,
 		dbUserId: input.dbUserId,
@@ -342,12 +342,7 @@ export async function setDefaultEmailNotificationDestination(input: {
 			)
 			.bind(account.id)
 			.run()
-		return listEmailNotificationDestinations({
-			db: input.db,
-			dbUserId: account.id,
-			accountEmail: account.email,
-			accountEmailVerified: Boolean(account.emailVerifiedAt),
-		})
+		return
 	}
 
 	const row = await input.db
@@ -387,20 +382,13 @@ export async function setDefaultEmailNotificationDestination(input: {
 			)
 			.bind(row.id, account.id),
 	])
-
-	return listEmailNotificationDestinations({
-		db: input.db,
-		dbUserId: account.id,
-		accountEmail: account.email,
-		accountEmailVerified: Boolean(account.emailVerifiedAt),
-	})
 }
 
-export async function removeEmailNotificationDestination(input: {
+export async function deleteEmailNotificationDestination(input: {
 	db: D1Database
 	dbUserId: number
 	destinationId: string
-}): Promise<Array<EmailNotificationDestination>> {
+}): Promise<void> {
 	if (input.destinationId === identityEmailDestinationId) {
 		throw new EmailDestinationError(
 			'cannot_remove_identity',
@@ -425,12 +413,25 @@ export async function removeEmailNotificationDestination(input: {
 			'Email destination was not found.',
 		)
 	}
+}
 
+export async function setDefaultEmailNotificationDestination(
+	input: Parameters<typeof changeDefaultEmailNotificationDestination>[0],
+) {
+	await changeDefaultEmailNotificationDestination(input)
 	return listEmailNotificationDestinations({
 		db: input.db,
-		dbUserId: account.id,
-		accountEmail: account.email,
-		accountEmailVerified: Boolean(account.emailVerifiedAt),
+		dbUserId: input.dbUserId,
+	})
+}
+
+export async function removeEmailNotificationDestination(
+	input: Parameters<typeof deleteEmailNotificationDestination>[0],
+) {
+	await deleteEmailNotificationDestination(input)
+	return listEmailNotificationDestinations({
+		db: input.db,
+		dbUserId: input.dbUserId,
 	})
 }
 

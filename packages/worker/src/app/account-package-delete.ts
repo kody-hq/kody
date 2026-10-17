@@ -1,29 +1,32 @@
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import {
+	packageMutationResult,
+	type PackageMutationResult,
+} from './package-mutation-result.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import {
 	deleteSavedPackageProjection,
 	PackageStorageCleanupError,
 } from '#worker/package-registry/service.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { readTrimmedStringOrEmpty } from '#app/request-body.ts'
 
 type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
 >
 
-export async function handleAccountPackageDeleteAction(input: {
+export async function deleteAccountPackage(input: {
 	env: Env
 	user: AuthenticatedUser
-	body: object
-}): Promise<Response | null> {
-	const action = readTrimmedStringOrEmpty(input.body, 'action')
-	if (action !== 'delete') return null
-
-	const packageId = readTrimmedStringOrEmpty(input.body, 'packageId')
-	const confirmName = readTrimmedStringOrEmpty(input.body, 'confirmName')
+	packageId: string
+	confirmName: string
+}): Promise<PackageMutationResult> {
+	const packageId = input.packageId.trim()
+	const confirmName = input.confirmName.trim()
 	if (!packageId) {
-		return jsonResponse({ ok: false, error: 'Package id is required.' }, 400)
+		return packageMutationResult(
+			{ ok: false, error: 'Package id is required.' },
+			400,
+		)
 	}
 
 	const resolved = await loadWritableAccountSavedPackage({
@@ -32,10 +35,14 @@ export async function handleAccountPackageDeleteAction(input: {
 		packageId,
 		permission: 'package:delete',
 	})
-	if (!resolved.ok) return resolved.response
+	if (!resolved.ok)
+		return packageMutationResult(
+			{ ok: false, error: 'Package not found.' },
+			404,
+		)
 	const { savedPackage, ownerUserId, actorUserId } = resolved.package
 	if (confirmName !== savedPackage.name) {
-		return jsonResponse(
+		return packageMutationResult(
 			{
 				ok: false,
 				error: `Type the package name "${savedPackage.name}" to delete it.`,
@@ -53,15 +60,15 @@ export async function handleAccountPackageDeleteAction(input: {
 		})
 	} catch (error) {
 		if (error instanceof CommunityActionError) {
-			return jsonResponse({ ok: false, error: error.message }, 400)
+			return packageMutationResult({ ok: false, error: error.message }, 400)
 		}
 		if (error instanceof PackageStorageCleanupError) {
-			return jsonResponse({ ok: false, error: error.message }, 409)
+			return packageMutationResult({ ok: false, error: error.message }, 409)
 		}
 		throw error
 	}
 
-	return jsonResponse({
+	return packageMutationResult({
 		ok: true,
 		deleted: true,
 		packageId,

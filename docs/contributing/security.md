@@ -48,9 +48,9 @@ package-app surfaces:
    (`.prepare(...).bind(...)`); never interpolate user input into SQL.
 8. **Untrusted markdown renders through the safe renderer only.** Community
    READMEs (and any future third-party-authored markdown shown on first-party
-   pages) must go through `packages/worker/client/markdown-view.tsx`, which
-   builds JSX from an allowlist of `marked` lexer tokens: raw HTML renders as
-   escaped text (first-party guides may additionally emit allowlisted
+   pages) must go through `packages/worker/start/components/markdown-view.tsx`,
+   which builds JSX from an allowlist of `marked` lexer tokens: raw HTML renders
+   as escaped text (first-party guides may additionally emit allowlisted
    `<details>`/`<summary>` and GitHub-style `> [!TIP]` callouts; untrusted
    markdown never does), and links are restricted to absolute
    `http:`/`https:`/`mailto:` URLs with `/@...` user-scope paths and

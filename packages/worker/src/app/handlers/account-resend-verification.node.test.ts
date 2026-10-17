@@ -9,7 +9,7 @@ import {
 	consoleInfo,
 	consoleWarn,
 } from '#worker/test-support/console-spies.ts'
-import { createAccountResendVerificationHandler } from './account-resend-verification.ts'
+import { resendWebsiteVerification } from '#worker/identity/account-resend-verification-operations.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
@@ -193,7 +193,7 @@ function createAppEnv(db: D1Database, overrides: Record<string, unknown> = {}) {
 		SENTRY_ENVIRONMENT: 'test',
 		FLAG_EXPOSURES: { writeDataPoint() {} },
 		...overrides,
-	} as unknown as Parameters<typeof createAccountResendVerificationHandler>[0]
+	} as unknown as Env
 }
 
 const session: AuthSession = {
@@ -211,9 +211,7 @@ function createResendClient(
 	envOverrides: Record<string, unknown> = {},
 ) {
 	const testDb = createResendTestDb(dbOptions)
-	const { handler } = createAccountResendVerificationHandler(
-		createAppEnv(testDb.db, envOverrides),
-	)
+	const env = createAppEnv(testDb.db, envOverrides)
 	const send = async (signedIn = true) => {
 		const request = new Request(
 			'http://example.com/account/resend-verification.json',
@@ -224,7 +222,12 @@ function createResendClient(
 					: {},
 			},
 		)
-		return handler({ request, url: new URL(request.url), params: {} } as never)
+		return resendWebsiteVerification({
+			env,
+			request,
+			url: new URL(request.url),
+			body: {},
+		})
 	}
 	return { state: testDb.state, send }
 }
@@ -277,7 +280,7 @@ test('resend verification refuses without minting a token', async () => {
 		expect([
 			label,
 			response.status,
-			body === undefined ? undefined : await response.json(),
+			body === undefined ? undefined : await Promise.resolve(response.data),
 			state.verificationInserts,
 		]).toEqual([label, status, body, 0])
 		if (auditReason) {
@@ -292,7 +295,7 @@ test('resend verification refuses a hard-bounced recipient before using the per-
 	const { state, send } = createResendClient({ hardBounced: true })
 	const response = await send()
 	expect(response.status).toBe(409)
-	expect(await response.json()).toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: false,
 		code: 'recipient_hard_bounce',
 	})
@@ -308,7 +311,11 @@ test('resend verification issues a fresh token for unverified accounts and rate-
 
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		const response = await send()
-		expect([attempt, response.status, await response.json()]).toEqual([
+		expect([
+			attempt,
+			response.status,
+			await Promise.resolve(response.data),
+		]).toEqual([
 			attempt,
 			200,
 			{ ok: true, message: 'Verification email sent. Check your inbox.' },
@@ -326,7 +333,7 @@ test('resend verification issues a fresh token for unverified accounts and rate-
 	const rateLimitedResponse = await send()
 	expect(rateLimitedResponse.status).toBe(429)
 	expect(rateLimitedResponse.headers.get('Retry-After')).toBeTruthy()
-	expect(await rateLimitedResponse.json()).toEqual({
+	expect(await Promise.resolve(rateLimitedResponse.data)).toEqual({
 		ok: false,
 		error:
 			'Too many verification emails for this account. You can request 3 every 15 minutes. Try again in 15 minutes.',
@@ -366,7 +373,7 @@ test('resend verification surfaces send failures without pretending success', as
 
 	const response = await send()
 	expect(response.status).toBe(502)
-	expect(await response.json()).toEqual({
+	expect(await Promise.resolve(response.data)).toEqual({
 		ok: false,
 		error: 'Unable to send the verification email. Please try again later.',
 	})

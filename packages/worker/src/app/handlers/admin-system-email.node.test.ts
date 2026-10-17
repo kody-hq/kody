@@ -1,8 +1,3 @@
-import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { sessionRequestContext } from '#worker/test-support/request-context.ts'
-import { RequestContext } from 'remix/router'
-import { expect, test, vi } from 'vitest'
 import type * as AuthenticatedUser from '#app/authenticated-user.ts'
 import { type PermissionString, type RoleName } from '#universal/permissions.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
@@ -11,9 +6,14 @@ import {
 	emailRawMimeKey,
 } from '#worker/email/blob-keys.ts'
 import { systemEmailOwnerId } from '#worker/email/system-email.ts'
-import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
+import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { sessionRequestContext } from '#worker/test-support/request-context.ts'
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser:
@@ -36,8 +36,8 @@ vi.mock('#worker/audit-log.ts', async (importOriginal) => {
 	}
 })
 
-const { createAdminSystemEmailApiHandler } =
-	await import('./admin-system-email.ts')
+const { deleteAdminSystemEmail } =
+	await import('#worker/admin/system-email-operations.ts')
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 
@@ -167,17 +167,39 @@ function createHarness() {
 		if (input.search) {
 			requestUrl.search = input.search
 		}
-		return createAdminSystemEmailApiHandler(env).handler(
-			new RequestContext(
-				input.body
-					? new Request(requestUrl, {
-							method: input.method ?? 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify(input.body),
-						})
-					: new Request(requestUrl, { method: input.method ?? 'GET' }),
-			),
-		)
+		return adminOperationOutcome(async () => {
+			const request = new Request(requestUrl, {
+				headers: { Accept: 'application/json' },
+			})
+			if (input.body)
+				return deleteAdminSystemEmail({
+					env,
+					request,
+					messageId:
+						typeof input.body.message_id === 'string'
+							? input.body.message_id
+							: '',
+				})
+			const { requireUserWithRole } = await import('#app/permissions-server.ts')
+			const actor = await requireUserWithRole(request, env, 'admin')
+			const { loadAdminSystemEmailData } =
+				await import('#worker/admin/system-email-data.ts')
+			const { auditSystemEmailAccess } =
+				await import('#worker/admin/system-email-operations.ts')
+			const payload = await loadAdminSystemEmailData(env, requestUrl.toString())
+			await auditSystemEmailAccess({
+				env,
+				request,
+				actorEmail: actor.email,
+				action: payload.selectedMessage
+					? 'adminSystemEmailGet'
+					: 'adminSystemEmailList',
+				reason: payload.selectedMessage
+					? `target_message_id=${payload.selectedMessage.id}`
+					: 'system_email_list',
+			})
+			return payload
+		})
 	}
 	return { sqlite, memoryBlobs, messageId, rawMimeKey, attachmentKey, call }
 }
@@ -188,7 +210,7 @@ test('admin system email API lists, gets, and deletes operator-owned mail only',
 
 	const list = await call({})
 	expect(list.status).toBe(200)
-	const listBody = (await list.json()) as {
+	const listBody = (await Promise.resolve(list.data)) as {
 		ok: boolean
 		total: number
 		messages: Array<{ id: string }>
@@ -203,7 +225,7 @@ test('admin system email API lists, gets, and deletes operator-owned mail only',
 		search: `?messageId=${encodeURIComponent(messageId)}`,
 	})
 	expect(get.status).toBe(200)
-	const getBody = (await get.json()) as {
+	const getBody = (await Promise.resolve(get.data)) as {
 		ok: boolean
 		selectedMessage: { id: string; subject: string } | null
 	}
@@ -227,18 +249,7 @@ test('admin system email API lists, gets, and deletes operator-owned mail only',
 		body: { action: 'delete', message_id: messageId },
 	})
 	expect(deleted.status).toBe(200)
-	const deletedBody = (await deleted.json()) as {
-		ok: boolean
-		total: number
-		selectedMessage: unknown
-		messages: Array<unknown>
-	}
-	expect(deletedBody).toMatchObject({
-		ok: true,
-		total: 0,
-		selectedMessage: null,
-		messages: [],
-	})
+	expect(deleted.data).toEqual({ ok: true, deletedMessageId: messageId })
 	expect(
 		sqlite
 			.prepare(`SELECT id FROM system_email_messages WHERE id = ?`)
@@ -271,4 +282,20 @@ test('admin system email API lists, gets, and deletes operator-owned mail only',
 			reason: `target_message_id=${messageId}`,
 		}),
 	)
+})
+
+test('committed system email deletion does not depend on reloading the inbox', async () => {
+	const { call, messageId } = createHarness()
+	const data = await import('#worker/admin/system-email-data.ts')
+	const read = vi
+		.spyOn(data, 'loadAdminSystemEmailData')
+		.mockRejectedValue(new Error('Inbox unavailable'))
+	try {
+		const deleted = await call({ body: { message_id: messageId } })
+		expect(deleted.status).toBe(200)
+		expect(deleted.data).toEqual({ ok: true, deletedMessageId: messageId })
+		expect(read).not.toHaveBeenCalled()
+	} finally {
+		read.mockRestore()
+	}
 })

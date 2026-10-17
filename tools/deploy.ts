@@ -40,7 +40,7 @@ function resolveWranglerCommand() {
 		: resolveLocalBinary('wrangler')
 }
 
-export const originViteWranglerConfigPath = 'dist/ssr/wrangler.json'
+export const originViteWranglerConfigPath = 'dist/server/wrangler.json'
 
 export function inferOriginDeployCloudflareEnv(configPath: string | undefined) {
 	const fileName =
@@ -113,6 +113,11 @@ export async function deploy(args: ReadonlyArray<string>) {
 		KODY_WRANGLER_CONFIG: wranglerConfigPath,
 		...(cloudflareEnv ? { CLOUDFLARE_ENV: cloudflareEnv } : {}),
 	})
+	run(
+		process.execPath,
+		['tools/framework-comparison/verify-redact-build.mjs', 'dist'],
+		process.env,
+	)
 	if (!existsSync(originViteWranglerConfigPath)) {
 		console.error(
 			`Origin Vite build did not emit ${originViteWranglerConfigPath}; cannot deploy.`,

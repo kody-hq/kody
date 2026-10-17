@@ -24,13 +24,6 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
 	syncSeatsAfterMembershipChange: vi.fn(),
-	renderAppPage: vi.fn(
-		async (input: { loaderData?: unknown; status?: number }) =>
-			new Response(JSON.stringify(input.loaderData ?? null), {
-				status: input.status ?? 200,
-				headers: { 'Content-Type': 'application/json' },
-			}),
-	),
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -41,16 +34,12 @@ vi.mock('#worker/orgs/seat-sync-after-membership.ts', () => ({
 	syncSeatsAfterMembershipChange: (...args: Array<unknown>) =>
 		mocks.syncSeatsAfterMembershipChange(...args),
 }))
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (...args: Array<unknown>) =>
-		mocks.renderAppPage(args[0] as { loaderData?: unknown; status?: number }),
-}))
 
 const {
-	createAccountInviteLinkAcceptPostHandler,
-	createAccountInviteLinkDeclinePostHandler,
-	createOrgInviteJoinHandler,
-	createOrgInviteJoinPostHandler,
+	acceptWebsiteInviteLink,
+	declineWebsiteInviteLink,
+	loadJoinPageData,
+	joinWebsiteOrganization,
 } = await import('./org-invite-join.ts')
 
 const owner = { id: 1, personId: 'a'.repeat(64) }
@@ -147,18 +136,19 @@ function signInJoiner(emailVerified = true) {
 beforeEach(async () => {
 	mocks.readAuthenticatedAppUser.mockReset()
 	mocks.syncSeatsAfterMembershipChange.mockClear()
-	mocks.renderAppPage.mockClear()
 	await seed()
 })
 
 test('join page shows org confirmation without members for a valid link', async () => {
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	const response = await createOrgInviteJoinHandler(createEnv()).handler({
+	const response = await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${token}`),
-		params: { token },
-	} as never)
+		token,
+	})
 	expect(response.status).toBe(200)
-	const body = (await response.json()) as {
+	const body = response.data as {
 		orgInviteJoin: {
 			ok: true
 			org: { slug: string; displayName: string | null }
@@ -178,14 +168,16 @@ test('join page shows org confirmation without members for a valid link', async 
 
 test('join post adds the member and returns the org redirect', async () => {
 	signInJoiner(true)
-	const response = await createOrgInviteJoinPostHandler(createEnv()).handler({
+	const response = await joinWebsiteOrganization({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${token}`, {
 			method: 'POST',
 		}),
-		params: { token },
-	} as never)
+		token,
+	})
 	expect(response.status).toBe(200)
-	expect(await response.json()).toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: true,
 		alreadyMember: false,
 		orgSlug: 'join-co',
@@ -201,12 +193,14 @@ test('expired links show a clear error on the join page', async () => {
 		)
 		.run()
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	const response = await createOrgInviteJoinHandler(createEnv()).handler({
+	const response = await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${token}`),
-		params: { token },
-	} as never)
+		token,
+	})
 	expect(response.status).toBe(400)
-	expect(await response.json()).toMatchObject({
+	expect(response.data).toMatchObject({
 		orgInviteJoin: {
 			ok: false,
 			reason: 'expired',
@@ -261,14 +255,16 @@ async function pendingRows() {
 test('a package link page describes the access and waits for the viewer', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	const response = await createOrgInviteJoinHandler(createEnv()).handler({
+	const response = await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`, {
 			headers: { Accept: 'application/json' },
 		}),
-		params: { token: link.token },
-	} as never)
+		token: link.token,
+	})
 	expect(response.status).toBe(200)
-	const body = (await response.json()) as { orgInviteJoin: unknown }
+	const body = response.data as { orgInviteJoin: unknown }
 	expect(body.orgInviteJoin).toMatchObject({
 		ok: true,
 		org: { slug: 'ada', personal: true },
@@ -296,21 +292,23 @@ test('a package link page describes the access and waits for the viewer', async 
 test('accepting from the Organizations page grants the package and clears the wait', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	await createOrgInviteJoinHandler(createEnv()).handler({
+	await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`),
-		params: { token: link.token },
-	} as never)
-	const response = await createAccountInviteLinkAcceptPostHandler(
-		createEnv(),
-	).handler({
+		token: link.token,
+	})
+	const response = await acceptWebsiteInviteLink({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(
 			`https://kody.test/account/organizations/invite-links/${link.id}/accept.json`,
 			{ method: 'POST' },
 		),
-		params: { linkId: link.id },
-	} as never)
+		linkId: link.id,
+	})
 	expect(response.status).toBe(200)
-	expect(await response.json()).toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: true,
 		kind: 'resource',
 		redirectTo: '/@ada/weather',
@@ -328,35 +326,37 @@ test('accepting from the Organizations page grants the package and clears the wa
 test('accepting by link id needs a pending row from opening the link', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	const response = await createAccountInviteLinkAcceptPostHandler(
-		createEnv(),
-	).handler({
+	const response = await acceptWebsiteInviteLink({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(
 			`https://kody.test/account/organizations/invite-links/${link.id}/accept.json`,
 			{ method: 'POST' },
 		),
-		params: { linkId: link.id },
-	} as never)
+		linkId: link.id,
+	})
 	expect(response.status).toBe(400)
-	expect(await response.json()).toMatchObject({ ok: false, reason: 'invalid' })
+	expect(response.data).toMatchObject({ ok: false, reason: 'invalid' })
 })
 
 test('declining removes the waiting invite without using the link', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	await createOrgInviteJoinHandler(createEnv()).handler({
+	await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`),
-		params: { token: link.token },
-	} as never)
-	const response = await createAccountInviteLinkDeclinePostHandler(
-		createEnv(),
-	).handler({
+		token: link.token,
+	})
+	const response = await declineWebsiteInviteLink({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(
 			`https://kody.test/account/organizations/invite-links/${link.id}/decline.json`,
 			{ method: 'POST' },
 		),
-		params: { linkId: link.id },
-	} as never)
+		linkId: link.id,
+	})
 	expect(response.status).toBe(200)
 	expect(await pendingRows()).toEqual([])
 	const used = await db
@@ -369,21 +369,25 @@ test('declining removes the waiting invite without using the link', async () => 
 test('a spent package link says so instead of offering it again', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	await createOrgInviteJoinPostHandler(createEnv()).handler({
+	await joinWebsiteOrganization({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`, {
 			method: 'POST',
 		}),
-		params: { token: link.token },
-	} as never)
+		token: link.token,
+	})
 	sqlite
 		.prepare(`UPDATE grants SET deleted_at = ? WHERE subject_id = ?`)
 		.run('2026-02-01T00:00:00.000Z', joiner.personId)
-	const response = await createOrgInviteJoinHandler(createEnv()).handler({
+	const response = await readJoin({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`),
-		params: { token: link.token },
-	} as never)
+		token: link.token,
+	})
 	expect(response.status).toBe(400)
-	expect(await response.json()).toMatchObject({
+	expect(response.data).toMatchObject({
 		orgInviteJoin: { ok: false, reason: 'already_used' },
 	})
 })
@@ -391,20 +395,24 @@ test('a spent package link says so instead of offering it again', async () => {
 test('reopening a used-up package link you accepted shows your access', async () => {
 	const link = await createPackageLink({ maxUses: 1 })
 	signInJoiner(true)
-	await createOrgInviteJoinPostHandler(createEnv()).handler({
+	await joinWebsiteOrganization({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`, {
 			method: 'POST',
 		}),
-		params: { token: link.token },
-	} as never)
-	const reopen = () =>
-		createOrgInviteJoinHandler(createEnv()).handler({
+		token: link.token,
+	})
+	const reopen = async () =>
+		readJoin({
+			env: createEnv(),
+			user: await mocks.readAuthenticatedAppUser(),
 			request: new Request(`https://kody.test/join/${link.token}`),
-			params: { token: link.token },
-		} as never)
+			token: link.token,
+		})
 	const accepted = await reopen()
 	expect(accepted.status).toBe(200)
-	expect(await accepted.json()).toMatchObject({
+	expect(accepted.data).toMatchObject({
 		orgInviteJoin: { ok: true, alreadyMember: true },
 	})
 	expect(await pendingRows()).toEqual([])
@@ -414,13 +422,13 @@ test('reopening a used-up package link you accepted shows your access', async ()
 		.run('2026-02-01T00:00:00.000Z', joiner.personId)
 	const removed = await reopen()
 	expect(removed.status).toBe(400)
-	expect(await removed.json()).toMatchObject({
+	expect(removed.data).toMatchObject({
 		orgInviteJoin: { ok: false, reason: 'already_used' },
 	})
 
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
 	const stranger = await reopen()
-	expect(await stranger.json()).toMatchObject({
+	expect(stranger.data).toMatchObject({
 		orgInviteJoin: { ok: false, reason: 'exhausted' },
 	})
 })
@@ -428,12 +436,14 @@ test('reopening a used-up package link you accepted shows your access', async ()
 test('reopening an accepted link after its creator lost access shows your access', async () => {
 	const link = await createPackageLink()
 	signInJoiner(true)
-	await createOrgInviteJoinPostHandler(createEnv()).handler({
+	await joinWebsiteOrganization({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(`https://kody.test/join/${link.token}`, {
 			method: 'POST',
 		}),
-		params: { token: link.token },
-	} as never)
+		token: link.token,
+	})
 	sqlite
 		.prepare(
 			`UPDATE org_memberships SET role = 'member' WHERE org_id = ? AND user_id = ?`,
@@ -442,17 +452,29 @@ test('reopening an accepted link after its creator lost access shows your access
 	sqlite
 		.prepare(`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ?`)
 		.run(owner.personId)
-	const reopen = () =>
-		createOrgInviteJoinHandler(createEnv()).handler({
+	const reopen = async () =>
+		readJoin({
+			env: createEnv(),
+			user: await mocks.readAuthenticatedAppUser(),
 			request: new Request(`https://kody.test/join/${link.token}`),
-			params: { token: link.token },
-		} as never)
-	expect(await (await reopen()).json()).toMatchObject({
+			token: link.token,
+		})
+	expect((await reopen()).data).toMatchObject({
 		orgInviteJoin: { ok: true, alreadyMember: true },
 	})
 
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	expect(await (await reopen()).json()).toMatchObject({
+	expect((await reopen()).data).toMatchObject({
 		orgInviteJoin: { ok: false, reason: 'inviter_gone' },
 	})
 })
+
+async function readJoin(input: {
+	env: Env
+	request: Request
+	token: string
+	user: unknown
+}) {
+	const data = await loadJoinPageData(input)
+	return { status: data.ok ? 200 : 400, data: { orgInviteJoin: data } }
+}

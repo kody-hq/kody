@@ -1,12 +1,10 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
 import type * as accountExperimentsData from '#app/account-experiments-data.ts'
-import type * as ssrRender from '#app/ssr-render.tsx'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import {
-	createAccountExperimentsApiHandler,
-	createAccountExperimentsHandler,
-} from './account-experiments.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import type * as CloudflareWorkers from 'cloudflare:workers'
+import { expect, test, vi } from 'vitest'
+import { loadExperimentsPage } from '../../../start/server/account-collections.ts'
+import { testAccountExperimentsApiHandler } from './account-experiments.test-support.ts'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -14,9 +12,6 @@ const mockModule = vi.hoisted(() => ({
 	loadAccountExperimentsData: vi.fn(),
 	setExperimentsOptIn: vi.fn<typeof accountExperimentsData.setExperimentsOptIn>(
 		async () => undefined,
-	),
-	renderAppPage: vi.fn<typeof ssrRender.renderAppPage>(
-		async () => new Response('ok'),
 	),
 }))
 
@@ -38,10 +33,23 @@ vi.mock('#app/account-experiments-data.ts', () => ({
 	) => mockModule.setExperimentsOptIn(...args),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (...args: Parameters<typeof ssrRender.renderAppPage>) =>
-		mockModule.renderAppPage(...args),
+vi.mock('@tanstack/react-start', async () => ({
+	createServerOnlyFn: <T>(fn: T) => fn,
+	createServerFn: (
+		await import('#worker/test-support/start-server-function.ts')
+	).createTestServerFn,
 }))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<typeof CloudflareWorkers>()),
+	env: { APP_DB: {}, COOKIE_SECRET: 'test' },
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => new Request('https://kody.example/_serverFn/experiments'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: (env: unknown) => env }))
+vi.mock('#app/auth-session.ts', () => ({ setAuthSessionSecret: vi.fn() }))
+vi.mock('#app/org-request-binding.ts', () => ({}))
 
 function createEnv() {
 	return {
@@ -70,53 +78,35 @@ function createUser() {
 	}
 }
 
-test('account experiments page requires auth and renders loader data', async () => {
-	const env = createEnv()
-	const handler = createAccountExperimentsHandler(env)
+test('native experiments loader requires authentication and returns persisted opt-in state', async () => {
 	const loginRedirect = new Response(null, {
 		status: 302,
 		headers: { Location: '/login' },
 	})
 	mockModule.requireAuthenticatedPageUser.mockResolvedValueOnce(loginRedirect)
-	const denied = await handler.handler({
-		request: new Request('https://kody.example/account/experiments'),
-		params: {},
-		url: new URL('https://kody.example/account/experiments'),
-	} as never)
-	expect(denied).toBe(loginRedirect)
-
-	const user = createUser()
-	mockModule.requireAuthenticatedPageUser.mockResolvedValueOnce(user)
+	await expect(loadExperimentsPage({ data: {} })).rejects.toMatchObject({
+		options: { href: '/login', statusCode: 302 },
+	})
+	mockModule.requireAuthenticatedPageUser.mockResolvedValueOnce(createUser())
 	mockModule.loadAccountExperimentsData.mockResolvedValueOnce({
 		ok: true,
 		experimentsOptIn: false,
 	})
-	await handler.handler({
-		request: new Request('https://kody.example/account/experiments'),
-		params: {},
-		url: new URL('https://kody.example/account/experiments'),
-	} as never)
+	const result = await loadExperimentsPage({ data: {} })
+	expect(result.payload).toEqual({ ok: true, experimentsOptIn: false })
 	expect(mockModule.loadAccountExperimentsData).toHaveBeenCalledWith({
-		db: env.APP_DB,
+		db: expect.anything(),
 		userId: 7,
 	})
-	expect(mockModule.renderAppPage).toHaveBeenCalledWith(
-		expect.objectContaining({
-			title: 'Experiments',
-			loaderData: {
-				accountExperiments: { ok: true, experimentsOptIn: false },
-			},
-		}),
-	)
 })
 
 test('account experiments API persists opt-in and opt-out with audit', async () => {
 	const env = createEnv()
-	const handler = createAccountExperimentsApiHandler(env)
+	const handler = testAccountExperimentsApiHandler(env)
 	const url = new URL('https://kody.example/account/experiments.json')
 
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	const unauthorized = await handler.handler({
+	const unauthorized = await handler.execute({
 		request: new Request(url, { method: 'GET' }),
 		params: {},
 		url,
@@ -125,11 +115,10 @@ test('account experiments API persists opt-in and opt-out with audit', async () 
 
 	const user = createUser()
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(user)
-	mockModule.loadAccountExperimentsData.mockResolvedValue({
-		ok: true,
-		experimentsOptIn: true,
-	})
-	const optIn = await handler.handler({
+	mockModule.loadAccountExperimentsData.mockRejectedValue(
+		new Error('Preference read unavailable'),
+	)
+	const optIn = await handler.execute({
 		request: new Request(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -138,6 +127,7 @@ test('account experiments API persists opt-in and opt-out with audit', async () 
 		params: {},
 		url,
 	} as never)
+	expect(mockModule.loadAccountExperimentsData).not.toHaveBeenCalled()
 	expect(mockModule.setExperimentsOptIn).toHaveBeenCalledWith(env.APP_DB, {
 		userId: 7,
 		enabled: true,
@@ -151,16 +141,12 @@ test('account experiments API persists opt-in and opt-out with audit', async () 
 			reason: 'experiments_opt_in=true',
 		}),
 	)
-	await expect(optIn.json()).resolves.toEqual({
+	expect(optIn.data).toEqual({
 		ok: true,
 		experimentsOptIn: true,
 	})
 
-	mockModule.loadAccountExperimentsData.mockResolvedValue({
-		ok: true,
-		experimentsOptIn: false,
-	})
-	await handler.handler({
+	await handler.execute({
 		request: new Request(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -180,7 +166,7 @@ test('account experiments API persists opt-in and opt-out with audit', async () 
 		}),
 	)
 
-	const badBody = await handler.handler({
+	const badBody = await handler.execute({
 		request: new Request(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },

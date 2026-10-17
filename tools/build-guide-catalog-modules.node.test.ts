@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import {
+	mkdtemp,
 	readFile,
 	readdir,
 	rm,
@@ -8,38 +9,61 @@ import {
 	writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from 'vitest'
+import { expect, test, onTestFinished } from 'vitest'
 import {
 	ensureGuideCatalogModules,
 	isLockStale,
-	lockPath,
+	guideCatalogLockPath,
 } from './build-guide-catalog-modules.ts'
 import {
-	guideMetadataList,
-	importGuideCatalog,
-} from '#worker/guide-catalog-modules.ts'
+	type Guide,
+	type GuideMetadata,
+} from '#worker/guides/parse-frontmatter.ts'
 import { guides as webGuides } from '#worker/guides/catalog.ts'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
-const generatedDir = path.join(repoRoot, 'packages/worker/src/generated')
-const stampPath = path.join(generatedDir, 'guide-catalog.stamp.json')
-const metadataOutputPath = path.join(generatedDir, 'guide-metadata.mjs')
-const catalogOutputPath = path.join(generatedDir, 'guide-catalog.mjs')
-const builderScriptPath = fileURLToPath(
-	new URL('./build-guide-catalog-modules.ts', import.meta.url),
-)
 
-function runBuilderProcess(): Promise<{
+// These tests delete outputs and forge lock owners. Keep every path away
+// from the modules read by concurrent Workers tests and local dev servers.
+async function createOutputFixture() {
+	const generatedDir = await mkdtemp(
+		path.join(tmpdir(), 'kody-guide-catalog-test-'),
+	)
+	const lockPath = guideCatalogLockPath(generatedDir)
+	onTestFinished(async () => {
+		await rm(generatedDir, { recursive: true, force: true })
+		await rm(lockPath, { force: true })
+	})
+	return {
+		generatedDir,
+		lockPath,
+		stampPath: path.join(generatedDir, 'guide-catalog.stamp.json'),
+		metadataOutputPath: path.join(generatedDir, 'guide-metadata.mjs'),
+		catalogOutputPath: path.join(generatedDir, 'guide-catalog.mjs'),
+	}
+}
+
+function runBuilderProcess(outputDir: string): Promise<{
 	code: number | null
 	stdout: string
 	stderr: string
 }> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(process.execPath, [builderScriptPath], {
-			cwd: repoRoot,
-			stdio: ['ignore', 'pipe', 'pipe'],
-		})
+		const child = spawn(
+			process.execPath,
+			[
+				'--input-type=module',
+				'--eval',
+				`import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.ts'; await ensureGuideCatalogModules({ outputDir: process.argv[1] });`,
+				outputDir,
+			],
+			{
+				cwd: repoRoot,
+				stdio: ['ignore', 'pipe', 'pipe'],
+			},
+		)
 		let stdout = ''
 		let stderr = ''
 		child.stdout.on('data', (chunk: Buffer) => {
@@ -70,14 +94,21 @@ function parseGeneratedModulePayload(content: string): unknown {
 }
 
 test('ensureGuideCatalogModules generates metadata and a full catalog matching the web catalog', async () => {
-	await ensureGuideCatalogModules()
+	const { generatedDir, metadataOutputPath, catalogOutputPath } =
+		await createOutputFixture()
+	await ensureGuideCatalogModules({ outputDir: generatedDir })
+	const guideMetadataList = parseGeneratedModulePayload(
+		await readFile(metadataOutputPath, 'utf8'),
+	) as Array<GuideMetadata>
 
 	expect(guideMetadataList.length).toBe(webGuides.length)
 	const metadataById = new Map(
 		guideMetadataList.map((guide) => [guide.id, guide]),
 	)
 
-	const { guides } = await importGuideCatalog()
+	const guides = parseGeneratedModulePayload(
+		await readFile(catalogOutputPath, 'utf8'),
+	) as Array<Guide>
 	expect(guides.length).toBe(webGuides.length)
 	const fullById = new Map(guides.map((guide) => [guide.id, guide]))
 
@@ -100,11 +131,13 @@ test('ensureGuideCatalogModules generates metadata and a full catalog matching t
 })
 
 test('ensureGuideCatalogModules skips complete warm output and repairs a missing generated module', async () => {
-	await ensureGuideCatalogModules()
+	const { generatedDir, stampPath, metadataOutputPath } =
+		await createOutputFixture()
+	await ensureGuideCatalogModules({ outputDir: generatedDir })
 	const before = await stat(stampPath)
 	const beforeContent = await readFile(stampPath, 'utf8')
 
-	await ensureGuideCatalogModules()
+	await ensureGuideCatalogModules({ outputDir: generatedDir })
 
 	const after = await stat(stampPath)
 	const afterContent = await readFile(stampPath, 'utf8')
@@ -112,21 +145,22 @@ test('ensureGuideCatalogModules skips complete warm output and repairs a missing
 	expect(after.mtimeMs).toBe(before.mtimeMs)
 
 	await rm(metadataOutputPath)
-	await ensureGuideCatalogModules()
+	await ensureGuideCatalogModules({ outputDir: generatedDir })
 	expect(await readFile(metadataOutputPath, 'utf8')).toMatch(
 		/^export const guideMetadata = JSON\.parse\(/m,
 	)
 })
 
 test('guide catalog lock keeps a live owner regardless of age and recovers abandoned owners', async () => {
+	const { lockPath } = await createOutputFixture()
 	const oldTime = new Date(Date.now() - 120_000)
 	try {
 		await writeFile(lockPath, String(process.pid))
 		await utimes(lockPath, oldTime, oldTime)
-		expect(await isLockStale()).toBe(false)
+		expect(await isLockStale(lockPath)).toBe(false)
 
 		await writeFile(lockPath, '2147483647')
-		expect(await isLockStale()).toBe(true)
+		expect(await isLockStale(lockPath)).toBe(true)
 	} finally {
 		await rm(lockPath, { force: true })
 	}
@@ -143,14 +177,19 @@ test(
 	'ensureGuideCatalogModules is cross-process safe: concurrent regeneration from a clean state converges on uncorrupted, consistent output',
 	{ timeout: 30_000 },
 	async () => {
-		await rm(stampPath, { force: true })
-		await rm(metadataOutputPath, { force: true })
-		await rm(catalogOutputPath, { force: true })
-		await rm(lockPath, { force: true })
+		const {
+			generatedDir,
+			lockPath,
+			stampPath,
+			metadataOutputPath,
+			catalogOutputPath,
+		} = await createOutputFixture()
 
 		const concurrency = 6
 		const results = await Promise.all(
-			Array.from({ length: concurrency }, () => runBuilderProcess()),
+			Array.from({ length: concurrency }, () =>
+				runBuilderProcess(generatedDir),
+			),
 		)
 		for (const result of results) {
 			expect(
@@ -183,7 +222,7 @@ test(
 		// The stamp published last must already reflect the fully-written
 		// state: a further call finds nothing to do.
 		const before = await stat(stampPath)
-		await ensureGuideCatalogModules()
+		await ensureGuideCatalogModules({ outputDir: generatedDir })
 		const after = await stat(stampPath)
 		expect(after.mtimeMs).toBe(before.mtimeMs)
 	},

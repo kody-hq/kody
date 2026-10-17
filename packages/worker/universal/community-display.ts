@@ -17,7 +17,13 @@ export function formatCommunityPublishedDate(value: string) {
 	// editorial date voice, matching `formatBlogPostDate`). This renders on the
 	// server and again on hydration, so a runtime-dependent format would both
 	// vary by host locale and risk a mismatch between the two.
-	return new Date(value).toLocaleDateString('en-US', {
+	// SQLite CURRENT_TIMESTAMP omits the zone, but stores UTC.
+	const timestamp = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(
+		value,
+	)
+		? `${value.replace(' ', 'T')}Z`
+		: value
+	return new Date(timestamp).toLocaleDateString('en-US', {
 		year: 'numeric',
 		month: 'long',
 		day: 'numeric',

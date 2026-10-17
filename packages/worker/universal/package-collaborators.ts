@@ -95,16 +95,17 @@ export type PackageCollaboratorInviteCreated = {
 	prompt: string
 }
 
-export type PackageCollaboratorsWriteResult = PackageCollaboratorsView & {
+/** Writes return their outcome independently of a subsequent confirming read. */
+export type PackageCollaboratorsWriteResult = {
+	ok: true
 	invite?: PackageCollaboratorInviteCreated
 }
 
 /**
- * POST body for `communityPackageCollaboratorsApiPost`; the response is the
- * updated `PackageCollaboratorsView` (`PackageCollaboratorsWriteResult` after
- * an invite). `grant` adds a team or org member, or changes the preset of one
- * who already holds a grant. `invite` and `revoke-invite` are personal-org
- * only.
+ * Native collaborator mutation input; writes return an acknowledgement and
+ * creation returns its one-time invite handoff. `grant` adds a team or org
+ * member, or changes the preset of one who already holds a grant. `invite`
+ * and `revoke-invite` are personal-org only.
  */
 export type PackageCollaboratorsChange =
 	| {

@@ -120,8 +120,8 @@ reporter/owner ids on `admin/community-reports` — a screen the inventory above
 already defers.
 
 **2. `RecordTable` across all seventeen screens — landed.**
-`packages/worker/client/routes/record-table.tsx`, with `/account/packages` as
-its first consumer and the other sixteen following. `AccountManagementLayout`,
+`packages/worker/start/pages/record-table.tsx`, with `/account/packages` as its
+first consumer and the other sixteen following. `AccountManagementLayout`,
 `AccountManagementSidebar`, `AccountManagementList`,
 `AccountManagementListItemLink`, `AccountManagementSearchField`,
 `accountManagementListMaxHeight`, and the three `accountManagementTable*Css`

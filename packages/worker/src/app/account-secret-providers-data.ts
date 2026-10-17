@@ -14,9 +14,13 @@ export async function loadAccountSecretProvidersData(input: {
 	env: Env
 	userId: OwnerId
 	email: string
-	url: string
+	approval: {
+		provider?: string
+		ref?: string
+		packageId?: string
+		packageName?: string
+	}
 }): Promise<AccountSecretProvidersLoaderData> {
-	const requestUrl = new URL(input.url)
 	const [bindings, grants, packages, secrets] = await Promise.all([
 		listBoundSecretProviders({
 			env: input.env,
@@ -38,7 +42,7 @@ export async function loadAccountSecretProvidersData(input: {
 	const approval = await loadApprovalCard({
 		env: input.env,
 		userId: input.userId,
-		searchParams: requestUrl.searchParams,
+		approval: input.approval,
 	})
 	return {
 		ok: true,
@@ -71,11 +75,16 @@ export async function loadAccountSecretProvidersData(input: {
 async function loadApprovalCard(input: {
 	env: Env
 	userId: OwnerId
-	searchParams: URLSearchParams
+	approval: {
+		provider?: string
+		ref?: string
+		packageId?: string
+		packageName?: string
+	}
 }): Promise<AccountSecretProvidersLoaderData['approval']> {
-	const provider = input.searchParams.get('provider')?.trim() ?? ''
-	const ref = input.searchParams.get('ref')?.trim() ?? ''
-	const packageId = input.searchParams.get('package_id')?.trim() ?? ''
+	const provider = input.approval.provider?.trim() ?? ''
+	const ref = input.approval.ref?.trim() ?? ''
+	const packageId = input.approval.packageId?.trim() ?? ''
 	if (!provider || !ref || !packageId) return null
 	const canonicalRef = tryCanonicalizeProviderRef(ref) ?? ref
 	try {
@@ -98,7 +107,7 @@ async function loadApprovalCard(input: {
 			provider,
 			canonicalRef,
 			packageId,
-			kodyId: input.searchParams.get('package')?.trim() || packageId,
+			kodyId: input.approval.packageName?.trim() || packageId,
 			alreadyGranted: false,
 			error:
 				error instanceof SecretProviderError

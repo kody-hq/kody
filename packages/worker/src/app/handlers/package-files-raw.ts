@@ -1,4 +1,3 @@
-import { type Action } from 'remix/router'
 import { anonymousPersonalizedJsonCacheHeaders } from '#app/anonymous-html-cache.ts'
 import {
 	loadAccessiblePackageFileRaw,
@@ -8,7 +7,6 @@ import {
 import { resolvePackageFileRawViewer } from '#app/package-files-raw-viewer.ts'
 import { type ApiError } from '#worker/open-api/errors.ts'
 import { normalizePackageFilesPath } from '#universal/package-files.ts'
-import { type routes } from '#universal/routes.ts'
 
 // Raw bytes share the app origin. `sandbox` keeps anything a browser does
 // render (SVG opened directly, a PDF viewer) in an opaque origin with no
@@ -109,50 +107,61 @@ function readRawSelectedPath(relativePath: unknown) {
 }
 
 export function createCommunityPackageRawHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			if (request.method !== 'GET' && request.method !== 'HEAD') {
-				return new Response('Method not allowed', { status: 405 })
-			}
-			const selectedPath = readRawSelectedPath(params.relativePath)
-			if (selectedPath == null) return rawNotFound()
-			const viewer = await resolvePackageFileRawViewer({ env, request })
-			if (viewer.kind === 'invalid') {
-				return rawInvalidCredentials(viewer.error)
-			}
-			const result = await loadAccessiblePackageFileRaw({
-				env,
-				request,
-				username: params.username,
-				kodyId: params.kodyId,
-				selectedPath,
-				ref: params.ref,
-				...(viewer.kind === 'token'
-					? { viewer: viewer.user, viewerOrgId: viewer.orgId }
-					: {}),
-			})
-			return respondRaw({ request, result })
-		},
-	} satisfies Action<typeof routes.communityPackageRaw>
+	return async ({
+		request,
+		params,
+	}: {
+		request: Request
+		params: {
+			username: string
+			kodyId: string
+			ref: string
+			relativePath: string | undefined
+		}
+	}) => {
+		if (request.method !== 'GET' && request.method !== 'HEAD') {
+			return new Response('Method not allowed', { status: 405 })
+		}
+		const selectedPath = readRawSelectedPath(params.relativePath)
+		if (selectedPath == null) return rawNotFound()
+		const viewer = await resolvePackageFileRawViewer({ env, request })
+		if (viewer.kind === 'invalid') {
+			return rawInvalidCredentials(viewer.error)
+		}
+		const result = await loadAccessiblePackageFileRaw({
+			env,
+			request,
+			username: params.username,
+			kodyId: params.kodyId,
+			selectedPath,
+			ref: params.ref,
+			...(viewer.kind === 'token'
+				? { viewer: viewer.user, viewerOrgId: viewer.orgId }
+				: {}),
+		})
+		return respondRaw({ request, result })
+	}
 }
 
 export function createCommunityDetailRawHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			if (request.method !== 'GET' && request.method !== 'HEAD') {
-				return new Response('Method not allowed', { status: 405 })
-			}
-			const selectedPath = readRawSelectedPath(params.relativePath)
-			if (selectedPath == null) return rawNotFound()
-			const result = await loadCommunityPackageFileRaw({
-				env,
-				request,
-				listingId: params.listingId,
-				selectedPath,
-			})
-			return respondRaw({ request, result })
-		},
-	} satisfies Action<typeof routes.communityDetailRaw>
+	return async ({
+		request,
+		params,
+	}: {
+		request: Request
+		params: { listingId: string; relativePath: string | undefined }
+	}) => {
+		if (request.method !== 'GET' && request.method !== 'HEAD') {
+			return new Response('Method not allowed', { status: 405 })
+		}
+		const selectedPath = readRawSelectedPath(params.relativePath)
+		if (selectedPath == null) return rawNotFound()
+		const result = await loadCommunityPackageFileRaw({
+			env,
+			request,
+			listingId: params.listingId,
+			selectedPath,
+		})
+		return respondRaw({ request, result })
+	}
 }

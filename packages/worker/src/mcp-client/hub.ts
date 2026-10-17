@@ -1,3 +1,8 @@
+import {
+	mcpReadSnapshotStorageKey,
+	projectMcpReadSnapshot,
+	coldMcpReadSnapshot,
+} from './read-snapshot.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
@@ -102,6 +107,7 @@ import {
 import {
 	type McpHubConnectResult,
 	type McpHubOAuthClientChange,
+	type McpClientHubReadSnapshot,
 	type McpHubServerSnapshot,
 	type McpHubSnapshot,
 	type McpServerConnectionState,
@@ -160,6 +166,7 @@ class McpClientHubBase extends DurableObject<Env> {
 	private readonly manager: MCPClientManager
 	private readonly lifecycle: Lifecycle<Env>
 	private restored: Promise<void> | null = null
+	private operationallyRestored = false
 	private readonly lastDiscoverErrors = new Map<string, McpServerLastError>()
 	private readonly tokenPresence = new Map<string, McpOAuthTokenPresence>()
 	private readonly connectLocks = new Map<string, Promise<void>>()
@@ -370,6 +377,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		await this.hydratePreRegisteredClientIds()
 		await this.lifecycle.start()
 		await this.hydrateTokenRecoveryErrors()
+		this.operationallyRestored = true
 	}
 
 	private async hydratePreRegisteredClientIds() {
@@ -1709,9 +1717,35 @@ class McpClientHubBase extends DurableObject<Env> {
 		return this.listServerCards()
 	}
 
+	/** No restore, recovery, token processing, event delivery, or storage writes. */
+	async readSnapshot(): Promise<McpClientHubReadSnapshot> {
+		if (this.operationallyRestored)
+			return projectMcpReadSnapshot(this.listServerCards())
+		return coldMcpReadSnapshot(
+			await this.ctx.storage.get<McpClientHubReadSnapshot>(
+				mcpReadSnapshotStorageKey,
+			),
+		)
+	}
+
+	/** Called by operational clients after writes, including partial failures. */
+	async saveReadSnapshot(): Promise<void> {
+		if (!this.operationallyRestored) return
+		try {
+			await this.ctx.storage.put(
+				mcpReadSnapshotStorageKey,
+				projectMcpReadSnapshot(this.listServerCards()),
+			)
+		} catch (error) {
+			console.warn('mcp-read-snapshot-save-failed', error)
+		}
+	}
+
 	async getSnapshot(): Promise<McpHubSnapshot> {
+		const servers = await this.collectServerSnapshots()
+		await this.saveReadSnapshot()
 		return {
-			servers: await this.collectServerSnapshots(),
+			servers,
 			connectionEvents: await this.peekConnectionEvents(),
 		}
 	}
@@ -2320,6 +2354,7 @@ class McpClientHubBase extends DurableObject<Env> {
 		const sealed = await this.readSealedPreRegisteredOAuthClient(serverId)
 		if (sealed) this.preRegisteredClientIds.set(serverId, sealed.clientId)
 		await this.hydrateTokenRecoveryErrors()
+		this.operationallyRestored = true
 		const persisted = parsePersistedMcpServerOptions(staged.row.server_options)
 		const options = reconnectMcpServerOptions(
 			persisted ? sanitizePersistedMcpServerOptions(persisted) : undefined,
@@ -2392,6 +2427,7 @@ class McpClientHubBase extends DurableObject<Env> {
 			// Connections that fail to close cleanly must not block deletion.
 		}
 		this.restored = null
+		this.operationallyRestored = false
 		this.preRegisteredClients.clear()
 		this.preRegisteredClientIds.clear()
 		await this.ctx.storage.deleteAll()

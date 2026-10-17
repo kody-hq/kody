@@ -1,4 +1,3 @@
-import { type Action } from 'remix/router'
 import { loadPackagePage } from '#app/package-page.ts'
 import { resolveCommunityPackageUrl } from '#worker/community/package-url.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
@@ -14,7 +13,6 @@ import {
 	resolvePackageReadmeImagePath,
 } from '#universal/package-readme-images.ts'
 import { isReservedPackageFilesKodyId } from '#universal/package-files.ts'
-import { type routes } from '#universal/routes.ts'
 
 function notFound() {
 	return new Response('Not found', { status: 404 })
@@ -57,67 +55,32 @@ async function servePublishedPackageReadmeAsset(input: {
 }
 
 export function createCommunityPackageAssetHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			if (isReservedPackageFilesKodyId(params.kodyId)) return notFound()
-			const relativePath = selectedAssetPath(params.relativePath)
-			if (!relativePath) return notFound()
+	return async ({
+		request,
+		params,
+	}: {
+		request: Request
+		params: {
+			username: string
+			kodyId: string
+			relativePath: string | undefined
+		}
+	}) => {
+		if (isReservedPackageFilesKodyId(params.kodyId)) return notFound()
+		const relativePath = selectedAssetPath(params.relativePath)
+		if (!relativePath) return notFound()
 
-			const publicTarget = await resolveCommunityPackageUrl({
-				db: env.APP_DB,
-				username: params.username,
-				kodyId: params.kodyId,
-			})
-			if (publicTarget) {
-				const listing = await getCommunityListingById(env.APP_DB, {
-					listingId: publicTarget.listingId,
-					includeDelisted: false,
-				})
-				if (!listing) return notFound()
-				return servePublishedPackageReadmeAsset({
-					env,
-					sourceId: listing.sourceId,
-					commit: listing.pinnedCommit,
-					relativePath,
-					listingId: listing.id,
-					cacheControl: packageReadmeAssetCacheControl,
-				})
-			}
-
-			const page = await loadPackagePage({
-				env,
-				request,
-				username: params.username,
-				kodyId: params.kodyId,
-			})
-			if (page.kind !== 'page' || !page.ownerPackage || !page.viewerIsOwner) {
-				return notFound()
-			}
-			return servePublishedPackageReadmeAsset({
-				env,
-				sourceId: page.ownerPackage.sourceId,
-				commit: page.ownerPackage.publishedCommit ?? '',
-				relativePath,
-				cacheControl: packageReadmeAssetPrivateCacheControl,
-			})
-		},
-	} satisfies Action<typeof routes.communityPackageAsset>
-}
-
-export function createCommunityDetailAssetHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ params }) {
-			const relativePath = selectedAssetPath(params.relativePath)
-			if (!relativePath) return notFound()
-
+		const publicTarget = await resolveCommunityPackageUrl({
+			db: env.APP_DB,
+			username: params.username,
+			kodyId: params.kodyId,
+		})
+		if (publicTarget) {
 			const listing = await getCommunityListingById(env.APP_DB, {
-				listingId: params.listingId,
+				listingId: publicTarget.listingId,
 				includeDelisted: false,
 			})
 			if (!listing) return notFound()
-
 			return servePublishedPackageReadmeAsset({
 				env,
 				sourceId: listing.sourceId,
@@ -126,6 +89,49 @@ export function createCommunityDetailAssetHandler(env: Env) {
 				listingId: listing.id,
 				cacheControl: packageReadmeAssetCacheControl,
 			})
-		},
-	} satisfies Action<typeof routes.communityDetailAsset>
+		}
+
+		const page = await loadPackagePage({
+			env,
+			request,
+			username: params.username,
+			kodyId: params.kodyId,
+		})
+		if (page.kind !== 'page' || !page.ownerPackage || !page.viewerIsOwner) {
+			return notFound()
+		}
+		return servePublishedPackageReadmeAsset({
+			env,
+			sourceId: page.ownerPackage.sourceId,
+			commit: page.ownerPackage.publishedCommit ?? '',
+			relativePath,
+			cacheControl: packageReadmeAssetPrivateCacheControl,
+		})
+	}
+}
+
+export function createCommunityDetailAssetHandler(env: Env) {
+	return async ({
+		params,
+	}: {
+		params: { listingId: string; relativePath: string | undefined }
+	}) => {
+		const relativePath = selectedAssetPath(params.relativePath)
+		if (!relativePath) return notFound()
+
+		const listing = await getCommunityListingById(env.APP_DB, {
+			listingId: params.listingId,
+			includeDelisted: false,
+		})
+		if (!listing) return notFound()
+
+		return servePublishedPackageReadmeAsset({
+			env,
+			sourceId: listing.sourceId,
+			commit: listing.pinnedCommit,
+			relativePath,
+			listingId: listing.id,
+			cacheControl: packageReadmeAssetCacheControl,
+		})
+	}
 }

@@ -10,15 +10,15 @@ vi.mock('#worker/community/profile-service.ts', () => ({
 }))
 
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
-import { createAccountProfileApiHandler } from './account-profile.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 import {
 	isOrgBindingMembershipQuery,
 	mockPersonalOrgBindingRow,
 } from '#worker/test-support/org-binding-query.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { testAccountProfileApiHandler } from './account-profile.test-support.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -165,7 +165,7 @@ function createProfileClient(
 		APP_BASE_URL: 'http://example.com',
 		...(options.kv ? { BUNDLE_ARTIFACTS_KV: options.kv } : {}),
 	} as Env
-	const { handler } = createAccountProfileApiHandler(env)
+	const { execute } = testAccountProfileApiHandler(env)
 	const email = `${usernames[0]}@example.com`
 	const send = async (body?: Record<string, unknown>) => {
 		const cookie = await createAuthCookie(
@@ -184,7 +184,7 @@ function createProfileClient(
 			},
 			body: body ? JSON.stringify(body) : undefined,
 		})
-		return handler({ request, url: new URL(request.url), params: {} } as never)
+		return execute({ request, url: new URL(request.url), params: {} } as never)
 	}
 	return {
 		testDb,
@@ -211,7 +211,7 @@ test('account profile API returns email and username for the signed-in user', as
 	const response = await get()
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({
+	expect(response.data).toEqual({
 		ok: true,
 		email: 'current-user@example.com',
 		emailVerified: false,
@@ -232,7 +232,7 @@ test('account profile API rejects any username change because usernames are perm
 
 	for (const requested of ['Next-Jane', 'taken-jane', 'bad username', 'kody']) {
 		const response = await post({ username: requested })
-		expect([response.status, await response.json()]).toEqual([
+		expect([response.status, response.data]).toEqual([
 			400,
 			{
 				ok: false,
@@ -259,7 +259,7 @@ test('account profile API treats an unchanged username as a no-op so grandfather
 	})
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toMatchObject({ ok: true, username: 'kody' })
+	expect(response.data).toEqual({ ok: true })
 	expect(username()).toBe('kody')
 	expect(mocks.updateCommunityProfile).toHaveBeenCalledWith(
 		expect.objectContaining({
@@ -301,18 +301,7 @@ test('account profile API round trips and validates displayName, bio, and visibi
 	})
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({
-		ok: true,
-		email: 'current-user@example.com',
-		emailVerified: false,
-		emailVerificationDelivery: null,
-		username: 'current-user',
-		displayName: 'Current User',
-		bio: 'I build packages',
-		avatarUrl: null,
-		profileVisibility: 'private',
-		formerEmails: [],
-	})
+	expect(response.data).toEqual({ ok: true })
 	expect(mocks.updateCommunityProfile).toHaveBeenCalledWith({
 		env,
 		numericUserId: 1,
@@ -322,7 +311,7 @@ test('account profile API round trips and validates displayName, bio, and visibi
 	})
 	expectAccountAudit('update_profile', 'success')
 
-	expect(await (await get()).json()).toMatchObject({
+	expect((await get()).data).toMatchObject({
 		displayName: 'Current User',
 		bio: 'I build packages',
 		profileVisibility: 'private',
@@ -330,7 +319,7 @@ test('account profile API round trips and validates displayName, bio, and visibi
 
 	const invalidVisibility = await post({ profileVisibility: 'friends' })
 	expect(invalidVisibility.status).toBe(400)
-	expect(await invalidVisibility.json()).toEqual({
+	expect(invalidVisibility.data).toEqual({
 		ok: false,
 		error: 'Profile visibility is invalid.',
 	})
@@ -340,13 +329,30 @@ test('account profile API round trips and validates displayName, bio, and visibi
 	)
 	const invalidDisplayName = await post({ displayName: 'x'.repeat(51) })
 	expect(invalidDisplayName.status).toBe(400)
-	expect(await invalidDisplayName.json()).toEqual({
+	expect(invalidDisplayName.data).toEqual({
 		ok: false,
 		error: 'Display name must be at most 50 characters.',
 	})
 })
 
-test('clearing displayName returns the username, not the stale auth display name', async () => {
+test('a committed profile save does not depend on reloading account data', async () => {
+	const { env, post } = createProfileClient(['current-user'])
+	const prepare = vi.spyOn(env.APP_DB, 'prepare')
+	mocks.updateCommunityProfile.mockImplementation(async () => {
+		prepare.mockImplementation(() => {
+			throw new Error('Post-write account reads are unavailable')
+		})
+	})
+	try {
+		const response = await post({ displayName: 'Updated name' })
+		expect(response.status).toBe(200)
+		expect(response.data).toEqual({ ok: true })
+	} finally {
+		prepare.mockRestore()
+	}
+})
+
+test('clearing displayName persists null and acknowledges the committed native save', async () => {
 	// Auth resolves once per request with the stored display name. Clearing
 	// must not fall back to that cached value in the POST response (Devin on
 	// #3879).
@@ -369,9 +375,6 @@ test('clearing displayName returns the username, not the stale auth display name
 	const response = await post({ displayName: '' })
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toMatchObject({
-		username: 'ada',
-		displayName: 'ada',
-	})
+	expect(response.data).toEqual({ ok: true })
 	expect(testDb.users.get(1)?.display_name).toBeNull()
 })

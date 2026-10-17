@@ -19,7 +19,8 @@ lacks actionable detail. Do not add a second lane beside the shared primitive.
 
 - Builder: `#universal/error-agent-prompt` (`buildErrorAgentPrompt`) and presets
   in `#universal/error-agent-prompt-presets`
-- Hydrated UI: `#client/error-agent-prompt-button` (`ErrorAgentPromptButton`)
+- Hydrated UI: `#start/components/error-agent-prompt-button`
+  (`ErrorAgentPromptButton`)
 - Static HTML (no client entry): `renderErrorAgentPromptStaticHtml`
 - Always stamp `data-error-agent-prompt`
 - Never put secret values, tokens, or other users’ private data in the prompt;

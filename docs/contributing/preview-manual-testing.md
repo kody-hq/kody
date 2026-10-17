@@ -24,8 +24,7 @@ script; a `--` separator is optional).
 The script signs in as the preview seed user and keeps that session. The seed
 account starts **empty** except the user row — there are no secrets, packages,
 or jobs until you create them. Create that data and assert the change as the
-same user. For a saved package, use `package-create` (not a create action on
-`POST /account/packages.json`):
+same user. For a saved package, use `package-create`:
 
 ```bash
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead]
@@ -40,12 +39,12 @@ npm run control-kody -- execute --origin <preview> --code-file fixture.ts [--par
 npm run control-kody -- search --origin <preview> --query "packageSave"
 ```
 
-JSON APIs still cover other account data:
+Use retained HTTP protocols for session and export checks. Exercise website
+reads and mutations through the browser, which calls Start server functions:
 
 ```bash
 npm run preview:manual-test -- \
-  --request 'POST /onboarding/checklist-dismiss.json {}' \
-  --request 'GET /onboarding.json' \
+  --request 'GET /session' \
   --check /onboarding/step-2
 ```
 
@@ -163,27 +162,26 @@ leave CI only sealed to the operator's key. PR previews never get an admin.
 
 Do not seed preview D1 from the agent VM with `tools/ci/preview-resources.ts`
 unless you are an operator with Cloudflare credentials. Create user data through
-the product JSON APIs (`/account/*.json` in
-`packages/worker/universal/routes.ts`) or, for a saved package,
+supported MCP capabilities with `control-kody execute` / `search`, or use the
+browser UI. For a saved package, use
 `npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead]`.
-Those JSON endpoints are the same ones the UI posts to. Package creation is
-MCP-only (`packageGetGitRemote({ create: true, kody_id })` with the package name
-leaf or `@owner/leaf`); there is no create action on
-`POST /account/packages.json`. Arbitrary MCP `execute` / `search` uses
-`control-kody execute` / `search` against the same origin.
+Package creation uses `packageGetGitRemote({ create: true, kody_id })` with the
+package name leaf or `@owner/leaf`. Website-only reads and mutations use Start
+server functions, not public JSON action URLs. `/session`, `/auth`, and
+`/account/export.json` remain HTTP protocols. Use `control-kody` login rather
+than implementing authentication yourself.
 
 `/mcp` stays OAuth-protected; an unauthenticated GET is 401 by design. Logged-in
 preview testing does not require agents to hand-roll an MCP OAuth dance — the
 CLI does it for them.
 
 `emailSend` on a PR preview still stores the mailbox row (so `emailMessageGet`
-and `GET /account/email.json?selected=` can read the text and HTML bodies).
-Provider delivery fails with Cloudflare's
-`could not find domain config of sending domain` because the per-preview inbox
-host (`user-me@inbox.kody-pr-<n>.…workers.dev`) is not a configured sending
-domain. Treat `status: "failed"` plus that error as the expected preview send;
-the stored row is the body round-trip. Production and local mock/REST fallbacks
-are the paths that actually deliver.
+and the browser email page can read the text and HTML bodies). Provider delivery
+fails with Cloudflare's `could not find domain config of sending domain` because
+the per-preview inbox host (`user-me@inbox.kody-pr-<n>.…workers.dev`) is not a
+configured sending domain. Treat `status: "failed"` plus that error as the
+expected preview send; the stored row is the body round-trip. Production and
+local mock/REST fallbacks are the paths that actually deliver.
 
 Two `packageSave` packages on the seed account are both self-authored and share
 implicit user-secret read. That is not a locked-secret denial test. To preview
@@ -212,14 +210,15 @@ node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
   --enable-flag connection-profiles
 ```
 
-After that deploy, the seed session reports the flag on:
+After that deploy, open the connected agents page as the seed user and verify
+the connection profile controls:
 
 ```bash
-npm run control-kody -- request GET /account/connected-agents.json --origin <preview> --dump --contains '"connectionProfilesEnabled":true'
+npm run control-kody -- browse --origin <preview> --path /account/connected-agents
 ```
 
 Without the label, the next preview seed deletes that allowlisted override, and
-the same request contains `"connectionProfilesEnabled":false`. An unknown
+the connection profile controls should no longer appear. An unknown
 `preview-flag:` label fails the seed step. Adding or removing the label on a
 closed pull request does not deploy.
 

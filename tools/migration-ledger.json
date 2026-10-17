@@ -601,7 +601,7 @@
 			"sha256": "20ef74d467821c4be5f931062c1469670ee1a5e8209aa8d1423904c40b1c2d06"
 		},
 		{
-			"filename": "0161-email-verification-hard-bounces.sql",
+			"filename": "0162-email-verification-hard-bounces.sql",
 			"sha256": "d526830851617183c490a54b5fa05de70c639c6c81344999ba72c7201a2b66a2"
 		}
 	]

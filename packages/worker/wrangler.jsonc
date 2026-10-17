@@ -1,6 +1,7 @@
 {
 	"$schema": "../../node_modules/wrangler/config-schema.json",
 	"name": "kody",
+	"version_metadata": { "binding": "CF_VERSION_METADATA" },
 	"compatibility_date": "2026-04-16",
 	// `enhanced_error_serialization` is date-default on 2026-04-21. Opt in
 	// explicitly so JSRPC from the Artifacts binding preserves `name`/`code`
@@ -228,6 +229,7 @@
 	// 0016); the main worker has no scheduled handler.
 	"env": {
 		"production": {
+			"version_metadata": { "binding": "CF_VERSION_METADATA" },
 			"ratelimits": [
 				{
 					"name": "AUTH_RATE_LIMITER",
@@ -642,6 +644,7 @@
 			},
 		},
 		"preview": {
+			"version_metadata": { "binding": "CF_VERSION_METADATA" },
 			// Deployed preview origins upload the slim entry and own no Durable
 			// Object class, so `tools/ci/preview-resources.ts` strips this block
 			// from the generated deploy config. It only replays for the full
@@ -1044,6 +1047,7 @@
 			},
 		},
 		"test": {
+			"version_metadata": { "binding": "CF_VERSION_METADATA" },
 			// Local test workers replay the whole migration chain, so it must
 			// not create JobManager/JobRunner: the class is not exported here
 			// anymore (it lives in the jobs worker, ADR 0016). Same chain as the

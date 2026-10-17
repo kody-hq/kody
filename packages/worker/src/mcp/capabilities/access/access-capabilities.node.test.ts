@@ -1,22 +1,24 @@
-import { DatabaseSync } from 'node:sqlite'
+import { McpCallerError } from '#mcp/caller-error.ts'
+import { createMcpCallerContext } from '#mcp/context.ts'
+import { compileAccessForRequest } from '#worker/authorization/access-compile.ts'
+import { LivePersonRequiredError } from '#worker/authorization/authorize.ts'
+import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
+import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import {
+	deriveRequestContext,
+	type RequestSource,
+} from '#worker/request-context/request-context.ts'
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { McpCallerError } from '#mcp/caller-error.ts'
-import { createMcpCallerContext } from '#mcp/context.ts'
-import { compileAccessForRequest } from '#worker/authorization/access-compile.ts'
-import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
-import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
-import {
-	deriveRequestContext,
-	type RequestSource,
-} from '#worker/request-context/request-context.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { LivePersonRequiredError } from '#worker/authorization/authorize.ts'
 import {
 	accessGrantCapability,
 	accessRevokeCapability,
@@ -24,8 +26,6 @@ import {
 import { inviteAcceptCapability, inviteCreateCapability } from './invites.ts'
 import { orgCreateCapability, orgMemberListCapability } from './org-members.ts'
 import { teamCreateCapability } from './teams.ts'
-import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
-import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 
 async function createDb() {
 	const sqlite = new DatabaseSync(':memory:')

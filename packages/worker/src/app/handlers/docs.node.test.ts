@@ -11,19 +11,15 @@ import {
 	type WalkthroughHostPick,
 } from '#universal/walkthrough-hosts.ts'
 import { getGuideBySlug, listProviderGuides } from '#worker/guides/catalog.ts'
-import { listDocsNavSlugs, visibleDocsNav } from '#universal/docs-nav.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
-	createDocDetailApiHandler,
-	createDocDetailHandler,
+	loadAccessibleDocDetail,
 	createDocDetailMarkdownHandler,
-	createDocsApiHandler,
-	createDocsConnectApiHandler,
 	createDocsConnectMarkdownHandler,
 	createDocsMarkdownHandler,
 	createLlmsTxtHandler,
 	createDocsLlmsTxtHandler,
-} from './docs.tsx'
+} from './docs.ts'
 import { resolveLegacyGuidesLocation } from './legacy-guides-redirect.ts'
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -37,19 +33,30 @@ const markdownType = 'text/markdown; charset=utf-8'
 type HandlerArgs = { request: Request; params: { slug: string } }
 
 function call(
-	create: (env: Env) => unknown,
+	create: (env: Env) => (args: HandlerArgs) => Promise<Response>,
 	path: string,
 	options: { slug?: string; headers?: HeadersInit; env?: Env } = {},
 ) {
-	const action = create(options.env ?? env) as {
-		handler: (args: HandlerArgs) => Promise<Response>
-	}
-	return action.handler({
+	const action = create(options.env ?? env)
+	return action({
 		request: new Request(`https://kody.example${path}`, {
 			headers: options.headers,
 		}),
 		params: { slug: options.slug ?? '' },
 	})
+}
+
+async function readDetail(
+	slug: string,
+	bindings: Env = env,
+	headers?: HeadersInit,
+) {
+	const detail = await loadAccessibleDocDetail(
+		new Request(`https://kody.example/docs/${slug}`, { headers }),
+		bindings,
+		slug,
+	)
+	return detail?.doc ?? null
 }
 
 function expectOrdered(body: string, markers: Array<string>) {
@@ -64,39 +71,7 @@ function asAdminOnce() {
 	} as never)
 }
 
-test('docs API lists every advertised doc by section and the markdown root is intro plus index', async () => {
-	const apiResponse = await call(createDocsApiHandler, '/docs.json')
-	expect(apiResponse.status).toBe(200)
-	expect(apiResponse.headers.get('Cache-Control')).toBe(publicCache)
-	expect(apiResponse.headers.get('Vary')).toBe('Cookie')
-	const payload = (await apiResponse.json()) as {
-		ok: boolean
-		intro: string
-		sections: Array<{ id: string }>
-		guides: Array<{
-			slug: string
-			id: string
-			section: string | null
-			audience: string
-		}>
-	}
-	expect(payload.ok).toBe(true)
-	expect(payload.intro).toBe('what-is-kody')
-	expect(payload.guides.map((guide) => guide.slug)).toEqual(
-		listDocsNavSlugs({ includeAdmin: false }),
-	)
-	expect(payload.guides.filter((guide) => guide.id === 'values')).toEqual([])
-	expect(payload.guides.every((guide) => guide.section !== null)).toBe(true)
-	expect(payload.sections.map((section) => section.id)).toEqual(
-		visibleDocsNav(false).map((section) => section.id),
-	)
-	expect(payload.guides[0]?.slug).toBe('what-is-kody')
-	expect(
-		payload.guides.find((guide) => guide.slug === 'onboarding')?.audience,
-	).toBe('agents')
-	// Bodies stay out of the index payload.
-	expect(JSON.stringify(payload)).not.toContain('## ')
-
+test('the markdown root is intro plus index', async () => {
 	const markdownIndex = await call(createDocsMarkdownHandler, '/docs.md')
 	expect(markdownIndex.headers.get('content-type')).toBe(markdownType)
 	const indexBody = await markdownIndex.text()
@@ -182,7 +157,6 @@ test('legacy /guides URLs resolve to their /docs twins and merged doc slugs 308 
 
 	const slug = 'integration-backed-app-happy-path'
 	for (const [create, ext] of [
-		[createDocDetailApiHandler, 'json'],
 		[createDocDetailMarkdownHandler, 'md'],
 	] as const) {
 		const response = await call(create, `/docs/${slug}.${ext}`, { slug })
@@ -191,27 +165,7 @@ test('legacy /guides URLs resolve to their /docs twins and merged doc slugs 308 
 	}
 })
 
-test('docs connect index serves JSON and markdown without colliding with doc slugs', async () => {
-	const apiResponse = await call(
-		createDocsConnectApiHandler,
-		'/docs/connect.json',
-	)
-	expect(apiResponse.status).toBe(200)
-	const payload = (await apiResponse.json()) as {
-		ok: boolean
-		guides: Array<{ slug: string; category: string; provider: string | null }>
-	}
-	expect(payload.ok).toBe(true)
-	expect(payload.guides.length).toBe(listProviderGuides().length)
-	expect(payload.guides.every((guide) => guide.category === 'provider')).toBe(
-		true,
-	)
-	expect(payload.guides.map((guide) => guide.provider)).toEqual(
-		payload.guides
-			.map((guide) => guide.provider ?? '')
-			.toSorted((a, b) => a.localeCompare(b)),
-	)
-
+test('docs connect markdown stays separate from doc slugs', async () => {
 	const markdown = await call(
 		createDocsConnectMarkdownHandler,
 		'/docs/connect.md',
@@ -246,8 +200,7 @@ test('docs connect index serves JSON and markdown without colliding with doc slu
 test('provider and platform doc markdown details stay stable', async () => {
 	const markdownDetail = (slug: string) =>
 		call(createDocDetailMarkdownHandler, `/docs/${slug}.md`, { slug })
-	const apiDetail = (slug: string) =>
-		call(createDocDetailApiHandler, `/docs/${slug}.json`, { slug })
+	const apiDetail = (slug: string) => readDetail(slug)
 
 	for (const slug of ['oauth', 'github', 'google-oauth']) {
 		expect([slug, (await markdownDetail(slug)).status]).toEqual([slug, 200])
@@ -259,20 +212,19 @@ test('provider and platform doc markdown details stay stable', async () => {
 	expect(oauthBody).not.toContain('\nid: oauth\n')
 
 	const googleOauthApi = await apiDetail('google-oauth')
-	expect(googleOauthApi.status).toBe(200)
-	expect(await googleOauthApi.json()).toMatchObject({
+	expect(googleOauthApi).toMatchObject({
 		ok: true,
 		slug: 'google-oauth',
 		id: 'google_oauth',
 	})
-	expect(await (await apiDetail('kody-factory')).json()).toMatchObject({
+	expect(await apiDetail('kody-factory')).toMatchObject({
 		ok: true,
 		slug: 'kody-factory',
 		id: 'kody_factory',
 	})
 
 	expect((await markdownDetail('nope')).status).toBe(404)
-	expect((await apiDetail('nope')).status).toBe(404)
+	expect(await apiDetail('nope')).toBeNull()
 })
 
 test('interactive doc JSON includes walkthrough highlight tokens', async () => {
@@ -303,19 +255,9 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 			},
 		} as unknown as Fetcher,
 	} as Env
-	const apiDetail = (slug: string) =>
-		call(createDocDetailApiHandler, `/docs/${slug}.json`, {
-			slug,
-			env: highlightEnv,
-		})
-
+	const apiDetail = (slug: string) => readDetail(slug, highlightEnv)
 	const howKodyWorksResponse = await apiDetail('how-kody-works')
-	expect(howKodyWorksResponse.status).toBe(200)
-	expect(howKodyWorksResponse.headers.get('Cache-Control')).toBe(publicCache)
-	expect(howKodyWorksResponse.headers.get('Server-Timing') ?? '').toContain(
-		'highlight;dur=',
-	)
-	const howKodyWorksPayload = (await howKodyWorksResponse.json()) as {
+	const howKodyWorksPayload = howKodyWorksResponse as {
 		ok: boolean
 		walkthroughHighlights?: Record<
 			string,
@@ -337,9 +279,7 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 		isValidWalkthroughHostPick(howKodyWorksPayload.walkthroughHosts!),
 	).toBe(true)
 
-	const googleOauthPayload = (await (
-		await apiDetail('google-oauth')
-	).json()) as {
+	const googleOauthPayload = (await apiDetail('google-oauth')) as {
 		walkthroughHighlights?: Record<string, { plain: boolean }>
 		walkthroughHosts?: unknown
 	}
@@ -352,7 +292,7 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 	)
 	expect(googleOauthPayload.walkthroughHosts).toBeUndefined()
 
-	const oauthPayload = (await (await apiDetail('oauth')).json()) as {
+	const oauthPayload = (await apiDetail('oauth')) as {
 		walkthroughHighlights?: Record<string, unknown>
 	}
 	expect(oauthPayload.walkthroughHighlights).toBeUndefined()
@@ -360,11 +300,7 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 
 test('admin-only docs 404 for anonymous viewers and stay out of public subscriptions', async () => {
 	const slug = 'admin-events'
-	const json = await call(createDocDetailApiHandler, `/docs/${slug}.json`, {
-		slug,
-	})
-	expect(json.status).toBe(404)
-	expect(await json.json()).toEqual({ ok: false, error: 'Doc not found.' })
+	expect(await readDetail(slug)).toBeNull()
 	const markdown = await call(
 		createDocDetailMarkdownHandler,
 		`/docs/${slug}.md`,
@@ -383,17 +319,8 @@ test('admin-only docs 404 for anonymous viewers and stay out of public subscript
 
 	const cookie = { Cookie: 'kody_session=test' }
 	asAdminOnce()
-	const adminJson = await call(
-		createDocDetailApiHandler,
-		`/docs/${slug}.json`,
-		{
-			slug,
-			headers: cookie,
-		},
-	)
-	expect(adminJson.status).toBe(200)
-	expect(adminJson.headers.get('Cache-Control')).toBe('no-store')
-	expect(await adminJson.json()).toMatchObject({
+	const adminJson = await readDetail(slug, env, cookie)
+	expect(adminJson).toMatchObject({
 		ok: true,
 		slug,
 		body: expect.stringContaining('fleet.entitlement.crossed'),
@@ -408,33 +335,6 @@ test('admin-only docs 404 for anonymous viewers and stay out of public subscript
 	expect(adminMarkdown.status).toBe(200)
 	expect(adminMarkdown.headers.get('Cache-Control')).toBe('no-store')
 	expect(await adminMarkdown.text()).toContain('fleet.entitlement.crossed')
-
-	asAdminOnce()
-	const adminNegotiated = await call(createDocDetailHandler, `/docs/${slug}`, {
-		slug,
-		headers: { ...cookie, Accept: 'text/markdown' },
-	})
-	expect(adminNegotiated.status).toBe(200)
-	expect(adminNegotiated.headers.get('Cache-Control')).toBe('no-store')
-	expect(adminNegotiated.headers.get('Vary')).toBe('Accept')
-	expect(await adminNegotiated.text()).toContain('fleet.entitlement.crossed')
-
-	asAdminOnce()
-	const adminIndex = await call(createDocsApiHandler, '/docs.json', {
-		headers: cookie,
-	})
-	expect(adminIndex.status).toBe(200)
-	expect(adminIndex.headers.get('Cache-Control')).toBe('no-store')
-	const adminIndexPayload = (await adminIndex.json()) as {
-		guides: Array<{ slug: string }>
-		sections: Array<{ id: string }>
-	}
-	expect(adminIndexPayload.guides.some((guide) => guide.slug === slug)).toBe(
-		true,
-	)
-	expect(
-		adminIndexPayload.sections.some((section) => section.id === 'admin'),
-	).toBe(true)
 })
 
 test('AI discovery covers every sitemap URL and shares website and blog metadata', async () => {

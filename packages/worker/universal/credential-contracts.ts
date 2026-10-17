@@ -386,18 +386,6 @@ export type CredentialApprovalView = {
 	errors: Array<string>
 }
 
-/** Approve refused; nothing was written. `view` is resolved fresh. */
-export type CredentialApprovalFailure = {
-	ok: false
-	error: string
-	view: CredentialApprovalView
-}
-
-export type CredentialApprovalSuccess = {
-	ok: true
-	view: CredentialApprovalView
-}
-
 /**
  * `pause.resourceType` of an enablement paused because a credential its
  * trigger mapping names is gone or no longer usable by the enabler.
@@ -596,7 +584,7 @@ export function parseCredentialCreateQuery(
 // ---------------------------------------------------------------------------
 
 export const maxCredentialProposalValues = 64
-const maxCredentialProposalReasonLength = 500
+export const maxCredentialProposalReasonLength = 500
 
 function credentialApprovalPath(input: {
 	username: string
@@ -826,7 +814,7 @@ function normalizeProposalDomain(value: string) {
 	return domain
 }
 
-function normalizeProposalSenderValue(
+export function normalizeProposalSenderValue(
 	kind: Exclude<CredentialProposalSenderKind, 'any_authenticated'>,
 	value: string,
 ) {

@@ -1,19 +1,13 @@
-import { type Action } from 'remix/router'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import {
 	hasStoredConnectClientSecret,
 	loadAccountIntegrationByName,
 	loadExistingConnectionSummary,
-	readConnectOauthLookupOptions,
 } from '#app/account-integrations-data.ts'
 import { loadConnectOauthChooser } from '#app/connect-oauth-chooser.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { requirePageSession } from '#app/page-auth.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { joinAppUrl } from '#worker/app-base-url.ts'
-import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { type ConnectOauthLoaderData } from '#universal/loader-data.ts'
-import { type routes } from '#universal/routes.ts'
 
 /**
  * Every working visit to /connect/oauth carries at least one of these:
@@ -36,25 +30,35 @@ export function isBareConnectOauthVisit(url: URL): boolean {
  * (`code`/`error`) restore config from sessionStorage, so their query
  * carries no provider and only the redirect URI is embedded.
  */
-async function loadConnectOauthLoaderData(
+export async function loadConnectOauthLoaderData(
 	env: Env,
 	request: Request,
-	requestUrl: URL,
+	input: {
+		orgSlug?: string
+		provider?: string
+		code?: string
+		error?: string
+		appSlug?: string
+		platformSlug?: string
+	},
+	authenticatedUser?: Awaited<ReturnType<typeof readAuthenticatedAppUser>>,
 ): Promise<ConnectOauthLoaderData> {
 	const redirectUri = joinAppUrl({
 		env,
-		path: requestUrl.pathname,
+		path: '/connect/oauth',
 		requestUrl: request.url,
 	})
-	const provider = requestUrl.searchParams.get('provider')?.trim()
+	const provider = input.provider?.trim()
 	const providerKey = provider ? normalizeProviderKey(provider) : ''
 	if (!providerKey) {
-		if (!isBareConnectOauthVisit(requestUrl)) {
+		if (input.provider || input.code || input.error) {
 			return { ok: true, provider: null, integration: null, redirectUri }
 		}
-		const user = await readAuthenticatedAppUser(request, env, {
-			prefetchFeatureFlags: true,
-		})
+		const user =
+			authenticatedUser ??
+			(await readAuthenticatedAppUser(request, env, {
+				prefetchFeatureFlags: true,
+			}))
 		return {
 			ok: true,
 			provider: null,
@@ -64,24 +68,33 @@ async function loadConnectOauthLoaderData(
 				? await loadConnectOauthChooser({
 						env,
 						userId: user.mcpUser.userId,
-						orgSlug: readOrgSlugFromUrl(requestUrl),
+						orgSlug: input.orgSlug,
 					})
 				: { options: [] },
 		}
 	}
-	const user = await readAuthenticatedAppUser(request, env, {
-		prefetchFeatureFlags: true,
-	})
+	const user =
+		authenticatedUser ??
+		(await readAuthenticatedAppUser(request, env, {
+			prefetchFeatureFlags: true,
+		}))
 	if (!user) {
 		return { ok: true, provider: null, integration: null, redirectUri }
 	}
 	// `app=<slug>` reuses a saved bring-your-own app under `provider`.
-	// `platform=` is ignored: built-in connect is retired.
+	// Explicit platform intent uses the same visibility rules as the integration resolver.
 	const integration = await loadAccountIntegrationByName(
 		env,
 		user,
 		providerKey,
-		readConnectOauthLookupOptions(requestUrl.searchParams),
+		{
+			appSlug: input.appSlug?.trim()
+				? (normalizeProviderKey(input.appSlug.trim()) ?? undefined)
+				: undefined,
+			platformSlug: input.platformSlug?.trim()
+				? (normalizeProviderKey(input.platformSlug.trim()) ?? undefined)
+				: undefined,
+		},
 	)
 	const [existingConnection, hasStoredClientSecret] = await Promise.all([
 		loadExistingConnectionSummary(env, user, providerKey),
@@ -96,27 +109,4 @@ async function loadConnectOauthLoaderData(
 		hasStoredClientSecret,
 		redirectUri,
 	}
-}
-
-export function createConnectOauthHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const requestUrl = new URL(request.url)
-			const sessionRedirect = await requirePageSession(request)
-			if (sessionRedirect) {
-				return sessionRedirect
-			}
-			const connectOauth = await loadConnectOauthLoaderData(
-				env,
-				request,
-				requestUrl,
-			)
-			return renderAppPage({
-				request,
-				env,
-				loaderData: { connectOauth },
-			})
-		},
-	} satisfies Action<typeof routes.connectOauth>
 }

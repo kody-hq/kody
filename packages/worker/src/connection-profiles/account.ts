@@ -105,23 +105,12 @@ export async function loadConnectionProfilesForAccount(input: {
 	}
 }
 
-export async function applyConnectionProfileMutation(input: {
+async function writeConnectionProfile<T>(input: {
 	env: Env
-	requestUrl: string | URL
 	userId: string
-	emailVerified: boolean
-	body: unknown
+	write: () => Promise<T>
 }): Promise<
-	| {
-			ok: true
-			connectionProfiles: Array<AccountConnectionProfileView>
-			connectionProfilePackageOptions: Array<{
-				id: string
-				name: string
-				kodyId: string
-			}>
-	  }
-	| { ok: false; error: string; status: number }
+	{ ok: true; result: T } | { ok: false; error: string; status: number }
 > {
 	const enabled = await isConnectionProfilesEnabledForUser({
 		db: input.env.APP_DB,
@@ -134,50 +123,8 @@ export async function applyConnectionProfileMutation(input: {
 			status: 404,
 		}
 	}
-	if (!input.body || typeof input.body !== 'object') {
-		return { ok: false, error: 'Invalid request body.', status: 400 }
-	}
-	const body = input.body as Record<string, unknown>
-	const intent = body.intent
 	try {
-		switch (intent) {
-			case 'create': {
-				await createConnectionProfile({
-					db: input.env.APP_DB,
-					userId: input.userId,
-					orgId: input.userId,
-					name: typeof body.name === 'string' ? body.name : '',
-					grants: body.grants,
-				})
-				break
-			}
-			case 'update': {
-				if (typeof body.profileId !== 'string' || !body.profileId.trim()) {
-					return { ok: false, error: 'profileId is required.', status: 400 }
-				}
-				await updateConnectionProfile({
-					db: input.env.APP_DB,
-					userId: input.userId,
-					profileId: body.profileId.trim(),
-					...(typeof body.name === 'string' ? { name: body.name } : {}),
-					...(body.grants !== undefined ? { grants: body.grants } : {}),
-				})
-				break
-			}
-			case 'delete': {
-				if (typeof body.profileId !== 'string' || !body.profileId.trim()) {
-					return { ok: false, error: 'profileId is required.', status: 400 }
-				}
-				await deleteConnectionProfile({
-					db: input.env.APP_DB,
-					userId: input.userId,
-					profileId: body.profileId.trim(),
-				})
-				break
-			}
-			default:
-				return { ok: false, error: 'Invalid request body.', status: 400 }
-		}
+		return { ok: true, result: await input.write() }
 	} catch (error) {
 		if (error instanceof McpCallerError) {
 			return { ok: false, error: error.message, status: 400 }
@@ -187,15 +134,56 @@ export async function applyConnectionProfileMutation(input: {
 		}
 		throw error
 	}
-	const loaded = await loadConnectionProfilesForAccount({
-		env: input.env,
-		requestUrl: input.requestUrl,
-		userId: input.userId,
-		emailVerified: input.emailVerified,
+}
+
+type ProfileWriteContext = Omit<
+	Parameters<typeof writeConnectionProfile>[0],
+	'write'
+>
+export function createAccountConnectionProfile(
+	input: ProfileWriteContext & { name: string; grants: unknown },
+) {
+	return writeConnectionProfile({
+		...input,
+		write: () =>
+			createConnectionProfile({
+				db: input.env.APP_DB,
+				userId: input.userId,
+				orgId: input.userId,
+				name: input.name,
+				grants: input.grants,
+			}),
 	})
-	return {
-		ok: true,
-		connectionProfiles: loaded.connectionProfiles,
-		connectionProfilePackageOptions: loaded.connectionProfilePackageOptions,
-	}
+}
+export function updateAccountConnectionProfile(
+	input: ProfileWriteContext & {
+		profileId: string
+		name?: string
+		grants?: unknown
+	},
+) {
+	return writeConnectionProfile({
+		...input,
+		write: () =>
+			updateConnectionProfile({
+				db: input.env.APP_DB,
+				userId: input.userId,
+				profileId: input.profileId,
+				...(input.name !== undefined ? { name: input.name } : {}),
+				...(input.grants !== undefined ? { grants: input.grants } : {}),
+			}),
+	})
+}
+export function deleteAccountConnectionProfile(
+	input: ProfileWriteContext & { profileId: string },
+) {
+	return writeConnectionProfile({
+		...input,
+		write: () =>
+			deleteConnectionProfile({
+				db: input.env.APP_DB,
+				userId: input.userId,
+				profileId: input.profileId,
+			}),
+	})
 }

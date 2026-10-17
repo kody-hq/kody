@@ -408,8 +408,7 @@ const copilotAppCustomizeGuideUrl =
 export const chatGptDeveloperModeGuideUrl =
 	'https://developers.openai.com/api/docs/guides/developer-mode'
 
-/** Cursor docs for Marketplace plugins and custom MCP servers. */
-export const cursorMcpGuideUrl = 'https://cursor.com/docs/mcp'
+const cursorMcpGuideUrl = 'https://cursor.com/docs/mcp'
 
 /** Claude Desktop / Claude.ai custom remote connector help. */
 const claudeCustomConnectorsGuideUrl =
@@ -471,8 +470,7 @@ const kodyMarketplacePluginId = '56286216'
 /** Confirmed Grok Bot one-click add for the official Kody plugin. */
 export const grokBotInstallUrl = `grokbot://app/v1/plugin/add?id=${kodyMarketplacePluginId}`
 
-/** Grok Bot sidebar plugin help. */
-export const grokBotConnectPluginsUrl =
+const grokBotConnectPluginsUrl =
 	'https://cursor.com/help/grok-bot/connect-plugins'
 
 function onboardingAgentHelpHref(id: McpClientKind) {

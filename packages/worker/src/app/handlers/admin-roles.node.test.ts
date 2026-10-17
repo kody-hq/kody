@@ -76,22 +76,28 @@ function createRolesTestEnv() {
 	}
 }
 
-const { createAdminRolesApiHandler } = await import('./admin-roles.ts')
+const { requireUserWithPermission } = await import('#app/permissions-server.ts')
+const { loadAdminRolesData } = await import('#app/admin-roles-data.ts')
+const { adminOperationOutcome } =
+	await import('#worker/test-support/admin-operation-outcome.ts')
+const read = () =>
+	adminOperationOutcome(async () => {
+		const env = createRolesTestEnv() as unknown as Env
+		await requireUserWithPermission(
+			new Request('https://example.com/admin/roles', {
+				headers: { Accept: 'application/json' },
+			}),
+			env,
+			'read:role:any',
+		)
+		return loadAdminRolesData(env)
+	})
 
 test('admin roles list returns roles and attached permissions', async () => {
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(
 		createAdminActor(['admin']),
 	)
-	const handler = createAdminRolesApiHandler(
-		createRolesTestEnv() as unknown as Env,
-	)
-	const response = await handler.handler({
-		request: new Request('https://example.com/admin/roles.json', {
-			headers: { Accept: 'application/json' },
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/roles.json'),
-	} as never)
+	const response = await read()
 	expect(response.status).toBe(200)
 })
 
@@ -99,15 +105,6 @@ test('admin roles API returns 403 without read:role:any permission', async () =>
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(
 		createAdminActor(['user']),
 	)
-	const handler = createAdminRolesApiHandler(
-		createRolesTestEnv() as unknown as Env,
-	)
-	const response = await handler.handler({
-		request: new Request('https://example.com/admin/roles.json', {
-			headers: { Accept: 'application/json' },
-		}),
-		params: {},
-		url: new URL('https://example.com/admin/roles.json'),
-	} as never)
+	const response = await read()
 	expect(response.status).toBe(403)
 })

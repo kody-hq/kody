@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	repoPushQueueAttemptsHeader,
+	repoPushQueueMaxEntries,
 	repoPushQueueOutcomeHeader,
 	repoPushQueuePathHeader,
 	repoPushQueuePositionHeader,
@@ -15,12 +16,55 @@ import {
 	RepoPushQueueV1,
 	routeToRepoPushQueue,
 } from './index.ts'
+import {
+	encodeGitFlushPktBytes,
+	encodeGitPktLineBytes,
+} from './repo-push-queue-commands.ts'
 import { RepoPushQueue, type RepoPushQueueStore } from './repo-push-queue.ts'
 
 const sourceId = '57a9ce42-dfc2-4867-bc01-2c0d05f23f07'
 const upstream =
 	'https://acct.artifacts.cloudflare.net/git/default/repo.git/git-receive-pack'
 const busyBody = '{"error":"artifacts_git_receive_pack_busy"}'
+const oidA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const oidB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const oidC = 'cccccccccccccccccccccccccccccccccccccccc'
+const oidD = 'dddddddddddddddddddddddddddddddddddddddd'
+
+function concatBytes(...parts: Array<Uint8Array>) {
+	const total = parts.reduce((sum, part) => sum + part.byteLength, 0)
+	const out = new Uint8Array(total)
+	let offset = 0
+	for (const part of parts) {
+		out.set(part, offset)
+		offset += part.byteLength
+	}
+	return out
+}
+
+function receivePackRequestBody(
+	commands: Array<{ oldOid: string; newOid: string; ref: string }>,
+	capabilities = 'report-status side-band-64k',
+	packMarker = 'PACK',
+) {
+	const packets: Array<Uint8Array> = []
+	commands.forEach((command, index) => {
+		const base = `${command.oldOid} ${command.newOid} ${command.ref}`
+		const payload = index === 0 ? `${base}\0${capabilities}\n` : `${base}\n`
+		packets.push(encodeGitPktLineBytes(payload))
+	})
+	packets.push(encodeGitFlushPktBytes())
+	packets.push(new TextEncoder().encode(packMarker))
+	return concatBytes(...packets)
+}
+
+function reportStatusOk(refs: Array<string>) {
+	return concatBytes(
+		encodeGitPktLineBytes('unpack ok\n'),
+		...refs.map((ref) => encodeGitPktLineBytes(`ok ${ref}\n`)),
+		encodeGitFlushPktBytes(),
+	)
+}
 
 function createMemoryStore() {
 	const chunks = new Map<string, Uint8Array>()
@@ -604,6 +648,399 @@ test('gateway rejects malformed handoffs and maps a dead Durable Object to a ret
 	expect(String(consoleError.mock.calls[0]?.[0])).toContain(
 		'repo-push-queue-stub-failed',
 	)
+})
+
+test('stale old-sha is rejected locally with report-status and never reaches Artifacts', async () => {
+	const { store } = createMemoryStore()
+	const events: Array<string> = []
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		log: (event) => events.push(event.event),
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/x-git-receive-pack-result',
+				},
+			})
+		},
+	})
+	const first = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(first.status).toBe(200)
+	expect(calls).toBe(1)
+
+	const stale = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(stale.status).toBe(200)
+	expect(calls).toBe(1)
+	expect(stale.headers.get('Content-Type')).toBe(
+		'application/x-git-receive-pack-result',
+	)
+	expect(stale.headers.get(repoPushQueueAttemptsHeader)).toBe('0')
+	const staleBody = await stale.text()
+	expect(staleBody).toContain('unpack ok\n')
+	expect(staleBody).toContain('ng refs/heads/main fetch first\n')
+	expect(events).toContain('stale')
+})
+
+test('fresh push after a landed tip is still sent to Artifacts', async () => {
+	const { store } = createMemoryStore()
+	const sent: Array<string> = []
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async (_url, init) => {
+			sent.push(await new Response(init.body).text())
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	const fresh = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(fresh.status).toBe(200)
+	expect(sent).toHaveLength(2)
+	expect(sent[1]).toContain(`${oidB} ${oidC} refs/heads/main`)
+})
+
+test('cache updates on ok and a later stale sibling is rejected without a send', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidD, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+})
+
+test('mixed multi-ref: all known-stale rejects locally; any cache-miss falls through', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(
+				reportStatusOk(['refs/heads/main', 'refs/heads/feature']),
+				{ status: 200 },
+			)
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/feature' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+
+	const bothStale = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' },
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/feature' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	const bothStaleBody = await bothStale.text()
+	expect(bothStaleBody).toContain('ng refs/heads/main fetch first\n')
+	expect(bothStaleBody).toContain('ng refs/heads/feature fetch first\n')
+
+	const mixed = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' },
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/other' },
+			]),
+		),
+	)
+	expect(mixed.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
+test('known-stale without report-status falls through instead of synthesizing status', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	const noStatus = await queue.handle(
+		pushRequest(
+			receivePackRequestBody(
+				[{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' }],
+				'side-band-64k',
+			),
+		),
+	)
+	expect(noStatus.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
+test('a no-op land does not wedge later pushes from that tip', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidA, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	const next = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(next.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
+test('a force-push rewind to a historical tip falls through to Artifacts', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(2)
+	// Outside force-push reset main back to oidA; client fetched and pushes on.
+	const rewind = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidD, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(rewind.status).toBe(200)
+	expect(calls).toBe(3)
+})
+
+test('an outside-writer tip does not wedge the cache after the client fetches', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			if (calls === 1) {
+				return new Response(reportStatusOk(['refs/heads/main']), {
+					status: 200,
+				})
+			}
+			// Second send is the client that already fetched the outside tip.
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	// Outside writer moved main to oidC. Client fetched oidC and pushes onward.
+	const afterOutside = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidC, newOid: oidD, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(afterOutside.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
+test('Artifacts ng clears the landed tip so a later fetch-based push can send', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			if (calls === 1) {
+				return new Response(reportStatusOk(['refs/heads/main']), {
+					status: 200,
+				})
+			}
+			if (calls === 2) {
+				return new Response(
+					concatBytes(
+						encodeGitPktLineBytes('unpack ok\n'),
+						encodeGitPktLineBytes('ng refs/heads/main non-fast-forward\n'),
+						encodeGitFlushPktBytes(),
+					),
+					{ status: 200 },
+				)
+			}
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	// Cache tip is oidB; client still thinks tip is oidB but Artifacts moved.
+	const rejected = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(rejected.status).toBe(200)
+	expect(await rejected.text()).toContain('ng refs/heads/main non-fast-forward')
+	expect(calls).toBe(2)
+	// After ng cleared the cache, a push based on the real tip falls through.
+	const recovered = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidD, newOid: oidA, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(recovered.status).toBe(200)
+	expect(calls).toBe(3)
+})
+
+test('unknown or unparseable command section falls through to a normal Artifacts send', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+
+	const uncachedRef = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/topic' },
+			]),
+		),
+	)
+	expect(uncachedRef.status).toBe(200)
+	expect(calls).toBe(2)
+
+	const opaque = await queue.handle(pushRequest('not-a-receive-pack-body'))
+	expect(opaque.status).toBe(200)
+	expect(calls).toBe(3)
+})
+
+test('repoPushQueueMaxEntries covers a 50-agent burst', () => {
+	expect(repoPushQueueMaxEntries).toBe(64)
+	expect(repoPushQueueMaxEntries).toBeGreaterThanOrEqual(50)
 })
 
 test('Durable Object store chunks keys and deletes in batches', async () => {

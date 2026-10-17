@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { handleAccountPackagePublishLockAction } from '#app/account-package-publish-lock.ts'
+import { lockAccountPackage } from '#app/account-package-publish-lock.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
@@ -91,32 +91,31 @@ function memberUser(): AuthenticatedAppUser {
 	}
 }
 
-test('reload after team package lock includes selectedPackage from the owning org', async () => {
+test('team package lock returns an outcome and persists the lock in the owning org', async () => {
 	const env = await createTeamEnv()
 	const user = memberUser()
 	const request = new Request(
 		'https://kody.test/account/packages/pkg-team/settings',
 		{ method: 'POST' },
 	)
-	const response = await handleAccountPackagePublishLockAction({
+	const response = await lockAccountPackage({
 		env,
 		request,
 		user,
-		body: { action: 'lock', packageId: 'pkg-team' },
+		packageId: 'pkg-team',
 	})
 	expect(response?.status).toBe(200)
-	const payload = (await response?.json()) as {
-		selectedPackage?: {
-			id: string
-			kodyId: string
-			name: string
-			lockedAt: string
-		}
-	}
-	expect(payload.selectedPackage).toMatchObject({
+	expect(response.data).toEqual({ ok: true, packageId: 'pkg-team' })
+	const persisted = await env.APP_DB.prepare(
+		'SELECT id, user_id, kody_id, name, locked_at FROM saved_packages WHERE id = ?',
+	)
+		.bind('pkg-team')
+		.first()
+	expect(persisted).toMatchObject({
 		id: 'pkg-team',
-		kodyId: 'shared',
+		user_id: teamId,
+		kody_id: 'shared',
 		name: '@acme/shared',
-		lockedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+		locked_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
 	})
 })

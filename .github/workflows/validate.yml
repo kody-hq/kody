@@ -188,6 +188,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run api-docs:build
 
+      - name: 🧪 Start release build
+        if: ${{ !cancelled() }}
+        env:
+          KODY_START_RELEASE: ${{ github.sha }}
+          KODY_VITE_OUTDIR: dist-start-release
+        run: |
+          npm exec --no -- vite build
+          node tools/ci/verify-start-release-build.ts dist-start-release
+
       - name: 📦 Worker startup bundles
         if: ${{ !cancelled() }}
         env:
@@ -515,7 +524,9 @@ jobs:
   e2e:
     runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
     name: 🎭 E2E
-    timeout-minutes: 15
+    # The suite runs serially against one D1 file. Keep enough time for the
+    # expanded migration coverage and one permitted workerd-crash retry.
+    timeout-minutes: 40
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false

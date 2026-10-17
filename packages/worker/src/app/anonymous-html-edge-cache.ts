@@ -1,22 +1,25 @@
+import { prepareNonceHtmlForDelivery } from './anonymous-html-nonce.ts'
 import { getCanonicalAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	anonymousHtmlCacheControl,
 	anonymousVisibilityGatedCacheControl,
 	clearRetiredSiteBannerDismissCookie,
-	isCacheableAnonymousPath,
+	type AnonymousDocumentCachePolicy,
 	requestHasRetiredSiteBannerDismissCookie,
 	requestHasSessionCookie,
 } from '#app/anonymous-html-cache.ts'
-import { requestBypassesAnonymousDocumentCache } from '#universal/frame-constants.ts'
+import { parseReferralCode } from '#universal/referral-program.ts'
 import { prefersMarkdown } from '#app/markdown-negotiation.ts'
 
 export const anonymousHtmlEdgeCacheHeader = 'X-Kody-Cache'
 export const anonymousHtmlCacheAcceptParam = '__accept'
 export const anonymousHtmlCacheAcceptHtml = 'html'
+export const anonymousHtmlCacheVersionParam = '__worker_version'
 
 const browserVaryStorageHeader = 'X-Kody-Browser-Vary'
 
 type AnonymousHtmlCacheEnv = {
+	CF_VERSION_METADATA?: { id: string }
 	APP_BASE_URL?: string | null
 	PACKAGE_APP_BASE_URL?: string | null
 	PACKAGE_APP_LEGACY_HOSTS?: string | null
@@ -32,19 +35,23 @@ function requestBypassesAnonymousHtmlCache(request: Request) {
 export function isAnonymousHtmlCacheRequest(
 	request: Request,
 	env: AnonymousHtmlCacheEnv,
+	policy?: AnonymousDocumentCachePolicy,
 ) {
+	if (!policy) return false
 	// Local dev persists caches.default under .wrangler/state and workerd
 	// honors stale-while-revalidate, so a stored document outlives the edit
 	// that changed it by minutes: the browser reload Vite triggers after an
 	// HMR update carries no `no-cache` and would replay the pre-edit page.
 	if (env.WRANGLER_IS_LOCAL_DEV === 'true') return false
+	// A previous release may reference assets removed by the current deploy.
+	// Without a deployment identity, rendering is safer than sharing HTML.
+	if (!env.CF_VERSION_METADATA?.id.trim()) return false
 	if (request.method !== 'GET' && request.method !== 'HEAD') return false
 	if (request.headers.has('Authorization')) return false
 	if (requestHasSessionCookie(request)) return false
 	// Skip shared cache while the retired dismiss cookie is present so origin
 	// can expire it (Set-Cookie responses are never stored).
 	if (requestHasRetiredSiteBannerDismissCookie(request)) return false
-	if (requestBypassesAnonymousDocumentCache(request)) return false
 	if (requestBypassesAnonymousHtmlCache(request)) return false
 	if (prefersMarkdown(request)) return false
 	let url: URL
@@ -59,14 +66,17 @@ export function isAnonymousHtmlCacheRequest(
 	if (url.origin !== getCanonicalAppBaseUrl({ env, requestUrl: url })) {
 		return false
 	}
-	return isCacheableAnonymousPath(url.pathname)
+	return !parseReferralCode({ searchParams: url.searchParams })
 }
 
 export function buildAnonymousHtmlCacheKey(
 	request: Request,
 	env: AnonymousHtmlCacheEnv,
 ) {
+	const versionId = env.CF_VERSION_METADATA?.id.trim()
+	if (!versionId) throw new Error('HTML cache requires Worker version metadata')
 	const url = new URL(request.url)
+	url.searchParams.set(anonymousHtmlCacheVersionParam, versionId)
 	const origin = getCanonicalAppBaseUrl({ env, requestUrl: url })
 	url.searchParams.set(
 		anonymousHtmlCacheAcceptParam,
@@ -197,12 +207,13 @@ function workerDefaultCache(): Cache | null {
 export async function serveAnonymousHtmlFromCache(
 	request: Request,
 	env: AnonymousHtmlCacheEnv,
-	ctx: ExecutionContext,
+	ctx: Pick<ExecutionContext, 'waitUntil'>,
 	next: () => Promise<Response>,
+	options: { policy?: AnonymousDocumentCachePolicy; nonce?: string } = {},
 ): Promise<Response> {
-	const eligible = isAnonymousHtmlCacheRequest(request, env)
+	const eligible = isAnonymousHtmlCacheRequest(request, env, options.policy)
 	if (!eligible) {
-		return expireRetiredSiteBannerDismissCookie(request, await next())
+		return prepareNonceHtmlForDelivery(await next(), { cached: false })
 	}
 
 	const cacheKey = buildAnonymousHtmlCacheKey(request, env)
@@ -210,30 +221,31 @@ export async function serveAnonymousHtmlFromCache(
 	if (cache) {
 		const cached = await cache.match(cacheKey).catch(() => undefined)
 		if (cached) {
-			return withAnonymousHtmlCacheLookup(cached, 'HIT', request.method)
+			return prepareNonceHtmlForDelivery(
+				withAnonymousHtmlCacheLookup(cached, 'HIT', request.method),
+				{ cached: true, nonce: options.nonce },
+			)
 		}
 	}
 
 	const response = await next()
-	const withMiss = withAnonymousHtmlCacheLookup(
-		response,
-		'MISS',
-		request.method,
-	)
 	if (
 		request.method === 'GET' &&
 		cache &&
-		isAnonymousHtmlCacheStoreable(withMiss)
+		isAnonymousHtmlCacheStoreable(response)
 	) {
 		ctx.waitUntil(
-			storeCompleteAnonymousHtml(cache, cacheKey, withMiss.clone()).catch(
+			storeCompleteAnonymousHtml(cache, cacheKey, response.clone()).catch(
 				(error: unknown) => {
 					console.debug('anonymous-html-cache-put-failed', error)
 				},
 			),
 		)
 	}
-	return withMiss
+	return prepareNonceHtmlForDelivery(
+		withAnonymousHtmlCacheLookup(response, 'MISS', request.method),
+		{ cached: false },
+	)
 }
 
 function expireRetiredSiteBannerDismissCookie(
@@ -257,4 +269,14 @@ function expireRetiredSiteBannerDismissCookie(
 		statusText: response.statusText,
 		headers,
 	})
+}
+
+export async function deliverAnonymousDocument(
+	request: Request,
+	response: Response,
+) {
+	return expireRetiredSiteBannerDismissCookie(
+		request,
+		await prepareNonceHtmlForDelivery(response, { cached: false }),
+	)
 }

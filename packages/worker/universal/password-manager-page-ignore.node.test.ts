@@ -1,5 +1,5 @@
-import { jsx } from 'remix/component/jsx-runtime'
-import { renderToString } from 'remix/component/server'
+import { jsx } from 'react/jsx-runtime'
+import { renderToString } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import {
 	passwordManagerPageIgnoreAttribute,
@@ -29,7 +29,7 @@ test('body markup carries data-1p-ignore except on login and signup', async () =
 			children: 'Users',
 		}),
 	)
-	expect(adminHtml).toContain('<body data-1p-ignore>')
+	expect(adminHtml).toContain('<body data-1p-ignore="true">')
 
 	const accountHtml = await renderToString(
 		jsx('body', {

@@ -1,17 +1,17 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
-import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as authSession from '#app/auth-session.ts'
-import type * as settingsService from '#worker/mcp-client/settings-service.ts'
-import type * as hubClient from '#worker/mcp-client/hub-client.ts'
-import type * as settingsRepo from '#worker/mcp-client/settings-repo.ts'
-import type * as orgsRepo from '#worker/orgs/repo.ts'
+import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as authorizeModule from '#worker/authorization/authorize.ts'
+import type * as ProviderMarks from '#worker/integrations/provider-marks.ts'
+import type * as hubClient from '#worker/mcp-client/hub-client.ts'
 import { type McpClientHubClient } from '#worker/mcp-client/hub-client.ts'
+import type * as settingsRepo from '#worker/mcp-client/settings-repo.ts'
+import type * as settingsService from '#worker/mcp-client/settings-service.ts'
 import { type McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
 import { type McpServerLastError } from '#worker/mcp-client/types.ts'
+import type * as orgsRepo from '#worker/orgs/repo.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
-import type * as ProviderMarks from '#worker/integrations/provider-marks.ts'
+import { expect, test, vi } from 'vitest'
 
 const mockModule = await vi.hoisted(async () => {
 	// Hoisted above static imports, so the id helpers load here.
@@ -117,8 +117,8 @@ const mockModule = await vi.hoisted(async () => {
 		persistMcpServerLastErrorIfChanged: vi.fn<
 			typeof settingsService.persistMcpServerLastErrorIfChanged
 		>(async () => undefined),
-		getCachedMcpClientHubSnapshot: vi.fn<
-			typeof hubClient.getCachedMcpClientHubSnapshot
+		getCachedMcpClientHubReadSnapshot: vi.fn<
+			typeof hubClient.getCachedMcpClientHubReadSnapshot
 		>(async () => ({
 			servers: [
 				{
@@ -180,10 +180,6 @@ vi.mock('#app/auth-session.ts', () => ({
 vi.mock('#app/auth-redirect.ts', () => ({
 	redirectToLogin: () => new Response(null, { status: 302 }),
 	redirectToLoginWhenUnauthenticated: () => new Response(null, { status: 302 }),
-}))
-
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async () => new Response('ok'),
 }))
 
 vi.mock('#worker/mcp-client/settings-service.ts', () => ({
@@ -265,9 +261,9 @@ vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => ({
 }))
 
 vi.mock('#worker/mcp-client/hub-client.ts', () => ({
-	getCachedMcpClientHubSnapshot: (
-		...args: Parameters<typeof hubClient.getCachedMcpClientHubSnapshot>
-	) => mockModule.getCachedMcpClientHubSnapshot(...args),
+	getCachedMcpClientHubReadSnapshot: (
+		...args: Parameters<typeof hubClient.getCachedMcpClientHubReadSnapshot>
+	) => mockModule.getCachedMcpClientHubReadSnapshot(...args),
 	createMcpClientHubClient: (input: { userId: string }) => {
 		mockModule.hubOwners.push(input.userId)
 		return {
@@ -289,9 +285,9 @@ vi.mock('#worker/mcp-client/hub-client.ts', () => ({
 }))
 
 const {
-	createAccountMcpServersApiHandler,
+	testAccountMcpServersApiHandler,
 	createAccountMcpServersOauthCallbackHandler,
-} = await import('./account-mcp-servers.ts')
+} = await import('./account-mcp-servers.test-support.ts')
 
 const env = { APP_DB: {} as D1Database } as Env
 const apiUrl = 'https://example.com/account/mcp-servers.json'
@@ -318,11 +314,11 @@ function discoveryFailure(attemptId: string, suffix = '') {
 }
 
 function createApiClient() {
-	const { handler } = createAccountMcpServersApiHandler(env)
+	const { execute } = testAccountMcpServersApiHandler(env)
 	return {
-		get: () => handler({ request: new Request(apiUrl), params: {} } as never),
+		get: () => execute({ request: new Request(apiUrl), params: {} } as never),
 		post: (body: Record<string, unknown>) =>
-			handler({
+			execute({
 				request: new Request(apiUrl, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -334,7 +330,7 @@ function createApiClient() {
 }
 
 function createCallbackClient() {
-	const { handler } = createAccountMcpServersOauthCallbackHandler(env)
+	const handler = createAccountMcpServersOauthCallbackHandler(env)
 	return async (search: string, init?: RequestInit) => {
 		const response = await handler({
 			request: new Request(`${callbackUrl}?${search}`, init),
@@ -342,7 +338,10 @@ function createCallbackClient() {
 		} as never)
 		return {
 			response,
-			location: new URL(response.headers.get('Location') ?? '', callbackUrl),
+			location: new URL(
+				new Headers(response.headers).get('Location') ?? '',
+				callbackUrl,
+			),
 		}
 	}
 }
@@ -352,8 +351,7 @@ test('MCP servers API lists, adds, reconnects, disables, and deletes with user s
 
 	const listResponse = await get()
 	expect(listResponse.status).toBe(200)
-	expect(listResponse.headers.get('Cache-Control')).toBe('no-store')
-	await expect(listResponse.json()).resolves.toEqual({
+	expect(listResponse.data).toEqual({
 		ok: true,
 		email: 'user@example.com',
 		username: 'test-user',
@@ -385,6 +383,14 @@ test('MCP servers API lists, adds, reconnects, disables, and deletes with user s
 		savedPackages: [{ id: 'pkg-drafts', kodyId: 'gmail-drafts' }],
 	})
 
+	const listImplementation =
+		mockModule.listMcpServerSettings.getMockImplementation()!
+	// Accepted writes must not depend on rebuilding the settings page.
+	mockModule.listMcpServerSettings.mockClear()
+	mockModule.listMcpServerSettings.mockRejectedValue(
+		new Error('List unavailable'),
+	)
+
 	const addResponse = await post({
 		action: 'add',
 		name: 'notion',
@@ -403,7 +409,7 @@ test('MCP servers API lists, adds, reconnects, disables, and deletes with user s
 			waitUntil: expect.any(Function),
 		}),
 	)
-	await expect(addResponse.json()).resolves.toMatchObject({
+	expect(addResponse.data).toMatchObject({
 		ok: true,
 		selectedServerId: 'server-2',
 	})
@@ -470,6 +476,14 @@ test('MCP servers API lists, adds, reconnects, disables, and deletes with user s
 	expect(mockModule.deleteMcpServer).toHaveBeenCalledWith(
 		expect.objectContaining(userScope),
 	)
+	mockModule.listMcpServerSettings.mockImplementation(listImplementation)
+	expect(mockModule.listMcpServerSettings).not.toHaveBeenCalled()
+	expect(addResponse.data).not.toHaveProperty('servers')
+	expect(hungReconnect.data).toMatchObject({
+		state: 'connected',
+		error: hung.message,
+		toolCount: 0,
+	})
 })
 
 test('MCP servers OAuth callback ignores HEAD and redirects with the auth outcome', async () => {
@@ -496,7 +510,7 @@ test('MCP servers OAuth callback ignores HEAD and redirects with the auth outcom
 	expect(onboarding.location.hash).toBe('')
 	expect(onboarding.location.searchParams.get('auth')).toBe('success')
 	const onboardingSetCookie =
-		onboarding.response.headers.get('Set-Cookie') ?? ''
+		new Headers(onboarding.response.headers).get('Set-Cookie') ?? ''
 	expect(onboardingSetCookie).toContain('kody_mcp_oauth_return=;')
 	expect(onboardingSetCookie).toContain('Max-Age=0')
 	expect(mockModule.handleOAuthCallback).toHaveBeenCalledWith({

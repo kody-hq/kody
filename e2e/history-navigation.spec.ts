@@ -9,7 +9,7 @@ type HistoryFrame = {
 	path: string
 	scrollY: number
 	featureOnScreen: boolean
-	featureStylesheetApplied: boolean
+	featureStylesApplied: boolean
 	homeOnScreen: boolean
 }
 
@@ -37,14 +37,28 @@ async function startHistoryRecording(page: Page) {
 		let recordingActive = true
 		const sample = () => {
 			if (!recordingActive) return
-			const stylesheet = document.querySelector<HTMLLinkElement>(
-				'link[rel="stylesheet"][href="/feature-pages.css"]',
+			const feature = document.querySelector('.feature-detail')
+			const study = feature?.querySelector('.study')
+			const split = feature?.querySelector('.split, .boundary')
+			const expectedHue = feature?.querySelector('.memory')
+				? '29'
+				: feature?.querySelector('.credentials')
+					? '148'
+					: null
+			const styled = Boolean(
+				feature &&
+				study &&
+				split &&
+				getComputedStyle(feature).getPropertyValue('--hue').trim() ===
+					expectedHue &&
+				getComputedStyle(split).display === 'grid' &&
+				parseFloat(getComputedStyle(study).paddingTop) > 0,
 			)
 			recording.frames.push({
 				path: location.pathname,
 				scrollY: Math.round(window.scrollY),
 				featureOnScreen: Boolean(document.querySelector('.feature-detail')),
-				featureStylesheetApplied: Boolean(stylesheet?.sheet),
+				featureStylesApplied: styled,
 				homeOnScreen: Boolean(
 					document.querySelector('main a[href="/features/memory"]'),
 				),
@@ -71,23 +85,52 @@ function stopHistoryRecording(page: Page) {
 	)
 }
 
-function expectFeatureStylesheetApplied(page: Page) {
-	return expect
+async function expectFeatureStylesheetApplied(page: Page) {
+	await expect(
+		page.locator('.feature-detail .split, .feature-detail .boundary'),
+	).toHaveCSS('display', 'grid')
+	await expect
 		.poll(() =>
-			page.evaluate(() =>
-				Boolean(
-					document.querySelector<HTMLLinkElement>(
-						'link[rel="stylesheet"][href="/feature-pages.css"]',
-					)?.sheet,
+			page
+				.locator('.feature-detail')
+				.evaluate((element) =>
+					getComputedStyle(element).getPropertyValue('--hue').trim(),
 				),
-			),
 		)
-		.toBe(true)
+		.toBe(new URL(page.url()).pathname.endsWith('/memory') ? '29' : '148')
+	// Ensure the recorder observes the rendered destination, not only pending frames.
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+			),
+	)
+}
+
+function isFeatureModule(url: URL) {
+	return (
+		/\/assets\/features-[^/]+\.js$/.test(url.pathname) ||
+		url.pathname.endsWith('/start/pages/features.tsx')
+	)
+}
+
+async function holdFeatureModule(page: Page) {
+	let release!: () => void
+	const gate = new Promise<void>((resolve) => {
+		release = resolve
+	})
+	let requested = false
+	await page.route(isFeatureModule, async (route) => {
+		requested = true
+		await gate
+		await route.continue()
+	})
+	return { release, wait: () => expect.poll(() => requested).toBe(true) }
 }
 
 function unstyledFeatureFrames(recording: HistoryRecording) {
 	return recording.frames.filter(
-		(frame) => frame.featureOnScreen && !frame.featureStylesheetApplied,
+		(frame) => frame.featureOnScreen && !frame.featureStylesApplied,
 	)
 }
 
@@ -117,11 +160,7 @@ test('a primitive card link and Back/Forward paint styled and at the restored sc
 	page,
 }) => {
 	await openWarmHomepage(page)
-	// A slow route stylesheet must hold the swap, not paint the page bare.
-	await page.route('**/feature-pages.css', async (route) => {
-		await new Promise((resolve) => setTimeout(resolve, 400))
-		await route.continue()
-	})
+	const held = await holdFeatureModule(page)
 
 	const cardLink = primitiveCardLink(page, 'memory')
 	await cardLink.scrollIntoViewIfNeeded()
@@ -132,6 +171,10 @@ test('a primitive card link and Back/Forward paint styled and at the restored sc
 
 	await startHistoryRecording(page)
 	await cardLink.click()
+	await held.wait()
+	await expect(cardLink).toBeVisible()
+	await expect(page.locator('.feature-detail')).toHaveCount(0)
+	held.release()
 	await expect(page).toHaveURL(/\/features\/memory$/)
 	await expect(page.locator('.feature-detail')).toBeVisible()
 	await expectFeatureStylesheetApplied(page)
@@ -140,6 +183,7 @@ test('a primitive card link and Back/Forward paint styled and at the restored sc
 		await page.evaluate(() => '__kodyBootDocument' in window),
 		'the card click stayed in the SPA',
 	).toBe(true)
+	expect(click.frames.some((frame) => frame.featureOnScreen)).toBe(true)
 	expect(unstyledFeatureFrames(click), 'click painted unstyled').toEqual([])
 
 	const documentRefetches: Array<string> = []
@@ -177,6 +221,7 @@ test('a primitive card link and Back/Forward paint styled and at the restored sc
 	await expect(page.locator('.feature-detail')).toBeVisible()
 	await expectFeatureStylesheetApplied(page)
 	const forward = await stopHistoryRecording(page)
+	expect(forward.frames.some((frame) => frame.featureOnScreen)).toBe(true)
 	expect(unstyledFeatureFrames(forward), 'Forward painted unstyled').toEqual([])
 	expect(
 		forward.frames.filter(
@@ -187,52 +232,88 @@ test('a primitive card link and Back/Forward paint styled and at the restored sc
 	expect(forward.viewTransitions).toBe(0)
 })
 
-test('a superseding feature navigation waits for the stylesheet already loading', async ({
+test('a superseding feature navigation waits for the shared styled component', async ({
 	page,
 }) => {
 	await openWarmHomepage(page, ['/features/memory', '/features/credentials'])
-	await page.route('**/feature-pages.css', async (route) => {
-		await new Promise((resolve) => setTimeout(resolve, 2_500))
-		await route.continue()
-	})
+	const held = await holdFeatureModule(page)
 	await primitiveCardLink(page, 'memory').scrollIntoViewIfNeeded()
 
 	await startHistoryRecording(page)
 	await primitiveCardLink(page, 'memory').click()
-	// The first navigation is now waiting on the stylesheet it inserted.
-	await expect(
-		page.locator('link[rel="stylesheet"][href="/feature-pages.css"]'),
-	).toBeAttached()
+	await held.wait()
+	await expect(page.locator('.feature-detail')).toHaveCount(0)
 	await primitiveCardLink(page, 'credentials').click()
+	await expect(page.locator('.feature-detail')).toHaveCount(0)
+	held.release()
 	await expect(page).toHaveURL(/\/features\/credentials$/)
 	await expect(page.locator('.feature-detail')).toBeVisible()
 	await expectFeatureStylesheetApplied(page)
 	const recording = await stopHistoryRecording(page)
 
 	expect(await page.evaluate(() => '__kodyBootDocument' in window)).toBe(true)
+	expect(recording.frames.some((frame) => frame.featureOnScreen)).toBe(true)
+	expect(
+		recording.frames.filter(
+			(frame) =>
+				frame.featureOnScreen && frame.path !== '/features/credentials',
+		),
+	).toEqual([])
 	expect(unstyledFeatureFrames(recording), 'painted unstyled').toEqual([])
 })
 
-test('a route stylesheet that fails to load falls back to a document load', async ({
+test('a feature component that fails to load recovers through a document load', async ({
 	page,
 }) => {
+	const unexpectedErrors: string[] = []
+	let abortedFeatureUrl: string | undefined
+	page.on('pageerror', (error) => unexpectedErrors.push(error.message))
+	page.on('console', (message) => {
+		// Vite can report the failed dependency through its generated route chunk.
+		const failedImportPrefix =
+			'React client error: TypeError: Failed to fetch dynamically imported module: '
+		if (message.text().startsWith(failedImportPrefix)) {
+			const failedUrl = message.text().slice(failedImportPrefix.length)
+			const memoryRouteChunk = new URL(
+				'/packages/worker/start/routes/features_.memory.tsx?tsr-split=component',
+				page.url(),
+			).href
+			if (
+				abortedFeatureUrl &&
+				(failedUrl === abortedFeatureUrl || failedUrl === memoryRouteChunk)
+			)
+				return
+		}
+		if (
+			message.type() === 'error' &&
+			message.text().includes('React client error:')
+		) {
+			unexpectedErrors.push(message.text())
+		}
+	})
 	await openWarmHomepage(page)
-	let stylesheetRequests = 0
-	await page.route('**/feature-pages.css', async (route) => {
-		stylesheetRequests += 1
-		if (stylesheetRequests === 1) {
+	let componentRequests = 0
+	await page.route(isFeatureModule, async (route) => {
+		componentRequests += 1
+		if (componentRequests === 1) {
+			abortedFeatureUrl = route.request().url()
 			await route.abort('failed')
 			return
 		}
 		await route.continue()
 	})
 
-	await primitiveCardLink(page, 'memory').click()
+	// The router changes the URL before its failed import triggers a document
+	// reload. Wait for that load, not the earlier same-document URL change.
+	await Promise.all([
+		page.waitForEvent('load'),
+		primitiveCardLink(page, 'memory').click(),
+	])
 	await expect(page).toHaveURL(/\/features\/memory$/)
-	await expect
-		.poll(() => page.evaluate(() => '__kodyBootDocument' in window))
-		.toBe(false)
+	expect(await page.evaluate(() => '__kodyBootDocument' in window)).toBe(false)
 	await expect(page.locator('.feature-detail')).toBeVisible()
 	await expectFeatureStylesheetApplied(page)
-	expect(stylesheetRequests).toBe(2)
+	await waitForClientHydration(page)
+	await expect.poll(() => componentRequests).toBe(2)
+	expect(unexpectedErrors).toEqual([])
 })

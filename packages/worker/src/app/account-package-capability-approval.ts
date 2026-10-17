@@ -1,11 +1,13 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import {
+	packageMutationResult,
+	type PackageMutationResult,
+} from './package-mutation-result.ts'
 import {
 	type AuthenticatedAppUser,
 	type readAuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
-import { reloadAccountPackagesAfterWrite } from '#app/account-packages-data.ts'
 import {
 	approveCredentialNeedsRequest,
 	approveWentPublicRequest,
@@ -187,76 +189,81 @@ async function auditPackageDecision(input: {
 	})
 }
 
-function readBodyString(body: object, key: string) {
-	const value: unknown = (body as Record<string, unknown>)[key]
-	return typeof value === 'string' ? value.trim() : ''
-}
-
-/** Actions the approve-capabilities page API may accept. */
-export const accountPackageApproveCapabilitiesPageActions = [
-	'approve-capabilities',
-	'approve-capabilities-and-go-public',
-	'approve-credential-needs',
-	'approve-went-public',
-] as const
-
-export type AccountPackageApproveCapabilitiesPageAction =
-	(typeof accountPackageApproveCapabilitiesPageActions)[number]
-
-const accountPackageInternetVisibleActions = [
-	...accountPackageApproveCapabilitiesPageActions,
-	'set-internet-visible',
-] as const
-
-export type AccountPackageInternetVisibleAction =
-	(typeof accountPackageInternetVisibleActions)[number]
-
-function isAccountPackageInternetVisibleAction(
-	action: string,
-): action is AccountPackageInternetVisibleAction {
-	return (accountPackageInternetVisibleActions as readonly string[]).includes(
-		action,
-	)
-}
-
-export function isAccountPackageApproveCapabilitiesPageAction(
-	action: string,
-): action is AccountPackageApproveCapabilitiesPageAction {
-	return (
-		accountPackageApproveCapabilitiesPageActions as readonly string[]
-	).includes(action)
-}
-
-/**
- * Resolve the page API action. Absent `action` defaults to approve-capabilities;
- * any other missing/unknown value is rejected (caller returns 400).
- */
-export function resolveAccountPackageApproveCapabilitiesPageAction(
-	body: object,
-): AccountPackageApproveCapabilitiesPageAction | null {
-	if (!('action' in body)) {
-		return 'approve-capabilities'
-	}
-	const value: unknown = (body as Record<string, unknown>).action
-	if (typeof value !== 'string') return null
-	const action = value.trim()
-	return isAccountPackageApproveCapabilitiesPageAction(action) ? action : null
-}
-
-export async function handleAccountPackageInternetVisibleAction(input: {
+type CapabilityMutationContext = {
 	env: Env
 	request: Request
 	user: AuthenticatedUser
-	body: object
-}): Promise<Response | null> {
-	const action = readBodyString(input.body, 'action')
-	if (!isAccountPackageInternetVisibleAction(action)) {
-		return null
-	}
-
-	const packageId = readBodyString(input.body, 'packageId')
+	packageId: string
+}
+type CapabilityChange =
+	| {
+			action: 'set-internet-visible'
+			internetVisible: boolean
+			confirmName: string
+	  }
+	| { action: 'approve-capabilities'; fingerprint: string }
+	| {
+			action: 'approve-capabilities-and-go-public'
+			fingerprint: string
+			requestId: string
+	  }
+	| {
+			action: 'approve-credential-needs' | 'approve-went-public'
+			requestId: string
+	  }
+export function setAccountPackageInternetVisible(
+	input: CapabilityMutationContext & {
+		internetVisible: boolean
+		confirmName: string
+	},
+) {
+	return changePackageCapabilityApproval({
+		...input,
+		action: 'set-internet-visible',
+	})
+}
+export function approveAccountPackageCapabilities(
+	input: CapabilityMutationContext & { fingerprint: string },
+) {
+	return changePackageCapabilityApproval({
+		...input,
+		action: 'approve-capabilities',
+	})
+}
+export function approveAccountPackageCapabilitiesAndGoPublic(
+	input: CapabilityMutationContext & { fingerprint: string; requestId: string },
+) {
+	return changePackageCapabilityApproval({
+		...input,
+		action: 'approve-capabilities-and-go-public',
+	})
+}
+export function approveAccountPackageCredentialNeeds(
+	input: CapabilityMutationContext & { requestId: string },
+) {
+	return changePackageCapabilityApproval({
+		...input,
+		action: 'approve-credential-needs',
+	})
+}
+export function approveAccountPackageWentPublic(
+	input: CapabilityMutationContext & { requestId: string },
+) {
+	return changePackageCapabilityApproval({
+		...input,
+		action: 'approve-went-public',
+	})
+}
+async function changePackageCapabilityApproval(
+	input: CapabilityMutationContext & CapabilityChange,
+): Promise<PackageMutationResult> {
+	const action = input.action
+	const packageId = input.packageId.trim()
 	if (!packageId) {
-		return jsonResponse({ ok: false, error: 'Package id is required.' }, 400)
+		return packageMutationResult(
+			{ ok: false, error: 'Package id is required.' },
+			400,
+		)
 	}
 
 	const resolved = await loadWritableAccountSavedPackage({
@@ -265,7 +272,11 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 		packageId,
 		permission: 'package:publish',
 	})
-	if (!resolved.ok) return resolved.response
+	if (!resolved.ok)
+		return packageMutationResult(
+			{ ok: false, error: 'Package not found.' },
+			404,
+		)
 	const { savedPackage, ownerUserId, actorUserId } = resolved.package
 
 	const binding = await loadOrgBindingForOrg(
@@ -325,7 +336,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 				})
 				return {
 					ok: false as const,
-					response: jsonResponse(
+					response: packageMutationResult(
 						{ ok: false, error: error.message, approvalUrl },
 						400,
 					),
@@ -352,30 +363,16 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 		return approved
 	}
 
-	const reloaded = async () =>
-		jsonResponse(
-			await reloadAccountPackagesAfterWrite({
-				env: input.env,
-				request: input.request,
-				user: input.user,
-				packageId,
-				ownerUserId,
-			}),
-		)
-
-	// The approve-capabilities page only checks `ok` then navigates or reloads.
-	// Returning the full account packages payload after Approve made Kent's
-	// org-sized accounts hang on "Approving…" (#3914 follow-up).
-	const approvePageOk = () => jsonResponse({ ok: true as const })
+	const accepted = () => packageMutationResult({ ok: true, packageId })
 
 	if (
 		action === 'approve-credential-needs' ||
 		action === 'approve-went-public' ||
 		action === 'approve-capabilities-and-go-public'
 	) {
-		const requestId = readBodyString(input.body, 'requestId')
+		const requestId = 'requestId' in input ? input.requestId.trim() : ''
 		if (!requestId) {
-			return jsonResponse(
+			return packageMutationResult(
 				{ ok: false, error: 'Approval request id is required.' },
 				400,
 			)
@@ -388,7 +385,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 				packageId: savedPackage.id,
 			})
 			if (pending?.id !== requestId) {
-				return jsonResponse(
+				return packageMutationResult(
 					{
 						ok: false,
 						error:
@@ -403,7 +400,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 			// The pin does not enqueue, so a request turned off meanwhile stays
 			// off and approving it below fails.
 			const capabilities = await approveCapabilities(
-				readBodyString(input.body, 'fingerprint'),
+				'fingerprint' in input ? input.fingerprint.trim() : '',
 				{ enqueueWentPublic: false },
 			)
 			if (!capabilities.ok) return capabilities.response
@@ -420,29 +417,29 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 					})
 				: await approveWentPublic(requestId)
 		if (!approved.ok) {
-			return jsonResponse(
+			return packageMutationResult(
 				{ ok: false, error: approved.error, approvalUrl },
 				approved.status,
 			)
 		}
-		return approvePageOk()
+		return accepted()
 	}
 
 	if (action === 'approve-capabilities') {
 		const capabilities = await approveCapabilities(
-			readBodyString(input.body, 'fingerprint'),
+			'fingerprint' in input ? input.fingerprint.trim() : '',
 		)
 		if (!capabilities.ok) return capabilities.response
-		return approvePageOk()
+		return accepted()
 	}
 
 	const internetVisible =
-		'internetVisible' in input.body && input.body.internetVisible === true
-	const confirmName = readBodyString(input.body, 'confirmName')
+		'internetVisible' in input && input.internetVisible === true
+	const confirmName = 'confirmName' in input ? input.confirmName.trim() : ''
 
 	if (!internetVisible) {
 		if (confirmName !== savedPackage.kodyId) {
-			return jsonResponse(
+			return packageMutationResult(
 				{
 					ok: false,
 					error: `Type the package slug "${savedPackage.kodyId}" to turn off internet-visible serving.`,
@@ -457,13 +454,16 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 			actorUserId,
 		})
 		if (!changed) {
-			return jsonResponse({ ok: false, error: 'Package not found.' }, 404)
+			return packageMutationResult(
+				{ ok: false, error: 'Package not found.' },
+				404,
+			)
 		}
-		return await reloaded()
+		return accepted()
 	}
 
 	if (confirmName !== savedPackage.kodyId) {
-		return jsonResponse(
+		return packageMutationResult(
 			{
 				ok: false,
 				error: `Type the package slug "${savedPackage.kodyId}" to continue. Review and approve the capability summary first.`,
@@ -480,7 +480,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 			requestUrl: input.request.url,
 		})
 		if (!summary.publishedCommit) {
-			return jsonResponse(
+			return packageMutationResult(
 				{
 					ok: false,
 					error: 'Publish the package before making it internet-visible.',
@@ -507,7 +507,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 			summary,
 		})
 		if (attempt.status === 'self_published') {
-			return await reloaded()
+			return accepted()
 		}
 		if (attempt.status === 'failed') {
 			// Same as packageUpdate: do not recreate a went_public ask or apply
@@ -518,7 +518,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 				packageId: savedPackage.id,
 			})
 			if (!pending) {
-				return jsonResponse(
+				return packageMutationResult(
 					{
 						ok: false,
 						error: `${attempt.error} Nothing is pending; try turning internet-visible on again.`,
@@ -527,7 +527,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 					400,
 				)
 			}
-			return jsonResponse(
+			return packageMutationResult(
 				{
 					ok: false,
 					error: attempt.error,
@@ -537,7 +537,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 			)
 		}
 		if (summary.fingerprintMatchesApproval) {
-			// Capability set already approved — turn internet-visible on now
+			// Capability set already approved, turn internet-visible on now
 			// (same as packageUpdate when the pin matches).
 			const applied = await applyMatchingPinInternetVisible({
 				env: input.env,
@@ -551,13 +551,13 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 				await audit('package.went_public.approve', 'failure', {
 					error: applied.error,
 				})
-				return jsonResponse(
+				return packageMutationResult(
 					{ ok: false, error: applied.error, approvalUrl },
 					400,
 				)
 			}
 			await audit('package.went_public.approve', 'success', {})
-			return await reloaded()
+			return accepted()
 		}
 		// Record the ask so the approval page offers one Approve for the
 		// capability set and going public together.
@@ -580,7 +580,7 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 		})
 		const approvalStep =
 			'Review the credentials and capabilities on the approval page. One Approve records them and makes this package internet-visible.'
-		return jsonResponse(
+		return packageMutationResult(
 			{
 				ok: false,
 				error: securityAudit
@@ -593,7 +593,10 @@ export async function handleAccountPackageInternetVisibleAction(input: {
 		)
 	} catch (error) {
 		if (error instanceof CapabilityApprovalError) {
-			return jsonResponse({ ok: false, error: error.message, approvalUrl }, 400)
+			return packageMutationResult(
+				{ ok: false, error: error.message, approvalUrl },
+				400,
+			)
 		}
 		throw error
 	}

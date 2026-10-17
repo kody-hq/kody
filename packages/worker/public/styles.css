@@ -2997,7 +2997,7 @@ html:not(.js) .landing-connect-copy {
 }
 
 /*
- * Primitive widgets (`client/primitive-widgets.tsx`) for the homepage cards
+ * Primitive widgets (`start/components/primitive-widgets.tsx`) for the homepage cards
  * and the `/features` overview (its card chrome is in `feature-pages.css`).
  *
  * The scene is a 360×200 stage whose type scales with its width (30em

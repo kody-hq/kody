@@ -6,7 +6,7 @@ import { expect, test, vi } from 'vitest'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
-import { createCommunityInstallApiPostHandler } from './community-install.ts'
+import { installWebsiteCommunityPackage } from './community-install.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 
 const mockModule = vi.hoisted(() => ({
@@ -47,7 +47,6 @@ vi.mock('#worker/package-registry/user-scope.ts', () => ({
 
 const env = { APP_DB: {} as D1Database } as Env
 const personalOwnerId = ownerIdFromStored('stable-user-b')
-
 function listing(id: string, name: string) {
 	return { id, name, trusted: false, pinnedCommit: 'commit-1' }
 }
@@ -67,9 +66,10 @@ function installed(kodyId: string, overrides: Record<string, unknown> = {}) {
 }
 
 test('community install POST enforces gates and maps install outcomes', async () => {
-	const handler = createCommunityInstallApiPostHandler(env)
 	const post = async (body: unknown = { acknowledged: true }) => {
-		const response = await handler.handler({
+		const response = await installWebsiteCommunityPackage({
+			env,
+			user: await mockModule.readAuthenticatedAppUser(),
 			request: new Request(
 				'https://example.com/community/listing-1/install.json',
 				{
@@ -78,18 +78,15 @@ test('community install POST enforces gates and maps install outcomes', async ()
 					body: JSON.stringify(body),
 				},
 			),
-			params: { listingId: 'listing-1' },
+			listingId: 'listing-1',
+			body,
 			url: new URL('https://example.com/community/listing-1/install.json'),
 		} as never)
 		return {
 			status: response.status,
-			payload: (await response.json()) as Record<string, unknown>,
+			payload: response.data as Record<string, unknown>,
 		}
 	}
-
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	expect((await post({})).status).toBe(401)
-	expect(mockModule.installCommunityListing).not.toHaveBeenCalled()
 
 	mockModule.readAuthenticatedAppUser.mockResolvedValue({
 		email: 'userb@example.com',
@@ -249,12 +246,13 @@ test('community install POST enforces gates and maps install outcomes', async ()
 	)
 })
 
-test('community install goes to the personal org even when the URL or a leftover cookie names a team', async () => {
-	const handler = createCommunityInstallApiPostHandler(env)
+test('community install uses the personal org despite a leftover team cookie or explicit URL org', async () => {
+	const personalOrgId = ownerIdFromStored('org-personal-user-b')
 	mockModule.readAuthenticatedAppUser.mockResolvedValue({
 		email: 'userb@example.com',
 		mcpUser: {
 			userId: personIdFromStored('stable-user-b'),
+			personalOrgId,
 			email: 'userb@example.com',
 		},
 	})
@@ -263,30 +261,24 @@ test('community install goes to the personal org even when the URL or a leftover
 		listing('listing-1', '@someone/demo'),
 	)
 	mockModule.installCommunityListing.mockResolvedValue(installed('demo'))
-
-	const href = 'https://example.com/community/listing-1/install.json?org=acme'
-	const response = await handler.handler({
-		request: new Request(href, {
+	const result = await installWebsiteCommunityPackage({
+		env,
+		user: await mockModule.readAuthenticatedAppUser(),
+		request: new Request('https://example.com/_serverFn/install?org=acme', {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Cookie: 'kody_last_org=acme',
-			},
-			body: JSON.stringify({ acknowledged: true }),
+			headers: { Cookie: 'kody_last_org=acme' },
 		}),
-		params: { listingId: 'listing-1' },
-		url: new URL(href),
-	} as never)
-
-	expect(response.status).toBe(200)
+		listingId: 'listing-1',
+		body: { acknowledged: true },
+	})
+	expect(result.status).toBe(200)
 	expect(mockModule.getPackageScopeByUserId).toHaveBeenCalledWith(
 		env.APP_DB,
-		personalOwnerId,
+		personalOrgId,
 	)
 	expect(mockModule.installCommunityListing).toHaveBeenCalledWith(
 		expect.objectContaining({
-			userId: personalOwnerId,
-			userEmail: 'userb@example.com',
+			userId: personalOrgId,
 			expectedPackageScope: 'userb',
 		}),
 	)

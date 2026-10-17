@@ -21,29 +21,16 @@ Generic `http` `webhookUrlApply` destinations require owner Allow at
 ## Drive it
 
 ```bash
-node tools/control-kody.ts login
-node tools/control-kody.ts request GET /profiles/<username>/packages/<kodyId>/webhooks.json
-node tools/control-kody.ts request POST /profiles/<username>/packages/<kodyId>/webhooks.json \
-  --json '{"intent":"mint","webhookName":"<name>"}'
-node tools/control-kody.ts request GET /account/webhooks.json
+npm run control-kody -- browse --origin <preview> --path /@<username>/<kodyId>/settings
 ```
 
-## APIs
-
-- `GET /profiles/:username/packages/:kodyId/webhooks.json` —
-  `{ ok, username, kodyId, webhooks[] }`; no URL, no secret. `urlRecoverable` is
-  false for mints that predate encrypted storage. Owner-only: another username
-  or an unknown package is a 404.
-- `POST /profiles/:username/packages/:kodyId/webhooks.json` —
-  `{ intent: 'mint' | 'rotate' | 'reveal' | 'enable' | 'disable', webhookName }`.
-  `mint`, `rotate`, and `reveal` add `revealed: { id, handle, url }`; the URL
-  origin follows the request so previews show their own host.
-- `GET /account/webhooks.json` — `{ ok, username, webhooks[] }` across every
-  package; read-only (POST is 405).
-- `GET|POST /@<slug>/-/webhooks/approve-apply.json` — owner approval for a
-  pending generic `http` apply (`handle` + `fingerprint` query). GET returns the
-  destination summary. POST `{ action: "approve" | "reject" }` writes or
-  discards the durable grant. The HTML twin is `/connect/webhook-apply`.
+Native server functions handle list, mint, rotate, reveal, enable, disable, and
+apply approvals. Lists never include credential URLs. Only an explicit mint,
+rotate, or reveal returns a URL, using the preview host. Older mints without
+encrypted secrets cannot reveal. Verify owner denial and the read-only account
+index separately. `/connect/webhook-apply` presents the destination and approves
+or rejects the pending grant. External webhook delivery URLs remain HTTP ingress
+protocols.
 
 ## Gotchas
 

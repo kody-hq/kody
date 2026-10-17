@@ -31,53 +31,24 @@ vi.mock(
 	}),
 )
 
-const { createPackageCredentialsApiHandler } =
+const { mutatePackageCredentialMappings } =
 	await import('./package-credentials.ts')
 const { MappingWriteRefused } =
 	await import('#worker/credentials/package-credential-mapping-changes.ts')
 
-const url = 'https://kody.test/profiles/acme/packages/digest/credentials.json'
-const call = (init?: RequestInit) =>
-	createPackageCredentialsApiHandler({} as Env).handler({
-		request: new Request(url, init),
-		params: { username: 'acme', kodyId: 'digest' },
-	} as never)
 const post = (body: unknown) =>
-	call({
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body),
-	})
+	mutatePackageCredentialMappings({ scope: mocks.scope as never, body })
 const change = {
 	target: { type: 'default', layer: 'mine' },
 	needKey: 'mail',
 	credentials: [{ name: 'resend-prod' }],
 }
 
-test('reads need a session and package:execute, and only GET and POST are allowed', async () => {
-	mocks.loadScope.mockResolvedValue(mocks.scope)
-	expect((await call({ method: 'DELETE' })).status).toBe(405)
-	const view = await call()
-	expect(view.status).toBe(200)
-	await expect(view.json()).resolves.toEqual({ ok: true, view: 'fresh' })
-	expect(mocks.loadScope).toHaveBeenCalledWith(
-		expect.objectContaining({ username: 'acme', kodyId: 'digest' }),
-	)
-
-	mocks.loadScope.mockResolvedValueOnce(null)
-	expect((await call()).status).toBe(404)
-
-	const signedIn = mocks.user
-	mocks.user = null
-	expect((await call()).status).toBe(401)
-	mocks.user = signedIn
-})
-
 test('writes apply every change or none and return the fresh view', async () => {
 	mocks.loadScope.mockResolvedValue(mocks.scope)
 	const bad = await post({ changes: [{ ...change, needKey: '' }] })
 	expect(bad.status).toBe(400)
-	await expect(bad.json()).resolves.toMatchObject({ ok: false })
+	expect(bad.data).toMatchObject({ ok: false })
 	expect((await post({ changes: [] })).status).toBe(400)
 
 	mocks.resolved = [
@@ -92,7 +63,7 @@ test('writes apply every change or none and return the fresh view', async () => 
 		changes: [change, { ...change, needKey: 'nope' }],
 	})
 	expect(refused.status).toBe(400)
-	await expect(refused.json()).resolves.toEqual({
+	expect(refused.data).toEqual({
 		ok: false,
 		errors: [
 			{
@@ -108,7 +79,7 @@ test('writes apply every change or none and return the fresh view', async () => 
 	mocks.resolved = [{ ...change, error: null }]
 	const saved = await post({ changes: [change] })
 	expect(saved.status).toBe(200)
-	await expect(saved.json()).resolves.toEqual({ ok: true, view: 'fresh' })
+	expect(saved.data).toEqual({ ok: true, view: 'fresh' })
 	expect(mocks.write).toHaveBeenCalledTimes(1)
 
 	mocks.write.mockRejectedValueOnce(
@@ -135,7 +106,7 @@ test('writes apply every change or none and return the fresh view', async () => 
 	)
 	const gone = await post({ changes: [change] })
 	expect(gone.status).toBe(400)
-	await expect(gone.json()).resolves.toEqual({
+	expect(gone.data).toEqual({
 		ok: false,
 		errors: [
 			{

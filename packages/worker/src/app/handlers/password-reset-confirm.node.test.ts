@@ -24,8 +24,8 @@ vi.mock('#app/email/cloudflare-email.ts', () => ({
 	) => mockSendCloudflareEmail(...args),
 }))
 
-const { createPasswordResetConfirmHandler } =
-	await import('./password-reset.ts')
+const { confirmWebsitePasswordReset } =
+	await import('#worker/identity/password-reset-operations.ts')
 
 function createMigratedDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -74,7 +74,7 @@ test('password reset confirm clears TOTP, passkeys, and linked providers', async
 	`)
 
 	const revokedGrantIds = new Array<string>()
-	const handler = createPasswordResetConfirmHandler({
+	const env = {
 		APP_DB: db,
 		APP_BASE_URL: 'https://kody.codes',
 		SYSTEM_EMAIL_DOMAIN: 'kody.codes',
@@ -92,9 +92,11 @@ test('password reset confirm clears TOTP, passkeys, and linked providers', async
 				revokedGrantIds.push(grantId)
 			},
 		},
-	} as unknown as Env)
+	} as unknown as Env
 
-	const response = await handler.handler({
+	const response = await confirmWebsitePasswordReset({
+		env,
+		body: { token, password: 'brand-new-password' },
 		request: new Request('https://kody.codes/password-reset/confirm', {
 			method: 'POST',
 			body: JSON.stringify({
@@ -103,11 +105,10 @@ test('password reset confirm clears TOTP, passkeys, and linked providers', async
 			}),
 		}),
 		url: new URL('https://kody.codes/password-reset/confirm'),
-		params: {},
-	} as never)
+	})
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({ ok: true })
+	expect(response.data).toEqual({ ok: true })
 	expect(revokedGrantIds).toEqual(['grant-1'])
 
 	const row = sqlite

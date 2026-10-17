@@ -7,7 +7,7 @@
 		"target": "ES2023",
 		"lib": ["ES2023", "WebWorker", "WebWorker.Iterable"],
 		"jsx": "react-jsx",
-		"jsxImportSource": "remix/component",
+		"jsxImportSource": "react",
 		// Force MCP SDK to resolve to the hoisted install to avoid duplicate
 		// private type conflicts when multiple copies are present.
 		"paths": {
@@ -30,6 +30,13 @@
 		"noUncheckedSideEffectImports": true
 	},
 	"include": [
+		"./start/http-entry.ts",
+		"./start/server.ts",
+		"./start/request-context.ts",
+		"./start/document-negotiation.ts",
+		"./start/action-page-method.ts",
+		"./start/action-pages.ts",
+
 		"./env.d.ts",
 		"./worker-configuration.d.ts",
 		"./src/**/*.d.ts",
@@ -42,6 +49,7 @@
 		"./universal/**/*.tsx"
 	],
 	"exclude": [
+		"**/*.test-support.ts",
 		"**/*.test.ts",
 		"**/*.spec.ts",
 		"./src/test-support/**/*.ts",
@@ -49,8 +57,6 @@
 		"./src/og/og-image-assets.node.ts",
 		"./src/og/og-resvg-wasm.node.ts",
 		"./src/og/og-binary-assets.node.ts",
-		"./src/app/ssr-document.tsx",
-		"./src/app/ssr-render.tsx",
 		"../**/*.test.ts",
 		"../**/*.spec.ts",
 		"../../**/*.test.ts",

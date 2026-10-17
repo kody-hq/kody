@@ -1,4 +1,3 @@
-import { routePattern } from '#universal/route-pattern.ts'
 import { routes } from '#universal/routes.ts'
 
 /**
@@ -14,8 +13,8 @@ export const passwordManagerPageIgnoreAttribute = 'data-1p-ignore'
  * pathname, including account, admin, and client navigations, opts out.
  */
 const passwordManagerFillablePathnames = new Set<string>([
-	routePattern(routes.login),
-	routePattern(routes.signup),
+	routes.login.href(),
+	routes.signup.href(),
 ])
 
 /** True except on the login and signup documents. */

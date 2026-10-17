@@ -80,7 +80,8 @@ function makeRun(overrides: Partial<RunRecord> = {}): RunRecord {
 function loadActivity(path: string, env = {} as Env) {
 	return loadAccountActivityData({
 		env,
-		request: new Request(`https://example.com${path}`),
+		...readAccountActivityFilters(path),
+		selectedRunId: readAccountActivitySelectedRunId(path),
 		user,
 		now: new Date('2026-07-26T12:00:00.000Z'),
 	})

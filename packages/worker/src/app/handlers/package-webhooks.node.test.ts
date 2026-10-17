@@ -1,7 +1,15 @@
+import * as webhookReads from '#app/package-webhooks-data.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
-import { createCommunityPackageWebhooksApiHandler } from '#app/handlers/package-webhooks.ts'
+import {
+	mintPackageWebhook,
+	rotatePackageWebhook,
+	revealPackageWebhook,
+	enablePackageWebhook,
+	disablePackageWebhook,
+	readPackageWebhooksData,
+} from '#app/handlers/package-webhooks.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -151,40 +159,60 @@ async function setup(sessionUsername = 'owner') {
 		);
 	`)
 	const db = createD1FromSqlite(sqlite)
-	const handler = createCommunityPackageWebhooksApiHandler({
+	const env = {
 		APP_DB: db,
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 		SENTRY_ENVIRONMENT: 'test',
-	} as unknown as Env)
-	const run = (request: Request, params = ownerParams) =>
-		handler.handler({ request, url: new URL(request.url), params } as never)
-	const get = (params = ownerParams) =>
-		run(
-			new Request(apiUrl, { headers: { Accept: 'application/json' } }),
+	} as unknown as Env
+	const get = async (params = ownerParams) => {
+		const result = await readPackageWebhooksData(
+			new Request(apiUrl),
 			params,
+			env,
 		)
-	const post = (body: unknown, params = ownerParams) =>
-		run(
-			new Request(apiUrl, {
-				method: 'POST',
-				headers: {
-					Accept: 'application/json',
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(body),
-			}),
+		return result.status === 200
+			? { status: 200, data: result.data }
+			: { status: result.status, data: { ok: false, error: result.error } }
+	}
+	const operations = {
+		mint: mintPackageWebhook,
+		rotate: rotatePackageWebhook,
+		reveal: revealPackageWebhook,
+		enable: enablePackageWebhook,
+		disable: disablePackageWebhook,
+	}
+	const post = (
+		body: {
+			intent: keyof typeof operations
+			webhookName: string
+			endpointId?: string
+			createInstance?: boolean
+			instanceLabel?: string
+		},
+		params = ownerParams,
+	) =>
+		operations[body.intent]({
+			env,
+			request: new Request(apiUrl),
 			params,
-		)
-	const act = async (intent: string, webhookName = 'launcher') => {
+			webhookName: body.webhookName,
+			endpointId: body.endpointId,
+			createInstance: body.createInstance,
+			instanceLabel: body.instanceLabel,
+		})
+	const act = async (
+		intent: keyof typeof operations,
+		webhookName = 'launcher',
+	) => {
 		const response = await post({ intent, webhookName })
 		return {
 			status: response.status,
-			body: (await response.json()) as PackageWebhooksActionPayload & {
+			body: response.data as PackageWebhooksActionPayload & {
 				error: string
 			},
 		}
 	}
-	return { db, userId, run, get, post, act }
+	return { db, userId, get, post, act, env }
 }
 
 function launcherOf(body: { webhooks: PackageWebhooksLoaderData['webhooks'] }) {
@@ -200,7 +228,7 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 
 	const listed = await get()
 	expect(listed.status).toBe(200)
-	const listBody = (await listed.json()) as PackageWebhooksLoaderData
+	const listBody = listed.data as PackageWebhooksLoaderData
 	expect(listBody).toMatchObject({
 		ok: true,
 		username: 'owner',
@@ -222,13 +250,15 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 
 	const minted = await act('mint')
 	expect(minted.status).toBe(200)
+	expect(minted.body).not.toHaveProperty('webhooks')
+	expect(minted.body).not.toHaveProperty('username')
 	expect(minted.body.revealed?.handle.startsWith('whh_')).toBe(true)
 	const mintedEndpointId = minted.body.revealed!.handle.replace(/^whh_/, '')
 	expect(minted.body.revealed?.id).toBe(
 		`sentry-bridge/launcher/${mintedEndpointId}`,
 	)
 	// The URL comes from the request origin so previews show their own host,
-	// and the response reveals it exactly once alongside the refreshed list.
+	// and the response reveals it exactly once without rebuilding the list.
 	expect(minted.body.revealed?.url).toMatch(
 		/^https:\/\/kody\.example\/@owner\/webhooks\/sentry-bridge\/launcher\/[A-Za-z0-9_-]+$/,
 	)
@@ -238,7 +268,9 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	// at Approve, and the card must not read Active.
 	const approvalUrl = `https://kody.example/@owner/sentry-bridge/approve-credentials?enable=webhook%3Alauncher%3A${mintedEndpointId}`
 	expect(minted.body.approvalUrl).toBe(approvalUrl)
-	expect(launcherOf(minted.body)).toMatchObject({
+	expect(
+		launcherOf((await get()).data as PackageWebhooksLoaderData),
+	).toMatchObject({
 		minted: true,
 		enabled: true,
 		approved: false,
@@ -246,7 +278,7 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 		urlRecoverable: true,
 		handle: mintedHandle,
 	})
-	expect(JSON.stringify(minted.body.webhooks)).not.toContain(
+	expect(JSON.stringify((await get()).data)).not.toContain(
 		urlSecretOf(mintedUrl),
 	)
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
@@ -259,7 +291,7 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	)
 
 	// GET never carries the credential; only an explicit reveal does.
-	const relistText = await (await get()).text()
+	const relistText = JSON.stringify((await get()).data)
 	expect(relistText).not.toContain(urlSecretOf(mintedUrl))
 	expect(relistText).not.toContain('"url"')
 
@@ -283,13 +315,17 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	const disabled = await act('disable')
 	expect(disabled.status).toBe(200)
 	expect(disabled.body.revealed).toBeUndefined()
-	expect(launcherOf(disabled.body).enabled).toBe(false)
+	expect(
+		launcherOf((await get()).data as PackageWebhooksLoaderData).enabled,
+	).toBe(false)
 
 	const rotated = await act('rotate')
 	expect(rotated.status).toBe(200)
 	expect(rotated.body.revealed?.url).not.toBe(mintedUrl)
 	expect(rotated.body.revealed?.handle).toBe(mintedHandle)
-	const rotatedLauncher = launcherOf(rotated.body)
+	const rotatedLauncher = launcherOf(
+		(await get()).data as PackageWebhooksLoaderData,
+	)
 	// Rotate keeps the disabled state; only Enable flips it back.
 	expect(rotatedLauncher.enabled).toBe(false)
 	expect(rotatedLauncher.previousUrlActiveUntil).toEqual(expect.any(String))
@@ -300,7 +336,9 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 
 	const enabled = await act('enable')
 	expect(enabled.status).toBe(200)
-	expect(launcherOf(enabled.body).enabled).toBe(true)
+	expect(
+		launcherOf((await get()).data as PackageWebhooksLoaderData).enabled,
+	).toBe(true)
 
 	const whereLauncher = `WHERE user_id = ? AND package_id = 'pkg-1' AND webhook_name = 'launcher'`
 	const stored = await db
@@ -319,7 +357,7 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 		)
 		.bind(userId)
 		.run()
-	const legacyList = (await (await get()).json()) as PackageWebhooksLoaderData
+	const legacyList = (await get()).data as PackageWebhooksLoaderData
 	expect(launcherOf(legacyList).urlRecoverable).toBe(false)
 	const legacyReveal = await act('reveal')
 	expect(legacyReveal.status).toBe(400)
@@ -339,7 +377,7 @@ test('package webhooks API is owner-only: another username or an unknown package
 
 	const someoneElse = await get(otherParams)
 	expect(someoneElse.status).toBe(404)
-	const someoneElseBody = (await someoneElse.json()) as { error: string }
+	const someoneElseBody = someoneElse.data as { error: string }
 	expect(someoneElseBody.error).toBe('Package not found.')
 	expect(JSON.stringify(someoneElseBody)).not.toContain('sentry')
 
@@ -359,8 +397,8 @@ test('package webhooks API is owner-only: another username or an unknown package
 	expect(unknownPackage.status).toBe(404)
 })
 
-test('package webhooks API rejects unknown webhooks, bad bodies, and anonymous callers', async () => {
-	const { db, run, get, act } = await setup()
+test('package webhook operations reject unknown webhooks, empty names, and anonymous callers', async () => {
+	const { db, get, act } = await setup()
 
 	const undeclared = await act('mint', 'nope')
 	expect(undeclared.status).toBe(400)
@@ -368,17 +406,12 @@ test('package webhooks API rejects unknown webhooks, bad bodies, and anonymous c
 
 	const rejected = [
 		{ name: 'unminted reveal', intent: 'reveal', webhookName: 'sentry' },
-		{ name: 'unknown intent', intent: 'delete', webhookName: 'sentry' },
 		{ name: 'blank webhook name', intent: 'mint', webhookName: ' ' },
-	]
+	] as const
 	for (const { name, intent, webhookName } of rejected) {
 		const { status } = await act(intent, webhookName)
 		expect({ name, status }).toEqual({ name, status: 400 })
 	}
-
-	const wrongMethod = await run(new Request(apiUrl, { method: 'DELETE' }))
-	expect(wrongMethod.status).toBe(405)
-	expect(wrongMethod.headers.get('Allow')).toBe('GET, POST')
 
 	// Infrastructure failures are audited with their detail but reach the
 	// browser only as the generic per-intent message.
@@ -397,4 +430,133 @@ test('package webhooks API rejects unknown webhooks, bad bodies, and anonymous c
 
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
 	expect((await get()).status).toBe(401)
+})
+
+test('native webhook reads share API data and owner-only denials', async () => {
+	const { env, get } = await setup()
+	const request = new Request(apiUrl)
+	const result = await readPackageWebhooksData(request, ownerParams, env)
+	expect(result.status).toBe(200)
+	if (result.status !== 200) throw new Error('Expected authorized webhook data')
+	expect(result.data).toEqual((await get()).data)
+	expect(result.data).not.toHaveProperty('revealed')
+	expect(await readPackageWebhooksData(request, otherParams, env)).toEqual({
+		status: 404,
+		error: 'Package not found.',
+	})
+	expect(
+		await readPackageWebhooksData(
+			request,
+			{ ...ownerParams, kodyId: 'missing' },
+			env,
+		),
+	).toEqual({ status: 404, error: 'Package not found.' })
+	mockModule.readAuthenticatedAppUser.mockResolvedValueOnce(null)
+	expect(await readPackageWebhooksData(request, ownerParams, env)).toEqual({
+		status: 401,
+		error: 'Unauthorized.',
+	})
+})
+
+test('committed webhook mint succeeds without rebuilding a failing read model', async () => {
+	const { act, db, userId } = await setup()
+	const read = vi
+		.spyOn(webhookReads, 'loadPackageWebhooksData')
+		.mockRejectedValue(new Error('read model unavailable'))
+	try {
+		const result = await act('mint')
+		expect(result.status).toBe(200)
+		const stored = await db
+			.prepare(
+				`SELECT id FROM webhook_endpoints WHERE user_id = ? AND package_id = 'pkg-1' AND webhook_name = 'launcher'`,
+			)
+			.bind(userId)
+			.first<{ id: string }>()
+		expect(stored?.id).toEqual(expect.any(String))
+		expect(result.body).toMatchObject({
+			ok: true,
+			revealed: {
+				id: `sentry-bridge/launcher/${stored!.id}`,
+				handle: `whh_${stored!.id}`,
+			},
+		})
+		expect(result.body).not.toHaveProperty('webhooks')
+		expect(read).not.toHaveBeenCalled()
+		const audits = logAuditEventSpy.mock.calls
+			.map(([event]) => event)
+			.filter((event) => event.action === 'webhook_url_mint')
+		expect(audits).toHaveLength(1)
+		expect(audits[0]?.result).toBe('success')
+	} finally {
+		read.mockRestore()
+	}
+})
+
+test('native webhook operations mint labeled siblings and target one endpoint without changing its sibling', async () => {
+	const { act, post, get } = await setup()
+	const first = await act('mint')
+	const originalId = first.body.revealed!.handle.replace(/^whh_/, '')
+	const extra = await post({
+		intent: 'mint',
+		webhookName: 'launcher',
+		createInstance: true,
+		instanceLabel: 'staging',
+	})
+	expect(extra.status).toBe(200)
+	const payload = extra.data as PackageWebhooksActionPayload
+	expect(payload).not.toHaveProperty('webhooks')
+	const extraId = payload.revealed!.handle.replace(/^whh_/, '')
+	expect(extraId).not.toBe(originalId)
+	expect(payload.revealed!.id).toBe(`sentry-bridge/launcher/${extraId}`)
+	expect(payload.approvalUrl).toContain(
+		encodeURIComponent(`webhook:launcher:${extraId}`),
+	)
+	const listed = (await get()).data as PackageWebhooksLoaderData
+	const siblings = listed.webhooks.filter((row) => row.name === 'launcher')
+	expect(siblings).toHaveLength(2)
+	expect(
+		siblings.find((row) => row.endpointId === extraId)?.instanceLabel,
+	).toBe('staging')
+	const reveal = await post({
+		intent: 'reveal',
+		webhookName: 'launcher',
+		endpointId: extraId,
+	})
+	expect((reveal.data as PackageWebhooksActionPayload).revealed?.url).toBe(
+		payload.revealed?.url,
+	)
+	expect(
+		(
+			await post({
+				intent: 'disable',
+				webhookName: 'launcher',
+				endpointId: extraId,
+			})
+		).status,
+	).toBe(200)
+	const after = (await get()).data as PackageWebhooksLoaderData
+	expect(
+		after.webhooks.find((row) => row.endpointId === extraId)?.enabled,
+	).toBe(false)
+	expect(
+		after.webhooks.find((row) => row.endpointId === originalId)?.enabled,
+	).toBe(true)
+	expect(
+		(
+			await post({
+				intent: 'mint',
+				webhookName: 'launcher',
+				createInstance: true,
+			})
+		).status,
+	).toBe(400)
+	expect(
+		(
+			await post({
+				intent: 'reveal',
+				webhookName: 'sentry',
+				endpointId: extraId,
+			})
+		).status,
+	).toBe(400)
 })

@@ -1,6 +1,5 @@
 import { env, exports } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
-import { ensureCommunityFlowSchema } from '#worker/community/community-flow-test-schema.ts'
 
 function createRequest(
 	path: string,
@@ -13,7 +12,7 @@ async function workerFetch(request: Request): Promise<Response> {
 	return await exports.default.fetch(request)
 }
 
-test('public route hardening rejects retired connector paths, unknown paths, and abusive auth', async () => {
+test('protocol routing rejects retired connectors and protects maintenance endpoints', async () => {
 	await env.APP_DB.prepare(`DROP TABLE IF EXISTS users`).run()
 	await env.APP_DB.prepare(
 		`CREATE TABLE users (
@@ -61,18 +60,6 @@ test('public route hardening rejects retired connector paths, unknown paths, and
 	for (const request of retiredConnectorRequests) {
 		expect((await workerFetch(request)).status).toBe(404)
 	}
-
-	// Two segments is the public package URL `/@owner/kody-id`, even when the id
-	// spells a retired machine namespace: it reaches the app and 404s as a page
-	// rather than being swallowed by a special connector route.
-	await ensureCommunityFlowSchema(env.APP_DB)
-	const namespaceLookalikeResponse = await workerFetch(
-		createRequest('/@connector-user/connectors'),
-	)
-	expect(namespaceLookalikeResponse.status).toBe(404)
-	await expect(namespaceLookalikeResponse.text()).resolves.toContain(
-		"This doesn't quite connect.",
-	)
 
 	// Real maintenance routes from index.ts share handleSecretMaintenanceRequest:
 	// non-POST → 405 (proves registration vs unknown JSON 404); unauthenticated
@@ -149,27 +136,4 @@ test('public route hardening rejects retired connector paths, unknown paths, and
 	await expect(unknownMaintenanceResponse.json()).resolves.toEqual({
 		error: 'Unknown maintenance endpoint.',
 	})
-
-	let rateLimited = false
-	for (let i = 0; i < 25; i++) {
-		const response = await workerFetch(
-			createRequest('/auth', {
-				...jsonPost({
-					email: 'attacker@example.com',
-					password: 'password123',
-					mode: 'login',
-				}),
-				headers: {
-					'Content-Type': 'application/json',
-					'CF-Connecting-IP': '198.51.100.42',
-				},
-			}),
-		)
-		if (response.status === 429) {
-			rateLimited = true
-			expect(response.headers.get('Retry-After')).toBeTruthy()
-			break
-		}
-	}
-	expect(rateLimited).toBe(true)
 }, 60_000)

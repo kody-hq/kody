@@ -1,19 +1,18 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { RequestContext } from 'remix/router'
-import { expect, test, vi } from 'vitest'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type EmailMessageRecord } from '#worker/email/types.ts'
 import type * as emailVerification from '#app/email-verification.ts'
-import type * as emailRepo from '#worker/email/repo.ts'
-import type * as ownerEmailReader from '#worker/email/owner-email-reader.ts'
-import type * as emailService from '#worker/email/service.ts'
-import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
-import type * as EmailPlatformAddress from '#worker/email/platform-address.ts'
 import type * as EntitlementPlans from '#universal/plans.ts'
 import { type resolveEntitlementLimit } from '#universal/plans.ts'
+import type * as ownerEmailReader from '#worker/email/owner-email-reader.ts'
+import type * as EmailPlatformAddress from '#worker/email/platform-address.ts'
+import type * as emailRepo from '#worker/email/repo.ts'
+import type * as emailService from '#worker/email/service.ts'
+import { type EmailMessageRecord } from '#worker/email/types.ts'
 import type * as EntitlementService from '#worker/entitlements/service.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { expect, test, vi } from 'vitest'
 
 const messageRecord: EmailMessageRecord = {
 	id: 'msg-1',
@@ -219,10 +218,6 @@ vi.mock('#app/auth-redirect.ts', () => ({
 	redirectToLoginWhenUnauthenticated: () => new Response(null, { status: 302 }),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async () => new Response('ok'),
-}))
-
 vi.mock('#app/email-verification.ts', () => ({
 	emailVerificationRequiredMessage:
 		'Account email is not verified. Open the verification link sent to your account email, or resend it from /pending-verification or /account.',
@@ -316,7 +311,8 @@ vi.mock('#worker/email/service.ts', () => ({
 	) => mockModule.deleteEmailMessage(...args),
 }))
 
-const { createAccountEmailApiHandler } = await import('./account-email.ts')
+const { testAccountEmailApiHandler } =
+	await import('./account-email.test-support.ts')
 
 function createEnv(input?: {
 	meter?: ReturnType<typeof createInMemoryUserMeterEnv>
@@ -351,32 +347,29 @@ function useFrozenUtcTime(iso: string) {
 }
 
 function createEmailClient(env: Env) {
-	const { handler } = createAccountEmailApiHandler(env)
+	const { execute } = testAccountEmailApiHandler(env)
 	return {
 		get: (search = '') =>
-			handler(
-				new RequestContext(
-					new Request(`https://example.com/account/email.json${search}`),
-				),
-			),
+			execute({
+				request: new Request(`https://example.com/account/email.json${search}`),
+			}),
 		post: (body: Record<string, unknown>, search = '') =>
-			handler(
-				new RequestContext(
-					new Request(`https://example.com/account/email.json${search}`, {
+			execute({
+				request: new Request(
+					`https://example.com/account/email.json${search}`,
+					{
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify(body),
-					}),
+					},
 				),
-			),
+			}),
 		put: () =>
-			handler(
-				new RequestContext(
-					new Request('https://example.com/account/email.json', {
-						method: 'PUT',
-					}),
-				),
-			),
+			execute({
+				request: new Request('https://example.com/account/email.json', {
+					method: 'PUT',
+				}),
+			}),
 	}
 }
 
@@ -396,9 +389,8 @@ test('email API lists messages with pagination, UserMeter usage, and owner-scope
 
 	const listResponse = await get()
 	expect(listResponse.status).toBe(200)
-	expect(listResponse.headers.get('Cache-Control')).toBe('no-store')
 	expect(mockModule.getOwnerEmailMessageById).not.toHaveBeenCalled()
-	await expect(listResponse.json()).resolves.toMatchObject({
+	expect(listResponse.data).toMatchObject({
 		ok: true,
 		emailVerified: true,
 		email: 'user@example.com',
@@ -454,7 +446,7 @@ test('email API lists messages with pagination, UserMeter usage, and owner-scope
 			expect.objectContaining({ ownerId: userId, messageId: 'msg-1' }),
 		)
 	}
-	await expect(selectedResponse.json()).resolves.toMatchObject({
+	expect(selectedResponse.data).toMatchObject({
 		ok: true,
 		page: 2,
 		pageSize: 10,
@@ -481,7 +473,7 @@ test('email API lists messages with pagination, UserMeter usage, and owner-scope
 	expect(mockModule.getOwnerEmailMessageById).toHaveBeenLastCalledWith(
 		expect.objectContaining({ ownerId: userId, messageId: 'missing-msg' }),
 	)
-	await expect(missingSelection.json()).resolves.toMatchObject({
+	expect(missingSelection.data).toMatchObject({
 		ok: true,
 		selectedMessage: null,
 	})
@@ -513,14 +505,14 @@ test('email API lists classification filters and classifies inbound messages', a
 		classification: 'quarantined',
 		classification_reason: 'DMARC failed.',
 	}
-	await expect(listResponse.json()).resolves.toMatchObject({
+	expect(listResponse.data).toMatchObject({
 		ok: true,
 		classification: 'quarantined',
 		messages: [expect.objectContaining(quarantinedFields)],
 		selectedMessage: expect.objectContaining(quarantinedFields),
 	})
 
-	// Reload after classify uses the default message list again.
+	// Mutation results are independent of the current list and selection.
 	createEnv({ meter, messages: [messageRecord] })
 	mockModule.getOwnerEmailMessageById.mockResolvedValue(messageRecord)
 	const classify = (classification: string, messageId = 'msg-1') =>
@@ -542,9 +534,10 @@ test('email API lists classification filters and classifies inbound messages', a
 	expect(mockModule.setEmailMessageClassification).toHaveBeenLastCalledWith(
 		classifyCall('quarantined', 'Reclassified by user.'),
 	)
-	await expect(quarantineResponse.json()).resolves.toMatchObject({
+	expect(quarantineResponse.data).toMatchObject({
 		ok: true,
-		selectedMessage: expect.objectContaining({ id: 'msg-1' }),
+		messageId: 'msg-1',
+		classification: 'quarantined',
 	})
 
 	const acceptResponse = await classify('accepted')
@@ -558,7 +551,7 @@ test('email API lists classification filters and classifies inbound messages', a
 	expect((await post({ action: 'unknown' })).status).toBe(400)
 })
 
-test('email API deletes an owned message and refreshes usage without a selection', async () => {
+test('email deletion succeeds without reading the list or usage again', async () => {
 	const env = createEnv({ messages: [] })
 	const { post } = createEmailClient(env)
 	const deleteCall = (messageId: string) => ({
@@ -576,17 +569,8 @@ test('email API deletes an owned message and refreshes usage without a selection
 	expect(mockModule.deleteEmailMessage).toHaveBeenCalledWith(
 		deleteCall('msg-1'),
 	)
-	await expect(response.json()).resolves.toMatchObject({
-		ok: true,
-		messages: [],
-		selectedMessage: null,
-		usage: expect.objectContaining({
-			stored_messages: expect.objectContaining({
-				count: expect.any(Number),
-				limit: 100,
-			}),
-		}),
-	})
+	expect(response.data).toEqual({ ok: true, messageId: 'msg-1' })
+	expect(mockModule.listEmailInboxesForUser).not.toHaveBeenCalled()
 
 	mockModule.deleteEmailMessage.mockResolvedValueOnce(false)
 	const missingResponse = await post({
@@ -611,7 +595,7 @@ test('email API gates unverified accounts and skips mailbox queries', async () =
 	expect(mockModule.listEmailInboxesForUser).not.toHaveBeenCalled()
 	expect(mockModule.getUserPlan).not.toHaveBeenCalled()
 	expect(mockModule.listOwnerEmailMessagesPage).not.toHaveBeenCalled()
-	await expect(response.json()).resolves.toMatchObject({
+	expect(response.data).toMatchObject({
 		ok: true,
 		emailVerified: false,
 		inboxAddress: 'test-user@inbox.example.com',
@@ -622,4 +606,32 @@ test('email API gates unverified accounts and skips mailbox queries', async () =
 		total: 0,
 		classification: null,
 	})
+})
+
+test('accepted email writes do not depend on an available page read', async () => {
+	const env = createEnv()
+	const { post } = createEmailClient(env)
+	const read = mockModule.listOwnerEmailMessagesPage
+	const original = read.getMockImplementation()!
+	read.mockClear()
+	read.mockRejectedValue(new Error('Email listing unavailable'))
+	mockModule.getOwnerEmailMessageById.mockClear()
+	try {
+		expect(
+			(
+				await post({
+					action: 'classify',
+					message_id: 'msg-1',
+					classification: 'accepted',
+				})
+			).data,
+		).toEqual({ ok: true, messageId: 'msg-1', classification: 'accepted' })
+		expect(
+			(await post({ action: 'delete', message_id: 'msg-1' })).data,
+		).toEqual({ ok: true, messageId: 'msg-1' })
+		expect(read).not.toHaveBeenCalled()
+		expect(mockModule.getOwnerEmailMessageById).not.toHaveBeenCalled()
+	} finally {
+		read.mockImplementation(original)
+	}
 })

@@ -124,18 +124,14 @@ function projectionStatus(
 
 export async function loadAccountWorkflowsData(input: {
 	env: Env
-	request: Request
 	user: AuthenticatedUser
-	pathWorkflowId?: string
+	selectedWorkflowId: string | null
 }): Promise<AccountWorkflowsLoaderData> {
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
 	})
-	const selectedWorkflowId = readAccountWorkflowsSelectedWorkflowId(
-		input.request.url,
-		input.pathWorkflowId,
-	)
+	const selectedWorkflowId = input.selectedWorkflowId
 
 	const workflows = (
 		await listWorkflowRunsForUser({

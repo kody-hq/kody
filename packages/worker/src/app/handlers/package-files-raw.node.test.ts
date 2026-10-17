@@ -46,7 +46,7 @@ function requestPackageRaw(
 	params: { relativePath: string; ref?: string },
 	init?: RequestInit,
 ) {
-	return createCommunityPackageRawHandler({} as Env).handler({
+	return createCommunityPackageRawHandler({} as Env)({
 		request: new Request(url, init),
 		params: {
 			username: 'kentcdodds',
@@ -239,7 +239,7 @@ test('listing raw serves public files and 404s unknown listings', async () => {
 		filename: 'index.html',
 		isPrivate: false,
 	})
-	const html = await handler.handler({
+	const html = await handler({
 		request: new Request(
 			'https://kody.codes/community/listing-1/raw/index.html',
 		),
@@ -253,7 +253,7 @@ test('listing raw serves public files and 404s unknown listings', async () => {
 	mockModule.loadCommunityPackageFileRaw.mockResolvedValue({
 		kind: 'not-found',
 	})
-	const missing = await handler.handler({
+	const missing = await handler({
 		request: new Request('https://kody.codes/community/nope/raw/index.html'),
 		params: { listingId: 'nope', relativePath: 'index.html' },
 		url: new URL('https://kody.codes/community/nope/raw/index.html'),

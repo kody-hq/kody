@@ -20,8 +20,8 @@ node tools/control-kody.ts request GET /signup --origin http://localhost:3742 --
 
 ## APIs
 
-- `POST /auth` `{ mode: "signup", ... }`
-- `POST /account/resend-verification.json`
+- `POST /auth` `{ mode: "signup", ... }` Resend verification through the browser
+  control, which uses a native server function.
 
 ## Gotchas
 

@@ -17,7 +17,6 @@
     "@kody-internal/shared": "file:../shared",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.0.0",
-    "@remix-run/ui": "0.12.1",
     "@resvg/resvg-wasm": "^2.6.2",
     "@sentry/browser": "^10.76.0",
     "@sentry/cloudflare": "^10.76.0",
@@ -33,7 +32,16 @@
     "remix": "3.0.0",
     "satori": "^0.32.0",
     "tldts": "^7.4.16",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@emotion/react": "^11.14.0",
+    "@tanstack/react-query": "5.104.1",
+    "@tanstack/react-router": "^1.170.41",
+    "@tanstack/react-router-ssr-query": "1.167.3",
+    "@tanstack/react-start": "^1.168.60",
+    "@tanstack/redact": "0.1.4",
+    "@tanstack/start-storage-context": "1.167.36",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "imports": {
     "#app/*": "./src/app/*",

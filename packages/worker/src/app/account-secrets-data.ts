@@ -87,39 +87,44 @@ function readSelectedSecretIdFromPath(pathname: string) {
 	return null
 }
 
-export async function loadAccountSecretsData(input: {
-	request: Request
+export async function loadAccountSecretsSelection(input: {
 	env: Env
 	user: AuthenticatedUser
-	selectedSecretId?: string | null
+	selectedSecretId: string | null
+	approval: {
+		hosts: string[]
+		names: string[]
+		packageId?: string
+		scope: 'user' | 'package' | 'session'
+		storagePackageId?: string
+		sessionId?: string
+	}
 	packageOptions?: Array<SavedPackageOption>
 	savedPackages?: Array<SavedPackageSummary>
 }): Promise<AccountSecretsLoaderData> {
-	const selectedSecretId =
-		input.selectedSecretId === undefined
-			? readAccountSecretsSelectedSecretId(input.request.url)
-			: input.selectedSecretId
-	return buildAccountSecretsPayload({
-		...input,
-		selectedSecretId,
-	})
-}
-
-async function buildAccountSecretsPayload(input: {
-	request: Request
-	env: Env
-	user: AuthenticatedUser
-	selectedSecretId?: string | null
-	packageOptions?: Array<SavedPackageOption>
-	savedPackages?: Array<SavedPackageSummary>
-}): Promise<AccountSecretsLoaderData> {
-	const url = new URL(input.request.url)
-	const requestedApprovalHosts = readApprovalHosts(url)
+	const requestedApprovalHosts = classifyBulkApprovalHosts(
+		input.approval.hosts.flatMap((value) => value.split(',')),
+	)
 	const rejectedApprovalHosts = requestedApprovalHosts.rejected
-	const requestedPackageId = readRequestedPackageId(url)
-	const requestedSecretNames = readRequestedSecretNames(url)
-	const requestedHostScope = readHostApprovalScope(url)
-	const requestedHostStorageContext = getHostApprovalStorageContext(url)
+	const requestedPackageId = input.approval.packageId?.trim() || null
+	const requestedSecretNames = normalizeBulkPackageSecretApprovalNames(
+		input.approval.names.flatMap((value) => value.split(',')),
+	)
+	const requestedHostScope = input.approval.scope
+	const requestedHostStorageContext: StorageContext | null =
+		requestedHostScope === 'package' && input.approval.storagePackageId?.trim()
+			? {
+					packageId: input.approval.storagePackageId.trim(),
+					sessionId: null,
+					appId: null,
+				}
+			: requestedHostScope === 'session' && input.approval.sessionId?.trim()
+				? {
+						sessionId: input.approval.sessionId.trim(),
+						packageId: null,
+						appId: null,
+					}
+				: null
 	const savedPackages =
 		input.savedPackages ??
 		(await listSavedPackagesByUserId(input.env.APP_DB, {
@@ -625,72 +630,4 @@ export function getSecretContextForAccountSecret(input: {
 	}
 }
 
-function readApprovalHosts(url: URL) {
-	const values = [
-		...url.searchParams.getAll('hosts'),
-		...url.searchParams.getAll('host'),
-		...url.searchParams.getAll('allowed-host'),
-		...url.searchParams.getAll('allowedHosts'),
-	]
-	return classifyBulkApprovalHosts(values.flatMap((value) => value.split(',')))
-}
-
-function readHostApprovalScope(url: URL): SecretScope {
-	const value = url.searchParams.get('scope')?.trim()
-	switch (value) {
-		case 'package':
-		case 'session':
-		case 'user':
-			return value
-		default:
-			return 'user'
-	}
-}
-
-function getHostApprovalStorageContext(url: URL): StorageContext | null {
-	const scope = readHostApprovalScope(url)
-	switch (scope) {
-		case 'package': {
-			const packageId = url.searchParams.get('packageId')?.trim()
-			if (!packageId) return null
-			return { sessionId: null, appId: null, packageId }
-		}
-		case 'session': {
-			const sessionId = url.searchParams.get('sessionId')?.trim()
-			if (!sessionId) return null
-			return { sessionId, appId: null, packageId: null }
-		}
-		case 'user':
-			return null
-		default: {
-			const _exhaustive: never = scope
-			return _exhaustive
-		}
-	}
-}
-
-function readRequestedPackageId(url: URL) {
-	const value = url.searchParams.get('package_id')
-	return value?.trim() ? value.trim() : null
-}
-
-function readRequestedSecretNames(url: URL) {
-	const values = [
-		...url.searchParams.getAll('names'),
-		...url.searchParams.getAll('name'),
-	]
-	return normalizeBulkPackageSecretApprovalNames(
-		values.flatMap((value) => value.split(',')),
-	)
-}
-
-export {
-	getHostApprovalStorageContext,
-	listAccountSecrets,
-	readApprovalHosts,
-	readHostApprovalScope,
-	resolveApprovalRequest,
-	toPackageOptions,
-}
-
-export { buildAccountSecretsPayload }
+export { listAccountSecrets, resolveApprovalRequest, toPackageOptions }

@@ -219,9 +219,13 @@ function summarySince(now: Date) {
 
 export async function loadAccountActivityData(input: {
 	env: Env
-	request: Request
 	user: AuthenticatedUser
-	pathRunId?: string
+	selectedRunId: string | null
+	viewFilter: AccountActivityViewFilter
+	statusFilter: AccountActivityStatusFilter
+	surfaceFilter: AccountActivitySurfaceFilter
+	triageFilter: AccountActivityTriageFilter
+	cursor: string | null
 	now?: Date
 	serverTiming?: Array<ServerTimingEntry>
 }): Promise<AccountActivityLoaderData> {
@@ -230,12 +234,14 @@ export async function loadAccountActivityData(input: {
 		user: input.user.mcpUser,
 	})
 	const now = input.now ?? new Date()
-	const selectedRunId = readAccountActivitySelectedRunId(
-		input.request.url,
-		input.pathRunId,
-	)
-	const { viewFilter, statusFilter, surfaceFilter, triageFilter, cursor } =
-		readAccountActivityFilters(input.request.url)
+	const {
+		selectedRunId,
+		viewFilter,
+		statusFilter,
+		surfaceFilter,
+		triageFilter,
+		cursor,
+	} = input
 	const since = summarySince(now)
 
 	const [summary, page, selectedRecord] = await Promise.all([

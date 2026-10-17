@@ -1,19 +1,15 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { expect, test, vi } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
-import type * as ssrRender from '#app/ssr-render.tsx'
+import { type McpServerAuthorizeContinueResponse } from '#universal/loader-data.ts'
 import { type McpClientHubClient } from '#worker/mcp-client/hub-client.ts'
 import { type McpServerPendingAuthorization } from '#worker/mcp-client/types.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import {
-	type McpServerAuthorizeContinueResponse,
-	type McpServerAuthorizeLoaderData,
-} from '#universal/loader-data.ts'
+import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	readPendingAuthorization: vi.fn<
@@ -25,21 +21,6 @@ const mocks = vi.hoisted(() => ({
 	bindOAuthAttemptActor: vi.fn(async (): Promise<{ ok: boolean }> => ({
 		ok: true,
 	})),
-}))
-
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async (input: Parameters<typeof ssrRender.renderAppPage>[0]) =>
-		new Response(
-			JSON.stringify({
-				title: input.title,
-				notFound: input.notFound ?? false,
-				mcpServerAuthorize: input.loaderData?.mcpServerAuthorize ?? null,
-			}),
-			{
-				status: input.status ?? 200,
-				headers: { 'Content-Type': 'application/json' },
-			},
-		),
 }))
 
 vi.mock('#worker/mcp-client/hub-client.ts', () => ({
@@ -54,10 +35,8 @@ vi.mock('#worker/mcp-client/hub-client.ts', () => ({
 		}) as Partial<McpClientHubClient>,
 }))
 
-const {
-	createOrgMcpServerAuthorizeHandler,
-	createOrgMcpServerAuthorizePostHandler,
-} = await import('./org-mcp-server-authorize.ts')
+const { testOrgMcpServerAuthorizePostHandler, loadMcpServerAuthorizeData } =
+	await import('./org-mcp-server-authorize.test-support.ts')
 
 const cookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 const origin = 'https://kody.test'
@@ -167,18 +146,28 @@ function pagePath(orgSlug: string, serverId: string) {
 
 async function openConsent(
 	env: Env,
-	input: { person: Person | null; orgSlug?: string; serverId?: string },
+	input: {
+		person: Person | null
+		orgSlug?: string
+		serverId?: string
+		method?: 'GET' | 'HEAD'
+		requestPath?: string
+	},
 ) {
 	const orgSlug = input.orgSlug ?? 'acme'
 	const serverId = input.serverId ?? 'server-acme'
-	const request = new Request(`${origin}${pagePath(orgSlug, serverId)}`, {
-		headers: input.person ? { Cookie: await cookieFor(input.person) } : {},
-	})
-	return createOrgMcpServerAuthorizeHandler(env).handler({
+	const request = new Request(
+		`${origin}${input.requestPath ?? pagePath(orgSlug, serverId)}`,
+		{
+			method: input.method ?? 'GET',
+			headers: input.person ? { Cookie: await cookieFor(input.person) } : {},
+		},
+	)
+	return loadMcpServerAuthorizeData({
+		env,
 		request,
 		params: { orgSlug, serverId },
-		url: new URL(request.url),
-	} as never)
+	})
 }
 
 async function clickContinue(
@@ -205,23 +194,21 @@ async function clickContinue(
 		},
 		body,
 	})
-	return createOrgMcpServerAuthorizePostHandler(env).handler({
+	return testOrgMcpServerAuthorizePostHandler(env).execute({
 		request,
 		params: { orgSlug, serverId },
 		url: new URL(request.url),
 	} as never)
 }
 
-async function readPage(response: Response) {
-	return (await response.json()) as {
-		title: string
-		notFound: boolean
-		mcpServerAuthorize: McpServerAuthorizeLoaderData | null
-	}
+function readPage(result: Awaited<ReturnType<typeof openConsent>>) {
+	if (result.kind !== 'ready')
+		throw new Error(`Expected consent data, got ${result.kind}`)
+	return result.payload
 }
 
-async function readContinue(response: Response) {
-	return (await response.json()) as McpServerAuthorizeContinueResponse
+async function readContinue(response: { data: unknown }) {
+	return response.data as McpServerAuthorizeContinueResponse
 }
 
 function refusedConsent(body: McpServerAuthorizeContinueResponse) {
@@ -231,7 +218,7 @@ function refusedConsent(body: McpServerAuthorizeContinueResponse) {
 
 async function consentToken(env: Env, person: Person) {
 	const page = await readPage(await openConsent(env, { person }))
-	const token = page.mcpServerAuthorize?.pending?.csrfToken
+	const token = page.pending?.csrfToken
 	if (!token) throw new Error('Expected a pending consent form token.')
 	return token
 }
@@ -240,17 +227,13 @@ test('consent page shows the connection and only hands out the provider URL afte
 	const env = await seed()
 
 	const anonymous = await openConsent(env, { person: null })
-	expect(anonymous.status).toBe(302)
-	expect(new URL(anonymous.headers.get('Location') ?? '').pathname).toBe(
-		'/login',
-	)
+	expect(anonymous.kind).toBe('signed-out')
 	expect(mocks.readPendingAuthorization).not.toHaveBeenCalled()
 
 	const page = await openConsent(env, { person: 'ada' })
-	expect(page.status).toBe(200)
-	expect(page.headers.get('Location')).toBeNull()
+	expect(page.kind).toBe('ready')
 	const loaded = await readPage(page)
-	expect(loaded.mcpServerAuthorize).toMatchObject({
+	expect(loaded).toMatchObject({
 		ok: true,
 		orgSlug: 'acme',
 		serverId: 'server-acme',
@@ -272,7 +255,7 @@ test('consent page shows the connection and only hands out the provider URL afte
 
 	const missingToken = await clickContinue(env, { person: 'ada' })
 	expect(missingToken.status).toBe(403)
-	expect(missingToken.headers.get('Location')).toBeNull()
+	expect(new Headers(missingToken.headers).get('Location')).toBeNull()
 	const missingBody = refusedConsent(await readContinue(missingToken))
 	expect(missingBody.error).toMatch(/expired/)
 	expect(missingBody.consent?.pending?.csrfToken).toEqual(expect.any(String))
@@ -287,10 +270,12 @@ test('consent page shows the connection and only hands out the provider URL afte
 
 	const approved = await clickContinue(env, {
 		person: 'ada',
-		csrf: loaded.mcpServerAuthorize?.pending?.csrfToken,
+		csrf: loaded.pending?.csrfToken,
 	})
 	expect(approved.status).toBe(200)
-	expect(approved.headers.get('Cache-Control')).toBe('private, no-store')
+	expect(new Headers(approved.headers).get('Cache-Control')).toBe(
+		'private, no-store',
+	)
 	expect(await readContinue(approved)).toEqual({
 		ok: true,
 		authorizationUrl: providerUrl,
@@ -317,7 +302,7 @@ test('consent form tokens are bound to the person and the pending authorization'
 		csrf: adaToken,
 	})
 	expect(otherOwner.status).toBe(403)
-	expect(otherOwner.headers.get('Location')).toBeNull()
+	expect(new Headers(otherOwner.headers).get('Location')).toBeNull()
 
 	mocks.readPendingAuthorization.mockResolvedValue({
 		serverId: 'server-acme',
@@ -337,8 +322,8 @@ test('consent form tokens are bound to the person and the pending authorization'
 
 	mocks.readPendingAuthorization.mockResolvedValue(null)
 	const idle = await openConsent(env, { person: 'ada' })
-	expect(idle.status).toBe(200)
-	expect((await readPage(idle)).mcpServerAuthorize?.pending).toBeNull()
+	expect(idle.kind).toBe('ready')
+	expect((await readPage(idle)).pending).toBeNull()
 	const settled = await clickContinue(env, { person: 'ada', csrf: adaToken })
 	expect(settled.status).toBe(409)
 	expect(
@@ -352,7 +337,7 @@ test('consent page refuses people outside the org, members without integration w
 	mocks.readPendingAuthorization.mockClear()
 
 	const outsider = await openConsent(env, { person: 'bob' })
-	expect(outsider.status).toBe(404)
+	expect(outsider.kind).toBe('not-found')
 	const outsiderPost = await clickContinue(env, {
 		person: 'bob',
 		csrf: adaToken,
@@ -364,7 +349,7 @@ test('consent page refuses people outside the org, members without integration w
 	})
 
 	const member = await openConsent(env, { person: 'dan' })
-	expect(member.status).toBe(403)
+	expect(member.kind).toBe('forbidden')
 	const memberPost = await clickContinue(env, { person: 'dan', csrf: adaToken })
 	expect(memberPost.status).toBe(403)
 	expect(await readContinue(memberPost)).toMatchObject({
@@ -377,14 +362,14 @@ test('consent page refuses people outside the org, members without integration w
 		orgSlug: 'ada',
 		serverId: 'server-ada',
 	})
-	expect(otherPersonalOrg.status).toBe(404)
+	expect(otherPersonalOrg.kind).toBe('not-found')
 
 	const serverFromAnotherOrg = await openConsent(env, {
 		person: 'ada',
 		orgSlug: 'ada',
 		serverId: 'server-acme',
 	})
-	expect(serverFromAnotherOrg.status).toBe(404)
+	expect(serverFromAnotherOrg.kind).toBe('not-found')
 	const crossOrgPost = await clickContinue(env, {
 		person: 'ada',
 		orgSlug: 'ada',
@@ -397,4 +382,32 @@ test('consent page refuses people outside the org, members without integration w
 		consent: null,
 	})
 	expect(mocks.readPendingAuthorization).not.toHaveBeenCalled()
+})
+
+test('consent read binds explicit org independently of the RPC URL and HEAD never continues OAuth', async () => {
+	const env = await seed()
+	mocks.bindOAuthAttemptActor.mockClear()
+	const page = readPage(
+		await openConsent(env, {
+			person: 'ada',
+			orgSlug: 'acme',
+			serverId: 'server-acme',
+			method: 'HEAD',
+			requestPath: '/_serverFn/consent',
+		}),
+	)
+	expect(page.orgSlug).toBe('acme')
+	expect(page.serverId).toBe('server-acme')
+	expect(mocks.readPendingAuthorization).toHaveBeenCalledWith({
+		ownerId: 'org-acme',
+		serverId: 'server-acme',
+	})
+	expect(mocks.bindOAuthAttemptActor).not.toHaveBeenCalled()
+	expect(
+		await openConsent(env, {
+			person: 'bob',
+			orgSlug: 'acme',
+			requestPath: '/_serverFn/consent',
+		}),
+	).toMatchObject({ kind: 'not-found' })
 })

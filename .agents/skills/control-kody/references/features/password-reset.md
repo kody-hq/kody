@@ -19,8 +19,7 @@ node tools/control-kody.ts request GET /reset-password --skip-login
 
 GET the page after a change; do not stop at "try this URL."
 
-## APIs
+## Transport
 
-- `POST /password-reset`
-- `POST /password-reset/confirm`
-- `POST /account/password.json`
+Password reset, confirmation, and signed-in password changes use native Start
+server functions through their browser forms.

@@ -1,14 +1,12 @@
+import { connectOauthInput } from '../../../start/connect-input.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import type * as AccountIntegrationsData from '#app/account-integrations-data.ts'
 import type * as AuthenticatedUser from '#app/authenticated-user.ts'
 import type * as ConnectOauthChooser from '#app/connect-oauth-chooser.ts'
 import type * as PageAuth from '#app/page-auth.ts'
-import {
-	createConnectOauthHandler,
-	isBareConnectOauthVisit,
-} from '#app/handlers/connect-oauth.ts'
+import { isBareConnectOauthVisit } from '#app/handlers/connect-oauth.ts'
+import { loadConnectOauth } from '../../../start/server/connect.ts'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser:
@@ -33,13 +31,6 @@ const mockModule = vi.hoisted(() => ({
 	loadConnectOauthChooser: vi.fn<
 		typeof ConnectOauthChooser.loadConnectOauthChooser
 	>(async () => ({ options: [] })),
-	readConnectOauthLookupOptions: (searchParams: URLSearchParams) => {
-		const appParam = searchParams.get('app')?.trim()
-		return {
-			appSlug: appParam || undefined,
-		}
-	},
-	renderAppPage: vi.fn<(input: unknown) => Promise<Response>>(),
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -76,22 +67,55 @@ vi.mock('#app/account-integrations-data.ts', () => ({
 			typeof AccountIntegrationsData.hasStoredConnectClientSecret
 		>
 	) => mockModule.hasStoredConnectClientSecret(...args),
-	readConnectOauthLookupOptions: (searchParams: URLSearchParams) =>
-		mockModule.readConnectOauthLookupOptions(searchParams),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (input: unknown) => mockModule.renderAppPage(input),
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/login'),
+	setResponseHeader: vi.fn(),
 }))
+vi.mock('@tanstack/react-start', () => ({
+	getGlobalStartContext: () => ({ env: native.env }),
+	createServerOnlyFn: <T>(fn: T) => fn,
+	createServerFn: () => {
+		let validate = (data: unknown) => data
+		const builder = {
+			validator: (
+				fn: typeof validate | { parse: (data: unknown) => unknown },
+			) => {
+				validate = typeof fn === 'function' ? fn : (data) => fn.parse(data)
+				return builder
+			},
+			handler:
+				(fn: (input: { data: unknown }) => unknown) =>
+				(input: { data: unknown }) =>
+					fn({ data: validate(input.data) }),
+		}
+		return builder
+	},
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: () => native.env }))
 
-const env = {} as Env
+const env = {
+	COOKIE_SECRET: 'test-cookie-secret-0123456789abcdef0123456789',
+} as Env
 
-function visit(search = '') {
-	return createConnectOauthHandler(env).handler(
-		new RequestContext(
-			new Request(`https://example.com/connect/oauth${search}`),
-		),
-	)
+let loaded: Awaited<ReturnType<typeof loadConnectOauth>> | undefined
+async function visit(search = '') {
+	native.env = env
+	native.request = new Request(`https://example.com/connect/oauth${search}`)
+	loaded = await loadConnectOauth({ data: connectOauthInput(search) })
+	return loaded
 }
 
 function signIn() {
@@ -99,14 +123,10 @@ function signIn() {
 	mockModule.readAuthenticatedAppUser.mockResolvedValue({
 		mcpUser: { userId: ownerIdFromStored('user-1') },
 	})
-	mockModule.renderAppPage.mockResolvedValue(new Response('ok'))
 }
 
 function renderedConnectOauth() {
-	const input = mockModule.renderAppPage.mock.calls.at(-1)?.[0] as {
-		loaderData: { connectOauth: unknown }
-	}
-	return input.loaderData.connectOauth
+	return loaded?.payload
 }
 
 test('bare and provider visits require a session; signed-in bare visits render the chooser', async () => {
@@ -131,9 +151,10 @@ test('bare and provider visits require a session; signed-in bare visits render t
 		),
 	)
 	for (const search of ['', '?provider=github']) {
-		const gated = await visit(search)
-		expect(gated.status).toBe(302)
-		expect(gated.headers.get('location')).toContain('/login')
+		await expect(visit(search)).rejects.toMatchObject({
+			status: 302,
+			options: { href: expect.stringContaining('/login') },
+		})
 	}
 
 	signIn()
@@ -146,7 +167,7 @@ test('bare and provider visits require a session; signed-in bare visits render t
 	})
 })
 
-test('provider visits embed SSR loader data and ignore platform lookup flags', async () => {
+test('provider visits embed SSR loader data with explicit app and platform selection', async () => {
 	signIn()
 	const record = { name: 'github', platform: true }
 	mockModule.loadAccountIntegrationByName.mockResolvedValue(record)
@@ -158,7 +179,7 @@ test('provider visits embed SSR loader data and ignore platform lookup flags', a
 		env,
 		expect.anything(),
 		'github',
-		{ appSlug: undefined },
+		{ appSlug: undefined, platformSlug: undefined },
 	)
 	expect(renderedConnectOauth()).toEqual({
 		ok: true,
@@ -176,31 +197,34 @@ test('provider visits embed SSR loader data and ignore platform lookup flags', a
 	})
 	mockModule.hasStoredConnectClientSecret.mockResolvedValue(false)
 	const lookups = [
-		['?provider=google&platform=1', 'google', undefined],
-		['?provider=google-2&platform=google', 'google-2', undefined],
-		['?provider=work&app=google', 'work', 'google'],
+		['?provider=google&platform=1', 'google', undefined, '1'],
+		['?provider=google-2&platform=google', 'google-2', undefined, 'google'],
+		['?provider=work&app=google', 'work', 'google', undefined],
 	] as const
-	for (const [search, name, appSlug] of lookups) {
+	for (const [search, name, appSlug, platformSlug] of lookups) {
 		await visit(search)
 		expect(mockModule.loadAccountIntegrationByName).toHaveBeenLastCalledWith(
 			env,
 			expect.anything(),
 			name,
-			{ appSlug },
+			{ appSlug, platformSlug },
 		)
 	}
 })
 
-test('callback embeds only the redirect URI without an integration lookup', async () => {
-	mockModule.requirePageSession.mockResolvedValue(null)
-	mockModule.renderAppPage.mockResolvedValue(new Response('ok'))
+test.each(['?code=auth-code&state=abc', '?error=access_denied&state=abc'])(
+	'callback %s embeds only the redirect URI without an account lookup',
+	async (search) => {
+		mockModule.requirePageSession.mockResolvedValue(null)
 
-	await visit('?code=auth-code&state=abc')
-	expect(mockModule.loadAccountIntegrationByName).not.toHaveBeenCalled()
-	expect(renderedConnectOauth()).toEqual({
-		ok: true,
-		provider: null,
-		integration: null,
-		redirectUri: 'https://example.com/connect/oauth',
-	})
-})
+		await visit(search)
+		expect(mockModule.readAuthenticatedAppUser).not.toHaveBeenCalled()
+		expect(mockModule.loadAccountIntegrationByName).not.toHaveBeenCalled()
+		expect(renderedConnectOauth()).toEqual({
+			ok: true,
+			provider: null,
+			integration: null,
+			redirectUri: 'https://example.com/connect/oauth',
+		})
+	},
+)

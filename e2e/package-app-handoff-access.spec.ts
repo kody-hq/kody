@@ -5,7 +5,7 @@ import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 /**
  * Hosted package-app handoff sends visitors without app:execute to the
  * saved-package page. That page must say "you don't have access" for a
- * signed-in outsider — never the generic "doesn't quite connect" 404.
+ * signed-in outsider, never the generic "doesn't quite connect" 404.
  *
  * Cross-origin token mint/exchange lives in
  * `package-app-origin.workers.test.ts` (requires PACKAGE_APP_BASE_URL). This
@@ -32,8 +32,9 @@ test('a signed-in outsider hitting a private package page sees no-access, not a 
 	const sourceId = crypto.randomUUID()
 	const kodyId = `private-demo-${runId}`
 	const packageName = `@${owner.username}/${kodyId}`
+	const privateDescription = `Private package metadata ${crypto.randomUUID()}`
 	const now = new Date().toISOString()
-	const ownerIdSql = `(SELECT stable_user_id FROM users WHERE email = ${quoteSqlString(owner.email)})`
+	const ownerIdSql = `(SELECT personal_org_id FROM users WHERE email = ${quoteSqlString(owner.email)})`
 
 	executeE2eD1Command(
 		`INSERT INTO saved_packages (
@@ -44,7 +45,7 @@ test('a signed-in outsider hitting a private package page sees no-access, not a 
 			${ownerIdSql},
 			${quoteSqlString(packageName)},
 			${quoteSqlString(kodyId)},
-			${quoteSqlString('Private package for no-access E2E')},
+			${quoteSqlString(privateDescription)},
 			'[]',
 			NULL,
 			${quoteSqlString(sourceId)},
@@ -56,13 +57,39 @@ test('a signed-in outsider hitting a private package page sees no-access, not a 
 		)`,
 	)
 
+	const packagePath = `/@${owner.username}/${kodyId}`
+	const anonymous = await page.goto(packagePath)
+	expect(anonymous?.status()).toBe(404)
+	await waitForClientHydration(page)
+	await expect(page).toHaveTitle('Not found')
+	await expect(page.getByTestId('not-found-page')).toBeVisible()
+	await expect(page.getByTestId('package-no-access-page')).toHaveCount(0)
+	await expect(page.locator('body')).not.toContainText(packageName, {
+		useInnerText: true,
+	})
+	// The router serializes the requested URL even on a 404. That is already
+	// known to the caller, but database-only metadata must never reach HTML,
+	// including hydration data and metadata tags.
+	const anonymousHtml = await anonymous!.text()
+	for (const privateValue of [privateDescription, packageId, sourceId]) {
+		expect(anonymousHtml).not.toContain(privateValue)
+	}
+	const metadata = await page
+		.locator('meta')
+		.evaluateAll((elements) =>
+			elements
+				.map((element) => element.getAttribute('content') ?? '')
+				.join('\n'),
+		)
+	expect(metadata).not.toContain(packageName)
+
 	await login({
 		email: stranger.email,
 		password: stranger.password,
 		mode: 'login',
 	})
 
-	const response = await page.goto(`/@${owner.username}/${kodyId}`)
+	const response = await page.goto(packagePath)
 	expect(response?.status()).toBe(403)
 	await waitForClientHydration(page)
 
@@ -89,4 +116,31 @@ test('a signed-in outsider hitting a private package page sees no-access, not a 
 	)
 	expect(handoff.status()).toBe(302)
 	expect(handoff.headers()['location']).toBe(`/@${owner.username}/${kodyId}`)
+
+	// Leaving the denial must remove its content, and client history must
+	// recheck access when the owner grants it, not reuse a cached denial.
+	await page.getByRole('link', { name: 'How sharing works' }).click()
+	await expect(page).toHaveURL(/\/docs\/package-sharing$/)
+	await expect(noAccess).toHaveCount(0)
+	const grantId = `handoff-access-${runId}`
+	executeE2eD1Command(`
+		INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type,
+			subject_id, preset, created_by_user_id, created_at, updated_at)
+		SELECT ${quoteSqlString(grantId)}, owner.personal_org_id, 'package',
+			${quoteSqlString(packageId)}, 'user', stranger.stable_user_id, 'use',
+			owner.stable_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		FROM users owner JOIN users stranger ON stranger.email = ${quoteSqlString(stranger.email)}
+		WHERE owner.email = ${quoteSqlString(owner.email)};
+		INSERT INTO grant_permissions (grant_id, permission) VALUES
+			(${quoteSqlString(grantId)}, 'package:read'),
+			(${quoteSqlString(grantId)}, 'package:execute');
+		UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ${ownerIdSql};
+	`)
+	await page.goBack()
+	await expect(page).toHaveURL(new RegExp(`${packagePath}$`))
+	await expect(
+		page.getByRole('link', { name: 'Files', exact: true }),
+	).toBeVisible()
+	await expect(noAccess).toHaveCount(0)
+	await expect(page.getByTestId('not-found-page')).toHaveCount(0)
 })

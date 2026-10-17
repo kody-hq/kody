@@ -1,6 +1,4 @@
 import { expect, test } from 'vitest'
-import { isRouteLoaderRedirect } from '#client/route-loader.ts'
-import { onboardingRouteLoader } from './onboarding.tsx'
 import {
 	clearOnboardingAgentChooserSession,
 	onboardingAgentChooserSessionKey,
@@ -8,14 +6,7 @@ import {
 	rememberOnboardingAgentChooser,
 	resolveOnboardingAgentChooser,
 } from './onboarding-agent-chooser-session.ts'
-import {
-	pickOnboardingAgentChooser,
-	type OnboardingAgentChooserPick,
-} from './onboarding-mcp-clients.ts'
-import {
-	clearOnboardingPayloadCache,
-	type OnboardingPayload,
-} from './onboarding-payload.ts'
+import { pickOnboardingAgentChooser } from './onboarding-mcp-clients.ts'
 
 /** Installs a window + sessionStorage stub; dispose restores the globals. */
 function installBrowserSession() {
@@ -53,61 +44,7 @@ function installBrowserSession() {
 	}
 }
 
-const anonymousOnboardingPayload = {
-	ok: true,
-	loggedIn: false,
-	username: null,
-	mcpServerUrl: 'https://example.com/mcp',
-	setupPrompt: '',
-	discoveryPrompt: '',
-	persistPrompt: '',
-	hasAccessWin: false,
-	hasSecondMcpClient: false,
-	hasMcpClient: false,
-	connectedAgents: [],
-	secondAgentStandardGift: {
-		received: false,
-		active: false,
-		status: 'none',
-		expiresAt: null,
-		grantedAt: null,
-	},
-	emailVerified: false,
-	needsOnboarding: true,
-	featuredListings: [],
-	featuredMcpServers: [],
-	customMcpServers: [],
-	persistedPackageName: null,
-	accessWinMemorySubject: null,
-	checklist: null,
-} satisfies OnboardingPayload
-
-async function loadSelectionStep(pathname = '/onboarding/step-1') {
-	const originalFetch = globalThis.fetch
-	clearOnboardingPayloadCache()
-	globalThis.fetch = (async () =>
-		Response.json(anonymousOnboardingPayload)) as typeof fetch
-	try {
-		return await onboardingRouteLoader(
-			new URL(`https://example.com${pathname}`),
-			new AbortController().signal,
-		)
-	} finally {
-		globalThis.fetch = originalFetch
-		clearOnboardingPayloadCache()
-	}
-}
-
-function chooserFromLoader(
-	result: Awaited<ReturnType<typeof onboardingRouteLoader>>,
-): OnboardingAgentChooserPick {
-	if (isRouteLoaderRedirect(result) || !result.onboardingAgentChooser) {
-		throw new Error('expected onboarding agent chooser loader data')
-	}
-	return result.onboardingAgentChooser
-}
-
-test('client loads of the selection step reuse the SSR agent order', async () => {
+test('remembered chooser retains the SSR agent order', async () => {
 	using browser = installBrowserSession()
 	const ssrPick = pickOnboardingAgentChooser(() => 0)
 	const otherPick = pickOnboardingAgentChooser((max) => Math.max(0, max - 1))
@@ -120,66 +57,9 @@ test('client loads of the selection step reuse the SSR agent order', async () =>
 		JSON.parse(browser.store.get(onboardingAgentChooserSessionKey) ?? 'null'),
 	).toEqual(ssrPick)
 
-	const first = chooserFromLoader(await loadSelectionStep())
-	const afterSelect = chooserFromLoader(
-		await loadSelectionStep('/onboarding/step-1/cursor'),
-	)
-	const afterChangeSelection = chooserFromLoader(await loadSelectionStep())
-	const indexRedirect = await loadSelectionStep('/onboarding?redirectTo=%2F')
-	expect(isRouteLoaderRedirect(indexRedirect)).toBe(true)
-	if (isRouteLoaderRedirect(indexRedirect)) {
-		expect(indexRedirect.to).toBe('/onboarding/step-1?redirectTo=%2F')
-	}
-	expect(first).toEqual(ssrPick)
-	expect(afterSelect).toEqual(ssrPick)
-	expect(afterChangeSelection).toEqual(ssrPick)
 	expect(resolveOnboardingAgentChooser((max) => Math.max(0, max - 1))).toEqual(
 		ssrPick,
 	)
-})
-
-test('client /onboarding resume follows payload progress, not always step 1', async () => {
-	const originalFetch = globalThis.fetch
-	clearOnboardingPayloadCache()
-	const finished = {
-		...anonymousOnboardingPayload,
-		loggedIn: true,
-		emailVerified: true,
-		needsOnboarding: false,
-		hasMcpClient: true,
-		hasAccessWin: true,
-		hasSecondMcpClient: true,
-		connectedAgents: [
-			{
-				clientId: 'cursor-client',
-				label: 'Cursor',
-				kind: 'cursor' as const,
-				connectedAt: '2026-09-08T17:00:00.000Z',
-				lastUsedAt: null,
-			},
-			{
-				clientId: 'claude-desktop-client',
-				label: 'Claude Desktop',
-				kind: 'claude-desktop' as const,
-				connectedAt: '2026-09-08T18:00:00.000Z',
-				lastUsedAt: null,
-			},
-		],
-	} satisfies OnboardingPayload
-	globalThis.fetch = (async () => Response.json(finished)) as typeof fetch
-	try {
-		const indexRedirect = await onboardingRouteLoader(
-			new URL('https://example.com/onboarding'),
-			new AbortController().signal,
-		)
-		expect(isRouteLoaderRedirect(indexRedirect)).toBe(true)
-		if (isRouteLoaderRedirect(indexRedirect)) {
-			expect(indexRedirect.to).toBe('/onboarding/step-3')
-		}
-	} finally {
-		globalThis.fetch = originalFetch
-		clearOnboardingPayloadCache()
-	}
 })
 
 test('onboarding agent chooser session ignores invalid storage and does not persist on the server', () => {

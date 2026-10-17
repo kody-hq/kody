@@ -1,3 +1,5 @@
+import { BillingPlanUnavailableError } from '#app/account-billing-data.ts'
+import { completeOrgBillingCheckout } from './org-billing.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -24,7 +26,7 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
 	requireAuthenticatedPageUser: vi.fn(),
-	userHasMcpOAuthGrants: vi.fn(async () => false),
+	userHasMcpOAuthGrants: vi.fn(async (..._args: Array<unknown>) => false),
 	linkStripeCustomerFromCheckoutSessionAttribution:
 		vi.fn<(...args: Array<unknown>) => Promise<unknown>>(),
 	loadAccountBillingData: vi.fn(async (input: Record<string, unknown>) => ({
@@ -40,22 +42,6 @@ const mocks = vi.hoisted(() => ({
 		vi.fn<(...args: Array<unknown>) => Promise<Array<unknown>>>(),
 	findActivePromotionCode:
 		vi.fn<(...args: Array<unknown>) => Promise<unknown>>(),
-	renderAppPage: vi.fn(
-		async (input: {
-			loaderData?: unknown
-			status?: number
-			notFound?: boolean
-			unauthorized?: boolean
-		}) =>
-			Response.json(
-				{
-					loaderData: input.loaderData ?? null,
-					notFound: input.notFound ?? false,
-					unauthorized: input.unauthorized ?? false,
-				},
-				{ status: input.status ?? 200 },
-			),
-	),
 	submitPlatformFeedback:
 		vi.fn<(...args: Array<unknown>) => Promise<{ id: string }>>(),
 	enqueuePlatformFeedbackDispatch:
@@ -71,14 +57,13 @@ vi.mock('#app/page-auth.ts', () => ({
 		mocks.requireAuthenticatedPageUser(...args),
 }))
 vi.mock('#app/onboarding-data.ts', () => ({
-	userHasMcpOAuthGrants: () => mocks.userHasMcpOAuthGrants(),
+	userHasMcpOAuthGrants: (...args: Array<unknown>) =>
+		mocks.userHasMcpOAuthGrants(...args),
 }))
 vi.mock('#app/account-billing-data.ts', () => ({
+	BillingPlanUnavailableError: class BillingPlanUnavailableError extends Error {},
 	loadAccountBillingData: (input: Record<string, unknown>) =>
 		mocks.loadAccountBillingData(input),
-}))
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (input: never) => mocks.renderAppPage(input),
 }))
 vi.mock('#worker/billing/subscription-sync.ts', () => ({
 	BillingLinkError: class BillingLinkError extends Error {
@@ -115,11 +100,11 @@ vi.mock('#worker/billing/stripe-client.ts', async (importOriginal) => {
 })
 
 const {
-	createAccountBillingCancellationFeedbackApiHandler,
-	createOrgBillingApiHandler,
-	createOrgBillingCheckoutApiHandler,
-	createOrgBillingPortalHandler,
-	createOrgBillingSuccessHandler,
+	submitWebsiteCancellationFeedback,
+	loadOrgBillingPageData,
+	resolveOrgBillingAccess,
+	startWebsiteCheckout,
+	openWebsiteBillingPortal,
 } = await import('./org-billing.ts')
 
 const retiredStandardPriceId = 'price_1U3sg6LAQpAnsYszGeL2nc8O'
@@ -247,31 +232,58 @@ function signInAs(person: Person | null) {
 	)
 }
 
-function call(
-	createHandler: (env: Env) => { handler: (input: never) => unknown },
+async function readWebsiteBilling(input: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	orgSlug: string
+}) {
+	const access = await resolveOrgBillingAccess({
+		...input,
+		permission: 'billing:read',
+	})
+	return access.ok
+		? {
+				status: 200,
+				data: await loadOrgBillingPageData({
+					...input,
+					org: access.org,
+					errorCode: new URL(input.request.url).searchParams.get('error'),
+					noticeCode: new URL(input.request.url).searchParams.get('billing'),
+				}),
+			}
+		: { status: access.status, data: { ok: false, error: access.error } }
+}
+async function call<T>(
+	operation: (input: {
+		env: Env
+		request: Request
+		user: AuthenticatedAppUser
+		orgSlug: string
+		body: unknown
+	}) => Promise<T>,
 	env: Env,
 	path: string,
 	init?: RequestInit,
 ) {
-	const url = new URL(`https://example.com${path}`)
-	return createHandler(env).handler({
-		request: new Request(url, init),
-		params: {},
-		url,
-	} as never) as Promise<Response>
+	const request = new Request(`https://example.com${path}`, init)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	if (!user) throw new Error('Sign in required.')
+	return operation({
+		env,
+		request,
+		user,
+		orgSlug: new URL(request.url).pathname.split('/')[1]!.slice(1),
+		body: init?.body ? JSON.parse(String(init.body)) : undefined,
+	})
 }
 
 function postCheckout(env: Env, orgSlug: string, body: unknown) {
-	return call(
-		createOrgBillingCheckoutApiHandler,
-		env,
-		`/@${orgSlug}/-/billing/checkout.json`,
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		},
-	)
+	return call(startWebsiteCheckout, env, `/@${orgSlug}/-/billing`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
 }
 
 function subscription(input: { id: string; status: string; priceId: string }) {
@@ -299,8 +311,10 @@ beforeEach(async () => {
 
 test('checkout sells only Pro and picks the monthly or annual price', async () => {
 	signInAs(null)
-	const unauthorized = await postCheckout(createEnv(), 'ada', { plan: 'pro' })
-	expect(unauthorized.status).toBe(401)
+	await expect(
+		postCheckout(createEnv(), 'ada', { plan: 'pro' }),
+	).rejects.toThrow('Sign in required.')
+	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
 
 	signInAs('ada')
 	for (const body of [
@@ -315,7 +329,7 @@ test('checkout sells only Pro and picks the monthly or annual price', async () =
 	const env = createEnv()
 	const monthly = await postCheckout(env, 'ada', { plan: 'pro' })
 	expect(monthly.status).toBe(200)
-	expect(await monthly.json()).toEqual({
+	expect(monthly.data).toEqual({
 		ok: true,
 		url: 'https://checkout.stripe.com/c/pay/cs_test',
 		mode: 'checkout',
@@ -393,7 +407,7 @@ test('only owners and billing admins can subscribe an organization', async () =>
 	signInAs('bob')
 	const member = await postCheckout(env, 'acme', { plan: 'pro' })
 	expect(member.status).toBe(403)
-	expect(await member.json()).toEqual({
+	expect(member.data).toEqual({
 		ok: false,
 		error: 'Only owners and billing admins can manage billing for @acme.',
 	})
@@ -417,7 +431,7 @@ test('promo codes apply to monthly checkouts only, as a Kody-validated discount'
 		promoCode: 'AGENCY-1',
 	})
 	expect(annual.status).toBe(400)
-	expect(await annual.json()).toEqual({
+	expect(annual.data).toEqual({
 		ok: false,
 		error: annualPromoRejection,
 	})
@@ -499,7 +513,7 @@ test('unusable promo codes get a specific message and never reach Checkout', asy
 			plan: 'pro',
 			promoCode: 'CODE',
 		})
-		expect([response.status, await response.json()]).toEqual([
+		expect([response.status, response.data]).toEqual([
 			400,
 			{ ok: false, error },
 		])
@@ -528,7 +542,7 @@ test('unusable promo codes get a specific message and never reach Checkout', asy
 			plan: 'pro',
 			promoCode: 'OTHER',
 		})
-		expect([rejected.status, await rejected.json()]).toEqual([
+		expect([rejected.status, rejected.data]).toEqual([
 			400,
 			{ ok: false, error: promoRejectedByStripe },
 		])
@@ -547,7 +561,7 @@ test('unusable promo codes get a specific message and never reach Checkout', asy
 		interval: 'month',
 		promoCode: 'AGENCY-2',
 	})
-	expect([subscribed.status, await subscribed.json()]).toEqual([
+	expect([subscribed.status, subscribed.data]).toEqual([
 		409,
 		{ ok: false, error: existingSubscriptionPromoRejection },
 	])
@@ -568,7 +582,7 @@ test('existing subscribers switch plans through the portal update flow', async (
 		}),
 	])
 	const resubscribe = await postCheckout(env, 'ada', { plan: 'pro' })
-	expect(await resubscribe.json()).toMatchObject({ mode: 'checkout' })
+	expect(resubscribe.data).toMatchObject({ mode: 'checkout' })
 	expect(mocks.createCheckoutSession).toHaveBeenLastCalledWith(
 		env,
 		expect.objectContaining({ customerId: 'cus_existing' }),
@@ -585,7 +599,7 @@ test('existing subscribers switch plans through the portal update flow', async (
 		plan: 'pro',
 		interval: 'year',
 	})
-	expect(await upgrade.json()).toEqual({
+	expect(upgrade.data).toEqual({
 		ok: true,
 		url: 'https://billing.stripe.com/p/session/test',
 		mode: 'portal_update',
@@ -609,7 +623,7 @@ test('existing subscribers switch plans through the portal update flow', async (
 		subscription({ id: 'sub_pro', status: 'active', priceId: 'price_pro' }),
 	])
 	const samePlan = await postCheckout(env, 'ada', { plan: 'pro' })
-	expect([samePlan.status, await samePlan.json()]).toEqual([
+	expect([samePlan.status, samePlan.data]).toEqual([
 		409,
 		{ ok: false, error: 'You are already on that plan.' },
 	])
@@ -630,7 +644,7 @@ test('existing subscribers switch plans through the portal update flow', async (
 		}),
 	])
 	const doubled = await postCheckout(env, 'ada', { plan: 'pro' })
-	expect(await doubled.json()).toMatchObject({ mode: 'portal' })
+	expect(doubled.data).toMatchObject({ mode: 'portal' })
 
 	consoleError.mockImplementation(() => {})
 	try {
@@ -640,7 +654,7 @@ test('existing subscribers switch plans through the portal update flow', async (
 			}),
 		)
 		const stripeDown = await postCheckout(env, 'ada', { plan: 'pro' })
-		expect([stripeDown.status, await stripeDown.json()]).toEqual([
+		expect([stripeDown.status, stripeDown.data]).toEqual([
 			502,
 			{ ok: false, error: 'Unable to start checkout. Try again shortly.' },
 		])
@@ -652,12 +666,12 @@ test('existing subscribers switch plans through the portal update flow', async (
 test('billing data is readable by owners and billing admins of the org in the URL', async () => {
 	const env = createEnv()
 	const getBilling = (slug: string) =>
-		call(createOrgBillingApiHandler, env, `/@${slug}/-/billing.json`)
+		call(readWebsiteBilling, env, `/@${slug}/-/billing`)
 
 	signInAs('cara')
 	const billingAdmin = await getBilling('acme')
 	expect(billingAdmin.status).toBe(200)
-	expect(await billingAdmin.json()).toEqual({
+	expect(billingAdmin.data).toEqual({
 		ok: true,
 		org: {
 			id: 'org-acme',
@@ -669,7 +683,7 @@ test('billing data is readable by owners and billing admins of the org in the UR
 	})
 
 	signInAs('ada')
-	expect(await (await getBilling('ada')).json()).toMatchObject({
+	expect((await getBilling('ada')).data).toMatchObject({
 		org: { id: 'person-ada', slug: 'ada', personal: true },
 		seats: 1,
 	})
@@ -679,27 +693,35 @@ test('billing data is readable by owners and billing admins of the org in the UR
 	signInAs('dan')
 	expect((await getBilling('acme')).status).toBe(404)
 	signInAs(null)
-	expect((await getBilling('acme')).status).toBe(401)
+	await expect(getBilling('acme')).rejects.toThrow('Sign in required.')
 })
 
 test('checkout return links the Stripe customer onto the org in the URL', async () => {
 	mocks.linkStripeCustomerFromCheckoutSessionAttribution.mockResolvedValue({})
 	const env = createEnv()
-	const getSuccess = (path: string) =>
-		call(createOrgBillingSuccessHandler, env, path)
+	const getSuccess = async (sessionId: string | null = null) => {
+		const request = new Request('https://example.com/@acme/-/billing/success')
+		const user = await mocks.readAuthenticatedAppUser(request, env)
+		return completeOrgBillingCheckout({
+			request,
+			env,
+			user,
+			orgSlug: 'acme',
+			sessionId,
+		})
+	}
 
 	signInAs('ada')
-	const missing = await getSuccess('/@acme/-/billing/success')
+	const missing = await getSuccess()
+	if (!(missing instanceof Response))
+		throw new Error('Expected checkout redirect')
 	expect(missing.status).toBe(302)
 	expect(missing.headers.get('location')).toBe(
 		'https://example.com/@acme/-/billing?error=missing_session',
 	)
 
-	const linked = await getSuccess('/@acme/-/billing/success?session_id=cs_test')
-	expect(linked.status).toBe(200)
-	expect(await linked.json()).toMatchObject({
-		loaderData: { accountBillingSuccess: { ok: true, needsOnboarding: true } },
-	})
+	const linked = await getSuccess('cs_test')
+	expect(linked).toMatchObject({ ok: true, needsOnboarding: true })
 	expect(
 		mocks.linkStripeCustomerFromCheckoutSessionAttribution,
 	).toHaveBeenCalledWith(
@@ -710,23 +732,56 @@ test('checkout return links the Stripe customer onto the org in the URL', async 
 	)
 
 	signInAs('bob')
-	const member = await getSuccess('/@acme/-/billing/success?session_id=cs_test')
-	expect(member.status).toBe(403)
+	const member = await getSuccess('cs_test')
+	expect(member).toMatchObject({ ok: false, status: 403 })
 	expect(
 		mocks.linkStripeCustomerFromCheckoutSessionAttribution,
 	).toHaveBeenCalledTimes(1)
+})
+
+test('checkout return checks onboarding against the stamped personal organization', async () => {
+	const env = createEnv()
+	signInAs('ada')
+	mocks.linkStripeCustomerFromCheckoutSessionAttribution.mockResolvedValue({})
+	mocks.userHasMcpOAuthGrants.mockResolvedValue(true)
+	const request = new Request('https://example.com/@acme/-/billing/success')
+	const user: AuthenticatedAppUser = await mocks.readAuthenticatedAppUser(
+		request,
+		env,
+	)
+	user.mcpUser = {
+		...user.mcpUser,
+		personalOrgId: ownerIdFromStored('personal-org-distinct'),
+	}
+	const result = await completeOrgBillingCheckout({
+		request,
+		env,
+		user,
+		orgSlug: 'acme',
+		sessionId: 'cs_test',
+	})
+	expect(result).toEqual({ ok: true, needsOnboarding: false })
+	expect(mocks.userHasMcpOAuthGrants).toHaveBeenCalledWith(
+		env,
+		ownerIdFromStored('personal-org-distinct'),
+	)
+	expect(
+		mocks.linkStripeCustomerFromCheckoutSessionAttribution,
+	).toHaveBeenCalledWith(
+		expect.objectContaining({ orgId: ownerIdFromStored('org-acme') }),
+	)
 })
 
 test('the Stripe portal opens for the org in the URL and only for managers', async () => {
 	linkCustomer('org-acme', 'cus_acme')
 	const env = createEnv()
 	const getPortal = () =>
-		call(createOrgBillingPortalHandler, env, '/@acme/-/billing/portal')
+		call(openWebsiteBillingPortal, env, '/@acme/-/billing')
 
 	signInAs('cara')
 	const opened = await getPortal()
-	expect(opened.status).toBe(302)
-	expect(opened.headers.get('location')).toBe(
+	expect(opened.status).toBe(200)
+	expect('url' in opened.data ? opened.data.url : null).toBe(
 		'https://billing.stripe.com/p/session/test',
 	)
 	expect(mocks.createBillingPortalSession).toHaveBeenCalledWith(
@@ -749,24 +804,22 @@ test('billing cancellation feedback records platform feedback', async () => {
 	mocks.enqueuePlatformFeedbackDispatch.mockResolvedValue(undefined)
 	const env = createEnv()
 	const post = (body: unknown) =>
-		call(
-			createAccountBillingCancellationFeedbackApiHandler,
-			env,
-			'/account/billing/cancellation-feedback.json',
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body),
-			},
-		)
+		call(submitWebsiteCancellationFeedback, env, '/account/billing', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		})
 
 	signInAs(null)
-	expect((await post({ details: 'Too expensive.' })).status).toBe(401)
+	await expect(post({ details: 'Too expensive.' })).rejects.toThrow(
+		'Sign in required.',
+	)
+	expect(mocks.submitPlatformFeedback).not.toHaveBeenCalled()
 
 	signInAs('ada')
 	expect((await post({ details: '   ' })).status).toBe(400)
 	const success = await post({ details: 'Too expensive for my usage.' })
-	expect([success.status, await success.json()]).toEqual([200, { ok: true }])
+	expect([success.status, success.data]).toEqual([200, { ok: true }])
 	expect(mocks.submitPlatformFeedback).toHaveBeenCalledWith(
 		expect.objectContaining({
 			submitterUserId: 'person-ada',
@@ -802,7 +855,7 @@ test('a person who already claimed a promo code cannot claim one for another org
 		promoCode: 'AGENCY-1',
 	})
 	expect(response.status).toBe(409)
-	expect(await response.json()).toEqual({
+	expect(response.data).toEqual({
 		ok: false,
 		error: promoAlreadyClaimedRejection,
 	})
@@ -863,7 +916,7 @@ test('a promo checkout reserves the claim before Stripe is called, so a parallel
 	})
 	const second = await postCheckout(env, 'acme', body)
 	expect(second.status).toBe(409)
-	expect(await second.json()).toEqual({
+	expect(second.data).toEqual({
 		ok: false,
 		error: promoAlreadyClaimedRejection,
 	})
@@ -897,4 +950,19 @@ test('a promo reservation is released when Stripe refuses the checkout', async (
 	const retry = await postCheckout(env, 'acme', body)
 	expect(retry.status).toBe(200)
 	expect((await readPromoClaim(people.ada.personId))?.status).toBe('reserved')
+})
+
+test('a missing billing plan becomes unavailable without hiding unrelated read failures', async () => {
+	const env = createEnv()
+	const getBilling = (slug: string) =>
+		call(readWebsiteBilling, env, `/@${slug}/-/billing`)
+	signInAs('ada')
+	mocks.loadAccountBillingData.mockRejectedValueOnce(
+		new BillingPlanUnavailableError('Plan unavailable'),
+	)
+	expect((await getBilling('acme')).data).toBeNull()
+	mocks.loadAccountBillingData.mockRejectedValueOnce(
+		new Error('Database unavailable'),
+	)
+	await expect(getBilling('acme')).rejects.toThrow('Database unavailable')
 })

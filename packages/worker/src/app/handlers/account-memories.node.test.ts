@@ -98,10 +98,6 @@ vi.mock('#app/auth-redirect.ts', () => ({
 	redirectToLoginWhenUnauthenticated: () => new Response(null, { status: 302 }),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async () => new Response('ok'),
-}))
-
 vi.mock('#mcp/memory/repo.ts', () => ({
 	listMemoriesByUserId: (
 		...args: Parameters<typeof memoryRepo.listMemoriesByUserId>
@@ -123,18 +119,25 @@ vi.mock('#worker/orgs/is-personal-org.ts', () => ({
 		orgId === 'stable-user-1',
 }))
 
-const { createAccountMemoriesApiHandler, createAccountMemoriesExportHandler } =
-	await import('./account-memories.ts')
+const { testAccountMemoriesApiHandler } =
+	await import('./account-memories.test-support.ts')
+
+const { createAccountMemoriesExportHandler } =
+	await import('../../../start/server/memories-export.ts')
+const exportOrgBinding = vi.hoisted(() => vi.fn())
+vi.mock('#worker/orgs/repo.ts', () => ({
+	loadOrgBindingForSlug: exportOrgBinding,
+}))
 
 const env = { APP_DB: {} as D1Database } as Env
 
 function createClient(
-	createHandler: (env: Env) => { handler: (input: never) => Promise<Response> },
+	createHandler: typeof testAccountMemoriesApiHandler,
 	path: string,
 ) {
-	const { handler } = createHandler(env)
+	const { execute } = createHandler(env)
 	return (search = '', init?: RequestInit) =>
-		handler({
+		execute({
 			request: new Request(`https://example.com${path}${search}`, init),
 			params: {},
 		} as never)
@@ -148,22 +151,22 @@ const postJson = (body: Record<string, unknown>): RequestInit => ({
 
 test('memories API lists, filters, and selects user-scoped memories', async () => {
 	const request = createClient(
-		createAccountMemoriesApiHandler,
+		testAccountMemoriesApiHandler,
 		'/account/memories.json',
 	)
 
 	const listResponse = await request()
 	expect(listResponse.status).toBe(200)
-	expect(listResponse.headers.get('Cache-Control')).toBe('no-store')
 	expect(mockModule.listMemoriesByUserId).toHaveBeenCalledWith(
 		expect.anything(),
 		'stable-user-1',
 		expect.objectContaining({
 			statuses: ['active', 'archived'],
+			includeDeleted: false,
 			limit: 100,
 		}),
 	)
-	await expect(listResponse.json()).resolves.toEqual({
+	expect(listResponse.data).toEqual({
 		ok: true,
 		email: 'user@example.com',
 		username: 'test-user',
@@ -193,15 +196,17 @@ test('memories API lists, filters, and selects user-scoped memories', async () =
 		'stable-user-1',
 		expect.objectContaining({
 			statuses: ['active', 'archived', 'deleted'],
+			includeDeleted: true,
 		}),
 	)
 	expect(mockModule.getMemory).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: ownerIdFromStored('stable-user-1'),
 			memoryId: memoryRow.id,
+			includeDeleted: true,
 		}),
 	)
-	await expect(filtered.json()).resolves.toMatchObject({
+	expect(filtered.data).toMatchObject({
 		ok: true,
 		query: 'editor',
 		includeDeleted: true,
@@ -212,11 +217,19 @@ test('memories API lists, filters, and selects user-scoped memories', async () =
 			dedupeKey: memoryRow.dedupeKey,
 		}),
 	})
+	await request(`?selected=${memoryRow.id}`)
+	expect(mockModule.getMemory).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('stable-user-1'),
+			memoryId: memoryRow.id,
+			includeDeleted: false,
+		}),
+	)
 })
 
 test('memories API soft/force deletes and rejects invalid delete requests', async () => {
 	const request = createClient(
-		createAccountMemoriesApiHandler,
+		testAccountMemoriesApiHandler,
 		'/account/memories.json',
 	)
 
@@ -258,8 +271,20 @@ test('memories export filename uses the UTC calendar date', () => {
 	).toBe('kody-memories-2026-08-31.json')
 })
 
+test('memories export supports authenticated HEAD without a response body', async () => {
+	const response = await createAccountMemoriesExportHandler(env)({
+		request: new Request('https://example.com/account/memories-export.json', {
+			method: 'HEAD',
+		}),
+	})
+	expect(response.status).toBe(200)
+	expect(response.headers.get('Cache-Control')).toBe('no-store')
+	expect(response.headers.get('Content-Disposition')).toContain('attachment;')
+	expect(await response.text()).toBe('')
+})
+
 test('memories export downloads the signed-in user memories as JSON', async () => {
-	const request = createClient(
+	const request = createExportClient(
 		createAccountMemoriesExportHandler,
 		'/account/memories-export.json',
 	)
@@ -281,6 +306,7 @@ test('memories export downloads the signed-in user memories as JSON', async () =
 			userId: ownerIdFromStored('stable-user-1'),
 			afterId: null,
 			statuses: ['active', 'archived'],
+			includeDeleted: false,
 			limit: 200,
 		}),
 	)
@@ -322,6 +348,7 @@ test('memories export downloads the signed-in user memories as JSON', async () =
 	expect(mockModule.listMemoriesByUserIdPage).toHaveBeenLastCalledWith(
 		expect.objectContaining({
 			statuses: ['active', 'archived', 'deleted'],
+			includeDeleted: true,
 		}),
 	)
 	await expect(withDeleted.json()).resolves.toMatchObject({
@@ -349,4 +376,101 @@ test('memories export downloads the signed-in user memories as JSON', async () =
 	)
 
 	expect((await request('', { method: 'POST' })).status).toBe(405)
+})
+
+function createExportClient(
+	createHandler: typeof createAccountMemoriesExportHandler,
+	path: string,
+) {
+	const handler = createHandler(env)
+	return (search = '', init?: RequestInit) =>
+		handler({
+			request: new Request(`https://example.com${path}${search}`, init),
+			params: {},
+		} as never)
+}
+
+test('accepted memory deletion does not depend on listing memories', async () => {
+	const request = createClient(
+		testAccountMemoriesApiHandler,
+		'/account/memories.json',
+	)
+	const original = mockModule.listMemoriesByUserId.getMockImplementation()
+	mockModule.listMemoriesByUserId.mockRejectedValue(
+		new Error('Page unavailable'),
+	)
+	mockModule.listMemoriesByUserId.mockClear()
+	mockModule.deleteMemory.mockResolvedValueOnce({
+		...memoryRow,
+		status: 'deleted',
+	})
+	try {
+		const response = await request(
+			'',
+			postJson({ action: 'delete', memoryId: memoryRow.id }),
+		)
+		expect(response.status).toBe(200)
+		expect(response.data).toEqual({ ok: true, deletedMemoryId: memoryRow.id })
+		expect(mockModule.listMemoriesByUserId).not.toHaveBeenCalled()
+	} finally {
+		mockModule.listMemoriesByUserId.mockImplementation(original!)
+	}
+})
+
+test('memories download rejects invalid, missing, and grant-only explicit org scopes before querying memories', async () => {
+	const request = createExportClient(
+		createAccountMemoriesExportHandler,
+		'/account/memories-export.json',
+	)
+	for (const binding of [
+		null,
+		{ org: { id: 'org-team', slug: 'team' }, role: null },
+	]) {
+		exportOrgBinding.mockResolvedValueOnce(binding)
+		mockModule.listMemoriesByUserIdPage.mockClear()
+		expect((await request('?org=team')).status).toBe(404)
+		expect(mockModule.listMemoriesByUserIdPage).not.toHaveBeenCalled()
+	}
+	mockModule.listMemoriesByUserIdPage.mockClear()
+	expect((await request('?org=%20')).status).toBe(404)
+	expect(mockModule.listMemoriesByUserIdPage).not.toHaveBeenCalled()
+})
+test('memories download explicitly binds a normalized member org, without relying on auth URL binding', async () => {
+	exportOrgBinding.mockResolvedValueOnce({
+		org: { id: 'org-team', slug: 'team' },
+		role: 'member',
+	})
+	const request = createExportClient(
+		createAccountMemoriesExportHandler,
+		'/account/memories-export.json',
+	)
+	expect((await request('?org=%20TEAM%20&includeDeleted=true')).status).toBe(
+		200,
+	)
+	expect(exportOrgBinding).toHaveBeenLastCalledWith(
+		env.APP_DB,
+		'stable-user-1',
+		'team',
+	)
+	expect(mockModule.listMemoriesByUserIdPage).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			userId: 'org-team',
+			statuses: ['active', 'archived', 'deleted'],
+			includeDeleted: true,
+		}),
+	)
+})
+
+test('memories download authenticates the original session independently of the explicit org query', async () => {
+	const request = new Request(
+		'https://example.com/account/memories-export.json?org=team',
+		{ headers: { cookie: 'session=original' } },
+	)
+	exportOrgBinding.mockResolvedValueOnce(null)
+	expect(
+		(await createAccountMemoriesExportHandler(env)({ request })).status,
+	).toBe(404)
+	const args = mockModule.readAuthenticatedAppUser.mock.calls.at(-1)!
+	expect(args[0]).toBe(request)
+	expect(args[2]?.resourceRequest?.url).toBe('https://example.com/')
 })

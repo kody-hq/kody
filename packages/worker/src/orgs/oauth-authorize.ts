@@ -31,12 +31,15 @@ export type AuthorizeConsentOrg = {
  * Returns null when neither source names an org.
  */
 export async function resolveAuthorizeOrg(input: {
+	authorizeUrl?: URL
 	env: Env
 	request: Request
 	authRequest: AuthRequest
 	userId: string
 }): Promise<AuthorizeOrg | null> {
-	const fromAuthorizeUrl = readOrgSlugFromUrl(input.request.url)
+	const fromAuthorizeUrl = readOrgSlugFromUrl(
+		input.authorizeUrl?.href ?? input.request.url,
+	)
 	let fromResource: string | null = null
 	if (typeof input.authRequest.resource === 'string') {
 		const stripped = stripOrgFromResourceUri(input.authRequest.resource)

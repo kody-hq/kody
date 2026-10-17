@@ -2,7 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { type CommunityProfileRecord } from '#worker/community/types.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
-import { createProfileOgImageHandler } from './profile.tsx'
+import { createProfileOgImageHandler } from './profile.ts'
 
 const mocks = vi.hoisted(() => ({
 	getCommunityProfileByUsername: vi.fn(),
@@ -55,7 +55,7 @@ test('profile OG image public PNG, avatar fallback, and unavailable profiles', a
 	mocks.renderProfileOgImage.mockResolvedValue(tinyPng)
 
 	const handler = createProfileOgImageHandler({} as Env)
-	const publicResponse = await handler.handler({
+	const publicResponse = await handler({
 		request: new Request('https://example.com/profiles/alice/og.png'),
 		params: { username: 'alice' },
 		url: new URL('https://example.com/profiles/alice/og.png'),
@@ -77,7 +77,7 @@ test('profile OG image public PNG, avatar fallback, and unavailable profiles', a
 	mocks.getCommunityProfileByUsername.mockResolvedValue(publicProfile)
 	mocks.getUserAvatarObject.mockRejectedValue(new Error('r2 unavailable'))
 	mocks.renderProfileOgImage.mockResolvedValue(tinyPng)
-	const fallbackResponse = await handler.handler({
+	const fallbackResponse = await handler({
 		request: new Request('https://example.com/profiles/alice/og.png'),
 		params: { username: 'alice' },
 		url: new URL('https://example.com/profiles/alice/og.png'),
@@ -93,7 +93,7 @@ test('profile OG image public PNG, avatar fallback, and unavailable profiles', a
 	)
 
 	mocks.getCommunityProfileByUsername.mockResolvedValue(null)
-	const unavailable = await handler.handler({
+	const unavailable = await handler({
 		request: new Request('https://example.com/profiles/secret/og.png'),
 		params: { username: 'secret' },
 		url: new URL('https://example.com/profiles/secret/og.png'),

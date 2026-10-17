@@ -1,124 +1,62 @@
-import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type Action } from 'remix/router'
-import { loadAccountProfileData } from '#app/account-profile-data.ts'
+import { buildUserAvatarUrl } from '#app/community-public.ts'
+import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type routes } from '#universal/routes.ts'
 import {
 	deleteUserAvatar,
 	processUserAvatar,
 	saveUserAvatar,
 } from '#worker/community/avatar.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 
 async function readFileBytes(file: File): Promise<Uint8Array> {
 	return new Uint8Array(await file.arrayBuffer())
 }
 
-export function createAccountAvatarApiPostHandler(env: Env) {
+export async function updateAccountAvatar({
+	env,
+	user,
+	request,
+	avatar,
+}: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	request: Request
+	avatar: File | null
+}) {
+	// Avatars belong to the person, not their personal org.
+	const stableUserId = personalOrgId(user.mcpUser.userId)
+	let avatarKey: string | null = null
+	if (avatar === null)
+		await deleteUserAvatar({ env, numericUserId: user.userId, stableUserId })
+	else {
+		if (avatar.size === 0) throw new Error('Avatar file is required.')
+		const processed = processUserAvatar({
+			contentType: avatar.type || 'application/octet-stream',
+			sourceBytes: await readFileBytes(avatar),
+		})
+		avatarKey = await saveUserAvatar({
+			env,
+			numericUserId: user.userId,
+			stableUserId,
+			bytes: processed.bytes,
+			contentType: processed.contentType,
+		})
+	}
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: avatar === null ? 'delete_avatar' : 'upload_avatar',
+		result: 'success',
+		email: user.email,
+		ip: getRequestIp(request) ?? undefined,
+		path: '/account',
+	})
 	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-
-			if (request.method !== 'POST') {
-				return jsonResponse({ ok: false, error: 'Method not allowed.' }, 405)
-			}
-
-			const requestIp = getRequestIp(request) ?? undefined
-			const contentType = request.headers.get('Content-Type') ?? ''
-
-			if (contentType.includes('application/json')) {
-				const body = await request.json().catch(() => null)
-				if (
-					!body ||
-					typeof body !== 'object' ||
-					(body as Record<string, unknown>).remove !== true
-				) {
-					return jsonResponse(
-						{ ok: false, error: 'Invalid request body.' },
-						400,
-					)
-				}
-
-				await deleteUserAvatar({
-					env,
-					numericUserId: user.userId,
-					// person-keyed (not personal org)
-					stableUserId: personalOrgId(user.mcpUser.userId),
-				})
-
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'account',
-					action: 'delete_avatar',
-					result: 'success',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-				})
-
-				return jsonResponse(await loadAccountProfileData(user, env))
-			}
-
-			let formData: FormData
-			try {
-				formData = await request.formData()
-			} catch {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Expected multipart form data with an avatar file.',
-					},
-					400,
-				)
-			}
-
-			const avatar = formData.get('avatar')
-			if (!(avatar instanceof File) || avatar.size === 0) {
-				return jsonResponse(
-					{ ok: false, error: 'Avatar file is required.' },
-					400,
-				)
-			}
-
-			try {
-				const sourceBytes = await readFileBytes(avatar)
-				const processed = processUserAvatar({
-					contentType: avatar.type || 'application/octet-stream',
-					sourceBytes,
-				})
-				await saveUserAvatar({
-					env,
-					numericUserId: user.userId,
-					stableUserId: personalOrgId(user.mcpUser.userId),
-					bytes: processed.bytes,
-					contentType: processed.contentType,
-				})
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unable to save avatar.'
-				return jsonResponse({ ok: false, error: message }, 400)
-			}
-
-			void logAuditEvent({
-				db: auditDatabaseFromEnv(env),
-				category: 'account',
-				action: 'upload_avatar',
-				result: 'success',
-				email: user.email,
-				ip: requestIp,
-				path: url.pathname,
-			})
-
-			return jsonResponse(await loadAccountProfileData(user, env))
-		},
-	} satisfies Action<typeof routes.accountAvatarApiPost>
+		ok: true as const,
+		avatarUrl: buildUserAvatarUrl({ username: user.username, avatarKey }),
+	}
 }

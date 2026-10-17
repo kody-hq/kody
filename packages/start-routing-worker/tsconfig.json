@@ -1,0 +1,16 @@
+{
+	"extends": "../worker/tsconfig-worker.json",
+	"compilerOptions": {
+		"composite": false,
+		"incremental": false,
+		"noEmit": true,
+		"types": ["node"]
+	},
+	"include": [
+		"./*.ts",
+		"../worker/worker-configuration.d.ts",
+		"../worker/env.d.ts",
+		"../worker/src/**/*.d.ts"
+	],
+	"exclude": []
+}

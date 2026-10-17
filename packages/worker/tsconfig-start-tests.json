@@ -1,0 +1,17 @@
+{
+	"extends": "./tsconfig-start.json",
+	"compilerOptions": {
+		"types": ["node", "vite/client"],
+		"jsxImportSource": "react"
+	},
+	"include": [
+		"start/**/*.node.test.ts",
+		"start/test-support/**/*.ts",
+		"client/types/**/*.d.ts"
+	],
+	"exclude": [
+		"start/server/**/*.node.test.ts",
+		"start/http-entry.node.test.ts",
+		"start/server-isolation.node.test.ts"
+	]
+}

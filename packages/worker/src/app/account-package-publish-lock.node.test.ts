@@ -100,11 +100,13 @@ vi.mock('#worker/app-base-url.ts', () => ({
 }))
 
 const {
-	handleAccountPackagePublishLockAction,
+	lockAccountPackage,
+	unlockAccountPackage,
+	approveAccountPackagePublish,
 	loadAccountPackageApprovePublishData,
 } = await import('./account-package-publish-lock.ts')
 
-type ActionInput = Parameters<typeof handleAccountPackagePublishLockAction>[0]
+type ActionInput = Parameters<typeof lockAccountPackage>[0]
 
 const env = { APP_DB: {} as D1Database } as Env
 const user = {
@@ -153,14 +155,20 @@ function sourceRow(publishedCommit: string) {
 	}
 }
 
-function act(body: ActionInput['body']) {
-	return handleAccountPackagePublishLockAction({
+function act(input: { action: string; packageId: string; commit?: string }) {
+	const context = {
 		env,
-		request: new Request('https://example.com/account/packages.json', {
+		request: new Request('https://example.com/_serverFn/package', {
 			method: 'POST',
 		}),
 		user,
-		body,
+		packageId: input.packageId,
+	}
+	if (input.action === 'lock') return lockAccountPackage(context)
+	if (input.action === 'unlock') return unlockAccountPackage(context)
+	return approveAccountPackagePublish({
+		...context,
+		commit: input.commit ?? '',
 	})
 }
 
@@ -184,28 +192,17 @@ async function loadApproveOk(commit?: string) {
 }
 
 test('website lock and unlock write locked_at and approve-publish promotes a named commit without unlocking', async () => {
-	mockModule.reloadAccountPackagesAfterWrite.mockResolvedValue({
-		ok: true,
-		email: 'user@example.com',
-		username: 'user',
-		invocationUrlOrigin: 'https://example.com',
-		packages: [],
-		selectedPackage: null,
-		page: 1,
-		pageSize: 20,
-		total: 0,
-		query: '',
-		appFilter: 'all',
-		sort: 'updated',
-	})
+	mockModule.reloadAccountPackagesAfterWrite.mockRejectedValue(
+		new Error('Unrelated package list unavailable'),
+	)
 	mockModule.writablePackage = unlockedPackage
 	mockModule.setSavedPackageLockedAt.mockResolvedValue(true)
 
-	expect(await act({ action: 'absorb-listing', packageId: 'pkg-1' })).toBeNull()
 	expect(mockModule.setSavedPackageLockedAt).not.toHaveBeenCalled()
 
 	const lockResponse = await act({ action: 'lock', packageId: 'pkg-1' })
 	expect(lockResponse?.status).toBe(200)
+	expect(lockResponse?.data).toEqual({ ok: true, packageId: 'pkg-1' })
 	expect(mockModule.setSavedPackageLockedAt).toHaveBeenCalledWith(env.APP_DB, {
 		userId: ownerIdFromStored('user-1'),
 		packageId: 'pkg-1',
@@ -258,6 +255,7 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 		newCommit: 'abc1234',
 	})
 	expect(unlockedPublish).not.toHaveProperty('allowLockedPublish')
+	expect(mockModule.reloadAccountPackagesAfterWrite).not.toHaveBeenCalled()
 
 	mockModule.writablePackage = lockedPackage
 	mockModule.resolveArtifactSourceHead.mockResolvedValue({

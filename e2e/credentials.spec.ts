@@ -1,3 +1,4 @@
+import { saveKeyThroughUi } from './account-fixtures.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
 test('Credentials lists a key, filters by kind, and opens its detail pane without the value', async ({
@@ -14,19 +15,12 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	})
 	await login({ email: user.email, password: user.password, mode: 'login' })
 	const value = `sk-never-shown-${runId}`
-	const saved = await page.request.post('/account/secrets.json', {
-		data: {
-			action: 'save',
-			name: 'DEMO_API_KEY',
-			scope: 'user',
-			value,
-			description: 'Demo key',
-			allowedHosts: ['api.example.com'],
-			allowedPackages: [],
-		},
-		headers: { 'Content-Type': 'application/json' },
+	await saveKeyThroughUi(page, {
+		name: 'DEMO_API_KEY',
+		value,
+		description: 'Demo key',
+		allowedHosts: ['api.example.com'],
 	})
-	expect(saved.ok()).toBe(true)
 
 	await page.setViewportSize({ width: 1440, height: 900 })
 	await page.goto(`/@${user.username}/-/credentials`)
@@ -48,6 +42,16 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 		page.getByRole('link', { name: 'How credentials work' }),
 	).toHaveAttribute('href', '/docs/credentials')
 
+	// A filter changes only the displayed rows. Keep the same mounted table and
+	// do not invoke either a page loader or the session verifier.
+	const requests: string[] = []
+	const collectRequest = (request: { url(): string }) => {
+		if (request.url().includes('/_serverFn/')) requests.push(request.url())
+	}
+	page.on('request', collectRequest)
+	await table.evaluate((element) =>
+		element.setAttribute('data-filter-mount', 'same'),
+	)
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
 		.selectOption('oauth')
@@ -57,6 +61,28 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
 		.selectOption('secret')
 	await expect(row).toBeVisible()
+	// Do not wait for the search navigation before changing another filter.
+	await page
+		.getByLabel('Search credentials', { exact: true })
+		.pressSequentially('DEMO')
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.selectOption('oauth')
+	await expect(page).toHaveURL(
+		(url) =>
+			url.searchParams.get('q') === 'DEMO' &&
+			url.searchParams.get('kind') === 'oauth',
+	)
+	await expect(row).toHaveCount(0)
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.selectOption('secret')
+	await expect(row).toBeVisible()
+	await page.getByLabel('Search credentials', { exact: true }).fill('')
+	await expect(page).toHaveURL(/\/credentials\?kind=secret$/)
+	await expect(table).toHaveAttribute('data-filter-mount', 'same')
+	page.off('request', collectRequest)
+	expect(requests).toEqual([])
 
 	await row.click()
 	await expect(page).toHaveURL(
@@ -116,19 +142,11 @@ test('a Key detail pane edits its allowed hosts, HTTPS host names only', async (
 	})
 	await login({ email: user.email, password: user.password, mode: 'login' })
 	const value = `sk-hosts-never-shown-${runId}`
-	const saved = await page.request.post('/account/secrets.json', {
-		data: {
-			action: 'save',
-			name: 'HOSTS_KEY',
-			scope: 'user',
-			value,
-			description: '',
-			allowedHosts: ['api.example.com'],
-			allowedPackages: [],
-		},
-		headers: { 'Content-Type': 'application/json' },
+	await saveKeyThroughUi(page, {
+		name: 'HOSTS_KEY',
+		value,
+		allowedHosts: ['api.example.com'],
 	})
-	expect(saved.ok()).toBe(true)
 
 	await page.setViewportSize({ width: 1440, height: 900 })
 	await page.goto(`/@${user.username}/-/credentials`)
@@ -180,16 +198,12 @@ test('a Key detail pane edits its allowed hosts, HTTPS host names only', async (
 	).toHaveCount(0)
 	await editor.getByRole('button', { name: 'Cancel' }).click()
 
-	const listed = await page.request.get('/account/credentials.json', {
-		headers: { Referer: page.url() },
-	})
-	const payload = (await listed.json()) as {
-		credentials: Array<{ name: string; hosts: Array<string> }>
-	}
-	expect(
-		payload.credentials.find((credential) => credential.name === 'HOSTS_KEY')
-			?.hosts,
-	).toEqual(['uploads.example.com'])
+	// A fresh document must read the saved hosts, independently of the Query cache.
+	await page.reload()
+	await waitForClientHydration(page)
+	await expect(pane.getByText('uploads.example.com')).toBeVisible()
+	await expect(pane.getByText('api.example.com')).toHaveCount(0)
+	await expect(page.getByText(value)).toHaveCount(0)
 })
 
 test('the creation link saves Key, URL, and login credentials from their prefill', async ({
@@ -230,12 +244,24 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 		'DIGEST_KEY is saved',
 	)
 	await expect(page.getByText(value)).toHaveCount(0)
-	await expect(page.getByTestId('connect-credential-approve')).toHaveAttribute(
-		'href',
-		new RegExp(
-			`^/@${user.username}/pr-digest/approve-credentials\\?mine%5Bemail%5D=id%3A[^&]+$`,
-		),
-	)
+	await expect
+		.poll(async () => {
+			const href = await page
+				.getByTestId('connect-credential-approve')
+				.getAttribute('href')
+			if (!href) return null
+			const url = new URL(href, page.url())
+			return {
+				origin: url.origin,
+				pathname: url.pathname,
+				params: [...url.searchParams],
+			}
+		})
+		.toEqual({
+			origin: new URL(page.url()).origin,
+			pathname: `/@${user.username}/pr-digest/approve-credentials`,
+			params: [['mine[email]', expect.stringMatching(/^id:[^&]+$/)]],
+		})
 
 	await page.getByRole('link', { name: 'View credential' }).click()
 	const pane = page.getByRole('region', { name: 'DIGEST_KEY details' })
@@ -374,20 +400,17 @@ test('case-only credential rename persists on the secrets editor', async ({
 		password: 'cred-case-rename-password',
 	})
 	await login({ email: user.email, password: user.password, mode: 'login' })
-	const created = await page.request.post('/account/secrets.json', {
-		data: {
-			action: 'save',
-			name: 'Henry',
-			scope: 'user',
-			kind: 'url',
-			value: 'https://hooks.example.com/henry',
-			hosts: ['hooks.example.com'],
-			allowedHosts: [],
-			allowedPackages: [],
-		},
-		headers: { 'Content-Type': 'application/json' },
-	})
-	expect(created.ok()).toBe(true)
+	await page.goto(
+		'/connect/credential?kind=url&kindMode=required&name=Henry&allowedHosts=hooks.example.com',
+	)
+	await waitForClientHydration(page)
+	await page
+		.getByRole('textbox', { name: 'Value', exact: true })
+		.fill('https://hooks.example.com/henry')
+	await page.getByTestId('connect-credential-save').click()
+	await expect(page.getByTestId('connect-credential-saved')).toContainText(
+		'Henry is saved',
+	)
 
 	await page.goto(`/@${user.username}/-/secrets/user/Henry`)
 	await waitForClientHydration(page)
@@ -403,15 +426,17 @@ test('case-only credential rename persists on the secrets editor', async ({
 		page.getByRole('link', { name: 'henry', exact: true }),
 	).toBeVisible()
 
-	const listed = await page.request.get('/account/credentials.json')
-	expect(listed.ok()).toBe(true)
-	const payload = (await listed.json()) as {
-		credentials: Array<{ name: string }>
-	}
-	expect(payload.credentials.map((credential) => credential.name)).toContain(
-		'henry',
+	// A fresh document proves the stored name and kind, independent of the editor cache.
+	await page.goto(`/@${user.username}/-/credentials`)
+	await waitForClientHydration(page)
+	const table = page.getByRole('region', { name: 'Credentials', exact: true })
+	const renamed = table.getByRole('link', { name: /^henry(?:\s|$)/ })
+	await expect(renamed).toBeVisible()
+	await expect(renamed.locator('xpath=ancestor::tr')).toContainText('URL')
+	await expect(table.getByRole('link', { name: /^Henry(?:\s|$)/ })).toHaveCount(
+		0,
 	)
-	expect(
-		payload.credentials.map((credential) => credential.name),
-	).not.toContain('Henry')
+	await page.goto(`/@${user.username}/-/secrets/user/henry`)
+	await waitForClientHydration(page)
+	await expect(nameInput).toHaveValue('henry')
 })

@@ -1,9 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
-import {
-	ownerIdFromStored,
-	personIdFromStored,
-} from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -16,6 +10,12 @@ import {
 } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -32,11 +32,11 @@ vi.mock('#app/page-auth.ts', () => ({
 }))
 
 const {
-	createOrgTeamsApiHandler,
-	createOrgTeamsCreatePostHandler,
-	createOrgTeamsMemberAddPostHandler,
-	createOrgTeamsMemberRemovePostHandler,
-} = await import('./org-teams.ts')
+	testOrgTeamsApiHandler,
+	testOrgTeamsCreatePostHandler,
+	testOrgTeamsMemberAddPostHandler,
+	testOrgTeamsMemberRemovePostHandler,
+} = await import('./org-teams.test-support.ts')
 
 const people = {
 	ada: { id: 9, personId: 'a'.repeat(64) },
@@ -156,35 +156,35 @@ beforeEach(async () => {
 	await seed()
 })
 
-test('teams JSON is 404 for collaborators, 403 for billing, readable by members', async () => {
+test('teams data is 404 for collaborators, 403 for billing, readable by members', async () => {
 	const env = createEnv()
-	const collab = new Request('https://kody.test/@zeta-co/-/teams.json')
+	const collab = new Request('https://kody.test/@zeta-co/-/teams')
 	await signIn('dan', collab)
 	expect(
 		(
-			await createOrgTeamsApiHandler(env).handler({
+			await testOrgTeamsApiHandler(env).execute({
 				request: collab,
 			} as never)
 		).status,
 	).toBe(404)
 
-	const billing = new Request('https://kody.test/@zeta-co/-/teams.json')
+	const billing = new Request('https://kody.test/@zeta-co/-/teams')
 	await signIn('cara', billing)
 	expect(
 		(
-			await createOrgTeamsApiHandler(env).handler({
+			await testOrgTeamsApiHandler(env).execute({
 				request: billing,
 			} as never)
 		).status,
 	).toBe(403)
 
-	const member = new Request('https://kody.test/@zeta-co/-/teams.json')
+	const member = new Request('https://kody.test/@zeta-co/-/teams')
 	await signIn('bob', member)
-	const readable = await createOrgTeamsApiHandler(env).handler({
+	const readable = await testOrgTeamsApiHandler(env).execute({
 		request: member,
 	} as never)
 	expect(readable.status).toBe(200)
-	const payload = (await readable.json()) as {
+	const payload = readable.data as {
 		canManage: boolean
 		teams: Array<unknown>
 	}
@@ -194,20 +194,20 @@ test('teams JSON is 404 for collaborators, 403 for billing, readable by members'
 
 test('owner can create a team and add a member', async () => {
 	const env = createEnv()
-	const createReq = new Request(
-		'https://kody.test/@zeta-co/-/teams/create.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ slug: 'platform', name: 'Platform' }),
-		},
-	)
+	const createReq = new Request('https://kody.test/@zeta-co/-/teams', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ slug: 'platform', name: 'Platform' }),
+	})
 	await signIn('ada', createReq)
-	const created = await createOrgTeamsCreatePostHandler(env).handler({
+	const created = await testOrgTeamsCreatePostHandler(env).execute({
 		request: createReq,
 	} as never)
 	expect(created.status).toBe(200)
-	const createdPayload = (await created.json()) as {
+	expect(created.data).toEqual({ ok: true })
+	const createdPayload = (
+		await testOrgTeamsApiHandler(env).execute({ request: createReq } as never)
+	).data as {
 		ok: boolean
 		teams: Array<{ id: string; slug: string; memberCount: number }>
 		canManage: boolean
@@ -217,20 +217,20 @@ test('owner can create a team and add a member', async () => {
 	expect(createdPayload.teams).toHaveLength(1)
 	const teamId = createdPayload.teams[0]!.id
 
-	const addReq = new Request(
-		'https://kody.test/@zeta-co/-/teams/member-add.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ teamId, userId: people.bob.personId }),
-		},
-	)
+	const addReq = new Request('https://kody.test/@zeta-co/-/teams', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ teamId, userId: people.bob.personId }),
+	})
 	await signIn('ada', addReq)
-	const added = await createOrgTeamsMemberAddPostHandler(env).handler({
+	const added = await testOrgTeamsMemberAddPostHandler(env).execute({
 		request: addReq,
 	} as never)
 	expect(added.status).toBe(200)
-	const addedPayload = (await added.json()) as {
+	expect(added.data).toEqual({ ok: true })
+	const addedPayload = (
+		await testOrgTeamsApiHandler(env).execute({ request: addReq } as never)
+	).data as {
 		teams: Array<{ memberCount: number; members: Array<{ username: string }> }>
 	}
 	expect(addedPayload.teams[0]?.memberCount).toBe(1)
@@ -273,19 +273,16 @@ test('team member remove rejects a team id from another organization', async () 
 		audit: createTestOrgAuditWriter(),
 	})
 
-	const removeReq = new Request(
-		'https://kody.test/@zeta-co/-/teams/member-remove.json',
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				teamId: foreign.id,
-				userId: people.bob.personId,
-			}),
-		},
-	)
+	const removeReq = new Request('https://kody.test/@zeta-co/-/teams', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			teamId: foreign.id,
+			userId: people.bob.personId,
+		}),
+	})
 	await signIn('ada', removeReq)
-	const removed = await createOrgTeamsMemberRemovePostHandler(env).handler({
+	const removed = await testOrgTeamsMemberRemovePostHandler(env).execute({
 		request: removeReq,
 	} as never)
 	expect(removed.status).toBe(400)

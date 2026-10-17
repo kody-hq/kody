@@ -16,33 +16,20 @@ Detail stays under `/@<slug>/-/secrets/{user|session|package}/…`, including
 ## Drive it
 
 ```bash
-node tools/control-kody.ts preview -- \
-  --request 'GET /account/secrets.json' \
-  --check /@<slug>/-/secrets
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/secrets
 ```
 
-GET the page body after a claimed fix. A “try
-https://kody.codes/@<slug>/-/secrets” note with no body is not proof.
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-## APIs
-
-- `GET|POST /account/secrets.json`
-- `GET|POST /account/secret-providers.json`
-
-`POST /account/secrets.json` writes with `action: "save"`. `name`, `value`, and
-`scope` are required. Omit `currentId` to create a secret; pass `currentId` to
-update one. An unknown action is HTTP 400 `Invalid action.`
-
-Seed a preview secret with `save`:
-
-```bash
-node tools/control-kody.ts request POST /account/secrets.json '{"action":"save","scope":"user","name":"previewSeed","value":"preview-seed-value","allowedHosts":["api.example.com"]}'
-```
+Create preview secrets through the secret editor. Verify creation and editing
+without exposing secret values in logs.
 
 ## Gotchas
 
 - Never paste secret values into chat, PRs, or execute params.
-- Preview seed starts with zero secrets. Create one with the `save` POST above
+- Preview seed starts with zero secrets. Create one through the secret editor
   before asserting rows.
 - `/connect/secrets` rejects hosts that are not hostname-shaped (truncated
   tokens, paths, empty values). Those must not appear as a successful Allow

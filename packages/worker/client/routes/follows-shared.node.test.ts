@@ -1,17 +1,12 @@
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import {
 	describeFollowEvents,
 	describePausedFollow,
 	followEventOptions,
 	followEventsToSubmit,
-	followPostErrorMessage,
+	followErrorMessage,
 	initialFollowEventChoice,
-	postOrgFollow,
 } from '#client/routes/follows-shared.ts'
-
-afterEach(() => {
-	vi.unstubAllGlobals()
-})
 
 test('describeFollowEvents reads as a sentence in display order', () => {
 	expect(describeFollowEvents(['pushed', 'published'])).toBe(
@@ -116,42 +111,13 @@ test('followEventsToSubmit keeps an untouched choice and drops gated events only
 
 test('rate-limit errors name the workspace limit', () => {
 	expect(
-		followPostErrorMessage({
+		followErrorMessage({
 			ok: false,
 			code: 'rate_limited',
 			error: 'Follow limit reached for this org.',
 		}),
 	).toMatch(/30 things in the last hour/)
 	expect(
-		followPostErrorMessage({ ok: false, code: 'invalid', error: 'Nope.' }),
+		followErrorMessage({ ok: false, code: 'invalid', error: 'Nope.' }),
 	).toBe('Nope.')
-})
-
-test('postOrgFollow posts to the workspace in the URL and fills in gate failures', async () => {
-	const fetchMock = vi.fn(
-		async () =>
-			new Response(JSON.stringify({ ok: false, error: 'Not a member.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			}),
-	)
-	vi.stubGlobal('fetch', fetchMock)
-
-	const payload = await postOrgFollow('acme', {
-		intent: 'unfollow',
-		id: 'follow-1',
-	})
-
-	expect(fetchMock).toHaveBeenCalledWith(
-		'/@acme/-/follows.json',
-		expect.objectContaining({
-			method: 'POST',
-			body: JSON.stringify({ intent: 'unfollow', id: 'follow-1' }),
-		}),
-	)
-	expect(payload).toEqual({
-		ok: false,
-		code: 'not_found',
-		error: 'Not a member.',
-	})
 })

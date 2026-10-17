@@ -1,4 +1,4 @@
-import { type Action } from 'remix/router'
+import { type EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -11,8 +11,6 @@ import {
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
 import { verifyEmailChangeToken } from '#app/email-change.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
-import { type routes } from '#universal/routes.ts'
 
 function getVerifyEmailChangeError(result: {
 	reason:
@@ -44,78 +42,69 @@ function getVerifyEmailChangeError(result: {
 	}
 }
 
-export function createVerifyEmailChangeHandler(env: Env) {
+export async function executeVerifyEmailChange({
+	request,
+	env,
+	token,
+}: {
+	request: Request
+	env: Env
+	token: string | null
+}): Promise<EmailVerificationResult> {
+	setAuthSessionSecret(env.COOKIE_SECRET)
+	const result = await verifyEmailChangeToken({
+		db: env.APP_DB,
+		token: token,
+	})
+	const requestIp = getRequestIp(request) ?? undefined
+
+	if (!result.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: 'email_change_verify',
+			result: 'failure',
+			ip: requestIp,
+			path: '/verify-email-change',
+			reason: result.reason,
+		})
+		return {
+			title: 'Verify email change',
+			status: 400,
+			ok: false,
+			error: getVerifyEmailChangeError(result),
+		}
+	}
+
+	const { session } = await readAuthSessionResult(request)
+	const setCookie =
+		session?.stableUserId === result.stableUserId
+			? await createAuthCookie(
+					{
+						stableUserId: session.stableUserId,
+						email: result.newEmail,
+						rememberMe: session.rememberMe,
+					},
+					isSecureRequest(request),
+				)
+			: null
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'email_change_verify',
+		result: 'success',
+		email: result.newEmail,
+		ip: requestIp,
+		path: '/verify-email-change',
+		reason: `old_email=${result.oldEmail}`,
+	})
 	return {
-		middleware: [],
-		async handler({ request, url }) {
-			setAuthSessionSecret(env.COOKIE_SECRET)
-			const result = await verifyEmailChangeToken({
-				db: env.APP_DB,
-				token: url.searchParams.get('token'),
-			})
-			const requestIp = getRequestIp(request) ?? undefined
-
-			if (!result.ok) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'account',
-					action: 'email_change_verify',
-					result: 'failure',
-					ip: requestIp,
-					path: url.pathname,
-					reason: result.reason,
-				})
-				return renderAppPage({
-					request,
-					env,
-					title: 'Verify email change',
-					status: 400,
-					loaderData: {
-						emailVerification: {
-							ok: false,
-							error: getVerifyEmailChangeError(result),
-						},
-					},
-				})
-			}
-
-			const { session } = await readAuthSessionResult(request)
-			const setCookie =
-				session?.stableUserId === result.stableUserId
-					? await createAuthCookie(
-							{
-								stableUserId: session.stableUserId,
-								email: result.newEmail,
-								rememberMe: session.rememberMe,
-							},
-							isSecureRequest(request),
-						)
-					: null
-
-			void logAuditEvent({
-				db: auditDatabaseFromEnv(env),
-				category: 'account',
-				action: 'email_change_verify',
-				result: 'success',
-				email: result.newEmail,
-				ip: requestIp,
-				path: url.pathname,
-				reason: `old_email=${result.oldEmail}`,
-			})
-			return renderAppPage({
-				request,
-				env,
-				title: 'Email changed',
-				extraSetCookies: setCookie ? [setCookie] : undefined,
-				loaderData: {
-					emailVerification: {
-						ok: true,
-						kind: 'email_change',
-						message:
-							'Your account email has been changed and verified. The previous address stays tied to this account until you release it from Account settings → Former addresses.',
-					},
-				},
-			})
-		},
-	} satisfies Action<typeof routes.verifyEmailChange>
+		title: 'Email changed',
+		setCookie: setCookie ?? undefined,
+		ok: true,
+		kind: 'email_change',
+		message:
+			'Your account email has been changed and verified. The previous address stays tied to this account until you release it from Account settings → Former addresses.',
+	}
 }

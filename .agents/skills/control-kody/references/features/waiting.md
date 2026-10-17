@@ -12,21 +12,19 @@ approve-publish here instead of inventing another inbox.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts preview -- \
-  --request 'GET /account/waiting.json' \
-  --check /@<slug>/-/waiting
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/waiting
 ```
 
-## APIs
-
-- `GET /account/waiting.json`
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
 ## Gotchas
 
 - Seed accounts usually still show first-use setup cards (search, memory,
   execute, package, job, integration, secret, Discord) until those gates clear.
   Empty is only after those plus reconnects and locks are gone. Create the
-  pending grant or locked package through the same JSON APIs the UI uses before
-  asserting copy.
+  pending grant or locked package through supported MCP capabilities or the UI
+  before asserting copy.
 - The error-rate card counts **open** Activity errors in the last 7 days.
   Ignored and resolved runs do not keep it on Waiting.

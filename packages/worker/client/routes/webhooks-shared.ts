@@ -1,20 +1,7 @@
-import { orgAccountApiFetchInit } from '#client/org-account-api.ts'
-import { readJson } from '#client/routes/account-approval-shared.ts'
-import {
-	routeLoaderRedirect,
-	type RouteLoaderResult,
-} from '#client/route-loader.ts'
-import {
-	type AccountWebhooksLoaderData,
-	type PackageWebhookListItem,
-	type PackageWebhooksActionPayload,
-	type PackageWebhooksLoaderData,
-} from '#universal/loader-data.ts'
+import { type PackageWebhookListItem } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
-
-const accountWebhooksApiPath = routes.accountWebhooksApi.href()
 
 /** The triggers guide section on inbound webhooks (`docs/guides/triggers.md`). */
 export const webhooksDocHref = `${docHref('triggers')}#inbound-webhooks-the-external-http-knock`
@@ -72,10 +59,6 @@ export function buildPackageWebhooksHref(input: {
 			})
 		: packageWebhooksSectionId
 	return `${settingsHref}#${anchor}`
-}
-
-function packageWebhooksApiHref(input: { username: string; kodyId: string }) {
-	return routes.communityPackageWebhooksApi.href(input)
 }
 
 type WebhookStatusInput = Pick<
@@ -151,102 +134,5 @@ export function webhookFailureMessage(intent: WebhookIntent) {
 			const exhaustive: never = intent
 			return String(exhaustive)
 		}
-	}
-}
-
-export async function fetchAccountWebhooks(href: string, signal: AbortSignal) {
-	const response = await fetch(
-		accountWebhooksApiPath,
-		orgAccountApiFetchInit(href, signal),
-	)
-	if (response.status === 401) return { kind: 'unauthorized' as const }
-	const payload = await readJson<AccountWebhooksLoaderData>(response)
-	if (!response.ok || !payload?.ok) {
-		throw new Error('Unable to load webhooks.')
-	}
-	return { kind: 'ok' as const, payload }
-}
-
-export async function accountWebhooksRouteLoader(
-	url: URL,
-	signal: AbortSignal,
-): Promise<RouteLoaderResult> {
-	const result = await fetchAccountWebhooks(url.href, signal)
-	if (result.kind === 'unauthorized') {
-		return routeLoaderRedirect('/login')
-	}
-	return { accountWebhooks: result.payload }
-}
-
-export type PackageWebhooksFetchResult =
-	| { kind: 'unauthorized' }
-	| { kind: 'ok'; payload: PackageWebhooksLoaderData }
-
-export async function fetchPackageWebhooks(input: {
-	username: string
-	kodyId: string
-	signal?: AbortSignal
-}): Promise<PackageWebhooksFetchResult> {
-	const response = await fetch(packageWebhooksApiHref(input), {
-		headers: { Accept: 'application/json' },
-		credentials: 'include',
-		signal: input.signal,
-	})
-	if (response.status === 401) return { kind: 'unauthorized' }
-	const payload = await readJson<PackageWebhooksLoaderData>(response)
-	if (!response.ok || !payload?.ok) {
-		throw new Error('Unable to load webhooks.')
-	}
-	return { kind: 'ok', payload }
-}
-
-export type PackageWebhookIntentResult =
-	| { kind: 'unauthorized' }
-	| { kind: 'ok'; payload: PackageWebhooksActionPayload }
-	| { kind: 'error'; message: string }
-
-/**
- * Runs one intent against the package webhooks API. Only `mint`, `rotate`,
- * and `reveal` answers carry `revealed`; the caller keeps that URL in memory
- * and never in a payload it re-renders from.
- */
-export async function postPackageWebhookIntent(input: {
-	username: string
-	kodyId: string
-	webhookName: string
-	intent: WebhookIntent
-	endpointId?: string | null
-	createInstance?: boolean
-	instanceLabel?: string | null
-}): Promise<PackageWebhookIntentResult> {
-	try {
-		const response = await fetch(packageWebhooksApiHref(input), {
-			method: 'POST',
-			headers: {
-				Accept: 'application/json',
-				'Content-Type': 'application/json',
-			},
-			credentials: 'include',
-			body: JSON.stringify({
-				intent: input.intent,
-				webhookName: input.webhookName,
-				...(input.endpointId ? { endpointId: input.endpointId } : {}),
-				...(input.createInstance ? { createInstance: true } : {}),
-				...(input.instanceLabel ? { instanceLabel: input.instanceLabel } : {}),
-			}),
-		})
-		if (response.status === 401) return { kind: 'unauthorized' }
-		const payload = await readJson<
-			PackageWebhooksActionPayload & { error?: string; ok?: boolean }
-		>(response)
-		if (!response.ok || !payload?.ok) {
-			return {
-				kind: 'error',
-				message: payload?.error || webhookFailureMessage(input.intent),
-			}
-		}
-		return { kind: 'ok', payload }
-	} catch {
-		return { kind: 'error', message: webhookFailureMessage(input.intent) }
 	}
 }

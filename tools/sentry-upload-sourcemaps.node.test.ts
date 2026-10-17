@@ -50,8 +50,8 @@ test('sibling-only deploys upload wrangler maps next to each worker config and s
 
 test('origin vite deploys require client maps and upload every worker bundle that has maps', async () => {
 	await using fixture = await sourcemapFixture({
-		'dist/ssr/index.js': 'origin()',
-		'dist/ssr/index.js.map': '{}',
+		'dist/server/index.js': 'origin()',
+		'dist/server/index.js.map': '{}',
 		'dist/client/assets/entry.js': 'client()',
 		'dist/client/assets/entry.js.map': '{}',
 		'packages/platform-worker/.wrangler/sentry-bundle/index.js.map': '{}',
@@ -61,7 +61,7 @@ test('origin vite deploys require client maps and upload every worker bundle tha
 		ok: true,
 		uploads: [
 			{
-				dir: join(fixture.root, 'dist/ssr'),
+				dir: join(fixture.root, 'dist/server'),
 				label: 'origin vite worker bundle',
 			},
 			{
@@ -79,7 +79,7 @@ test('origin vite deploys require client maps and upload every worker bundle tha
 	})
 
 	await using originWithoutClient = await sourcemapFixture({
-		'dist/ssr/index.js.map': '{}',
+		'dist/server/index.js.map': '{}',
 	})
 	expect(
 		planSentrySourcemapUploads({ root: originWithoutClient.root }),
@@ -97,7 +97,7 @@ test('missing worker maps fail the pipeline instead of silently skipping', async
 	const plan = planSentrySourcemapUploads({ root: fixture.root })
 	expect(plan.ok).toBe(false)
 	if (plan.ok) throw new Error('expected a missing-bundle failure')
-	expect(plan.error).toContain(join(fixture.root, 'dist/ssr'))
+	expect(plan.error).toContain(join(fixture.root, 'dist/server'))
 	expect(plan.error).toContain(
 		join(fixture.root, 'packages/platform-worker/.wrangler/sentry-bundle'),
 	)

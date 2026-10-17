@@ -1,15 +1,5 @@
 import { matchesSearchQuery } from '#client/search-filter.ts'
-import { readJson } from '#client/routes/account-approval-shared.ts'
-import {
-	routeLoaderRedirect,
-	type RouteLoaderResult,
-} from '#client/route-loader.ts'
-import {
-	type AdminProviderMark,
-	type AdminProviderMarksLoaderData,
-} from '#universal/loader-data.ts'
-
-export const adminProviderMarksApiPath = '/admin/provider-marks.json'
+import { type AdminProviderMark } from '#universal/loader-data.ts'
 
 export function splitAliasInput(raw: string): Array<string> {
 	return raw
@@ -48,26 +38,4 @@ export function groupMarks(marks: ReadonlyArray<AdminProviderMark>): Array<{
 	return [...groups.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([key, grouped]) => ({ key, marks: grouped }))
-}
-
-export async function adminProviderMarksRouteLoader(
-	_url: URL,
-	signal: AbortSignal,
-): Promise<RouteLoaderResult> {
-	const response = await fetch(adminProviderMarksApiPath, {
-		headers: { Accept: 'application/json' },
-		credentials: 'include',
-		signal,
-	})
-	if (response.status === 401) {
-		return routeLoaderRedirect('/login')
-	}
-	if (response.status === 403) {
-		throw new Error('You do not have permission to view provider marks.')
-	}
-	const payload = await readJson<AdminProviderMarksLoaderData>(response)
-	if (!response.ok || !payload?.ok) {
-		throw new Error('Unable to load provider marks.')
-	}
-	return { adminProviderMarks: payload } as RouteLoaderResult
 }

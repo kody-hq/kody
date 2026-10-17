@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { RequestContext } from 'remix/router'
 import { encodeDeployInfo, type DeployInfo } from '#worker/deploy-info.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 
@@ -27,11 +26,11 @@ const deployInfo = {
 } satisfies DeployInfo
 
 function createHealthRequestContext(accept?: string) {
-	return new RequestContext(
-		new Request('https://example.com/health', {
+	return {
+		request: new Request('https://example.com/health', {
 			headers: accept ? { Accept: accept } : undefined,
 		}),
-	)
+	}
 }
 
 test('health handler reports commit, PR, and deploy metadata for JSON and HTML clients', async () => {
@@ -39,7 +38,7 @@ test('health handler reports commit, PR, and deploy metadata for JSON and HTML c
 		APP_COMMIT_SHA: undefined,
 		APP_DEPLOY_INFO: undefined,
 	})
-	const unsetResponse = await unsetHandler.handler(createHealthRequestContext())
+	const unsetResponse = await unsetHandler(createHealthRequestContext())
 	expect(unsetResponse.status).toBe(200)
 	expect(unsetResponse.headers.get('Cache-Control')).toBe('no-store')
 	expect(unsetResponse.headers.get('X-App-Commit-Sha')).toBe('unknown')
@@ -55,7 +54,7 @@ test('health handler reports commit, PR, and deploy metadata for JSON and HTML c
 		APP_COMMIT_SHA: commitSha,
 		APP_DEPLOY_INFO: undefined,
 	})
-	const shaOnlyResponse = await shaOnlyHandler.handler(
+	const shaOnlyResponse = await shaOnlyHandler(
 		createHealthRequestContext('application/json'),
 	)
 	expect(shaOnlyResponse.headers.get('X-App-Commit-Sha')).toBe(commitSha)
@@ -76,9 +75,7 @@ test('health handler reports commit, PR, and deploy metadata for JSON and HTML c
 		APP_COMMIT_SHA: commitSha,
 		APP_DEPLOY_INFO: encodeDeployInfo(deployInfo),
 	})
-	const jsonResponse = await deployedHandler.handler(
-		createHealthRequestContext(),
-	)
+	const jsonResponse = await deployedHandler(createHealthRequestContext())
 	expect(await jsonResponse.json()).toEqual({
 		ok: true,
 		commitSha,
@@ -92,7 +89,7 @@ test('health handler reports commit, PR, and deploy metadata for JSON and HTML c
 		deploy: deployInfo.deploy,
 	})
 
-	const htmlResponse = await deployedHandler.handler(
+	const htmlResponse = await deployedHandler(
 		createHealthRequestContext('text/html'),
 	)
 	expect(htmlResponse.headers.get('Content-Type')).toBe(

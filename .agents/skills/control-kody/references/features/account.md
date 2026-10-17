@@ -4,7 +4,8 @@ Pages about the person, split from the org workspace:
 
 - `/account` (Account settings): name, avatar, email, onboarding banner; links
   to the public profile at `/@handle`. Also hosts one-time personal-org
-  conversion (`POST /account/convert-personal-org.json` with `newHandle`).
+  conversion through its native Start form, which asks for the new personal
+  handle.
 - `/account/security`: password, links to two-factor and passkeys, sign-in
   providers (Connected accounts), former emails.
 - `/account/organizations`: every org you belong to (no "current" marker: an org
@@ -14,26 +15,27 @@ Pages about the person, split from the org workspace:
 - `/account/experiments`: experiments opt-in.
 - `/account/data`: export and delete account.
 
-Usage and credits live on the org workspace at `/@:orgSlug/-/usage` (credits are
-`#credits`). Legacy `/account/usage` and `/account/credits` redirect to the
-personal org's usage page.
+Usage lives at `/@:orgSlug/-/usage`, with funding controls in `#credits`. The
+credits ledger lives at `/@:orgSlug/-/credits`. Legacy `/account/usage` and
+`/account/credits` redirect to the corresponding personal-org page.
 
 The account rail ("Account sections") lists only those pages; it has no
 workspaces group. From account pages, orgs are reached through the avatar menu's
 Manage group (below) and the Organizations page. Every workspace section is on a
 separate "Workspace sections" rail under `/@<slug>/-/…`. That rail groups Build
-(Repositories, Jobs, Webhooks), Credentials (Secrets, Integrations, MCP servers,
-Secret providers), Agents & data (Agents, Memories, Email), Activity, and
-Organization (Usage & credits and Billing for owners/billing admins). Activity
-has Activity, Workflows, and Waiting as tabs under the page title
+(Repositories, Jobs, Webhooks), Credentials (Credentials, Secret providers),
+Agents & data (Agents, Memories, Email), Activity, and Organization (Usage &
+credits and Billing for owners/billing admins). Activity has Activity,
+Workflows, and Waiting as tabs under the page title
 (`data-testid="account-section-tabs"`, labelled "Activity pages"); the rail item
 stays current on all three. Repositories is `/@<slug>/-/repositories`, distinct
 from the public profile at `/@<slug>`. Former `/@<slug>/-/packages` URLs 301 to
 `/repositories` (query preserved). The signup org's Overview
 (`/@<slug>/-/overview`) is a card for every workspace section; a team org's
 overview URL redirects to its home at `/@<slug>`. Both rails come from
-`account-rail.ts` and render through `AccountPageHeader` in
-`packages/worker/client/routes/account-management-components.tsx`. Below 860px a
+`account-rail.ts` and render through the account shell navigation in
+`packages/worker/start/pages/account-management-components.tsx`. Below 860px a
+
 rail collapses to a `<details>` menu.
 
 The org switcher is the Workspace rail's heading: under the "Workspace" label,
@@ -45,7 +47,7 @@ otherwise it opens that org's workspace home (`workspaceSwitchHref`). Below
 860px the same switcher is the first item in the rail's `<details>` drawer
 (`org-switcher-drawer`, panel `org-switcher-drawer-panel`). The account rail has
 no switcher and no org list. Source:
-`packages/worker/client/workspace-switcher.tsx`.
+`packages/worker/start/components/workspace-switcher.tsx`.
 
 The site header has one session control, the account menu
 (`data-testid="account-menu"`, panel `account-menu-panel`): the person's avatar,
@@ -65,11 +67,11 @@ profile (`/@<username>`) also links **Workspace** (lands on
 ## How to get there
 
 `/account` after login. Create an organization at `/account/organizations/new`
-(`POST` the same path with `displayName` and `slug`); it redirects to the org
-home at `/@<slug>`. Account deletion is `/account/delete`. Team-org settings,
-members, teams, grants, and collaborators are `/@<slug>/-/settings`,
-`/@<slug>/-/members`, `/@<slug>/-/teams`, `/@<slug>/-/grants`, and
-`/@<slug>/-/collaborators`.
+by submitting the organization form; it navigates to the org home at `/@<slug>`.
+Account deletion is on `/account/data`. Both actions use Start server functions.
+Team-org settings, members, teams, grants, and collaborators are
+`/@<slug>/-/settings`, `/@<slug>/-/members`, `/@<slug>/-/teams`,
+`/@<slug>/-/grants`, and `/@<slug>/-/collaborators`.
 
 A non-personal org handle (`/@<slug>`) renders the org home for its members and
 404s for everyone else. Secrets, jobs, and the other org resource pages read
@@ -94,57 +96,27 @@ Resource pages (packages, secrets, jobs, and the rest) live under
 ## Drive it
 
 ```bash
-node tools/control-kody.ts login
-node tools/control-kody.ts request GET /account/profile.json
-node tools/control-kody.ts request GET /account/organizations.json
-node tools/control-kody.ts request GET /@<slug>/-/settings.json
-node tools/control-kody.ts request GET /@<slug>/-/members.json
-node tools/control-kody.ts request GET /@<slug>/-/teams.json
-node tools/control-kody.ts request GET /@<slug>/-/grants.json
-node tools/control-kody.ts request GET /@<slug>/-/collaborators.json
-node tools/control-kody.ts request GET /account/connections.json
+npm run control-kody -- browse --origin <preview> --path /account
+npm run control-kody -- request GET /session --origin <preview>
 ```
 
-## APIs
-
-- `GET|POST /account/profile.json`
-- `GET /account/organizations.json` (orgs, pending invites)
-- `GET|POST /@<slug>/-/settings.json` (team org profile; personal orgs point at
-  Account)
-- `POST /@<slug>/-/settings/avatar.json`
-- `POST /@<slug>/-/settings/delete.json`
-- `GET /@<slug>/-/members.json`
-- `POST /@<slug>/-/members/role.json`
-- `POST /@<slug>/-/members/remove.json`
-- `POST /@<slug>/-/members/invite.json`
-- `GET /@<slug>/-/teams.json`
-- `POST /@<slug>/-/teams/create.json`
-- `POST /@<slug>/-/teams/member-add.json`
-- `POST /@<slug>/-/teams/member-remove.json`
-- `GET /@<slug>/-/grants.json`
-- `POST /@<slug>/-/grants/revoke.json`
-- `GET /@<slug>/-/collaborators.json`
-- `POST /account/profile/avatar.json`
-- `POST /account/email-change.json`
-- `POST /account/email-claim-release.json`
-- `GET /account/export.json`
-- `POST /account/delete`
-- `GET|POST /account/connections.json` (sign-in providers: GitHub, Google, X,
-  Discord)
-- `POST /logout` (Log out in the account menu)
+Profile, organization membership, avatar, email, deletion, and logout actions
+use native Start server functions. Test the relevant forms and confirmations in
+the signed-in browser. `GET /account/export.json` remains the metadata export
+protocol.
 
 ## Gotchas
 
 - Seed users start empty. Profile fields exist; packages/secrets/jobs do not
   until you create them.
-- A successful `POST /account/delete` clears the session and the account page
+- A successful account deletion clears the session and the account page
   navigates to `/?accountDeleted=1`. The homepage status
   `data-testid="account-deleted-notice"` reads "Your Kody account has been
   deleted". Do not delete the shared preview seed to prove this.
 - Connected agents (inbound MCP hosts) are a workspace page:
   [connections](./connections.md) at `/@<slug>/-/agents`.
 - Linking a sign-in provider returns to `/account/security?oauthLinked=<id>`.
-- Former-address release is `POST /account/email-claim-release.json`, then
-  confirm at `/verify-email-claim-release`. It drops the claim without reminting
+- Former-address release starts in the account UI, then confirm at
+  `/verify-email-claim-release`. It drops the claim without reminting
   `users.stable_user_id`.
 - Email destinations are managed on the [email inbox](./email.md).

@@ -1,8 +1,4 @@
 import { dnsSafeUsernamePatternSource } from '@kody-internal/shared/public-urls.ts'
-import { createMatcher } from 'remix/route-pattern/match'
-import { routes } from '#universal/routes.ts'
-
-const profileMatcher = createMatcher(routes.profile.pattern)
 
 /**
  * `/@slug/-/repositories` is the signed-in repository list. The capture is
@@ -18,9 +14,14 @@ const orgRepositoryListPattern = new RegExp(
  * render a profile page for it.
  */
 export function getProfileUsernameFromPathname(pathname: string) {
-	const matched = profileMatcher.match(new URL(pathname, 'http://localhost'))
-		?.params.username
-	if (matched) return matched
+	const matched = /^\/@([^/]+)\/?$/.exec(pathname)?.[1]
+	if (matched) {
+		try {
+			return decodeURIComponent(matched)
+		} catch {
+			return null
+		}
+	}
 	return orgRepositoryListPattern.exec(pathname)?.[1] ?? null
 }
 

@@ -21,7 +21,13 @@ export async function loadAdminCommunityReportsData(
 ): Promise<AdminCommunityReportsLoaderData> {
 	const url = new URL(requestUrl, 'http://localhost')
 	const rawStatusFilter = url.searchParams.get('status') ?? 'open'
-	const statusFilter = normalizeReportStatusFilter(rawStatusFilter)
+	return readAdminCommunityReportsData(env, { status: rawStatusFilter })
+}
+export async function readAdminCommunityReportsData(
+	env: Env,
+	input: { status: string | null },
+): Promise<AdminCommunityReportsLoaderData> {
+	const statusFilter = normalizeReportStatusFilter(input.status ?? 'open')
 	const reports = await loadAdminCommunityReports(env, statusFilter)
 	return {
 		ok: true,

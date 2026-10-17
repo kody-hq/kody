@@ -2,7 +2,7 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 
 /**
  * Production deploy path classification:
- * - Remix/blog/UI handlers → origin; skip platform/runtime/jobs/highlight
+ * - Start/blog/UI handlers → origin; skip platform/runtime/jobs/highlight
  * - Official guide markdown (also bundled into the MCP Durable Object) →
  *   origin + platform; skip runtime/jobs/highlight
  * - Highlight worker or shared highlight types → highlight (plus origin when
@@ -29,6 +29,7 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 
 const originOnlyPathPrefixes = [
 	'packages/worker/client/',
+	'packages/worker/start/',
 	'packages/worker/public/',
 	'packages/worker/src/app/client-entry-assets',
 	'packages/worker/src/blog/posts/',
@@ -45,8 +46,6 @@ const originAndPlatformPathPrefixes = [
 ] as const
 
 const originOnlyExactPaths = new Set([
-	'packages/worker/src/app/layout.ts',
-	'packages/worker/src/app/ssr-render.tsx',
 	'packages/worker/universal/blog-display.ts',
 	'vite.config.ts',
 	'tools/deploy.ts',

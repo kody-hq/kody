@@ -1,11 +1,10 @@
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createPendingVerificationHandler } from '#app/handlers/pending-verification.ts'
+import { loadPendingVerification } from '../../../start/server/pending-verification.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 import {
@@ -15,10 +14,27 @@ import {
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: vi.fn(async ({ loaderData }) =>
-		Response.json({ ok: true, loaderData }),
-	),
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/pending-verification'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: (env: Env) => env }))
+vi.mock('@tanstack/react-start', async () => ({
+	createServerFn: (
+		await import('#worker/test-support/start-server-function.ts')
+	).createTestServerFn,
+	createServerOnlyFn: <T>(fn: T) => fn,
 }))
 
 function createUserEnv(options: {
@@ -98,78 +114,54 @@ test('pending verification requires a live session, preserves redirectTo after v
 	}
 	const cookie = await createAuthCookie(session, false)
 
-	const anonymousResponse = await createPendingVerificationHandler(
-		createUserEnv({}),
-	).handler(
-		new RequestContext(new Request('https://example.com/pending-verification')),
-	)
-	expect(anonymousResponse.status).toBe(302)
-	expect(anonymousResponse.headers.get('Location')).toBe(
-		'https://example.com/login?redirectTo=%2Fpending-verification',
-	)
-
-	const pendingResponse = await createPendingVerificationHandler(
-		createUserEnv({ emailVerifiedAt: null }),
-	).handler(
-		new RequestContext(
-			new Request('https://example.com/pending-verification', {
-				headers: { Cookie: cookie },
-			}),
-		),
-	)
-	expect(pendingResponse.status).toBe(200)
-	await expect(pendingResponse.json()).resolves.toEqual({
-		ok: true,
-		loaderData: {
-			pendingVerification: {
-				ok: true,
-				email: 'pending@example.com',
-				emailVerificationDelivery: null,
-			},
+	async function read(env: Env, search = '', cookie?: string) {
+		native.env = env
+		native.request = new Request(
+			`https://example.com/pending-verification${search}`,
+			{ headers: cookie ? { Cookie: cookie } : {} },
+		)
+		native.setResponseHeader.mockClear()
+		return loadPendingVerification({ data: search })
+	}
+	await expect(read(createUserEnv({}))).rejects.toMatchObject({
+		options: {
+			statusCode: 302,
+			href: 'https://example.com/login?redirectTo=%2Fpending-verification',
 		},
 	})
-
-	const verifiedResponse = await createPendingVerificationHandler(
-		createUserEnv({ emailVerifiedAt: new Date(0).toISOString() }),
-	).handler(
-		new RequestContext(
-			new Request('https://example.com/pending-verification', {
-				headers: { Cookie: cookie },
-			}),
-		),
-	)
-	expect(verifiedResponse.status).toBe(302)
-	expect(verifiedResponse.headers.get('Location')).toBe(
-		'https://example.com/onboarding',
-	)
-
-	const verifiedWithRedirect = await createPendingVerificationHandler(
-		createUserEnv({ emailVerifiedAt: new Date(0).toISOString() }),
-	).handler(
-		new RequestContext(
-			new Request(
-				'https://example.com/pending-verification?redirectTo=%2Foauth%2Fauthorize%3Fclient_id%3Ddemo',
-				{ headers: { Cookie: cookie } },
+	await expect(
+		read(createUserEnv({ emailVerifiedAt: null }), '', cookie),
+	).resolves.toEqual({
+		ok: true,
+		email: 'pending@example.com',
+		emailVerificationDelivery: null,
+	})
+	for (const [search, href] of [
+		['', '/onboarding'],
+		[
+			'?redirectTo=%2Foauth%2Fauthorize%3Fclient_id%3Ddemo',
+			'/oauth/authorize?client_id=demo',
+		],
+		['?redirectTo=https%3A%2F%2Fevil.example', '/onboarding'],
+	]) {
+		await expect(
+			read(
+				createUserEnv({ emailVerifiedAt: new Date(0).toISOString() }),
+				search,
+				cookie,
 			),
-		),
-	)
-	expect(verifiedWithRedirect.status).toBe(302)
-	expect(verifiedWithRedirect.headers.get('Location')).toBe(
-		'https://example.com/oauth/authorize?client_id=demo',
-	)
-
-	const verifiedRejectsOpenRedirect = await createPendingVerificationHandler(
-		createUserEnv({ emailVerifiedAt: new Date(0).toISOString() }),
-	).handler(
-		new RequestContext(
-			new Request(
-				'https://example.com/pending-verification?redirectTo=https%3A%2F%2Fevil.example',
-				{ headers: { Cookie: cookie } },
-			),
-		),
-	)
-	expect(verifiedRejectsOpenRedirect.status).toBe(302)
-	expect(verifiedRejectsOpenRedirect.headers.get('Location')).toBe(
-		'https://example.com/onboarding',
-	)
+		).rejects.toMatchObject({ options: { statusCode: 302, href } })
+	}
+	await expect(
+		read(createUserEnv({ missingUser: true }), '', cookie),
+	).rejects.toMatchObject({
+		options: {
+			statusCode: 302,
+			href: 'https://example.com/login?redirectTo=%2Fpending-verification',
+		},
+	})
+	const cleared = native.setResponseHeader.mock.calls.find(
+		([name]) => name === 'Set-Cookie',
+	)?.[1] as string | undefined
+	expect(cleared).toContain('Max-Age=0')
 })

@@ -14,8 +14,8 @@ function pathToFeaturesDir() {
 
 /**
  * User-facing surfaces agents rediscover. Keep `paths` aligned with
- * `packages/worker/universal/routes.ts` HTML routes. JSON companions go in
- * `apis`.
+ * `packages/worker/start/routeTree.gen.ts` document paths. Only external HTTP protocols and downloads go in
+ * `apis`, website reads and mutations use Start server functions.
  */
 export const featureCatalog: ReadonlyArray<Feature> = [
 	{
@@ -23,7 +23,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 		title: 'Sign in',
 		file: 'login.md',
 		paths: ['/login'],
-		apis: ['/auth', '/session', '/logout', '/auth/providers.json'],
+		apis: ['/auth', '/session'],
 	},
 	{
 		id: 'signup',
@@ -38,7 +38,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/verify-email-destination',
 			'/unsubscribe/tips',
 		],
-		apis: ['/account/resend-verification.json'],
+		apis: [],
 	},
 	{
 		id: 'onboarding',
@@ -47,46 +47,34 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 		paths: [
 			'/onboarding',
 			'/onboarding/step-1',
-			'/onboarding/step-1/:agent',
+			'/onboarding/step-1/$agent',
 			'/onboarding/step-2',
-			'/onboarding/step-2/:service',
+			'/onboarding/step-2/$service',
 			'/onboarding/step-3',
-			'/onboarding/step-3/:agent',
+			'/onboarding/step-3/$agent',
 		],
-		apis: ['/onboarding.json', '/onboarding/checklist-dismiss.json'],
+		apis: [],
 	},
 	{
 		id: 'password-reset',
 		title: 'Password reset',
 		file: 'password-reset.md',
 		paths: ['/reset-password'],
-		apis: [
-			'/password-reset',
-			'/password-reset/confirm',
-			'/account/password.json',
-		],
+		apis: [],
 	},
 	{
 		id: 'two-factor',
 		title: 'Two-factor auth',
 		file: 'two-factor.md',
 		paths: ['/account/two-factor', '/verify'],
-		apis: ['/account/two-factor.json', '/verify/2fa.json'],
+		apis: [],
 	},
 	{
 		id: 'passkeys',
 		title: 'Passkeys',
 		file: 'passkeys.md',
-		paths: [
-			'/account/passkeys',
-			'/webauthn/registration',
-			'/webauthn/authentication',
-		],
-		apis: [
-			'/account/passkeys.json',
-			'/webauthn/registration',
-			'/webauthn/authentication',
-		],
+		paths: ['/account/passkeys'],
+		apis: [],
 	},
 	{
 		id: 'account',
@@ -96,239 +84,188 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/account',
 			'/account/security',
 			'/account/data',
-			'/account/delete',
 			'/account/organizations',
 			'/account/organizations/new',
-			'/@:orgSlug/-/settings',
-			'/@:orgSlug/-/members',
-			'/@:orgSlug/-/teams',
-			'/@:orgSlug/-/grants',
-			'/@:orgSlug/-/collaborators',
-			'/join/:token',
+			'/@{$orgSlug}/-/overview',
+			'/@{$orgSlug}/-/settings',
+			'/@{$orgSlug}/-/members',
+			'/@{$orgSlug}/-/teams',
+			'/@{$orgSlug}/-/grants',
+			'/@{$orgSlug}/-/collaborators',
+			'/join/$token',
 		],
-		apis: [
-			'/account/profile.json',
-			'/account/convert-personal-org.json',
-			'/account/organizations.json',
-			'/account/organizations/:orgSlug/restore.json',
-			'/@:orgSlug/-/settings.json',
-			'/@:orgSlug/-/members.json',
-			'/@:orgSlug/-/members/invite-links.json',
-			'/@:orgSlug/-/members/invite-links-revoke.json',
-			'/@:orgSlug/-/teams.json',
-			'/@:orgSlug/-/grants.json',
-			'/@:orgSlug/-/collaborators.json',
-			'/account/profile/avatar.json',
-			'/account/email-change.json',
-			'/account/email-claim-release.json',
-			'/account/export.json',
-			'/account/delete',
-			'/account/connections.json',
-		],
+		apis: ['/account/export.json'],
 	},
 	{
 		id: 'connections',
 		title: 'Agents (connected agents)',
 		file: 'connections.md',
-		paths: ['/@:orgSlug/-/agents(/*rest)'],
-		apis: ['/account/connected-agents.json'],
+		paths: [
+			'/account/agents',
+			'/account/connections',
+			'/@{$orgSlug}/-/connections',
+			'/@{$orgSlug}/-/agents',
+		],
+		apis: [],
 	},
 	{
 		id: 'packages',
 		title: 'Packages',
 		file: 'packages.md',
 		paths: [
-			'/account/packages/:packageId',
-			'/account/packages/:packageId/approve-publish',
-			'/account/packages/:packageId/files(/*relativePath)',
-			'/@:username',
-			'/@:username/:kodyId',
-			'/@:username/:kodyId/icon/:iconCommit',
-			'/@:username/:kodyId/settings',
-			'/@:username/:kodyId/collaborators',
-			'/account/repos/:repoId/icon/:iconCommit',
-			'/@:username/:kodyId/approve-publish',
-			'/@:orgSlug/-/repositories',
-			'/@:orgSlug/-/approvals/:bundleId',
+			'/account/packages',
+			'/@{$orgSlug}/-/packages',
+			'/account/packages/$packageId',
+			'/account/packages/$packageId/approve-publish',
+			'/account/packages/$packageId/files/$',
+			'/@{$username}',
+			'/@{$username}/$kodyId',
+			'/@{$username}/$kodyId/icon/$iconCommit',
+			'/@{$username}/$kodyId/settings',
+			'/@{$username}/$kodyId/collaborators',
+			'/account/repos/$repoId/icon/$iconCommit',
+			'/@{$username}/$kodyId/approve-publish',
+			'/@{$orgSlug}/-/repositories',
+			'/@{$orgSlug}/-/approvals/$bundleId',
 		],
-		apis: [
-			'/account/packages.json',
-			'/@:orgSlug/-/repositories.json',
-			'/account/packages/:packageId/approve-publish.json',
-			'/account/packages/:packageId/files.json',
-			'/profiles/:username/packages/:kodyId/approve-publish.json',
-			'/profiles/:username/packages/:kodyId/collaborators.json',
-			'/@:username/:kodyId/raw/:ref(/*relativePath)',
-			'/@:orgSlug/-/approvals/:bundleId.json',
-		],
+		apis: ['/@{$username}/$kodyId/raw/$ref/$'],
 	},
 	{
 		id: 'secrets',
 		title: 'Secrets',
 		file: 'secrets.md',
 		paths: [
+			'/@{$orgSlug}/-/credentials',
+			'/account/secrets',
+			'/account/secret-providers',
 			'/connect/secrets',
 			'/connect/secret-set',
 			'/account/credentials',
-			'/@:orgSlug/-/secrets(/*rest)',
-			'/@:orgSlug/-/secret-providers(/*rest)',
+			'/@{$orgSlug}/-/secrets',
+			'/@{$orgSlug}/-/secret-providers',
 		],
-		apis: ['/account/secrets.json', '/account/secret-providers.json'],
+		apis: [],
 	},
 	{
 		id: 'integrations',
 		title: 'Integrations and OAuth connect',
 		file: 'integrations.md',
-		paths: ['/connect/oauth', '/@:orgSlug/-/integrations(/*rest)'],
-		apis: ['/account/integrations.json'],
+		paths: [
+			'/account/integrations',
+			'/connect/oauth',
+			'/@{$orgSlug}/-/integrations',
+		],
+		apis: [],
 	},
 	{
 		id: 'mcp-servers',
 		title: 'MCP servers',
 		file: 'mcp-servers.md',
 		paths: [
+			'/account/mcp-servers',
 			'/account/mcp-oauth-clients',
 			'/account/mcp-servers/oauth/callback',
-			'/account/mcp-servers/logos/:serverId',
-			'/@:orgSlug/-/mcp-servers(/*rest)',
+			'/account/mcp-servers/logos/$serverId',
+			'/@{$orgSlug}/-/mcp-servers',
 		],
-		apis: ['/account/mcp-servers.json', '/account/mcp-oauth-clients.json'],
+		apis: [],
 	},
 	{
 		id: 'jobs',
 		title: 'Jobs',
 		file: 'jobs.md',
-		paths: ['/@:orgSlug/-/jobs(/*rest)'],
-		apis: ['/account/jobs.json'],
+		paths: ['/account/jobs', '/@{$orgSlug}/-/jobs'],
+		apis: [],
 	},
 	{
 		id: 'workflows',
 		title: 'Workflows',
 		file: 'workflows.md',
-		paths: ['/@:orgSlug/-/workflows(/*rest)'],
-		apis: ['/account/workflows.json'],
+		paths: ['/account/workflows', '/@{$orgSlug}/-/workflows'],
+		apis: [],
 	},
 	{
 		id: 'webhooks',
 		title: 'Webhooks (minted URLs)',
 		file: 'webhooks.md',
 		paths: [
-			'/@:username/:kodyId/settings',
-			'/@:orgSlug/-/webhooks',
+			'/account/webhooks',
+			'/@{$username}/$kodyId/settings',
+			'/@{$orgSlug}/-/webhooks',
 			'/connect/webhook-apply',
 		],
-		apis: [
-			'/profiles/:username/packages/:kodyId/webhooks.json',
-			'/account/webhooks.json',
-			'/account/webhooks/approve-apply.json',
-		],
+		apis: [],
 	},
 	{
 		id: 'follows',
 		title: 'Follows',
 		file: 'follows.md',
-		paths: ['/@:username/:kodyId', '/@:orgSlug/-/follows'],
-		apis: [
-			'/profiles/:username/packages/:kodyId/follow.json',
-			'/@:orgSlug/-/follows.json',
-		],
+		paths: ['/@{$username}/$kodyId', '/@{$orgSlug}/-/follows'],
+		apis: [],
 	},
 	{
 		id: 'activity',
 		title: 'Activity',
 		file: 'activity.md',
-		paths: ['/@:orgSlug/-/activity(/*rest)'],
-		apis: ['/account/activity.json'],
+		paths: ['/account/activity', '/@{$orgSlug}/-/activity'],
+		apis: [],
 	},
 	{
 		id: 'waiting',
 		title: 'Waiting inbox',
 		file: 'waiting.md',
-		paths: ['/@:orgSlug/-/waiting(/*rest)'],
-		apis: ['/account/waiting.json'],
+		paths: ['/account/waiting', '/@{$orgSlug}/-/waiting'],
+		apis: [],
 	},
 	{
 		id: 'experiments',
 		title: 'Experiments',
 		file: 'experiments.md',
 		paths: ['/account/experiments'],
-		apis: ['/account/experiments.json'],
+		apis: [],
 	},
 	{
 		id: 'memories',
 		title: 'Memories',
 		file: 'memories.md',
-		paths: ['/@:orgSlug/-/memories(/*rest)'],
-		apis: ['/account/memories.json', '/account/memories-export.json'],
+		paths: ['/account/memories', '/@{$orgSlug}/-/memories'],
+		apis: ['/account/memories-export.json'],
 	},
 	{
 		id: 'email',
 		title: 'Email inbox',
 		file: 'email.md',
-		paths: ['/@:orgSlug/-/email(/*rest)'],
-		apis: ['/account/email.json', '/account/email-destinations.json'],
+		paths: ['/account/email', '/@{$orgSlug}/-/email'],
+		apis: [],
 	},
 	{
 		id: 'billing',
 		title: 'Billing, credits, and usage',
 		file: 'billing.md',
 		paths: [
-			'/@:orgSlug/-/billing',
-			'/@:orgSlug/-/billing/success',
-			'/@:orgSlug/-/billing/portal',
-			'/@:orgSlug/-/usage',
-			'/@:orgSlug/-/credits',
+			'/account/billing',
+			'/@{$orgSlug}/-/billing',
+			'/@{$orgSlug}/-/billing/success',
+			'/@{$orgSlug}/-/usage',
+			'/@{$orgSlug}/-/credits',
 			'/account/credits',
 			'/account/usage',
 		],
-		apis: [
-			'/@:orgSlug/-/billing.json',
-			'/@:orgSlug/-/billing/checkout.json',
-			'/@:orgSlug/-/usage.json',
-			'/@:orgSlug/-/credits.json',
-			'/account/billing/cancellation-feedback.json',
-			'/account/credits/top-up.json',
-			'/account/credits/settings.json',
-			'/account/usage.json',
-		],
+		apis: [],
 	},
 	{
 		id: 'admin',
 		title: 'Admin',
 		file: 'admin.md',
 		paths: ['/admin'],
-		apis: [
-			'/admin/users.json',
-			'/admin/users/credits.json',
-			'/admin/roles.json',
-			'/admin/reserved-usernames.json',
-			'/admin/feature-flags.json',
-			'/admin/platform-integrations.json',
-			'/admin/provider-marks.json',
-			'/admin/codemods.json',
-			'/admin/community-reports.json',
-			'/admin/insights.json',
-			'/admin/platform-feedback.json',
-			'/admin/system-email.json',
-		],
+		apis: [],
 	},
 	{
 		id: 'community',
 		title: 'Community listings and profiles',
 		file: 'community.md',
-		paths: ['/community', '/@:username', '/@:username/:kodyId'],
-		apis: [
-			'/community.json',
-			'/community/:listingId.json',
-			'/community/:listingId/report.json',
-			'/community/:listingId/trust.json',
-			'/community/:listingId/feature.json',
-			'/community/:listingId/install.json',
-			'/profiles/:username.json',
-			'/profiles/:username/packages/:kodyId.json',
-			'/@:username/:kodyId/raw/:ref(/*relativePath)',
-			'/community/:listingId/raw(/*relativePath)',
-		],
+		paths: ['/community', '/@{$username}', '/@{$username}/$kodyId'],
+		apis: ['/@{$username}/$kodyId/raw/$ref/$', '/community/$listingId/raw/$'],
 	},
 	{
 		id: 'marketing',
@@ -341,7 +278,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/faq',
 			'/case-studies',
 			'/believe',
-			'/with/:agent',
+			'/with/$agent',
 			'/compare/n8n-alternatives',
 			'/compare/composio-alternatives',
 			'/use-cases',
@@ -364,12 +301,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/blog',
 			'/discord',
 		],
-		apis: [
-			'/docs.json',
-			'/blog.json',
-			'/discord.json',
-			'/landing-hero-videos.json',
-		],
+		apis: [],
 	},
 ]
 
@@ -386,17 +318,26 @@ const requiredHtmlPrefixes = [
 	'/connect/oauth',
 	'/connect/secrets',
 	'/community',
-	'/@:username',
+	'/@{$username}',
+	'/@{$orgSlug}',
 	'/docs',
 ] as const
 
-function extractQuotedPaths(source: string) {
-	const paths = new Set<string>()
-	for (const match of source.matchAll(/['"`](\/[^'"`\s]*)['"`]/g)) {
-		const value = match[1]
-		if (value) paths.add(value)
-	}
-	return [...paths].toSorted()
+// Read the generated native route inventory without importing UI or server modules.
+// This is source inspection for the CLI, not a second route matcher.
+function extractNativePaths(source: string) {
+	const inventory = source.match(
+		/export interface FileRoutesByFullPath \{([\s\S]*?)\n\}/,
+	)?.[1]
+	if (!inventory)
+		throw new Error('Missing generated FileRoutesByFullPath inventory')
+	return [
+		...new Set(
+			[...inventory.matchAll(/^\s*'([^']+)':/gm)].map(
+				(match) => match[1]!.replace(/\/$/, '') || '/',
+			),
+		),
+	].toSorted()
 }
 
 function isHtmlUserPath(routePath: string) {
@@ -468,7 +409,7 @@ export function checkFeatureCatalog(input: {
 	existingFiles: ReadonlyArray<string>
 }): { ok: boolean; issues: Array<CatalogCheckIssue> } {
 	const catalog = input.catalog ?? featureCatalog
-	const routePaths = extractQuotedPaths(input.routeSource)
+	const routePaths = extractNativePaths(input.routeSource)
 	const files = new Set(input.existingFiles)
 	const issues: Array<CatalogCheckIssue> = []
 
@@ -488,7 +429,7 @@ export function checkFeatureCatalog(input: {
 					kind: 'stale-path',
 					id: feature.id,
 					path: owned,
-					detail: `${feature.id} lists ${owned}, which is not in routes.ts`,
+					detail: `${feature.id} lists ${owned}, which is not in the generated Start route tree`,
 				})
 			}
 		}

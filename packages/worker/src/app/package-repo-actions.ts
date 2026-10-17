@@ -2,7 +2,7 @@ import { buildPackageAppPath } from '@kody-internal/shared/public-urls.ts'
 import { type PublicCommunityListing } from '#app/community-public.ts'
 import { type PackagePageAccess } from '#app/package-page.ts'
 import { type ViewerListingInstall } from '#universal/community-public-types.ts'
-import { type PackageRepoActions } from '#universal/package-title-actions.tsx'
+import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { routes } from '#universal/routes.ts'
 import { buildPackagePublishApprovalPath } from '#worker/package-registry/package-publish-lock.ts'
 

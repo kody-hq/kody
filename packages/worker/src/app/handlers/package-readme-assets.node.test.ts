@@ -146,7 +146,7 @@ function callPackageHandler(
 		relativePath = 'docs/poster.png',
 	} = input
 	const url = `https://kody.codes/@${username}/${kodyId}/assets/${relativePath}`
-	return createCommunityPackageAssetHandler(env).handler({
+	return createCommunityPackageAssetHandler(env)({
 		request: new Request(url),
 		params: { username, kodyId, relativePath },
 		url: new URL(url),
@@ -155,7 +155,7 @@ function callPackageHandler(
 
 function callListingHandler(relativePath = 'docs/poster.png') {
 	const url = `https://kody.codes/community/${listing.id}/assets/${relativePath}`
-	return createCommunityDetailAssetHandler(env).handler({
+	return createCommunityDetailAssetHandler(env)({
 		request: new Request(url),
 		params: { listingId: listing.id, relativePath },
 		url: new URL(url),

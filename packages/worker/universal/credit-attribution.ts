@@ -12,7 +12,7 @@ const creditAttributionAdHocPackageId = ''
 
 export const creditAttributionAdHocName = 'Ad hoc'
 
-/** Top packages shown before "Show all" expands the same list in place. */
+/** Top packages shown before Show all expands the same list in place. */
 export const creditAttributionDefaultVisiblePackages = 5
 
 export const creditAttributionMeters = [

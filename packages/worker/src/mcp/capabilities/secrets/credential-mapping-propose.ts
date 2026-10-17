@@ -4,7 +4,7 @@ import {
 	recordCredentialProposal,
 } from '#worker/credentials/agent-credential-proposals.ts'
 import { resolveCredentialApproval } from '#worker/credentials/credential-approval.ts'
-import { credentialPickSchema } from '#worker/credentials/credential-pick-schema.ts'
+import { credentialPickSchema } from '#universal/credential-pick-schema.ts'
 import { loadPackageMappingScopeForRequest } from '#worker/credentials/package-mapping-scope-access.ts'
 import {
 	packageIdLookupDescription,
