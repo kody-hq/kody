@@ -120,6 +120,23 @@ test('an unreadable stale snapshot is named when the publish removes a mount', (
 	)
 })
 
+test('a computed packageSecrets.get still counts kept mounts when a literal alias is present', () => {
+	const report = describeSecretMountCompat({
+		keptAliases: ['wakeToken', 'otherToken'],
+		dependents: [
+			{
+				packageId: 'pkg-dependent',
+				name: '@kentcdodds/dependent',
+				stale: true,
+				aliases: ['wakeToken'],
+				computed: true,
+			},
+		],
+	})
+	expect(report.notice).toContain('otherToken, wakeToken')
+	expect(report.notice).toContain('@kentcdodds/dependent')
+})
+
 test('kept mounts name the stale dependents that still read them', () => {
 	const report = describeSecretMountCompat({
 		keptAliases: ['wakeToken'],

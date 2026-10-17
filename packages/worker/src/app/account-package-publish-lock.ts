@@ -146,6 +146,7 @@ export async function loadAccountPackageApprovePublishData(input: {
 						nextFiles: pendingFiles.files,
 						previousCommit: publishedCommit,
 						previousFiles: publishedFiles.files,
+						sourceRoot: source.source_root,
 					}),
 		diff:
 			unpublishedCompare || pendingMissing

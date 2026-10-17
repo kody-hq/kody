@@ -148,8 +148,10 @@ export function describeSecretMountCompat(input: {
 	for (const dependent of stale) {
 		const readAliases = new Set<string>()
 		const snapshotUnread = dependent.computed && dependent.aliases.length === 0
-		if (snapshotUnread) {
-			unreadable.add(dependent.name)
+		// A computed packageSecrets.get can name any kept or removed mount,
+		// including when the same snapshot also has a literal alias.
+		if (dependent.computed) {
+			if (snapshotUnread) unreadable.add(dependent.name)
 			for (const alias of kept) {
 				addReader(readers, alias, dependent.name)
 				readAliases.add(alias)
@@ -167,10 +169,15 @@ export function describeSecretMountCompat(input: {
 		const keptHere = [...readAliases].filter((alias) => keptSet.has(alias))
 		const parts: Array<string> = []
 		if (removedHere.length > 0) {
+			const guessed =
+				dependent.computed &&
+				removedHere.every((alias) => !dependent.aliases.includes(alias))
 			parts.push(
 				snapshotUnread
 					? `This stale dependent's bundled snapshot could not be read. Removing secret mount ${removedHere.sort().join(', ')} may break ${dependent.name}. Deleting the secret may break it too.`
-					: `Removing secret mount ${removedHere.sort().join(', ')} breaks ${dependent.name}. Deleting the secret breaks it too.`,
+					: guessed
+						? `This stale dependent calls packageSecrets.get with a computed alias. Removing secret mount ${removedHere.sort().join(', ')} may break ${dependent.name}. Deleting the secret may break it too.`
+						: `Removing secret mount ${removedHere.sort().join(', ')} breaks ${dependent.name}. Deleting the secret breaks it too.`,
 			)
 		}
 		if (keptHere.length > 0) {
@@ -412,6 +419,7 @@ export async function loadSecretMountCompatNotice(input: {
 				snapshot?.files['package.json'] ??
 				null
 		}
+		if (manifestSource == null) return null
 		const keptAliases = readSecretMountAliases(manifestSource) ?? []
 		const summary = await getStaticPackageDependentsSummary({
 			db: input.env.APP_DB,
@@ -486,6 +494,7 @@ export async function annotateStaticDependentsWithSecretMounts(input: {
 				snapshot?.files['package.json'] ??
 				null
 		}
+		if (manifestSource == null) return input.summary
 		const keptAliases = readSecretMountAliases(manifestSource) ?? []
 		const { dependents, declaredMounts } = await dependentReads({
 			env: input.env,

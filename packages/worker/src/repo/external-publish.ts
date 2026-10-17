@@ -376,7 +376,7 @@ export async function publishFromExternalRef(input: {
 					nextCommit: input.newCommit,
 					nextFiles: pendingFiles,
 					previousCommit: source.published_commit,
-					sourceRoot: input.sourceRoot ?? source.source_root,
+					sourceRoot: source.source_root,
 				})
 			: null
 	if (lockedPackage) {
