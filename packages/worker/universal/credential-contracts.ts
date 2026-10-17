@@ -177,7 +177,7 @@ export type CredentialInjectView =
  * Where placeholders may be filled. Null means anywhere. Distinct from
  * `inject` (scoped credential() client only).
  */
-export type CredentialFillPlacementView = {
+type CredentialFillPlacementView = {
 	headers?: true | Array<string>
 	query?: true
 	path?: true
