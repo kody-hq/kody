@@ -143,17 +143,35 @@ export function parseReceivePackCommands(
 }
 
 /**
- * True when every command's old-oid disagrees with a known landed tip for that
- * ref. Cache misses are not stale: those must fall through to Artifacts.
+ * Per-ref tips this queue last landed, plus oids it already moved past.
+ * A push is known-stale only when its old-oid is in `superseded` (a tip we
+ * overwrote). An old-oid that merely disagrees with `tip` (e.g. an outside
+ * writer advanced the ref) falls through to Artifacts so the cache cannot
+ * wedge clients that already fetched the real tip.
+ */
+export type LandedRefState = {
+	tip: string
+	/** Recent tips this queue replaced; capped FIFO. */
+	superseded: ReadonlyArray<string>
+}
+
+/** How many superseded oids to retain per ref (covers a large racing burst). */
+export const landedRefSupersededLimit = 64
+
+/**
+ * True when every command's old-oid is a tip this queue already moved past.
+ * Cache misses and unknown old-oids (outside writers) are not stale.
  */
 export function allReceivePackCommandsKnownStale(
 	commands: ReadonlyArray<ReceivePackCommand>,
-	landedRefs: ReadonlyMap<string, string>,
+	landedRefs: ReadonlyMap<string, LandedRefState>,
 ) {
 	if (commands.length === 0) return false
 	return commands.every((command) => {
-		const tip = landedRefs.get(command.ref)
-		return tip !== undefined && tip !== command.oldOid
+		const state = landedRefs.get(command.ref)
+		if (!state) return false
+		if (command.oldOid === state.tip) return false
+		return state.superseded.includes(command.oldOid)
 	})
 }
 
@@ -182,18 +200,35 @@ export function buildStaleFetchFirstReportStatus(
 }
 
 /**
- * Collect refs that report-status marked `ok`. Understands plain and
+ * Collect refs that report-status marked `ok` or `ng`. Understands plain and
  * sideband-wrapped (band 1) result bodies. Progress (band 2) is skipped;
  * fatals (band 3) end the scan.
  */
-export function collectReportStatusOkRefs(body: Uint8Array): Set<string> {
-	const okRefs = new Set<string>()
+export function collectReportStatusRefOutcomes(body: Uint8Array): {
+	ok: Set<string>
+	ng: Set<string>
+} {
+	const ok = new Set<string>()
+	const ng = new Set<string>()
 	scanReportStatusPackets(body, (line) => {
-		if (!line.startsWith('ok ')) return
-		const ref = line.slice(3).replace(/\n$/, '')
-		if (ref) okRefs.add(ref)
+		const trimmed = line.replace(/\n$/, '')
+		if (trimmed.startsWith('ok ')) {
+			const ref = trimmed.slice(3)
+			if (ref) ok.add(ref)
+			return
+		}
+		if (trimmed.startsWith('ng ')) {
+			const rest = trimmed.slice(3)
+			const space = rest.indexOf(' ')
+			const ref = space === -1 ? rest : rest.slice(0, space)
+			if (ref) ng.add(ref)
+		}
 	})
-	return okRefs
+	return { ok, ng }
+}
+
+export function collectReportStatusOkRefs(body: Uint8Array): Set<string> {
+	return collectReportStatusRefOutcomes(body).ok
 }
 
 function scanReportStatusPackets(
@@ -223,20 +258,44 @@ function scanReportStatusPackets(
 	}
 }
 
-/** Apply successful `ok <ref>` lines onto the landed-ref tip cache. */
-export function applyReportStatusOkToLandedRefs(
-	landedRefs: Map<string, string>,
+function pushSuperseded(
+	prior: ReadonlyArray<string>,
+	oid: string | undefined,
+): Array<string> {
+	if (!oid || isZeroOid(oid)) return [...prior]
+	if (prior.includes(oid)) return [...prior]
+	const next = [...prior, oid]
+	if (next.length <= landedRefSupersededLimit) return next
+	return next.slice(next.length - landedRefSupersededLimit)
+}
+
+/**
+ * Apply report-status onto the landed-ref cache: `ok` advances tip (and records
+ * the previous tip / command old-oid as superseded); `ng` clears the entry so
+ * a tip that moved outside the queue cannot wedge later valid pushes.
+ */
+export function applyReportStatusToLandedRefs(
+	landedRefs: Map<string, LandedRefState>,
 	commands: ReadonlyArray<ReceivePackCommand>,
 	reportStatusBody: Uint8Array,
 ) {
-	const okRefs = collectReportStatusOkRefs(reportStatusBody)
+	const { ok: okRefs, ng: ngRefs } =
+		collectReportStatusRefOutcomes(reportStatusBody)
+	for (const ref of ngRefs) {
+		landedRefs.delete(ref)
+	}
 	if (okRefs.size === 0) return
 	for (const command of commands) {
 		if (!okRefs.has(command.ref)) continue
 		if (isZeroOid(command.newOid)) {
 			landedRefs.delete(command.ref)
-		} else {
-			landedRefs.set(command.ref, command.newOid)
+			continue
 		}
+		const prior = landedRefs.get(command.ref)
+		const superseded = pushSuperseded(
+			prior?.superseded ?? [],
+			prior?.tip ?? command.oldOid,
+		)
+		landedRefs.set(command.ref, { tip: command.newOid, superseded })
 	}
 }

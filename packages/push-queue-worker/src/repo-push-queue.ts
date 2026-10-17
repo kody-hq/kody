@@ -24,10 +24,11 @@ import {
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
 import {
 	allReceivePackCommandsKnownStale,
-	applyReportStatusOkToLandedRefs,
+	applyReportStatusToLandedRefs,
 	buildStaleFetchFirstReportStatus,
 	parseReceivePackCommands,
 	receivePackCommandPrefixLimitBytes,
+	type LandedRefState,
 	type ReceivePackCommand,
 } from './repo-push-queue-commands.ts'
 
@@ -181,12 +182,12 @@ export class RepoPushQueue {
 	#landingCount = 0
 	#reservedBytes = 0
 	/**
-	 * Tips this queue last landed (`ok <ref>` + command new-oid). In-memory
-	 * only: a DO reset clears it and unknown refs fall through to Artifacts.
-	 * Writers outside the queue can only make this stale → a spurious
-	 * `fetch first` the client retries after fetch.
+	 * Tips this queue last landed (`ok <ref>` + command new-oid) plus oids it
+	 * already moved past. In-memory only: a DO reset clears it. Known-stale
+	 * means the command old-oid is in `superseded`; an unknown old-oid (outside
+	 * writer) falls through to Artifacts. Artifacts `ng` clears the entry.
 	 */
-	readonly #landedRefs = new Map<string, string>()
+	readonly #landedRefs = new Map<string, LandedRefState>()
 
 	constructor(deps: RepoPushQueueDeps) {
 		this.#store = deps.store
@@ -533,7 +534,7 @@ export class RepoPushQueue {
 		// Artifacts lock is released in queue order.
 		const body = await upstream.arrayBuffer()
 		if (commands && upstream.status >= 200 && upstream.status < 300) {
-			applyReportStatusOkToLandedRefs(
+			applyReportStatusToLandedRefs(
 				this.#landedRefs,
 				commands,
 				new Uint8Array(body),

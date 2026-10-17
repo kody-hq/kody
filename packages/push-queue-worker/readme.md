@@ -17,13 +17,15 @@ that repo across all origin isolates and colos:
    or in-band HTTP 200 sideband fatal) is retried inside the turn.
 3. Every push shares a 90s budget from arrival. Past it, or when the queue or
    storage is unavailable, the client gets `503` with `Retry-After: 2`.
-4. Before each Artifacts send, the queue compares command old-oids to tips it
-   last landed (`ok <ref>` + that command's new-oid). When every command is
-   already known-stale it answers with report-status `ng <ref> fetch first` and
-   skips the Artifacts exchange (N agents racing one ref stay O(N), not O(N²)).
-   Cache misses and mixed stale/fresh multi-ref pushes still send. Other
-   report-status (non-fast-forward, etc.) passes through unchanged. Chunks are
-   deleted after every push.
+4. Before each Artifacts send, the queue checks command old-oids against tips it
+   last landed (`ok <ref>` + that command's new-oid) and the oids it already
+   moved past. When every command's old-oid is in that superseded set it answers
+   with report-status `ng <ref> fetch first` and skips the Artifacts exchange (N
+   agents racing one ref stay O(N), not O(N²)). Unknown old-oids (outside
+   writers), cache misses, and mixed multi-ref pushes still send. Artifacts `ng`
+   clears the ref entry so a wedged cache cannot block a later fetch-based push.
+   Other report-status passes through unchanged. Chunks are deleted after every
+   push.
 
 The Artifacts token stays in memory only and is only sent to HTTPS
 `*.artifacts.cloudflare.net` receive-pack URLs (`ARTIFACTS_UPSTREAM_HOST_SUFFIX`

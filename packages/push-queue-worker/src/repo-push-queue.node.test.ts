@@ -805,6 +805,101 @@ test('mixed multi-ref: all known-stale rejects locally; any cache-miss falls thr
 	expect(calls).toBe(2)
 })
 
+test('an outside-writer tip does not wedge the cache after the client fetches', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			if (calls === 1) {
+				return new Response(reportStatusOk(['refs/heads/main']), {
+					status: 200,
+				})
+			}
+			// Second send is the client that already fetched the outside tip.
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	// Outside writer moved main to oidC. Client fetched oidC and pushes onward.
+	const afterOutside = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidC, newOid: oidD, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(afterOutside.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
+test('Artifacts ng clears the landed tip so a later fetch-based push can send', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			if (calls === 1) {
+				return new Response(reportStatusOk(['refs/heads/main']), {
+					status: 200,
+				})
+			}
+			if (calls === 2) {
+				return new Response(
+					concatBytes(
+						encodeGitPktLineBytes('unpack ok\n'),
+						encodeGitPktLineBytes('ng refs/heads/main non-fast-forward\n'),
+						encodeGitFlushPktBytes(),
+					),
+					{ status: 200 },
+				)
+			}
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	// Cache tip is oidB; client still thinks tip is oidB but Artifacts moved.
+	const rejected = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(rejected.status).toBe(200)
+	expect(await rejected.text()).toContain('ng refs/heads/main non-fast-forward')
+	expect(calls).toBe(2)
+	// After ng cleared the cache, a push based on the real tip falls through.
+	const recovered = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidD, newOid: oidA, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(recovered.status).toBe(200)
+	expect(calls).toBe(3)
+})
+
 test('unknown or unparseable command section falls through to a normal Artifacts send', async () => {
 	const { store } = createMemoryStore()
 	let calls = 0

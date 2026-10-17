@@ -1,11 +1,12 @@
 import { expect, test } from 'vitest'
 import {
 	allReceivePackCommandsKnownStale,
-	applyReportStatusOkToLandedRefs,
+	applyReportStatusToLandedRefs,
 	buildStaleFetchFirstReportStatus,
 	collectReportStatusOkRefs,
 	encodeGitFlushPktBytes,
 	encodeGitPktLineBytes,
+	type LandedRefState,
 	parseReceivePackCommands,
 } from './repo-push-queue-commands.ts'
 
@@ -67,8 +68,10 @@ test('parseReceivePackCommands reads old/new/ref and side-band capability', () =
 	).toBe(false)
 })
 
-test('allReceivePackCommandsKnownStale requires a cache hit mismatch on every command', () => {
-	const landed = new Map([['refs/heads/main', oidB]])
+test('allReceivePackCommandsKnownStale requires every old-oid to be superseded', () => {
+	const landed = new Map<string, LandedRefState>([
+		['refs/heads/main', { tip: oidB, superseded: [oidA] }],
+	])
 	expect(
 		allReceivePackCommandsKnownStale(
 			[{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' }],
@@ -78,6 +81,13 @@ test('allReceivePackCommandsKnownStale requires a cache hit mismatch on every co
 	expect(
 		allReceivePackCommandsKnownStale(
 			[{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' }],
+			landed,
+		),
+	).toBe(false)
+	// Outside writer advanced the tip: unknown old-oid must fall through.
+	expect(
+		allReceivePackCommandsKnownStale(
+			[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
 			landed,
 		),
 	).toBe(false)
@@ -103,8 +113,8 @@ test('allReceivePackCommandsKnownStale requires a cache hit mismatch on every co
 				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/feature' },
 			],
 			new Map([
-				['refs/heads/main', oidB],
-				['refs/heads/feature', oidB],
+				['refs/heads/main', { tip: oidB, superseded: [oidA] }],
+				['refs/heads/feature', { tip: oidB, superseded: [oidA] }],
 			]),
 		),
 	).toBe(true)
@@ -129,15 +139,15 @@ test('buildStaleFetchFirstReportStatus emits unpack ok and ng fetch first', () =
 	expect(collectReportStatusOkRefs(plain).size).toBe(0)
 })
 
-test('applyReportStatusOkToLandedRefs updates tips and deletes on zero new-oid', () => {
-	const landed = new Map<string, string>()
+test('applyReportStatusToLandedRefs updates tips, records superseded, and clears on ng', () => {
+	const landed = new Map<string, LandedRefState>()
 	const okBody = concat(
 		encodeGitPktLineBytes('unpack ok\n'),
 		encodeGitPktLineBytes('ok refs/heads/main\n'),
 		encodeGitPktLineBytes('ng refs/heads/other non-fast-forward\n'),
 		encodeGitFlushPktBytes(),
 	)
-	applyReportStatusOkToLandedRefs(
+	applyReportStatusToLandedRefs(
 		landed,
 		[
 			{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
@@ -145,18 +155,46 @@ test('applyReportStatusOkToLandedRefs updates tips and deletes on zero new-oid',
 		],
 		okBody,
 	)
-	expect(landed.get('refs/heads/main')).toBe(oidB)
+	expect(landed.get('refs/heads/main')).toEqual({
+		tip: oidB,
+		superseded: [oidA],
+	})
 	expect(landed.has('refs/heads/other')).toBe(false)
 
-	const deleteBody = concat(
-		encodeGitPktLineBytes('unpack ok\n'),
-		encodeGitPktLineBytes('ok refs/heads/main\n'),
-		encodeGitFlushPktBytes(),
+	applyReportStatusToLandedRefs(
+		landed,
+		[{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' }],
+		concat(
+			encodeGitPktLineBytes('unpack ok\n'),
+			encodeGitPktLineBytes('ok refs/heads/main\n'),
+			encodeGitFlushPktBytes(),
+		),
 	)
-	applyReportStatusOkToLandedRefs(
+	expect(landed.get('refs/heads/main')).toEqual({
+		tip: oidC,
+		superseded: [oidA, oidB],
+	})
+
+	applyReportStatusToLandedRefs(
+		landed,
+		[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
+		concat(
+			encodeGitPktLineBytes('unpack ok\n'),
+			encodeGitPktLineBytes('ng refs/heads/main fetch first\n'),
+			encodeGitFlushPktBytes(),
+		),
+	)
+	expect(landed.has('refs/heads/main')).toBe(false)
+
+	landed.set('refs/heads/main', { tip: oidB, superseded: [oidA] })
+	applyReportStatusToLandedRefs(
 		landed,
 		[{ oldOid: oidB, newOid: zeros, ref: 'refs/heads/main' }],
-		deleteBody,
+		concat(
+			encodeGitPktLineBytes('unpack ok\n'),
+			encodeGitPktLineBytes('ok refs/heads/main\n'),
+			encodeGitFlushPktBytes(),
+		),
 	)
 	expect(landed.has('refs/heads/main')).toBe(false)
 })
