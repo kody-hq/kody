@@ -726,11 +726,31 @@ export async function pollDeviceAuthorization(input: {
 	}
 
 	if (errorCode === 'expired_token') {
-		await deleteDevicePendingSession({
+		// Do not delete here: a concurrent poll may have stored
+		// approvedTokenPayload for persist retry. Logical expiry still
+		// clears the session when expiresAtMs elapses.
+		const latest = await loadDevicePendingSession({
 			env: input.env,
 			userId: input.userId,
 			sessionId: input.sessionId,
 		})
+		if (latest?.completion) {
+			return {
+				ok: false,
+				status: 'invalid_session',
+				error: 'Device authorization session was already completed.',
+				httpStatus: 404,
+			}
+		}
+		if (latest?.approvedTokenPayload) {
+			const cachedAccess = readOptionalStringField(
+				latest.approvedTokenPayload,
+				'access_token',
+			)
+			if (cachedAccess) {
+				return toApprovedPollResult(latest, latest.approvedTokenPayload)
+			}
+		}
 		return {
 			ok: false,
 			status: 'expired_token',
