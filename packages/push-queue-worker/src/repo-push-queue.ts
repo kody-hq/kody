@@ -382,8 +382,10 @@ export class RepoPushQueue {
 			}
 		}
 		const parsed = await this.#peekCommands(entry, loaded)
+		// Only synthesize report-status when the client asked for it; otherwise
+		// fall through so a no-status client cannot mistake HTTP 200 for success.
 		if (
-			parsed &&
+			parsed?.reportStatus &&
 			allReceivePackCommandsKnownStale(parsed.commands, this.#landedRefs)
 		) {
 			return this.#rejectStale(entry, parsed.commands, parsed.sideband)
@@ -420,6 +422,7 @@ export class RepoPushQueue {
 	): Promise<{
 		commands: Array<ReceivePackCommand>
 		sideband: boolean
+		reportStatus: boolean
 	} | null> {
 		try {
 			const prefix = await this.#loadCommandPrefix(entry, loaded)

@@ -805,6 +805,38 @@ test('mixed multi-ref: all known-stale rejects locally; any cache-miss falls thr
 	expect(calls).toBe(2)
 })
 
+test('known-stale without report-status falls through instead of synthesizing status', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	const noStatus = await queue.handle(
+		pushRequest(
+			receivePackRequestBody(
+				[{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/main' }],
+				'side-band-64k',
+			),
+		),
+	)
+	expect(noStatus.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
 test('an outside-writer tip does not wedge the cache after the client fetches', async () => {
 	const { store } = createMemoryStore()
 	let calls = 0

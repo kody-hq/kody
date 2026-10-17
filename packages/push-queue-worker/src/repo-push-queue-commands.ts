@@ -20,6 +20,8 @@ export type ParsedReceivePackCommands = {
 	commands: Array<ReceivePackCommand>
 	/** True when the first command advertised side-band or side-band-64k. */
 	sideband: boolean
+	/** True when the first command advertised report-status. */
+	reportStatus: boolean
 }
 
 /**
@@ -98,6 +100,7 @@ export function parseReceivePackCommands(
 ): ParsedReceivePackCommands | null {
 	const commands: Array<ReceivePackCommand> = []
 	let sideband = false
+	let reportStatus = false
 	let offset = 0
 	let sawFlush = false
 	while (offset + 4 <= body.byteLength) {
@@ -118,9 +121,13 @@ export function parseReceivePackCommands(
 				.slice(nul + 1)
 				.replace(/\n$/, '')
 				.toLowerCase()
-			sideband = caps
 				.split(/\s+/)
-				.some((cap) => cap === 'side-band' || cap === 'side-band-64k')
+			sideband = caps.some(
+				(cap) => cap === 'side-band' || cap === 'side-band-64k',
+			)
+			reportStatus = caps.some(
+				(cap) => cap === 'report-status' || cap === 'report-status-v2',
+			)
 			text = text.slice(0, nul)
 		}
 		text = text.replace(/\n$/, '')
@@ -139,7 +146,7 @@ export function parseReceivePackCommands(
 		})
 	}
 	if (!sawFlush || commands.length === 0) return null
-	return { commands, sideband }
+	return { commands, sideband, reportStatus }
 }
 
 /**

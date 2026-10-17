@@ -53,6 +53,7 @@ test('parseReceivePackCommands reads old/new/ref and side-band capability', () =
 	)
 	expect(parsed).toEqual({
 		sideband: true,
+		reportStatus: true,
 		commands: [
 			{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
 			{ oldOid: zeros, newOid: oidC, ref: 'refs/heads/feature' },
@@ -65,6 +66,14 @@ test('parseReceivePackCommands reads old/new/ref and side-band capability', () =
 				'report-status',
 			),
 		)?.sideband,
+	).toBe(false)
+	expect(
+		parseReceivePackCommands(
+			receivePackBody(
+				[{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' }],
+				'side-band-64k',
+			),
+		)?.reportStatus,
 	).toBe(false)
 })
 
