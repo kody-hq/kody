@@ -1,8 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { createVerifyEmailHandler } from '#app/handlers/verify-email.ts'
+import { executeVerifyEmail } from '#app/handlers/verify-email.ts'
 import { verifyEmailToken } from '#app/email-verification.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { sendConnectAgentEmail } from '#app/user-account-emails.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
@@ -22,12 +21,6 @@ vi.mock('cloudflare:workers', async (importOriginal) => {
 
 vi.mock('#app/email-verification.ts', () => ({
 	verifyEmailToken: vi.fn(),
-}))
-
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: vi.fn(async ({ loaderData }) =>
-		Response.json({ ok: true, loaderData }),
-	),
 }))
 
 vi.mock('#app/user-account-emails.ts', () => ({
@@ -55,56 +48,39 @@ test('verify-email handler wires success CTA from redirectTo and rejects open re
 		stableUserId: ownerIdFromStored('user_verified'),
 		newlyVerified: false,
 	})
-	const handler = createVerifyEmailHandler({
+	const env = {
 		APP_DB: {} as D1Database,
-	} as Env)
+	} as Env
 
 	const oauthResume = '/oauth/authorize?client_id=demo'
-	const oauthResponse = await handler.handler({
-		request: new Request(
-			`https://example.com/verify-email?token=ok&redirectTo=${encodeURIComponent(oauthResume)}`,
-		),
-		url: new URL(
-			`https://example.com/verify-email?token=ok&redirectTo=${encodeURIComponent(oauthResume)}`,
-		),
-		params: {},
-	} as never)
-	expect(await oauthResponse.json()).toEqual({
+	const oauthResponse = await executeVerifyEmail({
+		request: new Request('https://example.com/_serverFn/verify'),
+		env,
+		token: 'ok',
+		redirectTo: oauthResume,
+	})
+	expect(oauthResponse).toMatchObject({
 		ok: true,
-		loaderData: {
-			emailVerification: {
-				ok: true,
-				kind: 'email_verify',
-				message: expect.any(String),
-				ctaHref: oauthResume,
-				ctaLabel: 'Continue authorization',
-			},
-		},
+		kind: 'email_verify',
+		message: expect.any(String),
+		ctaHref: oauthResume,
+		ctaLabel: 'Continue authorization',
 	})
 
-	const maliciousResponse = await handler.handler({
-		request: new Request(
-			'https://example.com/verify-email?token=ok&redirectTo=https%3A%2F%2Fevil.example',
-		),
-		url: new URL(
-			'https://example.com/verify-email?token=ok&redirectTo=https%3A%2F%2Fevil.example',
-		),
-		params: {},
-	} as never)
-	expect(await maliciousResponse.json()).toEqual({
+	const maliciousResponse = await executeVerifyEmail({
+		request: new Request('https://example.com/_serverFn/verify'),
+		env,
+		token: 'ok',
+		redirectTo: 'https://evil.example',
+	})
+	expect(maliciousResponse).toMatchObject({
 		ok: true,
-		loaderData: {
-			emailVerification: {
-				ok: true,
-				kind: 'email_verify',
-				message: expect.any(String),
-				ctaHref: '/onboarding',
-				ctaLabel: 'Continue to onboarding',
-			},
-		},
+		kind: 'email_verify',
+		message: expect.any(String),
+		ctaHref: '/onboarding',
+		ctaLabel: 'Continue to onboarding',
 	})
 
-	expect(renderAppPage).toHaveBeenCalled()
 	expect(sendConnectAgentEmail).not.toHaveBeenCalled()
 	expect(waitUntilImpl).not.toHaveBeenCalled()
 	expect(scheduleKitSubscriberSync).not.toHaveBeenCalled()
@@ -126,17 +102,17 @@ test('verify-email sends the connect-agent mail only on newly verified accounts'
 		stableUserId: ownerIdFromStored('user_verified'),
 		newlyVerified: true,
 	})
-	const handler = createVerifyEmailHandler({
+	const env = {
 		APP_DB: {} as D1Database,
-	} as Env)
-	const handled = handler.handler({
+	} as Env
+	const handled = executeVerifyEmail({
 		request: new Request('https://example.com/verify-email?token=ok'),
-		url: new URL('https://example.com/verify-email?token=ok'),
-		params: {},
-	} as never)
+		env,
+		token: 'ok',
+	})
 	const response = await Promise.race([
 		handled,
-		new Promise<Response>((_, reject) => {
+		new Promise<Awaited<ReturnType<typeof executeVerifyEmail>>>((_, reject) => {
 			setTimeout(
 				() => reject(new Error('verify page waited on the connect-agent send')),
 				1_000,

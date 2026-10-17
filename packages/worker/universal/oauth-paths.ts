@@ -1,7 +1,6 @@
 /**
- * Pathnames owned by the Cloudflare OAuth provider wrapper (not Remix
- * `routes.ts` / `router.map`). Client SPA registries and document-head key
- * off these so authorize/callback shells stay aligned with the provider.
+ * Shared OAuth protocol paths. The Cloudflare provider wrapper and native
+ * Start consent/callback documents use these to keep their public URLs aligned.
  */
 export const oauthPaths = {
 	authorize: '/oauth/authorize',

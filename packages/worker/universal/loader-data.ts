@@ -27,7 +27,7 @@ import { type PackageCollaboratorsLoaderData } from '#universal/package-collabor
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
-import { type PackageRepoActions } from '#universal/package-title-actions.tsx'
+import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
 import { type LandingHeroVideo } from '#universal/landing-hero-copy.ts'
 import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
@@ -352,7 +352,7 @@ export function toProfileListLoaderData(
 	}
 }
 
-export type ProfileUnavailableLoaderData = {
+type ProfileUnavailableLoaderData = {
 	ok: false
 	unavailable: true
 }
@@ -454,8 +454,7 @@ export type AdminCreditWalletSummary = {
 	recent: Array<AdminCreditLedgerItem>
 }
 
-/** One overridable cap on the admin org limits panel. */
-export type AdminOrgLimitRow = {
+type AdminOrgLimitRow = {
 	key: LimitOverrideKey
 	label: string
 	/** The plan's limit (seat pool and credits ceiling); null = no window. */
@@ -490,27 +489,13 @@ export type AdminCreatedUserSetup = {
 	setupTokenExpiresAt: number
 }
 
-/**
- * POST (mutation) responses also carry the updated target user so the
- * client can patch it into an infinite-scroll list that may have scrolled
- * past the first page.
- */
-export type AdminUsersMutationData = AdminUsersLoaderData & {
-	updatedUser: AdminUserListItem | null
+/** Admin writes return their outcome, not another copy of the paginated list. */
+export type AdminUsersMutationData = {
+	ok: true
+	updatedUser?: AdminUserListItem | null
 	verifyUrl?: string | null
 	verifyUrlExpiresAt?: number | null
 	createdUser?: AdminCreatedUserSetup
-	/**
-	 * Create succeeded but `loadAdminUsersData` failed. The client must keep
-	 * the current list window and still show `createdUser` / the setup link.
-	 */
-	listRefreshFailed?: boolean
-	/**
-	 * The created row matches the request's active list filters. The client
-	 * only prepends `updatedUser` when this is true, so a search/role/
-	 * verification filter cannot gain a non-matching row.
-	 */
-	createdUserInFilteredList?: boolean
 }
 
 type AdminRoleListItem = {
@@ -1301,7 +1286,7 @@ type OrgSettingsCustomHostnameView = {
 	updatedAt: string
 }
 
-export type OrgSettingsCustomDomainsView = {
+type OrgSettingsCustomDomainsView = {
 	hostnames: Array<OrgSettingsCustomHostnameView>
 	dnsTarget: string | null
 }
@@ -1507,7 +1492,7 @@ export type OrgCollaboratorsLoaderData = {
 	canManage: boolean
 }
 
-export type AccountConnectionListItem = {
+type AccountConnectionListItem = {
 	provider: string
 	label: string
 	displayName: string | null
@@ -1830,7 +1815,8 @@ export type PackageWebhookRevealedUrl = {
 	url: string
 }
 
-export type PackageWebhooksActionPayload = PackageWebhooksLoaderData & {
+export type PackageWebhooksActionPayload = {
+	ok: true
 	revealed?: PackageWebhookRevealedUrl
 	/**
 	 * Set by mint / rotate while the webhook is not on for anyone: minting
@@ -1844,42 +1830,6 @@ export type PendingVerificationLoaderData = {
 	email: string
 	emailVerificationDelivery?: EmailVerificationDelivery | null
 }
-
-export type EmailVerificationLoaderData =
-	| {
-			ok: true
-			kind:
-				| 'email_verify'
-				| 'email_change'
-				| 'email_claim_release'
-				| 'email_destination'
-			message: string
-			ctaHref?: string
-			ctaLabel?: string
-	  }
-	| {
-			ok: false
-			error: string
-			kind?:
-				| 'email_verify'
-				| 'email_change'
-				| 'email_claim_release'
-				| 'email_destination'
-			reason?: 'missing_token' | 'invalid_token' | 'expired_token'
-			ctaHref?: string
-			ctaLabel?: string
-	  }
-
-export type TipsUnsubscribeLoaderData =
-	| {
-			ok: true
-			alreadyOptedOut: boolean
-			message: string
-	  }
-	| {
-			ok: false
-			error: string
-	  }
 
 export type AccountIntegrationListItem = {
 	name: string
@@ -1995,25 +1945,6 @@ export type AccountIntegrationsLoaderData = {
 	platformCatalog?: Array<PlatformIntegrationCatalogItem>
 }
 
-export type AccountIntegrationDetailLoaderData = {
-	ok: true
-	integration: AccountIntegrationListItem | null
-	/**
-	 * Always false. Built-in connects start from `platform=<slug>` discovery
-	 * links instead; the field stays so older clients keep a stable shape.
-	 */
-	builtInAvailable?: boolean
-	/** See {@link ConnectOauthExistingConnection}. */
-	existingConnection?: ConnectOauthExistingConnection | null
-	/**
-	 * True when the user already stores the client-secret secret the connect
-	 * page would use for this name (the stored integration's secret name,
-	 * else `<providerKey>ClientSecret`). Lets the page render its setup /
-	 * ready state without a follow-up secrets fetch.
-	 */
-	hasStoredClientSecret?: boolean
-}
-
 /**
  * The connection currently stored under a requested name — enough for the
  * connect page to warn before an OAuth flow replaces it with a different app.
@@ -2033,11 +1964,11 @@ export type ConnectOauthLoaderData = {
 	ok: true
 	provider: string | null
 	integration: AccountIntegrationListItem | null
-	/** See {@link AccountIntegrationDetailLoaderData.builtInAvailable}. */
+	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */
 	existingConnection?: ConnectOauthExistingConnection | null
-	/** See {@link AccountIntegrationDetailLoaderData.hasStoredClientSecret}. */
+	/** Whether the stored client-secret secret is available for this connection. */
 	hasStoredClientSecret?: boolean
 	/**
 	 * Absolute redirect (callback) URI for this deployment — the page URL
@@ -2589,7 +2520,7 @@ export type AccountWorkflowListItem = {
 	lastError: string | null
 }
 
-export type AccountWorkflowDetail = AccountWorkflowListItem
+type AccountWorkflowDetail = AccountWorkflowListItem
 
 export type AccountWorkflowsLoaderData = {
 	ok: true
@@ -2644,7 +2575,7 @@ export type AccountActivityRunDetail = AccountActivityRunListItem & {
 	logs: Array<AccountActivityRunLog>
 }
 
-export type AccountActivitySummary = {
+type AccountActivitySummary = {
 	since: string
 	total: number
 	errors: number
@@ -2653,7 +2584,7 @@ export type AccountActivitySummary = {
 	running: number
 }
 
-export type AccountActivityLoaderData = {
+type AccountActivityLoaderData = {
 	ok: true
 	viewFilter: AccountActivityViewFilter
 	statusFilter: AccountActivityStatusFilter
@@ -2679,7 +2610,7 @@ export type AccountMemoryListItem = {
 	updatedAt: string
 }
 
-export type AccountMemoryDetail = AccountMemoryListItem & {
+type AccountMemoryDetail = AccountMemoryListItem & {
 	details: string
 	sourceUris: Array<string>
 	dedupeKey: string | null
@@ -2959,8 +2890,6 @@ export type AppLoaderData = {
 	accountMemories?: AccountMemoriesLoaderData
 	accountEmail?: AccountEmailLoaderData
 	authProviders?: AuthProvidersLoaderData
-	emailVerification?: EmailVerificationLoaderData
-	tipsUnsubscribe?: TipsUnsubscribeLoaderData
 	oauthAuthorize?: OAuthAuthorizeLoaderData
 	packageAppOauthConsent?: PackageAppOauthConsentLoaderData
 	accountBilling?: AccountBillingLoaderData

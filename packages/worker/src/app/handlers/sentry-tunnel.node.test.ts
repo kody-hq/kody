@@ -34,9 +34,7 @@ function tunnelRequest(
 			body,
 		}),
 		url: new URL('http://example.com/sentry-tunnel'),
-	} as unknown as Parameters<
-		ReturnType<typeof createSentryTunnelHandler>['handler']
-	>[0]
+	} as unknown as Parameters<ReturnType<typeof createSentryTunnelHandler>>[0]
 }
 
 function stubFetch(fetchMock: ReturnType<typeof vi.fn>) {
@@ -67,7 +65,7 @@ test('sentry tunnel forwards matching envelopes and rejects everything else', as
 		SENTRY_DSN: configuredDsn,
 		APP_DB: createAppDb(),
 	})
-	const forwarded = await forwardHandler.handler(
+	const forwarded = await forwardHandler(
 		tunnelRequest(buildEnvelope(configuredDsn)),
 	)
 	expect(forwarded.status).toBe(200)
@@ -87,7 +85,7 @@ test('sentry tunnel forwards matching envelopes and rejects everything else', as
 	})
 	expect(
 		(
-			await rejectHandler.handler(
+			await rejectHandler(
 				tunnelRequest(buildEnvelope('https://other@o999.ingest.sentry.io/1')),
 			)
 		).status,
@@ -95,21 +93,21 @@ test('sentry tunnel forwards matching envelopes and rejects everything else', as
 	// Truthy non-string dsn values must 403, not crash.
 	expect(
 		(
-			await rejectHandler.handler(
+			await rejectHandler(
 				tunnelRequest('{"dsn":{"nested":true}}\n{"type":"event"}'),
 			)
 		).status,
 	).toBe(403)
 	expect(
 		(
-			await createSentryTunnelHandler({ APP_DB: createAppDb() }).handler(
+			await createSentryTunnelHandler({ APP_DB: createAppDb() })(
 				tunnelRequest(buildEnvelope(configuredDsn)),
 			)
 		).status,
 	).toBe(404)
-	expect(
-		(await rejectHandler.handler(tunnelRequest('not json\nrest'))).status,
-	).toBe(400)
+	expect((await rejectHandler(tunnelRequest('not json\nrest'))).status).toBe(
+		400,
+	)
 	expect(rejectMock).not.toHaveBeenCalled()
 
 	const failMock = vi.fn(async () => {
@@ -122,8 +120,7 @@ test('sentry tunnel forwards matching envelopes and rejects everything else', as
 		APP_DB: createAppDb(),
 	})
 	expect(
-		(await failHandler.handler(tunnelRequest(buildEnvelope(configuredDsn))))
-			.status,
+		(await failHandler(tunnelRequest(buildEnvelope(configuredDsn)))).status,
 	).toBe(502)
 })
 
@@ -140,7 +137,7 @@ test('sentry tunnel caps forwarding per address and needs a declared length', as
 		SENTRY_TUNNEL_RATE_LIMITER: { limit } as unknown as RateLimit,
 	})
 	const flood = () =>
-		handler.handler(
+		handler(
 			tunnelRequest(buildEnvelope(configuredDsn), {
 				'CF-Connecting-IP': '198.51.100.42',
 			}),
@@ -156,7 +153,7 @@ test('sentry tunnel caps forwarding per address and needs a declared length', as
 	expect(forwardMock).toHaveBeenCalledTimes(2)
 
 	// An undeclared body length is refused before anything is buffered.
-	const chunked = await handler.handler(
+	const chunked = await handler(
 		tunnelRequest(buildEnvelope(configuredDsn), { 'content-length': '' }),
 	)
 	expect(chunked.status).toBe(411)
@@ -177,7 +174,7 @@ test('sentry tunnel falls back to D1 rate limiting without the binding', async (
 		attempt <= sentryTunnelRateLimitConfig.maxRequests;
 		attempt++
 	) {
-		const response = await handler.handler(
+		const response = await handler(
 			tunnelRequest(buildEnvelope(configuredDsn), {
 				'CF-Connecting-IP': '203.0.113.9',
 			}),

@@ -239,7 +239,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 ### M6 — Origin SSR graph eagerly imports `marked`
 
 - **Area:** performance (Worker startup)
-- **Location:** origin router → `packages/worker/src/app/handlers/blog.tsx` →
+- **Location:** origin router → `packages/worker/src/app/handlers/blog.ts` →
   highlight/markdown path; `startup-budget.md`
 - **Evidence:** `marked` is listed as a heavy module-scope lib. The origin
   router statically imports blog. Client `markdown-view.tsx` is already in a
@@ -253,7 +253,8 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 ### M7 — Mobile site menu overlay does not trap Tab
 
 - **Area:** accessibility
-- **Location:** `SiteHeader` in `packages/worker/client/site-header.tsx`
+- **Location:** `SiteHeader` in
+  `packages/worker/start/components/site-header.tsx`
 - **Evidence:** Native `popover` light-dismisses on Escape/outside click and
   uses a dimmed `::backdrop`, but does not trap Tab. Tab from the last menu link
   continues into content behind the overlay.
@@ -268,17 +269,18 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 
 - **Area:** accessibility
 - **Location:**
-  - `YouTubeLightPlayer` in `packages/worker/client/youtube-light-player.tsx`
-    (visually hidden “Play video”; `title` is iframe-only)
+  - `YouTubeLightPlayer` in
+    `packages/worker/start/components/youtube-light-player.tsx` (visually hidden
+    “Play video”; `title` is iframe-only)
   - `ProfileRepositorySearchInput` in
-    `packages/worker/client/routes/profile-search-field.tsx`
+    `packages/worker/start/components/profile-search-field.tsx`
     (`role="searchbox"`, placeholder only, no `aria-label`)
   - `renderCopyPromptPill` in
-    `packages/worker/universal/fork-outdated-copy-button.tsx` (visible “Fork
-    outdated” / “Forked”; real instruction is `aria-hidden` tooltip via
+    `packages/worker/start/components/fork-outdated-copy-button.tsx` (visible
+    “Fork outdated” / “Forked”; real instruction is `aria-hidden` tooltip via
     `aria-describedby`)
   - Secret allowed-host rows in
-    `packages/worker/client/routes/secret-editor-fields.tsx`
+    `packages/worker/start/pages/secret-editor-fields.tsx`
 - **Impact:** Homepage play, `/@username` search, community copy pills, and
   secret-host fields fail WCAG 4.1.2 / 3.3.2 for screen reader users.
 - **Recommended fix:** `Play ${title}` on the poster button;
@@ -291,7 +293,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 
 - **Area:** accessibility
 - **Location:** `listenToRouterNavigationEnd` in
-  `packages/worker/client/app.tsx`
+  `packages/worker/start/routes/__root.tsx`
 - **Evidence:** Docs set `data-docs-heading` on the article `h1` and focus that.
   Account/admin `h1`s have no equivalent, so focus lands on the `#main`
   landmark.
@@ -320,7 +322,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 
 - **Area:** accessibility / loading UX
 - **Location:** `createPackageWebhooksController.render` in
-  `packages/worker/client/routes/package-webhook-settings.tsx`
+  `packages/worker/start/pages/package-webhook-settings.tsx`
 - **Evidence:**
   `showLoading = !isCurrent || status === 'idle' || status === 'loading'`
   replaces the card list with “Loading webhooks…”. Parent settings correctly
@@ -384,7 +386,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 
 - **Area:** security
 - **Location:**
-  `packages/worker/src/app/handlers/account-resend-verification.ts`
+  `packages/worker/src/identity/account-resend-verification-operations.ts`
 - **Evidence:** Non-JSON requests still send mail; `redirectTo` comes from the
   query string. Rate-limited. SameSite still blocks cross-site POST cookies.
 - **Impact:** Extra verification emails if SameSite fails.

@@ -10,15 +10,14 @@ User-added MCP servers and the OAuth clients they mint.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/mcp-servers.json
-node tools/control-kody.ts request GET /account/mcp-oauth-clients.json
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/mcp-servers
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET|POST /account/mcp-servers.json`
-- `GET|POST /account/mcp-oauth-clients.json`
-- `/account/mcp-servers/oauth/callback`
+The external OAuth callback remains `/account/mcp-servers/oauth/callback`.
 
 ## Gotchas
 

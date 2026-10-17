@@ -1,12 +1,10 @@
+import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import {
 	personalOrgId,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { jsonResponse } from '#worker/json-response.ts'
-import { type Action } from 'remix/router'
 import {
 	deriveOnboardingChecklist,
-	dismissOnboardingChecklist,
 	loadOnboardingAccessWin,
 	loadOnboardingAccessWinMemorySubject,
 	readOnboardingChecklistDismissed,
@@ -22,7 +20,7 @@ import {
 	loadOnboardingMcpChooserListings,
 } from '#app/community-data.ts'
 import {
-	loadMcpClientHubSnapshotOrNull,
+	loadMcpClientHubReadSnapshotOrNull,
 	mcpServerStatusError,
 } from '#mcp/capabilities/mcp-servers/shared.ts'
 import { listMcpServerSettings } from '#worker/mcp-client/settings-service.ts'
@@ -50,23 +48,15 @@ import {
 	loadPlatformIntegrationCatalog,
 	onboardingFeaturedPlatformIntegrationSlugs,
 } from '#app/platform-integration-catalog.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
-import { type routes } from '#universal/routes.ts'
 import {
 	onboardingIndexRedirectHref,
-	onboardingStepPaths,
-	onboardingWizardStepHref,
-	parseOnboardingPathname,
 	type OnboardingWizardProgress,
 } from '#universal/onboarding-process.ts'
 import {
 	highlightResultsByKey,
 	highlightSnippets,
 } from '#app/highlight-code.ts'
-import {
-	collectOnboardingMcpSnippets,
-	pickOnboardingAgentChooser,
-} from '#universal/onboarding-mcp-clients.ts'
+import { collectOnboardingMcpSnippets } from '#universal/onboarding-mcp-clients.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,
@@ -80,6 +70,7 @@ import {
 export async function loadChecklist(
 	env: Env,
 	userId: OwnerId,
+	personId: OwnerId,
 	username: string,
 	hasMcpClient: boolean,
 	options?: { hasAccessWin?: boolean; hasSecondMcpClient?: boolean },
@@ -88,25 +79,27 @@ export async function loadChecklist(
 		deriveOnboardingChecklist({
 			env,
 			userId,
+			personId,
 			emailVerified: true,
 			hasMcpClient,
 			hasAccessWin: options?.hasAccessWin,
 			hasSecondMcpClient: options?.hasSecondMcpClient,
 		}),
-		readOnboardingChecklistDismissed({ env, userId }),
+		readOnboardingChecklistDismissed({ env, personId }),
 	])
 	return { username, items: checklist.items, dismissed }
 }
 
-async function attachOnboardingProgress(
+export async function attachOnboardingProgress(
 	env: Env,
 	userId: OwnerId,
+	personId: OwnerId,
 	username: string,
 	onboarding: OnboardingLoaderData,
 ) {
 	const [hasAccessWin, persistedPackageName, accessWinMemorySubject] =
 		await Promise.all([
-			loadOnboardingAccessWin(env, userId),
+			loadOnboardingAccessWin(env, userId, personId),
 			loadPersistedPackageName(env, userId),
 			loadOnboardingAccessWinMemorySubject(env, userId),
 		])
@@ -116,6 +109,7 @@ async function attachOnboardingProgress(
 	onboarding.checklist = await loadChecklist(
 		env,
 		userId,
+		personId,
 		username,
 		onboarding.hasMcpClient,
 		{
@@ -153,7 +147,7 @@ async function loadOnboardingMcpChooserOverlay(
 		if (settings.length === 0) {
 			return { settings: [], statusByServerId: undefined }
 		}
-		const snapshot = await loadMcpClientHubSnapshotOrNull({ env, userId })
+		const snapshot = await loadMcpClientHubReadSnapshotOrNull({ env, userId })
 		const statusByServerId = new Map(
 			settings.map((setting) => {
 				const server =
@@ -164,7 +158,7 @@ async function loadOnboardingMcpChooserOverlay(
 					{
 						connected: server?.state === 'ready',
 						authorizationPending: server?.authorizationPending ?? false,
-						state: server?.state ?? 'disconnected',
+						state: server?.state ?? 'unknown',
 						error: mcpServerStatusError({ setting, snapshot: server }),
 					},
 				] as const
@@ -226,7 +220,7 @@ async function loadOnboardingChooserMcpState(
 	}
 }
 
-async function loadOnboardingChooserFields(
+export async function loadOnboardingChooserFields(
 	env: Env,
 	request: Request,
 	userId?: OwnerId | null,
@@ -260,11 +254,12 @@ async function loadOnboardingChooserFields(
 async function loadOnboardingResumeProgress(
 	env: Env,
 	userId: OwnerId,
+	personId: OwnerId,
 ): Promise<OnboardingWizardProgress> {
 	const helpers = await resolveOAuthHelpers<OAuthGrantListHelpers>(env)
 	const [inbound, hasAccessWin] = await Promise.all([
-		loadInboundMcpConnectionState(helpers, userId),
-		loadOnboardingAccessWin(env, userId),
+		loadInboundMcpConnectionState(helpers, personId),
+		loadOnboardingAccessWin(env, userId, personId),
 	])
 	return {
 		hasMcpClient: inbound.uniqueClientCount > 0,
@@ -273,7 +268,7 @@ async function loadOnboardingResumeProgress(
 	}
 }
 
-async function redirectOnboardingIndex(env: Env, request: Request) {
+export async function redirectOnboardingIndex(env: Env, request: Request) {
 	const requestUrl = new URL(request.url)
 	const user = await readAuthenticatedAppUser(request, env, {
 		prefetchFeatureFlags: true,
@@ -289,7 +284,8 @@ async function redirectOnboardingIndex(env: Env, request: Request) {
 	}
 	const progress = await loadOnboardingResumeProgress(
 		env,
-		// person-keyed (not personal org)
+		personalOrgIdForPerson(user.mcpUser),
+		// OAuth connections are person-owned; the chooser inventory is org-owned.
 		personalOrgId(user.mcpUser.userId),
 	)
 	return Response.redirect(
@@ -301,7 +297,7 @@ async function redirectOnboardingIndex(env: Env, request: Request) {
 	)
 }
 
-function redirectUnverifiedToPending(request: Request) {
+export function redirectUnverifiedToPending(request: Request) {
 	const requestUrl = new URL(request.url)
 	const redirectTo = normalizeRedirectTo(
 		requestUrl.searchParams.get('redirectTo'),
@@ -313,7 +309,7 @@ function redirectUnverifiedToPending(request: Request) {
 	return Response.redirect(pendingUrl, 302)
 }
 
-async function withOnboardingHighlights(
+export async function withOnboardingHighlights(
 	env: Env,
 	data: OnboardingLoaderData,
 	serverTiming?: Array<ServerTimingEntry>,
@@ -329,189 +325,60 @@ async function withOnboardingHighlights(
 	}
 }
 
-export function createOnboardingHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const requestUrl = new URL(request.url)
-			if (requestUrl.pathname === onboardingStepPaths.index) {
-				return redirectOnboardingIndex(env, request)
-			}
-			const location = parseOnboardingPathname(requestUrl.pathname)
-			if (location && !location.valid) {
-				const target = new URL(
-					onboardingWizardStepHref(location.step, requestUrl.search),
-					request.url,
-				)
-				return Response.redirect(target, 302)
-			}
-			const serverTiming: Array<ServerTimingEntry> = []
-			const user = await readAuthenticatedAppUser(request, env, {
-				prefetchFeatureFlags: true,
-			})
-			if (!user) {
-				const { persistContext: _persistContext, ...chooser } =
-					await pushServerTiming(serverTiming, 'listings', () =>
-						loadOnboardingChooserFields(env, request),
-					)
-				const onboarding = await withOnboardingHighlights(
-					env,
-					{
-						...loadPublicOnboardingData({
-							env,
-							requestUrl: request.url,
-						}),
-						...chooser,
-					},
-					serverTiming,
-				)
-				return renderAppPage({
-					request,
-					env,
-					loaderData: {
-						onboarding,
-						onboardingAgentChooser: pickOnboardingAgentChooser(),
-					},
-					serverTiming,
-				})
-			}
-
-			if (!user.emailVerified) {
-				return redirectUnverifiedToPending(request)
-			}
-
-			const chooser = await pushServerTiming(serverTiming, 'listings', () =>
+export async function readOnboardingPageData(env: Env, request: Request) {
+	const serverTiming: Array<ServerTimingEntry> = []
+	const user = await readAuthenticatedAppUser(request, env)
+	if (!user) {
+		const { persistContext: _persistContext, ...chooser } =
+			await pushServerTiming(serverTiming, 'listings', () =>
+				loadOnboardingChooserFields(env, request),
+			)
+		const payload = await withOnboardingHighlights(
+			env,
+			{
+				...loadPublicOnboardingData({ env, requestUrl: request.url }),
+				...chooser,
+			},
+			serverTiming,
+		)
+		return {
+			payload,
+			serverTiming,
+			headers: anonymousPersonalizedJsonCacheHeaders({
+				personalized: false,
+				request,
+			}),
+		}
+	}
+	// Keep unverified callers' setup fields empty until verification succeeds.
+	const chooser = user.emailVerified
+		? await pushServerTiming(serverTiming, 'listings', () =>
 				loadOnboardingChooserFields(
 					env,
 					request,
-					personalOrgId(user.mcpUser.userId),
+					personalOrgIdForPerson(user.mcpUser),
 				),
 			)
-			const onboarding = await loadOnboardingData({
-				env,
-				requestUrl: request.url,
-				stableUserId: personalOrgId(user.mcpUser.userId),
-				username: user.username,
-				emailVerified: user.emailVerified,
-				...chooser,
-			})
-			await attachOnboardingProgress(
-				env,
-				personalOrgId(user.mcpUser.userId),
-				user.username,
-				onboarding,
-			)
-			return renderAppPage({
-				request,
-				env,
-				loaderData: {
-					onboarding: await withOnboardingHighlights(
-						env,
-						onboarding,
-						serverTiming,
-					),
-					onboardingAgentChooser: pickOnboardingAgentChooser(),
-				},
-				serverTiming,
-			})
-		},
-	} satisfies Action<
-		| typeof routes.onboarding
-		| typeof routes.onboardingStep1
-		| typeof routes.onboardingStep1Agent
-		| typeof routes.onboardingStep2
-		| typeof routes.onboardingStep2Service
-		| typeof routes.onboardingStep3
-		| typeof routes.onboardingStep3Agent
-	>
-}
-
-export function createOnboardingApiHandler(env: Env) {
+		: null
+	const onboarding = await loadOnboardingData({
+		env,
+		requestUrl: request.url,
+		personId: personalOrgId(user.mcpUser.userId),
+		username: user.username,
+		emailVerified: user.emailVerified,
+		...chooser,
+	})
+	if (user.emailVerified)
+		await attachOnboardingProgress(
+			env,
+			personalOrgIdForPerson(user.mcpUser),
+			personalOrgId(user.mcpUser.userId),
+			user.username,
+			onboarding,
+		)
 	return {
-		middleware: [],
-		async handler({ request }) {
-			if (request.method !== 'GET') {
-				return jsonResponse({ ok: false, error: 'Method not allowed.' }, 405)
-			}
-
-			const serverTiming: Array<ServerTimingEntry> = []
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				const { persistContext: _persistContext, ...chooser } =
-					await pushServerTiming(serverTiming, 'listings', () =>
-						loadOnboardingChooserFields(env, request),
-					)
-				return jsonResponse(
-					await withOnboardingHighlights(
-						env,
-						{
-							...loadPublicOnboardingData({
-								env,
-								requestUrl: request.url,
-							}),
-							...chooser,
-						},
-						serverTiming,
-					),
-					{
-						serverTiming,
-						headers: anonymousPersonalizedJsonCacheHeaders({
-							personalized: false,
-							request,
-						}),
-					},
-				)
-			}
-
-			// Unverified callers still get a payload so clients can detect the
-			// gate; MCP URL/setup and featured fields stay empty until
-			// verification succeeds.
-			const chooser = user.emailVerified
-				? await pushServerTiming(serverTiming, 'listings', () =>
-						loadOnboardingChooserFields(
-							env,
-							request,
-							personalOrgId(user.mcpUser.userId),
-						),
-					)
-				: null
-			const onboarding = await loadOnboardingData({
-				env,
-				requestUrl: request.url,
-				stableUserId: personalOrgId(user.mcpUser.userId),
-				username: user.username,
-				emailVerified: user.emailVerified,
-				...chooser,
-			})
-			if (user.emailVerified) {
-				await attachOnboardingProgress(
-					env,
-					personalOrgId(user.mcpUser.userId),
-					user.username,
-					onboarding,
-				)
-			}
-			return jsonResponse(
-				await withOnboardingHighlights(env, onboarding, serverTiming),
-				{ serverTiming },
-			)
-		},
-	} satisfies Action<typeof routes.onboardingApi>
-}
-
-export function createOnboardingChecklistDismissHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Sign in required.' }, 401)
-			}
-			await dismissOnboardingChecklist({
-				env,
-				userId: personalOrgId(user.mcpUser.userId),
-			})
-			return jsonResponse({ ok: true })
-		},
-	} satisfies Action<typeof routes.onboardingChecklistDismissPost>
+		payload: await withOnboardingHighlights(env, onboarding, serverTiming),
+		serverTiming,
+		headers: undefined,
+	}
 }

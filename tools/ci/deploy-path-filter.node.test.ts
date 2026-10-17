@@ -26,17 +26,18 @@ test('production deploy path filter selects worker scripts only when their sourc
 		[
 			[
 				'packages/worker/src/blog/posts/your-assistants-home.md',
-				'packages/worker/client/routes/blog.tsx',
+				'packages/worker/start/routes/blog.tsx',
 				'packages/worker/public/styles.css',
 			],
 			deploys('main'),
 		],
+		[['packages/worker/start/server/account.ts'], deploys('main')],
 		[['docs/guides/what-is-kody.md'], deploys('main', 'platform')],
 		[
 			[
 				'docs/guides/what-is-kody.md',
 				'packages/worker/src/blog/posts/your-assistants-home.md',
-				'packages/worker/client/routes/blog.tsx',
+				'packages/worker/start/routes/blog.tsx',
 			],
 			deploys('main', 'platform'),
 		],
@@ -47,7 +48,7 @@ test('production deploy path filter selects worker scripts only when their sourc
 		[
 			[
 				'packages/highlight-worker/src/index.ts',
-				'packages/worker/client/routes/blog-post.tsx',
+				'packages/worker/start/pages/blog-post.tsx',
 			],
 			deploys('main', 'highlight'),
 		],

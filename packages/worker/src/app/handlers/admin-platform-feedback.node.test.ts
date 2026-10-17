@@ -69,20 +69,22 @@ const detailPayload = {
 
 const env = { APP_DB: {} } as Env
 
-const { createAdminPlatformFeedbackApiHandler } =
-	await import('./admin-platform-feedback.ts')
+const { readAdminPlatformFeedback } =
+	await import('#worker/admin/platform-feedback-operations.ts')
+const { adminOperationOutcome } =
+	await import('#worker/test-support/admin-operation-outcome.ts')
 
 test('admin platform feedback JSON requires admin and audits list and detail reads', async () => {
-	const handler = createAdminPlatformFeedbackApiHandler(env)
 	const requestHandler = (search = '') =>
-		handler.handler({
-			request: new Request(
-				`https://example.com/admin/platform-feedback.json${search}`,
-				{ headers: { Accept: 'application/json' } },
-			),
-			params: {},
-			url: new URL(`https://example.com/admin/platform-feedback.json${search}`),
-		} as never)
+		adminOperationOutcome(() =>
+			readAdminPlatformFeedback({
+				env,
+				request: new Request(
+					`https://example.com/admin/platform-feedback.json${search}`,
+					{ headers: { Accept: 'application/json' } },
+				),
+			}),
+		)
 
 	mockModule.requireUserWithRole.mockRejectedValueOnce(
 		new Response(JSON.stringify({ ok: false, error: 'Forbidden.' }), {
@@ -106,7 +108,7 @@ test('admin platform feedback JSON requires admin and audits list and detail rea
 	mockModule.loadAdminPlatformFeedbackData.mockResolvedValueOnce(listPayload)
 	const listResponse = await requestHandler()
 	expect(listResponse.status).toBe(200)
-	expect(await listResponse.json()).toEqual(listPayload)
+	expect(await Promise.resolve(listResponse.data)).toEqual(listPayload)
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
 		expect.objectContaining({
 			category: 'admin',
@@ -123,7 +125,7 @@ test('admin platform feedback JSON requires admin and audits list and detail rea
 	mockModule.loadAdminPlatformFeedbackData.mockResolvedValueOnce(detailPayload)
 	const detailResponse = await requestHandler('?feedbackId=feedback-1')
 	expect(detailResponse.status).toBe(200)
-	expect(await detailResponse.json()).toEqual(detailPayload)
+	expect(await Promise.resolve(detailResponse.data)).toEqual(detailPayload)
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
 		expect.objectContaining({
 			category: 'admin',

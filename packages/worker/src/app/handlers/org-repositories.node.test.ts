@@ -12,7 +12,8 @@ vi.mock('#app/authenticated-user.ts', () => ({
 		mocks.readAuthenticatedAppUser(...args),
 }))
 
-const { createOrgRepositoriesApiHandler } = await import('./org-section.ts')
+const { loadOrgRepositoriesData } = await import('../org-repositories-data.ts')
+const { loadOrgBindingForSlug } = await import('#worker/orgs/repo.ts')
 
 const ownerId = 'person-owner'
 const memberId = 'person-member'
@@ -133,17 +134,30 @@ async function listAs(env: Env, personId: string, search = '') {
 		username: personId,
 		mcpUser: { userId: personId, username: personId },
 	})
-	const request = new Request(
-		`https://kody.test/@acme/-/repositories.json${search}`,
+	const params = new URLSearchParams(search)
+	const parsedLimit = Number.parseInt(params.get('limit') ?? '', 10)
+	const binding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		personId as never,
+		'acme',
 	)
-	const response = await createOrgRepositoriesApiHandler(env).handler({
-		request,
-		params: { orgSlug: 'acme' },
-		url: new URL(request.url),
-	} as never)
+	const user = await mocks.readAuthenticatedAppUser()
+	const data = binding?.role
+		? await loadOrgRepositoriesData({
+				env,
+				user,
+				binding,
+				query: params.get('q') ?? '',
+				limit:
+					Number.isFinite(parsedLimit) && parsedLimit > 0
+						? Math.min(parsedLimit, 100)
+						: undefined,
+			})
+		: { ok: false, error: 'Not found.' }
+
 	return {
-		status: response.status,
-		body: (await response.json()) as {
+		status: binding?.role ? 200 : 404,
+		body: data as {
 			ok: boolean
 			error?: string
 			activity?: Array<unknown> | null
@@ -217,6 +231,6 @@ test('team repositories list what each member role can see', async () => {
 	expect(guest.status).toBe(404)
 	expect(guest.body).toEqual({
 		ok: false,
-		error: 'Organization resources unavailable',
+		error: 'Not found.',
 	})
 })

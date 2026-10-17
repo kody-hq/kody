@@ -1,6 +1,4 @@
-import { jsonResponse } from '#worker/json-response.ts'
-import { type Action } from 'remix/router'
-import { object, optional, parseSafe, string } from 'remix/data-schema'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	applyPasswordChange,
 	type ApplyPasswordChangeResult,
@@ -10,7 +8,6 @@ import {
 	isSecureRequest,
 	readParsedAuthSession,
 } from '#app/auth-session.ts'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { checkRateLimit } from '#app/rate-limit.ts'
 import {
 	auditDatabaseFromEnv,
@@ -20,13 +17,13 @@ import {
 import { createDb, usersTable } from '#worker/db.ts'
 import { isUsablePasswordHash } from '#worker/identity/usable-password.ts'
 import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
-import { type routes } from '#universal/routes.ts'
 import {
 	personalOrgId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { verifyPassword } from '@kody-internal/shared/password-hash.ts'
 import { getPasswordPolicyError } from '@kody-internal/shared/password-policy.ts'
+import { object, optional, parseSafe, string } from 'remix/data-schema'
 
 const passwordChangeRateLimitConfig = {
 	maxRequests: 5,
@@ -64,239 +61,230 @@ function passwordChangeIssuedAt(result: ApplyPasswordChangeResult) {
 	return Date.now()
 }
 
-export function createAccountPasswordHandler(env: Env) {
+export async function changeAccountPassword({
+	env,
+	request,
+	user,
+	body,
+}: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	body: unknown
+}): Promise<{
+	status: number
+	payload: { ok: boolean; error?: string; message?: string; code?: string }
+	sessionCookie?: string
+	retryAfter?: string
+}> {
 	const db = createDb(env.APP_DB)
+	const url = new URL(request.url)
+	const parsed = parseSafe(passwordChangeRequestSchema, body)
+	const requestIp = getRequestIp(request) ?? undefined
+	const currentPassword = parsed.success
+		? (parsed.value.currentPassword ?? '')
+		: ''
+	const newPassword = parsed.success ? parsed.value.newPassword : ''
 
-	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
+	if (!parsed.success || !newPassword) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_change',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: 'invalid_payload',
+		})
+		return {
+			status: 400,
+			payload: { ok: false, error: 'New password is required.' },
+		}
+	}
 
-			let body: unknown
-			try {
-				body = await request.json()
-			} catch {
-				return jsonResponse({ ok: false, error: 'Invalid JSON payload.' }, 400)
-			}
+	const passwordError = getPasswordPolicyError(newPassword)
+	if (passwordError) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_change',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: 'weak_password',
+		})
+		return { status: 400, payload: { ok: false, error: passwordError } }
+	}
 
-			const parsed = parseSafe(passwordChangeRequestSchema, body)
-			const requestIp = getRequestIp(request) ?? undefined
-			const currentPassword = parsed.success
-				? (parsed.value.currentPassword ?? '')
-				: ''
-			const newPassword = parsed.success ? parsed.value.newPassword : ''
+	const userRecord = await db.findOne(usersTable, {
+		where: { id: user.userId },
+	})
+	if (!userRecord) {
+		return { status: 401, payload: { ok: false, error: 'Unauthorized.' } }
+	}
 
-			if (!parsed.success || !newPassword) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'auth',
-					action: 'password_change',
-					result: 'failure',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-					reason: 'invalid_payload',
-				})
-				return jsonResponse(
-					{ ok: false, error: 'New password is required.' },
-					400,
-				)
-			}
+	const rateLimitKey = `password-change:user:${user.userId}`
+	const rateLimit = await checkRateLimit(
+		env.APP_DB,
+		rateLimitKey,
+		passwordChangeRateLimitConfig,
+	)
+	if (!rateLimit.allowed) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_change',
+			result: 'rate_limited',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+		})
+		return {
+			status: 429,
+			payload: {
+				ok: false,
+				error: 'Too many password change attempts. Please try again later.',
+			},
+			retryAfter: String(rateLimit.retryAfterSeconds ?? 60),
+		}
+	}
 
-			const passwordError = getPasswordPolicyError(newPassword)
-			if (passwordError) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'auth',
-					action: 'password_change',
-					result: 'failure',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-					reason: 'weak_password',
-				})
-				return jsonResponse({ ok: false, error: passwordError }, 400)
-			}
-
-			const userRecord = await db.findOne(usersTable, {
-				where: { id: user.userId },
-			})
-			if (!userRecord) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-
-			const rateLimitKey = `password-change:user:${user.userId}`
-			const rateLimit = await checkRateLimit(
-				env.APP_DB,
-				rateLimitKey,
-				passwordChangeRateLimitConfig,
-			)
-			if (!rateLimit.allowed) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'auth',
-					action: 'password_change',
-					result: 'rate_limited',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-				})
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Too many password change attempts. Please try again later.',
-					},
-					{
-						status: 429,
-						headers: {
-							'Retry-After': String(rateLimit.retryAfterSeconds ?? 60),
-						},
-					},
-				)
-			}
-
-			const hasUsablePassword = isUsablePasswordHash(userRecord.password_hash)
-			if (hasUsablePassword) {
-				if (!currentPassword) {
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'auth',
-						action: 'password_change',
-						result: 'failure',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-						reason: 'missing_current_password',
-					})
-					return jsonResponse(
-						{ ok: false, error: 'Current password is required.' },
-						400,
-					)
-				}
-				const passwordValid = await verifyPassword(
-					currentPassword,
-					userRecord.password_hash,
-				)
-				if (!passwordValid) {
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'auth',
-						action: 'password_change',
-						result: 'failure',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-						reason: 'invalid_password',
-					})
-					return jsonResponse(
-						{
-							ok: false,
-							code: 'invalid_password',
-							error: 'Current password is incorrect.',
-						},
-						401,
-					)
-				}
-				if (currentPassword === newPassword) {
-					void logAuditEvent({
-						db: auditDatabaseFromEnv(env),
-						category: 'auth',
-						action: 'password_change',
-						result: 'failure',
-						email: user.email,
-						ip: requestIp,
-						path: url.pathname,
-						reason: 'same_password',
-					})
-					return jsonResponse(
-						{ ok: false, error: 'Choose a different password.' },
-						400,
-					)
-				}
-			}
-
-			const helpers = (env as Env & { OAUTH_PROVIDER?: OAuthGrantHelpers })
-				.OAUTH_PROVIDER
-			const result = await applyPasswordChange({
-				db,
-				d1: env.APP_DB,
-				helpers,
-				userId: user.userId,
-				// person-keyed (not personal org)
-				stableUserId: personalOrgId(
-					personIdFromStored(userRecord.stable_user_id),
-				),
-				password: newPassword,
-			})
-
-			const sessionUserId = user.sessionUserId
-			const sessionEmail = user.email
-			async function sessionCookieForChange() {
-				const parsedSession = await readParsedAuthSession(request)
-				return createAuthCookie(
-					{
-						stableUserId: sessionUserId,
-						email: sessionEmail,
-						rememberMe: parsedSession?.session.rememberMe ?? false,
-					},
-					isSecureRequest(request),
-					passwordChangeIssuedAt(result),
-				)
-			}
-
-			if (!result.ok) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'auth',
-					action: 'password_change',
-					result: 'failure',
-					email: user.email,
-					ip: requestIp,
-					path: url.pathname,
-					reason: applyFailureReason(result),
-				})
-				if (!result.stamped) {
-					return jsonResponse(
-						{
-							ok: false,
-							error: 'Unable to update your password right now.',
-						},
-						500,
-					)
-				}
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Unable to update your password right now.',
-					},
-					{
-						status: 500,
-						headers: { 'Set-Cookie': await sessionCookieForChange() },
-					},
-				)
-			}
-
+	const hasUsablePassword = isUsablePasswordHash(userRecord.password_hash)
+	if (hasUsablePassword) {
+		if (!currentPassword) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',
 				action: 'password_change',
-				result: 'success',
+				result: 'failure',
 				email: user.email,
 				ip: requestIp,
 				path: url.pathname,
+				reason: 'missing_current_password',
 			})
-			return jsonResponse(
-				{
-					ok: true,
-					message: hasUsablePassword
-						? 'Password updated. Other sessions and connected MCP hosts need to sign in again.'
-						: 'Password saved. You can sign in with email and password, and other sessions and connected MCP hosts need to sign in again.',
+			return {
+				status: 400,
+				payload: { ok: false, error: 'Current password is required.' },
+			}
+		}
+		const passwordValid = await verifyPassword(
+			currentPassword,
+			userRecord.password_hash,
+		)
+		if (!passwordValid) {
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'password_change',
+				result: 'failure',
+				email: user.email,
+				ip: requestIp,
+				path: url.pathname,
+				reason: 'invalid_password',
+			})
+			return {
+				status: 401,
+				payload: {
+					ok: false,
+					code: 'invalid_password',
+					error: 'Current password is incorrect.',
 				},
-				{ headers: { 'Set-Cookie': await sessionCookieForChange() } },
-			)
+			}
+		}
+		if (currentPassword === newPassword) {
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'password_change',
+				result: 'failure',
+				email: user.email,
+				ip: requestIp,
+				path: url.pathname,
+				reason: 'same_password',
+			})
+			return {
+				status: 400,
+				payload: { ok: false, error: 'Choose a different password.' },
+			}
+		}
+	}
+
+	const helpers = (env as Env & { OAUTH_PROVIDER?: OAuthGrantHelpers })
+		.OAUTH_PROVIDER
+	const result = await applyPasswordChange({
+		db,
+		d1: env.APP_DB,
+		helpers,
+		userId: user.userId,
+		// Password sessions are person-owned.
+		stableUserId: personalOrgId(personIdFromStored(userRecord.stable_user_id)),
+		password: newPassword,
+	})
+
+	const sessionUserId = user.sessionUserId
+	const sessionEmail = user.email
+	async function sessionCookieForChange() {
+		const parsedSession = await readParsedAuthSession(request)
+		return createAuthCookie(
+			{
+				stableUserId: sessionUserId,
+				email: sessionEmail,
+				rememberMe: parsedSession?.session.rememberMe ?? false,
+			},
+			isSecureRequest(request),
+			passwordChangeIssuedAt(result),
+		)
+	}
+
+	if (!result.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_change',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: applyFailureReason(result),
+		})
+		if (!result.stamped) {
+			return {
+				status: 500,
+				payload: {
+					ok: false,
+					error: 'Unable to update your password right now.',
+				},
+			}
+		}
+		return {
+			status: 500,
+			payload: {
+				ok: false,
+				error: 'Unable to update your password right now.',
+			},
+			sessionCookie: await sessionCookieForChange(),
+		}
+	}
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'auth',
+		action: 'password_change',
+		result: 'success',
+		email: user.email,
+		ip: requestIp,
+		path: url.pathname,
+	})
+	return {
+		status: 200,
+		payload: {
+			ok: true,
+			message: hasUsablePassword
+				? 'Password updated. Other sessions and connected MCP hosts need to sign in again.'
+				: 'Password saved. You can sign in with email and password, and other sessions and connected MCP hosts need to sign in again.',
 		},
-	} satisfies Action<typeof routes.accountPassword>
+		sessionCookie: await sessionCookieForChange(),
+	}
 }

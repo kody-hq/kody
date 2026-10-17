@@ -11,13 +11,14 @@ apps: `/@<slug>/-/integrations/apps/:appSlug`. One-click grant:
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/integrations.json
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/integrations
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET|POST /account/integrations.json`
-- `/connect/oauth` (browser; needs a real provider client)
+`/connect/oauth` remains a browser flow and requires a real provider client.
 
 ## Gotchas
 

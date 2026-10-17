@@ -171,6 +171,7 @@ test('community index overlays fork installs and ignores same-leaf packages with
 	const sameLeafOnly = await loadCommunityIndexData(
 		{} as Env,
 		request('/community'),
+		{ query: '', sort: null, category: null, limit: 50 },
 	)
 	expect(sameLeafOnly.listings).toHaveLength(1)
 	expect(sameLeafOnly.listings[0]?.viewerInstall).toBeUndefined()
@@ -185,7 +186,12 @@ test('community index overlays fork installs and ignores same-leaf packages with
 	mockModule.listSavedPackagesBySlugs.mockResolvedValue([viewerGithubPackage])
 	mockModule.listSavedPackagesByIds.mockResolvedValue([])
 
-	const data = await loadCommunityIndexData({} as Env, request('/community'))
+	const data = await loadCommunityIndexData({} as Env, request('/community'), {
+		query: '',
+		sort: null,
+		category: null,
+		limit: 50,
+	})
 	expect(data.listings).toHaveLength(1)
 	expect(data.listings[0]?.viewerInstall).toEqual(
 		expect.objectContaining({
@@ -219,6 +225,7 @@ test('community index resolves the viewer while listings are still loading', asy
 	const loading = loadCommunityIndexData(
 		{} as Env,
 		request('/community?viewer-overlap'),
+		{ query: '', sort: null, category: null, limit: 50 },
 	)
 	await vi.waitFor(() => {
 		expect(mockModule.readAuthenticatedAppUser).toHaveBeenCalledTimes(1)
@@ -439,8 +446,18 @@ test('community index is memoized per request and forwards newest sort to loader
 	)
 
 	const sameRequest = request('/community')
-	const first = loadCommunityIndexData({} as Env, sameRequest)
-	const second = loadCommunityIndexData({} as Env, sameRequest)
+	const first = loadCommunityIndexData({} as Env, sameRequest, {
+		query: '',
+		sort: null,
+		category: null,
+		limit: 50,
+	})
+	const second = loadCommunityIndexData({} as Env, sameRequest, {
+		query: '',
+		sort: null,
+		category: null,
+		limit: 50,
+	})
 	expect(second).toBe(first)
 	const firstData = await first
 	expect(firstData.listings).toHaveLength(1)
@@ -453,20 +470,24 @@ test('community index is memoized per request and forwards newest sort to loader
 	expect(firstData.sort).toBe('best')
 
 	mockModule.listCommunityIndexOverview.mockClear()
-	const newestBrowse = await loadCommunityIndexData(
-		{} as Env,
-		request('/community?sort=newest'),
-	)
+	const newestBrowse = await loadCommunityIndexData({} as Env, sameRequest, {
+		query: '',
+		sort: 'newest',
+		category: null,
+		limit: 50,
+	})
 	expect(newestBrowse.sort).toBe('newest')
 	expect(mockModule.listCommunityIndexOverview).toHaveBeenCalledWith({
 		env: {},
 		sort: 'newest',
 	})
 
-	const newestSearch = await loadCommunityIndexData(
-		{} as Env,
-		request('/community?q=github&sort=newest'),
-	)
+	const newestSearch = await loadCommunityIndexData({} as Env, sameRequest, {
+		query: 'github',
+		sort: 'newest',
+		category: null,
+		limit: 50,
+	})
 	expect(newestSearch).toMatchObject({
 		sort: 'newest',
 		query: 'github',
@@ -488,7 +509,8 @@ test('community index is memoized per request and forwards newest sort to loader
 	mockModule.listCommunityListingsWithAggregates.mockClear()
 	const integrationsBrowse = await loadCommunityIndexData(
 		{} as Env,
-		request('/community?category=integrations'),
+		sameRequest,
+		{ query: '', sort: null, category: 'integrations', limit: 50 },
 	)
 	expect(integrationsBrowse.category).toBe('integrations')
 	expect(integrationsBrowse.groups).toBeNull()
@@ -510,6 +532,7 @@ test('community index omits viewerInstall for anonymous viewers and auth failure
 	const anonymous = await loadCommunityIndexData(
 		{} as Env,
 		request('/community'),
+		{ query: '', sort: null, category: null, limit: 50 },
 	)
 	expect(anonymous.listings[0]?.viewerInstall).toBeUndefined()
 	expect(mockModule.listSavedPackagesBySlugs).not.toHaveBeenCalled()
@@ -521,6 +544,7 @@ test('community index omits viewerInstall for anonymous viewers and auth failure
 	const failedAuth = await loadCommunityIndexData(
 		{} as Env,
 		request('/community'),
+		{ query: '', sort: null, category: null, limit: 50 },
 	)
 	expect(failedAuth.ok).toBe(true)
 	expect(failedAuth.listings).toHaveLength(1)

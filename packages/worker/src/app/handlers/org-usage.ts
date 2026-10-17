@@ -1,27 +1,18 @@
-import { jsonResponse } from '#worker/json-response.ts'
-import { type Action } from 'remix/router'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { type BillingPageOrg } from '#app/account-billing-data.ts'
 import { loadAccountUsageData } from '#app/account-usage-data.ts'
-import {
-	readAuthenticatedAppUser,
-	type AuthenticatedAppUser,
-} from '#app/authenticated-user.ts'
-import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
-import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	authorize,
 	AuthorizationError,
 } from '#worker/authorization/authorize.ts'
 import { orgUsageCreditsPath, orgUsagePath } from '#universal/org-pages.ts'
-import { type routes } from '#universal/routes.ts'
 import {
 	applyCreditTopUpFromCheckoutSession,
 	CreditTopUpError,
 } from '#worker/billing/credit-top-ups.ts'
-import { getOrgById } from '#worker/orgs/repo.ts'
+import { getOrgById, loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 
 type OrgUsageAccess =
 	| { ok: true; org: BillingPageOrg }
@@ -52,17 +43,17 @@ function readMessage(
  * organization.
  */
 async function resolveOrgUsageAccess(input: {
-	request: Request
+	orgSlug: string
 	env: Env
 	user: AuthenticatedAppUser
 	permission: Extract<OrgPermission, 'billing:read' | 'billing:write'>
 }): Promise<OrgUsageAccess> {
-	const resolution = await loadRequestOrgResolution(
-		input.request,
-		input.env,
+	const resolution = await loadOrgBindingForSlug(
+		input.env.APP_DB,
 		input.user.mcpUser.userId,
+		input.orgSlug,
 	)
-	if (typeof resolution === 'string') {
+	if (!resolution || resolution.org.id !== input.user.request.org.id) {
 		return { ok: false, status: 404, error: 'Organization unavailable.' }
 	}
 	const slug = resolution.org.slug ?? input.user.username
@@ -95,138 +86,81 @@ async function resolveOrgUsageAccess(input: {
 	}
 }
 
-function creditsRedirect(
-	request: Request,
-	slug: string,
-	params: Record<string, string>,
-) {
-	const url = new URL(orgUsageCreditsPath(slug), request.url)
-	for (const [key, value] of Object.entries(params)) {
-		url.searchParams.set(key, value)
-	}
-	return Response.redirect(url.toString(), 302)
-}
-
-function renderUsageDenied(
-	request: Request,
-	env: Env,
-	access: Extract<OrgUsageAccess, { ok: false }>,
-) {
-	return renderAppPage({
-		request,
-		env,
-		title: access.status === 404 ? 'Organization unavailable' : 'Usage',
-		...(access.status === 404 ? { notFound: true } : { unauthorized: true }),
-		status: access.status,
-	})
-}
-
-async function loadOrgUsagePageData(input: {
-	request: Request
+/** Foreground checkout completion, separate from reusable usage reads. */
+export async function completeOrgCreditTopUp(input: {
 	env: Env
 	user: AuthenticatedAppUser
-	org: BillingPageOrg
+	orgSlug: string
+	sessionId: string
 }) {
-	const searchParams = new URL(input.request.url).searchParams
-	return await loadAccountUsageData({
-		env: input.env,
-		userId: input.user.userId,
-		org: input.org,
-		notice: readMessage(creditsNoticeMessages, searchParams.get('credits')),
-		error: readMessage(creditsErrorMessages, searchParams.get('error')),
+	const { env } = input
+	const access = await resolveOrgUsageAccess({
+		...input,
+		permission: 'billing:read',
 	})
+	if (!access.ok)
+		return {
+			kind: 'denied' as const,
+			status: access.status,
+			error: access.error,
+		}
+	let query: Record<string, string>
+	try {
+		await applyCreditTopUpFromCheckoutSession({
+			env,
+			sessionId: input.sessionId.trim(),
+			expectedStableUserId: access.org.id,
+			now: new Date(),
+		})
+		query = { credits: 'added' }
+	} catch (error) {
+		const code = error instanceof CreditTopUpError ? error.code : 'topup_failed'
+		console.error('credit_top_up_confirm_failed', { code })
+		query = {
+			error: readMessage(creditsErrorMessages, code) ? code : 'topup_failed',
+		}
+	}
+	const target = new URL(
+		orgUsageCreditsPath(access.org.slug),
+		'https://kody.local',
+	)
+	target.search = new URLSearchParams(query).toString()
+	return {
+		kind: 'redirect' as const,
+		href: target.pathname + target.search + target.hash,
+	}
 }
 
-export function createOrgUsageHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await requireAuthenticatedPageUser(request, env)
-			if (user instanceof Response) {
-				return user
-			}
-			const access = await resolveOrgUsageAccess({
-				request,
-				env,
-				user,
-				permission: 'billing:read',
-			})
-			if (!access.ok) return renderUsageDenied(request, env, access)
-
-			const searchParams = new URL(request.url).searchParams
-			const sessionId = searchParams.get('session_id')?.trim()
-			if (searchParams.get('topup') === 'success' && sessionId) {
-				try {
-					await applyCreditTopUpFromCheckoutSession({
-						env,
-						sessionId,
-						expectedStableUserId: access.org.id,
-						now: new Date(),
-					})
-					return creditsRedirect(request, access.org.slug, { credits: 'added' })
-				} catch (error) {
-					const code =
-						error instanceof CreditTopUpError ? error.code : 'topup_failed'
-					console.error('credit_top_up_confirm_failed', { code })
-					return creditsRedirect(request, access.org.slug, {
-						error: readMessage(creditsErrorMessages, code)
-							? code
-							: 'topup_failed',
-					})
-				}
-			}
-
-			const accountUsage = await loadOrgUsagePageData({
-				request,
-				env,
-				user,
-				org: access.org,
-			})
-			if (!accountUsage) {
-				return new Response('Not found', { status: 404 })
-			}
-			return renderAppPage({
-				request,
-				env,
-				title: 'Usage',
-				loaderData: { accountUsage },
-			})
-		},
-	} satisfies Action<typeof routes.orgUsage>
-}
-
-export function createOrgUsageApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			if (request.method !== 'GET') {
-				return jsonResponse({ ok: false, error: 'Method not allowed.' }, 405)
-			}
-			const access = await resolveOrgUsageAccess({
-				request,
-				env,
-				user,
-				permission: 'billing:read',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			const accountUsage = await loadOrgUsagePageData({
-				request,
-				env,
-				user,
-				org: access.org,
-			})
-			if (!accountUsage) {
-				return jsonResponse({ ok: false, error: 'Not found.' }, 404)
-			}
-			return jsonResponse(accountUsage)
-		},
-	} satisfies Action<typeof routes.orgUsageApi>
+export async function loadOrgUsagePageResult(input: {
+	env: Env
+	user: AuthenticatedAppUser
+	orgSlug: string
+	credits: string | null
+	error: string | null
+	topup: string | null
+	sessionId: string | null
+}) {
+	const { env, user } = input
+	const access = await resolveOrgUsageAccess({
+		...input,
+		permission: 'billing:read',
+	})
+	if (!access.ok)
+		return {
+			kind: 'denied' as const,
+			status: access.status,
+			error: access.error,
+		}
+	const payload = await loadAccountUsageData({
+		env,
+		userId: user.userId,
+		org: access.org,
+		notice: readMessage(creditsNoticeMessages, input.credits),
+		error: readMessage(creditsErrorMessages, input.error),
+	})
+	if (!payload)
+		return { kind: 'denied' as const, status: 404 as const, error: 'Not found' }
+	return { kind: 'data' as const, payload }
 }
 
 /** Personal-org usage URL for legacy `/account/usage` and `/account/credits`. */

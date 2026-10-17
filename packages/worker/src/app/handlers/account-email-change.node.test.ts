@@ -18,7 +18,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { createAccountEmailChangeHandler } from './account-email-change.ts'
+import { requestWebsiteEmailChange } from '#worker/identity/account-email-change-operations.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -78,11 +78,11 @@ function createAppEnv(db: D1Database) {
 		APP_BASE_URL: 'http://example.com',
 		COOKIE_SECRET: testCookieSecret,
 		SENTRY_ENVIRONMENT: 'test',
-	} as unknown as Parameters<typeof createAccountEmailChangeHandler>[0]
+	} as unknown as Env
 }
 
 function createEmailChangeClient(db: D1Database, currentEmail: string) {
-	const { handler } = createAccountEmailChangeHandler(createAppEnv(db))
+	const env = createAppEnv(db)
 	const session: AuthSession = {
 		stableUserId: testStableUserIdFromEmail(currentEmail),
 		email: currentEmail,
@@ -100,7 +100,12 @@ function createEmailChangeClient(db: D1Database, currentEmail: string) {
 				body: JSON.stringify({ email, password }),
 			},
 		)
-		return handler({ request, url: new URL(request.url), params: {} } as never)
+		return requestWebsiteEmailChange({
+			env,
+			request,
+			url: new URL(request.url),
+			body: { email, password },
+		})
 	}
 }
 
@@ -129,7 +134,7 @@ test('email change requests require the current password and create a pending ve
 		'wrong-password',
 	)
 	expect(wrongPasswordResponse.status).toBe(401)
-	expect(await wrongPasswordResponse.json()).toEqual({
+	expect(await Promise.resolve(wrongPasswordResponse.data)).toEqual({
 		ok: false,
 		code: 'invalid_password',
 		error: 'Password is incorrect.',
@@ -138,7 +143,7 @@ test('email change requests require the current password and create a pending ve
 
 	const response = await requestChange('New@Example.com')
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({
+	expect(await Promise.resolve(response.data)).toEqual({
 		ok: true,
 		formerEmailRemainsClaimed: true,
 		message:
@@ -182,7 +187,7 @@ test('unverified accounts cannot start an email change', async () => {
 		'unverified@example.com',
 	)('new@example.com')
 	expect(response.status).toBe(403)
-	expect(await response.json()).toEqual({
+	expect(await Promise.resolve(response.data)).toEqual({
 		ok: false,
 		error: 'Verify your current email address before changing it.',
 	})
@@ -218,7 +223,7 @@ test('email change requests reject emails already owned by another account', asy
 		'old@example.com',
 	)('taken@example.com')
 	expect(response.status).toBe(409)
-	expect(await response.json()).toEqual({
+	expect(await Promise.resolve(response.data)).toEqual({
 		ok: false,
 		error: 'Email already registered.',
 	})

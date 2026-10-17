@@ -1,17 +1,17 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { expect, test, vi } from 'vitest'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createAccountMcpOauthClientsApiHandler } from '#app/handlers/account-mcp-oauth-clients.ts'
-import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { testAccountMcpOauthClientsApiHandler } from '#app/handlers/account-mcp-oauth-clients.test-support.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -53,15 +53,17 @@ function createAppEnv(
 		COOKIE_SECRET: testCookieSecret,
 		SENTRY_ENVIRONMENT: 'test',
 		OAUTH_PROVIDER: helpers,
-	} as unknown as Parameters<typeof createAccountMcpOauthClientsApiHandler>[0]
+	} as unknown as Parameters<typeof testAccountMcpOauthClientsApiHandler>[0]
 }
 
 type Handler = {
-	handler(context: never): Promise<Response>
+	execute(
+		context: never,
+	): Promise<{ data: unknown; status: number; headers?: HeadersInit }>
 }
 
 async function runHandler(handler: Handler, request: Request) {
-	return handler.handler({
+	return handler.execute({
 		request,
 		url: new URL(request.url),
 		params: {},
@@ -89,7 +91,7 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 		})),
 		deleteClient: vi.fn(async () => undefined),
 	}
-	const handler = createAccountMcpOauthClientsApiHandler(
+	const handler = testAccountMcpOauthClientsApiHandler(
 		createAppEnv(db, helpers),
 	)
 	const cookie = await createAuthCookie(userOneSession, false)
@@ -100,6 +102,10 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 	)
 	expect(anonymous.status).toBe(401)
 
+	const clientOperations = await import('#app/account-mcp-oauth-clients.ts')
+	const listRead = vi
+		.spyOn(clientOperations, 'listUserMcpOauthClients')
+		.mockRejectedValue(new Error('Client list unavailable'))
 	const created = await runHandler(
 		handler,
 		new Request('http://example.com/account/mcp-oauth-clients.json', {
@@ -115,11 +121,12 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 			}),
 		}),
 	)
+	expect(listRead).not.toHaveBeenCalled()
+	listRead.mockRestore()
 	expect(created.status).toBe(200)
-	const createdPayload = (await created.json()) as {
+	const createdPayload = created.data as {
 		ok: boolean
-		clients: Array<{ id: string; clientId: string }>
-		createdClient: { clientId: string; clientSecret: string }
+		createdClient: { id: string; clientId: string; clientSecret: string }
 	}
 	expect(createdPayload.ok).toBe(true)
 	expect(createdPayload.createdClient).toEqual(
@@ -128,7 +135,7 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 			clientSecret: 'shown-once',
 		}),
 	)
-	const createdId = createdPayload.clients[0]?.id
+	const createdId = createdPayload.createdClient.id
 	expect(createdId).toBeTruthy()
 
 	const listed = await runHandler(
@@ -137,7 +144,7 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 			headers: { Cookie: cookie },
 		}),
 	)
-	const listedPayload = (await listed.json()) as {
+	const listedPayload = listed.data as {
 		ok: boolean
 		clients: Array<{ clientId: string; clientSecret?: string }>
 		createdClient?: unknown
@@ -162,7 +169,7 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 			},
 		}),
 	)
-	const otherPayload = (await otherList.json()) as {
+	const otherPayload = otherList.data as {
 		clients: Array<unknown>
 	}
 	expect(otherPayload.clients).toEqual([])
@@ -183,10 +190,17 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 	)
 	expect(revoked.status).toBe(200)
 	expect(helpers.deleteClient).toHaveBeenCalledWith('client-one')
-	const revokedPayload = (await revoked.json()) as {
-		clients: Array<{ revokedAt: string | null }>
-	}
-	expect(revokedPayload.clients[0]?.revokedAt).toBeTruthy()
+	expect(revoked.data).toEqual({ ok: true, revokedClientId: createdId })
+	const afterRevoke = await runHandler(
+		handler,
+		new Request('http://example.com/account/mcp-oauth-clients.json', {
+			headers: { Cookie: cookie },
+		}),
+	)
+	expect(
+		(afterRevoke.data as { clients: Array<{ revokedAt: string | null }> })
+			.clients[0]?.revokedAt,
+	).toBeTruthy()
 
 	const unverifiedSqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(
@@ -201,7 +215,7 @@ test('account MCP OAuth clients API mints, lists without the secret, isolates us
 		verified: false,
 	})
 	const unverified = await runHandler(
-		createAccountMcpOauthClientsApiHandler(
+		testAccountMcpOauthClientsApiHandler(
 			createAppEnv(unverifiedDb, {
 				createClient: vi.fn(),
 				deleteClient: vi.fn(),

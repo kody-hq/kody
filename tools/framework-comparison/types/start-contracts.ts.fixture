@@ -1,0 +1,47 @@
+import { type getRouter } from '../../../packages/worker/start/router.tsx'
+import { loadJobsPage } from '#start/server/account-collections'
+import { Route } from '../../../packages/worker/start/routes/account_.jobs.tsx'
+import { type PostAccountJobsAction } from '../../../packages/worker/start/pages/account-jobs-shared.ts'
+import { routes } from '../../../packages/worker/universal/routes.ts'
+
+declare const router: ReturnType<typeof getRouter>
+declare const postAction: PostAccountJobsAction
+
+// Actual server-function input, inferred result, and route loader consumption.
+void loadJobsPage({ data: '/account/jobs' })
+// @ts-expect-error The server function requires a string location.
+void loadJobsPage({ data: 123 })
+type Loaded = Awaited<ReturnType<typeof loadJobsPage>>
+declare const loaded: Loaded
+const days: number = loaded.payload.retention.successOnceDays
+// @ts-expect-error Server result does not contain this retention property.
+loaded.payload.retention.inventedWindow
+const pageData = Route.useLoaderData()
+// @ts-expect-error The route consumer preserves the inferred numeric type.
+const invalidDays: string = pageData.payload.retention.successOnceDays
+
+void router.navigate({ to: '/account/jobs' })
+void router.navigate({ to: '/account/jobs/$jobId', params: { jobId: 'test' } })
+// @ts-expect-error Registered navigation rejects a missing detail parameter.
+void router.navigate({ to: '/account/jobs/$jobId', params: {} })
+// @ts-expect-error Registered navigation rejects an unknown route.
+void router.navigate({ to: '/account/nonexistent-typed-route' })
+
+// Both implementations also use the shared typed Remix route URL builder.
+void routes.accountJobDetail.href({ jobId: 'test' })
+// @ts-expect-error Shared URL builder requires the job parameter.
+void routes.accountJobDetail.href({})
+
+// Accepted today, intentionally no expected error: search is not validated here.
+void router.navigate({
+	to: '/account/jobs',
+	search: { view: 'invalid-filter' },
+})
+// Accepted today: mutation body has only Record<string, unknown>, not an action union.
+void postAction({
+	body: { action: 'invented-action', successOnceDays: 'wrong' },
+	successMessage: () => null,
+	failureMessage: 'failed',
+})
+void days
+void invalidDays

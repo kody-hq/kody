@@ -1,5 +1,6 @@
 import { Resvg } from '@resvg/resvg-wasm'
 import satori, { init as initSatori } from 'satori/standalone'
+import { createElement, type ReactNode } from 'react'
 import { loadAdditionalOgAsset } from '#worker/og/og-emoji.ts'
 import {
 	ensureOgBinaryAssetsReady,
@@ -43,6 +44,18 @@ export type SatoriElement = {
 		cy?: number
 		r?: number
 	}
+}
+
+function renderSatoriChild(child: SatoriChild): ReactNode {
+	if (typeof child === 'string') return child
+	const { children, ...props } = child.props
+	const descendants =
+		children === undefined
+			? []
+			: Array.isArray(children)
+				? children
+				: [children]
+	return createElement(child.type, props, ...descendants.map(renderSatoriChild))
 }
 
 let wasmReady: Promise<void> | null = null
@@ -283,7 +296,7 @@ export async function renderOgImage(
 
 	const bodyFontData = getWixMadeforTextLatin400FontData()
 	const displayFontData = getBricolageGrotesqueLatin700FontData()
-	const svg = await satori(markup, {
+	const svg = await satori(renderSatoriChild(markup), {
 		width: OG_WIDTH,
 		height: OG_HEIGHT,
 		// Latin fonts have no color-emoji glyphs. Twemoji images fill the gap

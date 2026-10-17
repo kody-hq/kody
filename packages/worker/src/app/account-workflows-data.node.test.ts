@@ -104,9 +104,7 @@ test('loadAccountWorkflowsData lists runs, resolves selection, and falls back to
 
 	const payload = await loadAccountWorkflowsData({
 		env: {} as Env,
-		request: new Request(
-			'https://example.com/account/workflows.json?selected=dynwf-1',
-		),
+		selectedWorkflowId: 'dynwf-1',
 		user,
 	})
 
@@ -154,9 +152,8 @@ test('loadAccountWorkflowsData lists runs, resolves selection, and falls back to
 
 	const projectionPayload = await loadAccountWorkflowsData({
 		env: {} as Env,
-		request: new Request('https://example.com/account/workflows/dynwf-old'),
+		selectedWorkflowId: 'dynwf-old',
 		user,
-		pathWorkflowId: 'dynwf-old',
 	})
 
 	expect(mockModule.getWorkflowProjection).toHaveBeenCalledWith({

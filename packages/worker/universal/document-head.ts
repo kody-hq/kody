@@ -1,16 +1,11 @@
 import { acquisitionPageSummaries } from '#universal/acquisition/metadata.ts'
-import { createMultiMatcher } from 'remix/route-pattern/match'
 import { isAccountConnectionAgent } from '#universal/account-connections.ts'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { onboardingAgentLabel } from '#universal/onboarding-mcp-clients.ts'
-import { oauthPaths } from '#universal/oauth-paths.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import {
 	type PackageCredentialsTab,
 	packageCredentialsTabLabel,
 } from '#universal/package-credentials-page.ts'
-import { routePattern } from '#universal/route-pattern.ts'
-import { routes } from '#universal/routes.ts'
 import { docHref, docsIntroSlug } from '#universal/docs-nav.ts'
 import {
 	homeOgImagePath,
@@ -25,20 +20,8 @@ import {
 
 export const DEFAULT_DOCUMENT_TITLE = 'Kody'
 export const NOT_FOUND_DOCUMENT_TITLE = 'Not found'
-export const INTERNAL_ERROR_DOCUMENT_TITLE = 'Something went wrong'
 
-/** Stable marker so SPA navigation can upsert/remove managed head tags. */
-export const DOCUMENT_HEAD_ATTR = 'data-kody-head'
-
-/**
- * Meta tag carrying the canonical origin the server rendered head URLs with
- * (`getCanonicalAppBaseUrl`). SPA navigations read it so canonical/OG URLs
- * keep pointing at the canonical domain when the page is dual-served from a
- * legacy host, instead of reverting to `window.location.origin`.
- */
-export const CANONICAL_ORIGIN_META_NAME = 'kody:canonical-origin'
-
-const documentHeadOrigin = 'https://kody.local'
+const INTERNAL_ERROR_DOCUMENT_TITLE = 'Something went wrong'
 
 type DocumentHeadLink = {
 	rel: string
@@ -247,7 +230,7 @@ function docDetailHead({
 					og: {
 						title,
 						description: doc.summary,
-						imagePath: routes.docDetailOgImage.href({ slug: doc.slug }),
+						imagePath: `/docs/${encodeURIComponent(doc.slug).replaceAll('.', '%2E')}/og.png`,
 					},
 				}
 			: {}),
@@ -260,62 +243,46 @@ function docDetailHead({
  * navigations keep `<head>` in sync without per-route wiring.
  */
 const routeDocumentHeads = {
-	[routePattern(routes.home)]: homeDocumentHead,
-	[routePattern(routes.account)]: titleOnly('Account settings'),
-	[routePattern(routes.accountSecurity)]: titleOnly('Security'),
-	[routePattern(routes.accountData)]: titleOnly('Data & deletion'),
-	[routePattern(routes.accountOrganizations)]: titleOnly('Organizations'),
-	[routePattern(routes.orgBilling)]: titleOnly('Billing'),
-	[routePattern(routes.orgBillingSuccess)]: titleOnly("You're in"),
-	[routePattern(routes.orgUsage)]: titleOnly('Usage'),
-	[routePattern(routes.orgCredits)]: titleOnly('Credits'),
-	[routePattern(routes.accountUsage)]: titleOnly('Usage'),
-	[routePattern(routes.accountExperiments)]: titleOnly('Experiments'),
-	[routePattern(routes.communityPackageApproveCredentials)]: titleOnly(
-		'Approve credential mappings',
-	),
-	[routePattern(routes.orgApprovalBundle)]: titleOnly('Review approvals'),
-	[routePattern(routes.communityPackageApprovePublish)]: titleOnly(
-		'Approve package publish',
-	),
-	[routePattern(routes.communityPackageApproveCapabilities)]: titleOnly(
+	home: homeDocumentHead,
+	account: titleOnly('Account settings'),
+	accountSecurity: titleOnly('Security'),
+	accountData: titleOnly('Data & deletion'),
+	accountOrganizations: titleOnly('Organizations'),
+	orgBilling: titleOnly('Billing'),
+	orgBillingSuccess: titleOnly("You're in"),
+	orgUsage: titleOnly('Usage'),
+	orgCredits: titleOnly('Credits'),
+	accountUsage: titleOnly('Usage'),
+	accountExperiments: titleOnly('Experiments'),
+	communityPackageApproveCredentials: titleOnly('Approve credential mappings'),
+	orgApprovalBundle: titleOnly('Review approvals'),
+	communityPackageApprovePublish: titleOnly('Approve package publish'),
+	communityPackageApproveCapabilities: titleOnly(
 		'Approve internet-visible capabilities',
 	),
-	[routePattern(routes.accountPackageFiles)]: ({ loaderData }) => {
+	accountPackageFiles: ({ loaderData }) => {
 		const files = loaderData?.packageFiles
 		return titleOnly(files?.ok ? `${files.title} files` : 'Package files')
 	},
-	[routePattern(routes.accountPasskeys)]: titleOnly('Passkeys'),
-	[routePattern(routes.accountMcpOauthClients)]: titleOnly('MCP OAuth clients'),
-	[routePattern(routes.accountTwoFactor)]: titleOnly(
-		'Two-factor authentication',
-	),
-	[routePattern(routes.admin)]: titleOnly('Admin users'),
-	[routePattern(routes.adminUsers)]: titleOnly('Admin users'),
-	[routePattern(routes.adminUserDetail)]: titleOnly('Admin users'),
-	[routePattern(routes.adminReservedUsernames)]: titleOnly(
-		'Admin reserved usernames',
-	),
-	[routePattern(routes.adminFeatureFlags)]: titleOnly('Admin feature flags'),
-	[routePattern(routes.adminPlatformIntegrations)]: titleOnly(
-		'Admin platform integrations',
-	),
-	[routePattern(routes.adminPlatformIntegrationNew)]: titleOnly(
-		'Admin platform integrations',
-	),
-	[routePattern(routes.adminPlatformIntegrationDetail)]: titleOnly(
-		'Admin platform integrations',
-	),
-	[routePattern(routes.adminProviderMarks)]: titleOnly('Admin provider marks'),
-	[routePattern(routes.adminCodemods)]: titleOnly('Admin codemods'),
-	[routePattern(routes.adminRoles)]: titleOnly('Admin roles'),
-	[routePattern(routes.adminCommunityReports)]: titleOnly('Community reports'),
-	[routePattern(routes.adminInsights)]: titleOnly('Admin insights'),
-	[routePattern(routes.adminPlatformFeedback)]: titleOnly(
-		'Admin platform feedback',
-	),
-	[routePattern(routes.adminSystemEmail)]: titleOnly('Admin system email'),
-	[routePattern(routes.blog)]: publicPageHead('blog', 'Blog', {
+	accountPasskeys: titleOnly('Passkeys'),
+	accountMcpOauthClients: titleOnly('MCP OAuth clients'),
+	accountTwoFactor: titleOnly('Two-factor authentication'),
+	admin: titleOnly('Admin users'),
+	adminUsers: titleOnly('Admin users'),
+	adminUserDetail: titleOnly('Admin users'),
+	adminReservedUsernames: titleOnly('Admin reserved usernames'),
+	adminFeatureFlags: titleOnly('Admin feature flags'),
+	adminPlatformIntegrations: titleOnly('Admin platform integrations'),
+	adminPlatformIntegrationNew: titleOnly('Admin platform integrations'),
+	adminPlatformIntegrationDetail: titleOnly('Admin platform integrations'),
+	adminProviderMarks: titleOnly('Admin provider marks'),
+	adminCodemods: titleOnly('Admin codemods'),
+	adminRoles: titleOnly('Admin roles'),
+	adminCommunityReports: titleOnly('Community reports'),
+	adminInsights: titleOnly('Admin insights'),
+	adminPlatformFeedback: titleOnly('Admin platform feedback'),
+	adminSystemEmail: titleOnly('Admin system email'),
+	blog: publicPageHead('blog', 'Blog', {
 		links: [
 			{
 				rel: 'alternate',
@@ -325,7 +292,7 @@ const routeDocumentHeads = {
 			},
 		],
 	}),
-	[routePattern(routes.blogPost)]: ({ loaderData, pathname }) => {
+	blogPost: ({ loaderData, pathname }) => {
 		const post = loaderData?.blogPost
 		if (!post?.ok) {
 			return titleOnly('Blog')
@@ -341,24 +308,18 @@ const routeDocumentHeads = {
 			},
 		}
 	},
-	[routePattern(routes.docs)]: docDetailHead,
-	[routePattern(routes.docsConnect)]: ({ pathname }) => ({
+	docs: docDetailHead,
+	docsConnect: ({ pathname }) => ({
 		title: 'Connect a provider — Kody Docs',
 		description:
 			'Verified walkthroughs for connecting Discord, GitHub, Google, Notion, Origin, Salesforce, Slack, or Spotify to Kody.',
 		canonicalPath: pathname,
 	}),
-	[routePattern(routes.docDetail)]: docDetailHead,
-	[routePattern(routes.community)]: publicPageHead(
-		'community',
-		'Public packages',
-	),
-	[routePattern(routes.communityDetail)]: communityListingHead,
-	[routePattern(routes.communityPackage)]: communityListingHead,
-	[routePattern(routes.communityPackageSettings)]: ({
-		loaderData,
-		pathname,
-	}) => {
+	docDetail: docDetailHead,
+	community: publicPageHead('community', 'Public packages'),
+	communityDetail: communityListingHead,
+	communityPackage: communityListingHead,
+	communityPackageSettings: ({ loaderData, pathname }) => {
 		const shell = loaderData?.communityDetailShell
 		if (!shell?.ok) {
 			if (shell && 'notFound' in shell) {
@@ -371,16 +332,10 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
-	[routePattern(routes.communityPackageCredentials)]:
-		packageCredentialsHead('credentials'),
-	[routePattern(routes.communityPackageMappings)]:
-		packageCredentialsHead('mappings'),
-	[routePattern(routes.communityPackageTriggers)]:
-		packageCredentialsHead('triggers'),
-	[routePattern(routes.communityPackageCollaborators)]: ({
-		loaderData,
-		pathname,
-	}) => {
+	communityPackageCredentials: packageCredentialsHead('credentials'),
+	communityPackageMappings: packageCredentialsHead('mappings'),
+	communityPackageTriggers: packageCredentialsHead('triggers'),
+	communityPackageCollaborators: ({ loaderData, pathname }) => {
 		const page = loaderData?.packageCollaborators
 		if (page && !page.ok) return titleOnly(NOT_FOUND_DOCUMENT_TITLE)
 		if (!page) return titleOnly('Package collaborators')
@@ -389,7 +344,7 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
-	[routePattern(routes.communityDetailFiles)]: ({ loaderData, pathname }) => {
+	communityDetailFiles: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')
 		return {
@@ -397,7 +352,7 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
-	[routePattern(routes.communityPackageFiles)]: ({ loaderData, pathname }) => {
+	communityPackageFiles: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')
 		return {
@@ -405,7 +360,7 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
-	[routePattern(routes.communityPackageTree)]: ({ loaderData, pathname }) => {
+	communityPackageTree: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')
 		return {
@@ -413,7 +368,7 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
-	[routePattern(routes.profile)]: ({ loaderData, params, pathname }) => {
+	profile: ({ loaderData, params, pathname }) => {
 		const shell = loaderData?.profileShell
 		if (shell && !shell.ok) {
 			return titleOnly('Profile unavailable')
@@ -443,107 +398,75 @@ const routeDocumentHeads = {
 			},
 		}
 	},
-	[routePattern(routes.notFoundPage)]: titleOnly(NOT_FOUND_DOCUMENT_TITLE),
-	[routePattern(routes.internalErrorPage)]: titleOnly(
-		INTERNAL_ERROR_DOCUMENT_TITLE,
-	),
-	[routePattern(routes.login)]: publicPageHead('login', DEFAULT_DOCUMENT_TITLE),
-	[routePattern(routes.signup)]: publicPageHead(
-		'signup',
-		DEFAULT_DOCUMENT_TITLE,
-	),
-	[routePattern(routes.onboarding)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep1)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep1Agent)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep2)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep2Service)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep3)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.onboardingStep3Agent)]: publicPageHead(
-		'onboarding',
-		'Get started',
-	),
-	[routePattern(routes.pendingVerification)]: titleOnly('Verify your email'),
-	[routePattern(routes.features)]: featurePageHead(
+	notFoundPage: titleOnly(NOT_FOUND_DOCUMENT_TITLE),
+	internalErrorPage: titleOnly(INTERNAL_ERROR_DOCUMENT_TITLE),
+	login: publicPageHead('login', DEFAULT_DOCUMENT_TITLE),
+	signup: publicPageHead('signup', DEFAULT_DOCUMENT_TITLE),
+	onboarding: publicPageHead('onboarding', 'Get started'),
+	onboardingStep1: publicPageHead('onboarding', 'Get started'),
+	onboardingStep1Agent: publicPageHead('onboarding', 'Get started'),
+	onboardingStep2: publicPageHead('onboarding', 'Get started'),
+	onboardingStep2Service: publicPageHead('onboarding', 'Get started'),
+	onboardingStep3: publicPageHead('onboarding', 'Get started'),
+	onboardingStep3Agent: publicPageHead('onboarding', 'Get started'),
+	pendingVerification: titleOnly('Verify your email'),
+	features: featurePageHead(
 		'features',
 		'Kody features for your AI agents | Kody',
 	),
-	[routePattern(routes.featureMemory)]: featurePageHead(
+	featureMemory: featurePageHead(
 		'feature-memory',
 		'Shared memory for your AI agents | Kody',
 		'memory',
 	),
-	[routePattern(routes.featurePackages)]: featurePageHead(
+	featurePackages: featurePageHead(
 		'feature-packages',
 		'Reusable packages for your AI agents | Kody',
 		'packages',
 	),
-	[routePattern(routes.featureTriggers)]: featurePageHead(
+	featureTriggers: featurePageHead(
 		'feature-triggers',
 		'Triggers and automation for your AI agents | Kody',
 		'triggers',
 	),
-	[routePattern(routes.featureCredentials)]: featurePageHead(
+	featureCredentials: featurePageHead(
 		'feature-credentials',
 		'Credentials for your AI agents | Kody',
 		['secrets', 'integrations'],
 	),
-	[routePattern(routes.featureApps)]: featurePageHead(
+	featureApps: featurePageHead(
 		'feature-apps',
 		'Package apps for your AI agents | Kody',
 		'apps',
 	),
-	[routePattern(routes.business)]: publicPageHead(
+	business: publicPageHead(
 		'business',
 		'AI Agent Cloud for Business and Agencies | Kody',
 	),
-	[routePattern(routes.pricing)]: publicPageHead('pricing', 'Pricing'),
-	[routePattern(routes.faq)]: publicPageHead('faq', 'FAQ'),
-	[routePattern(routes.n8nAlternatives)]: acquisitionHead,
-	[routePattern(routes.mcpGateway)]: acquisitionHead,
-	[routePattern(routes.sharedMemory)]: acquisitionHead,
-	[routePattern(routes.gmail)]: acquisitionHead,
-	[routePattern(routes.customTools)]: acquisitionHead,
-	[routePattern(routes.composioAlternatives)]: acquisitionHead,
-	[routePattern(routes.slack)]: acquisitionHead,
-	[routePattern(routes.scheduledWorkflows)]: acquisitionHead,
-	[routePattern(routes.claudeIntegrations)]: acquisitionHead,
-	[routePattern(routes.useCases)]: acquisitionHead,
-	[routePattern(routes.automation)]: acquisitionHead,
-	[routePattern(routes.caseStudies)]: publicPageHead(
-		'case-studies',
-		'Case studies',
-	),
-	[routePattern(routes.believe)]: publicPageHead('believe', 'What we believe'),
-	[routePattern(routes.withAgent)]: withAgentHead,
-	[routePattern(routes.support)]: publicPageHead('support', 'Support'),
-	[routePattern(routes.about)]: publicPageHead('about', 'About Kody'),
-	[routePattern(routes.contact)]: publicPageHead('contact', 'Contact Kody'),
-	[routePattern(routes.privacy)]: publicPageHead('privacy', 'Privacy'),
-	[routePattern(routes.terms)]: publicPageHead('terms', 'Terms'),
-	[routePattern(routes.discord)]: publicPageHead('discord', 'Discord'),
-	[routePattern(routes.resetPassword)]: publicPageHead(
-		'reset-password',
-		'Reset password',
-	),
-	[routePattern(routes.orgInviteJoin)]: ({ loaderData }) => {
+	pricing: publicPageHead('pricing', 'Pricing'),
+	faq: publicPageHead('faq', 'FAQ'),
+	n8nAlternatives: acquisitionHead,
+	mcpGateway: acquisitionHead,
+	sharedMemory: acquisitionHead,
+	gmail: acquisitionHead,
+	customTools: acquisitionHead,
+	composioAlternatives: acquisitionHead,
+	slack: acquisitionHead,
+	scheduledWorkflows: acquisitionHead,
+	claudeIntegrations: acquisitionHead,
+	useCases: acquisitionHead,
+	automation: acquisitionHead,
+	caseStudies: publicPageHead('case-studies', 'Case studies'),
+	believe: publicPageHead('believe', 'What we believe'),
+	withAgent: withAgentHead,
+	support: publicPageHead('support', 'Support'),
+	about: publicPageHead('about', 'About Kody'),
+	contact: publicPageHead('contact', 'Contact Kody'),
+	privacy: publicPageHead('privacy', 'Privacy'),
+	terms: publicPageHead('terms', 'Terms'),
+	discord: publicPageHead('discord', 'Discord'),
+	resetPassword: publicPageHead('reset-password', 'Reset password'),
+	orgInviteJoin: ({ loaderData }) => {
 		const join = loaderData?.orgInviteJoin
 		if (join?.ok) {
 			const name = join.org.displayName?.trim() || join.org.slug
@@ -551,51 +474,23 @@ const routeDocumentHeads = {
 		}
 		return titleOnly('Invite link')
 	},
-	[routePattern(routes.verify)]: titleOnly('Two-factor authentication'),
-	[routePattern(routes.verifyEmail)]: ({ loaderData }) => {
-		const verification = loaderData?.emailVerification
-		return titleOnly(verification?.ok ? 'Email verified' : 'Verify email')
-	},
-	[routePattern(routes.verifyEmailChange)]: ({ loaderData }) => {
-		const verification = loaderData?.emailVerification
-		return titleOnly(verification?.ok ? 'Email changed' : 'Verify email change')
-	},
-	[routePattern(routes.verifyEmailClaimRelease)]: ({ loaderData }) => {
-		const verification = loaderData?.emailVerification
-		return titleOnly(verification?.ok ? 'Email released' : 'Release email')
-	},
-	[routePattern(routes.verifyEmailDestination)]: ({ loaderData }) => {
-		const verification = loaderData?.emailVerification
-		return titleOnly(
-			verification?.ok
-				? 'Email destination verified'
-				: 'Verify email destination',
-		)
-	},
-	[routePattern(routes.unsubscribeTips)]: ({ loaderData }) => {
-		const unsubscribe = loaderData?.tipsUnsubscribe
-		return titleOnly(
-			unsubscribe?.ok ? 'Unsubscribed from tips' : 'Unsubscribe from tips',
-		)
-	},
-	[routePattern(routes.connectOauth)]: ({ loaderData }) => {
+	verify: titleOnly('Two-factor authentication'),
+	connectOauth: ({ loaderData }) => {
 		const provider = loaderData?.connectOauth?.provider?.trim()
 		return titleOnly(provider ? `Connect ${provider}` : 'Connect an account')
 	},
-	[routePattern(routes.connectSecrets)]: titleOnly('Allow secret hosts'),
-	[routePattern(routes.connectCredential)]: titleOnly('Add a credential'),
-	[routePattern(routes.connectSecretSet)]: titleOnly('Set secret'),
-	[routePattern(routes.connectWebhookApply)]: titleOnly(
-		'Approve webhook apply destination',
-	),
-	[oauthPaths.authorize]: titleOnly('Authorize access'),
-	[packageAppOauthPaths.authorize]: titleOnly('Allow package app'),
-	[oauthPaths.callback]: titleOnly('OAuth callback'),
+	connectSecrets: titleOnly('Allow secret hosts'),
+	connectCredential: titleOnly('Add a credential'),
+	connectSecretSet: titleOnly('Set secret'),
+	connectWebhookApply: titleOnly('Approve webhook apply destination'),
+	oauthAuthorize: titleOnly('Authorize access'),
+	packageAppOauthAuthorize: titleOnly('Allow package app'),
+	oauthCallback: titleOnly('OAuth callback'),
 } as const satisfies Record<string, DocumentHeadResolver>
 
-const orgDocumentHeads: Record<string, DocumentHeadResolver> = {
-	[routePattern(routes.orgActivity)]: titleOnly('Activity'),
-	[routePattern(routes.orgAgents)]: ({ pathname }) => {
+const orgDocumentHeads = {
+	orgActivity: titleOnly('Activity'),
+	orgAgents: ({ pathname }) => {
 		const rest = pathname.split('/-/agents/')[1]?.replace(/\/$/, '') ?? ''
 		if (rest === 'new') return titleOnly('Connect an agent')
 		if (rest === 'usage') return titleOnly('Connection usage')
@@ -615,74 +510,50 @@ const orgDocumentHeads: Record<string, DocumentHeadResolver> = {
 		}
 		return titleOnly('Agents')
 	},
-	[routePattern(routes.orgCredentials)]: titleOnly('Credentials'),
-	[routePattern(routes.orgCredentialNew)]: titleOnly('Add a credential'),
-	[routePattern(routes.orgEmail)]: titleOnly('Email inbox'),
-	[routePattern(routes.orgIntegrations)]: titleOnly('Integrations'),
-	[routePattern(routes.orgJobs)]: titleOnly('Jobs'),
-	[routePattern(routes.orgMcpServers)]: titleOnly('MCP servers'),
-	[routePattern(routes.orgMemories)]: titleOnly('Memories'),
-	[routePattern(routes.orgFollows)]: titleOnly('Follows'),
-	[routePattern(routes.orgOverview)]: titleOnly('Overview'),
-	[routePattern(routes.orgRepositories)]: titleOnly('Repositories'),
-	[routePattern(routes.orgSecretProviders)]: titleOnly('Secret providers'),
-	[routePattern(routes.orgSecrets)]: titleOnly('Secrets'),
-	[routePattern(routes.orgWaiting)]: titleOnly('Waiting'),
-	[routePattern(routes.orgWebhooks)]: titleOnly('Webhooks'),
-	[routePattern(routes.orgWorkflows)]: titleOnly('Workflows'),
+	orgCredentials: titleOnly('Credentials'),
+	orgCredentialNew: titleOnly('Add a credential'),
+	orgEmail: titleOnly('Email inbox'),
+	orgIntegrations: titleOnly('Integrations'),
+	orgJobs: titleOnly('Jobs'),
+	orgMcpServers: titleOnly('MCP servers'),
+	orgMemories: titleOnly('Memories'),
+	orgFollows: titleOnly('Follows'),
+	orgOverview: titleOnly('Overview'),
+	orgRepositories: titleOnly('Repositories'),
+	orgSecretProviders: titleOnly('Secret providers'),
+	orgSecrets: titleOnly('Secrets'),
+	orgWaiting: titleOnly('Waiting'),
+	orgWebhooks: titleOnly('Webhooks'),
+	orgWorkflows: titleOnly('Workflows'),
 	// Static `/-/` outranks `/@:username/:kodyId/settings` (kodyId would be `-`).
-	[routePattern(routes.orgSettings)]: titleOnly('Settings'),
-	[routePattern(routes.orgMembers)]: titleOnly('Members'),
-	[routePattern(routes.orgTeams)]: titleOnly('Teams'),
-	[routePattern(routes.orgGrants)]: titleOnly('Grants'),
-	[routePattern(routes.orgCollaborators)]: titleOnly('Collaborators'),
-	[routePattern(routes.accountOrganizationsNew)]: titleOnly(
-		'Create organization',
-	),
-}
+	orgSettings: titleOnly('Settings'),
+	orgMembers: titleOnly('Members'),
+	orgTeams: titleOnly('Teams'),
+	orgGrants: titleOnly('Grants'),
+	orgCollaborators: titleOnly('Collaborators'),
+	accountOrganizationsNew: titleOnly('Create organization'),
+} as const satisfies Record<string, DocumentHeadResolver>
 
-const documentHeadMatcher = (() => {
-	const matcher = createMultiMatcher<DocumentHeadResolver>()
-	for (const [pattern, resolver] of Object.entries({
-		...routeDocumentHeads,
-		...orgDocumentHeads,
-	})) {
-		matcher.add(pattern, resolver)
-	}
-	return matcher
-})()
+const documentHeads = { ...routeDocumentHeads, ...orgDocumentHeads } as const
+export type DocumentHeadKey = keyof typeof documentHeads
 
+/** The native route selects metadata. This function never matches URL paths. */
 export function resolveDocumentHead(
+	key: DocumentHeadKey,
 	pathname: string,
 	loaderData?: Partial<AppLoaderData>,
 	search = '',
+	params: Record<string, string | undefined> = {},
 ): DocumentHeadDescriptor {
-	const match = documentHeadMatcher.match(new URL(pathname, documentHeadOrigin))
-	if (!match) {
-		return titleOnly(NOT_FOUND_DOCUMENT_TITLE)
-	}
-
-	const resolver = match.data
+	const resolver: DocumentHeadResolver = documentHeads[key]
 	const descriptor =
 		typeof resolver === 'function'
-			? resolver({
-					pathname,
-					search,
-					params: match.params,
-					loaderData,
-				})
+			? resolver({ pathname, search, params, loaderData })
 			: resolver
 
 	const description = descriptor.description ?? descriptor.og?.description
 	if (description === undefined) return descriptor
 	return { ...descriptor, description }
-}
-
-export function resolveDocumentTitle(
-	pathname: string,
-	loaderData?: Partial<AppLoaderData>,
-): string {
-	return resolveDocumentHead(pathname, loaderData).title
 }
 
 export function absolutizeDocumentHead(

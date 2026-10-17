@@ -37,31 +37,19 @@ Each org page lists only the signed-in person's agents approved for that org
 (the org picked on the MCP consent screen; grants from before org stamping
 belong to the signup org). Team orgs open it to every member role and to
 grant-only collaborators. Revoke there removes only that org's grants; the same
-host stays connected elsewhere. Connection profiles are signup-org only.
-`/account/connected-agents.json` binds the org from a same-origin Referer on
-`/@<slug>/-/agents`.
+host stays connected elsewhere. Connection profiles are signup-org only. Native
+connected-agent functions bind explicit validated org scope.
 
 ## Drive it
 
 ```bash
-node tools/control-kody.ts login
-node tools/control-kody.ts request GET /account/connected-agents.json
-node tools/control-kody.ts request GET /@<slug>/-/agents/new
-node tools/control-kody.ts request GET /@<slug>/-/agents/new/cursor
-# Create a profile (experimenter + flag on):
-node tools/control-kody.ts request POST /account/connected-agents.json --json '{"intent":"create","name":"ci","grants":[{"resourceType":"package","resourceId":"<package-id>","actions":["read","execute"]}]}'
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/agents
 ```
 
-## APIs
-
-- `GET|POST /account/connected-agents.json` (`{ intent: 'revoke', clientId }` or
-  profile `{ intent: 'create'|'update'|'delete', ... }`)
-- `mcpServerUrl` in that payload is empty until the account email is verified
-  (same gate as `/onboarding.json`); the page then shows a verify note instead
-  of the grid and copy card.
-- When `connectionProfilesEnabled` is true, the payload also includes
-  `connectionProfiles` and `connectionProfilePackageOptions`.
-- All three HTML views share that one payload (no refetch between them).
+Create, edit, and revoke connection profiles through the browser with the
+experiment enabled. Native server functions validate explicit org scope.
+Unverified accounts see the verification note instead of an MCP URL. The list
+and connect views share Query data.
 
 ## Gotchas
 
@@ -80,8 +68,8 @@ node tools/control-kody.ts request POST /account/connected-agents.json --json '{
   hosts keep a Connected mark and stay selectable (same as onboarding Step 3) so
   connect steps can be re-viewed. The connected list offers **View connect
   steps** for known kinds.
-- `/account/connections.json` is the sign-in provider (GitHub, Google, …) list
-  on Overview, not this page's data.
+- The account connections page shows the sign-in provider (GitHub, Google, …)
+  list on Overview, not this page's data.
 - Profile names are at most 64 characters; `Unlimited` is reserved. Empty named
   profiles deny all packages; absent profile keeps unlimited access. Non-
   experimenters ignore `?profile=`.

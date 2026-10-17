@@ -58,11 +58,11 @@ test('?og= rewrites share images and drops the query from the visible url', () =
 	expect(locationWithoutHomeOgParam('not a url')).toBeNull()
 
 	const switchHead = absolutizeDocumentHead(
-		resolveDocumentHead('/', undefined, '?og=switch'),
+		resolveDocumentHead('home', '/', undefined, '?og=switch'),
 		'https://kody.codes',
 	)
 	const cursorHead = absolutizeDocumentHead(
-		resolveDocumentHead('/', undefined, '?og=cursor-claude'),
+		resolveDocumentHead('home', '/', undefined, '?og=cursor-claude'),
 		'https://kody.codes',
 	)
 	expect(switchHead.og?.imageUrl).toBe(
@@ -76,11 +76,11 @@ test('?og= rewrites share images and drops the query from the visible url', () =
 	expect(switchHead.canonicalUrl).toBe('https://kody.codes/')
 
 	const fallback = absolutizeDocumentHead(
-		resolveDocumentHead('/', undefined, '?og=nope'),
+		resolveDocumentHead('home', '/', undefined, '?og=nope'),
 		'https://kody.codes',
 	)
 	const plain = absolutizeDocumentHead(
-		resolveDocumentHead('/'),
+		resolveDocumentHead('home', '/'),
 		'https://kody.codes',
 	)
 	expect(fallback.og).toEqual(plain.og)

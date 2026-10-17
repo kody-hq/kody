@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { createAccountAvatarApiPostHandler } from './account-avatar.ts'
+import { testAccountAvatarApiPostHandler } from './account-avatar.test-support.ts'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -15,7 +15,8 @@ vi.mock('#app/authenticated-user.ts', () => ({
 		mocks.readAuthenticatedAppUser(...args),
 }))
 
-vi.mock('#worker/community/avatar.ts', () => ({
+vi.mock('#worker/community/avatar.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#worker/community/avatar.ts')>()),
 	processUserAvatar: (...args: Array<unknown>) =>
 		mocks.processUserAvatar(...args),
 	saveUserAvatar: (...args: Array<unknown>) => mocks.saveUserAvatar(...args),
@@ -42,18 +43,6 @@ const authedUser = {
 	},
 }
 
-const profilePayload = {
-	ok: true as const,
-	email: 'alice@example.com',
-	emailVerified: true,
-	username: 'alice',
-	displayName: 'Alice',
-	bio: null,
-	avatarUrl: '/profiles/alice/avatar/hash.png',
-	profileVisibility: 'public' as const,
-	formerEmails: [],
-}
-
 function createEnv() {
 	return {
 		APP_DB: {} as D1Database,
@@ -62,10 +51,10 @@ function createEnv() {
 }
 
 test('account avatar API auth, upload, remove, and invalid type', async () => {
-	const handler = createAccountAvatarApiPostHandler(createEnv())
+	const handler = testAccountAvatarApiPostHandler(createEnv())
 
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	const unauthorized = await handler.handler({
+	const unauthorized = await handler.execute({
 		request: new Request('http://example.com/account/profile/avatar.json', {
 			method: 'POST',
 		}),
@@ -73,7 +62,7 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		params: {},
 	} as never)
 	expect(unauthorized.status).toBe(401)
-	expect(((await unauthorized.json()) as { ok: boolean }).ok).toBe(false)
+	expect((unauthorized.data as { ok: boolean }).ok).toBe(false)
 
 	mocks.readAuthenticatedAppUser.mockResolvedValue(authedUser)
 	mocks.processUserAvatar.mockReturnValue({
@@ -81,7 +70,9 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		contentType: 'image/png',
 	})
 	mocks.saveUserAvatar.mockResolvedValue('user-avatars/stable-alice/hash.png')
-	mocks.loadAccountProfileData.mockResolvedValue(profilePayload)
+	mocks.loadAccountProfileData.mockRejectedValue(
+		new Error('Profile read unavailable'),
+	)
 
 	const form = new FormData()
 	form.set(
@@ -90,7 +81,7 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 			type: 'image/png',
 		}),
 	)
-	const upload = await handler.handler({
+	const upload = await handler.execute({
 		request: new Request('http://example.com/account/profile/avatar.json', {
 			method: 'POST',
 			body: form,
@@ -99,7 +90,11 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		params: {},
 	} as never)
 	expect(upload.status).toBe(200)
-	expect(await upload.json()).toEqual(profilePayload)
+	expect(upload.data).toEqual({
+		ok: true,
+		avatarUrl: '/profiles/alice/avatar/hash.png',
+	})
+	expect(mocks.loadAccountProfileData).not.toHaveBeenCalled()
 	expect(mocks.saveUserAvatar).toHaveBeenCalledWith(
 		expect.objectContaining({
 			numericUserId: 1,
@@ -109,11 +104,7 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 	)
 
 	mocks.deleteUserAvatar.mockResolvedValue(undefined)
-	mocks.loadAccountProfileData.mockResolvedValue({
-		...profilePayload,
-		avatarUrl: null,
-	})
-	const remove = await handler.handler({
+	const remove = await handler.execute({
 		request: new Request('http://example.com/account/profile/avatar.json', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -123,7 +114,7 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		params: {},
 	} as never)
 	expect(remove.status).toBe(200)
-	expect(await remove.json()).toMatchObject({ avatarUrl: null })
+	expect(remove.data).toMatchObject({ avatarUrl: null })
 	expect(mocks.deleteUserAvatar).toHaveBeenCalledWith(
 		expect.objectContaining({
 			numericUserId: 1,
@@ -139,7 +130,7 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		'avatar',
 		new File([Uint8Array.from([1])], 'avatar.svg', { type: 'image/svg+xml' }),
 	)
-	const invalid = await handler.handler({
+	const invalid = await handler.execute({
 		request: new Request('http://example.com/account/profile/avatar.json', {
 			method: 'POST',
 			body: invalidForm,
@@ -148,5 +139,5 @@ test('account avatar API auth, upload, remove, and invalid type', async () => {
 		params: {},
 	} as never)
 	expect(invalid.status).toBe(400)
-	expect(((await invalid.json()) as { ok: boolean }).ok).toBe(false)
+	expect((invalid.data as { ok: boolean }).ok).toBe(false)
 })

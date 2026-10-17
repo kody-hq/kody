@@ -110,7 +110,7 @@ const env = createEnv()
 
 function callHandler(iconCommit = 'pub-1') {
 	const handler = createCommunityPackageIconHandler(env)
-	return handler.handler({
+	return handler({
 		request: new Request(`https://example.com/@kent/notes/icon/${iconCommit}`),
 		params: { username: 'kent', kodyId: 'notes', iconCommit },
 		url: new URL(`https://example.com/@kent/notes/icon/${iconCommit}`),

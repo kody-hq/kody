@@ -10,7 +10,6 @@ import {
 	onboardingChecklistItemLabels,
 	type OnboardingChecklistItemId,
 } from './onboarding-process.ts'
-import { createHref } from 'remix/route-pattern/href'
 import { enablementMappingPauseResourceType } from './credential-contracts.ts'
 import { orgResourcePathForAccountPath } from './org-pages.ts'
 import { routes } from './routes.ts'
@@ -540,9 +539,7 @@ function buildPausedEnablementWaitingItem(
 function buildMcpServerWaitingItem(
 	server: WaitingMcpServerSignal,
 ): WaitingItem | null {
-	const href = createHref('/account/mcp-servers/:serverId', {
-		serverId: server.id,
-	})
+	const href = `/account/mcp-servers/${encodeURIComponent(server.id).replaceAll('.', '%2E')}`
 	if (server.state === 'authenticating') {
 		return {
 			id: `mcp-server:${server.id}`,

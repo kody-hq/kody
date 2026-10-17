@@ -9,12 +9,6 @@
 		"jsx": "react-jsx",
 		"jsxImportSource": "remix/component",
 		"paths": {
-			"#client/app-root.tsx": [
-				"./packages/worker/src/app/ssr-stubs/app-root.ts"
-			],
-			"#client/lazy-route.tsx": [
-				"./packages/worker/src/app/ssr-stubs/lazy-route.ts"
-			],
 			"@modelcontextprotocol/sdk": ["./node_modules/@modelcontextprotocol/sdk"],
 			"@modelcontextprotocol/sdk/*": [
 				"./node_modules/@modelcontextprotocol/sdk/*"

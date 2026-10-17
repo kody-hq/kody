@@ -1,8 +1,4 @@
-import { type Action } from 'remix/router'
-import { z } from 'zod'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
-import { credentialPickSchema } from '#worker/credentials/credential-pick-schema.ts'
+import { type loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
 import {
 	MappingWriteRefused,
 	resolveMappingChanges,
@@ -21,58 +17,14 @@ import {
 	TriggerEnablementError,
 } from '#worker/enablements/service.ts'
 import { isMcpCallerError } from '#mcp/caller-error.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '../operation-result.ts'
+import { packageCredentialChangesSchema } from '#universal/credential-mutations.ts'
 import {
-	credentialTriggerKinds,
-	maxCredentialProposalValues,
+	isInboundEmailApprovalTopic,
 	type CredentialMappingChange,
 	type PackageCredentialsEnablementAction,
 	type PackageCredentialsWriteFailure,
 } from '#universal/credential-contracts.ts'
-import { type routes } from '#universal/routes.ts'
-
-const triggerRefSchema = z.strictObject({
-	kind: z.enum(credentialTriggerKinds),
-	name: z.string().trim().min(1),
-})
-
-const changeSchema = z.strictObject({
-	target: z.discriminatedUnion('type', [
-		z.strictObject({
-			type: z.literal('default'),
-			layer: z.enum(['org', 'mine']),
-		}),
-		z.strictObject({
-			type: z.literal('trigger'),
-			trigger: triggerRefSchema,
-			enablementId: z.string().trim().min(1).optional(),
-			createInstance: z.boolean().optional(),
-		}),
-	]),
-	needKey: z.string().trim().min(1),
-	credentials: z
-		.array(credentialPickSchema)
-		.max(maxCredentialProposalValues)
-		.nullable(),
-})
-
-const enablementActionSchema = z.strictObject({
-	trigger: triggerRefSchema,
-	state: z.enum(['on', 'off']),
-	enablementId: z.string().trim().min(1).optional(),
-	createInstance: z.boolean().optional(),
-})
-
-const bodySchema = z
-	.strictObject({
-		changes: z.array(changeSchema).max(maxCredentialProposalValues).optional(),
-		enablements: z.array(enablementActionSchema).max(16).optional(),
-	})
-	.refine(
-		(body) =>
-			(body.changes?.length ?? 0) > 0 || (body.enablements?.length ?? 0) > 0,
-		{ message: 'expected { changes } and/or { enablements }' },
-	)
 
 async function requirePackageTriggerEnablement(input: {
 	env: Env
@@ -114,7 +66,75 @@ async function validateEnablementActions(input: {
 	>
 	actions: ReadonlyArray<PackageCredentialsEnablementAction>
 }) {
+	const actorId = input.scope.request.actor?.userId
+	if (!actorId)
+		throw new TriggerEnablementError(
+			'trigger_unknown',
+			'Only a signed-in person can change trigger enablements.',
+		)
 	for (const action of input.actions) {
+		if (action.state === 'on') {
+			const trigger = input.scope.triggers.find(
+				(declared) =>
+					declared.kind === action.trigger.kind &&
+					declared.name === action.trigger.name &&
+					(declared.kind !== 'webhook' ||
+						!action.enablementId ||
+						declared.enablements.some((row) => row.id === action.enablementId)),
+			)
+			if (!trigger)
+				throw new TriggerEnablementError(
+					'trigger_unknown',
+					'This package does not declare that trigger.',
+				)
+			if (
+				trigger.kind === 'subscription' &&
+				isInboundEmailApprovalTopic(trigger.name)
+			) {
+				throw new TriggerEnablementError(
+					'email_approval_required',
+					'Inbound email requires sender-scoped approval from the package approval page.',
+				)
+			}
+			if (action.createInstance && action.enablementId) {
+				throw new TriggerEnablementError(
+					'trigger_unknown',
+					'A new instance cannot target an existing enablement id.',
+				)
+			}
+			if (trigger.kind === 'webhook') {
+				if (action.createInstance)
+					throw new TriggerEnablementError(
+						'webhook_other_enabler',
+						'Each webhook URL runs as one enablement. Mint another URL for another instance.',
+					)
+				if (!trigger.instanceId)
+					throw new TriggerEnablementError(
+						'webhook_not_minted',
+						'This webhook has no URL yet. Mint and approve it first.',
+					)
+				if (
+					trigger.enablements.some(
+						(row) => String(row.enablerUserId) !== String(actorId),
+					)
+				) {
+					throw new TriggerEnablementError(
+						'webhook_other_enabler',
+						'This webhook is already on for another person.',
+					)
+				}
+				if (
+					!trigger.enablements.some(
+						(row) => String(row.enablerUserId) === String(actorId),
+					)
+				) {
+					throw new TriggerEnablementError(
+						'webhook_approval_required',
+						'A webhook requires approval before its first turn-on.',
+					)
+				}
+			}
+		}
 		if (action.state === 'off') {
 			if (!action.enablementId) {
 				throw new TriggerEnablementError(
@@ -196,165 +216,129 @@ async function applyEnablementActions(input: {
 	}
 }
 
-/**
- * `/profiles/:username/packages/:kodyId/credentials.json`: the package
- * Credentials, Default mappings, and Triggers tabs. GET returns the
- * `PackageCredentialsView`; POST `{ changes }` and/or `{ enablements }`
- * applies every change or none and returns the updated view. Signed-in
- * sessions only; anyone without `package:execute` on the package gets a 404.
- */
-export function createPackageCredentialsApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			if (request.method !== 'GET' && request.method !== 'POST') {
-				return jsonResponse(
-					{ ok: false, error: 'Method not allowed.' },
-					{ status: 405, headers: { Allow: 'GET, POST' } },
-				)
-			}
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const scope = await loadPackageMappingScopeForViewer({
-				env,
-				request,
-				user,
-				username: params.username,
-				kodyId: params.kodyId,
-			})
-			if (!scope) {
-				return jsonResponse({ ok: false, error: 'Package not found.' }, 404)
-			}
-			if (request.method === 'GET') {
-				return jsonResponse(await buildPackageCredentialsView(scope))
-			}
-			const parsed = bodySchema.safeParse(
-				await request.json().catch(() => null),
+/** Session-scoped mapping and enablement writes, shared by native Start mutations. */
+export async function mutatePackageCredentialMappings({
+	scope,
+	body,
+}: {
+	scope: NonNullable<
+		Awaited<ReturnType<typeof loadPackageMappingScopeForViewer>>
+	>
+	body: unknown
+}) {
+	const env = scope.env
+	const parsed = packageCredentialChangesSchema.safeParse(body)
+	if (!parsed.success) {
+		return operationResult(
+			{
+				ok: false,
+				error: `Invalid request body: ${parsed.error.issues[0]?.message ?? 'expected { changes } and/or { enablements }'}.`,
+			},
+			400,
+		)
+	}
+	const changes: Array<CredentialMappingChange> = parsed.data.changes ?? []
+	const enablements = parsed.data.enablements ?? []
+	if (changes.length > 0) {
+		const resolved = await resolveMappingChanges(scope, changes)
+		const errors = resolved.flatMap((change) =>
+			change.error
+				? [
+						{
+							needKey: change.needKey,
+							target: change.target,
+							...change.error,
+						},
+					]
+				: [],
+		)
+		if (errors.length > 0) {
+			return operationResult(
+				{ ok: false, errors } satisfies PackageCredentialsWriteFailure,
+				400,
 			)
-			if (!parsed.success) {
-				return jsonResponse(
+		}
+		try {
+			// Validate enablements before any mapping write so a bad off
+			// action cannot leave a willEnable mapping half-applied.
+			if (enablements.length > 0) {
+				await validateEnablementActions({
+					env,
+					scope,
+					actions: enablements,
+				})
+			}
+			// Mapping writes before enablement mutations so a failed
+			// mapping does not leave enablements half-applied.
+			await writeMappingChanges(scope, resolved)
+			if (enablements.length > 0) {
+				await applyEnablementActions({ env, scope, actions: enablements })
+			}
+		} catch (error) {
+			if (
+				error instanceof MappingWriteRefused &&
+				error.code !== 'webhook_other_enabler' &&
+				error.code !== 'email_sender_conflict' &&
+				error.change
+			) {
+				return operationResult(
 					{
 						ok: false,
-						error: `Invalid request body: ${parsed.error.issues[0]?.message ?? 'expected { changes } and/or { enablements }'}.`,
-					},
+						errors: [
+							{
+								needKey: error.change.needKey,
+								target: error.change.target,
+								code: error.code,
+								message: error.message,
+							},
+						],
+					} satisfies PackageCredentialsWriteFailure,
 					400,
 				)
 			}
-			const changes: Array<CredentialMappingChange> = parsed.data.changes ?? []
-			const enablements = parsed.data.enablements ?? []
-			if (changes.length > 0) {
-				const resolved = await resolveMappingChanges(scope, changes)
-				const errors = resolved.flatMap((change) =>
-					change.error
-						? [
-								{
-									needKey: change.needKey,
-									target: change.target,
-									...change.error,
-								},
-							]
-						: [],
+			if (error instanceof TriggerEnablementError) {
+				const conflict =
+					error.code === 'webhook_other_enabler' ||
+					error.code === 'email_sender_conflict'
+				return operationResult(
+					{ ok: false, error: error.message },
+					conflict ? 409 : 400,
 				)
-				if (errors.length > 0) {
-					return jsonResponse(
-						{ ok: false, errors } satisfies PackageCredentialsWriteFailure,
-						400,
-					)
-				}
-				try {
-					// Validate enablements before any mapping write so a bad off
-					// action cannot leave a willEnable mapping half-applied.
-					if (enablements.length > 0) {
-						await validateEnablementActions({
-							env,
-							scope,
-							actions: enablements,
-						})
-					}
-					// Mapping writes before enablement mutations so a failed
-					// mapping does not leave enablements half-applied.
-					await writeMappingChanges(scope, resolved)
-					if (enablements.length > 0) {
-						await applyEnablementActions({ env, scope, actions: enablements })
-					}
-				} catch (error) {
-					if (
-						error instanceof MappingWriteRefused &&
-						error.code !== 'webhook_other_enabler' &&
-						error.code !== 'email_sender_conflict' &&
-						error.change
-					) {
-						return jsonResponse(
-							{
-								ok: false,
-								errors: [
-									{
-										needKey: error.change.needKey,
-										target: error.change.target,
-										code: error.code,
-										message: error.message,
-									},
-								],
-							} satisfies PackageCredentialsWriteFailure,
-							400,
-						)
-					}
-					if (error instanceof TriggerEnablementError) {
-						const conflict =
-							error.code === 'webhook_other_enabler' ||
-							error.code === 'email_sender_conflict'
-						return jsonResponse(
-							{ ok: false, error: error.message },
-							{ status: conflict ? 409 : 400 },
-						)
-					}
-					// A webhook or email sender someone else turned on between resolve and write.
-					if (
-						!(error instanceof MappingWriteRefused) &&
-						!(isMcpCallerError(error) && error instanceof Error)
-					) {
-						throw error
-					}
-					return jsonResponse(
-						{ ok: false, error: error.message },
-						{ status: 409 },
-					)
-				}
-			} else {
-				try {
-					await applyEnablementActions({ env, scope, actions: enablements })
-				} catch (error) {
-					if (error instanceof TriggerEnablementError) {
-						const conflict =
-							error.code === 'webhook_other_enabler' ||
-							error.code === 'email_sender_conflict'
-						return jsonResponse(
-							{ ok: false, error: error.message },
-							{ status: conflict ? 409 : 400 },
-						)
-					}
-					if (isMcpCallerError(error) && error instanceof Error) {
-						return jsonResponse(
-							{ ok: false, error: error.message },
-							{ status: 409 },
-						)
-					}
-					throw error
-				}
 			}
-			const fresh = await loadPackageMappingScope({
-				env,
-				baseUrl: scope.baseUrl,
-				request: scope.request,
-				savedPackage: scope.savedPackage,
-				canManage: scope.canManage,
-			})
-			return jsonResponse(await buildPackageCredentialsView(fresh))
-		},
-	} satisfies Action<
-		| typeof routes.communityPackageCredentialsApi
-		| typeof routes.communityPackageCredentialsApiPost
-	>
+			// A webhook or email sender someone else turned on between resolve and write.
+			if (
+				!(error instanceof MappingWriteRefused) &&
+				!(isMcpCallerError(error) && error instanceof Error)
+			) {
+				throw error
+			}
+			return operationResult({ ok: false, error: error.message }, 409)
+		}
+	} else {
+		try {
+			await applyEnablementActions({ env, scope, actions: enablements })
+		} catch (error) {
+			if (error instanceof TriggerEnablementError) {
+				const conflict =
+					error.code === 'webhook_other_enabler' ||
+					error.code === 'email_sender_conflict'
+				return operationResult(
+					{ ok: false, error: error.message },
+					conflict ? 409 : 400,
+				)
+			}
+			if (isMcpCallerError(error) && error instanceof Error) {
+				return operationResult({ ok: false, error: error.message }, 409)
+			}
+			throw error
+		}
+	}
+	const fresh = await loadPackageMappingScope({
+		env,
+		baseUrl: scope.baseUrl,
+		request: scope.request,
+		savedPackage: scope.savedPackage,
+		canManage: scope.canManage,
+	})
+	return operationResult(await buildPackageCredentialsView(fresh))
 }

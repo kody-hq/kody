@@ -1,6 +1,4 @@
-import { type Action } from 'remix/router'
 import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
-import { type routes } from '#universal/routes.ts'
 import {
 	buildHealthReport,
 	prefersHtml,
@@ -14,26 +12,23 @@ type HealthEnv = {
 }
 
 export function createHealthHandler(appEnv: HealthEnv) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const report = buildHealthReport(appEnv)
-			const commitSha = report.commitSha ?? 'unknown'
-			const headers = {
-				'Cache-Control': 'no-store',
-				'X-App-Commit-Sha': commitSha,
-			}
-			if (prefersHtml(request.headers.get('Accept'))) {
-				return new Response(renderHealthHtml(report), {
-					headers: {
-						...headers,
-						'Content-Type': 'text/html; charset=utf-8',
-					},
-				})
-			}
-			return Response.json(report, { headers })
-		},
-	} satisfies Action<typeof routes.health>
+	return async ({ request }: { request: Request }) => {
+		const report = buildHealthReport(appEnv)
+		const commitSha = report.commitSha ?? 'unknown'
+		const headers = {
+			'Cache-Control': 'no-store',
+			'X-App-Commit-Sha': commitSha,
+		}
+		if (prefersHtml(request.headers.get('Accept'))) {
+			return new Response(renderHealthHtml(report), {
+				headers: {
+					...headers,
+					'Content-Type': 'text/html; charset=utf-8',
+				},
+			})
+		}
+		return Response.json(report, { headers })
+	}
 }
 
 function renderHealthHtml(report: HealthReport) {

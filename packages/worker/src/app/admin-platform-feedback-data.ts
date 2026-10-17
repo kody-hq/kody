@@ -91,6 +91,32 @@ export async function loadAdminPlatformFeedbackData(
 	const feedbackId = readAdminPlatformFeedbackId(
 		url.searchParams.get('feedbackId'),
 	)
+	return readAdminPlatformFeedbackData(env, {
+		page,
+		pageSize,
+		status: statusFilter,
+		category: categoryFilter,
+		feedbackId,
+	})
+}
+export async function readAdminPlatformFeedbackData(
+	env: Env,
+	input: {
+		page: number
+		pageSize: number
+		status: string | null
+		category: string | null
+		feedbackId: string | null
+	},
+): Promise<AdminPlatformFeedbackLoaderData> {
+	const page = Math.max(1, Math.floor(input.page))
+	const pageSize = Math.min(
+		maxPageSize,
+		Math.max(1, Math.floor(input.pageSize)),
+	)
+	const statusFilter = readStatusFilter(input.status)
+	const categoryFilter = readCategoryFilter(input.category)
+	const feedbackId = readAdminPlatformFeedbackId(input.feedbackId)
 	const [initialList, selectedRecord] = await Promise.all([
 		listPlatformFeedbackForAdmin({
 			db: env.APP_DB,

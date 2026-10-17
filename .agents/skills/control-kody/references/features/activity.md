@@ -9,12 +9,12 @@ User-level execution history (jobs, execute, webhooks, apps).
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/activity.json
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/activity
 ```
 
-## APIs
-
-- `GET /account/activity.json`
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
 ## Gotchas
 

@@ -10,10 +10,7 @@ import { type OnboardingFeaturedListing } from '#universal/community-public-type
 import { listDisconnectedOnboardingFeaturedMcpServers } from '#universal/onboarding-mcp-chooser.ts'
 import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
 import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
-import {
-	countConnectedAgentEcosystems,
-	hasSecondConnectedMcpClient,
-} from '#universal/onboarding-agent-ecosystems.ts'
+import { hasSecondConnectedMcpClient } from '#universal/onboarding-agent-ecosystems.ts'
 import {
 	type OnboardingChecklistLoaderData,
 	type OnboardingCustomMcpServer,
@@ -22,7 +19,7 @@ import {
 } from '#universal/loader-data.ts'
 import { describeSecondAgentStandardGift } from '#universal/second-agent-standard-gift.ts'
 import { loadInboundMcpConnectionState } from '#worker/connected-mcp-agents.ts'
-import { maybeEvaluateSecondAgentStandardGift } from '#worker/entitlements/second-agent-standard-gift.ts'
+import { loadSecondAgentStandardGift } from '#worker/entitlements/second-agent-standard-gift.ts'
 import { type OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 export {
 	buildDiscoveryPrompt,
@@ -147,7 +144,7 @@ export function loadHomePageOnboardingData(input: {
 export async function loadOnboardingData(input: {
 	env: OnboardingEnv
 	requestUrl: string | URL
-	stableUserId: OwnerId
+	personId: OwnerId
 	username: string
 	emailVerified: boolean
 	/**
@@ -177,16 +174,19 @@ export async function loadOnboardingData(input: {
 }): Promise<OnboardingLoaderData> {
 	const inbound = await loadInboundMcpConnectionState(
 		input.env.OAUTH_PROVIDER,
-		input.stableUserId,
+		input.personId,
 	)
 	const connectedAgents = toOnboardingConnectedAgents(inbound.agents)
-	const ecosystemCount = countConnectedAgentEcosystems(connectedAgents)
-	const secondAgentStandardGift = await maybeEvaluateSecondAgentStandardGift({
-		db: input.env.APP_DB,
-		stableUserId: input.stableUserId,
-		ecosystemCount,
-		listingFailed: inbound.listingFailed,
-	})
+	const secondAgentStandardGift =
+		typeof input.env.APP_DB?.prepare === 'function'
+			? await loadSecondAgentStandardGift(
+					input.env.APP_DB,
+					input.personId,
+				).catch((error: unknown) => {
+					console.warn('second-agent-standard-gift-read-failed', error)
+					return describeSecondAgentStandardGift({})
+				})
+			: describeSecondAgentStandardGift({})
 	const hasMcpClient = inbound.uniqueClientCount > 0
 	// Known ecosystems, not raw grant count and not clientId count. Two
 	// Cursor auth contexts are one ecosystem.

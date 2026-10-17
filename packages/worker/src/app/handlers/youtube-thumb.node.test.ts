@@ -10,7 +10,7 @@ function callHandler(
 	method: 'GET' | 'HEAD' | 'POST' = 'GET',
 ) {
 	const handler = createYoutubeThumbHandler(env)
-	return handler.handler({
+	return handler({
 		request: new Request(`https://example.com/youtube-thumb/${id}`, {
 			method,
 		}),

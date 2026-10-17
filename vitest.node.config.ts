@@ -20,6 +20,10 @@ export default mergeConfig(
 		resolve: {
 			alias: [
 				{
+					find: /^#start\/server\/(.*)$/,
+					replacement: resolve(rootDir, 'packages/worker/start/server/$1.ts'),
+				},
+				{
 					find: '#worker/og/og-image-assets.ts',
 					replacement: resolve(
 						rootDir,

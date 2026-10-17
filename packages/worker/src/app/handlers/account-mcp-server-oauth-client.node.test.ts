@@ -1,7 +1,3 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import {
 	decryptMcpServerOAuthClientSecret,
@@ -15,6 +11,10 @@ import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 type HubClientInput = {
 	ownerId: string
@@ -69,7 +69,7 @@ vi.mock('#worker/mcp-client/hub-client.ts', async (importOriginal) => ({
 				...clientInput,
 			}),
 	}),
-	getCachedMcpClientHubSnapshot: async () => {
+	getCachedMcpClientHubReadSnapshot: async () => {
 		if (mocks.snapshotFails) throw new Error('hub snapshot unavailable')
 		return {
 			servers: [...mocks.clientIds].map(([serverId, oauthClientId]) => ({
@@ -87,8 +87,8 @@ vi.mock('#worker/mcp-client/hub-client.ts', async (importOriginal) => ({
 	},
 }))
 
-const { createAccountMcpServersApiHandler } =
-	await import('./account-mcp-servers.ts')
+const { testAccountMcpServersApiHandler } =
+	await import('./account-mcp-servers.test-support.ts')
 
 const cookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 const secretStoreKey = 'test-secret-store-key-32-chars-minimum'
@@ -199,23 +199,25 @@ async function callApi(
 		},
 		false,
 	)
-	const request = new Request(`${origin}/account/mcp-servers.json`, {
-		method: input.method ?? 'POST',
-		headers: {
-			Cookie: cookie,
-			Accept: 'application/json',
-			'Content-Type': 'application/json',
-			Origin: origin,
-			Referer: `${origin}/@${orgSlug}/-/mcp-servers/server-acme`,
+	const request = new Request(
+		`${origin}/@${orgSlug}/-/mcp-servers/server-acme`,
+		{
+			method: input.method ?? 'POST',
+			headers: {
+				Cookie: cookie,
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				Origin: origin,
+			},
+			...(input.body ? { body: JSON.stringify(input.body) } : {}),
 		},
-		...(input.body ? { body: JSON.stringify(input.body) } : {}),
-	})
-	const response = await createAccountMcpServersApiHandler(env).handler({
+	)
+	const response = await testAccountMcpServersApiHandler(env).execute({
 		request,
 		params: {},
 		url: new URL(request.url),
 	} as never)
-	return { status: response.status, text: await response.text() }
+	return { status: response.status, text: JSON.stringify(response.data) }
 }
 
 function storedSetting(sqlite: DatabaseSync) {
@@ -251,12 +253,11 @@ test('an org admin saves, replaces, and removes a client; only the sealed secret
 	})
 	expect(saved.status).toBe(200)
 	expect(saved.text).not.toContain(clientSecret)
-	const savedServer = (
-		JSON.parse(saved.text) as {
-			servers: Array<{ id: string; oauthClientId: string | null }>
-		}
-	).servers.find((server) => server.id === 'server-acme')
-	expect(savedServer?.oauthClientId).toBe(clientId)
+	expect(JSON.parse(saved.text)).toMatchObject({
+		ok: true,
+		selectedServerId: 'server-acme',
+		oauthClientId: clientId,
+	})
 
 	const firstCall = hubCall(0)
 	expect(firstCall).toMatchObject({
@@ -464,14 +465,12 @@ test('the save response shows the hub reply even when the snapshot read fails', 
 		},
 	})
 	expect(saved.status).toBe(200)
-	const servers = (
-		JSON.parse(saved.text) as {
-			servers: Array<{ id: string; oauthClientId: string | null }>
-		}
-	).servers
-	expect(servers.find((server) => server.id === 'server-acme')).toMatchObject({
+	expect(JSON.parse(saved.text)).toMatchObject({
+		ok: true,
+		selectedServerId: 'server-acme',
 		oauthClientId: clientId,
 	})
+	expect(JSON.parse(saved.text)).not.toHaveProperty('servers')
 	expect(saved.text).not.toContain(clientSecret)
 	expect(JSON.stringify(consoleCalls)).not.toContain(clientSecret)
 })

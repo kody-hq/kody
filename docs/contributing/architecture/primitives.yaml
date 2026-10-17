@@ -36,9 +36,12 @@ primitives:
   # --- Entry points -------------------------------------------------------
   - id: app-ui
     group: surfaces
-    name: Browser app (Remix 3)
-    summary: Server-first Remix UI and Worker-served app routes.
+    name: Browser app (TanStack Start)
+    summary:
+      TanStack Start documents, Router navigation, Query server state, and
+      Worker-served APIs.
     code:
+      - packages/worker/start/
       - packages/worker/client/
       - packages/worker/src/app/
       - packages/worker/universal/
@@ -175,7 +178,7 @@ primitives:
       - packages/worker/src/app/oauth-
       - packages/worker/src/app/handlers/verify
       - packages/worker/src/app/handlers/pending-verification.ts
-      - packages/worker/src/app/handlers/webauthn.ts
+      - packages/worker/src/identity/webauthn-operations.ts
       - packages/worker/src/app/handlers/account-two-factor.ts
       - packages/worker/src/app/handlers/account-passkeys.ts
       - packages/worker/src/app/email-verification.ts
@@ -336,7 +339,7 @@ primitives:
       - packages/worker/src/mcp/capabilities/community/
       - packages/worker/src/app/handlers/community
       - packages/worker/src/app/handlers/admin-community-reports
-      - packages/worker/client/routes/community
+      - packages/worker/start/pages/community
     docs:
       - docs/use/community-packages.md
       - docs/contributing/community-packages.md
@@ -461,11 +464,11 @@ primitives:
       - packages/worker/src/mcp/capabilities/webhooks/
       - packages/worker/src/app/handlers/webhook-ingress.ts
       - packages/worker/src/app/handlers/package-webhooks.ts
-      - packages/worker/src/app/handlers/account-webhooks.ts
+      - packages/worker/start/server/account-collections.ts
       - packages/worker/src/app/package-webhooks-data.ts
-      - packages/worker/client/routes/package-webhook-settings.tsx
-      - packages/worker/client/routes/package-webhook-card.tsx
-      - packages/worker/client/routes/account-webhooks.tsx
+      - packages/worker/start/pages/package-webhook-settings.tsx
+      - packages/worker/start/pages/package-webhook-card.tsx
+      - packages/worker/start/pages/account-webhooks.tsx
       - packages/worker/client/routes/webhooks-shared.ts
       - packages/worker/src/package-registry/
     docs:
@@ -735,10 +738,10 @@ primitives:
       - packages/worker/src/follow/
       - packages/worker/src/mcp/capabilities/follow/
       - packages/worker/src/app/follows-web.ts
-      - packages/worker/src/app/handlers/org-follows.ts
+      - packages/worker/start/server/follows.ts
       - packages/worker/universal/follows.ts
-      - packages/worker/client/routes/org-follows.tsx
-      - packages/worker/client/routes/package-follow-controller.tsx
+      - packages/worker/start/pages/org-follows.tsx
+      - packages/worker/start/components/package-follow-panel.tsx
       - packages/worker/src/community/fork-upstream-updated-package-subscriptions
       - packages/worker/src/community/fork-upstream-updated-subscription-event
     docs:

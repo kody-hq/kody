@@ -211,9 +211,7 @@ test('readAuthenticatedAppUser prefetches flags only when HTML pages opt in', as
 	const counts = { batch: 0, flagPrepares: 0 }
 	const env = createUsersDb({ user: { username: 'html-user' }, counts })
 
-	const apiRequest = await sessionRequest(
-		'https://example.com/account/connections',
-	)
+	const apiRequest = await sessionRequest('https://example.com/account/agents')
 	const apiUser = await readAuthenticatedAppUser(apiRequest, env)
 	expect(apiUser?.username).toBe('html-user')
 	expect(hasResolvedRequestFeatureFlags(apiRequest)).toBe(false)
@@ -235,4 +233,30 @@ test('readAuthenticatedAppUser prefetches flags only when HTML pages opt in', as
 		stableUserId: htmlUser.mcpUser.userId,
 	})
 	expect(counts).toEqual({ batch: 3, flagPrepares: 2 })
+})
+
+test('resource binding reuses original RPC authentication without trusting resource cookies', async () => {
+	const counts = { batch: 0, flagPrepares: 0 }
+	const env = createUsersDb({ user: { username: 'html-user' }, counts })
+	const original = await sessionRequest('https://example.com/_serverFn/read')
+	const first = await readAuthenticatedAppUser(original, env)
+	// The synthetic resource URL has no credentials. Identity comes only from
+	// the original HTTP request, and shares its existing request-scoped lookup.
+	const resourceRequest = new Request('https://example.com/account/memories')
+	const second = await readAuthenticatedAppUser(original, env, {
+		resourceRequest,
+	})
+	expect(second?.mcpUser.userId).toBe(first?.mcpUser.userId)
+	expect(second).not.toBeNull()
+	expect(counts.batch).toBe(1)
+	// Supplying an authenticated resource request cannot authenticate an anonymous RPC.
+	expect(
+		await readAuthenticatedAppUser(
+			new Request('https://example.com/_serverFn/read'),
+			env,
+			{
+				resourceRequest: original,
+			},
+		),
+	).toBeNull()
 })

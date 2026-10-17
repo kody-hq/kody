@@ -1,4 +1,4 @@
-import { type Action } from 'remix/router'
+import { type EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -8,8 +8,6 @@ import {
 	verifyEmailDestinationToken,
 	type VerifyEmailDestinationReason,
 } from '#worker/email/destination-verification.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
-import { type routes } from '#universal/routes.ts'
 
 const emailDestinationsHref = '/account/email#email-destinations'
 
@@ -28,75 +26,61 @@ function getVerifyEmailDestinationError(reason: VerifyEmailDestinationReason) {
 	}
 }
 
-export function createVerifyEmailDestinationHandler(env: Env) {
+export async function executeVerifyEmailDestination({
+	request,
+	env,
+	token,
+}: {
+	request: Request
+	env: Env
+	token: string | null
+}): Promise<EmailVerificationResult> {
+	const result = await verifyEmailDestinationToken({
+		db: env.APP_DB,
+		token: token,
+		consume: true,
+	})
+
+	const requestIp = getRequestIp(request) ?? undefined
+
+	if (!result.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: 'email_destination_verify',
+			result: 'failure',
+			ip: requestIp,
+			path: '/verify-email-destination',
+			reason: result.reason,
+		})
+		return {
+			title: 'Verify email destination',
+			status: 400,
+			ok: false,
+			kind: 'email_destination',
+			reason: result.reason,
+			error: getVerifyEmailDestinationError(result.reason),
+			ctaHref: emailDestinationsHref,
+			ctaLabel: 'Resend from email inbox',
+		}
+	}
+
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'email_destination_verify',
+		result: 'success',
+		email: result.email,
+		ip: requestIp,
+		path: '/verify-email-destination',
+	})
 	return {
-		middleware: [],
-		async handler({ request, url }) {
-			const consume = request.method !== 'HEAD'
-			const result = await verifyEmailDestinationToken({
-				db: env.APP_DB,
-				token: url.searchParams.get('token'),
-				consume,
-			})
-
-			if (request.method === 'HEAD') {
-				return new Response(null, { status: result.ok ? 200 : 400 })
-			}
-
-			const requestIp = getRequestIp(request) ?? undefined
-
-			if (!result.ok) {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'account',
-					action: 'email_destination_verify',
-					result: 'failure',
-					ip: requestIp,
-					path: url.pathname,
-					reason: result.reason,
-				})
-				return renderAppPage({
-					request,
-					env,
-					title: 'Verify email destination',
-					status: 400,
-					loaderData: {
-						emailVerification: {
-							ok: false,
-							kind: 'email_destination',
-							reason: result.reason,
-							error: getVerifyEmailDestinationError(result.reason),
-							ctaHref: emailDestinationsHref,
-							ctaLabel: 'Resend from email inbox',
-						},
-					},
-				})
-			}
-
-			void logAuditEvent({
-				db: auditDatabaseFromEnv(env),
-				category: 'account',
-				action: 'email_destination_verify',
-				result: 'success',
-				email: result.email,
-				ip: requestIp,
-				path: url.pathname,
-			})
-			return renderAppPage({
-				request,
-				env,
-				title: 'Email destination verified',
-				loaderData: {
-					emailVerification: {
-						ok: true,
-						kind: 'email_destination',
-						message:
-							'emailSend can now use this address. Mail comes from your platform inbox. Set it as the default from the email inbox if you want omitted `to` to use it.',
-						ctaHref: emailDestinationsHref,
-						ctaLabel: 'Go to email inbox',
-					},
-				},
-			})
-		},
-	} satisfies Action<typeof routes.verifyEmailDestination>
+		title: 'Email destination verified',
+		ok: true,
+		kind: 'email_destination',
+		message:
+			'emailSend can now use this address. Mail comes from your platform inbox. Set it as the default from the email inbox if you want omitted `to` to use it.',
+		ctaHref: emailDestinationsHref,
+		ctaLabel: 'Go to email inbox',
+	}
 }

@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import {
 	consumeAccountCreatedFathomSignal,
 	fathomEventNames,
@@ -6,102 +6,75 @@ import {
 	trackFathomEvent,
 } from './fathom-events.ts'
 
-test('Fathom track and account-created consume strip the query once Fathom is ready', () => {
-	const trackEvent = vi.fn()
-	vi.stubGlobal('window', {
-		fathom: { trackEvent },
-	})
-	expect(trackFathomEvent(fathomEventNames.signupStarted)).toBe(true)
-	expect(trackEvent).toHaveBeenCalledWith('signup_started')
-
-	vi.stubGlobal('window', {})
-	expect(trackFathomEvent('account_created')).toBe(false)
-
-	const replaceStateUnavailable = vi.fn()
-	vi.stubGlobal('window', {
-		location: {
-			href: 'https://kody.codes/onboarding?accountCreated=1',
-		},
-		history: { state: null, replaceState: replaceStateUnavailable },
-	})
-	expect(consumeAccountCreatedFathomSignal()).toBe(false)
-	expect(replaceStateUnavailable).not.toHaveBeenCalled()
-
-	const replaceState = vi.fn()
-	let href = 'https://kody.codes/onboarding?accountCreated=1'
-	vi.stubGlobal('window', {
-		get location() {
-			return { href }
-		},
-		history: {
-			state: null,
-			replaceState(_state: unknown, _title: string, next: string) {
-				replaceState(_state, _title, next)
-				href = `https://kody.codes${next}`
-			},
-		},
-		fathom: { trackEvent },
-	})
-	expect(consumeAccountCreatedFathomSignal()).toBe(true)
-	expect(trackEvent).toHaveBeenCalledWith('account_created')
-	expect(replaceState).toHaveBeenCalledWith(null, '', '/onboarding')
-	expect(consumeAccountCreatedFathomSignal()).toBe(false)
-	expect(trackEvent).toHaveBeenCalledTimes(2)
-
+afterEach(() => {
+	vi.useRealTimers()
 	vi.unstubAllGlobals()
 })
 
-test('scheduleConsumeAccountCreatedFathomSignal retries until Fathom loads and no-ops without the query', () => {
-	vi.useFakeTimers()
-	const trackEvent = vi.fn()
-	const replaceState = vi.fn()
-	let href = 'https://kody.codes/onboarding?accountCreated=1'
-	const win: {
-		location: { href: string }
-		history: {
-			state: null
-			replaceState: (_state: unknown, _title: string, next: string) => void
-		}
-		fathom?: { trackEvent: typeof trackEvent }
-		setInterval: typeof setInterval
-		clearInterval: typeof clearInterval
-	} = {
+function fixture() {
+	let href = 'https://kody.codes/onboarding?other=value&accountCreated=1#step'
+	const win = {
 		get location() {
 			return { href }
 		},
-		history: {
-			state: null,
-			replaceState(_state: unknown, _title: string, next: string) {
-				replaceState(_state, _title, next)
-				href = `https://kody.codes${next}`
-			},
-		},
+		fathom: undefined as undefined | { trackEvent: ReturnType<typeof vi.fn> },
 		setInterval,
 		clearInterval,
 	}
 	vi.stubGlobal('window', win)
+	const replaceHref = vi.fn((next: string) => {
+		href = `https://kody.codes${next}`
+	})
+	return { win, replaceHref }
+}
 
+test('accepted analytics delegates cleanup while preserving other query and hash', () => {
+	const { win, replaceHref } = fixture()
+	expect(trackFathomEvent('account_created')).toBe(false)
+	expect(consumeAccountCreatedFathomSignal(replaceHref)).toBe(false)
+	expect(replaceHref).not.toHaveBeenCalled()
+	const trackEvent = vi.fn()
+	win.fathom = { trackEvent }
+	expect(trackFathomEvent(fathomEventNames.signupStarted)).toBe(true)
+	expect(consumeAccountCreatedFathomSignal(replaceHref)).toBe(true)
+	expect(replaceHref).toHaveBeenCalledWith('/onboarding?other=value#step')
+	expect(consumeAccountCreatedFathomSignal(replaceHref)).toBe(false)
+	expect(trackEvent.mock.calls).toEqual([
+		['signup_started'],
+		['account_created'],
+	])
+})
+
+test('failed cleanup and effect remount retry cleanup without sending analytics again', () => {
+	const { win, replaceHref } = fixture()
+	const trackEvent = vi.fn()
+	win.fathom = { trackEvent }
+	expect(
+		consumeAccountCreatedFathomSignal(() => {
+			throw new Error('Navigation failed')
+		}),
+	).toBe(false)
+	const cancel = scheduleConsumeAccountCreatedFathomSignal({ replaceHref })
+	cancel()
+	expect(trackEvent).toHaveBeenCalledExactlyOnceWith('account_created')
+	expect(replaceHref).toHaveBeenCalledWith('/onboarding?other=value#step')
+})
+
+test('scheduler retries unavailable analytics and stops after acceptance', () => {
+	vi.useFakeTimers()
+	const { win, replaceHref } = fixture()
 	const cancel = scheduleConsumeAccountCreatedFathomSignal({
+		replaceHref,
 		intervalMs: 100,
 		maxAttempts: 5,
 	})
-	expect(trackEvent).not.toHaveBeenCalled()
-
-	win.fathom = { trackEvent }
 	vi.advanceTimersByTime(100)
-	expect(trackEvent).toHaveBeenCalledWith('account_created')
-	expect(replaceState).toHaveBeenCalledWith(null, '', '/onboarding')
+	expect(replaceHref).not.toHaveBeenCalled()
+	const trackEvent = vi.fn()
+	win.fathom = { trackEvent }
+	vi.advanceTimersByTime(500)
+	expect(trackEvent).toHaveBeenCalledExactlyOnceWith('account_created')
 	cancel()
-	vi.useRealTimers()
-
-	const setIntervalSpy = vi.fn()
-	vi.stubGlobal('window', {
-		location: { href: 'https://kody.codes/account' },
-		setInterval: setIntervalSpy,
-		clearInterval: vi.fn(),
-	})
-	const noopCancel = scheduleConsumeAccountCreatedFathomSignal()
-	expect(setIntervalSpy).not.toHaveBeenCalled()
-	noopCancel()
-	vi.unstubAllGlobals()
+	scheduleConsumeAccountCreatedFathomSignal({ replaceHref })()
+	expect(replaceHref).toHaveBeenCalledTimes(1)
 })

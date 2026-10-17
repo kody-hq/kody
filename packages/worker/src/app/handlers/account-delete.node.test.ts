@@ -1,13 +1,12 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeAll, expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
 import { accountDeletionConfirmationPhrase } from '#universal/account-deletion-confirmation.ts'
+import { UserDeleteBlockedSoleOwnerError } from '#worker/orgs/soft-delete.ts'
 import {
 	auditEventSummaries,
 	logAuditEventSpy,
 } from '#worker/test-support/audit-log-spy.ts'
-import { UserDeleteBlockedSoleOwnerError } from '#worker/orgs/soft-delete.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { beforeAll, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUserForDeletion: vi.fn(),
@@ -49,7 +48,8 @@ vi.mock('@kody-internal/shared/password-hash.ts', () => ({
 	verifyPassword: (...args: Array<unknown>) => mocks.verifyPassword(...args),
 }))
 
-const { createAccountDeleteHandler } = await import('./account-delete.ts')
+const { testAccountDeleteHandler } =
+	await import('./account-delete.test-support.ts')
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -61,7 +61,7 @@ const signedInUser = {
 }
 
 function createHandler() {
-	return createAccountDeleteHandler({
+	return testAccountDeleteHandler({
 		COOKIE_SECRET: testCookieSecret,
 		APP_DB: {} as D1Database,
 		APP_BASE_URL: 'https://kody.example',
@@ -74,7 +74,7 @@ async function requestDelete(body: unknown) {
 		headers: { 'Content-Type': 'application/json' },
 		body: typeof body === 'string' ? body : JSON.stringify(body),
 	})
-	return createHandler().handler(new RequestContext(request) as never)
+	return createHandler().execute({ request: request } as never)
 }
 
 function signInOauthOnlyUser() {
@@ -128,14 +128,16 @@ test('account deletion requires GOODBYE KODY, password when one exists, and soft
 		password: 'secret',
 	})
 	expect(deleted.status).toBe(200)
-	expect(await deleted.json()).toMatchObject({
+	expect(deleted.data).toMatchObject({
 		ok: true,
 		softDeleted: true,
 		restoreWindowDays: 30,
 		userId: ownerIdFromStored('stable-ada'),
 		deletedOrgIds: ['stable-ada'],
 	})
-	expect(deleted.headers.get('Set-Cookie') ?? '').toContain('kody_session=')
+	expect(new Headers(deleted.headers).get('Set-Cookie') ?? '').toContain(
+		'kody_session=',
+	)
 	expect(mocks.softDeleteUserAccount).toHaveBeenCalledWith({
 		env: expect.objectContaining({ COOKIE_SECRET: testCookieSecret }),
 		userId: ownerIdFromStored('stable-ada'),
@@ -187,12 +189,12 @@ test('sole Owner of an org with other members is blocked with a 409', async () =
 	})
 
 	expect(response.status).toBe(409)
-	expect(await response.json()).toEqual({
+	expect(response.data).toEqual({
 		error:
 			'Account deletion is blocked while you are the only Owner of @acme. Promote another Owner or remove the other members first.',
 		blockers: [{ orgId: ownerIdFromStored('org-acme'), orgSlug: 'acme' }],
 	})
-	expect(response.headers.get('Set-Cookie')).toBeNull()
+	expect(new Headers(response.headers).get('Set-Cookie')).toBeNull()
 	expect(mocks.scheduleUserDeletedEvent).not.toHaveBeenCalled()
 	expect(auditEventSummaries()).toEqual(['account_delete:failure'])
 	expect(logAuditEventSpy.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -214,7 +216,7 @@ test('a successful soft deletion reports restore window metadata', async () => {
 		confirmation: accountDeletionConfirmationPhrase,
 	})
 	expect(softDeleted.status).toBe(200)
-	const body = await softDeleted.json()
+	const body = softDeleted.data
 	expect(body).toMatchObject({
 		ok: true,
 		softDeleted: true,

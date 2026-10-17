@@ -306,6 +306,7 @@ test('pointer-only USER retry after midnight enforces the current quota day', as
 	const provisioned = await ensureDefaultEmailInbox({
 		db: env.APP_DB,
 		userId,
+		actorPersonId: userId,
 		username,
 		domain: platformDomain,
 	})

@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { originWorkerHandler } from './origin-handler.ts'
+import { requestSkipsAssetProbe } from './static-asset-probe.ts'
 
 function trackAssetFetches(base: Env) {
 	const pathnames: Array<string> = []
@@ -53,22 +54,16 @@ test('a public file is served from ASSETS and a dynamic prefix never fetches tha
 	expect(assetBytes.byteLength).toBeGreaterThan(0)
 	expect(tracked.pathnames).toContain('/favicon.ico')
 
-	const beforeAccount = tracked.pathnames.length
-	const accountResponse = await workerFetch(
-		new Request('https://test.kody.dev/account'),
-		tracked.env,
-	)
-	await accountResponse.body?.cancel()
-	const accountFetches = tracked.pathnames.slice(beforeAccount)
-	expect(
-		accountFetches.some(
-			(pathname) => pathname === '/account' || pathname.startsWith('/account/'),
-		),
-	).toBe(false)
+	expect(requestSkipsAssetProbe('/account')).toBe(true)
+	expect(requestSkipsAssetProbe('/@acme/-/jobs')).toBe(true)
+	// Document and Start protocol dispatch require the compiled MCP test server.
+	expect(requestSkipsAssetProbe('/account/memories-export.json')).toBe(true)
 
 	const beforeOrg = tracked.pathnames.length
 	const orgResponse = await workerFetch(
-		new Request('https://test.kody.dev/@acme/-/jobs'),
+		new Request('https://test.kody.dev/@acme/connectors/home', {
+			headers: { Accept: 'application/json' },
+		}),
 		tracked.env,
 	)
 	await orgResponse.body?.cancel()

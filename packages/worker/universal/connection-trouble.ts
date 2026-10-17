@@ -1,5 +1,3 @@
-import { createHref } from 'remix/route-pattern/href'
-
 export const integrationAuthFailureReasons = [
 	'missing_refresh_token',
 	'provider_rejected',
@@ -85,13 +83,11 @@ export function buildIntegrationReconnectHref(input: {
 }
 
 function buildIntegrationAccountHref(name: string) {
-	return createHref('/account/integrations/:integrationName', {
-		integrationName: name,
-	})
+	return `/account/integrations/${encodeURIComponent(name).replaceAll('.', '%2E')}`
 }
 
 function buildExpiredSecretHref(name: string) {
-	return createHref('/account/secrets/user/:secretName', { secretName: name })
+	return `/account/secrets/user/${encodeURIComponent(name).replaceAll('.', '%2E')}`
 }
 
 export function integrationAuthFailureCopy(input: {

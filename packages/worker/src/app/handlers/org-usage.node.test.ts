@@ -22,22 +22,6 @@ const mocks = vi.hoisted(() => ({
 	})),
 	applyCreditTopUpFromCheckoutSession:
 		vi.fn<(input: unknown) => Promise<unknown>>(),
-	renderAppPage: vi.fn(
-		async (input: {
-			loaderData?: unknown
-			status?: number
-			notFound?: boolean
-			unauthorized?: boolean
-		}) =>
-			Response.json(
-				{
-					loaderData: input.loaderData ?? null,
-					notFound: input.notFound ?? false,
-					unauthorized: input.unauthorized ?? false,
-				},
-				{ status: input.status ?? 200 },
-			),
-	),
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -52,9 +36,6 @@ vi.mock('#app/account-usage-data.ts', () => ({
 	loadAccountUsageData: (input: Record<string, unknown>) =>
 		mocks.loadAccountUsageData(input),
 }))
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (input: never) => mocks.renderAppPage(input),
-}))
 vi.mock('#worker/billing/credit-top-ups.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CreditTopUps>()
 	return {
@@ -64,7 +45,7 @@ vi.mock('#worker/billing/credit-top-ups.ts', async (importOriginal) => {
 	}
 })
 
-const { createOrgUsageApiHandler, createOrgUsageHandler } =
+const { loadOrgUsagePageResult, completeOrgCreditTopUp } =
 	await import('./org-usage.ts')
 
 const now = '2026-01-01T00:00:00.000Z'
@@ -178,18 +159,60 @@ function signInAs(person: Person | null) {
 	)
 }
 
-function call(
-	createHandler: (env: Env) => { handler: (input: never) => unknown },
+async function call(
 	env: Env,
 	path: string,
 	init?: RequestInit,
+	completion = false,
 ) {
-	const url = new URL(`https://example.com${path}`)
-	return createHandler(env).handler({
-		request: new Request(url, init),
-		params: {},
-		url,
-	} as never) as Promise<Response>
+	const request = new Request(`https://example.com${path}`, init)
+	const user = await mocks.requireAuthenticatedPageUser(request, env)
+	if (user instanceof Response)
+		return {
+			status: user.status,
+			headers: user.headers,
+			data: null,
+			error: await user.text(),
+		}
+	const url = new URL(request.url)
+	const result = completion
+		? await completeOrgCreditTopUp({
+				env,
+				user,
+				orgSlug: url.pathname.split('/')[1]!.slice(1),
+				sessionId: url.searchParams.get('session_id') ?? '',
+			})
+		: await loadOrgUsagePageResult({
+				env,
+				user,
+				orgSlug: url.pathname.split('/')[1]!.slice(1),
+				credits: url.searchParams.get('credits'),
+				error: url.searchParams.get('error'),
+				topup: url.searchParams.get('topup'),
+				sessionId: url.searchParams.get('session_id'),
+			})
+	if (result.kind === 'redirect')
+		return {
+			status: 302,
+			headers: new Headers({
+				Location: new URL(result.href, request.url).toString(),
+			}),
+			data: null,
+			error: '',
+		}
+	if (result.kind === 'denied')
+		return {
+			status: result.status,
+			headers: new Headers(),
+			data: null,
+			error: result.error,
+		}
+	return {
+		status: 200,
+		headers: new Headers(),
+		data: result.payload,
+		error: null,
+	}
 }
 
 beforeEach(async () => {
@@ -206,13 +229,12 @@ beforeEach(async () => {
 
 test('usage data is readable by owners and billing admins of the org in the URL', async () => {
 	const env = createEnv()
-	const getUsage = (slug: string) =>
-		call(createOrgUsageApiHandler, env, `/@${slug}/-/usage.json`)
+	const getUsage = (slug: string) => call(env, `/@${slug}/-/usage`)
 
 	signInAs('cara')
 	const billingAdmin = await getUsage('acme')
 	expect(billingAdmin.status).toBe(200)
-	expect(await billingAdmin.json()).toEqual({
+	expect(billingAdmin.data).toEqual({
 		ok: true,
 		org: {
 			id: 'org-acme',
@@ -233,7 +255,7 @@ test('usage data is readable by owners and billing admins of the org in the URL'
 	)
 
 	signInAs('ada')
-	expect(await (await getUsage('ada')).json()).toMatchObject({
+	expect((await getUsage('ada')).data).toMatchObject({
 		org: { id: 'person-ada', slug: 'ada', personal: true },
 	})
 
@@ -242,24 +264,19 @@ test('usage data is readable by owners and billing admins of the org in the URL'
 	signInAs('dan')
 	expect((await getUsage('acme')).status).toBe(404)
 	signInAs(null)
-	expect((await getUsage('acme')).status).toBe(401)
+	expect((await getUsage('acme')).status).toBe(302)
 })
 
 test('the usage page mirrors the API access matrix', async () => {
 	const env = createEnv()
-	const getPage = (slug: string) =>
-		call(createOrgUsageHandler, env, `/@${slug}/-/usage`)
+	const getPage = (slug: string) => call(env, `/@${slug}/-/usage`)
 
 	signInAs('ada')
 	const owner = await getPage('acme')
 	expect(owner.status).toBe(200)
-	expect(await owner.json()).toMatchObject({
-		loaderData: {
-			accountUsage: {
-				ok: true,
-				org: { id: 'org-acme', slug: 'acme', personal: false },
-			},
-		},
+	expect(owner.data).toMatchObject({
+		ok: true,
+		org: { id: 'org-acme', slug: 'acme', personal: false },
 	})
 
 	signInAs('cara')
@@ -268,19 +285,31 @@ test('the usage page mirrors the API access matrix', async () => {
 	signInAs('bob')
 	const member = await getPage('acme')
 	expect(member.status).toBe(403)
-	expect(await member.json()).toMatchObject({ unauthorized: true })
+	expect(member.error).toContain('Only owners and billing admins')
 
 	signInAs('dan')
 	const outsider = await getPage('acme')
 	expect(outsider.status).toBe(404)
-	expect(await outsider.json()).toMatchObject({ notFound: true })
+	expect(outsider.error).toContain('Organization unavailable')
+})
+
+const complete = (env: Env, path: string) => call(env, path, undefined, true)
+
+test('usage reads never apply a checkout even when legacy return parameters are present', async () => {
+	const env = createEnv()
+	signInAs('ada')
+	const response = await call(
+		env,
+		'/@ada/-/usage?topup=success&session_id=cs_123',
+	)
+	expect(response.status).toBe(200)
+	expect(mocks.applyCreditTopUpFromCheckoutSession).not.toHaveBeenCalled()
 })
 
 test('a confirmed Stripe return lands on the Credits section with the added notice', async () => {
 	const env = createEnv()
 	signInAs('ada')
-	const response = await call(
-		createOrgUsageHandler,
+	const response = await complete(
 		env,
 		'/@ada/-/usage?topup=success&session_id=cs_123',
 	)
@@ -304,8 +333,7 @@ test('a rejected Stripe return keeps known codes and folds the rest into topup_f
 	mocks.applyCreditTopUpFromCheckoutSession.mockRejectedValueOnce(
 		new CreditTopUpError('not_paid', 'Not paid.'),
 	)
-	const notPaid = await call(
-		createOrgUsageHandler,
+	const notPaid = await complete(
 		env,
 		'/@ada/-/usage?topup=success&session_id=cs_1',
 	)
@@ -316,8 +344,7 @@ test('a rejected Stripe return keeps known codes and folds the rest into topup_f
 	mocks.applyCreditTopUpFromCheckoutSession.mockRejectedValueOnce(
 		new CreditTopUpError('user_not_found', 'Missing.'),
 	)
-	const unknown = await call(
-		createOrgUsageHandler,
+	const unknown = await complete(
 		env,
 		'/@ada/-/usage?topup=success&session_id=cs_2',
 	)
@@ -333,11 +360,7 @@ test('a rejected Stripe return keeps known codes and folds the rest into topup_f
 test('notice and error codes map to messages; unknown and prototype keys map to nothing', async () => {
 	const env = createEnv()
 	signInAs('ada')
-	await call(
-		createOrgUsageHandler,
-		env,
-		'/@ada/-/usage?credits=added&error=not_paid',
-	)
+	await call(env, '/@ada/-/usage?credits=added&error=not_paid')
 	expect(mocks.loadAccountUsageData).toHaveBeenLastCalledWith(
 		expect.objectContaining({
 			notice: expect.any(String),
@@ -345,13 +368,34 @@ test('notice and error codes map to messages; unknown and prototype keys map to 
 		}),
 	)
 
-	await call(
-		createOrgUsageHandler,
-		env,
-		'/@ada/-/usage?credits=__proto__&error=constructor',
-	)
+	await call(env, '/@ada/-/usage?credits=__proto__&error=constructor')
 	expect(mocks.loadAccountUsageData).toHaveBeenLastCalledWith(
 		expect.objectContaining({ notice: undefined, error: undefined }),
 	)
+	expect(mocks.applyCreditTopUpFromCheckoutSession).not.toHaveBeenCalled()
+})
+
+test('typed usage selection cannot authorize one org while reading another', async () => {
+	const env = createEnv()
+	const user = await mocks.requireAuthenticatedPageUser(
+		new Request('https://example.com/@ada/-/usage'),
+		env,
+	)
+	if (user instanceof Response) throw new Error('Expected authenticated actor')
+	const result = await loadOrgUsagePageResult({
+		env,
+		user,
+		orgSlug: 'acme',
+		credits: null,
+		error: null,
+		topup: null,
+		sessionId: null,
+	})
+	expect(result).toEqual({
+		kind: 'denied',
+		status: 404,
+		error: 'Organization unavailable.',
+	})
+	expect(mocks.loadAccountUsageData).not.toHaveBeenCalled()
 	expect(mocks.applyCreditTopUpFromCheckoutSession).not.toHaveBeenCalled()
 })

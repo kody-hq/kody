@@ -73,6 +73,7 @@ key.
 - Allowlist: `packages/worker/src/app/youtube-watch-allowlist.ts`
 - SSR snapshot: `packages/worker/src/app/youtube-watch-ssr.ts`
 - Thumb proxy: `packages/worker/src/app/handlers/youtube-thumb.ts`
-- Overlay: `packages/worker/client/youtube-watch-overlay.tsx`
-- Homepage hero player: `packages/worker/client/routes/landing-hero-video.tsx`
-  and `packages/worker/universal/landing-hero-copy.ts`
+- Overlay: `packages/worker/start/components/youtube-watch-overlay.tsx`
+- Homepage hero player:
+  `packages/worker/start/components/landing-hero-video.tsx` and
+  `packages/worker/universal/landing-hero-copy.ts`

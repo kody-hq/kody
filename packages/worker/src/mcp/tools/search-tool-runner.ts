@@ -260,8 +260,9 @@ export async function runSearchTool(input: {
 			if (considerOnboardingNotice) {
 				const settlement = await settleWithBudget(
 					buildOnboardingSearchNotice({
-						env: env,
-						userId: personOwnerId,
+						env,
+						userId: personalOrgOwnerId ?? personOwnerId,
+						personId: personOwnerId,
 						baseUrl,
 					}),
 					SEARCH_ONBOARDING_NOTICE_BUDGET_MS,

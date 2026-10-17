@@ -1,4 +1,3 @@
-import { type Action } from 'remix/router'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
@@ -20,7 +19,6 @@ import {
 import { identityIconCommitForSource } from '#worker/repo/identity-icon.ts'
 import { getUserRepoByName } from '#worker/repo/user-repos.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { type routes } from '#universal/routes.ts'
 
 function isGuestVisiblePackage(pkg: { hidden: boolean; isPrivate: boolean }) {
 	return !pkg.hidden && !pkg.isPrivate
@@ -44,41 +42,44 @@ async function viewerCanAccessPlainRepo(input: {
 }
 
 export function createCommunityPackageIconHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const [target, user] = await Promise.all([
-				resolvePackagePageUrl({
-					db: env.APP_DB,
-					username: params.username,
-					kodyId: params.kodyId,
-				}),
-				readAuthenticatedAppUser(request, env),
-			])
-			if (target?.kind === 'redirect') {
-				return identityIconNotFound()
-			}
-
-			if (target?.kind === 'package' && target.savedPackage) {
-				return await servePackageIdentityIcon({
-					env,
-					user,
-					userId: target.userId,
-					savedPackage: target.savedPackage,
-					listingId: target.listingId,
-					iconCommit: params.iconCommit,
-				})
-			}
-
-			return await servePlainRepoIdentityIcon({
-				env,
-				user,
+	return async ({
+		request,
+		params,
+	}: {
+		request: Request
+		params: { username: string; kodyId: string; iconCommit: string }
+	}) => {
+		const [target, user] = await Promise.all([
+			resolvePackagePageUrl({
+				db: env.APP_DB,
 				username: params.username,
 				kodyId: params.kodyId,
+			}),
+			readAuthenticatedAppUser(request, env),
+		])
+		if (target?.kind === 'redirect') {
+			return identityIconNotFound()
+		}
+
+		if (target?.kind === 'package' && target.savedPackage) {
+			return await servePackageIdentityIcon({
+				env,
+				user,
+				userId: target.userId,
+				savedPackage: target.savedPackage,
+				listingId: target.listingId,
 				iconCommit: params.iconCommit,
 			})
-		},
-	} satisfies Action<typeof routes.communityPackageIcon>
+		}
+
+		return await servePlainRepoIdentityIcon({
+			env,
+			user,
+			username: params.username,
+			kodyId: params.kodyId,
+			iconCommit: params.iconCommit,
+		})
+	}
 }
 
 async function servePackageIdentityIcon(input: {

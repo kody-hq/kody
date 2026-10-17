@@ -1,19 +1,26 @@
-import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
-import { createAccountPasskeysApiHandler } from '#app/handlers/account-passkeys.ts'
+import { testAccountPasskeysApiHandler } from '#app/handlers/account-passkeys.test-support.ts'
 import {
-	createWebauthnAuthenticationHandler,
-	createWebauthnRegistrationHandler,
-} from '#app/handlers/webauthn.ts'
+	webauthnAuthenticationOptions,
+	webauthnAuthenticationVerify,
+	webauthnRegistrationOptions,
+} from '#worker/identity/webauthn-operations.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
+import { verifyAuthenticationResponse } from '@simplewebauthn/server'
+import type * as WebauthnServer from '@simplewebauthn/server'
+vi.mock('@simplewebauthn/server', async (importOriginal) => ({
+	...(await importOriginal<typeof WebauthnServer>()),
+	verifyAuthenticationResponse: vi.fn(),
+}))
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
-type Handler = { handler(context: never): Promise<Response> }
+type Handler = ReturnType<typeof testAccountPasskeysApiHandler>
 
 function setup() {
 	setAuthSessionSecret(testCookieSecret)
@@ -24,7 +31,7 @@ function setup() {
 		APP_BASE_URL: 'http://example.com',
 		COOKIE_SECRET: testCookieSecret,
 		SENTRY_ENVIRONMENT: 'test',
-	} as unknown as Parameters<typeof createAccountPasskeysApiHandler>[0]
+	} as unknown as Parameters<typeof testAccountPasskeysApiHandler>[0]
 	const seedUser = async (id: number, username: string) => {
 		const email = `${username}@example.com`
 		const stableUserId = testStableUserIdFromEmail(email)
@@ -87,7 +94,7 @@ async function run(
 			? {}
 			: { method: 'POST', body: JSON.stringify(init.body) }),
 	})
-	return handler.handler({
+	return handler.execute({
 		request,
 		url: new URL(request.url),
 		params: {},
@@ -112,7 +119,7 @@ test('account passkeys API lists labels/dates, renames owned keys, and deletes w
 	seedPasskey({ id: 'passkey-user-1b', userId: 1, name: 'Work laptop' })
 	seedPasskey({ id: 'passkey-user-2', userId: 2, name: 'Other user' })
 
-	const handler = createAccountPasskeysApiHandler(env)
+	const handler = testAccountPasskeysApiHandler(env)
 	const cookie = await userOneCookie()
 	const post = async (body: Record<string, string>) => {
 		const response = await run(handler, '/account/passkeys.json', {
@@ -121,7 +128,7 @@ test('account passkeys API lists labels/dates, renames owned keys, and deletes w
 		})
 		return {
 			status: response.status,
-			payload: (await response.json()) as PasskeysPayload,
+			payload: response.data as PasskeysPayload,
 		}
 	}
 	const otherUserRow = () =>
@@ -131,7 +138,7 @@ test('account passkeys API lists labels/dates, renames owned keys, and deletes w
 
 	const list = await run(handler, '/account/passkeys.json', { cookie })
 	expect(list.status).toBe(200)
-	const listPayload = (await list.json()) as PasskeysPayload
+	const listPayload = list.data as PasskeysPayload
 	expect(listPayload.ok).toBe(true)
 	expect(listPayload.passkeys).toMatchObject([
 		{ id: 'passkey-user-1b', name: 'Work laptop', lastUsedAt: null },
@@ -158,7 +165,9 @@ test('account passkeys API lists labels/dates, renames owned keys, and deletes w
 	expect(ownRename.status).toBe(200)
 	expect(ownRename.payload.ok).toBe(true)
 	expect(
-		ownRename.payload.passkeys.find((p) => p.id === 'passkey-user-1')?.name,
+		sqlite
+			.prepare(`SELECT name FROM passkeys WHERE id = 'passkey-user-1'`)
+			.get()?.name,
 	).toBe('Phone · Google')
 
 	const blankRename = await post({
@@ -183,23 +192,32 @@ test('account passkeys API lists labels/dates, renames owned keys, and deletes w
 	})
 	expect(ownDelete.status).toBe(200)
 	expect(ownDelete.payload.ok).toBe(true)
-	expect(ownDelete.payload.passkeys.map((p) => p.id)).toEqual([
-		'passkey-user-1b',
-	])
+	expect(ownDelete.payload).toEqual({ ok: true })
+	expect(
+		sqlite
+			.prepare(`SELECT id FROM passkeys WHERE user_id = 1 ORDER BY id`)
+			.all(),
+	).toEqual([{ id: 'passkey-user-1b' }])
 })
 
 test('registration options require authentication and exclude existing credentials', async () => {
 	const { env, seedUser, seedPasskey } = setup()
-	const handler = createWebauthnRegistrationHandler(env)
-	expect((await run(handler, '/webauthn/registration')).status).toBe(401)
+	const options = (cookie?: string) =>
+		webauthnRegistrationOptions({
+			env,
+			request: new Request('http://example.com/webauthn/registration', {
+				headers: cookie ? { Cookie: cookie } : {},
+			}),
+			url: new URL('http://example.com/webauthn/registration'),
+			body: {},
+		})
+	expect((await options()).status).toBe(401)
 
 	await seedUser(1, 'one')
 	seedPasskey({ id: 'passkey-user-1', userId: 1 })
-	const response = await run(handler, '/webauthn/registration', {
-		cookie: await userOneCookie(),
-	})
+	const response = await options(await userOneCookie())
 	expect(response.status).toBe(200)
-	const payload = (await response.json()) as {
+	const payload = (await Promise.resolve(response.data)) as {
 		ok: boolean
 		options: {
 			challenge: string
@@ -219,10 +237,16 @@ test('registration options require authentication and exclude existing credentia
 })
 
 test('authentication issues challenge options and rejects unknown passkeys', async () => {
-	const handler = createWebauthnAuthenticationHandler(setup().env)
-	const options = await run(handler, '/webauthn/authentication')
+	const env = setup().env
+	const url = new URL('http://example.com/webauthn/authentication')
+	const options = await webauthnAuthenticationOptions({
+		env,
+		request: new Request(url),
+		url,
+		body: {},
+	})
 	expect(options.status).toBe(200)
-	const optionsPayload = (await options.json()) as {
+	const optionsPayload = (await Promise.resolve(options.data)) as {
 		ok: boolean
 		options: { challenge: string }
 	}
@@ -231,10 +255,53 @@ test('authentication issues challenge options and rejects unknown passkeys', asy
 	const challengeCookie = options.headers.get('Set-Cookie')?.split(';')[0] ?? ''
 	expect(challengeCookie).toContain('kody_webauthn_challenge=')
 
-	const response = await run(handler, '/webauthn/authentication', {
-		cookie: challengeCookie,
-		body: { response: { id: 'unknown-passkey', rawId: 'unknown-passkey' } },
+	const response = await webauthnAuthenticationVerify({
+		env,
+		request: new Request(url, { headers: { Cookie: challengeCookie } }),
+		url,
+		body: {
+			response: { id: 'unknown-passkey', rawId: 'unknown-passkey' } as never,
+		},
 	})
 	expect(response.status).toBe(401)
-	expect(await response.json()).toMatchObject({ ok: false })
+	expect(await Promise.resolve(response.data)).toMatchObject({ ok: false })
+})
+
+test('a cryptographically verified passkey cannot mint a session for a tombstoned person', async () => {
+	const { env, sqlite, seedUser, seedPasskey } = setup()
+	await seedUser(1, 'deleted-passkey-user')
+	seedPasskey({ id: 'deleted-passkey', userId: 1 })
+	const url = new URL('http://example.com/webauthn/authentication')
+	const options = await webauthnAuthenticationOptions({
+		env,
+		request: new Request(url),
+		url,
+		body: {},
+	})
+	const cookie = options.headers.get('Set-Cookie')!.split(';')[0]!
+	sqlite.exec(`UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = 1`)
+	vi.mocked(verifyAuthenticationResponse).mockResolvedValueOnce({
+		verified: true,
+		authenticationInfo: { newCounter: 1 },
+	} as never)
+	const result = await webauthnAuthenticationVerify({
+		env,
+		request: new Request(url, { headers: { Cookie: cookie } }),
+		url,
+		body: {
+			response: { id: 'deleted-passkey', rawId: 'deleted-passkey' } as never,
+		},
+	})
+	expect(verifyAuthenticationResponse).toHaveBeenCalledOnce()
+	expect(result.status).toBe(401)
+	expect(result.data).toEqual({ ok: false, error: 'Passkey sign-in failed.' })
+	expect(
+		result.headers
+			.getSetCookie()
+			.some(
+				(cookie) =>
+					cookie.startsWith('kody_session=') && !cookie.includes('Max-Age=0'),
+			),
+	).toBe(false)
+	expect(result.headers.get('Set-Cookie')).toContain('kody_webauthn_challenge=')
 })

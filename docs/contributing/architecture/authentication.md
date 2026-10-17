@@ -70,7 +70,7 @@ that refresh then hit the revoked grant and must start a new OAuth flow.
 stable id and only then uses the numeric primary key for internal D1 joins.
 Version-1 cookies fail closed and require a fresh login.
 
-`packages/worker/src/app/handler.ts` calls `setAuthSessionSecret` on each
+`packages/worker/start/http-entry.ts` calls `setAuthSessionSecret` on each
 request so cookie signing and verification are available to handlers.
 
 ## Login and signup
@@ -178,9 +178,9 @@ delivery-alert bounce/complaint table); they do not write
 
 Signed-in users with an unverified email can request a fresh link with
 `POST /account/resend-verification.json`
-(`packages/worker/src/app/handlers/account-resend-verification.ts`), surfaced as
-a "Resend verification email" button on `/pending-verification`, `/account`,
-`/onboarding`, and `/oauth/authorize`. The endpoint reuses
+(`packages/worker/src/identity/account-resend-verification-operations.ts`),
+surfaced as a "Resend verification email" button on `/pending-verification`,
+`/account`, `/onboarding`, and `/oauth/authorize`. The endpoint reuses
 `createEmailVerification` (invalidating older tokens) and is rate-limited per
 user (3 requests per 15 minutes).
 
@@ -201,18 +201,17 @@ lifecycle events (`delivered`, `deferred`, `bounced`, `failed`, `rejected`,
 (`RLR613`, `RLR813`, "blacklisted", Spamhaus DBL) — including deferred 4xx that
 carry those signals — is classified as `sender_block`. The pending-verification,
 account, and OAuth authorize UIs surface the bounce instead of staying silently
-pending, and `POST /account/resend-verification.json` refuses to retry into a
-known `sender_block`. The same events write a per-recipient cooldown
-(`email_recipient_cooldowns`) so other transactional mail stops hammering that
-address, and mark the recipient's MX provider (`email_rejecting_providers`,
-keyed by host suffix such as `messagingengine.com`) so holdable kody@ mail
-(campaigns, plan-limit nudges) is skipped for that provider until rejections age
-out or a successful delivery clears it. Essential mail (verification,
-password/sign-in, security, billing) still attempts the send, subject only to
-the recipient cooldown. `/pending-verification` polls
-`GET /account/email-verification-delivery.json` (session cookie only; no email
-query param) for spinner / delivered / failed indicators without exposing other
-users' delivery state. The first terminal failure fans
+pending, and the native `resendWebsiteVerification` server function refuses to
+retry into a known `sender_block`. Delivery events also write per-recipient
+cooldowns in `email_recipient_cooldowns` and mark rejecting MX providers in
+`email_rejecting_providers`. Holdable mail, such as campaigns and plan-limit
+nudges, is skipped for rejecting providers until rejections age out or delivery
+succeeds. Essential verification, password, security, and billing mail remains
+subject to recipient cooldowns. Native password-reset operations use the same
+send policy. `/pending-verification` polls the native `readWebsiteSessionInfo`
+server function (session cookie only; no email input) for delivery indicators
+without exposing other users' delivery state. Polls time out after ten seconds,
+and successful resend invalidates earlier reads. The first terminal failure fans
 `user.email_verification.failed` to admin-owned packages. When a send stays
 `accepted` for an hour with no lifecycle event, the hourly
 `email_verification_stall_alert` lane fans `user.email_verification.stalled`.
@@ -330,9 +329,9 @@ Both are opt-in and adapted from the Epic Stack.
 - When a 2FA account logs in with a password (or social login), the handler does
   **not** issue `kody_session`. It sets the short-lived signed `kody_verify`
   cookie (`packages/worker/src/app/verify-session.ts`, 10 minutes) and the
-  client redirects to `/verify`. `POST /verify/2fa.json`
-  (`packages/worker/src/app/handlers/verify.ts`) checks the TOTP code and only
-  then issues the real session cookie. Passkey sign-in skips this step: a
+  client redirects to `/verify`. The native two-factor verification function
+  (`packages/worker/src/identity/verify-operations.ts`) checks the TOTP code and
+  only then issues the real session cookie. Passkey sign-in skips this step: a
   verified WebAuthn assertion already requires possession of the authenticator
   plus user verification (biometric/PIN), so it is treated as MFA-complete.
 - Disabling 2FA requires a fresh code. The inline OAuth password form
@@ -343,9 +342,9 @@ Both are opt-in and adapted from the Epic Stack.
 `packages/worker/src/app/passkeys.ts`):
 
 - Registration and authentication ceremonies live in
-  `packages/worker/src/app/handlers/webauthn.ts` using `@simplewebauthn/server`;
-  challenges ride in the short-lived signed `kody_webauthn_challenge` cookie, so
-  no server-side ceremony state exists.
+  `packages/worker/src/identity/webauthn-operations.ts` using
+  `@simplewebauthn/server`; challenges ride in the short-lived signed
+  `kody_webauthn_challenge` cookie, so no server-side ceremony state exists.
 - The relying party id/origin derive from the request host. WebAuthn requires a
   registrable domain, so Playwright passkey tests navigate via `localhost`
   rather than `127.0.0.1`.
@@ -448,33 +447,29 @@ after the restore window is `hardPurgeSoftDeletedUser`
 
 Related handlers:
 
-- `GET /login` and `GET /signup`:
-  `packages/worker/src/app/handlers/auth-page.ts`
-- `POST /logout`: `packages/worker/src/app/handlers/logout.ts`
+- `GET /login` and `GET /signup`: `packages/worker/start/routes/login.tsx` and
+  `packages/worker/start/routes/signup.tsx`
+- Native sign-out function: `packages/worker/start/server/security-mutations.ts`
 - `POST /session`: `packages/worker/src/app/handlers/session.ts` for session
   status checks
-- `GET /account`: `packages/worker/src/app/handlers/account.ts` (redirects to
-  login if missing session)
+- `GET /account`: `packages/worker/start/routes/account.tsx` (redirects to login
+  if missing session)
 
 ### Client session refresh behavior
 
-The app shell (`packages/worker/client/app.tsx`) refreshes session state after
-initial load and on client-side navigation events. Navigation-triggered
-refreshes are throttled (30s) to avoid a `/session` round trip on every SPA
-navigation, but the throttle never applies to refreshes that follow a mutation:
-the client router (`packages/worker/client/client-router.tsx`) emits a
-`mutation` event after every form POST it submits (exposed as
-`listenToRouterMutations`), and the shell marks its session state stale so the
-follow-up redirect navigation refreshes it regardless of the throttle —
-auth-changing POSTs like `/logout` update the top nav immediately. If an
-in-flight refresh is aborted, the client keeps the last known ready session
-instead of overwriting it with `null`. This prevents transient logged-out UI
-during concurrent re-renders.
+The Start root route (`packages/worker/start/routes/__root.tsx`) verifies
+identity for foreground private navigation. Query caches include the actor in
+their keys. Document-bound server functions reject actor changes before
+returning another account's payload. Activation refresh verifies identity before
+refreshing private queries; mutations reconcile the submitting actor's cache
+even after navigation. See
+[web app rendering and server state](../tanstack-start.md) for cache ownership
+and freshness policies.
 
 ## Password reset
 
-Password reset handlers are in
-`packages/worker/src/app/handlers/password-reset.ts`.
+Password reset operations called by Start server functions are in
+`packages/worker/src/identity/password-reset-operations.ts`.
 
 - `POST /password-reset` creates a one-time token and stores only its hash
 - the response is uniform for registered and unregistered addresses in both body
@@ -893,7 +888,7 @@ intercepts `POST /oauth/token` refresh grants:
   account setup links
 - `packages/worker/src/app/email-verification.ts`,
   `packages/worker/src/app/handlers/verify-email.ts`, and
-  `packages/worker/src/app/handlers/account-resend-verification.ts` for
+  `packages/worker/src/identity/account-resend-verification-operations.ts` for
   verification tokens and resends
 - `packages/worker/src/email/destinations.ts`,
   `packages/worker/src/email/destination-verification.ts`, and

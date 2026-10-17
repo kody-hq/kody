@@ -1,6 +1,4 @@
-import { type Action } from 'remix/router'
 import { checkSentryTunnelRateLimit } from '#app/rate-limit.ts'
-import { type routes } from '#universal/routes.ts'
 import { getRequestIp } from '#worker/audit-log.ts'
 
 /**
@@ -44,78 +42,75 @@ export function buildEnvelopeIngestUrl(dsn: string): string | null {
 }
 
 export function createSentryTunnelHandler(appEnv: SentryTunnelEnv) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const configuredDsn = appEnv.SENTRY_DSN?.trim()
-			if (!configuredDsn) {
-				return new Response('Not Found', { status: 404 })
-			}
+	return async ({ request }: { request: Request }) => {
+		const configuredDsn = appEnv.SENTRY_DSN?.trim()
+		if (!configuredDsn) {
+			return new Response('Not Found', { status: 404 })
+		}
 
-			const contentLengthHeader = request.headers.get('content-length')
-			const contentLength = Number(contentLengthHeader)
-			if (!contentLengthHeader || !Number.isFinite(contentLength)) {
-				// Without a declared length there is nothing to check before
-				// buffering, so refuse rather than read an unbounded stream.
-				return new Response('Length Required', { status: 411 })
-			}
-			if (contentLength > maxEnvelopeBytes) {
-				return new Response('Payload Too Large', { status: 413 })
-			}
+		const contentLengthHeader = request.headers.get('content-length')
+		const contentLength = Number(contentLengthHeader)
+		if (!contentLengthHeader || !Number.isFinite(contentLength)) {
+			// Without a declared length there is nothing to check before
+			// buffering, so refuse rather than read an unbounded stream.
+			return new Response('Length Required', { status: 411 })
+		}
+		if (contentLength > maxEnvelopeBytes) {
+			return new Response('Payload Too Large', { status: 413 })
+		}
 
-			const rateLimit = await checkSentryTunnelRateLimit(
-				appEnv,
-				`sentry-tunnel:ip:${getRequestIp(request) ?? 'unknown'}`,
-			)
-			if (!rateLimit.allowed) {
-				return new Response('Too Many Requests', {
-					status: 429,
-					headers: {
-						'Retry-After': String(rateLimit.retryAfterSeconds ?? 60),
-					},
-				})
-			}
+		const rateLimit = await checkSentryTunnelRateLimit(
+			appEnv,
+			`sentry-tunnel:ip:${getRequestIp(request) ?? 'unknown'}`,
+		)
+		if (!rateLimit.allowed) {
+			return new Response('Too Many Requests', {
+				status: 429,
+				headers: {
+					'Retry-After': String(rateLimit.retryAfterSeconds ?? 60),
+				},
+			})
+		}
 
-			const body = await request.arrayBuffer()
-			if (body.byteLength > maxEnvelopeBytes) {
-				return new Response('Payload Too Large', { status: 413 })
-			}
+		const body = await request.arrayBuffer()
+		if (body.byteLength > maxEnvelopeBytes) {
+			return new Response('Payload Too Large', { status: 413 })
+		}
 
-			// The envelope header is the first newline-delimited JSON line.
-			const headerEnd = new Uint8Array(body).indexOf(0x0a)
-			const headerText = new TextDecoder().decode(
-				headerEnd === -1 ? body : body.slice(0, headerEnd),
-			)
-			let envelopeDsn: unknown
-			try {
-				const header = JSON.parse(headerText) as { dsn?: unknown }
-				envelopeDsn = header.dsn
-			} catch {
-				return new Response('Malformed envelope', { status: 400 })
-			}
-			if (
-				typeof envelopeDsn !== 'string' ||
-				envelopeDsn.trim() !== configuredDsn
-			) {
-				return new Response('Forbidden', { status: 403 })
-			}
+		// The envelope header is the first newline-delimited JSON line.
+		const headerEnd = new Uint8Array(body).indexOf(0x0a)
+		const headerText = new TextDecoder().decode(
+			headerEnd === -1 ? body : body.slice(0, headerEnd),
+		)
+		let envelopeDsn: unknown
+		try {
+			const header = JSON.parse(headerText) as { dsn?: unknown }
+			envelopeDsn = header.dsn
+		} catch {
+			return new Response('Malformed envelope', { status: 400 })
+		}
+		if (
+			typeof envelopeDsn !== 'string' ||
+			envelopeDsn.trim() !== configuredDsn
+		) {
+			return new Response('Forbidden', { status: 403 })
+		}
 
-			const ingestUrl = buildEnvelopeIngestUrl(configuredDsn)
-			if (!ingestUrl) {
-				return new Response('Not Found', { status: 404 })
-			}
+		const ingestUrl = buildEnvelopeIngestUrl(configuredDsn)
+		if (!ingestUrl) {
+			return new Response('Not Found', { status: 404 })
+		}
 
-			try {
-				const upstream = await fetch(ingestUrl, {
-					method: 'POST',
-					headers: { 'content-type': 'application/x-sentry-envelope' },
-					body,
-				})
-				return new Response(null, { status: upstream.ok ? 200 : 502 })
-			} catch (error) {
-				console.warn('sentry-tunnel-forward-failed', error)
-				return new Response(null, { status: 502 })
-			}
-		},
-	} satisfies Action<typeof routes.sentryTunnel>
+		try {
+			const upstream = await fetch(ingestUrl, {
+				method: 'POST',
+				headers: { 'content-type': 'application/x-sentry-envelope' },
+				body,
+			})
+			return new Response(null, { status: upstream.ok ? 200 : 502 })
+		} catch (error) {
+			console.warn('sentry-tunnel-forward-failed', error)
+			return new Response(null, { status: 502 })
+		}
+	}
 }

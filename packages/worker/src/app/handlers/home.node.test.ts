@@ -1,14 +1,12 @@
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createHomeHandler } from '#app/handlers/home.ts'
+import { loadHome } from '../../../start/server/home.ts'
 import { loadOnboardingData } from '#app/onboarding-data.ts'
 import { loadSessionInfo } from '#app/session-info.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 import {
 	isOrgBindingMembershipQuery,
@@ -17,6 +15,9 @@ import {
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import type * as OnboardingData from '#app/onboarding-data.ts'
+
+// Binding validation is covered separately; this unit exercises real auth batching.
+vi.mock('#app/env.ts', () => ({ getEnv: (env: Env) => env }))
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -28,11 +29,27 @@ vi.mock('#app/onboarding-data.ts', async (importOriginal) => {
 	}
 })
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: vi.fn(),
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/'),
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+}))
+vi.mock('@tanstack/react-start', async () => ({
+	createServerFn: (
+		await import('#worker/test-support/start-server-function.ts')
+	).createTestServerFn,
+	createServerOnlyFn: <T>(fn: T) => fn,
 }))
 
-test('authenticated home SSR prefetches flags while loading page data', async () => {
+test('native home leaves auth and flag reads to the session loader', async () => {
 	setAuthSessionSecret(testCookieSecret)
 	const email = 'home@example.com'
 	const stableUserId = testStableUserIdFromEmail(email)
@@ -102,24 +119,19 @@ test('authenticated home SSR prefetches flags while loading page data', async ()
 	const request = new Request('https://example.com/', {
 		headers: { Cookie: cookie },
 	})
-	vi.mocked(renderAppPage).mockImplementation(async (input) => {
-		const loaded = await loadSessionInfo(input.request, input.env)
-		return Response.json({ session: loaded.session })
-	})
+	native.env = env
+	native.request = request
 
 	silenceExpectedConsoleWarns(['landing-hero-videos'])
 	const fetchMock = vi
 		.spyOn(globalThis, 'fetch')
 		.mockRejectedValue(new Error('offline'))
-	const response = await createHomeHandler(env).handler(
-		new RequestContext(request),
-	)
-	expect(response.status).toBe(200)
-	const body = (await response.json()) as {
-		session: { username: string; featureFlags: Record<string, boolean> }
-	}
-	expect(body.session.username).toBe('home-user')
-	expect(body.session.featureFlags).toEqual({
+	const home = await loadHome()
+	expect(counts.prepare).toBe(0)
+	const body = await loadSessionInfo(request, env)
+	expect(home.landingAgentOrder.length).toBeGreaterThan(0)
+	expect(body.session?.username).toBe('home-user')
+	expect(body.session?.featureFlags).toEqual({
 		'demo-indicator': true,
 		'jev-search-rerank': false,
 		'execute-invoke': true,
@@ -132,37 +144,22 @@ test('authenticated home SSR prefetches flags while loading page data', async ()
 	})
 	expect(counts.batchSizes).toEqual([2, 3])
 	expect(loadOnboardingData).not.toHaveBeenCalled()
-	const homeInput = vi.mocked(renderAppPage).mock.calls.at(-1)?.[0]
-	expect(homeInput?.loaderData?.onboarding).toMatchObject({
-		loggedIn: true,
-		username: 'home-user',
-		emailVerified: false,
-		featuredMcpServers: [],
-		setupPrompt: '',
-		persistPrompt: '',
-	})
-	expect(
-		homeInput?.loaderData?.onboarding?.discoveryPrompt.length,
-	).toBeGreaterThan(0)
+	expect(home.landingHeroVideos).toEqual([])
 	fetchMock.mockRestore()
 })
 
-test('anonymous home SSR omits the unused onboarding chooser catalog', async () => {
-	vi.mocked(renderAppPage).mockResolvedValue(new Response('ok'))
+test('native anonymous home omits the unused onboarding chooser catalog', async () => {
 	silenceExpectedConsoleWarns(['landing-hero-videos'])
 	const fetchMock = vi
 		.spyOn(globalThis, 'fetch')
 		.mockRejectedValue(new Error('offline'))
 
 	setAuthSessionSecret(testCookieSecret)
-	const response = await createHomeHandler({
-		COOKIE_SECRET: testCookieSecret,
-	} as Env).handler(new RequestContext(new Request('https://example.com/')))
-	expect(response.status).toBe(200)
-	const input = vi.mocked(renderAppPage).mock.calls.at(-1)?.[0]
-	expect(input?.loaderData?.onboarding?.discoveryPrompt.length).toBeGreaterThan(
-		0,
-	)
-	expect(input?.loaderData?.landingHeroVideos).toEqual([])
+	native.env = { COOKIE_SECRET: testCookieSecret } as Env
+	native.request = new Request('https://example.com/')
+	const home = await loadHome()
+	expect(home.landingAgentOrder.length).toBeGreaterThan(0)
+	expect(home.landingHeroVideos).toEqual([])
+	expect(loadOnboardingData).not.toHaveBeenCalled()
 	fetchMock.mockRestore()
 })

@@ -1,5 +1,4 @@
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
@@ -61,13 +60,11 @@ function setupSession() {
 		COOKIE_SECRET: testCookieSecret,
 	} as Env)
 	return (cookie: string) =>
-		session.handler(
-			new RequestContext(
-				new Request('http://example.com/session', {
-					headers: { Cookie: cookie },
-				}),
-			),
-		)
+		session({
+			request: new Request('http://example.com/session', {
+				headers: { Cookie: cookie },
+			}),
+		})
 }
 
 test('session handler only renews remembered sessions after the renewal window', async () => {

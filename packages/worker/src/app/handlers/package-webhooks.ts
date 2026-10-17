@@ -1,14 +1,5 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { type Action } from 'remix/router'
-import {
-	boolean,
-	enum_,
-	object,
-	optional,
-	parseSafe,
-	string,
-} from 'remix/data-schema'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	loadPackageWebhooksData,
@@ -22,7 +13,7 @@ import {
 	logAuditEvent,
 } from '#worker/audit-log.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '../operation-result.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
 	isWebhookUrlMinted,
@@ -35,7 +26,6 @@ import {
 	type PackageWebhookRevealedUrl,
 	type PackageWebhooksActionPayload,
 } from '#universal/loader-data.ts'
-import { type routes } from '#universal/routes.ts'
 
 const webhookActionIntents = [
 	'mint',
@@ -47,278 +37,199 @@ const webhookActionIntents = [
 
 type WebhookActionIntent = (typeof webhookActionIntents)[number]
 
-const webhookActionSchema = object({
-	intent: enum_(webhookActionIntents),
-	webhookName: string(),
-	endpointId: optional(string()),
-	createInstance: optional(boolean()),
-	instanceLabel: optional(string()),
-})
-
 type AuthenticatedUser = WebhooksUser &
 	Pick<
 		NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>,
 		'email' | 'request'
 	>
 
-/**
- * JSON API for `/profiles/:username/packages/:kodyId/webhooks.json`, the
- * Webhooks section of package settings. GET lists the package's declared
- * webhooks with minted state; POST mints, rotates, reveals, enables, or
- * disables one.
- *
- * Owner-only: the signed-in user must be `:username` and own `:kodyId`.
- * Anything else is a 404 so the route leaks neither package existence nor
- * webhook names. `reveal` (and the reveal that rides along with mint /
- * rotate) is the only place the credential URL leaves the server. It is
- * owner-session gated and audited; the MCP `webhooks` capabilities never
- * return it.
- */
-export function createCommunityPackageWebhooksApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, url, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			if (
-				normalizeUsername(params.username) !== normalizeUsername(user.username)
-			) {
-				return jsonResponse({ ok: false, error: 'Package not found.' }, 404)
-			}
-			const savedPackage = await resolveSavedPackage({
-				db: env.APP_DB,
-				userId: ownerIdFromCaller({
-					request: user.request,
-					user: user.mcpUser,
-				}),
-				packageIdOrKodyId: params.kodyId.trim(),
-			})
-			if (!savedPackage) {
-				return jsonResponse({ ok: false, error: 'Package not found.' }, 404)
-			}
-			const packageKodyId = savedPackage.kodyId
-
-			if (request.method === 'GET') {
-				return jsonResponse(
-					await loadPackageWebhooksData({
-						env,
-						requestUrl: request.url,
-						user,
-						kodyId: packageKodyId,
-					}),
-				)
-			}
-
-			if (request.method !== 'POST') {
-				return jsonResponse(
-					{ ok: false, error: 'Method not allowed.' },
-					{ status: 405, headers: { Allow: 'GET, POST' } },
-				)
-			}
-
-			const body = await request.json().catch(() => null)
-			const parsed = parseSafe(webhookActionSchema, body)
-			if (!parsed.success) {
-				return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
-			}
-			const webhookName = parsed.value.webhookName.trim()
-			if (!webhookName) {
-				return jsonResponse(
-					{ ok: false, error: 'webhookName is required.' },
-					400,
-				)
-			}
-
-			const intent = parsed.value.intent
-			const endpointId = parsed.value.endpointId?.trim() || null
-			const createInstance = parsed.value.createInstance === true
-			const instanceLabel = parsed.value.instanceLabel?.trim() || null
-			const audit = (result: 'success' | 'failure', reason?: string) => {
-				void logAuditEvent({
-					db: auditDatabaseFromEnv(env),
-					category: 'account',
-					action: auditActionFor(intent),
-					result,
-					email: user.email,
-					ip: getRequestIp(request) ?? undefined,
-					path: url.pathname,
-					reason: [
-						`package=${packageKodyId}`,
-						`webhook=${webhookName}`,
-						...(endpointId ? [`endpoint=${endpointId}`] : []),
-						...(createInstance ? ['createInstance'] : []),
-						...(reason ? [reason] : []),
-					].join(' '),
-				})
-			}
-
-			try {
-				const { revealed, approvalUrl } = await runWebhookAction({
-					env,
-					request,
-					user,
-					intent,
-					packageKodyId,
-					webhookName,
-					endpointId,
-					createInstance,
-					instanceLabel,
-				})
-				audit('success')
-				const payload: PackageWebhooksActionPayload = {
-					...(await loadPackageWebhooksData({
-						env,
-						requestUrl: request.url,
-						user,
-						kodyId: packageKodyId,
-					})),
-					...(revealed ? { revealed } : {}),
-					...(approvalUrl ? { approvalUrl } : {}),
-				}
-				return jsonResponse(payload)
-			} catch (error) {
-				const detail =
-					error instanceof Error ? error.message : failureMessageFor(intent)
-				audit('failure', detail)
-				// Caller mistakes (undeclared webhook, not minted, legacy secret)
-				// carry safe messages. Anything else is an infrastructure failure
-				// whose text must not reach the browser.
-				if (isMcpCallerError(error)) {
-					return jsonResponse({ ok: false, error: detail }, 400)
-				}
-				console.error('package webhooks action failed', {
-					intent,
-					packageKodyId,
-					webhookName,
-					endpointId,
-					error,
-				})
-				return jsonResponse(
-					{ ok: false, error: failureMessageFor(intent) },
-					500,
-				)
-			}
-		},
-	} satisfies Action<typeof routes.communityPackageWebhooksApi>
+async function authorizePackageWebhooks(
+	request: Request,
+	params: { username: string; kodyId: string },
+	env: Env,
+) {
+	const user = await readAuthenticatedAppUser(request, env)
+	if (!user) {
+		return { status: 401 as const, error: 'Unauthorized.' }
+	}
+	if (normalizeUsername(params.username) !== normalizeUsername(user.username)) {
+		return { status: 404 as const, error: 'Package not found.' }
+	}
+	const savedPackage = await resolveSavedPackage({
+		db: env.APP_DB,
+		userId: ownerIdFromCaller({
+			request: user.request,
+			user: user.mcpUser,
+		}),
+		packageIdOrKodyId: params.kodyId.trim(),
+	})
+	if (!savedPackage) {
+		return { status: 404 as const, error: 'Package not found.' }
+	}
+	return { status: 200 as const, user, packageKodyId: savedPackage.kodyId }
 }
 
-async function runWebhookAction(input: {
-	env: Env
+export async function readPackageWebhooksData(
+	request: Request,
+	params: { username: string; kodyId: string },
+	env: Env,
+) {
+	const access = await authorizePackageWebhooks(request, params, env)
+	if (access.status !== 200) return access
+	return {
+		status: 200 as const,
+		data: await loadPackageWebhooksData({
+			env,
+			requestUrl: request.url,
+			user: access.user,
+			kodyId: access.packageKodyId,
+		}),
+	}
+}
+
+type PackageWebhookInput = {
 	request: Request
-	user: AuthenticatedUser
-	intent: WebhookActionIntent
-	packageKodyId: string
+	params: { username: string; kodyId: string }
+	env: Env
 	webhookName: string
-	endpointId: string | null
-	createInstance: boolean
-	instanceLabel: string | null
-}): Promise<{
-	revealed: PackageWebhookRevealedUrl | null
-	approvalUrl: string | null
-}> {
-	const {
-		env,
-		request,
-		user,
-		intent,
-		packageKodyId,
-		webhookName,
-		endpointId,
-		createInstance,
-		instanceLabel,
-	} = input
-	const shared = {
+	endpointId?: string | null
+	createInstance?: boolean
+	instanceLabel?: string | null
+}
+export function mintPackageWebhook(input: PackageWebhookInput) {
+	return changePackageWebhook(input, 'mint', async (target) => {
+		if (!input.createInstance && (await isWebhookUrlMinted(target)))
+			throw new McpCallerError(
+				'This webhook already has a URL. Rotate it to issue a new one, or mint another URL with a label.',
+			)
+		const minted = await mintWebhookUrlForUser({
+			...target,
+			createInstance: input.createInstance === true,
+			instanceLabel: input.instanceLabel?.trim() || null,
+		})
+		return {
+			revealed: await revealForUi({ ...target, endpointId: minted.endpointId }),
+			approvalUrl: minted.approvalUrl,
+		}
+	})
+}
+export function rotatePackageWebhook(input: PackageWebhookInput) {
+	return changePackageWebhook(input, 'rotate', async (target) => {
+		const { approvalUrl, endpointId } = await rotateWebhookUrlForUser(target)
+		return {
+			revealed: await revealForUi({ ...target, endpointId }),
+			approvalUrl,
+		}
+	})
+}
+export function revealPackageWebhook(input: PackageWebhookInput) {
+	return changePackageWebhook(input, 'reveal', async (target) => ({
+		revealed: await revealForUi(target),
+		approvalUrl: null,
+	}))
+}
+export function enablePackageWebhook(input: PackageWebhookInput) {
+	return changePackageWebhook(input, 'enable', async (target) => {
+		await setWebhookEnabledForUser({ ...target, enabled: true })
+		return { revealed: null, approvalUrl: null }
+	})
+}
+export function disablePackageWebhook(input: PackageWebhookInput) {
+	return changePackageWebhook(input, 'disable', async (target) => {
+		await setWebhookEnabledForUser({ ...target, enabled: false })
+		return { revealed: null, approvalUrl: null }
+	})
+}
+function webhookTarget(
+	env: Env,
+	request: Request,
+	user: AuthenticatedUser,
+	packageKodyId: string,
+	webhookName: string,
+) {
+	return {
 		env,
 		request: user.request,
 		userId: ownerIdFromCaller({ request: user.request, user: user.mcpUser }),
 		email: user.email,
 		username: user.username,
 		kodyId: packageKodyId,
+		packageKodyId,
 		webhookName,
 		requestUrl: request.url,
+		endpointId: null as string | null,
 	}
-	switch (intent) {
-		case 'mint': {
-			if (createInstance) {
-				const minted = await mintWebhookUrlForUser({
-					...shared,
-					createInstance: true,
-					instanceLabel,
-				})
-				return {
-					revealed: await revealForUi({
-						...shared,
-						packageKodyId,
-						endpointId: minted.endpointId,
-					}),
-					approvalUrl: minted.approvalUrl,
-				}
-			}
-			// Mint on an existing row would silently rotate (and re-enable) the
-			// credential; make the owner choose Rotate for that.
-			if (await isWebhookUrlMinted(shared)) {
-				throw new McpCallerError(
-					'This webhook already has a URL. Rotate it to issue a new one, or mint another URL with a label.',
-				)
-			}
-			const { approvalUrl, endpointId: mintedEndpointId } =
-				await mintWebhookUrlForUser(shared)
-			return {
-				revealed: await revealForUi({
-					...shared,
-					packageKodyId,
-					endpointId: mintedEndpointId,
-				}),
-				approvalUrl,
-			}
+}
+async function changePackageWebhook(
+	input: PackageWebhookInput,
+	intent: WebhookActionIntent,
+	apply: (target: ReturnType<typeof webhookTarget>) => Promise<{
+		revealed: PackageWebhookRevealedUrl | null
+		approvalUrl: string | null
+	}>,
+) {
+	const { request, params, env } = input
+	const access = await authorizePackageWebhooks(request, params, env)
+	if (access.status !== 200)
+		return operationResult({ ok: false, error: access.error }, access.status)
+	const { user, packageKodyId } = access
+
+	const webhookName = input.webhookName.trim()
+	if (!webhookName) {
+		return operationResult(
+			{ ok: false, error: 'webhookName is required.' },
+			400,
+		)
+	}
+
+	const audit = (result: 'success' | 'failure', reason?: string) => {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: auditActionFor(intent),
+			result,
+			email: user.email,
+			ip: getRequestIp(request) ?? undefined,
+			path: new URL(request.url).pathname,
+			reason: [
+				`package=${packageKodyId}`,
+				`webhook=${webhookName}`,
+				...(input.endpointId ? [`endpoint=${input.endpointId}`] : []),
+				...(input.createInstance ? ['createInstance'] : []),
+				...(reason ? [reason] : []),
+			].join(' '),
+		})
+	}
+
+	try {
+		const { revealed, approvalUrl } = await apply({
+			...webhookTarget(env, request, user, packageKodyId, webhookName),
+			endpointId: input.endpointId?.trim() || null,
+		})
+		audit('success')
+		const payload: PackageWebhooksActionPayload = {
+			ok: true,
+			...(revealed ? { revealed } : {}),
+			...(approvalUrl ? { approvalUrl } : {}),
 		}
-		case 'rotate': {
-			const { approvalUrl, endpointId: rotatedEndpointId } =
-				await rotateWebhookUrlForUser({
-					...shared,
-					endpointId,
-				})
-			return {
-				revealed: await revealForUi({
-					...shared,
-					packageKodyId,
-					endpointId: rotatedEndpointId,
-				}),
-				approvalUrl,
-			}
+		return operationResult(payload)
+	} catch (error) {
+		const detail =
+			error instanceof Error ? error.message : failureMessageFor(intent)
+		audit('failure', detail)
+		// Caller mistakes (undeclared webhook, not minted, legacy secret)
+		// carry safe messages. Anything else is an infrastructure failure
+		// whose text must not reach the browser.
+		if (isMcpCallerError(error)) {
+			return operationResult({ ok: false, error: detail }, 400)
 		}
-		case 'reveal': {
-			return {
-				revealed: await revealForUi({
-					...shared,
-					packageKodyId,
-					endpointId,
-				}),
-				approvalUrl: null,
-			}
-		}
-		case 'enable': {
-			await setWebhookEnabledForUser({
-				...shared,
-				endpointId,
-				enabled: true,
-			})
-			return { revealed: null, approvalUrl: null }
-		}
-		case 'disable': {
-			await setWebhookEnabledForUser({
-				...shared,
-				endpointId,
-				enabled: false,
-			})
-			return { revealed: null, approvalUrl: null }
-		}
-		default: {
-			const exhaustive: never = intent
-			throw new Error(`Unhandled webhook intent: ${String(exhaustive)}`)
-		}
+		console.error('package webhooks action failed', {
+			intent,
+			packageKodyId,
+			webhookName,
+			error,
+		})
+		return operationResult({ ok: false, error: failureMessageFor(intent) }, 500)
 	}
 }
 

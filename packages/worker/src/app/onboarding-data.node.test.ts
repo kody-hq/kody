@@ -33,7 +33,7 @@ function loadWith(
 			},
 		},
 		requestUrl: 'http://localhost:3742/onboarding',
-		stableUserId: ownerIdFromStored('user-1'),
+		personId: ownerIdFromStored('user-1'),
 		username: 'u-b',
 		emailVerified: true,
 		...input,

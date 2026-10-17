@@ -4,18 +4,12 @@
  * pages and any response that sets a cookie stay `no-store`. The origin Worker
  * stores cookie-less GET responses in `caches.default` keyed on canonical
  * origin + pathname + search plus a `__accept=html` marker; markdown-preferring
- * `Accept` values (`prefersMarkdown`) bypass the store. Frame fetches
- * (`x-remix-target` or the `__frame` query param) bypass it too: those caches
- * key on the URL, and returning the document nests another site shell inside
- * the frame. Hits restore the miss `Vary` (`Cookie`, plus `Accept` on
+ * `Accept` values (`prefersMarkdown`) bypass the store. Native routes opt in
+ * through their cache policy. Hits restore the miss `Vary` (`Cookie`, plus `Accept` on
  * negotiated routes) so intermediary caches still split on the session cookie.
  */
 
-import { acquisitionPageSummaries } from '#universal/acquisition/metadata.ts'
-import { createMatcher } from 'remix/route-pattern/match'
-import { requestBypassesAnonymousDocumentCache } from '#universal/frame-constants.ts'
-import { routes } from '#universal/routes.ts'
-import { withAgentHref, withAgents } from '#universal/with-agents.ts'
+export type AnonymousDocumentCachePolicy = 'marketing' | 'visibility'
 
 export const sessionCookieName = 'kody_session'
 
@@ -36,63 +30,6 @@ export const anonymousHtmlCacheControl =
  * one minute instead of riding the marketing pages' revalidation window.
  */
 export const anonymousVisibilityGatedCacheControl = 'public, max-age=60'
-
-const cacheableAnonymousExactPaths = new Set([
-	...acquisitionPageSummaries.map((page) => page.path),
-	'/',
-	'/pricing',
-	'/for/business',
-	'/faq',
-	'/about',
-	'/contact',
-	'/case-studies',
-	'/believe',
-	...withAgents.map((agent) => withAgentHref(agent.slug)),
-	'/blog',
-	'/community',
-	'/onboarding',
-	'/docs',
-	'/docs/connect',
-	// Viewer-independent docs indexes (plain text, same Cache API path).
-	'/llms.txt',
-	'/docs/llms.txt',
-	// Anonymous auth shells: Turnstile site key + OAuth provider list are
-	// deployment config. Session cookies, Set-Cookie, and banner-dismiss
-	// cookies still force no-store via resolveAppPageCacheControl.
-	'/login',
-	'/signup',
-])
-
-// Public package surfaces: home, tree, and the listing-uuid shapes they
-// replaced. Anonymous markup for these is viewer-independent, and anonymous
-// traffic is most of what they see.
-const cacheableAnonymousRouteMatchers = [
-	routes.communityPackage,
-	routes.communityPackageTree,
-	routes.communityDetail,
-	routes.communityDetailFiles,
-].map((route) => createMatcher(route.pattern))
-
-const matcherOrigin = 'https://kody.local'
-
-export function isVisibilityGatedAnonymousPath(pathname: string) {
-	// Read-only smart HTTP clone URLs must never enter the HTML edge cache.
-	if (pathname.includes('.git/') || pathname.endsWith('.git')) return false
-	const url = new URL(pathname, matcherOrigin)
-	return cacheableAnonymousRouteMatchers.some(
-		(matcher) => matcher.match(url) !== null,
-	)
-}
-
-export function isCacheableAnonymousPath(pathname: string) {
-	if (cacheableAnonymousExactPaths.has(pathname)) return true
-	if (pathname.startsWith('/onboarding/step-')) return true
-	if (pathname.startsWith('/docs/')) {
-		const rest = pathname.slice('/docs/'.length)
-		return rest.length > 0 && !rest.includes('/')
-	}
-	return isVisibilityGatedAnonymousPath(pathname)
-}
 
 export function requestHasSessionCookie(request: Request): boolean {
 	const cookie = request.headers.get('Cookie') ?? ''
@@ -116,7 +53,7 @@ export function clearRetiredSiteBannerDismissCookie(input: {
 }
 
 export function resolveAppPageCacheControl(input: {
-	pathname: string
+	policy?: AnonymousDocumentCachePolicy
 	session: unknown | null
 	request: Request
 	responseSetsCookie: boolean
@@ -144,18 +81,12 @@ export function resolveAppPageCacheControl(input: {
 	if (requestHasSessionCookie(input.request)) {
 		return { cacheControl: 'no-store' }
 	}
-	// Frame reloads share the page URL. Caching that response stores the
-	// document where the frame expected a fragment.
-	if (requestBypassesAnonymousDocumentCache(input.request)) {
-		return { cacheControl: 'no-store' }
-	}
-	if (!isCacheableAnonymousPath(input.pathname)) {
-		return { cacheControl: 'no-store' }
-	}
+	if (!input.policy) return { cacheControl: 'no-store' }
 	return {
-		cacheControl: isVisibilityGatedAnonymousPath(input.pathname)
-			? anonymousVisibilityGatedCacheControl
-			: anonymousHtmlCacheControl,
+		cacheControl:
+			input.policy === 'visibility'
+				? anonymousVisibilityGatedCacheControl
+				: anonymousHtmlCacheControl,
 		vary: 'Cookie',
 	}
 }

@@ -1,8 +1,9 @@
+import { defaultParseSearch } from '@tanstack/react-router'
+import { collectionSearch } from '../../start/filter-search.ts'
 import { expect, test } from 'vitest'
 import {
 	filterAccountJobs,
 	isActiveAccountJob,
-	readJobsViewFilter,
 	type FilterableAccountJob,
 } from './account-jobs-filter.ts'
 
@@ -56,7 +57,14 @@ test('account jobs filters cover active/history views and search', () => {
 		['/account/jobs?view=all', 'all'],
 		['/account/jobs?view=nope', 'active'],
 	] as const
-	expect(views.map(([href]) => [href, readJobsViewFilter(href)])).toEqual(views)
+	expect(
+		views.map(([href]) => [
+			href,
+			collectionSearch(
+				defaultParseSearch(new URL(href, 'https://kody.local').search),
+			).view,
+		]),
+	).toEqual(views)
 
 	const jobs = [
 		job('live-cron', { name: 'Live digest' }),

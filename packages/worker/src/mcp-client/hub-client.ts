@@ -8,6 +8,7 @@ import { type SealedMcpPreRegisteredOAuthClient } from './preregistered-oauth-cl
 import {
 	type McpClientHubSnapshot,
 	type McpHubConnectResult,
+	type McpClientHubReadSnapshot,
 	type McpHubServerSnapshot,
 	type McpServerConnectResult,
 	type McpServerOAuthCallbackOutcome,
@@ -110,12 +111,27 @@ export async function callMcpServerTool(
 			toolName: input.toolName,
 			args: input.args,
 		})) as CallToolResult
+		await saveReadSnapshot(input, stub)
 		await emitPendingConnectionEvents(input, stub)
 		return result
 	} catch (error) {
 		invalidateMcpClientHubSnapshotCache(input)
+		await saveReadSnapshot(input, stub)
 		await emitPendingConnectionEvents(input, stub)
 		throw error
+	}
+}
+
+async function saveReadSnapshot(
+	input: McpClientHubClientInput,
+	stub: ReturnType<typeof getMcpClientHubStub>,
+) {
+	try {
+		await stub.saveReadSnapshot()
+	} catch (error) {
+		console.warn('mcp-read-snapshot-save-failed', error)
+	} finally {
+		mcpReadSnapshotCache.delete(mcpClientHubKey(input.userId))
 	}
 }
 
@@ -123,34 +139,38 @@ export function createMcpClientHubClient(
 	input: McpClientHubClientInput,
 ): McpClientHubClient {
 	const stub = getMcpClientHubStub(input)
+	async function operation<T>(run: () => Promise<T>): Promise<T> {
+		invalidateMcpClientHubSnapshotCache(input)
+		try {
+			return await run()
+		} finally {
+			await saveReadSnapshot(input, stub)
+			invalidateMcpClientHubSnapshotCache(input)
+		}
+	}
 	return {
 		async addServer(addInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			const result = await stub.addServer(addInput)
+			const result = await operation(() => stub.addServer(addInput))
 			await emitPendingConnectionEvents(input, stub)
 			return toMcpServerConnectResult(result)
 		},
 		async reconnectServer(reconnectInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			const result = await stub.reconnectServer(reconnectInput)
+			const result = await operation(() => stub.reconnectServer(reconnectInput))
 			await emitPendingConnectionEvents(input, stub)
 			return toMcpServerConnectResult(result)
 		},
 		async refreshServer(refreshInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			const result = await stub.refreshServer(refreshInput)
+			const result = await operation(() => stub.refreshServer(refreshInput))
 			await emitPendingConnectionEvents(input, stub)
 			return toMcpServerConnectResult(result)
 		},
 		async removeServer(removeInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			await stub.removeServer(removeInput)
+			await operation(() => stub.removeServer(removeInput))
 		},
 		async setPreRegisteredOAuthClient(clientInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			const change = await stub.setPreRegisteredOAuthClient(clientInput)
-			// A read during the change may have cached the old client.
-			invalidateMcpClientHubSnapshotCache(input)
+			const change = await operation(() =>
+				stub.setPreRegisteredOAuthClient(clientInput),
+			)
 			await emitPendingConnectionEvents(input, stub)
 			return {
 				...change,
@@ -158,8 +178,9 @@ export function createMcpClientHubClient(
 			}
 		},
 		async handleOAuthCallback(callbackInput) {
-			invalidateMcpClientHubSnapshotCache(input)
-			const result = await stub.handleOAuthCallback(callbackInput)
+			const result = await operation(() =>
+				stub.handleOAuthCallback(callbackInput),
+			)
 			await emitPendingConnectionEvents(input, stub)
 			return result
 		},
@@ -242,6 +263,7 @@ export function getCachedMcpClientHubSnapshot(
 		create: async () => {
 			const stub = getMcpClientHubStub(input)
 			const snapshot = await stub.getSnapshot()
+			mcpReadSnapshotCache.delete(mcpClientHubKey(input.userId))
 			await emitPendingConnectionEvents(
 				input,
 				stub,
@@ -271,9 +293,24 @@ export function getCachedMcpClientHubServers(
 		create: async () => {
 			const stub = getMcpClientHubStub(input)
 			const peeked = await stub.peekServers()
+			await saveReadSnapshot(input, stub)
 			await emitPendingConnectionEvents(input, stub)
 			return { servers: peeked.servers.map(toMcpServerSnapshot) }
 		},
+	})
+}
+
+const mcpReadSnapshotCache = new PromiseLruCache<McpClientHubReadSnapshot>({
+	ttlMs: mcpClientHubSnapshotCacheTtlMs,
+	limit: mcpClientHubSnapshotCacheLimit,
+})
+
+export function getCachedMcpClientHubReadSnapshot(
+	input: Pick<McpClientHubClientInput, 'env' | 'userId'>,
+): Promise<McpClientHubReadSnapshot> {
+	return mcpReadSnapshotCache.getOrCreate({
+		cacheKey: mcpClientHubKey(input.userId),
+		create: () => getMcpClientHubStub(input).readSnapshot(),
 	})
 }
 
@@ -281,6 +318,7 @@ export function invalidateMcpClientHubSnapshotCache(input: {
 	userId: OwnerId
 }) {
 	const key = mcpClientHubKey(input.userId)
+	mcpReadSnapshotCache.delete(key)
 	mcpClientHubSnapshotCache.delete(key)
 	mcpClientHubSnapshotCache.delete(mcpClientHubServersCacheKey(input.userId))
 }

@@ -1,103 +1,99 @@
-import { expect, test } from 'vitest'
-import { createRouter } from 'remix/router'
-import { remixCrossOriginProtection } from './cross-origin-protection.ts'
+import { expect, test, vi } from 'vitest'
+import { protocolCsrf } from './cross-origin-protection.ts'
 
-function createStubHandler(name: string) {
+async function run(
+	path: string,
+	headers: HeadersInit = {},
+	handlerType: 'router' | 'serverFn' = 'router',
+	method = 'POST',
+) {
+	const request = new Request(`https://kody.test${path}`, { method, headers })
+	const server = protocolCsrf.options.server!
+	const response = new Response('accepted')
+	const next = vi.fn(() => ({
+		request,
+		pathname: new URL(request.url).pathname,
+		context: {},
+		response,
+	}))
+	const result = await server({
+		request,
+		pathname: new URL(request.url).pathname,
+		handlerType,
+		context: { nonce: 'test' },
+		next: next as Parameters<typeof server>[0]['next'],
+	})
 	return {
-		middleware: [],
-		async handler() {
-			return new Response(name)
-		},
+		response: result instanceof Response ? result : result.response,
+		next,
 	}
 }
-
-test('COP rejects cross-site app posts and bypasses webhook, sentry, and tips unsubscribe posts', async () => {
-	const router = createRouter({
-		middleware: [remixCrossOriginProtection],
-	})
-	router.post('/account/profile.json', createStubHandler('profile'))
-	router.post('/webhooks/stripe', createStubHandler('stripe'))
-	router.post(
-		'/@kentcdodds/webhooks/pkg/hook/secret',
-		createStubHandler('hook'),
-	)
-	router.post('/sentry-tunnel', createStubHandler('sentry'))
-	router.post('/unsubscribe/tips', createStubHandler('tips-unsub'))
-	router.get('/account', createStubHandler('account-get'))
-
-	const sameOrigin = await router.fetch(
-		new Request('http://localhost/account/profile.json', {
-			method: 'POST',
-			headers: {
-				Origin: 'http://localhost',
-				'Sec-Fetch-Site': 'same-origin',
-			},
-		}),
-	)
-	expect(await sameOrigin.text()).toBe('profile')
-
-	const crossSite = await router.fetch(
-		new Request('http://localhost/account/profile.json', {
-			method: 'POST',
-			headers: {
-				Origin: 'https://evil.example',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(crossSite.status).toBe(403)
-
-	const getAllowed = await router.fetch(
-		new Request('http://localhost/account', {
-			headers: {
-				Origin: 'https://evil.example',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(await getAllowed.text()).toBe('account-get')
-
-	const stripe = await router.fetch(
-		new Request('http://localhost/webhooks/stripe', {
-			method: 'POST',
-			headers: {
-				Origin: 'https://js.stripe.com',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(await stripe.text()).toBe('stripe')
-
-	const hook = await router.fetch(
-		new Request('http://localhost/@kentcdodds/webhooks/pkg/hook/secret', {
-			method: 'POST',
-			headers: {
-				Origin: 'https://hooks.example',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(await hook.text()).toBe('hook')
-
-	const sentry = await router.fetch(
-		new Request('http://localhost/sentry-tunnel', {
-			method: 'POST',
-			headers: {
-				Origin: 'https://evil.example',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(await sentry.text()).toBe('sentry')
-
-	const tipsUnsub = await router.fetch(
-		new Request('http://localhost/unsubscribe/tips?token=abc', {
-			method: 'POST',
-			headers: {
-				Origin: 'https://mail.google.com',
-				'Sec-Fetch-Site': 'cross-site',
-			},
-		}),
-	)
-	expect(await tipsUnsub.text()).toBe('tips-unsub')
+test.each([
+	[{ Origin: 'https://kody.test' }, 200],
+	[{ 'Sec-Fetch-Site': 'same-origin' }, 200],
+	[{ 'Sec-Fetch-Site': 'none' }, 200],
+	[{ Origin: 'https://evil.test' }, 403],
+	[{ 'Sec-Fetch-Site': 'cross-site', Origin: 'https://kody.test' }, 403],
+	[{ Referer: 'https://kody.test/docs' }, 200],
+	[{ Referer: 'https://kody.test.evil.test/docs' }, 403],
+	[{ Referer: 'https://evil.test/docs' }, 403],
+	[{}, 200],
+] as const)(
+	'protocol CSRF checks browser metadata while allowing originless CLI requests: %j',
+	async (headers, status) => {
+		const result = await run('/auth', headers)
+		expect(result.response.status).toBe(status)
+		expect(result.next).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
+	},
+)
+test.each([
+	'/webhooks/stripe',
+	'/@acme/webhooks/package/hook/secret',
+	'/sentry-tunnel',
+	'/unsubscribe/tips?token=abc',
+])('external protocol bypass is exact for %s', async (path) => {
+	expect(
+		(await run(path, { 'Sec-Fetch-Site': 'cross-site' })).response.status,
+	).toBe(200)
 })
+test.each([
+	'/webhooks/stripe/extra',
+	'/webhooks/stripe-evil',
+	'/@acme/webhooks/package/hook',
+	'/@acme/webhooks/package/hook/secret/extra',
+	'/sentry-tunnel/extra',
+	'/unsubscribe/tips/extra',
+])('lookalike path gets no bypass: %s', async (path) => {
+	expect(
+		(await run(path, { 'Sec-Fetch-Site': 'cross-site' })).response.status,
+	).toBe(403)
+})
+test('safe reads bypass protocol CSRF and RPC delegates to the separate strict native policy', async () => {
+	expect(
+		(await run('/account', { 'Sec-Fetch-Site': 'cross-site' }, 'router', 'GET'))
+			.response.status,
+	).toBe(200)
+	const rpc = await run(
+		'/_serverFn/mutate',
+		{ 'Sec-Fetch-Site': 'cross-site' },
+		'serverFn',
+	)
+	expect(rpc.next).toHaveBeenCalledOnce()
+})
+
+test.each([
+	[{ Origin: 'https://evil.test' }, 403],
+	[{ 'Sec-Fetch-Site': 'cross-site' }, 403],
+	[{ Origin: 'https://kody.test', 'Sec-Fetch-Site': 'same-origin' }, 200],
+	[{}, 200],
+] as const)(
+	'OAuth consent POST uses native browser CSRF protection: %j',
+	async (headers, status) => {
+		const result = await run(
+			'/oauth/authorize?client_id=app&state=client-state',
+			headers,
+		)
+		expect(result.response.status).toBe(status)
+		expect(result.next).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
+	},
+)

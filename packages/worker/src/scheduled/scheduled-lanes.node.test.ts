@@ -27,3 +27,11 @@ test('Durable Object duration attribution runs once an hour at minute 20', () =>
 		getScheduledLaneCadence(new Date('2026-09-02T12:00:00.000Z')),
 	).not.toContain('durable_object_duration_attribution')
 })
+
+test('gift reconciliation is dispatched on every existing five-minute tick', () => {
+	for (const minute of ['00', '05', '25', '55']) {
+		expect(
+			getScheduledLaneCadence(new Date(`2026-10-15T12:${minute}:00Z`)),
+		).toContain('second_agent_gift_reconciliation')
+	}
+})

@@ -32,7 +32,7 @@
     "dev:mock-cloudflare": "node --env-file=packages/worker/.env ./wrangler-env.ts dev --local --config packages/mock-servers/cloudflare/wrangler.jsonc",
     "deploy": "node --input-type=module -e \"if (['preview','test'].includes(process.env.CLOUDFLARE_ENV ?? '')) { await import('./tools/prepare-e2e-env.ts'); }\" && node --env-file=packages/worker/.env tools/deploy.ts --outdir .wrangler/sentry-bundle --upload-source-maps",
     "sentry:upload-sourcemaps": "node tools/sentry-upload-sourcemaps.ts",
-    "build": "vite build",
+    "build": "vite build && node tools/framework-comparison/verify-redact-build.mjs",
     "backup:build": "wrangler deploy --dry-run --config packages/backup-control-plane/wrangler.jsonc",
     "backup:deploy": "wrangler deploy --config packages/backup-control-plane/wrangler.jsonc",
     "status:build": "wrangler deploy --dry-run --config packages/status/wrangler.jsonc",
@@ -94,7 +94,7 @@
     "site-perf": "node tools/site-perf/collect.ts",
     "generate-types": "node tools/generate-worker-configuration-types.ts",
     "generate-types:check": "node tools/check-worker-configuration-types.ts",
-    "typecheck": "node tools/run-nx.ts run-many -t typecheck",
+    "typecheck": "node tools/run-nx.ts run-many -t typecheck && npm run typecheck:start",
     "test": "node tools/run-nx.ts run worker:test",
     "test:node": "node tools/run-nx.ts run worker:test-node",
     "test:workers": "node tools/run-nx.ts run worker:test-workers",
@@ -115,7 +115,10 @@
     "nx:graph": "nx graph",
     "nx:show-projects": "nx show projects",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
-    "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts"
+    "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
+    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json",
+    "build:client": "npm run build",
+    "build:client:web": "npm run build"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -150,7 +153,11 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.147.0",
+    "@tanstack/intent": "0.5.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -206,5 +213,17 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
+  },
+  "intent": {
+    "skills": [
+      "@tanstack/react-start",
+      "@tanstack/react-router",
+      "@tanstack/router-core",
+      "@tanstack/start-client-core",
+      "@tanstack/start-server-core",
+      "@tanstack/router-plugin",
+      "@tanstack/virtual-file-routes",
+      "@tanstack/redact"
+    ]
   }
 }

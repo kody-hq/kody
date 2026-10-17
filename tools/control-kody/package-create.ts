@@ -206,7 +206,7 @@ export async function createPreviewPackage(input: {
 		const fetchImpl = input.fetchImpl ?? fetch
 		const username =
 			usernameFromPackageName(created.name, created.kodyId) ??
-			(await usernameFromProfile(
+			(await usernameFromSession(
 				input.origin,
 				connection.cookieHeader,
 				fetchImpl,
@@ -328,12 +328,12 @@ function redactGitOutput(text: string) {
 	return text.replaceAll(/\/\/([^/@\s]+):([^@/\s]+)@/g, '//***:***@')
 }
 
-async function usernameFromProfile(
+async function usernameFromSession(
 	origin: string,
 	cookieHeader: string,
 	fetchImpl: FetchLike,
 ) {
-	const response = await fetchImpl(`${origin}/account/profile.json`, {
+	const response = await fetchImpl(`${origin}/session`, {
 		headers: {
 			Accept: 'application/json',
 			Cookie: cookieHeader,
@@ -347,7 +347,9 @@ async function usernameFromProfile(
 		return null
 	}
 	if (!body || typeof body !== 'object') return null
-	const username = Reflect.get(body, 'username')
+	const session = Reflect.get(body, 'session')
+	if (!session || typeof session !== 'object') return null
+	const username = Reflect.get(session, 'username')
 	return typeof username === 'string' && username.length > 0 ? username : null
 }
 

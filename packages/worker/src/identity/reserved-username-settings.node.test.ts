@@ -10,6 +10,7 @@ import {
 	getEffectiveReservedUsernameError,
 	isEffectivelyReservedUsername,
 	loadReservedUsernameRecord,
+	loadReservedUsernameAdminSnapshot,
 	PermanentlyReservedUsernameError,
 	removeReservedUsernames,
 	reservedUsernamesKvKey,
@@ -207,4 +208,32 @@ test('reserved username KV overrides, fallback, memo, permanent lock, and confli
 		{ username: 'brandnew', stableUserId: conflictStableId },
 		{ username: 'fuckyou', stableUserId: collideStableId },
 	])
+})
+
+test('admin snapshot confirms a write from another request env despite a warm validation memo', async () => {
+	const { sqlite, db } = createMigratedDb()
+	try {
+		const kv = createMemoryKv()
+		const reader = { ...createEnv(kv), APP_DB: db }
+		const writer = { ...createEnv(kv), APP_DB: db }
+		expect((await loadReservedUsernameRecord(reader)).added).toEqual([])
+		await addReservedUsernames({
+			env: writer,
+			usernames: ['reserved-test'],
+			updatedBy: 'admin-stable-id',
+		})
+		// The cached validation record demonstrates the independent env memo.
+		expect((await loadReservedUsernameRecord(reader)).added).toEqual([])
+		expect((await loadReservedUsernameAdminSnapshot(reader)).added).toEqual([
+			'reserved-test',
+		])
+		await removeReservedUsernames({
+			env: writer,
+			usernames: ['reserved-test'],
+			updatedBy: 'admin-stable-id',
+		})
+		expect((await loadReservedUsernameAdminSnapshot(reader)).added).toEqual([])
+	} finally {
+		sqlite.close()
+	}
 })

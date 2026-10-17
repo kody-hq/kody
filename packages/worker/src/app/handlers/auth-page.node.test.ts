@@ -1,28 +1,48 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createAuthPageHandler } from '#app/handlers/auth-page.ts'
+import { loadAuthPage } from '../../../start/server/auth-page.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async (input: { extraSetCookies?: Array<string> }) => {
-		const headers = new Headers({ 'Content-Type': 'text/html' })
-		for (const cookie of input.extraSetCookies ?? []) {
-			headers.append('Set-Cookie', cookie)
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/login'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('@tanstack/react-start', () => ({
+	createServerOnlyFn: <T>(fn: T) => fn,
+	createServerFn: () => {
+		let validate = (data: unknown) => data
+		const builder = {
+			validator: (fn: typeof validate) => {
+				validate = fn
+				return builder
+			},
+			handler:
+				(fn: (input: { data: unknown }) => unknown) =>
+				(input: { data: unknown }) =>
+					fn({ data: validate(input.data) }),
 		}
-		return new Response('login-page', {
-			status: 200,
-			headers,
-		})
+		return builder
 	},
 }))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: () => native.env }))
 
 function createStaleSessionTestEnv() {
 	return {
@@ -75,17 +95,14 @@ test('auth page renders login for a stale session instead of redirecting away', 
 		rememberMe: false,
 	}
 	const cookie = await createAuthCookie(session, false)
-	const handler = createAuthPageHandler(createStaleSessionTestEnv(), 'login')
-	const response = await handler.handler(
-		new RequestContext(
-			new Request('https://example.com/login?redirectTo=%2Faccount', {
-				headers: { Cookie: cookie },
-			}),
-		),
+	native.env = createStaleSessionTestEnv()
+	native.request = new Request(
+		'https://example.com/login?redirectTo=%2Faccount',
+		{ headers: { Cookie: cookie } },
 	)
-
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('login-page')
+	const response = await loadAuthPage({ data: { redirectTo: '/account' } })
+	expect(response).not.toHaveProperty('session')
+	expect(response.authConfig.ok).toBe(true)
 })
 
 test('auth page renders login for a deleting account instead of redirecting to /account', async () => {
@@ -147,18 +164,21 @@ test('auth page renders login for a deleting account instead of redirecting to /
 			},
 		} as unknown as D1Database,
 	} as Env
-	const handler = createAuthPageHandler(env, 'login')
-	const response = await handler.handler(
-		new RequestContext(
-			new Request('https://example.com/login?redirectTo=%2Faccount', {
-				headers: { Cookie: cookie },
-			}),
-		),
+	native.env = env
+	native.setResponseHeader.mockClear()
+	native.request = new Request(
+		'https://example.com/login?redirectTo=%2Faccount',
+		{ headers: { Cookie: cookie } },
 	)
-
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('login-page')
-	const setCookie = response.headers.get('Set-Cookie') ?? ''
-	expect(setCookie).toContain('kody_session=')
-	expect(setCookie).toContain('Max-Age=0')
+	const response = await loadAuthPage({ data: { redirectTo: '/account' } })
+	expect(response).not.toHaveProperty('session')
+	expect(response.authConfig.ok).toBe(true)
+	expect(native.setResponseHeader).toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.stringContaining('kody_session='),
+	)
+	expect(native.setResponseHeader).toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.stringContaining('Max-Age=0'),
+	)
 })

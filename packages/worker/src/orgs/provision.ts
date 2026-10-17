@@ -79,6 +79,14 @@ export async function provisionPersonalOrg(
 	db: D1Database,
 	input: ProvisionPersonalOrgInput,
 ) {
+	await runProvisionStatements(personalOrgProvisionStatements(db, input))
+}
+
+/** Build provisioning writes so ownership conversions can commit them atomically. */
+export function personalOrgProvisionStatements(
+	db: D1Database,
+	input: ProvisionPersonalOrgInput,
+): Array<D1PreparedStatement> {
 	const createdAt = input.createdAt ?? new Date().toISOString()
 	const orgId = resolveProvisionOrgId(input)
 	const slug = orgSlugFromUsername(input.username)
@@ -92,7 +100,7 @@ export async function provisionPersonalOrg(
 	const signupWelcomeCreditsPending =
 		Number(input.signupWelcomeCreditsPending) === 1 ? 1 : 0
 
-	await runProvisionStatements([
+	return [
 		db
 			.prepare(
 				`INSERT INTO orgs (
@@ -157,7 +165,7 @@ export async function provisionPersonalOrg(
 				 VALUES (?, ?, ?, ?)`,
 			)
 			.bind(handle, input.stableUserId, orgId, createdAt),
-	])
+	]
 }
 
 /**

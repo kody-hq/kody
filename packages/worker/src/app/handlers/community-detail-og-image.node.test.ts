@@ -2,7 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
 import type * as IconFitModule from '#worker/community/icon-fit.ts'
-import { createCommunityDetailOgImageHandler } from './community-detail.tsx'
+import { createCommunityDetailOgImageHandler } from './community-detail.ts'
 
 const mocks = vi.hoisted(() => ({
 	getCommunityIconObject: vi.fn(),
@@ -97,7 +97,7 @@ test('community detail OG image embeds PNG icons and converts WebP for satori', 
 	mocks.renderCommunityOgImage.mockResolvedValue(tinyPng)
 
 	const handler = createCommunityDetailOgImageHandler({} as Env)
-	const pngResponse = await handler.handler({
+	const pngResponse = await handler({
 		request: new Request('https://example.com/community/listing-1/og.png'),
 		params: { listingId: listing.id },
 		url: new URL('https://example.com/community/listing-1/og.png'),
@@ -133,7 +133,7 @@ test('community detail OG image embeds PNG icons and converts WebP for satori', 
 	})
 	mocks.renderCommunityOgImage.mockResolvedValue(tinyPng)
 
-	const webpResponse = await handler.handler({
+	const webpResponse = await handler({
 		request: new Request('https://example.com/community/listing-1/og.png'),
 		params: { listingId: listing.id },
 		url: new URL('https://example.com/community/listing-1/og.png'),

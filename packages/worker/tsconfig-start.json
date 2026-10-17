@@ -1,0 +1,36 @@
+{
+	"extends": "@epic-web/config/typescript",
+	"compilerOptions": {
+		"target": "ES2023",
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"jsxImportSource": "@emotion/react",
+		"types": ["vite/client"],
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"paths": {
+			"#start/server/*": [
+				"./.generated/start-types/packages/worker/start/server/*.d.ts"
+			],
+			"#app/*.ts": ["./.generated/start-types/packages/worker/src/app/*.d.ts"],
+			"#mcp/*.ts": ["./.generated/start-types/packages/worker/src/mcp/*.d.ts"],
+			"#worker/*.ts": ["./.generated/start-types/packages/worker/src/*.d.ts"],
+			"@kody-internal/shared/*.ts": [
+				"./.generated/start-types/packages/shared/src/*.d.ts"
+			],
+			"@kody-internal/shared/*.js": [
+				"./.generated/start-types/packages/shared/src/*.d.ts"
+			]
+		}
+	},
+	"include": [
+		"start/**/*.tsx",
+		"start/start.ts",
+		"start/components/**/*.ts",
+		"client/types/**/*.d.ts"
+	],
+	"exclude": ["start/server/**/*.ts"]
+}

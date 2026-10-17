@@ -1,4 +1,5 @@
 import { accountConnectionAgentIds } from '../packages/worker/universal/account-connections.ts'
+import { saveKeyThroughUi } from './account-fixtures.ts'
 import {
 	collectJsonRequests,
 	expectSingleCommitTransition,
@@ -8,9 +9,9 @@ import {
 import {
 	expect,
 	test,
+	waitForClientHydration,
 	type Locator,
 	type Page,
-	waitForClientHydration,
 } from './playwright-utils.ts'
 
 /**
@@ -277,7 +278,7 @@ test('signed-in profile opens the workspace rail through to Activity', async ({
 	).toHaveAttribute('aria-current', 'page')
 })
 
-test('credits live on the usage page: /account/credits redirects there', async ({
+test('the legacy credits URL opens the personal workspace ledger', async ({
 	page,
 	seedE2eUser,
 	login,
@@ -291,21 +292,17 @@ test('credits live on the usage page: /account/credits redirects there', async (
 	})
 	await login({ email: user.email, password: user.password, mode: 'login' })
 	await page.goto('/account/credits')
-	await expect(page).toHaveURL(
-		new RegExp(`/@${user.username}/-/usage#credits$`),
-	)
+	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credits$`))
 	await expect(
-		page.getByRole('heading', { level: 1, name: 'Usage' }),
+		page.getByRole('heading', { level: 1, name: 'Credits' }),
 	).toBeVisible()
 	await expect(
-		page
-			.locator('#credits')
-			.getByRole('heading', { level: 2, name: 'Credits' }),
+		page.getByRole('heading', { level: 2, name: 'Ledger' }),
 	).toBeVisible()
 
 	const rail = page.getByRole('navigation', { name: 'Workspace sections' })
 	await expect(
-		rail.getByRole('link', { name: 'Usage', exact: true }),
+		rail.getByRole('link', { name: 'Credits', exact: true }),
 	).toHaveAttribute('aria-current', 'page')
 })
 
@@ -429,32 +426,18 @@ test('account live search keeps the same focused input while the list filters', 
 	})
 	await login({ email: user.email, password: user.password, mode: 'login' })
 
-	const alphaSecret = await page.request.post('/account/secrets.json', {
-		data: {
-			action: 'save',
-			name: `alphaSecret${runId}`,
-			scope: 'user',
-			value: 'alpha-secret-value',
-			description: 'Matches the alpha query',
-			allowedHosts: ['api.example.com'],
-			allowedPackages: [],
-		},
-		headers: { 'Content-Type': 'application/json' },
+	await saveKeyThroughUi(page, {
+		name: `alphaSecret${runId}`,
+		value: 'alpha-secret-value',
+		description: 'Matches the alpha query',
+		allowedHosts: ['api.example.com'],
 	})
-	expect(alphaSecret.ok()).toBe(true)
-	const betaSecret = await page.request.post('/account/secrets.json', {
-		data: {
-			action: 'save',
-			name: `betaSecret${runId}`,
-			scope: 'user',
-			value: 'beta-secret-value',
-			description: 'Does not match the alpha query',
-			allowedHosts: ['api.example.com'],
-			allowedPackages: [],
-		},
-		headers: { 'Content-Type': 'application/json' },
+	await saveKeyThroughUi(page, {
+		name: `betaSecret${runId}`,
+		value: 'beta-secret-value',
+		description: 'Does not match the alpha query',
+		allowedHosts: ['api.example.com'],
 	})
-	expect(betaSecret.ok()).toBe(true)
 
 	await page.goto(`/@${user.username}/-/credentials`)
 	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credentials$`))

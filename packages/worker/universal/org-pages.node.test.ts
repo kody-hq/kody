@@ -8,7 +8,6 @@ import {
 	relocateAccountHref,
 	orderOrganizations,
 	orgIdentity,
-	orgOwnedAccountApiSection,
 	orgOwnedSectionForPath,
 	orgOverviewPath,
 	orgSlugFromOrgOwnedPath,
@@ -20,7 +19,6 @@ import {
 	parseOrgResourcePath,
 	parseOrgCreditsPath,
 	parseOrgUsagePath,
-	switchOrgPath,
 	type OrganizationSummary,
 	urlOrgSlug,
 } from './org-pages.ts'
@@ -111,34 +109,6 @@ test('org resource paths alias back to account loaders and ignore package apps',
 	expect(parseOrgResourcePath('/@acme/-/packages')).toBeNull()
 })
 
-test('switching keeps the same kind of page or falls back to organization home', () => {
-	expect(switchOrgPath('/@acme/-/secrets', 'other')).toBe('/@other/-/secrets')
-	expect(switchOrgPath('/@acme/-/secrets/new', 'other')).toBe(
-		'/@other/-/secrets/new',
-	)
-	expect(switchOrgPath('/@acme/-/billing', 'other')).toBe('/@other/-/billing')
-	expect(switchOrgPath('/@acme/-/billing/success', 'other')).toBe(
-		'/@other/-/billing',
-	)
-	expect(switchOrgPath('/@acme/-/usage', 'other')).toBe('/@other/-/usage')
-	expect(switchOrgPath('/@acme/-/usage.json', 'other')).toBe('/@other/-/usage')
-	expect(switchOrgPath('/@acme/-/settings', 'other')).toBe('/@other/-/settings')
-	expect(switchOrgPath('/@acme/-/members.json', 'other')).toBe(
-		'/@other/-/members',
-	)
-	expect(switchOrgPath('/@acme/-/teams', 'other')).toBe('/@other/-/teams')
-	expect(switchOrgPath('/@acme/-/grants.json', 'other')).toBe(
-		'/@other/-/grants',
-	)
-	expect(switchOrgPath('/@acme/-/collaborators', 'other')).toBe(
-		'/@other/-/collaborators',
-	)
-	expect(switchOrgPath('/@acme/devin', 'other')).toBe('/@other')
-	expect(switchOrgPath('/account', 'other')).toBe('/@other')
-	expect(switchOrgPath('/pricing', 'other')).toBe('/@other')
-	expect(switchOrgPath('/@acme/-/overview', 'other')).toBe('/@other')
-})
-
 test('the workspace overview is an org-owned page under the /- separator', () => {
 	expect(orgOverviewPath('ada')).toBe('/@ada/-/overview')
 	expect(parseOrgOverviewPath('/@ada/-/overview')).toEqual({ slug: 'ada' })
@@ -153,37 +123,11 @@ test('management paths name settings and members under the /- separator', () => 
 		slug: 'acme',
 		section: 'settings',
 	})
-	expect(parseOrgManagementPath('/@acme/-/settings.json')).toEqual({
-		slug: 'acme',
-		section: 'settings',
-	})
-	expect(parseOrgManagementPath('/@acme/-/settings/avatar.json')).toEqual({
-		slug: 'acme',
-		section: 'settings',
-	})
-	expect(parseOrgManagementPath('/@acme/-/members/invite.json')).toEqual({
-		slug: 'acme',
-		section: 'members',
-	})
-	expect(parseOrgManagementPath('/@acme/-/members/invite-links.json')).toEqual({
-		slug: 'acme',
-		section: 'members',
-	})
-	expect(
-		parseOrgManagementPath('/@acme/-/members/invite-links-revoke.json'),
-	).toEqual({
-		slug: 'acme',
-		section: 'members',
-	})
 	expect(parseOrgManagementPath('/@acme/-/teams')).toEqual({
 		slug: 'acme',
 		section: 'teams',
 	})
-	expect(parseOrgManagementPath('/@acme/-/grants/revoke.json')).toEqual({
-		slug: 'acme',
-		section: 'grants',
-	})
-	expect(parseOrgManagementPath('/@acme/-/collaborators.json')).toEqual({
+	expect(parseOrgManagementPath('/@acme/-/collaborators')).toEqual({
 		slug: 'acme',
 		section: 'collaborators',
 	})
@@ -288,10 +232,7 @@ test('billing paths bind to the organization in the URL', () => {
 	for (const pathname of [
 		'/@acme/-/billing',
 		'/@acme/-/billing/',
-		'/@acme/-/billing.json',
-		'/@acme/-/billing/checkout.json',
 		'/@acme/-/billing/success',
-		'/@acme/-/billing/portal',
 	]) {
 		expect(parseOrgBillingPath(pathname)).toEqual({ slug: 'acme' })
 	}
@@ -303,11 +244,7 @@ test('billing paths bind to the organization in the URL', () => {
 
 test('usage paths bind to the organization in the URL', () => {
 	expect(orgUsagePath('acme')).toBe('/@acme/-/usage')
-	for (const pathname of [
-		'/@acme/-/usage',
-		'/@acme/-/usage/',
-		'/@acme/-/usage.json',
-	]) {
+	for (const pathname of ['/@acme/-/usage', '/@acme/-/usage/']) {
 		expect(parseOrgUsagePath(pathname)).toEqual({ slug: 'acme' })
 	}
 	expect(parseOrgUsagePath('/account/usage')).toBeNull()
@@ -315,55 +252,60 @@ test('usage paths bind to the organization in the URL', () => {
 	expect(parseOrgUsagePath('/@acme/usage')).toBeNull()
 	expect(parseOrgUsagePath('/@Not A Slug/usage')).toBeNull()
 	expect(orgSlugFromOrgOwnedPath('/@acme/-/usage')).toBe('acme')
-	expect(orgSlugFromOrgOwnedPath('/@acme/-/usage.json')).toBe('acme')
+	expect(orgSlugFromOrgOwnedPath('/@acme/-/usage.json')).toBeNull()
 })
 
 test('credits paths bind to the organization in the URL', () => {
 	expect(orgCreditsPath('acme')).toBe('/@acme/-/credits')
 	expect(orgUsageWhereItWentPath('acme')).toBe('/@acme/-/usage#where-it-went')
-	for (const pathname of [
-		'/@acme/-/credits',
-		'/@acme/-/credits/',
-		'/@acme/-/credits.json',
-	]) {
+	for (const pathname of ['/@acme/-/credits', '/@acme/-/credits/']) {
 		expect(parseOrgCreditsPath(pathname)).toEqual({ slug: 'acme' })
 		expect(orgSlugFromOrgOwnedPath(pathname)).toBe('acme')
 	}
 	expect(parseOrgCreditsPath('/@acme/-/credits/extra')).toBeNull()
 	expect(parseOrgCreditsPath('/@acme/credits')).toBeNull()
 	expect(parseOrgCreditsPath('/@Not A Slug/-/credits')).toBeNull()
-	expect(switchOrgPath('/@acme/-/credits', 'other')).toBe('/@other/-/credits')
-})
-
-test('org account JSON names the section', () => {
-	expect(orgOwnedAccountApiSection('/account/secrets.json')).toBe('secrets')
-	expect(orgOwnedAccountApiSection('/account/jobs.json')).toBe('jobs')
-	expect(orgOwnedAccountApiSection('/account/connected-agents.json')).toBe(
-		'agents',
-	)
-	expect(orgOwnedAccountApiSection('/account/connection-usage.json')).toBe(
-		'agents',
-	)
-	// Sign-in providers belong to the person, not the Agents page.
-	expect(orgOwnedAccountApiSection('/account/connections.json')).toBeNull()
-	expect(orgOwnedAccountApiSection('/account/packages.json')).toBeNull()
-	expect(orgOwnedAccountApiSection('/account/passkeys.json')).toBeNull()
-	expect(orgOwnedAccountApiSection('/@acme/-/secrets')).toBeNull()
-	// The Memories download exports the page's org, like the list.
-	expect(orgOwnedAccountApiSection('/account/memories-export.json')).toBe(
-		'memories',
-	)
 })
 
 test('every org-bound URL names its section, or none for billing and management', () => {
 	expect(orgOwnedSectionForPath('/@acme/-/memories/m-1')).toBe('memories')
-	expect(orgOwnedSectionForPath('/@acme/-/repositories.json')).toBe(
-		'repositories',
+	expect(orgOwnedSectionForPath('/@acme/-/repositories')).toBe('repositories')
+	expect(orgOwnedSectionForPath('/account/workflows.json')).toBeNull()
+	expect(orgOwnedSectionForPath('/account/memories-export.json')).toBe(
+		'memories',
 	)
-	expect(orgOwnedSectionForPath('/account/workflows.json')).toBe('workflows')
 	expect(orgOwnedSectionForPath('/@acme/-/settings.json')).toBeNull()
 	expect(orgOwnedSectionForPath('/@acme/-/billing')).toBeNull()
 	expect(orgOwnedSectionForPath('/@acme/-/nope.json')).toBeNull()
-	expect(orgSlugFromOrgOwnedPath('/@acme/-/repositories.json')).toBe('acme')
+	expect(orgSlugFromOrgOwnedPath('/@acme/-/repositories.json')).toBeNull()
 	expect(orgSlugFromOrgOwnedPath('/@acme/packages.json')).toBeNull()
+})
+
+test.each([
+	'/@acme/-/repositories.json',
+	'/@acme/-/follows.json',
+	'/@acme/-/billing.json',
+	'/@acme/-/billing/checkout.json',
+	'/@acme/-/billing/portal',
+	'/@acme/-/usage.json',
+	'/@acme/-/approvals/bundle-id.json',
+	'/@acme/-/settings.json',
+	'/@acme/-/settings/avatar.json',
+	'/@acme/-/members/invite.json',
+	'/@acme/-/members/invite-links.json',
+	'/@acme/-/members/invite-links-revoke.json',
+	'/@acme/-/grants/revoke.json',
+	'/@acme/-/collaborators.json',
+])(
+	'obsolete website endpoint does not establish org page scope: %s',
+	(pathname) => {
+		expect(orgSlugFromOrgOwnedPath(pathname)).toBeNull()
+		expect(orgOwnedSectionForPath(pathname)).toBeNull()
+	},
+)
+
+test('retired billing portal action is not rewritten as an organization page', () => {
+	expect(
+		orgResourcePathForAccountPath('/account/billing/portal', 'ada'),
+	).toBeNull()
 })

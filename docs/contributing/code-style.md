@@ -78,16 +78,17 @@ file style first, then run the formatter.
 
 ## Destructive actions
 
-- Confirm first with `createDoubleCheck` from
-  `packages/worker/client/double-check.ts` (second click, blur cancels).
+- Confirm destructive actions before executing them. Follow the native account
+  deletion flow in `packages/worker/start/pages/account-delete-panel.tsx` for
+  actions that require an explicit confirmation dialog.
 - If the action should be undoable, apply the optimistic result and start
-  `createUndoableAction` from `packages/worker/client/undoable-action.ts`.
-  Render `UndoToast` while `pending` is set. `onCommit` is the real mutation
-  (use `keepalive: true` on `fetch`); `onUndo` restores local state. Leaving the
-  page commits so the action is not lost. Do not navigate to a remounting route
-  during the undo window — remount commits immediately and loader data can
-  restore the optimistic removal. Navigate after `onCommit` if the selection is
-  gone.
+  `useUndoableAction` from
+  `packages/worker/start/components/use-undoable-action.ts`. Render `UndoToast`
+  while `pending` is set. `onCommit` is the real mutation (use `keepalive: true`
+  on `fetch`); `onUndo` restores local state. Leaving the page commits so the
+  action is not lost. Do not navigate to a remounting route during the undo
+  window — remount commits immediately and loader data can restore the
+  optimistic removal. Navigate after `onCommit` if the selection is gone.
 - For non-undo flash messages (save/upload success, or errors that should not
   shift page layout), use `toast` from `packages/worker/client/toast.ts`. The
   app shell already mounts `<Toaster />`. `toast.success` and `toast.info`

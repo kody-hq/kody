@@ -63,6 +63,18 @@ steps** for known kinds (same install path as Connect an agent). That list is
 not `users.mcp_client_name` (first-touch) and not `/account/mcp-oauth-clients`
 (user-minted confidential clients).
 
+The gift ledger is written at OAuth authorization completion. Website reads only
+load that ledger. The `second_agent_gift_reconciliation` scheduled lane repairs
+missed evaluations and older eligible accounts using the existing five-minute
+jobs dispatch. It scans eight ungranted live people per tick and wraps its
+independent `OAUTH_KV` cursor. At N ungranted people, a full sweep takes roughly
+`5 × ceil(N / 8)` minutes, plus a tail tick for an exact batch multiple; failed
+people retry on the next sweep. Normal authorization grants remain immediate.
+The D1 conditional write prevents replay from extending a gift, and excludes
+people or orgs whose deletion began while grants were loading. The cursor is
+only a progress hint, so stale KV reads can repeat work safely. See
+`src/entitlements/second-agent-gift-reconciliation.ts` in the worker package.
+
 `first-win` is not a wizard step and is not a checklist item. Signed-in
 `/onboarding` does not probe Mailbox for that loop. MCP registers
 `onboarding_first_win` and `search({ entity: "guide:first_win" })` serves the

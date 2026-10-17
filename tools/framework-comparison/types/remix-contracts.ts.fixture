@@ -1,0 +1,22 @@
+// Runner rewrites BASELINE_ROOT to the requested immutable checkout.
+import { routes } from 'BASELINE_ROOT/packages/worker/universal/routes.ts'
+import { type AccountJobsLoaderData } from 'BASELINE_ROOT/packages/worker/universal/loader-data.ts'
+import { readJson } from 'BASELINE_ROOT/packages/worker/client/routes/account-approval-shared.ts'
+
+declare const response: Response
+void routes.accountJobDetail.href({ jobId: 'test' })
+// @ts-expect-error Remix's shared typed builder also rejects a missing parameter.
+void routes.accountJobDetail.href({})
+async function read() {
+	const data = await readJson<AccountJobsLoaderData>(response)
+	if (!data) return
+	const days: number = data.retention.successOnceDays
+	// @ts-expect-error The declared response contract protects consumers.
+	const invalid: string = data.retention.successOnceDays
+	// @ts-expect-error The declared response contract rejects unknown properties.
+	data.retention.inventedWindow
+	// This also compiles: readJson trusts the caller's generic, it does not verify JSON.
+	const incompatible = await readJson<{ invented: number }>(response)
+	return { days, invalid, incompatible }
+}
+void read

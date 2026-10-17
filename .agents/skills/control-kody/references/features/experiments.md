@@ -11,15 +11,12 @@ itself.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts login
-node tools/control-kody.ts request GET /account/experiments.json
-node tools/control-kody.ts request POST /account/experiments.json \
-  --json '{"experimentsOptIn":true}'
+npm run control-kody -- browse --origin <preview> --path /account/experiments
 ```
 
-## APIs
-
-- `GET|POST /account/experiments.json` — body `{ "experimentsOptIn": boolean }`
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
 ## Gotchas
 

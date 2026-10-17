@@ -33,14 +33,14 @@ test('startup snapshot keeps the Vite client tree next to SSR wrangler.json', as
 	const sourceRoot = await mkdtemp(path.join(tmpdir(), 'origin-vite-source-'))
 	const outputRoot = await mkdtemp(path.join(tmpdir(), 'origin-vite-snap-'))
 	try {
-		await mkdir(path.join(sourceRoot, 'dist', 'ssr', 'assets'), {
+		await mkdir(path.join(sourceRoot, 'dist', 'server', 'assets'), {
 			recursive: true,
 		})
 		await mkdir(path.join(sourceRoot, 'dist', 'client', 'assets'), {
 			recursive: true,
 		})
 		await writeFile(
-			path.join(sourceRoot, 'dist', 'ssr', 'wrangler.json'),
+			path.join(sourceRoot, 'dist', 'server', 'wrangler.json'),
 			JSON.stringify({
 				main: 'index.js',
 				assets: { directory: '../client' },
@@ -54,10 +54,10 @@ test('startup snapshot keeps the Vite client tree next to SSR wrangler.json', as
 			sourceRoot,
 			outputRoot,
 		})
-		expect(path.basename(snapshot.ssrDir)).toBe('ssr')
+		expect(path.basename(snapshot.serverDir)).toBe('server')
 		expect(path.basename(snapshot.clientDir)).toBe('client')
 		const copied = JSON.parse(
-			await readFile(path.join(snapshot.ssrDir, 'wrangler.json'), 'utf8'),
+			await readFile(path.join(snapshot.serverDir, 'wrangler.json'), 'utf8'),
 		) as { assets: { directory: string } }
 		expect(copied.assets.directory).toBe('../client')
 		expect(

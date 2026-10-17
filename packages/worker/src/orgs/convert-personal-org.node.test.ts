@@ -765,3 +765,130 @@ test('convertPersonalOrg retargets follows when personal org id differs from per
 			.first(),
 	).toEqual({ target_owner_id: personalOrgId })
 })
+
+function conversionSnapshot(sqlite: DatabaseSync) {
+	return Object.fromEntries(
+		[
+			'users',
+			'orgs',
+			'org_memberships',
+			'handles',
+			'secret_entries',
+			'secret_buckets',
+			'user_oauth_apps',
+			'user_integrations',
+			'mcp_memories',
+			'mcp_server_settings',
+			'api_tokens',
+			'grants',
+			'follows',
+		].map((table) => [
+			table,
+			sqlite.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
+		]),
+	)
+}
+
+test('credential preparation failure leaves identity, ownership, and earlier ciphertext unchanged', async () => {
+	const { sqlite, db, env } = await createHarness()
+	const personId = await seedEqualIdPerson(db, {
+		email: 'prepare-failure@example.com',
+		username: 'prepare-failure',
+	})
+	await seedOwnedSurfaces(db, personalOrgId(personId), personId)
+	// Secret preparation succeeds first, then this integration fails to decrypt.
+	sqlite.exec(
+		`UPDATE user_integrations SET access_token_encrypted = 'invalid-ciphertext'`,
+	)
+	const before = conversionSnapshot(sqlite)
+	await expect(
+		convertPersonalOrg({
+			env,
+			personId,
+			newHandle: 'prepare-new',
+			now: new Date(now),
+		}),
+	).rejects.toThrow(/./)
+	expect(conversionSnapshot(sqlite)).toEqual(before)
+	expect(hubMock.calls).toEqual([])
+})
+
+test('a late D1 failure rolls back identity, ciphertext, resource owners and staged MCP imports', async () => {
+	const { sqlite, db, env } = await createHarness()
+	const personId = await seedEqualIdPerson(db, {
+		email: 'batch-failure@example.com',
+		username: 'batch-failure',
+	})
+	const oldOrgId = personalOrgId(personId)
+	await seedOwnedSurfaces(db, oldOrgId, personId)
+	;(env as { MCP_CLIENT_HUB?: unknown }).MCP_CLIENT_HUB = {}
+	await db
+		.prepare(
+			`INSERT INTO mcp_server_settings (id, user_id, name, url) VALUES ('srv-atomic', ?, 'atomic', 'https://mcp.example.com')`,
+		)
+		.bind(oldOrgId)
+		.run()
+	sqlite.exec(
+		`CREATE TRIGGER fail_conversion_token BEFORE UPDATE OF org_id ON api_tokens BEGIN SELECT RAISE(ABORT, 'token owner write failed'); END`,
+	)
+	const before = conversionSnapshot(sqlite)
+	await expect(
+		convertPersonalOrg({
+			env,
+			personId,
+			newHandle: 'batch-new',
+			now: new Date(now),
+		}),
+	).rejects.toThrow('token owner write failed')
+	expect(conversionSnapshot(sqlite)).toEqual(before)
+	expect(hubMock.calls.some((call) => call.startsWith('import:'))).toBe(true)
+	expect(hubMock.calls.some((call) => call.startsWith('discard:'))).toBe(true)
+	expect(
+		hubMock.calls.some(
+			(call) => call.startsWith('remove:') || call.startsWith('connect:'),
+		),
+	).toBe(false)
+	const secret = await db
+		.prepare(
+			`SELECT encrypted_value FROM secret_entries WHERE id = 'cred-personal'`,
+		)
+		.first<{ encrypted_value: string }>()
+	expect(
+		await decryptSecretValue(
+			cryptoEnv,
+			secret!.encrypted_value,
+			userSecretContext(oldOrgId),
+		),
+	).toBe('user-secret-plaintext')
+})
+
+test('a failed email followup reports committed conversion instead of offering a second conversion', async () => {
+	const { sqlite, db, env } = await createHarness()
+	const personId = await seedEqualIdPerson(db, {
+		email: 'followup@example.com',
+		username: 'followup-old',
+	})
+	sqlite.exec(
+		`CREATE TRIGGER fail_conversion_inbox BEFORE INSERT ON email_inboxes BEGIN SELECT RAISE(ABORT, 'inbox unavailable'); END`,
+	)
+	const result = await convertPersonalOrg({
+		env,
+		personId,
+		newHandle: 'followup-new',
+		now: new Date(now),
+	})
+	expect(result.followUpFailures).toContain('email_inbox')
+	expect(
+		await db
+			.prepare(
+				`SELECT username, personal_org_id FROM users WHERE stable_user_id = ?`,
+			)
+			.bind(personId)
+			.first(),
+	).toEqual({
+		username: 'followup-new',
+		personal_org_id: result.newPersonalOrgId,
+	})
+	expect(await isPersonalOrg(db, result.convertedOrgId)).toBe(false)
+	expect(await isPersonalOrg(db, result.newPersonalOrgId)).toBe(true)
+})

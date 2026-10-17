@@ -97,10 +97,9 @@ function loadTurnstileScript() {
 }
 
 /**
- * Remix re-renders wipe children of a declarative empty host. The widget
- * lives in a shadow mount Remix does not touch, so a light-DOM wipe is not
- * enough to remount. Fake test hosts without `attachShadow` fall back to
- * the container itself.
+ * Keep Turnstile-owned nodes isolated from the form renderer. Check the
+ * shadow mount itself before deciding a widget needs to be recreated. Hosts
+ * without shadow DOM support use the container itself.
  */
 function ensureTurnstileMount(container: HTMLElement) {
 	if (!container.shadowRoot && typeof container.attachShadow === 'function') {

@@ -1,10 +1,6 @@
 import { expect, test } from 'vitest'
-import { createMatcher } from 'remix/route-pattern/match'
-import { routes } from '#universal/routes.ts'
 import { parsePackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
 import { isNamespacedAppEndpointPath } from './user-namespace-routes.ts'
-
-const communityPackageMatcher = createMatcher(routes.communityPackage.pattern)
 
 test('machine namespaces claim only their multi-segment paths', () => {
 	expect(isNamespacedAppEndpointPath('/@kody/packages/devin')).toBe(true)
@@ -45,14 +41,4 @@ test('machine namespaces claim only their multi-segment paths', () => {
 		isNamespacedAppEndpointPath('/@kody/doom/assets/docs/poster.png'),
 	).toBe(false)
 	expect(parsePackageAppPath('/@kody/doom/assets/docs/poster.png')).toBeNull()
-
-	expect(
-		communityPackageMatcher.match(new URL('https://example.com/@kody/devin'))
-			?.params,
-	).toEqual({ username: 'kody', kodyId: 'devin' })
-	expect(
-		communityPackageMatcher.match(
-			new URL('https://example.com/@kody/packages/devin'),
-		),
-	).toBeNull()
 })

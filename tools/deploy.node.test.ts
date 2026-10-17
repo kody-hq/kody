@@ -10,7 +10,7 @@ import {
 } from './deploy.ts'
 
 test('origin Vite deploy always points Wrangler at the generated SSR config', () => {
-	expect(originViteWranglerConfigPath).toBe('dist/ssr/wrangler.json')
+	expect(originViteWranglerConfigPath).toBe('dist/server/wrangler.json')
 	expect(
 		originViteDeployArgs([
 			'--config',
@@ -21,7 +21,7 @@ test('origin Vite deploy always points Wrangler at the generated SSR config', ()
 	).toEqual([
 		'deploy',
 		'--config',
-		'dist/ssr/wrangler.json',
+		'dist/server/wrangler.json',
 		'--var',
 		'APP_COMMIT_SHA:abc',
 	])
@@ -41,7 +41,7 @@ test('origin Vite deploy pins the production script name when callers omit --nam
 	).toEqual([
 		'deploy',
 		'--config',
-		'dist/ssr/wrangler.json',
+		'dist/server/wrangler.json',
 		'--var',
 		'APP_COMMIT_SHA:abc',
 		'--name',
@@ -63,7 +63,7 @@ test('origin Vite deploy keeps an explicit --name (preview per-PR workers)', () 
 	).toEqual([
 		'deploy',
 		'--config',
-		'dist/ssr/wrangler.json',
+		'dist/server/wrangler.json',
 		'--name',
 		'kody-pr-2055',
 	])

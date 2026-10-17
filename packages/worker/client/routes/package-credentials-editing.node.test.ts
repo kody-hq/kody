@@ -1,6 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import {
-	type CredentialMappingChange,
 	type CredentialRef,
 	type PackageCredentialNeedView,
 	type PackageCredentialsView,
@@ -12,10 +11,10 @@ import {
 	draftFromStored,
 	draftToChange,
 	mappingOptions,
+	mappingEditorKey,
 	type MappingDraft,
 	mappingSaveAgentPrompt,
 	packageBoundKeysPickerNote,
-	postPackageCredentialChanges,
 	toggleDraftPick,
 	triggerMappingRows,
 	triggerDraftProblem,
@@ -294,59 +293,6 @@ test('trigger rows cover every need, using the trigger’s own row when sent', (
 	])
 })
 
-test('saving posts one change and reads saved, refused, conflict, and signed-out answers', async () => {
-	const change: CredentialMappingChange = {
-		target: { type: 'default', layer: 'mine' },
-		needKey: 'openai',
-		credentials: [{ id: 'cred-1' }],
-	}
-	const respond = (body: unknown, status: number) =>
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => new Response(JSON.stringify(body), { status })),
-		)
-	const post = () =>
-		postPackageCredentialChanges({
-			username: 'jane',
-			kodyId: 'daily-digest',
-			changes: [change],
-		})
-
-	const view = { ok: true, needs: [] }
-	respond(view, 200)
-	expect(await post()).toEqual({ kind: 'saved', view })
-	const fetchMock = vi.mocked(fetch)
-	expect(fetchMock).toHaveBeenCalledWith(
-		'/profiles/jane/packages/daily-digest/credentials.json',
-		expect.objectContaining({
-			method: 'POST',
-			body: JSON.stringify({ changes: [change] }),
-		}),
-	)
-
-	const refusal = {
-		needKey: 'openai',
-		target: change.target,
-		code: 'credential_not_found',
-		message: 'Gone.',
-	}
-	respond({ ok: false, errors: [refusal] }, 400)
-	expect(await post()).toEqual({ kind: 'refused', errors: [refusal] })
-
-	respond({ ok: false }, 409)
-	expect(await post()).toEqual({
-		kind: 'error',
-		message:
-			'Someone else turned this trigger on while you were editing. Reload to see their mapping.',
-	})
-
-	respond({ ok: false, error: 'Bad body.' }, 400)
-	expect(await post()).toEqual({ kind: 'error', message: 'Bad body.' })
-
-	respond({}, 401)
-	expect(await post()).toEqual({ kind: 'unauthorized' })
-})
-
 test('the agent prompt names the mapping and never asks for a value', () => {
 	expect(
 		mappingSaveAgentPrompt({
@@ -362,4 +308,21 @@ test('the agent prompt names the mapping and never asks for a value', () => {
 			'Help me fix it. Do not ask me to paste any credential value into chat.',
 		].join('\n'),
 	)
+})
+
+test('mapping editor state stays separate for each live trigger instance and a new instance', () => {
+	const trigger = { kind: 'cron' as const, name: 'daily' }
+	const first = mappingEditorKey(
+		{ type: 'trigger', trigger, enablementId: 'first' },
+		'github',
+	)
+	const second = mappingEditorKey(
+		{ type: 'trigger', trigger, enablementId: 'second' },
+		'github',
+	)
+	const next = mappingEditorKey(
+		{ type: 'trigger', trigger, createInstance: true },
+		'github',
+	)
+	expect(new Set([first, second, next]).size).toBe(3)
 })

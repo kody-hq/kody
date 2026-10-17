@@ -22,6 +22,27 @@ test('readPackageManifestSource accepts repo-root and source-root file maps', ()
 	expect(
 		readPackageManifestSource({ 'package.json': manifest }, 'packages/bot'),
 	).toBe(manifest)
+	expect(
+		readPackageManifestSource(
+			{
+				'package.json': manifest,
+				'packages/bot/src/wake.ts': 'export {}',
+			},
+			'packages/bot',
+		),
+	).toBe(manifest)
+	const nested = JSON.stringify({
+		kody: { secretMounts: { nested: { name: 'nested' } } },
+	})
+	expect(
+		readPackageManifestSource(
+			{
+				'package.json': manifest,
+				'packages/bot/package.json': nested,
+			},
+			'packages/bot',
+		),
+	).toBe(nested)
 })
 
 test('readSecretMountAliases lists mount aliases and ignores a missing key', () => {

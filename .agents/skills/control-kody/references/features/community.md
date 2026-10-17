@@ -15,20 +15,15 @@ previews from `/@username/kody-id/raw/:ref/…`. Owner settings:
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /community.json --skip-login
+npm run control-kody -- browse --origin <preview> --path /community
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET /community.json`
-- `GET /community/:listingId.json`
-- `GET /profiles/:username.json`
-- `GET /profiles/:username/packages/:kodyId.json`
-- `GET /profiles/:username/packages/:kodyId/files.json`
-- `POST /community/:listingId/{report,feature,install}.json` (web install goes
-  to your personal org since listing URLs carry no org; team forks use an
-  org-scoped MCP connection's `communityFork`)
-- `POST /community/:listingId/trust.json` returns 410 (no trusted-listing mark)
+Check catalog, profile, file navigation, and the two-click install control in
+the browser. Raw files and README assets remain explicit HTTP resources.
 
 ## Gotchas
 
@@ -48,7 +43,7 @@ node tools/control-kody.ts request GET /community.json --skip-login
   another account (including `@kody/*`) use `createDoubleCheck`. The tooltip is
   `This was built by another user. Verify it before using. Click again to confirm fork.`
   The first click arms that control. The second click sends `acknowledged: true`
-  (the install endpoint responds `409` without it). Clicking elsewhere,
+  (the install operation rejects requests without it). Clicking elsewhere,
   navigating, or leaving the control clears the armed state.
 - Admin **featured** is editorial catalog placement on `/community` and listing
   detail (and slim names in the onboarding persist-prompt payload). It is not a
@@ -61,3 +56,6 @@ node tools/control-kody.ts request GET /community.json --skip-login
   tab.
 - Own-profile **Needs republish** (`listing=ahead`) is listing pin behind
   `published_commit`. Guests do not see that filter.
+
+Web installs target the personal organization. Team forks use the org-scoped MCP
+communityFork capability.

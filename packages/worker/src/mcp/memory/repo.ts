@@ -80,16 +80,17 @@ export async function getMemoryById(
 	db: D1Database,
 	userId: string,
 	memoryId: string,
+	options?: { includeDeleted?: boolean },
 ): Promise<McpMemoryRow | null> {
 	const row = await db
 		.prepare(
 			`SELECT id, user_id, category, status, subject, summary, details, tags_json,
 				source_uris_json, dedupe_key, created_at, updated_at, last_accessed_at, deleted_at
 			FROM mcp_memories
-			WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}
+			WHERE user_id = ? AND id = ? AND (deleted_at IS NULL OR ? = 1)
 			LIMIT 1`,
 		)
-		.bind(userId, memoryId)
+		.bind(userId, memoryId, options?.includeDeleted === true ? 1 : 0)
 		.first<Record<string, unknown>>()
 	return row ? mapMemoryRow(row) : null
 }
@@ -150,12 +151,13 @@ export async function deleteMemory(
 	db: D1Database,
 	userId: string,
 	memoryId: string,
+	options?: { force?: boolean },
 ): Promise<boolean> {
 	const out = await db
 		.prepare(
-			`DELETE FROM mcp_memories WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
+			`DELETE FROM mcp_memories WHERE user_id = ? AND id = ? AND (deleted_at IS NULL OR ? = 1)`,
 		)
-		.bind(userId, memoryId)
+		.bind(userId, memoryId, options?.force === true ? 1 : 0)
 		.run()
 	return (out.meta.changes ?? 0) > 0
 }
@@ -164,6 +166,7 @@ export async function listMemoriesByUserId(
 	db: D1Database,
 	userId: string,
 	options?: {
+		includeDeleted?: boolean
 		statuses?: Array<McpMemoryRow['status']>
 		limit?: number
 	},
@@ -179,12 +182,17 @@ export async function listMemoriesByUserId(
 			`SELECT id, user_id, category, status, subject, summary, details, tags_json,
 				source_uris_json, dedupe_key, created_at, updated_at, last_accessed_at, deleted_at
 			FROM mcp_memories
-			WHERE user_id = ?${andLiveDeletedAtSql()}
+			WHERE user_id = ? AND (deleted_at IS NULL OR ? = 1)
 				${statusClause}
 			ORDER BY updated_at DESC
 			LIMIT ?`,
 		)
-		.bind(userId, ...(statuses ?? []), limit)
+		.bind(
+			userId,
+			options?.includeDeleted === true ? 1 : 0,
+			...(statuses ?? []),
+			limit,
+		)
 		.all<Record<string, unknown>>()
 	return (results ?? []).map(mapMemoryRow)
 }
@@ -198,6 +206,7 @@ export async function listMemoriesByUserIdPage(input: {
 	userId: string
 	afterId: string | null
 	limit: number
+	includeDeleted?: boolean
 	statuses?: Array<McpMemoryRow['status']>
 }): Promise<Array<McpMemoryRow>> {
 	const statuses =
@@ -210,13 +219,19 @@ export async function listMemoriesByUserIdPage(input: {
 			`SELECT id, user_id, category, status, subject, summary, details, tags_json,
 				source_uris_json, dedupe_key, created_at, updated_at, last_accessed_at, deleted_at
 			FROM mcp_memories
-			WHERE user_id = ?${andLiveDeletedAtSql()}
+			WHERE user_id = ? AND (deleted_at IS NULL OR ? = 1)
 				AND id > ?
 				${statusClause}
 			ORDER BY id
 			LIMIT ?`,
 		)
-		.bind(input.userId, input.afterId ?? '', ...(statuses ?? []), input.limit)
+		.bind(
+			input.userId,
+			input.includeDeleted === true ? 1 : 0,
+			input.afterId ?? '',
+			...(statuses ?? []),
+			input.limit,
+		)
 		.all<Record<string, unknown>>()
 	return (results ?? []).map(mapMemoryRow)
 }

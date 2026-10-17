@@ -1,4 +1,3 @@
-import { RequestContext } from 'remix/router'
 import { expect, test, vi } from 'vitest'
 import type * as CloudflareEmail from '#app/email/cloudflare-email.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
@@ -63,8 +62,8 @@ vi.mock('#app/email/cloudflare-email.ts', () => ({
 	) => mockModule.sendCloudflareEmail(...args),
 }))
 
-const { createPasswordResetRequestHandler, createPasswordResetConfirmHandler } =
-	await import('./password-reset.ts')
+const { requestWebsitePasswordReset, confirmWebsitePasswordReset } =
+	await import('#worker/identity/password-reset-operations.ts')
 const { runWithDeferredWork } = await import('#worker/deferred-work.ts')
 
 function createEnv(overrides: Record<string, unknown> = {}) {
@@ -94,12 +93,6 @@ function createEnv(overrides: Record<string, unknown> = {}) {
 	} as unknown as Env
 }
 
-function post(url: string, body: Record<string, unknown>) {
-	return new RequestContext(
-		new Request(url, { method: 'POST', body: JSON.stringify(body) }),
-	)
-}
-
 // The request handler defers token creation and the email send past the
 // response so latency cannot reveal whether the address is registered; tests
 // collect the deferred work the way `ctx.waitUntil` does in the worker.
@@ -108,11 +101,17 @@ async function requestReset(
 	url: string,
 	body: Record<string, unknown> = { email: 'user@example.com' },
 ) {
-	const handler = createPasswordResetRequestHandler(createEnv(env))
+	const bindings = createEnv(env)
 	const deferred = new Array<Promise<unknown>>()
 	const response = await runWithDeferredWork(
 		(promise) => deferred.push(promise),
-		() => handler.handler(post(url, body)),
+		() =>
+			requestWebsitePasswordReset({
+				env: bindings,
+				request: new Request(url),
+				url: new URL(url),
+				body,
+			}),
 	)
 	return { response, flush: () => Promise.all(deferred) }
 }
@@ -139,7 +138,7 @@ test('password reset request ignores leftover website autofill and rejects the h
 		website: 'https://kody.codes',
 	})
 	expect(autofilled.response.status).toBe(200)
-	expect(await autofilled.response.json()).toEqual({
+	expect(await Promise.resolve(autofilled.response.data)).toEqual({
 		ok: true,
 		message: 'If the account exists, a reset email has been sent.',
 	})
@@ -150,7 +149,7 @@ test('password reset request ignores leftover website autofill and rejects the h
 		[honeypotFieldName]: 'https://spam.example',
 	})
 	expect(honeypot.response.status).toBe(400)
-	expect(await honeypot.response.json()).toEqual({
+	expect(await Promise.resolve(honeypot.response.data)).toEqual({
 		error: 'Unable to submit this form.',
 	})
 })
@@ -263,15 +262,12 @@ function createTrackingGrantHelpers(
 }
 
 function confirm(oauthProvider: unknown) {
-	const handler = createPasswordResetConfirmHandler(
-		createEnv({ OAUTH_PROVIDER: oauthProvider, ...kodyCodes }),
-	)
-	return handler.handler(
-		post('https://example.com/password-reset/confirm', {
-			token: 'a'.repeat(64),
-			password: 'new-password-123',
-		}),
-	)
+	return confirmWebsitePasswordReset({
+		env: createEnv({ OAUTH_PROVIDER: oauthProvider, ...kodyCodes }),
+		request: new Request('https://example.com/password-reset/confirm'),
+		url: new URL('https://example.com/password-reset/confirm'),
+		body: { token: 'a'.repeat(64), password: 'new-password-123' },
+	})
 }
 
 test('password reset confirm revokes MCP grants before stamping password_changed_at', async () => {
@@ -282,7 +278,7 @@ test('password reset confirm revokes MCP grants before stamping password_changed
 	const response = await confirm(helpers)
 
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({ ok: true })
+	expect(await Promise.resolve(response.data)).toEqual({ ok: true })
 	expect(helpers.listUserGrants).toHaveBeenCalledWith('a'.repeat(64), {
 		cursor: undefined,
 	})
@@ -336,7 +332,7 @@ test('password reset confirm fails closed when MCP grants cannot be revoked', as
 	})
 
 	expect(response.status).toBe(500)
-	expect(await response.json()).toEqual({
+	expect(await Promise.resolve(response.data)).toEqual({
 		error: 'Unable to finish password reset right now.',
 	})
 	expect(mockModule.update).not.toHaveBeenCalled()

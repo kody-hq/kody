@@ -3,12 +3,6 @@
  * tests can exercise the predicates with plain event shapes.
  */
 
-import {
-	errorStackMentionsResolveFrame,
-	isBrowserFetchNetworkError,
-	isBrowserFetchNetworkErrorMessage,
-} from '#client/browser-fetch-network-error.ts'
-
 type SentryStackFrame = {
 	filename?: string
 	abs_path?: string
@@ -138,7 +132,7 @@ export function filterBrowserAbortSentryEvent<T extends SentryErrorEventLike>(
 }
 
 /**
- * Firefox throws when page JS (Remix hydration or Sentry Session Replay /
+ * Firefox throws when page JS (hydration or Sentry Session Replay /
  * rrweb `startRecording`) touches a DOM node the content compartment cannot
  * read — typically an extension-injected Xray wrapper or a cross-origin
  * object. Signature from production issue 7639685398 / MDN
@@ -1217,80 +1211,14 @@ function filterSyntaxHighlightCoreDynamicImportFailureSentryEvent<
 }
 
 /**
- * Remix `resolveFrame` `fetch()` network TypeErrors (WebKit "Load failed",
- * Chromium "Failed to fetch" / "Failed to fetch (host)", Firefox NetworkError).
- * Observed as a handled client hydration error after a successful GET of the
- * same frame URL (KODY-CLOUDFLARE-5Y, Mobile Safari on `/@kody/planetscale`;
- * KODY-6A, Chrome Mobile on `/` with sourcemapped `createFrameResolveInit`).
- * External connectivity blips — not an app defect. Match only when a stack
- * frame names `resolveFrame`, `fetchFrameResolve`, or `createFrameResolveInit`
- * so other fetch TypeErrors stay Sentry-visible.
- */
-function isResolveFrameFetchNetworkSentryEvent(
-	event: SentryErrorEventLike,
-	originalException?: unknown,
-) {
-	const networkFromException =
-		isBrowserFetchNetworkError(originalException) ||
-		(typeof originalException === 'object' &&
-			originalException !== null &&
-			'message' in originalException &&
-			typeof originalException.message === 'string' &&
-			isBrowserFetchNetworkErrorMessage(originalException.message) &&
-			'name' in originalException &&
-			originalException.name === 'TypeError')
-
-	const networkFromEvent =
-		event.exception?.values?.some(
-			(value) =>
-				value.type === 'TypeError' &&
-				typeof value.value === 'string' &&
-				isBrowserFetchNetworkErrorMessage(value.value),
-		) ?? false
-
-	if (!networkFromException && !networkFromEvent) return false
-
-	if (errorStackMentionsResolveFrame(originalException)) return true
-	return sentryEventStackFrameFunctions(event).some((name) =>
-		isResolveFrameFetchStackFunction(name),
-	)
-}
-
-function isResolveFrameFetchStackFunction(name: string) {
-	return (
-		name.includes('resolveFrame') ||
-		name.includes('fetchFrameResolve') ||
-		name.includes('createFrameResolveInit')
-	)
-}
-
-/** Pre-SDK buffer gate: network TypeError from resolveFrame / fetchFrameResolve. */
-export function isResolveFrameFetchNetworkError(error: unknown) {
-	return (
-		isBrowserFetchNetworkError(error) && errorStackMentionsResolveFrame(error)
-	)
-}
-
-/**
  * Local `npm run dev` Vite / wrangler sessions (KODY-6Z, KODY-6T, KODY-6Y).
  * Production wrangler vars copy `SENTRY_ENVIRONMENT=production` into local
  * Vite, so HMR identity/CSS-binding crashes report as production. Match only
- * loopback frame URLs, Vite HMR runtime tokens, or `Frame resolve failed`
- * for a loopback `src` — production `kody.codes` resolveFrame 500s stay
- * visible.
+ * loopback stack URLs or Vite dependency URLs. Production failures stay visible.
  */
 const loopbackHttpUrlPattern =
 	/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:[/?#]|$)/i
-const viteDevStackTokenPattern =
-	/\/\.vite\/|remix_component-hmr|callComponentRenderForHmr/i
-const frameResolveLoopbackMessagePattern =
-	/^Frame resolve failed \(\d+\) for https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])/i
-
-function isLocalViteDevFrameResolveMessage(message: string) {
-	return frameResolveLoopbackMessagePattern.test(
-		message.trim().replace(/^Error:\s*/i, ''),
-	)
-}
+const viteDevStackTokenPattern = /\/\.vite\//i
 
 function stackTextLooksLikeLocalViteDev(text: string) {
 	return (
@@ -1299,15 +1227,9 @@ function stackTextLooksLikeLocalViteDev(text: string) {
 }
 
 export function isLocalViteDevError(error: unknown) {
-	if (typeof error === 'string') {
-		return isLocalViteDevFrameResolveMessage(error)
-	}
 	if (typeof error !== 'object' || error === null) return false
-	const message =
-		'message' in error && typeof error.message === 'string' ? error.message : ''
 	const stack =
 		'stack' in error && typeof error.stack === 'string' ? error.stack : ''
-	if (isLocalViteDevFrameResolveMessage(message)) return true
 	return stackTextLooksLikeLocalViteDev(stack)
 }
 
@@ -1316,23 +1238,7 @@ function isLocalViteDevSentryEvent(
 	originalException?: unknown,
 ) {
 	if (isLocalViteDevError(originalException)) return true
-	if (
-		sentryEventMessages(event).some(
-			(message) =>
-				typeof message === 'string' &&
-				isLocalViteDevFrameResolveMessage(message),
-		)
-	) {
-		return true
-	}
-	if (sentryEventStackFrameUrls(event).some(stackTextLooksLikeLocalViteDev)) {
-		return true
-	}
-	return sentryEventStackFrameFunctions(event).some(
-		(name) =>
-			name.includes('callComponentRenderForHmr') ||
-			name.includes('remix_component-hmr'),
-	)
+	return sentryEventStackFrameUrls(event).some(stackTextLooksLikeLocalViteDev)
 }
 
 function filterLocalViteDevSentryEvent<T extends SentryErrorEventLike>(
@@ -1340,15 +1246,6 @@ function filterLocalViteDevSentryEvent<T extends SentryErrorEventLike>(
 	originalException?: unknown,
 ): T | null {
 	if (isLocalViteDevSentryEvent(event, originalException)) return null
-	return event
-}
-
-function filterResolveFrameFetchNetworkSentryEvent<
-	T extends SentryErrorEventLike,
->(event: T, originalException?: unknown): T | null {
-	if (isResolveFrameFetchNetworkSentryEvent(event, originalException)) {
-		return null
-	}
 	return event
 }
 
@@ -1400,143 +1297,6 @@ function filterCloudflareTurnstileClientSentryEvent<
 	T extends SentryErrorEventLike,
 >(event: T, originalException?: unknown): T | null {
 	if (isCloudflareTurnstileClientSentryEvent(event, originalException)) {
-		return null
-	}
-	return event
-}
-
-/**
- * Remix reconcile races after DOM desync (Chrome Translate, docs SPA
- * sidebar nav, etc.): `moveDomRange` calls `insertBefore` with a stale
- * sibling. Signatures from production issues 7732198685 / KODY-7N
- * (`/docs/how-kody-works`, Polish Chrome Translate) and 7758139188 /
- * KODY-8A (docs sidebar SPA nav between `/docs/*`, same session as
- * KODY-8D Framework invariant).
- *
- * Match is intentionally narrow: `NotFoundError` plus this exact
- * insertBefore wording on the **same** `exception.values` entry. Do
- * **not** require `@remix-run/component` / `reconcile` / `moveDomRange`
- * stack frames at filter time — browser `beforeSend` sees minified
- * production bundles (`/assets/entry-….js`, functions `go`/`fo`/`io`);
- * sourcemaps only rewrite those frames on Sentry's server *after*
- * capture, so a stack gate silently fails to drop real reconcile noise
- * (KODY-8A). Keep HierarchyRequestError / non-matching insertBefore
- * messages visible — KODY-5E was a different HierarchyRequestError on RSS
- * SPA nav.
- */
-const remixReconcileInsertBeforeNotFoundMessage =
-	/^(?:NotFoundError:\s*)?Failed to execute 'insertBefore' on 'Node': The node before which the new node is to be inserted is not a child of this node\.?$/
-
-function isRemixReconcileInsertBeforeNotFoundMessage(message: string) {
-	return remixReconcileInsertBeforeNotFoundMessage.test(message.trim())
-}
-
-function isNotFoundErrorName(name: string | undefined) {
-	return name === 'NotFoundError'
-}
-
-export function isRemixReconcileInsertBeforeNotFoundError(error: unknown) {
-	if (typeof error !== 'object' || error === null) return false
-	const name =
-		'name' in error && typeof error.name === 'string' ? error.name : ''
-	if (!isNotFoundErrorName(name)) return false
-	const message =
-		'message' in error && typeof error.message === 'string' ? error.message : ''
-	return isRemixReconcileInsertBeforeNotFoundMessage(message)
-}
-
-function isRemixReconcileInsertBeforeNotFoundSentryEvent(
-	event: SentryErrorEventLike,
-	originalException?: unknown,
-) {
-	if (isRemixReconcileInsertBeforeNotFoundError(originalException)) return true
-	// Type and message must agree on the same exception.values entry — never
-	// pair a NotFoundError type with an insertBefore message from another
-	// value or from untyped event.message.
-	return (
-		event.exception?.values?.some(
-			(value) =>
-				isNotFoundErrorName(value.type) &&
-				typeof value.value === 'string' &&
-				isRemixReconcileInsertBeforeNotFoundMessage(value.value),
-		) ?? false
-	)
-}
-
-function filterRemixReconcileInsertBeforeNotFoundSentryEvent<
-	T extends SentryErrorEventLike,
->(event: T, originalException?: unknown): T | null {
-	if (
-		isRemixReconcileInsertBeforeNotFoundSentryEvent(event, originalException)
-	) {
-		return null
-	}
-	return event
-}
-
-/**
- * Remix internal after DOM desync: reconcile expects a removed component
- * to still be in the committed tree. Signature from production issue
- * 7760649391 / KODY-8D on `/docs/package-apps` — same Chrome session as
- * KODY-8A insertBefore NotFoundError after docs sidebar SPA nav. Not an
- * actionable app defect; further nav after the insertBefore failure trips
- * this invariant inside `@remix-run/component`.
- *
- * Match is intentionally narrow: this exact Framework invariant wording
- * (optional `Error:` preface). Prefer `Error` type when present; do not
- * require sourcemapped remix stack frames — `beforeSend` only sees minified
- * bundles (same pitfall as KODY-8A / the insertBefore filter above).
- */
-const remixReconcileRemovedComponentCommittedMessage =
-	/^(?:Error:\s*)?Framework invariant: Expected removed component to be committed\.?$/
-
-function isRemixReconcileRemovedComponentCommittedMessage(message: string) {
-	return remixReconcileRemovedComponentCommittedMessage.test(message.trim())
-}
-
-export function isRemixReconcileRemovedComponentCommittedError(error: unknown) {
-	if (typeof error !== 'object' || error === null) return false
-	const name =
-		'name' in error && typeof error.name === 'string' ? error.name : ''
-	if (name.length > 0 && name !== 'Error') return false
-	const message =
-		'message' in error && typeof error.message === 'string' ? error.message : ''
-	return isRemixReconcileRemovedComponentCommittedMessage(message)
-}
-
-function isRemixReconcileRemovedComponentCommittedSentryEvent(
-	event: SentryErrorEventLike,
-	originalException?: unknown,
-) {
-	if (isRemixReconcileRemovedComponentCommittedError(originalException)) {
-		return true
-	}
-	const values = event.exception?.values ?? []
-	if (values.length > 0) {
-		return values.some((value) => {
-			if (value.type && value.type !== 'Error') return false
-			return (
-				typeof value.value === 'string' &&
-				isRemixReconcileRemovedComponentCommittedMessage(value.value)
-			)
-		})
-	}
-	return sentryEventMessages(event).some(
-		(message) =>
-			typeof message === 'string' &&
-			isRemixReconcileRemovedComponentCommittedMessage(message),
-	)
-}
-
-function filterRemixReconcileRemovedComponentCommittedSentryEvent<
-	T extends SentryErrorEventLike,
->(event: T, originalException?: unknown): T | null {
-	if (
-		isRemixReconcileRemovedComponentCommittedSentryEvent(
-			event,
-			originalException,
-		)
-	) {
 		return null
 	}
 	return event
@@ -2059,11 +1819,7 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	) {
 		return null
 	}
-	if (
-		filterResolveFrameFetchNetworkSentryEvent(event, originalException) === null
-	) {
-		return null
-	}
+
 	if (filterLocalViteDevSentryEvent(event, originalException) === null) {
 		return null
 	}
@@ -2073,22 +1829,7 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	) {
 		return null
 	}
-	if (
-		filterRemixReconcileInsertBeforeNotFoundSentryEvent(
-			event,
-			originalException,
-		) === null
-	) {
-		return null
-	}
-	if (
-		filterRemixReconcileRemovedComponentCommittedSentryEvent(
-			event,
-			originalException,
-		) === null
-	) {
-		return null
-	}
+
 	if (
 		filterCrabAppleUserAgentSpoofSentryEvent(event, originalException) === null
 	) {

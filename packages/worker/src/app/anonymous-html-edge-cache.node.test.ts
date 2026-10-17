@@ -31,7 +31,9 @@ function htmlResponse(input: {
 	})
 }
 
+const version = { CF_VERSION_METADATA: { id: 'version-1' } }
 const canonicalEnv = {
+	...version,
 	APP_BASE_URL: 'https://kody.codes',
 	APP_LEGACY_HOSTS: 'kody.codes.legacy.example',
 	PACKAGE_APP_BASE_URL: 'https://kody-apps.example',
@@ -79,21 +81,17 @@ test('anonymous HTML Cache API stores only cookie-less 200 HTML with the shared 
 			{ headers: { Cookie: 'kody_session=stale' } },
 			false,
 		],
-		[
-			'https://kody.codes/community',
-			{ headers: { 'x-remix-target': 'community-listings' } },
-			false,
-		],
-		['https://kody.codes/community?__frame=community-listings', {}, false],
+		['https://kody.codes/?ref=alice', {}, false],
 		['https://kody.codes.legacy.example/', {}, false],
 		['https://kody-apps.example/', {}, false],
 		[
 			'https://preview.example.workers.dev/pricing',
 			{},
 			true,
-			{ APP_BASE_URL: 'https://preview.example.workers.dev' },
+			{ ...version, APP_BASE_URL: 'https://preview.example.workers.dev' },
 		],
-		['http://localhost:3742/', {}, true, {}],
+		['http://localhost:3742/', {}, true, version],
+		[home, {}, false, {}],
 		// `npm run dev` and the Playwright web server: a stored page would hide
 		// the next edit from an anonymous tab for the stale-while-revalidate window.
 		['http://localhost:3742/', {}, false, { WRANGLER_IS_LOCAL_DEV: 'true' }],
@@ -101,7 +99,11 @@ test('anonymous HTML Cache API stores only cookie-less 200 HTML with the shared 
 	expect(
 		requestCases.filter(
 			([url, init, expected, env = canonicalEnv]) =>
-				isAnonymousHtmlCacheRequest(new Request(url, init), env) !== expected,
+				isAnonymousHtmlCacheRequest(
+					new Request(url, init),
+					env,
+					'marketing',
+				) !== expected,
 		),
 	).toEqual([])
 
@@ -110,15 +112,15 @@ test('anonymous HTML Cache API stores only cookie-less 200 HTML with the shared 
 			method: 'HEAD',
 			headers: { Accept: 'text/html' },
 		}),
-		{ APP_BASE_URL: 'https://kody.codes' },
+		{ ...version, APP_BASE_URL: 'https://kody.codes' },
 	)
 	expect(htmlKey.method).toBe('GET')
 	expect(htmlKey.url).toBe(
-		`https://kody.codes/pricing?utm=1&${anonymousHtmlCacheAcceptParam}=${anonymousHtmlCacheAcceptHtml}`,
+		`https://kody.codes/pricing?utm=1&__worker_version=version-1&${anonymousHtmlCacheAcceptParam}=${anonymousHtmlCacheAcceptHtml}`,
 	)
 	const defaultAcceptKey = buildAnonymousHtmlCacheKey(
 		new Request('https://preview.example.workers.dev/pricing?utm=1'),
-		{ APP_BASE_URL: 'https://kody.codes' },
+		{ ...version, APP_BASE_URL: 'https://kody.codes' },
 	)
 	expect(defaultAcceptKey.url).toBe(htmlKey.url)
 
@@ -178,4 +180,13 @@ test('the stored entry keeps the buffered body and moves Vary aside', async () =
 	expect(entry.headers.get('X-Kody-Browser-Vary')).toBe('Cookie, Accept')
 	expect(entry.headers.get('Vary')).toBe('Accept')
 	expect(entry.headers.get('Cache-Control')).toBe(anonymousHtmlCacheControl)
+})
+
+test('routes that do not opt in never look up shared entries', () => {
+	expect(
+		isAnonymousHtmlCacheRequest(
+			new Request('https://kody.codes/account'),
+			canonicalEnv,
+		),
+	).toBe(false)
 })

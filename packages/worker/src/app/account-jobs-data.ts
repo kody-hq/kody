@@ -209,19 +209,15 @@ function toAlarm(state: JobManagerDebugState): AccountJobsAlarm {
 
 export async function loadAccountJobsData(input: {
 	env: Env
-	request: Request
 	user: AuthenticatedUser
-	pathJobId?: string
+	selectedJobId: string | null
 	serverTiming?: Array<ServerTimingEntry>
 }): Promise<AccountJobsLoaderData> {
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
 	})
-	const selectedJobId = readAccountJobsSelectedJobId(
-		input.request.url,
-		input.pathJobId,
-	)
+	const selectedJobId = input.selectedJobId
 	const [inspection, savedPackages] = await Promise.all([
 		inspectJobsForUser({
 			env: input.env,

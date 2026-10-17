@@ -29,80 +29,55 @@ export type SessionInfo = {
 	inviteCount?: number
 }
 
-export type SessionStatus = 'idle' | 'loading' | 'ready'
-
-let sessionRefreshHandler: (() => void) | null = null
-
-export function setSessionRefreshHandler(handler: (() => void) | null) {
-	sessionRefreshHandler = handler
-}
-
-export function queueSessionRefresh() {
-	sessionRefreshHandler?.()
-}
-
 export function getSessionDisplayName(session: SessionInfo | null) {
 	return session?.username || session?.email || ''
 }
 
-export async function fetchSessionInfo(
-	signal?: AbortSignal,
-): Promise<SessionInfo | null> {
-	try {
-		const response = await fetch('/session', {
-			headers: { Accept: 'application/json' },
-			credentials: 'include',
-			signal,
-		})
-		if (signal?.aborted) return null
-		const payload = await response.json().catch(() => null)
-		const email =
-			response.ok && payload?.ok && typeof payload?.session?.email === 'string'
-				? payload.session.email.trim()
-				: ''
-		const username =
-			response.ok &&
-			payload?.ok &&
-			typeof payload?.session?.username === 'string'
-				? payload.session.username.trim()
-				: ''
-		const avatarUrl =
-			response.ok &&
-			payload?.ok &&
-			typeof payload?.session?.avatarUrl === 'string'
-				? payload.session.avatarUrl.trim() || null
-				: null
-		const roles = readRoleNames(payload?.session?.roles)
-		const permissions = readPermissionStrings(payload?.session?.permissions)
-		const featureFlags = readFeatureFlags(payload?.session?.featureFlags)
-		const emailVerified = payload?.session?.emailVerified === true
-		const emailVerificationDelivery = parseEmailVerificationDelivery(
-			payload?.session?.emailVerificationDelivery &&
-				typeof payload.session.emailVerificationDelivery === 'object'
-				? {
-						status: payload.session.emailVerificationDelivery.status,
-						class: payload.session.emailVerificationDelivery.class,
-						at: payload.session.emailVerificationDelivery.at,
-					}
-				: {},
-		)
-		return email
-			? {
-					email,
-					emailVerified,
-					emailVerificationDelivery,
-					username,
-					avatarUrl,
-					roles,
-					permissions,
-					featureFlags,
-					organizations: readOrganizations(payload?.session?.organizations),
-					inviteCount: readInviteCount(payload?.session?.inviteCount),
-				}
+export function parseSessionInfo(value: unknown): SessionInfo | null {
+	const payload = value as {
+		ok?: unknown
+		session?: Partial<SessionInfo> | null
+	} | null
+	const email =
+		payload?.ok && typeof payload?.session?.email === 'string'
+			? payload.session.email.trim()
+			: ''
+	const username =
+		payload?.ok && typeof payload?.session?.username === 'string'
+			? payload.session.username.trim()
+			: ''
+	const avatarUrl =
+		payload?.ok && typeof payload?.session?.avatarUrl === 'string'
+			? payload.session.avatarUrl.trim() || null
 			: null
-	} catch {
-		return null
-	}
+	const roles = readRoleNames(payload?.session?.roles)
+	const permissions = readPermissionStrings(payload?.session?.permissions)
+	const featureFlags = readFeatureFlags(payload?.session?.featureFlags)
+	const emailVerified = payload?.session?.emailVerified === true
+	const emailVerificationDelivery = parseEmailVerificationDelivery(
+		payload?.session?.emailVerificationDelivery &&
+			typeof payload.session.emailVerificationDelivery === 'object'
+			? {
+					status: payload.session.emailVerificationDelivery.status,
+					class: payload.session.emailVerificationDelivery.class,
+					at: payload.session.emailVerificationDelivery.at,
+				}
+			: {},
+	)
+	return email
+		? {
+				email,
+				emailVerified,
+				emailVerificationDelivery,
+				username,
+				avatarUrl,
+				roles,
+				permissions,
+				featureFlags,
+				organizations: readOrganizations(payload?.session?.organizations),
+				inviteCount: readInviteCount(payload?.session?.inviteCount),
+			}
+		: null
 }
 
 function readInviteCount(value: unknown) {

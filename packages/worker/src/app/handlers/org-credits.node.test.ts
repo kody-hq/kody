@@ -10,51 +10,54 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
-	requireAuthenticatedPageUser: vi.fn(),
 	loadOrgCreditsData: vi.fn(async (input: Record<string, unknown>) => ({
 		ok: true,
 		input,
 	})),
-	renderAppPage: vi.fn(
-		async (input: {
-			loaderData?: unknown
-			status?: number
-			notFound?: boolean
-		}) =>
-			Response.json(
-				{
-					loaderData: input.loaderData ?? null,
-					notFound: input.notFound ?? false,
-				},
-				{ status: input.status ?? 200 },
-			),
-	),
+	env: {} as Env,
+	request: new Request('https://example.com/_serverFn/credits'),
 }))
-
 vi.mock('#app/authenticated-user.ts', () => ({
-	readAuthenticatedAppUser: (...args: Array<unknown>) =>
+	readAuthenticatedAppUser: (...args: unknown[]) =>
 		mocks.readAuthenticatedAppUser(...args),
 }))
-vi.mock('#app/page-auth.ts', () => ({
-	requireAuthenticatedPageUser: (...args: Array<unknown>) =>
-		mocks.requireAuthenticatedPageUser(...args),
+vi.mock('#app/org-credits-data.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof OrgCreditsData>()),
+	loadOrgCreditsData: (input: Record<string, unknown>) =>
+		mocks.loadOrgCreditsData(input),
 }))
-vi.mock('#app/org-credits-data.ts', async (importOriginal) => {
-	const actual = await importOriginal<typeof OrgCreditsData>()
-	return {
-		...actual,
-		loadOrgCreditsData: (input: Record<string, unknown>) =>
-			mocks.loadOrgCreditsData(input),
-	}
-})
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (input: never) => mocks.renderAppPage(input),
+vi.mock('@tanstack/react-start', () => ({
+	getGlobalStartContext: () => ({ env: mocks.env }),
+	createServerFn: () => {
+		let validate = (v: unknown) => v
+		const builder = {
+			validator: (schema: { parse: (v: unknown) => unknown }) => {
+				validate = schema.parse.bind(schema)
+				return builder
+			},
+			handler:
+				(fn: (v: { data: unknown }) => unknown) => (input: { data: unknown }) =>
+					fn({ data: validate(input.data) }),
+		}
+		return builder
+	},
 }))
-
-const { createOrgCreditsApiHandler, createOrgCreditsHandler } =
-	await import('./org-credits.ts')
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => mocks.request,
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return mocks.env
+	},
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: () => mocks.env }))
+vi.mock('../../../start/server/document-head.ts', () => ({
+	loadDocumentHead: () => ({}),
+}))
+const { loadCreditsPage } = await import('../../../start/server/org-credits.ts')
 const { encodeCreditLedgerCursor } = await import('#app/org-credits-data.ts')
-
 const now = '2026-01-01T00:00:00.000Z'
 
 /** Personal org per person, plus `acme` where Ada owns, Bob is a member, and Cara is billing. */
@@ -157,23 +160,11 @@ function signInAs(person: Person | null) {
 		} satisfies AuthenticatedAppUser
 	}
 	mocks.readAuthenticatedAppUser.mockImplementation(sign)
-	mocks.requireAuthenticatedPageUser.mockImplementation(
-		async (request: Request, env: Env) =>
-			(await sign(request, env)) ??
-			Response.redirect('https://example.com/login', 302),
-	)
 }
 
-function call(
-	createHandler: (env: Env) => { handler: (input: never) => unknown },
-	path: string,
-) {
-	const url = new URL(`https://example.com${path}`)
-	return createHandler(createEnv()).handler({
-		request: new Request(url),
-		params: {},
-		url,
-	} as never) as Promise<Response>
+function call(orgSlug: string, cursor?: string) {
+	mocks.env = createEnv()
+	return loadCreditsPage({ data: { orgSlug, cursor } })
 }
 
 beforeEach(async () => {
@@ -182,94 +173,92 @@ beforeEach(async () => {
 	signInAs('ada')
 })
 
-test('every member can open credits; only owners and billing admins read billing', async () => {
-	const getCredits = (slug: string) =>
-		call(createOrgCreditsApiHandler, `/@${slug}/-/credits.json`)
-	const lastInput = () => mocks.loadOrgCreditsData.mock.lastCall?.[0]
-
+test('only owners and billing admins receive billing data; members receive their own budget', async () => {
 	for (const [person, canReadBilling] of [
 		['ada', true],
 		['cara', true],
 		['bob', false],
 	] as const) {
 		signInAs(person)
-		expect((await getCredits('acme')).status).toBe(200)
-		expect(lastInput()).toMatchObject({
-			org: {
-				id: 'org-acme',
-				slug: 'acme',
-				displayName: 'Acme',
-				personal: false,
-			},
+		await call('acme')
+		expect(mocks.loadOrgCreditsData.mock.lastCall?.[0]).toMatchObject({
+			org: { id: 'org-acme', slug: 'acme', personal: false },
 			viewerUserId: people[person].personId,
 			canReadBilling,
 			before: null,
 		})
 	}
-
 	signInAs('ada')
-	await getCredits('ada')
-	expect(lastInput()).toMatchObject({
-		org: { id: 'person-ada', slug: 'ada', personal: true },
+	await call('ada')
+	expect(mocks.loadOrgCreditsData.mock.lastCall?.[0]).toMatchObject({
+		org: { slug: 'ada', personal: true },
 		canReadBilling: true,
 	})
-
-	mocks.loadOrgCreditsData.mockClear()
+})
+test('outsiders and anonymous users cannot read credits', async () => {
 	signInAs('dan')
-	expect((await getCredits('acme')).status).toBe(404)
+	await expect(call('acme')).rejects.toMatchObject({ isNotFound: true })
 	signInAs('bob')
-	expect((await getCredits('ada')).status).toBe(404)
+	await expect(call('ada')).rejects.toMatchObject({ isNotFound: true })
 	signInAs(null)
-	expect((await getCredits('acme')).status).toBe(401)
+	await expect(call('acme')).rejects.toMatchObject({
+		options: { href: '/login?redirectTo=%2F%40acme%2F-%2Fcredits' },
+	})
 	expect(mocks.loadOrgCreditsData).not.toHaveBeenCalled()
 })
-
-test('the page renders the same data and 404s outsiders', async () => {
-	signInAs('bob')
-	const member = await call(createOrgCreditsHandler, '/@acme/-/credits')
-	expect(member.status).toBe(200)
-	expect(await member.json()).toMatchObject({
-		loaderData: { orgCredits: { ok: true, input: { canReadBilling: false } } },
-	})
-
-	signInAs('dan')
-	const outsider = await call(createOrgCreditsHandler, '/@acme/-/credits')
-	expect(outsider.status).toBe(404)
-	expect(await outsider.json()).toMatchObject({ notFound: true })
-
-	signInAs(null)
-	const signedOut = await call(createOrgCreditsHandler, '/@acme/-/credits')
-	expect(signedOut.status).toBe(302)
-})
-
-test('a ledger cursor is decoded; a malformed one is a 400 (API) or dropped (page)', async () => {
+test('ledger cursor is decoded and malformed input redirects before reading data', async () => {
 	const cursor = encodeCreditLedgerCursor({
 		createdAt: '2026-10-01T00:00:00.000Z',
 		id: 'topup-1',
 	})
-	await call(
-		createOrgCreditsApiHandler,
-		`/@acme/-/credits.json?cursor=${encodeURIComponent(cursor)}`,
-	)
+	await call('acme', cursor)
 	expect(mocks.loadOrgCreditsData).toHaveBeenLastCalledWith(
 		expect.objectContaining({
 			before: { createdAt: '2026-10-01T00:00:00.000Z', id: 'topup-1' },
 		}),
 	)
-
 	mocks.loadOrgCreditsData.mockClear()
-	const bad = await call(
-		createOrgCreditsApiHandler,
-		'/@acme/-/credits.json?cursor=nope',
-	)
-	expect(bad.status).toBe(400)
-	const page = await call(
-		createOrgCreditsHandler,
-		'/@acme/-/credits?cursor=nope&x=1',
-	)
-	expect(page.status).toBe(302)
-	expect(page.headers.get('Location')).toBe(
-		'https://example.com/@acme/-/credits?x=1',
-	)
+	await expect(call('acme', 'nope')).rejects.toMatchObject({
+		options: { href: '/@acme/-/credits' },
+	})
 	expect(mocks.loadOrgCreditsData).not.toHaveBeenCalled()
+})
+
+test('grant-only collaborators see their own budget without billing access', async () => {
+	sqlite
+		.prepare(
+			`INSERT INTO grants (id,org_id,resource_type,resource_id,subject_type,subject_id,preset,created_by_user_id,created_at,updated_at) VALUES ('credit-grant','org-acme','secret','secret-1','user',?,'use',?,?,?)`,
+		)
+		.run(people.dan.personId, people.ada.personId, now, now)
+	signInAs('dan')
+	await call('acme')
+	expect(mocks.loadOrgCreditsData).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			org: expect.objectContaining({ id: 'org-acme' }),
+			viewerUserId: people.dan.personId,
+			canReadBilling: false,
+		}),
+	)
+})
+
+test('cursor redirects preserve unrelated search and login retains the requested cursor', async () => {
+	mocks.env = createEnv()
+	await expect(
+		loadCreditsPage({
+			data: { orgSlug: 'acme', cursor: 'nope', search: '?cursor=nope&x=1' },
+		}),
+	).rejects.toMatchObject({ options: { href: '/@acme/-/credits?x=1' } })
+	expect(mocks.loadOrgCreditsData).not.toHaveBeenCalled()
+	signInAs(null)
+	await expect(
+		loadCreditsPage({
+			data: { orgSlug: 'acme', cursor: 'nope', search: '?cursor=nope&x=1' },
+		}),
+	).rejects.toMatchObject({
+		options: {
+			href:
+				'/login?redirectTo=' +
+				encodeURIComponent('/@acme/-/credits?cursor=nope&x=1'),
+		},
+	})
 })

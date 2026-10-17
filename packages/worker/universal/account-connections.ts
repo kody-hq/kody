@@ -12,11 +12,7 @@ import {
 	isMcpClientKind,
 	mcpClientTabs,
 } from '#universal/onboarding-mcp-clients.ts'
-import {
-	accountAliasPath,
-	orgResourcePath,
-	orgSlugFromPathname,
-} from '#universal/org-pages.ts'
+import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
 export type AccountConnectionsView =
 	| { kind: 'list' }
 	| { kind: 'new'; agent: McpClientKind | null }
@@ -75,33 +71,4 @@ export function accountConnectionsUsageHref(
 	return connection
 		? `${base}?connection=${encodeURIComponent(connection)}`
 		: base
-}
-
-/** `null` when the pathname is under the page but names an unknown agent. */
-export function parseAccountConnectionsPathname(
-	pathname: string,
-): AccountConnectionsView | null {
-	pathname = accountAliasPath(pathname)
-	const base = '/account/agents'
-	if (pathname === base || pathname === `${base}/`) return { kind: 'list' }
-	if (pathname === `${base}/usage` || pathname === `${base}/usage/`) {
-		return { kind: 'usage' }
-	}
-	const newBase = '/account/agents/new'
-	if (pathname === newBase || pathname === `${newBase}/`) {
-		return { kind: 'new', agent: null }
-	}
-	const prefix = `${newBase}/`
-	if (!pathname.startsWith(prefix)) return null
-	const segment = pathname.slice(prefix.length).replace(/\/$/u, '')
-	if (!segment || segment.includes('/')) return null
-	let decoded: string
-	try {
-		decoded = decodeURIComponent(segment)
-	} catch {
-		return null
-	}
-	return isAccountConnectionAgent(decoded)
-		? { kind: 'new', agent: decoded }
-		: null
 }

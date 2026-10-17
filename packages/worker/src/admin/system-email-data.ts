@@ -165,11 +165,28 @@ export async function loadAdminSystemEmailData(
 	requestUrl: string,
 ): Promise<AdminSystemEmailLoaderData> {
 	const url = new URL(requestUrl, 'http://localhost')
-	const { page, pageSize, offset } = readPagination(url, {
+	const { page, pageSize } = readPagination(url, {
 		defaultPageSize,
 		maxPageSize,
 	})
 	const selectedMessageId = url.searchParams.get('messageId')?.trim() || null
+	return readAdminSystemEmailData(env, {
+		page,
+		pageSize,
+		messageId: selectedMessageId,
+	})
+}
+export async function readAdminSystemEmailData(
+	env: Env,
+	input: { page: number; pageSize: number; messageId: string | null },
+): Promise<AdminSystemEmailLoaderData> {
+	const page = Math.max(1, Math.floor(input.page))
+	const pageSize = Math.min(
+		maxPageSize,
+		Math.max(1, Math.floor(input.pageSize)),
+	)
+	const offset = (page - 1) * pageSize
+	const selectedMessageId = input.messageId?.trim() || null
 	const [list, selectedMessage] = await Promise.all([
 		listSystemEmailAdminMessages({
 			db: env.APP_DB,

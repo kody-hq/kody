@@ -1,12 +1,29 @@
-import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { generateTOTP } from '@epic-web/totp'
-import { expect, test, vi } from 'vitest'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
+import { testAccountTwoFactorApiHandler } from '#app/handlers/account-two-factor.test-support.ts'
+import { twoFactorVerifyRateLimitConfig } from '#app/rate-limit.ts'
+import { confirmTwoFactorSetup } from '#app/two-factor.ts'
+import {
+	createVerifySessionCookie,
+	setVerifySessionSecret,
+} from '#app/verify-session.ts'
+import { verifyWebsiteTwoFactor } from '#worker/identity/verify-operations.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import {
+	auditEventSummaries,
+	logAuditEventSpy,
+} from '#worker/test-support/audit-log-spy.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { generateTOTP } from '@epic-web/totp'
+import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
+import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 	scheduleUserCreatedEvent: vi.fn(),
@@ -14,23 +31,6 @@ vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 }))
 
 const { createAuthHandler } = await import('#app/handlers/auth.ts')
-import { confirmTwoFactorSetup } from '#app/two-factor.ts'
-import { createAccountTwoFactorApiHandler } from '#app/handlers/account-two-factor.ts'
-import { createTwoFactorVerifyApiHandler } from '#app/handlers/verify.ts'
-import {
-	createVerifySessionCookie,
-	setVerifySessionSecret,
-} from '#app/verify-session.ts'
-import { twoFactorVerifyRateLimitConfig } from '#app/rate-limit.ts'
-import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
-import {
-	auditEventSummaries,
-	logAuditEventSpy,
-} from '#worker/test-support/audit-log-spy.ts'
-import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
@@ -40,10 +40,10 @@ const session: AuthSession = {
 	rememberMe: false,
 }
 
-type Handler = { handler(context: never): Promise<Response> }
+type Handler = ReturnType<typeof testAccountTwoFactorApiHandler>
 
 function runHandler(handler: Handler, request: Request) {
-	return handler.handler({
+	return handler.execute({
 		request,
 		url: new URL(request.url),
 		params: {},
@@ -110,9 +110,8 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 		APP_BASE_URL: 'http://example.com',
 		COOKIE_SECRET: testCookieSecret,
 		SENTRY_ENVIRONMENT: 'test',
-	} as unknown as Parameters<typeof createAccountTwoFactorApiHandler>[0]
-	const twoFactorHandler = createAccountTwoFactorApiHandler(env)
-	const verifyHandler = createTwoFactorVerifyApiHandler(env)
+	} as unknown as Parameters<typeof testAccountTwoFactorApiHandler>[0]
+	const twoFactorHandler = testAccountTwoFactorApiHandler(env)
 	const readRow = () =>
 		sqlite
 			.prepare(
@@ -142,7 +141,7 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 			return row
 		},
 		login() {
-			return runHandler(
+			return runAuthHandler(
 				createAuthHandler(
 					env as unknown as Parameters<typeof createAuthHandler>[0],
 				),
@@ -154,10 +153,13 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 			)
 		},
 		verify(code: string, cookie?: string) {
-			return runHandler(
-				verifyHandler,
-				postJson('/verify/2fa.json', { code }, cookie),
-			)
+			const request = postJson('/verify/2fa.json', { code }, cookie)
+			return verifyWebsiteTwoFactor({
+				env,
+				request,
+				url: new URL(request.url),
+				body: { code },
+			})
 		},
 		countRows() {
 			return (
@@ -174,7 +176,7 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 test('two-factor setup requires authentication and a valid code before activating', async () => {
 	const anonymous = await setupTwoFactor({ seedUser: false })
 	const unauthenticated = await runHandler(
-		createAccountTwoFactorApiHandler(anonymous.env),
+		testAccountTwoFactorApiHandler(anonymous.env),
 		postJson('/account/two-factor.json', { intent: 'setup' }),
 	)
 	expect(unauthenticated.status).toBe(401)
@@ -182,7 +184,7 @@ test('two-factor setup requires authentication and a valid code before activatin
 	const { post, readRow } = await setupTwoFactor()
 	const setupResponse = await post({ intent: 'setup' })
 	expect(setupResponse.status).toBe(200)
-	const setupPayload = (await setupResponse.json()) as {
+	const setupPayload = setupResponse.data as {
 		ok: boolean
 		otpUri: string
 		secret: string
@@ -204,7 +206,7 @@ test('two-factor setup requires authentication and a valid code before activatin
 		code: await currentCode(pendingRow),
 	})
 	expect(confirmResponse.status).toBe(200)
-	expect(await confirmResponse.json()).toEqual({ ok: true, enabled: true })
+	expect(confirmResponse.data).toEqual({ ok: true, enabled: true })
 	// The row is promoted in place: the scanned secret stays the active one.
 	expect(readRow()).toMatchObject({ type: '2fa', secret: setupPayload.secret })
 	// Setup start, the rejected confirm, and the successful enable are audited
@@ -228,8 +230,18 @@ test('cancelling a pending setup removes it without touching active 2fa', async 
 	await post({ intent: 'setup' })
 	const cancelResponse = await post({ intent: 'cancel' })
 	expect(cancelResponse.status).toBe(200)
-	expect(await cancelResponse.json()).toEqual({ ok: true, enabled: false })
+	expect(cancelResponse.data).toEqual({ ok: true, enabled: false })
 	expect(readRow()).toBeUndefined()
+})
+
+test('cancelling setup preserves an already enabled authenticator', async () => {
+	const { enable, post, readRow } = await setupTwoFactor()
+	await enable()
+	const active = readRow()
+	const cancelled = await post({ intent: 'cancel' })
+	expect(cancelled.status).toBe(200)
+	expect(cancelled.data).toEqual({ ok: true, enabled: true })
+	expect(readRow()).toEqual(active)
 })
 
 test('login issues the session directly without 2fa and defers it to code verification once 2fa is enabled', async () => {
@@ -271,7 +283,7 @@ test('login issues the session directly without 2fa and defers it to code verifi
 		verifyCookie,
 	)
 	expect(validVerify.status).toBe(200)
-	expect(await validVerify.json()).toEqual({ ok: true })
+	expect(validVerify.data).toEqual({ ok: true })
 	const verifySetCookies = validVerify.headers.getSetCookie()
 	expect(
 		verifySetCookies.some((cookie) => cookie.startsWith('kody_session=')),
@@ -280,7 +292,7 @@ test('login issues the session directly without 2fa and defers it to code verifi
 
 	const missingVerify = await verify('123456')
 	expect(missingVerify.status).toBe(401)
-	expect(await missingVerify.json()).toMatchObject({
+	expect(missingVerify.data).toMatchObject({
 		ok: false,
 		code: 'expired',
 	})
@@ -305,7 +317,7 @@ test('repeated invalid codes lock the account out of 2fa verification', async ()
 	}
 	const locked = await verify('000000', pendingCookie)
 	expect(locked.status).toBe(429)
-	expect(await locked.json()).toMatchObject({ ok: false, code: 'locked' })
+	expect(locked.data).toMatchObject({ ok: false, code: 'locked' })
 	expect(locked.headers.get('Retry-After')).toBe(
 		String(twoFactorVerifyRateLimitConfig.windowSeconds),
 	)
@@ -341,7 +353,7 @@ test('disabling 2fa requires a valid current code and clears stale pending rows'
 		code: await currentCode(verificationRow),
 	})
 	expect(validDisable.status).toBe(200)
-	expect(await validDisable.json()).toEqual({ ok: true, enabled: false })
+	expect(validDisable.data).toEqual({ ok: true, enabled: false })
 	expect(countRows()).toBe(0)
 	// The in-test 2FA enablement plus the rejected and successful disable
 	// attempts are audited — and nothing else.
@@ -384,4 +396,47 @@ test('a duplicate confirm cannot delete the active factor', async () => {
 	expect(await confirmTwoFactorSetup(db, 1)).toBe(true)
 	expect(await confirmTwoFactorSetup(db, 1)).toBe(false)
 	expect(readRow()).toMatchObject({ type: '2fa', secret: pendingRow.secret })
+})
+
+function runAuthHandler(
+	handler: ReturnType<typeof createAuthHandler>,
+	request: Request,
+) {
+	return handler({
+		request,
+		url: new URL(request.url),
+		params: {},
+	} as never)
+}
+
+test('a deleted person cannot finish a previously issued TOTP challenge or mint a fresh password session', async () => {
+	const { sqlite, enable, login, verify } = await setupTwoFactor()
+	const row = await enable()
+	const pending = await login()
+	const cookie = pending.headers
+		.getSetCookie()
+		.find((cookie) => cookie.startsWith('kody_verify='))!
+		.split(';')[0]!
+	sqlite.exec(`UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = 1`)
+	const result = await verify(await currentCode(row), cookie)
+	expect(result.status).toBe(400)
+	expect(result.data).toMatchObject({ ok: false, error: 'Invalid code.' })
+	expect(
+		result.headers
+			.getSetCookie()
+			.some(
+				(cookie) =>
+					cookie.startsWith('kody_session=') && !cookie.includes('Max-Age=0'),
+			),
+	).toBe(false)
+	const retry = await login()
+	expect(retry.status).toBe(401)
+	expect(
+		retry.headers
+			.getSetCookie()
+			.some(
+				(cookie) =>
+					cookie.startsWith('kody_session=') && !cookie.includes('Max-Age=0'),
+			),
+	).toBe(false)
 })

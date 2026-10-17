@@ -94,26 +94,18 @@ Org-owned storage and usage billing read `ownerIdFromCaller`
 (`packages/worker/src/request-context/owner-id.ts`): `request.org.id` when the
 request has an org, otherwise the acting person. Personal orgs reuse the person
 id, so those keys do not move. Package import lookup, account resource pages,
-secrets, jobs, and execute usage go through that function. A same-origin
-`/account/<section>.json` fetch from an org page binds that org via Referer.
-Route loaders run before the client router commits the URL, so they pass the
-destination page as `referrer` (`orgAccountApiReferrer`).
+secrets, jobs, and execute usage go through that function.
 
-The URL is the only source of truth for which org a browser request is in: the
-`/@slug/…` path, the page Referer for account JSON, or an explicit `?org=<slug>`
-(`/connect/oauth`). Nothing remembers a "current" org in a cookie or the
-session. A request with no org in its URL uses the signup org, and pages that
-need another org link to it explicitly.
+The URL is the source of the website's organization scope. Native route loaders
+pass the matched org slug explicitly to Start server functions, which resolve
+membership against the original authenticated request. They do not infer scope
+from Referer or remember a current org in a cookie. Pages without org scope use
+the personal organization, and links to team resources carry their slug.
 
-Every org-bound request passes the router-wide org binding guard
-(`packages/worker/src/app/org-binding-guard-middleware.ts`) before its handler.
-When the `/@slug/-/…` URL or the account JSON Referer names an org the person
-cannot use, or a section `orgSectionDenial` closes to them, the guard returns
-404 instead of the signup-org fallback in `readAuthenticatedAppUser`. Handlers
-do not opt in. `org-binding-guard-middleware.node.test.ts` walks the route
-table, so a new `/@:orgSlug/-/…` route or an `/account/<section>.json` route
-named after an org section fails until the guard covers it or the route is
-listed as person-scoped with a reason.
+Native collection readers also enforce section permissions. The document-level
+org guard rejects inaccessible org routes before rendering. Each server function
+independently checks its scope and permissions, since RPC calls can bypass page
+navigation.
 
 ## What to read when changing it
 

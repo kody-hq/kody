@@ -1,4 +1,3 @@
-import { readJson } from '#client/routes/account-approval-shared.ts'
 import { chartColor } from '#client/charts/chart-theme.ts'
 import { monthShortNames } from '#client/charts/usage-metric-series.ts'
 import {
@@ -7,17 +6,10 @@ import {
 } from '#universal/dynamic-worker-cost.ts'
 import {
 	type AdminCostRiskKind,
-	type AdminInsightsLoaderData,
 	type AdminInsightsRunLogCompleteness,
 	type AdminUsageMetric,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	routeLoaderRedirect,
-	type RouteLoaderResult,
-} from '#client/route-loader.ts'
-
-export const adminInsightsApiPath = '/admin/insights.json'
 
 export const planColors: Record<string, string> = {
 	pro: chartColor.violet,
@@ -141,26 +133,4 @@ export function formatRunLogCompletenessWarning(
 		return 'Workflow and package-activation totals refresh hourly off this page. No snapshot yet.'
 	}
 	return `Workflow and activation totals are partial — loaded RunLog snapshots for ${completeness.usersLoaded} of ${completeness.usersAttempted} users.`
-}
-
-export async function adminInsightsRouteLoader(
-	url: URL,
-	signal: AbortSignal,
-): Promise<RouteLoaderResult> {
-	const response = await fetch(`${adminInsightsApiPath}${url.search}`, {
-		headers: { Accept: 'application/json' },
-		credentials: 'include',
-		signal,
-	})
-	if (response.status === 401) {
-		return routeLoaderRedirect('/login')
-	}
-	if (response.status === 403) {
-		throw new Error('You do not have permission to view admin insights.')
-	}
-	const payload = await readJson<AdminInsightsLoaderData>(response)
-	if (!response.ok || !payload?.ok) {
-		throw new Error('Unable to load admin insights.')
-	}
-	return { adminInsights: payload }
 }

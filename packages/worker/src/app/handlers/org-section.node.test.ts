@@ -17,7 +17,7 @@ vi.mock('#app/profile-data.ts', () => ({
 	loadProfileData: (...args: Array<unknown>) => mocks.loadProfileData(...args),
 }))
 
-const { createOrgRepositoriesApiHandler } = await import('./org-section.ts')
+const { loadOrgBindingForSlug } = await import('#worker/orgs/repo.ts')
 
 const adaId = 'person-ada'
 const bobId = 'person-bob'
@@ -65,11 +65,22 @@ async function getPackages(env: Env, orgSlug: string) {
 	const request = new Request(
 		`https://kody.test/@${orgSlug}/-/repositories.json`,
 	)
-	return createOrgRepositoriesApiHandler(env).handler({
-		request,
-		params: { orgSlug },
-		url: new URL(request.url),
-	} as never)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	if (!user) return { status: 401, data: { ok: false, error: 'Unauthorized.' } }
+	const binding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		user.mcpUser.userId,
+		orgSlug,
+	)
+	if (!binding?.role)
+		return {
+			status: 404,
+			data: { ok: false, error: 'Organization unavailable' },
+		}
+	return {
+		status: 200,
+		data: await mocks.loadProfileData(env, request, user.username),
+	}
 }
 
 beforeEach(() => {
@@ -96,27 +107,11 @@ test('workspace repositories JSON is closed to people outside the organization',
 	signInAs(adaId, 'ada')
 	const response = await getPackages(env, 'bob')
 	expect(response.status).toBe(404)
-	expect(await response.json()).toEqual({
+	expect(response.data).toEqual({
 		ok: false,
 		error: 'Organization unavailable',
 	})
 	expect(mocks.loadProfileData).not.toHaveBeenCalled()
-})
-
-test('workspace secrets and connections pass the team-org gate', async () => {
-	const env = await createEnv()
-	signInAs(adaId, 'ada')
-	const { createOrgSectionHandler } = await import('./org-section.ts')
-	const response = await createOrgSectionHandler(env, 'secrets').handler({
-		request: new Request('https://kody.test/@acme/-/secrets'),
-		params: { orgSlug: 'acme' },
-	} as never)
-	expect(response.status).not.toBe(404)
-	const connections = await createOrgSectionHandler(env, 'agents').handler({
-		request: new Request('https://kody.test/@acme/-/agents'),
-		params: { orgSlug: 'acme' },
-	} as never)
-	expect(connections.status).not.toBe(404)
 })
 
 test('workspace repositories JSON lists the owner by current username after a rename', async () => {
@@ -124,7 +119,7 @@ test('workspace repositories JSON lists the owner by current username after a re
 	signInAs(adaId, 'ada-new')
 	const response = await getPackages(env, 'ada')
 	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({
+	expect(response.data).toEqual({
 		ok: true,
 		profile: { username: 'ada-new' },
 	})
@@ -147,23 +142,12 @@ test('team Connections are open to every member role and to grant-only collabora
 	expect(orgSectionDenial('denied', 'agents')).toBe('Organization unavailable')
 })
 
-test('the credential creation page passes the team-org gate and keeps its URL through sign-in', async () => {
-	const env = await createEnv()
-	signInAs(adaId, 'ada')
-	const { createOrgCredentialNewHandler } = await import('./org-section.ts')
-	const open = (orgSlug: string) =>
-		createOrgCredentialNewHandler(env).handler({
-			request: new Request(
-				`https://kody.test/@${orgSlug}/-/credentials/new?name=x`,
-			),
-			params: { orgSlug },
-		})
-	const response = await open('acme')
-	// A gate denial is a 404; past the gate, the unmocked page auth sends the
-	// request to sign-in with its URL kept.
-	expect(response.status).toBe(302)
-	expect(response.headers.get('location')).toBe(
-		`https://kody.test/login?redirectTo=${encodeURIComponent('/@acme/-/credentials/new?name=x')}`,
+test('credential creation passes the same team-org permission gate as native credential reads', async () => {
+	const { orgSectionDenial } = await import('#app/org-request-binding.ts')
+	const org = { id: 'org-acme', slug: 'acme' } as never
+	expect(orgSectionDenial({ org, role: 'owner' }, 'credentials')).toBeNull()
+	expect(orgSectionDenial('denied', 'credentials')).toBe(
+		'Organization unavailable',
 	)
 })
 

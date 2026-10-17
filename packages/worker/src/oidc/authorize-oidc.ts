@@ -33,11 +33,11 @@ export type OidcAuthorizeGateResult =
 
 export function parseOidcAuthorizeParams(
 	request: Request,
+	searchParams = new URL(request.url).searchParams,
 ): OidcAuthorizeParams | { error: string; errorCode: string } {
-	const url = new URL(request.url)
 	let maxAge: number | undefined
-	if (url.searchParams.has('max_age')) {
-		const maxAgeRaw = url.searchParams.get('max_age')?.trim() ?? ''
+	if (searchParams.has('max_age')) {
+		const maxAgeRaw = searchParams.get('max_age')?.trim() ?? ''
 		if (!/^\d+$/.test(maxAgeRaw)) {
 			return {
 				error: 'max_age must be a non-negative integer.',
@@ -54,11 +54,11 @@ export function parseOidcAuthorizeParams(
 		maxAge = parsed
 	}
 	return {
-		nonce: url.searchParams.get('nonce')?.trim() || undefined,
-		prompt: url.searchParams.get('prompt')?.trim() || undefined,
+		nonce: searchParams.get('nonce')?.trim() || undefined,
+		prompt: searchParams.get('prompt')?.trim() || undefined,
 		maxAge,
-		idTokenHint: url.searchParams.get('id_token_hint')?.trim() || undefined,
-		responseType: url.searchParams.get('response_type')?.trim() || 'code',
+		idTokenHint: searchParams.get('id_token_hint')?.trim() || undefined,
+		responseType: searchParams.get('response_type')?.trim() || 'code',
 	}
 }
 

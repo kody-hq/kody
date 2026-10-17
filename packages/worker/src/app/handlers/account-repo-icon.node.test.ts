@@ -46,7 +46,7 @@ const source = {
 
 function callHandler(iconCommit = 'idx-1') {
 	const handler = createAccountRepoIconHandler({ APP_DB: {} } as Env)
-	return handler.handler({
+	return handler({
 		request: new Request(
 			`https://example.com/account/repos/repo-1/icon/${iconCommit}`,
 		),

@@ -1,5 +1,3 @@
-import { type Action } from 'remix/router'
-import { type routes } from '#universal/routes.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { readFleetExecuteLastSuccess } from '#worker/execute-health-heartbeat.ts'
 import { type AppEnv } from '#worker/env-schema.ts'
@@ -193,33 +191,30 @@ export function createHealthComponentsHandler(appEnv: HealthComponentsEnv) {
 	let cached: { report: HealthComponentsReport; expiresAt: number } | null =
 		null
 	let inFlight: Promise<HealthComponentsReport> | null = null
-	return {
-		middleware: [],
-		async handler() {
-			const now = Date.now()
-			let report: HealthComponentsReport
-			if (cached && cached.expiresAt > now) {
-				report = cached.report
-			} else {
-				if (!inFlight) {
-					inFlight = collectHealthComponents(appEnv)
-						.then((collected) => {
-							cached = {
-								report: collected,
-								expiresAt: Date.now() + resultCacheTtlMs,
-							}
-							return collected
-						})
-						.finally(() => {
-							inFlight = null
-						})
-				}
-				report = await inFlight
+	return async () => {
+		const now = Date.now()
+		let report: HealthComponentsReport
+		if (cached && cached.expiresAt > now) {
+			report = cached.report
+		} else {
+			if (!inFlight) {
+				inFlight = collectHealthComponents(appEnv)
+					.then((collected) => {
+						cached = {
+							report: collected,
+							expiresAt: Date.now() + resultCacheTtlMs,
+						}
+						return collected
+					})
+					.finally(() => {
+						inFlight = null
+					})
 			}
-			return Response.json(report, {
-				status: report.ok ? 200 : 503,
-				headers: { 'Cache-Control': 'no-store' },
-			})
-		},
-	} satisfies Action<typeof routes.healthComponents>
+			report = await inFlight
+		}
+		return Response.json(report, {
+			status: report.ok ? 200 : 503,
+			headers: { 'Cache-Control': 'no-store' },
+		})
+	}
 }

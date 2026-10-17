@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { listBlogPosts } from '#worker/blog/catalog.ts'
-import { createBlogPostOgImageHandler } from './blog.tsx'
+import { createBlogPostOgImageHandler } from './blog.ts'
 
 const mocks = vi.hoisted(() => ({
 	renderBlogPostOgImage: vi.fn(),
@@ -26,7 +26,7 @@ test('blog post OG image renders PNG for a catalog post and 404s unknown slugs',
 	const post = listBlogPosts().find((entry) => !entry.ogImage)
 	expect(post).toBeDefined()
 
-	const response = await handler.handler({
+	const response = await handler({
 		request: new Request(`https://example.com/blog/${post!.slug}/og.png`),
 		params: { slug: post!.slug },
 		url: new URL(`https://example.com/blog/${post!.slug}/og.png`),
@@ -58,7 +58,7 @@ test('blog post OG image renders PNG for a catalog post and 404s unknown slugs',
 		},
 	} as unknown as Env)
 	mocks.renderBlogPostOgImage.mockClear()
-	const withArt = await artHandler.handler({
+	const withArt = await artHandler({
 		request: new Request(`https://example.com/blog/${withOgArt!.slug}/og.png`),
 		params: { slug: withOgArt!.slug },
 		url: new URL(`https://example.com/blog/${withOgArt!.slug}/og.png`),
@@ -77,7 +77,7 @@ test('blog post OG image renders PNG for a catalog post and 404s unknown slugs',
 		['?theme=chartreuse', 'dark'],
 	] as const) {
 		mocks.renderBlogPostOgImage.mockClear()
-		await handler.handler({
+		await handler({
 			request: new Request(
 				`https://example.com/blog/${post!.slug}/og.png${query}`,
 			),
@@ -89,7 +89,7 @@ test('blog post OG image renders PNG for a catalog post and 404s unknown slugs',
 		)
 	}
 
-	const missing = await handler.handler({
+	const missing = await handler({
 		request: new Request('https://example.com/blog/does-not-exist/og.png'),
 		params: { slug: 'does-not-exist' },
 		url: new URL('https://example.com/blog/does-not-exist/og.png'),

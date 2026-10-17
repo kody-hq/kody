@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
-import { remix } from '@pitlane/dev'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { redact } from '@tanstack/redact/vite'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { parseJsonc } from './tools/ci/resource-utils.ts'
 import {
 	collectLocalOriginDevVars,
 	localGeneratedConfigBasename,
@@ -16,8 +16,16 @@ import { writeLocalRuntimeDevConfig } from './tools/local-runtime-dev-config.ts'
 import { resolveLocalD1PersistPath } from './tools/local-d1-persist.ts'
 import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules.ts'
+import { inlineCssText } from './tools/vite-inline-css-text.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
+
+import {
+	startReleaseAssets,
+	startReleaseBase,
+} from './tools/vite-start-release.ts'
+
+const releaseBase = startReleaseBase(process.env.KODY_START_RELEASE)
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 // `@cloudflare/vite-plugin` reads `CLOUDFLARE_ENV` itself (not this
@@ -34,21 +42,27 @@ const wranglerConfigPath =
 	process.env.KODY_WRANGLER_CONFIG ?? 'packages/worker/wrangler.jsonc'
 const isOriginDeployBuild = Boolean(process.env.KODY_WRANGLER_CONFIG)
 
-function resolveWorkerEntry(configPath: string) {
-	const absoluteConfig = path.resolve(root, configPath)
-	const config = parseJsonc<{ main?: string }>(
-		readFileSync(absoluteConfig, 'utf8'),
-	)
-	const main = config.main ?? './src/index.ts'
-	return path.relative(root, path.resolve(path.dirname(absoluteConfig), main))
-}
-
 function alias(prefix: string, target: string) {
 	return {
 		find: new RegExp(`^${prefix}/`),
 		replacement: `${target}/`,
 	}
 }
+
+// Match tanstack.com's Worker setup: every server variant uses one runtime.
+const redactServerAliases = [
+	'react-dom/server',
+	'react-dom/server.edge',
+	'react-dom/server.node',
+	'react-dom/server.bun',
+	'react-dom/server.browser',
+	'react-dom/static.edge',
+	'react-dom/static.node',
+	'react-dom/static',
+].map((specifier) => ({
+	find: new RegExp(`^${specifier.replaceAll('.', '\\.')}$`),
+	replacement: '@tanstack/redact/server',
+}))
 
 export default defineConfig(async ({ command }) => {
 	await ensureWorkerBundlerModules()
@@ -73,6 +87,26 @@ export default defineConfig(async ({ command }) => {
 			vars: collectLocalOriginDevVars(process.env, process.env.PORT),
 			generatedBasename,
 		})
+		if (process.env.KODY_E2E_WEB_SERVER === '1') {
+			const { unstable_getVarsForDev } = await import('wrangler')
+			const expected = collectLocalOriginDevVars(process.env, process.env.PORT)
+			const resolved = unstable_getVarsForDev(
+				serveWranglerConfigPath,
+				undefined,
+				expected,
+				envName,
+				true,
+			)
+			if (
+				!expected.STRIPE_SECRET_KEY?.startsWith('sk_test_e2e_') ||
+				resolved.STRIPE_SECRET_KEY?.value !== expected.STRIPE_SECRET_KEY ||
+				resolved.STRIPE_API_BASE_URL?.value !== expected.STRIPE_API_BASE_URL
+			) {
+				throw new Error(
+					'E2E Stripe configuration was overridden by local environment files. Remove the Stripe overrides before running isolated billing tests.',
+				)
+			}
+		}
 		// Jobs + highlight stay attached in the test env (Playwright e2e).
 		// Platform/runtime have no test env and stay skipped there. Pin the
 		// registered names so origin `service: "kody-jobs"` / `kody-highlight`
@@ -123,19 +157,27 @@ export default defineConfig(async ({ command }) => {
 	}
 
 	return {
+		base: releaseBase,
 		publicDir: 'packages/worker/public',
+		environments: {
+			client: {
+				// The late-injected Buffer polyfill is missed by the initial dependency scan.
+				// Prebundle it so first use cannot reload a page with an unfinished form.
+				optimizeDeps: { include: ['buffer'] },
+			},
+			ssr: {
+				optimizeDeps: { noDiscovery: true, include: [] },
+				resolve: { noExternal: ['@tanstack/redact'] },
+			},
+		},
+		ssr: { noExternal: ['@tanstack/redact'] },
 		build: {
 			sourcemap: true,
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
 		},
 		plugins: [
 			markdownAsText(),
-			remix({
-				serverHandler: false,
-				clientEntry: 'packages/worker/client/entry.tsx',
-				serverEntry: resolveWorkerEntry(serveWranglerConfigPath),
-				serverEnvironments: ['ssr'],
-			}),
+			inlineCssText(),
 			cloudflare({
 				configPath: serveWranglerConfigPath,
 				viteEnvironment: { name: 'ssr' },
@@ -157,22 +199,43 @@ export default defineConfig(async ({ command }) => {
 				auxiliaryWorkers,
 			}),
 			workerWholeGraphReload(),
+			redact(),
+			tanstackStart({
+				srcDirectory: 'packages/worker/start',
+				serverFns: {
+					base: releaseBase === '/' ? '/_serverFn' : `${releaseBase}_serverFn/`,
+				},
+				router: {
+					basepath: '/',
+					codeSplittingOptions: {
+						defaultBehavior: [
+							['loader'],
+							['component'],
+							['pendingComponent'],
+							['errorComponent'],
+							['notFoundComponent'],
+						],
+					},
+				},
+				server: { entry: 'server.ts' },
+			}),
+			react({
+				include: /\/start\/.*\.[jt]sx?$/,
+				jsxImportSource: '@emotion/react',
+			}),
+			startReleaseAssets(releaseBase),
 		],
 		resolve: {
 			alias: [
+				...redactServerAliases,
 				{
-					find: /#app\/hmr\.ts$/,
-					replacement: path.resolve(
-						root,
-						'packages/worker/src/app/hmr.vite.ts',
-					),
+					find: /^use-sync-external-store\/shim\/index\.js$/,
+					replacement: '@tanstack/redact',
 				},
+
 				{
-					find: /#app\/client-entry-assets\.ts$/,
-					replacement: path.resolve(
-						root,
-						'packages/worker/src/app/client-entry-assets.vite.ts',
-					),
+					find: /^#start\/server\/(.*)$/,
+					replacement: path.resolve(root, 'packages/worker/start/server/$1.ts'),
 				},
 				alias('#app', path.resolve(root, 'packages/worker/src/app')),
 				alias('#client', path.resolve(root, 'packages/worker/client')),
@@ -182,10 +245,7 @@ export default defineConfig(async ({ command }) => {
 			],
 		},
 		oxc: {
-			jsx: {
-				runtime: 'automatic',
-				importSource: 'remix/component',
-			},
+			jsx: { runtime: 'automatic' as const, importSource: '@emotion/react' },
 		},
 	}
 })

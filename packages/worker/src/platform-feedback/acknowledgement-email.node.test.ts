@@ -7,7 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { metaPlatformFeedbackSubmitCapability } from '#mcp/capabilities/meta/meta-platform-feedback-submit.ts'
-import { createAccountBillingCancellationFeedbackApiHandler } from '#app/handlers/org-billing.ts'
+import { submitWebsiteCancellationFeedback } from '#app/handlers/org-billing.ts'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
@@ -438,20 +438,22 @@ test('meta submit and billing cancellation both send one acknowledgement through
 	const url = new URL(
 		'https://example.com/account/billing/cancellation-feedback.json',
 	)
-	const billingResponse =
-		await createAccountBillingCancellationFeedbackApiHandler(env).handler({
-			request: new Request(url, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					details: 'Leaving because acknowledgement coverage matters.',
-				}),
+	const billingResponse = await submitWebsiteCancellationFeedback({
+		env,
+		user: authenticatedUser,
+		body: { details: 'Leaving because acknowledgement coverage matters.' },
+		request: new Request(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				details: 'Leaving because acknowledgement coverage matters.',
 			}),
-			params: {},
-			url,
-		} as never)
+		}),
+		params: {},
+		url,
+	} as never)
 	expect(billingResponse.status).toBe(200)
-	expect(await billingResponse.json()).toEqual({ ok: true })
+	expect(billingResponse.data).toEqual({ ok: true })
 	expect(sent).toHaveLength(1)
 	expect(queueBodies).toHaveLength(1)
 

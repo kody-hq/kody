@@ -1,14 +1,8 @@
-import { type Action } from 'remix/router'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	orgHasPermission,
-	resolveOrgManagementAccess,
 	type ManagedOrg,
 } from '#app/org-management-access.ts'
-import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
-import { jsonResponse } from '#worker/json-response.ts'
 import { listOutsideCollaborators } from '#worker/orgs/org-collaborators-list.ts'
 import { listOrgGrantsForView } from '#worker/orgs/org-grants-view.ts'
 import {
@@ -16,23 +10,8 @@ import {
 	type OrgCollaboratorsLoaderData,
 	type OrgGrantView,
 } from '#universal/loader-data.ts'
-import { type routes } from '#universal/routes.ts'
 
-function renderDenied(
-	request: Request,
-	env: Env,
-	access: { status: 403 | 404 },
-) {
-	return renderAppPage({
-		request,
-		env,
-		title: access.status === 404 ? 'Organization unavailable' : 'Collaborators',
-		...(access.status === 404 ? { notFound: true } : { unauthorized: true }),
-		status: access.status,
-	})
-}
-
-async function loadOrgCollaboratorsData(input: {
+export async function loadOrgCollaboratorsData(input: {
 	env: Env
 	user: Parameters<typeof orgHasPermission>[1]
 	org: ManagedOrg
@@ -69,57 +48,4 @@ async function loadOrgCollaboratorsData(input: {
 		}),
 		canManage,
 	}
-}
-
-export function createOrgCollaboratorsHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await requireAuthenticatedPageUser(request, env)
-			if (user instanceof Response) return user
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'member:read',
-			})
-			if (!access.ok) return renderDenied(request, env, access)
-			return await renderAppPage({
-				request,
-				env,
-				title: 'Collaborators',
-				loaderData: {
-					orgCollaborators: await loadOrgCollaboratorsData({
-						env,
-						user,
-						org: access.org,
-					}),
-				},
-			})
-		},
-	} satisfies Action<typeof routes.orgCollaborators>
-}
-
-export function createOrgCollaboratorsApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'member:read',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			return jsonResponse(
-				await loadOrgCollaboratorsData({ env, user, org: access.org }),
-			)
-		},
-	} satisfies Action<typeof routes.orgCollaboratorsApi>
 }

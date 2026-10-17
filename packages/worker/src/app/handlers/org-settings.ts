@@ -1,14 +1,11 @@
-import { type Action } from 'remix/router'
-import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { operationResult } from '../operation-result.ts'
+import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	orgHasPermission,
 	resolveOrgManagementAccess,
 	type ManagedOrg,
 } from '#app/org-management-access.ts'
-import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { processUserAvatar } from '#worker/community/avatar.ts'
-import { jsonResponse } from '#worker/json-response.ts'
 import {
 	buildOrgAvatarUrl,
 	deleteOrgAvatar,
@@ -27,19 +24,6 @@ import {
 	PackageAppCustomHostnameError,
 	syncPackageAppCustomHostname,
 } from '#worker/package-app-custom-hostnames/service.ts'
-function renderDenied(
-	request: Request,
-	env: Env,
-	access: { status: 403 | 404 },
-) {
-	return renderAppPage({
-		request,
-		env,
-		title: access.status === 404 ? 'Organization unavailable' : 'Settings',
-		...(access.status === 404 ? { notFound: true } : { unauthorized: true }),
-		status: access.status,
-	})
-}
 
 async function loadCustomDomainsView(
 	env: Env,
@@ -87,7 +71,7 @@ async function loadCustomDomainsView(
 	}
 }
 
-async function loadOrgSettingsData(input: {
+export async function loadOrgSettingsData(input: {
 	env: Env
 	user: Parameters<typeof orgHasPermission>[1]
 	org: ManagedOrg
@@ -109,404 +93,284 @@ async function loadOrgSettingsData(input: {
 	}
 }
 
-export function createOrgSettingsHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await requireAuthenticatedPageUser(request, env)
-			if (user instanceof Response) return user
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:read',
-			})
-			if (!access.ok) return renderDenied(request, env, access)
-			return await renderAppPage({
-				request,
-				env,
-				title: 'Settings',
-				loaderData: {
-					orgSettings: await loadOrgSettingsData({
-						env,
-						user,
-						org: access.org,
-					}),
-				},
-			})
-		},
-	} satisfies Action<typeof routes.orgSettings>
-}
-
-export function createOrgSettingsApiHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:read',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			return jsonResponse(
-				await loadOrgSettingsData({ env, user, org: access.org }),
-			)
-		},
-	} satisfies Action<typeof routes.orgSettingsApi>
-}
-
-export function createOrgSettingsPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:write',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			if (access.org.personal) {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Your name, photo, and handle live on your account profile.',
-					},
-					400,
-				)
-			}
-			const body = (await request.json().catch(() => null)) as {
-				displayName?: unknown
-				slug?: unknown
-			} | null
-			if (!body || typeof body !== 'object') {
-				return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
-			}
-			const updated = await updateOrgProfile(env.APP_DB, {
-				orgId: access.org.id,
-				displayName:
-					typeof body.displayName === 'string' ? body.displayName : undefined,
-				slug: typeof body.slug === 'string' ? body.slug : undefined,
-			})
-			if (!updated.ok) {
-				return jsonResponse({ ok: false, error: updated.error }, 400)
-			}
-			const next = {
-				...access.org,
-				slug: updated.slug,
-				displayName: updated.displayName,
-			}
-			return jsonResponse(await loadOrgSettingsData({ env, user, org: next }))
-		},
-	} satisfies Action<typeof routes.orgSettingsPost>
-}
-
 async function readFileBytes(file: File): Promise<Uint8Array> {
 	return new Uint8Array(await file.arrayBuffer())
 }
 
-export function createOrgSettingsAvatarPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:write',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			if (access.org.personal) {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Your photo lives on your account profile.',
-					},
-					400,
-				)
-			}
-
-			const contentType = request.headers.get('Content-Type') ?? ''
-			if (contentType.includes('application/json')) {
-				const body = await request.json().catch(() => null)
-				if (
-					!body ||
-					typeof body !== 'object' ||
-					(body as Record<string, unknown>).remove !== true
-				) {
-					return jsonResponse(
-						{ ok: false, error: 'Invalid request body.' },
-						400,
-					)
-				}
-				await deleteOrgAvatar({ env, orgId: access.org.id })
-				return jsonResponse(
-					await loadOrgSettingsData({
-						env,
-						user,
-						org: { ...access.org, avatarUrl: null },
-					}),
-				)
-			}
-
-			let formData: FormData
-			try {
-				formData = await request.formData()
-			} catch {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Expected multipart form data with an avatar file.',
-					},
-					400,
-				)
-			}
-			const avatar = formData.get('avatar')
-			if (!(avatar instanceof File) || avatar.size === 0) {
-				return jsonResponse(
-					{ ok: false, error: 'Avatar file is required.' },
-					400,
-				)
-			}
-			let sourceBytes: Uint8Array
-			try {
-				sourceBytes = await readFileBytes(avatar)
-			} catch (error) {
-				console.error('org-avatar-read-failed', error)
-				return jsonResponse({ ok: false, error: 'Unable to read avatar.' }, 500)
-			}
-			let processed: ReturnType<typeof processUserAvatar>
-			try {
-				processed = processUserAvatar({
-					contentType: avatar.type || 'application/octet-stream',
-					sourceBytes,
-				})
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unable to process avatar.'
-				return jsonResponse({ ok: false, error: message }, 400)
-			}
-			try {
-				const avatarKey = await saveOrgAvatar({
-					env,
-					orgId: access.org.id,
-					bytes: processed.bytes,
-					contentType: processed.contentType,
-				})
-				return jsonResponse(
-					await loadOrgSettingsData({
-						env,
-						user,
-						org: {
-							...access.org,
-							avatarUrl: buildOrgAvatarUrl({
-								slug: access.org.slug,
-								avatarKey,
-							}),
-						},
-					}),
-				)
-			} catch (error) {
-				console.error('org-avatar-save-failed', error)
-				return jsonResponse({ ok: false, error: 'Unable to save avatar.' }, 500)
-			}
-		},
-	} satisfies Action<typeof routes.orgSettingsAvatarPost>
+type OrganizationWriteContext = {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	orgSlug?: string
 }
 
-export function createOrgSettingsDeletePostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:delete',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			if (access.org.personal) {
-				return jsonResponse(
-					{
-						ok: false,
-						error:
-							'Your personal organization is your account. Delete it from Account → Data & deletion.',
-					},
-					400,
-				)
-			}
-			const body = (await request.json().catch(() => null)) as {
-				confirmation?: unknown
-			} | null
-			const confirmation =
-				typeof body?.confirmation === 'string' ? body.confirmation.trim() : ''
-			if (confirmation !== access.org.slug && confirmation !== 'DELETE') {
-				return jsonResponse(
-					{
-						ok: false,
-						error: `Type ${access.org.slug} or DELETE to confirm.`,
-					},
-					400,
-				)
-			}
-			await softDeleteOrg({
-				env,
-				orgId: access.org.id,
-				actorUserId: user.mcpUser.userId,
-			})
-			return jsonResponse({
-				ok: true,
-				redirectTo: routes.accountOrganizations.href(),
-			})
-		},
-	} satisfies Action<typeof routes.orgSettingsDeletePost>
+export async function updateOrganizationProfile(
+	input: OrganizationWriteContext & { displayName?: string; slug?: string },
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Your name, photo, and handle live on your account profile.',
+			},
+			400,
+		)
+	}
+	const updated = await updateOrgProfile(env.APP_DB, {
+		orgId: access.org.id,
+		displayName: input.displayName,
+		slug: input.slug,
+	})
+	if (!updated.ok) {
+		return operationResult({ ok: false, error: updated.error }, 400)
+	}
+	const next = {
+		...access.org,
+		slug: updated.slug,
+		displayName: updated.displayName,
+	}
+	return operationResult({ ok: true, org: next })
 }
 
-export function createOrgSettingsCustomHostnamesPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const access = await resolveOrgManagementAccess({
-				request,
-				env,
-				user,
-				permission: 'org:write',
-			})
-			if (!access.ok) {
-				return jsonResponse({ ok: false, error: access.error }, access.status)
-			}
-			if (access.org.personal) {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Custom domains are only available on team organizations.',
-					},
-					400,
-				)
-			}
-			if (
-				!(await isPackageAppCustomDomainsEnabledForUser(
-					env.APP_DB,
-					user.userId,
-				))
-			) {
-				return jsonResponse(
-					{
-						ok: false,
-						error: 'Package-app custom domains are not enabled for this user.',
-					},
-					404,
-				)
-			}
-			const body = (await request.json().catch(() => null)) as {
-				action?: unknown
-				hostname?: unknown
-				id?: unknown
-				binding_kind?: unknown
-				package_id?: unknown
-				ssl_method?: unknown
-			} | null
-			if (!body || typeof body !== 'object') {
-				return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
-			}
-			const action = typeof body.action === 'string' ? body.action.trim() : ''
-			try {
-				switch (action) {
-					case 'add': {
-						const hostname =
-							typeof body.hostname === 'string' ? body.hostname : ''
-						const bindingKind = body.binding_kind
-						if (bindingKind !== 'app' && bindingKind !== 'org') {
-							return jsonResponse(
-								{ ok: false, error: 'binding_kind must be app or org.' },
-								400,
-							)
-						}
-						const sslMethod =
-							body.ssl_method === 'txt' || body.ssl_method === 'http'
-								? body.ssl_method
-								: undefined
-						await addPackageAppCustomHostname({
-							env,
-							orgId: access.org.id,
-							actingUserId: user.userId,
-							createdByUserId: user.mcpUser.userId,
-							bindingKind,
-							hostname,
-							packageId:
-								typeof body.package_id === 'string'
-									? body.package_id
-									: undefined,
-							sslMethod,
-						})
-						break
-					}
-					case 'sync': {
-						await syncPackageAppCustomHostname({
-							env,
-							orgId: access.org.id,
-							actingUserId: user.userId,
-							hostname:
-								typeof body.hostname === 'string' ? body.hostname : undefined,
-							id: typeof body.id === 'string' ? body.id : undefined,
-						})
-						break
-					}
-					case 'delete': {
-						await deletePackageAppCustomHostname({
-							env,
-							orgId: access.org.id,
-							actingUserId: user.userId,
-							hostname:
-								typeof body.hostname === 'string' ? body.hostname : undefined,
-							id: typeof body.id === 'string' ? body.id : undefined,
-						})
-						break
-					}
-					default:
-						return jsonResponse(
-							{ ok: false, error: 'action must be add, sync, or delete.' },
-							400,
-						)
-				}
-			} catch (error) {
-				if (error instanceof PackageAppCustomHostnameError) {
-					return jsonResponse({ ok: false, error: error.message }, 400)
-				}
-				throw error
-			}
-			return jsonResponse(
-				await loadOrgSettingsData({ env, user, org: access.org }),
-			)
-		},
-	} satisfies Action<typeof routes.orgSettingsCustomHostnamesPost>
+export async function removeOrganizationPhoto(input: OrganizationWriteContext) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok)
+		return operationResult({ ok: false, error: access.error }, access.status)
+	if (access.org.personal)
+		return operationResult(
+			{ ok: false, error: 'Your photo lives on your account profile.' },
+			400,
+		)
+	await deleteOrgAvatar({ env, orgId: access.org.id })
+	return operationResult({ ok: true, org: { ...access.org, avatarUrl: null } })
+}
+
+export async function saveOrganizationPhoto(
+	input: OrganizationWriteContext & { avatar: File | null },
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Your photo lives on your account profile.',
+			},
+			400,
+		)
+	}
+
+	const avatar = input.avatar
+	if (!(avatar instanceof File) || avatar.size === 0) {
+		return operationResult(
+			{ ok: false, error: 'Avatar file is required.' },
+			400,
+		)
+	}
+	let sourceBytes: Uint8Array
+	try {
+		sourceBytes = await readFileBytes(avatar)
+	} catch (error) {
+		console.error('org-avatar-read-failed', error)
+		return operationResult({ ok: false, error: 'Unable to read avatar.' }, 500)
+	}
+	let processed: ReturnType<typeof processUserAvatar>
+	try {
+		processed = processUserAvatar({
+			contentType: avatar.type || 'application/octet-stream',
+			sourceBytes,
+		})
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : 'Unable to process avatar.'
+		return operationResult({ ok: false, error: message }, 400)
+	}
+	try {
+		const avatarKey = await saveOrgAvatar({
+			env,
+			orgId: access.org.id,
+			bytes: processed.bytes,
+			contentType: processed.contentType,
+		})
+		return operationResult({
+			ok: true,
+			org: {
+				...access.org,
+				avatarUrl: buildOrgAvatarUrl({ slug: access.org.slug, avatarKey }),
+			},
+		})
+	} catch (error) {
+		console.error('org-avatar-save-failed', error)
+		return operationResult({ ok: false, error: 'Unable to save avatar.' }, 500)
+	}
+}
+
+export async function deleteOrganization(
+	input: OrganizationWriteContext & { confirmation: string },
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:delete',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error:
+					'Your personal organization is your account. Delete it from Account → Data & deletion.',
+			},
+			400,
+		)
+	}
+	const confirmation = input.confirmation.trim()
+	if (confirmation !== access.org.slug && confirmation !== 'DELETE') {
+		return operationResult(
+			{
+				ok: false,
+				error: `Type ${access.org.slug} or DELETE to confirm.`,
+			},
+			400,
+		)
+	}
+	await softDeleteOrg({
+		env,
+		orgId: access.org.id,
+		actorUserId: user.mcpUser.userId,
+	})
+	return operationResult({
+		ok: true,
+		redirectTo: routes.accountOrganizations.href(),
+	})
+}
+
+async function writeOrganizationDomain(
+	input: OrganizationWriteContext,
+	write: (access: {
+		orgId: string
+		actingUserId: number
+		createdByUserId: string
+	}) => Promise<unknown>,
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Custom domains are only available on team organizations.',
+			},
+			400,
+		)
+	}
+	if (
+		!(await isPackageAppCustomDomainsEnabledForUser(env.APP_DB, user.userId))
+	) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Package-app custom domains are not enabled for this user.',
+			},
+			404,
+		)
+	}
+	try {
+		await write({
+			orgId: access.org.id,
+			actingUserId: user.userId,
+			createdByUserId: user.mcpUser.userId,
+		})
+	} catch (error) {
+		if (error instanceof PackageAppCustomHostnameError) {
+			return operationResult({ ok: false, error: error.message }, 400)
+		}
+		throw error
+	}
+	return operationResult({ ok: true })
+}
+
+export async function addOrganizationDomain(
+	input: OrganizationWriteContext & {
+		hostname: string
+		bindingKind: 'app' | 'org'
+		packageId?: string
+		sslMethod?: 'txt' | 'http'
+	},
+) {
+	return writeOrganizationDomain(input, (access) =>
+		addPackageAppCustomHostname({
+			env: input.env,
+			...access,
+			hostname: input.hostname,
+			bindingKind: input.bindingKind,
+			packageId: input.packageId,
+			sslMethod: input.sslMethod,
+		}),
+	)
+}
+export async function syncOrganizationDomain(
+	input: OrganizationWriteContext & { hostname?: string; id?: string },
+) {
+	return writeOrganizationDomain(input, (access) =>
+		syncPackageAppCustomHostname({
+			env: input.env,
+			...access,
+			hostname: input.hostname,
+			id: input.id,
+		}),
+	)
+}
+export async function deleteOrganizationDomain(
+	input: OrganizationWriteContext & { hostname?: string; id?: string },
+) {
+	return writeOrganizationDomain(input, (access) =>
+		deletePackageAppCustomHostname({
+			env: input.env,
+			...access,
+			hostname: input.hostname,
+			id: input.id,
+		}),
+	)
 }

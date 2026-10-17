@@ -16,30 +16,25 @@ own record with its own event choice. The org is always the one in the URL.
 
 ## Drive it
 
-```bash
-node tools/control-kody.ts login
-node tools/control-kody.ts request GET /profiles/<owner>/packages/<kodyId>/follow.json
-node tools/control-kody.ts request POST /@<slug>/-/follows.json \
-  --json '{"intent":"follow","name":"@<owner>/<kodyId>","kind":"package","events":["published"]}'
-node tools/control-kody.ts request GET /@<slug>/-/follows.json
-node tools/control-kody.ts request POST /@<slug>/-/follows.json \
-  --json '{"intent":"unfollow","name":"@<owner>/<kodyId>","kind":"package"}'
-```
+Sign in, open the package or repository, and use the Follow panel. Select the
+workspace and events, submit, then check the workspace Follows page. Exercise
+Resume and Unfollow on the actual page so the test covers native navigation,
+server-function authorization, and Query reconciliation.
 
-## APIs
+## Website operations
 
-- `GET /profiles/:username/packages/:kodyId/follow.json[?kind=package|repo]` —
-  `{ ok, target, availableEvents, canPush, workspaces[] }`. Each workspace is
-  one the viewer is a member of (personal first) with its `follow` summary or
-  null. A target the viewer cannot follow is a 404, like a missing one.
-- `GET /@:orgSlug/-/follows.json` — `{ ok, orgSlug, follows[] }`; `org:read`.
-- `POST /@:orgSlug/-/follows.json` — `{ intent: 'follow', name, kind, events? }`
-  creates, resumes, or changes events (omit `events` to keep the stored choice);
-  `{ intent: 'follow', id }` resumes a listed follow under its target's current
-  name (the Follows page uses this, since stored names go stale on rename);
-  `{ intent: 'unfollow', id }` or `{ intent: 'unfollow', name, kind }` deletes.
-  Errors carry `code`: `invalid` 400, `unauthorized` 401, `not_found` 404,
-  `rate_limited` 429.
+The website uses typed Start server functions in `start/server/follows.ts`:
+
+- `loadPackageFollow` reads target permissions and available workspaces.
+- `loadOrgFollows` reads the selected workspace's follows with `org:read`.
+- `followTarget` creates a follow or updates its event choice.
+- `resumeFollow` resumes by id under the target's current name.
+- `unfollowTarget` removes by id or target, scoped to the selected workspace.
+
+These are website operations, not stable external HTTP APIs. External clients
+use the official follow capabilities. There are no website `.json` action
+endpoints. Writes authenticate the viewer, bind the explicit workspace, enforce
+permissions and rate limits, then reconcile the captured actor's Query data.
 
 ## Gotchas
 

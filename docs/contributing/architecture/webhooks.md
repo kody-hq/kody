@@ -207,7 +207,7 @@ package runtimes. End-user call shape:
 
 Webhooks belong to the package that declares them, so the owner surface is the
 **Webhooks** section of package settings (`/@:username/:kodyId/settings`,
-`packages/worker/client/routes/package-webhook-settings.tsx` with one
+`packages/worker/start/pages/package-webhook-settings.tsx` with one
 `package-webhook-card.tsx` per declared webhook). Its JSON companion is
 `/profiles/:username/packages/:kodyId/webhooks.json`
 (`packages/worker/src/app/handlers/package-webhooks.ts`). The handler is
@@ -225,11 +225,11 @@ so a stray click cannot rotate a provider's URL; `reveal` refuses mints without
 `url_secret_encrypted` and points at Rotate. The client keeps revealed URLs in
 memory only and drops them on Hide or when the settings page changes package.
 
-`/@<slug>/-/webhooks` (`packages/worker/client/routes/account-webhooks.tsx`,
-`packages/worker/src/app/handlers/account-webhooks.ts`) is a thin cross-package
-index. `GET /account/webhooks.json` lists every declared webhook (never a URL)
-and each row deep-links to `/@:username/:kodyId/settings#webhook-<name>`. The
-account API has no mutating intents.
+`/@<slug>/-/webhooks` (`packages/worker/start/pages/account-webhooks.tsx`,
+`packages/worker/start/server/account-collections.ts`) is a thin cross-package
+index. Its native read lists every declared webhook (never a URL) and each row
+deep-links to `/@:username/:kodyId/settings#webhook-<name>`. The account index
+has no mutating intents.
 
 `revealWebhookUrlForWebsite` is website-only: no MCP capability, execute
 binding, or apply result may return the credential URL.

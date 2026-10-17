@@ -1,5 +1,4 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type Action } from 'remix/router'
 import {
 	readAuthenticatedAppUser,
 	type AuthenticatedAppUser,
@@ -9,7 +8,6 @@ import { getMcpServerSettingById } from '#worker/mcp-client/settings-service.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { orgSlugFromOrgOwnedPath } from '#universal/org-pages.ts'
-import { type routes } from '#universal/routes.ts'
 
 /**
  * Logo URLs stay on `/account/mcp-servers/logos/…` (no org in the path), but
@@ -53,44 +51,47 @@ async function ownerIdForMcpServerLogo(input: {
  * request org so a team-org page does not 404 logos stored on that org.
  */
 export function createMcpServerLogoHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return new Response('Not found', { status: 404 })
-			}
-			const userId = await ownerIdForMcpServerLogo({ env, user, request })
-			const server = await getMcpServerSettingById({
-				env,
-				userId,
-				id: params.serverId,
-			})
-			if (!server?.logoKey) {
-				return new Response('Not found', { status: 404 })
-			}
-			const logo = await loadFittedMcpServerLogo({
-				db: env.APP_DB,
-				env,
-				userId,
-				serverId: server.id,
-				logoKey: server.logoKey,
-				logoContentType: server.logoContentType,
-				logoSource: server.logoSource,
-				faviconSourceHost: server.faviconSourceHost,
-			})
-			if (!logo) {
-				return new Response('Not found', { status: 404 })
-			}
-			return new Response(logo.body, {
-				headers: {
-					'Cache-Control': logo.cacheControl,
-					'Content-Length': String(logo.size),
-					'Content-Type': logo.contentType,
-					ETag: logo.httpEtag,
-					'X-Content-Type-Options': 'nosniff',
-				},
-			})
-		},
-	} satisfies Action<typeof routes.accountMcpServerLogo>
+	return async ({
+		request,
+		params,
+	}: {
+		request: Request
+		params: { serverId: string }
+	}) => {
+		const user = await readAuthenticatedAppUser(request, env)
+		if (!user) {
+			return new Response('Not found', { status: 404 })
+		}
+		const userId = await ownerIdForMcpServerLogo({ env, user, request })
+		const server = await getMcpServerSettingById({
+			env,
+			userId,
+			id: params.serverId,
+		})
+		if (!server?.logoKey) {
+			return new Response('Not found', { status: 404 })
+		}
+		const logo = await loadFittedMcpServerLogo({
+			db: env.APP_DB,
+			env,
+			userId,
+			serverId: server.id,
+			logoKey: server.logoKey,
+			logoContentType: server.logoContentType,
+			logoSource: server.logoSource,
+			faviconSourceHost: server.faviconSourceHost,
+		})
+		if (!logo) {
+			return new Response('Not found', { status: 404 })
+		}
+		return new Response(logo.body, {
+			headers: {
+				'Cache-Control': logo.cacheControl,
+				'Content-Length': String(logo.size),
+				'Content-Type': logo.contentType,
+				ETag: logo.httpEtag,
+				'X-Content-Type-Options': 'nosniff',
+			},
+		})
+	}
 }

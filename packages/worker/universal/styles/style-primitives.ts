@@ -1,4 +1,3 @@
-import { type css } from 'remix/component'
 import {
 	colors,
 	mq,
@@ -14,32 +13,6 @@ import {
  * touch taps otherwise leave elements stuck in their hover state.
  */
 export const hoverMq = '@media (hover: hover) and (pointer: fine)'
-
-type CssObject = Parameters<typeof css>[0]
-
-function isPlainObject(value: unknown): value is CssObject {
-	return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/**
- * Deep-merges css objects so shared nested blocks (media queries, selectors)
- * combine instead of the later spread silently clobbering the earlier one.
- * Later values win on leaf conflicts.
- */
-export function mergeCss(...objects: Array<CssObject>): CssObject {
-	const result: CssObject = {}
-	for (const object of objects) {
-		for (const [key, value] of Object.entries(object)) {
-			const existing = result[key]
-			if (isPlainObject(existing) && isPlainObject(value)) {
-				result[key] = mergeCss(existing, value)
-			} else {
-				result[key] = value
-			}
-		}
-	}
-	return result
-}
 
 type ButtonCssOptions = {
 	size?: 'md' | 'lg'
@@ -457,21 +430,7 @@ export function getLanternGlowCss(options: { maxWidth: string }) {
 	}
 }
 
-/**
- * Markdown table layout for prose (guides, blog) and README views.
- *
- * The prose root uses `overflow-wrap: anywhere` so long tokens in lists can
- * shrink. That also collapses table min-content to a character, so auto
- * layout gives leftover space to the long first column and the last column
- * wraps "An integration" onto two lines. Reset wrap on the table, keep the
- * last column at content width when every last-column cell is a short
- * label, and scroll overflow on a wrapper — not on `display: block`
- * tables, which skip column layout. Long last-column descriptions still
- * wrap so a chooser table does not force every prose table to scroll.
- *
- * Wrap each `<table>` in `[data-markdown-table]` (see `markdown-view.tsx`).
- */
-export const markdownTableCss = {
+const markdownTableCss = {
 	'& [data-markdown-table]': {
 		margin: '1.15rem 0 0',
 		maxWidth: '100%',
@@ -542,7 +501,9 @@ export const proseCss = {
 		maxWidth: '62ch',
 		textWrap: 'pretty' as const,
 	},
-	'& > p:first-child': {
+	// Inline SSR styles are not prose siblings. Keep the first content paragraph flush,
+	// without removing spacing when a heading or another content element precedes it.
+	'& > p:not(:not(style) ~ *)': {
 		marginTop: 0,
 	},
 	'& p strong': {
@@ -648,7 +609,7 @@ export const proseCss = {
 		borderLeft: `2px solid ${colors.border}`,
 		color: colors.textMuted,
 	},
-	'& blockquote p:first-child': {
+	'& blockquote p:not(:not(style) ~ *)': {
 		marginTop: 0,
 	},
 	'& code': {

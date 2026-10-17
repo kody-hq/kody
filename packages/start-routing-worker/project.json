@@ -1,0 +1,21 @@
+{
+	"$schema": "../../node_modules/nx/schemas/project-schema.json",
+	"name": "start-routing-worker",
+	"projectType": "application",
+	"sourceRoot": "packages/start-routing-worker",
+	"implicitDependencies": ["worker"],
+	"targets": {
+		"typecheck": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "tsc --noEmit -p packages/start-routing-worker/tsconfig.json"
+			}
+		},
+		"test": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "vitest run --project node-unit packages/start-routing-worker"
+			}
+		}
+	}
+}

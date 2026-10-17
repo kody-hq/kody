@@ -21,7 +21,6 @@ import {
 } from '#worker/follow/service.ts'
 import {
 	followRecordEvents,
-	isFollowTargetKind,
 	type FollowRecord,
 	type FollowView,
 } from '#worker/follow/types.ts'
@@ -31,13 +30,12 @@ import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
 import {
 	followEventsForKind,
 	followPausedDeleteAt,
-	isFollowEvent,
 	type FollowSummary,
 	type FollowTargetKindName,
 	type OrgFollowRow,
 	type OrgFollowsLoaderData,
-	type OrgFollowsPostBody,
-	type OrgFollowsPostPayload,
+	type FollowEvent,
+	type FollowOperationResult,
 	type PackageFollowStatePayload,
 } from '#universal/follows.ts'
 
@@ -153,46 +151,14 @@ export async function loadOrgFollowsData(input: {
 	}
 }
 
-export function parseOrgFollowsPostBody(
-	body: unknown,
-): OrgFollowsPostBody | null {
-	if (!body || typeof body !== 'object' || Array.isArray(body)) return null
-	const record = body as Record<string, unknown>
-	const kind =
-		typeof record['kind'] === 'string' && isFollowTargetKind(record['kind'])
-			? record['kind']
-			: null
-	const name = typeof record['name'] === 'string' ? record['name'].trim() : ''
-	const id = typeof record['id'] === 'string' ? record['id'].trim() : ''
-	switch (record['intent']) {
-		case 'follow': {
-			if (id && !name && record['events'] === undefined) {
-				return { intent: 'follow', id }
-			}
-			if (!name || !kind) return null
-			const events = record['events']
-			if (events === undefined) return { intent: 'follow', name, kind }
-			if (!Array.isArray(events) || !events.every(isFollowEvent)) return null
-			return { intent: 'follow', name, kind, events }
-		}
-		case 'unfollow': {
-			if (id) return { intent: 'unfollow', id }
-			if (!name || !kind) return null
-			return { intent: 'unfollow', name, kind }
-		}
-		default:
-			return null
-	}
-}
-
-function postError(
-	code: Extract<OrgFollowsPostPayload, { ok: false }>['code'],
+function followError(
+	code: Extract<FollowOperationResult, { ok: false }>['code'],
 	error: string,
 ) {
 	return { ok: false as const, code, error }
 }
 
-export function orgFollowsPostStatus(payload: OrgFollowsPostPayload) {
+export function followOperationStatus(payload: FollowOperationResult) {
 	if (payload.ok) return 200
 	switch (payload.code) {
 		case 'invalid':
@@ -210,108 +176,103 @@ export function orgFollowsPostStatus(payload: OrgFollowsPostPayload) {
 	}
 }
 
-/** Follow, change events, or unfollow for the org in the request URL. */
-export async function applyOrgFollowsPost(input: {
+type FollowContext = {
 	env: Env
 	user: AuthenticatedAppUser
 	org: { id: string }
-	body: OrgFollowsPostBody
-}): Promise<OrgFollowsPostPayload> {
-	const { body } = input
+}
+type FollowTarget = { name: string; kind: FollowTargetKindName }
+
+async function followOperation(
+	run: () => Promise<FollowOperationResult>,
+): Promise<FollowOperationResult> {
 	try {
-		switch (body.intent) {
-			case 'follow': {
-				let target: { name: string; kind: FollowTargetKindName }
-				if ('id' in body) {
-					const record = await getFollowForOrg(input.env.APP_DB, {
-						followerOrgId: input.org.id,
-						id: body.id,
-					})
-					if (!record) {
-						return postError('not_found', 'This follow is already gone.')
-					}
-					const live = await loadFollowTargetSnapshot(input.env.APP_DB, record)
-					if (!live) {
-						return postError(
-							'not_found',
-							`${record.targetName} no longer exists, so this follow can’t resume. Unfollow to remove it.`,
-						)
-					}
-					target = live
-				} else {
-					target = body
-				}
-				const follow = await addFollow({
-					env: input.env,
-					followerOrgId: input.org.id,
-					creatorUserId: input.user.mcpUser.userId,
-					name: target.name,
-					kind: target.kind,
-					events: 'events' in body ? body.events : undefined,
-				})
-				return {
-					ok: true,
-					intent: 'follow',
-					name: follow.name,
-					kind: follow.kind,
-					follow: summaryFromView(follow),
-				}
-			}
-			case 'unfollow': {
-				if ('id' in body) {
-					const record = await getFollowForOrg(input.env.APP_DB, {
-						followerOrgId: input.org.id,
-						id: body.id,
-					})
-					if (
-						!record ||
-						!(await deleteFollowForOrg(input.env.APP_DB, {
-							followerOrgId: input.org.id,
-							id: body.id,
-						}))
-					) {
-						return postError('not_found', 'This follow is already gone.')
-					}
-					return {
-						ok: true,
-						intent: 'unfollow',
-						name: record.targetName,
-						kind: record.targetKind,
-						follow: null,
-					}
-				}
-				const { removed } = await removeFollow({
-					env: input.env,
-					followerOrgId: input.org.id,
-					name: body.name,
-					kind: body.kind,
-				})
-				return {
-					ok: true,
-					intent: 'unfollow',
-					name: removed.name,
-					kind: removed.kind,
-					follow: null,
-				}
-			}
-			default: {
-				const exhaustive: never = body
-				throw new Error(`Unhandled follow intent: ${String(exhaustive)}`)
-			}
-		}
+		return await run()
 	} catch (error) {
 		if (error instanceof FollowRateLimitError) {
-			return postError('rate_limited', error.message)
+			return followError('rate_limited', error.message)
 		}
 		if (
 			error instanceof FollowNotFoundError ||
 			error instanceof FollowTargetNotFoundError
 		) {
-			return postError('not_found', error.message)
+			return followError('not_found', error.message)
 		}
 		if (error instanceof McpCallerError) {
-			return postError('invalid', error.message)
+			return followError('invalid', error.message)
 		}
 		throw error
 	}
+}
+
+export function followOrgTarget(
+	input: FollowContext & FollowTarget & { events?: Array<FollowEvent> },
+) {
+	return followOperation(async () => {
+		const follow = await addFollow({
+			env: input.env,
+			followerOrgId: input.org.id,
+			creatorUserId: input.user.mcpUser.userId,
+			name: input.name,
+			kind: input.kind,
+			events: input.events,
+		})
+		return {
+			ok: true,
+			name: follow.name,
+			kind: follow.kind,
+			follow: summaryFromView(follow),
+		}
+	})
+}
+
+export function resumeOrgFollow(input: FollowContext & { id: string }) {
+	return followOperation(async () => {
+		const record = await getFollowForOrg(input.env.APP_DB, {
+			followerOrgId: input.org.id,
+			id: input.id,
+		})
+		if (!record) return followError('not_found', 'This follow is already gone.')
+		const live = await loadFollowTargetSnapshot(input.env.APP_DB, record)
+		if (!live)
+			return followError(
+				'not_found',
+				`${record.targetName} no longer exists, so this follow can’t resume. Unfollow to remove it.`,
+			)
+		return followOrgTarget({ ...input, ...live })
+	})
+}
+
+export function unfollowOrgTarget(
+	input: FollowContext & (FollowTarget | { id: string }),
+) {
+	return followOperation(async () => {
+		if ('id' in input) {
+			const record = await getFollowForOrg(input.env.APP_DB, {
+				followerOrgId: input.org.id,
+				id: input.id,
+			})
+			if (
+				!record ||
+				!(await deleteFollowForOrg(input.env.APP_DB, {
+					followerOrgId: input.org.id,
+					id: input.id,
+				}))
+			)
+				return followError('not_found', 'This follow is already gone.')
+			return {
+				ok: true,
+				name: record.targetName,
+				kind: record.targetKind,
+				follow: null,
+			}
+		}
+		const { removed } = await removeFollow({
+			env: input.env,
+			followerOrgId: input.org.id,
+			name: input.name,
+			kind: input.kind,
+		})
+		return { ok: true, name: removed.name, kind: removed.kind, follow: null }
+	})
 }

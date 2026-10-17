@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
 import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
@@ -86,7 +85,7 @@ async function postAuth(
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ turnstileToken: 'test-token', ...body }),
 	})
-	return handler.handler(new RequestContext(request))
+	return handler({ request: request })
 }
 
 function readAuditActions(sqlite: DatabaseSync) {

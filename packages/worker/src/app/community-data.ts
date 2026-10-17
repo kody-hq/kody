@@ -1,5 +1,4 @@
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
-import { readPositiveInt } from '#worker/query-params.ts'
 import {
 	buildForkPrompt,
 	toOnboardingFeaturedListing,
@@ -49,7 +48,6 @@ import {
 import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 
-const defaultCommunityListLimit = 50
 const onboardingFeaturedListingLimit = 12
 
 function isCommunityDataCacheEnabled(env: Env) {
@@ -73,23 +71,32 @@ async function loadWithCommunityCache<T>(
 	return value
 }
 
-// One SSR request starts the index load in the page handler so it overlaps
-// session/asset work, then the blocking `community-listings` Frame reads the
-// same data during render. Memoize per Request so the second call reuses
-// the first load.
+type CommunityIndexInput = {
+	query: string
+	sort: string | null
+	category: string | null
+	limit: number
+}
 const requestIndexDataStore = new WeakMap<
 	Request,
-	Promise<CommunityIndexLoaderData>
+	Map<string, Promise<CommunityIndexLoaderData>>
 >()
 
 export function loadCommunityIndexData(
 	env: Env,
 	request: Request,
+	resource: CommunityIndexInput,
 ): Promise<CommunityIndexLoaderData> {
-	let pending = requestIndexDataStore.get(request)
+	let reads = requestIndexDataStore.get(request)
+	if (!reads) {
+		reads = new Map()
+		requestIndexDataStore.set(request, reads)
+	}
+	const key = JSON.stringify(resource)
+	let pending = reads.get(key)
 	if (!pending) {
-		pending = loadCommunityIndexDataUncached(env, request)
-		requestIndexDataStore.set(request, pending)
+		pending = loadCommunityIndexDataUncached(env, request, resource)
+		reads.set(key, pending)
 	}
 	return pending
 }
@@ -97,19 +104,13 @@ export function loadCommunityIndexData(
 async function loadCommunityIndexDataUncached(
 	env: Env,
 	request: Request,
+	resource: CommunityIndexInput,
 ): Promise<CommunityIndexLoaderData> {
-	const url = new URL(request.url)
-	const query = url.searchParams.get('q')?.trim() ?? ''
-	const sort = parseCommunityListingSort(url.searchParams.get('sort'))
-	const category = parseCommunityListingCategory(
-		url.searchParams.get('category'),
-	)
+	const query = resource.query.trim()
+	const sort = parseCommunityListingSort(resource.sort)
+	const category = parseCommunityListingCategory(resource.category)
 	const overview = query.length === 0 && category == null
-	const limit = readPositiveInt(
-		url.searchParams.get('limit'),
-		defaultCommunityListLimit,
-		100,
-	)
+	const limit = Math.min(100, Math.max(1, Math.floor(resource.limit)))
 
 	const cacheKey = buildCommunityIndexCacheKey({
 		query,

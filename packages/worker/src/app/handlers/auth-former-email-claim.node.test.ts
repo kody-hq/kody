@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { RequestContext } from 'remix/router'
 import { beforeAll, expect, test, vi } from 'vitest'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
 import { quoteSqlString } from '@kody-internal/shared/sql-literals.ts'
@@ -76,7 +75,7 @@ async function signup(
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
 	})
-	return handler.handler(new RequestContext(request))
+	return handler({ request: request })
 }
 
 beforeAll(() => {

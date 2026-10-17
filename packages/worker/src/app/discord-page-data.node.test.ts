@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import { loadDiscordPageData } from '#app/discord-page-data.ts'
-import { createDiscordApiHandler } from '#app/handlers/discord.ts'
+import { loadDiscordPageForRequest } from '#app/handlers/discord.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
@@ -52,14 +52,14 @@ test('discord page reports guest, unconnected, and connected states', async () =
 	setAuthSessionSecret(testCookieSecret)
 	const { sqlite, db } = createTestDb()
 	const env = createAppEnv(db)
-	const handler = createDiscordApiHandler(env)
 
-	const anonymous = await handler.handler({
+	const anonymous = await loadDiscordPageForRequest({
+		env,
 		request: new Request('http://example.com/discord.json'),
 		url: new URL('http://example.com/discord.json'),
 		params: {},
 	} as never)
-	expect(await anonymous.json()).toEqual({
+	expect(anonymous).toEqual({
 		ok: true,
 		signedIn: false,
 		discordConnected: false,
@@ -156,14 +156,15 @@ test('discord page reports guest, unconnected, and connected states', async () =
 		},
 		false,
 	)
-	const signedIn = await handler.handler({
+	const signedIn = await loadDiscordPageForRequest({
+		env,
 		request: new Request('http://example.com/discord.json', {
 			headers: { Cookie: sessionCookie.split(';')[0] ?? sessionCookie },
 		}),
 		url: new URL('http://example.com/discord.json'),
 		params: {},
 	} as never)
-	expect(await signedIn.json()).toMatchObject({
+	expect(signedIn).toMatchObject({
 		ok: true,
 		signedIn: true,
 		discordConnected: true,

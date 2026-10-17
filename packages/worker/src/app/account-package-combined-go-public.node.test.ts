@@ -27,11 +27,11 @@ vi.mock('#app/account-packages-data.ts', () => ({
 }))
 
 const {
-	handleAccountPackageInternetVisibleAction,
+	setAccountPackageInternetVisible,
+	approveAccountPackageCapabilities,
+	approveAccountPackageCapabilitiesAndGoPublic,
 	loadAccountPackageApproveCapabilitiesData,
 } = await import('./account-package-capability-approval.ts')
-const { createAccountPackageApproveCapabilitiesApiHandler } =
-	await import('./handlers/account-package-approve-capabilities.ts')
 
 async function setup() {
 	const t = await setupPackageCredentialMappingFixture({
@@ -53,7 +53,9 @@ async function setup() {
 			'2026-10-13T00:00:00.000Z',
 		)
 		.run()
-	mocks.reloadAccountPackagesAfterWrite.mockResolvedValue({ ok: true })
+	mocks.reloadAccountPackagesAfterWrite.mockRejectedValue(
+		new Error('Unrelated package list unavailable'),
+	)
 	const user = {
 		userId: 0,
 		username: 'bea',
@@ -62,29 +64,44 @@ async function setup() {
 		request: t.requestAs('bea', 'owner'),
 	} as unknown as AuthenticatedAppUser
 	mocks.readAuthenticatedAppUser.mockResolvedValue(user)
-	const toggle = (body: Record<string, unknown>) =>
-		handleAccountPackageInternetVisibleAction({
-			env: t.env,
-			request: new Request(`${mappingFixtureBaseUrl}/account/packages.json`, {
-				method: 'POST',
-			}),
-			user,
-			body: { packageId: t.savedPackage.id, ...body },
+	const context = {
+		env: t.env,
+		user,
+		packageId: t.savedPackage.id,
+		request: new Request(
+			`${mappingFixtureBaseUrl}/@acme-clients/digest/approve-capabilities`,
+			{ method: 'POST' },
+		),
+	}
+	const toggle = (input: {
+		action: 'set-internet-visible'
+		internetVisible: boolean
+		confirmName: string
+	}) =>
+		setAccountPackageInternetVisible({
+			...context,
+			internetVisible: input.internetVisible,
+			confirmName: input.confirmName,
 		})
-	const approvalApi = createAccountPackageApproveCapabilitiesApiHandler(t.env)
-	// The approval page posts here, not to /account/packages.json.
-	const approve = (body: Record<string, unknown>) =>
-		approvalApi.handler({
-			request: new Request(
-				`${mappingFixtureBaseUrl}/account/packages/${t.savedPackage.id}/approve-capabilities.json`,
-				{
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(body),
-				},
-			),
-			params: { packageId: t.savedPackage.id },
-		} as never) as Promise<Response>
+	const approve = (
+		input:
+			| { action: 'approve-capabilities'; fingerprint: string }
+			| {
+					action: 'approve-capabilities-and-go-public'
+					fingerprint: string
+					requestId: string | null
+			  },
+	) =>
+		input.action === 'approve-capabilities-and-go-public'
+			? approveAccountPackageCapabilitiesAndGoPublic({
+					...context,
+					fingerprint: input.fingerprint,
+					requestId: input.requestId ?? '',
+				})
+			: approveAccountPackageCapabilities({
+					...context,
+					fingerprint: input.fingerprint,
+				})
 	const loadPage = async () => {
 		const data = await loadAccountPackageApproveCapabilitiesData({
 			env: t.env,
@@ -137,7 +154,7 @@ test('asking to go public, then one Approve, records both decisions and serves t
 		confirmName: 'digest',
 	})
 	expect(asked?.status).toBe(400)
-	await expect(asked?.json()).resolves.toMatchObject({
+	expect(asked?.data).toMatchObject({
 		approvalUrl: `${mappingFixtureBaseUrl}/@acme-clients/digest/approve-capabilities`,
 	})
 
@@ -437,29 +454,12 @@ test('a stale combined click after going public was turned off changes nothing',
 	expect(await t.packageAudits()).toEqual([])
 })
 
-test('approval page API rejects unknown actions with 400 instead of rewriting', async () => {
-	const t = await setup()
-	const page = await t.loadPage()
-	expect(page.fingerprintMatchesApproval).toBe(false)
-
-	const rejected = await t.approve({
-		action: 'not-a-real-action',
-		fingerprint: page.fingerprint,
-	})
-	expect(rejected.status).toBe(400)
-	await expect(rejected.json()).resolves.toEqual({
-		ok: false,
-		error: 'Unsupported action.',
-	})
-	expect((await t.loadPage()).fingerprintMatchesApproval).toBe(false)
-	expect(await t.packageAudits()).toEqual([])
-})
-
-test('approval page API defaults to approve-capabilities only when action is absent', async () => {
+test('native capability approval uses its explicit operation without action dispatch', async () => {
 	const t = await setup()
 	const page = await t.loadPage()
 
 	const approved = await t.approve({
+		action: 'approve-capabilities',
 		fingerprint: page.fingerprint,
 	})
 	expect(approved.status).toBe(200)

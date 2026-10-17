@@ -532,7 +532,7 @@ export async function buildPackageCredentialsView(
 						mappings: mappingRowsFor(row, { recordIncomplete: true }),
 					}))
 			// An off trigger still lists need rows (null overrides) so the editor
-			// can turn it on by saving a pick — same shape as before instances.
+			// can turn it on by saving a pick, same shape as before instances.
 			const mappings = otherEnabler
 				? []
 				: (instances[0]?.mappings ??

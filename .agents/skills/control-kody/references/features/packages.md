@@ -8,23 +8,22 @@ Repo-backed saved packages: list, detail, files, approve-publish.
 including private and unpublished ones when you view your own profile. The page
 heading and account rail label are **Repositories**; the list routes are
 `/@username` and `/@<slug>/-/repositories`. On a team org,
-`/@<slug>/-/repositories` (and `/@<slug>/-/repositories.json`) lists the
-packages that org owns, filtered to what the member can see (`canSeeResource`),
-plus every plain repo the org owns (members who can open the page see all of
-them; there is no per-repo grant). Former `/@<slug>/-/packages` (+ `.json`) URLs
-301 to `/repositories` and keep the query string. Chip filters (`visibility`,
-`listing`, `hidden`, `package`, `app`) and sort (`sort=updated|created|name`,
-`dir=asc|desc`) run client-side from the already-loaded list (behind a
-`<details>` Filters disclosure; no loader, no view transition). Default sort is
-updated descending (`updated_at DESC`); name defaults to ascending.
-`package=yes|no` is whether the row has the saved-package extension — distinct
-from `app=yes|no` (Has app / No app). Own-profile GET params:
-`visibility=public|private`, `listing=published|unpublished|ahead` (ahead =
-**Needs republish**: rare sync lag when the listing pin is briefly behind
-`published_commit` after promote; not HEAD-ahead-of-published), `hidden=yes|no`,
-`package=yes|no`, `app=yes|no`, `sort=created|name`, and `dir=asc|desc` (omit
-`dir` when it matches the sort field's default). Guests can use
-`listing=published|unpublished`, `package=yes|no`, `app=yes|no`, `sort`, and
+`/@<slug>/-/repositories` lists the packages that org owns, filtered to what the
+member can see (`canSeeResource`), plus every plain repo the org owns (members
+who can open the page see all of them; there is no per-repo grant). Former
+`/@<slug>/-/packages` URLs 301 to `/repositories` and keep the query string.
+Chip filters (`visibility`, `listing`, `hidden`, `package`, `app`) and sort
+(`sort=updated|created|name`, `dir=asc|desc`) run client-side from the
+already-loaded list (behind a `<details>` Filters disclosure; no loader, no view
+transition). Default sort is updated descending (`updated_at DESC`); name
+defaults to ascending. `package=yes|no` is whether the row has the saved-package
+extension — distinct from `app=yes|no` (Has app / No app). Own-profile GET
+params: `visibility=public|private`, `listing=published|unpublished|ahead`
+(ahead = **Needs republish**: rare sync lag when the listing pin is briefly
+behind `published_commit` after promote; not HEAD-ahead-of-published),
+`hidden=yes|no`, `package=yes|no`, `app=yes|no`, `sort=created|name`, and
+`dir=asc|desc` (omit `dir` when it matches the sort field's default). Guests can
+use `listing=published|unpublished`, `package=yes|no`, `app=yes|no`, `sort`, and
 `dir`. Owner-only params are ignored for them. Search is `q=` and filters the
 already-loaded list as you type (URL `replaceState`, no loader). Each row shows
 Iconic signifiers (native tooltip only) for package or repo, private, hidden,
@@ -42,27 +41,24 @@ pinned commit), `/@username/:kodyId/settings` (**Settings** tab for packages:
 lock, forkable visibility, internet-visible, webhooks, delete),
 `/@username/:kodyId/collaborators` (**Collaborators** tab, shown only with
 `package:manage_access`: teams, org members, and outside collaborators with
-their preset; add a team or org member, change preset, remove; in a personal
-org, invite by email or username, list and revoke pending invites, and a
-team-org callout instead), `/@username/:kodyId/approve-publish`
-(published-vs-HEAD review), and `/@username/:kodyId/approve-capabilities`
-(credential/capability summary before internet-visible).
-`/@:orgSlug/-/approvals/:bundleId` is an agent-prefilled bundle of pending
-approvals across packages (`approvalBundleCreate`), with Approve all and
-per-item Approve or Deny; only the person it was made for can open it. Opening
-an allowlisted image or video in the tree renders a preview; the bytes come from
-`/@username/:kodyId/raw/:ref/…` (same authz as the tree, 404 on every denial).
-Every file view links that URL as **Raw**; agents can fetch it with
-`Authorization: Bearer kody_at_…` (`package:read`). `/account/packages` 404s.
-`/account/packages/:packageId` redirects to the canonical package page.
+their preset; add a team or org member, change preset, remove),
+`/@username/:kodyId/approve-publish` (published-vs-HEAD review), and
+`/@username/:kodyId/approve-capabilities` (credential/capability summary before
+internet-visible). `/@:orgSlug/-/approvals/:bundleId` is an agent-prefilled
+bundle of pending approvals across packages (`approvalBundleCreate`), with
+Approve all and per-item Approve or Deny; only the person it was made for can
+open it. Opening an allowlisted image or video in the tree renders a preview;
+the bytes come from `/@username/:kodyId/raw/:ref/…` (same authz as the tree, 404
+on every denial). Every file view links that URL as **Raw**; agents can fetch it
+with `Authorization: Bearer kody_at_…` (`package:read`). `/account/packages`
+404s. `/account/packages/:packageId` redirects to the canonical package page.
 
 ## Drive it
 
 Preview seed has **no** packages until you create one. Package creation is
 MCP-only (`packageGetGitRemote({ create: true, kody_id })` with the package name
-leaf or `@owner/leaf`). There is no create action on
-`POST /account/packages.json`. Use the CLI — logged-in preview testing does not
-require agents to hand-roll an MCP OAuth dance — the CLI does it for them:
+leaf or `@owner/leaf`). Use the CLI — logged-in preview testing does not require
+agents to hand-roll an MCP OAuth dance — the CLI does it for them:
 
 ```bash
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
@@ -72,7 +68,6 @@ Then assert the pages:
 
 ```bash
 node tools/control-kody.ts preview -- \
-  --request 'GET /account/packages.json' \
   --check /@user-me
 ```
 
@@ -82,31 +77,21 @@ ahead of published**. That flag needs a minted Artifacts write remote.
 with `package-create`, then delete it and assert the empty state. Arbitrary MCP
 fixtures use `control-kody execute` / `search` against the same origin.
 
-## APIs
+## Transport
 
-- `GET|POST /account/packages.json` (list / lock, unlock, set-visibility,
-  set-internet-visible, approve-capabilities, delete, adopt-community-fork,
-  absorb-listing; no package-create action)
-- `GET /profiles/:username/packages/:kodyId.json`
-- `GET /profiles/:username/packages/:kodyId/files.json`
-- `GET /@:username/:kodyId/icon/:iconCommit` (package or plain-repo list mark)
-- `GET /account/repos/:repoId/icon/:iconCommit` (MCP/owner-only repo mark)
-- `GET /@:username/:kodyId/raw/:ref(/*relativePath)` (raw file bytes)
-- `GET /profiles/:username/packages/:kodyId/approve-publish.json`
-- `GET|POST /profiles/:username/packages/:kodyId/collaborators.json` (view / one
-  change: `grant`, `revoke`, and personal-org-only `invite`, `revoke-invite`;
-  403 without `package:manage_access`)
-- `GET|POST /profiles/:username/packages/:kodyId/approve-capabilities.json`
-- `GET|POST /profiles/:username/packages/:kodyId/credentials.json` (Credentials
-  / Default mappings / Triggers tabs; POST `{ changes }` and/or
-  `{ enablements }` for mapping edits and the viewer’s own on/off /
-  multi-instance toggles)
-- `GET /account/packages/:packageId/files.json` (404 + `redirectTo` the tree)
-- `GET|POST /account/packages/:packageId/approve-publish.json`
-- `GET|POST /account/packages/:packageId/approve-capabilities.json`
-- `GET|POST /@:orgSlug/-/approvals/:bundleId.json` (approval bundle view; POST
-  `{ action: 'approve' | 'deny', item, fingerprint }` decides one item, session
-  only)
+Package reads, settings, individual and bundled approvals, and Collaborators use
+native Start server functions. Collaborator changes require
+`package:manage_access` and support granting or revoking internal team/member
+access through `packageCollaboratorSet` and `packageCollaboratorRemove`.
+Personal packages also create addressed invites by email or username and revoke
+pending invites through native Start functions, backed by `inviteCreate` and
+`inviteRevoke`. One-time messages stay local to the submitted actor and package.
+Existing outside collaborators are listed read-only and can be removed. Raw
+files, assets, and icons remain HTTP resources:
+
+- `GET /@:username/:kodyId/icon/:iconCommit`
+- `GET /account/repos/:repoId/icon/:iconCommit`
+- `GET /@:username/:kodyId/raw/:ref(/*relativePath)`
 
 ## Gotchas
 

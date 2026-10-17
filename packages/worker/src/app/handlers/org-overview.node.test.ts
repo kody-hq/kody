@@ -5,7 +5,6 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
-	renderAppPage: vi.fn(),
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -13,11 +12,54 @@ vi.mock('#app/authenticated-user.ts', () => ({
 		mocks.readAuthenticatedAppUser(...args),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: (...args: Array<unknown>) => mocks.renderAppPage(...args),
+vi.mock('#app/page-auth.ts', () => ({
+	requireAuthenticatedPageUser: async () =>
+		(await mocks.readAuthenticatedAppUser()) ??
+		Response.redirect('https://kody.test/login', 302),
 }))
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/login'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('@tanstack/react-start', () => ({
+	createServerOnlyFn: <T>(fn: T) => fn,
+	createServerFn: () => {
+		let validate:
+			| ((data: unknown) => unknown)
+			| { parse(data: unknown): unknown } = (data) => data
+		const builder = {
+			validator: (fn: typeof validate) => {
+				validate = fn
+				return builder
+			},
+			handler:
+				(fn: (input: { data: unknown }) => unknown) =>
+				(input: { data: unknown }) =>
+					fn({
+						data:
+							typeof validate === 'function'
+								? validate(input.data)
+								: validate.parse(input.data),
+					}),
+		}
+		return builder
+	},
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: () => native.env }))
 
-const { createOrgOverviewHandler } = await import('./org-overview.ts')
+const { loadOrgOverview } =
+	await import('../../../start/server/org-management.ts')
 
 const adaId = 'person-ada'
 const bobId = 'person-bob'
@@ -51,23 +93,21 @@ async function createEnv() {
 			)
 			.run(orgId, userId, now)
 	}
-	return { APP_DB: db } as unknown as Env
+	return {
+		APP_DB: db,
+		COOKIE_SECRET: 'test-cookie-secret-0123456789abcdef0123456789',
+	} as unknown as Env
 }
 
 async function getOverview(env: Env, orgSlug: string) {
-	return createOrgOverviewHandler(env).handler({
-		request: new Request(`https://kody.test/@${orgSlug}/-/overview`),
-		params: { orgSlug },
-	} as never)
+	native.env = env
+	native.request = new Request(`https://kody.test/@${orgSlug}/-/overview`)
+	return loadOrgOverview({ data: { slug: orgSlug } })
 }
 
 beforeEach(() => {
 	mocks.readAuthenticatedAppUser.mockReset()
-	mocks.renderAppPage.mockReset()
-	mocks.renderAppPage.mockImplementation(
-		async (input: { title: string; status?: number }) =>
-			new Response(input.title, { status: input.status ?? 200 }),
-	)
+	native.setResponseHeader.mockClear()
 	mocks.readAuthenticatedAppUser.mockResolvedValue({
 		username: 'ada-renamed',
 		mcpUser: { userId: adaId },
@@ -75,28 +115,24 @@ beforeEach(() => {
 })
 
 test('the signup org overview renders without remembering the org', async () => {
-	const response = await getOverview(await createEnv(), 'ada')
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('Overview')
-	expect(response.headers.get('Set-Cookie')).toBeNull()
+	expect(await getOverview(await createEnv(), 'ada')).toEqual({ slug: 'ada' })
+	expect(native.setResponseHeader.mock.calls).toEqual([
+		['Cache-Control', 'private, no-store'],
+	])
 })
-
 test('a team org overview redirects to the team home', async () => {
-	const response = await getOverview(await createEnv(), 'acme')
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toBe('https://kody.test/@acme')
-	expect(mocks.renderAppPage).not.toHaveBeenCalled()
+	await expect(getOverview(await createEnv(), 'acme')).rejects.toMatchObject({
+		options: { href: '/@acme' },
+	})
 })
-
 test('an org you do not belong to is a 404', async () => {
-	const response = await getOverview(await createEnv(), 'bob')
-	expect(response.status).toBe(404)
+	await expect(getOverview(await createEnv(), 'bob')).rejects.toMatchObject({
+		isNotFound: true,
+	})
 })
-
 test('signed-out visitors go to login', async () => {
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	const response = await getOverview(await createEnv(), 'ada')
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toContain('/login')
-	expect(mocks.renderAppPage).not.toHaveBeenCalled()
+	await expect(getOverview(await createEnv(), 'ada')).rejects.toMatchObject({
+		options: { href: expect.stringContaining('/login') },
+	})
 })

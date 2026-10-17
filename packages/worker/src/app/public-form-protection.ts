@@ -30,12 +30,12 @@ export function getTurnstileSiteKey(env: PublicFormProtectionEnv) {
 
 export type PublicFormProtectionResult =
 	| { ok: true }
-	| { ok: false; response: Response }
+	| { ok: false; error: string; status?: number }
 
 const turnstileKeysMissingProductionMessage =
 	'Production public forms require TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY.'
 
-export async function verifyPublicFormProtection(input: {
+export async function checkPublicFormProtection(input: {
 	env: PublicFormProtectionEnv
 	request: Request
 	body: PublicFormBody
@@ -43,10 +43,7 @@ export async function verifyPublicFormProtection(input: {
 	if (readTrimmedString(input.body, honeypotFieldName)) {
 		return {
 			ok: false,
-			response: Response.json(
-				{ error: 'Unable to submit this form.' },
-				{ status: 400 },
-			),
+			error: 'Unable to submit this form.',
 		}
 	}
 
@@ -68,13 +65,9 @@ export async function verifyPublicFormProtection(input: {
 		})
 		return {
 			ok: false,
-			response: Response.json(
-				{
-					error:
-						'Human verification is not configured on this deployment. Please try again later.',
-				},
-				{ status: 503 },
-			),
+			error:
+				'Human verification is not configured on this deployment. Please try again later.',
+			status: 503,
 		}
 	}
 
@@ -82,10 +75,7 @@ export async function verifyPublicFormProtection(input: {
 	if (!token) {
 		return {
 			ok: false,
-			response: Response.json(
-				{ error: 'Please complete the human verification challenge.' },
-				{ status: 400 },
-			),
+			error: 'Please complete the human verification challenge.',
 		}
 	}
 
@@ -134,9 +124,21 @@ export async function verifyPublicFormProtection(input: {
 
 	return {
 		ok: false,
-		response: Response.json(
-			{ error: 'Human verification failed. Please try again.' },
-			{ status: 400 },
-		),
+		error: 'Human verification failed. Please try again.',
 	}
+}
+
+export async function verifyPublicFormProtection(
+	input: Parameters<typeof checkPublicFormProtection>[0],
+) {
+	const result = await checkPublicFormProtection(input)
+	return result.ok
+		? result
+		: {
+				ok: false as const,
+				response: Response.json(
+					{ error: result.error },
+					{ status: result.status ?? 400 },
+				),
+			}
 }

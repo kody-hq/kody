@@ -1,6 +1,5 @@
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import {
-	accountAliasPath,
 	orgBillingPath,
 	orgCollaboratorsPath,
 	orgCreditsPath,
@@ -11,26 +10,20 @@ import {
 	orgRoleManagesBilling,
 	orgSettingsPath,
 	orgTeamsPath,
-	orgSlugFromOrgOwnedPath,
-	orgSlugFromPathname,
 	orgUsagePath,
-	parseOrgBillingPath,
-	parseOrgCreditsPath,
-	parseOrgManagementPath,
-	parseOrgResourcePath,
-	parseOrgUsagePath,
-	switchOrgPath,
 	type OrganizationSummary,
+	type WorkspaceSwitchTarget,
+	isOrganizationSlug,
 	type OrgOwnedAccountSection,
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { type IconName } from '#universal/icon.tsx'
+import { type IconName } from '#universal/icon-names.ts'
 
 /**
  * The repository list for an organization. Without a slug yet, the link
  * opens the person hub instead of a removed `/account/packages` page.
  */
-export function accountPackagesNavHref(orgSlug: string | null | undefined) {
+function accountPackagesNavHref(orgSlug: string | null | undefined) {
 	return orgSlug
 		? orgResourcePath(orgSlug, 'repositories')
 		: routes.account.href()
@@ -43,25 +36,14 @@ function orgSectionHref(
 	return orgSlug ? orgResourcePath(orgSlug, section) : routes.account.href()
 }
 
-/**
- * Org slug for workspace-rail links: the org already on an org-owned
- * `/@slug/-/…` URL (even when the session list is stale), otherwise the org
- * in the path when the person belongs to it, otherwise their signup
- * organization. Username is only a last resort — personal org slugs stay put
- * across renames.
- */
+/** Matched workspace identity wins, then the stable signup slug, then username. */
 export function accountRailOrgSlug(input: {
-	pathname: string
+	orgSlug: string | null
 	organizations: ReadonlyArray<{ slug: string; personal: boolean }>
 	username: string | null | undefined
 }) {
-	const ownedPathSlug = orgSlugFromOrgOwnedPath(input.pathname)
-	if (ownedPathSlug) return ownedPathSlug
-	const fromPath = orgSlugFromPathname(input.pathname)
-	if (fromPath && input.organizations.some((org) => org.slug === fromPath)) {
-		return fromPath
-	}
 	return (
+		input.orgSlug ??
 		input.organizations.find((org) => org.personal)?.slug ??
 		input.username?.trim() ??
 		null
@@ -70,24 +52,18 @@ export function accountRailOrgSlug(input: {
 
 /** One page of a rail item that has several (Activity → Workflows). */
 export type AccountRailTab = {
+	id: string
 	href: string
 	label: string
 }
 
 export type AccountRailItem = {
+	id: string
 	href: string
 	label: string
 	icon: IconName
-	/** Other pages that belong to this item (`/account/passkeys` → Security). */
-	alsoActiveFor?: ReadonlyArray<string>
 	/** One line for the workspace overview card. */
 	description?: string
-	/**
-	 * When true, only an exact path match marks this item current. Used for a
-	 * team Overview that lands on `/@slug` so `/@slug/-/repositories` does not
-	 * light it up.
-	 */
-	exact?: boolean
 	/**
 	 * Sibling pages shown as tabs under the page title. Each tab page also
 	 * marks this item current, so the rail lists the group once.
@@ -108,37 +84,37 @@ export type AccountRailGroup = {
 
 /** Settings that belong to the person, whichever organization they are in. */
 const accountRailItems: Array<AccountRailItem> = [
-	{ href: routes.account.href(), label: 'Account settings', icon: 'user' },
+	{
+		id: 'profile',
+		href: routes.account.href(),
+		label: 'Account settings',
+		icon: 'user',
+	},
 	{
 		href: routes.accountSecurity.href(),
+		id: 'security',
 		label: 'Security',
 		icon: 'shield',
-		alsoActiveFor: [
-			routes.accountTwoFactor.href(),
-			routes.accountPasskeys.href(),
-		],
 	},
 	{
 		href: routes.accountOrganizations.href(),
+		id: 'organizations',
 		label: 'Organizations',
 		icon: 'users',
 	},
 	{
 		href: routes.accountExperiments.href(),
+		id: 'experiments',
 		label: 'Experiments',
 		icon: 'star',
 	},
 	{
 		href: routes.accountData.href(),
+		id: 'data',
 		label: 'Data & deletion',
 		icon: 'folder',
 	},
 ]
-
-/** True for the person-scoped pages that take the account rail. */
-export function isAccountRailPath(pathname: string) {
-	return accountRailItems.some((item) => isAccountNavItemActive(item, pathname))
-}
 
 /**
  * Where an organization's workspace opens: a team org's home at `/@slug`,
@@ -151,42 +127,33 @@ export function workspaceHomeHref(org: { slug: string; personal: boolean }) {
 		: routes.profile.href({ username: org.slug })
 }
 
-/**
- * Whether `pathname` (already rewritten into `org`) is a page this role can
- * open there. Mirrors the server: grant-only collaborators open Agents
- * only, Billing needs `billing:write`, Teams needs `team:read`, and a
- * personal org has no Settings, Members, Teams, or Collaborators pages.
- */
-function orgPathOpensFor(
-	pathname: string,
-	org: Pick<OrganizationSummary, 'personal' | 'role'>,
-) {
-	const section = parseOrgResourcePath(pathname)?.section
-	if (parseOrgCreditsPath(pathname)) return true
-	if (org.role === null) return section === 'agents'
-	if (parseOrgBillingPath(pathname) || parseOrgUsagePath(pathname)) {
-		return orgRoleManagesBilling(org.role)
-	}
-	const management = parseOrgManagementPath(pathname)?.section
-	if (!management) return true
-	if (org.personal) return management === 'grants'
-	if (management === 'teams') return org.role !== 'billing'
-	return true
-}
-
-/**
- * Where the org switcher sends you: the same page in the target org when
- * you can open it there, otherwise that org's workspace home.
- */
+/** Target policy is presentation only; destination loaders authorize every request. */
 export function workspaceSwitchHref(
-	pathname: string,
+	target: WorkspaceSwitchTarget | undefined,
 	org: Pick<OrganizationSummary, 'slug' | 'personal' | 'role'>,
 ) {
-	const next = switchOrgPath(pathname, org.slug)
-	if (next === routes.profile.href({ username: org.slug })) {
+	if (!isOrganizationSlug(org.slug)) return '/'
+	if (!target) return workspaceHomeHref(org)
+	const { section, rest } = target
+	if (section !== 'credits' && org.role === null && section !== 'agents')
 		return workspaceHomeHref(org)
-	}
-	return orgPathOpensFor(next, org) ? next : workspaceHomeHref(org)
+	if (
+		(section === 'billing' || section === 'usage') &&
+		!orgRoleManagesBilling(org.role)
+	)
+		return workspaceHomeHref(org)
+	const management = [
+		'settings',
+		'members',
+		'teams',
+		'grants',
+		'collaborators',
+	].includes(section)
+	if (management && org.personal && section !== 'grants')
+		return workspaceHomeHref(org)
+	if (section === 'teams' && org.role === 'billing')
+		return workspaceHomeHref(org)
+	return `/@${org.slug}/-/${section}${rest ? `/${rest}` : ''}`
 }
 
 /**
@@ -205,6 +172,7 @@ function overviewRailItem(
 	if (!orgSlug) {
 		return {
 			href: routes.account.href(),
+			id: 'overview',
 			label: 'Overview',
 			icon: 'home',
 			description: 'Every section this workspace owns, one click away.',
@@ -215,15 +183,15 @@ function overviewRailItem(
 	if (!personal) {
 		return {
 			href: routes.profile.href({ username: orgSlug }),
+			id: 'overview',
 			label: 'Overview',
 			icon: 'home',
 			description: 'Every section this workspace owns, one click away.',
-			exact: true,
-			alsoActiveFor: [orgOverviewPath(orgSlug)],
 		}
 	}
 	return {
 		href: orgOverviewPath(orgSlug),
+		id: 'overview',
 		label: 'Overview',
 		icon: 'home',
 		description: 'Every section this workspace owns, one click away.',
@@ -233,6 +201,7 @@ function overviewRailItem(
 function billingRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSlug ? orgBillingPath(orgSlug) : routes.account.href(),
+		id: 'billing',
 		label: 'Billing',
 		icon: 'wallet',
 	}
@@ -241,17 +210,16 @@ function billingRailItem(orgSlug: string | null | undefined): AccountRailItem {
 function usageRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSlug ? orgUsagePath(orgSlug) : routes.account.href(),
+		id: 'usage',
 		label: 'Usage',
 		icon: 'chart',
-		alsoActiveFor: orgSlug
-			? [routes.accountUsage.href(), routes.accountCredits.href()]
-			: [routes.accountCredits.href()],
 	}
 }
 
 function creditsRailItem(orgSlug: string): AccountRailItem {
 	return {
 		href: orgCreditsPath(orgSlug),
+		id: 'credits',
 		label: 'Credits',
 		icon: 'pie-chart',
 	}
@@ -267,6 +235,7 @@ export function workspaceLandingItem(
 ): AccountRailItem {
 	return {
 		href: accountPackagesNavHref(orgSlug),
+		id: 'workspace',
 		label: 'Workspace',
 		icon: 'box',
 	}
@@ -288,11 +257,13 @@ export function teamOrgManagementItems(input: {
 	const items: Array<AccountRailItem> = [
 		{
 			href: orgSettingsPath(orgSlug),
+			id: 'settings',
 			label: 'Settings',
 			icon: 'edit',
 		},
 		{
 			href: orgMembersPath(orgSlug),
+			id: 'members',
 			label: 'Members',
 			icon: 'users',
 		},
@@ -301,6 +272,7 @@ export function teamOrgManagementItems(input: {
 	if (input.role === 'owner' || input.role === 'member') {
 		items.push({
 			href: orgTeamsPath(orgSlug),
+			id: 'teams',
 			label: 'Teams',
 			icon: 'users',
 		})
@@ -308,11 +280,13 @@ export function teamOrgManagementItems(input: {
 	items.push(
 		{
 			href: orgGrantsPath(orgSlug),
+			id: 'grants',
 			label: 'Grants',
 			icon: 'key',
 		},
 		{
 			href: orgCollaboratorsPath(orgSlug),
+			id: 'collaborators',
 			label: 'Collaborators',
 			icon: 'share',
 		},
@@ -334,6 +308,7 @@ function repositoriesRailItem(
 ): AccountRailItem {
 	return {
 		href: accountPackagesNavHref(orgSlug),
+		id: 'repositories',
 		label: 'Repositories',
 		icon: 'box',
 		description: 'Every repository in this workspace, private ones included.',
@@ -343,6 +318,7 @@ function repositoriesRailItem(
 function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'jobs'),
+		id: 'jobs',
 		label: 'Jobs',
 		icon: 'briefcase',
 		description: 'Scheduled package jobs. Run one now or pause it.',
@@ -352,9 +328,9 @@ function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 function agentsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'agents'),
+		id: 'agents',
 		label: 'Agents',
 		icon: 'link',
-		alsoActiveFor: [routes.accountMcpOauthClients.href()],
 		description: 'Agents connected to Kody and what they can use.',
 	}
 }
@@ -368,13 +344,9 @@ function credentialsRailItem(
 ): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'credentials'),
+		id: 'credentials',
 		label: 'Credentials',
 		icon: 'key',
-		alsoActiveFor: orgSlug
-			? (['secrets', 'integrations', 'mcp-servers'] as const).map((section) =>
-					orgResourcePath(orgSlug, section),
-				)
-			: [],
 		description:
 			'Keys, OAuth connections, MCP servers, and vaults Kody uses for you.',
 	}
@@ -383,6 +355,7 @@ function credentialsRailItem(
 function memoriesRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'memories'),
+		id: 'memories',
 		label: 'Memories',
 		icon: 'book',
 		description: 'Personal long-term memories for this account.',
@@ -391,15 +364,27 @@ function memoriesRailItem(orgSlug: string | null | undefined): AccountRailItem {
 
 function activityRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	const tabs: Array<AccountRailTab> = [
-		{ href: orgSectionHref(orgSlug, 'activity'), label: 'Activity' },
-		{ href: orgSectionHref(orgSlug, 'workflows'), label: 'Workflows' },
-		{ href: orgSectionHref(orgSlug, 'waiting'), label: 'Waiting' },
+		{
+			href: orgSectionHref(orgSlug, 'activity'),
+			id: 'activity',
+			label: 'Activity',
+		},
+		{
+			href: orgSectionHref(orgSlug, 'workflows'),
+			id: 'workflows',
+			label: 'Workflows',
+		},
+		{
+			href: orgSectionHref(orgSlug, 'waiting'),
+			id: 'waiting',
+			label: 'Waiting',
+		},
 	]
 	return {
 		href: orgSectionHref(orgSlug, 'activity'),
+		id: 'activity',
 		label: 'Activity',
 		icon: 'trending-up',
-		alsoActiveFor: tabs.slice(1).map((tab) => tab.href),
 		description:
 			'Recent runs with their logs, long-running workflows, and what is waiting on you.',
 		tabs,
@@ -409,6 +394,7 @@ function activityRailItem(orgSlug: string | null | undefined): AccountRailItem {
 function grantsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSlug ? orgGrantsPath(orgSlug) : routes.account.href(),
+		id: 'grants',
 		label: 'Grants',
 		icon: 'key',
 		description: 'Who can use packages and other resources in this workspace.',
@@ -421,18 +407,22 @@ function grantsRailItem(orgSlug: string | null | undefined): AccountRailItem {
  */
 function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 	const tabs: Array<AccountRailTab> = [
-		{ href: orgMembersPath(orgSlug), label: 'Members' },
+		{ href: orgMembersPath(orgSlug), id: 'members', label: 'Members' },
 		...(role === 'owner' || role === 'member'
-			? [{ href: orgTeamsPath(orgSlug), label: 'Teams' }]
+			? [{ href: orgTeamsPath(orgSlug), id: 'teams', label: 'Teams' }]
 			: []),
-		{ href: orgCollaboratorsPath(orgSlug), label: 'Collaborators' },
-		{ href: orgGrantsPath(orgSlug), label: 'Grants' },
+		{
+			href: orgCollaboratorsPath(orgSlug),
+			id: 'collaborators',
+			label: 'Collaborators',
+		},
+		{ href: orgGrantsPath(orgSlug), id: 'grants', label: 'Grants' },
 	]
 	return {
 		href: orgMembersPath(orgSlug),
+		id: 'members',
 		label: 'Members',
 		icon: 'users',
-		alsoActiveFor: tabs.slice(1).map((tab) => tab.href),
 		description: 'People, teams, collaborators, and what each can use.',
 		tabs,
 	}
@@ -457,12 +447,14 @@ function workspaceResourceGroups(
 				jobsRailItem(orgSlug),
 				{
 					href: orgSectionHref(orgSlug, 'webhooks'),
+					id: 'webhooks',
 					label: 'Webhooks',
 					icon: 'cloud',
 					description: 'Every inbound webhook your packages declare.',
 				},
 				{
 					href: orgSectionHref(orgSlug, 'follows'),
+					id: 'follows',
 					label: 'Follows',
 					icon: 'eye',
 					description:
@@ -476,6 +468,7 @@ function workspaceResourceGroups(
 				credentialsRailItem(orgSlug),
 				{
 					href: orgSectionHref(orgSlug, 'secret-providers'),
+					id: 'secret-providers',
 					label: 'Secret providers',
 					icon: 'lock',
 					description: 'Bind a package to a provider such as 1password.',
@@ -489,6 +482,7 @@ function workspaceResourceGroups(
 				...(personal ? [memoriesRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'email'),
+					id: 'email',
 					label: 'Email',
 					icon: 'mail',
 					description:
@@ -570,6 +564,7 @@ export function workspaceRailGroups(input: {
 					membersRailItem(orgSlug, role),
 					{
 						href: orgSettingsPath(orgSlug),
+						id: 'settings',
 						label: 'Settings',
 						icon: 'edit',
 						description: 'The organization name, photo, and deletion.',
@@ -586,52 +581,28 @@ export function workspaceRailGroups(input: {
 	]
 }
 
-/**
- * Tabs for the page at `currentPath`: those of the rail item it belongs to
- * (named by that item), or null when that item has a single page.
- */
-export function railTabsForPath(
+/** Tabs belong to a selected item identity, independent of URL shape. */
+export function railTabsForSelection(
 	groups: ReadonlyArray<AccountRailGroup>,
-	currentPath: string,
-): {
-	label: string
-	tabs: Array<AccountRailTab & { active: boolean }>
-} | null {
+	itemId: string | undefined,
+) {
 	const item = groups
 		.flatMap((group) => group.items)
-		.find((entry) => entry.tabs && isAccountNavItemActive(entry, currentPath))
+		.find((entry) => entry.tabs && isAccountNavItemSelected(entry, itemId))
 	if (!item?.tabs) return null
 	return {
 		label: item.label,
-		tabs: item.tabs.map((tab) => ({
+		tabs: item.tabs.map(({ id, ...tab }) => ({
 			...tab,
-			active: matchesRailPath(tab.href, currentPath),
+			active: id === itemId,
 		})),
 	}
 }
-
-function matchesRailPath(itemPath: string, currentPath: string) {
-	if (itemPath === routes.account.href()) return currentPath === itemPath
-	const itemAlias = accountAliasPath(itemPath)
-	const currentAlias = accountAliasPath(currentPath)
-	return currentAlias === itemAlias || currentAlias.startsWith(`${itemAlias}/`)
-}
-
-export function isAccountNavItemActive(
-	item: Pick<AccountRailItem, 'href' | 'alsoActiveFor' | 'exact'>,
-	currentPath: string,
+export function isAccountNavItemSelected(
+	item: Pick<AccountRailItem, 'id' | 'tabs'>,
+	itemId: string | undefined,
 ) {
-	const normalized =
-		currentPath.length > 1 ? currentPath.replace(/\/+$/, '') : currentPath
-	if (item.exact) {
-		const href =
-			item.href.length > 1 ? item.href.replace(/\/+$/, '') : item.href
-		if (normalized === href) return true
-		return (item.alsoActiveFor ?? []).some((path) =>
-			matchesRailPath(path, currentPath),
-		)
-	}
-	return [item.href, ...(item.alsoActiveFor ?? [])].some((path) =>
-		matchesRailPath(path, currentPath),
+	return (
+		item.id === itemId || Boolean(item.tabs?.some((tab) => tab.id === itemId))
 	)
 }

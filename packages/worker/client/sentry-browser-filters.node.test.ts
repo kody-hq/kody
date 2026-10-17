@@ -321,51 +321,6 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			undefined,
 			new TypeError(highlightChunkMessage),
 		],
-		// resolveFrame fetch network TypeErrors (KODY-CLOUDFLARE-5Y); Safari often
-		// keeps only the immediate fetchFrameResolve caller.
-		[
-			'TypeError',
-			'Load failed',
-			[fr('app.resolveFrame', '../client/entry.tsx')],
-		],
-		[
-			'TypeError',
-			'Failed to fetch',
-			undefined,
-			withStack(
-				new TypeError('Failed to fetch'),
-				'resolveFrame@https://kody.codes/client-entry.js:3:61347',
-			),
-		],
-		[
-			'TypeError',
-			'Load failed',
-			undefined,
-			withStack(
-				new TypeError('Load failed'),
-				'fetchFrameResolve@https://kody.codes/client-entry.js:3:61000',
-			),
-		],
-		[
-			'TypeError',
-			'Load failed',
-			[fr('fetchFrameResolve', '../client/frame-resolve.ts')],
-		],
-		// Chromium "Failed to fetch (host)" via createFrameResolveInit (KODY-6A).
-		[
-			'TypeError',
-			'Failed to fetch (kody.codes)',
-			[frameResolveFrame, fr('boot', '../client/entry.tsx')],
-		],
-		[
-			'TypeError',
-			'Failed to fetch (kody.codes)',
-			undefined,
-			withStack(
-				new TypeError('Failed to fetch (kody.codes)'),
-				'TypeError: Failed to fetch\n    at Yn (https://kody.codes/client-entry.js:3:2497)\n    at Object.resolveFrame (https://kody.codes/client-entry.js:3:76468)',
-			),
-		],
 		// Turnstile client load and challenge failures (KODY-6D / KODY-6E).
 		[
 			'Error',
@@ -385,13 +340,13 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			undefined,
 			Object.assign(new Error(turnstileCode), { name: 'TurnstileError' }),
 		],
-		// Local Vite HMR and loopback frame-resolve 500s (KODY-6Z).
+		// Local Vite HMR and loopback application failures.
 		[
 			'Error',
-			'Frame resolve failed (500) for http://localhost:3742/',
+			'Local render failed',
 			[
 				{
-					function: 'Object.resolveFrame',
+					function: 'renderDocument',
 					filename: '/packages/worker/client/entry.tsx',
 					absPath: 'http://localhost:3742/packages/worker/client/entry.tsx',
 				},
@@ -402,11 +357,10 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			readingUrl,
 			[
 				{
-					function: 'Object.callComponentRenderForHmr',
-					filename:
-						'/node_modules/.vite/deps/remix_component-hmr_runtime_browser.js',
+					function: 'update',
+					filename: '/node_modules/.vite/deps/react-dom_client.js',
 					absPath:
-						'http://localhost:3742/node_modules/.vite/deps/remix_component-hmr_runtime_browser.js',
+						'http://localhost:3742/node_modules/.vite/deps/react-dom_client.js',
 				},
 			],
 		],
@@ -415,30 +369,9 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			'Client hydration error',
 			undefined,
 			withStack(
-				new Error('Frame resolve failed (500) for http://127.0.0.1:3742/'),
-				'Error: Frame resolve failed (500) for http://127.0.0.1:3742/\n    at Object.resolveFrame (http://127.0.0.1:3742/packages/worker/client/entry.tsx:80:11)',
+				new Error('Local render failed'),
+				'Error: Local render failed\n    at renderDocument (http://127.0.0.1:3742/packages/worker/client/entry.tsx:80:11)',
 			),
-		],
-		// Remix reconcile insertBefore NotFoundError (KODY-7N / KODY-8A).
-		// Drop without remix/reconcile frames — production beforeSend only
-		// sees minified /assets/entry-….js stacks (sourcemaps rewrite later).
-		['NotFoundError', insertBeforeMessage, [reconcileFrame]],
-		['NotFoundError', insertBeforeMessage, [minifiedEntryFrame]],
-		['NotFoundError', insertBeforeMessage, [fr('boot', '../client/entry.tsx')]],
-		[
-			'NotFoundError',
-			`NotFoundError: ${insertBeforeMessage}`,
-			undefined,
-			new DOMException(insertBeforeMessage, 'NotFoundError'),
-		],
-		// Remix Framework invariant after DOM desync (KODY-8D).
-		['Error', frameworkInvariantMessage, [minifiedEntryFrame]],
-		['Error', `Error: ${frameworkInvariantMessage}`],
-		[
-			'Error',
-			'something else',
-			undefined,
-			new Error(frameworkInvariantMessage),
 		],
 		// CrabApple navigator.userAgent hard-spoof noise (KODY-80).
 		['Error', crabAppleMessage, spoofFrames],
@@ -578,6 +511,68 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			'TypeError',
 			ogTypeMessage,
 			[fr('applyDocumentHead', 'https://heykody.app/assets/document-head.js')],
+		],
+		// Former runtime-specific suppression must not hide current app failures.
+		[
+			'TypeError',
+			'Load failed',
+			[fr('app.resolveFrame', '../client/entry.tsx')],
+		],
+		[
+			'TypeError',
+			'Failed to fetch',
+			undefined,
+			withStack(
+				new TypeError('Failed to fetch'),
+				'resolveFrame@https://kody.codes/client-entry.js:3:61347',
+			),
+		],
+		[
+			'TypeError',
+			'Load failed',
+			undefined,
+			withStack(
+				new TypeError('Load failed'),
+				'fetchFrameResolve@https://kody.codes/client-entry.js:3:61000',
+			),
+		],
+		[
+			'TypeError',
+			'Load failed',
+			[fr('fetchFrameResolve', '../client/frame-resolve.ts')],
+		],
+		// Chromium "Failed to fetch (host)" via createFrameResolveInit (KODY-6A).
+		[
+			'TypeError',
+			'Failed to fetch (kody.codes)',
+			[frameResolveFrame, fr('boot', '../client/entry.tsx')],
+		],
+		[
+			'TypeError',
+			'Failed to fetch (kody.codes)',
+			undefined,
+			withStack(
+				new TypeError('Failed to fetch (kody.codes)'),
+				'TypeError: Failed to fetch\n    at Yn (https://kody.codes/client-entry.js:3:2497)\n    at Object.resolveFrame (https://kody.codes/client-entry.js:3:76468)',
+			),
+		],
+		['NotFoundError', insertBeforeMessage, [reconcileFrame]],
+		['NotFoundError', insertBeforeMessage, [minifiedEntryFrame]],
+		['NotFoundError', insertBeforeMessage, [fr('boot', '../client/entry.tsx')]],
+		[
+			'NotFoundError',
+			`NotFoundError: ${insertBeforeMessage}`,
+			undefined,
+			new DOMException(insertBeforeMessage, 'NotFoundError'),
+		],
+		// Remix Framework invariant after DOM desync (KODY-8D).
+		['Error', frameworkInvariantMessage, [minifiedEntryFrame]],
+		['Error', `Error: ${frameworkInvariantMessage}`],
+		[
+			'Error',
+			'something else',
+			undefined,
+			new Error(frameworkInvariantMessage),
 		],
 		['NetworkError', 'Failed to fetch'],
 		// Near-miss "Unknown …" wording stays visible (not Start release).

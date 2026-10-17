@@ -1,13 +1,11 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { RequestContext } from 'remix/router'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import { createAccountHandler } from '#app/handlers/account.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
+import { loadAccountPage } from '../../../start/server/account-page.ts'
 import { loadSessionInfo } from '#app/session-info.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 import {
@@ -74,8 +72,28 @@ vi.mock('#app/onboarding-data.ts', () => ({
 	})),
 }))
 
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: vi.fn(),
+const native = vi.hoisted(() => ({
+	env: {} as Env,
+	request: new Request('https://example.com/account'),
+	setResponseHeader: vi.fn(),
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	get env() {
+		return native.env
+	},
+}))
+vi.mock('@tanstack/react-start/server', () => ({
+	getRequest: () => native.request,
+	setResponseHeader: native.setResponseHeader,
+}))
+vi.mock('#app/env.ts', () => ({ getEnv: (env: Env) => env }))
+vi.mock('@tanstack/react-start', async () => ({
+	getGlobalStartContext: () => ({ env: native.env }),
+	createServerFn: (
+		await import('#worker/test-support/start-server-function.ts')
+	).createTestServerFn,
+	createServerOnlyFn: <T>(fn: T) => fn,
 }))
 
 type Rows = Array<Record<string, unknown>>
@@ -164,27 +182,24 @@ function createAccountEnv(
 async function getAccount(env: Env, session: AuthSession) {
 	setAuthSessionSecret(testCookieSecret)
 	const cookie = await createAuthCookie(session, false)
-	return createAccountHandler(env, 'Account settings').handler(
-		new RequestContext(
-			new Request('https://example.com/account', {
-				headers: { Cookie: cookie },
-			}),
-		),
-	)
+	native.env = env
+	native.request = new Request('https://example.com/account', {
+		headers: { Cookie: cookie },
+	})
+	native.setResponseHeader.mockClear()
+	return loadAccountPage({ data: '' })
 }
 
-test('account handler redirects to login with a session-destroy cookie for stale, deleting, or soft-deleted accounts', async () => {
+test('native account loader redirects to login with a session-destroy cookie for stale, deleting, or soft-deleted accounts', async () => {
 	const deletingUserId = 'a'.repeat(64)
 	const softDeletedUserId = 'b'.repeat(64)
 	const cases = [
 		{
-			label: 'stale session',
 			stableUserId: ownerIdFromStored('f').repeat(64),
 			email: 'missing@example.com',
 			users: [],
 		},
 		{
-			label: 'deleting account',
 			stableUserId: deletingUserId,
 			email: 'deleting@example.com',
 			users: [
@@ -212,30 +227,25 @@ test('account handler redirects to login with a session-destroy cookie for stale
 			],
 		},
 	]
-	for (const { label, stableUserId, email, users } of cases) {
+	for (const { stableUserId, email, users } of cases) {
 		const { env } = createAccountEnv({ users })
-		const response = await getAccount(env, {
-			stableUserId,
-			email,
-			rememberMe: false,
+		await expect(
+			getAccount(env, { stableUserId, email, rememberMe: false }),
+		).rejects.toMatchObject({
+			options: {
+				statusCode: 302,
+				href: 'https://example.com/login?redirectTo=%2Faccount',
+			},
 		})
-		const setCookie = response.headers.get('Set-Cookie') ?? ''
-		expect({
-			label,
-			status: response.status,
-			location: response.headers.get('Location'),
-			clearsSession:
-				setCookie.includes('kody_session=') && setCookie.includes('Max-Age=0'),
-		}).toEqual({
-			label,
-			status: 302,
-			location: 'https://example.com/login?redirectTo=%2Faccount',
-			clearsSession: true,
-		})
+		const cookie = native.setResponseHeader.mock.calls.find(
+			([name]) => name === 'Set-Cookie',
+		)?.[1] as string | undefined
+		expect(cookie).toContain('kody_session=')
+		expect(cookie).toContain('Max-Age=0')
 	}
 })
 
-test('authenticated account SSR batches user/role and flag reads into two round trips', async () => {
+test('native account and session reads batch user/role and flag reads into two round trips', async () => {
 	const email = 'account@example.com'
 	const stableUserId = testStableUserIdFromEmail(email)
 	const { env, counts } = createAccountEnv({
@@ -249,33 +259,16 @@ test('authenticated account SSR batches user/role and flag reads into two round 
 		overrides: [{ flag_key: 'execute-invoke', enabled: 1 }],
 	})
 
-	vi.mocked(renderAppPage).mockImplementation(async (input) => {
-		const loaded = await loadSessionInfo(input.request, input.env)
-		return Response.json({
-			session: loaded.session,
-			loaderData: input.loaderData,
-		})
-	})
-
 	const response = await getAccount(env, {
 		stableUserId,
 		email,
 		rememberMe: false,
 	})
-	expect(response.status).toBe(200)
-	const body = (await response.json()) as {
-		session: {
-			username: string
-			roles: Array<string>
-			permissions: Array<string>
-			featureFlags: Record<string, boolean>
-		}
-		loaderData: Record<string, unknown>
-	}
-	expect(body.session.username).toBe('account-user')
-	expect(body.session.roles).toEqual(['user'])
-	expect(body.session.permissions).toEqual(['read:user:own'])
-	expect(body.session.featureFlags).toEqual({
+	const body = await loadSessionInfo(native.request, env)
+	expect(body.session?.username).toBe('account-user')
+	expect(body.session?.roles).toEqual(['user'])
+	expect(body.session?.permissions).toEqual(['read:user:own'])
+	expect(body.session?.featureFlags).toEqual({
 		'demo-indicator': true,
 		'jev-search-rerank': false,
 		'execute-invoke': true,
@@ -286,7 +279,7 @@ test('authenticated account SSR batches user/role and flag reads into two round 
 		'repo-push-queue': false,
 		'credential-need-enforcement': false,
 	})
-	expect(Object.keys(body.loaderData).sort()).toEqual([
+	expect(Object.keys(response.payloads).sort()).toEqual([
 		'accountConnections',
 		'accountProfile',
 		'onboarding',

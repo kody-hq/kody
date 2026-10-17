@@ -1,5 +1,3 @@
-import { type Action } from 'remix/router'
-import { type routes } from '#universal/routes.ts'
 import { handleWebhookIngressRequest } from '#worker/webhooks/http.ts'
 
 /**
@@ -9,10 +7,7 @@ import { handleWebhookIngressRequest } from '#worker/webhooks/http.ts'
  * `kody-webhook-dispatch` — not `ctx.waitUntil`.
  */
 export function createWebhookIngressHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request }) {
-			return handleWebhookIngressRequest(request, env)
-		},
-	} satisfies Action<typeof routes.webhookIngress>
+	return async ({ request }: { request: Request }) => {
+		return handleWebhookIngressRequest(request, env)
+	}
 }

@@ -57,7 +57,7 @@ test('MCP server logo route is owner-scoped and private', async () => {
 	const handler = createMcpServerLogoHandler({} as Env)
 
 	mockModule.readAuthenticatedAppUser.mockResolvedValueOnce(null)
-	const anonymous = await handler.handler({
+	const anonymous = await handler({
 		request: new Request('https://example.com/account/mcp-servers/logos/s1'),
 		params: { serverId: 's1' },
 	} as never)
@@ -68,7 +68,7 @@ test('MCP server logo route is owner-scoped and private', async () => {
 		request: { org: { id: personalOrgId, slug: 'user-1' } },
 	})
 	mockModule.getMcpServerSettingById.mockResolvedValueOnce(null)
-	const missing = await handler.handler({
+	const missing = await handler({
 		request: new Request('https://example.com/account/mcp-servers/logos/s1'),
 		params: { serverId: 's1' },
 	} as never)
@@ -79,7 +79,7 @@ test('MCP server logo route is owner-scoped and private', async () => {
 		request: { org: { id: personalOrgId, slug: 'user-1' } },
 	})
 	logoOk()
-	const ok = await handler.handler({
+	const ok = await handler({
 		request: new Request('https://example.com/account/mcp-servers/logos/s1'),
 		params: { serverId: 's1' },
 	} as never)
@@ -106,7 +106,7 @@ test('MCP server logo uses the team org from a same-origin Referer', async () =>
 	})
 	logoOk()
 
-	const ok = await handler.handler({
+	const ok = await handler({
 		request: new Request('https://example.com/account/mcp-servers/logos/s1', {
 			headers: { Referer: 'https://example.com/@acme/-/mcp-servers' },
 		}),

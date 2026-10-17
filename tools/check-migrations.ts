@@ -675,7 +675,9 @@ export async function readTrustedMigrationHistory(
 export async function checkMigrationsDirectory(
 	migrationsDir: string = defaultMigrationsDir,
 	ledgerPath: string = defaultMigrationLedgerPath,
-): Promise<MigrationFilenameCheckResult> {
+): Promise<
+	MigrationFilenameCheckResult & { trustedFilenames: ReadonlyArray<string> }
+> {
 	const directoryEntries = await readdir(migrationsDir, {
 		withFileTypes: true,
 	})
@@ -700,6 +702,7 @@ export async function checkMigrationsDirectory(
 	const errors = [...ledgerResult.errors, ...referenceErrors]
 	return {
 		...ledgerResult,
+		trustedFilenames: trustedHistory?.files.map((file) => file.filename) ?? [],
 		ok: errors.length === 0,
 		errors,
 	}
@@ -731,7 +734,7 @@ export type OpenPullRequestMigrationAdvisory = {
 	lines: Array<string>
 	warning: string | null
 	/**
-	 * Prefixes this checkout uses that other open PRs also claim. Non-empty
+	 * New migration prefixes this checkout uses that other open PRs also claim. Non-empty
 	 * means the migration check must fail so the author renumbers before
 	 * mid-ship collisions (#3592). Skipped scans never report overlaps.
 	 */
@@ -747,6 +750,8 @@ export type OpenPullRequestMigrationAdvisory = {
 export function formatOpenPullRequestMigrationAdvisory(input: {
 	migrationsDir: string
 	localFilenames: ReadonlyArray<string>
+	/** Exact files already in trusted history cannot be renumbered for another PR. */
+	trustedFilenames?: ReadonlyArray<string>
 	localNextPrefix: string
 	scan: OpenPullRequestMigrationScan
 }): OpenPullRequestMigrationAdvisory {
@@ -756,7 +761,9 @@ export function formatOpenPullRequestMigrationAdvisory(input: {
 		case 'ok':
 			return claimedMigrationPrefixAdvisory({
 				migrationsDir: input.migrationsDir,
-				localFilenames: input.localFilenames,
+				localFilenames: input.localFilenames.filter(
+					(filename) => !input.trustedFilenames?.includes(filename),
+				),
 				localNextPrefix: input.localNextPrefix,
 				scan: input.scan,
 			})
@@ -903,6 +910,7 @@ export async function main(
 	const advisory = formatOpenPullRequestMigrationAdvisory({
 		migrationsDir,
 		localFilenames,
+		trustedFilenames: result.trustedFilenames,
 		localNextPrefix: result.nextPrefix,
 		scan: await scanOpenPullRequestMigrationPrefixes({ migrationsDir }),
 	})

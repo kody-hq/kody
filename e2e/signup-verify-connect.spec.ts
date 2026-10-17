@@ -1,3 +1,4 @@
+import { requestHasDataFields } from './server-function-requests.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 import {
 	clearAuthRateLimitsInE2eDatabase,
@@ -154,10 +155,42 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 			)
 		}
 
-		await page.goto(verifyPath)
+		// Discover the compiled RPC from the browser navigation, never assume a
+		// generated function ID or serialize Start's request format ourselves.
+		const verificationUrl = new URL(verifyPath, origin)
+		const token = verificationUrl.searchParams.get('token')!
+		const redirectTo = verificationUrl.searchParams.get('redirectTo')
+		let checkedHead = false
+		await page.route('**/_serverFn/**', async (route) => {
+			const request = route.request()
+			if (!requestHasDataFields(request, { token, redirectTo }))
+				return route.fallback()
+			const head = await page.request.head(request.url(), {
+				headers: await request.allHeaders(),
+				maxRedirects: 0,
+			})
+			expect(head.status()).toBe(405)
+			expect(head.headers().allow).toBe('GET')
+			expect(await head.body()).toHaveLength(0)
+			const stillUnverified = await page.request.get('/session')
+			const state = (await stillUnverified.json()) as {
+				session?: { emailVerified?: boolean }
+			}
+			expect(state.session?.emailVerified).toBe(false)
+			checkedHead = true
+			await route.continue()
+		})
+		await waitForClientHydration(page)
+		await page.evaluate(
+			(href) => window.history.pushState(null, '', href),
+			verifyPath,
+		)
+
 		await expect(
 			page.getByRole('heading', { name: 'Email verified' }),
 		).toBeVisible()
+		expect(checkedHead).toBe(true)
+		await page.unrouteAll({ behavior: 'wait' })
 		await expect(
 			page.getByRole('link', { name: 'Continue to onboarding' }),
 		).toBeVisible()
@@ -210,8 +243,10 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 		await expect(page.getByTestId('onboarding-agent-picker')).toBeVisible()
 
 		await stepsNav.getByRole('link', { name: '1 Connect your agent' }).click()
-		await expect(page.getByTestId('onboarding-agent-picker')).toBeVisible()
-		await page
+		// Step 3 retains its own picker until Step 1 commits.
+		const firstAgentPanel = page.getByTestId('onboarding-connect-agent')
+		await expect(firstAgentPanel).toBeVisible()
+		await firstAgentPanel
 			.getByTestId('onboarding-agent-picker')
 			.getByRole('link', { name: 'Claude Code', exact: true })
 			.click()

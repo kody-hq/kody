@@ -18,12 +18,15 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
  * `authRequest.resource` to the canonical `/mcp` audience (strip `?profile=`).
  */
 export async function resolveAuthorizeConnectionProfile(input: {
+	authorizeUrl?: URL
 	env: Env
 	request: Request
 	authRequest: AuthRequest
 	userId: string
 }): Promise<string | null> {
-	const fromAuthorizeUrl = readConnectionProfileNameFromUrl(input.request.url)
+	const fromAuthorizeUrl = readConnectionProfileNameFromUrl(
+		input.authorizeUrl?.href ?? input.request.url,
+	)
 	let fromResource: string | null = null
 	if (typeof input.authRequest.resource === 'string') {
 		const stripped = stripConnectionProfileFromResourceUri(

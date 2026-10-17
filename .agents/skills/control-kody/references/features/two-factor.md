@@ -9,15 +9,14 @@ TOTP setup and the `/verify` challenge after password login.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/two-factor.json
+npm run control-kody -- browse --origin <preview> --path /account/two-factor
 ```
 
-## APIs
-
-- `GET|POST /account/two-factor.json`
-- `POST /verify/2fa.json`
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
 ## Gotchas
 
-- SSR can paint before Remix binds click handlers. E2E waits on
-  `html[data-hydrated]`. A screenshot of the form is not proof the submit works.
+- SSR can paint before hydration finishes. Exercise the form after hydration; a
+  screenshot alone does not prove submission works.

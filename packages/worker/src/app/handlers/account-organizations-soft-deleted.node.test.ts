@@ -12,13 +12,12 @@ const email = 'soft-deleted@example.com'
 const stableUserId = testStableUserIdFromEmail(email)
 
 vi.mock('#app/account-organizations-data.ts', () => ({
-	loadAccountOrganizationsData: vi.fn(async () => {
+	loadAccountOrganizationSnapshot: vi.fn(async () => {
 		throw new Error('organizations loader must not run for soft-deleted people')
 	}),
 }))
 
-const { createAccountOrganizationsApiHandler } =
-	await import('./account-organizations.ts')
+const { requireAuthenticatedPageUser } = await import('#app/page-auth.ts')
 
 function createSoftDeletedEnv() {
 	return {
@@ -65,7 +64,7 @@ function createSoftDeletedEnv() {
 	} as Env
 }
 
-test('GET /account/organizations.json returns 401 for a soft-deleted session', async () => {
+test('the native organizations page gate signs out a tombstoned session and redirects to login', async () => {
 	setAuthSessionSecret(testCookieSecret)
 	const cookie = await createAuthCookie(
 		{
@@ -75,17 +74,25 @@ test('GET /account/organizations.json returns 401 for a soft-deleted session', a
 		} satisfies AuthSession,
 		false,
 	)
-	const response = await createAccountOrganizationsApiHandler(
-		createSoftDeletedEnv(),
-	).handler({
-		request: new Request('https://example.com/account/organizations.json', {
+	const response = await requireAuthenticatedPageUser(
+		new Request('https://example.com/account/organizations', {
 			headers: { Cookie: cookie },
 		}),
-	} as never)
-
-	expect(response.status).toBe(401)
-	expect(await response.json()).toEqual({
-		ok: false,
-		error: 'Unauthorized.',
-	})
+		createSoftDeletedEnv(),
+		{ redirectTo: '/account/organizations' },
+	)
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected login redirect')
+	expect(response.status).toBe(302)
+	expect(
+		new URL(response.headers.get('Location')!, 'https://example.com').pathname,
+	).toBe('/login')
+	expect(
+		new URL(
+			response.headers.get('Location')!,
+			'https://example.com',
+		).searchParams.get('redirectTo'),
+	).toBe('/account/organizations')
+	expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0')
 })

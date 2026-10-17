@@ -31,10 +31,8 @@ vi.mock('#worker/orgs/seat-sync-after-membership.ts', () => ({
 		mocks.syncSeatsAfterMembershipChange(...args),
 }))
 
-const {
-	createAccountInviteAcceptPostHandler,
-	createAccountInviteDeclinePostHandler,
-} = await import('./account-invites.ts')
+const { acceptWebsiteInvite, declineWebsiteInvite } =
+	await import('./account-invites.ts')
 const { listPendingInvitesForViewer } =
 	await import('#app/account-organizations-data.ts')
 
@@ -186,19 +184,19 @@ async function post(
 	inviteId: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
 	const create =
-		action === 'accept'
-			? createAccountInviteAcceptPostHandler
-			: createAccountInviteDeclinePostHandler
-	const response = await create(createEnv()).handler({
+		action === 'accept' ? acceptWebsiteInvite : declineWebsiteInvite
+	const response = await create({
+		env: createEnv(),
+		user: await mocks.readAuthenticatedAppUser(),
 		request: new Request(
 			`https://kody.test/account/organizations/invites/${inviteId}/${action}.json`,
 			{ method: 'POST' },
 		),
-		params: { inviteId },
-	} as never)
+		inviteId,
+	})
 	return {
 		status: response.status,
-		body: (await response.json()) as Record<string, unknown>,
+		body: response.data,
 	}
 }
 
@@ -343,6 +341,4 @@ test('only the recipient can answer, and an email invite needs a verified email'
 	expect(await post('accept', 'missing-invite')).toMatchObject({
 		status: 404,
 	})
-	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	expect((await post('accept', emailInvite)).status).toBe(401)
 })

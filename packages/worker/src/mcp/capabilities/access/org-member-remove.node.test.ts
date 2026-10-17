@@ -1,15 +1,15 @@
-import { DatabaseSync } from 'node:sqlite'
+import { createMcpCallerContext } from '#mcp/context.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { createMcpCallerContext } from '#mcp/context.ts'
-import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { orgMemberRemoveCapability } from './org-members.ts'
-import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 
 test('orgMemberRemove revokes org credentials and disconnects own-login integrations', async () => {
 	const sqlite = new DatabaseSync(':memory:')

@@ -66,6 +66,7 @@ import { handleSystemInboundEmail } from './system-inbound-email.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 type InboundMailboxAccountRow = {
+	actor_person_id: string | null
 	email: string | null
 	plan: string | null
 	stripe_plan: string | null
@@ -88,7 +89,7 @@ async function loadInboundMailboxAccount(db: D1Database, ownerId: OwnerId) {
 		// personal_org_id or legacy equal-id stable_user_id.
 		const row = await db
 			.prepare(
-				`SELECT u.email AS email, o.plan AS plan, o.stripe_plan AS stripe_plan,
+				`SELECT u.stable_user_id AS actor_person_id, u.email AS email, o.plan AS plan, o.stripe_plan AS stripe_plan,
 				        o.entitlement_ladder AS entitlement_ladder,
 				        o.stripe_credits_eligible AS stripe_credits_eligible,
 				        o.admin_credits_eligible AS admin_credits_eligible,
@@ -107,7 +108,7 @@ async function loadInboundMailboxAccount(db: D1Database, ownerId: OwnerId) {
 	}
 	const row = await db
 		.prepare(
-			`SELECT NULL AS email, plan, stripe_plan, entitlement_ladder,
+			`SELECT NULL AS actor_person_id, NULL AS email, plan, stripe_plan, entitlement_ladder,
 			        stripe_credits_eligible, admin_credits_eligible,
 			        NULL AS email_verified_at, NULL AS suspended_at
 			 FROM orgs
@@ -338,6 +339,7 @@ export async function handleInboundEmail(
 			const provisioned = await ensureDefaultEmailInbox({
 				db: env.APP_DB,
 				userId,
+				actorPersonId: accountRow?.actor_person_id ?? userId,
 				username: identity.handle,
 				domain: platformDomain,
 			})

@@ -26,12 +26,9 @@ import {
 import { isAccountEmailVerified } from '#worker/identity/email-verification-state.ts'
 import { getEnv } from '#app/env.ts'
 import {
-	type AuthProvidersLoaderData,
 	type OAuthAuthorizeConsentOrg,
 	type OAuthAuthorizeLoaderData,
 } from '#universal/loader-data.ts'
-import { publicAuthProvidersLoaderData } from '#app/public-auth-providers.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import {
 	personalOrgId,
 	personIdFromStored,
@@ -138,6 +135,7 @@ function isAuthorizeBindingError(error: unknown): error is { message: string } {
 }
 
 async function resolveAuthorizeOrgAndProfile(input: {
+	authorizeUrl?: URL
 	env: Env
 	request: Request
 	authRequest: AuthRequest
@@ -150,6 +148,7 @@ async function resolveAuthorizeOrgAndProfile(input: {
 	const urlOrg = await resolveAuthorizeOrg({
 		env: input.env,
 		request: input.request,
+		authorizeUrl: input.authorizeUrl,
 		authRequest: input.authRequest,
 		userId: input.userId,
 	})
@@ -162,6 +161,7 @@ async function resolveAuthorizeOrgAndProfile(input: {
 	const connectionProfileName = await resolveAuthorizeConnectionProfile({
 		env: input.env,
 		request: input.request,
+		authorizeUrl: input.authorizeUrl,
 		authRequest: input.authRequest,
 		userId: input.userId,
 	})
@@ -206,33 +206,13 @@ type OAuthClientResetVerification = {
 	reason: 'invalid-client-id-mismatch'
 }
 
-function renderSpaShell(
-	request: Request,
-	env: Env,
-	options: {
-		status?: number
-		loaderData?: {
-			oauthAuthorize: OAuthAuthorizeLoaderData
-			authProviders?: AuthProvidersLoaderData
-		}
-		setCookie?: string | null
-	} = {},
-) {
-	const { status = 200, loaderData, setCookie } = options
-	return renderAppPage({
-		request,
-		env,
-		status,
-		loaderData,
-		extraSetCookies: setCookie ? [setCookie] : undefined,
-	})
-}
-
 const dummyPasswordHash =
 	'pbkdf2_sha256$100000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000'
 const oauthClientResetVerificationCookieName = 'kody_oauth_client_reset'
 const oauthClientResetVerificationMaxAgeSeconds = 60 * 5
-const oauthClientResetVerificationCookiePath = '/oauth'
+// The website reset uses Start RPCs outside /oauth. Only this signed, short-lived
+// verification cookie needs to span both transports.
+const oauthClientResetVerificationCookiePath = '/'
 
 let oauthClientResetVerificationCookie: ReturnType<typeof createCookie> | null =
 	null
@@ -307,12 +287,19 @@ async function createOAuthClientResetVerificationCookie(
 	verification: OAuthClientResetVerification,
 ) {
 	const appEnv = getEnv(env)
-	return getOAuthClientResetVerificationCookie(appEnv.COOKIE_SECRET).serialize(
-		JSON.stringify(verification),
-		{
+	const cookie = getOAuthClientResetVerificationCookie(appEnv.COOKIE_SECRET)
+	return [
+		await cookie.serialize(JSON.stringify(verification), {
 			secure: isSecureRequest(request),
-		},
-	)
+		}),
+		// Retire the pre-Start path so it cannot shadow the new cookie on /oauth.
+		await cookie.serialize('', {
+			path: '/oauth',
+			secure: isSecureRequest(request),
+			maxAge: 0,
+			expires: new Date(0),
+		}),
+	]
 }
 
 async function destroyOAuthClientResetVerificationCookie(
@@ -320,13 +307,16 @@ async function destroyOAuthClientResetVerificationCookie(
 	env: Env,
 ) {
 	const appEnv = getEnv(env)
-	return getOAuthClientResetVerificationCookie(appEnv.COOKIE_SECRET).serialize(
-		'',
-		{
-			secure: isSecureRequest(request),
-			maxAge: 0,
-			expires: new Date(0),
-		},
+	const cookie = getOAuthClientResetVerificationCookie(appEnv.COOKIE_SECRET)
+	return Promise.all(
+		['/', '/oauth'].map((path) =>
+			cookie.serialize('', {
+				path,
+				secure: isSecureRequest(request),
+				maxAge: 0,
+				expires: new Date(0),
+			}),
+		),
 	)
 }
 
@@ -392,9 +382,16 @@ async function resolveAuthRequest(
 	helpers: OAuthHelpers,
 	request: Request,
 	env: Env,
+	authorizeUrl?: URL,
 ) {
 	try {
-		const authRequest = await helpers.parseAuthRequest(request)
+		// The provider parser consumes an HTTP authorize request. Keep this adapter
+		// local: sessions, cookies, OIDC and organization checks retain the real request.
+		const authRequest = await helpers.parseAuthRequest(
+			authorizeUrl && authorizeUrl.href !== request.url
+				? new Request(authorizeUrl, { headers: request.headers })
+				: request,
+		)
 		if (!authRequest.clientId || !authRequest.redirectUri) {
 			return {
 				error:
@@ -428,8 +425,11 @@ async function resolveAuthRequest(
 	}
 }
 
-function readClientIdFromAuthorizeRequest(request: Request) {
-	const clientId = new URL(request.url).searchParams.get('client_id')?.trim()
+function readClientIdFromAuthorizeRequest(
+	request: Request,
+	authorizeUrl = new URL(request.url),
+) {
+	const clientId = authorizeUrl.searchParams.get('client_id')?.trim()
 	return clientId ? clientId : null
 }
 
@@ -478,8 +478,8 @@ function readRegisteredRedirectUris(client: ClientInfo) {
 async function requestHasRedirectUriMismatch(
 	helpers: OAuthHelpers,
 	request: Request,
+	url = new URL(request.url),
 ) {
-	const url = new URL(request.url)
 	const clientId = url.searchParams.get('client_id')?.trim()
 	const redirectUri = url.searchParams.get('redirect_uri')?.trim()
 	if (!clientId || !redirectUri) return false
@@ -513,28 +513,30 @@ async function resolveAuthorizeInfoResetState(
 	env: Env,
 	helpers: OAuthHelpers,
 	errorMessage: string,
+	authorizeUrl?: URL,
 ) {
 	const shouldClearVerificationCookie =
 		requestHasOAuthClientResetVerificationCookie(request)
 	const redirectUriMismatch = await requestHasRedirectUriMismatch(
 		helpers,
 		request,
+		authorizeUrl,
 	)
 	if (redirectUriMismatch) {
 		return {
 			allowClientReset: true,
-			setCookie: shouldClearVerificationCookie
+			setCookies: shouldClearVerificationCookie
 				? await destroyOAuthClientResetVerificationCookie(request, env)
-				: null,
+				: [],
 		}
 	}
 
 	if (errorMessage === invalidClientIdMismatchMessage) {
-		const clientId = readClientIdFromAuthorizeRequest(request)
+		const clientId = readClientIdFromAuthorizeRequest(request, authorizeUrl)
 		if (clientId) {
 			return {
 				allowClientReset: true,
-				setCookie: await createOAuthClientResetVerificationCookie(
+				setCookies: await createOAuthClientResetVerificationCookie(
 					request,
 					env,
 					{
@@ -548,19 +550,56 @@ async function resolveAuthorizeInfoResetState(
 
 	return {
 		allowClientReset: false,
-		setCookie: shouldClearVerificationCookie
+		setCookies: shouldClearVerificationCookie
 			? await destroyOAuthClientResetVerificationCookie(request, env)
-			: null,
+			: [],
 	}
+}
+
+export type OAuthDecisionData = {
+	ok: boolean
+	error?: string
+	code?: string
+	redirectTo?: string
+	message?: string
+	requiresOrgChoice?: boolean
+	requiresTwoFactor?: boolean
+}
+type OAuthDecisionResult = {
+	data: OAuthDecisionData
+	status: number
+	headers: Headers
+}
+function decisionResult(
+	data: OAuthDecisionData,
+	options: { status?: number; headers?: HeadersInit } = {},
+): OAuthDecisionResult {
+	return {
+		data,
+		status: options.status ?? 200,
+		headers: new Headers(options.headers),
+	}
+}
+function decisionError(
+	message: string,
+	status = 400,
+	code = 'invalid_request',
+	headers?: HeadersInit,
+): OAuthDecisionResult {
+	return decisionResult(
+		{ ok: false, error: message, code },
+		{ status, headers },
+	)
 }
 
 async function handleResetClientRequest(
 	request: Request,
 	env: Env,
 	helpers: OAuthHelpers,
-	requestIp?: string,
+	requestIp: string | undefined,
+	authorizeUrl: URL,
 ) {
-	const clientId = readClientIdFromAuthorizeRequest(request)
+	const clientId = readClientIdFromAuthorizeRequest(request, authorizeUrl)
 	const hasResetVerificationCookie =
 		requestHasOAuthClientResetVerificationCookie(request)
 	const verifiedClientReset = await readOAuthClientResetVerification(
@@ -569,31 +608,30 @@ async function handleResetClientRequest(
 	)
 	const clearResetVerificationCookie = hasResetVerificationCookie
 		? await destroyOAuthClientResetVerificationCookie(request, env)
-		: null
+		: []
 	const redirectUriMismatch = await requestHasRedirectUriMismatch(
 		helpers,
 		request,
+		authorizeUrl,
 	)
 	const canResetStoredClient =
 		redirectUriMismatch ||
 		(clientId !== null && verifiedClientReset?.clientId === clientId)
 	if (!canResetStoredClient) {
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			'Stored client cleanup is only available for stale or mismatched client registrations.',
 			400,
 			'invalid_request',
-			createSetCookieHeaders([clearResetVerificationCookie]),
+			createSetCookieHeaders(clearResetVerificationCookie),
 		)
 	}
 
 	if (!clientId) {
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			'Missing client ID for stored client cleanup.',
 			400,
 			'invalid_request',
-			createSetCookieHeaders([clearResetVerificationCookie]),
+			createSetCookieHeaders(clearResetVerificationCookie),
 		)
 	}
 
@@ -611,12 +649,11 @@ async function handleResetClientRequest(
 			clientId,
 			reason: 'missing_session',
 		})
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			'Sign in before resetting this connection.',
 			401,
 			'unauthorized',
-			createSetCookieHeaders([clearResetVerificationCookie]),
+			createSetCookieHeaders(clearResetVerificationCookie),
 		)
 	}
 
@@ -638,12 +675,11 @@ async function handleResetClientRequest(
 				clientId,
 				reason: 'user_not_found',
 			})
-			return respondAuthorizeError(
-				request,
+			return decisionError(
 				'Signed-in user not found.',
 				401,
 				'unauthorized',
-				createSetCookieHeaders([clearResetVerificationCookie]),
+				createSetCookieHeaders(clearResetVerificationCookie),
 			)
 		}
 		const userId = personIdFromStored(userRecord.stable_user_id)
@@ -679,7 +715,7 @@ async function handleResetClientRequest(
 			clientId,
 			reason: ownsClient ? 'deleted_owned_client' : 'revoked_grants_only',
 		})
-		return jsonResponse(
+		return decisionResult(
 			{
 				ok: true,
 				message: ownsClient
@@ -688,7 +724,7 @@ async function handleResetClientRequest(
 			},
 			{
 				headers: createSetCookieHeaders([
-					clearResetVerificationCookie,
+					...clearResetVerificationCookie,
 					setCookie,
 				]),
 			},
@@ -704,12 +740,11 @@ async function handleResetClientRequest(
 			clientId,
 			reason: error instanceof Error ? error.message : 'unknown_error',
 		})
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			'Unable to reset this connection right now.',
 			500,
 			'server_error',
-			createSetCookieHeaders([clearResetVerificationCookie]),
+			createSetCookieHeaders(clearResetVerificationCookie),
 		)
 	}
 }
@@ -858,16 +893,17 @@ async function resolveAuthorizeSession(request: Request, env: Env) {
 
 export type OAuthAuthorizeDataResult = {
 	data: OAuthAuthorizeLoaderData
-	setCookie: string | null
+	setCookies: Array<string | null>
 }
 
 export async function loadOAuthAuthorizeData(
 	request: Request,
 	env: Env,
+	authorizeUrl = new URL(request.url),
 ): Promise<OAuthAuthorizeDataResult> {
 	if (
 		isOAuthAuthorizeClobberedResubmit({
-			searchParams: new URL(request.url).searchParams,
+			searchParams: authorizeUrl.searchParams,
 		})
 	) {
 		return {
@@ -876,10 +912,13 @@ export async function loadOAuthAuthorizeData(
 				error: oauthAuthorizeClobberedResubmitMessage,
 				allowClientReset: false,
 			},
-			setCookie: null,
+			setCookies: [],
 		}
 	}
-	const oidcParamsOrError = parseOidcAuthorizeParams(request)
+	const oidcParamsOrError = parseOidcAuthorizeParams(
+		request,
+		authorizeUrl.searchParams,
+	)
 	if (isOidcAuthorizeParamsParseError(oidcParamsOrError)) {
 		return {
 			data: {
@@ -887,19 +926,25 @@ export async function loadOAuthAuthorizeData(
 				error: oidcParamsOrError.error,
 				allowClientReset: false,
 			},
-			setCookie: null,
+			setCookies: [],
 		}
 	}
 	const oidcParams = oidcParamsOrError
 	const helpers = getOAuthHelpers(env)
-	const resolution = await resolveAuthRequest(helpers, request, env)
+	const resolution = await resolveAuthRequest(
+		helpers,
+		request,
+		env,
+		authorizeUrl,
+	)
 	if ('error' in resolution) {
-		const { allowClientReset, setCookie } =
+		const { allowClientReset, setCookies } =
 			await resolveAuthorizeInfoResetState(
 				request,
 				env,
 				helpers,
 				resolution.error ?? 'Unable to parse OAuth request.',
+				authorizeUrl,
 			)
 		return {
 			data: {
@@ -907,7 +952,7 @@ export async function loadOAuthAuthorizeData(
 				error: resolution.error ?? 'Unable to parse OAuth request.',
 				allowClientReset,
 			},
-			setCookie,
+			setCookies,
 		}
 	}
 
@@ -928,7 +973,7 @@ export async function loadOAuthAuthorizeData(
 				error: oidcGate.error,
 				allowClientReset: false,
 			},
-			setCookie: null,
+			setCookies: [],
 		}
 	}
 
@@ -936,7 +981,7 @@ export async function loadOAuthAuthorizeData(
 	const clearResetVerificationCookie =
 		requestHasOAuthClientResetVerificationCookie(request)
 			? await destroyOAuthClientResetVerificationCookie(request, env)
-			: null
+			: []
 	const resolvedScopes = resolveScopes(authRequest.scope)
 	if (!Array.isArray(resolvedScopes)) {
 		return {
@@ -945,7 +990,7 @@ export async function loadOAuthAuthorizeData(
 				error: resolvedScopes.error,
 				allowClientReset: false,
 			},
-			setCookie: clearResetVerificationCookie,
+			setCookies: clearResetVerificationCookie,
 		}
 	}
 	const authorizeSession = await resolveAuthorizeSession(request, env)
@@ -970,7 +1015,7 @@ export async function loadOAuthAuthorizeData(
 	}
 
 	let orgs: Array<OAuthAuthorizeConsentOrg> = []
-	let selectedOrgSlug: string | null = readOrgSlugFromUrl(request.url)
+	let selectedOrgSlug: string | null = readOrgSlugFromUrl(authorizeUrl.href)
 	if (!requireCredentials && authorizeSession.stableUserId) {
 		// Match approve: resolve `?org=` from the authorize URL and resource
 		// before auto-selecting. Fail closed when the client named an
@@ -979,6 +1024,7 @@ export async function loadOAuthAuthorizeData(
 		let resolvedRequested: AuthorizeOrg | null = null
 		try {
 			resolvedRequested = await resolveAuthorizeOrg({
+				authorizeUrl,
 				env,
 				request,
 				authRequest,
@@ -992,7 +1038,7 @@ export async function loadOAuthAuthorizeData(
 						error: error.message,
 						allowClientReset: false,
 					},
-					setCookie: clearResetVerificationCookie ?? sessionSetCookie,
+					setCookies: [...clearResetVerificationCookie, sessionSetCookie],
 				}
 			}
 			throw error
@@ -1022,7 +1068,7 @@ export async function loadOAuthAuthorizeData(
 			orgs,
 			selectedOrgSlug,
 		},
-		setCookie: clearResetVerificationCookie ?? sessionSetCookie,
+		setCookies: [...clearResetVerificationCookie, sessionSetCookie],
 	}
 }
 
@@ -1030,13 +1076,13 @@ export async function handleAuthorizeInfo(
 	request: Request,
 	env: Env,
 ): Promise<Response> {
-	const { data, setCookie } = await loadOAuthAuthorizeData(request, env)
+	const { data, setCookies } = await loadOAuthAuthorizeData(request, env)
 	if (!data.ok) {
 		return jsonResponse(
 			{ ok: false, error: data.error, allowClientReset: data.allowClientReset },
 			{
 				status: 400,
-				headers: createSetCookieHeaders([setCookie]),
+				headers: createSetCookieHeaders(setCookies),
 			},
 		)
 	}
@@ -1052,7 +1098,7 @@ export async function handleAuthorizeInfo(
 			selectedOrgSlug: data.selectedOrgSlug,
 		},
 		{
-			headers: createSetCookieHeaders([setCookie]),
+			headers: createSetCookieHeaders(setCookies),
 		},
 	)
 }
@@ -1088,7 +1134,7 @@ export function handleAuthorizeRouteException(
 	return standaloneAuthorizeErrorHtmlResponse(message, 500)
 }
 
-async function tryHandleSilentOidcAuthorize(
+export async function tryHandleSilentOidcAuthorize(
 	request: Request,
 	env: Env,
 ): Promise<Response | null> {
@@ -1385,29 +1431,58 @@ export async function handleAuthorizeRequest(
 	request: Request,
 	env: Env,
 ): Promise<Response> {
-	if (request.method === 'GET') {
-		const silentOrError = await tryHandleSilentOidcAuthorize(request, env)
-		if (silentOrError) return silentOrError
-		const { data, setCookie } = await loadOAuthAuthorizeData(request, env)
-		return renderSpaShell(request, env, {
-			loaderData: {
-				oauthAuthorize: data,
-				authProviders: publicAuthProvidersLoaderData(env),
-			},
-			setCookie,
-		})
-	}
-
-	if (request.method !== 'POST') {
+	if (request.method !== 'POST')
 		return new Response('Method not allowed', { status: 405 })
+	const formData = await request.formData().catch(() => null)
+	const result = await decideOAuthAuthorization({
+		request,
+		env,
+		authorizeUrl: new URL(request.url),
+		formData,
+	})
+	if (wantsJson(request) || result.data.message)
+		return jsonResponse(result.data, {
+			status: result.status,
+			headers: result.headers,
+		})
+	if (result.data.redirectTo) {
+		result.headers.set('Location', result.data.redirectTo)
+		return new Response(null, { status: 302, headers: result.headers })
 	}
+	return respondAuthorizeError(
+		request,
+		result.data.error ?? 'Unable to complete authorization.',
+		result.status,
+		result.data.code,
+		result.headers,
+	)
+}
 
+export async function decideOAuthAuthorization({
+	request,
+	env,
+	authorizeUrl,
+	formData,
+}: {
+	request: Request
+	env: Env
+	authorizeUrl: URL
+	formData: FormData | null
+}): Promise<OAuthDecisionResult> {
+	if (
+		authorizeUrl.origin !== new URL(request.url).origin ||
+		authorizeUrl.pathname !== '/oauth/authorize' ||
+		authorizeUrl.hash
+	)
+		throw new Error('Invalid authorization URL')
 	const requestIp = getRequestIp(request) ?? undefined
 	const helpers = getOAuthHelpers(env)
-	const oidcParamsOrError = parseOidcAuthorizeParams(request)
+	const oidcParamsOrError = parseOidcAuthorizeParams(
+		request,
+		authorizeUrl.searchParams,
+	)
 	if (isOidcAuthorizeParamsParseError(oidcParamsOrError)) {
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			oidcParamsOrError.error,
 			400,
 			oidcParamsOrError.errorCode,
@@ -1425,40 +1500,42 @@ export async function handleAuthorizeRequest(
 		env,
 	})
 	if (!oidcGate.ok) {
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			oidcGate.error,
 			oidcGate.status ?? 400,
 			oidcGate.errorCode,
 		)
 	}
 
-	const formData = await request.formData().catch(() => null)
-	if (!formData) {
-		return respondAuthorizeError(request, 'Invalid form data')
-	}
+	if (!formData) return decisionError('Invalid form data')
+
 	if (
 		isOAuthAuthorizeClobberedResubmit({
-			searchParams: new URL(request.url).searchParams,
+			searchParams: authorizeUrl.searchParams,
 			formData,
 		})
 	) {
-		return respondAuthorizeError(
-			request,
-			oauthAuthorizeClobberedResubmitMessage,
-		)
+		return decisionError(oauthAuthorizeClobberedResubmitMessage)
 	}
 	const decision = String(formData.get('decision') ?? 'approve')
 	if (decision === 'reset-client') {
-		return handleResetClientRequest(request, env, helpers, requestIp)
+		return handleResetClientRequest(
+			request,
+			env,
+			helpers,
+			requestIp,
+			authorizeUrl,
+		)
 	}
 
-	const resolution = await resolveAuthRequest(helpers, request, env)
+	const resolution = await resolveAuthRequest(
+		helpers,
+		request,
+		env,
+		authorizeUrl,
+	)
 	if ('error' in resolution) {
-		return respondAuthorizeError(
-			request,
-			resolution.error ?? 'Unable to process OAuth request.',
-		)
+		return decisionError(resolution.error ?? 'Unable to process OAuth request.')
 	}
 
 	const { authRequest } = resolution
@@ -1478,20 +1555,15 @@ export async function handleAuthorizeRequest(
 			clientId: authRequest.clientId,
 			reason: 'invalid_pkce_method',
 		})
-		return respondAuthorizeError(request, pkceError)
+		return decisionError(pkceError)
 	}
 
 	if (decision === 'deny') {
 		const redirectTo = createAccessDeniedRedirectUrl(authRequest, request, env)
 		if (!redirectTo) {
-			return respondAuthorizeError(
-				request,
-				'Missing redirect URI for access denial.',
-			)
+			return decisionError('Missing redirect URI for access denial.')
 		}
-		return wantsJson(request)
-			? jsonResponse({ ok: true, redirectTo })
-			: Response.redirect(redirectTo, 302)
+		return decisionResult({ ok: true, redirectTo })
 	}
 
 	const email = String(formData.get('email') ?? '').trim()
@@ -1505,8 +1577,7 @@ export async function handleAuthorizeRequest(
 	const hasSession = Boolean(sessionEmail)
 
 	if (oidcGate.forbidInlineLogin && hasFormCredentials) {
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			'Interactive login is not allowed for this authorization request.',
 			400,
 			'interaction_required',
@@ -1524,7 +1595,7 @@ export async function handleAuthorizeRequest(
 			clientId: authRequest.clientId,
 			reason: 'missing_credentials',
 		})
-		return respondAuthorizeError(request, 'Email and password are required.')
+		return decisionError('Email and password are required.')
 	}
 
 	let approvedEmail = ''
@@ -1570,7 +1641,7 @@ export async function handleAuthorizeRequest(
 					errorClass: 'invalid_credentials',
 				})
 			}
-			return respondAuthorizeError(request, 'Invalid email or password.')
+			return decisionError('Invalid email or password.')
 		}
 		try {
 			await upgradePasswordHashIfNeeded(
@@ -1594,7 +1665,7 @@ export async function handleAuthorizeRequest(
 				clientId: authRequest.clientId,
 				reason: 'username_missing',
 			})
-			return respondAuthorizeError(request, 'Username is required.', 401)
+			return decisionError('Username is required.', 401)
 		}
 		// Password alone is not enough when 2FA is on: park a pending verify
 		// cookie and send the user through /verify (TOTP), then resume authorize
@@ -1613,7 +1684,7 @@ export async function handleAuthorizeRequest(
 			)
 			const clearSessionCookie = await destroyAuthCookie(secure)
 			const authorizeResume = stripLoginFromAuthorizePrompt(
-				`${new URL(request.url).pathname}${new URL(request.url).search}`,
+				`${authorizeUrl.pathname}${authorizeUrl.search}`,
 			)
 			const redirectTo = `/verify?redirectTo=${encodeURIComponent(authorizeResume)}`
 			void logAuditEvent({
@@ -1631,18 +1702,10 @@ export async function handleAuthorizeRequest(
 				clientId: authRequest.clientId,
 			})
 			const headers = createSetCookieHeaders([verifyCookie, clearSessionCookie])
-			if (wantsJson(request)) {
-				return jsonResponse(
-					{ ok: true, redirectTo, requiresTwoFactor: true },
-					{ headers },
-				)
-			}
-			const redirectHeaders = headers ?? new Headers()
-			redirectHeaders.set('Location', redirectTo)
-			return new Response(null, {
-				status: 302,
-				headers: redirectHeaders,
-			})
+			return decisionResult(
+				{ ok: true, redirectTo, requiresTwoFactor: true },
+				{ headers },
+			)
 		}
 		approvedEmail = normalizedEmail
 		approvedUsername = username
@@ -1659,7 +1722,7 @@ export async function handleAuthorizeRequest(
 		// from authRequest.resource and would hide a resource-only org from
 		// the later approval resolve.
 		const formOrgSlug = readOrgSlugFromForm(formData)
-		const urlOrgSlug = readOrgSlugFromUrl(request.url)
+		const urlOrgSlug = readOrgSlugFromUrl(authorizeUrl.href)
 		const resourceOrgSlug =
 			typeof authRequest.resource === 'string'
 				? stripOrgFromResourceUri(authRequest.resource).orgSlug
@@ -1688,7 +1751,7 @@ export async function handleAuthorizeRequest(
 				clientId: authRequest.clientId,
 				reason: 'session_user_not_found',
 			})
-			return respondAuthorizeError(request, 'Signed-in user not found.', 401)
+			return decisionError('Signed-in user not found.', 401)
 		}
 		const username = getValidOAuthUsername(userRecord.username)
 		if (!username) {
@@ -1702,7 +1765,7 @@ export async function handleAuthorizeRequest(
 				clientId: authRequest.clientId,
 				reason: 'username_missing',
 			})
-			return respondAuthorizeError(request, 'Username is required.', 401)
+			return decisionError('Username is required.', 401)
 		}
 		approvedEmail = userRecord.email.trim().toLowerCase()
 		approvedUsername = username
@@ -1750,8 +1813,7 @@ export async function handleAuthorizeRequest(
 			clientId: authRequest.clientId,
 			reason: 'email_verification_required',
 		})
-		return respondAuthorizeError(
-			request,
+		return decisionError(
 			oauthEmailVerificationRequiredMessage,
 			403,
 			'email_verification_required',
@@ -1769,21 +1831,12 @@ export async function handleAuthorizeRequest(
 			isSecureRequest(request),
 		)
 		if (requiresOrgChoiceReload) {
-			const reloadTo = stripLoginFromAuthorizePrompt(request.url)
+			const reloadTo = stripLoginFromAuthorizePrompt(authorizeUrl.href)
 			const cookieHeaders = createSetCookieHeaders([setCookie])
-			if (wantsJson(request)) {
-				return jsonResponse(
-					{ ok: true, redirectTo: reloadTo, requiresOrgChoice: true },
-					{ headers: cookieHeaders },
-				)
-			}
-			return new Response(null, {
-				status: 302,
-				headers: {
-					Location: reloadTo,
-					...(setCookie ? { 'Set-Cookie': setCookie } : {}),
-				},
-			})
+			return decisionResult(
+				{ ok: true, redirectTo: reloadTo, requiresOrgChoice: true },
+				{ headers: cookieHeaders },
+			)
 		}
 	}
 
@@ -1800,6 +1853,7 @@ export async function handleAuthorizeRequest(
 		let connectionProfileName: string | null
 		try {
 			const resolved = await resolveAuthorizeOrgAndProfile({
+				authorizeUrl,
 				env,
 				request,
 				authRequest,
@@ -1818,12 +1872,13 @@ export async function handleAuthorizeRequest(
 					env,
 				)
 				if (redirectTo) {
-					return wantsJson(request)
-						? jsonResponse({ ok: false, error: error.message, redirectTo })
-						: Response.redirect(redirectTo, 302)
+					return decisionResult({
+						ok: false,
+						error: error.message,
+						redirectTo,
+					})
 				}
-				return respondAuthorizeError(
-					request,
+				return decisionError(
 					error.message,
 					400,
 					'invalid_request',
@@ -1882,39 +1937,13 @@ export async function handleAuthorizeRequest(
 			env,
 			personalOrgId(personIdFromStored(userId)),
 		)
-		if (wantsJson(request)) {
-			return jsonResponse(
-				{ ok: true, redirectTo },
-				{
-					headers: createSetCookieHeaders([setCookie]),
-				},
-			)
-		}
-
-		if (setCookie) {
-			return new Response(null, {
-				status: 302,
-				headers: {
-					Location: redirectTo,
-					'Set-Cookie': setCookie,
-				},
-			})
-		}
-
-		return Response.redirect(redirectTo, 302)
+		return decisionResult(
+			{ ok: true, redirectTo },
+			{ headers: createSetCookieHeaders([setCookie]) },
+		)
 	}
 
-	return respondAuthorizeError(request, resolvedScopes.error)
-}
-
-export function handleOAuthCallback(
-	request: Request,
-	env: Env,
-): Promise<Response> {
-	const url = new URL(request.url)
-	const hasError =
-		url.searchParams.has('error') || url.searchParams.has('error_description')
-	return renderSpaShell(request, env, { status: hasError ? 400 : 200 })
+	return decisionError(resolvedScopes.error)
 }
 
 /**

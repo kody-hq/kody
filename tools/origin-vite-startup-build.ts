@@ -59,8 +59,8 @@ export type OriginViteStartupBuild = {
 }
 
 /**
- * Copies the Vite origin `dist/ssr` + `dist/client` trees into `outputRoot`.
- * The generated `ssr/wrangler.json` points `assets.directory` at `../client`,
+ * Copies the Vite origin `dist/server` + `dist/client` trees into `outputRoot`.
+ * The generated `server/wrangler.json` points `assets.directory` at `../client`,
  * so the client tree must sit next to the SSR snapshot.
  */
 export async function copyOriginViteBuildSnapshot({
@@ -70,21 +70,23 @@ export async function copyOriginViteBuildSnapshot({
 	sourceRoot: string
 	outputRoot: string
 }) {
-	const ssrDir = path.join(outputRoot, 'ssr')
+	const serverDir = path.join(outputRoot, 'server')
 	const clientDir = path.join(outputRoot, 'client')
-	await cp(path.join(sourceRoot, 'dist', 'ssr'), ssrDir, { recursive: true })
+	await cp(path.join(sourceRoot, 'dist', 'server'), serverDir, {
+		recursive: true,
+	})
 	await cp(path.join(sourceRoot, 'dist', 'client'), clientDir, {
 		recursive: true,
 	})
-	return { ssrDir, clientDir }
+	return { serverDir, clientDir }
 }
 
 let originViteBuildQueue: Promise<void> = Promise.resolve()
 
 /**
- * Builds the slim origin production entry with the same Vite + Pitlane
+ * Builds the slim origin production entry with the same Vite + TanStack Start
  * pipeline production deploy uses. The Cloudflare Vite plugin always writes
- * `dist/ssr` and `dist/client` at the repo root; this snapshots both into
+ * `dist/server` and `dist/client` at the repo root; this snapshots both into
  * `outputRoot` so `wrangler check startup` can resolve Workers Assets.
  * Calls are serialized because they share the generated Wrangler config and
  * those repo-root `dist/` directories.
@@ -138,21 +140,21 @@ async function buildOriginProductionViteBundleUnlocked(
 		force: true,
 	})
 
-	const { ssrDir, clientDir } = await copyOriginViteBuildSnapshot({
+	const { serverDir, clientDir } = await copyOriginViteBuildSnapshot({
 		sourceRoot: repoRoot,
 		outputRoot,
 	})
-	const wranglerConfigPath = path.join(ssrDir, 'wrangler.json')
+	const wranglerConfigPath = path.join(serverDir, 'wrangler.json')
 	const builtWrangler = JSON.parse(
 		await readFile(wranglerConfigPath, 'utf8'),
 	) as { main?: string }
 	const entryFile = builtWrangler.main ?? 'index.js'
-	const entryPath = path.join(ssrDir, entryFile)
+	const entryPath = path.join(serverDir, entryFile)
 	return {
 		outDir: outputRoot,
 		entryPath,
 		sourceMapPath: `${entryPath}.map`,
-		assetsDir: path.join(ssrDir, 'assets'),
+		assetsDir: path.join(serverDir, 'assets'),
 		wranglerConfigPath,
 		clientDir,
 	}

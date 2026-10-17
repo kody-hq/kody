@@ -33,20 +33,6 @@ export function isActiveAccountWorkflow(
 	return !terminalStatuses.has(workflow.status)
 }
 
-export function readWorkflowsViewFilter(
-	href: string,
-): AccountWorkflowsViewFilter {
-	const value = new URL(href, 'http://localhost').searchParams
-		.get('view')
-		?.trim()
-	if (value === 'history' || value === 'all') return value
-	return 'active'
-}
-
-export function readWorkflowsSearchFilter(href: string) {
-	return new URL(href, 'http://localhost').searchParams.get('q')?.trim() ?? ''
-}
-
 export function filterAccountWorkflows<
 	Workflow extends FilterableAccountWorkflow,
 >(

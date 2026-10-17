@@ -4,11 +4,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
-	applyOrgFollowsPost,
+	followOrgTarget,
+	resumeOrgFollow,
+	unfollowOrgTarget,
 	loadOrgFollowsData,
 	loadPackageFollowState,
-	orgFollowsPostStatus,
-	parseOrgFollowsPostBody,
+	followOperationStatus,
 } from '#app/follows-web.ts'
 import { resourceGrantKey } from '#worker/authorization/access-compile.ts'
 import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
@@ -105,73 +106,17 @@ beforeEach(() => {
 	vi.clearAllMocks()
 })
 
-test('parseOrgFollowsPostBody accepts follow and unfollow shapes only', () => {
-	expect(
-		parseOrgFollowsPostBody({
-			intent: 'follow',
-			name: ' @ada/notes ',
-			kind: 'package',
-			events: ['pushed'],
-		}),
-	).toEqual({
-		intent: 'follow',
-		name: '@ada/notes',
-		kind: 'package',
-		events: ['pushed'],
-	})
-	expect(
-		parseOrgFollowsPostBody({
-			intent: 'follow',
-			name: '@ada/notes',
-			kind: 'package',
-		}),
-	).toEqual({ intent: 'follow', name: '@ada/notes', kind: 'package' })
-	expect(parseOrgFollowsPostBody({ intent: 'follow', id: ' f-1 ' })).toEqual({
-		intent: 'follow',
-		id: 'f-1',
-	})
-	expect(
-		parseOrgFollowsPostBody({ intent: 'follow', id: 'f-1', events: [] }),
-	).toBeNull()
-	expect(parseOrgFollowsPostBody({ intent: 'unfollow', id: 'f-1' })).toEqual({
-		intent: 'unfollow',
-		id: 'f-1',
-	})
-	expect(
-		parseOrgFollowsPostBody({
-			intent: 'unfollow',
-			name: '@ada/notes',
-			kind: 'repo',
-		}),
-	).toEqual({ intent: 'unfollow', name: '@ada/notes', kind: 'repo' })
-	expect(
-		parseOrgFollowsPostBody({
-			intent: 'follow',
-			name: '@ada/notes',
-			kind: 'package',
-			events: ['starred'],
-		}),
-	).toBeNull()
-	expect(
-		parseOrgFollowsPostBody({ intent: 'follow', name: '@ada/notes' }),
-	).toBeNull()
-	expect(parseOrgFollowsPostBody({ intent: 'unfollow' })).toBeNull()
-	expect(parseOrgFollowsPostBody([])).toBeNull()
-	expect(parseOrgFollowsPostBody(null)).toBeNull()
-})
-
-test('orgFollowsPostStatus maps every error code to an HTTP status', () => {
+test('followOperationStatus maps every error code to an HTTP status', () => {
 	const error = (
 		code: 'invalid' | 'not_found' | 'rate_limited' | 'unauthorized',
-	) => orgFollowsPostStatus({ ok: false, code, error: '' })
+	) => followOperationStatus({ ok: false, code, error: '' })
 	expect(error('invalid')).toBe(400)
 	expect(error('unauthorized')).toBe(401)
 	expect(error('not_found')).toBe(404)
 	expect(error('rate_limited')).toBe(429)
 	expect(
-		orgFollowsPostStatus({
+		followOperationStatus({
 			ok: true,
-			intent: 'unfollow',
 			name: '@ada/notes',
 			kind: 'package',
 			follow: null,
@@ -250,41 +195,34 @@ test('loadPackageFollowState hides private targets the viewer can only run', asy
 	).toBeNull()
 })
 
-test('applyOrgFollowsPost follows with chosen events, explains push gating, and unfollows', async () => {
+test('named follow operations follows with chosen events, explains push gating, and unfollows', async () => {
 	const { db, env } = await setup()
 	mocks.loadFollowTargetPermissions.mockResolvedValue(
 		access(['package:execute']),
 	)
 	const org = { id: 'org-team' }
 
-	const gated = await applyOrgFollowsPost({
+	const gated = await followOrgTarget({
 		env,
 		user,
 		org,
-		body: {
-			intent: 'follow',
-			name: '@ada/notes',
-			kind: 'package',
-			events: ['pushed'],
-		},
+		name: '@ada/notes',
+		kind: 'package',
+		events: ['pushed'],
 	})
 	expect(gated).toMatchObject({ ok: false, code: 'invalid' })
 	expect(gated.ok ? '' : gated.error).toMatch(/run-only access does not/)
 
-	const followed = await applyOrgFollowsPost({
+	const followed = await followOrgTarget({
 		env,
 		user,
 		org,
-		body: {
-			intent: 'follow',
-			name: '@ada/notes',
-			kind: 'package',
-			events: ['published'],
-		},
+		name: '@ada/notes',
+		kind: 'package',
+		events: ['published'],
 	})
 	expect(followed).toMatchObject({
 		ok: true,
-		intent: 'follow',
 		name: '@ada/notes',
 		follow: { status: 'active', events: ['published'] },
 	})
@@ -295,22 +233,22 @@ test('applyOrgFollowsPost follows with chosen events, explains push gating, and 
 		targetId: 'pkg-notes',
 	})
 	expect(record).not.toBeNull()
-	const otherOrg = await applyOrgFollowsPost({
+	const otherOrg = await unfollowOrgTarget({
 		env,
 		user,
 		org: { id: 'org-other' },
-		body: { intent: 'unfollow', id: record!.id },
+		id: record!.id,
 	})
 	expect(otherOrg).toMatchObject({ ok: false, code: 'not_found' })
 
 	expect(
-		await applyOrgFollowsPost({
+		await unfollowOrgTarget({
 			env,
 			user,
 			org,
-			body: { intent: 'unfollow', id: record!.id },
+			id: record!.id,
 		}),
-	).toMatchObject({ ok: true, intent: 'unfollow', follow: null })
+	).toMatchObject({ ok: true, follow: null })
 	expect(
 		await getFollowByTarget(db, {
 			followerOrgId: 'org-team',
@@ -320,7 +258,7 @@ test('applyOrgFollowsPost follows with chosen events, explains push gating, and 
 	).toBeNull()
 })
 
-test('applyOrgFollowsPost resumes a listed follow by id after its target is renamed', async () => {
+test('named follow operations resumes a listed follow by id after its target is renamed', async () => {
 	const { db, env } = await setup()
 	const renamed = {
 		userId: ownerId,
@@ -348,23 +286,22 @@ test('applyOrgFollowsPost resumes a listed follow by id after its target is rena
 	})
 
 	expect(
-		await applyOrgFollowsPost({
+		await resumeOrgFollow({
 			env,
 			user,
 			org: { id: 'org-other' },
-			body: { intent: 'follow', id: 'follow-renamed' },
+			id: 'follow-renamed',
 		}),
 	).toMatchObject({ ok: false, code: 'not_found' })
 
-	const resumed = await applyOrgFollowsPost({
+	const resumed = await resumeOrgFollow({
 		env,
 		user,
 		org: { id: 'org-team' },
-		body: { intent: 'follow', id: 'follow-renamed' },
+		id: 'follow-renamed',
 	})
 	expect(resumed).toMatchObject({
 		ok: true,
-		intent: 'follow',
 		follow: { status: 'active' },
 	})
 
@@ -374,30 +311,31 @@ test('applyOrgFollowsPost resumes a listed follow by id after its target is rena
 		pausedAt: '2026-10-02T00:00:00.000Z',
 		reason: 'target_missing',
 	})
-	const gone = await applyOrgFollowsPost({
+	const gone = await resumeOrgFollow({
 		env,
 		user,
 		org: { id: 'org-team' },
-		body: { intent: 'follow', id: 'follow-renamed' },
+		id: 'follow-renamed',
 	})
 	expect(gone).toMatchObject({ ok: false, code: 'not_found' })
 	expect(gone.ok ? '' : gone.error).toMatch(/no longer exists/)
 })
 
-test('applyOrgFollowsPost reports the hourly new-follow limit', async () => {
+test('named follow operations reports the hourly new-follow limit', async () => {
 	const { env, db } = await setup()
 	mocks.loadFollowTargetPermissions.mockResolvedValue(access(['package:read']))
 	for (let index = 0; index < followCreateMaxPerHour; index += 1) {
 		await consumeFollowCreateSlot(db, 'org-busy')
 	}
-	const payload = await applyOrgFollowsPost({
+	const payload = await followOrgTarget({
 		env,
 		user,
 		org: { id: 'org-busy' },
-		body: { intent: 'follow', name: '@ada/notes', kind: 'package' },
+		name: '@ada/notes',
+		kind: 'package',
 	})
 	expect(payload).toMatchObject({ ok: false, code: 'rate_limited' })
-	expect(orgFollowsPostStatus(payload)).toBe(429)
+	expect(followOperationStatus(payload)).toBe(429)
 })
 
 test('loadOrgFollowsData shows pause reasons and when paused follows are deleted', async () => {

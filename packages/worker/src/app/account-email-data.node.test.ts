@@ -124,7 +124,8 @@ vi.mock('#worker/email/owner-email-reader.ts', () => ({
 	listOwnerEmailDeliveryEvents: mocks.listOwnerEmailDeliveryEvents,
 }))
 
-const { loadAccountEmailData } = await import('./account-email-data.ts')
+const { readAccountEmailData, loadAccountEmailDetail } =
+	await import('./account-email-data.ts')
 
 const authenticatedUser: AuthenticatedAppUser = {
 	sessionUserId: '42',
@@ -146,7 +147,7 @@ const authenticatedUser: AuthenticatedAppUser = {
 	request: sessionRequestContext('stable-user-1', 'test-user'),
 }
 
-test('loadAccountEmailData reads USER message graph only through owner Mailbox readers', async () => {
+test('readAccountEmailData reads USER message graph only through owner Mailbox readers', async () => {
 	mocks.classifyInboundEmailSender.mockResolvedValue({
 		kind: 'unverified',
 		reason: 'From address was not authenticated.',
@@ -167,11 +168,13 @@ test('loadAccountEmailData reads USER message graph only through owner Mailbox r
 		...meter.env,
 	} as Env
 
-	const result = await loadAccountEmailData({
+	const result = await readAccountEmailData({
 		env,
-		request: new Request(
-			'https://example.com/account/email.json?selected=msg-1',
-		),
+		page: 1,
+		pageSize: 25,
+		query: '',
+		classification: null,
+		selectedMessageId: 'msg-1',
 		user: authenticatedUser,
 	})
 
@@ -200,7 +203,7 @@ test('loadAccountEmailData reads USER message graph only through owner Mailbox r
 	expect(result.selectedMessage?.enable_sender).toBeNull()
 })
 
-test('loadAccountEmailData uses the org slug for a team inbox and exposes a member sender', async () => {
+test('readAccountEmailData uses the org slug for a team inbox and exposes a member sender', async () => {
 	const memberId = 'c'.repeat(64)
 	mocks.classifyInboundEmailSender.mockResolvedValue({
 		kind: 'member',
@@ -233,11 +236,13 @@ test('loadAccountEmailData uses the org slug for a team inbox and exposes a memb
 		COOKIE_SECRET: 'secret',
 		...meter.env,
 	} as Env
-	const result = await loadAccountEmailData({
+	const result = await readAccountEmailData({
 		env,
-		request: new Request(
-			'https://example.com/account/email.json?selected=msg-1',
-		),
+		page: 1,
+		pageSize: 25,
+		query: '',
+		classification: null,
+		selectedMessageId: 'msg-1',
 		user: {
 			...authenticatedUser,
 			username: 'viewer',
@@ -279,7 +284,7 @@ test('loadAccountEmailData uses the org slug for a team inbox and exposes a memb
 	)
 })
 
-test('loadAccountEmailData refuses a member without email:read', async () => {
+test('readAccountEmailData refuses a member without email:read', async () => {
 	mocks.listOwnerEmailMessagesPage.mockClear()
 	const sqlite = new DatabaseSync(':memory:')
 	const db = createD1FromSqlite(sqlite)
@@ -295,14 +300,17 @@ test('loadAccountEmailData refuses a member without email:read', async () => {
 		.run()
 	const meter = createInMemoryUserMeterEnv()
 	await expect(
-		loadAccountEmailData({
+		readAccountEmailData({
 			env: {
 				APP_DB: db,
 				APP_BASE_URL: 'https://example.com',
 				COOKIE_SECRET: 'secret',
 				...meter.env,
 			} as Env,
-			request: new Request('https://example.com/account/email.json'),
+			page: 1,
+			pageSize: 25,
+			query: '',
+			classification: null,
 			user: {
 				...authenticatedUser,
 				request: deriveRequestContext({
@@ -317,6 +325,25 @@ test('loadAccountEmailData refuses a member without email:read', async () => {
 		}),
 	).rejects.toMatchObject({ permission: 'email:read' })
 	expect(mocks.listOwnerEmailMessagesPage).not.toHaveBeenCalled()
+	mocks.getOwnerEmailMessageById.mockClear()
+	await expect(
+		loadAccountEmailDetail({
+			env: { APP_DB: db } as Env,
+			user: {
+				...authenticatedUser,
+				request: deriveRequestContext({
+					user: {
+						userId: personIdFromStored('e'.repeat(64)),
+						username: 'member',
+					},
+					source: { kind: 'session' },
+					orgBinding: { org: { id: orgId, slug: 'acme' }, role: 'member' },
+				}),
+			},
+			messageId: 'msg-1',
+		}),
+	).rejects.toMatchObject({ permission: 'email:read' })
+	expect(mocks.getOwnerEmailMessageById).not.toHaveBeenCalled()
 })
 
 async function usersAndOrgsDb() {
@@ -338,7 +365,7 @@ async function usersAndOrgsDb() {
 	return db
 }
 
-test('loadAccountEmailData hides a personal inbox until the account email is verified', async () => {
+test('readAccountEmailData hides a personal inbox until the account email is verified', async () => {
 	vi.mocked(isAccountEmailVerified).mockResolvedValueOnce(false)
 	mocks.listOwnerEmailMessagesPage.mockClear()
 	const db = await usersAndOrgsDb()
@@ -351,14 +378,17 @@ test('loadAccountEmailData hides a personal inbox until the account email is ver
 		.bind(orgId)
 		.run()
 	const meter = createInMemoryUserMeterEnv()
-	const result = await loadAccountEmailData({
+	const result = await readAccountEmailData({
 		env: {
 			APP_DB: db,
 			APP_BASE_URL: 'https://example.com',
 			COOKIE_SECRET: 'secret',
 			...meter.env,
 		} as Env,
-		request: new Request('https://example.com/account/email.json'),
+		page: 1,
+		pageSize: 25,
+		query: '',
+		classification: null,
 		user: { ...authenticatedUser, emailVerified: false },
 	})
 	expect(result.emailVerified).toBe(false)
@@ -367,7 +397,7 @@ test('loadAccountEmailData hides a personal inbox until the account email is ver
 	expect(mocks.listOwnerEmailMessagesPage).not.toHaveBeenCalled()
 })
 
-test('loadAccountEmailData shows a team inbox to an unverified owner with email:read', async () => {
+test('readAccountEmailData shows a team inbox to an unverified owner with email:read', async () => {
 	vi.mocked(isAccountEmailVerified).mockResolvedValueOnce(false)
 	mocks.classifyInboundEmailSender.mockResolvedValue({
 		kind: 'unverified',
@@ -396,14 +426,17 @@ test('loadAccountEmailData shows a team inbox to an unverified owner with email:
 		.bind(viewerId)
 		.run()
 	const meter = createInMemoryUserMeterEnv()
-	const result = await loadAccountEmailData({
+	const result = await readAccountEmailData({
 		env: {
 			APP_DB: db,
 			APP_BASE_URL: 'https://example.com',
 			COOKIE_SECRET: 'secret',
 			...meter.env,
 		} as Env,
-		request: new Request('https://example.com/account/email.json'),
+		page: 1,
+		pageSize: 25,
+		query: '',
+		classification: null,
 		user: {
 			...authenticatedUser,
 			email: 'ada@example.com',
@@ -432,7 +465,7 @@ test('loadAccountEmailData shows a team inbox to an unverified owner with email:
 	)
 })
 
-test('loadAccountEmailData shows a paid team plan instead of the viewer email free plan', async () => {
+test('readAccountEmailData shows a paid team plan instead of the viewer email free plan', async () => {
 	const actual = await vi.importActual<typeof EntitlementService>(
 		'#worker/entitlements/service.ts',
 	)
@@ -466,14 +499,17 @@ test('loadAccountEmailData shows a paid team plan instead of the viewer email fr
 		.bind(viewerId)
 		.run()
 	const meter = createInMemoryUserMeterEnv()
-	const result = await loadAccountEmailData({
+	const result = await readAccountEmailData({
 		env: {
 			APP_DB: db,
 			APP_BASE_URL: 'https://example.com',
 			COOKIE_SECRET: 'secret',
 			...meter.env,
 		} as Env,
-		request: new Request('https://example.com/account/email.json'),
+		page: 1,
+		pageSize: 25,
+		query: '',
+		classification: null,
 		user: {
 			...authenticatedUser,
 			email: 'ada@example.com',
@@ -503,4 +539,44 @@ test('loadAccountEmailData shows a paid team plan instead of the viewer email fr
 		stored_messages: { limit: 25_000 },
 		max_message_bytes: 768 * 1024,
 	})
+})
+
+test('detail reads only the owner-scoped message graph, without list or usage work', async () => {
+	vi.clearAllMocks()
+	mocks.classifyInboundEmailSender.mockResolvedValueOnce({
+		kind: 'unverified',
+		reason: 'From address was not authenticated.',
+	})
+	mocks.getOwnerEmailMessageById.mockResolvedValueOnce(messageRecord)
+	mocks.listOwnerEmailAttachmentsForMessage.mockResolvedValueOnce([])
+	mocks.listOwnerEmailDeliveryEvents.mockResolvedValueOnce([])
+	const env = { APP_DB: {} } as Env
+	const detail = await loadAccountEmailDetail({
+		env,
+		user: authenticatedUser,
+		messageId: 'msg-1',
+	})
+	expect(detail?.id).toBe('msg-1')
+	expect(mocks.getOwnerEmailMessageById).toHaveBeenCalledWith({
+		env,
+		ownerId: ownerIdFromStored('stable-user-1'),
+		messageId: 'msg-1',
+	})
+	expect(mocks.listOwnerEmailMessagesPage).not.toHaveBeenCalled()
+	const { getUserEntitlement } = await import('#worker/entitlements/service.ts')
+	expect(getUserEntitlement).not.toHaveBeenCalled()
+})
+
+test('detail requires verified email before reading any message data', async () => {
+	vi.clearAllMocks()
+	const { isAccountEmailVerified } = await import('#app/email-verification.ts')
+	vi.mocked(isAccountEmailVerified).mockResolvedValueOnce(false)
+	const detail = await loadAccountEmailDetail({
+		env: { APP_DB: {} } as Env,
+		user: { ...authenticatedUser, emailVerified: false },
+		messageId: 'msg-1',
+	})
+	expect(detail).toBeNull()
+	expect(mocks.getOwnerEmailMessageById).not.toHaveBeenCalled()
+	expect(mocks.listOwnerEmailAttachmentsForMessage).not.toHaveBeenCalled()
 })

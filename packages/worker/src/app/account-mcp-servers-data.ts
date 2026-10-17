@@ -3,17 +3,15 @@ import { type AccountMcpServersLoaderData } from '#universal/loader-data.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildMcpServerStatusView,
-	loadMcpClientHubSnapshotOrNull,
+	loadMcpClientHubReadSnapshotOrNull,
 } from '#mcp/capabilities/mcp-servers/shared.ts'
 import {
 	attachCatalogLogoPath,
 	listPlatformProviderMarks,
 } from '#worker/integrations/provider-marks.ts'
-import { backfillMissingMcpServerFavicons } from '#worker/mcp-client/mcp-server-favicon.ts'
 import { buildMcpServerAutoLogoPath } from '#worker/mcp-client/mcp-server-logo.ts'
 import {
 	listMcpServerSettings,
-	persistMcpServerLastErrorIfChanged,
 	resolveMcpServerOAuthClientUrls,
 } from '#worker/mcp-client/settings-service.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
@@ -41,37 +39,13 @@ export async function loadAccountMcpServersData(input: {
 		listSavedPackagesByUserId(input.env.APP_DB, { userId }),
 		listPlatformProviderMarks({ db: input.env.APP_DB }),
 	])
-	await backfillMissingMcpServerFavicons({
-		db: input.env.APP_DB,
-		env: input.env,
-		userId,
-		servers: settings,
-		waitUntil: input.waitUntil,
-	})
 	const snapshot =
 		settings.length > 0
-			? await loadMcpClientHubSnapshotOrNull({
+			? await loadMcpClientHubReadSnapshotOrNull({
 					env: input.env,
 					userId,
-					waitUntil: input.waitUntil,
 				})
 			: null
-	if (snapshot) {
-		await Promise.all(
-			settings.map((setting) => {
-				const server = snapshot.servers.find(
-					(entry) => entry.serverId === setting.id,
-				)
-				return persistMcpServerLastErrorIfChanged({
-					env: input.env,
-					userId,
-					id: setting.id,
-					state: server?.state ?? 'disconnected',
-					lastError: server?.lastError ?? null,
-				})
-			}),
-		)
-	}
 	return {
 		ok: true,
 		email: input.user.email,
@@ -96,6 +70,7 @@ export async function loadAccountMcpServersData(input: {
 						oauthClientOrigin: oauth.clientOrigin,
 						oauthClientMetadataUrl: oauth.clientMetadataUrl,
 					}),
+					state: server?.state ?? 'unknown',
 					autoLogoPath: buildMcpServerAutoLogoPath(setting),
 					oauthClientId: server?.oauthClientId ?? null,
 				},

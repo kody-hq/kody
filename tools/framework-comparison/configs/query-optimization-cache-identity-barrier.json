@@ -1,0 +1,48 @@
+{
+	"targets": [
+		{
+			"label": "query-before",
+			"origin": "http://127.0.0.1:4178",
+			"root": "/tmp/kody-start-query",
+			"sourceManifestSha256": "047036b630248158fc9e2988592671969f1e4e3e2473561efab05ace83ed404d"
+		},
+		{
+			"label": "query-optimized",
+			"origin": "http://127.0.0.1:4191",
+			"root": "/tmp/kody-start-query-optimized",
+			"sourceManifestSha256": "3f2594764d43afc3f9437b47c5516a9acdc395dfc3106f72ad24db9400458a59"
+		}
+	],
+	"rounds": 1,
+	"latencyMs": [0, 100],
+	"authenticated": true,
+	"entry": "/account",
+	"steps": [
+		{
+			"name": "leave-account",
+			"path": "/account/jobs",
+			"marker": {
+				"selector": "main input[type=\"number\"]",
+				"property": "value",
+				"text": "14"
+			}
+		},
+		{
+			"name": "warm-account-held-identity",
+			"path": "/account",
+			"marker": {
+				"selector": "main input[name=\"username\"]",
+				"property": "value",
+				"text": "jane"
+			},
+			"barrier": {
+				"functionNames": [
+					"verifySession_createServerFn_handler",
+					"loadShell_createServerFn_handler"
+				],
+				"paths": [],
+				"observeMs": 1000
+			}
+		}
+	]
+}

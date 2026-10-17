@@ -1,0 +1,113 @@
+{
+	"targets": [
+		{
+			"label": "remix",
+			"origin": "http://127.0.0.1:4177",
+			"root": "/tmp/kody-framework-baseline",
+			"framework": "remix",
+			"sourceGitRevision": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83"
+		},
+		{
+			"label": "query-before",
+			"origin": "http://127.0.0.1:4178",
+			"root": "/tmp/kody-start-query",
+			"sourceManifestSha256": "047036b630248158fc9e2988592671969f1e4e3e2473561efab05ace83ed404d"
+		},
+		{
+			"label": "query-optimized",
+			"origin": "http://127.0.0.1:4191",
+			"root": "/tmp/kody-start-query-optimized",
+			"sourceManifestSha256": "3f2594764d43afc3f9437b47c5516a9acdc395dfc3106f72ad24db9400458a59"
+		}
+	],
+	"rounds": 1,
+	"latencyMs": [0, 100],
+	"authenticated": true,
+	"entry": "/account",
+	"steps": [
+		{
+			"name": "jobs-0",
+			"path": "/account/jobs",
+			"marker": {
+				"selector": "main input[type=\"number\"]",
+				"property": "value",
+				"text": "14"
+			},
+			"waitBeforeMs": 0
+		},
+		{
+			"name": "account-0",
+			"path": "/account",
+			"marker": {
+				"selector": "main input[name=\"username\"]",
+				"property": "value",
+				"text": "jane"
+			}
+		},
+		{
+			"name": "jobs-11000",
+			"path": "/account/jobs",
+			"marker": {
+				"selector": "main input[type=\"number\"]",
+				"property": "value",
+				"text": "14"
+			},
+			"waitBeforeMs": 11000
+		},
+		{
+			"name": "account-11000",
+			"path": "/account",
+			"marker": {
+				"selector": "main input[name=\"username\"]",
+				"property": "value",
+				"text": "jane"
+			}
+		},
+		{
+			"name": "jobs-31000",
+			"path": "/account/jobs",
+			"marker": {
+				"selector": "main input[type=\"number\"]",
+				"property": "value",
+				"text": "14"
+			},
+			"waitBeforeMs": 31000
+		},
+		{
+			"name": "account-31000",
+			"path": "/account",
+			"marker": {
+				"selector": "main input[name=\"username\"]",
+				"property": "value",
+				"text": "jane"
+			}
+		},
+		{
+			"name": "jobs-61000",
+			"path": "/account/jobs",
+			"marker": {
+				"selector": "main input[type=\"number\"]",
+				"property": "value",
+				"text": "14"
+			},
+			"waitBeforeMs": 61000
+		},
+		{
+			"name": "account-61000",
+			"path": "/account",
+			"marker": {
+				"selector": "main input[name=\"username\"]",
+				"property": "value",
+				"text": "jane"
+			}
+		}
+	],
+	"accountCheckpoint": true,
+	"policySeconds": {
+		"before": 30,
+		"optimizedJobs": 10,
+		"optimizedAccount": 60,
+		"optimizedShell": 60,
+		"privateIdentity": "every foreground navigation"
+	}
+}

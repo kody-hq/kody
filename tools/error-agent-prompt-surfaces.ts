@@ -5,7 +5,7 @@
  *
  * When you add a new user-facing error UI the agent cannot already see, add
  * the file here under `adopt` and use `#universal/error-agent-prompt` /
- * `#client/error-agent-prompt-button`. See
+ * `#start/components/error-agent-prompt-button`. See
  * docs/principles/error-prompt-for-agents.md.
  */
 
@@ -16,22 +16,22 @@ export type ErrorAgentPromptSkip = {
 
 /** Files that must include the `data-error-agent-prompt` marker. */
 export const errorAgentPromptAdoptFiles = [
-	'packages/worker/client/internal-error-page.tsx',
-	'packages/worker/client/not-found-page.tsx',
-	'packages/worker/client/app.tsx',
-	'packages/worker/client/error-agent-prompt-button.tsx',
-	'packages/worker/client/routes/connect-oauth-sections.tsx',
-	'packages/worker/client/routes/connect-secrets.tsx',
-	'packages/worker/client/routes/connect-secret-set.tsx',
-	'packages/worker/client/routes/connect-webhook-apply.tsx',
-	'packages/worker/client/routes/account-secrets-approval.tsx',
-	'packages/worker/client/routes/account-package-approve-publish.tsx',
-	'packages/worker/client/routes/login.tsx',
-	'packages/worker/client/routes/oauth-authorize.tsx',
-	'packages/worker/client/routes/account-billing.tsx',
-	'packages/worker/client/routes/discord.tsx',
-	'packages/worker/client/routes/verify-email.tsx',
-	'packages/worker/client/routes/org-invite-join.tsx',
+	'packages/worker/start/components/internal-error-page.tsx',
+	'packages/worker/start/components/not-found-page.tsx',
+	'packages/worker/start/routes/__root.tsx',
+	'packages/worker/start/components/error-agent-prompt-button.tsx',
+	'packages/worker/start/pages/connect-oauth-sections.tsx',
+	'packages/worker/start/pages/connect-secrets.tsx',
+	'packages/worker/start/pages/connect-secret-set.tsx',
+	'packages/worker/start/pages/connect-webhook-apply.tsx',
+	'packages/worker/start/pages/account-secrets-approval.tsx',
+	'packages/worker/start/pages/account-package-approve-publish.tsx',
+	'packages/worker/start/pages/login.tsx',
+	'packages/worker/start/pages/oauth-authorize.tsx',
+	'packages/worker/start/pages/account-billing.tsx',
+	'packages/worker/start/pages/discord.tsx',
+	'packages/worker/start/pages/verify-email.tsx',
+	'packages/worker/start/pages/org-invite-join.tsx',
 	'packages/worker/src/app/internal-error-page.ts',
 	'packages/worker/src/package-runtime/package-app-serve.ts',
 	'packages/worker/src/app/email/messages.ts',
@@ -44,9 +44,9 @@ export const errorAgentPromptAdoptFiles = [
  */
 export const errorAgentPromptSkipFiles: ReadonlyArray<ErrorAgentPromptSkip> = [
 	{
-		file: 'packages/worker/src/app/handlers/error-pages.ts',
+		file: 'packages/worker/start/server/error-page.ts',
 		reason:
-			'SSR handlers only; illustrated UI lives in InternalErrorPage / NotFoundPage.',
+			'Server loaders only; rendered errors use InternalErrorPage and NotFoundPage.',
 	},
 	{
 		file: 'packages/worker/client/illustrated-error-page.ts',
@@ -57,28 +57,28 @@ export const errorAgentPromptSkipFiles: ReadonlyArray<ErrorAgentPromptSkip> = [
 		reason: 'Shared 500 copy constants only; not a user-facing error surface.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-activity-detail.tsx',
+		file: 'packages/worker/start/pages/account-activity-detail.tsx',
 		reason: 'Agent already has runGet for the same error text.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-activity.tsx',
+		file: 'packages/worker/start/pages/account-activity.tsx',
 		reason:
 			'List already ships a triage Copy prompt; runGet covers detail errors.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-jobs-detail.tsx',
+		file: 'packages/worker/start/pages/account-jobs-detail.tsx',
 		reason: 'Agent already has jobGet / runGet.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-jobs.tsx',
+		file: 'packages/worker/start/pages/account-jobs.tsx',
 		reason: 'Agent already has jobList / job actions.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-webhooks.tsx',
+		file: 'packages/worker/start/pages/account-webhooks.tsx',
 		reason: 'Agent already has webhookList.',
 	},
 	{
-		file: 'packages/worker/client/routes/account-workflows.tsx',
+		file: 'packages/worker/start/pages/account-workflows.tsx',
 		reason: 'Agent already has workflow capabilities.',
 	},
 ]

@@ -1299,7 +1299,7 @@
 	grid-column: span 2;
 }
 /* An odd card out sits centered under the pairs. */
-.feature-overview .feature:nth-child(odd):last-child {
+.feature-overview article.feature:nth-of-type(odd):last-of-type {
 	grid-column: 2 / span 2;
 }
 .feature-overview .feature {
@@ -1402,7 +1402,7 @@
 		gap: 24px;
 	}
 	.feature-overview .feature,
-	.feature-overview .feature:nth-child(odd):last-child {
+	.feature-overview article.feature:nth-of-type(odd):last-of-type {
 		grid-column: auto;
 	}
 	.feature-overview h1 {

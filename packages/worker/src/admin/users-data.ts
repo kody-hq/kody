@@ -243,52 +243,61 @@ function buildAdminUserListWhereClause(
 	}
 }
 
-/**
- * Whether `stableUserId` belongs in the filtered admin-users result for
- * this request URL. Uses the same WHERE clause as the page query so the
- * client can prepend a created row without reimplementing filters.
- */
-export async function adminUserMatchesListFilters(
-	env: Env,
-	requestUrl: string,
-	stableUserId: string,
-): Promise<boolean> {
-	if (!parsePersonId(stableUserId)) return false
-	const url = new URL(requestUrl, 'http://localhost')
-	const filters = readAdminUserListFilters(url)
-	const { whereClause, params } = buildAdminUserListWhereClause(
-		filters,
-		new Date(),
-	)
-	const membershipWhere = whereClause
-		? `${whereClause} AND u.stable_user_id = ?`
-		: 'WHERE u.stable_user_id = ?'
-	const row = await env.APP_DB.prepare(
-		`SELECT 1 AS found FROM users u ${membershipWhere}${andLiveDeletedAtSql('u')} LIMIT 1`,
-	)
-		.bind(...params, stableUserId)
-		.first<{ found: number }>()
-	return row != null
-}
-
 export async function loadAdminUsersData(
 	env: Env,
 	requestUrl: string,
 	pathStableUserId?: string,
 ): Promise<AdminUsersLoaderData> {
 	const url = new URL(requestUrl, 'http://localhost')
-	const { page, pageSize, offset } = readPagination(url, {
+	const { page, pageSize } = readPagination(url, {
 		defaultPageSize,
 		maxPageSize,
 	})
-	const filters = readAdminUserListFilters(url)
+	return readAdminUsersData(env, {
+		...readAdminUserListFilters(url),
+		page,
+		pageSize,
+		selectedStableUserId: readAdminUsersSelectedStableUserId(
+			requestUrl,
+			pathStableUserId,
+		),
+	})
+}
+
+/** The domain read accepts data, independent of page URLs or HTTP transport. */
+export async function readAdminUsersData(
+	env: Env,
+	input: {
+		query: string
+		role: string | null
+		verification: string | null
+		page: number
+		pageSize: number
+		selectedStableUserId?: string | null
+	},
+): Promise<AdminUsersLoaderData> {
+	const page = Math.max(1, Math.floor(input.page))
+	const pageSize = Math.min(
+		maxPageSize,
+		Math.max(1, Math.floor(input.pageSize)),
+	)
+	const offset = (page - 1) * pageSize
+	const role = input.role?.trim() ?? ''
+	const verification = input.verification?.trim() ?? ''
+	const filters: AdminUserListFilters = {
+		query: input.query.trim(),
+		role: isRoleName(role) ? role : null,
+		verification: isAdminUserVerificationFilter(verification)
+			? verification
+			: null,
+	}
+
 	const { whereClause, params } = buildAdminUserListWhereClause(
 		filters,
 		new Date(),
 	)
-	const selectedStableUserId = readAdminUsersSelectedStableUserId(
-		requestUrl,
-		pathStableUserId,
+	const selectedStableUserId = parseSelectedStableUserId(
+		input.selectedStableUserId,
 	)
 
 	const [totalResult, userRows, selectedUser] = await Promise.all([

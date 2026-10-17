@@ -3,7 +3,10 @@ import { z } from 'zod'
 import { normalizeMcpServerName } from '@kody-internal/shared/mcp-servers.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent.ts'
-import { getCachedMcpClientHubSnapshot } from '#worker/mcp-client/hub-client.ts'
+import {
+	getCachedMcpClientHubReadSnapshot,
+	getCachedMcpClientHubSnapshot,
+} from '#worker/mcp-client/hub-client.ts'
 import { enrichMcpOAuthProviderError } from '#worker/mcp-client/oauth-provider-error.ts'
 import {
 	getMcpServerSettingById,
@@ -11,7 +14,7 @@ import {
 } from '#worker/mcp-client/settings-service.ts'
 import { type McpServerSettingMetadata } from '#worker/mcp-client/settings-types.ts'
 import { isMcpOAuthMissingRefreshGrantLastError } from '#worker/mcp-client/oauth-token-recovery.ts'
-import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
+import { type McpServerReadSnapshot } from '#worker/mcp-client/types.ts'
 
 export const mcpServerStatusSchema = z.object({
 	id: z.string(),
@@ -57,7 +60,7 @@ export function mcpServerCallerOrgSlug(callerContext: {
  */
 export function mcpServerStatusError(input: {
 	setting: McpServerSettingMetadata
-	snapshot: McpServerSnapshot | null
+	snapshot: McpServerReadSnapshot | null
 	oauthCallbackUrl?: string
 	oauthClientOrigin?: string
 	oauthClientMetadataUrl?: string | null
@@ -83,7 +86,7 @@ export function mcpServerStatusError(input: {
 
 export function buildMcpServerStatusView(input: {
 	setting: McpServerSettingMetadata
-	snapshot: McpServerSnapshot | null
+	snapshot: McpServerReadSnapshot | null
 	authorizeLink: McpServerAuthorizeLinkBase
 	oauthCallbackUrl?: string
 	oauthClientOrigin?: string
@@ -91,6 +94,7 @@ export function buildMcpServerStatusView(input: {
 }): McpServerStatusView {
 	const { setting, snapshot } = input
 	const connected = snapshot?.state === 'ready'
+	const hasDiscovery = connected || snapshot?.state === 'unknown'
 	const error = mcpServerStatusError(input)
 	return {
 		id: setting.id,
@@ -99,7 +103,7 @@ export function buildMcpServerStatusView(input: {
 		enabled: setting.enabled,
 		state: snapshot?.state ?? 'disconnected',
 		connected,
-		toolCount: connected ? (snapshot?.tools.length ?? 0) : 0,
+		toolCount: hasDiscovery ? (snapshot?.tools.length ?? 0) : 0,
 		authUrl: snapshot?.authorizationPending
 			? buildMcpServerAuthorizeUrl({
 					...input.authorizeLink,
@@ -108,7 +112,7 @@ export function buildMcpServerStatusView(input: {
 			: null,
 		error,
 		hasRefreshToken: snapshot?.hasRefreshToken ?? false,
-		tools: connected ? (snapshot?.tools.map((tool) => tool.name) ?? []) : [],
+		tools: hasDiscovery ? (snapshot?.tools.map((tool) => tool.name) ?? []) : [],
 		createdAt: setting.createdAt,
 		updatedAt: setting.updatedAt,
 		usageMode: setting.usageMode === 'packages' ? 'packages' : 'any',
@@ -156,4 +160,15 @@ export async function resolveMcpServerSetting(input: {
 	throw new McpCallerError(
 		`No MCP server matches "${identifier}". Saved servers: ${available}.`,
 	)
+}
+
+export async function loadMcpClientHubReadSnapshotOrNull(input: {
+	env: Env
+	userId: OwnerId
+}) {
+	try {
+		return await getCachedMcpClientHubReadSnapshot(input)
+	} catch {
+		return null
+	}
 }

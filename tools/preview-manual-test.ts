@@ -52,9 +52,6 @@ const usageLines = [
 	'                      Content-Type). Redirects stay manual, and',
 	'                      --contains also sees Location.',
 	'                      Examples:',
-	'                      POST /account/secrets.json {"action":"save",...}',
-	'                      POST /account/organizations/new 302 --form slug=x-org --form displayName=X --contains /@x-org',
-	'                      POST /account/profile/avatar.json --multipart --form avatar=@./avatar.png',
 	'                      GET /pricing --dump --contains Worker compute',
 	'                      GET /account/export.json is a metadata manifest;',
 	'                      do not --contains user data there. Verify rows with',
@@ -1129,7 +1126,7 @@ export function formatBriefing(result: PreviewManualTestResult): string {
 		`Username: ${result.login.username}`,
 		'`/admin` is expected to 403 — preview does not seed an admin account.',
 		result.session.origin
-			? `Follow-up HTTP: npm run control-kody -- request GET /account/secrets.json --origin ${result.session.origin}`
+			? `Follow-up HTTP: npm run control-kody -- request GET /session --origin ${result.session.origin}`
 			: null,
 	].filter((line): line is string => line !== null)
 
@@ -1151,16 +1148,15 @@ export function formatBriefing(result: PreviewManualTestResult): string {
 		'',
 		'Logged-in testing (required for medium/high risk):',
 		'The seed account starts empty except the user row. Create the data this',
-		'PR needs through the same JSON APIs the UI uses, then assert them:',
-		'  npm run preview:manual-test -- --request \'POST /account/secrets.json {"action":"save","scope":"user","name":"previewSeed","value":"preview-seed-value","allowedHosts":["api.example.com"]}\' --request \'GET /account/secrets.json\'',
-		'Follow-up HTML/JSON assertions use control-kody request, not cookie+curl:',
-		`  npm run control-kody -- request GET /account/secrets.json --origin ${result.session.origin ?? '<preview-url>'}`,
+		'PR needs through control-kody execute, then exercise the website UI.',
+		'Use control-kody request for HTTP documents and protocol checks:',
+		`  npm run control-kody -- request GET /session --origin ${result.session.origin ?? '<preview-url>'}`,
 		'GET /account/export.json is a bounded metadata manifest, not section',
 		'rows. Do not --contains a secret name there. Verify export content with',
 		'MCP accountExportSection (example: section d1_table table secret_entries)',
 		'via control-kody execute on the same origin.',
-		'Values are retired drain-only (POST delete). Prefer secrets, memories,',
-		'package storage, or the feature APIs this PR changes for seed data.',
+		'Prefer secrets, memories,',
+		'package storage, or the official API for seed data.',
 		'Stay on the preview origin. `/mcp` is 401 without OAuth by design.',
 		'',
 		'UI pass after data exists: open the preview URL (computerUse on Cloud',

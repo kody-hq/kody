@@ -1,8 +1,6 @@
 import { readdirSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { expect, test } from 'vitest'
-import { routePattern } from '#universal/route-pattern.ts'
-import { routes } from '#universal/routes.ts'
 import { requestSkipsAssetProbe } from './static-asset-probe.ts'
 
 const publicDirectory = join(import.meta.dirname, '../public')
@@ -62,26 +60,8 @@ test('public files and client bundles still probe ASSETS', () => {
 	).toEqual([])
 })
 
-test('literal route roots skip the probe unless they are public asset directories', () => {
-	const publicDirectories = new Set(
-		readdirSync(publicDirectory, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name),
-	)
-	const mismatches: Array<string> = []
-	for (const route of Object.values(routes)) {
-		const pattern = routePattern(route)
-		const body = pattern.startsWith('/') ? pattern.slice(1) : pattern
-		if (body.startsWith('@') || body.startsWith(':') || body.length === 0) {
-			continue
-		}
-		const segment = body.split('/')[0] ?? ''
-		if (segment.length === 0 || /[:*(]/.test(segment)) continue
-		const sample = `/${segment}/asset-probe`
-		const skips = requestSkipsAssetProbe(sample)
-		const shouldSkip = !publicDirectories.has(segment)
-		if (skips !== shouldSkip) mismatches.push(pattern)
-	}
-	expect(mismatches).toEqual([])
+test('unknown document paths do not require an asset lookup or route registry', () => {
+	expect(requestSkipsAssetProbe('/new-feature/page')).toBe(true)
 	expect(requestSkipsAssetProbe('/@kent/-/activity')).toBe(true)
+	expect(requestSkipsAssetProbe('/feature-scenes/packages.css')).toBe(false)
 })

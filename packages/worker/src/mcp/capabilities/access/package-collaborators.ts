@@ -136,6 +136,34 @@ async function resolveInternalSubject(
 	return { type: 'user', id: userId }
 }
 
+/** Shared write operation. MCP enriches its response separately; website writes
+ * return an acknowledgement without depending on a subsequent list read. */
+export async function setPackageCollaboratorAccess(
+	args: Parameters<typeof resolveInternalSubject>[2] & {
+		package_id: string
+		preset: z.infer<typeof grantPresetSchema>
+	},
+	ctx: CapabilityContext,
+) {
+	const managed = await loadManagedPackage(ctx, args.package_id)
+	const subject = await resolveInternalSubject(
+		ctx.env.APP_DB,
+		managed.orgId,
+		args,
+	)
+	await accessGrantCapability.handler(
+		{
+			resource_type: 'package',
+			resource_id: managed.package.id,
+			subject_type: subject.type,
+			subject_id: subject.id,
+			preset: args.preset,
+		},
+		ctx,
+	)
+	return { managed, subject }
+}
+
 export const packageCollaboratorListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
@@ -218,19 +246,11 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			try {
-				const managed = await loadManagedPackage(ctx, args.package_id)
-				const db = ctx.env.APP_DB
-				const subject = await resolveInternalSubject(db, managed.orgId, args)
-				await accessGrantCapability.handler(
-					{
-						resource_type: 'package',
-						resource_id: managed.package.id,
-						subject_type: subject.type,
-						subject_id: subject.id,
-						preset: args.preset,
-					},
+				const { managed, subject } = await setPackageCollaboratorAccess(
+					args,
 					ctx,
 				)
+				const db = ctx.env.APP_DB
 				const listed = await listPackageCollaborators({
 					db,
 					orgId: managed.orgId,

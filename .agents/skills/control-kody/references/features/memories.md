@@ -15,13 +15,14 @@ Personal org only (writable). Team org: no Memories nav item.
 ## Drive it
 
 ```bash
-node tools/control-kody.ts request GET /account/memories.json
+npm run control-kody -- browse --origin <preview> --path /@<slug>/-/memories
 ```
 
-## APIs
+The page uses native Start server functions for website reads and mutations. Use
+supported MCP capabilities through `control-kody search` and
+`control-kody execute` when fixture data is needed.
 
-- `GET|POST /account/memories.json`
-- `GET /@<slug>/-/memories-export.json`
+The download protocol remains `GET /account/memories-export.json`.
 
 ## Gotchas
 

@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -138,7 +138,14 @@ async function verifyEmail(db: D1Database, user: TestUser) {
 		.run()
 }
 
-test('referral rewards both parties once on first paid invoice, skips trial, rejects fraud, and stacks without a cap', async () => {
+test('referral rewards both parties once on first paid invoice, skips trial, rejects fraud, and stacks without a cap', async ({
+	onTestFinished,
+}) => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(now)
+	onTestFinished(() => {
+		vi.useRealTimers()
+	})
 	const db = await createDb()
 	const referrer = await insertUser(db, 'referrer')
 	const referee = await insertUser(db, 'referee')

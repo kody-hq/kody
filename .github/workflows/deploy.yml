@@ -9,6 +9,29 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Production deployment or inactive Start opt-in preparation
+        type: choice
+        options:
+          - production
+          - prepare-start-opt-in
+          - deploy-start-opt-in
+          - activate-start-opt-in
+          - verify-start-opt-in
+          - rollback-start-opt-in
+        default: production
+      start_release:
+        description:
+          Full reviewed PR 3561 source SHA, required for opt-in preparation
+        type: string
+        default: ''
+      start_evidence_run:
+        description:
+          For activation, an inactive verification run, for rollback, the
+          activation receipt run
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -27,14 +50,348 @@ permissions:
 # replace a pending deploy.
 concurrency:
   group: >-
-    ${{ ((github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
-    || (github.event.workflow_run.conclusion == 'success' &&
-    github.event.workflow_run.head_branch == 'main' &&
+    ${{ ((github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+    && inputs.mode == 'production') || (github.event.workflow_run.conclusion ==
+    'success' && github.event.workflow_run.head_branch == 'main' &&
     github.event.workflow_run.event == 'push')) && 'deploy-production' ||
-    format('deploy-skipped-{0}', github.run_id) }}
+    ((github.event_name == 'workflow_dispatch' && github.ref_name ==
+    'taren/tanstack-start-migration' && (inputs.mode == 'prepare-start-opt-in'
+    || inputs.mode == 'deploy-start-opt-in' || inputs.mode ==
+    'activate-start-opt-in' || inputs.mode == 'verify-start-opt-in' ||
+    inputs.mode == 'rollback-start-opt-in')) && 'deploy-start-opt-in' ||
+    format('deploy-skipped-{0}', github.run_id)) }}
   cancel-in-progress: false
 
 jobs:
+  prepare-start-opt-in:
+    name: Prepare inactive Start opt-in release
+    if: >-
+      github.event_name == 'workflow_dispatch' && (inputs.mode ==
+      'prepare-start-opt-in' || inputs.mode == 'deploy-start-opt-in') &&
+      github.ref == 'refs/heads/taren/tanstack-start-migration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    env:
+      KODY_START_RELEASE: ${{ inputs.start_release }}
+    steps:
+      - name: Verify pinned PR head and successful validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'JS'
+          const release = process.env.KODY_START_RELEASE
+          if (!/^[a-f0-9]{40}$/.test(release) || release !== process.env.DISPATCH_SHA) throw new Error('Dispatch must pin its exact reviewed branch head')
+          const api = async (url) => {
+            const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/${url}`, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' } })
+            if (!response.ok) throw new Error(`GitHub verification failed: ${response.status}`)
+            return response.json()
+          }
+          const pr = await api('pulls/3561')
+          if (pr.state !== 'open' || pr.head.sha !== release || pr.head.ref !== 'taren/tanstack-start-migration' || pr.head.repo.full_name !== process.env.REPOSITORY) throw new Error('Pinned release is not the open migration PR head')
+          const runs = await api(`actions/runs?head_sha=${release}&per_page=100`)
+          const validate = runs.workflow_runs.filter(run => run.name === '✅ Validate' && run.head_sha === release).sort((a, b) => b.id - a.id)[0]
+          if (!validate || validate.status !== 'completed' || validate.conclusion !== 'success') throw new Error('Latest Validate for the exact source SHA must pass before production settings are read')
+          JS
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.start_release }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Read existing production bindings and approved account IDs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/ci/prepare-start-opt-in.ts snapshot
+      - name: Build pinned isolated release
+        env:
+          KODY_WRANGLER_CONFIG: packages/worker/wrangler-start.generated.json
+          CLOUDFLARE_ENV: production
+        run: |
+          cp packages/worker/.env.example packages/worker/.env
+          npx --no-install vite build
+          node tools/framework-comparison/verify-redact-build.mjs dist
+          node tools/ci/verify-start-release-build.ts dist
+          node tools/ci/prepare-start-opt-in.ts finalize
+      - name: Deploy inactive isolated workers with trusted production secrets
+        if: inputs.mode == 'deploy-start-opt-in'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_APP_API_TOKEN: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          SECRET_STORE_KEY: ${{ secrets.SECRET_STORE_KEY }}
+          AI_GATEWAY_ID: ${{ secrets.AI_GATEWAY_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          CAPABILITY_REINDEX_SECRET: ${{ secrets.CAPABILITY_REINDEX_SECRET }}
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+          X_CLIENT_ID: ${{ secrets.OAUTH_X_CLIENT_ID }}
+          X_CLIENT_SECRET: ${{ secrets.OAUTH_X_CLIENT_SECRET }}
+          DISCORD_CLIENT_ID: ${{ secrets.OAUTH_DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.OAUTH_DISCORD_CLIENT_SECRET }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          DISCORD_MEMBER_ROLE_ID: ${{ secrets.DISCORD_MEMBER_ROLE_ID }}
+          DISCORD_STANDARD_ROLE_ID: ${{ secrets.DISCORD_STANDARD_ROLE_ID }}
+          DISCORD_PRO_ROLE_ID: ${{ secrets.DISCORD_PRO_ROLE_ID }}
+          KIT_API_KEY: ${{ secrets.KIT_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STATUS_INCIDENT_EVENT_SECRET:
+            ${{ secrets.STATUS_INCIDENT_EVENT_SECRET }}
+          YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
+          OIDC_SIGNING_PRIVATE_KEY_PEM:
+            ${{ secrets.OIDC_SIGNING_PRIVATE_KEY_PEM }}
+          OIDC_SIGNING_KEY_ID: ${{ secrets.OIDC_SIGNING_KEY_ID }}
+          CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
+            ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
+          PACKAGE_APP_TICKET_KEYS: ${{ secrets.PACKAGE_APP_TICKET_KEYS }}
+          TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+        run: node tools/ci/deploy-start-opt-in.ts
+      - name: Verify inactive workers through a private remote session
+        if:
+          inputs.mode == 'deploy-start-opt-in' || inputs.mode ==
+          'verify-start-opt-in'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/ci/probe-start-opt-in.ts
+      - name: Upload inactive review bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-opt-in-${{ inputs.start_release }}
+          path: |
+            .tmp/start-opt-in/review.json
+            .tmp/start-opt-in/router.json
+            packages/start-routing-worker/start-entry.generated.ts
+            .tmp/start-opt-in/deployed.json
+            .tmp/start-opt-in/controller.json
+            .tmp/start-opt-in/runtime-proof.json
+            .tmp/start-opt-in/secret-names.json
+            dist
+          include-hidden-files: true
+          retention-days: 3
+      # Preparation never deploys. Inactive deployment is an explicit mode,
+      # and neither mode can activate a zone route or replace a live worker.
+  verify-start-opt-in:
+    name: Verify existing inactive Start release
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode ==
+      'verify-start-opt-in' && github.ref ==
+      'refs/heads/taren/tanstack-start-migration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    env:
+      KODY_START_RELEASE: ${{ inputs.start_release }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Verify current controller and successful target deployment step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN: ${{ inputs.start_evidence_run }}
+        run: node tools/ci/start-opt-in-evidence.ts deployment
+      - uses: actions/download-artifact@v4
+        with:
+          name: start-opt-in-${{ inputs.start_release }}
+          run-id: ${{ inputs.start_evidence_run }}
+          github-token: ${{ github.token }}
+          path: .tmp/start-opt-in/download
+      - name: Select immutable deployed target bundle
+        run: |
+          cp .tmp/start-opt-in/download/.tmp/start-opt-in/review.json .tmp/start-opt-in/review.json
+          cp .tmp/start-opt-in/download/.tmp/start-opt-in/deployed.json .tmp/start-opt-in/deployed.json
+          cp -R .tmp/start-opt-in/download/dist ./dist
+      - name: Verify exact inactive receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN: ${{ inputs.start_evidence_run }}
+        run: node tools/ci/start-opt-in-evidence.ts receipt
+      - name: Verify inactive workers through corrected private probe
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/ci/probe-start-opt-in.ts
+      - name: Retain verified target and controller provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-opt-in-${{ inputs.start_release }}
+          path: |
+            .tmp/start-opt-in/review.json
+            .tmp/start-opt-in/deployed.json
+            .tmp/start-opt-in/controller.json
+            .tmp/start-opt-in/runtime-proof.json
+          include-hidden-files: true
+          retention-days: 3
+  activate-start-opt-in:
+    name: Activate reviewed two-account Start opt-in route
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode ==
+      'activate-start-opt-in' && github.ref ==
+      'refs/heads/taren/tanstack-start-migration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    env:
+      KODY_START_RELEASE: ${{ inputs.start_release }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Verify current controller and target evidence
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN: ${{ inputs.start_evidence_run }}
+        run: node tools/ci/start-opt-in-evidence.ts verification
+      - uses: actions/download-artifact@v4
+        with:
+          name: start-opt-in-${{ inputs.start_release }}
+          run-id: ${{ inputs.start_evidence_run }}
+          github-token: ${{ github.token }}
+          path: .tmp/start-opt-in/download
+      - name: Select exact reviewed evidence files
+        run: |
+          if [ "${{ steps.evidence.outputs.layout }}" = "nested" ]; then
+            evidence_dir=.tmp/start-opt-in/download/.tmp/start-opt-in
+          elif [ "${{ steps.evidence.outputs.layout }}" = "flat" ]; then
+            evidence_dir=.tmp/start-opt-in/download
+          else
+            exit 1
+          fi
+          cp "$evidence_dir/review.json" .tmp/start-opt-in/review.json
+          cp "$evidence_dir/runtime-proof.json" .tmp/start-opt-in/runtime-proof.json
+          cp "$evidence_dir/controller.json" .tmp/start-opt-in/controller.json
+          cp "$evidence_dir/deployed.json" .tmp/start-opt-in/deployed.json
+      - name: Verify target receipt and controller provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN: ${{ inputs.start_evidence_run }}
+        run: node tools/ci/start-opt-in-evidence.ts proof
+      - name: Activate only the reviewed zone route overlay
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: node tools/ci/start-opt-in-routing.ts activate
+      - name: Retain exact rollback receipt even after a verification failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-opt-in-route-${{ inputs.start_release }}
+          path: .tmp/start-opt-in/route-receipt.json
+          include-hidden-files: true
+          retention-days: 30
+  rollback-start-opt-in:
+    name: Remove only the recorded Start opt-in overlay
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode ==
+      'rollback-start-opt-in' && github.ref ==
+      'refs/heads/taren/tanstack-start-migration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      actions: read
+    env:
+      KODY_START_RELEASE: ${{ inputs.start_release }}
+    steps:
+      - name: Verify activation receipt provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVIDENCE_RUN: ${{ inputs.start_evidence_run }}
+        run: |
+          node --input-type=module <<'JS'
+          const release = process.env.KODY_START_RELEASE
+          if (!/^[a-f0-9]{40}$/.test(release) || !/^[0-9]+$/.test(process.env.EVIDENCE_RUN)) throw new Error('Pinned target release and activation receipt run ID required')
+          const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/actions/runs/${process.env.EVIDENCE_RUN}`, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' } })
+          if (!response.ok) throw new Error(`Receipt verification failed: ${response.status}`)
+          const evidence = await response.json()
+          if (!/^[a-f0-9]{40}$/.test(evidence.head_sha) || evidence.status !== 'completed' || evidence.event !== 'workflow_dispatch' || evidence.path !== '.github/workflows/deploy.yml' || evidence.head_branch !== 'taren/tanstack-start-migration' || evidence.repository?.full_name !== process.env.REPOSITORY) throw new Error('Receipt must come from the trusted completed activation workflow')
+          const jobsResponse = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/actions/runs/${process.env.EVIDENCE_RUN}/jobs?per_page=100`, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' } })
+          if (!jobsResponse.ok) throw new Error(`Activation job verification failed: ${jobsResponse.status}`)
+          const jobs = await jobsResponse.json()
+          const activation = jobs.jobs?.filter(job => job.name === 'Activate reviewed two-account Start opt-in route')
+          if (activation?.length !== 1 || !activation[0].steps?.some(step => step.name === 'Activate only the reviewed zone route overlay' && ['success', 'failure', 'cancelled', 'timed_out'].includes(step.conclusion))) throw new Error('Receipt must come from an executed activation step')
+          // The run pins controller code. The downloaded receipt pins the target release.
+          JS
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: start-opt-in-route-${{ inputs.start_release }}
+          run-id: ${{ inputs.start_evidence_run }}
+          github-token: ${{ github.token }}
+          path: .tmp/start-opt-in/rollback-download
+      - name: Select and verify the captured route receipt
+        run: |
+          cp .tmp/start-opt-in/rollback-download/route-receipt.json .tmp/start-opt-in/route-receipt.json
+          node --input-type=module <<'JS'
+          import { readFile } from 'node:fs/promises'
+          const receipt = JSON.parse(await readFile('.tmp/start-opt-in/route-receipt.json', 'utf8'))
+          if (receipt.release !== process.env.KODY_START_RELEASE) throw new Error('Receipt target release does not match the requested rollback release')
+          JS
+      - name: Delete only the exact recorded rollout zone route
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: node tools/ci/start-opt-in-routing.ts rollback
+      - name: Retain rollback result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: start-opt-in-rollback-${{ inputs.start_release }}
+          path: .tmp/start-opt-in/route-receipt.json
+          include-hidden-files: true
+          retention-days: 30
   sha-guard:
     runs-on: warp-ubuntu-latest-x64-4x
     name: 🧾 Production deploy guard
@@ -44,7 +401,8 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push') ||
-      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
+      inputs.mode == 'production')
     outputs:
       deploy_sha: ${{ steps.sha_guard.outputs.deploy_sha }}
       should_deploy: ${{ steps.sha_guard.outputs.should_deploy }}

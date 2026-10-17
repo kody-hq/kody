@@ -1,19 +1,20 @@
-import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { DatabaseSync } from 'node:sqlite'
-import { RequestContext } from 'remix/router'
-import { sessionRequestContext } from '#worker/test-support/request-context.ts'
-import { expect, test, vi } from 'vitest'
+import { providerMarkSaveSchema } from '#universal/admin-provider-mutations.ts'
 import type * as AuthenticatedUser from '#app/authenticated-user.ts'
 import { type PermissionString, type RoleName } from '#universal/permissions.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
-import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
+import { adminOperationOutcome } from '#worker/test-support/admin-operation-outcome.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	createFakeImagesBinding,
 	tinyPngBytes,
 } from '#worker/test-support/images-binding.ts'
+import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser:
@@ -36,8 +37,8 @@ vi.mock('#worker/audit-log.ts', async (importOriginal) => {
 	}
 })
 
-const { createAdminProviderMarksApiHandler } =
-	await import('./admin-provider-marks.ts')
+const { saveAdminProviderMark, deleteAdminProviderMark } =
+	await import('#worker/admin/provider-marks-operations.ts')
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 
@@ -88,26 +89,40 @@ function createMarksClient() {
 			IMAGES: images,
 		}) as unknown as Env
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(createActor(['admin']))
-	const url = new URL('https://example.com/admin/provider-marks.json')
+	const url = new URL('https://example.com/admin/provider-marks')
 	const call = (
 		body?: Record<string, unknown>,
 		{ storage = true }: { storage?: boolean } = {},
 	) =>
-		createAdminProviderMarksApiHandler(createEnv(storage)).handler(
-			new RequestContext(
-				body
-					? new Request(url, {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify(body),
+		adminOperationOutcome(async () => {
+			const env = createEnv(storage)
+			const request = new Request(url, {
+				headers: { Accept: 'application/json' },
+			})
+			if (body)
+				return body.action === 'delete'
+					? deleteAdminProviderMark({
+							env,
+							request,
+							slug: String(body.slug ?? ''),
 						})
-					: new Request(url),
-			),
-		)
+					: saveAdminProviderMark({
+							env,
+							request,
+							data: providerMarkSaveSchema.parse(body),
+						})
+			const { requireUserWithRole } = await import('#app/permissions-server.ts')
+			await requireUserWithRole(request, env, 'admin')
+			const { loadAdminProviderMarksData } =
+				await import('#app/admin-provider-marks-data.ts')
+			return loadAdminProviderMarksData(env)
+		})
 	const listSlugs = async () => {
 		const response = await call()
 		expect(response.status).toBe(200)
-		const body = (await response.json()) as { marks: Array<{ slug: string }> }
+		const body = (await Promise.resolve(response.data)) as {
+			marks: Array<{ slug: string }>
+		}
 		return body.marks.map((mark) => mark.slug)
 	}
 	return { call, listSlugs }
@@ -130,7 +145,8 @@ test('admin provider marks API saves, lists, and deletes marks, refusing logo wr
 
 	const saved = await call(saveGoogle)
 	expect(saved.status).toBe(200)
-	const savedBody = (await saved.json()) as {
+	expect(saved.data).toEqual({ ok: true })
+	const savedBody = (await call()).data as {
 		ok: true
 		marks: Array<{ slug: string; logoPath: string | null }>
 	}
@@ -144,7 +160,8 @@ test('admin provider marks API saves, lists, and deletes marks, refusing logo wr
 		{ storage: false },
 	)
 	expect(relabeled.status).toBe(200)
-	await expect(relabeled.json()).resolves.toMatchObject({
+	expect(relabeled.data).toEqual({ ok: true })
+	expect((await call()).data).toMatchObject({
 		marks: [
 			{
 				slug: 'google',
@@ -161,5 +178,23 @@ test('admin provider marks API saves, lists, and deletes marks, refusing logo wr
 
 	const deleted = await call(deleteGoogle)
 	expect(deleted.status).toBe(200)
-	await expect(deleted.json()).resolves.toMatchObject({ ok: true, marks: [] })
+	expect(deleted.data).toEqual({ ok: true })
+	expect(await listSlugs()).toEqual([])
+})
+
+test('accepted provider mark writes do not depend on rebuilding the admin page', async () => {
+	const { call, listSlugs } = createMarksClient()
+	const pageData = await import('#app/admin-provider-marks-data.ts')
+	const load = vi
+		.spyOn(pageData, 'loadAdminProviderMarksData')
+		.mockRejectedValue(new Error('List unavailable'))
+	try {
+		const saved = await call(saveGoogle)
+		expect(saved.status).toBe(200)
+		expect(saved.data).toEqual({ ok: true })
+		expect(load).not.toHaveBeenCalled()
+	} finally {
+		load.mockRestore()
+	}
+	expect(await listSlugs()).toEqual(['google'])
 })

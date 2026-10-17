@@ -1,8 +1,6 @@
+import { connectionsRedirect } from '../../../start/server/legacy-redirects.ts'
 import { expect, test } from 'vitest'
-import {
-	createLegacyOrgConnectionsRedirectHandler,
-	resolveLegacyOrgConnectionsLocation,
-} from './legacy-org-connections-redirect.ts'
+import { resolveLegacyOrgConnectionsLocation } from './legacy-org-connections-redirect.ts'
 
 test('legacy /-/connections redirects to /-/agents with the rest of the path and the query', () => {
 	const resolve = (path: string) =>
@@ -20,12 +18,9 @@ test('legacy /-/connections redirects to /-/agents with the rest of the path and
 })
 
 test('legacy connections handler responds 301 with Location', async () => {
-	const response = await createLegacyOrgConnectionsRedirectHandler(
-		{} as Env,
-	).handler({
+	const response = await connectionsRedirect({
 		request: new Request('https://kody.test/@jane/-/connections/new?ref=email'),
-		params: { orgSlug: 'jane', rest: 'new' },
-	} as never)
+	})
 	expect(response.status).toBe(301)
 	expect(response.headers.get('Location')).toBe('/@jane/-/agents/new?ref=email')
 })

@@ -70,8 +70,8 @@ export function scopePackageSourceFiles(
 
 /**
  * Repo snapshots key files from the repo root. Check results key them from
- * the source root. Use the scoped manifest when the map still has that
- * prefix, and the unscoped `package.json` when the root was already stripped.
+ * the source root. Prefer `sourceRoot/package.json` when that file is in the
+ * map, and the unscoped `package.json` otherwise.
  */
 export function readPackageManifestSource(
 	files: Record<string, string> | null | undefined,
@@ -80,13 +80,10 @@ export function readPackageManifestSource(
 	if (!files) return null
 	const root = normalizeRepoWorkspacePath(sourceRoot).replace(/\/+$/, '')
 	if (root) {
-		const prefix = `${root}/`
-		const hasPrefixedPath = Object.keys(files).some(
-			(path) => path === root || path.startsWith(prefix),
-		)
-		if (hasPrefixedPath) {
-			return manifestSourceFromFiles(scopePackageSourceFiles(files, root))
-		}
+		const scoped = manifestSourceFromFiles(scopePackageSourceFiles(files, root))
+		// A source-root-relative tree can still contain a path under the same
+		// prefix. Prefer the scoped manifest only when that file is present.
+		if (scoped != null) return scoped
 	}
 	return manifestSourceFromFiles(files)
 }

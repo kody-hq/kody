@@ -78,12 +78,10 @@ every case.
 
 Repo-wide syntactic bans that do not need a custom visitor live in the same
 config as built-in rules: `typescript/no-explicit-any` and
-`eslint/no-warning-comments` for `TODO` / `FIXME` / `HACK`. The Remix `on()`
-wrapper in `packages/worker/client/event-mixin.ts` is the one `no-explicit-any`
-override — call sites mix SubmitEvent, MouseEvent, and untyped
-`currentTarget.value` reads. File-size allowlists and decorative comment banners
-stay a separate `validate` script (`npm run slop-ratchet:check`) because they
-are allowlist / inventory checks, not per-file lint rules.
+`eslint/no-warning-comments` for `TODO` / `FIXME` / `HACK`. File-size allowlists
+and decorative comment banners stay a separate `validate` script
+(`npm run slop-ratchet:check`) because they are allowlist / inventory checks,
+not per-file lint rules.
 
 ## Verify manually
 

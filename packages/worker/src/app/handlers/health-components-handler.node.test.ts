@@ -41,7 +41,7 @@ function component(report: HealthComponentsReport, id: string) {
 function fetchComponents(
 	handler: ReturnType<typeof createHealthComponentsHandler>,
 ) {
-	return handler.handler()
+	return handler()
 }
 
 test('collectHealthComponents reports healthy, failed, and unavailable bindings', async () => {

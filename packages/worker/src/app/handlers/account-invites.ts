@@ -1,11 +1,10 @@
-import { type Action } from 'remix/router'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	acceptAddressedInvite,
 	declineAddressedInvite,
 } from '#mcp/capabilities/access/invites.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '#app/operation-result.ts'
 import {
 	getInviteByIdAnyOrg,
 	type StoredInvite,
@@ -19,12 +18,8 @@ type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
 >
 
-function readInviteId(params: { inviteId?: unknown }) {
-	return typeof params.inviteId === 'string' ? params.inviteId.trim() : ''
-}
-
 function notFound() {
-	return jsonResponse(
+	return operationResult(
 		{ ok: false, error: 'This invite is no longer waiting on you.' },
 		404,
 	)
@@ -39,13 +34,13 @@ async function loadRecipientInvite(
 	env: Env,
 	user: AuthenticatedUser,
 	inviteId: string,
-): Promise<StoredInvite | Response> {
+) {
 	const invite = inviteId
 		? await getInviteByIdAnyOrg(env.APP_DB, inviteId)
 		: null
 	if (!invite) return notFound()
 	if (invite.inviteeEmail && !user.emailVerified) {
-		return jsonResponse(
+		return operationResult(
 			{ ok: false, error: 'Verify your email to answer this invite.' },
 			403,
 		)
@@ -55,7 +50,7 @@ async function loadRecipientInvite(
 
 function callerErrorResponse(error: unknown) {
 	if (error instanceof McpCallerError || error instanceof FreeOrgLimitError) {
-		return jsonResponse({ ok: false, error: error.message }, 400)
+		return operationResult({ ok: false, error: error.message }, 400)
 	}
 	throw error
 }
@@ -96,56 +91,52 @@ async function redirectAfterAccept(
 }
 
 /** Accept an invite addressed to this person from Waiting or Organizations. */
-export function createAccountInviteAcceptPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const invite = await loadRecipientInvite(env, user, readInviteId(params))
-			if (invite instanceof Response) return invite
-			try {
-				const org = await acceptAddressedInvite({
-					db: env.APP_DB,
-					env,
-					invite,
-					user: recipient(user),
-					audit: orgAuditWriterFromRequest(env, user.request),
-				})
-				return jsonResponse({
-					ok: true,
-					redirectTo: await redirectAfterAccept(env.APP_DB, invite, org.slug),
-				})
-			} catch (error) {
-				return callerErrorResponse(error)
-			}
-		},
-	} satisfies Action<typeof routes.accountInviteAcceptPost>
+export async function acceptWebsiteInvite({
+	env,
+	user,
+	inviteId,
+}: InviteOperationContext & { inviteId: string }) {
+	const invite = await loadRecipientInvite(env, user, inviteId)
+	if ('data' in invite) return invite
+	try {
+		const org = await acceptAddressedInvite({
+			db: env.APP_DB,
+			env,
+			invite,
+			user: recipient(user),
+			audit: orgAuditWriterFromRequest(env, user.request),
+		})
+		return operationResult({
+			ok: true,
+			redirectTo: await redirectAfterAccept(env.APP_DB, invite, org.slug),
+		})
+	} catch (error) {
+		return callerErrorResponse(error)
+	}
 }
 
-export function createAccountInviteDeclinePostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const invite = await loadRecipientInvite(env, user, readInviteId(params))
-			if (invite instanceof Response) return invite
-			try {
-				await declineAddressedInvite({
-					db: env.APP_DB,
-					invite,
-					user: recipient(user),
-					audit: orgAuditWriterFromRequest(env, user.request),
-				})
-				return jsonResponse({ ok: true })
-			} catch (error) {
-				return callerErrorResponse(error)
-			}
-		},
-	} satisfies Action<typeof routes.accountInviteDeclinePost>
+export async function declineWebsiteInvite({
+	env,
+	user,
+	inviteId,
+}: InviteOperationContext & { inviteId: string }) {
+	const invite = await loadRecipientInvite(env, user, inviteId)
+	if ('data' in invite) return invite
+	try {
+		await declineAddressedInvite({
+			db: env.APP_DB,
+			invite,
+			user: recipient(user),
+			audit: orgAuditWriterFromRequest(env, user.request),
+		})
+		return operationResult({ ok: true })
+	} catch (error) {
+		return callerErrorResponse(error)
+	}
+}
+
+type InviteOperationContext = {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 }

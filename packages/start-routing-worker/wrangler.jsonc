@@ -1,0 +1,24 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "kody-start-router",
+	"main": "./index.ts",
+	"tsconfig": "./tsconfig.json",
+	"compatibility_date": "2026-04-16",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"preview_urls": false,
+	// The deployment manifest supplies the exact production APP_DB ID, both
+	// approved person IDs, immutable candidate name and release SHA. It also
+	// installs COOKIE_SECRET and a separate START_ROLLOUT_SECRET. This base
+	// config deliberately has no routes or resource IDs and cannot opt anyone in.
+	"services": [
+		{ "binding": "LEGACY", "service": "kody-production" },
+		{ "binding": "START", "service": "kody-start-unconfigured" },
+	],
+	"vars": {
+		"APP_BASE_URL": "https://kody.codes",
+		"START_ALLOWED_PERSON_IDS": "[]",
+		"START_RELEASE": "",
+		"START_ASSET_MANIFEST_SHA256": "",
+	},
+}

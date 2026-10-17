@@ -23,7 +23,7 @@ StorageRunner RPC wall-clock proxy), the shared usage metric series (including
 observe-only Dynamic Worker CPU), and a Credits panel: balance, credit
 eligibility (purchasable Pro or admin eligibility), a grant form (dollars plus
 an optional note; works on the signed-in admin too), and the recent ledger with
-the granting admin for grants (`/admin/users/credits.json`).
+the granting admin for grants.
 
 ## Drive it
 
@@ -41,7 +41,8 @@ previews the next claim page; results carry stable user ids).
 
 ## APIs
 
-JSON siblings under `/admin/*.json`. Same 403 for the preview seed.
+Admin reads and mutations use native Start server functions with admin
+authorization. The preview seed cannot access them.
 
 ## Gotchas
 

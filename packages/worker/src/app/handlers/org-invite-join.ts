@@ -1,16 +1,14 @@
-import { type Action } from 'remix/router'
 import {
 	readAuthenticatedAppUser,
 	type AuthenticatedAppUser,
 } from '#app/authenticated-user.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
 import { getRequestIp } from '#worker/audit-log.ts'
 import {
 	checkRateLimit,
 	orgInviteJoinRateLimitConfig,
 	releaseRateLimit,
 } from '#app/rate-limit.ts'
-import { jsonResponse } from '#worker/json-response.ts'
+import { operationResult } from '#app/operation-result.ts'
 import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
 import {
 	clearInviteLinkPending,
@@ -183,7 +181,7 @@ async function settledBlockedLinkForViewer(
  * signed-in viewer who still needs what it gives gets a pending row so the
  * invite also waits on their Organizations page.
  */
-async function loadJoinPageData(input: {
+export async function loadJoinPageData(input: {
 	env: Env
 	request: Request
 	token: string
@@ -254,15 +252,6 @@ async function loadJoinPageData(input: {
 		alreadyMember,
 		authenticated: Boolean(user),
 	}
-}
-
-function wantsJson(request: Request) {
-	const accept = request.headers.get('Accept') ?? ''
-	return accept.includes('application/json')
-}
-
-function readToken(params: { token?: unknown }) {
-	return typeof params.token === 'string' ? params.token : String(params.token)
 }
 
 async function redirectAfterAccept(
@@ -342,14 +331,14 @@ async function acceptInviteLink(input: {
 		if (terminalBlocks.has(result.reason)) {
 			await clearInviteLinkPending({ db, linkId: link.id, userId })
 		}
-		return jsonResponse(
+		return operationResult(
 			{ ok: false, error: result.error, reason: result.reason },
 			400,
 		)
 	}
 	await clearInviteLinkPending({ db, linkId: link.id, userId })
 	const destination = await redirectAfterAccept(db, result.orgId, result.target)
-	return jsonResponse({
+	return operationResult({
 		ok: true,
 		alreadyMember: result.alreadyMember,
 		kind: result.target.kind,
@@ -369,14 +358,14 @@ async function rateLimited(request: Request, env: Env, key: string) {
 }
 
 function tooManyAttempts() {
-	return jsonResponse(
+	return operationResult(
 		{ ok: false, error: 'Too many join attempts. Try again shortly.' },
 		429,
 	)
 }
 
 function invalidLinkResponse() {
-	return jsonResponse(
+	return operationResult(
 		{
 			ok: false,
 			error: inviteLinkBlockMessage('invalid'),
@@ -386,136 +375,92 @@ function invalidLinkResponse() {
 	)
 }
 
-export function createOrgInviteJoinHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const data = await loadJoinPageData({
-				env,
-				request,
-				token: readToken(params),
-			})
-			if (wantsJson(request)) {
-				return jsonResponse({ orgInviteJoin: data }, data.ok ? 200 : 400)
-			}
-			return renderAppPage({
-				request,
-				env,
-				title: data.ok
-					? `Join ${data.org.displayName?.trim() || data.org.slug}`
-					: 'Invite link',
-				status: data.ok ? 200 : 400,
-				loaderData: { orgInviteJoin: data },
-			})
-		},
-	} satisfies Action<typeof routes.orgInviteJoin>
+export async function joinWebsiteOrganization({
+	env,
+	request,
+	user,
+	token,
+}: InviteOperationContext & { token: string }) {
+	const limit = await rateLimited(request, env, token)
+	if (!limit.allowed) return tooManyAttempts()
+	const tokenHash = await hashInviteLinkToken(token.trim())
+	const link = await getInviteLinkByTokenHash(env.APP_DB, tokenHash)
+	if (!link) return invalidLinkResponse()
+	return await acceptInviteLink({
+		env,
+		request,
+		user,
+		link,
+		rateKey: limit.rateKey,
+	})
 }
 
-export function createOrgInviteJoinPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const token = readToken(params)
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const limit = await rateLimited(request, env, token)
-			if (!limit.allowed) return tooManyAttempts()
-			const tokenHash = await hashInviteLinkToken(token.trim())
-			const link = await getInviteLinkByTokenHash(env.APP_DB, tokenHash)
-			if (!link) return invalidLinkResponse()
-			return await acceptInviteLink({
-				env,
-				request,
-				user,
-				link,
-				rateKey: limit.rateKey,
-			})
-		},
-	} satisfies Action<typeof routes.orgInviteJoinPost>
-}
-
-export function createOrgInviteJoinDeclinePostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const tokenHash = await hashInviteLinkToken(readToken(params).trim())
-			const link = await getInviteLinkByTokenHash(env.APP_DB, tokenHash)
-			if (!link) return invalidLinkResponse()
-			await clearInviteLinkPending({
-				db: env.APP_DB,
-				linkId: link.id,
-				userId: user.mcpUser.userId,
-			})
-			return jsonResponse({
-				ok: true,
-				redirectTo: `${routes.accountOrganizations.href()}#invites`,
-			})
-		},
-	} satisfies Action<typeof routes.orgInviteJoinDeclinePost>
-}
-
-function readLinkId(params: { linkId?: unknown }) {
-	return typeof params.linkId === 'string' ? params.linkId.trim() : ''
+export async function declineWebsiteOrganizationInvite({
+	env,
+	user,
+	token,
+}: InviteOperationContext & { token: string }) {
+	const tokenHash = await hashInviteLinkToken(token.trim())
+	const link = await getInviteLinkByTokenHash(env.APP_DB, tokenHash)
+	if (!link) return invalidLinkResponse()
+	await clearInviteLinkPending({
+		db: env.APP_DB,
+		linkId: link.id,
+		userId: user.mcpUser.userId,
+	})
+	return operationResult({
+		ok: true,
+		redirectTo: `${routes.accountOrganizations.href()}#invites`,
+	})
 }
 
 /**
  * Accept from the Organizations page. The pending row proves this person
  * opened the link, so the token is not needed again.
  */
-export function createAccountInviteLinkAcceptPostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const linkId = readLinkId(params)
-			const limit = await rateLimited(request, env, linkId)
-			if (!limit.allowed) return tooManyAttempts()
-			const link = linkId
-				? await getPendingInviteLinkForPerson({
-						db: env.APP_DB,
-						linkId,
-						userId: user.mcpUser.userId,
-					})
-				: null
-			if (!link) return invalidLinkResponse()
-			return await acceptInviteLink({
-				env,
-				request,
-				user,
-				link,
-				rateKey: limit.rateKey,
+export async function acceptWebsiteInviteLink({
+	env,
+	request,
+	user,
+	linkId,
+}: InviteOperationContext & { linkId: string }) {
+	const limit = await rateLimited(request, env, linkId)
+	if (!limit.allowed) return tooManyAttempts()
+	const link = linkId
+		? await getPendingInviteLinkForPerson({
+				db: env.APP_DB,
+				linkId,
+				userId: user.mcpUser.userId,
 			})
-		},
-	} satisfies Action<typeof routes.accountInviteLinkAcceptPost>
+		: null
+	if (!link) return invalidLinkResponse()
+	return await acceptInviteLink({
+		env,
+		request,
+		user,
+		link,
+		rateKey: limit.rateKey,
+	})
 }
 
-export function createAccountInviteLinkDeclinePostHandler(env: Env) {
-	return {
-		middleware: [],
-		async handler({ request, params }) {
-			const user = await readAuthenticatedAppUser(request, env)
-			if (!user) {
-				return jsonResponse({ ok: false, error: 'Unauthorized.' }, 401)
-			}
-			const linkId = readLinkId(params)
-			const cleared = linkId
-				? await clearInviteLinkPending({
-						db: env.APP_DB,
-						linkId,
-						userId: user.mcpUser.userId,
-					})
-				: false
-			if (!cleared) return invalidLinkResponse()
-			return jsonResponse({ ok: true })
-		},
-	} satisfies Action<typeof routes.accountInviteLinkDeclinePost>
+export async function declineWebsiteInviteLink({
+	env,
+	user,
+	linkId,
+}: InviteOperationContext & { linkId: string }) {
+	const cleared = linkId
+		? await clearInviteLinkPending({
+				db: env.APP_DB,
+				linkId,
+				userId: user.mcpUser.userId,
+			})
+		: false
+	if (!cleared) return invalidLinkResponse()
+	return operationResult({ ok: true })
+}
+
+type InviteOperationContext = {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 }

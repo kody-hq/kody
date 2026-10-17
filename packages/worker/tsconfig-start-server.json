@@ -1,0 +1,26 @@
+{
+	"extends": "./tsconfig-worker-typecheck.json",
+	"compilerOptions": {
+		"composite": false,
+		"noEmit": false,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"noEmitOnError": true,
+		"outDir": ".generated/start-types",
+		"rootDir": "../.."
+	},
+	"include": [
+		"start/server/**/*.ts",
+		"env.d.ts",
+		"worker-configuration.d.ts",
+		"src/**/*.d.ts",
+		"../shared/src/**/*.ts",
+		"start/server.ts"
+	],
+	"exclude": [
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"../shared/**/*.test.ts",
+		"../shared/**/*.spec.ts"
+	]
+}

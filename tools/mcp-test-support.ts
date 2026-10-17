@@ -3,6 +3,13 @@ import { randomUUID } from 'node:crypto'
 import { type Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { type CallToolRequest } from '@modelcontextprotocol/sdk/types.js'
 import { createTestHarness } from 'wrangler'
+import { buildLandingHeroVideosCacheKey } from '#worker/app/landing-hero-videos.ts'
+import { createKvCachifiedCache } from '#worker/kv-cachified.ts'
+import {
+	landingHeroSourcePlaylistId,
+	type LandingHeroVideo,
+} from '#universal/landing-hero-copy.ts'
+import { buildOriginTestApp } from './build-origin-test-app.ts'
 import { startCloudflareMock } from '#worker/test-support/cloudflare-mock-server.ts'
 import { ensureGuideCatalogModules } from './build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
@@ -44,6 +51,11 @@ export type SharedMcpE2eServer = {
 	markEmailVerified(email: string): Promise<void>
 	assignRole(email: string, role: string): Promise<void>
 	clearAuthRateLimits(): Promise<void>
+	seedHeroVideos(videos: Array<LandingHeroVideo>): Promise<void>
+	seedOAuthClient(
+		clientId: string,
+		registration: Record<string, unknown> | null,
+	): Promise<void>
 }
 
 type SharedMcpE2eServerHandle = SharedMcpE2eServer & {
@@ -83,20 +95,28 @@ export async function getSharedMcpE2eServer(): Promise<SharedMcpE2eServer> {
 		markEmailVerified: (email) => server.markEmailVerified(email),
 		assignRole: (email, role) => server.assignRole(email, role),
 		clearAuthRateLimits: () => server.clearAuthRateLimits(),
+		seedHeroVideos: (videos) => server.seedHeroVideos(videos),
+		seedOAuthClient: (id, registration) =>
+			server.seedOAuthClient(id, registration),
 	}
 }
 
 /** Dispose the shared harness (no-op when none is running). */
 export async function stopSharedMcpE2eServer() {
 	const state = sharedMcpE2eGlobalState()
+	if (state.closing) return state.closing
 	if (!state.promise) return
 	state.closing ??= (async () => {
-		const handle = await state.promise
+		const pending = state.promise
 		state.promise = null
+		const handle = await pending?.catch(() => null)
 		await handle?.close()
 	})()
-	await state.closing
-	state.closing = null
+	try {
+		await state.closing
+	} finally {
+		state.closing = null
+	}
 }
 
 /** Unique DNS-safe username + email so shared-DB tests stay isolated. */
@@ -117,15 +137,21 @@ async function startSharedMcpE2eServer(): Promise<SharedMcpE2eServerHandle> {
 		markEmailVerified: started.markEmailVerified,
 		assignRole: started.assignRole,
 		clearAuthRateLimits: started.clearAuthRateLimits,
+		seedHeroVideos: started.seedHeroVideos,
+		seedOAuthClient: started.seedOAuthClient,
 		close: started.close,
 	}
 }
 
 async function startHarnessWithCloudflareMock() {
 	await Promise.all([ensureWorkerBundlerModules(), ensureGuideCatalogModules()])
+	const compiled = await buildOriginTestApp()
 	const cloudflareMock = await startCloudflareMock(
 		`mcp-e2e-cloudflare-${randomUUID()}`,
-	)
+	).catch(async (error: unknown) => {
+		await compiled.close()
+		throw error
+	})
 	const cloudflareVars = {
 		CLOUDFLARE_API_BASE_URL: cloudflareMock.origin,
 		CLOUDFLARE_API_TOKEN: cloudflareMock.token,
@@ -136,8 +162,7 @@ async function startHarnessWithCloudflareMock() {
 		root: projectRoot,
 		workers: [
 			{
-				configPath: 'packages/worker/wrangler.jsonc',
-				env: 'test',
+				configPath: compiled.configPath,
 				vars: cloudflareVars,
 				bindingOverrides: {
 					CLOUDFLARE_API_MOCK: 'kody-mock-cloudflare-test',
@@ -163,6 +188,8 @@ async function startHarnessWithCloudflareMock() {
 		const worker = harness.getWorker<{
 			APP_DB: D1Database
 			AUDIT_DB: D1Database
+			BUNDLE_ARTIFACTS_KV: KVNamespace
+			OAUTH_KV: KVNamespace
 		}>()
 		await worker.applyD1Migrations('APP_DB')
 		await worker.applyD1Migrations('AUDIT_DB')
@@ -198,6 +225,23 @@ WHERE u.email = ? AND r.name = ?`,
 					.bind(email, role)
 					.run()
 			},
+			async seedOAuthClient(
+				clientId: string,
+				registration: Record<string, unknown> | null,
+			) {
+				const key = `client:${clientId}`
+				if (registration === null) await env.OAUTH_KV.delete(key)
+				else await env.OAUTH_KV.put(key, JSON.stringify(registration))
+			},
+			async seedHeroVideos(videos: Array<LandingHeroVideo>) {
+				await createKvCachifiedCache(env.BUNDLE_ARTIFACTS_KV).set(
+					buildLandingHeroVideosCacheKey(landingHeroSourcePlaylistId),
+					{
+						value: videos,
+						metadata: { createdTime: Date.now(), ttl: 300_000, swr: 3_600_000 },
+					},
+				)
+			},
 			async clearAuthRateLimits() {
 				await env.APP_DB.prepare(
 					`CREATE TABLE IF NOT EXISTS _rate_limits (
@@ -214,13 +258,21 @@ WHERE u.email = ? AND r.name = ?`,
 				try {
 					await harness.close()
 				} finally {
-					await cloudflareMock[Symbol.asyncDispose]()
+					try {
+						await cloudflareMock[Symbol.asyncDispose]()
+					} finally {
+						await compiled.close()
+					}
 				}
 			},
 		}
 	} catch (error) {
 		await harness.close().catch(() => undefined)
-		await cloudflareMock[Symbol.asyncDispose]()
+		try {
+			await cloudflareMock[Symbol.asyncDispose]()
+		} finally {
+			await compiled.close()
+		}
 		throw error
 	}
 }

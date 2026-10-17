@@ -6,12 +6,12 @@ import { isExecutedDirectly } from './node-runtime.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-// Origin production maps come from `vite build` (`dist/ssr` + `dist/client`).
+// Origin production maps come from `vite build` (`dist/server` + `dist/client`).
 // Wrangler resolves `--outdir .wrangler/sentry-bundle` against the config
 // file's directory, so sibling scripts land under their package (not the
 // origin worker path, and not always the repo root).
 export const sentryWorkerBundleRelPaths = [
-	'dist/ssr',
+	'dist/server',
 	'packages/worker/.wrangler/sentry-bundle',
 	'packages/platform-worker/.wrangler/sentry-bundle',
 	'packages/runtime-worker/.wrangler/sentry-bundle',
@@ -46,7 +46,7 @@ function workerBundleLabel(
 	relPath: (typeof sentryWorkerBundleRelPaths)[number],
 ): string {
 	switch (relPath) {
-		case 'dist/ssr':
+		case 'dist/server':
 			return 'origin vite worker bundle'
 		case 'packages/worker/.wrangler/sentry-bundle':
 			return 'origin wrangler worker bundle'
@@ -82,12 +82,12 @@ export function planSentrySourcemapUploads(input: {
 			.join(', ')
 		return {
 			ok: false,
-			error: `sentry-upload-sourcemaps: no worker bundle with source maps found (checked: ${checked}). Origin maps come from \`vite build\` (\`dist/ssr\`); sibling deploys still use \`--outdir .wrangler/sentry-bundle --upload-source-maps\` next to each worker config.`,
+			error: `sentry-upload-sourcemaps: no worker bundle with source maps found (checked: ${checked}). Origin maps come from \`vite build\` (\`dist/server\`); sibling deploys still use \`--outdir .wrangler/sentry-bundle --upload-source-maps\` next to each worker config.`,
 		}
 	}
 
 	const clientDir = join(input.root, sentryClientAssetsRelPath)
-	const originBuilt = existsSync(join(input.root, 'dist', 'ssr'))
+	const originBuilt = existsSync(join(input.root, 'dist', 'server'))
 	if (hasSourceMaps(clientDir)) {
 		return {
 			ok: true,

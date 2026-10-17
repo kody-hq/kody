@@ -54,38 +54,76 @@ test('an org the person cannot use is a 404 on every section, never their own da
 		password: stranger.password,
 		mode: 'login',
 	})
-	const memory = await page.request.post('/account/memories.json', {
-		data: { action: 'noop' },
-		headers: {
-			'Content-Type': 'application/json',
-			Referer: `${origin}/@${vault}/-/memories`,
-		},
+
+	// A browser can forge the explicit organization input, but it cannot gain access.
+	await page.goto(`/@${stranger.username}/-/mcp-servers/new`)
+	await waitForClientHydration(page)
+	let forged = false
+	await page.route('**/_serverFn/**', async (route) => {
+		if (
+			route.request().method() !== 'POST' ||
+			!route.request().postData()?.includes('orgSlug')
+		)
+			return route.fallback()
+		const body = route.request().postDataJSON()
+		function changeScope(value: unknown): void {
+			if (!value || typeof value !== 'object') return
+			const record = value as Record<string, unknown>
+			if (record.orgSlug === stranger.username) {
+				record.orgSlug = vault
+				forged = true
+			}
+			if (Array.isArray(record.k) && Array.isArray(record.v)) {
+				const index = record.k.indexOf('orgSlug')
+				if (index >= 0) {
+					const node = record.v[index] as { s?: string }
+					if (node?.s === stranger.username) {
+						node.s = vault
+						forged = true
+					}
+				}
+			}
+			for (const child of Object.values(record)) changeScope(child)
+		}
+		changeScope(body)
+		expect(forged).toBe(true)
+		await route.continue({ postData: JSON.stringify(body) })
 	})
-	expect(memory.status()).toBe(404)
+	await page.locator('input[name="name"]').fill('forged-org-write')
+	await page.getByLabel('Server URL').fill('http://127.0.0.1:9/mcp')
+	await page
+		.locator('button[type="submit"]')
+		.filter({ hasText: /^Add server$/ })
+		.click()
+	await expect.poll(() => forged).toBe(true)
+	await expect(
+		page.getByText('Organization not found.', { exact: false }).first(),
+	).toBeVisible()
+	await page.unrouteAll({ behavior: 'wait' })
 
 	for (const section of ['memories', 'workflows', 'webhooks', 'mcp-servers']) {
 		const response = await page.goto(`/@${vault}/-/${section}`)
 		expect(response?.status(), section).toBe(404)
+		await expect(page).toHaveURL(`${origin}/@${vault}/-/${section}`)
+		expect(response?.headers()['cache-control']).toContain('no-store')
+		expect(response?.headers()['content-security-policy']).toMatch(
+			/script-src[^;]*'nonce-[^']+'/,
+		)
+		await expect(page.getByTestId('not-found-page')).toBeVisible()
+		await waitForClientHydration(page)
 	}
 
-	for (const [api, section] of orgSectionApis) {
-		const denied = await page.request.get(`/account/${api}.json`, {
-			headers: { Referer: `${origin}/@${vault}/-/${section}` },
-		})
-		expect(denied.status(), api).toBe(404)
-		await expect(denied.json()).resolves.toEqual({
-			ok: false,
-			error: 'Organization not found.',
-		})
+	for (const [, section] of orgSectionApis) {
+		const denied = await page.goto(`/@${vault}/-/${section}`)
+		expect(denied?.status(), section).toBe(404)
+		await expect(page.getByTestId('not-found-page')).toBeVisible()
+	}
+	for (const [, section] of orgSectionApis) {
+		const own = await page.goto(`/@${stranger.username}/-/${section}`)
+		expect(own?.status(), section).toBe(200)
+		await expect(page.getByTestId('not-found-page')).toHaveCount(0)
 	}
 
-	// The stranger's own org still answers from its own pages.
-	for (const [api, section] of orgSectionApis) {
-		const own = await page.request.get(`/account/${api}.json`, {
-			headers: { Referer: `${origin}/@${stranger.username}/-/${section}` },
-		})
-		expect(own.status(), api).toBe(200)
-	}
 	const ownPage = await page.goto(`/@${stranger.username}/-/memories`)
 	expect(ownPage?.status()).toBe(200)
 	await expect(

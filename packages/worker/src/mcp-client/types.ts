@@ -131,3 +131,9 @@ export type McpServerOAuthCallbackOutcome = {
 	authorizationNeeded: boolean
 	lastError: McpServerLastError | null
 }
+
+/** Website status never starts a connection just to observe it. */
+export type McpServerReadSnapshot = Omit<McpServerSnapshot, 'state'> & {
+	state: McpServerSnapshot['state'] | 'unknown'
+}
+export type McpClientHubReadSnapshot = { servers: Array<McpServerReadSnapshot> }

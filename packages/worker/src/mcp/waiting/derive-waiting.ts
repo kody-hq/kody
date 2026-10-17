@@ -155,7 +155,7 @@ export async function collectWaitingSignals(input: {
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
 			env,
-			userId: user.stableUserId,
+			personId: user.actorStableUserId ?? user.stableUserId,
 		}).catch(() => true),
 		userHasMcpOAuthGrants(env, user.actorStableUserId ?? user.stableUserId),
 		collectMcpServerSignals(env, user.stableUserId, input.waitUntil),
@@ -175,7 +175,10 @@ export async function collectWaitingSignals(input: {
 		collectPendingEmailChange(env, user.userId, now),
 		collectErrorRate(env, user.stableUserId, now),
 		collectEntitlementCaps(env, user, now),
-		probeActivationStamps(env.APP_DB, user.stableUserId),
+		probeActivationStamps(
+			env.APP_DB,
+			user.actorStableUserId ?? user.stableUserId,
+		),
 		probeHasMemory(env.APP_DB, user.stableUserId),
 		probeHasJob(env, user.stableUserId),
 		readOfficialDiscordMembershipForUser({
@@ -196,6 +199,7 @@ export async function collectWaitingSignals(input: {
 	// re-derives them itself.
 	const checklist = await deriveOnboardingChecklist({
 		env,
+		personId: user.actorStableUserId ?? user.stableUserId,
 		userId: user.stableUserId,
 		emailVerified: user.emailVerified,
 		hasMcpClient,

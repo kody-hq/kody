@@ -1,47 +1,11 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import { creditTopUpSuccessUrl } from '#worker/billing/credit-top-ups.ts'
-import {
-	accountCreditsRedirectUrl,
-	createAccountCreditsHandler,
-} from './account-credits.ts'
+import { accountCreditsRedirectUrl } from './account-credits.ts'
 
-const mockModule = vi.hoisted(() => ({
-	requireAuthenticatedPageUser: vi.fn<() => Promise<unknown>>(),
-	getOrgById: vi.fn<(db: unknown, id: string) => Promise<unknown>>(),
-}))
-
-vi.mock('#app/page-auth.ts', () => ({
-	requireAuthenticatedPageUser: () => mockModule.requireAuthenticatedPageUser(),
-}))
-
-vi.mock('#worker/orgs/repo.ts', () => ({
-	getOrgById: (db: unknown, id: string) => mockModule.getOrgById(db, id),
-}))
-
-const env = { APP_DB: {} } as Env
-
-beforeEach(() => {
-	vi.clearAllMocks()
-	mockModule.requireAuthenticatedPageUser.mockResolvedValue({
-		userId: 7,
-		username: 'ada',
-		mcpUser: { userId: ownerIdFromStored('stable-7') },
-	})
-	mockModule.getOrgById.mockResolvedValue({ slug: 'ada' })
-})
-
-test('old /account/credits links land on the personal org usage Credits section', async () => {
-	const request = new Request('https://kody.codes/account/credits')
-	const response = await createAccountCreditsHandler(env).handler({
-		request,
-		url: new URL(request.url),
-		params: {},
-	} as never)
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toBe(
-		'https://kody.codes/@ada/-/usage#credits',
-	)
+test('old /account/credits links land on the personal org credits ledger', () => {
+	expect(
+		accountCreditsRedirectUrl('https://kody.codes/account/credits', 'ada'),
+	).toBe('https://kody.codes/@ada/-/credits')
 })
 
 test('the redirect keeps pre-move Stripe returns and notice codes', () => {
@@ -58,7 +22,7 @@ test('the redirect keeps pre-move Stripe returns and notice codes', () => {
 			'https://kody.codes/account/credits?credits=added',
 			'ada',
 		),
-	).toBe('https://kody.codes/@ada/-/usage?credits=added#credits')
+	).toBe('https://kody.codes/@ada/-/credits?credits=added')
 })
 
 test('top-up success URL drops the fragment so Stripe can append the session id', () => {

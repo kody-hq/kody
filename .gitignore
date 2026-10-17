@@ -13,6 +13,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-start
 *.local
 bun.lock
 
@@ -50,3 +51,11 @@ packages/jobs-worker/wrangler-*.generated.json
 packages/highlight-worker/wrangler-local-dev.generated.json
 packages/highlight-worker/wrangler-*.generated.json
 packages/api-worker/wrangler-*.generated.json
+
+/test-results-start/
+
+# Local migration measurement artifacts and captured sessions
+/tools/framework-comparison/reports/
+
+packages/start-routing-worker/wrangler-*.generated.json
+packages/start-routing-worker/start-entry.generated.ts

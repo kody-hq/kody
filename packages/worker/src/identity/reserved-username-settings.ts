@@ -327,7 +327,9 @@ export async function findReservedUsernameConflicts(
 }
 
 export async function loadReservedUsernameAdminSnapshot(env: Env) {
-	const record = await loadReservedUsernameRecord(env)
+	// Admin reads confirm writes across request env identities. The public
+	// username-validation memo can be stale for its TTL after another request.
+	const record = await loadReservedUsernameRecordUncached(env)
 	const effective = computeEffectiveReservedUsernames(record)
 	const conflicts = await findReservedUsernameConflicts(
 		env.APP_DB,

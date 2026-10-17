@@ -19,9 +19,8 @@ Local default: `jane@example.com` / `ilikecode`. Preview default:
 ## APIs
 
 - `POST /auth` `{ email, password, mode: "login" }`
-- `GET /session`
-- `POST /logout`
-- `GET /auth/providers.json`
+- `GET /session` Provider reads and logout use native Start server functions
+  through the UI.
 
 ## Gotchas
 

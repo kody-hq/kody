@@ -195,3 +195,16 @@ test('committed markdown file references exist', async () => {
 		issues: [],
 	})
 })
+
+test('local comparison reports cannot make broken checkout links pass locally', () => {
+	const report = 'tools/framework-comparison/reports/COMPARISON.md'
+	const issues = issuesIn({
+		relativePath: 'tools/framework-comparison/README.md',
+		content: '[results](reports/COMPARISON.md)',
+		files: [report],
+		directories: ['tools/framework-comparison/reports'],
+	})
+	expect(issues).toHaveLength(1)
+	expect(issues[0]?.reference).toBe(report)
+	expect(issues[0]?.message).toContain('local-only')
+})
