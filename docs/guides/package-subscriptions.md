@@ -343,7 +343,9 @@ package runtime `email` helper.
 Quarantined stored inbound email dispatches `email.message.quarantined` instead
 of `email.message.received`. The payload matches `email.message.received` with
 `event: 'email.message.quarantined'`. Reclassifying a message later does not
-retroactively dispatch either topic.
+retroactively dispatch either topic. `email.reply` refuses that message
+(`quarantined_inbound_reply`) until it is released with `emailMessageClassify`
+(`classification: "accepted"`) or Not spam on `/@<slug>/-/email`.
 
 ## `email.message.delivery.updated`
 

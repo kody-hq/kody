@@ -597,19 +597,22 @@ still matches the envelope): `block` rejects at SMTP before quota is charged,
 because of an allow rule. When no rule matches, suspect mail is quarantined and
 other mail is accepted. Accepted user mail dispatches `email.message.received`;
 quarantined user mail dispatches `email.message.quarantined` instead.
-Quarantined operator system-inbox mail is stored but suppresses
-`email.system-message.received`. Before user-inbox dispatch,
-`classifyInboundEmailSender` decides the sender. A verified, authenticated
-account email of a current org member is `member` (only packages they hold
-`package:execute` on are considered). Any other From that authenticates by DMARC
-pass or aligned SPF is `inbox-owner`. Packages run only when a per-sender
-enablement matches; the run acts as that enablement's enabler, with credentials
-checked and audited under them. DKIM-only, a missing Authentication-Results
-header, failed auth, a missing From, or a spoofed member address runs nothing
-and logs `inbound-email-sender-unverified`. Successful reserved-sender sends fan
-`email.system-message.sent` (admin-only) with the sent correspondence.
-Reclassification never retroactively fires subscription events. Users manage
-rules via `email_sender_rule_*` (200-rule cap), reclassify via
+`emailReply` refuses a quarantined inbound message (`quarantined_inbound_reply`)
+before any send or daily send quota is used, so a reply cannot backscatter to a
+spoofed sender. Release it with `emailMessageClassify` (classification
+`accepted`) or Not spam on `/@<slug>/-/email`, then reply. Quarantined operator
+system-inbox mail is stored but suppresses `email.system-message.received`.
+Before user-inbox dispatch, `classifyInboundEmailSender` decides the sender. A
+verified, authenticated account email of a current org member is `member` (only
+packages they hold `package:execute` on are considered). Any other From that
+authenticates by DMARC pass or aligned SPF is `inbox-owner`. Packages run only
+when a per-sender enablement matches; the run acts as that enablement's enabler,
+with credentials checked and audited under them. DKIM-only, a missing
+Authentication-Results header, failed auth, a missing From, or a spoofed member
+address runs nothing and logs `inbound-email-sender-unverified`. Successful
+reserved-sender sends fan `email.system-message.sent` (admin-only) with the sent
+correspondence. Reclassification never retroactively fires subscription events.
+Users manage rules via `email_sender_rule_*` (200-rule cap), reclassify via
 `emailMessageClassify` or `/@<slug>/-/email`, and delete stored messages via
 `emailMessageDelete` or the delete action on `/@<slug>/-/email`; operators use
 `admin_system_email_sender_rule_*` for system inboxes. Upstream, Cloudflare

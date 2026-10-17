@@ -157,7 +157,8 @@ inbox**. It links here.
 ## Where to go next
 
 - [Email primitives](../use/email-primitives.md) — addressing, plus-tags,
-  quotas, `emailSend` / `emailReply`.
+  quotas, `emailSend` / `emailReply`. `emailReply` will not answer quarantined
+  mail until you release it.
 - [Subscriptions and events](./package-subscriptions.md) — payload shape and
   synthetic dispatch.
 - [Email and memories](./first-win.md) — optional welcome-email loop. That
