@@ -423,8 +423,9 @@ cannot fan out across parallel paths. Covered paths (`rateLimitedAuthPaths` in
 Public signup requires Turnstile in production: both `TURNSTILE_SITE_KEY` and
 `TURNSTILE_SECRET_KEY` must be set or the worker refuses to boot. If either key
 is missing at request time, public forms refuse with a `503` (reported to
-Sentry) instead of failing open. Local development, previews, and tests may omit
-the keys and skip the challenge.
+Sentry) instead of failing open. Local development (`WRANGLER_IS_LOCAL_DEV`),
+previews, and tests may omit the keys and skip the challenge — including when
+local generated wrangler still copies `SENTRY_ENVIRONMENT=production`.
 
 Excess requests receive `429 Too Many Requests` with a `Retry-After` header. The
 D1 approach uses a batched INSERT + COUNT in a single transaction, avoiding the

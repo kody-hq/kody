@@ -297,7 +297,12 @@ the full error are in
 Copy `packages/worker/.env.example` to `packages/worker/.env` if missing.
 `dev:ensure` and `migrate:local` do this copy themselves. `COOKIE_SECRET` and
 `SECRET_STORE_KEY` are required for local dev. The file does not create D1, KV,
-or Durable Object bindings.
+or Durable Object bindings. Turnstile keys are not required for local boot:
+generated local wrangler keeps `SENTRY_ENVIRONMENT=production` from the
+production env block but sets `WRANGLER_IS_LOCAL_DEV=true`, and `validateEnv`
+skips the production Turnstile boot gate for that flag (#3939). Real production
+still refuses to boot without both keys. To exercise the widget locally, the
+commented Cloudflare always-pass test values in `.env.example` are enough.
 
 ## Local Kody execute (CLI)
 

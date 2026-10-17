@@ -148,9 +148,10 @@ email.
 
 Required in production for public signup. Both `TURNSTILE_SITE_KEY` and
 `TURNSTILE_SECRET_KEY` must be set; production boot fails without them, and
-request handlers refuse with a `503` (to Sentry) if either key disappears.
-Local/preview/test may omit them. Dashboard: **Turnstile**.
-`.github/workflows/deploy.yml` does not sync these secrets.
+request handlers refuse with a `503` (to Sentry) if either key disappears. Local
+(`WRANGLER_IS_LOCAL_DEV`), preview, and test may omit them even when generated
+local wrangler still sets `SENTRY_ENVIRONMENT=production`. Dashboard:
+**Turnstile**. `.github/workflows/deploy.yml` does not sync these secrets.
 
 ### API tokens
 
