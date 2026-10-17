@@ -837,6 +837,45 @@ test('known-stale without report-status falls through instead of synthesizing st
 	expect(calls).toBe(2)
 })
 
+test('a force-push rewind to a historical tip falls through to Artifacts', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(2)
+	// Outside force-push reset main back to oidA; client fetched and pushes on.
+	const rewind = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidD, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(rewind.status).toBe(200)
+	expect(calls).toBe(3)
+})
+
 test('an outside-writer tip does not wedge the cache after the client fetches', async () => {
 	const { store } = createMemoryStore()
 	let calls = 0

@@ -77,9 +77,9 @@ test('parseReceivePackCommands reads old/new/ref and side-band capability', () =
 	).toBe(false)
 })
 
-test('allReceivePackCommandsKnownStale requires every old-oid to be superseded', () => {
+test('allReceivePackCommandsKnownStale matches only the immediate previous tip', () => {
 	const landed = new Map<string, LandedRefState>([
-		['refs/heads/main', { tip: oidB, superseded: [oidA] }],
+		['refs/heads/main', { tip: oidB, previous: oidA }],
 	])
 	expect(
 		allReceivePackCommandsKnownStale(
@@ -93,7 +93,7 @@ test('allReceivePackCommandsKnownStale requires every old-oid to be superseded',
 			landed,
 		),
 	).toBe(false)
-	// Outside writer advanced the tip: unknown old-oid must fall through.
+	// Outside writer / force-push rewind to a historical oid must fall through.
 	expect(
 		allReceivePackCommandsKnownStale(
 			[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
@@ -122,8 +122,8 @@ test('allReceivePackCommandsKnownStale requires every old-oid to be superseded',
 				{ oldOid: oidA, newOid: oidC, ref: 'refs/heads/feature' },
 			],
 			new Map([
-				['refs/heads/main', { tip: oidB, superseded: [oidA] }],
-				['refs/heads/feature', { tip: oidB, superseded: [oidA] }],
+				['refs/heads/main', { tip: oidB, previous: oidA }],
+				['refs/heads/feature', { tip: oidB, previous: oidA }],
 			]),
 		),
 	).toBe(true)
@@ -148,7 +148,7 @@ test('buildStaleFetchFirstReportStatus emits unpack ok and ng fetch first', () =
 	expect(collectReportStatusOkRefs(plain).size).toBe(0)
 })
 
-test('applyReportStatusToLandedRefs updates tips, records superseded, and clears on ng', () => {
+test('applyReportStatusToLandedRefs records command old-oid as previous and clears on ng', () => {
 	const landed = new Map<string, LandedRefState>()
 	const okBody = concat(
 		encodeGitPktLineBytes('unpack ok\n'),
@@ -166,13 +166,14 @@ test('applyReportStatusToLandedRefs updates tips, records superseded, and clears
 	)
 	expect(landed.get('refs/heads/main')).toEqual({
 		tip: oidB,
-		superseded: [oidA],
+		previous: oidA,
 	})
 	expect(landed.has('refs/heads/other')).toBe(false)
 
+	// Catch-up after an outside tip: record the real previous (command.oldOid).
 	applyReportStatusToLandedRefs(
 		landed,
-		[{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' }],
+		[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
 		concat(
 			encodeGitPktLineBytes('unpack ok\n'),
 			encodeGitPktLineBytes('ok refs/heads/main\n'),
@@ -180,13 +181,13 @@ test('applyReportStatusToLandedRefs updates tips, records superseded, and clears
 		),
 	)
 	expect(landed.get('refs/heads/main')).toEqual({
-		tip: oidC,
-		superseded: [oidA, oidB],
+		tip: oidA,
+		previous: oidC,
 	})
 
 	applyReportStatusToLandedRefs(
 		landed,
-		[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
+		[{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' }],
 		concat(
 			encodeGitPktLineBytes('unpack ok\n'),
 			encodeGitPktLineBytes('ng refs/heads/main fetch first\n'),
@@ -195,7 +196,7 @@ test('applyReportStatusToLandedRefs updates tips, records superseded, and clears
 	)
 	expect(landed.has('refs/heads/main')).toBe(false)
 
-	landed.set('refs/heads/main', { tip: oidB, superseded: [oidA] })
+	landed.set('refs/heads/main', { tip: oidB, previous: oidA })
 	applyReportStatusToLandedRefs(
 		landed,
 		[{ oldOid: oidB, newOid: zeros, ref: 'refs/heads/main' }],

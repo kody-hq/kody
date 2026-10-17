@@ -182,10 +182,10 @@ export class RepoPushQueue {
 	#landingCount = 0
 	#reservedBytes = 0
 	/**
-	 * Tips this queue last landed (`ok <ref>` + command new-oid) plus oids it
-	 * already moved past. In-memory only: a DO reset clears it. Known-stale
-	 * means the command old-oid is in `superseded`; an unknown old-oid (outside
-	 * writer) falls through to Artifacts. Artifacts `ng` clears the entry.
+	 * Tips this queue last landed (`ok <ref>` + command new-oid) plus the
+	 * immediate previous tip. In-memory only: a DO reset clears it. Known-stale
+	 * means old-oid === previous; unknown/historical old-oids fall through.
+	 * Artifacts `ng` clears the entry.
 	 */
 	readonly #landedRefs = new Map<string, LandedRefState>()
 

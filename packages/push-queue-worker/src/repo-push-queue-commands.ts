@@ -150,24 +150,20 @@ export function parseReceivePackCommands(
 }
 
 /**
- * Per-ref tips this queue last landed, plus oids it already moved past.
- * A push is known-stale only when its old-oid is in `superseded` (a tip we
- * overwrote). An old-oid that merely disagrees with `tip` (e.g. an outside
- * writer advanced the ref) falls through to Artifacts so the cache cannot
- * wedge clients that already fetched the real tip.
+ * Per-ref tip this queue last landed, plus the single previous tip that
+ * command overwrote. Known-stale means old-oid === previous (the hot path for
+ * N agents racing one ref). Older or unknown old-oids fall through so a
+ * force-push rewind to a historical oid cannot wedge the cache.
  */
 export type LandedRefState = {
 	tip: string
-	/** Recent tips this queue replaced; capped FIFO. */
-	superseded: ReadonlyArray<string>
+	/** Immediate predecessor tip overwritten by the last successful land. */
+	previous: string | null
 }
 
-/** How many superseded oids to retain per ref (covers a large racing burst). */
-export const landedRefSupersededLimit = 64
-
 /**
- * True when every command's old-oid is a tip this queue already moved past.
- * Cache misses and unknown old-oids (outside writers) are not stale.
+ * True when every command's old-oid is the tip this queue just moved past.
+ * Cache misses and unknown old-oids (outside writers / rewinds) are not stale.
  */
 export function allReceivePackCommandsKnownStale(
 	commands: ReadonlyArray<ReceivePackCommand>,
@@ -176,9 +172,8 @@ export function allReceivePackCommandsKnownStale(
 	if (commands.length === 0) return false
 	return commands.every((command) => {
 		const state = landedRefs.get(command.ref)
-		if (!state) return false
-		if (command.oldOid === state.tip) return false
-		return state.superseded.includes(command.oldOid)
+		if (!state || state.previous === null) return false
+		return command.oldOid === state.previous
 	})
 }
 
@@ -265,21 +260,11 @@ function scanReportStatusPackets(
 	}
 }
 
-function pushSuperseded(
-	prior: ReadonlyArray<string>,
-	oid: string | undefined,
-): Array<string> {
-	if (!oid || isZeroOid(oid)) return [...prior]
-	if (prior.includes(oid)) return [...prior]
-	const next = [...prior, oid]
-	if (next.length <= landedRefSupersededLimit) return next
-	return next.slice(next.length - landedRefSupersededLimit)
-}
-
 /**
- * Apply report-status onto the landed-ref cache: `ok` advances tip (and records
- * the previous tip / command old-oid as superseded); `ng` clears the entry so
- * a tip that moved outside the queue cannot wedge later valid pushes.
+ * Apply report-status onto the landed-ref cache: `ok` advances tip and records
+ * the command's old-oid as `previous` (so sibling racers on that tip reject
+ * locally); `ng` clears the entry so an outside move cannot wedge later
+ * fetch-based pushes.
  */
 export function applyReportStatusToLandedRefs(
 	landedRefs: Map<string, LandedRefState>,
@@ -298,11 +283,9 @@ export function applyReportStatusToLandedRefs(
 			landedRefs.delete(command.ref)
 			continue
 		}
-		const prior = landedRefs.get(command.ref)
-		const superseded = pushSuperseded(
-			prior?.superseded ?? [],
-			prior?.tip ?? command.oldOid,
-		)
-		landedRefs.set(command.ref, { tip: command.newOid, superseded })
+		landedRefs.set(command.ref, {
+			tip: command.newOid,
+			previous: isZeroOid(command.oldOid) ? null : command.oldOid,
+		})
 	}
 }
