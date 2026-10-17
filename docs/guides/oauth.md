@@ -103,20 +103,20 @@ with `allowedHosts` when needed.
 
 ## Common optional parameters
 
-| Param                       | Purpose                                                                        |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `flow`                      | `pkce` (default), `confidential`, or `device` (RFC 8628).                      |
-| `deviceAuthorizationUrl`    | Required when `flow=device`: the provider's device authorization endpoint.     |
-| `pkce`                      | `true` or `false`; overrides the PKCE default (see below). Ignored for device. |
-| `tokenExchangeStyle`        | `form` (default), `basic-json`, or `basic-form`; overrides the host default.   |
-| `scopes`                    | Space- or separator-separated scopes.                                          |
-| `scopeSeparator`            | Defaults to a single space.                                                    |
-| `allowedHosts`              | Extra API hosts beyond the token (and device) host.                            |
-| `apiBaseUrl`                | Optional API base URL hint.                                                    |
-| `dashboardUrl`              | Provider settings link.                                                        |
-| `extraAuthorizeParams`      | Provider-specific authorize params.                                            |
-| `loginHint`                 | Merges into authorize `login_hint` without replacing stored extra params.      |
-| `providerSetupInstructions` | Free-form setup hints shown in the wizard.                                     |
+| Param                       | Purpose                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `flow`                      | `pkce` (default), `confidential`, or `device` (RFC 8628).                                                                        |
+| `deviceAuthorizationUrl`    | Required when `flow=device`: the provider's device authorization endpoint.                                                       |
+| `pkce`                      | `true` or `false`; overrides the PKCE default for `pkce` / `confidential` only. Device flow ignores PKCE entirely (no override). |
+| `tokenExchangeStyle`        | `form` (default), `basic-json`, or `basic-form`; overrides the host default.                                                     |
+| `scopes`                    | Space- or separator-separated scopes.                                                                                            |
+| `scopeSeparator`            | Defaults to a single space.                                                                                                      |
+| `allowedHosts`              | Extra API hosts beyond the token (and device) host.                                                                              |
+| `apiBaseUrl`                | Optional API base URL hint.                                                                                                      |
+| `dashboardUrl`              | Provider settings link.                                                                                                          |
+| `extraAuthorizeParams`      | Provider-specific authorize params.                                                                                              |
+| `loginHint`                 | Merges into authorize `login_hint` without replacing stored extra params.                                                        |
+| `providerSetupInstructions` | Free-form setup hints shown in the wizard.                                                                                       |
 
 ## Device authorization grant (RFC 8628)
 
@@ -141,8 +141,10 @@ Agents can drive the same backend with MCP `integrationDeviceConnectStart` /
 `flow` decides whether a client secret is collected and sent (`confidential`) or
 not (`pkce`). Device grant allows public clients (no secret) or confidential
 ones. PKCE itself is a separate switch: it defaults to on for the `pkce` flow
-and off for `confidential` / `device`, and `pkce=true` enables S256 PKCE on top
-of a confidential flow for providers that require both.
+and off for `confidential`, and `pkce=true` enables S256 PKCE on top of a
+confidential flow for providers that require both. Device flow ignores PKCE
+entirely — there is no authorize redirect, so `pkce=true` has no effect when
+`flow=device`.
 
 `tokenExchangeStyle` decides how confidential credentials reach the token
 endpoint: `form` puts `client_secret` in the urlencoded body (GitHub, Slack,

@@ -5,6 +5,8 @@ import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
 	DEVICE_DEFAULT_INTERVAL_SECONDS,
 	DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
+	consumeDevicePendingSession,
+	loadDevicePendingSession,
 	pollDeviceAuthorization,
 	startDeviceAuthorization,
 } from './device-flow.ts'
@@ -159,6 +161,42 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	if (approved.status !== 'approved') return
 	expect(approved.tokenPayload.access_token).toBe('at-1')
 	expect(JSON.stringify(approved)).not.toContain('dc-1')
+	// Tokens stay in KV until consume so persist can retry.
+	const stored = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(stored?.approvedTokenPayload?.access_token).toBe('at-1')
+	expect(fetchImpl).toHaveBeenCalledTimes(4)
+
+	const cached = await pollDeviceAuthorization({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		fetchImpl,
+		nowMs: Date.now() + 180_000,
+	})
+	expect(cached.ok).toBe(true)
+	if (!cached.ok) return
+	expect(cached.status).toBe('approved')
+	if (cached.status !== 'approved') return
+	expect(cached.tokenPayload.access_token).toBe('at-1')
+	// Cached approve must not re-hit the provider with device_code.
+	expect(fetchImpl).toHaveBeenCalledTimes(4)
+
+	await consumeDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: baseStart.userId,
+			sessionId: started.sessionId,
+		}),
+	).toBeNull()
 })
 
 test('pollDeviceAuthorization returns access_denied and expired_token', async () => {

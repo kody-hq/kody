@@ -74,6 +74,12 @@ export type DevicePendingSession = {
 	extraAuthorizeParams: Record<string, string>
 	/** BYO confidential secret captured at start; never returned to callers. */
 	clientSecret: string | null
+	/**
+	 * Set once the provider returns tokens. Later polls return this payload
+	 * without re-using `device_code` at the provider. Cleared only by
+	 * `consumeDevicePendingSession` after persist succeeds.
+	 */
+	approvedTokenPayload?: Record<string, unknown> | null
 }
 
 export type DeviceStartSuccess = {
@@ -117,7 +123,10 @@ export type DevicePollSuccess = {
 	status: 'approved'
 	tokenPayload: Record<string, unknown>
 	/** Session fields needed to persist the connection. */
-	session: Omit<DevicePendingSession, 'deviceCode' | 'clientSecret'>
+	session: Omit<
+		DevicePendingSession,
+		'deviceCode' | 'clientSecret' | 'approvedTokenPayload'
+	>
 	clientSecret: string | null
 }
 
@@ -206,10 +215,20 @@ export async function storeDevicePendingSession(input: {
 	if (!input.env.OAUTH_KV) {
 		throw new Error('Device authorization storage is unavailable.')
 	}
-	const ttlSeconds = Math.max(
-		1,
-		Math.ceil((input.session.expiresAtMs - Date.now()) / 1000),
+	const remainingSeconds = Math.ceil(
+		(input.session.expiresAtMs - Date.now()) / 1000,
 	)
+	if (remainingSeconds < 1) {
+		await deleteDevicePendingSession({
+			env: input.env,
+			userId: input.session.userId,
+			sessionId: input.sessionId,
+		})
+		return
+	}
+	// Cloudflare KV rejects expirationTtl < 60. Logical expiry is enforced
+	// by `expiresAtMs` in pollDeviceAuthorization.
+	const ttlSeconds = Math.max(60, remainingSeconds)
 	await input.env.OAUTH_KV.put(
 		deviceSessionKvKey(input.session.userId, input.sessionId),
 		JSON.stringify(input.session),
@@ -240,6 +259,34 @@ export async function deleteDevicePendingSession(input: {
 	await input.env.OAUTH_KV.delete(
 		deviceSessionKvKey(input.userId, input.sessionId),
 	)
+}
+
+/** Delete the pending session after tokens have been persisted successfully. */
+export async function consumeDevicePendingSession(input: {
+	env: Pick<Env, 'OAUTH_KV'>
+	userId: string
+	sessionId: string
+}): Promise<void> {
+	await deleteDevicePendingSession(input)
+}
+
+function toApprovedPollResult(
+	session: DevicePendingSession,
+	tokenPayload: Record<string, unknown>,
+): DevicePollSuccess {
+	const {
+		deviceCode: _deviceCode,
+		clientSecret,
+		approvedTokenPayload: _approved,
+		...safeSession
+	} = session
+	return {
+		ok: true,
+		status: 'approved',
+		tokenPayload,
+		session: safeSession,
+		clientSecret,
+	}
 }
 
 export async function startDeviceAuthorization(input: {
@@ -465,6 +512,18 @@ export async function pollDeviceAuthorization(input: {
 		}
 	}
 
+	// Provider already approved: return cached tokens without re-hitting
+	// the token endpoint (device_code is single-use).
+	if (session.approvedTokenPayload) {
+		const cachedAccess = readOptionalStringField(
+			session.approvedTokenPayload,
+			'access_token',
+		)
+		if (cachedAccess) {
+			return toApprovedPollResult(session, session.approvedTokenPayload)
+		}
+	}
+
 	if (now < session.nextPollAtMs) {
 		return {
 			ok: true,
@@ -630,18 +689,14 @@ export async function pollDeviceAuthorization(input: {
 		}
 	}
 
-	await deleteDevicePendingSession({
+	// Keep tokens in KV until persist succeeds so a failed persist can retry
+	// without re-using the provider device_code.
+	session.approvedTokenPayload = tokenPayload
+	await storeDevicePendingSession({
 		env: input.env,
-		userId: input.userId,
 		sessionId: input.sessionId,
+		session,
 	})
 
-	const { deviceCode: _deviceCode, clientSecret, ...safeSession } = session
-	return {
-		ok: true,
-		status: 'approved',
-		tokenPayload,
-		session: safeSession,
-		clientSecret,
-	}
+	return toApprovedPollResult(session, tokenPayload)
 }

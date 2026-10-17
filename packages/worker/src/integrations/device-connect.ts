@@ -21,6 +21,7 @@ import {
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
+	consumeDevicePendingSession,
 	pollDeviceAuthorization,
 	startDeviceAuthorization,
 	type DevicePollFailure,
@@ -274,6 +275,7 @@ export async function pollIntegrationDeviceConnect(
 		clientSecret: polled.clientSecret,
 	})
 	if (!persisted.ok) {
+		// Leave the approved session in KV so a retry poll can re-read tokens.
 		return {
 			ok: false,
 			status: 'persist_failed',
@@ -281,6 +283,11 @@ export async function pollIntegrationDeviceConnect(
 			httpStatus: persisted.status,
 		}
 	}
+	await consumeDevicePendingSession({
+		env: input.env,
+		userId: ownerId,
+		sessionId,
+	})
 	return {
 		ok: true,
 		status: 'approved',
