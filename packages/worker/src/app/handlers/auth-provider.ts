@@ -22,6 +22,10 @@ import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { getAvailableUsernameFromBase } from '#worker/identity/generated-username.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import {
+	assessAccountEmail,
+	type AccountEmailRejectionCode,
+} from '#worker/identity/account-email-policy.ts'
+import {
 	oauthLoginErrorMessages,
 	type OauthLoginErrorCode,
 } from '#universal/oauth-login-errors.ts'
@@ -141,6 +145,27 @@ function redirect(location: string, cookies: Array<string>) {
 		headers.append('Set-Cookie', cookie)
 	}
 	return new Response(null, { status: 302, headers })
+}
+
+function oauthCodeForAccountEmail(
+	code: AccountEmailRejectionCode,
+): OauthLoginErrorCode {
+	switch (code) {
+		case 'invalid_email':
+			return 'email-invalid'
+		case 'email_typo':
+			return 'email-typo'
+		case 'disposable_email':
+			return 'email-disposable'
+		case 'email_domain_nxdomain':
+		case 'email_domain_no_mx':
+		case 'email_domain_null_mx':
+			return 'email-undeliverable'
+		default: {
+			const exhaustive: never = code
+			throw new Error(`Unhandled account email code: ${String(exhaustive)}`)
+		}
+	}
 }
 
 function redirectToLoginWithError(
@@ -733,7 +758,16 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				})
 			}
 
-			// 4. New account.
+			// 4. New account. Reject addresses we would not store before any
+			// identity allocation or user-row write.
+			const emailDecision = await assessAccountEmail(email)
+			if (!emailDecision.ok) {
+				return fail(
+					oauthCodeForAccountEmail(emailDecision.code),
+					emailDecision.code,
+				)
+			}
+
 			let username: string
 			let stableUserId: OwnerId
 			let signupPersonalOrgId: OwnerId

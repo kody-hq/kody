@@ -117,6 +117,19 @@ Admins can create a user directly by email from `/admin/users`. That flow calls
 the web route logic directly, so admin MCP capabilities can reuse the same
 service. It:
 
+- requires a syntactically valid email (`name@domain`). A username with no `@`
+  is rejected. The same check runs for password signup, social signup, account
+  email change, and `adminUserCreate`
+- rejects disposable domains (and their subdomains) from the vendored
+  [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains)
+  list. Refresh it with `node tools/update-disposable-email-domains.mjs`
+- rejects common mistyped domains and answers with the likely address
+  (`Did you mean ada@gmail.com?`). `.con` and `.cmo` are treated as `.com`
+  typos. `.co` is only rewritten for the explicit provider list because it is a
+  real TLD
+- rejects domains that definitively have no MX and no A/AAAA record (RFC 5321
+  implicit MX). A null MX rejects. DNS-over-HTTPS timeouts and resolver errors
+  fail open so a lookup outage does not block signup
 - requires a unique email and either a unique explicit username or an
   auto-generated unique username derived from the email
 - stores a sentinel `password_hash` that never verifies as a usable password
@@ -174,8 +187,12 @@ Signed-in users with an unverified email can request a fresh link with
 (`packages/worker/src/app/handlers/account-resend-verification.ts`), surfaced as
 a "Resend verification email" button on `/pending-verification`, `/account`,
 `/onboarding`, and `/oauth/authorize`. The endpoint reuses
-`createEmailVerification` (invalidating older tokens) and is rate-limited per
-user (3 requests per 15 minutes).
+`createEmailVerification` (invalidating older tokens). Two limits apply: 3
+requests per 15 minutes for that account, and 5 verification emails per
+recipient address per rolling 24 hours across every account, signup, and resend.
+The per-address counter is a SHA-256 of the normalized recipient in
+`_rate_limits`, because that table stores keys in the clear. A refused send
+names the limit and the UTC time to retry.
 
 `users.email_verified_at` records whether an account's email is verified.
 Accounts with a non-null value are treated as verified; normal signup leaves it
@@ -201,8 +218,14 @@ address, and mark the recipient's MX provider (`email_rejecting_providers`,
 keyed by host suffix such as `messagingengine.com`) so holdable kody@ mail
 (campaigns, plan-limit nudges) is skipped for that provider until rejections age
 out or a successful delivery clears it. Essential mail (verification,
-password/sign-in, security, billing) still attempts the send, subject only to
-the recipient cooldown. `/pending-verification` polls
+password/sign-in, security, billing) still attempts the send, subject to the
+recipient cooldown. Verification mail has two extra stops.
+`email_verification_hard_bounces` records a per-recipient hard bounce (a
+Cloudflare `bounced` event, or `failed` / `rejected` with a permanent 5xx) and
+refuses later verification sends to that address on every account until a
+`delivered` event clears the row. Sender-domain blocklist hits stay on the
+temporary cooldown and are not stored there. The verification cap above is the
+other stop. `/pending-verification` polls
 `GET /account/email-verification-delivery.json` (session cookie only; no email
 query param) for spinner / delivered / failed indicators without exposing other
 users' delivery state. The first terminal failure fans

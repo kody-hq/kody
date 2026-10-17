@@ -3,6 +3,7 @@ import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { hashVerificationToken } from '#app/email-verification.ts'
+import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { buildEmailChangeEmail } from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
@@ -144,14 +145,15 @@ export type VerifyEmailChangeResult =
 			oldEmail: string
 			newEmail: string
 	  }
-	| {
+	| ({
 			ok: false
 			reason:
 				| 'missing_token'
 				| 'invalid_token'
 				| 'expired_token'
 				| 'email_conflict'
-	  }
+				| 'email_rejected'
+	  } & { error?: string })
 
 export async function verifyEmailChangeToken(input: {
 	db: D1Database
@@ -201,6 +203,14 @@ export async function verifyEmailChangeToken(input: {
 		await isEmailReservedForOtherAccount(input.db, newEmail, record.user_id)
 	) {
 		return { ok: false, reason: 'email_conflict' }
+	}
+	const emailDecision = await assessAccountEmail(newEmail)
+	if (!emailDecision.ok) {
+		return {
+			ok: false,
+			reason: 'email_rejected',
+			error: emailDecision.error,
+		}
 	}
 
 	// Preserve the existing stable id across email changes so MCP identity,

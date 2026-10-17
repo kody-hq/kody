@@ -86,10 +86,14 @@ function createAuthTestContext(
 		emailConfigured?: boolean
 		kv?: KVNamespace
 		sentryEnvironment?: 'test' | 'preview' | 'production'
+		hardBouncedEmail?: string
+		verificationCapExhausted?: boolean
 	} = {},
 ) {
 	const testDb = createTestDb({
 		failRoleAssignment: options.failRoleAssignment ?? false,
+		hardBouncedEmail: options.hardBouncedEmail,
+		verificationCapExhausted: options.verificationCapExhausted,
 	})
 	const sentryEnvironment = options.sentryEnvironment ?? 'test'
 	const handler = createAuthHandler({
@@ -166,7 +170,13 @@ type TestUser = {
 	personal_org_id: string
 } & Record<(typeof utmColumns)[number], string | null>
 
-function createTestDb(options: { failRoleAssignment?: boolean } = {}) {
+function createTestDb(
+	options: {
+		failRoleAssignment?: boolean
+		hardBouncedEmail?: string
+		verificationCapExhausted?: boolean
+	} = {},
+) {
 	let nextId = 1
 	const users = new Map<string, TestUser>()
 	const db = {
@@ -178,6 +188,9 @@ function createTestDb(options: { failRoleAssignment?: boolean } = {}) {
 		prepare(query: string) {
 			const normalizedQuery = query.replace(/\s+/g, ' ').trim().toLowerCase()
 			return {
+				async run() {
+					return { meta: { changes: 0, last_row_id: 0 } }
+				},
 				bind(...params: Array<unknown>) {
 					const findUser = (column: 'email' | 'username') => {
 						const needle = String(params[0] ?? '').toLowerCase()
@@ -261,10 +274,33 @@ function createTestDb(options: { failRoleAssignment?: boolean } = {}) {
 					return {
 						all: executeAll,
 						async first() {
+							if (
+								normalizedQuery.includes('from email_verification_hard_bounces')
+							) {
+								const recipient = String(params[0] ?? '').toLowerCase()
+								return options.hardBouncedEmail?.toLowerCase() === recipient
+									? { recipient, status: 'bounced' }
+									: null
+							}
+							if (
+								normalizedQuery.includes('from _rate_limits') &&
+								normalizedQuery.includes('count')
+							) {
+								if (!options.verificationCapExhausted) {
+									return { count: 0, oldest: null }
+								}
+								return {
+									count: 5,
+									oldest: Math.floor(Date.now() / 1000) - 60,
+								}
+							}
 							const result = await executeAll()
 							return result.results[0] ?? null
 						},
 						async run() {
+							if (normalizedQuery.includes('insert into _rate_limits')) {
+								return { meta: { changes: 1, last_row_id: 1 } }
+							}
 							if (normalizedQuery.includes('insert into "users"')) {
 								const user = insertUser()
 								return { meta: { changes: 1, last_row_id: user.id } }
@@ -700,4 +736,81 @@ test('signup rejects KV-added reserved usernames and accepts unreserved built-in
 	)
 	expect(unreservedResponse.status).toBe(200)
 	expect(await unreservedResponse.json()).toEqual(signupAccepted)
+})
+
+test('signup rejects invalid, mistyped, and disposable emails before creating a user', async () => {
+	const context = createAuthTestContext()
+
+	const invalid = await context.signup('jjenzz', 'jjenzz')
+	expect(invalid.status).toBe(400)
+	expect(await invalid.json()).toEqual({
+		error: 'Enter a valid email address, like name@gmail.com.',
+		code: 'invalid_email',
+	})
+	expect(context.testDb.users.has('jjenzz')).toBe(false)
+	expectAuthAudit('signup', 'failure', { reason: 'invalid_email' })
+
+	const typo = await context.signup('ada@gmial.com', 'ada-typo')
+	expect(typo.status).toBe(400)
+	expect(await typo.json()).toEqual({
+		error: 'That email domain looks mistyped. Did you mean ada@gmail.com?',
+		code: 'email_typo',
+		suggestion: 'ada@gmail.com',
+	})
+	expect(context.testDb.users.has('ada@gmial.com')).toBe(false)
+
+	await context.testDb.addUser('taken@mailinator.com', 'secret', 'taken-mail')
+	const disposable = await context.signup(
+		'new@mailinator.com',
+		'mailinator-new',
+	)
+	expect(disposable.status).toBe(400)
+	const disposableBody = await disposable.json()
+	expect(disposableBody).toMatchObject({ code: 'disposable_email' })
+	// An address that already has an account gets the same rejection, so the
+	// error does not reveal whether the account exists.
+	const disposableExisting = await context.signup(
+		'taken@mailinator.com',
+		'mailinator-taken',
+	)
+	expect(disposableExisting.status).toBe(disposable.status)
+	expect(await disposableExisting.json()).toEqual(disposableBody)
+})
+
+test('login still accepts an existing account whose email has no @', async () => {
+	const context = createAuthTestContext()
+	await context.testDb.addUser('jjenzz', 'secret', 'jjenzz')
+	const response = await context.request({
+		email: 'jjenzz',
+		password: 'secret',
+		mode: 'login',
+	})
+	expect(response.status).toBe(200)
+	expect(await response.json()).toEqual({ ok: true, mode: 'login' })
+})
+
+test('signup refuses hard-bounced recipients and over-cap addresses before creating a user', async () => {
+	const bounced = createAuthTestContext({
+		hardBouncedEmail: 'bounced@example.com',
+	})
+	const bounceResponse = await bounced.signup(
+		'Bounced@Example.com',
+		'bounced-jane',
+	)
+	expect(bounceResponse.status).toBe(409)
+	expect(await bounceResponse.json()).toMatchObject({
+		code: 'recipient_hard_bounce',
+	})
+	expect(bounced.testDb.users.size).toBe(0)
+	expectAuthAudit('signup', 'failure', { reason: 'recipient_hard_bounce' })
+
+	const capped = createAuthTestContext({ verificationCapExhausted: true })
+	const capResponse = await capped.signup('capped@example.com', 'capped-jane')
+	expect(capResponse.status).toBe(429)
+	expect(capResponse.headers.get('Retry-After')).toBeTruthy()
+	const capBody = (await capResponse.json()) as { error: string; code: string }
+	expect(capBody.code).toBe('verification_email_cap')
+	expect(capBody.error).toContain('5 verification emails')
+	expect(capBody.error).toContain('24 hours')
+	expect(capped.testDb.users.size).toBe(0)
 })

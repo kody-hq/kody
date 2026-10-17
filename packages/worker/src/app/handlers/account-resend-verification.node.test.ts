@@ -29,6 +29,7 @@ function createResendTestDb(
 		deliveryStatus?: string | null
 		deletingAt?: string | null
 		fenceAfterWritableCheck?: boolean
+		hardBounced?: boolean
 	} = {},
 ) {
 	const user = {
@@ -46,6 +47,7 @@ function createResendTestDb(
 		verificationDeletes: 0,
 		rateLimitAttempts: 0,
 		rateLimitMax: 3,
+		recipientCapAttempts: 0,
 		fenceAfterWritableCheck: false,
 	}
 
@@ -53,7 +55,11 @@ function createResendTestDb(
 		const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
 		const statement = {
 			query: normalized,
-			bind: () => statement,
+			params: [] as Array<unknown>,
+			bind(...params: Array<unknown>) {
+				statement.params = params
+				return statement
+			},
 			async all() {
 				if (
 					normalized.startsWith('select') &&
@@ -95,6 +101,11 @@ function createResendTestDb(
 						personal_org_id: user.stable_user_id,
 					}
 				}
+				if (normalized.includes('from email_verification_hard_bounces')) {
+					return options.hardBounced
+						? { recipient: user.email, status: 'bounced' }
+						: null
+				}
 				if (normalized.includes('email_verification_delivery_status')) {
 					return {
 						email_verification_delivery_status: options.deliveryStatus ?? null,
@@ -117,7 +128,10 @@ function createResendTestDb(
 					return { meta: { changes: 1, last_row_id: 1 } }
 				}
 				if (normalized.includes('delete from _rate_limits')) {
-					state.rateLimitAttempts = Math.max(0, state.rateLimitAttempts - 1)
+					const key = String(statement.params[0] ?? '')
+					if (!key.startsWith('verify-email:recipient:')) {
+						state.rateLimitAttempts = Math.max(0, state.rateLimitAttempts - 1)
+					}
 				}
 				return { meta: { changes: 1, last_row_id: 1 } }
 			},
@@ -142,6 +156,20 @@ function createResendTestDb(
 				return statements.map(() => ({
 					meta: { changes: 0, last_row_id: 0 },
 				}))
+			}
+			const insert = statements.find((statement) =>
+				statement.query?.includes('insert into _rate_limits'),
+			)
+			const key = String(
+				(insert as { params?: Array<unknown> } | undefined)?.params?.[0] ?? '',
+			)
+			if (key.startsWith('verify-email:recipient:')) {
+				state.recipientCapAttempts += 1
+				const allowed = state.recipientCapAttempts <= 5
+				return [
+					{ meta: { changes: 0, last_row_id: 0 } },
+					{ meta: { changes: allowed ? 1 : 0, last_row_id: 0 } },
+				]
 			}
 			state.rateLimitAttempts += 1
 			const allowed = state.rateLimitAttempts <= state.rateLimitMax
@@ -260,6 +288,21 @@ test('resend verification refuses without minting a token', async () => {
 	}
 })
 
+test('resend verification refuses a hard-bounced recipient before using the per-account limit', async () => {
+	const { state, send } = createResendClient({ hardBounced: true })
+	const response = await send()
+	expect(response.status).toBe(409)
+	expect(await response.json()).toMatchObject({
+		ok: false,
+		code: 'recipient_hard_bounce',
+	})
+	expect(state.verificationInserts).toBe(0)
+	expect(state.rateLimitAttempts).toBe(0)
+	expect(logAuditEventSpy).toHaveBeenCalledWith(
+		resendAudit('failure', 'recipient_hard_bounce'),
+	)
+})
+
 test('resend verification issues a fresh token for unverified accounts and rate-limits repeats', async () => {
 	const { state, send } = createResendClient({ emailVerifiedAt: null })
 
@@ -285,7 +328,9 @@ test('resend verification issues a fresh token for unverified accounts and rate-
 	expect(rateLimitedResponse.headers.get('Retry-After')).toBeTruthy()
 	expect(await rateLimitedResponse.json()).toEqual({
 		ok: false,
-		error: 'Too many verification emails requested. Please try again later.',
+		error:
+			'Too many verification emails for this account. You can request 3 every 15 minutes. Try again in 15 minutes.',
+		code: 'verification_resend_cap',
 	})
 	// No new token is created for rate-limited requests.
 	expect(state.verificationInserts).toBe(3)

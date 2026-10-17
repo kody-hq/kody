@@ -17,6 +17,11 @@ import {
 } from '#worker/audit-log.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { createEmailVerification } from '#app/email-verification.ts'
+import {
+	inspectVerificationEmailSend,
+	VerificationEmailRefusedError,
+} from '#app/verification-email-cap.ts'
+import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { assignUserRole } from '#worker/identity/permissions-db.ts'
@@ -260,6 +265,65 @@ export function createAuthHandler(env: Env) {
 					return Response.json(
 						{ error: 'Username already registered.' },
 						{ status: 409 },
+					)
+				}
+
+				const emailDecision = await assessAccountEmail(normalizedEmail)
+				if (!emailDecision.ok) {
+					void logAuditEvent({
+						db: auditDatabaseFromEnv(env),
+						category: 'auth',
+						action: 'signup',
+						result: 'failure',
+						email: normalizedEmail,
+						ip: requestIp,
+						path: url.pathname,
+						reason: emailDecision.code,
+					})
+					return Response.json(
+						{
+							error: emailDecision.error,
+							code: emailDecision.code,
+							...(emailDecision.suggestion
+								? { suggestion: emailDecision.suggestion }
+								: {}),
+						},
+						{ status: 400 },
+					)
+				}
+
+				const verificationSend = await inspectVerificationEmailSend({
+					db: env.APP_DB,
+					email: emailDecision.email,
+				})
+				if (!verificationSend.ok) {
+					void logAuditEvent({
+						db: auditDatabaseFromEnv(env),
+						category: 'auth',
+						action: 'signup',
+						result:
+							verificationSend.code === 'verification_email_cap'
+								? 'rate_limited'
+								: 'failure',
+						email: normalizedEmail,
+						ip: requestIp,
+						path: url.pathname,
+						reason: verificationSend.code,
+					})
+					return Response.json(
+						{
+							error: verificationSend.error,
+							code: verificationSend.code,
+						},
+						{
+							status: verificationSend.status,
+							headers:
+								verificationSend.retryAfterSeconds == null
+									? undefined
+									: {
+											'Retry-After': String(verificationSend.retryAfterSeconds),
+										},
+						},
 					)
 				}
 
@@ -562,6 +626,31 @@ export function createAuthHandler(env: Env) {
 						console.error(
 							'Failed to remove user row after verification setup failure:',
 							deleteError,
+						)
+					}
+					if (error instanceof VerificationEmailRefusedError) {
+						void logAuditEvent({
+							db: auditDatabaseFromEnv(env),
+							category: 'auth',
+							action: 'signup',
+							result:
+								error.code === 'verification_email_cap'
+									? 'rate_limited'
+									: 'failure',
+							email: normalizedEmail,
+							ip: requestIp,
+							path: url.pathname,
+							reason: error.code,
+						})
+						return Response.json(
+							{ error: error.message, code: error.code },
+							{
+								status: error.status,
+								headers:
+									error.retryAfterSeconds == null
+										? undefined
+										: { 'Retry-After': String(error.retryAfterSeconds) },
+							},
 						)
 					}
 					void logAuditEvent({

@@ -141,6 +141,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 				smtpResponse: providerEvent.payload.delivery.smtpResponse,
 				smtpEnhancedStatusCode:
 					providerEvent.payload.delivery.smtpEnhancedStatusCode,
+				smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
 			})
 		}
 		return { ...result, providerEvent }
@@ -176,6 +177,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpResponse: providerEvent.payload.delivery.smtpResponse,
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
+		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
 	})
 
 	if (

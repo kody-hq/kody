@@ -791,6 +791,18 @@ async function handleCreateUserAction(input: {
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : 'Unable to create user.'
+		const requestIp = getRequestIp(input.request) ?? undefined
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(input.env),
+			category: 'admin',
+			action: 'create_user',
+			result: 'failure',
+			email: input.actor.email,
+			ip: requestIp,
+			path: input.url.pathname,
+			reason:
+				error instanceof AdminCreateUserError ? error.code : 'create_failed',
+		})
 		return jsonResponse(
 			{
 				ok: false,

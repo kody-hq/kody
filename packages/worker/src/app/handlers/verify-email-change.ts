@@ -14,14 +14,16 @@ import { verifyEmailChangeToken } from '#app/email-change.ts'
 import { renderAppPage } from '#app/ssr-render.tsx'
 import { type routes } from '#universal/routes.ts'
 
-function getVerifyEmailChangeError(
+function getVerifyEmailChangeError(result: {
 	reason:
 		| 'missing_token'
 		| 'invalid_token'
 		| 'expired_token'
-		| 'email_conflict',
-) {
-	switch (reason) {
+		| 'email_conflict'
+		| 'email_rejected'
+	error?: string
+}) {
+	switch (result.reason) {
 		case 'missing_token':
 			return 'Verification token is required.'
 		case 'invalid_token':
@@ -30,8 +32,13 @@ function getVerifyEmailChangeError(
 			return 'Email change link has expired.'
 		case 'email_conflict':
 			return 'That email address is already registered.'
+		case 'email_rejected':
+			return (
+				result.error ??
+				'That email address cannot be used. Use a different address.'
+			)
 		default: {
-			const unreachable: never = reason
+			const unreachable: never = result.reason
 			return unreachable
 		}
 	}
@@ -66,7 +73,7 @@ export function createVerifyEmailChangeHandler(env: Env) {
 					loaderData: {
 						emailVerification: {
 							ok: false,
-							error: getVerifyEmailChangeError(result.reason),
+							error: getVerifyEmailChangeError(result),
 						},
 					},
 				})

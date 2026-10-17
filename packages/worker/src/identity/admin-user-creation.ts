@@ -1,5 +1,6 @@
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
+import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import {
 	adminPasswordSetupTokenExpiryMs,
@@ -29,6 +30,11 @@ import {
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export type AdminCreateUserErrorCode =
 	| 'invalid_email'
+	| 'email_typo'
+	| 'disposable_email'
+	| 'email_domain_nxdomain'
+	| 'email_domain_no_mx'
+	| 'email_domain_null_mx'
 	| 'invalid_username'
 	| 'email_exists'
 	| 'username_exists'
@@ -119,10 +125,21 @@ export async function adminCreateUserWithPasswordSetup(input: {
 	username?: string | null
 	setupLinkOrigin: string | URL
 	now?: Date
+	/** Test seam for mail-domain DNS. Production callers omit it. */
+	fetchImpl?: typeof fetch
 }) {
-	const email = normalizeEmail(input.email)
+	const emailDecision = await assessAccountEmail(input.email, {
+		fetchImpl: input.fetchImpl,
+	})
+	if (!emailDecision.ok) {
+		throw new AdminCreateUserError(emailDecision.code, emailDecision.error)
+	}
+	const email = normalizeEmail(emailDecision.email)
 	if (!email) {
-		throw new AdminCreateUserError('invalid_email', 'Email is required.')
+		throw new AdminCreateUserError(
+			'invalid_email',
+			'Enter a valid email address, like name@gmail.com.',
+		)
 	}
 
 	const existingUser = await input.db

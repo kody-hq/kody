@@ -10,6 +10,7 @@ import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { createEmailChangeVerification } from '#app/email-change.ts'
 import { isEmailReservedForOtherAccount } from '#worker/identity/email-claims.ts'
+import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, releaseRateLimit } from '#app/rate-limit.ts'
 import { type routes } from '#universal/routes.ts'
@@ -25,15 +26,6 @@ const emailChangeRequestSchema = object({
 	email: string(),
 	password: string(),
 })
-
-function getEmailValidationError(email: string) {
-	if (!email) return 'Email is required.'
-	if (email.length > 254) return 'Email is too long.'
-	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-		return 'Enter a valid email address.'
-	}
-	return null
-}
 
 export function createAccountEmailChangeHandler(env: Env) {
 	const db = createDb(env.APP_DB)
@@ -55,12 +47,8 @@ export function createAccountEmailChangeHandler(env: Env) {
 
 			const parsed = parseSafe(emailChangeRequestSchema, body)
 			const requestIp = getRequestIp(request) ?? undefined
-			const newEmail = parsed.success ? normalizeEmail(parsed.value.email) : ''
 			const password = parsed.success ? parsed.value.password : ''
-			const validationError = parsed.success
-				? getEmailValidationError(newEmail)
-				: 'Invalid request body.'
-			if (validationError) {
+			if (!parsed.success) {
 				void logAuditEvent({
 					db: auditDatabaseFromEnv(env),
 					category: 'account',
@@ -71,8 +59,35 @@ export function createAccountEmailChangeHandler(env: Env) {
 					path: url.pathname,
 					reason: 'invalid_payload',
 				})
-				return jsonResponse({ ok: false, error: validationError }, 400)
+				return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
 			}
+			const emailDecision = await assessAccountEmail(
+				normalizeEmail(parsed.value.email),
+			)
+			if (!emailDecision.ok) {
+				void logAuditEvent({
+					db: auditDatabaseFromEnv(env),
+					category: 'account',
+					action: 'email_change_request',
+					result: 'failure',
+					email: user.email,
+					ip: requestIp,
+					path: url.pathname,
+					reason: emailDecision.code,
+				})
+				return jsonResponse(
+					{
+						ok: false,
+						error: emailDecision.error,
+						code: emailDecision.code,
+						...(emailDecision.suggestion
+							? { suggestion: emailDecision.suggestion }
+							: {}),
+					},
+					400,
+				)
+			}
+			const newEmail = emailDecision.email
 
 			if (newEmail === normalizeEmail(user.email)) {
 				return jsonResponse(
