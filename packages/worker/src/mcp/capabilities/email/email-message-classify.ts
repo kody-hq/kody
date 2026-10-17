@@ -15,7 +15,7 @@ export const emailMessageClassifyCapability = defineDomainCapability(
 		name: 'emailMessageClassify',
 		orgPermission: 'email:write',
 		description:
-			'Reclassify a stored inbound email message as accepted or quarantined. Receive-time classification decides package subscription dispatch once; reclassifying to accepted does not retroactively fire email.message.received.',
+			'Reclassify a stored inbound email message as accepted or quarantined. Setting classification to accepted releases a quarantined message so emailReply can answer it. Receive-time classification decides package subscription dispatch once; reclassifying to accepted does not retroactively fire email.message.received.',
 		keywords: [
 			'email',
 			'message',

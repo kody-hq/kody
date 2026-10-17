@@ -7,6 +7,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
+import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import { ApiError, toApiError } from './errors.ts'
 
 test('ApiError.toBody redacts Kody credentials in error details', () => {
@@ -47,6 +48,21 @@ function artifactsGitHttpError(statusCode: number) {
 	}
 	return error
 }
+
+test('toApiError maps a quarantined inbound reply refusal to 409 quarantined_inbound_reply', () => {
+	const refused = new QuarantinedInboundReplyError()
+	expect(toApiError(refused)).toMatchObject({
+		status: 409,
+		code: 'quarantined_inbound_reply',
+		message: refused.message,
+	})
+	const wrapped = new Error('Capability invocation failed.', { cause: refused })
+	expect(toApiError(wrapped)).toMatchObject({
+		status: 409,
+		code: 'quarantined_inbound_reply',
+		message: refused.message,
+	})
+})
 
 test('toApiError maps exhausted Artifacts git failures to 503 internal_error with report id details', () => {
 	consoleError.mockImplementation(() => {})

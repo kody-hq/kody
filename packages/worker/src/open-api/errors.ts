@@ -22,6 +22,7 @@ import {
 	isEntitlementLimitError,
 	isJobIntervalFloorError,
 } from '#worker/entitlements/errors.ts'
+import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -47,6 +48,7 @@ export const apiErrorCodes = [
 	'rate_limited',
 	'entitlement_limit',
 	'capability_error',
+	'quarantined_inbound_reply',
 	'package_import_unresolved',
 	'package_import_unpublished',
 	'unsupported_dynamic_package_import',
@@ -200,6 +202,17 @@ export function toApiError(error: unknown): ApiError {
 			// Hint only — entitlement reset is not a fixed window. Clients should
 			// back off at least this long before retrying a capped operation.
 			headers: { 'Retry-After': '60' },
+			cause: error,
+		})
+	}
+	const quarantinedReply = getErrorCauseChain(error).find((entry) =>
+		isQuarantinedInboundReplyError(entry),
+	)
+	if (quarantinedReply) {
+		return new ApiError({
+			status: 409,
+			code: 'quarantined_inbound_reply',
+			message: quarantinedReply.message,
 			cause: error,
 		})
 	}

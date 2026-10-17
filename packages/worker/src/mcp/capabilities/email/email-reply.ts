@@ -22,8 +22,15 @@ export const emailReplyCapability = defineDomainCapability(
 		name: 'emailReply',
 		orgPermission: 'email:send',
 		description:
-			'Reply to a stored inbound email from your platform-assigned {username}@<platform domain> address, preserving thread headers and optionally attaching files (base64 content). The recipient always comes from the stored message.',
-		keywords: ['email', 'reply', 'thread', 'message', 'attachment'],
+			'Reply to a stored inbound email from your platform-assigned {username}@<platform domain> address, preserving thread headers and optionally attaching files (base64 content). The recipient always comes from the stored message. Refuses with quarantined_inbound_reply when that message is still quarantined, before any send or daily send quota is used, because replies to quarantined mail usually reach spoofed senders. Release it first with emailMessageClassify (classification "accepted") or Not spam on the email inbox page, then reply.',
+		keywords: [
+			'email',
+			'reply',
+			'thread',
+			'message',
+			'attachment',
+			'quarantine',
+		],
 		readOnly: false,
 		idempotent: false,
 		destructive: false,
