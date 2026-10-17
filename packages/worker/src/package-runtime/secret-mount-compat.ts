@@ -68,6 +68,29 @@ export function scopePackageSourceFiles(
 	)
 }
 
+/**
+ * Repo snapshots key files from the repo root. Check results key them from
+ * the source root. Use the scoped manifest when the map still has that
+ * prefix, and the unscoped `package.json` when the root was already stripped.
+ */
+export function readPackageManifestSource(
+	files: Record<string, string> | null | undefined,
+	sourceRoot = '',
+) {
+	if (!files) return null
+	const root = normalizeRepoWorkspacePath(sourceRoot).replace(/\/+$/, '')
+	if (root) {
+		const prefix = `${root}/`
+		const hasPrefixedPath = Object.keys(files).some(
+			(path) => path === root || path.startsWith(prefix),
+		)
+		if (hasPrefixedPath) {
+			return manifestSourceFromFiles(scopePackageSourceFiles(files, root))
+		}
+	}
+	return manifestSourceFromFiles(files)
+}
+
 /** Gate/check note. Names the aliases; dependent names are added at publish. */
 export function secretMountsKeptCompatNote(aliases: ReadonlyArray<string>) {
 	const list = aliases.length > 0 ? aliases.join(', ') : '(none)'
@@ -396,10 +419,10 @@ export async function loadSecretMountCompatNotice(input: {
 	sourceRoot?: string
 }): Promise<string | null> {
 	try {
-		const scoped = input.nextFiles
-			? scopePackageSourceFiles(input.nextFiles, input.sourceRoot)
-			: null
-		let manifestSource = manifestSourceFromFiles(scoped)
+		let manifestSource = readPackageManifestSource(
+			input.nextFiles,
+			input.sourceRoot,
+		)
 		if (manifestSource == null) {
 			const snapshot = await readPublishedSourceSnapshot({
 				env: input.env,
@@ -437,10 +460,9 @@ export async function loadSecretMountCompatNotice(input: {
 				sourceId: input.sourceId,
 				commit: previousCommit,
 			}),
-			fromFiles: manifestSourceFromFiles(
-				input.previousFiles
-					? scopePackageSourceFiles(input.previousFiles, input.sourceRoot)
-					: null,
+			fromFiles: readPackageManifestSource(
+				input.previousFiles,
+				input.sourceRoot,
 			),
 		})
 		if (

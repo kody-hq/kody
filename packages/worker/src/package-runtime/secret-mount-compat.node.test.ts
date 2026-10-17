@@ -4,9 +4,25 @@ import {
 	applySecretMountCompatToSummary,
 	bundledPackageSecretMountReads,
 	describeSecretMountCompat,
+	readPackageManifestSource,
 	readSecretMountAliases,
 	secretMountsKeptCompatNote,
 } from './secret-mount-compat.ts'
+
+test('readPackageManifestSource accepts repo-root and source-root file maps', () => {
+	const manifest = JSON.stringify({
+		kody: { secretMounts: { wakeToken: { name: 'wakeToken' } } },
+	})
+	expect(
+		readPackageManifestSource(
+			{ 'packages/bot/package.json': manifest },
+			'packages/bot',
+		),
+	).toBe(manifest)
+	expect(
+		readPackageManifestSource({ 'package.json': manifest }, 'packages/bot'),
+	).toBe(manifest)
+})
 
 test('readSecretMountAliases lists mount aliases and ignores a missing key', () => {
 	expect(
