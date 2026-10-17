@@ -62,6 +62,13 @@ export type CredentialProviderBindingItem = {
 	/** The package that holds the door secret unlocking the vault. */
 	packageId: string
 	doorSecretName: string
+	/** Null means anywhere. Distinct from inject. */
+	placement: {
+		headers?: true | Array<string>
+		query?: true
+		path?: true
+		body?: true
+	} | null
 	updatedAt: string
 }
 

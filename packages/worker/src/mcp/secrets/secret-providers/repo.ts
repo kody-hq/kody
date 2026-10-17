@@ -4,6 +4,7 @@ import {
 } from './types.ts'
 
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
+import { readCredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 type BindingRow = {
 	id: string
@@ -12,6 +13,7 @@ type BindingRow = {
 	package_id: string
 	door_secret_name: string
 	config_json: string
+	placement_json: string | null
 	created_at: string
 	updated_at: string
 }
@@ -51,6 +53,7 @@ function toBindingRecord(row: BindingRow): SecretProviderBindingRecord {
 		packageId: row.package_id,
 		doorSecretName: row.door_secret_name,
 		config: parseSecretProviderConfigJson(row.config_json),
+		placement: readCredentialFillPlacement(row.placement_json),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -149,7 +152,7 @@ export async function getSecretProviderBinding(
 	const row = await db
 		.prepare(
 			`SELECT id, user_id, provider_id, package_id, door_secret_name, config_json,
-				created_at, updated_at
+				placement_json, created_at, updated_at
 			FROM secret_provider_bindings
 			WHERE user_id = ? AND provider_id = ?${andLiveDeletedAtSql()}`,
 		)
@@ -165,7 +168,7 @@ export async function listSecretProviderBindings(
 	const result = await db
 		.prepare(
 			`SELECT id, user_id, provider_id, package_id, door_secret_name, config_json,
-				created_at, updated_at
+				placement_json, created_at, updated_at
 			FROM secret_provider_bindings
 			WHERE user_id = ?${andLiveDeletedAtSql()}
 			ORDER BY provider_id ASC`,

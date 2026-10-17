@@ -6,6 +6,13 @@ export type SecretProviderBindingRecord = {
 	packageId: string
 	doorSecretName: string
 	config: Record<string, string>
+	/** Null means anywhere. Distinct from inject. */
+	placement: {
+		headers?: true | Array<string>
+		query?: true
+		path?: true
+		body?: true
+	} | null
 	createdAt: string
 	updatedAt: string
 }
