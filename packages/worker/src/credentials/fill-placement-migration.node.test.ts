@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
-const migrationFileName = '0161-credential-fill-placement.sql'
+const migrationFileName = '0162-credential-fill-placement.sql'
 
 function databaseBeforeMigration() {
 	const sqlite = new DatabaseSync(':memory:', {
@@ -27,7 +27,7 @@ function databaseBeforeMigration() {
 	return sqlite
 }
 
-test('0161 adds nullable placement_json so existing credentials stay anywhere', () => {
+test('0162 adds nullable placement_json so existing credentials stay anywhere', () => {
 	const sqlite = databaseBeforeMigration()
 	sqlite.exec(
 		readFileSync(new URL(migrationFileName, migrationsDirectory), 'utf8'),

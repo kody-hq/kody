@@ -1496,6 +1496,7 @@ test('account secrets save refuses to re-host an opt-in credential without its k
 			name: 'Authorization',
 			format: 'Bearer {value}',
 		},
+		placement: null,
 	}
 	const save = (body: Record<string, unknown>) =>
 		createHandler()(

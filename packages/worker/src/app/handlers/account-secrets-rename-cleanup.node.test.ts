@@ -719,6 +719,7 @@ test('a failed rollback reports the committed casing so native editors can retar
 		loginExchange: null,
 		provider: null,
 		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+		placement: null,
 	})
 	mockModule.renameSecret
 		.mockResolvedValueOnce(makeSecret('henry') as never)

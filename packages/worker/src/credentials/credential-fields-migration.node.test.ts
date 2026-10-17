@@ -134,11 +134,11 @@ test('connecting or reconnecting an integration records its OAuth app provider',
 test('a vault binding created or rebound after 0111 records its vault as its source', async () => {
 	const sqlite = databaseBeforeMigration()
 	runMigration(sqlite)
-	// Live upserts select placement_json (0161); apply it so the reader matches
+	// Live upserts select placement_json (0162); apply it so the reader matches
 	// today's schema without re-running the whole ledger.
 	sqlite.exec(
 		readFileSync(
-			new URL('0161-credential-fill-placement.sql', migrationsDirectory),
+			new URL('0162-credential-fill-placement.sql', migrationsDirectory),
 			'utf8',
 		),
 	)
