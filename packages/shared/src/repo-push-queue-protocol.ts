@@ -34,7 +34,15 @@ export const repoPushQueueBudgetMs = 90_000
 /** Per-value DO storage cap is 2 MB; stay well under it. */
 export const repoPushQueueChunkBytes = 1024 * 1024
 
-export const repoPushQueueMaxEntries = 32
+/**
+ * Concurrent pushes held (landing + waiting + running) per repo. 64 covers a
+ * 50-agent burst without `full` 503s; memory stays bounded by
+ * {@link repoPushQueueMaxQueuedBytes} (pack bytes in DO storage) and
+ * {@link repoPushQueueInMemorySendBytes} (only the in-flight small pack is
+ * buffered). Entry metadata and in-memory tokens for 64 waiters are negligible
+ * next to the 256 MiB byte cap.
+ */
+export const repoPushQueueMaxEntries = 64
 export const repoPushQueueMaxQueuedBytes = 256 * 1024 * 1024
 
 /**
