@@ -204,7 +204,20 @@ test('account destination API blocks new accounts with the signup wait', async (
 	expect(await response.json()).toMatchObject({
 		ok: false,
 		error: expect.stringMatching(
-			/New accounts can add email destinations 24 hours after signup\. Try again after .+ UTC/,
+			/New accounts can add email destinations 24 hours after signup, so the verification email was not sent\. The address is saved on the account\. Try again after .+ UTC/,
 		),
+		destinations: expect.arrayContaining([
+			expect.objectContaining({
+				email: 'phone@example.com',
+				verified: false,
+			}),
+		]),
 	})
+	expect(
+		sqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM pending_email_destination_verifications`,
+			)
+			.get(),
+	).toEqual({ count: 0 })
 })

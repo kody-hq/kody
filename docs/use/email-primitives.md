@@ -70,10 +70,12 @@ Use the MCP `email` domain:
   hours old (`users.created_at`). Verification mail is also limited to 3
   requests every 15 minutes per account, 10 per account per rolling 24 hours,
   and 3 per recipient address per rolling 24 hours across all accounts. A
-  blocked request names which limit was hit and the UTC time to retry. Use a
-  different address when the recipient cap is hit. Contact support if a new
-  account needs a destination sooner. `adminEmailDestinationVerify` marks an
-  address verified without sending mail, so it is not subject to these caps.
+  blocked request names which limit was hit and the UTC time to retry. The
+  address is still saved, so a later retry or `adminEmailDestinationVerify` can
+  finish it without another first-time add. Use a different address when the
+  recipient cap is hit. Contact support if a new account needs a destination
+  sooner. `adminEmailDestinationVerify` marks a saved address verified without
+  sending mail, so it is not subject to these caps.
 - `emailDestinationSetDefault` picks the destination used when `emailSend` omits
   `to`.
 - `emailDestinationRemove` removes an extra destination. The identity email

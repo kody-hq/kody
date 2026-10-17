@@ -161,7 +161,8 @@ not own `users.email`. Add, resend, set-default, and remove live at
 and 3 verification emails per recipient address per rolling 24 hours across all
 accounts (the recipient key is a hash of the normalized address). The account
 must be at least 24 hours old (`users.created_at`) before it can request that
-mail. Blocked requests name the limit and the UTC time to retry.
+mail. Blocked requests name the limit and the UTC time to retry. The address is
+still saved when the mail is blocked, so an operator can mark that row verified.
 `adminEmailDestinationVerify` does not send mail and is not subject to those
 caps. Re-adding a pending unverified address resends a verification email. The
 cap is 5 extras besides the identity email. Unverified extras never receive

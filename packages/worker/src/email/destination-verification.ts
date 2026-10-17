@@ -216,14 +216,14 @@ async function assertDestinationVerificationAccountAge(
 	if (createdMs == null) {
 		throw new EmailDestinationError(
 			'account_too_new',
-			`New accounts can add email destinations ${ageLabel} after signup, and this account has no readable creation time. Contact support so we can confirm when the account was created.`,
+			`New accounts can add email destinations ${ageLabel} after signup, and this account has no readable creation time, so the verification email was not sent. The address is saved on the account. Contact support to confirm when the account was created, or ask them to mark the address verified.`,
 		)
 	}
 	const eligibleAtMs = createdMs + emailDestinationMinimumAccountAgeMs
 	if (now.getTime() >= eligibleAtMs) return
 	throw new EmailDestinationError(
 		'account_too_new',
-		`New accounts can add email destinations ${ageLabel} after signup. Try again after ${formatRetryAtUtc(new Date(eligibleAtMs))}. If you need an address before then, contact support.`,
+		`New accounts can add email destinations ${ageLabel} after signup, so the verification email was not sent. The address is saved on the account. Try again after ${formatRetryAtUtc(new Date(eligibleAtMs))}. If you need it sooner, contact support and ask them to mark it verified.`,
 		{
 			retryAfterSeconds: Math.max(
 				1,
@@ -251,7 +251,7 @@ async function acquireDestinationVerificationAllowance(input: {
 			config: emailDestinationUserDailyCap,
 			code: 'user_daily_cap',
 			message: (retryAtLabel) =>
-				`Destination verification email was not sent. This account has reached the limit of ${emailDestinationUserDailyCap.maxRequests} destination verification emails per rolling ${formatWindow(emailDestinationUserDailyCap.windowSeconds)}. Try again after ${retryAtLabel}.`,
+				`Destination verification email was not sent. This account has reached the limit of ${emailDestinationUserDailyCap.maxRequests} destination verification emails per rolling ${formatWindow(emailDestinationUserDailyCap.windowSeconds)}. The address is saved on the account. Try again after ${retryAtLabel}. Contact support if it needs to be verified before then.`,
 		})
 		allowance.userDaily = true
 		await consumeDestinationVerificationSlot({
@@ -262,7 +262,7 @@ async function acquireDestinationVerificationAllowance(input: {
 			config: emailDestinationRecipientDailyCap,
 			code: 'recipient_daily_cap',
 			message: (retryAtLabel) =>
-				`Destination verification email was not sent to this address. It has already received ${emailDestinationRecipientDailyCap.maxRequests} destination verification emails in the last ${formatWindow(emailDestinationRecipientDailyCap.windowSeconds)}, the maximum across all accounts. Use a different address, or try again after ${retryAtLabel}. If you did not request these emails, contact support.`,
+				`Destination verification email was not sent to this address. It has already received ${emailDestinationRecipientDailyCap.maxRequests} destination verification emails in the last ${formatWindow(emailDestinationRecipientDailyCap.windowSeconds)}, the maximum across all accounts. The address is saved on the account. Use a different address, or try again after ${retryAtLabel}. If you did not request these emails, contact support.`,
 		})
 		allowance.recipient = true
 		await consumeDestinationVerificationSlot({
@@ -271,7 +271,7 @@ async function acquireDestinationVerificationAllowance(input: {
 			config: emailDestinationRateLimitConfig,
 			code: 'rate_limited',
 			message: (retryAtLabel) =>
-				`Destination verification email was not sent. You can request at most ${emailDestinationRateLimitConfig.maxRequests} every ${formatWindow(emailDestinationRateLimitConfig.windowSeconds)}. Try again after ${retryAtLabel}.`,
+				`Destination verification email was not sent. You can request at most ${emailDestinationRateLimitConfig.maxRequests} every ${formatWindow(emailDestinationRateLimitConfig.windowSeconds)}. The address is saved on the account. Try again after ${retryAtLabel}.`,
 		})
 		allowance.burst = true
 		return allowance
@@ -526,6 +526,13 @@ export async function createEmailDestinationVerification(input: {
 	requestUrl: string | URL
 }): Promise<{ destination: EmailNotificationDestination; created: boolean }> {
 	const recipientEmail = requireDestinationRecipient(input.email)
+	// Save the row before the mail gates. A blocked first add must still leave
+	// a destination adminEmailDestinationVerify can mark verified without sending.
+	const added = await addEmailNotificationDestination({
+		db: input.env.APP_DB,
+		dbUserId: input.userId,
+		email: recipientEmail,
+	})
 	await assertDestinationVerificationAccountAge(input.env.APP_DB, input.userId)
 	const allowance = await acquireDestinationVerificationAllowance({
 		db: input.env.APP_DB,
@@ -533,11 +540,6 @@ export async function createEmailDestinationVerification(input: {
 		recipientEmail,
 	})
 	try {
-		const added = await addEmailNotificationDestination({
-			db: input.env.APP_DB,
-			dbUserId: input.userId,
-			email: recipientEmail,
-		})
 		const minted = await insertDestinationVerificationToken({
 			db: input.env.APP_DB,
 			userId: input.userId,

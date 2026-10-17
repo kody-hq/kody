@@ -48,6 +48,10 @@ export function createAccountEmailDestinations(handle: Handle) {
 			if (!response.ok || !payload?.ok) {
 				message = payload?.error ?? 'Unable to update email destinations.'
 				tone = 'error'
+				if (payload?.destinations) {
+					applyPayload(payload)
+					if (body.action === 'add') draftEmail = ''
+				}
 				return
 			}
 			applyPayload(payload)

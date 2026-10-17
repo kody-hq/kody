@@ -248,8 +248,20 @@ export function createAccountEmailDestinationsHandler(env: Env) {
 						error.retryAfterSeconds == null
 							? undefined
 							: { 'Retry-After': String(error.retryAfterSeconds) }
+					const destinations = await listEmailNotificationDestinations({
+						db: env.APP_DB,
+						dbUserId: user.userId,
+						accountEmail: user.email,
+						accountEmailVerified: user.emailVerified,
+					}).catch(() => null)
 					return jsonResponse(
-						{ ok: false, error: error.message },
+						destinations
+							? {
+									...destinationListPayload(destinations),
+									ok: false,
+									error: error.message,
+								}
+							: { ok: false, error: error.message },
 						headers ? { status, headers } : status,
 					)
 				}

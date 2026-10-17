@@ -6,6 +6,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { hashVerificationToken } from '#worker/identity/email-verification-tokens.ts'
 import { addEmailNotificationDestination } from './destinations.ts'
+import { markAdminEmailDestinationVerified } from './destination-verification-admin.ts'
 import {
 	createEmailDestinationVerification,
 	emailDestinationMinimumAccountAgeMs,
@@ -137,7 +138,7 @@ test('createEmailDestinationVerification rate-limits add and resend for UI and M
 	await expect(create('one-more@example.com')).rejects.toMatchObject({
 		code: 'rate_limited',
 		message: expect.stringMatching(
-			/at most 3 every 15 minutes\. Try again after \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/,
+			/at most 3 every 15 minutes\. The address is saved on the account\. Try again after \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/,
 		),
 	})
 	expect(consoleWarn).toHaveBeenCalled()
@@ -158,13 +159,20 @@ test('new accounts cannot request destination verification until the minimum age
 		code: 'account_too_new',
 		message: expect.stringMatching(
 			new RegExp(
-				`New accounts can add email destinations ${ageHours} hours after signup\\. Try again after \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} UTC\\. If you need an address before then, contact support\\.`,
+				`New accounts can add email destinations ${ageHours} hours after signup, so the verification email was not sent\\. The address is saved on the account\\. Try again after \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} UTC\\. If you need it sooner, contact support and ask them to mark it verified\\.`,
 			),
 		),
 	})
 	expect(
 		sqlite
 			.prepare(`SELECT COUNT(*) AS count FROM email_notification_destinations`)
+			.get(),
+	).toEqual({ count: 1 })
+	expect(
+		sqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM pending_email_destination_verifications`,
+			)
 			.get(),
 	).toEqual({ count: 0 })
 	expect(
@@ -174,6 +182,32 @@ test('new accounts cannot request destination verification until the minimum age
 			)
 			.get(),
 	).toBeUndefined()
+})
+
+test('a blocked first add keeps the destination so an operator can mark it verified', async () => {
+	const { sqlite, db, create } = await makeOwner({
+		createdAtSql: "datetime('now', '-30 minutes')",
+	})
+	await expect(create('pager@example.com')).rejects.toMatchObject({
+		code: 'account_too_new',
+	})
+	sqlite.exec(`INSERT INTO user_roles (user_id, role_id) VALUES (1, 1)`)
+	const marked = await markAdminEmailDestinationVerified({
+		db,
+		target: { stableUserId: testStableUserIdFromEmail('owner@example.com') },
+		destinationEmail: 'Pager@Example.com',
+	})
+	expect(marked.destination).toMatchObject({
+		email: 'pager@example.com',
+		verified: true,
+	})
+	expect(
+		sqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM pending_email_destination_verifications`,
+			)
+			.get(),
+	).toEqual({ count: 0 })
 })
 
 test('each account can send at most the daily destination verification cap', async () => {
@@ -205,7 +239,7 @@ test('each account can send at most the daily destination verification cap', asy
 	await expect(create('eleven@example.com')).rejects.toMatchObject({
 		code: 'user_daily_cap',
 		message: expect.stringMatching(
-			/limit of 10 destination verification emails per rolling 24 hours\. Try again after \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/,
+			/limit of 10 destination verification emails per rolling 24 hours\. The address is saved on the account\. Try again after \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/,
 		),
 	})
 })
