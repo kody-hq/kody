@@ -22,6 +22,14 @@ import {
 	repoPushQueueUpstreamHeader,
 	repoPushQueueWaitMsHeader,
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
+import {
+	allReceivePackCommandsKnownStale,
+	applyReportStatusOkToLandedRefs,
+	buildStaleFetchFirstReportStatus,
+	parseReceivePackCommands,
+	receivePackCommandPrefixLimitBytes,
+	type ReceivePackCommand,
+} from './repo-push-queue-commands.ts'
 
 /**
  * Pack bytes for queued pushes. Backed by Durable Object storage in
@@ -69,6 +77,7 @@ export type RepoPushQueueEvent = {
 		| 'landed'
 		| 'sent'
 		| 'rejected'
+		| 'stale'
 		| 'timeout'
 		| 'unavailable'
 		| 'abandoned-cleanup-failed'
@@ -142,10 +151,13 @@ class BodyTimeoutError extends Error {}
  * A push is enqueued only after its full pack has landed in storage. FIFO
  * order is landing order, so a slow upload never blocks pushes that already
  * landed. One push at a time is sent to Artifacts; Artifacts busy responses
- * (writers outside this queue) are retried with jittered backoff. Every push
- * has a 90s budget from arrival; the deadline is checked before each send.
- * An attempt already in flight is never aborted by the budget: cutting a
- * pack off mid-upload is worse than finishing it.
+ * (writers outside this queue) are retried with jittered backoff. Before each
+ * send, command old-oids are checked against tips this queue last landed; when
+ * every command is already known-stale the queue answers `ng <ref> fetch first`
+ * without an Artifacts exchange. Every push has a 90s budget from arrival; the
+ * deadline is checked before each send. An attempt already in flight is never
+ * aborted by the budget: cutting a pack off mid-upload is worse than finishing
+ * it.
  *
  * Shutdown: Cloudflare stops an outgoing instance's storage access when a
  * new version takes over, and lets requests that do not touch storage
@@ -168,6 +180,13 @@ export class RepoPushQueue {
 	#running: QueueEntry | null = null
 	#landingCount = 0
 	#reservedBytes = 0
+	/**
+	 * Tips this queue last landed (`ok <ref>` + command new-oid). In-memory
+	 * only: a DO reset clears it and unknown refs fall through to Artifacts.
+	 * Writers outside the queue can only make this stale → a spurious
+	 * `fetch first` the client retries after fetch.
+	 */
+	readonly #landedRefs = new Map<string, string>()
 
 	constructor(deps: RepoPushQueueDeps) {
 		this.#store = deps.store
@@ -361,6 +380,13 @@ export class RepoPushQueue {
 				return this.#reject('unavailable', { entry })
 			}
 		}
+		const parsed = await this.#peekCommands(entry, loaded)
+		if (
+			parsed &&
+			allReceivePackCommandsKnownStale(parsed.commands, this.#landedRefs)
+		) {
+			return this.#rejectStale(entry, parsed.commands, parsed.sideband)
+		}
 		const stats: ExchangeStats = { attempts: 0, firstSendAt: null }
 		const exchange = new AbortController()
 		const exchangeTimer = setTimeout(
@@ -369,7 +395,13 @@ export class RepoPushQueue {
 				this.#limits.responseGraceMs,
 		)
 		try {
-			return await this.#exchange(entry, loaded, exchange.signal, stats)
+			return await this.#exchange(
+				entry,
+				loaded,
+				exchange.signal,
+				stats,
+				parsed?.commands ?? null,
+			)
 		} catch {
 			return this.#reject('unavailable', {
 				entry,
@@ -381,11 +413,93 @@ export class RepoPushQueue {
 		}
 	}
 
+	async #peekCommands(
+		entry: QueueEntry,
+		loaded: Array<Uint8Array> | null,
+	): Promise<{
+		commands: Array<ReceivePackCommand>
+		sideband: boolean
+	} | null> {
+		try {
+			const prefix = await this.#loadCommandPrefix(entry, loaded)
+			if (!prefix) return null
+			return parseReceivePackCommands(prefix)
+		} catch {
+			return null
+		}
+	}
+
+	async #loadCommandPrefix(
+		entry: QueueEntry,
+		loaded: Array<Uint8Array> | null,
+	): Promise<Uint8Array | null> {
+		const limit = Math.min(entry.bytes, receivePackCommandPrefixLimitBytes)
+		if (limit === 0) return null
+		if (loaded) {
+			const prefix = new Uint8Array(limit)
+			let offset = 0
+			for (const chunk of loaded) {
+				if (offset >= limit) break
+				const take = Math.min(chunk.byteLength, limit - offset)
+				prefix.set(chunk.subarray(0, take), offset)
+				offset += take
+			}
+			return offset === 0 ? null : prefix.subarray(0, offset)
+		}
+		const chunks: Array<Uint8Array> = []
+		let total = 0
+		for (let index = 0; index < entry.chunkCount && total < limit; index += 1) {
+			const chunk = await this.#store.getChunk(entry.id, index)
+			if (!chunk) throw new Error(`missing push queue chunk ${index}`)
+			const take = Math.min(chunk.byteLength, limit - total)
+			chunks.push(take === chunk.byteLength ? chunk : chunk.subarray(0, take))
+			total += take
+		}
+		if (total === 0) return null
+		if (chunks.length === 1) return chunks[0]!
+		const prefix = new Uint8Array(total)
+		let offset = 0
+		for (const chunk of chunks) {
+			prefix.set(chunk, offset)
+			offset += chunk.byteLength
+		}
+		return prefix
+	}
+
+	#rejectStale(
+		entry: QueueEntry,
+		commands: Array<ReceivePackCommand>,
+		sideband: boolean,
+	): Response {
+		const waitMs = this.#now() - entry.landedAt
+		this.#log({
+			event: 'stale',
+			entryId: entry.id,
+			bytes: entry.bytes,
+			position: entry.position,
+			waitMs,
+			attempts: 0,
+			outcome: 'fetch_first',
+			status: 200,
+		})
+		const headers = new Headers({
+			'Content-Type': 'application/x-git-receive-pack-result',
+		})
+		setQueueHeaders(headers, {
+			position: entry.position,
+			waitMs,
+			attempts: 0,
+		})
+		const body = buildStaleFetchFirstReportStatus(commands, { sideband })
+		return new Response(Uint8Array.from(body), { status: 200, headers })
+	}
+
 	async #exchange(
 		entry: QueueEntry,
 		loaded: Array<Uint8Array> | null,
 		signal: AbortSignal,
 		stats: ExchangeStats,
+		commands: Array<ReceivePackCommand> | null,
 	): Promise<Response> {
 		const waited = await waitOutReceivePackBusy({
 			deadlineMs: entry.deadlineMs,
@@ -418,6 +532,13 @@ export class RepoPushQueue {
 		// Drain the report-status body before the next push is sent so the
 		// Artifacts lock is released in queue order.
 		const body = await upstream.arrayBuffer()
+		if (commands && upstream.status >= 200 && upstream.status < 300) {
+			applyReportStatusOkToLandedRefs(
+				this.#landedRefs,
+				commands,
+				new Uint8Array(body),
+			)
+		}
 		this.#log({
 			event: 'sent',
 			entryId: entry.id,
