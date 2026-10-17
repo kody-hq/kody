@@ -3338,6 +3338,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						sourceId: source.id,
 						nextCommit: publishedCommit,
 						nextFiles: snapshotFiles,
+						previousCommit: source.published_commit,
 						sourceRoot: source.source_root,
 					})
 				: null

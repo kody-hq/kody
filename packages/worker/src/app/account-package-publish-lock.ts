@@ -144,6 +144,8 @@ export async function loadAccountPackageApprovePublishData(input: {
 						sourceId: source.id,
 						nextCommit: pendingCommit,
 						nextFiles: pendingFiles.files,
+						previousCommit: publishedCommit,
+						previousFiles: publishedFiles.files,
 					}),
 		diff:
 			unpublishedCompare || pendingMissing
@@ -313,6 +315,7 @@ export async function handleAccountPackagePublishLockAction(input: {
 				userId: ownerUserId,
 				sourceId: source.id,
 				nextCommit: commit,
+				previousCommit: source.published_commit,
 			})
 			return jsonResponse({
 				...packagesPayload,

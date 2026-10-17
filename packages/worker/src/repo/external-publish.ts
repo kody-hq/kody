@@ -375,6 +375,7 @@ export async function publishFromExternalRef(input: {
 					sourceId: source.id,
 					nextCommit: input.newCommit,
 					nextFiles: pendingFiles,
+					previousCommit: source.published_commit,
 					sourceRoot: input.sourceRoot ?? source.source_root,
 				})
 			: null

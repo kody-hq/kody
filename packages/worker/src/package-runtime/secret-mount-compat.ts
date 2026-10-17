@@ -122,6 +122,12 @@ export type SecretMountCompatReport = {
  */
 export function describeSecretMountCompat(input: {
 	keptAliases: ReadonlyArray<string>
+	/**
+	 * Mounts on the previously published manifest, or declared on a bundled
+	 * snapshot. Aliases absent from `keptAliases` are removals. Stale
+	 * dependents whose snapshot could not be read are named for each removal.
+	 */
+	previousAliases?: ReadonlyArray<string>
 	dependents: ReadonlyArray<SecretMountDependentRead>
 	truncated?: boolean
 }): SecretMountCompatReport {
@@ -129,12 +135,26 @@ export function describeSecretMountCompat(input: {
 	const keptSet = new Set(kept)
 	const stale = input.dependents.filter((dependent) => dependent.stale)
 	const readers = new Map<string, Set<string>>()
-	const removed = new Set<string>()
+	const removed = new Set(
+		(input.previousAliases ?? []).filter((alias) => !keptSet.has(alias)),
+	)
+	for (const dependent of stale) {
+		for (const alias of dependent.aliases) {
+			if (!keptSet.has(alias)) removed.add(alias)
+		}
+	}
+	const unreadable = new Set<string>()
 	const actionByPackageId = new Map<string, string>()
 	for (const dependent of stale) {
 		const readAliases = new Set<string>()
-		if (dependent.computed && dependent.aliases.length === 0) {
+		const snapshotUnread = dependent.computed && dependent.aliases.length === 0
+		if (snapshotUnread) {
+			unreadable.add(dependent.name)
 			for (const alias of kept) {
+				addReader(readers, alias, dependent.name)
+				readAliases.add(alias)
+			}
+			for (const alias of removed) {
 				addReader(readers, alias, dependent.name)
 				readAliases.add(alias)
 			}
@@ -142,19 +162,22 @@ export function describeSecretMountCompat(input: {
 		for (const alias of dependent.aliases) {
 			addReader(readers, alias, dependent.name)
 			readAliases.add(alias)
-			if (!keptSet.has(alias)) removed.add(alias)
 		}
 		const removedHere = [...readAliases].filter((alias) => !keptSet.has(alias))
 		const keptHere = [...readAliases].filter((alias) => keptSet.has(alias))
 		const parts: Array<string> = []
 		if (removedHere.length > 0) {
 			parts.push(
-				`Removing secret mount ${removedHere.sort().join(', ')} breaks ${dependent.name}. Deleting the secret breaks it too.`,
+				snapshotUnread
+					? `This stale dependent's bundled snapshot could not be read. Removing secret mount ${removedHere.sort().join(', ')} may break ${dependent.name}. Deleting the secret may break it too.`
+					: `Removing secret mount ${removedHere.sort().join(', ')} breaks ${dependent.name}. Deleting the secret breaks it too.`,
 			)
 		}
 		if (keptHere.length > 0) {
 			parts.push(
-				`This stale dependent still reads kept secret mount ${keptHere.sort().join(', ')}. Removing that mount or deleting its secret breaks ${dependent.name}.`,
+				snapshotUnread
+					? `This stale dependent's bundled snapshot could not be read. It may still read kept secret mount ${keptHere.sort().join(', ')}. Removing that mount or deleting its secret may break ${dependent.name}.`
+					: `This stale dependent still reads kept secret mount ${keptHere.sort().join(', ')}. Removing that mount or deleting its secret breaks ${dependent.name}.`,
 			)
 		}
 		if (parts.length > 0)
@@ -167,8 +190,12 @@ export function describeSecretMountCompat(input: {
 		for (const alias of removedAliases) {
 			for (const name of readers.get(alias) ?? []) names.add(name)
 		}
+		const unreadNote =
+			[...unreadable].filter((name) => names.has(name)).length > 0
+				? ' Some of those bundled snapshots could not be read; they may still call packageSecrets.get for the removed mount.'
+				: ''
 		lines.push(
-			`This publish removes secret mount ${removedAliases.join(', ')}. Stale static dependents still bundling ${removedAliases.length === 1 ? 'that mount' : 'those mounts'}: ${formatNames(names)}. Removing the mount or deleting the secret will break those dependents.`,
+			`This publish removes secret mount ${removedAliases.join(', ')}. Stale static dependents still bundling ${removedAliases.length === 1 ? 'that mount' : 'those mounts'}: ${formatNames(names)}. Removing the mount or deleting the secret will break those dependents.${unreadNote}`,
 		)
 	}
 	const keptRead = kept.filter((alias) => (readers.get(alias)?.size ?? 0) > 0)
@@ -227,11 +254,22 @@ export function appendSecretMountCompatNotice(
 	return `${message}\n\n${notice}`
 }
 
+type SnapshotMountRead = MountRead & { declaredMounts: Array<string> }
+
+function declaredMountsFromFiles(
+	files: Record<string, string>,
+	manifestPath?: string | null,
+) {
+	const source =
+		(manifestPath ? files[manifestPath] : undefined) ?? files['package.json']
+	return readSecretMountAliases(source) ?? []
+}
+
 async function readsAtCommit(input: {
 	env: Env
 	sourceId: string
 	commit: string
-	cache: Map<string, MountRead>
+	cache: Map<string, SnapshotMountRead>
 }) {
 	const cached = input.cache.get(input.commit)
 	if (cached) return cached
@@ -240,11 +278,32 @@ async function readsAtCommit(input: {
 		sourceId: input.sourceId,
 		publishedCommit: input.commit,
 	})
-	const read = snapshot?.files
-		? bundledPackageSecretMountReads(snapshot.files)
-		: { aliases: [], computed: true }
+	const read: SnapshotMountRead = snapshot?.files
+		? {
+				...bundledPackageSecretMountReads(snapshot.files),
+				declaredMounts: declaredMountsFromFiles(
+					snapshot.files,
+					snapshot.manifestPath,
+				),
+			}
+		: { aliases: [], computed: true, declaredMounts: [] }
 	input.cache.set(input.commit, read)
 	return read
+}
+
+async function aliasesAtCommit(input: {
+	env: Env
+	sourceId: string
+	commit: string | null | undefined
+}) {
+	if (!input.commit) return []
+	const snapshot = await readPublishedSourceSnapshot({
+		env: input.env,
+		sourceId: input.sourceId,
+		publishedCommit: input.commit,
+	})
+	if (!snapshot?.files) return []
+	return declaredMountsFromFiles(snapshot.files, snapshot.manifestPath)
 }
 
 async function dependentReads(input: {
@@ -254,6 +313,8 @@ async function dependentReads(input: {
 	nextCommit: string
 }): Promise<{
 	dependents: Array<SecretMountDependentRead>
+	/** Mounts declared on readable bundled snapshots. */
+	declaredMounts: Array<string>
 }> {
 	const rows = await listStaticDependentBundleArtifactRows(input.env.APP_DB, {
 		userId: input.userId,
@@ -262,7 +323,8 @@ async function dependentReads(input: {
 		packageLimit: defaultStaticDependentPackageLimit,
 		artifactsPerPackageLimit: defaultStaticDependentArtifactsPerPackageLimit,
 	})
-	const cache = new Map<string, MountRead>()
+	const cache = new Map<string, SnapshotMountRead>()
+	const declaredMounts = new Set<string>()
 	const byPackage = new Map<string, SecretMountDependentRead>()
 	for (const row of rows) {
 		const existing = byPackage.get(row.packageId) ?? {
@@ -290,10 +352,23 @@ async function dependentReads(input: {
 			...new Set([...existing.aliases, ...read.aliases]),
 		].sort()
 		existing.computed = existing.computed || read.computed
+		for (const alias of read.declaredMounts) declaredMounts.add(alias)
 	}
 	return {
 		dependents: [...byPackage.values()],
+		declaredMounts: [...declaredMounts].sort(),
 	}
+}
+
+function previousMountAliases(input: {
+	fromCommit: ReadonlyArray<string>
+	fromBundles: ReadonlyArray<string>
+	fromFiles: string | null
+}) {
+	const fromFiles = readSecretMountAliases(input.fromFiles) ?? []
+	return [
+		...new Set([...input.fromCommit, ...input.fromBundles, ...fromFiles]),
+	].sort()
 }
 
 function manifestSourceFromFiles(
@@ -314,6 +389,9 @@ export async function loadSecretMountCompatNotice(input: {
 	sourceId: string
 	nextCommit: string
 	nextFiles?: Record<string, string> | null
+	/** Published manifest before this commit, when it is still the live pin. */
+	previousCommit?: string | null
+	previousFiles?: Record<string, string> | null
 	sourceRoot?: string
 }): Promise<string | null> {
 	try {
@@ -341,17 +419,39 @@ export async function loadSecretMountCompatNotice(input: {
 			sourceId: input.sourceId,
 			currentDependencyCommit: input.nextCommit,
 		})
-		const { dependents } = await dependentReads({
+		const { dependents, declaredMounts } = await dependentReads({
 			env: input.env,
 			userId: input.userId,
 			sourceId: input.sourceId,
 			nextCommit: input.nextCommit,
 		})
-		if (keptAliases.length === 0 && dependents.every((row) => !row.stale)) {
+		const previousCommit =
+			input.previousCommit && input.previousCommit !== input.nextCommit
+				? input.previousCommit
+				: null
+		const previousAliases = previousMountAliases({
+			fromCommit: await aliasesAtCommit({
+				env: input.env,
+				sourceId: input.sourceId,
+				commit: previousCommit,
+			}),
+			fromBundles: declaredMounts,
+			fromFiles: manifestSourceFromFiles(
+				input.previousFiles
+					? scopePackageSourceFiles(input.previousFiles, input.sourceRoot)
+					: null,
+			),
+		})
+		if (
+			keptAliases.length === 0 &&
+			previousAliases.length === 0 &&
+			dependents.every((row) => !row.stale)
+		) {
 			return null
 		}
 		return describeSecretMountCompat({
 			keptAliases,
+			previousAliases,
 			dependents,
 			truncated: summary.truncated,
 		}).notice
@@ -369,6 +469,7 @@ export async function annotateStaticDependentsWithSecretMounts(input: {
 	nextCommit: string
 	summary: StaticPackageDependentsSummary
 	nextFiles?: Record<string, string> | null
+	previousCommit?: string | null
 }): Promise<StaticPackageDependentsSummary> {
 	try {
 		let manifestSource = manifestSourceFromFiles(input.nextFiles)
@@ -386,14 +487,27 @@ export async function annotateStaticDependentsWithSecretMounts(input: {
 				null
 		}
 		const keptAliases = readSecretMountAliases(manifestSource) ?? []
-		const { dependents } = await dependentReads({
+		const { dependents, declaredMounts } = await dependentReads({
 			env: input.env,
 			userId: input.userId,
 			sourceId: input.sourceId,
 			nextCommit: input.nextCommit,
 		})
+		const previousCommit =
+			input.previousCommit && input.previousCommit !== input.nextCommit
+				? input.previousCommit
+				: null
 		const report = describeSecretMountCompat({
 			keptAliases,
+			previousAliases: previousMountAliases({
+				fromCommit: await aliasesAtCommit({
+					env: input.env,
+					sourceId: input.sourceId,
+					commit: previousCommit,
+				}),
+				fromBundles: declaredMounts,
+				fromFiles: null,
+			}),
 			dependents,
 			truncated: input.summary.truncated,
 		})

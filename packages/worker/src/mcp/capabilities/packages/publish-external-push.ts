@@ -676,6 +676,7 @@ async function getPublishStaticDependents(input: {
 	userId: OwnerId
 	sourceId: string
 	publishedCommit: string | null
+	previousCommit?: string | null
 }): Promise<StaticPackageDependentsSummary> {
 	if (!input.publishedCommit) {
 		return {
@@ -699,6 +700,7 @@ async function getPublishStaticDependents(input: {
 		sourceId: input.sourceId,
 		nextCommit: input.publishedCommit,
 		summary,
+		previousCommit: input.previousCommit,
 	})
 }
 
@@ -1079,6 +1081,7 @@ async function runExternalPublishAttempt(input: {
 								userId: input.ownerUserId,
 								sourceId: input.source.id,
 								publishedCommit: result.published_commit,
+								previousCommit: result.previous_commit,
 							}),
 							pending_secret_package_approvals:
 								await getPendingSecretApprovalsForPublishedPackage({

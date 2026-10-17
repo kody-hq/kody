@@ -95,6 +95,31 @@ test('publish that drops a mount alias names the stale static dependents', () =>
 	)
 })
 
+test('an unreadable stale snapshot is named when the publish removes a mount', () => {
+	const report = describeSecretMountCompat({
+		keptAliases: [],
+		previousAliases: ['wakeToken'],
+		dependents: [
+			{
+				packageId: 'pkg-dependent',
+				name: '@kentcdodds/dependent',
+				stale: true,
+				aliases: [],
+				computed: true,
+			},
+		],
+	})
+	expect(report.notice).toContain('removes secret mount wakeToken')
+	expect(report.notice).toContain('@kentcdodds/dependent')
+	expect(report.notice).toContain('could not be read')
+	expect(report.notice).toContain(
+		'Removing the mount or deleting the secret will break those dependents.',
+	)
+	expect(report.actionByPackageId.get('pkg-dependent')).toContain(
+		'bundled snapshot could not be read',
+	)
+})
+
 test('kept mounts name the stale dependents that still read them', () => {
 	const report = describeSecretMountCompat({
 		keptAliases: ['wakeToken'],
