@@ -18,13 +18,17 @@ import {
 	type PackageCredentialSlot,
 	packageCredentialKindValues,
 } from '#worker/package-registry/types.ts'
+import {
+	readSecretMountAliases,
+	secretMountsKeptCompatNote,
+} from '#worker/package-runtime/secret-mount-compat.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
 
 const credentialPatternCheckLabel = `codemod ${detectLegacyCredentialPatternsCodemodId}`
 const credentialStampGateHeading =
 	'Credential stamp publish gate (issue #3836 phase 1):'
 const credentialStampGateFixIntro =
-	'Publish failed. Packages must be conversion-ready: every credential use is a fixed kody.credentials slot with a real description, and every call site uses a literal key. Prefer credential("SLOT") / credentials("SLOT") so callers can pick which saved credential fills each slot with the execute credentials call map ({ "SLOT": "credential-name" }) or a stored/trigger mapping; placeholders and createAuthenticatedFetch resolve the literal slot name as a saved credential name. Never choose credential names at runtime, and do not use |scope=, secretMounts, server eval, vault placeholders, or credential.named() in stamped packages. Fix each item below, then publish again.'
+	'Publish failed. Packages must be conversion-ready: every credential use is a fixed kody.credentials slot with a real description, and every call site uses a literal key. Prefer credential("SLOT") / credentials("SLOT") so callers can pick which saved credential fills each slot with the execute credentials call map ({ "SLOT": "credential-name" }) or a stored/trigger mapping; placeholders and createAuthenticatedFetch resolve the literal slot name as a saved credential name. Never choose credential names at runtime, and do not use |scope=, packageSecrets.get, server eval, vault placeholders, or credential.named() in stamped packages. Leftover kody.secretMounts may stay so stale static dependents keep resolving; removing a mount or deleting its secret breaks those dependents. Fix each item below, then publish again.'
 const credentialPatternFindingsHeading = `Credential placeholder references (${credentialPatternCheckLabel}):`
 const credentialPatternLabelsDoc =
 	'Labels are described under "Credential slots" in the packages docs.'
@@ -261,6 +265,7 @@ export function buildCredentialPatternCheck(
 		patternsByPath.set(path, [...(patternsByPath.get(path) ?? []), pattern])
 	}
 
+	const mountNote = secretMountCompatLine(merged.files)
 	if (stamp.failures.length > 0) {
 		const failureLines = stamp.failures.map((failure) => `- ${failure.message}`)
 		const staleNote =
@@ -284,6 +289,7 @@ export function buildCredentialPatternCheck(
 				...failureLines,
 				...addedNote,
 				...staleNote,
+				...(mountNote ? [mountNote] : []),
 				credentialStampConversionFixGuidance,
 				...credentialTypeHintLines(merged.files),
 			].join('\n'),
@@ -341,6 +347,7 @@ export function buildCredentialPatternCheck(
 					]
 				: []),
 			...staleNote,
+			...(mountNote ? [mountNote] : []),
 			...credentialTypeHintLines(merged.files),
 		]
 			.filter((line): line is string => line != null && line.length > 0)
@@ -348,6 +355,12 @@ export function buildCredentialPatternCheck(
 		sourceFiles: merged.files,
 		stampKeys: stamp.keys,
 	}
+}
+
+function secretMountCompatLine(sourceFiles: Record<string, string>) {
+	const aliases = readSecretMountAliases(sourceFiles['package.json'])
+	if (aliases == null) return null
+	return secretMountsKeptCompatNote(aliases)
 }
 
 function readPackageName(sourceFiles: Record<string, string>) {

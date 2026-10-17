@@ -793,7 +793,7 @@ test('large prebuilt client asset does not fail stamp and stays cheap to scan', 
 	).toBe(true)
 })
 
-test('computed |scope= and secretMounts fail the stamp gate', () => {
+test('computed |scope= fails the stamp gate and manifest-only secretMounts do not', () => {
 	const scoped = scanCredentialStamp({
 		'package.json': manifest(),
 		'src/index.ts':
@@ -810,8 +810,9 @@ test('computed |scope= and secretMounts fail the stamp gate', () => {
 		'src/index.ts': 'export const ready = true',
 	})
 	expect(mounts.failures.some((f) => f.message.includes('secretMounts'))).toBe(
-		true,
+		false,
 	)
+	expect(mounts.failures).toEqual([])
 })
 
 test('isStoredCredentialStamp rejects a dependency pin that is not an object', () => {

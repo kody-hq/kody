@@ -27,6 +27,7 @@ const loaderData: AccountPackageApprovePublishLoaderData = {
 	packageHref: '/@kodykoala/gmail-drafts',
 	listing: null,
 	listingWillLagAfterPromote: false,
+	secretMountCompatNotice: null,
 	diff: {
 		files: [
 			{
@@ -208,4 +209,26 @@ test('approve-publish for an already-published commit pin does not claim HEAD is
 	expect(html).toContain('Open Approve without a commit pin')
 	expect(html).not.toContain('the public version is up to date')
 	expect(html).not.toContain('No unpublished commit is waiting')
+})
+
+test('approve-publish SSR shows the secret mount compat notice', async () => {
+	const notice =
+		'This publish removes secret mount wakeToken. Stale static dependents still bundling that mount: @kentcdodds/dependent. Removing the mount or deleting the secret will break those dependents.'
+	const html = await renderToString(
+		jsx(RouterLocationProvider, {
+			url: approvePublishHref,
+			children: jsx(AppLoaderDataProvider, {
+				loaderData: {
+					accountPackageApprovePublish: {
+						...loaderData,
+						secretMountCompatNotice: notice,
+					},
+				},
+				children: jsx(AccountPackageApprovePublishRoute, {}),
+			}),
+		}),
+	)
+	expect(html).toContain('data-testid="secret-mount-compat-notice"')
+	expect(html).toContain('@kentcdodds/dependent')
+	expect(html).toContain('will break those dependents')
 })

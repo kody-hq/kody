@@ -272,7 +272,12 @@ export const packageSecretMountResolver: CredentialResolver<'package-secret-moun
 					`Package "${packageInfo.savedPackage.kodyId}" does not declare secret mount "${credential.alias}".`,
 				)
 			}
-			// The alias is not a stamp key. Check the secret the mount loads.
+			// The alias is not a stamp key. Once this package carries a credential
+			// stamp, the mounted secret name must be a declared kody.credentials
+			// slot (kind secret, signing, or omitted). A name that is not
+			// declared fails closed. The mount's package or session scope does
+			// not skip that check, and resolution still reads only the current
+			// manifest's secretMounts.
 			await assertCredentialUsesDeclared({
 				env: input.env,
 				request: input.actor,

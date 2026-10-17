@@ -185,3 +185,49 @@ test('large kody.app.assets client bundle does not fail the publish gate', () =>
 	expect(result.message).not.toMatch(/server_eval|eval|new Function/)
 	expect(elapsedMs).toBeLessThan(2_000)
 })
+
+test('manifest-only secretMounts is an ok compat note', () => {
+	const result = check(
+		[
+			"import { credential } from 'kody:runtime'",
+			'export default async function wake() {',
+			'  return await credential("wakeToken")',
+			'}',
+		].join('\n'),
+		{
+			credentials: {
+				wakeToken: { kind: 'secret', description: 'Wake token.' },
+			},
+			secretMounts: {
+				wakeToken: { name: 'wakeToken', scope: 'package' },
+			},
+		},
+	)
+	expect(result.ok).toBe(true)
+	expect(result.message).toContain(
+		'kody.secretMounts kept only for stale static dependents: wakeToken. Removing a mount or deleting its secret breaks those dependents.',
+	)
+	expect(result.message).not.toMatch(/Publish failed/)
+})
+
+test('packageSecrets.get still fails the stamp gate when secretMounts remain', () => {
+	const result = check(
+		[
+			"import { packageSecrets } from 'kody:runtime'",
+			'export default async function wake() {',
+			'  return await packageSecrets.get("wakeToken")',
+			'}',
+		].join('\n'),
+		{
+			credentials: {
+				wakeToken: { kind: 'secret', description: 'Wake token.' },
+			},
+			secretMounts: {
+				wakeToken: { name: 'wakeToken', scope: 'package' },
+			},
+		},
+	)
+	expect(result.ok).toBe(false)
+	expect(result.message).toMatch(/packageSecrets\.get/)
+	expect(result.message).toMatch(/Publish failed/)
+})

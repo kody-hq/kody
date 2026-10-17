@@ -356,6 +356,8 @@ export type RepoExternalPublishResult =
 			message: string
 			packageId: string
 			packageName: string
+			/** Names stale static dependents still reading kept or removed mounts. */
+			secret_mount_compat?: string | null
 	  }
 	| {
 			status: 'approval_required'
@@ -363,6 +365,7 @@ export type RepoExternalPublishResult =
 			pending_commit: string
 			message: string
 			approval: CredentialNeedsApprovalRequired
+			secret_mount_compat?: string | null
 	  }
 
 export type RepoSourceBootstrapResult = {

@@ -520,6 +520,44 @@ use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
 - Declaring OAuth scopes on a need. A missing scope shows up as a 401 or 403
   with `x-kody-credential-hint`.
 
+## Leftover secret mounts
+
+Older packages declared `kody.secretMounts` and read them with
+`packageSecrets.get`. That call returns an opaque `{{secret:…}}` ref. A
+dependent that statically imported the package bundled that call. The bundled
+copy still resolves the alias against the dependency's **current** published
+manifest, not the commit it was built from.
+
+Publish may keep those mount declarations after the package's own new code has
+moved to `kody.credentials` and no longer calls `packageSecrets.get`. Keeping a
+mount is a compatibility lane for those stale bundles. It grants nothing new:
+
+- Resolution still reads only the mounts on the current manifest. There is no
+  alias fallback, no history of old mounts, and no commit-pinned lookup.
+- The mounted secret **name** must also be a `kody.credentials` slot of kind
+  `secret` or `signing` (or a slot with no kind). The alias is not a stamp key.
+  A kept mount whose name is not declared fails closed
+  (`credential_need_undeclared`) once the package has a credential stamp. A
+  `package` or `session` scope on the mount does not skip that check.
+- Actor Use, package approval, and a fresh secret lookup still run. Deleting the
+  secret cuts off old code on its next call. Old code cannot keep using a
+  deleted secret.
+- New source that calls `packageSecrets.get` or `packageSecretGet` still fails
+  the publish gate. A newly published dependent cannot borrow the dependency's
+  mount: its own `packageSecrets.get` runs as the dependent, which does not
+  declare that mount.
+
+The credentials check says which aliases were kept. Publish results,
+`static_dependents`, locked-publish approval, and the approve-publish page name
+the stale static dependents that still read each mount. They also warn when a
+publish **removes** an alias those dependents bundled: removing the mount or
+deleting the secret will break those named packages.
+
+Retire a mount only after `static_dependents` shows no stale bundle still
+calling `packageSecrets.get` for it (dependents republish onto the credential
+slot). Then delete the mount. Deleting the underlying secret is the other
+revocation lever and works even while the mount declaration remains.
+
 ## Where to go next
 
 - [Secrets](./secrets.md): the Key kind in depth, host and package approval, and

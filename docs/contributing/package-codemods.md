@@ -347,7 +347,7 @@ finding message starts with one fixed pattern label:
 | `computed integration` | `createAuthenticatedFetch`, `integrationTokenRefresh`, or `{{integration-token:…}}` with a runtime name                                                                                                                                                                                  |
 | `kody.mcp`             | Any `kody.mcp` access, including `const { mcp } = kody`                                                                                                                                                                                                                                  |
 | `\|scope=`             | A `\|scope=` placeholder suffix with a literal or computed scope, or a `scope` option on a secret helper                                                                                                                                                                                 |
-| `secretMounts`         | `package.json#kody.secretMounts`                                                                                                                                                                                                                                                         |
+| `secretMounts`         | `package.json#kody.secretMounts`. Detected, and a manifest-only declaration is a non-failing compat finding: keep mounts stale static dependents still read (`static_dependents`) and delete a mount only once none do. `packageSecrets.get` in new source still fails the publish gate. |
 | `webhook secretName`   | `verification.secretName` or `challenge.prove.secretName` on a `kody.webhooks` entry                                                                                                                                                                                                     |
 | `plain http`           | A `fetch` or `new Request` of an `http://` URL in a module that uses placeholders                                                                                                                                                                                                        |
 | `packageSecrets.get`   | Any `packageSecrets.get` or `kody.packageSecretGet` call                                                                                                                                                                                                                                 |
@@ -399,15 +399,19 @@ Publish error (credentials check `ok: false`): the package must be
 **conversion-ready**. Declare every credential as a fixed `kody.credentials`
 slot with a real description, call only literal keys (`credential("SLOT")` /
 `createAuthenticatedFetch("SLOT")` / `{{secret:SLOT}}`), and remove `|scope=`,
-`secretMounts`, vault placeholders, server `eval` / `new Function` / non-literal
-`import()`, and computed names. Callers pick which saved credential fills each
-slot with the execute `credentials` call map (`{ "SLOT": "credential-name" }` or
-CLI `--credential SLOT=name`) or a stored/trigger mapping — never choose the
-credential name at runtime inside package code. Literal `kody.mcp.SERVER` names
-are stamped as `kind: "mcp"` slots (phase 2); dynamic `kody.mcp[variable]` fails
-the stamp gate. The `kody.mcp` 0010 label remains for migration tracking.
-`credential.named()` stays limited to ad hoc runs and unshared personal-org
-packages (not stamped).
+`packageSecrets.get`, vault placeholders, server `eval` / `new Function` /
+non-literal `import()`, and computed names. A manifest that still declares
+`kody.secretMounts`, with no `packageSecrets.get` in the new source, does not
+fail the gate: the check stays `ok: true` and notes the aliases kept for stale
+static dependents. Removing a mount or deleting its secret breaks those
+dependents; publish warnings name them. Callers pick which saved credential
+fills each slot with the execute `credentials` call map
+(`{ "SLOT": "credential-name" }` or CLI `--credential SLOT=name`) or a
+stored/trigger mapping — never choose the credential name at runtime inside
+package code. Literal `kody.mcp.SERVER` names are stamped as `kind: "mcp"` slots
+(phase 2); dynamic `kody.mcp[variable]` fails the stamp gate. The `kody.mcp`
+0010 label remains for migration tracking. `credential.named()` stays limited to
+ad hoc runs and unshared personal-org packages (not stamped).
 
 Save each scan step result as its own JSON file, then print the report over all
 of them:
@@ -523,8 +527,9 @@ servers get `kind: "mcp"`; OAuth / integration names get `kind: "oauth"`;
 signing names get `kind: "signing"`.
 
 Packages with unstampable patterns (non-literal names, `|scope=`,
-`secretMounts`, `packageSecrets.get`, `credential.named`, server eval, dynamic
-`kody.mcp`) stay `needs_manual`. Prefer `0015-convert-credential-stamps` /
+`packageSecrets.get`, `credential.named`, server eval, dynamic `kody.mcp`) stay
+`needs_manual`. Manifest-only `kody.secretMounts` may stay for stale static
+dependents and does not block sealing. Prefer `0015-convert-credential-stamps` /
 `adminCredentialStampMigrate` for behavior-preserving conversion before leaving
 packages on the publish gate. It uses `applyMode: 'published-only'`.
 
@@ -568,7 +573,8 @@ Skips without writing when:
 - The package is a Kent holdout (`@kentcdodds/raycast`,
   `@kentcdodds/oauth-integration-health`).
 - Blocking stamp-gate failures remain (computed names, any `|scope=`,
-  `secretMounts`, vault placeholders, `server_eval`, `credential.named`, …).
+  `packageSecrets.get`, vault placeholders, `server_eval`, `credential.named`,
+  …). Manifest-only `kody.secretMounts` does not block.
 
 Never emails or notifies owners, never creates credential values, and relies on
 the existing republish path so job/trigger enablements stay as they are. Uses

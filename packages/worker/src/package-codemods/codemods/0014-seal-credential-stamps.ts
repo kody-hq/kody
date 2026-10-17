@@ -28,7 +28,7 @@ export const sealCredentialStampsMessages = {
 	declare:
 		'Uses stamped credentials that kody.credentials does not declare with a description. This codemod fills inferred descriptions (MCP servers, OAuth accounts, signing keys) and leaves other keys for manual review.',
 	unconvertible:
-		'Has credential patterns the stamp gate cannot seal (non-literal names, |scope=, secretMounts, packageSecrets.get, credential.named, server eval, dynamic kody.mcp, or invalid keys). Convert to literal stamped uses by hand, then republish.',
+		'Has credential patterns the stamp gate cannot seal (non-literal names, |scope=, packageSecrets.get, credential.named, server eval, dynamic kody.mcp, or invalid keys). Manifest-only kody.secretMounts may stay for stale static dependents. Convert other patterns to literal stamped uses by hand, then republish.',
 	uninferable:
 		'Has stamped credential keys whose purpose cannot be inferred from source. Write a real description in kody.credentials for each, then republish.',
 } as const

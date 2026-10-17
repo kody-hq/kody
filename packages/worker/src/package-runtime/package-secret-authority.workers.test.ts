@@ -10,10 +10,13 @@ import { communityDomain } from '#mcp/capabilities/community/domain.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import {
+	deleteSecret,
 	lockSecretToPackage,
 	saveSecret,
 	setSecretAllowedHosts,
 } from '#mcp/secrets/service.ts'
+import { buildCredentialStamp } from '#worker/credentials/credential-stamp.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
@@ -23,7 +26,10 @@ import {
 	buildKodyModuleBundle,
 } from './module-graph.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
-import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
+import {
+	persistPublishedSourceSnapshot,
+	writePublishedCredentialStamp,
+} from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 
@@ -90,6 +96,14 @@ async function ensureSecretAuthorityTestSchema() {
 	// Shared helper mirrors migrations (including secret_entries.kind); do not
 	// hand-copy the table DDL here (#3523).
 	await ensureSecretBucketsTestSchema(env.APP_DB)
+	// deleteSecret's grant cleanup touches this table (migration 0116).
+	await runSql(`CREATE TABLE IF NOT EXISTS credential_org_grants (
+		credential_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		org_id TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		PRIMARY KEY (credential_id, org_id)
+	)`)
 	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
 		id TEXT PRIMARY KEY NOT NULL,
 		listing_id TEXT NOT NULL,
@@ -1047,5 +1061,220 @@ export default async function main() {
 				/not visible from this runtime|exists in package scope|matching server-side package runtime context|Package-scoped secrets are only available/i,
 			)
 		}
+	},
+)
+
+const packageWakeRef = { token: '{{secret:wakeToken|scope=package}}' }
+
+const credentialWakeSource = `import { credential } from 'kody:runtime'
+export default async function wake() {
+	await credential("wakeToken")
+	return { v: 2 }
+}`
+
+async function setupStalePackageWake() {
+	silenceIncidentalRuntimeWarnings()
+	await ensureSecretAuthorityTestSchema()
+	const userId = `user-${crypto.randomUUID()}`
+	await provisionTestUser(userId, `wt-${userId.slice(-12)}`)
+	const dep = await publishGrokBotWake(userId, tryStealSource, 'package')
+	const storageContext = {
+		sessionId: null,
+		appId: null,
+		packageId: dep.packageId,
+		storageId: dep.packageId,
+	}
+	await saveSecret({
+		env,
+		userId: ownerIdFromStored(userId),
+		scope: 'package',
+		name: 'wakeToken',
+		value: 'x',
+		storageContext,
+	})
+	await publishDependent(userId, { 'src/main.ts': importWakeEntry })
+	const call = async () =>
+		(
+			await runModule(userId, {
+				'entry.ts':
+					"import main from 'kody:@kentcdodds/dependent/main'\nexport default async () => await main()",
+			})
+		).result
+	return { userId, dep, storageContext, call }
+}
+
+async function republishGrokBotV2(input: {
+	userId: string
+	dep: PublishedPackage
+	secretMounts?: Record<string, { name: string; scope: 'package' | 'user' }>
+	stampKeys: Array<string>
+}) {
+	const commit = `commit-v2-${crypto.randomUUID()}`
+	await runSql(
+		'UPDATE entity_sources SET published_commit = ? WHERE id = ?',
+		commit,
+		input.dep.sourceId,
+	)
+	const source = await getEntitySourceById(env.APP_DB, input.dep.sourceId)
+	if (!source) throw new Error('no source row')
+	const kody: Record<string, unknown> = {
+		id: 'grok-bot',
+		description: 'Wake helper',
+		credentials: {
+			wakeToken: { kind: 'secret', description: 'Wake token.' },
+		},
+	}
+	if (input.secretMounts) kody.secretMounts = input.secretMounts
+	await persistPublishedSourceSnapshot({
+		env,
+		userId: input.userId,
+		source,
+		snapshot: {
+			files: {
+				'package.json': manifest('@kentcdodds/grok-bot', kody, {
+					exports: { './wake': './src/wake.ts' },
+				}),
+				'src/wake.ts': credentialWakeSource,
+			},
+		},
+	})
+	await writePublishedCredentialStamp({
+		env,
+		sourceId: input.dep.sourceId,
+		publishedCommit: commit,
+		stamp: await buildCredentialStamp({ keys: input.stampKeys }),
+	})
+}
+
+test(
+	'danj repro: stale dependent keeps resolving a kept mount',
+	{ timeout: 90_000 },
+	async () => {
+		const { userId, dep, call } = await setupStalePackageWake()
+		expect(await call()).toEqual(packageWakeRef)
+		await republishGrokBotV2({
+			userId,
+			dep,
+			secretMounts: wakeMount('package'),
+			stampKeys: ['wakeToken'],
+		})
+		expect(await call()).toEqual(packageWakeRef)
+	},
+)
+
+test(
+	'removing a kept mount cuts off the stale dependent',
+	{ timeout: 90_000 },
+	async () => {
+		const { userId, dep, call } = await setupStalePackageWake()
+		expect(await call()).toEqual(packageWakeRef)
+		await republishGrokBotV2({
+			userId,
+			dep,
+			stampKeys: ['wakeToken'],
+		})
+		const cutoff = await call()
+		expect(cutoff).toEqual({
+			error: expect.stringMatching(/does not declare secret mount "wakeToken"/),
+		})
+		expect(JSON.stringify(cutoff)).not.toContain('{{secret:')
+	},
+)
+
+test(
+	'deleting the secret cuts off a stale dependent that still has the mount',
+	{ timeout: 90_000 },
+	async () => {
+		const { userId, dep, storageContext, call } = await setupStalePackageWake()
+		expect(await call()).toEqual(packageWakeRef)
+		await republishGrokBotV2({
+			userId,
+			dep,
+			secretMounts: wakeMount('package'),
+			stampKeys: ['wakeToken'],
+		})
+		expect(await call()).toEqual(packageWakeRef)
+		const deleted = await deleteSecret({
+			env,
+			userId: ownerIdFromStored(userId),
+			scope: 'package',
+			name: 'wakeToken',
+			storageContext,
+		})
+		expect(deleted).toBe(true)
+		const cutoff = await call()
+		expect(cutoff).not.toEqual(packageWakeRef)
+		expect(JSON.stringify(cutoff)).not.toContain('{{secret:')
+		expect(JSON.stringify(cutoff)).toMatch(/wakeToken/i)
+	},
+)
+
+test(
+	'a new dependent cannot read a leftover mount through packageSecrets.get',
+	{ timeout: 90_000 },
+	async () => {
+		const { userId, dep } = await setupStalePackageWake()
+		await republishGrokBotV2({
+			userId,
+			dep,
+			secretMounts: wakeMount('package'),
+			stampKeys: ['wakeToken'],
+		})
+		await publishForkedPackage({
+			userId,
+			name: '@kentcdodds/dependent-next',
+			kodyId: 'dependent-next',
+			sourceFiles: {
+				'package.json': manifest(
+					'@kentcdodds/dependent-next',
+					{
+						id: 'dependent-next',
+						description: 'New dependent',
+						dependencies: { '@kentcdodds/grok-bot': '*' },
+					},
+					{ exports: { './main': './src/main.ts' } },
+				),
+				'src/main.ts': `import { packageSecrets } from 'kody:runtime'
+export default async function main() {
+	try {
+		return { stolen: await packageSecrets.get("wakeToken") }
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : String(error) }
+	}
+}`,
+			},
+			exports: [{ artifactName: './main', entryPoint: 'src/main.ts' }],
+		})
+		const fresh = await runModule(userId, {
+			'entry.ts':
+				"import main from 'kody:@kentcdodds/dependent-next/main'\nexport default async () => await main()",
+		})
+		expect(fresh.error).toBeUndefined()
+		expect(fresh.result).toEqual({
+			error: expect.stringMatching(/does not declare secret mount "wakeToken"/),
+		})
+		expect(JSON.stringify(fresh.result)).not.toContain('{{secret:')
+	},
+)
+
+test(
+	'a kept mount whose secret name is not a credential slot fails closed',
+	{ timeout: 90_000 },
+	async () => {
+		const { userId, dep, call } = await setupStalePackageWake()
+		expect(await call()).toEqual(packageWakeRef)
+		await republishGrokBotV2({
+			userId,
+			dep,
+			secretMounts: {
+				wakeToken: { name: 'legacyToken', scope: 'package' },
+			},
+			stampKeys: ['wakeToken'],
+		})
+		const cutoff = await call()
+		expect(JSON.stringify(cutoff)).toMatch(
+			/credential_need_undeclared|without declaring/,
+		)
+		expect(JSON.stringify(cutoff)).not.toContain('{{secret:')
 	},
 )

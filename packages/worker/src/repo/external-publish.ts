@@ -24,6 +24,7 @@ import {
 	type EntitySourceRow,
 	type RepoExternalPublishResult,
 } from './types.ts'
+import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
 
 export type RepoPublishWorkspace = {
@@ -365,6 +366,18 @@ export async function publishFromExternalRef(input: {
 			run_id: runId,
 		}
 	}
+	const pendingFiles = input.files ?? checks.sourceFiles
+	const secretMountCompat =
+		source.entity_kind === 'package'
+			? await loadSecretMountCompatNotice({
+					env: input.env,
+					userId: input.userId,
+					sourceId: source.id,
+					nextCommit: input.newCommit,
+					nextFiles: pendingFiles,
+					sourceRoot: input.sourceRoot ?? source.source_root,
+				})
+			: null
 	if (lockedPackage) {
 		const error = createPackagePublishLockedError({
 			savedPackage: lockedPackage,
@@ -378,6 +391,7 @@ export async function publishFromExternalRef(input: {
 			message: error.message,
 			packageId: lockedPackage.id,
 			packageName: lockedPackage.name,
+			...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
 		}
 	}
 	const approval =
@@ -387,7 +401,7 @@ export async function publishFromExternalRef(input: {
 					env: input.env,
 					source,
 					pendingCommit: input.newCommit,
-					files: input.files ?? checks.sourceFiles,
+					files: pendingFiles,
 					requestedByUserId: input.requestedByUserId,
 					pausedExternalPublish: {
 						allowForce: input.allowForce === true,
@@ -402,6 +416,7 @@ export async function publishFromExternalRef(input: {
 			pending_commit: input.newCommit,
 			message: approval.message,
 			approval,
+			...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
 		}
 	}
 	await finalizePublishedEntitySource({

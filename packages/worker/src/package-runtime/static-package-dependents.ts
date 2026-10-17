@@ -5,7 +5,7 @@ import {
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 
 export const defaultStaticDependentPackageLimit = 10
-const defaultStaticDependentArtifactsPerPackageLimit = 5
+export const defaultStaticDependentArtifactsPerPackageLimit = 5
 
 /**
  * One saved package whose published bundle artifacts statically captured another

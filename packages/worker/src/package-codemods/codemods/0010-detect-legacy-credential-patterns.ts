@@ -56,7 +56,7 @@ export const legacyCredentialPatternMessages: Record<
 	'|scope=':
 		'|scope=: reads a package- or session-scoped secret bucket. Move the value to an org credential assigned to the package.',
 	secretMounts:
-		'secretMounts: declares kody.secretMounts. Replace each mount with a kody.credentials slot.',
+		'secretMounts: declares kody.secretMounts. Keep mounts that stale static dependents still read (check static_dependents) and delete a mount only once no stale dependent reads it. New package code uses a kody.credentials slot instead of packageSecrets.get.',
 	'webhook secretName':
 		'webhook secretName: a webhook names its signing secret with secretName. Declare that secret as a kody.credentials slot.',
 	'plain http':

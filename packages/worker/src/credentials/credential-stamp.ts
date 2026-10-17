@@ -186,13 +186,14 @@ const packageManifestPath = 'package.json'
  * 0010 labels that cannot be sealed into a stamp allowlist. `kody.mcp` stays
  * off this list: phase 2 stamps literal server names and fails dynamic access
  * via {@link scanLiteralMcpServerKeys}. Non-literal names, `|scope=`,
- * secretMounts, packageSecrets.get, and plain http still fail closed.
+ * packageSecrets.get, and plain http still fail closed. Manifest-only
+ * `kody.secretMounts` is a compat finding: publish may keep it for stale
+ * static dependents, and it does not fail this gate.
  */
 const unstampableLegacyPatterns = new Set<LegacyCredentialPattern>([
 	'computed secret',
 	'computed integration',
 	'|scope=',
-	'secretMounts',
 	'packageSecrets.get',
 	'plain http',
 ])
@@ -1452,7 +1453,7 @@ function unstampablePatternFix(pattern: LegacyCredentialPattern): string {
 		case '|scope=':
 			return `Remove |scope= (and any helper scope option). Prefer a declared kody.credentials need filled by an org Key or by a Key bound to this same package (package Keys fill that package's needs when the name matches or they are the only match). ${credentialStampConversionFixGuidance}`
 		case 'secretMounts':
-			return `Delete kody.secretMounts. ${credentialStampConversionFixGuidance}`
+			return `Keep kody.secretMounts entries that stale static dependents still read (check static_dependents). Delete a mount only once no stale dependent reads it. Removing a mount or deleting its secret breaks those dependents. New code uses a kody.credentials slot, not packageSecrets.get. ${credentialStampConversionFixGuidance}`
 		case 'packageSecrets.get':
 			return `Replace packageSecrets.get with credential("SLOT") or {{secret:SLOT}}. ${credentialStampConversionFixGuidance}`
 		case 'plain http':

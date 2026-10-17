@@ -8,8 +8,10 @@
  * - Seal missing `kody.credentials` descriptions via the existing seal plan.
  *
  * Unconvertible patterns (computed names, `|scope=` including package/user/
- * session, secretMounts, server_eval, vault placeholders, credential.named)
- * stay skipped. Do not strip `|scope=package`: unsuffixed lookup prefers
+ * session, packageSecrets.get, server_eval, vault placeholders,
+ * credential.named) stay skipped. Manifest-only `kody.secretMounts` may stay
+ * for stale static dependents and does not block sealing. Do not strip
+ * `|scope=package`: unsuffixed lookup prefers
  * session before package, which would widen resolution. Package-bound Keys
  * can fill that same package's declared needs (name match or sole candidate),
  * so owners can move off `|scope=package` placeholders onto declared needs
@@ -41,7 +43,7 @@ export const credentialStampConvertMessages = {
 	holdout:
 		'Kent holdout: left untouched for the long-term publish-gate migration (issue #3836).',
 	unconvertible:
-		'Still has credential patterns the stamp gate cannot seal without an API or behavior change (computed names, |scope= including package/user/session, secretMounts, packageSecrets.get, credential.named, server eval, vault placeholders, or dynamic kody.mcp). Skip and leave on the publish gate.',
+		'Still has credential patterns the stamp gate cannot seal without an API or behavior change (computed names, |scope= including package/user/session, packageSecrets.get, credential.named, server eval, vault placeholders, or dynamic kody.mcp). Manifest-only kody.secretMounts may stay for stale static dependents. Skip and leave on the publish gate.',
 	uninferable:
 		'Has stamped credential keys whose purpose cannot be inferred from source. Write a real description in kody.credentials, then republish.',
 	invalidManifest:

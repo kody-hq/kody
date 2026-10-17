@@ -2266,6 +2266,12 @@ export type AccountPackageApprovePublishLoaderData = {
 	 * pin with the runtime. Kept for loader shape compatibility.
 	 */
 	listingWillLagAfterPromote: boolean
+	/**
+	 * Names stale static dependents that still read a kept `kody.secretMounts`
+	 * alias, or that will break if this publish removes one. Null when there
+	 * is nothing to warn about.
+	 */
+	secretMountCompatNotice: string | null
 	diff: {
 		files: Array<AccountPackagePublishDiffFile>
 		omittedCount: number

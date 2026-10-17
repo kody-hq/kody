@@ -75,6 +75,7 @@ import {
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
+import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import {
 	pausedSessionMovedMessage,
 	requireCredentialNeedsApproval,
@@ -3325,10 +3326,25 @@ class RepoSessionBase extends DurableObject<Env> {
 		// snapshot collected once above for the published source KV write.
 		const snapshotFiles = workspaceSnapshot.files
 		const publishedCommit = sessionHeadCommit ?? sessionRow.base_commit
-		const credentialNotice =
+		const patternNotice =
 			source.entity_kind === 'package'
 				? credentialPatternNoticeForFiles(snapshotFiles, source.source_root)
 				: null
+		const secretMountCompat =
+			source.entity_kind === 'package'
+				? await loadSecretMountCompatNotice({
+						env: this.env,
+						userId: input.userId,
+						sourceId: source.id,
+						nextCommit: publishedCommit,
+						nextFiles: snapshotFiles,
+						sourceRoot: source.source_root,
+					})
+				: null
+		const credentialNotice =
+			[patternNotice, secretMountCompat]
+				.filter((notice): notice is string => Boolean(notice))
+				.join('\n\n') || null
 		const withCredentialNotice = (message: string) =>
 			credentialNotice ? `${message}\n\n${credentialNotice}` : message
 		const lockedPackage =
