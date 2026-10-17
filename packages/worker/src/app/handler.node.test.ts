@@ -97,6 +97,28 @@ test('getEnv memoizes per env identity and requires AUTH_RATE_LIMITER and Turnst
 	).not.toThrow()
 })
 
+test('getEnv treats local wrangler (WRANGLER_IS_LOCAL_DEV) as non-production for boot guards', () => {
+	// Local generated wrangler copies SENTRY_ENVIRONMENT=production from the
+	// production env block but injects WRANGLER_IS_LOCAL_DEV=true (#3939).
+	expect(() =>
+		getEnv(
+			createEnv({
+				SENTRY_ENVIRONMENT: 'production',
+				WRANGLER_IS_LOCAL_DEV: 'true',
+			}),
+		),
+	).not.toThrow()
+	expect(() =>
+		getEnv(
+			createEnv({
+				SENTRY_ENVIRONMENT: 'production',
+				WRANGLER_IS_LOCAL_DEV: 'true',
+				AUTH_RATE_LIMITER: {},
+			}),
+		),
+	).not.toThrow()
+})
+
 test('handleRequest serves multiple requests from the same env object', async () => {
 	const env = createEnv()
 	const first = await handleRequest(

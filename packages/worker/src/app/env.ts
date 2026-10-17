@@ -1,4 +1,5 @@
 import { parseSafe } from 'remix/data-schema'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { EnvSchema } from '#worker/env-schema.ts'
 
 // Env binding objects are stable per isolate; validate them once per identity
@@ -21,17 +22,29 @@ export function getEnv(env: Env): Env {
 	return env
 }
 
+/**
+ * Real production only. Local `npm run dev` copies production wrangler vars
+ * (including `SENTRY_ENVIRONMENT=production`) into
+ * `wrangler-local-dev.generated.json` but also sets `WRANGLER_IS_LOCAL_DEV=true`,
+ * which `isNonProductionRuntime` treats as non-production so a fresh
+ * `.env.example` can boot without Turnstile (#3939).
+ */
+function requiresProductionBootGuards(env: Env) {
+	return env.SENTRY_ENVIRONMENT === 'production' && !isNonProductionRuntime(env)
+}
+
 function validateEnv(env: Env) {
-	if (env.SENTRY_ENVIRONMENT === 'production' && !env.AUTH_RATE_LIMITER) {
+	if (requiresProductionBootGuards(env) && !env.AUTH_RATE_LIMITER) {
 		throw new Error(
 			'Missing AUTH_RATE_LIMITER binding: production auth rate limiting must use the Cloudflare rate-limit binding, not the D1 fallback. Check the ratelimits block in packages/worker/wrangler.jsonc.',
 		)
 	}
 
-	// Signup is always open; production must not boot without Turnstile.
+	// Signup is always open; real production must not boot without Turnstile.
+	// Local wrangler is not treated as production here (WRANGLER_IS_LOCAL_DEV).
 	// Request-time protection also fails closed for unknown runtimes (unset
 	// SENTRY_ENVIRONMENT) via isNonProductionRuntime in public-form-protection.ts.
-	if (env.SENTRY_ENVIRONMENT === 'production') {
+	if (requiresProductionBootGuards(env)) {
 		const siteKey = env.TURNSTILE_SITE_KEY?.trim()
 		const secretKey = env.TURNSTILE_SECRET_KEY?.trim()
 		if (!siteKey || !secretKey) {
