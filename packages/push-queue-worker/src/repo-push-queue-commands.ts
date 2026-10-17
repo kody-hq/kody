@@ -164,6 +164,8 @@ export type LandedRefState = {
 /**
  * True when every command's old-oid is the tip this queue just moved past.
  * Cache misses and unknown old-oids (outside writers / rewinds) are not stale.
+ * `previous === tip` (no-op land) must not count as stale or later pushes from
+ * that tip would wedge until the Durable Object resets.
  */
 export function allReceivePackCommandsKnownStale(
 	commands: ReadonlyArray<ReceivePackCommand>,
@@ -173,7 +175,7 @@ export function allReceivePackCommandsKnownStale(
 	return commands.every((command) => {
 		const state = landedRefs.get(command.ref)
 		if (!state || state.previous === null) return false
-		return command.oldOid === state.previous
+		return command.oldOid === state.previous && command.oldOid !== state.tip
 	})
 }
 
@@ -283,9 +285,15 @@ export function applyReportStatusToLandedRefs(
 			landedRefs.delete(command.ref)
 			continue
 		}
+		const prior = landedRefs.get(command.ref)
+		const previous =
+			isZeroOid(command.oldOid) || command.oldOid === command.newOid
+				? (prior?.previous ?? null)
+				: command.oldOid
 		landedRefs.set(command.ref, {
 			tip: command.newOid,
-			previous: isZeroOid(command.oldOid) ? null : command.oldOid,
+			previous:
+				previous !== null && previous !== command.newOid ? previous : null,
 		})
 	}
 }

@@ -837,6 +837,37 @@ test('known-stale without report-status falls through instead of synthesizing st
 	expect(calls).toBe(2)
 })
 
+test('a no-op land does not wedge later pushes from that tip', async () => {
+	const { store } = createMemoryStore()
+	let calls = 0
+	const queue = new RepoPushQueue({
+		store,
+		fetch: async () => {
+			calls += 1
+			return new Response(reportStatusOk(['refs/heads/main']), {
+				status: 200,
+			})
+		},
+	})
+	await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidA, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(calls).toBe(1)
+	const next = await queue.handle(
+		pushRequest(
+			receivePackRequestBody([
+				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
+			]),
+		),
+	)
+	expect(next.status).toBe(200)
+	expect(calls).toBe(2)
+})
+
 test('a force-push rewind to a historical tip falls through to Artifacts', async () => {
 	const { store } = createMemoryStore()
 	let calls = 0

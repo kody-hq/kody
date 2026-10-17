@@ -93,6 +93,13 @@ test('allReceivePackCommandsKnownStale matches only the immediate previous tip',
 			landed,
 		),
 	).toBe(false)
+	// No-op land (previous === tip) must not wedge later pushes from that tip.
+	expect(
+		allReceivePackCommandsKnownStale(
+			[{ oldOid: oidB, newOid: oidC, ref: 'refs/heads/main' }],
+			new Map([['refs/heads/main', { tip: oidB, previous: oidB }]]),
+		),
+	).toBe(false)
 	// Outside writer / force-push rewind to a historical oid must fall through.
 	expect(
 		allReceivePackCommandsKnownStale(
@@ -174,6 +181,21 @@ test('applyReportStatusToLandedRefs records command old-oid as previous and clea
 	applyReportStatusToLandedRefs(
 		landed,
 		[{ oldOid: oidC, newOid: oidA, ref: 'refs/heads/main' }],
+		concat(
+			encodeGitPktLineBytes('unpack ok\n'),
+			encodeGitPktLineBytes('ok refs/heads/main\n'),
+			encodeGitFlushPktBytes(),
+		),
+	)
+	expect(landed.get('refs/heads/main')).toEqual({
+		tip: oidA,
+		previous: oidC,
+	})
+
+	// No-op ok (old === new) must not set previous === tip.
+	applyReportStatusToLandedRefs(
+		landed,
+		[{ oldOid: oidA, newOid: oidA, ref: 'refs/heads/main' }],
 		concat(
 			encodeGitPktLineBytes('unpack ok\n'),
 			encodeGitPktLineBytes('ok refs/heads/main\n'),
