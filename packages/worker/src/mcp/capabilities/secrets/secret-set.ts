@@ -59,6 +59,7 @@ const secretSetInputSchema = z
 			value.expires_at === undefined &&
 			value.provider === undefined &&
 			value.inject === undefined &&
+			value.placement === undefined &&
 			value.kind === undefined &&
 			value.hosts === undefined &&
 			value.login_exchange === undefined
@@ -66,7 +67,7 @@ const secretSetInputSchema = z
 			ctx.addIssue({
 				code: 'custom',
 				message:
-					'Provide a secret value, or a description / expires_at / provider / inject update for an existing secret.',
+					'Provide a secret value, or a description / expires_at / provider / inject / placement update for an existing secret.',
 				path: ['value'],
 			})
 		}

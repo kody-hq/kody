@@ -515,6 +515,7 @@ test('account secrets save renames opt-in credentials in place without their kin
 			name: 'Authorization',
 			format: 'Bearer {value}',
 		},
+		placement: null,
 	}
 	const save = (body: Record<string, unknown>) =>
 		createHandler()(
@@ -623,6 +624,7 @@ test('account secrets save rolls back an in-place rename when the later write fa
 			name: 'Authorization',
 			format: 'Bearer {value}',
 		},
+		placement: null,
 	}
 	mockSecretsListing([makeSecret('Henry')])
 	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
@@ -663,6 +665,7 @@ test('account secrets save still refuses moving an opt-in credential across scop
 			name: 'Authorization',
 			format: 'Bearer {value}',
 		},
+		placement: null,
 	}
 	const pkg = {
 		id: 'pkg-1',

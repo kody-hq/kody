@@ -20,6 +20,7 @@ const item = (
 	description: '',
 	hosts: [],
 	inject: null,
+	placement: null,
 	packageId: null,
 	lockedToPackageIds: [],
 	expiresAt: null,

@@ -5,7 +5,9 @@ import {
 	assertLoginExchangeOnHosts,
 	assertOptInCredentialValue,
 	type CredentialFieldsUpdate,
+	type CredentialFillPlacement,
 	type CredentialInject,
+	credentialFillPlacementSchema,
 	credentialHostsSchema,
 	credentialInjectSchema,
 	credentialProviderSchema,
@@ -15,6 +17,7 @@ import {
 	type OptInStoredCredentialKind,
 	optInStoredCredentialKinds,
 	readStoredCredentialPlacement,
+	serializeCredentialFillPlacement,
 	updateCredentialFields,
 } from '#worker/credentials/credential-fields.ts'
 import {
@@ -59,7 +62,13 @@ export const optInCredentialInputFields = {
 	inject: credentialInjectSchema
 		.optional()
 		.describe(
-			'Optional placement for a scoped credential client: a header with a "{value}" format, basic auth, or a query parameter. Defaults to `Authorization: Bearer {value}`. Placeholders ignore it.',
+			'Optional inject for a scoped credential client: a header with a "{value}" format, basic auth, or a query parameter. Defaults to `Authorization: Bearer {value}`. Placeholders ignore it.',
+		),
+	placement: credentialFillPlacementSchema
+		.nullable()
+		.optional()
+		.describe(
+			'Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential — headers (optionally named), query, path, and/or body. Null means anywhere. Distinct from inject, which only steers the scoped credential() client. The gateway does not enforce this yet.',
 		),
 }
 
@@ -74,12 +83,14 @@ type OptInInput = {
 	login_exchange?: z.infer<typeof loginExchangeSchema>
 	provider?: string | null
 	inject?: CredentialInject
+	placement?: CredentialFillPlacement | null
 }
 
 type CredentialReport = {
 	kind: StoredKind
 	provider: string | null
 	inject: CredentialInject
+	placement: CredentialFillPlacement | null
 }
 
 export type OptInCredentialPlan =
@@ -137,19 +148,21 @@ export async function planOptInCredentialFieldsForOrg(input: {
 		login_exchange: loginExchange,
 		provider,
 		inject,
+		placement,
 		value,
 	} = input.input
 	const name = input.input.name.trim()
 	const touchesKind =
 		kind !== undefined || hosts !== undefined || loginExchange !== undefined
-	const touchesFields = provider !== undefined || inject !== undefined
+	const touchesFields =
+		provider !== undefined || inject !== undefined || placement !== undefined
 	const hasValue = typeof value === 'string' && value.length > 0
 	if (!touchesKind && !touchesFields) {
 		// A new value for an existing opt-in kind is still checked against it.
 		if (input.input.scope !== 'user' || !hasValue) return { mode: 'none' }
 	} else if (input.input.scope !== 'user' || input.authorityPackageId) {
 		throw new McpCallerError(
-			'kind, hosts, login_exchange, provider, and inject apply only to user-scope secrets set outside a package.',
+			'kind, hosts, login_exchange, provider, inject, and placement apply only to user-scope secrets set outside a package.',
 		)
 	}
 	if (touchesKind && !hasValue) {
@@ -173,7 +186,7 @@ export async function planOptInCredentialFieldsForOrg(input: {
 			input.input.expires_at !== undefined
 		) {
 			throw new McpCallerError(
-				'Without a value, change provider or inject in a call of their own, separate from description or expires_at.',
+				'Without a value, change provider, inject, or placement in a call of their own, separate from description or expires_at.',
 			)
 		}
 		if (inject) assertInjectFitsKind({ kind: existing.kind, inject })
@@ -184,6 +197,7 @@ export async function planOptInCredentialFieldsForOrg(input: {
 			update: {
 				...(provider !== undefined ? { provider } : {}),
 				...(inject ? { inject } : {}),
+				...(placement !== undefined ? { placement } : {}),
 			},
 		}
 	}
@@ -238,17 +252,20 @@ export async function planOptInCredentialFieldsForOrg(input: {
 	const before = {
 		provider: existing?.provider ?? null,
 		inject: existing?.inject ?? defaultCredentialInject,
+		placement: existing?.placement ?? null,
 	}
 	const report: CredentialReport = {
 		kind: effectiveKind,
 		provider: provider === undefined ? before.provider : provider,
 		inject: inject ?? before.inject,
+		placement: placement === undefined ? before.placement : placement,
 	}
 	assertInjectFitsKind({ kind: report.kind, inject: report.inject })
 	const fieldDetails = touchesFields
 		? {
 				provider: { before: before.provider, after: report.provider },
 				inject: { before: before.inject, after: report.inject },
+				placement: { before: before.placement, after: report.placement },
 			}
 		: {}
 	return {
@@ -259,6 +276,7 @@ export async function planOptInCredentialFieldsForOrg(input: {
 			configJson: effectiveExchange ? JSON.stringify(effectiveExchange) : null,
 			provider: report.provider,
 			injectJson: JSON.stringify(report.inject),
+			placementJson: serializeCredentialFillPlacement(report.placement),
 		},
 		auditEvent: (credentialId) =>
 			touchesKind
@@ -328,5 +346,6 @@ export async function applyCredentialFieldsOnly(
 		kind: plan.kind,
 		provider: updated.provider,
 		inject: updated.inject,
+		placement: updated.placement,
 	}
 }

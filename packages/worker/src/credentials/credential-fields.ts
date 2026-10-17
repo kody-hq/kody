@@ -18,12 +18,28 @@ import {
 } from '#worker/orgs/org-audit.ts'
 import { getOrgCredential, type OrgCredential } from './credential-ids.ts'
 import { credentialHostsAllow } from './credential-request.ts'
+import {
+	type CredentialFillPlacement,
+	readCredentialFillPlacement,
+	serializeCredentialFillPlacement,
+} from './fill-placement.ts'
 import { loginExchangeSchema } from './login-resolver.ts'
 import {
 	assertOptInCredentialValue,
 	type OptInStoredCredentialKind,
 	optInStoredCredentialKinds,
 } from './opt-in-credential-value.ts'
+
+export {
+	type CredentialFillPlacement,
+	credentialFillPlacementSchema,
+	defaultNewCredentialFillPlacement,
+	fillPlacementAllows,
+	fillPlacementPartLabels,
+	readCredentialFillPlacement,
+	serializeCredentialFillPlacement,
+	type CredentialFillSite,
+} from './fill-placement.ts'
 
 /** RFC 9110 token characters for HTTP field names. */
 const httpFieldNamePattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
@@ -152,6 +168,13 @@ const fieldTables = {
 	vault: 'secret_provider_bindings',
 } as const satisfies Record<OrgCredential['kind'], string>
 
+/** Tables that store placeholder fill placement (not MCP servers). */
+const placementFieldTables = {
+	secret: 'secret_entries',
+	integration: 'user_integrations',
+	vault: 'secret_provider_bindings',
+} as const satisfies Partial<Record<OrgCredential['kind'], string>>
+
 const storedKindValues = ['secret', ...optInStoredCredentialKinds] as const
 
 export type StoredCredentialKindValue = (typeof storedKindValues)[number]
@@ -198,35 +221,53 @@ export function readCredentialInject(
 export type CredentialFieldsUpdate = {
 	provider?: string | null
 	inject?: CredentialInject
+	/**
+	 * Placeholder fill placement. `undefined` leaves the stored value alone;
+	 * `null` clears it back to anywhere.
+	 */
+	placement?: CredentialFillPlacement | null
 }
 
 export type CredentialFields = {
 	credential: OrgCredential
 	provider: string | null
 	inject: CredentialInject
+	/** Null means anywhere (placeholders may fill any request part). */
+	placement: CredentialFillPlacement | null
 }
 
 async function readFields(db: D1Database, credential: OrgCredential) {
 	const isSecret = credential.kind === 'secret'
+	const hasPlacement = credential.kind in placementFieldTables
 	const row = await db
 		.prepare(
-			`SELECT provider, inject_json${isSecret ? ', kind' : ''}
+			`SELECT provider, inject_json${isSecret ? ', kind' : ''}${
+				hasPlacement ? ', placement_json' : ''
+			}
 			FROM ${fieldTables[credential.kind]} WHERE id = ?`,
 		)
 		.bind(credential.id)
-		.first<{ provider: string | null; inject_json: string; kind?: string }>()
+		.first<{
+			provider: string | null
+			inject_json: string
+			kind?: string
+			placement_json?: string | null
+		}>()
 	return {
 		credential,
 		provider: row?.provider ?? null,
 		inject: parseInject(row?.inject_json),
+		placement: hasPlacement
+			? readCredentialFillPlacement(row?.placement_json)
+			: null,
 		storedKind: isSecret ? parseStoredKind(row?.kind) : null,
 	}
 }
 
 /**
- * Sets `provider` and/or `inject` on one credential of `orgId`, committed
- * together with its audit event. The caller has already authorized the
- * manager's write permission.
+ * Sets `provider`, `inject`, and/or placeholder `placement` on one credential
+ * of `orgId`, committed together with its audit event. The caller has already
+ * authorized the manager's write permission.
  */
 export async function updateCredentialFields(input: {
 	db: D1Database
@@ -243,9 +284,24 @@ export async function updateCredentialFields(input: {
 	if (!credential?.live) {
 		throw new McpCallerError('No credential with that id in this org.')
 	}
+	const touchesProviderOrInject =
+		input.update.provider !== undefined || input.update.inject !== undefined
+	const touchesPlacement = input.update.placement !== undefined
 	if (credential.kind === 'vault') {
+		if (touchesProviderOrInject) {
+			throw new McpCallerError(
+				'A vault binding takes its inject from each reference; it has no provider or inject to set. Only placement may change.',
+			)
+		}
+		if (!touchesPlacement) {
+			throw new McpCallerError(
+				'A vault binding takes its inject from each reference; it has no provider or inject to set.',
+			)
+		}
+	}
+	if (credential.kind === 'mcp-server' && touchesPlacement) {
 		throw new McpCallerError(
-			'A vault binding takes its placement from each reference; it has no provider or inject to set.',
+			'MCP servers have no placeholder fill placement; only provider can change.',
 		)
 	}
 	const before = await readFields(input.db, credential)
@@ -254,8 +310,13 @@ export async function updateCredentialFields(input: {
 			? before.provider
 			: input.update.provider
 	const inject = input.update.inject ?? before.inject
+	const placement =
+		input.update.placement === undefined
+			? before.placement
+			: input.update.placement
 	if (
 		credential.kind !== 'secret' &&
+		credential.kind !== 'vault' &&
 		JSON.stringify(inject) !== JSON.stringify(defaultCredentialInject)
 	) {
 		throw new McpCallerError(
@@ -265,41 +326,60 @@ export async function updateCredentialFields(input: {
 	if (before.storedKind) {
 		assertInjectFitsKind({ kind: before.storedKind, inject })
 	}
+	const placementTable =
+		placementFieldTables[credential.kind as keyof typeof placementFieldTables]
+	const setsPlacement = placementTable !== undefined && touchesPlacement
+	const sql = setsPlacement
+		? `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?, placement_json = ?
+			WHERE id = ? AND deleted_at IS NULL`
+		: `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?
+			WHERE id = ? AND deleted_at IS NULL`
+	const statement = setsPlacement
+		? input.db
+				.prepare(sql)
+				.bind(
+					provider,
+					JSON.stringify(inject),
+					serializeCredentialFillPlacement(placement),
+					credential.id,
+				)
+		: input.db
+				.prepare(sql)
+				.bind(provider, JSON.stringify(inject), credential.id)
+	const details: Record<string, unknown> = {
+		credentialKind: credential.kind,
+	}
+	if (touchesProviderOrInject) {
+		details.provider = { before: before.provider, after: provider }
+		details.inject = { before: before.inject, after: inject }
+	}
+	if (setsPlacement) {
+		details.placement = { before: before.placement, after: placement }
+	}
 	await runAppDbBatchWithOrgAudit({
 		appDb: input.db,
 		audit: input.audit,
-		statements: [
-			input.db
-				.prepare(
-					`UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?
-					WHERE id = ? AND deleted_at IS NULL`,
-				)
-				.bind(provider, JSON.stringify(inject), credential.id),
-		],
+		statements: [statement],
 		event: {
 			orgId: input.orgId,
 			action: 'credential.fields_updated',
 			resourceType: 'credential',
 			resourceId: credential.id,
-			details: {
-				credentialKind: credential.kind,
-				provider: { before: before.provider, after: provider },
-				inject: { before: before.inject, after: inject },
-			},
+			details,
 		},
 	})
-	return { credential, provider, inject }
+	return { credential, provider, inject, placement }
 }
 
 export async function readCredentialFields(input: {
 	db: D1Database
 	credential: OrgCredential
 }): Promise<CredentialFields> {
-	const { credential, provider, inject } = await readFields(
+	const { credential, provider, inject, placement } = await readFields(
 		input.db,
 		input.credential,
 	)
-	return { credential, provider, inject }
+	return { credential, provider, inject, placement }
 }
 
 export type StoredCredentialPlacement = {
@@ -309,12 +389,13 @@ export type StoredCredentialPlacement = {
 	loginExchange: z.infer<typeof loginExchangeSchema> | null
 	provider: string | null
 	inject: CredentialInject
+	placement: CredentialFillPlacement | null
 }
 
 /**
- * The kind, hosts, login exchange, provider, and inject of `orgId`'s live
- * user-scope secret `name`, never its value. Null when there is no such
- * secret.
+ * The kind, hosts, login exchange, provider, inject, and fill placement of
+ * `orgId`'s live user-scope secret `name`, never its value. Null when there
+ * is no such secret.
  */
 export async function readStoredCredentialPlacement(input: {
 	db: D1Database
@@ -325,7 +406,7 @@ export async function readStoredCredentialPlacement(input: {
 		.prepare(
 			`SELECT e.id AS id, e.kind AS kind, e.allowed_hosts AS allowed_hosts,
 				e.config_json AS config_json, e.provider AS provider,
-				e.inject_json AS inject_json
+				e.inject_json AS inject_json, e.placement_json AS placement_json
 			FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
 			WHERE b.user_id = ? AND b.scope = 'user' AND b.binding_key = ''
 				AND e.name = ? AND e.deleted_at IS NULL AND b.deleted_at IS NULL`,
@@ -338,6 +419,7 @@ export async function readStoredCredentialPlacement(input: {
 			config_json: string | null
 			provider: string | null
 			inject_json: string
+			placement_json: string | null
 		}>()
 	if (!row) return null
 	const hosts = z.array(z.string()).safeParse(JSON.parse(row.allowed_hosts))
@@ -351,5 +433,6 @@ export async function readStoredCredentialPlacement(input: {
 		loginExchange: exchange?.success ? exchange.data : null,
 		provider: row.provider,
 		inject: parseInject(row.inject_json),
+		placement: readCredentialFillPlacement(row.placement_json),
 	}
 }

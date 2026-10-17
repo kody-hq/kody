@@ -28,7 +28,10 @@
   [Amendment 2026-10-16](#amendment-2026-10-16-webhook-multi-instance));
   2026-10-16 (Kent: packages that stored a credential stamp may use only
   declared slots; unstamped packages keep the legacy path — see
-  [Amendment 2026-10-16](#amendment-2026-10-16-stamped-packages-fail-closed))
+  [Amendment 2026-10-16](#amendment-2026-10-16-stamped-packages-fail-closed));
+  2026-10-17 (Kent: each credential owns an allowed fill-placement for
+  placeholders; null means anywhere until migration and enforcement — see
+  [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -795,3 +798,28 @@ flag stays off.
 - **Flag.** Do not flip `credential-need-enforcement` to mean "phase 3 is on".
   Stamped packages are enforced because a stamp is stored, not because the flag
   changed.
+
+## Amendment 2026-10-17: per-credential fill placement
+
+Kent approved this on 2026-10-17. It reverses the permanent "no header-only
+switch" rule for Key placeholders (lines 115–117 and 408–410 above, and the
+2026-10-15 amendment's "Placement stays fill-anywhere").
+
+- **What changes.** Every credential that fills placeholders (`{{secret:…}}`,
+  `{{secret-basic:…}}`, `{{integration-token:…}}`, vault `{{secret/…}}`) gets an
+  allowed **fill placement**: which request parts it may be filled into —
+  headers (optionally limited to named headers), query, URL path, and/or body.
+  Stored as `placement_json`. **Null/absent means anywhere** (today's behavior)
+  so existing rows do not change when the column lands. New credentials will
+  default to headers-only once observe-mode ships. The per-request header
+  `x-kody-secret-resolution: headers-only` stays and **intersects** with
+  placement (it never widens it). Distinct from `inject`, which only steers the
+  scoped `credential()` client.
+- **Rollout.** (1) Schema + read/write + audit of placement changes, no gateway
+  behavior change. (2) Observe mode logs "would block" and new credentials
+  default to headers-only. (3) Surfaces (UI, MCP, CLI, docs). (4) Migrate
+  existing credentials from observed package usage and audit logs. (5)
+  Enforcement with a clear refusal that names the credential, the refused part,
+  and the allowed parts. Enforcement ships last.
+- **Unchanged.** Host allowlists, HTTPS-only fill, scoped-client `inject`,
+  package need declarations, and the rest of this record.

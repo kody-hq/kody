@@ -29,7 +29,10 @@ import {
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
 import { filterCredentialList } from '#universal/credentials-list.ts'
-import { readCredentialInject } from './credential-fields.ts'
+import {
+	readCredentialFillPlacement,
+	readCredentialInject,
+} from './credential-fields.ts'
 import { listPersonalCredentialCandidates } from './personal-credentials.ts'
 
 type Family = 'secret' | 'integration'
@@ -97,6 +100,7 @@ type SecretRow = {
 	allowed_hosts: string
 	allowed_packages: string
 	inject_json: string | null
+	placement_json: string | null
 	bucket_scope: string
 	binding_key: string
 	created_at: string
@@ -115,7 +119,7 @@ async function loadSecretRows(input: {
 		const result = await input.db
 			.prepare(
 				`SELECT e.id, e.name, e.kind, e.provider, e.description, e.allowed_hosts,
-					e.allowed_packages, e.inject_json, b.scope AS bucket_scope,
+					e.allowed_packages, e.inject_json, e.placement_json, b.scope AS bucket_scope,
 					b.binding_key, e.created_at, e.updated_at, e.expires_at,
 					b.expires_at AS bucket_expires_at
 				FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
@@ -150,6 +154,7 @@ async function loadSecretRows(input: {
 					kind === 'secret' || kind === 'login'
 						? readCredentialInject(row.inject_json)
 						: null,
+				placement: readCredentialFillPlacement(row.placement_json),
 				packageId: row.bucket_scope === 'package' ? row.binding_key : null,
 				lockedToPackageIds: parseStringArray(row.allowed_packages),
 				expiresAt,
@@ -173,6 +178,7 @@ type IntegrationRow = {
 	api_base_url: string | null
 	usage_mode: string
 	allowed_packages_json: string
+	placement_json: string | null
 	connected_at: string | null
 	auth_failed_at: string | null
 	auth_failed_reason: string | null
@@ -193,7 +199,7 @@ async function loadIntegrationRows(input: {
 				p.required_hosts_json AS app_hosts_json,
 				CASE WHEN i.platform_app_slug IS NOT NULL THEN p.api_base_url
 					ELSE a.api_base_url END AS api_base_url,
-				i.usage_mode, i.allowed_packages_json, i.connected_at,
+				i.usage_mode, i.allowed_packages_json, i.placement_json, i.connected_at,
 				i.auth_failed_at, i.auth_failed_reason, i.created_at, i.updated_at
 			FROM user_integrations i
 			LEFT JOIN user_oauth_apps a
@@ -227,6 +233,7 @@ async function loadIntegrationRows(input: {
 				apiBaseUrl: row.api_base_url,
 			}),
 			inject: bearerInject,
+			placement: readCredentialFillPlacement(row.placement_json),
 			packageId: null,
 			lockedToPackageIds:
 				row.usage_mode === 'packages'
@@ -283,6 +290,7 @@ async function loadMcpRows(input: {
 			description: '',
 			hosts: hostOf(row.url),
 			inject: null,
+			placement: null,
 			packageId: null,
 			lockedToPackageIds:
 				row.usage_mode === 'packages'

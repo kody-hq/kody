@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { authorize } from '#worker/authorization/authorize.ts'
 import {
+	credentialFillPlacementSchema,
 	credentialInjectSchema,
 	credentialProviderSchema,
 	updateCredentialFields,
@@ -39,17 +40,30 @@ const inputSchema = z
 			.describe(
 				'How a scoped credential client places a secret\'s value: a header with a "{value}" format, basic auth, or a query parameter. OAuth connections and MCP servers always use Authorization: Bearer.',
 			),
+		placement: credentialFillPlacementSchema
+			.nullable()
+			.optional()
+			.describe(
+				'Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. The gateway does not enforce this yet.',
+			),
 	})
-	.refine((value) => value.provider !== undefined || value.inject, {
-		message: 'Provide provider and/or inject.',
-	})
+	.refine(
+		(value) =>
+			value.provider !== undefined ||
+			value.inject ||
+			value.placement !== undefined,
+		{
+			message: 'Provide provider, inject, and/or placement.',
+		},
+	)
 
 const outputSchema = z.object({
 	credential_id: z.string(),
-	credential_kind: z.enum(['secret', 'integration', 'mcp-server']),
+	credential_kind: z.enum(['secret', 'integration', 'mcp-server', 'vault']),
 	name: z.string(),
 	provider: z.string().nullable(),
 	inject: credentialInjectSchema,
+	placement: credentialFillPlacementSchema.nullable(),
 })
 
 export const credentialUpdateCapability = defineDomainCapability(
@@ -58,7 +72,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 		name: 'credentialUpdate',
 		orgPermission: 'none',
 		description:
-			"Set a credential's provider and/or inject (ADR 0068): which package credential needs it can satisfy, and where a scoped `credential(key)` client puts its value. Works for user-scope secrets, OAuth connections, and MCP servers by credential id; needs Write on that credential and is audited. `{{secret:name}}` placeholders ignore both fields, so existing Keys keep working unchanged. Never takes or returns a value.",
+			"Set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body; null = anywhere). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Never takes or returns a value.",
 		keywords: [
 			'credential',
 			'provider',
@@ -79,7 +93,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 			})
 			if (authorityPackageId) {
 				throw new McpCallerError(
-					'Package runtimes cannot change a credential’s provider or inject.',
+					'Package runtimes cannot change a credential’s provider, inject, or placement.',
 				)
 			}
 			const orgId = ownerIdFromCaller(ctx.callerContext)
@@ -110,18 +124,19 @@ export const credentialUpdateCapability = defineDomainCapability(
 						? { provider: parsed.provider }
 						: {}),
 					...(parsed.inject ? { inject: parsed.inject } : {}),
+					...(parsed.placement !== undefined
+						? { placement: parsed.placement }
+						: {}),
 				},
 				audit: orgAuditWriterFromRequest(ctx.env, request),
 			})
-			if (updated.credential.kind === 'vault') {
-				throw new Error('Vault bindings have no provider or inject.')
-			}
 			return {
 				credential_id: updated.credential.id,
 				credential_kind: updated.credential.kind,
 				name: updated.credential.name,
 				provider: updated.provider,
 				inject: updated.inject,
+				placement: updated.placement,
 			}
 		},
 	},

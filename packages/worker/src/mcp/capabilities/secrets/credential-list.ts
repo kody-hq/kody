@@ -30,6 +30,17 @@ const credentialListItemSchema = z.object({
 	description: z.string(),
 	hosts: z.array(z.string()),
 	inject: injectSchema.nullable(),
+	placement: z
+		.object({
+			headers: z.union([z.literal(true), z.array(z.string())]).optional(),
+			query: z.literal(true).optional(),
+			path: z.literal(true).optional(),
+			body: z.literal(true).optional(),
+		})
+		.nullable()
+		.describe(
+			'Where placeholders may be filled (headers, query, path, body). Null means anywhere. Distinct from inject.',
+		),
 	packageId: z
 		.string()
 		.nullable()
