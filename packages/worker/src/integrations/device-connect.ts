@@ -255,8 +255,28 @@ export async function pollIntegrationDeviceConnect(
 		fetchImpl: input.fetchImpl,
 		nowMs: input.nowMs,
 	})
-	if (!polled.ok) return polled
-	if (polled.status !== 'approved') {
+	if (!polled.ok || polled.status !== 'approved') {
+		// Concurrent poll may have persisted and written a completion receipt
+		// while this request was at the provider (e.g. expired_token race).
+		const after = await loadDevicePendingSession({
+			env: input.env,
+			userId: ownerId,
+			sessionId,
+		})
+		if (after?.completion) {
+			return {
+				ok: true,
+				status: 'approved',
+				accessTokenSaved: true,
+				refreshTokenSaved: after.completion.refreshTokenSaved,
+				allowedHosts: after.completion.allowedHosts,
+				hostApprovalLinks: after.completion.hostApprovalLinks,
+				integrationName: after.completion.integrationName,
+				nextSteps: after.completion
+					.nextSteps as DeviceConnectPollApproved['nextSteps'],
+			}
+		}
+		if (!polled.ok) return polled
 		return polled
 	}
 

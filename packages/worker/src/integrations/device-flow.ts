@@ -734,14 +734,8 @@ export async function pollDeviceAuthorization(input: {
 			userId: input.userId,
 			sessionId: input.sessionId,
 		})
-		if (latest?.completion) {
-			return {
-				ok: false,
-				status: 'invalid_session',
-				error: 'Device authorization session was already completed.',
-				httpStatus: 404,
-			}
-		}
+		// Completion / approved payload: connect-layer poll re-reads the
+		// receipt after this return; keep tokens for that retry path.
 		if (latest?.approvedTokenPayload) {
 			const cachedAccess = readOptionalStringField(
 				latest.approvedTokenPayload,
