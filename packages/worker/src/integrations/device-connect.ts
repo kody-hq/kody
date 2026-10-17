@@ -329,17 +329,22 @@ export async function pollIntegrationDeviceConnect(
 		integrationName: persisted.integrationName,
 		nextSteps: persisted.nextSteps,
 	}
-	await completeDevicePendingSession({
-		env: input.env,
-		userId: ownerId,
-		sessionId,
-		completion: {
-			refreshTokenSaved: approved.refreshTokenSaved,
-			allowedHosts: approved.allowedHosts,
-			hostApprovalLinks: approved.hostApprovalLinks,
-			integrationName: approved.integrationName,
-			nextSteps: approved.nextSteps,
-		},
-	})
+	// Receipt is best-effort: credentials are already saved.
+	try {
+		await completeDevicePendingSession({
+			env: input.env,
+			userId: ownerId,
+			sessionId,
+			completion: {
+				refreshTokenSaved: approved.refreshTokenSaved,
+				allowedHosts: approved.allowedHosts,
+				hostApprovalLinks: approved.hostApprovalLinks,
+				integrationName: approved.integrationName,
+				nextSteps: approved.nextSteps,
+			},
+		})
+	} catch {
+		// Ignore — caller already has the approved result.
+	}
 	return approved
 }

@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
+	DEVICE_COMPLETION_RECEIPT_TTL_SECONDS,
 	DEVICE_DEFAULT_INTERVAL_SECONDS,
 	DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
 	completeDevicePendingSession,
@@ -10,6 +11,7 @@ import {
 	loadDevicePendingSession,
 	pollDeviceAuthorization,
 	startDeviceAuthorization,
+	storeDevicePendingSession,
 } from './device-flow.ts'
 
 function createSqliteEnv() {
@@ -231,6 +233,77 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 			sessionId: started.sessionId,
 		}),
 	).toBeNull()
+})
+
+test('completeDevicePendingSession keeps a receipt after provider expiry', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'dc-late',
+			user_code: 'LATE-0001',
+			verification_uri: 'https://auth.example.com/verify',
+			expires_in: 60,
+			interval: 1,
+		}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		provider: 'late-provider',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	if (!started.ok) return
+	const pending = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(pending).not.toBeNull()
+	if (!pending) return
+	// Simulate persist finishing after the device code expired.
+	pending.expiresAtMs = Date.now() - 5_000
+	await storeDevicePendingSession({
+		env,
+		sessionId: started.sessionId,
+		session: pending,
+	})
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: baseStart.userId,
+			sessionId: started.sessionId,
+		}),
+	).toBeNull()
+
+	// Re-seed an approved-but-expired session the way poll would leave it.
+	pending.approvedTokenPayload = { access_token: 'at-late' }
+	pending.expiresAtMs = Date.now() - 1_000
+	await env.OAUTH_KV!.put(
+		`integration-device-session:${baseStart.userId}:${started.sessionId}`,
+		JSON.stringify(pending),
+	)
+	await completeDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+		completion: {
+			refreshTokenSaved: false,
+			allowedHosts: ['api.example.com'],
+			hostApprovalLinks: [],
+			integrationName: 'late-provider',
+			nextSteps: null,
+		},
+	})
+	const receipt = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(receipt?.completion?.integrationName).toBe('late-provider')
+	expect(receipt?.expiresAtMs).toBeGreaterThan(
+		Date.now() + (DEVICE_COMPLETION_RECEIPT_TTL_SECONDS - 5) * 1000,
+	)
 })
 
 test('pollDeviceAuthorization returns access_denied and expired_token', async () => {

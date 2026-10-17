@@ -29,6 +29,9 @@ export const DEVICE_DEFAULT_INTERVAL_SECONDS = 5
 /** Cap pending session TTL (provider expires_in may be shorter). */
 export const DEVICE_SESSION_MAX_TTL_SECONDS = 60 * 30
 
+/** How long a post-persist completion receipt stays retryable. */
+export const DEVICE_COMPLETION_RECEIPT_TTL_SECONDS = 5 * 60
+
 /** Starts per user per rolling window. */
 export const deviceStartRateLimitConfig = {
 	maxRequests: 10,
@@ -236,7 +239,9 @@ export async function storeDevicePendingSession(input: {
 	const remainingSeconds = Math.ceil(
 		(input.session.expiresAtMs - Date.now()) / 1000,
 	)
-	if (remainingSeconds < 1) {
+	// Completion receipts must survive near/after provider expiry so a lost
+	// approved response can retry. Pending sessions with no remaining life go.
+	if (remainingSeconds < 1 && !input.session.completion) {
 		await deleteDevicePendingSession({
 			env: input.env,
 			userId: input.session.userId,
@@ -245,8 +250,13 @@ export async function storeDevicePendingSession(input: {
 		return
 	}
 	// Cloudflare KV rejects expirationTtl < 60. Logical expiry is enforced
-	// by `expiresAtMs` in pollDeviceAuthorization.
-	const ttlSeconds = Math.max(60, remainingSeconds)
+	// by `expiresAtMs` in pollDeviceAuthorization (pending) or by the
+	// completion receipt TTL.
+	const ttlSeconds = Math.max(
+		60,
+		remainingSeconds,
+		input.session.completion ? DEVICE_COMPLETION_RECEIPT_TTL_SECONDS : 0,
+	)
 	await input.env.OAUTH_KV.put(
 		deviceSessionKvKey(input.session.userId, input.sessionId),
 		JSON.stringify(input.session),
@@ -304,10 +314,16 @@ export async function completeDevicePendingSession(input: {
 		sessionId: input.sessionId,
 	})
 	if (!session || session.userId !== input.userId) return
+	const now = Date.now()
 	session.deviceCode = ''
 	session.clientSecret = null
 	session.approvedTokenPayload = null
 	session.completion = input.completion
+	// Extend past provider expiry so late approve + lost response can retry.
+	session.expiresAtMs = Math.max(
+		session.expiresAtMs,
+		now + DEVICE_COMPLETION_RECEIPT_TTL_SECONDS * 1000,
+	)
 	await storeDevicePendingSession({
 		env: input.env,
 		sessionId: input.sessionId,
