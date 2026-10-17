@@ -416,11 +416,19 @@ test('an audit write failure does not fail the tool call or record its arguments
 		'Failed to record credential resolution audit event:',
 		'Failed to record MCP tool call audit event:',
 	])
+	expect(consoleError.mock.calls[0]?.[1]).toMatchObject({
+		action: 'credential.resolve',
+		result: 'success',
+		errorName: 'Error',
+	})
 	expect(consoleError.mock.calls[1]?.[1]).toMatchObject({
 		action: 'mcp.call',
 		result: 'success',
 		errorName: 'Error',
 	})
+	expect(JSON.stringify(consoleError.mock.calls[0]?.[1])).not.toContain(
+		'audit db unavailable',
+	)
 	expect(JSON.stringify(consoleError.mock.calls[1]?.[1])).not.toContain(
 		'audit db unavailable',
 	)

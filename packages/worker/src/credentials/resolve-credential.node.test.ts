@@ -3,6 +3,7 @@
  * AUDIT_DB, real secrets, real org memberships and grants.
  */
 import { DatabaseSync } from 'node:sqlite'
+import * as Sentry from '@sentry/cloudflare'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -1015,15 +1016,21 @@ test('a failed org access lookup is retried on the next resolution, not cached',
 
 test('an audit write failure is logged without the value and never fails the resolution', async () => {
 	const t = await setup()
+	// D1 failures can echo bound parameters on the Error; keep a sentinel in
+	// the message so a regression that logs the object fails this test.
+	const auditWriteError = new Error(
+		`audit db unavailable binding=${secretValue}`,
+	)
 	const env = {
 		...t.env,
 		AUDIT_DB: {
 			prepare() {
-				throw new Error('audit db unavailable')
+				throw auditWriteError
 			},
 		} as unknown as D1Database,
 	} as Env
 	consoleError.mockImplementation(() => {})
+	const captureException = vi.spyOn(Sentry, 'captureException')
 	await expect(
 		resolveCredential({
 			env,
@@ -1042,11 +1049,18 @@ test('an audit write failure is logged without the value and never fails the res
 	expect(consoleError.mock.calls[0]?.[0]).toBe(
 		'Failed to record credential resolution audit event:',
 	)
-	expect(
-		JSON.stringify(consoleError.mock.calls[0]?.[1], (_key, value) =>
-			value instanceof Error ? value.message : value,
-		),
-	).not.toContain(secretValue)
+	expect(consoleError.mock.calls[0]?.[1]).toEqual({
+		action: 'credential.resolve',
+		orgId: t.orgId,
+		result: 'success',
+		errorName: 'Error',
+	})
+	const consolePayload = JSON.stringify(consoleError.mock.calls[0]?.[1])
+	expect(consolePayload).not.toContain(secretValue)
+	expect(consolePayload).not.toContain('audit db unavailable')
+	expect(consolePayload).not.toContain('binding=')
+	expect(captureException).toHaveBeenCalledExactlyOnceWith(auditWriteError)
+	captureException.mockRestore()
 })
 
 test('a Use grant follows the credential id through a rename; a deleted and recreated name does not inherit it', async () => {

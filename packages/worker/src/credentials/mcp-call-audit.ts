@@ -7,13 +7,13 @@
  * values, or error messages: those are caller data and would make every
  * tool call a place to leak credentials into the audit log.
  */
-import * as Sentry from '@sentry/cloudflare'
 import { waitUntil } from 'cloudflare:workers'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import { type PackageStamp } from './package-stamp.ts'
+import { reportOrgAuditWriteFailure } from './report-org-audit-write-failure.ts'
 
 export const mcpCallAuditAction = 'mcp.call'
 
@@ -149,31 +149,18 @@ export function scheduleMcpCallAudit(input: {
 					details,
 				})
 			})().catch((error: unknown) => {
-				reportMcpCallAuditFailure(event, error)
+				reportOrgAuditWriteFailure(
+					'Failed to record MCP tool call audit event:',
+					event,
+					error,
+				)
 			}),
 		)
 	} catch (error) {
-		reportMcpCallAuditFailure(event, error)
+		reportOrgAuditWriteFailure(
+			'Failed to record MCP tool call audit event:',
+			event,
+			error,
+		)
 	}
-}
-
-function reportMcpCallAuditFailure(
-	event: { action: string; orgId: string; result: string },
-	error: unknown,
-) {
-	console.error('Failed to record MCP tool call audit event:', {
-		action: event.action,
-		orgId: event.orgId,
-		result: event.result,
-		errorName: error instanceof Error ? error.name : typeof error,
-	})
-	Sentry.withScope((scope) => {
-		scope.setTag('org_audit.action', event.action)
-		scope.setContext('org_audit', {
-			action: event.action,
-			orgId: event.orgId,
-			result: event.result,
-		})
-		Sentry.captureException(error)
-	})
 }

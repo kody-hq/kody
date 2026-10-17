@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/cloudflare'
 import { waitUntil } from 'cloudflare:workers'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -20,6 +19,7 @@ import {
 } from './credential-request.ts'
 import { CredentialNeedUndeclaredError } from './credential-need-enforcement.ts'
 import { type PackageStamp } from './package-stamp.ts'
+import { reportOrgAuditWriteFailure } from './report-org-audit-write-failure.ts'
 
 export const credentialResolveAuditAction = 'credential.resolve'
 
@@ -132,15 +132,11 @@ export function scheduleCredentialResolutionAudit(input: {
 				},
 			})
 		})().catch((error: unknown) => {
-			console.error('Failed to record credential resolution audit event:', {
-				...event,
+			reportOrgAuditWriteFailure(
+				'Failed to record credential resolution audit event:',
+				event,
 				error,
-			})
-			Sentry.withScope((scope) => {
-				scope.setTag('org_audit.action', event.action)
-				scope.setContext('org_audit', event)
-				Sentry.captureException(error)
-			})
+			)
 		}),
 	)
 }
