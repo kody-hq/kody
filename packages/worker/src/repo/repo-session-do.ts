@@ -1010,11 +1010,23 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 	}) {
 		if (input.sessionId) {
-			const { source } = await this.getSessionState(
+			// Catalog first without clone. Published sessions must not
+			// rehydrate scratch after publish released storage inventory;
+			// active sessions still need the workspace for pre-publish
+			// manifest / rebuild fallbacks when no published snapshot exists.
+			const { source, sessionRow } = await this.getSessionState(
 				input.sessionId,
 				input.userId,
-				{ allowedStatuses: ['active', 'published'] },
+				{
+					allowedStatuses: ['active', 'published'],
+					initialize: false,
+				},
 			)
+			if (sessionRow.status === 'active') {
+				await this.getSessionState(input.sessionId, input.userId, {
+					allowedStatuses: ['active'],
+				})
+			}
 			return source
 		}
 		if (!input.sourceId) {

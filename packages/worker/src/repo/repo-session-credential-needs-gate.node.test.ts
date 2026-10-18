@@ -505,3 +505,32 @@ test('getSessionInfo skips workspace clone for published sessions', async () => 
 	expect(mockModule.git.clone).not.toHaveBeenCalled()
 	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalled()
 })
+
+test('listPublishedPackageArtifactTargets skips clone for published sessions', async () => {
+	setCommonSessionFixtures()
+	mockModule.getRepoSessionById.mockResolvedValue(
+		sessionRow({
+			id: 'session-1',
+			status: 'published',
+			expires_at: '2026-11-01T00:00:00.000Z',
+		}),
+	)
+	mockModule.loadPublishedSourceManifestSnapshot.mockResolvedValue({
+		version: 1,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-base',
+		manifestPath: 'package.json',
+		manifestContent: userPackageJson,
+		createdAt: '2026-08-17T20:00:00.000Z',
+	})
+	mockModule.workspaceExists.mockResolvedValue(false)
+	mockModule.git.clone.mockClear()
+	await expect(
+		repoSession().listPublishedPackageArtifactTargets(session),
+	).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ artifactName: '.', kind: 'module' }),
+		]),
+	)
+	expect(mockModule.git.clone).not.toHaveBeenCalled()
+})
