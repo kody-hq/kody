@@ -47,7 +47,10 @@ import {
 	loadAdminUserByTarget,
 	type AdminUserTarget,
 } from '#worker/admin/users-data.ts'
-import { assignUserRole } from '#worker/identity/permissions-db.ts'
+import {
+	assignUserRole,
+	removeAdminRolePreservingLastAdmin,
+} from '#worker/identity/permissions-db.ts'
 import {
 	adminAccountDeletionApprovalTtlMs,
 	adminAccountDeletionHandleMatches,
@@ -466,31 +469,15 @@ async function loadTombstonedDeletionTarget(
 	}
 }
 
-/**
- * Remove the admin role only while another live admin remains. The count is
- * inside the DELETE so two overlapping deletes of the last two admins cannot
- * both proceed.
- */
 async function releaseAdminRoleIfNotLast(
 	db: D1Database,
 	dbUserId: number,
 ): Promise<'demoted' | 'not_admin' | 'last_admin'> {
-	const removed = await db
-		.prepare(
-			`DELETE FROM user_roles
-			 WHERE user_id = ?
-			   AND role_id = (SELECT id FROM roles WHERE name = 'admin')
-			   AND (
-			     SELECT COUNT(DISTINCT ur.user_id)
-			     FROM user_roles ur
-			     INNER JOIN roles r ON r.id = ur.role_id
-			     INNER JOIN users u ON u.id = ur.user_id AND u.deleted_at IS NULL
-			     WHERE r.name = 'admin'
-			   ) > 1`,
-		)
-		.bind(dbUserId)
-		.run()
-	if ((removed.meta.changes ?? 0) > 0) return 'demoted'
+	const { removed } = await removeAdminRolePreservingLastAdmin({
+		db,
+		userId: dbUserId,
+	})
+	if (removed) return 'demoted'
 	const stillAdmin = await db
 		.prepare(
 			`SELECT 1 AS ok
