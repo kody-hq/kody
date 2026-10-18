@@ -385,6 +385,17 @@ export async function loadAdminAccountDeletionSummary(
 	return summarize(env, loaded)
 }
 
+async function loadApprovalSummary(
+	env: Env,
+	stableUserId: string,
+): Promise<AdminAccountDeletionSummary | null> {
+	const live = await loadAdminAccountDeletionSummary(env, { stableUserId })
+	if (live) return live
+	const tombstone = await loadTombstonedDeletionTarget(env.APP_DB, stableUserId)
+	if (!tombstone) return null
+	return summarize(env, tombstone)
+}
+
 async function auditDeletion(input: {
 	env: Env
 	actor: Actor
@@ -761,9 +772,10 @@ export async function readAdminAccountDeletionApproval(input: {
 	if (row.consumed_at) return { status: 'consumed' }
 	const now = input.now ?? new Date()
 	if (Date.parse(row.expires_at) <= now.getTime()) return { status: 'expired' }
-	const summary = await loadAdminAccountDeletionSummary(input.env, {
-		stableUserId: row.target_stable_user_id,
-	})
+	const summary = await loadApprovalSummary(
+		input.env,
+		row.target_stable_user_id,
+	)
 	if (!summary) return { status: 'missing' }
 	return { status: 'pending', summary }
 }

@@ -21,6 +21,7 @@ import {
 	createAdminAccountDeletionApproval,
 	executeAdminAccountHardDelete,
 	loadAdminAccountDeletionSummary,
+	readAdminAccountDeletionApproval,
 } from './account-hard-delete.ts'
 
 const createdAt = '2026-01-03T00:00:00.000Z'
@@ -592,12 +593,25 @@ test('a partial delete resumes from the tombstone and the last admin is kept', a
 		username: 'half-deleted',
 		email: 'half@example.com',
 	})
+	const approval = await createAdminAccountDeletionApproval({
+		env,
+		actor,
+		target: { stableUserId: targetId },
+	})
 	await softDeleteUserAccount({
 		env,
 		userId: targetId as never,
 		actorUserId: adminId,
 		actorUsername: 'only-admin',
 	})
+	const page = await readAdminAccountDeletionApproval({
+		env,
+		approvalId: approval.approvalId,
+	})
+	expect(page.status).toBe('pending')
+	if (page.status === 'pending') {
+		expect(page.summary.handle).toBe('half-deleted')
+	}
 	expect(await isUsernameClaimedInIdentity(appDb, 'half-deleted')).toBe(true)
 	const finished = await executeAdminAccountHardDelete({
 		env,
