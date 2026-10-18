@@ -37,7 +37,9 @@ test('identifies reordered theme tags and identity differences without reporting
 		result.find((entry) => entry.name === 'document-actor')
 			?.differingAttributes,
 	).toEqual('content')
-	expect(normalize({ documentMeta: result }, 3)).toEqual({ documentMeta: result })
+	expect(normalize({ documentMeta: result }, 3)).toEqual({
+		documentMeta: result,
+	})
 	expect(JSON.stringify(result)).not.toContain('private-actor')
 	expect(JSON.stringify(result)).not.toContain('https://')
 	delete elements['meta[name="viewport"]']
