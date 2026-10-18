@@ -4,6 +4,10 @@ import { hydrateRoot } from 'react-dom/client'
 import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
 import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
+import {
+	clearStaleRouteChunkReloadFlag,
+	onVitePreloadError,
+} from '#client/reload-on-stale-route-chunk.ts'
 import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-start-release.ts'
 import {
 	captureClientException,
@@ -12,6 +16,7 @@ import {
 } from '#client/sentry-client.ts'
 
 initSentryClient(document)
+window.addEventListener('vite:preloadError', onVitePreloadError)
 
 function reportReactError(error: unknown, context?: ClientErrorContext) {
 	console.error('React client error:', error)
@@ -24,8 +29,10 @@ function HydratedApp({ router }: { router: AnyRouter }) {
 		if (
 			router.state.matches.length > 0 &&
 			router.state.matches.every((match) => match.status === 'success')
-		)
+		) {
 			clearUnknownStartReleaseReloadFlag()
+			clearStaleRouteChunkReloadFlag()
+		}
 	}, [router])
 	return <RouterProvider router={router} />
 }

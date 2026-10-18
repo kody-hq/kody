@@ -1163,8 +1163,9 @@ function filterUnknownStartReleaseSentryEvent<T extends SentryErrorEventLike>(
  * Safari). Fences already render as escaped plaintext until the chunk
  * resolves, so this is expected degradation — not an app defect. Match only
  * the browser "Failed to fetch dynamically imported module" signature with
- * `syntax-highlight-core` in the URL so other chunk-load failures stay
- * Sentry-visible (route boot still reloads on stale area hashes).
+ * `syntax-highlight-core` in the URL. Other dynamic-import failures stay
+ * Sentry-visible unless `reloadOnStaleRouteChunk` just triggered its one-shot
+ * reload (KODY-5W / KODY-9S / KODY-9V / KODY-9Y).
  */
 const syntaxHighlightCoreDynamicImportFailureMessage =
 	/Failed to fetch dynamically imported module:\s*\S*syntax-highlight-core[^/\s]*\.js/i

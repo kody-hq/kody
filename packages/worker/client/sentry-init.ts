@@ -1,5 +1,6 @@
-import type { ClientErrorContext } from './sentry-client.ts'
+import { type ClientErrorContext } from './sentry-client.ts'
 import * as Sentry from '@sentry/browser'
+import { reloadOnStaleRouteChunk } from '#client/reload-on-stale-route-chunk.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import { filterBrowserSentryEvent } from '#client/sentry-browser-filters.ts'
 import { type SentryClientConfig } from '#universal/sentry-config.ts'
@@ -75,15 +76,20 @@ export function initBrowserSentry(config: SentryClientConfig) {
 		// 7682968915, 7687920474, 7689579030, 7690163947, 7696001937,
 		// 7715934699, 7717003182, 7777463624, 7795797021.
 		beforeSend(event, hint) {
+			const error =
+				hint.originalException ??
+				event.message ??
+				event.exception?.values?.[0]?.value
 			// Stale Start release after deploy (KODY-9E): recover with one hard
 			// reload even when the SDK (not captureClientException) captured
 			// the error — buffer listeners are gone after ensureSentryLoaded.
 			// One-shot guard lives in the helper; filter still drops the event.
-			reloadOnUnknownStartRelease(
-				hint.originalException ??
-					event.message ??
-					event.exception?.values?.[0]?.value,
-			)
+			reloadOnUnknownStartRelease(error)
+			// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y):
+			// drop the event only when this call triggered the one-shot reload.
+			// A second failure stays visible. syntax-highlight-core is still
+			// dropped by the filter below.
+			if (reloadOnStaleRouteChunk(error)) return null
 			return filterBrowserSentryEvent(event, hint.originalException)
 		},
 	})
