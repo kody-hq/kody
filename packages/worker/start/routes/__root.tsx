@@ -390,8 +390,18 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/apple-touch-icon.png')}
 				/>
 				<link rel="manifest" href={publicAsset('/site.webmanifest')} />
-				<meta name="theme-color" {...documentThemeColors.light} />
-				<meta name="theme-color" {...documentThemeColors.dark} />
+				{/* Extensions (e.g. Dark Reader) often rewrite the first theme-color
+				    content before hydrate. Keep validating other head metas. */}
+				<meta
+					name="theme-color"
+					{...documentThemeColors.light}
+					suppressHydrationWarning
+				/>
+				<meta
+					name="theme-color"
+					{...documentThemeColors.dark}
+					suppressHydrationWarning
+				/>
 				<script src={publicAsset('/page-init.js')} />
 				<link
 					rel="preload"
