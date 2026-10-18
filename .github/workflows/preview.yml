@@ -1380,8 +1380,8 @@ jobs:
               core.notice(`Deleted GitHub environment: ${envName}`);
             } catch (e) {
               if (e.status === 404) {
-                core.info(
-                  `GitHub environment not found (already deleted): ${envName}`,
+                core.warning(
+                  `Could not confirm deletion of GitHub environment ${envName}; it may already be absent or the token may lack access.`,
                 );
               } else if (
                 e.status === 403 &&
