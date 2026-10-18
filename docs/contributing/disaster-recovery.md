@@ -63,7 +63,7 @@ recent evidence.
 
 | Date (UTC) | Lane proven                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-10-18 | Staging fell behind one UTC day per day. Consecutive `exporter/summary.json` completions were ~27–28h apart (2026-10-08 through 2026-10-15), and 2026-10-16 was still in the mailbox phase on 2026-10-18T03:05Z (`ownerIndex` 736, revision 2645, `advancedAt` moving). The 06:15 watchdog stayed silent because that cursor was inside the 2h "still draining" window. D1 exports and hourly seals of finished days were fine. |
+| 2026-10-18 | Staging fell behind one UTC day per day. Consecutive `exporter/summary.json` completions were ~27–28h apart (2026-10-08 through 2026-10-15), and 2026-10-16 was still in the mailbox phase on 2026-10-18T03:05Z (`ownerIndex` 736, revision 2645, `advancedAt` moving). The 06:15 watchdog stayed silent because that cursor was inside the 2h "still draining" window. D1 exports and hourly seals of finished days were fine.                                                                                                                                                                                                                                                                |
 | 2026-09-22 | Staging catch-up lookback raised 2→14 days and cadence 15→5 min after eleven stranded days (2026-09-12..2026-09-22) aged out mid-phase under the old window; seal scan matched at 16 days (14 lookback + today + overnight gap). Operator `POST /__maintenance/dr-export` resumes each day until `summaryWritten` (see PR for recovery status).                                                                                                                                                                                                                                                                                                                                                |
 | 2026-08-07 | First stranded staging day recovered and sealed (`daily/full/2026-08-07/manifest.json`, sealedAt 2026-08-07T19:45:16Z, 341 sealed objects). The night ran out of window mid-`artifacts` (progress revision 714, no summary; 06:15 watchdog paged correctly). Recovery resumed the existing `exporter/progress.json` (no staged work purged), staged the ~20 remaining snapshots, wrote `exporter/summary.json` at 19:05:29Z, and the unchanged hourly control-plane seal picked the day up at 19:45. Motivated the daytime catch-up lane and `POST /__maintenance/dr-export` ([#1287](https://github.com/kentcdodds/kody/pull/1287); [#1223](https://github.com/kentcdodds/kody/issues/1223)). |
 | 2026-08-07 | Offline escrow unseal smoke test proven with the real `SECRET_ESCROW_PASSPHRASE` against `escrow/secret-store-key.v1.json` ([#1091](https://github.com/kentcdodds/kody/issues/1091)): recovered key matched production `SECRET_STORE_KEY`; wrong passphrase failed cleanly (auth-tag error, no partial output).                                                                                                                                                                                                                                                                                                                                                                                |
@@ -221,16 +221,15 @@ Contract: `packages/shared/src/backup-staging.ts`.
      today's `exporter/progress.json` if neither progress nor summary exists so
      catch-up can resume tonight after backlog drains. Catch-up is disabled
      during the nightly window so the two lanes do not double-run the same tick.
-     The 14-day lookback stays above both the 2026-09 failure (eleven days
-     aged out under a 2-day window) and the 2026-10 pace (~28h wall clock per
-     staged day at ~700 Mailbox owners). Mailbox and RunLog now fetch 8 owners
-     per wave inside the 45s tick, which should finish a day well inside 24h;
-     the wide lookback is what keeps a regression from aging a day out
-     mid-phase. Catch-up is
-     resume-only: a day that never staged progress is not started fresh (its
-     dumps would contain current data, not that day's). Data staged during
-     catch-up is read at resume time; a slightly newer dump is preferred over an
-     unsealable day.
+     The 14-day lookback stays above both the 2026-09 failure (eleven days aged
+     out under a 2-day window) and the 2026-10 pace (~28h wall clock per staged
+     day at ~700 Mailbox owners). Mailbox and RunLog now fetch 8 owners per wave
+     inside the 45s tick, which should finish a day well inside 24h; the wide
+     lookback is what keeps a regression from aging a day out mid-phase.
+     Catch-up is resume-only: a day that never staged progress is not started
+     fresh (its dumps would contain current data, not that day's). Data staged
+     during catch-up is read at resume time; a slightly newer dump is preferred
+     over an unsealable day.
    - **Resumable phase state** — `exporter/progress.json` contains phase
      cursors, counters, bounded index-entry tails, and conditional-write
      revision data. Mailbox, selected RunLog, and StorageRunner dump pages plus
@@ -709,14 +708,14 @@ the correctness spec and incident-only fallback:
 
 ## Schedules and freshness
 
-| When (UTC)                      | Who               | What                                                                                                                                                                                                   |
-| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `*/5` during 00:30–06:10        | Production worker | Staging export: resume the oldest stranded day (progress without summary, today − ≤14 days), else stage today (cheap no-op once complete)                                                              |
-| Every 5 min outside 00:30–06:10 | Production worker | Staging catch-up: resume the oldest stranded day (progress without summary, today − ≤14 days); cheap no-op otherwise                                                                                   |
+| When (UTC)                      | Who               | What                                                                                                                                                                                                                                                                           |
+| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `*/5` during 00:30–06:10        | Production worker | Staging export: resume the oldest stranded day (progress without summary, today − ≤14 days), else stage today (cheap no-op once complete)                                                                                                                                      |
+| Every 5 min outside 00:30–06:10 | Production worker | Staging catch-up: resume the oldest stranded day (progress without summary, today − ≤14 days); cheap no-op otherwise                                                                                                                                                           |
 | 06:15                           | Production worker | Staging watchdog: missing today's summary with no older stranded days, today complete while earlier days are stranded, catch-up with no advance for 2h, or the oldest stranded day 2+ UTC days behind, fails → Sentry. A one-day backlog that is still advancing does not page |
-| 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                |
-| 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                       |
-| Hourly `:45`                    | Control plane     | D1 freshness for every configured source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                         |
+| 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                        |
+| 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
+| Hourly `:45`                    | Control plane     | D1 freshness for every configured source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                                 |
 
 ### Stranded staging days (manual finish)
 
@@ -724,13 +723,13 @@ Failure mode: the nightly exporter hard-stops when the window closes, so a night
 with too much work leaves `staging/{day}/exporter/progress.json` without
 `exporter/summary.json`. The 06:15 watchdog pages when tonight is genuinely
 incomplete and not deferred for older backlog; without a summary the day can
-never seal. Nightly and daytime catch-up ticks (table above) should finish a
-day well inside 24h: Mailbox and RunLog read 8 owners at a time inside a ~45s
-tick, instead of one owner per ~5s serial round trip. When more than one day in
-the lookback is stranded, both lanes finish the oldest first so earlier days
-seal before later nights stack more backlog. The hourly control-plane seal
-(16-day lookback, matched to catch-up plus overnight gap) then seals it — no
-operator action needed.
+never seal. Nightly and daytime catch-up ticks (table above) should finish a day
+well inside 24h: Mailbox and RunLog read 8 owners at a time inside a ~45s tick,
+instead of one owner per ~5s serial round trip. When more than one day in the
+lookback is stranded, both lanes finish the oldest first so earlier days seal
+before later nights stack more backlog. The hourly control-plane seal (16-day
+lookback, matched to catch-up plus overnight gap) then seals it — no operator
+action needed.
 
 Operate manually when catch-up is stuck, the day has already fallen outside the
 catch-up lookback, or you want the day finished immediately:
