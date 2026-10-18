@@ -546,7 +546,6 @@ async function saveConnectOauthApp(
 	return { ok: true, clientId: savedClientId }
 }
 
-
 /**
  * Start RFC 8628 device authorization. Never logs or returns `device_code`.
  */
@@ -654,15 +653,11 @@ export async function pollConnectOauthDevice(input: {
 			}
 		}
 		const status = typeof payload.status === 'string' ? payload.status : null
-		if (
-			status === 'authorization_pending' ||
-			status === 'slow_down'
-		) {
+		if (status === 'authorization_pending' || status === 'slow_down') {
 			return {
 				ok: true,
 				status,
-				interval:
-					typeof payload.interval === 'number' ? payload.interval : 5,
+				interval: typeof payload.interval === 'number' ? payload.interval : 5,
 				expiresIn:
 					typeof payload.expiresIn === 'number' ? payload.expiresIn : 0,
 			}
@@ -700,18 +695,17 @@ export async function pollConnectOauthDevice(input: {
 				? error.message
 				: 'Unable to poll device authorization.'
 		const lower = message.toLowerCase()
-		const status =
-			lower.includes('denied')
-				? 'access_denied'
-				: lower.includes('expired')
-					? 'expired_token'
-					: lower.includes('invalid session') || lower.includes('session')
-						? 'invalid_session'
-						: lower.includes('persist')
-							? 'persist_failed'
-							: lower.includes('rate')
-								? 'rate_limited'
-								: 'unknown'
+		const status = lower.includes('denied')
+			? 'access_denied'
+			: lower.includes('expired')
+				? 'expired_token'
+				: lower.includes('invalid session') || lower.includes('session')
+					? 'invalid_session'
+					: lower.includes('persist')
+						? 'persist_failed'
+						: lower.includes('rate')
+							? 'rate_limited'
+							: 'unknown'
 		return { ok: false, status, error: message }
 	}
 }
