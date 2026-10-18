@@ -105,6 +105,59 @@ test('a password reset hard bounce records suppression and a delivery clears it'
 	).toBeNull()
 })
 
+test('a late password reset bounce after delivery does not re-suppress', async () => {
+	const { db, userId } = await createDb()
+	const recipient = 'ada@example.com'
+	await registerTransactionalEmailDelivery({
+		db,
+		providerMessageId: 'cf-reset-late',
+		userId,
+		recipient,
+		kind: 'password_reset',
+	})
+	const delivered = await processCloudflareEmailDeliveryEvent({
+		env: { APP_DB: db },
+		body: {
+			...providerEvent({
+				providerMessageId: 'cf-reset-late',
+				providerEventId: 'event-delivered-late',
+				status: 'delivered',
+				recipient,
+			}),
+			metadata: {
+				accountId: 'account-1',
+				eventSubscriptionId: 'subscription-1',
+				eventSchemaVersion: 1,
+				eventTimestamp: '2026-10-18T03:00:00.000Z',
+			},
+		},
+	})
+	expect(delivered.outcome).toBe('recorded_transactional')
+	const bounced = await processCloudflareEmailDeliveryEvent({
+		env: { APP_DB: db },
+		body: {
+			...providerEvent({
+				providerMessageId: 'cf-reset-late',
+				providerEventId: 'event-bounce-late',
+				status: 'bounced',
+				recipient,
+				smtpResponse: '550 5.1.1 user unknown',
+				smtpStatusCode: '550',
+			}),
+			metadata: {
+				accountId: 'account-1',
+				eventSubscriptionId: 'subscription-1',
+				eventSchemaVersion: 1,
+				eventTimestamp: '2026-10-18T02:00:00.000Z',
+			},
+		},
+	})
+	expect(bounced.outcome).toBe('stale_transactional')
+	expect(
+		await loadVerificationRecipientHardBounce({ db, recipient }),
+	).toBeNull()
+})
+
 test('a mailbox bounce does not record verification suppression', async () => {
 	const { db } = await createDb()
 	const result = await processCloudflareEmailDeliveryEvent({

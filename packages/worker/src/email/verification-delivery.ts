@@ -232,6 +232,69 @@ export type RecordedTransactionalDelivery = {
 	alreadyTerminal: boolean
 }
 
+function isMissingDeliveryCursor(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error)
+	return (
+		error instanceof TypeError ||
+		/no such column/i.test(message) ||
+		/no such table/i.test(message)
+	)
+}
+
+function isOlderTransactionalEvent(
+	existingAt: string | null | undefined,
+	eventTimestamp: string,
+) {
+	if (!existingAt) return false
+	const existingAtMs = Date.parse(existingAt)
+	const eventAtMs = Date.parse(eventTimestamp)
+	return (
+		Number.isFinite(existingAtMs) &&
+		Number.isFinite(eventAtMs) &&
+		eventAtMs < existingAtMs
+	)
+}
+
+async function loadTransactionalDeliveryCursor(input: {
+	db: D1Database
+	providerMessageId: string
+}) {
+	try {
+		return await input.db
+			.prepare(
+				`SELECT last_status AS lastStatus, last_status_at AS lastStatusAt
+				 FROM transactional_email_delivery_index
+				 WHERE provider_message_id = ?`,
+			)
+			.bind(input.providerMessageId)
+			.first<{ lastStatus: string | null; lastStatusAt: string | null }>()
+	} catch (error) {
+		if (isMissingDeliveryCursor(error)) return null
+		throw error
+	}
+}
+
+async function rememberTransactionalDeliveryCursor(input: {
+	db: D1Database
+	providerMessageId: string
+	status: string
+	at: string
+}) {
+	try {
+		await input.db
+			.prepare(
+				`UPDATE transactional_email_delivery_index
+				 SET last_status = ?, last_status_at = ?
+				 WHERE provider_message_id = ?`,
+			)
+			.bind(input.status, input.at, input.providerMessageId)
+			.run()
+	} catch (error) {
+		if (isMissingDeliveryCursor(error)) return
+		throw error
+	}
+}
+
 export async function recordTransactionalEmailDeliveryEvent(input: {
 	db: D1Database
 	providerMessageId: string
@@ -260,7 +323,21 @@ export async function recordTransactionalEmailDeliveryEvent(input: {
 		index.kind === transactionalPasswordResetConfirmedKind
 	) {
 		// Index-only: a reset bounce must not write signup verification
-		// columns. The delivery-event path still records recipient suppression.
+		// columns. A newer status already stored on this message wins, so a
+		// late bounce after delivered does not re-suppress the recipient.
+		const cursor = await loadTransactionalDeliveryCursor({
+			db: input.db,
+			providerMessageId: input.providerMessageId,
+		})
+		if (isOlderTransactionalEvent(cursor?.lastStatusAt, input.eventTimestamp)) {
+			return { outcome: 'stale' }
+		}
+		await rememberTransactionalDeliveryCursor({
+			db: input.db,
+			providerMessageId: input.providerMessageId,
+			status: input.deliveryStatus,
+			at: input.eventTimestamp,
+		})
 		return {
 			outcome: 'recorded',
 			event: {
