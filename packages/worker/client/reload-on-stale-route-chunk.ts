@@ -16,6 +16,18 @@ import {
 
 export const staleRouteChunkReloadFlag = 'kody:stale-route-chunk-reload'
 
+/**
+ * True only between a route load's `onBeforeLoad` and `onResolved`.
+ * Idle deferred imports (`sentry-init`, syntax-highlight) must not reload:
+ * a successful route boot clears the session flag, so those misses would
+ * otherwise reload the tab forever.
+ */
+let staleRouteChunkReloadArmed = false
+
+export function setStaleRouteChunkReloadArmed(armed: boolean) {
+	staleRouteChunkReloadArmed = armed
+}
+
 /** Chromium: `Failed to fetch dynamically imported module: <url>`. */
 const chromiumDynamicImportFailure =
 	/^(?:TypeError:\s*)?Failed to fetch dynamically imported module:\s+\S+$/
@@ -48,16 +60,19 @@ export function isStaleRouteChunkLoadError(error: unknown) {
 }
 
 /**
- * If `error` is a post-deploy dynamic-import miss, attempt one hard reload
- * for this tab session. Returns whether a reload was triggered. Never throws
- * when sessionStorage is unavailable (and does not reload in that case, to
- * avoid a loop with no flag). Leave the flag set across a failed recovery;
- * call `clearStaleRouteChunkReloadFlag` after a successful boot.
+ * If `error` is a post-deploy dynamic-import miss during a route load, attempt
+ * one hard reload for this tab session. Returns whether a reload was
+ * triggered. No-ops while disarmed so an idle import cannot reload again
+ * after boot clears the flag. Never throws when sessionStorage is
+ * unavailable (and does not reload in that case, to avoid a loop with no
+ * flag). Leave the flag set across a failed recovery; call
+ * `clearStaleRouteChunkReloadFlag` after a successful boot.
  *
  * A true result is expected staleness: callers must not report it. A false
  * result because the flag is already set must still be reported.
  */
 export function reloadOnStaleRouteChunk(error: unknown): boolean {
+	if (!staleRouteChunkReloadArmed) return false
 	if (!isStaleRouteChunkLoadError(error)) return false
 	if (typeof window === 'undefined') return false
 	try {

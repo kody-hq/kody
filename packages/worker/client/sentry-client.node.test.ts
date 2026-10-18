@@ -55,6 +55,9 @@ test('keeps component stacks with their errors before and after Sentry loads', a
 test('skips Sentry when a stale route chunk reload fires, then reports the next miss', async () => {
 	const store = new Map<string, string>()
 	const reload = vi.fn()
+	const { setStaleRouteChunkReloadArmed } =
+		await import('./reload-on-stale-route-chunk.ts')
+	setStaleRouteChunkReloadArmed(true)
 	vi.stubGlobal('sessionStorage', {
 		getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
 		setItem: (key: string, value: string) => {

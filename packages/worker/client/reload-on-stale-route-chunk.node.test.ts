@@ -4,6 +4,7 @@ import {
 	isStaleRouteChunkLoadError,
 	onVitePreloadError,
 	reloadOnStaleRouteChunk,
+	setStaleRouteChunkReloadArmed,
 	staleRouteChunkReloadFlag,
 } from './reload-on-stale-route-chunk.ts'
 
@@ -23,6 +24,7 @@ function restoreGlobals() {
 }
 
 afterEach(() => {
+	setStaleRouteChunkReloadArmed(false)
 	restoreGlobals()
 	vi.restoreAllMocks()
 })
@@ -100,11 +102,24 @@ test('isStaleRouteChunkLoadError ignores near-miss fetch and TypeError messages'
 	}
 })
 
+test('reloadOnStaleRouteChunk ignores chunk misses outside a route load', () => {
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
+	setStaleRouteChunkReloadArmed(false)
+
+	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
+	expect(reload).not.toHaveBeenCalled()
+	expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
+})
+
 test('reloadOnStaleRouteChunk reloads once for a stale route chunk', () => {
 	const store = new Map<string, string>()
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
 	expect(reload).toHaveBeenCalledTimes(1)
@@ -120,6 +135,7 @@ test('clearStaleRouteChunkReloadFlag allows a later deploy to recover again', ()
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
 	clearStaleRouteChunkReloadFlag()
@@ -144,6 +160,7 @@ test('clearStaleRouteChunkReloadFlag does not throw when sessionStorage is unava
 test('reloadOnStaleRouteChunk does not throw or reload when sessionStorage is unavailable', () => {
 	const reload = vi.fn()
 	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
 	Object.defineProperty(globalThis, 'sessionStorage', {
 		configurable: true,
 		get() {
@@ -160,6 +177,7 @@ test('onVitePreloadError prevents the default only when a reload is triggered', 
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
 
 	const first = new Event('vite:preloadError', { cancelable: true })
 	Object.assign(first, { payload: new TypeError(chromium) })

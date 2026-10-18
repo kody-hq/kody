@@ -54,6 +54,9 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 		location: { reload },
 	} as unknown as Window & typeof globalThis
 	const { initBrowserSentry } = await import('./sentry-init.ts')
+	const { setStaleRouteChunkReloadArmed } =
+		await import('./reload-on-stale-route-chunk.ts')
+	setStaleRouteChunkReloadArmed(true)
 	initBrowserSentry({
 		dsn: 'https://key@o1.ingest.sentry.io/2',
 		environment: 'production',

@@ -7,6 +7,7 @@ import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
 import {
 	clearStaleRouteChunkReloadFlag,
 	onVitePreloadError,
+	setStaleRouteChunkReloadArmed,
 } from '#client/reload-on-stale-route-chunk.ts'
 import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-start-release.ts'
 import {
@@ -39,6 +40,14 @@ function HydratedApp({ router }: { router: AnyRouter }) {
 
 hydrateStart()
 	.then((router) => {
+		// Arm only while a route load is in flight. Chunk import rejection and
+		// the route error boundary both run before `onResolved`.
+		router.subscribe('onBeforeLoad', () => {
+			setStaleRouteChunkReloadArmed(true)
+		})
+		router.subscribe('onResolved', () => {
+			setStaleRouteChunkReloadArmed(false)
+		})
 		const reportDocumentError = (
 			error: unknown,
 			context?: ClientErrorContext,
