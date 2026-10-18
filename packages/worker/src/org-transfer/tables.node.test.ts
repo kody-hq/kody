@@ -60,3 +60,20 @@ test('email, usage, and meter data stay with the source org', () => {
 		expect(orgTransferTables[table]?.disposition).toBe('keep')
 	}
 })
+
+test('memories stay with their owning user', () => {
+	for (const table of [
+		'mcp_memories',
+		'mcp_memory_conversation_suppressions',
+	]) {
+		expect(orgTransferTables[table]).toEqual({
+			disposition: 'keep',
+			reason:
+				'Memories are personal: they stay with their owning user and are never moved to another org.',
+		})
+	}
+	expect(orgTransferRepointedTables).not.toContain('mcp_memories')
+	expect(orgTransferRepointedTables).not.toContain(
+		'mcp_memory_conversation_suppressions',
+	)
+})

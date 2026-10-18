@@ -2,8 +2,10 @@
 
 `adminOrgResourceTransfer` moves every resource one org owns to another org:
 packages, repos, sources, secrets, values, integrations, BYO OAuth apps, MCP
-servers, webhooks, package jobs, package storage, and memories. Use it when an
-owner approves consolidating a personal org into a team org, or the reverse.
+servers, webhooks, package jobs, and package storage. Memories are personal:
+they stay with their owning user and are never moved to another org, including
+when the source is a personal org. Use it when an owner approves consolidating a
+personal org into a team org, or the reverse.
 
 It is an admin capability. It is destructive, audited on both orgs, and runs
 only through `execute`; never call it from package or user code.
@@ -30,6 +32,9 @@ deliberate decision.
 
 These stay with the source org:
 
+- Memories (personal-only), including conversation suppressions and memory
+  vectors. Shared org knowledge belongs in documented packages and org
+  instructions.
 - Email inboxes, addresses, sender identities, and notification destinations.
 - Usage, credit, and billing history, `RunLog`, and `UserMeter`.
 - Person-owned rows (logins, passkeys, API tokens, OAuth clients).
@@ -61,6 +66,11 @@ orphans, clashes, blockers, and warnings. It never returns row values.
   `{ code, message, table?, subject? }`. `subject` names the row (a package,
   secret, or server name) or, for post-commit warnings, the step. The codes are
   listed in `packages/worker/src/org-transfer/findings.ts`.
+- `kept.memories`: `{ count, note }`. `count` is the live memories the source
+  owns (`deleted_at` is null), and it is present when that count is zero. `note`
+  says memories are personal and stay with their owner. Conversation
+  suppressions, memory vectors, and memory embed fingerprints are left
+  untouched. `skipOrphans` does not delete them.
 - `refusals`: the findings apply would refuse on (see the list that follows).
 - `fingerprint`: SHA-256 of the summary, with keys and list entries sorted. The
   same plan always has the same fingerprint. It covers what an operator can
@@ -99,8 +109,8 @@ source org instead:
 - Soft-deleted in the D1 batch: webhook endpoints, community listings, secret
   and value buckets, and secret-provider bindings.
 - Deleted in the D1 batch: published bundle artifacts, Artifacts push
-  subscriptions, community forks, memory conversation suppressions,
-  secret-provider grants, and package kody-id and slug redirects.
+  subscriptions, community forks, secret-provider grants, and package kody-id
+  and slug redirects.
 - Cleaned up after commit: sources are deleted with their Artifacts repos.
   Storage buckets are cleared on their StorageRunner and then deleted, like
   package delete. A soft-deleted bucket would keep its `(user_id, storage_id)`
@@ -156,15 +166,16 @@ MCP server is removed from the source hub with all its keys (without first
 redialing it, when the source hub has not started yet) and only then registered
 and connected in the target hub, so only one hub can refresh its OAuth tokens;
 old logos are deleted, orphans cleaned, repo sessions on moved sources
-discarded, package, memory, and job vectors reindexed under the target, and the
+discarded, package and job vectors reindexed under the target, and the
 retriever, skills, subscription, invoke-contract, and community caches
 refreshed. Failures there come back as `post_commit_warnings` (code
 `post_commit_step_failed`, `subject` naming the step), and `leftovers` counts
 any rows still pointing at the source.
 
 The result has `outcome` (`planned`, `refused`, `failed`, or `applied`),
-`fingerprint`, the dry-run summary, `refusals`, `failure`, `backup_key`,
-`storage_copies`, `leftovers`, `post_commit_warnings`, and `mcp_connections`.
+`fingerprint`, the dry-run summary (including `kept.memories`), `refusals`,
+`failure`, `backup_key`, `storage_copies`, `leftovers`, `post_commit_warnings`,
+and `mcp_connections`.
 
 `mcp_connections` has one entry per moved MCP server after the target hub dialed
 it: `{ id, name, source_removed, state, needs_authorization, authorize_url }`.

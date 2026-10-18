@@ -22,12 +22,6 @@ import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { deleteStorageBucketInventory } from '#worker/storage-buckets/service.ts'
 import { buildJobEmbedText } from '#mcp/jobs-embed.ts'
 import { deleteJobVector, upsertJobVector } from '#mcp/jobs-vectorize.ts'
-import { buildMemoryEmbedTextFromRow } from '#mcp/memory/memory-embed.ts'
-import {
-	deleteMemoryVector,
-	upsertMemoryVector,
-} from '#mcp/memory/memory-vectorize.ts'
-import { type McpMemoryRow } from '#mcp/memory/types.ts'
 import { countOrgTransferLeftovers } from './batch.ts'
 import { type OrgTransferFinding } from './findings.ts'
 import { type OrgTransferPlan } from './plan.ts'
@@ -194,19 +188,6 @@ export async function runOrgTransferPostCommit(input: {
 			],
 			packageAppSlugs: [String(row['kody_id'])],
 			sourceId,
-		})
-	}
-	for (const row of plan.moves.mcp_memories) {
-		const memory = row as unknown as McpMemoryRow
-		await step(`reindex memory ${memory.id}`, async () => {
-			await deleteMemoryVector(env, memory.id)
-			await upsertMemoryVector(env, {
-				memoryId: memory.id,
-				userId: toId,
-				category: memory.category,
-				status: memory.status,
-				embedText: buildMemoryEmbedTextFromRow(memory),
-			})
 		})
 	}
 	for (const job of plan.jobs) {
