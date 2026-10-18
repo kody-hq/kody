@@ -17,7 +17,10 @@ import {
 	type PackageCredentialSlot,
 	packageCredentialKindValues,
 } from '#worker/package-registry/types.ts'
-import { listSavedPackagesByIds } from '#worker/package-registry/repo.ts'
+import {
+	getSavedPackageById,
+	listSavedPackagesByIds,
+} from '#worker/package-registry/repo.ts'
 import { buildSecretPackageApprovalUrl } from '#mcp/secrets/package-approval-url.ts'
 import { resolveSecretPageOrgSlug } from '#mcp/secrets/package-access.ts'
 import { findSecret } from '#mcp/secrets/service.ts'
@@ -139,6 +142,42 @@ export async function buildCredentialAllowedPackagesPublishWarningNotice(input: 
 }): Promise<string | null> {
 	const warnings = await buildCredentialAllowedPackagesPublishWarnings(input)
 	return formatCredentialAllowedPackagesPublishWarnings(warnings)
+}
+
+/**
+ * Resolve the saved package then build the notice. Swallows lookup/scan
+ * failures so stub APP_DB in unit tests and transient D1 errors never fail
+ * publish or save.
+ */
+export async function loadCredentialAllowedPackagesPublishWarningNotice(input: {
+	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	baseUrl: string
+	userId: OwnerId
+	orgSlug?: string | null
+	packageId: string
+	files: Record<string, string>
+	slots?: Record<string, PackageCredentialSlot> | undefined
+}): Promise<string | null> {
+	try {
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: input.userId,
+			packageId: input.packageId,
+		})
+		if (!savedPackage) return null
+		return await buildCredentialAllowedPackagesPublishWarningNotice({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			userId: input.userId,
+			orgSlug: input.orgSlug,
+			packageId: savedPackage.id,
+			packageDisplayName: savedPackage.name,
+			kodyId: savedPackage.kodyId,
+			files: input.files,
+			slots: input.slots,
+		})
+	} catch {
+		return null
+	}
 }
 
 export async function buildCredentialAllowedPackagesPublishWarnings(input: {

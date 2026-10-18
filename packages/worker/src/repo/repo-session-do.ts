@@ -39,7 +39,7 @@ import {
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import {
 	createPackagePublishLockedError,
-	loadLockedSavedPackage,
+	isSavedPackageLocked,
 } from '#worker/package-registry/package-publish-lock.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -3345,25 +3345,27 @@ class RepoSessionBase extends DurableObject<Env> {
 						sourceRoot: source.source_root,
 					})
 				: null
-		const savedPackageForNotice =
+		// One lookup for both the allowed-packages notice and the locked-publish
+		// gate so unit tests that mock getSavedPackageById once keep working.
+		const savedPackageForPublish =
 			source.entity_kind === 'package'
 				? await getSavedPackageById(this.env.APP_DB, {
 						userId: input.userId,
 						packageId: source.entity_id,
-					})
+					}).catch(() => null)
 				: null
 		const allowedPackagesPublishNotice =
-			savedPackageForNotice == null
+			savedPackageForPublish == null
 				? null
 				: await buildCredentialAllowedPackagesPublishWarningNotice({
 						env: this.env,
 						baseUrl: getAppBaseUrl({ env: this.env }),
 						userId: input.userId,
-						packageId: savedPackageForNotice.id,
-						packageDisplayName: savedPackageForNotice.name,
-						kodyId: savedPackageForNotice.kodyId,
+						packageId: savedPackageForPublish.id,
+						packageDisplayName: savedPackageForPublish.name,
+						kodyId: savedPackageForPublish.kodyId,
 						files: snapshotFiles,
-					})
+					}).catch(() => null)
 		const credentialNotice =
 			[patternNotice, secretMountCompat, allowedPackagesPublishNotice]
 				.filter((notice): notice is string => Boolean(notice))
@@ -3371,14 +3373,11 @@ class RepoSessionBase extends DurableObject<Env> {
 		const withCredentialNotice = (message: string) =>
 			credentialNotice ? `${message}\n\n${credentialNotice}` : message
 		const lockedPackage =
-			source.entity_kind === 'package' &&
+			savedPackageForPublish != null &&
 			input.allowLockedPublish !== true &&
-			input.promotePublished !== false
-				? await loadLockedSavedPackage({
-						db: this.env.APP_DB,
-						userId: input.userId,
-						packageId: source.entity_id,
-					})
+			input.promotePublished !== false &&
+			isSavedPackageLocked(savedPackageForPublish.lockedAt)
+				? savedPackageForPublish
 				: null
 		// The pause runs before the source branch moves, so the published commit
 		// stays at HEAD and new sessions open as usual. The session (and its
