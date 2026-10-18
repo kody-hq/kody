@@ -298,9 +298,8 @@ export function packageStorageSql(
 			changes: typeof info.changes === 'number' ? info.changes : 0,
 		}
 	}
-	// Node < 22.16: columns() missing. Prefer all() so RETURNING still works
-	// (never match the word "returning" in the SQL text). all() already ran
-	// the statement — do not call run() afterward (that would double-write).
+	// Node < 22.16: columns() missing. Prefer all() so RETURNING still works.
+	// all() already ran the statement — do not call run() afterward.
 	const rows = plainSqlRows(stmt.all(...params))
 	if (rows.length > 0) return { rows }
 	const trimmed = query.trimStart().toLowerCase()
@@ -310,6 +309,10 @@ export function packageStorageSql(
 		trimmed.startsWith('pragma') ||
 		trimmed.startsWith('explain')
 	if (isReadLike) return { rows }
+	// Empty DML+RETURNING must match hosted `{ rows: [] }` (no `changes`).
+	// Strip string/blob literals first so a body value of "returning id" does
+	// not fake a RETURNING clause.
+	if (sqlHasReturningClause(query)) return { rows }
 	const changesRow = db.prepare('select changes() as c').get() as
 		| { c?: number }
 		| undefined
@@ -317,6 +320,15 @@ export function packageStorageSql(
 		rows: [],
 		changes: typeof changesRow?.c === 'number' ? changesRow.c : 0,
 	}
+}
+
+/** True when SQL has a RETURNING keyword outside string/blob literals. */
+export function sqlHasReturningClause(query: string): boolean {
+	const withoutLiterals = query.replace(
+		/'(?:[^']|'')*'|"(?:[^"]|"")*"|X'[0-9A-Fa-f]*'/g,
+		"''",
+	)
+	return /\breturning\b/i.test(withoutLiterals)
 }
 
 /** node:sqlite returns null-prototype row objects; plain clones JSON-cleanly. */

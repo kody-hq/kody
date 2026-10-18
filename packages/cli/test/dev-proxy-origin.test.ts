@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
 	buildDevProxyUpstreamHeaders,
+	buildTrustedDevForwardUrl,
 	buildTrustedDevPublicUrl,
 	defaultLoopbackHostAliases,
 	isAllowedDevHost,
@@ -77,6 +78,25 @@ test('buildTrustedDevPublicUrl uses hosted origin and mount-stripped path', () =
 	assert.equal(
 		trustedDevHostFromHostedUrl('http://127.0.0.1:4777/'),
 		'127.0.0.1:4777',
+	)
+})
+
+test('buildTrustedDevPublicUrl keeps protocol-relative restPath on the hosted origin', () => {
+	assert.equal(
+		buildTrustedDevPublicUrl({
+			hostedUrl: 'http://127.0.0.1:4777',
+			restPath: '//evil.example/x',
+			search: '?y=1',
+		}),
+		'http://127.0.0.1:4777//evil.example/x?y=1',
+	)
+	assert.equal(
+		buildTrustedDevForwardUrl({
+			baseUrl: 'http://127.0.0.1:8787',
+			restPath: '//evil.example/x',
+			search: '',
+		}),
+		'http://127.0.0.1:8787//evil.example/x',
 	)
 })
 

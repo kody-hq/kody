@@ -549,6 +549,21 @@ test('writeGeneratedWranglerConfig rejects invalid environment asset config', as
 	)
 })
 
+test('writeGeneratedWranglerConfig rejects WRANGLER_IS_LOCAL_DEV on deploy envs', async () => {
+	consoleError.mockImplementation(() => {})
+	await using temp = await createTempDir()
+	using _exit = mockProcessExit()
+	await expect(
+		writeGeneratedWranglerConfig({
+			...productionArgs(path.join(temp.dir, 'out.json')),
+			workerVars: { WRANGLER_IS_LOCAL_DEV: 'true' },
+		}),
+	).rejects.toThrow('process.exit called')
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining('WRANGLER_IS_LOCAL_DEV'),
+	)
+})
+
 test('ensureR2BucketLifecycle dry-run returns the policy without calling Wrangler', () => {
 	consoleError.mockImplementation(() => {})
 	const policy = {

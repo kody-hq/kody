@@ -421,6 +421,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<AppBrowserEffects />
 				{children}
 				<Toaster />
+				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
+				<script src={publicAsset('/emotion-style-hoist.js')} />
 				<Scripts />
 			</body>
 		</html>

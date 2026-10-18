@@ -50,6 +50,12 @@ export type ClientErrorContext = {
 		index: number
 		differingAttributes: string
 	}>
+	documentHydration?: {
+		bodyEmotionStyleCount: number
+		headEmotionStyleCount: number
+		bodyEmotionUnmarkedCount: number
+		pathname: string | null
+	}
 }
 
 type CaptureFn = (error: unknown, context?: ClientErrorContext) => void

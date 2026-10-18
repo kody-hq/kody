@@ -113,8 +113,18 @@ function expectAccessDenied(error: unknown) {
 	return true
 }
 
-function lookups(pkg: unknown, fork: unknown) {
-	mockModule.getSavedPackageById.mockResolvedValueOnce(pkg)
+function lookups(
+	pkg: unknown,
+	fork: unknown,
+	options?: { packageLoads?: number },
+) {
+	// `use` intent goes through packageHasImplicitUserSecretReadAccess first
+	// (one package load). Denied paths load the package again for the approval
+	// URL, so pass packageLoads: 2.
+	const packageLoads = options?.packageLoads ?? 1
+	for (let i = 0; i < packageLoads; i++) {
+		mockModule.getSavedPackageById.mockResolvedValueOnce(pkg)
+	}
 	mockModule.getCommunityForkByForkedPackageId.mockResolvedValueOnce(fork)
 }
 
@@ -143,7 +153,7 @@ test('package secret access grants cover owned, self-authored, forked, adopted, 
 		{ forkerUserId: 'user-1', forkedPackageId: 'pkg-1' },
 	)
 
-	lookups(savedPackage, communityFork)
+	lookups(savedPackage, communityFork, { packageLoads: 2 })
 	await expect(
 		assertPackageCanAccessResolvedSecret(accessInput()),
 	).rejects.toSatisfy(expectAccessDenied)
@@ -212,7 +222,8 @@ test('package secret access authorizes the stamp package, not the importing run'
 
 test("package secret access does not resolve another org's package", async () => {
 	const otherOrgPackageId = '91d7d9e4-6b88-44da-ab19-01fe26845ac5'
-	mockModule.getSavedPackageById.mockResolvedValueOnce(null)
+	// Implicit-access probe + not-found path each call getSavedPackageById.
+	mockModule.getSavedPackageById.mockResolvedValue(null)
 	await expect(
 		assertPackageCanAccessResolvedSecret(
 			accessInput({
@@ -228,10 +239,34 @@ test("package secret access does not resolve another org's package", async () =>
 	})
 	expect(mockModule.getCommunityForkByForkedPackageId).not.toHaveBeenCalled()
 
+	mockModule.getSavedPackageById.mockReset()
 	lookups(savedPackage, null)
 	await expect(
 		assertPackageCanAccessResolvedSecret(accessInput()),
 	).resolves.toBeUndefined()
+})
+
+test('package secret access shares one package load across concurrent use checks (KODY-9K)', async () => {
+	clearLookups()
+	mockModule.getSavedPackageById.mockResolvedValue(savedPackage)
+	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(null)
+	// WeakMap inflight is keyed by APP_DB identity — share one handle.
+	const sharedEnv = { APP_DB: {} as D1Database }
+
+	await Promise.all([
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ env: sharedEnv, secretName: 'a' }),
+		),
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ env: sharedEnv, secretName: 'b' }),
+		),
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ env: sharedEnv, secretName: 'c' }),
+		),
+	])
+
+	expect(mockModule.getSavedPackageById).toHaveBeenCalledTimes(1)
+	expect(mockModule.getCommunityForkByForkedPackageId).toHaveBeenCalledTimes(1)
 })
 
 test('assertCanSetSecrets fails closed for mutate grants before any provider work', async () => {

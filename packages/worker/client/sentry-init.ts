@@ -101,11 +101,14 @@ export function captureBrowserException(
 ) {
 	Sentry.captureException(
 		error,
-		context?.componentStack || context?.documentMeta
+		context?.componentStack ||
+			context?.documentMeta ||
+			context?.documentHydration
 			? {
 					extra: {
 						componentStack: context.componentStack,
 						documentMeta: context.documentMeta,
+						documentHydration: context.documentHydration,
 					},
 				}
 			: undefined,

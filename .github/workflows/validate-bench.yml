@@ -87,6 +87,8 @@ jobs:
       actions: read
     steps:
       - name: 📥 Download timing artifacts
+        id: download_timings
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: validate-timings-*

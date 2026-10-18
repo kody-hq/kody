@@ -48,6 +48,85 @@ function jsonResponse(body: unknown, status = 200) {
 	})
 }
 
+test('startDeviceAuthorization rejects redirects so client_secret is not resent', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(
+		async () =>
+			new Response(null, {
+				status: 307,
+				headers: { Location: 'http://evil.example/device' },
+			}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		clientSecret: 'device-client-secret',
+		fetchImpl,
+	})
+	expect(started).toEqual({
+		ok: false,
+		error:
+			'Device authorization endpoint returned a redirect; credential-bearing requests do not follow redirects.',
+		status: 502,
+	})
+	expect(fetchImpl).toHaveBeenCalledWith(
+		baseStart.deviceAuthorizationUrl,
+		expect.objectContaining({ redirect: 'manual' }),
+	)
+})
+
+test('startDeviceAuthorization rejects non-loopback http device and token URLs', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn()
+	const rejectedDevice = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'http://auth.example.com/device',
+		fetchImpl,
+	})
+	expect(rejectedDevice).toEqual({
+		ok: false,
+		error:
+			'Device authorization URL must use https (http is only allowed for localhost).',
+		status: 400,
+	})
+	const rejectedToken = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		tokenUrl: 'http://auth.example.com/token',
+		fetchImpl,
+	})
+	expect(rejectedToken).toEqual({
+		ok: false,
+		error: 'Token URL must use https (http is only allowed for localhost).',
+		status: 400,
+	})
+	expect(fetchImpl).not.toHaveBeenCalled()
+})
+
+test('startDeviceAuthorization allows loopback http for local mocks', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'secret-device-code',
+			user_code: 'ABCD-EFGH',
+			verification_uri: 'http://localhost:8787/verify',
+			expires_in: 600,
+			interval: 5,
+		}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'http://localhost:8787/device',
+		tokenUrl: 'http://127.0.0.1:8787/token',
+		allowedHosts: ['localhost', '127.0.0.1', 'api.example.com'],
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	expect(fetchImpl).toHaveBeenCalledOnce()
+})
+
 test('startDeviceAuthorization stores session and returns user-facing fields without device_code', async () => {
 	const env = createSqliteEnv()
 	const fetchImpl = vi.fn(async () =>

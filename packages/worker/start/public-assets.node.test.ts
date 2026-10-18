@@ -11,6 +11,7 @@ test('release public files use the immutable namespace, document and service URL
 	vi.stubEnv('BASE_URL', '/__start/0123456789012345678901234567890123456789/')
 	for (const file of [
 		'/page-init.js',
+		'/emotion-style-hoist.js',
 		'/fonts/wix-madefor-text-latin.woff2',
 		'/site.webmanifest',
 		'/favicon.ico',

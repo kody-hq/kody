@@ -3,6 +3,7 @@ import { StrictMode, startTransition, useEffect } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
+import { documentHydrationDiagnostics } from './document-hydration-diagnostics.ts'
 import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
 import {
 	clearStaleRouteChunkReloadFlag,
@@ -55,16 +56,23 @@ hydrateStart()
 			let enriched = context
 			if (
 				error instanceof Error &&
-				error.message.startsWith('Hydration mismatch') &&
-				/at meta\s+at head\b/.test(context?.componentStack ?? '')
+				error.message.startsWith('Hydration mismatch')
 			) {
 				try {
-					enriched = {
-						...context,
-						documentMeta: documentMetaDiagnostics(
-							document,
-							router.state.matches[0]?.loaderData,
-						),
+					if (/at meta\s+at head\b/.test(context?.componentStack ?? '')) {
+						enriched = {
+							...context,
+							documentMeta: documentMetaDiagnostics(
+								document,
+								router.state.matches[0]?.loaderData,
+							),
+						}
+					} else {
+						// Structural mismatch (reconcile leftover / adoptHostDom).
+						enriched = {
+							...context,
+							documentHydration: documentHydrationDiagnostics(document),
+						}
 					}
 				} catch {
 					// Diagnostics must never prevent the original error report.
