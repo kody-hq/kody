@@ -412,6 +412,19 @@ test('destination verification rejects a bounce after a newer delivered event', 
 			senderBlockResponse,
 		),
 	).toEqual({ outcome: 'stale' })
+	// Same delivered event again (queue retry after cursor write) stays
+	// recorded so deliverability side effects can still run.
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'delivered',
+			'2026-10-17T18:30:00.000Z',
+		),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: { status: 'delivered' },
+	})
 })
 
 test('password reset rejects a bounce after a newer delivered event', async () => {

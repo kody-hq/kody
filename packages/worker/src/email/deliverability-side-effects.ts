@@ -13,6 +13,7 @@ import {
 	recordRejectingProvidersForRecipient,
 } from './rejecting-providers.ts'
 import { type EmailDeliveryStatus } from './types.ts'
+import { transactionalDeliveryCursorMatches } from './verification-delivery.ts'
 import {
 	clearVerificationRecipientHardBounce,
 	recordVerificationRecipientHardBounce,
@@ -31,11 +32,32 @@ export async function applyDeliverabilitySideEffects(input: {
 	 * must not.
 	 */
 	recordVerificationSuppression?: boolean
+	/**
+	 * When set, skip (and undo) mutations unless the transactional delivery
+	 * cursor still names this exact event. Prevents an older bounce from
+	 * re-arming holds after a newer delivered event claimed the cursor.
+	 */
+	confirmCursor?: {
+		providerMessageId: string
+		status: string
+		at: string
+	}
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<void> {
 	const now = input.now ?? new Date()
+	const cursorStillOwnsEvent = async () => {
+		if (!input.confirmCursor) return true
+		return await transactionalDeliveryCursorMatches({
+			db: input.db,
+			providerMessageId: input.confirmCursor.providerMessageId,
+			status: input.confirmCursor.status,
+			at: input.confirmCursor.at,
+		})
+	}
 	try {
+		if (!(await cursorStillOwnsEvent())) return
+
 		if (input.deliveryStatus === 'delivered') {
 			await clearEmailRecipientCooldown({
 				db: input.db,
@@ -80,6 +102,26 @@ export async function applyDeliverabilitySideEffects(input: {
 				smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
 				smtpStatusCode: input.smtpStatusCode,
 				now,
+			})
+		}
+
+		// A newer delivered event may have claimed the cursor while we were
+		// writing failure holds. Clear them again so the winning delivered
+		// status is what the recipient sees.
+		if (!(await cursorStillOwnsEvent())) {
+			await clearEmailRecipientCooldown({
+				db: input.db,
+				recipient: input.recipient,
+			})
+			await clearRejectingProvidersForRecipient({
+				db: input.db,
+				recipient: input.recipient,
+				now,
+				fetchImpl: input.fetchImpl,
+			})
+			await clearVerificationRecipientHardBounce({
+				db: input.db,
+				recipient: input.recipient,
 			})
 		}
 	} catch (error) {

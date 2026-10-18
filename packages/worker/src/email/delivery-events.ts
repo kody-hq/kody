@@ -184,6 +184,11 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		recordVerificationSuppression: transactionalKindRecordsHardBounce(
 			transactional.event.kind,
 		),
+		confirmCursor: {
+			providerMessageId: providerEvent.payload.messageId,
+			status: providerEvent.payload.delivery.status,
+			at: providerEvent.metadata.eventTimestamp,
+		},
 	})
 
 	if (

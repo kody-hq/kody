@@ -241,12 +241,47 @@ function isMissingDeliveryCursor(error: unknown) {
 	)
 }
 
+async function loadTransactionalDeliveryCursor(input: {
+	db: D1Database
+	providerMessageId: string
+}) {
+	try {
+		return await input.db
+			.prepare(
+				`SELECT last_status AS lastStatus, last_status_at AS lastStatusAt
+				 FROM transactional_email_delivery_index
+				 WHERE provider_message_id = ?`,
+			)
+			.bind(input.providerMessageId)
+			.first<{ lastStatus: string | null; lastStatusAt: string | null }>()
+	} catch (error) {
+		if (isMissingDeliveryCursor(error)) return null
+		throw error
+	}
+}
+
+/** True when the durable cursor still names this exact provider event. */
+export async function transactionalDeliveryCursorMatches(input: {
+	db: D1Database
+	providerMessageId: string
+	status: string
+	at: string
+}): Promise<boolean> {
+	const cursor = await loadTransactionalDeliveryCursor(input)
+	return (
+		cursor?.lastStatus === input.status && cursor?.lastStatusAt === input.at
+	)
+}
+
 /**
  * Claim the per-message delivery cursor only when this event is strictly
  * newer than the stored cursor (or the cursor is empty). Equal timestamps
  * lose so a bounce cannot re-arm holds after a delivered event that shares
  * the same provider clock. The conditional UPDATE is the race guard when
  * queue consumers run concurrently for the same provider message id.
+ *
+ * A retry of the same event after the cursor write already committed returns
+ * `recorded` so deliverability side effects can still run.
  */
 async function claimTransactionalDeliveryCursor(input: {
 	db: D1Database
@@ -267,7 +302,11 @@ async function claimTransactionalDeliveryCursor(input: {
 			)
 			.bind(input.status, input.at, input.providerMessageId, input.at)
 			.run()
-		return Number(result.meta.changes ?? 0) > 0 ? 'recorded' : 'stale'
+		if (Number(result.meta.changes ?? 0) > 0) return 'recorded'
+		// Same event already claimed the cursor (queue retry after the write
+		// but before side effects). Treat as recorded so holds can recover.
+		if (await transactionalDeliveryCursorMatches(input)) return 'recorded'
+		return 'stale'
 	} catch (error) {
 		if (isMissingDeliveryCursor(error)) return 'unavailable'
 		throw error
