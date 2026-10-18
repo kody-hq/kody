@@ -458,3 +458,24 @@ test('approve-publish mutation returns a distinct error for an unknown full SHA'
 	expect(response?.data.error).not.toContain('restorable backup')
 	expect(response?.data.error).not.toContain('source recovery')
 })
+
+test('approve-publish keeps a source-recovery clone failure distinct from an unknown commit', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	const cloneMiss = new Error(
+		'Artifacts git clone failed for https://example.test/repo.git: Could not find refs/heads/main.',
+	)
+	mockModule.publishFromExternalRef.mockRejectedValueOnce(
+		new Error(
+			`packagePublishExternalPush stopped by the production package source safety policy. Kody could not verify a restorable backup snapshot for source "source-1" at published commit "${fullCommit}": ${cloneMiss.message} Stop and report this source recovery problem instead of rebuilding or overwriting the package in place.`,
+			{ cause: cloneMiss },
+		),
+	)
+	await expect(
+		act({
+			action: 'approve-publish',
+			packageId: 'pkg-1',
+			commit: fullCommit,
+		}),
+	).rejects.toThrow('restorable backup snapshot')
+})

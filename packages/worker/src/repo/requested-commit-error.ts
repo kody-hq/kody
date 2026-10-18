@@ -26,19 +26,38 @@ function errorCode(error: Error) {
 	return null
 }
 
+function isCloneOrSourceRecoveryMessage(message: string) {
+	return (
+		message.includes(
+			'stopped by the production package source safety policy.',
+		) ||
+		message.includes('Stop and report this source recovery problem') ||
+		message.includes('Artifacts git clone failed') ||
+		message.startsWith('Failed to resolve cloned HEAD') ||
+		message.startsWith('source clone failed:')
+	)
+}
+
 /**
  * isomorphic-git `git.checkout` accepts a 40-hex oid without checking the
  * object, then throws `CommitNotFetchedError` when that object is absent.
  * Anything else is resolved as a ref and, on a miss, retried as
  * `origin/<ref>` (`Could not find origin/<ref>`).
+ *
+ * A clone failure or a source-recovery wrap can embed that same "Could not
+ * find" text. Those stay clone or backup failures.
  */
 export function isUnknownRequestedCommitCheckoutError(error: unknown) {
-	const message = getErrorMessage(error)
-	// A failed clone can mention a missing ref in its cause. That is a clone
-	// failure, not an unknown requested commit.
-	if (message.startsWith('Artifacts git clone failed')) return false
-	if (message.startsWith('Failed to resolve cloned HEAD')) return false
-	for (const entry of getErrorCauseChain(error)) {
+	const chain = getErrorCauseChain(error)
+	if (
+		chain.some(
+			(entry) =>
+				entry instanceof Error && isCloneOrSourceRecoveryMessage(entry.message),
+		)
+	) {
+		return false
+	}
+	for (const entry of chain) {
 		if (!(entry instanceof Error)) continue
 		const code = errorCode(entry)
 		if (

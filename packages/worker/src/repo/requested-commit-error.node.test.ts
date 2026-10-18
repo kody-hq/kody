@@ -4,6 +4,7 @@ import { buildSourceRecoveryProblemMessage } from './source-safety-policy.ts'
 import {
 	buildUnknownRequestedCommitMessage,
 	classifyExternalPublishCloneError,
+	unknownRequestedCommitError,
 } from './requested-commit-error.ts'
 
 const publishedSource = {
@@ -51,6 +52,22 @@ test('clone failures and storage failures stay different kinds', () => {
 	expect(wrapped).toContain('restorable backup snapshot')
 	expect(wrapped).toContain('Artifacts git clone failed')
 	expect(wrapped).not.toContain('was not found in the package source')
+
+	const cloneMiss = new Error(
+		'Artifacts git clone failed for https://example.test/repo.git: Could not find refs/heads/main.',
+	)
+	const recovery = new Error(
+		buildSourceRecoveryProblemMessage({
+			source: publishedSource,
+			operation: 'packagePublishExternalPush',
+			reason: cloneMiss.message,
+		}),
+		{ cause: cloneMiss },
+	)
+	expect(unknownRequestedCommitError(recovery, commit)).toBeNull()
+	expect(classifyExternalPublishCloneError(cloneMiss, commit).kind).toBe(
+		'source_recovery',
+	)
 
 	const storageFailure = classifyExternalPublishCloneError(
 		new Error('string or blob too big: SQLITE_TOOBIG'),
