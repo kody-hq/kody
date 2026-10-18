@@ -320,6 +320,9 @@ vi.mock('#worker/storage-buckets/service.ts', () => ({
 	registerStorageBucketAndWait: (
 		...args: Parameters<typeof StorageBuckets.registerStorageBucketAndWait>
 	) => mockModule.registerStorageBucketAndWait(...args),
+	storageBucketInventoryExists: (
+		...args: Parameters<typeof StorageBuckets.storageBucketInventoryExists>
+	) => mockModule.storageBucketInventoryExists(...args),
 	repoSessionStorageBucketId: (sessionId: string) =>
 		`repo-session:${sessionId}`,
 }))
@@ -1379,6 +1382,36 @@ test('publishSession persists the workspace snapshot to BUNDLE_ARTIFACTS_KV for 
 		expect.stringContaining('publish_git_note'),
 		expect.anything(),
 	)
+	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalledWith({
+		db: expect.anything(),
+		userId: ownerIdFromStored('user-1'),
+		storageId: 'repo-session:session-1',
+	})
+	expect(mockModule.maybeRefreshStorageBucketEstimate).not.toHaveBeenCalled()
+})
+
+test('getSessionInfo releases leftover published session scratch when inventory still exists', async () => {
+	setCommonSessionFixtures()
+	mockModule.getRepoSessionById.mockResolvedValue(
+		sessionRow({
+			id: 'session-1',
+			status: 'published',
+			expires_at: '2026-11-01T00:00:00.000Z',
+		}),
+	)
+	mockModule.storageBucketInventoryExists.mockResolvedValueOnce(true)
+	const repo = repoSession(createEnv())
+	await expect(
+		repo.getSessionInfo({
+			sessionId: 'session-1',
+			userId: ownerIdFromStored('user-1'),
+		}),
+	).resolves.toMatchObject({ id: 'session-1' })
+	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalledWith({
+		db: expect.anything(),
+		userId: ownerIdFromStored('user-1'),
+		storageId: 'repo-session:session-1',
+	})
 })
 
 test('publishFromExternalRef rejects stale expected HEAD values and checks fast-forward ancestry through the ephemeral clone', async () => {

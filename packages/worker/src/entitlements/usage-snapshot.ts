@@ -22,7 +22,12 @@ import {
 	readCurrentEntitlementResourceUsage,
 	readUserMeterEntitlementUsageSnapshot,
 } from './service.ts'
-import { listUserStorageBucketEstimates } from '#worker/storage-buckets/service.ts'
+import {
+	formatStorageBucketKindSummary,
+	listUserStorageBucketEstimates,
+	summarizeStorageBucketEstimatesByKind,
+	type StorageBucketKind,
+} from '#worker/storage-buckets/service.ts'
 
 export const entitlementUsageWarningThreshold = 0.8
 
@@ -31,6 +36,13 @@ export type EntitlementUsageWeekWindow = {
 	limit: number
 	percentOfLimit: number | null
 	overEightyPercent: boolean
+}
+
+export type EntitlementUsageStorageByKind = {
+	kind: StorageBucketKind
+	label: string
+	bytes: number
+	count: number
 }
 
 export type EntitlementUsageSnapshotRow = {
@@ -45,6 +57,8 @@ export type EntitlementUsageSnapshotRow = {
 	percentOfLimit: number | null
 	overEightyPercent: boolean
 	week?: EntitlementUsageWeekWindow
+	/** Present on `storage_bytes` when inventoried buckets exist (no raw ids). */
+	storageByKind?: Array<EntitlementUsageStorageByKind>
 }
 
 export type EntitlementUsageSnapshot = {
@@ -121,6 +135,8 @@ export async function readEntitlementUsageSnapshot(input: {
 		nonMeterUsages.map((entry) => [entry.resource, entry.current]),
 	)
 
+	const storageByKind = summarizeStorageBucketEstimatesByKind(bucketEstimates)
+	const storageKindSummary = formatStorageBucketKindSummary(bucketEstimates)
 	const resources = accountUsageEntitlementResources.map((resource) => {
 		const visibility = entitlementResourceVisibility[resource]
 		const current = resolveSnapshotCurrent({
@@ -146,12 +162,16 @@ export async function readEntitlementUsageSnapshot(input: {
 			(percentOfLimit !== null &&
 				percentOfLimit > entitlementUsageWarningThreshold) ||
 			(week?.overEightyPercent ?? false)
+		const whatCounts =
+			resource === 'storage_bytes' && storageKindSummary
+				? `${visibility.whatCounts} ${storageKindSummary}`
+				: visibility.whatCounts
 		return {
 			resource,
 			label: entitlementResourceLabels[resource],
 			group: visibility.group,
 			kind: visibility.kind,
-			whatCounts: visibility.whatCounts,
+			whatCounts,
 			howToReduce: buildEntitlementHowToReduce(
 				resource,
 				entitlement.plan,
@@ -162,6 +182,9 @@ export async function readEntitlementUsageSnapshot(input: {
 			percentOfLimit,
 			overEightyPercent,
 			...(week ? { week } : {}),
+			...(resource === 'storage_bytes' && storageByKind.length > 0
+				? { storageByKind }
+				: {}),
 		}
 	})
 	return {

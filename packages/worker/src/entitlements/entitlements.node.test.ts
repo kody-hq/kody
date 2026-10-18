@@ -450,9 +450,12 @@ test('denial hints follow each resource window: daily meters reset, only standin
 		expect(
 			hint.startsWith('This daily limit resets at 00:00 UTC, in 1m.'),
 		).toBe(window === 'utc_day')
-		expect(hint.startsWith('Remove or finish existing')).toBe(
-			window === 'standing',
-		)
+		expect(
+			hint.startsWith('Remove or finish existing') ||
+				hint.startsWith(
+					'Delete package or job storage you no longer need, or discard active repo sessions',
+				),
+		).toBe(window === 'standing')
 	}
 	expect(
 		buildEntitlementUpgradeHint({

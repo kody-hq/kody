@@ -23,6 +23,13 @@ const usageWeekWindowSchema = z.object({
 	overEightyPercent: z.boolean(),
 })
 
+const usageStorageByKindSchema = z.object({
+	kind: z.enum(['package', 'job', 'execute', 'repo_session', 'unknown']),
+	label: z.string(),
+	bytes: z.number().int().nonnegative(),
+	count: z.number().int().nonnegative(),
+})
+
 const usageResourceSchema = z.object({
 	resource: z.string(),
 	label: z.string(),
@@ -36,6 +43,8 @@ const usageResourceSchema = z.object({
 	overEightyPercent: z.boolean(),
 	mechanic: z.string().optional(),
 	week: usageWeekWindowSchema.optional(),
+	/** Inventoried durable buckets by kind (no raw storage ids). */
+	storageByKind: z.array(usageStorageByKindSchema).optional(),
 })
 
 export const usageGetCapability = defineDomainCapability(
@@ -111,6 +120,12 @@ export const usageGetCapability = defineDomainCapability(
 					percentOfLimit: number | null
 					overEightyPercent: boolean
 				}
+				storageByKind?: Array<{
+					kind: 'package' | 'job' | 'execute' | 'repo_session' | 'unknown'
+					label: string
+					bytes: number
+					count: number
+				}>
 			}) => ({
 				resource: row.resource,
 				label: row.label,
@@ -132,6 +147,7 @@ export const usageGetCapability = defineDomainCapability(
 							},
 						}
 					: {}),
+				...(row.storageByKind ? { storageByKind: row.storageByKind } : {}),
 			})
 			const computeRows = toComputeOverageUsageRows(computeOverage)
 			return {

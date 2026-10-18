@@ -292,6 +292,9 @@ vi.mock('#worker/storage-buckets/service.ts', () => ({
 	registerStorageBucketAndWait: (
 		...args: Parameters<typeof StorageBuckets.registerStorageBucketAndWait>
 	) => mockModule.registerStorageBucketAndWait(...args),
+	storageBucketInventoryExists: (
+		...args: Parameters<typeof StorageBuckets.storageBucketInventoryExists>
+	) => mockModule.storageBucketInventoryExists(...args),
 	repoSessionStorageBucketId: (sessionId: string) =>
 		`repo-session:${sessionId}`,
 }))

@@ -171,6 +171,7 @@ import {
 	maybeRefreshStorageBucketEstimate,
 	registerStorageBucketAndWait,
 	repoSessionStorageBucketId,
+	storageBucketInventoryExists,
 } from '#worker/storage-buckets/service.ts'
 import {
 	pushServerTiming,
@@ -182,6 +183,13 @@ const lastCheckStatusStorageKey = 'repo-session:last-check-status'
 const cachedSessionStateStorageKeyPrefix = 'repo-session:state:'
 const defaultSessionBranch = 'main'
 const publishedSessionRetentionMs = 14 * 24 * 60 * 60 * 1000
+/**
+ * Appended to successful `publishSession` messages so agents know the
+ * workspace scratch no longer counts toward `storage_bytes`. Catalog rows
+ * stay for {@link publishedSessionRetentionMs} (or until discard).
+ */
+export const publishedSessionScratchReleasedNotice =
+	'Session scratch no longer counts toward storage; the catalog row is retained for 14 days (repoDiscardSession removes it sooner).'
 const sessionCommitAuthor = {
 	name: 'Kody Repo Session',
 	email: 'repo-session@local.invalid',
@@ -449,6 +457,26 @@ class RepoSessionBase extends DurableObject<Env> {
 			userId,
 			storageId: repoSessionStorageBucketId(sessionId),
 		})
+	}
+
+	/**
+	 * After a successful publish, durable source lives in Artifacts + the
+	 * published snapshot. Drop workspace scratch and its storage-bucket
+	 * inventory so leftover session bytes cannot push the owner over their
+	 * plan storage limit. Keeps the catalog row (`published` + expires_at).
+	 * Idempotent: safe for legacy published sessions that still hold scratch.
+	 */
+	private async releasePublishedSessionScratch(
+		sessionId: string,
+		userId: OwnerId,
+	): Promise<void> {
+		await this.clearCachedSessionState(sessionId)
+		await this.resetWorkspace().catch(() => {
+			// Best-effort; R2 prefix purge below is the safety net.
+		})
+		await this.purgeWorkspaceBlobs()
+		await this.deleteStorageInventory(sessionId, userId)
+		this.initializedSessionId = null
 	}
 
 	private async readCachedSessionState(
@@ -1904,6 +1932,22 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 			{ allowedStatuses: ['active', 'published'] },
 		)
+		// Lazy heal: older publishes kept counting workspace bytes until
+		// discard/expiry. Release scratch the first time a published session
+		// still holding inventory is inspected.
+		if (
+			sessionRow.status === 'published' &&
+			(await storageBucketInventoryExists({
+				db: this.env.APP_DB,
+				userId: sessionRow.user_id,
+				storageId: repoSessionStorageBucketId(sessionRow.id),
+			}))
+		) {
+			await this.releasePublishedSessionScratch(
+				sessionRow.id,
+				sessionRow.user_id,
+			)
+		}
 		await this.touchRepoSession(sessionRow)
 		return toRepoSessionInfoResult(sessionRow, source)
 	}
@@ -3189,12 +3233,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				published_commit: publishedCommit,
 			},
 		})
-		this.refreshStoredEstimate(input.sessionRow.id, input.sessionRow.user_id)
+		await this.releasePublishedSessionScratch(
+			input.sessionRow.id,
+			input.sessionRow.user_id,
+		)
 		return {
 			status: 'ok',
 			sessionId: input.sessionRow.id,
 			publishedCommit,
-			message: `Published plain repo session ${input.sessionRow.id} to ${input.source.repo_id}.`,
+			message: `Published plain repo session ${input.sessionRow.id} to ${input.source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
 		}
 	}
 
@@ -3519,13 +3566,13 @@ class RepoSessionBase extends DurableObject<Env> {
 				published_commit: publishedCommit,
 			},
 		})
-		this.refreshStoredEstimate(sessionRow.id, sessionRow.user_id)
+		await this.releasePublishedSessionScratch(sessionRow.id, sessionRow.user_id)
 		return {
 			status: 'ok',
 			sessionId: sessionRow.id,
 			publishedCommit: sessionHeadCommit ?? sessionRow.base_commit,
 			message: withCredentialNotice(
-				`Published session ${sessionRow.id} to ${source.repo_id}.`,
+				`Published session ${sessionRow.id} to ${source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
 			),
 		}
 	}

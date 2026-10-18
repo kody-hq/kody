@@ -137,6 +137,16 @@ accumulate against the `repo_sessions` entitlement. Unused (never-checkpointed)
 sessions are swept after 30 minutes idle; checkpointed sessions are swept after
 7 days idle.
 
+**Storage:** while a session is active, its workspace scratch (Durable Object
+SQLite plus `REPO_SESSION_BLOBS`) is inventoried and counts toward the account
+`storage_bytes` plan limit. `repoOpenSession` does not pre-check storage
+headroom; the next package/job/storage write admits against the live total.
+After a successful `repoPublishSession`, that session’s scratch is released from
+the storage inventory (durable source lives in Artifacts and the published
+snapshot). The catalog row stays `published` for 14 days so agents can list it;
+`repoDiscardSession` removes the row sooner. Active sessions still count until
+discard or idle sweep.
+
 ### `write` edits vs patches
 
 A `repoEditFiles` `write` edit overwrites one file with full new content and
