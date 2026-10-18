@@ -3,6 +3,11 @@
  * tests can exercise the predicates with plain event shapes.
  */
 
+import {
+	isBrowserFetchNetworkError,
+	isBrowserFetchNetworkErrorMessage,
+} from '#client/browser-fetch-network-error.ts'
+
 type SentryStackFrame = {
 	filename?: string
 	abs_path?: string
@@ -1111,6 +1116,87 @@ function filterBrowserBlobImportScriptsNetworkSentryEvent<
 }
 
 /**
+ * Transient browser `fetch()` network failures from TanStack Start server
+ * function RPC (KODY-9Q / issue 7798170337). After the Start migration,
+ * `createServerFn` client calls hit `/_serverFn/…`; when the tab resumes
+ * offline/asleep (or the network blips), WebKit rejects with TypeError
+ * `Load failed`, Chromium with `Failed to fetch`, Firefox with
+ * `NetworkError when attempting to fetch resource.` — stack entirely in
+ * `serverFnFetcher` / `createServerFn`. Root capture is the router's
+ * `defaultOnCatch: captureClientException` and root
+ * `refreshOnActivation` → `onError: captureClientException` (handled).
+ * Tab-resume refresh keeps existing Query data; no error boundary. Match
+ * only browser fetch-network TypeError wording (see
+ * `isBrowserFetchNetworkError`) AND stack evidence of the Start serverFn
+ * fetcher. Never blanket-drop bare "Failed to fetch" / in-app TypeErrors.
+ */
+const tanStackServerFnFetchStackToken = /serverFnFetcher|createServerFn/
+
+function textMentionsTanStackServerFnFetch(text: string) {
+	return tanStackServerFnFetchStackToken.test(text)
+}
+
+function framesMentionTanStackServerFnFetch(
+	frames: Array<SentryStackFrame> | undefined,
+) {
+	if (!frames || frames.length === 0) return false
+	for (const frame of frames) {
+		if (
+			typeof frame.function === 'string' &&
+			textMentionsTanStackServerFnFetch(frame.function)
+		) {
+			return true
+		}
+		for (const url of stackFrameUrls(frame)) {
+			if (textMentionsTanStackServerFnFetch(url)) return true
+		}
+	}
+	return false
+}
+
+function originalExceptionMentionsTanStackServerFnFetch(error: unknown) {
+	if (typeof error !== 'object' || error === null) return false
+	const stack =
+		'stack' in error && typeof error.stack === 'string' ? error.stack : ''
+	return textMentionsTanStackServerFnFetch(stack)
+}
+
+export function isTanStackServerFnFetchNetworkError(error: unknown) {
+	if (!isBrowserFetchNetworkError(error)) return false
+	return originalExceptionMentionsTanStackServerFnFetch(error)
+}
+
+function isTanStackServerFnFetchNetworkSentryEvent(
+	event: SentryErrorEventLike,
+	originalException?: unknown,
+) {
+	if (isTanStackServerFnFetchNetworkError(originalException)) return true
+
+	// Same-entry gate: TypeError fetch-network wording AND serverFn frames on
+	// that value. Bare event.message / frameless values stay visible.
+	const values = event.exception?.values ?? []
+	return values.some((value) => {
+		if (value.type !== 'TypeError') return false
+		if (
+			typeof value.value !== 'string' ||
+			!isBrowserFetchNetworkErrorMessage(value.value)
+		) {
+			return false
+		}
+		return framesMentionTanStackServerFnFetch(value.stacktrace?.frames)
+	})
+}
+
+function filterTanStackServerFnFetchNetworkSentryEvent<
+	T extends SentryErrorEventLike,
+>(event: T, originalException?: unknown): T | null {
+	if (isTanStackServerFnFetchNetworkSentryEvent(event, originalException)) {
+		return null
+	}
+	return event
+}
+
+/**
  * Stale Start release after a deploy: a browser tab still holding a previous
  * client build calls `/__start/<old-hash>/_serverFn/...`, gets HTTP 404 with
  * body exactly `Unknown Start release.`, and the createServerFn client throws
@@ -1809,6 +1895,12 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 		return null
 	}
 	if (filterUnknownStartReleaseSentryEvent(event, originalException) === null) {
+		return null
+	}
+	if (
+		filterTanStackServerFnFetchNetworkSentryEvent(event, originalException) ===
+		null
+	) {
 		return null
 	}
 	if (

@@ -8,6 +8,7 @@ import {
 	isMetaMaskWalletNoAccountError,
 	isLocalViteDevError,
 	isSyntaxHighlightCoreDynamicImportFailureError,
+	isTanStackServerFnFetchNetworkError,
 	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
 import {
@@ -70,6 +71,7 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isMetaMaskWalletNoAccountError(error) ||
 		isChromeExtensionMessageChannelDisconnectedError(error) ||
 		isUnknownStartReleaseError(error) ||
+		isTanStackServerFnFetchNetworkError(error) ||
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||
 		isCloudflareTurnstileClientError(error)

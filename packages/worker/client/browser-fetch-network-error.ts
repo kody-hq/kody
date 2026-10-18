@@ -25,7 +25,7 @@ function normalizeBrowserFetchNetworkErrorMessage(message: string) {
 	return withoutTypePrefix
 }
 
-function isBrowserFetchNetworkErrorMessage(message: string) {
+export function isBrowserFetchNetworkErrorMessage(message: string) {
 	return browserFetchNetworkErrorMessages.has(
 		normalizeBrowserFetchNetworkErrorMessage(message),
 	)
