@@ -10,34 +10,55 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+	closePackageSqlDbsForSession,
 	loadMockSession,
 	packageStorageSql,
+	sqlHasReturningClause,
 	statementYieldsRows,
 } from '../src/mock/mock-storage.js'
 import { DatabaseSync } from 'node:sqlite'
 
 test('statementYieldsRows uses columns(), not a returning regex', () => {
 	const db = new DatabaseSync(':memory:')
-	db.exec('create table notes (id integer primary key, body text)')
+	try {
+		db.exec('create table notes (id integer primary key, body text)')
+		const returning = db.prepare(
+			'insert into notes (body) values (?) returning id, body',
+		)
+		const plain = db.prepare('insert into notes (body) values (?)')
+		const select = db.prepare('select id, body from notes')
+		const literalReturning = db.prepare(
+			`insert into notes (body) values ('returning id')`,
+		)
+		if (typeof returning.columns !== 'function') {
+			// Node < 22.16: columns() missing — statementYieldsRows returns null.
+			assert.equal(statementYieldsRows(returning), null)
+			assert.equal(statementYieldsRows(plain), null)
+			return
+		}
+		assert.equal(statementYieldsRows(returning), true)
+		assert.equal(statementYieldsRows(plain), false)
+		assert.equal(statementYieldsRows(select), true)
+		// Literal "returning" in a string must not decide the path — columns() does.
+		assert.equal(statementYieldsRows(literalReturning), false)
+	} finally {
+		db.close()
+	}
+})
+
+test('sqlHasReturningClause ignores returning inside string literals', () => {
 	assert.equal(
-		statementYieldsRows(
-			db.prepare('insert into notes (body) values (?) returning id, body'),
+		sqlHasReturningClause(
+			'insert into notes (body) values (?) returning id, body',
 		),
 		true,
 	)
 	assert.equal(
-		statementYieldsRows(db.prepare('insert into notes (body) values (?)')),
+		sqlHasReturningClause(`insert into notes (body) values ('returning id')`),
 		false,
 	)
 	assert.equal(
-		statementYieldsRows(db.prepare('select id, body from notes')),
-		true,
-	)
-	// Literal "returning" in a string must not decide the path — columns() does.
-	assert.equal(
-		statementYieldsRows(
-			db.prepare(`insert into notes (body) values ('returning id')`),
-		),
+		sqlHasReturningClause('insert into notes (body) values (?)'),
 		false,
 	)
 })
@@ -79,7 +100,16 @@ test('packageStorageSql returns INSERT RETURNING rows', async () => {
 			env,
 		)
 		assert.deepEqual(selected.rows, [{ id: 1, body: 'hi' }])
+		const emptyReturning = packageStorageSql(
+			state,
+			pkg,
+			'update notes set body = ? where id = 99 returning id, body',
+			['nope'],
+			env,
+		)
+		assert.deepEqual(emptyReturning, { rows: [] })
 	} finally {
+		closePackageSqlDbsForSession('returning')
 		await rm(cache, { recursive: true, force: true })
 	}
 })
@@ -134,6 +164,7 @@ test('packageStorageSql UPDATE/DELETE RETURNING and plain mutations', async () =
 		assert.deepEqual(plain.rows, [])
 		assert.equal(plain.changes, 1)
 	} finally {
+		closePackageSqlDbsForSession('returning-dml')
 		await rm(cache, { recursive: true, force: true })
 	}
 })
