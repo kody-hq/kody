@@ -380,7 +380,7 @@ const allowedPackagesPublishNoticeSchema = z
 	.nullable()
 	.optional()
 	.describe(
-		'Advance warning when this package fills a user credential whose allowed-packages list excludes it. Stricter enforcement of that setting starts Tuesday, Oct 21, 2026. Null/omitted when there is nothing to warn about. Does not block publish.',
+		'Advance warning when this package fills a user credential whose allowed-packages list excludes it. Stricter enforcement of that setting starts Wednesday, Oct 21, 2026. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
 const outputSchema = z.discriminatedUnion('status', [

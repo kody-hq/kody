@@ -99,10 +99,10 @@ Saving a secret does not by itself let anything use it.
 Bulk approval URLs (`/@<slug>/-/secrets/approve?package_id=…&names=a,b`) let you
 approve several pending secrets for one package in a click.
 
-Starting Tuesday, Oct 21, 2026, a non-empty `allowed_packages` list is enforced
-for every package use of that credential (including when the package is used
-through another package or loaded in a one-off `execute` run). Publish and save
-may warn beforehand when a package fills a credential it is not listed for;
+Starting Wednesday, Oct 21, 2026, a non-empty `allowed_packages` list is
+enforced for every package use of that credential (including when the package is
+used through another package or loaded in a one-off `execute` run). Publish and
+save may warn beforehand when a package fills a credential it is not listed for;
 approve the package or move the use into an already-allowed package.
 
 ## Scopes

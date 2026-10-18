@@ -2,7 +2,7 @@
  * Advance (non-blocking) publish/save warnings when a package fills a
  * user-scope credential by literal name and that credential's allowed-packages
  * list is non-empty and does not include this package. Stricter enforcement of
- * the existing allowed-packages setting starts Tuesday, Oct 21, 2026; until
+ * the existing allowed-packages setting starts Wednesday, Oct 21, 2026; until
  * then these warnings only tip owners to approve or move the use.
  *
  * Does not change fill, access, publish, or save behavior.
@@ -26,7 +26,8 @@ import { resolveSecretPageOrgSlug } from '#mcp/secrets/package-access.ts'
 import { findSecret } from '#mcp/secrets/service.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 
-export const credentialAllowedPackagesEnforcementDate = 'Tuesday, Oct 21, 2026'
+export const credentialAllowedPackagesEnforcementDate =
+	'Wednesday, Oct 21, 2026'
 
 export type AllowedPackagesListEntry =
 	| { kind: 'package'; id: string; displayName: string }

@@ -2209,7 +2209,7 @@ export type AccountPackageApprovePublishLoaderData = {
 	/**
 	 * Advance warning when this package fills a user credential whose
 	 * allowed-packages list excludes it. Stricter enforcement starts
-	 * Tuesday, Oct 21, 2026. Null when there is nothing to warn about.
+	 * Wednesday, Oct 21, 2026. Null when there is nothing to warn about.
 	 */
 	allowedPackagesPublishNotice: string | null
 	diff: {
