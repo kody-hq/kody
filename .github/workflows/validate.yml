@@ -16,9 +16,10 @@ on:
     inputs:
       runner:
         description: >
-          Runner label for every Validate job on this manual run. Default
-          matches push and pull_request (WarpBuild). Choose ubuntu-latest for a
-          GitHub-hosted comparison.
+          Runner label for every heavy Validate job on this manual run. Default
+          matches push and pull_request (vars.CI_RUNNER or WarpBuild). Choose
+          ubuntu-latest for a GitHub-hosted comparison. The final ✅ Validate
+          gate always runs on ubuntu-latest.
         type: choice
         options:
           - warp-ubuntu-latest-x64-4x
@@ -71,9 +72,11 @@ permissions:
 env:
   CI: '1'
   VALIDATE_NO_CACHE: ${{ inputs.no_cache == true && 'true' || 'false' }}
-  # Same expression as runs-on. Push/PR leave inputs.runner empty and report
-  # WarpBuild; workflow_call always sets it (default ubuntu-latest).
-  VALIDATE_RUNNER: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+  # Same expression as heavy-job runs-on. Push/PR leave inputs.runner empty and
+  # use vars.CI_RUNNER (else WarpBuild); workflow_call always sets it (default
+  # ubuntu-latest). The final gate job ignores this and stays on ubuntu-latest.
+  VALIDATE_RUNNER:
+    ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
   VALIDATE_ITERATION: ${{ inputs.iteration || 0 }}
   NX_SKIP_NX_CACHE: ${{ inputs.no_cache == true && 'true' || '' }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: >-
@@ -93,8 +96,9 @@ env:
 concurrency:
   group: >-
     validate-${{ github.event_name }}-${{ github.event.pull_request.number ||
-    github.ref }}-${{ inputs.runner || 'warp-ubuntu-latest-x64-4x'
-    }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0 }}
+    github.ref }}-${{ inputs.runner || vars.CI_RUNNER ||
+    'warp-ubuntu-latest-x64-4x' }}-nocache-${{ inputs.no_cache || false
+    }}-iter-${{ inputs.iteration || 0 }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 # Same checks as `npm run validate`, split across runners so CPU-heavy suites
@@ -103,7 +107,8 @@ concurrency:
 # gate.
 jobs:
   static:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧹 Static
     timeout-minutes: 10
     permissions:
@@ -303,7 +308,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   node:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧪 Node
     timeout-minutes: 15
     if: >-
@@ -362,7 +368,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   workers:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ☁️ Workers
     # Room for one ≤720s attempt + one retry + setup. Soft-capping the suite
     # below the old 15m job wall avoids workers=cancelled mid-suite (#3763).
@@ -483,7 +490,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   mcp:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔌 MCP
     timeout-minutes: 10
     if: >-
@@ -522,11 +530,20 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
-    name: 🎭 E2E
-    # The suite runs serially against one D1 file. Keep enough time for the
-    # expanded migration coverage and one permitted workerd-crash retry.
-    timeout-minutes: 40
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    name: 🎭 E2E (${{ matrix.shard }}/4)
+    # Each shard owns its own runner (and D1 file), so shards never share
+    # SQLITE_BUSY. Keep workers: 1 inside a shard (playwright.config.ts).
+    # N=4 balances wall-clock (~18–21m serial E2E → ~shard_max) against
+    # repeated setup/build cost; see PR body for measured timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    # Room for one shard (~setup + ~¼ suite) plus one permitted workerd-crash
+    # retry. Serial E2E was 40m; shards should finish well under that.
+    timeout-minutes: 25
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false
@@ -554,16 +571,19 @@ jobs:
       # `ReferenceError: __LOAD__ is not defined` during live export-type
       # inspection (Validate #36669175020), or restart workerd after
       # "The Workers runtime crashed unexpectedly" while the webServer
-      # process stays up (Validate #38206666510). Retry the whole suite
+      # process stays up (Validate #38206666510). Retry the whole shard
       # once with a fresh server, but only when the failure matches that
       # crash signature — genuine test failures never retry.
+      # --skipNxCache: shard CLI args must not reuse another shard's
+      # cached test-e2e success (run-commands may not hash forwarded args).
       - name: 🎭 Playwright E2E
         run: |
           # No pipefail: the runner's implicit `bash -e` would abort on the
           # failing pipeline before the flake check; PIPESTATUS captures the
           # suite's exit code instead.
           set -u
-          npm run test:e2e:run 2>&1 | tee e2e-attempt-1.log
+          shard="${{ matrix.shard }}/4"
+          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard" 2>&1 | tee e2e-attempt-1.log
           status=${PIPESTATUS[0]}
           if [ "$status" -eq 0 ]; then
             exit 0
@@ -571,8 +591,17 @@ jobs:
           if ! node tools/ci/is-retryable-e2e-failure.ts e2e-attempt-1.log; then
             exit "$status"
           fi
-          echo "::warning::Playwright webServer died on start or mid-suite; retrying the E2E suite once with a fresh server."
-          npm run test:e2e:run
+          echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
+          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard"
+
+      - name: 📤 Upload Playwright blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-blob-report-${{ matrix.shard }}
+          path: blob-report
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Wrangler writes fatal mid-suite exits under WRANGLER_LOG_PATH
       # (./logs.local). Upload on failure so empty `[WebServer] ERROR` lines
@@ -581,7 +610,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-wrangler-logs
+          name: e2e-wrangler-logs-${{ matrix.shard }}
           path: logs.local/
           if-no-files-found: ignore
           retention-days: 14
@@ -594,14 +623,74 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: e2e"
+            echo "- job: e2e-${{ matrix.shard }}/4"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  e2e_report:
+    runs-on: ubuntu-latest
+    name: 🎭 E2E Report
+    timeout-minutes: 10
+    needs:
+      - e2e
+    # Merge shard blob reports even when some shards failed so the HTML
+    # artifact stays readable. Skip when the matrix was skipped (draft PR)
+    # or the whole run was cancelled.
+    if: >-
+      always() && !cancelled() && needs.e2e.result != 'skipped' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 📥 Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+          if-no-files-found: ignore
+
+      - name: 🧩 Merge Playwright reports
+        run: |
+          set -u
+          if [ ! -d all-blob-reports ] || [ -z "$(ls -A all-blob-reports 2>/dev/null)" ]; then
+            echo "::warning::No Playwright blob reports found to merge."
+            mkdir -p playwright-report
+            echo "<p>No blob reports were uploaded from E2E shards.</p>" > playwright-report/index.html
+            exit 0
+          fi
+          npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: 📤 Upload merged HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: playwright-report
+          if-no-files-found: warn
+          retention-days: 14
+
   cli:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ inputs.runner || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧰 CLI
     timeout-minutes: 20
     if: >-
@@ -642,7 +731,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   validate:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    # Final merge gate stays on GitHub-hosted ubuntu-latest so a green
+    # ✅ Validate check does not wait on a Warp machine (~10s) for a 3–4s job.
+    runs-on: ubuntu-latest
     name: ✅ Validate
     timeout-minutes: 2
     needs:
@@ -651,6 +742,7 @@ jobs:
       - workers
       - mcp
       - e2e
+      - e2e_report
       - cli
     permissions:
       contents: read
@@ -710,9 +802,13 @@ jobs:
               "🧪 Node",
               "☁️ Workers",
               "🔌 MCP",
-              "🎭 E2E",
               "🧰 CLI",
+              "🎭 E2E Report",
           )
+          # Sharded E2E jobs are named "🎭 E2E (1/4)" … "🎭 E2E (4/4)" (or
+          # nested under validate-bench). Match any job whose leaf starts
+          # with "🎭 E2E (" so timings stay accurate after the split.
+          e2e_prefix = "🎭 E2E ("
 
           def find_job(leaf):
               # Direct Validate runs use the bare job name. Reusable calls from
@@ -731,13 +827,24 @@ jobs:
               nested.sort(key=lambda j: j.get("started_at") or "", reverse=True)
               return nested[0]
 
+          def find_e2e_jobs():
+              matched = []
+              for job in jobs:
+                  name = job.get("name") or ""
+                  leaf = name.split(" / ")[-1]
+                  if leaf.startswith(e2e_prefix):
+                      matched.append(job)
+              matched.sort(key=lambda j: j.get("name") or "")
+              return matched
+
           rows = []
           total = 0
           earliest = None
           latest = None
           summary_lines = []
-          for name in leaf_names:
-              job = find_job(name)
+
+          def append_job_row(name, job):
+              nonlocal total, earliest, latest
               if not job:
                   summary_lines.append(f"| {name} | missing | — |")
                   rows.append(
@@ -749,7 +856,7 @@ jobs:
                           "labels": [],
                       }
                   )
-                  continue
+                  return
               start = parse(job.get("started_at"))
               end = parse(job.get("completed_at"))
               conclusion = job.get("conclusion") or job.get("status") or "?"
@@ -775,6 +882,18 @@ jobs:
                       "completed_at": job.get("completed_at"),
                   }
               )
+
+          for name in ("🧹 Static", "🧪 Node", "☁️ Workers", "🔌 MCP"):
+              append_job_row(name, find_job(name))
+          e2e_jobs = find_e2e_jobs()
+          if e2e_jobs:
+              for job in e2e_jobs:
+                  leaf = (job.get("name") or "").split(" / ")[-1]
+                  append_job_row(leaf, job)
+          else:
+              append_job_row("🎭 E2E", None)
+          for name in ("🎭 E2E Report", "🧰 CLI"):
+              append_job_row(name, find_job(name))
           wall = (
               int((latest - earliest).total_seconds())
               if earliest and latest
@@ -850,19 +969,22 @@ jobs:
         if: >-
           needs.static.result == 'success' && needs.node.result == 'success' &&
           needs.workers.result == 'success' && needs.mcp.result == 'success' &&
-          needs.e2e.result == 'success' && needs.cli.result == 'success'
+          needs.e2e.result == 'success' && needs.e2e_report.result == 'success'
+          && needs.cli.result == 'success'
         run: echo "All validate jobs passed"
 
       - name: ❌ Report failures
         if: >-
           needs.static.result != 'success' || needs.node.result != 'success' ||
           needs.workers.result != 'success' || needs.mcp.result != 'success' ||
-          needs.e2e.result != 'success' || needs.cli.result != 'success'
+          needs.e2e.result != 'success' || needs.e2e_report.result != 'success'
+          || needs.cli.result != 'success'
         run: |
           echo "static=${{ needs.static.result }}"
           echo "node=${{ needs.node.result }}"
           echo "workers=${{ needs.workers.result }}"
           echo "mcp=${{ needs.mcp.result }}"
           echo "e2e=${{ needs.e2e.result }}"
+          echo "e2e_report=${{ needs.e2e_report.result }}"
           echo "cli=${{ needs.cli.result }}"
           exit 1

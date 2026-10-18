@@ -22,7 +22,12 @@ export default defineConfig({
 	// Wrangler and the `d1 execute` helpers. Parallel workers cause SQLITE_BUSY
 	// and transient 500s during auth/admin flows.
 	workers: 1,
-	reporter: process.env.CI ? 'github' : 'list',
+	// CI shards upload blob reports; the Validate merge job runs
+	// `playwright merge-reports` into one HTML artifact. Keep `github` for
+	// per-shard annotations on the Actions UI.
+	reporter: process.env.CI
+		? [['blob', { outputDir: 'blob-report' }], ['github']]
+		: 'list',
 	use: {
 		baseURL,
 		trace: 'on-first-retry',
