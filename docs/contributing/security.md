@@ -273,12 +273,14 @@ Dispatch lives in `packages/worker/src/app/package-app-origin.ts`, called first
 in the Worker `fetch` handler:
 
 - **App origin, `/@{username}/packages/*`:** never executes package code.
-  Anonymous visitors and signed-in outsiders stay on the app origin (the
-  saved-package page, or a same-origin landing that links to the hosted origin).
-  A signed-in person who may run the app still hands off: safe methods redirect
-  (`302`) to the owner's package-app subdomain or verified custom hostname with
-  a handoff token; other methods get a `307` to that host with no token. Retired
-  slugs still `308` on the app origin.
+  Anonymous visitors and signed-in outsiders stay on the app origin. A
+  session-gated app sends anonymous GET/HEAD to `/login` there. An approved
+  internet-visible app shows the saved-package page when that page can link to
+  the app, and a same-origin landing with that link otherwise. A signed-in
+  person who may run the app still hands off: safe methods redirect (`302`) to
+  the owner's package-app subdomain or verified custom hostname with a handoff
+  token; other methods get a `307` to that host with no token. Retired slugs
+  still `308` on the app origin.
 - **Package-app apex** (`kody.run`): serves no package code. `/` redirects to
   the app origin. Legacy path-based URLs (`/@{username}/packages/*`) redirect
   (`302`/`307`) to the owning user's subdomain. Everything else — including

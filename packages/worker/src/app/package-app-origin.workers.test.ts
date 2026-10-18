@@ -435,16 +435,19 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		expect(rootResponse.headers.get('Location')).toBe(`${appOrigin}/`)
 	}
 
-	// 9. The package-app session is not an app session. The app origin does not
-	// hand off, and it does not send the visitor to the package-app host.
+	// 9. The package-app session is not an app session. A session-gated app
+	// sends an anonymous visitor to login on the app origin, not to the
+	// package-app host.
 	const appOriginWithPackageCookie = await workerFetch(
 		`${appOrigin}/@${ownerUsername}/packages/demo`,
 		withPackageSession(),
 	)
 	expect(appOriginWithPackageCookie.status).toBe(302)
-	expect(appOriginWithPackageCookie.headers.get('Location')).toBe(
-		`${appOrigin}/@${ownerUsername}/demo`,
+	const packageCookieLogin = new URL(
+		appOriginWithPackageCookie.headers.get('Location') ?? '',
 	)
+	expect(packageCookieLogin.origin).toBe(appOrigin)
+	expect(packageCookieLogin.pathname).toBe('/login')
 
 	// 10. A signed-in visitor on the owner-only handoff mount is sent to the
 	// saved-package page (`/@{username}/{kodyId}`), not a "not found" 404.
@@ -691,9 +694,9 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 		`${appOrigin}/@${orgSlug}/packages/${privateApp.slug}`,
 	)
 	expect(privateEntry.status).toBe(302)
-	expect(privateEntry.headers.get('Location')).toBe(
-		`${appOrigin}/@${orgSlug}/${privateApp.slug}`,
-	)
+	const privateLogin = new URL(privateEntry.headers.get('Location') ?? '')
+	expect(privateLogin.origin).toBe(appOrigin)
+	expect(privateLogin.pathname).toBe('/login')
 
 	// Package-app origin: anonymous requests to the internet-visible app clear
 	// the gate and reach serve (500: the fixture has no published source).
@@ -723,9 +726,9 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	const unapprovedEntry = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${accessFixture.unapprovedPublicApp.slug}`,
 	)
-	expect(unapprovedEntry.headers.get('Location')).toBe(
-		`${appOrigin}/@${orgSlug}/${accessFixture.unapprovedPublicApp.slug}`,
-	)
+	const unapprovedLogin = new URL(unapprovedEntry.headers.get('Location') ?? '')
+	expect(unapprovedLogin.origin).toBe(appOrigin)
+	expect(unapprovedLogin.pathname).toBe('/login')
 	const unapprovedAnonymous = await workerFetch(
 		`${accessFixtureOrigin}/packages/${accessFixture.unapprovedPublicApp.slug}`,
 	)
@@ -819,6 +822,51 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(ownerPostLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
 		false,
 	)
+
+	// A public package with no community listing renders unauthorized and has
+	// no app link, so both anonymous and signed-in visitors get the landing.
+	const openSiteId = 'pkg-cost-open-site'
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO saved_packages (
+			id, user_id, name, kody_id, description, tags_json, search_text,
+			source_id, has_app, hidden, is_private, is_internet_visible,
+			created_at, updated_at
+		) VALUES (?, ?, ?, 'open-site', '', '[]', NULL, ?, 1, 0, 0, 1, ?, ?)`,
+	)
+		.bind(
+			openSiteId,
+			accessFixture.orgId,
+			`@${orgSlug}/open-site`,
+			`src-${openSiteId}`,
+			'2026-10-14T00:00:00.000Z',
+			'2026-10-14T00:00:00.000Z',
+		)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO package_capability_approvals (
+			id, package_id, owner_user_id, published_commit, fingerprint,
+			capability_set_json, approved_by_user_id, approved_at, created_at
+		) VALUES ('approval-cost-open-site', ?, ?, 'commit-open-site', 'fp-open', '[]', ?, ?, ?)`,
+	)
+		.bind(
+			openSiteId,
+			accessFixture.orgId,
+			accessFixture.orgId,
+			'2026-10-14T00:00:00.000Z',
+			'2026-10-14T00:00:00.000Z',
+		)
+		.run()
+	for (const headers of [{}, { Cookie: outsiderSession }] as const) {
+		const openSite = await workerFetch(
+			`${appOrigin}/@${orgSlug}/packages/open-site`,
+			{ headers },
+		)
+		expect(openSite.status).toBe(200)
+		expect(openSite.headers.get('Location')).toBeNull()
+		await expect(openSite.text()).resolves.toContain(
+			`${accessFixtureOrigin}/packages/open-site`,
+		)
+	}
 })
 
 async function sessionCookieForFixtureOutsider() {

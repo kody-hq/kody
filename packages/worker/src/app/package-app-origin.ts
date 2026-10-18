@@ -25,6 +25,7 @@ import {
 	type VerifiedPackageAppCustomHostname,
 } from '#worker/package-app-custom-hostnames/types.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
+import { getCommunityListingByOwnerAndPackage } from '#worker/community/repo.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	getAppBaseUrl,
@@ -642,6 +643,17 @@ async function handleAppOriginPackageAppPath(input: {
 			: false
 
 	if (!user || !org || !canExecute) {
+		// A session-gated app has no anonymous page. Login stays on the app
+		// origin and returns the visitor to this path, so an expired owner
+		// session can still hand off. It does not reveal whether the package
+		// exists.
+		if (
+			!user &&
+			!internetVisible &&
+			(request.method === 'GET' || request.method === 'HEAD')
+		) {
+			return await redirectToLoginWhenUnauthenticated(request, env)
+		}
 		return await stayOnAppOriginPackagePage({
 			request,
 			env,
@@ -704,12 +716,45 @@ async function handleAppOriginPackageAppPath(input: {
 }
 
 /**
+ * The saved-package page includes a hosted-app link for a signed-in viewer of
+ * a private or hidden package (the no-access page) and for anyone when the
+ * package is public and listed. An unlisted public package renders
+ * unauthorized and has no link.
+ */
+async function packagePageShowsHostedAppLink(input: {
+	env: Env
+	savedPackage: {
+		id: string
+		userId: string
+		isPrivate: boolean
+		hidden: boolean
+	} | null
+	signedIn: boolean
+}) {
+	const saved = input.savedPackage
+	if (!saved) return false
+	if (saved.isPrivate || saved.hidden) return input.signedIn
+	try {
+		const listing = await getCommunityListingByOwnerAndPackage(
+			input.env.APP_DB,
+			{
+				ownerUserId: saved.userId,
+				packageId: saved.id,
+			},
+		)
+		return listing?.status === 'active'
+	} catch {
+		return false
+	}
+}
+
+/**
  * Anonymous visitors and signed-in outsiders never leave the app origin.
- * GET/HEAD of a package the viewer can open goes to the saved-package page.
- * A private internet-visible app would 404 for an anonymous visitor on that
- * page, so those requests render a same-origin landing that links to the
- * real origin instead of bouncing there. Other methods 303 to the package
- * page so a body is not replayed onto an author-controlled host.
+ * GET/HEAD of a package page that can show the app goes there. A page that
+ * cannot (anonymous private or hidden, or a public package with no listing)
+ * renders a same-origin landing that links to the real origin. Other methods
+ * 303 to the package page so a body is not replayed onto an author-controlled
+ * host.
  */
 async function stayOnAppOriginPackagePage(input: {
 	request: Request
@@ -718,7 +763,12 @@ async function stayOnAppOriginPackagePage(input: {
 	packagePath: PackageAppPath
 	packageAppOrigin: string
 	internetVisible: boolean
-	savedPackage: { isPrivate: boolean; hidden: boolean } | null
+	savedPackage: {
+		id: string
+		userId: string
+		isPrivate: boolean
+		hidden: boolean
+	} | null
 	signedIn: boolean
 }) {
 	const packagePageRedirect = () =>
@@ -734,11 +784,7 @@ async function stayOnAppOriginPackagePage(input: {
 	if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
 		return packagePageRedirect()
 	}
-	const opaqueToAnonymous =
-		!input.savedPackage ||
-		input.savedPackage.isPrivate ||
-		input.savedPackage.hidden
-	if (input.internetVisible && !input.signedIn && opaqueToAnonymous) {
+	if (input.internetVisible && !(await packagePageShowsHostedAppLink(input))) {
 		const restPath =
 			input.packagePath.restPath === '/' ? null : input.packagePath.restPath
 		const location = await resolvePublicPackageAppLocation({

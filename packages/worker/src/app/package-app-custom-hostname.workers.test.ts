@@ -233,8 +233,15 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	).split(';')[0]
 
 	const packagePage = `${appOrigin}/@${ownerUsername}/demo`
+	const anonymousGet = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo?tab=1`,
+	)
+	const anonymousLogin = new URL(anonymousGet.headers.get('Location') ?? '')
+	expect(anonymousGet.status).toBe(302)
+	expect(anonymousLogin.origin).toBe(appOrigin)
+	expect(anonymousLogin.pathname).toBe('/login')
+	expect(anonymousLogin.href).not.toContain(customHostname)
 	for (const [name, init, status] of [
-		['anonymous GET', {}, 302],
 		['outsider GET', { headers: { Cookie: outsiderCookie ?? '' } }, 302],
 		['anonymous POST', { method: 'POST' }, 303],
 		[
