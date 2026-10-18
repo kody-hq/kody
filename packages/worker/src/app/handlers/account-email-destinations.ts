@@ -14,9 +14,37 @@ import {
 	EmailDestinationError,
 	deleteEmailNotificationDestination,
 	changeDefaultEmailNotificationDestination,
+	type EmailDestinationErrorCode,
 } from '#worker/email/destinations.ts'
 
 export { emailDestinationRateLimitConfig }
+
+function destinationVerificationHttpStatus(
+	code: EmailDestinationErrorCode,
+): number {
+	switch (code) {
+		case 'rate_limited':
+		case 'user_daily_cap':
+		case 'recipient_daily_cap':
+			return 429
+		case 'account_too_new':
+			return 403
+		case 'not_found':
+			return 404
+		case 'at_cap':
+			return 409
+		case 'invalid_email':
+		case 'identity_email':
+		case 'already_added':
+		case 'not_verified':
+		case 'cannot_remove_identity':
+			return 400
+		default: {
+			const exhaustive: never = code
+			return exhaustive
+		}
+	}
+}
 
 type DestinationContext = {
 	request: Request
@@ -55,32 +83,33 @@ async function runDestinationOperation(
 		return operationResult(await run())
 	} catch (error) {
 		if (error instanceof EmailDestinationError) {
-			if (error.code === 'rate_limited') {
+			const status = destinationVerificationHttpStatus(error.code)
+			if (
+				error.code === 'rate_limited' ||
+				error.code === 'user_daily_cap' ||
+				error.code === 'recipient_daily_cap' ||
+				error.code === 'account_too_new'
+			) {
 				void logAuditEvent({
 					db: auditDatabaseFromEnv(env),
 					category: 'account',
 					action: 'email_destination',
-					result: 'rate_limited',
+					result: error.code === 'account_too_new' ? 'failure' : 'rate_limited',
 					email: user.email,
 					ip: requestIp,
 					path: '/account/email',
-					reason: action,
+					reason:
+						error.code === 'rate_limited' ? action : `${action}:${error.code}`,
 				})
-				return operationResult(
-					{ ok: false, error: error.message },
-					{
-						status: 429,
-						headers: {
-							'Retry-After': String(
-								emailDestinationRateLimitConfig.windowSeconds,
-							),
-						},
-					},
-				)
 			}
-			const status =
-				error.code === 'not_found' ? 404 : error.code === 'at_cap' ? 409 : 400
-			return operationResult({ ok: false, error: error.message }, status)
+			const headers =
+				error.retryAfterSeconds == null
+					? undefined
+					: { 'Retry-After': String(error.retryAfterSeconds) }
+			return operationResult(
+				{ ok: false, error: error.message },
+				headers ? { status, headers } : status,
+			)
 		}
 		if (
 			error instanceof Error &&

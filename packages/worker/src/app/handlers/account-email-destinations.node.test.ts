@@ -27,20 +27,23 @@ function createMigratedDb() {
 
 async function seedUser(
 	sqlite: DatabaseSync,
-	input: { verified?: boolean } = {},
+	input: { verified?: boolean; createdAtSql?: string } = {},
 ) {
 	const email = 'owner@example.com'
 	const stableUserId = testStableUserIdFromEmail(email)
+	const createdAtSql = input.createdAtSql ?? "datetime('now', '-48 hours')"
 	sqlite.exec(`
 		INSERT INTO users (
-			id, username, email, stable_user_id, password_hash, email_verified_at
+			id, username, email, stable_user_id, password_hash, email_verified_at,
+			created_at
 		) VALUES (
 			1,
 			'owner',
 			${quoteSqlString(email)},
 			${quoteSqlString(stableUserId)},
 			'test-password-hash',
-			${input.verified === false ? 'NULL' : 'CURRENT_TIMESTAMP'}
+			${input.verified === false ? 'NULL' : 'CURRENT_TIMESTAMP'},
+			${createdAtSql}
 		);
 	`)
 	await provisionPersonalOrgForSqliteUser(sqlite, {
@@ -236,4 +239,50 @@ test('account destination operations persist writes, return outcomes, and reject
 		}),
 	)
 	expect(unverified.status).toBe(403)
+})
+
+test('account destination API blocks new accounts with the signup wait', async () => {
+	const { sqlite, db } = createMigratedDb()
+	await seedUser(sqlite, { createdAtSql: "datetime('now', '-30 minutes')" })
+	const handler = testAccountEmailDestinationsHandler(createAppEnv(db))
+	const session = {
+		stableUserId: testStableUserIdFromEmail('owner@example.com'),
+		email: 'owner@example.com',
+		rememberMe: false,
+	}
+	const response = await runHandler(
+		handler,
+		await createRequest({
+			session,
+			body: { action: 'add', email: 'phone@example.com' },
+		}),
+	)
+	expect(response.status).toBe(403)
+	const retryAfter = new Headers(response.headers).get('Retry-After')
+	expect(retryAfter).toMatch(/^\d+$/)
+	expect(response.data).toMatchObject({
+		ok: false,
+		error: expect.stringMatching(
+			/New accounts can add email destinations 24 hours after signup, so the verification email was not sent\. The address is saved on the account\. Try again after .+ UTC/,
+		),
+	})
+	const listed = await runHandler(
+		handler,
+		await createRequest({ session, method: 'GET' }),
+	)
+	expect(listed.data).toMatchObject({
+		destinations: expect.arrayContaining([
+			expect.objectContaining({
+				email: 'phone@example.com',
+				verified: false,
+			}),
+		]),
+	})
+	expect(
+		sqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM pending_email_destination_verifications`,
+			)
+			.get(),
+	).toEqual({ count: 0 })
 })

@@ -278,6 +278,8 @@ export type StoredCredentialRow = {
 	allowed_hosts: string
 	inject_json: string
 	config_json: string | null
+	/** Null means anywhere. */
+	placement_json: string | null
 }
 
 /**
@@ -297,7 +299,8 @@ export async function getStoredCredentialEntry(input: {
 		.prepare(
 			`SELECT e.id AS id, e.name AS name, e.kind AS kind,
 				e.encrypted_value AS encrypted_value, e.allowed_hosts AS allowed_hosts,
-				e.inject_json AS inject_json, e.config_json AS config_json
+				e.inject_json AS inject_json, e.config_json AS config_json,
+				e.placement_json AS placement_json
 			FROM secret_entries e
 			JOIN secret_buckets b ON b.id = e.bucket_id
 			WHERE b.user_id = ? AND e.id = ?
@@ -321,6 +324,8 @@ export async function getStoredCredentialEntry(input: {
 		allowed_hosts: String(row['allowed_hosts']),
 		inject_json: String(row['inject_json']),
 		config_json: row['config_json'] == null ? null : String(row['config_json']),
+		placement_json:
+			row['placement_json'] == null ? null : String(row['placement_json']),
 	}
 }
 
@@ -366,6 +371,8 @@ export type SecretEntryCredentialColumns = {
 	config_json: string | null
 	provider: string | null
 	inject_json: string
+	/** Null means anywhere. Omitted on conflict keeps the existing column. */
+	placement_json: string | null
 }
 
 /**
@@ -384,8 +391,9 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 		.prepare(
 			`INSERT INTO secret_entries (
 				id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages,
-				expires_at, created_at, updated_at, kind, config_json, provider, inject_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				expires_at, created_at, updated_at, kind, config_json, provider, inject_json,
+				placement_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(bucket_id, name)
 			DO UPDATE SET
 				description = excluded.description,
@@ -397,7 +405,8 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 				kind = excluded.kind,
 				config_json = excluded.config_json,
 				provider = excluded.provider,
-				inject_json = excluded.inject_json`,
+				inject_json = excluded.inject_json,
+				placement_json = excluded.placement_json`,
 		)
 		.bind(
 			input.credential.id,
@@ -414,6 +423,7 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 			input.credential.config_json,
 			input.credential.provider,
 			input.credential.inject_json,
+			input.credential.placement_json,
 		)
 }
 

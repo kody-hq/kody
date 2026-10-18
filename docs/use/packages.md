@@ -686,15 +686,17 @@ Quarantined inbound email dispatches `email.message.quarantined` instead. Both
 payloads are metadata-first: handlers receive the stored message id, recipient
 and sender metadata, timestamps, processing status, and attachment metadata.
 Fetch parsed bodies or attachment bytes only when needed with `emailMessageGet`,
-`emailAttachmentGet`, or the `email` helper from `kody:runtime`. Operator
-system-inbox mail dispatches the separate `email.system-message.received` topic
-to packages saved by admin users when the message is accepted (quarantined
-system mail is stored but not dispatched); its payload adds an `admin_url` link
-to the message in the admin interface. Successful operator sends from reserved
-system senders dispatch `email.system-message.sent` with the sent correspondence
-(recipients, subject, and bodies) so an admin archive package can record mail
-that did not go through a utility wrapper. See
-[Email primitives](./email-primitives.md) for the full payload shapes.
+`emailAttachmentGet`, or the `email` helper from `kody:runtime`. `email.reply`
+refuses a quarantined message (`quarantined_inbound_reply`) until
+`emailMessageClassify` releases it. Operator system-inbox mail dispatches the
+separate `email.system-message.received` topic to packages saved by admin users
+when the message is accepted (quarantined system mail is stored but not
+dispatched); its payload adds an `admin_url` link to the message in the admin
+interface. Successful operator sends from reserved system senders dispatch
+`email.system-message.sent` with the sent correspondence (recipients, subject,
+and bodies) so an admin archive package can record mail that did not go through
+a utility wrapper. See [Email primitives](./email-primitives.md) for the full
+payload shapes.
 
 When a run in your Activity finishes with an error, Kody dispatches
 `run.error.recorded` to your packages that declare that topic. The payload is

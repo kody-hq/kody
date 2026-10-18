@@ -56,7 +56,7 @@ export const adminEmailDestinationVerifyCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		name: 'adminEmailDestinationVerify',
 		description:
-			'Mark one additional email destination verified after the operator confirms ownership (for example the person replied from that address to their inbox). Use when destination verification mail never arrives. Admin-only; audited; does not send mail.',
+			'Mark one additional email destination verified after the operator confirms ownership (for example the person replied from that address to their inbox). Use when destination verification mail never arrives, including when the account is younger than 24 hours or a verification-mail cap blocked the send. A blocked add still stores the address, so this marks that saved row verified. Admin-only; audited; does not send mail and does not consume the new-account wait or those caps.',
 		keywords: [
 			'admin',
 			'email destination',

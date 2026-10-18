@@ -173,6 +173,17 @@ export type CredentialInjectView =
 	| { kind: 'basic'; valueAs: 'username' | 'password'; other: string }
 	| { kind: 'query'; param: string }
 
+/**
+ * Where placeholders may be filled. Null means anywhere. Distinct from
+ * `inject` (scoped credential() client only).
+ */
+type CredentialFillPlacementView = {
+	headers?: true | Array<string>
+	query?: true
+	path?: true
+	body?: true
+}
+
 export type CredentialListItemStatus =
 	| 'ok'
 	| 'expired'
@@ -188,6 +199,8 @@ export type CredentialListItem = {
 	description: string
 	hosts: Array<string>
 	inject: CredentialInjectView | null
+	/** Null means anywhere. MCP servers always null (no placeholder fill). */
+	placement: CredentialFillPlacementView | null
 	packageId: string | null
 	lockedToPackageIds: Array<string>
 	expiresAt: string | null

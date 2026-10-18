@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
+import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { redactEmailRecipient } from '#worker/audit-log.ts'
 import { buildEmailDestinationVerificationEmail } from '#app/email/messages.ts'
@@ -13,12 +14,16 @@ import {
 	hashVerificationToken,
 	verificationTokenExpiryMs,
 } from '#worker/identity/email-verification-tokens.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { normalizeEmailAddress } from './address.ts'
 import {
 	addEmailNotificationDestination,
 	deleteEmailNotificationDestinationRow,
 	EmailDestinationError,
+	getEmailDestinationValidationError,
 	loadEmailDestinationAccount,
 	markEmailNotificationDestinationVerified,
+	type EmailDestinationErrorCode,
 	type EmailNotificationDestination,
 } from './destinations.ts'
 import { emailOutboundPausedMessage } from './outbound-abuse.ts'
@@ -34,40 +39,277 @@ import {
 	transactionalEmailDestinationVerificationKind,
 } from './verification-delivery.ts'
 
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+/**
+ * Destination-verification abuse caps. `docs/use/email-primitives.md`,
+ * `docs/contributing/architecture/authentication.md`, and the
+ * `emailDestinationAdd` capability description repeat these defaults.
+ */
 export const emailDestinationRateLimitConfig = {
 	maxRequests: 3,
 	windowSeconds: 15 * 60,
 }
 
-function destinationVerificationRateLimitKey(userId: number) {
+/** Per-user rolling daily cap, in addition to the 15-minute burst limit. */
+export const emailDestinationUserDailyCap = {
+	maxRequests: 10,
+	windowSeconds: 24 * 60 * 60,
+}
+
+/**
+ * Per-recipient rolling daily cap across every account. The rate-limit key
+ * is a hash of the normalized address so `_rate_limits` does not store it.
+ */
+export const emailDestinationRecipientDailyCap = {
+	maxRequests: 3,
+	windowSeconds: 24 * 60 * 60,
+}
+
+/** `users.created_at` must be at least this old before verification mail. */
+export const emailDestinationMinimumAccountAgeMs = 24 * 60 * 60 * 1000
+
+export function emailDestinationUserBurstRateLimitKey(userId: number) {
 	return `email-destination:user:${userId}`
 }
 
-async function consumeDestinationVerificationRateLimit(
-	db: D1Database,
-	userId: number,
-) {
-	const rateLimit = await checkRateLimit(
-		db,
-		destinationVerificationRateLimitKey(userId),
-		emailDestinationRateLimitConfig,
-	)
-	if (!rateLimit.allowed) {
+function emailDestinationUserDailyRateLimitKey(userId: number) {
+	return `email-destination:user-daily:${userId}`
+}
+
+type DestinationVerificationCapCode = Extract<
+	EmailDestinationErrorCode,
+	'rate_limited' | 'user_daily_cap' | 'recipient_daily_cap'
+>
+
+type DestinationVerificationAllowance = {
+	recipientEmail: string
+	userDaily: boolean
+	recipient: boolean
+	burst: boolean
+}
+
+function formatRetryAtUtc(date: Date) {
+	const iso = date.toISOString()
+	return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`
+}
+
+function formatWindow(windowSeconds: number) {
+	if (windowSeconds % (60 * 60) === 0) {
+		const hours = windowSeconds / (60 * 60)
+		return hours === 1 ? '1 hour' : `${hours} hours`
+	}
+	if (windowSeconds % 60 === 0) {
+		const minutes = windowSeconds / 60
+		return minutes === 1 ? '1 minute' : `${minutes} minutes`
+	}
+	return windowSeconds === 1 ? '1 second' : `${windowSeconds} seconds`
+}
+
+function formatMinimumAccountAge() {
+	return formatWindow(emailDestinationMinimumAccountAgeMs / 1000)
+}
+
+function parseStoredTimestampMs(value: string) {
+	const trimmed = value.trim()
+	if (!trimmed) return null
+	const sqliteUtc =
+		/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z)?$/.exec(trimmed)
+	const normalized = sqliteUtc
+		? `${sqliteUtc[1]}T${sqliteUtc[2]}${sqliteUtc[3] ?? 'Z'}`
+		: trimmed
+	const ms = Date.parse(normalized)
+	return Number.isFinite(ms) ? ms : null
+}
+
+function requireDestinationRecipient(email: string) {
+	const validationError = getEmailDestinationValidationError(email)
+	if (validationError) {
+		throw new EmailDestinationError('invalid_email', validationError)
+	}
+	const canonical = normalizeEmailAddress(email)
+	if (!canonical) {
 		throw new EmailDestinationError(
-			'rate_limited',
-			'Too many destination verification requests. Please try again later.',
+			'invalid_email',
+			'Enter a valid email address.',
 		)
+	}
+	return canonical
+}
+
+function canonicalDestinationRecipient(email: string) {
+	return normalizeEmailAddress(email) ?? email.trim().toLowerCase()
+}
+
+async function destinationVerificationRecipientRateLimitKey(email: string) {
+	const digest = await sha256Hex(canonicalDestinationRecipient(email))
+	return `email-destination:recipient:${digest}`
+}
+
+async function readDestinationVerificationRetry(
+	db: D1Database,
+	key: string,
+	windowSeconds: number,
+) {
+	const nowSeconds = Math.floor(Date.now() / 1000)
+	const row = await db
+		.prepare(
+			`SELECT MIN(ts) AS oldest
+			 FROM _rate_limits
+			 WHERE key = ? AND ts > ?`,
+		)
+		.bind(key, nowSeconds - windowSeconds)
+		.first<{ oldest: number | null }>()
+	const oldest = row?.oldest
+	if (typeof oldest !== 'number') {
+		return {
+			retryAt: new Date((nowSeconds + windowSeconds) * 1000),
+			retryAfterSeconds: windowSeconds,
+		}
+	}
+	const retryAtSeconds = oldest + windowSeconds
+	return {
+		retryAt: new Date(retryAtSeconds * 1000),
+		retryAfterSeconds: Math.max(1, retryAtSeconds - nowSeconds),
 	}
 }
 
-async function refundDestinationVerificationRateLimit(
+async function consumeDestinationVerificationSlot(input: {
+	db: D1Database
+	key: string
+	config: { maxRequests: number; windowSeconds: number }
+	code: DestinationVerificationCapCode
+	message: (retryAtLabel: string) => string
+}) {
+	const rateLimit = await checkRateLimit(input.db, input.key, input.config)
+	if (rateLimit.allowed) return
+	const retry = await readDestinationVerificationRetry(
+		input.db,
+		input.key,
+		input.config.windowSeconds,
+	)
+	throw new EmailDestinationError(
+		input.code,
+		input.message(formatRetryAtUtc(retry.retryAt)),
+		{ retryAfterSeconds: retry.retryAfterSeconds },
+	)
+}
+
+async function assertDestinationVerificationAccountAge(
 	db: D1Database,
 	userId: number,
+	now = new Date(),
 ) {
-	await releaseRateLimit(db, destinationVerificationRateLimitKey(userId)).catch(
-		() => undefined,
+	const row = await db
+		.prepare(
+			`SELECT created_at
+			 FROM users
+			 WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
+		)
+		.bind(userId)
+		.first<{ created_at: string | null }>()
+	if (!row) {
+		throw new Error('Account was not found for destination verification.')
+	}
+	const createdMs = row.created_at
+		? parseStoredTimestampMs(row.created_at)
+		: null
+	const ageLabel = formatMinimumAccountAge()
+	if (createdMs == null) {
+		throw new EmailDestinationError(
+			'account_too_new',
+			`New accounts can add email destinations ${ageLabel} after signup, and this account has no readable creation time, so the verification email was not sent. The address is saved on the account. Contact support to confirm when the account was created, or ask them to mark the address verified.`,
+		)
+	}
+	const eligibleAtMs = createdMs + emailDestinationMinimumAccountAgeMs
+	if (now.getTime() >= eligibleAtMs) return
+	throw new EmailDestinationError(
+		'account_too_new',
+		`New accounts can add email destinations ${ageLabel} after signup, so the verification email was not sent. The address is saved on the account. Try again after ${formatRetryAtUtc(new Date(eligibleAtMs))}. If you need it sooner, contact support and ask them to mark it verified.`,
+		{
+			retryAfterSeconds: Math.max(
+				1,
+				Math.ceil((eligibleAtMs - now.getTime()) / 1000),
+			),
+		},
 	)
+}
+
+async function acquireDestinationVerificationAllowance(input: {
+	db: D1Database
+	userId: number
+	recipientEmail: string
+}) {
+	const allowance: DestinationVerificationAllowance = {
+		recipientEmail: input.recipientEmail,
+		userDaily: false,
+		recipient: false,
+		burst: false,
+	}
+	try {
+		await consumeDestinationVerificationSlot({
+			db: input.db,
+			key: emailDestinationUserDailyRateLimitKey(input.userId),
+			config: emailDestinationUserDailyCap,
+			code: 'user_daily_cap',
+			message: (retryAtLabel) =>
+				`Destination verification email was not sent. This account has reached the limit of ${emailDestinationUserDailyCap.maxRequests} destination verification emails per rolling ${formatWindow(emailDestinationUserDailyCap.windowSeconds)}. The address is saved on the account. Try again after ${retryAtLabel}. Contact support if it needs to be verified before then.`,
+		})
+		allowance.userDaily = true
+		await consumeDestinationVerificationSlot({
+			db: input.db,
+			key: await destinationVerificationRecipientRateLimitKey(
+				input.recipientEmail,
+			),
+			config: emailDestinationRecipientDailyCap,
+			code: 'recipient_daily_cap',
+			message: (retryAtLabel) =>
+				`Destination verification email was not sent to this address. It has already received ${emailDestinationRecipientDailyCap.maxRequests} destination verification emails in the last ${formatWindow(emailDestinationRecipientDailyCap.windowSeconds)}, the maximum across all accounts. The address is saved on the account. Use a different address, or try again after ${retryAtLabel}. If you did not request these emails, contact support.`,
+		})
+		allowance.recipient = true
+		await consumeDestinationVerificationSlot({
+			db: input.db,
+			key: emailDestinationUserBurstRateLimitKey(input.userId),
+			config: emailDestinationRateLimitConfig,
+			code: 'rate_limited',
+			message: (retryAtLabel) =>
+				`Destination verification email was not sent. You can request at most ${emailDestinationRateLimitConfig.maxRequests} every ${formatWindow(emailDestinationRateLimitConfig.windowSeconds)}. The address is saved on the account. Try again after ${retryAtLabel}.`,
+		})
+		allowance.burst = true
+		return allowance
+	} catch (error) {
+		await refundDestinationVerificationAllowance(
+			input.db,
+			input.userId,
+			allowance,
+		)
+		throw error
+	}
+}
+
+async function refundDestinationVerificationAllowance(
+	db: D1Database,
+	userId: number,
+	allowance: DestinationVerificationAllowance,
+) {
+	if (allowance.userDaily) {
+		await releaseRateLimit(
+			db,
+			emailDestinationUserDailyRateLimitKey(userId),
+		).catch(() => undefined)
+	}
+	if (allowance.recipient) {
+		await releaseRateLimit(
+			db,
+			await destinationVerificationRecipientRateLimitKey(
+				allowance.recipientEmail,
+			),
+		).catch(() => undefined)
+	}
+	if (allowance.burst) {
+		await releaseRateLimit(
+			db,
+			emailDestinationUserBurstRateLimitKey(userId),
+		).catch(() => undefined)
+	}
 }
 
 export type VerifyEmailDestinationReason =
@@ -283,35 +525,26 @@ export async function createEmailDestinationVerification(input: {
 	email: string
 	requestUrl: string | URL
 }): Promise<{ destination: EmailNotificationDestination; created: boolean }> {
-	await consumeDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
-	let added: {
-		destination: EmailNotificationDestination
-		created: boolean
-	}
+	const recipientEmail = requireDestinationRecipient(input.email)
+	// Save the row before the mail gates. A blocked first add must still leave
+	// a destination adminEmailDestinationVerify can mark verified without sending.
+	const added = await addEmailNotificationDestination({
+		db: input.env.APP_DB,
+		dbUserId: input.userId,
+		email: recipientEmail,
+	})
+	await assertDestinationVerificationAccountAge(input.env.APP_DB, input.userId)
+	const allowance = await acquireDestinationVerificationAllowance({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		recipientEmail,
+	})
 	try {
-		added = await addEmailNotificationDestination({
-			db: input.env.APP_DB,
-			dbUserId: input.userId,
-			email: input.email,
-		})
-	} catch (error) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
-		throw error
-	}
-
-	let minted: { token: string; tokenHash: string }
-	try {
-		minted = await insertDestinationVerificationToken({
+		const minted = await insertDestinationVerificationToken({
 			db: input.env.APP_DB,
 			userId: input.userId,
 			destinationId: added.destination.id,
 		})
-	} catch (error) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
-		throw error
-	}
-
-	try {
 		await sendDestinationVerificationEmail({
 			env: input.env,
 			userId: input.userId,
@@ -334,12 +567,15 @@ export async function createEmailDestinationVerification(input: {
 				}
 			},
 		})
+		return added
 	} catch (error) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
+		await refundDestinationVerificationAllowance(
+			input.env.APP_DB,
+			input.userId,
+			allowance,
+		)
 		throw error
 	}
-
-	return added
 }
 
 export async function resendEmailDestinationVerification(input: {
@@ -348,7 +584,6 @@ export async function resendEmailDestinationVerification(input: {
 	destinationId: string
 	requestUrl: string | URL
 }): Promise<EmailNotificationDestination> {
-	await consumeDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
 	const row = await input.env.APP_DB.prepare(
 		`SELECT id, email, verified_at, is_default
 		 FROM email_notification_destinations
@@ -362,13 +597,18 @@ export async function resendEmailDestinationVerification(input: {
 			is_default: number
 		}>()
 	if (!row) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
 		throw new Error('Email destination was not found.')
 	}
 	if (row.verified_at) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
 		throw new Error('That address is already verified.')
 	}
+
+	await assertDestinationVerificationAccountAge(input.env.APP_DB, input.userId)
+	const allowance = await acquireDestinationVerificationAllowance({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		recipientEmail: canonicalDestinationRecipient(row.email),
+	})
 
 	try {
 		const minted = await insertDestinationVerificationToken({
@@ -393,7 +633,11 @@ export async function resendEmailDestinationVerification(input: {
 			},
 		})
 	} catch (error) {
-		await refundDestinationVerificationRateLimit(input.env.APP_DB, input.userId)
+		await refundDestinationVerificationAllowance(
+			input.env.APP_DB,
+			input.userId,
+			allowance,
+		)
 		throw error
 	}
 

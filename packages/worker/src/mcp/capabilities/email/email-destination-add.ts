@@ -16,7 +16,7 @@ export const emailDestinationAddCapability = defineDomainCapability(
 		name: 'emailDestinationAdd',
 		orgPermission: 'email:write',
 		description:
-			'Start verification for an additional email destination. Mail comes from your platform address; destinations expand the allowed to set. The address cannot receive mail until the owner opens the verification link. Re-adding an unverified address resends the link. Cap is 5 extras besides the account email.',
+			'Start verification for an additional email destination. Mail comes from your platform address; destinations expand the allowed to set. The address cannot receive mail until the owner opens the verification link. Re-adding an unverified address resends the link. Cap is 5 extras besides the account email. The account must be at least 24 hours old. Verification mail is limited to 3 requests every 15 minutes, 10 per user per rolling 24 hours, and 3 per recipient address per rolling 24 hours across all accounts. A blocked send names the limit and the UTC time to retry, and still saves the address so a later retry or adminEmailDestinationVerify can finish it. Use a different address when the recipient cap is hit, or contact support if the account needs an address sooner.',
 		keywords: ['email', 'destination', 'add', 'verify', 'send'],
 		readOnly: false,
 		idempotent: false,

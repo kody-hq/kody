@@ -32,7 +32,7 @@ function createOwnerDb() {
 	}
 }
 
-test('admin mark destination verified covers the operator unblock path', async () => {
+test('admin mark destination verified ignores the new-account verification wait', async () => {
 	const { sqlite, db, stableUserId } = createOwnerDb()
 	const added = await addEmailNotificationDestination({
 		db,

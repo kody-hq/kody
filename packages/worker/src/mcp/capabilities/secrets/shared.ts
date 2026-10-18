@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { credentialInjectSchema } from '#worker/credentials/credential-fields.ts'
+import {
+	credentialFillPlacementSchema,
+	credentialInjectSchema,
+} from '#worker/credentials/credential-fields.ts'
 import {
 	type ListedSecret,
 	type SecretMetadata,
@@ -23,6 +26,12 @@ export const secretMetadataSchema = z.object({
 		.describe('Credential kind, returned when this call set opt-in fields.'),
 	provider: z.string().nullable().optional(),
 	inject: credentialInjectSchema.optional(),
+	placement: credentialFillPlacementSchema
+		.nullable()
+		.optional()
+		.describe(
+			'Where placeholders may be filled. Null means anywhere. Returned when this call set opt-in fields.',
+		),
 })
 
 export function toSecretCapabilityOutput(secret: SecretMetadata) {

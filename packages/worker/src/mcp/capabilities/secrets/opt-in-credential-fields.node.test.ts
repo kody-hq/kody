@@ -105,7 +105,7 @@ async function setup() {
 		await db
 			.prepare(
 				`SELECT e.id, e.kind, e.allowed_hosts, e.config_json, e.provider, e.inject_json,
-					e.encrypted_value, e.updated_at
+					e.placement_json, e.encrypted_value, e.updated_at
 				 FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
 				 WHERE b.user_id = ? AND b.scope = 'user' AND e.name = ? AND e.deleted_at IS NULL`,
 			)
@@ -117,6 +117,7 @@ async function setup() {
 				config_json: string | null
 				provider: string | null
 				inject_json: string
+				placement_json: string | null
 				encrypted_value: string
 				updated_at: string
 			}>()
@@ -337,6 +338,7 @@ test('credentialUpdate sets provider and inject by credential id for a writer on
 		name: 'resendKey',
 		provider: 'resend',
 		inject: { kind: 'query', param: 'api_key' },
+		placement: null,
 	})
 	await expect(
 		credentialUpdateCapability.handler(
@@ -545,4 +547,27 @@ test('every value write path checks an opt-in credential against its stored kind
 		t.owner,
 	)
 	expect((await t.entry('deploy-hook'))?.kind).toBe('url')
+})
+
+test('placement updates an existing Key without a value, audited, and leaves it null by default', async () => {
+	const t = await setup()
+	await t.set({ name: 'apiKey', value: 'sk_value' })
+	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
+	const saved = await t.set({
+		name: 'apiKey',
+		placement: { headers: true },
+	})
+	expect(saved).toMatchObject({
+		placement: { headers: true },
+	})
+	expect(JSON.parse((await t.entry('apiKey'))!.placement_json!)).toEqual({
+		headers: true,
+	})
+	const audits = await t.audits('credential.fields_updated')
+	expect(audits[0]?.details).toMatchObject({
+		placement: { before: null, after: { headers: true } },
+	})
+	const cleared = await t.set({ name: 'apiKey', placement: null })
+	expect(cleared).toMatchObject({ placement: null })
+	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
 })

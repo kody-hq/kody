@@ -23,14 +23,24 @@ export type EmailDestinationErrorCode =
 	| 'at_cap'
 	| 'cannot_remove_identity'
 	| 'rate_limited'
+	| 'user_daily_cap'
+	| 'recipient_daily_cap'
+	| 'account_too_new'
 
 export class EmailDestinationError extends Error {
 	readonly code: EmailDestinationErrorCode
+	/** Seconds until the caller can retry, when this error is a temporary cap. */
+	readonly retryAfterSeconds: number | null
 
-	constructor(code: EmailDestinationErrorCode, message: string) {
+	constructor(
+		code: EmailDestinationErrorCode,
+		message: string,
+		options?: { retryAfterSeconds?: number },
+	) {
 		super(message)
 		this.name = 'EmailDestinationError'
 		this.code = code
+		this.retryAfterSeconds = options?.retryAfterSeconds ?? null
 	}
 }
 

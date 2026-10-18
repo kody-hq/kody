@@ -86,6 +86,13 @@ function outboundMessage(overrides: Record<string, unknown>) {
 	}
 }
 
+test('emailReply description tells agents to release quarantined mail before replying', () => {
+	expect(emailReplyCapability.description).toContain(
+		'quarantined_inbound_reply',
+	)
+	expect(emailReplyCapability.description).toContain('emailMessageClassify')
+})
+
 test('emailReply gates unverified accounts, surfaces failed delivery, and forwards attachments', async () => {
 	await expect(
 		emailReplyCapability.handler(

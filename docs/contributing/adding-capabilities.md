@@ -216,6 +216,8 @@ touches a user mailbox, sender identity, or plan entitlement, and it carries its
 own per-sender daily cap. Mail from `kody@` sets Reply-To to `support@<apex>`
 unless `reply_to` is provided. User mail keeps its own boundary: `emailSend` is
 notify-self (verified email destinations only) and `emailReply` is reply-only.
+`emailReply` refuses quarantined inbound mail (`quarantined_inbound_reply`)
+until `emailMessageClassify` releases it (`classification: "accepted"`).
 
 Platform feedback list/get is the only admin capability surface that reviews
 user-authored private text, and only after explicit approval. Community activity

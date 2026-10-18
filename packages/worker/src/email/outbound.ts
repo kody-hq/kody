@@ -31,6 +31,7 @@ import { resolveAcceptableNotificationEmails } from './destinations.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import { mailboxRpc, type MailboxEnv } from './mailbox-client.ts'
 import { mailboxMessageToEmailMessageRecord } from './mailbox-record-mappers.ts'
+import { QuarantinedInboundReplyError } from './quarantined-inbound-reply.ts'
 import {
 	type MailboxAttachmentInput,
 	type MailboxDeliveryEventInput,
@@ -140,7 +141,8 @@ export type EmailSendInput = {
 	| {
 			/**
 			 * Reply policy (emailReply): the recipient is derived from the
-			 * stored inbound message; callers never supply it.
+			 * stored inbound message; callers never supply it. A quarantined
+			 * original is refused before quota or provider send.
 			 */
 			recipientPolicy: 'reply'
 			replyToMessageId: string
@@ -572,6 +574,20 @@ export async function sendOutboundEmail(
 				: null
 			if (!replyOriginal || replyOriginal.direction !== 'inbound') {
 				throw new Error('Replying requires a stored inbound message.')
+			}
+			// Before recipient derivation, daily send quota, storage, or the
+			// provider. Quarantined mail is often spoofed; a reply backscatters.
+			switch (replyOriginal.classification) {
+				case 'quarantined':
+					throw new QuarantinedInboundReplyError()
+				case 'accepted':
+					break
+				default: {
+					const unexpected: never = replyOriginal.classification
+					throw new Error(
+						`Unexpected inbound classification: ${String(unexpected)}`,
+					)
+				}
 			}
 			original = replyOriginal
 			to = [deriveReplyRecipient(replyOriginal)]

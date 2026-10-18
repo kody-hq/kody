@@ -99,6 +99,8 @@ export type SaveSecretCredential = {
 	configJson: string | null
 	provider: string | null
 	injectJson: string
+	/** Null means anywhere (placeholders may fill any request part). */
+	placementJson: string | null
 	audit: {
 		writer: OrgAuditWriter
 		event: (credentialId: string) => OrgAuditOutboxEvent
@@ -277,6 +279,7 @@ export async function saveSecret(
 						config_json: credential.configJson,
 						provider: credential.provider,
 						inject_json: credential.injectJson,
+						placement_json: credential.placementJson,
 					},
 				}),
 			],

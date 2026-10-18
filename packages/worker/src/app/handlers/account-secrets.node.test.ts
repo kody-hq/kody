@@ -1333,6 +1333,7 @@ test('account secrets save clears an opt-in credential provider sent empty', asy
 		loginExchange: null,
 		provider: 'slack',
 		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+		placement: null,
 	})
 	const save = (provider?: string) =>
 		createHandler()(
@@ -1464,6 +1465,7 @@ test('account secrets save keeps an opt-in credential hosts when the form sends 
 		loginExchange: null,
 		provider: null,
 		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+		placement: null,
 	})
 	mockModule.setSecretAllowedHosts.mockClear()
 	const response = await createHandler()(
@@ -1494,6 +1496,7 @@ test('account secrets save refuses to re-host an opt-in credential without its k
 			name: 'Authorization',
 			format: 'Bearer {value}',
 		},
+		placement: null,
 	}
 	const save = (body: Record<string, unknown>) =>
 		createHandler()(

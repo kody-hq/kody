@@ -8,7 +8,6 @@ import {
 	replaceWalkthroughHost,
 	walkthroughHostMarkUrl,
 	walkthroughHostSlotLabel,
-	type WalkthroughHost,
 	type WalkthroughHostPick,
 	type WalkthroughHostSlot,
 } from '#universal/walkthrough-hosts.ts'
@@ -18,8 +17,8 @@ import { colors, radius } from '#universal/styles/tokens.ts'
  * Story setup for the How Kody works transcript and the homepage loop.
  * `sentence` is the guide lead. `picker` is the homepage chooser.
  * Changing a select updates conversation marks through `onHostsChange`.
- * Customizable select is a progressive enhancement; other browsers keep
- * a native select styled as the same inline chip.
+ * Native option markup must survive HTML parsing in every supported browser.
+ * The selected agent mark sits outside the select for the same reason.
  *
  * Keep browser translators from replacing the live select and label nodes
  * while host selection updates the transcript (KODY-7N).
@@ -70,37 +69,45 @@ function renderHostSelect(
 	const selected = hosts[slot]
 	const options = listWalkthroughHostOptions(hosts, slot)
 	return (
-		<select
-			aria-label={label}
-			value={selected.id}
-			translate="no"
-			className="notranslate"
-			css={selectCss}
-			onChange={(event) => onChange(slot, event.currentTarget.value)}
+		<span
+			css={{
+				display: 'inline-block',
+				position: 'relative',
+				verticalAlign: 'middle',
+				maxWidth: '100%',
+			}}
 		>
-			<button type="button">{renderHostOption(selected)}</button>
-			{options.map((host) => (
-				<option key={host.id} value={host.id}>
-					{renderHostOption(host)}
-				</option>
-			))}
-		</select>
-	)
-}
-
-function renderHostOption(host: WalkthroughHost) {
-	return (
-		<span className="walkthrough-host-option">
 			<span
+				css={{
+					...optionMarkCss,
+					position: 'absolute',
+					left: '0.65em',
+					top: '50%',
+					transform: 'translateY(-50%)',
+					pointerEvents: 'none',
+				}}
 				className="walkthrough-host-mark"
 				style={
 					{
-						'--chip-icon': `url("${publicAsset(walkthroughHostMarkUrl(host))}")`,
+						'--chip-icon': `url("${publicAsset(walkthroughHostMarkUrl(selected))}")`,
 					} as CSSProperties
 				}
 				aria-hidden="true"
-			></span>
-			{host.label}
+			/>
+			<select
+				aria-label={label}
+				value={selected.id}
+				translate="no"
+				className="notranslate"
+				css={selectCss}
+				onChange={(event) => onChange(slot, event.currentTarget.value)}
+			>
+				{options.map((host) => (
+					<option key={host.id} value={host.id}>
+						{host.label}
+					</option>
+				))}
+			</select>
 		</span>
 	)
 }
@@ -131,12 +138,6 @@ const nativeSelectCss = {
 	backgroundSize: '0.75em',
 } satisfies CSSObject
 
-const optionInnerCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	gap: '0.35em',
-} satisfies CSSObject
-
 const optionMarkCss = {
 	width: '0.85em',
 	height: '0.85em',
@@ -152,18 +153,15 @@ const optionMarkCss = {
 	WebkitMaskRepeat: 'no-repeat',
 } satisfies CSSObject
 
-// Emit all option styles before the select. Inline Emotion style nodes inside
-// a customizable select cannot be parsed safely by Cloudflare HTMLRewriter.
+// Keep the select native, including in browsers that support customizable selects.
 const selectCss = {
-	'& .walkthrough-host-option': optionInnerCss,
-	'& .walkthrough-host-mark': optionMarkCss,
-	display: 'inline-flex',
-	alignItems: 'center',
+	...nativeSelectCss,
+	display: 'inline-block',
 	verticalAlign: 'middle' as const,
 	maxWidth: '100%',
 	minHeight: '24px',
 	margin: '0 0.15em',
-	padding: '0.15em 0.5em',
+	padding: '0.15em 1.35em 0.15em 1.65em',
 	border: `1px solid ${colors.border}`,
 	borderRadius: radius.full,
 	backgroundColor: colors.surface,
@@ -176,50 +174,4 @@ const selectCss = {
 		borderColor: colors.primary,
 		color: colors.primaryText,
 	},
-	'@supports (appearance: base-select)': {
-		appearance: 'base-select' as CSSObject['appearance'],
-		'& > button': {
-			display: 'inline-flex',
-			alignItems: 'center',
-			minHeight: '24px',
-			margin: 0,
-			padding: '0.15em 0',
-			border: 'none',
-			background: 'transparent',
-			color: 'inherit',
-			font: 'inherit',
-			fontWeight: 'inherit',
-			lineHeight: 'inherit',
-			cursor: 'pointer',
-		},
-		'&::picker-icon': {
-			width: '0.7em',
-			height: '0.7em',
-			alignSelf: 'center',
-			translate: '0 -0.12em',
-			color: 'currentColor',
-			opacity: 0.7,
-		},
-		'&::picker(select)': {
-			appearance: 'base-select' as CSSObject['appearance'],
-			marginTop: '0.35rem',
-			padding: '0.35rem',
-			border: `1px solid ${colors.border}`,
-			borderRadius: radius.lg,
-			backgroundColor: colors.surface,
-			color: colors.text,
-		},
-		'& option': {
-			padding: '0.4rem 0.55rem',
-			borderRadius: radius.md,
-			cursor: 'pointer',
-		},
-		'& option:hover, & option:checked': {
-			backgroundColor: colors.primarySoftest,
-		},
-		'& option::checkmark': {
-			display: 'none',
-		},
-	},
-	'@supports not (appearance: base-select)': nativeSelectCss,
 } satisfies CSSObject

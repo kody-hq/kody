@@ -36,10 +36,11 @@ async function createOwnerEnv() {
 	const stableUserId = testStableUserIdFromEmail('owner@example.com')
 	sqlite.exec(`
 		INSERT INTO users (
-			id, username, email, stable_user_id, password_hash, email_verified_at
+			id, username, email, stable_user_id, password_hash, email_verified_at,
+			created_at
 		) VALUES (
 			1, 'owner', 'owner@example.com', ${quoteSqlString(stableUserId)},
-			'test-password-hash', CURRENT_TIMESTAMP
+			'test-password-hash', CURRENT_TIMESTAMP, datetime('now', '-48 hours')
 		);
 	`)
 	const env = {

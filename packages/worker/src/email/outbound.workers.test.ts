@@ -17,6 +17,11 @@ import {
 	maxOutboundEmailAttachmentTotalBytes,
 	sendOutboundEmail,
 } from './outbound.ts'
+import {
+	quarantinedInboundReplyErrorCode,
+	quarantinedInboundReplyMessage,
+	QuarantinedInboundReplyError,
+} from './quarantined-inbound-reply.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { createMswWorkerServer } from '#worker/test-support/msw-worker-server.ts'
@@ -168,11 +173,13 @@ async function writeInboundMailboxMessage(
 		toAddresses: Array<string>
 		subject: string
 		messageIdHeader: string
+		classification?: 'accepted' | 'quarantined'
+		classificationReason?: string | null
+		updatedAt?: string
 	},
 ) {
 	const now = new Date().toISOString()
 	const message = baseMessage(ownerIdFromStored(userId), {
-		...input,
 		inboxId: null,
 		fromAddress: 'recipient@example.com',
 		envelopeFrom: 'recipient@example.com',
@@ -180,6 +187,7 @@ async function writeInboundMailboxMessage(
 		receivedAt: now,
 		createdAt: now,
 		updatedAt: now,
+		...input,
 	})
 	await mailboxRpc({
 		env,
@@ -567,6 +575,92 @@ test('sendOutboundEmail skips REST fallback when the binding succeeds or validat
 	await expect(
 		sendAs(await seedAccount(), { env: restEnv(), text: '   ' }),
 	).rejects.toThrow('Email text or HTML body is required.')
+})
+
+test('sendOutboundEmail refuses replies to quarantined inbound mail until it is released', async () => {
+	await ensureUsageRollupsTestSchema(env.APP_DB)
+	const account = await seedAccount()
+	let providerSends = 0
+	const sendEnv = bindingEnv(async () => {
+		providerSends += 1
+		return { messageId: `provider-quarantine-${providerSends}` }
+	})
+	const quarantined = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'You won',
+		messageIdHeader: '<quarantined@example.com>',
+		classification: 'quarantined',
+		classificationReason: 'DMARC failed.',
+	})
+	const sendsBefore = await readDailyEmailSendCounter(account.userId)
+
+	const refused = await rejection(
+		sendAs(account, {
+			env: sendEnv,
+			recipientPolicy: 'reply',
+			replyToMessageId: quarantined.id,
+			subject: 'Re: You won',
+			text: 'This should not send.',
+		}),
+	)
+	expect(refused).toBeInstanceOf(QuarantinedInboundReplyError)
+	expect(refused).toMatchObject({
+		code: quarantinedInboundReplyErrorCode,
+		message: quarantinedInboundReplyMessage,
+	})
+	expect(providerSends).toBe(0)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)
+	expect(await listOutboundMessages(account.userId)).toMatchObject({
+		messages: [],
+	})
+
+	const accepted = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Real note',
+		messageIdHeader: '<accepted@example.com>',
+		classification: 'accepted',
+	})
+	const acceptedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: accepted.id,
+		subject: 'Re: Real note',
+		text: 'Thanks.',
+	})
+	expect(acceptedReply.status).toBe('sent')
+	expect(providerSends).toBe(1)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore + 1)
+
+	const held = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Maybe real',
+		messageIdHeader: '<held@example.com>',
+		classification: 'quarantined',
+		classificationReason: 'Sender matched quarantine rule.',
+		updatedAt: '2026-07-01T12:00:00.000Z',
+	})
+	const released = await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).setMessageClassification({
+		ownerId: ownerIdFromStored(account.userId),
+		messageId: held.id,
+		classification: 'accepted',
+		classificationReason: null,
+		updatedAt: '2026-07-01T12:00:01.000Z',
+	})
+	expect(released).toEqual({ status: 'accepted' })
+	const releasedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: held.id,
+		subject: 'Re: Maybe real',
+		text: 'Released, so this can send.',
+	})
+	expect(releasedReply.status).toBe('sent')
+	expect(releasedReply.message.toAddresses).toEqual(['recipient@example.com'])
+	expect(providerSends).toBe(2)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore + 2)
 })
 
 test('sendOutboundEmail preserves reply headers and records failed fallback sends', async () => {

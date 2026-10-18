@@ -66,7 +66,16 @@ Use the MCP `email` domain:
   message is sent from your platform address (`{username}@<platform domain>`) on
   the same Cloudflare Email binding path as `emailSend` / `emailReply` — not
   from the apex transactional sender. Unused links from earlier sends stay valid
-  until they expire or the address is verified.
+  until they expire or the address is verified. The account must be at least 24
+  hours old (`users.created_at`). Verification mail is also limited to 3
+  requests every 15 minutes per account, 10 per account per rolling 24 hours,
+  and 3 per recipient address per rolling 24 hours across all accounts. A
+  blocked request names which limit was hit and the UTC time to retry. The
+  address is still saved, so a later retry or `adminEmailDestinationVerify` can
+  finish it without another first-time add. Use a different address when the
+  recipient cap is hit. Contact support if a new account needs a destination
+  sooner. `adminEmailDestinationVerify` marks a saved address verified without
+  sending mail, so it is not subject to these caps.
 - `emailDestinationSetDefault` picks the destination used when `emailSend` omits
   `to`.
 - `emailDestinationRemove` removes an extra destination. The identity email
@@ -88,7 +97,13 @@ Use the MCP `email` domain:
   `{ filename, content_type, content_base64 }`) are sent with the reply and
   stored as `external` attachments readable later via `emailAttachmentGet`. With
   attachments, the whole message (bodies plus decoded attachment bytes) must fit
-  the plan's `email_message_bytes` per-message cap.
+  the plan's `email_message_bytes` per-message cap. A quarantined original is
+  refused before any send or daily send quota is used
+  (`quarantined_inbound_reply`): replies to quarantined mail usually reach
+  spoofed senders. Release it first with `emailMessageClassify`
+  (`classification: "accepted"`) or Not spam on `/@<slug>/-/email`, then reply.
+  The same refusal applies to package runtime `email.reply`, which calls
+  `emailReply`.
 - `emailAttachmentGet` returns stored attachment bytes by attachment id.
 - `emailMessageList` lists stored inbound and outbound messages. Rows include
   `classification` and `classification_reason` and omit parsed bodies; pass an
@@ -177,8 +192,10 @@ Inbound storage is quota-gated per user:
   addresses they added and verified). Kody is not an open relay: destinations
   only expand the allowed `to` set. `emailReply` is the only way for a user
   account to address external recipients, and only recipients taken from stored
-  inbound mail. Admins have a separate operator channel (`adminSystemEmailSend`)
-  that speaks for the platform rather than for any user account: it sends from a
+  inbound mail that is not quarantined. A quarantined original is refused
+  (`quarantined_inbound_reply`) before the daily send quota or the provider is
+  touched. Admins have a separate operator channel (`adminSystemEmailSend`) that
+  speaks for the platform rather than for any user account: it sends from a
   reserved system sender, uses no user mailbox or plan entitlement, is
   audit-logged, and is capped per sender per UTC day.
 - Outbound sends consume a per-day entitlement. The `max` plan allows 10,000
@@ -376,7 +393,10 @@ Quarantined stored inbound email dispatches `email.message.quarantined` instead
 of `email.message.received`. The payload shape matches
 `EmailMessageReceivedEvent` with `event: 'email.message.quarantined'`. Packages
 that should react to spam or suspect mail subscribe to this topic; packages that
-only want trusted inbound mail stay on `email.message.received`.
+only want trusted inbound mail stay on `email.message.received`. `email.reply`
+and `emailReply` refuse a quarantined message (`quarantined_inbound_reply`)
+until it is released with `emailMessageClassify` (`classification: "accepted"`)
+or Not spam on `/@<slug>/-/email`.
 
 ## `email.message.delivery.updated` package subscription
 
