@@ -62,7 +62,7 @@ function review(
 }
 
 const rateLimitMessage = (retryAfterSeconds: number) =>
-	`Platform feedback is limited to 10 submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds.`
+	`Platform feedback is limited to 10 submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds. For urgent issues, email support@kody.codes.`
 
 test('platform feedback workflow submits, lists, reads, transitions, and preserves submitter attribution', async () => {
 	const { sqlite, db, queries } = createPlatformFeedbackDb()
@@ -338,7 +338,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	await expect(
 		submit(queueLimited.db, 'queue-limited-user', { category: 'bug' }),
 	).rejects.toThrow(
-		'You already have 100 open or triaged platform feedback submissions.',
+		'You already have 100 open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.',
 	)
 	queueLimited.sqlite
 		.prepare(

@@ -229,6 +229,7 @@ export async function submitPlatformFeedback(input: {
 		)
 		if (limitCounts.rollingCount >= submissionRateLimit) {
 			throw new PlatformFeedbackSubmissionRateLimitError(
+				submissionRateLimit,
 				getSubmissionRateLimitRetryAfterSeconds(
 					limitCounts.oldestCreatedAt,
 					now,
