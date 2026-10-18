@@ -403,6 +403,15 @@ test('destination verification rejects a bounce after a newer delivered event', 
 			senderBlockResponse,
 		),
 	).toEqual({ outcome: 'stale' })
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'bounced',
+			'2026-10-17T18:30:00.000Z',
+			senderBlockResponse,
+		),
+	).toEqual({ outcome: 'stale' })
 })
 
 test('password reset rejects a bounce after a newer delivered event', async () => {

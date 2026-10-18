@@ -241,56 +241,35 @@ function isMissingDeliveryCursor(error: unknown) {
 	)
 }
 
-function isOlderTransactionalEvent(
-	existingAt: string | null | undefined,
-	eventTimestamp: string,
-) {
-	if (!existingAt) return false
-	const existingAtMs = Date.parse(existingAt)
-	const eventAtMs = Date.parse(eventTimestamp)
-	return (
-		Number.isFinite(existingAtMs) &&
-		Number.isFinite(eventAtMs) &&
-		eventAtMs < existingAtMs
-	)
-}
-
-async function loadTransactionalDeliveryCursor(input: {
-	db: D1Database
-	providerMessageId: string
-}) {
-	try {
-		return await input.db
-			.prepare(
-				`SELECT last_status AS lastStatus, last_status_at AS lastStatusAt
-				 FROM transactional_email_delivery_index
-				 WHERE provider_message_id = ?`,
-			)
-			.bind(input.providerMessageId)
-			.first<{ lastStatus: string | null; lastStatusAt: string | null }>()
-	} catch (error) {
-		if (isMissingDeliveryCursor(error)) return null
-		throw error
-	}
-}
-
-async function rememberTransactionalDeliveryCursor(input: {
+/**
+ * Claim the per-message delivery cursor only when this event is strictly
+ * newer than the stored cursor (or the cursor is empty). Equal timestamps
+ * lose so a bounce cannot re-arm holds after a delivered event that shares
+ * the same provider clock. The conditional UPDATE is the race guard when
+ * queue consumers run concurrently for the same provider message id.
+ */
+async function claimTransactionalDeliveryCursor(input: {
 	db: D1Database
 	providerMessageId: string
 	status: string
 	at: string
-}) {
+}): Promise<'recorded' | 'stale' | 'unavailable'> {
 	try {
-		await input.db
+		const result = await input.db
 			.prepare(
 				`UPDATE transactional_email_delivery_index
 				 SET last_status = ?, last_status_at = ?
-				 WHERE provider_message_id = ?`,
+				 WHERE provider_message_id = ?
+				   AND (
+				     last_status_at IS NULL
+				     OR last_status_at < ?
+				   )`,
 			)
-			.bind(input.status, input.at, input.providerMessageId)
+			.bind(input.status, input.at, input.providerMessageId, input.at)
 			.run()
+		return Number(result.meta.changes ?? 0) > 0 ? 'recorded' : 'stale'
 	} catch (error) {
-		if (isMissingDeliveryCursor(error)) return
+		if (isMissingDeliveryCursor(error)) return 'unavailable'
 		throw error
 	}
 }
@@ -328,19 +307,15 @@ export async function recordTransactionalEmailDeliveryEvent(input: {
 		// delivery cursor still rejects out-of-order provider events so a
 		// late bounce after delivered cannot re-arm recipient cooldowns or
 		// rejecting-provider holds.
-		const cursor = await loadTransactionalDeliveryCursor({
-			db: input.db,
-			providerMessageId: input.providerMessageId,
-		})
-		if (isOlderTransactionalEvent(cursor?.lastStatusAt, input.eventTimestamp)) {
-			return { outcome: 'stale' }
-		}
-		await rememberTransactionalDeliveryCursor({
+		const claim = await claimTransactionalDeliveryCursor({
 			db: input.db,
 			providerMessageId: input.providerMessageId,
 			status: input.deliveryStatus,
 			at: input.eventTimestamp,
 		})
+		if (claim === 'stale') {
+			return { outcome: 'stale' }
+		}
 		return {
 			outcome: 'recorded',
 			event: {
