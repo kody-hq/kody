@@ -420,30 +420,6 @@ async function auditDeletion(input: {
 	})
 }
 
-async function releaseClaimedHandle(input: {
-	db: D1Database
-	handle: string
-	personId: string
-	personalOrgId: string
-}) {
-	await input.db
-		.prepare(
-			`DELETE FROM handles
-			 WHERE handle = ?
-			   AND (
-			     user_id = ? OR user_id = ? OR org_id = ? OR org_id = ?
-			   )`,
-		)
-		.bind(
-			input.handle,
-			input.personId,
-			input.personalOrgId,
-			input.personId,
-			input.personalOrgId,
-		)
-		.run()
-}
-
 async function loadTombstonedDeletionTarget(
 	db: D1Database,
 	stableUserId: string,
@@ -635,12 +611,6 @@ export async function executeAdminAccountHardDelete(input: {
 			env: input.env,
 			dbUserId: target.dbUserId,
 			stableUserId: target.stableUserId,
-		})
-		await releaseClaimedHandle({
-			db: input.env.APP_DB,
-			handle: target.handle,
-			personId: target.stableUserId,
-			personalOrgId: target.personalOrgId,
 		})
 	} catch (error) {
 		if (demotedAdmin) {
