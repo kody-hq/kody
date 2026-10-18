@@ -1,4 +1,4 @@
-import type { ClientErrorContext } from './sentry-client.ts'
+import { type ClientErrorContext } from './sentry-client.ts'
 import * as Sentry from '@sentry/browser'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import { filterBrowserSentryEvent } from '#client/sentry-browser-filters.ts'
@@ -95,11 +95,14 @@ export function captureBrowserException(
 ) {
 	Sentry.captureException(
 		error,
-		context?.componentStack || context?.documentMeta
+		context?.componentStack ||
+			context?.documentMeta ||
+			context?.documentHydration
 			? {
 					extra: {
 						componentStack: context.componentStack,
 						documentMeta: context.documentMeta,
+						documentHydration: context.documentHydration,
 					},
 				}
 			: undefined,
