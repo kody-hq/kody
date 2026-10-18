@@ -48,8 +48,15 @@ test('delivery queue handles terminal outcomes without a D1-to-Mailbox graph mir
 			messageId: 'provider-1',
 			delivery: { status: 'delivered' },
 		},
+		metadata: {
+			eventTimestamp: '2026-07-17T20:00:00.000Z',
+		},
 	}
-	const message = { id: 'message-1', userId: ownerIdFromStored('user-1') }
+	const message = {
+		id: 'message-1',
+		userId: ownerIdFromStored('user-1'),
+		deliveryStatusAt: '2026-07-17T20:00:00.000Z',
+	}
 	const transactionalEvent = {
 		userId: 9,
 		status: 'bounced',
@@ -196,6 +203,8 @@ test('delivery queue handles terminal outcomes without a D1-to-Mailbox graph mir
 			ownerId: message.userId,
 			deliveryStatus: 'delivered',
 			providerEventId: 'event-1',
+			eventTimestamp: '2026-07-17T20:00:00.000Z',
+			messageDeliveryStatusAt: '2026-07-17T20:00:00.000Z',
 		}),
 	)
 	expect(mocks.applyOutboundEmailAbusePause).toHaveBeenCalledTimes(4)

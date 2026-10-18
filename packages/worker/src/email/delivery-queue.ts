@@ -107,6 +107,8 @@ export async function handleEmailDeliveryQueue(
 						ownerId: result.message.userId,
 						deliveryStatus: result.providerEvent.payload.delivery.status,
 						providerEventId: result.providerEvent.payload.eventId,
+						eventTimestamp: result.providerEvent.metadata.eventTimestamp,
+						messageDeliveryStatusAt: result.message.deliveryStatusAt,
 					})
 					await dispatchEmailDeliverySubscriptionEvents({
 						env,

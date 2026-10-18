@@ -118,6 +118,33 @@ function pauseStatement(input: {
 		)
 }
 
+function isSupersededDeliveryEvent(input: {
+	eventTimestamp: string
+	messageDeliveryStatusAt: string | null | undefined
+}) {
+	const messageAt = input.messageDeliveryStatusAt
+	if (messageAt == null || messageAt === '') return false
+	// ISO-8601 UTC strings compare lexicographically. A message status
+	// strictly newer than this provider event means a later lifecycle
+	// event already won; do not mutate the consecutive-failure counter.
+	return messageAt > input.eventTimestamp
+}
+
+async function markFailureTrackingApplied(input: {
+	db: D1Database
+	providerEventId: string
+	nowIso: string
+}) {
+	await input.db
+		.prepare(
+			`UPDATE email_outbound_failure_tracking
+			 SET applied_at = ?
+			 WHERE provider_event_id = ? AND applied_at IS NULL`,
+		)
+		.bind(input.nowIso, input.providerEventId)
+		.run()
+}
+
 export async function applyOutboundConsecutiveFailureTracking(input: {
 	db: D1Database
 	/** Personal-org / mailbox owner id (orgs.id). */
@@ -129,6 +156,14 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 	 * after a mid-flight tracking crash still counts the failure once.
 	 */
 	providerEventId: string
+	/** Provider event timestamp (Cloudflare metadata.eventTimestamp). */
+	eventTimestamp: string
+	/**
+	 * Latest delivery status timestamp already on the outbound message.
+	 * When this is strictly newer than `eventTimestamp`, drain a pending
+	 * ledger row without changing the consecutive-failure counter.
+	 */
+	messageDeliveryStatusAt?: string | null
 	now?: Date
 }): Promise<{ paused: boolean; consecutiveFailures: number }> {
 	const now = input.now ?? new Date()
@@ -141,6 +176,27 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 		deliveryStatus: input.deliveryStatus,
 		nowIso,
 	})
+	if (
+		pending === 'pending' &&
+		isSupersededDeliveryEvent({
+			eventTimestamp: input.eventTimestamp,
+			messageDeliveryStatusAt: input.messageDeliveryStatusAt,
+		})
+	) {
+		await markFailureTrackingApplied({
+			db: input.db,
+			providerEventId: input.providerEventId,
+			nowIso,
+		})
+		const current = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		return {
+			paused: Boolean(current?.pausedAt),
+			consecutiveFailures: current?.consecutiveFailures ?? 0,
+		}
+	}
 	if (pending === 'applied') {
 		// Count already landed. Still attempt the pause write so a crash
 		// between the applied batch and a later pause statement cannot leave

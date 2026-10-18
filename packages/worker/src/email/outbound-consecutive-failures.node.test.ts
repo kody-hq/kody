@@ -56,6 +56,7 @@ test('pauses after N consecutive terminal failures and clears on deliver or resu
 			ownerId,
 			deliveryStatus: 'failed',
 			providerEventId: `event-fail-${i}`,
+			eventTimestamp: `2026-10-17T12:00:0${i}.000Z`,
 		})
 		expect(result).toEqual({ paused: false, consecutiveFailures: i })
 		expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
@@ -69,6 +70,7 @@ test('pauses after N consecutive terminal failures and clears on deliver or resu
 		ownerId,
 		deliveryStatus: 'failed',
 		providerEventId: 'event-fail-threshold',
+		eventTimestamp: '2026-10-17T12:00:00.000Z',
 		now: new Date('2026-10-17T12:00:00.000Z'),
 	})
 	expect(paused.paused).toBe(true)
@@ -85,6 +87,8 @@ test('pauses after N consecutive terminal failures and clears on deliver or resu
 		ownerId,
 		deliveryStatus: 'delivered',
 		providerEventId: 'event-delivered-1',
+		eventTimestamp: '2026-10-17T12:01:00.000Z',
+		messageDeliveryStatusAt: '2026-10-17T12:01:00.000Z',
 	})
 	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
 		pausedAt: '2026-10-17T12:00:00.000Z',
@@ -118,6 +122,7 @@ test('duplicate provider event ids do not inflate the consecutive-failure counte
 			ownerId,
 			deliveryStatus: 'bounced',
 			providerEventId: 'event-same',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
 		}),
 	).toEqual({ paused: false, consecutiveFailures: 1 })
 	expect(
@@ -126,6 +131,8 @@ test('duplicate provider event ids do not inflate the consecutive-failure counte
 			ownerId,
 			deliveryStatus: 'bounced',
 			providerEventId: 'event-same',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+			messageDeliveryStatusAt: '2026-10-17T12:00:00.000Z',
 		}),
 	).toEqual({ paused: false, consecutiveFailures: 1 })
 	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
@@ -154,6 +161,8 @@ test('a pending failure count is applied on retry after a mid-flight crash', asy
 			ownerId,
 			deliveryStatus: 'failed',
 			providerEventId: 'event-pending',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+			messageDeliveryStatusAt: '2026-10-17T12:00:00.000Z',
 		}),
 	).toEqual({ paused: false, consecutiveFailures: 1 })
 
@@ -174,6 +183,8 @@ test('a pending failure count is applied on retry after a mid-flight crash', asy
 			ownerId,
 			deliveryStatus: 'failed',
 			providerEventId: 'event-pending',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+			messageDeliveryStatusAt: '2026-10-17T12:00:00.000Z',
 		}),
 	).toEqual({ paused: false, consecutiveFailures: 1 })
 })
@@ -212,6 +223,8 @@ test('applied retry still pauses when the count already hit the threshold', asyn
 		ownerId,
 		deliveryStatus: 'failed',
 		providerEventId: 'event-threshold',
+		eventTimestamp: '2026-10-17T12:00:00.000Z',
+		messageDeliveryStatusAt: '2026-10-17T12:00:00.000Z',
 		now: new Date('2026-10-17T12:00:02.000Z'),
 	})
 	expect(result).toEqual({
@@ -225,5 +238,47 @@ test('applied retry still pauses when the count already hit the threshold', asyn
 	expect(consoleWarn).toHaveBeenCalledWith('email-outbound-delivery-paused', {
 		consecutiveFailures: outboundConsecutiveFailurePauseThreshold,
 		deliveryStatus: 'failed',
+	})
+})
+
+test('superseded pending failure does not mutate the consecutive-failure counter', async () => {
+	const db = await createOrgDb()
+	const ownerId = ownerIdFromStored('org_user_1')
+
+	await db
+		.prepare(`UPDATE orgs SET email_outbound_consecutive_failures = 2`)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO email_outbound_failure_tracking (
+				provider_event_id, user_id, delivery_status, created_at, applied_at
+			) VALUES (?, ?, ?, ?, NULL)`,
+		)
+		.bind('event-old-failure', ownerId, 'failed', '2026-10-17T12:00:00.000Z')
+		.run()
+
+	expect(
+		await applyOutboundConsecutiveFailureTracking({
+			db,
+			ownerId,
+			deliveryStatus: 'failed',
+			providerEventId: 'event-old-failure',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+			// A newer delivered status already won on the message.
+			messageDeliveryStatusAt: '2026-10-17T12:05:00.000Z',
+		}),
+	).toEqual({ paused: false, consecutiveFailures: 2 })
+
+	const tracking = await db
+		.prepare(
+			`SELECT applied_at AS appliedAt
+			 FROM email_outbound_failure_tracking
+			 WHERE provider_event_id = ?`,
+		)
+		.bind('event-old-failure')
+		.first<{ appliedAt: string | null }>()
+	expect(tracking?.appliedAt).toEqual(expect.any(String))
+	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
+		consecutiveFailures: 2,
 	})
 })
