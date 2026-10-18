@@ -47,7 +47,7 @@ jobs:
   backfill:
     name: 🧾 ${{ inputs.mode }} on ${{ inputs.target }}
     if: github.event_name == 'workflow_dispatch'
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     timeout-minutes: 60
     environment: ${{ inputs.target == 'production' && 'production' || '' }}
     env:

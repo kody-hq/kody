@@ -393,7 +393,7 @@ jobs:
           include-hidden-files: true
           retention-days: 30
   sha-guard:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧾 Production deploy guard
     timeout-minutes: 4
     if: >-
@@ -597,7 +597,7 @@ jobs:
   # mutation (including jobs/highlight siblings) so a missing token fails the
   # deploy instead of leaving the fleet half-applied.
   require-worker-tokens:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔒 Require Worker-scoped Cloudflare tokens
     timeout-minutes: 2
     needs: sha-guard
@@ -633,7 +633,7 @@ jobs:
   # can validate against an existing jobs-worker script. See
   # docs/contributing/architecture/jobs-worker-migration-runbook.md.
   deploy-highlight-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🎨 Deploy highlight worker
     timeout-minutes: 8
     needs:
@@ -733,7 +733,7 @@ jobs:
   # owns the RepoPushQueueV1 Durable Object (migration tag v1), so this uses
   # `wrangler deploy`; see packages/push-queue-worker/readme.md.
   deploy-push-queue-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📮 Deploy push queue worker
     timeout-minutes: 8
     needs:
@@ -829,7 +829,7 @@ jobs:
           exit 1
 
   deploy-jobs-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ⏰ Deploy jobs worker
     timeout-minutes: 8
     needs:
@@ -967,7 +967,7 @@ jobs:
           exit 1
 
   deploy:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🚀 Deploy to production
     timeout-minutes: 20
     needs:
@@ -1697,7 +1697,7 @@ jobs:
           node tools/ci/reindex-capabilities.ts --url "$DEPLOY_URL" --phases capabilities
 
   deploy-status-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📟 Deploy status worker
     timeout-minutes: 8
     # Deploys after the main worker so the status prober never probes a
@@ -1832,7 +1832,7 @@ jobs:
           exit 1
 
   deploy-api-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔌 Deploy API worker (api.kody.codes)
     timeout-minutes: 8
     # The KODY_API service binding targets the origin's KodyApi entrypoint,
@@ -1938,7 +1938,7 @@ jobs:
           exit 1
 
   deploy-api-docs-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📚 Deploy API docs worker (api-docs.kody.codes)
     timeout-minutes: 8
     # Independent of origin: docs fetch the live OpenAPI JSON over HTTPS.
@@ -2044,7 +2044,7 @@ jobs:
           exit 1
 
   deploy-backup-control-plane:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🛟 Deploy DR backup control plane
     timeout-minutes: 8
     needs: sha-guard

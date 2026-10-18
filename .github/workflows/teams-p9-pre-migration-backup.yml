@@ -40,7 +40,7 @@ concurrency:
 jobs:
   bookmarks:
     name: 🛟 Bookmarks on ${{ inputs.target }}
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     timeout-minutes: 20
     environment: ${{ inputs.target == 'production' && 'production' || '' }}
     env:

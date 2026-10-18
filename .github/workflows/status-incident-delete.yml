@@ -28,7 +28,7 @@ concurrency:
 jobs:
   delete:
     name: 🧹 Delete status incident ${{ inputs.incident_id }}
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     timeout-minutes: 5
     environment: production
     steps:

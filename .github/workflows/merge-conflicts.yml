@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   merge-conflicts:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: Report merge conflicts
     timeout-minutes: 15
     # Title and body edits do not change mergeability. Pull requests that

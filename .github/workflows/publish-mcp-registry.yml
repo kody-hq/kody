@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: Publish server.json to MCP Registry
     timeout-minutes: 10
     steps:
