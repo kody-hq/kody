@@ -128,6 +128,15 @@ reads start only after their parent resource authorizes.
 Passing that gate does not replace authenticated preview testing or matched
 production performance measurements.
 
+Production origin deployments retain hashed public client assets for seven days,
+so an open tab can still import a lazy chunk after the next deploy. The deploy
+workflow restores the latest production asset archive, merges it after Vite
+builds, then saves the archive after the origin deploy succeeds. Only assets
+present in the new build refresh their retention timestamp. HTML, unversioned
+public files, source maps, and server bundles are excluded. Archive errors fail
+the deploy instead of silently discarding assets. The first deploy starts the
+archive; it cannot recover files removed before retention began.
+
 ## Matched page identity
 
 The root `beforeLoad` returns `pageLocation` on every navigation. A rendered
