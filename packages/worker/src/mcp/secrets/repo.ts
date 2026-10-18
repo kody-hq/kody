@@ -68,6 +68,10 @@ export async function getSecretBucket(input: {
 	bindingKey: string
 	now?: string
 }): Promise<SecretBucketRow | null> {
+	// Capture each caller's effective `now` before sharing the D1 load so a
+	// later caller that crosses an expiry boundary does not inherit a
+	// pre-expiry row from the first coalesced request (KODY-9K follow-up).
+	const now = input.now ?? new Date().toISOString()
 	const cacheKey = `${input.userId}\0${input.scope}\0${input.bindingKey}`
 	let inflight = inflightSecretBuckets.get(input.db)
 	if (!inflight) {
@@ -75,12 +79,17 @@ export async function getSecretBucket(input: {
 		inflightSecretBuckets.set(input.db, inflight)
 	}
 	const existing = inflight.get(cacheKey)
-	if (existing) return existing
-	const pending = loadSecretBucket(input).finally(() => {
-		if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
-	})
-	inflight.set(cacheKey, pending)
-	return pending
+	const pending =
+		existing ??
+		loadSecretBucket({ ...input, now }).finally(() => {
+			if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
+		})
+	if (!existing) inflight.set(cacheKey, pending)
+	const bucket = await pending
+	if (bucket && bucket.expires_at != null && bucket.expires_at <= now) {
+		return null
+	}
+	return bucket
 }
 
 async function loadSecretBucket(input: {
@@ -203,9 +212,9 @@ async function flushSecretEntryBatch(db: D1Database) {
 		else byBucket.set(request.bucketId, [request])
 	}
 
-	try {
-		await Promise.all(
-			[...byBucket.entries()].map(async ([bucketId, requests]) => {
+	await Promise.all(
+		[...byBucket.entries()].map(async ([bucketId, requests]) => {
+			try {
 				const uniqueNames = [
 					...new Set(requests.map((request) => request.name)),
 				]
@@ -227,11 +236,13 @@ async function flushSecretEntryBatch(db: D1Database) {
 				for (const request of requests) {
 					request.resolve(byName.get(request.name) ?? null)
 				}
-			}),
-		)
-	} catch (error) {
-		for (const request of pending) request.reject(error)
-	}
+			} catch (error) {
+				// Isolate failures per bucket so one D1 error does not reject
+				// unrelated secrets that share the same microtask flush.
+				for (const request of requests) request.reject(error)
+			}
+		}),
+	)
 }
 
 /**

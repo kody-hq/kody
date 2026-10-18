@@ -116,6 +116,110 @@ test('getSecretBucket shares one D1 read for concurrent identical lookups (KODY-
 	expect(queries.filter(isSecretBucketLookup)).toHaveLength(2)
 })
 
+test('getSecretBucket rechecks expiry for callers that share an in-flight load', async () => {
+	const queries: Array<string> = []
+	const { sqlite, db } = createSecretsDb({ queries })
+	const userId = ownerIdFromStored('user-bucket-expiry')
+	sqlite.exec(`
+		INSERT INTO secret_buckets (id, user_id, scope, binding_key, expires_at)
+		VALUES (
+			'bucket-expiring',
+			'${userId}',
+			'user',
+			'',
+			'2026-10-17T12:00:00.000Z'
+		);
+	`)
+	queries.length = 0
+
+	let releaseLookup: (() => void) | undefined
+	const lookupGate = new Promise<void>((resolve) => {
+		releaseLookup = resolve
+	})
+	const originalPrepare = db.prepare.bind(db)
+	db.prepare = ((query: string) => {
+		const statement = originalPrepare(query)
+		if (!isSecretBucketLookup(query)) return statement
+		const originalFirst = statement.first.bind(statement)
+		statement.first = (async () => {
+			await lookupGate
+			return originalFirst()
+		}) as typeof statement.first
+		return statement
+	}) as typeof db.prepare
+
+	const early = getSecretBucket({
+		db,
+		userId,
+		scope: 'user',
+		bindingKey: '',
+		now: '2026-10-17T11:59:00.000Z',
+	})
+	const late = getSecretBucket({
+		db,
+		userId,
+		scope: 'user',
+		bindingKey: '',
+		now: '2026-10-17T12:00:01.000Z',
+	})
+	releaseLookup?.()
+	expect(await early).toEqual(
+		expect.objectContaining({ id: 'bucket-expiring' }),
+	)
+	expect(await late).toBeNull()
+	expect(queries.filter(isSecretBucketLookup)).toHaveLength(1)
+})
+
+test('getSecretEntry isolates one bucket failure from other buckets in the same flush', async () => {
+	const { sqlite, db } = createSecretsDb()
+	sqlite.exec(`
+		INSERT INTO secret_buckets (id, user_id, scope, binding_key)
+		VALUES
+			('bucket-ok', 'org-isolate', 'user', ''),
+			('bucket-bad', 'org-isolate', 'user', 'other');
+		INSERT INTO secret_entries (id, bucket_id, name, encrypted_value)
+		VALUES
+			('cred-ok', 'bucket-ok', 'GOOD', 'ct-ok'),
+			('cred-bad', 'bucket-bad', 'BAD', 'ct-bad');
+	`)
+
+	const originalPrepare = db.prepare.bind(db)
+	db.prepare = ((query: string) => {
+		const statement = originalPrepare(query)
+		if (isSecretEntrySingleLookup(query) || isSecretEntryBatchLookup(query)) {
+			const originalBind = statement.bind.bind(statement)
+			statement.bind = (...args: Array<unknown>) => {
+				const bound = originalBind(...args)
+				if (args[0] === 'bucket-bad') {
+					const fail = async () => {
+						throw new Error('simulated bucket-bad D1 failure')
+					}
+					bound.first = fail
+					bound.all = fail
+					bound.run = fail
+				}
+				return bound
+			}
+		}
+		return statement
+	}) as typeof db.prepare
+
+	const [ok, bad] = await Promise.allSettled([
+		getSecretEntry({ db, bucketId: 'bucket-ok', name: 'GOOD' }),
+		getSecretEntry({ db, bucketId: 'bucket-bad', name: 'BAD' }),
+	])
+	expect(ok).toEqual({
+		status: 'fulfilled',
+		value: expect.objectContaining({ name: 'GOOD' }),
+	})
+	expect(bad.status).toBe('rejected')
+	if (bad.status === 'rejected') {
+		expect(bad.reason).toEqual(
+			expect.objectContaining({ message: 'simulated bucket-bad D1 failure' }),
+		)
+	}
+})
+
 test('getSecretEntry batches concurrent names in one bucket into one IN read (KODY-9K)', async () => {
 	const queries: Array<string> = []
 	const { sqlite, db } = createSecretsDb({ queries })
