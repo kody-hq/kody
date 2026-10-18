@@ -18,10 +18,11 @@ export type PackageRepoActions = {
 	/** Owner: default-branch HEAD is ahead of the last publish. */
 	publishHref: string | null
 	/**
-	 * Open app. Owners of a hosted app get the kody.codes handoff path (that
-	 * is what signs them in on the package-app origin). Visitors of an
-	 * internet-visible app get the canonical hosted origin. Inline
-	 * deployments use the path mount.
+	 * Open app. Someone who may run the app (`app:execute`) gets the
+	 * kody.codes handoff path, which is what signs them in on the package-app
+	 * origin. Everyone else gets the canonical hosted origin only when the
+	 * app is approved for anonymous serving. Inline deployments use the path
+	 * mount.
 	 */
 	packageAppHref: string | null
 	/**

@@ -708,7 +708,11 @@ export async function loadAccessiblePackageFilesData(input: {
 			kodyId: page.kodyId,
 			description: page.listing.listing.description,
 			ownerProfilePublic: page.ownerProfilePublic,
-			repoActions: await buildPackageRepoActionsForPage(page, input.env),
+			repoActions: await buildPackageRepoActionsForPage(
+				page,
+				input.env,
+				input.request,
+			),
 		}
 	}
 
@@ -736,7 +740,11 @@ export async function loadAccessiblePackageFilesData(input: {
 		return data
 			? {
 					...data,
-					repoActions: await buildPackageRepoActionsForPage(page, input.env),
+					repoActions: await buildPackageRepoActionsForPage(
+						page,
+						input.env,
+						input.request,
+					),
 				}
 			: null
 	}
@@ -762,7 +770,11 @@ export async function loadAccessiblePackageFilesData(input: {
 		viewerCanManageAccess: page.viewerCanManageAccess,
 		description: page.ownerPackage.description,
 		ownerProfilePublic: page.ownerProfilePublic,
-		repoActions: await buildPackageRepoActionsForPage(page, input.env),
+		repoActions: await buildPackageRepoActionsForPage(
+			page,
+			input.env,
+			input.request,
+		),
 	}
 }
 

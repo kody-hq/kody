@@ -3,13 +3,14 @@ import { loadCommunityDetailData } from '#app/community-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	viewerCanDeleteSavedPackage,
+	viewerCanExecutePackageApp,
 	viewerCanManageSavedPackage,
 	viewerCanManageSavedPackageAccess,
 	viewerCanPublishSavedPackage,
 	viewerCanReadSavedPackage,
 	viewerIsSavedPackageOrgOwner,
 } from '#app/package-viewer-access.ts'
-import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import { resolvePackageAppLinks } from '#app/package-repo-actions.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
@@ -84,6 +85,11 @@ export type PackagePageAccess =
 			viewerCanManageAccess: boolean
 			/** May adopt a community fork (org owner only; widens secret access). */
 			viewerCanAdoptCommunityFork: boolean
+			/**
+			 * The viewer may run this package's hosted app (`app:execute`).
+			 * Distinct from `viewerIsOwner`, which is `package:read`.
+			 */
+			viewerMayRun?: boolean
 			loggedIn: boolean
 			/** Saved package or plain repo a Follow control acts on. */
 			followTarget: { kind: FollowTargetKind; id: string } | null
@@ -334,6 +340,7 @@ async function loadPlainRepoPage(input: {
 		viewerCanManageAccess: false,
 		viewerCanAdoptCommunityFork: false,
 		loggedIn: Boolean(viewer),
+		viewerMayRun: false,
 		followTarget: { kind: 'repo', id: repo.id },
 		invocationUrlOrigin: getAppBaseUrl({
 			env: input.env,
@@ -491,6 +498,7 @@ async function resolvePackagePageForViewer(
 			viewerCanDelete,
 			viewerCanManageAccess,
 			viewerCanAdoptCommunityFork,
+			viewerMayRun,
 		] = await Promise.all([
 			viewerCanManageSavedPackage({
 				env: input.env,
@@ -520,6 +528,12 @@ async function resolvePackagePageForViewer(
 				env: input.env,
 				viewer,
 				ownerId,
+			}),
+			viewerCanExecutePackageApp({
+				env: input.env,
+				viewer,
+				ownerId,
+				appId: packageId,
 			}),
 		])
 		const [listing, ownerPackage] = await Promise.all([
@@ -554,6 +568,7 @@ async function resolvePackagePageForViewer(
 			viewerCanDelete,
 			viewerCanManageAccess,
 			viewerCanAdoptCommunityFork,
+			viewerMayRun,
 			loggedIn: true,
 			followTarget: { kind: 'package', id: packageId },
 			invocationUrlOrigin,
@@ -563,11 +578,17 @@ async function resolvePackagePageForViewer(
 	}
 
 	if (target.listingId) {
-		const listing = await loadCommunityDetailData(
-			input.env,
-			input.request,
-			target.listingId,
-		)
+		const [listing, viewerMayRun] = await Promise.all([
+			loadCommunityDetailData(input.env, input.request, target.listingId),
+			viewer && target.savedPackage
+				? viewerCanExecutePackageApp({
+						env: input.env,
+						viewer,
+						ownerId: target.userId,
+						appId: target.savedPackage.id,
+					})
+				: Promise.resolve(false),
+		])
 		if (!listing) return { kind: 'not_found' }
 		return {
 			kind: 'page',
@@ -582,6 +603,7 @@ async function resolvePackagePageForViewer(
 			viewerCanDelete: false,
 			viewerCanManageAccess: false,
 			viewerCanAdoptCommunityFork: false,
+			viewerMayRun,
 			loggedIn: Boolean(viewer),
 			followTarget: target.savedPackage
 				? { kind: 'package', id: target.savedPackage.id }
@@ -601,16 +623,27 @@ async function resolvePackagePageForViewer(
 		// Revealing existence to signed-in people who already know the URL
 		// (share links / handoffs) is intentional product policy.
 		if (viewer && target.savedPackage) {
-			const packageAppHref =
-				target.savedPackage.hasApp && target.savedPackage.isInternetVisible
-					? ((
-							await resolvePublicPackageAppLocation({
-								env: input.env,
-								username: target.username,
-								kodyId: target.kodyId,
-							})
-						)?.hostedUrl ?? null)
-					: null
+			const mayRun = target.savedPackage.hasApp
+				? await viewerCanExecutePackageApp({
+						env: input.env,
+						viewer,
+						ownerId: target.userId,
+						appId: target.savedPackage.id,
+					})
+				: false
+			const links = target.savedPackage.hasApp
+				? await resolvePackageAppLinks({
+						env: input.env,
+						requestUrl: input.request.url,
+						username: target.username,
+						kodyId: target.kodyId,
+						viewerMayRun: mayRun,
+						hasPackage: true,
+						ownerUserId: target.userId,
+						hasApp: true,
+					})
+				: null
+			const packageAppHref = links?.packageAppHref ?? null
 			return {
 				kind: 'no_access',
 				username: target.username,

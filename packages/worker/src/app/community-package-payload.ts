@@ -1,3 +1,4 @@
+import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildPackageRepoActions,
 	buildPackageRepoActionsForPage,
@@ -114,6 +115,7 @@ export async function loadCommunityDetailPayload(
 			...detail,
 			repoActions: await withPackageAppLinks(
 				env,
+				request,
 				buildPackageRepoActions({
 					...detail,
 					kodyId: detail.listing.kodyId,
@@ -121,10 +123,8 @@ export async function loadCommunityDetailPayload(
 				{
 					username: detail.username,
 					kodyId: detail.listing.kodyId,
-					viewerIsOwner: detail.viewerIsOwner,
 					hasPackage: true,
 					hasApp: detail.ownerPackage?.hasApp,
-					isInternetVisible: detail.ownerPackage?.isInternetVisible,
 				},
 			),
 			hasPackage: true,
@@ -194,7 +194,7 @@ export async function loadCommunityPackagePayload(input: {
 			viewerIsOwner: page.viewerIsOwner,
 			viewerCanManage: page.viewerCanManage,
 			viewerCanManageAccess: page.viewerCanManageAccess,
-			repoActions: await buildPackageRepoActionsForPage(page, env),
+			repoActions: await buildPackageRepoActionsForPage(page, env, request),
 			viewerCanPublish: page.viewerCanPublish,
 			viewerCanDelete: page.viewerCanDelete,
 			viewerCanAdoptCommunityFork: page.viewerCanAdoptCommunityFork,
@@ -219,17 +219,22 @@ export async function loadCommunityPackagePayload(input: {
 
 async function withPackageAppLinks(
 	env: Env,
+	request: Request,
 	actions: PackageRepoActions,
 	input: {
 		username: string
 		kodyId: string
-		viewerIsOwner: boolean
 		hasPackage: boolean
 		hasApp?: boolean
-		isInternetVisible?: boolean
 	},
 ) {
-	const links = await resolvePackageAppLinks({ env, ...input })
+	const viewer = (await readAuthenticatedAppUser(request, env))?.mcpUser ?? null
+	const links = await resolvePackageAppLinks({
+		env,
+		requestUrl: request.url,
+		viewer,
+		...input,
+	})
 	if (!links) return actions
 	return { ...actions, ...links }
 }

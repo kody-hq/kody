@@ -1,12 +1,15 @@
 import { buildPackageAppPath } from '@kody-internal/shared/public-urls.ts'
 import { type PublicCommunityListing } from '#app/community-public.ts'
 import { type PackagePageAccess } from '#app/package-page.ts'
+import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
+import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type ViewerListingInstall } from '#universal/community-public-types.ts'
 import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { routes } from '#universal/routes.ts'
-import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { buildPackagePublishApprovalPath } from '#worker/package-registry/package-publish-lock.ts'
 
@@ -126,27 +129,33 @@ export function buildPackageRepoActions(input: {
 
 type PackageAppLinkFlags = {
 	hasApp: boolean
-	isInternetVisible: boolean
 }
 
 /**
  * Href for "Open app", plus the canonical hosted origin when it differs.
  *
- * Session-gated apps keep the app-origin handoff path for people who may run
- * them: `*.kody.run` and custom domains only authenticate through that token.
- * Internet-visible apps link straight at the canonical origin for everyone
- * else. Inline deployments (no package-app origin) keep the path mount,
- * because that is where the app actually runs.
+ * The handoff path is only for someone who may run the app (`app:execute`).
+ * `*.kody.run` and custom domains authenticate through that token, so a
+ * reader who cannot execute must not be sent there. Everyone else gets the
+ * canonical origin only when the app is actually served anonymously (an
+ * approved internet-visible capability set). The flag alone is not enough:
+ * an unapproved app 403s on the hosted origin. Inline deployments keep the
+ * path mount, because that is where the app runs.
  */
 export async function resolvePackageAppLinks(input: {
 	env: Env
 	username: string
 	kodyId: string
-	viewerIsOwner: boolean
+	/**
+	 * Precomputed `app:execute`. When omitted and `viewer` is set, this
+	 * function checks. `false` means the caller already knows they cannot run it.
+	 */
+	viewerMayRun?: boolean
+	viewer?: Pick<McpUserContext, 'userId' | 'username'> | null
 	hasPackage: boolean
 	ownerUserId?: string
 	hasApp?: boolean
-	isInternetVisible?: boolean
+	requestUrl?: string
 }): Promise<{
 	packageAppHref: string | null
 	packageAppOriginHref: string | null
@@ -156,15 +165,20 @@ export async function resolvePackageAppLinks(input: {
 	if (!flags.hasApp) {
 		return { packageAppHref: null, packageAppOriginHref: null }
 	}
+	const publiclyServable = await appIsPubliclyServable(input)
+	const mayRun =
+		input.viewerMayRun === true ||
+		(input.viewerMayRun === undefined && input.viewer
+			? await viewerMayRunPackageApp(input)
+			: false)
 	const pathHref = buildPackageAppPath({
 		username: input.username,
 		kodyId: input.kodyId,
 	})
 	const packageAppOrigin = getPackageAppBaseUrl({ env: input.env })
 	if (!packageAppOrigin) {
-		const showInline = input.viewerIsOwner || flags.isInternetVisible
 		return {
-			packageAppHref: showInline ? pathHref : null,
+			packageAppHref: mayRun || publiclyServable ? pathHref : null,
 			packageAppOriginHref: null,
 		}
 	}
@@ -176,22 +190,87 @@ export async function resolvePackageAppLinks(input: {
 				kodyId: input.kodyId,
 			})
 		)?.hostedUrl ?? null
-	// Owners still need the handoff so a private app (and a signed-in session
-	// on an internet-visible app) actually opens. Visitors of an
-	// internet-visible app go straight to the hosted origin.
-	if (input.viewerIsOwner) {
+	if (mayRun) {
 		return {
 			packageAppHref: pathHref,
 			packageAppOriginHref: canonical,
 		}
 	}
-	if (flags.isInternetVisible && canonical) {
+	if (publiclyServable && canonical) {
 		return {
 			packageAppHref: canonical,
 			packageAppOriginHref: canonical,
 		}
 	}
 	return { packageAppHref: null, packageAppOriginHref: null }
+}
+
+async function appIsPubliclyServable(input: {
+	env: Env
+	username: string
+	kodyId: string
+	ownerUserId?: string
+	requestUrl?: string
+}): Promise<boolean> {
+	try {
+		const ownerUserId = await resolveLinkOwnerUserId(input)
+		if (!ownerUserId) return false
+		const lookup = await resolveSavedPackageForPackageAppSlug({
+			db: input.env.APP_DB,
+			userId: ownerUserId,
+			slug: input.kodyId,
+		})
+		return Boolean(
+			await resolveInternetVisibleApprovedCommit({
+				env: input.env,
+				lookup,
+				requestUrl: input.requestUrl ?? getAppBaseUrl({ env: input.env }),
+			}),
+		)
+	} catch {
+		return false
+	}
+}
+
+async function viewerMayRunPackageApp(input: {
+	env: Env
+	username: string
+	kodyId: string
+	ownerUserId?: string
+	viewer?: Pick<McpUserContext, 'userId' | 'username'> | null
+}): Promise<boolean> {
+	if (!input.viewer) return false
+	try {
+		const ownerUserId = await resolveLinkOwnerUserId(input)
+		if (!ownerUserId) return false
+		const lookup = await resolveSavedPackageForPackageAppSlug({
+			db: input.env.APP_DB,
+			userId: ownerUserId,
+			slug: input.kodyId,
+		})
+		if (!lookup?.savedPackage.hasApp) return false
+		return await viewerCanExecutePackageApp({
+			env: input.env,
+			viewer: input.viewer,
+			ownerId: ownerUserId,
+			appId: lookup.savedPackage.id,
+		})
+	} catch {
+		return false
+	}
+}
+
+async function resolveLinkOwnerUserId(input: {
+	env: Env
+	username: string
+	ownerUserId?: string
+}): Promise<string | null> {
+	if (input.ownerUserId) return input.ownerUserId
+	const org = await resolvePackageAppOrgOwnerByHandle({
+		env: input.env,
+		handle: input.username,
+	})
+	return org?.userId ?? null
 }
 
 async function loadPackageAppLinkFlags(input: {
@@ -201,36 +280,20 @@ async function loadPackageAppLinkFlags(input: {
 	hasPackage: boolean
 	ownerUserId?: string
 	hasApp?: boolean
-	isInternetVisible?: boolean
 }): Promise<PackageAppLinkFlags | null> {
 	if (typeof input.hasApp === 'boolean') {
-		return {
-			hasApp: input.hasApp,
-			isInternetVisible: input.isInternetVisible === true,
-		}
+		return { hasApp: input.hasApp }
 	}
-	if (!input.hasPackage) return { hasApp: false, isInternetVisible: false }
+	if (!input.hasPackage) return { hasApp: false }
 	try {
-		const ownerUserId =
-			input.ownerUserId ??
-			(
-				await resolvePackageAppOrgOwnerByHandle({
-					env: input.env,
-					handle: input.username,
-				})
-			)?.userId
-		if (!ownerUserId) return { hasApp: false, isInternetVisible: false }
+		const ownerUserId = await resolveLinkOwnerUserId(input)
+		if (!ownerUserId) return { hasApp: false }
 		const lookup = await resolveSavedPackageForPackageAppSlug({
 			db: input.env.APP_DB,
 			userId: ownerUserId,
 			slug: input.kodyId,
 		})
-		const saved = lookup?.savedPackage
-		if (!saved) return { hasApp: false, isInternetVisible: false }
-		return {
-			hasApp: saved.hasApp,
-			isInternetVisible: saved.isInternetVisible,
-		}
+		return { hasApp: lookup?.savedPackage.hasApp === true }
 	} catch {
 		return null
 	}
@@ -249,6 +312,7 @@ function ownerPackageSourceAhead(ownerPackage: {
 export async function buildPackageRepoActionsForPage(
 	page: Extract<PackagePageAccess, { kind: 'page' }>,
 	env: Env,
+	request?: Request,
 ) {
 	const owner = page.ownerPackage
 	const actions = buildPackageRepoActions({
@@ -276,13 +340,13 @@ export async function buildPackageRepoActionsForPage(
 	})
 	const links = await resolvePackageAppLinks({
 		env,
+		requestUrl: request?.url,
 		username: page.username,
 		kodyId: page.kodyId,
-		viewerIsOwner: page.viewerIsOwner,
+		viewerMayRun: page.viewerMayRun === true,
 		hasPackage: page.hasPackage,
 		ownerUserId: page.ownerUserId,
 		hasApp: owner ? owner.hasApp : undefined,
-		isInternetVisible: owner ? owner.isInternetVisible : undefined,
 	})
 	if (!links) return actions
 	return { ...actions, ...links }

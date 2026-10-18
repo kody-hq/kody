@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageRepoActions,
 	buildSourceAheadPublishHref,
+	resolvePackageAppLinks,
 } from '#app/package-repo-actions.ts'
 import {
 	type PublicCommunityListing,
@@ -167,4 +168,33 @@ test('buildSourceAheadPublishHref names the HEAD commit when present', () => {
 	expect(buildSourceAheadPublishHref({ ...input, headCommit: null })).toBe(
 		'/@kentcdodds/github-triage/approve-publish',
 	)
+})
+
+test('open app hands off only for someone who may run the app', async () => {
+	const env = {
+		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
+	} as Env
+	const shared = {
+		env,
+		username: 'kentcdodds',
+		kodyId: 'github-triage',
+		hasPackage: true,
+		hasApp: true,
+		requestUrl: 'https://kody.test/@kentcdodds/github-triage',
+	}
+	await expect(
+		resolvePackageAppLinks({ ...shared, viewerMayRun: true }),
+	).resolves.toEqual({
+		packageAppHref: '/@kentcdodds/packages/github-triage',
+		packageAppOriginHref:
+			'https://kentcdodds.packages.isolated.test/packages/github-triage',
+	})
+	// No approved capability set is visible, so a reader does not get a public
+	// Open app that would 403 on the hosted origin.
+	await expect(
+		resolvePackageAppLinks({ ...shared, viewerMayRun: false }),
+	).resolves.toEqual({
+		packageAppHref: null,
+		packageAppOriginHref: null,
+	})
 })
