@@ -249,7 +249,13 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 			input.db
 				.prepare(
 					`UPDATE orgs
-					 SET email_outbound_consecutive_failures = 0,
+					 SET email_outbound_consecutive_failures = CASE
+					       WHEN email_outbound_failure_watermark_at IS NULL
+					         THEN 0
+					       WHEN email_outbound_failure_watermark_at <= ?
+					         THEN 0
+					       ELSE email_outbound_consecutive_failures
+					     END,
 					     email_outbound_failure_watermark_at = CASE
 					       WHEN email_outbound_failure_watermark_at IS NULL
 					         THEN ?
@@ -268,6 +274,7 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 					eventAt,
 					eventAt,
 					eventAt,
+					eventAt,
 					nowIso,
 					input.ownerId,
 					input.providerEventId,
@@ -280,7 +287,14 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 				)
 				.bind(nowIso, input.providerEventId),
 		])
-		return { paused: false, consecutiveFailures: 0 }
+		const afterDelivered = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		return {
+			paused: Boolean(afterDelivered?.pausedAt),
+			consecutiveFailures: afterDelivered?.consecutiveFailures ?? 0,
+		}
 	}
 
 	if (!terminalFailureStatuses.has(input.deliveryStatus)) {

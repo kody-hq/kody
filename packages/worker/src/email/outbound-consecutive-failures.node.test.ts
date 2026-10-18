@@ -306,6 +306,40 @@ test('supersession compares timestamps as instants across ISO forms', async () =
 	).toEqual({ paused: false, consecutiveFailures: 2 })
 })
 
+test('older delivered event after newer watermark does not wipe failure counts', async () => {
+	const db = await createOrgDb()
+	const ownerId = ownerIdFromStored('org_user_1')
+
+	await applyOutboundConsecutiveFailureTracking({
+		db,
+		ownerId,
+		deliveryStatus: 'delivered',
+		providerEventId: 'event-delivered-newer',
+		eventTimestamp: '2026-10-17T12:05:00.000Z',
+	})
+	await applyOutboundConsecutiveFailureTracking({
+		db,
+		ownerId,
+		deliveryStatus: 'failed',
+		providerEventId: 'event-fail-after-newer-delivery',
+		eventTimestamp: '2026-10-17T12:06:00.000Z',
+	})
+	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
+		consecutiveFailures: 1,
+	})
+
+	// Stale older delivered must mark applied without clearing the count.
+	expect(
+		await applyOutboundConsecutiveFailureTracking({
+			db,
+			ownerId,
+			deliveryStatus: 'delivered',
+			providerEventId: 'event-delivered-older',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+		}),
+	).toEqual({ paused: false, consecutiveFailures: 1 })
+})
+
 test('older terminal event after delivered watermark does not re-increment', async () => {
 	const db = await createOrgDb()
 	const ownerId = ownerIdFromStored('org_user_1')
