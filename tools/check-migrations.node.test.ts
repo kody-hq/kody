@@ -271,11 +271,27 @@ test('trusted history allows a listed migration-repairs digest rewrite', async (
 			{
 				filename: historicalEntry.filename,
 				fromSha256: historicalEntry.sha256,
+				toSha256: repairedEntry.sha256,
 				reason: 'rolled back before d1_migrations recorded the file',
 			},
 		],
 	)
 	expect(withRepair.ok).toBe(true)
+
+	const wrongDestination = checkMigrationLedger(
+		[...bootstrapFiles, repairedEntry],
+		repairedLedger,
+		trustedHistory,
+		[
+			{
+				filename: historicalEntry.filename,
+				fromSha256: historicalEntry.sha256,
+				toSha256: hashMigrationContent('SELECT 3;\n'),
+				reason: 'rolled back before d1_migrations recorded the file',
+			},
+		],
+	)
+	expect(wrongDestination.ok).toBe(false)
 })
 
 test('migration content hashing canonicalizes CRLF to LF', () => {

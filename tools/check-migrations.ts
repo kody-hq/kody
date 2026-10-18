@@ -29,6 +29,7 @@ export const defaultMigrationRepairsPath = path.join(
 export type MigrationRepair = {
 	filename: string
 	fromSha256: string
+	toSha256: string
 	reason: string
 }
 
@@ -433,6 +434,8 @@ export function isMigrationRepairsFile(
 				typeof entry.filename === 'string' &&
 				typeof entry.fromSha256 === 'string' &&
 				/^[a-f0-9]{64}$/.test(entry.fromSha256) &&
+				typeof entry.toSha256 === 'string' &&
+				/^[a-f0-9]{64}$/.test(entry.toSha256) &&
 				typeof entry.reason === 'string' &&
 				entry.reason.trim().length > 0,
 		)
@@ -442,7 +445,7 @@ export function isMigrationRepairsFile(
 /**
  * One-shot allowlist for rewriting a migration that landed on `main` but never
  * applied successfully (D1 rolled back before `d1_migrations` recorded it).
- * Match is filename + trusted fromSha256 → current digest may differ.
+ * Match is filename + trusted fromSha256 + approved toSha256 only.
  */
 export function isAllowedMigrationRepair(input: {
 	filename: string
@@ -456,7 +459,8 @@ export function isAllowedMigrationRepair(input: {
 	return input.repairs.some(
 		(repair) =>
 			repair.filename === input.filename &&
-			repair.fromSha256 === input.fromSha256,
+			repair.fromSha256 === input.fromSha256 &&
+			repair.toSha256 === input.toSha256,
 	)
 }
 

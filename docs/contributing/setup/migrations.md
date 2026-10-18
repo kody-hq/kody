@@ -36,9 +36,10 @@ in [Seed test account](./seeding.md).
   ship as a new migration instead. Exception: when production (or another
   durable remote) rolls back a migration before `d1_migrations` records it — so
   the SQL never applied — you may replace that file's contents and ledger digest
-  only by listing the prior digest in `tools/migration-repairs.json`
-  (`filename`, `fromSha256`, `reason`). That allowlist is one-shot per digest;
-  remove the entry after the repair lands on `main` if you want a tidy tree.
+  only by listing the prior and approved replacement digests in
+  `tools/migration-repairs.json` (`filename`, `fromSha256`, `toSha256`,
+  `reason`). That allowlist is one-shot per exact rewrite; remove the entry
+  after the repair lands on `main` if you want a tidy tree.
 - `npm run migrations:check` (also run by `npm run validate`, and by the
   pre-commit hook when the staged diff is not docs-only) enforces the naming
   rules above against the checked-in, append-only `tools/migration-ledger.json`.
