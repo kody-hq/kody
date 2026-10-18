@@ -548,10 +548,11 @@ authority when another package or ad hoc execute statically imports it. The
 importer does not need its own `allowed_packages` grant. The importer's own code
 still cannot read that secret, including by passing the declaring package's id
 to `kody.packageSecretGet` / `Has`. See
-[Package approval](./secrets-and-values.md#package-approval). Starting Tuesday,
-Oct 21, 2026, a non-empty `allowed_packages` list is enforced for those stamped
-uses everywhere (including through another package or a one-off `execute` load);
-publish/save warnings tip owners to approve or move the use before then.
+[Package approval](./secrets-and-values.md#package-approval). Starting
+Wednesday, Oct 21, 2026, a non-empty `allowed_packages` list is enforced for
+those stamped uses everywhere (including through another package or a one-off
+`execute` load); publish/save warnings tip owners to approve or move the use
+before then.
 
 ### Ambient `storage` is not a `kody:runtime` export
 
