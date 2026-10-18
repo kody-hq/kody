@@ -95,16 +95,17 @@ env:
 # Runner / no_cache / iteration keep bench matrix cells and ubuntu-vs-warp
 # dispatches from cancelling each other. The runner segment is the label
 # jobs actually use (inputs.runner, or WarpBuild when that input is absent).
-# workflow_call (validate-bench) also keys on the caller run_id so two
+# Manual / validate-bench runs (caller event is workflow_dispatch; reusable
+# workflows inherit that name, not workflow_call) also key on run_id so two
 # overlapping uncached benches on the same runner do not cancel matching
-# iterations while cancel-in-progress stays true for PR/manual runs.
+# iterations while cancel-in-progress stays true for PR runs.
 concurrency:
   group: >-
     validate-${{ github.event_name }}-${{ github.event.pull_request.number ||
     github.ref }}-${{ (inputs.runner != '' && inputs.runner != '(repo default)'
     && inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x'
     }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0
-    }}${{ github.event_name == 'workflow_call' && format('-run-{0}',
+    }}${{ github.event_name == 'workflow_dispatch' && format('-run-{0}',
     github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
