@@ -76,7 +76,9 @@ for (const renderer of ['react', 'redact'] as const) {
 				)?.[0]
 				expect(selectedOption).toMatch(/\bselected(?:=|\s|>)/)
 			}
-			expect(html.match(/class="walkthrough-host-mark"/g)).toHaveLength(3)
+			expect(
+				html.match(/class="[^"]*\bwalkthrough-host-mark\b[^"]*"/g),
+			).toHaveLength(3)
 			expect(html).toContain('mask-image:var(--chip-icon)')
 			expect(html).not.toContain('appearance:base-select')
 			expect(html).toContain('/images/icons/')
