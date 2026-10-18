@@ -697,6 +697,13 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		table: 'invites',
 		columns: ['invited_by_user_id', 'accepted_by_user_id'],
 	},
+	// Pending and consumed admin hard-delete approvals name both the target
+	// person and the requesting admin. Either account's deletion removes them.
+	{
+		kind: 'user_columns',
+		table: 'admin_account_deletion_approvals',
+		columns: ['target_stable_user_id', 'requested_by_stable_user_id'],
+	},
 	{
 		kind: 'replace_user_column',
 		table: 'org_invite_links',
