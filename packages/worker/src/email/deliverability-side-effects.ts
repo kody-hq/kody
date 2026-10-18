@@ -13,7 +13,10 @@ import {
 	recordRejectingProvidersForRecipient,
 } from './rejecting-providers.ts'
 import { type EmailDeliveryStatus } from './types.ts'
-import { transactionalDeliveryCursorMatches } from './verification-delivery.ts'
+import {
+	transactionalDeliveryCursorIsDelivered,
+	transactionalDeliveryCursorMatches,
+} from './verification-delivery.ts'
 import {
 	clearVerificationRecipientHardBounce,
 	recordVerificationRecipientHardBounce,
@@ -106,9 +109,16 @@ export async function applyDeliverabilitySideEffects(input: {
 		}
 
 		// A newer delivered event may have claimed the cursor while we were
-		// writing failure holds. Clear them again so the winning delivered
-		// status is what the recipient sees.
-		if (!(await cursorStillOwnsEvent())) {
+		// writing failure holds. Only undo when delivered won — a newer
+		// bounce/failed claim must keep its own holds.
+		if (
+			input.confirmCursor &&
+			!(await cursorStillOwnsEvent()) &&
+			(await transactionalDeliveryCursorIsDelivered({
+				db: input.db,
+				providerMessageId: input.confirmCursor.providerMessageId,
+			}))
+		) {
 			await clearEmailRecipientCooldown({
 				db: input.db,
 				recipient: input.recipient,
