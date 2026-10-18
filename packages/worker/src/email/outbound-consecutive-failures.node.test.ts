@@ -177,3 +177,53 @@ test('a pending failure count is applied on retry after a mid-flight crash', asy
 		}),
 	).toEqual({ paused: false, consecutiveFailures: 1 })
 })
+
+test('applied retry still pauses when the count already hit the threshold', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const db = await createOrgDb()
+	const ownerId = ownerIdFromStored('org_user_1')
+
+	// Crash after increment+applied but before pause: count is at threshold,
+	// applied_at is set, paused_at is still null.
+	await db
+		.prepare(
+			`UPDATE orgs
+			 SET email_outbound_consecutive_failures = ?`,
+		)
+		.bind(outboundConsecutiveFailurePauseThreshold)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO email_outbound_failure_tracking (
+				provider_event_id, user_id, delivery_status, created_at, applied_at
+			) VALUES (?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			'event-threshold',
+			ownerId,
+			'failed',
+			'2026-10-17T12:00:00.000Z',
+			'2026-10-17T12:00:01.000Z',
+		)
+		.run()
+
+	const result = await applyOutboundConsecutiveFailureTracking({
+		db,
+		ownerId,
+		deliveryStatus: 'failed',
+		providerEventId: 'event-threshold',
+		now: new Date('2026-10-17T12:00:02.000Z'),
+	})
+	expect(result).toEqual({
+		paused: true,
+		consecutiveFailures: outboundConsecutiveFailurePauseThreshold,
+	})
+	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
+		pausedAt: '2026-10-17T12:00:02.000Z',
+		consecutiveFailures: outboundConsecutiveFailurePauseThreshold,
+	})
+	expect(consoleWarn).toHaveBeenCalledWith('email-outbound-delivery-paused', {
+		consecutiveFailures: outboundConsecutiveFailurePauseThreshold,
+		deliveryStatus: 'failed',
+	})
+})

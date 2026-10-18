@@ -56,6 +56,68 @@ async function ensurePendingFailureTracking(input: {
 	return row?.appliedAt == null ? 'pending' : 'applied'
 }
 
+/**
+ * Idempotent pause write. Safe on retries: only transitions NULL → set when
+ * the consecutive-failure count is still at the threshold.
+ */
+async function maybePauseOutboundDelivery(input: {
+	db: D1Database
+	ownerId: OwnerId
+	deliveryStatus: EmailDeliveryStatus
+	nowIso: string
+	consecutiveFailures: number
+}): Promise<boolean> {
+	if (input.consecutiveFailures < outboundConsecutiveFailurePauseThreshold) {
+		return false
+	}
+	const pause = await input.db
+		.prepare(
+			`UPDATE orgs
+			 SET email_outbound_delivery_paused_at = ?,
+			     updated_at = ?
+			 WHERE id = ?
+			   AND email_outbound_delivery_paused_at IS NULL
+			   AND email_outbound_consecutive_failures >= ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.nowIso,
+			input.nowIso,
+			input.ownerId,
+			outboundConsecutiveFailurePauseThreshold,
+		)
+		.run()
+	const paused = Number(pause.meta.changes ?? 0) > 0
+	if (paused) {
+		console.warn('email-outbound-delivery-paused', {
+			consecutiveFailures: input.consecutiveFailures,
+			deliveryStatus: input.deliveryStatus,
+		})
+	}
+	return paused
+}
+
+function pauseStatement(input: {
+	db: D1Database
+	ownerId: OwnerId
+	nowIso: string
+}) {
+	return input.db
+		.prepare(
+			`UPDATE orgs
+			 SET email_outbound_delivery_paused_at = ?,
+			     updated_at = ?
+			 WHERE id = ?
+			   AND email_outbound_delivery_paused_at IS NULL
+			   AND email_outbound_consecutive_failures >= ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.nowIso,
+			input.nowIso,
+			input.ownerId,
+			outboundConsecutiveFailurePauseThreshold,
+		)
+}
+
 export async function applyOutboundConsecutiveFailureTracking(input: {
 	db: D1Database
 	/** Personal-org / mailbox owner id (orgs.id). */
@@ -80,14 +142,31 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 		nowIso,
 	})
 	if (pending === 'applied') {
+		// Count already landed. Still attempt the pause write so a crash
+		// between the applied batch and a later pause statement cannot leave
+		// the org at threshold without email_outbound_delivery_paused_at.
 		const current = await loadOutboundDeliveryPause({
 			db: input.db,
 			ownerId: input.ownerId,
 		})
-		return {
-			paused: Boolean(current?.pausedAt),
-			consecutiveFailures: current?.consecutiveFailures ?? 0,
+		const consecutiveFailures = current?.consecutiveFailures ?? 0
+		if (current?.pausedAt) {
+			return { paused: true, consecutiveFailures }
 		}
+		if (
+			terminalFailureStatuses.has(input.deliveryStatus) &&
+			consecutiveFailures >= outboundConsecutiveFailurePauseThreshold
+		) {
+			const paused = await maybePauseOutboundDelivery({
+				db: input.db,
+				ownerId: input.ownerId,
+				deliveryStatus: input.deliveryStatus,
+				nowIso,
+				consecutiveFailures,
+			})
+			return { paused, consecutiveFailures }
+		}
+		return { paused: false, consecutiveFailures }
 	}
 
 	if (input.deliveryStatus === 'delivered') {
@@ -136,8 +215,13 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 		}
 	}
 
-	// Increment + mark applied atomically. Retries see applied_at set and
-	// skip; a crash before commit leaves applied_at NULL so the count recovers.
+	const before = await loadOutboundDeliveryPause({
+		db: input.db,
+		ownerId: input.ownerId,
+	})
+
+	// Increment, mark applied, and pause (when at threshold) in one batch so
+	// a crash cannot leave applied_at set while skipping the pause write.
 	await input.db.batch([
 		input.db
 			.prepare(
@@ -159,6 +243,7 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 				 WHERE provider_event_id = ? AND applied_at IS NULL`,
 			)
 			.bind(nowIso, input.providerEventId),
+		pauseStatement({ db: input.db, ownerId: input.ownerId, nowIso }),
 	])
 
 	const after = await loadOutboundDeliveryPause({
@@ -166,33 +251,8 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 		ownerId: input.ownerId,
 	})
 	const nextCount = after?.consecutiveFailures ?? 0
-	if (nextCount < outboundConsecutiveFailurePauseThreshold || after?.pausedAt) {
-		return {
-			paused: Boolean(after?.pausedAt),
-			consecutiveFailures: nextCount,
-		}
-	}
-
-	// Require the count to still be at the threshold so a concurrent
-	// delivered reset cannot leave a stale pause after clearing failures.
-	const pause = await input.db
-		.prepare(
-			`UPDATE orgs
-			 SET email_outbound_delivery_paused_at = ?,
-			     updated_at = ?
-			 WHERE id = ?
-			   AND email_outbound_delivery_paused_at IS NULL
-			   AND email_outbound_consecutive_failures >= ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(
-			nowIso,
-			nowIso,
-			input.ownerId,
-			outboundConsecutiveFailurePauseThreshold,
-		)
-		.run()
-	const paused = Number(pause.meta.changes ?? 0) > 0
-	if (paused) {
+	const paused = Boolean(after?.pausedAt)
+	if (paused && !before?.pausedAt) {
 		console.warn('email-outbound-delivery-paused', {
 			consecutiveFailures: nextCount,
 			deliveryStatus: input.deliveryStatus,
