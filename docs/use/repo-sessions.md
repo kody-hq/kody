@@ -111,7 +111,8 @@ states:
   base commit and current published commit
 - **`locked`** with `approval_url` when the package has `locked_at` set. The
   session commit is already on HEAD; promoting it is a website click at that
-  URL. Approving one commit does not unlock the package.
+  URL. The `commit` query is the full 40-character SHA-1. Approving one commit
+  does not unlock the package.
 
 That makes it easier for agents to resume or repair a workflow without string
 parsing.

@@ -878,20 +878,21 @@ agent needs the package unlocked, it should send the owner to
 When an agent pushes or saves a locked package, the commit still lands on
 Artifacts HEAD. Publish tools then return **`locked`** with an
 **`approval_url`** that names that commit:
-`/@{username}/{package-name}/approve-publish?commit=<sha>`. Opening that URL
-shows a file-by-file diff of the current published tree versus that commit.
-Clicking **Promote this commit** runs the real publish (checks, bundle
-artifacts, projections) for that SHA. Promoting one commit does not unlock the
-package.
+`/@{username}/{package-name}/approve-publish?commit=<sha>`. `<sha>` is the full
+40-character SHA-1 object id. A shorter prefix is rejected with "Use the full
+commit SHA (40 characters)". Opening that URL shows a file-by-file diff of the
+current published tree versus that commit. Clicking **Promote this commit** runs
+the real publish (checks, bundle artifacts, projections) for that SHA. Promoting
+one commit does not unlock the package.
 
 Unlocked packages use the same review page. When default-branch HEAD is newer
 than the last publish, owners see **Publish changes** on the Repo tab and a
 **Publishing** panel on Settings. Both open
 `/@{username}/{package-name}/approve-publish?commit=<sha>`, where `<sha>` is the
-resolved default-branch HEAD, to publish with **Publish HEAD**. Visitors may
-still see a non-interactive status when HEAD is ahead. The five-minute reconcile
-job still auto-publishes unlocked packages; this page is the explicit website
-path.
+full 40-character SHA-1 of the resolved default-branch HEAD, to publish with
+**Publish HEAD**. Visitors may still see a non-interactive status when HEAD is
+ahead. The five-minute reconcile job still auto-publishes unlocked packages;
+this page is the explicit website path.
 
 Once a package is listed, publishing or promoting advances the public community
 listing with the runtime — see
