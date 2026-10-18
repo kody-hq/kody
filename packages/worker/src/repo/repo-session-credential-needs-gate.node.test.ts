@@ -486,3 +486,22 @@ test('getSessionInfo heals published inventory without failing on cleanup errors
 		id: 'session-1',
 	})
 })
+
+test('getSessionInfo skips workspace clone for published sessions', async () => {
+	setCommonSessionFixtures()
+	mockModule.getRepoSessionById.mockResolvedValue(
+		sessionRow({
+			id: 'session-1',
+			status: 'published',
+			expires_at: '2026-11-01T00:00:00.000Z',
+		}),
+	)
+	mockModule.storageBucketInventoryExists.mockResolvedValueOnce(true)
+	mockModule.workspaceExists.mockResolvedValue(false)
+	mockModule.git.clone.mockClear()
+	await expect(repoSession().getSessionInfo(session)).resolves.toMatchObject({
+		id: 'session-1',
+	})
+	expect(mockModule.git.clone).not.toHaveBeenCalled()
+	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalled()
+})

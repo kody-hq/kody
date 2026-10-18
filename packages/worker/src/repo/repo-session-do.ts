@@ -535,6 +535,12 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId,
 		options: {
 			allowedStatuses?: ReadonlyArray<RepoSessionRow['status']>
+			/**
+			 * When false, skip artifact remote mint + workspace clone. Use for
+			 * catalog-only reads (getSessionInfo) so inspecting a published
+			 * session cannot rehydrate scratch that publish already released.
+			 */
+			initialize?: boolean
 		} = {},
 	) {
 		const cachedState = await this.readCachedSessionState(sessionId)
@@ -580,12 +586,16 @@ class RepoSessionBase extends DurableObject<Env> {
 			scope: 'write',
 			pendingReconcile: buildPendingExternalReconcile(this.env.APP_DB, source),
 		})
-		await this.initialize({
-			sessionId: sessionRow.id,
-			repoRemote: access.remote,
-			repoToken: access.token,
-			sessionBranch: sessionRow.session_branch,
-		})
+		// Catalog-only reads (getSessionInfo) skip clone so inspecting a
+		// published session cannot rehydrate scratch publish already released.
+		if (options.initialize !== false) {
+			await this.initialize({
+				sessionId: sessionRow.id,
+				repoRemote: access.remote,
+				repoToken: access.token,
+				sessionBranch: sessionRow.session_branch,
+			})
+		}
 		return {
 			sessionRow,
 			source,
@@ -1942,7 +1952,11 @@ class RepoSessionBase extends DurableObject<Env> {
 		const { sessionRow, source } = await this.getSessionState(
 			input.sessionId,
 			input.userId,
-			{ allowedStatuses: ['active', 'published'] },
+			{
+				allowedStatuses: ['active', 'published'],
+				// Catalog + heal only: never re-clone published scratch.
+				initialize: false,
+			},
 		)
 		// Lazy heal: older publishes kept counting workspace bytes until
 		// discard/expiry. Release scratch the first time a published session
