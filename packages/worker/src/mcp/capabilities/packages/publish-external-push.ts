@@ -681,6 +681,7 @@ async function getAllowedPackagesPublishNoticeForPublishedPackage(input: {
 			packageDisplayName: input.packageDisplayName,
 			kodyId: input.kodyId,
 			files: published.files,
+			sourceRoot: published.source?.source_root,
 		})
 	} catch {
 		return null

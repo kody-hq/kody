@@ -560,20 +560,26 @@ export const savePackageCapability = defineDomainCapability(
 						storageId: null,
 					},
 				})
-			const allowedPackagesPublishNotice =
-				await buildCredentialAllowedPackagesPublishWarningNotice({
-					env: ctx.env,
-					baseUrl: ctx.callerContext.baseUrl,
-					userId: owner.ownerUserId,
-					orgSlug: secretPageOrgSlugFromCaller(ctx.callerContext),
-					packageId: saved.id,
-					packageDisplayName: saved.name,
-					kodyId: saved.kodyId,
-					// An existing package keeps files this save omits, so scan the
-					// published set the projection loaded.
-					files: publishedFiles,
-					slots: manifest.kody.credentials,
-				})
+			let allowedPackagesPublishNotice: string | null = null
+			try {
+				allowedPackagesPublishNotice =
+					await buildCredentialAllowedPackagesPublishWarningNotice({
+						env: ctx.env,
+						baseUrl: ctx.callerContext.baseUrl,
+						userId: owner.ownerUserId,
+						orgSlug: secretPageOrgSlugFromCaller(ctx.callerContext),
+						packageId: saved.id,
+						packageDisplayName: saved.name,
+						kodyId: saved.kodyId,
+						// An existing package keeps files this save omits, so scan the
+						// published set the projection loaded.
+						files: publishedFiles,
+						slots: manifest.kody.credentials,
+					})
+			} catch {
+				// Warning is best-effort: never fail save after persistence.
+				allowedPackagesPublishNotice = null
+			}
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 4,
 				total: 4,

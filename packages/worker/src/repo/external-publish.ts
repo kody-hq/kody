@@ -389,6 +389,7 @@ export async function publishFromExternalRef(input: {
 					userId: input.userId,
 					packageId: source.entity_id,
 					files: pendingFiles,
+					sourceRoot: source.source_root,
 					slots: checks.manifest?.kody?.credentials,
 				})
 			: null

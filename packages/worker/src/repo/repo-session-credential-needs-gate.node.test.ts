@@ -409,7 +409,9 @@ test('a locked package keeps its locked-publish flow without pausing for credent
 	const packageFile = { 'package.json': userPackageJson }
 	seedWorkspace(packageFile)
 	const state = await checkedPublishState(packageFile)
-	mockModule.getSavedPackageById.mockResolvedValueOnce({
+	// Lock and the additive allowed-packages notice each look up the package
+	// independently so warning failures cannot fail-open the lock gate.
+	mockModule.getSavedPackageById.mockResolvedValue({
 		id: 'package-1',
 		name: '@user/demo',
 		lockedAt: '2026-10-13T00:00:00.000Z',

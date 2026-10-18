@@ -39,7 +39,7 @@ import {
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import {
 	createPackagePublishLockedError,
-	isSavedPackageLocked,
+	loadLockedSavedPackage,
 } from '#worker/package-registry/package-publish-lock.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -76,7 +76,7 @@ import {
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
-import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
+import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	pausedSessionMovedMessage,
@@ -3345,27 +3345,19 @@ class RepoSessionBase extends DurableObject<Env> {
 						sourceRoot: source.source_root,
 					})
 				: null
-		// One lookup for both the allowed-packages notice and the locked-publish
-		// gate so unit tests that mock getSavedPackageById once keep working.
-		const savedPackageForPublish =
-			source.entity_kind === 'package'
-				? await getSavedPackageById(this.env.APP_DB, {
-						userId: input.userId,
-						packageId: source.entity_id,
-					}).catch(() => null)
-				: null
+		// Warning is independent of the locked-publish gate: lookup/scan failures
+		// must never change lock or approve results (fail-closed lock stays intact).
 		const allowedPackagesPublishNotice =
-			savedPackageForPublish == null
-				? null
-				: await buildCredentialAllowedPackagesPublishWarningNotice({
+			source.entity_kind === 'package'
+				? await loadCredentialAllowedPackagesPublishWarningNotice({
 						env: this.env,
 						baseUrl: getAppBaseUrl({ env: this.env }),
 						userId: input.userId,
-						packageId: savedPackageForPublish.id,
-						packageDisplayName: savedPackageForPublish.name,
-						kodyId: savedPackageForPublish.kodyId,
+						packageId: source.entity_id,
 						files: snapshotFiles,
-					}).catch(() => null)
+						sourceRoot: source.source_root,
+					})
+				: null
 		const credentialNotice =
 			[patternNotice, secretMountCompat, allowedPackagesPublishNotice]
 				.filter((notice): notice is string => Boolean(notice))
@@ -3373,11 +3365,14 @@ class RepoSessionBase extends DurableObject<Env> {
 		const withCredentialNotice = (message: string) =>
 			credentialNotice ? `${message}\n\n${credentialNotice}` : message
 		const lockedPackage =
-			savedPackageForPublish != null &&
+			source.entity_kind === 'package' &&
 			input.allowLockedPublish !== true &&
-			input.promotePublished !== false &&
-			isSavedPackageLocked(savedPackageForPublish.lockedAt)
-				? savedPackageForPublish
+			input.promotePublished !== false
+				? await loadLockedSavedPackage({
+						db: this.env.APP_DB,
+						userId: input.userId,
+						packageId: source.entity_id,
+					})
 				: null
 		// The pause runs before the source branch moves, so the published commit
 		// stays at HEAD and new sessions open as usual. The session (and its

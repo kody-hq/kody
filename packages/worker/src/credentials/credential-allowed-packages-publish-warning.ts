@@ -24,6 +24,7 @@ import {
 import { buildSecretPackageApprovalUrl } from '#mcp/secrets/package-approval-url.ts'
 import { resolveSecretPageOrgSlug } from '#mcp/secrets/package-access.ts'
 import { findSecret } from '#mcp/secrets/service.ts'
+import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 
 export const credentialAllowedPackagesEnforcementDate = 'Tuesday, Oct 21, 2026'
 
@@ -138,10 +139,16 @@ export async function buildCredentialAllowedPackagesPublishWarningNotice(input: 
 	packageDisplayName: string
 	kodyId: string
 	files: Record<string, string>
+	sourceRoot?: string | null
 	slots?: Record<string, PackageCredentialSlot> | undefined
 }): Promise<string | null> {
-	const warnings = await buildCredentialAllowedPackagesPublishWarnings(input)
-	return formatCredentialAllowedPackagesPublishWarnings(warnings)
+	try {
+		const warnings = await buildCredentialAllowedPackagesPublishWarnings(input)
+		return formatCredentialAllowedPackagesPublishWarnings(warnings)
+	} catch {
+		// Non-blocking: any warning failure leaves the save/publish result unchanged.
+		return null
+	}
 }
 
 /**
@@ -156,6 +163,7 @@ export async function loadCredentialAllowedPackagesPublishWarningNotice(input: {
 	orgSlug?: string | null
 	packageId: string
 	files: Record<string, string>
+	sourceRoot?: string | null
 	slots?: Record<string, PackageCredentialSlot> | undefined
 }): Promise<string | null> {
 	try {
@@ -173,11 +181,29 @@ export async function loadCredentialAllowedPackagesPublishWarningNotice(input: {
 			packageDisplayName: savedPackage.name,
 			kodyId: savedPackage.kodyId,
 			files: input.files,
+			sourceRoot: input.sourceRoot,
 			slots: input.slots,
 		})
 	} catch {
 		return null
 	}
+}
+
+/**
+ * Scope a repo snapshot to the package source root the same way
+ * `credentialPatternNoticeForFiles` / credential inventory reads do.
+ */
+export function filesForPackageSourceRoot(
+	files: Record<string, string>,
+	sourceRoot?: string | null,
+): Record<string, string> {
+	const root = normalizeRepoWorkspacePath(sourceRoot ?? '').replace(/\/+$/, '')
+	if (!root) return files
+	return Object.fromEntries(
+		Object.entries(files)
+			.filter(([path]) => path.startsWith(`${root}/`))
+			.map(([path, content]) => [path.slice(root.length + 1), content]),
+	)
 }
 
 export async function buildCredentialAllowedPackagesPublishWarnings(input: {
@@ -189,84 +215,91 @@ export async function buildCredentialAllowedPackagesPublishWarnings(input: {
 	packageDisplayName: string
 	kodyId: string
 	files: Record<string, string>
+	sourceRoot?: string | null
 	slots?: Record<string, PackageCredentialSlot> | undefined
 }): Promise<Array<CredentialAllowedPackagesPublishWarning>> {
-	let scan: PackageCredentialScan
 	try {
-		scan = scanPackageCredentials({
-			files: input.files,
-			slots:
-				input.slots ?? readDeclaredCredentialSlots(input.files['package.json']),
+		const scopedFiles = filesForPackageSourceRoot(input.files, input.sourceRoot)
+		let scan: PackageCredentialScan
+		try {
+			scan = scanPackageCredentials({
+				files: scopedFiles,
+				slots:
+					input.slots ??
+					readDeclaredCredentialSlots(scopedFiles['package.json']),
+			})
+		} catch {
+			return []
+		}
+		const secretNames = collectLiteralUserSecretNames(scan)
+		if (secretNames.length === 0) return []
+
+		const storageContext = {
+			sessionId: null,
+			appId: null,
+			packageId: input.packageId,
+			storageId: null,
+		}
+		const mismatched: Array<{
+			name: string
+			allowedPackages: Array<string>
+		}> = []
+		for (const name of secretNames) {
+			const found = await findSecret({
+				env: input.env,
+				userId: input.userId,
+				name,
+				scope: 'user',
+				storageContext,
+			})
+			if (!found.found || found.scope !== 'user') continue
+			if (found.allowedPackages.length === 0) continue
+			if (found.allowedPackages.includes(input.packageId)) continue
+			mismatched.push({ name, allowedPackages: found.allowedPackages })
+		}
+		if (mismatched.length === 0) return []
+
+		const allowedIds = [
+			...new Set(mismatched.flatMap((entry) => entry.allowedPackages)),
+		]
+		const packages = await listSavedPackagesByIds(input.env.APP_DB, {
+			userId: input.userId,
+			packageIds: allowedIds,
 		})
+		const packagesById = new Map(
+			packages.map((saved) => [
+				saved.id,
+				{ id: saved.id, name: saved.name, kodyId: saved.kodyId },
+			]),
+		)
+
+		const orgSlug = await resolveSecretPageOrgSlug({
+			db: input.env.APP_DB,
+			userId: input.userId,
+			orgSlug: input.orgSlug,
+		})
+		if (!orgSlug) return []
+
+		return mismatched.map((entry) => ({
+			credentialName: entry.name,
+			allowedEntries: resolveAllowedPackagesListEntries({
+				allowedPackages: entry.allowedPackages,
+				packagesById,
+			}),
+			packageDisplayName: input.packageDisplayName,
+			approvalUrl: buildSecretPackageApprovalUrl({
+				baseUrl: input.baseUrl,
+				orgSlug,
+				name: entry.name,
+				scope: 'user',
+				packageId: input.packageId,
+				kodyId: input.kodyId,
+				storageContext,
+			}),
+		}))
 	} catch {
 		return []
 	}
-	const secretNames = collectLiteralUserSecretNames(scan)
-	if (secretNames.length === 0) return []
-
-	const storageContext = {
-		sessionId: null,
-		appId: null,
-		packageId: input.packageId,
-		storageId: null,
-	}
-	const mismatched: Array<{
-		name: string
-		allowedPackages: Array<string>
-	}> = []
-	for (const name of secretNames) {
-		const found = await findSecret({
-			env: input.env,
-			userId: input.userId,
-			name,
-			scope: 'user',
-			storageContext,
-		})
-		if (!found.found || found.scope !== 'user') continue
-		if (found.allowedPackages.length === 0) continue
-		if (found.allowedPackages.includes(input.packageId)) continue
-		mismatched.push({ name, allowedPackages: found.allowedPackages })
-	}
-	if (mismatched.length === 0) return []
-
-	const allowedIds = [
-		...new Set(mismatched.flatMap((entry) => entry.allowedPackages)),
-	]
-	const packages = await listSavedPackagesByIds(input.env.APP_DB, {
-		userId: input.userId,
-		packageIds: allowedIds,
-	})
-	const packagesById = new Map(
-		packages.map((saved) => [
-			saved.id,
-			{ id: saved.id, name: saved.name, kodyId: saved.kodyId },
-		]),
-	)
-
-	const orgSlug = await resolveSecretPageOrgSlug({
-		db: input.env.APP_DB,
-		userId: input.userId,
-		orgSlug: input.orgSlug,
-	})
-	if (!orgSlug) return []
-
-	return mismatched.map((entry) => ({
-		credentialName: entry.name,
-		allowedEntries: resolveAllowedPackagesListEntries({
-			allowedPackages: entry.allowedPackages,
-			packagesById,
-		}),
-		packageDisplayName: input.packageDisplayName,
-		approvalUrl: buildSecretPackageApprovalUrl({
-			baseUrl: input.baseUrl,
-			orgSlug,
-			name: entry.name,
-			scope: 'user',
-			packageId: input.packageId,
-			kodyId: input.kodyId,
-			storageContext,
-		}),
-	}))
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

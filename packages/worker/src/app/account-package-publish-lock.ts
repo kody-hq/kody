@@ -167,7 +167,8 @@ export async function loadAccountPackageApprovePublishData(input: {
 						packageDisplayName: savedPackage.name,
 						kodyId: savedPackage.kodyId,
 						files: pendingFiles.files,
-					}),
+						sourceRoot: source.source_root,
+					}).catch(() => null),
 		diff:
 			unpublishedCompare || pendingMissing
 				? { files: [], omittedCount: 0 }

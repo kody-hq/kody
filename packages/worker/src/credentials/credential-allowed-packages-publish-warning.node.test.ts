@@ -8,6 +8,7 @@ import {
 	buildCredentialAllowedPackagesPublishWarnings,
 	collectLiteralUserSecretNames,
 	credentialAllowedPackagesEnforcementDate,
+	filesForPackageSourceRoot,
 	formatAllowedPackagesList,
 	formatCredentialAllowedPackagesPublishWarning,
 	resolveAllowedPackagesListEntries,
@@ -229,6 +230,125 @@ test('builder stays quiet when the list is empty or already includes the package
 			files: packageFiles('RESEND_API_KEY'),
 		}),
 	).resolves.toBeNull()
+})
+
+test('filesForPackageSourceRoot scopes nested package paths like credential inventory', () => {
+	const nested = filesForPackageSourceRoot(
+		{
+			'packages/demo/package.json': '{"name":"@owner/demo"}',
+			'packages/demo/src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
+			'packages/other/src/index.ts':
+				"export const y = '{{secret:OTHER_KEY}}'\n",
+			'README.md': '# root\n',
+		},
+		'packages/demo',
+	)
+	expect(nested).toEqual({
+		'package.json': '{"name":"@owner/demo"}',
+		'src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
+	})
+	expect(filesForPackageSourceRoot({ 'package.json': '{}' }, '/')).toEqual({
+		'package.json': '{}',
+	})
+})
+
+test('builder respects package source root and ignores sibling fills', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const now = '2026-10-18T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO orgs (id, slug, plan, created_at, updated_at)
+			 VALUES (?, 'owner', 'pro', ?, ?)`,
+		)
+		.run(userId, now, now)
+	for (const saved of [
+		{ id: 'pkg-demo', name: '@owner/demo', kodyId: 'demo' },
+		{ id: 'pkg-notes', name: '@owner/notes', kodyId: 'notes' },
+	]) {
+		sqlite
+			.prepare(
+				`INSERT INTO saved_packages (
+					id, user_id, name, kody_id, description, source_id, created_at, updated_at
+				) VALUES (?, ?, ?, ?, '', ?, ?, ?)`,
+			)
+			.run(
+				saved.id,
+				userId,
+				saved.name,
+				saved.kodyId,
+				`source-${saved.id}`,
+				now,
+				now,
+			)
+	}
+	sqlite
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key, created_at, updated_at)
+			 VALUES ('bucket-user', ?, 'user', '', ?, ?)`,
+		)
+		.run(userId, now, now)
+	for (const [id, name] of [
+		['secret-demo', 'DEMO_KEY'],
+		['secret-other', 'OTHER_KEY'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO secret_entries (
+					id, bucket_id, name, encrypted_value, allowed_packages, created_at, updated_at
+				) VALUES (?, 'bucket-user', ?, 'cipher', ?, ?, ?)`,
+			)
+			.run(id, name, JSON.stringify(['pkg-notes']), now, now)
+	}
+	const env = {
+		APP_DB: createD1FromSqlite(sqlite),
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+	} as Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	const repoFiles = {
+		'packages/demo/package.json': JSON.stringify({
+			name: '@owner/demo',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'demo',
+				description: 'Demo package.',
+				credentials: {
+					DEMO_KEY: {
+						kind: 'secret',
+						provider: 'resend',
+						description: 'Demo key.',
+					},
+				},
+			},
+		}),
+		'packages/demo/src/index.ts':
+			"export const h = { Authorization: 'Bearer {{secret:DEMO_KEY}}' }\n",
+		'packages/other/src/index.ts': "export const y = '{{secret:OTHER_KEY}}'\n",
+	}
+	const scoped = await buildCredentialAllowedPackagesPublishWarnings({
+		env,
+		baseUrl,
+		userId,
+		packageId: 'pkg-demo',
+		packageDisplayName: '@owner/demo',
+		kodyId: 'demo',
+		files: repoFiles,
+		sourceRoot: 'packages/demo',
+	})
+	expect(scoped.map((warning) => warning.credentialName)).toEqual(['DEMO_KEY'])
+
+	const unscoped = await buildCredentialAllowedPackagesPublishWarnings({
+		env,
+		baseUrl,
+		userId,
+		packageId: 'pkg-demo',
+		packageDisplayName: '@owner/demo',
+		kodyId: 'demo',
+		files: repoFiles,
+	})
+	expect(unscoped.map((warning) => warning.credentialName).sort()).toEqual([
+		'DEMO_KEY',
+		'OTHER_KEY',
+	])
 })
 
 test('publish-flow notice appears while the save/publish path stays non-blocking', async () => {
