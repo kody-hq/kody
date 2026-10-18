@@ -65,6 +65,7 @@ export async function retrySecretBulkUpload(
 }
 
 export type CliOptions = {
+	versioned?: boolean
 	env?: string
 	name?: string
 	config?: string
@@ -93,6 +94,10 @@ function parseArgs(argv: Array<string>): CliOptions {
 		const arg = argv[index]
 		if (!arg) continue
 		switch (arg) {
+			case '--versioned': {
+				options.versioned = true
+				break
+			}
 			case '--env': {
 				const envName = argv[index + 1]
 				if (envName === undefined) {
@@ -390,7 +395,14 @@ export function buildWranglerSecretBulkFlags(
 			`wrangler secret bulk appends -<env> even when --name is set, so "${options.name}" with --env ${options.env} would target "${options.name}-${options.env}". Pass --env "" with --name to pin the unsuffixed script.`,
 		)
 	}
-	const args = ['secret', 'bulk', secretsFilePath]
+	// Stage secrets without promoting an unrelated uploaded Worker version.
+	// The subsequent code deploy inherits these secrets from the latest version.
+	const args = [
+		...(options.versioned ? ['versions'] : []),
+		'secret',
+		'bulk',
+		secretsFilePath,
+	]
 	if (options.env !== undefined && options.env.length > 0) {
 		args.push('--env', options.env)
 	}
