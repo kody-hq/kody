@@ -105,6 +105,10 @@ export const routes = {
 		href: (params: { stableUserId: string | number }) =>
 			`/admin/users/${segment(params.stableUserId)}`,
 	},
+	adminAccountDeletion: {
+		href: (params: { approvalId: string | number }) =>
+			`/admin/account-deletions/${segment(params.approvalId)}`,
+	},
 	adminRoles: { href: () => '/admin/roles' },
 	adminReservedUsernames: { href: () => '/admin/reserved-usernames' },
 	adminFeatureFlags: { href: () => '/admin/feature-flags' },

@@ -51,6 +51,7 @@ import { adminWebhookVerificationScanCapability } from './admin-webhook-verifica
 import { adminUserGetCapability } from './admin-user-get.ts'
 import { adminUserListCapability } from './admin-user-list.ts'
 import { adminUserUpdateCapability } from './admin-user-update.ts'
+import { adminUserAccountDeleteCapability } from './admin-user-account-delete.ts'
 import { adminUserVerifyCapability } from './admin-user-verify.ts'
 import { adminEmailDestinationVerifyCapability } from './admin-email-destination-verify.ts'
 import { adminAccountDeletionAbortCapability } from './admin-account-deletion-abort.ts'
@@ -136,6 +137,9 @@ export const adminDomain = defineDomain({
 		'personal memory migration',
 		'org usage',
 		'org restore',
+		'account delete',
+		'hard delete',
+		'delete account',
 		'oauth grants',
 		'grant bindings',
 		'oauth grants lacking orgId',
@@ -150,6 +154,7 @@ export const adminDomain = defineDomain({
 		adminWebhookVerificationScanCapability,
 		adminUserCreateCapability,
 		adminUserUpdateCapability,
+		adminUserAccountDeleteCapability,
 		adminUserVerifyCapability,
 		adminEmailDestinationVerifyCapability,
 		adminUserMeterParityCapability,

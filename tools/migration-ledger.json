@@ -607,6 +607,10 @@
 		{
 			"filename": "0165-oauth-device-authorization.sql",
 			"sha256": "6eef245a600d256662793ed97f3e39686bdc92887f03a55d360b253e41a035b5"
+		},
+		{
+			"filename": "0166-admin-account-deletion-approvals.sql",
+			"sha256": "3e63ead40af31c59d993bb05b6b1dbe9d30db52cb559e3dd0a18b0bee2f390e6"
 		}
 	]
 }

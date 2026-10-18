@@ -197,6 +197,7 @@ import { Route as AccountSecretProvidersApproveRouteImport } from './routes/acco
 import { Route as AccountSecretsApproveRouteImport } from './routes/account_.secrets_.approve'
 import { Route as AccountSecretsNewRouteImport } from './routes/account_.secrets_.new'
 import { Route as AccountWorkflowsWorkflowIdRouteImport } from './routes/account_.workflows_.$workflowId'
+import { Route as AdminAccountDeletionsApprovalIdRouteImport } from './routes/admin.account-deletions_.$approvalId'
 import { Route as AdminPlatformIntegrationsSlugRouteImport } from './routes/admin.platform-integrations_.$slug'
 import { Route as AdminPlatformIntegrationsNewRouteImport } from './routes/admin.platform-integrations_.new'
 import { Route as AdminUsersStableUserIdRouteImport } from './routes/admin.users_.$stableUserId'
@@ -1258,6 +1259,12 @@ const AccountWorkflowsWorkflowIdRoute =
     path: '/account/workflows/$workflowId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminAccountDeletionsApprovalIdRoute =
+  AdminAccountDeletionsApprovalIdRouteImport.update({
+    id: '/admin/account-deletions_/$approvalId',
+    path: '/admin/account-deletions/$approvalId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminPlatformIntegrationsSlugRoute =
   AdminPlatformIntegrationsSlugRouteImport.update({
     id: '/admin/platform-integrations_/$slug',
@@ -1824,6 +1831,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/approve': typeof AccountSecretsApproveRoute
   '/account/secrets/new': typeof AccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -2077,6 +2085,7 @@ export interface FileRoutesByTo {
   '/account/secrets/approve': typeof AccountSecretsApproveRoute
   '/account/secrets/new': typeof AccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -2332,6 +2341,7 @@ export interface FileRoutesById {
   '/account_/secrets_/approve': typeof AccountSecretsApproveRoute
   '/account_/secrets_/new': typeof AccountSecretsNewRoute
   '/account_/workflows_/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions_/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations_/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations_/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users_/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -2588,6 +2598,7 @@ export interface FileRouteTypes {
     | '/account/secrets/approve'
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
+    | '/admin/account-deletions/$approvalId'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -2841,6 +2852,7 @@ export interface FileRouteTypes {
     | '/account/secrets/approve'
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
+    | '/admin/account-deletions/$approvalId'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -3095,6 +3107,7 @@ export interface FileRouteTypes {
     | '/account_/secrets_/approve'
     | '/account_/secrets_/new'
     | '/account_/workflows_/$workflowId'
+    | '/admin/account-deletions_/$approvalId'
     | '/admin/platform-integrations_/$slug'
     | '/admin/platform-integrations_/new'
     | '/admin/users_/$stableUserId'
@@ -3346,6 +3359,7 @@ export interface RootRouteChildren {
   AccountSecretsApproveRoute: typeof AccountSecretsApproveRoute
   AccountSecretsNewRoute: typeof AccountSecretsNewRoute
   AccountWorkflowsWorkflowIdRoute: typeof AccountWorkflowsWorkflowIdRoute
+  AdminAccountDeletionsApprovalIdRoute: typeof AdminAccountDeletionsApprovalIdRoute
   AdminPlatformIntegrationsSlugRoute: typeof AdminPlatformIntegrationsSlugRoute
   AdminPlatformIntegrationsNewRoute: typeof AdminPlatformIntegrationsNewRoute
   AdminUsersStableUserIdRoute: typeof AdminUsersStableUserIdRoute
@@ -4726,6 +4740,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountWorkflowsWorkflowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/account-deletions_/$approvalId': {
+      id: '/admin/account-deletions_/$approvalId'
+      path: '/admin/account-deletions/$approvalId'
+      fullPath: '/admin/account-deletions/$approvalId'
+      preLoaderRoute: typeof AdminAccountDeletionsApprovalIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/platform-integrations_/$slug': {
       id: '/admin/platform-integrations_/$slug'
       path: '/admin/platform-integrations/$slug'
@@ -5428,6 +5449,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountSecretsApproveRoute: AccountSecretsApproveRoute,
   AccountSecretsNewRoute: AccountSecretsNewRoute,
   AccountWorkflowsWorkflowIdRoute: AccountWorkflowsWorkflowIdRoute,
+  AdminAccountDeletionsApprovalIdRoute: AdminAccountDeletionsApprovalIdRoute,
   AdminPlatformIntegrationsSlugRoute: AdminPlatformIntegrationsSlugRoute,
   AdminPlatformIntegrationsNewRoute: AdminPlatformIntegrationsNewRoute,
   AdminUsersStableUserIdRoute: AdminUsersStableUserIdRoute,

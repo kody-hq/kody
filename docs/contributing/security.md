@@ -643,6 +643,9 @@ blast radius:
   for 60 seconds, so a new suspension can take up to that long to stop
   background work already warm in an isolate. Set and cleared through the
   audited `suspend_user` / `unsuspend_user` actions on `POST /admin/users.json`.
+  Hard delete is a separate audited action (`adminUserAccountDelete` plus the
+  admin users **Delete account** modal). It requires a one-page approval or a
+  typed-handle confirmation and frees the handle immediately.
 - **Automatic outbound-email pause (`orgs.email_outbound_paused_at`).** The
   delivery queue evaluates provider delivery events
   (`packages/worker/src/email/outbound-abuse.ts`): one spam complaint, or five
