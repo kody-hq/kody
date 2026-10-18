@@ -45,21 +45,100 @@ export type DeployWorkflowContractDecision =
 			expectedVersion: number
 	  }
 
+/** Static pattern: env name is a fixed constant (not caller-controlled). */
+const expectedContractAssignmentPattern =
+	/EXPECTED_DEPLOY_WORKFLOW_CONTRACT:\s*(?:'([0-9]+)'|"([0-9]+)"|([0-9]+))/
+
+const shaGuardStepIdPattern = /^(\s*)(?:-\s+)?id:\s*sha_guard\s*$/
+const stepEnvHeaderPattern = /^(\s*)env:\s*$/
+
+function stripYamlComment(line: string) {
+	return line.replace(/#.*$/, '')
+}
+
+function parseVersionFromAssignmentLine(line: string): number | null {
+	const match = expectedContractAssignmentPattern.exec(stripYamlComment(line))
+	const raw = match?.[1] ?? match?.[2] ?? match?.[3]
+	if (!raw || !versionPattern.test(raw)) return null
+	return Number(raw)
+}
+
+/**
+ * Env lines belonging to the step with `id: sha_guard` (the runtime source of
+ * truth). Ignores commented-out assignments. Returns null when that step is
+ * absent so fixtures can still declare the env without a full job scaffold.
+ */
+export function extractShaGuardStepEnvLines(
+	source: string,
+): Array<string> | null {
+	const lines = source.split('\n')
+	let stepIndent: string | null = null
+	let collectingEnv = false
+	let envIndent: string | null = null
+	const envLines: Array<string> = []
+
+	for (const rawLine of lines) {
+		const idMatch = shaGuardStepIdPattern.exec(rawLine)
+		if (idMatch) {
+			stepIndent = idMatch[1] ?? ''
+			collectingEnv = false
+			envIndent = null
+			envLines.length = 0
+			continue
+		}
+		if (stepIndent === null) continue
+
+		const leadingWhitespace = /^(\s*)/.exec(rawLine)?.[1] ?? ''
+		if (!collectingEnv) {
+			const envHeader = stepEnvHeaderPattern.exec(rawLine)
+			if (envHeader && (envHeader[1] ?? '').length >= stepIndent.length) {
+				collectingEnv = true
+				envIndent = envHeader[1] ?? ''
+				continue
+			}
+			// Sibling keys (`shell:`, `run:`) share the step indent. A shallower
+			// line (next `- name:` or job key) means we left the step.
+			if (
+				rawLine.trim() !== '' &&
+				leadingWhitespace.length < stepIndent.length
+			) {
+				return envLines.length > 0 ? envLines : null
+			}
+			continue
+		}
+
+		const indent = envIndent ?? ''
+		if (rawLine.trim() === '') {
+			envLines.push(rawLine)
+			continue
+		}
+		if (rawLine.startsWith(`${indent} `) || rawLine.startsWith(`${indent}\t`)) {
+			envLines.push(rawLine)
+			continue
+		}
+		// End of env block (next step key or next step).
+		break
+	}
+
+	return stepIndent === null ? null : envLines
+}
+
 /**
  * Parse the integer the running deploy.yml declares as its required contract.
+ * Prefers the active `sha_guard` step env (ignoring `#` comments). Falls back
+ * to the first non-commented declaration when no `sha_guard` step is present.
  * Accepts `EXPECTED_DEPLOY_WORKFLOW_CONTRACT: '1'` / `"1"` / `1`.
  */
 export function parseExpectedContractFromWorkflowSource(
 	source: string,
 ): number | null {
-	const match = source.match(
-		new RegExp(
-			`${expectedContractEnvName}:\\s*(?:'([0-9]+)'|"([0-9]+)"|([0-9]+))`,
-		),
-	)
-	const raw = match?.[1] ?? match?.[2] ?? match?.[3]
-	if (!raw || !versionPattern.test(raw)) return null
-	return Number(raw)
+	const shaGuardEnv = extractShaGuardStepEnvLines(source)
+	const lines = shaGuardEnv ?? source.split('\n')
+	for (const line of lines) {
+		const version = parseVersionFromAssignmentLine(line)
+		if (version !== null) return version
+	}
+	return null
 }
 
 export function parseExpectedContractFromEnv(

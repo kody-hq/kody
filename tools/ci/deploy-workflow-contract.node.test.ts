@@ -33,6 +33,36 @@ test('parseExpectedContractFromWorkflowSource reads quoted and bare integers', (
 	).toBe(null)
 })
 
+test('parseExpectedContractFromWorkflowSource uses sha_guard env and ignores comments', () => {
+	const source = `
+jobs:
+  sha-guard:
+    steps:
+      - name: Guard
+        id: sha_guard
+        env:
+          # ${expectedContractEnvName}: '99'
+          EVENT_NAME: workflow_run
+          ${expectedContractEnvName}: '2'
+        run: node tools/ci/deploy-workflow-contract.ts
+`
+	expect(parseExpectedContractFromWorkflowSource(source)).toBe(2)
+
+	const staleCommentBeforeActive = `
+# ${expectedContractEnvName}: '1'
+jobs:
+  sha-guard:
+    steps:
+      - id: sha_guard
+        env:
+          ${expectedContractEnvName}: '3'
+        run: echo ok
+`
+	expect(
+		parseExpectedContractFromWorkflowSource(staleCommentBeforeActive),
+	).toBe(3)
+})
+
 test('parseExpectedContractFromEnv accepts only positive integers', () => {
 	expect(parseExpectedContractFromEnv('1')).toBe(1)
 	expect(parseExpectedContractFromEnv(' 12 ')).toBe(12)
