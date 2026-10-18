@@ -16,14 +16,16 @@ on:
     inputs:
       runner:
         description: >
-          Runner label for every Validate job on this manual run. Default
-          matches push and pull_request (WarpBuild). Choose ubuntu-latest for a
-          GitHub-hosted comparison.
+          Runner label for every heavy Validate job on this manual run. Leave as
+          "(repo default)" to use vars.CI_RUNNER (else WarpBuild), matching
+          push/PR. Choose ubuntu-latest for a GitHub-hosted comparison. The
+          final ✅ Validate gate always runs on ubuntu-latest.
         type: choice
         options:
+          - (repo default)
           - warp-ubuntu-latest-x64-4x
           - ubuntu-latest
-        default: warp-ubuntu-latest-x64-4x
+        default: (repo default)
       no_cache:
         description: >
           Skip every Validate cache layer (Nx remote token unbound,
@@ -71,9 +73,12 @@ permissions:
 env:
   CI: '1'
   VALIDATE_NO_CACHE: ${{ inputs.no_cache == true && 'true' || 'false' }}
-  # Same expression as runs-on. Push/PR leave inputs.runner empty and report
-  # WarpBuild; workflow_call always sets it (default ubuntu-latest).
-  VALIDATE_RUNNER: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+  # Same expression as heavy-job runs-on. Push/PR leave inputs.runner empty and
+  # use vars.CI_RUNNER (else WarpBuild); workflow_call always sets it (default
+  # ubuntu-latest). The final gate job ignores this and stays on ubuntu-latest.
+  VALIDATE_RUNNER:
+    ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
   VALIDATE_ITERATION: ${{ inputs.iteration || 0 }}
   NX_SKIP_NX_CACHE: ${{ inputs.no_cache == true && 'true' || '' }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: >-
@@ -93,7 +98,8 @@ env:
 concurrency:
   group: >-
     validate-${{ github.event_name }}-${{ github.event.pull_request.number ||
-    github.ref }}-${{ inputs.runner || 'warp-ubuntu-latest-x64-4x'
+    github.ref }}-${{ (inputs.runner != '' && inputs.runner != '(repo default)'
+    && inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x'
     }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0 }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
@@ -103,7 +109,9 @@ concurrency:
 # gate.
 jobs:
   static:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧹 Static
     timeout-minutes: 10
     permissions:
@@ -303,7 +311,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   node:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧪 Node
     timeout-minutes: 15
     if: >-
@@ -362,7 +372,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   workers:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ☁️ Workers
     # Room for one ≤720s attempt + one retry + setup. Soft-capping the suite
     # below the old 15m job wall avoids workers=cancelled mid-suite (#3763).
@@ -483,7 +495,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   mcp:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔌 MCP
     timeout-minutes: 10
     if: >-
@@ -522,11 +536,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
-    name: 🎭 E2E
-    # The suite runs serially against one D1 file. Keep enough time for the
-    # expanded migration coverage and one permitted workerd-crash retry.
-    timeout-minutes: 40
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    name: 🎭 E2E (${{ matrix.shard }}/4)
+    # Each shard owns its own runner (and D1 file), so shards never share
+    # SQLITE_BUSY. Keep workers: 1 inside a shard (playwright.config.ts).
+    # N=4 balances wall-clock (~18–21m serial E2E → ~shard_max) against
+    # repeated setup/build cost; see PR body for measured timings.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    # Room for one shard (~setup + ~¼ suite) plus one permitted workerd-crash
+    # retry. Serial E2E was 40m; shards should finish well under that.
+    timeout-minutes: 25
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false
@@ -554,16 +578,19 @@ jobs:
       # `ReferenceError: __LOAD__ is not defined` during live export-type
       # inspection (Validate #36669175020), or restart workerd after
       # "The Workers runtime crashed unexpectedly" while the webServer
-      # process stays up (Validate #38206666510). Retry the whole suite
+      # process stays up (Validate #38206666510). Retry the whole shard
       # once with a fresh server, but only when the failure matches that
       # crash signature — genuine test failures never retry.
+      # --skipNxCache: shard CLI args must not reuse another shard's
+      # cached test-e2e success (run-commands may not hash forwarded args).
       - name: 🎭 Playwright E2E
         run: |
           # No pipefail: the runner's implicit `bash -e` would abort on the
           # failing pipeline before the flake check; PIPESTATUS captures the
           # suite's exit code instead.
           set -u
-          npm run test:e2e:run 2>&1 | tee e2e-attempt-1.log
+          shard="${{ matrix.shard }}/4"
+          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard" 2>&1 | tee e2e-attempt-1.log
           status=${PIPESTATUS[0]}
           if [ "$status" -eq 0 ]; then
             exit 0
@@ -571,8 +598,17 @@ jobs:
           if ! node tools/ci/is-retryable-e2e-failure.ts e2e-attempt-1.log; then
             exit "$status"
           fi
-          echo "::warning::Playwright webServer died on start or mid-suite; retrying the E2E suite once with a fresh server."
-          npm run test:e2e:run
+          echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
+          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard"
+
+      - name: 📤 Upload Playwright blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-blob-report-${{ matrix.shard }}
+          path: blob-report
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Wrangler writes fatal mid-suite exits under WRANGLER_LOG_PATH
       # (./logs.local). Upload on failure so empty `[WebServer] ERROR` lines
@@ -581,7 +617,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-wrangler-logs
+          name: e2e-wrangler-logs-${{ matrix.shard }}
           path: logs.local/
           if-no-files-found: ignore
           retention-days: 14
@@ -594,14 +630,75 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: e2e"
+            echo "- job: e2e-${{ matrix.shard }}/4"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  e2e_report:
+    runs-on: ubuntu-latest
+    name: 🎭 E2E Report
+    timeout-minutes: 10
+    needs:
+      - e2e
+    # Merge shard blob reports even when some shards failed so the HTML
+    # artifact stays readable. Skip when the matrix was skipped (draft PR)
+    # or the whole run was cancelled.
+    if: >-
+      always() && !cancelled() && needs.e2e.result != 'skipped' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 📥 Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+          if-no-files-found: ignore
+
+      - name: 🧩 Merge Playwright reports
+        run: |
+          set -u
+          if [ ! -d all-blob-reports ] || [ -z "$(ls -A all-blob-reports 2>/dev/null)" ]; then
+            echo "::warning::No Playwright blob reports found to merge."
+            mkdir -p playwright-report
+            echo "<p>No blob reports were uploaded from E2E shards.</p>" > playwright-report/index.html
+            exit 0
+          fi
+          npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: 📤 Upload merged HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: playwright-report
+          if-no-files-found: warn
+          retention-days: 14
+
   cli:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧰 CLI
     timeout-minutes: 20
     if: >-
@@ -642,7 +739,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   validate:
-    runs-on: ${{ inputs.runner || 'warp-ubuntu-latest-x64-4x' }}
+    # Final merge gate stays on GitHub-hosted ubuntu-latest so a green
+    # ✅ Validate check does not wait on a Warp machine (~10s) for a 3–4s job.
+    runs-on: ubuntu-latest
     name: ✅ Validate
     timeout-minutes: 2
     needs:
@@ -651,6 +750,7 @@ jobs:
       - workers
       - mcp
       - e2e
+      - e2e_report
       - cli
     permissions:
       contents: read
@@ -703,134 +803,181 @@ jobs:
                   return None
               return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
-          payload = json.loads(os.environ["JOBS_JSON"])
-          jobs = payload.get("jobs", [])
-          leaf_names = (
-              "🧹 Static",
-              "🧪 Node",
-              "☁️ Workers",
-              "🔌 MCP",
-              "🎭 E2E",
-              "🧰 CLI",
-          )
+          def main():
+              payload = json.loads(os.environ["JOBS_JSON"])
+              jobs = payload.get("jobs", [])
+              # Sharded E2E jobs are named "🎭 E2E (1/4)" … "🎭 E2E (4/4)" (or
+              # nested under validate-bench). Match any job whose leaf starts
+              # with "🎭 E2E (" so timings stay accurate after the split.
+              e2e_prefix = "🎭 E2E ("
 
-          def find_job(leaf):
-              # Direct Validate runs use the bare job name. Reusable calls from
-              # validate-bench nest as "{caller} / {leaf}". When several
-              # iterations share a run, prefer the most recently started match.
-              exact = [j for j in jobs if j.get("name") == leaf]
-              if exact:
-                  return exact[0]
-              nested = [
-                  j
-                  for j in jobs
-                  if (j.get("name") or "").endswith(f" / {leaf}")
-              ]
-              if not nested:
-                  return None
-              nested.sort(key=lambda j: j.get("started_at") or "", reverse=True)
-              return nested[0]
+              def find_job(leaf):
+                  # Direct Validate runs use the bare job name. Reusable calls
+                  # from validate-bench nest as "{caller} / {leaf}". When
+                  # several iterations share a run, prefer the most recently
+                  # started match.
+                  exact = [j for j in jobs if j.get("name") == leaf]
+                  if exact:
+                      return exact[0]
+                  nested = [
+                      j
+                      for j in jobs
+                      if (j.get("name") or "").endswith(f" / {leaf}")
+                  ]
+                  if not nested:
+                      return None
+                  nested.sort(
+                      key=lambda j: j.get("started_at") or "", reverse=True
+                  )
+                  return nested[0]
 
-          rows = []
-          total = 0
-          earliest = None
-          latest = None
-          summary_lines = []
-          for name in leaf_names:
-              job = find_job(name)
-              if not job:
-                  summary_lines.append(f"| {name} | missing | — |")
+              # Prefer the caller prefix from a non-E2E leaf so multi-iteration
+              # validate-bench runs only count this invocation's shards.
+              caller_prefix = None
+              for probe in ("🧹 Static", "🧪 Node", "☁️ Workers", "🔌 MCP", "🧰 CLI"):
+                  probed = find_job(probe)
+                  if not probed:
+                      continue
+                  name = probed.get("name") or ""
+                  if " / " in name:
+                      caller_prefix = name.rsplit(" / ", 1)[0]
+                      break
+
+              def find_e2e_jobs():
+                  matched = []
+                  for job in jobs:
+                      name = job.get("name") or ""
+                      if caller_prefix is not None:
+                          if not name.startswith(f"{caller_prefix} / "):
+                              continue
+                          leaf = name[len(caller_prefix) + 3 :]
+                      else:
+                          if " / " in name:
+                              continue
+                          leaf = name
+                      if leaf.startswith(e2e_prefix):
+                          matched.append(job)
+                  matched.sort(key=lambda j: j.get("name") or "")
+                  return matched
+
+              rows = []
+              total = 0
+              earliest = None
+              latest = None
+              summary_lines = []
+
+              def append_job_row(name, job):
+                  nonlocal total, earliest, latest
+                  if not job:
+                      summary_lines.append(f"| {name} | missing | — |")
+                      rows.append(
+                          {
+                              "job": name,
+                              "conclusion": "missing",
+                              "duration_seconds": None,
+                              "runner_name": None,
+                              "labels": [],
+                          }
+                      )
+                      return
+                  start = parse(job.get("started_at"))
+                  end = parse(job.get("completed_at"))
+                  conclusion = job.get("conclusion") or job.get("status") or "?"
+                  labels = job.get("labels") or []
+                  runner_name = job.get("runner_name") or None
+                  if start and end:
+                      dur = int((end - start).total_seconds())
+                      total += dur
+                      earliest = (
+                          start if earliest is None or start < earliest else earliest
+                      )
+                      latest = end if latest is None or end > latest else latest
+                      summary_lines.append(f"| {name} | {conclusion} | {dur}s |")
+                  else:
+                      dur = None
+                      summary_lines.append(f"| {name} | {conclusion} | — |")
                   rows.append(
                       {
                           "job": name,
-                          "conclusion": "missing",
-                          "duration_seconds": None,
-                          "runner_name": None,
-                          "labels": [],
+                          "conclusion": conclusion,
+                          "duration_seconds": dur,
+                          "runner_name": runner_name,
+                          "labels": labels,
+                          "started_at": job.get("started_at"),
+                          "completed_at": job.get("completed_at"),
                       }
                   )
-                  continue
-              start = parse(job.get("started_at"))
-              end = parse(job.get("completed_at"))
-              conclusion = job.get("conclusion") or job.get("status") or "?"
-              labels = job.get("labels") or []
-              runner_name = job.get("runner_name") or None
-              if start and end:
-                  dur = int((end - start).total_seconds())
-                  total += dur
-                  earliest = start if earliest is None or start < earliest else earliest
-                  latest = end if latest is None or end > latest else latest
-                  summary_lines.append(f"| {name} | {conclusion} | {dur}s |")
-              else:
-                  dur = None
-                  summary_lines.append(f"| {name} | {conclusion} | — |")
-              rows.append(
-                  {
-                      "job": name,
-                      "conclusion": conclusion,
-                      "duration_seconds": dur,
-                      "runner_name": runner_name,
-                      "labels": labels,
-                      "started_at": job.get("started_at"),
-                      "completed_at": job.get("completed_at"),
-                  }
-              )
-          wall = (
-              int((latest - earliest).total_seconds())
-              if earliest and latest
-              else total
-          )
-          summary_lines.extend(
-              [
-                  "",
-                  f"- **sum of job durations:** {total}s",
-                  f"- **wall-clock (earliest start → latest end):** {wall}s",
-              ]
-          )
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
-              fh.write("\n".join(summary_lines) + "\n")
 
-          report = {
-              "schema": "kody.validate-timings.v1",
-              "recorded_at": datetime.now(timezone.utc).isoformat(),
-              "run_id": os.environ.get("GITHUB_RUN_ID"),
-              "run_url": os.environ.get("GITHUB_RUN_URL"),
-              "sha": os.environ.get("GITHUB_SHA"),
-              "no_cache": os.environ.get("VALIDATE_NO_CACHE") == "true",
-              "runner": os.environ.get("VALIDATE_RUNNER"),
-              "iteration": int(float(os.environ.get("VALIDATE_ITERATION") or "0")),
-              "sum_job_duration_seconds": total,
-              "wall_clock_seconds": wall,
-              "jobs": rows,
-          }
-          out_dir = "validate-timings"
-          json_path = os.path.join(out_dir, "timings.json")
-          csv_path = os.path.join(out_dir, "timings.csv")
-          with open(json_path, "w", encoding="utf-8") as fh:
-              json.dump(report, fh, indent=2)
-              fh.write("\n")
-          with open(csv_path, "w", encoding="utf-8", newline="") as fh:
-              writer = csv.DictWriter(
-                  fh,
-                  fieldnames=[
-                      "job",
-                      "conclusion",
-                      "duration_seconds",
-                      "runner_name",
-                      "labels",
-                      "started_at",
-                      "completed_at",
-                  ],
+              for name in ("🧹 Static", "🧪 Node", "☁️ Workers", "🔌 MCP"):
+                  append_job_row(name, find_job(name))
+              e2e_jobs = find_e2e_jobs()
+              if e2e_jobs:
+                  for job in e2e_jobs:
+                      leaf = (job.get("name") or "").split(" / ")[-1]
+                      append_job_row(leaf, job)
+              else:
+                  append_job_row("🎭 E2E", None)
+              for name in ("🎭 E2E Report", "🧰 CLI"):
+                  append_job_row(name, find_job(name))
+              wall = (
+                  int((latest - earliest).total_seconds())
+                  if earliest and latest
+                  else total
               )
-              writer.writeheader()
-              for row in rows:
-                  writer.writerow(
-                      {
-                          **row,
-                          "labels": ",".join(row.get("labels") or []),
-                      }
+              summary_lines.extend(
+                  [
+                      "",
+                      f"- **sum of job durations:** {total}s",
+                      f"- **wall-clock (earliest start → latest end):** {wall}s",
+                  ]
+              )
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+                  fh.write("\n".join(summary_lines) + "\n")
+
+              report = {
+                  "schema": "kody.validate-timings.v1",
+                  "recorded_at": datetime.now(timezone.utc).isoformat(),
+                  "run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "run_url": os.environ.get("GITHUB_RUN_URL"),
+                  "sha": os.environ.get("GITHUB_SHA"),
+                  "no_cache": os.environ.get("VALIDATE_NO_CACHE") == "true",
+                  "runner": os.environ.get("VALIDATE_RUNNER"),
+                  "iteration": int(float(os.environ.get("VALIDATE_ITERATION") or "0")),
+                  "sum_job_duration_seconds": total,
+                  "wall_clock_seconds": wall,
+                  "jobs": rows,
+              }
+              out_dir = "validate-timings"
+              json_path = os.path.join(out_dir, "timings.json")
+              csv_path = os.path.join(out_dir, "timings.csv")
+              with open(json_path, "w", encoding="utf-8") as fh:
+                  json.dump(report, fh, indent=2)
+                  fh.write("\n")
+              with open(csv_path, "w", encoding="utf-8", newline="") as fh:
+                  writer = csv.DictWriter(
+                      fh,
+                      fieldnames=[
+                          "job",
+                          "conclusion",
+                          "duration_seconds",
+                          "runner_name",
+                          "labels",
+                          "started_at",
+                          "completed_at",
+                      ],
                   )
-          print(json.dumps({"sum": total, "wall": wall, "jobs": len(rows)}))
+                  writer.writeheader()
+                  for row in rows:
+                      writer.writerow(
+                          {
+                              **row,
+                              "labels": ",".join(row.get("labels") or []),
+                          }
+                      )
+              print(json.dumps({"sum": total, "wall": wall, "jobs": len(rows)}))
+
+          main()
+
           PY
 
       - name: 📤 Upload timing artifact
@@ -850,19 +997,22 @@ jobs:
         if: >-
           needs.static.result == 'success' && needs.node.result == 'success' &&
           needs.workers.result == 'success' && needs.mcp.result == 'success' &&
-          needs.e2e.result == 'success' && needs.cli.result == 'success'
+          needs.e2e.result == 'success' && needs.e2e_report.result == 'success'
+          && needs.cli.result == 'success'
         run: echo "All validate jobs passed"
 
       - name: ❌ Report failures
         if: >-
           needs.static.result != 'success' || needs.node.result != 'success' ||
           needs.workers.result != 'success' || needs.mcp.result != 'success' ||
-          needs.e2e.result != 'success' || needs.cli.result != 'success'
+          needs.e2e.result != 'success' || needs.e2e_report.result != 'success'
+          || needs.cli.result != 'success'
         run: |
           echo "static=${{ needs.static.result }}"
           echo "node=${{ needs.node.result }}"
           echo "workers=${{ needs.workers.result }}"
           echo "mcp=${{ needs.mcp.result }}"
           echo "e2e=${{ needs.e2e.result }}"
+          echo "e2e_report=${{ needs.e2e_report.result }}"
           echo "cli=${{ needs.cli.result }}"
           exit 1

@@ -90,12 +90,16 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   measures the bundle, not contention from e2e and Worker builds (#2475, #2759).
   The unit-test and Playwright legs set `CI=1` so timeouts, worker limits, and
   Nx cache hashes match GitHub Actions. CI runs the same checks as separate jobs
-  (🧹 Static, 🧪 Node, ☁️ Workers, 🔌 MCP, 🎭 E2E, aggregated by ✅ Validate).
-  If `npm run validate` passes locally, CI will pass. Trusted writers (Cloud
-  Agent environments, and same-repo validate) set
-  `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` and the write token so Nx uploads task
-  artifacts to `https://nx-cache.kody.codes`. Fork `pull_request` validate uses
-  the read token and can only GET (see
+  (🧹 Static, 🧪 Node, ☁️ Workers, 🔌 MCP, sharded 🎭 E2E, aggregated by ✅
+  Validate). Heavy Validate jobs use
+  `runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}` (set repo
+  variable `CI_RUNNER=ubuntu-latest` to drop WarpBuild in one place); the final
+  ✅ Validate gate always runs on GitHub-hosted `ubuntu-latest`. If
+  `npm run validate` passes locally, CI will pass. Trusted writers (Cloud Agent
+  environments, and same-repo validate) set `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`
+  and the write token so Nx uploads task artifacts to
+  `https://nx-cache.kody.codes`. Fork `pull_request` validate uses the read
+  token and can only GET (see
   [decision 0019](../decisions/0019-self-hosted-nx-remote-cache.md),
   [decision 0038](../decisions/0038-no-nx-cloud-read-write-cache-tokens.md),
   [decision 0040](../decisions/0040-same-repo-writers-may-put-nx-cache.md), and

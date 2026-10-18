@@ -59,7 +59,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔎 Deploy Preview Resources
     # Includes room for deploy retries, healthchecks, and failed-deploy
     # cleanup (150s budget). Raised from 15 so a healthy origin/platform/runtime
@@ -1150,7 +1150,7 @@ jobs:
           node tools/ci/preview-resources.ts cleanup --worker-name "$APP_WORKER_NAME"
 
   cleanup:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧹 Cleanup Preview Resources
     timeout-minutes: 4
     permissions:

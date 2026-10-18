@@ -94,8 +94,9 @@ test('dashboard renders oversized D1 SQL as not restorable with a warning', asyn
 
 	vi.spyOn(globalThis, 'fetch').mockResolvedValue(identityEnvelope(1_000))
 	const html = await renderDashboard(env, { now })
-	assert.match(html, /<th>D1 restorable<\/th>/)
-	assert.match(html, /<td class="bad">no<\/td>/)
+	assert.match(html, /<th title="[^"]*">D1 restorable<\/th>/)
+	assert.match(html, /<td class="bad">Not restorable<\/td>/)
+	assert.match(html, /Gray is waiting or in progress/)
 	assert.match(
 		html,
 		/D1 SQL contains oversized statements and cannot be restored/,
@@ -105,7 +106,7 @@ test('dashboard renders oversized D1 SQL as not restorable with a warning', asyn
 	const [missingStatsStatus] = await collectDayStatuses(env, now)
 	assert.equal(missingStatsStatus?.d1Restorable, false)
 	const missingStatsHtml = await renderDashboard(env, { now })
-	assert.match(missingStatsHtml, /<td class="bad">no<\/td>/)
+	assert.match(missingStatsHtml, /<td class="bad">Not restorable<\/td>/)
 	assert.match(
 		missingStatsHtml,
 		/D1 is not restorable: required SQL stats are missing/,
@@ -144,8 +145,9 @@ test('dashboard warns when a configured D1 source is missing and marks the day u
 	vi.spyOn(globalThis, 'fetch').mockResolvedValue(identityEnvelope(1_000))
 	const html = await renderDashboard(env, { now })
 	assert.match(html, /kody-jobs: D1 manifest missing/)
-	assert.match(html, /<td class="bad">unverified<\/td>/)
-	assert.match(html, /<td class="bad">no<\/td>/)
+	assert.match(html, /<td class="bad">Missing<\/td>/)
+	assert.doesNotMatch(html, /SOURCE_ACCOUNT_ID/)
+	assert.match(html, /Identifiers/)
 })
 
 test('an unreadable D1 manifest keeps the day unverified even when a later source verifies', async () => {
@@ -165,6 +167,93 @@ test('an unreadable D1 manifest keeps the day unverified even when a later sourc
 			`${env.SOURCE_DATABASE_NAME}: D1 manifest unreadable`,
 		),
 		status?.warnings.join('; '),
+	)
+})
+
+test('dashboard reads staging progress and keeps a moving backlog off red', async () => {
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const at = new Date('2026-10-18T03:10:00.000Z')
+	const seed = {
+		phase: 'mailbox',
+		revision: 0,
+		advancedAt: null,
+		mailbox: { ownerIndex: 0 },
+	}
+	await bucket.put(
+		'staging/2026-10-18/exporter/progress.json',
+		JSON.stringify(seed),
+	)
+	await bucket.put(
+		'staging/2026-10-17/exporter/progress.json',
+		JSON.stringify(seed),
+	)
+	await bucket.put(
+		'staging/2026-10-16/exporter/progress.json',
+		JSON.stringify({
+			phase: 'mailbox',
+			revision: 2645,
+			advancedAt: '2026-10-18T03:05:00.000Z',
+			mailbox: { ownerIndex: 736 },
+		}),
+	)
+
+	const statuses = await collectDayStatuses(env, at)
+	const byDay = new Map(statuses.map((status) => [status.day, status]))
+	assert.equal(
+		byDay.get('2026-10-18')?.cells.staging.label,
+		'Queued behind 2026-10-16',
+	)
+	assert.equal(byDay.get('2026-10-17')?.cells.staging.tone, 'neutral')
+	assert.equal(
+		byDay.get('2026-10-16')?.cells.staging.label,
+		'Overdue · mailbox phase · advanced 5m ago',
+	)
+	assert.equal(byDay.get('2026-10-16')?.cells.staging.tone, 'warn')
+	assert.equal(
+		byDay.get('2026-10-16')?.cells.sealed.label,
+		'Waiting for staging',
+	)
+
+	vi.spyOn(globalThis, 'fetch').mockResolvedValue(identityEnvelope(1_000))
+	const html = await renderDashboard(env, { now: at })
+	assert.match(html, /Queued behind 2026-10-16/)
+	assert.match(html, /Overdue · mailbox phase · advanced 5m ago/)
+	assert.match(html, /What the columns mean/)
+	assert.doesNotMatch(html, /<td class="bad">no<\/td>/)
+})
+
+test('a stranded day just outside the table still owns the queue', async () => {
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const at = new Date('2026-10-18T12:00:00.000Z')
+	const seed = {
+		phase: 'mailbox',
+		revision: 0,
+		advancedAt: null,
+		mailbox: { ownerIndex: 0 },
+	}
+	await bucket.put(
+		'staging/2026-10-17/exporter/progress.json',
+		JSON.stringify(seed),
+	)
+	await bucket.put(
+		'staging/2026-10-04/exporter/progress.json',
+		JSON.stringify({
+			phase: 'artifacts',
+			revision: 40,
+			advancedAt: '2026-10-18T11:50:00.000Z',
+			artifactsIndex: 3,
+		}),
+	)
+
+	const statuses = await collectDayStatuses(env, at)
+	const day17 = statuses.find((status) => status.day === '2026-10-17')
+	assert.equal(day17?.cells.staging.label, 'Queued behind 2026-10-04')
+	assert.equal(day17?.cells.staging.tone, 'neutral')
+	assert.equal(
+		statuses.some((status) => status.day === '2026-10-04'),
+		false,
 	)
 })
 

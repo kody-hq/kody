@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import type * as CloudflareEmail from '#app/email/cloudflare-email.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as AuditLog from '#worker/audit-log.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
 
@@ -66,17 +66,31 @@ const { requestWebsitePasswordReset, confirmWebsitePasswordReset } =
 	await import('#worker/identity/password-reset-operations.ts')
 const { runWithDeferredWork } = await import('#worker/deferred-work.ts')
 
-function createEnv(overrides: Record<string, unknown> = {}) {
+function createEnv(
+	overrides: Record<string, unknown> = {},
+	options: { hardBounce?: boolean; queries?: Array<string> } = {},
+) {
 	return {
 		APP_DB: {
 			prepare: (query: string) => ({
-				bind: () => ({
+				bind: (...args: Array<unknown>) => ({
 					// Only token writes succeed; 2FA/passkey/provider deletes report 0 rows.
 					run: async () => {
+						options.queries?.push(query)
 						const hit = /^(delete from|insert into) password_resets/i.test(
 							query.replace(/\s+/g, ' ').trim(),
 						)
 						return { meta: { changes: hit ? 1 : 0, last_row_id: hit ? 1 : 0 } }
+					},
+					first: async () => {
+						options.queries?.push(query)
+						if (
+							options.hardBounce &&
+							query.includes('email_verification_hard_bounces')
+						) {
+							return { recipient: args[0], status: 'bounced' }
+						}
+						return null
 					},
 				}),
 			}),
@@ -100,8 +114,9 @@ async function requestReset(
 	env: Record<string, unknown>,
 	url: string,
 	body: Record<string, unknown> = { email: 'user@example.com' },
+	options: { hardBounce?: boolean; queries?: Array<string> } = {},
 ) {
-	const bindings = createEnv(env)
+	const bindings = createEnv(env, options)
 	const deferred = new Array<Promise<unknown>>()
 	const response = await runWithDeferredWork(
 		(promise) => deferred.push(promise),
@@ -261,9 +276,12 @@ function createTrackingGrantHelpers(
 	}
 }
 
-function confirm(oauthProvider: unknown) {
+function confirm(
+	oauthProvider: unknown,
+	options: { hardBounce?: boolean; queries?: Array<string> } = {},
+) {
 	return confirmWebsitePasswordReset({
-		env: createEnv({ OAUTH_PROVIDER: oauthProvider, ...kodyCodes }),
+		env: createEnv({ OAUTH_PROVIDER: oauthProvider, ...kodyCodes }, options),
 		request: new Request('https://example.com/password-reset/confirm'),
 		url: new URL('https://example.com/password-reset/confirm'),
 		body: { token: 'a'.repeat(64), password: 'new-password-123' },
@@ -344,4 +362,68 @@ test('password reset confirm fails closed when MCP grants cannot be revoked', as
 			reason: 'kv unavailable',
 		}),
 	)
+})
+
+const genericResetResponse = {
+	ok: true,
+	message: 'If the account exists, a reset email has been sent.',
+}
+
+test('a hard-bounced address skips the reset email and still returns the generic response', async () => {
+	const queries: Array<string> = []
+	const { response, flush } = await requestReset(
+		kodyCodes,
+		'https://kody.codes/password-reset',
+		{ email: 'user@example.com' },
+		{ hardBounce: true, queries },
+	)
+	expect(response.status).toBe(200)
+	expect(await Promise.resolve(response.data)).toEqual(genericResetResponse)
+	expect(mockModule.sendCloudflareEmail).not.toHaveBeenCalled()
+	await flush()
+	expect(mockModule.sendCloudflareEmail).not.toHaveBeenCalled()
+	expect(queries.join('\n')).not.toMatch(/_rate_limits|verify-email:recipient/)
+	const logged = consoleInfo.mock.calls.find(
+		(args) => args[0] === 'password-reset-hard-bounce-suppressed',
+	)
+	expect(logged?.[1]).toBe(
+		JSON.stringify({
+			to: '***@example.com',
+			kind: 'password_reset',
+		}),
+	)
+	expect(String(logged?.[1])).not.toContain('user@example.com')
+})
+
+test('password reset confirmation skips a hard-bounced address without consuming the verification cap', async () => {
+	const queries: Array<string> = []
+	const { helpers } = createTrackingGrantHelpers([
+		{ id: 'grant-1', clientId: 'client-a' },
+	])
+	const response = await confirm(helpers, { hardBounce: true, queries })
+	expect(response.status).toBe(200)
+	expect(await Promise.resolve(response.data)).toEqual({ ok: true })
+	expect(mockModule.sendCloudflareEmail).not.toHaveBeenCalled()
+	expect(queries.join('\n')).not.toMatch(/_rate_limits|verify-email:recipient/)
+	expect(consoleInfo.mock.calls).toContainEqual([
+		'password-reset-hard-bounce-suppressed',
+		JSON.stringify({
+			to: '***@example.com',
+			kind: 'password_reset_confirmed',
+		}),
+	])
+})
+
+test('a delivered password reset does not consume the verification cap', async () => {
+	const queries: Array<string> = []
+	const { response, flush } = await requestReset(
+		kodyCodes,
+		'https://kody.codes/password-reset',
+		{ email: 'user@example.com' },
+		{ queries },
+	)
+	expect(await Promise.resolve(response.data)).toEqual(genericResetResponse)
+	await flush()
+	expect(mockModule.sendCloudflareEmail).toHaveBeenCalledOnce()
+	expect(queries.join('\n')).not.toMatch(/_rate_limits|verify-email:recipient/)
 })

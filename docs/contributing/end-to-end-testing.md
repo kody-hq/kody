@@ -111,14 +111,17 @@ Avoid `page.locator('css')` unless no accessible alternative exists.
   Cloudflare inspector) so validate does not require killing `dev:ensure`
   (#3731). Set `PLAYWRIGHT_BASE_URL` to reuse an existing server instead. It
   also restarts Vite once if the first process exits before Playwright reaches
-  `/health`. On CI, the `🎭 E2E` job also retries the suite once when
-  `tools/ci/is-retryable-e2e-failure.ts` matches a webServer start crash
-  (`Process from config.webServer was not able to start`, including Vite
+  `/health`. On CI, Validate runs Playwright as four `--shard=i/4` matrix jobs
+  (each on its own runner / D1 file; `workers: 1` stays). Each shard retries
+  once when `tools/ci/is-retryable-e2e-failure.ts` matches a webServer start
+  crash (`Process from config.webServer was not able to start`, including Vite
   `__LOAD__ is not defined` during Cloudflare export-type inspection), a
   mid-suite death on port 3847, or a recovered workerd crash
   (`The Workers runtime crashed unexpectedly and is being restarted`). Genuine
-  assertion failures do not retry. The job uploads `logs.local/` as the
-  `e2e-wrangler-logs` artifact when the suite fails.
+  assertion failures do not retry. Shards upload Playwright `blob` reports; the
+  `🎭 E2E Report` job merges them with `playwright merge-reports` into one HTML
+  artifact. Failed shards also upload `logs.local/` as
+  `e2e-wrangler-logs-<shard>`.
 - Ensure the `env.test` section in `packages/worker/wrangler.jsonc` includes
   assets, KV, and durable objects since these are not inherited from top-level
   Wrangler config.

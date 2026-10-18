@@ -43,7 +43,7 @@ concurrency:
 
 jobs:
   sweep:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧹 Sweep closed-PR previews
     # Each preview cleanup has a 150s budget (previewCleanupBudgetMsDefault).
     # preview-sweep.ts also tracks its own 30-minute wall-clock budget

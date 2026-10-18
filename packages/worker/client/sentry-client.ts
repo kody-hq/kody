@@ -41,11 +41,13 @@ const IDLE_LOAD_TIMEOUT_MS = 2500
 /** Chunk-load attempts before giving up on error reporting for this page. */
 const MAX_LOAD_ATTEMPTS = 3
 
-type CaptureFn = (error: unknown) => void
+export type ClientErrorContext = { componentStack?: string | null }
+
+type CaptureFn = (error: unknown, context?: ClientErrorContext) => void
 
 let pendingConfig: SentryClientConfig | null = null
 let captureImpl: CaptureFn | null = null
-let errorBuffer: Array<unknown> = []
+let errorBuffer: Array<{ error: unknown; context?: ClientErrorContext }> = []
 let buffering = false
 let loadPromise: Promise<void> | null = null
 let loadAttempts = 0
@@ -66,14 +68,14 @@ function shouldIgnoreBufferedError(error: unknown) {
 	)
 }
 
-function enqueueBufferedError(error: unknown) {
+function enqueueBufferedError(error: unknown, context?: ClientErrorContext) {
 	if (!buffering || captureImpl) return
 	reloadOnUnknownStartRelease(error)
 	if (shouldIgnoreBufferedError(error)) return
 	// Keep the earliest errors when full — the first failure is usually the
 	// most diagnostic one.
 	if (errorBuffer.length < BUFFER_CAP) {
-		errorBuffer.push(error)
+		errorBuffer.push({ error, context })
 	}
 	// First (and any subsequent) buffered error loads Sentry immediately so
 	// early crashes are not stuck waiting for idle.
@@ -140,9 +142,9 @@ function ensureSentryLoaded() {
 			const pending = errorBuffer
 			errorBuffer = []
 			captureImpl = captureBrowserException
-			for (const error of pending) {
+			for (const { error, context } of pending) {
 				try {
-					captureBrowserException(error)
+					captureBrowserException(error, context)
 				} catch {
 					// Reporting must never break the app.
 				}
@@ -181,18 +183,21 @@ export function initSentryClient(doc: Document): boolean {
 }
 
 /** Report a caught client error without letting reporting itself throw. */
-export function captureClientException(error: unknown) {
+export function captureClientException(
+	error: unknown,
+	context?: ClientErrorContext,
+) {
 	// Stale Start release after deploy (KODY-9E): recover with one hard reload
 	// before dropping the event from Sentry (handled createServerFn path).
 	reloadOnUnknownStartRelease(error)
 	if (shouldIgnoreBufferedError(error)) return
 	try {
 		if (captureImpl) {
-			captureImpl(error)
+			captureImpl(error, context)
 			return
 		}
 		if (!pendingConfig) return
-		enqueueBufferedError(error)
+		enqueueBufferedError(error, context)
 	} catch {
 		// Reporting must never break the app.
 	}

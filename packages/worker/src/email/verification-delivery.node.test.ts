@@ -10,6 +10,8 @@ import {
 	setUserEmailVerificationDelivery,
 	transactionalEmailDestinationVerificationKind,
 	transactionalEmailVerificationKind,
+	transactionalKindRecordsHardBounce,
+	transactionalPasswordResetKind,
 } from './verification-delivery.ts'
 
 const senderBlockResponse =
@@ -325,4 +327,45 @@ test('destination verification lifecycle matches the index without clobbering si
 		},
 	})
 	expect(await readUserDelivery(db)).toMatchObject({ status: 'delivered' })
+})
+
+test('password reset lifecycle matches the index without clobbering signup delivery columns', async () => {
+	const db = await createDeliveryTestDb()
+	await setUserEmailVerificationDelivery({
+		db,
+		userId: 1,
+		status: 'accepted',
+		class: null,
+		at: '2026-09-17T02:00:00.000Z',
+	})
+	await register(db, 'cf-reset', { kind: transactionalPasswordResetKind })
+	expect(
+		transactionalKindRecordsHardBounce(transactionalPasswordResetKind),
+	).toBe(true)
+	expect(transactionalKindRecordsHardBounce('password_reset_confirmed')).toBe(
+		true,
+	)
+	expect(transactionalKindRecordsHardBounce('email_verification')).toBe(true)
+	expect(transactionalKindRecordsHardBounce('forward')).toBe(false)
+
+	expect(
+		await record(
+			db,
+			'cf-reset',
+			'bounced',
+			'2026-09-17T02:05:00.000Z',
+			'550 5.1.1 user unknown',
+		),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: {
+			kind: transactionalPasswordResetKind,
+			status: 'bounced',
+			recipient: 'blocked@example.com',
+		},
+	})
+	expect(await readUserDelivery(db)).toEqual({
+		status: 'accepted',
+		class: null,
+	})
 })
