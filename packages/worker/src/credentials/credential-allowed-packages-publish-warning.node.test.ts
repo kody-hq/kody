@@ -264,6 +264,17 @@ test('filesForPackageSourceRoot scopes nested package paths like credential inve
 		'package.json': '{"name":"@owner/demo"}',
 		'src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
 	})
+	// A repo snapshot with nothing under this source root must not fall back
+	// to sibling package files.
+	expect(
+		filesForPackageSourceRoot(
+			{
+				'packages/other/src/index.ts':
+					"export const y = '{{secret:OTHER_KEY}}'\n",
+			},
+			'packages/demo',
+		),
+	).toEqual({})
 })
 
 test('builder respects package source root and ignores sibling fills', async () => {

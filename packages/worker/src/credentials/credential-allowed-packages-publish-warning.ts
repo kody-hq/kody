@@ -209,7 +209,11 @@ export function filesForPackageSourceRoot(
 	// some external-publish maps are already package-relative — only strip when
 	// the map still contains paths under the source root.
 	if (Object.keys(scoped).length > 0) return scoped
-	return files
+	// Empty under sourceRoot: keep the map only when it is already package-
+	// relative (has package.json at the map root). Otherwise return empty so a
+	// monorepo snapshot cannot fall back to sibling package fills.
+	if ('package.json' in files) return files
+	return {}
 }
 
 export async function buildCredentialAllowedPackagesPublishWarnings(input: {
