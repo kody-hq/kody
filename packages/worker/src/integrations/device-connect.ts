@@ -8,13 +8,13 @@ import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import {
 	assertScopesAllowedForPlatformApp,
 	getAvailablePlatformApp,
 } from '#worker/integrations/service.ts'
 import { getPlatformOauthAppClientSecret } from '#worker/integrations/platform-apps.ts'
-import { type buildConnectOauthNextSteps } from '#app/connect-oauth-next-steps.ts'
+import { type buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import {
 	persistConnectOauthTokens,
 	resolveConnectClientSecret,

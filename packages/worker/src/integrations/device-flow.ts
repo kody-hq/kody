@@ -7,8 +7,8 @@
  * an opaque session id plus the user-facing code and verification URI.
  */
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
-import { checkRateLimit } from '#app/rate-limit.ts'
-import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { checkRateLimit } from '#worker/rate-limit.ts'
+import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import {
 	buildOAuthTokenExchangeRequest,
 	isOAuthTokenExchangeSoftFailure,
@@ -16,6 +16,7 @@ import {
 	resolveTokenExchangeStyle,
 	type TokenExchangeStyle,
 } from './oauth-token-exchange.ts'
+import { assertSecureCredentialUrl } from './secure-credential-url.ts'
 
 export const DEVICE_CODE_GRANT_TYPE =
 	'urn:ietf:params:oauth:grant-type:device_code' as const
@@ -177,6 +178,10 @@ function isSafeExternalUrl(raw: string) {
 	}
 }
 
+export function assertSafeTokenUrl(url: string): string | null {
+	return assertSecureCredentialUrl(url, 'Token URL')
+}
+
 function deviceSessionKvKey(userId: string, sessionId: string) {
 	return `integration-device-session:${userId}:${sessionId}`
 }
@@ -218,10 +223,11 @@ function readOptionalStringField(
 
 export function assertSafeDeviceAuthorizationUrl(url: string): string | null {
 	const trimmed = url.trim()
-	if (!trimmed) return 'Device authorization URL is required.'
-	if (!isSafeExternalUrl(trimmed)) {
-		return 'Device authorization URL must use http or https.'
-	}
+	const secureError = assertSecureCredentialUrl(
+		trimmed,
+		'Device authorization URL',
+	)
+	if (secureError) return secureError
 	if (!safeParseHost(trimmed)) {
 		return 'Device authorization URL is invalid.'
 	}
@@ -375,6 +381,10 @@ export async function startDeviceAuthorization(input: {
 	)
 	if (urlError) {
 		return { ok: false, error: urlError, status: 400 }
+	}
+	const tokenUrlError = assertSafeTokenUrl(input.tokenUrl)
+	if (tokenUrlError) {
+		return { ok: false, error: tokenUrlError, status: 400 }
 	}
 	const deviceHost = safeParseHost(input.deviceAuthorizationUrl)
 	const tokenHost = safeParseHost(input.tokenUrl)

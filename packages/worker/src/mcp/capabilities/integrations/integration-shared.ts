@@ -5,6 +5,7 @@ import {
 	integrationAuthFailureReasons,
 } from '#universal/connection-trouble.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { isSecureCredentialUrl } from '#worker/integrations/secure-credential-url.ts'
 
 export const integrationFlowValues = ['pkce', 'confidential', 'device'] as const
 
@@ -53,7 +54,9 @@ export const integrationAuthorizationSchema = z
 
 export const integrationConfigSchema = z.object({
 	name: integrationNameSchema,
-	tokenUrl: z.string().url(),
+	tokenUrl: z.string().url().refine(isSecureCredentialUrl, {
+		message: 'Token URL must use https (http is only allowed for localhost).',
+	}),
 	apiBaseUrl: z.string().url().optional().nullable(),
 	flow: z.enum(integrationFlowValues),
 	/**
@@ -72,8 +75,9 @@ export const integrationConfigSchema = z.object({
 	deviceAuthorizationUrl: z
 		.string()
 		.url()
-		.refine(isHttpUrl, {
-			message: 'Device authorization URL must use http or https.',
+		.refine(isSecureCredentialUrl, {
+			message:
+				'Device authorization URL must use https (http is only allowed for localhost).',
 		})
 		.optional()
 		.nullable(),
@@ -117,7 +121,14 @@ type IntegrationAuthorization = z.infer<typeof integrationAuthorizationSchema>
 export const integrationSaveSchema = z
 	.object({
 		name: integrationNameSchema,
-		tokenUrl: z.string().url().optional(),
+		tokenUrl: z
+			.string()
+			.url()
+			.refine(isSecureCredentialUrl, {
+				message:
+					'Token URL must use https (http is only allowed for localhost).',
+			})
+			.optional(),
 		apiBaseUrl: z.string().url().nullable().optional(),
 		flow: z.enum(integrationFlowValues).optional(),
 		usePkce: z.boolean().nullable().optional(),
@@ -127,8 +138,9 @@ export const integrationSaveSchema = z
 		deviceAuthorizationUrl: z
 			.string()
 			.url()
-			.refine(isHttpUrl, {
-				message: 'Device authorization URL must use http or https.',
+			.refine(isSecureCredentialUrl, {
+				message:
+					'Device authorization URL must use https (http is only allowed for localhost).',
 			})
 			.nullable()
 			.optional(),

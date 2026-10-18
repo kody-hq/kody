@@ -8,7 +8,11 @@ import {
 	normalizeIntegrationConfig,
 	type IntegrationConfig,
 } from '#mcp/capabilities/integrations/integration-shared.ts'
-import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
+import {
+	assertSafeDeviceAuthorizationUrl,
+	assertSafeTokenUrl,
+} from './device-flow.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstIntegration } from '#worker/identity/activation-stamps.ts'
@@ -1014,6 +1018,10 @@ function normalizeOauthAppConfig(
 	if (!tokenUrl) {
 		throw new Error('Token URL is required.')
 	}
+	const tokenUrlError = assertSafeTokenUrl(tokenUrl)
+	if (tokenUrlError) {
+		throw new Error(tokenUrlError)
+	}
 	const authorization = value.authorization
 		? normalizeIntegrationAuthorization({
 				authorizeUrl: value.authorization.authorizeUrl,
@@ -1034,6 +1042,14 @@ function normalizeOauthAppConfig(
 				: null
 	const tokenExchangeStyle = value.tokenExchangeStyle ?? null
 	const deviceAuthorizationUrl = value.deviceAuthorizationUrl?.trim() || null
+	if (value.flow === 'device' || deviceAuthorizationUrl) {
+		const deviceUrlError = assertSafeDeviceAuthorizationUrl(
+			deviceAuthorizationUrl ?? '',
+		)
+		if (deviceUrlError) {
+			throw new Error(deviceUrlError)
+		}
+	}
 	return {
 		name: preferredSlug,
 		tokenUrl,
