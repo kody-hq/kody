@@ -1428,20 +1428,24 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const runs = await github.rest.actions.listWorkflowRuns({
-              ...context.repo, workflow_id: 'deploy.yml', branch: 'main', per_page: 50,
-            })
-            for (const run of runs.data.workflow_runs) {
-              if (run.id === context.runId) continue
-              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                ...context.repo, run_id: run.id,
+            for (let page = 1; ; page++) {
+              const artifacts = await github.rest.actions.listArtifactsForRepo({
+                ...context.repo, name: 'production-client-assets', per_page: 100, page,
               })
-              const archive = artifacts.data.artifacts.find(a =>
-                a.name === 'production-client-assets' && !a.expired)
-              if (!archive) continue
-              core.setOutput('artifact_id', String(archive.id))
-              core.setOutput('run_id', String(run.id))
-              return
+              for (const archive of artifacts.data.artifacts) {
+                const source = archive.workflow_run
+                if (archive.expired || !source || source.id === context.runId ||
+                    source.head_branch !== 'main' ||
+                    source.head_repository_id !== source.repository_id) continue
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  ...context.repo, run_id: source.id,
+                })
+                if (run.status !== 'completed' || run.path !== '.github/workflows/deploy.yml') continue
+                core.setOutput('artifact_id', String(archive.id))
+                core.setOutput('run_id', String(source.id))
+                return
+              }
+              if (artifacts.data.artifacts.length < 100) break
             }
             core.info('No retained archive yet; this deployment starts asset retention.')
 
