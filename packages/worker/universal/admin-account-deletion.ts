@@ -12,12 +12,12 @@ export const adminAccountDeletionAcknowledgementReasons = [
 export type AdminAccountDeletionAcknowledgementReason =
 	(typeof adminAccountDeletionAcknowledgementReasons)[number]
 
-export type AdminAccountDeletionSoleOrg = {
+type AdminAccountDeletionSoleOrg = {
 	slug: string
 	otherMemberCount: number
 }
 
-export type AdminAccountDeletionCounts = {
+type AdminAccountDeletionCounts = {
 	packages: number
 	jobs: number
 	credentials: number
