@@ -899,7 +899,7 @@ test('a failed owner read still keeps the successful pages from that wave', asyn
 		progressKey,
 		JSON.stringify({ ...released, leaseExpiresAt: null }),
 		{
-			ifMatch: leased!.etag,
+			ifMatch: leased!.etag ?? undefined,
 		},
 	)
 
