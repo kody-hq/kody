@@ -203,8 +203,10 @@ export function filesForPackageSourceRoot(
 	files: Record<string, string>,
 	sourceRoot?: string | null,
 ): Record<string, string> {
-	const root = normalizeRepoWorkspacePath(sourceRoot ?? '').replace(/\/+$/, '')
-	if (!root) return files
+	const root = normalizeRepoWorkspacePath(sourceRoot ?? '')
+		.replace(/^(?:\.\/)+/, '')
+		.replace(/\/+$/, '')
+	if (!root || root === '.') return files
 	return Object.fromEntries(
 		Object.entries(files)
 			.filter(([path]) => path.startsWith(`${root}/`))

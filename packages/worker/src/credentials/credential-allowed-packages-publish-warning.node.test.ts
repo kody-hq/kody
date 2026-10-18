@@ -251,6 +251,21 @@ test('filesForPackageSourceRoot strips strictly with no fallback', () => {
 	expect(filesForPackageSourceRoot({ 'package.json': '{}' }, '/')).toEqual({
 		'package.json': '{}',
 	})
+	expect(filesForPackageSourceRoot({ 'package.json': '{}' }, '.')).toEqual({
+		'package.json': '{}',
+	})
+	expect(
+		filesForPackageSourceRoot(
+			{
+				'packages/demo/package.json': '{"name":"@owner/demo"}',
+				'packages/demo/src/index.ts': "export const x = '1'\n",
+			},
+			'./packages/demo',
+		),
+	).toEqual({
+		'package.json': '{"name":"@owner/demo"}',
+		'src/index.ts': "export const x = '1'\n",
+	})
 	// Already package-relative trees must omit sourceRoot at the call site.
 	// Passing a nested root against that map strictly yields {}.
 	expect(
