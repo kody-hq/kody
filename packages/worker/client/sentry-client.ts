@@ -41,7 +41,15 @@ const IDLE_LOAD_TIMEOUT_MS = 2500
 /** Chunk-load attempts before giving up on error reporting for this page. */
 const MAX_LOAD_ATTEMPTS = 3
 
-export type ClientErrorContext = { componentStack?: string | null }
+export type ClientErrorContext = {
+	componentStack?: string | null
+	documentMeta?: Array<{
+		name: string
+		count: number
+		index: number
+		differingAttributes: Array<string>
+	}>
+}
 
 type CaptureFn = (error: unknown, context?: ClientErrorContext) => void
 

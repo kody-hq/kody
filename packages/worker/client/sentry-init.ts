@@ -95,8 +95,13 @@ export function captureBrowserException(
 ) {
 	Sentry.captureException(
 		error,
-		context?.componentStack
-			? { extra: { componentStack: context.componentStack } }
+		context?.componentStack || context?.documentMeta
+			? {
+					extra: {
+						componentStack: context.componentStack,
+						documentMeta: context.documentMeta,
+					},
+				}
 			: undefined,
 	)
 }

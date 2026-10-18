@@ -3,6 +3,7 @@ import { StrictMode, startTransition, useEffect } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
+import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
 import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-start-release.ts'
 import {
 	captureClientException,
@@ -31,6 +32,30 @@ function HydratedApp({ router }: { router: AnyRouter }) {
 
 hydrateStart()
 	.then((router) => {
+		const reportDocumentError = (
+			error: unknown,
+			context?: ClientErrorContext,
+		) => {
+			let enriched = context
+			if (
+				error instanceof Error &&
+				error.message.startsWith('Hydration mismatch') &&
+				/at meta\s+at head\b/.test(context?.componentStack ?? '')
+			) {
+				try {
+					enriched = {
+						...context,
+						documentMeta: documentMetaDiagnostics(
+							document,
+							router.state.matches[0]?.loaderData,
+						),
+					}
+				} catch {
+					// Diagnostics must never prevent the original error report.
+				}
+			}
+			reportReactError(error, enriched)
+		}
 		startTransition(() => {
 			hydrateRoot(
 				document,
@@ -38,9 +63,9 @@ hydrateStart()
 					<HydratedApp router={router} />
 				</StrictMode>,
 				{
-					onCaughtError: reportReactError,
-					onUncaughtError: reportReactError,
-					onRecoverableError: reportReactError,
+					onCaughtError: reportDocumentError,
+					onUncaughtError: reportDocumentError,
+					onRecoverableError: reportDocumentError,
 				},
 			)
 		})

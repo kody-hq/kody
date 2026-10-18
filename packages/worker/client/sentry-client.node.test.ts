@@ -29,7 +29,17 @@ test('keeps component stacks with their errors before and after Sentry loads', a
 	} as unknown as Document
 	expect(initSentryClient(doc)).toBe(true)
 	const early = new Error('early hydration failure')
-	const earlyContext = { componentStack: '\n    at CredentialsFeature' }
+	const earlyContext = {
+		componentStack: '\n    at meta\n    at head',
+		documentMeta: [
+			{
+				name: 'viewport',
+				count: 1,
+				index: 0,
+				differingAttributes: ['content'],
+			},
+		],
+	}
 	captureClientException(early, earlyContext)
 	await vi.waitFor(() =>
 		expect(capture).toHaveBeenCalledWith(early, earlyContext),
