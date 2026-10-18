@@ -11,5 +11,6 @@ export async function rejectUnsupportedRouteMethod(request: Request) {
 		method,
 		route,
 		Boolean(route && params['**'] === undefined),
+		request,
 	)
 }

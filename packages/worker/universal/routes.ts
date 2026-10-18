@@ -93,6 +93,7 @@ export const routes = {
 	},
 	accountExperiments: { href: () => '/account/experiments' },
 	accountMemoriesExport: { href: () => '/account/memories-export.json' },
+	accountPackagesApi: { href: () => '/account/packages.json' },
 	accountPasskeys: { href: () => '/account/passkeys' },
 	accountMcpOauthClients: { href: () => '/account/mcp-oauth-clients' },
 	accountTwoFactor: { href: () => '/account/two-factor' },

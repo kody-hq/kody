@@ -128,7 +128,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/@{$orgSlug}/-/repositories',
 			'/@{$orgSlug}/-/approvals/$bundleId',
 		],
-		apis: ['/@{$username}/$kodyId/raw/$ref/$'],
+		apis: ['/account/packages.json', '/@{$username}/$kodyId/raw/$ref/$'],
 	},
 	{
 		id: 'secrets',

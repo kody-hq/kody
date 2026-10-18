@@ -28,6 +28,8 @@ const personScopedAccountRoutes: Record<string, string> = {
 	'/account/mcp-servers/logos/$serverId':
 		'path has no org; handler binds via explicit server owner',
 	'/account/mcp-servers/oauth/callback': 'OAuth state carries the server owner',
+	'/account/packages.json':
+		'retained package mutations authorize each package by its owning org',
 	'/account/packages/$packageId': 'package authorization checks its owner',
 	'/account/packages/$packageId/approve-publish':
 		'package authorization checks its owner',

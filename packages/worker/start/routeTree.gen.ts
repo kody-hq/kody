@@ -70,6 +70,7 @@ import { Route as AccountMcpServersRouteImport } from './routes/account_.mcp-ser
 import { Route as AccountMemoriesRouteImport } from './routes/account_.memories'
 import { Route as AccountMemoriesExportDotjsonRouteImport } from './routes/account_.memories-export[.]json'
 import { Route as AccountOrganizationsRouteImport } from './routes/account_.organizations'
+import { Route as AccountPackagesDotjsonRouteImport } from './routes/account_.packages[.]json'
 import { Route as AccountPasskeysRouteImport } from './routes/account_.passkeys'
 import { Route as AccountSecretProvidersRouteImport } from './routes/account_.secret-providers'
 import { Route as AccountSecretsRouteImport } from './routes/account_.secrets'
@@ -571,6 +572,11 @@ const AccountMemoriesExportDotjsonRoute =
 const AccountOrganizationsRoute = AccountOrganizationsRouteImport.update({
   id: '/account_/organizations',
   path: '/account/organizations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountPackagesDotjsonRoute = AccountPackagesDotjsonRouteImport.update({
+  id: '/account_/packages.json',
+  path: '/account/packages.json',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountPasskeysRoute = AccountPasskeysRouteImport.update({
@@ -1705,6 +1711,7 @@ export interface FileRoutesByFullPath {
   '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/organizations': typeof AccountOrganizationsRoute
+  '/account/packages.json': typeof AccountPackagesDotjsonRoute
   '/account/passkeys': typeof AccountPasskeysRoute
   '/account/secret-providers': typeof AccountSecretProvidersRoute
   '/account/secrets': typeof AccountSecretsRoute
@@ -1959,6 +1966,7 @@ export interface FileRoutesByTo {
   '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/organizations': typeof AccountOrganizationsRoute
+  '/account/packages.json': typeof AccountPackagesDotjsonRoute
   '/account/passkeys': typeof AccountPasskeysRoute
   '/account/secret-providers': typeof AccountSecretProvidersRoute
   '/account/secrets': typeof AccountSecretsRoute
@@ -2215,6 +2223,7 @@ export interface FileRoutesById {
   '/account_/memories': typeof AccountMemoriesRoute
   '/account_/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account_/organizations': typeof AccountOrganizationsRoute
+  '/account_/packages.json': typeof AccountPackagesDotjsonRoute
   '/account_/passkeys': typeof AccountPasskeysRoute
   '/account_/secret-providers': typeof AccountSecretProvidersRoute
   '/account_/secrets': typeof AccountSecretsRoute
@@ -2472,6 +2481,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/memories-export.json'
     | '/account/organizations'
+    | '/account/packages.json'
     | '/account/passkeys'
     | '/account/secret-providers'
     | '/account/secrets'
@@ -2726,6 +2736,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/memories-export.json'
     | '/account/organizations'
+    | '/account/packages.json'
     | '/account/passkeys'
     | '/account/secret-providers'
     | '/account/secrets'
@@ -2981,6 +2992,7 @@ export interface FileRouteTypes {
     | '/account_/memories'
     | '/account_/memories-export.json'
     | '/account_/organizations'
+    | '/account_/packages.json'
     | '/account_/passkeys'
     | '/account_/secret-providers'
     | '/account_/secrets'
@@ -3237,6 +3249,7 @@ export interface RootRouteChildren {
   AccountMemoriesRoute: typeof AccountMemoriesRoute
   AccountMemoriesExportDotjsonRoute: typeof AccountMemoriesExportDotjsonRoute
   AccountOrganizationsRoute: typeof AccountOrganizationsRoute
+  AccountPackagesDotjsonRoute: typeof AccountPackagesDotjsonRoute
   AccountPasskeysRoute: typeof AccountPasskeysRoute
   AccountSecretProvidersRoute: typeof AccountSecretProvidersRoute
   AccountSecretsRoute: typeof AccountSecretsRoute
@@ -3849,6 +3862,13 @@ declare module '@tanstack/react-router' {
       path: '/account/organizations'
       fullPath: '/account/organizations'
       preLoaderRoute: typeof AccountOrganizationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account_/packages.json': {
+      id: '/account_/packages.json'
+      path: '/account/packages.json'
+      fullPath: '/account/packages.json'
+      preLoaderRoute: typeof AccountPackagesDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/account_/passkeys': {
@@ -5310,6 +5330,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountMemoriesRoute: AccountMemoriesRoute,
   AccountMemoriesExportDotjsonRoute: AccountMemoriesExportDotjsonRoute,
   AccountOrganizationsRoute: AccountOrganizationsRoute,
+  AccountPackagesDotjsonRoute: AccountPackagesDotjsonRoute,
   AccountPasskeysRoute: AccountPasskeysRoute,
   AccountSecretProvidersRoute: AccountSecretProvidersRoute,
   AccountSecretsRoute: AccountSecretsRoute,
@@ -5548,13 +5569,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
