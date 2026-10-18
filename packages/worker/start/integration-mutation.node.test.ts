@@ -32,6 +32,7 @@ const payload: AccountIntegrationsLoaderData = {
 			hasClientSecret: true,
 			tokenUrl: 'https://mail.test/token',
 			authorizeUrl: null,
+			deviceAuthorizationUrl: null,
 			apiBaseUrl: null,
 			flow: 'pkce',
 			usePkce: true,

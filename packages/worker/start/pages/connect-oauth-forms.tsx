@@ -278,7 +278,6 @@ export function renderConnectStep(input: {
 	)
 }
 
-
 export function renderDeviceStep(input: {
 	config: ConnectOauthConfig
 	userCode: string
@@ -332,7 +331,7 @@ export function renderDeviceStep(input: {
 						<code
 							data-testid="connect-oauth-user-code"
 							css={{
-								...sourceDetailValueCss,
+								...detailValueCss,
 								fontSize: typography.fontSize.xl,
 								letterSpacing: '0.08em',
 								fontWeight: typography.fontWeight.semibold,

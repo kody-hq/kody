@@ -208,7 +208,7 @@ export function toStoredIntegrationConfig(
  * Accepts either a JSON string or an already-decoded object with inline
  * `clientId` (the first-class integrations table shape).
  */
-export function parseStoredIntegrationConfig(
+function parseStoredIntegrationConfig(
 	raw: string | Record<string, unknown>,
 	fallbackProvider: string | null,
 ): StoredIntegrationConfig | null {
@@ -663,7 +663,7 @@ export function formatConnectOauthCaughtError(
  * Distinguish real Kody session expiry (401 Unauthorized) from provider token
  * exchange failures that historically leaked through as HTTP 401.
  */
-export function formatOAuthExchangeFailure(input: {
+function formatOAuthExchangeFailure(input: {
 	status: number
 	data: Record<string, unknown> | null
 }): { treatAsSessionExpired: boolean; error: string } {
@@ -683,7 +683,7 @@ export function formatOAuthExchangeFailure(input: {
 	}
 }
 
-export function isOAuthExchangeSessionExpired(input: {
+function isOAuthExchangeSessionExpired(input: {
 	status: number
 	data: Record<string, unknown> | null
 }) {
@@ -848,7 +848,7 @@ export function parseProviderSetupInstructions(raw: string | null) {
 	return decoded && isMostlyPrintable(decoded) ? decoded : trimmed
 }
 
-export function decodeBase64Payload(raw: string) {
+function decodeBase64Payload(raw: string) {
 	if (!/^[A-Za-z0-9+/=_-]+$/.test(raw)) return null
 	try {
 		return new TextDecoder().decode(base64UrlToBytes(raw))
@@ -857,7 +857,7 @@ export function decodeBase64Payload(raw: string) {
 	}
 }
 
-export function isMostlyPrintable(text: string) {
+function isMostlyPrintable(text: string) {
 	if (!text) return false
 	let printable = 0
 	for (const char of text) {

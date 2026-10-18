@@ -379,8 +379,7 @@ export async function connectAccountOAuth(input: {
 				provider,
 				tokenUrl,
 				apiBaseUrl,
-				flow:
-					flow === 'confidential' || flow === 'device' ? flow : 'pkce',
+				flow: flow === 'confidential' || flow === 'device' ? flow : 'pkce',
 				usePkce,
 				clientId,
 				tokenExchangeStyle: resolveTokenExchangeStyle({
@@ -508,7 +507,6 @@ async function emitConnectOauthAuthSucceeded(input: {
 		)
 	}
 }
-
 
 export async function startAccountDeviceConnect(input: {
 	env: Env
@@ -728,13 +726,22 @@ async function handlePlatformOAuthExchange(input: {
 			)
 		}
 	}
+	if (platformApp.flow === 'device') {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Device flow does not use authorization code exchange.',
+			},
+			400,
+		)
+	}
 	const params = new URLSearchParams(input.paramsRaw)
 	params.set('client_id', platformApp.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({
 		tokenUrl: platformApp.tokenUrl,
 		params,
-		flow: platformApp.flow,
+		flow: platformApp.flow === 'confidential' ? 'confidential' : 'pkce',
 		clientSecret,
 		style: resolveTokenExchangeStyle({
 			tokenUrl: platformApp.tokenUrl,

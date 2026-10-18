@@ -2,7 +2,14 @@
 import { useRouter } from '@tanstack/react-router'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from 'react'
+import {
+	useState,
+	useRef,
+	useEffect,
+	useCallback,
+	useMemo,
+	type FormEvent,
+} from 'react'
 import {
 	type ConnectOauthExistingConnection,
 	type ConnectOauthLoaderData,
@@ -336,14 +343,15 @@ export function ConnectOauthRoute({
 		update({ statusMessage, statusTone })
 	}
 	const stateRef = useRef(state)
-	stateRef.current = state
+	useEffect(() => {
+		stateRef.current = state
+	}, [state])
 	const [, setDeviceTick] = useState(0)
 	const deviceStep = useMemo(
 		() =>
 			createConnectOauthDeviceStep({
 				getConfig: () => stateRef.current.config,
-				getSubmitting: () =>
-					stateRef.current.submitting || inFlight.current,
+				getSubmitting: () => stateRef.current.submitting || inFlight.current,
 				setSubmitting: (value) => {
 					inFlight.current = value
 					setState((previous) => ({ ...previous, submitting: value }))
