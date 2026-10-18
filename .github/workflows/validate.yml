@@ -353,9 +353,12 @@ jobs:
 
       - name: ⏱️ Unit job budget (≤720s)
         if: success()
+        # Enforced on pull requests; advisory (warning annotation) on push to
+        # main and manual dispatches so a slow cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch
-          "$UNIT_JOB_START_EPOCH"
+          "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
+          '--advisory' || '' }}
 
       - name: ⏱️ Job wall-clock
         if: always() && !cancelled()
@@ -476,9 +479,12 @@ jobs:
 
       - name: ⏱️ Unit job budget (≤720s)
         if: success()
+        # Enforced on pull requests; advisory (warning annotation) on push to
+        # main and manual dispatches so a slow cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch
-          "$UNIT_JOB_START_EPOCH"
+          "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
+          '--advisory' || '' }}
 
       - name: ⏱️ Job wall-clock
         if: always() && !cancelled()

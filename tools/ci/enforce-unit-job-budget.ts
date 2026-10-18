@@ -11,9 +11,16 @@
  * resets the start epoch so the post-suite check measures the successful
  * attempt only (job wall is the 30-minute Workers timeout).
  *
+ * `--advisory` reports an overrun as a GitHub warning annotation and exits 0.
+ * Validate passes it on non-pull_request events (push to main, manual bench
+ * dispatches): the budget is a regression gate for PRs, and a slow cold run on
+ * main should not turn main red or block the production deploy that follows
+ * Validate.
+ *
  * Usage:
  *   node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch 1710000000
  *   node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch 1710000000
+ *   node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch 1710000000 --advisory
  */
 import { isExecutedDirectly } from '../node-runtime.ts'
 
@@ -127,7 +134,7 @@ export function main(args = process.argv.slice(2)) {
 	const startRaw = readFlag(args, '--start-epoch')
 	if (!legRaw || !isUnitJobLeg(legRaw) || !startRaw) {
 		console.error(
-			'Usage: node tools/ci/enforce-unit-job-budget.ts --leg <node|workers> --start-epoch <unix-seconds>',
+			'Usage: node tools/ci/enforce-unit-job-budget.ts --leg <node|workers> --start-epoch <unix-seconds> [--advisory]',
 		)
 		process.exitCode = 1
 		return
@@ -145,6 +152,13 @@ export function main(args = process.argv.slice(2)) {
 	})
 	if (result.ok) {
 		console.log(result.summary)
+		process.exitCode = 0
+		return
+	}
+	if (args.includes('--advisory')) {
+		console.log(
+			`::warning title=${result.jobName} over budget (advisory)::${result.summary}`,
+		)
 		process.exitCode = 0
 		return
 	}

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	evaluateUnitJobBudget,
@@ -133,8 +133,50 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 	main([])
 	expect(process.exitCode).toBe(1)
 	expect(consoleError).toHaveBeenCalledWith(
-		'Usage: node tools/ci/enforce-unit-job-budget.ts --leg <node|workers> --start-epoch <unix-seconds>',
+		'Usage: node tools/ci/enforce-unit-job-budget.ts --leg <node|workers> --start-epoch <unix-seconds> [--advisory]',
 	)
 
+	process.exitCode = previousExitCode
+})
+
+test('the unit job budget is advisory outside pull requests', () => {
+	const previousExitCode = process.exitCode
+	const workflow = readFileSync(
+		new URL('../../.github/workflows/validate.yml', import.meta.url),
+		'utf8',
+	)
+	// Both post-suite budget checks: enforced on PRs, advisory elsewhere.
+	const advisoryFlag =
+		/"\$UNIT_JOB_START_EPOCH" \$\{\{ github\.event_name != 'pull_request' &&\s+'--advisory' \|\| '' \}\}/g
+	expect(workflow.match(advisoryFlag)).toHaveLength(2)
+
+	const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
+	process.exitCode = undefined
+	main([
+		'--leg',
+		'node',
+		'--start-epoch',
+		String(Math.floor(Date.now() / 1000) - 729),
+		'--advisory',
+	])
+	expect(process.exitCode).toBe(0)
+	expect(consoleError).not.toHaveBeenCalled()
+	expect(consoleLog).toHaveBeenCalledWith(
+		expect.stringMatching(
+			/^::warning title=🧪 Node over budget \(advisory\)::🧪 Node took 7\d\ds; budget is 720s\./,
+		),
+	)
+
+	process.exitCode = undefined
+	main([
+		'--leg',
+		'node',
+		'--start-epoch',
+		String(Math.floor(Date.now() / 1000) - 729),
+	])
+	expect(process.exitCode).toBe(1)
+
+	consoleLog.mockRestore()
 	process.exitCode = previousExitCode
 })

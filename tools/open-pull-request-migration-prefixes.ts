@@ -119,7 +119,7 @@ export async function scanOpenPullRequestMigrationPrefixes(input: {
 	const currentPullNumber =
 		input.currentPullNumber !== undefined
 			? input.currentPullNumber
-			: readCurrentPullNumber(env, cwd)
+			: resolveCurrentPullNumber(env, cwd)
 	try {
 		const claims = await listClaimedMigrationFiles({
 			repository,
@@ -180,7 +180,14 @@ function readToken(env: NodeJS.ProcessEnv, cwd: string) {
 	return commandOutput(cwd, 'gh', ['auth', 'token'])
 }
 
-function readCurrentPullNumber(env: NodeJS.ProcessEnv, cwd: string) {
+/**
+ * This checkout's pull request number: GITHUB_PULL_REQUEST_NUMBER, then a
+ * `refs/pull/<n>/...` GITHUB_REF (pull_request events), then `gh pr view`.
+ */
+export function resolveCurrentPullNumber(
+	env: NodeJS.ProcessEnv,
+	cwd: string,
+): number | null {
 	const explicit = env.GITHUB_PULL_REQUEST_NUMBER?.trim()
 	if (explicit && /^\d+$/.test(explicit)) return Number(explicit)
 	const ref = /^refs\/pull\/(?<number>\d+)\//.exec(env.GITHUB_REF ?? '')

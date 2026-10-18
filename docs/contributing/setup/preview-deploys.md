@@ -132,8 +132,10 @@ job. The preview URL is posted as a PR comment instead.
 Cleanup deletes any leftover `preview-<pr-number>` GitHub Environment on PR
 close. That API requires repository administration write access, so the repo
 must define a `PREVIEW_ENVIRONMENT_ADMIN_TOKEN` Actions secret with a token that
-has that permission. Cleanup intentionally fails when that secret is missing or
-under-scoped so permission regressions are visible.
+has that permission. When that secret is missing or under-scoped, the
+environment-delete step emits a warning annotation instead of failing the job,
+so a permission regression does not paint closed PRs red. The Cloudflare
+resource and GitHub deployment cleanup steps still fail on errors.
 
 Every Cloudflare delete in `tools/ci/preview-resources.ts` (Workers, D1, KV, R2,
 Queues and their consumers, Vectorize indexes, Artifacts namespaces) first

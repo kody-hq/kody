@@ -1311,9 +1311,12 @@ jobs:
 
       # Preview deploys no longer create per-PR GitHub Environments. Keep this
       # step so open-PR leftovers (and any race-recreated `preview-<n>`) still go
-      # away when the PR closes.
+      # away when the PR closes. Best-effort: a missing or under-scoped
+      # PREVIEW_ENVIRONMENT_ADMIN_TOKEN is a warning, not a red X on a closed
+      # PR. Worker/D1/KV/R2/Vectorize and deployment cleanup above stay strict.
       - name: 🏷️ Delete GitHub preview environment
         if: always()
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -1358,9 +1361,10 @@ jobs:
             }
 
             if (!hasAdminToken) {
-              throw new Error(
-                "PREVIEW_ENVIRONMENT_ADMIN_TOKEN is required to delete leftover GitHub preview environments. Configure it with repository administration write access.",
+              core.warning(
+                `PREVIEW_ENVIRONMENT_ADMIN_TOKEN is required to delete leftover GitHub preview environment ${envName}. Configure it with repository administration write access.`,
               );
+              return;
             }
 
             const { owner, repo } = context.repo;
@@ -1384,7 +1388,7 @@ jobs:
                 e.response?.headers?.["x-accepted-github-permissions"] ===
                   "administration=write"
               ) {
-                throw new Error(
+                core.warning(
                   `PREVIEW_ENVIRONMENT_ADMIN_TOKEN cannot delete ${envName}; it must allow repository administration write access.`,
                 );
               } else {
