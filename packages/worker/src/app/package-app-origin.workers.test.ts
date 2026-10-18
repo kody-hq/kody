@@ -856,7 +856,8 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 			'2026-10-14T00:00:00.000Z',
 		)
 		.run()
-	for (const headers of [{}, { Cookie: outsiderSession }] as const) {
+	const openSiteHeaders: Array<HeadersInit> = [{}, { Cookie: outsiderSession }]
+	for (const headers of openSiteHeaders) {
 		const openSite = await workerFetch(
 			`${appOrigin}/@${orgSlug}/packages/open-site`,
 			{ headers },

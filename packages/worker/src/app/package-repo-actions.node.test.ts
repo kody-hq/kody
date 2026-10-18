@@ -173,7 +173,7 @@ test('buildSourceAheadPublishHref names the HEAD commit when present', () => {
 test('open app hands off only for someone who may run the app', async () => {
 	const env = {
 		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
-	} as Env
+	} as unknown as Env
 	const shared = {
 		env,
 		username: 'kentcdodds',
