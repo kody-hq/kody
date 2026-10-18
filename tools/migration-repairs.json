@@ -1,0 +1,10 @@
+{
+	"version": 1,
+	"repairs": [
+		{
+			"filename": "0165-oauth-device-authorization.sql",
+			"fromSha256": "6eef245a600d256662793ed97f3e39686bdc92887f03a55d360b253e41a035b5",
+			"reason": "Production deploy of #3980 failed applying 0165 with SQLITE_CONSTRAINT_FOREIGNKEY before d1_migrations recorded the file. Replace the rebuild with a 0002-style snapshot of user_integrations so parent DROP/RENAME can commit cleanly."
+		}
+	]
+}

@@ -21,6 +21,21 @@ export const defaultMigrationLedgerPath = path.join(
 	'tools',
 	'migration-ledger.json',
 )
+export const defaultMigrationRepairsPath = path.join(
+	'tools',
+	'migration-repairs.json',
+)
+
+export type MigrationRepair = {
+	filename: string
+	fromSha256: string
+	reason: string
+}
+
+export type MigrationRepairsFile = {
+	version: 1
+	repairs: Array<MigrationRepair>
+}
 export const defaultKnownMigrationDirectories: ReadonlyArray<string> = [
 	defaultMigrationsDir,
 	path.join('packages', 'jobs-worker', 'migrations'),
@@ -401,10 +416,55 @@ export function isMigrationLedger(value: unknown): value is MigrationLedger {
 	)
 }
 
+export function isMigrationRepairsFile(
+	value: unknown,
+): value is MigrationRepairsFile {
+	if (!value || typeof value !== 'object') {
+		return false
+	}
+	const candidate = value as MigrationRepairsFile
+	return (
+		candidate.version === 1 &&
+		Array.isArray(candidate.repairs) &&
+		candidate.repairs.every(
+			(entry) =>
+				entry !== null &&
+				typeof entry === 'object' &&
+				typeof entry.filename === 'string' &&
+				typeof entry.fromSha256 === 'string' &&
+				/^[a-f0-9]{64}$/.test(entry.fromSha256) &&
+				typeof entry.reason === 'string' &&
+				entry.reason.trim().length > 0,
+		)
+	)
+}
+
+/**
+ * One-shot allowlist for rewriting a migration that landed on `main` but never
+ * applied successfully (D1 rolled back before `d1_migrations` recorded it).
+ * Match is filename + trusted fromSha256 → current digest may differ.
+ */
+export function isAllowedMigrationRepair(input: {
+	filename: string
+	fromSha256: string
+	toSha256: string
+	repairs: ReadonlyArray<MigrationRepair>
+}): boolean {
+	if (input.fromSha256 === input.toSha256) {
+		return false
+	}
+	return input.repairs.some(
+		(repair) =>
+			repair.filename === input.filename &&
+			repair.fromSha256 === input.fromSha256,
+	)
+}
+
 export function checkMigrationLedger(
 	files: ReadonlyArray<MigrationLedgerEntry>,
 	ledger: MigrationLedger,
 	trustedHistory: TrustedMigrationHistory | null = null,
+	repairs: ReadonlyArray<MigrationRepair> = [],
 ): MigrationFilenameCheckResult {
 	const filenames = files.map(({ filename }) => filename)
 	const filenameResult = checkMigrationFilenames(filenames)
@@ -491,12 +551,26 @@ export function checkMigrationLedger(
 		)
 	}
 
+	const filesByName = new Map(files.map((entry) => [entry.filename, entry]))
+	const ledgerByName = new Map(
+		ledger.migrations.map((entry) => [entry.filename, entry]),
+	)
+
 	for (const [index, trustedEntry] of trustedLedgerEntries.entries()) {
 		const currentEntry = ledger.migrations[index]
+		const repaired =
+			currentEntry !== undefined &&
+			currentEntry.filename === trustedEntry.filename &&
+			isAllowedMigrationRepair({
+				filename: trustedEntry.filename,
+				fromSha256: trustedEntry.sha256,
+				toSha256: currentEntry.sha256,
+				repairs,
+			})
 		if (
 			!currentEntry ||
 			currentEntry.filename !== trustedEntry.filename ||
-			currentEntry.sha256 !== trustedEntry.sha256
+			(currentEntry.sha256 !== trustedEntry.sha256 && !repaired)
 		) {
 			errors.push(
 				`Migration ledger history from ${comparableTrustedHistory?.ref ?? 'the frozen bootstrap baseline'} changed at "${trustedEntry.filename}". Historical ledger entries cannot be edited, reordered, or deleted.`,
@@ -504,10 +578,6 @@ export function checkMigrationLedger(
 		}
 	}
 
-	const filesByName = new Map(files.map((entry) => [entry.filename, entry]))
-	const ledgerByName = new Map(
-		ledger.migrations.map((entry) => [entry.filename, entry]),
-	)
 	for (const entry of ledger.migrations) {
 		const file = filesByName.get(entry.filename)
 		if (!file) {
@@ -537,7 +607,15 @@ export function checkMigrationLedger(
 			errors.push(
 				`Migration "${trustedFile.filename}" exists in trusted history ${comparableTrustedHistory?.ref ?? 'the frozen bootstrap baseline'} but is missing from the checkout.`,
 			)
-		} else if (currentFile.sha256 !== trustedFile.sha256) {
+		} else if (
+			currentFile.sha256 !== trustedFile.sha256 &&
+			!isAllowedMigrationRepair({
+				filename: trustedFile.filename,
+				fromSha256: trustedFile.sha256,
+				toSha256: currentFile.sha256,
+				repairs,
+			})
+		) {
 			errors.push(
 				`Migration "${trustedFile.filename}" differs from trusted history ${comparableTrustedHistory?.ref ?? 'the frozen bootstrap baseline'}. Migration and ledger digests cannot be changed together.`,
 			)
@@ -672,9 +750,34 @@ export async function readTrustedMigrationHistory(
 	return { ref, files, ledgerEntries, ledgerBaselineSha256 }
 }
 
+export async function readMigrationRepairs(
+	repairsPath: string = defaultMigrationRepairsPath,
+): Promise<ReadonlyArray<MigrationRepair>> {
+	let raw: string
+	try {
+		raw = await readFile(repairsPath, 'utf8')
+	} catch (error) {
+		if (
+			error &&
+			typeof error === 'object' &&
+			'code' in error &&
+			error.code === 'ENOENT'
+		) {
+			return []
+		}
+		throw error
+	}
+	const parsed: unknown = JSON.parse(raw)
+	if (!isMigrationRepairsFile(parsed)) {
+		throw new Error(`Invalid migration repairs file at ${repairsPath}.`)
+	}
+	return parsed.repairs
+}
+
 export async function checkMigrationsDirectory(
 	migrationsDir: string = defaultMigrationsDir,
 	ledgerPath: string = defaultMigrationLedgerPath,
+	repairsPath: string = defaultMigrationRepairsPath,
 ): Promise<
 	MigrationFilenameCheckResult & { trustedFilenames: ReadonlyArray<string> }
 > {
@@ -693,11 +796,17 @@ export async function checkMigrationsDirectory(
 		})),
 	)
 	const ledger = await readMigrationLedger(ledgerPath)
+	const repairs = await readMigrationRepairs(repairsPath)
 	const trustedBase = await resolveTrustedMigrationBase()
 	const trustedHistory = trustedBase
 		? await readTrustedMigrationHistory(trustedBase)
 		: null
-	const ledgerResult = checkMigrationLedger(files, ledger, trustedHistory)
+	const ledgerResult = checkMigrationLedger(
+		files,
+		ledger,
+		trustedHistory,
+		repairs,
+	)
 	const referenceErrors = await checkRepositoryMigrationFilenameReferences()
 	const errors = [...ledgerResult.errors, ...referenceErrors]
 	return {

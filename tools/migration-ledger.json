@@ -606,7 +606,7 @@
 		},
 		{
 			"filename": "0165-oauth-device-authorization.sql",
-			"sha256": "6eef245a600d256662793ed97f3e39686bdc92887f03a55d360b253e41a035b5"
+			"sha256": "d59b65afe4a6a23a5e4569431f899e950bae108e9b57c31907786857cd27497d"
 		},
 		{
 			"filename": "0166-email-verification-hard-bounces.sql",
