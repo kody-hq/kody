@@ -368,6 +368,10 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	]),
 	...capabilityRoutes('integrations', [
 		['GET', '/v1/integrations', 'integrationList'],
+		// Static `device` segments before `/{name}` so path templates stay clear;
+		// matchApiRoute also prefers more static segments.
+		['POST', '/v1/integrations/device/start', 'integrationDeviceConnectStart'],
+		['POST', '/v1/integrations/device/poll', 'integrationDeviceConnectPoll'],
 		['GET', '/v1/integrations/{name}', 'integrationGet'],
 		['PUT', '/v1/integrations/{name}', 'integrationSave'],
 		['DELETE', '/v1/integrations/{name}', 'integrationDelete'],

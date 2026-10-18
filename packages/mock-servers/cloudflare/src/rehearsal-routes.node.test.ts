@@ -1,9 +1,12 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { expect, test } from 'vitest'
 import {
+	DEVICE_CODE_GRANT_TYPE,
 	rehearsalEchoPath,
+	rehearsalOauthDeviceAuthorizePath,
 	rehearsalOauthTokenPath,
 	rehearsalSecretHeader,
+	resetRehearsalDeviceSessions,
 	routeRehearsal,
 } from './rehearsal-routes.ts'
 
@@ -62,4 +65,77 @@ test('token endpoint mints tokens for a code or refresh token and rejects anythi
 		body: 'grant_type=client_credentials',
 	})
 	expect(rejected?.status).toBe(400)
+})
+
+async function startDevice(scenario?: string) {
+	resetRehearsalDeviceSessions()
+	const body = new URLSearchParams({
+		client_id: 'rehearsal-client',
+		...(scenario ? { scenario } : {}),
+	})
+	const response = await call(rehearsalOauthDeviceAuthorizePath, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: body.toString(),
+	})
+	expect(response?.status).toBe(200)
+	return (await response?.json()) as {
+		device_code: string
+		user_code: string
+		verification_uri: string
+		expires_in: number
+		interval: number
+	}
+}
+
+async function pollDevice(deviceCode: string) {
+	const response = await call(rehearsalOauthTokenPath, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({
+			grant_type: DEVICE_CODE_GRANT_TYPE,
+			device_code: deviceCode,
+			client_id: 'rehearsal-client',
+		}).toString(),
+	})
+	return {
+		status: response?.status ?? 0,
+		body: (await response?.json()) as Record<string, unknown>,
+	}
+}
+
+test('device authorize then pending polls succeed', async () => {
+	const started = await startDevice('default')
+	expect(started.user_code).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
+	expect(started.device_code).toMatch(/^rehearsal_dc_/)
+	const first = await pollDevice(started.device_code)
+	expect(first.body.error).toBe('authorization_pending')
+	const second = await pollDevice(started.device_code)
+	expect(second.body.error).toBe('authorization_pending')
+	const third = await pollDevice(started.device_code)
+	expect(third.status).toBe(200)
+	expect(third.body.access_token).toMatch(/^rehearsal_at_/)
+})
+
+test('device slow_down then pending then success', async () => {
+	const started = await startDevice('slow_down')
+	const first = await pollDevice(started.device_code)
+	expect(first.body.error).toBe('slow_down')
+	const second = await pollDevice(started.device_code)
+	expect(second.body.error).toBe('authorization_pending')
+	const third = await pollDevice(started.device_code)
+	expect(third.status).toBe(200)
+	expect(third.body.access_token).toMatch(/^rehearsal_at_/)
+})
+
+test('device access_denied', async () => {
+	const started = await startDevice('access_denied')
+	const first = await pollDevice(started.device_code)
+	expect(first.body.error).toBe('access_denied')
+})
+
+test('device expired_token', async () => {
+	const started = await startDevice('expired_token')
+	const first = await pollDevice(started.device_code)
+	expect(first.body.error).toBe('expired_token')
 })

@@ -23,7 +23,9 @@ export const platformOauthAppPublicSchema = z.object({
 	description: z.string().nullable(),
 	clientId: z.string().min(1),
 	tokenUrl: z.string().url(),
-	authorizeUrl: z.string().url(),
+	/** Empty string allowed for device-only apps (no authorization_code URL). */
+	authorizeUrl: z.union([z.string().url(), z.literal('')]),
+	deviceAuthorizationUrl: z.string().url().nullable(),
 	apiBaseUrl: z.string().url().nullable(),
 	flow: z.enum(integrationFlowValues),
 	usePkce: z.boolean().nullable(),
@@ -56,6 +58,7 @@ export function toPlatformOauthAppPublic(
 		clientId: app.clientId,
 		tokenUrl: app.tokenUrl,
 		authorizeUrl: app.authorizeUrl,
+		deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 		apiBaseUrl: app.apiBaseUrl,
 		flow: app.flow,
 		usePkce: app.usePkce,

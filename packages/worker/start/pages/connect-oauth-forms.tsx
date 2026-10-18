@@ -40,7 +40,7 @@ import {
 
 function renderScopePicker(input: {
 	config: ConnectOauthConfig
-	currentStep: 'setup' | 'connect' | 'callback' | 'success'
+	currentStep: 'setup' | 'connect' | 'device' | 'callback' | 'success'
 	offeredScopeMenu: Array<string>
 	onToggleScope: (scope: string) => void
 }) {
@@ -261,7 +261,9 @@ export function renderConnectStep(input: {
 						input.onConnect()
 					}}
 				>
-					Continue to {input.config.provider}
+					{input.config.flow === 'device'
+						? 'Start device authorization'
+						: `Continue to ${input.config.provider}`}
 				</button>
 			)}
 			{input.wouldReplace && !input.replaceConfirmed
@@ -272,6 +274,102 @@ export function renderConnectStep(input: {
 						offeredScopeMenu: input.offeredScopeMenu,
 						onToggleScope: input.onToggleScope,
 					})}
+		</section>
+	)
+}
+
+export function renderDeviceStep(input: {
+	config: ConnectOauthConfig
+	userCode: string
+	verificationUri: string
+	verificationUriComplete: string | null
+	expiresIn: number
+	polling: boolean
+	errorMessage: string | null
+	onRestart: () => void
+}) {
+	const verificationHref =
+		input.verificationUriComplete || input.verificationUri
+	const minutes = Math.floor(input.expiresIn / 60)
+	const seconds = input.expiresIn % 60
+	const expiryLabel =
+		input.expiresIn <= 0
+			? 'Expired'
+			: minutes > 0
+				? `${minutes}m ${seconds.toString().padStart(2, '0')}s`
+				: `${seconds}s`
+	return (
+		<section css={cardCss} data-testid="connect-oauth-device-step">
+			{input.errorMessage ? (
+				<div css={{ display: 'grid', gap: spacing.md }}>
+					<p css={{ margin: 0, color: colors.text }}>{input.errorMessage}</p>
+					<button
+						type="button"
+						css={connectOauthPrimaryButtonCss}
+						onClick={() => {
+							input.onRestart()
+						}}
+					>
+						Start again
+					</button>
+				</div>
+			) : (
+				<div css={{ display: 'grid', gap: spacing.md }}>
+					<p css={{ margin: 0, color: colors.text }}>
+						Enter this code at {input.config.provider} to authorize access.
+					</p>
+					<div
+						css={{
+							...insetCardCss,
+							display: 'grid',
+							gap: spacing.sm,
+							justifyItems: 'center',
+							textAlign: 'center',
+						}}
+					>
+						<span css={fieldLabelCss}>Your code</span>
+						<code
+							data-testid="connect-oauth-user-code"
+							css={{
+								...detailValueCss,
+								fontSize: typography.fontSize.xl,
+								letterSpacing: '0.08em',
+								fontWeight: typography.fontWeight.semibold,
+							}}
+						>
+							{input.userCode}
+						</code>
+						<CopyTextButton
+							value={input.userCode}
+							idleLabel="Copy code"
+							variant="secondary"
+						/>
+					</div>
+					<p css={descriptionCss}>
+						{input.polling
+							? 'Waiting for approval…'
+							: 'Checking authorization status…'}{' '}
+						Code expires in {expiryLabel}.
+					</p>
+					<a
+						href={verificationHref}
+						target="_blank"
+						rel="noreferrer noopener"
+						css={primaryLinkCss}
+					>
+						Open {input.config.provider} to enter the code
+					</a>
+					<button
+						type="button"
+						css={connectOauthSecondaryButtonCss}
+						onClick={() => {
+							input.onRestart()
+						}}
+					>
+						Cancel
+					</button>
+				</div>
+			)}
 		</section>
 	)
 }

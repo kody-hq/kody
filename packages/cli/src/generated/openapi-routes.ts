@@ -331,6 +331,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['name'],
 	},
 	{
+		operationId: 'integrationDeviceConnectPoll',
+		method: 'POST',
+		pathTemplate: '/v1/integrations/device/poll',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'integrationDeviceConnectStart',
+		method: 'POST',
+		pathTemplate: '/v1/integrations/device/start',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'integrationGet',
 		method: 'GET',
 		pathTemplate: '/v1/integrations/{name}',

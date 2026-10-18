@@ -543,6 +543,34 @@ test('upsertOauthAppWithoutConnection covers setup, client-id reuse, and connect
 	expect(googleAppIdentity(preserveUserId)).toEqual(before)
 })
 
+test('upsertOauthAppWithoutConnection persists deviceAuthorizationUrl on user apps', async () => {
+	const { env } = createEnv()
+	const userId = 'user-device-url-persist'
+	const app = await upsertOauthAppWithoutConnection({
+		env,
+		userId,
+		config: {
+			name: 'example-device',
+			tokenUrl: 'https://auth.example.com/token',
+			apiBaseUrl: 'https://api.example.com',
+			flow: 'device',
+			clientId: 'device-client-1',
+			deviceAuthorizationUrl: 'https://auth.example.com/device',
+			authorization: null,
+		},
+	})
+	expect(app.deviceAuthorizationUrl).toBe('https://auth.example.com/device')
+	expect(app.flow).toBe('device')
+	const reloaded = await getOauthApp({
+		env,
+		userId,
+		slug: app.slug,
+	})
+	expect(reloaded?.deviceAuthorizationUrl).toBe(
+		'https://auth.example.com/device',
+	)
+})
+
 test('findOauthAppForProviderSetup prefers an exact-slug setup app over family prefill', async () => {
 	const { env, save } = createEnv()
 	const userId = ownerIdFromStored('user-family-prefill')

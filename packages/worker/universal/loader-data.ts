@@ -565,8 +565,9 @@ export type AdminPlatformIntegrationApp = {
 	hasClientSecret: boolean
 	tokenUrl: string
 	authorizeUrl: string
+	deviceAuthorizationUrl: string | null
 	apiBaseUrl: string | null
-	flow: 'pkce' | 'confidential'
+	flow: 'pkce' | 'confidential' | 'device'
 	usePkce: boolean | null
 	tokenExchangeStyle: 'form' | 'basic-json' | 'basic-form' | null
 	scopeSeparator: string | null
@@ -1844,13 +1845,14 @@ export type AccountIntegrationListItem = {
 	 * Omitted when a provider-family prefill could not agree on flow so the
 	 * connect UI keeps the query/default flow instead of inventing one.
 	 */
-	flow?: 'pkce' | 'confidential'
+	flow?: 'pkce' | 'confidential' | 'device'
 	usePkce?: boolean | null
 	/** Empty when a provider-family prefill could not agree on client id. */
 	clientId: string
 	hasClientSecret?: boolean | null
 	requiredHosts?: Array<string>
 	tokenExchangeStyle?: 'form' | 'basic-json' | 'basic-form' | null
+	deviceAuthorizationUrl?: string | null
 	authorization?: {
 		authorizeUrl: string
 		scopes: Array<string>
@@ -1902,8 +1904,9 @@ export type AccountOauthAppListItem = {
 	hasClientSecret: boolean
 	tokenUrl: string
 	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
 	apiBaseUrl: string | null
-	flow: 'pkce' | 'confidential'
+	flow: 'pkce' | 'confidential' | 'device'
 	usePkce: boolean | null
 	tokenExchangeStyle: 'form' | 'basic-json' | 'basic-form' | null
 	scopeSeparator: string | null

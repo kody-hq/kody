@@ -217,6 +217,61 @@ export const exchangeOAuthToken = createServerFn({ method: 'POST' })
 		)
 	})
 
+const deviceConnectStartSchema = z.object({
+	provider: z.string(),
+	platformAppSlug: z.string().nullish(),
+	tokenUrl: z.string().nullish(),
+	apiBaseUrl: z.string().nullish(),
+	authorizeUrl: z.string().nullish(),
+	deviceAuthorizationUrl: z.string().nullish(),
+	clientId: z.string().nullish(),
+	clientSecret: z.string().nullish(),
+	usePkce: z.boolean().nullish(),
+	scopes: z.array(z.string()).optional(),
+	scopeSeparator: z.string().nullish(),
+	extraAuthorizeParams: z.record(z.string(), z.string()).optional(),
+	allowedHosts: z.array(z.string()).optional(),
+	tokenExchangeStyle: z.string().nullish(),
+})
+
+const deviceConnectPollSchema = z.object({
+	sessionId: z.string().min(1),
+})
+
+export const startDeviceConnect = createServerFn({ method: 'POST' })
+	.validator(secretMutationScope.extend({ fields: deviceConnectStartSchema }))
+	.handler(async ({ data }) => {
+		const [{ withWebsiteMutation }, { startAccountDeviceConnect }] =
+			await Promise.all([
+				import('./mutation-context.ts'),
+				import('../../src/app/handlers/account-secrets.ts'),
+			])
+		return withWebsiteMutation(
+			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
+			async (context) => {
+				const result = await startAccountDeviceConnect({ ...context, ...data })
+				return result.data
+			},
+		)
+	})
+
+export const pollDeviceConnect = createServerFn({ method: 'POST' })
+	.validator(secretMutationScope.extend({ fields: deviceConnectPollSchema }))
+	.handler(async ({ data }) => {
+		const [{ withWebsiteMutation }, { pollAccountDeviceConnect }] =
+			await Promise.all([
+				import('./mutation-context.ts'),
+				import('../../src/app/handlers/account-secrets.ts'),
+			])
+		return withWebsiteMutation(
+			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
+			async (context) => {
+				const result = await pollAccountDeviceConnect({ ...context, ...data })
+				return result.data
+			},
+		)
+	})
+
 export const deleteAccountMemory = createServerFn({ method: 'POST' })
 	.validator(
 		resourceInput.omit({ search: true }).extend({

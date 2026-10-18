@@ -12,8 +12,10 @@ export const platformIntegrationSaveSchema = z.object({
 	newSlug: z.string().nullable().optional(),
 	clientId: z.string(),
 	tokenUrl: z.string(),
+	/** Empty string allowed for device-only apps (no authorization_code URL). */
 	authorizeUrl: z.string(),
-	flow: z.enum(['pkce', 'confidential']),
+	deviceAuthorizationUrl: z.string().nullable().optional(),
+	flow: z.enum(['pkce', 'confidential', 'device']),
 	provider: z.string().nullable().optional(),
 	label: z.string().nullable().optional(),
 	description: z.string().nullable().optional(),

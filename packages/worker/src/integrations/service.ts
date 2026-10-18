@@ -74,6 +74,7 @@ export type OauthAppConfigInput = {
 	usePkce?: boolean | null
 	clientId: string
 	tokenExchangeStyle?: IntegrationConfig['tokenExchangeStyle']
+	deviceAuthorizationUrl?: string | null
 	authorization?: {
 		authorizeUrl: string
 		scopes?: Array<string>
@@ -90,6 +91,7 @@ type OauthAppWriteConfig = {
 	usePkce?: boolean
 	clientId: string
 	tokenExchangeStyle?: NonNullable<IntegrationConfig['tokenExchangeStyle']>
+	deviceAuthorizationUrl?: string | null
 	authorization?: NonNullable<IntegrationConfig['authorization']>
 }
 
@@ -115,6 +117,7 @@ export function toIntegrationConfig(
 		clientId: app.clientId,
 		requiredHosts: connection.requiredHosts,
 		tokenExchangeStyle: app.tokenExchangeStyle,
+		deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 		authorization,
 		...usageFields(connection),
 	})
@@ -127,6 +130,14 @@ export function toPlatformIntegrationConfig(
 	// The shared client secret never has a user-facing secret name; the
 	// `platform` marker routes sandbox token refresh through the host-side
 	// `integrationTokenRefresh` capability instead.
+	const authorization = !app.authorizeUrl.trim()
+		? null
+		: {
+				authorizeUrl: app.authorizeUrl,
+				scopes: connection.scopes,
+				scopeSeparator: app.scopeSeparator,
+				extraAuthorizeParams: app.extraAuthorizeParams,
+			}
 	return {
 		...normalizeIntegrationConfig({
 			name: connection.name,
@@ -140,12 +151,8 @@ export function toPlatformIntegrationConfig(
 				...app.requiredHosts,
 			]),
 			tokenExchangeStyle: app.tokenExchangeStyle,
-			authorization: {
-				authorizeUrl: app.authorizeUrl,
-				scopes: connection.scopes,
-				scopeSeparator: app.scopeSeparator,
-				extraAuthorizeParams: app.extraAuthorizeParams,
-			},
+			deviceAuthorizationUrl: app.deviceAuthorizationUrl,
+			authorization,
 			...usageFields(connection),
 		}),
 		platform: true,
@@ -642,6 +649,7 @@ export type OauthAppSetupPrefill = {
 	hasClientSecret: boolean | null
 	tokenUrl: string | null
 	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
 	apiBaseUrl: string | null
 	flow: UserOauthApp['flow'] | null
 	usePkce: boolean | null
@@ -710,6 +718,7 @@ export function oauthAppToSetupPrefill(
 		hasClientSecret: app.hasClientSecret,
 		tokenUrl: app.tokenUrl,
 		authorizeUrl: app.authorizeUrl,
+		deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 		apiBaseUrl: app.apiBaseUrl,
 		flow: app.flow,
 		usePkce: app.usePkce,
@@ -746,6 +755,9 @@ function mergeOauthAppFamilyPrefill(input: {
 		),
 		tokenUrl: agreedSetupValue(candidates.map((app) => app.tokenUrl)),
 		authorizeUrl: agreedSetupValue(candidates.map((app) => app.authorizeUrl)),
+		deviceAuthorizationUrl: agreedSetupValue(
+			candidates.map((app) => app.deviceAuthorizationUrl),
+		),
 		apiBaseUrl: agreedSetupValue(candidates.map((app) => app.apiBaseUrl)),
 		flow: agreedSetupValue(candidates.map((app) => app.flow)),
 		usePkce: agreedSetupValue(candidates.map((app) => app.usePkce)),
@@ -788,6 +800,7 @@ function setupPrefillHasAgreedField(prefill: OauthAppSetupPrefill) {
 		prefill.hasClientSecret ||
 		prefill.tokenUrl ||
 		prefill.authorizeUrl ||
+		prefill.deviceAuthorizationUrl ||
 		prefill.apiBaseUrl ||
 		prefill.flow ||
 		typeof prefill.usePkce === 'boolean' ||
@@ -979,6 +992,9 @@ function oauthAppWriteConfigFromIntegration(
 		...(config.tokenExchangeStyle
 			? { tokenExchangeStyle: config.tokenExchangeStyle }
 			: {}),
+		...(config.deviceAuthorizationUrl
+			? { deviceAuthorizationUrl: config.deviceAuthorizationUrl }
+			: {}),
 		...(config.authorization ? { authorization: config.authorization } : {}),
 	}
 }
@@ -1008,12 +1024,16 @@ function normalizeOauthAppConfig(
 		: null
 	// Store usePkce only when it differs from the flow default so tuple
 	// matching stays aligned with normalizeIntegrationConfig / migration.
+	// Device flow has no PKCE.
 	const usePkce =
-		typeof value.usePkce === 'boolean' &&
-		value.usePkce !== (value.flow === 'pkce')
-			? value.usePkce
-			: null
+		value.flow === 'device'
+			? null
+			: typeof value.usePkce === 'boolean' &&
+				  value.usePkce !== (value.flow === 'pkce')
+				? value.usePkce
+				: null
 	const tokenExchangeStyle = value.tokenExchangeStyle ?? null
+	const deviceAuthorizationUrl = value.deviceAuthorizationUrl?.trim() || null
 	return {
 		name: preferredSlug,
 		tokenUrl,
@@ -1022,6 +1042,7 @@ function normalizeOauthAppConfig(
 		...(usePkce == null ? {} : { usePkce }),
 		clientId,
 		...(tokenExchangeStyle ? { tokenExchangeStyle } : {}),
+		...(deviceAuthorizationUrl ? { deviceAuthorizationUrl } : {}),
 		...(authorization ? { authorization } : {}),
 	}
 }
@@ -1052,6 +1073,7 @@ async function resolveOrCreateOauthApp(input: {
 		clientId: appTupleFields.client_id,
 		tokenUrl: appTupleFields.token_url,
 		authorizeUrl: appTupleFields.authorize_url,
+		deviceAuthorizationUrl: appTupleFields.device_authorization_url,
 		apiBaseUrl: appTupleFields.api_base_url,
 		flow: appTupleFields.flow,
 		usePkce: appTupleFields.use_pkce,
@@ -1157,6 +1179,8 @@ function buildOauthAppRow(input: {
 		client_id: input.config.clientId,
 		token_url: input.config.tokenUrl,
 		authorize_url: authorization?.authorizeUrl ?? null,
+		device_authorization_url:
+			input.config.deviceAuthorizationUrl?.trim() || null,
 		api_base_url: input.config.apiBaseUrl ?? null,
 		flow: input.config.flow,
 		use_pkce:

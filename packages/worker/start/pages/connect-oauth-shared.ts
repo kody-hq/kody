@@ -6,7 +6,9 @@ import {
 import {
 	connectOAuth,
 	exchangeOAuthToken,
+	pollDeviceConnect,
 	saveOAuthApp,
+	startDeviceConnect,
 } from '#start/server/account-mutations'
 import {
 	normalizeProviderKey,
@@ -44,7 +46,52 @@ import {
 } from '#client/routes/connect-oauth-config.ts'
 
 export type ConnectOauthStatusTone = 'info' | 'warn' | 'error'
-export type ConnectOauthStep = 'setup' | 'connect' | 'callback' | 'success'
+export type ConnectOauthStep =
+	| 'setup'
+	| 'connect'
+	| 'device'
+	| 'callback'
+	| 'success'
+
+export type ConnectOauthDeviceStartResult =
+	| {
+			ok: true
+			sessionId: string
+			userCode: string
+			verificationUri: string
+			verificationUriComplete: string | null
+			expiresIn: number
+			interval: number
+	  }
+	| { ok: false; error: string }
+
+export type ConnectOauthDevicePollResult =
+	| {
+			ok: true
+			status: 'authorization_pending' | 'slow_down'
+			interval: number
+			expiresIn: number
+	  }
+	| {
+			ok: true
+			status: 'approved'
+			accessTokenSaved: boolean
+			refreshTokenSaved: boolean
+			hostApprovalLinks: unknown
+			nextSteps: unknown
+	  }
+	| {
+			ok: false
+			status:
+				| 'access_denied'
+				| 'expired_token'
+				| 'invalid_session'
+				| 'rate_limited'
+				| 'provider_error'
+				| 'persist_failed'
+				| 'unknown'
+			error: string
+	  }
 
 type OAuthExchangeResult =
 	| { ok: true; data: Record<string, unknown>; status: number }
@@ -171,6 +218,9 @@ async function saveConnectOauthConnection(input: {
 					? { platformAppSlug: config.platformAppSlug }
 					: {}),
 				authorizeUrl: config.authorizeUrl,
+				...(config.deviceAuthorizationUrl
+					? { deviceAuthorizationUrl: config.deviceAuthorizationUrl }
+					: {}),
 				tokenUrl: config.tokenUrl,
 				apiBaseUrl: config.apiBaseUrl,
 				scopes: config.scopes,
@@ -220,6 +270,7 @@ export function readConnectOauthQueryConfig(
 	}
 	const provider = readRequired('provider')
 	const authorizeUrl = readOptional('authorizeUrl')
+	const deviceAuthorizationUrlRaw = readOptional('deviceAuthorizationUrl')
 	const tokenUrl = readOptional('tokenUrl')
 	const apiBaseUrl = parseOptionalUrl(readOptional('apiBaseUrl'))
 	if (!provider) {
@@ -232,12 +283,22 @@ export function readConnectOauthQueryConfig(
 	if (authorizeUrl && (!isSafeExternalUrl(authorizeUrl) || !authorizeHost)) {
 		return { ok: false, error: 'Authorize URL must be valid.' }
 	}
+	let deviceAuthorizationUrl: string | null = null
+	if (deviceAuthorizationUrlRaw) {
+		if (!isSafeExternalUrl(deviceAuthorizationUrlRaw)) {
+			return { ok: false, error: 'Device authorization URL must be valid.' }
+		}
+		deviceAuthorizationUrl = deviceAuthorizationUrlRaw
+	}
 	const tokenHost = tokenUrl ? safeParseHost(tokenUrl) : null
 	if (tokenUrl && !tokenHost) {
 		return { ok: false, error: 'Token URL must be valid when provided.' }
 	}
 	const rawFlow = readOptional('flow')?.toLowerCase() ?? null
-	const flow = rawFlow === 'pkce' || rawFlow === 'confidential' ? rawFlow : null
+	const flow =
+		rawFlow === 'pkce' || rawFlow === 'confidential' || rawFlow === 'device'
+			? rawFlow
+			: null
 	const usePkce = parseOptionalBoolean(readOptional('pkce'))
 	const tokenExchangeStyle = parseTokenExchangeStyle(
 		readOptional('tokenExchangeStyle'),
@@ -259,8 +320,12 @@ export function readConnectOauthQueryConfig(
 	const providerSetupInstructions = parseProviderSetupInstructions(
 		readOptional('providerSetupInstructions'),
 	)
+	const deviceHost = deviceAuthorizationUrl
+		? safeParseHost(deviceAuthorizationUrl)
+		: null
 	const allowedHosts = normalizeHosts([
 		...(tokenHost ? [tokenHost] : []),
+		...(deviceHost ? [deviceHost] : []),
 		...parseAllowedHosts(readOptional('allowedHosts')),
 	])
 	return {
@@ -268,8 +333,11 @@ export function readConnectOauthQueryConfig(
 		value: {
 			provider,
 			providerKey,
-			authorizeHost,
+			authorizeHost:
+				authorizeHost ||
+				(deviceAuthorizationUrl ? safeParseHost(deviceAuthorizationUrl) : null),
 			authorizeUrl,
+			deviceAuthorizationUrl,
 			tokenUrl,
 			apiBaseUrl,
 			scopes,
@@ -354,6 +422,9 @@ export async function buildConnectOauthAuthorizeUrl(input: {
 		throw new Error('Unable to start OAuth with invalid configuration.')
 	}
 	persistConnectOauthConfig(input.config)
+	if (!input.config.authorizeUrl) {
+		throw new Error('Authorize URL is required for this OAuth flow.')
+	}
 	const url = new URL(input.config.authorizeUrl)
 	url.searchParams.set('response_type', 'code')
 	const clientId = input.config.clientId.trim()
@@ -446,6 +517,9 @@ async function saveConnectOauthApp(
 			fields: {
 				provider: nextConfig.provider,
 				authorizeUrl: nextConfig.authorizeUrl,
+				...(nextConfig.deviceAuthorizationUrl
+					? { deviceAuthorizationUrl: nextConfig.deviceAuthorizationUrl }
+					: {}),
 				tokenUrl: nextConfig.tokenUrl,
 				apiBaseUrl: nextConfig.apiBaseUrl,
 				flow: nextConfig.flow,
@@ -470,6 +544,170 @@ async function saveConnectOauthApp(
 		return { ok: false, error: 'Unable to save OAuth app configuration.' }
 	}
 	return { ok: true, clientId: savedClientId }
+}
+
+/**
+ * Start RFC 8628 device authorization. Never logs or returns `device_code`.
+ */
+export async function startConnectOauthDevice(input: {
+	config: ConnectOauthConfig
+	orgSlug: string | null
+}): Promise<ConnectOauthDeviceStartResult> {
+	const { config, orgSlug } = input
+	try {
+		const payload = (await startDeviceConnect({
+			data: {
+				orgSlug: orgSlug ?? undefined,
+				fields: {
+					provider: config.provider,
+					...(config.platformAppSlug
+						? { platformAppSlug: config.platformAppSlug }
+						: {}),
+					authorizeUrl: config.authorizeUrl,
+					deviceAuthorizationUrl: config.deviceAuthorizationUrl,
+					tokenUrl: config.tokenUrl,
+					apiBaseUrl: config.apiBaseUrl,
+					scopes: config.scopes,
+					scopeSeparator: config.scopeSeparator,
+					extraAuthorizeParams: config.extraAuthorizeParams,
+					usePkce: config.usePkce,
+					tokenExchangeStyle: config.tokenExchangeStyle,
+					clientId: config.clientId,
+					allowedHosts: config.allowedHosts,
+				},
+			},
+		})) as Record<string, unknown>
+		if (payload.ok === false) {
+			return {
+				ok: false,
+				error:
+					typeof payload.error === 'string'
+						? payload.error
+						: 'Unable to start device authorization.',
+			}
+		}
+		if (
+			typeof payload.sessionId !== 'string' ||
+			typeof payload.userCode !== 'string' ||
+			typeof payload.verificationUri !== 'string' ||
+			typeof payload.expiresIn !== 'number' ||
+			typeof payload.interval !== 'number'
+		) {
+			return { ok: false, error: 'Unable to start device authorization.' }
+		}
+		return {
+			ok: true,
+			sessionId: payload.sessionId,
+			userCode: payload.userCode,
+			verificationUri: payload.verificationUri,
+			verificationUriComplete:
+				typeof payload.verificationUriComplete === 'string'
+					? payload.verificationUriComplete
+					: null,
+			expiresIn: payload.expiresIn,
+			interval: payload.interval,
+		}
+	} catch (error) {
+		return {
+			ok: false,
+			error:
+				error instanceof Error
+					? error.message
+					: 'Unable to start device authorization.',
+		}
+	}
+}
+
+/**
+ * Poll device authorization. Never logs or returns `device_code`.
+ */
+export async function pollConnectOauthDevice(input: {
+	sessionId: string
+	orgSlug: string | null
+}): Promise<ConnectOauthDevicePollResult> {
+	try {
+		const payload = (await pollDeviceConnect({
+			data: {
+				orgSlug: input.orgSlug ?? undefined,
+				fields: { sessionId: input.sessionId },
+			},
+		})) as Record<string, unknown>
+		if (payload.ok === false) {
+			const status = typeof payload.status === 'string' ? payload.status : null
+			const failureStatus =
+				status === 'access_denied' ||
+				status === 'expired_token' ||
+				status === 'invalid_session' ||
+				status === 'rate_limited' ||
+				status === 'provider_error' ||
+				status === 'persist_failed'
+					? status
+					: 'unknown'
+			return {
+				ok: false,
+				status: failureStatus,
+				error:
+					typeof payload.error === 'string'
+						? payload.error
+						: 'Unable to poll device authorization.',
+			}
+		}
+		const status = typeof payload.status === 'string' ? payload.status : null
+		if (status === 'authorization_pending' || status === 'slow_down') {
+			return {
+				ok: true,
+				status,
+				interval: typeof payload.interval === 'number' ? payload.interval : 5,
+				expiresIn:
+					typeof payload.expiresIn === 'number' ? payload.expiresIn : 0,
+			}
+		}
+		if (status === 'approved') {
+			return {
+				ok: true,
+				status: 'approved',
+				accessTokenSaved: payload.accessTokenSaved === true,
+				refreshTokenSaved: payload.refreshTokenSaved === true,
+				hostApprovalLinks: payload.hostApprovalLinks,
+				nextSteps: payload.nextSteps,
+			}
+		}
+		const failureStatus =
+			status === 'access_denied' ||
+			status === 'expired_token' ||
+			status === 'invalid_session' ||
+			status === 'rate_limited' ||
+			status === 'provider_error' ||
+			status === 'persist_failed'
+				? status
+				: 'unknown'
+		return {
+			ok: false,
+			status: failureStatus,
+			error:
+				typeof payload.error === 'string'
+					? payload.error
+					: 'Unable to poll device authorization.',
+		}
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: 'Unable to poll device authorization.'
+		const lower = message.toLowerCase()
+		const status = lower.includes('denied')
+			? 'access_denied'
+			: lower.includes('expired')
+				? 'expired_token'
+				: lower.includes('invalid session') || lower.includes('session')
+					? 'invalid_session'
+					: lower.includes('persist')
+						? 'persist_failed'
+						: lower.includes('rate')
+							? 'rate_limited'
+							: 'unknown'
+		return { ok: false, status, error: message }
+	}
 }
 
 export const connectOauthPageCss = {

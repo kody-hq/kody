@@ -98,6 +98,8 @@ const storageRules: ReadonlyArray<StorageRule> = [
 				'Refresh primitive, reached only through the door.',
 			[accountSecretsHandler]:
 				'Account management: OAuth connect exchanges the code with the stored client secret.',
+			'packages/worker/src/integrations/connect-oauth-persist.ts':
+				'Shared connect persist: resolves a stored BYO client secret when the browser omits it on device or code exchange.',
 		},
 	},
 	{

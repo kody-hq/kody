@@ -14,6 +14,7 @@ import {
 	releaseIntegrationTokenRefreshLease,
 	writeIntegrationAuthFailure,
 } from './repo.ts'
+import { resolveDeviceClientAuthFlow } from './device-flow.ts'
 import {
 	buildOAuthTokenExchangeRequest,
 	resolveTokenExchangeStyle,
@@ -609,7 +610,9 @@ async function exchangeRefreshTokenWithLease({
 	}
 
 	let clientSecret: string | null = null
-	if (app.flow === 'confidential') {
+	const shouldLoadClientSecret =
+		app.flow === 'confidential' || app.flow === 'device'
+	if (shouldLoadClientSecret) {
 		switch (joined.lane) {
 			case 'platform': {
 				clientSecret = await getPlatformOauthAppClientSecret({
@@ -634,7 +637,7 @@ async function exchangeRefreshTokenWithLease({
 				)
 			}
 		}
-		if (!clientSecret) {
+		if (app.flow === 'confidential' && !clientSecret) {
 			throw fail(
 				`Client secret for integration "${connection.name}" was not found.`,
 				{ reason: 'missing_secret' },
@@ -652,7 +655,10 @@ async function exchangeRefreshTokenWithLease({
 	})
 	const exchangeRequest = buildOAuthTokenExchangeRequest({
 		params,
-		flow: app.flow,
+		flow: resolveDeviceClientAuthFlow({
+			flow: app.flow,
+			clientSecret,
+		}),
 		clientSecret,
 		style,
 	})

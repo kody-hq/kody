@@ -206,14 +206,27 @@ export function AdminPlatformIntegrationsPage(props: {
 		const clientId = String(formData.get('clientId') ?? '').trim()
 		const tokenUrl = String(formData.get('tokenUrl') ?? '').trim()
 		const authorizeUrl = String(formData.get('authorizeUrl') ?? '').trim()
+		const deviceAuthorizationUrl = String(
+			formData.get('deviceAuthorizationUrl') ?? '',
+		).trim()
 		const flow = String(formData.get('flow') ?? '').trim()
-		if (!slug || !clientId || !tokenUrl || !authorizeUrl) {
-			setMessage('Slug, client id, token URL, and authorize URL are required.')
+		if (!slug || !clientId || !tokenUrl) {
+			setMessage('Slug, client id, and token URL are required.')
 			setMessageTone('error')
 			return
 		}
-		if (flow !== 'pkce' && flow !== 'confidential') {
+		if (flow !== 'pkce' && flow !== 'confidential' && flow !== 'device') {
 			setMessage('Choose a valid OAuth flow.')
+			setMessageTone('error')
+			return
+		}
+		if (flow !== 'device' && !authorizeUrl) {
+			setMessage('Authorize URL is required.')
+			setMessageTone('error')
+			return
+		}
+		if (flow === 'device' && !deviceAuthorizationUrl) {
+			setMessage('Device authorization URL is required for device flow.')
 			setMessageTone('error')
 			return
 		}
@@ -223,6 +236,7 @@ export function AdminPlatformIntegrationsPage(props: {
 			clientId,
 			tokenUrl,
 			authorizeUrl,
+			deviceAuthorizationUrl: deviceAuthorizationUrl || null,
 			flow,
 			provider: String(formData.get('provider') ?? '').trim() || null,
 			label: String(formData.get('label') ?? '').trim() || null,
@@ -294,6 +308,7 @@ export function AdminPlatformIntegrationsPage(props: {
 						clientId: app.clientId,
 						tokenUrl: app.tokenUrl,
 						authorizeUrl: app.authorizeUrl,
+						deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 						flow: app.flow,
 						enabled: !app.enabled,
 					},
@@ -313,6 +328,7 @@ export function AdminPlatformIntegrationsPage(props: {
 						clientId: app.clientId,
 						tokenUrl: app.tokenUrl,
 						authorizeUrl: app.authorizeUrl,
+						deviceAuthorizationUrl: app.deviceAuthorizationUrl,
 						flow: app.flow,
 						visibility,
 					},

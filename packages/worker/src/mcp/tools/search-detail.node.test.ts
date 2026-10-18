@@ -127,6 +127,7 @@ function createJoinedIntegration(name: string): JoinedIntegration {
 			hasClientSecret: true,
 			tokenUrl: 'https://github.com/login/oauth/access_token',
 			authorizeUrl: 'https://github.com/login/oauth/authorize',
+			deviceAuthorizationUrl: null,
 			apiBaseUrl: 'https://api.github.com',
 			flow: 'confidential',
 			usePkce: null,

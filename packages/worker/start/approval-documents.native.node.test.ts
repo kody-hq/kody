@@ -300,6 +300,7 @@ test('native pages server-renders simplified integration and secret-approval pag
 		hasClientSecret: true,
 		tokenUrl: 'https://oauth2.googleapis.com/token',
 		authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+		deviceAuthorizationUrl: null,
 		apiBaseUrl: 'https://www.googleapis.com',
 		flow: 'confidential' as const,
 		usePkce: false,
