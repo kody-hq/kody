@@ -623,6 +623,10 @@
 		{
 			"filename": "0169-email-outbound-failure-tracking.sql",
 			"sha256": "540957df86ffd190e88b3651fb6243400e0fe81bd844f892d3b1f90779df2d10"
+		},
+		{
+			"filename": "0170-email-outbound-failure-watermark.sql",
+			"sha256": "7a516317c971a2ed351e47da82c37a1e3d905b8be8f4e42a4ff5edd1ecd19667"
 		}
 	]
 }

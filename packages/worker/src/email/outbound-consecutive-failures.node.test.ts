@@ -19,6 +19,7 @@ async function createOrgDb() {
 				id TEXT PRIMARY KEY NOT NULL,
 				email_outbound_consecutive_failures INTEGER NOT NULL DEFAULT 0,
 				email_outbound_delivery_paused_at TEXT,
+				email_outbound_failure_watermark_at TEXT,
 				updated_at TEXT,
 				deleted_at TEXT
 			)`,
@@ -281,4 +282,91 @@ test('superseded pending failure does not mutate the consecutive-failure counter
 	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
 		consecutiveFailures: 2,
 	})
+})
+
+test('supersession compares timestamps as instants across ISO forms', async () => {
+	const db = await createOrgDb()
+	const ownerId = ownerIdFromStored('org_user_1')
+
+	await db
+		.prepare(`UPDATE orgs SET email_outbound_consecutive_failures = 1`)
+		.run()
+
+	// Lexical compare would treat ...00Z as newer than ...00.500Z; instant
+	// compare correctly keeps the later failure event countable.
+	expect(
+		await applyOutboundConsecutiveFailureTracking({
+			db,
+			ownerId,
+			deliveryStatus: 'failed',
+			providerEventId: 'event-ms-form',
+			eventTimestamp: '2026-10-17T12:00:00.500Z',
+			messageDeliveryStatusAt: '2026-10-17T12:00:00Z',
+		}),
+	).toEqual({ paused: false, consecutiveFailures: 2 })
+})
+
+test('older terminal event after delivered watermark does not re-increment', async () => {
+	const db = await createOrgDb()
+	const ownerId = ownerIdFromStored('org_user_1')
+
+	await applyOutboundConsecutiveFailureTracking({
+		db,
+		ownerId,
+		deliveryStatus: 'failed',
+		providerEventId: 'event-fail-early',
+		eventTimestamp: '2026-10-17T12:00:00.000Z',
+	})
+	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
+		consecutiveFailures: 1,
+	})
+
+	await applyOutboundConsecutiveFailureTracking({
+		db,
+		ownerId,
+		deliveryStatus: 'delivered',
+		providerEventId: 'event-delivered-win',
+		eventTimestamp: '2026-10-17T12:05:00.000Z',
+		messageDeliveryStatusAt: '2026-10-17T12:05:00.000Z',
+	})
+	expect(await loadOutboundDeliveryPause({ db, ownerId })).toMatchObject({
+		consecutiveFailures: 0,
+	})
+
+	// Simulate the race: an older bounce still holds a pending ledger row
+	// and a stale messageDeliveryStatusAt snapshot from before delivered.
+	await db
+		.prepare(
+			`INSERT INTO email_outbound_failure_tracking (
+				provider_event_id, user_id, delivery_status, created_at, applied_at
+			) VALUES (?, ?, ?, ?, NULL)`,
+		)
+		.bind(
+			'event-old-bounce-race',
+			ownerId,
+			'bounced',
+			'2026-10-17T12:00:00.000Z',
+		)
+		.run()
+
+	expect(
+		await applyOutboundConsecutiveFailureTracking({
+			db,
+			ownerId,
+			deliveryStatus: 'bounced',
+			providerEventId: 'event-old-bounce-race',
+			eventTimestamp: '2026-10-17T12:00:00.000Z',
+			messageDeliveryStatusAt: '2026-10-17T12:00:00.000Z',
+		}),
+	).toEqual({ paused: false, consecutiveFailures: 0 })
+
+	const tracking = await db
+		.prepare(
+			`SELECT applied_at AS appliedAt
+			 FROM email_outbound_failure_tracking
+			 WHERE provider_event_id = ?`,
+		)
+		.bind('event-old-bounce-race')
+		.first<{ appliedAt: string | null }>()
+	expect(tracking?.appliedAt).toEqual(expect.any(String))
 })

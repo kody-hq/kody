@@ -118,16 +118,30 @@ function pauseStatement(input: {
 		)
 }
 
+/** Instant compare — lexical ISO order fails across with/without-ms forms. */
+function isIsoInstantStrictlyNewer(left: string, right: string): boolean {
+	const leftMs = Date.parse(left)
+	const rightMs = Date.parse(right)
+	if (!Number.isFinite(leftMs) || !Number.isFinite(rightMs)) return false
+	return leftMs > rightMs
+}
+
 function isSupersededDeliveryEvent(input: {
 	eventTimestamp: string
 	messageDeliveryStatusAt: string | null | undefined
 }) {
 	const messageAt = input.messageDeliveryStatusAt
 	if (messageAt == null || messageAt === '') return false
-	// ISO-8601 UTC strings compare lexicographically. A message status
-	// strictly newer than this provider event means a later lifecycle
-	// event already won; do not mutate the consecutive-failure counter.
-	return messageAt > input.eventTimestamp
+	// A message status strictly newer than this provider event means a
+	// later lifecycle event already won; do not mutate the counter.
+	return isIsoInstantStrictlyNewer(messageAt, input.eventTimestamp)
+}
+
+/** Canonical UTC ISO so SQL watermark guards match instant order. */
+function canonicalIsoTimestamp(value: string): string {
+	const ms = Date.parse(value)
+	if (!Number.isFinite(ms)) return value
+	return new Date(ms).toISOString()
 }
 
 async function markFailureTrackingApplied(input: {
@@ -168,6 +182,7 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 }): Promise<{ paused: boolean; consecutiveFailures: number }> {
 	const now = input.now ?? new Date()
 	const nowIso = now.toISOString()
+	const eventAt = canonicalIsoTimestamp(input.eventTimestamp)
 
 	const pending = await ensurePendingFailureTracking({
 		db: input.db,
@@ -179,7 +194,7 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 	if (
 		pending === 'pending' &&
 		isSupersededDeliveryEvent({
-			eventTimestamp: input.eventTimestamp,
+			eventTimestamp: eventAt,
 			messageDeliveryStatusAt: input.messageDeliveryStatusAt,
 		})
 	) {
@@ -226,13 +241,22 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 	}
 
 	if (input.deliveryStatus === 'delivered') {
-		// Reset + mark applied in one D1 batch so a crash leaves the row
-		// pending and a retry can still clear the counter.
+		// Reset, advance the failure watermark, and mark applied in one
+		// batch so a crash leaves the row pending and a retry can still
+		// clear the counter. The watermark blocks concurrent older
+		// terminal events from re-incrementing after this reset.
 		await input.db.batch([
 			input.db
 				.prepare(
 					`UPDATE orgs
 					 SET email_outbound_consecutive_failures = 0,
+					     email_outbound_failure_watermark_at = CASE
+					       WHEN email_outbound_failure_watermark_at IS NULL
+					         THEN ?
+					       WHEN email_outbound_failure_watermark_at < ?
+					         THEN ?
+					       ELSE email_outbound_failure_watermark_at
+					     END,
 					     updated_at = ?
 					 WHERE id = ?
 					   AND EXISTS (
@@ -240,7 +264,14 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 					     WHERE provider_event_id = ? AND applied_at IS NULL
 					   )${andLiveDeletedAtSql()}`,
 				)
-				.bind(nowIso, input.ownerId, input.providerEventId),
+				.bind(
+					eventAt,
+					eventAt,
+					eventAt,
+					nowIso,
+					input.ownerId,
+					input.providerEventId,
+				),
 			input.db
 				.prepare(
 					`UPDATE email_outbound_failure_tracking
@@ -276,8 +307,10 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 		ownerId: input.ownerId,
 	})
 
-	// Increment, mark applied, and pause (when at threshold) in one batch so
-	// a crash cannot leave applied_at set while skipping the pause write.
+	// Increment (only when strictly newer than the delivered watermark),
+	// mark applied, and pause (when at threshold) in one batch so a crash
+	// cannot leave applied_at set while skipping the pause write, and a
+	// concurrent older bounce cannot re-increment after a delivered reset.
 	await input.db.batch([
 		input.db
 			.prepare(
@@ -286,12 +319,16 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 				       email_outbound_consecutive_failures + 1,
 				     updated_at = ?
 				 WHERE id = ?
+				   AND (
+				     email_outbound_failure_watermark_at IS NULL
+				     OR email_outbound_failure_watermark_at < ?
+				   )
 				   AND EXISTS (
 				     SELECT 1 FROM email_outbound_failure_tracking
 				     WHERE provider_event_id = ? AND applied_at IS NULL
 				   )${andLiveDeletedAtSql()}`,
 			)
-			.bind(nowIso, input.ownerId, input.providerEventId),
+			.bind(nowIso, input.ownerId, eventAt, input.providerEventId),
 		input.db
 			.prepare(
 				`UPDATE email_outbound_failure_tracking
