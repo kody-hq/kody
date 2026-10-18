@@ -18,6 +18,7 @@ import { softDeleteUserAccount } from '#worker/orgs/soft-delete.ts'
 import {
 	approveAdminAccountDeletion,
 	deleteAdminUserAccount,
+	createAdminAccountDeletionApproval,
 	executeAdminAccountHardDelete,
 	loadAdminAccountDeletionSummary,
 } from './account-hard-delete.ts'
@@ -568,6 +569,13 @@ test('a partial delete resumes from the tombstone and the last admin is kept', a
 		username: 'only-admin',
 		roles: ['admin'],
 	}
+	await expect(
+		createAdminAccountDeletionApproval({
+			env,
+			actor,
+			target: { stableUserId: adminId },
+		}),
+	).rejects.toThrow(/last admin/i)
 	await expect(
 		deleteAdminUserAccount({
 			env,

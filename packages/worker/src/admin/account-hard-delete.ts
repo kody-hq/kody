@@ -710,6 +710,13 @@ export async function createAdminAccountDeletionApproval(input: {
 		throw new AdminAccountHardDeleteError('User not found.', 404, 'not_found')
 	}
 	const summary = await summarize(input.env, loaded)
+	if (summary.deletionBlocked) {
+		throw new AdminAccountHardDeleteError(
+			summary.deletionBlocked,
+			409,
+			'last_admin',
+		)
+	}
 	const now = input.now ?? new Date()
 	const approvalId = crypto.randomUUID()
 	const expiresAt = new Date(
