@@ -740,18 +740,18 @@ with its own audit trail.
 
 Where they are wired:
 
-- The server wraps the three org index handlers and `/connect/secret-set` with
-  `withCredentialIndexRedirect` (`app/handlers/credential-index-redirect.ts`).
-  The client router wraps the same loaders with `withCredentialRedirectLoader`,
-  so in-app navigation redirects too.
+- Org index routes (`/@:org/-/secrets`, `/@:org/-/integrations`,
+  `/@:org/-/mcp-servers`) and `/connect/secret-set` call `credentialRedirectFor`
+  in `beforeLoad` and throw a 302 when the table matches.
 - `/connect/credential` redirects to the creation one-pager at
   `/@:org/-/credentials/new` in the signed-in user's signup org, with the query
   preserved. A legacy `/connect/secret-set` link therefore lands on the
   one-pager in two hops.
 - `/account/credentials` redirects to the signup org's Credentials list, query
-  preserved. Org-less pages (`/connect/secrets`, `/connect/secret-set`) link
-  back to it with `data-rmx-document`, because the client router would otherwise
-  intercept the org-less path.
+  preserved. `SiteLink` uses `linkNavigation`, which treats exact native routes
+  that have `beforeLoad` and no component or loader as document navigations, so
+  in-app clicks follow the server 302 instead of handling the path as an SPA
+  page. `/account/credits` uses the same redirect-only shape.
 - URLs the table returns null for stay on the dedicated page: approval links
   (`names`, `hosts`, `package_id`, `capability`) and `package=` filters on the
   index pages. `/connect/secret-set` remains the Key intake.
