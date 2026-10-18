@@ -1,5 +1,17 @@
 import { saveKeyThroughUi } from './account-fixtures.ts'
-import { expect, test, waitForClientHydration } from './playwright-utils.ts'
+import {
+	expect,
+	test,
+	waitForClientHydration,
+	type Page,
+} from './playwright-utils.ts'
+
+async function accountRailStickyTop(page: Page) {
+	await page.evaluate(() => window.scrollTo(0, 0))
+	const rail = page.locator('[data-account-nav] > div').first()
+	await expect(rail).toBeVisible()
+	return rail.evaluate((element) => element.getBoundingClientRect().top)
+}
 
 test('Credentials lists a key, filters by kind, and opens its detail pane without the value', async ({
 	page,
@@ -439,4 +451,79 @@ test('case-only credential rename persists on the secrets editor', async ({
 	await page.goto(`/@${user.username}/-/secrets/user/henry`)
 	await waitForClientHydration(page)
 	await expect(nameInput).toHaveValue('henry')
+})
+
+test('account rail top stays put when credentials search shrinks a tall list', async ({
+	page,
+	seedE2eUser,
+	login,
+}) => {
+	// Enough rows that the content column outgrows the sticky rail (so sticky
+	// engages on the full list) plus one uniquely searchable name.
+	test.setTimeout(process.env.CI ? 180_000 : 120_000)
+	const runId = Date.now()
+	const user = await seedE2eUser({
+		email: `cred-rail-${runId}@example.com`,
+		username: `cred-rail-${runId}`,
+		password: 'cred-rail-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+
+	const searchable = `AUDIBLE_RAIL_${runId}`
+	const names = [
+		searchable,
+		...Array.from({ length: 17 }, (_, i) => `RAIL_FILL_${runId}_${i}`),
+	]
+	const context = page.context()
+	await Promise.all(
+		names.map(async (name, index) => {
+			const tab = await context.newPage()
+			try {
+				await saveKeyThroughUi(tab, {
+					name,
+					value: `sk-rail-${runId}-${index}`,
+					allowedHosts: ['api.example.com'],
+				})
+			} finally {
+				await tab.close()
+			}
+		}),
+	)
+
+	await page.setViewportSize({ width: 1440, height: 900 })
+	await page.goto(`/@${user.username}/-/credentials`)
+	await waitForClientHydration(page)
+	const table = page.getByRole('region', { name: 'Credentials', exact: true })
+	await expect(table.getByText(/\d+ of \d+/)).toContainText(
+		`${names.length} of ${names.length}`,
+	)
+	const longTop = await accountRailStickyTop(page)
+	const longNavHeight = await page
+		.locator('[data-account-nav]')
+		.evaluate((element) => element.getBoundingClientRect().height)
+	const longRailHeight = await page
+		.locator('[data-account-nav] > div')
+		.first()
+		.evaluate((element) => element.getBoundingClientRect().height)
+	expect(
+		longNavHeight,
+		'full list must stretch the nav taller than the rail so sticky engages',
+	).toBeGreaterThan(longRailHeight + 1)
+
+	await page.getByLabel('Search credentials', { exact: true }).fill('AUDIBLE')
+	await expect(page).toHaveURL(/[?&]q=AUDIBLE/)
+	await expect(
+		table.getByRole('link', { name: new RegExp(searchable) }),
+	).toBeVisible()
+	await expect(table.getByText(/of \d+/)).toContainText(`1 of ${names.length}`)
+	const shortTop = await accountRailStickyTop(page)
+	const shortNavHeight = await page
+		.locator('[data-account-nav]')
+		.evaluate((element) => element.getBoundingClientRect().height)
+	expect(
+		shortNavHeight,
+		'filtered list should leave the nav about as tall as the rail',
+	).toBeLessThanOrEqual(longRailHeight + 1)
+
+	expect(Math.abs(shortTop - longTop)).toBeLessThanOrEqual(0.5)
 })
