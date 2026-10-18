@@ -3058,6 +3058,13 @@ export async function writeGeneratedWranglerConfig({
 			resolvedVars[key] = value
 		}
 	}
+	// Deployed preview/production must never carry the local-dev Turnstile
+	// bypass. Local `npm run dev` writes a separate generated config.
+	if (resolvedVars.WRANGLER_IS_LOCAL_DEV !== undefined) {
+		fail(
+			`wrangler config for env.${envName} must not set WRANGLER_IS_LOCAL_DEV (got ${JSON.stringify(resolvedVars.WRANGLER_IS_LOCAL_DEV)}). That flag skips production boot guards; use the local-dev generated config instead.`,
+		)
+	}
 	;(targetEnv as Record<string, unknown>).vars = resolvedVars
 
 	if (artifactsNamespace) {
