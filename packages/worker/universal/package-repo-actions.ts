@@ -17,8 +17,18 @@ export type PackageRepoActions = {
 	fork: PackageRepoForkAction | null
 	/** Owner: default-branch HEAD is ahead of the last publish. */
 	publishHref: string | null
-	/** Owner: the package declares an app. */
+	/**
+	 * Open app. Owners of a hosted app get the kody.codes handoff path (that
+	 * is what signs them in on the package-app origin). Visitors of an
+	 * internet-visible app get the canonical hosted origin. Inline
+	 * deployments use the path mount.
+	 */
 	packageAppHref: string | null
+	/**
+	 * Canonical kody.run or verified custom-domain URL when it is not already
+	 * `packageAppHref`. Null when this deployment serves the app inline.
+	 */
+	packageAppOriginHref?: string | null
 	follow?: PackageRepoFollowAction | null
 }
 

@@ -327,9 +327,10 @@ const appHandler = withCors({
 			return handleOAuthProtectedApiMe(request, env)
 		}
 
-		// Non-production inline package apps. Production requests normally redirect
-		// in handlePackageAppOriginRequest; this handler independently returns 500
-		// rather than executing package code if that routing invariant is broken.
+		// Non-production inline package apps. Production app-origin package paths
+		// are handled in handlePackageAppOriginRequest (handoff only for people
+		// who may run the app). This handler returns 500 in production rather
+		// than executing package code if that routing invariant is broken.
 		if (isPackageAppRequestPath(url.pathname)) {
 			const response = await handlePackageAppRequest(request, env)
 			return stripPackageAppRuntimeRunId(response).response

@@ -55,8 +55,10 @@ Requests are handled in this order:
      the handoff-token exchange on those same paths). `/` redirects to the app
      origin; every other path is `404`.
    - On the **app origin**, `/@{username}/packages/*` never executes package
-     code: safe methods redirect to the owner's package-app subdomain with a
-     handoff token, other methods get a `307` to that subdomain.
+     code. Anonymous visitors and signed-in outsiders stay on the app origin. A
+     signed-in person who may run the app is redirected to the owner's
+     package-app subdomain (or verified custom hostname) with a handoff token on
+     safe methods, or a `307` on other methods.
    - Production package-app requests fail with `500` when `PACKAGE_APP_BASE_URL`
      is missing or is not on a separate registrable domain from `APP_BASE_URL`;
      package code never executes inline.

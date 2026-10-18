@@ -435,16 +435,16 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		expect(rootResponse.headers.get('Location')).toBe(`${appOrigin}/`)
 	}
 
-	// 9. The package-app session is not an app session: the app origin refuses
-	// it and sends the visitor to log in.
+	// 9. The package-app session is not an app session. The app origin does not
+	// hand off, and it does not send the visitor to the package-app host.
 	const appOriginWithPackageCookie = await workerFetch(
 		`${appOrigin}/@${ownerUsername}/packages/demo`,
 		withPackageSession(),
 	)
 	expect(appOriginWithPackageCookie.status).toBe(302)
-	expect(
-		new URL(appOriginWithPackageCookie.headers.get('Location') ?? '').pathname,
-	).toBe('/login')
+	expect(appOriginWithPackageCookie.headers.get('Location')).toBe(
+		`${appOrigin}/@${ownerUsername}/demo`,
+	)
 
 	// 10. A signed-in visitor on the owner-only handoff mount is sent to the
 	// saved-package page (`/@{username}/{kodyId}`), not a "not found" 404.
@@ -673,26 +673,26 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	await seedPackageAppAccessFixture()
 	const { orgSlug, privateApp, publicApp } = accessFixture
 
-	// App origin: a signed-out visitor of an internet-visible app goes straight
-	// to the package-app origin (no handoff token); a private app still asks
-	// for login.
+	// App origin: a signed-out visitor of an internet-visible app stays on the
+	// app origin. The package page would hide this private package, so the
+	// response is a landing page that links to the real origin (path and query
+	// preserved) and does not redirect.
 	const publicEntry = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}?tab=1`,
 	)
-	expect(publicEntry.status).toBe(302)
-	const publicLocation = new URL(publicEntry.headers.get('Location') ?? '')
-	expect(publicLocation.origin).toBe(accessFixtureOrigin)
-	expect(publicLocation.pathname).toBe(`/packages/${publicApp.slug}`)
-	expect(publicLocation.searchParams.get('tab')).toBe('1')
-	expect(publicLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
-		false,
-	)
+	expect(publicEntry.status).toBe(200)
+	expect(publicEntry.headers.get('Location')).toBeNull()
+	const publicBody = await publicEntry.text()
+	const publicAppUrl = `${accessFixtureOrigin}/packages/${publicApp.slug}?tab=1`
+	expect(publicBody).toContain(publicAppUrl)
+	expect(publicBody).toContain('data-testid="package-app-origin-link"')
+	expect(publicBody).not.toContain(packageAppHandoffQueryParam)
 	const privateEntry = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${privateApp.slug}`,
 	)
 	expect(privateEntry.status).toBe(302)
-	expect(new URL(privateEntry.headers.get('Location') ?? '').pathname).toBe(
-		'/login',
+	expect(privateEntry.headers.get('Location')).toBe(
+		`${appOrigin}/@${orgSlug}/${privateApp.slug}`,
 	)
 
 	// Package-app origin: anonymous requests to the internet-visible app clear
@@ -718,12 +718,13 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(privateAnonymous.status).toBe(403)
 	expect(privateAnonymous.headers.get('X-Kody-Handoff')).toBe('required')
 
-	// Internet-visible without an approved capability set stays gated.
+	// Internet-visible without an approved capability set stays on the app
+	// origin. It is not a public app, so the visitor gets the package page.
 	const unapprovedEntry = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${accessFixture.unapprovedPublicApp.slug}`,
 	)
-	expect(new URL(unapprovedEntry.headers.get('Location') ?? '').pathname).toBe(
-		'/login',
+	expect(unapprovedEntry.headers.get('Location')).toBe(
+		`${appOrigin}/@${orgSlug}/${accessFixture.unapprovedPublicApp.slug}`,
 	)
 	const unapprovedAnonymous = await workerFetch(
 		`${accessFixtureOrigin}/packages/${accessFixture.unapprovedPublicApp.slug}`,
@@ -768,6 +769,56 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(member.status).toBe(500)
 	expect(member.headers.get('Cache-Control')).toBe('private')
 	expect(member.headers.get('Vary')).toContain('Cookie')
+
+	// Signed-in outsiders on the app origin stay on the saved-package page,
+	// including for an internet-visible app and for non-GET.
+	const outsiderEmail = 'app-origin-outsider@example.com'
+	await seedAccount({
+		db: env.APP_DB,
+		email: outsiderEmail,
+		username: 'app-outsider',
+	})
+	const outsiderSession = await sessionCookieFor(outsiderEmail)
+	const outsiderPublic = await workerFetch(
+		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}/play?tab=1`,
+		{ headers: { Cookie: outsiderSession } },
+	)
+	expect(outsiderPublic.status).toBe(302)
+	expect(outsiderPublic.headers.get('Location')).toBe(
+		`${appOrigin}/@${orgSlug}/${publicApp.slug}`,
+	)
+	const outsiderPost = await workerFetch(
+		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,
+		{ method: 'POST', headers: { Cookie: outsiderSession } },
+	)
+	expect(outsiderPost.status).toBe(303)
+	expect(outsiderPost.headers.get('Location')).toBe(
+		`${appOrigin}/@${orgSlug}/${publicApp.slug}`,
+	)
+	const anonymousPost = await workerFetch(
+		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,
+		{ method: 'POST' },
+	)
+	expect(anonymousPost.status).toBe(303)
+	expect(new URL(anonymousPost.headers.get('Location') ?? '').origin).toBe(
+		appOrigin,
+	)
+
+	// People who may run the app still hand off. Other methods 307 without a
+	// token, and only after the execute check.
+	const ownerSession = await sessionCookieFor(accessFixture.people.owner.email)
+	const ownerPost = await workerFetch(
+		`${appOrigin}/@${orgSlug}/packages/${privateApp.slug}?tab=1`,
+		{ method: 'POST', headers: { Cookie: ownerSession } },
+	)
+	expect(ownerPost.status).toBe(307)
+	const ownerPostLocation = new URL(ownerPost.headers.get('Location') ?? '')
+	expect(ownerPostLocation.origin).toBe(accessFixtureOrigin)
+	expect(ownerPostLocation.pathname).toBe(`/packages/${privateApp.slug}`)
+	expect(ownerPostLocation.searchParams.get('tab')).toBe('1')
+	expect(ownerPostLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
+		false,
+	)
 })
 
 async function sessionCookieForFixtureOutsider() {

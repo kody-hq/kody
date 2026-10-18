@@ -88,6 +88,7 @@ import { runWithRequestContext } from '#worker/request-context.ts'
 import { runWithDeferredWork } from '#worker/deferred-work.ts'
 import { stripPackageAppRuntimeRunId } from '#worker/package-runtime/package-app-diagnostics.ts'
 import { wantsJson } from '#worker/utils.ts'
+import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 
 /**
  * Host-based isolation for hosted package apps.
@@ -106,11 +107,14 @@ import { wantsJson } from '#worker/utils.ts'
  * apex) serves no package code at all — it only redirects legacy path-based
  * URLs to the owning user's subdomain and sends the bare origin home.
  *
- * The app origin is the only host that can authenticate the owner, so it mints
- * a short-lived single-use handoff token and the user's package-app subdomain
- * exchanges it for its own host-scoped session cookie (named with the
- * `__Host-` prefix on secure requests so sibling subdomains cannot shadow it).
- * The same host-only cookie is set on a verified customer custom hostname.
+ * The app origin is the only host that can authenticate the owner, so a
+ * signed-in person who may run the app still mints a short-lived single-use
+ * handoff token and the user's package-app subdomain exchanges it for its own
+ * host-scoped session cookie (named with the `__Host-` prefix on secure
+ * requests so sibling subdomains cannot shadow it). The same host-only cookie
+ * is set on a verified customer custom hostname. Anonymous visitors and
+ * signed-in outsiders are not redirected there: `/@{username}/packages/…` on
+ * the app origin stays on that origin and shows the saved-package page.
  *
  * When `package-app-custom-domains` is globally on, a verified app-level
  * custom hostname serves that package at `/` (assets at `/_assets/...`).
@@ -126,12 +130,14 @@ import { wantsJson } from '#worker/utils.ts'
  * them to someone else (`package-app-cache-headers.ts`).
  *
  * The origins never redirect to each other in a cycle: the app origin only
- * ever redirects *to* a package-app subdomain, the apex only redirects to a
- * subdomain or the app origin, and a subdomain only ever redirects within
- * itself (dropping a consumed token from the URL). A request that arrives
- * without a usable session gets a terminal 403 with a link back to the app
- * origin, so a browser that refuses the cookie fails visibly instead of
- * bouncing between hosts.
+ * redirects people who may run the app *to* a package-app subdomain (or a
+ * verified custom hostname), the apex only redirects to a subdomain or the
+ * app origin, and a subdomain only ever redirects within itself (dropping a
+ * consumed token from the URL). A request that arrives without a usable
+ * session gets a terminal 403 with a link back to the app origin, so a
+ * browser that refuses the cookie fails visibly instead of bouncing between
+ * hosts. Everyone else who hits `/@{username}/packages/…` on the app origin
+ * stays there.
  *
  * `/@{username}/webhooks/*` deliberately stays on the app origin: it is a
  * machine API authenticated by its own URL secret, it is never called by
@@ -148,7 +154,7 @@ function withoutHandoffToken(url: URL) {
 
 function redirectResponse(input: {
 	location: string
-	status: 302 | 307 | 308
+	status: 302 | 303 | 307 | 308
 	setCookie?: string | Array<string>
 	cacheControl?: string
 }) {
@@ -301,6 +307,7 @@ function redirectToPackagePage(input: {
 	env: Env
 	request: Request
 	packagePath: PackageAppPath
+	status?: 302 | 303
 }) {
 	return redirectResponse({
 		location: joinAppUrl({
@@ -311,7 +318,7 @@ function redirectToPackagePage(input: {
 			}),
 			requestUrl: input.request.url,
 		}),
-		status: 302,
+		status: input.status ?? 302,
 	})
 }
 
@@ -570,12 +577,18 @@ async function buildCustomHostnameHandoffTarget(input: {
 }
 
 /**
- * Mint a handoff token for the signed-in visitor and send them to the
- * package-app subdomain of the org named in the path, or to a verified
- * custom hostname when one is bound to this package. The app origin never
- * executes package code once `PACKAGE_APP_BASE_URL` is configured.
+ * App-origin `/@{username}/packages/…` when a separate package-app origin is
+ * configured. The app origin never executes package code.
+ *
+ * People who may run the app still hand off (302 + token on GET/HEAD, 307
+ * without a token on other methods) because `*.kody.run` and custom domains
+ * authenticate only with the host-scoped cookie that token mints. Everyone
+ * else stays on the app origin: the saved-package page, or a same-origin
+ * landing that links to the real origin when the package page itself would
+ * hide a private internet-visible app. Nothing here redirects anonymous
+ * visitors or signed-in outsiders off the app origin.
  */
-async function redirectAppOriginToPackageAppOrigin(input: {
+async function handleAppOriginPackageAppPath(input: {
 	request: Request
 	env: Env
 	url: URL
@@ -585,6 +598,7 @@ async function redirectAppOriginToPackageAppOrigin(input: {
 	const { request, env, url, packagePath, packageAppOrigin } = input
 
 	// Resolve retired slugs before minting a handoff bound to the URL slug.
+	// The 308 stays on the app origin.
 	const retiredRedirect = await redirectRetiredPackageAppSlug({
 		env,
 		url,
@@ -609,9 +623,6 @@ async function redirectAppOriginToPackageAppOrigin(input: {
 				slug: packagePath.kodyId,
 			})
 		: null
-	// Internet-visible apps serve anyone on the package-app origin, so a
-	// visitor who cannot run the app as themselves goes there without a
-	// handoff and is served anonymously.
 	const internetVisible = Boolean(
 		await resolveInternetVisibleApprovedCommit({
 			env,
@@ -619,6 +630,29 @@ async function redirectAppOriginToPackageAppOrigin(input: {
 			requestUrl: request.url,
 		}),
 	)
+	const user = await readAuthenticatedAppUser(request, env)
+	const canExecute =
+		user && org
+			? await viewerCanExecutePackageApp({
+					env,
+					viewer: user.mcpUser,
+					ownerId: org.userId,
+					appId: slugLookup?.savedPackage.id ?? null,
+				})
+			: false
+
+	if (!user || !org || !canExecute) {
+		return await stayOnAppOriginPackagePage({
+			request,
+			env,
+			url,
+			packagePath,
+			packageAppOrigin,
+			internetVisible,
+			savedPackage: slugLookup?.savedPackage ?? null,
+			signedIn: Boolean(user),
+		})
+	}
 
 	const customHandoff = await buildCustomHostnameHandoffTarget({
 		env,
@@ -638,40 +672,11 @@ async function redirectAppOriginToPackageAppOrigin(input: {
 	// with that id so a mixed-case app-origin URL cannot fail the path check.
 	const handoffKodyId = usableCustomHandoff?.kodyId ?? packagePath.kodyId
 
-	// A non-safe method reaching the app origin is not part of the normal flow
-	// (package pages are loaded from, and post back to, the package-app
-	// subdomain). Preserve the method and let the subdomain authorize it with
-	// its own session rather than minting a token for a request we cannot
-	// replay.
+	// A non-safe method cannot carry a handoff token. Preserve the method and
+	// let the package-app host authorize it with a cookie the visitor already
+	// holds. This runs only after we know they may run the app.
 	if (request.method !== 'GET' && request.method !== 'HEAD') {
 		return redirectResponse({ location: target.toString(), status: 307 })
-	}
-
-	const user = await readAuthenticatedAppUser(request, env)
-	if (!user) {
-		if (internetVisible) {
-			return redirectResponse({ location: target.toString(), status: 302 })
-		}
-		return await redirectToLoginWhenUnauthenticated(request, env)
-	}
-	const canExecute = org
-		? await viewerCanExecutePackageApp({
-				env,
-				viewer: user.mcpUser,
-				ownerId: org.userId,
-				appId: slugLookup?.savedPackage.id ?? null,
-			})
-		: false
-	if (!org || !canExecute) {
-		if (internetVisible) {
-			return redirectResponse({ location: target.toString(), status: 302 })
-		}
-		// `/@{username}/packages/{kodyId}` hands off only for visitors who
-		// may run the org's app. Everyone else belongs on the saved-package
-		// page (`/@{username}/{kodyId}`). That page shows an explicit
-		// no-access shell for signed-in outsiders — never a "doesn't quite
-		// connect" 404 that looks like the package was unpublished.
-		return redirectToPackagePage({ env, request, packagePath })
 	}
 
 	const parsedSession = await readParsedAuthSession(request)
@@ -696,6 +701,132 @@ async function redirectAppOriginToPackageAppOrigin(input: {
 		}),
 	)
 	return redirectResponse({ location: target.toString(), status: 302 })
+}
+
+/**
+ * Anonymous visitors and signed-in outsiders never leave the app origin.
+ * GET/HEAD of a package the viewer can open goes to the saved-package page.
+ * A private internet-visible app would 404 for an anonymous visitor on that
+ * page, so those requests render a same-origin landing that links to the
+ * real origin instead of bouncing there. Other methods 303 to the package
+ * page so a body is not replayed onto an author-controlled host.
+ */
+async function stayOnAppOriginPackagePage(input: {
+	request: Request
+	env: Env
+	url: URL
+	packagePath: PackageAppPath
+	packageAppOrigin: string
+	internetVisible: boolean
+	savedPackage: { isPrivate: boolean; hidden: boolean } | null
+	signedIn: boolean
+}) {
+	const packagePageRedirect = () =>
+		redirectToPackagePage({
+			env: input.env,
+			request: input.request,
+			packagePath: input.packagePath,
+			status:
+				input.request.method === 'GET' || input.request.method === 'HEAD'
+					? 302
+					: 303,
+		})
+	if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
+		return packagePageRedirect()
+	}
+	const opaqueToAnonymous =
+		!input.savedPackage ||
+		input.savedPackage.isPrivate ||
+		input.savedPackage.hidden
+	if (input.internetVisible && !input.signedIn && opaqueToAnonymous) {
+		const restPath =
+			input.packagePath.restPath === '/' ? null : input.packagePath.restPath
+		const location = await resolvePublicPackageAppLocation({
+			env: input.env,
+			username: input.packagePath.username,
+			kodyId: input.packagePath.kodyId,
+			restPath,
+		})
+		const target = location
+			? new URL(location.hostedUrl)
+			: buildSubdomainTarget({
+					packageAppOrigin: input.packageAppOrigin,
+					packagePath: input.packagePath,
+					url: input.url,
+				})
+		target.search = withoutHandoffToken(input.url).search
+		return createPackageAppOriginLinkResponse({
+			request: input.request,
+			appUrl: target.toString(),
+			packagePagePath: buildPackagePagePath({
+				username: input.packagePath.username,
+				kodyId: input.packagePath.kodyId,
+			}),
+			packageName: `@${input.packagePath.username}/${input.packagePath.kodyId}`,
+		})
+	}
+	return packagePageRedirect()
+}
+
+/**
+ * Same-origin page for an old `/@{username}/packages/…` link whose package
+ * page would not show the app. The visitor chooses the real origin; nothing
+ * redirects them there.
+ */
+function createPackageAppOriginLinkResponse(input: {
+	request: Request
+	appUrl: string
+	packagePagePath: string
+	packageName: string
+}) {
+	const headers = {
+		'Cache-Control': 'no-store',
+		'X-Robots-Tag': 'noindex',
+	}
+	if (input.request.method === 'HEAD') {
+		return new Response(null, { status: 200, headers })
+	}
+	return createHtmlResponse(
+		html`<!doctype html>
+			<html lang="en">
+				<head>
+					<meta charset="utf-8" />
+					<meta name="viewport" content="width=device-width, initial-scale=1" />
+					<title>${input.packageName}</title>
+					<style>
+						:root {
+							color-scheme: light dark;
+							font-family: ui-sans-serif, system-ui, sans-serif;
+							line-height: 1.5;
+						}
+						main {
+							box-sizing: border-box;
+							max-width: 34rem;
+							margin: 0 auto;
+							padding: min(12vh, 6rem) 1.25rem;
+						}
+					</style>
+				</head>
+				<body>
+					<main data-testid="package-app-landing">
+						<h1>${input.packageName}</h1>
+						<p>
+							This package app is hosted on its own site. Kody does not open it
+							for you.
+						</p>
+						<p>
+							<a href="${input.appUrl}" data-testid="package-app-origin-link"
+								>Open the app</a
+							>
+						</p>
+						<p>
+							<a href="${input.packagePagePath}">View the package on Kody</a>
+						</p>
+					</main>
+				</body>
+			</html>`,
+		{ status: 200, headers },
+	)
 }
 
 /**
@@ -1232,7 +1363,7 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 	}
 	if (!packagePath) return null
 
-	return await redirectAppOriginToPackageAppOrigin({
+	return await handleAppOriginPackageAppPath({
 		request,
 		env,
 		url,

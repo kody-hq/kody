@@ -565,10 +565,11 @@ app route.
 
 Production-hosted package apps run on per-user subdomains of Kody's separate
 `kody.run` domain (`https://{username}.kody.run/packages/<package-name>/...`),
-not on the signed-in app origin. Opening an app from Kody performs a short-lived
-session handoff to that subdomain. Package author JavaScript cannot use the
-first-party `kody_session` cookie or call authenticated Kody pages as the
-signed-in user.
+or on a verified custom domain, not on the signed-in app origin. The package
+page links there. People who may run the app still open it through a short-lived
+session handoff from kody.codes, because the hosted origin cannot see the
+kody.codes session cookie. Package author JavaScript cannot use the first-party
+`kody_session` cookie or call authenticated Kody pages as the signed-in user.
 
 Package app URLs follow the mount contract: on a subdomain the public path is
 `/packages/<package-name>/<path>` (the username lives in the hostname; the

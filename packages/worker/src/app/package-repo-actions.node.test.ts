@@ -51,6 +51,7 @@ test('visitors get only a fork action whose login link returns to the Repo tab',
 		},
 		publishHref: null,
 		packageAppHref: null,
+		packageAppOriginHref: null,
 		follow: null,
 	})
 	expect(buildPackageRepoActions({ ...base, listing: null }).fork).toBeNull()
@@ -92,6 +93,7 @@ test('owners get publish and open app actions but never fork', () => {
 		fork: null,
 		publishHref: '/@kentcdodds/github-triage/approve-publish',
 		packageAppHref: expect.stringContaining('github-triage'),
+		packageAppOriginHref: null,
 		follow: null,
 	})
 })
@@ -114,6 +116,7 @@ test('owners get Publish changes when HEAD is ahead even without a listing', () 
 		publishHref:
 			'/@kentcdodds/github-triage/approve-publish?commit=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
 		packageAppHref: null,
+		packageAppOriginHref: null,
 		follow: null,
 	})
 })

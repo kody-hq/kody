@@ -103,6 +103,7 @@ import {
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	packageAppSyntheticHeaderName,
@@ -1854,7 +1855,7 @@ function packageAppPublicBasePath(input: {
 	}
 }
 
-function buildPackageAppPublicContext(input: {
+async function buildPackageAppPublicContext(input: {
 	env: Env
 	baseUrl: string
 	savedPackage: { kodyId: string; name: string }
@@ -1885,9 +1886,15 @@ function buildPackageAppPublicContext(input: {
 			hostedUrl: `${input.runtime.hostedOrigin.replace(/\/+$/, '')}${appBasePath}`,
 		}
 	}
-	// Background/synthetic callers get the canonical hosted URL: the per-user
-	// subdomain when a package-app origin is configured, the inline path-based
-	// mount otherwise.
+	// Background/synthetic callers get the canonical hosted URL: a verified
+	// app-level custom hostname, otherwise the per-user subdomain, otherwise
+	// the inline path-based mount.
+	const canonical = await resolvePublicPackageAppLocation({
+		env: input.env,
+		username,
+		kodyId: urlSlug,
+	})
+	if (canonical) return canonical
 	const hostedUrl = resolveHostedPackageAppUrl({
 		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
 		appBaseUrl: input.baseUrl,
@@ -2110,7 +2117,7 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 		mount?: PackageAppMount
 	}
 }): Promise<PackageAppWorkerOptions> {
-	const publicContext = buildPackageAppPublicContext(input)
+	const publicContext = await buildPackageAppPublicContext(input)
 	const manifest = resolvePackageAppManifest({
 		manifest: input.manifest,
 		source: input.source,
@@ -2322,7 +2329,7 @@ export async function buildPackageAppWorker(input: {
 		})
 	})
 	return await pushServerTiming(input.serverTiming, 'appLoader', async () => {
-		const publicContext = buildPackageAppPublicContext(input)
+		const publicContext = await buildPackageAppPublicContext(input)
 		const cacheKey = createPackageAppWorkerCacheKey({
 			userId: input.userId,
 			visitor: packageAppVisitorOf(

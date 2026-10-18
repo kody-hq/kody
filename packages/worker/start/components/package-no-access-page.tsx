@@ -23,6 +23,8 @@ export type PackageNoAccessPageProps = {
 	kodyId: string
 	packageName: string
 	viewerUsername: string
+	/** Canonical hosted origin for an internet-visible app. */
+	packageAppHref?: string | null
 }
 
 /**
@@ -30,7 +32,8 @@ export type PackageNoAccessPageProps = {
  * illustrated 404 — a shared private-app handoff must not look unpublished.
  */
 export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
-	const { username, kodyId, packageName, viewerUsername } = props
+	const { username, kodyId, packageName, viewerUsername, packageAppHref } =
+		props
 	const packageHref = routes.communityPackage.href({ username, kodyId })
 	const sharingDocsHref = routes.docDetail.href({ slug: 'package-sharing' })
 	const requestMessage = [
@@ -64,6 +67,15 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 				An org invite alone is not enough unless those grants come with it.
 			</p>
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
+				{packageAppHref ? (
+					<SiteLink
+						href={packageAppHref}
+						data-testid="package-app-origin-link"
+						css={getPillButtonCss()}
+					>
+						Open the app
+					</SiteLink>
+				) : null}
 				<CopyTextButton
 					value={requestMessage}
 					idleLabel="Copy access request"

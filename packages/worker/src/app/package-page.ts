@@ -9,6 +9,7 @@ import {
 	viewerCanReadSavedPackage,
 	viewerIsSavedPackageOrgOwner,
 } from '#app/package-viewer-access.ts'
+import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
@@ -50,6 +51,11 @@ export type PackagePageAccess =
 			kodyId: string
 			packageName: string
 			viewerUsername: string
+			/**
+			 * Canonical hosted origin when the app is internet-visible. The
+			 * package page is closed, but the app itself is not.
+			 */
+			packageAppHref?: string | null
 	  }
 	| {
 			kind: 'page'
@@ -595,12 +601,23 @@ async function resolvePackagePageForViewer(
 		// Revealing existence to signed-in people who already know the URL
 		// (share links / handoffs) is intentional product policy.
 		if (viewer && target.savedPackage) {
+			const packageAppHref =
+				target.savedPackage.hasApp && target.savedPackage.isInternetVisible
+					? ((
+							await resolvePublicPackageAppLocation({
+								env: input.env,
+								username: target.username,
+								kodyId: target.kodyId,
+							})
+						)?.hostedUrl ?? null)
+					: null
 			return {
 				kind: 'no_access',
 				username: target.username,
 				kodyId: target.kodyId,
 				packageName: target.savedPackage.name,
 				viewerUsername: viewer.username ?? 'unknown',
+				...(packageAppHref ? { packageAppHref } : {}),
 			}
 		}
 		return { kind: 'not_found' }
