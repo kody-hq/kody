@@ -16,8 +16,8 @@ export function linkNavigation(
 	const redirectOnly =
 		exact &&
 		Boolean(route?.options.beforeLoad) &&
-		!route.options.component &&
-		!route.options.loader
+		!route?.options.component &&
+		!route?.options.loader
 	return {
 		preload: route?.options.preload,
 		reloadDocument:
