@@ -6,6 +6,7 @@ import { buildPublishCommitDiff } from '#app/package-publish-diff.ts'
 import { type AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { routes } from '#universal/routes.ts'
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	packageMutationResult,
@@ -16,7 +17,7 @@ import {
 	isGitCommitSha,
 	isSavedPackageLocked,
 } from '#worker/package-registry/package-publish-lock.ts'
-import { unknownRequestedCommitError } from '#worker/repo/requested-commit-error.ts'
+import { isUnknownRequestedCommitMessage } from '#worker/repo/requested-commit-error.ts'
 import { setSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
@@ -305,12 +306,11 @@ async function changePackagePublishState(
 			rebuildPackageArtifacts: true,
 		})
 	} catch (error) {
-		const unknownCommit = unknownRequestedCommitError(error, commit)
-		if (unknownCommit) {
-			return packageMutationResult(
-				{ ok: false, error: unknownCommit.message },
-				400,
-			)
+		// Only the checkout classifier's message. A later NotFoundError
+		// (ancestry walk, missing blob) must not be relabeled as this commit.
+		const message = getErrorMessage(error)
+		if (isUnknownRequestedCommitMessage(message)) {
+			return packageMutationResult({ ok: false, error: message }, 400)
 		}
 		throw error
 	}

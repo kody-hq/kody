@@ -438,12 +438,14 @@ test('approve-publish mutation returns a distinct error for an unknown full SHA'
 	mockModule.writablePackage = lockedPackage
 	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
 	mockModule.publishFromExternalRef.mockRejectedValueOnce(
-		Object.assign(
-			new Error(
-				`Failed to checkout "${unknownCommit}" because commit ${unknownCommit} is not available locally. Do a git fetch to make the branch available locally.`,
+		new Error(buildUnknownRequestedCommitMessage(unknownCommit), {
+			cause: Object.assign(
+				new Error(
+					`Failed to checkout "${unknownCommit}" because commit ${unknownCommit} is not available locally. Do a git fetch to make the branch available locally.`,
+				),
+				{ name: 'CommitNotFetchedError', code: 'CommitNotFetchedError' },
 			),
-			{ name: 'CommitNotFetchedError', code: 'CommitNotFetchedError' },
-		),
+		}),
 	)
 	const response = await act({
 		action: 'approve-publish',
@@ -478,4 +480,22 @@ test('approve-publish keeps a source-recovery clone failure distinct from an unk
 			commit: fullCommit,
 		}),
 	).rejects.toThrow('restorable backup snapshot')
+})
+
+test('approve-publish does not relabel a later missing object as an unknown commit', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	mockModule.publishFromExternalRef.mockRejectedValueOnce(
+		Object.assign(new Error('Could not find abcdef.'), {
+			name: 'NotFoundError',
+			code: 'NotFoundError',
+		}),
+	)
+	await expect(
+		act({
+			action: 'approve-publish',
+			packageId: 'pkg-1',
+			commit: fullCommit,
+		}),
+	).rejects.toThrow('Could not find abcdef.')
 })
