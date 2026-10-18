@@ -1,4 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { fullGitCommitShaRequiredMessage } from '#worker/package-registry/package-publish-lock.ts'
 import { expect, test, vi } from 'vitest'
 
 const mockModule = vi.hoisted(() => ({
@@ -148,6 +149,9 @@ test('legacy package approval links redirect and the canonical owner URL renders
 		ownerPackage,
 	})
 	const canonical = await requestApproval()
+	if (!('payload' in canonical) || !canonical.payload) {
+		throw new Error('expected the review payload')
+	}
 	expect(canonical.payload.ok).toBe(true)
 	expect(mockModule.loadAccountPackageApprovePublishData).toHaveBeenCalledWith({
 		env: expect.any(Object),
@@ -155,5 +159,14 @@ test('legacy package approval links redirect and the canonical owner URL renders
 		user,
 		packageId: 'pkg-1',
 		commit: 'abc1234',
+	})
+
+	mockModule.loadAccountPackageApprovePublishData.mockResolvedValue({
+		ok: false,
+		error: fullGitCommitShaRequiredMessage,
+	})
+	const shortCommit = await requestApproval()
+	expect(shortCommit).toEqual({
+		error: fullGitCommitShaRequiredMessage,
 	})
 })
