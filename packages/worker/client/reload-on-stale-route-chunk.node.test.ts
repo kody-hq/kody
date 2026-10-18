@@ -5,6 +5,7 @@ import {
 	onVitePreloadError,
 	reloadOnStaleRouteChunk,
 	setStaleRouteChunkReloadArmed,
+	staleRouteChunkReloadArmMs,
 	staleRouteChunkReloadFlag,
 } from './reload-on-stale-route-chunk.ts'
 
@@ -110,6 +111,40 @@ test('reloadOnStaleRouteChunk ignores chunk misses outside a route load', () => 
 	setStaleRouteChunkReloadArmed(false)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
+	expect(reload).not.toHaveBeenCalled()
+	expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
+})
+
+test('reloadOnStaleRouteChunk disarms itself after the route-load window', () => {
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
+	vi.useFakeTimers()
+	try {
+		setStaleRouteChunkReloadArmed(true)
+		vi.advanceTimersByTime(staleRouteChunkReloadArmMs + 1)
+
+		expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
+		expect(reload).not.toHaveBeenCalled()
+		expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('reloadOnStaleRouteChunk never reloads for the optional syntax-highlight chunk', () => {
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
+
+	const error = new TypeError(
+		'Failed to fetch dynamically imported module: https://kody.codes/assets/syntax-highlight-core-AbC123.js',
+	)
+	expect(isStaleRouteChunkLoadError(error)).toBe(true)
+	expect(reloadOnStaleRouteChunk(error)).toBe(false)
 	expect(reload).not.toHaveBeenCalled()
 	expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
 })

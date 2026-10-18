@@ -9,6 +9,7 @@
  * must not reload.
  */
 
+import { isSyntaxHighlightCoreDynamicImportFailureError } from '#client/sentry-browser-filters.ts'
 import {
 	getSessionStorageItem,
 	setSessionStorageItem,
@@ -17,15 +18,28 @@ import {
 export const staleRouteChunkReloadFlag = 'kody:stale-route-chunk-reload'
 
 /**
- * True only between a route load's `onBeforeLoad` and `onResolved`.
- * Idle deferred imports (`sentry-init`, syntax-highlight) must not reload:
- * a successful route boot clears the session flag, so those misses would
- * otherwise reload the tab forever.
+ * Longest a single route load may keep the reload armed. `onResolved` only
+ * fires for the transaction that wins, so a superseded or abandoned load
+ * must not leave the reload armed for later idle imports.
  */
-let staleRouteChunkReloadArmed = false
+export const staleRouteChunkReloadArmMs = 30_000
+
+/**
+ * Armed only between a route load's `onBeforeLoad` and `onResolved`, and for
+ * at most `staleRouteChunkReloadArmMs`. Idle deferred imports (`sentry-init`,
+ * syntax-highlight) must not reload: a successful route boot clears the
+ * session flag, so those misses would otherwise reload the tab forever.
+ */
+let staleRouteChunkReloadArmedUntil = 0
 
 export function setStaleRouteChunkReloadArmed(armed: boolean) {
-	staleRouteChunkReloadArmed = armed
+	staleRouteChunkReloadArmedUntil = armed
+		? Date.now() + staleRouteChunkReloadArmMs
+		: 0
+}
+
+function isStaleRouteChunkReloadArmed() {
+	return Date.now() <= staleRouteChunkReloadArmedUntil
 }
 
 /** Chromium: `Failed to fetch dynamically imported module: <url>`. */
@@ -72,8 +86,10 @@ export function isStaleRouteChunkLoadError(error: unknown) {
  * result because the flag is already set must still be reported.
  */
 export function reloadOnStaleRouteChunk(error: unknown): boolean {
-	if (!staleRouteChunkReloadArmed) return false
+	if (!isStaleRouteChunkReloadArmed()) return false
 	if (!isStaleRouteChunkLoadError(error)) return false
+	// Optional Shiki chunk has a plaintext fallback; never reload for it.
+	if (isSyntaxHighlightCoreDynamicImportFailureError(error)) return false
 	if (typeof window === 'undefined') return false
 	try {
 		if (getSessionStorageItem(staleRouteChunkReloadFlag)) return false
