@@ -9,6 +9,7 @@
  */
 
 import { normalizeEmailAddress } from './address.ts'
+import { parseAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { classifyVerificationDeliveryFailure } from './verification-delivery.ts'
 import { type EmailDeliveryStatus } from './types.ts'
 
@@ -24,12 +25,14 @@ export type VerificationHardBounceInput = {
 	smtpStatusCode?: string | null
 }
 
-function isInfrastructureError(error: unknown) {
+function isMissingPolicyStore(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error)
 	return (
 		error instanceof TypeError ||
 		/no such table/i.test(message) ||
-		/SQLITE_ERROR/i.test(message)
+		/\.prepare is not a function/i.test(message) ||
+		/\.first is not a function/i.test(message) ||
+		/\.run is not a function/i.test(message)
 	)
 }
 
@@ -72,8 +75,19 @@ export function isVerificationHardBounce(input: VerificationHardBounceInput) {
 	return permanentSmtpFailure(input)
 }
 
+/**
+ * Account emails allow RFC punctuation such as `'`. Cloudflare events may
+ * also wrap the address as `Name <addr>`. Key both shapes the same way
+ * `parseAccountEmail` does, so a bounce is not stored under a truncated
+ * local part.
+ */
 function canonicalRecipient(recipient: string) {
-	return normalizeEmailAddress(recipient)
+	const trimmed = recipient.trim()
+	const wrapped = /<([^<>]+)>/u.exec(trimmed)
+	const candidate = wrapped?.[1] ?? trimmed
+	const parsed = parseAccountEmail(candidate)
+	if (parsed) return parsed.email
+	return normalizeEmailAddress(trimmed)
 }
 
 function truncateDetail(value: string | null | undefined) {
@@ -101,10 +115,7 @@ export async function loadVerificationRecipientHardBounce(input: {
 			.bind(recipient)
 			.first<{ recipient: string; status: string }>()
 	} catch (error) {
-		if (isInfrastructureError(error)) {
-			console.warn('verification-hard-bounce-read-failed', error)
-			return null
-		}
+		if (isMissingPolicyStore(error)) return null
 		throw error
 	}
 }
@@ -152,10 +163,7 @@ export async function recordVerificationRecipientHardBounce(input: {
 			.bind(recipient, input.status, detail, at, at)
 			.run()
 	} catch (error) {
-		if (isInfrastructureError(error)) {
-			console.warn('verification-hard-bounce-write-failed', error)
-			return false
-		}
+		if (isMissingPolicyStore(error)) return false
 		throw error
 	}
 	return true
@@ -175,10 +183,7 @@ export async function clearVerificationRecipientHardBounce(input: {
 			.bind(recipient)
 			.run()
 	} catch (error) {
-		if (isInfrastructureError(error)) {
-			console.warn('verification-hard-bounce-clear-failed', error)
-			return
-		}
+		if (isMissingPolicyStore(error)) return
 		throw error
 	}
 }

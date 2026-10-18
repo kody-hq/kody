@@ -67,6 +67,22 @@ test('a hard bounce suppresses later verification sends until a delivery clears 
 		status: 'bounced',
 	})
 	expect(verificationHardBounceMessage).toContain('support@kody.codes')
+	await applyDeliverabilitySideEffects({
+		db,
+		recipient: "O'Brien <o'brien@company.com>",
+		deliveryStatus: 'bounced',
+		smtpResponse: '550 5.1.1 user unknown',
+		fetchImpl,
+	})
+	expect(
+		await loadVerificationRecipientHardBounce({
+			db,
+			recipient: "o'brien@company.com",
+		}),
+	).toEqual({
+		recipient: "o'brien@company.com",
+		status: 'bounced',
+	})
 
 	await applyDeliverabilitySideEffects({
 		db,

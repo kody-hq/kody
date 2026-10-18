@@ -55,6 +55,12 @@ function finiteNumber(value: unknown) {
 	return null
 }
 
+function isIncompleteRateLimitStore(error: unknown) {
+	if (error instanceof TypeError) return true
+	const message = error instanceof Error ? error.message : String(error)
+	return /no such table/i.test(message) || /is not a function/i.test(message)
+}
+
 function isInfrastructureError(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error)
 	return (
@@ -197,6 +203,7 @@ export async function peekVerificationEmailCap(input: {
 				: Math.max(1, oldest + verificationEmailCapWindowSeconds - nowSeconds)
 		return capBlock(retryAfterSeconds, now)
 	} catch (error) {
+		if (isIncompleteRateLimitStore(error)) return { ok: true }
 		if (isInfrastructureError(error)) {
 			console.warn('verification-email-cap-peek-failed', error)
 			return { ok: true }
@@ -279,6 +286,9 @@ export async function reserveVerificationEmailSend(input: {
 		}
 		return { ok: true, consumed: true, email: blocked.email }
 	} catch (error) {
+		if (isIncompleteRateLimitStore(error)) {
+			return { ok: true, consumed: false, email: blocked.email }
+		}
 		if (isInfrastructureError(error)) {
 			console.warn('verification-email-cap-reserve-failed', error)
 			return { ok: true, consumed: false, email: blocked.email }
