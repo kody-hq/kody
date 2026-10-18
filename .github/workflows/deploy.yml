@@ -34,6 +34,7 @@ on:
         default: ''
 
 permissions:
+  actions: read
   contents: read
   deployments: write
   pull-requests: read
@@ -1182,6 +1183,10 @@ jobs:
           needs.sha-guard.outputs.deploy_platform == 'true' ||
           steps.resources.outputs.origin_deploy_mode == 'fresh'
         env:
+          # A fresh account has no Worker version for versions secret bulk to patch.
+          PLATFORM_SECRET_MODE:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
+            '--versioned' || '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_APP_API_TOKEN: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
           WRANGLER_CONFIG:
@@ -1215,8 +1220,9 @@ jobs:
           CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
             ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
         run: >
-          node tools/ci/sync-worker-secrets.ts --env "" --name kody-platform
-          --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
+          node tools/ci/sync-worker-secrets.ts
+          ${PLATFORM_SECRET_MODE:+$PLATFORM_SECRET_MODE} --env "" --name
+          kody-platform --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
           --set-from-env-optional SECRET_STORE_KEY --set-from-env-optional
           AI_GATEWAY_ID --set-from-env-optional SENTRY_DSN --set-from-env
           CLOUDFLARE_API_TOKEN=CLOUDFLARE_APP_API_TOKEN --set-from-env-optional
@@ -1419,6 +1425,46 @@ jobs:
           APP_DEPLOY_INFO="$(node tools/ci/build-deploy-info.ts)"
           echo "app_deploy_info=$APP_DEPLOY_INFO" >> "$GITHUB_OUTPUT"
 
+      - name: Find retained production client assets
+        id: retained_assets
+        if: >-
+          needs.sha-guard.outputs.deploy_main == 'true' ||
+          steps.resources.outputs.origin_deploy_mode == 'fresh'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            for (let page = 1; ; page++) {
+              const artifacts = await github.rest.actions.listArtifactsForRepo({
+                ...context.repo, name: 'production-client-assets', per_page: 100, page,
+              })
+              for (const archive of artifacts.data.artifacts) {
+                const source = archive.workflow_run
+                if (archive.expired || !source || source.id === context.runId ||
+                    source.head_branch !== 'main' ||
+                    source.head_repository_id !== source.repository_id) continue
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  ...context.repo, run_id: source.id,
+                })
+                if (run.status !== 'completed' ||
+                    run.path.split('@')[0] !== '.github/workflows/deploy.yml') continue
+                core.setOutput('artifact_id', String(archive.id))
+                core.setOutput('run_id', String(source.id))
+                return
+              }
+              if (artifacts.data.artifacts.length < 100) break
+            }
+            core.info('No retained archive yet; this deployment starts asset retention.')
+
+      - name: Restore retained production client assets
+        if: steps.retained_assets.outputs.artifact_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.retained_assets.outputs.artifact_id }}
+          run-id: ${{ steps.retained_assets.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .tmp/previous-client-assets
+          merge-multiple: true
+
       - name: ☁️ Deploy to Cloudflare Workers
         id: deploy
         if: >-
@@ -1431,6 +1477,7 @@ jobs:
           DEPLOY_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
           APP_DEPLOY_INFO: ${{ steps.deploy_info.outputs.app_deploy_info }}
           WRANGLER_CONFIG: ${{ steps.resources.outputs.wrangler_config }}
+          KODY_RETAIN_CLIENT_ASSETS: '1'
         run: |
           set -euo pipefail
           # Explicit --name: Vite emits a flattened wrangler.json whose
@@ -1480,6 +1527,15 @@ jobs:
           if [ -n "$DEPLOY_URL" ]; then
             echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Save deployed production client assets
+        if: steps.deploy.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-client-assets
+          path: .tmp/deployed-client-assets/
+          if-no-files-found: error
+          retention-days: 8
 
       - name: 📤 Upload Worker source maps to Sentry
         env:

@@ -399,8 +399,18 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/apple-touch-icon.png')}
 				/>
 				<link rel="manifest" href={publicAsset('/site.webmanifest')} />
-				<meta name="theme-color" {...documentThemeColors.light} />
-				<meta name="theme-color" {...documentThemeColors.dark} />
+				{/* Extensions (e.g. Dark Reader) often rewrite the first theme-color
+				    content before hydrate. Keep validating other head metas. */}
+				<meta
+					name="theme-color"
+					{...documentThemeColors.light}
+					suppressHydrationWarning
+				/>
+				<meta
+					name="theme-color"
+					{...documentThemeColors.dark}
+					suppressHydrationWarning
+				/>
 				<script src={publicAsset('/page-init.js')} />
 				<link
 					rel="preload"
@@ -430,6 +440,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<AppBrowserEffects />
 				{children}
 				<Toaster />
+				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
+				<script src={publicAsset('/emotion-style-hoist.js')} />
 				<Scripts />
 			</body>
 		</html>

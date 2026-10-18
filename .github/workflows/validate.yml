@@ -95,12 +95,18 @@ env:
 # Runner / no_cache / iteration keep bench matrix cells and ubuntu-vs-warp
 # dispatches from cancelling each other. The runner segment is the label
 # jobs actually use (inputs.runner, or WarpBuild when that input is absent).
+# Manual / validate-bench runs (caller event is workflow_dispatch; reusable
+# workflows inherit that name, not workflow_call) also key on run_id so two
+# overlapping uncached benches on the same runner do not cancel matching
+# iterations while cancel-in-progress stays true for PR runs.
 concurrency:
   group: >-
     validate-${{ github.event_name }}-${{ github.event.pull_request.number ||
     github.ref }}-${{ (inputs.runner != '' && inputs.runner != '(repo default)'
     && inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x'
-    }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0 }}
+    }}-nocache-${{ inputs.no_cache || false }}-iter-${{ inputs.iteration || 0
+    }}${{ github.event_name == 'workflow_dispatch' && format('-run-{0}',
+    github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 # Same checks as `npm run validate`, split across runners so CPU-heavy suites
@@ -791,8 +797,13 @@ jobs:
 
           # Prefer Actions API timings (started_at/completed_at) so the gate
           # job can total siblings without artifacts.
-          JOBS_JSON=$(gh api \
-            "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs")
+          # Paginate: a 5-iteration bench with sharded E2E exceeds the default
+          # 30-job page, and later iterations would otherwise steal earlier
+          # timings. `--jq '.jobs[]'` + `jq -s` rebuilds one object because
+          # raw `--paginate` concatenates page objects and breaks json.loads.
+          JOBS_JSON=$(gh api --paginate \
+            "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=100" \
+            --jq '.jobs[]' | jq -s '{jobs: .}')
           export JOBS_JSON
           export VALIDATE_NO_CACHE VALIDATE_RUNNER VALIDATE_ITERATION
           export GITHUB_SHA='${{ github.sha }}'
@@ -997,6 +1008,7 @@ jobs:
             github.run_id }}
           path: validate-timings/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 30
 
       - name: ✅ All checks passed

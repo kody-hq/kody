@@ -1,3 +1,4 @@
+import { reloadOnStaleRouteChunk } from '#client/reload-on-stale-route-chunk.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import {
 	isBrowserAbortError,
@@ -50,6 +51,12 @@ export type ClientErrorContext = {
 		index: number
 		differingAttributes: string
 	}>
+	documentHydration?: {
+		bodyEmotionStyleCount: number
+		headEmotionStyleCount: number
+		bodyEmotionUnmarkedCount: number
+		pathname: string | null
+	}
 }
 
 type CaptureFn = (error: unknown, context?: ClientErrorContext) => void
@@ -81,6 +88,9 @@ function shouldIgnoreBufferedError(error: unknown) {
 function enqueueBufferedError(error: unknown, context?: ClientErrorContext) {
 	if (!buffering || captureImpl) return
 	reloadOnUnknownStartRelease(error)
+	// First stale-chunk miss reloads and is expected. A later miss (flag
+	// already set) falls through so a genuinely missing chunk is reported.
+	if (reloadOnStaleRouteChunk(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	// Keep the earliest errors when full — the first failure is usually the
 	// most diagnostic one.
@@ -200,6 +210,9 @@ export function captureClientException(
 	// Stale Start release after deploy (KODY-9E): recover with one hard reload
 	// before dropping the event from Sentry (handled createServerFn path).
 	reloadOnUnknownStartRelease(error)
+	// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y): skip
+	// Sentry only when this call triggered the one-shot reload.
+	if (reloadOnStaleRouteChunk(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	try {
 		if (captureImpl) {
