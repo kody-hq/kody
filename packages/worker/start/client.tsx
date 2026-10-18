@@ -7,13 +7,14 @@ import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-st
 import {
 	captureClientException,
 	initSentryClient,
+	type ClientErrorContext,
 } from '#client/sentry-client.ts'
 
 initSentryClient(document)
 
-function reportReactError(error: unknown) {
+function reportReactError(error: unknown, context?: ClientErrorContext) {
 	console.error('React client error:', error)
-	captureClientException(error)
+	captureClientException(error, context)
 }
 
 function HydratedApp({ router }: { router: AnyRouter }) {
