@@ -147,6 +147,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	email_inbox_addresses: keep(emailStays),
 	email_inboxes: keep(emailStays),
 	email_notification_destinations: keep(emailStays),
+	email_outbound_failure_tracking: keep(emailStays),
 	email_outbound_provider_index: keep(emailStays),
 	email_outbound_provider_index_repair_owners: keep(emailStays),
 	email_sender_identities: keep(emailStays),

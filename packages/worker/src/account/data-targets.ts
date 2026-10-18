@@ -458,6 +458,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 			'Operational global provider→owner reverse lookup omitted from portable export. Mailbox rows retain provider ids, but no fleet-wide automatic rebuild is claimed; account deletion keeps explicit owner cleanup.',
 	},
 	{
+		kind: 'user_id',
+		table: 'email_outbound_failure_tracking',
+		includeInExport: false,
+		surface: 'email_outbound_failure_tracking',
+		reason:
+			'Operational per-provider-event consecutive-failure tracking ledger omitted from portable export; account deletion removes the owner rows.',
+	},
+	{
 		kind: 'db_user_id',
 		table: 'transactional_email_delivery_index',
 		includeInExport: false,

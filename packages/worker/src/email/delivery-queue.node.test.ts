@@ -188,8 +188,16 @@ test('delivery queue handles terminal outcomes without a D1-to-Mailbox graph mir
 		},
 	)
 	expect(mocks.dispatchEmailDeliverySubscriptionEvents).toHaveBeenCalledTimes(3)
-	// recorded + dispatch-failure recorded — not the duplicate replay.
-	expect(mocks.applyOutboundConsecutiveFailureTracking).toHaveBeenCalledTimes(2)
+	// recorded + duplicate + dispatch-failure recorded — durable pending
+	// tracking must also run on duplicate so a mid-flight crash recovers.
+	expect(mocks.applyOutboundConsecutiveFailureTracking).toHaveBeenCalledTimes(3)
+	expect(mocks.applyOutboundConsecutiveFailureTracking).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ownerId: message.userId,
+			deliveryStatus: 'delivered',
+			providerEventId: 'event-1',
+		}),
+	)
 	expect(mocks.applyOutboundEmailAbusePause).toHaveBeenCalledTimes(4)
 	expect(waitUntilPromises).toHaveLength(0)
 	expect(prepare).not.toHaveBeenCalled()

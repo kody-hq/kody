@@ -619,6 +619,10 @@
 		{
 			"filename": "0168-admin-account-deletion-approvals.sql",
 			"sha256": "3e63ead40af31c59d993bb05b6b1dbe9d30db52cb559e3dd0a18b0bee2f390e6"
+		},
+		{
+			"filename": "0169-email-outbound-failure-tracking.sql",
+			"sha256": "540957df86ffd190e88b3651fb6243400e0fe81bd844f892d3b1f90779df2d10"
 		}
 	]
 }

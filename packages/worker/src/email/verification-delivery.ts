@@ -320,11 +320,14 @@ export async function recordTransactionalEmailDeliveryEvent(input: {
 
 	if (
 		index.kind === transactionalPasswordResetKind ||
-		index.kind === transactionalPasswordResetConfirmedKind
+		index.kind === transactionalPasswordResetConfirmedKind ||
+		index.kind === transactionalEmailDestinationVerificationKind
 	) {
-		// Index-only: a reset bounce must not write signup verification
-		// columns. A newer status already stored on this message wins, so a
-		// late bounce after delivered does not re-suppress the recipient.
+		// Index-only kinds must not write users.email_verification_delivery_*.
+		// Those columns are signup identity verification. A per-message
+		// delivery cursor still rejects out-of-order provider events so a
+		// late bounce after delivered cannot re-arm recipient cooldowns or
+		// rejecting-provider holds.
 		const cursor = await loadTransactionalDeliveryCursor({
 			db: input.db,
 			providerMessageId: input.providerMessageId,
@@ -338,27 +341,6 @@ export async function recordTransactionalEmailDeliveryEvent(input: {
 			status: input.deliveryStatus,
 			at: input.eventTimestamp,
 		})
-		return {
-			outcome: 'recorded',
-			event: {
-				userId: index.user_id,
-				kind: index.kind,
-				recipient: index.recipient,
-				status: input.deliveryStatus,
-				class: classifyVerificationDeliveryFailure({
-					status: input.deliveryStatus,
-					smtpResponse: input.smtpResponse,
-					smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
-				}),
-				alreadyTerminal: false,
-			},
-		}
-	}
-	if (index.kind === transactionalEmailDestinationVerificationKind) {
-		// Index-only: extra-address verify must not write
-		// users.email_verification_delivery_*. Those columns are signup
-		// identity verification. Matching here still acks the queue and
-		// keeps the provider id attributable for ops queries.
 		return {
 			outcome: 'recorded',
 			event: {
