@@ -701,7 +701,7 @@ export const pageGutter = 'clamp(1.25rem, 4vw, 2.5rem)'
  */
 export const siteHeaderNavPaddingBlock = '0.8rem'
 export const siteHeaderBrandMinHeight = '44px'
-export const siteHeaderHairline = '1px'
+const siteHeaderHairline = '1px'
 
 /**
  * Block size of the sticky site header (`top: 0`). Sticky rails that sit
@@ -718,7 +718,7 @@ export const siteHeaderHeight = `calc(${siteHeaderNavPaddingBlock} + ${siteHeade
  * the sticky box itself sticks at `siteHeaderHeight` and
  * `accountRailGapBelowHeader` pads the content down to this line.
  */
-export const accountRailContentTop = '5rem'
+const accountRailContentTop = '5rem'
 
 /** Breathing room between the header hairline and the first rail content. */
 export const accountRailGapBelowHeader = `calc(${accountRailContentTop} - ${siteHeaderHeight})`
