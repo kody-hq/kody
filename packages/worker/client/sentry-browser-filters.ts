@@ -1140,9 +1140,11 @@ function filterBrowserBlobImportScriptsNetworkSentryEvent<
  * `isBrowserFetchNetworkError`) AND serverFn evidence:
  * - stack/frames naming `serverFnFetcher` / `createServerFn` (dev or
  *   source-mapped stacks), OR
- * - a Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn` (production
- *   `beforeSend` sees bundled `/assets/…` frames; source maps apply after
- *   send, so module names are unavailable client-side).
+ * - a Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn` and that
+ *   lacks a numeric `data.status_code` (production `beforeSend` sees bundled
+ *   `/assets/…` frames; source maps apply after send). Rejected fetches omit
+ *   `status_code`; completed responses (including 2xx/4xx/5xx) include it and
+ *   must not count as evidence for a later unrelated network TypeError.
  *
  * Multi-value events (linked `cause` chains) drop only when **every** value
  * is a qualifying fetch-network TypeError — a reportable app exception with
@@ -1184,6 +1186,10 @@ function originalExceptionMentionsTanStackServerFnFetch(error: unknown) {
 function eventHasTanStackServerFnFetchBreadcrumb(event: SentryErrorEventLike) {
 	for (const crumb of event.breadcrumbs ?? []) {
 		if (crumb.category !== 'fetch' && crumb.category !== 'xhr') continue
+		// Completed HTTP responses carry a numeric status_code. Skip them so a
+		// prior successful `/_serverFn` call cannot qualify a later unrelated
+		// fetch-network TypeError. Rejected fetches omit status_code.
+		if (typeof crumb.data?.status_code === 'number') continue
 		const url = crumb.data?.url
 		if (typeof url === 'string' && tanStackServerFnBreadcrumbUrl.test(url)) {
 			return true
@@ -1221,9 +1227,9 @@ function isTanStackServerFnFetchNetworkSentryEvent(
 	if (!values.every(isTanStackServerFnFetchNetworkExceptionMessage)) {
 		return false
 	}
-	// Evidence: production beforeSend uses /_serverFn breadcrumbs (bundled
-	// /assets frames lack module names); unminified stacks / originalException
-	// may still name serverFnFetcher / createServerFn.
+	// Evidence: production beforeSend uses rejected /_serverFn breadcrumbs
+	// (no status_code; bundled /assets frames lack module names); unminified
+	// stacks / originalException may still name serverFnFetcher / createServerFn.
 	if (eventHasTanStackServerFnFetchBreadcrumb(event)) return true
 	if (isTanStackServerFnFetchNetworkError(originalException)) return true
 	return values.every((value) =>

@@ -892,6 +892,37 @@ test('serverFn fetch-network filter drops production /assets stacks via /_server
 	expect(filterBrowserSentryEvent(withoutCrumb)).toBe(withoutCrumb)
 })
 
+test('serverFn fetch-network filter ignores successful /_serverFn breadcrumb status_code', () => {
+	// A prior completed serverFn (status_code present) must not drop a later
+	// unrelated fetch-network TypeError that only has /assets frames.
+	const productionAssetFrame = fr(
+		'getResponse',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Failed to fetch',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+					status_code: 200,
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBe(event)
+})
+
 test('serverFn fetch-network filter does not pair message and frames across exception values', () => {
 	const crossValueEvent = {
 		exception: {
