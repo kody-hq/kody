@@ -358,6 +358,13 @@ ON email_rejecting_providers(last_rejection_at);`,
 );`,
 		`CREATE INDEX IF NOT EXISTS idx_email_mx_lookup_cache_expires
 ON email_mx_lookup_cache(expires_at);`,
+		`CREATE TABLE IF NOT EXISTS email_verification_hard_bounces (
+	recipient TEXT PRIMARY KEY NOT NULL,
+	status TEXT NOT NULL,
+	detail TEXT,
+	suppressed_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);`,
 	]
 	for (const statement of statements) {
 		await db.prepare(statement).run()

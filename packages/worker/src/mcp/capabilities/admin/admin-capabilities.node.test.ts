@@ -598,6 +598,19 @@ test('adminUserCreate records audit metadata and assigns the default role', asyn
 	})
 })
 
+test('adminUserCreate rejects a username typed into the email field', async () => {
+	const t = createAdminCapabilityTest([admin])
+	await expect(
+		adminUserCreateCapability.handler({ email: 'jjenzz' }, t.ctx),
+	).rejects.toBeInstanceOf(McpCallerError)
+	await expect(
+		adminUserCreateCapability.handler({ email: 'jjenzz' }, t.ctx),
+	).rejects.toThrow('Enter a valid email address, like name@gmail.com.')
+	expect(t.sqlite.prepare(`SELECT COUNT(*) AS count FROM users`).get()).toEqual(
+		{ count: 1 },
+	)
+})
+
 test('adminUserUpdate sets plan, maps null clear to free, and rejects unknown users and plans', async () => {
 	const t = createAdminCapabilityTest([admin, { ...jane, plan: 'max' }])
 	const janePlan = () => t.userRow('jane@example.com')?.['plan']

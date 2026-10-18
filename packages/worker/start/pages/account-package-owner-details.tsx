@@ -39,6 +39,63 @@ import { PackagePublishingPanel } from './account-package-publishing-panel.tsx'
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
 import { type AccountPackageDetail } from '#universal/loader-data.ts'
 
+function PackageAppLinks(props: {
+	openHref: string | null
+	originHref?: string | null
+}) {
+	if (!props.openHref) return 'No app'
+	const origin =
+		props.originHref && props.originHref !== props.openHref
+			? props.originHref
+			: null
+	let originLabel = origin
+	if (origin) {
+		try {
+			originLabel = new URL(origin).host
+		} catch {
+			originLabel = origin
+		}
+	}
+	return (
+		<span
+			css={{
+				display: 'inline-flex',
+				flexWrap: 'wrap',
+				alignItems: 'center',
+				gap: '0.75rem',
+			}}
+		>
+			<a
+				href={props.openHref}
+				data-testid="open-package-app"
+				css={packageAppLinkCss}
+			>
+				{renderIcon('share', { size: '1em' })} Open Package App
+			</a>
+			{origin ? (
+				<a
+					href={origin}
+					data-testid="package-app-origin-link"
+					aria-label={`Open the app at ${originLabel}`}
+					css={packageAppLinkCss}
+				>
+					{originLabel}
+				</a>
+			) : null}
+		</span>
+	)
+}
+
+const packageAppLinkCss = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: '0.35rem',
+	color: colors.primaryText,
+	fontWeight: typography.fontWeight.semibold,
+	textDecoration: 'none',
+	'&:hover': { color: colors.text },
+} as const
+
 function isPackageLocked(lockedAt: string | null | undefined) {
 	return typeof lockedAt === 'string' && lockedAt.trim().length > 0
 }
@@ -51,6 +108,13 @@ export function AccountPackageOwnerDetails(props: {
 	viewerCanDelete: boolean
 	viewerCanAdoptCommunityFork: boolean
 	onToggleLock: () => void
+	/**
+	 * Server-built Open app href. Omitted in unit renders, which fall back to
+	 * the path mount. Null means the package has no app link.
+	 */
+	packageAppHref?: string | null
+	/** Canonical hosted origin when Open app is the handoff path instead. */
+	packageAppOriginHref?: string | null
 }) {
 	const visibilityMutation = usePackageMutation(
 		props.packageDetail.id,
@@ -454,24 +518,17 @@ export function AccountPackageOwnerDetails(props: {
 					{
 						label: 'App',
 						value: packageDetail.hasApp ? (
-							<a
-								href={buildPackageAppPath({
-									username: props.ownerUsername,
-									kodyId: packageDetail.kodyId,
-								})}
-								data-testid="open-package-app"
-								css={{
-									display: 'inline-flex',
-									alignItems: 'center',
-									gap: '0.35rem',
-									color: colors.primaryText,
-									fontWeight: typography.fontWeight.semibold,
-									textDecoration: 'none',
-									'&:hover': { color: colors.text },
-								}}
-							>
-								{renderIcon('share', { size: '1em' })} Open Package App
-							</a>
+							<PackageAppLinks
+								openHref={
+									props.packageAppHref !== undefined
+										? props.packageAppHref
+										: buildPackageAppPath({
+												username: props.ownerUsername,
+												kodyId: packageDetail.kodyId,
+											})
+								}
+								originHref={props.packageAppOriginHref}
+							/>
 						) : (
 							'No app'
 						),

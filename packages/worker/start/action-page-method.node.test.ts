@@ -97,13 +97,13 @@ test('native action route policy blocks explicit preloads but permits a real nav
 			isServer: false,
 			origin: 'https://kody.test',
 		})
-		await isolatedRouter.preloadRoute({ to: '/action' })
+		await isolatedRouter.preloadRoute({ to: '/action' } as never)
 		assert.equal(
 			loader.mock.calls.length,
 			0,
 			`${pathname} must not consume on preload`,
 		)
-		await isolatedRouter.navigate({ to: '/action' })
+		await isolatedRouter.navigate({ to: '/action' } as never)
 		assert.equal(
 			loader.mock.calls.length,
 			1,

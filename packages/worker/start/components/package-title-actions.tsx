@@ -53,6 +53,7 @@ function hasPackageRepoActions(actions: PackageRepoActions | null) {
 		actions.fork ||
 		actions.publishHref ||
 		actions.packageAppHref ||
+		actions.packageAppOriginHref ||
 		actions.follow,
 	)
 }
@@ -127,7 +128,31 @@ export function renderPackageRepoActions(
 					<span>Open app</span>
 				</a>
 			) : null}
+			{actions.packageAppOriginHref &&
+			actions.packageAppOriginHref !== actions.packageAppHref
+				? renderPackageAppOriginLink(actions.packageAppOriginHref)
+				: null}
 		</>
+	)
+}
+
+function renderPackageAppOriginLink(href: string) {
+	let label = href
+	try {
+		label = new URL(href).host
+	} catch {
+		label = href
+	}
+	return (
+		<a
+			href={href}
+			data-testid="package-app-origin-link"
+			aria-label={`Open the app at ${label}`}
+			css={packageActionSecondaryCss}
+		>
+			{renderIcon('share', { size: actionIconSize })}
+			<span>{label}</span>
+		</a>
 	)
 }
 

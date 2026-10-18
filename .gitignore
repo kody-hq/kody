@@ -59,3 +59,5 @@ packages/api-worker/wrangler-*.generated.json
 
 packages/start-routing-worker/wrangler-*.generated.json
 packages/start-routing-worker/start-entry.generated.ts
+
+artifacts/

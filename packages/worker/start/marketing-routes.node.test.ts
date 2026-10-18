@@ -58,7 +58,7 @@ test('agent route rejects unknown catalog entries before rendering', () => {
 test.each([secretsRoute, integrationsRoute])(
 	'retired feature route preserves search in its permanent redirect',
 	(route) => {
-		const beforeLoad = route.options.beforeLoad as (input: {
+		const beforeLoad = route.options.beforeLoad as unknown as (input: {
 			location: { searchStr: string }
 		}) => unknown
 		let failure: unknown

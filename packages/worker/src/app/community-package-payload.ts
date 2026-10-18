@@ -1,6 +1,8 @@
+import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	buildPackageRepoActions,
 	buildPackageRepoActionsForPage,
+	resolvePackageAppLinks,
 } from '#app/package-repo-actions.ts'
 import { loadCommunityDetailData } from '#app/community-data.ts'
 import {
@@ -15,6 +17,7 @@ import {
 } from '#app/package-files-data.ts'
 import { highlightMarkdownFences } from '#app/highlight-code.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { recordServerTiming } from '#worker/request-context.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
 export async function highlightReadmeFences(
@@ -110,10 +113,20 @@ export async function loadCommunityDetailPayload(
 		serverTiming,
 		data: {
 			...detail,
-			repoActions: buildPackageRepoActions({
-				...detail,
-				kodyId: detail.listing.kodyId,
-			}),
+			repoActions: await withPackageAppLinks(
+				env,
+				request,
+				buildPackageRepoActions({
+					...detail,
+					kodyId: detail.listing.kodyId,
+				}),
+				{
+					username: detail.username,
+					kodyId: detail.listing.kodyId,
+					hasPackage: true,
+					hasApp: detail.ownerPackage?.hasApp,
+				},
+			),
 			hasPackage: true,
 			packageShaped: false,
 			readmeContent: detail.listing.readmeContent,
@@ -181,7 +194,7 @@ export async function loadCommunityPackagePayload(input: {
 			viewerIsOwner: page.viewerIsOwner,
 			viewerCanManage: page.viewerCanManage,
 			viewerCanManageAccess: page.viewerCanManageAccess,
-			repoActions: buildPackageRepoActionsForPage(page),
+			repoActions: await buildPackageRepoActionsForPage(page, env, request),
 			viewerCanPublish: page.viewerCanPublish,
 			viewerCanDelete: page.viewerCanDelete,
 			viewerCanAdoptCommunityFork: page.viewerCanAdoptCommunityFork,
@@ -202,4 +215,26 @@ export async function loadCommunityPackagePayload(input: {
 			invocationUrlOrigin: page.invocationUrlOrigin,
 		},
 	}
+}
+
+async function withPackageAppLinks(
+	env: Env,
+	request: Request,
+	actions: PackageRepoActions,
+	input: {
+		username: string
+		kodyId: string
+		hasPackage: boolean
+		hasApp?: boolean
+	},
+) {
+	const viewer = (await readAuthenticatedAppUser(request, env))?.mcpUser ?? null
+	const links = await resolvePackageAppLinks({
+		env,
+		requestUrl: request.url,
+		viewer,
+		...input,
+	})
+	if (!links) return actions
+	return { ...actions, ...links }
 }

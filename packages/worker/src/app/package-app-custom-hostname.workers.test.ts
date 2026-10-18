@@ -209,6 +209,135 @@ test('custom hostnames stay refused and handoff stays on the user subdomain when
 	expect(location.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
 })
 
+test('anonymous and signed-in outsiders are not redirected to an app custom hostname', async () => {
+	configureOrigins()
+	const sessionCookie = await seedOwnerSessionCookie()
+	await seedCustomHostnamePackage()
+	await setCustomDomainsFlag(true)
+	const outsiderEmail = 'custom-host-outsider@example.com'
+	await seedAccount({
+		db: env.APP_DB,
+		email: outsiderEmail,
+		username: 'customoutsider',
+	})
+	setAuthSessionSecret(env.COOKIE_SECRET)
+	const outsiderCookie = (
+		await createAuthCookie(
+			{
+				stableUserId: testStableUserIdFromEmail(outsiderEmail),
+				email: outsiderEmail,
+				rememberMe: false,
+			},
+			true,
+		)
+	).split(';')[0]
+
+	const packagePage = `${appOrigin}/@${ownerUsername}/demo`
+	const anonymousGet = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo?tab=1`,
+	)
+	const anonymousLogin = new URL(anonymousGet.headers.get('Location') ?? '')
+	expect(anonymousGet.status).toBe(302)
+	expect(anonymousLogin.origin).toBe(appOrigin)
+	expect(anonymousLogin.pathname).toBe('/login')
+	expect(anonymousLogin.href).not.toContain(customHostname)
+	for (const [name, init, status] of [
+		['outsider GET', { headers: { Cookie: outsiderCookie ?? '' } }, 302],
+		['anonymous POST', { method: 'POST' }, 303],
+		[
+			'outsider POST',
+			{ method: 'POST', headers: { Cookie: outsiderCookie ?? '' } },
+			303,
+		],
+	] as const) {
+		const response = await workerFetch(
+			`${appOrigin}/@${ownerUsername}/packages/demo?tab=1`,
+			init,
+		)
+		const location = response.headers.get('Location') ?? ''
+		expect({ name, status: response.status, location }).toEqual({
+			name,
+			status,
+			location: packagePage,
+		})
+		expect(location).not.toContain(customHostname)
+	}
+
+	// The owner still hands off onto the custom hostname.
+	const ownerResponse = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo`,
+		{ headers: { Cookie: sessionCookie } },
+	)
+	expect(ownerResponse.status).toBe(302)
+	expect(new URL(ownerResponse.headers.get('Location') ?? '').origin).toBe(
+		customOrigin,
+	)
+	await setCustomDomainsFlag(false)
+})
+
+test('an internet-visible app links at its custom hostname without redirecting', async () => {
+	configureOrigins()
+	await seedOwnerSessionCookie()
+	await seedCustomHostnamePackage()
+	await setCustomDomainsFlag(true)
+	try {
+		await env.APP_DB.prepare(
+			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
+		).run()
+	} catch {
+		// Column already present.
+	}
+	// A new slug avoids the package-app slug cache filled by the private-app
+	// request earlier in this file.
+	await env.APP_DB.prepare(
+		`UPDATE saved_packages
+		 SET is_internet_visible = 1, kody_id = 'demo-public', name = ?
+		 WHERE id = ?`,
+	)
+		.bind(`@${ownerUsername}/demo-public`, packageId)
+		.run()
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS package_capability_approvals (
+			id TEXT PRIMARY KEY NOT NULL,
+			package_id TEXT NOT NULL,
+			owner_user_id TEXT NOT NULL,
+			published_commit TEXT NOT NULL,
+			fingerprint TEXT NOT NULL,
+			capability_set_json TEXT NOT NULL,
+			dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
+			approved_by_user_id TEXT NOT NULL,
+			approved_at TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`,
+	).run()
+	const ownerId = testStableUserIdFromEmail(ownerEmail)
+	const now = '2026-10-13T00:00:00.000Z'
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO package_capability_approvals (
+			id, package_id, owner_user_id, published_commit, fingerprint,
+			capability_set_json, approved_by_user_id, approved_at, created_at
+		) VALUES ('approval-custom-demo', ?, ?, 'commit-custom', 'fp', '[]', ?, ?, ?)`,
+	)
+		.bind(packageId, ownerId, ownerId, now, now)
+		.run()
+
+	const response = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo-public/play?x=1`,
+	)
+	expect(response.status).toBe(200)
+	expect(response.headers.get('Location')).toBeNull()
+	const body = await response.text()
+	expect(body).toContain(`${customOrigin}/play?x=1`)
+	expect(body).not.toContain(ownerPackageAppOrigin)
+	const post = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo-public/play`,
+		{ method: 'DELETE' },
+	)
+	expect(post.status).toBe(303)
+	expect(new URL(post.headers.get('Location') ?? '').origin).toBe(appOrigin)
+	await setCustomDomainsFlag(false)
+})
+
 test('a verified app custom hostname serves at / behind the same host-only handoff', async () => {
 	silenceExpectedConsoleErrors([
 		'Package app handler failed:',
@@ -337,15 +466,27 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 		orgHostname,
 	)
 
-	// The org domain serves only session-gated apps, so a signed-out visitor
-	// of an internet-visible app goes to the org subdomain instead.
+	// The org domain serves only session-gated apps. A signed-out visitor of
+	// an internet-visible app is not redirected there or to the subdomain;
+	// the page links at the subdomain.
 	const publicEntry = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,
 	)
-	expect(publicEntry.status).toBe(302)
-	const publicLocation = new URL(publicEntry.headers.get('Location') ?? '')
-	expect(publicLocation.origin).toBe(accessFixtureOrigin)
-	expect(publicLocation.pathname).toBe(`/packages/${publicApp.slug}`)
+	expect(publicEntry.status).toBe(200)
+	expect(publicEntry.headers.get('Location')).toBeNull()
+	const publicBody = await publicEntry.text()
+	expect(publicBody).toContain(
+		`${accessFixtureOrigin}/packages/${publicApp.slug}`,
+	)
+	expect(publicBody).not.toContain(orgHostname)
+	const publicPost = await workerFetch(
+		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,
+		{ method: 'POST' },
+	)
+	expect(publicPost.status).toBe(303)
+	expect(new URL(publicPost.headers.get('Location') ?? '').origin).toBe(
+		appOrigin,
+	)
 
 	await env.APP_DB.prepare(
 		`DELETE FROM package_app_custom_hostnames WHERE id = 'host-cost-org'`,

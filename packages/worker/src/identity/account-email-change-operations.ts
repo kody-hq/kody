@@ -9,6 +9,8 @@ import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { createEmailChangeVerification } from '#app/email-change.ts'
 import { isEmailReservedForOtherAccount } from '#worker/identity/email-claims.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
+import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, releaseRateLimit } from '#app/rate-limit.ts'
 import { createDb, usersTable } from '#worker/db.ts'
@@ -23,15 +25,6 @@ const emailChangeRequestSchema = object({
 	email: string(),
 	password: string(),
 })
-
-function getEmailValidationError(email: string) {
-	if (!email) return 'Email is required.'
-	if (email.length > 254) return 'Email is too long.'
-	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-		return 'Enter a valid email address.'
-	}
-	return null
-}
 
 export async function requestWebsiteEmailChange({
 	env,
@@ -52,12 +45,8 @@ export async function requestWebsiteEmailChange({
 
 	const parsed = parseSafe(emailChangeRequestSchema, body)
 	const requestIp = getRequestIp(request) ?? undefined
-	const newEmail = parsed.success ? normalizeEmail(parsed.value.email) : ''
 	const password = parsed.success ? parsed.value.password : ''
-	const validationError = parsed.success
-		? getEmailValidationError(newEmail)
-		: 'Invalid request body.'
-	if (validationError) {
+	if (!parsed.success) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'account',
@@ -68,10 +57,13 @@ export async function requestWebsiteEmailChange({
 			path: url.pathname,
 			reason: 'invalid_payload',
 		})
-		return authOperationResult({ ok: false, error: validationError }, 400)
+		return authOperationResult(
+			{ ok: false, error: 'Invalid request body.' },
+			400,
+		)
 	}
-
-	if (newEmail === normalizeEmail(user.email)) {
+	const requestedEmail = normalizeEmail(parsed.value.email)
+	if (requestedEmail === normalizeEmail(user.email)) {
 		return authOperationResult(
 			{ ok: false, error: 'Enter a different email address.' },
 			400,
@@ -134,6 +126,35 @@ export async function requestWebsiteEmailChange({
 			},
 		)
 	}
+
+	const emailDecision = await assessAccountEmail(requestedEmail, {
+		allowExampleDomain: isNonProductionRuntime(env),
+	})
+	if (!emailDecision.ok) {
+		await releaseRateLimit(env.APP_DB, rateLimitKey).catch(() => undefined)
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: 'email_change_request',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: emailDecision.code,
+		})
+		return authOperationResult(
+			{
+				ok: false,
+				error: emailDecision.error,
+				code: emailDecision.code,
+				...(emailDecision.suggestion
+					? { suggestion: emailDecision.suggestion }
+					: {}),
+			},
+			400,
+		)
+	}
+	const newEmail = emailDecision.email
 
 	const passwordValid = await verifyPassword(password, userRecord.password_hash)
 	if (!passwordValid) {

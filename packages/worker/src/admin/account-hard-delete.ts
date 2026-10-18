@@ -1,4 +1,10 @@
 /**
+ * soft-delete-read-filter: opt-out
+ *
+ * Resume after a partial hard-delete must read the tombstoned person and the
+ * organizations already soft-deleted with them. Live product lookups stay
+ * filtered; this module also reads `deleted_at IS NOT NULL`.
+ *
  * Admin hard-delete of one person account.
  *
  * Self-serve deletion soft-deletes and keeps the username, handle, and org
@@ -41,6 +47,7 @@ import {
 	loadAdminUserByTarget,
 	type AdminUserTarget,
 } from '#worker/admin/users-data.ts'
+import { assignUserRole } from '#worker/identity/permissions-db.ts'
 import {
 	adminAccountDeletionApprovalTtlMs,
 	adminAccountDeletionHandleMatches,
@@ -423,6 +430,104 @@ async function releaseClaimedHandle(input: {
 		.run()
 }
 
+async function loadTombstonedDeletionTarget(
+	db: D1Database,
+	stableUserId: string,
+): Promise<DeletionTarget | null> {
+	const row = await db
+		.prepare(
+			`SELECT id, stable_user_id, username, email, personal_org_id, created_at
+			 FROM users
+			 WHERE stable_user_id = ? AND deleted_at IS NOT NULL`,
+		)
+		.bind(stableUserId)
+		.first<{
+			id: number
+			stable_user_id: string
+			username: string
+			email: string
+			personal_org_id: string | null
+			created_at: string
+		}>()
+	if (!row) return null
+	const stable = ownerIdFromStored(row.stable_user_id)
+	return {
+		dbUserId: row.id,
+		stableUserId: stable,
+		personalOrgId: personalOrgIdFromUserRow(row),
+		handle: row.username,
+		email: row.email,
+		createdAt: row.created_at,
+		plan: 'free',
+		manualPlan: 'free',
+		stripePlan: null,
+		isAdmin: false,
+		soleOwnedNonPersonalOrgs: [],
+	}
+}
+
+/**
+ * Remove the admin role only while another live admin remains. The count is
+ * inside the DELETE so two overlapping deletes of the last two admins cannot
+ * both proceed.
+ */
+async function releaseAdminRoleIfNotLast(
+	db: D1Database,
+	dbUserId: number,
+): Promise<'demoted' | 'not_admin' | 'last_admin'> {
+	const removed = await db
+		.prepare(
+			`DELETE FROM user_roles
+			 WHERE user_id = ?
+			   AND role_id = (SELECT id FROM roles WHERE name = 'admin')
+			   AND (
+			     SELECT COUNT(DISTINCT ur.user_id)
+			     FROM user_roles ur
+			     INNER JOIN roles r ON r.id = ur.role_id
+			     INNER JOIN users u ON u.id = ur.user_id AND u.deleted_at IS NULL
+			     WHERE r.name = 'admin'
+			   ) > 1`,
+		)
+		.bind(dbUserId)
+		.run()
+	if ((removed.meta.changes ?? 0) > 0) return 'demoted'
+	const stillAdmin = await db
+		.prepare(
+			`SELECT 1 AS ok
+			 FROM user_roles ur
+			 INNER JOIN roles r ON r.id = ur.role_id
+			 WHERE ur.user_id = ? AND r.name = 'admin'`,
+		)
+		.bind(dbUserId)
+		.first<{ ok: number }>()
+	return stillAdmin ? 'last_admin' : 'not_admin'
+}
+
+async function listTombstonedSoleOwnedOrgIds(
+	db: D1Database,
+	userId: string,
+	personalOrgId: string,
+) {
+	const rows = await db
+		.prepare(
+			`SELECT o.id AS id
+			 FROM orgs o
+			 INNER JOIN org_memberships m
+			   ON m.org_id = o.id AND m.user_id = ? AND m.role = 'owner'
+			 WHERE o.deleted_at IS NOT NULL
+			   AND o.id != ?
+			   AND NOT EXISTS (
+			     SELECT 1 FROM org_memberships other
+			     WHERE other.org_id = o.id
+			       AND other.role = 'owner'
+			       AND other.user_id != ?
+			   )`,
+		)
+		.bind(userId, personalOrgId, userId)
+		.all<{ id: string }>()
+	return (rows.results ?? []).map((row) => row.id)
+}
+
 async function hardPurgeOrgIfPresent(env: Env, orgId: OwnerId) {
 	try {
 		await hardPurgeOrg({ env, orgId })
@@ -444,55 +549,66 @@ export async function executeAdminAccountHardDelete(input: {
 	acknowledge: boolean
 	path: string
 }): Promise<{ handle: string }> {
-	const target = await loadDeletionTarget(input.env.APP_DB, {
+	let target = await loadDeletionTarget(input.env.APP_DB, {
 		stableUserId: input.targetStableUserId,
 	})
+	const resuming = !target
+	if (!target) {
+		target = await loadTombstonedDeletionTarget(
+			input.env.APP_DB,
+			input.targetStableUserId,
+		)
+	}
 	if (!target) {
 		throw new AdminAccountHardDeleteError('User not found.', 404, 'not_found')
 	}
-	const summary = await summarize(input.env, target)
-	if (summary.deletionBlocked) {
-		await auditDeletion({
-			env: input.env,
-			actor: input.actor,
-			target,
-			path: input.path,
-			result: 'failure',
-			reason: 'last_admin',
-		})
-		throw new AdminAccountHardDeleteError(
-			summary.deletionBlocked,
-			409,
-			'last_admin',
+	let demotedAdmin = false
+	if (!resuming) {
+		const summary = await summarize(input.env, target)
+		if (summary.acknowledgementRequired && !input.acknowledge) {
+			await auditDeletion({
+				env: input.env,
+				actor: input.actor,
+				target,
+				path: input.path,
+				result: 'failure',
+				reason: `acknowledgement_required:${summary.acknowledgementReasons.join(',')}`,
+			})
+			throw new AdminAccountHardDeleteError(
+				'Deleting this account requires acknowledging the packages, organizations, or paid billing on the confirmation page.',
+				409,
+				'acknowledgement_required',
+			)
+		}
+		const adminSlot = await releaseAdminRoleIfNotLast(
+			input.env.APP_DB,
+			target.dbUserId,
 		)
-	}
-	if (summary.acknowledgementRequired && !input.acknowledge) {
-		await auditDeletion({
-			env: input.env,
-			actor: input.actor,
-			target,
-			path: input.path,
-			result: 'failure',
-			reason: `acknowledgement_required:${summary.acknowledgementReasons.join(',')}`,
-		})
-		throw new AdminAccountHardDeleteError(
-			'Deleting this account requires acknowledging the packages, organizations, or paid billing on the confirmation page.',
-			409,
-			'acknowledgement_required',
-		)
+		if (adminSlot === 'last_admin') {
+			await auditDeletion({
+				env: input.env,
+				actor: input.actor,
+				target,
+				path: input.path,
+				result: 'failure',
+				reason: 'last_admin',
+			})
+			throw new AdminAccountHardDeleteError(lastAdminMessage, 409, 'last_admin')
+		}
+		demotedAdmin = adminSlot === 'demoted'
 	}
 
-	const preDeletedOrgIds: Array<OwnerId> = []
 	try {
-		for (const org of target.soleOwnedNonPersonalOrgs) {
-			if (org.otherMemberCount === 0) continue
-			await softDeleteOrg({
-				env: input.env,
-				orgId: org.orgId,
-				actorUserId: input.actor.stableUserId,
-				actorUsername: input.actor.username,
-			})
-			preDeletedOrgIds.push(org.orgId)
+		if (!resuming) {
+			for (const org of target.soleOwnedNonPersonalOrgs) {
+				if (org.otherMemberCount === 0) continue
+				await softDeleteOrg({
+					env: input.env,
+					orgId: org.orgId,
+					actorUserId: input.actor.stableUserId,
+					actorUsername: input.actor.username,
+				})
+			}
 		}
 		const softDeleted = await softDeleteUserAccount({
 			env: input.env,
@@ -500,9 +616,14 @@ export async function executeAdminAccountHardDelete(input: {
 			actorUserId: input.actor.stableUserId,
 			actorUsername: input.actor.username,
 		})
+		const tombstonedSoleOwned = await listTombstonedSoleOwnedOrgIds(
+			input.env.APP_DB,
+			target.stableUserId,
+			target.personalOrgId,
+		)
 		const orgIds = new Set<string>([
-			...preDeletedOrgIds,
 			...softDeleted.deletedOrgIds,
+			...tombstonedSoleOwned,
 			target.personalOrgId,
 		])
 		const ordered = [...orgIds].filter(
@@ -524,6 +645,20 @@ export async function executeAdminAccountHardDelete(input: {
 			personalOrgId: target.personalOrgId,
 		})
 	} catch (error) {
+		if (demotedAdmin) {
+			const stillThere = await input.env.APP_DB.prepare(
+				`SELECT 1 AS ok FROM users WHERE id = ?`,
+			)
+				.bind(target.dbUserId)
+				.first<{ ok: number }>()
+			if (stillThere) {
+				await assignUserRole({
+					db: input.env.APP_DB,
+					userId: target.dbUserId,
+					roleName: 'admin',
+				})
+			}
+		}
 		const message =
 			error instanceof UserDeleteBlockedSoleOwnerError
 				? `Account deletion is blocked while this person is the only Owner of ${error.blockers
@@ -765,9 +900,21 @@ export async function deleteAdminUserAccount(input: {
 }) {
 	const denied = requireAdminActor(input.actor)
 	if (denied) return denied
-	const summary = await loadAdminAccountDeletionSummary(input.env, {
-		stableUserId: input.stableUserId,
-	})
+	const summary =
+		(await loadAdminAccountDeletionSummary(input.env, {
+			stableUserId: input.stableUserId,
+		})) ??
+		(await loadTombstonedDeletionTarget(
+			input.env.APP_DB,
+			input.stableUserId,
+		).then((tombstone) =>
+			tombstone
+				? {
+						handle: tombstone.handle,
+						email: tombstone.email,
+					}
+				: null,
+		))
 	if (!summary) {
 		return adminOperationResult(
 			{ ok: false as const, error: 'User not found.' },

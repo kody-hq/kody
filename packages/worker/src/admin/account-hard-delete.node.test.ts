@@ -14,9 +14,11 @@ import {
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { softDeleteUserAccount } from '#worker/orgs/soft-delete.ts'
 import {
 	approveAdminAccountDeletion,
 	deleteAdminUserAccount,
+	executeAdminAccountHardDelete,
 	loadAdminAccountDeletionSummary,
 } from './account-hard-delete.ts'
 
@@ -550,4 +552,54 @@ test('sole ownership of a non-personal org and paid billing require acknowledgem
 	expect(removed).toEqual({ ok: true, handle: 'paid-user' })
 	expect(await userCount(appDb, 'paid-user')).toBe(0)
 	expect(await isUsernameClaimedInIdentity(appDb, 'paid-user')).toBe(false)
+})
+
+test('a partial delete resumes from the tombstone and the last admin is kept', async () => {
+	const { env, appDb } = createEnv()
+	const adminId = await seedPerson(appDb, {
+		id: 1,
+		username: 'only-admin',
+		email: 'admin@example.com',
+		admin: true,
+	})
+	const actor = {
+		stableUserId: adminId,
+		email: 'admin@example.com',
+		username: 'only-admin',
+		roles: ['admin'],
+	}
+	await expect(
+		deleteAdminUserAccount({
+			env,
+			actor,
+			stableUserId: adminId,
+			handleConfirmation: 'only-admin',
+			acknowledge: true,
+		}),
+	).rejects.toThrow(/last admin/i)
+	expect(await userCount(appDb, 'only-admin')).toBe(1)
+
+	const targetId = await seedPerson(appDb, {
+		id: 2,
+		username: 'half-deleted',
+		email: 'half@example.com',
+	})
+	await softDeleteUserAccount({
+		env,
+		userId: targetId as never,
+		actorUserId: adminId,
+		actorUsername: 'only-admin',
+	})
+	expect(await isUsernameClaimedInIdentity(appDb, 'half-deleted')).toBe(true)
+	const finished = await executeAdminAccountHardDelete({
+		env,
+		actor,
+		targetStableUserId: targetId,
+		acknowledge: true,
+		path: '/admin/account-deletions',
+	})
+	expect(finished.handle).toBe('half-deleted')
+	expect(await userCount(appDb, 'half-deleted')).toBe(0)
+	expect(await isUsernameClaimedInIdentity(appDb, 'half-deleted')).toBe(false)
+	expect(await userCount(appDb, 'only-admin')).toBe(1)
 })

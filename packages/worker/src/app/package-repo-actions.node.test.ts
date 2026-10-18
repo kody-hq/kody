@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageRepoActions,
 	buildSourceAheadPublishHref,
+	resolvePackageAppLinks,
 } from '#app/package-repo-actions.ts'
 import {
 	type PublicCommunityListing,
@@ -51,6 +52,7 @@ test('visitors get only a fork action whose login link returns to the Repo tab',
 		},
 		publishHref: null,
 		packageAppHref: null,
+		packageAppOriginHref: null,
 		follow: null,
 	})
 	expect(buildPackageRepoActions({ ...base, listing: null }).fork).toBeNull()
@@ -92,6 +94,7 @@ test('owners get publish and open app actions but never fork', () => {
 		fork: null,
 		publishHref: '/@kentcdodds/github-triage/approve-publish',
 		packageAppHref: expect.stringContaining('github-triage'),
+		packageAppOriginHref: null,
 		follow: null,
 	})
 })
@@ -114,6 +117,7 @@ test('owners get Publish changes when HEAD is ahead even without a listing', () 
 		publishHref:
 			'/@kentcdodds/github-triage/approve-publish?commit=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
 		packageAppHref: null,
+		packageAppOriginHref: null,
 		follow: null,
 	})
 })
@@ -164,4 +168,33 @@ test('buildSourceAheadPublishHref names the HEAD commit when present', () => {
 	expect(buildSourceAheadPublishHref({ ...input, headCommit: null })).toBe(
 		'/@kentcdodds/github-triage/approve-publish',
 	)
+})
+
+test('open app hands off only for someone who may run the app', async () => {
+	const env = {
+		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
+	} as unknown as Env
+	const shared = {
+		env,
+		username: 'kentcdodds',
+		kodyId: 'github-triage',
+		hasPackage: true,
+		hasApp: true,
+		requestUrl: 'https://kody.test/@kentcdodds/github-triage',
+	}
+	await expect(
+		resolvePackageAppLinks({ ...shared, viewerMayRun: true }),
+	).resolves.toEqual({
+		packageAppHref: '/@kentcdodds/packages/github-triage',
+		packageAppOriginHref:
+			'https://kentcdodds.packages.isolated.test/packages/github-triage',
+	})
+	// No approved capability set is visible, so a reader does not get a public
+	// Open app that would 403 on the hosted origin.
+	await expect(
+		resolvePackageAppLinks({ ...shared, viewerMayRun: false }),
+	).resolves.toEqual({
+		packageAppHref: null,
+		packageAppOriginHref: null,
+	})
 })

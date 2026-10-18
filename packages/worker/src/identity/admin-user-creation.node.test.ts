@@ -155,3 +155,54 @@ test('adminCreateUserWithPasswordSetup rejects explicit reserved usernames and s
 	expect(created.username.includes('support')).toBe(false)
 	expect(getUsernameValidationError(created.username)).toBeNull()
 })
+
+test('adminCreateUserWithPasswordSetup rejects malformed, mistyped, and disposable emails before insert', async () => {
+	const { db, count } = createDb()
+
+	await expect(
+		adminCreateUserWithPasswordSetup({
+			db,
+			email: 'jjenzz',
+			setupLinkOrigin,
+		}),
+	).rejects.toMatchObject({
+		code: 'invalid_email',
+		message: 'Enter a valid email address, like name@gmail.com.',
+	})
+
+	await expect(
+		adminCreateUserWithPasswordSetup({
+			db,
+			email: 'ada@gmial.com',
+			setupLinkOrigin,
+		}),
+	).rejects.toMatchObject({
+		code: 'email_typo',
+		message: 'That email domain looks mistyped. Did you mean ada@gmail.com?',
+	})
+
+	await expect(
+		adminCreateUserWithPasswordSetup({
+			db,
+			email: 'ada@mail.mailinator.com',
+			setupLinkOrigin,
+		}),
+	).rejects.toMatchObject({ code: 'disposable_email' })
+
+	expect(count('users')).toBe(0)
+})
+
+test('adminCreateUserWithPasswordSetup rejects domains that definitively cannot receive mail', async () => {
+	const { db, count } = createDb()
+	const fetchImpl = (async () => Response.json({ Status: 3 })) as typeof fetch
+
+	await expect(
+		adminCreateUserWithPasswordSetup({
+			db,
+			email: 'ada@missing.test',
+			setupLinkOrigin,
+			fetchImpl,
+		}),
+	).rejects.toMatchObject({ code: 'email_domain_nxdomain' })
+	expect(count('users')).toBe(0)
+})

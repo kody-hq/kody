@@ -34,6 +34,13 @@ the same verification message will not get through and can make delivery worse.
    an operator can verify your account manually or send a one-time verification
    link over a path that is not `kody.codes` mail.
 
+Signup also refuses an address that is missing an `@`, a known typo (the error
+suggests the corrected address), a disposable inbox, or a domain that has no
+mail servers. If a previous verification message to that address hard-bounced,
+Kody stops sending more verification mail there and asks for a different address
+or support. One address can receive at most 5 verification emails in 24 hours;
+the error says when to retry.
+
 **If mail is delayed rather than blocked:** check Spam/Junk, then whitelist
 `kody.codes` / `kody@kody.codes` (exact steps vary by provider). On Fastmail,
 adding `*@kody.codes` as a contact helps once the domain is not blocklisted.

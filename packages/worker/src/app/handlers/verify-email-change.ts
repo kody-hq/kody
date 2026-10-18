@@ -10,16 +10,19 @@ import {
 	readAuthSessionResult,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { verifyEmailChangeToken } from '#app/email-change.ts'
 
-function getVerifyEmailChangeError(
+function getVerifyEmailChangeError(result: {
 	reason:
 		| 'missing_token'
 		| 'invalid_token'
 		| 'expired_token'
-		| 'email_conflict',
-) {
-	switch (reason) {
+		| 'email_conflict'
+		| 'email_rejected'
+	error?: string
+}) {
+	switch (result.reason) {
 		case 'missing_token':
 			return 'Verification token is required.'
 		case 'invalid_token':
@@ -28,8 +31,13 @@ function getVerifyEmailChangeError(
 			return 'Email change link has expired.'
 		case 'email_conflict':
 			return 'That email address is already registered.'
+		case 'email_rejected':
+			return (
+				result.error ??
+				'That email address cannot be used. Use a different address.'
+			)
 		default: {
-			const unreachable: never = reason
+			const unreachable: never = result.reason
 			return unreachable
 		}
 	}
@@ -48,6 +56,7 @@ export async function executeVerifyEmailChange({
 	const result = await verifyEmailChangeToken({
 		db: env.APP_DB,
 		token: token,
+		allowExampleDomain: isNonProductionRuntime(env),
 	})
 	const requestIp = getRequestIp(request) ?? undefined
 
@@ -65,7 +74,7 @@ export async function executeVerifyEmailChange({
 			title: 'Verify email change',
 			status: 400,
 			ok: false,
-			error: getVerifyEmailChangeError(result.reason),
+			error: getVerifyEmailChangeError(result),
 		}
 	}
 

@@ -30,6 +30,11 @@ import {
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
 import { firstTouchAttributionCreateFields } from '#universal/first-touch-attribution.ts'
 import { type OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
+import {
+	assessAccountEmail,
+	type AccountEmailRejectionCode,
+} from '#worker/identity/account-email-policy.ts'
 import { resolvePlanWrite } from '#universal/plans.ts'
 import {
 	resolveReferralCodeForSignup,
@@ -94,6 +99,27 @@ import {
  */
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 const oauthNoUsablePasswordHash = unusablePasswordHash.oauthCreated
+
+function oauthCodeForAccountEmail(
+	code: AccountEmailRejectionCode,
+): OauthLoginErrorCode {
+	switch (code) {
+		case 'invalid_email':
+			return 'email-invalid'
+		case 'email_typo':
+			return 'email-typo'
+		case 'disposable_email':
+			return 'email-disposable'
+		case 'email_domain_nxdomain':
+		case 'email_domain_no_mx':
+		case 'email_domain_null_mx':
+			return 'email-undeliverable'
+		default: {
+			const exhaustive: never = code
+			throw new Error(`Unhandled account email code: ${String(exhaustive)}`)
+		}
+	}
+}
 
 function redirect(location: string, cookies: Array<string>) {
 	const headers = new Headers({ Location: location })
@@ -594,7 +620,18 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			})
 		}
 
-		// 4. New account.
+		// 4. New account. Reject addresses we would not store before any
+		// identity allocation or user-row write.
+		const emailDecision = await assessAccountEmail(email, {
+			allowExampleDomain: isNonProductionRuntime(env),
+		})
+		if (!emailDecision.ok) {
+			return fail(
+				oauthCodeForAccountEmail(emailDecision.code),
+				emailDecision.code,
+			)
+		}
+
 		let username: string
 		let stableUserId: OwnerId
 		let signupPersonalOrgId: OwnerId

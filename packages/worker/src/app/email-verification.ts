@@ -23,6 +23,11 @@ import {
 	insertEmailVerificationToken,
 	retireOtherEmailVerificationTokens,
 } from '#worker/identity/email-verification-tokens.ts'
+import {
+	releaseVerificationEmailSend,
+	reserveVerificationEmailSend,
+	VerificationEmailRefusedError,
+} from '#app/verification-email-cap.ts'
 
 /**
  * The read-only verification check moved to
@@ -63,10 +68,36 @@ export async function createEmailVerification(input: {
 	requestUrl: string | URL
 	redirectTo?: string | null
 }) {
-	const minted = await insertEmailVerificationToken({
+	const reservation = await reserveVerificationEmailSend({
 		db: input.env.APP_DB,
-		userId: input.userId,
+		email: input.email,
 	})
+	if (!reservation.ok) {
+		throw new VerificationEmailRefusedError(reservation)
+	}
+
+	let unsentCapEmail = reservation.consumed ? reservation.email : null
+	async function releaseUnsentCap() {
+		if (!unsentCapEmail) return
+		const email = unsentCapEmail
+		unsentCapEmail = null
+		await releaseVerificationEmailSend(input.env.APP_DB, email).catch(
+			(error) => {
+				console.warn('verification-email-cap-release-failed', error)
+			},
+		)
+	}
+
+	let minted: Awaited<ReturnType<typeof insertEmailVerificationToken>>
+	try {
+		minted = await insertEmailVerificationToken({
+			db: input.env.APP_DB,
+			userId: input.userId,
+		})
+	} catch (error) {
+		await releaseUnsentCap()
+		throw error
+	}
 	async function discardNewToken() {
 		await discardEmailVerificationToken(input.env.APP_DB, minted.tokenHash)
 	}
@@ -106,11 +137,13 @@ export async function createEmailVerification(input: {
 		})
 	} catch (error) {
 		await discardNewToken()
+		await releaseUnsentCap()
 		throw error
 	}
 	if (!sendResult.ok) {
 		if ('hold' in sendResult && sendResult.hold) {
 			await discardNewToken()
+			await releaseUnsentCap()
 			throw new EmailVerificationSendBlockedError(sendResult.error)
 		}
 		// Local dev, preview, and test runtimes may have no email sender
@@ -120,10 +153,14 @@ export async function createEmailVerification(input: {
 		// roll back.
 		if (!(sendResult.skipped && isNonProductionRuntime(input.env))) {
 			await discardNewToken()
+			await releaseUnsentCap()
 			throw new Error(
 				sendResult.error ?? 'Verification email could not be sent.',
 			)
 		}
+		// A skipped send did not reach the recipient, so it does not count
+		// toward the per-address verification cap.
+		await releaseUnsentCap()
 		// This branch only exists for non-production runtimes (checked above),
 		// so an operator warning would be noise; keep it informational.
 		console.info('email-verification-send-skipped', input.userId)
