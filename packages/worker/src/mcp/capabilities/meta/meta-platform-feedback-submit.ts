@@ -1,7 +1,9 @@
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { enqueuePlatformFeedbackDispatch } from '#worker/platform-feedback/dispatch-queue-producer.ts'
+import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.ts'
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
 import { platformFeedbackCategories } from '#worker/platform-feedback/types.ts'
 import { requireMcpUser } from './require-user.ts'
@@ -79,15 +81,25 @@ export const metaPlatformFeedbackSubmitCapability = defineDomainCapability(
 					'Platform feedback requires an authenticated account username.',
 				)
 			}
-			const feedback = await submitPlatformFeedback({
-				db: ctx.env.APP_DB,
-				submitterUserId: user.userId,
-				submitterUsername,
-				submitterEmail: user.email,
-				category: args.category,
-				summary: args.summary,
-				details: args.details,
-			})
+			let feedback
+			try {
+				feedback = await submitPlatformFeedback({
+					db: ctx.env.APP_DB,
+					submitterUserId: user.userId,
+					submitterUsername,
+					submitterEmail: user.email,
+					category: args.category,
+					summary: args.summary,
+					details: args.details,
+				})
+			} catch (error) {
+				// Rate limits, active-queue caps, and concurrent conflicts are
+				// caller-clearable; keep them off Sentry as user errors.
+				if (isPlatformFeedbackDomainError(error)) {
+					throw new McpCallerError(error.message, { cause: error })
+				}
+				throw error
+			}
 			try {
 				await enqueuePlatformFeedbackDispatch({
 					queue: ctx.env.PLATFORM_FEEDBACK_DISPATCH_QUEUE,

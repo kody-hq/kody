@@ -8,8 +8,10 @@ import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import {
+	PlatformFeedbackActiveQueueLimitError,
 	PlatformFeedbackInvalidTransitionError,
 	PlatformFeedbackNotFoundError,
+	PlatformFeedbackSubmissionRateLimitError,
 } from '#worker/platform-feedback/errors.ts'
 import {
 	auditEventSummaries,
@@ -224,11 +226,31 @@ test('meta platform feedback submission gates consent and isolates post-persiste
 		executionOrigin: 'interactive',
 	})
 	mockModule.submitPlatformFeedback.mockRejectedValueOnce(
-		new Error('active queue limit'),
+		new PlatformFeedbackSubmissionRateLimitError(10, 3600),
 	)
 	await expect(
 		metaPlatformFeedbackSubmitCapability.handler(input, interactive),
-	).rejects.toThrow('active queue limit')
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof McpCallerError &&
+			error.message ===
+				'Platform feedback is limited to 10 submissions per rolling 24 hours. Retry after 3600 seconds. For urgent issues, email support@kody.codes.' &&
+			error.cause instanceof PlatformFeedbackSubmissionRateLimitError,
+	)
+	expect(mockModule.queueSend).not.toHaveBeenCalled()
+
+	mockModule.submitPlatformFeedback.mockRejectedValueOnce(
+		new PlatformFeedbackActiveQueueLimitError(100),
+	)
+	await expect(
+		metaPlatformFeedbackSubmitCapability.handler(input, interactive),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof McpCallerError &&
+			error.message ===
+				'You already have 100 open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.' &&
+			error.cause instanceof PlatformFeedbackActiveQueueLimitError,
+	)
 	expect(mockModule.queueSend).not.toHaveBeenCalled()
 
 	const result = await metaPlatformFeedbackSubmitCapability.handler(
