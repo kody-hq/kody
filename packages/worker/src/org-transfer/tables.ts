@@ -38,6 +38,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
 	),
+	admin_account_deletion_approvals: keep(
+		'Admin hard-delete approvals name a person and the requesting admin. They are not organization resources, so an org transfer leaves them in place.',
+	),
 	user_repos: move('user_id re-pointed.'),
 	entity_sources: move(
 		'user_id re-pointed for sources of moved packages and repos.',
