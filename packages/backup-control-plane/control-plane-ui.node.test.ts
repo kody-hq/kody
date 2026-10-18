@@ -223,6 +223,40 @@ test('dashboard reads staging progress and keeps a moving backlog off red', asyn
 	assert.doesNotMatch(html, /<td class="bad">no<\/td>/)
 })
 
+test('a stranded day just outside the table still owns the queue', async () => {
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const at = new Date('2026-10-18T12:00:00.000Z')
+	const seed = {
+		phase: 'mailbox',
+		revision: 0,
+		advancedAt: null,
+		mailbox: { ownerIndex: 0 },
+	}
+	await bucket.put(
+		'staging/2026-10-17/exporter/progress.json',
+		JSON.stringify(seed),
+	)
+	await bucket.put(
+		'staging/2026-10-04/exporter/progress.json',
+		JSON.stringify({
+			phase: 'artifacts',
+			revision: 40,
+			advancedAt: '2026-10-18T11:50:00.000Z',
+			artifactsIndex: 3,
+		}),
+	)
+
+	const statuses = await collectDayStatuses(env, at)
+	const day17 = statuses.find((status) => status.day === '2026-10-17')
+	assert.equal(day17?.cells.staging.label, 'Queued behind 2026-10-04')
+	assert.equal(day17?.cells.staging.tone, 'neutral')
+	assert.equal(
+		statuses.some((status) => status.day === '2026-10-04'),
+		false,
+	)
+})
+
 test('restore status lists undeclared databases as notes, not warnings', () => {
 	const html = renderRestoreStatusPage({
 		instanceId: 'dr-restore-2026-07-22-demo',

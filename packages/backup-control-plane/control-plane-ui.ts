@@ -19,6 +19,7 @@ import {
 	dayColumnLegend,
 	deriveDayCells,
 	parseStagingProgressFacts,
+	stagingCatchUpLookbackDays,
 	type DayCell,
 	type DayCells,
 	type SealFacts,
@@ -241,6 +242,12 @@ function stagingProgressKey(day: string): string {
 	return `${stagingPrefix(day)}exporter/progress.json`
 }
 
+function utcDayOffsetDate(day: string, daysBack: number): string {
+	const date = new Date(`${day}T00:00:00.000Z`)
+	date.setUTCDate(date.getUTCDate() - daysBack)
+	return utcDay(date)
+}
+
 async function readBucketJson(
 	bucket: R2Bucket,
 	key: string,
@@ -458,7 +465,7 @@ export async function collectDayStatuses(
 			},
 		})
 	}
-	const activeStagingDay =
+	let activeStagingDay =
 		[...days]
 			.reverse()
 			.find(
@@ -468,6 +475,33 @@ export async function collectDayStatuses(
 					!day.stagingPresent &&
 					day.stagingSummary !== 'unreadable',
 			)?.day ?? null
+	// Exporter lookback is today plus 14 days back. The table is 14 rows
+	// (today through today-13), so today-14 can be the real queue head
+	// without appearing here. Honor it or the next seed looks failed.
+	const lookbackEdge = utcDayOffsetDate(utcDay(now), stagingCatchUpLookbackDays)
+	const edgeSummary = await readBucketJson(
+		env.BACKUP_BUCKET,
+		stagingSummaryKey(lookbackEdge),
+	)
+	const edgeProgress = await readBucketJson(
+		env.BACKUP_BUCKET,
+		stagingProgressKey(lookbackEdge),
+	)
+	const edgeSummaryFacts =
+		edgeSummary === 'unreadable' || edgeSummary === null
+			? edgeSummary
+			: summaryFacts(edgeSummary)
+	const edgeProgressFacts =
+		edgeProgress === 'unreadable' || edgeProgress === null
+			? edgeProgress
+			: (parseStagingProgressFacts(edgeProgress) ?? 'unreadable')
+	if (
+		edgeProgressFacts !== null &&
+		edgeProgressFacts !== 'unreadable' &&
+		edgeSummaryFacts === null
+	) {
+		activeStagingDay = lookbackEdge
+	}
 	for (const day of days) {
 		day.cells = deriveDayCells({
 			day: day.day,

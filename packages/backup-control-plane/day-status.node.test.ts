@@ -264,13 +264,21 @@ test('a revision-0 seed is starting during the window and not started after it',
 	assert.equal(starting.staging.label, 'Starting')
 	assert.equal(starting.staging.tone, 'neutral')
 
-	const missed = derive({
+	const justBecameHead = derive({
 		day: '2026-10-17',
 		stagingProgress: seed,
 		activeStagingDay: '2026-10-17',
 	})
-	assert.equal(missed.staging.label, 'Not started')
-	assert.equal(missed.staging.tone, 'bad')
+	assert.equal(justBecameHead.staging.label, 'Starting')
+	assert.equal(justBecameHead.staging.tone, 'neutral')
+
+	const notTheHead = derive({
+		day: '2026-10-17',
+		stagingProgress: seed,
+		activeStagingDay: null,
+	})
+	assert.equal(notTheHead.staging.label, 'Not started')
+	assert.equal(notTheHead.staging.tone, 'bad')
 })
 
 test('a finished day is complete, then waiting, due, or overdue for the hourly seal', () => {

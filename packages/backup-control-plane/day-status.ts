@@ -23,13 +23,13 @@ import { isRecord } from '@kody-internal/shared/is-record.ts'
  */
 
 /** 02:15 UTC — primary D1 export. */
-export const d1ExportDueMinuteUtc = 2 * 60 + 15
+const d1ExportDueMinuteUtc = 2 * 60 + 15
 /** 06:10 UTC — end of the morning staging window, after D1 catch-up. */
-export const d1ExportWindowEndMinuteUtc = 6 * 60 + 10
+const d1ExportWindowEndMinuteUtc = 6 * 60 + 10
 /** 00:30 UTC — staging nightly window opens. */
-export const stagingWindowStartMinuteUtc = 30
+const stagingWindowStartMinuteUtc = 30
 /** Same close as the D1 grace window. */
-export const stagingWindowEndMinuteUtc = d1ExportWindowEndMinuteUtc
+const stagingWindowEndMinuteUtc = d1ExportWindowEndMinuteUtc
 
 /** Still-open staging after this is late, not failed. */
 export const stagingExpectedCompleteMs = 48 * 60 * 60 * 1000
@@ -43,7 +43,7 @@ export const stagingCatchUpLookbackDays = 14
 /** Red once fewer than two full days remain inside the 14-day lookback. */
 export const stagingNearingLookbackOffset = 12
 /** Amber when a summary has been waiting on the hourly seal this long. */
-export const sealOverdueAfterMs = 3 * 60 * 60 * 1000
+const sealOverdueAfterMs = 3 * 60 * 60 * 1000
 /** Lease length used when progress has no `advancedAt` (exporter fallback). */
 const progressLeaseDurationMs = 2 * 60 * 1000
 
@@ -57,9 +57,9 @@ const stagingPhases = [
 	'done',
 ] as const
 
-export type StagingPhase = (typeof stagingPhases)[number]
+type StagingPhase = (typeof stagingPhases)[number]
 
-export type DayTone = 'neutral' | 'ok' | 'warn' | 'bad'
+type DayTone = 'neutral' | 'ok' | 'warn' | 'bad'
 
 export type DayCell = {
 	tone: DayTone
@@ -374,6 +374,13 @@ function classifyStaging(input: {
 			case 'due':
 				return { kind: 'starting' }
 			case 'closed':
+				// The oldest stranded day can be a revision-0 seed for a few
+				// minutes after the previous day finishes, before the next
+				// 5-minute tick. That is waiting, not a failure. A seed that
+				// is not the active day still falls through as not started.
+				if (input.activeStagingDay === input.day) {
+					return { kind: 'starting' }
+				}
 				return { kind: 'not-started' }
 			default: {
 				const exhaustive: never = input.stagingWindow
