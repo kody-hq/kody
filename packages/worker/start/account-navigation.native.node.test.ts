@@ -65,12 +65,12 @@ test('empty workspace shells reserve the navigation column in server-rendered ma
 	)
 	expect(html).toMatch(/grid-template-columns:200px minmax\(0,\s*1fr\)/)
 	expect(html).not.toContain('--account-rail-height')
-	// Sticky offset must match siteHeaderHeight so short lists do not jump.
+	// Sticky top matches the header block; padding restores the 5rem content line.
 	expect(html).toMatch(
 		/position:\s*sticky[^}]*top:\s*calc\(0\.8rem \+ 44px \+ 0\.8rem \+ 1px\)/,
 	)
-	expect(html).not.toMatch(
-		/<nav(?=[^>]*data-account-nav)[^>]*>[\s\S]*?top:\s*5rem/,
+	expect(html).toMatch(
+		/padding-top:\s*calc\(5rem - calc\(0\.8rem \+ 44px \+ 0\.8rem \+ 1px\)\)/,
 	)
 	expect(html).toContain('href="/@acme/-/agents"')
 })

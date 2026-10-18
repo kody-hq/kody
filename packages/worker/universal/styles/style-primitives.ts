@@ -713,6 +713,17 @@ export const siteHeaderHairline = '1px'
 export const siteHeaderHeight = `calc(${siteHeaderNavPaddingBlock} + ${siteHeaderBrandMinHeight} + ${siteHeaderNavPaddingBlock} + ${siteHeaderHairline})`
 
 /**
+ * Established viewport top for the first account-rail content (workspace
+ * switcher / eyebrow) under the sticky header. Kept as the long-list look;
+ * the sticky box itself sticks at `siteHeaderHeight` and
+ * `accountRailGapBelowHeader` pads the content down to this line.
+ */
+export const accountRailContentTop = '5rem'
+
+/** Breathing room between the header hairline and the first rail content. */
+export const accountRailGapBelowHeader = `calc(${accountRailContentTop} - ${siteHeaderHeight})`
+
+/**
  * Shared shell for every package detail tab (Repo, Files, Settings, …).
  * Same box model as the site header `navCss`: `maxWidth` on the content box
  * with `pageGutter` padding outside it (no `border-box`), so Files keeps the

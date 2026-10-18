@@ -6,11 +6,12 @@ import {
 	type Page,
 } from './playwright-utils.ts'
 
-async function accountRailStickyTop(page: Page) {
+/** Viewport top of the first rail content (workspace switcher / eyebrow). */
+async function accountRailContentTop(page: Page) {
 	await page.evaluate(() => window.scrollTo(0, 0))
-	const rail = page.locator('[data-account-nav] > div').first()
-	await expect(rail).toBeVisible()
-	return rail.evaluate((element) => element.getBoundingClientRect().top)
+	const heading = page.locator('[data-account-nav] [data-account-nav-heading]')
+	await expect(heading).toBeVisible()
+	return heading.evaluate((element) => element.getBoundingClientRect().top)
 }
 
 test('Credentials lists a key, filters by kind, and opens its detail pane without the value', async ({
@@ -497,7 +498,7 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 	await expect(table.getByText(/\d+ of \d+/)).toContainText(
 		`${names.length} of ${names.length}`,
 	)
-	const longTop = await accountRailStickyTop(page)
+	const longTop = await accountRailContentTop(page)
 	const longNavHeight = await page
 		.locator('[data-account-nav]')
 		.evaluate((element) => element.getBoundingClientRect().height)
@@ -509,6 +510,8 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 		longNavHeight,
 		'full list must stretch the nav taller than the rail so sticky engages',
 	).toBeGreaterThan(longRailHeight + 1)
+	// Pre-fix long-list look: first rail content at 5rem (80px at 16px root).
+	expect(Math.abs(longTop - 80)).toBeLessThanOrEqual(0.5)
 
 	await page.getByLabel('Search credentials', { exact: true }).fill('AUDIBLE')
 	await expect(page).toHaveURL(/[?&]q=AUDIBLE/)
@@ -516,7 +519,7 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 		table.getByRole('link', { name: new RegExp(searchable) }),
 	).toBeVisible()
 	await expect(table.getByText(/of \d+/)).toContainText(`1 of ${names.length}`)
-	const shortTop = await accountRailStickyTop(page)
+	const shortTop = await accountRailContentTop(page)
 	const shortNavHeight = await page
 		.locator('[data-account-nav]')
 		.evaluate((element) => element.getBoundingClientRect().height)
@@ -526,4 +529,5 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 	).toBeLessThanOrEqual(longRailHeight + 1)
 
 	expect(Math.abs(shortTop - longTop)).toBeLessThanOrEqual(0.5)
+	expect(Math.abs(shortTop - 80)).toBeLessThanOrEqual(0.5)
 })

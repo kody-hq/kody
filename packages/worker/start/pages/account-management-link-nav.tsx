@@ -6,6 +6,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon, type IconName } from '../components/icon.tsx'
 import { colors, transitions } from '#universal/styles/tokens.ts'
 import {
+	accountRailGapBelowHeader,
 	hoverMq,
 	siteHeaderHeight,
 } from '#universal/styles/style-primitives.ts'
@@ -249,13 +250,13 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 				>
 					<div
 						css={{
-							// Sticks under the site header on a long page. `top`
-							// matches `siteHeaderHeight` so at scrollY=0 the
-							// natural position equals the sticky offset — a short
-							// content column (filtered list) must not drop the
-							// rail a few px higher than a tall one.
+							// Sticks at the header bottom so natural and sticky
+							// tops match (no short-list jump). Padding restores
+							// the established long-list breathing room so the
+							// first rail content lands at `accountRailContentTop`.
 							position: 'sticky',
 							top: siteHeaderHeight,
+							paddingTop: accountRailGapBelowHeader,
 							display: 'flex',
 							flexDirection: 'column',
 							gap: '0.15rem',
