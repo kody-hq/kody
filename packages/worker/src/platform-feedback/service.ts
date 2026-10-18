@@ -7,6 +7,12 @@ import {
 	PlatformFeedbackSubmissionRateLimitError,
 } from './errors.ts'
 import {
+	platformFeedbackActiveQueueLimit,
+	platformFeedbackSubmissionRateLimit,
+	platformFeedbackSubmissionRateLimitWindowMs,
+	platformFeedbackSubmissionRateLimitWindowSeconds,
+} from './limits.ts'
+import {
 	getPlatformFeedbackByIdForAdmin,
 	getPlatformFeedbackByIdForSubmitter,
 	getPlatformFeedbackSubmissionLimitCounts,
@@ -29,35 +35,93 @@ import {
 	type PlatformFeedbackSubmitterRecord,
 } from './types.ts'
 
+export {
+	platformFeedbackActiveQueueLimit,
+	platformFeedbackSubmissionRateLimit,
+} from './limits.ts'
+
 const maxSummaryLength = 200
 const maxDetailsLength = 8_000
 const maxAdminNoteLength = 2_000
 const defaultPageSize = 20
 const maxPageSize = 100
-const activeQueueLimit = 100
-const submissionRateLimit = 10
-const submissionRateLimitWindowSeconds = 24 * 60 * 60
-const submissionRateLimitWindowMs = submissionRateLimitWindowSeconds * 1_000
 const submissionInsertAttempts = 2
+
+export type PlatformFeedbackSubmissionQuota = {
+	limit: number
+	remaining: number
+	/** ISO timestamp when the next rolling-window slot frees; null when remaining > 0. */
+	nextSlotAt: string | null
+}
+
+function getRollingWindowStart(now: string) {
+	return new Date(
+		new Date(now).getTime() - platformFeedbackSubmissionRateLimitWindowMs,
+	).toISOString()
+}
+
+/**
+ * Shared rolling-window quota math for submit enforcement and list reads so
+ * remaining / next-slot cannot drift from the rate-limit error path.
+ */
+export function buildPlatformFeedbackSubmissionQuota(
+	counts: { rollingCount: number; oldestCreatedAt: string | null },
+	now: string,
+): PlatformFeedbackSubmissionQuota {
+	const remaining = Math.max(
+		0,
+		platformFeedbackSubmissionRateLimit - counts.rollingCount,
+	)
+	if (remaining > 0) {
+		return {
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining,
+			nextSlotAt: null,
+		}
+	}
+	const oldestCreatedAtMs = Date.parse(counts.oldestCreatedAt ?? '')
+	const nowMs = Date.parse(now)
+	const nextSlotAtMs =
+		Number.isFinite(oldestCreatedAtMs) && Number.isFinite(nowMs)
+			? oldestCreatedAtMs + platformFeedbackSubmissionRateLimitWindowMs
+			: nowMs + platformFeedbackSubmissionRateLimitWindowMs
+	return {
+		limit: platformFeedbackSubmissionRateLimit,
+		remaining: 0,
+		nextSlotAt: new Date(nextSlotAtMs).toISOString(),
+	}
+}
 
 function getSubmissionRateLimitRetryAfterSeconds(
 	oldestCreatedAt: string | null,
 	now: string,
 ) {
-	const oldestCreatedAtMs = Date.parse(oldestCreatedAt ?? '')
+	const quota = buildPlatformFeedbackSubmissionQuota(
+		{ rollingCount: platformFeedbackSubmissionRateLimit, oldestCreatedAt },
+		now,
+	)
+	const nextSlotAtMs = Date.parse(quota.nextSlotAt ?? '')
 	const nowMs = Date.parse(now)
-	if (!Number.isFinite(oldestCreatedAtMs) || !Number.isFinite(nowMs)) {
-		return submissionRateLimitWindowSeconds
+	if (!Number.isFinite(nextSlotAtMs) || !Number.isFinite(nowMs)) {
+		return platformFeedbackSubmissionRateLimitWindowSeconds
 	}
 	return Math.min(
-		submissionRateLimitWindowSeconds,
-		Math.max(
-			1,
-			Math.ceil(
-				(oldestCreatedAtMs + submissionRateLimitWindowMs - nowMs) / 1_000,
-			),
-		),
+		platformFeedbackSubmissionRateLimitWindowSeconds,
+		Math.max(1, Math.ceil((nextSlotAtMs - nowMs) / 1_000)),
 	)
+}
+
+export async function getPlatformFeedbackSubmissionQuota(input: {
+	db: D1Database
+	submitterUserId: string
+	now?: string
+}): Promise<PlatformFeedbackSubmissionQuota> {
+	const now = input.now ?? new Date().toISOString()
+	const counts = await getPlatformFeedbackSubmissionLimitCounts(input.db, {
+		submitterUserId: input.submitterUserId,
+		rollingWindowStart: getRollingWindowStart(now),
+	})
+	return buildPlatformFeedbackSubmissionQuota(counts, now)
 }
 
 function toPlatformFeedbackRecord({
@@ -208,14 +272,12 @@ export async function submitPlatformFeedback(input: {
 		created_at: now,
 		updated_at: now,
 	}
-	const rollingWindowStart = new Date(
-		new Date(now).getTime() - submissionRateLimitWindowMs,
-	).toISOString()
+	const rollingWindowStart = getRollingWindowStart(now)
 	for (let attempt = 0; attempt < submissionInsertAttempts; attempt += 1) {
 		const didInsert = await insertPlatformFeedback(input.db, row, {
-			activeQueueLimit,
+			activeQueueLimit: platformFeedbackActiveQueueLimit,
 			rollingWindowStart,
-			submissionRateLimit,
+			submissionRateLimit: platformFeedbackSubmissionRateLimit,
 		})
 		if (didInsert) {
 			break
@@ -227,17 +289,19 @@ export async function submitPlatformFeedback(input: {
 				rollingWindowStart,
 			},
 		)
-		if (limitCounts.rollingCount >= submissionRateLimit) {
+		if (limitCounts.rollingCount >= platformFeedbackSubmissionRateLimit) {
 			throw new PlatformFeedbackSubmissionRateLimitError(
-				submissionRateLimit,
+				platformFeedbackSubmissionRateLimit,
 				getSubmissionRateLimitRetryAfterSeconds(
 					limitCounts.oldestCreatedAt,
 					now,
 				),
 			)
 		}
-		if (limitCounts.activeCount >= activeQueueLimit) {
-			throw new PlatformFeedbackActiveQueueLimitError(activeQueueLimit)
+		if (limitCounts.activeCount >= platformFeedbackActiveQueueLimit) {
+			throw new PlatformFeedbackActiveQueueLimitError(
+				platformFeedbackActiveQueueLimit,
+			)
 		}
 		if (attempt === submissionInsertAttempts - 1) {
 			throw new PlatformFeedbackSubmissionConflictError()
@@ -315,11 +379,13 @@ export async function listPlatformFeedbackForSubmitter(input: {
 	page?: number
 	pageSize?: number
 	status?: PlatformFeedbackStatus
+	now?: string
 }): Promise<{
 	total: number
 	page: number
 	pageSize: number
 	items: Array<PlatformFeedbackSubmitterListItem>
+	submissionQuota: PlatformFeedbackSubmissionQuota
 }> {
 	let page = normalizePage(input.page)
 	const pageSize = normalizePageSize(input.pageSize)
@@ -329,7 +395,14 @@ export async function listPlatformFeedbackForSubmitter(input: {
 		pageSize,
 		status: input.status,
 	}
-	const result = await listPlatformFeedbackRowsForSubmitter(input.db, query)
+	const [result, submissionQuota] = await Promise.all([
+		listPlatformFeedbackRowsForSubmitter(input.db, query),
+		getPlatformFeedbackSubmissionQuota({
+			db: input.db,
+			submitterUserId: input.submitterUserId,
+			now: input.now,
+		}),
+	])
 	const lastPage = Math.ceil(result.total / pageSize)
 	if (result.total > 0 && page > lastPage) {
 		page = lastPage
@@ -338,7 +411,7 @@ export async function listPlatformFeedbackForSubmitter(input: {
 			page,
 		})
 	}
-	return { ...result, page, pageSize }
+	return { ...result, page, pageSize, submissionQuota }
 }
 
 export async function updatePlatformFeedbackForAdmin(input: {

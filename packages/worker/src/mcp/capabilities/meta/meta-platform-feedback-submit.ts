@@ -4,6 +4,7 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { enqueuePlatformFeedbackDispatch } from '#worker/platform-feedback/dispatch-queue-producer.ts'
 import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.ts'
+import { platformFeedbackSubmissionRateLimit } from '#worker/platform-feedback/limits.ts'
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
 import { platformFeedbackCategories } from '#worker/platform-feedback/types.ts'
 import { requireMcpUser } from './require-user.ts'
@@ -16,8 +17,7 @@ export const metaPlatformFeedbackSubmitCapability = defineDomainCapability(
 	{
 		name: 'metaPlatformFeedbackSubmit',
 		orgPermission: 'none',
-		description:
-			'Submit platform feedback only from an interactive MCP agent flow after showing the user the exact proposed summary and details, asking first, and receiving explicit approval. Open `search({ entity: "guide:platform_friction" })` first for the approval flow and content guidance. After submit, use metaPlatformFeedbackGet with the returned feedback_id (or metaPlatformFeedbackList) to check status — including open, triaged, resolved, and dismissed — without a full account export. The exact approved summary and details plus the account user id, username, and email may be delivered immediately to deployment admins through admin-configured notifications. Copies already delivered outside Kody may remain after Kody account deletion under the deployment operator’s retention and deletion controls. Non-interactive package code and package apps cannot submit. Do not include secrets or unrelated private content.',
+		description: `Submit platform feedback only from an interactive MCP agent flow after showing the user the exact proposed summary and details, asking first, and receiving explicit approval. Open \`search({ entity: "guide:platform_friction" })\` first for the approval flow and content guidance. Each account may create at most ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours; call metaPlatformFeedbackList first and check submissions_remaining (and next_slot_at when at the cap) before asking the user to approve multiple submissions. After submit, use metaPlatformFeedbackGet with the returned feedback_id (or metaPlatformFeedbackList) to check status — including open, triaged, resolved, and dismissed — without a full account export. The exact approved summary and details plus the account user id, username, and email may be delivered immediately to deployment admins through admin-configured notifications. Copies already delivered outside Kody may remain after Kody account deletion under the deployment operator’s retention and deletion controls. Non-interactive package code and package apps cannot submit. Do not include secrets or unrelated private content.`,
 		keywords: [
 			'platform feedback',
 			'friction',
