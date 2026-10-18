@@ -232,9 +232,10 @@ test('builder stays quiet when the list is empty or already includes the package
 	).resolves.toBeNull()
 })
 
-test('filesForPackageSourceRoot scopes nested package paths like credential inventory', () => {
+test('filesForPackageSourceRoot strips strictly with no fallback', () => {
 	const nested = filesForPackageSourceRoot(
 		{
+			'package.json': '{"name":"workspace"}',
 			'packages/demo/package.json': '{"name":"@owner/demo"}',
 			'packages/demo/src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
 			'packages/other/src/index.ts':
@@ -250,8 +251,8 @@ test('filesForPackageSourceRoot scopes nested package paths like credential inve
 	expect(filesForPackageSourceRoot({ 'package.json': '{}' }, '/')).toEqual({
 		'package.json': '{}',
 	})
-	// Already package-relative trees (external publish / published snapshots)
-	// must not be emptied when a nested sourceRoot is also passed.
+	// Already package-relative trees must omit sourceRoot at the call site.
+	// Passing a nested root against that map strictly yields {}.
 	expect(
 		filesForPackageSourceRoot(
 			{
@@ -260,15 +261,11 @@ test('filesForPackageSourceRoot scopes nested package paths like credential inve
 			},
 			'packages/demo',
 		),
-	).toEqual({
-		'package.json': '{"name":"@owner/demo"}',
-		'src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
-	})
-	// A repo snapshot with nothing under this source root must not fall back
-	// to sibling package files.
+	).toEqual({})
 	expect(
 		filesForPackageSourceRoot(
 			{
+				'package.json': '{"name":"workspace"}',
 				'packages/other/src/index.ts':
 					"export const y = '{{secret:OTHER_KEY}}'\n",
 			},
@@ -277,7 +274,7 @@ test('filesForPackageSourceRoot scopes nested package paths like credential inve
 	).toEqual({})
 })
 
-test('builder respects package source root and ignores sibling fills', async () => {
+function seedDualSecretEnv() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, migrationsDirectory)
 	const now = '2026-10-18T00:00:00.000Z'
@@ -325,10 +322,14 @@ test('builder respects package source root and ignores sibling fills', async () 
 			)
 			.run(id, name, JSON.stringify(['pkg-notes']), now, now)
 	}
-	const env = {
+	return {
 		APP_DB: createD1FromSqlite(sqlite),
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 	} as Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+}
+
+test('builder strips nested repo-rooted trees and ignores sibling fills', async () => {
+	const env = seedDualSecretEnv()
 	const repoFiles = {
 		'packages/demo/package.json': JSON.stringify({
 			name: '@owner/demo',
@@ -360,19 +361,60 @@ test('builder respects package source root and ignores sibling fills', async () 
 		sourceRoot: 'packages/demo',
 	})
 	expect(scoped.map((warning) => warning.credentialName)).toEqual(['DEMO_KEY'])
+})
 
-	const unscoped = await buildCredentialAllowedPackagesPublishWarnings({
+test('builder warns on already-stripped package trees when sourceRoot is omitted', async () => {
+	const env = seedDualSecretEnv()
+	const packageRelative = packageFiles('DEMO_KEY')
+	const warnings = await buildCredentialAllowedPackagesPublishWarnings({
 		env,
 		baseUrl,
 		userId,
 		packageId: 'pkg-demo',
 		packageDisplayName: '@owner/demo',
 		kodyId: 'demo',
-		files: repoFiles,
+		files: packageRelative,
 	})
-	expect(unscoped.map((warning) => warning.credentialName).sort()).toEqual([
+	expect(warnings.map((warning) => warning.credentialName)).toEqual([
 		'DEMO_KEY',
-		'OTHER_KEY',
+	])
+})
+
+test('builder ignores siblings in monorepo trees that include a root package.json', async () => {
+	const env = seedDualSecretEnv()
+	const monorepo = {
+		'package.json': JSON.stringify({ name: 'workspace', private: true }),
+		'packages/demo/package.json': JSON.stringify({
+			name: '@owner/demo',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'demo',
+				description: 'Demo package.',
+				credentials: {
+					DEMO_KEY: {
+						kind: 'secret',
+						provider: 'resend',
+						description: 'Demo key.',
+					},
+				},
+			},
+		}),
+		'packages/demo/src/index.ts':
+			"export const h = { Authorization: 'Bearer {{secret:DEMO_KEY}}' }\n",
+		'packages/other/src/index.ts': "export const y = '{{secret:OTHER_KEY}}'\n",
+	}
+	const warnings = await buildCredentialAllowedPackagesPublishWarnings({
+		env,
+		baseUrl,
+		userId,
+		packageId: 'pkg-demo',
+		packageDisplayName: '@owner/demo',
+		kodyId: 'demo',
+		files: monorepo,
+		sourceRoot: 'packages/demo',
+	})
+	expect(warnings.map((warning) => warning.credentialName)).toEqual([
+		'DEMO_KEY',
 	])
 })
 

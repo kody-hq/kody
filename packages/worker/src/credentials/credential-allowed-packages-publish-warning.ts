@@ -191,8 +191,13 @@ export async function loadCredentialAllowedPackagesPublishWarningNotice(input: {
 }
 
 /**
- * Scope a repo snapshot to the package source root the same way
- * `credentialPatternNoticeForFiles` / credential inventory reads do.
+ * Scope a repo-rooted file map to the package source root.
+ *
+ * Contract: pass `sourceRoot` only when `files` is keyed from the repo root.
+ * With a non-empty root this returns only paths under `root/` (stripped), or
+ * `{}` when none match — never falls back to the unscoped map. Already
+ * package-relative trees must omit `sourceRoot` (same as
+ * `credentialPatternNoticeForFiles(files)` without a root).
  */
 export function filesForPackageSourceRoot(
 	files: Record<string, string>,
@@ -200,20 +205,11 @@ export function filesForPackageSourceRoot(
 ): Record<string, string> {
 	const root = normalizeRepoWorkspacePath(sourceRoot ?? '').replace(/\/+$/, '')
 	if (!root) return files
-	const scoped = Object.fromEntries(
+	return Object.fromEntries(
 		Object.entries(files)
 			.filter(([path]) => path.startsWith(`${root}/`))
 			.map(([path, content]) => [path.slice(root.length + 1), content]),
 	)
-	// Repo snapshots are keyed from the repo root. Published check trees and
-	// some external-publish maps are already package-relative — only strip when
-	// the map still contains paths under the source root.
-	if (Object.keys(scoped).length > 0) return scoped
-	// Empty under sourceRoot: keep the map only when it is already package-
-	// relative (has package.json at the map root). Otherwise return empty so a
-	// monorepo snapshot cannot fall back to sibling package fills.
-	if ('package.json' in files) return files
-	return {}
 }
 
 export async function buildCredentialAllowedPackagesPublishWarnings(input: {

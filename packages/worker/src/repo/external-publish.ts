@@ -369,6 +369,10 @@ export async function publishFromExternalRef(input: {
 		}
 	}
 	const pendingFiles = input.files ?? checks.sourceFiles
+	// input.files (clone collectFiles) is repo-rooted; checks.sourceFiles is
+	// already package-relative. Pass sourceRoot only for the repo-rooted shape.
+	const pendingFilesSourceRoot =
+		input.files != null ? (input.sourceRoot ?? source.source_root) : undefined
 	const secretMountCompat =
 		source.entity_kind === 'package'
 			? await loadSecretMountCompatNotice({
@@ -389,7 +393,7 @@ export async function publishFromExternalRef(input: {
 					userId: input.userId,
 					packageId: source.entity_id,
 					files: pendingFiles,
-					sourceRoot: source.source_root,
+					sourceRoot: pendingFilesSourceRoot,
 					slots: checks.manifest?.kody?.credentials,
 				})
 			: null

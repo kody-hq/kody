@@ -672,6 +672,9 @@ async function getAllowedPackagesPublishNoticeForPublishedPackage(input: {
 			userId: input.userId,
 			sourceId: input.sourceId,
 		})
+		// Published snapshots used here are package-relative (or already keyed
+		// for packageSave). Do not pass sourceRoot — strict strip would empty
+		// an already-scoped tree.
 		return await buildCredentialAllowedPackagesPublishWarningNotice({
 			env: input.env,
 			baseUrl: input.baseUrl,
@@ -681,7 +684,6 @@ async function getAllowedPackagesPublishNoticeForPublishedPackage(input: {
 			packageDisplayName: input.packageDisplayName,
 			kodyId: input.kodyId,
 			files: published.files,
-			sourceRoot: published.source?.source_root,
 		})
 	} catch {
 		return null
