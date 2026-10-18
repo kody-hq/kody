@@ -128,8 +128,14 @@ export function parseAccountEmail(
 	if (labels.length < 2) return null
 	if (labels.some((label) => !domainLabelPattern.test(label))) return null
 	const tld = labels.at(-1)
-	if (!tld || tld.length < 2 || !/^[a-z]+$/u.test(tld)) return null
+	if (!tld || !isAcceptedEmailTld(tld)) return null
 	return { email: `${local}@${domain}`, local, domain }
+}
+
+/** ASCII TLDs, plus punycode IDN TLDs such as `xn--p1ai`. */
+function isAcceptedEmailTld(tld: string) {
+	if (/^[a-z]{2,}$/u.test(tld)) return true
+	return /^xn--[a-z0-9](?:[a-z0-9-]{0,57}[a-z0-9])?$/u.test(tld)
 }
 
 export function isDisposableEmailDomain(domain: string) {

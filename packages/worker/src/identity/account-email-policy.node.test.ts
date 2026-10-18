@@ -17,6 +17,12 @@ test('parseAccountEmail accepts a normal address and rejects a bare username', (
 	expect(parseAccountEmail('a@b')).toBeNull()
 	expect(parseAccountEmail('a@b.c')).toBeNull()
 	expect(parseAccountEmail('name <a@example.com>')).toBeNull()
+	expect(parseAccountEmail('ada@example.xn--p1ai')).toEqual({
+		email: 'ada@example.xn--p1ai',
+		local: 'ada',
+		domain: 'example.xn--p1ai',
+	})
+	expect(parseAccountEmail('ada@example.xn--')).toBeNull()
 })
 
 test('typo domains suggest the mailbox the person likely meant', () => {
