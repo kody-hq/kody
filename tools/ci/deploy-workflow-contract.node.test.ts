@@ -5,6 +5,7 @@ import {
 	assertDeployWorkflowContractDeclaredInWorkflow,
 	checkDeployWorkflowContractDrift,
 	expectedContractEnvName,
+	extractShaGuardStepEnvLines,
 	parseExpectedContractFromEnv,
 	parseExpectedContractFromWorkflowSource,
 } from './deploy-workflow-contract.ts'
@@ -61,6 +62,22 @@ jobs:
 	expect(
 		parseExpectedContractFromWorkflowSource(staleCommentBeforeActive),
 	).toBe(3)
+})
+
+test('found sha_guard without env does not fall back to another step declaration', () => {
+	const source = `
+jobs:
+  sha-guard:
+    steps:
+      - id: sha_guard
+        run: echo missing-env
+      - id: other
+        env:
+          ${expectedContractEnvName}: '9'
+        run: echo other
+`
+	expect(extractShaGuardStepEnvLines(source)).toEqual([])
+	expect(parseExpectedContractFromWorkflowSource(source)).toBe(null)
 })
 
 test('parseExpectedContractFromEnv accepts only positive integers', () => {

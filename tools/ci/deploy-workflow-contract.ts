@@ -63,10 +63,16 @@ function parseVersionFromAssignmentLine(line: string): number | null {
 	return Number(raw)
 }
 
+const yamlListItemPattern = /^(\s*)-\s+\S/
+
 /**
  * Env lines belonging to the step with `id: sha_guard` (the runtime source of
- * truth). Ignores commented-out assignments. Returns null when that step is
- * absent so fixtures can still declare the env without a full job scaffold.
+ * truth). Ignores commented-out assignments.
+ *
+ * Returns `null` when that step is absent (fixtures may declare the env
+ * without a full job scaffold). Returns an empty array when the step exists
+ * but has no env assignments — callers must not fall back to scanning the
+ * rest of the workflow in that case.
  */
 export function extractShaGuardStepEnvLines(
 	source: string,
@@ -89,6 +95,13 @@ export function extractShaGuardStepEnvLines(
 		if (stepIndent === null) continue
 
 		const leadingWhitespace = /^(\s*)/.exec(rawLine)?.[1] ?? ''
+		const nextListItem = yamlListItemPattern.exec(rawLine)
+		// Next step at equal or shallower list indent ends sha_guard, including
+		// `- id: sha_guard` followed by another `- …` at the same indent.
+		if (nextListItem && (nextListItem[1] ?? '').length <= stepIndent.length) {
+			return envLines
+		}
+
 		if (!collectingEnv) {
 			const envHeader = stepEnvHeaderPattern.exec(rawLine)
 			if (envHeader && (envHeader[1] ?? '').length >= stepIndent.length) {
@@ -97,12 +110,12 @@ export function extractShaGuardStepEnvLines(
 				continue
 			}
 			// Sibling keys (`shell:`, `run:`) share the step indent. A shallower
-			// line (next `- name:` or job key) means we left the step.
+			// non-list line (job key) means we left the step.
 			if (
 				rawLine.trim() !== '' &&
 				leadingWhitespace.length < stepIndent.length
 			) {
-				return envLines.length > 0 ? envLines : null
+				return envLines
 			}
 			continue
 		}
@@ -126,15 +139,22 @@ export function extractShaGuardStepEnvLines(
 /**
  * Parse the integer the running deploy.yml declares as its required contract.
  * Prefers the active `sha_guard` step env (ignoring `#` comments). Falls back
- * to the first non-commented declaration when no `sha_guard` step is present.
- * Accepts `EXPECTED_DEPLOY_WORKFLOW_CONTRACT: '1'` / `"1"` / `1`.
+ * to the first non-commented declaration only when no `sha_guard` step exists.
+ * A found `sha_guard` without the env assignment yields null (no whole-file
+ * fallback). Accepts `EXPECTED_DEPLOY_WORKFLOW_CONTRACT: '1'` / `"1"` / `1`.
  */
 export function parseExpectedContractFromWorkflowSource(
 	source: string,
 ): number | null {
 	const shaGuardEnv = extractShaGuardStepEnvLines(source)
-	const lines = shaGuardEnv ?? source.split('\n')
-	for (const line of lines) {
+	if (shaGuardEnv !== null) {
+		for (const line of shaGuardEnv) {
+			const version = parseVersionFromAssignmentLine(line)
+			if (version !== null) return version
+		}
+		return null
+	}
+	for (const line of source.split('\n')) {
 		const version = parseVersionFromAssignmentLine(line)
 		if (version !== null) return version
 	}
