@@ -23,11 +23,21 @@ type SentryExceptionValue = {
 	}
 }
 
+type SentryBreadcrumbLike = {
+	category?: string
+	data?: {
+		url?: string
+		method?: string
+		status_code?: number
+	}
+}
+
 type SentryErrorEventLike = {
 	message?: string
 	exception?: {
 		values?: Array<SentryExceptionValue>
 	}
+	breadcrumbs?: Array<SentryBreadcrumbLike>
 }
 
 function sentryEventMessages(event: SentryErrorEventLike) {
@@ -1121,16 +1131,26 @@ function filterBrowserBlobImportScriptsNetworkSentryEvent<
  * `createServerFn` client calls hit `/_serverFn/…`; when the tab resumes
  * offline/asleep (or the network blips), WebKit rejects with TypeError
  * `Load failed`, Chromium with `Failed to fetch`, Firefox with
- * `NetworkError when attempting to fetch resource.` — stack entirely in
- * `serverFnFetcher` / `createServerFn`. Root capture is the router's
- * `defaultOnCatch: captureClientException` and root
+ * `NetworkError when attempting to fetch resource.`. Root capture is the
+ * router's `defaultOnCatch: captureClientException` and root
  * `refreshOnActivation` → `onError: captureClientException` (handled).
- * Tab-resume refresh keeps existing Query data; no error boundary. Match
- * only browser fetch-network TypeError wording (see
- * `isBrowserFetchNetworkError`) AND stack evidence of the Start serverFn
- * fetcher. Never blanket-drop bare "Failed to fetch" / in-app TypeErrors.
+ * Tab-resume refresh keeps existing Query data; no error boundary.
+ *
+ * Match only browser fetch-network TypeError wording (see
+ * `isBrowserFetchNetworkError`) AND serverFn evidence:
+ * - stack/frames naming `serverFnFetcher` / `createServerFn` (dev or
+ *   source-mapped stacks), OR
+ * - a Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn` (production
+ *   `beforeSend` sees bundled `/assets/…` frames; source maps apply after
+ *   send, so module names are unavailable client-side).
+ *
+ * Multi-value events (linked `cause` chains) drop only when **every** value
+ * is a qualifying fetch-network TypeError — a reportable app exception with
+ * a network TypeError cause must stay visible. Never blanket-drop bare
+ * "Failed to fetch" / in-app TypeErrors.
  */
 const tanStackServerFnFetchStackToken = /serverFnFetcher|createServerFn/
+const tanStackServerFnBreadcrumbUrl = /\/_serverFn(?:\/|$|\?)/i
 
 function textMentionsTanStackServerFnFetch(text: string) {
 	return tanStackServerFnFetchStackToken.test(text)
@@ -1161,6 +1181,27 @@ function originalExceptionMentionsTanStackServerFnFetch(error: unknown) {
 	return textMentionsTanStackServerFnFetch(stack)
 }
 
+function eventHasTanStackServerFnFetchBreadcrumb(event: SentryErrorEventLike) {
+	for (const crumb of event.breadcrumbs ?? []) {
+		if (crumb.category !== 'fetch' && crumb.category !== 'xhr') continue
+		const url = crumb.data?.url
+		if (typeof url === 'string' && tanStackServerFnBreadcrumbUrl.test(url)) {
+			return true
+		}
+	}
+	return false
+}
+
+function isTanStackServerFnFetchNetworkExceptionMessage(
+	value: SentryExceptionValue,
+) {
+	if (value.type !== 'TypeError') return false
+	return (
+		typeof value.value === 'string' &&
+		isBrowserFetchNetworkErrorMessage(value.value)
+	)
+}
+
 export function isTanStackServerFnFetchNetworkError(error: unknown) {
 	if (!isBrowserFetchNetworkError(error)) return false
 	return originalExceptionMentionsTanStackServerFnFetch(error)
@@ -1170,21 +1211,24 @@ function isTanStackServerFnFetchNetworkSentryEvent(
 	event: SentryErrorEventLike,
 	originalException?: unknown,
 ) {
-	if (isTanStackServerFnFetchNetworkError(originalException)) return true
-
-	// Same-entry gate: TypeError fetch-network wording AND serverFn frames on
-	// that value. Bare event.message / frameless values stay visible.
+	// Every-value gate for linked causes (CodeRabbit): drop only when every
+	// exception value is a fetch-network TypeError. A reportable app Error
+	// wrapping a network TypeError cause must stay visible.
 	const values = event.exception?.values ?? []
-	return values.some((value) => {
-		if (value.type !== 'TypeError') return false
-		if (
-			typeof value.value !== 'string' ||
-			!isBrowserFetchNetworkErrorMessage(value.value)
-		) {
-			return false
-		}
-		return framesMentionTanStackServerFnFetch(value.stacktrace?.frames)
-	})
+	if (values.length === 0) {
+		return isTanStackServerFnFetchNetworkError(originalException)
+	}
+	if (!values.every(isTanStackServerFnFetchNetworkExceptionMessage)) {
+		return false
+	}
+	// Evidence: production beforeSend uses /_serverFn breadcrumbs (bundled
+	// /assets frames lack module names); unminified stacks / originalException
+	// may still name serverFnFetcher / createServerFn.
+	if (eventHasTanStackServerFnFetchBreadcrumb(event)) return true
+	if (isTanStackServerFnFetchNetworkError(originalException)) return true
+	return values.every((value) =>
+		framesMentionTanStackServerFnFetch(value.stacktrace?.frames),
+	)
 }
 
 function filterTanStackServerFnFetchNetworkSentryEvent<

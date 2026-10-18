@@ -37,6 +37,7 @@ import {
 } from '../session-identity.ts'
 import { refreshOnActivation } from '../refresh-on-activation.ts'
 import { refreshActiveQueries } from '../refresh-active-queries.ts'
+import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { captureClientException } from '#client/sentry-client.ts'
 import { CANONICAL_ORIGIN_META_NAME } from '#universal/document-head-markers.ts'
 import {
@@ -239,7 +240,15 @@ function LoadedAppLayout() {
 						return
 					}
 				},
-				onError: captureClientException,
+				// Activation only hits Start serverFns (verifySession + page
+				// queries). Transient fetch TypeErrors are expected when a
+				// slept tab resumes offline (KODY-9Q); keep stale Query data
+				// and skip Sentry — beforeSend also filters via /_serverFn
+				// breadcrumbs when capture comes from elsewhere.
+				onError: (error) => {
+					if (isBrowserFetchNetworkError(error)) return
+					captureClientException(error)
+				},
 			}),
 		[actorKey, queryClient, router],
 	)

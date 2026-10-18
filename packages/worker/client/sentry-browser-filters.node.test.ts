@@ -450,7 +450,7 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 		],
 		[
 			'TypeError',
-			'something else',
+			'Load failed',
 			undefined,
 			withStack(new TypeError('Load failed'), serverFnFetcherStack),
 		],
@@ -859,6 +859,39 @@ test('isTanStackServerFnFetchNetworkError requires serverFn stack evidence', () 
 	).toBe(false)
 })
 
+test('serverFn fetch-network filter drops production /assets stacks via /_serverFn breadcrumbs', () => {
+	const productionAssetFrame = fr(
+		'getResponse',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Load failed',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBeNull()
+	// Same TypeError with only /assets frames and no serverFn breadcrumb stays.
+	const withoutCrumb = {
+		exception: event.exception,
+	}
+	expect(filterBrowserSentryEvent(withoutCrumb)).toBe(withoutCrumb)
+})
+
 test('serverFn fetch-network filter does not pair message and frames across exception values', () => {
 	const crossValueEvent = {
 		exception: {
@@ -877,6 +910,28 @@ test('serverFn fetch-network filter does not pair message and frames across exce
 		},
 	}
 	expect(filterBrowserSentryEvent(crossValueEvent)).toBe(crossValueEvent)
+})
+
+test('serverFn fetch-network filter keeps a reportable exception that links a network TypeError cause', () => {
+	// LinkedErrors puts cause values alongside the main exception; drop only
+	// when every value is a qualifying serverFn fetch-network TypeError.
+	const linkedEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Load failed',
+					stacktrace: { frames: [serverFnFetcherFrame] },
+				},
+				{
+					type: 'Error',
+					value: 'Account loader failed',
+					stacktrace: { frames: [kodyEntry] },
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(linkedEvent)).toBe(linkedEvent)
 })
 
 test('isChromeExtensionMessageChannelDisconnectedError requires extension provenance', () => {
