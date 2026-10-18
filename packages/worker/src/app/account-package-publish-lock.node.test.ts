@@ -4,6 +4,8 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { fullGitCommitShaRequiredMessage } from '#worker/package-registry/package-publish-lock.ts'
+import { buildUnknownRequestedCommitMessage } from '#worker/repo/requested-commit-error.ts'
 
 const mockModule = vi.hoisted(() => ({
 	writablePackage: null as null | {
@@ -120,6 +122,10 @@ const user = {
 	},
 } as ActionInput['user']
 
+const fullCommit = '0123456789abcdef0123456789abcdef01234567'
+const unknownCommit = 'fedcba9876543210fedcba9876543210fedcba98'
+const shortCommit = '35aaf10'
+
 const unlockedPackage = {
 	id: 'pkg-1',
 	userId: ownerIdFromStored('user-1'),
@@ -225,21 +231,21 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 	mockModule.publishFromExternalRef.mockResolvedValue({
 		status: 'published',
 		previous_commit: 'commit-old',
-		published_commit: 'abc1234',
+		published_commit: fullCommit,
 		manifest: {},
 		checks: [],
 	})
 	const approveBody = {
 		action: 'approve-publish',
 		packageId: 'pkg-1',
-		commit: 'abc1234',
+		commit: fullCommit,
 	} as const
 	expect((await act(approveBody))?.status).toBe(200)
 	expect(mockModule.publishFromExternalRef).toHaveBeenCalledWith(
 		expect.objectContaining({
 			sourceId: 'source-1',
 			userId: ownerIdFromStored('user-1'),
-			newCommit: 'abc1234',
+			newCommit: fullCommit,
 			allowLockedPublish: true,
 		}),
 	)
@@ -252,7 +258,7 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 	expect(unlockedPublish).toMatchObject({
 		sourceId: 'source-1',
 		userId: ownerIdFromStored('user-1'),
-		newCommit: 'abc1234',
+		newCommit: fullCommit,
 	})
 	expect(unlockedPublish).not.toHaveProperty('allowLockedPublish')
 	expect(mockModule.reloadAccountPackagesAfterWrite).not.toHaveBeenCalled()
@@ -263,10 +269,10 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 		commit: 'deadbeef',
 	})
 	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue(null)
-	expect(await loadApprove('abc1234')).toMatchObject({
+	expect(await loadApprove(fullCommit)).toMatchObject({
 		ok: true,
 		publishedCommit: 'commit-old',
-		pendingCommit: 'abc1234',
+		pendingCommit: fullCommit,
 		alreadyPublished: false,
 		pendingIsDefaultHead: false,
 		packageHref: '/@user/notes',
@@ -295,7 +301,7 @@ test('approve-publish hrefs use the owning org slug for team packages', async ()
 		},
 		role: 'member',
 	} as Awaited<ReturnType<typeof loadOrgBindingForOrg>>)
-	const loaded = await loadApproveOk('abc1234')
+	const loaded = await loadApproveOk(fullCommit)
 	expect(loaded.packageHref).toBe('/@acme/shared')
 	expect(loaded.filesHref).toContain('/@acme/shared')
 })
@@ -396,4 +402,59 @@ test('approve-publish resolves HEAD, missing published, and missing HEAD diffs',
 	const missingHead = await loadApproveOk()
 	expect(missingHead.pendingCommit).toBeNull()
 	expect(missingHead.diff).toEqual(emptyDiff)
+})
+
+test('approve-publish loader rejects a short commit SHA', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	mockModule.readArtifactTreeAtCommit.mockClear()
+	const loaded = await loadApprove(shortCommit)
+	expect(loaded).toEqual({
+		ok: false,
+		error: fullGitCommitShaRequiredMessage,
+	})
+	expect(mockModule.readArtifactTreeAtCommit).not.toHaveBeenCalled()
+	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('approve-publish mutation rejects a short commit SHA', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	mockModule.publishFromExternalRef.mockClear()
+	const response = await act({
+		action: 'approve-publish',
+		packageId: 'pkg-1',
+		commit: shortCommit,
+	})
+	expect(response?.status).toBe(400)
+	expect(response?.data).toEqual({
+		ok: false,
+		error: fullGitCommitShaRequiredMessage,
+	})
+	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('approve-publish mutation returns a distinct error for an unknown full SHA', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	mockModule.publishFromExternalRef.mockRejectedValueOnce(
+		Object.assign(
+			new Error(
+				`Failed to checkout "${unknownCommit}" because commit ${unknownCommit} is not available locally. Do a git fetch to make the branch available locally.`,
+			),
+			{ name: 'CommitNotFetchedError', code: 'CommitNotFetchedError' },
+		),
+	)
+	const response = await act({
+		action: 'approve-publish',
+		packageId: 'pkg-1',
+		commit: unknownCommit,
+	})
+	expect(response?.status).toBe(400)
+	expect(response?.data).toEqual({
+		ok: false,
+		error: buildUnknownRequestedCommitMessage(unknownCommit),
+	})
+	expect(response?.data.error).not.toContain('restorable backup')
+	expect(response?.data.error).not.toContain('source recovery')
 })

@@ -657,9 +657,15 @@ export const repoPublishSessionOutputSchema = z.discriminatedUnion('status', [
 		status: z.literal('locked'),
 		session_id: z.string(),
 		published_commit: z.null(),
-		pending_commit: z.string(),
+		pending_commit: z
+			.string()
+			.describe('Full 40-character SHA-1 to promote. Do not abbreviate it.'),
 		current_published_commit: z.string().nullable(),
-		approval_url: z.string(),
+		approval_url: z
+			.string()
+			.describe(
+				'Owner page for pending_commit. The commit query is that full 40-character SHA-1.',
+			),
 		message: z.string(),
 	}),
 	z.object({

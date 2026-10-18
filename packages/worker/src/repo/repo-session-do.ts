@@ -120,6 +120,7 @@ import {
 	externalPublishWorkspaceDir,
 	isWorkspaceSqliteTooBigMessage,
 } from './external-publish-clone.ts'
+import { classifyExternalPublishCloneError } from './requested-commit-error.ts'
 import {
 	attachPublishPhaseTimings,
 	timePublishExternalPushPhase,
@@ -3571,20 +3572,38 @@ class RepoSessionBase extends DurableObject<Env> {
 				},
 			))
 		} catch (error) {
-			const message = getErrorMessage(error)
-			if (message.includes('Artifacts HEAD changed from')) {
-				throw error
-			}
-			throw new Error(
-				buildSourceRecoveryProblemMessage({
-					source,
-					operation: 'packagePublishExternalPush',
-					reason: message.includes('source clone or commit checkout failed:')
-						? message
-						: `source clone or commit checkout failed: ${message}`,
-				}),
-				{ cause: error },
+			const classified = classifyExternalPublishCloneError(
+				error,
+				input.newCommit,
 			)
+			switch (classified.kind) {
+				case 'rethrow':
+					throw error
+				case 'unknown_commit':
+					throw classified.error
+				case 'storage':
+					throw new Error(
+						buildWorkspaceSqliteTooBigCallerMessage(
+							'packagePublishExternalPush',
+						),
+						{ cause: error },
+					)
+				case 'source_recovery':
+					throw new Error(
+						buildSourceRecoveryProblemMessage({
+							source,
+							operation: 'packagePublishExternalPush',
+							reason: classified.reason,
+						}),
+						{ cause: error },
+					)
+				default: {
+					const exhaustive: never = classified
+					throw new Error(
+						`Unhandled external publish clone failure: ${String(exhaustive)}`,
+					)
+				}
+			}
 		}
 		const runId = crypto.randomUUID()
 		const publishDir = publishClone.dir || externalPublishWorkspaceDir

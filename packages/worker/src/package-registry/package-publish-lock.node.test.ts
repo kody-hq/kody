@@ -16,8 +16,11 @@ test('publish lock treats a stored timestamp as locked and builds a commit-named
 	expect(isSavedPackageLocked('   ')).toBe(false)
 	expect(isSavedPackageLocked('2026-08-28T12:00:00.000Z')).toBe(true)
 
-	expect(isGitCommitSha('7f3a91c')).toBe(true)
-	expect(isGitCommitSha('7f3a91c2e8b4d0aa')).toBe(true)
+	expect(isGitCommitSha('7f3a91c')).toBe(false)
+	expect(isGitCommitSha('7f3a91c2e8b4d0aa')).toBe(false)
+	expect(isGitCommitSha('a'.repeat(64))).toBe(false)
+	expect(isGitCommitSha('a'.repeat(40))).toBe(true)
+	expect(isGitCommitSha('A'.repeat(40))).toBe(true)
 	expect(isGitCommitSha('not-a-sha')).toBe(false)
 	expect(isGitCommitSha('')).toBe(false)
 

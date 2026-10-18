@@ -51,7 +51,7 @@ export const packageSummarySchema = z.object({
 		.string()
 		.nullable()
 		.describe(
-			'When set, publishes require a website click at /@{username}/{kodyId}/approve-publish. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings.',
+			'When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit.',
 		),
 	source_id: z.string(),
 	created_at: z.string(),

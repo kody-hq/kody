@@ -396,9 +396,13 @@ const outputSchema = z.discriminatedUnion('status', [
 		pending_commit: z
 			.string()
 			.describe(
-				'HEAD commit that passed checks. Promote it on the website approval page.',
+				'Full 40-character SHA-1 of the HEAD commit that passed checks. Promote it on the website approval page. Do not abbreviate it.',
 			),
-		approval_url: z.string(),
+		approval_url: z
+			.string()
+			.describe(
+				'Owner page for pending_commit. The commit query is that full 40-character SHA-1.',
+			),
 		message: z.string(),
 	}),
 	z.object({

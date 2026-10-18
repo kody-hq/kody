@@ -12,9 +12,11 @@ import {
 	type PackageMutationResult,
 } from './package-mutation-result.ts'
 import {
+	fullGitCommitShaRequiredMessage,
 	isGitCommitSha,
 	isSavedPackageLocked,
 } from '#worker/package-registry/package-publish-lock.ts'
+import { unknownRequestedCommitError } from '#worker/repo/requested-commit-error.ts'
 import { setSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
@@ -60,9 +62,9 @@ export async function loadAccountPackageApprovePublishData(input: {
 	let pendingCommit: string | null = null
 	if (requestedCommit) {
 		if (!isGitCommitSha(requestedCommit)) {
-			return { ok: false, error: 'The commit in this URL is not a git SHA.' }
+			return { ok: false, error: fullGitCommitShaRequiredMessage }
 		}
-		pendingCommit = requestedCommit
+		pendingCommit = requestedCommit.toLowerCase()
 	} else {
 		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
 		pendingCommit = head.commit
@@ -254,12 +256,12 @@ async function changePackagePublishState(
 		return packageMutationResult({ ok: true, packageId })
 	}
 
-	const commit = ('commit' in input ? input.commit : '').trim()
+	const commit = ('commit' in input ? input.commit : '').trim().toLowerCase()
 	if (!isGitCommitSha(commit)) {
 		return packageMutationResult(
 			{
 				ok: false,
-				error: 'A git commit SHA is required to approve this publish.',
+				error: fullGitCommitShaRequiredMessage,
 			},
 			400,
 		)
@@ -276,28 +278,42 @@ async function changePackagePublishState(
 		)
 	}
 	const sessionId = `approve-publish-${savedPackage.id}`
-	const publishResult = await repoSessionRpc(
-		input.env,
-		sessionId,
-	).publishFromExternalRef({
-		sessionId,
-		sourceId: source.id,
-		userId: ownerUserId,
-		newCommit: commit,
-		...(locked ? { allowLockedPublish: true } : {}),
-		requestedByUserId: actorUserId,
-		// Owner explicitly chose this commit on approve-publish. If a
-		// published-only fleet migration advanced published_commit to a sibling
-		// of pending HEAD, this is not a fast-forward; allowForce + overwrite
-		// confirmation (this click) still requires a restorable backup.
-		allowForce: true,
-		destructiveOverwriteConfirmed: true,
-		baseUrl: getAppBaseUrl({
-			env: input.env,
-			requestUrl: input.request.url,
-		}),
-		rebuildPackageArtifacts: true,
-	})
+	let publishResult: Awaited<
+		ReturnType<ReturnType<typeof repoSessionRpc>['publishFromExternalRef']>
+	>
+	try {
+		publishResult = await repoSessionRpc(
+			input.env,
+			sessionId,
+		).publishFromExternalRef({
+			sessionId,
+			sourceId: source.id,
+			userId: ownerUserId,
+			newCommit: commit,
+			...(locked ? { allowLockedPublish: true } : {}),
+			requestedByUserId: actorUserId,
+			// Owner explicitly chose this commit on approve-publish. If a
+			// published-only fleet migration advanced published_commit to a sibling
+			// of pending HEAD, this is not a fast-forward; allowForce + overwrite
+			// confirmation (this click) still requires a restorable backup.
+			allowForce: true,
+			destructiveOverwriteConfirmed: true,
+			baseUrl: getAppBaseUrl({
+				env: input.env,
+				requestUrl: input.request.url,
+			}),
+			rebuildPackageArtifacts: true,
+		})
+	} catch (error) {
+		const unknownCommit = unknownRequestedCommitError(error, commit)
+		if (unknownCommit) {
+			return packageMutationResult(
+				{ ok: false, error: unknownCommit.message },
+				400,
+			)
+		}
+		throw error
+	}
 	switch (publishResult.status) {
 		case 'published':
 		case 'already_published': {
