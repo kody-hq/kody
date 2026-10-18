@@ -39,6 +39,11 @@ import { refreshOnActivation } from '../refresh-on-activation.ts'
 import { refreshActiveQueries } from '../refresh-active-queries.ts'
 import { captureClientException } from '#client/sentry-client.ts'
 import { CANONICAL_ORIGIN_META_NAME } from '#universal/document-head-markers.ts'
+import {
+	documentCharset,
+	documentViewport,
+	documentThemeColors,
+} from '../document-shell-meta.ts'
 import { SENTRY_CONFIG_META_NAME } from '#universal/sentry-config.ts'
 import { NotFoundPage } from '../components/not-found-page.tsx'
 import { InternalErrorPage } from '../components/internal-error-page.tsx'
@@ -355,7 +360,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
-				<meta charSet="utf-8" />
+				<meta charSet={documentCharset} />
 				{homeDocument ? (
 					<script
 						nonce={nonce}
@@ -365,7 +370,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 						}}
 					/>
 				) : null}
-				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<meta name="viewport" content={documentViewport} />
 				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
 				<link
 					rel="icon"
@@ -385,16 +390,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/apple-touch-icon.png')}
 				/>
 				<link rel="manifest" href={publicAsset('/site.webmanifest')} />
-				<meta
-					name="theme-color"
-					content="#e6e8ea"
-					media="(prefers-color-scheme: light)"
-				/>
-				<meta
-					name="theme-color"
-					content="#111417"
-					media="(prefers-color-scheme: dark)"
-				/>
+				<meta name="theme-color" {...documentThemeColors.light} />
+				<meta name="theme-color" {...documentThemeColors.dark} />
 				<script src={publicAsset('/page-init.js')} />
 				<link
 					rel="preload"

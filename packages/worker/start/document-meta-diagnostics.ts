@@ -1,3 +1,11 @@
+import { CANONICAL_ORIGIN_META_NAME } from '#universal/document-head-markers.ts'
+import { documentActorMetaName } from './session-identity.ts'
+import {
+	documentCharset,
+	documentViewport,
+	documentThemeColors,
+} from './document-shell-meta.ts'
+
 type MetaCheck = {
 	name: string
 	selector: string
@@ -11,27 +19,24 @@ export function documentMetaDiagnostics(doc: Document, loaderData: unknown) {
 		{
 			name: 'charset',
 			selector: 'meta[charset]',
-			attributes: { charset: 'utf-8' },
+			attributes: { charset: documentCharset },
 		},
 		{
 			name: 'viewport',
 			selector: 'meta[name="viewport"]',
-			attributes: { content: 'width=device-width, initial-scale=1' },
+			attributes: { content: documentViewport },
 		},
 		{
 			name: 'theme-color-light',
 			selector: 'meta[name="theme-color"]',
 			index: 0,
-			attributes: {
-				content: '#e6e8ea',
-				media: '(prefers-color-scheme: light)',
-			},
+			attributes: documentThemeColors.light,
 		},
 		{
 			name: 'theme-color-dark',
 			selector: 'meta[name="theme-color"]',
 			index: 1,
-			attributes: { content: '#111417', media: '(prefers-color-scheme: dark)' },
+			attributes: documentThemeColors.dark,
 		},
 	]
 	if (loaderData && typeof loaderData === 'object') {
@@ -41,7 +46,7 @@ export function documentMetaDiagnostics(doc: Document, loaderData: unknown) {
 		) {
 			checks.push({
 				name: 'canonical-origin',
-				selector: 'meta[name="kody:canonical-origin"]',
+				selector: `meta[name="${CANONICAL_ORIGIN_META_NAME}"]`,
 				attributes: { content: loaderData.canonicalOrigin },
 			})
 		}
@@ -51,7 +56,7 @@ export function documentMetaDiagnostics(doc: Document, loaderData: unknown) {
 		) {
 			checks.push({
 				name: 'document-actor',
-				selector: 'meta[name="kody-document-actor"]',
+				selector: `meta[name="${documentActorMetaName}"]`,
 				attributes: { content: JSON.stringify(loaderData.actorKey) },
 			})
 		}
