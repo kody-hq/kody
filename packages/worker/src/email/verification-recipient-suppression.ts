@@ -1,11 +1,14 @@
 /**
- * Per-recipient hard-bounce suppression for verification mail.
+ * Per-recipient hard-bounce suppression for verification mail and
+ * password-reset mail.
  *
  * Cloudflare lifecycle events already update per-user delivery state. This
- * table stops every later verification send to the same recipient, including
- * a different account that tries the address. A later `delivered` event clears
- * the row. Sender-domain blocklist hits stay on the temporary cooldown path
- * and are not recorded here.
+ * table stops later verification sends and both password-reset emails to the
+ * same recipient, including a different account that tries the address. The
+ * 5-per-day verification cap does not apply to password resets. A later
+ * `delivered` event clears the row. Sender-domain blocklist hits stay on the
+ * temporary cooldown path and are not recorded here. Mailbox and forwarding
+ * events do not write this table.
  */
 
 import { normalizeEmailAddress } from './address.ts'

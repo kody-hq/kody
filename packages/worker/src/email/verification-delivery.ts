@@ -12,6 +12,20 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export const transactionalEmailVerificationKind = 'email_verification'
 export const transactionalEmailDestinationVerificationKind =
 	'email_destination_verification'
+export const transactionalPasswordResetKind = 'password_reset'
+export const transactionalPasswordResetConfirmedKind =
+	'password_reset_confirmed'
+
+const recipientHardBounceKinds = new Set<string>([
+	transactionalEmailVerificationKind,
+	transactionalPasswordResetKind,
+	transactionalPasswordResetConfirmedKind,
+])
+
+/** Verification and password-reset mail record a recipient hard bounce. Mailbox and forwarding kinds do not. */
+export function transactionalKindRecordsHardBounce(kind: string) {
+	return recipientHardBounceKinds.has(kind)
+}
 
 const deliveryDetailMaxLength = 500
 
@@ -241,6 +255,28 @@ export async function recordTransactionalEmailDeliveryEvent(input: {
 		return { outcome: 'unmatched' }
 	}
 
+	if (
+		index.kind === transactionalPasswordResetKind ||
+		index.kind === transactionalPasswordResetConfirmedKind
+	) {
+		// Index-only: a reset bounce must not write signup verification
+		// columns. The delivery-event path still records recipient suppression.
+		return {
+			outcome: 'recorded',
+			event: {
+				userId: index.user_id,
+				kind: index.kind,
+				recipient: index.recipient,
+				status: input.deliveryStatus,
+				class: classifyVerificationDeliveryFailure({
+					status: input.deliveryStatus,
+					smtpResponse: input.smtpResponse,
+					smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
+				}),
+				alreadyTerminal: false,
+			},
+		}
+	}
 	if (index.kind === transactionalEmailDestinationVerificationKind) {
 		// Index-only: extra-address verify must not write
 		// users.email_verification_delivery_*. Those columns are signup

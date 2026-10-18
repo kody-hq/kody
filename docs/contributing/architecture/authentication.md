@@ -224,22 +224,25 @@ cooldowns in `email_recipient_cooldowns` and mark rejecting MX providers in
 `email_rejecting_providers`. Holdable mail, such as campaigns and plan-limit
 nudges, is skipped for rejecting providers until rejections age out or delivery
 succeeds. Essential verification, password, security, and billing mail remains
-subject to recipient cooldowns. Verification mail has two extra stops.
-`email_verification_hard_bounces` records a per-recipient hard bounce (a
-Cloudflare `bounced` event, or `failed` / `rejected` with a permanent 5xx) and
-refuses later verification sends to that address on every account until a
-`delivered` event clears the row. Sender-domain blocklist hits stay on the
-temporary cooldown and are not stored there. The per-recipient verification cap
-is the other stop. Native password-reset operations use the same send policy.
-`/pending-verification` polls the native `readWebsiteSessionInfo` server
-function (session cookie only; no email input) for delivery indicators without
-exposing other users' delivery state. Polls time out after ten seconds, and
-successful resend invalidates earlier reads. The first terminal failure fans
-`user.email_verification.failed` to admin-owned packages. When a send stays
-`accepted` for an hour with no lifecycle event, the hourly
-`email_verification_stall_alert` lane fans `user.email_verification.stalled`.
-`/admin/users` and `adminUserList` accept `verification=stalled` for the same
-derived set. See
+subject to recipient cooldowns. The hard-bounce suppression applies to
+verification and password-reset mail, and the 5/24h cap applies to verification
+mail only. `email_verification_hard_bounces` records a per-recipient hard bounce
+(a Cloudflare `bounced` event, or `failed` / `rejected` with a permanent 5xx)
+from verification mail and from `password_reset` / `password_reset_confirmed`.
+Later verification sends and both password-reset emails to that address are
+skipped until a `delivered` event clears the row. A skipped reset still returns
+the generic success response. Sender-domain blocklist hits stay on the temporary
+cooldown and are not stored there. Mailbox and forwarding events do not write
+the suppression row. The per-recipient verification cap is the other stop and is
+not consumed by password resets. `/pending-verification` polls the native
+`readWebsiteSessionInfo` server function (session cookie only; no email input)
+for delivery indicators without exposing other users' delivery state. Polls time
+out after ten seconds, and successful resend invalidates earlier reads. The
+first terminal failure fans `user.email_verification.failed` to admin-owned
+packages. When a send stays `accepted` for an hour with no lifecycle event, the
+hourly `email_verification_stall_alert` lane fans
+`user.email_verification.stalled`. `/admin/users` and `adminUserList` accept
+`verification=stalled` for the same derived set. See
 [the admin events guide](../../guides/admin-events.md#useremailverificationfailed-admins)
 and
 [stalled verification](../../guides/admin-events.md#useremailverificationstalled-admins).

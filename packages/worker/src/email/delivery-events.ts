@@ -7,7 +7,7 @@ import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
 import {
 	recordTransactionalEmailDeliveryEvent,
-	transactionalEmailVerificationKind,
+	transactionalKindRecordsHardBounce,
 } from './verification-delivery.ts'
 
 const cloudflareEmailDeliveryTypeValues = [
@@ -181,8 +181,9 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
 		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
-		recordVerificationSuppression:
-			transactional.event.kind === transactionalEmailVerificationKind,
+		recordVerificationSuppression: transactionalKindRecordsHardBounce(
+			transactional.event.kind,
+		),
 	})
 
 	if (

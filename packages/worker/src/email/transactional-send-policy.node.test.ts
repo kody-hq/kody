@@ -101,6 +101,83 @@ test('gate holds holdable mail for active rejecting providers', async () => {
 	expect(essential).toEqual({ allowed: true })
 })
 
+test('password reset kinds stop on a hard bounce and do not read the verification cap', async () => {
+	const queries: Array<string> = []
+	const db = {
+		prepare(sql: string) {
+			queries.push(sql)
+			return {
+				bind() {
+					return {
+						async first() {
+							if (sql.includes('email_verification_hard_bounces')) {
+								return { recipient: 'ada@example.com', status: 'bounced' }
+							}
+							return null
+						},
+						async run() {
+							return { meta: { changes: 0 } }
+						},
+					}
+				},
+			}
+		},
+	} as unknown as D1Database
+
+	const reset = await gateTransactionalSend({
+		db,
+		recipient: 'ada@example.com',
+		category: 'essential',
+		kind: 'password_reset',
+	})
+	expect(reset).toMatchObject({
+		allowed: false,
+		code: 'recipient_hard_bounce',
+	})
+	const confirmed = await gateTransactionalSend({
+		db,
+		recipient: 'ada@example.com',
+		category: 'essential',
+		kind: 'password_reset_confirmed',
+	})
+	expect(confirmed).toMatchObject({
+		allowed: false,
+		code: 'recipient_hard_bounce',
+	})
+	const verification = await gateTransactionalSend({
+		db,
+		recipient: 'ada@example.com',
+		category: 'essential',
+		kind: 'email_verification',
+	})
+	expect(verification).toEqual({ allowed: true })
+	expect(queries.join('\n')).not.toMatch(/_rate_limits|verify-email:recipient/)
+})
+
+test('password reset hard-bounce lookup fails open when the table is missing', async () => {
+	const db = {
+		prepare() {
+			return {
+				bind() {
+					return {
+						async first() {
+							throw new Error('no such table: email_verification_hard_bounces')
+						},
+					}
+				},
+			}
+		},
+	} as unknown as D1Database
+	expect(
+		await gateTransactionalSend({
+			db,
+			recipient: 'ada@example.com',
+			category: 'essential',
+			kind: 'password_reset',
+		}),
+	).toEqual({ allowed: true })
+})
+
 test('gate fails open when policy tables are missing', async () => {
 	const db = {
 		prepare() {

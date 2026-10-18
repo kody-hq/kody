@@ -26,8 +26,9 @@ export async function applyDeliverabilitySideEffects(input: {
 	smtpEnhancedStatusCode?: string | null
 	smtpStatusCode?: string | null
 	/**
-	 * Mailbox bounces must not suppress verification mail. Only the
-	 * signup/verify transactional kind sets this.
+	 * Verification mail and password-reset mail (`password_reset`,
+	 * `password_reset_confirmed`) set this. Mailbox and forwarding events
+	 * must not.
 	 */
 	recordVerificationSuppression?: boolean
 	now?: Date
