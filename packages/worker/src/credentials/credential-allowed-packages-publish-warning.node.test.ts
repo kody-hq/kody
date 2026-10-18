@@ -250,6 +250,20 @@ test('filesForPackageSourceRoot scopes nested package paths like credential inve
 	expect(filesForPackageSourceRoot({ 'package.json': '{}' }, '/')).toEqual({
 		'package.json': '{}',
 	})
+	// Already package-relative trees (external publish / published snapshots)
+	// must not be emptied when a nested sourceRoot is also passed.
+	expect(
+		filesForPackageSourceRoot(
+			{
+				'package.json': '{"name":"@owner/demo"}',
+				'src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
+			},
+			'packages/demo',
+		),
+	).toEqual({
+		'package.json': '{"name":"@owner/demo"}',
+		'src/index.ts': "export const x = '{{secret:DEMO_KEY}}'\n",
+	})
 })
 
 test('builder respects package source root and ignores sibling fills', async () => {

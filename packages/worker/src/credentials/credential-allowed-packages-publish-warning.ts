@@ -200,11 +200,16 @@ export function filesForPackageSourceRoot(
 ): Record<string, string> {
 	const root = normalizeRepoWorkspacePath(sourceRoot ?? '').replace(/\/+$/, '')
 	if (!root) return files
-	return Object.fromEntries(
+	const scoped = Object.fromEntries(
 		Object.entries(files)
 			.filter(([path]) => path.startsWith(`${root}/`))
 			.map(([path, content]) => [path.slice(root.length + 1), content]),
 	)
+	// Repo snapshots are keyed from the repo root. Published check trees and
+	// some external-publish maps are already package-relative — only strip when
+	// the map still contains paths under the source root.
+	if (Object.keys(scoped).length > 0) return scoped
+	return files
 }
 
 export async function buildCredentialAllowedPackagesPublishWarnings(input: {
