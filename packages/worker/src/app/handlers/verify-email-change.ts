@@ -10,6 +10,7 @@ import {
 	readAuthSessionResult,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { verifyEmailChangeToken } from '#app/email-change.ts'
 
 function getVerifyEmailChangeError(result: {
@@ -55,6 +56,7 @@ export async function executeVerifyEmailChange({
 	const result = await verifyEmailChangeToken({
 		db: env.APP_DB,
 		token: token,
+		allowExampleDomain: isNonProductionRuntime(env),
 	})
 	const requestIp = getRequestIp(request) ?? undefined
 

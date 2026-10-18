@@ -30,6 +30,7 @@ import {
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
 import { firstTouchAttributionCreateFields } from '#universal/first-touch-attribution.ts'
 import { type OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	assessAccountEmail,
 	type AccountEmailRejectionCode,
@@ -621,7 +622,9 @@ export function createAuthProviderCallbackHandler(env: Env) {
 
 		// 4. New account. Reject addresses we would not store before any
 		// identity allocation or user-row write.
-		const emailDecision = await assessAccountEmail(email)
+		const emailDecision = await assessAccountEmail(email, {
+			allowExampleDomain: isNonProductionRuntime(env),
+		})
 		if (!emailDecision.ok) {
 			return fail(
 				oauthCodeForAccountEmail(emailDecision.code),

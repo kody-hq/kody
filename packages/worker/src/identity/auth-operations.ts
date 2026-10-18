@@ -22,6 +22,7 @@ import {
 	inspectVerificationEmailSend,
 	VerificationEmailRefusedError,
 } from '#app/verification-email-cap.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
@@ -261,7 +262,9 @@ export async function authenticateWebsite({
 			)
 		}
 
-		const emailDecision = await assessAccountEmail(normalizedEmail)
+		const emailDecision = await assessAccountEmail(normalizedEmail, {
+			allowExampleDomain: isNonProductionRuntime(env),
+		})
 		if (!emailDecision.ok) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),

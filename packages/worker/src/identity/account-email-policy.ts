@@ -228,10 +228,16 @@ function isVitestRuntime() {
  */
 export async function assessAccountEmail(
 	email: string,
-	options?: { fetchImpl?: typeof fetch },
+	options?: { fetchImpl?: typeof fetch; allowExampleDomain?: boolean },
 ): Promise<AccountEmailAssessment> {
 	const syntax = assessAccountEmailSyntax(email)
 	if (!syntax.ok) return syntax
+	// example.com publishes a null MX. Unit tests skip DNS under Vitest.
+	// Local dev, preview, and Playwright permit that fixture only; production
+	// still rejects it.
+	if (options?.allowExampleDomain && syntax.email.endsWith('@example.com')) {
+		return syntax
+	}
 	if (!options?.fetchImpl && isVitestRuntime()) {
 		return syntax
 	}

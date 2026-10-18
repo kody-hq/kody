@@ -56,6 +56,7 @@ test('a hard bounce suppresses later verification sends until a delivery clears 
 		deliveryStatus: 'bounced',
 		smtpResponse: '550 5.1.1 user unknown',
 		smtpStatusCode: '550',
+		recordVerificationSuppression: true,
 		fetchImpl,
 	})
 	const suppressed = await loadVerificationRecipientHardBounce({
@@ -72,6 +73,7 @@ test('a hard bounce suppresses later verification sends until a delivery clears 
 		recipient: "O'Brien <o'brien@company.com>",
 		deliveryStatus: 'bounced',
 		smtpResponse: '550 5.1.1 user unknown',
+		recordVerificationSuppression: true,
 		fetchImpl,
 	})
 	expect(

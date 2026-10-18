@@ -25,6 +25,11 @@ export async function applyDeliverabilitySideEffects(input: {
 	smtpResponse?: string | null
 	smtpEnhancedStatusCode?: string | null
 	smtpStatusCode?: string | null
+	/**
+	 * Mailbox bounces must not suppress verification mail. Only the
+	 * signup/verify transactional kind sets this.
+	 */
+	recordVerificationSuppression?: boolean
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<void> {
@@ -65,15 +70,17 @@ export async function applyDeliverabilitySideEffects(input: {
 			now,
 			fetchImpl: input.fetchImpl,
 		})
-		await recordVerificationRecipientHardBounce({
-			db: input.db,
-			recipient: input.recipient,
-			status: input.deliveryStatus,
-			smtpResponse: input.smtpResponse,
-			smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
-			smtpStatusCode: input.smtpStatusCode,
-			now,
-		})
+		if (input.recordVerificationSuppression) {
+			await recordVerificationRecipientHardBounce({
+				db: input.db,
+				recipient: input.recipient,
+				status: input.deliveryStatus,
+				smtpResponse: input.smtpResponse,
+				smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
+				smtpStatusCode: input.smtpStatusCode,
+				now,
+			})
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
 		// Pre-migration / stripped workers fixtures omit policy tables. Fail

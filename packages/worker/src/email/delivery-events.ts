@@ -5,7 +5,10 @@ import { type MailboxEnv } from './mailbox-client.ts'
 import { type EmailReportingEnv } from './reporting-events.ts'
 import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
-import { recordTransactionalEmailDeliveryEvent } from './verification-delivery.ts'
+import {
+	recordTransactionalEmailDeliveryEvent,
+	transactionalEmailVerificationKind,
+} from './verification-delivery.ts'
 
 const cloudflareEmailDeliveryTypeValues = [
 	'cf.email.sending.message.delivered',
@@ -178,6 +181,8 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
 		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+		recordVerificationSuppression:
+			transactional.event.kind === transactionalEmailVerificationKind,
 	})
 
 	if (

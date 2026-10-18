@@ -159,6 +159,7 @@ export async function verifyEmailChangeToken(input: {
 	db: D1Database
 	token: unknown
 	now?: Date
+	allowExampleDomain?: boolean
 }): Promise<VerifyEmailChangeResult> {
 	const token = typeof input.token === 'string' ? input.token.trim() : ''
 	if (!token) return { ok: false, reason: 'missing_token' }
@@ -204,7 +205,9 @@ export async function verifyEmailChangeToken(input: {
 	) {
 		return { ok: false, reason: 'email_conflict' }
 	}
-	const emailDecision = await assessAccountEmail(newEmail)
+	const emailDecision = await assessAccountEmail(newEmail, {
+		allowExampleDomain: input.allowExampleDomain,
+	})
 	if (!emailDecision.ok) {
 		return {
 			ok: false,

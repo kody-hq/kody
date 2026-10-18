@@ -9,6 +9,7 @@ import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { createEmailChangeVerification } from '#app/email-change.ts'
 import { isEmailReservedForOtherAccount } from '#worker/identity/email-claims.ts'
+import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, releaseRateLimit } from '#app/rate-limit.ts'
@@ -61,35 +62,8 @@ export async function requestWebsiteEmailChange({
 			400,
 		)
 	}
-	const emailDecision = await assessAccountEmail(
-		normalizeEmail(parsed.value.email),
-	)
-	if (!emailDecision.ok) {
-		void logAuditEvent({
-			db: auditDatabaseFromEnv(env),
-			category: 'account',
-			action: 'email_change_request',
-			result: 'failure',
-			email: user.email,
-			ip: requestIp,
-			path: url.pathname,
-			reason: emailDecision.code,
-		})
-		return authOperationResult(
-			{
-				ok: false,
-				error: emailDecision.error,
-				code: emailDecision.code,
-				...(emailDecision.suggestion
-					? { suggestion: emailDecision.suggestion }
-					: {}),
-			},
-			400,
-		)
-	}
-	const newEmail = emailDecision.email
-
-	if (newEmail === normalizeEmail(user.email)) {
+	const requestedEmail = normalizeEmail(parsed.value.email)
+	if (requestedEmail === normalizeEmail(user.email)) {
 		return authOperationResult(
 			{ ok: false, error: 'Enter a different email address.' },
 			400,
@@ -152,6 +126,35 @@ export async function requestWebsiteEmailChange({
 			},
 		)
 	}
+
+	const emailDecision = await assessAccountEmail(requestedEmail, {
+		allowExampleDomain: isNonProductionRuntime(env),
+	})
+	if (!emailDecision.ok) {
+		await releaseRateLimit(env.APP_DB, rateLimitKey).catch(() => undefined)
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'account',
+			action: 'email_change_request',
+			result: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: emailDecision.code,
+		})
+		return authOperationResult(
+			{
+				ok: false,
+				error: emailDecision.error,
+				code: emailDecision.code,
+				...(emailDecision.suggestion
+					? { suggestion: emailDecision.suggestion }
+					: {}),
+			},
+			400,
+		)
+	}
+	const newEmail = emailDecision.email
 
 	const passwordValid = await verifyPassword(password, userRecord.password_hash)
 	if (!passwordValid) {
