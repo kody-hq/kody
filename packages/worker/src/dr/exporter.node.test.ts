@@ -858,6 +858,115 @@ test('empty mailbox owners share progress writes across a wave', async () => {
 	)
 })
 
+test('a failed owner read still keeps the successful pages from that wave', async () => {
+	const owners = [ownerIdFromStored('user-a'), ownerIdFromStored('user-b')]
+	let reads = 0
+	mailboxMocks.exportMailbox.mockReset()
+	mailboxMocks.exportMailbox.mockImplementation(async () => {
+		reads += 1
+		if (reads === 2) throw new Error('mailbox down')
+		return { rows: [], truncated: false, nextStartAfter: null }
+	})
+	mockRunLogPage()
+	mockStorageEntries([])
+	const { client, readText } = createMemoryS3()
+	const env = createEnv({
+		APP_DB: createDb({
+			users: owners.map((ownerId) => ({ ownerId })),
+		}),
+		MAILBOX: {},
+		RUN_LOG: {},
+	})
+
+	await expect(
+		runDrExportTick({
+			env,
+			now: at('01:00'),
+			timeBudgetMs: 60_000,
+			s3: client,
+		}),
+	).rejects.toThrow(/mailbox down/)
+	const progress = JSON.parse(await readText(progressKey)) as {
+		mailbox: { pendingEntries: Array<{ ownerId: string }> }
+	}
+	expect(progress.mailbox.pendingEntries.map((entry) => entry.ownerId)).toEqual(
+		[owners[0]],
+	)
+	const leased = await client.getText(progressKey)
+	const released = JSON.parse(leased!.text) as { leaseId: string | null }
+	released.leaseId = null
+	await client.put(
+		progressKey,
+		JSON.stringify({ ...released, leaseExpiresAt: null }),
+		{
+			ifMatch: leased!.etag,
+		},
+	)
+
+	mailboxMocks.exportMailbox.mockResolvedValue({
+		rows: [],
+		truncated: false,
+		nextStartAfter: null,
+	})
+	const resumed = await runDrExportTick({
+		env,
+		now: at('01:05'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(resumed.summaryWritten).toBe(true)
+	expect(mailboxMocks.exportMailbox).toHaveBeenCalledTimes(3)
+})
+
+test('prefetched truncated mailbox pages are not read again in the same tick', async () => {
+	const calls: Array<string | null> = []
+	mailboxMocks.exportMailbox.mockReset()
+	mailboxMocks.exportMailbox.mockImplementation(
+		async (input: { startAfter?: string | null }) => {
+			const startAfter = input.startAfter ?? null
+			calls.push(startAfter)
+			if (startAfter === 'message:page-1') {
+				return {
+					rows: [{ kind: 'message', row: { id: 'page-2' } }],
+					truncated: false,
+					nextStartAfter: null,
+				}
+			}
+			return {
+				rows: [{ kind: 'message', row: { id: 'page-1' } }],
+				truncated: true,
+				nextStartAfter: 'message:page-1',
+			}
+		},
+	)
+	mockRunLogPage()
+	mockStorageEntries([])
+	const owners = [ownerIdFromStored('user-a'), ownerIdFromStored('user-b')]
+	const { client, readNdjson } = createMemoryS3()
+	const env = createEnv({
+		APP_DB: createDb({
+			users: owners.map((ownerId) => ({ ownerId })),
+		}),
+		MAILBOX: {},
+		RUN_LOG: {},
+	})
+
+	const result = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(result.summaryWritten).toBe(true)
+	expect(calls).toEqual([null, null, 'message:page-1', 'message:page-1'])
+	for (const ownerId of owners) {
+		const rows = await readNdjson<{ row: { id: string } }>(
+			stagingMailboxDumpKey(day, ownerId),
+		)
+		expect(rows.map((line) => line.row.id)).toEqual(['page-1', 'page-2'])
+	}
+})
+
 test('an in-progress mailbox dump resumes before a newly inserted earlier owner', async () => {
 	const calls: Array<string | null> = []
 	mailboxMocks.exportMailbox.mockReset()

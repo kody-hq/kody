@@ -613,6 +613,10 @@ async function exportOwnerPhase(input: {
 	})
 	const budgetExhausted = () =>
 		Date.now() - input.startedAtMs >= input.timeBudgetMs
+	// First pages already fetched for truncated owners. Progress only tracks
+	// one partial dump, so the rest stay in memory until this tick commits
+	// them. A crash refetches them; a healthy tick does not.
+	const heldFirstPages: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
 
 	async function consumeOwnerPage(
 		ownerId: OwnerId,
@@ -710,32 +714,56 @@ async function exportOwnerPhase(input: {
 			resetPartialOwnerState(input.lane)
 		}
 
+		const held = heldFirstPages.shift()
+		if (held) {
+			await consumeOwnerPage(held.ownerId, held.page)
+			await persistProgress(input.s3, input.session)
+			continue
+		}
+
+		const heldOwnerIds = new Set(heldFirstPages.map((page) => page.ownerId))
 		const batch: Array<OwnerId> = []
 		for (const candidate of input.owners) {
 			if (batch.length >= ownerExportConcurrency) break
-			if (handledOwnerIds.has(candidate)) continue
+			if (handledOwnerIds.has(candidate) || heldOwnerIds.has(candidate)) {
+				continue
+			}
 			batch.push(candidate)
 		}
 		if (batch.length === 0) break
-		const pages = await Promise.all(
+		const settled = await Promise.allSettled(
 			batch.map(async (ownerId) => ({
 				ownerId,
 				page: await input.fetchPage(ownerId, input.initialCursor),
 			})),
 		)
+		const pages: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+		let fetchFailure: unknown = null
+		for (const result of settled) {
+			if (result.status === 'fulfilled') {
+				pages.push(result.value)
+				continue
+			}
+			if (fetchFailure === null) fetchFailure = result.reason
+		}
 		const truncated: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+		let consumed = false
 		for (const item of pages) {
 			if (item.page.truncated && item.page.nextStartAfter) {
 				truncated.push(item)
 				continue
 			}
 			await consumeOwnerPage(item.ownerId, item.page)
+			consumed = true
 		}
-		const continued = truncated[0]
+		const continued = truncated.shift()
 		if (continued) {
 			await consumeOwnerPage(continued.ownerId, continued.page)
+			consumed = true
 		}
-		await persistProgress(input.s3, input.session)
+		heldFirstPages.push(...truncated)
+		if (consumed) await persistProgress(input.s3, input.session)
+		if (fetchFailure) throw fetchFailure
 	}
 	await flushOwnerIndexChunk({
 		s3: input.s3,
