@@ -144,9 +144,12 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   that do not name an existing step or job id. GitHub resolves those
   misspellings to empty strings instead of failing the run, so a typo in
   `deploy.yml` would otherwise first appear on a production deploy. It also
-  requires a `server.json` version bump when registry metadata changes: the MCP
-  Registry cannot republish a version. It also rejects a `description` longer
-  than 100 characters (`ServerDetail.description.maxLength` in the MCP
+  requires `EXPECTED_DEPLOY_WORKFLOW_CONTRACT` in `deploy.yml` to match
+  `DEPLOY_WORKFLOW_CONTRACT_VERSION` in `tools/ci/deploy-workflow-contract.ts`
+  (bump both when tip-of-main deploy.yml gains a checkout-coupled requirement).
+  It also requires a `server.json` version bump when registry metadata changes:
+  the MCP Registry cannot republish a version. It also rejects a `description`
+  longer than 100 characters (`ServerDetail.description.maxLength` in the MCP
   server.json schema) so a copy edit fails `validate` instead of the publish
   job. CI passes the PR base SHA or the pre-push `github.event.before` as
   `MCP_REGISTRY_VALIDATION_BASE` so a multi-commit main push that already bumped

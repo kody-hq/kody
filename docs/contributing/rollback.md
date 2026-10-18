@@ -403,16 +403,21 @@ forward-fix, or when you want Git history and CI to match what is live.
    HEAD, or an older validated `main` commit when live production `/health`
    reports an ancestor of it (`tools/ci/deploy-sha-guard.ts`). It never deploys
    a commit that is already live, older than live, or compared against an
-   unreadable live SHA. Path-filtered push deploys skip unchanged workers.
-   Optional workers (backup control plane, status, nx-cache) path-filter against
-   a 15-commit lookback from the deploy SHA, so a Validate gap longer than that
-   window can leave those workers on an older tree even when `main` still
-   contains the change. Manual `workflow_dispatch` on current `main` HEAD
-   force-deploys every worker, including those optional ones. The production job
-   timeout is 20 minutes, jobs/highlight 8 minutes each. Wall time is one
-   Validate cycle plus one Deploy cycle. The deploy job applies `APP_DB` /
-   `AUDIT_DB` migrations, uploads platform → runtime → origin, health-checks,
-   and runs execute smoke.
+   unreadable live SHA. Before path filters or uploads, it also requires the
+   checkout to satisfy `EXPECTED_DEPLOY_WORKFLOW_CONTRACT` from tip-of-main
+   `deploy.yml` (`tools/ci/deploy-workflow-contract.ts`): an older SHA that
+   predates a checkout-coupled workflow change fails fast with a plain redeploy
+   message instead of dying midway. Compatible commits that already carry the
+   required contract version still deploy. Path-filtered push deploys skip
+   unchanged workers. Optional workers (backup control plane, status, nx-cache)
+   path-filter against a 15-commit lookback from the deploy SHA, so a Validate
+   gap longer than that window can leave those workers on an older tree even
+   when `main` still contains the change. Manual `workflow_dispatch` on current
+   `main` HEAD force-deploys every worker, including those optional ones. The
+   production job timeout is 20 minutes, jobs/highlight 8 minutes each. Wall
+   time is one Validate cycle plus one Deploy cycle. The deploy job applies
+   `APP_DB` / `AUDIT_DB` migrations, uploads platform → runtime → origin,
+   health-checks, and runs execute smoke.
 
 `workflow_dispatch` on `.github/workflows/deploy.yml` has **no inputs**. It is
 allowed only when `github.ref_name == 'main'`. `sha-guard` compares the

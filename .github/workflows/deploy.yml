@@ -438,6 +438,10 @@ jobs:
           WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_DISPATCH_SHA: ${{ github.sha }}
           PRODUCTION_URL: ${{ vars.APP_BASE_URL || 'https://kody.codes' }}
+          # Tip-of-main workflow ↔ checkout contract. Bump together with
+          # DEPLOY_WORKFLOW_CONTRACT_VERSION in tools/ci/deploy-workflow-contract.ts
+          # when this workflow gains a checkout-coupled requirement.
+          EXPECTED_DEPLOY_WORKFLOW_CONTRACT: '1'
         run: |
           set -euo pipefail
           DEPLOY_SHA="$WORKFLOW_RUN_SHA"
@@ -483,6 +487,15 @@ jobs:
             exit 0
           fi
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+
+          # Fail fast when tip-of-main deploy.yml relies on checkout-side
+          # scripts/flags this SHA lacks (tools/ci/deploy-workflow-contract.ts).
+          # Runs before path filters, migrations, or any worker upload.
+          if [ ! -f tools/ci/deploy-workflow-contract.ts ]; then
+            echo "This commit predates the current deploy workflow (missing deploy-workflow-contract). Redeploy from main or a newer commit." >&2
+            exit 1
+          fi
+          node tools/ci/deploy-workflow-contract.ts
 
           # Always redeploy the DR control plane and status worker on manual
           # workflow_dispatch. On push-driven deploys, path-filter against a
