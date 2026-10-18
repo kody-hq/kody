@@ -48,6 +48,33 @@ function jsonResponse(body: unknown, status = 200) {
 	})
 }
 
+test('startDeviceAuthorization rejects redirects so client_secret is not resent', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(
+		async () =>
+			new Response(null, {
+				status: 307,
+				headers: { Location: 'http://evil.example/device' },
+			}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		clientSecret: 'device-client-secret',
+		fetchImpl,
+	})
+	expect(started).toEqual({
+		ok: false,
+		error:
+			'Device authorization endpoint returned a redirect; credential-bearing requests do not follow redirects.',
+		status: 502,
+	})
+	expect(fetchImpl).toHaveBeenCalledWith(
+		baseStart.deviceAuthorizationUrl,
+		expect.objectContaining({ redirect: 'manual' }),
+	)
+})
+
 test('startDeviceAuthorization rejects non-loopback http device and token URLs', async () => {
 	const env = createSqliteEnv()
 	const fetchImpl = vi.fn()

@@ -445,6 +445,9 @@ export async function startDeviceAuthorization(input: {
 				'Content-Type': 'application/x-www-form-urlencoded',
 			},
 			body: params.toString(),
+			// Never follow redirects: confidential device starts may POST
+			// client_secret, and 307/308 would resend that body to Location.
+			redirect: 'manual',
 			signal: AbortSignal.timeout(30_000),
 		})
 	} catch (error) {
@@ -454,6 +457,15 @@ export async function startDeviceAuthorization(input: {
 				error instanceof Error
 					? `Device authorization request failed: ${error.message}`
 					: 'Device authorization request failed.',
+			status: 502,
+		}
+	}
+	if (response.status >= 300 && response.status < 400) {
+		await response.body?.cancel()
+		return {
+			ok: false,
+			error:
+				'Device authorization endpoint returned a redirect; credential-bearing requests do not follow redirects.',
 			status: 502,
 		}
 	}
@@ -655,6 +667,9 @@ export async function pollDeviceAuthorization(input: {
 			method: 'POST',
 			headers: exchangeRequest.headers,
 			body: exchangeRequest.body,
+			// Token poll may include client_secret / device_code; never follow
+			// redirects that could resend credentials to another origin.
+			redirect: 'manual',
 			signal: AbortSignal.timeout(30_000),
 		})
 	} catch (error) {
@@ -673,6 +688,16 @@ export async function pollDeviceAuthorization(input: {
 				error instanceof Error
 					? `Device token poll failed: ${error.message}`
 					: 'Device token poll failed.',
+			httpStatus: 502,
+		}
+	}
+	if (response.status >= 300 && response.status < 400) {
+		await response.body?.cancel()
+		return {
+			ok: false,
+			status: 'provider_error',
+			error:
+				'Token endpoint returned a redirect; credential-bearing requests do not follow redirects.',
 			httpStatus: 502,
 		}
 	}
