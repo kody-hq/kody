@@ -29,7 +29,7 @@ tool outputs.
 3. **Additive config.** `user_oauth_apps` / `platform_oauth_apps` gain optional
    `device_authorization_url` and `flow = 'device'`. Existing rows are
    unchanged; no data migration of live connections is required beyond the
-   nullable column add (migration `0161`).
+   nullable column add (migration `0165`).
 4. **Public and confidential device clients.** Device grant is orthogonal to
    client authentication: a client secret is optional. Token poll / refresh use
    confidential auth only when a secret is available.
