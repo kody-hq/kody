@@ -18,8 +18,10 @@ import {
 	checkedPublishState,
 	createDurableObjectState,
 	createEnv,
+	sessionRow,
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -426,4 +428,61 @@ test('a locked package keeps its locked-publish flow without pausing for credent
 	).resolves.toMatchObject({ status: 'locked', publishedCommit: null })
 	expect(needsGate.requireCredentialNeedsApproval).not.toHaveBeenCalled()
 	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+})
+
+test('publishSession releases storage inventory after a successful publish', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const packageFile = { 'package.json': userPackageJson }
+	seedWorkspace(packageFile)
+	const state = await checkedPublishState(packageFile)
+	const { publishedSessionScratchReleasedNotice } =
+		await import('./repo-session-do.ts')
+	const result = await repoSession(createEnv(), state).publishSession(session)
+	expect(result).toMatchObject({ status: 'ok' })
+	expect(result.status === 'ok' && result.message).toContain(
+		publishedSessionScratchReleasedNotice,
+	)
+	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalledWith({
+		db: expect.anything(),
+		userId: ownerIdFromStored('user-1'),
+		storageId: 'repo-session:session-1',
+	})
+	expect(mockModule.maybeRefreshStorageBucketEstimate).not.toHaveBeenCalled()
+})
+
+test('publishSession stays ok when scratch inventory delete throws', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const packageFile = { 'package.json': userPackageJson }
+	seedWorkspace(packageFile)
+	const state = await checkedPublishState(packageFile)
+	mockModule.deleteStorageBucketInventory.mockRejectedValueOnce(
+		new Error('d1 inventory delete failed'),
+	)
+	await expect(
+		repoSession(createEnv(), state).publishSession(session),
+	).resolves.toMatchObject({ status: 'ok' })
+	expect(consoleWarn).toHaveBeenCalledWith(
+		expect.stringContaining('published session scratch release failed'),
+	)
+})
+
+test('getSessionInfo heals published inventory without failing on cleanup errors', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	mockModule.getRepoSessionById.mockResolvedValue(
+		sessionRow({
+			id: 'session-1',
+			status: 'published',
+			expires_at: '2026-11-01T00:00:00.000Z',
+		}),
+	)
+	mockModule.storageBucketInventoryExists.mockResolvedValueOnce(true)
+	mockModule.deleteStorageBucketInventory.mockRejectedValueOnce(
+		new Error('inventory delete failed'),
+	)
+	await expect(repoSession().getSessionInfo(session)).resolves.toMatchObject({
+		id: 'session-1',
+	})
 })

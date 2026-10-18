@@ -3142,13 +3142,6 @@ export type AccountUsageWeekWindow = {
 	overEightyPercent: boolean
 }
 
-export type AccountUsageStorageByKind = {
-	kind: 'package' | 'job' | 'execute' | 'repo_session' | 'unknown'
-	label: string
-	bytes: number
-	count: number
-}
-
 export type AccountUsageEntitlementConsumption = {
 	resource: string
 	label: string
@@ -3162,7 +3155,12 @@ export type AccountUsageEntitlementConsumption = {
 	overEightyPercent: boolean
 	week?: AccountUsageWeekWindow
 	/** Inventoried durable buckets by kind (no raw storage ids). */
-	storageByKind?: Array<AccountUsageStorageByKind>
+	storageByKind?: Array<{
+		kind: 'package' | 'job' | 'execute' | 'repo_session' | 'unknown'
+		label: string
+		bytes: number
+		count: number
+	}>
 }
 
 type AccountUsageComputeMeter = {

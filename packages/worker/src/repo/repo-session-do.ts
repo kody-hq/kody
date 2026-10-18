@@ -464,19 +464,31 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * published snapshot. Drop workspace scratch and its storage-bucket
 	 * inventory so leftover session bytes cannot push the owner over their
 	 * plan storage limit. Keeps the catalog row (`published` + expires_at).
-	 * Idempotent: safe for legacy published sessions that still hold scratch.
+	 * Idempotent and never throws: publish already committed; cleanup failure
+	 * must not fail the capability or block getSessionInfo heal. Cron expiry
+	 * still purges leftovers.
 	 */
 	private async releasePublishedSessionScratch(
 		sessionId: string,
 		userId: OwnerId,
 	): Promise<void> {
-		await this.clearCachedSessionState(sessionId)
-		await this.resetWorkspace().catch(() => {
-			// Best-effort; R2 prefix purge below is the safety net.
-		})
-		await this.purgeWorkspaceBlobs()
-		await this.deleteStorageInventory(sessionId, userId)
-		this.initializedSessionId = null
+		try {
+			await this.clearCachedSessionState(sessionId)
+			await this.resetWorkspace().catch(() => {
+				// Best-effort; R2 prefix purge below is the safety net.
+			})
+			await this.purgeWorkspaceBlobs()
+			await this.deleteStorageInventory(sessionId, userId)
+			this.initializedSessionId = null
+		} catch (error) {
+			console.warn(
+				JSON.stringify({
+					message: 'published session scratch release failed',
+					sessionId,
+					error: getErrorMessage(error),
+				}),
+			)
+		}
 	}
 
 	private async readCachedSessionState(
