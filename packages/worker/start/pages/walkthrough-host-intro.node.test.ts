@@ -56,7 +56,7 @@ export const rendered = ['sentence', 'picker'].map(variant => renderToString(
 }
 
 for (const renderer of ['react', 'redact'] as const) {
-	test(`${renderer} SSR keeps host picker styles outside selects without losing selected visual content`, async () => {
+	test(`${renderer} SSR uses native select children and keeps selected marks outside the control`, async () => {
 		const { rendered, selected } = await renderActualIntro(renderer)
 		for (const html of rendered) {
 			const selects = [
@@ -64,20 +64,21 @@ for (const renderer of ['react', 'redact'] as const) {
 			].map((match) => match[0])
 			expect(selects).toHaveLength(3)
 			for (const [index, select] of selects.entries()) {
-				expect(select).not.toMatch(/<style\b/i)
-				expect(select).toContain('walkthrough-host-option')
-				expect(select).toContain('walkthrough-host-mark')
-				expect(select).toContain('--chip-icon:')
-				expect(select).toMatch(/<button\b/)
+				// Older Safari parses only native option content inside a select.
+				// Extra button/span/style nodes are discarded before hydration.
+				expect(select).not.toMatch(/<(?:button|span|style|img)\b/i)
+				const children = select.replace(/^<select\b[^>]*>|<\/select>$/g, '')
+				expect(children).toMatch(/^(?:<option\b[^>]*>[^<]*<\/option>)+$/)
+				expect(select).not.toContain('--chip-icon:')
 				expect(select).toContain(selected[index]!.label)
 				const selectedOption = [...select.matchAll(/<option\b[^>]*>/g)].find(
 					(match) => match[0].includes(`value="${selected[index]!.id}"`),
 				)?.[0]
 				expect(selectedOption).toMatch(/\bselected(?:=|\s|>)/)
 			}
-			expect(html).toMatch(/<style\b[^>]*>[\s\S]*?\.walkthrough-host-option/)
+			expect(html.match(/class="walkthrough-host-mark"/g)).toHaveLength(3)
 			expect(html).toContain('mask-image:var(--chip-icon)')
-			expect(html).toContain('appearance:base-select')
+			expect(html).not.toContain('appearance:base-select')
 			expect(html).toContain('/images/icons/')
 		}
 	})
