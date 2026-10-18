@@ -165,12 +165,14 @@ export async function resolvePackageAppLinks(input: {
 	if (!flags.hasApp) {
 		return { packageAppHref: null, packageAppOriginHref: null }
 	}
-	const publiclyServable = await appIsPubliclyServable(input)
 	const mayRun =
 		input.viewerMayRun === true ||
 		(input.viewerMayRun === undefined && input.viewer
 			? await viewerMayRunPackageApp(input)
 			: false)
+	// Runners already get the handoff path. The approval lookup only decides
+	// whether everyone else may see the public origin.
+	const publiclyServable = mayRun ? false : await appIsPubliclyServable(input)
 	const pathHref = buildPackageAppPath({
 		username: input.username,
 		kodyId: input.kodyId,
