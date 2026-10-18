@@ -923,6 +923,43 @@ test('serverFn fetch-network filter ignores successful /_serverFn breadcrumb sta
 	expect(filterBrowserSentryEvent(event)).toBe(event)
 })
 
+test('serverFn fetch-network filter ignores stale rejected /_serverFn breadcrumb', () => {
+	// A prior rejected serverFn crumb still on the scope must not drop a later
+	// unrelated fetch-network TypeError whose latest fetch crumb is elsewhere.
+	const productionAssetFrame = fr(
+		'resolveFrame',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Failed to fetch',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+				},
+			},
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://cdn.example/sourcemap.map',
+					method: 'GET',
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBe(event)
+})
+
 test('serverFn fetch-network filter does not pair message and frames across exception values', () => {
 	const crossValueEvent = {
 		exception: {

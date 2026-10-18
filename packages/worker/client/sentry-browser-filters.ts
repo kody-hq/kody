@@ -1140,11 +1140,12 @@ function filterBrowserBlobImportScriptsNetworkSentryEvent<
  * `isBrowserFetchNetworkError`) AND serverFn evidence:
  * - stack/frames naming `serverFnFetcher` / `createServerFn` (dev or
  *   source-mapped stacks), OR
- * - a Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn` and that
- *   lacks a numeric `data.status_code` (production `beforeSend` sees bundled
- *   `/assets/…` frames; source maps apply after send). Rejected fetches omit
- *   `status_code`; completed responses (including 2xx/4xx/5xx) include it and
- *   must not count as evidence for a later unrelated network TypeError.
+ * - the latest Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn`
+ *   and that lacks a numeric `data.status_code` (production `beforeSend` sees
+ *   bundled `/assets/…` frames; source maps apply after send). Rejected
+ *   fetches omit `status_code`; completed responses include it. Older
+ *   rejected `/_serverFn` crumbs on the scope must not qualify a later
+ *   unrelated network TypeError.
  *
  * Multi-value events (linked `cause` chains) drop only when **every** value
  * is a qualifying fetch-network TypeError — a reportable app exception with
@@ -1184,18 +1185,23 @@ function originalExceptionMentionsTanStackServerFnFetch(error: unknown) {
 }
 
 function eventHasTanStackServerFnFetchBreadcrumb(event: SentryErrorEventLike) {
+	// Only the latest fetch/xhr crumb counts. Sentry keeps breadcrumbs on the
+	// scope, so an older rejected `/_serverFn` crumb must not qualify a later
+	// unrelated network TypeError.
+	let latestFetchBreadcrumb: SentryBreadcrumbLike | undefined
 	for (const crumb of event.breadcrumbs ?? []) {
 		if (crumb.category !== 'fetch' && crumb.category !== 'xhr') continue
-		// Completed HTTP responses carry a numeric status_code. Skip them so a
-		// prior successful `/_serverFn` call cannot qualify a later unrelated
-		// fetch-network TypeError. Rejected fetches omit status_code.
-		if (typeof crumb.data?.status_code === 'number') continue
-		const url = crumb.data?.url
-		if (typeof url === 'string' && tanStackServerFnBreadcrumbUrl.test(url)) {
-			return true
-		}
+		latestFetchBreadcrumb = crumb
 	}
-	return false
+	if (!latestFetchBreadcrumb) return false
+	// Completed HTTP responses carry a numeric status_code. Skip them so a
+	// prior successful `/_serverFn` call cannot qualify a later unrelated
+	// fetch-network TypeError. Rejected fetches omit status_code.
+	if (typeof latestFetchBreadcrumb.data?.status_code === 'number') {
+		return false
+	}
+	const url = latestFetchBreadcrumb.data?.url
+	return typeof url === 'string' && tanStackServerFnBreadcrumbUrl.test(url)
 }
 
 function isTanStackServerFnFetchNetworkExceptionMessage(
