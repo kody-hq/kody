@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { normalize } from '@sentry/core'
 import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
 
 test('identifies reordered theme tags and identity differences without reporting values', () => {
@@ -30,12 +31,13 @@ test('identifies reordered theme tags and identity differences without reporting
 		name: 'theme-color-light',
 		count: 2,
 		index: 0,
-		differingAttributes: ['content', 'media'],
+		differingAttributes: 'content,media',
 	})
 	expect(
 		result.find((entry) => entry.name === 'document-actor')
 			?.differingAttributes,
-	).toEqual(['content'])
+	).toEqual('content')
+	expect(normalize({ documentMeta: result }, 3)).toEqual({ documentMeta: result })
 	expect(JSON.stringify(result)).not.toContain('private-actor')
 	expect(JSON.stringify(result)).not.toContain('https://')
 	delete elements['meta[name="viewport"]']
@@ -47,6 +49,6 @@ test('identifies reordered theme tags and identity differences without reporting
 		name: 'viewport',
 		count: 0,
 		index: 0,
-		differingAttributes: ['content'],
+		differingAttributes: 'content',
 	})
 })

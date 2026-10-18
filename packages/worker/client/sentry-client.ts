@@ -47,7 +47,7 @@ export type ClientErrorContext = {
 		name: string
 		count: number
 		index: number
-		differingAttributes: Array<string>
+		differingAttributes: string
 	}>
 }
 

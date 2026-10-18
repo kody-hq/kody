@@ -36,7 +36,7 @@ test('keeps component stacks with their errors before and after Sentry loads', a
 				name: 'viewport',
 				count: 1,
 				index: 0,
-				differingAttributes: ['content'],
+				differingAttributes: 'content',
 			},
 		],
 	}

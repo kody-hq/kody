@@ -73,7 +73,9 @@ export function documentMetaDiagnostics(doc: Document, loaderData: unknown) {
 					([attribute, expected]) =>
 						element?.getAttribute(attribute) !== expected,
 				)
-				.map(([attribute]) => attribute),
+				.map(([attribute]) => attribute)
+				// Keep the leaf scalar at Sentry's default normalization depth.
+				.join(','),
 		}
 	})
 }
