@@ -25,6 +25,9 @@ import {
 	type RepoExternalPublishResult,
 } from './types.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
+import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
+import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
 
 export type RepoPublishWorkspace = {
@@ -379,6 +382,32 @@ export async function publishFromExternalRef(input: {
 					sourceRoot: source.source_root,
 				})
 			: null
+	const savedPackageForNotice =
+		source.entity_kind === 'package'
+			? await getSavedPackageById(input.env.APP_DB, {
+					userId: input.userId,
+					packageId: source.entity_id,
+				})
+			: null
+	const allowedPackagesPublishNotice =
+		savedPackageForNotice == null
+			? null
+			: await buildCredentialAllowedPackagesPublishWarningNotice({
+					env: input.env,
+					baseUrl: input.baseUrl ?? getAppBaseUrl({ env: input.env }),
+					userId: input.userId,
+					packageId: savedPackageForNotice.id,
+					packageDisplayName: savedPackageForNotice.name,
+					kodyId: savedPackageForNotice.kodyId,
+					files: pendingFiles,
+					slots: checks.manifest?.kody?.credentials,
+				})
+	const publishNotices = {
+		...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
+		...(allowedPackagesPublishNotice
+			? { allowed_packages_publish_notice: allowedPackagesPublishNotice }
+			: {}),
+	}
 	if (lockedPackage) {
 		const error = createPackagePublishLockedError({
 			savedPackage: lockedPackage,
@@ -392,7 +421,7 @@ export async function publishFromExternalRef(input: {
 			message: error.message,
 			packageId: lockedPackage.id,
 			packageName: lockedPackage.name,
-			...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
+			...publishNotices,
 		}
 	}
 	const approval =
@@ -417,7 +446,7 @@ export async function publishFromExternalRef(input: {
 			pending_commit: input.newCommit,
 			message: approval.message,
 			approval,
-			...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
+			...publishNotices,
 		}
 	}
 	await finalizePublishedEntitySource({
@@ -436,5 +465,6 @@ export async function publishFromExternalRef(input: {
 		published_commit: input.newCommit,
 		manifest: checks.manifest,
 		checks: checks.results,
+		...publishNotices,
 	}
 }

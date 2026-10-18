@@ -79,6 +79,7 @@ import {
 	pendingPackageSecretApprovalsSchema,
 } from './shared.ts'
 import { credentialPatternNoticeForFiles } from '#worker/repo/credential-pattern-check.ts'
+import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 
 function parseSavedPackageManifest(input: {
 	content: string
@@ -151,6 +152,7 @@ export function buildPackageSaveNextSteps(input: {
 	packageId: string
 	pendingSecretApprovalsGuidance?: string | null
 	credentialPatternsNotice?: string | null
+	allowedPackagesPublishNotice?: string | null
 }) {
 	const steps = [
 		'Coding agents with local filesystem/git access should use the git lane for further edits instead of re-sending full file sets:',
@@ -162,10 +164,12 @@ export function buildPackageSaveNextSteps(input: {
 	if (guidance) {
 		steps.push(guidance)
 	}
+	const notices = [
+		input.credentialPatternsNotice,
+		input.allowedPackagesPublishNotice,
+	].filter((notice): notice is string => Boolean(notice?.trim()))
 	const next = steps.join(' ')
-	return input.credentialPatternsNotice
-		? `${next}\n\n${input.credentialPatternsNotice}`
-		: next
+	return notices.length > 0 ? `${next}\n\n${notices.join('\n\n')}` : next
 }
 
 /**
@@ -538,6 +542,7 @@ export const savePackageCapability = defineDomainCapability(
 				total: 4,
 				message: 'Checking pending secret approvals — no spoilers, just gates…',
 			})
+			const publishedFiles = refreshed.files ?? files
 			const pendingSecretApprovals =
 				await buildPendingPackageSecretApprovalsSummary({
 					env: ctx.env,
@@ -554,6 +559,20 @@ export const savePackageCapability = defineDomainCapability(
 						packageId: saved.id,
 						storageId: null,
 					},
+				})
+			const allowedPackagesPublishNotice =
+				await buildCredentialAllowedPackagesPublishWarningNotice({
+					env: ctx.env,
+					baseUrl: ctx.callerContext.baseUrl,
+					userId: owner.ownerUserId,
+					orgSlug: secretPageOrgSlugFromCaller(ctx.callerContext),
+					packageId: saved.id,
+					packageDisplayName: saved.name,
+					kodyId: saved.kodyId,
+					// An existing package keeps files this save omits, so scan the
+					// published set the projection loaded.
+					files: publishedFiles,
+					slots: manifest.kody.credentials,
 				})
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 4,
@@ -585,11 +604,9 @@ export const savePackageCapability = defineDomainCapability(
 								pendingSecretApprovals,
 							)
 						: null,
-					// An existing package keeps files this save omits, so scan the
-					// published set the projection loaded.
-					credentialPatternsNotice: credentialPatternNoticeForFiles(
-						refreshed.files ?? files,
-					),
+					credentialPatternsNotice:
+						credentialPatternNoticeForFiles(publishedFiles),
+					allowedPackagesPublishNotice,
 				}),
 			}
 		},

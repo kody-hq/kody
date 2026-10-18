@@ -2206,6 +2206,12 @@ export type AccountPackageApprovePublishLoaderData = {
 	 * is nothing to warn about.
 	 */
 	secretMountCompatNotice: string | null
+	/**
+	 * Advance warning when this package fills a user credential whose
+	 * allowed-packages list excludes it. Stricter enforcement starts
+	 * Tuesday, Oct 21, 2026. Null when there is nothing to warn about.
+	 */
+	allowedPackagesPublishNotice: string | null
 	diff: {
 		files: Array<AccountPackagePublishDiffFile>
 		omittedCount: number

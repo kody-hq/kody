@@ -58,6 +58,7 @@ import {
 	buildPendingPackageSecretApprovalsSummary,
 	type PendingPackageSecretApprovalsSummary,
 } from '#mcp/secrets/pending-package-secret-approvals.ts'
+import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { loadPublishedEntitySource } from '#worker/repo/published-source.ts'
 import {
 	buildPackagePublishApprovalUrl,
@@ -374,6 +375,14 @@ const communityListingBehindHintSchema = z
 		'Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required.',
 	)
 
+const allowedPackagesPublishNoticeSchema = z
+	.string()
+	.nullable()
+	.optional()
+	.describe(
+		'Advance warning when this package fills a user credential whose allowed-packages list excludes it. Stricter enforcement of that setting starts Tuesday, Oct 21, 2026. Null/omitted when there is nothing to warn about. Does not block publish.',
+	)
+
 const outputSchema = z.discriminatedUnion('status', [
 	z.object({
 		status: z.literal('already_published'),
@@ -382,6 +391,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		test_hints: packageTestHintsSchema.optional(),
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
+		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 	}),
@@ -445,6 +455,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		test_hints: packageTestHintsSchema.optional(),
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
+		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 	}),
@@ -645,6 +656,37 @@ async function getPendingSecretApprovalsForPublishedPackage(input: {
 	}
 }
 
+async function getAllowedPackagesPublishNoticeForPublishedPackage(input: {
+	env: Env
+	baseUrl: string
+	userId: OwnerId
+	orgSlug?: string | null
+	packageId: string
+	packageDisplayName: string
+	kodyId: string
+	sourceId: string
+}): Promise<string | null> {
+	try {
+		const published = await loadPublishedEntitySource({
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+		})
+		return await buildCredentialAllowedPackagesPublishWarningNotice({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			userId: input.userId,
+			orgSlug: input.orgSlug,
+			packageId: input.packageId,
+			packageDisplayName: input.packageDisplayName,
+			kodyId: input.kodyId,
+			files: published.files,
+		})
+	} catch {
+		return null
+	}
+}
+
 async function getListingBehindPublishHint(input: {
 	env: Env
 	baseUrl: string
@@ -759,6 +801,7 @@ async function runExternalPublishAttempt(input: {
 	ownerEmail: string
 	expectedPackageScope: string
 	packageId: string
+	packageDisplayName: string
 	kodyId: string
 	hasApp: boolean
 	source: {
@@ -919,6 +962,17 @@ async function runExternalPublishAttempt(input: {
 										kodyId: input.kodyId,
 										sourceId: input.source.id,
 									}),
+								allowed_packages_publish_notice:
+									await getAllowedPackagesPublishNoticeForPublishedPackage({
+										env: input.env,
+										baseUrl: input.baseUrl,
+										userId: input.ownerUserId,
+										orgSlug: input.orgSlug,
+										packageId: input.packageId,
+										packageDisplayName: input.packageDisplayName,
+										kodyId: input.kodyId,
+										sourceId: input.source.id,
+									}),
 							}
 						},
 					)
@@ -937,6 +991,8 @@ async function runExternalPublishAttempt(input: {
 					static_dependents: alreadyPublishedExtras.static_dependents,
 					pending_secret_package_approvals:
 						alreadyPublishedExtras.pending_secret_package_approvals,
+					allowed_packages_publish_notice:
+						alreadyPublishedExtras.allowed_packages_publish_notice,
 					...(alreadyPublishedExtras.listing
 						? { listing: alreadyPublishedExtras.listing }
 						: {}),
@@ -961,11 +1017,14 @@ async function runExternalPublishAttempt(input: {
 					pending_commit: result.pending_commit,
 					approval_url: approvalUrl,
 					message: appendSecretMountCompatNotice(
-						createPackagePublishLockedMessage({
-							packageName: result.packageName,
-							approvalUrl,
-						}),
-						result.secret_mount_compat,
+						appendSecretMountCompatNotice(
+							createPackagePublishLockedMessage({
+								packageName: result.packageName,
+								approvalUrl,
+							}),
+							result.secret_mount_compat,
+						),
+						result.allowed_packages_publish_notice,
 					),
 				}
 			}
@@ -995,8 +1054,11 @@ async function runExternalPublishAttempt(input: {
 					...(bundle ? { approval_bundle_url: bundle.url } : {}),
 					credential_need_changes: result.approval.changes,
 					message: appendSecretMountCompatNotice(
-						approvalMessage,
-						result.secret_mount_compat,
+						appendSecretMountCompatNotice(
+							approvalMessage,
+							result.secret_mount_compat,
+						),
+						result.allowed_packages_publish_notice,
 					),
 				}
 			}
@@ -1104,6 +1166,18 @@ async function runExternalPublishAttempt(input: {
 									kodyId: input.kodyId,
 									sourceId: input.source.id,
 								}),
+							allowed_packages_publish_notice:
+								result.allowed_packages_publish_notice ??
+								(await getAllowedPackagesPublishNoticeForPublishedPackage({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									userId: input.ownerUserId,
+									orgSlug: input.orgSlug,
+									packageId: input.packageId,
+									packageDisplayName: input.packageDisplayName,
+									kodyId: input.kodyId,
+									sourceId: input.source.id,
+								})),
 						}
 					},
 				)
@@ -1121,6 +1195,8 @@ async function runExternalPublishAttempt(input: {
 				static_dependents: publishedExtras.static_dependents,
 				pending_secret_package_approvals:
 					publishedExtras.pending_secret_package_approvals,
+				allowed_packages_publish_notice:
+					publishedExtras.allowed_packages_publish_notice,
 				...(publishedExtras.listing
 					? { listing: publishedExtras.listing }
 					: {}),
@@ -1214,6 +1290,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				ownerEmail: owner.ownerEmail,
 				expectedPackageScope,
 				packageId,
+				packageDisplayName: name,
 				kodyId,
 				hasApp,
 				source: { id: source.id, repo_id: source.repo_id },

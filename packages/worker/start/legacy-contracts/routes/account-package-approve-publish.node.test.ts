@@ -26,6 +26,7 @@ const loaderData: AccountPackageApprovePublishLoaderData = {
 	listing: null,
 	listingWillLagAfterPromote: false,
 	secretMountCompatNotice: null,
+	allowedPackagesPublishNotice: null,
 	diff: {
 		files: [
 			{
@@ -209,3 +210,20 @@ test.each([
 		expect(html).toContain(notice)
 	},
 )
+
+test('approve-publish SSR shows the allowed-packages publish warning', async () => {
+	const notice =
+		'Credential "RESEND_API_KEY" is allowed only for @kodykoala/notes, not @kodykoala/gmail-drafts. Starting Tuesday, Oct 21, 2026, Kody enforces allowed-package lists everywhere.'
+	const html = await renderToString(
+		jsx(AccountPackageApprovePublishRoute, {
+			payload: { ...loaderData, allowedPackagesPublishNotice: notice },
+			username: 'kodykoala',
+			kodyId: 'gmail-drafts',
+		}),
+		approvePublishHref,
+	)
+	expect(html).toContain('data-testid="allowed-packages-publish-notice"')
+	expect(html).toContain('RESEND_API_KEY')
+	expect(html).toContain('@kodykoala/notes')
+	expect(html).toContain('Tuesday, Oct 21, 2026')
+})
