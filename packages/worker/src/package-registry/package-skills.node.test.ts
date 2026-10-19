@@ -4,7 +4,6 @@ import {
 	buildSkillUri,
 	collectPackageSkills,
 	digestSnapshotContent,
-	digestUtf8,
 	skillResourceIsBinary,
 	guessMimeType,
 	packageSkillMaxFiles,
@@ -211,10 +210,12 @@ test('rejects missing frontmatter fences', async () => {
 })
 
 test('digest is byte-length based and lowercase hex', async () => {
-	const first = await digestUtf8('héllo')
+	const first = await digestSnapshotContent('héllo', 'SKILL.md')
 	expect(first.size).toBe(6)
 	expect(first.digest).toMatch(/^sha256:[0-9a-f]{64}$/)
-	expect((await digestUtf8('héllo!')).digest).not.toBe(first.digest)
+	expect((await digestSnapshotContent('héllo!', 'SKILL.md')).digest).not.toBe(
+		first.digest,
+	)
 })
 
 test('binary skill assets digest latin-1 snapshot bytes, not UTF-8', async () => {
@@ -230,7 +231,7 @@ test('binary skill assets digest latin-1 snapshot bytes, not UTF-8', async () =>
 	)
 	const path = 'skills/a-skill/assets/logo.png'
 	const snap = await digestSnapshotContent(pngMagic, path)
-	const asUtf8 = await digestUtf8(pngMagic)
+	const asUtf8 = await digestSnapshotContent(pngMagic, 'SKILL.md')
 	expect(snap.size).toBe(8)
 	expect(asUtf8.size).toBeGreaterThan(8)
 	expect(snap.digest).not.toBe(asUtf8.digest)

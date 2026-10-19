@@ -9,7 +9,6 @@ import {
 } from '../src/auth.js'
 import { runCli } from '../src/cli.js'
 import { buildUsage } from '../src/help.js'
-import { formatStoredOrgsHelpBlock } from '../src/org.js'
 import { orgEnvVar, resolveOrgSlug } from '../src/org-resolve.js'
 import {
 	createFileBackend,
@@ -295,8 +294,11 @@ test('help lists logged-in orgs from the local store offline', () => {
 })
 
 test('help hints kody login when nobody is logged in', () => {
-	const block = formatStoredOrgsHelpBlock([])
-	assert.match(block, /Not logged in\. Run `kody login`\./)
+	const text = buildUsage({
+		mcpUrl,
+		backend: tempBackend(),
+	})
+	assert.match(text, /Not logged in\. Run `kody login`\./)
 })
 
 test('kody org list and org use work for agents', async () => {

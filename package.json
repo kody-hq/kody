@@ -27,7 +27,6 @@
     "dev:ensure": "node --env-file-if-exists=packages/worker/.env tools/ensure-dev.ts",
     "dev:client": "vite",
     "dev:vite": "vite",
-    "clean:client": "node -e \"const{rmSync}=require('node:fs');for(const p of ['packages/worker/public/assets','packages/worker/public/client-manifest.json','dist'])rmSync(p,{recursive:true,force:true})\"",
     "dev:worker": "vite",
     "dev:mock-cloudflare": "node --env-file=packages/worker/.env ./wrangler-env.ts dev --local --config packages/mock-servers/cloudflare/wrangler.jsonc",
     "deploy": "node --input-type=module -e \"if (['preview','test'].includes(process.env.CLOUDFLARE_ENV ?? '')) { await import('./tools/prepare-e2e-env.ts'); }\" && node --env-file=packages/worker/.env tools/deploy.ts --outdir .wrangler/sentry-bundle --upload-source-maps",
@@ -109,9 +108,7 @@
     "nx:show-projects": "nx show projects",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
-    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json",
-    "build:client": "npm run build",
-    "build:client:web": "npm run build"
+    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

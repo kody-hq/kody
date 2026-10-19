@@ -131,14 +131,6 @@ export async function digestSnapshotContent(
 	return { digest: `sha256:${hex}`, size: bytes.byteLength, bytes }
 }
 
-/** @deprecated Prefer {@link digestSnapshotContent} so binary assets stay intact. */
-export async function digestUtf8(
-	content: string,
-): Promise<{ digest: string; size: number }> {
-	const { digest, size } = await digestSnapshotContent(content, 'SKILL.md')
-	return { digest, size }
-}
-
 export function skillResourceIsBinary(packagePath: string, content: string) {
 	return content.includes('\0') || shouldStoreArtifactBlobAsLatin1(packagePath)
 }

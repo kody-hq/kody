@@ -329,11 +329,6 @@ export function cliExactVersionForNpx(packageVersion: string): string {
 	return gitCredentialHelperPinFallbackVersion
 }
 
-/** @deprecated Use {@link cliExactVersionForNpx}. Kept for one release as alias. */
-export function cliMajorVersionForNpx(packageVersion: string): string {
-	return cliExactVersionForNpx(packageVersion)
-}
-
 /** Whether a stored API token should be reminted for git HTTPS. */
 export function apiTokenNeedsRefresh(
 	stored: Pick<StoredApiToken, 'expiresAt'> | null | undefined,
