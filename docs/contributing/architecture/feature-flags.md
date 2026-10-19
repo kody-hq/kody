@@ -94,10 +94,9 @@ call `kody.adminFeatureFlagRepoCheck(...)` from `execute` / `kody execute`.
 
 ### Experiments audience
 
-Signed-in users opt in or out at `/account/experiments`
-(`GET|POST /account/experiments.json` with `{ "experimentsOptIn": boolean }`).
-That writes `users.experiments_opt_in`. Operators then target that audience on a
-flag:
+Signed-in users opt in or out at `/account/experiments` (`updateExperiments`
+with `{ experimentsOptIn: boolean }`). That writes `users.experiments_opt_in`.
+Operators then target that audience on a flag:
 
 - **Admin UI**: `/admin/feature-flags` → Audience → “Experiments opt-in”.
 - **MCP**:
@@ -107,8 +106,9 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
 
 ## Surfaces
 
-- **Admin UI**: `/admin/feature-flags` (+ `/admin/feature-flags.json` API),
-  admin-role gated, audited via `logAuditEvent` (`feature_flag_*` actions).
+- **Admin UI**: `/admin/feature-flags` (Start server functions in
+  `admin-mutations.ts`), admin-role gated, audited via `logAuditEvent`
+  (`feature_flag_*` actions).
 - **MCP capabilities**: `adminFeatureFlagList`, `adminFeatureFlagSet`,
   `adminFeatureFlagOverride` (admin role required, audited).
 - **Client**: evaluated per-request in `loadSessionInfo` (cached per request in

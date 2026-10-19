@@ -164,27 +164,22 @@ org context).
 | `loginExchange`      | For `kind=login`: the `login_exchange` JSON (`url`, `bodyFormat`, `body`, `tokenPath`, ...) the need expects. The page asks only for the login fields its `body` names (`{email}`, `{password}`, ...). Without it, the person fills in the exchange. |
 | anything else        | Passed through unchanged to the reused form: `/connect/secret-set` params (`scope`, `packageId`, `expiresAt`, `allowedPackages`) or `/connect/oauth` params (`authorizeUrl`, `tokenUrl`, `scopes`, `flow`, ...).                                     |
 
-The page saves `secret`, `url`, `login`, and `signing` in place through the
-website save (`POST /account/secrets.json`, `action: "save"`), which accepts
-`kind`, `hosts`, and `loginExchange` and validates them exactly as `secretSet`
-does. The person types the value, so no agent ever holds it. `oauth` hands off
-to `/connect/oauth` with the same query plus `org=<org>` (the OAuth redirect URI
-stays org-less; `org` binds account writes to the creation org), and `mcp` to
-`/@<org>/-/mcp-servers/new`.
+The page saves `secret`, `url`, `login`, and `signing` in place through
+`saveSecret`, which accepts `kind`, `hosts`, and `loginExchange` and validates
+them exactly as `secretSet` does. The person types the value, so no agent ever
+holds it. `oauth` hands off to `/connect/oauth` with the same query plus
+`org=<org>` (the OAuth redirect URI stays org-less; `org` binds account writes
+to the creation org), and `mcp` to `/@<org>/-/mcp-servers/new`.
 
 Codecs: `buildCredentialCreateHref(input)` and
 `parseCredentialCreateQuery(url)`.
 
 ## Credentials list API
 
-```
-GET /account/credentials.json?q=&kind=&scope=&packageScoped=&locked=
-```
-
-Session-authenticated (website), for the current org binding. The MCP / Open API
-twin is the `credentialList` capability (`GET /v1/credentials`, with `kinds` in
-place of `kind`) taking the same filters and returning the same `credentials`
-array.
+The website credentials page loads through `loadCredentialsPage` (same filters
+on the current org binding). The MCP / Open API twin is the `credentialList`
+capability (`GET /v1/credentials`, with `kinds` in place of `kind`) taking the
+same filters and returning the same `credentials` array.
 
 | Filter          | Values                                                                                |
 | --------------- | ------------------------------------------------------------------------------------- |

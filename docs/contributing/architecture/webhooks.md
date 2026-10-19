@@ -208,20 +208,22 @@ package runtimes. End-user call shape:
 Webhooks belong to the package that declares them, so the owner surface is the
 **Webhooks** section of package settings (`/@:username/:kodyId/settings`,
 `packages/worker/start/pages/package-webhook-settings.tsx` with one
-`package-webhook-card.tsx` per declared webhook). Its JSON companion is
-`/profiles/:username/packages/:kodyId/webhooks.json`
-(`packages/worker/src/app/handlers/package-webhooks.ts`). The handler is
+`package-webhook-card.tsx` per declared webhook). Reads and mutations are Start
+server functions in `packages/worker/start/server/package-webhooks.ts`
+(`loadPackageWebhooks`, `mintPackageWebhook`, `rotatePackageWebhook`,
+`revealPackageWebhook`, `enablePackageWebhook`, `disablePackageWebhook`) that
+call `packages/worker/src/app/handlers/package-webhooks.ts`. The handler is
 owner-only: the signed-in user must be `:username` and own `:kodyId`, otherwise
-it answers 404 without naming the package or its webhooks. `GET` returns
+it answers 404 without naming the package or its webhooks. The load returns
 `listWebhooksForUser` filtered to the package and joined with `urlRecoverable`
-and `previousUrlActiveUntil`, never the URL. `POST { intent, webhookName }`
-intents `mint`, `rotate`, and `reveal` return the refreshed list plus a
-`revealed` entry built by `revealWebhookUrlForWebsite` (decrypt
-`url_secret_encrypted`, rebuild the ingress path from the request origin);
-`enable` / `disable` return the list only. Every intent writes an `account`
-audit event (`webhook_url_mint`, `webhook_url_rotate`, `webhook_url_reveal`,
-`webhook_enable`, `webhook_disable`). `mint` refuses an already-minted webhook
-so a stray click cannot rotate a provider's URL; `reveal` refuses mints without
+and `previousUrlActiveUntil`, never the URL. `mint`, `rotate`, and `reveal`
+return the refreshed list plus a `revealed` entry built by
+`revealWebhookUrlForWebsite` (decrypt `url_secret_encrypted`, rebuild the
+ingress path from the request origin); `enable` / `disable` return the list
+only. Every intent writes an `account` audit event (`webhook_url_mint`,
+`webhook_url_rotate`, `webhook_url_reveal`, `webhook_enable`,
+`webhook_disable`). `mint` refuses an already-minted webhook so a stray click
+cannot rotate a provider's URL; `reveal` refuses mints without
 `url_secret_encrypted` and points at Rotate. The client keeps revealed URLs in
 memory only and drops them on Hide or when the settings page changes package.
 

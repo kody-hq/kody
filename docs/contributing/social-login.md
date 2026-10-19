@@ -13,28 +13,29 @@ persisted; the token is used once per login to fetch the profile.
 
 ## How the flow behaves
 
-Routes (see `packages/worker/src/app/handlers/auth-provider.ts` and
-`packages/worker/src/app/handlers/account-connections.ts`):
+Routes and Start functions (see
+`packages/worker/src/app/handlers/auth-provider.ts`,
+`packages/worker/start/server/auth-mutations.ts`, and
+`packages/worker/start/pages/account-connections-panel.tsx`):
 
-- `GET /auth/providers.json` — enabled providers. `/login`, `/signup`, and
-  `/oauth/authorize` embed this same payload during SSR so the buttons are in
-  the first HTML. SPA navigations fetch the endpoint. A provider only appears
-  when both its client id and secret env vars are set.
-- `POST /auth/:provider` — starts the flow (signed `kody_oauth_login` state
-  cookie with CSRF state + PKCE verifier). With `Accept: application/json` it
-  returns `{ authorizeUrl }` for client-side navigation; otherwise it 302s.
+- Enabled providers: `/login`, `/signup`, and `/oauth/authorize` embed
+  `publicAuthProvidersLoaderData` during SSR so the buttons are in the first
+  HTML. SPA navigations load the same payload with `readWebsiteAuthProviders`. A
+  provider only appears when both its client id and secret env vars are set.
+- `startWebsiteOAuth` — starts the flow (signed `kody_oauth_login` state cookie
+  with CSRF state + PKCE verifier) and returns `{ authorizeUrl }` for
+  client-side navigation.
 - `GET /auth/:provider/callback` — completes the flow
-- `GET /discord` / `GET /discord.json` — public Discord page (**Connect
-  Discord** joins the official server and links the account; signed-in visitors
-  see whether `oauth_connections` already has Discord)
-- `GET/POST /account/connections.json` — signed-in connection management (list,
-  disconnect)
+- `GET /discord` — public Discord page (**Connect Discord** joins the official
+  server and links the account; signed-in visitors see whether
+  `oauth_connections` already has Discord)
+- `/account` — signed-in connection management (list, disconnect via
+  `disconnectAccountProvider`)
 
-The first-party UI always uses the JSON start mode: the CSP locks `form-action`
-and `connect-src` to `'self'`, so neither a form-POST redirect nor a
-fetch-followed redirect may leave the origin — the client fetches the start
-endpoint and performs a top-level navigation to the returned authorize URL
-itself.
+The first-party UI always starts OAuth this way: the CSP locks `form-action` and
+`connect-src` to `'self'`, so neither a form-POST redirect nor a fetch-followed
+redirect may leave the origin — the client calls `startWebsiteOAuth` and
+performs a top-level navigation to the returned authorize URL itself.
 
 Callback resolution order:
 

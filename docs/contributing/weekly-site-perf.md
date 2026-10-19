@@ -72,16 +72,14 @@ the step.
 
 Anonymous `/`, `/pricing`, `/blog`, `/community`, `/onboarding`, `/docs`, and
 `/docs/:slug` HTML is `public, max-age=60, stale-while-revalidate=300` with
-`Vary: Cookie`. Anonymous `/onboarding.json` uses the same cache with
-`Vary: Cookie`. Doc JSON (`/docs/:slug.json`) is shared publicly without a
-cookie vary because the body is the same for every visitor. Any `kody_session`
-cookie, a resolved session, or a `Set-Cookie` response stays `no-store` on HTML.
-Auth, OAuth, and account pages never use the short CDN cache.
+`Vary: Cookie`. Doc markdown (`/docs/:slug.md`) is the retained machine-readable
+twin. Any `kody_session` cookie, a resolved session, or a `Set-Cookie` response
+stays `no-store` on HTML. Auth, OAuth, and account pages never use the short CDN
+cache.
 
-Landing layout CSS lives in `packages/worker/public/styles.css` (`.landing-*`)
-so SSR does not emit a Remix style tag per marketing node. Hero and below-fold
-art ship `srcset` variants. Login, signup, and verify load the Turnstile widget
-immediately.
+Landing layout CSS lives in `packages/worker/public/styles.css` (`.landing-*`).
+Hero and below-fold art ship `srcset` variants. Login, signup, and verify load
+the Turnstile widget immediately.
 
 ## Budget
 

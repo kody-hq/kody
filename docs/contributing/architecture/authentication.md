@@ -190,10 +190,10 @@ delivery-alert bounce/complaint table); they do not write
 `users.email_verification_delivery_*`.
 
 Signed-in users with an unverified email can request a fresh link with
-`POST /account/resend-verification.json`
+`resendWebsiteVerification`
 (`packages/worker/src/identity/account-resend-verification-operations.ts`),
 surfaced as a "Resend verification email" button on `/pending-verification`,
-`/account`, `/onboarding`, and `/oauth/authorize`. The endpoint reuses
+`/account`, `/onboarding`, and `/oauth/authorize`. The function reuses
 `createEmailVerification` (invalidating older tokens). Two limits apply: 3
 requests per 15 minutes for that account, and 5 verification emails per
 recipient address per rolling 24 hours across every account, signup, and resend.
@@ -378,9 +378,10 @@ Both are opt-in and adapted from the Epic Stack.
   `/account/passkeys`. Passkey sign-in is MFA-complete on its own
   (`userVerification: 'required'`): accounts with TOTP enabled go straight to a
   session and do not visit `/verify`.
-- `POST /verify/2fa.json`, `POST /account/two-factor.json`, and
-  `POST /webauthn/authentication` share the per-IP auth rate-limit bucket with
-  the other credential-accepting endpoints (`packages/worker/src/index.ts`).
+- `verifyWebsiteTwoFactor`, the `/account/two-factor` Start functions, and
+  passkey sign-in (`webauthnAuthenticationOptions` /
+  `webauthnAuthenticationVerify`) are credential-accepting website mutations
+  with per-user and per-IP rate limits.
 - Re-enrolling a new authenticator while two-factor is active is rejected; users
   must disable first (which requires a current code), so a hijacked session
   cannot silently swap the second factor.
@@ -523,7 +524,7 @@ Password reset operations called by Start server functions are in
 
 ## Password change
 
-Signed-in password change is `POST /account/password.json`
+Signed-in password change is `changePassword`
 (`packages/worker/src/app/handlers/account-password.ts`), exposed on `/account`.
 
 - Requires the current password when the account has a usable password hash
@@ -644,12 +645,12 @@ configuration is missing or unsafe.
 
 ## Account secret reveal
 
-The account secrets API (`packages/worker/src/app/handlers/account-secrets.ts`)
-returns a decrypted secret value to the **owner** only, and only for the
-selected secret:
+The account secrets page (`packages/worker/src/app/handlers/account-secrets.ts`,
+loaded by `loadSecretsPage`) returns a decrypted secret value to the **owner**
+only, and only for the selected secret:
 
-- `GET /account/secrets.json?selected=<secretId>` resolves the value into the
-  `selectedSecret.value` field of the JSON payload
+- Selecting a secret resolves the value into the `selectedSecret.value` field of
+  the page payload
 - Requires an active `kody_session` cookie; the value is scoped to the
   authenticated user's `mcpUser.userId`, so a session can only ever read its own
   secrets
@@ -685,22 +686,21 @@ the operator bot) and assign or remove configured guild roles
 token. The member role is assigned on connect; Standard and Pro roles follow
 `orgs.stripe_plan`.
 
-- `POST /auth/:provider` starts the flow (CSRF state + PKCE verifier in the
-  signed `kody_oauth_login` cookie); `GET /auth/:provider/callback` completes it
-  and issues the normal `kody_session` cookie. The first-party UI fetches the
-  start endpoint with `Accept: application/json` and navigates to the returned
-  authorize URL itself, because the CSP locks `form-action` and `connect-src` to
-  `'self'`
+- `startWebsiteOAuth` starts the flow (CSRF state + PKCE verifier in the signed
+  `kody_oauth_login` cookie); `GET /auth/:provider/callback` completes it and
+  issues the normal `kody_session` cookie. The first-party UI calls that Start
+  function and navigates to the returned authorize URL itself, because the CSP
+  locks `form-action` and `connect-src` to `'self'`
 - Existing connections sign in directly; the two-factor gate applies exactly as
   for password logins (passkey sign-in skips TOTP)
 - A signed-in user whose live `email_verified_at` is set hitting the callback
   links the provider identity to their account, managed from the `/account`
-  "Connected accounts" card backed by `/account/connections.json` (disconnect is
-  refused when the connection is the only sign-in method). An unverified
-  signed-in session is refused (`email-unverified`) so a password squat cannot
-  attach a provider and skip the unverified-account purge. `/discord` is the
-  public **Connect Discord** page (one action joins the official server and
-  links the account)
+  "Connected accounts" card (`disconnectAccountProvider`; disconnect is refused
+  when the connection is the only sign-in method). An unverified signed-in
+  session is refused (`email-unverified`) so a password squat cannot attach a
+  provider and skip the unverified-account purge. `/discord` is the public
+  **Connect Discord** page (one action joins the official server and links the
+  account)
 - A provider-verified email matching an existing **verified** account auto-links
   and signs in. A match against an **unverified** account reclaims that row
   first (unusable password sentinel, `password_changed_at` lockout, TOTP /
