@@ -336,6 +336,7 @@ export async function listSystemInboundUsageRows(input: {
 				usage_month AS month,
 				COUNT(*) AS event_count,
 				0 AS error_count,
+				0 AS caught_count,
 				SUM(COALESCE(usage_duration_ms, 0)) AS total_duration_ms,
 				0 AS total_cpu_ms,
 				SUM(COALESCE(usage_bytes, 0)) AS total_bytes
@@ -352,6 +353,7 @@ export async function listSystemInboundUsageRows(input: {
 			month: string
 			event_count: number
 			error_count: number
+			caught_count: number
 			total_duration_ms: number
 			total_cpu_ms: number
 			total_bytes: number

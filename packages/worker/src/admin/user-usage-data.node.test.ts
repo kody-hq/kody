@@ -32,6 +32,7 @@ type UsageRollupRow = {
 	month: string
 	event_count: number
 	error_count: number
+	caught_count?: number
 	total_duration_ms: number
 	total_cpu_ms: number
 	total_bytes: number
@@ -267,6 +268,7 @@ async function setupUsageUser(input: {
 				month,
 				event_count,
 				error_count: 0,
+				caught_count: 0,
 				total_duration_ms: 0,
 				total_cpu_ms: 0,
 				total_bytes: 0,
@@ -361,6 +363,37 @@ test('loadAdminUserUsageData returns null for unknown users and zeroed usage for
 			byClass: [],
 		},
 	})
+})
+
+test('loadAdminUserUsageData surfaces caughtCount beside errorCount for package_static_call', async () => {
+	const { load } = await setupUsageUser({
+		plan: 'standard',
+		rollups: [
+			[
+				'package_static_call',
+				'2026-07',
+				100,
+				{ error_count: 2, caught_count: 7 },
+			],
+		],
+	})
+	const data = await load()
+	const staticCall = data?.currentMonthUsage.find(
+		(row) => row.metric === 'package_static_call',
+	)
+	expect(staticCall).toEqual(
+		expect.objectContaining({
+			metric: 'package_static_call',
+			eventCount: 100,
+			errorCount: 2,
+			caughtCount: 7,
+		}),
+	)
+	// Historical / missing caught_count columns read as zero.
+	expect(
+		data?.currentMonthUsage.find((row) => row.metric === 'execute')
+			?.caughtCount,
+	).toBe(0)
 })
 
 test('loadAdminUserUsageData estimates Dynamic Worker cost from unique worker-days and compares it to catalog MRR', async () => {

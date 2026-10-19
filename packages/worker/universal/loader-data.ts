@@ -689,6 +689,11 @@ export type AdminUsageRollup = {
 	metric: AdminUsageMetric
 	eventCount: number
 	errorCount: number
+	/**
+	 * Handled `package_static_call` throws (`outcome: caught`). Zero for other
+	 * metrics and for historical rows written before caught_count existed.
+	 */
+	caughtCount: number
 	totalDurationMs: number
 	totalCpuMs: number
 	totalBytes: number

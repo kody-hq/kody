@@ -186,13 +186,17 @@ async function runEntry(userId: string, entrySource: string) {
 
 async function expectStaticCallRollup(
 	userId: string,
-	expected: { event_count: number; error_count: number },
+	expected: {
+		event_count: number
+		error_count: number
+		caught_count: number
+	},
 ) {
 	// Metering is fire-and-forget from the sandbox, so poll the rollup.
 	await vi.waitFor(
 		async () => {
 			const rollup = await env.APP_DB.prepare(
-				`SELECT event_count, error_count, total_duration_ms
+				`SELECT event_count, error_count, caught_count, total_duration_ms
 				FROM usage_rollups WHERE user_id = ?1 AND metric = 'package_static_call'`,
 			)
 				.bind(userId)
@@ -276,8 +280,12 @@ export default async function main() {
 			answerType: 'number',
 		})
 		// 3 default calls + 1 caught throw + 1 calm call = 5 events.
-		// Caught throws are outcome `caught`, so rollup error_count stays 0.
-		await expectStaticCallRollup(userId, { event_count: 5, error_count: 0 })
+		// Caught throws are outcome `caught` (rollup caught_count), not errors.
+		await expectStaticCallRollup(userId, {
+			event_count: 5,
+			error_count: 0,
+			caught_count: 1,
+		})
 	},
 )
 
@@ -303,7 +311,11 @@ export default async function main() {
 		)
 
 		expect(result.error).toBeTruthy()
-		await expectStaticCallRollup(userId, { event_count: 1, error_count: 1 })
+		await expectStaticCallRollup(userId, {
+			event_count: 1,
+			error_count: 1,
+			caught_count: 0,
+		})
 	},
 )
 
@@ -377,6 +389,10 @@ export default async function main() {
 		// The forged event fires before the two granted ones; once the granted
 		// events land, a count of exactly 2 proves the forged stamp was
 		// dropped by the host-side dependency-provenance check.
-		await expectStaticCallRollup(userId, { event_count: 2, error_count: 0 })
+		await expectStaticCallRollup(userId, {
+			event_count: 2,
+			error_count: 0,
+			caught_count: 0,
+		})
 	},
 )

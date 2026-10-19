@@ -627,6 +627,10 @@
 		{
 			"filename": "0170-email-outbound-failure-watermark.sql",
 			"sha256": "7a516317c971a2ed351e47da82c37a1e3d905b8be8f4e42a4ff5edd1ecd19667"
+		},
+		{
+			"filename": "0171-usage-rollups-caught-count.sql",
+			"sha256": "59ed0a30d630da64adb9144b37d007b2eba6905bc4ea1a676cf2fbb7c977ef37"
 		}
 	]
 }
