@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -783,4 +784,118 @@ test('upload-pack negotiation bodies over 64KiB pass through unchanged', async (
 	)
 	expect(response!.status).toBe(200)
 	expect(await response!.text()).toBe(upstreamBody)
+})
+
+test('gzip upload-pack bodies are decoded before the size cap and negotiation parser', async () => {
+	resetMocks()
+	seedPublicListing()
+	const artifactsRemote =
+		'https://artifacts.example.test/git/default/package-pkg-1.git'
+	const plain =
+		encodeGitPktLine(
+			`want ${publishedCommit} multi_ack_detailed no-done side-band-64k\n`,
+		) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine(`have ${liveCommit}\n`) +
+		encodeGitFlushPkt()
+	const upstreamBodies: Array<string> = []
+	const upstreamEncodings: Array<string | null> = []
+	using _server = createMswNodeServer([
+		http.post(`${artifactsRemote}/git-upload-pack`, async ({ request }) => {
+			upstreamEncodings.push(request.headers.get('Content-Encoding'))
+			upstreamBodies.push(await request.text())
+			return new HttpResponse(encodeGitPktLine(`ACK ${liveCommit}\n`), {
+				status: 200,
+				headers: { 'Content-Type': 'application/x-git-upload-pack-result' },
+			})
+		}),
+	])
+
+	const gzipped = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: gzipSync(plain),
+		}),
+		envStub(),
+	)
+	expect(gzipped!.status).toBe(200)
+	expect(await gzipped!.text()).toBe(
+		encodeGitPktLine(`ACK ${liveCommit} common\n`) + encodeGitPktLine('NAK\n'),
+	)
+	expect(upstreamBodies).toEqual([plain])
+	expect(upstreamEncodings).toEqual([null])
+
+	const xGzip = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'x-gzip',
+			},
+			body: gzipSync(plain),
+		}),
+		envStub(),
+	)
+	expect(await xGzip!.text()).toContain(`ACK ${liveCommit} common`)
+	expect(upstreamBodies).toEqual([plain, plain])
+
+	const unsupported = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'br',
+			},
+			body: plain,
+		}),
+		envStub(),
+	)
+	expect(unsupported!.status).toBe(200)
+	expect(await unsupported!.text()).toContain(
+		'ERR Unsupported upload-pack Content-Encoding.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+
+	const corrupt = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: new Uint8Array([1, 2, 3, 4]),
+		}),
+		envStub(),
+	)
+	expect(await corrupt!.text()).toContain(
+		'ERR Upload-pack request body could not be decoded.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+
+	let inflated = encodeGitPktLine(
+		`want ${publishedCommit} multi_ack_detailed side-band-64k\n`,
+	)
+	while (Buffer.byteLength(inflated) <= 256 * 1024) {
+		inflated += encodeGitPktLine(`have ${liveCommit}\n`)
+	}
+	const tooLarge = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: gzipSync(inflated),
+		}),
+		envStub(),
+	)
+	expect(await tooLarge!.text()).toContain(
+		'ERR Upload-pack request body too large.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+	expect(gzipSync(inflated).byteLength).toBeLessThan(256 * 1024)
 })

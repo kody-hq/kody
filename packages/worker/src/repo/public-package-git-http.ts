@@ -244,6 +244,9 @@ function forbiddenResponse(message: string) {
 const snapshotWantRejectedMessage =
 	'Public package git remotes only serve the published snapshot commit.'
 const uploadPackBodyTooLargeMessage = 'Upload-pack request body too large.'
+const uploadPackBodyDecodeMessage =
+	'Upload-pack request body could not be decoded.'
+const uploadPackEncodingMessage = 'Unsupported upload-pack Content-Encoding.'
 
 function sanitizeGitClientMessage(message: string) {
 	const cleaned = message
@@ -476,51 +479,119 @@ function artifactsAuthHeaders(tokenPlaintext: string): HeadersInit {
 	}
 }
 
-async function readUploadPackRequestBody(
-	request: Request,
-	maxBodyBytes: number = publicGitUploadPackMaxBodyBytes,
-): Promise<{ ok: true; body: Uint8Array } | { ok: false; response: Response }> {
-	const contentLengthHeader = request.headers.get('Content-Length')
-	if (contentLengthHeader != null) {
-		const contentLength = Number.parseInt(contentLengthHeader, 10)
-		if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+/**
+ * git's stateless HTTP client gzips a buffered upload-pack body once it is
+ * larger than 1024 bytes (`Content-Encoding: gzip`). The size cap and the
+ * pkt-line parsers need the decompressed bytes. `Content-Length` is the
+ * compressed size in that case, so it is not a stand-in for the cap.
+ */
+function uploadPackRequestStream(request: Request):
+	| {
+			ok: true
+			stream: ReadableStream<Uint8Array> | null
+			honorContentLength: boolean
+	  }
+	| { ok: false; response: Response } {
+	const encoding = (request.headers.get('Content-Encoding') ?? '')
+		.trim()
+		.toLowerCase()
+	if (encoding === '' || encoding === 'identity') {
+		return { ok: true, stream: request.body, honorContentLength: true }
+	}
+	if (encoding === 'gzip' || encoding === 'x-gzip') {
+		if (!request.body) {
+			return { ok: true, stream: null, honorContentLength: false }
+		}
+		try {
+			return {
+				ok: true,
+				stream: request.body.pipeThrough(new DecompressionStream('gzip')),
+				honorContentLength: false,
+			}
+		} catch {
 			return {
 				ok: false,
 				response: gitResultErrorResponse(
 					gitUploadPackService,
-					uploadPackBodyTooLargeMessage,
+					uploadPackBodyDecodeMessage,
 				),
 			}
 		}
 	}
+	return {
+		ok: false,
+		response: gitResultErrorResponse(
+			gitUploadPackService,
+			uploadPackEncodingMessage,
+		),
+	}
+}
 
-	const reader = request.body?.getReader()
+async function readUploadPackRequestBody(
+	request: Request,
+	maxBodyBytes: number = publicGitUploadPackMaxBodyBytes,
+): Promise<{ ok: true; body: Uint8Array } | { ok: false; response: Response }> {
+	const source = uploadPackRequestStream(request)
+	if (!source.ok) return source
+
+	if (source.honorContentLength) {
+		const contentLengthHeader = request.headers.get('Content-Length')
+		if (contentLengthHeader != null) {
+			const contentLength = Number.parseInt(contentLengthHeader, 10)
+			if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+				return {
+					ok: false,
+					response: gitResultErrorResponse(
+						gitUploadPackService,
+						uploadPackBodyTooLargeMessage,
+					),
+				}
+			}
+		}
+	}
+
+	const reader = source.stream?.getReader()
 	if (!reader) {
 		return { ok: true, body: new Uint8Array() }
 	}
 
 	const chunks: Array<Uint8Array> = []
 	let size = 0
-	for (;;) {
-		const { done, value } = await reader.read()
-		if (done) break
-		if (!value || value.byteLength === 0) continue
-		size += value.byteLength
-		if (size > maxBodyBytes) {
-			try {
-				await reader.cancel()
-			} catch {
-				// Ignore cancel errors; the size limit response is what matters.
+	try {
+		for (;;) {
+			const { done, value } = await reader.read()
+			if (done) break
+			if (!value || value.byteLength === 0) continue
+			size += value.byteLength
+			if (size > maxBodyBytes) {
+				try {
+					await reader.cancel()
+				} catch {
+					// Ignore cancel errors; the size limit response is what matters.
+				}
+				return {
+					ok: false,
+					response: gitResultErrorResponse(
+						gitUploadPackService,
+						uploadPackBodyTooLargeMessage,
+					),
+				}
 			}
-			return {
-				ok: false,
-				response: gitResultErrorResponse(
-					gitUploadPackService,
-					uploadPackBodyTooLargeMessage,
-				),
-			}
+			chunks.push(value)
 		}
-		chunks.push(value)
+	} catch {
+		try {
+			await reader.cancel()
+		} catch {
+			// The decode error response is what the client needs.
+		}
+		return {
+			ok: false,
+			response: gitResultErrorResponse(
+				gitUploadPackService,
+				uploadPackBodyDecodeMessage,
+			),
+		}
 	}
 
 	const body = new Uint8Array(size)
