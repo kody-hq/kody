@@ -159,10 +159,15 @@ export function reloadOnStaleRouteChunk(error: unknown): boolean {
 	try {
 		if (getSessionStorageItem(staleRouteChunkReloadFlag)) return false
 		if (!setSessionStorageItem(staleRouteChunkReloadFlag, '1')) return false
-		staleRouteChunkReloadTriggered = true
 		window.location.reload()
+		// Set after reload returns: if `reload()` throws (e.g. SecurityError),
+		// do not leave the follow-on suppress bit set. Session flag is cleared
+		// below so a later miss can still attempt recovery.
+		staleRouteChunkReloadTriggered = true
 		return true
 	} catch {
+		clearStaleRouteChunkReloadFlag()
+		staleRouteChunkReloadTriggered = false
 		return false
 	}
 }

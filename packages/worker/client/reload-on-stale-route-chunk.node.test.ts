@@ -332,3 +332,28 @@ test('follow-on undefined-module TypeError is not suppressed when reload did not
 		),
 	).toBe(false)
 })
+
+test('reloadOnStaleRouteChunk clears suppress state when location.reload throws', () => {
+	const store = new Map<string, string>()
+	installSessionStorage(store)
+	installWindow(() => {
+		throw new DOMException('The operation is insecure.', 'SecurityError')
+	})
+	setStaleRouteChunkReloadArmed(true)
+
+	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
+	expect(wasStaleRouteChunkReloadTriggered()).toBe(false)
+	expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
+	expect(
+		shouldSuppressStaleRouteChunkFollowOnError(
+			new TypeError(safariUndefinedModule),
+		),
+	).toBe(false)
+
+	// A later miss can still attempt recovery after the failed reload call.
+	const reload = vi.fn()
+	installWindow(reload)
+	expect(reloadOnStaleRouteChunk(new TypeError(webkit))).toBe(true)
+	expect(reload).toHaveBeenCalledTimes(1)
+	expect(wasStaleRouteChunkReloadTriggered()).toBe(true)
+})
