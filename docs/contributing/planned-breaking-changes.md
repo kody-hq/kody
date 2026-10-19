@@ -32,7 +32,7 @@ UUID; slug = leaf of `saved_packages.name`). The `saved_packages.kody_id` and
 the name leaf. Rename redirects write only `package_slug_redirects`; the legacy
 `package_kody_id_redirects` table is still read as a fallback and cleared on
 release/delete. Dropping the columns and the legacy table is
-[#1909](https://github.com/kody-hq/kody/issues/1909) phase 4.
+[#3676](https://github.com/kody-hq/kody/issues/3676) (reopened #1909 phase 4).
 
 **Ready when:** agent transcripts and create/resolve traffic no longer need the
 leftover param (Sentry KODY-7M and similar scoped-name-as-`kody_id` collisions

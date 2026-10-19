@@ -7,12 +7,13 @@ and 2026-07-01 internal security audits for the underlying findings, and
 [the 2026-09-16 codebase audit](../audits/2026-09-16-codebase-audit.md) for a
 later cross-cutting review.
 
-Kody is a multi-worker Cloudflare app: a Remix 3 browser UI and OAuth-protected
-MCP HTTP on origin, platform Durable Objects on `kody-platform`, package apps on
-`kody-runtime`, and cron on `kody-jobs`. It is multi-user, so the overarching
-invariant is that **every read/write path is scoped by `userId`** (see
-[`AGENTS.md`](../../AGENTS.md)). Cross-user data sharing is a bug, not a
-feature. See [architecture](architecture/index.md#production-worker-fleet).
+Kody is a multi-worker Cloudflare app: a TanStack Start browser UI and
+OAuth-protected MCP HTTP on origin, platform Durable Objects on `kody-platform`,
+package apps on `kody-runtime`, and cron on `kody-jobs`. It is multi-user, so
+the overarching invariant is that **every read/write path is scoped by
+`userId`** (see [`AGENTS.md`](../../AGENTS.md)). Cross-user data sharing is a
+bug, not a feature. See
+[architecture](architecture/index.md#production-worker-fleet).
 
 ## Invariants for future agents (do not regress)
 

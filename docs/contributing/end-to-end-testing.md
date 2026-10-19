@@ -149,9 +149,9 @@ handled by the static asset fetcher in `packages/worker/src/index.ts`.
 - Assert important intermediate states as part of the same journey that causes
   them instead of creating isolated loading-state or transition-state tests.
 - After `page.goto`, wait for client hydration before clicking JS-only controls
-  (`waitForClientHydration` in `e2e/playwright-utils.ts`). Boot preloads the
-  route chunk before Remix `run()`, so SSR headings are visible while
-  `on('click')` handlers are still unbound.
+  (`waitForClientHydration` in `e2e/playwright-utils.ts`). Start sets
+  `html[data-hydrated=true]` after the client hydrates, so SSR headings are
+  visible while click handlers are still unbound.
 - For client-router regressions, you may set a `window` marker before clicking a
   link and assert it survives navigation to prove there was no full document
   reload.

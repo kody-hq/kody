@@ -60,8 +60,8 @@ Open these before proposing a new primitive, surface, or storage home.
   — static import, `import(specifier)`, or workflows; external HTTP is
   [0048](./0048-webhooks-replace-invocation-tokens.md)
 - [0048 — Inbound HTTP is webhooks; invocation tokens drain](./0048-webhooks-replace-invocation-tokens.md)
-  — no `*` webhook URLs; HTTP invocation tokens fully removed (rows purged;
-  table drop follows after deploy)
+  — no `*` webhook URLs; HTTP invocation tokens fully removed (`0084` purged
+  rows; `0085` dropped `package_invocation_tokens`)
 - [0017 — Hosted package apps use per-user subdomains; same-owner isolation deferred](./0017-per-user-package-app-subdomains.md)
 - [0020 — Repo sessions spill Workspace objects to R2; do not adopt `@cloudflare/computer`](./0020-repo-session-workspace-r2-not-computer.md)
 - [0021 — Publish-gated packages; no in-process composition runtime](./0021-publish-gated-package-composition.md)

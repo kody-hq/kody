@@ -1,7 +1,7 @@
 # Cursor Cloud Agent notes
 
 Kody runs on Cloudflare Workers: the origin app/MCP worker plus platform,
-runtime, jobs, and status workers (Remix 3 UI + OAuth-protected MCP). See
+runtime, jobs, and status workers (TanStack Start UI + OAuth-protected MCP). See
 [`local development`](./setup/local-development.md) for the local dev guide;
 this document covers Cloud Agent VM gotchas only.
 
