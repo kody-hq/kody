@@ -47,10 +47,6 @@ export type CredentialFillPlacementView = z.infer<
 	typeof credentialFillPlacementViewSchema
 >
 
-/** Default for newly created credentials (headers only). */
-export const defaultNewCredentialFillPlacementView: CredentialFillPlacementView =
-	{ headers: true }
-
 export const fillPlacementPartIds = [
 	'headers',
 	'query',
@@ -60,25 +56,16 @@ export const fillPlacementPartIds = [
 
 export type FillPlacementPartId = (typeof fillPlacementPartIds)[number]
 
-/** Human-readable parts for detail pages and editors. */
-export function fillPlacementPartLabels(
-	placement: CredentialFillPlacementView | null,
-): Array<string> {
-	if (placement === null) return [...fillPlacementPartIds]
-	const parts: Array<string> = []
-	if (placement.headers !== undefined) parts.push('headers')
-	if (placement.query === true) parts.push('query')
-	if (placement.path === true) parts.push('path')
-	if (placement.body === true) parts.push('body')
-	return parts
-}
-
 /** One-line summary for metadata grids. */
 export function formatFillPlacementSummary(
 	placement: CredentialFillPlacementView | null,
 ): string {
 	if (placement === null) return 'Anywhere (headers, query, path, body)'
-	const parts = fillPlacementPartLabels(placement)
+	const parts: Array<string> = []
+	if (placement.headers !== undefined) parts.push('headers')
+	if (placement.query === true) parts.push('query')
+	if (placement.path === true) parts.push('path')
+	if (placement.body === true) parts.push('body')
 	if (
 		placement.headers !== undefined &&
 		placement.headers !== true &&
