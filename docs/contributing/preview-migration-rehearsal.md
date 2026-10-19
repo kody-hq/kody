@@ -229,12 +229,9 @@ pin/follow columns.
 
 ## P3: org.migrated audit backfill
 
-`org.migrated` audit rows are not part of the expand migration, because APP_DB
-and AUDIT_DB are separate databases. After a preview or production deploy has
-applied both, an operator runs
-[Teams org.migrated audit backfill](./teams-org-migrated-audit-backfill.md).
-That command is idempotent. `dry-run` prints counts and writes nothing. Deploy
-does not run it.
+`org.migrated` audit rows were not part of the expand migration (APP_DB and
+AUDIT_DB are separate databases). The operator backfill finished on production
+(2026-10-10) and the one-off tooling was removed. Deploy never ran it.
 
 ## What the preview cannot rehearse
 

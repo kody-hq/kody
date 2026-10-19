@@ -11,7 +11,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Decision records](./decisions/index.md) (steering veto list: product-shaped
   nos and durable constraints — not an ADR-per-PR log)
 - [0033 memory auto-surface lab](./decisions/0033-memory-auto-surface-lab.md)
-  (policy-grid evidence; re-run `node tools/memory-auto-surface-lab/run.mjs`)
+  (policy-grid evidence; lab script removed, source in git history at
+  `51def919d`)
 - [Inbound contributions](./inbound-contributions.md) (CLA for patches to this
   repository)
 - [Setup](./setup/index.md),
@@ -20,8 +21,6 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Manual PR preview testing](./preview-manual-testing.md)
 - [Preview migration rehearsal](./preview-migration-rehearsal.md) (seed,
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
-- [Teams org.migrated audit backfill](./teams-org-migrated-audit-backfill.md)
-  (operator dry-run and apply for `org.migrated` rows; not part of deploy)
 - [control-kody](./control-kody.md) (Feature Map + CLI; daily
   `@kentcdodds/verification-skill-maintain`)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
