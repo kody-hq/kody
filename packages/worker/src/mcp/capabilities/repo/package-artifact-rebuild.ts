@@ -180,13 +180,15 @@ async function filterTargetsNeedingRebuild(input: {
 	if (input.force) {
 		return {
 			remaining: [...input.targets],
-			alreadyBuilt: [],
+			alreadyBuilt: [] as Array<PublishedPackageArtifactBuildTarget>,
+			reused: [] as Array<PublishedPackageArtifactBuildTarget>,
 		}
 	}
 	const remaining: Array<PublishedPackageArtifactBuildTarget> = []
 	const alreadyBuilt: Array<PublishedPackageArtifactBuildTarget> = []
+	const reused: Array<PublishedPackageArtifactBuildTarget> = []
 	if (input.targets.length === 0) {
-		return { remaining, alreadyBuilt }
+		return { remaining, alreadyBuilt, reused }
 	}
 	// Load this rebuild's published snapshot once and pass that value to every
 	// target. A later rebuild loads again. Prior-commit snapshots are shared
@@ -217,7 +219,7 @@ async function filterTargetsNeedingRebuild(input: {
 			alreadyBuilt.push(target)
 			continue
 		}
-		const reused = await reusePublishedPackageArtifactIfUnchanged({
+		const didReuse = await reusePublishedPackageArtifactIfUnchanged({
 			env: input.env,
 			userId: input.userId,
 			sourceId: input.sourceId,
@@ -226,13 +228,15 @@ async function filterTargetsNeedingRebuild(input: {
 			snapshotCache,
 			...sharedSnapshot,
 		})
-		if (reused) {
-			alreadyBuilt.push(target)
+		if (didReuse) {
+			// Reuse copies prior-commit bytes under this tip — that is artifact
+			// work for artifacts_rebuilt, not a no-op skip.
+			reused.push(target)
 			continue
 		}
 		remaining.push(target)
 	}
-	return { remaining, alreadyBuilt }
+	return { remaining, alreadyBuilt, reused }
 }
 
 async function listTargetsOrThrow(input: {
@@ -280,15 +284,17 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 }): Promise<RebuildPublishedPackageArtifactsResult> {
 	const session = repoSessionRpc(input.env, input.rpcSessionId)
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = []
-	const { remaining, alreadyBuilt } = await filterTargetsNeedingRebuild({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.sourceId,
-		publishedCommit: input.publishedCommit,
-		targets: input.targets,
-		force: input.force,
-	})
-	succeeded.push(...alreadyBuilt)
+	const { remaining, alreadyBuilt, reused } = await filterTargetsNeedingRebuild(
+		{
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			targets: input.targets,
+			force: input.force,
+		},
+	)
+	succeeded.push(...alreadyBuilt, ...reused)
 
 	const failed: Array<{
 		target: PublishedPackageArtifactBuildTarget
@@ -327,7 +333,7 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 	}
 
 	if (failed.length === 0) {
-		return { rebuiltTargetCount: remaining.length }
+		return { rebuiltTargetCount: remaining.length + reused.length }
 	}
 
 	throwRebuildFailure({
@@ -398,19 +404,22 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 		targets: input.targets,
 	})
 
-	const { remaining, alreadyBuilt } = await filterTargetsNeedingRebuild({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.sourceId,
-		publishedCommit: input.publishedCommit,
-		targets,
-		force: input.force,
-	})
+	const { remaining, alreadyBuilt, reused } = await filterTargetsNeedingRebuild(
+		{
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			targets,
+			force: input.force,
+		},
+	)
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = [
 		...alreadyBuilt,
+		...reused,
 	]
 	if (remaining.length === 0) {
-		return { rebuiltTargetCount: 0 }
+		return { rebuiltTargetCount: reused.length }
 	}
 
 	let stagingKey: string
@@ -507,7 +516,7 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	}
 
 	if (failed.length === 0) {
-		return { rebuiltTargetCount: remaining.length }
+		return { rebuiltTargetCount: remaining.length + reused.length }
 	}
 
 	throwRebuildFailure({

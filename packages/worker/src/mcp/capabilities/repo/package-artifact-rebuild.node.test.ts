@@ -219,7 +219,7 @@ test('isolated rebuild skips already-built or unchanged targets and does not sta
 	const { run, discard } = setup()
 	mockModule.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(true)
 
-	await rebuild()
+	const alreadyCurrent = await rebuild()
 
 	expect(mockModule.listPublishedPackageArtifactTargets).toHaveBeenCalledTimes(
 		1,
@@ -227,6 +227,17 @@ test('isolated rebuild skips already-built or unchanged targets and does not sta
 	expect(mockModule.stagePublishedPackageArtifactRebuild).not.toHaveBeenCalled()
 	expect(run).not.toHaveBeenCalled()
 	expect(discard).not.toHaveBeenCalled()
+	expect(alreadyCurrent).toEqual({ rebuiltTargetCount: 0 })
+
+	// Prior-commit reuse under this tip is artifact work — count it so
+	// already_published.artifacts_rebuilt stays truthful.
+	const reusedTargets = sampleTargets.slice(0, 3)
+	setup({ targets: reusedTargets })
+	mockModule.reusePublishedPackageArtifactIfUnchanged.mockResolvedValue(true)
+	expect(await rebuild({ publishedCommit: 'commit-2' })).toEqual({
+		rebuiltTargetCount: 3,
+	})
+	expect(mockModule.stagePublishedPackageArtifactRebuild).not.toHaveBeenCalled()
 })
 
 test('force rebuilds already-built targets so already_published can repair stale same-commit artifacts', async () => {
