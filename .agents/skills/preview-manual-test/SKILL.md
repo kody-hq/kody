@@ -2,7 +2,9 @@
 name: preview-manual-test
 description: >
   Discover, wait for, sign in, create specific user data, and assert a PR
-  preview deploy. Use on medium or high risk PRs, after pushing a
+  preview deploy. Prefer local control-kody verification first. Use a preview
+  when local cannot exercise the change (Workers bindings, Durable Objects, real
+  OAuth/webhooks, deploy/wrangler/config, Artifacts), after pushing a
   ready-for-review PR, or when the user asks to test the preview URL.
 ---
 
@@ -80,12 +82,15 @@ flag-gated interaction works.
 
 ## When
 
+Prefer local [control-kody](../control-kody/SKILL.md) verification
+(`dev`/`login`/`request`/`browse`/`execute`) for UI and API changes. Use a PR
+preview when local cannot exercise the change: Workers / service bindings,
+Durable Objects, real OAuth or inbound third-party webhooks, deploy / wrangler /
+config, Artifacts / `packageSave`, or when the user asks to try the preview URL.
 After the PR is **ready for review** (drafts and forks have no preview) and you
-have pushed the commits you want to exercise. Typical triggers: visual-recap
-risk is **medium** (`extends`) or **high** (`adds`); auth, workers, or
-deploy-path behavior changed; the user asked to try the preview.
+have pushed the commits you want to exercise.
 
-This does not replace `npm run validate`.
+This does not replace `npm run validate` or local control-kody proof.
 
 ## After the scripted session
 

@@ -191,7 +191,12 @@ history — that ahead badge is website UI only. The listing detail page uses a
 link-break icon for that same outdated action and a **Fork ahead** badge. For an
 outdated fork, compare origin HEAD with your package, port useful changes, keep
 your customizations, then publish with `repoPublishSession` and
-`absorbed_upstream_commit` so the behind-upstream banner clears.
+`absorbed_upstream_commit` so the behind-upstream banner clears. That absorb
+path still opens a full repo session (clone + checks); there is no metadata-only
+absorb. While the session is open its scratch counts toward `storage_bytes`; a
+successful publish releases that scratch so it cannot strand your package app
+over the Free storage limit. See
+[Repo sessions](./repo-sessions.md#when-to-use-other-repo-capabilities).
 
 When the listing owner republishes with a new pinned commit, packages in your
 account can react through the `community.fork.upstream_updated` subscription

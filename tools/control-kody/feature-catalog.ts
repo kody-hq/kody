@@ -1,9 +1,31 @@
+type RouteKind =
+	| 'html'
+	| 'json'
+	| 'raw'
+	| 'webhook'
+	| 'asset'
+	| 'markdown'
+	| 'feed'
+	| 'protocol'
+	| 'well-known'
+	| 'error'
+
+export type GeneratedRoute = {
+	path: string
+	kind: RouteKind
+	featureId: string | null
+}
+
+/**
+ * Verification notes for a user-facing surface. Routes are generated from
+ * `routeTree.gen.ts`; `prefixes` only assign those routes to a notes file
+ * (longest match wins). Do not hand-maintain path lists.
+ */
 export type Feature = {
 	id: string
 	title: string
 	file: string
-	paths: Array<string>
-	apis: Array<string>
+	prefixes: Array<string>
 }
 
 export const featuresDirRelativePath = pathToFeaturesDir()
@@ -13,300 +35,267 @@ function pathToFeaturesDir() {
 }
 
 /**
- * User-facing surfaces agents rediscover. Keep `paths` aligned with
- * `packages/worker/start/routeTree.gen.ts` document paths. Only external HTTP protocols and downloads go in
- * `apis`, website reads and mutations use Start server functions.
+ * Prefix → feature ownership. Keep this small: add a prefix when a new
+ * user-facing area needs verification notes, not for every leaf route.
  */
 export const featureCatalog: ReadonlyArray<Feature> = [
 	{
 		id: 'login',
 		title: 'Sign in',
 		file: 'login.md',
-		paths: ['/login'],
-		apis: ['/auth', '/session'],
+		prefixes: [
+			'/login',
+			'/auth',
+			'/auth.md',
+			'/session',
+			'/oauth',
+			'/_kody/auth',
+		],
 	},
 	{
 		id: 'signup',
 		title: 'Sign up and email verify',
 		file: 'signup.md',
-		paths: [
+		prefixes: [
 			'/signup',
 			'/verify-email',
 			'/pending-verification',
 			'/verify-email-change',
 			'/verify-email-claim-release',
 			'/verify-email-destination',
-			'/unsubscribe/tips',
+			'/unsubscribe',
 		],
-		apis: [],
 	},
 	{
 		id: 'onboarding',
 		title: 'Onboarding',
 		file: 'onboarding.md',
-		paths: [
-			'/onboarding',
-			'/onboarding/step-1',
-			'/onboarding/step-1/$agent',
-			'/onboarding/step-2',
-			'/onboarding/step-2/$service',
-			'/onboarding/step-3',
-			'/onboarding/step-3/$agent',
-		],
-		apis: [],
+		prefixes: ['/onboarding'],
 	},
 	{
 		id: 'password-reset',
 		title: 'Password reset',
 		file: 'password-reset.md',
-		paths: ['/reset-password'],
-		apis: [],
+		prefixes: ['/reset-password'],
 	},
 	{
 		id: 'two-factor',
 		title: 'Two-factor auth',
 		file: 'two-factor.md',
-		paths: ['/account/two-factor', '/verify'],
-		apis: [],
+		prefixes: ['/account/two-factor', '/verify'],
 	},
 	{
 		id: 'passkeys',
 		title: 'Passkeys',
 		file: 'passkeys.md',
-		paths: ['/account/passkeys'],
-		apis: [],
+		prefixes: ['/account/passkeys'],
 	},
 	{
 		id: 'account',
 		title: 'Account hub',
 		file: 'account.md',
-		paths: [
+		prefixes: [
 			'/account',
 			'/account/security',
 			'/account/data',
 			'/account/organizations',
-			'/account/organizations/new',
+			'/account/export.json',
 			'/@{$orgSlug}/-/overview',
 			'/@{$orgSlug}/-/settings',
 			'/@{$orgSlug}/-/members',
 			'/@{$orgSlug}/-/teams',
 			'/@{$orgSlug}/-/grants',
 			'/@{$orgSlug}/-/collaborators',
-			'/join/$token',
+			'/join',
 		],
-		apis: ['/account/export.json'],
 	},
 	{
 		id: 'connections',
 		title: 'Agents (connected agents)',
 		file: 'connections.md',
-		paths: [
+		prefixes: [
 			'/account/agents',
 			'/account/connections',
-			'/@{$orgSlug}/-/connections',
 			'/@{$orgSlug}/-/agents',
+			'/@{$orgSlug}/-/connections',
 		],
-		apis: [],
 	},
 	{
 		id: 'packages',
 		title: 'Packages',
 		file: 'packages.md',
-		paths: [
+		prefixes: [
 			'/account/packages',
-			'/@{$orgSlug}/-/packages',
-			'/account/packages/$packageId',
-			'/account/packages/$packageId/approve-publish',
-			'/account/packages/$packageId/files/$',
+			'/account/packages.json',
+			'/account/repos',
 			'/@{$username}',
-			'/@{$username}/$kodyId',
-			'/@{$username}/$kodyId/icon/$iconCommit',
-			'/@{$username}/$kodyId/settings',
-			'/@{$username}/$kodyId/collaborators',
-			'/account/repos/$repoId/icon/$iconCommit',
-			'/@{$username}/$kodyId/approve-publish',
+			'/@{$orgSlug}/-/packages',
 			'/@{$orgSlug}/-/repositories',
-			'/@{$orgSlug}/-/approvals/$bundleId',
+			'/@{$orgSlug}/-/approvals',
 		],
-		apis: ['/@{$username}/$kodyId/raw/$ref/$'],
 	},
 	{
 		id: 'secrets',
 		title: 'Secrets',
 		file: 'secrets.md',
-		paths: [
-			'/@{$orgSlug}/-/credentials',
+		prefixes: [
 			'/account/secrets',
+			'/account/credentials',
 			'/account/secret-providers',
 			'/connect/secrets',
 			'/connect/secret-set',
-			'/account/credentials',
+			'/connect/credential',
 			'/@{$orgSlug}/-/secrets',
+			'/@{$orgSlug}/-/credentials',
 			'/@{$orgSlug}/-/secret-providers',
 		],
-		apis: [],
 	},
 	{
 		id: 'integrations',
 		title: 'Integrations and OAuth connect',
 		file: 'integrations.md',
-		paths: [
+		prefixes: [
 			'/account/integrations',
 			'/connect/oauth',
 			'/@{$orgSlug}/-/integrations',
+			'/integrations',
 		],
-		apis: [],
 	},
 	{
 		id: 'mcp-servers',
 		title: 'MCP servers',
 		file: 'mcp-servers.md',
-		paths: [
+		prefixes: [
 			'/account/mcp-servers',
 			'/account/mcp-oauth-clients',
-			'/account/mcp-servers/oauth/callback',
-			'/account/mcp-servers/logos/$serverId',
 			'/@{$orgSlug}/-/mcp-servers',
 		],
-		apis: [],
 	},
 	{
 		id: 'jobs',
 		title: 'Jobs',
 		file: 'jobs.md',
-		paths: ['/account/jobs', '/@{$orgSlug}/-/jobs'],
-		apis: [],
+		prefixes: ['/account/jobs', '/@{$orgSlug}/-/jobs'],
 	},
 	{
 		id: 'workflows',
 		title: 'Workflows',
 		file: 'workflows.md',
-		paths: ['/account/workflows', '/@{$orgSlug}/-/workflows'],
-		apis: [],
+		prefixes: ['/account/workflows', '/@{$orgSlug}/-/workflows'],
 	},
 	{
 		id: 'webhooks',
 		title: 'Webhooks (minted URLs)',
 		file: 'webhooks.md',
-		paths: [
+		prefixes: [
 			'/account/webhooks',
-			'/@{$username}/$kodyId/settings',
 			'/@{$orgSlug}/-/webhooks',
 			'/connect/webhook-apply',
+			'/@{$username}/webhooks',
+			'/webhooks',
 		],
-		apis: [],
 	},
 	{
 		id: 'follows',
 		title: 'Follows',
 		file: 'follows.md',
-		paths: ['/@{$username}/$kodyId', '/@{$orgSlug}/-/follows'],
-		apis: [],
+		prefixes: ['/@{$orgSlug}/-/follows'],
 	},
 	{
 		id: 'activity',
 		title: 'Activity',
 		file: 'activity.md',
-		paths: ['/account/activity', '/@{$orgSlug}/-/activity'],
-		apis: [],
+		prefixes: ['/account/activity', '/@{$orgSlug}/-/activity'],
 	},
 	{
 		id: 'waiting',
 		title: 'Waiting inbox',
 		file: 'waiting.md',
-		paths: ['/account/waiting', '/@{$orgSlug}/-/waiting'],
-		apis: [],
+		prefixes: ['/account/waiting', '/@{$orgSlug}/-/waiting'],
 	},
 	{
 		id: 'experiments',
 		title: 'Experiments',
 		file: 'experiments.md',
-		paths: ['/account/experiments'],
-		apis: [],
+		prefixes: ['/account/experiments'],
 	},
 	{
 		id: 'memories',
 		title: 'Memories',
 		file: 'memories.md',
-		paths: ['/account/memories', '/@{$orgSlug}/-/memories'],
-		apis: ['/account/memories-export.json'],
+		prefixes: [
+			'/account/memories',
+			'/account/memories-export.json',
+			'/@{$orgSlug}/-/memories',
+		],
 	},
 	{
 		id: 'email',
 		title: 'Email inbox',
 		file: 'email.md',
-		paths: ['/account/email', '/@{$orgSlug}/-/email'],
-		apis: [],
+		prefixes: ['/account/email', '/@{$orgSlug}/-/email'],
 	},
 	{
 		id: 'billing',
 		title: 'Billing, credits, and usage',
 		file: 'billing.md',
-		paths: [
+		prefixes: [
 			'/account/billing',
-			'/@{$orgSlug}/-/billing',
-			'/@{$orgSlug}/-/billing/success',
-			'/@{$orgSlug}/-/usage',
-			'/@{$orgSlug}/-/credits',
 			'/account/credits',
 			'/account/usage',
+			'/@{$orgSlug}/-/billing',
+			'/@{$orgSlug}/-/credits',
+			'/@{$orgSlug}/-/usage',
 		],
-		apis: [],
 	},
 	{
 		id: 'admin',
 		title: 'Admin',
 		file: 'admin.md',
-		paths: ['/admin'],
-		apis: [],
+		prefixes: ['/admin'],
 	},
 	{
 		id: 'community',
 		title: 'Community listings and profiles',
 		file: 'community.md',
-		paths: ['/community', '/@{$username}', '/@{$username}/$kodyId'],
-		apis: ['/@{$username}/$kodyId/raw/$ref/$', '/community/$listingId/raw/$'],
+		prefixes: ['/community'],
 	},
 	{
 		id: 'marketing',
 		title: 'Public marketing pages',
 		file: 'marketing.md',
-		paths: [
+		prefixes: [
 			'/',
-			'/pricing',
-			'/for/business',
-			'/faq',
-			'/case-studies',
-			'/believe',
-			'/with/$agent',
-			'/compare/n8n-alternatives',
-			'/compare/composio-alternatives',
-			'/use-cases',
-			'/use-cases/mcp-gateway',
-			'/use-cases/shared-agent-memory',
-			'/use-cases/claude-code-custom-tools',
-			'/use-cases/scheduled-workflows',
-			'/use-cases/ai-workflow-automation',
-			'/integrations/gmail',
-			'/integrations/slack',
-			'/integrations/claude',
-
-			'/support',
 			'/about',
-			'/contact',
-			'/privacy',
-			'/terms',
-			'/docs',
-			'/guides',
+			'/believe',
 			'/blog',
+			'/case-studies',
+			'/compare',
+			'/contact',
 			'/discord',
+			'/docs',
+			'/docs.md',
+			'/faq',
+			'/features',
+			'/for',
+			'/guides',
+			'/guides.json',
+			'/guides.md',
+			'/llms.txt',
+			'/pricing',
+			'/privacy',
+			'/robots.txt',
+			'/sitemap.xml',
+			'/support',
+			'/terms',
+			'/use-cases',
+			'/with',
 		],
-		apis: [],
 	},
 ]
 
-/** HTML prefixes that must stay mapped. JSON, assets, and well-known stay out. */
-const requiredHtmlPrefixes = [
+/** User-facing prefixes that must have notes (or an exemption). */
+const requiredNotesPrefixes = [
 	'/login',
 	'/signup',
 	'/onboarding',
@@ -322,6 +311,25 @@ const requiredHtmlPrefixes = [
 	'/@{$orgSlug}',
 	'/docs',
 ] as const
+
+/**
+ * Generated routes under these prefixes do not need Feature Map notes.
+ * Keep reasons short; this is the allowlist for "no verification notes".
+ */
+const exemptRoutePrefixes: ReadonlyArray<{
+	prefix: string
+	reason: string
+}> = [
+	{ prefix: '/health', reason: 'ops probe; use control-kody health' },
+	{ prefix: '/sentry-tunnel', reason: 'Sentry ingest tunnel' },
+	{ prefix: '/.well-known', reason: 'discovery / ACME / security txt' },
+	{ prefix: '/og/', reason: 'Open Graph image asset' },
+	{ prefix: '/youtube-thumb/', reason: 'thumbnail proxy asset' },
+	{ prefix: '/orgs/', reason: 'avatar asset' },
+	{ prefix: '/profiles/', reason: 'avatar / OG asset' },
+	{ prefix: '/404', reason: 'error page' },
+	{ prefix: '/500', reason: 'error page' },
+]
 
 // Read the generated native route inventory without importing UI or server modules.
 // This is source inspection for the CLI, not a second route matcher.
@@ -340,52 +348,110 @@ function extractNativePaths(source: string) {
 	].toSorted()
 }
 
-function isHtmlUserPath(routePath: string) {
-	if (routePath.startsWith('/.')) return false
-	if (routePath.startsWith('/integrations/')) return false
-	if (routePath.startsWith('/webhooks/')) return false
-	if (routePath.startsWith('/og/')) return false
-	if (routePath.startsWith('/youtube-thumb/')) return false
-	if (routePath === '/health' || routePath.startsWith('/health/')) return false
-	if (routePath === '/session') return false
-	if (routePath === '/sentry-tunnel') return false
+function classifyRouteKind(routePath: string): RouteKind {
+	if (routePath === '/404' || routePath === '/500') return 'error'
+	if (routePath.startsWith('/.well-known')) return 'well-known'
 	if (
-		routePath.endsWith('.json') ||
-		routePath.endsWith('.md') ||
-		routePath.endsWith('.xml') ||
-		routePath.endsWith('.txt') ||
-		routePath.endsWith('.png')
+		routePath === '/auth' ||
+		routePath.startsWith('/auth/') ||
+		routePath === '/session' ||
+		routePath === '/health' ||
+		routePath.startsWith('/health/') ||
+		routePath.startsWith('/oauth/') ||
+		routePath.startsWith('/_kody/auth') ||
+		routePath === '/sentry-tunnel'
 	) {
-		return false
+		return 'protocol'
 	}
-	return true
+	if (
+		routePath.includes('/webhooks/') ||
+		routePath === '/webhooks/stripe' ||
+		routePath.startsWith('/webhooks/')
+	) {
+		return 'webhook'
+	}
+	if (routePath.includes('/raw/') || routePath.endsWith('/raw/$')) return 'raw'
+	if (
+		routePath.endsWith('.png') ||
+		routePath.includes('/icon/') ||
+		routePath.includes('/avatar/') ||
+		routePath.includes('/logos/') ||
+		routePath.includes('/assets/') ||
+		routePath.startsWith('/og/') ||
+		routePath.startsWith('/youtube-thumb/') ||
+		routePath.startsWith('/orgs/') ||
+		routePath.startsWith('/profiles/')
+	) {
+		return 'asset'
+	}
+	if (routePath.endsWith('.json')) return 'json'
+	if (routePath.endsWith('.md')) return 'markdown'
+	if (
+		routePath.endsWith('.txt') ||
+		routePath.endsWith('.xml') ||
+		routePath === '/robots.txt' ||
+		routePath === '/sitemap.xml' ||
+		routePath === '/llms.txt'
+	) {
+		return 'feed'
+	}
+	return 'html'
 }
 
-function featureCoversPath(feature: Feature, routePath: string) {
-	return feature.paths.some((owned) => pathCoveredBy(owned, routePath))
+/** Hub prefixes that must not swallow sibling Feature Map entries. */
+const exactOnlyPrefixes = ['/', '/account'] as const
+
+function isExactOnlyPrefix(prefix: string) {
+	return (exactOnlyPrefixes as ReadonlyArray<string>).includes(prefix)
 }
 
-/** Hub paths that must not swallow sibling Feature Map entries. */
-const exactOnlyOwnedPaths = ['/', '/account'] as const
-
-function isExactOnlyOwnedPath(owned: string) {
-	return (exactOnlyOwnedPaths as ReadonlyArray<string>).includes(owned)
-}
-
-function prefixMatches(prefix: string, routePath: string) {
+/** Feature ownership match. Hubs `/` and `/account` are exact-only. */
+function ownershipPrefixMatches(prefix: string, routePath: string) {
 	if (routePath === prefix) return true
-	if (prefix === '/') return routePath === '/'
+	if (isExactOnlyPrefix(prefix)) return false
 	return routePath.startsWith(`${prefix}/`)
 }
 
-function pathCoveredBy(owned: string, routePath: string) {
-	if (routePath === owned) return true
-	if (isExactOnlyOwnedPath(owned)) return false
-	return routePath.startsWith(`${owned}/`)
+/** Required-prefix / exemption coverage (directory match; `/` stays exact). */
+function coveragePrefixMatches(prefix: string, routePath: string) {
+	if (routePath === prefix) return true
+	if (prefix === '/') return false
+	return routePath.startsWith(`${prefix}/`)
 }
 
-function catalogCoversPath(catalog: ReadonlyArray<Feature>, routePath: string) {
-	return catalog.some((feature) => featureCoversPath(feature, routePath))
+function isExemptRoute(routePath: string) {
+	return exemptRoutePrefixes.some(({ prefix }) =>
+		coveragePrefixMatches(prefix, routePath),
+	)
+}
+
+/** Longest matching feature prefix wins; `/` and `/account` are exact-only hubs. */
+function assignFeatureId(
+	routePath: string,
+	catalog: ReadonlyArray<Feature> = featureCatalog,
+): string | null {
+	let best: { id: string; length: number } | null = null
+	for (const feature of catalog) {
+		for (const prefix of feature.prefixes) {
+			if (!ownershipPrefixMatches(prefix, routePath)) continue
+			if (!best || prefix.length > best.length) {
+				best = { id: feature.id, length: prefix.length }
+			}
+		}
+	}
+	return best?.id ?? null
+}
+
+export function buildRouteInventory(input: {
+	routeSource: string
+	catalog?: ReadonlyArray<Feature>
+}): Array<GeneratedRoute> {
+	const catalog = input.catalog ?? featureCatalog
+	return extractNativePaths(input.routeSource).map((routePath) => ({
+		path: routePath,
+		kind: classifyRouteKind(routePath),
+		featureId: assignFeatureId(routePath, catalog),
+	}))
 }
 
 export function findFeature(
@@ -395,23 +461,146 @@ export function findFeature(
 	return catalog.find((feature) => feature.id === id) ?? null
 }
 
+export function formatRouteInventory(
+	routes: ReadonlyArray<GeneratedRoute>,
+	catalog: ReadonlyArray<Feature> = featureCatalog,
+	filter?: { featureId?: string | null; prefix?: string | null },
+) {
+	const filtered = routes.filter((route) => {
+		if (filter?.featureId && route.featureId !== filter.featureId) return false
+		if (filter?.prefix && !coveragePrefixMatches(filter.prefix, route.path))
+			return false
+		return true
+	})
+	const byFeature = new Map<string, Array<GeneratedRoute>>()
+	const unassigned: Array<GeneratedRoute> = []
+	for (const route of filtered) {
+		if (!route.featureId) {
+			unassigned.push(route)
+			continue
+		}
+		const list = byFeature.get(route.featureId) ?? []
+		list.push(route)
+		byFeature.set(route.featureId, list)
+	}
+	const lines: Array<string> = []
+	for (const feature of catalog) {
+		const list = byFeature.get(feature.id)
+		if (!list?.length) continue
+		lines.push(`${feature.id}\t${feature.title}`)
+		for (const route of list) {
+			lines.push(`  ${route.kind}\t${route.path}`)
+		}
+	}
+	if (unassigned.length > 0) {
+		lines.push('(unassigned)')
+		for (const route of unassigned) {
+			lines.push(`  ${route.kind}\t${route.path}`)
+		}
+	}
+	return lines.join('\n')
+}
+
 export type CatalogCheckIssue = {
-	kind: 'stale-path' | 'unmapped-route' | 'missing-file' | 'unknown-feature'
+	kind:
+		| 'missing-file'
+		| 'orphan-notes'
+		| 'unknown-route-ref'
+		| 'unmapped-required'
+		| 'missing-inventory'
 	id?: string
 	path?: string
 	file?: string
 	detail: string
 }
 
+/** Normalize a path written in notes to the FileRoutesByFullPath form. */
+function normalizeNotesRouteRef(raw: string): string {
+	let path = raw.trim()
+	const hash = path.indexOf('#')
+	if (hash >= 0) path = path.slice(0, hash)
+	const query = path.indexOf('?')
+	if (query >= 0) path = path.slice(0, query)
+	path = path.replace(/\/$/, '') || '/'
+	path = path
+		.replace(/\/@<slug>/g, '/@{$orgSlug}')
+		.replace(/\/@<orgSlug>/g, '/@{$orgSlug}')
+		.replace(/\/@:orgSlug/g, '/@{$orgSlug}')
+		.replace(/\/@username\b/g, '/@{$username}')
+		.replace(/\/@<username>/g, '/@{$username}')
+		.replace(/\/:([A-Za-z_][\w]*)/g, '/$$$1')
+		.replace(/\/\{([A-Za-z_][\w]*)\}/g, '/$$$1')
+	// `$kodyId` / `:kodyId` already handled; leaf package paths use `$kodyId`
+	path = path.replace(/\/:kodyId\b/g, '/$kodyId')
+	return path
+}
+
+/**
+ * Paths in backticks that look like app routes. Skips prose examples that are
+ * not rooted paths (no spaces, starts with `/`).
+ */
+function extractNotesRouteRefs(markdown: string): Array<string> {
+	const refs = new Set<string>()
+	for (const match of markdown.matchAll(/`(\/[^`\s]+)`/g)) {
+		const raw = match[1]!
+		if (raw.includes('…') || raw.includes('...')) continue
+		refs.add(normalizeNotesRouteRef(raw))
+	}
+	return [...refs].toSorted()
+}
+
+function inventoryHasRoute(
+	routePaths: ReadonlyArray<string>,
+	notePath: string,
+): boolean {
+	if (routePaths.includes(notePath)) return true
+	// Allow notes to cite a prefix that owns splat children
+	return routePaths.some(
+		(routePath) =>
+			routePath.startsWith(`${notePath}/`) ||
+			(notePath.endsWith('/$') && routePath.startsWith(notePath.slice(0, -1))),
+	)
+}
+
+function notesCoverRequiredPrefix(
+	catalog: ReadonlyArray<Feature>,
+	requiredPrefix: string,
+): boolean {
+	return catalog.some((feature) =>
+		feature.prefixes.some(
+			(owned) =>
+				coveragePrefixMatches(requiredPrefix, owned) ||
+				coveragePrefixMatches(owned, requiredPrefix) ||
+				owned === requiredPrefix,
+		),
+	)
+}
+
 export function checkFeatureCatalog(input: {
 	catalog?: ReadonlyArray<Feature>
 	routeSource: string
 	existingFiles: ReadonlyArray<string>
+	notesBodies?: ReadonlyMap<string, string>
 }): { ok: boolean; issues: Array<CatalogCheckIssue> } {
 	const catalog = input.catalog ?? featureCatalog
-	const routePaths = extractNativePaths(input.routeSource)
-	const files = new Set(input.existingFiles)
 	const issues: Array<CatalogCheckIssue> = []
+	let routePaths: Array<string>
+	try {
+		routePaths = extractNativePaths(input.routeSource)
+	} catch (error) {
+		issues.push({
+			kind: 'missing-inventory',
+			detail:
+				error instanceof Error
+					? error.message
+					: 'Failed to read FileRoutesByFullPath',
+		})
+		return { ok: false, issues }
+	}
+
+	const files = new Set(input.existingFiles)
+	const knownFiles = new Set(catalog.map((feature) => feature.file))
+	knownFiles.add('README.md')
 
 	for (const feature of catalog) {
 		if (!files.has(feature.file)) {
@@ -422,32 +611,71 @@ export function checkFeatureCatalog(input: {
 				detail: `${feature.id} is missing ${feature.file}`,
 			})
 		}
-		for (const owned of feature.paths) {
-			const present = routePaths.includes(owned)
-			if (!present) {
-				issues.push({
-					kind: 'stale-path',
-					id: feature.id,
-					path: owned,
-					detail: `${feature.id} lists ${owned}, which is not in the generated Start route tree`,
-				})
-			}
+	}
+
+	for (const file of files) {
+		if (!knownFiles.has(file)) {
+			issues.push({
+				kind: 'orphan-notes',
+				file,
+				detail: `${file} is not listed in the Feature Map catalog`,
+			})
 		}
 	}
 
-	for (const routePath of routePaths) {
-		if (!isHtmlUserPath(routePath)) continue
+	const inventory = buildRouteInventory({
+		routeSource: input.routeSource,
+		catalog,
+	})
+	const byPath = new Map(inventory.map((route) => [route.path, route]))
+
+	for (const required of requiredNotesPrefixes) {
+		if (notesCoverRequiredPrefix(catalog, required)) continue
+		if (exemptRoutePrefixes.some(({ prefix }) => prefix === required)) continue
+		issues.push({
+			kind: 'unmapped-required',
+			path: required,
+			detail: `${required} has no Feature Map notes entry or exemption`,
+		})
+	}
+
+	for (const route of inventory) {
+		if (route.featureId) continue
+		if (isExemptRoute(route.path)) continue
 		if (
-			!requiredHtmlPrefixes.some((prefix) => prefixMatches(prefix, routePath))
+			!requiredNotesPrefixes.some((prefix) =>
+				coveragePrefixMatches(prefix, route.path),
+			)
 		) {
 			continue
 		}
-		if (!catalogCoversPath(catalog, routePath)) {
-			issues.push({
-				kind: 'unmapped-route',
-				path: routePath,
-				detail: `${routePath} has no Feature Map entry`,
-			})
+		issues.push({
+			kind: 'unmapped-required',
+			path: route.path,
+			detail: `${route.path} is under a required prefix but has no notes feature`,
+		})
+	}
+
+	if (input.notesBodies) {
+		for (const feature of catalog) {
+			const body = input.notesBodies.get(feature.file)
+			if (body == null) continue
+			for (const ref of extractNotesRouteRefs(body)) {
+				if (inventoryHasRoute(routePaths, ref)) continue
+				// Parameterized note refs may use `$slug` where inventory uses `{$orgSlug}`
+				const alt = ref
+					.replace('/@{$slug}', '/@{$orgSlug}')
+					.replace('/$slug/', '/{$orgSlug}/')
+				if (inventoryHasRoute(routePaths, alt)) continue
+				if (byPath.has(ref)) continue
+				issues.push({
+					kind: 'unknown-route-ref',
+					id: feature.id,
+					path: ref,
+					file: feature.file,
+					detail: `${feature.id} notes cite ${ref}, which is not in the generated route inventory`,
+				})
+			}
 		}
 	}
 

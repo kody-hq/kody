@@ -348,6 +348,13 @@ export type RepoExternalPublishResult =
 			manifest: AuthoredPackageJson
 			checks: NonNullable<RepoSessionCheckStatus['results']>
 			phase_timings?: PublishPhaseTimings
+			/** Names stale static dependents still reading kept or removed mounts. */
+			secret_mount_compat?: string | null
+			/**
+			 * Advance warning when this package fills a user credential whose
+			 * allowed-packages list excludes it (enforcement Oct 21, 2026).
+			 */
+			allowed_packages_publish_notice?: string | null
 	  }
 	| {
 			status: 'locked'
@@ -358,6 +365,7 @@ export type RepoExternalPublishResult =
 			packageName: string
 			/** Names stale static dependents still reading kept or removed mounts. */
 			secret_mount_compat?: string | null
+			allowed_packages_publish_notice?: string | null
 	  }
 	| {
 			status: 'approval_required'
@@ -366,6 +374,7 @@ export type RepoExternalPublishResult =
 			message: string
 			approval: CredentialNeedsApprovalRequired
 			secret_mount_compat?: string | null
+			allowed_packages_publish_notice?: string | null
 	  }
 
 export type RepoSourceBootstrapResult = {

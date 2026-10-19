@@ -1,16 +1,17 @@
 # Dependency overrides
 
 This file documents every `overrides` entry in the root `package.json` and
-explains why it exists. `npm run overrides:check` (part of `npm run validate`
-and the CI static job) fails when an override has no `###` heading here whose
-first code span is the overridden package (nested overrides also name each
-parent in backticks before the `→`), when a heading documents a package or
-parent with no matching override, or when `package.json` repeats a key.
+explains why it exists. The overrides member of `npm run deps:check` (part of
+`npm run validate` and the CI static job) fails when an override has no `###`
+heading here whose first code span is the overridden package (nested overrides
+also name each parent in backticks before the `→`), when a heading documents a
+package or parent with no matching override, or when `package.json` repeats a
+key.
 
 After changing overrides, `npm run audit:prod` is the production-dependency
-check. It is part of `npm run validate` and the CI static job (see
-[`checks`](./setup/checks.md) and
-[`dependency auditing`](./setup/dependency-auditing.md)). Clearing these
+check (`npm audit --omit=dev --audit-level=moderate`). Moderate, high, and
+critical findings fail; low findings do not. It is part of `npm run validate`
+and the CI static job (see [`checks`](./setup/checks.md)). Clearing these
 override targets does not mean every advisory is gone — other transitive
 packages can still report findings outside this file's scope.
 

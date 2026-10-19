@@ -30,7 +30,14 @@ export class JobsHost
 	}): Promise<RunDueJobsResult> {
 		return runWithDynamicWorkerEvaluationBudget(
 			async () =>
-				await runDueJobsForUser({ env: this.env, userId: input.userId }),
+				await runDueJobsForUser({
+					env: this.env,
+					userId: input.userId,
+					// Host lifecycle owns meter finalization (and other deferred
+					// side effects). Claimed scheduled runs finish the run record
+					// before this RPC returns; waitUntil only retains promises.
+					waitUntil: (promise) => this.ctx.waitUntil(promise),
+				}),
 		)
 	}
 
@@ -48,6 +55,7 @@ export class JobsHost
 					jobId: input.jobId,
 					callerContext: input.callerContext ?? null,
 					repoCheckPolicyOverride: input.repoCheckPolicyOverride ?? null,
+					waitUntil: (promise) => this.ctx.waitUntil(promise),
 				}),
 		)
 	}

@@ -3,6 +3,11 @@
  * tests can exercise the predicates with plain event shapes.
  */
 
+import {
+	isBrowserFetchNetworkError,
+	isBrowserFetchNetworkErrorMessage,
+} from '#client/browser-fetch-network-error.ts'
+
 type SentryStackFrame = {
 	filename?: string
 	abs_path?: string
@@ -18,11 +23,21 @@ type SentryExceptionValue = {
 	}
 }
 
+type SentryBreadcrumbLike = {
+	category?: string
+	data?: {
+		url?: string
+		method?: string
+		status_code?: number
+	}
+}
+
 type SentryErrorEventLike = {
 	message?: string
 	exception?: {
 		values?: Array<SentryExceptionValue>
 	}
+	breadcrumbs?: Array<SentryBreadcrumbLike>
 }
 
 function sentryEventMessages(event: SentryErrorEventLike) {
@@ -1111,6 +1126,133 @@ function filterBrowserBlobImportScriptsNetworkSentryEvent<
 }
 
 /**
+ * Transient browser `fetch()` network failures from TanStack Start server
+ * function RPC (KODY-9Q / issue 7798170337). After the Start migration,
+ * `createServerFn` client calls hit `/_serverFn/…`; when the tab resumes
+ * offline/asleep (or the network blips), WebKit rejects with TypeError
+ * `Load failed`, Chromium with `Failed to fetch`, Firefox with
+ * `NetworkError when attempting to fetch resource.`. Root capture is the
+ * router's `defaultOnCatch: captureClientException` and root
+ * `refreshOnActivation` → `onError: captureClientException` (handled).
+ * Tab-resume refresh keeps existing Query data; no error boundary.
+ *
+ * Match only browser fetch-network TypeError wording (see
+ * `isBrowserFetchNetworkError`) AND serverFn evidence:
+ * - stack/frames naming `serverFnFetcher` / `createServerFn` (dev or
+ *   source-mapped stacks), OR
+ * - the latest Sentry fetch/xhr breadcrumb whose URL contains `/_serverFn`
+ *   and that lacks a numeric `data.status_code` (production `beforeSend` sees
+ *   bundled `/assets/…` frames; source maps apply after send). Rejected
+ *   fetches omit `status_code`; completed responses include it. Older
+ *   rejected `/_serverFn` crumbs on the scope must not qualify a later
+ *   unrelated network TypeError.
+ *
+ * Multi-value events (linked `cause` chains) drop only when **every** value
+ * is a qualifying fetch-network TypeError — a reportable app exception with
+ * a network TypeError cause must stay visible. Never blanket-drop bare
+ * "Failed to fetch" / in-app TypeErrors.
+ */
+const tanStackServerFnFetchStackToken = /serverFnFetcher|createServerFn/
+const tanStackServerFnBreadcrumbUrl = /\/_serverFn(?:\/|$|\?)/i
+
+function textMentionsTanStackServerFnFetch(text: string) {
+	return tanStackServerFnFetchStackToken.test(text)
+}
+
+function framesMentionTanStackServerFnFetch(
+	frames: Array<SentryStackFrame> | undefined,
+) {
+	if (!frames || frames.length === 0) return false
+	for (const frame of frames) {
+		if (
+			typeof frame.function === 'string' &&
+			textMentionsTanStackServerFnFetch(frame.function)
+		) {
+			return true
+		}
+		for (const url of stackFrameUrls(frame)) {
+			if (textMentionsTanStackServerFnFetch(url)) return true
+		}
+	}
+	return false
+}
+
+function originalExceptionMentionsTanStackServerFnFetch(error: unknown) {
+	if (typeof error !== 'object' || error === null) return false
+	const stack =
+		'stack' in error && typeof error.stack === 'string' ? error.stack : ''
+	return textMentionsTanStackServerFnFetch(stack)
+}
+
+function eventHasTanStackServerFnFetchBreadcrumb(event: SentryErrorEventLike) {
+	// Only the latest fetch/xhr crumb counts. Sentry keeps breadcrumbs on the
+	// scope, so an older rejected `/_serverFn` crumb must not qualify a later
+	// unrelated network TypeError.
+	let latestFetchBreadcrumb: SentryBreadcrumbLike | undefined
+	for (const crumb of event.breadcrumbs ?? []) {
+		if (crumb.category !== 'fetch' && crumb.category !== 'xhr') continue
+		latestFetchBreadcrumb = crumb
+	}
+	if (!latestFetchBreadcrumb) return false
+	// Completed HTTP responses carry a numeric status_code. Skip them so a
+	// prior successful `/_serverFn` call cannot qualify a later unrelated
+	// fetch-network TypeError. Rejected fetches omit status_code.
+	if (typeof latestFetchBreadcrumb.data?.status_code === 'number') {
+		return false
+	}
+	const url = latestFetchBreadcrumb.data?.url
+	return typeof url === 'string' && tanStackServerFnBreadcrumbUrl.test(url)
+}
+
+function isTanStackServerFnFetchNetworkExceptionMessage(
+	value: SentryExceptionValue,
+) {
+	if (value.type !== 'TypeError') return false
+	return (
+		typeof value.value === 'string' &&
+		isBrowserFetchNetworkErrorMessage(value.value)
+	)
+}
+
+export function isTanStackServerFnFetchNetworkError(error: unknown) {
+	if (!isBrowserFetchNetworkError(error)) return false
+	return originalExceptionMentionsTanStackServerFnFetch(error)
+}
+
+function isTanStackServerFnFetchNetworkSentryEvent(
+	event: SentryErrorEventLike,
+	originalException?: unknown,
+) {
+	// Every-value gate for linked causes (CodeRabbit): drop only when every
+	// exception value is a fetch-network TypeError. A reportable app Error
+	// wrapping a network TypeError cause must stay visible.
+	const values = event.exception?.values ?? []
+	if (values.length === 0) {
+		return isTanStackServerFnFetchNetworkError(originalException)
+	}
+	if (!values.every(isTanStackServerFnFetchNetworkExceptionMessage)) {
+		return false
+	}
+	// Evidence: production beforeSend uses rejected /_serverFn breadcrumbs
+	// (no status_code; bundled /assets frames lack module names); unminified
+	// stacks / originalException may still name serverFnFetcher / createServerFn.
+	if (eventHasTanStackServerFnFetchBreadcrumb(event)) return true
+	if (isTanStackServerFnFetchNetworkError(originalException)) return true
+	return values.every((value) =>
+		framesMentionTanStackServerFnFetch(value.stacktrace?.frames),
+	)
+}
+
+function filterTanStackServerFnFetchNetworkSentryEvent<
+	T extends SentryErrorEventLike,
+>(event: T, originalException?: unknown): T | null {
+	if (isTanStackServerFnFetchNetworkSentryEvent(event, originalException)) {
+		return null
+	}
+	return event
+}
+
+/**
  * Stale Start release after a deploy: a browser tab still holding a previous
  * client build calls `/__start/<old-hash>/_serverFn/...`, gets HTTP 404 with
  * body exactly `Unknown Start release.`, and the createServerFn client throws
@@ -1163,8 +1305,9 @@ function filterUnknownStartReleaseSentryEvent<T extends SentryErrorEventLike>(
  * Safari). Fences already render as escaped plaintext until the chunk
  * resolves, so this is expected degradation — not an app defect. Match only
  * the browser "Failed to fetch dynamically imported module" signature with
- * `syntax-highlight-core` in the URL so other chunk-load failures stay
- * Sentry-visible (route boot still reloads on stale area hashes).
+ * `syntax-highlight-core` in the URL. Other dynamic-import failures stay
+ * Sentry-visible unless `reloadOnStaleRouteChunk` just triggered its one-shot
+ * reload (KODY-5W / KODY-9S / KODY-9V / KODY-9Y).
  */
 const syntaxHighlightCoreDynamicImportFailureMessage =
 	/Failed to fetch dynamically imported module:\s*\S*syntax-highlight-core[^/\s]*\.js/i
@@ -1809,6 +1952,12 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 		return null
 	}
 	if (filterUnknownStartReleaseSentryEvent(event, originalException) === null) {
+		return null
+	}
+	if (
+		filterTanStackServerFnFetchNetworkSentryEvent(event, originalException) ===
+		null
+	) {
 		return null
 	}
 	if (

@@ -29,6 +29,7 @@ import {
 } from '#app/handlers/docs.ts'
 import { createYoutubeThumbHandler } from '#app/handlers/youtube-thumb.ts'
 import { createAccountExportHandler } from '#app/handlers/account-export.ts'
+import { createAccountPackagesApiHandler } from '#app/handlers/account-packages.ts'
 import { createMcpServerLogoHandler } from '#app/handlers/mcp-server-logo.ts'
 import { createAccountMcpServersOauthCallbackHandler } from '#app/handlers/account-mcp-servers.ts'
 import { createAccountMemoriesExportHandler } from './memories-export.ts'
@@ -232,6 +233,13 @@ export const accountExportHttp = ({
 	request: Request
 	params: {}
 }) => createAccountExportHandler(getStartRequestEnv())({ request })
+
+export const accountPackagesHttp = ({
+	request,
+}: {
+	request: Request
+	params: {}
+}) => createAccountPackagesApiHandler(getStartRequestEnv())({ request })
 
 export const accountMcpServerLogoHttp = ({
 	request,

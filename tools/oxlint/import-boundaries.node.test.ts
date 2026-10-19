@@ -108,22 +108,6 @@ test('client and universal modules cannot import server layers', () => {
 	).toBe(null)
 })
 
-test('client routes read loader payloads through createRouteData, not the raw load latch', () => {
-	const routeFile = 'packages/worker/client/routes/account-jobs.tsx'
-	const helperFile = 'packages/worker/client/route-data.tsx'
-
-	expect(
-		findImportBoundaryViolation(routeFile, '#client/route-load-latch.ts'),
-	).toMatch(/read loader payloads through createRouteData/)
-	expect(findImportBoundaryViolation(routeFile, '#client/route-data.tsx')).toBe(
-		null,
-	)
-	// The helper itself owns the latch.
-	expect(
-		findImportBoundaryViolation(helperFile, '#client/route-load-latch.ts'),
-	).toBe(null)
-})
-
 test('import boundaries have no legacy exceptions', () => {
 	const entries = importBoundaries.flatMap(
 		(boundary: {

@@ -12,6 +12,7 @@ import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
 import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
 import { type RepoPublishWorkspace } from './external-publish.ts'
 import { type PublishGitNoteFileSystem } from './publish-git-notes.ts'
+import { unknownRequestedCommitError } from './requested-commit-error.ts'
 
 /**
  * Clone / checkout for `packagePublishExternalPush` must not use the
@@ -190,10 +191,19 @@ export async function cloneExternalPublishWorkspace(input: {
 			force: true,
 		})
 	} catch (error) {
-		throw new Error(
-			`source clone or commit checkout failed: ${getErrorMessage(error)}`,
-			{ cause: error },
+		// Storage failures stay storage failures. A missing requested commit
+		// is not a clone failure and must not be labeled as one.
+		if (isWorkspaceSqliteTooBigMessage(getErrorMessage(error))) {
+			throw error
+		}
+		const unknownCommit = unknownRequestedCommitError(
+			error,
+			input.checkoutCommit,
 		)
+		if (unknownCommit) throw unknownCommit
+		throw new Error(`commit checkout failed: ${getErrorMessage(error)}`, {
+			cause: error,
+		})
 	}
 
 	const listFiles = async () =>

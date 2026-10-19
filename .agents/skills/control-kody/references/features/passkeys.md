@@ -1,21 +1,12 @@
 # Passkeys
 
-WebAuthn registration and authentication.
-
-## How to get there
-
-`/account/passkeys`. Browser-gated; Cloud Agent VMs often lack a platform
-authenticator.
-
-## Drive it
+## Seed / reach
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /account/passkeys
+npm run control-kody -- login
+npm run control-kody -- request GET /account/passkeys --contains 'Passkey'
 ```
 
-The page uses native Start server functions for website reads and mutations. Use
-supported MCP capabilities through `control-kody search` and
-`control-kody execute` when fixture data is needed.
+## Assert
 
-Registration and authentication use native server functions from the browser. A
-supported authenticator is required to verify a complete WebAuthn ceremony.
+- `/account/passkeys` (browser WebAuthn; prefer unit/e2e for register/assert)

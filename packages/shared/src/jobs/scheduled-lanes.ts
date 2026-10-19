@@ -211,7 +211,7 @@ export function shouldRunKitSubscriberSyncCron(now: Date) {
 
 /**
  * Nightly DR export window: roughly 00:30–06:10 UTC on the worker's
- * every-5-minute cron (~68 ticks × 20 s ≈ 22 minutes of staging work).
+ * every-5-minute cron (~68 ticks × 45 s ≈ 51 minutes of staging work).
  * Ticks outside this window are skipped so daytime traffic is not competing
  * with a full-platform export. Inside the window, each tick prefers the
  * oldest stranded day in the lookback (progress without summary), then today.
@@ -226,7 +226,7 @@ export function shouldRunDrExportCron(now: Date) {
  * Daytime catch-up cadence: outside the nightly window, every worker cron
  * tick (every 5 minutes) resumes the oldest stranded day in the lookback
  * until its summary is written. A single tick still spends at most the
- * normal ~20 s budget, so daytime blast radius stays bounded while backlog
+ * normal ~45 s budget, so daytime blast radius stays bounded while backlog
  * drains ~3× faster than the previous 15-minute cadence. Ticks with no
  * stranded day exit after two cheap HEAD-style checks per lookback day.
  */

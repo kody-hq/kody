@@ -2,7 +2,16 @@ import { routes } from '#universal/routes.ts'
 import { getSavedPackageById } from './repo.ts'
 import { type SavedPackageRecord } from './types.ts'
 
-const gitCommitShaPattern = /^[0-9a-f]{7,64}$/i
+/**
+ * Full SHA-1 object id. Artifacts git and isomorphic-git resolve only a
+ * 40-hex oid (`GitRefManager.resolve` returns length-40 hex as an object id
+ * and looks up every other value as a ref, including `origin/<value>`).
+ * SHA-256 object ids (64 hex) are not a supported repo format here.
+ */
+const gitCommitShaPattern = /^[0-9a-f]{40}$/i
+
+export const fullGitCommitShaRequiredMessage =
+	'Use the full commit SHA (40 characters)'
 
 export class PackagePublishLockedError extends Error {
 	readonly packageId: string

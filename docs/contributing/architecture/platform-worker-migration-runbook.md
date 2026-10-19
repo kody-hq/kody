@@ -9,14 +9,14 @@ This page records current ownership and the invariants later deploys must keep.
 How the remaining platform Durable Objects live on the `kody-platform` Worker
 (`packages/platform-worker/`), per
 [ADR 0034](../decisions/0034-origin-owns-no-durable-objects.md). Later deploys
-follow `.github/workflows/deploy.yml`. Remix/blog/UI-only uploads skip platform.
+follow `.github/workflows/deploy.yml`. UI/blog-only uploads skip platform.
 Official guide markdown uploads origin and platform.
 
 ## Ownership
 
 | Concern                                                                                                                        | Owner                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| Remix UI, blog, official guides, static assets                                                                                 | `kody` (origin)                                             |
+| Website (TanStack Start), blog, official guides, static assets                                                                 | `kody` (origin)                                             |
 | MCP HTTP (`/mcp`), OAuth, inbound email, queues                                                                                | `kody` (origin)                                             |
 | `MCP`, `McpClientHub`, `OAuthPurgeCoordinator`, `UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `StripePlanRefresh` | `kody-platform` (origin and runtime bind them cross-script) |
 | `StorageRunner`, `RunLog`, `PackageRealtimeSession`                                                                            | `kody-runtime`                                              |
@@ -81,9 +81,9 @@ When platform sources change on a steady-state script, the workflow deploys
 `kody-platform` before origin so cross-script bindings stay valid. That order is
 binding and healthcheck hygiene. It does not re-apply the `v1` transfer.
 
-Remix/blog/UI-only uploads skip platform, runtime, and jobs. Official guide
-markdown deploys origin and platform (MCP bundles those files) and still skips
-runtime and jobs, so those Durable Objects are not reset.
+UI/blog-only uploads skip platform, runtime, and jobs. Official guide markdown
+deploys origin and platform (MCP bundles those files) and still skips runtime
+and jobs, so those Durable Objects are not reset.
 
 Healthchecks: origin `/health`, platform `/__platform/health`, runtime
 `/__runtime/health`.

@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	acceptedEmailVerificationDelivery,
 	describeEmailVerificationDelivery,
-	emailVerificationDeliveryHelpPath,
 	isAdminUserVerificationFilter,
 	isStalledEmailVerificationDelivery,
 	shouldPollEmailVerificationDelivery,
@@ -80,7 +79,7 @@ test('delivered and failed map to terminal indicator phases', () => {
 	})
 	expect(failed.indicator).toBe('failed')
 	expect(failed.tone).toBe('error')
-	expect(failed.helpHref).toBe(emailVerificationDeliveryHelpPath)
+	expect(failed.helpHref).toBe('/docs/cant-open-or-get-mail')
 	expect(failed.helpLabel).toMatch(/can't open kody\.codes/i)
 	expect(failed.detail).toMatch(/social login/i)
 	expect(
@@ -118,5 +117,5 @@ test('sender_block copy tells people to try another address', () => {
 	expect(blocked.detail).toMatch(/blocking our domain right now/i)
 	expect(blocked.detail).toMatch(/try another address/i)
 	expect(blocked.detail).toMatch(/support/i)
-	expect(blocked.helpHref).toBe(emailVerificationDeliveryHelpPath)
+	expect(blocked.helpHref).toBe('/docs/cant-open-or-get-mail')
 })

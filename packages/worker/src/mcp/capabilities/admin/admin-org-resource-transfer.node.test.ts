@@ -2,6 +2,7 @@ import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
+import { orgTransferMemoriesStayNote } from '#worker/org-transfer/report.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
 
 const mocks = vi.hoisted(() => ({ runOrgResourceTransfer: vi.fn() }))
@@ -55,6 +56,9 @@ const summary = {
 	clashes: [],
 	blockers: [],
 	warnings: [],
+	kept: {
+		memories: { count: 0, note: orgTransferMemoriesStayNote },
+	},
 }
 
 test('adminOrgResourceTransfer is admin-only, destructive, and audited', async () => {

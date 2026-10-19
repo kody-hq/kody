@@ -1327,7 +1327,7 @@ test('control-kody request fetches public HTML without posting /auth and stops w
 	)
 })
 
-test('control-kody map --check reports unmapped /account pages and stale Feature Map paths', async () => {
+test('control-kody map --check reports unmapped required routes and unknown notes refs', async () => {
 	await using temp = await createTempDir()
 	for (const feature of featureCatalog) {
 		await writeFile(path.join(temp.dir, feature.file), `# ${feature.file}\n`)
@@ -1338,7 +1338,7 @@ test('control-kody map --check reports unmapped /account pages and stale Feature
 			'utf8',
 		).replace(
 			'export interface FileRoutesByFullPath {',
-			"export interface FileRoutesByFullPath {\n  '/account/new-surface': unknown",
+			"export interface FileRoutesByFullPath {\n  '/account/new-surface': unknown\n  '/@{$orgSlug}/-/brand-new': unknown",
 		),
 		featuresDir: temp.dir,
 	})
@@ -1346,20 +1346,43 @@ test('control-kody map --check reports unmapped /account pages and stale Feature
 	expect(
 		unmapped.issues.some(
 			(issue) =>
-				issue.kind === 'unmapped-route' &&
+				issue.kind === 'unmapped-required' &&
 				issue.path === '/account/new-surface',
+		),
+	).toBe(true)
+	expect(
+		unmapped.issues.some(
+			(issue) =>
+				issue.kind === 'unmapped-required' &&
+				issue.path === '/@{$orgSlug}/-/brand-new',
 		),
 	).toBe(true)
 
 	await using staleDir = await createTempDir()
-	await writeFile(path.join(staleDir.dir, 'waiting.md'), '# Waiting\n')
+	await writeFile(
+		path.join(staleDir.dir, 'waiting.md'),
+		'# Waiting\n\nSee `/account/missing-route`.\n',
+	)
 	const stale = runMapCheck({
+		catalog: [
+			{
+				id: 'waiting',
+				title: 'Waiting',
+				file: 'waiting.md',
+				prefixes: ['/account/waiting'],
+			},
+		],
 		routeSource: `export interface FileRoutesByFullPath {\n '/account/waiting': unknown\n}`,
 		featuresDir: staleDir.dir,
 	})
 	expect(stale.ok).toBe(false)
-	expect(stale.issues.some((issue) => issue.kind === 'missing-file')).toBe(true)
-	expect(stale.issues.some((issue) => issue.kind === 'stale-path')).toBe(true)
+	expect(stale.issues.some((issue) => issue.kind === 'unknown-route-ref')).toBe(
+		true,
+	)
+	expect(stale.issues.some((issue) => issue.kind === 'unmapped-required')).toBe(
+		true,
+	)
+
 	const incidental = runMapCheck({
 		routeSource: `${readFileSync(defaultRoutesPath(repoRootFromHere()), 'utf8')}\nexport const unrelated = '/account/not-a-route'`,
 		featuresDir: temp.dir,

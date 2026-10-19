@@ -1,4 +1,5 @@
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
+import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import { type McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
@@ -166,12 +167,19 @@ export async function resolveEntityDetail(input: {
 			listingAhead: record.listingAhead ?? null,
 			hostedUrl:
 				record.hasApp && ownerUsername
-					? resolveHostedPackageAppUrl({
+					? ((
+							await resolvePublicPackageAppLocation({
+								env,
+								username: ownerUsername,
+								kodyId: record.kodyId,
+							})
+						)?.hostedUrl ??
+						resolveHostedPackageAppUrl({
 							packageAppBaseUrl: packageAppOrigin,
 							appBaseUrl: input.callerContext.baseUrl,
 							username: ownerUsername,
 							kodyId: record.kodyId,
-						})
+						}))
 					: null,
 			...(ref.section ? { section: ref.section } : {}),
 		}

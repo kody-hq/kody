@@ -37,8 +37,14 @@ import {
 } from '../session-identity.ts'
 import { refreshOnActivation } from '../refresh-on-activation.ts'
 import { refreshActiveQueries } from '../refresh-active-queries.ts'
+import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { captureClientException } from '#client/sentry-client.ts'
 import { CANONICAL_ORIGIN_META_NAME } from '#universal/document-head-markers.ts'
+import {
+	documentCharset,
+	documentViewport,
+	documentThemeColors,
+} from '../document-shell-meta.ts'
 import { SENTRY_CONFIG_META_NAME } from '#universal/sentry-config.ts'
 import { NotFoundPage } from '../components/not-found-page.tsx'
 import { InternalErrorPage } from '../components/internal-error-page.tsx'
@@ -234,7 +240,15 @@ function LoadedAppLayout() {
 						return
 					}
 				},
-				onError: captureClientException,
+				// Activation only hits Start serverFns (verifySession + page
+				// queries). Transient fetch TypeErrors are expected when a
+				// slept tab resumes offline (KODY-9Q); keep stale Query data
+				// and skip Sentry — beforeSend also filters via /_serverFn
+				// breadcrumbs when capture comes from elsewhere.
+				onError: (error) => {
+					if (isBrowserFetchNetworkError(error)) return
+					captureClientException(error)
+				},
 			}),
 		[actorKey, queryClient, router],
 	)
@@ -355,7 +369,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
-				<meta charSet="utf-8" />
+				<meta charSet={documentCharset} />
 				{homeDocument ? (
 					<script
 						nonce={nonce}
@@ -365,7 +379,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 						}}
 					/>
 				) : null}
-				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<meta name="viewport" content={documentViewport} />
 				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
 				<link
 					rel="icon"
@@ -385,15 +399,17 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/apple-touch-icon.png')}
 				/>
 				<link rel="manifest" href={publicAsset('/site.webmanifest')} />
+				{/* Extensions (e.g. Dark Reader) often rewrite the first theme-color
+				    content before hydrate. Keep validating other head metas. */}
 				<meta
 					name="theme-color"
-					content="#e6e8ea"
-					media="(prefers-color-scheme: light)"
+					{...documentThemeColors.light}
+					suppressHydrationWarning
 				/>
 				<meta
 					name="theme-color"
-					content="#111417"
-					media="(prefers-color-scheme: dark)"
+					{...documentThemeColors.dark}
+					suppressHydrationWarning
 				/>
 				<script src={publicAsset('/page-init.js')} />
 				<link
@@ -424,6 +440,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<AppBrowserEffects />
 				{children}
 				<Toaster />
+				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
+				<script src={publicAsset('/emotion-style-hoist.js')} />
 				<Scripts />
 			</body>
 		</html>

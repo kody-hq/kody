@@ -40,6 +40,12 @@ finalize response succeed when the matching audit exists and the DO lease is
 already gone. Wrong user, stale timestamp, or short reason requests fail closed.
 Retry account deletion only after inspection shows no active leases.
 
+Hard-deleting an account immediately, and freeing its handle, is
+`adminUserAccountDelete`. That capability only returns an approval URL. The
+admin approves on the page (or confirms in the admin users modal by typing the
+handle). It does not replace `adminAccountDeletionAbort` when a leftover fence
+needs to be cleared.
+
 A failed delete that marked `users.deleting_at` before cleanup can leave the
 account fenced with no active leases. Confirm with `adminUserMeterParity`
 (`deletion.d1DeletingAt` / `deletion.meterDeletingAt`), then clear both sides:

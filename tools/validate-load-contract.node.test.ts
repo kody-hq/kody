@@ -37,8 +37,10 @@ test('validate runs the gate module and the startup-time check stays serial', ()
 	const commands = parallelValidateLegs.map((leg) => leg.command)
 	expect(commands).not.toContain(serialValidateCommand)
 	expect(commands).toContain('npm run worker-startup-bundles:check')
-	expect(commands).toContain('npm run skills-lock:check')
-	expect(commands).toContain('npm run docs:check-file-refs')
+	expect(commands).toContain('npm run docs:check')
+	expect(commands).toContain('npm run deps:check')
+	expect(commands).toContain('npm run soft-delete-read-filter:check')
+	expect(commands).toContain('npm run error-agent-prompt:check')
 })
 
 test('validate sets KODY_VALIDATE_LOAD=1 on the test-workers leg only', () => {

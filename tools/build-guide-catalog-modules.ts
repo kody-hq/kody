@@ -122,7 +122,8 @@ export async function isLockStale(targetLockPath = lockPath): Promise<boolean> {
 /**
  * Cross-process mutual exclusion via exclusive file creation (`wx`), so
  * concurrent `wrangler dev`/`build`/`deploy` invocations and concurrent
- * vitest projects (see `tools/vitest-global-setup-guide-catalog-modules.ts`,
+ * vitest projects (see `tools/vitest-global-setup-node.ts` /
+ * `tools/vitest-global-setup-workers.ts`,
  * used by both `node-unit` and `workers-unit`) never regenerate/write the
  * same output files at once. Returns a release function; callers must call
  * it from a `finally` block.

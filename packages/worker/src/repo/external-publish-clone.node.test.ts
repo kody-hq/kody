@@ -46,6 +46,8 @@ vi.mock('./artifacts-git-retry.ts', () => ({
 
 const { cloneExternalPublishWorkspace } =
 	await import('./external-publish-clone.ts')
+const { buildUnknownRequestedCommitMessage } =
+	await import('./requested-commit-error.ts')
 
 test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish helpers', async () => {
 	expect(
@@ -151,4 +153,51 @@ test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async
 	expect([
 		...snapshotStringToBytes(collected['public/mark.png']!, 'public/mark.png'),
 	]).toEqual([...pngMagic])
+})
+
+test('checkout of an unknown full SHA is not a clone or backup failure', async () => {
+	const commit = 'fedcba9876543210fedcba9876543210fedcba98'
+	gitMocks.checkout.mockRejectedValueOnce(
+		Object.assign(
+			new Error(
+				`Failed to checkout "${commit}" because commit ${commit} is not available locally. Do a git fetch to make the branch available locally.`,
+			),
+			{ name: 'CommitNotFetchedError', code: 'CommitNotFetchedError' },
+		),
+	)
+	await expect(
+		cloneExternalPublishWorkspace({
+			remote:
+				'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+			token: 'art_token',
+			branch: 'main',
+			checkoutCommit: commit,
+		}),
+	).rejects.toThrow(buildUnknownRequestedCommitMessage(commit))
+})
+
+test('checkout keeps a storage failure distinct from a clone failure', async () => {
+	gitMocks.checkout.mockRejectedValueOnce(
+		new Error('string or blob too big: SQLITE_TOOBIG'),
+	)
+	await expect(
+		cloneExternalPublishWorkspace({
+			remote:
+				'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+			token: 'art_token',
+			branch: 'main',
+			checkoutCommit: '0123456789abcdef0123456789abcdef01234567',
+		}),
+	).rejects.toThrow('string or blob too big: SQLITE_TOOBIG')
+
+	gitMocks.clone.mockRejectedValueOnce(new Error('HTTP Error: 500'))
+	await expect(
+		cloneExternalPublishWorkspace({
+			remote:
+				'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+			token: 'art_token',
+			branch: 'main',
+			checkoutCommit: '0123456789abcdef0123456789abcdef01234567',
+		}),
+	).rejects.toThrow(/Artifacts git clone failed/)
 })

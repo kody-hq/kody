@@ -12,7 +12,7 @@ import {
 	toPackageOptions,
 } from '#app/account-secrets-data.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { buildConnectOauthNextSteps } from '#app/connect-oauth-next-steps.ts'
+import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
 	canonicalIntegrationName,
@@ -73,6 +73,10 @@ import { dispatchIntegrationAuthSucceededSubscriptionEvents } from '#worker/inte
 import { getPlatformOauthAppClientSecret } from '#worker/integrations/platform-apps.ts'
 import { inferIntegrationRefreshPolicy } from '#worker/integrations/refresh-policy.ts'
 import {
+	assertSafeDeviceAuthorizationUrl,
+	assertSafeTokenUrl,
+} from '#worker/integrations/device-flow.ts'
+import {
 	assertScopesAllowedForPlatformApp,
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
@@ -132,6 +136,10 @@ export async function saveAccountOAuthApp(input: {
 	if (!tokenUrl) {
 		return operationResult({ ok: false, error: 'Token URL is required.' }, 400)
 	}
+	const tokenUrlError = assertSafeTokenUrl(tokenUrl)
+	if (tokenUrlError) {
+		return operationResult({ ok: false, error: tokenUrlError }, 400)
+	}
 	if (!clientId) {
 		return operationResult({ ok: false, error: 'Client ID is required.' }, 400)
 	}
@@ -156,6 +164,12 @@ export async function saveAccountOAuthApp(input: {
 		}
 	}
 	if (deviceAuthorizationUrl) {
+		const deviceUrlError = assertSafeDeviceAuthorizationUrl(
+			deviceAuthorizationUrl,
+		)
+		if (deviceUrlError) {
+			return operationResult({ ok: false, error: deviceUrlError }, 400)
+		}
 		const deviceHost = safeParseHost(deviceAuthorizationUrl)
 		if (!deviceHost) {
 			return operationResult(

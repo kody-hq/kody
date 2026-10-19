@@ -18,20 +18,21 @@ contributing docs; those belong in commit messages or release notes. Describe
 the system as it works today (“Kody stores…”, “The manifest rejects…”) instead
 of narrating a rollout (“Kody now stores…”, “We no longer accept…”).
 
-`npm run docs:check-temporal` checks durable documentation and docs-like MCP
-instructions for common rollout phrases. `npm run docs:check-decisions` rejects
-duplicate decision-record numbers. `npm run docs:check-file-refs` fails when
-markdown points at a repo file that is not in the tree (generated
-`wrangler-*.generated.json` files and local `.env` files are ignored).
-`npm run skills-lock:check` fails when `skills-lock.json` does not match the
-committed skill folders, including a `ship-pr` edit that did not refresh
-`computedHash`. `npm run docs:check-no-hosted-execute` rejects guidance that
-sends agents to the hosted execute tool when local CLI or Open API can run. The
-rule lives in [Local CLI execute](../guides/local-execute.md) and
+`npm run docs:check` runs the docs group (temporal language, decision-record
+numbers, markdown file refs, no hosted-execute fallback, and mermaid syntax) and
+reports each failing member by name. Temporal language checks durable
+documentation and docs-like MCP instructions for common rollout phrases.
+Decision-record numbers reject duplicates. File refs fail when markdown points
+at a repo file that is not in the tree (generated `wrangler-*.generated.json`
+files and local `.env` files are ignored). No hosted-execute rejects guidance
+that sends agents to the hosted execute tool when local CLI or Open API can run;
+the rule lives in [Local CLI execute](../guides/local-execute.md) and
 [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
-Negations stay allowed. `npm run mermaid:check` parses fenced mermaid in docs
-and agent skills (and `--stdin` recap blocks) so GitHub's "Unable to render rich
-display" failures fail locally. `npm run slop-ratchet:check` holds the
+Negations stay allowed. Mermaid parses fenced diagrams in docs and agent skills
+(and `--stdin` recap blocks) so GitHub's "Unable to render rich display"
+failures fail locally. `npm run deps:check` runs the dependency group (lockfile
+peer drift, dependency overrides, and skills-lock hash), including a `ship-pr`
+edit that did not refresh `computedHash`. `npm run slop-ratchet:check` holds the
 client-route and node-test file-size allowlists (line budgets counted after
 `oxfmt`), the root `AGENTS.md` line budget (`agents-md`), and rejects decorative
 `========` / `----------` comment banners. `kody-custom/no-tautological-absence`
@@ -92,6 +93,4 @@ the same tables verbatim; link to usage docs or rely on the tool output.
 - [Harness engineering](./harness-engineering.md) — promote repeated advice into
   lint, tests, or commands before adding a should-list
 - [Oxlint JS plugins](./oxlint-js-plugins.md) — where cheap syntactic rules live
-- [MCP server patterns](./mcp-server-patterns.md) — tool descriptions, schemas,
-  and server instructions
 - [Usage index](../use/index.md) — end-user table of contents

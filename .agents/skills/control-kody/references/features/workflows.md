@@ -1,23 +1,12 @@
 # Workflows
 
-Deferred one-shot runs (`workflows.create({ runAt })`).
-
-## How to get there
-
-`/@<slug>/-/workflows` → `/@<slug>/-/workflows/:workflowId`.
-
-## Drive it
+## Seed / reach
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /@<slug>/-/workflows
+npm run control-kody -- login
+npm run control-kody -- request GET /@jane/-/workflows --contains 'Workflows'
 ```
 
-The page uses native Start server functions for website reads and mutations. Use
-supported MCP capabilities through `control-kody search` and
-`control-kody execute` when fixture data is needed.
+## Assert
 
-## Gotchas
-
-- Recurring work belongs on `kody.jobs`, not workflows.
-- A displayed `inline-code` name on `/@<slug>/-/workflows` and Activity shows
-  the idempotency key as a subtitle.
+- `/@{$orgSlug}/-/workflows`, `/@{$orgSlug}/-/workflows/$workflowId`

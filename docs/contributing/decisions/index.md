@@ -13,9 +13,10 @@ A good record is half a page: context, the decision, consequences. See
 [0025](./0025-no-package-services-primitive.md) for the shape that actually
 steers (write the no before the next agent re-proposes the primitive).
 
-Decision records are point-in-time documents, so they are exempt from
-`npm run docs:check-temporal`; everything else in `docs/` describes current
-behavior (see [documentation principles](../documentation.md)).
+Decision records are point-in-time documents, so they are exempt from the
+temporal-language member of `npm run docs:check`; everything else in `docs/`
+describes current behavior (see
+[documentation principles](../documentation.md)).
 
 ## When to add a record
 
@@ -26,9 +27,10 @@ slug. Keep it to roughly half a page.
 
 Do **not** write an ADR on every PR. Number collisions (two 0022s, then two
 0028s, then two 0029s the same day) are the failure mode of that habit. If a
-number collides, renumber the later record; do not leave duplicates.
-`npm run docs:check-decisions` (part of `npm run validate`) rejects duplicate
-primary numbers. A lab note may share a number only as `NNNN-*-lab.md`.
+number collides, renumber the later record; do not leave duplicates. The
+decision-record member of `npm run docs:check` (part of `npm run validate`)
+rejects duplicate primary numbers. A lab note may share a number only as
+`NNNN-*-lab.md`.
 
 Do **not** record layout or UI tweaks, mode assignments, or "we use library X"
 unless that pick is a no that will otherwise be re-litigated.
@@ -58,8 +60,8 @@ Open these before proposing a new primitive, surface, or storage home.
   — static import, `import(specifier)`, or workflows; external HTTP is
   [0048](./0048-webhooks-replace-invocation-tokens.md)
 - [0048 — Inbound HTTP is webhooks; invocation tokens drain](./0048-webhooks-replace-invocation-tokens.md)
-  — no `*` webhook URLs; HTTP invocation tokens fully removed (rows purged;
-  table drop follows after deploy)
+  — no `*` webhook URLs; HTTP invocation tokens fully removed (`0084` purged
+  rows; `0085` dropped `package_invocation_tokens`)
 - [0017 — Hosted package apps use per-user subdomains; same-owner isolation deferred](./0017-per-user-package-app-subdomains.md)
 - [0020 — Repo sessions spill Workspace objects to R2; do not adopt `@cloudflare/computer`](./0020-repo-session-workspace-r2-not-computer.md)
 - [0021 — Publish-gated packages; no in-process composition runtime](./0021-publish-gated-package-composition.md)
@@ -70,7 +72,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0025 — No package services primitive](./0025-no-package-services-primitive.md)
 - [0032 — No unattached jobs; schedules belong to packages or workflows](./0032-no-unattached-jobs.md)
 - [0033 — No user-as-conversation, MCP session, or user-global memory hide](./0033-no-user-as-conversation.md)
-  ([lab](./0033-memory-auto-surface-lab.md))
+  ([lab](./0033-memory-auto-surface-lab.md); lab script removed, source in git
+  history at `51def919d`)
 - [0034 — Origin owns no Durable Object classes](./0034-origin-owns-no-durable-objects.md)
   — platform classes live on `kody-platform`; do not put them on origin,
   runtime, or jobs, and do not add a second origin-facing content worker

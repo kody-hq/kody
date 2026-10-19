@@ -59,7 +59,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔎 Deploy Preview Resources
     # Includes room for deploy retries, healthchecks, and failed-deploy
     # cleanup (150s budget). Raised from 15 so a healthy origin/platform/runtime
@@ -444,7 +444,7 @@ jobs:
           echo "worker_name=$RUNTIME_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-runtime.log
+            node tools/ci/retry-classifiers.ts deploy deploy-runtime.log
           }
 
           deploy_attempts=3
@@ -496,7 +496,7 @@ jobs:
           echo "worker_name=$PLATFORM_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-platform.log
+            node tools/ci/retry-classifiers.ts deploy deploy-platform.log
           }
 
           deploy_attempts=3
@@ -550,7 +550,7 @@ jobs:
           echo "Origin deploy: ${ORIGIN_ENTRY} entry (${ORIGIN_DEPLOY_MODE} preview fleet)"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy.log
+            node tools/ci/retry-classifiers.ts deploy deploy.log
           }
 
           deploy_attempts=3
@@ -621,7 +621,7 @@ jobs:
           echo "worker_name=$API_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-api.log
+            node tools/ci/retry-classifiers.ts deploy deploy-api.log
           }
 
           deploy_attempts=3
@@ -1150,7 +1150,7 @@ jobs:
           node tools/ci/preview-resources.ts cleanup --worker-name "$APP_WORKER_NAME"
 
   cleanup:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧹 Cleanup Preview Resources
     timeout-minutes: 4
     permissions:
@@ -1311,9 +1311,12 @@ jobs:
 
       # Preview deploys no longer create per-PR GitHub Environments. Keep this
       # step so open-PR leftovers (and any race-recreated `preview-<n>`) still go
-      # away when the PR closes.
+      # away when the PR closes. Best-effort: a missing or under-scoped
+      # PREVIEW_ENVIRONMENT_ADMIN_TOKEN is a warning, not a red X on a closed
+      # PR. Worker/D1/KV/R2/Vectorize and deployment cleanup above stay strict.
       - name: 🏷️ Delete GitHub preview environment
         if: always()
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -1358,9 +1361,10 @@ jobs:
             }
 
             if (!hasAdminToken) {
-              throw new Error(
-                "PREVIEW_ENVIRONMENT_ADMIN_TOKEN is required to delete leftover GitHub preview environments. Configure it with repository administration write access.",
+              core.warning(
+                `PREVIEW_ENVIRONMENT_ADMIN_TOKEN is required to delete leftover GitHub preview environment ${envName}. Configure it with repository administration write access.`,
               );
+              return;
             }
 
             const { owner, repo } = context.repo;
@@ -1376,15 +1380,15 @@ jobs:
               core.notice(`Deleted GitHub environment: ${envName}`);
             } catch (e) {
               if (e.status === 404) {
-                core.info(
-                  `GitHub environment not found (already deleted): ${envName}`,
+                core.warning(
+                  `Could not confirm deletion of GitHub environment ${envName}; it may already be absent or the token may lack access.`,
                 );
               } else if (
                 e.status === 403 &&
                 e.response?.headers?.["x-accepted-github-permissions"] ===
                   "administration=write"
               ) {
-                throw new Error(
+                core.warning(
                   `PREVIEW_ENVIRONMENT_ADMIN_TOKEN cannot delete ${envName}; it must allow repository administration write access.`,
                 );
               } else {

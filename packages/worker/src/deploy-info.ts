@@ -37,7 +37,7 @@ export type HealthCommit = {
 }
 
 export type HealthReport = {
-	ok: true
+	ok: boolean
 	commitSha: string | null
 	commit: HealthCommit | null
 	pullRequest: DeployPullRequestInfo | null

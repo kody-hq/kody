@@ -8,6 +8,9 @@ import { type OrgTransferRow } from './snapshot.ts'
 
 const text = (row: OrgTransferRow, column: string) => String(row[column] ?? '')
 
+export const orgTransferMemoriesStayNote =
+	'Memories are personal and stay with their owner; they are not moved.' as const
+
 /**
  * What a transfer moves, as counts and names. Built from plan rows by naming
  * columns explicitly, so ciphertext and other row values never reach output.
@@ -49,6 +52,13 @@ export type OrgTransferSummary = {
 	clashes: Array<OrgTransferFinding>
 	blockers: Array<OrgTransferFinding>
 	warnings: Array<OrgTransferFinding>
+	/** Always present, including when the source owns no live memories. */
+	kept: {
+		memories: {
+			count: number
+			note: typeof orgTransferMemoriesStayNote
+		}
+	}
 }
 
 export function summarizeOrgTransferPlan(
@@ -146,6 +156,12 @@ export function summarizeOrgTransferPlan(
 		clashes: plan.clashes,
 		blockers: plan.blockers,
 		warnings: plan.warnings,
+		kept: {
+			memories: {
+				count: plan.kept.memories.count,
+				note: orgTransferMemoriesStayNote,
+			},
+		},
 	}
 }
 

@@ -28,11 +28,8 @@ import {
 	ensureR2BucketLifecycle,
 	isCloudflareQueueAlreadyGoneError,
 	isCloudflareQuotaExceededFailure,
-	isPermanentCloudflareAuthFailure,
 	isR2BucketAlreadyExistsOutput,
 	isR2BucketNotEmptyOutput,
-	isRetryableCloudflareApiError,
-	isRetryableCloudflareFailure,
 	isTransientCloudflareGone,
 	isWranglerNotFoundOutput,
 	parseJsonc,
@@ -175,96 +172,8 @@ test('Wrangler / Cloudflare output and error classifiers', () => {
 			true,
 		],
 		[isR2BucketNotEmptyOutput, 'Authentication error [code: 10000]', false],
-		[isRetryableCloudflareFailure, 'Gateway Timeout [code: 504]', true],
-		[isRetryableCloudflareFailure, '✘ [ERROR] fetch failed', true],
-		[
-			isRetryableCloudflareFailure,
-			'▲ [WARNING] A fetch request failed, likely due to a connectivity issue.\n✘ [ERROR] fetch failed',
-			true,
-		],
-		[
-			isRetryableCloudflareFailure,
-			'This Worker does not exist on your account [code: 10007]',
-			false,
-		],
-		[
-			isRetryableCloudflareFailure,
-			'Received a malformed response from the API\nGET /accounts/acct/workers/scripts/kody-platform/deployments -> 200 OK',
-			true,
-		],
-		[
-			isPermanentCloudflareAuthFailure,
-			'Authentication error [code: 10000]',
-			true,
-		],
-		[
-			isPermanentCloudflareAuthFailure,
-			'Cloudflare API request failed (500): Internal authentication error: internal server error',
-			false,
-		],
-		[
-			isPermanentCloudflareAuthFailure,
-			'Cloudflare API request failed (403): Authentication error',
-			true,
-		],
-		// 401/403 win over "Internal authentication error" wording so a real
-		// unauthorized response is never retried with the same token.
-		[
-			isPermanentCloudflareAuthFailure,
-			'Cloudflare API request failed (403): Internal authentication error',
-			true,
-		],
-		[
-			isPermanentCloudflareAuthFailure,
-			'Cloudflare API request failed (401): Internal authentication error',
-			true,
-		],
-		[
-			isRetryableCloudflareFailure,
-			'Cloudflare API request failed (500): Internal authentication error: internal server error',
-			true,
-		],
-		[
-			isRetryableCloudflareFailure,
-			'✘ [ERROR] Internal authentication error: internal server error',
-			true,
-		],
-		[
-			isRetryableCloudflareFailure,
-			'Cloudflare API request failed (403): Internal authentication error',
-			false,
-		],
 	]
 	expect(cases.filter(([fn, value, want]) => fn(value) !== want)).toEqual([])
-
-	const apiErrors: Array<[string, boolean]> = [
-		[
-			'Malformed Cloudflare response (502) for /queues: upstream connect error or disconnect/reset before headers. reset reason: connection termination',
-			true,
-		],
-		['Cloudflare API request failed (400): invalid queue name', false],
-		[
-			'Malformed Cloudflare response (200) for /workers/scripts/kody-runtime: --boundary',
-			false,
-		],
-		['Cloudflare API request failed (429): Rate limited', true],
-		['Cloudflare API request failed (403): Authentication error', false],
-		['Cloudflare API request failed (401): unauthorized', false],
-		[
-			'Cloudflare API request failed (500): Internal authentication error: internal server error',
-			true,
-		],
-		[
-			'Cloudflare API request failed (403): Internal authentication error',
-			false,
-		],
-	]
-	expect(
-		apiErrors.filter(
-			([message, want]) =>
-				isRetryableCloudflareApiError(new Error(message)) !== want,
-		),
-	).toEqual([])
 
 	expect(
 		isTransientCloudflareGone(
@@ -546,6 +455,21 @@ test('writeGeneratedWranglerConfig rejects invalid environment asset config', as
 	).rejects.toThrow('process.exit called')
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('env.production.assets'),
+	)
+})
+
+test('writeGeneratedWranglerConfig rejects WRANGLER_IS_LOCAL_DEV on deploy envs', async () => {
+	consoleError.mockImplementation(() => {})
+	await using temp = await createTempDir()
+	using _exit = mockProcessExit()
+	await expect(
+		writeGeneratedWranglerConfig({
+			...productionArgs(path.join(temp.dir, 'out.json')),
+			workerVars: { WRANGLER_IS_LOCAL_DEV: 'true' },
+		}),
+	).rejects.toThrow('process.exit called')
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining('WRANGLER_IS_LOCAL_DEV'),
 	)
 })
 

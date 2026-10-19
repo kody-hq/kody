@@ -9,7 +9,7 @@ This page records current ownership and the invariants later deploys must keep.
 How the package runtime lane lives on the `kody-runtime` Worker
 (`packages/runtime-worker/`), per
 [ADR 0016](../decisions/0016-mono-worker-extraction.md). Later deploys follow
-`.github/workflows/deploy.yml`. Remix/blog/UI-only uploads skip runtime.
+`.github/workflows/deploy.yml`. UI/blog-only uploads skip runtime.
 
 ## Ownership
 
@@ -74,8 +74,7 @@ When runtime sources change on a steady-state script, the workflow deploys
 binding and healthcheck hygiene. It does not re-apply the `v1` transfer and it
 does not republish package-app zone routes as a first-time attach.
 
-Remix/blog/UI-only uploads skip runtime. Official guide markdown still skips
-runtime.
+UI/blog-only uploads skip runtime. Official guide markdown still skips runtime.
 
 Healthchecks: origin `/health`, runtime `/__runtime/health`. Package apps load
 on `https://{username}.kody.run/packages/{kodyId}/...` (the apex only redirects;

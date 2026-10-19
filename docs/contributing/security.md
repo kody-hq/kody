@@ -7,12 +7,13 @@ and 2026-07-01 internal security audits for the underlying findings, and
 [the 2026-09-16 codebase audit](../audits/2026-09-16-codebase-audit.md) for a
 later cross-cutting review.
 
-Kody is a multi-worker Cloudflare app: a Remix 3 browser UI and OAuth-protected
-MCP HTTP on origin, platform Durable Objects on `kody-platform`, package apps on
-`kody-runtime`, and cron on `kody-jobs`. It is multi-user, so the overarching
-invariant is that **every read/write path is scoped by `userId`** (see
-[`AGENTS.md`](../../AGENTS.md)). Cross-user data sharing is a bug, not a
-feature. See [architecture](architecture/index.md#production-worker-fleet).
+Kody is a multi-worker Cloudflare app: a TanStack Start browser UI and
+OAuth-protected MCP HTTP on origin, platform Durable Objects on `kody-platform`,
+package apps on `kody-runtime`, and cron on `kody-jobs`. It is multi-user, so
+the overarching invariant is that **every read/write path is scoped by
+`userId`** (see [`AGENTS.md`](../../AGENTS.md)). Cross-user data sharing is a
+bug, not a feature. See
+[architecture](architecture/index.md#production-worker-fleet).
 
 ## Invariants for future agents (do not regress)
 
@@ -272,10 +273,15 @@ contains `support`.
 Dispatch lives in `packages/worker/src/app/package-app-origin.ts`, called first
 in the Worker `fetch` handler:
 
-- **App origin, `/@{username}/packages/*`:** never executes package code. Safe
-  methods redirect (`302`) to the owner's package-app subdomain with a handoff
-  token; other methods get a `307` to that subdomain. Unauthenticated visitors
-  are sent to `/login` on the app origin first.
+- **App origin, `/@{username}/packages/*`:** never executes package code.
+  Anonymous visitors and signed-in outsiders stay on the app origin. A
+  session-gated app sends anonymous GET/HEAD to `/login` there. An approved
+  internet-visible app shows the saved-package page when that page can link to
+  the app, and a same-origin landing with that link otherwise. A signed-in
+  person who may run the app still hands off: safe methods redirect (`302`) to
+  the owner's package-app subdomain or verified custom hostname with a handoff
+  token; other methods get a `307` to that host with no token. Retired slugs
+  still `308` on the app origin.
 - **Package-app apex** (`kody.run`): serves no package code. `/` redirects to
   the app origin. Legacy path-based URLs (`/@{username}/packages/*`) redirect
   (`302`/`307`) to the owning user's subdomain. Everything else — including
@@ -643,6 +649,9 @@ blast radius:
   for 60 seconds, so a new suspension can take up to that long to stop
   background work already warm in an isolate. Set and cleared through the
   audited `suspend_user` / `unsuspend_user` actions on `POST /admin/users.json`.
+  Hard delete is a separate audited action (`adminUserAccountDelete` plus the
+  admin users **Delete account** modal). It requires a one-page approval or a
+  typed-handle confirmation and frees the handle immediately.
 - **Automatic outbound-email pause (`orgs.email_outbound_paused_at`).** The
   delivery queue evaluates provider delivery events
   (`packages/worker/src/email/outbound-abuse.ts`): one spam complaint, or five

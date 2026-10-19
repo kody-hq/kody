@@ -38,7 +38,11 @@ closing keyword.
 
 ## Testing
 
-<!-- What you ran or verified (validate, focused suites, production evidence). -->
+<!-- What you ran or verified (validate, focused suites, local control-kody,
+     preview only when local cannot exercise the change, production evidence).
+     Reviewers: scrutinize test-expectation/assertion changes made in the same
+     PR as the code they test; push back when an assertion was rewritten to
+     match a behavior change without justification. -->
 
 ## System changes
 

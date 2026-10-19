@@ -186,13 +186,17 @@ async function runEntry(userId: string, entrySource: string) {
 
 async function expectStaticCallRollup(
 	userId: string,
-	expected: { event_count: number; error_count: number },
+	expected: {
+		event_count: number
+		error_count: number
+		caught_count: number
+	},
 ) {
 	// Metering is fire-and-forget from the sandbox, so poll the rollup.
 	await vi.waitFor(
 		async () => {
 			const rollup = await env.APP_DB.prepare(
-				`SELECT event_count, error_count, total_duration_ms
+				`SELECT event_count, error_count, caught_count, total_duration_ms
 				FROM usage_rollups WHERE user_id = ?1 AND metric = 'package_static_call'`,
 			)
 				.bind(userId)
@@ -275,8 +279,43 @@ export default async function main() {
 			answer: 42,
 			answerType: 'number',
 		})
-		// 3 default calls + 1 throwing call + 1 calm call = 5 events, 1 error.
-		await expectStaticCallRollup(userId, { event_count: 5, error_count: 1 })
+		// 3 default calls + 1 caught throw + 1 calm call = 5 events.
+		// Caught throws are outcome `caught` (rollup caught_count), not errors.
+		await expectStaticCallRollup(userId, {
+			event_count: 5,
+			error_count: 0,
+			caught_count: 1,
+		})
+	},
+)
+
+test(
+	'uncaught static package throw still counts as a package_static_call error',
+	{ timeout: 30_000 },
+	async () => {
+		const { userId } = await publishSource(
+			'metered-uncaught',
+			'Metered dependency that fails the run',
+			`export function boom() {
+	throw new Error('uncaught boom')
+}`,
+		)
+
+		const result = await runEntry(
+			userId,
+			`import { boom } from 'kody:@kentcdodds/metered-uncaught'
+export default async function main() {
+	boom()
+	return 'unreachable'
+}`,
+		)
+
+		expect(result.error).toBeTruthy()
+		await expectStaticCallRollup(userId, {
+			event_count: 1,
+			error_count: 1,
+			caught_count: 0,
+		})
 	},
 )
 
@@ -350,6 +389,10 @@ export default async function main() {
 		// The forged event fires before the two granted ones; once the granted
 		// events land, a count of exactly 2 proves the forged stamp was
 		// dropped by the host-side dependency-provenance check.
-		await expectStaticCallRollup(userId, { event_count: 2, error_count: 0 })
+		await expectStaticCallRollup(userId, {
+			event_count: 2,
+			error_count: 0,
+			caught_count: 0,
+		})
 	},
 )

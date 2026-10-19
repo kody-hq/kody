@@ -2,7 +2,7 @@ import { readDrBackupS3Config } from '#worker/dr/backup-s3.ts'
 
 /**
  * Nightly DR export window: roughly 00:30–06:10 UTC on the worker's
- * every-5-minute cron (~68 ticks × 20 s ≈ 22 minutes of staging work).
+ * every-5-minute cron (~68 ticks × 45 s ≈ 51 minutes of staging work).
  * Ticks outside this window are skipped so daytime traffic is not competing
  * with a full-platform export. Inside the window, each tick prefers the
  * oldest stranded day in the lookback (progress without summary), then today.
@@ -19,11 +19,13 @@ export function shouldRunDrExportCron(now: Date) {
  * `exporter/progress.json` exists but whose `exporter/summary.json` was never
  * written because the nightly window closed first.
  *
- * Sized above the observed steady-state finish time (~2.5–3 days of
- * nightly + catch-up for ~500 Mailbox owners) so a day cannot age out of
- * the window mid-phase the way 2026-09-12..2026-09-22 did under a 2-day
- * lookback. Keep in sync with `sealRecentCompleteDays` so a newly written
- * summary is still within the hourly seal scan.
+ * Sized for the 2026-09 lookback failure and the 2026-10 pace, when ~700
+ * Mailbox owners took ~28h of wall clock per staged day. Owner export now
+ * waves 8 Durable Object reads inside a 45s tick so a day should finish
+ * inside 24h, but the 14-day window stays: a regression must not age a day
+ * out mid-phase the way 2026-09-12..2026-09-22 did under a 2-day lookback.
+ * Keep in sync with `sealRecentCompleteDays` so a newly written summary is
+ * still within the hourly seal scan.
  */
 export const drExportCatchUpLookbackDays = 14
 
@@ -31,7 +33,7 @@ export const drExportCatchUpLookbackDays = 14
  * Daytime catch-up cadence: outside the nightly window, every worker cron
  * tick (every 5 minutes) resumes the oldest stranded day in the lookback
  * until its summary is written. A single tick still spends at most the
- * normal ~20 s budget, so daytime blast radius stays bounded while backlog
+ * normal ~45 s budget, so daytime blast radius stays bounded while backlog
  * drains ~3× faster than the previous 15-minute cadence. Ticks with no
  * stranded day exit after two cheap HEAD-style checks per lookback day.
  */

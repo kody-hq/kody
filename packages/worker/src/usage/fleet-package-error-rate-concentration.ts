@@ -412,6 +412,8 @@ function concentrationWhereClause(input: {
 	const metrics = fleetPackageErrorRateMetrics
 		.map((metric) => `'${metric}'`)
 		.join(', ')
+	// Real failures only: `caught` static-call throws are excluded (same
+	// filter as buildFleetPackageErrorRateAnalyticsQuery).
 	return `timestamp >= toDateTime('${toAnalyticsDateTime(input.recentStart)}')
 	AND timestamp < toDateTime('${toAnalyticsDateTime(input.recentEnd)}')
 	AND blob2 IN (${metrics})

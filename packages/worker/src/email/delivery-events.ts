@@ -5,7 +5,11 @@ import { type MailboxEnv } from './mailbox-client.ts'
 import { type EmailReportingEnv } from './reporting-events.ts'
 import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
-import { recordTransactionalEmailDeliveryEvent } from './verification-delivery.ts'
+import {
+	recordTransactionalEmailDeliveryEvent,
+	transactionalKindRecordsHardBounce,
+	transactionalKindUsesDeliveryCursor,
+} from './verification-delivery.ts'
 
 const cloudflareEmailDeliveryTypeValues = [
 	'cf.email.sending.message.delivered',
@@ -141,6 +145,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 				smtpResponse: providerEvent.payload.delivery.smtpResponse,
 				smtpEnhancedStatusCode:
 					providerEvent.payload.delivery.smtpEnhancedStatusCode,
+				smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
 			})
 		}
 		return { ...result, providerEvent }
@@ -176,6 +181,20 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpResponse: providerEvent.payload.delivery.smtpResponse,
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
+		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+		recordVerificationSuppression: transactionalKindRecordsHardBounce(
+			transactional.event.kind,
+		),
+		// Signup verification uses users.email_verification_delivery_* and
+		// never claims the index cursor — only pass confirmCursor for kinds
+		// that do, or side effects would no-op.
+		confirmCursor: transactionalKindUsesDeliveryCursor(transactional.event.kind)
+			? {
+					providerMessageId: providerEvent.payload.messageId,
+					status: providerEvent.payload.delivery.status,
+					at: providerEvent.metadata.eventTimestamp,
+				}
+			: undefined,
 	})
 
 	if (

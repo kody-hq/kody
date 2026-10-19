@@ -20,6 +20,8 @@ import {
 	isPlaceholderMigrationFilename,
 	parseMigrationFilename,
 	readMigrationLedger,
+	mustYieldMigrationPrefix,
+	shouldEnforceOpenPullRequestOverlaps,
 	suggestFreeMigrationPrefix,
 	resolveTrustedMigrationBase,
 	type MigrationLedger,
@@ -234,6 +236,64 @@ test('trusted history rejects a migration and ledger digest co-edit', async () =
 		'no trusted Git base is available',
 		'Fetch origin/main history',
 	])
+})
+
+test('trusted history allows a listed migration-repairs digest rewrite', async () => {
+	const ledger = await readMigrationLedger()
+	const bootstrapFiles = ledger.migrations.map((entry) => ({ ...entry }))
+	const historicalEntry = {
+		filename: '0199-repairable.sql',
+		sha256: hashMigrationContent('SELECT 1;\n'),
+	}
+	const trustedHistory: TrustedMigrationHistory = {
+		ref: 'trusted-base-with-0199',
+		files: [...bootstrapFiles, historicalEntry],
+		ledgerEntries: [...bootstrapFiles, historicalEntry],
+		ledgerBaselineSha256: expectedMigrationBaselineSha256,
+	}
+	const repairedEntry = {
+		...historicalEntry,
+		sha256: hashMigrationContent('SELECT 2;\n'),
+	}
+	const repairedLedger = structuredClone(ledger)
+	repairedLedger.migrations.push(repairedEntry)
+
+	const withoutRepair = checkMigrationLedger(
+		[...bootstrapFiles, repairedEntry],
+		repairedLedger,
+		trustedHistory,
+	)
+	expect(withoutRepair.ok).toBe(false)
+
+	const withRepair = checkMigrationLedger(
+		[...bootstrapFiles, repairedEntry],
+		repairedLedger,
+		trustedHistory,
+		[
+			{
+				filename: historicalEntry.filename,
+				fromSha256: historicalEntry.sha256,
+				toSha256: repairedEntry.sha256,
+				reason: 'rolled back before d1_migrations recorded the file',
+			},
+		],
+	)
+	expect(withRepair.ok).toBe(true)
+
+	const wrongDestination = checkMigrationLedger(
+		[...bootstrapFiles, repairedEntry],
+		repairedLedger,
+		trustedHistory,
+		[
+			{
+				filename: historicalEntry.filename,
+				fromSha256: historicalEntry.sha256,
+				toSha256: hashMigrationContent('SELECT 3;\n'),
+				reason: 'rolled back before d1_migrations recorded the file',
+			},
+		],
+	)
+	expect(wrongDestination.ok).toBe(false)
 })
 
 test('migration content hashing canonicalizes CRLF to LF', () => {
@@ -574,6 +634,7 @@ test('the next free prefix skips open-PR claims and still allows gaps', () => {
 		warning:
 			'No free 4-digit migration prefix remains. The ledger result is unchanged.',
 		overlaps: [],
+		blockingOverlaps: [],
 	})
 
 	const migrationsDir = 'packages/worker/migrations'
@@ -590,6 +651,7 @@ test('the next free prefix skips open-PR claims and still allows gaps', () => {
 		lines: [],
 		warning: null,
 		overlaps: [],
+		blockingOverlaps: [],
 	})
 	expect(
 		formatOpenPullRequestMigrationAdvisory({
@@ -704,4 +766,161 @@ test('open PR claims cannot require renaming shipped migrations but still block 
 			trustedFilenames: undefined,
 		}).overlaps,
 	).toHaveLength(2)
+})
+
+test('open-PR prefix overlaps fail only pull request checks', () => {
+	expect(shouldEnforceOpenPullRequestOverlaps({})).toBe(true)
+	expect(
+		shouldEnforceOpenPullRequestOverlaps({ GITHUB_EVENT_NAME: 'pull_request' }),
+	).toBe(true)
+	expect(
+		shouldEnforceOpenPullRequestOverlaps({
+			GITHUB_EVENT_NAME: 'pull_request_target',
+		}),
+	).toBe(true)
+	expect(
+		shouldEnforceOpenPullRequestOverlaps({ GITHUB_EVENT_NAME: 'push' }),
+	).toBe(false)
+	expect(
+		shouldEnforceOpenPullRequestOverlaps({
+			GITHUB_EVENT_NAME: 'workflow_dispatch',
+		}),
+	).toBe(false)
+})
+
+test('the lowest-numbered open pull request keeps a contested prefix', () => {
+	const group = { prefix: '0162', pullNumbers: [3985] }
+	// #3992 collides with lower #3985: #3992 yields.
+	expect(
+		mustYieldMigrationPrefix({
+			group,
+			currentPullNumber: 3992,
+			isBaseBranchCheckout: false,
+		}),
+	).toBe(true)
+	// #3985 collides only with higher #3992: #3985 keeps the prefix.
+	expect(
+		mustYieldMigrationPrefix({
+			group: { prefix: '0162', pullNumbers: [3992] },
+			currentPullNumber: 3985,
+			isBaseBranchCheckout: false,
+		}),
+	).toBe(false)
+	// Unknown PR number stays conservative.
+	expect(
+		mustYieldMigrationPrefix({
+			group,
+			currentPullNumber: null,
+			isBaseBranchCheckout: false,
+		}),
+	).toBe(true)
+	// main already shipped it: never yields.
+	expect(
+		mustYieldMigrationPrefix({
+			group,
+			currentPullNumber: null,
+			isBaseBranchCheckout: true,
+		}),
+	).toBe(false)
+})
+
+test('only the higher-numbered side of a prefix collision must renumber', () => {
+	const migrationsDir = 'packages/worker/migrations'
+	const localFilenames = ['0161-shipped.sql', '0162-mine.sql']
+	const trustedFilenames = ['0161-shipped.sql']
+
+	const higher = formatOpenPullRequestMigrationAdvisory({
+		migrationsDir,
+		localFilenames,
+		trustedFilenames,
+		localNextPrefix: '0163',
+		currentPullNumber: 3992,
+		scan: {
+			status: 'ok',
+			claims: [{ number: 3985, filenames: [`${migrationsDir}/0162-a.sql`] }],
+		},
+	})
+	expect(higher.overlaps).toEqual([{ prefix: '0162', pullNumbers: [3985] }])
+	expect(higher.blockingOverlaps).toEqual(higher.overlaps)
+	expect(higher.suggestedPrefix).toBe('0163')
+	expect(higher.lines).toContain(
+		'Rename to the next free prefix 0163 (for example, 0163-your-change.sql) before merging.',
+	)
+	expect(higher.lines).toContain(
+		'The lowest-numbered open pull request keeps a contested prefix, so #3992 renumbers.',
+	)
+
+	const lower = formatOpenPullRequestMigrationAdvisory({
+		migrationsDir,
+		localFilenames,
+		trustedFilenames,
+		localNextPrefix: '0163',
+		currentPullNumber: 3985,
+		scan: {
+			status: 'ok',
+			claims: [{ number: 3992, filenames: [`${migrationsDir}/0162-b.sql`] }],
+		},
+	})
+	expect(lower.overlaps).toEqual([{ prefix: '0162', pullNumbers: [3992] }])
+	expect(lower.blockingOverlaps).toEqual([])
+	expect(lower.lines.join('\n')).not.toContain('Rename to the next free prefix')
+	expect(lower.lines).toContain('  0162: #3992')
+	expect(lower.lines.join('\n')).toContain('these pull requests must renumber')
+})
+
+test('several pull requests leaving one prefix get distinct suggestions', () => {
+	const migrationsDir = 'packages/worker/migrations'
+	const claims = [
+		{ number: 3985, filenames: [`${migrationsDir}/0162-a.sql`] },
+		{ number: 3992, filenames: [`${migrationsDir}/0162-b.sql`] },
+		{ number: 3994, filenames: [`${migrationsDir}/0162-c.sql`] },
+	]
+	function suggestionFor(currentPullNumber: number) {
+		return formatOpenPullRequestMigrationAdvisory({
+			migrationsDir,
+			localFilenames: ['0162-mine.sql'],
+			localNextPrefix: '0163',
+			currentPullNumber,
+			scan: {
+				status: 'ok',
+				claims: claims.filter((claim) => claim.number !== currentPullNumber),
+			},
+		})
+	}
+	expect(suggestionFor(3985).blockingOverlaps).toEqual([])
+	expect(suggestionFor(3992).suggestedPrefix).toBe('0163')
+	expect(suggestionFor(3994).suggestedPrefix).toBe('0164')
+	expect(
+		suggestFreeMigrationPrefix({
+			nextPrefix: '0163',
+			claimedPrefixes: ['0164'],
+			rank: 2,
+		}),
+	).toBe('0165')
+})
+
+test('a push to main reports open-PR overlaps without yielding them', () => {
+	const migrationsDir = 'packages/worker/migrations'
+	// The push's pre-merge base does not contain the just-merged 0167 file.
+	const advisory = formatOpenPullRequestMigrationAdvisory({
+		migrationsDir,
+		localFilenames: ['0166-old.sql', '0167-password-reset-hard-bounce.sql'],
+		trustedFilenames: ['0166-old.sql'],
+		localNextPrefix: '0168',
+		isBaseBranchCheckout: true,
+		scan: {
+			status: 'ok',
+			claims: [
+				{ number: 3998, filenames: [`${migrationsDir}/0167-signup.sql`] },
+			],
+		},
+	})
+	expect(advisory.overlaps).toEqual([{ prefix: '0167', pullNumbers: [3998] }])
+	expect(advisory.blockingOverlaps).toEqual([])
+	expect(advisory.lines).toContain(
+		'This checkout already ships prefixes that open pull requests also claim; those pull requests must renumber:',
+	)
+	expect(advisory.lines.join('\n')).not.toContain(
+		'Rename to the next free prefix',
+	)
 })

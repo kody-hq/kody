@@ -6,7 +6,6 @@ import {
 } from '#worker/storage-ids.ts'
 import { userOauthAppLogoR2KeyPrefix } from '#worker/integrations/user-oauth-app-logo.ts'
 import { mcpServerLogoR2KeyPrefix } from '#worker/mcp-client/mcp-server-logo.ts'
-import { memoryVectorId } from '#mcp/memory/memory-vectorize.ts'
 import { jobVectorId } from '#mcp/jobs-vectorize.ts'
 import { savedPackageVectorId } from '#worker/package-registry/repo.ts'
 import { type OrgTransferFinding } from './findings.ts'
@@ -78,6 +77,13 @@ export type OrgTransferPlan = {
 	clashes: Array<OrgTransferFinding>
 	blockers: Array<OrgTransferFinding>
 	warnings: Array<OrgTransferFinding>
+	/**
+	 * Live memories owned by the source. Reported so an operator sees they
+	 * stay; the transfer never re-points, deletes, or reindexes them.
+	 */
+	kept: {
+		memories: { count: number }
+	}
 }
 
 const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
@@ -94,8 +100,6 @@ const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
 	'entity_source_artifacts_push_subscriptions',
 	'community_listings',
 	'community_forks',
-	'mcp_memories',
-	'mcp_memory_conversation_suppressions',
 	'mcp_server_settings',
 	'mcp_user_server_instructions',
 	'user_oauth_apps',
@@ -322,22 +326,9 @@ export function planOrgTransfer(
 		}
 	}
 
-	// Memories.
-	moves.mcp_memories = source.mcp_memories.filter(isLiveRow)
-	const memoryIds = new Set(moves.mcp_memories.map((row) => text(row, 'id')))
-	for (const row of source.mcp_memory_conversation_suppressions) {
-		if (memoryIds.has(text(row, 'memory_id'))) {
-			moves.mcp_memory_conversation_suppressions.push(row)
-		} else {
-			orphan(
-				'mcp_memory_conversation_suppressions',
-				row,
-				text(row, 'memory_id'),
-				'memory no longer exists',
-				'delete',
-			)
-		}
-	}
+	// Memories stay with the source owner. The snapshot only counts live rows;
+	// nothing here re-points them, orphan-deletes suppressions, or reindexes
+	// memory vectors.
 
 	// Connectors and credentials.
 	moves.mcp_server_settings = source.mcp_server_settings.filter(isLiveRow)
@@ -714,7 +705,6 @@ export function planOrgTransfer(
 	// Derived rows rebuilt under the target.
 	const movedVectorIds = new Set([
 		...[...packageIds].map(savedPackageVectorId),
-		...[...memoryIds].map(memoryVectorId),
 		...jobs.map((job) => jobVectorId(job.id)),
 	])
 
@@ -759,5 +749,8 @@ export function planOrgTransfer(
 		clashes,
 		blockers,
 		warnings,
+		kept: {
+			memories: { count: snapshot.sourceLiveMemoryCount },
+		},
 	}
 }

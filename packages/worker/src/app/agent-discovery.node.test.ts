@@ -20,11 +20,6 @@ import {
 	getAgentSkill,
 	homeSoftwareApplicationJsonLdCspHash,
 	homeSoftwareApplicationJsonLdScriptText,
-	kodyApiDocsOrigin,
-	kodyGithubUrl,
-	kodyMcpServerCardVersion,
-	kodyOpenApiSpecUrl,
-	kodyOpenApiV1Anchor,
 	listAgentDiscoveryLinks,
 	listPublicSitemapEntries,
 	mcpResourcePath,
@@ -94,7 +89,7 @@ test('agent discovery documents describe the MCP server and public pages', async
 	expect(card.serverInfo).toEqual({
 		name: 'kody-mcp',
 		title: 'Kody',
-		version: kodyMcpServerCardVersion,
+		version: '1.0.0',
 	})
 	expect(card.description).toContain('individuals and teams')
 	expect(card.url).toBe(`${origin}${mcpResourcePath}`)
@@ -110,14 +105,14 @@ test('agent discovery documents describe the MCP server and public pages', async
 		`${origin}/.well-known/mcp/server-card.json`,
 	)
 	const openApiEntry = catalog.linkset.find(
-		(entry) => entry.anchor === kodyOpenApiV1Anchor,
+		(entry) => entry.anchor === 'https://api.kody.codes/v1',
 	)
 	expect(openApiEntry?.['service-desc']?.[0]).toEqual({
-		href: kodyOpenApiSpecUrl,
+		href: 'https://api.kody.codes/openapi.json',
 		type: 'application/json',
 	})
 	expect(openApiEntry?.['service-doc']?.[0]).toEqual({
-		href: `${kodyApiDocsOrigin}/`,
+		href: 'https://api-docs.kody.codes/',
 		type: 'text/html',
 	})
 	expect(openApiEntry?.['service-doc']?.[1]).toEqual({
@@ -134,8 +129,8 @@ test('agent discovery documents describe the MCP server and public pages', async
 
 	const openApiMd = buildOpenApiDiscoveryMarkdown(origin)
 	expect(openApiMd).toContain('## Kody Open API')
-	expect(openApiMd).toContain(kodyOpenApiSpecUrl)
-	expect(openApiMd).toContain(`${kodyApiDocsOrigin}/`)
+	expect(openApiMd).toContain('https://api.kody.codes/openapi.json')
+	expect(openApiMd).toContain('https://api-docs.kody.codes/')
 	expect(openApiMd).toContain(`${origin}/docs/open-api.md`)
 	expect(openApiMd).toContain(`${origin}/docs/api-versioning.md`)
 
@@ -145,7 +140,7 @@ test('agent discovery documents describe the MCP server and public pages', async
 		name: 'Kody',
 		url: 'https://kody.codes',
 		offers: { name: 'Free', price: '0', priceCurrency: 'USD' },
-		sameAs: [kodyGithubUrl],
+		sameAs: ['https://github.com/kody-hq/kody'],
 	})
 	expect(jsonLd.description.length).toBeGreaterThan(20)
 	const jsonLdText = homeSoftwareApplicationJsonLdScriptText()

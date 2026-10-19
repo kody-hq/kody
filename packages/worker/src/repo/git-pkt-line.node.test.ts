@@ -4,7 +4,9 @@ import {
 	encodeGitFlushPkt,
 	encodeGitPktLine,
 	extractUploadPackWantOids,
+	normalizeUploadPackNegotiationResponse,
 	rewriteUploadPackAdvertisement,
+	summarizeUploadPackRequest,
 	uploadPackWantsOnlySnapshot,
 } from './git-pkt-line.ts'
 
@@ -144,4 +146,135 @@ test('uploadPackWantsOnlySnapshot fails closed on empty wants, bad framing, and 
 		}),
 	).toBe(false)
 	expect(extractUploadPackWantOids(truncated)).toEqual({ ok: false })
+})
+
+const commonOid = '7708b8a3db843a5f7a69edd1117c2892fa8c6dd6'
+const otherOid = '3239879e3239879e3239879e3239879e3239879e'
+
+test('summarizeUploadPackRequest reads ack mode, done, and haves from the first want', () => {
+	const detailed =
+		encodeGitPktLine(
+			`want ${otherOid} multi_ack_detailed no-done side-band-64k agent=git/2.47.3\n`,
+		) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine(`have ${commonOid}\n`) +
+		encodeGitFlushPkt()
+	expect(
+		summarizeUploadPackRequest(new TextEncoder().encode(detailed)),
+	).toEqual({ ackMode: 'detailed', hasDone: false, hasHaves: true })
+
+	const multiWithDone =
+		encodeGitPktLine(`want ${otherOid} multi_ack side-band-64k\n`) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine('done\n')
+	expect(
+		summarizeUploadPackRequest(new TextEncoder().encode(multiWithDone)),
+	).toEqual({ ackMode: 'multi', hasDone: true, hasHaves: false })
+
+	const single =
+		encodeGitPktLine(`want ${otherOid} side-band-64k\n`) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine(`have ${commonOid}\n`) +
+		encodeGitFlushPkt()
+	expect(summarizeUploadPackRequest(new TextEncoder().encode(single))).toEqual({
+		ackMode: 'single',
+		hasDone: false,
+		hasHaves: true,
+	})
+	expect(summarizeUploadPackRequest(new Uint8Array([0xff, 0xfe]))).toEqual({
+		ackMode: 'single',
+		hasDone: false,
+		hasHaves: false,
+	})
+})
+
+test('normalizeUploadPackNegotiationResponse rewrites plain ACKs and appends NAK', () => {
+	const plain = new TextEncoder().encode(encodeGitPktLine(`ACK ${commonOid}\n`))
+	const detailed = new TextDecoder().decode(
+		normalizeUploadPackNegotiationResponse({
+			body: plain,
+			ackMode: 'detailed',
+		}),
+	)
+	expect(detailed).toBe(
+		encodeGitPktLine(`ACK ${commonOid} common\n`) + encodeGitPktLine('NAK\n'),
+	)
+	expect(detailed).not.toContain('ready')
+
+	const multi = new TextDecoder().decode(
+		normalizeUploadPackNegotiationResponse({ body: plain, ackMode: 'multi' }),
+	)
+	expect(multi).toBe(
+		encodeGitPktLine(`ACK ${commonOid} continue\n`) + encodeGitPktLine('NAK\n'),
+	)
+
+	expect(
+		new TextDecoder().decode(
+			normalizeUploadPackNegotiationResponse({
+				body: new Uint8Array(),
+				ackMode: 'detailed',
+			}),
+		),
+	).toBe(encodeGitPktLine('NAK\n'))
+})
+
+test('normalizeUploadPackNegotiationResponse leaves compliant and non-ack bodies unchanged', () => {
+	const compliant =
+		encodeGitPktLine(`ACK ${commonOid} common\n`) +
+		encodeGitPktLine(`ACK ${commonOid} ready\n`) +
+		encodeGitPktLine('NAK\n')
+	const compliantBytes = new TextEncoder().encode(compliant)
+	expect(
+		new TextDecoder().decode(
+			normalizeUploadPackNegotiationResponse({
+				body: compliantBytes,
+				ackMode: 'detailed',
+			}),
+		),
+	).toBe(compliant)
+
+	const sideband = new Uint8Array([
+		...new TextEncoder().encode(encodeGitPktLine(`ACK ${commonOid}\n`)),
+		0x30,
+		0x30,
+		0x30,
+		0x39,
+		0x01,
+		0x50,
+		0x41,
+		0x43,
+		0x4b,
+		0x30,
+		0x30,
+		0x30,
+		0x30,
+	])
+	const normalized = normalizeUploadPackNegotiationResponse({
+		body: sideband,
+		ackMode: 'detailed',
+	})
+	expect(Array.from(normalized)).toEqual(Array.from(sideband))
+
+	const garbage = new Uint8Array([0x00, 0x01, 0x02])
+	expect(
+		Array.from(
+			normalizeUploadPackNegotiationResponse({
+				body: garbage,
+				ackMode: 'multi',
+			}),
+		),
+	).toEqual(Array.from(garbage))
+
+	expect(
+		Array.from(
+			normalizeUploadPackNegotiationResponse({
+				body: new TextEncoder().encode(encodeGitPktLine(`ACK ${commonOid}\n`)),
+				ackMode: 'single',
+			}),
+		),
+	).toEqual(
+		Array.from(
+			new TextEncoder().encode(encodeGitPktLine(`ACK ${commonOid}\n`)),
+		),
+	)
 })

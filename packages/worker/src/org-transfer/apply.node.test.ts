@@ -22,18 +22,33 @@ import {
 	userWebhookHmacSecretContext,
 	userWebhookUrlSecretContext,
 } from '#mcp/secrets/crypto.ts'
+import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
 	orgAuditOutboxInsertStatement,
 	planOrgAuditOutbox,
 } from '#worker/orgs/org-audit-outbox.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { buildLengthSafeVectorId } from '#worker/vectorize/vector-ids.ts'
 import { type OrgTransferEffects, runOrgResourceTransfer } from './apply.ts'
+import { runOrgTransferPostCommit } from './post-commit.ts'
 import { resealOrgTransferSecrets } from './reencrypt.ts'
+import { orgTransferMemoriesStayNote } from './report.ts'
 import { loadOrgTransferSnapshot } from './snapshot.ts'
 import { OrgTransferStorageNotEmptyError } from './storage-copy.ts'
 
 const jobsMock = vi.hoisted(() => ({ jobs: [] as Array<unknown> }))
+
+const memoryVectorMock = vi.hoisted(() => ({
+	deleteMemoryVector: vi.fn(async () => {}),
+	upsertMemoryVector: vi.fn(async () => {}),
+}))
+
+vi.mock('#mcp/memory/memory-vectorize.ts', () => ({
+	memoryVectorId: (memoryId: string) => `memory_${memoryId}`,
+	deleteMemoryVector: memoryVectorMock.deleteMemoryVector,
+	upsertMemoryVector: memoryVectorMock.upsertMemoryVector,
+}))
 
 vi.mock('#worker/jobs/jobs-data.ts', () => ({
 	jobsData: () => ({
@@ -75,6 +90,8 @@ const plaintexts = {
 beforeEach(() => {
 	jobsMock.jobs = []
 	hubMock.serverIds = { [src]: ['server-1'] }
+	memoryVectorMock.deleteMemoryVector.mockClear()
+	memoryVectorMock.upsertMemoryVector.mockClear()
 })
 
 async function seed() {
@@ -521,7 +538,32 @@ test('dry-run reports the plan as counts and names and writes nothing', async ()
 		]),
 	)
 	expect(result.summary.clashes).toEqual([])
+	expect(result.summary.kept).toEqual({
+		memories: { count: 1, note: orgTransferMemoriesStayNote },
+	})
+	expect(result.summary.counts).not.toHaveProperty('mcp_memories')
+	expect(result.summary.orphans.map((orphan) => orphan.table)).not.toContain(
+		'mcp_memory_conversation_suppressions',
+	)
 	expectNoSecretMaterial(JSON.stringify(result), sqlite)
+})
+
+test('dry-run reports memories staying even when the source has none', async () => {
+	const { sqlite, db } = await seed()
+	sqlite.prepare(`DELETE FROM mcp_memories`).run()
+	const result = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'dry-run',
+		skipOrphans: false,
+	})
+	expect(result.outcome).toBe('planned')
+	expect(result.summary.kept).toEqual({
+		memories: { count: 0, note: orgTransferMemoriesStayNote },
+	})
 })
 
 test('apply refuses clashes in the target and touches nothing', async () => {
@@ -827,11 +869,15 @@ test('apply moves everything, re-seals credentials, and cleans up orphans', asyn
 	expect(orphanHook.user_id).toBe(src)
 	expect(orphanHook.deleted_at).not.toBeNull()
 
-	for (const table of ['mcp_memories', 'mcp_server_settings']) {
-		expect(
-			sqlite.prepare(`SELECT DISTINCT user_id FROM ${table}`).all(),
-		).toEqual([{ user_id: dst }])
-	}
+	expect(
+		sqlite.prepare(`SELECT DISTINCT user_id FROM mcp_server_settings`).all(),
+	).toEqual([{ user_id: dst }])
+	expect(
+		sqlite.prepare(`SELECT id, user_id, deleted_at FROM mcp_memories`).all(),
+	).toEqual([{ id: 'memory-1', user_id: src, deleted_at: null }])
+	expect(result.summary.kept).toEqual({
+		memories: { count: 1, note: orgTransferMemoriesStayNote },
+	})
 	expect(
 		sqlite
 			.prepare(`SELECT user_id FROM user_storage_buckets WHERE storage_id = ?`)
@@ -861,6 +907,8 @@ test('apply moves everything, re-seals credentials, and cleans up orphans', asyn
 		expect(backups[0]).not.toContain(value)
 	}
 	expect(backups[0]).toContain('"encrypted_value"')
+	expect(backups[0]).not.toContain('Prefers tea')
+	expect(backups[0]).not.toContain('mcp_memories')
 
 	expectNoSecretMaterial(JSON.stringify(result), sqlite)
 	expectNoSecretMaterial(
@@ -868,6 +916,158 @@ test('apply moves everything, re-seals credentials, and cleans up orphans', asyn
 		sqlite,
 	)
 	expectNoSecretMaterial(logged.join('\n'), sqlite)
+})
+
+test('apply leaves personal-org memories, suppressions, and memory vectors with the owner', async () => {
+	const { sqlite, db } = await seed()
+	sqlite
+		.prepare(
+			`INSERT INTO users (
+				username, email, password_hash, stable_user_id, personal_org_id,
+				created_at, updated_at
+			) VALUES ('brad', 'brad@example.com', 'hash', 'person-brad', ?, ?, ?)`,
+		)
+		.run(src, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO mcp_memories (id, user_id, subject, summary, deleted_at)
+			 VALUES ('memory-deleted', ?, 'Old', 'Gone', ?)`,
+		)
+		.run(src, now)
+	sqlite
+		.prepare(
+			`INSERT INTO mcp_memory_conversation_suppressions (
+				user_id, conversation_id, memory_id, expires_at
+			) VALUES
+				(?, 'conv-live', 'memory-1', ?),
+				(?, 'conv-old', 'memory-deleted', ?)`,
+		)
+		.run(src, now, src, now)
+	const memoryVectorId = buildLengthSafeVectorId({
+		prefix: 'memory',
+		rawId: 'memory-1',
+	})
+	const packageVectorId = buildLengthSafeVectorId({
+		prefix: 'package',
+		rawId: pkgA,
+	})
+	sqlite
+		.prepare(
+			`INSERT INTO vector_embed_fingerprints (
+				user_id, vector_id, content_hash, updated_at
+			) VALUES (?, ?, 'mem-hash', ?), (?, ?, 'pkg-hash', ?)`,
+		)
+		.run(src, memoryVectorId, now, src, packageVectorId, now)
+	expect(await isPersonalOrg(db, src)).toBe(true)
+	expect(await isPersonalOrg(db, dst)).toBe(false)
+
+	const dryRun = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'dry-run',
+		skipOrphans: true,
+	})
+	expect(dryRun.outcome).toBe('planned')
+	expect(dryRun.summary.kept).toEqual({
+		memories: { count: 1, note: orgTransferMemoriesStayNote },
+	})
+	expect(
+		dryRun.summary.orphans.some((orphan) =>
+			orphan.table.startsWith('mcp_memory'),
+		),
+	).toBe(false)
+
+	const backups: Array<string> = []
+	const result = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({
+			db,
+			calls: [],
+			backups,
+			overrides: {
+				afterCommit: async ({ plan, cleanupOrphans }) => {
+					expect(plan.moves).not.toHaveProperty('mcp_memories')
+					expect(plan.moves).not.toHaveProperty(
+						'mcp_memory_conversation_suppressions',
+					)
+					expect(
+						plan.orphans.some((orphan) =>
+							orphan.table.startsWith('mcp_memory'),
+						),
+					).toBe(false)
+					expect(
+						plan.derivedDeletes.vector_embed_fingerprints.map(
+							(row) => row['vector_id'],
+						),
+					).toEqual([packageVectorId])
+					return runOrgTransferPostCommit({
+						env: { APP_DB: db } as Env,
+						baseUrl: 'https://heykody.dev',
+						plan,
+						cleanupOrphans,
+					})
+				},
+			},
+		}),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'apply',
+		skipOrphans: true,
+	})
+
+	expect(result.outcome).toBe('applied')
+	expect(result.summary.kept).toEqual({
+		memories: { count: 1, note: orgTransferMemoriesStayNote },
+	})
+	expect(result.leftovers).not.toHaveProperty('mcp_memories')
+	expect(result.leftovers).not.toHaveProperty(
+		'mcp_memory_conversation_suppressions',
+	)
+	expect(
+		result.postCommitWarnings.some((warning) =>
+			`${warning.subject ?? ''} ${warning.message}`.includes('reindex memory'),
+		),
+	).toBe(false)
+	expect(memoryVectorMock.deleteMemoryVector).not.toHaveBeenCalled()
+	expect(memoryVectorMock.upsertMemoryVector).not.toHaveBeenCalled()
+	expect(
+		sqlite
+			.prepare(`SELECT id, user_id, deleted_at FROM mcp_memories ORDER BY id`)
+			.all(),
+	).toEqual([
+		{ id: 'memory-1', user_id: src, deleted_at: null },
+		{ id: 'memory-deleted', user_id: src, deleted_at: now },
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT user_id, conversation_id, memory_id
+				 FROM mcp_memory_conversation_suppressions
+				 ORDER BY conversation_id`,
+			)
+			.all(),
+	).toEqual([
+		{ user_id: src, conversation_id: 'conv-live', memory_id: 'memory-1' },
+		{
+			user_id: src,
+			conversation_id: 'conv-old',
+			memory_id: 'memory-deleted',
+		},
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT user_id, vector_id FROM vector_embed_fingerprints ORDER BY vector_id`,
+			)
+			.all(),
+	).toEqual([{ user_id: src, vector_id: memoryVectorId }])
+	expect(backups).toHaveLength(1)
+	expect(backups[0]).not.toContain('Prefers tea')
+	expect(backups[0]).not.toContain(memoryVectorId)
 })
 
 test('a failure before commit undoes side copies and leaves APP_DB unchanged', async () => {

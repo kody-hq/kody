@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -466,8 +467,15 @@ test('public package git HTTP advertises the published snapshot and proxies uplo
 		}),
 		envStub(),
 	)
-	expect(unpublishedWant!.status).toBe(403)
-	expect(await unpublishedWant!.text()).toMatch(/published snapshot/i)
+	expect(unpublishedWant!.status).toBe(200)
+	expect(unpublishedWant!.headers.get('Content-Type')).toBe(
+		'application/x-git-upload-pack-result',
+	)
+	const rejectedBody = await unpublishedWant!.text()
+	expect(rejectedBody).toContain(
+		'ERR Public package git remotes only serve the published snapshot commit.',
+	)
+	expect(rejectedBody).not.toContain('artifacts.example.test')
 	// Rejected before upstream fetch.
 	expect(fetchCalls).toHaveLength(2)
 
@@ -482,7 +490,13 @@ test('public package git HTTP advertises the published snapshot and proxies uplo
 		}),
 		envStub(),
 	)
-	expect(oversized!.status).toBe(413)
+	expect(oversized!.status).toBe(200)
+	expect(oversized!.headers.get('Content-Type')).toBe(
+		'application/x-git-upload-pack-result',
+	)
+	expect(await oversized!.text()).toContain(
+		'ERR Upload-pack request body too large.',
+	)
 	expect(fetchCalls).toHaveLength(2)
 })
 
@@ -587,4 +601,301 @@ test('public package git HTTP redirects listing renames and falls back to a loca
 	expect(body).toContain('symref=HEAD:refs/heads/main')
 	expect(body).toContain(`${publishedCommit} refs/heads/main\n`)
 	expect(body.endsWith('0000')).toBe(true)
+})
+
+test('upload-pack negotiation rewrites a bare ACK and leaves done responses unchanged', async () => {
+	resetMocks()
+	seedPublicListing()
+	const artifactsRemote =
+		'https://artifacts.example.test/git/default/package-pkg-1.git'
+	const plainAck = encodeGitPktLine(`ACK ${liveCommit}\n`)
+	let upstreamBodies: Array<string> = []
+	using _server = createMswNodeServer([
+		http.post(`${artifactsRemote}/git-upload-pack`, async ({ request }) => {
+			upstreamBodies.push(await request.text())
+			const client = upstreamBodies[upstreamBodies.length - 1] ?? ''
+			if (client.includes('done\n')) {
+				return new HttpResponse(plainAck + 'PACK-AFTER-DONE', {
+					status: 200,
+					headers: {
+						'Content-Type': 'application/x-git-upload-pack-result',
+						'Content-Length': String(
+							Buffer.byteLength(plainAck + 'PACK-AFTER-DONE'),
+						),
+					},
+				})
+			}
+			return new HttpResponse(plainAck, {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/x-git-upload-pack-result',
+					'Content-Length': String(Buffer.byteLength(plainAck)),
+				},
+			})
+		}),
+	])
+
+	const negotiation = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-git-upload-pack-request' },
+			body:
+				encodeGitPktLine(
+					`want ${publishedCommit} multi_ack_detailed no-done side-band-64k\n`,
+				) +
+				encodeGitFlushPkt() +
+				encodeGitPktLine(`have ${liveCommit}\n`) +
+				encodeGitFlushPkt(),
+		}),
+		envStub(),
+	)
+	expect(negotiation!.status).toBe(200)
+	expect(await negotiation!.text()).toBe(
+		encodeGitPktLine(`ACK ${liveCommit} common\n`) + encodeGitPktLine('NAK\n'),
+	)
+
+	const done = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-git-upload-pack-request' },
+			body:
+				encodeGitPktLine(
+					`want ${publishedCommit} multi_ack_detailed no-done side-band-64k\n`,
+				) +
+				encodeGitFlushPkt() +
+				encodeGitPktLine(`have ${liveCommit}\n`) +
+				encodeGitPktLine('done\n'),
+		}),
+		envStub(),
+	)
+	expect(await done!.text()).toBe(plainAck + 'PACK-AFTER-DONE')
+
+	const single = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-git-upload-pack-request' },
+			body:
+				encodeGitPktLine(`want ${publishedCommit} side-band-64k\n`) +
+				encodeGitFlushPkt() +
+				encodeGitPktLine(`have ${liveCommit}\n`) +
+				encodeGitFlushPkt(),
+		}),
+		envStub(),
+	)
+	expect(await single!.text()).toBe(plainAck)
+})
+
+test('upload-pack failures are git ERR packets and do not echo upstream URLs', async () => {
+	resetMocks()
+	seedPublicListing()
+	const artifactsRemote =
+		'https://artifacts.example.test/git/default/package-pkg-1.git'
+	using _server = createMswNodeServer([
+		http.post(`${artifactsRemote}/git-upload-pack`, () => {
+			return new HttpResponse(
+				'nope https://artifacts.example.test/secret art_v1_secret',
+				{ status: 502 },
+			)
+		}),
+	])
+	const rejected = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-git-upload-pack-request' },
+			body:
+				encodeGitPktLine(`want ${publishedCommit} side-band-64k\n`) +
+				encodeGitFlushPkt() +
+				encodeGitPktLine('done\n'),
+		}),
+		envStub(),
+	)
+	expect(rejected!.status).toBe(200)
+	expect(rejected!.headers.get('Content-Type')).toBe(
+		'application/x-git-upload-pack-result',
+	)
+	const body = await rejected!.text()
+	expect(body).toContain('ERR The artifact repository rejected git-upload-pack')
+	expect(body).toContain('HTTP 502')
+	expect(body).not.toContain('artifacts.example.test')
+	expect(body).not.toContain('art_v1_secret')
+
+	resetMocks()
+	seedPublicListing({ publishedCommit: null, pinnedCommit: 'not-a-sha' })
+	const infoRefs = await handlePublicPackageGitHttpRequest(
+		new Request(
+			'https://kody.codes/@kody/cloudflare.git/info/refs?service=git-upload-pack',
+		),
+		envStub(),
+	)
+	expect(infoRefs!.status).toBe(200)
+	expect(infoRefs!.headers.get('Content-Type')).toBe(
+		'application/x-git-upload-pack-advertisement',
+	)
+	const advertisement = await infoRefs!.text()
+	expect(advertisement.startsWith('001e# service=git-upload-pack\n0000')).toBe(
+		true,
+	)
+	expect(advertisement).toContain(
+		'ERR Public package has no published snapshot commit to clone.',
+	)
+
+	const repoRoot = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git', {
+			headers: { Accept: '*/*', 'User-Agent': 'git/2.47.0' },
+		}),
+		envStub(),
+	)
+	expect(repoRoot!.status).toBe(503)
+	expect(await repoRoot!.text()).toMatch(/published snapshot/i)
+})
+
+test('upload-pack negotiation bodies over 64KiB pass through unchanged', async () => {
+	resetMocks()
+	seedPublicListing()
+	const artifactsRemote =
+		'https://artifacts.example.test/git/default/package-pkg-1.git'
+	const plainAck = encodeGitPktLine(`ACK ${liveCommit}\n`)
+	let filler = ''
+	while (Buffer.byteLength(plainAck + filler) <= 64 * 1024) {
+		filler += encodeGitPktLine('NAK\n')
+	}
+	const upstreamBody = plainAck + filler
+	using _server = createMswNodeServer([
+		http.post(`${artifactsRemote}/git-upload-pack`, () => {
+			return new HttpResponse(upstreamBody, {
+				status: 200,
+				headers: { 'Content-Type': 'application/x-git-upload-pack-result' },
+			})
+		}),
+	])
+	const response = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-git-upload-pack-request' },
+			body:
+				encodeGitPktLine(
+					`want ${publishedCommit} multi_ack_detailed no-done side-band-64k\n`,
+				) +
+				encodeGitFlushPkt() +
+				encodeGitPktLine(`have ${liveCommit}\n`) +
+				encodeGitFlushPkt(),
+		}),
+		envStub(),
+	)
+	expect(response!.status).toBe(200)
+	expect(await response!.text()).toBe(upstreamBody)
+})
+
+test('gzip upload-pack bodies are decoded before the size cap and negotiation parser', async () => {
+	resetMocks()
+	seedPublicListing()
+	const artifactsRemote =
+		'https://artifacts.example.test/git/default/package-pkg-1.git'
+	const plain =
+		encodeGitPktLine(
+			`want ${publishedCommit} multi_ack_detailed no-done side-band-64k\n`,
+		) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine(`have ${liveCommit}\n`) +
+		encodeGitFlushPkt()
+	const upstreamBodies: Array<string> = []
+	const upstreamEncodings: Array<string | null> = []
+	using _server = createMswNodeServer([
+		http.post(`${artifactsRemote}/git-upload-pack`, async ({ request }) => {
+			upstreamEncodings.push(request.headers.get('Content-Encoding'))
+			upstreamBodies.push(await request.text())
+			return new HttpResponse(encodeGitPktLine(`ACK ${liveCommit}\n`), {
+				status: 200,
+				headers: { 'Content-Type': 'application/x-git-upload-pack-result' },
+			})
+		}),
+	])
+
+	const gzipped = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: gzipSync(plain),
+		}),
+		envStub(),
+	)
+	expect(gzipped!.status).toBe(200)
+	expect(await gzipped!.text()).toBe(
+		encodeGitPktLine(`ACK ${liveCommit} common\n`) + encodeGitPktLine('NAK\n'),
+	)
+	expect(upstreamBodies).toEqual([plain])
+	expect(upstreamEncodings).toEqual([null])
+
+	const xGzip = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'x-gzip',
+			},
+			body: gzipSync(plain),
+		}),
+		envStub(),
+	)
+	expect(await xGzip!.text()).toContain(`ACK ${liveCommit} common`)
+	expect(upstreamBodies).toEqual([plain, plain])
+
+	const unsupported = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'br',
+			},
+			body: plain,
+		}),
+		envStub(),
+	)
+	expect(unsupported!.status).toBe(200)
+	expect(await unsupported!.text()).toContain(
+		'ERR Unsupported upload-pack Content-Encoding.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+
+	const corrupt = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: new Uint8Array([1, 2, 3, 4]),
+		}),
+		envStub(),
+	)
+	expect(await corrupt!.text()).toContain(
+		'ERR Upload-pack request body could not be decoded.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+
+	let inflated = encodeGitPktLine(
+		`want ${publishedCommit} multi_ack_detailed side-band-64k\n`,
+	)
+	while (Buffer.byteLength(inflated) <= 256 * 1024) {
+		inflated += encodeGitPktLine(`have ${liveCommit}\n`)
+	}
+	const tooLarge = await handlePublicPackageGitHttpRequest(
+		new Request('https://kody.codes/@kody/cloudflare.git/git-upload-pack', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-git-upload-pack-request',
+				'Content-Encoding': 'gzip',
+			},
+			body: gzipSync(inflated),
+		}),
+		envStub(),
+	)
+	expect(await tooLarge!.text()).toContain(
+		'ERR Upload-pack request body too large.',
+	)
+	expect(upstreamBodies).toHaveLength(2)
+	expect(gzipSync(inflated).byteLength).toBeLessThan(256 * 1024)
 })

@@ -1,24 +1,15 @@
 # Jobs
 
-Package-owned schedules and their run history.
-
-## How to get there
-
-`/@<slug>/-/jobs` and `/@<slug>/-/jobs/:jobId`.
-
-## Drive it
+## Seed / reach
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /@<slug>/-/jobs
+npm run control-kody -- login
+npm run control-kody -- request GET /@jane/-/jobs --contains 'Jobs'
 ```
 
-Preview seed has no jobs until a package with `kody.jobs` exists.
+Create a job via `execute` / MCP when asserting non-empty list.
 
-## Transport
+## Assert
 
-The browser uses native Start server functions for job reads and mutations.
-
-## Gotchas
-
-- Republishing `"enabled": false` does not disable a running job. Use
-  `jobUpdate` or the package pause export.
+- `/@{$orgSlug}/-/jobs`, `/@{$orgSlug}/-/jobs/$jobId`
+- Legacy `/account/jobs` redirects to the personal org

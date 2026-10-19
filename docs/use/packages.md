@@ -548,7 +548,11 @@ authority when another package or ad hoc execute statically imports it. The
 importer does not need its own `allowed_packages` grant. The importer's own code
 still cannot read that secret, including by passing the declaring package's id
 to `kody.packageSecretGet` / `Has`. See
-[Package approval](./secrets-and-values.md#package-approval).
+[Package approval](./secrets-and-values.md#package-approval). Starting
+Wednesday, Oct 21, 2026, a non-empty `allowed_packages` list is enforced for
+those stamped uses everywhere (including through another package or a one-off
+`execute` load); publish/save warnings tip owners to approve or move the use
+before then.
 
 ### Ambient `storage` is not a `kody:runtime` export
 
@@ -565,10 +569,11 @@ app route.
 
 Production-hosted package apps run on per-user subdomains of Kody's separate
 `kody.run` domain (`https://{username}.kody.run/packages/<package-name>/...`),
-not on the signed-in app origin. Opening an app from Kody performs a short-lived
-session handoff to that subdomain. Package author JavaScript cannot use the
-first-party `kody_session` cookie or call authenticated Kody pages as the
-signed-in user.
+or on a verified custom domain, not on the signed-in app origin. The package
+page links there. People who may run the app still open it through a short-lived
+session handoff from kody.codes, because the hosted origin cannot see the
+kody.codes session cookie. Package author JavaScript cannot use the first-party
+`kody_session` cookie or call authenticated Kody pages as the signed-in user.
 
 Package app URLs follow the mount contract: on a subdomain the public path is
 `/packages/<package-name>/<path>` (the username lives in the hostname; the
@@ -878,20 +883,21 @@ agent needs the package unlocked, it should send the owner to
 When an agent pushes or saves a locked package, the commit still lands on
 Artifacts HEAD. Publish tools then return **`locked`** with an
 **`approval_url`** that names that commit:
-`/@{username}/{package-name}/approve-publish?commit=<sha>`. Opening that URL
-shows a file-by-file diff of the current published tree versus that commit.
-Clicking **Promote this commit** runs the real publish (checks, bundle
-artifacts, projections) for that SHA. Promoting one commit does not unlock the
-package.
+`/@{username}/{package-name}/approve-publish?commit=<sha>`. `<sha>` is the full
+40-character SHA-1 object id. A shorter prefix is rejected with "Use the full
+commit SHA (40 characters)". Opening that URL shows a file-by-file diff of the
+current published tree versus that commit. Clicking **Promote this commit** runs
+the real publish (checks, bundle artifacts, projections) for that SHA. Promoting
+one commit does not unlock the package.
 
 Unlocked packages use the same review page. When default-branch HEAD is newer
 than the last publish, owners see **Publish changes** on the Repo tab and a
 **Publishing** panel on Settings. Both open
 `/@{username}/{package-name}/approve-publish?commit=<sha>`, where `<sha>` is the
-resolved default-branch HEAD, to publish with **Publish HEAD**. Visitors may
-still see a non-interactive status when HEAD is ahead. The five-minute reconcile
-job still auto-publishes unlocked packages; this page is the explicit website
-path.
+full 40-character SHA-1 of the resolved default-branch HEAD, to publish with
+**Publish HEAD**. Visitors may still see a non-interactive status when HEAD is
+ahead. The five-minute reconcile job still auto-publishes unlocked packages;
+this page is the explicit website path.
 
 Once a package is listed, publishing or promoting advances the public community
 listing with the runtime — see

@@ -21,6 +21,8 @@ import {
 	hoverMq,
 	layoutMaxWidths,
 	pageGutter,
+	siteHeaderBrandMinHeight,
+	siteHeaderNavPaddingBlock,
 } from '#universal/styles/style-primitives.ts'
 
 export type SiteHeaderProps = {
@@ -227,7 +229,7 @@ const headerCss: CSSObject = {
 const navCss: CSSObject = {
 	maxWidth: layoutMaxWidths.extended,
 	marginInline: 'auto',
-	padding: `0.8rem ${pageGutter}`,
+	padding: `${siteHeaderNavPaddingBlock} ${pageGutter}`,
 	display: 'flex',
 	alignItems: 'center',
 	gap: '1.8rem',
@@ -239,7 +241,7 @@ const brandCss: CSSObject = {
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: '0.6rem',
-	minHeight: '44px',
+	minHeight: siteHeaderBrandMinHeight,
 	font: `700 1.25rem/1 ${typography.fontFamilyDisplay}`,
 	color: colors.text,
 	textDecoration: 'none',

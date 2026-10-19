@@ -64,6 +64,7 @@ type AdminUsageRollupRow = {
 	month: string
 	event_count: number
 	error_count: number
+	caught_count?: number | null
 	total_duration_ms: number
 	total_cpu_ms: number
 	total_bytes: number
@@ -261,7 +262,7 @@ async function queryUserMonthRollups(input: {
 }) {
 	const result = await input.db
 		.prepare(
-			`SELECT user_id, metric, month, event_count, error_count,
+			`SELECT user_id, metric, month, event_count, error_count, caught_count,
 				total_duration_ms, total_cpu_ms, total_bytes
 			 FROM usage_rollups
 			 WHERE user_id = ?
@@ -309,6 +310,7 @@ function toUsageRollup(
 		metric,
 		eventCount: Number(row?.event_count ?? 0),
 		errorCount: Number(row?.error_count ?? 0),
+		caughtCount: Number(row?.caught_count ?? 0),
 		totalDurationMs: Number(row?.total_duration_ms ?? 0),
 		totalCpuMs: Number(row?.total_cpu_ms ?? 0),
 		totalBytes: Number(row?.total_bytes ?? 0),

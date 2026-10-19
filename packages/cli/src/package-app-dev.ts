@@ -50,6 +50,7 @@ import {
 import { devErrorHeader, devRequestIdHeader } from './dev/dev-protocol.js'
 import {
 	buildDevProxyUpstreamHeaders,
+	buildTrustedDevForwardUrl,
 	buildTrustedDevPublicUrl,
 	isAllowedDevHost,
 	trustedDevHostFromHostedUrl,
@@ -768,6 +769,21 @@ export async function startPackageAppDev(
 		res: ServerResponse,
 	): Promise<void> {
 		try {
+			const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
+			if (
+				!isAllowedDevHost({
+					incomingHost: req.headers.host,
+					trustedHost,
+					aliases: options.hostAliases,
+				})
+			) {
+				res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
+				res.end(
+					`Unrecognized Host ${JSON.stringify(req.headers.host ?? '')}. ` +
+						`Open the URL kody dev printed (${hostedUrl}).\n`,
+				)
+				return
+			}
 			if (handleDevRoute(req, res)) return
 			await waitForBuild()
 			const assetPath = parseDevAssetPath(
@@ -829,20 +845,6 @@ export async function startPackageAppDev(
 		res: ServerResponse,
 	): Promise<void> {
 		const trustedHost = trustedDevHostFromHostedUrl(hostedUrl)
-		if (
-			!isAllowedDevHost({
-				incomingHost: req.headers.host,
-				trustedHost,
-				aliases: options.hostAliases,
-			})
-		) {
-			res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
-			res.end(
-				`Unrecognized Host ${JSON.stringify(req.headers.host ?? '')}. ` +
-					`Open the URL kody dev printed (${hostedUrl}).\n`,
-			)
-			return Promise.resolve()
-		}
 		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
 		const restPath = stripMount(incomingUrl.pathname, appBasePath)
 		const publicUrl = buildTrustedDevPublicUrl({
@@ -851,8 +853,11 @@ export async function startPackageAppDev(
 			search: incomingUrl.search,
 		})
 		const forwardUrl = new URL(
-			restPath + incomingUrl.search,
-			`http://127.0.0.1:${generation.workerd.port}`,
+			buildTrustedDevForwardUrl({
+				baseUrl: `http://127.0.0.1:${generation.workerd.port}`,
+				restPath,
+				search: incomingUrl.search,
+			}),
 		)
 		const tag: DevRequestTag = {
 			id: String(++requestCounter),

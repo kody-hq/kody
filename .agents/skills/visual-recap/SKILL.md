@@ -26,11 +26,11 @@ Run the classifier. Roll up to the highest of `adds`, then `extends`, then
 `composes`. You still choose `composes` vs `extends` from the diff. `adds` is a
 new map entry.
 
-| Rollup     | Risk   | Also                                                                                                |
-| ---------- | ------ | --------------------------------------------------------------------------------------------------- |
-| `composes` | low    | Wiring and call sites only.                                                                         |
-| `extends`  | medium | [preview-manual-test](../preview-manual-test/SKILL.md) as the seeded user with data for this change |
-| `adds`     | high   | Update `primitives.yaml`, `npm run primitives:check`, and the same preview                          |
+| Rollup     | Risk   | Also                                                                                                                                        |
+| ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `composes` | low    | Wiring and call sites only.                                                                                                                 |
+| `extends`  | medium | Local [control-kody](../control-kody/SKILL.md) verify as the seeded user; [preview](../preview-manual-test/SKILL.md) only when local cannot |
+| `adds`     | high   | Update `primitives.yaml`, `npm run primitives:check`, and the same local verify (preview when needed)                                       |
 
 Update `primitives.yaml` when this PR adds, removes, or materially reshapes a
 primitive (new `id`, renamed meaning, or ownership roots that must change). Do
@@ -58,12 +58,13 @@ significant push.
 ## Failure
 
 - The mermaid check exits non-zero. Fix the diagram. Do not put `;` in sequence
-  notes or messages. `npm run mermaid:check` uses the same parser.
+  notes or messages. `npm run docs:check` (mermaid member) uses the same parser.
 - The block file must start with `<!-- system-recap:start -->` and end with
   `<!-- system-recap:end -->`.
 - `gh pr edit` fails with
   `Resource not accessible by integration (updatePullRequest)`. The script still
   prints the merged body. Apply that body with Cursor ManagePullRequest. Do not
   have Kody edit the PR.
-- A health check or login smoke is not the medium or high preview. Do not cat
-  the session cookie into curl or Python.
+- A health check or login smoke is not medium or high verification. Prefer local
+  control-kody proof; use preview only when local cannot exercise the change. Do
+  not cat the session cookie into curl or Python.

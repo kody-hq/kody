@@ -9,9 +9,10 @@ import { isExecutedDirectly } from './node-runtime.ts'
  * ship-pr policy with kentcdodds/kcd-skills. ship-pr stays local, and
  * computedHash is the folder hash of the committed skill.
  *
- * `npm run skills-lock:check` runs in `npm run validate`, the CI static job,
- * and the pre-push hook when the push changes this lock or `.agents/skills/`.
- * A skill edit that does not refresh computedHash fails the check.
+ * Skills-lock runs via `npm run deps:check` (and the CI static job) and as
+ * `node tools/check-skills-lock.ts` on pre-push when the push changes this lock
+ * or `.agents/skills/`. A skill edit that does not refresh computedHash fails
+ * the check.
  */
 export const skillsLockRelativePath = 'skills-lock.json'
 export const shipPrSkillName = 'ship-pr'

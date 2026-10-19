@@ -164,27 +164,22 @@ org context).
 | `loginExchange`      | For `kind=login`: the `login_exchange` JSON (`url`, `bodyFormat`, `body`, `tokenPath`, ...) the need expects. The page asks only for the login fields its `body` names (`{email}`, `{password}`, ...). Without it, the person fills in the exchange. |
 | anything else        | Passed through unchanged to the reused form: `/connect/secret-set` params (`scope`, `packageId`, `expiresAt`, `allowedPackages`) or `/connect/oauth` params (`authorizeUrl`, `tokenUrl`, `scopes`, `flow`, ...).                                     |
 
-The page saves `secret`, `url`, `login`, and `signing` in place through the
-website save (`POST /account/secrets.json`, `action: "save"`), which accepts
-`kind`, `hosts`, and `loginExchange` and validates them exactly as `secretSet`
-does. The person types the value, so no agent ever holds it. `oauth` hands off
-to `/connect/oauth` with the same query plus `org=<org>` (the OAuth redirect URI
-stays org-less; `org` binds account writes to the creation org), and `mcp` to
-`/@<org>/-/mcp-servers/new`.
+The page saves `secret`, `url`, `login`, and `signing` in place through
+`saveSecret`, which accepts `kind`, `hosts`, and `loginExchange` and validates
+them exactly as `secretSet` does. The person types the value, so no agent ever
+holds it. `oauth` hands off to `/connect/oauth` with the same query plus
+`org=<org>` (the OAuth redirect URI stays org-less; `org` binds account writes
+to the creation org), and `mcp` to `/@<org>/-/mcp-servers/new`.
 
 Codecs: `buildCredentialCreateHref(input)` and
 `parseCredentialCreateQuery(url)`.
 
 ## Credentials list API
 
-```
-GET /account/credentials.json?q=&kind=&scope=&packageScoped=&locked=
-```
-
-Session-authenticated (website), for the current org binding. The MCP / Open API
-twin is the `credentialList` capability (`GET /v1/credentials`, with `kinds` in
-place of `kind`) taking the same filters and returning the same `credentials`
-array.
+The website credentials page loads through `loadCredentialsPage` (same filters
+on the current org binding). The MCP / Open API twin is the `credentialList`
+capability (`GET /v1/credentials`, with `kinds` in place of `kind`) taking the
+same filters and returning the same `credentials` array.
 
 | Filter          | Values                                                                                |
 | --------------- | ------------------------------------------------------------------------------------- |
@@ -740,18 +735,18 @@ with its own audit trail.
 
 Where they are wired:
 
-- The server wraps the three org index handlers and `/connect/secret-set` with
-  `withCredentialIndexRedirect` (`app/handlers/credential-index-redirect.ts`).
-  The client router wraps the same loaders with `withCredentialRedirectLoader`,
-  so in-app navigation redirects too.
+- Org index routes (`/@:org/-/secrets`, `/@:org/-/integrations`,
+  `/@:org/-/mcp-servers`) and `/connect/secret-set` call `credentialRedirectFor`
+  in `beforeLoad` and throw a 302 when the table matches.
 - `/connect/credential` redirects to the creation one-pager at
   `/@:org/-/credentials/new` in the signed-in user's signup org, with the query
   preserved. A legacy `/connect/secret-set` link therefore lands on the
   one-pager in two hops.
 - `/account/credentials` redirects to the signup org's Credentials list, query
-  preserved. Org-less pages (`/connect/secrets`, `/connect/secret-set`) link
-  back to it with `data-rmx-document`, because the client router would otherwise
-  intercept the org-less path.
+  preserved. `SiteLink` uses `linkNavigation`, which treats exact native routes
+  that have `beforeLoad` and no component or loader as document navigations, so
+  in-app clicks follow the server 302 instead of handling the path as an SPA
+  page. `/account/credits` uses the same redirect-only shape.
 - URLs the table returns null for stay on the dedicated page: approval links
   (`names`, `hosts`, `package_id`, `capability`) and `package=` filters on the
   index pages. `/connect/secret-set` remains the Key intake.

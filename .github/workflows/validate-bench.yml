@@ -87,6 +87,8 @@ jobs:
       actions: read
     steps:
       - name: 📥 Download timing artifacts
+        id: download_timings
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: validate-timings-*
@@ -118,7 +120,11 @@ jobs:
               "🧪 Node",
               "☁️ Workers",
               "🔌 MCP",
-              "🎭 E2E",
+              "🎭 E2E (1/4)",
+              "🎭 E2E (2/4)",
+              "🎭 E2E (3/4)",
+              "🎭 E2E (4/4)",
+              "🎭 E2E Report",
               "🧰 CLI",
           ]
 

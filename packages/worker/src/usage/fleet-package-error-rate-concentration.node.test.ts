@@ -146,6 +146,7 @@ test('fleet package error-rate concentration classifies, names, and stays identi
 	expect(query).toContain('GROUP BY user_id')
 	expect(query).not.toContain('GROUP BY user_id, entity_id')
 	expect(query).toContain("blob4 = 'error'")
+	expect(query).not.toContain('caught')
 	const packageQuery = buildFleetPackageErrorRateConcentrationPackageQuery({
 		...recentWindow,
 		ownerIds: ['jett-user'],

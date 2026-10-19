@@ -1,12 +1,9 @@
 # Cleanup after migrations
 
 Agents clean up leftover cruft from the change they are making. Untracked
-leftovers linger; tracked leftovers get finished.
-
-This page is the policy. Load the skill at
-[`.agents/skills/cleanup-after-migrations/SKILL.md`](../../.agents/skills/cleanup-after-migrations/SKILL.md)
-when the work introduces a transitional leftover, a deprecated path, a soak, or
-a follow-up migration.
+leftovers linger; tracked leftovers get finished. This page is the policy when
+work introduces a transitional leftover, a deprecated path, a soak, or a
+follow-up migration.
 
 ## Decision
 
@@ -93,7 +90,8 @@ durable tracker after the session ends.
 - [Authoring D1 migrations](./setup/migrations.md)
 - [Package codemod rollout](./package-codemods.md#rollout-doctrine)
 - [Harness engineering](./harness-engineering.md)
-- [Values retirement runbook](./architecture/values-retirement-runbook.md)
+- [ADR 0022 — Retire values](./decisions/0022-retire-values-primitive.md)
+  (complete; destination map lives in the ADR)
 - [Runtime worker migration runbook](./architecture/runtime-worker-migration-runbook.md)
 - [Platform worker migration runbook](./architecture/platform-worker-migration-runbook.md)
 - [Jobs worker migration runbook](./architecture/jobs-worker-migration-runbook.md)

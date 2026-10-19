@@ -3,17 +3,26 @@ import { StrictMode, startTransition, useEffect } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
+import { documentHydrationDiagnostics } from './document-hydration-diagnostics.ts'
+import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
+import {
+	clearStaleRouteChunkReloadFlag,
+	onVitePreloadError,
+	setStaleRouteChunkReloadArmed,
+} from '#client/reload-on-stale-route-chunk.ts'
 import { clearUnknownStartReleaseReloadFlag } from '#client/reload-on-unknown-start-release.ts'
 import {
 	captureClientException,
 	initSentryClient,
+	type ClientErrorContext,
 } from '#client/sentry-client.ts'
 
 initSentryClient(document)
+window.addEventListener('vite:preloadError', onVitePreloadError)
 
-function reportReactError(error: unknown) {
+function reportReactError(error: unknown, context?: ClientErrorContext) {
 	console.error('React client error:', error)
-	captureClientException(error)
+	captureClientException(error, context)
 }
 
 function HydratedApp({ router }: { router: AnyRouter }) {
@@ -22,14 +31,55 @@ function HydratedApp({ router }: { router: AnyRouter }) {
 		if (
 			router.state.matches.length > 0 &&
 			router.state.matches.every((match) => match.status === 'success')
-		)
+		) {
 			clearUnknownStartReleaseReloadFlag()
+			clearStaleRouteChunkReloadFlag()
+		}
 	}, [router])
 	return <RouterProvider router={router} />
 }
 
 hydrateStart()
 	.then((router) => {
+		// Arm only while a route load is in flight. Chunk import rejection and
+		// the route error boundary both run before `onResolved`.
+		router.subscribe('onBeforeLoad', () => {
+			setStaleRouteChunkReloadArmed(true)
+		})
+		router.subscribe('onResolved', () => {
+			setStaleRouteChunkReloadArmed(false)
+		})
+		const reportDocumentError = (
+			error: unknown,
+			context?: ClientErrorContext,
+		) => {
+			let enriched = context
+			if (
+				error instanceof Error &&
+				error.message.startsWith('Hydration mismatch')
+			) {
+				try {
+					if (/at meta\s+at head\b/.test(context?.componentStack ?? '')) {
+						enriched = {
+							...context,
+							documentMeta: documentMetaDiagnostics(
+								document,
+								router.state.matches[0]?.loaderData,
+							),
+						}
+					} else {
+						// Structural mismatch (reconcile leftover / adoptHostDom).
+						enriched = {
+							...context,
+							documentHydration: documentHydrationDiagnostics(document),
+						}
+					}
+				} catch {
+					// Diagnostics must never prevent the original error report.
+				}
+			}
+			reportReactError(error, enriched)
+		}
 		startTransition(() => {
 			hydrateRoot(
 				document,
@@ -37,9 +87,9 @@ hydrateStart()
 					<HydratedApp router={router} />
 				</StrictMode>,
 				{
-					onCaughtError: reportReactError,
-					onUncaughtError: reportReactError,
-					onRecoverableError: reportReactError,
+					onCaughtError: reportDocumentError,
+					onUncaughtError: reportDocumentError,
+					onRecoverableError: reportDocumentError,
 				},
 			)
 		})

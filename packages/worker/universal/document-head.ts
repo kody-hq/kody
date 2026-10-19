@@ -270,6 +270,7 @@ const routeDocumentHeads = {
 	admin: titleOnly('Admin users'),
 	adminUsers: titleOnly('Admin users'),
 	adminUserDetail: titleOnly('Admin users'),
+	adminAccountDeletion: titleOnly('Delete account'),
 	adminReservedUsernames: titleOnly('Admin reserved usernames'),
 	adminFeatureFlags: titleOnly('Admin feature flags'),
 	adminPlatformIntegrations: titleOnly('Admin platform integrations'),

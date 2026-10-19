@@ -26,8 +26,6 @@ export const orgTransferRepointedTables = [
 	'published_bundle_artifacts',
 	'entity_source_artifacts_push_subscriptions',
 	'community_forks',
-	'mcp_memories',
-	'mcp_memory_conversation_suppressions',
 	'mcp_server_settings',
 	'mcp_user_server_instructions',
 	'secret_buckets',

@@ -47,6 +47,7 @@ const usageRollupSchema = z.object({
 	metric: usageMetricSchema,
 	eventCount: z.number().int().nonnegative(),
 	errorCount: z.number().int().nonnegative(),
+	caughtCount: z.number().int().nonnegative(),
 	totalDurationMs: z.number().int().nonnegative(),
 	totalCpuMs: z.number().int().nonnegative(),
 	totalBytes: z.number().int().nonnegative(),

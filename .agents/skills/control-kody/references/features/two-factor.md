@@ -1,22 +1,15 @@
 # Two-factor auth
 
-TOTP setup and the `/verify` challenge after password login.
+## Seed / reach
 
-## How to get there
-
-`/account/two-factor` while signed in. Challenge: `/verify`.
-
-## Drive it
+Signed-in local user:
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /account/two-factor
+npm run control-kody -- login
+npm run control-kody -- request GET /account/two-factor --contains 'Two-factor'
 ```
 
-The page uses native Start server functions for website reads and mutations. Use
-supported MCP capabilities through `control-kody search` and
-`control-kody execute` when fixture data is needed.
+## Assert
 
-## Gotchas
-
-- SSR can paint before hydration finishes. Exercise the form after hydration; a
-  screenshot alone does not prove submission works.
+- Settings: `/account/two-factor`
+- Challenge: `/verify` (when 2FA is enabled on the account)

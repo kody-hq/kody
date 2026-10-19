@@ -6,9 +6,12 @@ import {
 	getPlatformFeedbackByIdForAdmin,
 	updatePlatformFeedbackStatusForAdmin,
 } from './repo.ts'
+import { platformFeedbackSubmissionRateLimit } from './limits.ts'
 import {
+	buildPlatformFeedbackSubmissionQuota,
 	getPlatformFeedbackForAdmin,
 	getPlatformFeedbackForSubmitter,
+	getPlatformFeedbackSubmissionQuota,
 	listPlatformFeedbackForAdmin,
 	listPlatformFeedbackForSubmitter,
 	submitPlatformFeedback,
@@ -62,7 +65,7 @@ function review(
 }
 
 const rateLimitMessage = (retryAfterSeconds: number) =>
-	`Platform feedback is limited to 10 submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds.`
+	`Platform feedback is limited to ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds. For urgent issues, email support@kody.codes.`
 
 test('platform feedback workflow submits, lists, reads, transitions, and preserves submitter attribution', async () => {
 	const { sqlite, db, queries } = createPlatformFeedbackDb()
@@ -280,7 +283,7 @@ test('platform feedback admin note updates reject the same stale revision', asyn
 
 test('platform feedback submission enforces the rolling rate limit and atomic active queue cap', async () => {
 	const rateLimited = createPlatformFeedbackDb()
-	for (let index = 0; index < 10; index += 1) {
+	for (let index = 0; index < platformFeedbackSubmissionRateLimit; index += 1) {
 		await submit(rateLimited.db, 'rate-limited-user')
 	}
 	await expect(submit(rateLimited.db, 'rate-limited-user')).rejects.toThrow(
@@ -290,7 +293,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 		rateLimited.sqlite
 			.prepare(`SELECT COUNT(*) AS total FROM platform_feedback`)
 			.get(),
-	).toEqual({ total: 10 })
+	).toEqual({ total: platformFeedbackSubmissionRateLimit })
 
 	vi.useFakeTimers()
 	try {
@@ -307,7 +310,11 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 			) VALUES (?, 'rate-limited-user', 'rate-limited-user',
 				'rate-limited-user@example.com', 'friction', 'Feedback', 'Details', ?, ?)`,
 		)
-		for (let index = 0; index < 10; index += 1) {
+		for (
+			let index = 0;
+			index < platformFeedbackSubmissionRateLimit;
+			index += 1
+		) {
 			insertFeedback.run(`feedback-${index}`, createdAt, createdAt)
 		}
 		await expect(submit(db, 'rate-limited-user')).rejects.toThrow(
@@ -338,7 +345,7 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	await expect(
 		submit(queueLimited.db, 'queue-limited-user', { category: 'bug' }),
 	).rejects.toThrow(
-		'You already have 100 open or triaged platform feedback submissions.',
+		'You already have 100 open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.',
 	)
 	queueLimited.sqlite
 		.prepare(
@@ -420,7 +427,16 @@ test('submitter get and list are owner-scoped and omit reviewer fields', async (
 		db,
 		submitterUserId: 'user-a',
 	})
-	expect(listed).toMatchObject({ total: 1, page: 1, pageSize: 20 })
+	expect(listed).toMatchObject({
+		total: 1,
+		page: 1,
+		pageSize: 20,
+		submissionQuota: {
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit - 1,
+			nextSlotAt: null,
+		},
+	})
 	expect(listed.items).toEqual([
 		{
 			id: owned.id,
@@ -450,4 +466,150 @@ test('submitter get and list are owner-scoped and omit reviewer fields', async (
 	})
 	expect(resolvedOnly.total).toBe(1)
 	expect(resolvedOnly.items[0]?.id).toBe(owned.id)
+})
+
+test('platform feedback submission quota: fresh, partial, at cap, and window rollover', async () => {
+	vi.useFakeTimers()
+	try {
+		const now = new Date('2026-07-19T12:00:00.000Z')
+		vi.setSystemTime(now)
+		const nowIso = now.toISOString()
+		const { sqlite, db } = createPlatformFeedbackDb()
+
+		expect(
+			await getPlatformFeedbackSubmissionQuota({
+				db,
+				submitterUserId: 'quota-user',
+				now: nowIso,
+			}),
+		).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit,
+			nextSlotAt: null,
+		})
+		expect(
+			buildPlatformFeedbackSubmissionQuota(
+				{ rollingCount: 0, oldestCreatedAt: null },
+				nowIso,
+			),
+		).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit,
+			nextSlotAt: null,
+		})
+
+		const insertFeedback = sqlite.prepare(
+			`INSERT INTO platform_feedback (
+				id, submitter_user_id, submitter_username, submitter_email,
+				category, summary, details, created_at, updated_at
+			) VALUES (?, 'quota-user', 'quota-user', 'quota-user@example.com',
+				'friction', 'Feedback', 'Details', ?, ?)`,
+		)
+		const oldestInWindow = new Date(
+			now.getTime() - 6 * 60 * 60 * 1_000,
+		).toISOString()
+		for (let index = 0; index < 3; index += 1) {
+			const createdAt =
+				index === 0
+					? oldestInWindow
+					: new Date(now.getTime() - index * 60 * 1_000).toISOString()
+			insertFeedback.run(`partial-${index}`, createdAt, createdAt)
+		}
+		expect(
+			await getPlatformFeedbackSubmissionQuota({
+				db,
+				submitterUserId: 'quota-user',
+				now: nowIso,
+			}),
+		).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit - 3,
+			nextSlotAt: null,
+		})
+		const partialList = await listPlatformFeedbackForSubmitter({
+			db,
+			submitterUserId: 'quota-user',
+			now: nowIso,
+		})
+		expect(partialList.submissionQuota).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit - 3,
+			nextSlotAt: null,
+		})
+
+		for (
+			let index = 3;
+			index < platformFeedbackSubmissionRateLimit;
+			index += 1
+		) {
+			const createdAt = new Date(
+				now.getTime() - index * 60 * 1_000,
+			).toISOString()
+			insertFeedback.run(`capped-${index}`, createdAt, createdAt)
+		}
+		const nextSlotAt = new Date(
+			new Date(oldestInWindow).getTime() + 24 * 60 * 60 * 1_000,
+		).toISOString()
+		expect(
+			await getPlatformFeedbackSubmissionQuota({
+				db,
+				submitterUserId: 'quota-user',
+				now: nowIso,
+			}),
+		).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 0,
+			nextSlotAt,
+		})
+		expect(
+			buildPlatformFeedbackSubmissionQuota(
+				{
+					rollingCount: platformFeedbackSubmissionRateLimit,
+					oldestCreatedAt: oldestInWindow,
+				},
+				nowIso,
+			),
+		).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 0,
+			nextSlotAt,
+		})
+		const cappedList = await listPlatformFeedbackForSubmitter({
+			db,
+			submitterUserId: 'quota-user',
+			now: nowIso,
+		})
+		expect(cappedList.submissionQuota).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 0,
+			nextSlotAt,
+		})
+
+		const afterOldestAgesOut = new Date(
+			new Date(oldestInWindow).getTime() + 24 * 60 * 60 * 1_000 + 1,
+		)
+		vi.setSystemTime(afterOldestAgesOut)
+		const rolled = await getPlatformFeedbackSubmissionQuota({
+			db,
+			submitterUserId: 'quota-user',
+			now: afterOldestAgesOut.toISOString(),
+		})
+		expect(rolled).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 1,
+			nextSlotAt: null,
+		})
+		const rolledList = await listPlatformFeedbackForSubmitter({
+			db,
+			submitterUserId: 'quota-user',
+			now: afterOldestAgesOut.toISOString(),
+		})
+		expect(rolledList.submissionQuota).toEqual({
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 1,
+			nextSlotAt: null,
+		})
+	} finally {
+		vi.useRealTimers()
+	}
 })

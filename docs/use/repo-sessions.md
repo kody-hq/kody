@@ -111,7 +111,8 @@ states:
   base commit and current published commit
 - **`locked`** with `approval_url` when the package has `locked_at` set. The
   session commit is already on HEAD; promoting it is a website click at that
-  URL. Approving one commit does not unlock the package.
+  URL. The `commit` query is the full 40-character SHA-1. Approving one commit
+  does not unlock the package.
 
 That makes it easier for agents to resume or repair a workflow without string
 parsing.
@@ -135,6 +136,16 @@ session to read or write should discard in a `finally` so leftovers do not
 accumulate against the `repo_sessions` entitlement. Unused (never-checkpointed)
 sessions are swept after 30 minutes idle; checkpointed sessions are swept after
 7 days idle.
+
+**Storage:** while a session is active, its workspace scratch (Durable Object
+SQLite plus `REPO_SESSION_BLOBS`) is inventoried and counts toward the account
+`storage_bytes` plan limit. `repoOpenSession` does not pre-check storage
+headroom; the next package/job/storage write admits against the live total.
+After a successful `repoPublishSession`, that session’s scratch is released from
+the storage inventory (durable source lives in Artifacts and the published
+snapshot). The catalog row stays `published` for 14 days so agents can list it;
+`repoDiscardSession` removes the row sooner. Active sessions still count until
+discard or idle sweep.
 
 ### `write` edits vs patches
 

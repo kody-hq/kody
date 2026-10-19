@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { routes } from '#universal/routes.ts'
+import { fullGitCommitShaRequiredMessage } from '#worker/package-registry/package-publish-lock.ts'
 function validate(data: { username: string; kodyId: string; commit?: string }) {
 	if (
 		!data ||
@@ -75,7 +76,12 @@ async function review(data: ReturnType<typeof validate>) {
 		packageId: page.ownerPackage.id,
 		commit: data.commit ?? '',
 	})
-	if (!payload.ok) throw notFound()
+	if (!payload.ok) {
+		if (payload.error === fullGitCommitShaRequiredMessage) {
+			return { error: payload.error }
+		}
+		throw notFound()
+	}
 	return {
 		payload,
 		head: loadDocumentHead('communityPackageApprovePublish', url.pathname, {

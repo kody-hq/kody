@@ -22,24 +22,31 @@ import {
 /**
  * Husky pre-commit and pre-push gates.
  *
- * A docs-only diff skips install:check, typecheck, migrations:check, and
- * test:push. lint-staged still formats the commit. Any other path, including
- * a comment in a source file, keeps the full check for that hook. An
- * unreadable diff fails closed and runs the check.
+ * A docs-only diff skips install:check, typecheck, migrations:check, knip,
+ * and test:push. lint-staged still formats the commit. Any other path,
+ * including a comment in a source file, keeps the full check for that hook.
+ * An unreadable diff fails closed and runs the check.
  *
- * pre-push also runs skills-lock:check when the push changes skills-lock.json
- * or a path under .agents/skills/, and when the pushed paths cannot be listed.
- * Markdown skill files are docs-only, so they do not run test:push.
+ * pre-push also runs `node tools/check-skills-lock.ts` when the push changes
+ * skills-lock.json or a path under .agents/skills/, and when the pushed paths
+ * cannot be listed.
+ * Markdown skill files are docs-only, so they do not run knip or test:push.
  * skills-lock.json alone does not either. Executable files under
- * .agents/skills/ still run test:push.
+ * .agents/skills/ still run knip and test:push.
  *
  * Rename detection is off so a source file renamed to markdown still lists
  * the deleted path.
  *
- * Pre-push skips `test:push` when the pushed commit's tree SHA is already
- * recorded green from `npm run validate` or a prior successful pre-push
- * (#3653 / #3719). Progress logs tick every 30s so a long workers-unit run is
- * not a silent hang (#3547). Workers-unit isolation (ADR 0011) is unchanged.
+ * Pre-push runs `npm run knip` (same files/exports/types gate as CI) before
+ * `test:push` on non-docs pushes. A knip failure tells the agent to run
+ * `npm run knip` and fix. CI keeps its Knip step as the backstop.
+ *
+ * Pre-push skips `knip` and/or `test:push` when that check's tree SHA is
+ * already recorded green from `npm run validate` or a prior successful
+ * pre-push of the same check (#3653 / #3719). Knip and test:push provenance
+ * are separate so a pre-knip `test:push`-only record cannot skip knip.
+ * Progress logs tick every 30s so a long workers-unit run is not a silent
+ * hang (#3547). Workers-unit isolation (ADR 0011) is unchanged.
  *
  * Pre-commit typecheck runs in a detached git worktree built from
  * `git write-tree` (the index) so unstaged fixes cannot greenlight a broken
@@ -61,6 +68,7 @@ export type GitHookCheckPlan = {
 	runInstallCheck: boolean
 	runTypecheck: boolean
 	runMigrationsCheck: boolean
+	runKnip: boolean
 	runUnitTests: boolean
 	runSkillsLockCheck: boolean
 	summary: string
@@ -123,7 +131,8 @@ export function hookScripts(plan: GitHookCheckPlan) {
 	if (plan.runInstallCheck) scripts.push('install:check')
 	if (plan.runTypecheck) scripts.push('typecheck')
 	if (plan.runMigrationsCheck) scripts.push('migrations:check')
-	if (plan.runSkillsLockCheck) scripts.push('skills-lock:check')
+	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
+	if (plan.runKnip) scripts.push('knip')
 	if (plan.runUnitTests) scripts.push('test:push')
 	return scripts
 }
@@ -159,36 +168,48 @@ export function pushedCommitShas(stdin: string | null): ReadonlyArray<string> {
 		.map((update) => update.localSha)
 }
 
-export function shouldSkipTestPushForProvenance(input: {
+function uniquePushedTreeSha(input: {
 	git: GitRunner
 	stdin?: string | null
-	store: ProvenanceStore
-}): { skip: boolean; treeSha: string | null; reason: string | null } {
+}): string | null {
 	const shas = pushedCommitShas(input.stdin ?? null)
-	if (shas.length === 0) {
-		return { skip: false, treeSha: null, reason: null }
-	}
+	if (shas.length === 0) return null
 	const trees: Array<string> = []
 	for (const sha of shas) {
 		const treeSha = treeShaForCommit(input.git, sha)
-		if (!treeSha) {
-			return { skip: false, treeSha: null, reason: null }
-		}
+		if (!treeSha) return null
 		trees.push(treeSha)
 	}
 	const unique = [...new Set(trees)]
-	if (unique.length !== 1) {
+	return unique.length === 1 ? unique[0]! : null
+}
+
+export function shouldSkipProvenanceCheck(input: {
+	git: GitRunner
+	stdin?: string | null
+	store: ProvenanceStore
+	check: 'knip' | 'test:push'
+}): { skip: boolean; treeSha: string | null; reason: string | null } {
+	const treeSha = uniquePushedTreeSha(input)
+	if (!treeSha) {
 		return { skip: false, treeSha: null, reason: null }
 	}
-	const treeSha = unique[0]!
-	if (!hasProvenanceCheck(input.store, 'test:push', treeSha)) {
+	if (!hasProvenanceCheck(input.store, input.check, treeSha)) {
 		return { skip: false, treeSha, reason: null }
 	}
 	return {
 		skip: true,
 		treeSha,
-		reason: `pre-push: skipping test:push (tree ${treeSha.slice(0, 12)} already green)`,
+		reason: `pre-push: skipping ${input.check} (tree ${treeSha.slice(0, 12)} already green)`,
 	}
+}
+
+export function shouldSkipTestPushForProvenance(input: {
+	git: GitRunner
+	stdin?: string | null
+	store: ProvenanceStore
+}): { skip: boolean; treeSha: string | null; reason: string | null } {
+	return shouldSkipProvenanceCheck({ ...input, check: 'test:push' })
 }
 
 function worktreeHasUnstagedOrUntracked(porcelainStdout: string) {
@@ -446,24 +467,40 @@ export async function runGitHookChecks(input: {
 	log(plan.summary)
 
 	let scripts = hookScripts(plan)
-	if (input.hook === 'pre-push' && scripts.includes('test:push')) {
-		const skip = shouldSkipTestPushForProvenance({
-			git,
-			stdin: input.stdin,
-			store: provenance,
-		})
-		if (skip.skip && skip.reason) {
-			log(skip.reason)
-			scripts = scripts.filter((script) => script !== 'test:push')
+	if (input.hook === 'pre-push') {
+		if (scripts.includes('knip')) {
+			const skipKnip = shouldSkipProvenanceCheck({
+				git,
+				stdin: input.stdin,
+				store: provenance,
+				check: 'knip',
+			})
+			if (skipKnip.skip && skipKnip.reason) {
+				log(skipKnip.reason)
+				scripts = scripts.filter((script) => script !== 'knip')
+			}
+		}
+		if (scripts.includes('test:push')) {
+			const skipTests = shouldSkipProvenanceCheck({
+				git,
+				stdin: input.stdin,
+				store: provenance,
+				check: 'test:push',
+			})
+			if (skipTests.skip && skipTests.reason) {
+				log(skipTests.reason)
+				scripts = scripts.filter((script) => script !== 'test:push')
+			}
 		}
 	}
 
 	for (const script of scripts) {
 		const started = now()
-		log(`hook: starting npm run ${script}`)
+		const label = hookCommandLabel(script)
+		log(`hook: starting ${label}`)
 		const heartbeat = setInterval(() => {
 			const elapsedSec = Math.max(1, Math.round((now() - started) / 1000))
-			log(`hook: still running npm run ${script} (${elapsedSec}s)`)
+			log(`hook: still running ${label} (${elapsedSec}s)`)
 		}, progressIntervalMs)
 		// Unref so a stuck interval cannot keep the process alive after exit.
 		heartbeat.unref?.()
@@ -471,8 +508,10 @@ export async function runGitHookChecks(input: {
 		// Provenance must bind to the tree that was actually tested, not
 		// whatever commit tips appear on stdin (#3745 review). Skip the
 		// fingerprint when stdin has no pushable SHAs (blank / delete-only).
-		const pushShas =
-			script === 'test:push' ? pushedCommitShas(input.stdin ?? null) : []
+		const recordsProvenance = script === 'test:push' || script === 'knip'
+		const pushShas = recordsProvenance
+			? pushedCommitShas(input.stdin ?? null)
+			: []
 		const testedTreeBefore =
 			pushShas.length > 0 ? treeShaForWorktree(git) : null
 		try {
@@ -489,12 +528,19 @@ export async function runGitHookChecks(input: {
 			clearInterval(heartbeat)
 		}
 		const elapsedSec = Math.max(0, Math.round((now() - started) / 1000))
-		log(`hook: finished npm run ${script} in ${elapsedSec}s (exit ${status})`)
-		if (status !== 0) return status
-		if (script === 'test:push' && pushShas.length > 0) {
+		log(`hook: finished ${label} in ${elapsedSec}s (exit ${status})`)
+		if (status !== 0) {
+			if (script === 'knip') {
+				log(
+					'pre-push: knip failed. Run `npm run knip` and fix unused files, exports, or types before pushing.',
+				)
+			}
+			return status
+		}
+		if (recordsProvenance && pushShas.length > 0) {
 			if (hasUntrackedFiles(git)) {
 				log(
-					'pre-push: not recording test:push provenance (untracked files present; stash create cannot fingerprint them)',
+					`pre-push: not recording ${script} provenance (untracked files present; stash create cannot fingerprint them)`,
 				)
 				continue
 			}
@@ -505,7 +551,7 @@ export async function runGitHookChecks(input: {
 				testedTreeBefore !== testedTreeAfter
 			) {
 				log(
-					'pre-push: not recording test:push provenance (worktree changed during the run or could not be fingerprinted)',
+					`pre-push: not recording ${script} provenance (worktree changed during the run or could not be fingerprinted)`,
 				)
 				continue
 			}
@@ -513,7 +559,7 @@ export async function runGitHookChecks(input: {
 				const commitTree = treeShaForCommit(git, sha)
 				if (!commitTree || commitTree !== testedTreeAfter) continue
 				recordProvenanceCheck(provenance, {
-					check: 'test:push',
+					check: script === 'knip' ? 'knip' : 'test:push',
 					treeSha: commitTree,
 					source: 'pre-push',
 				})
@@ -529,6 +575,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runInstallCheck: true,
 			runTypecheck: true,
 			runMigrationsCheck: true,
+			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
 			summary:
@@ -540,6 +587,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runInstallCheck: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
+			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
 			summary: `pre-commit: skipping install:check, typecheck, and migrations:check (${docsOnlySummary(paths)})`,
@@ -549,6 +597,7 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		runInstallCheck: true,
 		runTypecheck: true,
 		runMigrationsCheck: true,
+		runKnip: false,
 		runUnitTests: false,
 		runSkillsLockCheck: false,
 		summary: `pre-commit: running install:check, typecheck, and migrations:check (${codePathSummary(paths)})`,
@@ -561,45 +610,49 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runInstallCheck: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
+			runKnip: true,
 			runUnitTests: true,
 			runSkillsLockCheck: true,
 			summary:
-				'pre-push: running test:push and skills-lock:check (could not list pushed paths)',
+				'pre-push: running knip, test:push, and skills-lock (could not list pushed paths)',
 		}
 	}
 	const skillsLock = paths.some(isSkillsLockHookPath)
 	// skills-lock.json is not markdown. Markdown under .agents/skills/ is
 	// already docs-only. Executable skill scripts (.mjs, tests) are not, so
-	// they still run test:push.
+	// they still run knip and test:push.
 	if (paths.every(skipsPrePushUnitTests)) {
 		if (skillsLock) {
 			return {
 				runInstallCheck: false,
 				runTypecheck: false,
 				runMigrationsCheck: false,
+				runKnip: false,
 				runUnitTests: false,
 				runSkillsLockCheck: true,
-				summary: `pre-push: running skills-lock:check (${skillsLockPathSummary(paths)})`,
+				summary: `pre-push: running skills-lock (${skillsLockPathSummary(paths)})`,
 			}
 		}
 		return {
 			runInstallCheck: false,
 			runTypecheck: false,
 			runMigrationsCheck: false,
+			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
-			summary: `pre-push: skipping test:push (${docsOnlySummary(paths)})`,
+			summary: `pre-push: skipping knip and test:push (${docsOnlySummary(paths)})`,
 		}
 	}
 	return {
 		runInstallCheck: false,
 		runTypecheck: false,
 		runMigrationsCheck: false,
+		runKnip: true,
 		runUnitTests: true,
 		runSkillsLockCheck: skillsLock,
 		summary: skillsLock
-			? `pre-push: running skills-lock:check and test:push (${codePathSummary(paths)})`
-			: `pre-push: running test:push (${codePathSummary(paths)})`,
+			? `pre-push: running skills-lock, knip, and test:push (${codePathSummary(paths)})`
+			: `pre-push: running knip and test:push (${codePathSummary(paths)})`,
 	}
 }
 
@@ -757,13 +810,24 @@ export function gitHookScriptEnv(source: NodeJS.ProcessEnv = process.env) {
 	return env
 }
 
+/** Label for progress logs (`npm run X` or a bare `node …` command). */
+export function hookCommandLabel(script: string) {
+	return script.startsWith('node ') ? script : `npm run ${script}`
+}
+
 function defaultRunNpmScript(script: string, cwd?: string): Promise<number> {
 	return new Promise((resolve) => {
-		const child = spawn(resolveNpmCommand(), ['run', script], {
-			stdio: 'inherit',
-			env: gitHookScriptEnv(),
-			cwd,
-		})
+		const child = script.startsWith('node ')
+			? spawn(process.execPath, script.slice('node '.length).split(' '), {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
+			: spawn(resolveNpmCommand(), ['run', script], {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)

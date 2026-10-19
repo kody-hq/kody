@@ -34,6 +34,7 @@ on:
         default: ''
 
 permissions:
+  actions: read
   contents: read
   deployments: write
   pull-requests: read
@@ -120,7 +121,7 @@ jobs:
         run: |
           cp packages/worker/.env.example packages/worker/.env
           npx --no-install vite build
-          node tools/framework-comparison/verify-redact-build.mjs dist
+          node tools/ci/verify-redact-build.mjs dist
           node tools/ci/verify-start-release-build.ts dist
           node tools/ci/prepare-start-opt-in.ts finalize
       - name: Deploy inactive isolated workers with trusted production secrets
@@ -393,7 +394,7 @@ jobs:
           include-hidden-files: true
           retention-days: 30
   sha-guard:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🧾 Production deploy guard
     timeout-minutes: 4
     if: >-
@@ -437,6 +438,10 @@ jobs:
           WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_DISPATCH_SHA: ${{ github.sha }}
           PRODUCTION_URL: ${{ vars.APP_BASE_URL || 'https://kody.codes' }}
+          # Tip-of-main workflow ↔ checkout contract. Bump together with
+          # DEPLOY_WORKFLOW_CONTRACT_VERSION in tools/ci/deploy-workflow-contract.ts
+          # when this workflow gains a checkout-coupled requirement.
+          EXPECTED_DEPLOY_WORKFLOW_CONTRACT: '1'
         run: |
           set -euo pipefail
           DEPLOY_SHA="$WORKFLOW_RUN_SHA"
@@ -482,6 +487,15 @@ jobs:
             exit 0
           fi
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+
+          # Fail fast when tip-of-main deploy.yml relies on checkout-side
+          # scripts/flags this SHA lacks (tools/ci/deploy-workflow-contract.ts).
+          # Runs before path filters, migrations, or any worker upload.
+          if [ ! -f tools/ci/deploy-workflow-contract.ts ]; then
+            echo "This commit predates the current deploy workflow (missing deploy-workflow-contract). Redeploy from main or a newer commit." >&2
+            exit 1
+          fi
+          node tools/ci/deploy-workflow-contract.ts
 
           # Always redeploy the DR control plane and status worker on manual
           # workflow_dispatch. On push-driven deploys, path-filter against a
@@ -597,7 +611,7 @@ jobs:
   # mutation (including jobs/highlight siblings) so a missing token fails the
   # deploy instead of leaving the fleet half-applied.
   require-worker-tokens:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔒 Require Worker-scoped Cloudflare tokens
     timeout-minutes: 2
     needs: sha-guard
@@ -633,7 +647,7 @@ jobs:
   # can validate against an existing jobs-worker script. See
   # docs/contributing/architecture/jobs-worker-migration-runbook.md.
   deploy-highlight-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🎨 Deploy highlight worker
     timeout-minutes: 8
     needs:
@@ -733,7 +747,7 @@ jobs:
   # owns the RepoPushQueueV1 Durable Object (migration tag v1), so this uses
   # `wrangler deploy`; see packages/push-queue-worker/readme.md.
   deploy-push-queue-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📮 Deploy push queue worker
     timeout-minutes: 8
     needs:
@@ -829,7 +843,7 @@ jobs:
           exit 1
 
   deploy-jobs-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ⏰ Deploy jobs worker
     timeout-minutes: 8
     needs:
@@ -967,7 +981,7 @@ jobs:
           exit 1
 
   deploy:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🚀 Deploy to production
     timeout-minutes: 20
     needs:
@@ -1182,6 +1196,10 @@ jobs:
           needs.sha-guard.outputs.deploy_platform == 'true' ||
           steps.resources.outputs.origin_deploy_mode == 'fresh'
         env:
+          # A fresh account has no Worker version for versions secret bulk to patch.
+          PLATFORM_SECRET_MODE:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
+            '--versioned' || '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_APP_API_TOKEN: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
           WRANGLER_CONFIG:
@@ -1215,8 +1233,9 @@ jobs:
           CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
             ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
         run: >
-          node tools/ci/sync-worker-secrets.ts --env "" --name kody-platform
-          --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
+          node tools/ci/sync-worker-secrets.ts
+          ${PLATFORM_SECRET_MODE:+$PLATFORM_SECRET_MODE} --env "" --name
+          kody-platform --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
           --set-from-env-optional SECRET_STORE_KEY --set-from-env-optional
           AI_GATEWAY_ID --set-from-env-optional SENTRY_DSN --set-from-env
           CLOUDFLARE_API_TOKEN=CLOUDFLARE_APP_API_TOKEN --set-from-env-optional
@@ -1262,7 +1281,7 @@ jobs:
           fi
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-origin-bootstrap.log
+            node tools/ci/retry-classifiers.ts deploy deploy-origin-bootstrap.log
           }
 
           deploy_attempts=3
@@ -1310,7 +1329,7 @@ jobs:
           set -euo pipefail
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-platform.log
+            node tools/ci/retry-classifiers.ts deploy deploy-platform.log
           }
 
           deploy_attempts=3
@@ -1366,7 +1385,7 @@ jobs:
           set -euo pipefail
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-runtime.log
+            node tools/ci/retry-classifiers.ts deploy deploy-runtime.log
           }
 
           deploy_attempts=3
@@ -1419,6 +1438,46 @@ jobs:
           APP_DEPLOY_INFO="$(node tools/ci/build-deploy-info.ts)"
           echo "app_deploy_info=$APP_DEPLOY_INFO" >> "$GITHUB_OUTPUT"
 
+      - name: Find retained production client assets
+        id: retained_assets
+        if: >-
+          needs.sha-guard.outputs.deploy_main == 'true' ||
+          steps.resources.outputs.origin_deploy_mode == 'fresh'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            for (let page = 1; ; page++) {
+              const artifacts = await github.rest.actions.listArtifactsForRepo({
+                ...context.repo, name: 'production-client-assets', per_page: 100, page,
+              })
+              for (const archive of artifacts.data.artifacts) {
+                const source = archive.workflow_run
+                if (archive.expired || !source || source.id === context.runId ||
+                    source.head_branch !== 'main' ||
+                    source.head_repository_id !== source.repository_id) continue
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  ...context.repo, run_id: source.id,
+                })
+                if (run.status !== 'completed' ||
+                    run.path.split('@')[0] !== '.github/workflows/deploy.yml') continue
+                core.setOutput('artifact_id', String(archive.id))
+                core.setOutput('run_id', String(source.id))
+                return
+              }
+              if (artifacts.data.artifacts.length < 100) break
+            }
+            core.info('No retained archive yet; this deployment starts asset retention.')
+
+      - name: Restore retained production client assets
+        if: steps.retained_assets.outputs.artifact_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.retained_assets.outputs.artifact_id }}
+          run-id: ${{ steps.retained_assets.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .tmp/previous-client-assets
+          merge-multiple: true
+
       - name: ☁️ Deploy to Cloudflare Workers
         id: deploy
         if: >-
@@ -1431,6 +1490,7 @@ jobs:
           DEPLOY_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
           APP_DEPLOY_INFO: ${{ steps.deploy_info.outputs.app_deploy_info }}
           WRANGLER_CONFIG: ${{ steps.resources.outputs.wrangler_config }}
+          KODY_RETAIN_CLIENT_ASSETS: '1'
         run: |
           set -euo pipefail
           # Explicit --name: Vite emits a flattened wrangler.json whose
@@ -1441,7 +1501,7 @@ jobs:
           DEPLOY_ARGS=(--name kody-production --config "$WRANGLER_CONFIG" --var "APP_COMMIT_SHA:${DEPLOY_COMMIT_SHA}" --var "APP_DEPLOY_INFO:${APP_DEPLOY_INFO}")
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy.log
+            node tools/ci/retry-classifiers.ts deploy deploy.log
           }
 
           deploy_attempts=3
@@ -1480,6 +1540,15 @@ jobs:
           if [ -n "$DEPLOY_URL" ]; then
             echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Save deployed production client assets
+        if: steps.deploy.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-client-assets
+          path: .tmp/deployed-client-assets/
+          if-no-files-found: error
+          retention-days: 8
 
       - name: 📤 Upload Worker source maps to Sentry
         env:
@@ -1697,7 +1766,7 @@ jobs:
           node tools/ci/reindex-capabilities.ts --url "$DEPLOY_URL" --phases capabilities
 
   deploy-status-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📟 Deploy status worker
     timeout-minutes: 8
     # Deploys after the main worker so the status prober never probes a
@@ -1832,7 +1901,7 @@ jobs:
           exit 1
 
   deploy-api-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🔌 Deploy API worker (api.kody.codes)
     timeout-minutes: 8
     # The KODY_API service binding targets the origin's KodyApi entrypoint,
@@ -1938,7 +2007,7 @@ jobs:
           exit 1
 
   deploy-api-docs-worker:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📚 Deploy API docs worker (api-docs.kody.codes)
     timeout-minutes: 8
     # Independent of origin: docs fetch the live OpenAPI JSON over HTTPS.
@@ -2044,7 +2113,7 @@ jobs:
           exit 1
 
   deploy-backup-control-plane:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 🛟 Deploy DR backup control plane
     timeout-minutes: 8
     needs: sha-guard

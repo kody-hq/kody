@@ -20,6 +20,14 @@ export const oauthLoginErrorMessages = {
 	'email-unverified': 'Verify your email before connecting a sign-in provider.',
 	'email-unavailable':
 		'This email address cannot be used for a new account. Contact support@kody.codes.',
+	'email-invalid':
+		'That email address is not valid. Use an address like name@gmail.com, or contact support@kody.codes.',
+	'email-typo':
+		'That email domain looks mistyped. Check the spelling (for example gmail.com) and try again, or use a different address.',
+	'email-disposable':
+		'That email domain is a disposable inbox and cannot be used for a Kody account. Use a personal or work address you control.',
+	'email-undeliverable':
+		'That email domain does not accept mail. Check the domain or use a different address.',
 	'email-claimed': formerEmailClaimedSignupMessage,
 	'account-error': 'We could not create your account. Please try again.',
 	'rate-limited': 'Too many sign-in attempts. Please try again later.',

@@ -4,20 +4,27 @@ Cloud Agents verify Kody with one CLI and a Feature Map instead of throwaway
 scripts. The CLI wraps `dev:ensure`, seed login, authenticated HTTP, PR preview
 smoke, `/health` SHA checks, and the Feature Map.
 
+**Local verification is the default** for UI and API changes: `doctor`, `dev`,
+`login`, then `request` / `browse` / `execute` on localhost. Use a PR `preview`
+only when local cannot exercise the change — Workers / service bindings, Durable
+Objects, real OAuth or inbound third-party webhooks, deploy / wrangler / config,
+Artifacts / `packageSave`, or other production-like surfaces. See
+[Local limitations](./cloud-agents.md#local-limitations).
+
 ```bash
 npm run control-kody -- doctor
 npm run control-kody -- dev
 npm run control-kody -- login
-npm run control-kody -- request GET /account/waiting.json
-npm run control-kody -- request GET /@<slug>/-/waiting --dump --contains 'Waiting'
-npm run control-kody -- request POST /account/secrets.json 400 '{"action":"add"}'
-npm run control-kody -- request POST /account/organizations/new --form slug=x-org --form displayName=X
-npm run control-kody -- request POST /account/profile/avatar.json --multipart --form avatar=@./avatar.png
-npm run control-kody -- request GET /account/connected-agents.json --header 'Referer: <origin>/@<slug>/-/agents'
+npm run control-kody -- request GET /session
+npm run control-kody -- request GET /account/packages.json
+npm run control-kody -- request GET /@jane/-/waiting --dump --contains 'Waiting'
+npm run control-kody -- request GET /account/waiting 302 --contains /@jane/-/waiting
+npm run control-kody -- request GET /account/organizations/new --contains 'Create organization'
+npm run control-kody -- browse --path /account/organizations/new
 npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <commit>
-npm run control-kody -- preview --pr 42 --check /@<slug>/-/waiting
+npm run control-kody -- preview --pr 42 --check /@user-me/-/waiting
 npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
 npm run control-kody -- execute --origin <preview> --code-file fixture.ts [--params-file params.json] [--org <slug>]
@@ -42,16 +49,19 @@ the merge being live.
 ## Feature Map
 
 [`.agents/skills/control-kody/references/features/`](../../.agents/skills/control-kody/references/features/README.md)
-is the human index.
+holds verification notes (how to seed, reach, and assert). The route inventory
+is generated from
+[`packages/worker/start/routeTree.gen.ts`](../../packages/worker/start/routeTree.gen.ts)
+(`FileRoutesByFullPath`). Feature prefixes in
 [`tools/control-kody/feature-catalog.ts`](../../tools/control-kody/feature-catalog.ts)
-is the catalog `map --check` and `tools/control-kody.node.test.ts` enforce
-against
-[`packages/worker/universal/routes.ts`](../../packages/worker/universal/routes.ts).
+only group that inventory — do not hand-maintain path lists.
 
-When you add, remove, or rename a user-facing HTML route under `/account`,
-`/admin`, `/login`, `/onboarding`, `/community`, or `/@`, update the catalog and
-the matching feature file in the same change. Run `map --check` before opening a
-Feature Map PR.
+`map` prints the generated inventory (optionally filtered by feature id).
+`map --check` (and `npm run feature-map:check` in CI) fails when notes cite
+unknown routes, a required user-facing prefix has no notes (and no exemption),
+or a notes file is missing / orphaned. When you add a new user-facing area, add
+a short notes file and a prefix in the catalog; leaf routes under an existing
+prefix need no catalog edit.
 
 After `login`, keep using `request` for HTML and JSON assertions. Do not `cat`
 the session cookie into `curl` or Python. `request --dump` writes the raw body
@@ -73,26 +83,22 @@ trailing `--dump` / `--contains <text>` flags as `request`, for example
 
 Repeat `--form name=value` to send `application/x-www-form-urlencoded`. Add
 `--multipart` for `multipart/form-data`; a `@` value is a file path
-(`--form avatar=@./avatar.png`). `POST /account/organizations/new` reads
-`request.formData()` (`slug`, `displayName`) and redirects. `preview --request`
-leaves the redirect manual, and `--contains` also sees `Location`:
+(`--form avatar=@./avatar.png`). Most website mutations (org create, profile
+upload, secrets) use Start server functions — assert the page with `request` /
+`browse`, or mutate via `execute` / MCP, not retired `/account/*.json` action
+POSTs. Remaining protocol JSON GETs include `/session`,
+`/account/packages.json`, and `/account/export.json`.
+
+`preview --request` leaves redirects manual, and `--contains` also sees
+`Location`:
 
 ```bash
-npm run control-kody -- preview --pr 42 --request 'POST /account/organizations/new 302 --form slug=x-org --form displayName=X --contains /@x-org'
+npm run control-kody -- preview --pr 42 --request 'GET /account/waiting 302 --contains /@user-me/-/waiting'
 ```
 
-Org-owned `/account/<section>.json` routes (for example `connected-agents`,
-`connection-usage`, `secrets`, `jobs`) bind the org from a same-origin
-`Referer`. Without one they bind the personal org. Send it with `--header`
-(repeatable, `Name: value`; `Cookie` and `Content-Type` are rejected because the
-session and body own them). The session cookie and re-login work as for any
-other `request`:
-
-```bash
-npm run control-kody -- request GET /account/connected-agents.json --header 'Referer: http://localhost:3742/@<slug>/-/agents'
-```
-
-The same `--header` works inside a `preview --request` spec.
+`--header` (repeatable, `Name: value`) sets request headers when a protocol
+needs them (`Cookie` and `Content-Type` are rejected because the session and
+body own them). The same `--header` works inside a `preview --request` spec.
 
 `browse` reuses the seed cookie stored in `.tmp/control-kody-cookie` (from
 `login` or `preview`) and injects it into headed Playwright Chromium via

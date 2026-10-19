@@ -734,7 +734,9 @@ test('fetch gateway requires package approval before resolving user secrets', as
 	)
 	const transformed = await expand(request(), packageRunProps('pkg-1'))
 	expect(transformed.headers.get('Authorization')).toBe('Bearer secret-value')
-	expect(packageSpy).toHaveBeenCalledTimes(1)
+	// Deny path: shared implicit-access probe + approval-URL package load.
+	// Granted path short-circuits on allowedPackages (no further package load).
+	expect(packageSpy).toHaveBeenCalledTimes(2)
 	expect(forkSpy).toHaveBeenCalledTimes(1)
 	expect(resolveSpy).toHaveBeenCalledTimes(2)
 })

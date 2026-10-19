@@ -85,7 +85,7 @@ export const entitlementResourceVisibility: Record<
 		kind: 'counter',
 		whatCounts: 'Active editing sessions opened by agents against your repos.',
 		howToReduce:
-			'Discard finished sessions with repoDiscardSession. Unused (never-checkpointed) sessions are swept after 30 minutes idle; checkpointed sessions are swept after 7 days idle.',
+			'Discard finished sessions with repoDiscardSession. Unused (never-checkpointed) sessions are swept after 30 minutes idle; checkpointed sessions are swept after 7 days idle. Successful publish releases session scratch from storage counts; the catalog row is retained for 14 days.',
 	},
 	email_sends_per_day: {
 		group: 'daily',
@@ -126,8 +126,9 @@ export const entitlementResourceVisibility: Record<
 		group: 'storage',
 		kind: 'counter',
 		whatCounts:
-			'Durable payload bytes across D1-backed data plus inventoried package, job, execute, and repo-session storage buckets.',
-		howToReduce: 'Delete stored content you no longer need.',
+			'Durable payload bytes across D1-backed data plus inventoried package, job, execute, and active repo-session storage buckets. Successful repoPublishSession releases that session’s scratch so it no longer counts; active sessions and package/job storage still do.',
+		howToReduce:
+			'Delete package or job storage you no longer need, discard active repo sessions with repoDiscardSession, or clear package storage from the package page. usageGet / Account → Usage list inventoried bucket kinds when storage is high.',
 	},
 	concurrent_workflows: {
 		group: 'counts',

@@ -184,15 +184,16 @@ export function isRetryableAnalyticsEngineSqlStatus(status: number) {
 const usageRollupAbsoluteUpsertStatement = `
 INSERT INTO usage_rollups (
 	user_id, metric, month,
-	event_count, error_count,
+	event_count, error_count, caught_count,
 	total_duration_ms, total_cpu_ms, total_bytes,
 	updated_at
 )
-SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
 WHERE ${liveBillingOwnerSql('?1')}
 ON CONFLICT (user_id, metric, month) DO UPDATE SET
 	event_count = excluded.event_count,
 	error_count = excluded.error_count,
+	caught_count = excluded.caught_count,
 	total_duration_ms = excluded.total_duration_ms,
 	total_cpu_ms = excluded.total_cpu_ms,
 	total_bytes = excluded.total_bytes,
@@ -253,6 +254,13 @@ SELECT
 			0.0
 		) * _sample_interval
 	) AS error_count,
+	sum(
+		if(
+			blob4 = 'caught',
+			if(${coalescedMetrics} AND double3 > 0, double3, 1.0),
+			0.0
+		) * _sample_interval
+	) AS caught_count,
 	sum(double1 * _sample_interval) AS total_duration_ms,
 	sum(double2 * _sample_interval) AS total_cpu_ms,
 	sum(if(${coalescedMetrics}, 0.0, double3) * _sample_interval) AS total_bytes
@@ -270,6 +278,7 @@ type AnalyticsEngineSqlRow = {
 	month?: string
 	event_count: number | string
 	error_count: number | string
+	caught_count?: number | string
 	total_duration_ms: number | string
 	total_cpu_ms: number | string
 	total_bytes: number | string
@@ -558,6 +567,8 @@ export async function aggregateUsageRollups(
 				toCount(existing?.event_count ?? 0) + toCount(row.event_count),
 			error_count:
 				toCount(existing?.error_count ?? 0) + toCount(row.error_count),
+			caught_count:
+				toCount(existing?.caught_count ?? 0) + toCount(row.caught_count ?? 0),
 			total_duration_ms:
 				toCount(existing?.total_duration_ms ?? 0) +
 				toCount(row.total_duration_ms),
@@ -575,6 +586,7 @@ export async function aggregateUsageRollups(
 			row.month ?? month,
 			toCount(row.event_count),
 			toCount(row.error_count),
+			toCount(row.caught_count ?? 0),
 			toCount(row.total_duration_ms),
 			toCount(row.total_cpu_ms),
 			toCount(row.total_bytes),

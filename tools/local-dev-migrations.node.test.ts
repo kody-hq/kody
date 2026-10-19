@@ -4,11 +4,11 @@ import path from 'node:path'
 import { expect, test } from 'vitest'
 import { parseJsonc } from './ci/resource-utils.ts'
 import { localizeMigrations } from './local-dev-migrations.ts'
+import { writeLocalSiblingDevConfig } from './local-sibling-dev-config.ts'
 import {
-	writeLocalRuntimeDevConfig,
 	writeRuntimeDryRunConfig,
 	writeRuntimeStartupCheckConfig,
-} from './local-runtime-dev-config.ts'
+} from './local-runtime-dry-run-config.ts'
 
 test('localizeMigrations turns transfers into sqlite creates and elides a later delete', () => {
 	const localized = localizeMigrations([
@@ -111,14 +111,14 @@ test('writeRuntimeStartupCheckConfig writes wrangler.jsonc with an absolute main
 	)
 })
 
-test('writeLocalRuntimeDevConfig writes a top-level chain wrangler can apply', async () => {
+test('writeLocalSiblingDevConfig writes a top-level chain wrangler can apply', async () => {
 	await using copy = await runtimeConfigCopy('kody-local-runtime-')
 	const generated = await readGenerated<{
 		migrations?: unknown
 		env?: { production?: { migrations?: unknown } }
 	}>(
-		await writeLocalRuntimeDevConfig({
-			runtimeConfigPath: copy.sourcePath,
+		await writeLocalSiblingDevConfig({
+			configPath: copy.sourcePath,
 			envName: 'production',
 			mainWorkerDevName: 'kody-production',
 			port: '3742',

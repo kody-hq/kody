@@ -5,7 +5,28 @@ test('document methods cannot fall through to page or token loaders', () => {
 		const response = routeMethodRejection(method, { options: {} }, true)
 		expect(response?.status).toBe(405)
 		expect(response?.headers.get('Allow')).toBe('GET, HEAD')
+		expect(response?.headers.get('content-type')).toBeNull()
 	}
+})
+test('JSON POSTs to document fuzzy matches get a JSON 405 body', async () => {
+	const response = routeMethodRejection(
+		'POST',
+		{ options: { component: () => null } },
+		false,
+		new Request('https://kody.test/account/secrets.json', {
+			method: 'POST',
+			headers: {
+				accept: 'application/json',
+				'content-type': 'application/json',
+			},
+		}),
+	)
+	expect(response?.status).toBe(405)
+	expect(response?.headers.get('content-type')).toMatch(/application\/json/)
+	await expect(response?.json()).resolves.toEqual({
+		ok: false,
+		error: 'Method not allowed.',
+	})
 })
 test('only an exact native protocol handler authorizes a mutation method', () => {
 	const route = {

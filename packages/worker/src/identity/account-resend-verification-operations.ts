@@ -8,6 +8,10 @@ import {
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createEmailVerification } from '#app/email-verification.ts'
 import { checkRateLimit, releaseRateLimit } from '#app/rate-limit.ts'
+import {
+	inspectVerificationEmailSend,
+	VerificationEmailRefusedError,
+} from '#app/verification-email-cap.ts'
 import { emailVerificationSenderBlockMessage } from '#universal/email-verification-delivery.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
@@ -74,6 +78,42 @@ export async function resendWebsiteVerification({
 
 	const redirectTo = readResendRedirectTo(body)
 
+	const verificationSend = await inspectVerificationEmailSend({
+		db: env.APP_DB,
+		email: user.email,
+	})
+	if (!verificationSend.ok) {
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'email_verification_resend',
+			result:
+				verificationSend.code === 'verification_email_cap'
+					? 'rate_limited'
+					: 'failure',
+			email: user.email,
+			ip: requestIp,
+			path: url.pathname,
+			reason: verificationSend.code,
+		})
+		return authOperationResult(
+			{
+				ok: false,
+				error: verificationSend.error,
+				code: verificationSend.code,
+			},
+			{
+				status: verificationSend.status,
+				headers:
+					verificationSend.retryAfterSeconds == null
+						? undefined
+						: {
+								'Retry-After': String(verificationSend.retryAfterSeconds),
+							},
+			},
+		)
+	}
+
 	try {
 		await assertVerificationResendAllowed(env.APP_DB, user.userId)
 	} catch (error) {
@@ -116,16 +156,17 @@ export async function resendWebsiteVerification({
 			ip: requestIp,
 			path: url.pathname,
 		})
+		const retryAfterSeconds = rateLimit.retryAfterSeconds ?? 60
 		return authOperationResult(
 			{
 				ok: false,
-				error:
-					'Too many verification emails requested. Please try again later.',
+				error: `Too many verification emails for this account. You can request ${String(resendVerificationRateLimitConfig.maxRequests)} every ${String(resendVerificationRateLimitConfig.windowSeconds / 60)} minutes. Try again in ${String(Math.ceil(retryAfterSeconds / 60))} minutes.`,
+				code: 'verification_resend_cap',
 			},
 			{
 				status: 429,
 				headers: {
-					'Retry-After': String(rateLimit.retryAfterSeconds ?? 60),
+					'Retry-After': String(retryAfterSeconds),
 				},
 			},
 		)
@@ -148,6 +189,30 @@ export async function resendWebsiteVerification({
 					code: 'account_deleting',
 				},
 				409,
+			)
+		}
+		if (error instanceof VerificationEmailRefusedError) {
+			await releaseRateLimit(env.APP_DB, rateLimitKey).catch(() => undefined)
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'email_verification_resend',
+				result:
+					error.code === 'verification_email_cap' ? 'rate_limited' : 'failure',
+				email: user.email,
+				ip: requestIp,
+				path: url.pathname,
+				reason: error.code,
+			})
+			return authOperationResult(
+				{ ok: false, error: error.message, code: error.code },
+				{
+					status: error.status,
+					headers:
+						error.retryAfterSeconds == null
+							? undefined
+							: { 'Retry-After': String(error.retryAfterSeconds) },
+				},
 			)
 		}
 		console.error('Failed to resend verification email:', error)

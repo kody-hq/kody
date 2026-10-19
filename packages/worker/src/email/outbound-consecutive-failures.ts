@@ -2,6 +2,11 @@
  * Auto-pause user/agent outbound mail after N consecutive terminal delivery
  * failures. Distinct from the abuse pause (spam complaints / bounce burst):
  * owners can resume this pause from account email settings.
+ *
+ * Counting is keyed by Cloudflare `provider_event_id` in
+ * `email_outbound_failure_tracking`, separate from provider-event insert
+ * idempotency. A queue retry after a mid-flight crash can still apply the
+ * count exactly once.
  */
 
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -20,65 +25,51 @@ const terminalFailureStatuses = new Set<EmailDeliveryStatus>([
 	'complained',
 ])
 
-export async function applyOutboundConsecutiveFailureTracking(input: {
+async function ensurePendingFailureTracking(input: {
 	db: D1Database
-	/** Personal-org / mailbox owner id (orgs.id). */
+	providerEventId: string
 	ownerId: OwnerId
 	deliveryStatus: EmailDeliveryStatus
-	now?: Date
-}): Promise<{ paused: boolean; consecutiveFailures: number }> {
-	const now = input.now ?? new Date()
-	const nowIso = now.toISOString()
-
-	if (input.deliveryStatus === 'delivered') {
-		await input.db
-			.prepare(
-				`UPDATE orgs
-				 SET email_outbound_consecutive_failures = 0,
-				     updated_at = ?
-				 WHERE id = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(nowIso, input.ownerId)
-			.run()
-		return { paused: false, consecutiveFailures: 0 }
-	}
-
-	if (!terminalFailureStatuses.has(input.deliveryStatus)) {
-		return { paused: false, consecutiveFailures: 0 }
-	}
-
-	// Atomic increment so concurrent queue consumers cannot both read N and
-	// write N+1 (missing the pause threshold).
-	const increment = await input.db
+	nowIso: string
+}): Promise<'pending' | 'applied'> {
+	await input.db
 		.prepare(
-			`UPDATE orgs
-			 SET email_outbound_consecutive_failures =
-			       email_outbound_consecutive_failures + 1,
-			     updated_at = ?
-			 WHERE id = ?${andLiveDeletedAtSql()}
-			 RETURNING email_outbound_consecutive_failures,
-			           email_outbound_delivery_paused_at`,
+			`INSERT OR IGNORE INTO email_outbound_failure_tracking (
+				provider_event_id, user_id, delivery_status, created_at, applied_at
+			) VALUES (?, ?, ?, ?, NULL)`,
 		)
-		.bind(nowIso, input.ownerId)
-		.first<{
-			email_outbound_consecutive_failures: number
-			email_outbound_delivery_paused_at: string | null
-		}>()
-	if (!increment) return { paused: false, consecutiveFailures: 0 }
+		.bind(
+			input.providerEventId,
+			input.ownerId,
+			input.deliveryStatus,
+			input.nowIso,
+		)
+		.run()
+	const row = await input.db
+		.prepare(
+			`SELECT applied_at AS appliedAt
+			 FROM email_outbound_failure_tracking
+			 WHERE provider_event_id = ?`,
+		)
+		.bind(input.providerEventId)
+		.first<{ appliedAt: string | null }>()
+	return row?.appliedAt == null ? 'pending' : 'applied'
+}
 
-	const nextCount = Number(increment.email_outbound_consecutive_failures ?? 0)
-	if (
-		nextCount < outboundConsecutiveFailurePauseThreshold ||
-		increment.email_outbound_delivery_paused_at
-	) {
-		return {
-			paused: Boolean(increment.email_outbound_delivery_paused_at),
-			consecutiveFailures: nextCount,
-		}
+/**
+ * Idempotent pause write. Safe on retries: only transitions NULL → set when
+ * the consecutive-failure count is still at the threshold.
+ */
+async function maybePauseOutboundDelivery(input: {
+	db: D1Database
+	ownerId: OwnerId
+	deliveryStatus: EmailDeliveryStatus
+	nowIso: string
+	consecutiveFailures: number
+}): Promise<boolean> {
+	if (input.consecutiveFailures < outboundConsecutiveFailurePauseThreshold) {
+		return false
 	}
-
-	// Require the count to still be at the threshold so a concurrent
-	// delivered reset cannot leave a stale pause after clearing failures.
 	const pause = await input.db
 		.prepare(
 			`UPDATE orgs
@@ -89,14 +80,286 @@ export async function applyOutboundConsecutiveFailureTracking(input: {
 			   AND email_outbound_consecutive_failures >= ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(
-			nowIso,
-			nowIso,
+			input.nowIso,
+			input.nowIso,
 			input.ownerId,
 			outboundConsecutiveFailurePauseThreshold,
 		)
 		.run()
 	const paused = Number(pause.meta.changes ?? 0) > 0
 	if (paused) {
+		console.warn('email-outbound-delivery-paused', {
+			consecutiveFailures: input.consecutiveFailures,
+			deliveryStatus: input.deliveryStatus,
+		})
+	}
+	return paused
+}
+
+function pauseStatement(input: {
+	db: D1Database
+	ownerId: OwnerId
+	nowIso: string
+}) {
+	return input.db
+		.prepare(
+			`UPDATE orgs
+			 SET email_outbound_delivery_paused_at = ?,
+			     updated_at = ?
+			 WHERE id = ?
+			   AND email_outbound_delivery_paused_at IS NULL
+			   AND email_outbound_consecutive_failures >= ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.nowIso,
+			input.nowIso,
+			input.ownerId,
+			outboundConsecutiveFailurePauseThreshold,
+		)
+}
+
+/** Instant compare — lexical ISO order fails across with/without-ms forms. */
+function isIsoInstantStrictlyNewer(left: string, right: string): boolean {
+	const leftMs = Date.parse(left)
+	const rightMs = Date.parse(right)
+	if (!Number.isFinite(leftMs) || !Number.isFinite(rightMs)) return false
+	return leftMs > rightMs
+}
+
+function isSupersededDeliveryEvent(input: {
+	eventTimestamp: string
+	messageDeliveryStatusAt: string | null | undefined
+}) {
+	const messageAt = input.messageDeliveryStatusAt
+	if (messageAt == null || messageAt === '') return false
+	// A message status strictly newer than this provider event means a
+	// later lifecycle event already won; do not mutate the counter.
+	return isIsoInstantStrictlyNewer(messageAt, input.eventTimestamp)
+}
+
+/** Canonical UTC ISO so SQL watermark guards match instant order. */
+function canonicalIsoTimestamp(value: string): string {
+	const ms = Date.parse(value)
+	if (!Number.isFinite(ms)) return value
+	return new Date(ms).toISOString()
+}
+
+async function markFailureTrackingApplied(input: {
+	db: D1Database
+	providerEventId: string
+	nowIso: string
+}) {
+	await input.db
+		.prepare(
+			`UPDATE email_outbound_failure_tracking
+			 SET applied_at = ?
+			 WHERE provider_event_id = ? AND applied_at IS NULL`,
+		)
+		.bind(input.nowIso, input.providerEventId)
+		.run()
+}
+
+export async function applyOutboundConsecutiveFailureTracking(input: {
+	db: D1Database
+	/** Personal-org / mailbox owner id (orgs.id). */
+	ownerId: OwnerId
+	deliveryStatus: EmailDeliveryStatus
+	/**
+	 * Cloudflare provider event id. Dedupes consecutive-failure counting
+	 * separately from provider-event insert idempotency so a queue retry
+	 * after a mid-flight tracking crash still counts the failure once.
+	 */
+	providerEventId: string
+	/** Provider event timestamp (Cloudflare metadata.eventTimestamp). */
+	eventTimestamp: string
+	/**
+	 * Latest delivery status timestamp already on the outbound message.
+	 * When this is strictly newer than `eventTimestamp`, drain a pending
+	 * ledger row without changing the consecutive-failure counter.
+	 */
+	messageDeliveryStatusAt?: string | null
+	now?: Date
+}): Promise<{ paused: boolean; consecutiveFailures: number }> {
+	const now = input.now ?? new Date()
+	const nowIso = now.toISOString()
+	const eventAt = canonicalIsoTimestamp(input.eventTimestamp)
+
+	const pending = await ensurePendingFailureTracking({
+		db: input.db,
+		providerEventId: input.providerEventId,
+		ownerId: input.ownerId,
+		deliveryStatus: input.deliveryStatus,
+		nowIso,
+	})
+	if (
+		pending === 'pending' &&
+		isSupersededDeliveryEvent({
+			eventTimestamp: eventAt,
+			messageDeliveryStatusAt: input.messageDeliveryStatusAt,
+		})
+	) {
+		await markFailureTrackingApplied({
+			db: input.db,
+			providerEventId: input.providerEventId,
+			nowIso,
+		})
+		const current = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		return {
+			paused: Boolean(current?.pausedAt),
+			consecutiveFailures: current?.consecutiveFailures ?? 0,
+		}
+	}
+	if (pending === 'applied') {
+		// Count already landed. Still attempt the pause write so a crash
+		// between the applied batch and a later pause statement cannot leave
+		// the org at threshold without email_outbound_delivery_paused_at.
+		const current = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		const consecutiveFailures = current?.consecutiveFailures ?? 0
+		if (current?.pausedAt) {
+			return { paused: true, consecutiveFailures }
+		}
+		if (
+			terminalFailureStatuses.has(input.deliveryStatus) &&
+			consecutiveFailures >= outboundConsecutiveFailurePauseThreshold
+		) {
+			const paused = await maybePauseOutboundDelivery({
+				db: input.db,
+				ownerId: input.ownerId,
+				deliveryStatus: input.deliveryStatus,
+				nowIso,
+				consecutiveFailures,
+			})
+			return { paused, consecutiveFailures }
+		}
+		return { paused: false, consecutiveFailures }
+	}
+
+	if (input.deliveryStatus === 'delivered') {
+		// Reset, advance the failure watermark, and mark applied in one
+		// batch so a crash leaves the row pending and a retry can still
+		// clear the counter. The watermark blocks concurrent older
+		// terminal events from re-incrementing after this reset.
+		await input.db.batch([
+			input.db
+				.prepare(
+					`UPDATE orgs
+					 SET email_outbound_consecutive_failures = CASE
+					       WHEN email_outbound_failure_watermark_at IS NULL
+					         THEN 0
+					       WHEN email_outbound_failure_watermark_at <= ?
+					         THEN 0
+					       ELSE email_outbound_consecutive_failures
+					     END,
+					     email_outbound_failure_watermark_at = CASE
+					       WHEN email_outbound_failure_watermark_at IS NULL
+					         THEN ?
+					       WHEN email_outbound_failure_watermark_at < ?
+					         THEN ?
+					       ELSE email_outbound_failure_watermark_at
+					     END,
+					     updated_at = ?
+					 WHERE id = ?
+					   AND EXISTS (
+					     SELECT 1 FROM email_outbound_failure_tracking
+					     WHERE provider_event_id = ? AND applied_at IS NULL
+					   )${andLiveDeletedAtSql()}`,
+				)
+				.bind(
+					eventAt,
+					eventAt,
+					eventAt,
+					eventAt,
+					nowIso,
+					input.ownerId,
+					input.providerEventId,
+				),
+			input.db
+				.prepare(
+					`UPDATE email_outbound_failure_tracking
+					 SET applied_at = ?
+					 WHERE provider_event_id = ? AND applied_at IS NULL`,
+				)
+				.bind(nowIso, input.providerEventId),
+		])
+		const afterDelivered = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		return {
+			paused: Boolean(afterDelivered?.pausedAt),
+			consecutiveFailures: afterDelivered?.consecutiveFailures ?? 0,
+		}
+	}
+
+	if (!terminalFailureStatuses.has(input.deliveryStatus)) {
+		await input.db
+			.prepare(
+				`UPDATE email_outbound_failure_tracking
+				 SET applied_at = ?
+				 WHERE provider_event_id = ? AND applied_at IS NULL`,
+			)
+			.bind(nowIso, input.providerEventId)
+			.run()
+		const current = await loadOutboundDeliveryPause({
+			db: input.db,
+			ownerId: input.ownerId,
+		})
+		return {
+			paused: Boolean(current?.pausedAt),
+			consecutiveFailures: current?.consecutiveFailures ?? 0,
+		}
+	}
+
+	const before = await loadOutboundDeliveryPause({
+		db: input.db,
+		ownerId: input.ownerId,
+	})
+
+	// Increment (only when strictly newer than the delivered watermark),
+	// mark applied, and pause (when at threshold) in one batch so a crash
+	// cannot leave applied_at set while skipping the pause write, and a
+	// concurrent older bounce cannot re-increment after a delivered reset.
+	await input.db.batch([
+		input.db
+			.prepare(
+				`UPDATE orgs
+				 SET email_outbound_consecutive_failures =
+				       email_outbound_consecutive_failures + 1,
+				     updated_at = ?
+				 WHERE id = ?
+				   AND (
+				     email_outbound_failure_watermark_at IS NULL
+				     OR email_outbound_failure_watermark_at < ?
+				   )
+				   AND EXISTS (
+				     SELECT 1 FROM email_outbound_failure_tracking
+				     WHERE provider_event_id = ? AND applied_at IS NULL
+				   )${andLiveDeletedAtSql()}`,
+			)
+			.bind(nowIso, input.ownerId, eventAt, input.providerEventId),
+		input.db
+			.prepare(
+				`UPDATE email_outbound_failure_tracking
+				 SET applied_at = ?
+				 WHERE provider_event_id = ? AND applied_at IS NULL`,
+			)
+			.bind(nowIso, input.providerEventId),
+		pauseStatement({ db: input.db, ownerId: input.ownerId, nowIso }),
+	])
+
+	const after = await loadOutboundDeliveryPause({
+		db: input.db,
+		ownerId: input.ownerId,
+	})
+	const nextCount = after?.consecutiveFailures ?? 0
+	const paused = Boolean(after?.pausedAt)
+	if (paused && !before?.pausedAt) {
 		console.warn('email-outbound-delivery-paused', {
 			consecutiveFailures: nextCount,
 			deliveryStatus: input.deliveryStatus,

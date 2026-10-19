@@ -695,6 +695,35 @@ export const articleMeasure = '43rem'
 export const pageGutter = 'clamp(1.25rem, 4vw, 2.5rem)'
 
 /**
+ * Vertical pieces of the sticky site header. Keep these in sync with
+ * `site-header.tsx` (`navCss` padding + `brandCss` minHeight) and the 1px
+ * `.site-header` hairline in `styles.css`.
+ */
+export const siteHeaderNavPaddingBlock = '0.8rem'
+export const siteHeaderBrandMinHeight = '44px'
+const siteHeaderHairline = '1px'
+
+/**
+ * Block size of the sticky site header (`top: 0`). Sticky rails that sit
+ * under it use this as their `top` so the rail's natural position at
+ * `scrollY=0` equals the sticky offset — otherwise a tall content column
+ * engages sticky and nudges the rail down, while a short column leaves it
+ * at the natural (higher) spot.
+ */
+export const siteHeaderHeight = `calc(${siteHeaderNavPaddingBlock} + ${siteHeaderBrandMinHeight} + ${siteHeaderNavPaddingBlock} + ${siteHeaderHairline})`
+
+/**
+ * Established viewport top for the first account-rail content (workspace
+ * switcher / eyebrow) under the sticky header. Kept as the long-list look;
+ * the sticky box itself sticks at `siteHeaderHeight` and
+ * `accountRailGapBelowHeader` pads the content down to this line.
+ */
+const accountRailContentTop = '5rem'
+
+/** Breathing room between the header hairline and the first rail content. */
+export const accountRailGapBelowHeader = `calc(${accountRailContentTop} - ${siteHeaderHeight})`
+
+/**
  * Shared shell for every package detail tab (Repo, Files, Settings, …).
  * Same box model as the site header `navCss`: `maxWidth` on the content box
  * with `pageGutter` padding outside it (no `border-box`), so Files keeps the

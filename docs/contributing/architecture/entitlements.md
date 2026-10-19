@@ -152,13 +152,13 @@ customer). The gift never lowers a paid or manual grant. Expiry is read-time (no
 sweeper). Authorize completion and grant-list pages (onboarding payload, Account
 → Connections) call `maybeEvaluateSecondAgentStandardGift`, which skips the
 write when known ecosystems are below 2 or listing failed, but still reads the
-persisted ledger so `/onboarding.json` does not hide an already-granted gift.
-Missing `APP_DB.prepare` skips both write and read.
+persisted ledger so the onboarding payload does not hide an already-granted
+gift. Missing `APP_DB.prepare` skips both write and read.
 
 `describeSecondAgentStandardGift` / `SecondAgentStandardGiftState` is the flag
 lifecycle email or PackagedSingleClient should read: `received`, `active`, and
-`status` (`none` | `active` | `expired` | `already_paid`). Onboarding loader and
-`/onboarding.json` expose that object as `secondAgentStandardGift`.
+`status` (`none` | `active` | `expired` | `already_paid`). The onboarding loader
+exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 

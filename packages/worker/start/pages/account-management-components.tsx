@@ -176,7 +176,7 @@ type AccountManagementShellProps = {
 	maxWidth?: string
 	/**
 	 * The route is refetching this location while its last good content stays
-	 * on screen (`createRouteData` snapshot `pending` with data). Marks the
+	 * on screen (`usePageQuery` keeps the previous payload). Marks the
 	 * shell `aria-busy` and announces it to assistive tech without moving
 	 * layout. Leave unset on the cold path where the route shows its own
 	 * loading copy.

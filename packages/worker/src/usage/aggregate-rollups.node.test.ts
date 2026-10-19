@@ -19,6 +19,7 @@ type EmailUsageRow = {
 	month: string
 	event_count: number
 	error_count: number
+	caught_count?: number
 	total_duration_ms: number
 	total_cpu_ms: number
 	total_bytes: number
@@ -194,6 +195,7 @@ function aeRow(
 		metric,
 		event_count: 1,
 		error_count: 0,
+		caught_count: 0,
 		total_duration_ms: 0,
 		total_cpu_ms: 0,
 		total_bytes: 0,
@@ -271,12 +273,19 @@ test('aggregateUsageRollups merges current and previous Analytics months with du
 				total_duration_ms: 3456.7,
 				total_bytes: 1024,
 			}),
+			aeRow('user-a', 'package_static_call', {
+				event_count: 20,
+				error_count: 1,
+				caught_count: 9,
+				total_duration_ms: 40,
+			}),
 			// The SQL API may serialize aggregates as strings.
 			{
 				user_id: ownerIdFromStored('user-b'),
 				metric: 'email_send',
 				event_count: '3',
 				error_count: '0',
+				caught_count: '0',
 				total_duration_ms: '0',
 				total_cpu_ms: '0',
 				total_bytes: '2048',
@@ -307,7 +316,7 @@ test('aggregateUsageRollups merges current and previous Analytics months with du
 	await expect(aggregate(db, now)).resolves.toEqual({
 		skipped: false,
 		month: '2026-07',
-		upsertedRows: 4,
+		upsertedRows: 5,
 		deletedRows: 0,
 		users: 4,
 	})
@@ -336,6 +345,8 @@ test('aggregateUsageRollups merges current and previous Analytics months with du
 			'AS event_count',
 			`blob4 = 'error'`,
 			'AS error_count',
+			`blob4 = 'caught'`,
+			'AS caught_count',
 			'sum(double1 * _sample_interval) AS total_duration_ms',
 			'GROUP BY blob1, blob2',
 		]),
@@ -370,10 +381,11 @@ test('aggregateUsageRollups merges current and previous Analytics months with du
 	expect(statements[0]?.sql).not.toContain('event_count + ')
 	const stamp = now.toISOString()
 	expect(statements.map((statement) => statement.params)).toEqual([
-		['user-a', 'execute', '2026-07', 12, 2, 3457, 0, 1024, stamp],
-		['user-b', 'email_send', '2026-07', 3, 0, 0, 0, 2048, stamp],
-		['user-c', 'email_received', '2026-06', 5, 2, 100, 0, 1000, stamp],
-		['system:email', 'email_received', '2026-07', 2, 0, 50, 0, 4096, stamp],
+		['user-a', 'execute', '2026-07', 12, 2, 0, 3457, 0, 1024, stamp],
+		['user-a', 'package_static_call', '2026-07', 20, 1, 9, 40, 0, 0, stamp],
+		['user-b', 'email_send', '2026-07', 3, 0, 0, 0, 0, 2048, stamp],
+		['user-c', 'email_received', '2026-06', 5, 2, 0, 100, 0, 1000, stamp],
+		['system:email', 'email_received', '2026-07', 2, 0, 0, 50, 0, 4096, stamp],
 	])
 })
 

@@ -8,7 +8,7 @@ import { waitUntil } from 'cloudflare:workers'
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { buildConnectOauthNextSteps } from '#app/connect-oauth-next-steps.ts'
+import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import {
 	canonicalIntegrationName,
 	normalizeIntegrationConfig,

@@ -129,15 +129,15 @@ export async function runValidate(
 	const runSerial = options.runSerial ?? runShellCommand
 	const status = await runSerial(serialValidateCommand)
 	if (status !== 0) return status
-	// Same tree already proven green: pre-push can skip test:push (#3653).
+	// Same tree already proven green: pre-push can skip knip + test:push (#3653).
 	const treeSha = recordValidateTreeProvenance(git, undefined, treeShaBefore)
 	if (treeSha) {
 		log(
-			`validate: recorded test:push provenance for tree ${treeSha.slice(0, 12)}`,
+			`validate: recorded knip and test:push provenance for tree ${treeSha.slice(0, 12)}`,
 		)
 	} else if (treeShaBefore) {
 		log(
-			'validate: skipped test:push provenance (worktree changed during validate, or untracked files present)',
+			'validate: skipped knip/test:push provenance (worktree changed during validate, or untracked files present)',
 		)
 	}
 	return 0

@@ -33,9 +33,20 @@ preferences), package storage (runtime state and package-owned settings), repos
 platform onboarding dismissal. Do not add a thinner "account settings" primitive
 unless, after the soak, something still has no home.
 
-The [values retirement runbook](../architecture/values-retirement-runbook.md) is
-the executable plan: removal when the mechanical gates there hold — not on a
-calendar date alone.
+## Destination map
+
+Do not invent a replacement primitive.
+
+| Job                                 | Destination                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| Platform UI dismiss                 | `users.onboarding_checklist_dismissed_at`                                     |
+| Durable facts / preferences         | memories (`meta_memory_*`, verify-first)                                      |
+| Package runtime state / cache       | `packageStorage()`                                                            |
+| Versioned calibration               | plain repo (live-at-HEAD)                                                     |
+| Package-owned knobs                 | `packageStorage()` or a file in that package repo                             |
+| Shared ids used by several packages | owning package export, or one small settings package others statically import |
+| OAuth client ids                    | integrations / platform OAuth apps                                            |
+| Credentials                         | secrets                                                                       |
 
 ## Consequences
 
@@ -49,11 +60,16 @@ config need appears that memories plus a settings package cannot cover.
 ## LATER-NOTE (2026-08-24)
 
 Writes and agent-facing surfaces are gone. `valueGet` / `valueList` /
-`valueDelete` remain as an unadvertised drain until the D1 tables drop. See the
-[values retirement runbook](../architecture/values-retirement-runbook.md).
+`valueDelete` remain as an unadvertised drain until the D1 tables drop.
 
 ## LATER-NOTE (2026-10-16)
 
 The drain, `/account/values`, the unadvertised values guide, and data-inventory
 reads are removed. `value_entries` and `value_buckets` drop in migration
 `0159-drop-value-tables.sql`. Production rows were already 0.
+
+## LATER-NOTE (2026-10-19)
+
+Retirement is complete in this repo. Do not add `account_settings`, `user_kv`,
+or a new MCP domain to replace values. Do not auto-write memories from leftover
+rows. Secrets stay.

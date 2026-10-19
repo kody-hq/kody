@@ -403,7 +403,7 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		limit: 67_108_864,
 		current: 449_966_219,
 		upgradeHint:
-			'Remove or finish existing storage bytes you no longer need, or upgrade your plan at /@<slug>/-/billing.',
+			'Delete package or job storage you no longer need, or discard active repo sessions with repoDiscardSession, or upgrade your plan at /@<slug>/-/billing.',
 	})
 	const entitlementEvent = exceptionEvent({
 		type: 'EntitlementLimitError',

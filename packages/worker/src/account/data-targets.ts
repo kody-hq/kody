@@ -458,6 +458,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 			'Operational global provider→owner reverse lookup omitted from portable export. Mailbox rows retain provider ids, but no fleet-wide automatic rebuild is claimed; account deletion keeps explicit owner cleanup.',
 	},
 	{
+		kind: 'user_id',
+		table: 'email_outbound_failure_tracking',
+		includeInExport: false,
+		surface: 'email_outbound_failure_tracking',
+		reason:
+			'Operational per-provider-event consecutive-failure tracking ledger omitted from portable export; account deletion removes the owner rows.',
+	},
+	{
 		kind: 'db_user_id',
 		table: 'transactional_email_delivery_index',
 		includeInExport: false,
@@ -696,6 +704,13 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		kind: 'user_columns',
 		table: 'invites',
 		columns: ['invited_by_user_id', 'accepted_by_user_id'],
+	},
+	// Pending and consumed admin hard-delete approvals name both the target
+	// person and the requesting admin. Either account's deletion removes them.
+	{
+		kind: 'user_columns',
+		table: 'admin_account_deletion_approvals',
+		columns: ['target_stable_user_id', 'requested_by_stable_user_id'],
 	},
 	{
 		kind: 'replace_user_column',

@@ -1,7 +1,7 @@
 # Cursor Cloud Agent notes
 
 Kody runs on Cloudflare Workers: the origin app/MCP worker plus platform,
-runtime, jobs, and status workers (Remix 3 UI + OAuth-protected MCP). See
+runtime, jobs, and status workers (TanStack Start UI + OAuth-protected MCP). See
 [`local development`](./setup/local-development.md) for the local dev guide;
 this document covers Cloud Agent VM gotchas only.
 
@@ -82,11 +82,12 @@ Cursor Cloud Agent VMs set `core.hooksPath` to a dispatcher under
 dispatcher with Husky: `core.hooksPath` stays on the dispatcher,
 `.cursor-original-hooks-path` points at `.husky/_`, and `pre-push` /
 `pre-commit` / `commit-msg` become dispatcher symlinks when those user scripts
-exist. `git push` then runs `npm run test:push` (`test:node` + `test:workers`)
-when the push changes a non-docs path, and can upload those Nx remote-cache
-artifacts before GitHub Actions starts. A docs-only push skips the suites. A
-push that touches `skills-lock.json` or `.agents/skills/` still runs
-`npm run skills-lock:check`.
+exist. `git push` then runs `npm run knip` and `npm run test:push`
+(`test:node` + `test:workers`) when the push changes a non-docs path, and can
+upload those Nx remote-cache artifacts before GitHub Actions starts. A docs-only
+push skips knip and the suites. A push that touches `skills-lock.json` or
+`.agents/skills/` still runs `node tools/check-skills-lock.ts` (also part of
+`npm run deps:check`).
 
 Playwright E2E is not in the push hook: that suite is heavier than the unit
 gate, and a failed e2e leg skips the unit gate when the push is retried with
@@ -116,14 +117,14 @@ staged diff is not docs-only, plus prevalidate) and `control-kody doctor`'s
 not treat a cached typecheck as proof the install matches the lockfile — run
 `install:check` (or `npm ci`) first. `npm install` keeps `package-lock.json`
 unchanged when every locked direct dependency satisfies the peer ranges its
-declared range can still reach, including optional peers.
-`npm run lockfile:check` (part of `npm run validate` and the CI static job)
-rejects a lockfile `npm install` would rewrite, such as an
+declared range can still reach, including optional peers. `npm run deps:check`
+(part of `npm run validate` and the CI static job) includes lockfile peer drift
+and rejects a lockfile `npm install` would rewrite, such as an
 `@cloudflare/workers-types` pin older than wrangler's peer range. A boot can
 already show `package-lock.json` modified, often that `workers-types` bump,
 before you install anything yourself. Leave that diff unstaged. Restore it with
 `git restore package-lock.json` when you did not change dependencies. A pin
-update that `lockfile:check` asks for belongs in its own commit.
+update that lockfile peer drift asks for belongs in its own commit.
 
 ## Git worktrees
 

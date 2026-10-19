@@ -210,10 +210,13 @@ export async function removeAdminRolePreservingLastAdmin(input: {
 				`DELETE FROM user_roles
 				 WHERE user_id = ?
 				   AND role_id = (SELECT id FROM roles WHERE name = 'admin')
-				   AND (SELECT COUNT(DISTINCT ur.user_id)
-				        FROM user_roles ur
-				        INNER JOIN roles r ON r.id = ur.role_id
-				        WHERE r.name = 'admin') > 1`,
+				   AND (
+				     SELECT COUNT(DISTINCT ur.user_id)
+				     FROM user_roles ur
+				     INNER JOIN roles r ON r.id = ur.role_id
+				     INNER JOIN users u ON u.id = ur.user_id AND u.deleted_at IS NULL
+				     WHERE r.name = 'admin'
+				   ) > 1`,
 			)
 			.bind(input.userId),
 		bumpPersonalOrgEpochForUserRowStatement(input.db, input.userId),
