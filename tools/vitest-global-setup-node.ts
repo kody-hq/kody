@@ -8,8 +8,5 @@ import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
  * fresh clone. The generators are stamped, so warm runs cost ~0 ms.
  */
 export default async function setup() {
-	await Promise.all([
-		ensureWorkerBundlerModules(),
-		ensureGuideCatalogModules(),
-	])
+	await Promise.all([ensureWorkerBundlerModules(), ensureGuideCatalogModules()])
 }
