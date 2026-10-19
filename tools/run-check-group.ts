@@ -74,7 +74,15 @@ export async function runCheckGroup(
 	const failed: string[] = []
 	for (const member of members) {
 		log(`${groupName}: running ${member.name}`)
-		const code = await runMember(member)
+		let code: number
+		try {
+			code = await runMember(member)
+		} catch (error) {
+			failed.push(member.name)
+			const detail = error instanceof Error ? error.message : String(error)
+			log(`${groupName}: ${member.name} failed (${detail})`)
+			continue
+		}
 		if (code !== 0) {
 			failed.push(member.name)
 			log(`${groupName}: ${member.name} failed (exit ${String(code)})`)
