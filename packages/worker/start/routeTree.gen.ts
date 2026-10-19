@@ -70,6 +70,7 @@ import { Route as AccountMcpServersRouteImport } from './routes/account_.mcp-ser
 import { Route as AccountMemoriesRouteImport } from './routes/account_.memories'
 import { Route as AccountMemoriesExportDotjsonRouteImport } from './routes/account_.memories-export[.]json'
 import { Route as AccountOrganizationsRouteImport } from './routes/account_.organizations'
+import { Route as AccountPackagesDotjsonRouteImport } from './routes/account_.packages[.]json'
 import { Route as AccountPasskeysRouteImport } from './routes/account_.passkeys'
 import { Route as AccountSecretProvidersRouteImport } from './routes/account_.secret-providers'
 import { Route as AccountSecretsRouteImport } from './routes/account_.secrets'
@@ -197,6 +198,7 @@ import { Route as AccountSecretProvidersApproveRouteImport } from './routes/acco
 import { Route as AccountSecretsApproveRouteImport } from './routes/account_.secrets_.approve'
 import { Route as AccountSecretsNewRouteImport } from './routes/account_.secrets_.new'
 import { Route as AccountWorkflowsWorkflowIdRouteImport } from './routes/account_.workflows_.$workflowId'
+import { Route as AdminAccountDeletionsApprovalIdRouteImport } from './routes/admin.account-deletions_.$approvalId'
 import { Route as AdminPlatformIntegrationsSlugRouteImport } from './routes/admin.platform-integrations_.$slug'
 import { Route as AdminPlatformIntegrationsNewRouteImport } from './routes/admin.platform-integrations_.new'
 import { Route as AdminUsersStableUserIdRouteImport } from './routes/admin.users_.$stableUserId'
@@ -570,6 +572,11 @@ const AccountMemoriesExportDotjsonRoute =
 const AccountOrganizationsRoute = AccountOrganizationsRouteImport.update({
   id: '/account_/organizations',
   path: '/account/organizations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountPackagesDotjsonRoute = AccountPackagesDotjsonRouteImport.update({
+  id: '/account_/packages.json',
+  path: '/account/packages.json',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountPasskeysRoute = AccountPasskeysRouteImport.update({
@@ -1258,6 +1265,12 @@ const AccountWorkflowsWorkflowIdRoute =
     path: '/account/workflows/$workflowId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminAccountDeletionsApprovalIdRoute =
+  AdminAccountDeletionsApprovalIdRouteImport.update({
+    id: '/admin/account-deletions_/$approvalId',
+    path: '/admin/account-deletions/$approvalId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminPlatformIntegrationsSlugRoute =
   AdminPlatformIntegrationsSlugRouteImport.update({
     id: '/admin/platform-integrations_/$slug',
@@ -1698,6 +1711,7 @@ export interface FileRoutesByFullPath {
   '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/organizations': typeof AccountOrganizationsRoute
+  '/account/packages.json': typeof AccountPackagesDotjsonRoute
   '/account/passkeys': typeof AccountPasskeysRoute
   '/account/secret-providers': typeof AccountSecretProvidersRoute
   '/account/secrets': typeof AccountSecretsRoute
@@ -1824,6 +1838,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/approve': typeof AccountSecretsApproveRoute
   '/account/secrets/new': typeof AccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -1951,6 +1966,7 @@ export interface FileRoutesByTo {
   '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/organizations': typeof AccountOrganizationsRoute
+  '/account/packages.json': typeof AccountPackagesDotjsonRoute
   '/account/passkeys': typeof AccountPasskeysRoute
   '/account/secret-providers': typeof AccountSecretProvidersRoute
   '/account/secrets': typeof AccountSecretsRoute
@@ -2077,6 +2093,7 @@ export interface FileRoutesByTo {
   '/account/secrets/approve': typeof AccountSecretsApproveRoute
   '/account/secrets/new': typeof AccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -2206,6 +2223,7 @@ export interface FileRoutesById {
   '/account_/memories': typeof AccountMemoriesRoute
   '/account_/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account_/organizations': typeof AccountOrganizationsRoute
+  '/account_/packages.json': typeof AccountPackagesDotjsonRoute
   '/account_/passkeys': typeof AccountPasskeysRoute
   '/account_/secret-providers': typeof AccountSecretProvidersRoute
   '/account_/secrets': typeof AccountSecretsRoute
@@ -2332,6 +2350,7 @@ export interface FileRoutesById {
   '/account_/secrets_/approve': typeof AccountSecretsApproveRoute
   '/account_/secrets_/new': typeof AccountSecretsNewRoute
   '/account_/workflows_/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions_/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
   '/admin/platform-integrations_/$slug': typeof AdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations_/new': typeof AdminPlatformIntegrationsNewRoute
   '/admin/users_/$stableUserId': typeof AdminUsersStableUserIdRoute
@@ -2462,6 +2481,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/memories-export.json'
     | '/account/organizations'
+    | '/account/packages.json'
     | '/account/passkeys'
     | '/account/secret-providers'
     | '/account/secrets'
@@ -2588,6 +2608,7 @@ export interface FileRouteTypes {
     | '/account/secrets/approve'
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
+    | '/admin/account-deletions/$approvalId'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -2715,6 +2736,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/memories-export.json'
     | '/account/organizations'
+    | '/account/packages.json'
     | '/account/passkeys'
     | '/account/secret-providers'
     | '/account/secrets'
@@ -2841,6 +2863,7 @@ export interface FileRouteTypes {
     | '/account/secrets/approve'
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
+    | '/admin/account-deletions/$approvalId'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -2969,6 +2992,7 @@ export interface FileRouteTypes {
     | '/account_/memories'
     | '/account_/memories-export.json'
     | '/account_/organizations'
+    | '/account_/packages.json'
     | '/account_/passkeys'
     | '/account_/secret-providers'
     | '/account_/secrets'
@@ -3095,6 +3119,7 @@ export interface FileRouteTypes {
     | '/account_/secrets_/approve'
     | '/account_/secrets_/new'
     | '/account_/workflows_/$workflowId'
+    | '/admin/account-deletions_/$approvalId'
     | '/admin/platform-integrations_/$slug'
     | '/admin/platform-integrations_/new'
     | '/admin/users_/$stableUserId'
@@ -3224,6 +3249,7 @@ export interface RootRouteChildren {
   AccountMemoriesRoute: typeof AccountMemoriesRoute
   AccountMemoriesExportDotjsonRoute: typeof AccountMemoriesExportDotjsonRoute
   AccountOrganizationsRoute: typeof AccountOrganizationsRoute
+  AccountPackagesDotjsonRoute: typeof AccountPackagesDotjsonRoute
   AccountPasskeysRoute: typeof AccountPasskeysRoute
   AccountSecretProvidersRoute: typeof AccountSecretProvidersRoute
   AccountSecretsRoute: typeof AccountSecretsRoute
@@ -3346,6 +3372,7 @@ export interface RootRouteChildren {
   AccountSecretsApproveRoute: typeof AccountSecretsApproveRoute
   AccountSecretsNewRoute: typeof AccountSecretsNewRoute
   AccountWorkflowsWorkflowIdRoute: typeof AccountWorkflowsWorkflowIdRoute
+  AdminAccountDeletionsApprovalIdRoute: typeof AdminAccountDeletionsApprovalIdRoute
   AdminPlatformIntegrationsSlugRoute: typeof AdminPlatformIntegrationsSlugRoute
   AdminPlatformIntegrationsNewRoute: typeof AdminPlatformIntegrationsNewRoute
   AdminUsersStableUserIdRoute: typeof AdminUsersStableUserIdRoute
@@ -3835,6 +3862,13 @@ declare module '@tanstack/react-router' {
       path: '/account/organizations'
       fullPath: '/account/organizations'
       preLoaderRoute: typeof AccountOrganizationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account_/packages.json': {
+      id: '/account_/packages.json'
+      path: '/account/packages.json'
+      fullPath: '/account/packages.json'
+      preLoaderRoute: typeof AccountPackagesDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/account_/passkeys': {
@@ -4726,6 +4760,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountWorkflowsWorkflowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/account-deletions_/$approvalId': {
+      id: '/admin/account-deletions_/$approvalId'
+      path: '/admin/account-deletions/$approvalId'
+      fullPath: '/admin/account-deletions/$approvalId'
+      preLoaderRoute: typeof AdminAccountDeletionsApprovalIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/platform-integrations_/$slug': {
       id: '/admin/platform-integrations_/$slug'
       path: '/admin/platform-integrations/$slug'
@@ -5289,6 +5330,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountMemoriesRoute: AccountMemoriesRoute,
   AccountMemoriesExportDotjsonRoute: AccountMemoriesExportDotjsonRoute,
   AccountOrganizationsRoute: AccountOrganizationsRoute,
+  AccountPackagesDotjsonRoute: AccountPackagesDotjsonRoute,
   AccountPasskeysRoute: AccountPasskeysRoute,
   AccountSecretProvidersRoute: AccountSecretProvidersRoute,
   AccountSecretsRoute: AccountSecretsRoute,
@@ -5428,6 +5470,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountSecretsApproveRoute: AccountSecretsApproveRoute,
   AccountSecretsNewRoute: AccountSecretsNewRoute,
   AccountWorkflowsWorkflowIdRoute: AccountWorkflowsWorkflowIdRoute,
+  AdminAccountDeletionsApprovalIdRoute: AdminAccountDeletionsApprovalIdRoute,
   AdminPlatformIntegrationsSlugRoute: AdminPlatformIntegrationsSlugRoute,
   AdminPlatformIntegrationsNewRoute: AdminPlatformIntegrationsNewRoute,
   AdminUsersStableUserIdRoute: AdminUsersStableUserIdRoute,

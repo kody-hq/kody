@@ -76,7 +76,20 @@ export {
 	shouldRunDrExportWatchdogCron,
 } from '#worker/dr/exporter-schedule.ts'
 
-export const drExportRunTimeBudgetMs = 20_000
+/**
+ * Wall budget for one cron tick. 45s is still a small slice of the 5-minute
+ * cron, and the lease is 2 minutes, so a tick finishes before the next one
+ * starts. Raised from 20s after 2026-10-16 spent ~15h in the mailbox phase:
+ * at ~5s per owner a 20s tick finished about 4 owners, which cannot keep up
+ * with one UTC day per day once the owner count is past ~700.
+ */
+export const drExportRunTimeBudgetMs = 45_000
+/**
+ * Mailbox and RunLog owners are independent. Fetch this many first pages at
+ * once so a wave waits on the slowest Durable Object instead of the sum.
+ * Commits stay serial so progress and the index tail stay single-writer.
+ */
+const ownerExportConcurrency = 8
 /** Skip individual R2 objects larger than this (full-buffer ceiling). */
 export const drExportMaxObjectBytes = 25 * 1024 * 1024
 /** Cap for an assembled storage dump before it is admitted to the index. */
@@ -87,6 +100,13 @@ const previousSealedDayLookbackDays = 35
 const progressLeaseDurationMs = 2 * 60_000
 /** Watchdog / catch-up: older stranded work is "active" if it advanced within this window. */
 const strandedCatchUpActiveMs = 2 * 60 * 60_000
+/**
+ * Page even while catch-up is moving when the oldest stranded day is this
+ * many UTC days behind today. One day behind is the normal queue (yesterday
+ * still draining). Two days behind means throughput is losing to the calendar,
+ * which the "deferred-for-older-stranded" path used to hide.
+ */
+const stagingLagAlertDays = 2
 const exporterProgressSchemaVersion = 3 as const
 const ownerExportPageSize = 250
 const runLogInitialCursor = 'job-run-observability:'
@@ -217,6 +237,12 @@ function utcDayMinus(day: string, daysBack: number) {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	date.setUTCDate(date.getUTCDate() - daysBack)
 	return date.toISOString().slice(0, 10)
+}
+
+function utcDayOffset(today: string, day: string) {
+	const todayMs = Date.parse(`${today}T00:00:00.000Z`)
+	const dayMs = Date.parse(`${day}T00:00:00.000Z`)
+	return Math.round((todayMs - dayMs) / (24 * 60 * 60 * 1000))
 }
 
 /**
@@ -553,6 +579,12 @@ async function collectHandledOwnerIds(input: {
 	return handled
 }
 
+type OwnerExportPage = {
+	entries: Array<unknown>
+	nextStartAfter: string | null
+	truncated: boolean
+}
+
 async function exportOwnerPhase(input: {
 	s3: DrBackupS3Client
 	session: ProgressSession
@@ -568,11 +600,7 @@ async function exportOwnerPhase(input: {
 	fetchPage: (
 		ownerId: OwnerId,
 		startAfter: string | null,
-	) => Promise<{
-		entries: Array<unknown>
-		nextStartAfter: string | null
-		truncated: boolean
-	}>
+	) => Promise<OwnerExportPage>
 	onDumpCompleted: () => void
 	nextPhase: DrExporterPhase
 }): Promise<boolean> {
@@ -583,27 +611,21 @@ async function exportOwnerPhase(input: {
 		lane: input.lane,
 		oversizedWarningPrefix: input.oversizedWarningPrefix,
 	})
-	let ownerIndex = 0
-	for (;;) {
-		if (Date.now() - input.startedAtMs >= input.timeBudgetMs) return true
-		let ownerId: OwnerId | undefined
-		while (ownerIndex < input.owners.length) {
-			const candidate = input.owners[ownerIndex]!
-			ownerIndex += 1
-			if (!handledOwnerIds.has(candidate)) {
-				ownerId = candidate
-				break
-			}
-		}
-		if (!ownerId) break
+	const budgetExhausted = () =>
+		Date.now() - input.startedAtMs >= input.timeBudgetMs
+	// First pages already fetched for truncated owners. Progress only tracks
+	// one partial dump, so the rest stay in memory until this tick commits
+	// them. A crash refetches them; a healthy tick does not.
+	const heldFirstPages: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+
+	async function consumeOwnerPage(
+		ownerId: OwnerId,
+		page: OwnerExportPage,
+	): Promise<'complete' | 'truncated'> {
 		if (input.lane.partialOwnerId !== ownerId) {
 			resetPartialOwnerState(input.lane)
 			input.lane.partialOwnerId = ownerId
 		}
-		const page = await input.fetchPage(
-			ownerId,
-			input.lane.pageStartAfter ?? input.initialCursor,
-		)
 		const pageBody = page.entries.map(ndjsonLine).join('')
 		const pageBytes = utf8ByteLength(pageBody)
 		input.lane.partialEntryCount += page.entries.length
@@ -615,8 +637,7 @@ async function exportOwnerPhase(input: {
 			input.lane.ownerIndex += 1
 			resetPartialOwnerState(input.lane)
 			handledOwnerIds.add(ownerId)
-			await persistProgress(input.s3, input.session)
-			continue
+			return 'complete'
 		}
 		if (pageBody.length > 0) {
 			input.lane.dumpChunkHead = await putLinkedChunk({
@@ -634,8 +655,7 @@ async function exportOwnerPhase(input: {
 		}
 		if (page.truncated && page.nextStartAfter) {
 			input.lane.pageStartAfter = page.nextStartAfter
-			await persistProgress(input.s3, input.session)
-			continue
+			return 'truncated'
 		}
 		const objectKey = input.dumpKey(progress.day, ownerId)
 		const body = await readLinkedChunkBody({
@@ -669,7 +689,81 @@ async function exportOwnerPhase(input: {
 		input.lane.ownerIndex += 1
 		resetPartialOwnerState(input.lane)
 		input.onDumpCompleted()
-		await persistProgress(input.s3, input.session)
+		return 'complete'
+	}
+
+	for (;;) {
+		if (budgetExhausted()) return true
+		const partialOwnerId = input.lane.partialOwnerId
+		if (
+			partialOwnerId &&
+			!handledOwnerIds.has(partialOwnerId as OwnerId) &&
+			input.owners.includes(partialOwnerId as OwnerId)
+		) {
+			// Finish the in-progress dump before any newly inserted owner.
+			// Inventory drift used to reset this cursor and rewrite the dump.
+			const page = await input.fetchPage(
+				partialOwnerId as OwnerId,
+				input.lane.pageStartAfter ?? input.initialCursor,
+			)
+			await consumeOwnerPage(partialOwnerId as OwnerId, page)
+			await persistProgress(input.s3, input.session)
+			continue
+		}
+		if (partialOwnerId && !input.owners.includes(partialOwnerId as OwnerId)) {
+			resetPartialOwnerState(input.lane)
+		}
+
+		const held = heldFirstPages.shift()
+		if (held) {
+			await consumeOwnerPage(held.ownerId, held.page)
+			await persistProgress(input.s3, input.session)
+			continue
+		}
+
+		const heldOwnerIds = new Set(heldFirstPages.map((page) => page.ownerId))
+		const batch: Array<OwnerId> = []
+		for (const candidate of input.owners) {
+			if (batch.length >= ownerExportConcurrency) break
+			if (handledOwnerIds.has(candidate) || heldOwnerIds.has(candidate)) {
+				continue
+			}
+			batch.push(candidate)
+		}
+		if (batch.length === 0) break
+		const settled = await Promise.allSettled(
+			batch.map(async (ownerId) => ({
+				ownerId,
+				page: await input.fetchPage(ownerId, input.initialCursor),
+			})),
+		)
+		const pages: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+		let fetchFailure: unknown = null
+		for (const result of settled) {
+			if (result.status === 'fulfilled') {
+				pages.push(result.value)
+				continue
+			}
+			if (fetchFailure === null) fetchFailure = result.reason
+		}
+		const truncated: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+		let consumed = false
+		for (const item of pages) {
+			if (item.page.truncated && item.page.nextStartAfter) {
+				truncated.push(item)
+				continue
+			}
+			await consumeOwnerPage(item.ownerId, item.page)
+			consumed = true
+		}
+		const continued = truncated.shift()
+		if (continued) {
+			await consumeOwnerPage(continued.ownerId, continued.page)
+			consumed = true
+		}
+		heldFirstPages.push(...truncated)
+		if (consumed) await persistProgress(input.s3, input.session)
+		if (fetchFailure) throw fetchFailure
 	}
 	await flushOwnerIndexChunk({
 		s3: input.s3,
@@ -1529,9 +1623,11 @@ export type DrExportWatchdogResult = {
  * the deferral — an incomplete night is otherwise silent (the exporter stops
  * getting ticks when the window closes). When earlier stranded days exist and
  * tonight has no summary yet (nightly deferred to drain backlog), returns
- * without paging. Throws when tonight has a summary but earlier days are still
- * stranded: catch-up prefers the oldest stranded day, so that combination
- * means catch-up is stuck and should stay loud once per day.
+ * without paging only while the oldest stranded day is still yesterday.
+ * Two or more UTC days of backlog pages even if the cursor is moving, because
+ * that pace loses to the calendar. Throws when tonight has a summary but
+ * earlier days are still stranded: catch-up prefers the oldest stranded day,
+ * so that combination means catch-up is stuck and should stay loud once per day.
  */
 export async function runDrExportWatchdogTick(input: {
 	env: Env
@@ -1606,6 +1702,12 @@ export async function runDrExportWatchdogTick(input: {
 			}
 		}
 		if (olderCatchUpActive) {
+			const oldest = strandedPreviousDays[0]
+			if (oldest && utcDayOffset(day, oldest) >= stagingLagAlertDays) {
+				throw new Error(
+					`DR staging lag: oldest stranded day ${oldest} is ${utcDayOffset(day, oldest)} UTC days behind ${day} and still has no summary. Catch-up is advancing, but it is not keeping up with one day per day. Resume the oldest via POST /__maintenance/dr-export.`,
+				)
+			}
 			console.info(
 				'dr_export_watchdog',
 				JSON.stringify({

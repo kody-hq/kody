@@ -6,8 +6,8 @@ in focused docs, and do not restate the same policy across files.
 ## Rules
 
 - Root `AGENTS.md` is a small index (map), not an encyclopedia. The `agents-md`
-  file-size ratchet (`npm run file-size-ratchet:check`) enforces the line
-  budget; raise `maxLines` only on purpose.
+  file-size ratchet (`npm run slop-ratchet:check`) enforces the line budget;
+  raise `maxLines` only on purpose.
 - Detail lives in focused pages under `docs/` (principles, contributing, guides)
   or in task skills under `.agents/skills/`.
 - Progressive disclosure: agents open the index, then only the page the task

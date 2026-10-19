@@ -217,22 +217,21 @@ concern.
 
 ```mermaid
 flowchart TD
-    A[Inspect code and incoming main changes] --> B[Port behavior and security]
-    B --> C[Static review and checks]
-    C --> D[Commit and push migration branch]
-    D --> E[CI tests and build]
-    D --> F[Normal PR preview deployment]
-    E --> G[Inspect failures and fix root cause]
-    G --> C
-    F --> H[Verify deployed commit and preview behavior]
-    E --> I[Readiness assessment]
+    A[Inspect code] --> B[Static review and checks]
+    B --> C[Commit and open PR]
+    C --> D[CI tests and build]
+    C --> E[Normal PR preview deployment]
+    D --> F[Inspect failures and fix root cause]
+    F --> B
+    E --> G[Verify deployed commit and preview behavior]
+    D --> H[Local control-kody on changed surfaces]
+    G --> I[Explicit merge and production approval]
     H --> I
-    I --> J[Explicit merge and production approval]
 ```
 
-The current workflow skips local runtime tests before catch-up pushes by user
-request. CI success does not prove visual or authenticated action parity. The
-[parity audit](./tanstack-start-parity-audit.md) tracks evidence and gaps.
+Local verification uses [control-kody](./control-kody.md). CI success does not
+prove visual or authenticated action parity. Use a PR preview only when local
+cannot exercise the change.
 
 ## 11. Anonymous document caching
 

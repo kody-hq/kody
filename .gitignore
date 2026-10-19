@@ -34,6 +34,7 @@ bun.lock
 .env
 mock-data
 playwright-report
+blob-report
 test-results
 packages/worker/public/client-entry.js
 packages/worker/public/client-entry.js.map
@@ -54,8 +55,7 @@ packages/api-worker/wrangler-*.generated.json
 
 /test-results-start/
 
-# Local migration measurement artifacts and captured sessions
-/tools/framework-comparison/reports/
-
 packages/start-routing-worker/wrangler-*.generated.json
 packages/start-routing-worker/start-entry.generated.ts
+
+artifacts/

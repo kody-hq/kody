@@ -9,7 +9,7 @@ description: >
 # control-kody
 
 Do not invent a throwaway curl script, scrape PR comments by hand, or rediscover
-account routes from `routes.ts`. Use the CLI and the Feature Map.
+account routes from `routeTree.gen.ts`. Use the CLI and the Feature Map.
 
 ```bash
 npm run control-kody -- doctor
@@ -66,10 +66,13 @@ seeded.
 
 ## Feature Map
 
-[references/features/README.md](./references/features/README.md) is the
-human-readable index. `tools/control-kody/feature-catalog.ts` is the
-machine-readable source. `map --check` (and its node test) fail when a listed
-path leaves `routes.ts` or a required HTML route has no entry.
+[references/features/README.md](./references/features/README.md) is verification
+notes (seed, reach, assert). Routes are generated from
+`packages/worker/start/routeTree.gen.ts` (`FileRoutesByFullPath`); feature
+prefixes in `tools/control-kody/feature-catalog.ts` only group that inventory.
+`map` prints the generated inventory; `map --check` fails when notes cite
+unknown routes, a required user-facing prefix has no notes (and no exemption),
+or a notes file is missing / orphaned. CI runs `npm run feature-map:check`.
 
 Load **one** feature file for the surface you are changing. Run `map --check`
 before opening a Feature Map PR.
@@ -99,14 +102,20 @@ before opening a Feature Map PR.
 
 ## Proof
 
-CI green is not enough for a user-visible account change. Prefer:
+CI green is not enough for a user-visible account change. **Local verification
+is the default** — prefer `dev` / `login` / `request` / `browse` / `execute` on
+localhost before a PR preview:
 
-1. `doctor` then `dev` or `preview`
-2. `request` (`--dump` / `--contains`) or `--check` as the seed user **with data
-   for this change**
-3. When UI is under test: `browse --origin <origin> --path <path>` (or
-   computerUse with `/login?redirectTo=<path>` and the public seed credentials).
-   Prefer MCP/API otherwise.
+1. `doctor` then `dev` (migrate + seed if `login` says so)
+2. `request` (`--dump` / `--contains`) as the local seed user **with data for
+   this change**; when UI is under test, `browse --path <path>` (or computerUse
+   with `/login?redirectTo=<path>` and the public seed credentials). Prefer
+   MCP/API/`execute` otherwise.
+3. Use a PR `preview` only when local cannot exercise the change: Workers /
+   service bindings, Durable Objects, real OAuth or inbound third-party
+   webhooks, deploy/wrangler/config, Artifacts/`packageSave`, or other
+   production-like surfaces (see
+   [Local limitations](../../../docs/contributing/cloud-agents.md#local-limitations)).
 4. After merge, `health --origin https://kody.codes --sha <merge>` (full SHA,
    unique short SHA, or a later descendant HEAD that contains the merge)
 

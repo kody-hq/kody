@@ -206,23 +206,6 @@ export const importBoundaries = [
 		skipTestFiles: true,
 	},
 	{
-		/**
-		 * The href latch is `createRouteData`'s internal bookkeeping. Routes
-		 * that used it directly also had to hand-roll consume-once, the
-		 * fallback fetch, and the loading UI — and blanked the page while a
-		 * refetch ran (docs/contributing/no-flash-navigation.md).
-		 */
-		id: 'routes-to-load-latch',
-		filePattern: /(^|\/)packages\/worker\/client\/routes\/.+$/,
-		forbiddenPrefixes: ['#client/route-load-latch.ts'],
-		message:
-			'Client routes read loader payloads through createRouteData (#client/route-data.tsx), which owns the load latch, the fallback fetch, and the last-good payload the page keeps showing. Do not import #client/route-load-latch.ts directly (see docs/contributing/no-flash-navigation.md).',
-		allowedSpecifiers: [],
-		neverAllowedPrefix: null,
-		neverAllowedMessage: null,
-		skipTestFiles: true,
-	},
-	{
 		id: 'universal-to-client',
 		filePattern: /(^|\/)packages\/worker\/universal\/.+$/,
 		forbiddenPrefixes: ['#client/'],

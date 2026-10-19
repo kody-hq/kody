@@ -112,17 +112,18 @@ npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; 
 
 Use `--file path.ts` the same way when the module lives on disk. Keep `--local`;
 static `kody:@owner/name` imports still run locally (package-graph download +
-CapabilityProxy hops). Inline `code` on `POST /v1/local-execute/package-graph`
-may be up to just under the Open API JSON body limit (~5 MiB); larger modules
-(or multi-megabyte `kody dev` worker bundles) pass `imports` alone so origin
-synthesizes a tiny entry. If inline `code` still exceeds that ceiling, the API
-(and CLI) name the actual UTF-8 byte length and the maximum — not a bare
-`Invalid parameters.` Package-graph always returns the gateway-fetch shim, so
-ad-hoc scripts with no `kody:@` imports still expand `{{secret:…}}` placeholders
-on origin (or fail closed naming the secret) instead of sending them raw.
-`import { credential } from 'kody:runtime'` for ad hoc and unpublished package
-source needs a CLI whose host `kody:runtime` exports `credential` /
-`credentials` per the
+CapabilityProxy hops). The CLI posts the `kody:@` imports that still need
+published modules to `POST /v1/local-execute/package-graph` (with a tiny
+synthetic entry), never the whole module. Inline `code` on that route may be up
+to just under the Open API JSON body limit (~5 MiB); larger callers pass
+`imports` alone so origin synthesizes a tiny entry. If inline `code` still
+exceeds that ceiling, the API (and CLI) name the actual UTF-8 byte length and
+the maximum — not a bare `Invalid parameters.` Package-graph always returns the
+gateway-fetch shim, so ad-hoc scripts with no `kody:@` imports still expand
+`{{secret:…}}` placeholders on origin (or fail closed naming the secret) instead
+of sending them raw. `import { credential } from 'kody:runtime'` for ad hoc and
+unpublished package source needs a CLI whose host `kody:runtime` exports
+`credential` / `credentials` per the
 [CLI local credential runtime](../contributing/contracts/cli-local-credential-runtime.md)
 contract (CapabilityProxy opens a handle; gateway placement only — same as
 hosted). Older CLIs fail at import time; upgrade `@kodycodes/cli`.
@@ -152,6 +153,22 @@ seconds (`UND_ERR_HEADERS_TIMEOUT`) and need a few seconds of margin. With
 `HTTP_PROXY` / `HTTPS_PROXY`. A `fetch` without placeholders, and a multipart
 upload that does not need fill, goes straight from local workerd and is not
 subject to this deadline.
+
+## Running from a package checkout
+
+Run `--file` from inside a package directory and the CLI resolves that package's
+own `kody:@…` exports (and `.kody/deps.json` mappings) from the working tree.
+Their remaining `kody:@` dependencies come from published package-graph. When a
+**successful** package-graph response omits required modules, the module never
+ran: that error (`incomplete_package_graph` in `--json` output) is a package
+resolution problem, not an auth problem. HTTP 401 or 403 from package-graph is
+still auth or permission — use the Failure section below. Two workarounds for
+`incomplete_package_graph`:
+
+- Inside the checkout, import your own package's files with relative imports
+  (`./src/helper.ts`) instead of `kody:@scope/pkg/helper`.
+- To test the **published** exports, run the entry from a directory outside the
+  checkout so every `kody:@` import resolves from package-graph.
 
 ## Failure
 

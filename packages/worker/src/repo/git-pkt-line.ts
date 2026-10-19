@@ -205,3 +205,118 @@ export function uploadPackWantsOnlySnapshot(input: {
 	if (extracted.wants.length === 0) return false
 	return extracted.wants.every((oid) => oid === snapshot)
 }
+
+export type UploadPackAckMode = 'detailed' | 'multi' | 'single'
+
+export type UploadPackRequestSummary = {
+	ackMode: UploadPackAckMode
+	hasDone: boolean
+	hasHaves: boolean
+}
+
+function stripPktNewline(packet: string) {
+	return packet.endsWith('\n') ? packet.slice(0, -1) : packet
+}
+
+/**
+ * Read ack mode from the capability list on the first `want` line.
+ * Unparseable bodies are reported as single-ack so callers pass the upstream
+ * response through unchanged instead of rewriting bytes they could not frame.
+ */
+export function summarizeUploadPackRequest(
+	body: Uint8Array,
+): UploadPackRequestSummary {
+	const parsed = splitGitPktLines(body)
+	if (!parsed.ok) {
+		return { ackMode: 'single', hasDone: false, hasHaves: false }
+	}
+	let ackMode: UploadPackAckMode = 'single'
+	let hasDone = false
+	let hasHaves = false
+	let sawWant = false
+	for (const packet of parsed.packets) {
+		if (packet === null) continue
+		const line = stripPktNewline(packet)
+		if (!sawWant && line.startsWith('want ')) {
+			sawWant = true
+			const capabilities = line.split(' ').slice(2)
+			if (capabilities.includes('multi_ack_detailed')) ackMode = 'detailed'
+			else if (capabilities.includes('multi_ack')) ackMode = 'multi'
+		} else if (line === 'done') {
+			hasDone = true
+		} else if (line.startsWith('have ')) {
+			hasHaves = true
+		}
+	}
+	return { ackMode, hasDone, hasHaves }
+}
+
+const plainAckPattern = /^ACK ([0-9a-fA-F]{40})$/
+
+function isAckOrNakPacket(packet: string) {
+	const line = stripPktNewline(packet)
+	return line === 'NAK' || line.startsWith('ACK ')
+}
+
+function negotiationStatusForAckMode(ackMode: 'detailed' | 'multi') {
+	switch (ackMode) {
+		case 'detailed':
+			return 'common'
+		case 'multi':
+			return 'continue'
+		default: {
+			const exhaustive: never = ackMode
+			throw new Error(`Unexpected upload-pack ack mode: ${String(exhaustive)}`)
+		}
+	}
+}
+
+/**
+ * Rewrite a multi-ack negotiation response that omitted ack statuses.
+ * Plain `ACK <oid>` becomes `ACK <oid> common` (detailed) or `continue`
+ * (multi). Lines that already carry a status are left alone. The result ends
+ * with `NAK` and nothing after it. Side-band or other non-ack bodies, and
+ * bodies that do not split into pkt-lines, are returned unchanged so a
+ * compliant upload-pack (which may already be sending the pack) is not
+ * rewritten. Never emits `ready`.
+ */
+export function normalizeUploadPackNegotiationResponse(input: {
+	body: Uint8Array
+	ackMode: UploadPackAckMode
+}): Uint8Array {
+	if (input.ackMode === 'single') return input.body
+	const parsed = splitGitPktLines(input.body)
+	if (!parsed.ok) return input.body
+	for (const packet of parsed.packets) {
+		if (packet === null) continue
+		if (!isAckOrNakPacket(packet)) return input.body
+	}
+
+	const status = negotiationStatusForAckMode(input.ackMode)
+	const packets: Array<string | null> = []
+	for (const packet of parsed.packets) {
+		if (packet === null) {
+			packets.push(null)
+			continue
+		}
+		const plain = plainAckPattern.exec(stripPktNewline(packet))
+		if (plain?.[1]) {
+			packets.push(`ACK ${plain[1]} ${status}\n`)
+			continue
+		}
+		packets.push(packet.endsWith('\n') ? packet : `${packet}\n`)
+	}
+
+	while (packets.length > 0 && packets[packets.length - 1] === null) {
+		packets.pop()
+	}
+	const last = packets[packets.length - 1]
+	const lastLine = typeof last === 'string' ? stripPktNewline(last) : null
+	if (lastLine !== 'NAK') packets.push('NAK\n')
+
+	let encoded = ''
+	for (const packet of packets) {
+		encoded += packet === null ? encodeGitFlushPkt() : encodeGitPktLine(packet)
+	}
+	return textEncoder.encode(encoded)
+}

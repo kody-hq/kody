@@ -6,6 +6,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { parse as parsePublicSuffix } from 'tldts'
 import { resolveLocalBinary } from '../node-runtime.ts'
+import {
+	isRetryableCloudflareApiError,
+	isRetryableCloudflareFailure,
+} from './retry-classifiers.ts'
 
 type WranglerEnvName = 'preview' | 'production'
 
@@ -63,65 +67,6 @@ export class CloudflareResourceError extends Error {
 		this.kind = kind
 		this.resource = resource
 	}
-}
-
-/**
- * Permanent Cloudflare auth failures must not be retried. 401/403 and
- * wrangler "Authentication error [code: 10000]" stay in this set so a bad
- * token cannot burn the preview cleanup budget.
- *
- * Cloudflare also returns HTTP 500 with
- * "Internal authentication error: internal server error" as a transient
- * platform blip (seen on scheduled preview sweeps). That phrasing matches a
- * naive `/authentication error/i` check, so 5xx envelopes and the Internal
- * wording (when not on 401/403) are excluded here and stay retryable via
- * `isRetryableCloudflareFailure`. Explicit 401/403 always win over wording.
- */
-export function isPermanentCloudflareAuthFailure(message: string) {
-	if (
-		/Cloudflare API request failed \(401\)/.test(message) ||
-		/Cloudflare API request failed \(403\)/.test(message)
-	) {
-		return true
-	}
-	if (
-		/Cloudflare API request failed \(5\d\d\)/.test(message) ||
-		/internal authentication error/i.test(message)
-	) {
-		return false
-	}
-	return (
-		/authentication error/i.test(message) || /\[code:\s*10000\]/.test(message)
-	)
-}
-
-export function isRetryableCloudflareFailure(message: string) {
-	if (isPermanentCloudflareAuthFailure(message)) return false
-	return (
-		(message.includes('Malformed Cloudflare response') &&
-			!/Malformed Cloudflare response \(200\).*--/u.test(message)) ||
-		// Wrangler uses this phrasing for truncated JSON on 200 GET /deployments,
-		// not only 5xx connect resets. Keep the multipart-200 exclusion above.
-		message.includes('Received a malformed response from the API') ||
-		message.includes('upstream connect error') ||
-		message.includes('Cloudflare API request failed (429)') ||
-		/Cloudflare API request failed \(5\d\d\)/.test(message) ||
-		// Cloudflare platform blip (also appears in wrangler stderr without an
-		// HTTP status envelope). Distinct from permanent "Authentication error".
-		/internal authentication error/i.test(message) ||
-		/504 Gateway Timeout/i.test(message) ||
-		/Gateway Timeout/i.test(message) ||
-		message.includes('fetch failed') ||
-		message.includes('ECONNRESET') ||
-		message.includes('ETIMEDOUT') ||
-		message.includes('socket hang up')
-	)
-}
-
-export function isRetryableCloudflareApiError(error: unknown) {
-	if (!(error instanceof Error)) return false
-	if (error.name === 'AbortError') return true
-	return isRetryableCloudflareFailure(error.message)
 }
 
 /**
@@ -3057,6 +3002,13 @@ export async function writeGeneratedWranglerConfig({
 		if (typeof value === 'string' && value.length > 0) {
 			resolvedVars[key] = value
 		}
+	}
+	// Deployed preview/production must never carry the local-dev Turnstile
+	// bypass. Local `npm run dev` writes a separate generated config.
+	if (resolvedVars.WRANGLER_IS_LOCAL_DEV !== undefined) {
+		fail(
+			`wrangler config for env.${envName} must not set WRANGLER_IS_LOCAL_DEV (got ${JSON.stringify(resolvedVars.WRANGLER_IS_LOCAL_DEV)}). That flag skips production boot guards; use the local-dev generated config instead.`,
+		)
 	}
 	;(targetEnv as Record<string, unknown>).vars = resolvedVars
 

@@ -689,6 +689,11 @@ export type AdminUsageRollup = {
 	metric: AdminUsageMetric
 	eventCount: number
 	errorCount: number
+	/**
+	 * Handled `package_static_call` throws (`outcome: caught`). Zero for other
+	 * metrics and for historical rows written before caught_count existed.
+	 */
+	caughtCount: number
 	totalDurationMs: number
 	totalCpuMs: number
 	totalBytes: number
@@ -2206,6 +2211,12 @@ export type AccountPackageApprovePublishLoaderData = {
 	 * is nothing to warn about.
 	 */
 	secretMountCompatNotice: string | null
+	/**
+	 * Advance warning when this package fills a user credential whose
+	 * allowed-packages list excludes it. Stricter enforcement starts
+	 * Wednesday, Oct 21, 2026. Null when there is nothing to warn about.
+	 */
+	allowedPackagesPublishNotice: string | null
 	diff: {
 		files: Array<AccountPackagePublishDiffFile>
 		omittedCount: number
@@ -3148,6 +3159,13 @@ export type AccountUsageEntitlementConsumption = {
 	percentOfLimit: number | null
 	overEightyPercent: boolean
 	week?: AccountUsageWeekWindow
+	/** Inventoried durable buckets by kind (no raw storage ids). */
+	storageByKind?: Array<{
+		kind: 'package' | 'job' | 'execute' | 'repo_session' | 'unknown'
+		label: string
+		bytes: number
+		count: number
+	}>
 }
 
 type AccountUsageComputeMeter = {

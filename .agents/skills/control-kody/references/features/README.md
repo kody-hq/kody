@@ -1,62 +1,58 @@
 # Feature Map
 
-Searchable map of Kody user-facing surfaces. Load one file, not this whole
-directory.
-
-The catalog in `tools/control-kody/feature-catalog.ts` is the machine-readable
-source. `node tools/control-kody.ts map --check` fails when a listed path leaves
-`routes.ts` or a required HTML route has no entry.
-
-## How to use it
+Verification notes for Kody surfaces. Routes come from
+`packages/worker/start/routeTree.gen.ts` (`FileRoutesByFullPath`); this
+directory only holds how to seed, reach, and assert each area. Load **one** file
+for the surface you are changing.
 
 ```bash
-node tools/control-kody.ts map
-node tools/control-kody.ts map waiting
-node tools/control-kody.ts map --check
+npm run control-kody -- map
+npm run control-kody -- map waiting
+npm run control-kody -- map --check
 ```
 
-Then drive the surface with `login`, `request`, `preview`, and `health`. Run
-`map --check` before opening a Feature Map PR. See the
-[control-kody skill](../../SKILL.md).
+`map` prints the generated inventory (kind + path), grouped by feature prefixes
+in `tools/control-kody/feature-catalog.ts`. `map --check` fails when notes cite
+unknown routes, a required user-facing prefix has no notes (and no exemption),
+or a notes file is missing / orphaned. CI runs the same check via
+`npm run feature-map:check`.
 
 ## Surfaces
 
-- [login](./login.md) — `/login`
-- [signup](./signup.md) — `/signup`
-- [onboarding](./onboarding.md) — `/onboarding`
-- [password-reset](./password-reset.md) — `/reset-password`
-- [two-factor](./two-factor.md) — `/account/two-factor`
-- [passkeys](./passkeys.md) — `/account/passkeys`
-- [account](./account.md) — `/account`
-- [connections](./connections.md) — `/@<slug>/-/agents`
-- [packages](./packages.md) — `/@username`
-- [secrets](./secrets.md) — `/@<slug>/-/secrets`
-- [integrations](./integrations.md) — `/@<slug>/-/integrations`
-- [mcp-servers](./mcp-servers.md) — `/@<slug>/-/mcp-servers`
-- [jobs](./jobs.md) — `/@<slug>/-/jobs`
-- [workflows](./workflows.md) — `/@<slug>/-/workflows`
-- [webhooks](./webhooks.md) — `/@username/kodyId/settings#webhooks` (index at
-  `/@<slug>/-/webhooks`; generic `http` apply approval at
-  `/connect/webhook-apply`)
-- [follows](./follows.md) — `/@<slug>/-/follows` (Follow panel on
-  `/@owner/kodyId#follow`)
-- [activity](./activity.md) — `/@<slug>/-/activity`
-- [waiting](./waiting.md) — `/@<slug>/-/waiting`
-- [experiments](./experiments.md) — `/account/experiments`
-- [memories](./memories.md) — `/@<slug>/-/memories`
-- [email](./email.md) — `/@<slug>/-/email`
-- [billing](./billing.md) — `/@:orgSlug/-/billing`
-- [admin](./admin.md) — `/admin` (seed user is 403)
-- [community](./community.md) — `/community`
-- [marketing](./marketing.md) — `/`, `/docs`, `/blog`, `/support`
+- [login](./login.md)
+- [signup](./signup.md)
+- [onboarding](./onboarding.md)
+- [password-reset](./password-reset.md)
+- [two-factor](./two-factor.md)
+- [passkeys](./passkeys.md)
+- [account](./account.md)
+- [connections](./connections.md)
+- [packages](./packages.md)
+- [secrets](./secrets.md)
+- [integrations](./integrations.md)
+- [mcp-servers](./mcp-servers.md)
+- [jobs](./jobs.md)
+- [workflows](./workflows.md)
+- [webhooks](./webhooks.md)
+- [follows](./follows.md)
+- [activity](./activity.md)
+- [waiting](./waiting.md)
+- [experiments](./experiments.md)
+- [memories](./memories.md)
+- [email](./email.md)
+- [billing](./billing.md)
+- [admin](./admin.md)
+- [community](./community.md)
+- [marketing](./marketing.md)
 
 ## Seed users
 
-| Environment | Email               | Password    | Notes                                        |
-| ----------- | ------------------- | ----------- | -------------------------------------------- |
-| Local       | `jane@example.com`  | `ilikecode` | Non-admin. Prefer this.                      |
-| Local       | `kody@example.com`  | `ilikecode` | Admin. Avoid unless needed.                  |
-| Preview     | `me@kentcdodds.com` | `ilikecode` | Non-admin. Empty until seeded via JSON APIs. |
+| Environment | Email               | Password    | Notes                                   |
+| ----------- | ------------------- | ----------- | --------------------------------------- |
+| Local       | `jane@example.com`  | `ilikecode` | Non-admin. Prefer this.                 |
+| Local       | `kody@example.com`  | `ilikecode` | Admin. Avoid unless needed.             |
+| Preview     | `me@kentcdodds.com` | `ilikecode` | Non-admin. Empty until you create data. |
 
-Create preview data with `control-kody request` / `preview --request`. Do not
-raw-D1-seed preview.
+Runnable `request` / `browse` examples use `/@jane` (local). On preview, use
+`/@user-me` instead. Assert sections keep inventory placeholders
+(`/@{$orgSlug}`, `/@{$username}`).

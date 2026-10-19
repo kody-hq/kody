@@ -264,6 +264,21 @@ export function AccountPackageApprovePublishRoute({
 							{payload.secretMountCompatNotice}
 						</p>
 					) : null}
+					{payload.allowedPackagesPublishNotice ? (
+						<p
+							data-testid="allowed-packages-publish-notice"
+							css={{
+								margin: 0,
+								color: colors.text,
+								padding: spacing.sm,
+								borderRadius: '0.55rem',
+								border: `1px solid ${colors.warning}`,
+								whiteSpace: 'pre-wrap',
+							}}
+						>
+							{payload.allowedPackagesPublishNotice}
+						</p>
+					) : null}
 					{nothingToPublish && headUpToDate ? (
 						<p
 							data-testid="approve-publish-empty-state"

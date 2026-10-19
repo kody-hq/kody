@@ -76,6 +76,8 @@ import {
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
+import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
+import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	pausedSessionMovedMessage,
 	requireCredentialNeedsApproval,
@@ -120,6 +122,7 @@ import {
 	externalPublishWorkspaceDir,
 	isWorkspaceSqliteTooBigMessage,
 } from './external-publish-clone.ts'
+import { classifyExternalPublishCloneError } from './requested-commit-error.ts'
 import {
 	attachPublishPhaseTimings,
 	timePublishExternalPushPhase,
@@ -168,6 +171,7 @@ import {
 	maybeRefreshStorageBucketEstimate,
 	registerStorageBucketAndWait,
 	repoSessionStorageBucketId,
+	storageBucketInventoryExists,
 } from '#worker/storage-buckets/service.ts'
 import {
 	pushServerTiming,
@@ -179,6 +183,13 @@ const lastCheckStatusStorageKey = 'repo-session:last-check-status'
 const cachedSessionStateStorageKeyPrefix = 'repo-session:state:'
 const defaultSessionBranch = 'main'
 const publishedSessionRetentionMs = 14 * 24 * 60 * 60 * 1000
+/**
+ * Appended to successful `publishSession` messages so agents know the
+ * workspace scratch no longer counts toward `storage_bytes`. Catalog rows
+ * stay for {@link publishedSessionRetentionMs} (or until discard).
+ */
+export const publishedSessionScratchReleasedNotice =
+	'Session scratch no longer counts toward storage; the catalog row is retained for 14 days (repoDiscardSession removes it sooner).'
 const sessionCommitAuthor = {
 	name: 'Kody Repo Session',
 	email: 'repo-session@local.invalid',
@@ -448,6 +459,38 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 	}
 
+	/**
+	 * After a successful publish, durable source lives in Artifacts + the
+	 * published snapshot. Drop workspace scratch and its storage-bucket
+	 * inventory so leftover session bytes cannot push the owner over their
+	 * plan storage limit. Keeps the catalog row (`published` + expires_at).
+	 * Idempotent and never throws: publish already committed; cleanup failure
+	 * must not fail the capability or block getSessionInfo heal. Cron expiry
+	 * still purges leftovers.
+	 */
+	private async releasePublishedSessionScratch(
+		sessionId: string,
+		userId: OwnerId,
+	): Promise<void> {
+		try {
+			await this.clearCachedSessionState(sessionId)
+			await this.resetWorkspace().catch(() => {
+				// Best-effort; R2 prefix purge below is the safety net.
+			})
+			await this.purgeWorkspaceBlobs()
+			await this.deleteStorageInventory(sessionId, userId)
+			this.initializedSessionId = null
+		} catch (error) {
+			console.warn(
+				JSON.stringify({
+					message: 'published session scratch release failed',
+					sessionId,
+					error: getErrorMessage(error),
+				}),
+			)
+		}
+	}
+
 	private async readCachedSessionState(
 		sessionId: string,
 	): Promise<CachedRepoSessionState | null> {
@@ -492,6 +535,12 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId,
 		options: {
 			allowedStatuses?: ReadonlyArray<RepoSessionRow['status']>
+			/**
+			 * When false, skip artifact remote mint + workspace clone. Use for
+			 * catalog-only reads (getSessionInfo) so inspecting a published
+			 * session cannot rehydrate scratch that publish already released.
+			 */
+			initialize?: boolean
 		} = {},
 	) {
 		const cachedState = await this.readCachedSessionState(sessionId)
@@ -537,12 +586,16 @@ class RepoSessionBase extends DurableObject<Env> {
 			scope: 'write',
 			pendingReconcile: buildPendingExternalReconcile(this.env.APP_DB, source),
 		})
-		await this.initialize({
-			sessionId: sessionRow.id,
-			repoRemote: access.remote,
-			repoToken: access.token,
-			sessionBranch: sessionRow.session_branch,
-		})
+		// Catalog-only reads (getSessionInfo) skip clone so inspecting a
+		// published session cannot rehydrate scratch publish already released.
+		if (options.initialize !== false) {
+			await this.initialize({
+				sessionId: sessionRow.id,
+				repoRemote: access.remote,
+				repoToken: access.token,
+				sessionBranch: sessionRow.session_branch,
+			})
+		}
 		return {
 			sessionRow,
 			source,
@@ -957,11 +1010,23 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 	}) {
 		if (input.sessionId) {
-			const { source } = await this.getSessionState(
+			// Catalog first without clone. Published sessions must not
+			// rehydrate scratch after publish released storage inventory;
+			// active sessions still need the workspace for pre-publish
+			// manifest / rebuild fallbacks when no published snapshot exists.
+			const { source, sessionRow } = await this.getSessionState(
 				input.sessionId,
 				input.userId,
-				{ allowedStatuses: ['active', 'published'] },
+				{
+					allowedStatuses: ['active', 'published'],
+					initialize: false,
+				},
 			)
+			if (sessionRow.status === 'active') {
+				await this.getSessionState(input.sessionId, input.userId, {
+					allowedStatuses: ['active'],
+				})
+			}
 			return source
 		}
 		if (!input.sourceId) {
@@ -1899,8 +1964,28 @@ class RepoSessionBase extends DurableObject<Env> {
 		const { sessionRow, source } = await this.getSessionState(
 			input.sessionId,
 			input.userId,
-			{ allowedStatuses: ['active', 'published'] },
+			{
+				allowedStatuses: ['active', 'published'],
+				// Catalog + heal only: never re-clone published scratch.
+				initialize: false,
+			},
 		)
+		// Lazy heal: older publishes kept counting workspace bytes until
+		// discard/expiry. Release scratch the first time a published session
+		// still holding inventory is inspected.
+		if (
+			sessionRow.status === 'published' &&
+			(await storageBucketInventoryExists({
+				db: this.env.APP_DB,
+				userId: sessionRow.user_id,
+				storageId: repoSessionStorageBucketId(sessionRow.id),
+			}))
+		) {
+			await this.releasePublishedSessionScratch(
+				sessionRow.id,
+				sessionRow.user_id,
+			)
+		}
 		await this.touchRepoSession(sessionRow)
 		return toRepoSessionInfoResult(sessionRow, source)
 	}
@@ -3186,12 +3271,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				published_commit: publishedCommit,
 			},
 		})
-		this.refreshStoredEstimate(input.sessionRow.id, input.sessionRow.user_id)
+		await this.releasePublishedSessionScratch(
+			input.sessionRow.id,
+			input.sessionRow.user_id,
+		)
 		return {
 			status: 'ok',
 			sessionId: input.sessionRow.id,
 			publishedCommit,
-			message: `Published plain repo session ${input.sessionRow.id} to ${input.source.repo_id}.`,
+			message: `Published plain repo session ${input.sessionRow.id} to ${input.source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
 		}
 	}
 
@@ -3342,8 +3430,21 @@ class RepoSessionBase extends DurableObject<Env> {
 						sourceRoot: source.source_root,
 					})
 				: null
+		// Warning is independent of the locked-publish gate: lookup/scan failures
+		// must never change lock or approve results (fail-closed lock stays intact).
+		const allowedPackagesPublishNotice =
+			source.entity_kind === 'package'
+				? await loadCredentialAllowedPackagesPublishWarningNotice({
+						env: this.env,
+						baseUrl: getAppBaseUrl({ env: this.env }),
+						userId: input.userId,
+						packageId: source.entity_id,
+						files: snapshotFiles,
+						sourceRoot: source.source_root,
+					})
+				: null
 		const credentialNotice =
-			[patternNotice, secretMountCompat]
+			[patternNotice, secretMountCompat, allowedPackagesPublishNotice]
 				.filter((notice): notice is string => Boolean(notice))
 				.join('\n\n') || null
 		const withCredentialNotice = (message: string) =>
@@ -3503,13 +3604,13 @@ class RepoSessionBase extends DurableObject<Env> {
 				published_commit: publishedCommit,
 			},
 		})
-		this.refreshStoredEstimate(sessionRow.id, sessionRow.user_id)
+		await this.releasePublishedSessionScratch(sessionRow.id, sessionRow.user_id)
 		return {
 			status: 'ok',
 			sessionId: sessionRow.id,
 			publishedCommit: sessionHeadCommit ?? sessionRow.base_commit,
 			message: withCredentialNotice(
-				`Published session ${sessionRow.id} to ${source.repo_id}.`,
+				`Published session ${sessionRow.id} to ${source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
 			),
 		}
 	}
@@ -3571,20 +3672,38 @@ class RepoSessionBase extends DurableObject<Env> {
 				},
 			))
 		} catch (error) {
-			const message = getErrorMessage(error)
-			if (message.includes('Artifacts HEAD changed from')) {
-				throw error
-			}
-			throw new Error(
-				buildSourceRecoveryProblemMessage({
-					source,
-					operation: 'packagePublishExternalPush',
-					reason: message.includes('source clone or commit checkout failed:')
-						? message
-						: `source clone or commit checkout failed: ${message}`,
-				}),
-				{ cause: error },
+			const classified = classifyExternalPublishCloneError(
+				error,
+				input.newCommit,
 			)
+			switch (classified.kind) {
+				case 'rethrow':
+					throw error
+				case 'unknown_commit':
+					throw classified.error
+				case 'storage':
+					throw new Error(
+						buildWorkspaceSqliteTooBigCallerMessage(
+							'packagePublishExternalPush',
+						),
+						{ cause: error },
+					)
+				case 'source_recovery':
+					throw new Error(
+						buildSourceRecoveryProblemMessage({
+							source,
+							operation: 'packagePublishExternalPush',
+							reason: classified.reason,
+						}),
+						{ cause: error },
+					)
+				default: {
+					const exhaustive: never = classified
+					throw new Error(
+						`Unhandled external publish clone failure: ${String(exhaustive)}`,
+					)
+				}
+			}
 		}
 		const runId = crypto.randomUUID()
 		const publishDir = publishClone.dir || externalPublishWorkspaceDir

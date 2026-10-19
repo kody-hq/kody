@@ -9,7 +9,7 @@ permissions:
 jobs:
   seal-escrow:
     name: Seal SECRET_STORE_KEY into DR backup bucket
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     timeout-minutes: 10
     steps:
       - name: Checkout

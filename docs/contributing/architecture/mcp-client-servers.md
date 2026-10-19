@@ -199,10 +199,10 @@ fetch `{canonical-app-origin}/oauth/client-metadata.json`; that document's
 
 ### Pre-registered OAuth clients
 
-An admin can give one server an OAuth client ID and secret that they registered
+The owner can give one server an OAuth client ID and secret that they registered
 with its authorization server. It is set, replaced, and removed only from that
-server's settings page (`set-oauth-client` / `remove-oauth-client` on
-`/account/mcp-servers.json`, which requires `integration:write`). No capability,
+server's settings page (`setMcpServerOAuthClient` /
+`removeMcpServerOAuthClient`, which require `integration:write`). No capability,
 API response, MCP tool, or page returns the secret after save.
 
 - **Storage.** The worker seals the secret with `SECRET_STORE_KEY` (purpose

@@ -630,6 +630,22 @@ export function AdminUsersPage(props: {
 								onCreditsGranted: invalidateUsage,
 								onSubmitModerationAction: (action) =>
 									void submitModerationAction(action),
+								onAccountDeleted: (handle) => {
+									setMessage(
+										`Deleted @${handle}. The handle can be registered again.`,
+									)
+									void invalidatePages()
+									void router.navigate({
+										to: '/admin/users',
+										search: {
+											q: undefined,
+											role: undefined,
+											verification: undefined,
+											selected: undefined,
+											pageSize: 20,
+										},
+									})
+								},
 							}}
 						/>
 					) : null

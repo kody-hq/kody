@@ -25,8 +25,13 @@ import {
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import {
 	buildUploadPackAdvertisement,
+	encodeGitFlushPkt,
+	encodeGitPktLine,
+	normalizeUploadPackNegotiationResponse,
 	rewriteUploadPackAdvertisement,
+	summarizeUploadPackRequest,
 	uploadPackWantsOnlySnapshot,
+	type UploadPackRequestSummary,
 } from '#worker/repo/git-pkt-line.ts'
 import { resolveGitHttpTargetAccess } from '#worker/repo/git-http-target.ts'
 
@@ -41,6 +46,13 @@ const publicGitRateLimit = { maxRequests: 120, windowSeconds: 60 } as const
 const publicGitUploadPackMaxBodyBytes = 256 * 1024
 /** Authenticated live clones may send larger want/have negotiation. */
 const authenticatedGitUploadPackMaxBodyBytes = 1024 * 1024
+/**
+ * Multi-ack negotiation replies are a handful of ACK/NAK pkt-lines. Anything
+ * larger is pack data (or not a negotiation reply); do not buffer it.
+ */
+const uploadPackNegotiationNormalizeCapBytes = 64 * 1024
+
+const gitTextEncoder = new TextEncoder()
 
 const hopByHopResponseHeaders = new Set([
 	'connection',
@@ -229,25 +241,64 @@ function forbiddenResponse(message: string) {
 	})
 }
 
-function wantRejectedResponse() {
-	return new Response(
-		'Public package git remotes only serve the published snapshot commit.',
-		{
-			status: 403,
-			headers: {
-				'Cache-Control': 'no-store',
-				'Content-Type': 'text/plain; charset=utf-8',
-			},
-		},
+const snapshotWantRejectedMessage =
+	'Public package git remotes only serve the published snapshot commit.'
+const uploadPackBodyTooLargeMessage = 'Upload-pack request body too large.'
+const uploadPackBodyDecodeMessage =
+	'Upload-pack request body could not be decoded.'
+const uploadPackEncodingMessage = 'Unsupported upload-pack Content-Encoding.'
+
+function sanitizeGitClientMessage(message: string) {
+	const cleaned = message
+		.replace(/https?:\/\/\S+/gi, '[url]')
+		.replace(/kody_at_[A-Za-z0-9_-]+/g, '[token]')
+		.replace(/art_v1_\S+/g, '[token]')
+		.replace(/[\r\n]+/g, ' ')
+		.trim()
+		.slice(0, 2000)
+	return cleaned.length > 0 ? cleaned : 'Git request failed.'
+}
+
+function gitPktLineErrorBody(message: string) {
+	return gitTextEncoder.encode(
+		encodeGitPktLine(`ERR ${sanitizeGitClientMessage(message)}\n`),
 	)
 }
 
-function payloadTooLargeResponse() {
-	return new Response('Upload-pack request body too large.', {
-		status: 413,
+function gitResultErrorResponse(
+	service: typeof gitUploadPackService | typeof gitReceivePackService,
+	message: string,
+) {
+	const contentType =
+		service === gitReceivePackService
+			? 'application/x-git-receive-pack-result'
+			: 'application/x-git-upload-pack-result'
+	return new Response(gitPktLineErrorBody(message), {
+		status: 200,
 		headers: {
 			'Cache-Control': 'no-store',
-			'Content-Type': 'text/plain; charset=utf-8',
+			'Content-Type': contentType,
+		},
+	})
+}
+
+function gitAdvertisementErrorResponse(
+	service: typeof gitUploadPackService | typeof gitReceivePackService,
+	message: string,
+) {
+	const body =
+		encodeGitPktLine(`# service=${service}\n`) +
+		encodeGitFlushPkt() +
+		encodeGitPktLine(`ERR ${sanitizeGitClientMessage(message)}\n`)
+	const contentType =
+		service === gitReceivePackService
+			? 'application/x-git-receive-pack-advertisement'
+			: 'application/x-git-upload-pack-advertisement'
+	return new Response(gitTextEncoder.encode(body), {
+		status: 200,
+		headers: {
+			'Cache-Control': 'no-store',
+			'Content-Type': contentType,
 		},
 	})
 }
@@ -428,39 +479,119 @@ function artifactsAuthHeaders(tokenPlaintext: string): HeadersInit {
 	}
 }
 
+/**
+ * git's stateless HTTP client gzips a buffered upload-pack body once it is
+ * larger than 1024 bytes (`Content-Encoding: gzip`). The size cap and the
+ * pkt-line parsers need the decompressed bytes. `Content-Length` is the
+ * compressed size in that case, so it is not a stand-in for the cap.
+ */
+function uploadPackRequestStream(request: Request):
+	| {
+			ok: true
+			stream: ReadableStream<Uint8Array> | null
+			honorContentLength: boolean
+	  }
+	| { ok: false; response: Response } {
+	const encoding = (request.headers.get('Content-Encoding') ?? '')
+		.trim()
+		.toLowerCase()
+	if (encoding === '' || encoding === 'identity') {
+		return { ok: true, stream: request.body, honorContentLength: true }
+	}
+	if (encoding === 'gzip' || encoding === 'x-gzip') {
+		if (!request.body) {
+			return { ok: true, stream: null, honorContentLength: false }
+		}
+		try {
+			return {
+				ok: true,
+				stream: request.body.pipeThrough(new DecompressionStream('gzip')),
+				honorContentLength: false,
+			}
+		} catch {
+			return {
+				ok: false,
+				response: gitResultErrorResponse(
+					gitUploadPackService,
+					uploadPackBodyDecodeMessage,
+				),
+			}
+		}
+	}
+	return {
+		ok: false,
+		response: gitResultErrorResponse(
+			gitUploadPackService,
+			uploadPackEncodingMessage,
+		),
+	}
+}
+
 async function readUploadPackRequestBody(
 	request: Request,
 	maxBodyBytes: number = publicGitUploadPackMaxBodyBytes,
 ): Promise<{ ok: true; body: Uint8Array } | { ok: false; response: Response }> {
-	const contentLengthHeader = request.headers.get('Content-Length')
-	if (contentLengthHeader != null) {
-		const contentLength = Number.parseInt(contentLengthHeader, 10)
-		if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
-			return { ok: false, response: payloadTooLargeResponse() }
+	const source = uploadPackRequestStream(request)
+	if (!source.ok) return source
+
+	if (source.honorContentLength) {
+		const contentLengthHeader = request.headers.get('Content-Length')
+		if (contentLengthHeader != null) {
+			const contentLength = Number.parseInt(contentLengthHeader, 10)
+			if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+				return {
+					ok: false,
+					response: gitResultErrorResponse(
+						gitUploadPackService,
+						uploadPackBodyTooLargeMessage,
+					),
+				}
+			}
 		}
 	}
 
-	const reader = request.body?.getReader()
+	const reader = source.stream?.getReader()
 	if (!reader) {
 		return { ok: true, body: new Uint8Array() }
 	}
 
 	const chunks: Array<Uint8Array> = []
 	let size = 0
-	for (;;) {
-		const { done, value } = await reader.read()
-		if (done) break
-		if (!value || value.byteLength === 0) continue
-		size += value.byteLength
-		if (size > maxBodyBytes) {
-			try {
-				await reader.cancel()
-			} catch {
-				// Ignore cancel errors; the size limit response is what matters.
+	try {
+		for (;;) {
+			const { done, value } = await reader.read()
+			if (done) break
+			if (!value || value.byteLength === 0) continue
+			size += value.byteLength
+			if (size > maxBodyBytes) {
+				try {
+					await reader.cancel()
+				} catch {
+					// Ignore cancel errors; the size limit response is what matters.
+				}
+				return {
+					ok: false,
+					response: gitResultErrorResponse(
+						gitUploadPackService,
+						uploadPackBodyTooLargeMessage,
+					),
+				}
 			}
-			return { ok: false, response: payloadTooLargeResponse() }
+			chunks.push(value)
 		}
-		chunks.push(value)
+	} catch {
+		try {
+			await reader.cancel()
+		} catch {
+			// The decode error response is what the client needs.
+		}
+		return {
+			ok: false,
+			response: gitResultErrorResponse(
+				gitUploadPackService,
+				uploadPackBodyDecodeMessage,
+			),
+		}
 	}
 
 	const body = new Uint8Array(size)
@@ -501,6 +632,94 @@ function toProxiedPublicTarget(
 	}
 }
 
+async function cancelResponseBody(response: Response) {
+	try {
+		await response.body?.cancel()
+	} catch {
+		// The git error response replaces the upstream body.
+	}
+}
+
+function shouldNormalizeUploadPackNegotiation(
+	summary: UploadPackRequestSummary,
+) {
+	if (summary.hasDone) return false
+	switch (summary.ackMode) {
+		case 'single':
+			return false
+		case 'detailed':
+		case 'multi':
+			return true
+		default: {
+			const exhaustive: never = summary.ackMode
+			throw new Error(`Unexpected upload-pack ack mode: ${String(exhaustive)}`)
+		}
+	}
+}
+
+async function readStreamWithCap(
+	stream: ReadableStream<Uint8Array> | null,
+	cap: number,
+): Promise<
+	| { kind: 'complete'; bytes: Uint8Array }
+	| {
+			kind: 'overflow'
+			prefix: Uint8Array
+			reader: ReadableStreamDefaultReader<Uint8Array>
+	  }
+> {
+	if (!stream) return { kind: 'complete', bytes: new Uint8Array() }
+	const reader = stream.getReader()
+	const chunks: Array<Uint8Array> = []
+	let size = 0
+	for (;;) {
+		const { done, value } = await reader.read()
+		if (done) break
+		if (!value || value.byteLength === 0) continue
+		chunks.push(value)
+		size += value.byteLength
+		if (size > cap) {
+			return { kind: 'overflow', prefix: concatChunks(chunks, size), reader }
+		}
+	}
+	return { kind: 'complete', bytes: concatChunks(chunks, size) }
+}
+
+function concatChunks(chunks: Array<Uint8Array>, size: number) {
+	const bytes = new Uint8Array(size)
+	let offset = 0
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	return bytes
+}
+
+function streamPrefixThenReader(
+	prefix: Uint8Array,
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+	let sentPrefix = false
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			if (!sentPrefix) {
+				sentPrefix = true
+				if (prefix.byteLength > 0) controller.enqueue(prefix)
+				return
+			}
+			const { done, value } = await reader.read()
+			if (done) {
+				controller.close()
+				return
+			}
+			if (value && value.byteLength > 0) controller.enqueue(value)
+		},
+		cancel(reason) {
+			return reader.cancel(reason)
+		},
+	})
+}
+
 async function proxyArtifactsUploadPack(input: {
 	target: ProxiedGitTarget
 	request: Request
@@ -538,21 +757,66 @@ async function proxyArtifactsUploadPack(input: {
 				snapshotCommit: input.target.snapshotCommit,
 			})
 		) {
-			return wantRejectedResponse()
+			return gitResultErrorResponse(
+				gitUploadPackService,
+				snapshotWantRejectedMessage,
+			)
 		}
 	}
 
+	const requestSummary = summarizeUploadPackRequest(bodyResult.body)
 	const upstream = await fetch(upstreamUrl, {
 		method: 'POST',
 		headers,
 		body: Uint8Array.from(bodyResult.body),
 		signal: AbortSignal.timeout(60_000),
 	})
+	if (!upstream.ok) {
+		await cancelResponseBody(upstream)
+		return gitResultErrorResponse(
+			gitUploadPackService,
+			`The artifact repository rejected git-upload-pack (HTTP ${upstream.status}).`,
+		)
+	}
 
-	return new Response(upstream.body, {
+	const responseHeaders = filterProxiedResponseHeaders(upstream.headers)
+	if (!shouldNormalizeUploadPackNegotiation(requestSummary)) {
+		return new Response(upstream.body, {
+			status: upstream.status,
+			statusText: upstream.statusText,
+			headers: responseHeaders,
+		})
+	}
+
+	// Artifacts advertises multi_ack_detailed but answers negotiation rounds
+	// with a bare `ACK <oid>` and no NAK. git then drops multi-ack, sends
+	// `done` without its haves, and reads the following NAK as sideband
+	// (band byte 'N' = 78). Rewrite that round only. `done` responses and
+	// single-ack clients stream through.
+	const capped = await readStreamWithCap(
+		upstream.body,
+		uploadPackNegotiationNormalizeCapBytes,
+	)
+	if (capped.kind === 'overflow') {
+		return new Response(streamPrefixThenReader(capped.prefix, capped.reader), {
+			status: upstream.status,
+			statusText: upstream.statusText,
+			headers: responseHeaders,
+		})
+	}
+
+	const normalized = normalizeUploadPackNegotiationResponse({
+		body: capped.bytes,
+		ackMode: requestSummary.ackMode,
+	})
+	responseHeaders.delete('content-length')
+	if (!responseHeaders.has('content-type')) {
+		responseHeaders.set('Content-Type', 'application/x-git-upload-pack-result')
+	}
+	return new Response(Uint8Array.from(normalized), {
 		status: upstream.status,
 		statusText: upstream.statusText,
-		headers: filterProxiedResponseHeaders(upstream.headers),
+		headers: responseHeaders,
 	})
 }
 
@@ -579,6 +843,13 @@ async function proxyArtifactsReceivePack(input: {
 		duplex: 'half',
 		signal: AbortSignal.timeout(120_000),
 	} as RequestInit & { duplex: 'half' })
+	if (!upstream.ok) {
+		await cancelResponseBody(upstream)
+		return gitResultErrorResponse(
+			gitReceivePackService,
+			`The artifact repository rejected git-receive-pack (HTTP ${upstream.status}).`,
+		)
+	}
 
 	return new Response(upstream.body, {
 		status: upstream.status,
@@ -625,10 +896,16 @@ async function proxyArtifactsInfoRefs(input: {
 					},
 				})
 			}
+			try {
+				await upstream.body?.cancel()
+			} catch {
+				// The advertisement error response is what the client needs.
+			}
 		} catch {
-			// Fall through to 503 via caller.
+			// Fall through to a git ERR advertisement.
 		}
-		return serviceUnavailableResponse(
+		return gitAdvertisementErrorResponse(
+			input.service,
 			'Failed to advertise refs for the artifact repository.',
 		)
 	}
@@ -937,8 +1214,35 @@ function stripTrailingSlash(value: string) {
 	return value.endsWith('/') ? value.slice(0, -1) : value
 }
 
+type GitHttpEndpoint =
+	| { kind: 'upload-pack' }
+	| { kind: 'receive-pack' }
+	| {
+			kind: 'info-refs'
+			service: typeof gitUploadPackService | typeof gitReceivePackService
+	  }
+	| { kind: 'repo-root' }
+
+function gitSmartProtocolError(endpoint: GitHttpEndpoint, message: string) {
+	switch (endpoint.kind) {
+		case 'repo-root':
+			return null
+		case 'upload-pack':
+			return gitResultErrorResponse(gitUploadPackService, message)
+		case 'receive-pack':
+			return gitResultErrorResponse(gitReceivePackService, message)
+		case 'info-refs':
+			return gitAdvertisementErrorResponse(endpoint.service, message)
+		default: {
+			const exhaustive: never = endpoint
+			throw new Error(`Unexpected git endpoint: ${String(exhaustive)}`)
+		}
+	}
+}
+
 function responseForGitResolve(
 	resolved: Awaited<ReturnType<typeof resolveGitHttpProxyTarget>>,
+	endpoint: GitHttpEndpoint,
 ) {
 	switch (resolved.kind) {
 		case 'ok':
@@ -952,9 +1256,15 @@ function responseForGitResolve(
 		case 'unauthorized':
 			return authRequiredResponse(resolved.message ?? 'Authentication required')
 		case 'forbidden':
-			return forbiddenResponse(resolved.message)
+			return (
+				gitSmartProtocolError(endpoint, resolved.message) ??
+				forbiddenResponse(resolved.message)
+			)
 		case 'unavailable':
-			return serviceUnavailableResponse(resolved.message)
+			return (
+				gitSmartProtocolError(endpoint, resolved.message) ??
+				serviceUnavailableResponse(resolved.message)
+			)
 		default: {
 			const exhaustive: never = resolved
 			throw new Error(`Unexpected git resolve: ${String(exhaustive)}`)
@@ -1003,7 +1313,7 @@ export async function handlePublicPackageGitHttpRequest(
 			location.pathname = `${location.pathname}/git-receive-pack`
 			return Response.redirect(location.toString(), 301)
 		}
-		const early = responseForGitResolve(resolved)
+		const early = responseForGitResolve(resolved, { kind: 'receive-pack' })
 		if (early) return early
 		if (resolved.kind !== 'ok') return notFoundResponse()
 		try {
@@ -1012,7 +1322,8 @@ export async function handlePublicPackageGitHttpRequest(
 				request,
 			})
 		} catch {
-			return serviceUnavailableResponse(
+			return gitResultErrorResponse(
+				gitReceivePackService,
 				'Failed to proxy git-receive-pack to the artifact repository.',
 			)
 		}
@@ -1044,7 +1355,13 @@ export async function handlePublicPackageGitHttpRequest(
 			location.search = url.search
 			return Response.redirect(location.toString(), 301)
 		}
-		const early = responseForGitResolve(resolved)
+		const early = responseForGitResolve(resolved, {
+			kind: 'info-refs',
+			service:
+				service === gitReceivePackService
+					? gitReceivePackService
+					: gitUploadPackService,
+		})
 		if (early) return early
 		if (resolved.kind !== 'ok') return notFoundResponse()
 
@@ -1073,7 +1390,10 @@ export async function handlePublicPackageGitHttpRequest(
 			})
 		} catch {
 			if (!resolved.target.snapshotCommit || needWrite) {
-				return serviceUnavailableResponse(
+				return gitAdvertisementErrorResponse(
+					service === gitReceivePackService
+						? gitReceivePackService
+						: gitUploadPackService,
 					'Failed to advertise refs for the artifact repository.',
 				)
 			}
@@ -1109,7 +1429,7 @@ export async function handlePublicPackageGitHttpRequest(
 			location.pathname = `${location.pathname}/git-upload-pack`
 			return Response.redirect(location.toString(), 301)
 		}
-		const early = responseForGitResolve(resolved)
+		const early = responseForGitResolve(resolved, { kind: 'upload-pack' })
 		if (early) return early
 		if (resolved.kind !== 'ok') return notFoundResponse()
 		try {
@@ -1118,7 +1438,8 @@ export async function handlePublicPackageGitHttpRequest(
 				request,
 			})
 		} catch {
-			return serviceUnavailableResponse(
+			return gitResultErrorResponse(
+				gitUploadPackService,
 				'Failed to proxy git-upload-pack to the artifact repository.',
 			)
 		}
@@ -1146,7 +1467,7 @@ export async function handlePublicPackageGitHttpRequest(
 		if (resolved.kind === 'redirect') {
 			return Response.redirect(new URL(resolved.to, url.origin).toString(), 301)
 		}
-		const early = responseForGitResolve(resolved)
+		const early = responseForGitResolve(resolved, { kind: 'repo-root' })
 		if (early) return early
 		if (resolved.kind !== 'ok') return notFoundResponse()
 		const cloneUrl = `${url.origin}${getCommunityPackageGitHref({

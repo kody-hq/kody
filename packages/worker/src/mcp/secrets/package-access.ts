@@ -181,6 +181,21 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	if (!packageId || input.resolved.scope !== 'user') return
 	if (input.resolved.allowedPackages.includes(packageId)) return
 
+	const intent = input.intent ?? 'use'
+	// Route `use` through the shared in-flight map so multi-secret fetch
+	// auth shares one package + fork load (KODY-9K). Missing packages still
+	// fall through to the explicit not-found error below.
+	if (
+		intent === 'use' &&
+		(await packageHasImplicitUserSecretReadAccess({
+			env: input.env,
+			userId: input.userId,
+			packageId,
+		}))
+	) {
+		return
+	}
+
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId,
@@ -189,17 +204,6 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 		throw new PackageSecretAccessDeniedError(
 			`Package "${packageId}" was not found for secret access.`,
 		)
-	}
-	const intent = input.intent ?? 'use'
-	if (
-		intent === 'use' &&
-		(await savedPackageHasImplicitUserSecretReadAccess({
-			db: input.env.APP_DB,
-			userId: input.userId,
-			savedPackage,
-		}))
-	) {
-		return
 	}
 
 	const orgSlug = await resolveSecretPageOrgSlug({

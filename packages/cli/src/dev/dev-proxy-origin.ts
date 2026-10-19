@@ -71,7 +71,26 @@ export function buildTrustedDevPublicUrl(input: {
 	restPath: string
 	search: string
 }): string {
-	const url = new URL(input.restPath + input.search, input.hostedUrl)
+	// Assign pathname/search on the hosted origin. `new URL(restPath, base)`
+	// treats a leading `//` as a new authority (SSRF via mount-stripped paths).
+	const url = new URL(input.hostedUrl)
+	url.pathname = input.restPath
+	url.search = input.search
+	return url.href
+}
+
+/**
+ * Build a same-origin (or loopback workerd) URL without letting `restPath`
+ * rewrite the authority. Same `//` hazard as {@link buildTrustedDevPublicUrl}.
+ */
+export function buildTrustedDevForwardUrl(input: {
+	baseUrl: string
+	restPath: string
+	search: string
+}): string {
+	const url = new URL(input.baseUrl)
+	url.pathname = input.restPath
+	url.search = input.search
 	return url.href
 }
 

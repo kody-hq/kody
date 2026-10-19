@@ -243,6 +243,9 @@ export const repoSessionMockModule = (() => {
 		deleteStorageBucketInventory: vi.fn<
 			typeof storageBucketsModule.deleteStorageBucketInventory
 		>(async () => true),
+		storageBucketInventoryExists: vi.fn<
+			typeof storageBucketsModule.storageBucketInventoryExists
+		>(async () => false),
 		getSavedPackageById: vi.fn(
 			async (
 				..._args: Parameters<typeof savedPackageRepoModule.getSavedPackageById>
@@ -299,6 +302,8 @@ export function restoreRepoSessionMockBaseline() {
 	mocks.registerStorageBucketAndWait.mockClear()
 	mocks.maybeRefreshStorageBucketEstimate.mockClear()
 	mocks.deleteStorageBucketInventory.mockClear()
+	mocks.storageBucketInventoryExists.mockClear()
+	mocks.storageBucketInventoryExists.mockResolvedValue(false)
 
 	mocks.workspaceExists.mockResolvedValue(false)
 	mocks.workspaceReadFileBytes.mockImplementation(async (path) => {

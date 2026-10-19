@@ -38,13 +38,11 @@ export const localPackageGraphPlatformIssueUrl =
 	'https://github.com/kody-hq/kody/issues/2808'
 
 /**
- * When `code` is larger than this, package-graph POSTs a tiny synthetic entry
- * built from the already-scanned `kody:@` import list instead of the full
- * module. Origin only needs those imports (plus the gateway-fetch shim) —
- * shipping a 1.2–1.7 MiB TanStack / React `kody dev` worker bundle on every
- * rebuild trips older 512k Zod caps and wastes bandwidth under live reload.
- * Origin's inline `code` ceiling is the Open API JSON body limit (5 MiB);
- * callers that need the full source scanned can still send it under that cap.
+ * Historical threshold: package-graph used to POST the full entry `code` below
+ * this size and a synthetic imports-only entry above it. The request is now
+ * always built from the imports that still need published modules (kody#4067),
+ * so the size no longer changes the request shape. Kept for callers/tests that
+ * reference it.
  */
 export const packageGraphInlineCodePreferImportsChars = 400_000
 
@@ -240,15 +238,51 @@ export async function rewriteBareKodyBuiltinImports(
 export class LocalPackageGraphError extends Error {
 	readonly status: number | null
 	readonly code: string | null
+	readonly details: Record<string, unknown> | null
 
 	constructor(
 		message: string,
-		options: { status?: number | null; code?: string | null } = {},
+		options: {
+			status?: number | null
+			code?: string | null
+			details?: Record<string, unknown> | null
+		} = {},
 	) {
 		super(message)
 		this.name = 'LocalPackageGraphError'
 		this.status = options.status ?? null
 		this.code = options.code ?? null
+		this.details = options.details ?? null
+	}
+}
+
+/** Docs for running entries from a package checkout (kody#4067). */
+export const localExecutePackageCheckoutDocsUrl =
+	'https://kody.codes/docs/local-execute#running-from-a-package-checkout'
+
+/**
+ * `--json` body for a package-graph failure. Package-graph runs before
+ * workerd starts, so the module never ran; agents get a stable `code`
+ * instead of an empty stdout (kody#4067).
+ */
+export function packageGraphErrorToolResult(error: LocalPackageGraphError): {
+	isError: true
+	content: Array<{ type: 'text'; text: string }>
+	structuredContent: { error: Record<string, unknown> }
+} {
+	return {
+		isError: true,
+		content: [{ type: 'text', text: error.message }],
+		structuredContent: {
+			error: {
+				code: error.code ?? 'package_graph_failed',
+				message: error.message,
+				phase: 'package_graph',
+				moduleRan: false,
+				...(error.status !== null ? { status: error.status } : {}),
+				...error.details,
+			},
+		},
 	}
 }
 
@@ -421,14 +455,15 @@ export async function fetchLocalPackageGraph(
 	const url = capabilityProxyUrl(input.apiUrl, localPackageGraphPath)
 	if (input.org) url.searchParams.set('org', input.org)
 	const fetchFn = input.fetchFn ?? fetch
-	// Large bundles (kody dev worker apps): only the kody:@ import list matters
-	// for stamped-module download. Keep a small synthetic `code` so older
-	// origins that still require the field keep working; new origins also
-	// accept imports-only.
-	const requestCode =
-		input.code.length > packageGraphInlineCodePreferImportsChars
-			? synthesizePackageGraphEntry(required)
-			: input.code
+	// Build the request from the imports that still need published modules,
+	// never from the original entry. Origin builds root aliases from the
+	// posted `code`'s static imports (it ignores `imports` when `code` is
+	// set), so posting the entry after some imports resolved from the working
+	// tree asked for the wrong roots: self-package exports instead of their
+	// published deps (kody#4067). A synthetic side-effect entry keeps the two
+	// aligned, stays tiny for multi-megabyte `kody dev` bundles, and still
+	// satisfies older origins that require the `code` field.
+	const requestCode = synthesizePackageGraphEntry(required)
 	let response: Response
 	try {
 		response = await fetchFn(url, {
@@ -472,8 +507,12 @@ export async function fetchLocalPackageGraph(
 	)
 	if (missing.length > 0) {
 		throw new LocalPackageGraphError(
-			`Local package graph response omitted modules for: ${missing.join(', ')}. ${localPackageGraphPlatformIssueUrl}`,
-			{ code: 'incomplete_package_graph' },
+			`Your module never ran: Kody's package-graph response omitted modules for ${missing.join(', ')}, so local execute stopped before starting the module. ` +
+				`This is a package resolution problem, not an auth problem — your credentials were accepted. ` +
+				`Workarounds: inside a package checkout, import your own package's files with relative imports instead of \`kody:@…\`; ` +
+				`to test the published exports, run the entry from outside the checkout. ` +
+				`See ${localExecutePackageCheckoutDocsUrl} and ${localPackageGraphPlatformIssueUrl}.`,
+			{ code: 'incomplete_package_graph', details: { missing } },
 		)
 	}
 	return graph

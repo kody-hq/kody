@@ -94,6 +94,7 @@ test('recordValidateTreeProvenance writes the worktree tree SHA', async () => {
 			return gitResult(1)
 		}
 		expect(recordValidateTreeProvenance(dirty, store, treeA)).toBe(treeA)
+		expect(hasProvenanceCheck(store, 'knip', treeA)).toBe(true)
 		expect(hasProvenanceCheck(store, 'test:push', treeA)).toBe(true)
 	} finally {
 		await rm(root, { recursive: true, force: true })

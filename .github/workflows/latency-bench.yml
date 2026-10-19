@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   measure:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ⏱ Measure MCP latency
     timeout-minutes: 15
     env:

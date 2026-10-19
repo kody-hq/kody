@@ -43,6 +43,8 @@ protocol contract without sending website mutations through its HTTP adapter.
 | GET    | `/account/mcp-servers/logos/:serverId`                        | Browser assets and previews                                             |
 | GET    | `/account/mcp-servers/oauth/callback`                         | External OAuth redirect                                                 |
 | GET    | `/account/memories-export.json`                               | Authenticated file download                                             |
+| GET    | `/account/packages.json`                                      | Retained client assets (package list JSON during asset retention)       |
+| POST   | `/account/packages.json`                                      | Retained client assets (package mutations during asset retention)       |
 | GET    | `/community/:listingId/raw(/*relativePath)`                   | Package source and README asset consumers                               |
 | GET    | `/@:username/:kodyId/raw/:ref(/*relativePath)`                | Package source and README asset consumers                               |
 | GET    | `/@:username/:kodyId/assets(/*relativePath)`                  | Package source and README asset consumers                               |
@@ -73,10 +75,13 @@ The origin worker still owns MCP, OAuth/OIDC, WebSocket upgrades, package-app
 hosting, and worker infrastructure protocols before website dispatch. The API
 worker owns the official REST API. These are independent of website routing.
 
-The retired `/account/*.json`, `/admin/*.json`, and public JSON companion routes
-are not a supported API. Use the official API or MCP for automation, and the
-website UI to verify browser mutations. `/auth` and `/session` remain explicit
-tooling exceptions, the website itself uses native functions for both.
+Most retired `/account/*.json`, `/admin/*.json`, and public JSON companion
+routes are not a supported API. Use the official API or MCP for automation, and
+the website UI (native Start server functions) to verify browser mutations.
+`/auth` and `/session` remain explicit tooling exceptions.
+`/account/packages.json` is retained so hashed client assets from the
+asset-retention window can still mutate packages; new UI must not add callers to
+other retired companions.
 
 Website consent uses the `submitOAuthDecision` Start server function. It shares
 approval, denial and client reset operations with `POST /oauth/authorize` while

@@ -18,11 +18,14 @@ import {
 import { isExecutedDirectly } from './node-runtime.ts'
 import { isOrganizationSlug } from '../packages/worker/universal/org-pages.ts'
 import {
+	buildRouteInventory,
 	checkFeatureCatalog,
 	featureCatalog,
 	featuresDirRelativePath,
 	findFeature,
+	formatRouteInventory,
 	type Feature,
+	type GeneratedRoute,
 } from './control-kody/feature-catalog.ts'
 import {
 	createPreviewPackage,
@@ -97,7 +100,7 @@ const usageLines = [
 	'  preview         PR preview smoke (forwards flags to preview:manual-test)',
 	'  browse          Open headed Chromium already signed in (reuse seed cookie)',
 	'  health          GET /health and optionally assert commitSha',
-	'  map             List or print a Feature Map entry; --check for drift',
+	'  map             Print generated route inventory or a feature notes file; --check for drift',
 	'  package-create  Create a stub saved package via MCP (preview data)',
 	'  execute         Run an MCP execute module as the seed user',
 	'  search          Run MCP search as the seed user',
@@ -1251,12 +1254,12 @@ async function loginAndStoreCookie(
 	return { ok: true, cookieHeader: session.cookieHeader }
 }
 
-export function formatFeatureMap(features: ReadonlyArray<Feature>) {
-	return features
-		.map(
-			(feature) => `${feature.id}\t${feature.paths[0] ?? ''}\t${feature.title}`,
-		)
-		.join('\n')
+export function formatFeatureMap(
+	routes: ReadonlyArray<GeneratedRoute>,
+	features: ReadonlyArray<Feature> = featureCatalog,
+	filter?: { featureId?: string | null; prefix?: string | null },
+) {
+	return formatRouteInventory(routes, features, filter)
 }
 
 export function repoRootFromHere(here = import.meta.dirname) {
@@ -1274,13 +1277,23 @@ export function defaultFeaturesDir(root: string) {
 export function runMapCheck(input: {
 	routeSource: string
 	featuresDir: string
+	catalog?: ReadonlyArray<Feature>
 }) {
 	const existingFiles = existsSync(input.featuresDir)
 		? readdirSync(input.featuresDir).filter((name) => name.endsWith('.md'))
 		: []
+	const catalog = input.catalog ?? featureCatalog
+	const notesBodies = new Map<string, string>()
+	for (const feature of catalog) {
+		const filePath = path.join(input.featuresDir, feature.file)
+		if (!existsSync(filePath)) continue
+		notesBodies.set(feature.file, readFileSync(filePath, 'utf8'))
+	}
 	return checkFeatureCatalog({
+		catalog,
 		routeSource: input.routeSource,
 		existingFiles,
+		notesBodies,
 	})
 }
 
@@ -1760,15 +1773,18 @@ async function runCommand(options: ControlKodyOptions) {
 			return 0
 		}
 		case 'map': {
+			const root = repoRootFromHere()
+			const routeSource = readFileSync(defaultRoutesPath(root), 'utf8')
 			if (options.check) {
-				const root = repoRootFromHere()
 				const report = runMapCheck({
-					routeSource: readFileSync(defaultRoutesPath(root), 'utf8'),
+					routeSource,
 					featuresDir: defaultFeaturesDir(root),
 				})
 				if (options.json) printJson(report)
 				else if (report.ok)
-					console.log('Feature Map matches the native Start route tree')
+					console.log(
+						'Feature Map notes and generated routes match routeTree.gen.ts',
+					)
 				else {
 					for (const issue of report.issues) {
 						console.error(issue.detail)
@@ -1776,6 +1792,7 @@ async function runCommand(options: ControlKodyOptions) {
 				}
 				return report.ok ? 0 : 1
 			}
+			const inventory = buildRouteInventory({ routeSource })
 			if (options.featureId) {
 				const feature = findFeature(featureCatalog, options.featureId)
 				if (!feature) {
@@ -1783,17 +1800,30 @@ async function runCommand(options: ControlKodyOptions) {
 						`Unknown feature ${options.featureId}. Run: node tools/control-kody.ts map`,
 					)
 				}
-				const filePath = path.join(
-					defaultFeaturesDir(repoRootFromHere()),
-					feature.file,
+				const filePath = path.join(defaultFeaturesDir(root), feature.file)
+				const routes = inventory.filter(
+					(route) => route.featureId === feature.id,
 				)
-				if (options.json)
-					printJson({ feature, body: readFileSync(filePath, 'utf8') })
-				else console.log(readFileSync(filePath, 'utf8'))
+				if (options.json) {
+					printJson({
+						feature,
+						routes,
+						body: existsSync(filePath) ? readFileSync(filePath, 'utf8') : null,
+					})
+				} else {
+					console.log(readFileSync(filePath, 'utf8'))
+					console.log('')
+					console.log(
+						formatFeatureMap(routes, featureCatalog, {
+							featureId: feature.id,
+						}),
+					)
+				}
 				return 0
 			}
-			if (options.json) printJson(featureCatalog)
-			else console.log(formatFeatureMap(featureCatalog))
+			if (options.json)
+				printJson({ catalog: featureCatalog, routes: inventory })
+			else console.log(formatFeatureMap(inventory))
 			return 0
 		}
 		default: {

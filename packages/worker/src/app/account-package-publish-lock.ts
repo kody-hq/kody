@@ -6,15 +6,18 @@ import { buildPublishCommitDiff } from '#app/package-publish-diff.ts'
 import { type AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { routes } from '#universal/routes.ts'
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	packageMutationResult,
 	type PackageMutationResult,
 } from './package-mutation-result.ts'
 import {
+	fullGitCommitShaRequiredMessage,
 	isGitCommitSha,
 	isSavedPackageLocked,
 } from '#worker/package-registry/package-publish-lock.ts'
+import { isUnknownRequestedCommitMessage } from '#worker/repo/requested-commit-error.ts'
 import { setSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
@@ -22,6 +25,7 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveListingBehindPublishHint } from '#worker/community/resolve-listing-behind-publish-hint.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
+import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 
 type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
@@ -60,9 +64,9 @@ export async function loadAccountPackageApprovePublishData(input: {
 	let pendingCommit: string | null = null
 	if (requestedCommit) {
 		if (!isGitCommitSha(requestedCommit)) {
-			return { ok: false, error: 'The commit in this URL is not a git SHA.' }
+			return { ok: false, error: fullGitCommitShaRequiredMessage }
 		}
-		pendingCommit = requestedCommit
+		pendingCommit = requestedCommit.toLowerCase()
 	} else {
 		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
 		pendingCommit = head.commit
@@ -151,6 +155,20 @@ export async function loadAccountPackageApprovePublishData(input: {
 						previousFiles: publishedFiles.files,
 						sourceRoot: source.source_root,
 					}),
+		allowedPackagesPublishNotice:
+			pendingCommit == null
+				? null
+				: await buildCredentialAllowedPackagesPublishWarningNotice({
+						env: input.env,
+						baseUrl: getAppBaseUrl({ env: input.env }),
+						userId: ownerUserId,
+						orgSlug: ownerUsername,
+						packageId: savedPackage.id,
+						packageDisplayName: savedPackage.name,
+						kodyId: savedPackage.kodyId,
+						files: pendingFiles.files,
+						sourceRoot: source.source_root,
+					}).catch(() => null),
 		diff:
 			unpublishedCompare || pendingMissing
 				? { files: [], omittedCount: 0 }
@@ -254,12 +272,12 @@ async function changePackagePublishState(
 		return packageMutationResult({ ok: true, packageId })
 	}
 
-	const commit = ('commit' in input ? input.commit : '').trim()
+	const commit = ('commit' in input ? input.commit : '').trim().toLowerCase()
 	if (!isGitCommitSha(commit)) {
 		return packageMutationResult(
 			{
 				ok: false,
-				error: 'A git commit SHA is required to approve this publish.',
+				error: fullGitCommitShaRequiredMessage,
 			},
 			400,
 		)
@@ -276,28 +294,41 @@ async function changePackagePublishState(
 		)
 	}
 	const sessionId = `approve-publish-${savedPackage.id}`
-	const publishResult = await repoSessionRpc(
-		input.env,
-		sessionId,
-	).publishFromExternalRef({
-		sessionId,
-		sourceId: source.id,
-		userId: ownerUserId,
-		newCommit: commit,
-		...(locked ? { allowLockedPublish: true } : {}),
-		requestedByUserId: actorUserId,
-		// Owner explicitly chose this commit on approve-publish. If a
-		// published-only fleet migration advanced published_commit to a sibling
-		// of pending HEAD, this is not a fast-forward; allowForce + overwrite
-		// confirmation (this click) still requires a restorable backup.
-		allowForce: true,
-		destructiveOverwriteConfirmed: true,
-		baseUrl: getAppBaseUrl({
-			env: input.env,
-			requestUrl: input.request.url,
-		}),
-		rebuildPackageArtifacts: true,
-	})
+	let publishResult: Awaited<
+		ReturnType<ReturnType<typeof repoSessionRpc>['publishFromExternalRef']>
+	>
+	try {
+		publishResult = await repoSessionRpc(
+			input.env,
+			sessionId,
+		).publishFromExternalRef({
+			sessionId,
+			sourceId: source.id,
+			userId: ownerUserId,
+			newCommit: commit,
+			...(locked ? { allowLockedPublish: true } : {}),
+			requestedByUserId: actorUserId,
+			// Owner explicitly chose this commit on approve-publish. If a
+			// published-only fleet migration advanced published_commit to a sibling
+			// of pending HEAD, this is not a fast-forward; allowForce + overwrite
+			// confirmation (this click) still requires a restorable backup.
+			allowForce: true,
+			destructiveOverwriteConfirmed: true,
+			baseUrl: getAppBaseUrl({
+				env: input.env,
+				requestUrl: input.request.url,
+			}),
+			rebuildPackageArtifacts: true,
+		})
+	} catch (error) {
+		// Only the checkout classifier's message. A later NotFoundError
+		// (ancestry walk, missing blob) must not be relabeled as this commit.
+		const message = getErrorMessage(error)
+		if (isUnknownRequestedCommitMessage(message)) {
+			return packageMutationResult({ ok: false, error: message }, 400)
+		}
+		throw error
+	}
 	switch (publishResult.status) {
 		case 'published':
 		case 'already_published': {

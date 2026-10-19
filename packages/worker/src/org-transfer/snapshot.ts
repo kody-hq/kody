@@ -27,8 +27,6 @@ export const orgTransferOwnerTables = {
 	entity_source_artifacts_push_subscriptions: 'user_id',
 	community_listings: 'owner_user_id',
 	community_forks: 'forker_user_id',
-	mcp_memories: 'user_id',
-	mcp_memory_conversation_suppressions: 'user_id',
 	mcp_server_settings: 'user_id',
 	mcp_user_server_instructions: 'user_id',
 	user_oauth_apps: 'user_id',
@@ -76,6 +74,12 @@ export type OrgTransferSnapshot = {
 	hubServerIds: { from: Set<string>; to: Set<string> }
 	/** Source credentials granted to other orgs as personal credentials. */
 	personalGrantCredentialIds: Set<string>
+	/**
+	 * Live `mcp_memories` rows owned by the source (`deleted_at` is null).
+	 * Counted read-only. Memories, suppressions, and memory vectors are never
+	 * loaded into the move plan.
+	 */
+	sourceLiveMemoryCount: number
 }
 
 async function readOwnerRows(input: {
@@ -145,27 +149,36 @@ export async function loadOrgTransferSnapshot(input: {
 		mcpClientHubTransferStub({ env: input.env, userId })
 			.listServerIdsForTransfer()
 			.then((ids) => new Set(ids))
-	const [source, target, sourceJobs, members, fromHub, toHub, personalGrants] =
-		await Promise.all([
-			readOrgTransferTableRows(db, input.from.id),
-			readOrgTransferTableRows(db, input.to.id),
-			jobsData(input.env).listJobsForUser({ userId: input.from.id }),
-			db
-				.prepare(
-					`SELECT user_id, role FROM org_memberships
-					 WHERE org_id = ? AND deleted_at IS NULL`,
-				)
-				.bind(input.to.id)
-				.all<{ user_id: string; role: string }>(),
-			hubServerIds(input.from.id),
-			hubServerIds(input.to.id),
-			db
-				.prepare(
-					`SELECT DISTINCT credential_id FROM credential_org_grants WHERE user_id = ?`,
-				)
-				.bind(input.from.id)
-				.all<{ credential_id: string }>(),
-		])
+	const [
+		source,
+		target,
+		sourceJobs,
+		members,
+		fromHub,
+		toHub,
+		personalGrants,
+		sourceLiveMemoryCount,
+	] = await Promise.all([
+		readOrgTransferTableRows(db, input.from.id),
+		readOrgTransferTableRows(db, input.to.id),
+		jobsData(input.env).listJobsForUser({ userId: input.from.id }),
+		db
+			.prepare(
+				`SELECT user_id, role FROM org_memberships
+				 WHERE org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(input.to.id)
+			.all<{ user_id: string; role: string }>(),
+		hubServerIds(input.from.id),
+		hubServerIds(input.to.id),
+		db
+			.prepare(
+				`SELECT DISTINCT credential_id FROM credential_org_grants WHERE user_id = ?`,
+			)
+			.bind(input.from.id)
+			.all<{ credential_id: string }>(),
+		countLiveSourceMemories(db, input.from.id),
+	])
 	return {
 		from: input.from,
 		to: input.to,
@@ -179,5 +192,18 @@ export async function loadOrgTransferSnapshot(input: {
 		personalGrantCredentialIds: new Set(
 			(personalGrants.results ?? []).map((row) => row.credential_id),
 		),
+		sourceLiveMemoryCount,
 	}
+}
+
+/** Read-only. Memories are personal and are never part of the move snapshot. */
+async function countLiveSourceMemories(db: D1Database, ownerId: string) {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM mcp_memories
+			 WHERE user_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(ownerId)
+		.first<{ count: number }>()
+	return Number(row?.count ?? 0)
 }

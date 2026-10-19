@@ -5,6 +5,7 @@ import {
 	filterBrowserSentryEvent,
 	filterFirefoxDomPermissionDeniedSentryEvent,
 	isChromeExtensionMessageChannelDisconnectedError,
+	isTanStackServerFnFetchNetworkError,
 } from './sentry-browser-filters.ts'
 
 type Frame = {
@@ -111,6 +112,16 @@ const replayObserveAttachShadowFrame = fr(
 	'observeAttachShadow',
 	'@sentry/replay/build/npm/esm/index.js',
 )
+const serverFnFetcherFrame = fr(
+	'getResponse',
+	'@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js',
+)
+const createServerFnFrame = fr(
+	'userNext',
+	'@tanstack/start-client-core/dist/esm/createServerFn.js',
+)
+const serverFnFetcherStack =
+	'TypeError: Load failed\n    at getResponse (@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js:138:9)\n    at userNext (@tanstack/start-client-core/dist/esm/createServerFn.js:1:1)'
 
 test('individual browser Sentry filters drop AbortError, Firefox Xray, and injected-global noise', () => {
 	const cases: Array<[typeof filterBrowserSentryEvent, Case, boolean]> = [
@@ -428,6 +439,21 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 				`SecurityError: ${replayCrossOriginElementMessage}\n    at sn.onIframeLoad (@sentry/replay/index.js:2118:35)`,
 			),
 		],
+		// TanStack Start serverFn fetch network blips (KODY-9Q / 7798170337).
+		['TypeError', 'Load failed', [serverFnFetcherFrame, createServerFnFrame]],
+		['TypeError', 'Failed to fetch', [serverFnFetcherFrame]],
+		['TypeError', 'Failed to fetch (kody.codes)', [createServerFnFrame]],
+		[
+			'TypeError',
+			'NetworkError when attempting to fetch resource.',
+			[serverFnFetcherFrame],
+		],
+		[
+			'TypeError',
+			'Load failed',
+			undefined,
+			withStack(new TypeError('Load failed'), serverFnFetcherStack),
+		],
 	]
 	expect(
 		dropped.filter((c) => !droppedBy(filterBrowserSentryEvent, c)),
@@ -513,6 +539,9 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			[fr('applyDocumentHead', 'https://heykody.app/assets/document-head.js')],
 		],
 		// Former runtime-specific suppression must not hide current app failures.
+		// In-app TypeError "Load failed" with first-party frames stays visible:
+		// without serverFnFetcher/createServerFn evidence it could be a real bug
+		// (or a custom throw), not TanStack RPC network noise (KODY-9Q).
 		[
 			'TypeError',
 			'Load failed',
@@ -556,6 +585,10 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 				'TypeError: Failed to fetch\n    at Yn (https://kody.codes/client-entry.js:3:2497)\n    at Object.resolveFrame (https://kody.codes/client-entry.js:3:76468)',
 			),
 		],
+		// Bare fetch-network TypeError without serverFn stack evidence stays
+		// visible (could be any app fetch, not Start RPC).
+		['TypeError', 'Load failed'],
+		['TypeError', 'Load failed', [fr('someOtherFetch', 'app.js')]],
 		['NotFoundError', insertBeforeMessage, [reconcileFrame]],
 		['NotFoundError', insertBeforeMessage, [minifiedEntryFrame]],
 		['NotFoundError', insertBeforeMessage, [fr('boot', '../client/entry.tsx')]],
@@ -583,7 +616,6 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 		// with a frame-resolve frame.
 		['TypeError', blogChunkMessage],
 		['TypeError', blogChunkMessage, [frameResolveFrame]],
-		['TypeError', 'Load failed', [fr('someOtherFetch', 'app.js')]],
 		['Error', 'Turnstile widget host missing in layout'],
 		// Production homepage SSR 500s and readRouterUrl crashes stay visible.
 		[
@@ -782,6 +814,192 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 	expect(filterBrowserSentryEvent(emptyEvent, cspUnsafeEvalMessage)).toBe(
 		emptyEvent,
 	)
+})
+
+test('isTanStackServerFnFetchNetworkError requires serverFn stack evidence', () => {
+	expect(
+		isTanStackServerFnFetchNetworkError(
+			withStack(new TypeError('Load failed'), serverFnFetcherStack),
+		),
+	).toBe(true)
+	expect(
+		isTanStackServerFnFetchNetworkError(
+			withStack(
+				new TypeError('Failed to fetch'),
+				'TypeError: Failed to fetch\n    at getResponse (…/serverFnFetcher.js:1:1)',
+			),
+		),
+	).toBe(true)
+	// Message alone / first-party stack: keep reporting.
+	expect(
+		isTanStackServerFnFetchNetworkError(new TypeError('Load failed')),
+	).toBe(false)
+	expect(
+		isTanStackServerFnFetchNetworkError(
+			withStack(
+				new TypeError('Load failed'),
+				'TypeError: Load failed\n    at boot (https://kody.codes/assets/entry.js:1:1)',
+			),
+		),
+	).toBe(false)
+	// Non-network TypeError from createServerFn stays visible.
+	expect(
+		isTanStackServerFnFetchNetworkError(
+			withStack(
+				new TypeError('Cannot read properties of undefined'),
+				serverFnFetcherStack,
+			),
+		),
+	).toBe(false)
+	// Non-2xx serverFn body errors are Error, not TypeError — stay visible.
+	expect(
+		isTanStackServerFnFetchNetworkError(
+			withStack(new Error('Internal Server Error'), serverFnFetcherStack),
+		),
+	).toBe(false)
+})
+
+test('serverFn fetch-network filter drops production /assets stacks via /_serverFn breadcrumbs', () => {
+	const productionAssetFrame = fr(
+		'getResponse',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Load failed',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBeNull()
+	// Same TypeError with only /assets frames and no serverFn breadcrumb stays.
+	const withoutCrumb = {
+		exception: event.exception,
+	}
+	expect(filterBrowserSentryEvent(withoutCrumb)).toBe(withoutCrumb)
+})
+
+test('serverFn fetch-network filter ignores successful /_serverFn breadcrumb status_code', () => {
+	// A prior completed serverFn (status_code present) must not drop a later
+	// unrelated fetch-network TypeError that only has /assets frames.
+	const productionAssetFrame = fr(
+		'getResponse',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Failed to fetch',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+					status_code: 200,
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBe(event)
+})
+
+test('serverFn fetch-network filter ignores stale rejected /_serverFn breadcrumb', () => {
+	// A prior rejected serverFn crumb still on the scope must not drop a later
+	// unrelated fetch-network TypeError whose latest fetch crumb is elsewhere.
+	const productionAssetFrame = fr(
+		'resolveFrame',
+		'https://kody.codes/assets/entry-abc123.js',
+	)
+	const event = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Failed to fetch',
+					stacktrace: { frames: [productionAssetFrame] },
+				},
+			],
+		},
+		breadcrumbs: [
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://kody.codes/_serverFn/550d6c7b0123456789abcdef',
+					method: 'GET',
+				},
+			},
+			{
+				category: 'fetch',
+				data: {
+					url: 'https://cdn.example/sourcemap.map',
+					method: 'GET',
+				},
+			},
+		],
+	}
+	expect(filterBrowserSentryEvent(event)).toBe(event)
+})
+
+test('serverFn fetch-network filter does not pair message and frames across exception values', () => {
+	const crossValueEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Load failed',
+					stacktrace: { frames: [kodyEntry] },
+				},
+				{
+					type: 'TypeError',
+					value: 'unrelated',
+					stacktrace: { frames: [serverFnFetcherFrame] },
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(crossValueEvent)).toBe(crossValueEvent)
+})
+
+test('serverFn fetch-network filter keeps a reportable exception that links a network TypeError cause', () => {
+	// LinkedErrors puts cause values alongside the main exception; drop only
+	// when every value is a qualifying serverFn fetch-network TypeError.
+	const linkedEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: 'Load failed',
+					stacktrace: { frames: [serverFnFetcherFrame] },
+				},
+				{
+					type: 'Error',
+					value: 'Account loader failed',
+					stacktrace: { frames: [kodyEntry] },
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(linkedEvent)).toBe(linkedEvent)
 })
 
 test('isChromeExtensionMessageChannelDisconnectedError requires extension provenance', () => {

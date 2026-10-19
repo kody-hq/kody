@@ -9,7 +9,9 @@ import {
 	estimateEntitlementStorageSqlWriteBytes,
 	readStorageBytesFromUserMeter,
 } from '#worker/entitlements/service.ts'
+import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 import {
+	formatStorageBucketKindSummary,
 	listUserStorageBucketEstimates,
 	maybeRefreshStorageBucketEstimate,
 	recordStorageBucketEstimate,
@@ -1390,6 +1392,38 @@ async function readStorageBytesEntitlementBaseline(input: {
 	}
 }
 
+async function assertStorageBytesWithKindSummary(input: {
+	env: Env
+	userId: OwnerId
+	email: string | null | undefined
+	requested?: number
+	getCurrent: () => Promise<number>
+}) {
+	try {
+		await assertWithinStorageBytesEntitlement({
+			db: input.env.APP_DB,
+			userId: input.userId,
+			email: input.email,
+			requested: input.requested,
+			getCurrent: input.getCurrent,
+		})
+	} catch (error) {
+		if (!(error instanceof EntitlementLimitError)) throw error
+		if (error.details.resource !== 'storage_bytes') throw error
+		const buckets = await listUserStorageBucketEstimates({
+			env: input.env,
+			userId: input.userId,
+		}).catch(() => [])
+		const summary = formatStorageBucketKindSummary(buckets)
+		if (!summary) throw error
+		const { code: _code, ...details } = error.details
+		throw new EntitlementLimitError({
+			...details,
+			upgradeHint: `${details.upgradeHint} ${summary}`,
+		})
+	}
+}
+
 export async function assertStorageRunnerWriteWithinEntitlement(input: {
 	env: Env
 	userId: OwnerId
@@ -1433,8 +1467,8 @@ export async function assertStorageRunnerWriteWithinEntitlement(input: {
 			// race or first touch). Recompute so the new bucket is counted.
 			baseline = await beginBaselineRead(input.storageId)
 		}
-		await assertWithinStorageBytesEntitlement({
-			db: input.env.APP_DB,
+		await assertStorageBytesWithKindSummary({
+			env: input.env,
 			userId: input.userId,
 			email: input.email,
 			requested: input.requested,
@@ -1444,8 +1478,8 @@ export async function assertStorageRunnerWriteWithinEntitlement(input: {
 		return
 	}
 
-	await assertWithinStorageBytesEntitlement({
-		db: input.env.APP_DB,
+	await assertStorageBytesWithKindSummary({
+		env: input.env,
 		userId: input.userId,
 		email: input.email,
 		requested: input.requested,

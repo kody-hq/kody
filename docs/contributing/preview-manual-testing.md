@@ -1,13 +1,17 @@
 # Manual preview testing
 
-Use a PR preview when local `npm run validate` is not enough: medium or high
+Prefer local [control-kody](./control-kody.md) verification (`dev` / `login` /
+`request` / `browse` / `execute`) for UI and API changes. Use a PR preview when
+local cannot exercise the change: Workers / service bindings, Durable Objects,
+real OAuth or inbound third-party webhooks, deploy / wrangler / config,
+Artifacts / `packageSave`, or when you need the isolated preview workers, mocks,
+and a **logged-in user with the data the change cares about**. Medium or high
 risk recaps (`extends` / `adds` in
-[`.agents/skills/visual-recap/SKILL.md`](../../.agents/skills/visual-recap/SKILL.md)),
-auth or deploy-path changes, or anything that needs the real isolated preview
-workers, mocks, and a **logged-in user with the data the change cares about**.
+[`.agents/skills/visual-recap/SKILL.md`](../../.agents/skills/visual-recap/SKILL.md))
+still need that proof — local first, preview when local is insufficient.
 
-This does not replace `npm run validate`. A green health/login smoke is not
-evidence that an untested flow works.
+This does not replace `npm run validate` or local control-kody proof. A green
+health/login smoke is not evidence that an untested flow works.
 
 ## One command
 

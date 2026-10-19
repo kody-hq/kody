@@ -4,11 +4,11 @@ Kody is Your agents' cloud for individuals and teams (orgs, teams, grants): each
 account holds isolated packages, jobs, credentials, memories, remote connectors,
 email inboxes, and durable storage.
 
-`npm run validate` is the single authoritative local gate.
+`npm run validate` is the single authoritative local gate. UI/API: verify
+locally with [control-kody](./docs/contributing/control-kody.md) first (preview
+when [local cannot](./docs/contributing/cloud-agents.md#local-limitations)).
 
-Open the page that owns the task, and load
-[installed Intent skills](./docs/contributing/intent-skills.md) before
-substantial edits:
+Open the page that owns the task:
 
 - Contributor documentation map:
   [docs/contributing/index.md](./docs/contributing/index.md)

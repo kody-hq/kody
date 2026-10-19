@@ -11,8 +11,7 @@ import {
 	writeLocalOriginDevConfig,
 } from './tools/local-origin-dev-config.ts'
 import { writeLocalAuxiliaryDevConfig } from './tools/local-auxiliary-dev-config.ts'
-import { writeLocalPlatformDevConfig } from './tools/local-platform-dev-config.ts'
-import { writeLocalRuntimeDevConfig } from './tools/local-runtime-dev-config.ts'
+import { writeLocalSiblingDevConfig } from './tools/local-sibling-dev-config.ts'
 import { resolveLocalD1PersistPath } from './tools/local-d1-persist.ts'
 import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules.ts'
@@ -135,19 +134,20 @@ export default defineConfig(async ({ command }) => {
 			},
 		)
 		if (envName !== 'test') {
-			const runtimeDevConfigPath = await writeLocalRuntimeDevConfig({
-				runtimeConfigPath: 'packages/runtime-worker/wrangler.jsonc',
+			const runtimeDevConfigPath = await writeLocalSiblingDevConfig({
+				configPath: 'packages/runtime-worker/wrangler.jsonc',
 				envName,
 				mainWorkerDevName: `kody-${envName}`,
 				port: process.env.PORT,
 				generatedBasename,
 			})
-			const platformDevConfigPath = await writeLocalPlatformDevConfig({
-				platformConfigPath: 'packages/platform-worker/wrangler.jsonc',
+			const platformDevConfigPath = await writeLocalSiblingDevConfig({
+				configPath: 'packages/platform-worker/wrangler.jsonc',
 				envName,
 				mainWorkerDevName: `kody-${envName}`,
 				port: process.env.PORT,
 				generatedBasename,
+				dropAlwaysRemoteBindings: ['ai', 'artifacts'],
 			})
 			auxiliaryWorkers.push(
 				{ configPath: runtimeDevConfigPath, devOnly: true },

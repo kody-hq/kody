@@ -10,7 +10,10 @@ import {
 	type tokenExchangeStyleValues,
 } from '#mcp/capabilities/integrations/integration-shared.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import { assertSafeDeviceAuthorizationUrl } from './device-flow.ts'
+import {
+	assertSafeDeviceAuthorizationUrl,
+	assertSafeTokenUrl,
+} from './device-flow.ts'
 import { providerFromSlug } from './provider-from-slug.ts'
 
 /**
@@ -240,6 +243,10 @@ export async function upsertPlatformOauthApp(input: {
 	const authorizeUrl = input.app.authorizeUrl.trim()
 	if (!tokenUrl) {
 		throw new PlatformOauthAppValidationError('Token URL is required.')
+	}
+	const tokenUrlError = assertSafeTokenUrl(tokenUrl)
+	if (tokenUrlError) {
+		throw new PlatformOauthAppValidationError(tokenUrlError)
 	}
 	const existing = await getPlatformOauthAppRowBySlug({ db: input.db, slug })
 	const deviceAuthorizationUrl =

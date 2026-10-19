@@ -15,7 +15,7 @@ workers. Origin owns **zero** Durable Object classes
 
 | Script                       | Public surface                         | Owns                                                                                                                                                                         | Binds                                                                        |
 | ---------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `kody-production` (origin)   | `kody.codes`                           | Remix, MCP HTTP, OAuth, inbound email, queue consumers, `JobsHost`, `KodyApi`, `DynamicWorkerUsageTail`                                                                      | Platform DOs, runtime DOs / workflows, `RUNTIME_WORKER`, `JOBS`, `HIGHLIGHT` |
+| `kody-production` (origin)   | `kody.codes`                           | TanStack Start website, MCP HTTP, OAuth, inbound email, queue consumers, `JobsHost`, `KodyApi`, `DynamicWorkerUsageTail`                                                     | Platform DOs, runtime DOs / workflows, `RUNTIME_WORKER`, `JOBS`, `HIGHLIGHT` |
 | `kody-platform`              | `/__platform/health` only              | `MCP`, `McpClientHub`, `OAuthPurgeCoordinator`, `UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `StripePlanRefresh`, `KodyFetchGateway`, `DynamicWorkerUsageTail` | Shared D1/KV/R2/AI; runtime DOs for package work                             |
 | `kody-runtime`               | `{user}.kody.run`; `/__runtime/health` | `StorageRunner`, `RunLog`, `PackageRealtimeSession`, `DynamicCallableWorkflow`, `KodyFetchGateway`, `DynamicWorkerUsageTail`, `PackageAppRuntimeBridge`                      | Platform DOs, `JOBS`                                                         |
 | `kody-jobs`                  | no public hostname                     | `JobManager`, `JOBS_DB`, `kody-scheduled-dispatch`                                                                                                                           | `HOST` → origin `JobsHost`                                                   |
@@ -30,7 +30,7 @@ Local `npm run dev` attaches origin, platform, runtime, jobs, and highlight in
 one Miniflare. Playwright `CLOUDFLARE_ENV=test` is the exception: Durable Object
 classes run on the single `kody-test` script with no `script_name`.
 
-Remix/blog/UI-only deploys upload origin and skip platform, runtime, and jobs.
+UI/blog-only deploys upload origin and skip platform, runtime, and jobs.
 Official guide markdown (`docs/guides/`, `packages/worker/src/guides/`) uploads
 origin and platform because MCP `search({ entity: "guide:{id}" })` and
 `codingGuideGet` bundle those files.
@@ -83,8 +83,6 @@ wrote during that fetch) so the next cron can skip the synthetic.
 - [Feature Flags](./feature-flags.md): code-registry flags with D1-backed global
   state, percentage rollouts, and per-user overrides, managed at
   `/admin/feature-flags`.
-- [YouTube watch overlay](./youtube-watch.md): site-wide `/?youtubeId=` player
-  and first-party thumbnail proxy for allowlisted YouTube videos.
 - [Data Storage](./data-storage.md): what is stored in D1, KV, and Durable
   Objects. The rubric for choosing between D1, a per-user Durable Object, and
   Analytics Engine is recorded in decision record
@@ -119,10 +117,9 @@ wrote during that fetch) so the next cron can skip the synthetic.
 - [Production rollback](../rollback.md): Cloudflare version rollback vs
   forward-fix on `main` for the five product scripts, including when Durable
   Object or D1 migrations make Path A unsafe.
-- [Values retirement runbook](./values-retirement-runbook.md): values code and
-  D1 tables are gone ([ADR 0022](../decisions/0022-retire-values-primitive.md)).
 - [Cleanup after migrations](../cleanup-after-migrations.md): drop leftovers in
-  the same change when safe; otherwise open a GitHub issue.
+  the same change when safe; otherwise open a GitHub issue. Values retirement is
+  complete ([ADR 0022](../decisions/0022-retire-values-primitive.md)).
 - [Primitives map](./primitives.yaml): stable taxonomy of system primitives and
   invariants for the visual-recap skill
   (`.agents/skills/visual-recap/SKILL.md`). It is not a living feature changelog

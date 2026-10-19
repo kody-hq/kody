@@ -58,5 +58,5 @@ For **POST / PUT / PATCH / DELETE**, set `Content-Type: application/json` and
 
 ## Related
 
-- Developer docs (read-only) pattern:
-  [cloudflare-developer-docs.md](./cloudflare-developer-docs.md).
+- Official Cloudflare docs:
+  [developers.cloudflare.com](https://developers.cloudflare.com).

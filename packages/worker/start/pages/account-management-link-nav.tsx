@@ -5,7 +5,11 @@ import { useEffect, useRef } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon, type IconName } from '../components/icon.tsx'
 import { colors, transitions } from '#universal/styles/tokens.ts'
-import { hoverMq, pageGutter } from '#universal/styles/style-primitives.ts'
+import {
+	accountRailGapBelowHeader,
+	hoverMq,
+	siteHeaderHeight,
+} from '#universal/styles/style-primitives.ts'
 import { dismissOpenPopoverPanel } from '../components/switcher-menu.tsx'
 import {
 	WorkspaceSwitcher,
@@ -246,10 +250,13 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 				>
 					<div
 						css={{
-							// Sticks under the site header on a long page. The
-							// rail determines the shell height without a client-side measurement.
+							// Sticks at the header bottom so natural and sticky
+							// tops match (no short-list jump). Padding restores
+							// the established long-list breathing room so the
+							// first rail content lands at `accountRailContentTop`.
 							position: 'sticky',
-							top: '5rem',
+							top: siteHeaderHeight,
+							paddingTop: accountRailGapBelowHeader,
 							display: 'flex',
 							flexDirection: 'column',
 							gap: '0.15rem',

@@ -46,18 +46,14 @@ const hostAgentMotion = [
 	{ dur: '9.5s', del: '-3.5s', cycle: 5.1, phase: 3.4, travel: 2.2 },
 ] as const
 
-export const landingHeroSlots = landingOrbitAgents.map((agent, index) => ({
+const landingHeroSlots = landingOrbitAgents.map((agent, index) => ({
 	x: agent.x,
 	y: agent.y,
 	...hostAgentMotion[index]!,
 }))
 
 /** Always on the homepage ring. Everyone else competes for leftover slots. */
-export const landingHeroPinnedHostIds = [
-	'grok-bot',
-	'chatgpt',
-	'claude-code',
-] as const
+const landingHeroPinnedHostIds = ['grok-bot', 'chatgpt', 'claude-code'] as const
 
 export type LandingHeroAgent = (typeof landingHeroSlots)[number] & {
 	label: string
@@ -123,8 +119,8 @@ export function landingHeroLightAt(
 }
 
 /** Wall-clock multiplier for the light clock. `proximity` is 0 far, 1 close. */
-export const landingHeroLightRateFar = 0.54
-export const landingHeroLightRateNear = 2.31
+const landingHeroLightRateFar = 0.54
+const landingHeroLightRateNear = 2.31
 
 export function landingHeroLightRate(proximity: number) {
 	const t = Math.min(1, Math.max(0, proximity))

@@ -11,7 +11,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Decision records](./decisions/index.md) (steering veto list: product-shaped
   nos and durable constraints — not an ADR-per-PR log)
 - [0033 memory auto-surface lab](./decisions/0033-memory-auto-surface-lab.md)
-  (policy-grid evidence; re-run `node tools/memory-auto-surface-lab/run.mjs`)
+  (policy-grid evidence; lab script removed, source in git history at
+  `51def919d`)
 - [Inbound contributions](./inbound-contributions.md) (CLA for patches to this
   repository)
 - [Setup](./setup/index.md),
@@ -20,8 +21,6 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Manual PR preview testing](./preview-manual-testing.md)
 - [Preview migration rehearsal](./preview-migration-rehearsal.md) (seed,
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
-- [Teams org.migrated audit backfill](./teams-org-migrated-audit-backfill.md)
-  (operator dry-run and apply for `org.migrated` rows; not part of deploy)
 - [control-kody](./control-kody.md) (Feature Map + CLI; daily
   `@kentcdodds/verification-skill-maintain`)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
@@ -30,8 +29,6 @@ style, tests, MCP capabilities, and runtime architecture.
   shared by agents and CI)
 - [Harness engineering](./harness-engineering.md) (agent-first loop, promoting
   lessons into checkers before should-lists)
-- [Code health receipts](./code-health-receipts.md) (measured quality numbers
-  and the oversized-file cleanup record)
 - [Cleanup after migrations](./cleanup-after-migrations.md) (drop leftovers in
   the same change, or open a GitHub issue)
 - [Planned breaking changes](./planned-breaking-changes.md) (leftovers that
@@ -63,8 +60,9 @@ style, tests, MCP capabilities, and runtime architecture.
   (`typescript/no-explicit-any`, `TODO`/`FIXME`/`HACK`, file-size ratchet,
   vanished-copy `kody-custom/no-tautological-absence`, knip)
 - [Web app rendering and server state](./tanstack-start.md)
-- [No-flash navigation](./no-flash-navigation.md) (load-before-commit router,
-  `createRouteData` keeps the previous page until the next one is ready)
+- [No-flash navigation](./no-flash-navigation.md) (load-before-commit router;
+  `loadPageQuery` / `usePageQuery` keep the previous page until the next one is
+  ready)
 - [Cloudflare Agents SDK usage](./cloudflare-agents-sdk.md)
 
 ## Testing
@@ -92,11 +90,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Adding capabilities](./adding-capabilities.md)
 - [Search entity plugins](./search-entity-plugins.md) (plugin module + registry,
   result/detail unions, list markdown, detail routing, public type lists)
-- [MCP server patterns](./mcp-server-patterns.md) (reference for server design)
-- [AI chat package guide](./ai-chat-package-guide.md)
-- Execute patterns:
-  [Cloudflare API v4](./execute-patterns/cloudflare-api-v4.md),
-  [Cloudflare developer docs](./execute-patterns/cloudflare-developer-docs.md)
+- Execute patterns: [Cloudflare API v4](./execute-patterns/cloudflare-api-v4.md)
 
 ## Security and operations
 

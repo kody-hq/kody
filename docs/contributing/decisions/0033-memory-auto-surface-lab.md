@@ -1,8 +1,10 @@
 # 0033 lab: memory auto-surface (2026-08-22)
 
 Point-in-time evidence for [0033](./0033-no-user-as-conversation.md). This is
-not a second steering record. Re-run
-`node tools/memory-auto-surface-lab/run.mjs` when revisiting.
+not a second steering record. The lab script under
+`tools/memory-auto-surface-lab/` was removed after the findings were recorded
+here; recover it from git history at `51def919d` (last commit that contained
+it).
 
 ## Method
 

@@ -26,6 +26,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				email_outbound_paused_at TEXT,
 				email_outbound_delivery_paused_at TEXT,
 				email_outbound_consecutive_failures INTEGER NOT NULL DEFAULT 0,
+				email_outbound_failure_watermark_at TEXT,
 				default_user_budget_micro_usd INTEGER,
 				automation_budget_micro_usd INTEGER,
 				suspended_at TEXT,
@@ -60,6 +61,15 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 		await db
 			.prepare(
 				`ALTER TABLE orgs ADD COLUMN email_outbound_consecutive_failures INTEGER NOT NULL DEFAULT 0`,
+			)
+			.run()
+	} catch {
+		// Column already present on fuller schemas / re-runs.
+	}
+	try {
+		await db
+			.prepare(
+				`ALTER TABLE orgs ADD COLUMN email_outbound_failure_watermark_at TEXT`,
 			)
 			.run()
 	} catch {

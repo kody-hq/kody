@@ -1,8 +1,7 @@
 # Website framework ownership audit
 
-This inventory describes the migration source, including the current cleanup
-slice. It is not a claim that CI, the deployed preview, every browser state, or
-visual parity has passed. See the
+This inventory describes current website ownership on origin. It is not a claim
+that every browser state or visual path has been re-proven. See the
 [HTTP contracts inventory](./tanstack-start-http-contracts.md) for retained
 external URLs and their consumers.
 

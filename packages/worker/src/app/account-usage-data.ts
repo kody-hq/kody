@@ -230,6 +230,7 @@ function toAccountUsageRow(row: {
 	percentOfLimit: number | null
 	overEightyPercent: boolean
 	week?: AccountUsageWeekWindow
+	storageByKind?: AccountUsageEntitlementConsumption['storageByKind']
 }): AccountUsageEntitlementConsumption {
 	return {
 		resource: row.resource,
@@ -243,5 +244,6 @@ function toAccountUsageRow(row: {
 		percentOfLimit: row.percentOfLimit,
 		overEightyPercent: row.overEightyPercent,
 		...(row.week ? { week: row.week } : {}),
+		...(row.storageByKind ? { storageByKind: row.storageByKind } : {}),
 	}
 }

@@ -1,20 +1,17 @@
 import { buildCommunityPublicUrl } from '#mcp/capabilities/community/shared.ts'
-import { getDomain } from 'tldts'
-import {
-	canonicalIntegrationName,
-	type IntegrationConfig,
-} from '#mcp/capabilities/integrations/integration-shared.ts'
+import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
 import { searchCommunityListings } from '#worker/community/service.ts'
+import {
+	resolveIntegrationProviderName,
+	type IntegrationProviderMetadata,
+} from '#worker/integrations/provider-name.ts'
 import { type RelatedIntegrationPackageSuggestion } from './search-format.ts'
 import { extractSearchTokens } from './understand-search-query.ts'
 
+export { resolveIntegrationProviderName }
+
 export const maxIntegrationPackageSuggestions = 3
 const communitySuggestionCandidateLimit = 12
-
-type IntegrationProviderMetadata = Pick<
-	IntegrationConfig,
-	'name' | 'tokenUrl' | 'apiBaseUrl' | 'requiredHosts' | 'authorization'
->
 
 type ProviderPackageIdentity = {
 	kodyId: string
@@ -29,70 +26,6 @@ type SuggestionPackageRow = {
 		description: string
 		tags: Array<string>
 	}
-}
-
-function providerMetadataHosts(
-	integration: IntegrationProviderMetadata,
-): Array<string> {
-	const urls = [
-		integration.tokenUrl,
-		integration.apiBaseUrl,
-		integration.authorization?.authorizeUrl,
-	]
-	const hosts = urls.flatMap((url) => {
-		if (!url) return []
-		try {
-			return [new URL(url).hostname]
-		} catch {
-			return []
-		}
-	})
-	return [...hosts, ...(integration.requiredHosts ?? [])]
-}
-
-const providerDomainAliases: Readonly<Record<string, string>> = {
-	googleapis: 'google',
-}
-
-function normalizeProviderDomainLabel(label: string): string {
-	return providerDomainAliases[label] ?? label
-}
-
-function providerTokensFromHost(host: string): Array<string> {
-	const registrableDomain = getDomain(host) ?? host.toLowerCase()
-	const providerLabel = registrableDomain.split('.')[0] ?? registrableDomain
-	return extractSearchTokens(normalizeProviderDomainLabel(providerLabel))
-}
-
-/**
- * Separate the provider identity from an account-specific integration label.
- * A prefix is accepted only when saved endpoint metadata independently
- * identifies every token, so an arbitrary first segment is never assumed to be
- * the provider. The full integration name is the safe fallback.
- */
-export function resolveIntegrationProviderName(
-	integration: IntegrationProviderMetadata,
-): string {
-	const integrationName = canonicalIntegrationName(integration.name)
-	const nameSegments = integrationName.split('-').filter(Boolean)
-	const providerTokenGroups = providerMetadataHosts(integration)
-		.map(providerTokensFromHost)
-		.filter((tokens) => tokens.length > 0)
-
-	const matchesProviderTokens = (tokens: Array<string>) =>
-		providerTokenGroups.some(
-			(providerTokens) =>
-				providerTokens.length === tokens.length &&
-				providerTokens.every((token, index) => token === tokens[index]),
-		)
-
-	for (let length = nameSegments.length; length > 0; length--) {
-		const prefix = nameSegments.slice(0, length).join('-')
-		if (matchesProviderTokens(extractSearchTokens(prefix))) {
-			return prefix
-		}
-	}
-	return integrationName
 }
 
 export function packageIdentityMentionsProvider(

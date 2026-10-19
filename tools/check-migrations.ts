@@ -5,6 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { isExecutedDirectly } from './node-runtime.ts'
 import {
+	resolveCurrentPullNumber,
 	scanOpenPullRequestMigrationPrefixes,
 	type OpenPullRequestFileClaim,
 	type OpenPullRequestMigrationScan,
@@ -821,20 +822,30 @@ export async function checkMigrationsDirectory(
 	}
 }
 
+/**
+ * Returns the `rank`-th prefix (1-based, default 1) at or above `nextPrefix`
+ * that no claim uses. Several pull requests renumbering away from one
+ * contested prefix take distinct ranks so they do not collide again.
+ */
 export function suggestFreeMigrationPrefix(input: {
 	nextPrefix: string
 	claimedPrefixes: ReadonlyArray<string>
+	rank?: number
 }): string | null {
 	if (!/^\d{4}$/.test(input.nextPrefix)) return null
 	const claimed = new Set(
 		input.claimedPrefixes.filter((prefix) => /^\d{4}$/.test(prefix)),
 	)
+	let remaining = Math.max(1, Math.floor(input.rank ?? 1))
 	let prefix = Number(input.nextPrefix)
-	while (claimed.has(formatMigrationPrefix(prefix))) {
+	while (prefix <= 9999) {
+		if (!claimed.has(formatMigrationPrefix(prefix))) {
+			remaining -= 1
+			if (remaining === 0) return formatMigrationPrefix(prefix)
+		}
 		prefix += 1
-		if (prefix > 9999) return null
 	}
-	return formatMigrationPrefix(prefix)
+	return null
 }
 
 export type OpenPullRequestMigrationOverlap = {
@@ -847,18 +858,25 @@ export type OpenPullRequestMigrationAdvisory = {
 	lines: Array<string>
 	warning: string | null
 	/**
-	 * New migration prefixes this checkout uses that other open PRs also claim. Non-empty
-	 * means the migration check must fail so the author renumbers before
-	 * mid-ship collisions (#3592). Skipped scans never report overlaps.
+	 * New migration prefixes this checkout uses that other open PRs also claim.
+	 * Skipped scans never report overlaps.
 	 */
 	overlaps: Array<OpenPullRequestMigrationOverlap>
+	/**
+	 * The overlaps this checkout must give up (#3592). Tie-break: the
+	 * lowest-numbered open pull request keeps a contested prefix, so only the
+	 * higher-numbered side of a collision renumbers. A base-branch checkout
+	 * (push to main) never yields. Unknown PR numbers stay conservative and
+	 * yield every overlap. Pull request checks fail when this is non-empty.
+	 */
+	blockingOverlaps: Array<OpenPullRequestMigrationOverlap>
 }
 
 /**
  * Lists prefixes claimed by other open pull requests and suggests the lowest
  * prefix at or above the local next that none of them use. Gaps stay allowed.
  * Missing auth is silent. A GitHub failure is a warning, not a check failure.
- * Overlaps with open PRs fail the check (see `overlaps`).
+ * Pull request checks fail on `blockingOverlaps` only.
  */
 export function formatOpenPullRequestMigrationAdvisory(input: {
 	migrationsDir: string
@@ -867,6 +885,10 @@ export function formatOpenPullRequestMigrationAdvisory(input: {
 	trustedFilenames?: ReadonlyArray<string>
 	localNextPrefix: string
 	scan: OpenPullRequestMigrationScan
+	/** This checkout's open pull request number, when known. */
+	currentPullNumber?: number | null
+	/** True for base-branch checkouts (push to main), which keep every prefix. */
+	isBaseBranchCheckout?: boolean
 }): OpenPullRequestMigrationAdvisory {
 	switch (input.scan.status) {
 		case 'skipped':
@@ -879,6 +901,8 @@ export function formatOpenPullRequestMigrationAdvisory(input: {
 				),
 				localNextPrefix: input.localNextPrefix,
 				scan: input.scan,
+				currentPullNumber: input.currentPullNumber ?? null,
+				isBaseBranchCheckout: input.isBaseBranchCheckout ?? false,
 			})
 		default: {
 			const neverScan: never = input.scan
@@ -899,6 +923,7 @@ function skippedMigrationPrefixAdvisory(
 				lines: [],
 				warning: null,
 				overlaps: [],
+				blockingOverlaps: [],
 			}
 		case 'unauthorized':
 		case 'error':
@@ -907,6 +932,7 @@ function skippedMigrationPrefixAdvisory(
 				lines: [],
 				warning: `Open pull request migration prefix scan skipped: ${scan.detail ?? scan.reason}.`,
 				overlaps: [],
+				blockingOverlaps: [],
 			}
 		default: {
 			const neverReason: never = scan.reason
@@ -920,24 +946,11 @@ function claimedMigrationPrefixAdvisory(input: {
 	localFilenames: ReadonlyArray<string>
 	localNextPrefix: string
 	scan: Extract<OpenPullRequestMigrationScan, { status: 'ok' }>
+	currentPullNumber: number | null
+	isBaseBranchCheckout: boolean
 }): OpenPullRequestMigrationAdvisory {
 	const claims = prefixesFromFileClaims(input.scan.claims)
-	const suggestedPrefix = suggestFreeMigrationPrefix({
-		nextPrefix: input.localNextPrefix,
-		claimedPrefixes: claims.flatMap((claim) => claim.prefixes),
-	})
-	if (suggestedPrefix === null) {
-		return {
-			suggestedPrefix: input.localNextPrefix,
-			lines: [],
-			warning:
-				'No free 4-digit migration prefix remains. The ledger result is unchanged.',
-			overlaps: [],
-		}
-	}
-	if (claims.length === 0) {
-		return { suggestedPrefix, lines: [], warning: null, overlaps: [] }
-	}
+	const claimedPrefixes = claims.flatMap((claim) => claim.prefixes)
 	const grouped = groupClaimedPrefixes(claims)
 	const localPrefixes = new Set(
 		input.localFilenames.flatMap((filename) => {
@@ -946,17 +959,69 @@ function claimedMigrationPrefixAdvisory(input: {
 		}),
 	)
 	const overlaps = grouped.filter((group) => localPrefixes.has(group.prefix))
+	const blockingOverlaps = overlaps.filter((group) =>
+		mustYieldMigrationPrefix({
+			group,
+			currentPullNumber: input.currentPullNumber,
+			isBaseBranchCheckout: input.isBaseBranchCheckout,
+		}),
+	)
+	const keptOverlaps = overlaps.filter(
+		(group) => !blockingOverlaps.includes(group),
+	)
+	const suggestedPrefix = suggestFreeMigrationPrefix({
+		nextPrefix: input.localNextPrefix,
+		claimedPrefixes,
+		rank: renumberRank({
+			blockingOverlaps,
+			currentPullNumber: input.currentPullNumber,
+		}),
+	})
+	if (suggestedPrefix === null) {
+		return {
+			suggestedPrefix: input.localNextPrefix,
+			lines: [],
+			warning:
+				'No free 4-digit migration prefix remains. The ledger result is unchanged.',
+			overlaps: [],
+			blockingOverlaps: [],
+		}
+	}
+	if (claims.length === 0) {
+		return {
+			suggestedPrefix,
+			lines: [],
+			warning: null,
+			overlaps: [],
+			blockingOverlaps: [],
+		}
+	}
 	const lines = [
 		`Open pull requests claim migration prefixes in ${input.migrationsDir}:`,
 		...grouped.map((group) => `  ${group.prefix}: ${formatPullNumbers(group)}`),
 	]
-	if (overlaps.length > 0) {
+	if (blockingOverlaps.length > 0) {
 		lines.push(
 			'This checkout uses prefixes also claimed by open pull requests:',
-			...overlaps.map(
+			...blockingOverlaps.map(
 				(group) => `  ${group.prefix}: ${formatPullNumbers(group)}`,
 			),
 			`Rename to the next free prefix ${suggestedPrefix} (for example, ${suggestedPrefix}-your-change.sql) before merging.`,
+		)
+		if (input.currentPullNumber !== null) {
+			lines.push(
+				`The lowest-numbered open pull request keeps a contested prefix, so #${String(input.currentPullNumber)} renumbers.`,
+			)
+		}
+	}
+	if (keptOverlaps.length > 0) {
+		lines.push(
+			input.isBaseBranchCheckout
+				? 'This checkout already ships prefixes that open pull requests also claim; those pull requests must renumber:'
+				: 'This checkout keeps contested prefixes (lowest open pull request number wins); these pull requests must renumber:',
+			...keptOverlaps.map(
+				(group) => `  ${group.prefix}: ${formatPullNumbers(group)}`,
+			),
 		)
 	}
 	if (suggestedPrefix !== input.localNextPrefix) {
@@ -964,7 +1029,45 @@ function claimedMigrationPrefixAdvisory(input: {
 			`Next prefix free of this checkout and those claims: ${suggestedPrefix}.`,
 		)
 	}
-	return { suggestedPrefix, lines, warning: null, overlaps }
+	return { suggestedPrefix, lines, warning: null, overlaps, blockingOverlaps }
+}
+
+/**
+ * Deterministic tie-break for a prefix both this checkout and other open pull
+ * requests claim: the lowest pull request number keeps it. Base-branch
+ * checkouts already shipped the prefix and never yield. Without a known pull
+ * request number the checkout yields (conservative).
+ */
+export function mustYieldMigrationPrefix(input: {
+	group: OpenPullRequestMigrationOverlap
+	currentPullNumber: number | null
+	isBaseBranchCheckout: boolean
+}): boolean {
+	if (input.isBaseBranchCheckout) return false
+	const currentPullNumber = input.currentPullNumber
+	if (currentPullNumber === null) return true
+	return input.group.pullNumbers.some((number) => number < currentPullNumber)
+}
+
+/**
+ * How many lower-numbered claimants outrank this checkout on its most
+ * contested prefix. Rank N takes the N-th free prefix so several pull
+ * requests renumbering away from one prefix land on distinct prefixes.
+ */
+function renumberRank(input: {
+	blockingOverlaps: ReadonlyArray<OpenPullRequestMigrationOverlap>
+	currentPullNumber: number | null
+}): number {
+	const currentPullNumber = input.currentPullNumber
+	if (currentPullNumber === null) return 1
+	let rank = 1
+	for (const group of input.blockingOverlaps) {
+		const lower = group.pullNumbers.filter(
+			(number) => number < currentPullNumber,
+		).length
+		rank = Math.max(rank, lower)
+	}
+	return rank
 }
 
 function prefixesFromFileClaims(
@@ -1011,21 +1114,55 @@ function formatPullNumbers(group: { pullNumbers: ReadonlyArray<number> }) {
 	return group.pullNumbers.map((number) => `#${String(number)}`).join(', ')
 }
 
+/**
+ * Open-PR prefix overlaps fail only pull request checks (and local runs, which
+ * have no GitHub event). Pushes to main and manual dispatches print the
+ * advisory: the merged tree is still protected by the duplicate-prefix check,
+ * and the pull request that must renumber fails its own check instead.
+ */
+export function shouldEnforceOpenPullRequestOverlaps(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	const eventName = env.GITHUB_EVENT_NAME?.trim()
+	if (!eventName) return true
+	return isPullRequestEventName(eventName)
+}
+
+function isPullRequestEventName(eventName: string) {
+	return eventName === 'pull_request' || eventName === 'pull_request_target'
+}
+
+function isBaseBranchCheckout(env: NodeJS.ProcessEnv) {
+	const eventName = env.GITHUB_EVENT_NAME?.trim()
+	return Boolean(eventName) && !isPullRequestEventName(eventName ?? '')
+}
+
 export async function main(
 	migrationsDir: string = defaultMigrationsDir,
+	env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
 	const result = await checkMigrationsDirectory(migrationsDir)
 	const directoryEntries = await readdir(migrationsDir)
 	const localFilenames = directoryEntries.filter((name) =>
 		name.endsWith('.sql'),
 	)
+	const baseBranchCheckout = isBaseBranchCheckout(env)
+	const currentPullNumber = baseBranchCheckout
+		? null
+		: resolveCurrentPullNumber(env, process.cwd())
 	// Advisory only: missing GitHub auth or an API error must not fail the ledger check.
 	const advisory = formatOpenPullRequestMigrationAdvisory({
 		migrationsDir,
 		localFilenames,
 		trustedFilenames: result.trustedFilenames,
 		localNextPrefix: result.nextPrefix,
-		scan: await scanOpenPullRequestMigrationPrefixes({ migrationsDir }),
+		scan: await scanOpenPullRequestMigrationPrefixes({
+			migrationsDir,
+			env,
+			currentPullNumber,
+		}),
+		currentPullNumber,
+		isBaseBranchCheckout: baseBranchCheckout,
 	})
 	if (!result.ok) {
 		console.error(
@@ -1039,7 +1176,10 @@ export async function main(
 		return
 	}
 
-	if (advisory.overlaps.length > 0) {
+	if (
+		advisory.blockingOverlaps.length > 0 &&
+		shouldEnforceOpenPullRequestOverlaps(env)
+	) {
 		console.error(
 			`Migration prefix check failed for ${migrationsDir}: open pull requests claim the same prefix(es). Use ${advisory.suggestedPrefix}.`,
 		)

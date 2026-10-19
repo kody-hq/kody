@@ -116,6 +116,9 @@ function reduceGuidance(
 ): string | null {
 	switch (resourceWindow) {
 		case 'standing':
+			if (resource === 'storage_bytes') {
+				return 'Delete package or job storage you no longer need, or discard active repo sessions with repoDiscardSession'
+			}
 			return `Remove or finish existing ${entitlementResourceLabels[resource]} you no longer need`
 		case 'per_item':
 			return `Use fewer ${entitlementResourceLabels[resource]}`

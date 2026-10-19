@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   measure:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ⏱ Measure kody.codes
     timeout-minutes: 10
     steps:

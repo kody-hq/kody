@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { platformFeedbackSubmissionRateLimit } from '#worker/platform-feedback/limits.ts'
 import {
 	platformFeedbackCategories,
 	platformFeedbackStatuses,
@@ -11,6 +12,34 @@ export const metaPlatformFeedbackCategorySchema = z.enum(
 )
 
 export const metaPlatformFeedbackStatusSchema = z.enum(platformFeedbackStatuses)
+
+/**
+ * Rolling submission quota for the signed-in submitter. Same counting as
+ * metaPlatformFeedbackSubmit enforcement (`platformFeedbackSubmissionRateLimit`
+ * per 24 hours).
+ */
+export const metaPlatformFeedbackSubmissionQuotaSchema = z.object({
+	submission_rate_limit: z
+		.number()
+		.int()
+		.positive()
+		.describe(
+			`Max submissions per rolling 24-hour window (${platformFeedbackSubmissionRateLimit}).`,
+		),
+	submissions_remaining: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'How many more submissions the signed-in user can create in the current rolling 24-hour window.',
+		),
+	next_slot_at: z
+		.string()
+		.nullable()
+		.describe(
+			'ISO timestamp when the next rolling-window slot frees. Null when submissions_remaining > 0.',
+		),
+})
 
 /**
  * Submitter-visible list fields. Same column names as account export after

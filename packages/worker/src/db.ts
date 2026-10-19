@@ -177,6 +177,7 @@ export const orgsTable = table({
 		email_outbound_paused_at: c.text(),
 		email_outbound_delivery_paused_at: c.text(),
 		email_outbound_consecutive_failures: c.integer(),
+		email_outbound_failure_watermark_at: c.text(),
 		suspended_at: c.text(),
 		deleted_at: c.text(),
 		deleting_at: c.text(),

@@ -118,7 +118,7 @@ test('retained page reads its own route context while destination loader is pend
 			}),
 		)
 	expect(render()).toContain('workspace:jobs')
-	const navigation = pendingRouter.navigate({ to: '/security' })
+	const navigation = pendingRouter.navigate({ to: '/security' } as never)
 	await entered
 	expect(pendingRouter.latestLocation.pathname).toBe('/security')
 	expect(render()).toContain('workspace:jobs')

@@ -21,6 +21,8 @@ const orgMembershipShape =
 	'Org structure and access configuration belong to the org itself.'
 const emailStays =
 	'Email inboxes, addresses, and sender identities stay; the target org gets its own inbox the normal way.'
+const memoriesStay =
+	'Memories are personal: they stay with their owning user and are never moved to another org.'
 
 export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	saved_packages: move(
@@ -37,6 +39,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
+	),
+	admin_account_deletion_approvals: keep(
+		'Admin hard-delete approvals name a person and the requesting admin. They are not organization resources, so an org transfer leaves them in place.',
 	),
 	user_repos: move('user_id re-pointed.'),
 	entity_sources: move(
@@ -56,10 +61,6 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	follows: keep(
 		'Follow rows stay with the follower org (follower_org_id is not re-pointed). The transfer batch rewrites denormalized target_owner_id and target_name so followers keep watching the same target ids under the destination owner.',
-	),
-	mcp_memories: move('user_id re-pointed; vectors reindexed under the target.'),
-	mcp_memory_conversation_suppressions: move(
-		'user_id re-pointed for moved memories.',
 	),
 	mcp_server_settings: move(
 		'user_id re-pointed; the McpClientHub connection (tokens included) moves hub to hub.',
@@ -99,7 +100,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Rows for moved packages deleted; the reindex under the target writes fresh debt.',
 	),
 	vector_embed_fingerprints: move(
-		'Fingerprints for moved vectors deleted; the reindex under the target writes new ones.',
+		'Fingerprints for moved package and job vectors deleted; the reindex under the target writes new ones. Memory fingerprints stay with their owner.',
 	),
 	enablements: move('org_id re-pointed for triggers of moved packages.'),
 
@@ -146,6 +147,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	email_inbox_addresses: keep(emailStays),
 	email_inboxes: keep(emailStays),
 	email_notification_destinations: keep(emailStays),
+	email_outbound_failure_tracking: keep(emailStays),
 	email_outbound_provider_index: keep(emailStays),
 	email_outbound_provider_index_repair_owners: keep(emailStays),
 	email_sender_identities: keep(emailStays),
@@ -156,6 +158,8 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	handles: keep(orgMembershipShape),
 	invites: keep(orgMembershipShape),
 	mcp_agent_sessions: keep('Live MCP sessions belong to the connecting owner.'),
+	mcp_memories: keep(memoriesStay),
+	mcp_memory_conversation_suppressions: keep(memoriesStay),
 	mcp_event_subscriptions: keep(
 		'Client callback subscriptions belong to the OAuth client connection.',
 	),

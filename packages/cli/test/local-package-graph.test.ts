@@ -130,7 +130,11 @@ test('fetchLocalPackageGraph posts even when there are no kody:@ imports to load
 	})
 	assert.equal(requests.length, 1)
 	assert.match(requests[0]!.url, new RegExp(`${localPackageGraphPath}$`))
-	assert.deepEqual(requests[0]!.body, { code, imports: [] })
+	// Zero imports still POSTs (for the shim) with an empty synthetic entry.
+	assert.deepEqual(requests[0]!.body, {
+		code: synthesizePackageGraphEntry([]),
+		imports: [],
+	})
 	assert.deepEqual(result, {
 		imports: [],
 		modules: [
@@ -183,8 +187,10 @@ export default async function main(params) { return greet(params.name) }`
 	assert.equal(requests.length, 1)
 	assert.match(requests[0]!.url, new RegExp(`${localPackageGraphPath}$`))
 	assert.equal(requests[0]!.authorization, `Bearer ${goodToken}`)
+	// The request is built from the imports, not the entry source (kody#4067):
+	// origin derives root aliases from posted `code`, so they must match.
 	assert.deepEqual(requests[0]!.body, {
-		code,
+		code: synthesizePackageGraphEntry(['kody:@test/pkg/hello']),
 		imports: ['kody:@test/pkg/hello'],
 		conversationId: 'conv-pkg',
 	})
@@ -394,7 +400,15 @@ test('fetchLocalPackageGraph rejects incomplete module lists', async () => {
 						},
 					),
 			}),
-		/omitted modules for: kody:@a\/pkg\/one/,
+		(error: unknown) => {
+			assert.ok(error instanceof LocalPackageGraphError)
+			assert.equal(error.code, 'incomplete_package_graph')
+			assert.deepEqual(error.details, { missing: ['kody:@a/pkg/one'] })
+			assert.match(error.message, /omitted modules for kody:@a\/pkg\/one/)
+			assert.match(error.message, /never ran/)
+			assert.match(error.message, /not an auth problem/)
+			return true
+		},
 	)
 })
 

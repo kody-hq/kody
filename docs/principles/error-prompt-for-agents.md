@@ -29,7 +29,8 @@ lacks actionable detail. Do not add a second lane beside the shared primitive.
 ## Enforcement
 
 - Inventory: `tools/error-agent-prompt-surfaces.ts` (`adopt` + `skip`)
-- Guard: `npm run error-agent-prompt:check` (also in `npm run validate`)
+- Guard: `npm run error-agent-prompt:check` (also in `npm run validate` and the
+  CI static job)
 
 New dedicated error pages that match the candidate patterns must be classified
 into `adopt` or `skip` before validate passes.

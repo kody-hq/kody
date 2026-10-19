@@ -39,6 +39,7 @@ import {
 	formatUsagePercent,
 } from '#client/routes/admin-users-shared.ts'
 import { AdminUserCreditsPanel } from './admin-users-credits.tsx'
+import { AdminUserAccountModeration } from './admin-account-delete-dialog.tsx'
 import {
 	costVsPayFootnote,
 	formatDynamicWorkerUsd,
@@ -87,6 +88,7 @@ export type AdminUserDetailProps = {
 	onSubmitModerationAction: (
 		action: 'suspend_user' | 'unsuspend_user' | 'resume_email_outbound',
 	) => void
+	onAccountDeleted: (handle: string) => void
 }
 export function AdminUserDetail(props: AdminUserDetailProps) {
 	const { selectedUser, actionState, selectedUsage } = props
@@ -444,47 +446,15 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 				title="Moderation"
 				description="Suspension blocks the account at the session, MCP, and email chokepoints. The outbound-email pause is set automatically after spam complaints or repeated bounces."
 			>
-				<div
-					css={{
-						display: 'flex',
-						gap: spacing.md,
-						flexWrap: 'wrap',
-					}}
-				>
-					{selectedUser.suspended_at ? (
-						<button
-							type="button"
-							disabled={isMutating}
-							onClick={() => props.onSubmitModerationAction('unsuspend_user')}
-							css={primaryButtonCss}
-						>
-							{actionState === 'moderating' ? 'Working…' : 'Clear suspension'}
-						</button>
-					) : (
-						<button
-							type="button"
-							disabled={isMutating}
-							onClick={() => props.onSubmitModerationAction('suspend_user')}
-							css={secondaryButtonCss}
-						>
-							{actionState === 'moderating' ? 'Working…' : 'Suspend account'}
-						</button>
-					)}
-					{selectedUser.email_outbound_paused_at ? (
-						<button
-							type="button"
-							disabled={isMutating}
-							onClick={() =>
-								props.onSubmitModerationAction('resume_email_outbound')
-							}
-							css={secondaryButtonCss}
-						>
-							{actionState === 'moderating'
-								? 'Working…'
-								: 'Resume outbound email'}
-						</button>
-					) : null}
-				</div>
+				<AdminUserAccountModeration
+					stableUserId={selectedUser.stableUserId}
+					username={selectedUser.username}
+					suspendedAt={selectedUser.suspended_at}
+					emailOutboundPausedAt={selectedUser.email_outbound_paused_at}
+					parentMutating={isMutating}
+					onSubmitModerationAction={props.onSubmitModerationAction}
+					onDeleted={props.onAccountDeleted}
+				/>
 			</AccountManagementPanel>
 			<AccountManagementPanel
 				title="Usage & quotas"

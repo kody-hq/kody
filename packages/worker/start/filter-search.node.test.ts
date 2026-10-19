@@ -71,7 +71,7 @@ for (const validateSearch of validators) {
 			await router.navigate({
 				to: '/filters',
 				search: (previous: Record<string, unknown>) => ({ ...previous, q }),
-			})
+			} as never)
 			const params = new URLSearchParams(router.state.location.searchStr)
 			if (validateSearch === collectionSearch)
 				expect(params.has('view')).toBe(false)
@@ -97,7 +97,7 @@ for (const validateSearch of validators) {
 			await router.navigate({
 				to: '/filters',
 				search: { q: '123', [key]: value },
-			})
+			} as never)
 			expect(
 				new URLSearchParams(router.state.location.searchStr).get(key),
 			).toBe(String(value))
@@ -105,7 +105,10 @@ for (const validateSearch of validators) {
 		}
 
 		if (validateSearch === adminUsersSearch) {
-			await router.navigate({ to: '/filters', search: { pageSize: 50 } })
+			await router.navigate({
+				to: '/filters',
+				search: { pageSize: 50 },
+			} as never)
 			expect(
 				new URLSearchParams(router.state.location.searchStr).get('pageSize'),
 			).toBe('50')

@@ -1,7 +1,10 @@
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { enqueuePlatformFeedbackDispatch } from '#worker/platform-feedback/dispatch-queue-producer.ts'
+import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.ts'
+import { platformFeedbackSubmissionRateLimit } from '#worker/platform-feedback/limits.ts'
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
 import { platformFeedbackCategories } from '#worker/platform-feedback/types.ts'
 import { requireMcpUser } from './require-user.ts'
@@ -14,8 +17,7 @@ export const metaPlatformFeedbackSubmitCapability = defineDomainCapability(
 	{
 		name: 'metaPlatformFeedbackSubmit',
 		orgPermission: 'none',
-		description:
-			'Submit platform feedback only from an interactive MCP agent flow after showing the user the exact proposed summary and details, asking first, and receiving explicit approval. Open `search({ entity: "guide:platform_friction" })` first for the approval flow and content guidance. After submit, use metaPlatformFeedbackGet with the returned feedback_id (or metaPlatformFeedbackList) to check status — including open, triaged, resolved, and dismissed — without a full account export. The exact approved summary and details plus the account user id, username, and email may be delivered immediately to deployment admins through admin-configured notifications. Copies already delivered outside Kody may remain after Kody account deletion under the deployment operator’s retention and deletion controls. Non-interactive package code and package apps cannot submit. Do not include secrets or unrelated private content.',
+		description: `Submit platform feedback only from an interactive MCP agent flow after showing the user the exact proposed summary and details, asking first, and receiving explicit approval. Open \`search({ entity: "guide:platform_friction" })\` first for the approval flow and content guidance. Each account may create at most ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours; call metaPlatformFeedbackList first and check submissions_remaining (and next_slot_at when at the cap) before asking the user to approve multiple submissions. After submit, use metaPlatformFeedbackGet with the returned feedback_id (or metaPlatformFeedbackList) to check status — including open, triaged, resolved, and dismissed — without a full account export. The exact approved summary and details plus the account user id, username, and email may be delivered immediately to deployment admins through admin-configured notifications. Copies already delivered outside Kody may remain after Kody account deletion under the deployment operator’s retention and deletion controls. Non-interactive package code and package apps cannot submit. Do not include secrets or unrelated private content.`,
 		keywords: [
 			'platform feedback',
 			'friction',
@@ -79,15 +81,25 @@ export const metaPlatformFeedbackSubmitCapability = defineDomainCapability(
 					'Platform feedback requires an authenticated account username.',
 				)
 			}
-			const feedback = await submitPlatformFeedback({
-				db: ctx.env.APP_DB,
-				submitterUserId: user.userId,
-				submitterUsername,
-				submitterEmail: user.email,
-				category: args.category,
-				summary: args.summary,
-				details: args.details,
-			})
+			let feedback
+			try {
+				feedback = await submitPlatformFeedback({
+					db: ctx.env.APP_DB,
+					submitterUserId: user.userId,
+					submitterUsername,
+					submitterEmail: user.email,
+					category: args.category,
+					summary: args.summary,
+					details: args.details,
+				})
+			} catch (error) {
+				// Rate limits, active-queue caps, and concurrent conflicts are
+				// caller-clearable; keep them off Sentry as user errors.
+				if (isPlatformFeedbackDomainError(error)) {
+					throw new McpCallerError(error.message, { cause: error })
+				}
+				throw error
+			}
 			try {
 				await enqueuePlatformFeedbackDispatch({
 					queue: ctx.env.PLATFORM_FEEDBACK_DISPATCH_QUEUE,

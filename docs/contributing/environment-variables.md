@@ -107,7 +107,7 @@ Not Track skip the request. The CSP in
 
 Optional Wrangler vars (public, non-secret; see
 `packages/worker/src/env-schema.ts` and
-[architecture/youtube-watch.md](./architecture/youtube-watch.md)):
+`packages/worker/universal/youtube-watch.ts`):
 
 - `YOUTUBE_ALLOWED_PLAYLIST_IDS` — comma-separated playlist ids. The Worker
   reads each playlist's public Atom feed (latest ~15 videos) and caches it about
@@ -119,7 +119,7 @@ Optional Wrangler vars (public, non-secret; see
   extracted from enabled banner hrefs.
 
 Optional origin-only Worker secret (see `packages/worker/src/env-schema.ts` and
-[architecture/youtube-watch.md](./architecture/youtube-watch.md)):
+`packages/worker/src/app/landing-hero-videos.ts`):
 
 - `YOUTUBE_DATA_API_KEY` — YouTube Data API key for the homepage hero chooser
   (`playlistItems`, playlist order). When unset, the Worker reads the same

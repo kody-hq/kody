@@ -253,22 +253,17 @@ edit that changed it. The `workers-unit` suite still exercises the store.
 
 The public package surfaces (`/@:username/:kodyId`,
 `/@:username/:kodyId/tree/:ref/*`, `/@:username/:kodyId/raw/:ref/*`,
-`/community/:id`, `/community/:id/files/*`, `/community/:id/raw/*`) and their
-JSON companions (`/profiles/:username/packages/:kodyId.json`,
-`/community/:id.json`, `.../files.json`) are shared too, but with
-`public, max-age=60` and no stale-while-revalidate: an owner can unpublish or
-make a package private and nothing purges shared caches, so a stale public
-response is bounded to one minute. They are shared only when the document is a
-`200` (a `401` or `404` to a stranger stays `no-store` so making a package
-public takes effect at once) and, for JSON, when the request has no session
-cookie and the payload carries no viewer state. JSON companions are not stored
-in the Cache API (the store is HTML-only). Anonymous `/onboarding.json` and
-`/landing-hero-videos.json` use the marketing policy (the playlist payload is
-also KV-cached with SWR). `/docs/:slug.json` is publicly cacheable without a
-cookie vary (the payload is identical for every visitor). The response stays
-`no-store` when the request carries a `kody_session` cookie, `loadSessionInfo`
-resolves a session, or the response sets a cookie. Auth, OAuth, account, and
-every other HTML path stay `no-store`.
+`/community/:id`, `/community/:id/files/*`, `/community/:id/raw/*`) are shared
+too, but with `public, max-age=60` and no stale-while-revalidate
+(`anonymousDocumentCache: 'visibility'`): an owner can unpublish or make a
+package private and nothing purges shared caches, so a stale public response is
+bounded to one minute. They are shared only when the document is a `200` (a
+`401` or `404` to a stranger stays `no-store` so making a package public takes
+effect at once). The Cache API store is HTML-only. Landing-hero video metadata
+is KV-cached with SWR on the homepage load. The response stays `no-store` when
+the request carries a `kody_session` cookie, `loadSessionInfo` resolves a
+session, or the response sets a cookie. Auth, OAuth, account, and every other
+HTML path stay `no-store`.
 
 ## Request context
 
@@ -285,10 +280,10 @@ load, so unit tests and jobs are unaffected.
 
 ## Page Server-Timing
 
-`renderAppPage` and page JSON companions emit an HTTP `Server-Timing` header
-with request-scoped phases (`{ name, durationMs, desc? }`, same helper as
-execute). Cloudflare may append `cfEdge` / `cfOrigin` / `cfWorker`. App phases
-are:
+Loaders record request-scoped phases (`{ name, durationMs, desc? }`, same helper
+as execute) through `recordServerTiming` on the request context. Package-app
+serving attaches those entries as `Server-Timing`. Cloudflare may append
+`cfEdge` / `cfOrigin` / `cfWorker`. App phases include:
 
 - `session` — `loadSessionInfo`
 - `ssr` — route preload, stylesheet, and starting the HTML stream
@@ -302,9 +297,9 @@ are:
 - `files-route` — tree URL canonicalization for `/tree/:ref` and `/files`
 - `files` — tree snapshot read (KV, then the listing pin snapshot)
 
-Loader phases recorded through `recordServerTiming` land on the request context
-and are merged into the header by `renderAppPage`, the package JSON companions,
-and frame responses.
+Loader phases recorded through `recordServerTiming` land on the request context.
+Package-app responses merge them into `Server-Timing`. The weekly site-perf
+collector reads that header on marketing HTML.
 
 Signed-in `/onboarding` derives the setup checklist from verification, inbound
 MCP OAuth grants (first and second host), a Step 2 access win (memory, execute,

@@ -26,7 +26,7 @@ export type EmailVerificationDelivery = {
 }
 
 /** Public help doc for DNS filters and missing verification mail. */
-export const emailVerificationDeliveryHelpPath = '/docs/cant-open-or-get-mail'
+const emailVerificationDeliveryHelpPath = '/docs/cant-open-or-get-mail'
 
 const emailVerificationDeliveryIndicatorValues = [
 	'waiting',

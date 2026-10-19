@@ -8,7 +8,15 @@ import {
 	redactEmailRecipient,
 } from '#worker/audit-log.ts'
 import { deferWork } from '#worker/deferred-work.ts'
-import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
+import {
+	sendGatedTransactionalEmail,
+	type GatedTransactionalSendResult,
+} from '#worker/email/transactional-send-policy.ts'
+import {
+	registerTransactionalEmailDelivery,
+	transactionalPasswordResetConfirmedKind,
+	transactionalPasswordResetKind,
+} from '#worker/email/verification-delivery.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import {
 	createPasswordResetToken,
@@ -38,6 +46,43 @@ const resetConfirmSchema = object({
 	token: string(),
 	password: string(),
 })
+
+function logHardBounceSuppression(input: {
+	to: string
+	kind: string
+	result: GatedTransactionalSendResult
+}) {
+	if (input.result.ok || !('code' in input.result)) return
+	if (input.result.code !== 'recipient_hard_bounce') return
+	console.info(
+		'password-reset-hard-bounce-suppressed',
+		JSON.stringify({
+			to: redactEmailRecipient(input.to),
+			kind: input.kind,
+		}),
+	)
+}
+
+async function rememberPasswordResetDelivery(input: {
+	db: D1Database
+	userId: number
+	recipient: string
+	kind:
+		| typeof transactionalPasswordResetKind
+		| typeof transactionalPasswordResetConfirmedKind
+	result: GatedTransactionalSendResult
+}) {
+	if (!input.result.ok || !input.result.messageId) return
+	await registerTransactionalEmailDelivery({
+		db: input.db,
+		providerMessageId: input.result.messageId,
+		userId: input.userId,
+		recipient: input.recipient,
+		kind: input.kind,
+	}).catch((error) => {
+		console.warn('password-reset-delivery-index-failed', error)
+	})
+}
 
 function logMissingEmailConfig(payload: { to: string; subject: string }) {
 	console.warn(
@@ -137,7 +182,7 @@ export async function requestWebsitePasswordReset({
 			}
 
 			try {
-				await sendGatedTransactionalEmail({
+				const sendResult = await sendGatedTransactionalEmail({
 					db: env.APP_DB,
 					config: {
 						accountId: env.CLOUDFLARE_ACCOUNT_ID,
@@ -145,7 +190,7 @@ export async function requestWebsitePasswordReset({
 						apiToken: env.CLOUDFLARE_API_TOKEN,
 					},
 					category: 'essential',
-					kind: 'password_reset',
+					kind: transactionalPasswordResetKind,
 					message: {
 						to: normalizedEmail,
 						from: emailConfig.fromEmail,
@@ -153,6 +198,18 @@ export async function requestWebsitePasswordReset({
 						html: email.html,
 						text: email.text,
 					},
+				})
+				logHardBounceSuppression({
+					to: normalizedEmail,
+					kind: transactionalPasswordResetKind,
+					result: sendResult,
+				})
+				await rememberPasswordResetDelivery({
+					db: env.APP_DB,
+					userId,
+					recipient: normalizedEmail,
+					kind: transactionalPasswordResetKind,
+					result: sendResult,
 				})
 			} catch (error) {
 				console.warn('cloudflare-email-error', error)
@@ -346,7 +403,7 @@ export async function confirmWebsitePasswordReset({
 		})
 	} else {
 		try {
-			await sendGatedTransactionalEmail({
+			const sendResult = await sendGatedTransactionalEmail({
 				db: env.APP_DB,
 				config: {
 					accountId: env.CLOUDFLARE_ACCOUNT_ID,
@@ -354,7 +411,7 @@ export async function confirmWebsitePasswordReset({
 					apiToken: env.CLOUDFLARE_API_TOKEN,
 				},
 				category: 'essential',
-				kind: 'password_reset_confirmed',
+				kind: transactionalPasswordResetConfirmedKind,
 				message: {
 					to: userRecord.email,
 					from: emailConfig.fromEmail,
@@ -362,6 +419,18 @@ export async function confirmWebsitePasswordReset({
 					html: email.html,
 					text: email.text,
 				},
+			})
+			logHardBounceSuppression({
+				to: userRecord.email,
+				kind: transactionalPasswordResetConfirmedKind,
+				result: sendResult,
+			})
+			await rememberPasswordResetDelivery({
+				db: env.APP_DB,
+				userId: resetRecord.user_id,
+				recipient: userRecord.email,
+				kind: transactionalPasswordResetConfirmedKind,
+				result: sendResult,
 			})
 		} catch (error) {
 			console.warn('cloudflare-email-error', error)

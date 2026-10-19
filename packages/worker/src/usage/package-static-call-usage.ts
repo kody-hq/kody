@@ -2,6 +2,7 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	recordUsage,
 	type UsageEnv,
+	type UsageOutcome,
 	usageAttributionFieldsFromRequest,
 } from './record-usage.ts'
 
@@ -23,16 +24,31 @@ import {
  * usage to an arbitrary package.
  *
  * Events arrive as one batch per run (buffered sandbox-side and flushed by
- * the run wrapper while the sandbox RPC dispatchers are still live); each
- * batch entry becomes one usage event. `record` never throws and never
- * rejects: metering must not break the call path it observes (same
- * contract as `recordUsage`).
+ * the run wrapper while the sandbox RPC dispatchers are still live). The host
+ * buffers accepted events until {@link PackageStaticCallMeterTools.finalize}
+ * with the host-observed run outcome: a throw recorded as `error` at call
+ * time is rewritten to `caught` when the run succeeded (caller handled it).
+ * Fleet error-rate alerting counts only `error`, so caught throws stay
+ * visible in Analytics Engine / admin drill-down without inflating the rate.
+ * `record` / `finalize` never throw and never reject: metering must not break
+ * the call path it observes (same contract as `recordUsage`).
  */
 
 export type PackageStaticCallMeterInput = Record<string, unknown>
 
 export type PackageStaticCallMeterTools = {
 	record: (input: PackageStaticCallMeterInput) => Promise<void>
+	/**
+	 * Write buffered events after the host knows whether the run failed.
+	 * Safe to call more than once; later calls are no-ops.
+	 */
+	finalize: (input: { runFailed: boolean }) => Promise<void>
+}
+
+type PendingStaticCallEvent = {
+	packageId: string
+	durationMs: number | null
+	outcome: Extract<UsageOutcome, 'success' | 'error'>
 }
 
 /**
@@ -59,37 +75,56 @@ export function createPackageStaticCallMeterTools(input: {
 }): PackageStaticCallMeterTools | undefined {
 	const userId = input.userId?.trim()
 	if (!userId) return undefined
-	let recordedCount = 0
+	const pending: Array<PendingStaticCallEvent> = []
+	let finalized = false
 	return {
 		record: async (batch) => {
 			try {
+				if (finalized) return
 				const events = Array.isArray(batch?.events) ? batch.events : []
 				for (const rawEvent of events.slice(0, maxRecordedEventsPerRun)) {
-					if (recordedCount >= maxRecordedEventsPerRun) return
-					const recorded = await recordStaticCallEvent({
-						env: input.env,
-						userId,
-						request: input.request,
+					if (pending.length >= maxRecordedEventsPerRun) return
+					const accepted = acceptStaticCallEvent({
 						grantedPackageIds: input.grantedPackageIds,
 						rawEvent,
 					})
-					if (recorded) recordedCount += 1
+					if (accepted) pending.push(accepted)
 				}
 			} catch (error) {
 				console.debug('package-static-call-usage-failed', error)
 			}
 		},
+		finalize: async ({ runFailed }) => {
+			// Callers should schedule this via waitUntil (or a short race) so
+			// sequential recordUsage writes cannot stall the run return path.
+			try {
+				if (finalized) return
+				finalized = true
+				const events = pending.splice(0, pending.length)
+				for (const event of events) {
+					const outcome: UsageOutcome =
+						event.outcome === 'error' && !runFailed ? 'caught' : event.outcome
+					await recordUsage(input.env, {
+						userId,
+						eventType: 'package_static_call',
+						entityId: event.packageId,
+						durationMs: event.durationMs,
+						outcome,
+						...usageAttributionFieldsFromRequest(input.request),
+					})
+				}
+			} catch (error) {
+				console.debug('package-static-call-usage-finalize-failed', error)
+			}
+		},
 	}
 }
 
-/** Returns true when the event was recorded (counts against the run cap). */
-async function recordStaticCallEvent(input: {
-	env: UsageEnv
-	userId: string
-	request?: RequestContext | null
+/** Returns a pending event when the report is granted and well-formed. */
+function acceptStaticCallEvent(input: {
 	grantedPackageIds: ReadonlySet<string>
 	rawEvent: unknown
-}) {
+}): PendingStaticCallEvent | null {
 	const rawEvent =
 		typeof input.rawEvent === 'object' && input.rawEvent !== null
 			? (input.rawEvent as Record<string, unknown>)
@@ -102,12 +137,12 @@ async function recordStaticCallEvent(input: {
 			'stamped package id is not a static dependency of this run',
 			packageId,
 		)
-		return false
+		return null
 	}
 	const outcome = rawEvent.outcome
 	if (outcome !== 'success' && outcome !== 'error') {
 		console.debug('package-static-call-usage-dropped', 'invalid outcome')
-		return false
+		return null
 	}
 	const durationMs =
 		typeof rawEvent.durationMs === 'number' &&
@@ -115,13 +150,5 @@ async function recordStaticCallEvent(input: {
 		rawEvent.durationMs >= 0
 			? rawEvent.durationMs
 			: null
-	await recordUsage(input.env, {
-		userId: input.userId,
-		eventType: 'package_static_call',
-		entityId: packageId,
-		durationMs,
-		outcome,
-		...usageAttributionFieldsFromRequest(input.request),
-	})
-	return true
+	return { packageId, durationMs, outcome }
 }

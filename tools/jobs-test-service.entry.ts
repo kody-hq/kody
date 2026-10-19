@@ -3,7 +3,7 @@ import {
 	createD1JobsStore,
 	type JobsStore,
 } from '../packages/shared/src/jobs/store.ts'
-// Bundled as text by tools/build-jobs-test-service.ts (esbuild `.sql` loader).
+// Bundled as text by tools/build-test-services.ts (esbuild `.sql` loader).
 import jobsInitSql from '../packages/jobs-worker/migrations/0001-jobs-init.sql'
 import jobsSoftDeleteSql from '../packages/jobs-worker/migrations/0002-teams-expand-actor-and-soft-delete.sql'
 import jobsEnabledBeforeSoftDeleteSql from '../packages/jobs-worker/migrations/0003-job-enabled-before-soft-delete.sql'

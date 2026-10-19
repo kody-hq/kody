@@ -35,28 +35,26 @@ const mockModule = vi.hoisted(() => ({
 	),
 }))
 
-vi.mock('#worker/storage-buckets/service.ts', () => ({
-	listUserStorageBucketEstimates: (
-		...args: Parameters<
-			typeof StorageBucketsService.listUserStorageBucketEstimates
-		>
-	) => mockModule.listUserStorageBucketEstimates(...args),
-	registerStorageBucket: (...args: Array<unknown>) =>
-		mockModule.registerStorageBucket(...args),
-	recordStorageBucketEstimate: (...args: Array<unknown>) =>
-		mockModule.recordStorageBucketEstimate(...args),
-	maybeRefreshStorageBucketEstimate: (...args: Array<unknown>) =>
-		mockModule.maybeRefreshStorageBucketEstimate(...args),
-	repoSessionIdFromStorageBucketId: (storageId: string) =>
-		storageId.replace(/^repo-session:/, ''),
-	storageBucketKindFromStorageId: (storageId: string) => {
-		if (storageId.startsWith('package:')) return 'package'
-		return 'unknown'
-	},
-	flushStorageBucketRegistrationsForTests: async () => undefined,
-	clearStorageBucketRegistrationDedupeForTests: () => undefined,
-	listPlatformStorageBuckets: async () => [],
-}))
+vi.mock('#worker/storage-buckets/service.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof StorageBucketsService>()
+	return {
+		...actual,
+		listUserStorageBucketEstimates: (
+			...args: Parameters<
+				typeof StorageBucketsService.listUserStorageBucketEstimates
+			>
+		) => mockModule.listUserStorageBucketEstimates(...args),
+		registerStorageBucket: (...args: Array<unknown>) =>
+			mockModule.registerStorageBucket(...args),
+		recordStorageBucketEstimate: (...args: Array<unknown>) =>
+			mockModule.recordStorageBucketEstimate(...args),
+		maybeRefreshStorageBucketEstimate: (...args: Array<unknown>) =>
+			mockModule.maybeRefreshStorageBucketEstimate(...args),
+		flushStorageBucketRegistrationsForTests: async () => undefined,
+		clearStorageBucketRegistrationDedupeForTests: () => undefined,
+		listPlatformStorageBuckets: async () => [],
+	}
+})
 
 vi.mock('#worker/entitlements/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof EntitlementsService>()

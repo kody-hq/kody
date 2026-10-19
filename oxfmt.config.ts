@@ -13,7 +13,5 @@ export default defineConfig({
 		'!packages/worker/.env.example',
 		// TanStack Router regenerates this file with its own formatter.
 		'packages/worker/start/routeTree.gen.ts',
-		// Preserve benchmark output exactly as the measuring tools wrote it.
-		'tools/framework-comparison/reports/measurements/**',
 	],
 })

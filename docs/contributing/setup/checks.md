@@ -20,32 +20,37 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   or is a `LICENSE` / `LICENCE` / `COPYING` / `NOTICE` text file. A source file
   in the same commit, including a comment-only edit or a source file renamed to
   markdown, runs all three checks.
-- `git push` runs the Husky `pre-push` hook. It executes `npm run test:push`
-  (`CI=1` `test:node` + `test:workers`) when any updated ref changes a path that
-  is not docs-only, or when the pushed paths cannot be listed. When the pushed
-  commit's tree SHA is already recorded green from a successful
-  `npm run validate` (or a prior pre-push `test:push`) under
-  `.tmp/git-hook-provenance.json`, the hook skips `test:push` and logs that
-  provenance hit (#3653 / #3719). Progress lines tick every 30s while a script
-  runs so a long workers-unit leg is not a silent hang (#3547); ADR 0011
-  workers-unit isolation is unchanged. A docs-only range skips the suites. A
-  push that changes `skills-lock.json` or any path under `.agents/skills/` also
-  runs `npm run skills-lock:check`. `skills-lock.json` counts with docs for this
-  hook: a push of only the lock, skill markdown, and other docs skips
-  `test:push`. A non-markdown file under `.agents/skills/` (a script or a test)
-  still runs `test:push`, as does any other source file. An unreadable push path
-  list runs the skills-lock check too. Deleting a remote branch skips the suites
-  and the skills-lock check. An update diffs the remote tip against the local
-  tip, so a later docs-only push does not retest commits already on the remote.
-  A new branch diffs against the merge base of `origin/HEAD`, `origin/main`, or
-  `main` (never the branch being created). Those suites are the same Nx targets
-  the CI Node / Workers jobs run, so a remote-cache hit is possible after a push
-  that runs them. Bundled guides and other markdown are docs-only, so the local
-  suites skip them. `npm run validate` and CI run those suites for every pull
-  request. Playwright E2E stays in `npm run validate` and the CI E2E job. The
-  push hook stops short of that suite because Playwright E2E is heavier than the
-  unit gate, and a failed e2e leg skips the unit gate when the push is retried
-  with `--no-verify`. Bundler artifacts live under
+- `git push` runs the Husky `pre-push` hook. It executes `npm run knip` (same
+  unused files/exports/types gate as CI's Static Knip step) then
+  `npm run test:push` (`CI=1` `test:node` + `test:workers`) when any updated ref
+  changes a path that is not docs-only, or when the pushed paths cannot be
+  listed. A knip failure prints a clear message to run `npm run knip` and fix
+  before pushing; CI keeps its Knip step as the backstop. When a check's tree
+  SHA is already recorded green from a successful `npm run validate` (or a prior
+  pre-push of that same check) under `.tmp/git-hook-provenance.json`, the hook
+  skips that check and logs the provenance hit (#3653 / #3719). Knip and
+  test:push provenance are separate so a pre-knip `test:push`-only record cannot
+  skip knip. Progress lines tick every 30s while a script runs so a long
+  workers-unit leg is not a silent hang (#3547); ADR 0011 workers-unit isolation
+  is unchanged. A docs-only range skips knip and the suites. A push that changes
+  `skills-lock.json` or any path under `.agents/skills/` also runs
+  `node tools/check-skills-lock.ts`. `skills-lock.json` counts with docs for
+  this hook: a push of only the lock, skill markdown, and other docs skips
+  `knip` and `test:push`. A non-markdown file under `.agents/skills/` (a script
+  or a test) still runs `knip` and `test:push`, as does any other source file.
+  An unreadable push path list runs the skills-lock check too. Deleting a remote
+  branch skips knip, the suites, and the skills-lock check. An update diffs the
+  remote tip against the local tip, so a later docs-only push does not retest
+  commits already on the remote. A new branch diffs against the merge base of
+  `origin/HEAD`, `origin/main`, or `main` (never the branch being created).
+  Those suites are the same Nx targets the CI Node / Workers jobs run, so a
+  remote-cache hit is possible after a push that runs them. Bundled guides and
+  other markdown are docs-only, so the local suites skip them.
+  `npm run validate` and CI run those suites for every pull request. Playwright
+  E2E stays in `npm run validate` and the CI E2E job. The push hook stops short
+  of that suite because Playwright E2E is heavier than the unit gate, and a
+  failed e2e leg skips the unit gate when the push is retried with
+  `--no-verify`. Bundler artifacts live under
   `src/node_modules/.kody-generated/`. Local origin development uses Vite;
   `wrangler-env.ts` still wraps D1/types and sibling worker deploys. Playwright
   sets `CLOUDFLARE_ENV=test` so Vite skips platform/runtime auxiliary workers.
@@ -90,12 +95,16 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   measures the bundle, not contention from e2e and Worker builds (#2475, #2759).
   The unit-test and Playwright legs set `CI=1` so timeouts, worker limits, and
   Nx cache hashes match GitHub Actions. CI runs the same checks as separate jobs
-  (🧹 Static, 🧪 Node, ☁️ Workers, 🔌 MCP, 🎭 E2E, aggregated by ✅ Validate).
-  If `npm run validate` passes locally, CI will pass. Trusted writers (Cloud
-  Agent environments, and same-repo validate) set
-  `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` and the write token so Nx uploads task
-  artifacts to `https://nx-cache.kody.codes`. Fork `pull_request` validate uses
-  the read token and can only GET (see
+  (🧹 Static, 🧪 Node, ☁️ Workers, 🔌 MCP, sharded 🎭 E2E, aggregated by ✅
+  Validate). Heavy Validate jobs use
+  `runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}` (set repo
+  variable `CI_RUNNER=ubuntu-latest` to drop WarpBuild in one place); the final
+  ✅ Validate gate always runs on GitHub-hosted `ubuntu-latest`. If
+  `npm run validate` passes locally, CI will pass. Trusted writers (Cloud Agent
+  environments, and same-repo validate) set `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`
+  and the write token so Nx uploads task artifacts to
+  `https://nx-cache.kody.codes`. Fork `pull_request` validate uses the read
+  token and can only GET (see
   [decision 0019](../decisions/0019-self-hosted-nx-remote-cache.md),
   [decision 0038](../decisions/0038-no-nx-cloud-read-write-cache-tokens.md),
   [decision 0040](../decisions/0040-same-repo-writers-may-put-nx-cache.md), and
@@ -109,28 +118,34 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   nested workspace installs (for example `packages/worker/node_modules/satori`).
   Cloud Agent snapshots can lag a lockfile bump after `git pull`; this is the
   `run npm ci` hint.
-- `npm run lockfile:check` fails when a locked direct dependency sits inside its
-  declared range but outside a peer range that range can still reach.
-  `npm install` rewrites `package-lock.json` for that drift (including an
-  optional peer). The check keeps a Cloud Agent environment install from leaving
-  a dirty lockfile on a fresh checkout.
-- `npm run skills-lock:check` (`tools/check-skills-lock.ts`) fails when
-  `skills-lock.json` drifts from the committed skill folders it records.
+- `npm run docs:check` (`tools/run-check-group.ts docs`) runs temporal language,
+  decision-record numbers, markdown file refs, no hosted-execute fallback, and
+  mermaid syntax. It continues after a failure and lists each failed member by
+  name. File refs fail when markdown cites a repo file that is not in the tree.
+  Inline code paths under `packages/`, `docs/`, `tools/`, `e2e/`, `.agents/`, or
+  `.github/` are checked when their parent directory exists, and relative links
+  are checked always. Generated Wrangler configs (`wrangler-*.generated.json`
+  and anything under `.wrangler/`) and local `.env` files are ignored. A path
+  the same line names as absent is ignored. Example trees whose parent directory
+  is not in the repo are ignored.
+- `npm run deps:check` (`tools/run-check-group.ts deps`) runs lockfile peer
+  drift, dependency overrides, and skills-lock. Lockfile peer drift fails when a
+  locked direct dependency sits inside its declared range but outside a peer
+  range that range can still reach; `npm install` rewrites `package-lock.json`
+  for that drift (including an optional peer). Overrides fail when a root
+  `package.json` override is not documented in
+  [dependency overrides](../dependency-overrides.md), when that doc keeps a
+  section for a removed override, or when `package.json` repeats a key (JSON
+  keeps only the last value). Skills-lock (`tools/check-skills-lock.ts`) fails
+  when `skills-lock.json` drifts from the committed skill folders it records.
   `ship-pr` must stay a repo-owned local skill (so `skills update` does not
   reinstall it from kentcdodds/kcd-skills) and its `computedHash` must match the
   folder hash. Edit the skill and refresh `computedHash`, or the check fails.
-- `npm run docs:check-file-refs` (`tools/check-markdown-file-refs.ts`) fails
-  when markdown cites a repo file that is not in the tree. Inline code paths
-  under `packages/`, `docs/`, `tools/`, `e2e/`, `.agents/`, or `.github/` are
-  checked when their parent directory exists, and relative links are checked
-  always. Generated Wrangler configs (`wrangler-*.generated.json` and anything
-  under `.wrangler/`) and local `.env` files are ignored. A path the same line
-  names as absent is ignored. Example trees whose parent directory is not in the
-  repo are ignored.
-- `npm run overrides:check` fails when a root `package.json` override is not
-  documented in [dependency overrides](../dependency-overrides.md), when that
-  doc keeps a section for a removed override, or when `package.json` repeats a
-  key (JSON keeps only the last value).
+  `install:check` stays on the git hooks / `prevalidate` path and is not part of
+  this group.
+- `npm run soft-delete-read-filter:check` and `npm run error-agent-prompt:check`
+  run in local `validate` and the CI static job (they are not part of the docs
+  or deps groups).
 - `npm run deploy-guardrails:check` protects reviewed Durable Object migration
   history and bindings in both Wrangler configs, requires exact allowlisting for
   class deletion, and rejects destructive Cloudflare CLI operations in
@@ -140,9 +155,12 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   that do not name an existing step or job id. GitHub resolves those
   misspellings to empty strings instead of failing the run, so a typo in
   `deploy.yml` would otherwise first appear on a production deploy. It also
-  requires a `server.json` version bump when registry metadata changes: the MCP
-  Registry cannot republish a version. It also rejects a `description` longer
-  than 100 characters (`ServerDetail.description.maxLength` in the MCP
+  requires `EXPECTED_DEPLOY_WORKFLOW_CONTRACT` in `deploy.yml` to match
+  `DEPLOY_WORKFLOW_CONTRACT_VERSION` in `tools/ci/deploy-workflow-contract.ts`
+  (bump both when tip-of-main deploy.yml gains a checkout-coupled requirement).
+  It also requires a `server.json` version bump when registry metadata changes:
+  the MCP Registry cannot republish a version. It also rejects a `description`
+  longer than 100 characters (`ServerDetail.description.maxLength` in the MCP
   server.json schema) so a copy edit fails `validate` instead of the publish
   job. CI passes the PR base SHA or the pre-push `github.event.before` as
   `MCP_REGISTRY_VALIDATION_BASE` so a multi-commit main push that already bumped

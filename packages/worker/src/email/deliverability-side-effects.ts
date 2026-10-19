@@ -14,6 +14,10 @@ import {
 } from './rejecting-providers.ts'
 import { type EmailDeliveryStatus } from './types.ts'
 import {
+	transactionalDeliveryCursorIsDelivered,
+	transactionalDeliveryCursorMatches,
+} from './verification-delivery.ts'
+import {
 	clearVerificationRecipientHardBounce,
 	recordVerificationRecipientHardBounce,
 } from './verification-recipient-suppression.ts'
@@ -26,15 +30,37 @@ export async function applyDeliverabilitySideEffects(input: {
 	smtpEnhancedStatusCode?: string | null
 	smtpStatusCode?: string | null
 	/**
-	 * Mailbox bounces must not suppress verification mail. Only the
-	 * signup/verify transactional kind sets this.
+	 * Verification mail and password-reset mail (`password_reset`,
+	 * `password_reset_confirmed`) set this. Mailbox and forwarding events
+	 * must not.
 	 */
 	recordVerificationSuppression?: boolean
+	/**
+	 * When set, skip (and undo) mutations unless the transactional delivery
+	 * cursor still names this exact event. Prevents an older bounce from
+	 * re-arming holds after a newer delivered event claimed the cursor.
+	 */
+	confirmCursor?: {
+		providerMessageId: string
+		status: string
+		at: string
+	}
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<void> {
 	const now = input.now ?? new Date()
+	const cursorStillOwnsEvent = async () => {
+		if (!input.confirmCursor) return true
+		return await transactionalDeliveryCursorMatches({
+			db: input.db,
+			providerMessageId: input.confirmCursor.providerMessageId,
+			status: input.confirmCursor.status,
+			at: input.confirmCursor.at,
+		})
+	}
 	try {
+		if (!(await cursorStillOwnsEvent())) return
+
 		if (input.deliveryStatus === 'delivered') {
 			await clearEmailRecipientCooldown({
 				db: input.db,
@@ -79,6 +105,33 @@ export async function applyDeliverabilitySideEffects(input: {
 				smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
 				smtpStatusCode: input.smtpStatusCode,
 				now,
+			})
+		}
+
+		// A newer delivered event may have claimed the cursor while we were
+		// writing failure holds. Only undo when delivered won — a newer
+		// bounce/failed claim must keep its own holds.
+		if (
+			input.confirmCursor &&
+			!(await cursorStillOwnsEvent()) &&
+			(await transactionalDeliveryCursorIsDelivered({
+				db: input.db,
+				providerMessageId: input.confirmCursor.providerMessageId,
+			}))
+		) {
+			await clearEmailRecipientCooldown({
+				db: input.db,
+				recipient: input.recipient,
+			})
+			await clearRejectingProvidersForRecipient({
+				db: input.db,
+				recipient: input.recipient,
+				now,
+				fetchImpl: input.fetchImpl,
+			})
+			await clearVerificationRecipientHardBounce({
+				db: input.db,
+				recipient: input.recipient,
 			})
 		}
 	} catch (error) {

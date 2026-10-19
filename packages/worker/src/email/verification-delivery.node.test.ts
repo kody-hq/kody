@@ -10,6 +10,8 @@ import {
 	setUserEmailVerificationDelivery,
 	transactionalEmailDestinationVerificationKind,
 	transactionalEmailVerificationKind,
+	transactionalKindRecordsHardBounce,
+	transactionalPasswordResetKind,
 } from './verification-delivery.ts'
 
 const senderBlockResponse =
@@ -26,7 +28,9 @@ async function createDeliveryTestDb() {
 				user_id INTEGER NOT NULL,
 				kind TEXT NOT NULL,
 				recipient TEXT NOT NULL,
-				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+				last_status TEXT,
+				last_status_at TEXT
 			)`,
 		)
 		.run()
@@ -325,4 +329,147 @@ test('destination verification lifecycle matches the index without clobbering si
 		},
 	})
 	expect(await readUserDelivery(db)).toMatchObject({ status: 'delivered' })
+})
+
+test('password reset lifecycle matches the index without clobbering signup delivery columns', async () => {
+	const db = await createDeliveryTestDb()
+	await setUserEmailVerificationDelivery({
+		db,
+		userId: 1,
+		status: 'accepted',
+		class: null,
+		at: '2026-09-17T02:00:00.000Z',
+	})
+	await register(db, 'cf-reset', { kind: transactionalPasswordResetKind })
+	expect(
+		transactionalKindRecordsHardBounce(transactionalPasswordResetKind),
+	).toBe(true)
+	expect(transactionalKindRecordsHardBounce('password_reset_confirmed')).toBe(
+		true,
+	)
+	expect(transactionalKindRecordsHardBounce('email_verification')).toBe(true)
+	expect(transactionalKindRecordsHardBounce('forward')).toBe(false)
+
+	expect(
+		await record(
+			db,
+			'cf-reset',
+			'bounced',
+			'2026-09-17T02:05:00.000Z',
+			'550 5.1.1 user unknown',
+		),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: {
+			kind: transactionalPasswordResetKind,
+			status: 'bounced',
+			recipient: 'blocked@example.com',
+		},
+	})
+	expect(await readUserDelivery(db)).toEqual({
+		status: 'accepted',
+		class: null,
+	})
+})
+
+test('destination verification rejects a bounce after a newer delivered event', async () => {
+	const db = await createDeliveryTestDb()
+	await register(db, 'cf-destination-fresh', {
+		recipient: 'pager@example.com',
+		kind: transactionalEmailDestinationVerificationKind,
+	})
+
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'delivered',
+			'2026-10-17T18:30:00.000Z',
+		),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: {
+			kind: transactionalEmailDestinationVerificationKind,
+			status: 'delivered',
+			recipient: 'pager@example.com',
+		},
+	})
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'bounced',
+			'2026-10-17T18:20:00.000Z',
+			senderBlockResponse,
+		),
+	).toEqual({ outcome: 'stale' })
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'bounced',
+			'2026-10-17T18:30:00.000Z',
+			senderBlockResponse,
+		),
+	).toEqual({ outcome: 'stale' })
+	// Same delivered event again (queue retry after cursor write) stays
+	// recorded so deliverability side effects can still run.
+	expect(
+		await record(
+			db,
+			'cf-destination-fresh',
+			'delivered',
+			'2026-10-17T18:30:00.000Z',
+		),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: { status: 'delivered' },
+	})
+})
+
+test('password reset rejects a bounce after a newer delivered event', async () => {
+	const db = await createDeliveryTestDb()
+	await register(db, 'cf-reset-fresh', { kind: transactionalPasswordResetKind })
+
+	expect(
+		await record(db, 'cf-reset-fresh', 'delivered', '2026-10-17T18:30:00.000Z'),
+	).toMatchObject({
+		outcome: 'recorded',
+		event: { kind: transactionalPasswordResetKind, status: 'delivered' },
+	})
+	expect(
+		await record(
+			db,
+			'cf-reset-fresh',
+			'bounced',
+			'2026-10-17T18:20:00.000Z',
+			'550 5.1.1 user unknown',
+		),
+	).toEqual({ outcome: 'stale' })
+})
+
+test('delivery cursor claim compares timestamps as instants across ISO forms', async () => {
+	const db = await createDeliveryTestDb()
+	await register(db, 'cf-iso-forms', {
+		kind: transactionalEmailDestinationVerificationKind,
+	})
+
+	// Without-ms form sorts after with-ms lexically; instant compare must
+	// still accept the later bounce and reject a later retry of the earlier
+	// delivered event.
+	expect(
+		await record(db, 'cf-iso-forms', 'delivered', '2026-10-17T18:30:00Z'),
+	).toMatchObject({ outcome: 'recorded', event: { status: 'delivered' } })
+	expect(
+		await record(
+			db,
+			'cf-iso-forms',
+			'bounced',
+			'2026-10-17T18:30:00.500Z',
+			'550 5.1.1 user unknown',
+		),
+	).toMatchObject({ outcome: 'recorded', event: { status: 'bounced' } })
+	expect(
+		await record(db, 'cf-iso-forms', 'delivered', '2026-10-17T18:30:00Z'),
+	).toEqual({ outcome: 'stale' })
 })

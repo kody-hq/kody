@@ -286,6 +286,6 @@ test('package-app OAuth login on a real owner subdomain redirects to authorize w
 	expect(location).toBeTruthy()
 	const authorize = new URL(location!)
 	expect(authorize.origin).toBe(appOrigin)
-	expect(authorize.pathname).toBe(packageAppOauthPaths.authorize)
+	expect(authorize.pathname).toBe('/oauth/package-app/authorize')
 	expect(authorize.searchParams.get('client_id')).toBe(`${ownerUsername}/demo`)
 })

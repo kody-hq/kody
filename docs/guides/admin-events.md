@@ -293,9 +293,13 @@ timestamps, and package id so a retried POST does not double-invoke.
 The hourly `usage_aggregation` lane queries Analytics Engine for anonymous fleet
 totals of `package_export`, `package_static_call`, `job_run`, and
 `workflow_run`. It compares the last completed hour to the hour before it, and
-the last 24 hours to the 24 hours before that. When the combined error rate
-rises past a volume floor, Kody writes a KV snapshot for `/admin/insights` and
-fans `fleet.package_error_rate.elevated` to packages saved by users who hold the
+the last 24 hours to the 24 hours before that. Error totals use
+`blob4 = 'error'` only: `package_static_call` throws that a successful run
+handled are recorded as `caught` and do not inflate this alert (they remain in
+admin usage rollups as `caughtCount` / `caught_count`, and in AE for per-package
+drill-down via `blob3`). When the combined error rate rises past a volume floor,
+Kody writes a KV snapshot for `/admin/insights` and fans
+`fleet.package_error_rate.elevated` to packages saved by users who hold the
 admin role at dispatch time. A second query then groups recent-window errors by
 owner. One account at ≥80% of those errors, or three accounts together at ≥80%,
 is concentrated; a true multi-user spike stays fleet-wide. Concentrated pages

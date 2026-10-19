@@ -15,6 +15,7 @@ export async function ensureUsageRollupsTestSchema(db: D1Database) {
 	month TEXT NOT NULL,
 	event_count INTEGER NOT NULL DEFAULT 0,
 	error_count INTEGER NOT NULL DEFAULT 0,
+	caught_count INTEGER NOT NULL DEFAULT 0,
 	total_duration_ms INTEGER NOT NULL DEFAULT 0,
 	total_cpu_ms INTEGER NOT NULL DEFAULT 0,
 	total_bytes INTEGER NOT NULL DEFAULT 0,

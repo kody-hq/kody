@@ -285,6 +285,24 @@ export async function deleteStorageBucketInventory(input: {
 	return (result.meta?.changes ?? 0) > 0
 }
 
+/** True when this owner still has an inventory row for the storage id. */
+export async function storageBucketInventoryExists(input: {
+	db: D1Database
+	userId: OwnerId
+	storageId: string
+}): Promise<boolean> {
+	const row = await input.db
+		.prepare(
+			`SELECT 1 AS present
+			FROM user_storage_buckets
+			WHERE user_id = ? AND storage_id = ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.storageId)
+		.first<{ present: number }>()
+	return row != null
+}
+
 function normalizeEstimatedBytes(estimatedBytes: number) {
 	if (!Number.isFinite(estimatedBytes)) return null
 	return Math.max(0, Math.round(estimatedBytes))
@@ -501,6 +519,82 @@ export async function listUserStorageBucketEstimates(input: {
 				? row.estimatedBytes
 				: null,
 	}))
+}
+
+/** Human labels for inventoried bucket kinds (no raw storage ids). */
+export const storageBucketKindLabels: Record<StorageBucketKind, string> = {
+	package: 'package storage',
+	job: 'job storage',
+	execute: 'execute scratch',
+	repo_session: 'repo session scratch',
+	unknown: 'other storage',
+}
+
+/**
+ * Sum stored estimates by kind for diagnostics and denial hints. Omits
+ * storage ids so user-facing copy never exposes raw bucket keys.
+ */
+export function summarizeStorageBucketEstimatesByKind(
+	buckets: ReadonlyArray<{
+		kind: StorageBucketKind
+		estimatedBytes: number | null
+	}>,
+): Array<{
+	kind: StorageBucketKind
+	label: string
+	bytes: number
+	count: number
+}> {
+	const byKind = new Map<StorageBucketKind, { bytes: number; count: number }>()
+	for (const bucket of buckets) {
+		const entry = byKind.get(bucket.kind) ?? { bytes: 0, count: 0 }
+		entry.count += 1
+		entry.bytes += bucket.estimatedBytes ?? 0
+		byKind.set(bucket.kind, entry)
+	}
+	const order: ReadonlyArray<StorageBucketKind> = [
+		'package',
+		'repo_session',
+		'job',
+		'execute',
+		'unknown',
+	]
+	return order
+		.filter((kind) => byKind.has(kind))
+		.map((kind) => {
+			const entry = byKind.get(kind)!
+			return {
+				kind,
+				label: storageBucketKindLabels[kind],
+				bytes: entry.bytes,
+				count: entry.count,
+			}
+		})
+}
+
+/** Compact sentence for entitlement denials and usage copy. */
+export function formatStorageBucketKindSummary(
+	buckets: ReadonlyArray<{
+		kind: StorageBucketKind
+		estimatedBytes: number | null
+	}>,
+): string | null {
+	const rows = summarizeStorageBucketEstimatesByKind(buckets).filter(
+		(row) => row.count > 0,
+	)
+	if (rows.length === 0) return null
+	const parts = rows.map((row) => {
+		const size =
+			row.bytes <= 0
+				? 'size unknown'
+				: row.bytes < 1024
+					? `${row.bytes} B`
+					: row.bytes < 1024 * 1024
+						? `${(row.bytes / 1024).toFixed(1)} KiB`
+						: `${(row.bytes / (1024 * 1024)).toFixed(1)} MiB`
+		return `${row.count} ${row.label} (${size})`
+	})
+	return `Inventoried buckets: ${parts.join('; ')}.`
 }
 
 export async function listPlatformStorageBuckets(input: {

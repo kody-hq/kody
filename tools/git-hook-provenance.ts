@@ -10,15 +10,16 @@ type GitCommandResult = {
 type GitRunner = (args: ReadonlyArray<string>) => GitCommandResult
 
 /**
- * Local gate provenance: tree SHAs that already passed `test:push` (via
- * validate or a prior pre-push). Keyed on `git` tree objects so a clean
- * validate of the same contents skips the silent 10-minute pre-push re-run
- * (#3653 / #3719). Stored under `.tmp/` (gitignored).
+ * Local gate provenance: tree SHAs that already passed `knip` and/or
+ * `test:push` (via validate or a prior pre-push). Keyed on `git` tree objects
+ * so a clean validate of the same contents skips the silent pre-push re-run
+ * (#3653 / #3719). Each check is recorded separately so a pre-knip
+ * `test:push`-only record cannot skip knip. Stored under `.tmp/` (gitignored).
  */
 
 const gitHookProvenanceRelativePath = '.tmp/git-hook-provenance.json'
 
-export type GitHookProvenanceCheck = 'test:push'
+export type GitHookProvenanceCheck = 'knip' | 'test:push'
 
 export type GitHookProvenanceEntry = {
 	at: string
@@ -148,9 +149,9 @@ export function recordProvenanceCheck(
 
 /**
  * After a green `npm run validate`, mark the current worktree tree as having
- * already proven `test:push` so the next pre-push can skip. Only records when
- * `treeShaBefore` matches the post-run tree (caller captures before suites
- * start) and there are no untracked files.
+ * already proven `knip` and `test:push` so the next pre-push can skip both.
+ * Only records when `treeShaBefore` matches the post-run tree (caller
+ * captures before suites start) and there are no untracked files.
  */
 export function recordValidateTreeProvenance(
 	git: GitRunner,
@@ -161,6 +162,11 @@ export function recordValidateTreeProvenance(
 	const treeSha = treeShaForWorktree(git)
 	if (!treeSha) return null
 	if (treeShaBefore != null && treeShaBefore !== treeSha) return null
+	recordProvenanceCheck(store, {
+		check: 'knip',
+		treeSha,
+		source: 'validate',
+	})
 	recordProvenanceCheck(store, {
 		check: 'test:push',
 		treeSha,

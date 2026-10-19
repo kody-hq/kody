@@ -1,13 +1,15 @@
 /**
  * Catch misspelled `steps.<id>.outputs.*` and `needs.<id>` references in
  * GitHub Actions workflows before they silently resolve to empty strings on
- * a production deploy.
+ * a production deploy. Also refuses deploy.yml ↔ deploy-workflow-contract
+ * version drift.
  *
  * Usage:
  *   node tools/check-workflow-refs.ts
  */
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { checkDeployWorkflowContractDrift } from './ci/deploy-workflow-contract.ts'
 import { checkServerJsonVersionBump } from './ci/mcp-registry-publish.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
 
@@ -231,6 +233,16 @@ export async function main(cwd: string = process.cwd()): Promise<void> {
 				...result.issues.map(formatIssue),
 			].join('\n'),
 		)
+		process.exitCode = 1
+	}
+
+	const contractDrift = await checkDeployWorkflowContractDrift(cwd)
+	if (contractDrift.ok) {
+		console.log(
+			`Deploy workflow contract ok: EXPECTED_DEPLOY_WORKFLOW_CONTRACT=${String(contractDrift.version)}.`,
+		)
+	} else {
+		console.error(contractDrift.message)
 		process.exitCode = 1
 	}
 

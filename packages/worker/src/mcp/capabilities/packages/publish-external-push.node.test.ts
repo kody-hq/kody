@@ -474,6 +474,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		hosted_app_url: 'https://user.packages.kody.test/packages/demo-package',
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,
+		allowed_packages_publish_notice: null,
 		phase_timings: allPhaseTimings,
 	})
 	expect(mockModule.rebuildPublishedPackageArtifact).toHaveBeenCalledWith(
@@ -788,6 +789,7 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 		hosted_app_url: null,
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,
+		allowed_packages_publish_notice: null,
 		phase_timings: allPhaseTimings,
 	})
 

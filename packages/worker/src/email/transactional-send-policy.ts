@@ -18,6 +18,11 @@ import {
 	emailProviderHoldMessage,
 	findActiveRejectingProviderForRecipient,
 } from './rejecting-providers.ts'
+import { loadVerificationRecipientHardBounce } from './verification-recipient-suppression.ts'
+import {
+	transactionalPasswordResetConfirmedKind,
+	transactionalPasswordResetKind,
+} from './verification-delivery.ts'
 
 export const transactionalEmailCategories = ['essential', 'holdable'] as const
 export type TransactionalEmailCategory =
@@ -77,22 +82,45 @@ export type TransactionalSendGateResult =
 	| { allowed: true }
 	| {
 			allowed: false
-			code: 'recipient_cooldown' | 'provider_hold'
+			code: 'recipient_cooldown' | 'provider_hold' | 'recipient_hard_bounce'
 			message: string
 			providerKey?: string
 			cooldownUntil?: string
 	  }
 
+function isPasswordResetKind(kind: string | undefined) {
+	return (
+		kind === transactionalPasswordResetKind ||
+		kind === transactionalPasswordResetConfirmedKind
+	)
+}
+
 export async function gateTransactionalSend(input: {
 	db: D1Database
 	recipient: string
 	category: TransactionalEmailCategory
+	kind?: string
 	now?: Date
 	fetchImpl?: typeof fetch
 }): Promise<TransactionalSendGateResult> {
 	// Fail open when policy tables are missing or the lookup errors: a broken
 	// gate must not take down essential or holdable transactional mail.
 	try {
+		if (isPasswordResetKind(input.kind)) {
+			const hardBounce = await loadVerificationRecipientHardBounce({
+				db: input.db,
+				recipient: input.recipient,
+			})
+			if (hardBounce) {
+				return {
+					allowed: false,
+					code: 'recipient_hard_bounce',
+					message:
+						'Password reset email was not sent because this address previously hard-bounced.',
+				}
+			}
+		}
+
 		const cooldown = await assertEmailRecipientSendable({
 			db: input.db,
 			recipient: input.recipient,
@@ -155,7 +183,7 @@ export type GatedTransactionalSendResult =
 			skipped: true
 			hold: true
 			error: string
-			code: 'recipient_cooldown' | 'provider_hold'
+			code: 'recipient_cooldown' | 'provider_hold' | 'recipient_hard_bounce'
 			providerKey?: string
 			cooldownUntil?: string
 	  }
@@ -189,6 +217,7 @@ export async function sendGatedTransactionalEmail(input: {
 		db: input.db,
 		recipient,
 		category: input.category,
+		kind: input.kind,
 		now: input.now,
 		fetchImpl: input.fetchImpl,
 	})

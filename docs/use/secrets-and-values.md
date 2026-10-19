@@ -297,6 +297,15 @@ website-only. `secretSet` cannot change `allowed_packages`. Official OAuth token
 rotation (`createAuthenticatedFetch` 401 retry via `integrationTokenRefresh`)
 persists host-side and does not need that write grant.
 
+Starting **Wednesday, Oct 21, 2026**, Kody applies each user credential's
+`allowed_packages` list on every package use of that credential — including when
+the package is used through another package (an imported dependency) and when it
+is loaded in a one-off `execute` run. Until then, publish and save may warn when
+a package fills a credential whose list is non-empty and does not include that
+package; publishing and saving still succeed. To fix: approve the package on the
+secret's page (or via the approval link in the warning), or move the credential
+use into a package that is already on the list.
+
 **Host approval is separate and is never automatic**, including for
 self-authored and adopted packages. An empty host allowlist blocks
 `{{secret:name}}` fetch placeholders even when package read/use is automatic.

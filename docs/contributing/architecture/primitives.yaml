@@ -84,7 +84,7 @@ primitives:
       - packages/worker/src/platform-worker.ts
       - packages/shared/src/platform-worker.ts
       - tools/ci/platform-worker-config.ts
-      - tools/local-platform-dev-config.ts
+      - tools/local-sibling-dev-config.ts
     docs:
       - docs/contributing/decisions/0034-origin-owns-no-durable-objects.md
       - docs/contributing/architecture/platform-worker-migration-runbook.md
@@ -422,6 +422,9 @@ primitives:
     summary: Long-term per-user memories with verify-first writes.
     code:
       - packages/worker/src/mcp/capabilities/meta/
+    docs:
+      - docs/guides/memory.md
+      - docs/use/memory.md
 
   - id: platform-feedback
     group: assistant
@@ -454,6 +457,8 @@ primitives:
     code:
       - packages/worker/src/email/
       - packages/worker/src/mcp/capabilities/email/
+    docs:
+      - docs/use/email-primitives.md
 
   - id: webhooks
     group: assistant

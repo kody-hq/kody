@@ -168,7 +168,8 @@ test('guide catalog lock keeps a live owner regardless of age and recovers aband
 
 // Simulates the real trigger for this hardening: a clean checkout where
 // `wrangler dev`/`build`/`deploy` (via wrangler-env.ts) and both vitest
-// projects (via tools/vitest-global-setup-guide-catalog-modules.ts) can all
+// projects (via tools/vitest-global-setup-node.ts /
+// tools/vitest-global-setup-workers.ts) can all
 // race to regenerate the same gitignored output on first run. Spawns real
 // child processes rather than concurrent in-process calls so the lock is
 // actually exercised across process boundaries, not just across async tasks

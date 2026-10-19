@@ -27,12 +27,11 @@
     "dev:ensure": "node --env-file-if-exists=packages/worker/.env tools/ensure-dev.ts",
     "dev:client": "vite",
     "dev:vite": "vite",
-    "clean:client": "node -e \"const{rmSync}=require('node:fs');for(const p of ['packages/worker/public/assets','packages/worker/public/client-manifest.json','dist'])rmSync(p,{recursive:true,force:true})\"",
     "dev:worker": "vite",
     "dev:mock-cloudflare": "node --env-file=packages/worker/.env ./wrangler-env.ts dev --local --config packages/mock-servers/cloudflare/wrangler.jsonc",
     "deploy": "node --input-type=module -e \"if (['preview','test'].includes(process.env.CLOUDFLARE_ENV ?? '')) { await import('./tools/prepare-e2e-env.ts'); }\" && node --env-file=packages/worker/.env tools/deploy.ts --outdir .wrangler/sentry-bundle --upload-source-maps",
     "sentry:upload-sourcemaps": "node tools/sentry-upload-sourcemaps.ts",
-    "build": "vite build && node tools/framework-comparison/verify-redact-build.mjs",
+    "build": "vite build && node tools/ci/verify-redact-build.mjs",
     "backup:build": "wrangler deploy --dry-run --config packages/backup-control-plane/wrangler.jsonc",
     "backup:deploy": "wrangler deploy --config packages/backup-control-plane/wrangler.jsonc",
     "status:build": "wrangler deploy --dry-run --config packages/status/wrangler.jsonc",
@@ -60,18 +59,11 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "primitives:check": "node .agents/skills/visual-recap/scripts/check-primitives-map.mjs",
+    "feature-map:check": "node tools/control-kody.ts map --check",
     "primitives:classify": "node .agents/skills/visual-recap/scripts/classify-primitives.mjs",
-    "docs:check-temporal": "node tools/check-docs-temporal-language.ts",
-    "docs:check-decisions": "node tools/check-decision-record-numbers.ts",
-    "docs:check-file-refs": "node tools/check-markdown-file-refs.ts",
-    "docs:check-no-hosted-execute": "node tools/check-docs-no-hosted-execute.ts",
-    "lockfile:check": "node tools/check-lockfile-peer-drift.ts",
-    "skills-lock:check": "node tools/check-skills-lock.ts",
-    "overrides:check": "node tools/check-dependency-overrides.ts",
-    "mermaid:check": "node tools/check-mermaid-syntax.ts",
-    "file-size-ratchet:check": "node tools/check-file-size-ratchet.ts",
+    "docs:check": "node tools/run-check-group.ts docs",
+    "deps:check": "node tools/run-check-group.ts deps",
     "error-agent-prompt:check": "node tools/check-error-agent-prompt.ts",
-    "decorative-banners:check": "node tools/check-decorative-banners.ts",
     "slop-ratchet:check": "node tools/check-file-size-ratchet.ts && node tools/check-decorative-banners.ts",
     "knip": "knip",
     "cli:validate": "npm run validate -w @kodycodes/cli",
@@ -116,9 +108,7 @@
     "nx:show-projects": "nx show projects",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
-    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json",
-    "build:client": "npm run build",
-    "build:client:web": "npm run build"
+    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -134,7 +124,10 @@
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
     "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/semver": "^7.8.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
     "dotenv": "^18.0.5",
     "esbuild": "^0.28.2",
@@ -153,11 +146,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.147.0",
-    "@tanstack/intent": "0.5.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2"
+    "wrangler": "^4.147.0"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -213,17 +202,5 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
-  },
-  "intent": {
-    "skills": [
-      "@tanstack/react-start",
-      "@tanstack/react-router",
-      "@tanstack/router-core",
-      "@tanstack/start-client-core",
-      "@tanstack/start-server-core",
-      "@tanstack/router-plugin",
-      "@tanstack/virtual-file-routes",
-      "@tanstack/redact"
-    ]
   }
 }

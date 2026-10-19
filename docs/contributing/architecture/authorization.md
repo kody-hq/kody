@@ -517,6 +517,17 @@ reports nothing was removed, the handler distinguishes "target is the last
 admin" (409) from "target did not have the role" (idempotent no-op) — see
 `handleRemoveRoleAction` in `admin-users.ts`.
 
+Hard-deleting an account is separate from suspension. `adminUserAccountDelete`
+returns an approval URL and does not delete. An admin opens that page, reviews
+the handle, email, created date, plan, and counts, and clicks Approve. Packages,
+sole ownership of a non-personal organization, or paid billing require an extra
+acknowledgement on the page. The admin users page offers the same delete behind
+a modal that requires typing the handle. Approval soft-deletes, then hard-purges
+immediately so the handle can be registered again. Organizations the person does
+not solely own are left in place. The same last-admin rule blocks deleting the
+only remaining admin. Both the approval and the modal write an `admin` audit
+event, `admin_user_account_delete`.
+
 Signup and admin-created user setup fail with `500` if the seeded `user` role
 cannot be assigned (for example after a partial migration), rather than creating
 an account with no roles. The just-created `users` row is rolled back so the

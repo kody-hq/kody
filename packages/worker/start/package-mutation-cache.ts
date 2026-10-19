@@ -21,7 +21,23 @@ export function packageMutationOptions<
 		retry: false,
 		gcTime: 0,
 		mutationFn: async (data: TInput) => {
-			const result = await send({ data })
+			let result: TResult
+			try {
+				result = await send({ data })
+			} catch (error) {
+				if (
+					error instanceof SyntaxError ||
+					(error instanceof Error &&
+						/Unexpected end of JSON input|Failed to execute 'json'/i.test(
+							error.message,
+						))
+				) {
+					throw new Error(
+						'Unable to update this package. Reload the page and try again.',
+					)
+				}
+				throw error
+			}
 			if (!result.ok)
 				throw Object.assign(
 					new Error(result.error || 'Unable to update this package.'),

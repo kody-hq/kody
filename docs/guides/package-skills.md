@@ -124,9 +124,9 @@ search({ entity: 'package:@you/my-package#skills/hello-skill/SKILL.md' })
 
 ## Turn it on
 
-Signed-in users can opt in from the callout at the top of this page (it posts to
-`/docs/package-skills/opt-in`). Experimenters get the flag when an admin enables
-`mcp-skills-extension` for the `experiments_opt_in` audience. Default is off.
+Signed-in users can opt in from the callout at the top of this page.
+Experimenters get the flag when an admin enables `mcp-skills-extension` for the
+`experiments_opt_in` audience. Default is off.
 
 ## Skill registries
 

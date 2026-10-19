@@ -3,6 +3,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { loadPublishReview } from '#start/server/package-review'
 import { AccountPackageApprovePublishRoute } from '../pages/account-package-approve-publish.tsx'
 import { documentHead } from '../components/document-head.ts'
+import {
+	illustratedErrorHeadingCss,
+	illustratedErrorPageCss,
+} from '#client/illustrated-error-page.ts'
 export const Route = createFileRoute('/@{$username}_/$kodyId_/approve-publish')(
 	{
 		staticData: { navigation: { rail: 'workspace', item: 'packages' } },
@@ -15,17 +19,31 @@ export const Route = createFileRoute('/@{$username}_/$kodyId_/approve-publish')(
 				signal: abortController.signal,
 				data: { ...params, ...deps },
 			}),
-		head: ({ loaderData }) => documentHead(loaderData?.head),
+		head: ({ loaderData }) =>
+			documentHead(
+				loaderData && 'head' in loaderData ? loaderData.head : undefined,
+			),
 		component: Page,
 	},
 )
 function Page() {
 	const params = Route.useParams()
+	const data = Route.useLoaderData()
+	if ('error' in data) {
+		return (
+			<section
+				data-testid="approve-publish-commit-error"
+				css={illustratedErrorPageCss}
+			>
+				<h1 css={illustratedErrorHeadingCss}>{data.error}</h1>
+			</section>
+		)
+	}
 	return (
 		<AccountPackageApprovePublishRoute
 			key={`${params.username}/${params.kodyId}`}
 			{...params}
-			payload={Route.useLoaderData().payload}
+			payload={data.payload}
 		/>
 	)
 }

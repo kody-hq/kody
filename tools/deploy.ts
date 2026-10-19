@@ -13,7 +13,8 @@ import {
 	readConfigFlag,
 	readNameFlag,
 } from './origin-worker-config.ts'
-import { runWranglerDeployWithRetry } from './wrangler-deploy-retry.ts'
+import { runWranglerDeployWithRetry } from './ci/retry-classifiers.ts'
+import { retainClientAssets } from './retain-client-assets.ts'
 
 function run(
 	command: string,
@@ -115,7 +116,7 @@ export async function deploy(args: ReadonlyArray<string>) {
 	})
 	run(
 		process.execPath,
-		['tools/framework-comparison/verify-redact-build.mjs', 'dist'],
+		['tools/ci/verify-redact-build.mjs', 'dist'],
 		process.env,
 	)
 	if (!existsSync(originViteWranglerConfigPath)) {
@@ -135,6 +136,21 @@ export async function deploy(args: ReadonlyArray<string>) {
 		originViteWranglerConfigPath,
 		`${JSON.stringify(emittedConfig, null, '\t')}\n`,
 	)
+	if (process.env.KODY_RETAIN_CLIENT_ASSETS === '1') {
+		if (
+			cloudflareEnv !== 'production' ||
+			workerName !== productionOriginScriptName
+		) {
+			throw new Error(
+				'Client asset retention is limited to the production origin',
+			)
+		}
+		retainClientAssets({
+			clientDirectory: 'dist/client',
+			previousDirectory: '.tmp/previous-client-assets',
+			archiveDirectory: '.tmp/deployed-client-assets',
+		})
+	}
 	const result = await runWranglerDeployWithRetry({
 		command: resolveWranglerCommand(),
 		args: originViteDeployArgs(args, workerName),

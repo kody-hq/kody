@@ -178,6 +178,22 @@ test('secret bulk omits empty --env so --name pins the unsuffixed script', () =>
 	])
 })
 
+test('versioned secrets stage bindings without deploying pending code', () => {
+	expect(
+		buildWranglerSecretBulkFlags(
+			{ ...baseOptions, versioned: true, env: '', name: 'kody-platform' },
+			'/tmp/secrets.env',
+		),
+	).toEqual([
+		'versions',
+		'secret',
+		'bulk',
+		'/tmp/secrets.env',
+		'--name',
+		'kody-platform',
+	])
+})
+
 test('secret bulk rejects --env with --name so it cannot target name-env', () => {
 	const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
 		throw new Error('process.exit called')

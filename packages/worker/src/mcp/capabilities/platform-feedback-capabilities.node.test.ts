@@ -8,8 +8,10 @@ import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import {
+	PlatformFeedbackActiveQueueLimitError,
 	PlatformFeedbackInvalidTransitionError,
 	PlatformFeedbackNotFoundError,
+	PlatformFeedbackSubmissionRateLimitError,
 } from '#worker/platform-feedback/errors.ts'
 import {
 	auditEventSummaries,
@@ -23,6 +25,10 @@ import { adminPlatformFeedbackGetCapability } from './admin/admin-platform-feedb
 import { adminPlatformFeedbackListCapability } from './admin/admin-platform-feedback-list.ts'
 import { adminPlatformFeedbackUpdateCapability } from './admin/admin-platform-feedback-update.ts'
 import { platformFeedbackContentWarning } from './admin/platform-feedback-shared.ts'
+import {
+	platformFeedbackActiveQueueLimit,
+	platformFeedbackSubmissionRateLimit,
+} from '#worker/platform-feedback/limits.ts'
 import { metaPlatformFeedbackGetCapability } from './meta/meta-platform-feedback-get.ts'
 import { metaPlatformFeedbackListCapability } from './meta/meta-platform-feedback-list.ts'
 import { metaPlatformFeedbackSubmitCapability } from './meta/meta-platform-feedback-submit.ts'
@@ -224,11 +230,34 @@ test('meta platform feedback submission gates consent and isolates post-persiste
 		executionOrigin: 'interactive',
 	})
 	mockModule.submitPlatformFeedback.mockRejectedValueOnce(
-		new Error('active queue limit'),
+		new PlatformFeedbackSubmissionRateLimitError(
+			platformFeedbackSubmissionRateLimit,
+			3600,
+		),
 	)
 	await expect(
 		metaPlatformFeedbackSubmitCapability.handler(input, interactive),
-	).rejects.toThrow('active queue limit')
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof McpCallerError &&
+			error.message ===
+				`Platform feedback is limited to ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours. Retry after 3600 seconds. For urgent issues, email support@kody.codes.` &&
+			error.cause instanceof PlatformFeedbackSubmissionRateLimitError,
+	)
+	expect(mockModule.queueSend).not.toHaveBeenCalled()
+
+	mockModule.submitPlatformFeedback.mockRejectedValueOnce(
+		new PlatformFeedbackActiveQueueLimitError(platformFeedbackActiveQueueLimit),
+	)
+	await expect(
+		metaPlatformFeedbackSubmitCapability.handler(input, interactive),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof McpCallerError &&
+			error.message ===
+				`You already have ${platformFeedbackActiveQueueLimit} open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. For urgent issues, email support@kody.codes.` &&
+			error.cause instanceof PlatformFeedbackActiveQueueLimitError,
+	)
 	expect(mockModule.queueSend).not.toHaveBeenCalled()
 
 	const result = await metaPlatformFeedbackSubmitCapability.handler(
@@ -558,6 +587,11 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 				updatedAt: owned.updatedAt,
 			},
 		],
+		submissionQuota: {
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: platformFeedbackSubmissionRateLimit - 1,
+			nextSlotAt: null,
+		},
 	})
 
 	const context = createCapabilityContext({
@@ -621,9 +655,53 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 				updated_at: '2026-07-19T02:00:00.000Z',
 			},
 		],
+		submission_rate_limit: platformFeedbackSubmissionRateLimit,
+		submissions_remaining: platformFeedbackSubmissionRateLimit - 1,
+		next_slot_at: null,
 	})
 	expect(listed.feedback[0]).not.toHaveProperty('details')
 	expect(listed.feedback[0]).not.toHaveProperty('admin_note')
 	expect(listed.feedback[0]).not.toHaveProperty('reviewed_by_user_id')
 	expect(listed.feedback[0]).not.toHaveProperty('reviewed_at')
+})
+
+test('meta platform feedback list surfaces at-cap quota with next_slot_at', async () => {
+	mockModule.listPlatformFeedbackForSubmitter.mockResolvedValue({
+		total: 0,
+		page: 1,
+		pageSize: 20,
+		items: [],
+		submissionQuota: {
+			limit: platformFeedbackSubmissionRateLimit,
+			remaining: 0,
+			nextSlotAt: '2026-07-20T06:00:00.000Z',
+		},
+	})
+	const listed = await metaPlatformFeedbackListCapability.handler(
+		{},
+		createCapabilityContext({
+			userId: ownerIdFromStored('user-1'),
+		}),
+	)
+	expect(listed).toMatchObject({
+		submission_rate_limit: platformFeedbackSubmissionRateLimit,
+		submissions_remaining: 0,
+		next_slot_at: '2026-07-20T06:00:00.000Z',
+		feedback: [],
+	})
+})
+
+test('meta platform feedback submit description names the rate limit from the shared constant', () => {
+	expect(metaPlatformFeedbackSubmitCapability.description).toContain(
+		`at most ${platformFeedbackSubmissionRateLimit} submissions per rolling 24 hours`,
+	)
+	expect(metaPlatformFeedbackSubmitCapability.description).toContain(
+		'submissions_remaining',
+	)
+	expect(metaPlatformFeedbackListCapability.description).toContain(
+		'submissions_remaining',
+	)
+	expect(metaPlatformFeedbackListCapability.description).toContain(
+		`${platformFeedbackSubmissionRateLimit}-submission / 24-hour`,
+	)
 })

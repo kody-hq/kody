@@ -4,7 +4,7 @@ import { landingArtAttrs as originalLandingArtAttrs } from '#universal/landing-i
 export function publicAsset(path: string): string {
 	if (
 		!/^\/(?:images|fonts|feature-scenes)\//.test(path) &&
-		!/^\/(?:(?:logo(?:-[0-9]+)?\.(?:png|webp)|feature-pages\.css|styles\.css|android-chrome-[0-9]+x[0-9]+\.png|favicon(?:-[^/]+)?\.(?:ico|png)|apple-touch-icon\.png|site\.webmanifest|page-init\.js))$/.test(
+		!/^\/(?:(?:logo(?:-[0-9]+)?\.(?:png|webp)|feature-pages\.css|styles\.css|android-chrome-[0-9]+x[0-9]+\.png|favicon(?:-[^/]+)?\.(?:ico|png)|apple-touch-icon\.png|site\.webmanifest|page-init\.js|emotion-style-hoist\.js))$/.test(
 			path,
 		)
 	)

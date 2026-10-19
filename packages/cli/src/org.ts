@@ -2,9 +2,6 @@ import { createInterface } from 'node:readline'
 import { defaultMcpUrl } from './defaults.js'
 import { orgSlugFromFlag } from './org-slug.js'
 import {
-	listStoredOrgs,
-	loadCredentialStore,
-	promotePendingOrg,
 	setActiveOrg,
 	type ListedOrg,
 	type MultiOrgCredentialStore,
@@ -14,40 +11,6 @@ import {
 
 export { orgEnvVar, orgSlugFromFlag } from './org-slug.js'
 export { resolveOrgSlug } from './org-resolve.js'
-
-/** Offline help / listing block. No network. */
-export function formatStoredOrgsHelpBlock(
-	orgs: Array<ListedOrg>,
-	options: { indent?: string } = {},
-): string {
-	const indent = options.indent ?? '  '
-	if (orgs.length === 0) {
-		return `${indent}Not logged in. Run \`kody login\`.\n`
-	}
-	const lines = [`${indent}Logged-in orgs:`]
-	for (const org of orgs) {
-		const mark = org.active ? '*' : ' '
-		const pending = org.pending
-			? '  (slug pending — run any authenticated command)'
-			: ''
-		lines.push(
-			`${indent}  ${mark} ${org.slug}${org.active ? '  (active)' : ''}${pending}`,
-		)
-	}
-	return `${lines.join('\n')}\n`
-}
-
-export function readStoredOrgsForHelp(
-	mcpUrl: string = defaultMcpUrl,
-	backend?: SecretBackend,
-	resolution?: StoreResolution,
-): Array<ListedOrg> {
-	try {
-		return listStoredOrgs(mcpUrl, backend, resolution)
-	} catch {
-		return []
-	}
-}
 
 export function formatOrgListHuman(orgs: Array<ListedOrg>): string {
 	if (orgs.length === 0) {
@@ -137,15 +100,4 @@ export function useOrg(
 	resolution?: StoreResolution,
 ): MultiOrgCredentialStore {
 	return setActiveOrg(mcpUrl, orgSlugFromFlag(slug), backend, resolution)
-}
-
-export function promoteLegacyIfNeeded(
-	mcpUrl: string,
-	orgSlug: string,
-	backend?: SecretBackend,
-	resolution?: StoreResolution,
-): MultiOrgCredentialStore | null {
-	const snapshot = loadCredentialStore(mcpUrl, backend, resolution)
-	if (!snapshot?.pending) return snapshot
-	return promotePendingOrg(mcpUrl, orgSlug, backend, resolution)
 }

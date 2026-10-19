@@ -30,10 +30,13 @@ Credential setup is
 
 Same loop. Differences: Devin PRs are usually authored by
 `devin-ai-integration[bot]`, so Bugbot often returns `github_account_mismatch`
-and that skip is the common path; for previewable changes, treat a verified
-preview deploy as a mandatory merge gate (exercise the changed surface, not only
-a 200). For non-previewable changes, run the applicable static checks for the
-changed surface instead; for time gates, wake the Devin session via
+and that skip is the common path. Verify locally with
+[control-kody](../control-kody/SKILL.md) first; treat a verified preview deploy
+as a merge gate only when local cannot exercise the change (Workers/service
+bindings, Durable Objects, real OAuth or inbound third-party webhooks,
+deploy/wrangler/config, Artifacts/`packageSave`) — exercise the changed surface,
+not only a 200. For non-previewable changes, run the applicable static checks
+for the changed surface instead; for time gates, wake the Devin session via
 `kody:@kentcdodds/devin/sessions` `sendMessage` instead of Cursor `createRun`.
 
 ## Command
@@ -65,7 +68,13 @@ npx @kodycodes/cli execute --local \
   `./send-summary`. Take `agentId` and `model` from the agent socket. Omit
   `model` when the socket has none. Do not invent URLs. When UI routes deployed,
   put verified page links in Discord `extras`.
-- This repo, medium or high: preview with
-  [control-kody](../control-kody/SKILL.md). PR bodies say `Related to #N`, never
-  `does not close #N`. Non-trivial descriptions include a system recap
-  ([visual-recap](../visual-recap/SKILL.md)).
+- This repo, medium or high: verify locally with
+  [control-kody](../control-kody/SKILL.md) (`dev`/`login`/`request`/`browse`/
+  `execute`). Use a PR preview only when local cannot exercise the change
+  (Workers/service bindings, Durable Objects, real OAuth or inbound third-party
+  webhooks, deploy/wrangler/config, Artifacts/`packageSave`). PR bodies say
+  `Related to #N`, never `does not close #N`. Non-trivial descriptions include a
+  system recap ([visual-recap](../visual-recap/SKILL.md)).
+- Reviewers must scrutinize test-expectation / assertion changes made in the
+  same PR as the code they test, and push back when an assertion was rewritten
+  to match a behavior change without justification.

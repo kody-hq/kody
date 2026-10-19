@@ -611,6 +611,26 @@
 		{
 			"filename": "0166-email-verification-hard-bounces.sql",
 			"sha256": "d526830851617183c490a54b5fa05de70c639c6c81344999ba72c7201a2b66a2"
+		},
+		{
+			"filename": "0167-transactional-delivery-cursor.sql",
+			"sha256": "598af51826a6ac8cf5ebce7ea19991d944fa6270e5752601fd87a81a63533517"
+		},
+		{
+			"filename": "0168-admin-account-deletion-approvals.sql",
+			"sha256": "3e63ead40af31c59d993bb05b6b1dbe9d30db52cb559e3dd0a18b0bee2f390e6"
+		},
+		{
+			"filename": "0169-email-outbound-failure-tracking.sql",
+			"sha256": "540957df86ffd190e88b3651fb6243400e0fe81bd844f892d3b1f90779df2d10"
+		},
+		{
+			"filename": "0170-email-outbound-failure-watermark.sql",
+			"sha256": "7a516317c971a2ed351e47da82c37a1e3d905b8be8f4e42a4ff5edd1ecd19667"
+		},
+		{
+			"filename": "0171-usage-rollups-caught-count.sql",
+			"sha256": "59ed0a30d630da64adb9144b37d007b2eba6905bc4ea1a676cf2fbb7c977ef37"
 		}
 	]
 }

@@ -63,7 +63,12 @@ const runtimeTracing: typeof cloudflareWorkers.tracing | undefined = (
 	cloudflareWorkers as Partial<typeof cloudflareWorkers>
 ).tracing
 
-export type UsageOutcome = 'success' | 'error'
+/**
+ * `caught` is only written for `package_static_call`: the callee threw, but the
+ * run still succeeded (caller handled it). Fleet error-rate math counts only
+ * `error`. Historical rows without `caught` stay valid as `error`/`success`.
+ */
+export type UsageOutcome = 'success' | 'error' | 'caught'
 
 export type UsageEvent = {
 	/** Owning user. Required: every usage event is scoped to one user. */
@@ -300,13 +305,14 @@ export type UsageEnv = {
 const usageRollupUpsertStatement = `
 INSERT INTO usage_rollups (
 	user_id, metric, month,
-	event_count, error_count,
+	event_count, error_count, caught_count,
 	total_duration_ms, total_cpu_ms, total_bytes,
 	updated_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
 ON CONFLICT (user_id, metric, month) DO UPDATE SET
 	event_count = event_count + excluded.event_count,
 	error_count = error_count + excluded.error_count,
+	caught_count = caught_count + excluded.caught_count,
 	total_duration_ms = total_duration_ms + excluded.total_duration_ms,
 	total_cpu_ms = total_cpu_ms + excluded.total_cpu_ms,
 	total_bytes = total_bytes + excluded.total_bytes,
@@ -493,6 +499,7 @@ async function writeUsageRollup(
 				timestamp.slice(0, 7),
 				eventCount,
 				event.outcome === 'error' ? eventCount : 0,
+				event.outcome === 'caught' ? eventCount : 0,
 				Math.round(event.durationMs ?? 0),
 				Math.round(event.cpuMs ?? 0),
 				Math.round(event.bytes ?? 0),

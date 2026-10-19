@@ -26,30 +26,26 @@ const mockModule = vi.hoisted(() => ({
 	maybeRefreshStorageBucketEstimate: vi.fn(),
 }))
 
-vi.mock('#worker/storage-buckets/service.ts', () => ({
-	listUserStorageBucketEstimates: (
-		...args: Parameters<
-			typeof StorageBucketsService.listUserStorageBucketEstimates
-		>
-	) => mockModule.listUserStorageBucketEstimates(...args),
-	registerStorageBucket: (...args: Array<unknown>) =>
-		mockModule.registerStorageBucket(...args),
-	recordStorageBucketEstimate: (...args: Array<unknown>) =>
-		mockModule.recordStorageBucketEstimate(...args),
-	maybeRefreshStorageBucketEstimate: (...args: Array<unknown>) =>
-		mockModule.maybeRefreshStorageBucketEstimate(...args),
-	repoSessionIdFromStorageBucketId: (storageId: string) =>
-		storageId.replace(/^repo-session:/, ''),
-	storageBucketKindFromStorageId: (storageId: string) => {
-		if (storageId.startsWith('job:')) return 'job'
-		if (storageId.startsWith('exec:')) return 'execute'
-		if (storageId.startsWith('package:')) return 'package'
-		return 'unknown'
-	},
-	flushStorageBucketRegistrationsForTests: async () => undefined,
-	clearStorageBucketRegistrationDedupeForTests: () => undefined,
-	listPlatformStorageBuckets: async () => [],
-}))
+vi.mock('#worker/storage-buckets/service.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof StorageBucketsService>()
+	return {
+		...actual,
+		listUserStorageBucketEstimates: (
+			...args: Parameters<
+				typeof StorageBucketsService.listUserStorageBucketEstimates
+			>
+		) => mockModule.listUserStorageBucketEstimates(...args),
+		registerStorageBucket: (...args: Array<unknown>) =>
+			mockModule.registerStorageBucket(...args),
+		recordStorageBucketEstimate: (...args: Array<unknown>) =>
+			mockModule.recordStorageBucketEstimate(...args),
+		maybeRefreshStorageBucketEstimate: (...args: Array<unknown>) =>
+			mockModule.maybeRefreshStorageBucketEstimate(...args),
+		flushStorageBucketRegistrationsForTests: async () => undefined,
+		clearStorageBucketRegistrationDedupeForTests: () => undefined,
+		listPlatformStorageBuckets: async () => [],
+	}
+})
 
 vi.mock('#worker/entitlements/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof EntitlementsService>()
@@ -334,6 +330,9 @@ test('peer estimates stay out of the live probe path while D1 + target compose t
 			limit,
 		},
 	})
+	expect((denied as Error).message).toContain(
+		'Inventoried buckets: 2 package storage',
+	)
 	expect(probedStorageIds).toEqual(['package:target'])
 	expect(mockModule.readStorageBytesFromUserMeter).toHaveBeenCalledWith(
 		expect.objectContaining({

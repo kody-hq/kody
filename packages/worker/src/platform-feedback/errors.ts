@@ -44,10 +44,13 @@ export class PlatformFeedbackConcurrentUpdateError extends Error {
 	}
 }
 
+const platformFeedbackUrgentSupportNote =
+	'For urgent issues, email support@kody.codes.'
+
 export class PlatformFeedbackSubmissionRateLimitError extends Error {
-	constructor(retryAfterSeconds: number) {
+	constructor(limit: number, retryAfterSeconds: number) {
 		super(
-			`Platform feedback is limited to 10 submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds.`,
+			`Platform feedback is limited to ${limit} submissions per rolling 24 hours. Retry after ${retryAfterSeconds} seconds. ${platformFeedbackUrgentSupportNote}`,
 		)
 		this.name = 'PlatformFeedbackSubmissionRateLimitError'
 	}
@@ -56,7 +59,7 @@ export class PlatformFeedbackSubmissionRateLimitError extends Error {
 export class PlatformFeedbackActiveQueueLimitError extends Error {
 	constructor(limit: number) {
 		super(
-			`You already have ${limit} open or triaged platform feedback submissions. Wait for an admin to review them before submitting more.`,
+			`You already have ${limit} open or triaged platform feedback submissions. Wait for an admin to review them before submitting more. ${platformFeedbackUrgentSupportNote}`,
 		)
 		this.name = 'PlatformFeedbackActiveQueueLimitError'
 	}
@@ -65,7 +68,7 @@ export class PlatformFeedbackActiveQueueLimitError extends Error {
 export class PlatformFeedbackSubmissionConflictError extends Error {
 	constructor() {
 		super(
-			'Platform feedback submission limits changed concurrently. Retry the submission.',
+			`Platform feedback submission limits changed concurrently. Retry the submission. ${platformFeedbackUrgentSupportNote}`,
 		)
 		this.name = 'PlatformFeedbackSubmissionConflictError'
 	}

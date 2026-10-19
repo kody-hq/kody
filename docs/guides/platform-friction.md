@@ -125,9 +125,12 @@ the account is suspended, or the update is a no-op of an already resolved or
 dismissed row. Admin list results intentionally omit the full submission; a
 detail read exposes only the approved feedback, not unrelated account content.
 This delivery exception is limited to feedback the user explicitly approved; it
-does not expose other account content. Each account can create at most 10
+does not expose other account content. Each account can create at most 20
 feedback submissions in a rolling 24-hour period and have at most 100 active
-submissions (open or triaged).
+submissions (open or triaged). Before asking the user to approve multiple
+submissions, call `metaPlatformFeedbackList` and check `submissions_remaining`
+(and `next_slot_at` when the cap is hit) so you do not collect approvals that
+will fail the rate limit.
 
 Before asking for approval, also disclose that Kody cannot recall notification
 copies already delivered outside Kody. Admin notification copies may remain
@@ -142,7 +145,9 @@ no outcome email is sent), call `metaPlatformFeedbackGet` with the returned
 `feedback_id`, or `metaPlatformFeedbackList` for the signed-in user's
 submissions. Those reads return the same submitter-visible fields as account
 export (id, category, summary, details on get, status, created_at, updated_at)
-and never expose reviewer identity or admin notes. The submitting user's account
+and never expose reviewer identity or admin notes. `metaPlatformFeedbackList`
+also returns `submission_rate_limit`, `submissions_remaining`, and
+`next_slot_at` for the rolling submission cap. The submitting user's account
 export includes the submission and status but redacts internal reviewer
 identity, notes, and timestamps. Account deletion removes any remaining
 submissions. Kody rechecks a queued submission immediately before invoking

@@ -3,9 +3,6 @@ import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
-	DEVICE_COMPLETION_RECEIPT_TTL_SECONDS,
-	DEVICE_DEFAULT_INTERVAL_SECONDS,
-	DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
 	completeDevicePendingSession,
 	consumeDevicePendingSession,
 	loadDevicePendingSession,
@@ -47,6 +44,85 @@ function jsonResponse(body: unknown, status = 200) {
 		headers: { 'Content-Type': 'application/json' },
 	})
 }
+
+test('startDeviceAuthorization rejects redirects so client_secret is not resent', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(
+		async () =>
+			new Response(null, {
+				status: 307,
+				headers: { Location: 'http://evil.example/device' },
+			}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		clientSecret: 'device-client-secret',
+		fetchImpl,
+	})
+	expect(started).toEqual({
+		ok: false,
+		error:
+			'Device authorization endpoint returned a redirect; credential-bearing requests do not follow redirects.',
+		status: 502,
+	})
+	expect(fetchImpl).toHaveBeenCalledWith(
+		baseStart.deviceAuthorizationUrl,
+		expect.objectContaining({ redirect: 'manual' }),
+	)
+})
+
+test('startDeviceAuthorization rejects non-loopback http device and token URLs', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn()
+	const rejectedDevice = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'http://auth.example.com/device',
+		fetchImpl,
+	})
+	expect(rejectedDevice).toEqual({
+		ok: false,
+		error:
+			'Device authorization URL must use https (http is only allowed for localhost).',
+		status: 400,
+	})
+	const rejectedToken = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		tokenUrl: 'http://auth.example.com/token',
+		fetchImpl,
+	})
+	expect(rejectedToken).toEqual({
+		ok: false,
+		error: 'Token URL must use https (http is only allowed for localhost).',
+		status: 400,
+	})
+	expect(fetchImpl).not.toHaveBeenCalled()
+})
+
+test('startDeviceAuthorization allows loopback http for local mocks', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'secret-device-code',
+			user_code: 'ABCD-EFGH',
+			verification_uri: 'http://localhost:8787/verify',
+			expires_in: 600,
+			interval: 5,
+		}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'http://localhost:8787/device',
+		tokenUrl: 'http://127.0.0.1:8787/token',
+		allowedHosts: ['localhost', '127.0.0.1', 'api.example.com'],
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	expect(fetchImpl).toHaveBeenCalledOnce()
+})
 
 test('startDeviceAuthorization stores session and returns user-facing fields without device_code', async () => {
 	const env = createSqliteEnv()
@@ -120,7 +196,7 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	if (!pending.ok) return
 	expect(pending.status).toBe('authorization_pending')
 	if (pending.status !== 'authorization_pending') return
-	expect(pending.interval).toBe(DEVICE_DEFAULT_INTERVAL_SECONDS)
+	expect(pending.interval).toBe(5)
 
 	const slowed = await pollDeviceAuthorization({
 		env,
@@ -133,9 +209,7 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	if (!slowed.ok) return
 	expect(slowed.status).toBe('slow_down')
 	if (slowed.status !== 'slow_down') return
-	expect(slowed.interval).toBe(
-		DEVICE_DEFAULT_INTERVAL_SECONDS + DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
-	)
+	expect(slowed.interval).toBe(10)
 
 	const enforced = await pollDeviceAuthorization({
 		env,
@@ -301,9 +375,7 @@ test('completeDevicePendingSession keeps a receipt after provider expiry', async
 		sessionId: started.sessionId,
 	})
 	expect(receipt?.completion?.integrationName).toBe('late-provider')
-	expect(receipt?.expiresAtMs).toBeGreaterThan(
-		Date.now() + (DEVICE_COMPLETION_RECEIPT_TTL_SECONDS - 5) * 1000,
-	)
+	expect(receipt?.expiresAtMs).toBeGreaterThan(Date.now() + 4 * 60 * 1000)
 })
 
 test('pollDeviceAuthorization returns access_denied and expired_token', async () => {
@@ -454,10 +526,8 @@ test('pollDeviceAuthorization increases interval after connection timeout', asyn
 		userId: baseStart.userId,
 		sessionId: started.sessionId,
 	})
-	expect(stored?.intervalSeconds).toBe(5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS)
-	expect(stored?.nextPollAtMs).toBe(
-		t0 + (5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS) * 1000,
-	)
+	expect(stored?.intervalSeconds).toBe(10)
+	expect(stored?.nextPollAtMs).toBe(t0 + 10_000)
 	// Interval gate must block another provider hit until nextPollAtMs.
 	const gated = await pollDeviceAuthorization({
 		env,

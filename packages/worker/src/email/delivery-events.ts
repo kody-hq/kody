@@ -7,7 +7,8 @@ import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { emailDeliveryStatusValues, type EmailDeliveryStatus } from './types.ts'
 import {
 	recordTransactionalEmailDeliveryEvent,
-	transactionalEmailVerificationKind,
+	transactionalKindRecordsHardBounce,
+	transactionalKindUsesDeliveryCursor,
 } from './verification-delivery.ts'
 
 const cloudflareEmailDeliveryTypeValues = [
@@ -181,8 +182,19 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
 		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
-		recordVerificationSuppression:
-			transactional.event.kind === transactionalEmailVerificationKind,
+		recordVerificationSuppression: transactionalKindRecordsHardBounce(
+			transactional.event.kind,
+		),
+		// Signup verification uses users.email_verification_delivery_* and
+		// never claims the index cursor — only pass confirmCursor for kinds
+		// that do, or side effects would no-op.
+		confirmCursor: transactionalKindUsesDeliveryCursor(transactional.event.kind)
+			? {
+					providerMessageId: providerEvent.payload.messageId,
+					status: providerEvent.payload.delivery.status,
+					at: providerEvent.metadata.eventTimestamp,
+				}
+			: undefined,
 	})
 
 	if (
