@@ -84,7 +84,7 @@ primitives:
       - packages/worker/src/platform-worker.ts
       - packages/shared/src/platform-worker.ts
       - tools/ci/platform-worker-config.ts
-      - tools/local-platform-dev-config.ts
+      - tools/local-sibling-dev-config.ts
     docs:
       - docs/contributing/decisions/0034-origin-owns-no-durable-objects.md
       - docs/contributing/architecture/platform-worker-migration-runbook.md

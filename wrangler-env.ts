@@ -19,11 +19,8 @@ import {
 	jobsWorkerWranglerConfigPath,
 	resolveWranglerConfigPath,
 } from './tools/wrangler-env-config.ts'
-import {
-	writeLocalRuntimeDevConfig,
-	writeRuntimeDryRunConfig,
-} from './tools/local-runtime-dev-config.ts'
-import { writeLocalPlatformDevConfig } from './tools/local-platform-dev-config.ts'
+import { writeLocalSiblingDevConfig } from './tools/local-sibling-dev-config.ts'
+import { writeRuntimeDryRunConfig } from './tools/local-runtime-dry-run-config.ts'
 import {
 	isWranglerD1MigrationsApply,
 	runWranglerDeployWithRetry,
@@ -84,7 +81,7 @@ if (
 	// cross-script Durable Objects), so `wrangler dev` runs both scripts in
 	// one Miniflare via a secondary --config, which resolves those bindings
 	// locally. The secondary config is a generated local-dev variant (see
-	// tools/local-runtime-dev-config.ts) because wrangler applies `--var`
+	// tools/local-sibling-dev-config.ts) because wrangler applies `--var`
 	// only to the primary config, registers workers under `<name>-<env>`,
 	// and treats a secondary `ai` binding as always-remote.
 	const runtimeWorkerConfigPath = 'packages/runtime-worker/wrangler.jsonc'
@@ -217,8 +214,8 @@ if (isDevCommand && !hasInspectorPortFlag) {
 }
 
 if (shouldAddRuntimeDevConfig) {
-	const runtimeDevConfigPath = await writeLocalRuntimeDevConfig({
-		runtimeConfigPath: 'packages/runtime-worker/wrangler.jsonc',
+	const runtimeDevConfigPath = await writeLocalSiblingDevConfig({
+		configPath: 'packages/runtime-worker/wrangler.jsonc',
 		envName,
 		mainWorkerDevName: `kody-${envName}`,
 		port: resolvedPort,
@@ -227,11 +224,12 @@ if (shouldAddRuntimeDevConfig) {
 }
 
 if (shouldAddPlatformDevConfig) {
-	const platformDevConfigPath = await writeLocalPlatformDevConfig({
-		platformConfigPath: 'packages/platform-worker/wrangler.jsonc',
+	const platformDevConfigPath = await writeLocalSiblingDevConfig({
+		configPath: 'packages/platform-worker/wrangler.jsonc',
 		envName,
 		mainWorkerDevName: `kody-${envName}`,
 		port: resolvedPort,
+		dropAlwaysRemoteBindings: ['ai', 'artifacts'],
 	})
 	commandArgs.push('--config', platformDevConfigPath)
 }

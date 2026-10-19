@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { ensureGuideCatalogModules } from './build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
 import { isExecutedDirectly, resolveLocalBinary } from './node-runtime.ts'
-import { writeRuntimeStartupCheckConfig } from './local-runtime-dev-config.ts'
+import { writeRuntimeStartupCheckConfig } from './local-runtime-dry-run-config.ts'
 import { buildOriginProductionViteBundle } from './origin-vite-startup-build.ts'
 
 const execFileAsync = promisify(execFile)

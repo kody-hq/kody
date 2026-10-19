@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { ensureGuideCatalogModules } from './build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
 import { isExecutedDirectly, resolveLocalBinary } from './node-runtime.ts'
-import { writeRuntimeDryRunConfig } from './local-runtime-dev-config.ts'
+import { writeRuntimeDryRunConfig } from './local-runtime-dry-run-config.ts'
 import {
 	expectedKodyGeneratedUploadNames,
 	guideGeneratedModuleNames,
