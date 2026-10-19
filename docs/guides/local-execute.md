@@ -158,10 +158,12 @@ subject to this deadline.
 
 Run `--file` from inside a package directory and the CLI resolves that package's
 own `kody:@…` exports (and `.kody/deps.json` mappings) from the working tree.
-Their remaining `kody:@` dependencies come from published package-graph. If
-package-graph still fails, the module never ran: the error
-(`incomplete_package_graph` in `--json` output) is a package-resolution problem,
-not an auth problem. Two workarounds:
+Their remaining `kody:@` dependencies come from published package-graph. When a
+**successful** package-graph response omits required modules, the module never
+ran: that error (`incomplete_package_graph` in `--json` output) is a package
+resolution problem, not an auth problem. HTTP 401 or 403 from package-graph is
+still auth or permission — use the Failure section below. Two workarounds for
+`incomplete_package_graph`:
 
 - Inside the checkout, import your own package's files with relative imports
   (`./src/helper.ts`) instead of `kody:@scope/pkg/helper`.
