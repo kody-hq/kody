@@ -39,8 +39,6 @@ Primary operator surface:
   [Maintenance mode (edge)](#maintenance-mode-edge)).
 - Destination provisioner: `node tools/ci/backup-resources-cli.ts plan|apply`.
 
-Do not use `tools/export-d1-remote-to-sqlite.sh` as a backup or restore tool.
-
 ## Prevention
 
 ### Deploy guardrails
@@ -960,7 +958,6 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
 - Backup of `AUDIT_DB` hashed audit events (180-day evidence;
   accepted-unprotected 2026-08-07 — operator confirmed no backup lane for now)
 - Plaintext `SECRET_STORE_KEY` or other credentials inside backup media
-- Using `tools/export-d1-remote-to-sqlite.sh` as DR
 
 ## Provider references
 

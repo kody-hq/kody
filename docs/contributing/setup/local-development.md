@@ -29,9 +29,10 @@ Prerequisites, install, and `npm run dev` notes. See the
   `JOBS_DB`. KV titles follow the worker name: production defaults to
   `<worker-name>-oauth`; preview uses `<preview-worker-name>-oauth-kv` (see
   `tools/ci/preview-resources.ts`).
-- **Exporting from an existing remote D1**: export the remote database to a
-  local SQLite file with `tools/export-d1-remote-to-sqlite.sh`, then copy only
-  the tables you need into the local Kody database.
+- **Local schema and fixtures**: use `npm run migrate:local` then
+  `node tools/seed-test-data.ts --local` (see
+  [Seed test account](./seeding.md)). Do not copy a remote D1 database onto a
+  laptop for local work.
 - `packages/worker/.env` supplies local secrets for `npm run dev`. Copy it from
   `packages/worker/.env.example`, then update secrets as needed. The example
   includes placeholder values for `COOKIE_SECRET` and `SECRET_STORE_KEY`; all
