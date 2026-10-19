@@ -12,9 +12,64 @@ import {
 	cliCredentialBootstrapRedeemOperationId,
 	indexOpenApiOperations,
 	loadOpenApiOperations,
+	openApiRequest,
 	searchWithApiToken,
 	whoamiWithApiToken,
 } from '../src/open-api-client.js'
+
+test('openApiRequest tags connect-phase fetch failures with sent:false', async () => {
+	const fetchFn = (async () => {
+		throw new TypeError('fetch failed', {
+			cause: Object.assign(new Error('connect'), {
+				code: 'UND_ERR_CONNECT_TIMEOUT',
+			}),
+		})
+	}) as typeof fetch
+	await assert.rejects(
+		() =>
+			openApiRequest({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				method: 'POST',
+				path: 'v1/packages/pkg/publish',
+				body: {},
+				fetchFn,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.sent, false)
+			assert.match(error.message, /The request was not sent/)
+			assert.doesNotMatch(error.message, /workflowRunList/)
+			return true
+		},
+	)
+})
+
+test('openApiRequest tags post-connect fetch failures with sent:"unknown"', async () => {
+	const fetchFn = (async () => {
+		throw new TypeError('fetch failed', {
+			cause: Object.assign(new Error('socket'), { code: 'UND_ERR_SOCKET' }),
+		})
+	}) as typeof fetch
+	await assert.rejects(
+		() =>
+			openApiRequest({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				method: 'POST',
+				path: 'v1/packages/pkg/publish',
+				body: {},
+				fetchFn,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.sent, 'unknown')
+			assert.match(error.message, /outcome is unknown/)
+			assert.match(error.message, /workflowRunList/)
+			return true
+		},
+	)
+})
 
 test('searchWithApiToken posts /v1/search/tool with the bearer token', async () => {
 	const fetchFn = (async (

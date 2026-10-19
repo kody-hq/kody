@@ -4,7 +4,11 @@ import {
 } from './capability-proxy.js'
 import { cliName, defaultApiUrl } from './defaults.js'
 import { summarizeNonJsonErrorBody } from './http-error-body.js'
-import { describeNetworkError } from './network-error.js'
+import {
+	formatUnreachableApiMessage,
+	requestSentStatus,
+	type RequestSentStatus,
+} from './network-error.js'
 import { readPackageVersion } from './package-info.js'
 import { saveStoredApiToken, type StoredApiToken } from './api-token-store.js'
 import { type SecretBackend, type StoreResolution } from './store.js'
@@ -266,10 +270,11 @@ export async function redeemBootstrapCode(input: {
 			body: JSON.stringify(bootstrapRedeemRequestBody(code, lifetime)),
 		})
 	} catch (error) {
-		const reason = describeNetworkError(error)
-		throw new Error(
-			`Could not reach the Kody API at ${url.origin} (${reason}). Check --api-url / KODY_API_URL and your network.`,
-		)
+		const unreachable = new Error(
+			formatUnreachableApiMessage({ origin: url.origin, error }),
+		) as Error & { sent: RequestSentStatus }
+		unreachable.sent = requestSentStatus(error)
+		throw unreachable
 	}
 	const body = await readJson(response)
 	if (!response.ok) {

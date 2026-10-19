@@ -10,6 +10,8 @@ import {
 	apiUrlFrom,
 	buildExecuteToolArgs,
 	executeSourcesConflict,
+	argvIncludesJsonFlag,
+	formatCliErrorJson,
 	packagePublishParams,
 	resolvePackagePublishTarget,
 	parseApiParamsJson,
@@ -19,13 +21,13 @@ import {
 	runCli,
 	shouldUseApiToken,
 } from '../src/cli.js'
+import { OpenApiError, clearOpenApiRouteCache } from '../src/open-api-client.js'
 import { buildUsage } from '../src/help.js'
 import { readPackageVersion } from '../src/package-info.js'
 import { isPairedApiUrl } from '../src/api-token.js'
 import { type StoredApiToken } from '../src/api-token-store.js'
 import { modernMcpProtocolVersion } from '../src/defaults.js'
 import { formatToolResult } from '../src/tool-result.js'
-import { clearOpenApiRouteCache } from '../src/open-api-client.js'
 import { redact } from '../src/redact.js'
 import {
 	createFileBackend,
@@ -195,6 +197,73 @@ test('unknown commands write a short error to stderr only (no help on stdout)', 
 	assert.equal(stdout, '')
 	assert.match(stderr, /Unknown command "git-credential-typo"/)
 	assert.doesNotMatch(stderr, /Install Kody as a remote MCP server/)
+})
+
+test('argvIncludesJsonFlag and formatCliErrorJson expose additive sent', () => {
+	assert.equal(argvIncludesJsonFlag(['package', 'publish', '--json']), true)
+	assert.equal(argvIncludesJsonFlag(['package', 'publish']), false)
+	assert.deepEqual(
+		formatCliErrorJson(
+			new OpenApiError('not sent', { sent: false, code: 'network' }),
+		),
+		{
+			error: true,
+			message: 'not sent',
+			code: 'network',
+			sent: false,
+		},
+	)
+	assert.deepEqual(
+		formatCliErrorJson(new OpenApiError('maybe', { sent: 'unknown' })),
+		{
+			error: true,
+			message: 'maybe',
+			sent: 'unknown',
+		},
+	)
+})
+
+test('runCli --json prints sent:false on connect-phase Open API failures', async () => {
+	const server = createServer()
+	await new Promise<void>((resolve) =>
+		server.listen(0, '127.0.0.1', () => resolve()),
+	)
+	const { port } = server.address() as AddressInfo
+	await new Promise<void>((resolve, reject) => {
+		server.close((error) => (error ? reject(error) : resolve()))
+	})
+
+	let stdout = ''
+	let stderr = ''
+	const code = await runCli(
+		[
+			'api',
+			'metaGetCurrentUser',
+			'--token',
+			'kody_at_test_token_for_network',
+			'--api-url',
+			`http://127.0.0.1:${port}`,
+			'--json',
+		],
+		{
+			stdout: (text) => {
+				stdout += text
+			},
+			stderr: (text) => {
+				stderr += text
+			},
+		},
+	)
+	assert.equal(code, 1)
+	assert.match(stderr, /The request was not sent/)
+	const body = JSON.parse(stdout) as {
+		error: boolean
+		sent?: false | 'unknown'
+		message: string
+	}
+	assert.equal(body.error, true)
+	assert.equal(body.sent, false)
+	assert.match(body.message, /The request was not sent/)
 })
 
 test('parseApiParamsJson requires a flat object', () => {

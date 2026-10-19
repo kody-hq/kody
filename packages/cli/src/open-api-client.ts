@@ -11,7 +11,11 @@ import {
 	assertTokenSafeApiUrl,
 	capabilityProxyUrl,
 } from './capability-proxy.js'
-import { describeNetworkError } from './network-error.js'
+import {
+	formatUnreachableApiMessage,
+	requestSentStatus,
+	type RequestSentStatus,
+} from './network-error.js'
 import { bakedOpenApiRoutes } from './generated/openapi-routes.js'
 import { type ToolCallResult } from './tool-result.js'
 import { readPackageVersion } from './package-info.js'
@@ -31,15 +35,25 @@ export type OpenApiClientInput = {
 export class OpenApiError extends Error {
 	readonly status: number | null
 	readonly code: string | null
+	/**
+	 * Set when `fetch` rejected before an HTTP response. `false` = connect
+	 * phase (nothing sent); `"unknown"` = body may have reached the server.
+	 */
+	readonly sent?: RequestSentStatus
 
 	constructor(
 		message: string,
-		options: { status?: number | null; code?: string | null } = {},
+		options: {
+			status?: number | null
+			code?: string | null
+			sent?: RequestSentStatus
+		} = {},
 	) {
 		super(message)
 		this.name = 'OpenApiError'
 		this.status = options.status ?? null
 		this.code = options.code ?? null
+		if (options.sent !== undefined) this.sent = options.sent
 	}
 }
 
@@ -211,9 +225,9 @@ export async function openApiRequest(
 	try {
 		response = await fetchFn(url, { method, headers, body })
 	} catch (error) {
-		const reason = describeNetworkError(error)
 		throw new OpenApiError(
-			`Could not reach the Kody API at ${url.origin} (${reason}). Check --api-url / KODY_API_URL and your network.`,
+			formatUnreachableApiMessage({ origin: url.origin, error }),
+			{ sent: requestSentStatus(error) },
 		)
 	}
 	const responseBody = await readJson(response)
@@ -361,9 +375,12 @@ export async function loadOpenApiOperations(input: {
 				bakedOpenApiRoutes.map((route) => [route.operationId, route]),
 			)
 		}
-		const reason = describeNetworkError(error)
 		throw new OpenApiError(
-			`Could not load OpenAPI from ${url.href} (${reason}). Check --api-url / KODY_API_URL and your network.`,
+			formatUnreachableApiMessage({ origin: url.origin, error }).replace(
+				`Could not reach the Kody API at ${url.origin}`,
+				`Could not load OpenAPI from ${url.href}`,
+			),
+			{ sent: requestSentStatus(error) },
 		)
 	}
 	if (response.status === 304 && persisted) {

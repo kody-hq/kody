@@ -68,7 +68,7 @@ Usage:
   kody whoami [--org <slug>] [--target prod|mock] [--mcp-url <url>] [--token <token>] [--api-url <url>] [--json]
   kody search [query] [--org <slug>] [--entity <ref>] [--domain <id>] [--limit <n>] [--target prod|mock] [--token <token>] [--api-url <url>] [--json]
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
-  kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>]
+  kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
   kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
@@ -195,7 +195,16 @@ ${orgBlock}
              auth as \`kody api\`). Optional positional is a \`package_id\`, or a
              name (\`@owner/leaf\` or bare leaf) resolved to its package_id
              via \`packageList\` in the current org. Extra fields
-             via \`--params\` JSON (e.g. \`allow_force\`). Prints JSON.
+             via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
+             body and exits 0 on HTTP 2xx — including refusal statuses such as
+             \`checks_failed\`, \`locked\`, \`approval_required\`, and
+             \`not_fast_forward\` (inspect \`status\` in the JSON). Network
+             failures exit 1; with \`--json\`, stdout also gets
+             \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
+             phase — request not sent) or \`"unknown"\` (may have reached the
+             server — prefer \`kody api workflowRunList\` before retrying).
+             Re-publishing the same commit is safe: an active durable run is
+             deduped; a finished publish returns \`already_published\`.
 
   package collaborators | grant | revoke
              Who can use one package, and add or remove teams and members of

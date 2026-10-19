@@ -19,7 +19,11 @@ import {
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
 import { apiTokenEnvVar, cliName } from './defaults.js'
-import { describeNetworkError } from './network-error.js'
+import {
+	formatUnreachableApiMessage,
+	requestSentStatus,
+	type RequestSentStatus,
+} from './network-error.js'
 import { readPackageVersion } from './package-info.js'
 
 /**
@@ -321,15 +325,25 @@ export type CapabilityProxyClientInput = {
 export class CapabilityProxyError extends Error {
 	readonly status: number | null
 	readonly code: string | null
+	/**
+	 * Set when the hop failed before an HTTP response. `false` = connect
+	 * phase (nothing sent); `"unknown"` = body may have reached the server.
+	 */
+	readonly sent?: RequestSentStatus
 
 	constructor(
 		message: string,
-		options: { status?: number | null; code?: string | null } = {},
+		options: {
+			status?: number | null
+			code?: string | null
+			sent?: RequestSentStatus
+		} = {},
 	) {
 		super(message)
 		this.name = 'CapabilityProxyError'
 		this.status = options.status ?? null
 		this.code = options.code ?? null
+		if (options.sent !== undefined) this.sent = options.sent
 	}
 }
 
@@ -543,7 +557,11 @@ export async function callCapabilityProxyGatewayFetchStream(
 				error instanceof CapabilityProxyError
 					? error
 					: new CapabilityProxyError(
-							`Could not reach the Kody API at ${url.origin} (${describeNetworkError(error)}). Check --api-url / KODY_API_URL and your network.`,
+							formatUnreachableApiMessage({
+								origin: url.origin,
+								error,
+							}),
+							{ sent: requestSentStatus(error) },
 						),
 			)
 		})
@@ -671,9 +689,10 @@ async function send(
 			},
 		})
 	} catch (error) {
-		const reason = describeNetworkError(error)
+		if (error instanceof CapabilityProxyError) throw error
 		throw new CapabilityProxyError(
-			`Could not reach the Kody API at ${url.origin} (${reason}). Check --api-url / KODY_API_URL and your network.`,
+			formatUnreachableApiMessage({ origin: url.origin, error }),
+			{ sent: requestSentStatus(error) },
 		)
 	}
 }

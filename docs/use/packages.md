@@ -1228,6 +1228,18 @@ publish checks run.
    with that `workflow_id` until the run finishes; do not retry the same publish
    while the run is active.
 
+   If the CLI or client loses the HTTP response (for example
+   `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal
+   status, the outcome is unknown until you check. Prefer `workflowRunList`
+   (CLI: `kody api workflowRunList`) for recent `packagePublishExternalPush`
+   runs. Re-calling publish for the **same** commit is safe: an active durable
+   run for that commit is deduped and returns the existing `dispatched` handle;
+   a completed publish returns `already_published` without re-running checks.
+   Connect-phase failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
+   `ENOTFOUND`, `EAI_AGAIN`) never reached the server — republish is the right
+   next step. The CLI surfaces that distinction as `sent: false` vs
+   `sent: "unknown"` on `--json` errors.
+
 Computed `import(specifier)` (and other runtime package loads) resolve the
 current published package at call time instead of embedding a source snapshot in
 the dependent bundle. Those loads do not require republishing a dependent just

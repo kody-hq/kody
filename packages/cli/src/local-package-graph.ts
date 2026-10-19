@@ -18,7 +18,11 @@ import {
 	rejectedOauthBearerMessage,
 } from './api-token.js'
 import { apiTokenEnvVar, cliName } from './defaults.js'
-import { describeNetworkError } from './network-error.js'
+import {
+	formatUnreachableApiMessage,
+	requestSentStatus,
+	type RequestSentStatus,
+} from './network-error.js'
 import { readPackageVersion } from './package-info.js'
 
 /** Eager WASM init for es-module-lexer (shared across import scans). */
@@ -239,6 +243,7 @@ export class LocalPackageGraphError extends Error {
 	readonly status: number | null
 	readonly code: string | null
 	readonly details: Record<string, unknown> | null
+	readonly sent?: RequestSentStatus
 
 	constructor(
 		message: string,
@@ -246,6 +251,7 @@ export class LocalPackageGraphError extends Error {
 			status?: number | null
 			code?: string | null
 			details?: Record<string, unknown> | null
+			sent?: RequestSentStatus
 		} = {},
 	) {
 		super(message)
@@ -253,6 +259,7 @@ export class LocalPackageGraphError extends Error {
 		this.status = options.status ?? null
 		this.code = options.code ?? null
 		this.details = options.details ?? null
+		if (options.sent !== undefined) this.sent = options.sent
 	}
 }
 
@@ -280,6 +287,7 @@ export function packageGraphErrorToolResult(error: LocalPackageGraphError): {
 				phase: 'package_graph',
 				moduleRan: false,
 				...(error.status !== null ? { status: error.status } : {}),
+				...(error.sent !== undefined ? { sent: error.sent } : {}),
 				...error.details,
 			},
 		},
@@ -484,9 +492,9 @@ export async function fetchLocalPackageGraph(
 			}),
 		})
 	} catch (error) {
-		const reason = describeNetworkError(error)
 		throw new LocalPackageGraphError(
-			`Could not reach the Kody API at ${url.origin} (${reason}). Check --api-url / KODY_API_URL and your network.`,
+			formatUnreachableApiMessage({ origin: url.origin, error }),
+			{ sent: requestSentStatus(error) },
 		)
 	}
 

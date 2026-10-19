@@ -242,6 +242,7 @@ export async function runCli(
 			// Ignore refresh failures; the user's command still runs.
 		}
 	}
+	const jsonFlag = argvIncludesJsonFlag(argv)
 	try {
 		const parsed = resolveCommand(argv)
 		const helpMcpUrl = mcpUrlFrom({
@@ -256,9 +257,56 @@ export async function runCli(
 		}
 		return await dispatch(parsed, write, writeErr)
 	} catch (error) {
-		writeErr(`${redactError(error).message}\n`)
+		const redacted = redactError(error)
+		if (jsonFlag) {
+			write(`${JSON.stringify(formatCliErrorJson(redacted), null, 2)}\n`)
+		}
+		writeErr(`${redacted.message}\n`)
 		return 1
 	}
+}
+
+/** Peek `--json` without requiring a successful `resolveCommand` parse. */
+export function argvIncludesJsonFlag(argv: Array<string>): boolean {
+	return argv.includes('--json')
+}
+
+/**
+ * Structured `--json` error body. Additive `sent` when a network hop failed
+ * before an HTTP response (`false` = connect phase; `"unknown"` otherwise).
+ */
+export function formatCliErrorJson(error: Error): {
+	error: true
+	message: string
+	status?: number
+	code?: string
+	sent?: false | 'unknown'
+} {
+	const body: {
+		error: true
+		message: string
+		status?: number
+		code?: string
+		sent?: false | 'unknown'
+	} = {
+		error: true,
+		message: error.message,
+	}
+	const record = error as Error & {
+		sent?: unknown
+		status?: unknown
+		code?: unknown
+	}
+	if (record.sent === false || record.sent === 'unknown') {
+		body.sent = record.sent
+	}
+	if (typeof record.status === 'number') {
+		body.status = record.status
+	}
+	if (typeof record.code === 'string') {
+		body.code = record.code
+	}
+	return body
 }
 
 async function dispatch(

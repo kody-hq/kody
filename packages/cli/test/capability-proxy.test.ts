@@ -215,7 +215,7 @@ test('openCapabilityProxySession reports unreachable APIs with the network cause
 				token,
 				fetchFn,
 			}),
-		/Could not reach the Kody API at https:\/\/api\.kody\.codes \(fetch failed: ECONNREFUSED\)/,
+		/Could not reach the Kody API at https:\/\/api\.kody\.codes \(fetch failed: ECONNREFUSED\)\. The request was not sent/,
 	)
 })
 
