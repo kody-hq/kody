@@ -7,16 +7,9 @@ import path from 'node:path'
 import { parse as parsePublicSuffix } from 'tldts'
 import { resolveLocalBinary } from '../node-runtime.ts'
 import {
-	isPermanentCloudflareAuthFailure,
 	isRetryableCloudflareApiError,
 	isRetryableCloudflareFailure,
 } from './retry-classifiers.ts'
-
-export {
-	isPermanentCloudflareAuthFailure,
-	isRetryableCloudflareApiError,
-	isRetryableCloudflareFailure,
-}
 
 type WranglerEnvName = 'preview' | 'production'
 
