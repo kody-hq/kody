@@ -3,7 +3,16 @@ import { toolCliEntryFiles } from './tools/knip-tool-entries.ts'
 
 export default defineConfig({
 	include: ['files', 'exports', 'types'],
-	ignore: ['packages/cli/**'],
+	ignore: [
+		'packages/cli/**',
+		// Temporary until PR 2 deletes these after the replacement is on main.
+		'tools/build-highlight-test-service.ts',
+		'tools/build-jobs-test-service.ts',
+		'tools/vitest-global-setup-highlight-test-service.ts',
+		'tools/vitest-global-setup-jobs-test-service.ts',
+		'tools/vitest-global-setup-guide-catalog-modules.ts',
+		'tools/vitest-global-setup-worker-bundler-modules.ts',
+	],
 	workspaces: {
 		'.': {
 			entry: [

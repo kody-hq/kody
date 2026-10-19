@@ -130,10 +130,7 @@ export default mergeConfig(
 			environment: 'node',
 			include: ['**/*.node.test.ts'],
 			exclude: ['**/node_modules/**', '**/.git/**', '**/.worktrees/**'],
-			globalSetup: [
-				resolve(rootDir, 'tools/vitest-global-setup-worker-bundler-modules.ts'),
-				resolve(rootDir, 'tools/vitest-global-setup-guide-catalog-modules.ts'),
-			],
+			globalSetup: [resolve(rootDir, 'tools/vitest-global-setup-node.ts')],
 			// Merged with the shared setupFiles (console spies). Routes the
 			// audit-log sink through a shared spy; see test-support/audit-log-spy.ts.
 			setupFiles: [
