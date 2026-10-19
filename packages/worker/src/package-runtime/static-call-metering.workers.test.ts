@@ -275,8 +275,35 @@ export default async function main() {
 			answer: 42,
 			answerType: 'number',
 		})
-		// 3 default calls + 1 throwing call + 1 calm call = 5 events, 1 error.
-		await expectStaticCallRollup(userId, { event_count: 5, error_count: 1 })
+		// 3 default calls + 1 caught throw + 1 calm call = 5 events.
+		// Caught throws are outcome `caught`, so rollup error_count stays 0.
+		await expectStaticCallRollup(userId, { event_count: 5, error_count: 0 })
+	},
+)
+
+test(
+	'uncaught static package throw still counts as a package_static_call error',
+	{ timeout: 30_000 },
+	async () => {
+		const { userId } = await publishSource(
+			'metered-uncaught',
+			'Metered dependency that fails the run',
+			`export function boom() {
+	throw new Error('uncaught boom')
+}`,
+		)
+
+		const result = await runEntry(
+			userId,
+			`import { boom } from 'kody:@kentcdodds/metered-uncaught'
+export default async function main() {
+	boom()
+	return 'unreachable'
+}`,
+		)
+
+		expect(result.error).toBeTruthy()
+		await expectStaticCallRollup(userId, { event_count: 1, error_count: 1 })
 	},
 )
 

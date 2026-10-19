@@ -1208,6 +1208,13 @@ export async function runBundledModuleWithRegistry(
 		if (!exposeRunId || !runRecordHandle) return timed
 		return { ...timed, runId: runRecordHandle.id }
 	}
+	// Host-observed run outcome for static-call reclassification. Default to
+	// failed so an early throw before execute still treats buffered throws as
+	// real errors. Set false only when execute returns without `error`.
+	let staticCallRunFailed = true
+	let staticCallMeterTools:
+		| ReturnType<typeof createPackageStaticCallMeterTools>
+		| undefined
 	try {
 		// Hydration can install additional published-package sources (literal
 		// dynamic `import("kody:@...")` targets); keep a reference so error
@@ -1255,8 +1262,10 @@ export async function runBundledModuleWithRegistry(
 		// dropped host-side). This is deliberately tighter than the
 		// packageStorage grant set, which additionally includes the run's own
 		// package id, dynamic-import dependencies, and transitive static
-		// dependencies.
-		const staticCallMeterTools = createPackageStaticCallMeterTools({
+		// dependencies. Throws are buffered until finalize with the host run
+		// outcome so caught throws become `caught` (alert math counts `error`
+		// only).
+		staticCallMeterTools = createPackageStaticCallMeterTools({
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			request: callerContext.request,
@@ -1575,6 +1584,7 @@ ${runtimeHelperRuntimePropertySource}
 			const sanitizedResult = sanitizeExecuteResult(result, secretRedactor)
 			capturedLogs = sanitizedResult.logs
 			if (!result.error) {
+				staticCallRunFailed = false
 				await finishObservedRun({
 					status: 'success',
 					logs: sanitizedResult.logs ?? [],
@@ -1641,6 +1651,8 @@ ${runtimeHelperRuntimePropertySource}
 		}
 		await recordPackageExportUsage('error')
 		throw error
+	} finally {
+		await staticCallMeterTools?.finalize({ runFailed: staticCallRunFailed })
 	}
 }
 /**

@@ -307,6 +307,9 @@ export function buildFleetPackageErrorRateAnalyticsQuery(input: {
 	const metrics = fleetPackageErrorRateMetrics
 		.map((metric) => `'${metric}'`)
 		.join(', ')
+	// Count only `error` outcomes. `package_static_call` may also write
+	// `caught` (throw handled by a successful run); those must not inflate
+	// the fleet alert rate or concentration shares.
 	return `
 SELECT
 	if(timestamp >= toDateTime('${toAnalyticsDateTime(input.recentStart)}'), 'recent', 'previous') AS window,

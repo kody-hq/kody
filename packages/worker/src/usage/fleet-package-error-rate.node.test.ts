@@ -84,9 +84,36 @@ test('fleet package error-rate detection stays anonymous and prefers day rises',
 	expect(query).toContain(
 		"blob2 IN ('package_export', 'package_static_call', 'job_run', 'workflow_run')",
 	)
+	expect(query).toContain(
+		"sum(if(blob4 = 'error', _sample_interval, 0)) AS error_count",
+	)
+	expect(query).not.toContain('caught')
 	expect(query).toContain("toDateTime('2026-08-21 19:00:00')")
 	expect(query).not.toContain('blob1')
 	expect(query).not.toContain('user_id')
+
+	// Concentration shares use the same real-failure filter: only blob4=error.
+	const recentCombined = toWindowSnapshot({
+		start: new Date('2026-08-22T18:00:00.000Z'),
+		end: new Date('2026-08-22T19:00:00.000Z'),
+		byMetric: {
+			package_export: countsOf(10, 1),
+			package_static_call: countsOf(100, 0),
+			job_run: countsOf(0, 0),
+			workflow_run: countsOf(0, 0),
+		},
+	})
+	expect(recentCombined.combined).toEqual(countsOf(110, 1))
+	expect(
+		recentCombined.by_metric.find(
+			(row) => row.metric === 'package_static_call',
+		),
+	).toEqual({
+		metric: 'package_static_call',
+		events: 100,
+		errors: 0,
+		rate: 0,
+	})
 
 	const snapshot = foldAnalyticsWindowRows(
 		[

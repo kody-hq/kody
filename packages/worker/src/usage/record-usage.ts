@@ -63,7 +63,12 @@ const runtimeTracing: typeof cloudflareWorkers.tracing | undefined = (
 	cloudflareWorkers as Partial<typeof cloudflareWorkers>
 ).tracing
 
-export type UsageOutcome = 'success' | 'error'
+/**
+ * `caught` is only written for `package_static_call`: the callee threw, but the
+ * run still succeeded (caller handled it). Fleet error-rate math counts only
+ * `error`. Historical rows without `caught` stay valid as `error`/`success`.
+ */
+export type UsageOutcome = 'success' | 'error' | 'caught'
 
 export type UsageEvent = {
 	/** Owning user. Required: every usage event is scoped to one user. */
