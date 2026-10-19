@@ -26,7 +26,7 @@ function build(clientSources: string[], serverSources: string[] = []) {
 	return () =>
 		execFileSync(
 			process.execPath,
-			[resolve('tools/framework-comparison/verify-redact-build.mjs'), root],
+			[resolve('tools/ci/verify-redact-build.mjs'), root],
 			{ stdio: 'pipe' },
 		)
 }

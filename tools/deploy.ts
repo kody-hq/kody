@@ -116,7 +116,7 @@ export async function deploy(args: ReadonlyArray<string>) {
 	})
 	run(
 		process.execPath,
-		['tools/framework-comparison/verify-redact-build.mjs', 'dist'],
+		['tools/ci/verify-redact-build.mjs', 'dist'],
 		process.env,
 	)
 	if (!existsSync(originViteWranglerConfigPath)) {

@@ -121,7 +121,7 @@ jobs:
         run: |
           cp packages/worker/.env.example packages/worker/.env
           npx --no-install vite build
-          node tools/framework-comparison/verify-redact-build.mjs dist
+          node tools/ci/verify-redact-build.mjs dist
           node tools/ci/verify-start-release-build.ts dist
           node tools/ci/prepare-start-opt-in.ts finalize
       - name: Deploy inactive isolated workers with trusted production secrets

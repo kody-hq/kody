@@ -32,7 +32,7 @@
     "dev:mock-cloudflare": "node --env-file=packages/worker/.env ./wrangler-env.ts dev --local --config packages/mock-servers/cloudflare/wrangler.jsonc",
     "deploy": "node --input-type=module -e \"if (['preview','test'].includes(process.env.CLOUDFLARE_ENV ?? '')) { await import('./tools/prepare-e2e-env.ts'); }\" && node --env-file=packages/worker/.env tools/deploy.ts --outdir .wrangler/sentry-bundle --upload-source-maps",
     "sentry:upload-sourcemaps": "node tools/sentry-upload-sourcemaps.ts",
-    "build": "vite build && node tools/framework-comparison/verify-redact-build.mjs",
+    "build": "vite build && node tools/ci/verify-redact-build.mjs",
     "backup:build": "wrangler deploy --dry-run --config packages/backup-control-plane/wrangler.jsonc",
     "backup:deploy": "wrangler deploy --config packages/backup-control-plane/wrangler.jsonc",
     "status:build": "wrangler deploy --dry-run --config packages/status/wrangler.jsonc",
