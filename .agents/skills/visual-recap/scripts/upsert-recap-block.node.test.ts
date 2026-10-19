@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	isGhPrEditForbidden,
-	mergeRecapBody,
-} from '../.agents/skills/visual-recap/scripts/upsert-recap-block.mjs'
+import { isGhPrEditForbidden, mergeRecapBody } from './upsert-recap-block.mjs'
 
 const startMarker = '<!-- system-recap:start -->'
 const endMarker = '<!-- system-recap:end -->'
