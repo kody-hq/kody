@@ -611,6 +611,13 @@ index baf049b..0f886e2 100644
      if (parentTag !== "head" && parentTag !== "html" && parentTag !== "body" && !hasOpaqueHydrationChildren) {
        const cursor = getHydrationCursor(fiber);
        if (cursor) {
+@@ -704,5 +711,5 @@
+             process.env.NODE_ENV !== "production" ? `Hydration mismatch: server rendered extra nodes inside <${parentTag}>.` : "Hydration mismatch."
+           );
+-          if (currentRoot.re) currentRoot.re(error, { componentStack: null });
++          if (currentRoot.re) currentRoot.re(error, { componentStack: componentStack(fiber) });
+           abortHydration(error, fiber);
+         }
 @@ -889,7 +896,10 @@ var RenderErrorCapture = class {
    constructor(boundary, error, source = boundary) {
      this.boundary = boundary;
@@ -1186,6 +1193,13 @@ index 5eedc9b..cd46e19 100644
      if (
        parentTag !== 'head' &&
        parentTag !== 'html' &&
+@@ -998,5 +1011,5 @@
+               : 'Hydration mismatch.',
+           )
+-          if (currentRoot.re) currentRoot.re(error, { componentStack: null })
++          if (currentRoot.re) currentRoot.re(error, { componentStack: componentStack(fiber) })
+           abortHydration(error, fiber)
+         }
 @@ -1234,8 +1247,12 @@ export function findSuspenseBoundary(fiber: Fiber): Fiber | null {
  
  export class RenderErrorCapture {
