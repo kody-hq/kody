@@ -54,8 +54,9 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 		location: { reload },
 	} as unknown as Window & typeof globalThis
 	const { initBrowserSentry } = await import('./sentry-init.ts')
-	const { setStaleRouteChunkReloadArmed } =
+	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
 		await import('./reload-on-stale-route-chunk.ts')
+	resetStaleRouteChunkReloadTriggered()
 	setStaleRouteChunkReloadArmed(true)
 	initBrowserSentry({
 		dsn: 'https://key@o1.ingest.sentry.io/2',
@@ -76,6 +77,17 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 	expect(beforeSend(event, hint)).toBeNull()
 	expect(reload).toHaveBeenCalledTimes(1)
 
+	const followOnMessage =
+		"undefined is not an object (evaluating 'e[i??`default`]')"
+	const followOnEvent = {
+		exception: { values: [{ type: 'TypeError', value: followOnMessage }] },
+	} as ErrorEvent
+	expect(
+		beforeSend(followOnEvent, {
+			originalException: new TypeError(followOnMessage),
+		} as EventHint),
+	).toBeNull()
+
 	expect(beforeSend(event, hint)).toBe(event)
 	expect(reload).toHaveBeenCalledTimes(1)
 
@@ -87,4 +99,31 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 			originalException: new TypeError('Failed to fetch'),
 		} as EventHint),
 	).toBe(fetchEvent)
+})
+
+test('beforeSend keeps the undefined-module TypeError when no reload fired', async () => {
+	const { initBrowserSentry } = await import('./sentry-init.ts')
+	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
+		await import('./reload-on-stale-route-chunk.ts')
+	resetStaleRouteChunkReloadTriggered()
+	setStaleRouteChunkReloadArmed(false)
+	initBrowserSentry({
+		dsn: 'https://key@o1.ingest.sentry.io/2',
+		environment: 'production',
+		tunnel: '/sentry-tunnel',
+	})
+	const beforeSend = init.mock.calls[0]?.[0]?.beforeSend as (
+		event: ErrorEvent,
+		hint: EventHint,
+	) => ErrorEvent | null
+	const followOnMessage =
+		"undefined is not an object (evaluating 'e[i??`default`]')"
+	const followOnEvent = {
+		exception: { values: [{ type: 'TypeError', value: followOnMessage }] },
+	} as ErrorEvent
+	expect(
+		beforeSend(followOnEvent, {
+			originalException: new TypeError(followOnMessage),
+		} as EventHint),
+	).toBe(followOnEvent)
 })

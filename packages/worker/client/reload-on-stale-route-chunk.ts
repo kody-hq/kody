@@ -1,12 +1,18 @@
 /**
  * One-shot hard reload when a stale tab's hashed route chunk 404s after a
- * deploy (KODY-5W, KODY-9S, KODY-9V, KODY-9Y). Mirrors
+ * deploy (KODY-5W, KODY-9S, KODY-9V, KODY-9Y, KODY-A1). Mirrors
  * `reload-on-unknown-start-release.ts`: set the session flag before reload,
  * clear it after a successful boot so a later deploy can recover again.
  *
  * Match only the three browser dynamic-import failure messages. A blanket
  * TypeError ("Failed to fetch", "Load failed") is a different failure and
  * must not reload.
+ *
+ * When `onVitePreloadError` calls `preventDefault` after triggering reload,
+ * Vite's `__vitePreload` resolves `undefined` instead of rejecting. TanStack
+ * Router then crashes on `module[exportName ?? 'default']` (KODY-A1 /
+ * issue 7799039116). Suppress that follow-on only while this page's reload
+ * is pending — real undefined-default TypeErrors stay reportable.
  */
 
 import { isSyntaxHighlightCoreDynamicImportFailureError } from '#client/sentry-browser-filters.ts'
@@ -32,6 +38,13 @@ export const staleRouteChunkReloadArmMs = 30_000
  */
 let staleRouteChunkReloadArmedUntil = 0
 
+/**
+ * True after this page called `location.reload()` for a stale chunk. Cleared
+ * on the next document (reload) or via the test reset helper. Gates follow-on
+ * suppression so a spent session flag alone cannot hide real TypeErrors.
+ */
+let staleRouteChunkReloadTriggered = false
+
 export function setStaleRouteChunkReloadArmed(armed: boolean) {
 	staleRouteChunkReloadArmedUntil = armed
 		? Date.now() + staleRouteChunkReloadArmMs
@@ -40,6 +53,16 @@ export function setStaleRouteChunkReloadArmed(armed: boolean) {
 
 function isStaleRouteChunkReloadArmed() {
 	return Date.now() <= staleRouteChunkReloadArmedUntil
+}
+
+/** Whether this page already triggered the one-shot stale-chunk reload. */
+export function wasStaleRouteChunkReloadTriggered(): boolean {
+	return staleRouteChunkReloadTriggered
+}
+
+/** Test helper: clear the in-memory reload-triggered bit between cases. */
+export function resetStaleRouteChunkReloadTriggered(): void {
+	staleRouteChunkReloadTriggered = false
 }
 
 /** Chromium: `Failed to fetch dynamically imported module: <url>`. */
@@ -74,6 +97,48 @@ export function isStaleRouteChunkLoadError(error: unknown) {
 }
 
 /**
+ * TanStack `lazyRouteComponent` does `res[exportName ?? 'default']`. After
+ * Vite swallows a preload failure via `preventDefault`, `res` is undefined
+ * and browsers throw (KODY-A1 / issue 7799039116):
+ * - Safari: `undefined is not an object (evaluating 'e[i??`default`]')`
+ * - Chromium: `Cannot read properties of undefined (reading 'default')`
+ * - Firefox: `can't access property "default" of undefined`
+ */
+const safariUndefinedModuleDefault =
+	/^(?:TypeError:\s*)?undefined is not an object \(evaluating ['"][^'"]*\?\?\s*[`'"]default[`'"][^'"]*['"]\)$/
+
+const chromiumUndefinedModuleDefault =
+	/^(?:TypeError:\s*)?Cannot read properties of undefined \(reading ['"]default['"]\)$/
+
+const firefoxUndefinedModuleDefault =
+	/^(?:TypeError:\s*)?can't access property ['"]default['"] of undefined$/
+
+export function isStaleRouteChunkUndefinedModuleError(error: unknown) {
+	const message = staleRouteChunkLoadMessage(error)
+	if (message === undefined) return false
+	const trimmed = message.trim()
+	return (
+		safariUndefinedModuleDefault.test(trimmed) ||
+		chromiumUndefinedModuleDefault.test(trimmed) ||
+		firefoxUndefinedModuleDefault.test(trimmed)
+	)
+}
+
+/**
+ * Drop the TanStack undefined-module TypeError only when this page already
+ * triggered the stale-chunk reload. Without that gate, Chromium's
+ * "reading 'default'" wording is too common to filter globally.
+ */
+export function shouldSuppressStaleRouteChunkFollowOnError(
+	error: unknown,
+): boolean {
+	return (
+		staleRouteChunkReloadTriggered &&
+		isStaleRouteChunkUndefinedModuleError(error)
+	)
+}
+
+/**
  * If `error` is a post-deploy dynamic-import miss during a route load, attempt
  * one hard reload for this tab session. Returns whether a reload was
  * triggered. No-ops while disarmed so an idle import cannot reload again
@@ -94,6 +159,7 @@ export function reloadOnStaleRouteChunk(error: unknown): boolean {
 	try {
 		if (getSessionStorageItem(staleRouteChunkReloadFlag)) return false
 		if (!setSessionStorageItem(staleRouteChunkReloadFlag, '1')) return false
+		staleRouteChunkReloadTriggered = true
 		window.location.reload()
 		return true
 	} catch {
@@ -114,7 +180,9 @@ export function clearStaleRouteChunkReloadFlag(): void {
  * Vite build preload helper dispatches this when a dependency or the dynamic
  * import itself fails. `preventDefault` only when a reload was triggered, so
  * a second failure (or a non-matching payload such as CSS preload) still
- * surfaces.
+ * surfaces. That preventDefault makes the import resolve `undefined`; callers
+ * must suppress the resulting TanStack undefined-module TypeError via
+ * `shouldSuppressStaleRouteChunkFollowOnError` (KODY-A1).
  */
 export function onVitePreloadError(event: Event) {
 	const payload =

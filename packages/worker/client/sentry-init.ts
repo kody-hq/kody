@@ -1,6 +1,9 @@
 import { type ClientErrorContext } from './sentry-client.ts'
 import * as Sentry from '@sentry/browser'
-import { reloadOnStaleRouteChunk } from '#client/reload-on-stale-route-chunk.ts'
+import {
+	reloadOnStaleRouteChunk,
+	shouldSuppressStaleRouteChunkFollowOnError,
+} from '#client/reload-on-stale-route-chunk.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import { filterBrowserSentryEvent } from '#client/sentry-browser-filters.ts'
 import { type SentryClientConfig } from '#universal/sentry-config.ts'
@@ -91,6 +94,10 @@ export function initBrowserSentry(config: SentryClientConfig) {
 			// A second failure stays visible. syntax-highlight-core is still
 			// dropped by the filter below.
 			if (reloadOnStaleRouteChunk(error)) return null
+			// Vite preventDefault → undefined module → TanStack default read
+			// (KODY-A1 / issue 7799039116): drop only while that reload is
+			// pending on this page.
+			if (shouldSuppressStaleRouteChunkFollowOnError(error)) return null
 			return filterBrowserSentryEvent(event, hint.originalException)
 		},
 	})

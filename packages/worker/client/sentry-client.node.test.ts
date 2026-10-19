@@ -55,8 +55,9 @@ test('keeps component stacks with their errors before and after Sentry loads', a
 test('skips Sentry when a stale route chunk reload fires, then reports the next miss', async () => {
 	const store = new Map<string, string>()
 	const reload = vi.fn()
-	const { setStaleRouteChunkReloadArmed } =
+	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
 		await import('./reload-on-stale-route-chunk.ts')
+	resetStaleRouteChunkReloadTriggered()
 	setStaleRouteChunkReloadArmed(true)
 	vi.stubGlobal('sessionStorage', {
 		getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
@@ -93,6 +94,13 @@ test('skips Sentry when a stale route chunk reload fires, then reports the next 
 	expect(reload).toHaveBeenCalledTimes(1)
 	expect(capture).not.toHaveBeenCalled()
 
+	const followOn = new TypeError(
+		"undefined is not an object (evaluating 'e[i??`default`]')",
+	)
+	captureClientException(followOn)
+	await Promise.resolve()
+	expect(capture).not.toHaveBeenCalled()
+
 	const stillMissing = new TypeError(
 		'error loading dynamically imported module: https://kody.codes/assets/pricing-CgSDztSN.js',
 	)
@@ -114,5 +122,35 @@ test('skips Sentry when a stale route chunk reload fires, then reports the next 
 	captureClientException(network)
 	await vi.waitFor(() =>
 		expect(capture).toHaveBeenCalledWith(network, undefined),
+	)
+})
+
+test('reports the undefined-module TypeError when no stale-chunk reload fired', async () => {
+	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
+		await import('./reload-on-stale-route-chunk.ts')
+	resetStaleRouteChunkReloadTriggered()
+	setStaleRouteChunkReloadArmed(false)
+	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal('requestIdleCallback', vi.fn())
+	const { initSentryClient, captureClientException } =
+		await import('./sentry-client.ts')
+	const doc = {
+		querySelector: () => ({
+			getAttribute: () =>
+				JSON.stringify({
+					dsn: 'https://key@o1.ingest.sentry.io/2',
+					environment: 'production',
+					tunnel: '/sentry-tunnel',
+				}),
+		}),
+	} as unknown as Document
+	expect(initSentryClient(doc)).toBe(true)
+
+	const followOn = new TypeError(
+		"undefined is not an object (evaluating 'e[i??`default`]')",
+	)
+	captureClientException(followOn)
+	await vi.waitFor(() =>
+		expect(capture).toHaveBeenCalledWith(followOn, undefined),
 	)
 })

@@ -2,11 +2,15 @@ import { afterEach, expect, test, vi } from 'vitest'
 import {
 	clearStaleRouteChunkReloadFlag,
 	isStaleRouteChunkLoadError,
+	isStaleRouteChunkUndefinedModuleError,
 	onVitePreloadError,
 	reloadOnStaleRouteChunk,
+	resetStaleRouteChunkReloadTriggered,
 	setStaleRouteChunkReloadArmed,
+	shouldSuppressStaleRouteChunkFollowOnError,
 	staleRouteChunkReloadArmMs,
 	staleRouteChunkReloadFlag,
+	wasStaleRouteChunkReloadTriggered,
 } from './reload-on-stale-route-chunk.ts'
 
 const originalWindow = globalThis.window
@@ -26,6 +30,7 @@ function restoreGlobals() {
 
 afterEach(() => {
 	setStaleRouteChunkReloadArmed(false)
+	resetStaleRouteChunkReloadTriggered()
 	restoreGlobals()
 	vi.restoreAllMocks()
 })
@@ -58,6 +63,13 @@ const chromium =
 const firefox =
 	'error loading dynamically imported module: https://kody.codes/assets/pricing-CgSDztSN.js'
 const webkit = 'Importing a module script failed.'
+
+/** Safari (KODY-A1): TanStack minified `e[i??\`default\`]` on undefined module. */
+const safariUndefinedModule =
+	"undefined is not an object (evaluating 'e[i??`default`]')"
+const chromiumUndefinedModule =
+	"Cannot read properties of undefined (reading 'default')"
+const firefoxUndefinedModule = `can't access property "default" of undefined`
 
 test('isStaleRouteChunkLoadError matches Chromium, Firefox, and WebKit dynamic import failures', () => {
 	expect(isStaleRouteChunkLoadError(new TypeError(chromium))).toBe(true)
@@ -219,6 +231,7 @@ test('onVitePreloadError prevents the default only when a reload is triggered', 
 	onVitePreloadError(first)
 	expect(first.defaultPrevented).toBe(true)
 	expect(reload).toHaveBeenCalledTimes(1)
+	expect(wasStaleRouteChunkReloadTriggered()).toBe(true)
 
 	const second = new Event('vite:preloadError', { cancelable: true })
 	Object.assign(second, { payload: new TypeError(firefox) })
@@ -234,4 +247,88 @@ test('onVitePreloadError prevents the default only when a reload is triggered', 
 	})
 	onVitePreloadError(css)
 	expect(css.defaultPrevented).toBe(false)
+})
+
+test('isStaleRouteChunkUndefinedModuleError matches Safari, Chromium, and Firefox follow-ons', () => {
+	expect(
+		isStaleRouteChunkUndefinedModuleError(new TypeError(safariUndefinedModule)),
+	).toBe(true)
+	expect(
+		isStaleRouteChunkUndefinedModuleError(
+			new TypeError(chromiumUndefinedModule),
+		),
+	).toBe(true)
+	expect(
+		isStaleRouteChunkUndefinedModuleError(
+			new TypeError(firefoxUndefinedModule),
+		),
+	).toBe(true)
+	expect(
+		isStaleRouteChunkUndefinedModuleError(
+			`TypeError: ${safariUndefinedModule}`,
+		),
+	).toBe(true)
+})
+
+test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-default TypeErrors', () => {
+	const nearMisses = [
+		new TypeError(
+			"undefined is not an object (evaluating 'window.webkit.messageHandlers')",
+		),
+		new TypeError(
+			"undefined is not an object (evaluating 'e[i??`something`]')",
+		),
+		new TypeError("Cannot read properties of undefined (reading 'name')"),
+		new TypeError("Cannot read properties of null (reading 'default')"),
+		new TypeError(`can't access property "name" of undefined`),
+		new TypeError(chromium),
+		new TypeError('x'),
+		'undefined is not an object',
+	]
+	for (const error of nearMisses) {
+		expect(isStaleRouteChunkUndefinedModuleError(error)).toBe(false)
+	}
+})
+
+test('shouldSuppressStaleRouteChunkFollowOnError only after a reload was triggered', () => {
+	const followOn = new TypeError(safariUndefinedModule)
+	expect(shouldSuppressStaleRouteChunkFollowOnError(followOn)).toBe(false)
+
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
+	setStaleRouteChunkReloadArmed(true)
+	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
+	expect(wasStaleRouteChunkReloadTriggered()).toBe(true)
+
+	expect(shouldSuppressStaleRouteChunkFollowOnError(followOn)).toBe(true)
+	expect(
+		shouldSuppressStaleRouteChunkFollowOnError(
+			new TypeError(chromiumUndefinedModule),
+		),
+	).toBe(true)
+	// Unrelated TypeError still reports even while reload is pending.
+	expect(
+		shouldSuppressStaleRouteChunkFollowOnError(
+			new TypeError('Failed to fetch'),
+		),
+	).toBe(false)
+})
+
+test('follow-on undefined-module TypeError is not suppressed when reload did not fire', () => {
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
+	// Armed but session flag already spent → no reload, no suppress.
+	setStaleRouteChunkReloadArmed(true)
+	store.set(staleRouteChunkReloadFlag, '1')
+	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
+	expect(wasStaleRouteChunkReloadTriggered()).toBe(false)
+	expect(
+		shouldSuppressStaleRouteChunkFollowOnError(
+			new TypeError(safariUndefinedModule),
+		),
+	).toBe(false)
 })

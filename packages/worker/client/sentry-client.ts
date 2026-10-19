@@ -1,4 +1,7 @@
-import { reloadOnStaleRouteChunk } from '#client/reload-on-stale-route-chunk.ts'
+import {
+	reloadOnStaleRouteChunk,
+	shouldSuppressStaleRouteChunkFollowOnError,
+} from '#client/reload-on-stale-route-chunk.ts'
 import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import {
 	isBrowserAbortError,
@@ -91,6 +94,8 @@ function enqueueBufferedError(error: unknown, context?: ClientErrorContext) {
 	// First stale-chunk miss reloads and is expected. A later miss (flag
 	// already set) falls through so a genuinely missing chunk is reported.
 	if (reloadOnStaleRouteChunk(error)) return
+	// Vite preventDefault + TanStack `module[export ?? 'default']` (KODY-A1).
+	if (shouldSuppressStaleRouteChunkFollowOnError(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	// Keep the earliest errors when full — the first failure is usually the
 	// most diagnostic one.
@@ -213,6 +218,8 @@ export function captureClientException(
 	// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y): skip
 	// Sentry only when this call triggered the one-shot reload.
 	if (reloadOnStaleRouteChunk(error)) return
+	// Follow-on undefined-module TypeError after that reload (KODY-A1).
+	if (shouldSuppressStaleRouteChunkFollowOnError(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	try {
 		if (captureImpl) {
