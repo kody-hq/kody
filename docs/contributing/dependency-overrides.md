@@ -8,9 +8,9 @@ parent in backticks before the `→`), when a heading documents a package or
 parent with no matching override, or when `package.json` repeats a key.
 
 After changing overrides, `npm run audit:prod` is the production-dependency
-check. It is part of `npm run validate` and the CI static job (see
-[`checks`](./setup/checks.md) and
-[`dependency auditing`](./setup/dependency-auditing.md)). Clearing these
+check (`npm audit --omit=dev --audit-level=moderate`). Moderate, high, and
+critical findings fail; low findings do not. It is part of `npm run validate`
+and the CI static job (see [`checks`](./setup/checks.md)). Clearing these
 override targets does not mean every advisory is gone — other transitive
 packages can still report findings outside this file's scope.
 

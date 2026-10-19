@@ -93,9 +93,7 @@ style, tests, MCP capabilities, and runtime architecture.
   result/detail unions, list markdown, detail routing, public type lists)
 - [MCP server patterns](./mcp-server-patterns.md) (reference for server design)
 - [AI chat package guide](./ai-chat-package-guide.md)
-- Execute patterns:
-  [Cloudflare API v4](./execute-patterns/cloudflare-api-v4.md),
-  [Cloudflare developer docs](./execute-patterns/cloudflare-developer-docs.md)
+- Execute patterns: [Cloudflare API v4](./execute-patterns/cloudflare-api-v4.md)
 
 ## Security and operations
 
