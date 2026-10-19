@@ -28,19 +28,19 @@ export * from '@playwright/test'
 const hydrationTimeoutMs = process.env.CI ? 30_000 : 20_000
 
 /**
- * Wait until Remix client hydration has bound event handlers.
+ * Wait until Start client hydration has bound event handlers.
  *
- * `entry.tsx` preloads the route chunk before `run()`, so SSR headings and
- * buttons are visible while `on('click')` / `on('submit')` mixins are still
- * unbound. Clicking a `type="button"` control in that gap is a silent no-op.
+ * The root route sets `html[data-hydrated=true]` after mount, so SSR headings
+ * and buttons are visible while click/submit handlers are still unbound.
+ * Clicking a `type="button"` control in that gap is a silent no-op.
  *
  * Do not use Playwright's 5s default: `is-settled` only means the document
- * loaded, not that `app.ready()` finished.
+ * loaded, not that the client finished hydrating.
  */
 export async function waitForClientHydration(page: Page) {
 	await expect(
 		page.locator('html'),
-		'Remix boot sets html[data-hydrated=true] after preload + run + ready',
+		'Start boot sets html[data-hydrated=true] after client hydration',
 	).toHaveAttribute('data-hydrated', 'true', {
 		timeout: hydrationTimeoutMs,
 	})
