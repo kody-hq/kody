@@ -364,6 +364,30 @@ test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undec
 	}
 })
 
+test('assertBundleHasNoUnresolvedBareImports allows bare Node builtins left external after bundling', () => {
+	// fflate's Node build does `import { createRequire } from "module"`; that
+	// stays external under nodejs_compat and must not fail the post-bundle check
+	// (#4074). Prefixed node: imports are already excluded by the bare-import
+	// predicate; this covers the unprefixed form the pre-bundle check skips.
+	expect(() =>
+		assertBundleHasNoUnresolvedBareImports({
+			modules: {
+				'bundle.js':
+					'import { createRequire } from "module"\nconst require = createRequire("/")\nexport { require }\n',
+			},
+			bundleLabel: 'Saved package module "src/index.ts" bundle',
+			sourceFiles: {
+				'package.json': JSON.stringify({
+					name: '@kody/x',
+					dependencies: { fflate: '0.8.2' },
+					exports: { '.': './src/index.ts' },
+				}),
+				'src/index.ts': `import { gzipSync } from 'fflate'\nexport default () => gzipSync(new Uint8Array([1]))\n`,
+			},
+		}),
+	).not.toThrow()
+})
+
 test('isUndeclaredBarePackageImportFailure distinguishes declared install failures', () => {
 	expect(
 		isUndeclaredBarePackageImportFailure({

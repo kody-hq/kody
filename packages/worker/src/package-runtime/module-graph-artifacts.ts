@@ -14,9 +14,13 @@ import {
 	parseKodyPackageSpecifier,
 	packageSpecifierPrefix,
 } from './package-import-resolution.ts'
-import { throwUnresolvedBarePackageImportsError } from './bare-package-import-declarations.ts'
+import {
+	isNodeBuiltinBarePackageName,
+	throwUnresolvedBarePackageImportsError,
+} from './bare-package-import-declarations.ts'
 import {
 	collectLiteralImportSpecifiers,
+	getBarePackageNameFromSpecifier,
 	isBarePackageImportSpecifier,
 } from './import-specifiers.ts'
 import {
@@ -47,6 +51,11 @@ function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
 		for (const specifier of collectLiteralImportSpecifiers(source)) {
 			if (!isBarePackageImportSpecifier(specifier)) continue
+			// Match the pre-bundle check: unprefixed Node builtins stay external
+			// under nodejs_compat (e.g. fflate's `import … from "module"`). Prefixed
+			// `node:` imports are already excluded by isBarePackageImportSpecifier.
+			const packageName = getBarePackageNameFromSpecifier(specifier)
+			if (packageName && isNodeBuiltinBarePackageName(packageName)) continue
 			let existing = unresolved.get(modulePath)
 			if (!existing) {
 				existing = new Set()

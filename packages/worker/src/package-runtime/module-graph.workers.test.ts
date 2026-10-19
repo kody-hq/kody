@@ -302,6 +302,57 @@ export default async function run() {
 )
 
 test(
+	'saved package bundles and runs deps whose Node build imports bare module (#4074)',
+	// fflate's Node export does `import { createRequire } from "module"`. The
+	// bundler leaves that external; publish must accept it and workerd
+	// nodejs_compat must resolve createRequire at runtime.
+	{ timeout: 40_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const bundle = await buildKodyModuleBundle({
+			env,
+			baseUrl,
+			userId: ownerIdFromStored('user-fflate-bare-module'),
+			sourceFiles: makePackageFiles(
+				'fflate-bare-module',
+				{
+					description: 'fflate bare module import regression',
+					exports: { '.': './src/index.ts' },
+					dependencies: { fflate: '0.8.2' },
+				},
+				{
+					'src/index.ts': `import { gzipSync, gunzipSync } from 'fflate'
+export default async function run() {
+	const input = new Uint8Array([1, 2, 3, 4])
+	const zipped = gzipSync(input)
+	return { bytes: zipped.length, roundtrip: Array.from(gunzipSync(zipped)) }
+}`,
+				},
+			),
+			entryPoint: 'src/index.ts',
+		})
+
+		const moduleSources = Object.values(bundle.modules)
+			.map((module) => {
+				if (typeof module === 'string') return module
+				return [module.js, module.cjs, module.text]
+					.filter((value): value is string => typeof value === 'string')
+					.join('\n')
+			})
+			.join('\n')
+		expect(moduleSources).toMatch(/from\s+["']module["']/)
+		expect(moduleSources).not.toContain(`from "fflate"`)
+
+		const result = await runBundle('user-fflate-bare-module', bundle)
+		expect(result.error).toBeUndefined()
+		expect(result.result).toEqual({
+			bytes: expect.any(Number),
+			roundtrip: [1, 2, 3, 4],
+		})
+	},
+)
+
+test(
 	'ad hoc execute synthesizes and executes npm dependencies through the bundler',
 	{ timeout: 40_000 },
 	async () => {
