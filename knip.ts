@@ -3,13 +3,7 @@ import { toolCliEntryFiles } from './tools/knip-tool-entries.ts'
 
 export default defineConfig({
 	include: ['files', 'exports', 'types'],
-	ignore: [
-		'packages/cli/**',
-		// Old platform/runtime local-dev writers stay until a follow-up deletion
-		// PR after this replacement is on main and deploy-green.
-		'tools/local-platform-dev-config.ts',
-		'tools/local-runtime-dev-config.ts',
-	],
+	ignore: ['packages/cli/**'],
 	workspaces: {
 		'.': {
 			entry: [
