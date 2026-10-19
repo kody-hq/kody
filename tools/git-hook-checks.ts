@@ -40,11 +40,12 @@ import {
  * `test:push` on non-docs pushes. A knip failure tells the agent to run
  * `npm run knip` and fix. CI keeps its Knip step as the backstop.
  *
- * Pre-push skips `knip` and `test:push` when the pushed commit's tree SHA is
+ * Pre-push skips `knip` and/or `test:push` when that check's tree SHA is
  * already recorded green from `npm run validate` or a prior successful
- * pre-push (#3653 / #3719). Progress logs tick every 30s so a long
- * workers-unit run is not a silent hang (#3547). Workers-unit isolation
- * (ADR 0011) is unchanged.
+ * pre-push of the same check (#3653 / #3719). Knip and test:push provenance
+ * are separate so a pre-knip `test:push`-only record cannot skip knip.
+ * Progress logs tick every 30s so a long workers-unit run is not a silent
+ * hang (#3547). Workers-unit isolation (ADR 0011) is unchanged.
  *
  * Pre-commit typecheck runs in a detached git worktree built from
  * `git write-tree` (the index) so unstaged fixes cannot greenlight a broken
@@ -166,36 +167,48 @@ export function pushedCommitShas(stdin: string | null): ReadonlyArray<string> {
 		.map((update) => update.localSha)
 }
 
-export function shouldSkipTestPushForProvenance(input: {
+function uniquePushedTreeSha(input: {
 	git: GitRunner
 	stdin?: string | null
-	store: ProvenanceStore
-}): { skip: boolean; treeSha: string | null; reason: string | null } {
+}): string | null {
 	const shas = pushedCommitShas(input.stdin ?? null)
-	if (shas.length === 0) {
-		return { skip: false, treeSha: null, reason: null }
-	}
+	if (shas.length === 0) return null
 	const trees: Array<string> = []
 	for (const sha of shas) {
 		const treeSha = treeShaForCommit(input.git, sha)
-		if (!treeSha) {
-			return { skip: false, treeSha: null, reason: null }
-		}
+		if (!treeSha) return null
 		trees.push(treeSha)
 	}
 	const unique = [...new Set(trees)]
-	if (unique.length !== 1) {
+	return unique.length === 1 ? unique[0]! : null
+}
+
+export function shouldSkipProvenanceCheck(input: {
+	git: GitRunner
+	stdin?: string | null
+	store: ProvenanceStore
+	check: 'knip' | 'test:push'
+}): { skip: boolean; treeSha: string | null; reason: string | null } {
+	const treeSha = uniquePushedTreeSha(input)
+	if (!treeSha) {
 		return { skip: false, treeSha: null, reason: null }
 	}
-	const treeSha = unique[0]!
-	if (!hasProvenanceCheck(input.store, 'test:push', treeSha)) {
+	if (!hasProvenanceCheck(input.store, input.check, treeSha)) {
 		return { skip: false, treeSha, reason: null }
 	}
 	return {
 		skip: true,
 		treeSha,
-		reason: `pre-push: skipping knip and test:push (tree ${treeSha.slice(0, 12)} already green)`,
+		reason: `pre-push: skipping ${input.check} (tree ${treeSha.slice(0, 12)} already green)`,
 	}
+}
+
+export function shouldSkipTestPushForProvenance(input: {
+	git: GitRunner
+	stdin?: string | null
+	store: ProvenanceStore
+}): { skip: boolean; treeSha: string | null; reason: string | null } {
+	return shouldSkipProvenanceCheck({ ...input, check: 'test:push' })
 }
 
 function worktreeHasUnstagedOrUntracked(porcelainStdout: string) {
@@ -453,20 +466,30 @@ export async function runGitHookChecks(input: {
 	log(plan.summary)
 
 	let scripts = hookScripts(plan)
-	if (
-		input.hook === 'pre-push' &&
-		(scripts.includes('test:push') || scripts.includes('knip'))
-	) {
-		const skip = shouldSkipTestPushForProvenance({
-			git,
-			stdin: input.stdin,
-			store: provenance,
-		})
-		if (skip.skip && skip.reason) {
-			log(skip.reason)
-			scripts = scripts.filter(
-				(script) => script !== 'test:push' && script !== 'knip',
-			)
+	if (input.hook === 'pre-push') {
+		if (scripts.includes('knip')) {
+			const skipKnip = shouldSkipProvenanceCheck({
+				git,
+				stdin: input.stdin,
+				store: provenance,
+				check: 'knip',
+			})
+			if (skipKnip.skip && skipKnip.reason) {
+				log(skipKnip.reason)
+				scripts = scripts.filter((script) => script !== 'knip')
+			}
+		}
+		if (scripts.includes('test:push')) {
+			const skipTests = shouldSkipProvenanceCheck({
+				git,
+				stdin: input.stdin,
+				store: provenance,
+				check: 'test:push',
+			})
+			if (skipTests.skip && skipTests.reason) {
+				log(skipTests.reason)
+				scripts = scripts.filter((script) => script !== 'test:push')
+			}
 		}
 	}
 
@@ -483,8 +506,10 @@ export async function runGitHookChecks(input: {
 		// Provenance must bind to the tree that was actually tested, not
 		// whatever commit tips appear on stdin (#3745 review). Skip the
 		// fingerprint when stdin has no pushable SHAs (blank / delete-only).
-		const pushShas =
-			script === 'test:push' ? pushedCommitShas(input.stdin ?? null) : []
+		const recordsProvenance = script === 'test:push' || script === 'knip'
+		const pushShas = recordsProvenance
+			? pushedCommitShas(input.stdin ?? null)
+			: []
 		const testedTreeBefore =
 			pushShas.length > 0 ? treeShaForWorktree(git) : null
 		try {
@@ -510,10 +535,10 @@ export async function runGitHookChecks(input: {
 			}
 			return status
 		}
-		if (script === 'test:push' && pushShas.length > 0) {
+		if (recordsProvenance && pushShas.length > 0) {
 			if (hasUntrackedFiles(git)) {
 				log(
-					'pre-push: not recording test:push provenance (untracked files present; stash create cannot fingerprint them)',
+					`pre-push: not recording ${script} provenance (untracked files present; stash create cannot fingerprint them)`,
 				)
 				continue
 			}
@@ -524,7 +549,7 @@ export async function runGitHookChecks(input: {
 				testedTreeBefore !== testedTreeAfter
 			) {
 				log(
-					'pre-push: not recording test:push provenance (worktree changed during the run or could not be fingerprinted)',
+					`pre-push: not recording ${script} provenance (worktree changed during the run or could not be fingerprinted)`,
 				)
 				continue
 			}
@@ -532,7 +557,7 @@ export async function runGitHookChecks(input: {
 				const commitTree = treeShaForCommit(git, sha)
 				if (!commitTree || commitTree !== testedTreeAfter) continue
 				recordProvenanceCheck(provenance, {
-					check: 'test:push',
+					check: script === 'knip' ? 'knip' : 'test:push',
 					treeSha: commitTree,
 					source: 'pre-push',
 				})

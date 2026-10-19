@@ -15,6 +15,7 @@ import {
 	listInstalledNodeModulesDirs,
 	planGitHookChecks,
 	runGitHookChecks,
+	shouldSkipProvenanceCheck,
 	shouldSkipTestPushForProvenance,
 	withStagedTreeForTypecheck,
 	type GitRunner,
@@ -423,7 +424,7 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 	}
 })
 
-test('pre-push skips knip and test:push when the pushed tree is already green', async () => {
+test('pre-push skips knip and test:push only when each check is already green', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'hook-skip-'))
 	try {
 		const treeSha = 'e'.repeat(40)
@@ -441,6 +442,15 @@ test('pre-push skips knip and test:push when the pushed tree is already green', 
 			if (args[0] === 'rev-parse' && args.at(-1) === `${localSha}^{tree}`) {
 				return gitResult(0, `${treeSha}\n`)
 			}
+			if (args[0] === 'status') {
+				return gitResult(0, '')
+			}
+			if (args[0] === 'stash' && args[1] === 'create') {
+				return gitResult(0, '')
+			}
+			if (args[0] === 'rev-parse' && args.at(-1) === 'HEAD^{tree}') {
+				return gitResult(0, `${treeSha}\n`)
+			}
 			return gitResult(1)
 		}
 		expect(
@@ -450,7 +460,54 @@ test('pre-push skips knip and test:push when the pushed tree is already green', 
 				store,
 			}),
 		).toMatchObject({ skip: true, treeSha })
+		expect(
+			shouldSkipProvenanceCheck({
+				git,
+				stdin: `refs/heads/feature ${localSha} refs/heads/feature ${remoteSha}\n`,
+				store,
+				check: 'knip',
+			}).skip,
+		).toBe(false)
 
+		// test:push-only provenance must still run knip.
+		const logsPartial: Array<string> = []
+		const scriptsPartial: Array<string> = []
+		expect(
+			await runGitHookChecks({
+				hook: 'pre-push',
+				stdin: `refs/heads/feature ${localSha} refs/heads/feature ${remoteSha}\n`,
+				git,
+				provenance: store,
+				runScript: (script) => {
+					scriptsPartial.push(script)
+					return 0
+				},
+				log: (message) => logsPartial.push(message),
+				progressIntervalMs: 60_000,
+			}),
+		).toBe(0)
+		expect(scriptsPartial).toEqual(['knip'])
+		expect(
+			logsPartial.some((line) => line.includes('skipping test:push')),
+		).toBe(true)
+		expect(logsPartial.some((line) => line.includes('skipping knip'))).toBe(
+			false,
+		)
+		expect(
+			shouldSkipProvenanceCheck({
+				git,
+				stdin: `refs/heads/feature ${localSha} refs/heads/feature ${remoteSha}\n`,
+				store,
+				check: 'knip',
+			}).skip,
+		).toBe(true)
+
+		recordProvenanceCheck(store, {
+			check: 'knip',
+			treeSha,
+			source: 'validate',
+			at: '2026-10-14T00:00:00.000Z',
+		})
 		const logs: Array<string> = []
 		const scripts: Array<string> = []
 		const code = await runGitHookChecks({
@@ -467,9 +524,8 @@ test('pre-push skips knip and test:push when the pushed tree is already green', 
 		})
 		expect(code).toBe(0)
 		expect(scripts).toEqual([])
-		expect(
-			logs.some((line) => line.includes('skipping knip and test:push')),
-		).toBe(true)
+		expect(logs.some((line) => line.includes('skipping knip'))).toBe(true)
+		expect(logs.some((line) => line.includes('skipping test:push'))).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
 	} finally {
 		await rm(root, { recursive: true, force: true })
