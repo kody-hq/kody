@@ -1652,7 +1652,31 @@ ${runtimeHelperRuntimePropertySource}
 		await recordPackageExportUsage('error')
 		throw error
 	} finally {
-		await staticCallMeterTools?.finalize({ runFailed: staticCallRunFailed })
+		// Host-side static-call writes can be up to 200 sequential rollups.
+		// Prefer waitUntil so metering finishes after the response; otherwise
+		// keep the same 2s bound as the sandbox flush race so a slow sink
+		// cannot own the run's return latency.
+		const finalizePromise = staticCallMeterTools?.finalize({
+			runFailed: staticCallRunFailed,
+		})
+		if (!finalizePromise) {
+			// No meter for this run.
+		} else if (waitUntil) {
+			waitUntil(finalizePromise)
+		} else {
+			try {
+				let finalizeTimer: ReturnType<typeof setTimeout> | undefined
+				await Promise.race([
+					finalizePromise,
+					new Promise<void>((resolve) => {
+						finalizeTimer = setTimeout(resolve, 2_000)
+					}),
+				])
+				clearTimeout(finalizeTimer)
+			} catch {
+				// Metering never breaks the run it observes.
+			}
+		}
 	}
 }
 /**

@@ -95,6 +95,8 @@ export function createPackageStaticCallMeterTools(input: {
 			}
 		},
 		finalize: async ({ runFailed }) => {
+			// Callers should schedule this via waitUntil (or a short race) so
+			// sequential recordUsage writes cannot stall the run return path.
 			try {
 				if (finalized) return
 				finalized = true
