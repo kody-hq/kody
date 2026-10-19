@@ -109,6 +109,9 @@ let bareRepo = ''
 
 type GitResult = { code: number; stdout: Buffer; stderr: string }
 
+/** A hung upload-pack or fetch must not stall the suite. */
+const gitCommandTimeoutMs = 20_000
+
 function runGit(
 	args: Array<string>,
 	options: {
@@ -116,6 +119,7 @@ function runGit(
 		env?: NodeJS.ProcessEnv
 		input?: Uint8Array | string
 		allowFailure?: boolean
+		timeoutMs?: number
 	} = {},
 ): Promise<GitResult> {
 	return new Promise((resolve, reject) => {
@@ -126,25 +130,46 @@ function runGit(
 		})
 		const out: Array<Buffer> = []
 		const err: Array<Buffer> = []
+		let settled = false
+		const finish = (settle: () => void) => {
+			if (settled) return
+			settled = true
+			clearTimeout(timer)
+			settle()
+		}
+		const timer = setTimeout(() => {
+			child.kill('SIGKILL')
+			finish(() => {
+				reject(
+					new Error(
+						`git ${args.join(' ')} timed out after ${options.timeoutMs ?? gitCommandTimeoutMs}ms`,
+					),
+				)
+			})
+		}, options.timeoutMs ?? gitCommandTimeoutMs)
 		child.stdout.on('data', (chunk: Buffer) => {
 			out.push(chunk)
 		})
 		child.stderr.on('data', (chunk: Buffer) => {
 			err.push(chunk)
 		})
-		child.on('error', reject)
+		child.on('error', (error) => {
+			finish(() => reject(error))
+		})
 		child.on('close', (code) => {
 			const stdout = Buffer.concat(out)
 			const stderr = Buffer.concat(err).toString('utf8')
-			if ((code ?? 1) !== 0 && !options.allowFailure) {
-				reject(
-					new Error(
-						`git ${args.join(' ')} exited ${code}: ${stderr || stdout.toString('utf8')}`,
-					),
-				)
-				return
-			}
-			resolve({ code: code ?? 1, stdout, stderr })
+			finish(() => {
+				if ((code ?? 1) !== 0 && !options.allowFailure) {
+					reject(
+						new Error(
+							`git ${args.join(' ')} exited ${code}: ${stderr || stdout.toString('utf8')}`,
+						),
+					)
+					return
+				}
+				resolve({ code: code ?? 1, stdout, stderr })
+			})
 		})
 		if (options.input === undefined) child.stdin.end()
 		else child.stdin.end(options.input)
@@ -392,6 +417,15 @@ async function compliantAdvertisement() {
 
 const uploadLog: Array<{ hasDone: boolean; hasHaves: boolean }> = []
 
+type ClientUploadRequest = {
+	contentEncoding: string | null
+	bodyBytes: number
+	gzipMagic: boolean
+}
+
+/** Bytes git actually POSTed, before the proxy decompresses them. */
+const clientUploadRequests: Array<ClientUploadRequest> = []
+
 function upstreamHandlers() {
 	return [
 		mswHttp.get(`${artifactsRemote}/info/refs`, async () => {
@@ -588,6 +622,21 @@ test.skipIf(!gitAvailable)(
 				const chunks: Array<Buffer> = []
 				for await (const chunk of req) chunks.push(chunk as Buffer)
 				const body = Buffer.concat(chunks)
+				if (
+					req.method === 'POST' &&
+					(req.url ?? '').includes('/git-upload-pack')
+				) {
+					const encodingHeader = req.headers['content-encoding']
+					const contentEncoding = Array.isArray(encodingHeader)
+						? encodingHeader.join(',')
+						: (encodingHeader ?? null)
+					clientUploadRequests.push({
+						contentEncoding,
+						bodyBytes: body.byteLength,
+						gzipMagic:
+							body.byteLength >= 2 && body[0] === 0x1f && body[1] === 0x8b,
+					})
+				}
 				const headers = new Headers()
 				for (const [key, value] of Object.entries(req.headers)) {
 					if (value === undefined) continue
@@ -725,6 +774,74 @@ test.skipIf(!gitAvailable)(
 						expect(await headOf(dest, 'HEAD', env)).toBe(commitC)
 					}
 				}
+			}
+
+			// Sixteen haves is about 980 bytes, under git's 1024-byte gzip
+			// threshold, and a common tip stops negotiation immediately.
+			// Local-only commits are not acknowledged, so a later window
+			// grows past 1024 bytes and git sends Content-Encoding: gzip.
+			for (const mode of ['gitty', 'compliant'] as const) {
+				upstreamMode = mode
+				const dest = path.join(home, `gzip-${mode}`)
+				await setTip(commitA)
+				await runGit(clientArgs('0', ['clone', cloneUrl(port, false), dest]), {
+					env,
+				})
+				let localTip = await headOf(dest, 'HEAD', env)
+				for (let index = 1; index <= 48; index++) {
+					const blob = (
+						await runGit(['-C', dest, 'hash-object', '-w', '--stdin'], {
+							env,
+							input: `local ${index}\n`,
+						})
+					).stdout
+						.toString('utf8')
+						.trim()
+					const tree = (
+						await runGit(['-C', dest, 'mktree'], {
+							env,
+							input: `100644 blob ${blob}\tlocal.txt\n`,
+						})
+					).stdout
+						.toString('utf8')
+						.trim()
+					localTip = (
+						await runGit(
+							[
+								'-C',
+								dest,
+								'commit-tree',
+								tree,
+								'-p',
+								localTip,
+								'-m',
+								`local ${index}`,
+							],
+							{ env },
+						)
+					).stdout
+						.toString('utf8')
+						.trim()
+				}
+				await runGit(
+					['-C', dest, 'update-ref', 'refs/heads/local-only', localTip],
+					{ env },
+				)
+				clientUploadRequests.length = 0
+				await setTip(commitB)
+				await runGit(clientArgs('0', ['-C', dest, 'fetch', 'origin']), {
+					env,
+				})
+				const gzipped = clientUploadRequests.filter(
+					(entry) => entry.contentEncoding === 'gzip',
+				)
+				expect(gzipped.length).toBeGreaterThan(0)
+				expect(gzipped.every((entry) => entry.gzipMagic)).toBe(true)
+				expect(await headOf(dest, 'origin/main', env)).toBe(commitB)
+				await runGit(clientArgs('0', ['-C', dest, 'pull', '--ff-only']), {
+					env,
+				})
+				expect(await headOf(dest, 'HEAD', env)).toBe(commitB)
 			}
 
 			upstreamMode = 'gitty'
