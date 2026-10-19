@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { anonymousHtmlCacheControl } from '#app/anonymous-html-cache.ts'
 import { anonymousHtmlEdgeCacheHeader } from '#app/anonymous-html-edge-cache.ts'
 
 import { getSharedMcpE2eServer } from '../../../tools/mcp-test-support.ts'
@@ -144,7 +143,9 @@ test('anonymous llms.txt and auth pages are stored in caches.default; cookies st
 		const miss = await workerFetch(new Request(url))
 		expect(miss.status).toBe(200)
 		expect(miss.headers.get('Content-Type')).toMatch(/text\/plain/i)
-		expect(miss.headers.get('Cache-Control')).toBe(anonymousHtmlCacheControl)
+		expect(miss.headers.get('Cache-Control')).toBe(
+			'public, max-age=60, stale-while-revalidate=300',
+		)
 		expect(miss.headers.get(anonymousHtmlEdgeCacheHeader)).toBe('MISS')
 		const missBody = await miss.text()
 		expect(missBody.startsWith('# Kody')).toBe(true)
@@ -152,7 +153,9 @@ test('anonymous llms.txt and auth pages are stored in caches.default; cookies st
 		const hit = await workerFetch(new Request(url))
 		expect(hit.status).toBe(200)
 		expect(hit.headers.get(anonymousHtmlEdgeCacheHeader)).toBe('HIT')
-		expect(hit.headers.get('Cache-Control')).toBe(anonymousHtmlCacheControl)
+		expect(hit.headers.get('Cache-Control')).toBe(
+			'public, max-age=60, stale-while-revalidate=300',
+		)
 		expect(hit.headers.get('Vary')?.toLowerCase()).toContain('cookie')
 		await expect(hit.text()).resolves.toBe(missBody)
 	}

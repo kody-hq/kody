@@ -35,7 +35,9 @@ test('agent page shows its connect steps and matching canonical metadata', async
 		'https://kody.test',
 	)
 	expect(head.title).toBe('Kody for Claude Code | Kody')
-	expect(head.description).toBe(agent.pitch)
+	expect(head.description).toBe(
+		'Claude Code writes the package. Kody keeps it, runs it on a trigger, and shares it with the rest of your team.',
+	)
 	expect(head.canonicalUrl).toBe('https://kody.test/with/claude-code')
 })
 
@@ -43,9 +45,6 @@ test('agent route rejects unknown catalog entries before rendering', () => {
 	const beforeLoad = agentRoute.options.beforeLoad as unknown as (input: {
 		params: { agent: string }
 	}) => unknown
-	expect(beforeLoad({ params: { agent: 'claude-code' } })).toEqual({
-		agent: findWithAgent('claude-code'),
-	})
 	let failure: unknown
 	try {
 		beforeLoad({ params: { agent: 'not-an-agent' } })

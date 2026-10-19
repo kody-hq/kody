@@ -1,9 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
-import {
-	createCredentialClientRuntimeSource,
-	credentialClientToolNames,
-} from './credential-client-source.ts'
+import { createCredentialClientRuntimeSource } from './credential-client-source.ts'
 
 type Opened = {
 	handle: string
@@ -69,10 +66,10 @@ test('a Key client keeps fetch and exposes HMAC sign()', async () => {
 	const calls: Array<[string, unknown]> = []
 	const runtime = createRuntime(async (name, args) => {
 		calls.push([name, args])
-		if (name === credentialClientToolNames.sign) {
+		if (name === 'credentialClientSign') {
 			return { ok: true, value: { signature: 'sha256=sig' } }
 		}
-		expect(name).toBe(credentialClientToolNames.open)
+		expect(name).toBe('credentialClientOpen')
 		return { ok: true, value: openedAs('secret', ['api.example.com']) }
 	})
 	const client = await runtime.credential('xClientSecret')
@@ -88,7 +85,7 @@ test('a Key client keeps fetch and exposes HMAC sign()', async () => {
 		}),
 	).resolves.toBe('sha256=sig')
 	expect(calls).toContainEqual([
-		credentialClientToolNames.sign,
+		'credentialClientSign',
 		{
 			handle: 'kch1.handle.sig',
 			host: 'api.example.com',
@@ -105,7 +102,7 @@ test('a Key client keeps fetch and exposes HMAC sign()', async () => {
 
 test('a client carries the handle on its hosts, follows redirects itself, and drops it off-host', async () => {
 	const runtime = createRuntime(async (name, args) => {
-		expect(name).toBe(credentialClientToolNames.open)
+		expect(name).toBe('credentialClientOpen')
 		expect(args).toEqual({ key: 'resend' })
 		return { ok: true, value: openedAs('secret', ['api.example.com']) }
 	})
@@ -190,7 +187,7 @@ test('an OAuth client refreshes once on a 401 and retries with the same body', a
 	const calls: Array<string> = []
 	const runtime = createRuntime(async (name) => {
 		calls.push(name)
-		if (name === credentialClientToolNames.refresh) {
+		if (name === 'credentialClientRefresh') {
 			return { ok: true, value: { refreshed: true } }
 		}
 		return { ok: true, value: openedAs('oauth') }
@@ -209,10 +206,7 @@ test('an OAuth client refreshes once on a 401 and retries with the same body', a
 	})
 	expect(response.status).toBe(200)
 	expect(bodies).toEqual(['payload', 'payload'])
-	expect(calls).toEqual([
-		credentialClientToolNames.open,
-		credentialClientToolNames.refresh,
-	])
+	expect(calls).toEqual(['credentialClientOpen', 'credentialClientRefresh'])
 })
 
 test('structured errors come back as Errors with code, retryWith, and options', async () => {
@@ -279,10 +273,10 @@ test('named opens through the open tool, credentials through open-all, and signi
 	const calls: Array<[string, unknown]> = []
 	const runtime = createRuntime(async (name, args) => {
 		calls.push([name, args])
-		if (name === credentialClientToolNames.sign) {
+		if (name === 'credentialClientSign') {
 			return { ok: true, value: { signature: 'sig' } }
 		}
-		if (name === credentialClientToolNames.openAll) {
+		if (name === 'credentialClientOpenAll') {
 			return {
 				ok: true,
 				value: [
@@ -301,15 +295,15 @@ test('named opens through the open tool, credentials through open-all, and signi
 	expect(many[1]!.hint).toBe('set provider')
 	expect(Object.isFrozen(many[0])).toBe(true)
 	expect(calls).toEqual([
-		[credentialClientToolNames.open, { name: 'cred', scope: 'personal' }],
+		['credentialClientOpen', { name: 'cred', scope: 'personal' }],
 		[
-			credentialClientToolNames.sign,
+			'credentialClientSign',
 			{
 				handle: 'kch1.handle.sig',
 				host: 'api.example.com',
 				operation: { type: 'hmac', data: 'x' },
 			},
 		],
-		[credentialClientToolNames.openAll, { key: 'k' }],
+		['credentialClientOpenAll', { key: 'k' }],
 	])
 })

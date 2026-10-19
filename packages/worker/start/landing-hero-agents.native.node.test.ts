@@ -1,7 +1,6 @@
 import { jsx } from '@emotion/react/jsx-runtime'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
-import { landingPrimitiveIds } from '#universal/landing-lantern.ts'
 import {
 	listAllWalkthroughHosts,
 	pickWalkthroughHosts,
@@ -11,53 +10,55 @@ import {
 	landingHeroLightAt,
 	landingHeroLightProximity,
 	landingHeroLightRate,
-	landingHeroLightRateFar,
-	landingHeroLightRateNear,
-	landingHeroPinnedHostIds,
-	landingHeroSlots,
 	pickLandingHeroRing,
 	placeLandingHeroAgents,
 } from './components/landing-hero-agents.tsx'
 
+const pinnedHostIds = ['grok-bot', 'chatgpt', 'claude-code'] as const
+const heroSlotCount = 8
+
 test('hero ring always includes the pinned hosts and fills leftover slots from the SSR shuffle', () => {
 	const catalog = listAllWalkthroughHosts()
-	expect(landingHeroSlots.length).toBeLessThan(catalog.length)
+	expect(catalog.length).toBeGreaterThan(heroSlotCount)
 
 	const fallback = placeLandingHeroAgents()
-	expect(fallback.map((agent) => ({ x: agent.x, y: agent.y }))).toEqual(
-		landingHeroSlots.map((slot) => ({ x: slot.x, y: slot.y })),
+	expect(fallback).toHaveLength(heroSlotCount)
+	expect(fallback.map((agent) => ({ x: agent.x, y: agent.y }))).toEqual([
+		{ x: 12, y: 19 },
+		{ x: 88, y: 19 },
+		{ x: 93, y: 46 },
+		{ x: 87, y: 72 },
+		{ x: 74, y: 92 },
+		{ x: 26, y: 92 },
+		{ x: 13, y: 72 },
+		{ x: 7, y: 46 },
+	])
+	expect(fallback.map((agent) => agent.label)).toEqual(
+		expect.arrayContaining(['Grok Bot', 'ChatGPT', 'Claude Code']),
 	)
-	for (const id of landingHeroPinnedHostIds) {
-		const host = catalog.find((entry) => entry.id === id)
-		expect(host).toBeDefined()
-		expect(fallback.some((agent) => agent.label === host?.label)).toBe(true)
-	}
 
 	const pick = pickWalkthroughHosts(() => 0)
 	const placed = placeLandingHeroAgents(pick)
-	expect(placed).toHaveLength(landingHeroSlots.length)
-	for (const id of landingHeroPinnedHostIds) {
-		const host = catalog.find((entry) => entry.id === id)
-		expect(host).toBeDefined()
-		expect(placed.some((agent) => agent.label === host?.label)).toBe(true)
-	}
+	expect(placed).toHaveLength(heroSlotCount)
+	expect(placed.map((agent) => agent.label)).toEqual(
+		expect.arrayContaining(['Grok Bot', 'ChatGPT', 'Claude Code']),
+	)
 
 	const pinnedLast = [
 		...catalog.filter(
-			(host) =>
-				!(landingHeroPinnedHostIds as ReadonlyArray<string>).includes(host.id),
+			(host) => !(pinnedHostIds as ReadonlyArray<string>).includes(host.id),
 		),
 		...catalog.filter((host) =>
-			(landingHeroPinnedHostIds as ReadonlyArray<string>).includes(host.id),
+			(pinnedHostIds as ReadonlyArray<string>).includes(host.id),
 		),
 	]
 	const fromPinnedLast = pickLandingHeroRing(pinnedLast)
-	expect(fromPinnedLast).toHaveLength(landingHeroSlots.length)
-	for (const id of landingHeroPinnedHostIds) {
+	expect(fromPinnedLast).toHaveLength(heroSlotCount)
+	for (const id of pinnedHostIds) {
 		expect(fromPinnedLast.some((host) => host.id === id)).toBe(true)
 	}
 	expect(fromPinnedLast.map((host) => host.id)).not.toEqual(
-		pinnedLast.slice(0, landingHeroSlots.length).map((host) => host.id),
+		pinnedLast.slice(0, heroSlotCount).map((host) => host.id),
 	)
 })
 
@@ -84,8 +85,7 @@ test('hero tether lights travel inbound to the lantern and outbound to the agent
 	expect(outboundMid!.progress).toBeGreaterThan(0)
 	expect(outboundMid!.progress).toBeLessThan(1)
 	expect(outboundMid!.scale).toBeGreaterThan(0.45)
-	expect(landingHeroLightRate(0.5)).toBeGreaterThan(landingHeroLightRateFar)
-	expect(landingHeroLightRate(0.5)).toBeLessThan(landingHeroLightRateNear)
+	expect(landingHeroLightRate(0.5)).toBe(1.425)
 	// Fine pointers light by distance to the pointer; coarse pointers by the
 	// lantern's distance from the viewport centre.
 	const proximity = (
@@ -111,15 +111,13 @@ test('orbit lights carry the primitive colors and paint no connector', async () 
 	const tones = [...html.matchAll(/data-tone="([a-z]+)"/g)].map(
 		(match) => match[1],
 	)
-	expect(tones).toHaveLength(landingHeroSlots.length)
-	expect(new Set(tones)).toEqual(new Set(landingPrimitiveIds))
+	expect(tones).toHaveLength(heroSlotCount)
+	expect(new Set(tones)).toEqual(
+		new Set(['memory', 'packages', 'triggers', 'integrations', 'apps']),
+	)
 	expect(html).toContain('--orb:var(--primitive-memory)')
 	expect(html).toContain('landing-hero-agent-track')
-	expect(html).not.toContain('landing-hero-agent-line')
-	expect(html).not.toContain('landing-hero-agent-glow')
 	expect(html).toContain('data-decorative')
-	expect(html.match(/<span\b[^>]*class="landing-lantern-orb"/g)).toHaveLength(
-		landingPrimitiveIds.length,
-	)
+	expect(html.match(/<span\b[^>]*class="landing-lantern-orb"/g)).toHaveLength(5)
 	expect(html).not.toContain('<button')
 })

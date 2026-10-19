@@ -3,9 +3,6 @@ import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
-	DEVICE_COMPLETION_RECEIPT_TTL_SECONDS,
-	DEVICE_DEFAULT_INTERVAL_SECONDS,
-	DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
 	completeDevicePendingSession,
 	consumeDevicePendingSession,
 	loadDevicePendingSession,
@@ -199,7 +196,7 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	if (!pending.ok) return
 	expect(pending.status).toBe('authorization_pending')
 	if (pending.status !== 'authorization_pending') return
-	expect(pending.interval).toBe(DEVICE_DEFAULT_INTERVAL_SECONDS)
+	expect(pending.interval).toBe(5)
 
 	const slowed = await pollDeviceAuthorization({
 		env,
@@ -212,9 +209,7 @@ test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', asyn
 	if (!slowed.ok) return
 	expect(slowed.status).toBe('slow_down')
 	if (slowed.status !== 'slow_down') return
-	expect(slowed.interval).toBe(
-		DEVICE_DEFAULT_INTERVAL_SECONDS + DEVICE_SLOW_DOWN_INCREMENT_SECONDS,
-	)
+	expect(slowed.interval).toBe(10)
 
 	const enforced = await pollDeviceAuthorization({
 		env,
@@ -380,9 +375,7 @@ test('completeDevicePendingSession keeps a receipt after provider expiry', async
 		sessionId: started.sessionId,
 	})
 	expect(receipt?.completion?.integrationName).toBe('late-provider')
-	expect(receipt?.expiresAtMs).toBeGreaterThan(
-		Date.now() + (DEVICE_COMPLETION_RECEIPT_TTL_SECONDS - 5) * 1000,
-	)
+	expect(receipt?.expiresAtMs).toBeGreaterThan(Date.now() + 4 * 60 * 1000)
 })
 
 test('pollDeviceAuthorization returns access_denied and expired_token', async () => {
@@ -533,10 +526,8 @@ test('pollDeviceAuthorization increases interval after connection timeout', asyn
 		userId: baseStart.userId,
 		sessionId: started.sessionId,
 	})
-	expect(stored?.intervalSeconds).toBe(5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS)
-	expect(stored?.nextPollAtMs).toBe(
-		t0 + (5 + DEVICE_SLOW_DOWN_INCREMENT_SECONDS) * 1000,
-	)
+	expect(stored?.intervalSeconds).toBe(10)
+	expect(stored?.nextPollAtMs).toBe(t0 + 10_000)
 	// Interval gate must block another provider hit until nextPollAtMs.
 	const gated = await pollDeviceAuthorization({
 		env,

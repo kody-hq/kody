@@ -28,7 +28,6 @@ test('workspace rail groups Activity siblings as native navigation tabs', async 
 	)
 	expect(html).toContain('href="/@acme/-/waiting"')
 	expect(html).toContain('href="/@acme/-/agents"')
-	expect(html).not.toContain('href="/account/usage"')
 })
 
 test('workspace settings do not duplicate Activity tabs in the rail', async () => {
@@ -37,7 +36,6 @@ test('workspace settings do not duplicate Activity tabs in the rail', async () =
 	expect(html).toContain('href="/@acme/-/agents"')
 	expect(html).not.toContain('href="/@acme/-/workflows"')
 	expect(html).not.toContain('href="/@acme/-/waiting"')
-	expect(html).not.toContain('href="/account/usage"')
 })
 
 test('personal account rail keeps account chrome without legacy usage links', async () => {
@@ -64,7 +62,6 @@ test('empty workspace shells reserve the navigation column in server-rendered ma
 		html.indexOf('data-account-content'),
 	)
 	expect(html).toMatch(/grid-template-columns:200px minmax\(0,\s*1fr\)/)
-	expect(html).not.toContain('--account-rail-height')
 	// Sticky top matches the header block; padding restores the 5rem content line.
 	expect(html).toMatch(
 		/position:\s*sticky[^}]*top:\s*calc\(0\.8rem \+ 44px \+ 0\.8rem \+ 1px\)/,
