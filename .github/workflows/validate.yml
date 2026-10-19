@@ -252,9 +252,21 @@ jobs:
           # does not fail this step.
           GH_TOKEN: ${{ github.token }}
 
-      - name: 🔒 Lockfile peer drift
+      - name: 📚 Docs
         if: ${{ !cancelled() }}
-        run: npm run lockfile:check
+        run: npm run docs:check
+
+      - name: 📦 Deps
+        if: ${{ !cancelled() }}
+        run: npm run deps:check
+
+      - name: 🗑️ Soft-delete read filter
+        if: ${{ !cancelled() }}
+        run: npm run soft-delete-read-filter:check
+
+      - name: 🩹 Error agent prompt
+        if: ${{ !cancelled() }}
+        run: npm run error-agent-prompt:check
 
       - name: 🛡️ Deploy guardrails
         if: ${{ !cancelled() }}
@@ -269,34 +281,6 @@ jobs:
           MCP_REGISTRY_VALIDATION_BASE: >-
             ${{ github.event.pull_request.base.sha || github.event.before || ''
             }}
-
-      - name: 📚 Docs (temporal)
-        if: ${{ !cancelled() }}
-        run: npm run docs:check-temporal
-
-      - name: 📚 Docs (decisions)
-        if: ${{ !cancelled() }}
-        run: npm run docs:check-decisions
-
-      - name: 📚 Docs (file refs)
-        if: ${{ !cancelled() }}
-        run: npm run docs:check-file-refs
-
-      - name: 🧷 Skills lock
-        if: ${{ !cancelled() }}
-        run: npm run skills-lock:check
-
-      - name: 📚 Docs (no hosted execute fallback)
-        if: ${{ !cancelled() }}
-        run: npm run docs:check-no-hosted-execute
-
-      - name: 🧜 Mermaid
-        if: ${{ !cancelled() }}
-        run: npm run mermaid:check
-
-      - name: 🩹 Dependency overrides
-        if: ${{ !cancelled() }}
-        run: npm run overrides:check
 
       - name: 🔐 Production dependency audit
         if: ${{ !cancelled() }}

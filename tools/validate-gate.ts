@@ -106,13 +106,13 @@ export const parallelValidateLegs = [
 		weight: 'check',
 	},
 	{
-		name: 'docs-temporal',
-		command: 'npm run docs:check-temporal',
+		name: 'docs',
+		command: 'npm run docs:check',
 		weight: 'check',
 	},
 	{
-		name: 'docs-decisions',
-		command: 'npm run docs:check-decisions',
+		name: 'deps',
+		command: 'npm run deps:check',
 		weight: 'check',
 	},
 	{
@@ -126,12 +126,6 @@ export const parallelValidateLegs = [
 		weight: 'check',
 	},
 	{
-		name: 'docs-hosted-execute',
-		command: 'npm run docs:check-no-hosted-execute',
-		weight: 'check',
-	},
-	{ name: 'mermaid', command: 'npm run mermaid:check', weight: 'check' },
-	{
 		name: 'slop-ratchet',
 		command: 'npm run slop-ratchet:check',
 		weight: 'check',
@@ -144,22 +138,6 @@ export const parallelValidateLegs = [
 		weight: 'check',
 	},
 	{ name: 'audit', command: 'npm run audit:prod', weight: 'check' },
-	{ name: 'lockfile', command: 'npm run lockfile:check', weight: 'check' },
-	{
-		name: 'overrides',
-		command: 'npm run overrides:check',
-		weight: 'check',
-	},
-	{
-		name: 'skills-lock',
-		command: 'npm run skills-lock:check',
-		weight: 'check',
-	},
-	{
-		name: 'docs-refs',
-		command: 'npm run docs:check-file-refs',
-		weight: 'check',
-	},
 ] as const satisfies readonly ValidateLeg[]
 
 const legNames = new Set<string>()

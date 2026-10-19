@@ -13,8 +13,8 @@ Local CLI execute has one guide and one skill. Other pages link them.
 - Failure: `--local` cannot run. Use Open API / MCP `api`, or fix the
   environment.
 
-`npm run docs:check-no-hosted-execute` rejects guidance that sends agents to the
-hosted execute tool in that failure case.
+The no-hosted-execute member of `npm run docs:check` rejects guidance that sends
+agents to the hosted execute tool in that failure case.
 
 - [Local CLI execute](../guides/local-execute.md)
   (`search({ entity: "guide:local_execute" })`)

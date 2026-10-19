@@ -113,28 +113,34 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   nested workspace installs (for example `packages/worker/node_modules/satori`).
   Cloud Agent snapshots can lag a lockfile bump after `git pull`; this is the
   `run npm ci` hint.
-- `npm run lockfile:check` fails when a locked direct dependency sits inside its
-  declared range but outside a peer range that range can still reach.
-  `npm install` rewrites `package-lock.json` for that drift (including an
-  optional peer). The check keeps a Cloud Agent environment install from leaving
-  a dirty lockfile on a fresh checkout.
-- `npm run skills-lock:check` (`tools/check-skills-lock.ts`) fails when
-  `skills-lock.json` drifts from the committed skill folders it records.
+- `npm run docs:check` (`tools/run-check-group.ts docs`) runs temporal language,
+  decision-record numbers, markdown file refs, no hosted-execute fallback, and
+  mermaid syntax. It continues after a failure and lists each failed member by
+  name. File refs fail when markdown cites a repo file that is not in the tree.
+  Inline code paths under `packages/`, `docs/`, `tools/`, `e2e/`, `.agents/`, or
+  `.github/` are checked when their parent directory exists, and relative links
+  are checked always. Generated Wrangler configs (`wrangler-*.generated.json`
+  and anything under `.wrangler/`) and local `.env` files are ignored. A path
+  the same line names as absent is ignored. Example trees whose parent directory
+  is not in the repo are ignored.
+- `npm run deps:check` (`tools/run-check-group.ts deps`) runs lockfile peer
+  drift, dependency overrides, and skills-lock. Lockfile peer drift fails when a
+  locked direct dependency sits inside its declared range but outside a peer
+  range that range can still reach; `npm install` rewrites `package-lock.json`
+  for that drift (including an optional peer). Overrides fail when a root
+  `package.json` override is not documented in
+  [dependency overrides](../dependency-overrides.md), when that doc keeps a
+  section for a removed override, or when `package.json` repeats a key (JSON
+  keeps only the last value). Skills-lock (`tools/check-skills-lock.ts`) fails
+  when `skills-lock.json` drifts from the committed skill folders it records.
   `ship-pr` must stay a repo-owned local skill (so `skills update` does not
   reinstall it from kentcdodds/kcd-skills) and its `computedHash` must match the
   folder hash. Edit the skill and refresh `computedHash`, or the check fails.
-- `npm run docs:check-file-refs` (`tools/check-markdown-file-refs.ts`) fails
-  when markdown cites a repo file that is not in the tree. Inline code paths
-  under `packages/`, `docs/`, `tools/`, `e2e/`, `.agents/`, or `.github/` are
-  checked when their parent directory exists, and relative links are checked
-  always. Generated Wrangler configs (`wrangler-*.generated.json` and anything
-  under `.wrangler/`) and local `.env` files are ignored. A path the same line
-  names as absent is ignored. Example trees whose parent directory is not in the
-  repo are ignored.
-- `npm run overrides:check` fails when a root `package.json` override is not
-  documented in [dependency overrides](../dependency-overrides.md), when that
-  doc keeps a section for a removed override, or when `package.json` repeats a
-  key (JSON keeps only the last value).
+  `install:check` stays on the git hooks / `prevalidate` path and is not part of
+  this group. Per-check scripts still exist for targeted runs.
+- `npm run soft-delete-read-filter:check` and `npm run error-agent-prompt:check`
+  run in local `validate` and the CI static job (they are not part of the docs
+  or deps groups).
 - `npm run deploy-guardrails:check` protects reviewed Durable Object migration
   history and bindings in both Wrangler configs, requires exact allowlisting for
   class deletion, and rejects destructive Cloudflare CLI operations in

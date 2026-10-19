@@ -10,7 +10,7 @@ Live reads must exclude soft-deleted rows:
   `packages/jobs-worker/src` for `prepare` / `exec` literals that touch those
   tables without a live filter.
 - Production-tree enforcement is `npm run soft-delete-read-filter:check` (also
-  part of `npm run validate`). See ADR 0064.
+  part of `npm run validate` and the CI static job). See ADR 0064.
 
 Restore, purge, and soft-delete writers may opt out file-wide with a comment
 containing `soft-delete-read-filter: opt-out` (see
