@@ -805,3 +805,42 @@ test('runBundledModuleWithRegistry schedules finish via waitUntil when provided'
 	resolveFinish?.()
 	await Promise.all(waitUntilTasks)
 })
+
+test('runBundledModuleWithRegistry schedules meter finalize via waitUntil for claimed jobs', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const handle = {
+		id: 'run-claimed-job-waituntil',
+		userId: ownerIdFromStored('user-claimed-job-waituntil'),
+		startedAt: '2026-08-21T14:40:00.000Z',
+		persistence: 'eager' as const,
+		context: {
+			surface: 'job' as const,
+			name: 'sweep',
+			jobId: 'package-job:claimed-waituntil:sweep',
+			metadata: {},
+		},
+	}
+	vi.spyOn(runRecords, 'finishRunRecord').mockResolvedValue(true)
+	mockExecutor()
+	const waitUntilTasks: Array<Promise<unknown>> = []
+
+	const result = await runOk(
+		{
+			runRecord: {
+				surface: 'job',
+				name: 'sweep',
+				jobId: 'package-job:claimed-waituntil:sweep',
+			},
+			runRecordHandle: handle,
+			waitUntil: (promise) => {
+				waitUntilTasks.push(promise)
+			},
+		},
+		callerFor('user-claimed-job-waituntil'),
+	)
+	expect(result.error).toBeUndefined()
+	// Claimed scheduled runs must still hand static-call finalize to the
+	// host lifecycle callback instead of the no-waitUntil two-second race.
+	expect(waitUntilTasks.length).toBeGreaterThanOrEqual(1)
+	await Promise.all(waitUntilTasks)
+})

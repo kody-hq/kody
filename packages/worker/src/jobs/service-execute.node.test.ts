@@ -778,6 +778,55 @@ test('executeJobOnce loads the published source by job owner id, not the caller 
 	})
 })
 
+test('executeJobOnce forwards waitUntil to the registry for claimed scheduled runs', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env } = createExecuteEnv()
+	const callerContext = createBaseCallerContext()
+	const { row } = await publishInsertedPackageJob({
+		env,
+		callerContext,
+		name: 'claimed-waituntil-job',
+		code: 'export default async () => ({ ok: true })',
+		schedule: { type: 'interval', every: '15m' },
+	})
+	const claimedHandle = {
+		id: 'run-claimed-waituntil',
+		userId: personalOrgId(callerContext.user.userId),
+		startedAt: '2026-08-21T14:40:00.000Z',
+		persistence: 'eager' as const,
+		context: {
+			surface: 'job' as const,
+			name: row.record.name,
+			jobId: row.record.id,
+			storageId: row.record.storageId,
+		},
+	}
+	const waitUntil = vi.fn<(promise: Promise<unknown>) => void>()
+	const executeSpy = vi
+		.spyOn(registry, 'runBundledModuleWithRegistry')
+		.mockResolvedValue({ result: { ok: true }, logs: [] })
+
+	const outcome = await executeJobOnce({
+		env,
+		job: row.record,
+		callerContext,
+		runRecordHandle: claimedHandle,
+		waitUntil,
+		source: { kind: 'schedule', jobId: row.record.id },
+	})
+
+	expect(outcome.execution).toEqual({
+		ok: true,
+		result: { ok: true },
+		logs: [],
+	})
+	expect(executeSpy).toHaveBeenCalledTimes(1)
+	expect(executeSpy.mock.calls[0]?.[4]).toMatchObject({
+		runRecordHandle: claimedHandle,
+		waitUntil,
+	})
+})
+
 test('executeJobOnce retries claimed platform blips and surfaces them on run-now', async () => {
 	silenceIncidentalRuntimeWarnings()
 	const { env } = createExecuteEnv()

@@ -503,7 +503,12 @@ async function executePublishedJobArtifact(input: {
 			runRecord,
 			runRecordHandle: input.runRecordHandle,
 			...packageRuntimeTools,
-			waitUntil: input.runRecordHandle ? undefined : input.waitUntil,
+			// Keep waitUntil even when the caller pre-claimed the run record
+			// (scheduled jobs). Terminal run-record writes stay awaited inside
+			// finishRunRecord; waitUntil only owns deferred work such as
+			// static-call meter finalization so a slow D1 rollup path cannot
+			// lose events to the no-waitUntil two-second race.
+			waitUntil: input.waitUntil,
 		},
 	).then((result) => ({
 		...result,
