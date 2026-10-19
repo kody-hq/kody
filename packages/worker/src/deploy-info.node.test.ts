@@ -90,8 +90,11 @@ test('deploy info encodes for wrangler vars and rebuilds the /health report', ()
 	expect(truncateCommitMessage(`${'a'.repeat(500)}extra`).length).toBe(500)
 	const prefersHtmlCases: Array<[string | null, boolean]> = [
 		[null, false],
+		['*/*', false],
 		['application/json', false],
+		['application/json, text/plain, */*', false],
 		['text/html,application/xhtml+xml', true],
+		['text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', true],
 		['application/json, text/html', false],
 	]
 	expect(
