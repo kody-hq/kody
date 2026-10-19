@@ -20,27 +20,31 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   or is a `LICENSE` / `LICENCE` / `COPYING` / `NOTICE` text file. A source file
   in the same commit, including a comment-only edit or a source file renamed to
   markdown, runs all three checks.
-- `git push` runs the Husky `pre-push` hook. It executes `npm run test:push`
-  (`CI=1` `test:node` + `test:workers`) when any updated ref changes a path that
-  is not docs-only, or when the pushed paths cannot be listed. When the pushed
+- `git push` runs the Husky `pre-push` hook. It executes `npm run knip` (same
+  unused files/exports/types gate as CI's Static Knip step) then
+  `npm run test:push` (`CI=1` `test:node` + `test:workers`) when any updated ref
+  changes a path that is not docs-only, or when the pushed paths cannot be
+  listed. A knip failure prints a clear message to run `npm run knip` and fix
+  before pushing; CI keeps its Knip step as the backstop. When the pushed
   commit's tree SHA is already recorded green from a successful
-  `npm run validate` (or a prior pre-push `test:push`) under
-  `.tmp/git-hook-provenance.json`, the hook skips `test:push` and logs that
-  provenance hit (#3653 / #3719). Progress lines tick every 30s while a script
-  runs so a long workers-unit leg is not a silent hang (#3547); ADR 0011
-  workers-unit isolation is unchanged. A docs-only range skips the suites. A
-  push that changes `skills-lock.json` or any path under `.agents/skills/` also
-  runs `npm run skills-lock:check`. `skills-lock.json` counts with docs for this
-  hook: a push of only the lock, skill markdown, and other docs skips
-  `test:push`. A non-markdown file under `.agents/skills/` (a script or a test)
-  still runs `test:push`, as does any other source file. An unreadable push path
-  list runs the skills-lock check too. Deleting a remote branch skips the suites
-  and the skills-lock check. An update diffs the remote tip against the local
-  tip, so a later docs-only push does not retest commits already on the remote.
-  A new branch diffs against the merge base of `origin/HEAD`, `origin/main`, or
-  `main` (never the branch being created). Those suites are the same Nx targets
-  the CI Node / Workers jobs run, so a remote-cache hit is possible after a push
-  that runs them. Bundled guides and other markdown are docs-only, so the local
+  `npm run validate` (or a prior pre-push that ran those checks) under
+  `.tmp/git-hook-provenance.json`, the hook skips `knip` and `test:push` and
+  logs that provenance hit (#3653 / #3719). Progress lines tick every 30s while
+  a script runs so a long workers-unit leg is not a silent hang (#3547); ADR
+  0011 workers-unit isolation is unchanged. A docs-only range skips knip and the
+  suites. A push that changes `skills-lock.json` or any path under
+  `.agents/skills/` also runs `npm run skills-lock:check`. `skills-lock.json`
+  counts with docs for this hook: a push of only the lock, skill markdown, and
+  other docs skips `knip` and `test:push`. A non-markdown file under
+  `.agents/skills/` (a script or a test) still runs `knip` and `test:push`, as
+  does any other source file. An unreadable push path list runs the skills-lock
+  check too. Deleting a remote branch skips knip, the suites, and the
+  skills-lock check. An update diffs the remote tip against the local tip, so a
+  later docs-only push does not retest commits already on the remote. A new
+  branch diffs against the merge base of `origin/HEAD`, `origin/main`, or `main`
+  (never the branch being created). Those suites are the same Nx targets the CI
+  Node / Workers jobs run, so a remote-cache hit is possible after a push that
+  runs them. Bundled guides and other markdown are docs-only, so the local
   suites skip them. `npm run validate` and CI run those suites for every pull
   request. Playwright E2E stays in `npm run validate` and the CI E2E job. The
   push hook stops short of that suite because Playwright E2E is heavier than the

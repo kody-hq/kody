@@ -95,7 +95,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 	})
 	expect(
 		planGitHookChecks({ hook: 'pre-push', paths: codePaths }).summary,
-	).toBe('pre-push: running test:push (packages/worker/src/app.ts)')
+	).toBe('pre-push: running knip and test:push (packages/worker/src/app.ts)')
 	const planCases: Array<
 		['pre-commit' | 'pre-push', Array<string> | null, Array<string>]
 	> = [
@@ -108,11 +108,11 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		[
 			'pre-push',
 			['packages/worker/migrations/0067-example.sql'],
-			['test:push'],
+			['knip', 'test:push'],
 		],
 		['pre-commit', [], []],
 		['pre-commit', null, ['install:check', 'typecheck', 'migrations:check']],
-		['pre-push', null, ['skills-lock:check', 'test:push']],
+		['pre-push', null, ['skills-lock:check', 'knip', 'test:push']],
 	]
 	expect(
 		planCases.map(([hook, paths]) => [
@@ -162,7 +162,7 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 				throw new Error('blank pre-push stdin must fail closed before git')
 			},
 		}),
-	).toEqual({ code: 0, scripts: ['skills-lock:check', 'test:push'] })
+	).toEqual({ code: 0, scripts: ['skills-lock:check', 'knip', 'test:push'] })
 
 	expect(isSkillsLockHookPath('.agents/skills/ship-pr/SKILL.md')).toBe(true)
 	expect(isSkillsLockHookPath('./skills-lock.json')).toBe(true)
@@ -191,26 +191,26 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		plannedScripts('pre-push', [
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 		]),
-	).toEqual(['skills-lock:check', 'test:push'])
+	).toEqual(['skills-lock:check', 'knip', 'test:push'])
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 			'skills-lock.json',
 		]),
-	).toEqual(['skills-lock:check', 'test:push'])
+	).toEqual(['skills-lock:check', 'knip', 'test:push'])
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/ship-pr/SKILL.md',
 			'packages/worker/src/app.ts',
 		]),
-	).toEqual(['skills-lock:check', 'test:push'])
+	).toEqual(['skills-lock:check', 'knip', 'test:push'])
 	expect(
 		planGitHookChecks({
 			hook: 'pre-push',
 			paths: ['skills-lock.json', 'packages/worker/src/app.ts'],
 		}).summary,
 	).toBe(
-		'pre-push: running skills-lock:check and test:push (packages/worker/src/app.ts)',
+		'pre-push: running skills-lock:check, knip, and test:push (packages/worker/src/app.ts)',
 	)
 })
 
@@ -376,7 +376,7 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 		})
 		expect(prePush.status).toBe(0)
 		expect(prePush.stdout).toContain(
-			'pre-push: skipping test:push (1 docs-only path)',
+			'pre-push: skipping knip and test:push (1 docs-only path)',
 		)
 
 		git(['checkout', '-b', 'feature', base])
@@ -394,7 +394,10 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 				stdin: `refs/heads/feature ${feature} refs/heads/feature ${zeroSha}\n`,
 			}),
 		).toEqual(['src/app.ts'])
-		expect(plannedScripts('pre-push', ['src/app.ts'])).toEqual(['test:push'])
+		expect(plannedScripts('pre-push', ['src/app.ts'])).toEqual([
+			'knip',
+			'test:push',
+		])
 
 		git(['checkout', 'main'])
 		git(['mv', 'src/app.ts', 'src/app.md'])
@@ -420,7 +423,7 @@ test('a real docs follow-up skips unit tests and a source rename still typecheck
 	}
 })
 
-test('pre-push skips test:push when the pushed tree is already green', async () => {
+test('pre-push skips knip and test:push when the pushed tree is already green', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'hook-skip-'))
 	try {
 		const treeSha = 'e'.repeat(40)
@@ -464,10 +467,43 @@ test('pre-push skips test:push when the pushed tree is already green', async () 
 		})
 		expect(code).toBe(0)
 		expect(scripts).toEqual([])
+		expect(
+			logs.some((line) => line.includes('skipping knip and test:push')),
+		).toBe(true)
 		expect(logs.some((line) => line.includes('already green'))).toBe(true)
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
+})
+
+test('pre-push fails knip with a clear fix message before test:push', async () => {
+	const logs: Array<string> = []
+	const scripts: Array<string> = []
+	const code = await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/feature ${localSha} refs/heads/feature ${remoteSha}\n`,
+		git: (args) => {
+			if (args[0] === 'diff') {
+				return gitResult(0, 'packages/worker/src/app.ts\0')
+			}
+			return gitResult(1)
+		},
+		runScript: (script) => {
+			scripts.push(script)
+			return script === 'knip' ? 1 : 0
+		},
+		log: (message) => logs.push(message),
+		progressIntervalMs: 60_000,
+	})
+	expect(code).toBe(1)
+	expect(scripts).toEqual(['knip'])
+	expect(
+		logs.some((line) =>
+			line.includes(
+				'Run `npm run knip` and fix unused files, exports, or types',
+			),
+		),
+	).toBe(true)
 })
 
 test('pre-push records provenance after a successful test:push and logs progress', async () => {
@@ -509,6 +545,12 @@ test('pre-push records provenance after a successful test:push and logs progress
 			log: (message) => logs.push(message),
 		})
 		expect(code).toBe(0)
+		expect(logs.some((line) => line.includes('starting npm run knip'))).toBe(
+			true,
+		)
+		expect(logs.some((line) => line.includes('finished npm run knip'))).toBe(
+			true,
+		)
 		expect(
 			logs.some((line) => line.includes('starting npm run test:push')),
 		).toBe(true)
