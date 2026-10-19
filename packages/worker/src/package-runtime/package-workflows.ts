@@ -46,6 +46,7 @@ import {
 	getWorkflowProjection,
 	listWorkflowProjections,
 	reserveWorkflowProjectionSlot,
+	updateRunErrorTriage,
 	upsertWorkflowProjection,
 	type WorkflowProjectionRecord,
 	type WorkflowProjectionUpsertInput,
@@ -195,9 +196,11 @@ type WorkflowStepDoConfig = {
 	timeout?: string | number
 }
 
+const workflowStepRetryLimit = 3
+
 const workflowStepDoConfig: WorkflowStepDoConfig = {
 	retries: {
-		limit: 3,
+		limit: workflowStepRetryLimit,
 		delay: '30 seconds',
 		backoff: 'exponential',
 	},
@@ -208,12 +211,33 @@ const workflowStepDoConfig: WorkflowStepDoConfig = {
 	timeout: '6 minutes',
 }
 
+/**
+ * Cloudflare Workflows pass this into `step.do` callbacks. `attempt` is
+ * 1-indexed; with `retries.limit` N the engine may run attempts 1..N+1.
+ */
+type WorkflowStepAttemptContext = {
+	attempt: number
+}
+
 type DynamicCallableWorkflowStep = {
 	do(
 		name: string,
 		config: WorkflowStepDoConfig,
-		callback: () => Promise<JsonValue>,
+		callback: (ctx?: WorkflowStepAttemptContext) => Promise<JsonValue>,
 	): Promise<JsonValue>
+}
+
+const workflowStepWillRetryTriageNote =
+	'auto-ignored: durable workflow step will retry'
+
+function workflowStepWillRetry(attempt: number | undefined) {
+	// Only auto-ignore when Cloudflare passed a step attempt. Attempts
+	// 1..limit fail and retry; attempt limit+1 is the last try. Missing
+	// attempt (unit tests / older engines) stays an open error.
+	if (attempt == null || !Number.isFinite(attempt) || attempt < 1) {
+		return false
+	}
+	return attempt <= workflowStepRetryLimit
 }
 
 const packageWorkflowTokenId = 'internal:package-workflows'
@@ -1498,17 +1522,19 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					? 'invoke saved package workflow export'
 					: 'execute inline workflow code',
 				workflowStepDoConfig,
-				async () => {
+				async (stepCtx) => {
 					try {
 						if (payload.sourceType === 'package') {
 							return await this.invokePackageWorkflowExport(
 								payload,
 								event.instanceId,
+								stepCtx,
 							)
 						}
 						return await this.invokeInlineWorkflowCode(
 							payload,
 							event.instanceId,
+							stepCtx,
 						)
 					} catch (error) {
 						// Suspension stays in force across step retries, so fail the
@@ -1586,9 +1612,29 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		)
 	}
 
+	private async markRetryableWorkflowRunIgnored(input: {
+		userId: OwnerId
+		runId: string | undefined
+		willRetry: boolean
+	}) {
+		if (!input.willRetry || !input.runId) return
+		try {
+			await updateRunErrorTriage({
+				env: this.env,
+				userId: input.userId,
+				runId: input.runId,
+				errorTriage: 'ignored',
+				triageNote: workflowStepWillRetryTriageNote,
+			})
+		} catch (error) {
+			console.warn('workflow-run-retry-triage-failed', error)
+		}
+	}
+
 	private async invokePackageWorkflowExport(
 		payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'package' }>,
 		instanceId: string,
+		stepCtx?: WorkflowStepAttemptContext,
 	): Promise<JsonValue> {
 		const runHandle = beginRunRecord({
 			env: this.env,
@@ -1604,6 +1650,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				metadata: {
 					sourceType: 'package',
 					exportName: payload.exportName,
+					...(stepCtx?.attempt != null
+						? { workflow_step_attempt: stepCtx.attempt }
+						: {}),
 				},
 			},
 			waitUntil: (promise) => {
@@ -1668,6 +1717,15 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				logs,
 				error,
 			})
+			// Suspension becomes NonRetryableError in the step wrapper — leave
+			// that run open. Other failures still retry up to the step limit.
+			if (!isAccountSuspendedError(error)) {
+				await this.markRetryableWorkflowRunIgnored({
+					userId: payload.userId,
+					runId: runHandle?.id,
+					willRetry: workflowStepWillRetry(stepCtx?.attempt),
+				})
+			}
 			throw error
 		}
 	}
@@ -1675,6 +1733,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 	private async invokeInlineWorkflowCode(
 		payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'inline' }>,
 		instanceId: string,
+		stepCtx?: WorkflowStepAttemptContext,
 	): Promise<JsonValue> {
 		if (payload.packageContext === undefined) {
 			throw new Error(
@@ -1714,6 +1773,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				idempotencyKey: payload.idempotencyKey,
 				metadata: {
 					sourceType: 'inline',
+					...(stepCtx?.attempt != null
+						? { workflow_step_attempt: stepCtx.attempt }
+						: {}),
 				},
 			},
 			waitUntil,
@@ -1755,6 +1817,13 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				logs,
 				error,
 			})
+			if (!isAccountSuspendedError(error)) {
+				await this.markRetryableWorkflowRunIgnored({
+					userId: payload.userId,
+					runId: runHandle?.id,
+					willRetry: workflowStepWillRetry(stepCtx?.attempt),
+				})
+			}
 			throw error
 		}
 	}

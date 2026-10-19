@@ -259,6 +259,14 @@ async function listTargetsOrThrow(input: {
 	}
 }
 
+export type RebuildPublishedPackageArtifactsResult = {
+	/**
+	 * Targets that were not already built for this commit and therefore ran
+	 * rebuild or reuse work. Zero means every target was already current.
+	 */
+	rebuiltTargetCount: number
+}
+
 async function rebuildPublishedPackageArtifactsOnSession(input: {
 	env: Env
 	rpcSessionId: string
@@ -269,7 +277,7 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 	baseUrl: string
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
-}) {
+}): Promise<RebuildPublishedPackageArtifactsResult> {
 	const session = repoSessionRpc(input.env, input.rpcSessionId)
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = []
 	const { remaining, alreadyBuilt } = await filterTargetsNeedingRebuild({
@@ -318,7 +326,9 @@ async function rebuildPublishedPackageArtifactsOnSession(input: {
 		}
 	}
 
-	if (failed.length === 0) return
+	if (failed.length === 0) {
+		return { rebuiltTargetCount: remaining.length }
+	}
 
 	throwRebuildFailure({
 		sourceId: input.sourceId,
@@ -356,7 +366,7 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	baseUrl: string
 	targets?: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
-}) {
+}): Promise<RebuildPublishedPackageArtifactsResult> {
 	const session = repoSessionRpc(input.env, input.rpcSessionId)
 	const isolatedRunner = createIsolatedArtifactRebuildRunner(input.env)
 
@@ -369,11 +379,10 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 			publishedCommit: input.publishedCommit,
 			targets: input.targets,
 		})
-		await rebuildPublishedPackageArtifactsOnSession({
+		return await rebuildPublishedPackageArtifactsOnSession({
 			...input,
 			targets,
 		})
-		return
 	}
 
 	// List + skip before staging so already_published / repair resumes and
@@ -400,7 +409,9 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 	const succeeded: Array<PublishedPackageArtifactBuildTarget> = [
 		...alreadyBuilt,
 	]
-	if (remaining.length === 0) return
+	if (remaining.length === 0) {
+		return { rebuiltTargetCount: 0 }
+	}
 
 	let stagingKey: string
 	try {
@@ -495,7 +506,9 @@ async function rebuildPublishedPackageArtifactsViaRepoSessionOnce(input: {
 		await isolatedRunner.discard(stagingKey)
 	}
 
-	if (failed.length === 0) return
+	if (failed.length === 0) {
+		return { rebuiltTargetCount: remaining.length }
+	}
 
 	throwRebuildFailure({
 		sourceId: input.sourceId,
@@ -516,14 +529,13 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	/** When set, rebuild only these targets instead of every package target. */
 	targets?: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
-}) {
+}): Promise<RebuildPublishedPackageArtifactsResult> {
 	const maxAttempts = publishedPackageArtifactRebuildRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
 	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
 		const attempt = attemptIndex + 1
 		try {
-			await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
-			return
+			return await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
 		} catch (error) {
 			if (!isTransientArtifactRebuildError(error)) {
 				throw error

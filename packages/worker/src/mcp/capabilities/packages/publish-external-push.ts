@@ -16,6 +16,7 @@ import {
 	errorCauseChainIncludes,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
+import * as Sentry from '@sentry/cloudflare'
 import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
@@ -128,23 +129,34 @@ function logExternalPublishRetry(input: {
 	newCommit: string
 	attempt: number
 	nextDelayMs: number
+	willRetry: boolean
 	error: unknown
 }) {
-	// Log-only: DO isolate memory/CPU resets are retried; do not open Sentry
-	// issues per attempt. Exhausted retries still throw and hit MCP observability.
+	// Per-attempt resets stay out of Sentry issues (exhausted retries still
+	// throw and remain visible). Breadcrumb + structured warn keep CPU/memory
+	// resets searchable in telemetry without opening a ticket per blip.
 	const errorMessage = getErrorMessage(input.error)
-	console.warn(
-		JSON.stringify({
-			message: 'packagePublishExternalPush transient Durable Object reset',
-			sourceId: input.sourceId,
-			repoId: input.repoId,
-			packageId: input.packageId,
-			newCommit: input.newCommit,
-			attempt: input.attempt,
-			nextDelayMs: input.nextDelayMs,
-			errorMessage,
-		}),
-	)
+	const payload = {
+		message: 'packagePublishExternalPush transient Durable Object reset',
+		sourceId: input.sourceId,
+		repoId: input.repoId,
+		packageId: input.packageId,
+		newCommit: input.newCommit,
+		attempt: input.attempt,
+		nextDelayMs: input.nextDelayMs,
+		willRetry: input.willRetry,
+		errorMessage,
+	}
+	console.warn(JSON.stringify(payload))
+	// Workers Sentry SDK exposes addBreadcrumb; unit tests may not mock it.
+	if (typeof Sentry.addBreadcrumb === 'function') {
+		Sentry.addBreadcrumb({
+			category: 'package.publish',
+			level: 'warning',
+			message: payload.message,
+			data: payload,
+		})
+	}
 }
 
 function assertNotAborted(signal: AbortSignal | undefined) {
@@ -384,10 +396,17 @@ const allowedPackagesPublishNoticeSchema = z
 		'Advance warning when this package fills a user credential whose allowed-packages list excludes it. Stricter enforcement of that setting starts Wednesday, Oct 21, 2026. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
+const artifactsRebuiltSchema = z
+	.boolean()
+	.describe(
+		'True when this already_published result still rebuilt one or more package bundle artifacts (for example a prior attempt advanced published_commit then died mid-rebuild). False when every target was already current for this commit. Tip semantics are unchanged: published_commit already matched HEAD before this call.',
+	)
+
 const outputSchema = z.discriminatedUnion('status', [
 	z.object({
 		status: z.literal('already_published'),
 		published_commit: z.string().nullable(),
+		artifacts_rebuilt: artifactsRebuiltSchema,
 		hosted_app_url: z.string().nullable(),
 		test_hints: packageTestHintsSchema.optional(),
 		static_dependents: staticDependentsSchema,
@@ -885,16 +904,20 @@ async function runExternalPublishAttempt(input: {
 						},
 						async () => {
 							try {
-								await rebuildPublishedPackageArtifactsViaRepoSession({
-									env: input.env,
-									rpcSessionId: sessionId,
-									sourceId: input.source.id,
-									userId: input.ownerUserId,
-									publishedCommit,
-									baseUrl: input.baseUrl,
-									...(forceRebuild ? { force: true } : {}),
-								})
-								return { ok: true as const }
+								const rebuild =
+									await rebuildPublishedPackageArtifactsViaRepoSession({
+										env: input.env,
+										rpcSessionId: sessionId,
+										sourceId: input.source.id,
+										userId: input.ownerUserId,
+										publishedCommit,
+										baseUrl: input.baseUrl,
+										...(forceRebuild ? { force: true } : {}),
+									})
+								return {
+									ok: true as const,
+									rebuiltTargetCount: rebuild.rebuiltTargetCount,
+								}
 							} catch (error) {
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
@@ -914,6 +937,8 @@ async function runExternalPublishAttempt(input: {
 						run_id: crypto.randomUUID(),
 					}
 				}
+				const artifactsRebuilt =
+					forceRebuild || rebuildOutcome.rebuiltTargetCount > 0
 				const { durationMs: dependentsMs, value: alreadyPublishedExtras } =
 					await timePublishExternalPushPhase(
 						{
@@ -991,6 +1016,7 @@ async function runExternalPublishAttempt(input: {
 				return {
 					status: 'already_published' as const,
 					published_commit: publishedCommit,
+					artifacts_rebuilt: artifactsRebuilt,
 					hosted_app_url: alreadyPublishedExtras.hosted_app_url,
 					...(alreadyPublishedExtras.testHints
 						? { test_hints: alreadyPublishedExtras.testHints }
@@ -1231,6 +1257,7 @@ async function runExternalPublishAttempt(input: {
 				newCommit: input.newCommit,
 				attempt,
 				nextDelayMs,
+				willRetry,
 				error,
 			})
 			if (!willRetry) {
@@ -1252,7 +1279,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		name: 'packagePublishExternalPush',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this call; it still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran — read that field (and phase_timings.rebuild_ms) instead of treating already_published as a no-op. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,

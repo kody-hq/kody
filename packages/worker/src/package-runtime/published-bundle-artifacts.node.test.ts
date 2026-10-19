@@ -221,6 +221,32 @@ function stubFreshRebuildPersistence(kvKey = 'kv:key') {
 	mockModule.insertPublishedBundleArtifactRow.mockResolvedValue(undefined)
 }
 
+test('isPublishedBundleArtifactCurrentForCommit rejects prior-commit leftovers', async () => {
+	const { isPublishedBundleArtifactCurrentForCommit } =
+		await import('./published-bundle-artifacts.ts')
+	expect(
+		isPublishedBundleArtifactCurrentForCommit({
+			artifact: { publishedCommit: 'commit-old' },
+			rowPublishedCommit: 'commit-old',
+			currentPublishedCommit: 'commit-new',
+		}),
+	).toBe(false)
+	expect(
+		isPublishedBundleArtifactCurrentForCommit({
+			artifact: { publishedCommit: 'commit-new' },
+			rowPublishedCommit: 'commit-new',
+			currentPublishedCommit: 'commit-new',
+		}),
+	).toBe(true)
+	expect(
+		isPublishedBundleArtifactCurrentForCommit({
+			artifact: { publishedCommit: 'commit-new' },
+			rowPublishedCommit: 'commit-old',
+			currentPublishedCommit: 'commit-new',
+		}),
+	).toBe(false)
+})
+
 test('loadPublishedBundleArtifactByIdentity treats mismatched and malformed KV artifact payloads as cache misses', async () => {
 	const identity = {
 		sourceId: 'source-email-received-subscriber',

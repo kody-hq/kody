@@ -61,6 +61,7 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	finishRunRecord: (
 		...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 	) => runRecordMocks.finishRunRecord(...args),
+	updateRunErrorTriage: vi.fn(async () => ({ ok: true as const, run: {} })),
 	upsertWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.upsertWorkflowProjection(
 			...(args as [
@@ -137,12 +138,15 @@ function createWorkflowEnv(binding: { workflow: Workflow }) {
 	} as Env
 }
 
-function createInlineStep() {
+function createInlineStep(attempt = 1) {
 	return {
 		sleepUntil: vi.fn(),
 		do: vi.fn(
-			async (_name: string, _config: unknown, callback: () => unknown) =>
-				await callback(),
+			async (
+				_name: string,
+				_config: unknown,
+				callback: (ctx?: { attempt: number }) => unknown,
+			) => await callback({ attempt }),
 		),
 	} as unknown as WorkflowStep
 }
@@ -348,7 +352,10 @@ test('inline workflow sandbox failures throw UserCodeError except Durable Object
 					surface: 'workflow',
 					workflowId: created.id,
 					storageId: null,
-					metadata: { sourceType: 'inline' },
+					metadata: expect.objectContaining({
+						sourceType: 'inline',
+						workflow_step_attempt: 1,
+					}),
 				}),
 			}),
 		)
@@ -561,10 +568,11 @@ test('package and inline workflows each record exactly one workflow run with wor
 				name: 'shade-event',
 				packageId: 'pkg-1',
 				workflowId: packageRun.created.id,
-				metadata: {
+				metadata: expect.objectContaining({
 					sourceType: 'package',
 					exportName: './workflow-run-event',
-				},
+					workflow_step_attempt: 1,
+				}),
 			}),
 		}),
 	)
@@ -602,7 +610,10 @@ test('package and inline workflows each record exactly one workflow run with wor
 				surface: 'workflow',
 				name: 'inline-once',
 				workflowId: inlineRun.created.id,
-				metadata: { sourceType: 'inline' },
+				metadata: expect.objectContaining({
+					sourceType: 'inline',
+					workflow_step_attempt: 1,
+				}),
 			}),
 		}),
 	)

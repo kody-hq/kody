@@ -111,6 +111,7 @@ import {
 	getEntitySourceByIdForUser,
 } from '#worker/repo/entity-sources.ts'
 import {
+	isPublishedBundleArtifactCurrentForCommit,
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -278,12 +279,7 @@ function isPublishedJobBundleCurrent(input: {
 	rowPublishedCommit?: string | null
 	currentPublishedCommit: string | null
 }) {
-	return (
-		input.currentPublishedCommit != null &&
-		input.artifact?.publishedCommit === input.currentPublishedCommit &&
-		(input.rowPublishedCommit == null ||
-			input.rowPublishedCommit === input.currentPublishedCommit)
-	)
+	return isPublishedBundleArtifactCurrentForCommit(input)
 }
 
 async function ensurePublishedBundleArtifactForJob(input: {

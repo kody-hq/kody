@@ -246,6 +246,25 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 }
 
 /**
+ * True when a loaded identity artifact may keep serving for the source tip.
+ * Rejects a prior-commit leftover while `published_commit` has already
+ * advanced (publish rebuild still in flight). Jobs already enforced this;
+ * apps must too so run records naming the new tip do not serve old modules.
+ */
+export function isPublishedBundleArtifactCurrentForCommit(input: {
+	artifact: Pick<PublishedBundleArtifact, 'publishedCommit'> | null | undefined
+	rowPublishedCommit?: string | null
+	currentPublishedCommit: string | null | undefined
+}) {
+	return (
+		input.currentPublishedCommit != null &&
+		input.artifact?.publishedCommit === input.currentPublishedCommit &&
+		(input.rowPublishedCommit == null ||
+			input.rowPublishedCommit === input.currentPublishedCommit)
+	)
+}
+
+/**
  * True when a published bundle artifact already exists for this target
  * identity at `publishedCommit` (row + KV payload) and the artifact is not
  * older than the snapshot's `invalidateArtifactsBefore` cutoff. Used to

@@ -1187,10 +1187,14 @@ publish checks run.
    before recording the new published version, writing the published source
    snapshot, rebuilding package bundle artifacts, and refreshing search
    projections. If the pushed HEAD is already current, the tool returns
-   `already_published`. If the package is locked, it returns `locked` with a
-   `pending_commit` and `approval_url` after checks pass and leaves
-   `published_commit` unchanged. If it is internet-visible and its credential
-   needs changed, it returns `approval_required` the same way (see
+   `already_published` (tip unchanged). That result still runs the artifact
+   rebuild and sets `artifacts_rebuilt` true when any target needed rebuild work
+   — for example a prior attempt advanced `published_commit` then died
+   mid-rebuild. Read `artifacts_rebuilt` and `phase_timings.rebuild_ms` instead
+   of treating `already_published` as a no-op. If the package is locked, it
+   returns `locked` with a `pending_commit` and `approval_url` after checks pass
+   and leaves `published_commit` unchanged. If it is internet-visible and its
+   credential needs changed, it returns `approval_required` the same way (see
    [Approval when credential needs change](#approval-when-credential-needs-change)).
    If checks fail before promotion, it returns `checks_failed` with the failed
    check entries and leaves the underlying storage state unchanged. Full

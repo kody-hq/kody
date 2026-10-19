@@ -21,6 +21,7 @@ import {
 	resolvePackageAppAssetSourcePath,
 } from './package-app-assets-directory.ts'
 import {
+	isPublishedBundleArtifactCurrentForCommit,
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
@@ -164,7 +165,14 @@ async function resolvePackageAppClientArtifactUncached(input: {
 			artifactName: null,
 			entryPoint: input.clientEntry,
 		})
-		if (loaded?.artifact) {
+		if (
+			loaded?.artifact &&
+			isPublishedBundleArtifactCurrentForCommit({
+				artifact: loaded.artifact,
+				rowPublishedCommit: loaded.row?.publishedCommit,
+				currentPublishedCommit: input.savedPackage.publishedCommit,
+			})
+		) {
 			return {
 				mainModule: loaded.artifact.mainModule,
 				modules: loaded.artifact.modules,

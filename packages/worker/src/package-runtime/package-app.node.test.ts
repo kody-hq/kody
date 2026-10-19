@@ -628,13 +628,23 @@ function makeArtifact(
 	mainSource = 'export default { fetch() { return new Response("ok") } }',
 	extra: Record<string, unknown> = {},
 ) {
+	const publishedCommit =
+		typeof extra.publishedCommit === 'string'
+			? extra.publishedCommit
+			: 'commit-1'
 	return {
-		row: { id: 'artifact-row-1', artifactName: null, entryPoint: 'app.js' },
+		row: {
+			id: 'artifact-row-1',
+			artifactName: null,
+			entryPoint: 'app.js',
+			publishedCommit,
+		},
 		artifact: {
 			mainModule: 'dist/app.js',
 			modules: { 'dist/app.js': mainSource },
 			dependencies: [],
 			dynamicDependencies: [],
+			publishedCommit,
 			...extra,
 		},
 	}
@@ -1143,12 +1153,14 @@ test('package app worker exposes the fingerprinted client module URL when kody.a
 			id: 'artifact-row-client',
 			artifactName: null,
 			entryPoint: 'client.ts',
+			publishedCommit: 'commit-1',
 		},
 		artifact: {
 			mainModule: 'client.abcdefgh12345678.js',
 			modules: { 'client.abcdefgh12345678.js': 'console.log("hi")' },
 			dependencies: [],
 			dynamicDependencies: [],
+			publishedCommit: 'commit-1',
 		},
 	}
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockImplementation(
@@ -1234,6 +1246,44 @@ test('createPackageAppWorkerId changes when compatibility settings change', asyn
 	expect(dateChangedId).not.toBe(baselineId)
 	expect(flagsChangedId).not.toBe(baselineId)
 	expect(dateChangedId).not.toBe(flagsChangedId)
+})
+
+test('buildPackageAppWorker treats a prior-commit identity artifact as a miss while published_commit has advanced', async () => {
+	const { env } = createPackageAppTestEnv()
+	const freshSource = {
+		...createPackageAppTestSource(),
+		published_commit: 'commit-2',
+	}
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(
+			'export default { fetch() { return new Response("stale") } }',
+			{ publishedCommit: 'commit-1' },
+		),
+	)
+	packageAppRuntimeMock.buildKodyAppBundle.mockResolvedValue(freshBundle)
+	packageAppRuntimeMock.persistPublishedBundleArtifact.mockResolvedValue(
+		'bundle-artifact:v1:source-1:commit-2:app:_:app.js',
+	)
+	packageAppRuntimeMock.getEntitySourceById.mockResolvedValue(freshSource)
+
+	await buildPackageAppWorker(
+		makeBuildInput(env, 'stale-commit-artifact', {
+			userId: ownerIdFromStored('user-1'),
+			savedPackage: { publishedCommit: 'commit-2' },
+			source: freshSource,
+			loadSourceFiles: sourceFilesFor(),
+		}),
+	)
+
+	expect(packageAppRuntimeMock.buildKodyAppBundle).toHaveBeenCalledTimes(1)
+	expect(
+		packageAppRuntimeMock.persistPublishedBundleArtifact,
+	).toHaveBeenCalledWith(
+		expect.objectContaining({
+			source: freshSource,
+			kind: 'app',
+		}),
+	)
 })
 
 test('an app artifact rebuild persists artifactName null using the fresh source row and its entry point', async () => {

@@ -441,6 +441,9 @@ test('publishExternalPush returns forwarded clone and check timings without coll
 		expect.objectContaining({
 			status: 'already_published',
 			published_commit: 'commit-old',
+			// Default module target is reused/skipped in this fixture; timings
+			// still include rebuild_ms even when no target needed a rebuild.
+			artifacts_rebuilt: false,
 			phase_timings: { clone_ms: 7, ...allPhaseTimings },
 		}),
 	)
@@ -471,6 +474,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(await publish()).toEqual({
 		status: 'already_published',
 		published_commit: 'commit-old',
+		artifacts_rebuilt: true,
 		hosted_app_url: 'https://user.packages.kody.test/packages/demo-package',
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,
@@ -492,7 +496,13 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		targets: [jobTarget],
 	})
 	mockModule.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(true)
-	expect((await publish()).status).toBe('already_published')
+	const skippedRebuild = await publish()
+	expect(skippedRebuild).toEqual(
+		expect.objectContaining({
+			status: 'already_published',
+			artifacts_rebuilt: false,
+		}),
+	)
 	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
 
 	setupDefaultMocks({
@@ -501,7 +511,13 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		targets: [jobTarget],
 	})
 	mockModule.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(true)
-	expect((await publish()).status).toBe('already_published')
+	const forcedRebuild = await publish()
+	expect(forcedRebuild).toEqual(
+		expect.objectContaining({
+			status: 'already_published',
+			artifacts_rebuilt: true,
+		}),
+	)
 	expect(mockModule.rebuildPublishedPackageArtifact).toHaveBeenCalledWith(
 		rebuildCall('commit-old', jobTarget),
 	)
@@ -786,6 +802,7 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	expect(await publish()).toEqual({
 		status: 'already_published',
 		published_commit: 'commit-new',
+		artifacts_rebuilt: false,
 		hosted_app_url: null,
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,

@@ -35,6 +35,7 @@ import {
 import { runtimeModulePath } from './module-graph-paths.ts'
 import { assertPublishedSourceCanRebuildWithoutInstallingDeps } from './published-source-dependencies.ts'
 import {
+	isPublishedBundleArtifactCurrentForCommit,
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
@@ -2004,7 +2005,14 @@ async function resolvePackageAppBundledArtifact(input: {
 		artifactName: null,
 		entryPoint: appEntry,
 	})
-	if (loadedArtifact?.artifact) {
+	if (
+		loadedArtifact?.artifact &&
+		isPublishedBundleArtifactCurrentForCommit({
+			artifact: loadedArtifact.artifact,
+			rowPublishedCommit: loadedArtifact.row?.publishedCommit,
+			currentPublishedCommit: input.savedPackage.publishedCommit,
+		})
+	) {
 		return {
 			mainModule: loadedArtifact.artifact.mainModule,
 			modules: loadedArtifact.artifact.modules,
