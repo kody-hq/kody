@@ -15,6 +15,8 @@ async function writeSiblingFixture(
 
 test('pins the registered name, drops always-remote bindings, and injects vars', async () => {
 	const dir = await mkdtemp(path.join(tmpdir(), 'sibling-dev-config-'))
+	const previousAppBaseUrl = process.env.APP_BASE_URL
+	delete process.env.APP_BASE_URL
 	try {
 		const configPath = await writeSiblingFixture(dir, {
 			name: 'kody-platform',
@@ -84,6 +86,11 @@ test('pins the registered name, drops always-remote bindings, and injects vars',
 			{ tag: 'v1', new_sqlite_classes: ['StorageRunner'] },
 		])
 	} finally {
+		if (previousAppBaseUrl === undefined) {
+			delete process.env.APP_BASE_URL
+		} else {
+			process.env.APP_BASE_URL = previousAppBaseUrl
+		}
 		await rm(dir, { recursive: true, force: true })
 	}
 })
