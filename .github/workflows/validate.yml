@@ -326,10 +326,11 @@ jobs:
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false
     steps:
-      # Self-driving test-time budget: this job fails itself when wall-clock
-      # exceeds 720s (tools/ci/enforce-unit-job-budget.ts). Cap is a cold-run
-      # baseline with headroom; cache hit or miss does not change it. Setup +
-      # tests both count; do not delete tests to stay under.
+      # Self-driving test-time budget (tools/ci/enforce-unit-job-budget.ts):
+      # warn at watch 700s (~Node p95 + headroom); hard-fail at 840s on PRs
+      # (under this job's 15m timeout). Cache hit or miss does not change
+      # either threshold. Setup + tests both count; do not delete tests to
+      # stay under.
       - name: ⏱️ Mark job start
         run: |
           epoch=$(date +%s)
@@ -357,10 +358,11 @@ jobs:
             ${{ github.event.pull_request.base.sha || github.event.before || ''
             }}
 
-      - name: ⏱️ Unit job budget (≤720s)
+      - name: ⏱️ Unit job budget (watch 700s / hard 840s)
         if: success()
-        # Enforced on pull requests; advisory (warning annotation) on push to
-        # main and manual dispatches so a slow cold run cannot block deploy.
+        # Watch warns always; hard fail on pull requests only. Advisory
+        # (warning only) on push to main and manual dispatches so a slow
+        # cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch
           "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
@@ -385,20 +387,20 @@ jobs:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ☁️ Workers
-    # Room for one ≤720s attempt + one retry + setup. Soft-capping the suite
-    # below the old 15m job wall avoids workers=cancelled mid-suite (#3763).
+    # Room for one ≤780s attempt + one retry + setup. Soft-capping the suite
+    # below the job wall avoids workers=cancelled mid-suite (#3763).
     timeout-minutes: 30
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false
     steps:
-      # Self-driving attempt budget: each Workers suite attempt soft-caps at
-      # ≤720s (tools/ci/enforce-unit-job-budget.ts). Cap is a cold-run
-      # baseline with headroom; cache hit or miss does not change it. Do not
-      # delete tests to stay under. A mid-suite hit retries once; assertion
-      # failures do not. On retry the start epoch resets so the post-suite
-      # check measures the successful attempt; overall job wall is the
-      # 30-minute timeout above.
+      # Self-driving attempt budget (tools/ci/enforce-unit-job-budget.ts):
+      # each Workers suite attempt soft-caps at the hard ceiling (780s);
+      # post-suite watch is 620s (~Workers p95 + headroom). Cache hit or miss
+      # does not change either. Do not delete tests to stay under. A mid-suite
+      # soft-cap hit retries once; assertion failures do not. On retry the
+      # start epoch resets so the post-suite check measures the successful
+      # attempt; overall job wall is the 30-minute timeout above.
       - name: ⏱️ Mark job start
         run: |
           epoch=$(date +%s)
@@ -416,7 +418,7 @@ jobs:
           worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
-      # Soft-cap the first attempt at the remaining unit-job budget so a slow
+      # Soft-cap the first attempt at the remaining hard ceiling so a slow
       # runner cannot burn the whole job timeout and leave Validate as
       # workers=cancelled (#3763). GNU timeout exits 124 on soft-cap; exit
       # 137 is retryable only after the soft deadline (--kill-after SIGKILL).
@@ -427,7 +429,7 @@ jobs:
       - name: ☁️ Workers unit tests
         run: |
           set -u
-          attempt_budget_seconds=720
+          attempt_budget_seconds=780
           kill_after_seconds=60
           now=$(date +%s)
           elapsed=$((now - UNIT_JOB_START_EPOCH))
@@ -483,10 +485,11 @@ jobs:
           fi
           exit "$status"
 
-      - name: ⏱️ Unit job budget (≤720s)
+      - name: ⏱️ Unit job budget (watch 620s / hard 780s)
         if: success()
-        # Enforced on pull requests; advisory (warning annotation) on push to
-        # main and manual dispatches so a slow cold run cannot block deploy.
+        # Watch warns always; hard fail on pull requests only. Advisory
+        # (warning only) on push to main and manual dispatches so a slow
+        # cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch
           "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&

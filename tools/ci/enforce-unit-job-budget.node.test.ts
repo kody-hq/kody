@@ -4,21 +4,24 @@ import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	evaluateUnitJobBudget,
 	getUnitJobMaxSeconds,
+	getUnitJobWatchSeconds,
 	isRetryableUnitJobAttemptExit,
 	main,
 	unitJobAttemptKillAfterExitCode,
 	unitJobAttemptTimeoutExitCode,
 } from './enforce-unit-job-budget.ts'
 
-test('unit job budgets fail any overrun of the cold-run caps', () => {
+test('unit job budgets warn at watch and fail only past the hard ceiling', () => {
 	const previousExitCode = process.exitCode
 	const workflow = readFileSync(
 		new URL('../../.github/workflows/validate.yml', import.meta.url),
 		'utf8',
 	)
 
-	expect(getUnitJobMaxSeconds('node')).toBe(720)
-	expect(getUnitJobMaxSeconds('workers')).toBe(720)
+	expect(getUnitJobWatchSeconds('node')).toBe(700)
+	expect(getUnitJobMaxSeconds('node')).toBe(840)
+	expect(getUnitJobWatchSeconds('workers')).toBe(620)
+	expect(getUnitJobMaxSeconds('workers')).toBe(780)
 	expect(isRetryableUnitJobAttemptExit(unitJobAttemptTimeoutExitCode)).toBe(
 		true,
 	)
@@ -28,14 +31,14 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 	)
 	expect(
 		isRetryableUnitJobAttemptExit(unitJobAttemptKillAfterExitCode, {
-			elapsedSeconds: 720,
-			budgetSeconds: 720,
+			elapsedSeconds: 780,
+			budgetSeconds: 780,
 		}),
 	).toBe(true)
 	expect(
 		isRetryableUnitJobAttemptExit(unitJobAttemptKillAfterExitCode, {
 			elapsedSeconds: 100,
-			budgetSeconds: 720,
+			budgetSeconds: 780,
 		}),
 	).toBe(false)
 	expect(isRetryableUnitJobAttemptExit(1)).toBe(false)
@@ -45,30 +48,61 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 		evaluateUnitJobBudget({
 			leg: 'node',
 			startEpochSeconds: 1_000,
-			nowEpochSeconds: 1_000 + 720,
-		}).ok,
-	).toBe(true)
+			nowEpochSeconds: 1_000 + 700,
+		}),
+	).toMatchObject({ ok: true, level: 'ok' })
 	expect(
 		evaluateUnitJobBudget({
 			leg: 'node',
 			startEpochSeconds: 1_000,
-			nowEpochSeconds: 1_000 + 721,
-		}).ok,
-	).toBe(false)
+			nowEpochSeconds: 1_000 + 701,
+		}),
+	).toMatchObject({ ok: true, level: 'watch' })
+	expect(
+		evaluateUnitJobBudget({
+			leg: 'node',
+			startEpochSeconds: 1_000,
+			nowEpochSeconds: 1_000 + 840,
+		}),
+	).toMatchObject({ ok: true, level: 'watch' })
+	expect(
+		evaluateUnitJobBudget({
+			leg: 'node',
+			startEpochSeconds: 1_000,
+			nowEpochSeconds: 1_000 + 841,
+		}),
+	).toMatchObject({ ok: false, level: 'fail' })
 	expect(
 		evaluateUnitJobBudget({
 			leg: 'workers',
 			startEpochSeconds: 1_000,
-			nowEpochSeconds: 1_000 + 720,
-		}).ok,
-	).toBe(true)
+			nowEpochSeconds: 1_000 + 620,
+		}),
+	).toMatchObject({ ok: true, level: 'ok' })
 	expect(
 		evaluateUnitJobBudget({
 			leg: 'workers',
 			startEpochSeconds: 1_000,
-			nowEpochSeconds: 1_000 + 721,
-		}).ok,
-	).toBe(false)
+			nowEpochSeconds: 1_000 + 621,
+		}),
+	).toMatchObject({ ok: true, level: 'watch' })
+	expect(
+		evaluateUnitJobBudget({
+			leg: 'workers',
+			startEpochSeconds: 1_000,
+			nowEpochSeconds: 1_000 + 781,
+		}),
+	).toMatchObject({ ok: false, level: 'fail' })
+
+	const nodeAtWatch = evaluateUnitJobBudget({
+		leg: 'node',
+		startEpochSeconds: 1_000,
+		nowEpochSeconds: 1_000 + 710,
+	})
+	expect(nodeAtWatch.thresholdLine).toContain('elapsed 710s')
+	expect(nodeAtWatch.thresholdLine).toContain('watch 700s')
+	expect(nodeAtWatch.thresholdLine).toContain('hard 840s')
+	expect(nodeAtWatch.thresholdLine).toContain('| watch')
 
 	expect(workflow).toContain(
 		'node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch',
@@ -80,7 +114,7 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 	// Workers retries once on soft-budget timeout (exit 124) or kill-after
 	// 137 only after the soft deadline; early SIGKILL is not retryable
 	// (#3763). Retry status is captured under bash -e via if/else.
-	expect(workflow).toContain('attempt_budget_seconds=720')
+	expect(workflow).toContain('attempt_budget_seconds=780')
 	expect(workflow).toContain('kill_after_seconds=60')
 	expect(workflow).toContain('attempt_started=$(date +%s)')
 	expect(workflow).toContain(
@@ -103,8 +137,9 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 	expect(workersUnitStep).not.toContain('--no-verify')
 	expect(workersUnitStep).not.toContain('setupFiles')
 	expect(workflow).toMatch(
-		/name: ☁️ Workers\n\s+# Room for one ≤720s attempt[\s\S]*?timeout-minutes: 30/,
+		/name: ☁️ Workers\n\s+# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 30/,
 	)
+	expect(workflow).toMatch(/name: 🧪 Node\n\s+timeout-minutes: 15/)
 
 	process.exitCode = undefined
 	main([
@@ -115,13 +150,27 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 	])
 	expect(process.exitCode).toBe(0)
 
+	const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+	process.exitCode = undefined
+	main([
+		'--leg',
+		'node',
+		'--start-epoch',
+		String(Math.floor(Date.now() / 1000) - 710),
+	])
+	expect(process.exitCode).toBe(0)
+	expect(consoleLog).toHaveBeenCalledWith(
+		expect.stringMatching(/^::warning title=🧪 Node over watch threshold::/),
+	)
+	consoleLog.mockClear()
+
 	consoleError.mockImplementation(() => {})
 	process.exitCode = undefined
 	main([
 		'--leg',
 		'workers',
 		'--start-epoch',
-		String(Math.floor(Date.now() / 1000) - 721),
+		String(Math.floor(Date.now() / 1000) - 781),
 	])
 	expect(process.exitCode).toBe(1)
 	expect(consoleError).toHaveBeenCalledWith(
@@ -136,10 +185,11 @@ test('unit job budgets fail any overrun of the cold-run caps', () => {
 		'Usage: node tools/ci/enforce-unit-job-budget.ts --leg <node|workers> --start-epoch <unix-seconds> [--advisory]',
 	)
 
+	consoleLog.mockRestore()
 	process.exitCode = previousExitCode
 })
 
-test('the unit job budget is advisory outside pull requests', () => {
+test('the unit job hard ceiling is advisory outside pull requests', () => {
 	const previousExitCode = process.exitCode
 	const workflow = readFileSync(
 		new URL('../../.github/workflows/validate.yml', import.meta.url),
@@ -157,14 +207,14 @@ test('the unit job budget is advisory outside pull requests', () => {
 		'--leg',
 		'node',
 		'--start-epoch',
-		String(Math.floor(Date.now() / 1000) - 729),
+		String(Math.floor(Date.now() / 1000) - 850),
 		'--advisory',
 	])
 	expect(process.exitCode).toBe(0)
 	expect(consoleError).not.toHaveBeenCalled()
 	expect(consoleLog).toHaveBeenCalledWith(
 		expect.stringMatching(
-			/^::warning title=🧪 Node over budget \(advisory\)::🧪 Node took 7\d\ds; budget is 720s\./,
+			/^::warning title=🧪 Node over hard ceiling \(advisory\)::🧪 Node took 8\d\ds; hard ceiling is 840s/,
 		),
 	)
 
@@ -173,7 +223,7 @@ test('the unit job budget is advisory outside pull requests', () => {
 		'--leg',
 		'node',
 		'--start-epoch',
-		String(Math.floor(Date.now() / 1000) - 729),
+		String(Math.floor(Date.now() / 1000) - 850),
 	])
 	expect(process.exitCode).toBe(1)
 
