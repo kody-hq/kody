@@ -134,7 +134,10 @@
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
     "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/semver": "^7.8.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
     "dotenv": "^18.0.5",
     "esbuild": "^0.28.2",
@@ -153,11 +156,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.147.0",
-    "@tanstack/intent": "0.5.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2"
+    "wrangler": "^4.147.0"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -213,17 +212,5 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
-  },
-  "intent": {
-    "skills": [
-      "@tanstack/react-start",
-      "@tanstack/react-router",
-      "@tanstack/router-core",
-      "@tanstack/start-client-core",
-      "@tanstack/start-server-core",
-      "@tanstack/router-plugin",
-      "@tanstack/virtual-file-routes",
-      "@tanstack/redact"
-    ]
   }
 }
