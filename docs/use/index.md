@@ -43,6 +43,10 @@ reference detail those docs link into.
   `@kodycodes/cli execute --local` when Node ≥22
 - [Open API](../guides/open-api.md) — HTTPS api.kody.codes and MCP `api`
   (including scoped tokens for CI / headless)
+- [Git credential helper](../guides/auth-setup-git.md) — `kody auth setup-git`
+  for persistent HTTPS git auth
+- [API versioning](../guides/api-versioning.md) — additive `/v1` changes and how
+  breaking changes migrate
 - [Flake Hunter](../guides/flake-hunter.md),
   [Sentry Issues](../guides/sentry-issues.md),
   [Agent inbox](../guides/agent-inbox.md), and
