@@ -196,10 +196,13 @@ ${orgBlock}
              name (\`@owner/leaf\` or bare leaf) resolved to its package_id
              via \`packageList\` in the current org. Extra fields
              via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
-             body and exits 0 on HTTP 2xx — including refusal statuses such as
-             \`checks_failed\`, \`locked\`, \`approval_required\`, and
-             \`not_fast_forward\` (inspect \`status\` in the JSON). Network
-             failures exit 1; with \`--json\`, stdout also gets
+             body. Exit 0 for \`published\`, \`already_published\` (including
+             when \`artifacts_rebuilt\` is true), and \`dispatched\` (poll
+             \`workflowRunList\`). Exit 1 for refusal/rejection statuses
+             (\`checks_failed\`, \`locked\`, \`approval_required\`,
+             \`not_fast_forward\`) — the API \`message\` (or a checks summary)
+             goes to stderr, like npm. Auth / permission / network failures
+             also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the
              server — prefer \`kody api workflowRunList\` before retrying).

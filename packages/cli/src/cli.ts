@@ -32,6 +32,7 @@ import {
 	loadCredentials,
 } from './store.js'
 import { formatToolResult } from './tool-result.js'
+import { publishCliExitCode, publishRefusalMessage } from './publish-exit.js'
 import { resolveLocalExecuteBearer } from './local-execute-auth.js'
 import { assertNoUnknownCliOptions } from './unknown-cli-option.js'
 import {
@@ -53,6 +54,14 @@ export {
 	requireApiToken as resolveApiToken,
 	resolveScopedApiToken,
 } from './api-token.js'
+export {
+	isPublishCliSuccessStatus,
+	publishCliExitCode,
+	publishCliRefusalStatuses,
+	publishCliSuccessStatuses,
+	publishRefusalMessage,
+	readPublishStatus,
+} from './publish-exit.js'
 export { resolveLocalExecuteBearer } from './local-execute-auth.js'
 export {
 	authBootstrap,
@@ -1612,8 +1621,13 @@ async function dispatch(
 				'packagePublishExternalPush',
 				await resolvePackagePublishTarget(params, call),
 			)
+			// Always print the API body (agents/scripts inspect `status`).
 			write(`${JSON.stringify(result, null, 2)}\n`)
-			return 0
+			const code = publishCliExitCode(result)
+			if (code !== 0) {
+				writeErr(`${publishRefusalMessage(result)}\n`)
+			}
+			return code
 		}
 		case 'install': {
 			const { runInstall } = await import('./install.js')

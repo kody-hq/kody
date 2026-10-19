@@ -1183,45 +1183,50 @@ publish checks run.
    }
    ```
 
-   Call `packagePublishExternalPush`. Kody checks the pushed tree server-side
-   before recording the new published version, writing the published source
-   snapshot, rebuilding package bundle artifacts, and refreshing search
-   projections. If the package tip already matched HEAD before this request
-   began, the tool returns `already_published` (true no-op tip). That result
-   still runs the artifact rebuild and sets `artifacts_rebuilt` true when any
-   target needed rebuild or a forced snapshot repair ran. If `published_commit`
-   moved relative to that pre-request tip — including a durable re-entry after
-   an overlapping inline attempt advanced the tip — the status is `published`
-   with `previous_commit` set to the baseline tip, even when the repo session
-   already saw tip==HEAD. If the package is locked, it returns `locked` with a
-   `pending_commit` and `approval_url` after checks pass and leaves
-   `published_commit` unchanged. If it is internet-visible and its credential
-   needs changed, it returns `approval_required` the same way (see
+   Call `packagePublishExternalPush` (CLI: `kody package publish`). Kody checks
+   the pushed tree server-side before recording the new published version,
+   writing the published source snapshot, rebuilding package bundle artifacts,
+   and refreshing search projections. If the package tip already matched HEAD
+   before this request began, the tool returns `already_published` (true no-op
+   tip). That result still runs the artifact rebuild and sets
+   `artifacts_rebuilt` true when any target needed rebuild or a forced snapshot
+   repair ran. If `published_commit` moved relative to that pre-request tip —
+   including a durable re-entry after an overlapping inline attempt advanced the
+   tip — the status is `published` with `previous_commit` set to the baseline
+   tip, even when the repo session already saw tip==HEAD. If the package is
+   locked, it returns `locked` with a `pending_commit` and `approval_url` after
+   checks pass and leaves `published_commit` unchanged. If it is
+   internet-visible and its credential needs changed, it returns
+   `approval_required` the same way (see
    [Approval when credential needs change](#approval-when-credential-needs-change)).
    If checks fail before promotion, it returns `checks_failed` with the failed
-   check entries and leaves the underlying storage state unchanged. Full
-   check-time esbuild is deferred to the later published artifact rebuild
-   (callable and importable targets stay distinct). That rebuild copies
-   unchanged callable, importable, app, job, and subscription artifacts from the
-   previous published commit when the target's entry, reachable source, and
-   bundler root config (`package.json`, wrangler config, vendored
-   `node_modules`) match the new snapshot; a shared-module change dirties every
-   dependent target. Stale captured `kody:@` dependency commits also force a
-   rebuild, so republishing a stale dependent still refreshes inlined snapshots.
-   Missing prior artifacts or snapshots, first publish, force, and
-   `already_published` snapshot-mismatch repairs still rebuild. A published
-   commit always has a complete target set — reuse writes the prior modules
-   under the new commit key rather than leaving holes. A rebuild failure after
-   promotion also returns `checks_failed` with a bundle check — re-run the
-   publish capability to repair artifacts. Successful `published` responses, and
-   `already_published` responses when the metadata is available, include a
-   bounded `static_dependents` summary of direct saved packages whose published
-   bundle artifacts statically reference this package. Stale entries mean the
-   dependent bundle captured a dependency commit that differs from the current
-   published commit. Kody does not automatically republish those dependents;
-   inspect and republish only the ones whose static snapshot should reference
-   the current published commit. Those same success results include
-   `phase_timings` with optional millisecond fields `clone_ms`,
+   check entries and leaves the underlying storage state unchanged. The CLI
+   exits **0** for `published`, `already_published` (including
+   `artifacts_rebuilt: true`), and `dispatched`; it exits **1** for refusal
+   statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`)
+   and prints the API `message` (or a checks summary) to stderr — same
+   convention as npm. Auth and permission failures also exit 1. Full check-time
+   esbuild is deferred to the later published artifact rebuild (callable and
+   importable targets stay distinct). That rebuild copies unchanged callable,
+   importable, app, job, and subscription artifacts from the previous published
+   commit when the target's entry, reachable source, and bundler root config
+   (`package.json`, wrangler config, vendored `node_modules`) match the new
+   snapshot; a shared-module change dirties every dependent target. Stale
+   captured `kody:@` dependency commits also force a rebuild, so republishing a
+   stale dependent still refreshes inlined snapshots. Missing prior artifacts or
+   snapshots, first publish, force, and `already_published` snapshot-mismatch
+   repairs still rebuild. A published commit always has a complete target set —
+   reuse writes the prior modules under the new commit key rather than leaving
+   holes. A rebuild failure after promotion also returns `checks_failed` with a
+   bundle check — re-run the publish capability to repair artifacts. Successful
+   `published` responses, and `already_published` responses when the metadata is
+   available, include a bounded `static_dependents` summary of direct saved
+   packages whose published bundle artifacts statically reference this package.
+   Stale entries mean the dependent bundle captured a dependency commit that
+   differs from the current published commit. Kody does not automatically
+   republish those dependents; inspect and republish only the ones whose static
+   snapshot should reference the current published commit. Those same success
+   results include `phase_timings` with optional millisecond fields `clone_ms`,
    `checks_typecheck_ms`, `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and
    `total_ms`. Omitted keys did not run on that attempt. `checks_bundle_ms` is
    the publish bundle-check and is omitted when that esbuild pass is deferred to
