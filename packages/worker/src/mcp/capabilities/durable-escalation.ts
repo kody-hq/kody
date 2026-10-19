@@ -303,9 +303,11 @@ export async function runWithDurableEscalation<T>(input: {
 			// awaiting it (awaiting would reintroduce the opaque MCP timeout).
 			// Overlap is intentional and safe for publish: we do not cancel the
 			// in-flight attempt (partial apply is worse than duplication), the
-			// durable re-entry is idempotent on matching published_commit
-			// (already_published), and RepoSession DO RPCs serialize per session
-			// id so the common first-attempt session cannot interleave mutations.
+			// durable re-entry is idempotent on matching published_commit at the
+			// RepoSession layer, callers pass a pre-request tip baseline so a
+			// tip advance still reports published (not already_published), and
+			// RepoSession DO RPCs serialize per session id so the common
+			// first-attempt session cannot interleave mutations.
 		} finally {
 			clearTimeout(timer)
 		}
