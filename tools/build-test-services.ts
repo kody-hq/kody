@@ -41,21 +41,3 @@ export async function buildTestService(options: BuildTestServiceOptions) {
 		outfile,
 	})
 }
-
-export async function buildHighlightTestService() {
-	await buildTestService({
-		entry: 'tools/highlight-test-service.entry.ts',
-		outDir: '.tmp/highlight-test-service',
-	})
-}
-
-export async function buildJobsTestService() {
-	await buildTestService({
-		entry: 'tools/jobs-test-service.entry.ts',
-		outDir: '.tmp/jobs-test-service',
-		esbuild: {
-			external: ['cloudflare:workers'],
-			loader: { '.sql': 'text' },
-		},
-	})
-}

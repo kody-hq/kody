@@ -1,7 +1,4 @@
-import {
-	buildHighlightTestService,
-	buildJobsTestService,
-} from './build-test-services.ts'
+import { buildTestService } from './build-test-services.ts'
 import { ensureGuideCatalogModules } from './build-guide-catalog-modules.ts'
 import { ensureWorkerBundlerModules } from './build-worker-bundler-modules.ts'
 
@@ -15,7 +12,17 @@ export default async function setup() {
 	await Promise.all([
 		ensureWorkerBundlerModules(),
 		ensureGuideCatalogModules(),
-		buildJobsTestService(),
-		buildHighlightTestService(),
+		buildTestService({
+			entry: 'tools/jobs-test-service.entry.ts',
+			outDir: '.tmp/jobs-test-service',
+			esbuild: {
+				external: ['cloudflare:workers'],
+				loader: { '.sql': 'text' },
+			},
+		}),
+		buildTestService({
+			entry: 'tools/highlight-test-service.entry.ts',
+			outDir: '.tmp/highlight-test-service',
+		}),
 	])
 }
