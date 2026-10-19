@@ -92,6 +92,4 @@ the same tables verbatim; link to usage docs or rely on the tool output.
 - [Harness engineering](./harness-engineering.md) — promote repeated advice into
   lint, tests, or commands before adding a should-list
 - [Oxlint JS plugins](./oxlint-js-plugins.md) — where cheap syntactic rules live
-- [MCP server patterns](./mcp-server-patterns.md) — tool descriptions, schemas,
-  and server instructions
 - [Usage index](../use/index.md) — end-user table of contents

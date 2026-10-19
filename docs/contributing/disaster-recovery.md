@@ -142,13 +142,6 @@ account's Workers AI. The platform's own `AI_GATEWAY_ID` routes through the
 same-named gateway on the production (Kody) account via the Workers AI binding,
 which is account-scoped; the two gateways are independent.
 
-A 2026-07-29 cleanup ([#656](https://github.com/kentcdodds/kody/issues/656);
-[full audit and deletion record](https://github.com/kentcdodds/kody/issues/656#issuecomment-5122327193))
-removed the last orphaned platform leftovers on the KCD account (stale
-`kody-capabilities-prod` / `kody-capabilities-preview` Vectorize indexes; the
-old production workers, KV namespaces, preview D1, and the `heykody.dev` zone
-were already gone or moved).
-
 ### Bucket layout
 
 Contract: `packages/shared/src/backup-staging.ts`.

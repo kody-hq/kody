@@ -14,9 +14,9 @@ pages. New entries must also have a server and client route.
 | Scarf                  | All eleven exact paths are included. Existing tracker fires on page changes and return visits, strips queries/fragments, and skips non-production hosts, DNT, and GPC.    | Filter the pixel's `Page` field to these URLs to see identified company visits. Anonymous or unidentified visitors are not evidence of no company interest.                                      |
 | Google Search Console  | All eleven canonical URLs are in `/sitemap.xml`; HTML and negotiated Markdown are available. No new browser tag is needed.                                                | After deployment, inspect the URLs and compare queries, impressions, clicks, CTR, and position by page. Sitemap inclusion does not guarantee indexing.                                           |
 | Nozzle                 | Domain keyword tracking is independent of the page implementation. No browser tag is needed.                                                                              | Keep the existing US, English, desktop keyword set. Map ranking URLs to these pages; add missing target terms only within the existing collection budget.                                        |
-| Cloudflare             | Existing zone analytics and any enabled Web Analytics beacon cover the host. This PR adds no Worker request instrumentation.                                              | Use website page paths and Web Analytics for performance, separately from backend requests. Browser analytics cannot identify all agent or Markdown reads; those require request analytics/logs. |
+| Cloudflare             | Existing zone analytics and any enabled Web Analytics beacon cover the host. No Worker request instrumentation is added for these pages.                                  | Use website page paths and Web Analytics for performance, separately from backend requests. Browser analytics cannot identify all agent or Markdown reads; those require request analytics/logs. |
 | Semrush / Ahrefs / Moz | Research tools do not need page scripts.                                                                                                                                  | Use for opportunity and competitor research. Do not start duplicate paid rank-tracking campaigns.                                                                                                |
-| RB2B                   | Not installed by this PR.                                                                                                                                                 | Still deferred.                                                                                                                                                                                  |
+| RB2B                   | Not installed.                                                                                                                                                            | Still deferred.                                                                                                                                                                                  |
 
 CTA events only run on `https://kody.codes`, respect DNT/GPC, and send a fixed
 registry key rather than URLs, query values, email addresses, or page content.
@@ -49,22 +49,5 @@ Review weekly, using the same seven-day window. Start with impressions and
 indexing, then clicks, landing-page visits, CTA intent, and attributed signups.
 Record publication dates and substantial copy changes. Dashboard access and live
 ingestion must be verified after deployment; local tests establish code
-coverage, not production data delivery.
-
-## Setup verified for this rollout
-
-On October 10, 2026, the Kody domain property in Search Console had no submitted
-sitemap. Submitted `https://kody.codes/sitemap.xml`; Search Console confirmed
-submission success, but its status then showed “Couldn’t fetch.” The live URL
-returned HTTP 200 with XML. Google’s fetch and indexing remain unverified and
-need another check after deployment.
-
-Nozzle workspace Tanner, project `657984568612139`, keyword set
-`765259956446611` has 1,000 keywords, an active daily schedule, and desktop
-collection. The set is named US English desktop. Nozzle displayed a service-wide
-data-delay notice. No collection was triggered or tracking budget increased.
-
-Fathom dashboard access requested a fresh login during this audit. Production
-firewall settings and live event ingestion remain unverified. The new event
-names are defined in code, following
+coverage, not production data delivery. Event keys are defined in code; see
 [Fathom's event setup](https://usefathom.com/docs/events/overview).

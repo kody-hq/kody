@@ -210,28 +210,9 @@ both `--idle-ttl-seconds` and `--max-lifetime-seconds`.
 An operator can also take the JSON snapshot without Cloudflare credentials:
 `node tools/preview-rehearsal/run.ts json-snapshot --credentials creds/credentials.json --out snap.json`.
 
-## P8: sharing and platform conversion
-
-The Teams P8 data conversion is migration
-`packages/worker/migrations/0091-teams-sharing-platform-conversion.sql`. It
-already ran. It turned accepted package shares into `use` grants, pending shares
-into grant invites (fresh tokens, so old share invite links stopped working),
-scope grantees into Owners, and platform accounts into `pro` orgs with admin
-credits. Only `@kody` received the $1,000 site-admin credit.
-
-The seed writes that converted shape (a `use` grant, a grant invite, and an
-ordinary org with an Owner). The sealed backup and verify workflow
-(`🔁 Teams P8 Conversion Checks`) and the sharing conversion script are gone. A
-P9 contract rehearsal snapshots before and after the drop migrations
-(`0097`–`0101`) that remove `package_share_grants`, `package_scope_grants`,
-`username_redirects`, platform `users` rows, moved billing columns, and leftover
-pin/follow columns.
-
-## P3: org.migrated audit backfill
-
-`org.migrated` audit rows were not part of the expand migration (APP_DB and
-AUDIT_DB are separate databases). The operator backfill finished on production
-(2026-10-10) and the one-off tooling was removed. Deploy never ran it.
+The seed writes the post-Teams grant shape (a `use` grant, a grant invite, and
+an ordinary org with an Owner). Finished one-off conversion and audit-backfill
+tooling is gone; use this rehearsal path for future data migrations.
 
 ## What the preview cannot rehearse
 
