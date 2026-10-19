@@ -482,8 +482,10 @@ To mention the syntax in prose, write the inert form `{{secret:<name>}}`. Treat
 a resolvable `{{secret:name}}` as wiring, not as text you show to users or send
 onward. `kody dev check` and publish warn for clear cases only: a literal fetch
 init with a non-literal body when `x-kody-secret-resolution` is omitted or set
-to the literal `on`. Variable `init` values, non-literal `headers` values, and
-header spreads are skipped. Use `headers-only` or `off` to opt out. Details:
+to the literal `on`. Helpers that build headers in a variable and header spreads
+still warn (the scanner cannot see `headers-only` there). Variable whole-`init`
+values (`fetch(url, init)`) are skipped. Use `headers-only` or `off` to opt out.
+Each credential also has a fill placement that intersects with that header; see
 [Credentials](../guides/credentials.md#keys-and-placeholders).
 
 ## Named state

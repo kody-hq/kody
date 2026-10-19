@@ -7,6 +7,9 @@
  * Nothing here carries a credential value.
  */
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type CredentialFillPlacementView } from './credential-fill-placement.ts'
+
+export type { CredentialFillPlacementView } from './credential-fill-placement.ts'
 
 export const credentialKinds = [
 	'secret',
@@ -172,17 +175,6 @@ export type CredentialInjectView =
 	| { kind: 'header'; name: string; format: string }
 	| { kind: 'basic'; valueAs: 'username' | 'password'; other: string }
 	| { kind: 'query'; param: string }
-
-/**
- * Where placeholders may be filled. Null means anywhere. Distinct from
- * `inject` (scoped credential() client only).
- */
-type CredentialFillPlacementView = {
-	headers?: true | Array<string>
-	query?: true
-	path?: true
-	body?: true
-}
 
 export type CredentialListItemStatus =
 	| 'ok'

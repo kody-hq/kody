@@ -128,13 +128,37 @@ test('skips author-written bodies and explicit resolution modes', () => {
 			})
 		`),
 	).toEqual([])
+	expect(lines(`fetch(url, init)`)).toEqual([])
+	expect(lines(`fetch(url)`)).toEqual([])
+})
+
+test('warns when headers come from a variable, helper, or spread', () => {
+	expect(
+		lines(`
+			fetch(url, { headers, body: message })
+		`),
+	).toEqual([2])
+	expect(
+		lines(`
+			fetch(url, { headers: buildHeaders(), body: message })
+		`),
+	).toEqual([2])
 	expect(
 		lines(`
 			fetch(url, { headers: { ...headers }, body: message })
 		`),
-	).toEqual([])
-	expect(lines(`fetch(url, init)`)).toEqual([])
-	expect(lines(`fetch(url)`)).toEqual([])
+	).toEqual([2])
+	expect(
+		lines(`
+			fetch(url, {
+				headers: {
+					Authorization: 'Bearer {{secret:github}}',
+					...extra,
+				},
+				body: message,
+			})
+		`),
+	).toEqual([2])
 })
 
 test('ignores an async fetch method on a package app entry', () => {

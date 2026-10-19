@@ -9,7 +9,9 @@ import {
 	TimestampValue,
 } from './account-management-components.tsx'
 import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
+import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
+import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
 import {
 	type CredentialInjectView,
 	type CredentialListItem,
@@ -76,8 +78,8 @@ function injectLabel(inject: CredentialInjectView) {
 		}
 	}
 }
-/** How the value reaches a request, or why it never does. */
-function placementLabel(credential: CredentialListItem) {
+/** How a scoped credential() client places the value, or why it never does. */
+function injectSummary(credential: CredentialListItem) {
 	switch (credential.kind) {
 		case 'secret':
 		case 'oauth':
@@ -93,6 +95,23 @@ function placementLabel(credential: CredentialListItem) {
 			return 'Kody’s MCP connection'
 		default: {
 			const exhaustive: never = credential.kind
+			return exhaustive
+		}
+	}
+}
+
+function showsFillPlacement(kind: CredentialListItem['kind']) {
+	switch (kind) {
+		case 'secret':
+		case 'oauth':
+		case 'url':
+		case 'login':
+		case 'signing':
+			return true
+		case 'mcp':
+			return false
+		default: {
+			const exhaustive: never = kind
 			return exhaustive
 		}
 	}
@@ -285,18 +304,48 @@ export function renderCredentialDetail(input: {
 			)}
 
 			{renderField(
-				'Placement',
+				'Inject',
 				<div css={{ display: 'grid', gap: spacing.xs }}>
-					<code css={codeCss}>{placementLabel(credential)}</code>
-					{detail?.placeholder ? (
-						<p css={mutedCss}>
-							Code can also write{' '}
-							<code css={codeCss}>{detail.placeholder}</code> in a request to
-							one of its hosts; Kody fills it over HTTPS.
-						</p>
-					) : null}
+					<code css={codeCss}>{injectSummary(credential)}</code>
+					<p css={mutedCss}>
+						How a scoped <code css={codeCss}>credential()</code> client puts
+						this value on a request. Placeholders ignore inject.
+					</p>
 				</div>,
 			)}
+
+			{showsFillPlacement(credential.kind)
+				? renderField(
+						'Fill placement',
+						<div css={{ display: 'grid', gap: spacing.xs }}>
+							{credential.scope === 'org' ? (
+								<CredentialFillPlacementEditor
+									key={`${credential.id}:placement`}
+									credentialId={credential.id}
+									placement={credential.placement}
+									orgSlug={input.orgSlug}
+								/>
+							) : (
+								<>
+									<code css={codeCss}>
+										{formatFillPlacementSummary(credential.placement)}
+									</code>
+									<p css={mutedCss}>
+										Where placeholders may be filled. Edit this in the personal
+										org that owns the credential.
+									</p>
+								</>
+							)}
+							{detail?.placeholder ? (
+								<p css={mutedCss}>
+									Code can write <code css={codeCss}>{detail.placeholder}</code>{' '}
+									in a request to one of its hosts; Kody fills it over HTTPS
+									into the parts above.
+								</p>
+							) : null}
+						</div>,
+					)
+				: null}
 
 			{renderField(
 				'Packages',

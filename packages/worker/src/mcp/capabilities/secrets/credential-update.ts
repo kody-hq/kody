@@ -44,7 +44,7 @@ const inputSchema = z
 			.nullable()
 			.optional()
 			.describe(
-				'Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. The gateway does not enforce this yet.',
+				'Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. The gateway does not enforce this yet.',
 			),
 	})
 	.refine(

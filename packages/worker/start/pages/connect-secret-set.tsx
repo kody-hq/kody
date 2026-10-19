@@ -19,6 +19,8 @@ import { connectSecretSetQuery } from '../connect-secret-set-query.ts'
 import { usePageQuery } from '../page-query.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
+import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import {
@@ -76,6 +78,9 @@ export function ConnectSecretSetRoute({
 	} = usePageQuery(options)
 	const [value, setValue] = useState('')
 	const [showSecretValue, setShowSecretValue] = useState(false)
+	const [fillPlacementOverride, setFillPlacementOverride] = useState<
+		EditorState['fillPlacement'] | null
+	>(null)
 	const explicitPackageId = readExplicitPackageId(currentHref)
 	const draft = createEditorStateFromNewSecretQuery(
 		data.packageOptions,
@@ -91,11 +96,13 @@ export function ConnectSecretSetRoute({
 	const existing = findMatchingSecretForSetup(data.secrets, draft, {
 		explicitPackageId,
 	})
+	const hydrated = existing
+		? hydrateEditorStateForExistingSecret(draft, existing, currentHref)
+		: draft
 	const state = {
-		...(existing
-			? hydrateEditorStateForExistingSecret(draft, existing, currentHref)
-			: draft),
+		...hydrated,
 		value,
+		fillPlacement: fillPlacementOverride ?? hydrated.fillPlacement,
 	}
 	const mutation = useMutation({
 		mutationKey: ['secrets', actorKey],
@@ -115,6 +122,18 @@ export function ConnectSecretSetRoute({
 			const org = new URL(href, window.location.origin).searchParams
 				.get('org')
 				?.trim()
+			const placement = fillPlacementViewFromDraft(state.fillPlacement)
+			if (
+				placement === null &&
+				!(
+					state.fillPlacement.headers &&
+					state.fillPlacement.query &&
+					state.fillPlacement.path &&
+					state.fillPlacement.body
+				)
+			) {
+				throw new Error('Choose at least one fill-placement part.')
+			}
 			const payload = (await saveSecretRecord({
 				data: {
 					orgSlug: org || undefined,
@@ -128,6 +147,7 @@ export function ConnectSecretSetRoute({
 						value: state.value,
 						allowedHosts: policy.allowedHosts,
 						allowedPackages: policy.allowedPackages,
+						placement,
 						provider:
 							new URL(href, 'https://kody.local').searchParams
 								.get('provider')
@@ -335,6 +355,12 @@ export function ConnectSecretSetRoute({
 								</div>
 							) : null}
 						</div>
+
+						<CredentialFillPlacementFields
+							draft={state.fillPlacement}
+							onChange={setFillPlacementOverride}
+							disabled={saving || saved}
+						/>
 
 						<div css={fieldCss}>
 							<label htmlFor="connect-secret-set-value" css={fieldLabelCss}>

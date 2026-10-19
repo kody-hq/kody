@@ -276,6 +276,7 @@ test('getPackageCapability includes package-scoped secret metadata as FYI', asyn
 						updatedAt: '2026-04-26T00:00:00.000Z',
 						expiresAt: null,
 						ttlMs: null,
+						placement: null,
 					},
 				],
 			],

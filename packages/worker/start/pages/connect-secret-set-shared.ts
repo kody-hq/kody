@@ -1,5 +1,6 @@
 import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { fillPlacementDraftFromView } from '#universal/credential-fill-placement.ts'
 import { type EditorState } from './account-secrets-shared.ts'
 import { normalizeAllowedHosts } from '#client/routes/secret-normalization.ts'
 export function readConnectSecretSetView(input: {
@@ -76,6 +77,7 @@ export function hydrateEditorStateForExistingSecret(
 		allowedPackages: queryHasPackages
 			? state.allowedPackages
 			: existing.allowedPackages,
+		fillPlacement: fillPlacementDraftFromView(existing.placement),
 	}
 }
 export function readExplicitPackageId(href: string) {

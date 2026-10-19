@@ -49,7 +49,10 @@ import {
 	readStoredCredentialPlacement,
 	updateCredentialFields,
 } from '#worker/credentials/credential-fields.ts'
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import {
+	credentialFillPlacementSchema,
+	type CredentialFillPlacement,
+} from '#worker/credentials/fill-placement.ts'
 import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
@@ -1280,6 +1283,28 @@ export async function saveAccountSecret(input: {
 	if (!optIn.ok) {
 		return operationResult({ ok: false, error: optIn.error }, 400)
 	}
+	let requestedPlacement: CredentialFillPlacement | null | undefined
+	if (input.fields.placement !== undefined) {
+		if (input.fields.placement === null) {
+			requestedPlacement = null
+		} else {
+			const parsedPlacement = credentialFillPlacementSchema.safeParse(
+				input.fields.placement,
+			)
+			if (!parsedPlacement.success) {
+				return operationResult(
+					{
+						ok: false,
+						error:
+							parsedPlacement.error.issues[0]?.message ??
+							'Placement must allow at least one request part.',
+					},
+					400,
+				)
+			}
+			requestedPlacement = parsedPlacement.data
+		}
+	}
 	const touchesKind =
 		optIn.kind !== undefined ||
 		optIn.hosts !== undefined ||
@@ -1432,6 +1457,9 @@ export async function saveAccountSecret(input: {
 					kind: optIn.kind,
 					hosts: optIn.hosts,
 					login_exchange: optIn.loginExchange,
+					...(requestedPlacement !== undefined
+						? { placement: requestedPlacement }
+						: {}),
 					...(provider?.success
 						? { provider: provider.data }
 						: clearProvider
@@ -1534,9 +1562,11 @@ export async function saveAccountSecret(input: {
 
 	// Scope/package moves insert under a new bucket. Preserve the source
 	// placement (including null = anywhere) so headers-only default does not
-	// narrow an existing credential.
+	// narrow an existing credential. An explicit form placement wins.
 	let placementOnInsert: CredentialFillPlacement | null | undefined
-	if (currentSecret && !samePlacement && credential == null) {
+	if (requestedPlacement !== undefined && credential == null) {
+		placementOnInsert = requestedPlacement
+	} else if (currentSecret && !samePlacement && credential == null) {
 		const source = await findSecret({
 			env: input.env,
 			userId: ownerIdFromCaller({
@@ -1573,6 +1603,36 @@ export async function saveAccountSecret(input: {
 			...(credential ? { credential } : {}),
 			...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
 		})
+		if (
+			requestedPlacement !== undefined &&
+			credential == null &&
+			currentSecret &&
+			samePlacement
+		) {
+			const found = await findSecret({
+				env: input.env,
+				userId: ownerIdFromCaller({
+					request: input.user.request,
+					user: input.user.mcpUser,
+				}),
+				name,
+				scope,
+				storageContext: getSecretContextForAccountSecret({
+					scope,
+					packageId,
+				}),
+				includeExpired: true,
+			})
+			if (found.found && found.credentialId) {
+				await updateCredentialFields({
+					db: input.env.APP_DB,
+					orgId,
+					credentialId: found.credentialId,
+					update: { placement: requestedPlacement },
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
+				})
+			}
+		}
 		if (setsKeyHosts) {
 			await setSecretAllowedHosts({
 				env: input.env,
@@ -1714,6 +1774,7 @@ export async function saveAccountSecret(input: {
 		updatedAt: saved.updatedAt,
 		expiresAt: saved.expiresAt,
 		ttlMs: saved.ttlMs,
+		placement: saved.placement,
 		value,
 	}
 	return operationResult({

@@ -15,6 +15,7 @@ import {
 	rejectSecretAccess,
 } from '#start/server/account-mutations'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { type CSSObject } from '@emotion/react'
@@ -379,6 +380,20 @@ export function AccountSecretsPage({
 							left.localeCompare(right),
 						)
 					: []
+			const placement = fillPlacementViewFromDraft(
+				submittedEditorState.fillPlacement,
+			)
+			if (
+				placement === null &&
+				!(
+					submittedEditorState.fillPlacement.headers &&
+					submittedEditorState.fillPlacement.query &&
+					submittedEditorState.fillPlacement.path &&
+					submittedEditorState.fillPlacement.body
+				)
+			) {
+				throw new Error('Choose at least one fill-placement part.')
+			}
 			const payload = await save.mutateAsync({
 				orgSlug: orgSlug ?? undefined,
 				fields: {
@@ -394,6 +409,7 @@ export function AccountSecretsPage({
 					value: submittedEditorState.value,
 					allowedHosts,
 					allowedPackages,
+					placement,
 				},
 			})
 			if (!isCurrent()) return

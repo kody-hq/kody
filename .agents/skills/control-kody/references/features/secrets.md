@@ -19,3 +19,7 @@ not raw D1.
   `/connect/credential`
 - Legacy `/account/secrets` redirects or 404s depending on route — prefer org
   URLs
+- Credential detail shows **Fill placement** (and **Inject** separately). Edit
+  fill placement when the credential is org-owned. `/connect/secret-set` and the
+  secrets editor expose the same parts checkboxes (new secrets default
+  headers-only).

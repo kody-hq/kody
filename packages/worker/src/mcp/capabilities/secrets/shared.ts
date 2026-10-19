@@ -28,9 +28,8 @@ export const secretMetadataSchema = z.object({
 	inject: credentialInjectSchema.optional(),
 	placement: credentialFillPlacementSchema
 		.nullable()
-		.optional()
 		.describe(
-			'Where placeholders may be filled. Null means anywhere. Returned when this call set opt-in fields.',
+			'Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. The gateway does not enforce this yet.',
 		),
 })
 
@@ -46,6 +45,7 @@ export function toSecretCapabilityOutput(secret: SecretMetadata) {
 		updated_at: secret.updatedAt,
 		expires_at: secret.expiresAt,
 		ttl_ms: secret.ttlMs,
+		placement: secret.placement,
 	}
 }
 

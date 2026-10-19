@@ -15,6 +15,8 @@ import {
 	inputCss,
 	textareaCss,
 } from '#universal/styles/style-primitives.ts'
+import { type FillPlacementDraft } from '#universal/credential-fill-placement.ts'
+import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
 
 type SecretEditorFieldsProps = {
 	autoFocusKey?: string
@@ -30,6 +32,8 @@ type SecretEditorFieldsProps = {
 	onUpdateAllowedHost: (index: number, value: string) => void
 	onAddAllowedHost: () => void
 	onRemoveAllowedHost: (index: number) => void
+	fillPlacement: FillPlacementDraft
+	onFillPlacementChange: (value: FillPlacementDraft) => void
 	valuePlaceholder?: string
 	allowedHostsListName?: string
 }
@@ -65,6 +69,11 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 					css={textareaCss}
 				/>
 			</label>
+
+			<CredentialFillPlacementFields
+				draft={props.fillPlacement}
+				onChange={props.onFillPlacementChange}
+			/>
 
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Expires</span>

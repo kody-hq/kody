@@ -285,6 +285,7 @@ function secret(name: string) {
 		updatedAt: '2026-10-01T00:00:00.000Z',
 		expiresAt: null,
 		ttlMs: null,
+		placement: null,
 	}
 }
 

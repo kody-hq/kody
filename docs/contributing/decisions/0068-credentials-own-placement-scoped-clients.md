@@ -818,10 +818,12 @@ switch" rule for Key placeholders (lines 115–117 and 408–410 above, and the
 - **Rollout.** (1) Schema + read/write + audit of placement changes, no gateway
   behavior change. (2) Observe mode logs "would block" (placeholders and scoped
   `credential()` inject targets) and new credentials default to headers-only.
-  (3) Surfaces (UI, MCP, CLI, docs). (4) Migrate existing credentials from
-  observed package usage and audit logs. (5) Enforcement with a clear refusal
-  that names the credential, the refused part, and the allowed parts.
-  Enforcement ships last.
+  (3) Surfaces (UI, MCP, CLI, docs) — credential detail fill-placement editor,
+  secret create/edit, `secretSet` / `credentialUpdate` / `secretList` placement,
+  guides, and the publish/`kody dev check` warning for variable header helpers.
+  (4) Migrate existing credentials from observed package usage and audit logs.
+  (5) Enforcement with a clear refusal that names the credential, the refused
+  part, and the allowed parts. Enforcement ships last.
 - **Unchanged.** Host allowlists, HTTPS-only fill, scoped-client `inject` shapes
   (header / basic / query), package need declarations, and the rest of this
   record.

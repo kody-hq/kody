@@ -144,6 +144,7 @@ const mockModule = vi.hoisted(() => {
 			updatedAt: '1970-01-01T00:00:00.002Z',
 			expiresAt: null,
 			ttlMs: null,
+			placement: null,
 		})),
 		setSecretAllowedHosts: vi.fn<typeof secretsService.setSecretAllowedHosts>(
 			async (input) => ({
@@ -156,6 +157,7 @@ const mockModule = vi.hoisted(() => {
 				...stamps,
 				expiresAt: null,
 				ttlMs: null,
+				placement: null,
 			}),
 		),
 		deleteIntegration: vi.fn<typeof IntegrationsService.deleteIntegration>(
@@ -592,6 +594,7 @@ test('integrations API rotates OAuth app credentials with auth scoping and valid
 			updatedAt: '1970-01-01T00:00:00.001Z',
 			expiresAt: null,
 			ttlMs: null,
+			placement: null,
 		},
 	] as never)
 	const mergeResponse = await rotate({ clientSecret: 'rotated-secret-value' })

@@ -9,6 +9,7 @@ import {
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	type CredentialFillPlacement,
+	defaultNewCredentialFillPlacement,
 	readCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
@@ -328,6 +329,14 @@ export async function saveSecret(
 			input.env,
 		)
 	}
+	const placementAfter =
+		existingEntry != null
+			? readCredentialFillPlacement(existingEntry.placement_json)
+			: 'placementOnInsert' in input
+				? (input.placementOnInsert ?? null)
+				: input.credential
+					? readCredentialFillPlacement(input.credential.placementJson)
+					: defaultNewCredentialFillPlacement
 	return toSecretMetadata({
 		name,
 		scope: input.scope,
@@ -340,6 +349,7 @@ export async function saveSecret(
 		createdAt: existingEntry?.created_at ?? now,
 		updatedAt: now,
 		expiresAt: earliestSecretExpiresAt(entryExpiresAt, bucket.expires_at),
+		placement: placementAfter,
 	})
 }
 
@@ -823,6 +833,7 @@ export async function listSecrets(
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
+				placement: readCredentialFillPlacement(row.placement_json),
 			}),
 		}))
 	return listed
@@ -1099,6 +1110,7 @@ export async function renameSecret(input: {
 				existing.expires_at,
 				bucket.expires_at,
 			),
+			placement: readCredentialFillPlacement(existing.placement_json),
 		})
 	}
 	const taken = await getSecretEntry({
@@ -1138,6 +1150,7 @@ export async function renameSecret(input: {
 		createdAt: updated.created_at,
 		updatedAt: updated.updated_at,
 		expiresAt: earliestSecretExpiresAt(updated.expires_at, bucket.expires_at),
+		placement: readCredentialFillPlacement(updated.placement_json),
 	})
 }
 
@@ -1172,6 +1185,7 @@ export async function readSecretMetadata(
 		createdAt: entry.created_at,
 		updatedAt: entry.updated_at,
 		expiresAt: earliestSecretExpiresAt(entry.expires_at, bucket.expires_at),
+		placement: readCredentialFillPlacement(entry.placement_json),
 	})
 }
 
@@ -1282,6 +1296,7 @@ export async function updateSecret(
 		createdAt: existingEntry.created_at,
 		updatedAt: now,
 		expiresAt: earliestSecretExpiresAt(entryExpiresAt, bucket.expires_at),
+		placement: readCredentialFillPlacement(existingEntry.placement_json),
 	})
 }
 
@@ -1331,6 +1346,7 @@ export async function listPackageSecretsByPackageIds(input: {
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
+				placement: readCredentialFillPlacement(row.placement_json),
 			}),
 		)
 		grouped.set(packageId, current)
@@ -1469,6 +1485,7 @@ function toSecretMetadata(input: {
 	createdAt: string
 	updatedAt: string
 	expiresAt: string | null
+	placement?: CredentialFillPlacement | null
 }): SecretMetadata {
 	return {
 		name: input.name,
@@ -1481,6 +1498,7 @@ function toSecretMetadata(input: {
 		updatedAt: input.updatedAt,
 		expiresAt: input.expiresAt,
 		ttlMs: secretTtlMs(input.expiresAt),
+		placement: input.placement === undefined ? null : input.placement,
 	}
 }
 

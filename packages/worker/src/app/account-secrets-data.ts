@@ -6,6 +6,7 @@ import {
 	parseAccountSecretPath,
 } from '@kody-internal/shared/account-secret-route.ts'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { type StorageContext } from '#mcp/storage.ts'
 import {
@@ -51,6 +52,8 @@ type AccountSecretListItem = {
 	updatedAt: string
 	expiresAt: string | null
 	ttlMs: number | null
+	/** Null means anywhere. */
+	placement: CredentialFillPlacementView | null
 }
 
 type AccountSecretDetail = AccountSecretListItem & {
@@ -548,6 +551,7 @@ function toAccountSecretListItem(
 		updatedAt: string
 		expiresAt: string | null
 		ttlMs: number | null
+		placement?: AccountSecretListItem['placement']
 	},
 	packageTitles: Map<string, string>,
 ) {
@@ -575,6 +579,7 @@ function toAccountSecretListItem(
 		updatedAt: secret.updatedAt,
 		expiresAt: secret.expiresAt,
 		ttlMs: secret.ttlMs,
+		placement: secret.placement ?? null,
 	} satisfies AccountSecretListItem
 }
 

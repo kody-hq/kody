@@ -14,6 +14,11 @@ import {
 	normalizeAllowedHosts,
 	normalizeAllowedPackages,
 } from '#client/routes/secret-normalization.ts'
+import {
+	defaultFillPlacementDraft,
+	type FillPlacementDraft,
+	fillPlacementDraftFromView,
+} from '#universal/credential-fill-placement.ts'
 
 export type SecretScope = AccountSecretListItem['scope']
 
@@ -29,6 +34,7 @@ export type EditorState = {
 	value: string
 	allowedHosts: Array<string>
 	allowedPackages: Array<string>
+	fillPlacement: FillPlacementDraft
 }
 
 export type SecretFilterScope = 'all' | 'user' | 'package'
@@ -78,6 +84,7 @@ export function createEmptyEditorState(
 		value: '',
 		allowedHosts: [''],
 		allowedPackages: [],
+		fillPlacement: defaultFillPlacementDraft(),
 	}
 }
 
@@ -167,6 +174,7 @@ export function createEditorStateFromSecret(
 		value: secret.value,
 		allowedHosts: allowedHosts.length > 0 ? allowedHosts : [''],
 		allowedPackages,
+		fillPlacement: fillPlacementDraftFromView(secret.placement),
 	}
 }
 

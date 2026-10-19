@@ -213,6 +213,13 @@ export function SecretEditor(props: SecretEditorProps) {
 				onUpdateAllowedHost={updateAllowedHost}
 				onAddAllowedHost={addAllowedHost}
 				onRemoveAllowedHost={removeAllowedHost}
+				fillPlacement={editorState.fillPlacement}
+				onFillPlacementChange={(fillPlacement) => {
+					setEditorState({
+						...editorState,
+						fillPlacement,
+					})
+				}}
 				allowedHostsListName="allowed-hosts"
 			/>
 

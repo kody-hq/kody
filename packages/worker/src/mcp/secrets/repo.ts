@@ -39,6 +39,8 @@ type SecretMetadataRow = {
 	created_at: string
 	updated_at: string
 	expires_at: string | null
+	/** Null means anywhere. */
+	placement_json: string | null
 }
 
 type SecretEntryLookup = SecretEntryRow & {
@@ -743,7 +745,7 @@ export async function listSecretMetadataForBucket(input: {
 }): Promise<Array<SecretMetadataRow>> {
 	const { results } = await input.db
 		.prepare(
-			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at
+			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at, placement_json
 			FROM secret_entries
 			WHERE bucket_id = ?${andLiveDeletedAtSql()}
 			ORDER BY name ASC`,
@@ -766,7 +768,7 @@ export async function listUserScopeSecretMetadata(input: {
 	const now = input.now ?? new Date().toISOString()
 	const { results } = await input.db
 		.prepare(
-			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at
+			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json
 			FROM secret_buckets b
 			JOIN secret_entries e ON e.bucket_id = b.id
 			WHERE b.user_id = ? AND b.scope = 'user'
@@ -840,7 +842,7 @@ export async function listPackageScopeSecretMetadata(input: {
 		const placeholders = idChunk.map(() => '?').join(', ')
 		const { results } = await input.db
 			.prepare(
-				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at
+				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json
 				FROM secret_buckets b
 				JOIN secret_entries e ON e.bucket_id = b.id
 				WHERE b.user_id = ? AND b.scope = 'package'
@@ -904,5 +906,7 @@ function mapSecretMetadataRow(row: Record<string, unknown>): SecretMetadataRow {
 		created_at: String(row['created_at']),
 		updated_at: String(row['updated_at']),
 		expires_at: earliestSecretExpiresAt(entryExpiresAt, bucketExpiresAt),
+		placement_json:
+			row['placement_json'] == null ? null : String(row['placement_json']),
 	}
 }

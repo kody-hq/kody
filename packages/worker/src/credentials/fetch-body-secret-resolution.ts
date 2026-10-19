@@ -5,10 +5,11 @@
  * identical. Publish and `kody dev check` both call this; neither fails.
  *
  * Clear cases only. A call is skipped when the init value is not an object
- * literal, when `headers` is not an object literal (or contains a spread), or
- * when that headers object sets `x-kody-secret-resolution` to anything other
- * than the literal `on`. A body that is a literal, or `JSON.stringify` /
- * `new URLSearchParams` of literal data, is author-written and is not warned.
+ * literal, or when a literal headers object sets `x-kody-secret-resolution` to
+ * anything other than the literal `on`. A body that is a literal, or
+ * `JSON.stringify` / `new URLSearchParams` of literal data, is author-written
+ * and is not warned. Helpers that build headers in a variable, and header
+ * spreads, still warn: the scanner cannot see `headers-only` on those bags.
  */
 
 export const fetchBodySecretResolutionWarningLead =
@@ -145,20 +146,22 @@ function callSendsUnresolvedDynamicBody(args: Array<string>): boolean {
 	if (isStaticExpression(body.value)) return false
 	const headers = lastProperty(properties, 'headers')
 	if (headers == null) return true
-	if (headers.spread || headers.method) return false
+	if (headers.spread || headers.method) return true
 	return headersLeaveBodyResolutionOn(headers.value)
 }
 
 /**
  * True when this headers value still fills the body. A non-literal headers
- * value, or a spread, is not a clear case (returns false — no warning).
+ * value (variable / helper) or a spread warns: we cannot prove headers-only.
+ * A literal bag that sets the resolution mode to something other than `on`
+ * opts out.
  */
 function headersLeaveBodyResolutionOn(headersValue: string): boolean {
 	const text = headersValue.trim()
-	if (!text.startsWith('{')) return false
+	if (!text.startsWith('{')) return true
 	const properties = readObjectProperties(text)
-	if (properties == null) return false
-	if (properties.some((property) => property.spread)) return false
+	if (properties == null) return true
+	if (properties.some((property) => property.spread)) return true
 	const resolution = lastProperty(properties, secretResolutionHeaderName, {
 		caseInsensitive: true,
 	})

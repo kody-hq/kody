@@ -69,7 +69,7 @@ export const optInCredentialInputFields = {
 		.nullable()
 		.optional()
 		.describe(
-			'Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential — headers (optionally named), query, path, and/or body. Null means anywhere. Distinct from inject, which only steers the scoped credential() client. The gateway does not enforce this yet.',
+			'Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential — headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only when omitted. Distinct from inject, which only steers the scoped credential() client. The gateway does not enforce this yet.',
 		),
 }
 

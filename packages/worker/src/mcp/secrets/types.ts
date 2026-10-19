@@ -1,4 +1,5 @@
 import { type StorageContext } from '#mcp/storage.ts'
+import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 
 export const secretScopeValues = ['session', 'package', 'user'] as const
 
@@ -52,6 +53,8 @@ export type SecretMetadata = {
 	updatedAt: string
 	expiresAt: string | null
 	ttlMs: number | null
+	/** Null means anywhere. */
+	placement: CredentialFillPlacement | null
 }
 
 /** Listed secrets carry the credential id that grants are keyed by. */

@@ -61,6 +61,7 @@ test('findMatchingSecretForSetup resolves rotation targets by name and scope', (
 			updatedAt: '2026-01-01T00:00:00.000Z',
 			expiresAt: null,
 			ttlMs: null,
+			placement: null,
 		},
 		{
 			id: 'package:pkg_2:token',
@@ -75,6 +76,7 @@ test('findMatchingSecretForSetup resolves rotation targets by name and scope', (
 			updatedAt: '2026-01-01T00:00:00.000Z',
 			expiresAt: null,
 			ttlMs: null,
+			placement: null,
 		},
 	]
 
@@ -132,6 +134,7 @@ test('hydrateEditorStateForExistingSecret preserves policy unless the query sets
 		updatedAt: '2026-01-01T00:00:00.000Z',
 		expiresAt: '2026-12-01T00:00:00.000Z',
 		ttlMs: null,
+		placement: null,
 	}
 	const base = {
 		...createEmptyEditorState([]),

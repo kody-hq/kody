@@ -400,7 +400,13 @@ When a package will use user-scoped secrets (`{{secret:name}}` placeholders or
 `kody.secretMounts`):
 
 1. Ensure each secret exists (open `search({ entity: "guide:connect_secret" })`
-   / `search({ entity: "guide:secret_backed_integration" })`).
+   / `search({ entity: "guide:secret_backed_integration" })`). New secrets
+   default to **headers-only** fill placement; set `placement` on `secretSet`
+   (or edit fill placement on the credential) when the package fills query,
+   path, or body. Prefer `x-kody-secret-resolution: headers-only` on fetches
+   whose body forwards untrusted text — that header intersects placement and
+   never widens it. `kody dev check` / publish warn when a fetch body is dynamic
+   and headers come from a variable or spread without that mode.
 2. Self-authored packages and community forks the owner adopted on the website
    after a real source review get automatic read/use access to user secrets
    (host approval still applies; `secretSet` / `secretDelete` still need an
@@ -419,6 +425,9 @@ When a package will use user-scoped secrets (`{{secret:name}}` placeholders or
    they statically import the export; the stamp uses the owning package's grants
    and `kody.secretMounts` without adding the dependent to `allowed_packages`.
 5. Only then treat the package as ready to run.
+
+Fill placement details: [Credentials](./credentials.md#keys-and-placeholders)
+and [Secrets](./secrets.md).
 
 Host approval (from an earlier ad hoc `execute` smoke test) is separate from
 package approval. Unadopted community-forked packages may need both;

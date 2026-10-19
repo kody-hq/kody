@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
 
 const text = z.string().nullish()
 export const saveSecretSchema = z.object({
@@ -15,6 +16,8 @@ export const saveSecretSchema = z.object({
 	kind: text,
 	hosts: z.array(z.string()).optional(),
 	loginExchange: z.unknown().optional(),
+	/** Null means anywhere. Omitted keeps existing / create default. */
+	placement: credentialFillPlacementViewSchema.nullable().optional(),
 })
 export const deleteSecretSchema = z.object({ currentId: z.string() })
 const oauthFields = {

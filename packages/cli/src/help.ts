@@ -185,6 +185,10 @@ ${orgBlock}
              JSON (same shape as the MCP \`api\` tool). Uses scoped API
              auth only (\`--token\` / ${apiTokenEnvVar} / stored bootstrap).
              Prints JSON. Example: \`kody api usageGet --params '{}'\`.
+             Credential fill placement via \`secretSet\` /
+             \`credentialUpdate\` params, e.g. \`placement:{"headers":true}\`
+             (new secrets default headers-only when omitted; null = anywhere).
+             Gateway enforcement of placement is not on yet.
              Unknown operationIds error clearly; see
              ${defaultApiUrl}/openapi.json. tokenCreate / tokenRotate
              responses include a one-time token value — prefer env storage

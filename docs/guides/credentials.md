@@ -115,10 +115,19 @@ await fetch('https://api.github.com/repos/acme/widgets/issues', {
 header before the request leaves. `kody dev check` and a successful publish
 print a warning for a clear case: a fetch (or `new Request`) whose init object
 is a literal, whose body is not a literal (or `JSON.stringify` /
-`new URLSearchParams` of literals), and whose headers object does not set
-`x-kody-secret-resolution` to `headers-only` or `off`. Variable `init` values,
-header spreads, and non-literal header bags are skipped. The warning does not
-fail the check or block publish.
+`new URLSearchParams` of literals), and whose headers do not set
+`x-kody-secret-resolution` to `headers-only` or `off`. That includes helpers
+that build headers in a variable and header spreads — the scanner cannot see
+`headers-only` on those bags. Variable whole-`init` values (`fetch(url, init)`)
+are still skipped. The warning does not fail the check or block publish.
+
+Each credential also stores an allowed **fill placement** (headers, optionally
+named; query; path; and/or body). Null means anywhere. New credentials default
+to headers-only. The per-request header **intersects** with that placement (it
+never widens it). Distinct from **inject**, which only steers a scoped
+`credential()` client. Edit fill placement on the credential detail page, via
+`secretSet` / `credentialUpdate`, or the account secret editor. The gateway logs
+would-block today and does not refuse yet; enforcement ships later.
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):

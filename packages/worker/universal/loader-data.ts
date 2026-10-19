@@ -21,6 +21,7 @@ import {
 } from '#universal/community-categories.ts'
 import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
@@ -2331,6 +2332,8 @@ export type AccountSecretListItem = {
 	updatedAt: string
 	expiresAt: string | null
 	ttlMs: number | null
+	/** Null means anywhere. */
+	placement: CredentialFillPlacementView | null
 }
 
 export type AccountSecretDetail = AccountSecretListItem & {
