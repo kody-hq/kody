@@ -111,16 +111,17 @@ On each `npm run dev` start:
   `packages/worker/wrangler-local-dev.generated.json` and injects
   `WRANGLER_IS_LOCAL_DEV`, mock `CLOUDFLARE_API_*`, and `APP_BASE_URL` into
   `vars`. Worker secrets stay in `packages/worker/.env` / `.dev.vars`.
-- `tools/local-runtime-dev-config.ts` and `tools/local-platform-dev-config.ts`
-  write a gitignored `wrangler-local-dev.generated.json` next to each committed
-  config. Those files pin secondary registered names to `kody-runtime` and
-  `kody-platform`, drop each secondary `ai` binding, rewrite Durable Object
-  migrations for local replay (`tools/local-dev-migrations.ts`: transfers become
+- `tools/local-sibling-dev-config.ts` writes a gitignored
+  `wrangler-local-dev.generated.json` next to each committed platform/runtime
+  config. It pins secondary registered names to `kody-runtime` and
+  `kody-platform`, drops always-remote secondary bindings (`ai`, and for
+  platform also `artifacts`), rewrites Durable Object migrations for local
+  replay (`tools/local-dev-migrations.ts`: transfers become
   `new_sqlite_classes`, create-then-delete pairs such as
-  `PackageServiceInstance` are elided), and inject `APP_BASE_URL`,
+  `PackageServiceInstance` are elided), and injects `APP_BASE_URL`,
   `COOKIE_SECRET`, `SECRET_STORE_KEY`, and `WRANGLER_IS_LOCAL_DEV` from the
-  process env. Runtime still rewrites remaining `script_name: "kody"` refs to
-  the primary's dev name (`kody-<env>`).
+  process env. It also rewrites remaining `script_name: "kody"` refs to the
+  primary's dev name (`kody-<env>`).
 - Jobs and highlight get the same name pin via
   `tools/local-auxiliary-dev-config.ts` (`kody-jobs` / `kody-highlight`, not
   `kody-jobs-production`) so origin `JOBS` / `HIGHLIGHT` bindings resolve.
