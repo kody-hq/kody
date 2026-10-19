@@ -1,12 +1,9 @@
 # Cleanup after migrations
 
 Agents clean up leftover cruft from the change they are making. Untracked
-leftovers linger; tracked leftovers get finished.
-
-This page is the policy. Load the skill at
-[`.agents/skills/cleanup-after-migrations/SKILL.md`](../../.agents/skills/cleanup-after-migrations/SKILL.md)
-when the work introduces a transitional leftover, a deprecated path, a soak, or
-a follow-up migration.
+leftovers linger; tracked leftovers get finished. This page is the policy when
+work introduces a transitional leftover, a deprecated path, a soak, or a
+follow-up migration.
 
 ## Decision
 

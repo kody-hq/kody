@@ -95,3 +95,75 @@ Prerequisites, install, and `npm run dev` notes. See the
   tab sees the edit on the next reload instead of a stored page.
 - Set `CLOUDFLARE_ENV` to switch Wrangler environments (defaults to
   `production`). Playwright sets this to `test`.
+
+## Multi-worker local pitfalls
+
+Origin Vite serve never passes the committed platform or runtime Wrangler
+configs to `wrangler dev` directly. Wrangler applies `--local`, `--var`, and
+`.env`-derived secrets only to the **primary** config, registers each worker
+under `<name>-<env>`, and treats a secondary config's `ai` binding as
+always-remote (dev fails with "Failed to start the remote proxy session";
+`"remote": false` is not enough).
+
+On each `npm run dev` start:
+
+- `tools/local-origin-dev-config.ts` writes
+  `packages/worker/wrangler-local-dev.generated.json` and injects
+  `WRANGLER_IS_LOCAL_DEV`, mock `CLOUDFLARE_API_*`, and `APP_BASE_URL` into
+  `vars`. Worker secrets stay in `packages/worker/.env` / `.dev.vars`.
+- `tools/local-runtime-dev-config.ts` and `tools/local-platform-dev-config.ts`
+  write a gitignored `wrangler-local-dev.generated.json` next to each committed
+  config. Those files pin secondary registered names to `kody-runtime` and
+  `kody-platform`, drop each secondary `ai` binding, rewrite Durable Object
+  migrations for local replay (`tools/local-dev-migrations.ts`: transfers become
+  `new_sqlite_classes`, create-then-delete pairs such as
+  `PackageServiceInstance` are elided), and inject `APP_BASE_URL`,
+  `COOKIE_SECRET`, `SECRET_STORE_KEY`, and `WRANGLER_IS_LOCAL_DEV` from the
+  process env. Runtime still rewrites remaining `script_name: "kody"` refs to
+  the primary's dev name (`kody-<env>`).
+- Jobs and highlight get the same name pin via
+  `tools/local-auxiliary-dev-config.ts` (`kody-jobs` / `kody-highlight`, not
+  `kody-jobs-production`) so origin `JOBS` / `HIGHLIGHT` bindings resolve.
+
+If runtime-owned paths 503 with `Worker "kody-runtime" not found`, admin usage
+500s with `Worker "kody-jobs" not found`, or a secondary worker 500s on missing
+vars, inspect those generated files first.
+
+Sibling health paths are not on the origin port: platform serves
+`GET /__platform/health`, runtime serves `GET /__runtime/health`, and jobs
+serves `GET /health` on their own workers.
+
+### Migration dry-run and PackageServiceInstance
+
+If `npm run dev` or `npm run runtime:build` / startup-bundle dry-run fails with
+`Cannot apply deleted_classes migration to non-existent class PackageServiceInstance`,
+the config still has the production transfer+delete chain. Wrangler 4.131+
+applies that local sqlite-class map on `deploy --dry-run` as well as `dev`.
+`wrangler-env.ts` and `tools/check-worker-startup-bundles.ts` write
+`wrangler-dry-run.generated.json` with `localizeMigrations` for those bundle
+checks. `wrangler check startup` ignores `--config` and loads cwd
+`wrangler.jsonc`, so `check-worker-startup-time.ts` snapshots a localized config
+into a temp directory. Confirm `localizeMigrations` ran and that the generated
+file's **top-level** `migrations` (not only `env.production.migrations`) has no
+`PackageServiceInstance` delete. For `npm run dev`, confirm
+`wrangler-local-dev.generated.json` instead.
+
+### Origin must not create JobManager
+
+Local `npm run dev` uses `--env production`. The top-level migrations chain in
+`packages/worker/wrangler.jsonc` must not create `JobManager` (or JobRunner):
+that class lives on `packages/jobs-worker` (ADR 0016) and is not exported from
+`packages/worker/src/index.ts`. The committed top-level and preview/test chains
+omit the v6/v9 JobManager+JobRunner pair for that reason. If miniflare fails
+with `Class extends value undefined is not a constructor` while wrapping
+`JobManager`, check that the top-level chain still matches that omission.
+
+### Verifying runtime forwarding
+
+- Unauthenticated `GET /@<user>/packages/<anything>` on the main port: `302` →
+  `/login` proves the runtime lane handled it (a broken binding gives `503`
+  instead).
+- Binding status in dev output:
+  `env.RUNTIME_WORKER (...) Worker local [connected]` vs `[not connected]`.
+- Logged-in package-app requests redirect to the real `https://kody.run`
+  (production `PACKAGE_APP_BASE_URL`) — do not follow that handoff into prod.

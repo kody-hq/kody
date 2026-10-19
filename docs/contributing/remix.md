@@ -2,12 +2,14 @@
 
 Kody's web UI uses [TanStack Start, Router, and Query](./tanstack-start.md).
 Remix remains in the HTTP API layer and as an optional framework for
-user-authored package apps. Load `.agents/skills/remix/SKILL.md` when changing
-those Remix contracts. UI navigation and page data follow the Start guide.
+user-authored package apps. Use this page when changing those Remix contracts.
+UI navigation and page data follow the Start guide.
 
-The installed Remix docs are canonical: search `node_modules/remix/INDEX.md`,
-then read the matching guide under `node_modules/remix/guides/` and the package
-README. Do not vendor copies here.
+The installed Remix docs are canonical for framework APIs and mental model
+(routes, router, controllers, components, `handle.update()`): search
+`node_modules/remix/INDEX.md`, then read the matching guide under
+`node_modules/remix/guides/` and the package README. Do not vendor copies here,
+and do not assume Remix 2 patterns.
 
 ## Kody runtime topology
 

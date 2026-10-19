@@ -40,8 +40,9 @@ so a green local `validate` means CI will pass. `validate` is read-only; use
 ## Documentation
 
 - [AGENTS.md](../AGENTS.md) - Agent instructions and verification steps
-- [.agents/skills/remix/SKILL.md](../.agents/skills/remix/SKILL.md) - Remix
-  skill
+- [docs/contributing/remix.md](../docs/contributing/remix.md) - Remix HTTP and
+  package-app guidance (installed `node_modules/remix` docs are canonical for
+  framework APIs)
 - [docs/contributing/setup/](../docs/contributing/setup/index.md) - Setup
   documentation
 - [docs/contributing/cloud-agents.md](../docs/contributing/cloud-agents.md) —
