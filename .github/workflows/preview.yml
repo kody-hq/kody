@@ -444,7 +444,7 @@ jobs:
           echo "worker_name=$RUNTIME_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-runtime.log
+            node tools/ci/retry-classifiers.ts deploy deploy-runtime.log
           }
 
           deploy_attempts=3
@@ -496,7 +496,7 @@ jobs:
           echo "worker_name=$PLATFORM_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-platform.log
+            node tools/ci/retry-classifiers.ts deploy deploy-platform.log
           }
 
           deploy_attempts=3
@@ -550,7 +550,7 @@ jobs:
           echo "Origin deploy: ${ORIGIN_ENTRY} entry (${ORIGIN_DEPLOY_MODE} preview fleet)"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy.log
+            node tools/ci/retry-classifiers.ts deploy deploy.log
           }
 
           deploy_attempts=3
@@ -621,7 +621,7 @@ jobs:
           echo "worker_name=$API_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-api.log
+            node tools/ci/retry-classifiers.ts deploy deploy-api.log
           }
 
           deploy_attempts=3

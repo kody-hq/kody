@@ -13,7 +13,7 @@ import {
 	readConfigFlag,
 	readNameFlag,
 } from './origin-worker-config.ts'
-import { runWranglerDeployWithRetry } from './wrangler-deploy-retry.ts'
+import { runWranglerDeployWithRetry } from './ci/retry-classifiers.ts'
 import { retainClientAssets } from './retain-client-assets.ts'
 
 function run(

@@ -607,7 +607,7 @@ jobs:
           if [ "$status" -eq 0 ]; then
             exit 0
           fi
-          if ! node tools/ci/is-retryable-e2e-failure.ts e2e-attempt-1.log; then
+          if ! node tools/ci/retry-classifiers.ts e2e e2e-attempt-1.log; then
             exit "$status"
           fi
           echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."

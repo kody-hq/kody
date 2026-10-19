@@ -3,8 +3,6 @@ import { isRetryableCloudflareFailure } from './ci/resource-utils.ts'
 
 const wranglerDeployRetryMaxAttempts = 4
 const wranglerDeployRetryBaseDelayMs = 1_000
-export const wranglerD1MigrationsRetryMaxAttempts = 3
-export const wranglerD1MigrationsRetryBaseDelayMs = 10_000
 
 export function isRetryableWorkersDevSubdomainRace(output: string) {
 	const uploaded = /uploaded\s+\S+/i.test(output)

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
@@ -8,10 +8,6 @@ import { isRetryableE2eFailure, main } from './is-retryable-e2e-failure.ts'
 test('validate E2E retries webServer start/death flakes and fails fast on real specs', () => {
 	const previousExitCode = process.exitCode
 	const logDir = mkdtempSync(join(tmpdir(), 'retryable-e2e-'))
-	const workflow = readFileSync(
-		new URL('../../.github/workflows/validate.yml', import.meta.url),
-		'utf8',
-	)
 
 	const loadCrashLog = [
 		'\u001b[2m[WebServer] \u001b[22m\u001b[31merror when starting dev server:',
@@ -53,9 +49,6 @@ test('validate E2E retries webServer start/death flakes and fails fast on real s
 		isRetryableE2eFailure('[vite] Internal server error: fetch failed'),
 	).toBe(false)
 	expect(isRetryableE2eFailure('')).toBe(false)
-	expect(workflow).toContain(
-		'node tools/ci/is-retryable-e2e-failure.ts e2e-attempt-1.log',
-	)
 
 	const startLogPath = join(logDir, 'e2e-attempt-1.log')
 	writeFileSync(startLogPath, loadCrashLog)

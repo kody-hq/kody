@@ -113,8 +113,8 @@ Avoid `page.locator('css')` unless no accessible alternative exists.
   also restarts Vite once if the first process exits before Playwright reaches
   `/health`. On CI, Validate runs Playwright as four `--shard=i/4` matrix jobs
   (each on its own runner / D1 file; `workers: 1` stays). Each shard retries
-  once when `tools/ci/is-retryable-e2e-failure.ts` matches a webServer start
-  crash (`Process from config.webServer was not able to start`, including Vite
+  once when `tools/ci/retry-classifiers.ts e2e` matches a webServer start crash
+  (`Process from config.webServer was not able to start`, including Vite
   `__LOAD__ is not defined` during Cloudflare export-type inspection), a
   mid-suite death on port 3847, or a recovered workerd crash
   (`The Workers runtime crashed unexpectedly and is being restarted`). Genuine

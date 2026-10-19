@@ -1281,7 +1281,7 @@ jobs:
           fi
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-origin-bootstrap.log
+            node tools/ci/retry-classifiers.ts deploy deploy-origin-bootstrap.log
           }
 
           deploy_attempts=3
@@ -1329,7 +1329,7 @@ jobs:
           set -euo pipefail
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-platform.log
+            node tools/ci/retry-classifiers.ts deploy deploy-platform.log
           }
 
           deploy_attempts=3
@@ -1385,7 +1385,7 @@ jobs:
           set -euo pipefail
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy-runtime.log
+            node tools/ci/retry-classifiers.ts deploy deploy-runtime.log
           }
 
           deploy_attempts=3
@@ -1501,7 +1501,7 @@ jobs:
           DEPLOY_ARGS=(--name kody-production --config "$WRANGLER_CONFIG" --var "APP_COMMIT_SHA:${DEPLOY_COMMIT_SHA}" --var "APP_DEPLOY_INFO:${APP_DEPLOY_INFO}")
 
           is_retryable_deploy_failure() {
-            node tools/ci/is-retryable-deploy-failure.ts deploy.log
+            node tools/ci/retry-classifiers.ts deploy deploy.log
           }
 
           deploy_attempts=3

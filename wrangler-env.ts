@@ -29,7 +29,7 @@ import {
 	runWranglerDeployWithRetry,
 	wranglerD1MigrationsRetryBaseDelayMs,
 	wranglerD1MigrationsRetryMaxAttempts,
-} from './tools/wrangler-deploy-retry.ts'
+} from './tools/ci/retry-classifiers.ts'
 
 const envName = process.env.CLOUDFLARE_ENV ?? 'production'
 const portWaitTimeoutMs = 5000

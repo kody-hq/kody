@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isExecutedDirectly, resolveLocalBinary } from '../node-runtime.ts'
-import { isRetryableDeployFailure } from './is-retryable-deploy-failure.ts'
+import { isRetryableDeployFailure } from './retry-classifiers.ts'
 import { fail } from './resource-utils.ts'
 
 export type SecretBulkAttemptResult = {
