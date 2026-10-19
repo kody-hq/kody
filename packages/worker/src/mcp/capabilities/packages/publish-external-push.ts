@@ -100,9 +100,10 @@ const inputSchema = z.object({
 		.describe(destructiveOverwriteConfirmationDescription),
 	/**
 	 * Tip at the start of the interactive publish request that dispatched the
-	 * durable workflow. Durable re-entry must not re-read D1 (the overlapping
-	 * inline attempt may already have advanced published_commit). Agents must
-	 * not set this; the capability stamps it into durableParams.
+	 * durable workflow. Honored only when executionOrigin is background
+	 * (durable re-entry). Interactive callers are ignored so a null/spoofed
+	 * optional field cannot force published for a true no-op tip. The
+	 * capability stamps this into durableParams; agents must not set it.
 	 */
 	baseline_published_commit: z.string().nullable().optional(),
 })
@@ -1374,10 +1375,14 @@ export const publishExternalPushCapability = defineDomainCapability(
 				)
 			}
 
-			// Prefer the interactive-request baseline stamped into durableParams.
+			// Prefer the interactive-request baseline stamped into durableParams,
+			// but only on durable (background) re-entry. Interactive callers
+			// often send null for unused optionals; trusting that would turn a
+			// true no-op tip into published with previous_commit: null.
 			// Re-reading D1 on durable re-entry would see a tip the overlapping
 			// inline attempt already advanced and wrongly yield already_published.
 			const baselinePublishedCommit =
+				ctx.callerContext.executionOrigin === 'background' &&
 				args.baseline_published_commit !== undefined
 					? args.baseline_published_commit
 					: (source.published_commit ?? null)

@@ -760,6 +760,24 @@ test('durable re-entry remaps RepoSession already_published to published when ti
 			artifacts_rebuilt: false,
 		}),
 	)
+
+	// Interactive callers must not spoof baseline (null would force published).
+	setupDefaultMocks({
+		head: 'commit-old',
+		publish: {
+			status: 'already_published',
+			published_commit: 'commit-old',
+		},
+	})
+	expect(
+		await publish({ baseline_published_commit: null }, 'interactive'),
+	).toEqual(
+		expect.objectContaining({
+			status: 'already_published',
+			published_commit: 'commit-old',
+			artifacts_rebuilt: false,
+		}),
+	)
 })
 
 test('durable escalation keys team-org publishes to the owning org, not the actor personal org', async () => {
