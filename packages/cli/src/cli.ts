@@ -1151,6 +1151,24 @@ async function dispatch(
 							})()
 				write(formatToolResult(result, json))
 				return result.isError ? 1 : 0
+			} catch (error) {
+				// Package-graph runs before workerd starts. Under --json, keep
+				// stdout machine-readable with a stable code instead of leaving it
+				// empty (kody#4067). Human output stays on stderr via runCli.
+				if (json && local) {
+					const { LocalPackageGraphError, packageGraphErrorToolResult } =
+						await import('./local-package-graph.js')
+					if (error instanceof LocalPackageGraphError) {
+						const redacted = redactError(error).message
+						const result = packageGraphErrorToolResult(error)
+						result.content = [{ type: 'text', text: redacted }]
+						result.structuredContent.error.message = redacted
+						write(formatToolResult(result, true))
+						writeErr(`${redacted}\n`)
+						return 1
+					}
+				}
+				throw error
 			} finally {
 				await closeMock?.()
 			}
