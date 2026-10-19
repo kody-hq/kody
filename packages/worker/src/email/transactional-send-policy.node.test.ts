@@ -17,6 +17,9 @@ test('classifies essential vs holdable transactional kinds', () => {
 	expect(categoryForTransactionalEmailKind('entitlement_warning')).toBe(
 		'holdable',
 	)
+	expect(categoryForTransactionalEmailKind('package_owner_error_spike')).toBe(
+		'holdable',
+	)
 	expect(categoryForTransactionalEmailKind('mystery_campaign')).toBe('holdable')
 })
 

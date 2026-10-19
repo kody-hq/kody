@@ -557,6 +557,100 @@ export type UserErrorRateEmailRun = {
 	runUrl: string
 }
 
+export type PackageOwnerErrorSpikeEmailPackage = {
+	kodyId: string
+	errors: number
+	events: number
+	rate: number | null
+}
+
+export type PackageOwnerErrorSpikeEmailMetric = {
+	metric: string
+	errors: number
+	events: number
+}
+
+export function buildPackageOwnerErrorSpikeEmail(input: {
+	appBaseUrl: string
+	activityUrl: string
+	jobsUrl: string
+	supportUrl: string
+	ownerLabel: string
+	errorCount: number
+	eventCount: number
+	rate: number | null
+	spikeStartedAt: string
+	packages: Array<PackageOwnerErrorSpikeEmailPackage>
+	byMetric: Array<PackageOwnerErrorSpikeEmailMetric>
+}) {
+	const percent =
+		input.rate != null
+			? Math.round(input.rate * 100)
+			: input.eventCount > 0
+				? Math.round((input.errorCount / input.eventCount) * 100)
+				: 0
+	const packageLines =
+		input.packages.length > 0
+			? input.packages.map((pkg) => {
+					const pkgPercent =
+						pkg.rate != null
+							? Math.round(pkg.rate * 100)
+							: pkg.events > 0
+								? Math.round((pkg.errors / pkg.events) * 100)
+								: 0
+					return `${pkg.kodyId}: ${pkg.errors.toLocaleString('en-US')} errors / ${pkg.events.toLocaleString('en-US')} runs (${pkgPercent}%)`
+				})
+			: []
+	const metricLines =
+		input.byMetric.length > 0
+			? input.byMetric.map(
+					(row) =>
+						`${row.metric}: ${row.errors.toLocaleString('en-US')} errors across ${row.events.toLocaleString('en-US')} events`,
+				)
+			: []
+	const started = formatSpikeStarted(input.spikeStartedAt)
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Your Kody packages are erroring heavily right now',
+		preheader: `${input.errorCount.toLocaleString('en-US')} errors in the last hour (${percent}%).`,
+		heading: 'Package error spike',
+		body: [
+			`In the last hour, packages owned by ${input.ownerLabel} recorded ${input.errorCount.toLocaleString('en-US')} errors across ${input.eventCount.toLocaleString('en-US')} runs (${percent}%).`,
+			`This episode started around ${started}.`,
+			...(packageLines.length > 0
+				? ['Packages contributing the most errors:', ...packageLines]
+				: []),
+			...(metricLines.length > 0
+				? ['Error volume by kind:', ...metricLines]
+				: []),
+			'Fix the failing code, disable a broken job or trigger, or pause the package until it is healthy. Review recent runs and job history from the links below.',
+		],
+		action: { label: 'Review activity', url: input.activityUrl },
+		secondaryAction: { label: 'Manage jobs and triggers', url: input.jobsUrl },
+		afterAction: [
+			'Disable a broken job or trigger from Jobs if the failure is looping.',
+			`Support: ${input.supportUrl}`,
+		],
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because a package you publish crossed an hourly error-spike threshold. You will not get another email for this episode until it recovers.",
+	})
+}
+
+function formatSpikeStarted(iso: string) {
+	const ms = Date.parse(iso)
+	if (!Number.isFinite(ms)) return iso
+	return new Date(ms)
+		.toISOString()
+		.replace('T', ' ')
+		.replace(/\.\d{3}Z$/, ' UTC')
+}
+
 export function buildUserErrorRateEmail(input: {
 	appBaseUrl: string
 	activityUrl: string

@@ -4,8 +4,9 @@ title: Admin events
 summary:
   Event topics that dispatch only to packages saved by users who hold the
   admin role: system inbox mail, platform feedback, community activity and
-  listing publishes, status incidents, fleet health and entitlement crossings,
-  auth and email delivery bursts, and account lifecycle notifications.
+  listing publishes, status incidents, fleet health, package-owner error spikes,
+  entitlement crossings, auth and email delivery bursts, and account lifecycle
+  notifications.
 category: platform
 adminOnly: true
 ---
@@ -383,6 +384,69 @@ Use this topic for notifier packages that enqueue a Kody-repo investigation
 request. Agent spawning stays on the scheduled sweep, not in the subscription
 handler. Do not treat this topic as permission to read another user's Activity
 or package source.
+
+## `fleet.package_owner_error_spike` (admins)
+
+The hourly `usage_aggregation` lane also evaluates each package **owner** (the
+account/org that publishes the package) for a concentrated error spike.
+`package_export` and `package_static_call` errors attribute to the package
+publisher (any caller). `job_run` and `workflow_run` errors attribute to the
+billing owner that ran them. When an owner has ≥20 errored events and an error
+rate ≥25% in the last completed UTC hour, Kody emails the org owners once
+(holdable transactional mail, kind `package_owner_error_spike`) and fans
+`fleet.package_owner_error_spike` to admin-owned packages for audit.
+
+State is per-owner in KV (`ops-alert:package-owner-error-spike:v1:{ownerId}`):
+`ok` → `alerted` on the first crossing (one email). No repeats while `alerted`.
+Re-arm to `ok` when the owner's rate stays below 5% (or errors under 5) for two
+consecutive hourly windows, or when they have no activity for 24 hours. A later
+spike emails again.
+
+**Do not page on this topic.** The owner already received mail. Operator
+notifier packages (for example `@kentcdodds/admin-event-notify`) should treat it
+as audit/triage only — subscribe for history, not for paging Kent. Prefer
+`fleet.users_affected.elevated` (when shipped) for platform pages.
+
+Handlers receive:
+
+```ts
+type PackageOwnerErrorSpikeEvent = {
+	event: 'fleet.package_owner_error_spike'
+	event_id: string
+	insights_url: string
+	activity_url: string
+	environment: string
+	observed_at: string
+	owner: { username: string }
+	window: {
+		start: string
+		end: string
+		events: number
+		errors: number
+		rate: number | null
+	}
+	spike_started_at: string
+	packages: Array<{
+		kody_id: string
+		events: number
+		errors: number
+		rate: number | null
+	}>
+	by_metric: Array<{
+		metric:
+			'package_export' | 'package_static_call' | 'job_run' | 'workflow_run'
+		events: number
+		errors: number
+		rate: number | null
+	}>
+}
+```
+
+The event omits user ids, package UUIDs, emails, error strings, and logs.
+Idempotency keys include the topic, event id, and subscriber package id.
+
+Per-account notification preference for this owner email is not yet in Account
+settings (default on); track that as a follow-up.
 
 ## `fleet.entitlement.crossed` (admins)
 

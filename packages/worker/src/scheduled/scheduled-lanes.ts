@@ -4,6 +4,7 @@ import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
 import { refreshFleetPackageErrorRateAndMaybeAlert } from '#app/fleet-package-error-rate-alerts.ts'
+import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-error-spike-alerts.ts'
 import { pruneRetention } from '#app/retention.ts'
 import { pruneUnverifiedAccounts } from '#worker/account/unverified-account-purge.ts'
 import { pruneSoftDeleted } from '#worker/orgs/purge.ts'
@@ -173,6 +174,22 @@ export async function runScheduledLane(input: {
 					reason: 'query_failed',
 				}
 			}
+			let packageOwnerErrorSpike: Awaited<
+				ReturnType<typeof refreshPackageOwnerErrorSpikesAndMaybeAlert>
+			>
+			try {
+				packageOwnerErrorSpike =
+					await refreshPackageOwnerErrorSpikesAndMaybeAlert({
+						env: input.env,
+						now: input.scheduledAt,
+					})
+			} catch (error) {
+				console.warn('package-owner-error-spike-lane-failed', error)
+				packageOwnerErrorSpike = {
+					status: 'skipped',
+					reason: 'query_failed',
+				}
+			}
 			let runLogSnapshot: { status: 'ok' | 'failed' }
 			try {
 				await refreshAdminInsightsRunLogSnapshot({
@@ -198,7 +215,13 @@ export async function runScheduledLane(input: {
 				console.warn('credit-debits-lane-failed', error)
 				creditDebits = { status: 'failed' }
 			}
-			return { ...result, fleetPackageErrorRate, runLogSnapshot, creditDebits }
+			return {
+				...result,
+				fleetPackageErrorRate,
+				packageOwnerErrorSpike,
+				runLogSnapshot,
+				creditDebits,
+			}
 		}
 		case 'durable_object_duration_attribution':
 			return runDurableObjectDurationAttribution({

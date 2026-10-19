@@ -921,6 +921,16 @@ GROUP BY stage
   `ops-alert:fleet-package-error-rate:v1` suppresses repeat pages for six hours.
   The payload has no user ids, package UUIDs, emails, or error strings. See
   [Admin events](../../guides/admin-events.md#fleetpackageerrorrateelevated-admins).
+- **Package-owner error spike** (same `usage_aggregation` hour): a separate
+  Analytics Engine pass attributes `package_export` / `package_static_call`
+  errors to the package publisher (`saved_packages.user_id`) and `job_run` /
+  `workflow_run` errors to the billing owner (`blob1`). When an owner crosses
+  ≥20 errors and ≥25% error rate in the last completed hour, Kody emails the org
+  owners once and fans `fleet.package_owner_error_spike` for admin audit (not a
+  page). Per-owner KV state (`ops-alert:package-owner-error-spike:v1:{ownerId}`)
+  stays `alerted` until two consecutive healthy hours (rate under 5% or errors
+  under 5) or 24h of inactivity. See
+  [Admin events](../../guides/admin-events.md#fleetpackageownererrorspike-admins).
 
 ## Usage campaign
 
