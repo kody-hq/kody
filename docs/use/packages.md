@@ -1236,8 +1236,9 @@ publish checks run.
    run for that commit is deduped and returns the existing `dispatched` handle;
    a completed publish returns `already_published` without re-running checks.
    Connect-phase failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
-   `ENOTFOUND`, `EAI_AGAIN`) never reached the server — republish is the right
-   next step. The CLI surfaces that distinction as `sent: false` vs
+   `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
+   `did not connect within …ms` timeout) never reached the server — republish is
+   the right next step. The CLI surfaces that distinction as `sent: false` vs
    `sent: "unknown"` on `--json` errors.
 
 Computed `import(specifier)` (and other runtime package loads) resolve the

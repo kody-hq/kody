@@ -259,7 +259,9 @@ export async function runCli(
 	} catch (error) {
 		const redacted = redactError(error)
 		if (jsonFlag) {
-			write(`${JSON.stringify(formatCliErrorJson(redacted), null, 2)}\n`)
+			// One compact JSON line so `kody dev --json` NDJSON consumers stay
+			// line-oriented when a startup failure hits this catch.
+			write(`${JSON.stringify(formatCliErrorJson(redacted))}\n`)
 		}
 		writeErr(`${redacted.message}\n`)
 		return 1
