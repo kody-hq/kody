@@ -70,7 +70,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0025 — No package services primitive](./0025-no-package-services-primitive.md)
 - [0032 — No unattached jobs; schedules belong to packages or workflows](./0032-no-unattached-jobs.md)
 - [0033 — No user-as-conversation, MCP session, or user-global memory hide](./0033-no-user-as-conversation.md)
-  ([lab](./0033-memory-auto-surface-lab.md))
+  ([lab](./0033-memory-auto-surface-lab.md); lab script removed, source in git
+  history at `51def919d`)
 - [0034 — Origin owns no Durable Object classes](./0034-origin-owns-no-durable-objects.md)
   — platform classes live on `kody-platform`; do not put them on origin,
   runtime, or jobs, and do not add a second origin-facing content worker
