@@ -62,12 +62,18 @@ vi.mock('#worker/package-runtime/realtime-session.ts', () => ({
 	}),
 }))
 
-vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
-	loadPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
-		mockModule.loadPublishedBundleArtifactByIdentity(...args),
-	persistPublishedBundleArtifact: (...args: Array<unknown>) =>
-		mockModule.persistPublishedBundleArtifact(...args),
-}))
+vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
+	const actual = await vi.importActual<
+		typeof import('#worker/package-runtime/published-bundle-artifacts.ts')
+	>('#worker/package-runtime/published-bundle-artifacts.ts')
+	return {
+		...actual,
+		loadPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
+			mockModule.loadPublishedBundleArtifactByIdentity(...args),
+		persistPublishedBundleArtifact: (...args: Array<unknown>) =>
+			mockModule.persistPublishedBundleArtifact(...args),
+	}
+})
 
 vi.mock('#worker/worker-bundler-modules.ts', () => ({
 	importWorkerBundler: async () => ({
@@ -286,10 +292,14 @@ function seedClientAndAssets() {
 		async (input: { kind: string; entryPoint: string }) =>
 			input.kind === 'app-client' && input.entryPoint === 'src/client.ts'
 				? {
-						row: { id: 'row-client' },
+						row: {
+							id: 'row-client',
+							publishedCommit: fixture.source.published_commit,
+						},
 						artifact: {
 							mainModule: clientModuleName,
 							modules: { [clientModuleName]: 'export const hello = "hi"' },
+							publishedCommit: fixture.source.published_commit,
 						},
 					}
 				: null,
