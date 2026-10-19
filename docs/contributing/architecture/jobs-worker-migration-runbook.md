@@ -55,7 +55,7 @@ When jobs sources change, the workflow deploys `kody-jobs` before origin so the
 `JOBS` binding validates. That order is binding hygiene. It does not re-apply
 the `v1` transfer and it does not copy rows.
 
-Remix/blog/UI-only uploads skip jobs.
+UI/blog-only uploads skip jobs.
 
 Verify cron ticks (jobs-worker logs show `scheduled` invocations every 5 minutes
 and queue consumption on `kody-scheduled-dispatch`), a due job running

@@ -62,9 +62,9 @@ sequenceDiagram
 - Origin exports `KodyApi` (`packages/worker/src/open-api/kody-api.ts`), a
   `WorkerEntrypoint` that lazy-loads the handler so the origin startup budget
   does not pay for it. Operations run on origin so they share the capability
-  registry, D1, and account gates with MCP. The Remix UI does not call the Open
-  API; both use the same domain modules. The OpenAPI document's `externalDocs`
-  points at `https://api-docs.kody.codes`.
+  registry, D1, and account gates with MCP. The Start website does not call the
+  Open API; both use the same domain modules. The OpenAPI document's
+  `externalDocs` points at `https://api-docs.kody.codes`.
 - Custom domains create their own DNS record and certificate on deploy, so
   `api.kody.codes` and `api-docs.kody.codes` need no manual DNS step as long as
   no conflicting record already exists in the `kody.codes` zone. Previews deploy

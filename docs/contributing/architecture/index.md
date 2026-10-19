@@ -30,7 +30,7 @@ Local `npm run dev` attaches origin, platform, runtime, jobs, and highlight in
 one Miniflare. Playwright `CLOUDFLARE_ENV=test` is the exception: Durable Object
 classes run on the single `kody-test` script with no `script_name`.
 
-Remix/blog/UI-only deploys upload origin and skip platform, runtime, and jobs.
+UI/blog-only deploys upload origin and skip platform, runtime, and jobs.
 Official guide markdown (`docs/guides/`, `packages/worker/src/guides/`) uploads
 origin and platform because MCP `search({ entity: "guide:{id}" })` and
 `codingGuideGet` bundle those files.
