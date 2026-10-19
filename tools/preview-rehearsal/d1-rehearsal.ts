@@ -174,29 +174,6 @@ export async function queryD1<Row>(
 	return statements.flatMap((statement) => statement.results ?? [])
 }
 
-/** Rows written by a D1 statement. Throws when the API omits `meta.changes`. */
-export async function queryD1Changes(
-	client: CloudflareClient,
-	uuid: string,
-	sql: string,
-	params?: ReadonlyArray<string | number | null>,
-) {
-	const statements = await postD1Query(client, uuid, sql, params)
-	let changes = 0
-	for (const statement of statements) {
-		const reported = statement.meta?.changes
-		if (
-			typeof reported !== 'number' ||
-			!Number.isInteger(reported) ||
-			reported < 0
-		) {
-			throw new Error('D1 statement did not report changes.')
-		}
-		changes += reported
-	}
-	return changes
-}
-
 function quoteIdentifier(name: string) {
 	return `"${name.replaceAll('"', '""')}"`
 }
@@ -238,7 +215,7 @@ async function countD1Tables(
 	return counts.sort((a, b) => a.table.localeCompare(b.table))
 }
 
-export async function getD1Bookmark(client: CloudflareClient, uuid: string) {
+async function getD1Bookmark(client: CloudflareClient, uuid: string) {
 	const response = await cloudflareApiRequest<{ bookmark?: string }>({
 		...client,
 		pathname: `/d1/database/${uuid}/time_travel/bookmark`,
