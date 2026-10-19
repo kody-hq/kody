@@ -160,10 +160,11 @@ with `Class extends value undefined is not a constructor` while wrapping
 
 ### Verifying runtime forwarding
 
-- Unauthenticated `GET /@<user>/packages/<anything>` on the main port: `302` →
-  `/login` proves the runtime lane handled it (a broken binding gives `503`
-  instead).
-- Binding status in dev output:
-  `env.RUNTIME_WORKER (...) Worker local [connected]` vs `[not connected]`.
+- Binding status in the `npm run dev` output is the reliable signal:
+  `env.RUNTIME_WORKER (...) Worker local [connected]` vs `[not connected]`. A
+  `/login` redirect on an unauthenticated package-app path is **not** proof of
+  forwarding — origin falls through to in-process handlers when the binding is
+  missing and those handlers can redirect to `/login` too. A broken connected
+  binding tends to surface as `503` (`Worker "kody-runtime" not found`).
 - Logged-in package-app requests redirect to the real `https://kody.run`
   (production `PACKAGE_APP_BASE_URL`) — do not follow that handoff into prod.

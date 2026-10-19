@@ -1,6 +1,7 @@
 # kody Cloud Agent Guide
 
-A full-stack web application built on Cloudflare Workers with Remix 3 (beta).
+A full-stack web application built on Cloudflare Workers with a TanStack Start
+web UI. Remix serves the HTTP API layer and optional package apps.
 
 ## Quick Reference
 
@@ -32,8 +33,8 @@ so a green local `validate` means CI will pass. `validate` is read-only; use
 ## Architecture
 
 - **Server**: Cloudflare Workers (see `packages/worker/src/`)
-- **Client**: Remix 3 components bundled with Vite (see
-  `packages/worker/client/`)
+- **Client**: TanStack Start components bundled with Vite (see
+  `packages/worker/client/` and `packages/worker/start/`)
 - **Database**: Cloudflare D1 (SQLite, auto-handled locally by Wrangler)
 - **MCP Server**: Available at `/mcp` endpoint when worker runs
 
