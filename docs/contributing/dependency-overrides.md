@@ -37,6 +37,22 @@ the vulnerable exact `2.0.0`, so this override cannot be removed yet.
   OAuth client could send credentials to an authorization server chosen by the
   MCP server (`>=2.0.0, <=2.1.0`)
 
+### `@modelcontextprotocol/server` → `2.3.1`
+
+Floors the MCP server SDK above the current advisory range. The worker direct
+dependency and `agents@0.22.x` still peer vulnerable `2.0.0`, so this override
+cannot be removed yet. Related: #4122.
+
+- [GHSA-jm63-cq47-j5jp](https://github.com/advisories/GHSA-jm63-cq47-j5jp):
+  shared transport or server instances delivered one HTTP client's messages to
+  another (`>=2.0.0, <=2.2.0`)
+- [GHSA-46jr-4wx8-v453](https://github.com/advisories/GHSA-46jr-4wx8-v453): one
+  HTTP request within the default size limit could exhaust server memory during
+  validation (`>=2.0.0, <=2.2.0`)
+- [GHSA-rvq5-wwqv-78pq](https://github.com/advisories/GHSA-rvq5-wwqv-78pq):
+  server bearer authentication accepted tokens issued for another service
+  (`>=2.0.0, <=2.2.0`)
+
 ### `esbuild` → `$esbuild`
 
 Forces every transitive esbuild copy onto the root `esbuild@^0.28.2` resolution.

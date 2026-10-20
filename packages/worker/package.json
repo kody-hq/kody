@@ -16,7 +16,7 @@
     "@epic-web/totp": "^4.0.1",
     "@kody-internal/shared": "file:../shared",
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "@resvg/resvg-wasm": "^2.6.2",
     "@sentry/browser": "^10.76.0",
     "@sentry/cloudflare": "^10.76.0",
