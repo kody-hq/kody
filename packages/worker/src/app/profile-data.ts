@@ -94,7 +94,13 @@ function filterProfileRepositoriesForViewer(input: {
 }) {
 	return input.repositories.filter((pkg) => {
 		if (!pkg.hasPackage) {
-			return !pkg.isPrivate || input.binding.role != null
+			// Plain repos have no grant surface. Owners and members see private
+			// ones; billing and grant-only collaborators do not.
+			return (
+				!pkg.isPrivate ||
+				input.binding.role === 'owner' ||
+				input.binding.role === 'member'
+			)
 		}
 		if (isPublicProfileRepository(pkg)) return true
 		return canSeeResource(

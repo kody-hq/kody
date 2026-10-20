@@ -29,6 +29,8 @@ const otherPersonId = 'c'.repeat(64)
 const otherOrgId = 'd'.repeat(64)
 const grantPersonId = 'e'.repeat(64)
 const grantOrgId = 'f'.repeat(64)
+const billingPersonId = '1'.repeat(64)
+const billingOrgId = '2'.repeat(64)
 const now = '2026-01-01T00:00:00.000Z'
 
 function createEnv() {
@@ -42,6 +44,7 @@ function createEnv() {
 	insertOrg.run(ownerOrgId, 'owner', 'Owner', now, now)
 	insertOrg.run(otherOrgId, 'other', 'Other', now, now)
 	insertOrg.run(grantOrgId, 'grantee', 'Grantee', now, now)
+	insertOrg.run(billingOrgId, 'billing', 'Billing', now, now)
 
 	const insertUser = sqlite.prepare(
 		`INSERT INTO users (
@@ -58,6 +61,13 @@ function createEnv() {
 		grantOrgId,
 		now,
 	)
+	insertUser.run(
+		'billing',
+		'billing@example.com',
+		billingPersonId,
+		billingOrgId,
+		now,
+	)
 
 	const insertMembership = sqlite.prepare(
 		`INSERT INTO org_memberships (org_id, user_id, role, created_at)
@@ -66,6 +76,8 @@ function createEnv() {
 	insertMembership.run(ownerOrgId, ownerPersonId, 'owner', now)
 	insertMembership.run(otherOrgId, otherPersonId, 'owner', now)
 	insertMembership.run(grantOrgId, grantPersonId, 'owner', now)
+	insertMembership.run(billingOrgId, billingPersonId, 'owner', now)
+	insertMembership.run(ownerOrgId, billingPersonId, 'billing', now)
 
 	sqlite
 		.prepare(
@@ -152,6 +164,14 @@ function createEnv() {
 		)
 		.run('grant-shared', 'package:execute')
 
+	sqlite
+		.prepare(
+			`INSERT INTO user_repos (
+				id, user_id, name, description, is_private, created_at, updated_at
+			) VALUES (?, ?, ?, 'private plain', 1, ?, ?)`,
+		)
+		.run('repo-private-plain', ownerOrgId, 'private-plain', now, now)
+
 	return { APP_DB: createD1FromSqlite(sqlite) } as unknown as Env
 }
 
@@ -171,7 +191,9 @@ async function loadAs(
 								? ownerOrgId
 								: viewer.personId === grantPersonId
 									? grantOrgId
-									: otherOrgId,
+									: viewer.personId === billingPersonId
+										? billingOrgId
+										: otherOrgId,
 						),
 					},
 				}
@@ -212,17 +234,31 @@ test('self view lists private packages under the personal org id with Private ba
 	expect(data?.isSelf).toBe(true)
 	expect(packageIds(data)).toEqual([
 		'private-notes',
+		'private-plain',
 		'public-notes',
 		'shared-notes',
 	])
 	expect(packagePayload(data)).toEqual(
 		expect.arrayContaining([
 			{ kodyId: 'private-notes', isPrivate: true },
+			{ kodyId: 'private-plain', isPrivate: true },
 			{ kodyId: 'public-notes', isPrivate: false },
 			{ kodyId: 'shared-notes', isPrivate: true },
 		]),
 	)
 	expect(packageIds(data)).not.toContain('person-keyed')
+})
+
+test('billing member does not see private plain repos on the profile', async () => {
+	const env = createEnv()
+	const data = await loadAs(env, {
+		personId: billingPersonId,
+		username: 'billing',
+	})
+	expect(packageIds(data)).toEqual(['public-notes'])
+	expect(JSON.stringify(data)).not.toContain('private-plain')
+	expect(JSON.stringify(data)).not.toContain('private-notes')
+	expect(JSON.stringify(data)).not.toContain('shared-notes')
 })
 
 test('granted user sees public packages plus granted private ones only', async () => {
