@@ -804,6 +804,7 @@ test('DynamicCallableWorkflowBase records workflow_run usage on terminal transit
 				entityId: created.id,
 				durationMs: expect.any(Number),
 				outcome,
+				...(outcome === 'error' ? { errorName: 'Error' } : {}),
 			})
 			expect(
 				recordUsageSpy.mock.calls[0]?.[1]?.durationMs,

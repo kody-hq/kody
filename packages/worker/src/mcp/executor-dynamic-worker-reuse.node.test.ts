@@ -99,8 +99,9 @@ test('createExecuteExecutor records privacy-safe Dynamic Worker reuse on every L
 		'usage-user-reuse',
 		'',
 		'',
+		'',
 	])
-	expect(miss?.blobs).toHaveLength(12)
+	expect(miss?.blobs).toHaveLength(13)
 	expect(miss?.doubles?.[0]).toBeGreaterThanOrEqual(0)
 	expect(miss?.doubles?.[3]).toBeGreaterThan(0)
 	expect(miss?.doubles?.[usageEventDoubleIndexes.paramsChars]).toBeGreaterThan(
@@ -111,14 +112,14 @@ test('createExecuteExecutor records privacy-safe Dynamic Worker reuse on every L
 	const hit = invokes()[1]
 	expect(invokes()).toHaveLength(2)
 	expect(hit?.blobs?.[7]).toBe('hit')
-	expect(hit?.blobs).toHaveLength(12)
+	expect(hit?.blobs).toHaveLength(13)
 	expect(hit?.doubles?.[3]).toBe(miss?.doubles?.[3])
 	expect(hit?.doubles?.[usageEventDoubleIndexes.paramsChars]).toBeGreaterThan(0)
 
 	for (const params of [undefined, {}, null, 'not-an-object', [1, 2]]) {
 		await runJob(params === undefined ? undefined : { params })
 		expect(dataPoints.at(-1)?.blobs?.[1]).toBe('dynamic_worker_invoke')
-		expect(dataPoints.at(-1)?.blobs).toHaveLength(12)
+		expect(dataPoints.at(-1)?.blobs).toHaveLength(13)
 		expect(
 			dataPoints.at(-1)?.doubles?.[usageEventDoubleIndexes.paramsChars],
 		).toBe(0)
