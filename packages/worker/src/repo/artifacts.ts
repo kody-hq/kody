@@ -441,24 +441,32 @@ function adaptNativeArtifactsBinding(
 	}
 }
 
-function isDefaultCloudflareApiBase(baseUrl: string | undefined) {
+/**
+ * True when unset (Worker default) or the hostname is api.cloudflare.com
+ * (any scheme/casing). Local mocks use loopback or preview mock hosts.
+ */
+function isCloudflareProductionApiBase(baseUrl: string | undefined) {
 	const configured = baseUrl?.trim()
 	if (!configured) return true
-	return configured.replace(/\/$/, '').startsWith('https://api.cloudflare.com')
+	try {
+		return new URL(configured).hostname.toLowerCase() === 'api.cloudflare.com'
+	} catch {
+		return false
+	}
 }
 
 /**
  * Local vite serve drops the always-remote ARTIFACTS binding so packageSave
- * can use mock REST. Refuse the default Cloudflare API in that mode so a
- * `dev:vite` / SKIP_CLOUDFLARE_MOCK run with live tokens cannot write the
- * production Artifacts namespace.
+ * can use mock REST. Refuse the production Cloudflare API host in that mode
+ * so a `dev:vite` / SKIP_CLOUDFLARE_MOCK run with live tokens cannot write
+ * the production Artifacts namespace (including http:// or casing variants).
  */
 function assertLocalArtifactsRestUsesMock(env: Env, native: Artifacts | null) {
 	if (env.WRANGLER_IS_LOCAL_DEV !== 'true') return
 	if (native) return
-	if (!isDefaultCloudflareApiBase(env.CLOUDFLARE_API_BASE_URL)) return
+	if (!isCloudflareProductionApiBase(env.CLOUDFLARE_API_BASE_URL)) return
 	throw new Error(
-		'Local Artifacts REST refuses https://api.cloudflare.com (and the production namespace). Run `npm run dev` so the Cloudflare mock sets CLOUDFLARE_API_BASE_URL, or point CLOUDFLARE_API_BASE_URL at a mock. Do not use live Cloudflare credentials for local packageSave.',
+		'Local Artifacts REST refuses api.cloudflare.com (and the production namespace). Run `npm run dev` so the Cloudflare mock sets CLOUDFLARE_API_BASE_URL, or point CLOUDFLARE_API_BASE_URL at a mock. Do not use live Cloudflare credentials for local packageSave.',
 	)
 }
 
@@ -479,7 +487,7 @@ function createArtifactsRestBinding(env: Env, namespace: string) {
 	assertLocalArtifactsRestUsesMock(env, native)
 	const configuredBaseUrl = env.CLOUDFLARE_API_BASE_URL?.trim()
 	const usingNonDefaultApiBase = Boolean(
-		configuredBaseUrl && !isDefaultCloudflareApiBase(configuredBaseUrl),
+		configuredBaseUrl && !isCloudflareProductionApiBase(configuredBaseUrl),
 	)
 	const client =
 		native && usingNonDefaultApiBase

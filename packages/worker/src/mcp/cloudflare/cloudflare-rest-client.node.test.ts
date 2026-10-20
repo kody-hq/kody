@@ -8,6 +8,30 @@ import {
 
 type RecordedRequest = Pick<Request, 'method' | 'headers' | 'text'>
 
+test('Cloudflare REST client refuses a non-HTTPS api.cloudflare.com base URL', () => {
+	expect(
+		() =>
+			new CloudflareRestClient({
+				apiToken: 'token',
+				baseUrl: 'http://api.cloudflare.com',
+			}),
+	).toThrow(/must use HTTPS/)
+	expect(
+		() =>
+			new CloudflareRestClient({
+				apiToken: 'token',
+				baseUrl: 'https://api.cloudflare.com',
+			}),
+	).not.toThrow()
+	expect(
+		() =>
+			new CloudflareRestClient({
+				apiToken: 'token',
+				baseUrl: 'http://127.0.0.1:9028',
+			}),
+	).not.toThrow()
+})
+
 test('Cloudflare REST clients read mock responses, enforce API paths, and send JSON bodies', async () => {
 	const token = 'cloudflare-client-env-token'
 	const baseUrl = 'https://api.cloudflare.test'

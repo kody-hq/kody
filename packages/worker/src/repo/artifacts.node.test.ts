@@ -586,7 +586,7 @@ test('native ARTIFACTS with a mock API base and no Artifacts token skips REST cr
 	expect(restFetch).not.toHaveBeenCalled()
 })
 
-test('local Artifacts REST refuses the default Cloudflare API without a mock base URL', () => {
+test('local Artifacts REST refuses the Cloudflare production API host without a mock base URL', () => {
 	expect(() =>
 		getArtifactsBinding({
 			WRANGLER_IS_LOCAL_DEV: 'true',
@@ -594,7 +594,7 @@ test('local Artifacts REST refuses the default Cloudflare API without a mock bas
 			CLOUDFLARE_API_TOKEN: 'live-token',
 			ARTIFACTS_NAMESPACE: 'production',
 		} as unknown as Env),
-	).toThrow(/Local Artifacts REST refuses https:\/\/api\.cloudflare\.com/)
+	).toThrow(/Local Artifacts REST refuses api\.cloudflare\.com/)
 	expect(() =>
 		getArtifactsBinding({
 			WRANGLER_IS_LOCAL_DEV: 'true',
@@ -603,7 +603,25 @@ test('local Artifacts REST refuses the default Cloudflare API without a mock bas
 			CLOUDFLARE_API_BASE_URL: 'https://api.cloudflare.com',
 			ARTIFACTS_NAMESPACE: 'production',
 		} as unknown as Env),
-	).toThrow(/Local Artifacts REST refuses https:\/\/api\.cloudflare\.com/)
+	).toThrow(/Local Artifacts REST refuses api\.cloudflare\.com/)
+	expect(() =>
+		getArtifactsBinding({
+			WRANGLER_IS_LOCAL_DEV: 'true',
+			CLOUDFLARE_ACCOUNT_ID: 'acct',
+			CLOUDFLARE_API_TOKEN: 'live-token',
+			CLOUDFLARE_API_BASE_URL: 'http://api.cloudflare.com',
+			ARTIFACTS_NAMESPACE: 'production',
+		} as unknown as Env),
+	).toThrow(/Local Artifacts REST refuses api\.cloudflare\.com/)
+	expect(() =>
+		getArtifactsBinding({
+			WRANGLER_IS_LOCAL_DEV: 'true',
+			CLOUDFLARE_ACCOUNT_ID: 'acct',
+			CLOUDFLARE_API_TOKEN: 'live-token',
+			CLOUDFLARE_API_BASE_URL: 'https://API.cloudflare.com/',
+			ARTIFACTS_NAMESPACE: 'production',
+		} as unknown as Env),
+	).toThrow(/Local Artifacts REST refuses api\.cloudflare\.com/)
 	expect(() =>
 		getArtifactsBinding({
 			WRANGLER_IS_LOCAL_DEV: 'true',

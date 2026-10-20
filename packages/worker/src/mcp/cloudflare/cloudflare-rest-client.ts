@@ -49,6 +49,21 @@ export class CloudflareApiError extends Error {
 const defaultUserAgent = 'kody-cloudflare-rest/1.0'
 const defaultBaseUrl = 'https://api.cloudflare.com'
 
+function assertSafeCloudflareApiBase(baseUrl: string) {
+	let url: URL
+	try {
+		url = new URL(baseUrl)
+	} catch {
+		throw new Error(`Invalid Cloudflare API base URL: ${baseUrl}`)
+	}
+	if (
+		url.hostname.toLowerCase() === 'api.cloudflare.com' &&
+		url.protocol !== 'https:'
+	) {
+		throw new Error('Cloudflare API base URL must use HTTPS.')
+	}
+}
+
 export class CloudflareRestClient {
 	private readonly apiToken: string
 	private readonly baseUrl: string
@@ -58,6 +73,7 @@ export class CloudflareRestClient {
 	constructor(options: CloudflareRestClientOptions) {
 		this.apiToken = options.apiToken.trim()
 		this.baseUrl = (options.baseUrl ?? defaultBaseUrl).replace(/\/$/, '')
+		assertSafeCloudflareApiBase(this.baseUrl)
 		this.userAgent = options.userAgent?.trim() || defaultUserAgent
 		this.fetcher = options.fetcher
 	}
