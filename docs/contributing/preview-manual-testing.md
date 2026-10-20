@@ -237,10 +237,11 @@ closed pull request does not deploy.
    UI is under test.
 4. When UI is under test, open already signed in with
    `npm run control-kody -- browse --origin <preview> --path <path>` (optional
-   `--record`). Cursor `computerUse` cannot drive that Playwright window — for
-   computerUse, open `/login?redirectTo=<path>` with the seed credentials and
-   stay on the preview origin (do not follow package-app handoff into
-   production).
+   `--record` / `--screenshot <path>`). Do not attach `file://` `renderToString`
+   dumps as walkthrough evidence. Cursor `computerUse` cannot drive that
+   Playwright window — for computerUse, open `/login?redirectTo=<path>` with the
+   seed credentials and stay on the preview origin (do not follow package-app
+   handoff into production).
 5. Record what you saw in the PR.
 
 Do not point Playwright at the preview for the repo E2E suite. Local E2E

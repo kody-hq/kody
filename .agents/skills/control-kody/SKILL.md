@@ -21,7 +21,7 @@ npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <merge-sha>
 npm run control-kody -- preview --pr 42 --request 'GET /session' --check /account/waiting
-npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record]
+npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
 npm run control-kody -- execute --origin <preview> --code-file fixture.ts [--params-file params.json] [--org <slug>]
 npm run control-kody -- search --origin <preview> --query "packageSave" [--domain packages] [--org <slug>]
@@ -55,10 +55,12 @@ redirects, and `--contains` also searches the `Location` header.
 `browse` reuses the seed cookie from `.tmp/control-kody-cookie` (after `login`
 or `preview`) and injects it into headed Playwright Chromium the same way E2E
 does (`addCookies`). Opens `--path` already signed in. Optional `--record`
-writes video under `.tmp/control-kody-browse`. Prefer MCP/API/`execute` for
-proof; use `browse` only when UI is under test. Cursor `computerUse` drives its
-own browser and cannot attach to the CLI Chromium window — for computerUse, open
-`/login?redirectTo=<path>` with the public seed credentials instead.
+writes video under `.tmp/control-kody-browse`. `--screenshot <path>` writes a
+PNG from that live origin — do not attach `file://` `renderToString` dumps as
+walkthrough evidence. Prefer MCP/API/`execute` for proof; use `browse` only when
+UI is under test. Cursor `computerUse` drives its own browser and cannot attach
+to the CLI Chromium window — for computerUse, open `/login?redirectTo=<path>`
+with the public seed credentials instead.
 
 `doctor` (and a failed local `login`) print `npm run migrate:local` plus
 `node tools/seed-test-data.ts --local` when local APP_DB was never migrated or

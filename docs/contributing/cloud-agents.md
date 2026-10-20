@@ -272,7 +272,10 @@ the full error are in
   `/blog/*`. If the latest wrangler line is Reloading and `/health` still misses
   the budget, the process is left running so a retry can reuse it. UI
   verification opens that real origin (for example `/onboarding`); do not
-  substitute a `renderToString` dump of one component.
+  substitute a `renderToString` dump of one component, and do not screenshot a
+  `file://` HTML fixture. Walkthrough evidence for focused pages uses
+  `control-kody browse --screenshot` against the running origin (or the PR
+  preview when [local cannot](#local-limitations)).
 - `npm run dev` starts the optional Cloudflare API mock, then Vite so origin SSR
   and the client hydrate in one workerd graph. Generated platform and runtime
   configs join as Vite auxiliary workers, with the committed jobs and highlight

@@ -103,6 +103,8 @@ When UI is under test:
 1. Prefer `npm run control-kody -- browse --origin <preview> --path <path>` so
    Chromium opens already signed in (reuses `.tmp/control-kody-cookie`).
    Optional `--record` writes video under `.tmp/control-kody-browse`.
+   `--screenshot <path>` writes a PNG from the live preview — do not screenshot
+   a `file://` `renderToString` dump.
 2. Cursor `computerUse` cannot drive that Playwright window. For computerUse,
    open `/login?redirectTo=<path>` (seed email `me@kentcdodds.com` / password
    `ilikecode`, button **Sign in**) and stay on the preview origin.

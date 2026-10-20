@@ -27,6 +27,8 @@ export type BrowseSessionInput = {
 	headed?: boolean
 	record?: boolean
 	videoDir?: string
+	/** Write a PNG of the loaded page (PR walkthrough evidence). */
+	screenshotPath?: string | null
 	/** Close the browser after this many ms (scripted smoke / tests). */
 	closeAfterMs?: number | null
 	chromium?: BrowseChromium
@@ -40,6 +42,7 @@ export type BrowseSessionReport = {
 	headed: boolean
 	record: boolean
 	videoDir: string | null
+	screenshotPath: string | null
 	detail: string
 }
 
@@ -95,6 +98,20 @@ export function normalizeBrowsePath(browsePath: string) {
 	return trimmed
 }
 
+export function normalizeScreenshotPath(
+	screenshotPath: string | null | undefined,
+) {
+	if (screenshotPath == null) return null
+	const trimmed = screenshotPath.trim()
+	if (!trimmed) {
+		throw new Error('browse --screenshot requires a file path')
+	}
+	if (trimmed.startsWith('-')) {
+		throw new Error('browse --screenshot must be a file path, not a flag')
+	}
+	return path.resolve(trimmed)
+}
+
 export function browseTargetUrl(origin: string, browsePath: string) {
 	const base = normalizeCookieOrigin(origin)
 	const normalizedPath = normalizeBrowsePath(browsePath)
@@ -111,6 +128,9 @@ export function formatBrowseReport(report: BrowseSessionReport) {
 	const lines = [report.detail, `url ${report.url}`]
 	if (report.record && report.videoDir) {
 		lines.push(`video-dir ${report.videoDir}`)
+	}
+	if (report.screenshotPath) {
+		lines.push(`screenshot ${report.screenshotPath}`)
 	}
 	return lines.join('\n')
 }
@@ -136,7 +156,17 @@ export async function openBrowseSession(
 	const headed = input.headed !== false
 	const record = input.record === true
 	const videoDir = record ? (input.videoDir ?? defaultBrowseVideoDir) : null
+	const screenshotPath = normalizeScreenshotPath(input.screenshotPath)
 	if (videoDir) await mkdir(videoDir, { recursive: true })
+	if (screenshotPath) {
+		await mkdir(path.dirname(screenshotPath), { recursive: true })
+	}
+	// Headless + screenshot with no close budget would hang waiting for a
+	// window the agent cannot see. Capture and exit.
+	const closeAfterMs =
+		input.closeAfterMs == null && screenshotPath && !headed
+			? 0
+			: input.closeAfterMs
 
 	const launcher = input.chromium ?? chromium
 	let browser: Browser
@@ -161,7 +191,7 @@ export async function openBrowseSession(
 		await context.addCookies(cookies)
 		const page = await context.newPage()
 		const sessionClosed =
-			input.closeAfterMs == null
+			closeAfterMs == null
 				? new Promise<void>((resolve) => {
 						if (!browser.isConnected()) {
 							resolve()
@@ -172,6 +202,10 @@ export async function openBrowseSession(
 					})
 				: null
 		await page.goto(url, { waitUntil: 'domcontentloaded' })
+		if (screenshotPath) {
+			await page.waitForLoadState('load').catch(() => {})
+			await page.screenshot({ path: screenshotPath, fullPage: true })
+		}
 
 		const report: BrowseSessionReport = {
 			ok: true,
@@ -181,12 +215,13 @@ export async function openBrowseSession(
 			headed,
 			record,
 			videoDir,
+			screenshotPath,
 			detail: `opened ${url} (signed in)`,
 		}
 
-		if (input.closeAfterMs != null) {
-			if (input.closeAfterMs > 0) {
-				await delay(input.closeAfterMs)
+		if (closeAfterMs != null) {
+			if (closeAfterMs > 0) {
+				await delay(closeAfterMs)
 			}
 			await context.close()
 			context = null

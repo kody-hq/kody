@@ -49,6 +49,7 @@ import {
 	defaultBrowseVideoDir,
 	formatBrowseReport,
 	normalizeBrowsePath,
+	normalizeScreenshotPath,
 	openBrowseSession,
 } from './control-kody/browse.ts'
 import {
@@ -115,6 +116,7 @@ const usageLines = [
 	'  --contains <text>    Fail unless the response body includes this text',
 	'  --path <path>        browse target path (default: /account)',
 	'  --record             browse: record Playwright video under .tmp/control-kody-browse',
+	'  --screenshot <path>  browse: write a PNG of the loaded page (live origin)',
 	'  --headless           browse: launch Chromium headless (default is headed)',
 	'  --close-after <ms>   browse: close after N ms (scripted smoke / tests)',
 	'  --package-name <s>   Required for package-create (leaf or @scope/leaf)',
@@ -139,7 +141,7 @@ const usageLines = [
 	'browse reuses the seed cookie from login/preview and injects it into',
 	'Playwright Chromium (same addCookies pattern as e2e/playwright-utils.ts).',
 	'Prefer MCP/API/control-kody execute for proof; browse only when UI is under',
-	'test. Example: browse --origin <preview> --path /@user/pkg --record',
+	'test. Example: browse --origin <preview> --path /@user/pkg --screenshot shot.png',
 	'',
 	'request spec is METHOD /path [status] [json-body] [--form name=value]...',
 	"[--multipart] [--header 'Name: value']... Separate arguments are joined, so",
@@ -199,6 +201,7 @@ export type ControlKodyOptions = {
 	path: string
 	record: boolean
 	headed: boolean
+	screenshotPath: string | null
 	closeAfterMs: number | null
 	kodyId: string | null
 	description: string | null
@@ -267,6 +270,7 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		path: defaultBrowsePath,
 		record: false,
 		headed: true,
+		screenshotPath: null,
 		closeAfterMs: null,
 		kodyId: null,
 		description: null,
@@ -549,6 +553,13 @@ function parseSharedFlags(
 			}
 			case '--record': {
 				options.record = true
+				break
+			}
+			case '--screenshot': {
+				options.screenshotPath = normalizeScreenshotPath(
+					requireValue(argv[index + 1], '--screenshot'),
+				)
+				index += 1
 				break
 			}
 			case '--headless': {
@@ -1583,6 +1594,7 @@ async function runCommand(options: ControlKodyOptions) {
 				headed: options.headed,
 				record: options.record,
 				videoDir: options.record ? defaultBrowseVideoDir : undefined,
+				screenshotPath: options.screenshotPath,
 				closeAfterMs: options.closeAfterMs,
 			})
 			if (options.json) printJson({ ...report, cookieFile: options.cookieFile })

@@ -317,6 +317,25 @@ test('control-kody parses commands, maps every required route, and drives a seed
 			},
 		],
 		[
+			[
+				'browse',
+				'--origin',
+				preview,
+				'--path',
+				'/@user/pkg/approve-capabilities',
+				'--screenshot',
+				'.tmp/approve.png',
+				'--headless',
+			],
+			{
+				command: 'browse',
+				origin: preview,
+				path: '/@user/pkg/approve-capabilities',
+				headed: false,
+				screenshotPath: path.resolve('.tmp/approve.png'),
+			},
+		],
+		[
 			['browse', '/account/waiting', '--origin', preview],
 			{
 				command: 'browse',
@@ -347,6 +366,7 @@ test('control-kody parses commands, maps every required route, and drives a seed
 			/--org is only valid for execute, search, and package-create/,
 		],
 		['browse --close-after -1', /--close-after requires a value/],
+		['browse --screenshot', /--screenshot requires a value/],
 		['browse --path account', /same-origin path/],
 		['browse --path //evil.example', /same-origin path/],
 		['nope', /Unknown command/],

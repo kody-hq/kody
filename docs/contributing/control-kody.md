@@ -26,7 +26,7 @@ npm run control-kody -- map waiting
 npm run control-kody -- map --check
 npm run control-kody -- health --sha <commit>
 npm run control-kody -- preview --pr 42 --check /@user-me/-/waiting
-npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record]
+npm run control-kody -- browse --origin <preview> --path /@user-me/pkg [--record] [--screenshot .tmp/page.png]
 npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead] [--org <slug>]
 npm run control-kody -- execute --origin <preview> --code-file fixture.ts [--params-file params.json] [--org <slug>]
 npm run control-kody -- search --origin <preview> --query "packageSave" [--domain packages] [--org <slug>]
@@ -109,12 +109,17 @@ already signed in. Before launch it runs the same Playwright revision doctor as
 Chromium is missing — do not run `playwright install chromium` on Cloud Agents.
 Pass `--record` to write video under `.tmp/control-kody-browse` (needs
 Playwright ffmpeg: `npx playwright install ffmpeg` — small download),
-`--headless` for environments without a display, and `--close-after <ms>` for
-scripted smoke. Prefer MCP/API/`execute` for proof; use `browse` only when UI is
-under test. Cursor `computerUse` drives its own browser and cannot attach to the
-CLI-opened Chromium — for computerUse, open `/login?redirectTo=<path>` with the
-public seed credentials instead of retyping a long package URL after landing on
-`/account`.
+`--screenshot <path>` to write a PNG of the loaded page (PR walkthrough
+evidence), `--headless` for environments without a display, and
+`--close-after <ms>` for scripted smoke. Headless `--screenshot` closes after
+the capture when `--close-after` is omitted. Prefer MCP/API/`execute` for proof;
+use `browse` only when UI is under test. Walkthrough screenshots of account,
+approval, and other focused pages must come from this live origin (local `dev`
+or the PR preview), not a `file://` dump of `renderToString` HTML — those shots
+lack SiteHeader, tokens, and real layout. Cursor `computerUse` drives its own
+browser and cannot attach to the CLI-opened Chromium — for computerUse, open
+`/login?redirectTo=<path>` with the public seed credentials instead of retyping
+a long package URL after landing on `/account`.
 
 `doctor` checks local APP_DB readiness. A failed local `login` (unmigrated or
 unseeded D1) prints:

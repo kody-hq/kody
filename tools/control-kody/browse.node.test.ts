@@ -1,9 +1,12 @@
+import path from 'node:path'
+import { tmpdir } from 'node:os'
 import { expect, test } from 'vitest'
 import {
 	browseTargetUrl,
 	defaultBrowsePath,
 	formatBrowseReport,
 	normalizeBrowsePath,
+	normalizeScreenshotPath,
 	openBrowseSession,
 	playwrightCookiesFromHeader,
 	type BrowseChromium,
@@ -85,6 +88,8 @@ test('openBrowseSession injects cookies and opens the target path', async () => 
 		goto: async (url: string) => {
 			gotoCalls.push(url)
 		},
+		waitForLoadState: async () => {},
+		screenshot: async () => {},
 		on: (_event: string, _listener: () => void) => {},
 	}
 	const context = {
@@ -128,9 +133,59 @@ test('openBrowseSession injects cookies and opens the target path', async () => 
 		url: 'https://kody-pr-9.example/account/packages/demo',
 		headed: true,
 		record: false,
+		screenshotPath: null,
 	})
 	expect(formatBrowseReport(report)).toContain('signed in')
 	expect(disconnected).toBeNull()
+})
+
+test('normalizeScreenshotPath resolves a relative path and rejects flags', () => {
+	expect(normalizeScreenshotPath('.tmp/approve.png')).toBe(
+		path.resolve('.tmp/approve.png'),
+	)
+	expect(normalizeScreenshotPath(null)).toBe(null)
+	expect(() => normalizeScreenshotPath('')).toThrow(/file path/)
+	expect(() => normalizeScreenshotPath('--headless')).toThrow(/not a flag/)
+})
+
+test('openBrowseSession writes a screenshot and closes headless without closeAfterMs', async () => {
+	const screenshotCalls: Array<{ path: string; fullPage: boolean }> = []
+	const page = {
+		goto: async () => {},
+		waitForLoadState: async () => {},
+		screenshot: async (options: { path: string; fullPage: boolean }) => {
+			screenshotCalls.push(options)
+		},
+		on: () => {},
+	}
+	const context = {
+		addCookies: async () => {},
+		newPage: async () => page,
+		close: async () => {},
+	}
+	const browser = {
+		newContext: async () => context,
+		close: async () => {},
+		on: () => {},
+		isConnected: () => true,
+	}
+	const screenshotPath = path.join(
+		tmpdir(),
+		`control-kody-shot-${Date.now()}.png`,
+	)
+	const report = await openBrowseSession({
+		origin: 'https://kody-pr-9.example',
+		path: '/@user/pkg/approve-capabilities',
+		cookieHeader: 'kody_session=seed',
+		headed: false,
+		screenshotPath,
+		chromium: {
+			launch: async () => browser as never,
+		},
+	})
+	expect(screenshotCalls).toEqual([{ path: screenshotPath, fullPage: true }])
+	expect(report.screenshotPath).toBe(path.resolve(screenshotPath))
+	expect(formatBrowseReport(report)).toContain(`screenshot ${screenshotPath}`)
 })
 
 test('openBrowseSession refuses an empty cookie header', async () => {
