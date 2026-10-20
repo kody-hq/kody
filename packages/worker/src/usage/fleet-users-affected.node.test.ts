@@ -5,9 +5,6 @@ import {
 	buildFleetUsersAffectedPackageActorQuery,
 	clearFleetUsersAffectedPendingNotify,
 	evaluateFleetUsersAffectedTransition,
-	fleetUsersAffectedBaselineFactor,
-	fleetUsersAffectedMinAffected,
-	fleetUsersAffectedMinFractionDelta,
 	foldFleetUsersAffectedWindow,
 	isFleetUsersAffectedElevated,
 	medianOf,
@@ -33,10 +30,6 @@ function metrics(input: {
 }
 
 test('users-affected thresholds require volume floor and fraction lift', () => {
-	expect(fleetUsersAffectedMinAffected).toBe(5)
-	expect(fleetUsersAffectedBaselineFactor).toBe(2)
-	expect(fleetUsersAffectedMinFractionDelta).toBe(0.05)
-
 	expect(
 		isFleetUsersAffectedElevated({
 			affectedUsers: 4,

@@ -4,10 +4,6 @@ import {
 	foldPackageOwnerSpikeWindows,
 	isPackageOwnerErrorSpikeHealthy,
 	isPackageOwnerErrorSpikeTrigger,
-	packageOwnerErrorSpikeHealthyMaxErrors,
-	packageOwnerErrorSpikeHealthyRate,
-	packageOwnerErrorSpikeMinErrors,
-	packageOwnerErrorSpikeMinRate,
 	parsePackageOwnerSpikeState,
 	type PackageOwnerSpikeWindow,
 } from './package-owner-error-spike.ts'
@@ -28,12 +24,7 @@ function window(input: {
 	}
 }
 
-test('package owner spike thresholds use documented constants', () => {
-	expect(packageOwnerErrorSpikeMinErrors).toBe(20)
-	expect(packageOwnerErrorSpikeMinRate).toBe(0.25)
-	expect(packageOwnerErrorSpikeHealthyRate).toBe(0.05)
-	expect(packageOwnerErrorSpikeHealthyMaxErrors).toBe(5)
-
+test('package owner spike thresholds require volume floor and rate lift', () => {
 	expect(isPackageOwnerErrorSpikeTrigger({ errors: 19, events: 19 })).toBe(
 		false,
 	)

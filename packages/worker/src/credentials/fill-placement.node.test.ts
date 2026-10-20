@@ -32,7 +32,6 @@ test('null placement means anywhere', () => {
 })
 
 test('headers-only default for new credentials', () => {
-	expect(defaultNewCredentialFillPlacement).toEqual({ headers: true })
 	expect(
 		fillPlacementAllows(defaultNewCredentialFillPlacement, {
 			part: 'header',

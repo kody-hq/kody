@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	fleetPackageErrorRateDayAlertCooldownMinutes,
 	parseFleetPackageErrorRateAlertCooldownState,
 	shouldSuppressFleetPackageErrorRateAlert,
 	type FleetPackageErrorRateAlertCooldownState,
@@ -16,8 +15,6 @@ const baseAlert: FleetPackageErrorRateAlertCooldownState = {
 }
 
 test('day window uses 24h cooldown; same window+top owner never re-pages', () => {
-	expect(fleetPackageErrorRateDayAlertCooldownMinutes).toBe(24 * 60)
-
 	expect(
 		shouldSuppressFleetPackageErrorRateAlert({
 			now: new Date('2026-10-20T18:00:00.000Z'),

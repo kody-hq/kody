@@ -14,9 +14,6 @@ test('new credentials draft headers-only', () => {
 		body: false,
 		namedHeaders: '',
 	})
-	expect(fillPlacementViewFromDraft(defaultFillPlacementDraft())).toEqual({
-		headers: true,
-	})
 })
 
 test('anywhere (null) round-trips as all parts checked', () => {

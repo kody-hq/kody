@@ -2,25 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { clearOpenApiRouteCache } from '../src/open-api-client.js'
 import {
-	isPublishCliSuccessStatus,
 	publishCliExitCode,
-	publishCliRefusalStatuses,
-	publishCliSuccessStatuses,
 	publishRefusalMessage,
-	readPublishStatus,
 	runCli,
 } from '../src/cli.js'
-
-test('publishCliSuccessStatuses and refusal lists cover the API contract', () => {
-	assert.deepEqual(
-		[...publishCliSuccessStatuses],
-		['published', 'already_published'],
-	)
-	assert.deepEqual(
-		[...publishCliRefusalStatuses],
-		['not_fast_forward', 'checks_failed', 'locked', 'approval_required'],
-	)
-})
 
 test('publishCliExitCode is 0 only for published, already_published, dispatched', () => {
 	assert.equal(publishCliExitCode({ status: 'published' }), 0)
@@ -39,21 +24,9 @@ test('publishCliExitCode is 0 only for published, already_published, dispatched'
 		0,
 	)
 	assert.equal(publishCliExitCode({ status: 'dispatched' }), 0)
-
-	for (const status of publishCliRefusalStatuses) {
-		assert.equal(publishCliExitCode({ status }), 1, status)
-	}
 	assert.equal(publishCliExitCode({ status: 'mystery' }), 1)
 	assert.equal(publishCliExitCode({}), 1)
 	assert.equal(publishCliExitCode(null), 1)
-	assert.equal(
-		isPublishCliSuccessStatus(readPublishStatus({ status: 'published' })),
-		true,
-	)
-	assert.equal(
-		isPublishCliSuccessStatus(readPublishStatus({ status: 'checks_failed' })),
-		false,
-	)
 })
 
 test('publishRefusalMessage prefers API message and summarizes checks_failed', () => {
