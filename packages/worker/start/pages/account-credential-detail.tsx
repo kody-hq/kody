@@ -330,8 +330,10 @@ export function renderCredentialDetail(input: {
 										<p css={mutedCss}>
 											Package-scope secrets are editable here. A published
 											package may also declare placement on the matching{' '}
-											<code css={codeCss}>kody.credentials</code> need; Connect
-											and re-insert after Disconnect apply that declaration.
+											<code css={codeCss}>kody.credentials</code> need. That
+											declaration applies only when inserting a new
+											package-scope secret. Updating an existing secret keeps
+											its stored placement.
 										</p>
 									) : null}
 								</>
