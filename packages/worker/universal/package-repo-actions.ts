@@ -18,16 +18,17 @@ export type PackageRepoActions = {
 	/** Owner: default-branch HEAD is ahead of the last publish. */
 	publishHref: string | null
 	/**
-	 * Open app. Someone who may run the app (`app:execute`) gets the
-	 * kody.codes handoff path, which is what signs them in on the package-app
-	 * origin. Everyone else gets the canonical hosted origin only when the
-	 * app is approved for anonymous serving. Inline deployments use the path
-	 * mount.
+	 * Open app. Approved internet-visible apps use the canonical hosted
+	 * origin (`*.kody.run` or a verified custom domain). Someone who may run
+	 * a private or unapproved app (`app:execute`) still gets the kody.codes
+	 * handoff path so a session can attach. Inline deployments use the path
+	 * mount. There is no second host-labeled button.
 	 */
 	packageAppHref: string | null
 	/**
-	 * Canonical kody.run or verified custom-domain URL when it is not already
-	 * `packageAppHref`. Null when this deployment serves the app inline.
+	 * Reserved for settings/details that once showed a second hosted-origin
+	 * link. Always null from `resolvePackageAppLinks`; Open app is the only
+	 * control.
 	 */
 	packageAppOriginHref?: string | null
 	follow?: PackageRepoFollowAction | null

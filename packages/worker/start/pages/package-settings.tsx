@@ -120,7 +120,6 @@ export function PackageSettingsRoute({
 				<AccountPackageOwnerDetails
 					ownerUsername={username}
 					packageAppHref={data.repoActions?.packageAppHref ?? null}
-					packageAppOriginHref={data.repoActions?.packageAppOriginHref ?? null}
 					viewerCanPublish={data.viewerCanPublish === true}
 					viewerCanDelete={data.viewerCanDelete === true}
 					viewerCanAdoptCommunityFork={

@@ -132,15 +132,16 @@ type PackageAppLinkFlags = {
 }
 
 /**
- * Href for "Open app", plus the canonical hosted origin when it differs.
+ * Href for the single "Open app" control.
  *
- * The handoff path is only for someone who may run the app (`app:execute`).
- * `*.kody.run` and custom domains authenticate through that token, so a
- * reader who cannot execute must not be sent there. Everyone else gets the
- * canonical origin only when the app is actually served anonymously (an
- * approved internet-visible capability set). The flag alone is not enough:
- * an unapproved app 403s on the hosted origin. Inline deployments keep the
- * path mount, because that is where the app runs.
+ * When the app is approved for anonymous serving on the hosted origin
+ * (`*.kody.run` or a verified custom domain), Open app points there for
+ * everyone who may see it (runners and the public). Private or unapproved
+ * apps still use the kody.codes handoff path for someone who may run them
+ * (`app:execute`), because a direct hosted visit has no session. Readers who
+ * cannot execute never get a link that would 403. Inline deployments (no
+ * `PACKAGE_APP_BASE_URL`) keep the path mount. There is no second host
+ * button: `packageAppOriginHref` stays null.
  */
 export async function resolvePackageAppLinks(input: {
 	env: Env
@@ -170,9 +171,7 @@ export async function resolvePackageAppLinks(input: {
 		(input.viewerMayRun === undefined && input.viewer
 			? await viewerMayRunPackageApp(input)
 			: false)
-	// Runners already get the handoff path. The approval lookup only decides
-	// whether everyone else may see the public origin.
-	const publiclyServable = mayRun ? false : await appIsPubliclyServable(input)
+	const publiclyServable = await appIsPubliclyServable(input)
 	const pathHref = buildPackageAppPath({
 		username: input.username,
 		kodyId: input.kodyId,
@@ -192,16 +191,18 @@ export async function resolvePackageAppLinks(input: {
 				kodyId: input.kodyId,
 			})
 		)?.hostedUrl ?? null
-	if (mayRun) {
-		return {
-			packageAppHref: pathHref,
-			packageAppOriginHref: canonical,
-		}
-	}
 	if (publiclyServable && canonical) {
 		return {
 			packageAppHref: canonical,
-			packageAppOriginHref: canonical,
+			packageAppOriginHref: null,
+		}
+	}
+	if (mayRun) {
+		// Not internet-visible (or unapproved): handoff still attaches a
+		// session. Do not offer a second control at the bare hosted URL.
+		return {
+			packageAppHref: pathHref,
+			packageAppOriginHref: null,
 		}
 	}
 	return { packageAppHref: null, packageAppOriginHref: null }
