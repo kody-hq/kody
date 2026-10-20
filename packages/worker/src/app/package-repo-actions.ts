@@ -173,24 +173,22 @@ export async function resolvePackageAppLinks(input: {
 		(input.viewerMayRun === undefined && input.viewer
 			? await viewerMayRunPackageApp(input)
 			: false)
+	const pathHref = buildPackageAppPath({
+		username: input.username,
+		kodyId: input.kodyId,
+	})
 	const openHref = buildPackageAppOpenPath({
 		username: input.username,
 		kodyId: input.kodyId,
 	})
 	const packageAppOrigin = getPackageAppBaseUrl({ env: input.env })
 	if (!packageAppOrigin) {
-		// Inline deploy: same origin serves the app. Runners still use /open so
-		// the control is self-describing; anonymous IV readers keep the bare mount.
+		// Inline deploy: the app origin serves the package. Stay on the bare
+		// mount so client routers match packageAppBasePath. /open is only for
+		// handoff onto a separate hosted origin.
 		const publiclyServable = mayRun ? false : await appIsPubliclyServable(input)
 		return {
-			packageAppHref: mayRun
-				? openHref
-				: publiclyServable
-					? buildPackageAppPath({
-							username: input.username,
-							kodyId: input.kodyId,
-						})
-					: null,
+			packageAppHref: mayRun || publiclyServable ? pathHref : null,
 			packageAppOriginHref: null,
 		}
 	}

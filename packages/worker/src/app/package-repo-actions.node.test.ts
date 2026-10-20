@@ -197,3 +197,21 @@ test('open app uses the /open handoff path for runners', async () => {
 		packageAppOriginHref: null,
 	})
 })
+
+test('inline deploy keeps the bare mount for runners (no /open in the address bar)', async () => {
+	const env = {} as unknown as Env
+	await expect(
+		resolvePackageAppLinks({
+			env,
+			username: 'kentcdodds',
+			kodyId: 'github-triage',
+			hasPackage: true,
+			hasApp: true,
+			viewerMayRun: true,
+			requestUrl: 'https://kody.test/@kentcdodds/github-triage',
+		}),
+	).resolves.toEqual({
+		packageAppHref: '/@kentcdodds/packages/github-triage',
+		packageAppOriginHref: null,
+	})
+})
