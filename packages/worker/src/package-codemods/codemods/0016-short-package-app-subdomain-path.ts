@@ -80,7 +80,6 @@ function detectLegacySubdomainMounts(
 	for (const path of listFilesMatching(files, (source) =>
 		hasAmbiguousBareMount(source),
 	)) {
-		if (findings.some((finding) => finding.path === path)) continue
 		findings.push({ path, message: manualMentionMessage })
 	}
 	findings.sort((left, right) =>

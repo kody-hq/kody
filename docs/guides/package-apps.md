@@ -1273,9 +1273,8 @@ slash-terminated app mount as its scope. The canonical pair is:
 
 A scope that does not start with that header value is rejected by the browser
 with a `SecurityError`, so register exactly `${appBase}/`. The trailing slash
-matters: scope matching is a string-prefix check, so a scope of `/packages/app`
-would also claim the sibling mount `/packages/app-secret`; `/packages/app/`
-cannot.
+matters: scope matching is a string-prefix check, so a scope of `/app` would
+also claim the sibling mount `/app-secret`; `/app/` cannot.
 
 ```ts
 // in the page (src/client/index.ts)
@@ -1300,13 +1299,13 @@ self.addEventListener('install', (event) => {
 })
 ```
 
-Scope boundary: the bare mount URL (`hostedUrl`, `/packages/app` with no
-trailing slash — where the handoff lands) sits outside a `/packages/app/` scope,
-so the worker controls every page under the mount but not a document loaded at
-that exact URL. Link and redirect to slash-terminated paths inside the app
-(`${appBase}/`, `${appBase}/settings`) so the pages people spend time on are
-controlled; the root visit still gets the module straight from the platform with
-its immutable cache header.
+Scope boundary: the bare mount URL (`hostedUrl`, `/app` with no trailing slash —
+where the handoff lands; legacy `/packages/app` behaves the same) sits outside
+an `/app/` scope, so the worker controls every page under the mount but not a
+document loaded at that exact URL. Link and redirect to slash-terminated paths
+inside the app (`${appBase}/`, `${appBase}/settings`) so the pages people spend
+time on are controlled; the root visit still gets the module straight from the
+platform with its immutable cache header.
 
 Static `assets` paths are not fingerprinted (they carry a commit-scoped `ETag`
 and a five-minute max-age), so precache them keyed by `publishedCommit` and drop
