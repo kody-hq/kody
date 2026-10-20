@@ -1149,14 +1149,36 @@ jobs:
                 }),
               );
             } else {
-              await githubApi("createComment", () =>
-                github.rest.issues.createComment({
+              // A 5xx after GitHub stored the create can leave a marker
+              // comment behind; re-list before retrying so we update it
+              // instead of posting a duplicate.
+              let firstCreateAttempt = true;
+              await githubApi("createComment", async () => {
+                if (!firstCreateAttempt) {
+                  const latest = await github.paginate(
+                    github.rest.issues.listComments,
+                    { owner, repo, issue_number, per_page: 100 },
+                  );
+                  const created = latest.find((c) =>
+                    c.body?.includes(marker),
+                  );
+                  if (created) {
+                    return github.rest.issues.updateComment({
+                      owner,
+                      repo,
+                      comment_id: created.id,
+                      body,
+                    });
+                  }
+                }
+                firstCreateAttempt = false;
+                return github.rest.issues.createComment({
                   owner,
                   repo,
                   issue_number,
                   body,
-                }),
-              );
+                });
+              });
             }
 
       # A failed PR preview still holds Workers (and their Durable Object
@@ -1339,6 +1361,8 @@ jobs:
                   }),
                 );
               } catch (error) {
+                // A 5xx after a successful delete surfaces as 404 on retry.
+                if (error.status === 404) continue;
                 if (error.status !== 422) throw error;
                 await githubApi("createDeploymentStatus", () =>
                   github.rest.repos.createDeploymentStatus({
@@ -1349,13 +1373,17 @@ jobs:
                     description: "Cleaning up closed PR preview deployment.",
                   }),
                 );
-                await githubApi("deleteDeployment", () =>
-                  github.rest.repos.deleteDeployment({
-                    owner,
-                    repo,
-                    deployment_id: deployment.id,
-                  }),
-                );
+                try {
+                  await githubApi("deleteDeployment", () =>
+                    github.rest.repos.deleteDeployment({
+                      owner,
+                      repo,
+                      deployment_id: deployment.id,
+                    }),
+                  );
+                } catch (retryError) {
+                  if (retryError.status !== 404) throw retryError;
+                }
               }
             }
 
