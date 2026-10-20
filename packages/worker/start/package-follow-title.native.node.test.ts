@@ -61,14 +61,14 @@ test('Open app is the only app control; a leftover origin href does not render',
 		renderPackageRepoActions({
 			fork: null,
 			publishHref: null,
-			packageAppHref: '/@owner/packages/demo',
+			packageAppHref: '/@owner/packages/demo/open',
 			packageAppOriginHref: 'https://owner.kody.run/packages/demo',
 			follow: null,
 		}),
 		'/@owner/demo',
 	)
 	expect(html).toContain('data-testid="open-package-app"')
-	expect(html).toContain('href="/@owner/packages/demo"')
+	expect(html).toContain('href="/@owner/packages/demo/open"')
 	expect(html).toContain('<span>Open app</span>')
 	expect(html).not.toContain('data-testid="package-app-origin-link"')
 	expect(html).not.toContain('owner.kody.run')

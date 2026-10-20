@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageAppCustomHostnamePath,
 	buildPackageAppCustomHostnameUrl,
+	buildPackageAppOpenPath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
 	buildPackagePagePath,
@@ -23,6 +24,16 @@ test('saved-package pages and hosted package-app mounts use different paths', ()
 			restPath: '/report',
 		}),
 	).toBe('/@kentcdodds/packages/hn-pulse/report')
+	expect(
+		buildPackageAppOpenPath({ username: 'kentcdodds', kodyId: 'hn-pulse' }),
+	).toBe('/@kentcdodds/packages/hn-pulse/open')
+	expect(
+		buildPackageAppOpenPath({
+			username: 'kentcdodds',
+			kodyId: 'hn-pulse',
+			restPath: '/report',
+		}),
+	).toBe('/@kentcdodds/packages/hn-pulse/open/report')
 	expect(buildPackageAppSubdomainPath({ kodyId: 'hn-pulse' })).toBe(
 		'/packages/hn-pulse',
 	)

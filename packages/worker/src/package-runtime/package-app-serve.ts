@@ -8,6 +8,7 @@ import {
 	buildPackageAppCustomHostnamePath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
+	packageAppOpenPathSegment,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
 import { accountCreditsPath } from '#universal/compute-overage.ts'
@@ -80,6 +81,12 @@ export type PackageAppPath = {
 	kodyId: string
 	restPath: string
 	mount: PackageAppMount
+	/**
+	 * True when the app-origin path used `/open` after the package leaf
+	 * (`/@user/packages/{name}/open/...`). The segment is platform handoff
+	 * markup, not part of the hosted app path.
+	 */
+	openHandoff?: boolean
 }
 
 export function parsePackageAppPath(pathname: string): PackageAppPath | null {
@@ -97,11 +104,15 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 		return null
 	}
 	if (getUsernameFormatValidationError(username)) return null
+	const afterLeaf = parts.slice(3)
+	const openHandoff = afterLeaf[0] === packageAppOpenPathSegment
+	const restParts = openHandoff ? afterLeaf.slice(1) : afterLeaf
 	return {
 		username,
 		kodyId,
-		restPath: parts.length > 3 ? `/${parts.slice(3).join('/')}` : '/',
+		restPath: restParts.length > 0 ? `/${restParts.join('/')}` : '/',
 		mount: 'username-path',
+		...(openHandoff ? { openHandoff: true } : {}),
 	}
 }
 

@@ -31,6 +31,29 @@ export function buildPackageAppPath(input: {
 	)}${buildRestPathSuffix(input.restPath)}`
 }
 
+/**
+ * App-origin path that starts a package-app session handoff to the hosted
+ * origin. Distinct from bare `/@{user}/packages/{name}`, which still hands
+ * off for old links but does not read as an open action in the address bar.
+ *
+ * Subpath after `/open` (and the request query) is forwarded to the hosted
+ * app the same way the bare mount does. Hosted URL shape is owned by
+ * {@link buildPackageAppSubdomainPath} / {@link resolveHostedPackageAppUrl}.
+ */
+export const packageAppOpenPathSegment = 'open'
+
+export function buildPackageAppOpenPath(input: {
+	username: string
+	kodyId: string
+	restPath?: string | null
+}) {
+	const afterOpen = buildRestPathSuffix(input.restPath)
+	return `${buildPackageAppPath({
+		username: input.username,
+		kodyId: input.kodyId,
+	})}/${packageAppOpenPathSegment}${afterOpen}`
+}
+
 export function buildPackageAppUrl(input: {
 	origin: string
 	username: string
@@ -38,6 +61,15 @@ export function buildPackageAppUrl(input: {
 	restPath?: string | null
 }) {
 	return `${input.origin.trim().replace(/\/+$/, '')}${buildPackageAppPath(input)}`
+}
+
+export function buildPackageAppOpenUrl(input: {
+	origin: string
+	username: string
+	kodyId: string
+	restPath?: string | null
+}) {
+	return `${input.origin.trim().replace(/\/+$/, '')}${buildPackageAppOpenPath(input)}`
 }
 
 /**

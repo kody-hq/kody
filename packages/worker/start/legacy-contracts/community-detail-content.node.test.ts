@@ -504,7 +504,7 @@ test('open package app link shows for the owner, and hides without an app or acc
 		hasApp: true,
 	} as const
 	const openApp = testId('open-package-app')
-	const appHref = 'href="/@kentcdodds/packages/github-triage"'
+	const appHref = 'href="/@kentcdodds/packages/github-triage/open"'
 	expectMarkers(await render({ ...privateApp, viewerIsOwner: true }), [
 		openApp,
 		appHref,

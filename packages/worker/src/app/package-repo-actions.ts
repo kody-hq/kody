@@ -1,4 +1,7 @@
-import { buildPackageAppPath } from '@kody-internal/shared/public-urls.ts'
+import {
+	buildPackageAppOpenPath,
+	buildPackageAppPath,
+} from '@kody-internal/shared/public-urls.ts'
 import { type PublicCommunityListing } from '#app/community-public.ts'
 import { type PackagePageAccess } from '#app/package-page.ts'
 import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
@@ -62,8 +65,8 @@ export function buildPackageRepoActions(input: {
 	/** Set when the page names a followable package or plain repo. */
 	follow?: { kind: 'package' | 'repo'; viewerFollowing: boolean } | null
 	/**
-	 * Overrides the owner path mount. The page loader sets this to the
-	 * handoff entry or the canonical hosted origin.
+	 * Overrides the owner Open app href. The page loader sets this to the
+	 * `/open` handoff path or the canonical hosted origin for readers.
 	 */
 	packageAppHref?: string | null
 	/** Canonical kody.run or custom-domain URL, when one exists. */
@@ -102,7 +105,7 @@ export function buildPackageRepoActions(input: {
 		input.packageAppHref !== undefined
 			? input.packageAppHref
 			: input.viewerIsOwner && input.ownerPackage?.hasApp === true
-				? buildPackageAppPath({
+				? buildPackageAppOpenPath({
 						username: input.username,
 						kodyId: input.kodyId,
 					})
@@ -134,14 +137,13 @@ type PackageAppLinkFlags = {
 /**
  * Href for the single "Open app" control.
  *
- * When the app is approved for anonymous serving on the hosted origin
- * (`*.kody.run` or a verified custom domain), Open app points there for
- * everyone who may see it (runners and the public). Private or unapproved
- * apps still use the kody.codes handoff path for someone who may run them
- * (`app:execute`), because a direct hosted visit has no session. Readers who
- * cannot execute never get a link that would 403. Inline deployments (no
- * `PACKAGE_APP_BASE_URL`) keep the path mount. There is no second host
- * button: `packageAppOriginHref` stays null.
+ * Someone who may run the app (`app:execute`) gets the self-describing
+ * handoff path `/@{user}/packages/{name}/open`, which mints a session token
+ * and redirects to the hosted origin from
+ * {@link resolvePublicPackageAppLocation}. Readers who cannot execute get
+ * that hosted URL only when the app is approved for anonymous serving.
+ * Inline deployments (no `PACKAGE_APP_BASE_URL`) keep the path mount. There
+ * is no second host button: `packageAppOriginHref` stays null.
  */
 export async function resolvePackageAppLinks(input: {
 	env: Env
@@ -171,18 +173,34 @@ export async function resolvePackageAppLinks(input: {
 		(input.viewerMayRun === undefined && input.viewer
 			? await viewerMayRunPackageApp(input)
 			: false)
-	const publiclyServable = await appIsPubliclyServable(input)
-	const pathHref = buildPackageAppPath({
+	const openHref = buildPackageAppOpenPath({
 		username: input.username,
 		kodyId: input.kodyId,
 	})
 	const packageAppOrigin = getPackageAppBaseUrl({ env: input.env })
 	if (!packageAppOrigin) {
+		// Inline deploy: same origin serves the app. Runners still use /open so
+		// the control is self-describing; anonymous IV readers keep the bare mount.
+		const publiclyServable = mayRun ? false : await appIsPubliclyServable(input)
 		return {
-			packageAppHref: mayRun || publiclyServable ? pathHref : null,
+			packageAppHref: mayRun
+				? openHref
+				: publiclyServable
+					? buildPackageAppPath({
+							username: input.username,
+							kodyId: input.kodyId,
+						})
+					: null,
 			packageAppOriginHref: null,
 		}
 	}
+	if (mayRun) {
+		return {
+			packageAppHref: openHref,
+			packageAppOriginHref: null,
+		}
+	}
+	const publiclyServable = await appIsPubliclyServable(input)
 	const canonical =
 		(
 			await resolvePublicPackageAppLocation({
@@ -194,14 +212,6 @@ export async function resolvePackageAppLinks(input: {
 	if (publiclyServable && canonical) {
 		return {
 			packageAppHref: canonical,
-			packageAppOriginHref: null,
-		}
-	}
-	if (mayRun) {
-		// Not internet-visible (or unapproved): handoff still attaches a
-		// session. Do not offer a second control at the bare hosted URL.
-		return {
-			packageAppHref: pathHref,
 			packageAppOriginHref: null,
 		}
 	}

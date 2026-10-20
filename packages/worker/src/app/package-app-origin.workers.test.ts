@@ -216,11 +216,13 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		runtime: 'production',
 	})
 	const sessionCookie = await seedOwnerSessionCookie()
-	const entryUrl = `${appOrigin}/@${ownerUsername}/packages/demo/report`
+	const entryUrl = `${appOrigin}/@${ownerUsername}/packages/demo/open/report`
+	const legacyEntryUrl = `${appOrigin}/@${ownerUsername}/packages/demo/report`
 
-	// 1. The app origin never executes package code: it mints a handoff token and
-	// redirects to the owner's package-app subdomain, where the username lives in
-	// the hostname and the path carries only the package mount. Query preserved.
+	// 1. The app origin never executes package code: /open mints a handoff token
+	// and redirects to the owner's package-app subdomain, where the username
+	// lives in the hostname and the path carries only the package mount. Query
+	// preserved. Bare /packages/{name}/… still hands off for old links.
 	const appOriginResponse = await workerFetch(`${entryUrl}?tab=1`, {
 		headers: { Cookie: sessionCookie },
 	})
@@ -235,6 +237,13 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		packageAppHandoffQueryParam,
 	)
 	expect(handoffToken).toBeTruthy()
+	const bareMountHandoff = await workerFetch(`${legacyEntryUrl}?tab=1`, {
+		headers: { Cookie: sessionCookie },
+	})
+	expect(bareMountHandoff.status).toBe(302)
+	expect(new URL(bareMountHandoff.headers.get('Location') ?? '').pathname).toBe(
+		'/packages/demo/report',
+	)
 
 	// 2. The owner subdomain exchanges the token for its own host-scoped cookie,
 	// then bounces to the clean URL so the token stops travelling. The secure

@@ -170,7 +170,7 @@ test('buildSourceAheadPublishHref names the HEAD commit when present', () => {
 	)
 })
 
-test('open app hands off for runners when the app is not publicly servable', async () => {
+test('open app uses the /open handoff path for runners', async () => {
 	const env = {
 		PACKAGE_APP_BASE_URL: 'https://packages.isolated.test',
 	} as unknown as Env
@@ -182,12 +182,11 @@ test('open app hands off for runners when the app is not publicly servable', asy
 		hasApp: true,
 		requestUrl: 'https://kody.test/@kentcdodds/github-triage',
 	}
-	// No approved internet-visible capability set: runners still get the
-	// handoff path, and there is no second host-labeled control.
+	// Runners always get the self-describing handoff path; no second host button.
 	await expect(
 		resolvePackageAppLinks({ ...shared, viewerMayRun: true }),
 	).resolves.toEqual({
-		packageAppHref: '/@kentcdodds/packages/github-triage',
+		packageAppHref: '/@kentcdodds/packages/github-triage/open',
 		packageAppOriginHref: null,
 	})
 	// Readers do not get a public Open app that would 403 on the hosted origin.

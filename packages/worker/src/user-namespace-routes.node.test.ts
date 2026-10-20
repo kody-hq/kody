@@ -36,6 +36,20 @@ test('machine namespaces claim only their multi-segment paths', () => {
 		restPath: '/',
 		mount: 'username-path',
 	})
+	expect(parsePackageAppPath('/@kody/packages/devin/open')).toEqual({
+		username: 'kody',
+		kodyId: 'devin',
+		restPath: '/',
+		mount: 'username-path',
+		openHandoff: true,
+	})
+	expect(parsePackageAppPath('/@kody/packages/devin/open/report')).toEqual({
+		username: 'kody',
+		kodyId: 'devin',
+		restPath: '/report',
+		mount: 'username-path',
+		openHandoff: true,
+	})
 	expect(parsePackageAppPath('/@kody/devin')).toBeNull()
 	expect(
 		isNamespacedAppEndpointPath('/@kody/doom/assets/docs/poster.png'),

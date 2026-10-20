@@ -54,7 +54,7 @@ test('owner details link Open Package App when the package declares an app', asy
 	)
 
 	expect(html).toContain('data-testid="open-package-app"')
-	expect(html).toContain('href="/@kentcdodds/packages/demo-app"')
+	expect(html).toContain('href="/@kentcdodds/packages/demo-app/open"')
 	expect(html).toContain('Open Package App')
 	expect(html).toContain('data-icon="share"')
 })

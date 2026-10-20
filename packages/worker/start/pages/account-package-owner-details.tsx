@@ -3,7 +3,7 @@ import {
 	setPackageVisibility,
 	setPackageInternetVisible,
 } from '#start/server/package-mutations'
-import { buildPackageAppPath } from '@kody-internal/shared/public-urls.ts'
+import { buildPackageAppOpenPath } from '@kody-internal/shared/public-urls.ts'
 import { type CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { usePackageMutation } from '../package-mutation.ts'
@@ -486,7 +486,7 @@ export function AccountPackageOwnerDetails(props: {
 								openHref={
 									props.packageAppHref !== undefined
 										? props.packageAppHref
-										: buildPackageAppPath({
+										: buildPackageAppOpenPath({
 												username: props.ownerUsername,
 												kodyId: packageDetail.kodyId,
 											})

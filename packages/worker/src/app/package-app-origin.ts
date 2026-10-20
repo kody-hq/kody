@@ -4,7 +4,7 @@ import { html } from 'remix/html-template'
 import { createHtmlResponse } from 'remix/response/html'
 import {
 	buildPackageAppCustomHostnameUrl,
-	buildPackageAppPath,
+	buildPackageAppOpenPath,
 	buildPackageAppSubdomainPath,
 	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
@@ -194,8 +194,42 @@ function createUnmatchedPackageAppPathResponse() {
 }
 
 /**
- * The subdomain URL a package-app path is canonically served from, carrying
- * over the request's query string (minus any handoff token).
+ * Hosted URL for a handoff redirect. Uses
+ * {@link resolvePublicPackageAppLocation} (custom hostname or subdomain via
+ * the shared public-urls helpers) so hosted path shape stays in one place.
+ * Falls back to the subdomain builder when the public helper returns null.
+ */
+async function buildHandoffHostedTarget(input: {
+	env: Env
+	packageAppOrigin: string
+	packagePath: PackageAppPath
+	kodyId: string
+	url: URL
+}) {
+	const restPath =
+		input.packagePath.restPath === '/' ? null : input.packagePath.restPath
+	const publicLocation = await resolvePublicPackageAppLocation({
+		env: input.env,
+		username: input.packagePath.username,
+		kodyId: input.kodyId,
+		restPath,
+	})
+	const target = new URL(
+		publicLocation?.hostedUrl ??
+			buildPackageAppSubdomainUrl({
+				packageAppOrigin: input.packageAppOrigin,
+				username: input.packagePath.username,
+				kodyId: input.kodyId,
+				restPath,
+			}),
+	)
+	target.search = withoutHandoffToken(input.url).search
+	return target
+}
+
+/**
+ * Sync subdomain URL (tests and call sites that already know there is no
+ * custom hostname). Prefer {@link buildHandoffHostedTarget} for handoff.
  */
 function buildSubdomainTarget(input: {
 	packageAppOrigin: string
@@ -216,8 +250,8 @@ function buildSubdomainTarget(input: {
 }
 
 /**
- * The app-origin entry URL for a package app: the path-based mount that
- * authenticates the owner and starts a fresh handoff.
+ * The app-origin Open app URL: `/@{user}/packages/{name}/open`, which
+ * authenticates and starts a fresh handoff.
  */
 function buildAppOriginEntryUrl(input: {
 	appBaseUrl: string
@@ -225,7 +259,7 @@ function buildAppOriginEntryUrl(input: {
 	url: URL
 }) {
 	const entry = new URL(
-		`${input.appBaseUrl.replace(/\/+$/, '')}${buildPackageAppPath({
+		`${input.appBaseUrl.replace(/\/+$/, '')}${buildPackageAppOpenPath({
 			username: input.packagePath.username,
 			kodyId: input.packagePath.kodyId,
 			restPath:
@@ -605,7 +639,7 @@ async function handleAppOriginPackageAppPath(input: {
 		url,
 		packagePath,
 		buildLocation: (currentSlug) =>
-			buildPackageAppPath({
+			buildPackageAppOpenPath({
 				username: packagePath.username,
 				kodyId: currentSlug,
 				restPath: packagePath.restPath === '/' ? null : packagePath.restPath,
@@ -677,12 +711,18 @@ async function handleAppOriginPackageAppPath(input: {
 		customHandoff && !(internetVisible && customHandoff.bindingKind === 'org')
 			? customHandoff
 			: null
-	const target =
-		usableCustomHandoff?.target ??
-		buildSubdomainTarget({ packageAppOrigin, packagePath, url })
 	// Custom-host consume binds to the mapping leaf/slug (lowercased). Mint
 	// with that id so a mixed-case app-origin URL cannot fail the path check.
 	const handoffKodyId = usableCustomHandoff?.kodyId ?? packagePath.kodyId
+	const target =
+		usableCustomHandoff?.target ??
+		(await buildHandoffHostedTarget({
+			env,
+			packageAppOrigin,
+			packagePath,
+			kodyId: handoffKodyId,
+			url,
+		}))
 
 	// A non-safe method cannot carry a handoff token. Preserve the method and
 	// let the package-app host authorize it with a cookie the visitor already

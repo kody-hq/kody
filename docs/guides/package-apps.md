@@ -97,12 +97,14 @@ domains). That URL is the app. `https://kody.codes/@{username}/packages/…` is
 not: it shows the package page and does not bounce visitors to the hosted
 origin.
 
-**Open app** is one control. Approved internet-visible apps open at the hosted
-origin (`*.kody.run` or a verified custom domain). Private or unapproved apps
-still use the kody.codes handoff path for someone who may run them, so a
-short-lived token can attach a session on the hosted origin. Prefer the OAuth
-helper below for in-app Sign in / Sign out. A direct visit to `*.kody.run` or a
-custom domain does not see the kody.codes session cookie.
+**Open app** is one control. For someone who may run the app it goes to
+`/@{username}/packages/<name>/open` on kody.codes, which mints a short-lived
+handoff token and redirects to the hosted origin (`*.kody.run` or a verified
+custom domain). Bare `/@{username}/packages/<name>` still hands off for old
+links. Approved internet-visible apps can also be opened at the hosted origin
+without a session. Prefer the OAuth helper below for in-app Sign in / Sign out.
+A direct visit to `*.kody.run` or a custom domain does not see the kody.codes
+session cookie.
 
 ### Auth with Kody (OAuth)
 
@@ -111,9 +113,8 @@ is the client. Consent and sign-in stay on kody.codes; authorization codes +
 PKCE land a per-app host-only `__Host-kody_pkg_session_<hash>` cookie on the app
 origin (`*.kody.run` or a verified custom domain). Shared hosts keep one cookie
 per package leaf so logout of one app does not sign the visitor out of siblings.
-Redirect URIs are limited to `/_kody/auth/callback` on those origins. Private or
-unapproved apps still use the handoff path for **Open app** until in-app OAuth
-fully replaces it.
+Redirect URIs are limited to `/_kody/auth/callback` on those origins. **Open
+app** still uses the `/open` handoff path until in-app OAuth fully replaces it.
 
 Near-zero-config helper:
 
@@ -288,11 +289,12 @@ Copy-paste starting points land on `test_hints.app` after
 Confirm the real user flow in a browser that already has the session, or in a
 local harness that serves the **same** published client and assets:
 
-1. Open the app from the package page (**Open app** goes to the hosted origin
-   for approved internet-visible apps, or the kody.codes handoff path for
-   private or unapproved apps the viewer may run), **or** serve the published
-   entry, HTML, and asset routes locally with the same `appBasePath` /
-   `hostedUrl` join the Worker uses.
+1. Open the app from the package page (**Open app** uses
+   `/@{user}/packages/<name>/open` to hand off a session to the hosted origin
+   for people who may run it; internet-visible apps also open at the hosted
+   origin for everyone else), **or** serve the published entry, HTML, and asset
+   routes locally with the same `appBasePath` / `hostedUrl` join the Worker
+   uses.
 2. Click, type, and submit the way a person would.
 3. Confirm layout, redirects, and any websocket facet on that same client.
 4. Then ping the owner.
