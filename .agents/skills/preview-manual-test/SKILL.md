@@ -86,9 +86,10 @@ Prefer local [control-kody](../control-kody/SKILL.md) verification
 (`dev`/`login`/`request`/`browse`/`execute`) for UI and API changes. Use a PR
 preview when local cannot exercise the change: Workers / service bindings,
 Durable Objects, real OAuth or inbound third-party webhooks, deploy / wrangler /
-config, Artifacts / `packageSave`, or when the user asks to try the preview URL.
-After the PR is **ready for review** (drafts and forks have no preview) and you
-have pushed the commits you want to exercise.
+config, the real remote Artifacts namespace, or when the user asks to try the
+preview URL. Local `packageSave` / publish use the mock Artifacts API. After the
+PR is **ready for review** (drafts and forks have no preview) and you have
+pushed the commits you want to exercise.
 
 This does not replace `npm run validate` or local control-kody proof.
 

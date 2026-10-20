@@ -111,6 +111,48 @@ test('writes local-dev vars onto the selected env without dropping committed var
 	}
 })
 
+test('drops always-remote origin bindings from the generated local env only', async () => {
+	const dir = await mkdtemp(path.join(tmpdir(), 'origin-dev-config-'))
+	try {
+		const originConfigPath = path.join(dir, 'wrangler.jsonc')
+		await writeFile(
+			originConfigPath,
+			JSON.stringify({
+				name: 'kody',
+				main: './src/index.ts',
+				env: {
+					production: {
+						artifacts: [{ binding: 'ARTIFACTS', namespace: 'production' }],
+						ai: { binding: 'AI' },
+						vars: { ARTIFACTS_NAMESPACE: 'production' },
+					},
+				},
+			}),
+		)
+		const outputPath = await writeLocalOriginDevConfig({
+			originConfigPath,
+			envName: 'production',
+			vars: { WRANGLER_IS_LOCAL_DEV: 'true' },
+			dropAlwaysRemoteBindings: ['artifacts'],
+		})
+		const written = JSON.parse(await readFile(outputPath, 'utf8')) as {
+			env: {
+				production: {
+					artifacts?: unknown
+					ai?: unknown
+					vars: Record<string, string>
+				}
+			}
+		}
+		expect(written.env.production.artifacts).toBeUndefined()
+		expect(written.env.production.ai).toEqual({ binding: 'AI' })
+		expect(written.env.production.vars.ARTIFACTS_NAMESPACE).toBe('production')
+		expect(written.env.production.vars.WRANGLER_IS_LOCAL_DEV).toBe('true')
+	} finally {
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
 test('Stripe simulator config is restricted to the isolated test runner', () => {
 	const values = {
 		KODY_E2E_WEB_SERVER: '1',

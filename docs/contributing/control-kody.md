@@ -8,7 +8,8 @@ smoke, `/health` SHA checks, and the Feature Map.
 `login`, then `request` / `browse` / `execute` on localhost. Use a PR `preview`
 only when local cannot exercise the change — Workers / service bindings, Durable
 Objects, real OAuth or inbound third-party webhooks, deploy / wrangler / config,
-Artifacts / `packageSave`, or other production-like surfaces. See
+the real remote Artifacts namespace, or other production-like surfaces. Local
+`packageSave` / publish use the mock Artifacts API. See
 [Local limitations](./cloud-agents.md#local-limitations).
 
 ```bash
@@ -148,9 +149,12 @@ the package page can show **HEAD ahead of published**. Do not POST a create
 action to `/account/packages.json` — that endpoint has no package-create action.
 Logged-in preview testing does not require agents to hand-roll an MCP OAuth
 dance — the CLI does it for them. The command refuses `https://kody.codes`.
-Package source persistence (`packageGetGitRemote`, `packageSave`, publish) needs
-the remote `ARTIFACTS` binding, so run `package-create` against a PR preview,
-not `npm run dev`. See [Local limitations](./cloud-agents.md#local-limitations).
+Package source persistence (`packageGetGitRemote`, `packageSave`, publish) works
+on local `npm run dev`: the generated origin config drops the always-remote
+`ARTIFACTS` binding so the mock Artifacts API is used. Prefer `package-create` /
+`execute` against localhost; use a PR preview when you need the real remote
+Artifacts namespace. See
+[Local limitations](./cloud-agents.md#local-limitations).
 
 `execute` and `search` use the same OAuth client against a preview or local
 origin. `execute` reads an ESM module from `--code-file` (default export) and
@@ -158,9 +162,9 @@ optional JSON `--params-file`. `--execute-args-file` merges a JSON object into
 the execute call, such as a `credentials` call map. `search` takes `--query`,
 and optionally `--domain`, `--entity`, and `--limit`. Both refuse
 `https://kody.codes`. Do not hand-write a throwaway MCP client script for
-preview fixtures. A module that calls `packageSave`, publish, or
-`packageGetGitRemote` must use `--origin <preview>`; the local origin cannot
-persist package repos.
+preview fixtures. Modules that call `packageSave`, publish, or
+`packageGetGitRemote` can run against the local origin (mock Artifacts) or a PR
+preview (real Artifacts namespace).
 
 After the seed user belongs to more than one organization, OAuth authorize
 refuses to approve until an org is chosen. Pass `--org <slug>` on `execute`,

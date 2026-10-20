@@ -85,6 +85,12 @@ export default defineConfig(async ({ command }) => {
 			envName,
 			vars: collectLocalOriginDevVars(process.env, process.env.PORT),
 			generatedBasename,
+			// Same always-remote strip as the platform sibling: keep the
+			// committed production/preview `artifacts` binding for deploys,
+			// but omit it from the generated local origin so `packageSave`
+			// uses the mock Artifacts REST path instead of failing with
+			// "Binding ARTIFACTS needs to be run remotely".
+			dropAlwaysRemoteBindings: ['artifacts'],
 		})
 		if (process.env.KODY_E2E_WEB_SERVER === '1') {
 			const { unstable_getVarsForDev } = await import('wrangler')

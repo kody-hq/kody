@@ -381,12 +381,13 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   offline ranker when `WRANGLER_IS_LOCAL_DEV` is set (normal for `npm run dev`).
 - `/mcp` returns **401** without OAuth; use browser login or MCP E2E tests for
   authenticated MCP checks.
-- Package repo storage (Cloudflare Artifacts, the `ARTIFACTS` binding) is
-  remote-only. Wrangler treats that binding as an always-remote type; local
-  platform config strips it so `npm run dev` can start, and the origin test env
-  never binds it. `packageSave`, publish, and `packageGetGitRemote` / git-remote
-  flows then fail on a local origin — often with
-  `Binding ARTIFACTS needs to be run remotely`. Verify those paths on a PR
-  preview (`control-kody execute --origin <preview>` or
-  `package-create --origin <preview>`). Do not migrate, seed, and start
-  `npm run dev` just to exercise package source persistence.
+- Package repo storage uses Cloudflare Artifacts. The native `ARTIFACTS` binding
+  is always-remote, so local `vite serve` strips it from the generated origin
+  config (and from the platform sibling) the same way the origin test env never
+  binds it. With no binding, `packageSave`, publish, and `packageGetGitRemote`
+  fall through to the mock Artifacts REST client that `cli.ts` starts for local
+  dev (same path MCP E2E uses). Prefer local verification:
+  `npm run migrate:local && node tools/seed-test-data.ts --local`, then
+  `control-kody dev` / `execute` (admin seed `kody@example.com` for admin-owned
+  automation). Production and preview keep the real binding; use a PR preview
+  only when you need that remote Artifacts namespace.

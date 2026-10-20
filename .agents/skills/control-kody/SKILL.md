@@ -96,8 +96,11 @@ before opening a Feature Map PR.
   organization before approving this connection." The cached bearer token is
   keyed by origin, email, and org, so switching `--org` mints a new token and
   keeps the login cookie.
-- `packageSave`, publish, and `packageGetGitRemote` / `package-create` need the
-  remote `ARTIFACTS` binding. Use a PR preview origin, not `npm run dev`. See
+- `packageSave`, publish, and `packageGetGitRemote` / `package-create` work on
+  local `npm run dev`: the generated origin config drops the always-remote
+  `ARTIFACTS` binding so the mock Artifacts API is used (same as MCP E2E).
+  Prefer local `dev` / `execute` / `package-create`; use a PR preview when you
+  need the real remote Artifacts namespace. See
   [Local limitations](../../../docs/contributing/cloud-agents.md#local-limitations).
 
 ## Proof
@@ -113,9 +116,10 @@ localhost before a PR preview:
    MCP/API/`execute` otherwise.
 3. Use a PR `preview` only when local cannot exercise the change: Workers /
    service bindings, Durable Objects, real OAuth or inbound third-party
-   webhooks, deploy/wrangler/config, Artifacts/`packageSave`, or other
-   production-like surfaces (see
+   webhooks, deploy/wrangler/config, the real remote Artifacts namespace, or
+   other production-like surfaces (see
    [Local limitations](../../../docs/contributing/cloud-agents.md#local-limitations)).
+   Local `packageSave` / publish / git-remote use the mock Artifacts API.
 4. After merge, `health --origin https://kody.codes --sha <merge>` (full SHA,
    unique short SHA, or a later descendant HEAD that contains the merge)
 

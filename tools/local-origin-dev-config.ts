@@ -79,11 +79,21 @@ export async function writeLocalOriginDevConfig({
 	envName,
 	vars,
 	generatedBasename = localDevGeneratedConfigBasename,
+	dropAlwaysRemoteBindings = [],
 }: {
 	originConfigPath: string
 	envName: string
 	vars: Record<string, string>
 	generatedBasename?: string
+	/**
+	 * Always-remote Wrangler keys to omit from the selected env for local
+	 * `vite serve` (same idea as `writeLocalSiblingDevConfig`). Production and
+	 * preview deploy configs are untouched; only the generated local file
+	 * drops these. Origin `ARTIFACTS` must be dropped so `packageSave` can
+	 * fall through to the mock Artifacts REST client instead of failing with
+	 * "Binding ARTIFACTS needs to be run remotely".
+	 */
+	dropAlwaysRemoteBindings?: ReadonlyArray<string>
 }) {
 	const sourceText = await readFile(originConfigPath, 'utf8')
 	const config = parseJsonc<JsonRecord>(sourceText)
@@ -96,6 +106,9 @@ export async function writeLocalOriginDevConfig({
 		throw new Error(`${originConfigPath} is missing "env.${envName}".`)
 	}
 	const envRecord = originEnv as JsonRecord
+	for (const binding of dropAlwaysRemoteBindings) {
+		delete envRecord[binding]
+	}
 	envRecord.vars = {
 		...asRecord(envRecord.vars),
 		...vars,

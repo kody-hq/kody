@@ -3,10 +3,11 @@
 Prefer local [control-kody](./control-kody.md) verification (`dev` / `login` /
 `request` / `browse` / `execute`) for UI and API changes. Use a PR preview when
 local cannot exercise the change: Workers / service bindings, Durable Objects,
-real OAuth or inbound third-party webhooks, deploy / wrangler / config,
-Artifacts / `packageSave`, or when you need the isolated preview workers, mocks,
-and a **logged-in user with the data the change cares about**. Medium or high
-risk recaps (`extends` / `adds` in
+real OAuth or inbound third-party webhooks, deploy / wrangler / config, the real
+remote Artifacts namespace, or when you need the isolated preview workers,
+mocks, and a **logged-in user with the data the change cares about**. Local
+`packageSave` / publish use the mock Artifacts API. Medium or high risk recaps
+(`extends` / `adds` in
 [`.agents/skills/visual-recap/SKILL.md`](../../.agents/skills/visual-recap/SKILL.md))
 still need that proof — local first, preview when local is insufficient.
 
