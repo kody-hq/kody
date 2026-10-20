@@ -391,6 +391,9 @@ test('Add connection opens its own page with the client wall, then a host step (
 
 	await page.getByTestId('account-connections-change-agent').click()
 	await expect(grid).toBeVisible()
+	// Leave the agent grid so a hover-intent prefetch does not fire after
+	// reset() and get counted as a second destination load on Back (#3807).
+	await page.mouse.move(0, 0)
 	expect(requests.duplicates(), requests.paths.join(', ')).toEqual([])
 	requests.reset()
 
