@@ -15,6 +15,7 @@ import { adminUsageMetrics } from '#worker/admin/user-usage-data.ts'
 import { loadFleetUsageInsights } from '#worker/admin/fleet-usage-insights.ts'
 import { queryAnalyticsEngineSql } from '#worker/usage/aggregate-rollups.ts'
 import { loadOnboardingFunnelSummary } from '#worker/identity/onboarding-funnel-summary.ts'
+import { toAdminInsightsPackageErrorRate } from '#worker/admin/fleet-error-rate-data.ts'
 import { loadFleetPackageErrorRateSnapshot } from '#worker/usage/fleet-package-error-rate.ts'
 import {
 	type AdminInsightsActivation,
@@ -26,7 +27,6 @@ import {
 	type AdminInsightsHeatmapCell,
 	type AdminInsightsJobHealth,
 	type AdminInsightsLoaderData,
-	type AdminInsightsPackageErrorRate,
 	type AdminInsightsPlanSlice,
 	type AdminInsightsSignupWeek,
 	type AdminInsightsTotals,
@@ -284,32 +284,7 @@ async function queryAdminInsights(
 		topDurationConsumersByMetric: fleetUsage.topDurationConsumersByMetric,
 		entitlementPressure: fleetUsage.entitlementPressure,
 		dynamicWorkerCost: fleetUsage.dynamicWorkerCost,
-		packageErrorRate: toInsightsPackageErrorRate(packageErrorRateSnapshot),
-	}
-}
-
-function toInsightsPackageErrorRate(
-	snapshot: Awaited<ReturnType<typeof loadFleetPackageErrorRateSnapshot>>,
-): AdminInsightsPackageErrorRate {
-	if (!snapshot) {
-		return {
-			available: false,
-			updatedAt: null,
-			environment: null,
-			day: null,
-			hour: null,
-			lastAlertAt: null,
-			concentration: null,
-		}
-	}
-	return {
-		available: true,
-		updatedAt: snapshot.updatedAt,
-		environment: snapshot.environment,
-		day: snapshot.day,
-		hour: snapshot.hour,
-		lastAlertAt: snapshot.lastAlertAt,
-		concentration: snapshot.concentration,
+		packageErrorRate: toAdminInsightsPackageErrorRate(packageErrorRateSnapshot),
 	}
 }
 

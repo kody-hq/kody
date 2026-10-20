@@ -33,6 +33,7 @@ import { adminPlatformFeedbackGetCapability } from './admin-platform-feedback-ge
 import { adminPlatformFeedbackListCapability } from './admin-platform-feedback-list.ts'
 import { adminPlatformFeedbackUpdateCapability } from './admin-platform-feedback-update.ts'
 import { adminUserUsageCapability } from './admin-user-usage.ts'
+import { adminFleetErrorRateCapability } from './admin-fleet-error-rate.ts'
 import { adminOrgUsageCapability } from './admin-org-usage.ts'
 import { adminUserOauthGrantsCapability } from './admin-user-oauth-grants.ts'
 import { adminOauthGrantsLackingOrgIdRevokeCapability } from './admin-oauth-grants-lacking-org-id-revoke.ts'
@@ -136,6 +137,8 @@ export const adminDomain = defineDomain({
 		'memory copy',
 		'personal memory migration',
 		'org usage',
+		'fleet error rate',
+		'package error rate',
 		'org restore',
 		'account delete',
 		'hard delete',
@@ -189,6 +192,7 @@ export const adminDomain = defineDomain({
 		adminMemoryPersonalizePurgeCapability,
 		adminAuditLogQueryCapability,
 		adminUserUsageCapability,
+		adminFleetErrorRateCapability,
 		adminOrgUsageCapability,
 		adminUserOauthGrantsCapability,
 		adminOauthGrantsLackingOrgIdRevokeCapability,
