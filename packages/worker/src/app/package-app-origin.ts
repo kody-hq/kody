@@ -11,6 +11,7 @@ import {
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostRobotsTxtPath,
+	isPackageAppLegacySubdomainMountPath,
 	packageAppHostDefaultRobotsTxt,
 	packageAppHostDefaultRobotsTxtHeader,
 	packageAppHostSystemPrefix,
@@ -86,7 +87,10 @@ import {
 	readCachedPackageAppAccessDecision,
 	readOrgAccessEpoch,
 } from '#app/package-app-access-decision.ts'
-import { maybeHandleLegacyPackageAppSubdomainMount } from '#worker/package-runtime/package-app-legacy-mount.ts'
+import {
+	maybeHandleLegacyPackageAppSubdomainMount,
+	recordPackageAppLegacyMountHit,
+} from '#worker/package-runtime/package-app-legacy-mount.ts'
 import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import {
 	pushServerTiming,
@@ -1320,7 +1324,20 @@ async function handleUserSubdomainRequest(input: {
 				restPath: packagePath.restPath === '/' ? null : packagePath.restPath,
 			}),
 	})
-	if (retiredRedirect) return retiredRedirect
+	if (retiredRedirect) {
+		// Still count legacy `/packages/{old}` hits when the retired slug
+		// redirects in one hop to `/{current}` before the legacy handler runs.
+		if (isPackageAppLegacySubdomainMountPath(url.pathname)) {
+			recordPackageAppLegacyMountHit({
+				env,
+				username: packagePath.username,
+				kodyId: packagePath.kodyId,
+				method: request.method,
+				disposition: 'redirect',
+			})
+		}
+		return retiredRedirect
+	}
 
 	const legacyMount = maybeHandleLegacyPackageAppSubdomainMount({
 		request,
