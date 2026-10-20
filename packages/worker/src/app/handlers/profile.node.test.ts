@@ -8,17 +8,47 @@ import {
 } from '#universal/loader-data.ts'
 import { type CommunityProfileRecord } from '#worker/community/types.ts'
 
+const alicePersonId = 'stable-alice'
+const aliceOrgId = 'org-alice-personal'
+
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
 	getCommunityProfileByUsername: vi.fn(),
 	getProfileActivity: vi.fn(),
 	listProfileRepositories: vi.fn(),
 	listOrganizationsForPerson: vi.fn(),
+	findPublicOwnerIdentityByHandle: vi.fn(),
+	loadOrgBindingForOrg: vi.fn(),
+	computeEffectivePermissions: vi.fn(),
+	canSeeResource: vi.fn(),
+	checkPermission: vi.fn(),
 }))
 
 vi.mock('#worker/orgs/repo.ts', () => ({
 	listOrganizationsForPerson: (...args: Array<unknown>) =>
 		mockModule.listOrganizationsForPerson(...args),
+	loadOrgBindingForOrg: (...args: Array<unknown>) =>
+		mockModule.loadOrgBindingForOrg(...args),
+}))
+
+vi.mock('#worker/identity/user-lookup.ts', () => ({
+	findPublicOwnerIdentityByHandle: (...args: Array<unknown>) =>
+		mockModule.findPublicOwnerIdentityByHandle(...args),
+}))
+
+vi.mock('#worker/authorization/authorize.ts', () => ({
+	computeEffectivePermissions: (...args: Array<unknown>) =>
+		mockModule.computeEffectivePermissions(...args),
+	canSeeResource: (...args: Array<unknown>) =>
+		mockModule.canSeeResource(...args),
+	checkPermission: (...args: Array<unknown>) =>
+		mockModule.checkPermission(...args),
+	packageResource: (input: { id: string; userId: string; label?: string }) => ({
+		type: 'package',
+		id: input.id,
+		orgId: input.userId,
+		label: input.label,
+	}),
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -84,7 +114,7 @@ async function nativeProfile(username: string) {
 }
 
 const publicProfile = {
-	userId: ownerIdFromStored('stable-alice'),
+	userId: ownerIdFromStored(alicePersonId),
 	username: 'alice',
 	displayName: 'Alice',
 	bio: 'Hello',
@@ -159,6 +189,17 @@ function setupPublicProfileMocks() {
 	mockModule.getCommunityProfileByUsername.mockResolvedValue(publicProfile)
 	mockModule.listProfileRepositories.mockResolvedValue(packageFixture)
 	mockModule.getProfileActivity.mockResolvedValue(activityFixture)
+	mockModule.findPublicOwnerIdentityByHandle.mockResolvedValue({
+		handle: 'alice',
+		ownerId: ownerIdFromStored(aliceOrgId),
+	})
+	mockModule.loadOrgBindingForOrg.mockResolvedValue(null)
+	mockModule.computeEffectivePermissions.mockResolvedValue({
+		isOwner: false,
+		permissions: new Set(),
+	})
+	mockModule.canSeeResource.mockReturnValue(false)
+	mockModule.checkPermission.mockReturnValue({ allowed: false })
 }
 
 async function call(path: string, username = 'alice') {
@@ -207,7 +248,7 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 	expect(guest.body.packages).toHaveLength(1)
 	expect(guest.body.activity).toHaveLength(1)
 	expect(lastPackagesQuery()).toMatchObject({
-		ownerStableUserId: 'stable-alice',
+		ownerStableUserId: aliceOrgId,
 		ownerUsername: 'alice',
 		includePrivate: false,
 	})
@@ -248,10 +289,21 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 	expect(unknown.status).toBe(404)
 
 	// Own private profile is visible to self, including private packages.
+	// Inventory is keyed by personal org id (distinct from person id).
 	mockModule.readAuthenticatedAppUser.mockResolvedValue({
 		userId: 1,
-		mcpUser: { userId: ownerIdFromStored('stable-alice') },
+		mcpUser: { userId: ownerIdFromStored(alicePersonId) },
 	})
+	mockModule.loadOrgBindingForOrg.mockResolvedValue({
+		org: { id: ownerIdFromStored(aliceOrgId), slug: 'alice' },
+		role: 'owner',
+	})
+	mockModule.computeEffectivePermissions.mockResolvedValue({
+		isOwner: true,
+		permissions: new Set(),
+	})
+	mockModule.canSeeResource.mockReturnValue(true)
+	mockModule.checkPermission.mockReturnValue({ allowed: true })
 	mockModule.listProfileRepositories.mockResolvedValue([])
 	mockModule.getProfileActivity.mockResolvedValue([])
 	const own = await call(
@@ -265,7 +317,7 @@ test('profile API respects visibility, ignores owner-only filters for guests, an
 		profile: { visibility: 'private' },
 	})
 	expect(lastPackagesQuery()).toMatchObject({
-		ownerStableUserId: 'stable-alice',
+		ownerStableUserId: aliceOrgId,
 		includePrivate: true,
 	})
 })
@@ -412,6 +464,7 @@ test('explicit repository filters ignore RPC URL state and remain distinct in th
 		query: 'first',
 		limit: 2,
 		includePrivate: false,
+		ownerStableUserId: aliceOrgId,
 	})
 	const second = await loadProfileData(env, request, 'alice', undefined, {
 		query: 'second',
@@ -422,6 +475,7 @@ test('explicit repository filters ignore RPC URL state and remain distinct in th
 		query: 'second',
 		limit: 3,
 		includePrivate: false,
+		ownerStableUserId: aliceOrgId,
 	})
 	expect(mockModule.readAuthenticatedAppUser).toHaveBeenLastCalledWith(
 		request,

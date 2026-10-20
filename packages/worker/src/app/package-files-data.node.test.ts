@@ -202,6 +202,7 @@ function ownerSocialRow(profileVisibility: ProfileVisibility): UserSocialRow {
 		username: 'kentcdodds',
 		email: 'owner@example.com',
 		stable_user_id: 'owner-1',
+		personal_org_id: null,
 		display_name: null,
 		bio: null,
 		avatar_key: null,

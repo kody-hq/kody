@@ -20,6 +20,7 @@ export type UserSocialRow = {
 	username: string
 	email: string
 	stable_user_id: string
+	personal_org_id: string | null
 	display_name: string | null
 	bio: string | null
 	avatar_key: string | null
@@ -27,8 +28,8 @@ export type UserSocialRow = {
 	created_at: string
 }
 
-const userSocialSelectColumns = `id, username, email, stable_user_id, display_name, bio,
-	avatar_key, profile_visibility, created_at`
+const userSocialSelectColumns = `id, username, email, stable_user_id, personal_org_id,
+	display_name, bio, avatar_key, profile_visibility, created_at`
 
 function mapUserSocialRow(row: Record<string, unknown>): UserSocialRow {
 	return {
@@ -36,6 +37,8 @@ function mapUserSocialRow(row: Record<string, unknown>): UserSocialRow {
 		username: String(row['username']),
 		email: String(row['email']),
 		stable_user_id: String(row['stable_user_id']),
+		personal_org_id:
+			row['personal_org_id'] == null ? null : String(row['personal_org_id']),
 		display_name:
 			row['display_name'] == null ? null : String(row['display_name']),
 		bio: row['bio'] == null ? null : String(row['bio']),

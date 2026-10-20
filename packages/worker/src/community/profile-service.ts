@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
+import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { CommunityActionError } from './errors.ts'
 import {
 	countActiveListingsForOwner,
@@ -64,9 +65,11 @@ async function loadCommunityProfileFromRow(input: {
 		return null
 	}
 	const stableUserId = resolveStableUserIdFromRow(input.row)
+	// Inventory is keyed by personal org id, not person id (ADR 0063 / #3053).
+	const ownerOrgId = personalOrgIdFromUserRow(input.row)
 	const [publicPackageCount, listingCount] = await Promise.all([
-		countPublicSavedPackagesForUser(input.env.APP_DB, stableUserId),
-		countActiveListingsForOwner(input.env.APP_DB, stableUserId),
+		countPublicSavedPackagesForUser(input.env.APP_DB, ownerOrgId),
+		countActiveListingsForOwner(input.env.APP_DB, ownerOrgId),
 	])
 	return toCommunityProfileRecord({
 		row: input.row,

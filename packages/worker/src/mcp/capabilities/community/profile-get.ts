@@ -9,6 +9,9 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { callerContextFields } from '#mcp/observability.ts'
+import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
+import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { toCommunityActivityItemOutput } from './shared.ts'
 import {
 	communityProfileGetOutputSchema,
@@ -73,10 +76,22 @@ export const communityProfileGetCapability = defineDomainCapability(
 				}
 			}
 
+			// Packages are keyed by personal org id; person id misses post-#3053 orgs.
+			const identity = await findPublicOwnerIdentityByHandle({
+				db: ctx.env.APP_DB,
+				handle: profile.username,
+			})
+			const ownerOrgId =
+				identity?.ownerId ??
+				(await loadPersonalOrgIdForPerson(
+					ctx.env.APP_DB,
+					personIdFromStored(profile.userId),
+				))
+
 			const [packages, recentActivity] = await Promise.all([
 				listPublicProfilePackages({
 					env: ctx.env,
-					ownerStableUserId: profile.userId,
+					ownerStableUserId: ownerOrgId,
 					limit: profilePackageLimit,
 					includePrivate: isSelf,
 				}),
