@@ -344,4 +344,8 @@ test('pending resolve is not replaced by a later elevate', () => {
 	expect(secondHot.action).toBe('resolve')
 	expect(secondHot.next.pendingNotify).toBe('resolve')
 	expect(secondHot.next.incidentStartedAt).toBe(incidentStartedAt)
+	expect(secondHot.next.lastMetrics?.windowEnd).toBe(
+		pendingResolve.lastMetrics?.windowEnd,
+	)
+	expect(secondHot.next.lastMetrics?.affectedUsers).toBe(1)
 })

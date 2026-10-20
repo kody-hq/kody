@@ -206,8 +206,9 @@ export function evaluateFleetUsersAffectedTransition(input: {
 	}
 
 	// Finish the in-flight notify before starting a new elevate/resolve so a
-	// failed resolve cannot be overwritten by a later spike, and incident
-	// identity stays stable for event-id idempotency.
+	// failed resolve cannot be overwritten by a later spike. Keep the original
+	// window metrics / windowEnd so the replayed admin event matches the
+	// incident that armed pendingNotify (and keeps the same event_id).
 	if (pending != null) {
 		return {
 			action: pending,
@@ -221,6 +222,8 @@ export function evaluateFleetUsersAffectedTransition(input: {
 				consecutiveElevatedWindows: previous.consecutiveElevatedWindows,
 				consecutiveClearWindows: previous.consecutiveClearWindows,
 				incidentStartedAt: previous.incidentStartedAt,
+				lastWindowEnd: previous.lastWindowEnd,
+				lastMetrics: previous.lastMetrics,
 				pendingNotify: pending,
 			},
 		}
@@ -764,20 +767,33 @@ export async function refreshFleetUsersAffected(input: {
 		await kv.get(fleetUsersAffectedHistoryKvKey, 'json').catch(() => null),
 	)
 
-	// Same completed window: do not re-advance counters; replay pending notify.
-	if (previous?.lastWindowEnd === metrics.windowEnd) {
-		const pending =
-			previous.pendingNotify === 'elevate' ||
-			previous.pendingNotify === 'resolve'
-				? previous.pendingNotify
-				: 'none'
+	// Pending notify must replay the original incident payload before any new
+	// window advances counters or overwrites lastMetrics.
+	if (
+		previous?.pendingNotify === 'elevate' ||
+		previous?.pendingNotify === 'resolve'
+	) {
 		return {
 			status: 'refreshed',
-			action: pending,
+			action: previous.pendingNotify,
 			elevated:
 				previous.status === 'firing' || previous.pendingNotify === 'elevate',
 			resolvedIncidentStartedAt:
-				pending === 'resolve' ? previous.incidentStartedAt : null,
+				previous.pendingNotify === 'resolve'
+					? previous.incidentStartedAt
+					: null,
+			metrics: previous.lastMetrics ?? metrics,
+			state: previous,
+		}
+	}
+
+	// Same completed window: do not re-advance counters.
+	if (previous?.lastWindowEnd === metrics.windowEnd) {
+		return {
+			status: 'refreshed',
+			action: 'none',
+			elevated: previous.status === 'firing',
+			resolvedIncidentStartedAt: null,
 			metrics: previous.lastMetrics ?? metrics,
 			state: previous,
 		}
