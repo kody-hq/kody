@@ -17,15 +17,20 @@ import { maxApiRequestBodyBytes } from './request-params.ts'
 
 /**
  * Headroom under `maxApiRequestBodyBytes` for the JSON wrapper
- * (`{"code":"…","imports":[…],…}`) so a max-sized `code` does not 413 at the
- * edge body reader before Zod runs.
+ * (`{"code":"…","imports":[…],…}`) so typical UTF-8 source at this ceiling
+ * still fits the body reader. 64 KiB covers wrapper keys plus ordinary
+ * escaping. Pathological JSON expansion (newline-heavy source: each `\n`
+ * becomes `\\n`) can still 413 at `readJsonBody` as `payload_too_large`
+ * before this module's code-too-large message runs (#3846).
  */
 const packageGraphCodeBodyOverheadBytes = 64 * 1024
 
 /**
  * Inline `code` ceiling for package-graph. Capped just under the Open API JSON
- * body limit (`maxApiRequestBodyBytes`, 5 MiB) so the whole request still fits.
- * Publish allows larger repo source files via Artifacts git
+ * body limit (`maxApiRequestBodyBytes`, 5 MiB) for typical UTF-8 source so the
+ * whole request still fits. Escape expansion is not part of this budget —
+ * oversized escaped payloads return `payload_too_large` from the HTTP body
+ * reader. Publish allows larger repo source files via Artifacts git
  * (`maxRepoSourceFileBytes`, 10 MiB); callers with modules that large (or who
  * do not want to POST a multi-megabyte `kody dev` worker bundle) should pass
  * `imports` instead of inlining the whole bundle.
