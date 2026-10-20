@@ -386,7 +386,10 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   config (and from the platform sibling) the same way the origin test env never
   binds it. With no binding, `packageSave`, publish, and `packageGetGitRemote`
   fall through to the mock Artifacts REST client that `cli.ts` starts for local
-  dev (same path MCP E2E uses). Prefer local verification:
+  dev (same path MCP E2E uses). Local Artifacts REST refuses
+  `https://api.cloudflare.com` so `dev:vite` / `SKIP_CLOUDFLARE_MOCK=1` with
+  live tokens cannot write the production namespace — run `npm run dev` (or set
+  `CLOUDFLARE_API_BASE_URL` to a mock). Prefer local verification:
   `npm run migrate:local && node tools/seed-test-data.ts --local`, then
   `control-kody dev` / `execute` (admin seed `kody@example.com` for admin-owned
   automation). Production and preview keep the real binding; use a PR preview

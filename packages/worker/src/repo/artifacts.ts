@@ -441,6 +441,27 @@ function adaptNativeArtifactsBinding(
 	}
 }
 
+function isDefaultCloudflareApiBase(baseUrl: string | undefined) {
+	const configured = baseUrl?.trim()
+	if (!configured) return true
+	return configured.replace(/\/$/, '').startsWith('https://api.cloudflare.com')
+}
+
+/**
+ * Local vite serve drops the always-remote ARTIFACTS binding so packageSave
+ * can use mock REST. Refuse the default Cloudflare API in that mode so a
+ * `dev:vite` / SKIP_CLOUDFLARE_MOCK run with live tokens cannot write the
+ * production Artifacts namespace.
+ */
+function assertLocalArtifactsRestUsesMock(env: Env, native: Artifacts | null) {
+	if (env.WRANGLER_IS_LOCAL_DEV !== 'true') return
+	if (native) return
+	if (!isDefaultCloudflareApiBase(env.CLOUDFLARE_API_BASE_URL)) return
+	throw new Error(
+		'Local Artifacts REST refuses https://api.cloudflare.com (and the production namespace). Run `npm run dev` so the Cloudflare mock sets CLOUDFLARE_API_BASE_URL, or point CLOUDFLARE_API_BASE_URL at a mock. Do not use live Cloudflare credentials for local packageSave.',
+	)
+}
+
 function createArtifactsRestBinding(env: Env, namespace: string) {
 	const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim()
 	const artifactsApiToken = env.CLOUDFLARE_ARTIFACTS_API_TOKEN?.trim()
@@ -455,12 +476,10 @@ function createArtifactsRestBinding(env: Env, namespace: string) {
 	// API whenever the native binding is present, using CLOUDFLARE_ARTIFACTS_API_TOKEN
 	// when the shared CLOUDFLARE_API_TOKEN is the mock credential.
 	const native = readNativeArtifactsBinding(env)
+	assertLocalArtifactsRestUsesMock(env, native)
 	const configuredBaseUrl = env.CLOUDFLARE_API_BASE_URL?.trim()
 	const usingNonDefaultApiBase = Boolean(
-		configuredBaseUrl &&
-		!configuredBaseUrl
-			.replace(/\/$/, '')
-			.startsWith('https://api.cloudflare.com'),
+		configuredBaseUrl && !isDefaultCloudflareApiBase(configuredBaseUrl),
 	)
 	const client =
 		native && usingNonDefaultApiBase
