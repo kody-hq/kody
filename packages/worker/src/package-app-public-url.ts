@@ -20,7 +20,8 @@ export type PublicPackageAppLocation = {
 	hostedUrl: string
 	/**
 	 * Origin-relative mount. Empty on an app-level custom hostname (the app
-	 * owns `/`). On a subdomain this is `/packages/{kodyId}`.
+	 * owns `/`). On a subdomain this is `/{kodyId}` (legacy `/packages/{kodyId}`
+	 * is still served but is not the public shape).
 	 */
 	appBasePath: string
 }

@@ -1,4 +1,8 @@
 import {
+	isPackageAppHostNonLeafFirstSegment,
+	packageAppHostLegacyMountSegment,
+} from '@kody-internal/shared/package-app-host-paths.ts'
+import {
 	buildPackageAppSubdomainOrigin,
 	isDnsSafeUsername,
 } from '@kody-internal/shared/public-urls.ts'
@@ -86,7 +90,9 @@ function parsePackageUrl(input: {
 
 	const parts = url.pathname.split('/').filter(Boolean)
 
-	// Per-user subdomain form: `https://{username}.<package-app host>/packages/{kodyId}`.
+	// Per-user subdomain form: `https://{username}.<package-app host>/{kodyId}`
+	// (legacy `/packages/{kodyId}` still recognized). Deep links with a rest
+	// path are not package identity — same rule as username-path mounts.
 	for (const packageAppOrigin of input.packageAppOrigins) {
 		const packageAppBase = new URL(packageAppOrigin)
 		const hostname = url.hostname.toLowerCase()
@@ -94,11 +100,18 @@ function parsePackageUrl(input: {
 			hostname !== packageAppBase.hostname &&
 			hostname.endsWith(`.${packageAppBase.hostname}`)
 		) {
-			const isSubdomainPackagePath =
-				parts.length === 2 && parts[0] === 'packages'
-			if (!isSubdomainPackagePath) return { kind: 'not-package-identity' }
+			const legacyMount =
+				parts.length === 2 && parts[0] === packageAppHostLegacyMountSegment
+			const shortMount =
+				parts.length === 1 &&
+				!isPackageAppHostNonLeafFirstSegment(parts[0] ?? '')
+			if (!legacyMount && !shortMount) {
+				return { kind: 'not-package-identity' }
+			}
 			const label = hostname.slice(0, -(packageAppBase.hostname.length + 1))
-			const kodyId = safelyDecodePathSegment(parts[1] ?? '')
+			const kodyId = safelyDecodePathSegment(
+				(legacyMount ? parts[1] : parts[0]) ?? '',
+			)
 			if (
 				label.includes('.') ||
 				!isDnsSafeUsername(label) ||

@@ -85,6 +85,9 @@ test('package identity parser accepts exact ids and current-origin URLs and reje
 		],
 		// The canonical hosted URL is the caller's per-user subdomain, where the
 		// username lives in the hostname and the path carries only the mount.
+		[hosted, 'https://user.kody.run/daily-notes?tab=source#top', byKodyId],
+		[hosted, 'https://user.kodyapps.dev/daily-notes?tab=source#top', byKodyId],
+		// Legacy `/packages/{kodyId}` subdomain mounts still resolve.
 		[
 			hosted,
 			'https://user.kody.run/packages/daily-notes?tab=source#top',
@@ -95,23 +98,23 @@ test('package identity parser accepts exact ids and current-origin URLs and reje
 			'https://user.kodyapps.dev/packages/daily-notes?tab=source#top',
 			byKodyId,
 		],
+		[hosted, 'https://user.kodyapps.dev/daily-notes/report?tab=1', notIdentity],
 		[
 			hosted,
 			'https://user.kodyapps.dev/packages/daily-notes/report?tab=1',
 			notIdentity,
 		],
+		// Kody-owned first segments are never package identity.
+		[hosted, 'https://user.kodyapps.dev/-', notIdentity],
+		[hosted, 'https://user.kodyapps.dev/robots.txt', notIdentity],
 		// Another user's subdomain, even for the same kody id.
-		[hosted, 'https://other.kodyapps.dev/packages/daily-notes', invalid],
+		[hosted, 'https://other.kodyapps.dev/daily-notes', invalid],
 		// Nested labels are never a user subdomain.
-		[hosted, 'https://a.user.kodyapps.dev/packages/daily-notes', invalid],
+		[hosted, 'https://a.user.kodyapps.dev/daily-notes', invalid],
 		// Embedded credentials stay refused on the subdomain form too.
-		[
-			hosted,
-			'https://user:password@user.kodyapps.dev/packages/daily-notes',
-			invalid,
-		],
+		[hosted, 'https://user:password@user.kodyapps.dev/daily-notes', invalid],
 		// Wrong scheme for the configured package-app origin.
-		[hosted, 'http://user.kodyapps.dev/packages/daily-notes', invalid],
+		[hosted, 'http://user.kodyapps.dev/daily-notes', invalid],
 		// The app origin keeps working, and relative URLs still resolve against it.
 		[hosted, 'https://heykody.dev/@user/packages/daily-notes', byKodyId],
 		[hosted, `/account/packages/${packageId}`, byId],
