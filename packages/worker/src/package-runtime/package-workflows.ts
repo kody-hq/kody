@@ -37,7 +37,10 @@ import {
 	accountSuspendedErrorCode,
 	isAccountSuspendedError,
 } from '#worker/account/account-suspension.ts'
-import { recordUsage } from '#worker/usage/record-usage.ts'
+import {
+	recordUsage,
+	usageErrorNameFromUnknown,
+} from '#worker/usage/record-usage.ts'
 import {
 	beginRunRecord,
 	deleteWorkflowProjectionIfCreating,
@@ -1561,6 +1564,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				instanceId: event.instanceId,
 				startedAtMs,
 				outcome: 'error',
+				error,
 			})
 			throw error
 		}
@@ -1589,11 +1593,14 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		instanceId: string
 		startedAtMs: number
 		outcome: 'success' | 'error'
+		error?: unknown
 	}) {
 		if (!input.payload.userId) return
 		// Emitted inside a step so a replayed run() returns the cached result
 		// instead of recording the event again. The outcome is part of the step
 		// name so cached results from one path can never shadow the other.
+		const errorName =
+			input.outcome === 'error' ? usageErrorNameFromUnknown(input.error) : ''
 		await input.typedStep.do(
 			`record workflow usage (${input.outcome})`,
 			workflowStepDoConfig,
@@ -1604,6 +1611,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					entityId: input.instanceId,
 					durationMs: Date.now() - input.startedAtMs,
 					outcome: input.outcome,
+					...(errorName ? { errorName } : {}),
 					actorUserId: '',
 					automationSource: 'schedule',
 				})

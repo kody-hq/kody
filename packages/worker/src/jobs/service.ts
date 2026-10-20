@@ -104,7 +104,10 @@ import {
 } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { typecheckPackageEntrypointsFromSourceFiles } from '#worker/repo/checks.ts'
-import { recordUsage } from '#worker/usage/record-usage.ts'
+import {
+	recordUsage,
+	usageErrorNameFromUnknown,
+} from '#worker/usage/record-usage.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	getEntitySourceById,
@@ -1046,6 +1049,7 @@ export async function executeJobOnce(input: {
 			const started = new Date()
 			let execution: JobExecutionResult
 			let outcome: 'success' | 'error' = 'success'
+			let usageErrorName = ''
 			let finished = started
 			let durationMs = 0
 			let completedOccurrence = false
@@ -1058,6 +1062,7 @@ export async function executeJobOnce(input: {
 							'Job caller context is missing. Re-save the job to refresh its execution context.',
 						logs: [],
 					}
+					usageErrorName = usageErrorNameFromUnknown(execution.error)
 					completedOccurrence = true
 				} else {
 					const backgroundUser = await resolveBackgroundMcpUser(
@@ -1132,6 +1137,7 @@ export async function executeJobOnce(input: {
 							})
 						}
 						outcome = 'error'
+						usageErrorName = usageErrorNameFromUnknown(result.error)
 					}
 					execution = result.error
 						? {
@@ -1159,6 +1165,7 @@ export async function executeJobOnce(input: {
 					})
 				}
 				outcome = 'error'
+				usageErrorName = usageErrorNameFromUnknown(error)
 				execution = {
 					ok: false,
 					error: formatJobError(error),
@@ -1189,6 +1196,7 @@ export async function executeJobOnce(input: {
 						entityId: input.job.id,
 						durationMs,
 						outcome,
+						...(usageErrorName ? { errorName: usageErrorName } : {}),
 						actorUserId: billedActor?.userId ?? '',
 						automationSource: billedActor ? '' : 'schedule',
 					})

@@ -559,7 +559,51 @@ export function __kodyCreatePackageBoundSecrets(packageId) {
 	};
 }
 
-function __kodyRecordStaticPackageCall(packageId, startedAtMs, outcome) {
+// Proxies created by __kodyMeterStaticPackageExport. When a re-export chain
+// wraps an already-metered export, only the innermost apply that invokes the
+// real target records — outer layers skip so one throw is one event.
+const __kodyMeteredStaticPackageExports = new WeakSet();
+
+function __kodySanitizeStaticCallErrorName(raw) {
+	if (typeof raw !== 'string') return '';
+	const trimmed = raw.trim().slice(0, 96);
+	if (!trimmed || !/^[A-Za-z0-9._:-]+$/.test(trimmed)) return '';
+	return trimmed;
+}
+
+function __kodyStaticCallErrorName(error) {
+	try {
+		if (error == null) return '';
+		if (typeof error === 'string') {
+			const match = /^\\[([A-Za-z0-9._:-]{1,96})\\]/.exec(error.trim());
+			return __kodySanitizeStaticCallErrorName(match?.[1]);
+		}
+		if (typeof error !== 'object') return '';
+		const code = error.code;
+		if (typeof code === 'string') {
+			const fromCode = __kodySanitizeStaticCallErrorName(code);
+			if (fromCode) return fromCode;
+		}
+		const bodyCode = error.body?.code;
+		if (typeof bodyCode === 'string') {
+			const fromBody = __kodySanitizeStaticCallErrorName(bodyCode);
+			if (fromBody) return fromBody;
+		}
+		const message = error.message;
+		if (typeof message === 'string') {
+			const match = /^\\[([A-Za-z0-9._:-]{1,96})\\]/.exec(message.trim());
+			const fromMessage = __kodySanitizeStaticCallErrorName(match?.[1]);
+			if (fromMessage) return fromMessage;
+		}
+		const name = error.name;
+		if (typeof name === 'string') {
+			return __kodySanitizeStaticCallErrorName(name);
+		}
+	} catch {}
+	return '';
+}
+
+function __kodyRecordStaticPackageCall(packageId, startedAtMs, outcome, errorName) {
 	// Metering must never block or throw into the call path: reporting is a
 	// synchronous buffer push into the current run's meter (the surrounding
 	// wrapper flushes the buffer over the host bridge once, at the end of
@@ -569,11 +613,15 @@ function __kodyRecordStaticPackageCall(packageId, startedAtMs, outcome) {
 	try {
 		const meter = __kodyRuntimeStorage.getStore()?.__kodyStaticCallMeter;
 		if (meter == null || typeof meter.report !== 'function') return;
-		meter.report({
+		const report = {
 			packageId,
 			durationMs: Date.now() - startedAtMs,
 			outcome,
-		});
+		};
+		if (outcome === 'error' && typeof errorName === 'string' && errorName) {
+			report.errorName = errorName;
+		}
+		meter.report(report);
 	} catch {}
 }
 
@@ -588,9 +636,11 @@ function __kodyRecordStaticPackageCall(packageId, startedAtMs, outcome) {
 // event per call. [[Call]] records usage. [[Construct]] is not metered
 // (construction stays a transparent \`new\`), but it still runs under the
 // stamp ALS so constructor-side fetch / kody.* keep the imported identity.
+// Re-export chains that wrap an already-metered proxy record once at the
+// innermost layer (see __kodyMeteredStaticPackageExports).
 export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 	if (typeof exportValue !== 'function') return exportValue;
-	return new Proxy(exportValue, {
+	const proxy = new Proxy(exportValue, {
 		construct(target, argumentsList, newTarget) {
 			return __kodyRunWithSecretAuthority(packageId, () =>
 				Reflect.construct(target, argumentsList, newTarget),
@@ -598,6 +648,9 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 		},
 		apply(target, thisArg, argumentsList) {
 			const startedAtMs = Date.now();
+			// Outer re-export layers skip recording; the inner metered apply
+			// that reaches the real target owns the event.
+			const recordThisLayer = !__kodyMeteredStaticPackageExports.has(target);
 			// Async callees must be awaited inside ALS.run so the stamp
 			// survives awaits in the callee body (workerd loses ALS when the
 			// sync run() callback only *returns* a Promise). Sync callees
@@ -612,18 +665,23 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 							thisArg,
 							argumentsList,
 						);
-						__kodyRecordStaticPackageCall(
-							packageId,
-							startedAtMs,
-							'success',
-						);
+						if (recordThisLayer) {
+							__kodyRecordStaticPackageCall(
+								packageId,
+								startedAtMs,
+								'success',
+							);
+						}
 						return value;
 					} catch (error) {
-						__kodyRecordStaticPackageCall(
-							packageId,
-							startedAtMs,
-							'error',
-						);
+						if (recordThisLayer) {
+							__kodyRecordStaticPackageCall(
+								packageId,
+								startedAtMs,
+								'error',
+								__kodyStaticCallErrorName(error),
+							);
+						}
 						throw error;
 					}
 				});
@@ -633,7 +691,14 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 				try {
 					result = Reflect.apply(target, thisArg, argumentsList);
 				} catch (error) {
-					__kodyRecordStaticPackageCall(packageId, startedAtMs, 'error');
+					if (recordThisLayer) {
+						__kodyRecordStaticPackageCall(
+							packageId,
+							startedAtMs,
+							'error',
+							__kodyStaticCallErrorName(error),
+						);
+					}
 					throw error;
 				}
 				// Deliberately only native promises: subscribing to an arbitrary
@@ -645,28 +710,35 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 				// non-promise thenables record at return time instead of
 				// settlement.
 				if (result instanceof Promise) {
-					result.then(
-						() =>
-							__kodyRecordStaticPackageCall(
-								packageId,
-								startedAtMs,
-								'success',
-							),
-						() =>
-							__kodyRecordStaticPackageCall(
-								packageId,
-								startedAtMs,
-								'error',
-							),
-					);
+					if (recordThisLayer) {
+						result.then(
+							() =>
+								__kodyRecordStaticPackageCall(
+									packageId,
+									startedAtMs,
+									'success',
+								),
+							(error) =>
+								__kodyRecordStaticPackageCall(
+									packageId,
+									startedAtMs,
+									'error',
+									__kodyStaticCallErrorName(error),
+								),
+						);
+					}
 					return result;
 				}
-				__kodyRecordStaticPackageCall(packageId, startedAtMs, 'success');
+				if (recordThisLayer) {
+					__kodyRecordStaticPackageCall(packageId, startedAtMs, 'success');
+				}
 				return result;
 			};
 			return __kodyRunWithSecretAuthority(packageId, invoke);
 		},
 	});
+	__kodyMeteredStaticPackageExports.add(proxy);
+	return proxy;
 }
 
 // Unstamped fallback: modules without bundler-recorded package provenance

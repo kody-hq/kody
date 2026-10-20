@@ -64,6 +64,7 @@ test('records only granted, valid, sanitized package_static_call events', async 
 				durationMs: 7,
 			}),
 		)
+		expect(recordUsageSpy.mock.calls[1]?.[1]).not.toHaveProperty('errorName')
 
 		recordUsageSpy.mockClear()
 		const nextTools = createPackageStaticCallMeterTools({
@@ -86,6 +87,74 @@ test('records only granted, valid, sanitized package_static_call events', async 
 		for (const call of recordUsageSpy.mock.calls) {
 			expect(call[1]).toEqual(expect.objectContaining({ durationMs: null }))
 		}
+	})
+})
+
+test('records sanitized errorName on static-call errors and caught throws', async () => {
+	await withRecordUsageSpy(async (recordUsageSpy) => {
+		const tools = createPackageStaticCallMeterTools({
+			env: {} as Env,
+			userId: ownerIdFromStored('user-1'),
+			grantedPackageIds: new Set(['pkg-callee']),
+		})
+		await tools?.record({
+			events: [
+				{
+					packageId: 'pkg-callee',
+					durationMs: 2,
+					outcome: 'error',
+					errorName: 'credential_need_undeclared',
+				},
+				{
+					packageId: 'pkg-callee',
+					durationMs: 3,
+					outcome: 'error',
+					errorName: 'not a code!!',
+				},
+			],
+		})
+		await tools?.finalize({ runFailed: false })
+		expect(recordUsageSpy).toHaveBeenCalledTimes(2)
+		expect(recordUsageSpy.mock.calls[0]?.[1]).toEqual(
+			expect.objectContaining({
+				outcome: 'caught',
+				errorName: 'credential_need_undeclared',
+			}),
+		)
+		expect(recordUsageSpy.mock.calls[1]?.[1]).toEqual(
+			expect.objectContaining({
+				outcome: 'caught',
+			}),
+		)
+		expect(recordUsageSpy.mock.calls[1]?.[1]).not.toHaveProperty('errorName')
+	})
+})
+
+test('keeps static-call errorName when the run failed', async () => {
+	await withRecordUsageSpy(async (recordUsageSpy) => {
+		const tools = createPackageStaticCallMeterTools({
+			env: {} as Env,
+			userId: ownerIdFromStored('user-1'),
+			grantedPackageIds: new Set(['pkg-callee']),
+		})
+		await tools?.record({
+			events: [
+				{
+					packageId: 'pkg-callee',
+					durationMs: 2,
+					outcome: 'error',
+					errorName: 'credential_need_undeclared',
+				},
+			],
+		})
+		await tools?.finalize({ runFailed: true })
+		expect(recordUsageSpy).toHaveBeenCalledOnce()
+		expect(recordUsageSpy.mock.calls[0]?.[1]).toEqual(
+			expect.objectContaining({
+				outcome: 'error',
+				errorName: 'credential_need_undeclared',
+			}),
+		)
 	})
 })
 

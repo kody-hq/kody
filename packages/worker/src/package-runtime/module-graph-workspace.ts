@@ -262,8 +262,8 @@ function collectTransitiveKodyDependencies(input: {
 /**
  * Bundle dependency metadata for one entry point: every saved package the
  * entry statically imports, plus packages those dependencies statically
- * import (marked `transitive`). Grants for `packageStorage()` and
- * stamp-aligned secret authority derive from this list.
+ * import (marked `transitive`). Grants for `packageStorage()`, stamp-aligned
+ * secret authority, and static-call metering derive from this list.
  */
 export async function resolveKodyDependenciesForEntryPoint(input: {
 	env: Env

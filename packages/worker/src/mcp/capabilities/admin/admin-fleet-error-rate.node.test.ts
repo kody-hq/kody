@@ -101,6 +101,23 @@ test('adminFleetErrorRate is registered read-only admin and returns aggregates',
 				usersWithErrors: 2,
 			},
 		],
+		byErrorName: {
+			available: true,
+			failedRuns: [
+				{
+					day: '2026-10-20',
+					errorName: 'credential_need_undeclared',
+					count: 3,
+				},
+			],
+			staticCalls: [
+				{
+					day: '2026-10-20',
+					errorName: 'credential_need_undeclared',
+					count: 40,
+				},
+			],
+		},
 		filter: null,
 	})
 
@@ -115,6 +132,9 @@ test('adminFleetErrorRate is registered read-only admin and returns aggregates',
 			usersWithErrors: 2,
 		},
 	])
+	expect(result.byErrorName.staticCalls[0]?.errorName).toBe(
+		'credential_need_undeclared',
+	)
 	expect(result.filter).toBeNull()
 	expect(JSON.stringify(result)).not.toMatch(/@[a-z]|username|handle/i)
 	expect(loadMocks.loadAdminFleetErrorRateData).toHaveBeenCalledWith(
@@ -170,6 +190,11 @@ test('adminFleetErrorRate accepts days and stableUserId filter', async () => {
 				usersWithErrors: 1,
 			},
 		],
+		byErrorName: {
+			available: true,
+			failedRuns: [],
+			staticCalls: [{ day: '2026-10-20', errorName: 'Error', count: 1 }],
+		},
 		filter: { stableUserId: targetId },
 	})
 

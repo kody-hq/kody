@@ -3,9 +3,12 @@
  *
  * Reuses the KV snapshot that `/admin/insights` shows, and adds a daily
  * Analytics Engine breakdown of caught vs error outcomes (same fleet metrics
- * as the alert) plus distinct billing owners with errors. Aggregates only —
- * never returns usernames or package lists from the daily query. The snapshot
- * may still carry concentration names when elevated (same as the page).
+ * as the alert) plus distinct billing owners with errors, and per-day counts
+ * by error name (`blob13`) for failed runs vs static-call errors. Aggregates
+ * only — never returns usernames or package lists from the daily query. The
+ * snapshot may still carry concentration names when elevated (same as the
+ * page). Error-name rows with an empty name are historical or unattributed
+ * writes from before blob13 existed.
  */
 
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
@@ -36,6 +39,26 @@ export type AdminFleetErrorRateDailyRow = {
 	usersWithErrors: number
 }
 
+/** One UTC day × error-name bucket (aggregates only). */
+export type AdminFleetErrorRateDailyErrorNameRow = {
+	day: string
+	/** Sanitized name/code from AE blob13; empty string = unrecorded. */
+	errorName: string
+	count: number
+}
+
+export type AdminFleetErrorRateByErrorName = {
+	/**
+	 * False when AE is unavailable. Empty name buckets still appear for
+	 * pre-blob13 historical errors (names were not recorded then).
+	 */
+	available: boolean
+	/** `package_export` + `job_run` + `workflow_run` with outcome `error`. */
+	failedRuns: Array<AdminFleetErrorRateDailyErrorNameRow>
+	/** `package_static_call` with outcome `error` (not `caught`). */
+	staticCalls: Array<AdminFleetErrorRateDailyErrorNameRow>
+}
+
 export type AdminFleetErrorRateData = {
 	snapshot: AdminInsightsPackageErrorRate
 	days: number
@@ -43,6 +66,7 @@ export type AdminFleetErrorRateData = {
 	endDay: string
 	dailyAvailable: boolean
 	daily: Array<AdminFleetErrorRateDailyRow>
+	byErrorName: AdminFleetErrorRateByErrorName
 	/** Echo of a requested person filter; null for fleet aggregates. */
 	filter: { stableUserId: string } | null
 }
@@ -57,6 +81,14 @@ export type AdminFleetErrorRateUsersAnalyticsRow = {
 	day?: string
 	users_with_errors?: number | string
 }
+
+export type AdminFleetErrorRateErrorNameAnalyticsRow = {
+	day?: string
+	error_name?: string
+	error_count?: number | string
+}
+
+const failedRunMetrics = ['package_export', 'job_run', 'workflow_run'] as const
 
 /**
  * Map the KV fleet snapshot into the insights / capability shape. Shared so
@@ -158,6 +190,80 @@ export function usersWithErrorsForFilteredDay(errorCount: number) {
 	return errorCount > 0 ? 1 : 0
 }
 
+function metricsInClause(metrics: ReadonlyArray<string>) {
+	return metrics.map((metric) => `'${metric}'`).join(', ')
+}
+
+/**
+ * Failed-run error counts by UTC day and AE `blob13` error name/code.
+ * Empty `error_name` is unrecorded (pre-dimension or extract failed).
+ */
+export function buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery(input: {
+	dataset: string
+	startDay: string
+	nextDay: string
+	billingOwnerIds?: ReadonlyArray<string>
+}) {
+	const ownerClause = ownerInClause(input.billingOwnerIds)
+	return `
+SELECT
+	toDate(timestamp) AS day,
+	blob13 AS error_name,
+	sum(_sample_interval) AS error_count
+FROM ${input.dataset}
+WHERE timestamp >= toDateTime('${input.startDay} 00:00:00')
+	AND timestamp < toDateTime('${input.nextDay} 00:00:00')
+	AND blob2 IN (${metricsInClause(failedRunMetrics)})
+	AND blob4 = 'error'${ownerClause}
+GROUP BY day, error_name
+ORDER BY day ASC, error_count DESC
+FORMAT JSON
+`.trim()
+}
+
+/**
+ * Static-call error counts by UTC day and AE `blob13` (outcome `error` only).
+ */
+export function buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery(input: {
+	dataset: string
+	startDay: string
+	nextDay: string
+	billingOwnerIds?: ReadonlyArray<string>
+}) {
+	const ownerClause = ownerInClause(input.billingOwnerIds)
+	return `
+SELECT
+	toDate(timestamp) AS day,
+	blob13 AS error_name,
+	sum(_sample_interval) AS error_count
+FROM ${input.dataset}
+WHERE timestamp >= toDateTime('${input.startDay} 00:00:00')
+	AND timestamp < toDateTime('${input.nextDay} 00:00:00')
+	AND blob2 = 'package_static_call'
+	AND blob4 = 'error'${ownerClause}
+GROUP BY day, error_name
+ORDER BY day ASC, error_count DESC
+FORMAT JSON
+`.trim()
+}
+
+export function foldAdminFleetErrorRateDailyErrorNameRows(
+	rows: ReadonlyArray<AdminFleetErrorRateErrorNameAnalyticsRow>,
+	input: { startDay: string; endDay: string },
+): Array<AdminFleetErrorRateDailyErrorNameRow> {
+	const out: Array<AdminFleetErrorRateDailyErrorNameRow> = []
+	for (const row of rows) {
+		const day = String(row.day ?? '').slice(0, 'YYYY-MM-DD'.length)
+		if (!isDayInInclusiveRange(day, input.startDay, input.endDay)) continue
+		out.push({
+			day,
+			errorName: String(row.error_name ?? ''),
+			count: nonNegativeInt(row.error_count),
+		})
+	}
+	return out
+}
+
 export function foldAdminFleetErrorRateDailyRows(input: {
 	outcomeRows: ReadonlyArray<AdminFleetErrorRateOutcomeAnalyticsRow>
 	userRows: ReadonlyArray<AdminFleetErrorRateUsersAnalyticsRow>
@@ -233,13 +339,23 @@ export async function loadAdminFleetErrorRateData(input: {
 		? await resolveBillingOwnerIds(input.env.APP_DB, filter.stableUserId)
 		: []
 
-	const daily = await loadDailyBreakdown({
-		env: input.env,
-		startDay: window.startDay,
-		nextDay: window.nextDay,
-		endDay: window.endDay,
-		billingOwnerIds: filter ? billingOwnerIds : undefined,
-	})
+	const billingOwnerIdsForQuery = filter ? billingOwnerIds : undefined
+	const [daily, byErrorName] = await Promise.all([
+		loadDailyBreakdown({
+			env: input.env,
+			startDay: window.startDay,
+			nextDay: window.nextDay,
+			endDay: window.endDay,
+			billingOwnerIds: billingOwnerIdsForQuery,
+		}),
+		loadDailyByErrorName({
+			env: input.env,
+			startDay: window.startDay,
+			nextDay: window.nextDay,
+			endDay: window.endDay,
+			billingOwnerIds: billingOwnerIdsForQuery,
+		}),
+	])
 
 	return {
 		snapshot,
@@ -248,6 +364,7 @@ export async function loadAdminFleetErrorRateData(input: {
 		endDay: window.endDay,
 		dailyAvailable: daily.available,
 		daily: daily.rows,
+		byErrorName,
 		filter,
 	}
 }
@@ -334,6 +451,78 @@ async function loadDailyBreakdown(input: {
 	} catch (error) {
 		console.warn('admin-fleet-error-rate-daily-query-failed', error)
 		return { available: false, rows: empty }
+	}
+}
+
+async function loadDailyByErrorName(input: {
+	env: AdminFleetErrorRateEnv
+	startDay: string
+	nextDay: string
+	endDay: string
+	billingOwnerIds?: ReadonlyArray<string>
+}): Promise<AdminFleetErrorRateByErrorName> {
+	const empty: AdminFleetErrorRateByErrorName = {
+		available: false,
+		failedRuns: [],
+		staticCalls: [],
+	}
+	if (input.env.WRANGLER_IS_LOCAL_DEV === 'true') {
+		return empty
+	}
+	const accountId = input.env.CLOUDFLARE_ACCOUNT_ID?.trim()
+	const apiToken = input.env.CLOUDFLARE_API_TOKEN?.trim()
+	if (!input.env.USAGE_EVENTS || !accountId || !apiToken) {
+		return empty
+	}
+	if (
+		input.billingOwnerIds &&
+		input.billingOwnerIds.length > 0 &&
+		safeOwnerIds(input.billingOwnerIds).length === 0
+	) {
+		return { available: true, failedRuns: [], staticCalls: [] }
+	}
+
+	const dataset = resolveUsageEventsDataset(input.env)
+	const baseUrl =
+		input.env.CLOUDFLARE_API_BASE_URL?.trim() || 'https://api.cloudflare.com'
+	const queryInput = {
+		dataset,
+		startDay: input.startDay,
+		nextDay: input.nextDay,
+		billingOwnerIds: input.billingOwnerIds,
+	}
+	try {
+		const [failedRunRows, staticCallRows] = await Promise.all([
+			queryAnalyticsEngineSql<AdminFleetErrorRateErrorNameAnalyticsRow>({
+				accountId,
+				apiToken,
+				baseUrl,
+				query:
+					buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery(queryInput),
+			}),
+			queryAnalyticsEngineSql<AdminFleetErrorRateErrorNameAnalyticsRow>({
+				accountId,
+				apiToken,
+				baseUrl,
+				query:
+					buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery(queryInput),
+			}),
+		])
+		const foldInput = { startDay: input.startDay, endDay: input.endDay }
+		return {
+			available: true,
+			failedRuns: foldAdminFleetErrorRateDailyErrorNameRows(
+				failedRunRows,
+				foldInput,
+			),
+			staticCalls: foldAdminFleetErrorRateDailyErrorNameRows(
+				staticCallRows,
+				foldInput,
+			),
+		}
+	} catch (error) {
+		console.warn('admin-fleet-error-rate-by-error-name-query-failed', error)
+		return empty
 	}
 }
 

@@ -141,7 +141,19 @@ test('usageEventBlobs default actor to org billing id and map automation sources
 		'',
 		'schedule',
 		'',
+		'',
 	])
+	expect(
+		usageEventBlobs(
+			{
+				userId: ownerIdFromStored('org-1'),
+				eventType: 'package_static_call',
+				outcome: 'error',
+				errorName: 'credential_need_undeclared',
+			},
+			ts,
+		)[usageEventBlobIndexes.errorName],
+	).toBe('credential_need_undeclared')
 })
 
 test('usageAttributionFieldsFromRequest maps user and automation runs', () => {

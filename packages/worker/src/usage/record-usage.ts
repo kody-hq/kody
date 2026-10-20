@@ -51,6 +51,17 @@ import {
 import { stampFirstExecute } from '#worker/identity/activation-stamps.ts'
 import { type DynamicWorkerDaySurface } from './dynamic-worker-day-surface.ts'
 import { type ExecuteThinGlueClass } from './execute-thin-glue.ts'
+import {
+	sanitizeUsageErrorName,
+	usageErrorNameUnrecorded,
+} from './usage-error-name.ts'
+
+export {
+	sanitizeUsageErrorName,
+	usageErrorNameFromUnknown,
+	usageErrorNameMaxLength,
+	usageErrorNameUnrecorded,
+} from './usage-error-name.ts'
 
 export {
 	usageEventTypes,
@@ -145,6 +156,13 @@ export type UsageEvent = {
 	 * call sites without a request context).
 	 */
 	connectionKey?: string | null
+	/**
+	 * Short error name or code for failure outcomes (for example
+	 * `credential_need_undeclared`). Analytics Engine blob13. Empty on
+	 * success, on `caught` when no name was reported, and on historical
+	 * rows written before this dimension existed. Never a free-form message.
+	 */
+	errorName?: string | null
 }
 
 export const dynamicWorkerCacheReuses = ['hit', 'miss'] as const
@@ -164,6 +182,7 @@ export const usageEventBlobIndexes = {
 	actorUserId: 9,
 	automationSource: 10,
 	connectionKey: 11,
+	errorName: 12,
 } as const
 
 export function automationSourceForAnalytics(
@@ -264,9 +283,11 @@ export function usageEventBlobs(
 		| 'actorUserId'
 		| 'automationSource'
 		| 'connectionKey'
+		| 'errorName'
 	>,
 	timestamp: string,
 ): [
+	string,
 	string,
 	string,
 	string,
@@ -294,6 +315,9 @@ export function usageEventBlobs(
 		actorUserId,
 		automationSource,
 		event.connectionKey?.trim() || '',
+		event.outcome === 'success'
+			? usageErrorNameUnrecorded
+			: sanitizeUsageErrorName(event.errorName),
 	]
 }
 
@@ -449,6 +473,10 @@ function emitUsageSpan(event: UsageEvent) {
 			}
 			if (event.connectionKey) {
 				span.setAttribute('kody.connection_key', event.connectionKey)
+			}
+			const errorName = sanitizeUsageErrorName(event.errorName)
+			if (errorName) {
+				span.setAttribute('kody.error_name', errorName)
 			}
 		})
 	} catch (error) {

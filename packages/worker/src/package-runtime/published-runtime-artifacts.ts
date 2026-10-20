@@ -44,9 +44,10 @@ export type BundleArtifactDependency = {
 	 * True when the entry does not import this package directly: another
 	 * dependency's reachable source statically imports it, so its stamped
 	 * modules are inlined here too. Transitive ids join `packageStorage()` /
-	 * secret-authority grants. Static-call metering, popularity, and
-	 * republish staleness use direct dependencies only. Absent on artifacts
-	 * persisted before the field existed; those recorded direct imports only.
+	 * secret-authority grants and static-call metering (innermost re-export
+	 * layers). Popularity and republish staleness use direct dependencies
+	 * only. Absent on artifacts persisted before the field existed; those
+	 * recorded direct imports only.
 	 */
 	transitive?: true
 }

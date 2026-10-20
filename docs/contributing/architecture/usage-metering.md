@@ -63,6 +63,7 @@ type UsageEvent = {
 	actorUserId?: string | null // person who triggered the unit; AE blob10 ('' = Automation)
 	automationSource?: string | null // closed automation source; AE blob11
 	connectionKey?: string | null // credential the unit came through; AE blob12
+	errorName?: string | null // short error name/code on failures; AE blob13
 }
 ```
 
@@ -74,7 +75,15 @@ interactive runs and leaves `blob11` empty. Explicit Automation runs use
 `schedule`, and `email` (platform `event` automations map to `''`). Blob
 positions are centralized in `usageEventBlobIndexes` in
 `packages/worker/src/usage/record-usage.ts` (0-based array indexes; Analytics
-Engine SQL names them `blob1` through `blob12`).
+Engine SQL names them `blob1` through `blob13`).
+
+**Error name** (`errorName`, AE `blob13`) is a short sanitized token (for
+example `credential_need_undeclared` or `TimeoutError`), never a free-form
+message. It is written on `error` / `caught` outcomes for `package_export`,
+`package_static_call`, `job_run`, and `workflow_run` when extractable. Empty
+means success, extract failed, or a historical row from before this dimension
+existed. `adminFleetErrorRate` groups failed runs and static-call errors by day
+and `blob13`.
 
 **Connection attribution** (`connectionKey`, AE `blob12`) names the credential a
 unit came through, from `usageConnectionKey(request)`:
@@ -311,14 +320,22 @@ It does **not** also emit `execute` — that metric is MCP `execute` tool work
 only, matching `execute_unique_workers_per_day` and `first_execute_at`. A
 bundled execute-tool run that calls statically imported package exports still
 produces one `package_static_call` per call **inside** that run's `execute`
-span. Each metric answers its own question (`execute` is ad-hoc execute-tool
-volume; `job_run` is job activity; `package_export` is saved-package
-entrypoints; `package_static_call` is per-callee reuse). `dynamic_worker_day` is
-the Cloudflare bill unit: one unique Dynamic Worker id per user per UTC day, on
-every sandbox surface that creates a worker. `dynamic_worker_invoke` is the
-observe-only reuse meter: one event per execute-sandbox LOADER evaluate,
-including later claims of the same id on the same UTC day. Do not add it to
-entitlements or fleet event-count rankings.
+span. A **re-export chain** that wraps an already-metered export (A re-exports
+B) records that call **once**, at the innermost metered layer — outer proxy
+layers skip so one throw is one event. Independent calls from one package body
+into another still each count. Each metric answers its own question (`execute`
+is ad-hoc execute-tool volume; `job_run` is job activity; `package_export` is
+saved-package entrypoints; `package_static_call` is per-callee reuse).
+`dynamic_worker_day` is the Cloudflare bill unit: one unique Dynamic Worker id
+per user per UTC day, on every sandbox surface that creates a worker.
+`dynamic_worker_invoke` is the observe-only reuse meter: one event per
+execute-sandbox LOADER evaluate, including later claims of the same id on the
+same UTC day. Do not add it to entitlements or fleet event-count rankings.
+
+Scheduled-job **transient** failures (D1 blips, Durable Object isolate resets,
+storage-estimate misses) leave the claimed run open for retry and do **not**
+count buffered static-call throws as fleet `error` — finalize rewrites them to
+`caught`, matching a successful run that handled a throw.
 `PlanLimits.maxUniqueWorkerDaysPerMonth` is the public included allotment shown
 on `/pricing`. It is not in `entitlementResources` and does not replace the hard
 daily `execute` / `job_run` caps, or the public-ladder weekly execute and

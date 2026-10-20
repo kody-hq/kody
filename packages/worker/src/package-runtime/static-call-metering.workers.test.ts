@@ -83,19 +83,21 @@ async function ensureSavedPackageArtifactSchema() {
 }
 
 /**
- * Saves a package with a published source snapshot for a fresh user; the
+ * Saves a package with a published source snapshot for a fresh user (or an
+ * existing `userId` so one account can own a dependency chain); the
  * caller decides whether to also persist an importable artifact.
  */
 async function publishSource(
 	kodyId: string,
 	description: string,
 	indexSource: string,
+	options?: { userId?: string },
 ) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSavedPackageArtifactSchema()
 	await ensureUsageRollupsTestSchema(env.APP_DB)
 	const unique = crypto.randomUUID()
-	const userId = `user-${unique}`
+	const userId = options?.userId ?? `user-${unique}`
 	const packageId = `pkg-${unique}`
 	const sourceId = `source-${unique}`
 	const name = `@kentcdodds/${kodyId}`
@@ -315,6 +317,52 @@ export default async function main() {
 			event_count: 1,
 			error_count: 1,
 			caught_count: 0,
+		})
+	},
+)
+
+test(
+	're-exported static package throw meters once at the innermost layer',
+	{ timeout: 30_000 },
+	async () => {
+		const { userId } = await publishSource(
+			'metered-inner',
+			'Innermost metered dependency',
+			`export function boom() {
+	const error = new Error('inner boom')
+	error.name = 'InnerBoomError'
+	throw error
+}`,
+		)
+		await publishSource(
+			'metered-reexport',
+			'Re-export wrapper around the innermost dependency',
+			`export { boom } from 'kody:@kentcdodds/metered-inner'`,
+			{ userId },
+		)
+
+		const result = await runEntry(
+			userId,
+			`import { boom } from 'kody:@kentcdodds/metered-reexport'
+export default async function main() {
+	try {
+		boom()
+	} catch (error) {
+		return {
+			name: error instanceof Error ? error.name : 'unknown',
+		}
+	}
+	return { name: 'no-throw' }
+}`,
+		)
+
+		expect(result.error).toBeUndefined()
+		expect(result.result).toEqual({ name: 'InnerBoomError' })
+		// One throw through a re-export chain must not count once per layer.
+		await expectStaticCallRollup(userId, {
+			event_count: 1,
+			error_count: 0,
+			caught_count: 1,
 		})
 	},
 )

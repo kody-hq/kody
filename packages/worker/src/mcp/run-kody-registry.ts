@@ -118,6 +118,7 @@ import {
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
+	usageErrorNameFromUnknown,
 } from '#worker/usage/record-usage.ts'
 import { createPackageStaticCallMeterTools } from '#worker/usage/package-static-call-usage.ts'
 import { recordAgentPackageConversationUses } from '#worker/usage/agent-package-conversation-uses.ts'
@@ -1134,18 +1135,24 @@ export async function runBundledModuleWithRegistry(
 	// still counted as failed package runs.
 	const usageStartedAtMs = Date.now()
 	let usageRecorded = false
-	async function recordPackageExportUsage(outcome: 'success' | 'error') {
+	async function recordPackageExportUsage(
+		outcome: 'success' | 'error',
+		error?: unknown,
+	) {
 		if (usageRecorded) return
 		usageRecorded = true
 		if (options?.skipPackageExportUsage) return
 		const userId = ownerIdFromCaller(callerContext)
 		if (!options?.packageContext || !userId) return
+		const errorName =
+			outcome === 'error' ? usageErrorNameFromUnknown(error) : ''
 		await recordUsage(env, {
 			userId,
 			eventType: 'package_export',
 			entityId: options.packageContext.packageId,
 			durationMs: Date.now() - usageStartedAtMs,
 			outcome,
+			...(errorName ? { errorName } : {}),
 			...usageAttributionFieldsFromRequest(callerContext.request),
 		})
 	}
@@ -1257,21 +1264,20 @@ export async function runBundledModuleWithRegistry(
 			dynamicDependencyPackageIds,
 		})
 		// Static package export calls report through a sandbox bridge with a
-		// bundler-stamped callee package id; only ids recorded as *direct*
-		// static bundle dependencies at build time are accepted (mismatches are
-		// dropped host-side). This is deliberately tighter than the
+		// bundler-stamped callee package id; accept direct *and* transitive
+		// static dependency ids recorded at build time so a re-export chain
+		// that meters once at the innermost layer is not dropped host-side
+		// (mismatches are still dropped). This is still tighter than the
 		// packageStorage grant set, which additionally includes the run's own
-		// package id, dynamic-import dependencies, and transitive static
-		// dependencies. Throws are buffered until finalize with the host run
-		// outcome so caught throws become `caught` (alert math counts `error`
-		// only).
+		// package id and dynamic-import dependencies. Throws are buffered
+		// until finalize with the host run outcome so caught throws become
+		// `caught` (alert math counts `error` only).
 		staticCallMeterTools = createPackageStaticCallMeterTools({
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			request: callerContext.request,
 			grantedPackageIds: new Set(
 				(bundle.dependencies ?? [])
-					.filter(isDirectBundleDependency)
 					.map((dependency) => dependency.packageId)
 					.filter((packageId): packageId is string => Boolean(packageId)),
 			),
@@ -1613,7 +1619,10 @@ ${runtimeHelperRuntimePropertySource}
 				// error would make the idempotency replay permanent — the
 				// next claim would replay the terminal row instead of
 				// retrying the occurrence (D1 blips, DO isolate resets,
-				// storage-estimate misses).
+				// storage-estimate misses). Buffered static-call throws are
+				// not terminal fleet errors: rewrite them to `caught` on
+				// finalize (same as a successful run that handled a throw).
+				staticCallRunFailed = false
 				return withRunId(finalResult)
 			}
 			await finishObservedRun({
@@ -1621,10 +1630,11 @@ ${runtimeHelperRuntimePropertySource}
 				logs: finalResult.logs ?? [],
 				error: createNamedExecutionError(finalResult.error),
 			})
-			await recordPackageExportUsage('error')
+			await recordPackageExportUsage('error', finalResult.error)
 			return withRunId(finalResult)
 		} catch (error) {
 			if (leavesCallerRunRecordOpen(error)) {
+				staticCallRunFailed = false
 				throw error
 			}
 			if (!runRecordFinished) {
@@ -1639,6 +1649,7 @@ ${runtimeHelperRuntimePropertySource}
 		}
 	} catch (error) {
 		if (leavesCallerRunRecordOpen(error)) {
+			staticCallRunFailed = false
 			throw error
 		}
 		if (!runRecordFinished) {
@@ -1649,7 +1660,7 @@ ${runtimeHelperRuntimePropertySource}
 				error: resolved.error,
 			})
 		}
-		await recordPackageExportUsage('error')
+		await recordPackageExportUsage('error', error)
 		throw error
 	} finally {
 		// Host-side static-call writes can be up to 200 sequential rollups.

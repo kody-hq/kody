@@ -3,8 +3,11 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
 	adminFleetErrorRateDefaultDays,
 	adminFleetErrorRateMaxDays,
+	buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery,
 	buildAdminFleetErrorRateDailyOutcomeQuery,
+	buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery,
 	buildAdminFleetErrorRateDailyUsersQuery,
+	foldAdminFleetErrorRateDailyErrorNameRows,
 	foldAdminFleetErrorRateDailyRows,
 	loadAdminFleetErrorRateData,
 	resolveAdminFleetErrorRateWindow,
@@ -208,6 +211,51 @@ test('daily AE queries count caught and error and exclude handles', () => {
 	expect(users).not.toContain('blob1 IN')
 	expect(users).not.toContain('caught')
 	expect(users).not.toContain('username')
+
+	const failedRuns = buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery({
+		dataset: 'kody_usage_events',
+		startDay: '2026-10-14',
+		nextDay: '2026-10-21',
+	})
+	expect(failedRuns).toContain('blob13 AS error_name')
+	expect(failedRuns).toContain(
+		"blob2 IN ('package_export', 'job_run', 'workflow_run')",
+	)
+	expect(failedRuns).not.toContain('package_static_call')
+	expect(failedRuns).not.toContain('username')
+
+	const staticCalls = buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery({
+		dataset: 'kody_usage_events',
+		startDay: '2026-10-14',
+		nextDay: '2026-10-21',
+	})
+	expect(staticCalls).toContain("blob2 = 'package_static_call'")
+	expect(staticCalls).toContain('blob13 AS error_name')
+	expect(staticCalls).not.toContain('username')
+})
+
+test('fold error-name rows keeps aggregates without handles', () => {
+	expect(
+		foldAdminFleetErrorRateDailyErrorNameRows(
+			[
+				{
+					day: '2026-10-18',
+					error_name: 'credential_need_undeclared',
+					error_count: 12,
+				},
+				{ day: '2026-10-18', error_name: '', error_count: 3 },
+				{ day: '2026-10-17', error_name: 'TimeoutError', error_count: '1' },
+			],
+			{ startDay: '2026-10-18', endDay: '2026-10-18' },
+		),
+	).toEqual([
+		{
+			day: '2026-10-18',
+			errorName: 'credential_need_undeclared',
+			count: 12,
+		},
+		{ day: '2026-10-18', errorName: '', count: 3 },
+	])
 })
 
 test('fold fills every day and merges outcome with distinct users', () => {
@@ -254,7 +302,29 @@ test('loadAdminFleetErrorRateData reuses snapshot and returns daily aggregates',
 			if (input.query.includes('caught_count')) {
 				return [{ day: '2026-10-20', error_count: 5, caught_count: 12 }]
 			}
-			return [{ day: '2026-10-20', users_with_errors: 2 }]
+			if (input.query.includes('users_with_errors')) {
+				return [{ day: '2026-10-20', users_with_errors: 2 }]
+			}
+			if (input.query.includes("blob2 = 'package_static_call'")) {
+				return [
+					{
+						day: '2026-10-20',
+						error_name: 'credential_need_undeclared',
+						error_count: 40,
+					},
+				]
+			}
+			if (input.query.includes('blob13 AS error_name')) {
+				return [
+					{
+						day: '2026-10-20',
+						error_name: 'credential_need_undeclared',
+						error_count: 7,
+					},
+					{ day: '2026-10-20', error_name: '', error_count: 1 },
+				]
+			}
+			return []
 		},
 	)
 
@@ -295,7 +365,26 @@ test('loadAdminFleetErrorRateData reuses snapshot and returns daily aggregates',
 			usersWithErrors: 2,
 		},
 	])
+	expect(data.byErrorName.available).toBe(true)
+	expect(data.byErrorName.failedRuns).toEqual([
+		{
+			day: '2026-10-20',
+			errorName: 'credential_need_undeclared',
+			count: 7,
+		},
+		{ day: '2026-10-20', errorName: '', count: 1 },
+	])
+	expect(data.byErrorName.staticCalls).toEqual([
+		{
+			day: '2026-10-20',
+			errorName: 'credential_need_undeclared',
+			count: 40,
+		},
+	])
 	expect(JSON.stringify(data.daily)).not.toMatch(/@[a-z]|username|handle/i)
+	expect(JSON.stringify(data.byErrorName)).not.toMatch(
+		/@[a-z]|username|handle/i,
+	)
 })
 
 test('loadAdminFleetErrorRateData filters by billing owner without listing handles', async () => {
@@ -320,9 +409,20 @@ test('loadAdminFleetErrorRateData filters by billing owner without listing handl
 	queryMocks.queryAnalyticsEngineSql.mockImplementation(
 		async (input: { query: string }) => {
 			expect(input.query).toContain(`blob1 IN ('${personId}', '${orgId}')`)
-			expect(input.query).toContain('caught_count')
 			expect(input.query).not.toContain('users_with_errors')
-			return [{ day: '2026-10-20', error_count: 1, caught_count: 3 }]
+			if (input.query.includes('caught_count')) {
+				return [{ day: '2026-10-20', error_count: 1, caught_count: 3 }]
+			}
+			if (input.query.includes('blob13 AS error_name')) {
+				return [
+					{
+						day: '2026-10-20',
+						error_name: 'credential_need_undeclared',
+						error_count: 1,
+					},
+				]
+			}
+			return []
 		},
 	)
 
@@ -339,7 +439,8 @@ test('loadAdminFleetErrorRateData filters by billing owner without listing handl
 	})
 
 	expect(data.filter).toEqual({ stableUserId: personId })
-	expect(queryMocks.queryAnalyticsEngineSql).toHaveBeenCalledTimes(1)
+	// Outcome + failed-run by name + static-call by name (no users query).
+	expect(queryMocks.queryAnalyticsEngineSql).toHaveBeenCalledTimes(3)
 	expect(data.daily).toEqual([
 		{
 			day: '2026-10-20',
@@ -349,6 +450,7 @@ test('loadAdminFleetErrorRateData filters by billing owner without listing handl
 			usersWithErrors: 1,
 		},
 	])
+	expect(data.byErrorName.available).toBe(true)
 	expect(data).not.toHaveProperty('username')
 	expect(JSON.stringify(data)).not.toMatch(/@[a-z]/i)
 })
@@ -367,6 +469,11 @@ test('loadAdminFleetErrorRateData degrades when AE is unavailable', async () => 
 	})
 	expect(data.snapshot.available).toBe(false)
 	expect(data.dailyAvailable).toBe(false)
+	expect(data.byErrorName).toEqual({
+		available: false,
+		failedRuns: [],
+		staticCalls: [],
+	})
 	expect(data.daily).toEqual([
 		{
 			day: '2026-10-20',

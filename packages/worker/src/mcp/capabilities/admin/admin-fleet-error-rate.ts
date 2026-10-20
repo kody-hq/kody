@@ -90,6 +90,34 @@ const dailyRowSchema = z.object({
 		),
 })
 
+const dailyErrorNameRowSchema = z.object({
+	day: z.string().describe('UTC calendar day (YYYY-MM-DD).'),
+	errorName: z
+		.string()
+		.describe(
+			'Short error name/code from Analytics Engine blob13 (for example credential_need_undeclared). Empty string means unrecorded — historical rows before blob13, or extract failed. Never a free-form message, handle, or package id.',
+		),
+	count: z.number().int().nonnegative(),
+})
+
+const byErrorNameSchema = z.object({
+	available: z
+		.boolean()
+		.describe(
+			'False when Analytics Engine credentials are missing, local/dev, or the by-error-name query failed.',
+		),
+	failedRuns: z
+		.array(dailyErrorNameRowSchema)
+		.describe(
+			'package_export + job_run + workflow_run with outcome error, grouped by day and errorName. Aggregates only.',
+		),
+	staticCalls: z
+		.array(dailyErrorNameRowSchema)
+		.describe(
+			'package_static_call with outcome error (not caught), grouped by day and errorName. Aggregates only.',
+		),
+})
+
 const inputSchema = z.object({
 	days: z
 		.number()
@@ -120,6 +148,9 @@ const outputSchema = z.object({
 			'False when Analytics Engine credentials are missing, local/dev, or the daily query failed.',
 		),
 	daily: z.array(dailyRowSchema),
+	byErrorName: byErrorNameSchema.describe(
+		'Per-day error name/code breakdown for failed runs and static-call errors. Names exist only for events written after USAGE_EVENTS blob13; older days group under empty errorName.',
+	),
 	filter: z
 		.object({ stableUserId: stableUserIdSchema })
 		.nullable()
@@ -134,7 +165,7 @@ export const adminFleetErrorRateCapability = defineDomainCapability(
 		...adminCapabilityAccess,
 		name: 'adminFleetErrorRate',
 		description:
-			'Read-only fleet package-runtime error-rate health: the same hour/day KV snapshot as /admin/insights, plus a daily caught vs error breakdown (default 7 days, max 31) with distinct users-with-errors counts. Optional stableUserId scopes daily rows to one account. Admin-only; daily aggregates never list handles. Concentration usernames appear only when the shared snapshot is elevated (same as the page).',
+			'Read-only fleet package-runtime error-rate health: the same hour/day KV snapshot as /admin/insights, plus a daily caught vs error breakdown (default 7 days, max 31) with distinct users-with-errors counts, and per-day failed-run / static-call counts by error name (Analytics Engine blob13). Optional stableUserId scopes daily rows to one account. Admin-only; daily aggregates never list handles. Concentration usernames appear only when the shared snapshot is elevated (same as the page). Error names are forward-looking from the blob13 write; historical days before that dimension group under an empty name.',
 		keywords: [
 			'admin',
 			'fleet',
@@ -143,6 +174,7 @@ export const adminFleetErrorRateCapability = defineDomainCapability(
 			'insights',
 			'package runtime',
 			'health',
+			'error name',
 		],
 		inputSchema,
 		outputSchema,
@@ -161,6 +193,7 @@ export const adminFleetErrorRateCapability = defineDomainCapability(
 						[
 							`days=${result.days}`,
 							`daily_available=${result.dailyAvailable}`,
+							`by_error_name_available=${result.byErrorName.available}`,
 							`snapshot_available=${result.snapshot.available}`,
 							result.filter ? `filter=stable_user_id` : 'filter=fleet',
 						].join(';'),
