@@ -37,7 +37,11 @@ import {
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import {
+	isPackageAppOauthHostAuthPathname,
+	normalizePackageAppOauthHostAuthPathname,
+	packageAppOauthPaths,
+} from '#universal/package-app-oauth-paths.ts'
 import {
 	isVerifiedAppCustomHostname,
 	isVerifiedOrgCustomHostname,
@@ -48,10 +52,11 @@ import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hos
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { parsePackageAppSubdomainPath } from '#worker/package-runtime/package-app-serve.ts'
 import { resolvePackageAppOauthInlineIdentity } from '#app/package-app-oauth-inline-identity.ts'
 
 /**
- * Host-root `/_kody/auth/*` routes on package-app origins and verified custom
+ * Host-root `/-/auth/*` routes (and legacy `/_kody/auth/*`) on package-app origins and verified custom
  * domains (and on the app origin when `PACKAGE_APP_BASE_URL` is unset for
  * preview / path-based inline serving). Starts PKCE, exchanges the
  * authorization code for a per-app host-only package-app session cookie, clears
@@ -129,17 +134,29 @@ async function resolveVerifiedHostApp(input: {
 }
 
 /**
- * Leaf from a same-origin `Referer` path `/packages/{leaf}/…`. Used on shared
- * hosts so logout binds to the app that initiated the navigation, not an
- * attacker-chosen `?app=` on a sibling package.
+ * Leaf from a same-origin `Referer` path `/{leaf}/…` or the legacy
+ * `/packages/{leaf}/…`. Used on shared hosts so logout binds to the app that
+ * initiated the navigation, not an attacker-chosen `?app=` on a sibling
+ * package. Only package-app hosts mount packages at `/{leaf}`; on the app
+ * origin (inline serving) only the legacy form is a package path.
  */
-function readAppSlugFromSameOriginReferer(request: Request, requestUrl: URL) {
+function readAppSlugFromSameOriginReferer(
+	request: Request,
+	requestUrl: URL,
+	input: { packageAppHost: boolean },
+) {
 	const referer = request.headers.get('Referer')
 	if (!referer) return undefined
 	try {
 		const refererUrl = new URL(referer)
 		if (refererUrl.origin !== requestUrl.origin) return undefined
-		return readAppSlugFromReturnTo(`${refererUrl.pathname}${refererUrl.search}`)
+		if (!input.packageAppHost) {
+			return readAppSlugFromReturnTo(refererUrl.pathname)
+		}
+		return parsePackageAppSubdomainPath({
+			pathname: refererUrl.pathname,
+			username: '',
+		})?.kodyId.toLowerCase()
 	} catch {
 		return undefined
 	}
@@ -149,7 +166,7 @@ function readAppSlugFromSameOriginReferer(request: Request, requestUrl: URL) {
  * Which package leaf logout should clear on this host.
  *
  * On shared multi-app hosts (`{user}.kody.run` and org custom hostnames), only
- * a same-origin Referer `/packages/{leaf}` may select a per-app cookie —
+ * a same-origin Referer `/{leaf}` (or legacy `/packages/{leaf}`) may select a per-app cookie —
  * `?app=` / `return_to` are attacker-chosen on a top-level GET. Verified
  * single-app custom hostnames trust the hostname mapping. Shared-host logout
  * never waits on `APP_DB` (custom-domain lookup) so a D1 outage cannot block
@@ -162,19 +179,23 @@ async function resolveLogoutAppSlug(input: {
 	url: URL
 	returnTo: string
 }): Promise<string | null> {
-	const fromReferer = readAppSlugFromSameOriginReferer(input.request, input.url)
-
 	const requestHost = parsePackageAppRequestHost({
 		env: input.env,
 		url: input.url,
 	})
+	const inlineServing = !getPackageAppBaseUrl({ env: input.env })
+	const fromReferer = readAppSlugFromSameOriginReferer(
+		input.request,
+		input.url,
+		{ packageAppHost: !inlineServing },
+	)
 	if (requestHost?.kind === 'user-subdomain') {
 		return fromReferer ?? null
 	}
 
 	// Preview / path-based inline serving: no separate package-app zone, so
 	// query / return_to remain useful when Referer is absent.
-	if (!getPackageAppBaseUrl({ env: input.env })) {
+	if (inlineServing) {
 		return (
 			fromReferer ??
 			readAppSlugParam(input.url) ??
@@ -346,7 +367,9 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 		return badRequest('Missing authorization code.', 400)
 	}
 
-	const redirectUri = `${input.url.origin}${packageAppOauthPaths.callback}`
+	// Echo the callback path the browser used so codes issued for a legacy
+	// `/_kody/auth/callback` redirect URI still exchange.
+	const redirectUri = `${input.url.origin}${input.url.pathname}`
 	const record = await consumePackageAppOauthCode({
 		env: input.env,
 		code,
@@ -557,16 +580,17 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 }
 
 /**
- * Dispatch `/_kody/auth/*` on a package-app host. Returns null when the path
- * is not an auth route so the caller can continue serving the package.
+ * Dispatch `/-/auth/*` and legacy `/_kody/auth/*` on a package-app host with
+ * no redirect between them. Returns null when the path is not an auth route so
+ * the caller can continue serving the package.
  */
 export async function handlePackageAppOauthHostAuth(input: {
 	request: Request
 	env: Env
 	url: URL
 }): Promise<Response | null> {
-	const { pathname } = input.url
-	if (!pathname.startsWith('/_kody/auth')) return null
+	if (!isPackageAppOauthHostAuthPathname(input.url.pathname)) return null
+	const pathname = normalizePackageAppOauthHostAuthPathname(input.url.pathname)
 
 	if (pathname === packageAppOauthPaths.login) {
 		if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
@@ -599,7 +623,7 @@ export async function handlePackageAppOauthHostAuth(input: {
 	return badRequest('Unknown auth path.', 404)
 }
 
-/** True when a package-app origin request targets `/_kody/auth/*`. */
+/** True when a package-app origin request targets `/-/auth/*` or `/_kody/auth/*`. */
 export function isPackageAppOauthHostAuthPath(pathname: string) {
-	return pathname === '/_kody/auth' || pathname.startsWith('/_kody/auth/')
+	return isPackageAppOauthHostAuthPathname(pathname)
 }

@@ -5,7 +5,10 @@ import {
 	readPackageAppSession,
 	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import {
+	packageAppOauthLegacyPaths,
+	packageAppOauthPaths,
+} from '#universal/package-app-oauth-paths.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const packageAppOrigin = 'https://packages.isolated.test'
@@ -138,7 +141,7 @@ test('shared-host logout prefers Referer leaf over a sibling ?app=', async () =>
 		{
 			headers: {
 				Cookie: cookieHeader,
-				Referer: `${ownerPackageAppOrigin}/packages/notes/settings`,
+				Referer: `${ownerPackageAppOrigin}/notes/settings`,
 			},
 		},
 	)
@@ -234,4 +237,19 @@ test('older kit return_to=/ still clears the app when Referer has the leaf', asy
 			slug: 'notes',
 		}),
 	).resolves.toBeNull()
+})
+
+test('canonical /-/auth and legacy /_kody/auth both dispatch without redirecting', async () => {
+	configureOrigins()
+	for (const path of [packageAppOauthPaths.me, packageAppOauthLegacyPaths.me]) {
+		const response = await workerFetch(`${ownerPackageAppOrigin}${path}`)
+		expect({ path, status: response.status }).toEqual({ path, status: 400 })
+		expect(response.headers.get('Location')).toBeNull()
+	}
+	const unknown = await workerFetch(`${ownerPackageAppOrigin}/-/auth/nope`)
+	expect(unknown.status).toBe(404)
+	const legacyUnknown = await workerFetch(
+		`${ownerPackageAppOrigin}/_kody/auth/nope`,
+	)
+	expect(legacyUnknown.status).toBe(404)
 })

@@ -231,7 +231,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 		appOriginResponse.headers.get('Location') ?? '',
 	)
 	expect(handoffLocation.origin).toBe(ownerPackageAppOrigin)
-	expect(handoffLocation.pathname).toBe('/packages/demo/report')
+	expect(handoffLocation.pathname).toBe('/demo/report')
 	expect(handoffLocation.searchParams.get('tab')).toBe('1')
 	const handoffToken = handoffLocation.searchParams.get(
 		packageAppHandoffQueryParam,
@@ -242,7 +242,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	})
 	expect(bareMountHandoff.status).toBe(302)
 	expect(new URL(bareMountHandoff.headers.get('Location') ?? '').pathname).toBe(
-		'/packages/demo/report',
+		'/demo/report',
 	)
 
 	// 2. The owner subdomain exchanges the token for its own host-scoped cookie,
@@ -400,13 +400,14 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	const unmatchedUrls = [
 		...[packageAppOrigin, ownerPackageAppOrigin].flatMap((origin) =>
 			[
-				'/account/secrets.json',
-				'/login',
-				'/mcp',
-				'/session',
 				`/@${ownerUsername}/webhooks/demo/sentry/secret`,
 				`/@${ownerUsername}/connectors/home/instance`,
+				'/-/unknown',
+				'/.well-known/unknown',
 			].map((path) => `${origin}${path}`),
+		),
+		...['/account/secrets.json', '/login', '/mcp', '/session'].map(
+			(path) => `${packageAppOrigin}${path}`,
 		),
 		'https://nested.label.packages.isolated.test/packages/demo',
 		'https://Bad_Label.packages.isolated.test/packages/demo',
@@ -433,7 +434,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	const legacyResponse = await workerFetch(legacyUrl)
 	expect(legacyResponse.status).toBe(302)
 	expect(legacyResponse.headers.get('Location')).toBe(
-		`${ownerPackageAppOrigin}/packages/demo/report?tab=1`,
+		`${ownerPackageAppOrigin}/demo/report?tab=1`,
 	)
 
 	// 8. The bare package-app origin and a bare user subdomain are plausible
@@ -468,6 +469,25 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	expect(visitorOnHandoffMount.headers.get('Location')).toBe(
 		`${appOrigin}/@other-user/demo`,
 	)
+})
+
+test('package-app hosts answer /-/health with the app origin health report', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	for (const origin of [packageAppOrigin, ownerPackageAppOrigin]) {
+		const response = await workerFetch(`${origin}/-/health?format=json`)
+		expect(response.status).toBe(200)
+		expect(response.headers.get('Cache-Control')).toBe('no-store')
+		expect(response.headers.has('X-App-Commit-Sha')).toBe(true)
+		await expect(response.json()).resolves.toHaveProperty('ok')
+	}
+	const bareHealth = await workerFetch(`${ownerPackageAppOrigin}/health`, {
+		headers: { Accept: 'application/json' },
+	})
+	expect(bareHealth.status).toBe(403)
+	expect(bareHealth.headers.get('X-Kody-Handoff')).toBe('required')
 })
 
 test('package apps stay inline on the app origin when no package-app origin is configured', async () => {
@@ -579,7 +599,7 @@ test('team org private apps hand off and open for owners and execute-granted mem
 			appOriginResponse.headers.get('Location') ?? '',
 		)
 		expect(handoffLocation.origin).toBe(teamPackageAppOrigin)
-		expect(handoffLocation.pathname).toBe('/packages/demo')
+		expect(handoffLocation.pathname).toBe('/demo')
 		expect(
 			handoffLocation.searchParams.get(packageAppHandoffQueryParam),
 		).toBeTruthy()
@@ -695,7 +715,7 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(publicEntry.status).toBe(200)
 	expect(publicEntry.headers.get('Location')).toBeNull()
 	const publicBody = await publicEntry.text()
-	const publicAppUrl = `${accessFixtureOrigin}/packages/${publicApp.slug}?tab=1`
+	const publicAppUrl = `${accessFixtureOrigin}/${publicApp.slug}?tab=1`
 	expect(publicBody).toContain(publicAppUrl)
 	expect(publicBody).toContain('data-testid="package-app-origin-link"')
 	expect(publicBody).not.toContain(packageAppHandoffQueryParam)
@@ -712,6 +732,8 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	// Responses vary on Cookie so a cache never mixes anonymous and signed-in
 	// variants.
 	for (const path of [
+		`/${publicApp.slug}`,
+		`/${publicApp.slug}/_assets/app.js`,
 		`/packages/${publicApp.slug}`,
 		`/packages/${publicApp.slug}/_assets/app.js`,
 	]) {
@@ -826,7 +848,7 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(ownerPost.status).toBe(307)
 	const ownerPostLocation = new URL(ownerPost.headers.get('Location') ?? '')
 	expect(ownerPostLocation.origin).toBe(accessFixtureOrigin)
-	expect(ownerPostLocation.pathname).toBe(`/packages/${privateApp.slug}`)
+	expect(ownerPostLocation.pathname).toBe(`/${privateApp.slug}`)
 	expect(ownerPostLocation.searchParams.get('tab')).toBe('1')
 	expect(ownerPostLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
 		false,
@@ -874,7 +896,7 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 		expect(openSite.status).toBe(200)
 		expect(openSite.headers.get('Location')).toBeNull()
 		await expect(openSite.text()).resolves.toContain(
-			`${accessFixtureOrigin}/packages/open-site`,
+			`${accessFixtureOrigin}/open-site`,
 		)
 	}
 })

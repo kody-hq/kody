@@ -141,6 +141,7 @@ import { Route as UseCasesSharedAgentMemoryRouteImport } from './routes/use-case
 import { Route as WebhooksStripeRouteImport } from './routes/webhooks_.stripe'
 import { Route as WithAgentRouteImport } from './routes/with.$agent'
 import { Route as YoutubeThumbVideoIdRouteImport } from './routes/youtube-thumb_.$videoId'
+import { Route as Char91Char93AuthSplatRouteImport } from './routes/[-].auth.$'
 import { Route as DotwellKnownAgentSkillsIndexDotjsonRouteImport } from './routes/[.]well-known_.agent-skills_.index[.]json'
 import { Route as DotwellKnownMcpServerCardDotjsonRouteImport } from './routes/[.]well-known_.mcp_.server-card[.]json'
 import { Route as AtChar123orgSlugChar125ActivityRouteImport } from './routes/@{$orgSlug}_.-.activity'
@@ -936,6 +937,11 @@ const WithAgentRoute = WithAgentRouteImport.update({
 const YoutubeThumbVideoIdRoute = YoutubeThumbVideoIdRouteImport.update({
   id: '/youtube-thumb_/$videoId',
   path: '/youtube-thumb/$videoId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Char91Char93AuthSplatRoute = Char91Char93AuthSplatRouteImport.update({
+  id: '/-/auth/$',
+  path: '/-/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DotwellKnownAgentSkillsIndexDotjsonRoute =
@@ -1782,6 +1788,7 @@ export interface FileRoutesByFullPath {
   '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
+  '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known/agent-skills/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known/mcp/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
   '/@{$orgSlug}/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
@@ -2037,6 +2044,7 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogIndexRoute
   '/docs': typeof DocsIndexRoute
   '/onboarding': typeof OnboardingIndexRoute
+  '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known/agent-skills/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known/mcp/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
   '/@{$orgSlug}/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
@@ -2294,6 +2302,7 @@ export interface FileRoutesById {
   '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
+  '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known_/agent-skills_/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known_/mcp_/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
   '/@{$orgSlug}_/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
@@ -2552,6 +2561,7 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/docs/'
     | '/onboarding/'
+    | '/-/auth/$'
     | '/.well-known/agent-skills/index.json'
     | '/.well-known/mcp/server-card.json'
     | '/@{$orgSlug}/-/activity'
@@ -2807,6 +2817,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/docs'
     | '/onboarding'
+    | '/-/auth/$'
     | '/.well-known/agent-skills/index.json'
     | '/.well-known/mcp/server-card.json'
     | '/@{$orgSlug}/-/activity'
@@ -3063,6 +3074,7 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/docs/'
     | '/onboarding/'
+    | '/-/auth/$'
     | '/.well-known_/agent-skills_/index.json'
     | '/.well-known_/mcp_/server-card.json'
     | '/@{$orgSlug}_/-/activity'
@@ -3316,6 +3328,7 @@ export interface RootRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   BlogIndexRoute: typeof BlogIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  Char91Char93AuthSplatRoute: typeof Char91Char93AuthSplatRoute
   DotwellKnownAgentSkillsIndexDotjsonRoute: typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   DotwellKnownMcpServerCardDotjsonRoute: typeof DotwellKnownMcpServerCardDotjsonRoute
   AtChar123orgSlugChar125ActivityRoute: typeof AtChar123orgSlugChar125ActivityRoute
@@ -4361,6 +4374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof YoutubeThumbVideoIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/-/auth/$': {
+      id: '/-/auth/$'
+      path: '/-/auth/$'
+      fullPath: '/-/auth/$'
+      preLoaderRoute: typeof Char91Char93AuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/.well-known_/agent-skills_/index.json': {
       id: '/.well-known_/agent-skills_/index.json'
       path: '/.well-known/agent-skills/index.json'
@@ -5397,6 +5417,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   BlogIndexRoute: BlogIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
+  Char91Char93AuthSplatRoute: Char91Char93AuthSplatRoute,
   DotwellKnownAgentSkillsIndexDotjsonRoute:
     DotwellKnownAgentSkillsIndexDotjsonRoute,
   DotwellKnownMcpServerCardDotjsonRoute: DotwellKnownMcpServerCardDotjsonRoute,

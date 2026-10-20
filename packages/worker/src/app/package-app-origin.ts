@@ -9,6 +9,7 @@ import {
 	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
 } from '@kody-internal/shared/public-urls.ts'
+import { packageAppHostSystemPrefix } from '@kody-internal/shared/package-app-host-paths.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
 import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
@@ -48,6 +49,7 @@ import {
 	createPackageAppHandoffToken,
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
+import { createHealthHandler } from '#app/handlers/health.ts'
 import { handlePackageAppOauthHostAuth } from '#app/package-app-oauth-host-auth.ts'
 import {
 	resolvePackageAppOrgOwnerByHandle,
@@ -120,7 +122,9 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * When `package-app-custom-domains` is globally on, a verified app-level
  * custom hostname serves that package at `/` (assets at `/_assets/...`).
  * A verified org-level hostname serves private apps at
- * `/packages/{kodyId}` like `{slug}.kody.run`. The app origin hands off to
+ * `/{kodyId}` like `{slug}.kody.run` (legacy `/packages/{kodyId}` is still
+ * served). Kody-owned routes on package-app hosts live under `/-/` (auth,
+ * health). The app origin hands off to
  * the custom host when a binding exists (app-level first, then org-level).
  * Unverified hostnames stay refused.
  *
@@ -928,6 +932,8 @@ function handleApexRequest(input: {
 	packageAppOrigin: string
 }) {
 	const { request, env, url, packagePath, packageAppOrigin } = input
+	const health = handlePackageAppHostHealth({ request, env, url })
+	if (health) return health
 	if (packagePath) {
 		const target = buildSubdomainTarget({ packageAppOrigin, packagePath, url })
 		return redirectResponse({
@@ -1215,6 +1221,25 @@ function rejectCrossOriginMutatingPackageAppRequest(input: {
 	})
 }
 
+const packageAppHostHealthPath = `${packageAppHostSystemPrefix}/health`
+
+/**
+ * `/-/health` on a package-app host answers with the same report as the app
+ * origin so deploy tooling can verify the SHA behind `*.kody.run`. Returns null
+ * for every other request.
+ */
+function handlePackageAppHostHealth(input: {
+	request: Request
+	env: Env
+	url: URL
+}): Promise<Response> | null {
+	if (input.url.pathname !== packageAppHostHealthPath) return null
+	if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
+		return null
+	}
+	return createHealthHandler(input.env)({ request: input.request })
+}
+
 async function handleUserSubdomainRequest(input: {
 	request: Request
 	env: Env
@@ -1222,6 +1247,8 @@ async function handleUserSubdomainRequest(input: {
 	username: string
 }) {
 	const { request, env, url, username } = input
+	const health = handlePackageAppHostHealth({ request, env, url })
+	if (health) return await health
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
@@ -1283,6 +1310,8 @@ async function handleOrgCustomHostnameRequest(input: {
 	mapping: VerifiedOrgCustomHostname
 }) {
 	const { request, env, url, mapping } = input
+	const health = handlePackageAppHostHealth({ request, env, url })
+	if (health) return await health
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth

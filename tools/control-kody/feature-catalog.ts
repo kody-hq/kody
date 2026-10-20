@@ -49,6 +49,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/auth.md',
 			'/session',
 			'/oauth',
+			'/-/auth',
 			'/_kody/auth',
 		],
 	},
@@ -358,6 +359,7 @@ function classifyRouteKind(routePath: string): RouteKind {
 		routePath === '/health' ||
 		routePath.startsWith('/health/') ||
 		routePath.startsWith('/oauth/') ||
+		routePath.startsWith('/-/auth') ||
 		routePath.startsWith('/_kody/auth') ||
 		routePath === '/sentry-tunnel'
 	) {

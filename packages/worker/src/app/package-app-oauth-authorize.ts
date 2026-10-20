@@ -298,7 +298,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 				state: input.query.state,
 				error: 'invalid_request',
 				description:
-					'redirect_uri must be the /_kody/auth/callback on a verified origin for this package.',
+					'redirect_uri must be the /-/auth/callback on a verified origin for this package.',
 			}),
 		}
 	}

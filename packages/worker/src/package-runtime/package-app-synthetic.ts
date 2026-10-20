@@ -23,5 +23,5 @@ export function buildPackageAppNotFoundMessage() {
 }
 
 export function buildUnmatchedPackageAppOriginPathMessage() {
-	return `Package app URL not found. Hosted package apps are served from https://<username>.<package-app-domain>/packages/<kody-id>/<path> (legacy /@username/packages/<kody-id> URLs on the bare package-app domain redirect there). Requests outside a package app mount are not dispatched to any app. To exercise a declared package app fetch handler over MCP, use ${packageAppFetchCapabilityName} instead.`
+	return `Package app URL not found. Hosted package apps are served from https://<username>.<package-app-domain>/<kody-id>/<path> (legacy /packages/<kody-id> paths on that host and /@username/packages/<kody-id> URLs on the bare package-app domain redirect there). Requests outside a package app mount are not dispatched to any app. To exercise a declared package app fetch handler over MCP, use ${packageAppFetchCapabilityName} instead.`
 }

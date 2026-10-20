@@ -34,12 +34,10 @@ test('saved-package pages and hosted package-app mounts use different paths', ()
 			restPath: '/report',
 		}),
 	).toBe('/@kentcdodds/packages/hn-pulse/open/report')
-	expect(buildPackageAppSubdomainPath({ kodyId: 'hn-pulse' })).toBe(
-		'/packages/hn-pulse',
-	)
+	expect(buildPackageAppSubdomainPath({ kodyId: 'hn-pulse' })).toBe('/hn-pulse')
 	expect(
 		buildPackageAppSubdomainPath({ kodyId: 'hn-pulse', restPath: '/report' }),
-	).toBe('/packages/hn-pulse/report')
+	).toBe('/hn-pulse/report')
 	expect(buildPackageAppCustomHostnamePath({})).toBe('/')
 	expect(buildPackageAppCustomHostnamePath({ restPath: '/' })).toBe('/')
 	expect(buildPackageAppCustomHostnamePath({ restPath: '/report' })).toBe(

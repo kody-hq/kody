@@ -4,7 +4,11 @@ import {
 	lookupVerifiedOrgCustomHostnameForPackage,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
 import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import {
+	isPackageAppOauthCallbackPathname,
+	packageAppOauthLegacyPaths,
+	packageAppOauthPaths,
+} from '#universal/package-app-oauth-paths.ts'
 import { buildPackageAppSubdomainUrl } from '@kody-internal/shared/public-urls.ts'
 import { type PackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 
@@ -27,7 +31,7 @@ function normalizeCallbackUrl(raw: string): URL | null {
 	if (url.username || url.password) return null
 	if (url.hash) return null
 	if (url.search) return null
-	if (url.pathname !== packageAppOauthPaths.callback) return null
+	if (!isPackageAppOauthCallbackPathname(url.pathname)) return null
 	if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
 	// http only for local package-app hosts (*.localhost).
 	if (url.protocol === 'http:') {
@@ -35,6 +39,17 @@ function normalizeCallbackUrl(raw: string): URL | null {
 		if (host !== 'localhost' && !host.endsWith('.localhost')) return null
 	}
 	return url
+}
+
+const callbackPathnames = [
+	packageAppOauthPaths.callback,
+	packageAppOauthLegacyPaths.callback,
+] as const
+
+function pushCallbackUrls(allowed: Array<string>, origin: string) {
+	for (const pathname of callbackPathnames) {
+		allowed.push(`${origin}${pathname}`)
+	}
 }
 
 export async function listAllowedPackageAppOauthRedirectUris(input: {
@@ -52,7 +67,7 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 					kodyId: input.client.kodyId,
 				}),
 			)
-			allowed.push(`${subdomain.origin}${packageAppOauthPaths.callback}`)
+			pushCallbackUrls(allowed, subdomain.origin)
 		} catch {
 			// Ignore unparsable package-app origin.
 		}
@@ -62,7 +77,7 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 		// needs an allowlisted callback on that same origin.
 		try {
 			const appOrigin = new URL(getAppBaseUrl({ env: input.env })).origin
-			allowed.push(`${appOrigin}${packageAppOauthPaths.callback}`)
+			pushCallbackUrls(allowed, appOrigin)
 		} catch {
 			// Ignore unparsable app origin.
 		}
@@ -78,9 +93,7 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 		kodyId: input.client.kodyId,
 	})
 	if (appMapping) {
-		allowed.push(
-			`https://${appMapping.hostname}${packageAppOauthPaths.callback}`,
-		)
+		pushCallbackUrls(allowed, `https://${appMapping.hostname}`)
 	}
 
 	const orgMapping = await lookupVerifiedOrgCustomHostnameForPackage({
@@ -89,9 +102,7 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 		kodyId: input.client.kodyId,
 	})
 	if (orgMapping) {
-		allowed.push(
-			`https://${orgMapping.hostname}${packageAppOauthPaths.callback}`,
-		)
+		pushCallbackUrls(allowed, `https://${orgMapping.hostname}`)
 	}
 
 	return allowed

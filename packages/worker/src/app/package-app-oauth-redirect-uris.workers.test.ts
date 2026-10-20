@@ -5,7 +5,10 @@ import {
 	isAllowedPackageAppOauthRedirectUri,
 	listAllowedPackageAppOauthRedirectUris,
 } from '#app/package-app-oauth-redirect-uris.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import {
+	packageAppOauthLegacyPaths,
+	packageAppOauthPaths,
+} from '#universal/package-app-oauth-paths.ts'
 
 test('when PACKAGE_APP_BASE_URL is unset, app-origin callback is allowlisted', async () => {
 	const mutableEnv = env as unknown as Record<string, string | undefined>
@@ -23,6 +26,15 @@ test('when PACKAGE_APP_BASE_URL is unset, app-origin callback is allowlisted', a
 		})
 		const expected = `https://kody-pr-3889.kody-a99.workers.dev${packageAppOauthPaths.callback}`
 		expect(allowed).toContain(expected)
+		const legacy = `https://kody-pr-3889.kody-a99.workers.dev${packageAppOauthLegacyPaths.callback}`
+		expect(allowed).toContain(legacy)
+		expect(
+			await isAllowedPackageAppOauthRedirectUri({
+				env,
+				client,
+				redirectUri: legacy,
+			}),
+		).toBe(true)
 		expect(
 			await isAllowedPackageAppOauthRedirectUri({
 				env,

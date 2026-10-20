@@ -205,7 +205,7 @@ test('custom hostnames stay refused and handoff stays on the user subdomain when
 	expect(appOriginResponse.status).toBe(302)
 	const location = new URL(appOriginResponse.headers.get('Location') ?? '')
 	expect(location.origin).toBe(ownerPackageAppOrigin)
-	expect(location.pathname).toBe('/packages/demo')
+	expect(location.pathname).toBe('/demo')
 	expect(location.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
 })
 
@@ -475,9 +475,7 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 	expect(publicEntry.status).toBe(200)
 	expect(publicEntry.headers.get('Location')).toBeNull()
 	const publicBody = await publicEntry.text()
-	expect(publicBody).toContain(
-		`${accessFixtureOrigin}/packages/${publicApp.slug}`,
-	)
+	expect(publicBody).toContain(`${accessFixtureOrigin}/${publicApp.slug}`)
 	expect(publicBody).not.toContain(orgHostname)
 	const publicPost = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,

@@ -13,8 +13,60 @@ import {
 } from './package-app-diagnostics.ts'
 import {
 	parsePackageAppCustomHostnamePath,
+	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
 } from './package-app-serve.ts'
+
+test('subdomain paths parse the short /{name} form and the legacy /packages/{name} mount', () => {
+	expect(
+		parsePackageAppSubdomainPath({ pathname: '/demo', username: 'alice' }),
+	).toEqual({
+		username: 'alice',
+		kodyId: 'demo',
+		restPath: '/',
+		mount: 'user-subdomain',
+	})
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/demo/report/1',
+			username: 'alice',
+		}),
+	).toMatchObject({ kodyId: 'demo', restPath: '/report/1' })
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/packages/demo/report',
+			username: 'alice',
+		}),
+	).toEqual({
+		username: 'alice',
+		kodyId: 'demo',
+		restPath: '/report',
+		mount: 'user-subdomain',
+	})
+})
+
+test('subdomain paths never parse reserved first segments or a bare /packages', () => {
+	for (const pathname of [
+		'/',
+		'/packages',
+		'/packages/',
+		'/-',
+		'/-/health',
+		'/-/auth/login',
+		'/%2D/health',
+		'/.well-known/security.txt',
+		'/_kody/auth/login',
+		'/@alice/webhooks/demo',
+		'/robots.txt',
+		'/favicon.ico',
+		'/sitemap.xml',
+		'/%E0%A4%A',
+	]) {
+		expect(
+			parsePackageAppSubdomainPath({ pathname, username: 'alice' }),
+		).toBeNull()
+	}
+})
 
 // Existing serve tests exercise the local construction path (index/platform/
 // runtime scripts that export PackageAppRuntimeBridge). Slim-origin forward

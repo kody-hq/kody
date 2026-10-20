@@ -75,8 +75,10 @@ export function buildPackageAppOpenUrl(input: {
 /**
  * How a package-app URL addresses its package:
  *
- * - `user-subdomain`: `https://{username}.<package-app host>/packages/{kodyId}`
- *   — the production shape, where the username lives in the hostname.
+ * - `user-subdomain`: `https://{username}.<package-app host>/{kodyId}`
+ *   — the production shape, where the username lives in the hostname. The
+ *   legacy `/packages/{kodyId}` mount is still served there but is no longer
+ *   generated.
  * - `username-path`: `/@{username}/packages/{kodyId}` — the app-origin entry
  *   point (which redirects into the handoff) and the non-production inline
  *   serving shape.
@@ -113,13 +115,13 @@ export function isDnsSafeUsername(username: string) {
 /**
  * Path for a hosted package app on its per-user package-app subdomain. The
  * username lives in the hostname there, so the path carries only the package
- * mount: `/packages/{kodyId}/{rest}`.
+ * mount: `/{kodyId}/{rest}`. Kody-owned routes on that host live under `/-/`.
  */
 export function buildPackageAppSubdomainPath(input: {
 	kodyId: string
 	restPath?: string | null
 }) {
-	return `/packages/${encodeURIComponent(input.kodyId.trim())}${buildRestPathSuffix(
+	return `/${encodeURIComponent(input.kodyId.trim())}${buildRestPathSuffix(
 		input.restPath,
 	)}`
 }
@@ -155,7 +157,7 @@ export function buildPackageAppSubdomainUrl(input: {
 
 /**
  * Path on a customer custom hostname. The bound app owns the host root, so
- * there is no `/packages/{kodyId}` prefix. An empty rest path is `/`.
+ * there is no `/{kodyId}` prefix. An empty rest path is `/`.
  */
 export function buildPackageAppCustomHostnamePath(input: {
 	restPath?: string | null

@@ -239,7 +239,7 @@ export function isLegacyRequest(request: Request) {
 	)
 		return true
 	if (
-		/^\/(?:mcp|oauth|oidc|auth|session|api|webhooks|_kody\/auth|__maintenance|__platform|__runtime|__jobs)(?:\/|$)/.test(
+		/^\/(?:mcp|oauth|oidc|auth|session|api|webhooks|_kody\/auth|-\/auth|__maintenance|__platform|__runtime|__jobs)(?:\/|$)/.test(
 			path,
 		)
 	)

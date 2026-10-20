@@ -11,6 +11,10 @@ import {
 	packageAppOpenPathSegment,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
+import {
+	isPackageAppHostNonLeafFirstSegment,
+	packageAppHostLegacyMountSegment,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { accountCreditsPath } from '#universal/compute-overage.ts'
 import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.ts'
 import { buildPackageAppErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -118,16 +122,22 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 
 /**
  * Parse the path shape served on a per-user package-app subdomain, where the
- * username comes from the hostname and the path is `/packages/{kodyId}/{rest}`.
- * The caller must already have validated the subdomain's username label.
+ * username comes from the hostname. The canonical shape is `/{kodyId}/{rest}`;
+ * the legacy `/packages/{kodyId}/{rest}` mount is still accepted. Reserved
+ * first segments (`-`, `.well-known`, ...) are Kody-owned and never parse as a
+ * package, and a bare `/packages` has no leaf. The caller must already have
+ * validated the subdomain's username label.
  */
 export function parsePackageAppSubdomainPath(input: {
 	pathname: string
 	username: string
 }): PackageAppPath | null {
 	const parts = input.pathname.split('/').filter(Boolean)
-	if (parts[0] !== 'packages') return null
-	const rawKodyId = parts[1]?.trim()
+	const rawFirst = parts[0]?.trim()
+	if (!rawFirst) return null
+	const legacyMount = rawFirst === packageAppHostLegacyMountSegment
+	const leafIndex = legacyMount ? 1 : 0
+	const rawKodyId = parts[leafIndex]?.trim()
 	if (!rawKodyId) return null
 	let kodyId: string
 	try {
@@ -135,10 +145,14 @@ export function parsePackageAppSubdomainPath(input: {
 	} catch {
 		return null
 	}
+	if (!legacyMount && isPackageAppHostNonLeafFirstSegment(kodyId)) return null
 	return {
 		username: input.username,
 		kodyId,
-		restPath: parts.length > 2 ? `/${parts.slice(2).join('/')}` : '/',
+		restPath:
+			parts.length > leafIndex + 1
+				? `/${parts.slice(leafIndex + 1).join('/')}`
+				: '/',
 		mount: 'user-subdomain',
 	}
 }

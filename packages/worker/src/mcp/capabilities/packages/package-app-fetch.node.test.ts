@@ -170,9 +170,7 @@ test('packageAppFetch dispatches synthetic in-process app requests against hoste
 	)
 	const request = lastServedRequest()
 	expect(request).toBeInstanceOf(Request)
-	expect(request.url).toBe(
-		'https://kody.apps.example.com/packages/demo-app/api/health',
-	)
+	expect(request.url).toBe('https://kody.apps.example.com/demo-app/api/health')
 	expect(
 		Object.fromEntries(
 			['Host', 'CF-Ray', 'X-Forwarded-For', 'Origin', 'X-Test', 'Accept'].map(

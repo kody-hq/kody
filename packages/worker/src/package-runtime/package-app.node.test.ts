@@ -1204,11 +1204,11 @@ test('package app worker exposes the fingerprinted client module URL when kody.a
 	expect(
 		loaderWorkerOptions(loader)?.env['__kodyPackageContext'],
 	).toMatchObject({
-		appBasePath: '/packages/client-app',
-		hostedUrl: 'https://serving-owner.kody.run/packages/client-app',
-		assetBasePath: '/packages/client-app/_assets',
+		appBasePath: '/client-app',
+		hostedUrl: 'https://serving-owner.kody.run/client-app',
+		assetBasePath: '/client-app/_assets',
 		clientModuleUrl:
-			'https://serving-owner.kody.run/packages/client-app/_assets/client.abcdefgh12345678.js',
+			'https://serving-owner.kody.run/client-app/_assets/client.abcdefgh12345678.js',
 	})
 })
 
