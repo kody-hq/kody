@@ -729,6 +729,9 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           APP_COMMIT_SHA: ${{ github.sha }}
+          # Preview deploy already succeeded; keep sourcemap upstream blips
+          # visible via ::warning:: / step summary instead of failing the job.
+          SENTRY_UPLOAD_SOFT_FAIL: '1'
         run: |
           set -euo pipefail
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
@@ -1045,6 +1048,26 @@ jobs:
           OAUTH_KV_TITLE: ${{ steps.resources.outputs.oauth_kv_title }}
         with:
           script: |
+            const path = require("node:path");
+            const {
+              githubApiErrorStatus,
+              withGithubApiRetry,
+            } = require(path.join(
+              process.env.GITHUB_WORKSPACE,
+              "tools/ci/github-api-retry.cjs",
+            ));
+
+            async function githubApi(label, run) {
+              return withGithubApiRetry(run, {
+                onRetry: ({ attempt, maxAttempts, delayMs, error }) => {
+                  const status = githubApiErrorStatus(error);
+                  core.warning(
+                    `GitHub API ${label} returned ${status ?? "5xx"}; retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts}).`,
+                  );
+                },
+              });
+            }
+
             const marker = "<!-- kody-preview-url -->";
             const previewUrl = process.env.PREVIEW_URL;
             const loginDeepLink = `${previewUrl}/login?redirectTo=${encodeURIComponent("/account")}`;
@@ -1105,29 +1128,35 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
+            const comments = await githubApi("listComments", () =>
+              github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100,
+              }),
+            );
 
             const existing = comments.find((c) => c.body?.includes(marker));
 
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
+              await githubApi("updateComment", () =>
+                github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                }),
+              );
             } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
+              await githubApi("createComment", () =>
+                github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body,
+                }),
+              );
             }
 
       # A failed PR preview still holds Workers (and their Durable Object
@@ -1242,6 +1271,26 @@ jobs:
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
+            const path = require("node:path");
+            const {
+              githubApiErrorStatus,
+              withGithubApiRetry,
+            } = require(path.join(
+              process.env.GITHUB_WORKSPACE,
+              "tools/ci/github-api-retry.cjs",
+            ));
+
+            async function githubApi(label, run) {
+              return withGithubApiRetry(run, {
+                onRetry: ({ attempt, maxAttempts, delayMs, error }) => {
+                  const status = githubApiErrorStatus(error);
+                  core.warning(
+                    `GitHub API ${label} returned ${status ?? "5xx"}; retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts}).`,
+                  );
+                },
+              });
+            }
+
             const eventName = process.env.EVENT_NAME;
             let envName;
             if (eventName === "pull_request") {
@@ -1271,37 +1320,42 @@ jobs:
             }
 
             const { owner, repo } = context.repo;
-            const deployments = await github.paginate(
-              github.rest.repos.listDeployments,
-              {
+            const deployments = await githubApi("listDeployments", () =>
+              github.paginate(github.rest.repos.listDeployments, {
                 owner,
                 repo,
                 environment: envName,
                 per_page: 100,
-              },
+              }),
             );
 
             for (const deployment of deployments) {
               try {
-                await github.rest.repos.deleteDeployment({
-                  owner,
-                  repo,
-                  deployment_id: deployment.id,
-                });
+                await githubApi("deleteDeployment", () =>
+                  github.rest.repos.deleteDeployment({
+                    owner,
+                    repo,
+                    deployment_id: deployment.id,
+                  }),
+                );
               } catch (error) {
                 if (error.status !== 422) throw error;
-                await github.rest.repos.createDeploymentStatus({
-                  owner,
-                  repo,
-                  deployment_id: deployment.id,
-                  state: "inactive",
-                  description: "Cleaning up closed PR preview deployment.",
-                });
-                await github.rest.repos.deleteDeployment({
-                  owner,
-                  repo,
-                  deployment_id: deployment.id,
-                });
+                await githubApi("createDeploymentStatus", () =>
+                  github.rest.repos.createDeploymentStatus({
+                    owner,
+                    repo,
+                    deployment_id: deployment.id,
+                    state: "inactive",
+                    description: "Cleaning up closed PR preview deployment.",
+                  }),
+                );
+                await githubApi("deleteDeployment", () =>
+                  github.rest.repos.deleteDeployment({
+                    owner,
+                    repo,
+                    deployment_id: deployment.id,
+                  }),
+                );
               }
             }
 
@@ -1330,6 +1384,26 @@ jobs:
           github-token:
             ${{ secrets.PREVIEW_ENVIRONMENT_ADMIN_TOKEN || github.token }}
           script: |
+            const path = require("node:path");
+            const {
+              githubApiErrorStatus,
+              withGithubApiRetry,
+            } = require(path.join(
+              process.env.GITHUB_WORKSPACE,
+              "tools/ci/github-api-retry.cjs",
+            ));
+
+            async function githubApi(label, run) {
+              return withGithubApiRetry(run, {
+                onRetry: ({ attempt, maxAttempts, delayMs, error }) => {
+                  const status = githubApiErrorStatus(error);
+                  core.warning(
+                    `GitHub API ${label} returned ${status ?? "5xx"}; retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts}).`,
+                  );
+                },
+              });
+            }
+
             const eventName = process.env.EVENT_NAME;
             const hasAdminToken =
               process.env.HAS_PREVIEW_ENVIRONMENT_ADMIN_TOKEN === "true";
@@ -1369,13 +1443,15 @@ jobs:
 
             const { owner, repo } = context.repo;
             try {
-              await github.request(
-                "DELETE /repos/{owner}/{repo}/environments/{environment_name}",
-                {
-                  owner,
-                  repo,
-                  environment_name: envName,
-                },
+              await githubApi("deleteEnvironment", () =>
+                github.request(
+                  "DELETE /repos/{owner}/{repo}/environments/{environment_name}",
+                  {
+                    owner,
+                    repo,
+                    environment_name: envName,
+                  },
+                ),
               );
               core.notice(`Deleted GitHub environment: ${envName}`);
             } catch (e) {

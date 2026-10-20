@@ -10,10 +10,12 @@ export default defineConfig({
 				...toolCliEntryFiles(process.cwd()),
 				// Wrangler loads this default export through the generated remote probe config.
 				'tools/ci/start-opt-in-probe-worker.ts',
+				// Preview workflow github-script steps require this CommonJS helper.
+				'tools/ci/github-api-retry.cjs',
 				'e2e/**/*.ts',
 				'vitest*.ts',
 			],
-			project: ['tools/**/*.{ts,js,mjs}', '*.ts', 'e2e/**/*.ts'],
+			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
 		},
 		'packages/worker': {
 			paths: {
