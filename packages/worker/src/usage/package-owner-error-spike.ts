@@ -630,10 +630,13 @@ export async function writePackageOwnerSpikeState(input: {
 		{ expirationTtl: stateTtlSeconds },
 	)
 	const previous = input.previousStatus ?? null
-	if (previous === input.state.status) return
 	if (input.state.status === 'alerted') {
+		// Refresh the index TTL on every alerted write so a long episode
+		// cannot lose inactivity tracking when the 14-day index expires.
 		await addAlertedOwnerToIndex(input.kv, input.ownerId)
-	} else if (previous === 'alerted') {
+		return
+	}
+	if (previous === 'alerted') {
 		await removeAlertedOwnerFromIndex(input.kv, input.ownerId)
 	}
 }
@@ -665,7 +668,11 @@ async function writeAlertedOwnerIndex(
 
 async function addAlertedOwnerToIndex(kv: KVNamespace, ownerId: string) {
 	const existing = await readAlertedOwnerIndex(kv)
-	if (existing.includes(ownerId)) return
+	if (existing.includes(ownerId)) {
+		// Rewrite so the index TTL stays alive for long-lived episodes.
+		await writeAlertedOwnerIndex(kv, existing)
+		return
+	}
 	await writeAlertedOwnerIndex(kv, [...existing, ownerId])
 }
 
@@ -786,14 +793,9 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 			window,
 			now,
 		})
-		await writePackageOwnerSpikeState({
-			kv,
-			ownerId: window.ownerId,
-			state: transition.next,
-			previousStatus: previous?.status ?? null,
-		})
 		if (transition.action === 'alert') {
-			alerted += 1
+			// Notify first. Only persist alerted after success so a failed
+			// email/admin fan-out can retry next hour instead of going quiet.
 			if (input.onAlert) {
 				try {
 					await input.onAlert({
@@ -806,29 +808,42 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 						ownerId: window.ownerId,
 						error,
 					})
+					continue
 				}
 			}
-		} else if (transition.action === 'rearm') {
-			rearmed += 1
+			await writePackageOwnerSpikeState({
+				kv,
+				ownerId: window.ownerId,
+				state: transition.next,
+				previousStatus: previous?.status ?? null,
+			})
+			alerted += 1
+			continue
 		}
+		await writePackageOwnerSpikeState({
+			kv,
+			ownerId: window.ownerId,
+			state: transition.next,
+			previousStatus: previous?.status ?? null,
+		})
+		if (transition.action === 'rearm') rearmed += 1
 	}
 
+	// Alerted owners missing from this hour's top sample may still be
+	// erroring under the LIMIT — do not treat absence as inactivity.
+	// Refresh per-owner + index TTLs so long episodes stay trackable; true
+	// quiet re-arm happens when they next appear with healthy windows, or
+	// when state TTL expires.
 	for (const ownerId of alertedOwnerIds) {
 		if (evaluated.has(ownerId)) continue
 		const previous = await loadPackageOwnerSpikeState(kv, ownerId)
 		if (!previous || previous.status !== 'alerted') continue
-		const transition = evaluatePackageOwnerSpikeTransition({
-			previous,
-			window: null,
-			now,
-		})
 		await writePackageOwnerSpikeState({
 			kv,
 			ownerId,
-			state: transition.next,
+			state: previous,
 			previousStatus: previous.status,
 		})
-		if (transition.action === 'rearm') rearmed += 1
 		evaluated.add(ownerId)
 	}
 

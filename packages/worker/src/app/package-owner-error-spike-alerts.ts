@@ -143,35 +143,29 @@ async function notifyPackageOwnerErrorSpike(input: {
 	}
 
 	const username = slug ?? 'unknown'
-	try {
-		await dispatchPackageOwnerErrorSpikeSubscriptionEvent({
-			env: input.env as Pick<
-				Env,
-				'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
-			>,
-			event: buildPackageOwnerErrorSpikeEvent({
-				eventId: `${username}:${input.window.windowEnd}`,
-				insightsUrl,
-				activityUrl,
-				environment: resolveFleetPackageErrorRateEnvironment(input.env),
-				observedAt: input.now.toISOString(),
-				ownerUsername: username,
-				windowStart: input.window.windowStart,
-				windowEnd: input.window.windowEnd,
-				events: input.window.events,
-				errors: input.window.errors,
-				rate: input.window.rate,
-				spikeStartedAt,
-				packages: input.window.packages,
-				byMetric: input.window.byMetric,
-			}),
-		})
-	} catch (error) {
-		console.warn('package-owner-error-spike-admin-event-failed', {
-			ownerId: input.ownerId,
-			error,
-		})
-	}
+	const ownerToken = await shortOwnerToken(input.ownerId)
+	await dispatchPackageOwnerErrorSpikeSubscriptionEvent({
+		env: input.env as Pick<
+			Env,
+			'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
+		>,
+		event: buildPackageOwnerErrorSpikeEvent({
+			eventId: `${ownerToken}:${input.window.windowEnd}`,
+			insightsUrl,
+			activityUrl,
+			environment: resolveFleetPackageErrorRateEnvironment(input.env),
+			observedAt: input.now.toISOString(),
+			ownerUsername: username,
+			windowStart: input.window.windowStart,
+			windowEnd: input.window.windowEnd,
+			events: input.window.events,
+			errors: input.window.errors,
+			rate: input.window.rate,
+			spikeStartedAt,
+			packages: input.window.packages,
+			byMetric: input.window.byMetric,
+		}),
+	})
 
 	console.warn('package-owner-error-spike-alerted', {
 		owner: username,
@@ -180,4 +174,15 @@ async function notifyPackageOwnerErrorSpike(input: {
 		rate: input.window.rate,
 		packages: input.window.packages.map((pkg) => pkg.kody_id),
 	})
+}
+
+async function shortOwnerToken(ownerId: string) {
+	const digest = await crypto.subtle.digest(
+		'SHA-256',
+		new TextEncoder().encode(ownerId),
+	)
+	return Array.from(new Uint8Array(digest))
+		.slice(0, 8)
+		.map((byte) => byte.toString(16).padStart(2, '0'))
+		.join('')
 }
