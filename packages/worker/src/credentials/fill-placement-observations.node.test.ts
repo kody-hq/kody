@@ -45,3 +45,28 @@ test('recordFillPlacementObservation merges filled and would-block last-seen', a
 		updatedAt: '2026-10-20T13:00:00.000Z',
 	})
 })
+
+test('recordFillPlacementObservation json_patch keeps sibling parts across writes', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const db = createD1FromSqlite(sqlite)
+
+	await Promise.all([
+		recordFillPlacementObservation({
+			db,
+			credentialId: 'cred-race',
+			filledParts: ['headers'],
+			at: '2026-10-20T12:00:00.000Z',
+		}),
+		recordFillPlacementObservation({
+			db,
+			credentialId: 'cred-race',
+			wouldBlockParts: ['body'],
+			at: '2026-10-20T12:00:01.000Z',
+		}),
+	])
+
+	const view = await readFillPlacementObservation(db, 'cred-race')
+	expect(view?.filledLastSeen.headers).toBe('2026-10-20T12:00:00.000Z')
+	expect(view?.wouldBlockLastSeen.body).toBe('2026-10-20T12:00:01.000Z')
+})

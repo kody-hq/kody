@@ -506,9 +506,7 @@ export async function upsertSecretEntry(input: {
 		newCredentialPlacementOrigin:
 			'placementOriginOnInsert' in input
 				? (input.placementOriginOnInsert ?? null)
-				: 'placementOnInsert' in input
-					? null
-					: 'default_undeclared',
+				: null,
 	}).run()
 }
 
@@ -543,12 +541,7 @@ export async function upsertSecretEntriesAtomically(input: {
 					placementOnInsert !== undefined
 						? serializeCredentialFillPlacement(placementOnInsert ?? null)
 						: newCredentialPlacementJson,
-				newCredentialPlacementOrigin:
-					placementOriginOnInsert !== undefined
-						? placementOriginOnInsert
-						: placementOnInsert !== undefined
-							? null
-							: 'default_undeclared',
+				newCredentialPlacementOrigin: placementOriginOnInsert ?? null,
 			})
 		}),
 	)

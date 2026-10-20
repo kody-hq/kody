@@ -226,7 +226,7 @@ export function observeFillPlacementWouldBlock(input: {
 	})
 }
 
-/** Observe each site. Dedupes identical part keys. */
+/** Observe each site. Dedupes identical part keys into one durable write. */
 export function observeFillPlacementWouldBlockSites(input: {
 	credentialName: string
 	placement: CredentialFillPlacement | null
@@ -236,21 +236,29 @@ export function observeFillPlacementWouldBlockSites(input: {
 	env?: Pick<Env, 'APP_DB'>
 	credentialId?: string | null
 }): void {
+	if (!input.env || !input.credentialId) return
+	const mode = input.resolutionMode ?? 'on'
 	const seen = new Set<string>()
+	const filledParts: Array<FillPlacementPartKey> = []
+	const wouldBlockParts: Array<FillPlacementPartKey> = []
 	for (const site of input.sites) {
 		const key = fillPlacementPartKey(site)
 		if (seen.has(key)) continue
 		seen.add(key)
-		observeFillPlacementWouldBlock({
-			credentialName: input.credentialName,
-			placement: input.placement,
+		const allowed = fillPlacementAllowsUnderResolution(
+			input.placement,
 			site,
-			surface: input.surface,
-			resolutionMode: input.resolutionMode,
-			env: input.env,
-			credentialId: input.credentialId,
-		})
+			mode,
+		)
+		if (allowed) filledParts.push(key)
+		else wouldBlockParts.push(key)
 	}
+	scheduleFillPlacementObservation({
+		env: input.env,
+		credentialId: input.credentialId,
+		filledParts,
+		wouldBlockParts,
+	})
 }
 
 /**

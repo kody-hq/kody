@@ -192,18 +192,12 @@ test('observe schedules durable records without throwing and skips allowed sites
 			env,
 			credentialId: 'cred-1',
 		})
-		expect(schedule).toHaveBeenCalledTimes(2)
+		expect(schedule).toHaveBeenCalledTimes(1)
 		expect(schedule).toHaveBeenCalledWith({
 			env,
 			credentialId: 'cred-1',
 			filledParts: [],
-			wouldBlockParts: ['body'],
-		})
-		expect(schedule).toHaveBeenCalledWith({
-			env,
-			credentialId: 'cred-1',
-			filledParts: [],
-			wouldBlockParts: ['query'],
+			wouldBlockParts: ['body', 'query'],
 		})
 		schedule.mockClear()
 		observeFillPlacementWouldBlock({

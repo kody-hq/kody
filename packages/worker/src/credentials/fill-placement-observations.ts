@@ -65,32 +65,44 @@ export async function recordFillPlacementObservation(input: {
 	const credentialId = input.credentialId.trim()
 	if (!credentialId) return
 	const at = input.at ?? new Date().toISOString()
-	const existing = await readFillPlacementObservation(input.db, credentialId)
-	const filled = { ...existing?.filledLastSeen }
-	const wouldBlock = { ...existing?.wouldBlockLastSeen }
+	const filledPatch: Partial<Record<FillPlacementPartKey, string>> = {}
+	const wouldBlockPatch: Partial<Record<FillPlacementPartKey, string>> = {}
 	for (const part of input.filledParts ?? []) {
-		filled[part] = at
+		filledPatch[part] = at
 	}
 	for (const part of input.wouldBlockParts ?? []) {
-		wouldBlock[part] = at
+		wouldBlockPatch[part] = at
 	}
 	if (
-		(input.filledParts?.length ?? 0) === 0 &&
-		(input.wouldBlockParts?.length ?? 0) === 0
+		Object.keys(filledPatch).length === 0 &&
+		Object.keys(wouldBlockPatch).length === 0
 	) {
 		return
 	}
+	// Atomic json_patch merge so concurrent waitUntil writes for different
+	// parts on the same credential cannot overwrite each other.
 	await input.db
 		.prepare(
 			`INSERT INTO credential_fill_placement_observations (
 				credential_id, filled_last_seen_json, would_block_last_seen_json, updated_at
 			) VALUES (?, ?, ?, ?)
 			ON CONFLICT(credential_id) DO UPDATE SET
-				filled_last_seen_json = excluded.filled_last_seen_json,
-				would_block_last_seen_json = excluded.would_block_last_seen_json,
+				filled_last_seen_json = json_patch(
+					COALESCE(credential_fill_placement_observations.filled_last_seen_json, '{}'),
+					excluded.filled_last_seen_json
+				),
+				would_block_last_seen_json = json_patch(
+					COALESCE(credential_fill_placement_observations.would_block_last_seen_json, '{}'),
+					excluded.would_block_last_seen_json
+				),
 				updated_at = excluded.updated_at`,
 		)
-		.bind(credentialId, JSON.stringify(filled), JSON.stringify(wouldBlock), at)
+		.bind(
+			credentialId,
+			JSON.stringify(filledPatch),
+			JSON.stringify(wouldBlockPatch),
+			at,
+		)
 		.run()
 }
 
