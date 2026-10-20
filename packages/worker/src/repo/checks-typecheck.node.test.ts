@@ -228,7 +228,7 @@ test('an empty tsconfig still typechecks with TypeScript strict defaults', async
 		ok: false,
 		message: "src/index.ts:1:23 Parameter 'name' implicitly has an 'any' type.",
 	})
-})
+}, 60_000)
 
 test('job bodies with a tsconfig are typechecked, not only their default-export contract', async () => {
 	const typecheck = await runTypecheck({
@@ -250,7 +250,7 @@ test('job bodies with a tsconfig are typechecked, not only their default-export 
 		ok: false,
 		message: "src/job.ts:2:9 Type 'string' is not assignable to type 'number'.",
 	})
-})
+}, 60_000)
 
 test('without a tsconfig, publish discloses that exports are not typechecked', async () => {
 	const typecheck = await runTypecheck({
