@@ -202,9 +202,28 @@ export function evaluateFleetUsersAffectedTransition(input: {
 		lastMetrics: input.metrics,
 		baselineAffectedMedian: input.baselineAffectedMedian,
 		baselineFractionMedian: input.baselineFractionMedian,
-		// Carry pending across windows until dispatch clears it; otherwise a
-		// failed notify is lost on the next 15-minute cron.
 		pendingNotify: pending,
+	}
+
+	// Finish the in-flight notify before starting a new elevate/resolve so a
+	// failed resolve cannot be overwritten by a later spike, and incident
+	// identity stays stable for event-id idempotency.
+	if (pending != null) {
+		return {
+			action: pending,
+			elevated:
+				elevated || previous.status === 'firing' || pending === 'elevate',
+			resolvedIncidentStartedAt:
+				pending === 'resolve' ? previous.incidentStartedAt : null,
+			next: {
+				...base,
+				status: pending === 'elevate' ? 'firing' : previous.status,
+				consecutiveElevatedWindows: previous.consecutiveElevatedWindows,
+				consecutiveClearWindows: previous.consecutiveClearWindows,
+				incidentStartedAt: previous.incidentStartedAt,
+				pendingNotify: pending,
+			},
+		}
 	}
 
 	if (elevated) {
@@ -226,7 +245,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 				}
 			}
 			return {
-				action: pending ?? 'none',
+				action: 'none',
 				elevated: true,
 				resolvedIncidentStartedAt: null,
 				next: {
@@ -239,7 +258,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 			}
 		}
 		return {
-			action: pending ?? 'none',
+			action: 'none',
 			elevated: true,
 			resolvedIncidentStartedAt: null,
 			next: {
@@ -271,10 +290,9 @@ export function evaluateFleetUsersAffectedTransition(input: {
 			}
 		}
 		return {
-			action: pending ?? 'none',
+			action: 'none',
 			elevated: false,
-			resolvedIncidentStartedAt:
-				pending === 'resolve' ? previous.incidentStartedAt : null,
+			resolvedIncidentStartedAt: null,
 			next: {
 				...base,
 				status: 'firing',
@@ -285,17 +303,15 @@ export function evaluateFleetUsersAffectedTransition(input: {
 	}
 
 	return {
-		action: pending ?? 'none',
+		action: 'none',
 		elevated: false,
-		resolvedIncidentStartedAt:
-			pending === 'resolve' ? previous.incidentStartedAt : null,
+		resolvedIncidentStartedAt: null,
 		next: {
 			...base,
 			status: 'ok',
 			consecutiveElevatedWindows: 0,
 			consecutiveClearWindows: 0,
-			incidentStartedAt:
-				pending === 'resolve' ? previous.incidentStartedAt : null,
+			incidentStartedAt: null,
 		},
 	}
 }

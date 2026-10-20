@@ -294,3 +294,54 @@ test('pending elevate replays on the next window until cleared', () => {
 	expect(nextWindow.next.pendingNotify).toBe('elevate')
 	expect(nextWindow.next.status).toBe('firing')
 })
+
+test('pending resolve is not replaced by a later elevate', () => {
+	const incidentStartedAt = '2026-10-19T18:35:00.000Z'
+	const pendingResolve = {
+		version: 1 as const,
+		status: 'ok' as const,
+		consecutiveElevatedWindows: 0,
+		consecutiveClearWindows: 0,
+		incidentStartedAt,
+		lastWindowEnd: '2026-10-19T19:00:00.000Z',
+		lastMetrics: metrics({
+			affectedUsers: 1,
+			activeUsers: 100,
+			windowEnd: '2026-10-19T19:00:00.000Z',
+		}),
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		pendingNotify: 'resolve' as const,
+	}
+	const hot = metrics({
+		affectedUsers: 12,
+		activeUsers: 100,
+		windowEnd: '2026-10-19T19:15:00.000Z',
+	})
+	const firstHot = evaluateFleetUsersAffectedTransition({
+		previous: pendingResolve,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:20:00.000Z'),
+	})
+	expect(firstHot.action).toBe('resolve')
+	expect(firstHot.next.pendingNotify).toBe('resolve')
+	expect(firstHot.next.incidentStartedAt).toBe(incidentStartedAt)
+	expect(firstHot.resolvedIncidentStartedAt).toBe(incidentStartedAt)
+
+	const secondHot = evaluateFleetUsersAffectedTransition({
+		previous: firstHot.next,
+		metrics: metrics({
+			affectedUsers: 12,
+			activeUsers: 100,
+			windowEnd: '2026-10-19T19:30:00.000Z',
+		}),
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:35:00.000Z'),
+	})
+	expect(secondHot.action).toBe('resolve')
+	expect(secondHot.next.pendingNotify).toBe('resolve')
+	expect(secondHot.next.incidentStartedAt).toBe(incidentStartedAt)
+})

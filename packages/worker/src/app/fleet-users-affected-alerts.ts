@@ -57,7 +57,7 @@ export async function refreshFleetUsersAffectedAndMaybeAlert(input: {
 					'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
 				>,
 				event: buildFleetUsersAffectedElevatedEvent({
-					eventId: `elevate:${refreshed.metrics.windowEnd}`,
+					eventId: `elevate:${refreshed.state.incidentStartedAt ?? refreshed.metrics.windowEnd}`,
 					statusUrl: fleetUsersAffectedPublicStatusUrl,
 					insightsUrl,
 					environment,
@@ -78,13 +78,17 @@ export async function refreshFleetUsersAffectedAndMaybeAlert(input: {
 				dominantPackage: refreshed.metrics.dominantPackage?.kody_id ?? null,
 			})
 		} else {
+			const resolveIncidentId =
+				refreshed.resolvedIncidentStartedAt ??
+				refreshed.state.incidentStartedAt ??
+				refreshed.metrics.windowEnd
 			await dispatchFleetUsersAffectedSubscriptionEvent({
 				env: input.env as Pick<
 					Env,
 					'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
 				>,
 				event: buildFleetUsersAffectedResolvedEvent({
-					eventId: `resolve:${refreshed.metrics.windowEnd}`,
+					eventId: `resolve:${resolveIncidentId}`,
 					statusUrl: fleetUsersAffectedPublicStatusUrl,
 					insightsUrl,
 					environment,
