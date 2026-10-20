@@ -141,7 +141,9 @@ export function fillPlacementViewFromDraft(
 	}
 	const placement: CredentialFillPlacementView = {}
 	if (draft.headers) {
-		placement.headers = named.length > 0 ? named : true
+		// Empty field → any header. Non-empty input that yields no names
+		// (e.g. ", ,") stays an empty array so the schema rejects it.
+		placement.headers = draft.namedHeaders.trim().length === 0 ? true : named
 	}
 	if (draft.query) placement.query = true
 	if (draft.path) placement.path = true

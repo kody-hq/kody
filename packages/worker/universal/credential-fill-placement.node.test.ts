@@ -82,4 +82,22 @@ test('invalid named headers throw instead of saving as anywhere', () => {
 			namedHeaders: 'not a token!!!',
 		}),
 	).toThrow(/header name|RFC 9110/i)
+	expect(() =>
+		fillPlacementViewFromDraft({
+			headers: true,
+			query: false,
+			path: false,
+			body: false,
+			namedHeaders: ', ,',
+		}),
+	).toThrow()
+	expect(
+		fillPlacementViewFromDraft({
+			headers: true,
+			query: false,
+			path: false,
+			body: false,
+			namedHeaders: '',
+		}),
+	).toEqual({ headers: true })
 })
