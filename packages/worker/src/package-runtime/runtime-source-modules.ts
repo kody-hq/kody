@@ -680,13 +680,13 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 					outerPackageId,
 				);
 			};
-			// Only propagate the outer id while invoking another metered
-			// proxy (re-export). Independent calls from a callee body must
-			// not inherit the chain, or they would mis-attribute.
-			const runApply = (callback) =>
+			// Propagate the outer id only across a metered→metered hop
+			// (re-export). Innermost clears the store so independent calls
+			// from the real target body do not inherit a fallback id.
+			const runWithCallChain = (callback) =>
 				targetIsMetered
 					? __kodyStaticCallChainAls.run({ outerPackageId }, callback)
-					: callback();
+					: __kodyStaticCallChainAls.run(null, callback);
 			// Async callees must be awaited inside ALS.run so the stamp
 			// survives awaits in the callee body (workerd loses ALS when the
 			// sync run() callback only *returns* a Promise). Sync callees
@@ -694,8 +694,8 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 			// sync returns and run Reflect.apply inside async ALS, so we key
 			// off the intrinsic AsyncFunction prototype (not constructor.name).
 			if (Object.getPrototypeOf(target) === __kodyAsyncFunctionPrototype) {
-				return __kodyRunWithSecretAuthority(packageId, () =>
-					runApply(async () => {
+				return __kodyRunWithSecretAuthority(packageId, async () =>
+					runWithCallChain(async () => {
 						try {
 							const value = await Reflect.apply(
 								target,
@@ -712,7 +712,7 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 				);
 			}
 			const invoke = () =>
-				runApply(() => {
+				runWithCallChain(() => {
 					let result;
 					try {
 						result = Reflect.apply(target, thisArg, argumentsList);
