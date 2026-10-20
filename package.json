@@ -153,7 +153,7 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "brace-expansion": ">=5.0.12 <6.0.0",
     "esbuild": "$esbuild",
-    "hono": ">=4.13.7 <5.0.0",
+    "hono": ">=4.13.11 <5.0.0",
     "@hono/node-server": ">=2.0.10 <3.0.0",
     "postcss": ">=8.5.10 <9.0.0",
     "isomorphic-git": ">=1.40.0 <1.40.8",
