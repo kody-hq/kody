@@ -18,10 +18,11 @@ import { sanitizeUsageErrorName } from './usage-error-name.ts'
  * code still runs inside the sandbox realm, though, so the host validates
  * every reported id against the bundle's static dependency package ids
  * recorded at build time — direct and transitive (re-export chains meter at
- * the innermost layer). That set is still a strict subset of the
- * `packageStorage()` grant set, which additionally grants the run's own
- * package id and dynamic-import dependencies. Anything else is dropped. A
- * malicious module can therefore at worst inflate call counts for packages
+ * the innermost layer, with the outermost import id as a fallback when the
+ * artifact predates transitive listing). That set is still a strict subset
+ * of the `packageStorage()` grant set, which additionally grants the run's
+ * own package id and dynamic-import dependencies. Anything else is dropped.
+ * A malicious module can therefore at worst inflate call counts for packages
  * its own bundle already statically depends on — it can never attribute
  * usage to an arbitrary package.
  *
@@ -138,11 +139,24 @@ function acceptStaticCallEvent(input: {
 			: {}
 	const packageId =
 		typeof rawEvent.packageId === 'string' ? rawEvent.packageId : ''
-	if (!packageId || !input.grantedPackageIds.has(packageId)) {
+	const fallbackPackageId =
+		typeof rawEvent.fallbackPackageId === 'string'
+			? rawEvent.fallbackPackageId
+			: ''
+	// Prefer the innermost stamped id when granted. Older published artifacts
+	// may lack transitive dependency rows, so fall back to the outermost
+	// re-export import id (still bundler-stamped) rather than dropping the
+	// event entirely.
+	const grantedPackageId = input.grantedPackageIds.has(packageId)
+		? packageId
+		: fallbackPackageId && input.grantedPackageIds.has(fallbackPackageId)
+			? fallbackPackageId
+			: ''
+	if (!grantedPackageId) {
 		console.debug(
 			'package-static-call-usage-dropped',
 			'stamped package id is not a static dependency of this run',
-			packageId,
+			packageId || fallbackPackageId,
 		)
 		return null
 	}
@@ -163,5 +177,5 @@ function acceptStaticCallEvent(input: {
 					typeof rawEvent.errorName === 'string' ? rawEvent.errorName : '',
 				)
 			: ''
-	return { packageId, durationMs, outcome, errorName }
+	return { packageId: grantedPackageId, durationMs, outcome, errorName }
 }

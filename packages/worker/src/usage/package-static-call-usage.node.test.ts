@@ -130,6 +130,36 @@ test('records sanitized errorName on static-call errors and caught throws', asyn
 	})
 })
 
+test('falls back to fallbackPackageId when innermost id is not granted', async () => {
+	await withRecordUsageSpy(async (recordUsageSpy) => {
+		const tools = createPackageStaticCallMeterTools({
+			env: {} as Env,
+			userId: ownerIdFromStored('user-1'),
+			grantedPackageIds: new Set(['pkg-outer']),
+		})
+		await tools?.record({
+			events: [
+				{
+					packageId: 'pkg-inner-not-listed',
+					fallbackPackageId: 'pkg-outer',
+					durationMs: 4,
+					outcome: 'error',
+					errorName: 'InnerBoomError',
+				},
+			],
+		})
+		await tools?.finalize({ runFailed: false })
+		expect(recordUsageSpy).toHaveBeenCalledOnce()
+		expect(recordUsageSpy.mock.calls[0]?.[1]).toEqual(
+			expect.objectContaining({
+				entityId: 'pkg-outer',
+				outcome: 'caught',
+				errorName: 'InnerBoomError',
+			}),
+		)
+	})
+})
+
 test('keeps static-call errorName when the run failed', async () => {
 	await withRecordUsageSpy(async (recordUsageSpy) => {
 		const tools = createPackageStaticCallMeterTools({
