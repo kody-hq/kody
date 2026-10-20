@@ -37,6 +37,13 @@ test('shouldRedirectLegacyPackageAppSubdomainMount matches browser HTML GET/HEAD
 			}),
 		),
 	).toBe(false)
+	expect(
+		shouldRedirectLegacyPackageAppSubdomainMount(
+			new Request('https://alice.kody.run/packages/demo', {
+				headers: { Accept: 'text/html;q=0, application/json' },
+			}),
+		),
+	).toBe(false)
 })
 
 test('buildLegacyPackageAppSubdomainMountLocation preserves rest and query', () => {

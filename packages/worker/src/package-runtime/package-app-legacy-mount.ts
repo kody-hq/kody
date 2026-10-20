@@ -22,7 +22,17 @@ export function shouldRedirectLegacyPackageAppSubdomainMount(
 ): boolean {
 	if (request.method !== 'GET' && request.method !== 'HEAD') return false
 	const accept = request.headers.get('Accept') ?? ''
-	return accept.toLowerCase().includes('text/html')
+	return accept.split(',').some((entry) => {
+		const [rawMediaType, ...parameters] = entry.split(';')
+		const mediaType = rawMediaType?.trim().toLowerCase()
+		if (mediaType !== 'text/html') return false
+		const quality = parameters
+			.map((parameter) => parameter.trim().split('='))
+			.find(([name]) => name?.toLowerCase() === 'q')?.[1]
+		if (quality === undefined) return true
+		const parsed = Number(quality)
+		return Number.isFinite(parsed) && parsed > 0
+	})
 }
 
 export function buildLegacyPackageAppSubdomainMountLocation(input: {
