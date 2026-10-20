@@ -329,14 +329,13 @@ export async function saveSecret(
 			input.env,
 		)
 	}
-	const placementAfter =
-		existingEntry != null
+	const placementAfter = credential
+		? readCredentialFillPlacement(credential.placementJson)
+		: existingEntry != null
 			? readCredentialFillPlacement(existingEntry.placement_json)
 			: 'placementOnInsert' in input
 				? (input.placementOnInsert ?? null)
-				: input.credential
-					? readCredentialFillPlacement(input.credential.placementJson)
-					: defaultNewCredentialFillPlacement
+				: defaultNewCredentialFillPlacement
 	return toSecretMetadata({
 		name,
 		scope: input.scope,

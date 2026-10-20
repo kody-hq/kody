@@ -51,6 +51,7 @@ import {
 } from '#worker/credentials/credential-fields.ts'
 import {
 	credentialFillPlacementSchema,
+	serializeCredentialFillPlacement,
 	type CredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
@@ -1607,7 +1608,9 @@ export async function saveAccountSecret(input: {
 			requestedPlacement !== undefined &&
 			credential == null &&
 			currentSecret &&
-			samePlacement
+			samePlacement &&
+			serializeCredentialFillPlacement(currentSecret.placement) !==
+				serializeCredentialFillPlacement(requestedPlacement)
 		) {
 			const found = await findSecret({
 				env: input.env,
