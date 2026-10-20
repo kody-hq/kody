@@ -38,6 +38,10 @@ export const packageOwnerErrorSpikeMaxNamedPackages = 8
 export const packageOwnerErrorSpikeMaxOwnersPerSweep = 40
 /** Cap package rows loaded from AE before owner fold. */
 export const packageOwnerErrorSpikeMaxPackageRows = 200
+/** Max delivery attempts for a pending spike email (hourly sweeps). */
+export const packageOwnerErrorSpikeMaxDeliveryAttempts = 6
+/** Drop a pending spike if delivery never succeeds within this age. */
+export const packageOwnerErrorSpikePendingMaxAgeMs = 24 * 60 * 60 * 1000
 
 const packageMetrics = ['package_export', 'package_static_call'] as const
 const accountMetrics = ['job_run', 'workflow_run'] as const
@@ -95,31 +99,49 @@ export type PackageOwnerSpikeWindow = {
 	byMetric: Array<PackageOwnerSpikeMetricSummary>
 }
 
-export type PackageOwnerSpikeStateStatus = 'ok' | 'alerted'
+export type PackageOwnerSpikeStateStatus = 'ok' | 'pending' | 'alerted'
+
+export type PackageOwnerSpikeSnapshot = {
+	startedAt: string
+	windowStart: string
+	windowEnd: string
+	errors: number
+	events: number
+	rate: number | null
+	packages: Array<PackageOwnerSpikePackageSummary>
+	byMetric: Array<PackageOwnerSpikeMetricSummary>
+}
 
 export type PackageOwnerSpikeState = {
 	version: 1
 	status: PackageOwnerSpikeStateStatus
 	alertedAt: string | null
+	/** When status is pending: first failed (or not-yet-sent) delivery time. */
+	pendingSince: string | null
+	/** Delivery attempts while pending (0 when ok/alerted). */
+	deliveryAttempts: number
 	consecutiveHealthyWindows: number
 	lastActivityAt: string | null
 	lastWindowEnd: string | null
-	/** Snapshot of the spike that opened the alerted episode. */
-	spike: {
-		startedAt: string
-		errors: number
-		events: number
-		rate: number | null
-		packages: Array<PackageOwnerSpikePackageSummary>
-		byMetric: Array<PackageOwnerSpikeMetricSummary>
-	} | null
+	/** Snapshot of the spike that opened the episode (pending or alerted). */
+	spike: PackageOwnerSpikeSnapshot | null
 }
 
-export type PackageOwnerSpikeTransitionAction = 'none' | 'alert' | 'rearm'
+export type PackageOwnerSpikeTransitionAction =
+	| 'none'
+	| 'alert'
+	| 'retry_alert'
+	| 'abandon'
+	| 'rearm'
 
 export type PackageOwnerSpikeTransition = {
 	next: PackageOwnerSpikeState
 	action: PackageOwnerSpikeTransitionAction
+}
+
+type AlertedOwnerIndexDraft = {
+	ownerIds: Set<string>
+	dirty: boolean
 }
 
 export function packageOwnerErrorSpikeKvKey(ownerId: string) {
@@ -154,9 +176,10 @@ export function isPackageOwnerErrorSpikeHealthy(input: {
 }
 
 /**
- * ok → alerted on trigger (email once). Stay alerted without repeats while
- * still elevated. Re-arm after consecutive healthy windows, or after
- * inactivity with no activity for 24h.
+ * ok → pending on trigger (email once after delivery). Pending retries
+ * delivery independent of later thresholds until success, max attempts, or
+ * max age. Alerted stays quiet while elevated; re-arm after consecutive
+ * healthy windows, or after inactivity with no activity for 24h.
  */
 export function evaluatePackageOwnerSpikeTransition(input: {
 	previous: PackageOwnerSpikeState | null
@@ -164,13 +187,44 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 	now: Date
 	healthyWindowsToRearm?: number
 	inactiveRearmMs?: number
+	pendingMaxAgeMs?: number
 }): PackageOwnerSpikeTransition {
 	const healthyWindowsToRearm =
 		input.healthyWindowsToRearm ?? packageOwnerErrorSpikeHealthyWindowsToRearm
 	const inactiveRearmMs =
 		input.inactiveRearmMs ?? packageOwnerErrorSpikeInactiveRearmMs
+	const pendingMaxAgeMs =
+		input.pendingMaxAgeMs ?? packageOwnerErrorSpikePendingMaxAgeMs
 	const previous = input.previous ?? emptyOwnerSpikeState()
 	const nowIso = input.now.toISOString()
+
+	if (previous.status === 'pending') {
+		if (
+			isPendingSpikeExpired({
+				state: previous,
+				now: input.now,
+				pendingMaxAgeMs,
+			})
+		) {
+			return {
+				action: 'abandon',
+				next: {
+					...emptyOwnerSpikeState(),
+					lastActivityAt: input.window?.windowEnd ?? previous.lastActivityAt,
+					lastWindowEnd: input.window?.windowEnd ?? previous.lastWindowEnd,
+				},
+			}
+		}
+		return {
+			action: 'retry_alert',
+			next: {
+				...previous,
+				status: 'pending',
+				lastActivityAt: input.window?.windowEnd ?? previous.lastActivityAt,
+				lastWindowEnd: input.window?.windowEnd ?? previous.lastWindowEnd,
+			},
+		}
+	}
 
 	if (!input.window) {
 		const lastActivityAt = previous.lastActivityAt
@@ -209,6 +263,8 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 		version: 1,
 		status: previous.status,
 		alertedAt: previous.alertedAt,
+		pendingSince: previous.pendingSince,
+		deliveryAttempts: previous.deliveryAttempts,
 		consecutiveHealthyWindows: previous.consecutiveHealthyWindows,
 		lastActivityAt: window.windowEnd,
 		lastWindowEnd: window.windowEnd,
@@ -223,6 +279,8 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 					...base,
 					status: 'ok',
 					alertedAt: null,
+					pendingSince: null,
+					deliveryAttempts: 0,
 					consecutiveHealthyWindows: 0,
 					spike: null,
 				},
@@ -232,11 +290,15 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 			action: 'alert',
 			next: {
 				...base,
-				status: 'alerted',
-				alertedAt: nowIso,
+				status: 'pending',
+				alertedAt: null,
+				pendingSince: nowIso,
+				deliveryAttempts: 0,
 				consecutiveHealthyWindows: 0,
 				spike: {
 					startedAt: nowIso,
+					windowStart: window.windowStart,
+					windowEnd: window.windowEnd,
 					errors: window.errors,
 					events: window.events,
 					rate: window.rate,
@@ -254,6 +316,8 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 			next: {
 				...base,
 				status: 'alerted',
+				pendingSince: null,
+				deliveryAttempts: 0,
 				consecutiveHealthyWindows: 0,
 			},
 		}
@@ -275,6 +339,8 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 			next: {
 				...base,
 				status: 'alerted',
+				pendingSince: null,
+				deliveryAttempts: 0,
 				consecutiveHealthyWindows: consecutive,
 			},
 		}
@@ -285,8 +351,48 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 		next: {
 			...base,
 			status: 'alerted',
+			pendingSince: null,
+			deliveryAttempts: 0,
 			consecutiveHealthyWindows: 0,
 		},
+	}
+}
+
+export function isPendingSpikeExpired(input: {
+	state: PackageOwnerSpikeState
+	now: Date
+	pendingMaxAgeMs?: number
+	maxDeliveryAttempts?: number
+}) {
+	if (input.state.status !== 'pending') return false
+	const pendingMaxAgeMs =
+		input.pendingMaxAgeMs ?? packageOwnerErrorSpikePendingMaxAgeMs
+	const maxDeliveryAttempts =
+		input.maxDeliveryAttempts ?? packageOwnerErrorSpikeMaxDeliveryAttempts
+	if (input.state.deliveryAttempts >= maxDeliveryAttempts) return true
+	const since = input.state.pendingSince
+	if (since == null) return true
+	const started = Date.parse(since)
+	if (!Number.isFinite(started)) return true
+	return input.now.getTime() - started >= pendingMaxAgeMs
+}
+
+/** Rebuild the notify window from the retained spike snapshot. */
+export function packageOwnerSpikeWindowFromState(input: {
+	ownerId: string
+	state: PackageOwnerSpikeState
+}): PackageOwnerSpikeWindow | null {
+	const spike = input.state.spike
+	if (!spike) return null
+	return {
+		ownerId: input.ownerId,
+		windowStart: spike.windowStart,
+		windowEnd: spike.windowEnd,
+		events: spike.events,
+		errors: spike.errors,
+		rate: spike.rate,
+		packages: spike.packages,
+		byMetric: spike.byMetric,
 	}
 }
 
@@ -295,6 +401,8 @@ export function emptyOwnerSpikeState(): PackageOwnerSpikeState {
 		version: 1,
 		status: 'ok',
 		alertedAt: null,
+		pendingSince: null,
+		deliveryAttempts: 0,
 		consecutiveHealthyWindows: 0,
 		lastActivityAt: null,
 		lastWindowEnd: null,
@@ -308,11 +416,25 @@ export function parsePackageOwnerSpikeState(
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 	const record = value as Record<string, unknown>
 	if (record.version !== 1) return null
-	if (record.status !== 'ok' && record.status !== 'alerted') return null
+	if (
+		record.status !== 'ok' &&
+		record.status !== 'alerted' &&
+		record.status !== 'pending'
+	) {
+		return null
+	}
+	const spike = parseSpikeSnapshot(record.spike)
+	if (record.status === 'pending' && spike == null) return null
 	return {
 		version: 1,
 		status: record.status,
 		alertedAt: typeof record.alertedAt === 'string' ? record.alertedAt : null,
+		pendingSince:
+			typeof record.pendingSince === 'string' ? record.pendingSince : null,
+		deliveryAttempts:
+			typeof record.deliveryAttempts === 'number'
+				? Math.max(0, Math.round(record.deliveryAttempts))
+				: 0,
 		consecutiveHealthyWindows:
 			typeof record.consecutiveHealthyWindows === 'number'
 				? Math.max(0, Math.round(record.consecutiveHealthyWindows))
@@ -321,7 +443,7 @@ export function parsePackageOwnerSpikeState(
 			typeof record.lastActivityAt === 'string' ? record.lastActivityAt : null,
 		lastWindowEnd:
 			typeof record.lastWindowEnd === 'string' ? record.lastWindowEnd : null,
-		spike: parseSpikeSnapshot(record.spike),
+		spike,
 	}
 }
 
@@ -338,8 +460,23 @@ function parseSpikeSnapshot(value: unknown): PackageOwnerSpikeState['spike'] {
 			: typeof record.rate === 'number'
 				? record.rate
 				: null
+	const windowStart =
+		typeof record.windowStart === 'string'
+			? record.windowStart
+			: typeof record.startedAt === 'string'
+				? record.startedAt
+				: null
+	const windowEnd =
+		typeof record.windowEnd === 'string'
+			? record.windowEnd
+			: typeof record.startedAt === 'string'
+				? record.startedAt
+				: null
+	if (windowStart == null || windowEnd == null) return null
 	return {
 		startedAt: record.startedAt,
+		windowStart,
+		windowEnd,
 		errors: Math.max(0, Math.round(record.errors)),
 		events: Math.max(0, Math.round(record.events)),
 		rate,
@@ -623,6 +760,8 @@ export async function writePackageOwnerSpikeState(input: {
 	ownerId: string
 	state: PackageOwnerSpikeState
 	previousStatus?: PackageOwnerSpikeStateStatus | null
+	/** When set, index membership is deferred to one write at end of sweep. */
+	indexDraft?: AlertedOwnerIndexDraft
 }) {
 	await input.kv.put(
 		packageOwnerErrorSpikeKvKey(input.ownerId),
@@ -630,14 +769,52 @@ export async function writePackageOwnerSpikeState(input: {
 		{ expirationTtl: stateTtlSeconds },
 	)
 	const previous = input.previousStatus ?? null
-	if (input.state.status === 'alerted') {
-		// Refresh the index TTL on every alerted write so a long episode
-		// cannot lose inactivity tracking when the 14-day index expires.
-		await addAlertedOwnerToIndex(input.kv, input.ownerId)
+	if (input.indexDraft) {
+		applyAlertedOwnerIndexMembership({
+			draft: input.indexDraft,
+			ownerId: input.ownerId,
+			status: input.state.status,
+			previousStatus: previous,
+		})
 		return
 	}
-	if (previous === 'alerted') {
-		await removeAlertedOwnerFromIndex(input.kv, input.ownerId)
+	// Fallback path (tests / single-owner writes): one index rewrite.
+	const existing = await readAlertedOwnerIndex(input.kv)
+	const draft: AlertedOwnerIndexDraft = {
+		ownerIds: new Set(existing),
+		dirty: false,
+	}
+	applyAlertedOwnerIndexMembership({
+		draft,
+		ownerId: input.ownerId,
+		status: input.state.status,
+		previousStatus: previous,
+	})
+	if (draft.dirty) {
+		await writeAlertedOwnerIndex(input.kv, [...draft.ownerIds])
+	}
+}
+
+function isIndexedSpikeStatus(status: PackageOwnerSpikeStateStatus | null) {
+	return status === 'alerted' || status === 'pending'
+}
+
+function applyAlertedOwnerIndexMembership(input: {
+	draft: AlertedOwnerIndexDraft
+	ownerId: string
+	status: PackageOwnerSpikeStateStatus
+	previousStatus: PackageOwnerSpikeStateStatus | null
+}) {
+	if (isIndexedSpikeStatus(input.status)) {
+		// Refresh index TTL whenever an in-sample episode is rewritten so a
+		// long pending/alerted stretch cannot lose inactivity tracking.
+		input.draft.ownerIds.add(input.ownerId)
+		input.draft.dirty = true
+		return
+	}
+	if (isIndexedSpikeStatus(input.previousStatus)) {
+		input.draft.ownerIds.delete(input.ownerId)
+		input.draft.dirty = true
 	}
 }
 
@@ -657,30 +834,13 @@ async function readAlertedOwnerIndex(kv: KVNamespace): Promise<Array<string>> {
 
 async function writeAlertedOwnerIndex(
 	kv: KVNamespace,
-	ownerIds: Array<string>,
+	ownerIds: Iterable<string>,
 ) {
 	await kv.put(
 		packageOwnerErrorSpikeAlertedIndexKvKey,
 		JSON.stringify([...new Set(ownerIds)].sort()),
 		{ expirationTtl: stateTtlSeconds },
 	)
-}
-
-async function addAlertedOwnerToIndex(kv: KVNamespace, ownerId: string) {
-	const existing = await readAlertedOwnerIndex(kv)
-	if (existing.includes(ownerId)) {
-		// Rewrite so the index TTL stays alive for long-lived episodes.
-		await writeAlertedOwnerIndex(kv, existing)
-		return
-	}
-	await writeAlertedOwnerIndex(kv, [...existing, ownerId])
-}
-
-async function removeAlertedOwnerFromIndex(kv: KVNamespace, ownerId: string) {
-	const existing = await readAlertedOwnerIndex(kv)
-	const next = existing.filter((id) => id !== ownerId)
-	if (next.length === existing.length) return
-	await writeAlertedOwnerIndex(kv, next)
 }
 
 export type PackageOwnerErrorSpikeRefreshResult =
@@ -779,7 +939,11 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 		packageOwners,
 	}).slice(0, packageOwnerErrorSpikeMaxOwnersPerSweep)
 
-	const alertedOwnerIds = await readAlertedOwnerIndex(kv)
+	const indexedOwnerIds = await readAlertedOwnerIndex(kv)
+	const indexDraft: AlertedOwnerIndexDraft = {
+		ownerIds: new Set(indexedOwnerIds),
+		dirty: false,
+	}
 
 	let alerted = 0
 	let rearmed = 0
@@ -793,66 +957,59 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 			window,
 			now,
 		})
-		if (transition.action === 'alert') {
-			// Notify first. Only persist alerted after success so a failed
-			// email/admin fan-out can retry next hour instead of going quiet.
-			if (input.onAlert) {
-				try {
-					await input.onAlert({
-						ownerId: window.ownerId,
-						window,
-						state: transition.next,
-					})
-				} catch (error) {
-					console.warn('package-owner-error-spike-alert-callback-failed', {
-						ownerId: window.ownerId,
-						error,
-					})
-					continue
-				}
-			}
-			await writePackageOwnerSpikeState({
-				kv,
-				ownerId: window.ownerId,
-				state: transition.next,
-				previousStatus: previous?.status ?? null,
-			})
-			alerted += 1
-			continue
-		}
-		await writePackageOwnerSpikeState({
+		const outcome = await applyPackageOwnerSpikeTransition({
 			kv,
 			ownerId: window.ownerId,
-			state: transition.next,
-			previousStatus: previous?.status ?? null,
+			previous,
+			transition,
+			window,
+			now,
+			onAlert: input.onAlert,
+			indexDraft,
 		})
-		if (transition.action === 'rearm') rearmed += 1
+		alerted += outcome.alerted
+		rearmed += outcome.rearmed
 	}
 
-	// Alerted owners missing from this hour's top sample may still be
+	// Indexed owners missing from this hour's top sample may still be
 	// erroring under the LIMIT — do not treat absence as inactivity, and do
-	// not refresh TTLs forever. Only re-arm when lastActivityAt is stale (or
-	// missing); otherwise leave state alone until they reappear in the sample
-	// or the KV TTL expires.
-	for (const ownerId of alertedOwnerIds) {
+	// not refresh TTLs forever. Pending owners still get delivery retries.
+	// Alerted owners only re-arm when lastActivityAt is stale (or missing).
+	for (const ownerId of indexedOwnerIds) {
 		if (evaluated.has(ownerId)) continue
 		const previous = await loadPackageOwnerSpikeState(kv, ownerId)
-		if (!previous || previous.status !== 'alerted') continue
+		if (!previous || !isIndexedSpikeStatus(previous.status)) continue
 		const transition = evaluatePackageOwnerSpikeTransition({
 			previous,
 			window: null,
 			now,
 		})
-		if (transition.action === 'rearm') {
-			await writePackageOwnerSpikeState({
-				kv,
-				ownerId,
-				state: transition.next,
-				previousStatus: previous.status,
-			})
-			rearmed += 1
-		}
+		const outcome = await applyPackageOwnerSpikeTransition({
+			kv,
+			ownerId,
+			previous,
+			transition,
+			window: null,
+			now,
+			onAlert: input.onAlert,
+			indexDraft,
+		})
+		alerted += outcome.alerted
+		rearmed += outcome.rearmed
 		evaluated.add(ownerId)
+	}
+
+	// One index write per sweep (Workers KV: 1 write/sec/key). Owner states
+	// are already committed, so a failed index write cannot re-send emails.
+	if (indexDraft.dirty) {
+		try {
+			await writeAlertedOwnerIndex(kv, indexDraft.ownerIds)
+		} catch (error) {
+			console.warn(
+				'package-owner-error-spike-alerted-index-write-failed',
+				error,
+			)
+		}
 	}
 
 	return {
@@ -861,6 +1018,130 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 		alerted,
 		rearmed,
 	}
+}
+
+async function applyPackageOwnerSpikeTransition(input: {
+	kv: KVNamespace
+	ownerId: string
+	previous: PackageOwnerSpikeState | null
+	transition: PackageOwnerSpikeTransition
+	window: PackageOwnerSpikeWindow | null
+	now: Date
+	onAlert?: (input: {
+		ownerId: string
+		window: PackageOwnerSpikeWindow
+		state: PackageOwnerSpikeState
+	}) => Promise<void>
+	indexDraft: AlertedOwnerIndexDraft
+}): Promise<{ alerted: number; rearmed: number }> {
+	const previousStatus = input.previous?.status ?? null
+	const { transition } = input
+
+	if (transition.action === 'alert' || transition.action === 'retry_alert') {
+		const deliveryWindow =
+			packageOwnerSpikeWindowFromState({
+				ownerId: input.ownerId,
+				state: transition.next,
+			}) ?? input.window
+		if (!deliveryWindow || !transition.next.spike) {
+			await writePackageOwnerSpikeState({
+				kv: input.kv,
+				ownerId: input.ownerId,
+				state: emptyOwnerSpikeState(),
+				previousStatus,
+				indexDraft: input.indexDraft,
+			})
+			return { alerted: 0, rearmed: 1 }
+		}
+
+		const pendingBase: PackageOwnerSpikeState = {
+			...transition.next,
+			status: 'pending',
+			alertedAt: null,
+			pendingSince: transition.next.pendingSince ?? input.now.toISOString(),
+			deliveryAttempts: transition.next.deliveryAttempts,
+			spike: transition.next.spike,
+		}
+
+		if (input.onAlert) {
+			try {
+				await input.onAlert({
+					ownerId: input.ownerId,
+					window: deliveryWindow,
+					state: pendingBase,
+				})
+			} catch (error) {
+				console.warn('package-owner-error-spike-alert-callback-failed', {
+					ownerId: input.ownerId,
+					error,
+				})
+				const attempts = pendingBase.deliveryAttempts + 1
+				const failedPending: PackageOwnerSpikeState = {
+					...pendingBase,
+					deliveryAttempts: attempts,
+					pendingSince: pendingBase.pendingSince ?? input.now.toISOString(),
+				}
+				if (
+					isPendingSpikeExpired({
+						state: failedPending,
+						now: input.now,
+					})
+				) {
+					await writePackageOwnerSpikeState({
+						kv: input.kv,
+						ownerId: input.ownerId,
+						state: {
+							...emptyOwnerSpikeState(),
+							lastActivityAt: failedPending.lastActivityAt,
+							lastWindowEnd: failedPending.lastWindowEnd,
+						},
+						previousStatus,
+						indexDraft: input.indexDraft,
+					})
+					return { alerted: 0, rearmed: 1 }
+				}
+				// Retain the triggering snapshot so a quieter next hour still
+				// retries delivery instead of dropping the episode.
+				await writePackageOwnerSpikeState({
+					kv: input.kv,
+					ownerId: input.ownerId,
+					state: failedPending,
+					previousStatus,
+					indexDraft: input.indexDraft,
+				})
+				return { alerted: 0, rearmed: 0 }
+			}
+		}
+
+		// Persist alerted only after a successful (or no-op) notify so a
+		// failed send cannot suppress the one email for this spike.
+		await writePackageOwnerSpikeState({
+			kv: input.kv,
+			ownerId: input.ownerId,
+			state: {
+				...pendingBase,
+				status: 'alerted',
+				alertedAt: input.now.toISOString(),
+				pendingSince: null,
+				deliveryAttempts: 0,
+			},
+			previousStatus,
+			indexDraft: input.indexDraft,
+		})
+		return { alerted: 1, rearmed: 0 }
+	}
+
+	await writePackageOwnerSpikeState({
+		kv: input.kv,
+		ownerId: input.ownerId,
+		state: transition.next,
+		previousStatus,
+		indexDraft: input.indexDraft,
+	})
+	if (transition.action === 'rearm' || transition.action === 'abandon') {
+		return { alerted: 0, rearmed: 1 }
+	}
+	return { alerted: 0, rearmed: 0 }
 }
 
 function toAnalyticsDateTime(date: Date) {
