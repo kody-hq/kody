@@ -273,9 +273,9 @@ forks are the [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 This section is the mount-prefix recipe those pages share.
 
 Production-hosted package apps live at
-`https://{username}.kody.run/packages/<package-name>/<path>` (the username is in
-the hostname; the path mount is `/packages/<package-name>`). Confirmed
-non-production runtimes may serve inline on the app origin at
+`https://{username}.kody.run/<package-name>/<path>` (the username is in the
+hostname; the path mount is `/<package-name>`). Confirmed non-production
+runtimes may serve inline on the app origin at
 `/@username/packages/<package-name>/<path>` instead.
 
 Every package app receives only `/<path>` after the host strips the mount.
@@ -312,8 +312,8 @@ const audioUrl = new URL(
 
 - `packageContext.hostedUrl` is the full public URL of the app mount.
 - `packageContext.appBasePath` is the origin-relative mount path
-  (`/packages/<package-name>` on a subdomain,
-  `/@username/packages/<package-name>` when inline).
+  (`/<package-name>` on a subdomain, `/@username/packages/<package-name>` when
+  inline).
 
 Kody derives both fields from the package's current serving username and package
 name leaf, including after a rename or fork. Do not hard-code either path

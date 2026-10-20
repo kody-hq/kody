@@ -305,7 +305,7 @@ ${orgBlock}
              before workerd (also \`packageContext.appBasePath\`; the
              \`--ready-file\` JSON reports the same value as \`basePath\`).
              Default is empty (serve at \`/\`). Use
-             \`--app-base-path /packages/<package-name>\` to match the
+             \`--app-base-path /<package-name>\` to match the
              hosted app mount while iterating locally.
 
   --dry-run  With \`kody dev job|webhook|emit\`, print the module path and

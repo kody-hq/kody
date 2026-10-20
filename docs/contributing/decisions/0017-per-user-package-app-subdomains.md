@@ -97,3 +97,10 @@ hostname is not rewritten here. The canonical package-app apex is `kody.run`
 only the `kody.run` apex and wildcard zone routes. See
 [0044](./0044-retired-brand-domains-stay-retired.md) and
 [#1428](https://github.com/kentcdodds/kody/issues/1428).
+
+## Later update (2026-10-20)
+
+Production public URL shape is now
+`https://{username}.kody.run/{kodyId}/{path}`. The legacy `/packages/{kodyId}`
+subdomain mount still serves during the cutover. `packageContext.appBasePath` on
+a subdomain is `/{kodyId}`.

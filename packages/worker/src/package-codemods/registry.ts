@@ -13,6 +13,7 @@ import { explicitWebhookUrlSecretVerificationCodemod } from './codemods/0012-exp
 import { declareCredentialNeedsCodemod } from './codemods/0013-declare-credential-needs.ts'
 import { sealCredentialStampsCodemod } from './codemods/0014-seal-credential-stamps.ts'
 import { convertCredentialStampsCodemod } from './codemods/0015-convert-credential-stamps.ts'
+import { shortPackageAppSubdomainPathCodemod } from './codemods/0016-short-package-app-subdomain-path.ts'
 import { type PackageCodemod } from './types.ts'
 
 const packageCodemods: Array<PackageCodemod> = [
@@ -31,6 +32,7 @@ const packageCodemods: Array<PackageCodemod> = [
 	declareCredentialNeedsCodemod,
 	sealCredentialStampsCodemod,
 	convertCredentialStampsCodemod,
+	shortPackageAppSubdomainPathCodemod,
 ]
 
 const packageCodemodsById = new Map(

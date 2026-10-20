@@ -6,7 +6,7 @@
 
 ## Context
 
-Hosted package apps serve at `https://{username}.kody.run/packages/{kodyId}`
+Hosted package apps serve at `https://{username}.kody.run/{kodyId}`
 (`PACKAGE_APP_BASE_URL` in `packages/worker/wrangler.jsonc`; URL builders in
 `packages/shared/src/public-urls.ts`). `kody.run` is a separate registrable
 domain from `kody.codes` for cookie isolation; apps sign in with
@@ -62,7 +62,7 @@ Cloudflare for SaaS requirement).
 
 ## Consequences
 
-- Root-path serving on a custom host vs today's `/packages/{kodyId}` prefix on
+- Root-path serving on a custom host vs today's `/{kodyId}` prefix on
   `*.kody.run` must be designed when implementing (custom hosts likely serve at
   `/` for the bound app or org).
 - The package-app sign-in handoff must allow custom origins while preserving
@@ -82,3 +82,8 @@ Cloudflare for SaaS requirement).
 - Revisit Enterprise apex `A` / wildcards only if paying demand requires them
   and budget allows; revisit free-tier hostname counts if Cloudflare pricing
   changes.
+
+## Later update (2026-10-20)
+
+Subdomain mounts use `/{kodyId}` (legacy `/packages/{kodyId}` still
+dual-served). Custom hosts still serve a single public app at the host root.

@@ -51,7 +51,7 @@ Requests are handled in this order:
      origin; legacy `/@{username}/packages/*` redirects to the owning user's
      subdomain; everything else is `404`.
    - On a **per-user package-app subdomain** (`{username}.<package-app host>`),
-     only `/packages/{leaf}/*` for that hostname's username is served (plus the
+     only `/{leaf}/*` for that hostname's username is served (plus the
      handoff-token exchange on those same paths). `/` redirects to the app
      origin; every other path is `404`.
    - On the **app origin**, `/@{username}/packages/*` never executes package
@@ -160,8 +160,7 @@ Requests are handled in this order:
 
 ## Package-app realtime (WebSocket)
 
-A browser
-`new WebSocket('wss://{username}.kody.run/packages/{leaf}/ws[/facet]')` reaches
+A browser `new WebSocket('wss://{username}.kody.run/{leaf}/ws[/facet]')` reaches
 `kody-runtime` directly through the `*.kody.run` zone routes (inline dev/preview
 reaches it through the origin `RUNTIME_WORKER` forward).
 `servePackageAppRequest` recognizes the upgrade (`Upgrade` compared
@@ -180,8 +179,8 @@ instance's `fetch` in-process keeps the body and hides the bug
 Post-deploy check for a package with realtime hooks (for example PR Desk):
 
 1. `GET https://kody.run/__runtime/health` reports the merge `commitSha`.
-2. Open `https://{username}.kody.run/packages/{leaf}` signed in. DevTools →
-   Network → WS shows the `/ws` request with status `101 Switching Protocols`.
+2. Open `https://{username}.kody.run/{leaf}` signed in. DevTools → Network → WS
+   shows the `/ws` request with status `101 Switching Protocols`.
 3. From Kody MCP, `runList` for that package with `surface: 'app_realtime'`
    since the reopen shows a connect run, and `sessionList({ package_id })` lists
    the open session.

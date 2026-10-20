@@ -327,7 +327,7 @@ export async function servePackageAppAssetRequest(input: {
 	loadSourceFiles: () => Promise<Record<string, string>>
 	relativePath: string
 	/**
-	 * Origin-relative app mount (`/packages/<kodyId>` on a subdomain). A
+	 * Origin-relative app mount (`/<kodyId>` on a subdomain). A
 	 * service worker script served from the assets directory may claim
 	 * `<appBasePath>/` as its scope, so pages under the mount (not just
 	 * `/_assets/`) are controllable.

@@ -185,9 +185,9 @@ confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
   ensures proxied placeholder records for the apex, wildcard, and
   `domains.<apex-host>` (Cloudflare for SaaS origin / customer CNAME target)
   separately (see [setup-manifest.md](./setup-manifest.md)). Each owner's apps
-  are addressed at `https://{username}.<apex-host>/packages/{leaf}/...`; the
-  apex itself serves only redirects (legacy `/@user/packages/...` paths to the
-  owning subdomain, `/` to the app origin). It **must be a separate registrable
+  are addressed at `https://{username}.<apex-host>/{leaf}/...`; the apex itself
+  serves only redirects (legacy `/@user/packages/...` paths to the owning
+  subdomain, `/` to the app origin). It **must be a separate registrable
   domain** from `APP_BASE_URL`: that is what makes author-supplied package code
   cross-site, so the `SameSite=Lax` `kody_session` cookie never reaches it.
   Production origin validation also requires `APP_BASE_URL` so this relationship

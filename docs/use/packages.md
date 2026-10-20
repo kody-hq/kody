@@ -573,23 +573,25 @@ When `package.json#kody.app` is present, the package is hosted under the package
 app route.
 
 Production-hosted package apps run on per-user subdomains of Kody's separate
-`kody.run` domain (`https://{username}.kody.run/packages/<package-name>/...`),
-or on a verified custom domain, not on the signed-in app origin. The package
-page links there. People who may run the app still open it through a short-lived
-session handoff from kody.codes, because the hosted origin cannot see the
-kody.codes session cookie. Package author JavaScript cannot use the first-party
-`kody_session` cookie or call authenticated Kody pages as the signed-in user.
+`kody.run` domain (`https://{username}.kody.run/<package-name>/...`), or on a
+verified custom domain, not on the signed-in app origin. Legacy
+`/packages/<package-name>/...` on the subdomain still serves during the cutover.
+The package page links there. People who may run the app still open it through a
+short-lived session handoff from kody.codes, because the hosted origin cannot
+see the kody.codes session cookie. Package author JavaScript cannot use the
+first-party `kody_session` cookie or call authenticated Kody pages as the
+signed-in user.
 
 Package app URLs follow the mount contract: on a subdomain the public path is
-`/packages/<package-name>/<path>` (the username lives in the hostname; the
-segment is the package name leaf). Kody strips that mount before forwarding, so
-every entry sees `/<path>` and root-relative links such as `/audio/123` escape
-the app; build in-app links, redirects, shared links, email links, and OAuth
-callbacks against `packageContext.hostedUrl` and `packageContext.appBasePath`
-(derived from the serving username and package name leaf —
-`/packages/<package-name>` on a subdomain, `/@username/packages/<package-name>`
-when served inline in non-production). A Remix recipe that prefixes its route
-contract remounts the Request in the entry. See
+`/<package-name>/<path>` (the username lives in the hostname; the segment is the
+package name leaf). Kody strips that mount before forwarding, so every entry
+sees `/<path>` and root-relative links such as `/audio/123` escape the app;
+build in-app links, redirects, shared links, email links, and OAuth callbacks
+against `packageContext.hostedUrl` and `packageContext.appBasePath` (derived
+from the serving username and package name leaf — `/<package-name>` on a
+subdomain, `/@username/packages/<package-name>` when served inline in
+non-production). A Remix recipe that prefixes its route contract remounts the
+Request in the entry. See
 [Package app routing](../guides/package-authoring.md#package-app-routing) for
 the authoring example, and [Package apps](../guides/package-apps.md)
 (`guide:package_apps`) for the fetch contract, Remix recipe, session handoff,
