@@ -79,16 +79,16 @@ export function CredentialFillPlacementEditor(props: Props) {
 	}
 	async function onSave(event: FormEvent) {
 		event.preventDefault()
-		const next = fillPlacementViewFromDraft(draft)
-		if (
-			next === null &&
-			!(draft.headers && draft.query && draft.path && draft.body)
-		) {
-			setError('Choose at least one request part.')
-			return
-		}
 		setError(null)
 		try {
+			const next = fillPlacementViewFromDraft(draft)
+			if (
+				next === null &&
+				!(draft.headers && draft.query && draft.path && draft.body)
+			) {
+				setError('Choose at least one request part.')
+				return
+			}
 			const result = await mutation.mutateAsync(next)
 			setSaved({ placement: result.placement, from: props.placement })
 			setEditing(false)

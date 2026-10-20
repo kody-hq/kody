@@ -622,6 +622,9 @@ export async function updateUserSecretsForPackageAtomically(input: {
 				entry.existingEntry.expires_at,
 				bucket.expires_at,
 			),
+			placement: readCredentialFillPlacement(
+				entry.existingEntry.placement_json,
+			),
 		}),
 	)
 }
@@ -797,6 +800,9 @@ async function saveSecretsAtomically(input: {
 			createdAt: entry.existingEntry?.created_at ?? now,
 			updatedAt: now,
 			expiresAt: earliestSecretExpiresAt(entry.expiresAt, bucket.expires_at),
+			placement: entry.existingEntry
+				? readCredentialFillPlacement(entry.existingEntry.placement_json)
+				: defaultNewCredentialFillPlacement,
 		}),
 	)
 }
@@ -1554,6 +1560,7 @@ export async function setSecretAllowedHosts(input: {
 			existingEntry.expires_at,
 			bucket.expires_at,
 		),
+		placement: readCredentialFillPlacement(existingEntry.placement_json),
 	})
 }
 
@@ -1612,6 +1619,7 @@ export async function setSecretAllowedPackages(input: {
 			existingEntry.expires_at,
 			bucket.expires_at,
 		),
+		placement: readCredentialFillPlacement(existingEntry.placement_json),
 	})
 }
 
@@ -1678,6 +1686,7 @@ export async function inspectUserSecretPackageGrant(input: {
 				existingEntry.expires_at,
 				bucket.expires_at,
 			),
+			placement: readCredentialFillPlacement(existingEntry.placement_json),
 		}),
 		savedPackage: {
 			id: savedPackage.id,

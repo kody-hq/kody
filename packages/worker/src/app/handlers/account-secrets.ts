@@ -1774,7 +1774,12 @@ export async function saveAccountSecret(input: {
 		updatedAt: saved.updatedAt,
 		expiresAt: saved.expiresAt,
 		ttlMs: saved.ttlMs,
-		placement: saved.placement,
+		// saveSecret returns the pre-update row for existing secrets; when this
+		// handler wrote placement (insert or updateCredentialFields), prefer it.
+		placement:
+			requestedPlacement !== undefined && credential == null
+				? requestedPlacement
+				: saved.placement,
 		value,
 	}
 	return operationResult({

@@ -62,3 +62,24 @@ test('at least one part is required', () => {
 		}),
 	).toBeNull()
 })
+
+test('invalid named headers throw instead of saving as anywhere', () => {
+	expect(() =>
+		fillPlacementViewFromDraft({
+			headers: true,
+			query: true,
+			path: true,
+			body: true,
+			namedHeaders: 'Bad Header Name',
+		}),
+	).toThrow(/header name|RFC 9110/i)
+	expect(() =>
+		fillPlacementViewFromDraft({
+			headers: true,
+			query: false,
+			path: false,
+			body: false,
+			namedHeaders: 'not a token!!!',
+		}),
+	).toThrow(/header name|RFC 9110/i)
+})

@@ -123,6 +123,12 @@ export function defaultFillPlacementDraft(): FillPlacementDraft {
 	}
 }
 
+/**
+ * Build a placement view from editor draft checkboxes.
+ * Returns `null` for intentional anywhere (all parts, any header) or when no
+ * parts are selected. Throws when named headers (or the shape) are invalid so
+ * callers cannot confuse a bad name list with unrestricted fill.
+ */
 export function fillPlacementViewFromDraft(
 	draft: FillPlacementDraft,
 ): CredentialFillPlacementView | null {
@@ -130,6 +136,9 @@ export function fillPlacementViewFromDraft(
 		.split(',')
 		.map((name) => name.trim())
 		.filter((name) => name.length > 0)
+	if (!draft.headers && !draft.query && !draft.path && !draft.body) {
+		return null
+	}
 	const placement: CredentialFillPlacementView = {}
 	if (draft.headers) {
 		placement.headers = named.length > 0 ? named : true
@@ -138,7 +147,11 @@ export function fillPlacementViewFromDraft(
 	if (draft.path) placement.path = true
 	if (draft.body) placement.body = true
 	const parsed = credentialFillPlacementViewSchema.safeParse(placement)
-	if (!parsed.success) return null
+	if (!parsed.success) {
+		throw new Error(
+			parsed.error.issues[0]?.message ?? 'Invalid fill placement.',
+		)
+	}
 	// All four parts with any-header is stored as null (anywhere) so existing
 	// "anywhere" rows stay distinguishable from an explicit object.
 	if (
