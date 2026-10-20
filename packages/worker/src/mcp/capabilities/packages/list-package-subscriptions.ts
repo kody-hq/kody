@@ -121,7 +121,7 @@ export const listPackageSubscriptionsCapability = defineDomainCapability(
 				.min(1)
 				.optional()
 				.describe(
-					'Optional exact event topic filter such as "email.message.received", "repo.pushed", "run.error.recorded", "integration.auth.failed", "integration.auth.succeeded", "mcp.server.disconnected", "community.fork.upstream_updated", "follow.published", "follow.pushed", "platform.feedback.submitted", "community.activity.recorded", "community.listing.published", "status.incident.opened", "fleet.package_error_rate.elevated", "fleet.package_owner_error_spike", "fleet.entitlement.crossed", "auth.denial.burst", "email.delivery.burst", "user.created", "user.deleted", "user.email_verification.failed", "user.email_verification.stalled", "user.email_outbound.paused", or "email.system-message.sent".',
+					'Optional exact event topic filter such as "email.message.received", "repo.pushed", "run.error.recorded", "integration.auth.failed", "integration.auth.succeeded", "mcp.server.disconnected", "community.fork.upstream_updated", "follow.published", "follow.pushed", "platform.feedback.submitted", "community.activity.recorded", "community.listing.published", "status.incident.opened", "fleet.package_error_rate.elevated", "fleet.package_owner_error_spike", "fleet.users_affected.elevated", "fleet.users_affected.resolved", "fleet.entitlement.crossed", "auth.denial.burst", "email.delivery.burst", "user.created", "user.deleted", "user.email_verification.failed", "user.email_verification.stalled", "user.email_outbound.paused", or "email.system-message.sent".',
 				),
 		}),
 		outputSchema: z.object({
