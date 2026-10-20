@@ -3,6 +3,7 @@ import {
 	appendFleetUsersAffectedHistory,
 	baselineFromHistory,
 	buildFleetUsersAffectedPackageActorQuery,
+	clearFleetUsersAffectedPendingNotify,
 	evaluateFleetUsersAffectedTransition,
 	fleetUsersAffectedBaselineFactor,
 	fleetUsersAffectedMinAffected,
@@ -134,9 +135,10 @@ test('debounce elevate once, no repeats while firing, resolve then re-arm', () =
 	expect(second.action).toBe('elevate')
 	expect(second.next.status).toBe('firing')
 	expect(second.next.pendingNotify).toBe('elevate')
+	const afterNotify = clearFleetUsersAffectedPendingNotify(second.next)
 
 	const stillHot = evaluateFleetUsersAffectedTransition({
-		previous: second.next,
+		previous: afterNotify,
 		metrics: hot,
 		baselineAffectedMedian: 2,
 		baselineFractionMedian: 0.02,
@@ -255,4 +257,40 @@ test('buildFleetUsersAffectedPackageActorQuery aggregates distinct tuples', () =
 		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
 	})
 	expect(query).toContain('GROUP BY package_id, metric, actor_id')
+})
+
+test('pending elevate replays on the next window until cleared', () => {
+	const now = new Date('2026-10-19T18:20:00.000Z')
+	const hot = metrics({ affectedUsers: 12, activeUsers: 100 })
+	const first = evaluateFleetUsersAffectedTransition({
+		previous: null,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now,
+	})
+	const elevated = evaluateFleetUsersAffectedTransition({
+		previous: first.next,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T18:35:00.000Z'),
+	})
+	expect(elevated.action).toBe('elevate')
+	expect(elevated.next.pendingNotify).toBe('elevate')
+
+	const nextWindow = evaluateFleetUsersAffectedTransition({
+		previous: elevated.next,
+		metrics: metrics({
+			affectedUsers: 12,
+			activeUsers: 100,
+			windowEnd: '2026-10-19T18:45:00.000Z',
+		}),
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T18:50:00.000Z'),
+	})
+	expect(nextWindow.action).toBe('elevate')
+	expect(nextWindow.next.pendingNotify).toBe('elevate')
+	expect(nextWindow.next.status).toBe('firing')
 })

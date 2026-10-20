@@ -188,6 +188,10 @@ export function evaluateFleetUsersAffectedTransition(input: {
 		baselineAffectedMedian: input.baselineAffectedMedian,
 		baselineFractionMedian: input.baselineFractionMedian,
 	})
+	const pending =
+		previous.pendingNotify === 'elevate' || previous.pendingNotify === 'resolve'
+			? previous.pendingNotify
+			: null
 	const base: FleetUsersAffectedState = {
 		version: 1,
 		status: previous.status,
@@ -198,7 +202,9 @@ export function evaluateFleetUsersAffectedTransition(input: {
 		lastMetrics: input.metrics,
 		baselineAffectedMedian: input.baselineAffectedMedian,
 		baselineFractionMedian: input.baselineFractionMedian,
-		pendingNotify: null,
+		// Carry pending across windows until dispatch clears it; otherwise a
+		// failed notify is lost on the next 15-minute cron.
+		pendingNotify: pending,
 	}
 
 	if (elevated) {
@@ -220,7 +226,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 				}
 			}
 			return {
-				action: 'none',
+				action: pending ?? 'none',
 				elevated: true,
 				resolvedIncidentStartedAt: null,
 				next: {
@@ -233,7 +239,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 			}
 		}
 		return {
-			action: 'none',
+			action: pending ?? 'none',
 			elevated: true,
 			resolvedIncidentStartedAt: null,
 			next: {
@@ -258,16 +264,17 @@ export function evaluateFleetUsersAffectedTransition(input: {
 					consecutiveElevatedWindows: 0,
 					consecutiveClearWindows: 0,
 					// Keep incidentStartedAt until pending resolve notify clears
-					// so same-window retries can still build the resolved email.
+					// so retries can still build the resolved email.
 					incidentStartedAt: previous.incidentStartedAt,
 					pendingNotify: 'resolve',
 				},
 			}
 		}
 		return {
-			action: 'none',
+			action: pending ?? 'none',
 			elevated: false,
-			resolvedIncidentStartedAt: null,
+			resolvedIncidentStartedAt:
+				pending === 'resolve' ? previous.incidentStartedAt : null,
 			next: {
 				...base,
 				status: 'firing',
@@ -278,15 +285,17 @@ export function evaluateFleetUsersAffectedTransition(input: {
 	}
 
 	return {
-		action: 'none',
+		action: pending ?? 'none',
 		elevated: false,
-		resolvedIncidentStartedAt: null,
+		resolvedIncidentStartedAt:
+			pending === 'resolve' ? previous.incidentStartedAt : null,
 		next: {
 			...base,
 			status: 'ok',
 			consecutiveElevatedWindows: 0,
 			consecutiveClearWindows: 0,
-			incidentStartedAt: null,
+			incidentStartedAt:
+				pending === 'resolve' ? previous.incidentStartedAt : null,
 		},
 	}
 }
@@ -758,10 +767,16 @@ export async function refreshFleetUsersAffected(input: {
 		}
 	}
 
-	// Baseline excludes the current window (not yet appended) and any trailing
-	// samples already counted toward the in-progress elevate debounce.
+	// Baseline excludes this windowEnd if a prior partial write already stored
+	// it, plus any trailing samples from the in-progress elevate debounce.
+	const historyForBaseline = {
+		version: 1 as const,
+		samples: history.samples.filter(
+			(sample) => sample.windowEnd !== metrics.windowEnd,
+		),
+	}
 	const { baselineAffectedMedian, baselineFractionMedian } =
-		baselineFromHistory(history, {
+		baselineFromHistory(historyForBaseline, {
 			excludeTrailing: previous?.consecutiveElevatedWindows ?? 0,
 		})
 
@@ -781,12 +796,13 @@ export async function refreshFleetUsersAffected(input: {
 		fraction: metrics.fraction,
 	})
 
-	// History before state so a failed history write does not leave counters
-	// advanced without the sample that would explain them on retry.
-	await kv.put(fleetUsersAffectedHistoryKvKey, JSON.stringify(nextHistory), {
+	// State before history: same-window / pendingNotify replay keys off
+	// lastWindowEnd. Exclude this windowEnd from baseline inputs above so a
+	// partial history write cannot poison the median on retry.
+	await kv.put(fleetUsersAffectedKvKey, JSON.stringify(transition.next), {
 		expirationTtl: stateTtlSeconds,
 	})
-	await kv.put(fleetUsersAffectedKvKey, JSON.stringify(transition.next), {
+	await kv.put(fleetUsersAffectedHistoryKvKey, JSON.stringify(nextHistory), {
 		expirationTtl: stateTtlSeconds,
 	})
 
