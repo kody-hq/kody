@@ -99,30 +99,23 @@ export async function loadAccountPackageApproveCapabilitiesData(input: {
 		kodyId: savedPackage.kodyId,
 	})
 
-	const [pendingApprovals, securityAudit, selfPublishBlockerDetail] =
-		await Promise.all([
-			loadPendingPackageApprovals({
-				env: input.env,
-				ownerUserId: savedPackage.userId,
-				packageId: savedPackage.id,
-				publishedCommit: summary.publishedCommit,
-			}),
-			loadPackageSecurityAuditState({
-				db: input.env.APP_DB,
-				ownerUserId: savedPackage.userId,
-				packageId: savedPackage.id,
-				packageName: savedPackage.name,
-				publishedCommit: summary.publishedCommit,
-				fingerprint: summary.capabilitySet.fingerprint,
-				approvalUrl,
-			}),
-			explainSelfPublishBlocker({
-				env: input.env,
-				savedPackage,
-				summary,
-				approvalUrl,
-			}),
-		])
+	const [pendingApprovals, securityAudit] = await Promise.all([
+		loadPendingPackageApprovals({
+			env: input.env,
+			ownerUserId: savedPackage.userId,
+			packageId: savedPackage.id,
+			publishedCommit: summary.publishedCommit,
+		}),
+		loadPackageSecurityAuditState({
+			db: input.env.APP_DB,
+			ownerUserId: savedPackage.userId,
+			packageId: savedPackage.id,
+			packageName: savedPackage.name,
+			publishedCommit: summary.publishedCommit,
+			fingerprint: summary.capabilitySet.fingerprint,
+			approvalUrl,
+		}),
+	])
 
 	// A pending went_public request means the owner asked to go public. One
 	// Approve always covers that request: when the capability set still needs
@@ -139,6 +132,23 @@ export async function loadAccountPackageApproveCapabilitiesData(input: {
 	const showSelfPublishBlocker =
 		goPublicRequestId != null ||
 		(!savedPackage.isInternetVisible && !summary.fingerprintMatchesApproval)
+
+	// Informational only: never let detail evaluation take down Approve.
+	// Omit approvalUrl so the page does not say "Owner approves at" itself.
+	let selfPublishBlockerDetail: Awaited<
+		ReturnType<typeof explainSelfPublishBlocker>
+	> = null
+	if (showSelfPublishBlocker) {
+		try {
+			selfPublishBlockerDetail = await explainSelfPublishBlocker({
+				env: input.env,
+				savedPackage,
+				summary,
+			})
+		} catch {
+			selfPublishBlockerDetail = null
+		}
+	}
 
 	return {
 		ok: true,

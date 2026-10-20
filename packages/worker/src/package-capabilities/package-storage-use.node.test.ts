@@ -96,3 +96,45 @@ test('template literal expressions still count; surrounding text does not', () =
 		}),
 	).toBe(false)
 })
+
+test('regex literals and JSX text do not swallow later packageStorage calls', () => {
+	expect(
+		sourceFilesUsePackageStorage({
+			'src/x.ts':
+				'const cleaned = input.replace(/"/g, "")\nawait packageStorage().get("x")',
+		}),
+	).toBe(true)
+	expect(
+		sourceFilesUsePackageStorage({
+			'src/x.ts': "const re = /'/g\nawait packageStorage().get('x')",
+		}),
+	).toBe(true)
+	expect(
+		sourceFilesUsePackageStorage({
+			'src/Ui.tsx':
+				'export function Tip() { return <p>Don\'t refresh</p> }\nexport async function load() { return packageStorage().get("x") }',
+		}),
+	).toBe(true)
+})
+
+test('bracket keys inside string prose do not count; code bracket keys do', () => {
+	expect(
+		sourceFilesUsePackageStorage({
+			'app/assets.generated.ts':
+				'export const tip = `see runtime["packageStorage"] in docs`',
+		}),
+	).toBe(false)
+	expect(
+		sourceFilesUsePackageStorage({
+			'src/index.ts': 'await runtime["packageStorage"]().get("x")',
+		}),
+	).toBe(true)
+})
+
+test('unparseable modules fail closed and still count storage identifiers', () => {
+	expect(
+		sourceFilesUsePackageStorage({
+			'src/broken.ts': 'const x = {\nawait packageStorage().get("x")\n',
+		}),
+	).toBe(true)
+})

@@ -82,7 +82,7 @@ test('native capability review shows why approval is required when self-publish 
 				selfPublishBlocker: {
 					blocker: 'declares_capabilities',
 					message:
-						'Package storage detected at app/assets.generated.ts:12 (packageStorage). Owner approves at https://example.com/approve.',
+						'Package storage detected at app/assets.generated.ts:12 (packageStorage).',
 					reasons: [
 						{
 							kind: 'storage_entry',

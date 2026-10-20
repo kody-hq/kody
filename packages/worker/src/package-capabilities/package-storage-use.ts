@@ -1,4 +1,5 @@
 import { packageSourceFiles } from '#worker/credentials/credential-needs-closure.ts'
+import { parseModuleSource } from '#worker/module-source.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 
@@ -42,110 +43,71 @@ export type PackageStorageMatch = {
 	snippet: string
 }
 
+type AstNode = {
+	type: string
+	start?: number | null
+	end?: number | null
+	[key: string]: unknown
+}
+
 /**
- * Index ranges that are string or template *text* (not `${}` expressions).
- * Matches that fall entirely inside these ranges are treated as prose and do
- * not count as storage use, except bracket-key forms handled separately.
+ * Collect source ranges that are string / template / JSX text only. Uses
+ * Babel so regex literals and JSX apostrophes cannot open a string range
+ * that swallows later code. Returns null when the file does not parse:
+ * callers must fail closed (do not skip any matches).
  */
-function collectStringTextRanges(source: string): Array<{
-	start: number
-	end: number
-}> {
-	const ranges: Array<{ start: number; end: number }> = []
-	let i = 0
-	while (i < source.length) {
-		const ch = source[i]!
-		const next = source[i + 1]
-		if (ch === '/' && next === '/') {
-			i = source.indexOf('\n', i + 2)
-			if (i < 0) break
-			continue
-		}
-		if (ch === '/' && next === '*') {
-			const end = source.indexOf('*/', i + 2)
-			i = end < 0 ? source.length : end + 2
-			continue
-		}
-		if (ch === "'" || ch === '"') {
-			const quote = ch
-			const start = i + 1
-			i++
-			while (i < source.length) {
-				if (source[i] === '\\') {
-					i += 2
-					continue
-				}
-				if (source[i] === quote) break
-				i++
-			}
-			ranges.push({ start, end: i })
-			i++
-			continue
-		}
-		if (ch === '`') {
-			i++
-			let textStart = i
-			while (i < source.length) {
-				if (source[i] === '\\') {
-					i += 2
-					continue
-				}
-				if (source[i] === '`') {
-					ranges.push({ start: textStart, end: i })
-					i++
-					break
-				}
-				if (source[i] === '$' && source[i + 1] === '{') {
-					ranges.push({ start: textStart, end: i })
-					i += 2
-					let depth = 1
-					while (i < source.length && depth > 0) {
-						const c = source[i]!
-						if (c === "'" || c === '"' || c === '`') {
-							// Nested quotes inside ${}: recurse via simple skip of
-							// that quoted span so braces inside strings do not
-							// confuse depth. Conservative: treat nested template
-							// content as non-code too via a short walk.
-							const nestedQuote = c
-							i++
-							while (i < source.length) {
-								if (source[i] === '\\') {
-									i += 2
-									continue
-								}
-								if (source[i] === nestedQuote) {
-									i++
-									break
-								}
-								if (
-									nestedQuote === '`' &&
-									source[i] === '$' &&
-									source[i + 1] === '{'
-								) {
-									// Nested template expression: fall through by
-									// counting braces only outside strings is hard;
-									// advance one char and keep scanning.
-									i++
-									continue
-								}
-								i++
-							}
-							continue
-						}
-						if (c === '{') depth++
-						else if (c === '}') depth--
-						i++
-					}
-					textStart = i
-					continue
-				}
-				i++
-			}
-			continue
-		}
-		i++
+function collectStringTextRanges(
+	source: string,
+): Array<{ start: number; end: number }> | null {
+	let parsed: AstNode
+	try {
+		parsed = parseModuleSource(source) as unknown as AstNode
+	} catch {
+		return null
 	}
+	const ranges: Array<{ start: number; end: number }> = []
+	walkAst(parsed, (node) => {
+		if (
+			node.type !== 'StringLiteral' &&
+			node.type !== 'DirectiveLiteral' &&
+			node.type !== 'TemplateElement' &&
+			node.type !== 'JSXText'
+		) {
+			return
+		}
+		if (typeof node.start !== 'number' || typeof node.end !== 'number') return
+		ranges.push({ start: node.start, end: node.end })
+	})
 	return ranges
+}
+
+function walkAst(node: AstNode, visit: (node: AstNode) => void) {
+	visit(node)
+	for (const [key, value] of Object.entries(node)) {
+		if (
+			key === 'loc' ||
+			key === 'start' ||
+			key === 'end' ||
+			key === 'range' ||
+			key === 'leadingComments' ||
+			key === 'trailingComments' ||
+			key === 'innerComments' ||
+			key === 'comments'
+		) {
+			continue
+		}
+		if (Array.isArray(value)) {
+			for (const child of value) {
+				if (child && typeof child === 'object' && 'type' in child) {
+					walkAst(child as AstNode, visit)
+				}
+			}
+			continue
+		}
+		if (value && typeof value === 'object' && 'type' in value) {
+			walkAst(value as AstNode, visit)
+		}
+	}
 }
 
 function isInsideRanges(
@@ -154,6 +116,19 @@ function isInsideRanges(
 	ranges: ReadonlyArray<{ start: number; end: number }>,
 ) {
 	return ranges.some((range) => index >= range.start && end <= range.end)
+}
+
+/**
+ * True when this match should be treated as prose. Fail closed: when ranges
+ * are null (parse failure), never skip.
+ */
+function isProseMatch(
+	index: number,
+	end: number,
+	ranges: Array<{ start: number; end: number }> | null,
+) {
+	if (ranges === null) return false
+	return isInsideRanges(index, end, ranges)
 }
 
 function lineAndColumn(source: string, index: number) {
@@ -194,12 +169,13 @@ function pushMatch(
 
 /**
  * Find package-storage use sites in module source. Occurrences that sit
- * entirely inside string or template text are ignored (slide decks and docs
- * in `.generated.ts` blobs). Dynamic forms still count:
+ * entirely inside string, template, or JSX text are ignored (slide decks and
+ * docs in `.generated.ts` blobs). Dynamic forms still count:
  * - `packageStorage` / `storageQuery` / `storageExport` as code identifiers
  * - `kody[` / `kody?.[` in code
- * - `["packageStorage"]`-style bracket keys (string key, real access)
+ * - `["packageStorage"]`-style bracket keys when the `[` is in code
  *
+ * Parse failures fail closed: every regex hit counts (no prose skip).
  * Residual risk accepted: `new Function("packageStorage()")` and similar
  * eval-of-string forms are not counted. Prefer missing those over treating
  * demo prose as a capability. Comments still count (false positive OK).
@@ -215,7 +191,7 @@ export function findPackageStorageMatchesInSource(
 	for (const match of source.matchAll(storageIdentifierPattern)) {
 		const index = match.index ?? 0
 		const text = match[1] ?? match[0]!
-		if (isInsideRanges(index, index + text.length, stringRanges)) continue
+		if (isProseMatch(index, index + text.length, stringRanges)) continue
 		pushMatch(
 			matches,
 			path,
@@ -230,16 +206,19 @@ export function findPackageStorageMatchesInSource(
 	for (const match of source.matchAll(kodyBracketPattern)) {
 		const index = match.index ?? 0
 		const text = match[0]!
-		if (isInsideRanges(index, index + text.length, stringRanges)) continue
+		if (isProseMatch(index, index + text.length, stringRanges)) continue
 		pushMatch(matches, path, source, index, text.length, 'kodyBracket')
 	}
 
-	// Bracket keys: the name is inside quotes, so string-range skipping would
-	// drop them; scan the full source and keep these as dynamic access.
+	// Bracket keys: the name is inside quotes by design. Skip only when the
+	// entire `["packageStorage"]` span sits inside a larger string/template/
+	// JSX text range (slide prose). Real code access stays.
 	storageBracketKeyPattern.lastIndex = 0
 	for (const match of source.matchAll(storageBracketKeyPattern)) {
 		const index = match.index ?? 0
-		pushMatch(matches, path, source, index, match[0]!.length, 'bracketKey')
+		const text = match[0]!
+		if (isProseMatch(index, index + text.length, stringRanges)) continue
+		pushMatch(matches, path, source, index, text.length, 'bracketKey')
 	}
 
 	return matches
