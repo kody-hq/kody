@@ -107,16 +107,24 @@ test('isRepoSessionStructuralEditCallerMessage matches delete and move validatio
 })
 
 test('isRepoSessionApplyPatchCallerMessage matches apply-patch caller phrases only', () => {
+	const malformed = buildRepoApplyPatchParseCallerMessage(
+		'Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
+	)
+	expect(malformed).toContain('git apply patch is malformed:')
+	expect(malformed).toContain(
+		'Hunk header line counts (the numbers after @@) must match the hunk body.',
+	)
+
 	const callerMessages = [
 		'git apply patch did not contain any file changes.',
 		'git apply patch is missing a target file path.',
 		'git apply patch did not apply cleanly to src/index.ts.',
-		buildRepoApplyPatchParseCallerMessage(
-			'Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
-		),
+		malformed,
 		buildRepoApplyPatchParseCallerMessage(
 			'Added line count did not match for hunk at line 3',
 		),
+		// Legacy wrap from the first KODY-A3 deploy (prefix still matches).
+		'git apply patch: Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
 		// Raw `diff` parse phrases (defense for unwrapped / in-flight DO RPC).
 		'Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
 		'Hunk at line 5 has more lines than expected (expected 1 old lines and 1 new lines)',

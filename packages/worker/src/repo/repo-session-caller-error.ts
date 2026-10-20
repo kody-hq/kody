@@ -216,12 +216,18 @@ export function isRepoSessionStructuralEditCallerMessage(message: string) {
  * Agents send malformed or non-applying unified diffs; those are
  * caller-correctable. Subclass identity does not survive Durable Object RPC,
  * so MCP observability and the capability match this prefix (including
- * `diff` parse details rethrown as `git apply patch: …`). KODY-A3.
+ * `diff` parse details rethrown as `git apply patch is malformed: …`).
+ * KODY-A3 / KODY-A4.
  *
  * Also match raw `diff` parse phrases that can still escape without the
  * prefix (in-flight DO builds, or a forgotten wrap) so they stay off Sentry.
+ * The legacy `git apply patch: …` form from the first wrap stays matched via
+ * the shared prefix.
  */
 export const repoApplyPatchCallerMessagePrefix = 'git apply patch'
+
+export const repoApplyPatchMalformedGuidance =
+	'Hunk header line counts (the numbers after @@) must match the hunk body.'
 
 export function isRepoSessionApplyPatchCallerMessage(message: string) {
 	if (message.startsWith(repoApplyPatchCallerMessagePrefix)) return true
@@ -245,5 +251,5 @@ export function isRepoSessionApplyPatchCallerMessage(message: string) {
 }
 
 export function buildRepoApplyPatchParseCallerMessage(parseMessage: string) {
-	return `${repoApplyPatchCallerMessagePrefix}: ${parseMessage}`
+	return `${repoApplyPatchCallerMessagePrefix} is malformed: ${parseMessage}. ${repoApplyPatchMalformedGuidance}`
 }

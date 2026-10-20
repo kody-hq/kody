@@ -2273,8 +2273,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			)
 		} catch (error) {
 			// `diff` parsePatch throws plain Errors (malformed hunks, line-count
-			// mismatches). Prefix so DO RPC still classifies them as caller
-			// failures while preserving the actionable parse detail. KODY-A3.
+			// mismatches). Remap so DO RPC still classifies them as caller
+			// failures while preserving the actionable parse detail and a
+			// hunk-header hint agents can act on. KODY-A3 / KODY-A4.
 			throw new Error(
 				buildRepoApplyPatchParseCallerMessage(getErrorMessage(error)),
 				{ cause: error },

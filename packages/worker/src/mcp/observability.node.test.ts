@@ -395,7 +395,16 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				'repo session edits cannot combine a delete/move touching "src/a.ts" with a write/replace/writeJson edit for the same path in one call. Split them into separate repoEditFiles calls.',
 			),
 		),
-		// Malformed / non-applying patches (KODY-A3). Plain Error from DO RPC.
+		// Malformed / non-applying patches (KODY-A3 / KODY-A4). Plain Error
+		// from DO RPC, including the legacy `git apply patch: …` wrap.
+		handlerFailure(
+			'repoApplyPatch',
+			'repo',
+			'Error',
+			new Error(
+				'git apply patch is malformed: Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@. Hunk header line counts (the numbers after @@) must match the hunk body.',
+			),
+		),
 		handlerFailure(
 			'repoApplyPatch',
 			'repo',
@@ -429,7 +438,7 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 		for (const event of callerFailures) logMcpEvent(event)
 	})
 
-	expect(payloads).toHaveLength(34)
+	expect(payloads).toHaveLength(35)
 	expect(JSON.parse(payloads[0]!)).toMatchObject({
 		tool: 'execute',
 		outcome: 'failure',
