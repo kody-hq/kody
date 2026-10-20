@@ -22,7 +22,7 @@ import {
 type EnablementRow = {
 	id: string
 	org_id: string
-	package_id: string | null
+	package_id: string
 	trigger_kind: string
 	trigger_name: string
 	instance_id: string
@@ -111,7 +111,7 @@ function toRecord(row: EnablementRow): EnablementRecord {
 export type NewEnablement = {
 	id?: string
 	orgId: string
-	packageId: string | null
+	packageId: string
 	triggerKind: EnablementTriggerKind
 	triggerName: string
 	instanceId: string

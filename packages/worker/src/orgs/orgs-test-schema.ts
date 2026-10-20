@@ -182,7 +182,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 			`CREATE TABLE IF NOT EXISTS enablements (
 				id TEXT PRIMARY KEY NOT NULL,
 				org_id TEXT NOT NULL,
-				package_id TEXT,
+				package_id TEXT NOT NULL,
 				trigger_kind TEXT NOT NULL,
 				trigger_name TEXT NOT NULL,
 				instance_id TEXT NOT NULL,

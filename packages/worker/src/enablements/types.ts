@@ -75,7 +75,7 @@ export type EnablementSenderKind = (typeof enablementSenderKinds)[number]
 export type EnablementRecord = {
 	id: string
 	orgId: OwnerId
-	packageId: string | null
+	packageId: string
 	triggerKind: EnablementTriggerKind
 	triggerName: string
 	instanceId: string

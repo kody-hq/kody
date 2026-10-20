@@ -64,7 +64,6 @@ export async function checkEnablementMappedCredentials(input: {
 	enablement: EnablementRecord
 }): Promise<EnablementPauseInput | null> {
 	const { packageId } = input.enablement
-	if (!packageId) return null
 	const picks = (
 		await loadTriggerPicks(input.env.APP_DB, input.enablement)
 	).filter((pick) => pick.ids.length > 0)
