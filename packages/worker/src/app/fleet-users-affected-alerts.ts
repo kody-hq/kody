@@ -1,6 +1,9 @@
 import { joinAppUrl } from '#worker/app-base-url.ts'
 import { resolveFleetPackageErrorRateEnvironment } from '#worker/usage/fleet-package-error-rate.ts'
 import {
+	clearFleetUsersAffectedPendingNotify,
+	fleetUsersAffectedKvKey,
+	fleetUsersAffectedStateTtlSeconds,
 	refreshFleetUsersAffected,
 	type FleetUsersAffectedEnv,
 } from '#worker/usage/fleet-users-affected.ts'
@@ -96,6 +99,14 @@ export async function refreshFleetUsersAffectedAndMaybeAlert(input: {
 				affectedUsers: refreshed.metrics.affectedUsers,
 				activeUsers: refreshed.metrics.activeUsers,
 			})
+		}
+		const kv = input.env.BUNDLE_ARTIFACTS_KV
+		if (kv && refreshed.state.pendingNotify != null) {
+			const cleared = clearFleetUsersAffectedPendingNotify(refreshed.state)
+			await kv.put(fleetUsersAffectedKvKey, JSON.stringify(cleared), {
+				expirationTtl: fleetUsersAffectedStateTtlSeconds,
+			})
+			return { ...refreshed, state: cleared, notify: 'notified' }
 		}
 		return { ...refreshed, notify: 'notified' }
 	} catch (error) {

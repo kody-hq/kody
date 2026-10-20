@@ -30,7 +30,8 @@ export const fleetUsersAffectedMaxHistorySamples =
 
 const analyticsEngineIdPattern = /^[A-Za-z0-9:._-]+$/
 const maxSqlBindingsPerChunk = 90
-const stateTtlSeconds = 14 * 24 * 60 * 60
+export const fleetUsersAffectedStateTtlSeconds = 14 * 24 * 60 * 60
+const stateTtlSeconds = fleetUsersAffectedStateTtlSeconds
 
 export type FleetUsersAffectedEnv = {
 	USAGE_EVENTS?: AnalyticsEngineDataset
@@ -78,6 +79,8 @@ export type FleetUsersAffectedState = {
 	lastMetrics: FleetUsersAffectedWindowMetrics | null
 	baselineAffectedMedian: number | null
 	baselineFractionMedian: number | null
+	/** Set until elevate/resolve admin dispatch succeeds; enables same-window replay. */
+	pendingNotify: FleetUsersAffectedTransitionAction | null
 }
 
 export type FleetUsersAffectedHistory = {
@@ -156,6 +159,7 @@ export function emptyFleetUsersAffectedState(): FleetUsersAffectedState {
 		lastMetrics: null,
 		baselineAffectedMedian: null,
 		baselineFractionMedian: null,
+		pendingNotify: null,
 	}
 }
 
@@ -194,6 +198,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 		lastMetrics: input.metrics,
 		baselineAffectedMedian: input.baselineAffectedMedian,
 		baselineFractionMedian: input.baselineFractionMedian,
+		pendingNotify: null,
 	}
 
 	if (elevated) {
@@ -210,6 +215,7 @@ export function evaluateFleetUsersAffectedTransition(input: {
 						consecutiveElevatedWindows: consecutive,
 						consecutiveClearWindows: 0,
 						incidentStartedAt: input.now.toISOString(),
+						pendingNotify: 'elevate',
 					},
 				}
 			}
@@ -251,7 +257,10 @@ export function evaluateFleetUsersAffectedTransition(input: {
 					status: 'ok',
 					consecutiveElevatedWindows: 0,
 					consecutiveClearWindows: 0,
-					incidentStartedAt: null,
+					// Keep incidentStartedAt until pending resolve notify clears
+					// so same-window retries can still build the resolved email.
+					incidentStartedAt: previous.incidentStartedAt,
+					pendingNotify: 'resolve',
 				},
 			}
 		}
@@ -315,6 +324,23 @@ export function parseFleetUsersAffectedState(
 			typeof record.baselineFractionMedian === 'number'
 				? record.baselineFractionMedian
 				: null,
+		pendingNotify:
+			record.pendingNotify === 'elevate' || record.pendingNotify === 'resolve'
+				? record.pendingNotify
+				: null,
+	}
+}
+
+/** Clear pendingNotify after a successful elevate/resolve admin dispatch. */
+export function clearFleetUsersAffectedPendingNotify(
+	state: FleetUsersAffectedState,
+): FleetUsersAffectedState {
+	if (state.pendingNotify == null) return state
+	return {
+		...state,
+		pendingNotify: null,
+		incidentStartedAt:
+			state.pendingNotify === 'resolve' ? null : state.incidentStartedAt,
 	}
 }
 
@@ -413,9 +439,25 @@ export function appendFleetUsersAffectedHistory(input: {
 	return { version: 1, samples }
 }
 
-export function baselineFromHistory(history: FleetUsersAffectedHistory) {
-	const affected = history.samples.map((sample) => sample.affectedUsers)
-	const fractions = history.samples
+/**
+ * Median baseline over history. When `excludeTrailing` is set (the current
+ * consecutive elevated streak), those newest samples stay out of the median so
+ * a debounce pair cannot raise 2×baseline above the still-hot second window.
+ */
+export function baselineFromHistory(
+	history: FleetUsersAffectedHistory,
+	options?: { excludeTrailing?: number },
+) {
+	const excludeTrailing = Math.max(0, options?.excludeTrailing ?? 0)
+	const samples =
+		excludeTrailing === 0
+			? history.samples
+			: history.samples.slice(
+					0,
+					Math.max(0, history.samples.length - excludeTrailing),
+				)
+	const affected = samples.map((sample) => sample.affectedUsers)
+	const fractions = samples
 		.map((sample) => sample.fraction)
 		.filter((value): value is number => typeof value === 'number')
 	return {
@@ -471,6 +513,7 @@ WHERE timestamp >= toDateTime('${toAnalyticsDateTime(input.windowStart)}')
 	AND blob2 IN (${metrics})
 	AND blob4 = 'error'
 	AND blob3 != ''
+GROUP BY package_id, metric, actor_id
 FORMAT JSON
 `.trim()
 }
@@ -498,11 +541,8 @@ export function foldFleetUsersAffectedWindow(input: {
 		if (!packageId || !actorId || !analyticsEngineIdPattern.test(packageId)) {
 			continue
 		}
-		const kodyId = input.packageKodyIds.get(packageId)
-		if (!kodyId) continue
-		const pkgActors = actorsByPackage.get(kodyId) ?? new Set<string>()
-		pkgActors.add(actorId)
-		actorsByPackage.set(kodyId, pkgActors)
+		// Metric breakdown does not need a resolved package name; count first so
+		// a failed D1 lookup still populates by_metric.
 		if (
 			(fleetPackageErrorRateMetrics as ReadonlyArray<string>).includes(metric)
 		) {
@@ -510,6 +550,11 @@ export function foldFleetUsersAffectedWindow(input: {
 			metricActors.add(actorId)
 			actorsByMetric.set(metric, metricActors)
 		}
+		const kodyId = input.packageKodyIds.get(packageId)
+		if (!kodyId) continue
+		const pkgActors = actorsByPackage.get(kodyId) ?? new Set<string>()
+		pkgActors.add(actorId)
+		actorsByPackage.set(kodyId, pkgActors)
 	}
 	const affectedUsers = Math.max(0, Math.round(input.affectedActorCount))
 	const packages = [...actorsByPackage.entries()]
@@ -613,9 +658,8 @@ export async function refreshFleetUsersAffected(input: {
 	type ActorRow = { actor_id?: string; event_count?: number | string }
 	let affectedRows: Array<ActorRow>
 	let activeRows: Array<ActorRow>
-	let packageActorRows: Array<FleetUsersAffectedPackageActorRow>
 	try {
-		;[affectedRows, activeRows, packageActorRows] = await Promise.all([
+		;[affectedRows, activeRows] = await Promise.all([
 			queryAnalyticsEngineSql<ActorRow>({
 				accountId,
 				apiToken,
@@ -638,7 +682,18 @@ export async function refreshFleetUsersAffected(input: {
 					outcomeFilter: 'any',
 				}),
 			}),
-			queryAnalyticsEngineSql<FleetUsersAffectedPackageActorRow>({
+		])
+	} catch (error) {
+		console.warn('fleet-users-affected-query-failed', error)
+		return { status: 'skipped', reason: 'query_failed' }
+	}
+
+	// Ranking / attribution is best-effort: a row-limit or timeout must not
+	// suppress elevate/resolve for the distinct-actor detection queries.
+	let packageActorRows: Array<FleetUsersAffectedPackageActorRow> = []
+	try {
+		packageActorRows =
+			await queryAnalyticsEngineSql<FleetUsersAffectedPackageActorRow>({
 				accountId,
 				apiToken,
 				baseUrl,
@@ -647,11 +702,9 @@ export async function refreshFleetUsersAffected(input: {
 					windowStart,
 					windowEnd,
 				}),
-			}),
-		])
+			})
 	} catch (error) {
-		console.warn('fleet-users-affected-query-failed', error)
-		return { status: 'skipped', reason: 'query_failed' }
+		console.warn('fleet-users-affected-package-actors-failed', error)
 	}
 
 	const packageIds = [
@@ -685,10 +738,32 @@ export async function refreshFleetUsersAffected(input: {
 	const history = parseFleetUsersAffectedHistory(
 		await kv.get(fleetUsersAffectedHistoryKvKey, 'json').catch(() => null),
 	)
-	// Baseline excludes the current window so a spike cannot inflate its own
-	// median before debounce completes.
+
+	// Same completed window: do not re-advance counters; replay pending notify.
+	if (previous?.lastWindowEnd === metrics.windowEnd) {
+		const pending =
+			previous.pendingNotify === 'elevate' ||
+			previous.pendingNotify === 'resolve'
+				? previous.pendingNotify
+				: 'none'
+		return {
+			status: 'refreshed',
+			action: pending,
+			elevated:
+				previous.status === 'firing' || previous.pendingNotify === 'elevate',
+			resolvedIncidentStartedAt:
+				pending === 'resolve' ? previous.incidentStartedAt : null,
+			metrics: previous.lastMetrics ?? metrics,
+			state: previous,
+		}
+	}
+
+	// Baseline excludes the current window (not yet appended) and any trailing
+	// samples already counted toward the in-progress elevate debounce.
 	const { baselineAffectedMedian, baselineFractionMedian } =
-		baselineFromHistory(history)
+		baselineFromHistory(history, {
+			excludeTrailing: previous?.consecutiveElevatedWindows ?? 0,
+		})
 
 	const transition = evaluateFleetUsersAffectedTransition({
 		previous,
@@ -706,10 +781,12 @@ export async function refreshFleetUsersAffected(input: {
 		fraction: metrics.fraction,
 	})
 
-	await kv.put(fleetUsersAffectedKvKey, JSON.stringify(transition.next), {
+	// History before state so a failed history write does not leave counters
+	// advanced without the sample that would explain them on retry.
+	await kv.put(fleetUsersAffectedHistoryKvKey, JSON.stringify(nextHistory), {
 		expirationTtl: stateTtlSeconds,
 	})
-	await kv.put(fleetUsersAffectedHistoryKvKey, JSON.stringify(nextHistory), {
+	await kv.put(fleetUsersAffectedKvKey, JSON.stringify(transition.next), {
 		expirationTtl: stateTtlSeconds,
 	})
 

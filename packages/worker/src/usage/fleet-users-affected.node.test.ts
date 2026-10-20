@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	appendFleetUsersAffectedHistory,
 	baselineFromHistory,
-	emptyFleetUsersAffectedState,
+	buildFleetUsersAffectedPackageActorQuery,
 	evaluateFleetUsersAffectedTransition,
 	fleetUsersAffectedBaselineFactor,
 	fleetUsersAffectedMinAffected,
@@ -88,6 +88,20 @@ test('medianOf and history baseline', () => {
 		baselineAffectedMedian: 3,
 		baselineFractionMedian: 0.03,
 	})
+
+	const withSpike = appendFleetUsersAffectedHistory({
+		history: withSecond,
+		windowEnd: 'c',
+		affectedUsers: 20,
+		activeUsers: 100,
+		fraction: 0.2,
+	})
+	// Debounce pair: exclude the first elevated sample so 2×baseline stays
+	// below the still-hot second window.
+	expect(baselineFromHistory(withSpike, { excludeTrailing: 1 })).toEqual({
+		baselineAffectedMedian: 3,
+		baselineFractionMedian: 0.03,
+	})
 })
 
 test('debounce elevate once, no repeats while firing, resolve then re-arm', () => {
@@ -119,6 +133,7 @@ test('debounce elevate once, no repeats while firing, resolve then re-arm', () =
 	})
 	expect(second.action).toBe('elevate')
 	expect(second.next.status).toBe('firing')
+	expect(second.next.pendingNotify).toBe('elevate')
 
 	const stillHot = evaluateFleetUsersAffectedTransition({
 		previous: second.next,
@@ -150,16 +165,19 @@ test('debounce elevate once, no repeats while firing, resolve then re-arm', () =
 	})
 	expect(clear2.action).toBe('resolve')
 	expect(clear2.next.status).toBe('ok')
+	expect(clear2.next.pendingNotify).toBe('resolve')
+	expect(clear2.next.incidentStartedAt).toBe(second.next.incidentStartedAt)
 	expect(clear2.next).toMatchObject({
-		...emptyFleetUsersAffectedState(),
 		lastWindowEnd: calm.windowEnd,
 		lastMetrics: calm,
 		baselineAffectedMedian: 2,
 		baselineFractionMedian: 0.02,
+		consecutiveElevatedWindows: 0,
+		consecutiveClearWindows: 0,
 	})
 
 	const rearmElevate = evaluateFleetUsersAffectedTransition({
-		previous: clear2.next,
+		previous: { ...clear2.next, pendingNotify: null, incidentStartedAt: null },
 		metrics: hot,
 		baselineAffectedMedian: 2,
 		baselineFractionMedian: 0.02,
@@ -212,4 +230,29 @@ test('fold ranks packages by affected users and labels >50% dominant', () => {
 		metric: 'package_export',
 		affected_users: 6,
 	})
+})
+
+test('fold keeps byMetric when package name lookup is empty', () => {
+	const folded = foldFleetUsersAffectedWindow({
+		windowStart: new Date('2026-10-19T18:00:00.000Z'),
+		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
+		affectedActorCount: 2,
+		activeActorCount: 10,
+		packageActorRows: [
+			{ package_id: 'pkg-a', metric: 'job_run', actor_id: 'u1' },
+			{ package_id: 'pkg-a', metric: 'job_run', actor_id: 'u2' },
+		],
+		packageKodyIds: new Map(),
+	})
+	expect(folded.packages).toEqual([])
+	expect(folded.byMetric).toEqual([{ metric: 'job_run', affected_users: 2 }])
+})
+
+test('buildFleetUsersAffectedPackageActorQuery aggregates distinct tuples', () => {
+	const query = buildFleetUsersAffectedPackageActorQuery({
+		dataset: 'USAGE_EVENTS',
+		windowStart: new Date('2026-10-19T18:00:00.000Z'),
+		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
+	})
+	expect(query).toContain('GROUP BY package_id, metric, actor_id')
 })
