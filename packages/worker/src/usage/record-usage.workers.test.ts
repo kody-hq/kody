@@ -48,7 +48,7 @@ async function recordAll(
 
 const blobRow = (userId: string, blobs: Array<string>) => {
 	const padded = [userId, ...blobs]
-	while (padded.length < 12) padded.push('')
+	while (padded.length < 13) padded.push('')
 	if (!padded[usageEventBlobIndexes.actorUserId]) {
 		padded[usageEventBlobIndexes.actorUserId] = userId
 	}
