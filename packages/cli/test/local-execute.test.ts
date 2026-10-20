@@ -966,6 +966,10 @@ test('runLocalExecute stops before starting workerd when the token or flag is re
 			assert.match(error.message, /cli_command/)
 			assert.match(error.message, /never ask a human to paste a token/)
 			assert.match(error.message, /kody login/)
+			assert.match(
+				error.message,
+				/unset or replace that rejected value before retrying/,
+			)
 			return true
 		},
 	)

@@ -157,9 +157,16 @@ export function notAuthenticatedMessage(
 /**
  * 401 when a scoped `kody_at_…` was rejected. Same agent-first guidance as
  * missing auth (do not tell agents to ask a human for a fresh token).
+ * Explicit `--token` / `KODY_API_TOKEN` still win over a freshly stored
+ * bootstrap token, so say to clear or replace them before retrying.
  */
 export function rejectedApiTokenMessage(detail = ''): string {
-	return `Kody rejected the API token (expired, revoked, or malformed). ${notAuthenticatedGuidance()}${detail}`
+	return (
+		`Kody rejected the API token (expired, revoked, or malformed). ` +
+		`${notAuthenticatedGuidance()} ` +
+		`If you set --token or ${apiTokenEnvVar}, unset or replace that rejected value before retrying so the stored bootstrap token is used.` +
+		detail
+	)
 }
 
 /**
