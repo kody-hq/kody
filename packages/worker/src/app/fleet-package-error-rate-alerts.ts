@@ -127,10 +127,9 @@ export async function refreshFleetPackageErrorRateAndMaybeAlert(input: {
 			lastAlertEventId: event.event_id,
 		}
 		await writeFleetPackageErrorRateSnapshot(kv, snapshot)
-		const cooldownMinutes =
-			refreshed.elevation.kind === 'day'
-				? dayCooldownMinutes
-				: hourCooldownMinutes
+		// Keep one shared KV key readable for the longest cadence so an hour
+		// page cannot expire day cooldown state early.
+		const cooldownMinutes = Math.max(dayCooldownMinutes, hourCooldownMinutes)
 		const cooldownState: FleetPackageErrorRateAlertCooldownState = {
 			version: 1,
 			alertedAtMs: now.getTime(),
@@ -200,11 +199,11 @@ export function shouldSuppressFleetPackageErrorRateAlert(input: {
 export function parseFleetPackageErrorRateAlertCooldownState(
 	value: unknown,
 ): FleetPackageErrorRateAlertCooldownState | null {
-	if (typeof value === 'string') {
-		const legacyMs = Number(value)
+	// Legacy KV values were a millisecond timestamp string. After JSON.parse
+	// that becomes a number; accept both so in-flight cooldowns survive deploy.
+	if (typeof value === 'number' || typeof value === 'string') {
+		const legacyMs = typeof value === 'number' ? value : Number(value)
 		if (!Number.isFinite(legacyMs)) return null
-		// Legacy timestamp-only cooldown: treat as hour window with unknown
-		// identity so time-based suppression still works.
 		return {
 			version: 1,
 			alertedAtMs: legacyMs,

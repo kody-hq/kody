@@ -88,16 +88,20 @@ test('hour window keeps six-hour cooldown and same-window identity', () => {
 	).toBe(true)
 })
 
-test('parseFleetPackageErrorRateAlertCooldownState accepts legacy timestamp strings', () => {
-	const legacy = parseFleetPackageErrorRateAlertCooldownState(
-		String(Date.parse('2026-10-19T19:00:00.000Z')),
-	)
+test('parseFleetPackageErrorRateAlertCooldownState accepts legacy timestamp strings and JSON numbers', () => {
+	const ms = Date.parse('2026-10-19T19:00:00.000Z')
+	const legacy = parseFleetPackageErrorRateAlertCooldownState(String(ms))
 	expect(legacy).toMatchObject({
 		version: 1,
+		alertedAtMs: ms,
 		windowKind: 'hour',
 		windowEnd: '',
 		topOwnerUsername: null,
 	})
+	// KV read path: JSON.parse('"1724…"') → number, not string.
+	expect(
+		parseFleetPackageErrorRateAlertCooldownState(JSON.parse(String(ms))),
+	).toMatchObject({ alertedAtMs: ms, windowKind: 'hour' })
 	expect(
 		parseFleetPackageErrorRateAlertCooldownState({
 			version: 1,
