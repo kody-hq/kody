@@ -5,8 +5,8 @@ summary:
   Event topics that dispatch only to packages saved by users who hold the
   admin role: system inbox mail, platform feedback, community activity and
   listing publishes, status incidents, fleet health, package-owner error spikes,
-  entitlement crossings, auth and email delivery bursts, and account lifecycle
-  notifications.
+  users-affected platform incidents, entitlement crossings, auth and email
+  delivery bursts, and account lifecycle notifications.
 category: platform
 adminOnly: true
 ---
@@ -406,7 +406,7 @@ spike emails again.
 **Do not page on this topic.** The owner already received mail. Operator
 notifier packages (for example `@kentcdodds/admin-event-notify`) should treat it
 as audit/triage only — subscribe for history, not for paging Kent. Prefer
-`fleet.users_affected.elevated` (when shipped) for platform pages.
+`fleet.users_affected.elevated` for platform pages.
 
 Handlers receive:
 
@@ -448,6 +448,80 @@ Idempotency keys include the topic, event id, and subscriber package id.
 
 Per-account notification preference for this owner email is not yet in Account
 settings (default on); track that as a follow-up.
+
+## `fleet.users_affected.elevated` / `fleet.users_affected.resolved` (admins)
+
+Every 15 minutes the `fleet_users_affected_alert` lane counts distinct
+**actors** (`blob10`, falling back to billing id / automation keys) who ran
+package-runtime metrics (`package_export`, `package_static_call`, `job_run`,
+`workflow_run`) in the last completed window, and how many of those actors had
+≥1 `error` outcome. Baseline is the median of those metrics over the trailing ~7
+days of 15-minute samples stored in KV.
+
+The lane elevates when, for **two consecutive** windows:
+
+- affected users ≥ `max(5, 2 × baseline median)`, and
+- affected/active fraction is at least 5 percentage points above the baseline
+  fraction median.
+
+A single owner's broken package that only hurts that owner (1 affected user)
+cannot clear the volume floor. When one package still accounts for more than
+half of affected users in a true multi-user incident, the payload labels
+`dominant_package` but the event still fires.
+
+One `fleet.users_affected.elevated` fan-out per incident (no repeats while
+firing). After two consecutive clear windows, one
+`fleet.users_affected.resolved` fan-out re-arms the incident. Operator notifier
+packages (for example `@kentcdodds/admin-event-notify`) should **page on
+elevated** and send a single resolved notice on resolved — this is the platform
+replacement for paging on concentrated `fleet.package_error_rate.elevated`
+spikes.
+
+Handlers receive (elevated):
+
+```ts
+type FleetUsersAffectedElevatedEvent = {
+	event: 'fleet.users_affected.elevated'
+	event_id: string
+	status_url: string
+	insights_url: string
+	environment: string
+	observed_at: string
+	incident_started_at: string
+	window: {
+		start: string
+		end: string
+		affected_users: number
+		active_users: number
+		fraction: number | null
+	}
+	baseline: {
+		affected_users_median: number | null
+		fraction_median: number | null
+	}
+	packages: Array<{
+		kody_id: string
+		affected_users: number
+		share: number
+	}>
+	by_metric: Array<{
+		metric:
+			'package_export' | 'package_static_call' | 'job_run' | 'workflow_run'
+		affected_users: number
+	}>
+	dominant_package: {
+		kody_id: string
+		affected_users: number
+		share: number
+	} | null
+	deploy: { sha: string | null; timestamp: string | null }
+}
+```
+
+Resolved omits package rankings and deploy metadata; it carries the clear window
+counts plus `incident_started_at` from the episode that just ended. Payloads
+omit user ids, package UUIDs, emails, error strings, and logs. Idempotency keys
+include the topic, event id, and subscriber package id.
 
 ## `fleet.entitlement.crossed` (admins)
 

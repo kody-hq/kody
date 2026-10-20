@@ -35,3 +35,15 @@ test('gift reconciliation is dispatched on every existing five-minute tick', () 
 		).toContain('second_agent_gift_reconciliation')
 	}
 })
+
+test('fleet users-affected alert runs on the fifteen-minute cadence', () => {
+	expect(
+		getScheduledLaneCadence(new Date('2026-10-19T12:00:00.000Z')),
+	).toContain('fleet_users_affected_alert')
+	expect(
+		getScheduledLaneCadence(new Date('2026-10-19T12:15:00.000Z')),
+	).toContain('fleet_users_affected_alert')
+	expect(
+		getScheduledLaneCadence(new Date('2026-10-19T12:05:00.000Z')),
+	).not.toContain('fleet_users_affected_alert')
+})

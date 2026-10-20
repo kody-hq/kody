@@ -4,6 +4,7 @@ import { checkAuthDenialBurstAndNotify } from '#app/auth-denial-alerts.ts'
 import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
 import { refreshFleetPackageErrorRateAndMaybeAlert } from '#app/fleet-package-error-rate-alerts.ts'
+import { refreshFleetUsersAffectedAndMaybeAlert } from '#app/fleet-users-affected-alerts.ts'
 import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-error-spike-alerts.ts'
 import { pruneRetention } from '#app/retention.ts'
 import { pruneUnverifiedAccounts } from '#worker/account/unverified-account-purge.ts'
@@ -328,6 +329,11 @@ export async function runScheduledLane(input: {
 			})
 		case 'dlq_depth_alert':
 			return checkDlqDepthAndAlert({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'fleet_users_affected_alert':
+			return refreshFleetUsersAffectedAndMaybeAlert({
 				env: input.env,
 				now: input.scheduledAt,
 			})

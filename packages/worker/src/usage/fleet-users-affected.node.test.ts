@@ -1,0 +1,215 @@
+import { expect, test } from 'vitest'
+import {
+	appendFleetUsersAffectedHistory,
+	baselineFromHistory,
+	emptyFleetUsersAffectedState,
+	evaluateFleetUsersAffectedTransition,
+	fleetUsersAffectedBaselineFactor,
+	fleetUsersAffectedMinAffected,
+	fleetUsersAffectedMinFractionDelta,
+	foldFleetUsersAffectedWindow,
+	isFleetUsersAffectedElevated,
+	medianOf,
+	type FleetUsersAffectedWindowMetrics,
+} from './fleet-users-affected.ts'
+
+function metrics(input: {
+	affectedUsers: number
+	activeUsers: number
+	windowEnd?: string
+}): FleetUsersAffectedWindowMetrics {
+	return {
+		windowStart: '2026-10-19T18:00:00.000Z',
+		windowEnd: input.windowEnd ?? '2026-10-19T18:15:00.000Z',
+		affectedUsers: input.affectedUsers,
+		activeUsers: input.activeUsers,
+		fraction:
+			input.activeUsers <= 0 ? null : input.affectedUsers / input.activeUsers,
+		packages: [],
+		byMetric: [],
+		dominantPackage: null,
+	}
+}
+
+test('users-affected thresholds require volume floor and fraction lift', () => {
+	expect(fleetUsersAffectedMinAffected).toBe(5)
+	expect(fleetUsersAffectedBaselineFactor).toBe(2)
+	expect(fleetUsersAffectedMinFractionDelta).toBe(0.05)
+
+	expect(
+		isFleetUsersAffectedElevated({
+			affectedUsers: 4,
+			activeUsers: 100,
+			baselineAffectedMedian: 1,
+			baselineFractionMedian: 0.01,
+		}),
+	).toBe(false)
+
+	expect(
+		isFleetUsersAffectedElevated({
+			affectedUsers: 10,
+			activeUsers: 100,
+			baselineAffectedMedian: 3,
+			baselineFractionMedian: 0.02,
+		}),
+	).toBe(true)
+
+	// Single-owner noise: one affected user cannot clear max(5, 2x baseline).
+	expect(
+		isFleetUsersAffectedElevated({
+			affectedUsers: 1,
+			activeUsers: 1,
+			baselineAffectedMedian: 0,
+			baselineFractionMedian: 0,
+		}),
+	).toBe(false)
+})
+
+test('medianOf and history baseline', () => {
+	expect(medianOf([])).toBeNull()
+	expect(medianOf([1, 3, 2])).toBe(2)
+	expect(medianOf([1, 2, 3, 4])).toBe(2.5)
+
+	const history = appendFleetUsersAffectedHistory({
+		history: { version: 1, samples: [] },
+		windowEnd: 'a',
+		affectedUsers: 2,
+		activeUsers: 100,
+		fraction: 0.02,
+	})
+	const withSecond = appendFleetUsersAffectedHistory({
+		history,
+		windowEnd: 'b',
+		affectedUsers: 4,
+		activeUsers: 100,
+		fraction: 0.04,
+	})
+	expect(baselineFromHistory(withSecond)).toEqual({
+		baselineAffectedMedian: 3,
+		baselineFractionMedian: 0.03,
+	})
+})
+
+test('debounce elevate once, no repeats while firing, resolve then re-arm', () => {
+	const now = new Date('2026-10-19T18:20:00.000Z')
+	const hot = metrics({ affectedUsers: 12, activeUsers: 100 })
+	const calm = metrics({
+		affectedUsers: 1,
+		activeUsers: 100,
+		windowEnd: '2026-10-19T18:30:00.000Z',
+	})
+
+	const first = evaluateFleetUsersAffectedTransition({
+		previous: null,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now,
+	})
+	expect(first.action).toBe('none')
+	expect(first.next.status).toBe('ok')
+	expect(first.next.consecutiveElevatedWindows).toBe(1)
+
+	const second = evaluateFleetUsersAffectedTransition({
+		previous: first.next,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T18:35:00.000Z'),
+	})
+	expect(second.action).toBe('elevate')
+	expect(second.next.status).toBe('firing')
+
+	const stillHot = evaluateFleetUsersAffectedTransition({
+		previous: second.next,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T18:50:00.000Z'),
+	})
+	expect(stillHot.action).toBe('none')
+	expect(stillHot.next.status).toBe('firing')
+
+	const clear1 = evaluateFleetUsersAffectedTransition({
+		previous: stillHot.next,
+		metrics: calm,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:05:00.000Z'),
+	})
+	expect(clear1.action).toBe('none')
+	expect(clear1.next.status).toBe('firing')
+	expect(clear1.next.consecutiveClearWindows).toBe(1)
+
+	const clear2 = evaluateFleetUsersAffectedTransition({
+		previous: clear1.next,
+		metrics: calm,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:20:00.000Z'),
+	})
+	expect(clear2.action).toBe('resolve')
+	expect(clear2.next.status).toBe('ok')
+	expect(clear2.next).toMatchObject({
+		...emptyFleetUsersAffectedState(),
+		lastWindowEnd: calm.windowEnd,
+		lastMetrics: calm,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+	})
+
+	const rearmElevate = evaluateFleetUsersAffectedTransition({
+		previous: clear2.next,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:35:00.000Z'),
+	})
+	expect(rearmElevate.action).toBe('none')
+	const rearmElevate2 = evaluateFleetUsersAffectedTransition({
+		previous: rearmElevate.next,
+		metrics: hot,
+		baselineAffectedMedian: 2,
+		baselineFractionMedian: 0.02,
+		now: new Date('2026-10-19T19:50:00.000Z'),
+	})
+	expect(rearmElevate2.action).toBe('elevate')
+})
+
+test('fold ranks packages by affected users and labels >50% dominant', () => {
+	const folded = foldFleetUsersAffectedWindow({
+		windowStart: new Date('2026-10-19T18:00:00.000Z'),
+		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
+		affectedActorCount: 10,
+		activeActorCount: 50,
+		packageActorRows: [
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u1' },
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u2' },
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u3' },
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u4' },
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u5' },
+			{ package_id: 'pkg-a', metric: 'package_export', actor_id: 'u6' },
+			{ package_id: 'pkg-b', metric: 'job_run', actor_id: 'u7' },
+			{ package_id: 'pkg-b', metric: 'job_run', actor_id: 'u8' },
+		],
+		packageKodyIds: new Map([
+			['pkg-a', 'popular-broken'],
+			['pkg-b', 'other'],
+		]),
+	})
+	expect(folded.packages[0]).toMatchObject({
+		kody_id: 'popular-broken',
+		affected_users: 6,
+		share: 0.6,
+	})
+	expect(folded.dominantPackage).toMatchObject({
+		kody_id: 'popular-broken',
+		share: 0.6,
+	})
+	expect(
+		folded.byMetric.find((row) => row.metric === 'package_export'),
+	).toEqual({
+		metric: 'package_export',
+		affected_users: 6,
+	})
+})

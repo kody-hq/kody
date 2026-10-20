@@ -678,6 +678,7 @@ or did not dispatch, or checking which packages subscribe to
 `integration.auth.succeeded`, `mcp.server.disconnected`,
 `mcp.server.reconnected`, or admin-only topics such as `status.incident.opened`,
 `fleet.package_error_rate.elevated`, `fleet.package_owner_error_spike`,
+`fleet.users_affected.elevated`, `fleet.users_affected.resolved`,
 `fleet.entitlement.crossed`, `auth.denial.burst`, `email.delivery.burst`,
 `user.created`, `user.deleted`, `user.email_verification.failed`,
 `user.email_verification.stalled`, `user.email_outbound.paused`, and

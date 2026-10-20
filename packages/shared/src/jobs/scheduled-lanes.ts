@@ -29,6 +29,7 @@ export const scheduledLaneNames = [
 	'dr_export',
 	'dr_export_watchdog',
 	'job_schedule_watchdog',
+	'fleet_users_affected_alert',
 	'org_audit_outbox',
 	'package_app_custom_hostnames_reconcile',
 	'follow_maintenance',
@@ -252,6 +253,11 @@ export function shouldRunJobScheduleWatchdogCron(now: Date) {
 	return now.getUTCMinutes() % jobScheduleWatchdogIntervalMinutes === 0
 }
 
+/** Same 15-minute cadence as the job schedule watchdog. */
+export function shouldRunFleetUsersAffectedAlertCron(now: Date) {
+	return now.getUTCMinutes() % jobScheduleWatchdogIntervalMinutes === 0
+}
+
 /**
  * Which lanes a cron tick at `scheduledAt` should dispatch. DR export lanes
  * are dispatched on cadence regardless of configuration; the main worker
@@ -311,6 +317,9 @@ export function getScheduledLaneCadence(
 	}
 	if (shouldRunJobScheduleWatchdogCron(scheduledAt)) {
 		lanes.push('job_schedule_watchdog')
+	}
+	if (shouldRunFleetUsersAffectedAlertCron(scheduledAt)) {
+		lanes.push('fleet_users_affected_alert')
 	}
 	return lanes
 }

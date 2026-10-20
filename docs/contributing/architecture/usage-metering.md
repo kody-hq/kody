@@ -933,10 +933,20 @@ GROUP BY stage
   stays `alerted` until two consecutive healthy hours (rate under 5% or errors
   under 5) or 24h of inactivity. See
   [Admin events](../../guides/admin-events.md#fleetpackageownererrorspike-admins).
+- **Fleet users affected** (every 15 minutes, `fleet_users_affected_alert`):
+  distinct actors with ≥1 errored package-runtime event vs active actors in the
+  window, compared to a trailing 7-day median of 15-minute samples. Elevates
+  after two consecutive windows above `max(5, 2× baseline)` with a meaningful
+  fraction lift; resolves after two clear windows. Fans
+  `fleet.users_affected.elevated` / `.resolved` once per transition. KV state
+  `ops-alert:fleet-users-affected:v1` plus history
+  `ops-alert:fleet-users-affected:history:v1`. See
+  [Admin events](../../guides/admin-events.md#fleetusersaffectedelevated--fleetusersaffectedresolved-admins).
 
-  Tracking: remove this elevated alert after `fleet.users_affected.elevated` has
-  run ~1 week with sane behavior (owner spikes already notify publishers via
-  `fleet.package_owner_error_spike`).
+  Tracking: remove `fleet.package_error_rate.elevated` after
+  `fleet.users_affected.elevated` has run ~1 week with sane behavior (owner
+  spikes already notify publishers via `fleet.package_owner_error_spike`); see
+  #4086.
 
 ## Usage campaign
 
