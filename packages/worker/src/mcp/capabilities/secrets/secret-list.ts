@@ -6,6 +6,7 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { packageHasImplicitUserSecretReadAccess } from '#mcp/secrets/package-access.ts'
+import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
 import { loadSecretListScope } from './authorize-secret.ts'
@@ -35,19 +36,21 @@ export const secretListCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
-			const packageId =
-				ctx.callerContext.storageContext?.packageId?.trim() || null
+			// Same declaring-package stamp as secretSet / secretDelete so an
+			// imported provider export lists that package's bucket, not the
+			// consumer run's. Stamps outside the host grant set fall back to
+			// the run package id.
+			const { authorityPackageId, storageContext } =
+				resolveCallerSecretAuthority({
+					storageContext: ctx.callerContext.storageContext,
+				})
+			const packageId = authorityPackageId?.trim() || null
 			const listScope = await loadSecretListScope(ctx, 'secret:use')
 			const listed = await listSecrets({
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				scope: args.scope ?? null,
-				storageContext: {
-					sessionId: ctx.callerContext.storageContext?.sessionId ?? null,
-					appId: ctx.callerContext.storageContext?.appId ?? null,
-					packageId: ctx.callerContext.storageContext?.packageId ?? null,
-					storageId: ctx.callerContext.storageContext?.storageId ?? null,
-				},
+				storageContext,
 			})
 			const secrets = listed.filter((secret) =>
 				listScopeIncludes(listScope, secret.credentialId),

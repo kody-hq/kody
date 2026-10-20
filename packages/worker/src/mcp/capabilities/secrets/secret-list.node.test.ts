@@ -5,6 +5,10 @@ import {
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import {
+	runWithCurrentSecretAuthority,
+	runWithSecretAuthorityScope,
+} from '#mcp/secrets/secret-authority.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import { type ListedSecret } from '#mcp/secrets/types.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -212,4 +216,125 @@ test('secretList from execute returns caller-owned package metadata with package
 	])
 	expect(listed.secrets[0]).not.toHaveProperty('value')
 	expect(JSON.stringify(listed)).not.toContain('package-only-value')
+})
+
+test('secretList package scope uses declaring-package authority like secretSet', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyRepositoryMigrations(
+		sqlite,
+		new URL('../../../../migrations/', import.meta.url),
+	)
+	const env = {
+		APP_DB: createD1FromSqlite(sqlite),
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+		...createInMemoryUserMeterEnv().env,
+	} as Env
+	const userId = ownerIdFromStored('user-cross-pkg-list')
+	const providerPackageId = 'pkg-provider'
+	const consumerPackageId = 'pkg-consumer'
+	const secretValue = 'provider-secret-value-must-not-leak'
+	await secretService.saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'providerToken',
+		value: secretValue,
+		description: 'provider owned',
+		storageContext: {
+			sessionId: null,
+			appId: null,
+			packageId: providerPackageId,
+			storageId: providerPackageId,
+		},
+	})
+	await secretService.saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'consumerToken',
+		value: 'consumer-only-value',
+		storageContext: {
+			sessionId: null,
+			appId: null,
+			packageId: consumerPackageId,
+			storageId: consumerPackageId,
+		},
+	})
+
+	const consumerContext = {
+		env,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			baseUrl: 'https://example.com',
+			user: {
+				userId: personIdFromStored('user-cross-pkg-list'),
+				email: `${userId}@example.com`,
+				displayName: userId,
+			},
+			storageContext: {
+				sessionId: null,
+				appId: null,
+				packageId: consumerPackageId,
+				storageId: consumerPackageId,
+			},
+		}),
+	}
+
+	const direct = await secretListCapability.handler(
+		{ scope: 'package' },
+		{
+			env,
+			callerContext: createMcpCallerContext({
+				source: { kind: 'mcp-oauth' },
+				baseUrl: 'https://example.com',
+				user: {
+					userId: personIdFromStored('user-cross-pkg-list'),
+					email: `${userId}@example.com`,
+					displayName: userId,
+				},
+				storageContext: {
+					sessionId: null,
+					appId: null,
+					packageId: providerPackageId,
+					storageId: providerPackageId,
+				},
+			}),
+		},
+	)
+	expect(direct.secrets.map((secret) => secret.name)).toEqual(['providerToken'])
+	expect(direct.secrets[0]).toMatchObject({
+		scope: 'package',
+		package_id: providerPackageId,
+		disconnected: false,
+	})
+	expect(JSON.stringify(direct)).not.toContain(secretValue)
+
+	const imported = await runWithSecretAuthorityScope(
+		new Set([providerPackageId, consumerPackageId]),
+		() =>
+			runWithCurrentSecretAuthority(providerPackageId, () =>
+				secretListCapability.handler({ scope: 'package' }, consumerContext),
+			),
+	)
+	expect(imported.secrets.map((secret) => secret.name)).toEqual([
+		'providerToken',
+	])
+	expect(imported.secrets[0]).toMatchObject({
+		scope: 'package',
+		package_id: providerPackageId,
+		disconnected: false,
+	})
+	expect(JSON.stringify(imported)).not.toContain(secretValue)
+
+	const forged = await runWithSecretAuthorityScope(
+		new Set([consumerPackageId]),
+		() =>
+			runWithCurrentSecretAuthority(providerPackageId, () =>
+				secretListCapability.handler({ scope: 'package' }, consumerContext),
+			),
+	)
+	expect(forged.secrets.map((secret) => secret.name)).toEqual(['consumerToken'])
+	expect(forged.secrets[0]).toMatchObject({
+		package_id: consumerPackageId,
+	})
 })
