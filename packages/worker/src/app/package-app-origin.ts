@@ -86,6 +86,7 @@ import {
 	readCachedPackageAppAccessDecision,
 	readOrgAccessEpoch,
 } from '#app/package-app-access-decision.ts'
+import { maybeHandleLegacyPackageAppSubdomainMount } from '#worker/package-runtime/package-app-legacy-mount.ts'
 import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import {
 	pushServerTiming,
@@ -1305,6 +1306,14 @@ async function handleUserSubdomainRequest(input: {
 		}
 		return createUnmatchedPackageAppPathResponse()
 	}
+
+	const legacyMount = maybeHandleLegacyPackageAppSubdomainMount({
+		request,
+		env,
+		url,
+		packagePath,
+	})
+	if (legacyMount) return legacyMount
 
 	const retiredRedirect = await redirectRetiredPackageAppSlug({
 		env,

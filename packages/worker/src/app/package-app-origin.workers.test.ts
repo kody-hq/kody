@@ -521,6 +521,27 @@ test('user subdomain serves default robots.txt and 404s unknown .well-known', as
 	expect(apexRobots.status).toBe(404)
 })
 
+test('user subdomain permanently redirects HTML legacy /packages mounts to /{leaf}', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	const html = await workerFetch(
+		`${ownerPackageAppOrigin}/packages/demo/report?tab=1`,
+		{ headers: { Accept: 'text/html' } },
+	)
+	expect(html.status).toBe(308)
+	expect(html.headers.get('Location')).toBe('/demo/report?tab=1')
+
+	const json = await workerFetch(
+		`${ownerPackageAppOrigin}/packages/demo/report?tab=1`,
+		{ headers: { Accept: 'application/json' } },
+	)
+	// Quiet rewrite still dual-serves non-HTML (session gate applies).
+	expect(json.status).toBe(403)
+	expect(json.headers.get('X-Kody-Handoff')).toBe('required')
+})
+
 test('package apps stay inline on the app origin when no package-app origin is configured', async () => {
 	configureOrigins({ packageAppBaseUrl: undefined, runtime: 'preview' })
 	invalidatePackageAppOwnerCache({
