@@ -227,8 +227,8 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
  * so an old snapshot can carry any shape there (a string, an array, a map of
  * strings). That was never honored, so a non-empty key with no object-shaped
  * slot is dropped whole and the package stays undeclared. An empty map is a
- * valid declaration and stays. A retired `placement` is dropped, the way
- * `kody.app.runtime` is ignored on load.
+ * valid declaration and stays. Fill placement on a slot is kept when it matches
+ * the schema; an invalid placement makes that slot invalid (siblings stay).
  */
 function splitPublishedCredentials(
 	parsed: unknown,
@@ -248,7 +248,6 @@ function splitPublishedCredentials(
 	const valid: Array<[string, unknown]> = []
 	const invalid: Array<[string, string]> = []
 	for (const [name, slot] of Object.entries(credentials)) {
-		if (isPlainRecord(slot)) delete slot.placement
 		const result = packageCredentialsSchema.safeParse(
 			Object.fromEntries([[name, slot]]),
 		)

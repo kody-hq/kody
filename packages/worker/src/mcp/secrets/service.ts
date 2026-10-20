@@ -69,6 +69,7 @@ import {
 	type OrgAuditWriter,
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
+import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstSecret } from '#worker/identity/activation-stamps.ts'
 
@@ -404,6 +405,8 @@ export async function setSecretsAtomically(input: {
 	}>
 	storageContext?: StorageContext | null
 	waitUntil?: (promise: Promise<unknown>) => void
+	/** When set with a full Env, package-scope inserts read manifest placement. */
+	baseUrl?: string
 }): Promise<Array<SecretMetadata>> {
 	if (input.secrets.length === 0) {
 		throw new Error('At least one secret is required.')
@@ -469,6 +472,7 @@ export async function setSecretsAtomically(input: {
 		})),
 		storageContext,
 		waitUntil: input.waitUntil,
+		baseUrl: input.baseUrl,
 	})
 }
 
@@ -641,6 +645,7 @@ async function saveSecretsAtomically(input: {
 	}>
 	storageContext?: StorageContext | null
 	waitUntil?: (promise: Promise<unknown>) => void
+	baseUrl?: string
 }): Promise<Array<SecretMetadata>> {
 	const bucket = await getOrCreateSecretBucket({
 		db: input.env.APP_DB,
@@ -656,9 +661,17 @@ async function saveSecretsAtomically(input: {
 		encryptedValue: string
 		expiresAt: string | null
 		existingEntry: Awaited<ReturnType<typeof getSecretEntry>>
+		placementOnInsert?: CredentialFillPlacement | null
 	}> = []
 	let newSecretCount = 0
 	let requestedStorageBytes = 0
+	const packageIdForPlacement =
+		input.scope === 'package'
+			? input.storageContext?.packageId?.trim() ||
+				input.storageContext?.storageId?.trim() ||
+				bucket.binding_key ||
+				''
+			: ''
 
 	for (const secret of input.secrets) {
 		const name = secret.name.trim()
@@ -703,6 +716,18 @@ async function saveSecretsAtomically(input: {
 					}
 				: null,
 		})
+		let placementOnInsert: CredentialFillPlacement | undefined
+		if (existingEntry == null && packageIdForPlacement && input.baseUrl) {
+			placementOnInsert = await readDeclaredPackageSecretFillPlacement({
+				// Manifest load needs Artifacts bindings; failures fall back to
+				// the headers-only default inside the helper.
+				env: input.env as Env,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				packageId: packageIdForPlacement,
+				secretName: name,
+			})
+		}
 		prepared.push({
 			name,
 			description,
@@ -712,6 +737,7 @@ async function saveSecretsAtomically(input: {
 				requested: secret.expiresAt,
 			}),
 			existingEntry,
+			...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
 		})
 	}
 
@@ -744,6 +770,9 @@ async function saveSecretsAtomically(input: {
 			expires_at: entry.expiresAt,
 			created_at: entry.existingEntry?.created_at ?? now,
 			updated_at: now,
+			...(entry.placementOnInsert !== undefined
+				? { placementOnInsert: entry.placementOnInsert }
+				: {}),
 		})),
 	})
 	if (input.scope === 'user' || input.scope === 'package') {
@@ -801,7 +830,7 @@ async function saveSecretsAtomically(input: {
 			expiresAt: earliestSecretExpiresAt(entry.expiresAt, bucket.expires_at),
 			placement: entry.existingEntry
 				? readCredentialFillPlacement(entry.existingEntry.placement_json)
-				: defaultNewCredentialFillPlacement,
+				: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement),
 		}),
 	)
 }

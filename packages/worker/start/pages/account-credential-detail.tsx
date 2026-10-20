@@ -319,12 +319,22 @@ export function renderCredentialDetail(input: {
 						'Fill placement',
 						<div css={{ display: 'grid', gap: spacing.xs }}>
 							{credential.scope === 'org' ? (
-								<CredentialFillPlacementEditor
-									key={`${credential.id}:placement`}
-									credentialId={credential.id}
-									placement={credential.placement}
-									orgSlug={input.orgSlug}
-								/>
+								<>
+									<CredentialFillPlacementEditor
+										key={`${credential.id}:placement`}
+										credentialId={credential.id}
+										placement={credential.placement}
+										orgSlug={input.orgSlug}
+									/>
+									{credential.packageId ? (
+										<p css={mutedCss}>
+											Package-scope secrets are editable here. A published
+											package may also declare placement on the matching{' '}
+											<code css={codeCss}>kody.credentials</code> need; Connect
+											and re-insert after Disconnect apply that declaration.
+										</p>
+									) : null}
+								</>
 							) : (
 								<>
 									<code css={codeCss}>

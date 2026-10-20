@@ -195,12 +195,17 @@ credentials; opt-in types that a package can declare are described in
   for your instance of a trigger. It writes nothing and returns an approval
   link. The mappings apply when you open the link and click Approve, which
   applies them all at once and turns on any trigger they map.
-- Slots take no `placement`. Publish rejects one with a message to remove it.
-  Published versions that include it load with it ignored. The fetch gateway
-  fills `{{secret:NAME}}` and `{{integration-token:NAME}}` anywhere in a request
-  (a header, the URL path or query, or a text body) when the request is HTTPS
-  and its host is one the secret or integration allows, the same as for a
-  package without slots. See
+- Optional `placement` on a slot declares which request parts placeholders for
+  that package-scope secret may fill (headers, query, path, and/or body). It is
+  reviewable at publish and applied when the secret is inserted (Connect,
+  `secretSet`, or re-insert after Disconnect), instead of the headers-only
+  default. Package runtimes cannot set placement themselves; the owner can edit
+  it on the credential detail page. Without a declaration, new package-scope
+  secrets still default to headers-only. See
+  [Credentials](../guides/credentials.md#keys-and-placeholders) and
+  [ADR 0068 amendment 2026-10-20](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-20-package-manifest-fill-placement).
+  The fetch gateway still fills today; enforcement ships later. Placeholders
+  work over HTTPS to a host the secret or integration allows. See
   [Placeholders in `fetch`](./secrets-and-values.md#placeholders-in-fetch).
 
 #### Declare what a stamped package may use

@@ -206,7 +206,11 @@ Declare `kind` only when the package needs a specific shape:
   example).
 - A second account from the same provider gets its own key with an explicit
   `provider`.
-- Needs have no hosts or placement fields. Those belong to the credential.
+- Needs have no hosts or inject fields (those belong to the credential). An
+  optional `placement` on a need is the reviewable default for package-scope
+  secrets that need inserts as that name (Connect / `secretSet` / re-insert
+  after Disconnect), instead of headers-only. Package runtimes still cannot set
+  placement themselves; the owner can edit it on the credential detail page.
 
 ### Let app visitors use your credential
 

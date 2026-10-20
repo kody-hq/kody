@@ -498,18 +498,27 @@ export async function upsertSecretEntriesAtomically(input: {
 		Omit<SecretEntryRow, 'id' | 'created_at' | 'updated_at'> & {
 			created_at?: string
 			updated_at?: string
+			/**
+			 * Placement written only on INSERT for this row. Omitted →
+			 * headers-only default. Explicit `null` preserves anywhere.
+			 */
+			placementOnInsert?: CredentialFillPlacement | null
 		}
 	>
 }): Promise<void> {
 	if (input.rows.length === 0) return
 	await input.db.batch(
-		input.rows.map((row) =>
-			prepareUpsertSecretEntryStatement({
+		input.rows.map((row) => {
+			const { placementOnInsert, ...entry } = row
+			return prepareUpsertSecretEntryStatement({
 				db: input.db,
-				row,
-				newCredentialPlacementJson,
-			}),
-		),
+				row: entry,
+				newCredentialPlacementJson:
+					placementOnInsert !== undefined
+						? serializeCredentialFillPlacement(placementOnInsert ?? null)
+						: newCredentialPlacementJson,
+			})
+		}),
 	)
 }
 

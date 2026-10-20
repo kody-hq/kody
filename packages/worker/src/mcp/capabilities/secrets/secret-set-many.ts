@@ -141,6 +141,7 @@ export const secretSetManyCapability = defineDomainCapability(
 					expiresAt: secret.expires_at,
 				})),
 				storageContext,
+				baseUrl: ctx.callerContext.baseUrl,
 			})
 			return {
 				ok: true as const,

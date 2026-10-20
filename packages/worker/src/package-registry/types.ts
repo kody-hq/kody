@@ -2,6 +2,7 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { communityPackageCategories } from '#universal/community-categories.ts'
 import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
+import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -127,9 +128,6 @@ export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors takes only true. Omit it to keep app visitors from using the owner’s credential.'
 
-export const retiredCredentialPlacementMessage =
-	'kody.credentials slots take no placement: the fetch gateway fills a credential anywhere in a request (a header, the URL path or query, or the body) to a host the credential allows, over HTTPS. Remove placement.'
-
 /**
  * Kinds that satisfy a need with no declared `kind`: any fetch-capable
  * credential for the provider (ADR 0068 amendment 2026-10-12).
@@ -175,7 +173,13 @@ export const packageCredentialSlotSchema = z.strictObject({
 	ownerCredentialForVisitors: z
 		.literal(true, { error: ownerCredentialForVisitorsValueMessage })
 		.optional(),
-	placement: z.never({ error: retiredCredentialPlacementMessage }).optional(),
+	/**
+	 * Optional fill placement for package-scope secrets this need names.
+	 * Applied on Connect / secretSet insert (and re-insert after Disconnect)
+	 * instead of the headers-only default. Reviewable at publish; package
+	 * runtimes cannot set placement themselves. Distinct from inject.
+	 */
+	placement: credentialFillPlacementViewSchema.optional(),
 })
 
 export type PackageCredentialSlot = z.infer<typeof packageCredentialSlotSchema>

@@ -31,7 +31,10 @@
   [Amendment 2026-10-16](#amendment-2026-10-16-stamped-packages-fail-closed));
   2026-10-17 (Kent: each credential owns an allowed fill-placement for
   placeholders; null means anywhere until migration and enforcement — see
-  [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement))
+  [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement));
+  2026-10-20 (Cole: package needs may declare fill placement applied on
+  package-scope insert; runtimes still cannot widen placement — see
+  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -233,7 +236,9 @@ The keyed map stays. `provider` is optional and defaults to the key.
   provider/feature that truly requires one kind, such as oauth for Google user
   data). A declared `kind` keeps today's narrowing, so published manifests stay
   valid.
-- There is no hosts, inject, or placement field.
+- There is no hosts or inject field. Optional `placement` on a need is the
+  reviewable default for package-scope secret inserts of that name (see
+  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement)).
 - **Needs closure:** the package's needs plus those of its snapshotted
   dependencies (pinned at the dependent's publish, per
   [0001](./0001-no-package-versioning.md)), computed at publish and stored with
@@ -821,9 +826,36 @@ switch" rule for Key placeholders (lines 115–117 and 408–410 above, and the
   (3) Surfaces (UI, MCP, CLI, docs) — credential detail fill-placement editor,
   secret create/edit, `secretSet` / `credentialUpdate` / `secretList` placement,
   guides, and the publish/`kody dev check` warning for variable header helpers.
-  (4) Migrate existing credentials from observed package usage and audit logs.
-  (5) Enforcement with a clear refusal that names the credential, the refused
-  part, and the allowed parts. Enforcement ships last.
+  (4) Migrate existing credentials from observed package usage and audit logs
+  (including package-scope rows re-inserted after Disconnect that received the
+  headers-only default, not only rows that still have null placement). (5)
+  Enforcement with a clear refusal that names the credential, the refused part,
+  and the allowed parts. Enforcement ships last. Steps 4 and 5 are not approved
+  to ship yet.
 - **Unchanged.** Host allowlists, HTTPS-only fill, scoped-client `inject` shapes
-  (header / basic / query), package need declarations, and the rest of this
-  record.
+  (header / basic / query), and the rest of this record. Package need
+  declarations may optionally carry fill placement (see
+  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement)).
+
+## Amendment 2026-10-20: package manifest fill placement
+
+Cole folded this in from free-tier feedback on `@danj/audible-auth` (body-filled
+refresh tokens) before steps 4 and 5 of the placement rollout. It does not ship
+auto-narrowing or enforcement.
+
+- **What changes.** A `kody.credentials` need may declare optional `placement`
+  (same shape as credential fill placement: headers / query / path / body). When
+  a package-scope secret for that name is **inserted** (Connect, `secretSet` /
+  `secretSetMany`, account save, or re-insert after Disconnect), the published
+  declaration is written as `placement_json` instead of the headers-only
+  default. Omitted declaration keeps headers-only. Updates to an existing row do
+  not rewrite placement from the manifest.
+- **Least privilege.** Package runtimes still cannot pass `placement` on
+  `secretSet` or call `credentialUpdate`. Widening requires a reviewable publish
+  (and Promote on a locked package), then Connect or Disconnect+Connect. The
+  credential detail fill-placement editor already covers package-scope secrets
+  (listed as org-owned rows with a `packageId`); the owner can narrow or adjust
+  after insert.
+- **Step 4 note.** When auto-narrowing ships, it must also consider re-inserted
+  package-scope rows that received headers-only before a body (or other)
+  declaration existed, not only null (anywhere) rows.

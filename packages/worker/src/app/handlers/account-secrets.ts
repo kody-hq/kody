@@ -54,6 +54,7 @@ import {
 	serializeCredentialFillPlacement,
 	type CredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
+import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
 import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
@@ -1563,7 +1564,8 @@ export async function saveAccountSecret(input: {
 
 	// Scope/package moves insert under a new bucket. Preserve the source
 	// placement (including null = anywhere) so headers-only default does not
-	// narrow an existing credential. An explicit form placement wins.
+	// narrow an existing credential. An explicit form placement wins. For a
+	// new package-scope secret, the package manifest may declare placement.
 	let placementOnInsert: CredentialFillPlacement | null | undefined
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
@@ -1581,6 +1583,22 @@ export async function saveAccountSecret(input: {
 			includeExpired: true,
 		})
 		if (source.found) placementOnInsert = source.placement
+	} else if (
+		scope === 'package' &&
+		packageId &&
+		!currentSecret &&
+		credential == null
+	) {
+		placementOnInsert = await readDeclaredPackageSecretFillPlacement({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			baseUrl: new URL(input.request.url).origin,
+			packageId,
+			secretName: name,
+		})
 	}
 
 	let saved: Awaited<ReturnType<typeof saveSecret>>

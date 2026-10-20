@@ -42,7 +42,27 @@ test('the kody.credentials example in docs/use/packages.md publishes', () => {
 	}
 })
 
-test('publish rejects a retired placement, and published snapshots drop it', () => {
+test('publish accepts fill placement on a credential need', () => {
+	const secret = {
+		kind: 'secret' as const,
+		provider: 'acme',
+		description: 'Refresh token filled into Amazon form bodies.',
+		placement: { body: true as const },
+	}
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({ KEY: secret }),
+		}).kody.credentials,
+	).toEqual({ KEY: secret })
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({ KEY: secret }),
+			mode: 'published',
+		}).kody.credentials,
+	).toEqual({ KEY: secret })
+})
+
+test('publish rejects an invalid placement shape, and published snapshots drop it', () => {
 	const secret = { kind: 'secret', provider: 'acme', description: 'x' }
 	expect(
 		parseAuthoredPackageJson({
@@ -55,17 +75,14 @@ test('publish rejects a retired placement, and published snapshots drop it', () 
 			placement: { header: 'Authorization', template: 'Bearer {value}' },
 		},
 	}
-	expect(publishError(placed)).toContain(
-		'kody.credentials slots take no placement: the fetch gateway fills a credential anywhere in a request',
-	)
 	expect(publishError(placed)).toMatch(/kody\.credentials\.KEY\.placement/)
 	const content = manifestWithCredentials(placed)
 	for (const { kody } of [
 		parseAuthoredPackageJson({ content, mode: 'published' }),
 		readRootPackage({ 'package.json': content })!.manifest,
 	]) {
-		expect(kody.credentials).toEqual({ KEY: secret })
-		expect(kody.invalidCredentialSlots).toBeUndefined()
+		expect(kody.credentials).toEqual({})
+		expect(kody.invalidCredentialSlots?.KEY).toMatch(/placement/)
 	}
 })
 
@@ -211,14 +228,13 @@ test('published snapshots keep valid slots when one slot fails the slot schema, 
 	]) {
 		expect(kody.credentials).toEqual({
 			GOOGLE: google,
-			KEY: { kind: 'secret', provider: 'acme', description: 'Acme API key.' },
 			toString: google,
 		})
-		expect(kody.invalidCredentialSlots).toEqual({
-			LINEAR: 'kody.credentials.LINEAR: Unrecognized key: "futureRule"',
-			'bad name':
-				'kody.credentials.bad name: Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
-		})
+		expect(kody.invalidCredentialSlots?.KEY).toMatch(/placement/)
+		expect(kody.invalidCredentialSlots?.LINEAR).toMatch(/futureRule/)
+		expect(kody.invalidCredentialSlots?.['bad name']).toMatch(
+			/Credential slot names/,
+		)
 	}
 	expect(() => parseAuthoredPackageJson({ content })).toThrow(
 		/kody\.credentials\.KEY\.placement/,
