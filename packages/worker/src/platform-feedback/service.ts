@@ -462,12 +462,6 @@ export async function updatePlatformFeedbackForAdmin(input: {
 		maxLength: 1_000,
 	})
 	const adminNote = normalizeAdminNote(input.adminNote)
-	const resolutionNote = normalizePlatformFeedbackResolutionNote(
-		input.resolutionNote,
-	)
-	const resolutionPrUrls = normalizePlatformFeedbackResolutionPrUrls(
-		input.resolutionPrUrls,
-	)
 	for (let attempt = 0; attempt < 2; attempt += 1) {
 		const existing = await getPlatformFeedbackByIdForAdmin(
 			input.db,
@@ -487,6 +481,14 @@ export async function updatePlatformFeedbackForAdmin(input: {
 			nextStatus !== null &&
 			isOutcomeAction(input.action) &&
 			isOutcomeStatus(nextStatus)
+		// Ignore resolution fields on triage and terminal no-ops: do not validate
+		// them unless this update is storing an outcome.
+		const resolutionNote = storeOutcomeFields
+			? normalizePlatformFeedbackResolutionNote(input.resolutionNote)
+			: undefined
+		const resolutionPrUrls = storeOutcomeFields
+			? normalizePlatformFeedbackResolutionPrUrls(input.resolutionPrUrls)
+			: undefined
 		const nextResolutionNote = storeOutcomeFields
 			? (resolutionNote ?? null)
 			: undefined

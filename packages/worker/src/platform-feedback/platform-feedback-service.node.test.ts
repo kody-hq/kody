@@ -766,6 +766,57 @@ test('another user cannot read someone else resolution fields', async () => {
 	expect(listed.items).toEqual([])
 })
 
+test('triage and terminal no-ops ignore invalid resolution fields without validating them', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a')
+	const triaged = await updatePlatformFeedbackForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-a',
+		action: 'triage',
+		adminNote: 'Keep triage moving.',
+		resolutionNote: 'x'.repeat(2_001),
+		resolutionPrUrls: ['http://example.com/not-https'],
+	})
+	expect(triaged).toMatchObject({
+		didChangeStatus: true,
+		feedback: {
+			status: 'triaged',
+			adminNote: 'Keep triage moving.',
+			resolutionNote: null,
+			resolutionPrUrls: [],
+		},
+	})
+	const resolved = await review(
+		db,
+		submitted.id,
+		'admin-a',
+		'resolve',
+		undefined,
+		{
+			resolutionNote: 'Shipped.',
+			resolutionPrUrls: ['https://example.com/pull/1'],
+		},
+	)
+	expect(resolved.feedback.resolutionNote).toBe('Shipped.')
+	const noop = await updatePlatformFeedbackForAdmin({
+		db,
+		feedbackId: submitted.id,
+		reviewerUserId: 'admin-b',
+		action: 'resolve',
+		resolutionNote: 'x'.repeat(2_001),
+		resolutionPrUrls: ['ftp://example.com/nope'],
+	})
+	expect(noop).toMatchObject({
+		didChangeStatus: false,
+		feedback: {
+			status: 'resolved',
+			resolutionNote: 'Shipped.',
+			resolutionPrUrls: ['https://example.com/pull/1'],
+		},
+	})
+})
+
 test('resolution PR URL validation rejects non-https, oversize lists, and overlong entries', async () => {
 	const { db } = createPlatformFeedbackDb()
 	const submitted = await submit(db, 'user-a')
