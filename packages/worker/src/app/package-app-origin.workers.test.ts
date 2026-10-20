@@ -490,6 +490,37 @@ test('package-app hosts answer /-/health with the app origin health report', asy
 	expect(bareHealth.headers.get('X-Kody-Handoff')).toBe('required')
 })
 
+test('user subdomain serves default robots.txt and 404s unknown .well-known', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	const robots = await workerFetch(`${ownerPackageAppOrigin}/robots.txt`)
+	expect(robots.status).toBe(200)
+	expect(robots.headers.get('x-kody-default')).toBe('robots.txt')
+	expect(robots.headers.get('Content-Type')).toMatch(/text\/plain/)
+	await expect(robots.text()).resolves.toBe('User-agent: *\nAllow: /\n')
+
+	const robotsHead = await workerFetch(`${ownerPackageAppOrigin}/robots.txt`, {
+		method: 'HEAD',
+	})
+	expect(robotsHead.status).toBe(200)
+	expect(robotsHead.headers.get('x-kody-default')).toBe('robots.txt')
+	expect(await robotsHead.text()).toBe('')
+
+	const wellKnown = await workerFetch(
+		`${ownerPackageAppOrigin}/.well-known/security.txt`,
+	)
+	expect(wellKnown.status).toBe(404)
+	await expect(wellKnown.text()).resolves.toBe(
+		buildUnmatchedPackageAppOriginPathMessage(),
+	)
+
+	// Apex is not a short-path host; robots.txt stays unmatched there.
+	const apexRobots = await workerFetch(`${packageAppOrigin}/robots.txt`)
+	expect(apexRobots.status).toBe(404)
+})
+
 test('package apps stay inline on the app origin when no package-app origin is configured', async () => {
 	configureOrigins({ packageAppBaseUrl: undefined, runtime: 'preview' })
 	invalidatePackageAppOwnerCache({

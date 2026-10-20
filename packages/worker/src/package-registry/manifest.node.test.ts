@@ -141,6 +141,24 @@ test('parseAuthoredPackageJson validates scoped package names against kody.id', 
 	)
 })
 
+test('parseAuthoredPackageJson authoring refuses package-app host reserved leaves', () => {
+	expect(() => parse('@kentcdodds/packages')).toThrow(
+		/reserved for package-app host paths/,
+	)
+	// Existing published snapshots with a reserved leaf must still load.
+	expect(
+		parseAuthoredPackageJson({
+			content: JSON.stringify({
+				name: '@kentcdodds/packages',
+				private: true,
+				exports: { '.': './src/index.ts' },
+				kody: { description: 'legacy reserved leaf' },
+			}),
+			mode: 'published',
+		}).kody.id,
+	).toBe('packages')
+})
+
 test('parseAuthoredPackageJson rejects invalid manifests with a specific error per rule', () => {
 	const discordGateway = '@kentcdodds/discord-gateway'
 	type Case = [

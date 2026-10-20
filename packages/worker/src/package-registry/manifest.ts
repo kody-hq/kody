@@ -1,5 +1,9 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { listJsonSchemaSubsetProblems } from '@kody-internal/shared/json-schema-subset.ts'
+import {
+	isPackageAppHostReservedPackageLeaf,
+	packageAppHostReservedPackageLeafMessage,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { z } from 'zod'
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
@@ -138,6 +142,16 @@ export function parseAuthoredPackageJson(input: {
 	if (manifest.kody.id !== undefined && expectedKodyId !== manifest.kody.id) {
 		throw new Error(
 			`Invalid ${input.manifestPath ?? packageManifestPath}:\npackage.json name "${manifest.name}" must use a leaf package name that matches kody.id "${manifest.kody.id}".`,
+		)
+	}
+	// Authoring/publish must not mint reserved short-path leaves. Snapshot load
+	// (`published`) still accepts them so existing packages keep serving.
+	if (
+		(input.mode ?? 'authoring') === 'authoring' &&
+		isPackageAppHostReservedPackageLeaf(expectedKodyId)
+	) {
+		throw new Error(
+			`Invalid ${input.manifestPath ?? packageManifestPath}:\n${packageAppHostReservedPackageLeafMessage(expectedKodyId)}`,
 		)
 	}
 	manifest.kody.id = expectedKodyId

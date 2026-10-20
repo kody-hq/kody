@@ -9,7 +9,12 @@ import {
 	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
 } from '@kody-internal/shared/public-urls.ts'
-import { packageAppHostSystemPrefix } from '@kody-internal/shared/package-app-host-paths.ts'
+import {
+	isPackageAppHostRobotsTxtPath,
+	packageAppHostDefaultRobotsTxt,
+	packageAppHostDefaultRobotsTxtHeader,
+	packageAppHostSystemPrefix,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
 import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
@@ -1240,6 +1245,38 @@ function handlePackageAppHostHealth(input: {
 	return createHealthHandler(input.env)({ request: input.request })
 }
 
+/**
+ * Root files on short-path package-app hosts (user subdomain and org custom
+ * hostname): exact `/robots.txt` gets a platform default that allows all.
+ * Unknown `/.well-known/...` is not answered here; it falls through to the
+ * unmatched 404 (app-origin discovery docs are not invented on this host).
+ */
+function handlePackageAppHostRootFiles(input: {
+	request: Request
+	url: URL
+}): Response | null {
+	if (!isPackageAppHostRobotsTxtPath(input.url.pathname)) return null
+	if (input.request.method !== 'GET' && input.request.method !== 'HEAD') {
+		return new Response('Method Not Allowed', {
+			status: 405,
+			headers: {
+				Allow: 'GET, HEAD',
+				'Cache-Control': 'no-store',
+				'Content-Type': 'text/plain; charset=utf-8',
+			},
+		})
+	}
+	const headers = {
+		'Cache-Control': 'public, max-age=300',
+		'Content-Type': 'text/plain; charset=utf-8',
+		'x-kody-default': packageAppHostDefaultRobotsTxtHeader,
+	}
+	if (input.request.method === 'HEAD') {
+		return new Response(null, { status: 200, headers })
+	}
+	return new Response(packageAppHostDefaultRobotsTxt, { status: 200, headers })
+}
+
 async function handleUserSubdomainRequest(input: {
 	request: Request
 	env: Env
@@ -1249,6 +1286,8 @@ async function handleUserSubdomainRequest(input: {
 	const { request, env, url, username } = input
 	const health = handlePackageAppHostHealth({ request, env, url })
 	if (health) return await health
+	const rootFiles = handlePackageAppHostRootFiles({ request, url })
+	if (rootFiles) return rootFiles
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
@@ -1260,7 +1299,7 @@ async function handleUserSubdomainRequest(input: {
 	if (!packagePath) {
 		// Nothing first-party is reachable here. The bare subdomain is a
 		// plausible typo or bookmark, so send it home; everything else fails
-		// closed.
+		// closed (including unknown /.well-known/... on this host).
 		if (url.pathname === '/') {
 			return redirectResponse({ location: `${appBaseUrl}/`, status: 302 })
 		}
@@ -1312,6 +1351,8 @@ async function handleOrgCustomHostnameRequest(input: {
 	const { request, env, url, mapping } = input
 	const health = handlePackageAppHostHealth({ request, env, url })
 	if (health) return await health
+	const rootFiles = handlePackageAppHostRootFiles({ request, url })
+	if (rootFiles) return rootFiles
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth

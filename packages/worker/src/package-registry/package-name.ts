@@ -1,3 +1,7 @@
+import {
+	isPackageAppHostReservedPackageLeaf,
+	packageAppHostReservedPackageLeafMessage,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { kodyPackageIdPattern } from './types.ts'
 
 export const packageNameLeafPattern = kodyPackageIdPattern
@@ -65,9 +69,19 @@ export class PackageNameInputError extends Error {
 	}
 }
 
+function assertPackageLeafAllowedForCreate(leaf: string) {
+	if (isPackageAppHostReservedPackageLeaf(leaf)) {
+		throw new PackageNameInputError(
+			packageAppHostReservedPackageLeafMessage(leaf),
+		)
+	}
+}
+
 /**
  * Accept a leaf (`mailchimp`) or scoped name (`@grant/mailchimp`).
  * Matching owner scope is stripped; a different scope is rejected.
+ * Create refuses leaves that collide with package-app host root/system paths;
+ * resolve still accepts them so existing packages keep working.
  */
 export function normalizePackageNameInput(input: {
 	value: string
@@ -108,6 +122,7 @@ export function normalizePackageNameInput(input: {
 				}),
 			)
 		}
+		if (input.action === 'create') assertPackageLeafAllowedForCreate(leaf)
 		return leaf
 	}
 
@@ -130,5 +145,6 @@ export function normalizePackageNameInput(input: {
 			}),
 		)
 	}
+	if (input.action === 'create') assertPackageLeafAllowedForCreate(value)
 	return value
 }

@@ -1,3 +1,4 @@
+import { packageAppHostReservedPackageLeafMessage } from '@kody-internal/shared/package-app-host-paths.ts'
 import { expect, test } from 'vitest'
 import {
 	getPackageNameLeaf,
@@ -88,4 +89,30 @@ test('normalizePackageNameInput accepts a leaf, strips a matching scope, and rej
 	expect(getPackageNameScope('@kentcdodds/cursor-cloud-agents')).toBe(
 		'kentcdodds',
 	)
+})
+
+test('normalizePackageNameInput create refuses package-app host reserved leaves', () => {
+	expect(() =>
+		normalizePackageNameInput({
+			value: 'packages',
+			ownerScope: 'grant',
+			action: 'create',
+		}),
+	).toThrow(packageAppHostReservedPackageLeafMessage('packages'))
+	expect(() =>
+		normalizePackageNameInput({
+			value: '@grant/packages',
+			ownerScope: 'grant',
+			action: 'create',
+		}),
+	).toThrow(PackageNameInputError)
+
+	// Resolve still accepts reserved leaves so existing packages keep working.
+	expect(
+		normalizePackageNameInput({
+			value: 'packages',
+			ownerScope: 'grant',
+			action: 'resolve',
+		}),
+	).toBe('packages')
 })
