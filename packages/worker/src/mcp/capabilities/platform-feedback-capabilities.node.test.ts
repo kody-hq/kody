@@ -100,6 +100,8 @@ const openFeedback = {
 	reviewedByUserId: null,
 	reviewedAt: null,
 	adminNote: null,
+	resolutionNote: null,
+	resolutionPrUrls: [] as Array<string>,
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 }
@@ -387,6 +389,8 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 		summary_untrusted: 'Setup is confusing',
 		details_untrusted: 'The setup flow does not explain the next action.',
 		admin_note: null,
+		resolution_note: null,
+		resolution_pr_urls: [],
 	})
 	expect(get.feedback).not.toHaveProperty('summary')
 	expect(get.feedback).not.toHaveProperty('details')
@@ -405,6 +409,8 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 		reviewerUserId: 'admin-1',
 		action: 'triage',
 		adminNote: 'Needs setup review.',
+		resolutionNote: undefined,
+		resolutionPrUrls: undefined,
 	})
 	expect(updated.feedback).toMatchObject({
 		id: 'feedback-1',
@@ -413,6 +419,8 @@ test('admin platform feedback capabilities enforce role access, redact lists, pa
 		details_untrusted: 'The setup flow does not explain the next action.',
 		reviewed_by_user_id: 'admin-1',
 		admin_note: 'Needs setup review.',
+		resolution_note: null,
+		resolution_pr_urls: [],
 	})
 	expect(updated.content_warning).toBe(platformFeedbackContentWarning)
 	expect(mockModule.sendPlatformFeedbackOutcomeEmail).not.toHaveBeenCalled()
@@ -485,8 +493,14 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 		roles: ['admin'],
 	})
 
+	const resolvedWithOutcome = {
+		...resolvedFeedback,
+		adminNote: 'Internal only.',
+		resolutionNote: 'We shipped a clearer setup path.',
+		resolutionPrUrls: ['https://github.com/example/repo/pull/42'],
+	}
 	mockModule.updatePlatformFeedbackForAdmin.mockResolvedValueOnce({
-		feedback: resolvedFeedback,
+		feedback: resolvedWithOutcome,
 		previousStatus: 'open',
 		didChangeStatus: true,
 	})
@@ -494,16 +508,33 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 		{
 			id: 'feedback-1',
 			action: 'resolve',
+			admin_note: 'Internal only.',
 			user_message: 'We shipped a clearer setup path.',
+			pr_urls: ['https://github.com/example/repo/pull/42'],
 		},
 		adminContext,
 	)
-	expect(resolved.feedback.status).toBe('resolved')
+	expect(resolved.feedback).toMatchObject({
+		status: 'resolved',
+		admin_note: 'Internal only.',
+		resolution_note: 'We shipped a clearer setup path.',
+		resolution_pr_urls: ['https://github.com/example/repo/pull/42'],
+	})
+	expect(mockModule.updatePlatformFeedbackForAdmin).toHaveBeenCalledWith({
+		db: expect.anything(),
+		feedbackId: 'feedback-1',
+		reviewerUserId: 'admin-1',
+		action: 'resolve',
+		adminNote: 'Internal only.',
+		resolutionNote: 'We shipped a clearer setup path.',
+		resolutionPrUrls: ['https://github.com/example/repo/pull/42'],
+	})
 	expect(mockModule.sendPlatformFeedbackOutcomeEmail).toHaveBeenCalledWith({
 		env: adminContext.env,
-		feedback: resolvedFeedback,
+		feedback: resolvedWithOutcome,
 		status: 'resolved',
 		userMessage: 'We shipped a clearer setup path.',
+		prUrls: ['https://github.com/example/repo/pull/42'],
 	})
 
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockClear()
@@ -533,6 +564,7 @@ test('admin platform feedback resolve and dismiss email the submitter without fa
 		feedback: dismissedFeedback,
 		status: 'dismissed',
 		userMessage: undefined,
+		prUrls: [],
 	})
 
 	mockModule.sendPlatformFeedbackOutcomeEmail.mockReset()
@@ -568,6 +600,8 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 		summary: 'Setup is confusing',
 		details: 'The setup flow does not explain the next action.',
 		status: 'resolved' as const,
+		resolutionNote: 'We shipped a clearer setup path.',
+		resolutionPrUrls: ['https://github.com/example/repo/pull/42'],
 		createdAt: '2026-07-19T00:00:00.000Z',
 		updatedAt: '2026-07-19T02:00:00.000Z',
 	}
@@ -583,6 +617,8 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 				category: owned.category,
 				summary: owned.summary,
 				status: owned.status,
+				resolutionNote: owned.resolutionNote,
+				resolutionPrUrls: owned.resolutionPrUrls,
 				createdAt: owned.createdAt,
 				updatedAt: owned.updatedAt,
 			},
@@ -612,6 +648,8 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 		summary: 'Setup is confusing',
 		details: 'The setup flow does not explain the next action.',
 		status: 'resolved',
+		resolution_note: 'We shipped a clearer setup path.',
+		resolution_pr_urls: ['https://github.com/example/repo/pull/42'],
 		created_at: '2026-07-19T00:00:00.000Z',
 		updated_at: '2026-07-19T02:00:00.000Z',
 	})
@@ -651,6 +689,8 @@ test('meta platform feedback get and list scope to the signed-in submitter and r
 				category: 'friction',
 				summary: 'Setup is confusing',
 				status: 'resolved',
+				resolution_note: 'We shipped a clearer setup path.',
+				resolution_pr_urls: ['https://github.com/example/repo/pull/42'],
 				created_at: '2026-07-19T00:00:00.000Z',
 				updated_at: '2026-07-19T02:00:00.000Z',
 			},

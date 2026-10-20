@@ -214,9 +214,12 @@ dismissed, or your account is deleted. Resolved and dismissed feedback is
 removed 365 days after its last update. Account deletion removes any remaining
 submissions. When an admin resolves or dismisses your feedback, Kody may email
 you from the platform sender with the decision, thanks, and a way to send more
-feedback through your agent. That mail is skipped if your account has no email,
-outbound email is paused, or the account is suspended. Internal admin notes are
-not included.
+feedback through your agent. That mail can include a short outcome note and
+related PR links when the admin provides them; the same values are stored on
+your feedback as `resolution_note` and `resolution_pr_urls` so your agent can
+read them later. That mail is skipped if your account has no email, outbound
+email is paused, or the account is suspended. Internal admin notes are not
+included.
 
 When a notification is still queued, Kody rechecks that the feedback exists
 immediately before delivery and cancels it after account deletion when possible.
@@ -226,10 +229,11 @@ account deletion under the deployment operator's retention and deletion
 controls. Those copies contain only the exact approved feedback and its
 attribution described above, never unrelated account content.
 
-Your account export includes your own submissions and their status. Internal
-reviewer identity, notes, and timestamps are not included. If an admin who
-reviewed your feedback deletes their account, Kody clears that reviewer's
-attribution while retaining your submission for the lifecycle described above.
+Your account export includes your own submissions, their status, and any
+submitter-visible resolution fields. Internal reviewer identity, notes, and
+timestamps are not included. If an admin who reviewed your feedback deletes
+their account, Kody clears that reviewer's attribution while retaining your
+submission for the lifecycle described above.
 
 Community ratings, stored activity events, forks, and reports appear only in the
 participating user's account export. Owning the related listing does not expose

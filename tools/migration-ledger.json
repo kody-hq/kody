@@ -637,7 +637,11 @@
 			"sha256": "fc9b9a979e503d8c911701676aaa77f554e5159135201aaf96ded3d05d628a80"
 		},
 		{
-			"filename": "0173-credential-placement-origin-and-observations.sql",
+			"filename": "0173-platform-feedback-resolution.sql",
+			"sha256": "8e12ed4a07da3a8d1e7b14290d28d99e68057b93d010a01a169d20c7926e2a7b"
+		},
+		{
+			"filename": "0174-credential-placement-origin-and-observations.sql",
 			"sha256": "c0901129de8b5e688c18a5a4ec47c6365ac9b98808d5177fb1088b62392cd089"
 		}
 	]

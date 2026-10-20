@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS "platform_feedback" (
 	admin_note TEXT CHECK (
 		admin_note IS NULL OR length(admin_note) <= 2000
 	),
+	resolution_note TEXT CHECK (
+		resolution_note IS NULL OR length(resolution_note) <= 2000
+	),
+	resolution_pr_urls TEXT CHECK (
+		resolution_pr_urls IS NULL OR length(resolution_pr_urls) <= 12000
+	),
 	revision INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL,

@@ -1166,6 +1166,8 @@ export type AdminPlatformFeedbackListItem = {
 export type AdminPlatformFeedbackDetail = AdminPlatformFeedbackListItem & {
 	details_untrusted: string
 	admin_note: string | null
+	resolution_note: string | null
+	resolution_pr_urls: Array<string>
 	submitter: {
 		user_id: string
 		username: string | null

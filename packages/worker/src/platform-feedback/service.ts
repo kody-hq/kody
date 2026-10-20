@@ -24,15 +24,22 @@ import {
 	updatePlatformFeedbackStatusForAdmin,
 } from './repo.ts'
 import {
+	normalizePlatformFeedbackResolutionNote,
+	normalizePlatformFeedbackResolutionPrUrls,
+	serializePlatformFeedbackResolutionPrUrls,
+} from './resolution.ts'
+import {
 	type PlatformFeedbackAction,
 	type PlatformFeedbackAdminUpdate,
 	type PlatformFeedbackCategory,
+	type PlatformFeedbackOutcomeStatus,
 	type PlatformFeedbackRecord,
 	type PlatformFeedbackRecordWithRevision,
 	type PlatformFeedbackRow,
 	type PlatformFeedbackStatus,
 	type PlatformFeedbackSubmitterListItem,
 	type PlatformFeedbackSubmitterRecord,
+	platformFeedbackOutcomeStatuses,
 } from './types.ts'
 
 export {
@@ -46,6 +53,20 @@ const maxAdminNoteLength = 2_000
 const defaultPageSize = 20
 const maxPageSize = 100
 const submissionInsertAttempts = 2
+
+function isOutcomeAction(
+	action: PlatformFeedbackAction,
+): action is Exclude<PlatformFeedbackAction, 'triage'> {
+	return action === 'resolve' || action === 'dismiss'
+}
+
+function isOutcomeStatus(
+	status: PlatformFeedbackStatus,
+): status is PlatformFeedbackOutcomeStatus {
+	return (platformFeedbackOutcomeStatuses as ReadonlyArray<string>).includes(
+		status,
+	)
+}
 
 export type PlatformFeedbackSubmissionQuota = {
 	limit: number
@@ -269,6 +290,8 @@ export async function submitPlatformFeedback(input: {
 		reviewed_by_user_id: null,
 		reviewed_at: null,
 		admin_note: null,
+		resolution_note: null,
+		resolution_pr_urls: null,
 		created_at: now,
 		updated_at: now,
 	}
@@ -319,6 +342,8 @@ export async function submitPlatformFeedback(input: {
 		reviewedByUserId: row.reviewed_by_user_id,
 		reviewedAt: row.reviewed_at,
 		adminNote: row.admin_note,
+		resolutionNote: row.resolution_note,
+		resolutionPrUrls: [],
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	}
@@ -420,6 +445,17 @@ export async function updatePlatformFeedbackForAdmin(input: {
 	reviewerUserId: string
 	action: PlatformFeedbackAction
 	adminNote?: string
+	/**
+	 * Submitter-visible outcome note. Stored as `resolution_note` when this
+	 * update transitions into resolved/dismissed (same text mailed as
+	 * `user_message`). Ignored for triage and no-op terminal updates.
+	 */
+	resolutionNote?: string
+	/**
+	 * Optional https PR URLs stored as `resolution_pr_urls` on the same
+	 * outcome transition. Ignored for triage and no-op terminal updates.
+	 */
+	resolutionPrUrls?: Array<string>
 }): Promise<PlatformFeedbackAdminUpdate> {
 	const reviewerUserId = normalizeRequiredText(input.reviewerUserId, {
 		field: 'reviewerUserId',
@@ -441,7 +477,25 @@ export async function updatePlatformFeedbackForAdmin(input: {
 		})
 		const adminNoteChanged =
 			adminNote !== undefined && adminNote !== existing.adminNote
-		if (nextStatus === null && !adminNoteChanged) {
+		const storeOutcomeFields =
+			nextStatus !== null &&
+			isOutcomeAction(input.action) &&
+			isOutcomeStatus(nextStatus)
+		// Ignore resolution fields on triage and terminal no-ops: do not validate
+		// them unless this update is storing an outcome.
+		const resolutionNote = storeOutcomeFields
+			? normalizePlatformFeedbackResolutionNote(input.resolutionNote)
+			: undefined
+		const resolutionPrUrls = storeOutcomeFields
+			? normalizePlatformFeedbackResolutionPrUrls(input.resolutionPrUrls)
+			: undefined
+		const nextResolutionNote = storeOutcomeFields
+			? (resolutionNote ?? null)
+			: undefined
+		const nextResolutionPrUrlsJson = storeOutcomeFields
+			? serializePlatformFeedbackResolutionPrUrls(resolutionPrUrls ?? null)
+			: undefined
+		if (nextStatus === null && !adminNoteChanged && !storeOutcomeFields) {
 			return {
 				feedback: toPlatformFeedbackRecord(existing),
 				previousStatus: existing.status,
@@ -457,6 +511,8 @@ export async function updatePlatformFeedbackForAdmin(input: {
 			reviewedByUserId: reviewerUserId,
 			reviewedAt,
 			adminNote,
+			resolutionNote: nextResolutionNote,
+			resolutionPrUrlsJson: nextResolutionPrUrlsJson,
 		})
 		if (!updated) continue
 		const feedback = await getPlatformFeedbackByIdForAdmin(

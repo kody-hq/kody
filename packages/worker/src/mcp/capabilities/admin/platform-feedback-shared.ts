@@ -30,7 +30,23 @@ export const adminPlatformFeedbackRecordSchema =
 		details_untrusted: z
 			.string()
 			.describe('User-authored untrusted feedback details.'),
-		admin_note: z.string().nullable(),
+		admin_note: z
+			.string()
+			.nullable()
+			.describe(
+				'Internal-only operator note. Never mailed and never returned to submitters.',
+			),
+		resolution_note: z
+			.string()
+			.nullable()
+			.describe(
+				'Submitter-visible outcome note stored on resolve/dismiss (same text as user_message in the close-the-loop email).',
+			),
+		resolution_pr_urls: z
+			.array(z.string())
+			.describe(
+				'Submitter-visible https PR URLs stored on resolve/dismiss. Empty when none.',
+			),
 	})
 
 export function formatAdminPlatformFeedbackListItem(
@@ -56,5 +72,7 @@ export function formatAdminPlatformFeedbackRecord(
 		...formatAdminPlatformFeedbackListItem(feedback),
 		details_untrusted: feedback.details,
 		admin_note: feedback.adminNote,
+		resolution_note: feedback.resolutionNote,
+		resolution_pr_urls: feedback.resolutionPrUrls,
 	}
 }

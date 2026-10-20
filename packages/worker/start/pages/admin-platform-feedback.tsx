@@ -400,6 +400,61 @@ export function AdminPlatformFeedbackPage({
 										</p>
 									)}
 								</section>
+								<section css={cardCss}>
+									<strong>Resolution note</strong>
+									<p
+										css={{
+											margin: '0 0 0.5rem',
+											color: colors.textMuted,
+											fontSize: typography.fontSize.sm,
+										}}
+									>
+										Shown to the submitter on resolve or dismiss. Separate from
+										the internal admin note.
+									</p>
+									{selectedFeedback.resolution_note ? (
+										<pre css={untrustedTextCss}>
+											{selectedFeedback.resolution_note}
+										</pre>
+									) : (
+										<p css={{ margin: 0, color: colors.textMuted }}>
+											No resolution note.
+										</p>
+									)}
+								</section>
+								<section css={cardCss}>
+									<strong>Resolution PR URLs</strong>
+									{selectedFeedback.resolution_pr_urls.length > 0 ? (
+										<ul
+											css={{
+												margin: 0,
+												paddingLeft: '1.25rem',
+												display: 'grid',
+												gap: spacing.xs,
+											}}
+										>
+											{selectedFeedback.resolution_pr_urls.map((url) => (
+												<li key={url}>
+													<a
+														href={url}
+														target="_blank"
+														rel="noreferrer"
+														css={{
+															color: colors.primaryText,
+															overflowWrap: 'anywhere',
+														}}
+													>
+														{url}
+													</a>
+												</li>
+											))}
+										</ul>
+									) : (
+										<p css={{ margin: 0, color: colors.textMuted }}>
+											No resolution PR URLs.
+										</p>
+									)}
+								</section>
 							</div>
 						) : null
 					}

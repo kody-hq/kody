@@ -144,7 +144,7 @@
     "semver": "^7.8.5",
     "set-cookie-parser": "^3.1.2",
     "typescript": "^6.0.3",
-    "vite": "^8.3.2",
+    "vite": "^8.3.4",
     "vitest": "^4.1.11",
     "wrangler": "^4.147.0"
   },

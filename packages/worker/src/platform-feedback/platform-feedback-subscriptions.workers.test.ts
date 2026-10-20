@@ -33,6 +33,8 @@ const openFeedback = {
 	reviewedByUserId: null,
 	reviewedAt: null,
 	adminNote: null,
+	resolutionNote: null,
+	resolutionPrUrls: [] as Array<string>,
 	createdAt: '2026-07-19T01:00:00.000Z',
 	updatedAt: '2026-07-19T01:00:00.000Z',
 }
@@ -52,6 +54,8 @@ async function ensurePlatformFeedbackTestSchema(db: D1Database) {
 				reviewed_by_user_id TEXT,
 				reviewed_at TEXT,
 				admin_note TEXT,
+				resolution_note TEXT,
+				resolution_pr_urls TEXT,
 				revision INTEGER NOT NULL DEFAULT 0,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL

@@ -145,6 +145,8 @@ test('admin platform feedback data lists safely and uses stored submitter snapsh
 		reviewed_by_user_id: 'stable-reviewer',
 		reviewed_at: '2026-07-19T01:30:00.000Z',
 		admin_note: 'Follow up with the submitter.',
+		resolution_note: null,
+		resolution_pr_urls: [],
 		created_at: '2026-07-19T01:00:00.000Z',
 		updated_at: '2026-07-19T01:30:00.000Z',
 	})

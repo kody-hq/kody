@@ -230,7 +230,8 @@ counters live only in `UserMeter`, so they do not appear in the D1 inventory or
 Platform-feedback submissions are included in the submitting user's own D1
 export section. An export never includes submissions owned by other users,
 including feedback the exporter may have reviewed as an admin. The submitter's
-feedback status may remain in the export, but internal review metadata
+feedback status and submitter-visible resolution fields (`resolution_note`,
+`resolution_pr_urls`) may remain in the export, but internal review metadata
 (`reviewed_by_user_id`, `reviewed_at`, and `admin_note`) is redacted.
 
 Exports are versioned JSON documents:
