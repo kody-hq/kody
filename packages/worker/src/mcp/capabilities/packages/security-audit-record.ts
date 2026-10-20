@@ -18,6 +18,10 @@ import {
 	attemptSelfPublish,
 	type SelfPublishAttempt,
 } from '#worker/package-capabilities/self-publish.ts'
+import {
+	selfPublishBlockerReasonSchema,
+	selfPublishBlockerSchema,
+} from '#worker/package-capabilities/self-publish-blocker-schema.ts'
 import { getPendingWentPublicApproval } from '#worker/package-capabilities/went-public-approval.ts'
 import {
 	insertPackageSecurityAudit,
@@ -112,11 +116,22 @@ export const packageSecurityAuditRecordCapability = defineDomainCapability(
 				.describe(
 					'Present when this pass made the package internet-visible through self-publish for a pending internet-visible request.',
 				),
-			self_publish_blocker: z
-				.string()
+			self_publish_blocker: selfPublishBlockerSchema
 				.optional()
 				.describe(
 					'Present when an internet-visible request is pending and self-publish still does not apply; the owner approves at approval_url. Same values as packageUpdate self_publish_blocker.',
+				),
+			self_publish_blocker_reasons: z
+				.array(selfPublishBlockerReasonSchema)
+				.optional()
+				.describe(
+					'Structured reasons for self_publish_blocker (same shape as packageUpdate).',
+				),
+			self_publish_blocker_message: z
+				.string()
+				.optional()
+				.describe(
+					'Readable explanation of self_publish_blocker, including approval_url.',
 				),
 		}),
 		async handler(args, ctx) {
@@ -205,8 +220,11 @@ export const packageSecurityAuditRecordCapability = defineDomainCapability(
 				actorUserId: owner.actorUserId,
 				savedPackage,
 				summary,
+				approvalUrl,
 				verdict: record.verdict,
 			})
+			const blockedMessage =
+				selfPublish?.status === 'blocked' ? selfPublish.detail.message : null
 			return {
 				ok: true as const,
 				audit_id: record.id,
@@ -220,12 +238,18 @@ export const packageSecurityAuditRecordCapability = defineDomainCapability(
 				next_step:
 					selfPublish?.status === 'self_published'
 						? `Audit recorded for published commit ${record.publishedCommit}, and the pending internet-visible request was self-published: the package is internet-visible now. The owner can review it at ${approvalUrl}.`
-						: `Audit recorded for published commit ${record.publishedCommit}. Send the owner ${approvalUrl} to read it and decide; recording an audit approves nothing.`,
+						: blockedMessage
+							? `Audit recorded for published commit ${record.publishedCommit}. ${blockedMessage}`
+							: `Audit recorded for published commit ${record.publishedCommit}. Send the owner ${approvalUrl} to read it and decide; recording an audit approves nothing.`,
 				...(selfPublish?.status === 'self_published'
 					? { self_published: true as const }
 					: {}),
 				...(selfPublish?.status === 'blocked'
-					? { self_publish_blocker: selfPublish.blocker }
+					? {
+							self_publish_blocker: selfPublish.blocker,
+							self_publish_blocker_reasons: selfPublish.reasons,
+							self_publish_blocker_message: selfPublish.detail.message,
+						}
 					: {}),
 			}
 		},

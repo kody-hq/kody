@@ -22,10 +22,7 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { approveWentPublicRequest } from '#app/account-package-approval-requests.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
-} from '#worker/package-registry/types.ts'
+import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
 import {
@@ -39,31 +36,32 @@ import {
 	setSelfPublishMark,
 } from './went-public-approval.ts'
 import { loadCurrentPackageSecurityAudit } from './security-audit-state.ts'
+import { findPublishedPackageStorageMatches } from './package-storage-use.ts'
+import {
+	buildSelfPublishBlockerDetail,
+	credentialAndStorageReasonsFromEntries,
+	selfPublishCapabilityManifestFields,
+	type SelfPublishBlocker,
+	type SelfPublishBlockerDetail,
+	type SelfPublishBlockerReason,
+	type SelfPublishCapabilityManifestField,
+} from './self-publish-blocker-detail.ts'
 
 export const selfPublishAuditAction = 'package.went_public.self_publish'
 
-export type SelfPublishBlocker =
-	| 'unpublished'
-	| 'stale_dependencies'
-	| 'declares_credentials'
-	| 'declares_capabilities'
-	| 'not_audited'
-	| 'audit_concerns'
+export type {
+	SelfPublishBlocker,
+	SelfPublishBlockerDetail,
+	SelfPublishBlockerReason,
+} from './self-publish-blocker-detail.ts'
 
 export type SelfPublishEligibility =
 	| { eligible: true }
-	| { eligible: false; blocker: SelfPublishBlocker }
-
-/** Manifest fields that declare a capability beyond the package's storage. */
-const capabilityFields = [
-	'secretMounts',
-	'secretProvider',
-	'subscriptions',
-	'emits',
-	'jobs',
-	'retrievers',
-	'webhooks',
-] as const satisfies ReadonlyArray<keyof AuthoredPackageJson['kody']>
+	| {
+			eligible: false
+			blocker: SelfPublishBlocker
+			reasons: Array<SelfPublishBlockerReason>
+	  }
 
 function declaresAny(value: unknown) {
 	if (value == null) return false
@@ -72,15 +70,39 @@ function declaresAny(value: unknown) {
 	return true
 }
 
+type TreePackageResult =
+	| { blocker: null }
+	| {
+			blocker: SelfPublishBlocker
+			reasons: Array<SelfPublishBlockerReason>
+	  }
+
 async function evaluateTreePackage(
 	env: Env,
 	sourceId: string,
 	pinnedCommit: string,
-): Promise<SelfPublishBlocker | null> {
+): Promise<TreePackageResult> {
 	const source = await getEntitySourceById(env.APP_DB, sourceId)
-	if (!source?.published_commit) return 'unpublished'
+	if (!source?.published_commit) {
+		return {
+			blocker: 'unpublished',
+			reasons: [{ kind: 'unpublished', sourceId }],
+		}
+	}
 	// Only the published version is read, so it has to be the one serving pins.
-	if (source.published_commit !== pinnedCommit) return 'stale_dependencies'
+	if (source.published_commit !== pinnedCommit) {
+		return {
+			blocker: 'stale_dependencies',
+			reasons: [
+				{
+					kind: 'stale_dependencies',
+					sourceId,
+					pinnedCommit,
+					livePublishedCommit: source.published_commit,
+				},
+			],
+		}
+	}
 	const { manifest } = await loadPublishedEntityManifest({
 		env,
 		userId: source.user_id,
@@ -92,10 +114,32 @@ async function evaluateTreePackage(
 		declaresAny(kody.credentials) ||
 		declaresAny(kody.invalidCredentialSlots)
 	) {
-		return 'declares_credentials'
+		const needKeys = Object.keys(
+			(kody.credentials ?? {}) as Record<string, unknown>,
+		)
+		return {
+			blocker: 'declares_credentials',
+			reasons: [
+				{
+					kind: 'credential_needs',
+					sourceId,
+					needCount: Math.max(1, needKeys.length),
+				},
+			],
+		}
 	}
-	if (capabilityFields.some((field) => declaresAny(kody[field]))) {
-		return 'declares_capabilities'
+	const declaredFields = selfPublishCapabilityManifestFields.filter((field) =>
+		declaresAny(kody[field]),
+	)
+	if (declaredFields.length > 0) {
+		return {
+			blocker: 'declares_capabilities',
+			reasons: declaredFields.map((field) => ({
+				kind: 'manifest_field' as const,
+				field: field as SelfPublishCapabilityManifestField,
+				sourceId,
+			})),
+		}
 	}
 	const needs = await loadPublishedCredentialNeeds({
 		env,
@@ -103,7 +147,64 @@ async function evaluateTreePackage(
 		sourceId,
 		fresh: true,
 	})
-	return needs.length > 0 ? 'declares_credentials' : null
+	if (needs.length > 0) {
+		return {
+			blocker: 'declares_credentials',
+			reasons: [
+				{ kind: 'credential_needs', sourceId, needCount: needs.length },
+			],
+		}
+	}
+	return { blocker: null }
+}
+
+async function storageMatchesForEntries(input: {
+	env: Env
+	savedPackage: SavedPackageRecord
+	summary: CapabilityApprovalSummary
+}): Promise<
+	Map<string, Awaited<ReturnType<typeof findPublishedPackageStorageMatches>>>
+> {
+	const byPackageId = new Map<
+		string,
+		Awaited<ReturnType<typeof findPublishedPackageStorageMatches>>
+	>()
+	const storageEntries = input.summary.capabilitySet.entries.filter(
+		(entry) => entry.kind === 'storage' && entry.storageId,
+	)
+	if (storageEntries.length === 0) return byPackageId
+
+	const rootSourceId = input.savedPackage.sourceId
+	const publishedCommit = input.summary.publishedCommit
+	if (!publishedCommit) return byPackageId
+
+	// Root package storage is the common case (slide decks, static apps).
+	const rootMatches = await findPublishedPackageStorageMatches({
+		env: input.env,
+		sourceId: rootSourceId,
+		publishedCommit,
+	})
+	byPackageId.set(input.savedPackage.id, rootMatches)
+
+	for (const dependency of input.summary.dependencySnapshot?.dependencies ??
+		[]) {
+		if (!dependency.packageId || !dependency.sourceId) continue
+		if (byPackageId.has(dependency.packageId)) continue
+		if (
+			!storageEntries.some((entry) => entry.storageId === dependency.packageId)
+		) {
+			continue
+		}
+		byPackageId.set(
+			dependency.packageId,
+			await findPublishedPackageStorageMatches({
+				env: input.env,
+				sourceId: dependency.sourceId,
+				publishedCommit: dependency.publishedCommit,
+			}),
+		)
+	}
+	return byPackageId
 }
 
 /**
@@ -119,17 +220,25 @@ export async function evaluateSelfPublish(input: {
 	summary: CapabilityApprovalSummary
 }): Promise<SelfPublishEligibility> {
 	if (!input.summary.publishedCommit) {
-		return { eligible: false, blocker: 'unpublished' }
+		return {
+			eligible: false,
+			blocker: 'unpublished',
+			reasons: [{ kind: 'unpublished', sourceId: input.savedPackage.sourceId }],
+		}
 	}
 	// The approval page lists these entries. Anything here is something for
 	// the owner to approve (credentials, hosts, or storage); agents must not.
 	const entries = input.summary.capabilitySet.entries
 	if (entries.length > 0) {
+		const storageMatches = await storageMatchesForEntries(input)
+		const fromEntries = credentialAndStorageReasonsFromEntries(
+			entries,
+			storageMatches,
+		)
 		return {
 			eligible: false,
-			blocker: entries.some((entry) => entry.kind === 'credential')
-				? 'declares_credentials'
-				: 'declares_capabilities',
+			blocker: fromEntries?.blocker ?? 'declares_capabilities',
+			reasons: fromEntries?.reasons ?? [],
 		}
 	}
 	const pinned = new Map([
@@ -140,8 +249,14 @@ export async function evaluateSelfPublish(input: {
 		),
 	])
 	for (const [sourceId, commit] of pinned) {
-		const blocker = await evaluateTreePackage(input.env, sourceId, commit)
-		if (blocker) return { eligible: false, blocker }
+		const result = await evaluateTreePackage(input.env, sourceId, commit)
+		if (result.blocker) {
+			return {
+				eligible: false,
+				blocker: result.blocker,
+				reasons: result.reasons,
+			}
+		}
 	}
 	const audit = await loadCurrentPackageSecurityAudit(input.env.APP_DB, {
 		ownerUserId: input.savedPackage.userId,
@@ -149,11 +264,40 @@ export async function evaluateSelfPublish(input: {
 		publishedCommit: input.summary.publishedCommit,
 		fingerprint: input.summary.capabilitySet.fingerprint,
 	})
-	if (!audit) return { eligible: false, blocker: 'not_audited' }
+	if (!audit) {
+		return {
+			eligible: false,
+			blocker: 'not_audited',
+			reasons: [{ kind: 'not_audited' }],
+		}
+	}
 	if (audit.verdict !== 'pass') {
-		return { eligible: false, blocker: 'audit_concerns' }
+		return {
+			eligible: false,
+			blocker: 'audit_concerns',
+			reasons: [{ kind: 'audit_concerns' }],
+		}
 	}
 	return { eligible: true }
+}
+
+/**
+ * Explain why self-publish does not apply for this summary, without attempting
+ * to publish. Used by the approval page and agent responses.
+ */
+export async function explainSelfPublishBlocker(input: {
+	env: Env
+	savedPackage: SavedPackageRecord
+	summary: CapabilityApprovalSummary
+	approvalUrl?: string
+}): Promise<SelfPublishBlockerDetail | null> {
+	const eligibility = await evaluateSelfPublish(input)
+	if (eligibility.eligible) return null
+	return buildSelfPublishBlockerDetail({
+		blocker: eligibility.blocker,
+		reasons: eligibility.reasons,
+		approvalUrl: input.approvalUrl,
+	})
 }
 
 export type SelfPublishResult = { ok: true } | { ok: false; error: string }
@@ -348,7 +492,12 @@ export async function applyMatchingPinInternetVisible(input: {
 
 export type SelfPublishAttempt =
 	| { status: 'self_published' }
-	| { status: 'blocked'; blocker: SelfPublishBlocker | 'not_permitted' }
+	| {
+			status: 'blocked'
+			blocker: SelfPublishBlocker
+			reasons: Array<SelfPublishBlockerReason>
+			detail: SelfPublishBlockerDetail
+	  }
 	| { status: 'failed'; error: string }
 
 /**
@@ -364,10 +513,21 @@ export async function attemptSelfPublish(input: {
 	savedPackage: SavedPackageRecord
 	summary: CapabilityApprovalSummary
 	pendingRequestId?: string
+	approvalUrl?: string
 }): Promise<SelfPublishAttempt> {
 	const eligibility = await evaluateSelfPublish(input)
 	if (!eligibility.eligible) {
-		return { status: 'blocked', blocker: eligibility.blocker }
+		const detail = buildSelfPublishBlockerDetail({
+			blocker: eligibility.blocker,
+			reasons: eligibility.reasons,
+			approvalUrl: input.approvalUrl,
+		})
+		return {
+			status: 'blocked',
+			blocker: eligibility.blocker,
+			reasons: eligibility.reasons,
+			detail,
+		}
 	}
 	if (
 		!(await mayPublishPackage(
@@ -375,7 +535,17 @@ export async function attemptSelfPublish(input: {
 			input.savedPackage,
 		))
 	) {
-		return { status: 'blocked', blocker: 'not_permitted' }
+		const detail = buildSelfPublishBlockerDetail({
+			blocker: 'not_permitted',
+			reasons: [{ kind: 'not_permitted' }],
+			approvalUrl: input.approvalUrl,
+		})
+		return {
+			status: 'blocked',
+			blocker: 'not_permitted',
+			reasons: [{ kind: 'not_permitted' }],
+			detail,
+		}
 	}
 	const result = await selfPublishPackage(input)
 	return result.ok

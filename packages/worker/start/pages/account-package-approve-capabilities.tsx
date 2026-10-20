@@ -248,6 +248,75 @@ export function AccountPackageApproveCapabilitiesRoute({
 				</AccountManagementMessage>
 			) : null}
 
+			{payload.selfPublishBlocker ? (
+				<section
+					data-testid="package-self-publish-blocker"
+					aria-labelledby="package-self-publish-blocker-heading"
+					css={{
+						display: 'grid',
+						gap: spacing.sm,
+						padding: spacing.md,
+						borderRadius: radius.md,
+						background: colors.primarySoftest,
+						border: `1px solid ${colors.border}`,
+					}}
+				>
+					<h2
+						id="package-self-publish-blocker-heading"
+						css={{ ...heroHeadingCss, fontSize: typography.fontSize.lg }}
+					>
+						Why approval is required
+					</h2>
+					<p
+						css={{ margin: 0, color: colors.textMuted }}
+						data-testid="package-self-publish-blocker-message"
+					>
+						{payload.selfPublishBlocker.message}
+					</p>
+					{payload.selfPublishBlocker.reasons.length > 0 ? (
+						<ul
+							css={{
+								margin: 0,
+								paddingLeft: spacing.lg,
+								color: colors.textMuted,
+								display: 'grid',
+								gap: spacing.xs,
+							}}
+							data-testid="package-self-publish-blocker-reasons"
+						>
+							{payload.selfPublishBlocker.reasons.map((reason, index) => (
+								<li key={`${reason.kind}-${String(index)}`}>
+									<code css={{ fontSize: typography.fontSize.sm }}>
+										{reason.kind}
+									</code>
+									{reason.matches && reason.matches.length > 0 ? (
+										<span>
+											{' '}
+											at{' '}
+											{reason.matches
+												.slice(0, 3)
+												.map(
+													(match) =>
+														`${match.path}:${String(match.line)} (${match.pattern})`,
+												)
+												.join('; ')}
+										</span>
+									) : reason.field ? (
+										<span>
+											{' '}
+											(kody.{reason.field}
+											{reason.sourceId ? ` on ${reason.sourceId}` : ''})
+										</span>
+									) : reason.storageId ? (
+										<span> (storage {reason.storageId})</span>
+									) : null}
+								</li>
+							))}
+						</ul>
+					) : null}
+				</section>
+			) : null}
+
 			{pendingApprovals.length > 0 ? (
 				<section
 					data-testid="package-pending-approvals"

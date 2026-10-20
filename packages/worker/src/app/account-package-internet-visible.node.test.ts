@@ -39,6 +39,7 @@ vi.mock('#worker/package-capabilities/went-public-approval.ts', () => ({
 vi.mock('#worker/package-capabilities/self-publish.ts', () => ({
 	attemptSelfPublish: (...args: Array<unknown>) =>
 		mockModule.attemptSelfPublish(...args),
+	explainSelfPublishBlocker: vi.fn(async () => null),
 	applyMatchingPinInternetVisible: (...args: Array<unknown>) =>
 		mockModule.applyMatchingPinInternetVisible(...args),
 }))
@@ -141,6 +142,12 @@ beforeEach(() => {
 	mockModule.attemptSelfPublish.mockResolvedValue({
 		status: 'blocked',
 		blocker: 'not_audited',
+		reasons: [{ kind: 'not_audited' }],
+		detail: {
+			blocker: 'not_audited',
+			reasons: [{ kind: 'not_audited' }],
+			message: 'No passing security audit is recorded for this version.',
+		},
 	})
 	mockModule.applyMatchingPinInternetVisible.mockReset()
 })
@@ -261,6 +268,28 @@ test('turning on internet-visible on an audited version adds no audit step', asy
 		auditor: 'Audit agent',
 		recordedBy: null,
 		recordedAt: '2026-10-15T00:00:00.000Z',
+	})
+	mockModule.attemptSelfPublish.mockResolvedValue({
+		status: 'blocked',
+		blocker: 'declares_capabilities',
+		reasons: [
+			{
+				kind: 'storage_entry',
+				storageId: 'pkg-1',
+				via: ['notes'],
+			},
+		],
+		detail: {
+			blocker: 'declares_capabilities',
+			reasons: [
+				{
+					kind: 'storage_entry',
+					storageId: 'pkg-1',
+					via: ['notes'],
+				},
+			],
+			message: 'Capability set lists package storage for pkg-1.',
+		},
 	})
 
 	const response = await setAccountPackageInternetVisible({

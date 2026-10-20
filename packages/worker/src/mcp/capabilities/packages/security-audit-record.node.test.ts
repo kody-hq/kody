@@ -205,6 +205,13 @@ test('packageSecurityAuditRecord re-evaluates a pending internet-visible request
 	mockModule.attemptSelfPublish.mockResolvedValueOnce({
 		status: 'blocked',
 		blocker: 'declares_credentials',
+		reasons: [{ kind: 'credential_entry', via: ['notes'] }],
+		detail: {
+			blocker: 'declares_credentials',
+			reasons: [{ kind: 'credential_entry', via: ['notes'] }],
+			message:
+				'Capability set lists credential a credential. Owner approves at https://heykody.dev/@user/notes/approve-capabilities.',
+		},
 	})
 	const blocked = await packageSecurityAuditRecordCapability.handler(
 		validArgs,

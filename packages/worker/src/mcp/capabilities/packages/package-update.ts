@@ -34,6 +34,10 @@ import {
 	type SelfPublishAttempt,
 } from '#worker/package-capabilities/self-publish.ts'
 import {
+	selfPublishBlockerReasonSchema,
+	selfPublishBlockerSchema,
+} from '#worker/package-capabilities/self-publish-blocker-schema.ts'
+import {
 	enqueueWentPublicApproval,
 	getPendingWentPublicApproval,
 } from '#worker/package-capabilities/went-public-approval.ts'
@@ -169,19 +173,22 @@ export const packageUpdateCapability = defineDomainCapability(
 				.describe(
 					'Present when internet_visible was turned on without owner Approve because the package declares no credential or capability. The package cannot use any credential while public this way.',
 				),
-			self_publish_blocker: z
-				.enum([
-					'unpublished',
-					'stale_dependencies',
-					'declares_credentials',
-					'declares_capabilities',
-					'not_audited',
-					'audit_concerns',
-					'not_permitted',
-				])
+			self_publish_blocker: selfPublishBlockerSchema
 				.optional()
 				.describe(
 					`Why internet_visible waits on owner Approve instead of self-publishing: the capability set has credentials or storage to approve, a package in the tree is unpublished, a dependency republished since this package's publish (stale_dependencies: publish this package again), the tree declares credentials, the tree declares other capabilities, the current published commit + fingerprint has no security audit (not_audited) or one with verdict concerns (audit_concerns), or the caller may not publish this package. For not_audited: audit, record verdict pass with ${packageSecurityAuditRecordOperation}; that re-evaluates the pending request.`,
+				),
+			self_publish_blocker_reasons: z
+				.array(selfPublishBlockerReasonSchema)
+				.optional()
+				.describe(
+					'Structured reasons for self_publish_blocker: which capability (storage, mounts, jobs, webhooks, credentials, etc.), and for text-detected storage which file and line matched.',
+				),
+			self_publish_blocker_message: z
+				.string()
+				.optional()
+				.describe(
+					'Readable one-or-two sentence explanation of self_publish_blocker, including the approval URL when present.',
 				),
 			self_publish_error: z
 				.string()
@@ -292,6 +299,11 @@ export const packageUpdateCapability = defineDomainCapability(
 			let selfPublishBlocker:
 				| Extract<SelfPublishAttempt, { status: 'blocked' }>['blocker']
 				| null = null
+			let selfPublishBlockerReasons: Extract<
+				SelfPublishAttempt,
+				{ status: 'blocked' }
+			>['reasons'] = []
+			let selfPublishBlockerMessage: string | null = null
 			let selfPublishError: string | null = null
 			let approvalUrl: string | undefined
 			let securityAudit: PackageSecurityAuditNextStep | null = null
@@ -323,6 +335,7 @@ export const packageUpdateCapability = defineDomainCapability(
 					actorUserId: owner.actorUserId,
 					savedPackage: existing,
 					summary,
+					approvalUrl,
 				})
 				if (attempt.status === 'failed') {
 					// A failed attempt leaves the request it saw pending; with none
@@ -339,7 +352,11 @@ export const packageUpdateCapability = defineDomainCapability(
 					}
 					selfPublishError = attempt.error
 				}
-				if (attempt.status === 'blocked') selfPublishBlocker = attempt.blocker
+				if (attempt.status === 'blocked') {
+					selfPublishBlocker = attempt.blocker
+					selfPublishBlockerReasons = attempt.reasons
+					selfPublishBlockerMessage = attempt.detail.message
+				}
 				if (attempt.status === 'self_published') {
 					selfPublished = true
 				} else if (selfPublishError) {
@@ -443,7 +460,12 @@ export const packageUpdateCapability = defineDomainCapability(
 							approval_url: approvalUrl,
 							internet_visible_pending: true as const,
 							...(selfPublishBlocker
-								? { self_publish_blocker: selfPublishBlocker }
+								? {
+										self_publish_blocker: selfPublishBlocker,
+										self_publish_blocker_reasons: selfPublishBlockerReasons,
+										self_publish_blocker_message:
+											selfPublishBlockerMessage ?? undefined,
+									}
 								: {}),
 							...(selfPublishError
 								? { self_publish_error: selfPublishError }

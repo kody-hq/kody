@@ -2277,6 +2277,36 @@ export type AccountPackageApproveCapabilitiesLoaderData = {
 	fingerprintMatchesApproval: boolean
 	latestApprovedAt: string | null
 	securityAudit: AccountPackageSecurityAudit
+	/**
+	 * Why agents cannot self-publish this version while a went_public request
+	 * is pending (or would need Approve if asked). Null when self-publish
+	 * would apply or the package is already internet-visible with no pending
+	 * went_public ask.
+	 */
+	selfPublishBlocker: {
+		blocker: string
+		message: string
+		reasons: Array<{
+			kind: string
+			sourceId?: string
+			storageId?: string
+			field?: string
+			needCount?: number
+			credentialId?: string
+			name?: string
+			via?: Array<string>
+			assumed?: true
+			pinnedCommit?: string
+			livePublishedCommit?: string | null
+			matches?: Array<{
+				path: string
+				line: number
+				column: number
+				pattern: string
+				snippet: string
+			}>
+		}>
+	} | null
 	settingsHref: string
 	packageHref: string
 	approveHref: string

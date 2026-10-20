@@ -56,6 +56,7 @@ function loaderData(
 		],
 		fingerprintMatchesApproval: false,
 		latestApprovedAt: null,
+		selfPublishBlocker: null,
 		securityAudit: {
 			status: 'not_audited',
 			prompt: buildPackageSecurityAuditPrompt({

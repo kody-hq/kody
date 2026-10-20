@@ -48,6 +48,13 @@ vi.mock('./security-audit-state.ts', () => ({
 	loadCurrentPackageSecurityAudit: (...args: Array<unknown>) =>
 		mockModule.loadCurrentPackageSecurityAudit(...args),
 }))
+vi.mock('./package-storage-use.ts', () => ({
+	findPublishedPackageStorageMatches: vi.fn(async () => []),
+	publishedPackageUsesStorage: vi.fn(async () => false),
+	sourceFilesUsePackageStorage: vi.fn(() => false),
+	findPackageStorageMatchesInFiles: vi.fn(() => []),
+	findPackageStorageMatchesInSource: vi.fn(() => []),
+}))
 vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof Authorize>()),
 	authorizePackageWrite: (...args: Array<unknown>) =>
@@ -182,10 +189,12 @@ test('self-publish is blocked when the capability set has entries or the tree de
 		evaluateSelfPublish({ env, savedPackage, summary: summary(dependencies) })
 
 	publishTree({ 'source-root': {} })
-	await expect(evaluate()).resolves.toEqual({
-		eligible: false,
-		blocker: 'unpublished',
-	})
+	await expect(evaluate()).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'unpublished',
+		}),
+	)
 
 	publishTree({ 'source-root': {}, 'source-dep': {} })
 	await expect(
@@ -207,10 +216,18 @@ test('self-publish is blocked when the capability set has entries or the tree de
 				},
 			},
 		}),
-	).resolves.toEqual({
-		eligible: false,
-		blocker: 'declares_credentials',
-	})
+	).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'declares_credentials',
+			reasons: [
+				expect.objectContaining({
+					kind: 'credential_entry',
+					credentialId: 'cred-1',
+				}),
+			],
+		}),
+	)
 	await expect(
 		evaluateSelfPublish({
 			env,
@@ -230,19 +247,29 @@ test('self-publish is blocked when the capability set has entries or the tree de
 				},
 			},
 		}),
-	).resolves.toEqual({
-		eligible: false,
-		blocker: 'declares_capabilities',
-	})
+	).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'declares_capabilities',
+			reasons: [
+				expect.objectContaining({
+					kind: 'storage_entry',
+					storageId: 'pkg-1',
+				}),
+			],
+		}),
+	)
 
 	publishTree({
 		'source-root': {},
 		'source-dep': { credentials: { resend: { description: 'Mail.' } } },
 	})
-	await expect(evaluate()).resolves.toEqual({
-		eligible: false,
-		blocker: 'declares_credentials',
-	})
+	await expect(evaluate()).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'declares_credentials',
+		}),
+	)
 
 	publishTree({ 'source-root': {}, 'source-dep': {} })
 	mockModule.loadPublishedCredentialNeeds.mockImplementation(
@@ -251,10 +278,12 @@ test('self-publish is blocked when the capability set has entries or the tree de
 				? [{ key: 'resend', provider: 'resend' }]
 				: [],
 	)
-	await expect(evaluate()).resolves.toEqual({
-		eligible: false,
-		blocker: 'declares_credentials',
-	})
+	await expect(evaluate()).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'declares_credentials',
+		}),
+	)
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
 
 	for (const kody of [
@@ -267,10 +296,18 @@ test('self-publish is blocked when the capability set has entries or the tree de
 		{ webhooks: [{ name: 'stripe' }] },
 	]) {
 		publishTree({ 'source-root': kody, 'source-dep': {} })
-		await expect(evaluate()).resolves.toEqual({
-			eligible: false,
-			blocker: 'declares_capabilities',
-		})
+		await expect(evaluate()).resolves.toEqual(
+			expect.objectContaining({
+				eligible: false,
+				blocker: 'declares_capabilities',
+				reasons: [
+					expect.objectContaining({
+						kind: 'manifest_field',
+						field: Object.keys(kody)[0],
+					}),
+				],
+			}),
+		)
 	}
 })
 
@@ -280,10 +317,12 @@ test('self-publish needs a passing security audit for the current commit and fin
 		evaluateSelfPublish({ env, savedPackage, summary: summary() })
 
 	mockModule.loadCurrentPackageSecurityAudit.mockResolvedValueOnce(null)
-	await expect(evaluate()).resolves.toEqual({
-		eligible: false,
-		blocker: 'not_audited',
-	})
+	await expect(evaluate()).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'not_audited',
+		}),
+	)
 	expect(mockModule.loadCurrentPackageSecurityAudit).toHaveBeenCalledWith(
 		env.APP_DB,
 		{
@@ -301,10 +340,12 @@ test('self-publish needs a passing security audit for the current commit and fin
 		recordedBy: null,
 		recordedAt: '2026-10-15T00:00:00.000Z',
 	})
-	await expect(evaluate()).resolves.toEqual({
-		eligible: false,
-		blocker: 'audit_concerns',
-	})
+	await expect(evaluate()).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'audit_concerns',
+		}),
+	)
 
 	await expect(evaluate()).resolves.toEqual({ eligible: true })
 })
@@ -324,18 +365,27 @@ test('attemptSelfPublish writes nothing when blocked or when the caller may not 
 		})
 
 	mockModule.loadCurrentPackageSecurityAudit.mockResolvedValueOnce(null)
-	await expect(attempt()).resolves.toEqual({
-		status: 'blocked',
-		blocker: 'not_audited',
-	})
+	await expect(attempt()).resolves.toEqual(
+		expect.objectContaining({
+			status: 'blocked',
+			blocker: 'not_audited',
+			detail: expect.objectContaining({
+				blocker: 'not_audited',
+				message: expect.stringContaining('security audit'),
+			}),
+		}),
+	)
 
 	mockModule.authorizePackageWrite.mockRejectedValueOnce(
 		Object.create(AuthorizationError.prototype),
 	)
-	await expect(attempt()).resolves.toEqual({
-		status: 'blocked',
-		blocker: 'not_permitted',
-	})
+	await expect(attempt()).resolves.toEqual(
+		expect.objectContaining({
+			status: 'blocked',
+			blocker: 'not_permitted',
+			detail: expect.objectContaining({ blocker: 'not_permitted' }),
+		}),
+	)
 	expect(mockModule.approvePackageCapabilitySet).not.toHaveBeenCalled()
 	expect(mockModule.enqueueWentPublicApproval).not.toHaveBeenCalled()
 })
@@ -474,7 +524,12 @@ test('self-publish is blocked when a package in the tree republished since the p
 	stale.dependencySnapshot.dependencies[0]!.publishedCommit = 'commit-older'
 	await expect(
 		evaluateSelfPublish({ env, savedPackage, summary: stale }),
-	).resolves.toEqual({ eligible: false, blocker: 'stale_dependencies' })
+	).resolves.toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'stale_dependencies',
+		}),
+	)
 })
 
 test('selfPublishPackage refuses when the package republished since the audited commit', async () => {

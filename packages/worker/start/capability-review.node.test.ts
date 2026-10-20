@@ -35,6 +35,7 @@ const payload: AccountPackageApproveCapabilitiesLoaderData = {
 	fingerprintMatchesApproval: false,
 	goPublicRequestId: null,
 	latestApprovedAt: null,
+	selfPublishBlocker: null,
 	settingsHref: '/@owner/example/settings',
 	packageHref: '/@owner/example',
 	approveHref: '/@owner/example/approve-capabilities',

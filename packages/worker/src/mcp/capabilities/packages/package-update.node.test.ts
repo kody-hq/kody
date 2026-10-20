@@ -252,6 +252,12 @@ test('packageUpdate internet_visible without an approved capability set records 
 	mockModule.attemptSelfPublish.mockResolvedValue({
 		status: 'blocked',
 		blocker: 'declares_credentials',
+		reasons: [{ kind: 'credential_entry', via: ['notes'] }],
+		detail: {
+			blocker: 'declares_credentials',
+			reasons: [{ kind: 'credential_entry', via: ['notes'] }],
+			message: 'Capability set lists credential a credential.',
+		},
 	})
 
 	const result = await update({ internet_visible: true })
@@ -293,6 +299,12 @@ test('packageUpdate internet_visible with a matching pin turns serving on withou
 	mockModule.attemptSelfPublish.mockResolvedValue({
 		status: 'blocked',
 		blocker: 'declares_capabilities',
+		reasons: [{ kind: 'storage_entry', storageId: 'pkg-1', via: ['notes'] }],
+		detail: {
+			blocker: 'declares_capabilities',
+			reasons: [{ kind: 'storage_entry', storageId: 'pkg-1', via: ['notes'] }],
+			message: 'Capability set lists package storage for pkg-1.',
+		},
 	})
 	mockModule.loadCurrentPackageSecurityAudit.mockResolvedValue({
 		verdict: 'pass',
@@ -332,6 +344,12 @@ test('packageUpdate internet_visible with a matching pin asks to retry when appl
 	mockModule.attemptSelfPublish.mockResolvedValue({
 		status: 'blocked',
 		blocker: 'declares_capabilities',
+		reasons: [{ kind: 'storage_entry', storageId: 'pkg-1', via: ['notes'] }],
+		detail: {
+			blocker: 'declares_capabilities',
+			reasons: [{ kind: 'storage_entry', storageId: 'pkg-1', via: ['notes'] }],
+			message: 'Capability set lists package storage for pkg-1.',
+		},
 	})
 	mockModule.applyMatchingPinInternetVisible.mockResolvedValue({
 		ok: false,
@@ -393,6 +411,12 @@ test('packageUpdate internet_visible on an unaudited version tells the agent to 
 	mockModule.attemptSelfPublish.mockResolvedValue({
 		status: 'blocked',
 		blocker: 'not_audited',
+		reasons: [{ kind: 'not_audited' }],
+		detail: {
+			blocker: 'not_audited',
+			reasons: [{ kind: 'not_audited' }],
+			message: 'No passing security audit is recorded for this version.',
+		},
 	})
 	mockModule.getSavedPackageById.mockResolvedValue(createSavedPackage())
 	mockModule.loadCapabilityApprovalSummary.mockResolvedValue({

@@ -411,12 +411,14 @@ test('the fingerprint ignores account credentials the package does not declare',
 	expect((await t.compute()).capabilitySet.fingerprint).toBe(before)
 })
 
-test('storage detection reads module files, not browser storage or type declarations', () => {
+test('storage detection reads module files, not browser storage, type declarations, or string prose', () => {
 	expect(
 		sourceFilesUsePackageStorage({
 			'app/game.ts': "localStorage.setItem('hi', '1')",
 			'types/runtime.d.ts': 'export declare function packageStorage(): unknown',
 			'README.md': 'Uses packageStorage() for nothing.',
+			'app/assets.generated.ts':
+				'export const html = `<code>import { packageStorage } from "kody:runtime"</code>`',
 		}),
 	).toBe(false)
 	expect(
