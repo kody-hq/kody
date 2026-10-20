@@ -20,6 +20,7 @@ import {
 	isGitPushNotFastForwardMessage,
 	isRepoDisallowedPathMessage,
 	isRepoSearchInvalidRegexMessage,
+	isRepoSessionApplyPatchCallerMessage,
 	isRepoSessionInactiveMessage,
 	isRepoSessionNotFoundMessage,
 	isRepoSessionStructuralEditCallerMessage,
@@ -184,10 +185,11 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 		return true
 	}
 	// Published / inactive / missing repo sessions, invalid repoSearch
-	// regexes, disallowed repo paths, and structural delete/move validation
-	// are thrown inside the RepoSession Durable Object as plain Errors.
-	// Match the stable phrases so they stay out of Sentry even when a
-	// capability forgets to re-wrap as McpCallerError. KODY-9B.
+	// regexes, disallowed repo paths, structural delete/move validation, and
+	// malformed / non-applying repoApplyPatch diffs are thrown inside the
+	// RepoSession Durable Object as plain Errors. Match the stable phrases so
+	// they stay out of Sentry even when a capability forgets to re-wrap as
+	// McpCallerError. KODY-9B, KODY-A3.
 	if (
 		getErrorCauseChain(cause).some(
 			(entry) =>
@@ -196,7 +198,8 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 					isRepoSessionNotFoundMessage(entry.message) ||
 					isRepoSearchInvalidRegexMessage(entry.message) ||
 					isRepoDisallowedPathMessage(entry.message) ||
-					isRepoSessionStructuralEditCallerMessage(entry.message)),
+					isRepoSessionStructuralEditCallerMessage(entry.message) ||
+					isRepoSessionApplyPatchCallerMessage(entry.message)),
 		)
 	) {
 		return true

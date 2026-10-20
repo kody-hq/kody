@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest'
 import {
+	buildRepoApplyPatchParseCallerMessage,
 	isGitPushNotFastForwardError,
 	isGitPushNotFastForwardMessage,
+	isRepoSessionApplyPatchCallerMessage,
 	isRepoSessionInactiveMessage,
 	isRepoSessionNotFoundMessage,
 	isRepoSessionStructuralEditCallerMessage,
@@ -100,6 +102,47 @@ test('isRepoSessionStructuralEditCallerMessage matches delete and move validatio
 	expect(
 		platformMessages.filter((message) =>
 			isRepoSessionStructuralEditCallerMessage(message),
+		),
+	).toEqual([])
+})
+
+test('isRepoSessionApplyPatchCallerMessage matches apply-patch caller phrases only', () => {
+	const callerMessages = [
+		'git apply patch did not contain any file changes.',
+		'git apply patch is missing a target file path.',
+		'git apply patch did not apply cleanly to src/index.ts.',
+		buildRepoApplyPatchParseCallerMessage(
+			'Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
+		),
+		buildRepoApplyPatchParseCallerMessage(
+			'Added line count did not match for hunk at line 3',
+		),
+		// Raw `diff` parse phrases (defense for unwrapped / in-flight DO RPC).
+		'Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
+		'Hunk at line 5 has more lines than expected (expected 1 old lines and 1 new lines)',
+		'Added line count did not match for hunk at line 3',
+		'Removed line count did not match for hunk at line 2',
+		'Missing "+++ ..." file header for a/src/index.ts',
+		'Missing "--- ..." file header for b/src/index.ts',
+	]
+	expect(
+		callerMessages.filter(
+			(message) => !isRepoSessionApplyPatchCallerMessage(message),
+		),
+	).toEqual([])
+
+	const platformMessages = [
+		'Durable Object storage unavailable',
+		'Source "abc" was not found.',
+		'repo session delete edit target "src/index.js" was not found.',
+		'Failed to read repo session file "index.ts" while collecting workspace snapshot.',
+		'git status failed',
+		'Hunk header looked wrong but was unrelated platform text',
+		'Missing required field for package publish',
+	]
+	expect(
+		platformMessages.filter((message) =>
+			isRepoSessionApplyPatchCallerMessage(message),
 		),
 	).toEqual([])
 })

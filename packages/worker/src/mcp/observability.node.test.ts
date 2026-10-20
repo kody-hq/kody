@@ -395,12 +395,41 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				'repo session edits cannot combine a delete/move touching "src/a.ts" with a write/replace/writeJson edit for the same path in one call. Split them into separate repoEditFiles calls.',
 			),
 		),
+		// Malformed / non-applying patches (KODY-A3). Plain Error from DO RPC.
+		handlerFailure(
+			'repoApplyPatch',
+			'repo',
+			'Error',
+			new Error(
+				'git apply patch: Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@',
+			),
+		),
+		handlerFailure(
+			'repoApplyPatch',
+			'repo',
+			'Error',
+			new Error('git apply patch did not apply cleanly to src/index.ts.'),
+		),
+		handlerFailure(
+			'repoApplyPatch',
+			'repo',
+			'Error',
+			new Error('Durable Object RPC failed', {
+				cause: new Error('git apply patch did not contain any file changes.'),
+			}),
+		),
+		handlerFailure(
+			'repoApplyPatch',
+			'repo',
+			'Error',
+			new Error('Hunk at line 4 contained invalid line @@ -8,8 +8,8 @@'),
+		),
 	]
 	const payloads = captureMcpEvents(() => {
 		for (const event of callerFailures) logMcpEvent(event)
 	})
 
-	expect(payloads).toHaveLength(30)
+	expect(payloads).toHaveLength(34)
 	expect(JSON.parse(payloads[0]!)).toMatchObject({
 		tool: 'execute',
 		outcome: 'failure',

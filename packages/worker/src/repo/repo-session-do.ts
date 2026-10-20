@@ -134,6 +134,7 @@ import {
 	purgeRepoSessionWorkspaceBlobs,
 } from './repo-session-blobs.ts'
 import {
+	buildRepoApplyPatchParseCallerMessage,
 	buildRepoSessionNotFoundForUserMessage,
 	buildRepoSessionNotFoundMessage,
 	isGitPushNotFastForwardError,
@@ -2261,13 +2262,24 @@ class RepoSessionBase extends DurableObject<Env> {
 	}
 
 	private async applyUnifiedDiff(input: { patch: string; dryRun?: boolean }) {
-		const parsedSections = splitUnifiedDiffSections(input.patch).flatMap(
-			(section) =>
-				parsePatch(section.text).map((patch) => ({
-					patch,
-					header: section.header,
-				})),
-		)
+		let parsedSections
+		try {
+			parsedSections = splitUnifiedDiffSections(input.patch).flatMap(
+				(section) =>
+					parsePatch(section.text).map((patch) => ({
+						patch,
+						header: section.header,
+					})),
+			)
+		} catch (error) {
+			// `diff` parsePatch throws plain Errors (malformed hunks, line-count
+			// mismatches). Prefix so DO RPC still classifies them as caller
+			// failures while preserving the actionable parse detail. KODY-A3.
+			throw new Error(
+				buildRepoApplyPatchParseCallerMessage(getErrorMessage(error)),
+				{ cause: error },
+			)
+		}
 		if (parsedSections.length === 0) {
 			throw new Error('git apply patch did not contain any file changes.')
 		}

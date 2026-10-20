@@ -210,3 +210,40 @@ export function isRepoSessionStructuralEditCallerMessage(message: string) {
 		repoSessionMixedEditSuffix,
 	)
 }
+
+/**
+ * Stable prefix for `repoApplyPatch` / `applyUnifiedDiff` caller failures.
+ * Agents send malformed or non-applying unified diffs; those are
+ * caller-correctable. Subclass identity does not survive Durable Object RPC,
+ * so MCP observability and the capability match this prefix (including
+ * `diff` parse details rethrown as `git apply patch: …`). KODY-A3.
+ *
+ * Also match raw `diff` parse phrases that can still escape without the
+ * prefix (in-flight DO builds, or a forgotten wrap) so they stay off Sentry.
+ */
+export const repoApplyPatchCallerMessagePrefix = 'git apply patch'
+
+export function isRepoSessionApplyPatchCallerMessage(message: string) {
+	if (message.startsWith(repoApplyPatchCallerMessagePrefix)) return true
+	// Raw `diff` package parsePatch errors (see node_modules/diff patch/parse).
+	if (message.startsWith('Hunk at line ')) return true
+	if (message.startsWith('Added line count did not match for hunk at line ')) {
+		return true
+	}
+	if (
+		message.startsWith('Removed line count did not match for hunk at line ')
+	) {
+		return true
+	}
+	if (
+		message.startsWith('Missing "') &&
+		message.includes('" file header for ')
+	) {
+		return true
+	}
+	return false
+}
+
+export function buildRepoApplyPatchParseCallerMessage(parseMessage: string) {
+	return `${repoApplyPatchCallerMessagePrefix}: ${parseMessage}`
+}

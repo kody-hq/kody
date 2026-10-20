@@ -1,8 +1,12 @@
+import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { isRepoLargeFileMessage } from '#worker/repo/large-file-policy.ts'
+import { isRepoSessionApplyPatchCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
 import { authorizeRepoSessionPackageWrite } from './authorize-repo-session-package.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
@@ -38,12 +42,24 @@ export const repoApplyPatchCapability = defineDomainCapability(
 				userId: ownerId,
 				sessionId: args.session_id,
 			})
-			const result = await repoSessionRpc(ctx.env, args.session_id).applyPatch({
-				sessionId: args.session_id,
-				userId: ownerId,
-				patch: args.patch,
-				dryRun: args.dry_run,
-			})
+			let result
+			try {
+				result = await repoSessionRpc(ctx.env, args.session_id).applyPatch({
+					sessionId: args.session_id,
+					userId: ownerId,
+					patch: args.patch,
+					dryRun: args.dry_run,
+				})
+			} catch (error) {
+				// Malformed / non-applying patches and per-file size denials are
+				// caller-correctable. DO RPC may lose Error subclass identity, so
+				// match the stable message phrases. KODY-A3.
+				const callerMessage = getRepoSessionApplyPatchCallerMessage(error)
+				if (callerMessage) {
+					throw new McpCallerError(callerMessage, { cause: error })
+				}
+				throw error
+			}
 			return {
 				dry_run: result.dryRun,
 				total_changed: result.totalChanged,
@@ -57,3 +73,13 @@ export const repoApplyPatchCapability = defineDomainCapability(
 		},
 	},
 )
+
+function getRepoSessionApplyPatchCallerMessage(error: unknown) {
+	const match = getErrorCauseChain(error).find(
+		(entry) =>
+			entry instanceof Error &&
+			(isRepoSessionApplyPatchCallerMessage(entry.message) ||
+				isRepoLargeFileMessage(entry.message)),
+	)
+	return match instanceof Error ? match.message : null
+}
