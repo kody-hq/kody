@@ -126,16 +126,18 @@ FORMAT JSON
 `.trim()
 }
 
+/**
+ * Fleet-wide distinct billing owner ids (`blob1`) with at least one real
+ * failure that day. `caught` is excluded (same as the fleet alert). Do not
+ * use this under a per-account filter: one person may have both a legacy
+ * person id and a personal org id in `blob1`, which would inflate the count
+ * to 2 — callers clamp filtered rows to 0/1 instead.
+ */
 export function buildAdminFleetErrorRateDailyUsersQuery(input: {
 	dataset: string
 	startDay: string
 	nextDay: string
-	billingOwnerIds?: ReadonlyArray<string>
 }) {
-	const ownerClause = ownerInClause(input.billingOwnerIds)
-	// Distinct billing owners with at least one real failure that day.
-	// `caught` is excluded (same as the fleet alert). Uses count(DISTINCT)
-	// like onboarding funnel AE reads.
 	return `
 SELECT
 	toDate(timestamp) AS day,
@@ -144,11 +146,16 @@ FROM ${input.dataset}
 WHERE timestamp >= toDateTime('${input.startDay} 00:00:00')
 	AND timestamp < toDateTime('${input.nextDay} 00:00:00')
 	AND blob2 IN (${fleetMetricsInClause()})
-	AND blob4 = 'error'${ownerClause}
+	AND blob4 = 'error'
 GROUP BY day
 ORDER BY day ASC
 FORMAT JSON
 `.trim()
+}
+
+/** One filtered account: 0 or 1 user with errors that day (never 2+). */
+export function usersWithErrorsForFilteredDay(errorCount: number) {
+	return errorCount > 0 ? 1 : 0
 }
 
 export function foldAdminFleetErrorRateDailyRows(input: {
@@ -277,6 +284,7 @@ async function loadDailyBreakdown(input: {
 	const dataset = resolveUsageEventsDataset(input.env)
 	const baseUrl =
 		input.env.CLOUDFLARE_API_BASE_URL?.trim() || 'https://api.cloudflare.com'
+	const filtered = (input.billingOwnerIds?.length ?? 0) > 0
 	const queryInput = {
 		dataset,
 		startDay: input.startDay,
@@ -284,20 +292,36 @@ async function loadDailyBreakdown(input: {
 		billingOwnerIds: input.billingOwnerIds,
 	}
 	try {
-		const [outcomeRows, userRows] = await Promise.all([
-			queryAnalyticsEngineSql<AdminFleetErrorRateOutcomeAnalyticsRow>({
+		const outcomeRows =
+			await queryAnalyticsEngineSql<AdminFleetErrorRateOutcomeAnalyticsRow>({
 				accountId,
 				apiToken,
 				baseUrl,
 				query: buildAdminFleetErrorRateDailyOutcomeQuery(queryInput),
-			}),
-			queryAnalyticsEngineSql<AdminFleetErrorRateUsersAnalyticsRow>({
+			})
+		if (filtered) {
+			const rows = foldAdminFleetErrorRateDailyRows({
+				outcomeRows,
+				userRows: [],
+				startDay: input.startDay,
+				endDay: input.endDay,
+			}).map((row) => ({
+				...row,
+				usersWithErrors: usersWithErrorsForFilteredDay(row.errorCount),
+			}))
+			return { available: true, rows }
+		}
+		const userRows =
+			await queryAnalyticsEngineSql<AdminFleetErrorRateUsersAnalyticsRow>({
 				accountId,
 				apiToken,
 				baseUrl,
-				query: buildAdminFleetErrorRateDailyUsersQuery(queryInput),
-			}),
-		])
+				query: buildAdminFleetErrorRateDailyUsersQuery({
+					dataset,
+					startDay: input.startDay,
+					nextDay: input.nextDay,
+				}),
+			})
 		return {
 			available: true,
 			rows: foldAdminFleetErrorRateDailyRows({

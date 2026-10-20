@@ -86,7 +86,7 @@ const dailyRowSchema = z.object({
 		.int()
 		.nonnegative()
 		.describe(
-			'Distinct billing owners (Analytics Engine blob1) with at least one error that day. Aggregate only — no handles.',
+			'Fleet: distinct Analytics Engine billing owner ids (blob1) with at least one error that day (not person-deduped across legacy person vs personal-org ids). Filtered: 0 or 1 for that account. Aggregate only — no handles.',
 		),
 })
 

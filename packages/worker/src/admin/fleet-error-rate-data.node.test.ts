@@ -9,6 +9,7 @@ import {
 	loadAdminFleetErrorRateData,
 	resolveAdminFleetErrorRateWindow,
 	toAdminInsightsPackageErrorRate,
+	usersWithErrorsForFilteredDay,
 } from './fleet-error-rate-data.ts'
 
 const queryMocks = vi.hoisted(() => ({
@@ -201,11 +202,10 @@ test('daily AE queries count caught and error and exclude handles', () => {
 		dataset: 'kody_usage_events',
 		startDay: '2026-10-14',
 		nextDay: '2026-10-21',
-		billingOwnerIds: ['abc123', 'org-xyz'],
 	})
 	expect(users).toContain("blob4 = 'error'")
 	expect(users).toContain('count(DISTINCT blob1)')
-	expect(users).toContain("blob1 IN ('abc123', 'org-xyz')")
+	expect(users).not.toContain('blob1 IN')
 	expect(users).not.toContain('caught')
 	expect(users).not.toContain('username')
 })
@@ -320,10 +320,9 @@ test('loadAdminFleetErrorRateData filters by billing owner without listing handl
 	queryMocks.queryAnalyticsEngineSql.mockImplementation(
 		async (input: { query: string }) => {
 			expect(input.query).toContain(`blob1 IN ('${personId}', '${orgId}')`)
-			if (input.query.includes('caught_count')) {
-				return [{ day: '2026-10-20', error_count: 1, caught_count: 3 }]
-			}
-			return [{ day: '2026-10-20', users_with_errors: 1 }]
+			expect(input.query).toContain('caught_count')
+			expect(input.query).not.toContain('users_with_errors')
+			return [{ day: '2026-10-20', error_count: 1, caught_count: 3 }]
 		},
 	)
 
@@ -340,16 +339,23 @@ test('loadAdminFleetErrorRateData filters by billing owner without listing handl
 	})
 
 	expect(data.filter).toEqual({ stableUserId: personId })
+	expect(queryMocks.queryAnalyticsEngineSql).toHaveBeenCalledTimes(1)
 	expect(data.daily).toEqual([
 		{
 			day: '2026-10-20',
 			errorCount: 1,
 			caughtCount: 3,
+			// One account filter: never inflate to 2 from person+org blob1s.
 			usersWithErrors: 1,
 		},
 	])
 	expect(data).not.toHaveProperty('username')
 	expect(JSON.stringify(data)).not.toMatch(/@[a-z]/i)
+})
+
+test('filtered usersWithErrors is 0 or 1 even when outcomes span two billing ids', () => {
+	expect(usersWithErrorsForFilteredDay(0)).toBe(0)
+	expect(usersWithErrorsForFilteredDay(7)).toBe(1)
 })
 
 test('loadAdminFleetErrorRateData degrades when AE is unavailable', async () => {
