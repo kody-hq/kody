@@ -256,7 +256,9 @@ export async function collectWaitingSignals(input: {
 			integration: integrationsProbe.ok
 				? integrationsProbe.value.length > 0
 				: null,
-			secret: secretsProbe.ok ? secretsProbe.value.length > 0 : null,
+			secret: secretsProbe.ok
+				? secretsProbe.value.some((secret) => !secret.disconnected)
+				: null,
 			discord: discordJoined,
 		}),
 	}

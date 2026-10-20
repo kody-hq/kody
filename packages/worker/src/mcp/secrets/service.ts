@@ -434,7 +434,9 @@ export async function setSecretsAtomically(input: {
 		for (const secret of input.secrets) {
 			const name = secret.name.trim()
 			if (!name) throw new Error('Secret name is required.')
-			const existing = await resolveSecret({
+			// findSecret (not resolveSecret): a disconnected row still exists and
+			// reconnect must fill that same credential, not look like a create.
+			const existing = await findSecret({
 				env: input.env,
 				userId: input.userId,
 				name,
@@ -1030,7 +1032,9 @@ export async function findStoredCredentialForUse(input: {
 		ownerId: input.ownerId,
 		credentialId: input.credentialId,
 	})
-	if (!row) return null
+	if (!row || isDisconnectedSecretEncryptedValue(row.encrypted_value)) {
+		return null
+	}
 	return {
 		found: {
 			credentialId: row.id,
@@ -1427,6 +1431,7 @@ export async function listPackageSecretsByPackageIds(input: {
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
 				placement: readCredentialFillPlacement(row.placement_json),
+				disconnected: row.disconnected,
 			}),
 		)
 		grouped.set(packageId, current)
