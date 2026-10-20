@@ -97,7 +97,9 @@ kody.run    → kody-runtime (package-app zone routes)
   and jobs have sibling entrypoints (see
   [architecture](./docs/contributing/architecture/index.md#production-worker-fleet))
 - OAuth requests are handled first, then MCP requests, then static assets
-- Remaining requests go through TanStack Start
+- Webhook ingress (including GET subscription challenges) is handled in the
+  Worker `fetch` path before TanStack Start
+- Remaining website requests go through TanStack Start
   (`packages/worker/start/http-entry.ts`)
 - Client assets are bundled into `packages/worker/public/` and served via the
   `ASSETS` binding

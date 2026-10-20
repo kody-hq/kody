@@ -2,6 +2,7 @@ import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from 'vitest'
 import {
+	assertBrowseLandedOnTarget,
 	browseTargetUrl,
 	defaultBrowsePath,
 	formatBrowseReport,
@@ -84,10 +85,13 @@ test('openBrowseSession injects cookies and opens the target path', async () => 
 	const added: Array<unknown> = []
 	const gotoCalls: Array<string> = []
 	let disconnected: (() => void) | null = null
+	let currentUrl = 'https://kody-pr-9.example/account/packages/demo'
 	const page = {
 		goto: async (url: string) => {
 			gotoCalls.push(url)
+			currentUrl = url
 		},
+		url: () => currentUrl,
 		waitForLoadState: async () => {},
 		screenshot: async () => {},
 		on: (_event: string, _listener: () => void) => {},
@@ -146,14 +150,48 @@ test('normalizeScreenshotPath resolves a relative path and rejects flags', () =>
 	expect(normalizeScreenshotPath(null)).toBe(null)
 	expect(() => normalizeScreenshotPath('')).toThrow(/file path/)
 	expect(() => normalizeScreenshotPath('--headless')).toThrow(/not a flag/)
+	expect(() => normalizeScreenshotPath('.tmp/approve.jpeg')).toThrow(/\.png/)
+})
+
+test('assertBrowseLandedOnTarget rejects login and cross-origin landings', () => {
+	expect(() =>
+		assertBrowseLandedOnTarget({
+			requestedUrl: 'https://kody.example/account',
+			finalUrl: 'https://kody.example/account',
+		}),
+	).not.toThrow()
+	expect(() =>
+		assertBrowseLandedOnTarget({
+			requestedUrl: 'https://kody.example/account',
+			finalUrl: 'https://kody.example/login',
+		}),
+	).toThrow(/login/)
+	expect(() =>
+		assertBrowseLandedOnTarget({
+			requestedUrl: 'https://kody.example/account',
+			finalUrl: 'https://attacker.example/account',
+		}),
+	).toThrow(/different origin/)
 })
 
 test('openBrowseSession writes a screenshot and closes headless without closeAfterMs', async () => {
-	const screenshotCalls: Array<{ path: string; fullPage: boolean }> = []
+	const screenshotCalls: Array<{
+		path: string
+		fullPage: boolean
+		type: string
+	}> = []
+	const loadWaits: Array<{ state: string; timeout?: number }> = []
 	const page = {
 		goto: async () => {},
-		waitForLoadState: async () => {},
-		screenshot: async (options: { path: string; fullPage: boolean }) => {
+		url: () => 'https://kody-pr-9.example/@user/pkg/approve-capabilities',
+		waitForLoadState: async (state: string, options?: { timeout?: number }) => {
+			loadWaits.push({ state, timeout: options?.timeout })
+		},
+		screenshot: async (options: {
+			path: string
+			fullPage: boolean
+			type: string
+		}) => {
 			screenshotCalls.push(options)
 		},
 		on: () => {},
@@ -183,9 +221,52 @@ test('openBrowseSession writes a screenshot and closes headless without closeAft
 			launch: async () => browser as never,
 		},
 	})
-	expect(screenshotCalls).toEqual([{ path: screenshotPath, fullPage: true }])
+	expect(screenshotCalls).toEqual([
+		{ path: screenshotPath, fullPage: true, type: 'png' },
+	])
+	expect(loadWaits).toEqual([{ state: 'load', timeout: 30_000 }])
 	expect(report.screenshotPath).toBe(path.resolve(screenshotPath))
 	expect(formatBrowseReport(report)).toContain(`screenshot ${screenshotPath}`)
+})
+
+test('openBrowseSession rejects a login redirect before screenshot', async () => {
+	const screenshotCalls: Array<unknown> = []
+	const page = {
+		goto: async () => {},
+		url: () => 'https://kody-pr-9.example/login',
+		waitForLoadState: async () => {},
+		screenshot: async (options: unknown) => {
+			screenshotCalls.push(options)
+		},
+		on: () => {},
+	}
+	const context = {
+		addCookies: async () => {},
+		newPage: async () => page,
+		close: async () => {},
+	}
+	const browser = {
+		newContext: async () => context,
+		close: async () => {},
+		on: () => {},
+		isConnected: () => true,
+	}
+	await expect(
+		openBrowseSession({
+			origin: 'https://kody-pr-9.example',
+			path: '/account',
+			cookieHeader: 'kody_session=seed',
+			headed: false,
+			screenshotPath: path.join(
+				tmpdir(),
+				`control-kody-login-${Date.now()}.png`,
+			),
+			chromium: {
+				launch: async () => browser as never,
+			},
+		}),
+	).rejects.toThrow(/login/)
+	expect(screenshotCalls).toEqual([])
 })
 
 test('openBrowseSession refuses an empty cookie header', async () => {

@@ -139,8 +139,10 @@ Final `published` and `already_published` results from
 snippet per declared topic when subscriptions are present. For a `dispatched`
 result, poll the workflow to completion before reading its final publish result.
 Failed and non-fast-forward results have no test hints. The CLI
-(`kody package publish`) exits 0 for those success statuses (and for
-`dispatched`); refusal statuses exit 1 with the error on stderr.
+(`kody package publish`) exits 0 for `published`, `already_published`, and
+`dispatched`; refusal statuses (`checks_failed`, `not_fast_forward`, `locked`,
+`approval_required`, and any other non-success status) exit 1 with the error on
+stderr.
 
 ### Handler guidance
 

@@ -109,7 +109,32 @@ export function normalizeScreenshotPath(
 	if (trimmed.startsWith('-')) {
 		throw new Error('browse --screenshot must be a file path, not a flag')
 	}
+	if (!trimmed.toLowerCase().endsWith('.png')) {
+		throw new Error('browse --screenshot must end with .png')
+	}
 	return path.resolve(trimmed)
+}
+
+const browseScreenshotLoadTimeoutMs = 30_000
+
+/** Reject login / cross-origin landings before claiming signed-in evidence. */
+export function assertBrowseLandedOnTarget(input: {
+	requestedUrl: string
+	finalUrl: string
+}) {
+	const requested = new URL(input.requestedUrl)
+	const finalUrl = new URL(input.finalUrl)
+	if (finalUrl.origin !== requested.origin) {
+		throw new Error(
+			`browse landed on a different origin (${finalUrl.origin}); expected ${requested.origin}`,
+		)
+	}
+	const pathname = finalUrl.pathname.replace(/\/+$/, '') || '/'
+	if (pathname === '/login' || pathname.startsWith('/login/')) {
+		throw new Error(
+			`browse redirected to login (${finalUrl.toString()}); session cookie may be missing or expired`,
+		)
+	}
 }
 
 export function browseTargetUrl(origin: string, browsePath: string) {
@@ -202,21 +227,29 @@ export async function openBrowseSession(
 					})
 				: null
 		await page.goto(url, { waitUntil: 'domcontentloaded' })
+		const finalUrl = page.url()
+		assertBrowseLandedOnTarget({ requestedUrl: url, finalUrl })
 		if (screenshotPath) {
-			await page.waitForLoadState('load').catch(() => {})
-			await page.screenshot({ path: screenshotPath, fullPage: true })
+			await page.waitForLoadState('load', {
+				timeout: browseScreenshotLoadTimeoutMs,
+			})
+			await page.screenshot({
+				path: screenshotPath,
+				fullPage: true,
+				type: 'png',
+			})
 		}
 
 		const report: BrowseSessionReport = {
 			ok: true,
 			origin,
 			path: browsePath,
-			url,
+			url: finalUrl,
 			headed,
 			record,
 			videoDir,
 			screenshotPath,
-			detail: `opened ${url} (signed in)`,
+			detail: `opened ${finalUrl} (signed in)`,
 		}
 
 		if (closeAfterMs != null) {
