@@ -239,6 +239,13 @@ test('granted user sees public packages plus granted private ones only', async (
 			{ kodyId: 'shared-notes', isPrivate: true },
 		]),
 	)
+	// Public rows stay linked without package:read (same as anonymous).
+	expect(
+		data?.packages?.find((pkg) => pkg.kodyId === 'public-notes')?.canOpenDetail,
+	).not.toBe(false)
+	expect(
+		data?.packages?.find((pkg) => pkg.kodyId === 'shared-notes')?.canOpenDetail,
+	).not.toBe(false)
 	expect(JSON.stringify(data)).not.toContain('private-notes')
 	expect(JSON.stringify(data)).not.toContain('person-keyed')
 })

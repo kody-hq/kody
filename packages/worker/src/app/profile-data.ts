@@ -211,7 +211,12 @@ async function loadProfileDataUncached(
 				userId: ownerOrgId,
 				label: pkg.name,
 			})
+			// Public profile rows stay linked for grant holders the same way
+			// anonymous viewers get a link: the canonical /@owner/kodyId URL
+			// resolves without package:read. Private rows still need read (or a
+			// public listing) before the name is clickable.
 			const canOpenDetail =
+				isPublicProfileRepository(pkg) ||
 				checkPermission(access, 'package:read', resourceRef).allowed ||
 				Boolean(pkg.communityListingId)
 			return toPublicProfilePackageItem(pkg, {
