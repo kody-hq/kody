@@ -82,3 +82,31 @@ test('0016 leaves app-origin, Open API, apex, and nested hosts alone', () => {
 	expect(findings.some((finding) => finding.path === 'logo.png')).toBe(false)
 	expect(findings.some((finding) => finding.path === 'keep.ts')).toBe(false)
 })
+
+test('0016 detect reports rewrite and bare-mount findings on the same file', () => {
+	const files = {
+		'mixed.ts': [
+			"const hosted = 'https://alice.kody.run/packages/demo'",
+			"const bare = '/packages/other'",
+			'',
+		].join('\n'),
+	}
+	const findings = shortPackageAppSubdomainPathCodemod.detect(files)
+	expect(findings).toEqual(
+		expect.arrayContaining([
+			{
+				path: 'mixed.ts',
+				message: expect.stringContaining(
+					'rewrite to https://{user}.kody.run/{leaf}',
+				),
+			},
+			{
+				path: 'mixed.ts',
+				message: expect.stringContaining('manually'),
+			},
+		]),
+	)
+	expect(
+		findings.filter((finding) => finding.path === 'mixed.ts'),
+	).toHaveLength(2)
+})
