@@ -1,6 +1,6 @@
 import { type ensureFreshCredentials } from './auth.js'
 import {
-	missingLocalExecuteAuthMessage,
+	notAuthenticatedMessage,
 	expectedPairedApiOrigin,
 	isPairedApiUrl,
 	resolveScopedApiToken,
@@ -73,8 +73,6 @@ export async function resolveLocalExecuteBearer(
 		) {
 			throw error
 		}
-		throw new Error(
-			missingLocalExecuteAuthMessage(input.purpose ?? 'execute --local'),
-		)
+		throw new Error(notAuthenticatedMessage(input.purpose ?? 'execute --local'))
 	}
 }

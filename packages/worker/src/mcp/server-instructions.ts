@@ -22,6 +22,8 @@ export const baseMcpServerInstructions = `Kody is Your agents' cloud: a software
 
 ${preferLocalCliExecuteGuidance}
 
+When you need the Kody CLI and are not signed in, bootstrap it yourself with \`cliCredentialBootstrap\` and do not ask the human for a token.
+
 When the user asks you to do something, start with \`search\`, then \`execute\` to run code in Kody's cloud.
 
 Learn more with \`search({ entity: "guide:local_execute" })\`.`

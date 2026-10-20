@@ -116,18 +116,22 @@ ${orgBlock}
   --clients  Comma-separated ids: ${hostIds.join(', ')}
 
   auth bootstrap
-             Redeem a one-shot \`kody_bc_…\` from MCP \`cliCredentialBootstrap\`
-             (POST /v1/tokens/bootstrap/redeem, no Authorization header).
+             Agents on Kody MCP: call \`cliCredentialBootstrap\` (MCP
+             \`execute\` with \`kody.cliCredentialBootstrap({ lifetime:
+             "short", scopes: [...] })\`, or MCP \`api\` with operationId
+             \`cliCredentialBootstrap\`) and run the returned \`cli_command\`
+             (never ask a human to paste a token). Humans: \`kody login\`.
+             This command redeems a one-shot \`kody_bc_…\` (POST
+             /v1/tokens/bootstrap/redeem, no Authorization header).
              Lifetime is required: \`--lifetime short|long\` (\`short\` = 1h
              idle / 24h max; \`long\` = 14d idle / 3mo max), or both
              \`--idle-ttl-seconds\` and \`--max-lifetime-seconds\`.
              Single-task agents should use \`--lifetime short\`.
              Stores the resulting \`kody_at_…\` for \`execute --local\`,
              search, whoami, api, and token-auth cloud execute without
-             printing the token. Prefer this over tokenCreate for agents
-             already on MCP. Interactive humans can use \`kody login\`
-             instead. Do not call \`kody api cliCredentialBootstrapRedeem\`
-             — that would print the token.
+             printing the token. Do not call
+             \`kody api cliCredentialBootstrapRedeem\` (that would print the
+             token).
 
   --scopes <list>
              Opt in to scopes beyond the cliCredentialBootstrap defaults

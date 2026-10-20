@@ -12,13 +12,14 @@ import {
 	insufficientScopeMessage,
 	readInsufficientScopeDetails,
 	isScopedApiToken,
+	rejectedApiTokenMessage,
 	rejectedOauthBearerMessage,
 } from './api-token.js'
 import {
 	formatCredentialClientError,
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
-import { apiTokenEnvVar, cliName } from './defaults.js'
+import { cliName } from './defaults.js'
 import {
 	formatUnreachableApiMessage,
 	requestSentStatus,
@@ -736,7 +737,7 @@ function describeFailure(
 	const detail = failure?.message ? ` Server said: ${failure.message}` : ''
 	if (status === 401) {
 		const message = isScopedApiToken(token)
-			? `Kody rejected the API token (expired, revoked, or malformed). Mint a fresh scoped token and pass it with --token or ${apiTokenEnvVar}.${detail}`
+			? rejectedApiTokenMessage(detail)
 			: `${rejectedOauthBearerMessage()}${detail}`
 		return new CapabilityProxyError(message, { status, code })
 	}

@@ -96,7 +96,10 @@ test('openCapabilityProxySession explains a rejected token without echoing it', 
 			}),
 		(error: Error) => {
 			assert.match(error.message, /rejected the API token/)
-			assert.match(error.message, /--token or KODY_API_TOKEN/)
+			assert.match(error.message, /cliCredentialBootstrap/)
+			assert.match(error.message, /cli_command/)
+			assert.match(error.message, /never ask a human to paste a token/)
+			assert.match(error.message, /kody login/)
 			assert.equal(error.message.includes(token), false)
 			return true
 		},
@@ -158,12 +161,11 @@ test('openCapabilityProxySession explains a refused token in one line plus a fix
 				lines[0],
 				'The API token is not allowed to use CapabilityProxy (forbidden): token cannot execute.',
 			)
-			assert.match(lines[1] ?? '', /^Fix: run `npx @kodycodes\/cli login`/)
+			assert.match(lines[1] ?? '', /^Fix: /)
 			assert.match(lines[1] ?? '', /cliCredentialBootstrap/)
-			assert.match(
-				lines[1] ?? '',
-				/auth bootstrap --code <kody_bc_…> --lifetime short/,
-			)
+			assert.match(lines[1] ?? '', /cli_command/)
+			assert.match(lines[1] ?? '', /never ask a human to paste a token/)
+			assert.match(lines[1] ?? '', /kody login/)
 			assert.match(lines[1] ?? '', /KODY_API_TOKEN/)
 			return true
 		},

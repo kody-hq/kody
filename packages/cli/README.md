@@ -122,9 +122,10 @@ npx @kodycodes/cli whoami
 npx @kodycodes/cli api usageGet --params '{}'
 ```
 
-- Neither bootstrap store, `kody login`, nor a token → the error prefers
-  `cliCredentialBootstrap` → `auth bootstrap`, then `kody login`, then
-  `tokenCreate` for CI/headless (`--token` / `KODY_API_TOKEN`).
+- Neither bootstrap store, `kody login`, nor a token → one shared
+  not-authenticated error: agents on MCP call `cliCredentialBootstrap` and run
+  the returned `cli_command` (never ask a human to paste a token); humans run
+  `kody login`; CI/headless uses `tokenCreate` + `KODY_API_TOKEN`.
 - For `execute --local` specifically: `--token` / `KODY_API_TOKEN` wins when
   set; else a stored bootstrap/API token from `auth bootstrap`; else the stored
   `kody login` OAuth access token as Bearer only when the API and MCP URLs are
@@ -136,8 +137,8 @@ npx @kodycodes/cli api usageGet --params '{}'
   CapabilityProxy / package-graph
   ([kody-hq/kody#2812](https://github.com/kody-hq/kody/issues/2812)); until then
   use bootstrap or a scoped `kody_at_…` token.
-- Wrong/expired token → 401 with a mint-fresh-token message (or the OAuth
-  platform-gap message when the bearer is login OAuth).
+- Wrong/expired token → 401 with the same agent-first not-authenticated guidance
+  (or the OAuth platform-gap message when the bearer is login OAuth).
 - Wrong scopes → the error names the missing scope and the exact command to mint
   a token that adds it (see [Opt-in scopes](#opt-in-scopes)). When your org role
   lacks the permission, it says so instead: a new token cannot add it, and an

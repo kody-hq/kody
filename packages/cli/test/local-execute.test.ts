@@ -962,8 +962,10 @@ test('runLocalExecute stops before starting workerd when the token or flag is re
 				error.message,
 				/rejected the API token \(expired, revoked, or malformed\)/,
 			)
-			assert.match(error.message, /Mint a fresh scoped token/)
-			assert.match(error.message, /--token or KODY_API_TOKEN/)
+			assert.match(error.message, /cliCredentialBootstrap/)
+			assert.match(error.message, /cli_command/)
+			assert.match(error.message, /never ask a human to paste a token/)
+			assert.match(error.message, /kody login/)
 			return true
 		},
 	)

@@ -120,10 +120,46 @@ export function isScopedApiToken(token: string): boolean {
 
 /**
  * How to mint a scoped token for CI/headless. Interactive agents on MCP should
- * prefer `cliCredentialBootstrap` → `auth bootstrap` instead.
+ * prefer `cliCredentialBootstrap` → run returned `cli_command` instead.
  */
 export function apiTokenMintInstructions(): string {
-	return `For CI/headless only: mint with the Kody MCP \`api\` tool \`tokenCreate\` (include \`org:execute\` plus the capability scopes this command needs, e.g. \`package:execute\` / \`integration:read\`) and pass --token or set ${apiTokenEnvVar}.`
+	return `For CI/headless only: mint with the Kody MCP \`api\` tool \`tokenCreate\` (include \`org:execute\` plus the capability scopes this command needs, e.g. \`package:execute\` / \`integration:read\`) and set ${apiTokenEnvVar} (prefer env over --token).`
+}
+
+/**
+ * Shared guidance for every missing or invalid CLI auth failure. Agents hit
+ * this wall; put the MCP bootstrap path first and never ask a human for a token.
+ */
+export function notAuthenticatedGuidance(
+	lifetime: CliTokenLifetimeAlias = 'short',
+): string {
+	return (
+		`If you are an agent connected to the Kody MCP server, call \`cliCredentialBootstrap\` ` +
+		`(MCP \`execute\` with \`kody.cliCredentialBootstrap({ lifetime: "${lifetime}", scopes: [...] })\`, ` +
+		`or MCP \`api\` with operationId \`cliCredentialBootstrap\`) and run the returned \`cli_command\`; ` +
+		`never ask a human to paste a token. Humans: run \`kody login\`. ` +
+		apiTokenMintInstructions()
+	)
+}
+
+/**
+ * One generic not-authenticated message for missing or invalid auth (all
+ * commands). Optional `purpose` names the command that failed.
+ */
+export function notAuthenticatedMessage(
+	purpose?: string,
+	lifetime: CliTokenLifetimeAlias = 'short',
+): string {
+	const head = purpose ? `${purpose}: not authenticated.` : 'Not authenticated.'
+	return `${head} ${notAuthenticatedGuidance(lifetime)}`
+}
+
+/**
+ * 401 when a scoped `kody_at_…` was rejected. Same agent-first guidance as
+ * missing auth (do not tell agents to ask a human for a fresh token).
+ */
+export function rejectedApiTokenMessage(detail = ''): string {
+	return `Kody rejected the API token (expired, revoked, or malformed). ${notAuthenticatedGuidance()}${detail}`
 }
 
 /**
@@ -137,7 +173,7 @@ export function capabilityProxyForbiddenMessage(input: {
 	const reason = input.serverMessage ? `: ${input.serverMessage}` : ''
 	return (
 		`The API token is not allowed to use CapabilityProxy (${input.code ?? 'forbidden'})${reason}.\n` +
-		`Fix: run \`npx @kodycodes/cli login\` (agents on Kody MCP: ${cliBootstrapInstructions()}; CI: tokenCreate with \`org:execute\`, passed via --token or ${apiTokenEnvVar}).`
+		`Fix: ${notAuthenticatedGuidance()}`
 	)
 }
 
@@ -145,7 +181,10 @@ export function capabilityProxyForbiddenMessage(input: {
 export function cliBootstrapInstructions(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
-	return `From MCP, call \`cliCredentialBootstrap\` (MCP \`api\` / \`kody.cliCredentialBootstrap\`), then run \`npx @kodycodes/cli auth bootstrap --code <kody_bc_…> --lifetime ${lifetime}\``
+	return (
+		`call \`cliCredentialBootstrap\` (MCP \`execute\` with \`kody.cliCredentialBootstrap({ lifetime: "${lifetime}", scopes: [...] })\`, ` +
+		`or MCP \`api\` with operationId \`cliCredentialBootstrap\`) and run the returned \`cli_command\``
+	)
 }
 
 /**
@@ -187,29 +226,29 @@ export function currentStoredTokenLifetimeAlias(
 	return inferCliTokenLifetimeAlias(loadApiToken(apiUrl), nowMs)
 }
 
-/** Token-only Open API paths (search / whoami / cloud token execute) with no token. */
+/** Alias of {@link notAuthenticatedMessage} (token-only command paths). */
 export function missingApiTokenMessage(purpose: string): string {
-	return `${purpose} needs a scoped Kody API token. ${cliBootstrapInstructions()}, or ${apiTokenMintInstructions()}`
+	return notAuthenticatedMessage(purpose)
 }
 
-/**
- * `execute --local` with neither env/`--token`, stored bootstrap token, nor
- * `kody login`. Prefer bootstrap (MCP) → login → tokenCreate (CI).
- */
+/** Alias of {@link notAuthenticatedMessage} (`execute --local` paths). */
 export function missingLocalExecuteAuthMessage(
 	purpose: string = 'execute --local',
 ): string {
-	return `${purpose} needs auth. ${cliBootstrapInstructions()}; or run \`kody login\`; or for CI/headless, ${apiTokenMintInstructions()}`
+	return notAuthenticatedMessage(purpose)
 }
 
-/** Cloud search / whoami / execute when the process has neither a session nor a token. */
+/** Alias of {@link notAuthenticatedMessage} (login/session paths). */
 export function missingCliAuthMessage(): string {
-	return `Not logged in, and no API token is set. ${cliBootstrapInstructions()}; or run \`kody login\` for browser OAuth (search, whoami, cloud execute, and login-backed \`execute --local\`); or for CI/headless, ${apiTokenMintInstructions()}`
+	return notAuthenticatedMessage()
 }
 
 /** 401 when CapabilityProxy rejected a non-`kody_at_` bearer (typically CLI OAuth). */
 export function rejectedOauthBearerMessage(): string {
-	return `Kody rejected the bearer from \`kody login\`: the Open API still accepts only scoped \`kody_at_…\` API tokens on CapabilityProxy / package-graph (not MCP OAuth). See ${localExecuteOauthPlatformIssueUrl}. Until that lands, ${apiTokenMintInstructions()}`
+	return (
+		`Kody rejected the bearer from \`kody login\`: the Open API still accepts only scoped \`kody_at_…\` API tokens on CapabilityProxy / package-graph (not MCP OAuth). ` +
+		`See ${localExecuteOauthPlatformIssueUrl}. Until that lands, ${notAuthenticatedGuidance()}`
+	)
 }
 
 /** What an `insufficient_scope` error body says about the missing scope. */
@@ -343,7 +382,7 @@ export function requireApiToken(
 		env,
 		...options,
 	})
-	if (!token) throw new Error(missingApiTokenMessage(purpose))
+	if (!token) throw new Error(notAuthenticatedMessage(purpose))
 	return token
 }
 

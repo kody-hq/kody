@@ -147,7 +147,7 @@ test('runRemoteExecuteWithToken surfaces missing-token session 401 clearly', asy
 				apiUrl: 'https://api.kody.codes',
 				fetchFn,
 			}),
-		/--token or KODY_API_TOKEN/,
+		/rejected the API token[\s\S]*cliCredentialBootstrap[\s\S]*never ask a human to paste a token/,
 	)
 })
 

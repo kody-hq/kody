@@ -94,6 +94,14 @@ test('resolveCommand maps subcommands and flags', () => {
 	)
 })
 
+test('auth help puts agent cliCredentialBootstrap before kody login', () => {
+	const text = buildUsage({ orgs: [] })
+	assert.match(
+		text,
+		/auth bootstrap[\s\S]*Agents on Kody MCP: call `cliCredentialBootstrap`[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*Humans: `kody login`/,
+	)
+})
+
 test('help header version matches --version (same package.json source)', async () => {
 	const version = readPackageVersion()
 	assert.match(
@@ -377,7 +385,7 @@ test('resolveApiToken prefers --token, falls back to KODY_API_TOKEN, and require
 	assert.equal(resolveApiToken({}, { KODY_API_TOKEN: ' env ' }), 'env')
 	assert.throws(
 		() => resolveApiToken({}, {}),
-		/cliCredentialBootstrap[\s\S]*tokenCreate[\s\S]*org:execute[\s\S]*pass --token or set KODY_API_TOKEN/,
+		/not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*kody\.cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
 	)
 })
 
@@ -533,7 +541,7 @@ test('resolveLocalExecuteBearer fails clearly when neither login nor token is av
 					throw new Error('Not logged in')
 				},
 			}),
-		/execute --local needs auth[\s\S]*cliCredentialBootstrap[\s\S]*auth bootstrap[\s\S]*kody login[\s\S]*tokenCreate/,
+		/execute --local: not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate/,
 	)
 })
 
@@ -862,12 +870,14 @@ test('execute without token or login prompts clearly', async () => {
 		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
 		else process.env.KODY_API_TOKEN = previousToken
 	}
-	assert.match(stderr, /Not logged in, and no API token is set/)
-	assert.match(stderr, /cliCredentialBootstrap|auth bootstrap/)
+	assert.match(stderr, /Not authenticated/)
+	assert.match(stderr, /cliCredentialBootstrap/)
+	assert.match(stderr, /cli_command/)
+	assert.match(stderr, /never ask a human to paste a token/)
+	assert.match(stderr, /kody login/)
 	assert.match(stderr, /tokenCreate/)
 	assert.match(stderr, /org:execute/)
 	assert.match(stderr, /KODY_API_TOKEN/)
-	assert.match(stderr, /--token/)
 })
 
 test('execute --local without token or login fails clearly', async () => {
@@ -889,11 +899,12 @@ test('execute --local without token or login fails clearly', async () => {
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
 	}
-	assert.match(stderr, /execute --local needs auth/)
-	assert.match(stderr, /cliCredentialBootstrap|auth bootstrap/)
+	assert.match(stderr, /execute --local: not authenticated/)
+	assert.match(stderr, /cliCredentialBootstrap/)
+	assert.match(stderr, /cli_command/)
+	assert.match(stderr, /never ask a human to paste a token/)
 	assert.match(stderr, /kody login/)
 	assert.match(stderr, /tokenCreate|KODY_API_TOKEN/)
-	assert.match(stderr, /pass --token or set KODY_API_TOKEN/)
 	assert.doesNotMatch(stderr, /workerd did not start|Could not start workerd/)
 })
 

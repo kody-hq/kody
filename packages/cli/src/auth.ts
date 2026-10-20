@@ -4,7 +4,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
-import { isScopedApiToken, missingCliAuthMessage } from './api-token.js'
+import { isScopedApiToken, notAuthenticatedMessage } from './api-token.js'
 import {
 	accessTokenSkewMs,
 	cliRedirectUrl,
@@ -335,7 +335,7 @@ export async function ensureFreshCredentials(input: {
 				`No login stored for org "${input.org}". Run \`kody login --org ${input.org}\` (or \`kody org use ${input.org}\` after logging in).`,
 			)
 		}
-		throw new Error(missingCliAuthMessage())
+		throw new Error(notAuthenticatedMessage())
 	}
 	if (!isAccessTokenExpired(credentials, input.now)) {
 		return credentials

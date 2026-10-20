@@ -24,12 +24,15 @@ and package-graph routes.
 
 ## Setup
 
-**Agents already on MCP:** call `cliCredentialBootstrap` with a required
-lifetime (single-task agents use `short`). It returns a one-shot `kody_bc_…`
-code and a `cli_command` that already includes lifetime flags (**not** a
+**Agents already on MCP (do this yourself; never ask a human for a token):**
+call `cliCredentialBootstrap` with a required lifetime (single-task agents use
+`short`). Prefer MCP `execute` with
+`kody.cliCredentialBootstrap({ lifetime: "short" })`, or MCP `api` with
+`operationId: "cliCredentialBootstrap"`. It returns a one-shot `kody_bc_…` code
+and a `cli_command` that already includes lifetime flags (**not** a
 `kody_at_…`). Bootstrap tokens are person-owned (`org_binding: user`); pass
-`?org=<slug>` on API calls to act in a team org (default: personal). Run the CLI
-command (no second OAuth, no `tokenCreate`):
+`?org=<slug>` on API calls to act in a team org (default: personal). Run the
+returned `cli_command` (no second OAuth, no `tokenCreate`):
 
 ```json
 {
@@ -39,6 +42,7 @@ command (no second OAuth, no `tokenCreate`):
 ```
 
 ```bash
+# Or run the cli_command returned by cliCredentialBootstrap:
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 ```
 
@@ -67,8 +71,9 @@ scope your org role grants), else `KODY_API_TOKEN` or the stored token (only
 scopes that token already holds). `--code` with `--scopes` is an error because a
 code's scopes are fixed when it is minted.
 
-**Interactive humans:** `kody login` once per machine, then run `--local`
-without `KODY_API_TOKEN`.
+**Interactive humans:** `kody login` once per machine (beside the agent
+`cliCredentialBootstrap` path above), then run `--local` without
+`KODY_API_TOKEN`.
 
 ```bash
 npx @kodycodes/cli login   # once
@@ -77,9 +82,10 @@ npx @kodycodes/cli login   # once
 **CI / headless only:** scoped `KODY_API_TOKEN` (`kody_at_…` with `org:execute`,
 plus `package:execute` for saved-package imports), usually from MCP `api`
 `tokenCreate` with a required lifetime. Put the value in the environment; never
-paste it into chat. Prefer the env var over `--token`. When set,
-`KODY_API_TOKEN` wins over `kody login` / bootstrap store. Minting details:
-[Open API](./open-api.md) (`guide:open_api`).
+paste it into chat (agents on MCP must use `cliCredentialBootstrap` instead).
+Prefer the env var over `--token`. When set, `KODY_API_TOKEN` wins over
+`kody login` / bootstrap store. Minting details: [Open API](./open-api.md)
+(`guide:open_api`).
 
 ```json
 {
@@ -175,6 +181,10 @@ still auth or permission — use the Failure section below. Two workarounds for
 - Node is below 22, the CLI is missing, or the host cannot run workerd. Use
   [Open API](./open-api.md) / MCP `api`, or fix the environment. Hosted MCP
   `execute` stays banned for that failure case.
+- Not authenticated (missing or invalid credentials). Agents on MCP: call
+  `cliCredentialBootstrap` and run the returned `cli_command`; never ask a human
+  to paste a token. Humans: `kody login`. CI/headless: `tokenCreate` +
+  `KODY_API_TOKEN`.
 - Bootstrap or redeem rejects a missing lifetime. Pass `--lifetime short|long`
   (or both idle/max flags). Call `cliCredentialBootstrap` again with
   `lifetime: "short"` if the code expired.

@@ -5,8 +5,9 @@ import {
 	currentStoredTokenLifetimeAlias,
 	insufficientScopeMessage,
 	readInsufficientScopeDetails,
+	rejectedApiTokenMessage,
 } from './api-token.js'
-import { apiTokenEnvVar, cliName, defaultApiUrl } from './defaults.js'
+import { cliName, defaultApiUrl } from './defaults.js'
 import {
 	assertTokenSafeApiUrl,
 	capabilityProxyUrl,
@@ -617,10 +618,10 @@ function describeOpenApiFailure(
 	const code = failure?.code ?? null
 	const detail = failure?.message ? ` Server said: ${failure.message}` : ''
 	if (status === 401) {
-		return new OpenApiError(
-			`Kody rejected the API token (expired, revoked, or malformed). Mint a fresh scoped token and pass it with --token or ${apiTokenEnvVar}.${detail}`,
-			{ status, code },
-		)
+		return new OpenApiError(rejectedApiTokenMessage(detail), {
+			status,
+			code,
+		})
 	}
 	if (status === 403 && code === 'insufficient_scope') {
 		return new OpenApiError(

@@ -15,9 +15,10 @@ import {
 	insufficientScopeMessage,
 	isScopedApiToken,
 	readInsufficientScopeDetails,
+	rejectedApiTokenMessage,
 	rejectedOauthBearerMessage,
 } from './api-token.js'
-import { apiTokenEnvVar, cliName } from './defaults.js'
+import { cliName } from './defaults.js'
 import {
 	formatUnreachableApiMessage,
 	requestSentStatus,
@@ -593,7 +594,7 @@ function describePackageGraphFailure(
 	if (status === 401) {
 		// Same wording as CapabilityProxy session 401 — package-graph is now the auth gate.
 		const message = isScopedApiToken(token)
-			? `Kody rejected the API token (expired, revoked, or malformed). Mint a fresh scoped token and pass it with --token or ${apiTokenEnvVar}.${detail}`
+			? rejectedApiTokenMessage(detail)
 			: `${rejectedOauthBearerMessage()}${detail}`
 		return new LocalPackageGraphError(message, { status, code })
 	}
