@@ -89,9 +89,6 @@ const mockModule = vi.hoisted(() => ({
 		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
-	disconnectSecret: vi.fn<typeof secretsService.disconnectSecret>(
-		async () => false,
-	),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
 		name: input.toName,
 		scope: input.scope,
@@ -291,9 +288,6 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 		mockModule.resolveSecret(...args),
 	deleteSecret: (...args: Parameters<typeof secretsService.deleteSecret>) =>
 		mockModule.deleteSecret(...args),
-	disconnectSecret: (
-		...args: Parameters<typeof secretsService.disconnectSecret>
-	) => mockModule.disconnectSecret(...args),
 	renameSecret: (...args: Parameters<typeof secretsService.renameSecret>) =>
 		mockModule.renameSecret(...args),
 	findSecret: (...args: Parameters<typeof secretsService.findSecret>) =>
@@ -1138,31 +1132,6 @@ test('account secrets API loads selected secret values and deletes the selected 
 			storageContext: userStorage,
 		}),
 	)
-})
-
-test('account secrets disconnect clears the value and keeps the record', async () => {
-	const call = createHandler()
-	mockModule.disconnectSecret.mockResolvedValueOnce(true)
-
-	const disconnectResponse = await call(
-		postRequest({ action: 'disconnect', currentId: 'user::::myApiKey' }),
-	)
-
-	expect(disconnectResponse.status).toBe(200)
-	expect(disconnectResponse.data).toMatchObject({
-		ok: true,
-		disconnected: true,
-		secretId: 'user::::myApiKey',
-	})
-	expect(mockModule.disconnectSecret).toHaveBeenCalledWith(
-		expect.objectContaining({
-			userId: ownerIdFromStored('stable-user-1'),
-			name: 'myApiKey',
-			scope: 'user',
-			storageContext: userStorage,
-		}),
-	)
-	expect(mockModule.deleteSecret).not.toHaveBeenCalled()
 })
 
 test('account secrets save returns the new secret after a successful write', async () => {

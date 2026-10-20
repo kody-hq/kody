@@ -772,3 +772,26 @@ test('a failed rollback reports the committed casing so native editors can retar
 	})
 	expect(response.data).not.toHaveProperty('secrets')
 })
+
+test('account secrets disconnect clears the value and keeps the record', async () => {
+	const userStorage = { sessionId: null, appId: null, packageId: null }
+	mockModule.disconnectSecret.mockResolvedValueOnce(true)
+	const response = await createHandler()(
+		postRequest({ action: 'disconnect', currentId: 'user::::myApiKey' }),
+	)
+	expect(response.status).toBe(200)
+	expect(response.data).toMatchObject({
+		ok: true,
+		disconnected: true,
+		secretId: 'user::::myApiKey',
+	})
+	expect(mockModule.disconnectSecret).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('stable-user-1'),
+			name: 'myApiKey',
+			scope: 'user',
+			storageContext: userStorage,
+		}),
+	)
+	expect(mockModule.deleteSecret).not.toHaveBeenCalled()
+})
