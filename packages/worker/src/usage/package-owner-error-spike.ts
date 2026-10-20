@@ -206,12 +206,25 @@ export function evaluatePackageOwnerSpikeTransition(input: {
 				pendingMaxAgeMs,
 			})
 		) {
+			if (input.window) {
+				// Drop the expired episode, then evaluate the current window as
+				// a fresh ok owner so a same-hour new spike is not written as
+				// ok and lost if the next hour is quiet.
+				return evaluatePackageOwnerSpikeTransition({
+					...input,
+					previous: {
+						...emptyOwnerSpikeState(),
+						lastActivityAt: input.window.windowEnd,
+						lastWindowEnd: input.window.windowEnd,
+					},
+				})
+			}
 			return {
 				action: 'abandon',
 				next: {
 					...emptyOwnerSpikeState(),
-					lastActivityAt: input.window?.windowEnd ?? previous.lastActivityAt,
-					lastWindowEnd: input.window?.windowEnd ?? previous.lastWindowEnd,
+					lastActivityAt: previous.lastActivityAt,
+					lastWindowEnd: previous.lastWindowEnd,
 				},
 			}
 		}
@@ -974,7 +987,8 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 	// Indexed owners missing from this hour's top sample may still be
 	// erroring under the LIMIT — do not treat absence as inactivity, and do
 	// not refresh TTLs forever. Pending owners still get delivery retries.
-	// Alerted owners only re-arm when lastActivityAt is stale (or missing).
+	// Alerted owners only re-arm when lastActivityAt is stale (or missing);
+	// action none leaves state and the index untouched.
 	for (const ownerId of indexedOwnerIds) {
 		if (evaluated.has(ownerId)) continue
 		const previous = await loadPackageOwnerSpikeState(kv, ownerId)
@@ -984,6 +998,10 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 			window: null,
 			now,
 		})
+		if (transition.action === 'none') {
+			evaluated.add(ownerId)
+			continue
+		}
 		const outcome = await applyPackageOwnerSpikeTransition({
 			kv,
 			ownerId,

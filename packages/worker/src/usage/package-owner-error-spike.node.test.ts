@@ -174,7 +174,7 @@ test('pending retries independent of a quieter next window; abandons when aged o
 	expect(quietRetry.next.status).toBe('pending')
 	expect(quietRetry.next.spike?.errors).toBe(40)
 
-	const expired = evaluatePackageOwnerSpikeTransition({
+	const expiredQuiet = evaluatePackageOwnerSpikeTransition({
 		previous: {
 			...pending,
 			pendingSince: '2026-10-18T18:00:00.000Z',
@@ -182,9 +182,21 @@ test('pending retries independent of a quieter next window; abandons when aged o
 		window: window({ errors: 1, events: 100 }),
 		now: new Date('2026-10-19T20:05:00.000Z'),
 	})
-	expect(expired.action).toBe('abandon')
-	expect(expired.next.status).toBe('ok')
-	expect(expired.next.spike).toBeNull()
+	expect(expiredQuiet.action).toBe('none')
+	expect(expiredQuiet.next.status).toBe('ok')
+	expect(expiredQuiet.next.spike).toBeNull()
+
+	const expiredButHot = evaluatePackageOwnerSpikeTransition({
+		previous: {
+			...pending,
+			pendingSince: '2026-10-18T18:00:00.000Z',
+		},
+		window: spike,
+		now: new Date('2026-10-19T20:05:00.000Z'),
+	})
+	expect(expiredButHot.action).toBe('alert')
+	expect(expiredButHot.next.status).toBe('pending')
+	expect(expiredButHot.next.spike?.errors).toBe(40)
 
 	expect(
 		isPendingSpikeExpired({
@@ -427,6 +439,71 @@ test('refresh persists pending on notify failure and retries after a quiet hour'
 	)
 	expect(delivered?.status).toBe('alerted')
 	expect(delivered?.spike?.errors).toBe(40)
+})
+
+test('refresh leaves out-of-sample alerted owners untouched when not re-arming', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const kv = createMemoryKv()
+	const ownerId = 'owner-quiet-alerted'
+	const alertedState: PackageOwnerSpikeState = {
+		version: 1,
+		status: 'alerted',
+		alertedAt: '2026-10-19T19:05:00.000Z',
+		pendingSince: null,
+		deliveryAttempts: 0,
+		consecutiveHealthyWindows: 0,
+		lastActivityAt: '2026-10-19T19:00:00.000Z',
+		lastWindowEnd: '2026-10-19T19:00:00.000Z',
+		spike: {
+			startedAt: '2026-10-19T19:05:00.000Z',
+			windowStart: '2026-10-19T18:00:00.000Z',
+			windowEnd: '2026-10-19T19:00:00.000Z',
+			errors: 40,
+			events: 80,
+			rate: 0.5,
+			packages: [],
+			byMetric: [],
+		},
+	}
+	await kv.put(
+		packageOwnerErrorSpikeKvKey(ownerId),
+		JSON.stringify(alertedState),
+	)
+	await kv.put(
+		packageOwnerErrorSpikeAlertedIndexKvKey,
+		JSON.stringify([ownerId]),
+	)
+	queryAnalyticsEngineSql.mockResolvedValue([])
+
+	const putsBefore = kv.puts.length
+	const result = await refreshPackageOwnerErrorSpikes({
+		env: {
+			BUNDLE_ARTIFACTS_KV: kv,
+			APP_DB: {
+				prepare() {
+					return {
+						bind() {
+							return this
+						},
+						async all() {
+							return { results: [] }
+						},
+					}
+				},
+			} as unknown as D1Database,
+			USAGE_EVENTS: {} as AnalyticsEngineDataset,
+			CLOUDFLARE_ACCOUNT_ID: 'acct',
+			CLOUDFLARE_API_TOKEN: 'token',
+		},
+		now: new Date('2026-10-19T20:05:00.000Z'),
+	})
+	expect(result).toMatchObject({ status: 'refreshed', rearmed: 0 })
+	expect(kv.puts.length).toBe(putsBefore)
+	expect(
+		parsePackageOwnerSpikeState(
+			JSON.parse(kv.store.get(packageOwnerErrorSpikeKvKey(ownerId)) ?? 'null'),
+		)?.status,
+	).toBe('alerted')
 })
 
 test('refresh writes the alerted-owner index once per sweep', async () => {
