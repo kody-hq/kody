@@ -73,6 +73,7 @@ test('maybeHandleLegacyPackageAppSubdomainMount redirects HTML and rewrites othe
 		packagePath,
 	})
 	expect(redirected?.status).toBe(308)
+	expect(redirected?.headers.get('Vary')).toBe('Accept')
 	expect(redirected?.headers.get('Location')).toBe('/demo/report?x=1')
 	expect(writeDataPoint).toHaveBeenCalledWith({
 		indexes: ['alice'],

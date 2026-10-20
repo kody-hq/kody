@@ -103,6 +103,7 @@ export function maybeHandleLegacyPackageAppSubdomainMount(input: {
 		headers: {
 			Location: location,
 			'Cache-Control': 'public, max-age=300',
+			Vary: 'Accept',
 		},
 	})
 }
