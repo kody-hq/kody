@@ -73,6 +73,45 @@ test('native capability review displays reachable credentials, hosts, dependency
 	}
 	expect(html).toContain('href="/@owner/example/settings"')
 })
+test('native capability review shows why approval is required when self-publish is blocked', async () => {
+	const html = await renderStartPage(
+		jsx(AccountPackageApproveCapabilitiesRoute, {
+			payload: {
+				...payload,
+				goPublicRequestId: 'went-public-1',
+				selfPublishBlocker: {
+					blocker: 'declares_capabilities',
+					message:
+						'Package storage detected at app/assets.generated.ts:12 (packageStorage). Owner approves at https://example.com/approve.',
+					reasons: [
+						{
+							kind: 'storage_entry',
+							storageId: 'pkg',
+							via: ['example'],
+							matches: [
+								{
+									path: 'app/assets.generated.ts',
+									line: 12,
+									column: 1,
+									pattern: 'packageStorage',
+									snippet: 'packageStorage()',
+								},
+							],
+						},
+					],
+				},
+			},
+			username: 'owner',
+			kodyId: 'example',
+		}),
+		payload.approveHref,
+	)
+	expect(html).toContain('data-testid="package-self-publish-blocker"')
+	expect(html).toContain('Why approval is required')
+	expect(html).toContain('app/assets.generated.ts:12')
+	expect(html).toContain('packageStorage')
+})
+
 test('unpublished native capability review cannot approve and explains why', async () => {
 	const html = await renderStartPage(
 		jsx(AccountPackageApproveCapabilitiesRoute, {
