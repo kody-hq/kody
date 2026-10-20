@@ -56,10 +56,14 @@ function assertSafeCloudflareApiBase(baseUrl: string) {
 	} catch {
 		throw new Error(`Invalid Cloudflare API base URL: ${baseUrl}`)
 	}
-	if (
-		url.hostname.toLowerCase() === 'api.cloudflare.com' &&
-		url.protocol !== 'https:'
-	) {
+	const hostname = url.hostname.toLowerCase()
+	const isLoopback =
+		hostname === 'localhost' ||
+		hostname === '127.0.0.1' ||
+		hostname === '::1' ||
+		hostname === '[::1]'
+	// Bearer tokens go on every request; allow HTTP only for local mocks.
+	if (url.protocol !== 'https:' && !isLoopback) {
 		throw new Error('Cloudflare API base URL must use HTTPS.')
 	}
 }

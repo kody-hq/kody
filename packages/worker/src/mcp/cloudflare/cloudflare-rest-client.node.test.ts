@@ -8,12 +8,19 @@ import {
 
 type RecordedRequest = Pick<Request, 'method' | 'headers' | 'text'>
 
-test('Cloudflare REST client refuses a non-HTTPS api.cloudflare.com base URL', () => {
+test('Cloudflare REST client requires HTTPS except for loopback mock hosts', () => {
 	expect(
 		() =>
 			new CloudflareRestClient({
 				apiToken: 'token',
 				baseUrl: 'http://api.cloudflare.com',
+			}),
+	).toThrow(/must use HTTPS/)
+	expect(
+		() =>
+			new CloudflareRestClient({
+				apiToken: 'token',
+				baseUrl: 'http://proxy.example.com',
 			}),
 	).toThrow(/must use HTTPS/)
 	expect(
@@ -28,6 +35,13 @@ test('Cloudflare REST client refuses a non-HTTPS api.cloudflare.com base URL', (
 			new CloudflareRestClient({
 				apiToken: 'token',
 				baseUrl: 'http://127.0.0.1:9028',
+			}),
+	).not.toThrow()
+	expect(
+		() =>
+			new CloudflareRestClient({
+				apiToken: 'token',
+				baseUrl: 'http://localhost:9028',
 			}),
 	).not.toThrow()
 })
