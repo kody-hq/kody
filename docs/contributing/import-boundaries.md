@@ -4,10 +4,17 @@
 
 | Layer                                       | Path                         | Holds                                                                                                 |
 | ------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
-| App (`#app/*`)                              | `packages/worker/src/app/`   | Request handlers, SSR, and other server-only HTTP/UI code                                             |
+| App (`#app/*`)                              | `packages/worker/src/app/`   | Request handlers and other server-only HTTP/UI code (not website routes)                              |
 | MCP capabilities (`#mcp/*`)                 | `packages/worker/src/mcp/`   | The MCP server, capability registry, capability implementations                                       |
 | Shared primitives (the rest of `#worker/*`) | `packages/worker/src/`       | Domain services, repositories, and infrastructure both server layers build on                         |
 | Universal (`#universal/*`)                  | `packages/worker/universal/` | Client-safe contracts, registries, display helpers, and UI primitives the browser bundle also imports |
+
+Website pages, file routes, and Start server functions live under
+`packages/worker/start/` (native Start app; see
+[Web app rendering and server state](./tanstack-start.md) and
+[TypeScript setup](./typescript-setup.md#native-start-app)). `#app/*` is
+remaining server-only HTTP/UI — handlers, session helpers, envelopes — not the
+document renderer.
 
 The app layer may import MCP capabilities, shared primitives, and universal
 modules. MCP capabilities may import shared primitives and universal modules.

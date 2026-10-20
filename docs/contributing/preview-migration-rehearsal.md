@@ -120,8 +120,8 @@ integration against the preview's mock token endpoint, four memories, an MCP
 OAuth connection, a CLI bootstrap token, and an API token with every scope.
 Usage comes from the seed's own execute and job runs.
 
-Writes go through the product: MCP `execute` and the session JSON routes the UI
-posts to. The only direct D1 writes are the seed-path users (the same SQL as
+Writes go through the product: MCP `execute` and the Start server functions the
+website uses. The only direct D1 writes are the seed-path users (the same SQL as
 `tools/seed-test-data.ts`) and carol's auto-refill settings, because previews
 have no Stripe mock and the settings route requires a Stripe customer.
 

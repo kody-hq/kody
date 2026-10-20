@@ -1,7 +1,8 @@
 # kody Cloud Agent Guide
 
 A full-stack web application built on Cloudflare Workers with a TanStack Start
-web UI. Remix serves the HTTP API layer and optional package apps.
+web UI. Remix supplies cookie, schema, and HTML utilities and is an optional
+framework for user-authored package apps.
 
 ## Quick Reference
 
@@ -41,9 +42,9 @@ so a green local `validate` means CI will pass. `validate` is read-only; use
 ## Documentation
 
 - [AGENTS.md](../AGENTS.md) - Agent instructions and verification steps
-- [docs/contributing/remix.md](../docs/contributing/remix.md) - Remix HTTP and
-  package-app guidance (installed `node_modules/remix` docs are canonical for
-  framework APIs)
+- [docs/contributing/remix.md](../docs/contributing/remix.md) - Remix utilities
+  and package-app guidance (installed `node_modules/remix` docs are canonical
+  for framework APIs)
 - [docs/contributing/setup/](../docs/contributing/setup/index.md) - Setup
   documentation
 - [docs/contributing/cloud-agents.md](../docs/contributing/cloud-agents.md) —

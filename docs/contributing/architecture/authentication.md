@@ -546,16 +546,16 @@ Hosted package apps run on their own registrable domain in production
 origin — see
 [Hosted package app origin isolation](../security.md#hosted-package-app-origin-isolation)
 for why. Production serves each owner's apps on a per-user subdomain of that
-domain (`https://{username}.kody.run/packages/{kodyId}/...`); the apex only
+domain (`https://{username}.kody.run/packages/{leaf}/...`); the apex only
 redirects. That means `kody_session` never reaches them, so the package-app
 subdomain needs its own, deliberately smaller credential.
 
 **Handoff token** (`packages/worker/src/app/package-app-handoff.ts`). When a
-signed-in person who may run the app requests
-`/@{username}/packages/{kodyId}/...` on the app origin, the app origin mints
-`<base64url payload>.<HMAC-SHA256>`. Anonymous visitors and signed-in outsiders
-are not redirected off the app origin; they see the saved-package page, which
-links at the hosted origin. The token is:
+signed-in person who may run the app requests `/@{username}/packages/{leaf}/...`
+on the app origin, the app origin mints `<base64url payload>.<HMAC-SHA256>`.
+Anonymous visitors and signed-in outsiders are not redirected off the app
+origin; they see the saved-package page, which links at the hosted origin. The
+token is:
 
 - signed with `COOKIE_SECRET` over a purpose-labelled message
   (`kody-package-app-handoff:v2`), so it is not interchangeable with any other

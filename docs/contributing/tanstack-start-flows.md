@@ -1,8 +1,8 @@
 # Website process flows
 
-These diagrams describe the migration working tree, not a claim that every flow
-has passed deployed parity testing. They describe website infrastructure, not
-the internal execution of every package or background job.
+These diagrams describe current website ownership. They are not a claim that
+every flow has a dedicated deployed parity test. They describe website
+infrastructure, not the internal execution of every package or background job.
 
 ## Who owns what
 
@@ -13,7 +13,7 @@ the internal execution of every package or background job.
 | Reusable server data, freshness, mutation status and reconciliation   | Query                                | Keys include actor and resource scope                    |
 | Rendering, local drafts and component lifecycle                       | Redact through React-compatible APIs | Local UI state is not authoritative saved data           |
 | Identity, permissions, write leases, audit events and business rules  | Kody server/domain code              | Enforced on each operation, independent of the UI        |
-| Durable records and objects                                           | Existing database/storage services   | The migration does not require a new data model          |
+| Durable records and objects                                           | Existing database/storage services   | No new data model                                        |
 | Cookie, schema, table and HTML helpers                                | Retained Remix leaf utilities        | No website routing or action dispatch ownership          |
 
 ## 1. Initial page request and hydration
@@ -257,8 +257,7 @@ Native route metadata owns eligibility and the marketing or visibility-sensitive
 TTL. Cache keys include the Worker version so a deployment cannot replay old
 asset references. Cached HTML receives a fresh nonce that matches the delivered
 CSP. HEAD returns no body and does not populate the cache. Method guards reject
-actionable HEAD requests before document loaders. This lifecycle awaits CI
-verification; it is not yet deployed evidence.
+actionable HEAD requests before document loaders.
 
 Implementation details and source links:
 [web architecture](./tanstack-start.md).

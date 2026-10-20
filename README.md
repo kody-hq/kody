@@ -85,7 +85,7 @@ If you are trying to understand what this repository is for, start with
 ## How It Works
 
 ```
-kody.codes  → kody-production (origin: Remix, /mcp HTTP, OAuth, email, queues)
+kody.codes  → kody-production (origin: TanStack Start, /mcp HTTP, OAuth, email, queues)
                  ├─→ kody-platform  (MCP / mailbox / meter / repo-session DOs)
                  ├─→ kody-runtime   (package apps, invoke API, StorageRunner)
                  └─→ kody-jobs      (cron + JobManager; calls back via JobsHost)
@@ -97,7 +97,8 @@ kody.run    → kody-runtime (package-app zone routes)
   and jobs have sibling entrypoints (see
   [architecture](./docs/contributing/architecture/index.md#production-worker-fleet))
 - OAuth requests are handled first, then MCP requests, then static assets
-- Non-asset requests fall through to the server handler and router
+- Remaining requests go through TanStack Start
+  (`packages/worker/start/http-entry.ts`)
 - Client assets are bundled into `packages/worker/public/` and served via the
   `ASSETS` binding
 

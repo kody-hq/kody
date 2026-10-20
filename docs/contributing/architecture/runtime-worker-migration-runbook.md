@@ -77,7 +77,7 @@ does not republish package-app zone routes as a first-time attach.
 UI/blog-only uploads skip runtime. Official guide markdown still skips runtime.
 
 Healthchecks: origin `/health`, runtime `/__runtime/health`. Package apps load
-on `https://{username}.kody.run/packages/{kodyId}/...` (the apex only redirects;
+on `https://{username}.kody.run/packages/{leaf}/...` (the apex only redirects;
 it does not serve package code).
 
 ## Deleting a transferred class

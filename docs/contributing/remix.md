@@ -1,9 +1,11 @@
-# Remix HTTP and package-app guidance
+# Remix utilities and package-app guidance
 
 Kody's web UI uses [TanStack Start, Router, and Query](./tanstack-start.md).
-Remix remains in the HTTP API layer and as an optional framework for
-user-authored package apps. Use this page when changing those Remix contracts.
-UI navigation and page data follow the Start guide.
+Origin HTTP (website documents, server functions, and protocol routes) goes
+through Start. Remix supplies cookie, schema, data-table, and HTML utilities,
+and is an optional framework for user-authored package apps. Use this page when
+changing those Remix contracts. UI navigation and page data follow the Start
+guide.
 
 The installed Remix docs are canonical for framework APIs and mental model
 (routes, router, controllers, components, `handle.update()`): search

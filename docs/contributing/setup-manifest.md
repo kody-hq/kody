@@ -174,10 +174,10 @@ This project uses the following resources:
     nameservers), served by the runtime Worker via **zone routes** plus proxied
     placeholder DNS records — deliberately **not** a Workers custom domain.
     Per-user package apps are served from
-    `https://{username}.kody.run/packages/{kodyId}/...`; the apex serves
-    redirects (`/@user/packages/...` → per-user subdomain, `/` to the app
-    origin). `__Host-kody_pkg_session` is host-only, so each package-app zone
-    has its own sessions.
+    `https://{username}.kody.run/packages/{leaf}/...`; the apex serves redirects
+    (`/@user/packages/...` → per-user subdomain, `/` to the app origin).
+    `__Host-kody_pkg_session` is host-only, so each package-app zone has its own
+    sessions.
   - **No custom domain in this zone.** The deploy publishes this zone's Worker
     route table, and replacing a zone's routes detaches any Workers custom
     domain in that zone and deletes its DNS record. Package-app hosts therefore

@@ -263,7 +263,7 @@ the full error are in
   waits until `/health` is actually ok before printing the resolved URL. If
   `packages/worker/.env` is missing, it copies `.env.example` first so
   `npm run dev` (`--env-file=packages/worker/.env`) can start. If wrangler
-  accepts TCP but Remix logs `Invalid environment variables` /
+  accepts TCP but the origin worker logs `Invalid environment variables` /
   `Missing APP_DB binding` (or the same for `BUNDLE_ARTIFACTS_KV`,
   `STORAGE_RUNNER`, `PACKAGE_REALTIME_SESSION`, `MCP_CLIENT_HUB`), `dev:ensure`
   exits immediately with that hint instead of waiting 180s. Those bindings come

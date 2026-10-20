@@ -86,10 +86,12 @@ Declaring a webhook does **not** open ingress. A minted URL secret in D1 does.
 
 Route: `GET|POST /@:username/webhooks/:packageKodyId/:webhookName/:urlSecret`
 
-1. Worker `fetch` in `packages/worker/src/index.ts` matches the path early. The
-   path is also registered in `routes.ts` / `router.ts` (POST action), and
-   `/@*/webhooks/*` is in `run_worker_first` for all Wrangler environments. GET
-   challenges are handled by the early Worker path (not the Remix POST action).
+1. Worker `fetch` in `packages/worker/src/index.ts` matches the path early. POST
+   is also a native Start route
+   (`packages/worker/start/routes/@{$username}_.webhooks_.$packageKodyId_.$webhookName_.$urlSecret.ts`
+   → `webhookIngressHttp`). `/@*/webhooks/*` is in `run_worker_first` for all
+   Wrangler environments. GET challenges are handled by the early Worker path
+   (not the Start POST handler).
 2. Resolve username → user; resolve `packageKodyId` to a saved package owned by
    that user; load minted row keyed by `(user_id, package_id, webhook_name)`.
 3. Unminted, disabled, missing declaration (after republish rename/remove), or

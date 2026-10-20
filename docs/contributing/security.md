@@ -175,10 +175,10 @@ need their own looser policies to run author-authored code.
 
 Hosted package apps execute author-supplied HTML, JS, and worker code. In
 production they run on per-user subdomains of the package-app domain
-(`https://{username}.kody.run/packages/{kodyId}/...`); confirmed non-production
+(`https://{username}.kody.run/packages/{leaf}/...`); confirmed non-production
 runtimes may serve them inline on the app origin at
-`/@{username}/packages/{kodyId}/...` instead. Anything that shares an origin
-with a package app is inside its reach, and package apps get no CSP backstop
+`/@{username}/packages/{leaf}/...` instead. Anything that shares an origin with
+a package app is inside its reach, and package apps get no CSP backstop
 (invariant 2), so the origin boundary _is_ the control.
 
 **Threat model.** Author-supplied package code must not act as the owner, and
@@ -291,8 +291,8 @@ in the Worker `fetch` handler:
   the package-app domain would only widen its surface. Retired
   `/@{username}/connectors/*` paths also 404.
 - **Per-user package-app subdomain** (`{username}.kody.run`): serves only
-  `/packages/{kodyId}/*` for that hostname's username label. `/` redirects to
-  the app origin; every other path is `404`.
+  `/packages/{leaf}/*` for that hostname's username label. `/` redirects to the
+  app origin; every other path is `404`.
 
 **Handoff session and fixation defense.** The app origin mints a short-lived
 single-use handoff token; the owner's subdomain exchanges it for a host-scoped
@@ -351,8 +351,8 @@ Because hosted package apps are served from this deployment's own origins, code
 that decides whether a URL is "ours" must accept every production shape.
 `parsePackageSearchIdentity`
 (`packages/worker/src/mcp/tools/package-search-identity.ts`) accepts a
-`https://{username}.<package-app host>/packages/{kodyId}` URL, a
-`/@{username}/packages/{kodyId}` URL on the app or package-app apex, and
+`https://{username}.<package-app host>/packages/{leaf}` URL, a
+`/@{username}/packages/{leaf}` URL on the app or package-app apex, and
 `/account/packages/{packageId}` on the app origin — so a URL copied out of a
 running package app resolves to that package — while other `/account/*` paths
 stay app-origin only. Untrusted markdown is the opposite case:

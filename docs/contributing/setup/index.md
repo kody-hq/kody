@@ -15,5 +15,5 @@ need.
 - [Dependency overrides](../dependency-overrides.md) — `overrides`
   justifications and `npm run audit:prod`
 
-See [Remix HTTP and package-app guidance](../remix.md) instead of vendoring
+See [Remix utilities and package-app guidance](../remix.md) instead of vendoring
 generated package docs in this repo.

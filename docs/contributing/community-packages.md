@@ -72,7 +72,7 @@ teasers stay private.
 
 `/@owner/kody-id.git` is a **read-only** Git smart HTTP proxy for active public
 listings (`packages/worker/src/repo/public-package-git-http.ts`). The origin
-Worker handles it before the anonymous HTML edge cache and Remix. Flow:
+Worker handles it before the anonymous HTML edge cache and Start. Flow:
 
 1. Resolve the listing via `resolveCommunityPackageUrl` (404 when missing /
    private / delisted — same non-leak posture as package pages).
@@ -420,11 +420,10 @@ for the handler payload.
 
 A republish whose pinned commit differs from the stored listing notifies follows
 of that package (`follow.published`) and emits `community.fork.upstream_updated`
-from that same pipeline, one event per fork still behind the new pin. The old
-`{ kind: 'fork_upstream_updated' }` queue message is no longer produced;
-in-flight copies are acknowledged without fan-out. Forking also creates a follow
-of the upstream. Watching without a fork is `followAdd`. The alias payload is
-unchanged. Payload:
+from that same pipeline, one event per fork still behind the new pin. Queue
+consumers acknowledge leftover `{ kind: 'fork_upstream_updated' }` copies
+without fan-out. Forking also creates a follow of the upstream. Watching without
+a fork is `followAdd`. The alias payload is unchanged. Payload:
 [Package subscriptions](../guides/package-subscriptions.md#communityforkupstream_updated).
 
 ## Inert fork mechanism

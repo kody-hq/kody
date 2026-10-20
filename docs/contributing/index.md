@@ -60,6 +60,8 @@ style, tests, MCP capabilities, and runtime architecture.
   (`typescript/no-explicit-any`, `TODO`/`FIXME`/`HACK`, file-size ratchet,
   vanished-copy `kody-custom/no-tautological-absence`, knip)
 - [Web app rendering and server state](./tanstack-start.md)
+- [Remix utilities and package apps](./remix.md) (cookies, schemas, optional
+  package-app framework; origin HTTP is Start)
 - [No-flash navigation](./no-flash-navigation.md) (load-before-commit router;
   `loadPageQuery` / `usePageQuery` keep the previous page until the next one is
   ready)

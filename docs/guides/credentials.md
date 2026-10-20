@@ -537,9 +537,9 @@ dependent that statically imported the package bundled that call. The bundled
 copy still resolves the alias against the dependency's **current** published
 manifest, not the commit it was built from.
 
-Publish may keep those mount declarations after the package's own new code has
-moved to `kody.credentials` and no longer calls `packageSecrets.get`. Keeping a
-mount is a compatibility lane for those stale bundles. It grants nothing new:
+Publish may keep those mount declarations when the package's own source uses
+`kody.credentials` and does not call `packageSecrets.get`. Keeping a mount is a
+compatibility lane for those stale bundles. It grants nothing new:
 
 - Resolution still reads only the mounts on the current manifest. There is no
   alias fallback, no history of old mounts, and no commit-pinned lookup.
