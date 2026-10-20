@@ -918,9 +918,15 @@ GROUP BY stage
   the named owners. Kody still fans `fleet.package_error_rate.elevated` to
   admin-owned packages in every case. Concentrated payloads name usernames and
   package name leaves only. The KV cooldown key
-  `ops-alert:fleet-package-error-rate:v1` suppresses repeat pages for six hours.
-  The payload has no user ids, package UUIDs, emails, or error strings. See
+  `ops-alert:fleet-package-error-rate:v1` stores structured state: hour
+  elevations quiet for six hours, day elevations for 24 hours, and the same
+  window end + top owner never re-pages. The payload has no user ids, package
+  UUIDs, emails, or error strings. See
   [Admin events](../../guides/admin-events.md#fleetpackageerrorrateelevated-admins).
+
+  Tracking: remove this elevated alert after `fleet.users_affected.elevated` has
+  run ~1 week with sane behavior (owner spikes already notify publishers via
+  `fleet.package_owner_error_spike`).
 
 ## Usage campaign
 

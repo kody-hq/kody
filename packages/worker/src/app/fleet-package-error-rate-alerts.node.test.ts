@@ -129,9 +129,15 @@ test('refreshFleetPackageErrorRateAndMaybeAlert writes a content-free snapshot a
 	expect(dispatchFleetPackageErrorRateSubscriptionEvent).toHaveBeenCalledTimes(
 		1,
 	)
-	expect(stored.get(fleetPackageErrorRateAlertKvKey)).toBe(
-		String(alertNow.getTime()),
-	)
+	expect(
+		JSON.parse(stored.get(fleetPackageErrorRateAlertKvKey) ?? 'null'),
+	).toMatchObject({
+		version: 1,
+		alertedAtMs: alertNow.getTime(),
+		windowKind: 'day',
+		windowEnd: '2026-08-22T19:00:00.000Z',
+		eventId: 'day:2026-08-22T19:00:00.000Z',
+	})
 
 	await expect(
 		refreshFleetPackageErrorRateAndMaybeAlert({

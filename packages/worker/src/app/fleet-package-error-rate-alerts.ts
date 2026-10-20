@@ -1,7 +1,7 @@
 import { formatFleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
 import { joinAppUrl } from '#worker/app-base-url.ts'
 import {
-	fleetPackageErrorRateAlertCooldownMinutes as defaultCooldownMinutes,
+	fleetPackageErrorRateAlertCooldownMinutes as defaultHourCooldownMinutes,
 	refreshFleetPackageErrorRateSnapshot,
 	writeFleetPackageErrorRateSnapshot,
 	type FleetPackageErrorRateElevation,
@@ -12,13 +12,27 @@ import {
 	buildFleetPackageErrorRateElevatedEvent,
 	fleetPackageErrorRatePublicStatusUrl,
 	type FleetPackageErrorRateElevatedEvent,
+	type FleetPackageErrorRateWindowKind,
 } from '#worker/usage/fleet-package-error-rate-subscription-event.ts'
 import { dispatchFleetPackageErrorRateSubscriptionEvent } from '#worker/usage/fleet-package-error-rate-subscriptions.ts'
 
 export const fleetPackageErrorRateAlertKvKey =
 	'ops-alert:fleet-package-error-rate:v1'
 
-export { defaultCooldownMinutes as fleetPackageErrorRateAlertCooldownMinutes }
+/** Hour-window pages stay quiet for six hours. */
+export const fleetPackageErrorRateAlertCooldownMinutes =
+	defaultHourCooldownMinutes
+/** Day-window pages stay quiet for a full day (stops hourly re-pages). */
+export const fleetPackageErrorRateDayAlertCooldownMinutes = 24 * 60
+
+export type FleetPackageErrorRateAlertCooldownState = {
+	version: 1
+	alertedAtMs: number
+	windowKind: FleetPackageErrorRateWindowKind
+	windowEnd: string
+	topOwnerUsername: string | null
+	eventId: string
+}
 
 export type FleetPackageErrorRateRefreshResult =
 	| {
@@ -43,11 +57,16 @@ export type FleetPackageErrorRateRefreshResult =
  * `fleet.package_error_rate.elevated` to admin-owned packages when the
  * combined package-runtime error rate is rising. A concentrated spike
  * still pages the fleet; the event names the owning accounts.
+ *
+ * Day elevations use a 24h cooldown. Any elevation is also suppressed when
+ * the same window end + top owner was already paged (stops hourly re-pages
+ * when the event id string would otherwise change).
  */
 export async function refreshFleetPackageErrorRateAndMaybeAlert(input: {
 	env: FleetPackageErrorRateEnv
 	now?: Date
 	cooldownMinutes?: number
+	dayCooldownMinutes?: number
 }): Promise<FleetPackageErrorRateRefreshResult> {
 	const now = input.now ?? new Date()
 	const refreshed = await refreshFleetPackageErrorRateSnapshot({
@@ -68,8 +87,25 @@ export async function refreshFleetPackageErrorRateAndMaybeAlert(input: {
 	const kv = input.env.BUNDLE_ARTIFACTS_KV
 	if (!kv) return { status: 'skipped', reason: 'no_kv' }
 
-	const cooldownMinutes = input.cooldownMinutes ?? defaultCooldownMinutes
-	if (await isAlertOnCooldown({ kv, now, cooldownMinutes })) {
+	const hourCooldownMinutes =
+		input.cooldownMinutes ?? fleetPackageErrorRateAlertCooldownMinutes
+	const dayCooldownMinutes =
+		input.dayCooldownMinutes ?? fleetPackageErrorRateDayAlertCooldownMinutes
+	const topOwnerUsername = topOwnerUsernameFromConcentration(
+		event.concentration,
+	)
+	const lastAlert = await readAlertCooldownState(kv)
+	if (
+		shouldSuppressFleetPackageErrorRateAlert({
+			now,
+			lastAlert,
+			windowKind: refreshed.elevation.kind,
+			windowEnd: refreshed.elevation.comparison.recent.end,
+			topOwnerUsername,
+			hourCooldownMinutes,
+			dayCooldownMinutes,
+		})
+	) {
 		return {
 			status: 'refreshed',
 			elevated: true,
@@ -91,9 +127,23 @@ export async function refreshFleetPackageErrorRateAndMaybeAlert(input: {
 			lastAlertEventId: event.event_id,
 		}
 		await writeFleetPackageErrorRateSnapshot(kv, snapshot)
-		await kv.put(fleetPackageErrorRateAlertKvKey, String(now.getTime()), {
-			expirationTtl: (cooldownMinutes + 60) * 60,
-		})
+		const cooldownMinutes =
+			refreshed.elevation.kind === 'day'
+				? dayCooldownMinutes
+				: hourCooldownMinutes
+		const cooldownState: FleetPackageErrorRateAlertCooldownState = {
+			version: 1,
+			alertedAtMs: now.getTime(),
+			windowKind: refreshed.elevation.kind,
+			windowEnd: refreshed.elevation.comparison.recent.end,
+			topOwnerUsername,
+			eventId: event.event_id,
+		}
+		await kv.put(
+			fleetPackageErrorRateAlertKvKey,
+			JSON.stringify(cooldownState),
+			{ expirationTtl: (cooldownMinutes + 60) * 60 },
+		)
 		console.warn('fleet-package-error-rate-alerted', {
 			eventId: event.event_id,
 			window: event.trigger.window,
@@ -116,6 +166,79 @@ export async function refreshFleetPackageErrorRateAndMaybeAlert(input: {
 			alert: { status: 'skipped', reason: 'notify_failed' },
 		}
 	}
+}
+
+export function shouldSuppressFleetPackageErrorRateAlert(input: {
+	now: Date
+	lastAlert: FleetPackageErrorRateAlertCooldownState | null
+	windowKind: FleetPackageErrorRateWindowKind
+	windowEnd: string
+	topOwnerUsername: string | null
+	hourCooldownMinutes?: number
+	dayCooldownMinutes?: number
+}) {
+	const last = input.lastAlert
+	if (!last) return false
+
+	// Same completed window + same top owner: never re-page.
+	if (
+		last.windowKind === input.windowKind &&
+		last.windowEnd === input.windowEnd &&
+		(last.topOwnerUsername ?? null) === (input.topOwnerUsername ?? null)
+	) {
+		return true
+	}
+
+	const cooldownMinutes =
+		input.windowKind === 'day'
+			? (input.dayCooldownMinutes ??
+				fleetPackageErrorRateDayAlertCooldownMinutes)
+			: (input.hourCooldownMinutes ?? fleetPackageErrorRateAlertCooldownMinutes)
+	return input.now.getTime() - last.alertedAtMs < cooldownMinutes * 60_000
+}
+
+export function parseFleetPackageErrorRateAlertCooldownState(
+	value: unknown,
+): FleetPackageErrorRateAlertCooldownState | null {
+	if (typeof value === 'string') {
+		const legacyMs = Number(value)
+		if (!Number.isFinite(legacyMs)) return null
+		// Legacy timestamp-only cooldown: treat as hour window with unknown
+		// identity so time-based suppression still works.
+		return {
+			version: 1,
+			alertedAtMs: legacyMs,
+			windowKind: 'hour',
+			windowEnd: '',
+			topOwnerUsername: null,
+			eventId: '',
+		}
+	}
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+	const record = value as Record<string, unknown>
+	if (record.version !== 1) return null
+	if (typeof record.alertedAtMs !== 'number') return null
+	if (record.windowKind !== 'hour' && record.windowKind !== 'day') return null
+	if (typeof record.windowEnd !== 'string') return null
+	if (typeof record.eventId !== 'string') return null
+	return {
+		version: 1,
+		alertedAtMs: record.alertedAtMs,
+		windowKind: record.windowKind,
+		windowEnd: record.windowEnd,
+		topOwnerUsername:
+			typeof record.topOwnerUsername === 'string'
+				? record.topOwnerUsername
+				: null,
+		eventId: record.eventId,
+	}
+}
+
+function topOwnerUsernameFromConcentration(
+	concentration: FleetPackageErrorRateElevatedEvent['concentration'],
+) {
+	const username = concentration?.owners[0]?.username?.trim()
+	return username && username.length > 0 ? username : null
 }
 
 function buildElevatedEvent(input: {
@@ -141,20 +264,17 @@ function buildElevatedEvent(input: {
 	})
 }
 
-async function isAlertOnCooldown(input: {
-	kv: KVNamespace
-	now: Date
-	cooldownMinutes: number
-}) {
+async function readAlertCooldownState(kv: KVNamespace) {
 	try {
-		const lastSentRaw = await input.kv.get(fleetPackageErrorRateAlertKvKey)
-		const lastSentMs = lastSentRaw ? Number(lastSentRaw) : Number.NaN
-		return (
-			Number.isFinite(lastSentMs) &&
-			input.now.getTime() - lastSentMs < input.cooldownMinutes * 60_000
-		)
+		const raw = await kv.get(fleetPackageErrorRateAlertKvKey)
+		if (raw == null) return null
+		try {
+			return parseFleetPackageErrorRateAlertCooldownState(JSON.parse(raw))
+		} catch {
+			return parseFleetPackageErrorRateAlertCooldownState(raw)
+		}
 	} catch (error) {
 		console.debug('fleet-package-error-rate-cooldown-read-failed', error)
-		return false
+		return null
 	}
 }

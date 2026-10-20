@@ -308,8 +308,9 @@ looking like a fleet outage. A non-admin package may declare the topic, but it
 never receives the event. Role revocation stops delivery on the next elevation.
 
 There is no Queue / DLQ for this topic. A missed invoke is logged and does not
-fail usage rollup aggregation. A six-hour cooldown suppresses repeat pages
-during a prolonged incident.
+fail usage rollup aggregation. Hour elevations use a six-hour cooldown; day
+elevations use a 24-hour cooldown. The same completed window end plus top owner
+never re-pages even when the event id string would otherwise change hourly.
 
 Handlers receive operator telemetry only:
 
