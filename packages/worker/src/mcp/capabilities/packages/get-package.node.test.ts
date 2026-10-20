@@ -297,6 +297,7 @@ test('getPackageCapability includes package-scoped secret metadata as FYI', asyn
 			updated_at: '2026-04-26T00:00:00.000Z',
 			expires_at: null,
 			ttl_ms: null,
+			placement: null,
 		},
 	])
 	expect(result.package_secrets[0]).not.toHaveProperty('value')

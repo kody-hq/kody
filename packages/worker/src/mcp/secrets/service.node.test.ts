@@ -507,7 +507,7 @@ test('user secrets persist per-entry expiry, stay listed after expiry, and fail 
 			name: 'githubPat',
 			expiresAt: '2020-01-01T00:00:00.000Z',
 			ttlMs: 0,
-			placement: null,
+			placement: { headers: true },
 		}),
 	])
 
