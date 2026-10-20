@@ -830,20 +830,28 @@ export async function refreshPackageOwnerErrorSpikes(input: {
 	}
 
 	// Alerted owners missing from this hour's top sample may still be
-	// erroring under the LIMIT — do not treat absence as inactivity.
-	// Refresh per-owner + index TTLs so long episodes stay trackable; true
-	// quiet re-arm happens when they next appear with healthy windows, or
-	// when state TTL expires.
+	// erroring under the LIMIT — do not treat absence as inactivity, and do
+	// not refresh TTLs forever. Only re-arm when lastActivityAt is stale (or
+	// missing); otherwise leave state alone until they reappear in the sample
+	// or the KV TTL expires.
 	for (const ownerId of alertedOwnerIds) {
 		if (evaluated.has(ownerId)) continue
 		const previous = await loadPackageOwnerSpikeState(kv, ownerId)
 		if (!previous || previous.status !== 'alerted') continue
-		await writePackageOwnerSpikeState({
-			kv,
-			ownerId,
-			state: previous,
-			previousStatus: previous.status,
+		const transition = evaluatePackageOwnerSpikeTransition({
+			previous,
+			window: null,
+			now,
 		})
+		if (transition.action === 'rearm') {
+			await writePackageOwnerSpikeState({
+				kv,
+				ownerId,
+				state: transition.next,
+				previousStatus: previous.status,
+			})
+			rearmed += 1
+		}
 		evaluated.add(ownerId)
 	}
 

@@ -108,7 +108,10 @@ async function notifyPackageOwnerErrorSpike(input: {
 				events: row.events,
 			})),
 		})
+		let attempted = 0
+		let delivered = 0
 		for (const recipient of recipients) {
+			attempted += 1
 			try {
 				const sendResult = await sendGatedTransactionalEmail({
 					db,
@@ -127,7 +130,9 @@ async function notifyPackageOwnerErrorSpike(input: {
 						text: email.text,
 					},
 				})
-				if (!sendResult.ok) {
+				if (sendResult.ok) {
+					delivered += 1
+				} else {
 					console.warn('package-owner-error-spike-email-skipped', {
 						ownerId: input.ownerId,
 						reason: sendResult.error ?? 'unconfigured',
@@ -140,32 +145,45 @@ async function notifyPackageOwnerErrorSpike(input: {
 				})
 			}
 		}
+		// Fail the callback so alerted is not persisted and next hour retries.
+		if (attempted > 0 && delivered === 0) {
+			throw new Error('package-owner-error-spike-email-all-failed')
+		}
 	}
 
 	const username = slug ?? 'unknown'
 	const ownerToken = await shortOwnerToken(input.ownerId)
-	await dispatchPackageOwnerErrorSpikeSubscriptionEvent({
-		env: input.env as Pick<
-			Env,
-			'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
-		>,
-		event: buildPackageOwnerErrorSpikeEvent({
-			eventId: `${ownerToken}:${input.window.windowEnd}`,
-			insightsUrl,
-			activityUrl,
-			environment: resolveFleetPackageErrorRateEnvironment(input.env),
-			observedAt: input.now.toISOString(),
-			ownerUsername: username,
-			windowStart: input.window.windowStart,
-			windowEnd: input.window.windowEnd,
-			events: input.window.events,
-			errors: input.window.errors,
-			rate: input.window.rate,
-			spikeStartedAt,
-			packages: input.window.packages,
-			byMetric: input.window.byMetric,
-		}),
-	})
+	// Admin audit is best-effort: owner email already succeeded (or no
+	// recipients). Do not throw here or the next hour re-emails the owner.
+	try {
+		await dispatchPackageOwnerErrorSpikeSubscriptionEvent({
+			env: input.env as Pick<
+				Env,
+				'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'
+			>,
+			event: buildPackageOwnerErrorSpikeEvent({
+				eventId: `${ownerToken}:${input.window.windowEnd}`,
+				insightsUrl,
+				activityUrl,
+				environment: resolveFleetPackageErrorRateEnvironment(input.env),
+				observedAt: input.now.toISOString(),
+				ownerUsername: username,
+				windowStart: input.window.windowStart,
+				windowEnd: input.window.windowEnd,
+				events: input.window.events,
+				errors: input.window.errors,
+				rate: input.window.rate,
+				spikeStartedAt,
+				packages: input.window.packages,
+				byMetric: input.window.byMetric,
+			}),
+		})
+	} catch (error) {
+		console.warn('package-owner-error-spike-audit-failed', {
+			ownerId: input.ownerId,
+			error,
+		})
+	}
 
 	console.warn('package-owner-error-spike-alerted', {
 		owner: username,
