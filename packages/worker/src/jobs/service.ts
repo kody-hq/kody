@@ -27,6 +27,7 @@ import {
 import { buildJobEmbedText } from '#mcp/jobs-embed.ts'
 import { deleteJobVector, upsertJobVector } from '#mcp/jobs-vectorize.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import { createNamedExecutionError } from '#mcp/executor.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import {
 	abandonRunRecord,
@@ -1137,7 +1138,12 @@ export async function executeJobOnce(input: {
 							})
 						}
 						outcome = 'error'
-						usageErrorName = usageErrorNameFromUnknown(result.error)
+						const namedExecutionError = createNamedExecutionError(result.error)
+						usageErrorName = usageErrorNameFromUnknown(
+							namedExecutionError.name === 'TimeoutError'
+								? namedExecutionError
+								: result.error,
+						)
 					}
 					execution = result.error
 						? {

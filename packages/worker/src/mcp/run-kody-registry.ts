@@ -1625,12 +1625,20 @@ ${runtimeHelperRuntimePropertySource}
 				staticCallRunFailed = false
 				return withRunId(finalResult)
 			}
+			const namedExecutionError = createNamedExecutionError(finalResult.error)
 			await finishObservedRun({
 				status: 'error',
 				logs: finalResult.logs ?? [],
-				error: createNamedExecutionError(finalResult.error),
+				error: namedExecutionError,
 			})
-			await recordPackageExportUsage('error', finalResult.error)
+			// Prefer TimeoutError naming for sandbox timeouts; keep the original
+			// error otherwise so structured codes / names survive stringification.
+			await recordPackageExportUsage(
+				'error',
+				namedExecutionError.name === 'TimeoutError'
+					? namedExecutionError
+					: finalResult.error,
+			)
 			return withRunId(finalResult)
 		} catch (error) {
 			if (leavesCallerRunRecordOpen(error)) {
