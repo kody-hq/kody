@@ -67,6 +67,8 @@ function formatDetail(
 		...formatListItem(feedback),
 		details_untrusted: feedback.details,
 		admin_note: feedback.adminNote,
+		resolution_note: feedback.resolutionNote,
+		resolution_pr_urls: feedback.resolutionPrUrls,
 		submitter: {
 			user_id: feedback.submitterUserId,
 			username: feedback.submitterUsername,

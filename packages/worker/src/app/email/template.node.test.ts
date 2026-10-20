@@ -281,6 +281,7 @@ test('transactional emails escape untrusted content and put action URLs in both 
 		status: 'dismissed',
 		summary: hostileSummary,
 		userMessage: 'We shipped a clearer setup path. <em>Thanks</em>.',
+		prUrls: ['https://github.com/example/repo/pull/42'],
 	})
 	expect(dismissedWithNote.subject).toContain('update')
 	expect(dismissedWithNote.html).toContain(
@@ -290,4 +291,10 @@ test('transactional emails escape untrusted content and put action URLs in both 
 		'We shipped a clearer setup path. &lt;em&gt;Thanks&lt;/em&gt;.',
 	)
 	expect(dismissedWithNote.html).not.toContain('<em>Thanks</em>')
+	expect(dismissedWithNote.html).toContain(
+		'href="https://github.com/example/repo/pull/42"',
+	)
+	expect(dismissedWithNote.text).toContain(
+		'https://github.com/example/repo/pull/42',
+	)
 })

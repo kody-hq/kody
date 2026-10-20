@@ -33,6 +33,8 @@ const feedback: PlatformFeedbackRecord = {
 	reviewedByUserId: 'admin-1',
 	reviewedAt: '2026-07-19T01:00:00.000Z',
 	adminNote: 'platform-feedback-triage shipped: do not mail this',
+	resolutionNote: null,
+	resolutionPrUrls: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T01:00:00.000Z',
 }

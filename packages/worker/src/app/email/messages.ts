@@ -730,9 +730,13 @@ export function buildPlatformFeedbackOutcomeEmail(input: {
 	status: PlatformFeedbackOutcomeStatus
 	summary: string
 	userMessage?: string
+	prUrls?: Array<string>
 }) {
 	const copy = platformFeedbackOutcomeCopy(input.status)
 	const userMessage = input.userMessage?.trim()
+	const prUrls = (input.prUrls ?? [])
+		.map((url) => url.trim())
+		.filter((url) => url.length > 0)
 	return renderTransactionalEmail({
 		appBaseUrl: input.appBaseUrl,
 		subject: copy.subject,
@@ -741,6 +745,10 @@ export function buildPlatformFeedbackOutcomeEmail(input: {
 		body: [
 			copy.decision(input.summary.trim()),
 			...(userMessage ? [userMessage] : []),
+			...prUrls.map((url) => ({
+				text: 'Related change:',
+				link: { label: url, url },
+			})),
 			'Thanks for taking the time to tell us. Notes like yours help us make Kody better.',
 			'If you have more to share, tell your agent you want to send more Kody feedback.',
 		],

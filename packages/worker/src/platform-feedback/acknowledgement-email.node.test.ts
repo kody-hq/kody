@@ -203,6 +203,8 @@ const openFeedback: PlatformFeedbackRecord = {
 	reviewedByUserId: null,
 	reviewedAt: null,
 	adminNote: null,
+	resolutionNote: null,
+	resolutionPrUrls: [],
 	createdAt: '2026-07-19T00:00:00.000Z',
 	updatedAt: '2026-07-19T00:00:00.000Z',
 }

@@ -43,6 +43,8 @@ export type PlatformFeedbackRow = {
 	reviewed_by_user_id: string | null
 	reviewed_at: string | null
 	admin_note: string | null
+	resolution_note: string | null
+	resolution_pr_urls: string | null
 	created_at: string
 	updated_at: string
 }
@@ -59,6 +61,10 @@ export type PlatformFeedbackRecord = {
 	reviewedByUserId: string | null
 	reviewedAt: string | null
 	adminNote: string | null
+	/** Submitter-visible outcome note; never conflated with adminNote. */
+	resolutionNote: string | null
+	/** Submitter-visible https PR URLs from the outcome; empty when none. */
+	resolutionPrUrls: Array<string>
 	createdAt: string
 	updatedAt: string
 }
@@ -76,19 +82,27 @@ export type PlatformFeedbackRecordWithRevision = PlatformFeedbackRecord & {
 
 export type PlatformFeedbackListItem = Omit<
 	PlatformFeedbackRecord,
-	'details' | 'adminNote' | 'submitterUsername' | 'submitterEmail'
+	| 'details'
+	| 'adminNote'
+	| 'resolutionNote'
+	| 'resolutionPrUrls'
+	| 'submitterUsername'
+	| 'submitterEmail'
 >
 
 /**
  * Submitter-facing feedback fields. Matches the account-export columns that
  * survive reviewer redaction (`reviewed_by_user_id`, `reviewed_at`,
- * `admin_note`), minus the submitter's own identity columns.
+ * `admin_note`), minus the submitter's own identity columns. Includes
+ * submitter-visible resolution fields when present.
  */
 export type PlatformFeedbackSubmitterListItem = {
 	id: string
 	category: PlatformFeedbackCategory
 	summary: string
 	status: PlatformFeedbackStatus
+	resolutionNote: string | null
+	resolutionPrUrls: Array<string>
 	createdAt: string
 	updatedAt: string
 }

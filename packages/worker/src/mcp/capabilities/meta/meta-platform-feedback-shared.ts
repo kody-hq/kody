@@ -44,13 +44,26 @@ export const metaPlatformFeedbackSubmissionQuotaSchema = z.object({
 /**
  * Submitter-visible list fields. Same column names as account export after
  * reviewer redaction; omits details (list) and never includes reviewer/admin
- * columns. For resolved/dismissed rows, `updated_at` is the outcome time.
+ * columns (`admin_note` stays internal). Includes `resolution_note` and
+ * `resolution_pr_urls` when an admin resolved or dismissed the item. For
+ * resolved/dismissed rows, `updated_at` is the outcome time.
  */
 export const metaPlatformFeedbackListItemSchema = z.object({
 	id: z.string(),
 	category: metaPlatformFeedbackCategorySchema,
 	summary: z.string(),
 	status: metaPlatformFeedbackStatusSchema,
+	resolution_note: z
+		.string()
+		.nullable()
+		.describe(
+			'Submitter-visible outcome note from resolve/dismiss. Null when unset.',
+		),
+	resolution_pr_urls: z
+		.array(z.string())
+		.describe(
+			'Submitter-visible https PR URLs from resolve/dismiss. Empty when none.',
+		),
 	created_at: z.string(),
 	updated_at: z.string(),
 })
@@ -68,6 +81,8 @@ export function formatMetaPlatformFeedbackListItem(
 		category: feedback.category,
 		summary: feedback.summary,
 		status: feedback.status,
+		resolution_note: feedback.resolutionNote,
+		resolution_pr_urls: feedback.resolutionPrUrls,
 		created_at: feedback.createdAt,
 		updated_at: feedback.updatedAt,
 	}

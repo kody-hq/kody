@@ -54,6 +54,10 @@ function review(
 	reviewerUserId: string,
 	action: 'triage' | 'resolve' | 'dismiss',
 	adminNote?: string,
+	outcome?: {
+		resolutionNote?: string
+		resolutionPrUrls?: Array<string>
+	},
 ) {
 	return updatePlatformFeedbackForAdmin({
 		db,
@@ -61,6 +65,12 @@ function review(
 		reviewerUserId,
 		action,
 		...(adminNote === undefined ? {} : { adminNote }),
+		...(outcome?.resolutionNote === undefined
+			? {}
+			: { resolutionNote: outcome.resolutionNote }),
+		...(outcome?.resolutionPrUrls === undefined
+			? {}
+			: { resolutionPrUrls: outcome.resolutionPrUrls }),
 	})
 }
 
@@ -265,6 +275,8 @@ test('platform feedback admin note updates reject the same stale revision', asyn
 			reviewedByUserId,
 			reviewedAt: '2026-07-19T01:00:00.000Z',
 			adminNote,
+			resolutionNote: undefined,
+			resolutionPrUrlsJson: undefined,
 		})
 	expect(await updateNote('admin-a', 'First competing note.')).toBe(true)
 	expect(await updateNote('admin-b', 'Second competing note.')).toBe(false)
@@ -400,6 +412,8 @@ test('submitter get and list are owner-scoped and omit reviewer fields', async (
 		summary: 'Owned feedback',
 		details: 'Owned details for status checks.',
 		status: 'resolved',
+		resolutionNote: null,
+		resolutionPrUrls: [],
 		createdAt: owned.createdAt,
 		updatedAt: expect.any(String),
 	})
@@ -443,6 +457,8 @@ test('submitter get and list are owner-scoped and omit reviewer fields', async (
 			category: 'friction',
 			summary: 'Owned feedback',
 			status: 'resolved',
+			resolutionNote: null,
+			resolutionPrUrls: [],
 			createdAt: owned.createdAt,
 			updatedAt: expect.any(String),
 		},
@@ -612,4 +628,175 @@ test('platform feedback submission quota: fresh, partial, at cap, and window rol
 	} finally {
 		vi.useRealTimers()
 	}
+})
+
+test('resolve stores submitter-visible resolution note and PR URLs separate from admin_note', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a', {
+		summary: 'Broken save button',
+		details: 'Clicking save does nothing.',
+	})
+	const resolved = await review(
+		db,
+		submitted.id,
+		'admin-a',
+		'resolve',
+		'Internal triage: assign to setup team.',
+		{
+			resolutionNote: 'We fixed the save path and shipped it.',
+			resolutionPrUrls: [
+				'https://github.com/example/repo/pull/1',
+				'https://github.com/example/repo/pull/2',
+			],
+		},
+	)
+	expect(resolved).toMatchObject({
+		didChangeStatus: true,
+		feedback: {
+			status: 'resolved',
+			adminNote: 'Internal triage: assign to setup team.',
+			resolutionNote: 'We fixed the save path and shipped it.',
+			resolutionPrUrls: [
+				'https://github.com/example/repo/pull/1',
+				'https://github.com/example/repo/pull/2',
+			],
+		},
+	})
+
+	const forSubmitter = await getPlatformFeedbackForSubmitter({
+		db,
+		feedbackId: submitted.id,
+		submitterUserId: 'user-a',
+	})
+	expect(forSubmitter).toEqual({
+		id: submitted.id,
+		category: 'friction',
+		summary: 'Broken save button',
+		details: 'Clicking save does nothing.',
+		status: 'resolved',
+		resolutionNote: 'We fixed the save path and shipped it.',
+		resolutionPrUrls: [
+			'https://github.com/example/repo/pull/1',
+			'https://github.com/example/repo/pull/2',
+		],
+		createdAt: submitted.createdAt,
+		updatedAt: expect.any(String),
+	})
+	expect(JSON.stringify(forSubmitter)).not.toContain(
+		'Internal triage: assign to setup team.',
+	)
+	expect(forSubmitter).not.toHaveProperty('adminNote')
+
+	const listed = await listPlatformFeedbackForSubmitter({
+		db,
+		submitterUserId: 'user-a',
+		status: 'resolved',
+	})
+	expect(listed.items[0]).toMatchObject({
+		id: submitted.id,
+		resolutionNote: 'We fixed the save path and shipped it.',
+		resolutionPrUrls: [
+			'https://github.com/example/repo/pull/1',
+			'https://github.com/example/repo/pull/2',
+		],
+	})
+	expect(JSON.stringify(listed.items)).not.toContain(
+		'Internal triage: assign to setup team.',
+	)
+})
+
+test('dismiss stores resolution_note for the submitter without leaking admin_note', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a', {
+		summary: 'Want a purple theme',
+		details: 'Please add purple.',
+	})
+	const dismissed = await review(
+		db,
+		submitted.id,
+		'admin-a',
+		'dismiss',
+		'Out of brand guidelines; do not mention this.',
+		{
+			resolutionNote:
+				'We are not planning a purple theme, but thanks for asking.',
+		},
+	)
+	expect(dismissed.feedback).toMatchObject({
+		status: 'dismissed',
+		adminNote: 'Out of brand guidelines; do not mention this.',
+		resolutionNote:
+			'We are not planning a purple theme, but thanks for asking.',
+		resolutionPrUrls: [],
+	})
+	const forSubmitter = await getPlatformFeedbackForSubmitter({
+		db,
+		feedbackId: submitted.id,
+		submitterUserId: 'user-a',
+	})
+	expect(forSubmitter).toMatchObject({
+		status: 'dismissed',
+		resolutionNote:
+			'We are not planning a purple theme, but thanks for asking.',
+		resolutionPrUrls: [],
+	})
+	expect(JSON.stringify(forSubmitter)).not.toContain('Out of brand guidelines')
+	expect(forSubmitter).not.toHaveProperty('adminNote')
+})
+
+test('another user cannot read someone else resolution fields', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const owned = await submit(db, 'user-a')
+	await review(db, owned.id, 'admin-a', 'resolve', 'secret admin note', {
+		resolutionNote: 'Shipped a clearer setup flow.',
+		resolutionPrUrls: ['https://github.com/example/repo/pull/9'],
+	})
+	expect(
+		await getPlatformFeedbackForSubmitter({
+			db,
+			feedbackId: owned.id,
+			submitterUserId: 'user-b',
+		}),
+	).toBeNull()
+	const listed = await listPlatformFeedbackForSubmitter({
+		db,
+		submitterUserId: 'user-b',
+	})
+	expect(listed.total).toBe(0)
+	expect(listed.items).toEqual([])
+})
+
+test('resolution PR URL validation rejects non-https, oversize lists, and overlong entries', async () => {
+	const { db } = createPlatformFeedbackDb()
+	const submitted = await submit(db, 'user-a')
+	await expect(
+		review(db, submitted.id, 'admin-a', 'resolve', undefined, {
+			resolutionPrUrls: ['http://example.com/pull/1'],
+		}),
+	).rejects.toThrow(/https only/)
+	await expect(
+		review(db, submitted.id, 'admin-a', 'resolve', undefined, {
+			resolutionPrUrls: ['not a url'],
+		}),
+	).rejects.toThrow(/not a valid URL/)
+	await expect(
+		review(db, submitted.id, 'admin-a', 'resolve', undefined, {
+			resolutionPrUrls: Array.from(
+				{ length: 6 },
+				(_, index) => `https://example.com/pull/${index}`,
+			),
+		}),
+	).rejects.toThrow(/at most 5/)
+	await expect(
+		review(db, submitted.id, 'admin-a', 'resolve', undefined, {
+			resolutionPrUrls: [`https://example.com/${'a'.repeat(2_100)}`],
+		}),
+	).rejects.toThrow(/at most 2048/)
+	expect(
+		await getPlatformFeedbackForAdmin({ db, feedbackId: submitted.id }),
+	).toMatchObject({
+		status: 'open',
+		resolutionNote: null,
+		resolutionPrUrls: [],
+	})
 })

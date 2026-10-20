@@ -1,3 +1,4 @@
+import { parsePlatformFeedbackResolutionPrUrls } from './resolution.ts'
 import {
 	type PlatformFeedbackCategory,
 	type PlatformFeedbackListItem,
@@ -10,16 +11,17 @@ import {
 
 const platformFeedbackFullColumns = `id, submitter_user_id, submitter_username,
 	submitter_email, category, summary, details, status, reviewed_by_user_id,
-	reviewed_at, admin_note, revision, created_at, updated_at`
+	reviewed_at, admin_note, resolution_note, resolution_pr_urls, revision,
+	created_at, updated_at`
 
 const platformFeedbackListColumns = `id, submitter_user_id, category, summary,
 	status, reviewed_by_user_id, reviewed_at, created_at, updated_at`
 
 const platformFeedbackSubmitterListColumns = `id, category, summary, status,
-	created_at, updated_at`
+	resolution_note, resolution_pr_urls, created_at, updated_at`
 
 const platformFeedbackSubmitterGetColumns = `id, category, summary, details,
-	status, created_at, updated_at`
+	status, resolution_note, resolution_pr_urls, created_at, updated_at`
 
 function mapPlatformFeedbackRow(
 	row: Record<string, unknown>,
@@ -39,6 +41,11 @@ function mapPlatformFeedbackRow(
 				: String(row['reviewed_by_user_id']),
 		reviewedAt: row['reviewed_at'] == null ? null : String(row['reviewed_at']),
 		adminNote: row['admin_note'] == null ? null : String(row['admin_note']),
+		resolutionNote:
+			row['resolution_note'] == null ? null : String(row['resolution_note']),
+		resolutionPrUrls: parsePlatformFeedbackResolutionPrUrls(
+			row['resolution_pr_urls'],
+		),
 		revision: Number(row['revision']),
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
@@ -72,6 +79,11 @@ function mapPlatformFeedbackSubmitterListRow(
 		category: String(row['category']) as PlatformFeedbackCategory,
 		summary: String(row['summary']),
 		status: String(row['status']) as PlatformFeedbackStatus,
+		resolutionNote:
+			row['resolution_note'] == null ? null : String(row['resolution_note']),
+		resolutionPrUrls: parsePlatformFeedbackResolutionPrUrls(
+			row['resolution_pr_urls'],
+		),
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
 	}
@@ -100,9 +112,10 @@ export async function insertPlatformFeedback(
 			`INSERT INTO platform_feedback (
 				id, submitter_user_id, submitter_username, submitter_email,
 				category, summary, details, status, reviewed_by_user_id,
-				reviewed_at, admin_note, created_at, updated_at
+				reviewed_at, admin_note, resolution_note, resolution_pr_urls,
+				created_at, updated_at
 			)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			WHERE (
 				SELECT COUNT(*)
 				FROM platform_feedback
@@ -128,6 +141,8 @@ export async function insertPlatformFeedback(
 			row.reviewed_by_user_id,
 			row.reviewed_at,
 			row.admin_note,
+			row.resolution_note,
+			row.resolution_pr_urls,
 			row.created_at,
 			row.updated_at,
 			row.submitter_user_id,
@@ -354,6 +369,8 @@ export async function updatePlatformFeedbackStatusForAdmin(
 		reviewedByUserId: string
 		reviewedAt: string
 		adminNote: string | null | undefined
+		resolutionNote: string | null | undefined
+		resolutionPrUrlsJson: string | null | undefined
 	},
 ): Promise<boolean> {
 	const result = await db
@@ -361,6 +378,8 @@ export async function updatePlatformFeedbackStatusForAdmin(
 			`UPDATE platform_feedback
 			SET status = ?, reviewed_by_user_id = ?, reviewed_at = ?,
 				admin_note = CASE WHEN ? = 1 THEN ? ELSE admin_note END,
+				resolution_note = CASE WHEN ? = 1 THEN ? ELSE resolution_note END,
+				resolution_pr_urls = CASE WHEN ? = 1 THEN ? ELSE resolution_pr_urls END,
 				updated_at = ?, revision = revision + 1
 			WHERE id = ? AND status = ? AND revision = ?`,
 		)
@@ -370,6 +389,10 @@ export async function updatePlatformFeedbackStatusForAdmin(
 			input.reviewedAt,
 			input.adminNote === undefined ? 0 : 1,
 			input.adminNote ?? null,
+			input.resolutionNote === undefined ? 0 : 1,
+			input.resolutionNote ?? null,
+			input.resolutionPrUrlsJson === undefined ? 0 : 1,
+			input.resolutionPrUrlsJson ?? null,
 			input.reviewedAt,
 			input.feedbackId,
 			input.expectedStatus,

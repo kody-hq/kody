@@ -44,6 +44,7 @@ export async function sendPlatformFeedbackOutcomeEmail(input: {
 	feedback: PlatformFeedbackRecord
 	status: PlatformFeedbackOutcomeStatus
 	userMessage?: string
+	prUrls?: Array<string>
 }): Promise<boolean> {
 	if (input.feedback.status !== input.status) return false
 
@@ -83,6 +84,7 @@ export async function sendPlatformFeedbackOutcomeEmail(input: {
 		status: input.status,
 		summary: input.feedback.summary,
 		userMessage: input.userMessage,
+		prUrls: input.prUrls,
 	})
 	let sendResult: Awaited<ReturnType<typeof sendGatedTransactionalEmail>>
 	try {
