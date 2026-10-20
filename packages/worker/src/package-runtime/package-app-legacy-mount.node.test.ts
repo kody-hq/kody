@@ -81,12 +81,30 @@ test('maybeHandleLegacyPackageAppSubdomainMount redirects HTML and rewrites othe
 	})
 	expect(redirected?.status).toBe(308)
 	expect(redirected?.headers.get('Vary')).toBe('Accept')
+	expect(redirected?.headers.get('Cache-Control')).toBe('public, max-age=300')
 	expect(redirected?.headers.get('Location')).toBe('/demo/report?x=1')
 	expect(writeDataPoint).toHaveBeenCalledWith({
 		indexes: ['alice'],
 		blobs: [packageAppLegacyMountEventKind, 'alice', 'demo', 'GET', 'redirect'],
 		doubles: [1],
 	})
+
+	writeDataPoint.mockClear()
+	const handoffRedirect = maybeHandleLegacyPackageAppSubdomainMount({
+		request: new Request(
+			'https://alice.kody.run/packages/demo?__kody_handoff=token',
+			{ headers: { Accept: 'text/html' } },
+		),
+		env,
+		url: new URL('https://alice.kody.run/packages/demo?__kody_handoff=token'),
+		packagePath: { ...packagePath, restPath: '/' },
+	})
+	expect(handoffRedirect?.headers.get('Cache-Control')).toBe(
+		'private, no-store',
+	)
+	expect(handoffRedirect?.headers.get('Location')).toBe(
+		'/demo?__kody_handoff=token',
+	)
 
 	writeDataPoint.mockClear()
 	const rewritten = maybeHandleLegacyPackageAppSubdomainMount({

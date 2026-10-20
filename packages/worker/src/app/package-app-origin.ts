@@ -1307,14 +1307,9 @@ async function handleUserSubdomainRequest(input: {
 		return createUnmatchedPackageAppPathResponse()
 	}
 
-	const legacyMount = maybeHandleLegacyPackageAppSubdomainMount({
-		request,
-		env,
-		url,
-		packagePath,
-	})
-	if (legacyMount) return legacyMount
-
+	// Resolve retired slugs before the legacy `/packages` HTML 308 so a
+	// renamed leaf becomes one hop to `/{current}` instead of `/packages/old`
+	// → `/{old}` → `/{current}`.
 	const retiredRedirect = await redirectRetiredPackageAppSlug({
 		env,
 		url,
@@ -1326,6 +1321,14 @@ async function handleUserSubdomainRequest(input: {
 			}),
 	})
 	if (retiredRedirect) return retiredRedirect
+
+	const legacyMount = maybeHandleLegacyPackageAppSubdomainMount({
+		request,
+		env,
+		url,
+		packagePath,
+	})
+	if (legacyMount) return legacyMount
 
 	const crossOriginMutating = rejectCrossOriginMutatingPackageAppRequest({
 		request,

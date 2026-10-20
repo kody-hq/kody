@@ -1,5 +1,6 @@
 import { buildPackageAppSubdomainPath } from '@kody-internal/shared/public-urls.ts'
 import { isPackageAppLegacySubdomainMountPath } from '@kody-internal/shared/package-app-host-paths.ts'
+import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import { type PackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
 
 export const packageAppLegacyMountEventKind = 'legacy_package_mount'
@@ -108,11 +109,14 @@ export function maybeHandleLegacyPackageAppSubdomainMount(input: {
 		url: input.url,
 		packagePath: input.packagePath,
 	})
+	const cacheControl = input.url.searchParams.has(packageAppHandoffQueryParam)
+		? 'private, no-store'
+		: 'public, max-age=300'
 	return new Response(null, {
 		status: 308,
 		headers: {
 			Location: location,
-			'Cache-Control': 'public, max-age=300',
+			'Cache-Control': cacheControl,
 			Vary: 'Accept',
 		},
 	})
