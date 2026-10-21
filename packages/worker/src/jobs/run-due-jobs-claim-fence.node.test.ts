@@ -5,7 +5,7 @@ import {
 import { type EnablementSkip } from '#worker/enablements/run-gate.ts'
 import { type EnablementRun } from '#worker/request-context/request-context.ts'
 import { expect, test, vi } from 'vitest'
-import { consoleInfo } from '#worker/test-support/console-spies.ts'
+import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import { type JobRecord } from './types.ts'
 import { TransientJobExecutionError } from './execution-safety.ts'
 import type * as JobsRepo from '@kody-internal/shared/jobs/repo.ts'
@@ -880,4 +880,37 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 		}),
 	)
 	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
+})
+
+test('settleHungDueJobsForUser skips claim finalize when listing running runs fails', async () => {
+	const record = createJobRecord({
+		id: 'package-job:pkg-fenced:list-fail',
+	})
+	const row = claimedRow(record)
+	listJobRowsByUserId.mockResolvedValueOnce([row])
+	finalizeClaimedJobRow.mockReset()
+	finalizeClaimedJobRow.mockResolvedValue(true)
+	finishRunRecord.mockReset()
+	listRunRecords.mockReset()
+	listRunRecords.mockRejectedValueOnce(new Error('run-log unavailable'))
+	upsertJobRunObservability.mockClear()
+	consoleWarn.mockImplementation(() => {})
+
+	await expect(
+		settleHungDueJobsForUser({
+			env: { APP_DB: {} } as Env,
+			userId: record.userId,
+			now,
+		}),
+	).resolves.toEqual({
+		settledCount: 0,
+		jobOutcomes: [],
+	})
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'scheduled-job-hung-run-list-failed',
+		expect.any(Error),
+	)
+	expect(finishRunRecord).not.toHaveBeenCalled()
+	expect(upsertJobRunObservability).not.toHaveBeenCalled()
+	expect(finalizeClaimedJobRow).not.toHaveBeenCalled()
 })

@@ -46,6 +46,7 @@ import {
 import {
 	isWorkersHungRequestCanceledError,
 	scheduledJobHungExecutionMessage,
+	workersHungExecutionMessage,
 } from '@kody-internal/shared/workers-hung-request.ts'
 import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { applyExecutionOutcome, processDueJobs } from './process-due-jobs.ts'
@@ -1128,10 +1129,7 @@ export async function executeJobOnce(input: {
 						idempotencyKey: input.idempotencyKey,
 					})
 					if (result.error) {
-						const errorMessage =
-							typeof result.error === 'string'
-								? result.error
-								: formatJobError(result.error)
+						const errorMessage = formatScheduledJobExecutionError(result.error)
 						// Claimed scheduled occurrences already retry
 						// TransientJobExecutionError (D1 blips, DO isolate
 						// resets including "instance is no longer active",
@@ -1158,10 +1156,7 @@ export async function executeJobOnce(input: {
 					execution = result.error
 						? {
 								ok: false,
-								error:
-									typeof result.error === 'string'
-										? result.error
-										: formatJobError(result.error),
+								error: formatScheduledJobExecutionError(result.error),
 								logs: result.logs ?? [],
 							}
 						: {
@@ -1176,15 +1171,18 @@ export async function executeJobOnce(input: {
 					throw error
 				}
 				if (input.runRecordHandle && isTransientJobExecutionError(error)) {
-					throw new TransientJobExecutionError(formatJobError(error), {
-						cause: error,
-					})
+					throw new TransientJobExecutionError(
+						formatScheduledJobExecutionError(error),
+						{
+							cause: error,
+						},
+					)
 				}
 				outcome = 'error'
 				usageErrorName = usageErrorNameFromUnknown(error)
 				execution = {
 					ok: false,
-					error: formatJobError(error),
+					error: formatScheduledJobExecutionError(error),
 					logs: [],
 				}
 				// Daily job-run quota denials, account suspension, and org
@@ -1405,6 +1403,22 @@ async function resolveScheduledJobRunAttribution(input: {
 		packageId,
 		kodyId: savedPackage?.kodyId ?? null,
 	}
+}
+
+/**
+ * Map executor / platform hung cancel text to the scheduled-job owner message.
+ * The executor returns {@link workersHungExecutionMessage} for all surfaces;
+ * job Activity / jobGet should name the scheduler path.
+ */
+function formatScheduledJobExecutionError(error: unknown): string {
+	if (isWorkersHungRequestCanceledError(error)) {
+		return scheduledJobHungExecutionMessage
+	}
+	const message = typeof error === 'string' ? error : formatJobError(error)
+	if (message === workersHungExecutionMessage) {
+		return scheduledJobHungExecutionMessage
+	}
+	return message
 }
 
 /**
@@ -1994,6 +2008,13 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 					jobId: row.id,
 					scheduledFor,
 				})
+	const nowIso = input.now.toISOString()
+	const startedAt = row.running_since ?? nowIso
+	const durationMs = Math.max(
+		0,
+		input.now.valueOf() - new Date(startedAt).valueOf(),
+	)
+	const slotAt = scheduledFor ?? nowIso
 	// finishRunRecord already increments job_run_observability for terminal
 	// job runs. Only upsert when no occurrence run was finished, so a stranded
 	// claim without a running row still gets lastRunError without double-count.
@@ -2001,16 +2022,28 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 	if (occurrenceIdempotencyKeyPrefix) {
 		// Scheduled ticks persist one run per enablement under
 		// `${base}:enablement:${id}`; exact base-key lookup misses those.
-		const page = await listRunRecords({
-			env: input.env,
-			userId: input.userId,
-			filter: {
-				surface: 'job',
-				status: 'running',
-				jobId: row.id,
-			},
-			limit: runRecordMaxPageSize,
-		}).catch(() => ({ runs: [], nextCursor: null }))
+		// Do not swallow list failures: finalizing the claim while running
+		// rows stay open strands Activity for this occurrence.
+		let page: Awaited<ReturnType<typeof listRunRecords>>
+		try {
+			page = await listRunRecords({
+				env: input.env,
+				userId: input.userId,
+				filter: {
+					surface: 'job',
+					status: 'running',
+					jobId: row.id,
+				},
+				limit: runRecordMaxPageSize,
+			})
+		} catch (listError: unknown) {
+			console.warn('scheduled-job-hung-run-list-failed', listError)
+			return {
+				settled: false,
+				nextRunAt: scheduledFor ?? nowIso,
+				error,
+			}
+		}
 		for (const running of page.runs) {
 			const runKey = running.idempotencyKey?.trim()
 			if (
@@ -2055,13 +2088,6 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 			if (finished) finishedOccurrenceRun = true
 		}
 	}
-	const nowIso = input.now.toISOString()
-	const startedAt = row.running_since ?? nowIso
-	const durationMs = Math.max(
-		0,
-		input.now.valueOf() - new Date(startedAt).valueOf(),
-	)
-	const slotAt = scheduledFor ?? nowIso
 	if (!finishedOccurrenceRun) {
 		await upsertJobRunObservability({
 			env: input.env,

@@ -3,6 +3,7 @@ import {
 	isWorkersHungRequestCanceledError,
 	isWorkersHungRequestCanceledMessage,
 	scheduledJobHungExecutionMessage,
+	workersHungExecutionMessage,
 	workersHungRequestCanceledMessageFragment,
 } from './workers-hung-request.ts'
 
@@ -40,5 +41,7 @@ test('isWorkersHungRequestCanceledError walks the cause chain', () => {
 		),
 	).toBe(true)
 	expect(isWorkersHungRequestCanceledError(new Error('other'))).toBe(false)
+	expect(workersHungExecutionMessage).not.toContain('Scheduled job')
 	expect(scheduledJobHungExecutionMessage).toContain('scheduler could continue')
+	expect(scheduledJobHungExecutionMessage).not.toBe(workersHungExecutionMessage)
 })

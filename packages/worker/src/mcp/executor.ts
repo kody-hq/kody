@@ -10,7 +10,7 @@ import {
 } from '@kody-internal/shared/error-message.ts'
 import {
 	isWorkersHungRequestCanceledError,
-	scheduledJobHungExecutionMessage,
+	workersHungExecutionMessage,
 } from '@kody-internal/shared/workers-hung-request.ts'
 import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { exports as workerExports } from 'cloudflare:workers'
@@ -918,14 +918,15 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 					}
 					if (isWorkersHungRequestCanceledError(error)) {
 						// Dynamic-worker empty-event-loop hangs surface as this
-						// platform cancel. Prefer a job-owner-readable outcome over
+						// platform cancel. Prefer an owner-readable outcome over
 						// rethrowing (which aborts JobManager before claim settle)
-						// or returning Cloudflare's cancel string to Activity/jobGet.
+						// or returning Cloudflare's cancel string. Scheduled jobs
+						// remap to scheduledJobHungExecutionMessage in the jobs layer.
 						outcome = 'error'
 						return attachHostSideEffects(
 							{
 								result: undefined,
-								error: scheduledJobHungExecutionMessage,
+								error: workersHungExecutionMessage,
 								logs: [],
 							},
 							sideEffects,

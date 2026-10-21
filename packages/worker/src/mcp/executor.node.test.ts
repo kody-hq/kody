@@ -40,7 +40,7 @@ import {
 	durableObjectCodeUpdatedResetMessage,
 	executorSandboxTimeoutMessage,
 } from '#worker/sentry-options.ts'
-import { scheduledJobHungExecutionMessage } from '@kody-internal/shared/workers-hung-request.ts'
+import { workersHungExecutionMessage } from '@kody-internal/shared/workers-hung-request.ts'
 import { assertGeneratedExecutorSourceIsBundleSafe } from './kody-remote-proxy-source.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import { createEvaluationSideEffectTracker } from '#mcp/evaluation-side-effects.ts'
@@ -1102,11 +1102,12 @@ test('createExecuteExecutor rejects reserved provider names, keeps side-effect c
 	})
 	expect(hungCancel).toEqual({
 		result: undefined,
-		error: scheduledJobHungExecutionMessage,
+		error: workersHungExecutionMessage,
 		logs: [],
 		hostMediatedSideEffects: { dispatcherAttempts: 0, fetchAttempts: 0 },
 	})
 	expect(hungCancel.error).not.toContain('Workers runtime canceled')
+	expect(hungCancel.error).not.toContain('Scheduled job')
 
 	await runExecutor(
 		{ env: createExecutorTestEnv(fakeLoader.loader) },
