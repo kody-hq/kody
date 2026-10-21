@@ -338,6 +338,15 @@ function effectiveMapping(
 			createUrl: null,
 		}
 	}
+	if (resolution.status === 'expired') {
+		return {
+			source: 'auto',
+			status: 'expired',
+			credentials: resolution.candidates.map(toCredentialRef),
+			candidates: [],
+			createUrl: null,
+		}
+	}
 	return resolution.status === 'ambiguous'
 		? notReady('ambiguous', 'auto', resolution.candidates.map(toCredentialRef))
 		: notReady('unbound', 'auto')

@@ -752,3 +752,52 @@ test('an expired package-bound Key stays a bound candidate with status expired',
 		autoPick: { name: 'legacy-token', expired: true, packageId },
 	})
 })
+
+test('a live provider match wins over an expired package-name Key', async () => {
+	const t = await setup()
+	const packageId = 'token-refresh'
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'api-token',
+		packageId,
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'live-vendor',
+		provider: 'vendor',
+	})
+	const forPackage = await t.usableAs('bea', 'owner', undefined, packageId)
+	expect(
+		resolveNeedCandidates(
+			{ key: 'api-token', kind: 'secret', provider: 'vendor' },
+			forPackage,
+		),
+	).toMatchObject({
+		status: 'ready',
+		autoPick: { name: 'live-vendor', expired: false },
+	})
+})
+
+test('several expired-only matches stay expired, not ambiguous', async () => {
+	const t = await setup()
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'old-a',
+		provider: 'vendor',
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'old-b',
+		provider: 'vendor',
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	const usable = await t.usableAs('bea', 'owner')
+	expect(
+		resolveNeedCandidates({ kind: 'secret', provider: 'vendor' }, usable),
+	).toMatchObject({
+		status: 'expired',
+		autoPick: null,
+	})
+})

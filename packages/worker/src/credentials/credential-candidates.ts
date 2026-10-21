@@ -466,21 +466,22 @@ export function resolveNeedCandidates(
 	const [livePackageOnly, livePackageSecond] = livePackageNameMatch
 	let autoPick: UsableCredential | null = null
 	let status: NeedResolution['status']
-	// Exact-name package-bound Keys win over a sole provider match so a
-	// package's own legacy Key is preferred when the need key matches. Prefer
-	// a live package Key when both live and expired name-match.
+	// Live matches win for auto-pick so the Credentials tab agrees with
+	// runtime fill (`liveUsableCredentials`). Exact-name package-bound Keys
+	// still beat a sole provider match when they are live. Expired Keys only
+	// bind when nothing live would resolve.
 	if (livePackageOnly && !livePackageSecond) {
 		autoPick = livePackageOnly
 		status = 'ready'
-	} else if (packageOnly && !packageSecond) {
-		autoPick = packageOnly
-		status = autoStatus(packageOnly)
 	} else if (liveCandidates.length === 1 && onlyLive) {
 		autoPick = onlyLive
 		status = 'ready'
 	} else if (liveCandidates.length > 1) {
 		autoPick = null
 		status = 'ambiguous'
+	} else if (packageOnly && !packageSecond) {
+		autoPick = packageOnly
+		status = autoStatus(packageOnly)
 	} else if (candidates.length === 1 && only) {
 		autoPick = only
 		status = autoStatus(only)
@@ -488,8 +489,10 @@ export function resolveNeedCandidates(
 		autoPick = null
 		status = 'unbound'
 	} else {
+		// Several expired-only matches: still bound as expired, not "pick one"
+		// among Keys a run will refuse to fill.
 		autoPick = null
-		status = 'ambiguous'
+		status = 'expired'
 	}
 	return {
 		status,

@@ -241,14 +241,34 @@ function candidateHosts(candidates: ReadonlyArray<UsableCredential>) {
 	return [...new Set(candidates.flatMap((credential) => credential.hosts))]
 }
 
-function describeMatch(candidates: ReadonlyArray<UsableCredential>) {
-	if (candidates.length === 0) {
+function describeMatch(resolution: {
+	status: 'ready' | 'ambiguous' | 'unbound' | 'expired'
+	autoPick: UsableCredential | null
+	candidates: ReadonlyArray<UsableCredential>
+}) {
+	if (resolution.status === 'ready' && resolution.autoPick) {
+		return `Uses ${resolution.autoPick.name}.`
+	}
+	if (resolution.status === 'expired') {
+		const named =
+			resolution.autoPick?.name ??
+			resolution.candidates.map((credential) => credential.name).join(', ')
+		if (!named) {
+			return 'A matching credential is expired; runs will not fill it until it is refreshed.'
+		}
+		return `${named} matches but is expired; runs will not fill it until it is refreshed.`
+	}
+	if (resolution.candidates.length === 0) {
 		return 'No credential of yours matches yet; runs fail until you add one.'
 	}
-	if (candidates.length === 1) {
-		return `Uses ${candidates[0]!.name}.`
+	if (resolution.candidates.length === 1) {
+		const only = resolution.candidates[0]!
+		if (only.expired) {
+			return `${only.name} matches but is expired; runs will not fill it until it is refreshed.`
+		}
+		return `Uses ${only.name}.`
 	}
-	return `${candidates.length} of your credentials match (${candidates
+	return `${resolution.candidates.length} of your credentials match (${resolution.candidates
 		.map((credential) => credential.name)
 		.join(', ')}); runs need a mapping to pick one.`
 }
@@ -280,7 +300,7 @@ async function credentialNeedGrant(
 		hosts: candidateHosts(matched),
 		before: describeNeedBefore(change),
 		after: describeNeedShape(after),
-		match: describeMatch(matched),
+		match: describeMatch(resolution),
 	}
 }
 
