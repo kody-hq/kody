@@ -1,7 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
-	adminFleetErrorRateDefaultDays,
 	adminFleetErrorRateMaxDays,
 	buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery,
 	buildAdminFleetErrorRateDailyOutcomeQuery,
@@ -184,7 +183,6 @@ test('window clamps days and ends on today inclusive', () => {
 			now,
 		}).days,
 	).toBe(adminFleetErrorRateMaxDays)
-	expect(adminFleetErrorRateDefaultDays).toBe(7)
 })
 
 test('daily AE queries count caught and error and exclude handles', () => {

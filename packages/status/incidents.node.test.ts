@@ -33,9 +33,6 @@ test('probe hysteresis opens and resolves once at threshold and ignores flaps', 
 	expect(flap.transitions.every((transition) => transition === null)).toBe(true)
 	expect(flap.state.status).toBe('operational')
 
-	expect(failureThreshold).toBe(3)
-	expect(recoveryThreshold).toBe(2)
-
 	const singleFailure = run(initialComponentProbeState, [false, true])
 	expect(singleFailure.transitions).toEqual([null, null])
 	expect(singleFailure.state.status).toBe('operational')

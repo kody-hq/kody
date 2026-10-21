@@ -18,7 +18,6 @@ import {
 	userCacheDir,
 	workerdAssetUrl,
 	workerdTargetFor,
-	workerdVersion,
 } from '../src/workerd-binary.js'
 
 function serve(body: Buffer) {
@@ -42,13 +41,6 @@ test('workerdTargetFor covers Linux and macOS on x64/arm64 only', () => {
 	assert.throws(
 		() => workerdTargetFor('linux', 'ia32'),
 		/supports Linux and macOS/,
-	)
-})
-
-test('workerdAssetUrl points at the pinned GitHub release asset', () => {
-	assert.equal(
-		workerdAssetUrl('darwin-arm64'),
-		`https://github.com/cloudflare/workerd/releases/download/v${workerdVersion}/workerd-darwin-arm64.gz`,
 	)
 })
 

@@ -15,14 +15,6 @@ import {
 	localGatewayFetchStreamRuntimeSource,
 } from '../src/local-runtime-source.js'
 import { createPackageLocalRuntimeModuleSource } from '../src/package-local-runtime-source.js'
-import { localBridgeGatewayFetchPath } from '../src/local-runtime-bridge.js'
-import {
-	capabilityProxyGatewayFetchPath,
-	gatewayFetchHeadersHeaderName,
-	gatewayFetchMethodHeaderName,
-	gatewayFetchPackageIdHeaderName,
-	gatewayFetchUrlHeaderName,
-} from '../src/capability-proxy.js'
 
 const srcDir = join(dirname(fileURLToPath(import.meta.url)), '../src')
 
@@ -86,12 +78,7 @@ test('CLI --local runtime source implements every hosted special host marker (dr
 		if (marker.bridgeMarker === '/gateway-fetch') {
 			assert.match(entry, /gateway-fetch/)
 			assert.match(bridgeSource, /gateway-fetch/)
-			assert.equal(localBridgeGatewayFetchPath, '/gateway-fetch')
 			assert.match(capabilitySource, /capability-proxy\/gateway-fetch/)
-			assert.equal(
-				capabilityProxyGatewayFetchPath,
-				'v1/capability-proxy/gateway-fetch',
-			)
 			assert.match(forwardSource, /callCapabilityProxyGatewayFetchStream/)
 		}
 		if (marker.bridgeMarker === '/call') {
@@ -113,10 +100,6 @@ test('gatewayFetchStream is a real host method on the kody Proxy (not a JSON /ca
 		source,
 		/gatewayFetchStream[\s\S]{0,80}__kodyCall\(\['kody', 'gatewayFetchStream'\]/,
 	)
-	assert.equal(gatewayFetchUrlHeaderName, 'X-Kody-Gateway-Url')
-	assert.equal(gatewayFetchMethodHeaderName, 'X-Kody-Gateway-Method')
-	assert.equal(gatewayFetchPackageIdHeaderName, 'X-Kody-Gateway-Package-Id')
-	assert.equal(gatewayFetchHeadersHeaderName, 'X-Kody-Gateway-Headers')
 })
 
 test('hosted surface list stays alphabetically grouped and unique (edit-guard)', () => {

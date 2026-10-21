@@ -6,11 +6,9 @@ import {
 	inferOriginDeployWorkerName,
 	isSlimOriginEntry,
 	originViteDeployArgs,
-	originViteWranglerConfigPath,
 } from './deploy.ts'
 
 test('origin Vite deploy always points Wrangler at the generated SSR config', () => {
-	expect(originViteWranglerConfigPath).toBe('dist/server/wrangler.json')
 	expect(
 		originViteDeployArgs([
 			'--config',

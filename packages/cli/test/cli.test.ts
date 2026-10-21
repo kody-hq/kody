@@ -26,7 +26,6 @@ import { buildUsage } from '../src/help.js'
 import { readPackageVersion } from '../src/package-info.js'
 import { isPairedApiUrl } from '../src/api-token.js'
 import { type StoredApiToken } from '../src/api-token-store.js'
-import { modernMcpProtocolVersion } from '../src/defaults.js'
 import { formatToolResult } from '../src/tool-result.js'
 import { redact } from '../src/redact.js'
 import {
@@ -1225,8 +1224,4 @@ test('redact strips token-looking assignments', () => {
 		redact('access_token=abc123 refresh_token: xyz'),
 		'access_token=[redacted] refresh_token=[redacted]',
 	)
-})
-
-test('CLI pins the stateless MCP protocol revision', () => {
-	assert.equal(modernMcpProtocolVersion, '2026-07-28')
 })

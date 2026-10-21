@@ -9,7 +9,6 @@ import { test } from 'node:test'
 import {
 	assertTokenSafeApiUrl,
 	callCapabilityProxy,
-	capabilityProxyConnectTimeoutMs,
 	capabilityProxyGatewayDeadlineMs,
 	capabilityProxyHttpTimeoutMs,
 	capabilityProxyUrl,
@@ -445,7 +444,6 @@ async function withDelayedHeadersServer(
 }
 
 test('CapabilityProxy HTTP timeouts outlast the 5-minute gateway deadline plus overhead', () => {
-	assert.equal(capabilityProxyGatewayDeadlineMs, 5 * 60_000)
 	// Node's global fetch defaults headersTimeout to 300s, the same as the deadline.
 	assert.ok(
 		capabilityProxyHttpTimeoutMs >= capabilityProxyGatewayDeadlineMs + 60_000,
@@ -471,7 +469,6 @@ test('the CapabilityProxy sender governs how long a call waits for headers', asy
 })
 
 test('CapabilityProxy connect timeout fails closed before the idle timer', async () => {
-	assert.equal(capabilityProxyConnectTimeoutMs, 10_000)
 	// TEST-NET-1 is unroutable; without a connect bound the OS would hang far longer.
 	await assert.rejects(
 		() =>

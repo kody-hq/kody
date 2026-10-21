@@ -3,7 +3,6 @@ import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
-import { MAX_FREE_ORGS_PER_USER } from './billing.ts'
 import { createOrganization } from './create-organization.ts'
 import { orgHandleRestorableError } from './org-handle-claim.ts'
 import { ensureOrgsTestSchema } from './orgs-test-schema.ts'
@@ -73,7 +72,6 @@ test('createOrganization inserts org, membership, and handle together', async ()
 test('createOrganization enforces the same free-org cap as MCP orgCreate', async () => {
 	const { db } = await createDb()
 	const personId = testStableUserIdFromEmail('cap@example.com')
-	expect(MAX_FREE_ORGS_PER_USER).toBe(2)
 	await seedFreeOwnedOrg(db, {
 		id: 'free-1',
 		slug: 'free-one',

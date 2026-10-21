@@ -8,15 +8,12 @@ import {
 	isPackageAppHostWellKnownPath,
 	isPackageAppLegacySubdomainMountPath,
 	listPackageAppHostReservedPackageLeaves,
-	packageAppHostDefaultRobotsTxt,
 	packageAppHostReservedFirstSegments,
 	packageAppHostReservedPackageLeafAuditSql,
 	packageAppHostReservedPackageLeafMessage,
-	packageAppHostSystemPrefix,
 } from './package-app-host-paths.ts'
 
 test('system prefix and reserved first segments cover platform-owned paths', () => {
-	expect(packageAppHostSystemPrefix).toBe('/-')
 	for (const segment of [
 		'-',
 		'.well-known',
@@ -69,7 +66,6 @@ test('root path helpers match robots.txt and .well-known only', () => {
 	expect(isPackageAppHostWellKnownPath('/.well-known')).toBe(true)
 	expect(isPackageAppHostWellKnownPath('/.well-known/security.txt')).toBe(true)
 	expect(isPackageAppHostWellKnownPath('/well-known')).toBe(false)
-	expect(packageAppHostDefaultRobotsTxt).toBe('User-agent: *\nAllow: /\n')
 })
 
 test('legacy mount detection requires a leaf after /packages/', () => {

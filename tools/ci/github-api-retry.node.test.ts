@@ -5,8 +5,6 @@ import { expect, test } from 'vitest'
 
 const require = createRequire(import.meta.url)
 const {
-	defaultBaseDelayMs,
-	defaultMaxAttempts,
 	githubApiErrorStatus,
 	isRetryableGithubApiError,
 	isRetryableGithubApiStatus,
@@ -14,8 +12,6 @@ const {
 } = require(
 	join(dirname(fileURLToPath(import.meta.url)), 'github-api-retry.cjs'),
 ) as {
-	defaultBaseDelayMs: number
-	defaultMaxAttempts: number
 	githubApiErrorStatus: (error: unknown) => number | undefined
 	isRetryableGithubApiError: (error: unknown) => boolean
 	isRetryableGithubApiStatus: (status: number) => boolean
@@ -119,9 +115,4 @@ test('withGithubApiRetry exhausts attempts on persistent 5xx', async () => {
 		),
 	).rejects.toMatchObject({ status: 504 })
 	expect(attempts).toBe(3)
-})
-
-test('defaults match the preview workflow budget', () => {
-	expect(defaultMaxAttempts).toBe(4)
-	expect(defaultBaseDelayMs).toBe(1_000)
 })

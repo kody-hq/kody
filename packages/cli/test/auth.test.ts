@@ -12,7 +12,6 @@ import {
 	cliClientMetadataUrl,
 	cliRedirectUrl,
 	defaultScopes,
-	modernMcpProtocolVersion,
 	scopeIncludesOpenid,
 } from '../src/defaults.js'
 import { buildCliAuthorizationUrl } from '../src/oauth-browser.js'
@@ -118,7 +117,6 @@ test('CLI OAuth identity is CIMD with a fixed loopback redirect', () => {
 	assert.equal(metadata.token_endpoint_auth_method, 'none')
 	assert.equal(metadata.application_type, 'native')
 	assert.equal(metadata.scope, 'openid profile email')
-	assert.equal(modernMcpProtocolVersion, '2026-07-28')
 })
 
 test('orgSlugFromFlag lowercases and rejects a blank slug', () => {

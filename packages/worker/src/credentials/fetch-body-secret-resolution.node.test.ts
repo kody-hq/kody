@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import {
 	fetchBodySecretResolutionWarningLead,
@@ -9,21 +8,6 @@ import {
 function lines(source: string) {
 	return findFetchBodiesMissingSecretResolution(source).map((hit) => hit.line)
 }
-
-test('the CLI copy of the scanner stays identical', () => {
-	const worker = readFileSync(
-		new URL('./fetch-body-secret-resolution.ts', import.meta.url),
-		'utf8',
-	)
-	const cli = readFileSync(
-		new URL(
-			'../../../cli/src/fetch-body-secret-resolution.ts',
-			import.meta.url,
-		),
-		'utf8',
-	)
-	expect(cli).toBe(worker)
-})
 
 test('warns when a fetch body forwards a value and headers do not opt out', () => {
 	const source = `

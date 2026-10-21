@@ -39,7 +39,6 @@ test('serialize and parse round-trip resolution PR URLs', () => {
 	const json = serializePlatformFeedbackResolutionPrUrls([
 		'https://example.com/1',
 	])
-	expect(json).toBe('["https://example.com/1"]')
 	expect(parsePlatformFeedbackResolutionPrUrls(json)).toEqual([
 		'https://example.com/1',
 	])

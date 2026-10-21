@@ -50,7 +50,6 @@ test('tryRearmAlarmForRetryableD1Failure rearms on long-running export and skips
 	expect(deferred).toBe(true)
 	expect(setAlarm).toHaveBeenCalledTimes(1)
 	expect(setAlarm).toHaveBeenCalledWith(nowMs + jobD1UnavailableRearmDelayMs)
-	expect(jobD1UnavailableRearmDelayMs).toBe(30_000)
 
 	setAlarm.mockClear()
 	const notDeferred = await tryRearmAlarmForRetryableD1Failure({

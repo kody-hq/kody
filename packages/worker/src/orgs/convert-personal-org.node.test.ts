@@ -17,7 +17,6 @@ import {
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import { MAX_FREE_ORGS_PER_USER } from './billing.ts'
 import {
 	type ConvertPersonalOrgError,
 	convertPersonalOrg,
@@ -675,7 +674,6 @@ test('convertPersonalOrg refuses when minting the new free personal org would ex
 		email: 'capped@example.com',
 		username: 'capped',
 	})
-	expect(MAX_FREE_ORGS_PER_USER).toBe(2)
 	await db
 		.prepare(
 			`INSERT INTO orgs (

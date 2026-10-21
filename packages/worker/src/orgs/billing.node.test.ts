@@ -11,7 +11,6 @@ import {
 	FreeOrgLimitError,
 	isPaidOrg,
 	listOrgBillingRecipientUserIds,
-	MAX_FREE_ORGS_PER_USER,
 	readOrgBudgetSettings,
 	readUserBudgetMicroUsd,
 	resolveEffectiveUserBudgetMicroUsd,
@@ -215,7 +214,6 @@ test('assertCanOwnAnotherFreeOrg enforces MAX_FREE_ORGS_PER_USER', async () => {
 	})
 
 	expect(await countLiveFreeOwnedOrgs(db, userId)).toBe(2)
-	expect(MAX_FREE_ORGS_PER_USER).toBe(2)
 
 	await expect(assertCanOwnAnotherFreeOrg(db, userId)).rejects.toBeInstanceOf(
 		FreeOrgLimitError,

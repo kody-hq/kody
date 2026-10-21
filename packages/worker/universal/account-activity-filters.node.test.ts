@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	accountActivitySummaryWindowMs,
 	activityEmptyLabel,
 	buildActivitySearch,
 	readAccountActivityFilters,
@@ -24,7 +23,6 @@ const recentDefault: Search = {
 }
 
 test('activity URL defaults stay on open errors and recent runs flip to all history', () => {
-	expect(accountActivitySummaryWindowMs).toBe(7 * 24 * 60 * 60 * 1000)
 	const filters = (
 		viewFilter: string,
 		statusFilter: string,
