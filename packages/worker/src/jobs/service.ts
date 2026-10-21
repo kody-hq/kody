@@ -154,8 +154,9 @@ function requirePersistableJobCallerContext(
 
 /**
  * The clicker's request reaches run-now through the jobs worker RPC, so its
- * lineage is re-validated, not trusted. Run now runs as the clicker, so a
- * request with no person behind it runs nothing.
+ * lineage is re-validated, not trusted. Attribution (billing / actor) is the
+ * clicker; package storage context comes from the job row, not this source.
+ * A request with no person behind it runs nothing.
  */
 function runNowRequestSource(
 	callerContext: McpCallerContext | null | undefined,
@@ -166,7 +167,7 @@ function runNowRequestSource(
 		: null
 	if (!lineage?.actor) {
 		throw new McpCallerError(
-			`Job "${jobId}" can only be run now by a signed-in person, who it then runs as.`,
+			`Job "${jobId}" can only be run now by a signed-in person.`,
 		)
 	}
 	return { kind: 'inherited', lineage }
@@ -1292,6 +1293,17 @@ async function runRepoBackedJob(input: {
 	})
 }
 
+/**
+ * Run a job immediately for a signed-in clicker.
+ *
+ * Authorization (owner or a grant with `job:execute`) must already have
+ * passed at the call site. Execution uses the job row's stored package
+ * storage context so package secrets fill like a scheduled run. The clicker
+ * is only attribution (`source`); their interactive callerContext must never
+ * be written back onto the job row — that used to strip
+ * `storageContext.packageId` and break every later scheduled tick until
+ * republish.
+ */
 export async function runJobNow(input: {
 	env: Env
 	userId: OwnerId
@@ -1317,14 +1329,18 @@ export async function runJobNow(input: {
 					`Job "${input.jobId}" expired at ${row.record.expiresAt} and cannot be run.`,
 				)
 			}
-			const activeCallerContext = input.callerContext
-				? requirePersistableJobCallerContext(input.callerContext)
-				: row.callerContext
+			// Clicker lineage for attribution only; never for storage context.
 			const source = runNowRequestSource(input.callerContext, row.record.id)
+			const storedCallerContext = row.callerContext
+			if (!storedCallerContext) {
+				throw new McpCallerError(
+					`Job "${input.jobId}" has no stored execution context. Re-publish the package to refresh it.`,
+				)
+			}
 			const outcome = await executeJobOnce({
 				env: input.env,
 				job: row.record,
-				callerContext: activeCallerContext,
+				callerContext: storedCallerContext,
 				source,
 				repoCheckPolicyOverride: input.repoCheckPolicyOverride,
 				waitUntil: input.waitUntil,
@@ -1345,12 +1361,11 @@ export async function runJobNow(input: {
 			// Successful once jobs are retained for account/platform cleanup
 			// rather than deleted immediately.
 			const deletedAfterRun = false
+			// Outcome / schedule only — keep the published package caller context.
 			await jobsData(input.env).updateJob({
 				userId: input.userId,
 				job: updated,
-				callerContextJson: activeCallerContext
-					? serializeCallerContext(activeCallerContext)
-					: row.callerContextJson,
+				callerContextJson: row.callerContextJson,
 			})
 			const job = await hydrateJobViewFromRunLog({
 				env: input.env,

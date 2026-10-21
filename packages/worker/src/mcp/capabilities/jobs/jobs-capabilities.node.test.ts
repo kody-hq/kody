@@ -13,7 +13,17 @@ const mockModule = vi.hoisted(() => ({
 	runJobNowViaManager: vi.fn(),
 	updateJob: vi.fn(),
 	resolveCronJobEnablementHint: vi.fn(),
+	authorize: vi.fn(async (..._args: Array<unknown>) => undefined),
 }))
+
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/authorization/authorize.ts')>()
+	return {
+		...actual,
+		authorize: mockModule.authorize,
+	}
+})
 
 vi.mock('#worker/jobs/service.ts', () => ({
 	updateJob: (...args: Array<unknown>) => mockModule.updateJob(...args),
@@ -447,6 +457,18 @@ test('jobRunNow executes jobs immediately and preserves failed one-off jobs for 
 		logs: ['ran job'],
 	})
 	expect(failedOneOffResult.job.last_run_error).toBe('boom')
+})
+
+test('jobRunNow refuses a caller without job:execute', async () => {
+	mockModule.runJobNowViaManager.mockClear()
+	mockModule.authorize.mockRejectedValueOnce(
+		new Error('Missing job:execute. An org Owner can grant it.'),
+	)
+	await expect(
+		jobRunNowCapability.handler({ id: 'job-123' }, ctx),
+	).rejects.toThrow('Missing job:execute')
+	expect(mockModule.runJobNowViaManager).not.toHaveBeenCalled()
+	mockModule.authorize.mockResolvedValue(undefined)
 })
 
 test('job inspection capabilities expose due-now state, history, alarm status, optional source code, and workflow runs', async () => {

@@ -98,6 +98,7 @@ const mockModule = vi.hoisted(() => ({
 		},
 		request: sessionRequestContext('stable-user-1'),
 	})),
+	authorize: vi.fn(async (..._args: Array<unknown>) => undefined),
 	inspectJobsForUser: vi.fn(),
 	updateJob: vi.fn(),
 	runJobNowViaManager: vi.fn(),
@@ -148,6 +149,15 @@ vi.mock('#worker/app-base-url.ts', () => ({
 	getAppBaseUrl: (...args: Parameters<typeof appBaseUrl.getAppBaseUrl>) =>
 		mockModule.getAppBaseUrl(...args),
 }))
+
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/authorization/authorize.ts')>()
+	return {
+		...actual,
+		authorize: mockModule.authorize,
+	}
+})
 
 vi.mock('#worker/jobs/inspect.ts', () => ({
 	inspectJobsForUser: (...args: Array<unknown>) =>
@@ -375,6 +385,11 @@ test('jobs API kill switch and run now are user-scoped', async () => {
 
 	const runNowResponse = await post({ action: 'run_now', id: packageJob.id })
 	expect(runNowResponse.status).toBe(200)
+	expect(mockModule.authorize).toHaveBeenCalledWith(
+		expect.objectContaining({ env }),
+		'job:execute',
+		expect.objectContaining({ type: 'job', id: packageJob.id }),
+	)
 	expect(mockModule.runJobNowViaManager).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: ownerIdFromStored('stable-user-1'),
@@ -385,6 +400,21 @@ test('jobs API kill switch and run now are user-scoped', async () => {
 		ok: true,
 		runNow: { ok: true, deletedAfterRun: false },
 	})
+})
+
+test('run now refuses a caller without job:execute', async () => {
+	const { post } = createJobsClient()
+	mockModule.runJobNowViaManager.mockClear()
+	mockModule.authorize.mockRejectedValueOnce(
+		new Error('Missing job:execute. An org Owner can grant it.'),
+	)
+	const response = await post({ action: 'run_now', id: packageJob.id })
+	expect(response.status).toBe(400)
+	expect(response.data).toEqual({
+		ok: false,
+		error: 'Missing job:execute. An org Owner can grant it.',
+	})
+	expect(mockModule.runJobNowViaManager).not.toHaveBeenCalled()
 })
 
 test('accepted job changes do not depend on a jobs page read', async () => {

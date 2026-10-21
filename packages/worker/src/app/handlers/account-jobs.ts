@@ -2,6 +2,7 @@ import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { authorize, orgResource } from '#worker/authorization/authorize.ts'
 import { runJobNowViaManager } from '#worker/jobs/manager-client.ts'
 import { updateJob } from '#worker/jobs/service.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -59,10 +60,16 @@ export async function runAccountJobNow(input: {
 }) {
 	const id = input.id.trim()
 	if (!id) throw new Error('Job id is required.')
+	const request = input.user.request
+	await authorize(
+		{ env: input.env, request },
+		'job:execute',
+		orgResource(request, 'job', id),
+	)
 	const result = await runJobNowViaManager({
 		env: input.env,
 		userId: ownerIdFromCaller({
-			request: input.user.request,
+			request,
 			user: input.user.mcpUser,
 		}),
 		jobId: id,
