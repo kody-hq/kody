@@ -97,7 +97,12 @@ export function bundleInputs(
 	workingDir: string,
 ): Array<string> {
 	return Object.keys(metafile?.inputs ?? {})
-		.filter((path) => !path.includes('node_modules') && !path.includes(':'))
+		.filter((path) => {
+			// Virtual modules use `:`; real `node_modules` is a path segment
+			// (not a filename like `node_modules-generated.ts`).
+			if (path.includes(':')) return false
+			return !path.split(/[/\\]/).includes('node_modules')
+		})
 		.map((path) => resolve(workingDir, path))
 }
 
