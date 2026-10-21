@@ -656,6 +656,52 @@ test('package name, missing-import, execute-input, and description caller errors
 	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
 })
 
+test('mcpServerAdd duplicate-name caller error stays off Sentry (KODY-A5)', () => {
+	const duplicateName = new McpCallerError(
+		'An MCP server with this name already exists. Pick another name, or call mcpServerList to find the existing server and use mcpServerReconnect or mcpServerRemove as needed.',
+	)
+	const payloads = captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'mcpServerAdd',
+				'mcpServers',
+				'McpCallerError',
+				duplicateName,
+			),
+		)
+	})
+	expect(payloads).toHaveLength(1)
+	expect(JSON.parse(payloads[0]!)).toMatchObject({
+		tool: 'capability',
+		capabilityName: 'mcpServerAdd',
+		domain: 'mcpServers',
+		outcome: 'failure',
+		failurePhase: 'handler',
+		errorName: 'McpCallerError',
+		errorMessage: expect.stringMatching(
+			/^An MCP server with this name already exists\./,
+		),
+	})
+	expectNoSentry()
+
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'mcpServerAdd',
+				'mcpServers',
+				'Error',
+				new Error('Unable to connect to MCP server: hub unreachable'),
+			),
+		)
+	})
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+	expect(sentryMock.captureException).toHaveBeenCalledWith(
+		expect.objectContaining({
+			message: 'Unable to connect to MCP server: hub unreachable',
+		}),
+	)
+})
+
 test('unauthenticated capability calls stay off Sentry (KODY-9C)', () => {
 	const missingUser = thrownBy(() => requireMcpUser({ user: null }))
 	const missingRequest = thrownBy(() => requireMcpRequest({}))

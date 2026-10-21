@@ -8,6 +8,7 @@ import {
 	validateMcpServerUrl,
 	type McpServerRef,
 } from '@kody-internal/shared/mcp-servers.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import {
 	encryptMcpServerOAuthClientSecret,
@@ -189,15 +190,20 @@ export function invalidateEnabledMcpServerRefsCache(input: {
 function validateNameOrThrow(name: string) {
 	const normalized = normalizeMcpServerName(name)
 	if (!normalized) {
-		throw new Error('Server name is required.')
+		throw new McpCallerError('Server name is required.')
 	}
 	if (!isValidMcpServerName(normalized)) {
-		throw new Error(
+		throw new McpCallerError(
 			'Server name must use lowercase letters, numbers, and dashes; start and end with a letter or number; and be at most 64 characters.',
 		)
 	}
 	return normalized
 }
+
+const mcpServerSettingNotFoundMessage = 'MCP server setting not found.'
+
+const mcpServerDuplicateNameMessage =
+	'An MCP server with this name already exists. Pick another name, or call mcpServerList to find the existing server and use mcpServerReconnect or mcpServerRemove as needed.'
 
 export async function addMcpServer(input: {
 	env: Env
@@ -221,11 +227,13 @@ export async function addMcpServer(input: {
 	const name = validateNameOrThrow(input.name)
 	const urlValidation = validateMcpServerUrl(input.url)
 	if (!urlValidation.ok || !urlValidation.url) {
-		throw new Error(urlValidation.error ?? 'Server URL is invalid.')
+		throw new McpCallerError(urlValidation.error ?? 'Server URL is invalid.')
 	}
 	const tokenValidation = normalizeMcpServerBearerToken(input.bearerToken)
 	if (!tokenValidation.ok) {
-		throw new Error(tokenValidation.error ?? 'Bearer token is invalid.')
+		throw new McpCallerError(
+			tokenValidation.error ?? 'Bearer token is invalid.',
+		)
 	}
 	const headers = mcpServerAuthorizationHeaders(tokenValidation.authorization)
 	const existing = await getMcpServerSettingRowByName({
@@ -234,7 +242,7 @@ export async function addMcpServer(input: {
 		name,
 	})
 	if (existing) {
-		throw new Error('An MCP server with this name already exists.')
+		throw new McpCallerError(mcpServerDuplicateNameMessage)
 	}
 
 	const now = new Date().toISOString()
@@ -325,7 +333,7 @@ export async function setMcpServerEnabled(input: {
 		id: input.id,
 	})
 	if (!existing) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	const now = new Date().toISOString()
 	const row = {
@@ -338,7 +346,7 @@ export async function setMcpServerEnabled(input: {
 		row,
 	})
 	if (!updated) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
 	return toMetadata(row)
@@ -397,7 +405,7 @@ export async function setMcpServerPreRegisteredOAuthClient(input: {
 		id: input.id,
 	})
 	if (!existing) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	const sealed = input.client
 		? {
@@ -467,7 +475,7 @@ export async function setMcpServerUsage(input: {
 		id: input.id,
 	})
 	if (!existing) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	const usageMode = normalizeMcpServerUsageMode(input.usageMode)
 	const allowedPackageIds =
@@ -482,7 +490,7 @@ export async function setMcpServerUsage(input: {
 		allowedPackageIds,
 	})
 	if (!updated) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
 	return toMetadata({
@@ -505,7 +513,7 @@ export async function lockMcpServerToPackage(input: {
 }): Promise<McpServerSettingMetadata> {
 	const packageId = input.packageId.trim()
 	if (!packageId) {
-		throw new Error('Package id is required.')
+		throw new McpCallerError('Package id is required.')
 	}
 	const existing = await getMcpServerSettingRowById({
 		db: input.env.APP_DB,
@@ -513,14 +521,14 @@ export async function lockMcpServerToPackage(input: {
 		id: input.id,
 	})
 	if (!existing) {
-		throw new Error('MCP server setting not found.')
+		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId,
 	})
 	if (!savedPackage) {
-		throw new Error('Saved package not found for this user.')
+		throw new McpCallerError('Saved package not found for this user.')
 	}
 	if (
 		existing.usage_mode === 'packages' &&
