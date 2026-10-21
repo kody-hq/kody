@@ -80,7 +80,7 @@ CREATE TABLE __migration_assertions (
 );
 
 INSERT INTO __migration_assertions (message)
-SELECT 'package job still missing storageContext.packageId after 0006 repair; aborting.'
+SELECT 'package job still missing storageContext.packageId after 0006 repair - aborting.'
 WHERE EXISTS (
 	SELECT 1
 	FROM jobs
