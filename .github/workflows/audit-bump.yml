@@ -61,7 +61,9 @@ jobs:
 
       - name: 🩹 npm audit fix
         id: fix
-        if: steps.before.outputs.findings != '0'
+        if:
+          steps.before.outputs.findings != '' && steps.before.outputs.findings
+          != '0'
         run: |
           npm audit fix --omit=dev --ignore-scripts --no-fund || true
           changed="$(git status --porcelain -- package-lock.json npm-shrinkwrap.json ':(glob)**/package.json')"
@@ -74,7 +76,9 @@ jobs:
 
       - name: 🔍 Audit after fix
         id: after
-        if: steps.before.outputs.findings != '0'
+        if:
+          steps.before.outputs.findings != '' && steps.before.outputs.findings
+          != '0'
         run: node tools/ci/audit-gate.ts --mode=report --markdown=audit-after.md
 
       - name: 📝 Open or update the audit bump PR
@@ -89,7 +93,7 @@ jobs:
             echo
             echo "### Still reported after \`npm audit fix\`"
             echo
-            cat audit-after.md
+            cat audit-after.md 2>/dev/null || echo "Audit after the fix did not complete."
             echo
             echo "Anything still listed needs a documented override or floor (see docs/contributing/dependency-overrides.md). Push that to this branch instead of opening a second dependency PR."
             echo
@@ -111,6 +115,14 @@ jobs:
           git checkout -B "$BUMP_BRANCH"
           git add -A -- package-lock.json ':(glob)**/package.json'
           git commit -m 'fix(deps): npm audit fix for production advisories'
+          # Same content as the open PR: refresh the body, keep the head SHA
+          # (no new Validate run, no dismissed approvals).
+          if [ -n "$pr" ] && git fetch --quiet origin "refs/heads/$BUMP_BRANCH" \
+            && git diff --quiet FETCH_HEAD HEAD; then
+            gh pr edit "$pr" --body-file audit-pr-body.md
+            echo "::notice title=Audit bump::PR #$pr already has this fix; refreshed its body only."
+            exit 0
+          fi
           git push --force origin "HEAD:refs/heads/$BUMP_BRANCH"
           if [ -n "$pr" ]; then
             gh pr edit "$pr" --body-file audit-pr-body.md
@@ -123,16 +135,23 @@ jobs:
 
       - name: 🧾 Summary
         if: always()
+        env:
+          FINDINGS: ${{ steps.before.outputs.findings }}
+          CHANGED: ${{ steps.fix.outputs.changed }}
         run: |
+          unresolved=false
+          if [ -n "$FINDINGS" ] && [ "$FINDINGS" != "0" ] && [ "$CHANGED" != "true" ]; then
+            unresolved=true
+          fi
           {
             echo "### Production audit on main"
             echo
-            cat audit-before.md 2>/dev/null || echo "Audit did not run."
-            if [ "${{ steps.before.outputs.findings }}" != "0" ] && [ "${{ steps.fix.outputs.changed }}" != "true" ]; then
+            cat audit-before.md 2>/dev/null || echo "Audit did not complete; see the Audit main step."
+            if [ "$unresolved" = true ]; then
               echo
               echo "\`npm audit fix\` changed nothing. These findings need a documented override or floor (docs/contributing/dependency-overrides.md)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.before.outputs.findings }}" != "0" ] && [ "${{ steps.fix.outputs.changed }}" != "true" ]; then
+          if [ "$unresolved" = true ]; then
             echo "::warning title=Audit bump::npm audit fix could not resolve the production advisories on main; add a documented override or floor."
           fi
