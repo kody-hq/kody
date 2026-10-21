@@ -184,9 +184,7 @@ test.each(['', '/memory', '/packages', '/triggers', '/credentials', '/apps'])(
 		expect(html.match(/<h1[ >]/g)).toHaveLength(1)
 		expect(html.match(/<main[ >]/g)).toHaveLength(1)
 		if (suffix)
-			expect(html).toContain(
-				`/images/lantern/kody-primitives-orb-${suffix === '/credentials' ? 'integrations' : suffix.slice(1)}.webp`,
-			)
+			expect(html).toContain(`/images/features/${suffix.slice(1)}.svg`)
 		if (suffix === '/credentials')
 			contains(html, [
 				'href="/onboarding"',

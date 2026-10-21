@@ -42,9 +42,7 @@ export function TriggersFeature() {
 				<div>
 					<img
 						className="feature-orb"
-						src={publicAsset(
-							'/images/lantern/kody-primitives-orb-triggers.webp',
-						)}
+						src={publicAsset('/images/features/triggers.svg')}
 						alt=""
 						width="80"
 						height="80"

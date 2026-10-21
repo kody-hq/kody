@@ -58,7 +58,7 @@ export function MemoryFeature() {
 				<div>
 					<img
 						className="feature-orb"
-						src={publicAsset('/images/lantern/kody-primitives-orb-memory.webp')}
+						src={publicAsset('/images/features/memory.svg')}
 						alt=""
 						width="80"
 						height="80"

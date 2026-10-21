@@ -15,31 +15,26 @@ import {
 const features = [
 	{
 		id: 'memory',
-		orb: 'memory',
 		name: 'Memory',
 		description: 'Context that comes with you.',
 	},
 	{
 		id: 'packages',
-		orb: 'packages',
 		name: 'Packages',
 		description: 'Keep the software your agent builds.',
 	},
 	{
 		id: 'triggers',
-		orb: 'triggers',
 		name: 'Triggers',
 		description: 'Run work when something happens.',
 	},
 	{
 		id: 'credentials',
-		orb: 'integrations',
 		name: 'Credentials',
 		description: 'Keys and OAuth your agents use, never see.',
 	},
 	{
 		id: 'apps',
-		orb: 'apps',
 		name: 'Apps',
 		description: 'Give your work an interface.',
 	},
@@ -51,9 +46,30 @@ type Props = { currentPathname: string; mobile?: boolean }
 export function FeaturesMenu(props: Props) {
 	const [open, setOpen] = useState(false)
 	const panel = useRef<HTMLDivElement>(null)
+	const trigger = useRef<HTMLButtonElement>(null)
+	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+		undefined,
+	)
+	function cancelClose() {
+		clearTimeout(closeTimer.current)
+	}
+	function openOnHover() {
+		cancelClose()
+		panel.current?.showPopover()
+	}
+	function closeAfterLeaving() {
+		cancelClose()
+		closeTimer.current = setTimeout(() => {
+			if (!panel.current?.contains(document.activeElement)) {
+				dismissOpenPopoverPanel(panel.current)
+			}
+		}, 180)
+	}
+	useEffect(() => () => clearTimeout(closeTimer.current), [])
 	const mobile = useRef<HTMLDetailsElement>(null)
 	const href = useLocation({ select: (location) => location.href })
 	useEffect(() => {
+		cancelClose()
 		dismissOpenPopoverPanel(panel.current)
 		if (mobile.current) mobile.current.open = false
 	}, [href])
@@ -85,9 +101,7 @@ export function FeaturesMenu(props: Props) {
 							css={featureCss}
 						>
 							<img
-								src={publicAsset(
-									`/images/lantern/kody-primitives-orb-${feature.orb}.webp`,
-								)}
+								src={publicAsset(`/images/features/${feature.id}.svg`)}
 								width="36"
 								height="36"
 								alt=""
@@ -113,8 +127,34 @@ export function FeaturesMenu(props: Props) {
 			{links()}
 		</details>
 	) : (
-		<div>
+		<div
+			onPointerEnter={(event) => {
+				if (event.pointerType === 'mouse') openOnHover()
+			}}
+			onPointerLeave={(event) => {
+				if (event.pointerType === 'mouse') closeAfterLeaving()
+			}}
+			onFocusCapture={cancelClose}
+			onBlur={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget))
+					closeAfterLeaving()
+			}}
+			onKeyDown={(event) => {
+				if (event.key === 'Escape' && panel.current?.matches(':popover-open')) {
+					event.preventDefault()
+					dismissOpenPopoverPanel(panel.current)
+					trigger.current?.focus()
+				}
+			}}
+		>
 			<button
+				ref={trigger}
+				onClick={(event) => {
+					if (event.detail > 0 && window.matchMedia('(hover: hover)').matches) {
+						event.preventDefault()
+						openOnHover()
+					}
+				}}
 				type="button"
 				popoverTarget={panelId}
 				aria-expanded={open}

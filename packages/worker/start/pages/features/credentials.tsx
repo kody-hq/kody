@@ -54,9 +54,7 @@ export function CredentialsFeature() {
 					<div>
 						<img
 							className="feature-orb"
-							src={publicAsset(
-								'/images/lantern/kody-primitives-orb-integrations.webp',
-							)}
+							src={publicAsset('/images/features/credentials.svg')}
 							alt=""
 							width="80"
 							height="80"

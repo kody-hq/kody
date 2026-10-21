@@ -76,9 +76,7 @@ export function PackagesFeature() {
 				<div>
 					<img
 						className="feature-orb"
-						src={publicAsset(
-							'/images/lantern/kody-primitives-orb-packages.webp',
-						)}
+						src={publicAsset('/images/features/packages.svg')}
 						alt=""
 						width="80"
 						height="80"

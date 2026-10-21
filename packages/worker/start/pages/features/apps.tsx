@@ -97,7 +97,7 @@ export function AppsFeature() {
 				<div>
 					<img
 						className="feature-orb"
-						src={publicAsset('/images/lantern/kody-primitives-orb-apps.webp')}
+						src={publicAsset('/images/features/apps.svg')}
 						alt=""
 						width="80"
 						height="80"

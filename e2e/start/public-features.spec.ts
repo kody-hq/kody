@@ -81,7 +81,8 @@ for (const mobile of [false, true]) {
 		async function openFeatures() {
 			if (mobile)
 				await nav.getByRole('button', { name: 'Menu', exact: true }).click()
-			await trigger.click()
+			if (mobile) await trigger.click()
+			else await trigger.hover()
 		}
 		await openFeatures()
 		for (const name of [
@@ -98,10 +99,17 @@ for (const mobile of [false, true]) {
 		).toBeVisible()
 		if (!mobile) {
 			await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+			await panel.getByRole('link', { name: 'Memory', exact: true }).hover()
+			await expect(panel).toBeVisible()
+			await page.mouse.move(1200, 700)
+			await expect(panel).not.toBeVisible()
+			await trigger.focus()
+			await page.keyboard.press('Enter')
+			await expect(panel).toBeVisible()
 			await page.keyboard.press('Escape')
 			await expect(panel).not.toBeVisible()
 			await expect(trigger).toBeFocused()
-			await trigger.click()
+			await trigger.hover()
 		}
 		await panel.getByRole('link', { name: 'Memory', exact: true }).click()
 		await expect(page).toHaveURL(/\/features\/memory$/)
