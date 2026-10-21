@@ -10,7 +10,7 @@ import {
 } from './job-caller-context-package-id-backfill.ts'
 
 const mockListJobsPage = vi.hoisted(() => vi.fn())
-const mockUpdateJob = vi.hoisted(() => vi.fn())
+const mockUpdateJobCallerContextJson = vi.hoisted(() => vi.fn())
 const mockCreatePackageJobCallerContext = vi.hoisted(() => vi.fn())
 const mockSerializeCallerContext = vi.hoisted(() =>
 	vi.fn((ctx: unknown) => JSON.stringify(ctx)),
@@ -19,7 +19,7 @@ const mockSerializeCallerContext = vi.hoisted(() =>
 vi.mock('./jobs-data.ts', () => ({
 	jobsData: () => ({
 		listJobsPage: mockListJobsPage,
-		updateJob: mockUpdateJob,
+		updateJobCallerContextJson: mockUpdateJobCallerContextJson,
 	}),
 }))
 
@@ -110,13 +110,13 @@ test('backfill dryRun counts repairs without writing; apply rebuilds package cal
 		repoContext: null,
 	}
 	mockCreatePackageJobCallerContext.mockResolvedValue(rebuilt)
-	mockUpdateJob.mockResolvedValue(true)
+	mockUpdateJobCallerContextJson.mockResolvedValue(true)
 
 	mockListJobsPage.mockResolvedValueOnce([damagedRow()])
 	const dry = await backfillJobCallerContextPackageIds({
 		env,
 		dryRun: true,
-		baseUrl: 'https://example.com',
+		baseUrl: 'https://admin.example.com',
 	})
 	expect(dry.counts).toMatchObject({
 		scanned: 1,
@@ -124,26 +124,30 @@ test('backfill dryRun counts repairs without writing; apply rebuilds package cal
 		alreadyOk: 0,
 		failed: 0,
 	})
-	expect(mockUpdateJob).not.toHaveBeenCalled()
+	expect(mockUpdateJobCallerContextJson).not.toHaveBeenCalled()
 	expect(mockCreatePackageJobCallerContext).not.toHaveBeenCalled()
 
-	mockListJobsPage.mockResolvedValueOnce([damagedRow()])
+	const damaged = damagedRow()
+	mockListJobsPage.mockResolvedValueOnce([damaged])
 	const applied = await backfillJobCallerContextPackageIds({
 		env,
 		dryRun: false,
-		baseUrl: 'https://example.com',
+		baseUrl: 'https://admin.example.com',
 	})
 	expect(applied.counts.repaired).toBe(1)
 	expect(mockCreatePackageJobCallerContext).toHaveBeenCalledWith(
 		expect.objectContaining({
 			packageId,
 			userId: orgId,
+			// Prefer the damaged row's stored baseUrl over the admin request.
 			baseUrl: 'https://example.com',
 		}),
 	)
-	expect(mockUpdateJob).toHaveBeenCalledWith(
+	expect(mockUpdateJobCallerContextJson).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: orgId,
+			jobId,
+			expectedCallerContextJson: damaged.caller_context_json,
 			callerContextJson: JSON.stringify(rebuilt),
 		}),
 	)

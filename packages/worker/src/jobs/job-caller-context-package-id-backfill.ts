@@ -52,17 +52,28 @@ export type JobCallerContextPackageIdBackfillResult = {
 	outcomes: Array<JobCallerContextPackageIdBackfillOutcome>
 }
 
-function storedPackageId(callerContextJson: string): string | null {
+function parseStoredCallerContextJson(callerContextJson: string): {
+	packageId: string | null
+	baseUrl: string | null
+} {
 	try {
 		const parsed = JSON.parse(callerContextJson) as {
+			baseUrl?: unknown
 			storageContext?: { packageId?: unknown }
 		}
-		const packageId = parsed.storageContext?.packageId
-		if (typeof packageId !== 'string') return null
-		const trimmed = packageId.trim()
-		return trimmed || null
+		const packageIdRaw = parsed.storageContext?.packageId
+		const packageId =
+			typeof packageIdRaw === 'string' && packageIdRaw.trim()
+				? packageIdRaw.trim()
+				: null
+		const baseUrlRaw = parsed.baseUrl
+		const baseUrl =
+			typeof baseUrlRaw === 'string' && baseUrlRaw.trim()
+				? baseUrlRaw.trim()
+				: null
+		return { packageId, baseUrl }
 	} catch {
-		return null
+		return { packageId: null, baseUrl: null }
 	}
 }
 
@@ -72,7 +83,7 @@ export function jobCallerContextNeedsPackageIdRepair(input: {
 }): { needsRepair: boolean; packageId: string | null } {
 	const packageId = packageIdFromJobId(input.jobId)
 	if (!packageId) return { needsRepair: false, packageId: null }
-	const stored = storedPackageId(input.callerContextJson)
+	const stored = parseStoredCallerContextJson(input.callerContextJson).packageId
 	return {
 		needsRepair: stored !== packageId,
 		packageId,
@@ -166,24 +177,30 @@ export async function backfillJobCallerContextPackageIds(input: {
 				continue
 			}
 
+			const storedBaseUrl = parseStoredCallerContextJson(
+				row.caller_context_json,
+			).baseUrl
 			const callerContext = await createPackageJobCallerContext({
 				env: input.env as Env,
 				db: input.env.APP_DB,
-				baseUrl,
+				// Keep the job's published origin when present so credential
+				// failure URLs stay on the same host the package was synced for.
+				baseUrl: storedBaseUrl || baseUrl,
 				userId: ownerIdFromStored(orgId),
 				packageId,
 			})
 			const updatedAt = new Date().toISOString()
-			const didUpdate = await jobsData(input.env).updateJob({
+			const didUpdate = await jobsData(input.env).updateJobCallerContextJson({
 				userId: ownerIdFromStored(orgId),
-				job: {
-					...row.record,
-					updatedAt,
-				},
+				jobId,
+				expectedCallerContextJson: row.caller_context_json,
 				callerContextJson: serializeCallerContext(callerContext),
+				updatedAt,
 			})
 			if (!didUpdate) {
-				throw new Error(`Job "${jobId}" could not be updated.`)
+				throw new Error(
+					`Job "${jobId}" caller context changed concurrently; re-run the backfill page.`,
+				)
 			}
 			counts.repaired += 1
 			outcomes.push({

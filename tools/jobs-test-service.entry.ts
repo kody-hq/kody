@@ -83,6 +83,7 @@ const storeMethodNames = [
 	'finalizeClaimedJob',
 	'retryClaimedJob',
 	'refreshPackageJobIdentity',
+	'updateJobCallerContextJson',
 	'deleteJob',
 	'disableExpiredJobsForUser',
 	'countJobsForUser',
