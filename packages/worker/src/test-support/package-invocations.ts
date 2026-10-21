@@ -316,6 +316,28 @@ export function createFakeRunLog(
 				record: ledgerUpdated ? null : row ? clone(row) : null,
 			}
 		},
+		async touchPackageInvocation(input: {
+			invocationId: string
+			claimUpdatedAt: string
+		}) {
+			const row =
+				ledgerRows.find((candidate) => candidate.id === input.invocationId) ??
+				null
+			if (
+				!row ||
+				row.status !== 'in_progress' ||
+				row.updatedAt !== input.claimUpdatedAt
+			) {
+				return {
+					touched: false,
+					claimUpdatedAt: null,
+					record: row ? clone(row) : null,
+				}
+			}
+			const now = new Date().toISOString()
+			row.updatedAt = now
+			return { touched: true, claimUpdatedAt: now, record: null }
+		},
 		async releasePackageInvocation(input: {
 			invocationId: string
 			claimUpdatedAt: string

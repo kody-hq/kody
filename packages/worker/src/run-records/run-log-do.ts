@@ -2605,6 +2605,46 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
+	 * Bump `updated_at` on a live `in_progress` claim (fenced on
+	 * `claimUpdatedAt`). Used after a successful execute whose terminal
+	 * persist failed, so same-owner reclaim grace restarts from now instead
+	 * of from the original claim time (which may already exceed the grace
+	 * after a long sandbox run).
+	 */
+	async touchPackageInvocation(input: {
+		invocationId: string
+		claimUpdatedAt: string
+	}): Promise<{
+		touched: boolean
+		claimUpdatedAt: string | null
+		record: PackageInvocationLedgerRecord | null
+	}> {
+		const now = new Date().toISOString()
+		const current = this.getInvocationLedgerRowById(input.invocationId)
+		if (
+			!current ||
+			current.status !== 'in_progress' ||
+			current.updatedAt !== input.claimUpdatedAt
+		) {
+			return {
+				touched: false,
+				claimUpdatedAt: null,
+				record: current,
+			}
+		}
+		this.ctx.storage.sql.exec(
+			`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+			now,
+			input.invocationId,
+		)
+		return {
+			touched: true,
+			claimUpdatedAt: now,
+			record: null,
+		}
+	}
+
+	/**
 	 * Release a claim whose execution never started so retries are not
 	 * poisoned. Deletes the still-`in_progress` ledger row (fenced on
 	 * `claimUpdatedAt`). The attempt's still-`running` run row is finished as
@@ -4228,6 +4268,14 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 		logs: Array<RunLogEntryInput>
 	}) => Promise<{
 		ledgerUpdated: boolean
+		record: PackageInvocationLedgerRecord | null
+	}>
+	touchPackageInvocation: (input: {
+		invocationId: string
+		claimUpdatedAt: string
+	}) => Promise<{
+		touched: boolean
+		claimUpdatedAt: string | null
 		record: PackageInvocationLedgerRecord | null
 	}>
 	releasePackageInvocation: (input: {

@@ -10,6 +10,7 @@ import {
 	finishPackageInvocationRecord,
 	getPackageInvocationRecord,
 	releasePackageInvocationRecord,
+	touchPackageInvocationRecord,
 	type PackageInvocationLedgerRecord,
 } from '#worker/run-records/service.ts'
 import {
@@ -540,12 +541,30 @@ export async function invokeSavedPackageModule(input: {
 			} catch (error) {
 				// The module succeeded, but the atomic ledger + run terminal write
 				// did not. Do not report success: durable callers must retry the
-				// same key until the terminal response can be persisted. The live
-				// claim prevents that retry from duplicating the completed work.
+				// same key until the terminal response can be persisted. Refresh
+				// the claim lease so same-owner reclaim grace restarts from now
+				// (claim time alone may already exceed the grace after a long
+				// sandbox run).
 				console.error(
 					'package invocation completed-result persistence failed',
 					getErrorMessage(error),
 				)
+				try {
+					const touched = await touchPackageInvocationRecord({
+						env: input.env,
+						userId: input.actor.orgId,
+						invocationId: claimed.invocationId,
+						claimUpdatedAt: claimed.claimUpdatedAt,
+					})
+					if (touched.touched && touched.claimUpdatedAt) {
+						claimed.claimUpdatedAt = touched.claimUpdatedAt
+					}
+				} catch (touchError) {
+					console.warn(
+						'package invocation claim touch after persist failure failed',
+						getErrorMessage(touchError),
+					)
+				}
 				return buildPersistenceFailedResponse()
 			}
 		}

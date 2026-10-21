@@ -477,21 +477,29 @@ test('completed keyed invocation reports terminal persistence failure instead of
 	const db = createDatabase({ failFinish: true })
 	seedPackageResolution()
 	runMock.mockResolvedValue({ result: { handled: true }, logs: ['completed'] })
+	const deliveryId = 'delivery-finish-failure'
 	const request = dispatchRequest('evt-finish-failure', {
 		source: 'webhook',
 		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
 	})
 
 	expect(await invoke(db, request)).toMatchObject({
 		status: 500,
 		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
 	})
+	const rowAfterTouch = db.runLog.ledgerRows[0]
+	expect(rowAfterTouch?.status).toBe('in_progress')
+	// Touch refreshes the lease so a long sandbox run does not leave the
+	// original claim timestamp past the same-owner grace.
+	const claimAgeMs = Date.now() - Date.parse(rowAfterTouch!.updatedAt)
+	expect(claimAgeMs).toBeLessThan(5_000)
+
 	expect(await invoke(db, request)).toMatchObject({
 		status: 409,
 		body: { ok: false, error: { code: 'invocation_in_progress' } },
 	})
 	expect(runMock).toHaveBeenCalledTimes(1)
-	expect(db.runLog.ledgerRows[0]?.status).toBe('in_progress')
 	expect(consoleError).toHaveBeenCalledWith(
 		'package invocation completed-result persistence failed',
 		'RunLog finish unavailable',

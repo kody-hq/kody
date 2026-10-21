@@ -16,6 +16,7 @@ import {
 	getPackageInvocationRecord,
 	getRunRecord,
 	releasePackageInvocationRecord,
+	touchPackageInvocationRecord,
 } from './service.ts'
 import {
 	packageInvocationLedgerRetentionDays,
@@ -335,6 +336,45 @@ test('same claimOwner reclaims after the same-owner grace; a different owner doe
 	)
 	expect(finished.ledgerUpdated).toBe(true)
 	expect((await getLedger(userId, 'evt-owner'))?.status).toBe('failed')
+})
+
+test('touchPackageInvocation refreshes updated_at so same-owner grace restarts', async () => {
+	const userId = uniqueUserId('touch-claim')
+	const deliveryOwner = 'delivery-touch-1'
+	const seeded = await claim(userId, 'evt-touch', {
+		claimOwner: deliveryOwner,
+	})
+	const agedUpdatedAt = new Date(Date.now() - 5 * 60_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		agedUpdatedAt,
+		seeded.invocationId,
+	)
+
+	const touched = await touchPackageInvocationRecord({
+		env,
+		userId,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: agedUpdatedAt,
+	})
+	expect(touched.touched).toBe(true)
+	expect(touched.claimUpdatedAt).toBeTruthy()
+	expect(touched.claimUpdatedAt! > agedUpdatedAt).toBe(true)
+
+	// Still inside the refreshed grace: same owner cannot reclaim yet.
+	const tooFresh = await claimRaw(userId, 'evt-touch', {
+		claimOwner: deliveryOwner,
+	})
+	expect(tooFresh.outcome).toBe('existing')
+
+	const staleFence = await touchPackageInvocationRecord({
+		env,
+		userId,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: agedUpdatedAt,
+	})
+	expect(staleFence.touched).toBe(false)
 })
 
 test('stale in-progress claims are reclaimed atomically; mismatched hashes are not', async () => {

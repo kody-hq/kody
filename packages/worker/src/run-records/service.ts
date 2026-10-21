@@ -899,6 +899,30 @@ export async function finishPackageInvocationRecord(input: {
  * run as an error with diagnostic logs (so Activity keeps pre-execution
  * evidence instead of a vanished zero-log attempt).
  */
+/**
+ * Refresh `updated_at` on a live claim after a successful execute whose
+ * terminal persist failed, so same-owner reclaim grace does not treat the
+ * original claim timestamp as already expired.
+ */
+export async function touchPackageInvocationRecord(input: {
+	env: Env
+	userId: OwnerId
+	invocationId: string
+	claimUpdatedAt: string
+}): Promise<{
+	touched: boolean
+	claimUpdatedAt: string | null
+	record: PackageInvocationLedgerRecord | null
+}> {
+	return await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).touchPackageInvocation({
+		invocationId: input.invocationId,
+		claimUpdatedAt: input.claimUpdatedAt,
+	})
+}
+
 export async function releasePackageInvocationRecord(input: {
 	env: Env
 	userId: OwnerId
