@@ -95,18 +95,24 @@ current advisory range.
 Keep the root `esbuild` range at or above `0.28.1` so the shared copy stays
 outside that advisory.
 
-### `hono` → `>=4.13.7 <5.0.0`
+### `hono` → `>=4.13.11 <5.0.0`
 
 Keeps the transitive hono copy at or above the current advisory floor. Upstream
 `@modelcontextprotocol/sdk@1.32.1` still declares `hono@^4.11.4`, which allows
-vulnerable releases below `4.13.7`, so this override cannot be removed yet.
+vulnerable releases below `4.13.11`, so this override cannot be removed yet.
 
-The floor is `4.13.7` for:
+The floor is `4.13.11` for:
+
+- [GHSA-5r4p-p66f-jhc7](https://github.com/advisories/GHSA-5r4p-p66f-jhc7) —
+  `serveStatic` decodes the request path a second time, so crafted percent
+  encoding can skip middleware mounted on a static prefix (`>=4.12.4, <4.13.11`)
+
+That range also covers the `4.13.7` floor:
 
 - [GHSA-hxh3-vqpv-xpqv](https://github.com/advisories/GHSA-hxh3-vqpv-xpqv) —
   `hono/jsx` renders plain strings unescaped in boundary components (`<4.13.7`)
 
-That range also covers the `4.13.5` fixes:
+And the `4.13.5` fixes:
 
 - [GHSA-gqvv-2mrq-wpjv](https://github.com/advisories/GHSA-gqvv-2mrq-wpjv) —
   `toSSG()` can still write files outside the output directory (`<4.13.5`)
