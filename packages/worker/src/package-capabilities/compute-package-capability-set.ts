@@ -3,6 +3,7 @@ import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import {
 	listOrgReachableCredentials,
+	liveUsableCredentials,
 	resolveNeedCandidates,
 	type UsableCredential,
 } from '#worker/credentials/credential-candidates.ts'
@@ -108,7 +109,7 @@ export async function computePackageCapabilitySet(input: {
 			db: input.env.APP_DB,
 			orgId: input.ownerUserId,
 			packageId,
-		})
+		}).then(liveUsableCredentials)
 		reachableByPackage.set(packageId, next)
 		return next
 	}

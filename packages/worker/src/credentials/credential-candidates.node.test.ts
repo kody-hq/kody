@@ -26,6 +26,7 @@ import { upsertIntegration } from '#worker/integrations/service.ts'
 import {
 	listOrgReachableCredentials,
 	listUsableCredentials,
+	liveUsableCredentials,
 	resolveNeedCandidates,
 } from './credential-candidates.ts'
 import { grantPersonalCredentialToOrg } from './personal-credentials.ts'
@@ -201,12 +202,13 @@ test('needs resolve by kind and provider; a credential with no provider is only 
 		.run()
 	const usable = await t.usableAs('bea', 'owner')
 	expect(
-		usable.map(({ name, kind, provider, hosts, scope }) => ({
+		usable.map(({ name, kind, provider, hosts, scope, expired }) => ({
 			name,
 			kind,
 			provider,
 			hosts,
 			scope,
+			expired,
 		})),
 	).toEqual([
 		{
@@ -215,6 +217,7 @@ test('needs resolve by kind and provider; a credential with no provider is only 
 			provider: 'slack',
 			hosts: ['hooks.slack.com'],
 			scope: 'org',
+			expired: false,
 		},
 		{
 			name: 'gh-pat',
@@ -222,6 +225,7 @@ test('needs resolve by kind and provider; a credential with no provider is only 
 			provider: 'github',
 			hosts: ['api.github.com'],
 			scope: 'org',
+			expired: false,
 		},
 		{
 			name: 'linear-mcp',
@@ -229,6 +233,7 @@ test('needs resolve by kind and provider; a credential with no provider is only 
 			provider: 'linear',
 			hosts: ['mcp.linear.app'],
 			scope: 'org',
+			expired: false,
 		},
 		{
 			name: 'loose-key',
@@ -236,8 +241,26 @@ test('needs resolve by kind and provider; a credential with no provider is only 
 			provider: null,
 			hosts: [],
 			scope: 'org',
+			expired: false,
+		},
+		{
+			name: 'old-key',
+			kind: 'secret',
+			provider: 'linear',
+			hosts: [],
+			scope: 'org',
+			expired: true,
 		},
 	])
+	expect(
+		liveUsableCredentials(usable).map((credential) => credential.name),
+	).toEqual(['deploy-hook', 'gh-pat', 'linear-mcp', 'loose-key'])
+	expect(
+		resolveNeedCandidates({ kind: 'secret', provider: 'linear' }, usable),
+	).toMatchObject({
+		status: 'expired',
+		autoPick: { name: 'old-key', expired: true },
+	})
 	const github = resolveNeedCandidates(
 		{ kind: 'secret', provider: 'github' },
 		usable,
@@ -679,4 +702,53 @@ test('an OAuth connection lists the hosts the runtime allows, including its API 
 		},
 		{ name: 'orphan', kind: 'oauth', hosts: ['api.linear.app'] },
 	])
+})
+
+test('an expired package-bound Key stays a bound candidate with status expired', async () => {
+	const t = await setup()
+	const packageId = 'token-refresh'
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'api-token',
+		provider: 'vendor',
+		packageId,
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'legacy-token',
+		packageId,
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	const forPackage = await t.usableAs('bea', 'owner', undefined, packageId)
+	expect(
+		forPackage.map(({ name, packageId: bound, expired }) => ({
+			name,
+			packageId: bound,
+			expired,
+		})),
+	).toEqual([
+		{ name: 'api-token', packageId, expired: true },
+		{ name: 'legacy-token', packageId, expired: true },
+	])
+	expect(liveUsableCredentials(forPackage)).toEqual([])
+	expect(
+		resolveNeedCandidates(
+			{ key: 'api-token', kind: 'secret', provider: 'vendor' },
+			forPackage,
+		),
+	).toMatchObject({
+		status: 'expired',
+		autoPick: { name: 'api-token', expired: true, packageId },
+	})
+	// Null-provider package Keys still bind by exact need key when expired.
+	expect(
+		resolveNeedCandidates(
+			{ key: 'legacy-token', kind: 'secret', provider: 'other' },
+			forPackage,
+		),
+	).toMatchObject({
+		status: 'expired',
+		autoPick: { name: 'legacy-token', expired: true, packageId },
+	})
 })

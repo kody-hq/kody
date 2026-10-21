@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 		hosts: Array<string>
 		scope: 'org' | 'personal'
 		packageId: string | null
+		expired: boolean
 	}>,
 }))
 
@@ -117,6 +118,7 @@ test('usage reports how each package need relates to the credential', async () =
 			hosts: [],
 			scope: 'org',
 			packageId: null,
+			expired: false,
 		},
 		{
 			id: 'gh-1',
@@ -126,6 +128,7 @@ test('usage reports how each package need relates to the credential', async () =
 			hosts: [],
 			scope: 'org',
 			packageId: null,
+			expired: false,
 		},
 		{
 			id: 'gh-2',
@@ -135,6 +138,7 @@ test('usage reports how each package need relates to the credential', async () =
 			hosts: [],
 			scope: 'org',
 			packageId: null,
+			expired: false,
 		},
 		{
 			id: 'loose',
@@ -144,6 +148,7 @@ test('usage reports how each package need relates to the credential', async () =
 			hosts: [],
 			scope: 'org',
 			packageId: null,
+			expired: false,
 		},
 	]
 	mocks.needs.set('src-triage', [

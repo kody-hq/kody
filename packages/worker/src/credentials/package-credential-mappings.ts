@@ -304,14 +304,18 @@ function effectiveMapping(
 	})
 	if (stored) {
 		switch (stored.status) {
-			case 'ready':
+			case 'ready': {
+				const expired = stored.credentials.some(
+					(credential) => credential.expired,
+				)
 				return {
 					source: stored.source,
-					status: 'ready',
+					status: expired ? 'expired' : 'ready',
 					credentials: stored.credentials.map(toCredentialRef),
 					candidates: [],
 					createUrl: null,
 				}
+			}
 			case 'none':
 				return notReady('none', stored.source)
 			case 'unusable':
@@ -328,7 +332,7 @@ function effectiveMapping(
 	if (resolution.autoPick) {
 		return {
 			source: 'auto',
-			status: 'ready',
+			status: resolution.status === 'expired' ? 'expired' : 'ready',
 			credentials: [toCredentialRef(resolution.autoPick)],
 			candidates: [],
 			createUrl: null,
@@ -342,6 +346,9 @@ function effectiveMapping(
 function isIncomplete(
 	status: EffectiveCredentialMapping['status'],
 ): status is PackageCredentialsIncomplete['status'] {
+	// Expired stays bound: package-scope self-refreshing Keys need no owner
+	// "Add a credential" path, and user-scope expired also shows as Expired
+	// rather than missing (Secrets page already lists them).
 	return status === 'unbound' || status === 'ambiguous' || status === 'unusable'
 }
 

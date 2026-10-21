@@ -170,6 +170,8 @@ export function mappingStatusLabel(status: EffectiveCredentialMappingStatus): {
 			return { label: 'Pick one', tone: 'warning' }
 		case 'unusable':
 			return { label: 'Can’t use it', tone: 'danger' }
+		case 'expired':
+			return { label: 'Expired', tone: 'warning' }
 		default: {
 			const exhaustive: never = status
 			return exhaustive
@@ -220,10 +222,23 @@ export function credentialRefLabel(ref: CredentialRef) {
 export function sortNeedsByAttention(
 	needs: ReadonlyArray<PackageCredentialNeedView>,
 ) {
-	const rank = (need: PackageCredentialNeedView) =>
-		need.effective.status === 'ready' || need.effective.status === 'none'
-			? 1
-			: 0
+	const rank = (need: PackageCredentialNeedView) => {
+		switch (need.effective.status) {
+			case 'ready':
+			case 'none':
+			case 'expired':
+				// Expired stays bound (self-refreshing package Keys need no owner fix).
+				return 1
+			case 'unbound':
+			case 'ambiguous':
+			case 'unusable':
+				return 0
+			default: {
+				const exhaustive: never = need.effective.status
+				return exhaustive
+			}
+		}
+	}
 	return [...needs].sort(
 		(a, b) => rank(a) - rank(b) || a.key.localeCompare(b.key),
 	)

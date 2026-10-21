@@ -1,6 +1,7 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
+import { saveSecret } from '#mcp/secrets/service.ts'
 import {
 	dailyTarget as daily,
 	mappingFixtureBaseUrl as baseUrl,
@@ -345,6 +346,48 @@ test('createInstance adds a second enablement with its own credential mapping', 
 		(instance) => instance.mappings[0]?.override?.credentials[0]?.id ?? null,
 	)
 	expect(mapped.sort()).toEqual([prod, test_].sort())
+})
+
+test('an expired package-bound Key reads as expired, not missing, and skips attention', async () => {
+	const t = await setup()
+	await saveSecret({
+		env: t.env,
+		userId: t.acmeId,
+		scope: 'package',
+		name: 'mail',
+		value: 'short-lived',
+		expiresAt: '2020-01-01T00:00:00.000Z',
+		storageContext: {
+			sessionId: null,
+			appId: t.savedPackage.id,
+			packageId: t.savedPackage.id,
+			storageId: t.savedPackage.id,
+		},
+	})
+	await t.db
+		.prepare(
+			`UPDATE secret_entries SET provider = 'resend', allowed_hosts = '["api.resend.com"]'
+			WHERE name = 'mail' AND bucket_id IN (
+				SELECT id FROM secret_buckets
+				WHERE user_id = ? AND scope = 'package' AND binding_key = ?
+			)`,
+		)
+		.bind(t.acmeId, t.savedPackage.id)
+		.run()
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const mail = view.needs.find((need) => need.key === 'mail')
+	expect(mail?.effective).toMatchObject({
+		source: 'auto',
+		status: 'expired',
+		credentials: [{ name: 'mail', kind: 'secret', scope: 'org' }],
+		createUrl: null,
+	})
+	expect(view.incomplete).toEqual([
+		{ needKey: 'chat', where: { type: 'default' }, status: 'unbound' },
+	])
+	expect(view.incomplete.some((item) => item.needKey === 'mail')).toBe(false)
 })
 
 test('the viewer scope binds the :username org and needs package:execute', async () => {

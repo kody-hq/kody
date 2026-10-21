@@ -224,6 +224,7 @@ async function authorizeOauthConnection(
 		throw new CredentialNotFoundError()
 	}
 	const { connection } = found
+	if (connection.expired) throw new CredentialNotFoundError()
 	call.subject.name = connection.name
 	if (connection.scope === 'org') {
 		await authorizeActorUse(call, connection.id, connection.name)

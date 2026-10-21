@@ -158,6 +158,8 @@ export function renderEffective(
 	switch (mapping.status) {
 		case 'ready':
 			return renderRefs(orgSlug, mapping.credentials)
+		case 'expired':
+			return renderRefs(orgSlug, mapping.credentials)
 		case 'none':
 			return <span css={mutedCss}>Nothing, on purpose</span>
 		case 'unbound':

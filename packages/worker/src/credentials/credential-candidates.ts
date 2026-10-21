@@ -10,7 +10,10 @@
  * declares `kind`, candidates must match it; when `kind` is omitted, any
  * fetch-capable credential (secret/Key, oauth, login) qualifies. A credential
  * with no provider never auto-resolves unless it is a package-bound key whose
- * name matches the need key exactly. Nothing here reads a value.
+ * name matches the need key exactly. Expired Keys stay in the candidate set
+ * with `expired: true` so the Credentials UI can show them as bound-but-
+ * expired; runtime fill must use `liveUsableCredentials` so expired values
+ * are never injected. Nothing here reads a value.
  */
 import {
 	chunkArray,
@@ -20,6 +23,10 @@ import {
 	type OwnerId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	earliestSecretExpiresAt,
+	isSecretExpired,
+} from '@kody-internal/shared/secret-expires-at.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
@@ -44,6 +51,15 @@ export type UsableCredential = {
 	scope: 'org' | 'personal'
 	/** Set when the Key lives in a package-scope bucket bound to that package. */
 	packageId: string | null
+	/** True when the Key's entry or bucket expiry is at or before now. */
+	expired: boolean
+}
+
+/** Credentials that a run may still fill; drops expired Keys. */
+export function liveUsableCredentials(
+	usable: ReadonlyArray<UsableCredential>,
+): Array<UsableCredential> {
+	return usable.filter((credential) => !credential.expired)
 }
 
 type Row = {
@@ -58,6 +74,8 @@ type Row = {
 	api_base_url: string | null
 	bucket_scope: string | null
 	binding_key: string | null
+	expires_at: string | null
+	bucket_expires_at: string | null
 }
 
 type SecretScopeFilter = {
@@ -84,19 +102,16 @@ const usableRowQueries = [
 					: ` AND 0`
 			return `SELECT e.id AS id, e.name AS name, e.kind AS kind, e.provider AS provider,
 				e.allowed_hosts AS hosts_json, NULL AS url, NULL AS app_hosts_json,
-				NULL AS api_base_url, b.scope AS bucket_scope, b.binding_key AS binding_key
+				NULL AS api_base_url, b.scope AS bucket_scope, b.binding_key AS binding_key,
+				e.expires_at AS expires_at, b.expires_at AS bucket_expires_at
 			FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
 			WHERE b.user_id = ?${scopeSql}
 				AND e.deleted_at IS NULL AND b.deleted_at IS NULL
 				AND e.encrypted_value IS NOT NULL AND e.encrypted_value != ''
-				AND (e.expires_at IS NULL OR e.expires_at > ?)
-				AND (b.expires_at IS NULL OR b.expires_at > ?)${filter('e.id')}`
+				${filter('e.id')}`
 		},
-		binds: (now: string, scope: SecretScopeFilter) => [
-			...(scope.packageId ? [scope.packageId] : []),
-			now,
-			now,
-		],
+		binds: (_now: string, scope: SecretScopeFilter) =>
+			scope.packageId ? [scope.packageId] : [],
 	},
 	{
 		family: 'integration' as const,
@@ -106,7 +121,8 @@ const usableRowQueries = [
 				p.required_hosts_json AS app_hosts_json,
 				CASE WHEN i.platform_app_slug IS NOT NULL THEN p.api_base_url
 					ELSE a.api_base_url END AS api_base_url,
-				NULL AS bucket_scope, NULL AS binding_key
+				NULL AS bucket_scope, NULL AS binding_key,
+				NULL AS expires_at, NULL AS bucket_expires_at
 			FROM user_integrations i
 			LEFT JOIN user_oauth_apps a
 				ON a.user_id = i.user_id AND a.slug = i.app_slug AND a.deleted_at IS NULL
@@ -120,7 +136,8 @@ const usableRowQueries = [
 		sql: (filter: (column: string) => string, _scope: SecretScopeFilter) =>
 			`SELECT id, name, 'mcp' AS kind, provider, '[]' AS hosts_json, url,
 				NULL AS app_hosts_json, NULL AS api_base_url,
-				NULL AS bucket_scope, NULL AS binding_key
+				NULL AS bucket_scope, NULL AS binding_key,
+				NULL AS expires_at, NULL AS bucket_expires_at
 			FROM mcp_server_settings
 			WHERE user_id = ? AND deleted_at IS NULL AND enabled = 1${filter('id')}`,
 		binds: (_now: string, _scope: SecretScopeFilter) => [],
@@ -185,12 +202,13 @@ async function loadRows(input: {
 	}
 	const rows: Array<Row & { family: 'secret' | 'integration' }> = []
 	const extraBinds = secretScope.packageId ? 1 : 0
+	// ownerId + optional package binding_key; expiry is evaluated in JS.
 	const chunks =
 		input.ids === null
 			? [null]
 			: chunkArray(
 					[...new Set(input.ids)],
-					maxD1BoundParameters - 3 - extraBinds,
+					maxD1BoundParameters - 1 - extraBinds,
 				)
 	for (const chunk of chunks) {
 		if (chunk?.length === 0) continue
@@ -217,6 +235,7 @@ async function loadRows(input: {
 function toUsable(
 	row: Row,
 	scope: UsableCredential['scope'],
+	now: string,
 ): UsableCredential {
 	return {
 		id: row.id,
@@ -229,6 +248,10 @@ function toUsable(
 			row.bucket_scope === 'package' && row.binding_key
 				? row.binding_key
 				: null,
+		expired: isSecretExpired(
+			earliestSecretExpiresAt(row.expires_at, row.bucket_expires_at),
+			new Date(now),
+		),
 	}
 }
 
@@ -245,17 +268,18 @@ export async function findCredentialById(input: {
 	/** When set, also look in that package's bound Key bucket. */
 	packageId?: string | null
 }): Promise<UsableCredential | null> {
+	const now = (input.now ?? new Date()).toISOString()
 	const [row] = await loadRows({
 		db: input.db,
 		ownerId: input.ownerId,
 		ids: [input.id],
-		now: (input.now ?? new Date()).toISOString(),
+		now,
 		secretScope: {
 			includeUserScope: true,
 			packageId: input.packageId ?? null,
 		},
 	})
-	return row ? toUsable(row, input.scope) : null
+	return row ? toUsable(row, input.scope, now) : null
 }
 
 /**
@@ -284,7 +308,7 @@ export async function listOrgReachableCredentials(input: {
 			packageId: input.packageId ?? null,
 		},
 	})
-	const credentials = orgRows.map((row) => toUsable(row, 'org'))
+	const credentials = orgRows.map((row) => toUsable(row, 'org', now))
 	const grantors = await input.db
 		.prepare(
 			`SELECT DISTINCT user_id FROM credential_org_grants
@@ -306,7 +330,9 @@ export async function listOrgReachableCredentials(input: {
 			ids: personal.map((credential) => credential.id),
 			now,
 		})
-		credentials.push(...personalRows.map((row) => toUsable(row, 'personal')))
+		credentials.push(
+			...personalRows.map((row) => toUsable(row, 'personal', now)),
+		)
 	}
 	return credentials
 }
@@ -358,7 +384,7 @@ export async function listUsableCredentials(input: {
 				row.id,
 			),
 		)
-		.map((row) => toUsable(row, 'org'))
+		.map((row) => toUsable(row, 'org', now))
 	const actor = input.request.actor?.userId
 	// A scoped token narrows personal credentials too: Use of each family.
 	const tokenScopes = input.request.credential.scopes
@@ -374,7 +400,7 @@ export async function listUsableCredentials(input: {
 		usable.push(
 			...personalRows
 				.filter((row) => tokenAllows(row.family))
-				.map((row) => toUsable(row, 'personal')),
+				.map((row) => toUsable(row, 'personal', now)),
 		)
 	}
 	return usable.sort(
@@ -385,7 +411,7 @@ export async function listUsableCredentials(input: {
 }
 
 export type NeedResolution = {
-	status: 'ready' | 'ambiguous' | 'unbound'
+	status: 'ready' | 'ambiguous' | 'unbound' | 'expired'
 	/** The one candidate that resolves the need with no map entry. */
 	autoPick: UsableCredential | null
 	/** Credentials matching the need's provider and kind filter. */
@@ -396,11 +422,16 @@ export type NeedResolution = {
 	possibleMatches: Array<UsableCredential>
 }
 
+function autoStatus(credential: UsableCredential): 'ready' | 'expired' {
+	return credential.expired ? 'expired' : 'ready'
+}
+
 /**
  * Auto-pick when there is exactly one provider-matching candidate, or when a
  * package-bound Key's name matches the need key exactly (sole such match among
  * candidates and null-provider options). Other null-provider credentials stay
- * options only.
+ * options only. Live candidates win over expired ones for auto-pick; a sole
+ * expired match stays bound with status `expired`.
  */
 export function resolveNeedCandidates(
 	need: Pick<CredentialNeed, 'kind' | 'provider'> & { key?: string },
@@ -418,6 +449,8 @@ export function resolveNeedCandidates(
 		(credential) => credential.provider === null,
 	)
 	const options = [...candidates, ...possibleMatches]
+	const liveCandidates = candidates.filter((credential) => !credential.expired)
+	const [onlyLive] = liveCandidates
 	const [only] = candidates
 	const packageNameMatch =
 		need.key != null
@@ -426,17 +459,31 @@ export function resolveNeedCandidates(
 						credential.packageId != null && credential.name === need.key,
 				)
 			: []
+	const livePackageNameMatch = packageNameMatch.filter(
+		(credential) => !credential.expired,
+	)
 	const [packageOnly, packageSecond] = packageNameMatch
+	const [livePackageOnly, livePackageSecond] = livePackageNameMatch
 	let autoPick: UsableCredential | null = null
 	let status: NeedResolution['status']
 	// Exact-name package-bound Keys win over a sole provider match so a
-	// package's own legacy Key is preferred when the need key matches.
-	if (packageOnly && !packageSecond) {
-		autoPick = packageOnly
+	// package's own legacy Key is preferred when the need key matches. Prefer
+	// a live package Key when both live and expired name-match.
+	if (livePackageOnly && !livePackageSecond) {
+		autoPick = livePackageOnly
 		status = 'ready'
+	} else if (packageOnly && !packageSecond) {
+		autoPick = packageOnly
+		status = autoStatus(packageOnly)
+	} else if (liveCandidates.length === 1 && onlyLive) {
+		autoPick = onlyLive
+		status = 'ready'
+	} else if (liveCandidates.length > 1) {
+		autoPick = null
+		status = 'ambiguous'
 	} else if (candidates.length === 1 && only) {
 		autoPick = only
-		status = 'ready'
+		status = autoStatus(only)
 	} else if (candidates.length === 0) {
 		autoPick = null
 		status = 'unbound'

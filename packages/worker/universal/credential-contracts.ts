@@ -115,6 +115,8 @@ export type EffectiveCredentialMappingStatus =
 	| 'unbound'
 	| 'ambiguous'
 	| 'unusable'
+	/** Bound to a Key whose expiry has passed; not missing, not fillable. */
+	| 'expired'
 
 export type EffectiveCredentialMapping = {
 	source: CredentialMappingSource

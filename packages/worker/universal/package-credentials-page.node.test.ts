@@ -10,6 +10,7 @@ import {
 	credentialRefLabel,
 	describeIncompleteMapping,
 	incompleteMappingTab,
+	mappingStatusLabel,
 	packageCredentialsTabHref,
 	readPackageCredentialsTabPath,
 	sortNeedsByAttention,
@@ -110,13 +111,22 @@ test('needs that need attention sort first, then by key', () => {
 		need('zoom', 'unbound'),
 		need('none', 'none'),
 		need('openai', 'ambiguous'),
+		need('token', 'expired'),
 	])
 	expect(sorted.map((item) => item.key)).toEqual([
 		'openai',
 		'zoom',
 		'github',
 		'none',
+		'token',
 	])
+})
+
+test('expired mappings label as Expired with a warning tone', () => {
+	expect(mappingStatusLabel('expired')).toEqual({
+		label: 'Expired',
+		tone: 'warning',
+	})
 })
 
 test('trigger state names who turned it on and unminted webhooks', () => {

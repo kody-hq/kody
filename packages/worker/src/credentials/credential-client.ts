@@ -46,6 +46,7 @@ import {
 import {
 	findCredentialById,
 	listUsableCredentials,
+	liveUsableCredentials,
 	resolveNeedCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
@@ -764,11 +765,13 @@ export async function openCredentialClient(
 ): Promise<OpenedCredentialClient> {
 	if (input.name != null) {
 		const request = requireActorRequest(ctx)
-		const usable = await listUsableCredentials({
-			env: ctx.env,
-			request,
-			packageId: ctx.packageId,
-		})
+		const usable = liveUsableCredentials(
+			await listUsableCredentials({
+				env: ctx.env,
+				request,
+				packageId: ctx.packageId,
+			}),
+		)
 		await assertNamedAllowed(ctx)
 		const pick = {
 			name: readText(input.name, 'A credential name'),
@@ -785,11 +788,13 @@ export async function openCredentialClient(
 	const key = readText(input.key, 'A credential key')
 	const owner = await ownerCredentialOpen(ctx, key)
 	const opener = owner?.ctx ?? ctx
-	const usable = await listUsableCredentials({
-		env: ctx.env,
-		request: requireActorRequest(opener),
-		packageId: opener.packageId,
-	})
+	const usable = liveUsableCredentials(
+		await listUsableCredentials({
+			env: ctx.env,
+			request: requireActorRequest(opener),
+			packageId: opener.packageId,
+		}),
+	)
 	const picked = await resolveKey(opener, key, usable, 'one')
 	if (owner) assertApprovedForVisitors(key, owner, picked)
 	return await issueClient(opener, key, picked[0]!, {
@@ -808,11 +813,13 @@ export async function openCredentialClients(
 	const key = readText(input.key, 'A credential key')
 	const owner = await ownerCredentialOpen(ctx, key)
 	const opener = owner?.ctx ?? ctx
-	const usable = await listUsableCredentials({
-		env: ctx.env,
-		request: requireActorRequest(opener),
-		packageId: opener.packageId,
-	})
+	const usable = liveUsableCredentials(
+		await listUsableCredentials({
+			env: ctx.env,
+			request: requireActorRequest(opener),
+			packageId: opener.packageId,
+		}),
+	)
 	const picked = await resolveKey(opener, key, usable, 'many')
 	if (owner) assertApprovedForVisitors(key, owner, picked)
 	return await Promise.all(
@@ -876,7 +883,7 @@ export async function validateCredentialCallMap(input: {
 				env: input.env,
 				request,
 				packageId: null,
-			}),
+			}).then(liveUsableCredentials),
 			Promise.all(
 				entryPackageIds.map(async (packageId) => ({
 					packageId,
@@ -890,12 +897,12 @@ export async function validateCredentialCallMap(input: {
 			Promise.all(
 				entryPackageIds.map(async (packageId) => ({
 					packageId,
-					bound: (
+					bound: liveUsableCredentials(
 						await listUsableCredentials({
 							env: input.env,
 							request,
 							packageId,
-						})
+						}),
 					).filter((credential) => credential.packageId === packageId),
 				})),
 			),

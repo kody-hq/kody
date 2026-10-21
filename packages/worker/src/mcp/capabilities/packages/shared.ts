@@ -293,9 +293,9 @@ export const packageCredentialNeedSchema = z.object({
 		.optional()
 		.describe('The imported package that declares this need, when inherited.'),
 	status: z
-		.enum(['ready', 'ambiguous', 'unbound'])
+		.enum(['ready', 'ambiguous', 'unbound', 'expired'])
 		.describe(
-			'ready: exactly one of your credentials matches the need (kind filter and provider) and resolves with no call map entry. ambiguous: several match; pick one with a call map. unbound: none match.',
+			'ready: exactly one of your credentials matches the need (kind filter and provider) and resolves with no call map entry. ambiguous: several match; pick one with a call map. unbound: none match. expired: the matching Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it).',
 		),
 	autoPick: z
 		.string()

@@ -10,7 +10,10 @@
  * falls through, as the run's own resolution does.
  */
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import { listUsableCredentials } from '#worker/credentials/credential-candidates.ts'
+import {
+	listUsableCredentials,
+	liveUsableCredentials,
+} from '#worker/credentials/credential-candidates.ts'
 import {
 	loadPackageNeeds,
 	mappedCredentialFitsNeed,
@@ -80,11 +83,11 @@ export async function checkEnablementMappedCredentials(input: {
 	const declared = picks.filter((pick) => needs.has(pick.needKey))
 	if (declared.length === 0) return null
 	const usable = new Map(
-		(
+		liveUsableCredentials(
 			await listUsableCredentials({
 				...input,
 				packageId,
-			})
+			}),
 		).map((credential) => [credential.id, credential]),
 	)
 	for (const { needKey, ids } of declared) {
