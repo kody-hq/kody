@@ -140,22 +140,33 @@ jobs:
           FINDINGS: ${{ steps.before.outputs.findings }}
           AFTER_FINDINGS: ${{ steps.after.outputs.findings }}
         run: |
-          # Whatever npm audit fix left behind (or everything, when it changed
-          # nothing) still needs an override or floor.
-          remaining="${AFTER_FINDINGS:-$FINDINGS}"
+          # Whatever npm audit fix left behind still needs an override or
+          # floor. An empty post-fix count means that audit did not complete.
+          had_findings=false
+          if [ -n "$FINDINGS" ] && [ "$FINDINGS" != "0" ]; then
+            had_findings=true
+          fi
+          post_fix_unknown=false
           unresolved=false
-          if [ -n "$remaining" ] && [ "$remaining" != "0" ]; then
+          if [ "$had_findings" = true ] && [ -z "$AFTER_FINDINGS" ]; then
+            post_fix_unknown=true
+          elif [ -n "$AFTER_FINDINGS" ] && [ "$AFTER_FINDINGS" != "0" ]; then
             unresolved=true
           fi
           {
             echo "### Production audit on main"
             echo
             cat audit-before.md 2>/dev/null || echo "Audit did not complete; see the Audit main step."
-            if [ "$unresolved" = true ]; then
+            if [ "$post_fix_unknown" = true ]; then
               echo
-              echo "$remaining finding(s) remain after \`npm audit fix\`. They need a documented override or floor (docs/contributing/dependency-overrides.md)."
+              echo "The audit after \`npm audit fix\` did not complete, so the remaining findings are unknown."
+            elif [ "$unresolved" = true ]; then
+              echo
+              echo "$AFTER_FINDINGS finding(s) remain after \`npm audit fix\`. They need a documented override or floor (docs/contributing/dependency-overrides.md)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$unresolved" = true ]; then
-            echo "::warning title=Audit bump::$remaining production advisory finding(s) remain after npm audit fix; add a documented override or floor."
+          if [ "$post_fix_unknown" = true ]; then
+            echo "::warning title=Audit bump::The production audit after npm audit fix did not complete; rerun this workflow."
+          elif [ "$unresolved" = true ]; then
+            echo "::warning title=Audit bump::$AFTER_FINDINGS production advisory finding(s) remain after npm audit fix; add a documented override or floor."
           fi
