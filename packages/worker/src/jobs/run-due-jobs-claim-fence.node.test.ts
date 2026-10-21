@@ -802,6 +802,7 @@ test('a hung Workers cancellation settles the claimed job as a visible failure',
 				status: 'running',
 				jobId: record.id,
 			},
+			cursor: null,
 		}),
 	)
 	expect(finishRunRecord).toHaveBeenCalledTimes(1)
@@ -867,6 +868,7 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 				status: 'running',
 				jobId: record.id,
 			},
+			cursor: null,
 		}),
 	)
 	expect(finishRunRecord).not.toHaveBeenCalled()
@@ -913,4 +915,176 @@ test('settleHungDueJobsForUser skips claim finalize when listing running runs fa
 	expect(finishRunRecord).not.toHaveBeenCalled()
 	expect(upsertJobRunObservability).not.toHaveBeenCalled()
 	expect(finalizeClaimedJobRow).not.toHaveBeenCalled()
+})
+
+test('settleHungDueJobsForUser skips claim finalize when finishing a running run fails', async () => {
+	const record = createJobRecord({
+		id: 'package-job:pkg-fenced:finish-fail',
+	})
+	const row = claimedRow(record)
+	const occurrenceKey = `scheduled-job:${record.id}:${record.nextRunAt}`
+	const enablementKey = `${occurrenceKey}:enablement:enablement-fenced`
+	listJobRowsByUserId.mockResolvedValueOnce([row])
+	finalizeClaimedJobRow.mockReset()
+	finishRunRecord.mockReset()
+	finishRunRecord.mockResolvedValueOnce(false)
+	listRunRecords.mockReset()
+	listRunRecords.mockResolvedValueOnce({
+		runs: [
+			{
+				id: 'run-finish-fail',
+				surface: 'job',
+				status: 'running',
+				name: record.name,
+				packageId: null,
+				kodyId: null,
+				sourceId: record.sourceId,
+				publishedCommit: null,
+				storageId: record.storageId,
+				jobId: record.id,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: enablementKey,
+				parentRunId: null,
+				startedAt: now.toISOString(),
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				errorTriage: null,
+				triageNote: null,
+				triagedAt: null,
+				triagedBy: null,
+				metadata: { scheduledFor: record.nextRunAt },
+				logCount: 0,
+			},
+		],
+		nextCursor: null,
+	})
+	upsertJobRunObservability.mockClear()
+
+	await expect(
+		settleHungDueJobsForUser({
+			env: { APP_DB: {} } as Env,
+			userId: record.userId,
+			now,
+		}),
+	).resolves.toEqual({
+		settledCount: 0,
+		jobOutcomes: [],
+	})
+	expect(finishRunRecord).toHaveBeenCalledOnce()
+	expect(upsertJobRunObservability).not.toHaveBeenCalled()
+	expect(finalizeClaimedJobRow).not.toHaveBeenCalled()
+})
+
+test('settleHungDueJobsForUser pages through running runs before finalizing', async () => {
+	const record = createJobRecord({
+		id: 'package-job:pkg-fenced:page-runs',
+	})
+	const row = claimedRow(record)
+	const occurrenceKey = `scheduled-job:${record.id}:${record.nextRunAt}`
+	listJobRowsByUserId.mockResolvedValueOnce([row])
+	finalizeClaimedJobRow.mockReset()
+	finalizeClaimedJobRow.mockResolvedValue(true)
+	finishRunRecord.mockReset()
+	finishRunRecord.mockResolvedValue(true)
+	upsertJobRunObservability.mockClear()
+	listRunRecords.mockReset()
+	listRunRecords
+		.mockResolvedValueOnce({
+			runs: [
+				{
+					id: 'run-page-1',
+					surface: 'job',
+					status: 'running',
+					name: record.name,
+					packageId: null,
+					kodyId: null,
+					sourceId: record.sourceId,
+					publishedCommit: null,
+					storageId: record.storageId,
+					jobId: record.id,
+					workflowId: null,
+					invocationId: null,
+					sessionId: null,
+					idempotencyKey: `${occurrenceKey}:enablement:a`,
+					parentRunId: null,
+					startedAt: now.toISOString(),
+					finishedAt: null,
+					durationMs: null,
+					errorName: null,
+					errorMessage: null,
+					errorTriage: null,
+					triageNote: null,
+					triagedAt: null,
+					triagedBy: null,
+					metadata: { scheduledFor: record.nextRunAt },
+					logCount: 0,
+				},
+			],
+			nextCursor: 'page-2',
+		})
+		.mockResolvedValueOnce({
+			runs: [
+				{
+					id: 'run-page-2',
+					surface: 'job',
+					status: 'running',
+					name: record.name,
+					packageId: null,
+					kodyId: null,
+					sourceId: record.sourceId,
+					publishedCommit: null,
+					storageId: record.storageId,
+					jobId: record.id,
+					workflowId: null,
+					invocationId: null,
+					sessionId: null,
+					idempotencyKey: `${occurrenceKey}:enablement:b`,
+					parentRunId: null,
+					startedAt: now.toISOString(),
+					finishedAt: null,
+					durationMs: null,
+					errorName: null,
+					errorMessage: null,
+					errorTriage: null,
+					triageNote: null,
+					triagedAt: null,
+					triagedBy: null,
+					metadata: { scheduledFor: record.nextRunAt },
+					logCount: 0,
+				},
+			],
+			nextCursor: null,
+		})
+
+	await expect(
+		settleHungDueJobsForUser({
+			env: { APP_DB: {} } as Env,
+			userId: record.userId,
+			now,
+		}),
+	).resolves.toEqual({
+		settledCount: 1,
+		jobOutcomes: [
+			expect.objectContaining({
+				jobId: record.id,
+				outcome: 'failure',
+				error: scheduledJobHungExecutionMessage,
+			}),
+		],
+	})
+	expect(listRunRecords).toHaveBeenCalledTimes(2)
+	expect(listRunRecords).toHaveBeenNthCalledWith(
+		1,
+		expect.objectContaining({ cursor: null }),
+	)
+	expect(listRunRecords).toHaveBeenNthCalledWith(
+		2,
+		expect.objectContaining({ cursor: 'page-2' }),
+	)
+	expect(finishRunRecord).toHaveBeenCalledTimes(2)
+	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
 })

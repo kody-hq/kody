@@ -2022,20 +2022,69 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 	if (occurrenceIdempotencyKeyPrefix) {
 		// Scheduled ticks persist one run per enablement under
 		// `${base}:enablement:${id}`; exact base-key lookup misses those.
-		// Do not swallow list failures: finalizing the claim while running
-		// rows stay open strands Activity for this occurrence.
-		let page: Awaited<ReturnType<typeof listRunRecords>>
+		// Fail closed on list/finish errors: never finalize the claim while a
+		// matching running row may still be open in Activity.
+		let cursor: string | null = null
+		let unfinishedOccurrenceRun = false
 		try {
-			page = await listRunRecords({
-				env: input.env,
-				userId: input.userId,
-				filter: {
-					surface: 'job',
-					status: 'running',
-					jobId: row.id,
-				},
-				limit: runRecordMaxPageSize,
-			})
+			do {
+				const page = await listRunRecords({
+					env: input.env,
+					userId: input.userId,
+					filter: {
+						surface: 'job',
+						status: 'running',
+						jobId: row.id,
+					},
+					limit: runRecordMaxPageSize,
+					cursor,
+				})
+				for (const running of page.runs) {
+					const runKey = running.idempotencyKey?.trim()
+					if (
+						runKey == null ||
+						!(
+							runKey === occurrenceIdempotencyKeyPrefix ||
+							runKey.startsWith(`${occurrenceIdempotencyKeyPrefix}:`)
+						)
+					) {
+						continue
+					}
+					const handle: RunRecordHandle = {
+						id: running.id,
+						userId: input.userId,
+						startedAt: running.startedAt,
+						persistence: runPersistenceForContext({
+							surface: 'job',
+							idempotencyKey: runKey,
+						}),
+						context: {
+							surface: 'job',
+							name: running.name,
+							jobId: running.jobId ?? row.id,
+							storageId: running.storageId,
+							sourceId: running.sourceId,
+							publishedCommit: running.publishedCommit,
+							packageId: running.packageId,
+							kodyId: running.kodyId,
+							idempotencyKey: runKey,
+							metadata: running.metadata,
+						},
+					}
+					const finished = await finishRunRecord({
+						env: input.env,
+						handle,
+						status: 'error',
+						error,
+					}).catch((finishError: unknown) => {
+						console.warn('scheduled-job-hung-run-finish-failed', finishError)
+						return false
+					})
+					if (finished) finishedOccurrenceRun = true
+					else unfinishedOccurrenceRun = true
+				}
+				cursor = page.nextCursor
+			} while (cursor)
 		} catch (listError: unknown) {
 			console.warn('scheduled-job-hung-run-list-failed', listError)
 			return {
@@ -2044,48 +2093,12 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 				error,
 			}
 		}
-		for (const running of page.runs) {
-			const runKey = running.idempotencyKey?.trim()
-			if (
-				runKey == null ||
-				!(
-					runKey === occurrenceIdempotencyKeyPrefix ||
-					runKey.startsWith(`${occurrenceIdempotencyKeyPrefix}:`)
-				)
-			) {
-				continue
-			}
-			const handle: RunRecordHandle = {
-				id: running.id,
-				userId: input.userId,
-				startedAt: running.startedAt,
-				persistence: runPersistenceForContext({
-					surface: 'job',
-					idempotencyKey: runKey,
-				}),
-				context: {
-					surface: 'job',
-					name: running.name,
-					jobId: running.jobId ?? row.id,
-					storageId: running.storageId,
-					sourceId: running.sourceId,
-					publishedCommit: running.publishedCommit,
-					packageId: running.packageId,
-					kodyId: running.kodyId,
-					idempotencyKey: runKey,
-					metadata: running.metadata,
-				},
-			}
-			const finished = await finishRunRecord({
-				env: input.env,
-				handle,
-				status: 'error',
+		if (unfinishedOccurrenceRun) {
+			return {
+				settled: false,
+				nextRunAt: scheduledFor ?? nowIso,
 				error,
-			}).catch((finishError: unknown) => {
-				console.warn('scheduled-job-hung-run-finish-failed', finishError)
-				return false
-			})
-			if (finished) finishedOccurrenceRun = true
+			}
 		}
 	}
 	if (!finishedOccurrenceRun) {
