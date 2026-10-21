@@ -54,13 +54,30 @@ export function readExecuteResult(toolResult: unknown) {
 	if (!payload || typeof payload !== 'object') {
 		throw new Error('execute returned an unexpected result.')
 	}
-	const structured = payload as { result?: unknown; error?: unknown }
+	const structured = payload as {
+		result?: unknown
+		error?: unknown
+		inProgress?: unknown
+		runId?: unknown
+		idempotencyKey?: unknown
+	}
 	if (structured.error) {
 		const text = mcpToolErrorText(
 			toolResult as CallToolResult,
 			structured.error,
 		)
 		throw new Error(`execute failed: ${text}`)
+	}
+	if (structured.inProgress === true && !Object.hasOwn(structured, 'result')) {
+		return {
+			inProgress: true,
+			...(typeof structured.runId === 'string'
+				? { runId: structured.runId }
+				: {}),
+			...(typeof structured.idempotencyKey === 'string'
+				? { idempotencyKey: structured.idempotencyKey }
+				: {}),
+		}
 	}
 	return structured.result ?? null
 }

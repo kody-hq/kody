@@ -115,8 +115,8 @@ Use the MCP `email` domain:
   filters and limit caps as `emailMessageList`. Search rows also omit bodies.
 - `emailMessageGet` returns parsed bodies, headers, thread metadata, and
   attachment metadata.
-- `emailMessageDelete` deletes one stored inbound or outbound message owned by
-  the signed-in user. Missing and foreign ids fail. Deleting frees a
+- `emailMessageDelete` deletes one stored inbound or outbound message for the
+  current org. Missing and foreign ids fail. Deleting frees a
   `stored_email_messages` slot so new inbound mail can be accepted again. The
   same delete is available on `/@<slug>/-/email`.
 - `emailMessageClassify` reclassifies a stored inbound message as `accepted` or

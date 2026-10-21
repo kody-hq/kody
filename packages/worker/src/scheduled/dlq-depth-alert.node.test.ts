@@ -78,6 +78,10 @@ function productionEnv(kv: KVNamespace) {
 	}
 }
 
+const previewSentryEnv: Pick<Env, 'SENTRY_ENVIRONMENT'> = {
+	SENTRY_ENVIRONMENT: 'preview',
+}
+
 function installQueues(samples: Record<string, Sample> = {}) {
 	mocks.rawRequest.mockImplementation(async (input: { path: string }) => {
 		if (!input.path.endsWith('/metrics')) {
@@ -339,6 +343,10 @@ test('one unread queue fails the lane after a sibling stuck queue has already pa
 	).rejects.toThrow(/kody-email-delivery-dlq/)
 	expect(mocks.captureMessage).toHaveBeenCalledTimes(1)
 	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
+})
+
+test('Pick<Env> accepts preview SENTRY_ENVIRONMENT for the non-production skip path', () => {
+	expect(previewSentryEnv.SENTRY_ENVIRONMENT).toBe('preview')
 })
 
 test('non-production and missing Cloudflare credentials do not report an empty DLQ', async () => {

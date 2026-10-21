@@ -61,7 +61,7 @@ export function buildStubPackageFiles(input: {
 			'',
 			'Before publish (`guide:package_lifecycle`): session/tool-only lane —',
 			'`repoRunChecks` then `repoPublishSession`; git lane — local checks,',
-			'push, then `packagePublishExternalPush` (server-side checks;',
+			'commit, push, then `packagePublishExternalPush` (server-side checks;',
 			'sessions refuse unpublished HEAD).',
 			'After publish, when Node ≥22 + CLI are available, prefer',
 			'`npx @kodycodes/cli execute --local` (`kody login` or headless',

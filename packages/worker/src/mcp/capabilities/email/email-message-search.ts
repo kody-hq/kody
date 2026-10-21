@@ -19,7 +19,7 @@ export const emailMessageSearchCapability = defineDomainCapability(
 		name: 'emailMessageSearch',
 		orgPermission: 'email:read',
 		description:
-			'Search stored email messages owned by the signed-in user by case-insensitive substring match against subject, header From, and envelope sender.',
+			'Search stored email messages for the current org by case-insensitive substring match against subject, header From, and envelope sender.',
 		keywords: ['email', 'message', 'inbox', 'search', 'find', 'query'],
 		readOnly: true,
 		idempotent: true,

@@ -151,7 +151,7 @@ test('createStubSavedPackage rejects invalid kody ids and registers stubs for pe
 	expect(syncedFiles['AGENTS.md']).toContain('## Imports')
 	expect(syncedFiles['AGENTS.md']).toContain('repoRunChecks')
 	expect(syncedFiles['AGENTS.md']).toContain('packagePublishExternalPush')
-	expect(syncedFiles['AGENTS.md']).toContain('push, then')
+	expect(syncedFiles['AGENTS.md']).toContain('commit, push, then')
 	expect(syncedFiles['AGENTS.md']).toContain('refuse unpublished HEAD')
 	expect(syncedFiles['AGENTS.md']).toContain(
 		'Do not assume every agent can run the CLI.',

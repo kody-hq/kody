@@ -6,7 +6,8 @@
  *
  * Clear cases only. A call is skipped when the init value is not an object
  * literal, or when a literal headers object sets `x-kody-secret-resolution` to
- * anything other than the literal `on`. A body that is a literal, or
+ * anything other than `on` (trim + lowercase, matching the gateway). A body
+ * that is a literal, or
  * `JSON.stringify` / `new URLSearchParams` of literal data, is author-written
  * and is not warned. Helpers that build headers in a variable, and header
  * spreads, still warn: the scanner cannot see `headers-only` on those bags.
@@ -168,7 +169,7 @@ function headersLeaveBodyResolutionOn(headersValue: string): boolean {
 	if (resolution == null || resolution.method) return true
 	const mode = staticStringValue(resolution.value)
 	if (mode == null) return false
-	return mode === 'on'
+	return mode.trim().toLowerCase() === 'on'
 }
 
 function lastProperty(

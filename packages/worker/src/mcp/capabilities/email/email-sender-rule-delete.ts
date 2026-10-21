@@ -13,7 +13,7 @@ export const emailSenderRuleDeleteCapability = defineDomainCapability(
 		name: 'emailSenderRuleDelete',
 		orgPermission: 'email:write',
 		description:
-			'Delete one sender allow/block/quarantine rule owned by the signed-in user.',
+			'Delete one sender allow/block/quarantine rule for the current org.',
 		keywords: ['email', 'sender', 'rule', 'delete', 'remove', 'spam'],
 		readOnly: false,
 		idempotent: false,

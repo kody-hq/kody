@@ -34,7 +34,7 @@ interface __BaseEnv_Env {
 	IMAGES: ImagesBinding;
 	CF_VERSION_METADATA: WorkerVersionMetadata;
 	ASSETS: Fetcher;
-	SENTRY_ENVIRONMENT: "production";
+	SENTRY_ENVIRONMENT: string;
 	SENTRY_TRACES_SAMPLE_RATE: 0;
 	ARTIFACTS_NAMESPACE: "production";
 	PACKAGE_APP_BASE_URL: "https://kody.run";
