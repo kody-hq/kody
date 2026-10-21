@@ -817,15 +817,9 @@ test('a hung Workers cancellation settles the claimed job as a visible failure',
 			}),
 		}),
 	)
-	expect(upsertJobRunObservability).toHaveBeenCalledWith(
-		expect.objectContaining({
-			outcome: expect.objectContaining({
-				jobId: record.id,
-				status: 'error',
-				error: scheduledJobHungExecutionMessage,
-			}),
-		}),
-	)
+	// finishRunRecord already records job_run_observability; a second upsert
+	// would double-count runCount/errorCount for the same hung occurrence.
+	expect(upsertJobRunObservability).not.toHaveBeenCalled()
 	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
 	expect(retryClaimedJobRow).not.toHaveBeenCalled()
 })
@@ -844,6 +838,8 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 	upsertJobRunObservability.mockResolvedValue(null)
 	listRunRecords.mockReset()
 	listRunRecords.mockResolvedValueOnce({ runs: [], nextCursor: null })
+	upsertJobRunObservability.mockClear()
+	upsertJobRunObservability.mockResolvedValue(null)
 
 	await expect(
 		settleHungDueJobsForUser({
@@ -871,6 +867,16 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 				status: 'running',
 				jobId: record.id,
 			},
+		}),
+	)
+	expect(finishRunRecord).not.toHaveBeenCalled()
+	expect(upsertJobRunObservability).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: expect.objectContaining({
+				jobId: record.id,
+				status: 'error',
+				error: scheduledJobHungExecutionMessage,
+			}),
 		}),
 	)
 	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()

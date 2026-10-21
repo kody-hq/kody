@@ -1994,6 +1994,10 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 					jobId: row.id,
 					scheduledFor,
 				})
+	// finishRunRecord already increments job_run_observability for terminal
+	// job runs. Only upsert when no occurrence run was finished, so a stranded
+	// claim without a running row still gets lastRunError without double-count.
+	let finishedOccurrenceRun = false
 	if (occurrenceIdempotencyKeyPrefix) {
 		// Scheduled ticks persist one run per enablement under
 		// `${base}:enablement:${id}`; exact base-key lookup misses those.
@@ -2039,14 +2043,16 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 					metadata: running.metadata,
 				},
 			}
-			await finishRunRecord({
+			const finished = await finishRunRecord({
 				env: input.env,
 				handle,
 				status: 'error',
 				error,
 			}).catch((finishError: unknown) => {
 				console.warn('scheduled-job-hung-run-finish-failed', finishError)
+				return false
 			})
+			if (finished) finishedOccurrenceRun = true
 		}
 	}
 	const nowIso = input.now.toISOString()
@@ -2056,19 +2062,24 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 		input.now.valueOf() - new Date(startedAt).valueOf(),
 	)
 	const slotAt = scheduledFor ?? nowIso
-	await upsertJobRunObservability({
-		env: input.env,
-		userId: input.userId,
-		outcome: {
-			jobId: row.id,
-			status: 'error',
-			ranAt: slotAt,
-			error,
-			durationMs,
-		},
-	}).catch((observabilityError: unknown) => {
-		console.warn('scheduled-job-hung-observability-failed', observabilityError)
-	})
+	if (!finishedOccurrenceRun) {
+		await upsertJobRunObservability({
+			env: input.env,
+			userId: input.userId,
+			outcome: {
+				jobId: row.id,
+				status: 'error',
+				ranAt: slotAt,
+				error,
+				durationMs,
+			},
+		}).catch((observabilityError: unknown) => {
+			console.warn(
+				'scheduled-job-hung-observability-failed',
+				observabilityError,
+			)
+		})
+	}
 	const outcome: JobExecutionOutcome = {
 		execution: { ok: false, error, logs: [] },
 		startedAt,
