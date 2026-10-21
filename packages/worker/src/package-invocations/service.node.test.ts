@@ -399,6 +399,59 @@ test('invokePackageExport enforces idempotency replay, mismatch, corruption, and
 	)
 })
 
+test('same claimOwner reclaims a fresh in-progress claim so ack retries are not dropped', async () => {
+	const db = createDatabase()
+	seedPackageResolution()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['ok'] })
+	// Seed a completed row so seedFreshInvocation can clone ledger shape.
+	expect(
+		(await invoke(db, dispatchRequest('evt-seed-shape', { source: 'webhook' })))
+			.status,
+	).toBe(200)
+	const deliveryId = 'delivery-ack-reclaim'
+	const idempotencyKey = 'heartbeat:1:1:enablement:en-1'
+	db.runLog.seedFreshInvocation(idempotencyKey, deliveryId)
+	runMock.mockClear()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['retried'] })
+
+	// Without the same claimOwner, a fresh in_progress claim blocks execution
+	// for the full stale window (longer than the webhook ack retry budget).
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: 'other-delivery',
+			}),
+		),
+	).toMatchObject({
+		status: 409,
+		body: { ok: false, error: { code: 'invocation_in_progress' } },
+	})
+	expect(runMock).not.toHaveBeenCalled()
+
+	// Queue retry of the same delivery takes over and runs the handler.
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: deliveryId,
+			}),
+		),
+	).toMatchObject({
+		status: 200,
+		body: { ok: true, result: { handled: true } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(
+		db.runLog.ledgerRows.find((row) => row.idempotencyKey === idempotencyKey),
+	).toMatchObject({
+		status: 'completed',
+		claimOwner: deliveryId,
+	})
+})
+
 test('completed keyed invocation reports terminal persistence failure instead of false success', async () => {
 	consoleError.mockImplementation(() => {})
 	const db = createDatabase({ failFinish: true })

@@ -49,6 +49,7 @@ export type FakeLedgerRow = {
 	requestHash: string
 	source: string | null
 	topic: string | null
+	claimOwner: string | null
 	status: 'in_progress' | 'completed' | 'failed'
 	responseJson: string | null
 	createdAt: string
@@ -113,24 +114,34 @@ export function createFakeRunLog(
 		async claimPackageInvocation(input: {
 			invocation: Omit<
 				FakeLedgerRow,
-				'status' | 'responseJson' | 'createdAt' | 'updatedAt'
-			>
+				'status' | 'responseJson' | 'createdAt' | 'updatedAt' | 'claimOwner'
+			> & { claimOwner?: string | null }
 			staleBefore: string
 			run: Record<string, unknown> | null
 			initialLogs?: Array<unknown>
 		}) {
 			if (options.failClaim) throw new Error('RunLog unavailable')
 			const now = new Date().toISOString()
+			const claimOwner =
+				typeof input.invocation.claimOwner === 'string' &&
+				input.invocation.claimOwner.trim().length > 0
+					? input.invocation.claimOwner.trim()
+					: null
 			const existing = findByKey(input.invocation)
 			if (existing) {
+				const sameOwnerReclaim =
+					claimOwner != null &&
+					existing.claimOwner != null &&
+					existing.claimOwner === claimOwner
 				const reclaimable =
 					existing.status === 'in_progress' &&
 					existing.requestHash === input.invocation.requestHash &&
-					existing.updatedAt <= input.staleBefore
+					(existing.updatedAt <= input.staleBefore || sameOwnerReclaim)
 				if (!reclaimable) {
 					return { outcome: 'existing' as const, record: clone(existing) }
 				}
 				existing.updatedAt = now
+				existing.claimOwner = claimOwner
 				if (input.run) {
 					const runId = String(input.run['id'])
 					runRows.set(runId, clone({ ...input.run, invocationId: existing.id }))
@@ -145,6 +156,7 @@ export function createFakeRunLog(
 			}
 			ledgerRows.push({
 				...clone(input.invocation),
+				claimOwner,
 				status: 'in_progress',
 				responseJson: null,
 				createdAt: now,
@@ -371,6 +383,7 @@ export function createFakeRunLog(
 				...structuredClone(completed),
 				id: crypto.randomUUID(),
 				idempotencyKey,
+				claimOwner: null,
 				status: 'in_progress',
 				responseJson: null,
 				createdAt: '2026-01-01T00:00:00.000Z',
@@ -379,7 +392,10 @@ export function createFakeRunLog(
 			ledgerRows.push(row)
 			return structuredClone(row)
 		},
-		seedFreshInvocation(idempotencyKey: string) {
+		seedFreshInvocation(
+			idempotencyKey: string,
+			claimOwner: string | null = null,
+		) {
 			const completed = ledgerRows[0]
 			if (!completed) throw new Error('Expected completed invocation seed.')
 			const now = new Date().toISOString()
@@ -387,6 +403,7 @@ export function createFakeRunLog(
 				...structuredClone(completed),
 				id: crypto.randomUUID(),
 				idempotencyKey,
+				claimOwner,
 				status: 'in_progress',
 				responseJson: null,
 				createdAt: now,

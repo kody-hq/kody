@@ -149,5 +149,8 @@ export async function invokePackageExportWithToolFactories(input: {
 		...(input.request.idempotencyHashParams
 			? { idempotencyHashParams: input.request.idempotencyHashParams }
 			: {}),
+		...(input.request.claimOwner
+			? { claimOwner: input.request.claimOwner }
+			: {}),
 	})
 }

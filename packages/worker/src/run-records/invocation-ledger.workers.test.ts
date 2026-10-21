@@ -54,6 +54,9 @@ function claimInput(overrides?: Partial<Record<string, string | null>>) {
 		requestHash: String(overrides?.requestHash ?? 'hash-1'),
 		source: overrides?.source === undefined ? 'webhook' : overrides.source,
 		topic: overrides?.topic === undefined ? null : overrides.topic,
+		...(overrides && 'claimOwner' in overrides
+			? { claimOwner: overrides.claimOwner }
+			: {}),
 	}
 }
 
@@ -269,6 +272,53 @@ test('late failed subscription finish reopens a system-ignored platform interrup
 		triagedAt: null,
 		triagedBy: null,
 	})
+})
+
+test('same claimOwner reclaims a fresh in-progress row; a different owner does not', async () => {
+	const userId = uniqueUserId('same-owner-reclaim')
+	const deliveryOwner = 'delivery-ack-1'
+	const seeded = await claim(userId, 'evt-owner', { claimOwner: deliveryOwner })
+	expect(await getLedger(userId, 'evt-owner')).toMatchObject({
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+	})
+
+	// A distinct delivery with the same idempotency key must still see
+	// invocation_in_progress (dedupe), not steal the fresh claim.
+	const otherDelivery = await claimRaw(userId, 'evt-owner', {
+		claimOwner: 'delivery-ack-2',
+	})
+	expect(otherDelivery.outcome).toBe('existing')
+	if (otherDelivery.outcome !== 'existing') throw new Error('unreachable')
+	expect(otherDelivery.record).toMatchObject({
+		id: seeded.invocationId,
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+	})
+
+	// Queue retry of the same delivery takes over before the 15-minute stale
+	// window — the ack retry budget is only ~5 minutes.
+	const retried = await claim(userId, 'evt-owner', {
+		claimOwner: deliveryOwner,
+	})
+	expect(retried).toMatchObject({
+		invocationId: seeded.invocationId,
+		reclaimed: true,
+	})
+	expect(retried.claimUpdatedAt > seeded.claimUpdatedAt).toBe(true)
+	expect(await getLedger(userId, 'evt-owner')).toMatchObject({
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+		updatedAt: retried.claimUpdatedAt,
+	})
+
+	const finished = await finish(
+		userId,
+		retried,
+		failedOutcome('retry after hung first attempt'),
+	)
+	expect(finished.ledgerUpdated).toBe(true)
+	expect((await getLedger(userId, 'evt-owner'))?.status).toBe('failed')
 })
 
 test('stale in-progress claims are reclaimed atomically; mismatched hashes are not', async () => {

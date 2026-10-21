@@ -107,6 +107,7 @@ export async function processWebhookDispatch(
 		exportName: message.exportName,
 		params: resolved.params,
 		idempotencyKey: message.idempotencyKey,
+		claimOwner: message.deliveryId,
 		...(message.idempotencyParamsHash === 'ignore'
 			? { idempotencyParamsHash: 'ignore' as const }
 			: {}),
@@ -122,6 +123,9 @@ export async function processWebhookDispatch(
 	if (retryableCode) {
 		if (attempts >= webhookDispatchMaxRetries) {
 			const invocationError = readWebhookInvocationError(response.body)
+			// Exhausted ack deliveries must land as a visible Activity failure
+			// (not only a consumer log). requirePersistence throws into the
+			// queue handler retry path when the write does not stick.
 			await recordWebhookDelivery({
 				env,
 				endpoint: message.endpoint,

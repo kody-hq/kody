@@ -91,7 +91,7 @@ const metaFinishesSinceRetentionKey = 'finishes_since_retention'
 const metaRetentionEmptyBackoffKey = 'retention_empty_backoff_ms'
 const metaSchemaVersionKey = 'schema_version'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 11
+const runLogSchemaVersion = 12
 
 type RunLogSqlBillingOp =
 	| 'listRuns'
@@ -270,6 +270,13 @@ export type PackageInvocationLedgerRecord = {
 	requestHash: string
 	source: string | null
 	topic: string | null
+	/**
+	 * Stable id for the delivery/attempt lineage that holds this claim (for
+	 * example a webhook ack `deliveryId`). Same-owner retries may reclaim a
+	 * fresh `in_progress` row; other callers still wait for stale expiry or a
+	 * terminal response so genuine sender duplicates keep deduping.
+	 */
+	claimOwner: string | null
 	status: PackageInvocationLedgerStatus
 	/** Bounded replay cache; `null` when the terminal response was oversized. */
 	responseJson: string | null
@@ -290,6 +297,8 @@ export type PackageInvocationClaimInput = PackageInvocationLedgerKey & {
 	requestHash: string
 	source: string | null
 	topic: string | null
+	/** See {@link PackageInvocationLedgerRecord.claimOwner}. */
+	claimOwner?: string | null
 }
 
 export type PackageInvocationClaimResult =
@@ -591,6 +600,12 @@ function mapLogRow(row: Record<string, SqlStorageValue>): RunRecordLog {
 	}
 }
 
+function normalizeClaimOwner(value: string | null | undefined): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : null
+}
+
 function mapInvocationLedgerRow(
 	row: Record<string, SqlStorageValue>,
 ): PackageInvocationLedgerRecord {
@@ -605,6 +620,7 @@ function mapInvocationLedgerRow(
 		requestHash: String(row['request_hash']),
 		source: row['source'] == null ? null : String(row['source']),
 		topic: row['topic'] == null ? null : String(row['topic']),
+		claimOwner: row['claim_owner'] == null ? null : String(row['claim_owner']),
 		status: (status === 'completed' || status === 'failed'
 			? status
 			: 'in_progress') as PackageInvocationLedgerStatus,
@@ -855,12 +871,16 @@ class RunLogBase extends DurableObject<Env> {
 				request_hash TEXT NOT NULL,
 				source TEXT,
 				topic TEXT,
+				claim_owner TEXT,
 				status TEXT NOT NULL,
 				response_json TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
 			)
 		`)
+		if (installedVersion != null && installedVersion < 12) {
+			this.migrateInvocationLedgerClaimOwnerForV12()
+		}
 		this.ctx.storage.sql.exec(
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_invocation_ledger_key
 			ON package_invocation_ledger(token_id, package_id, export_name, idempotency_key)`,
@@ -1017,6 +1037,21 @@ class RunLogBase extends DurableObject<Env> {
 				SELECT COUNT(*) FROM run_logs l WHERE l.run_id = runs.id
 			)`,
 		)
+	}
+
+	/**
+	 * Claim-owner column so queue retries of the same delivery can take over a
+	 * fresh `in_progress` claim without waiting the full stale window (which is
+	 * longer than the webhook ack retry budget).
+	 */
+	private migrateInvocationLedgerClaimOwnerForV12() {
+		try {
+			this.ctx.storage.sql.exec(
+				`ALTER TABLE package_invocation_ledger ADD COLUMN claim_owner TEXT`,
+			)
+		} catch {
+			// Column already present on a partially migrated object.
+		}
 	}
 
 	private getMeta(key: string): number | null {
@@ -2391,10 +2426,11 @@ class RunLogBase extends DurableObject<Env> {
 	 * Claim a keyed package invocation and begin its run record in one on-path
 	 * DO call. DO execution is serialized, so lookup-then-insert here is
 	 * atomic — strictly better claim semantics than the racy D1
-	 * `INSERT OR IGNORE` this replaces. A matching stale `in_progress` row
-	 * (same request hash, `updated_at <= staleBefore`) is reclaimed in place;
-	 * everything else the key already owns is returned to the caller for
-	 * replay / mismatch / in-progress resolution.
+	 * `INSERT OR IGNORE` this replaces. A matching `in_progress` row is
+	 * reclaimed in place when it is stale (`updated_at <= staleBefore`) or
+	 * when the caller presents the same non-null `claimOwner` (same delivery
+	 * lineage taking over a dead attempt). Everything else the key already
+	 * owns is returned for replay / mismatch / in-progress resolution.
 	 */
 	async claimPackageInvocation(input: {
 		invocation: PackageInvocationClaimInput
@@ -2410,18 +2446,26 @@ class RunLogBase extends DurableObject<Env> {
 		initialLogs?: Array<RunLogEntryInput>
 	}): Promise<PackageInvocationClaimResult> {
 		const now = new Date().toISOString()
+		const claimOwner = normalizeClaimOwner(input.invocation.claimOwner)
 		const existing = this.findInvocationLedgerRow(input.invocation)
 		if (existing) {
+			const sameOwnerReclaim =
+				claimOwner != null &&
+				existing.claimOwner != null &&
+				existing.claimOwner === claimOwner
 			const reclaimable =
 				existing.status === 'in_progress' &&
 				existing.requestHash === input.invocation.requestHash &&
-				existing.updatedAt <= input.staleBefore
+				(existing.updatedAt <= input.staleBefore || sameOwnerReclaim)
 			if (!reclaimable) {
 				return { outcome: 'existing', record: existing }
 			}
 			this.ctx.storage.sql.exec(
-				`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+				`UPDATE package_invocation_ledger
+				SET updated_at = ?, claim_owner = ?
+				WHERE id = ?`,
 				now,
+				claimOwner,
 				existing.id,
 			)
 			if (input.run) {
@@ -2439,9 +2483,9 @@ class RunLogBase extends DurableObject<Env> {
 		this.ctx.storage.sql.exec(
 			`INSERT INTO package_invocation_ledger (
 				id, token_id, package_id, package_kody_id, export_name,
-				idempotency_key, request_hash, source, topic, status,
+				idempotency_key, request_hash, source, topic, claim_owner, status,
 				response_json, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_progress', NULL, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_progress', NULL, ?, ?)`,
 			input.invocation.id,
 			input.invocation.tokenId,
 			input.invocation.packageId,
@@ -2451,6 +2495,7 @@ class RunLogBase extends DurableObject<Env> {
 			input.invocation.requestHash,
 			input.invocation.source,
 			input.invocation.topic,
+			claimOwner,
 			now,
 			now,
 		)

@@ -50,6 +50,27 @@ function isStaleInvocation(updatedAt: string, now: Date) {
 	return Date.parse(updatedAt) <= now.getTime() - packageInvocationStaleAfterMs
 }
 
+function normalizeClaimOwner(value: string | null | undefined): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : null
+}
+
+function canReclaimInProgressInvocation(input: {
+	record: Pick<PackageInvocationLedgerRecord, 'updatedAt' | 'claimOwner'>
+	claimOwner: string | null
+	now?: Date
+}) {
+	if (isStaleInvocation(input.record.updatedAt, input.now ?? new Date())) {
+		return true
+	}
+	return (
+		input.claimOwner != null &&
+		input.record.claimOwner != null &&
+		input.claimOwner === input.record.claimOwner
+	)
+}
+
 function readInvocationErrorCode(body: unknown): string | null {
 	if (!body || typeof body !== 'object' || Array.isArray(body)) return null
 	const error = (body as Record<string, unknown>)['error']
@@ -105,6 +126,12 @@ export async function invokeSavedPackageModule(input: {
 	idempotencyKey: string
 	idempotencyParamsHash?: 'ignore'
 	idempotencyHashParams?: Record<string, unknown>
+	/**
+	 * Delivery/attempt lineage for reclaim (for example webhook ack
+	 * `deliveryId`). Same-owner retries take over a fresh `in_progress`
+	 * claim; omit for callers that only reclaim after the stale window.
+	 */
+	claimOwner?: string | null
 	source: string | null
 	topic: string | null
 	notFoundCode: 'export_not_found' | 'subscription_not_found'
@@ -217,6 +244,7 @@ export async function invokeSavedPackageModule(input: {
 		}
 	}
 
+	const claimOwner = normalizeClaimOwner(input.claimOwner)
 	const attemptClaim = async () =>
 		await claimPackageInvocationRecord({
 			env: input.env,
@@ -229,6 +257,7 @@ export async function invokeSavedPackageModule(input: {
 				requestHash,
 				source: input.source,
 				topic: input.topic,
+				claimOwner,
 			},
 			staleBefore: new Date(
 				Date.now() - packageInvocationStaleAfterMs,
@@ -250,8 +279,8 @@ export async function invokeSavedPackageModule(input: {
 
 	// Resolve an existing DO owner: mismatch and terminal rows resolve
 	// immediately; fresh in-progress rows are polled within the budget; stale
-	// in-progress rows are reclaimed atomically by a second claim call (which
-	// loops back here when a competitor wins the reclaim).
+	// or same-claimOwner in-progress rows are reclaimed atomically by a second
+	// claim call (which loops back here when a competitor wins the reclaim).
 	while (claim.outcome === 'existing') {
 		let record: PackageInvocationLedgerRecord | null = claim.record
 		if (record.requestHash !== requestHash || record.status !== 'in_progress') {
@@ -261,7 +290,7 @@ export async function invokeSavedPackageModule(input: {
 		while (
 			record &&
 			record.status === 'in_progress' &&
-			!isStaleInvocation(record.updatedAt, new Date()) &&
+			!canReclaimInProgressInvocation({ record, claimOwner }) &&
 			Date.now() < pollDeadline
 		) {
 			await new Promise((resolve) =>
@@ -288,7 +317,7 @@ export async function invokeSavedPackageModule(input: {
 		if (record.status !== 'in_progress') {
 			return resolveLedgerRecord(record)
 		}
-		if (!isStaleInvocation(record.updatedAt, new Date())) {
+		if (!canReclaimInProgressInvocation({ record, claimOwner })) {
 			return resolveLedgerRecord(record)
 		}
 		try {
