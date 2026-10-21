@@ -106,7 +106,7 @@
     "postinstall": "patch-package",
     "nx:graph": "nx graph",
     "nx:show-projects": "nx show projects",
-    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
+    "audit:prod": "node tools/ci/audit-gate.ts",
     "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
     "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json"
   },

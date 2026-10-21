@@ -288,6 +288,13 @@ jobs:
 
       - name: 🔐 Production dependency audit
         if: ${{ !cancelled() }}
+        env:
+          # tools/ci/audit-gate.ts blocks on moderate+ advisories only when the
+          # change touches a package.json or package-lock.json (diffed against
+          # the PR base). Main pushes and other changes report findings as
+          # warnings; the scheduled 🔐 Audit bump workflow opens the fix PR.
+          AUDIT_MODE: ${{ github.event_name == 'push' && 'report' || 'auto' }}
+          AUDIT_BASE: ${{ github.event.pull_request.base.sha || '' }}
         run: npm run audit:prod
 
       - name: ⏱️ Job wall-clock

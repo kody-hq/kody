@@ -14,7 +14,7 @@ Open the page that owns the task:
   [docs/contributing/index.md](./docs/contributing/index.md)
 - Engineering principles: [docs/principles/](./docs/principles/index.md)
 - Task skills: [`.agents/skills/`](./.agents/skills/)
-
-Cloud Agent VM gotchas (Node on `PATH`, Playwright install, dev server, seeding,
-local limitations):
-[docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
+- Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):
+  [docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
+- Dependency bump or audit fix: reuse an open PR, never open a duplicate
+  ([rule](./docs/contributing/dependency-overrides.md#dependency-bump-prs))

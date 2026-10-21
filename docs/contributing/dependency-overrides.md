@@ -9,11 +9,40 @@ package or parent with no matching override, or when `package.json` repeats a
 key.
 
 After changing overrides, `npm run audit:prod` is the production-dependency
-check (`npm audit --omit=dev --audit-level=moderate`). Moderate, high, and
-critical findings fail; low findings do not. It is part of `npm run validate`
-and the CI static job (see [`checks`](./setup/checks.md)). Clearing these
-override targets does not mean every advisory is gone — other transitive
-packages can still report findings outside this file's scope.
+check (`tools/ci/audit-gate.ts`, which runs `npm audit --omit=dev`). Moderate,
+high, and critical findings fail only when the change touches a dependency
+manifest: any `package.json` or `package-lock.json` in the workspace, compared
+with the merge base of `AUDIT_BASE` (the PR base in CI) or `origin/main`, plus
+uncommitted edits. Every other change, and every `main` push, reports findings
+as warnings (`::warning` annotations in CI) without failing, so a newly
+published advisory does not break unrelated work. Low findings never fail.
+`AUDIT_MODE=enforce` or `AUDIT_MODE=report` forces a mode. It is part of
+`npm run validate` and the CI static job (see [`checks`](./setup/checks.md)).
+Clearing these override targets does not mean every advisory is gone; other
+transitive packages can still report findings outside this file's scope.
+
+The scheduled `🔐 Audit bump` workflow (`.github/workflows/audit-bump.yml`) runs
+the audit on `main` every day. When it finds advisories it runs `npm audit fix`
+and opens or updates a single PR from the `ci/audit-bump` branch, then
+dispatches ✅ Validate on that branch (where the audit enforces, because the
+lockfile changed). Findings that `npm audit fix` cannot resolve are listed in
+that PR body and the job summary; they need an override or floor documented
+below. If the open `ci/audit-bump` PR has a commit from anyone other than
+`github-actions[bot]`, the workflow keeps that branch and only refreshes the PR
+body.
+
+## Dependency bump PRs
+
+Agents often notice the same advisory at the same time. Before opening a PR that
+bumps, floors, or overrides a dependency (including an audit fix):
+
+1. Look for an open PR that already touches that package:
+   `gh pr list --state open --search "<package> in:title,body"` and the open
+   `ci/audit-bump` PR (`gh pr list --state open --head ci/audit-bump`).
+2. If one exists, push your fix to that branch or leave it alone. Do not open a
+   second PR for the same package.
+3. Otherwise open one PR that names the package and advisory in its title, so
+   the next agent's search finds it.
 
 ## Production overrides
 

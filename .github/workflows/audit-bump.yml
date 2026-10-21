@@ -1,0 +1,138 @@
+name: 🔐 Audit bump
+
+# Daily production dependency audit on main. Main pushes and PRs that do not
+# touch a package.json or package-lock.json only report npm audit findings
+# (tools/ci/audit-gate.ts), so this workflow is what turns a new advisory into
+# a fix: it runs `npm audit fix` and opens or updates one PR from the
+# ci/audit-bump branch. An open ci/audit-bump PR is reused (force-pushed and
+# its body refreshed), never duplicated. Findings `npm audit fix` cannot
+# resolve (a semver-major fix or a transitive pin) are listed in the PR body
+# and the job summary; those need a documented override or floor
+# (docs/contributing/dependency-overrides.md).
+#
+# Pushes and PRs made with the workflow GITHUB_TOKEN do not trigger
+# pull_request workflows, so the job dispatches ✅ Validate on the branch
+# itself. Deploy only follows main, so that run never deploys.
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.repository == 'kody-hq/kody'
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    name: 🔐 Audit bump PR
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      BUMP_BRANCH: ci/audit-bump
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 📦 Checkout main
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: main
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: 🔍 Audit main
+        id: before
+        run:
+          node tools/ci/audit-gate.ts --mode=report --markdown=audit-before.md
+
+      - name: 🩹 npm audit fix
+        id: fix
+        if: steps.before.outputs.findings != '0'
+        run: |
+          npm audit fix --omit=dev --ignore-scripts --no-fund || true
+          changed="$(git status --porcelain -- package-lock.json npm-shrinkwrap.json ':(glob)**/package.json')"
+          if [ -n "$changed" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$changed"
+
+      - name: 🔍 Audit after fix
+        id: after
+        if: steps.before.outputs.findings != '0'
+        run: node tools/ci/audit-gate.ts --mode=report --markdown=audit-after.md
+
+      - name: 📝 Open or update the audit bump PR
+        if: steps.fix.outputs.changed == 'true'
+        run: |
+          {
+            echo "Automated production dependency audit fix from the scheduled 🔐 Audit bump workflow."
+            echo
+            echo "### Findings on main before the fix"
+            echo
+            cat audit-before.md
+            echo
+            echo "### Still reported after \`npm audit fix\`"
+            echo
+            cat audit-after.md
+            echo
+            echo "Anything still listed needs a documented override or floor (see docs/contributing/dependency-overrides.md). Push that to this branch instead of opening a second dependency PR."
+            echo
+            echo "✅ Validate is dispatched on this branch because GITHUB_TOKEN pushes do not trigger pull_request workflows."
+          } > audit-pr-body.md
+          pr="$(gh pr list --head "$BUMP_BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then
+            # Someone pushed a manual override or floor to the open PR: keep
+            # their work and only refresh the findings in the body.
+            others="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/commits" --paginate --jq '.[].author.login // "unknown"' | grep -v '^github-actions\[bot\]$' || true)"
+            if [ -n "$others" ]; then
+              gh pr edit "$pr" --body-file audit-pr-body.md
+              echo "::notice title=Audit bump::PR #$pr has non-bot commits; left the branch alone and refreshed its body."
+              exit 0
+            fi
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BUMP_BRANCH"
+          git add -A -- package-lock.json ':(glob)**/package.json'
+          git commit -m 'fix(deps): npm audit fix for production advisories'
+          git push --force origin "HEAD:refs/heads/$BUMP_BRANCH"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body-file audit-pr-body.md
+          else
+            gh pr create --base main --head "$BUMP_BRANCH" \
+              --title 'fix(deps): npm audit fix for production advisories' \
+              --body-file audit-pr-body.md
+          fi
+          gh workflow run validate.yml --ref "$BUMP_BRANCH" -f no_cache=false
+
+      - name: 🧾 Summary
+        if: always()
+        run: |
+          {
+            echo "### Production audit on main"
+            echo
+            cat audit-before.md 2>/dev/null || echo "Audit did not run."
+            if [ "${{ steps.before.outputs.findings }}" != "0" ] && [ "${{ steps.fix.outputs.changed }}" != "true" ]; then
+              echo
+              echo "\`npm audit fix\` changed nothing. These findings need a documented override or floor (docs/contributing/dependency-overrides.md)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.before.outputs.findings }}" != "0" ] && [ "${{ steps.fix.outputs.changed }}" != "true" ]; then
+            echo "::warning title=Audit bump::npm audit fix could not resolve the production advisories on main; add a documented override or floor."
+          fi
