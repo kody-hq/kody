@@ -86,7 +86,21 @@ function describeDifferentPackageRuntimeGuidance() {
 export function createSecretScopeUnavailableMessage(
 	matches: Array<SecretScopeUnavailableMatch>,
 ) {
-	const [first, ...rest] = matches
+	if (matches.length === 0) {
+		throw new Error('At least one secret scope match is required.')
+	}
+	// When the same name exists in several packages, lead with the match whose
+	// storage bucket owns this runtime so location + missing-context guidance
+	// describe the same package (not an earlier sorted sibling).
+	const missingContextMatch =
+		matches.find((match) => match.missingPackageContext) ?? null
+	const orderedMatches = missingContextMatch
+		? [
+				missingContextMatch,
+				...matches.filter((match) => match !== missingContextMatch),
+			]
+		: matches
+	const [first, ...rest] = orderedMatches
 	if (!first) {
 		throw new Error('At least one secret scope match is required.')
 	}
@@ -94,9 +108,7 @@ export function createSecretScopeUnavailableMessage(
 		rest.length === 0
 			? ''
 			: ` It also exists in ${rest.map(describeSecretScopeLocation).join(', ')}.`
-	const missingPackageContext =
-		matches.find((match) => match.missingPackageContext)
-			?.missingPackageContext ?? null
+	const missingPackageContext = first.missingPackageContext ?? null
 	if (missingPackageContext) {
 		return `Secret "${first.secretName}" exists in ${describeSecretScopeLocation(first)} and is not visible from this runtime.${extra}${describeMissingPackageContextGuidance(missingPackageContext)}`
 	}

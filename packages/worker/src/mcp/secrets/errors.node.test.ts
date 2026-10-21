@@ -153,3 +153,45 @@ test('package secret scope errors distinguish missing package context from a dif
 		missingPackageContext: true,
 	})
 })
+
+test('missing-context guidance leads with the package that owns this runtime', () => {
+	const message = createSecretScopeUnavailableMessage([
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-aaa',
+			packageName: 'other-gateway',
+			sessionId: null,
+			editorUrl:
+				'https://example.com/@acme/-/secrets/package/pkg-aaa/discordBotToken',
+		},
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-zzz',
+			packageName: 'discord-gateway',
+			sessionId: null,
+			editorUrl: null,
+			missingPackageContext: {
+				kind: 'missing_package_context',
+				runtimeLabel: 'job "nightly"',
+				contextSavedAt: null,
+			},
+		},
+	])
+	expect(message).toContain(
+		'exists in package scope for package "discord-gateway"',
+	)
+	expect(message).toContain('job "nightly"')
+	expect(message).toContain('but its package context is missing')
+	expect(message).toContain(
+		'It also exists in package scope for package "other-gateway"',
+	)
+	expect(parseSecretScopeUnavailableMessage(message)).toEqual({
+		secretName: 'discordBotToken',
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: true,
+	})
+})
