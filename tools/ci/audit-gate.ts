@@ -231,7 +231,7 @@ function main(argv: Array<string> = process.argv.slice(2)) {
 	}
 	if (mode === 'report') {
 		console.log(
-			`audit:prod (report): ${findings.length} production advisory finding(s), reported only. This change does not touch package.json or package-lock.json; the scheduled Audit bump workflow opens the fix PR.`,
+			`audit:prod (report): ${findings.length} production advisory finding(s), reported only. Report mode (a main push, a forced AUDIT_MODE, or no dependency manifest change); the scheduled Audit bump workflow opens the fix PR.`,
 		)
 		return 0
 	}

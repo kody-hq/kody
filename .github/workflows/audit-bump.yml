@@ -138,10 +138,13 @@ jobs:
         if: always()
         env:
           FINDINGS: ${{ steps.before.outputs.findings }}
-          CHANGED: ${{ steps.fix.outputs.changed }}
+          AFTER_FINDINGS: ${{ steps.after.outputs.findings }}
         run: |
+          # Whatever npm audit fix left behind (or everything, when it changed
+          # nothing) still needs an override or floor.
+          remaining="${AFTER_FINDINGS:-$FINDINGS}"
           unresolved=false
-          if [ -n "$FINDINGS" ] && [ "$FINDINGS" != "0" ] && [ "$CHANGED" != "true" ]; then
+          if [ -n "$remaining" ] && [ "$remaining" != "0" ]; then
             unresolved=true
           fi
           {
@@ -150,9 +153,9 @@ jobs:
             cat audit-before.md 2>/dev/null || echo "Audit did not complete; see the Audit main step."
             if [ "$unresolved" = true ]; then
               echo
-              echo "\`npm audit fix\` changed nothing. These findings need a documented override or floor (docs/contributing/dependency-overrides.md)."
+              echo "$remaining finding(s) remain after \`npm audit fix\`. They need a documented override or floor (docs/contributing/dependency-overrides.md)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$unresolved" = true ]; then
-            echo "::warning title=Audit bump::npm audit fix could not resolve the production advisories on main; add a documented override or floor."
+            echo "::warning title=Audit bump::$remaining production advisory finding(s) remain after npm audit fix; add a documented override or floor."
           fi
