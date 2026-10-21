@@ -147,14 +147,12 @@ test('path and query fills are observed as distinct sites', async () => {
 		expect(new URL(expanded.url).pathname).toContain('sk_live')
 		expect(new URL(expanded.url).searchParams.get('q')).toBe('sk_live')
 		await bodyFillDone
+		expect(schedule).toHaveBeenCalledTimes(1)
 		expect(schedule).toHaveBeenCalledWith(
 			expect.objectContaining({
-				wouldBlockParts: ['path'],
-			}),
-		)
-		expect(schedule).toHaveBeenCalledWith(
-			expect.objectContaining({
-				wouldBlockParts: ['query'],
+				credentialId: 'cred-apiKey',
+				filledParts: ['headers'],
+				wouldBlockParts: ['path', 'query'],
 			}),
 		)
 	} finally {

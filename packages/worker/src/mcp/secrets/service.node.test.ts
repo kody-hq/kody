@@ -118,7 +118,9 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: { headers: true },
-		placementOrigin: expect.anything(),
+		// Session/user inserts omit placementOriginOnInsert → null (not
+		// default_undeclared; that mark is only for package undeclared needs).
+		placementOrigin: null,
 	}
 	await expect(
 		resolveSecret({ env, userId, name, storageContext }),
