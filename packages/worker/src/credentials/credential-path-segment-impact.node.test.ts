@@ -245,6 +245,7 @@ test('analyzeCredentialPathSegmentImpact counts path fills whose values encode r
 	expect(report.packagesWithPathPlacement).toBe(2)
 	expect(report.packagesWithRoutingChars).toBe(1)
 	expect(report.credentialsWithRoutingChars).toBe(1)
+	expect(report.undecryptableCredentials).toBe(0)
 	expect(report.packages).toEqual([
 		{
 			packageId: 'pkg-webhook',
@@ -315,6 +316,7 @@ test('analyzeCredentialPathSegmentImpact counts other-org package Keys on path f
 	const report = await analyzeCredentialPathSegmentImpact({ env, runId })
 	expect(report.packagesWithRoutingChars).toBe(1)
 	expect(report.credentialsWithRoutingChars).toBe(1)
+	expect(report.undecryptableCredentials).toBe(0)
 	expect(report.packages).toEqual([
 		{
 			packageId: 'pkg-shared',
@@ -325,6 +327,125 @@ test('analyzeCredentialPathSegmentImpact counts other-org package Keys on path f
 			credentialNames: ['sharedWebhookPath'],
 		},
 	])
+})
+
+test('analyzeCredentialPathSegmentImpact continues when a path Key will not decrypt', async () => {
+	const runId = 'run-undecryptable'
+	const env = {
+		APP_DB: {
+			prepare(query: string) {
+				const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+				return {
+					bind(...params: Array<unknown>) {
+						return {
+							async first() {
+								if (normalized.includes('from credential_inventory_runs')) {
+									return {
+										id: runId,
+										status: 'complete',
+										cursor: null,
+									}
+								}
+								if (
+									normalized.includes('from secret_entries') &&
+									normalized.includes('e.id = ?')
+								) {
+									return {
+										id: String(params[0]),
+										name: 'brokenPath',
+										encrypted_value: 'v2.not-valid.ciphertext',
+										user_id: ownerId,
+									}
+								}
+								return null
+							},
+							async all() {
+								if (
+									normalized.includes('from credential_inventory_items') &&
+									normalized.includes("status = 'scanned'")
+								) {
+									return {
+										results: [
+											{
+												package_id: 'pkg-broken',
+												user_id: ownerId,
+												status: 'scanned',
+												result_json: JSON.stringify({
+													placeholders: {
+														secret: 1,
+														'secret-basic': 0,
+														'integration-token': 0,
+														vault: 0,
+														computed: 0,
+													},
+													unparsedModules: 0,
+													references: [
+														{
+															table: 'secret',
+															credentialIds: ['cred-broken'],
+															scope: null,
+															placement: { type: 'path' },
+														},
+													],
+													slots: [],
+												}),
+											},
+										],
+									}
+								}
+								if (normalized.includes('from credential_inventory_items')) {
+									return {
+										results: [
+											{
+												package_id: 'pkg-broken',
+												status: 'scanned',
+												result_json: JSON.stringify({
+													placeholders: {
+														secret: 1,
+														'secret-basic': 0,
+														'integration-token': 0,
+														vault: 0,
+														computed: 0,
+													},
+													unparsedModules: 0,
+													references: [
+														{
+															table: 'secret',
+															credentialIds: ['cred-broken'],
+															scope: null,
+															placement: { type: 'path' },
+														},
+													],
+													slots: [],
+												}),
+											},
+										],
+									}
+								}
+								if (normalized.includes('from saved_packages')) {
+									return { results: [] }
+								}
+								if (
+									normalized.includes('from users') &&
+									normalized.includes('deleted_at is null')
+								) {
+									return { results: [] }
+								}
+								return { results: [] }
+							},
+						}
+					},
+				}
+			},
+		} as unknown as D1Database,
+		SECRET_STORE_KEY: secretStoreKey,
+	}
+
+	const report = await analyzeCredentialPathSegmentImpact({ env, runId })
+	expect(report.packagesWithPathPlacement).toBe(1)
+	expect(report.packagesWithRoutingChars).toBe(0)
+	expect(report.undecryptableCredentials).toBe(1)
+	expect(report.packages).toEqual([])
 })
 
 test('analyzeCredentialPathSegmentImpact refuses an incomplete inventory run', async () => {

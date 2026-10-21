@@ -48,6 +48,8 @@ export type PathSegmentImpactReport = {
 	packagesWithRoutingChars: number
 	/** Distinct credentials (by id) in those packages. */
 	credentialsWithRoutingChars: number
+	/** Path credentials that could not be decrypted (excluded from routing counts). */
+	undecryptableCredentials: number
 	/**
 	 * Affected packages for private outreach decisions. Admin-only; do not
 	 * paste into public PR/issue/commit text.
@@ -207,6 +209,7 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 	const affectedByPackage = new Map<string, Map<string, string>>()
 	/** credentialId → credential name when routing chars encode, else null. */
 	const routingNameByCredential = new Map<string, string | null>()
+	const undecryptableCredentialIds = new Set<string>()
 
 	for (const item of items) {
 		if (!item.result) continue
@@ -227,14 +230,19 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 					) {
 						credentialName = null
 					} else {
-						const value = await decryptSecretValue(
-							input.env,
-							entry.encrypted_value,
-							userSecretContext(entry.ownerId),
-						)
-						credentialName = credentialValueHasPathRoutingCharacters(value)
-							? entry.name
-							: null
+						try {
+							const value = await decryptSecretValue(
+								input.env,
+								entry.encrypted_value,
+								userSecretContext(entry.ownerId),
+							)
+							credentialName = credentialValueHasPathRoutingCharacters(value)
+								? entry.name
+								: null
+						} catch {
+							undecryptableCredentialIds.add(credentialId)
+							credentialName = null
+						}
 					}
 					routingNameByCredential.set(credentialId, credentialName)
 				}
@@ -296,6 +304,7 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 		packagesWithPathPlacement: packagesWithPath.size,
 		packagesWithRoutingChars: packages.length,
 		credentialsWithRoutingChars: credentialIds.size,
+		undecryptableCredentials: undecryptableCredentialIds.size,
 		packages,
 	}
 }

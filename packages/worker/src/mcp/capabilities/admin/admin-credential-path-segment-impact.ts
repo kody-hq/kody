@@ -34,6 +34,13 @@ const outputSchema = z.object({
 	packagesWithPathPlacement: z.number().int().nonnegative(),
 	packagesWithRoutingChars: z.number().int().nonnegative(),
 	credentialsWithRoutingChars: z.number().int().nonnegative(),
+	undecryptableCredentials: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'Path credentials that could not be decrypted; excluded from routing-char counts.',
+		),
 	packages: z
 		.array(packageSchema)
 		.describe(

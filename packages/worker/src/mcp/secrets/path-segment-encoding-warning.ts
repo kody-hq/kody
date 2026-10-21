@@ -56,18 +56,32 @@ export function buildPathSegmentEncodingWarning(
 /**
  * On a 4xx, attach a warning header for each path-encoded credential name.
  * Multiple names join with ` | ` so one header stays agent-readable.
+ * Always strips any upstream copy of the header so only the gateway sets it.
  */
 export function withPathSegmentEncodingWarning(
 	response: Response,
 	credentialNames: ReadonlyArray<string>,
 ) {
-	if (credentialNames.length === 0) return response
-	if (response.status < 400 || response.status > 499) return response
-	const warning = credentialNames
-		.map((name) => buildPathSegmentEncodingWarning(name, response.status))
-		.join(' | ')
+	const shouldWarn =
+		credentialNames.length > 0 &&
+		response.status >= 400 &&
+		response.status <= 499
+	if (
+		!shouldWarn &&
+		!response.headers.has(pathSegmentEncodingWarningHeaderName)
+	) {
+		return response
+	}
 	const headers = new Headers(response.headers)
-	headers.set(pathSegmentEncodingWarningHeaderName, warning)
+	headers.delete(pathSegmentEncodingWarningHeaderName)
+	if (shouldWarn) {
+		headers.set(
+			pathSegmentEncodingWarningHeaderName,
+			credentialNames
+				.map((name) => buildPathSegmentEncodingWarning(name, response.status))
+				.join(' | '),
+		)
+	}
 	return withLanding(
 		new Response(response.body, {
 			status: response.status,

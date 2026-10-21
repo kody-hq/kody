@@ -63,3 +63,29 @@ test('withPathSegmentEncodingWarning attaches the header only on 4xx', async () 
 	)
 	expect(await failed.text()).toBe('gone')
 })
+
+test('withPathSegmentEncodingWarning strips upstream copies of the header', () => {
+	const spoofedOk = withPathSegmentEncodingWarning(
+		new Response('ok', {
+			status: 200,
+			headers: {
+				[pathSegmentEncodingWarningHeaderName]: 'spoofed',
+			},
+		}),
+		['webhookPath'],
+	)
+	expect(spoofedOk.headers.get(pathSegmentEncodingWarningHeaderName)).toBeNull()
+
+	const spoofedEmpty = withPathSegmentEncodingWarning(
+		new Response('gone', {
+			status: 404,
+			headers: {
+				[pathSegmentEncodingWarningHeaderName]: 'spoofed',
+			},
+		}),
+		[],
+	)
+	expect(
+		spoofedEmpty.headers.get(pathSegmentEncodingWarningHeaderName),
+	).toBeNull()
+})
