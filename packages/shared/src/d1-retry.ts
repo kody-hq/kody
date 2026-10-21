@@ -61,6 +61,27 @@ export const d1DbOverloadedTooManyQueuedMessage =
 const d1InternalErrorReferencePattern =
 	/^internal error(?: (?:in|while starting up) (?:D1 DB|Durable Object) storage caused object to be reset)?;\s*reference\s*=\s*[A-Za-z0-9_-]+$/i
 
+/**
+ * Exact Durable Object platform-reset sentences D1 can surface under optional
+ * `Error:` / `D1_ERROR:` prefixes (KODY-A9 — D1 is DO-backed; a deploy of the
+ * backing isolate yields `D1_ERROR: Durable Object reset because its code was
+ * updated.`). Same family as the worker Sentry / DO-reset-retry matchers:
+ * code-updated, blockConcurrencyWhile / storage-op timeouts, instance-inactive
+ * RPC close, and isolate memory/CPU / SQLITE_NOMEM resource-limit resets.
+ * Match only these bare platform strings so wrappers that embed the sentence
+ * stay non-retryable and Sentry-visible. Trailing periods are optional via
+ * {@link isExactD1PlatformMessage}.
+ */
+const d1DurableObjectPlatformResetMessages = [
+	'Durable Object reset because its code was updated',
+	'A call to blockConcurrencyWhile() in a Durable Object waited for too long. The call was canceled and the Durable Object was reset',
+	'Durable Object storage operation exceeded timeout which caused object to be reset',
+	'Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request',
+	"Durable Object's isolate exceeded its memory limit and was reset",
+	'Durable Object exceeded its CPU time limit and was reset',
+	'out of memory: SQLITE_NOMEM',
+] as const
+
 function stripD1ErrorPrefixes(message: string) {
 	return message
 		.trim()
@@ -86,6 +107,12 @@ function isD1DbOverloadedMessage(message: string) {
 
 function isD1InternalErrorMessage(message: string) {
 	return d1InternalErrorReferencePattern.test(stripD1ErrorPrefixes(message))
+}
+
+function isD1DurableObjectPlatformResetMessage(message: string) {
+	return d1DurableObjectPlatformResetMessages.some((expected) =>
+		isExactD1PlatformMessage(message, expected),
+	)
 }
 
 /**
@@ -119,7 +146,8 @@ export function isBareRetryableD1LockMessage(message: string) {
 		isD1BareLongRunningExportMessage(message) ||
 		isD1NetworkConnectionLostMessage(message) ||
 		isD1DbOverloadedMessage(message) ||
-		isD1InternalErrorMessage(message)
+		isD1InternalErrorMessage(message) ||
+		isD1DurableObjectPlatformResetMessage(message)
 	)
 }
 
@@ -130,7 +158,8 @@ export function isRetryableD1LockMessage(message: string) {
 		message.includes(d1LongRunningExportMessage) ||
 		isD1NetworkConnectionLostMessage(message) ||
 		isD1DbOverloadedMessage(message) ||
-		isD1InternalErrorMessage(message)
+		isD1InternalErrorMessage(message) ||
+		isD1DurableObjectPlatformResetMessage(message)
 	)
 }
 
@@ -180,10 +209,12 @@ function withAttemptTimeout<T>(
  * Cloudflare's "Currently processing a long-running export" (DR / REST
  * exports block other requests), binding "Network connection lost"
  * transport blips, "D1 DB is overloaded. Requests queued for too long" /
- * "D1 DB is overloaded. Too many requests queued" capacity blips, and opaque
+ * "D1 DB is overloaded. Too many requests queued" capacity blips, opaque
  * D1 "internal error …; reference = …" platform faults (including D1 DB and
  * Durable Object storage object-reset, with either `in` or `while starting up`
- * phrasing). D1 does not automatically retry write queries, so cron lanes and
+ * phrasing), and D1-prefixed Durable Object platform-reset sentences such as
+ * "Durable Object reset because its code was updated" (KODY-A9 — D1 is
+ * DO-backed). D1 does not automatically retry write queries, so cron lanes and
  * long-running retention batches need application-level backoff when they
  * overlap with concurrent writers, an in-flight export, a brief D1 session
  * drop, a D1 capacity spike, or a D1 backend blip.

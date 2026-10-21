@@ -100,6 +100,28 @@ test('runD1WithRetry matches lock errors, retries them, and rethrows other failu
 			true,
 			false,
 		],
+		// KODY-A9: D1 can surface DO isolate platform-resets under D1_ERROR:.
+		[
+			'D1_ERROR: Durable Object reset because its code was updated.',
+			true,
+			true,
+		],
+		[
+			'Error: D1_ERROR: Durable Object reset because its code was updated.',
+			true,
+			false,
+		],
+		['Durable Object reset because its code was updated', true, false],
+		[
+			'D1_ERROR: Durable Object storage operation exceeded timeout which caused object to be reset.',
+			true,
+			true,
+		],
+		[
+			'D1_ERROR: Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request.',
+			true,
+			false,
+		],
 		['Network connection lost while uploading...', false, true],
 		['queue is overloaded while uploading...', false, true],
 		['internal error', false, false],
@@ -129,6 +151,12 @@ test('runD1WithRetry matches lock errors, retries them, and rethrows other failu
 		['Internal error while starting up the package executor', false, false],
 		[
 			'serveMcp could not recover after retries: Internal error while starting up Durable Object storage caused object to be reset; reference = 9k2mnpq7rstuvwxyzabcdefg',
+			false,
+			true,
+		],
+		// KODY-A9: wrappers that embed the code-updated sentence stay non-retryable.
+		[
+			'serveMcp could not recover after retries: D1_ERROR: Durable Object reset because its code was updated.',
 			false,
 			true,
 		],
@@ -203,6 +231,8 @@ test('runD1WithRetry retries hung attempts when attemptTimeoutMs is set', async 
 })
 
 test('isBareRetryableD1LockMessage rejects wrappers that embed lock or export text', () => {
+	const d1CodeUpdatedReset =
+		'D1_ERROR: Durable Object reset because its code was updated.'
 	expect(isBareRetryableD1LockMessage(d1SqliteBusy)).toBe(true)
 	expect(isBareRetryableD1LockMessage('D1_ERROR: database is locked')).toBe(
 		true,
@@ -218,6 +248,11 @@ test('isBareRetryableD1LockMessage rejects wrappers that embed lock or export te
 		),
 	).toBe(true)
 	expect(isBareRetryableD1LockMessage(d1StartupReset)).toBe(true)
+	// KODY-A9: bare D1-prefixed DO code-updated reset matches; wrappers do not.
+	expect(isBareRetryableD1LockMessage(d1CodeUpdatedReset)).toBe(true)
+	expect(isBareRetryableD1LockMessage(`Error: ${d1CodeUpdatedReset}`)).toBe(
+		true,
+	)
 	// Substring retry matcher still accepts embedded text; bare Sentry matcher must not.
 	const d1SqliteBusyExtended =
 		'D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY (extended: SQLITE_BUSY_SNAPSHOT)'
@@ -237,6 +272,14 @@ test('isBareRetryableD1LockMessage rejects wrappers that embed lock or export te
 		isBareRetryableD1LockMessage(
 			`serveMcp could not recover after retries: ${d1SqliteBusy}`,
 		),
+	).toBe(false)
+	expect(
+		isBareRetryableD1LockMessage(
+			`serveMcp could not recover after retries: ${d1CodeUpdatedReset}`,
+		),
+	).toBe(false)
+	expect(
+		isBareRetryableD1LockMessage(rebuildFailureWrapper(d1CodeUpdatedReset)),
 	).toBe(false)
 })
 
