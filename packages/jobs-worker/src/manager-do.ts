@@ -11,7 +11,10 @@ import {
 import { type JobRepoCheckPolicy } from '@kody-internal/shared/jobs/types.ts'
 import { DurableObject } from 'cloudflare:workers'
 import { type JobsWorkerEnv } from './env.ts'
-import { tryRearmAlarmForRetryableD1Failure } from './manager-alarm-deferral.ts'
+import {
+	tryRearmAlarmForRetryableD1Failure,
+	trySettleHungRunDueJobsFailure,
+} from './manager-alarm-deferral.ts'
 import { buildSentryOptions } from './sentry-options.ts'
 import { getNextRunnableJob } from './store.ts'
 
@@ -232,7 +235,21 @@ export class JobManagerBase extends DurableObject<JobsWorkerEnv> {
 			) {
 				return
 			}
-			throw error
+			if (
+				await trySettleHungRunDueJobsFailure({
+					settleHungDueJobsForUser: (args) =>
+						this.env.HOST.settleHungDueJobsForUser(args),
+					userId,
+					error,
+					retryCount: alarmInfo?.retryCount,
+					isRetry: alarmInfo?.isRetry,
+				})
+			) {
+				// Fall through to syncAlarm so the next wake is armed; do not
+				// rethrow or Cloudflare will retry the same hung alarm.
+			} else {
+				throw error
+			}
 		}
 		try {
 			await this.syncAlarm({ userId, source: 'alarm' })

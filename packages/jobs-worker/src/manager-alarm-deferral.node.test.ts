@@ -3,7 +3,11 @@ import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies
 import {
 	jobD1UnavailableRearmDelayMs,
 	tryRearmAlarmForRetryableD1Failure,
+	trySettleHungRunDueJobsFailure,
 } from './manager-alarm-deferral.ts'
+
+const workersHungRequestMessage =
+	"The Workers runtime canceled this request because it detected that your Worker's code had hung and would never generate a response. Refer to: https://developers.cloudflare.com/workers/observability/errors/"
 
 type JobManagerAlarmHarness = {
 	ctx: {
@@ -21,6 +25,10 @@ type JobManagerAlarmHarness = {
 				dueJobCount: number
 				successCount: number
 				errorCount: number
+				jobOutcomes: Array<unknown>
+			}>
+			settleHungDueJobsForUser: (input: { userId: string }) => Promise<{
+				settledCount: number
 				jobOutcomes: Array<unknown>
 			}>
 		}
@@ -94,6 +102,7 @@ test('JobManager alarm defers retryable D1 failures without rethrowing', async (
 		.mockRejectedValue(
 			new Error('D1_ERROR: Currently processing a long-running export.'),
 		)
+	const settleHungDueJobsForUser = vi.fn()
 	const syncAlarm = vi.fn()
 
 	const state = {
@@ -109,7 +118,7 @@ test('JobManager alarm defers retryable D1 failures without rethrowing', async (
 		state: unknown,
 		env: unknown,
 	) => JobManagerAlarmHarness)(state, {
-		HOST: { runDueJobsForUser },
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
 	})
 	manager.syncAlarm = syncAlarm
 
@@ -117,6 +126,7 @@ test('JobManager alarm defers retryable D1 failures without rethrowing', async (
 		manager.alarm({ retryCount: 3, isRetry: true }),
 	).resolves.toBeUndefined()
 	expect(runDueJobsForUser).toHaveBeenCalledWith({ userId: 'user-1' })
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
 	expect(setAlarm).toHaveBeenCalledTimes(1)
 	const armedAt = setAlarm.mock.calls[0]?.[0]
 	expect(typeof armedAt).toBe('number')
@@ -138,6 +148,7 @@ test('JobManager alarm still rethrows non-retryable runDueJobs failures', async 
 	const runDueJobsForUser = vi
 		.fn()
 		.mockRejectedValue(new Error('permanent job host failure'))
+	const settleHungDueJobsForUser = vi.fn()
 
 	const state = {
 		blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
@@ -152,10 +163,81 @@ test('JobManager alarm still rethrows non-retryable runDueJobs failures', async 
 		state: unknown,
 		env: unknown,
 	) => JobManagerAlarmHarness)(state, {
-		HOST: { runDueJobsForUser },
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
 	})
 
 	await expect(manager.alarm()).rejects.toThrow('permanent job host failure')
+	expect(setAlarm).not.toHaveBeenCalled()
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+})
+
+test('trySettleHungRunDueJobsFailure settles claimed jobs and ignores other errors', async () => {
+	const settleHungDueJobsForUser = vi
+		.fn()
+		.mockResolvedValue({ settledCount: 2, jobOutcomes: [] })
+	expect(
+		await trySettleHungRunDueJobsFailure({
+			settleHungDueJobsForUser,
+			userId: 'user-1',
+			error: new Error(workersHungRequestMessage),
+			retryCount: 0,
+			isRetry: false,
+		}),
+	).toBe(true)
+	expect(settleHungDueJobsForUser).toHaveBeenCalledWith({ userId: 'user-1' })
+
+	settleHungDueJobsForUser.mockClear()
+	expect(
+		await trySettleHungRunDueJobsFailure({
+			settleHungDueJobsForUser,
+			userId: 'user-1',
+			error: new Error('permanent job host failure'),
+		}),
+	).toBe(false)
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+})
+
+test('JobManager alarm settles hung HOST cancellations without rethrowing', async () => {
+	silenceExpectedConsoleErrors(['job-scheduler'])
+	const { JobManagerBase } = await import('./manager-do.ts')
+
+	const setAlarm = vi.fn(async (_atMs: number) => undefined)
+	const storageGet = vi.fn(async (key: string) =>
+		key === 'user-id' ? 'user-1' : undefined,
+	)
+	const runDueJobsForUser = vi
+		.fn()
+		.mockRejectedValue(new Error(workersHungRequestMessage))
+	const settleHungDueJobsForUser = vi.fn().mockResolvedValue({
+		settledCount: 1,
+		jobOutcomes: [],
+	})
+	const syncAlarm = vi.fn().mockResolvedValue({
+		ok: true,
+		userId: 'user-1',
+		nextRunAt: null,
+	})
+
+	const state = {
+		blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
+		storage: {
+			get: storageGet,
+			getAlarm: vi.fn(async () => null),
+			setAlarm,
+			deleteAlarm: vi.fn(async () => undefined),
+		},
+	}
+	const manager = new (JobManagerBase as unknown as new (
+		state: unknown,
+		env: unknown,
+	) => JobManagerAlarmHarness)(state, {
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
+	})
+	manager.syncAlarm = syncAlarm
+
+	await expect(manager.alarm()).resolves.toBeUndefined()
+	expect(settleHungDueJobsForUser).toHaveBeenCalledWith({ userId: 'user-1' })
+	expect(syncAlarm).toHaveBeenCalledWith({ userId: 'user-1', source: 'alarm' })
 	expect(setAlarm).not.toHaveBeenCalled()
 })
 
@@ -173,6 +255,7 @@ test('JobManager alarm defers retryable D1 failures from syncAlarm', async () =>
 		errorCount: 0,
 		jobOutcomes: [],
 	})
+	const settleHungDueJobsForUser = vi.fn()
 	const syncAlarm = vi
 		.fn()
 		.mockRejectedValue(
@@ -192,11 +275,12 @@ test('JobManager alarm defers retryable D1 failures from syncAlarm', async () =>
 		state: unknown,
 		env: unknown,
 	) => JobManagerAlarmHarness)(state, {
-		HOST: { runDueJobsForUser },
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
 	})
 	manager.syncAlarm = syncAlarm
 
 	await expect(manager.alarm()).resolves.toBeUndefined()
 	expect(syncAlarm).toHaveBeenCalledWith({ userId: 'user-1', source: 'alarm' })
 	expect(setAlarm).toHaveBeenCalledTimes(1)
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
 })

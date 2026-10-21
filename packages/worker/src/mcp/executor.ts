@@ -8,6 +8,7 @@ import {
 	getErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
+import { isWorkersHungRequestCanceledError } from '@kody-internal/shared/workers-hung-request.ts'
 import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { exports as workerExports } from 'cloudflare:workers'
 import { loadNormalizeCode } from '#worker/codemode-normalize-load.ts'
@@ -129,6 +130,13 @@ export const defaultExecutionResponseLimitBytes = 102_400
 const maxSupportedExecutorTimeoutMs = 2_147_483_647
 const dynamicWorkerMainModule = 'executor.js'
 const hostEvaluationDrainGraceMs = 100
+/**
+ * Cloudflare hang-detects requests that only wait on timers once a dynamic
+ * worker's event loop is empty (~15–25s observed). `scheduler.wait` is real
+ * I/O on Workers and keeps the host deadline alive until evaluate settles or
+ * the sandbox budget fires. Interval stays well under that hung window.
+ */
+const hostEvaluationKeepAliveIntervalMs = 5_000
 const reservedProviderNames = new Set([
 	'__dispatchers',
 	'__invocation',
@@ -348,6 +356,55 @@ function throwIfEvaluationDeadlineAborted(signal?: AbortSignal) {
 	throw new Error(executorSandboxTimeoutMessage)
 }
 
+async function waitHostEvaluationKeepAliveMs(ms: number) {
+	if (
+		typeof scheduler !== 'undefined' &&
+		typeof scheduler.wait === 'function'
+	) {
+		await scheduler.wait(ms)
+		return
+	}
+	await new Promise<void>((resolve) => {
+		setTimeout(resolve, ms)
+	})
+}
+
+/**
+ * Abortable delay so a settled evaluate/timeout can stop the keepalive loop
+ * without waiting out the full interval (important for short test budgets).
+ */
+async function waitHostEvaluationKeepAliveInterval(
+	ms: number,
+	signal: AbortSignal,
+) {
+	if (signal.aborted) {
+		throw new DOMException('The operation was aborted.', 'AbortError')
+	}
+	await Promise.race([
+		waitHostEvaluationKeepAliveMs(ms),
+		new Promise<never>((_resolve, reject) => {
+			const onAbort = () => {
+				reject(new DOMException('The operation was aborted.', 'AbortError'))
+			}
+			signal.addEventListener('abort', onAbort, { once: true })
+			if (signal.aborted) onAbort()
+		}),
+	])
+}
+
+async function keepHostEvaluationRequestAlive(signal: AbortSignal) {
+	while (!signal.aborted) {
+		try {
+			await waitHostEvaluationKeepAliveInterval(
+				hostEvaluationKeepAliveIntervalMs,
+				signal,
+			)
+		} catch {
+			return
+		}
+	}
+}
+
 /**
  * Host-side deadline around Worker Loader `evaluate` (and its permit wait).
  * The sandbox also races an internal timer, but that only helps once the
@@ -357,6 +414,12 @@ function throwIfEvaluationDeadlineAborted(signal?: AbortSignal) {
  *
  * The AbortSignal is shared with the permit queue so a timed-out waiter is
  * removed and cannot start `evaluate` after `execute` has already returned.
+ *
+ * A parallel `scheduler.wait` keepalive keeps the host IoContext alive when
+ * the dynamic worker awaits a never-settling Promise with an empty event
+ * loop. Without it, Cloudflare hang-detects the host (~20s) before this
+ * deadline can fire, cancels JobManager's HOST RPC, and leaves the scheduled
+ * run stranded as `running` (KODY-AB).
  */
 export async function raceWithHostEvaluationDeadline<T>(
 	evaluate: (signal: AbortSignal) => Promise<T>,
@@ -370,6 +433,7 @@ export async function raceWithHostEvaluationDeadline<T>(
 		return await evaluate(new AbortController().signal)
 	}
 	const controller = new AbortController()
+	const keepaliveController = new AbortController()
 	let timeoutId: ReturnType<typeof setTimeout> | undefined
 	let rejectDeadline: ((error: Error) => void) | undefined
 	const abortWith = (error: Error) => {
@@ -412,6 +476,9 @@ export async function raceWithHostEvaluationDeadline<T>(
 	const evaluationPromise = Promise.resolve().then(
 		async () => await evaluate(controller.signal),
 	)
+	const keepalivePromise = keepHostEvaluationRequestAlive(
+		keepaliveController.signal,
+	)
 	try {
 		return await Promise.race([evaluationPromise, timeoutPromise])
 	} catch (error) {
@@ -426,6 +493,8 @@ export async function raceWithHostEvaluationDeadline<T>(
 		}
 		throw error
 	} finally {
+		keepaliveController.abort()
+		await settleWithin(keepalivePromise, hostEvaluationDrainGraceMs)
 		if (timeoutId !== undefined) {
 			clearTimeout(timeoutId)
 		}
@@ -840,6 +909,20 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 								result: undefined,
 								error: drainedResponse?.error ?? message,
 								logs: drainedResponse?.logs ?? [],
+							},
+							sideEffects,
+						)
+					}
+					if (isWorkersHungRequestCanceledError(error)) {
+						// Dynamic-worker empty-event-loop hangs surface as this
+						// platform cancel. Prefer a job-owner-readable outcome over
+						// rethrowing (which aborts JobManager before claim settle).
+						outcome = 'error'
+						return attachHostSideEffects(
+							{
+								result: undefined,
+								error: message,
+								logs: [],
 							},
 							sideEffects,
 						)

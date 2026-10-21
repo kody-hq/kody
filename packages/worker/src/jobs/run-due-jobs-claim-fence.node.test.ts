@@ -20,6 +20,7 @@ const disableExpiredJobRowsForUser = vi.fn<
 	typeof JobsRepo.disableExpiredJobRowsForUser
 >(async () => 0)
 const listDueJobRows = vi.fn()
+const listJobRowsByUserId = vi.fn()
 const claimJobRow = vi.fn()
 const finalizeClaimedJobRow = vi.fn()
 const retryClaimedJobRow = vi.fn()
@@ -27,6 +28,9 @@ const renewClaimedJobRow = vi.fn()
 const claimRunRecord = vi.fn()
 const upsertJobRunObservability = vi.fn()
 const getJobRunObservability = vi.fn()
+const finishRunRecord = vi.fn<typeof RunRecordsServiceModule.finishRunRecord>()
+const getRunRecordByIdempotencyKey =
+	vi.fn<typeof RunRecordsServiceModule.getRunRecordByIdempotencyKey>()
 const getEntitySourceByIdForUser = vi.fn()
 const getSavedPackageById = vi.fn()
 
@@ -70,6 +74,8 @@ vi.mock('@kody-internal/shared/jobs/repo.ts', async (importOriginal) => {
 			retryClaimedJobRow(...(args as [never])),
 		renewClaimedJobRow: (...args: Array<unknown>) =>
 			renewClaimedJobRow(...(args as [never])),
+		listJobRowsByUserId: (...args: Array<unknown>) =>
+			listJobRowsByUserId(...(args as [never])),
 	}
 })
 
@@ -84,8 +90,15 @@ vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
 		getJobRunObservability: (...args: Array<unknown>) =>
 			getJobRunObservability(...(args as [never])),
 		abandonRunRecord: vi.fn(),
-		finishRunRecord: vi.fn(),
+		finishRunRecord: (
+			...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
+		) => finishRunRecord(...args),
 		getRunRecord: vi.fn(),
+		getRunRecordByIdempotencyKey: (
+			...args: Parameters<
+				typeof RunRecordsServiceModule.getRunRecordByIdempotencyKey
+			>
+		) => getRunRecordByIdempotencyKey(...args),
 	}
 })
 
@@ -107,7 +120,13 @@ vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => {
 	}
 })
 
-const { runDueJobsForUser } = await import('./service.ts')
+const { runDueJobsForUser, settleHungDueJobsForUser } =
+	await import('./service.ts')
+const { scheduledJobHungExecutionMessage } =
+	await import('@kody-internal/shared/workers-hung-request.ts')
+
+const workersHungRequestMessage =
+	"The Workers runtime canceled this request because it detected that your Worker's code had hung and would never generate a response. Refer to: https://developers.cloudflare.com/workers/observability/errors/"
 
 function createJobRecord(overrides: Partial<JobRecord> = {}): JobRecord {
 	return {
@@ -673,4 +692,129 @@ test('each further enablement run renews the shared claim and stops once it is l
 	await runDue(record.userId)
 	expect(renewClaimedJobRow).toHaveBeenCalledOnce()
 	expect(claimRunRecord).toHaveBeenCalledOnce()
+})
+
+test('a hung Workers cancellation settles the claimed job as a visible failure', async () => {
+	const record = createJobRecord({
+		id: 'package-job:pkg-fenced:hung-job',
+	})
+	seedDueClaim(record)
+	finalizeClaimedJobRow.mockReset()
+	finalizeClaimedJobRow.mockResolvedValue(true)
+	finishRunRecord.mockReset()
+	finishRunRecord.mockResolvedValue(true)
+	upsertJobRunObservability.mockClear()
+	upsertJobRunObservability.mockResolvedValue({
+		jobId: record.id,
+		lastRunAt: record.nextRunAt,
+		lastRunStatus: 'error',
+		lastRunError: scheduledJobHungExecutionMessage,
+		lastDurationMs: 0,
+		runCount: 1,
+		successCount: 0,
+		errorCount: 1,
+		updatedAt: now.toISOString(),
+	})
+	getRunRecordByIdempotencyKey.mockReset()
+	getRunRecordByIdempotencyKey.mockResolvedValueOnce({
+		id: 'run-hung',
+		surface: 'job',
+		status: 'running',
+		name: record.name,
+		packageId: null,
+		kodyId: null,
+		sourceId: record.sourceId,
+		publishedCommit: null,
+		storageId: record.storageId,
+		jobId: record.id,
+		workflowId: null,
+		invocationId: null,
+		sessionId: null,
+		idempotencyKey: `scheduled-job:${record.id}:${record.nextRunAt}`,
+		parentRunId: null,
+		startedAt: now.toISOString(),
+		finishedAt: null,
+		durationMs: null,
+		errorName: null,
+		errorMessage: null,
+		errorTriage: null,
+		triageNote: null,
+		triagedAt: null,
+		triagedBy: null,
+		metadata: { scheduledFor: record.nextRunAt },
+		logCount: 0,
+	})
+	getEntitySourceByIdForUser.mockRejectedValueOnce(
+		new Error(workersHungRequestMessage),
+	)
+
+	await expect(runDue(record.userId)).resolves.toEqual({
+		dueJobCount: 1,
+		successCount: 0,
+		errorCount: 1,
+		jobOutcomes: [
+			{
+				jobId: record.id,
+				scheduleType: 'interval',
+				outcome: 'failure',
+				nextRunAt: '2026-07-30T20:00:00.000Z',
+				deleted: false,
+				error: scheduledJobHungExecutionMessage,
+			},
+		],
+	})
+	expect(finishRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			status: 'error',
+			error: scheduledJobHungExecutionMessage,
+		}),
+	)
+	expect(upsertJobRunObservability).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: expect.objectContaining({
+				jobId: record.id,
+				status: 'error',
+				error: scheduledJobHungExecutionMessage,
+			}),
+		}),
+	)
+	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
+	expect(retryClaimedJobRow).not.toHaveBeenCalled()
+})
+
+test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST cancel', async () => {
+	const record = createJobRecord({
+		id: 'package-job:pkg-fenced:settle-hung',
+	})
+	const row = claimedRow(record)
+	listJobRowsByUserId.mockResolvedValueOnce([row])
+	finalizeClaimedJobRow.mockReset()
+	finalizeClaimedJobRow.mockResolvedValue(true)
+	finishRunRecord.mockReset()
+	finishRunRecord.mockResolvedValue(true)
+	upsertJobRunObservability.mockClear()
+	upsertJobRunObservability.mockResolvedValue(null)
+	getRunRecordByIdempotencyKey.mockReset()
+	getRunRecordByIdempotencyKey.mockResolvedValueOnce(null)
+
+	await expect(
+		settleHungDueJobsForUser({
+			env: { APP_DB: {} } as Env,
+			userId: record.userId,
+			now,
+		}),
+	).resolves.toEqual({
+		settledCount: 1,
+		jobOutcomes: [
+			{
+				jobId: record.id,
+				scheduleType: 'interval',
+				outcome: 'failure',
+				nextRunAt: '2026-07-30T20:00:00.000Z',
+				deleted: false,
+				error: scheduledJobHungExecutionMessage,
+			},
+		],
+	})
+	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
 })

@@ -4,12 +4,17 @@ import {
 	type JobsHostContract,
 	type RunDueJobsResult,
 	type RunJobNowResult,
+	type SettleHungDueJobsResult,
 } from '@kody-internal/shared/jobs/rpc.ts'
 import { type ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { runScheduledLaneWithFailureIsolation } from '#worker/scheduled/scheduled-lanes.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
-import { runDueJobsForUser, runJobNow } from './service.ts'
+import {
+	runDueJobsForUser,
+	runJobNow,
+	settleHungDueJobsForUser,
+} from './service.ts'
 import { type JobRepoCheckPolicy } from './types.ts'
 
 /**
@@ -37,6 +42,18 @@ export class JobsHost
 					// side effects). Claimed scheduled runs finish the run record
 					// before this RPC returns; waitUntil only retains promises.
 					waitUntil: (promise) => this.ctx.waitUntil(promise),
+				}),
+		)
+	}
+
+	async settleHungDueJobsForUser(input: {
+		userId: OwnerId
+	}): Promise<SettleHungDueJobsResult> {
+		return runWithDynamicWorkerEvaluationBudget(
+			async () =>
+				await settleHungDueJobsForUser({
+					env: this.env,
+					userId: input.userId,
 				}),
 		)
 	}
