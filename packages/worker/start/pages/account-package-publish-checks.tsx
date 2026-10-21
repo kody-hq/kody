@@ -118,8 +118,8 @@ export function PublishChecksPanel(props: {
 				>
 					<h3 css={failedTitleCss}>Publish checks failed for this commit</h3>
 					<p css={{ margin: 0, color: colors.text }}>
-						This commit cannot be published, so {action.toLowerCase()} is off.
-						Fix the package, push a new commit, and approve that one.
+						This commit cannot be published, so {action} is off. Fix the
+						package, push a new commit, and approve that one.
 					</p>
 					<ul css={failedListCss}>
 						{state.failedChecks.map((check, index) => (
