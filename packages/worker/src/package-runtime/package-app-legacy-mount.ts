@@ -1,5 +1,8 @@
 import { buildPackageAppSubdomainPath } from '@kody-internal/shared/public-urls.ts'
-import { isPackageAppLegacySubdomainMountPath } from '@kody-internal/shared/package-app-host-paths.ts'
+import {
+	isPackageAppHostNonLeafFirstSegment,
+	isPackageAppLegacySubdomainMountPath,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import { type PackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
 
@@ -92,7 +95,15 @@ export function maybeHandleLegacyPackageAppSubdomainMount(input: {
 }): Response | null {
 	if (!isPackageAppLegacySubdomainMountPath(input.url.pathname)) return null
 
-	const redirect = shouldRedirectLegacyPackageAppSubdomainMount(input.request)
+	// Reserved / non-leaf names only route on the legacy mount (the short path
+	// is a host root or prefix). Keep a quiet rewrite so HTML does not 308 to
+	// a URL the serving side cannot mount.
+	const canUseShortPath = !isPackageAppHostNonLeafFirstSegment(
+		input.packagePath.kodyId,
+	)
+	const redirect =
+		canUseShortPath &&
+		shouldRedirectLegacyPackageAppSubdomainMount(input.request)
 	const disposition: PackageAppLegacyMountDisposition = redirect
 		? 'redirect'
 		: 'rewrite'

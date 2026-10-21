@@ -1,3 +1,8 @@
+import {
+	isPackageAppHostNonLeafFirstSegment,
+	packageAppHostLegacyMountSegment,
+} from './package-app-host-paths.ts'
+
 export function buildUsernamePathPrefix(username: string) {
 	return `/@${encodeURIComponent(username.trim())}`
 }
@@ -116,14 +121,22 @@ export function isDnsSafeUsername(username: string) {
  * Path for a hosted package app on its per-user package-app subdomain. The
  * username lives in the hostname there, so the path carries only the package
  * mount: `/{kodyId}/{rest}`. Kody-owned routes on that host live under `/-/`.
+ *
+ * Reserved or non-leaf names (legacy `packages` mount prefix, `robots.txt`,
+ * `/-/`, …) cannot use the short path: the serving parser treats them as host
+ * roots or prefixes, not package leaves. Those fall back to the legacy
+ * `/packages/{leaf}` mount, which still routes today.
  */
 export function buildPackageAppSubdomainPath(input: {
 	kodyId: string
 	restPath?: string | null
 }) {
-	return `/${encodeURIComponent(input.kodyId.trim())}${buildRestPathSuffix(
-		input.restPath,
-	)}`
+	const kodyId = input.kodyId.trim()
+	const encodedKodyId = encodeURIComponent(kodyId)
+	const mountPath = isPackageAppHostNonLeafFirstSegment(kodyId)
+		? `/${packageAppHostLegacyMountSegment}/${encodedKodyId}`
+		: `/${encodedKodyId}`
+	return `${mountPath}${buildRestPathSuffix(input.restPath)}`
 }
 
 /**

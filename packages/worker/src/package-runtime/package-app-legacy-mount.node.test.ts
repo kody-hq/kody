@@ -134,3 +134,33 @@ test('maybeHandleLegacyPackageAppSubdomainMount redirects HTML and rewrites othe
 	).toBeNull()
 	expect(writeDataPoint).toHaveBeenCalledTimes(1)
 })
+
+test('maybeHandleLegacyPackageAppSubdomainMount keeps quiet rewrite for reserved leaves', () => {
+	const writeDataPoint = vi.fn()
+	const env = { PACKAGE_APP_LEGACY_EVENTS: { writeDataPoint } }
+	const reserved = maybeHandleLegacyPackageAppSubdomainMount({
+		request: new Request('https://alice.kody.run/packages/packages', {
+			headers: { Accept: 'text/html' },
+		}),
+		env,
+		url: new URL('https://alice.kody.run/packages/packages'),
+		packagePath: {
+			username: 'alice',
+			kodyId: 'packages',
+			restPath: '/',
+			mount: 'user-subdomain',
+		},
+	})
+	expect(reserved).toBeNull()
+	expect(writeDataPoint).toHaveBeenCalledWith({
+		indexes: ['alice'],
+		blobs: [
+			packageAppLegacyMountEventKind,
+			'alice',
+			'packages',
+			'GET',
+			'rewrite',
+		],
+		doubles: [1],
+	})
+})

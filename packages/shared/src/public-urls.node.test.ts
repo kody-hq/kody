@@ -38,6 +38,24 @@ test('saved-package pages and hosted package-app mounts use different paths', ()
 	expect(
 		buildPackageAppSubdomainPath({ kodyId: 'hn-pulse', restPath: '/report' }),
 	).toBe('/hn-pulse/report')
+	// Reserved / non-leaf leaves cannot use the short path; serving needs the
+	// legacy `/packages/{leaf}` mount (bare `/packages` has no leaf; `/robots.txt`
+	// is a host root file).
+	expect(buildPackageAppSubdomainPath({ kodyId: 'packages' })).toBe(
+		'/packages/packages',
+	)
+	expect(
+		buildPackageAppSubdomainPath({
+			kodyId: 'packages',
+			restPath: '/report',
+		}),
+	).toBe('/packages/packages/report')
+	expect(buildPackageAppSubdomainPath({ kodyId: 'PACKAGES' })).toBe(
+		'/packages/PACKAGES',
+	)
+	expect(buildPackageAppSubdomainPath({ kodyId: 'robots.txt' })).toBe(
+		'/packages/robots.txt',
+	)
 	expect(buildPackageAppCustomHostnamePath({})).toBe('/')
 	expect(buildPackageAppCustomHostnamePath({ restPath: '/' })).toBe('/')
 	expect(buildPackageAppCustomHostnamePath({ restPath: '/report' })).toBe(
