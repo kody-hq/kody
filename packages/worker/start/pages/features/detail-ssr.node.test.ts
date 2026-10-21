@@ -8,23 +8,23 @@ import { TriggersFeature } from './triggers.tsx'
 import { AppsFeature } from './apps.tsx'
 
 const pages = [
-	['credentials', CredentialsFeature, 'integrations'],
-	['memory', MemoryFeature, 'memory'],
-	['packages', PackagesFeature, 'packages'],
-	['triggers', TriggersFeature, 'triggers'],
-	['apps', AppsFeature, 'apps'],
+	['credentials', CredentialsFeature],
+	['memory', MemoryFeature],
+	['packages', PackagesFeature],
+	['triggers', TriggersFeature],
+	['apps', AppsFeature],
 ] as const
 
 test.each(pages)(
 	'%s renders its complete detail content on the server',
-	async (slug, Component, orb) => {
+	async (slug, Component) => {
 		const html = await renderStartPage(
 			createElement(Component),
 			`/features/${slug}`,
 		)
 		expect(html).not.toContain('Loading page')
 		expect(html.match(/<h1[ >]/g)).toHaveLength(1)
-		expect(html).toContain(`/images/lantern/kody-primitives-orb-${orb}.webp`)
+		expect(html).toContain(`/images/features/${slug}.svg`)
 		if (slug === 'credentials') {
 			expect(html).toContain('href="/onboarding"')
 			expect(html).toContain('Connect your agent')

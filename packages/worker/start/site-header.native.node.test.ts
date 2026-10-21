@@ -138,9 +138,7 @@ test('desktop and mobile headers include the complete Features navigation', asyn
 		expect(html.match(new RegExp(`href="/features/${id}"`, 'g'))).toHaveLength(
 			2,
 		)
-		expect(html).toContain(
-			`/images/lantern/kody-primitives-orb-${id === 'credentials' ? 'integrations' : id}.webp`,
-		)
+		expect(html).toContain(`/images/features/${id}.svg`)
 	}
 	expect(
 		html.match(
