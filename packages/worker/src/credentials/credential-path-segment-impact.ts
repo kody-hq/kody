@@ -4,16 +4,26 @@
  * value contains `/`, `?`, or `#`. Never returns secret values. Does not email
  * or notify owners.
  */
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { decryptSecretValue, userSecretContext } from '#mcp/secrets/crypto.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
-import { getStoredCredentialEntry } from '#mcp/secrets/repo.ts'
 import { credentialValueHasPathRoutingCharacters } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	getCredentialInventoryReport,
 	type InventoryItemResult,
 } from './credential-inventory.ts'
+
+type ImpactCredentialRow = {
+	id: string
+	name: string
+	encrypted_value: string
+	/** Bucket owner — decrypt AAD and any other-org package Key. */
+	ownerId: OwnerId
+}
 
 export type PathSegmentImpactPackage = {
 	packageId: string
@@ -119,8 +129,9 @@ async function loadOwnerHandles(
 		const placeholders = chunk.map(() => '?').join(', ')
 		const rows = await db
 			.prepare(
-				`SELECT stable_user_id, username FROM users
-				WHERE stable_user_id IN (${placeholders})`,
+				`SELECT u.stable_user_id AS stable_user_id, u.username AS username
+				FROM users u
+				WHERE u.stable_user_id IN (${placeholders})${andLiveDeletedAtSql('u')}`,
 			)
 			.bind(...chunk)
 			.all<{ stable_user_id: string; username: string | null }>()
@@ -129,6 +140,47 @@ async function loadOwnerHandles(
 		}
 	}
 	return byId
+}
+
+/**
+ * Resolve a Key by id from any live bucket (publisher user-scope or any org's
+ * package-scope binding). Inventory path refs can name non-publisher Keys.
+ */
+async function loadCredentialByIdForImpact(
+	db: D1Database,
+	credentialId: string,
+	now = new Date().toISOString(),
+): Promise<ImpactCredentialRow | null> {
+	const row = await db
+		.prepare(
+			`SELECT e.id AS id, e.name AS name, e.encrypted_value AS encrypted_value,
+				b.user_id AS user_id
+			FROM secret_entries e
+			JOIN secret_buckets b ON b.id = e.bucket_id
+			WHERE e.id = ?
+				AND (
+					(b.scope = 'user' AND b.binding_key = '')
+					OR b.scope = 'package'
+				)
+				AND e.deleted_at IS NULL AND b.deleted_at IS NULL
+				AND (e.expires_at IS NULL OR e.expires_at > ?)
+				AND (b.expires_at IS NULL OR b.expires_at > ?)
+			LIMIT 1`,
+		)
+		.bind(credentialId, now, now)
+		.first<{
+			id: string
+			name: string
+			encrypted_value: string
+			user_id: string
+		}>()
+	if (!row) return null
+	return {
+		id: row.id,
+		name: row.name,
+		encrypted_value: row.encrypted_value,
+		ownerId: ownerIdFromStored(row.user_id),
+	}
 }
 
 /**
@@ -153,7 +205,7 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 	const packagesWithPath = new Set<string>()
 	/** packageId → Map<credentialId, name> for secrets that encode routing chars. */
 	const affectedByPackage = new Map<string, Map<string, string>>()
-	/** ownerId\0credentialId → credential name when routing chars encode, else null. */
+	/** credentialId → credential name when routing chars encode, else null. */
 	const routingNameByCredential = new Map<string, string | null>()
 
 	for (const item of items) {
@@ -163,14 +215,12 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 			if (reference.table !== 'secret') continue
 			packagesWithPath.add(item.packageId)
 			for (const credentialId of reference.credentialIds) {
-				const cacheKey = `${item.ownerId}\0${credentialId}`
-				let credentialName = routingNameByCredential.get(cacheKey)
+				let credentialName = routingNameByCredential.get(credentialId)
 				if (credentialName === undefined) {
-					const entry = await getStoredCredentialEntry({
-						db: input.env.APP_DB,
-						ownerId: item.ownerId,
+					const entry = await loadCredentialByIdForImpact(
+						input.env.APP_DB,
 						credentialId,
-					})
+					)
 					if (
 						!entry ||
 						isDisconnectedSecretEncryptedValue(entry.encrypted_value)
@@ -180,13 +230,13 @@ export async function analyzeCredentialPathSegmentImpact(input: {
 						const value = await decryptSecretValue(
 							input.env,
 							entry.encrypted_value,
-							userSecretContext(item.ownerId),
+							userSecretContext(entry.ownerId),
 						)
 						credentialName = credentialValueHasPathRoutingCharacters(value)
 							? entry.name
 							: null
 					}
-					routingNameByCredential.set(cacheKey, credentialName)
+					routingNameByCredential.set(credentialId, credentialName)
 				}
 				if (credentialName) {
 					const names =

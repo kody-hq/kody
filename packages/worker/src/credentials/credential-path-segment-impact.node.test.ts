@@ -4,6 +4,7 @@ import { encryptSecretValue, userSecretContext } from '#mcp/secrets/crypto.ts'
 import { analyzeCredentialPathSegmentImpact } from './credential-path-segment-impact.ts'
 
 const ownerId = ownerIdFromStored('user-impact-1')
+const otherOwnerId = ownerIdFromStored('user-impact-other')
 const secretStoreKey = 'test-secret-store-key-32-chars-minimum!!'
 
 function createDb(input: {
@@ -46,11 +47,8 @@ function createDb(input: {
 								normalized.includes('from secret_entries') &&
 								normalized.includes('e.id = ?')
 							) {
-								const owner = String(params[0])
-								const id = String(params[1])
-								const secret = input.secrets.find(
-									(row) => row.id === id && row.ownerId === owner,
-								)
+								const id = String(params[0])
+								const secret = input.secrets.find((row) => row.id === id)
 								if (!secret) return null
 								const encrypted = await encryptSecretValue(
 									{ SECRET_STORE_KEY: secretStoreKey },
@@ -60,12 +58,8 @@ function createDb(input: {
 								return {
 									id: secret.id,
 									name: secret.name,
-									kind: 'secret',
 									encrypted_value: encrypted,
-									allowed_hosts: '[]',
-									inject_json: '{}',
-									config_json: null,
-									placement_json: null,
+									user_id: secret.ownerId,
 								}
 							}
 							return null
@@ -103,7 +97,10 @@ function createDb(input: {
 										})),
 								}
 							}
-							if (normalized.includes('from users')) {
+							if (
+								normalized.includes('from users') &&
+								normalized.includes('deleted_at is null')
+							) {
 								const ids = new Set(params.map(String))
 								return {
 									results: input.users
@@ -256,6 +253,76 @@ test('analyzeCredentialPathSegmentImpact counts path fills whose values encode r
 			packageName: '@demo/webhook-job',
 			kodyId: 'webhook-job',
 			credentialNames: ['webhookPath'],
+		},
+	])
+})
+
+test('analyzeCredentialPathSegmentImpact counts other-org package Keys on path fills', async () => {
+	const runId = 'run-other-org-key'
+	const env = {
+		APP_DB: createDb({
+			runId,
+			complete: true,
+			items: [
+				{
+					packageId: 'pkg-shared',
+					ownerId,
+					result: {
+						placeholders: {
+							secret: 1,
+							'secret-basic': 0,
+							'integration-token': 0,
+							vault: 0,
+							computed: 0,
+						},
+						unparsedModules: 0,
+						references: [
+							{
+								table: 'secret',
+								credentialIds: ['cred-other-org'],
+								scope: 'package',
+								placement: { type: 'path' },
+							},
+						],
+						slots: [],
+					},
+				},
+			],
+			secrets: [
+				{
+					id: 'cred-other-org',
+					ownerId: otherOwnerId,
+					name: 'sharedWebhookPath',
+					value: 'hooks/T000/B000/xxx',
+				},
+			],
+			packages: [
+				{
+					id: 'pkg-shared',
+					ownerId,
+					name: '@demo/shared-webhook',
+					kodyId: 'shared-webhook',
+				},
+			],
+			users: [
+				{ stableUserId: ownerId, username: 'publisher' },
+				{ stableUserId: otherOwnerId, username: 'consumer' },
+			],
+		}),
+		SECRET_STORE_KEY: secretStoreKey,
+	}
+
+	const report = await analyzeCredentialPathSegmentImpact({ env, runId })
+	expect(report.packagesWithRoutingChars).toBe(1)
+	expect(report.credentialsWithRoutingChars).toBe(1)
+	expect(report.packages).toEqual([
+		{
+			packageId: 'pkg-shared',
+			ownerId,
+			ownerHandle: 'publisher',
+			packageName: '@demo/shared-webhook',
+			kodyId: 'shared-webhook',
+			credentialNames: ['sharedWebhookPath'],
 		},
 	])
 })
