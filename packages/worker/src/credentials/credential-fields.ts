@@ -275,6 +275,11 @@ export async function updateCredentialFields(input: {
 	credentialId: string
 	update: CredentialFieldsUpdate
 	audit: OrgAuditWriter
+	/**
+	 * How a secret placement change was chosen. Account UI passes `owner`
+	 * (default); MCP `credentialUpdate` passes `explicit`.
+	 */
+	placementOrigin?: 'owner' | 'explicit'
 }): Promise<CredentialFields> {
 	const credential = await getOrgCredential(
 		input.db,
@@ -340,6 +345,7 @@ export async function updateCredentialFields(input: {
 			WHERE id = ? AND deleted_at IS NULL`
 			: `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?
 			WHERE id = ? AND deleted_at IS NULL`
+	const placementOrigin = input.placementOrigin ?? 'owner'
 	const statement = setsSecretPlacementOrigin
 		? input.db
 				.prepare(sql)
@@ -347,7 +353,7 @@ export async function updateCredentialFields(input: {
 					provider,
 					JSON.stringify(inject),
 					serializeCredentialFillPlacement(placement),
-					'owner',
+					placementOrigin,
 					credential.id,
 				)
 		: setsPlacement

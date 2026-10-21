@@ -453,18 +453,25 @@ async function auditPlacementDeclarationUnread(input: {
 }) {
 	const auditDb = auditDatabaseFromEnv(input.env)
 	if (!auditDb) return
-	await logOrgAuditEvent({
-		db: auditDb,
-		orgId: input.userId,
-		action: 'credential.placement_declaration_unread',
-		result: 'success',
-		resourceType: 'secret',
-		details: {
-			packageId: input.packageId,
-			name: input.secretName,
-			reason: input.reason,
-		},
-	})
+	try {
+		await logOrgAuditEvent({
+			db: auditDb,
+			orgId: input.userId,
+			action: 'credential.placement_declaration_unread',
+			result: 'success',
+			resourceType: 'secret',
+			details: {
+				packageId: input.packageId,
+				name: input.secretName,
+				reason: input.reason,
+			},
+		})
+	} catch (error: unknown) {
+		console.warn('credential-placement-audit-failed', {
+			action: 'credential.placement_declaration_unread',
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
 }
 
 async function auditPlacementDeclarationRepaired(input: {
@@ -476,18 +483,25 @@ async function auditPlacementDeclarationRepaired(input: {
 }) {
 	const auditDb = auditDatabaseFromEnv(input.env)
 	if (!auditDb) return
-	await logOrgAuditEvent({
-		db: auditDb,
-		orgId: input.userId,
-		action: 'credential.placement_declaration_repaired',
-		result: 'success',
-		resourceType: 'secret',
-		resourceId: input.credentialId,
-		details: {
-			packageId: input.packageId,
-			name: input.secretName,
-		},
-	})
+	try {
+		await logOrgAuditEvent({
+			db: auditDb,
+			orgId: input.userId,
+			action: 'credential.placement_declaration_repaired',
+			result: 'success',
+			resourceType: 'secret',
+			resourceId: input.credentialId,
+			details: {
+				packageId: input.packageId,
+				name: input.secretName,
+			},
+		})
+	} catch (error: unknown) {
+		console.warn('credential-placement-audit-failed', {
+			action: 'credential.placement_declaration_repaired',
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
 }
 
 export async function updateUserSecretForPackage(input: {

@@ -129,6 +129,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 						: {}),
 				},
 				audit: orgAuditWriterFromRequest(ctx.env, request),
+				placementOrigin: 'explicit',
 			})
 			return {
 				credential_id: updated.credential.id,
