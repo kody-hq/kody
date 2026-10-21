@@ -25,6 +25,15 @@
 
 <!-- What changed. Short bullets are fine. -->
 
+### May break packages
+
+<!--
+Optional. Use this heading when the change can break existing published
+packages or saved credentials at runtime (not only at publish time). Keep it
+short: what breaks, who is affected, and the fix. Prefer counts over handles
+in public text. See docs/contributing/release-notes.md.
+-->
+
 ## Referenced issues and PRs
 
 <!--

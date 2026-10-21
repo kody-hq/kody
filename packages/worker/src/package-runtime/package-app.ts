@@ -91,6 +91,7 @@ import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
 } from '#mcp/secrets/execution-secret-redactor.ts'
+import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
 import {
 	type RunRecordHandle,
@@ -194,7 +195,13 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 		// matches it against the run binding on its props and places the
 		// credential. Stripping it would send an unauthenticated upstream
 		// request; throwing would block legitimate credential().fetch.
-		return __kodyNativeFetch(input, { ...init, headers });
+		return __kodyNativeFetch(input, { ...init, headers }).then((response) => {
+			const warning = response.headers.get(
+				${JSON.stringify(pathSegmentEncodingWarningHeaderName)},
+			);
+			if (warning) console.warn(warning);
+			return response;
+		});
 	};
 	globalThis[__kodyEvaluateFetchPatchedSymbol] = true;
 }

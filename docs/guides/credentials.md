@@ -76,6 +76,20 @@ const response = await fetch('https://api.github.com/user/repos', {
 })
 ```
 
+For a webhook URL (Slack, Discord, and similar), keep the path prefix literal
+and put only the one-segment token in the secret:
+
+```ts
+await fetch('https://hooks.example.com/services/{{secret:webhookToken}}', {
+	method: 'POST',
+	body,
+})
+```
+
+A path placeholder is filled as one encoded segment, so a `/` inside the secret
+becomes `%2F` and cannot change the route. The MCP reference has the full rule:
+[Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch).
+
 - The request must be HTTPS and its host must be one you approved for that
   secret. Otherwise it is refused with an error naming the secret and host; a
   placeholder is never sent unfilled.

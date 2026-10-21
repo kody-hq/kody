@@ -20,6 +20,7 @@ import {
 	retrieverOutboundFetchDeniedMessage,
 	type FetchGatewayProps,
 } from '#mcp/fetch-gateway.ts'
+import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
 	type RawFetchHostSink,
@@ -1038,10 +1039,15 @@ function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
 		`          __kodyFetchHeaders.set(${JSON.stringify(secretAuthorityHeaderName)}, __kodySecretAuthority);`,
 		'        }',
 		'        if (!__kodyRunFetcher) throw new Error("Outbound fetch is unavailable for this run.");',
-		'        return __kodyRunFetcher.fetch(input, {',
+		'        const __kodyResponse = await __kodyRunFetcher.fetch(input, {',
 		'          ...init,',
 		'          headers: __kodyFetchHeaders,',
 		'        });',
+		`        const __kodyPathSegmentWarning = __kodyResponse.headers.get(${JSON.stringify(pathSegmentEncodingWarningHeaderName)});`,
+		'        if (__kodyPathSegmentWarning) {',
+		'          console.warn(__kodyPathSegmentWarning);',
+		'        }',
+		'        return __kodyResponse;',
 		'      })();',
 		'    };',
 	]

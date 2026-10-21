@@ -14,9 +14,11 @@ This repository maintains two audiences:
 
 **Describe how things work.** Write in the present tense. Avoid changelog-style
 phrases (“now we…”, “we no longer…”, “previously…”) in both usage and
-contributing docs; those belong in commit messages or release notes. Describe
-the system as it works today (“Kody stores…”, “The manifest rejects…”) instead
-of narrating a rollout (“Kody now stores…”, “We no longer accept…”).
+contributing docs; those belong in commit messages or
+[release notes](./release-notes.md) (PR bodies and Discord ship summaries, with
+an optional **May break packages** heading). Describe the system as it works
+today (“Kody stores…”, “The manifest rejects…”) instead of narrating a rollout
+(“Kody now stores…”, “We no longer accept…”).
 
 `npm run docs:check` runs the docs group (temporal language, decision-record
 numbers, markdown file refs, no hosted-execute fallback, and mermaid syntax) and

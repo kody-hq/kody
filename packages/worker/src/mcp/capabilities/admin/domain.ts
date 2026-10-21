@@ -70,6 +70,7 @@ import { adminSoftDeletePurgeRunCapability } from './admin-soft-delete-purge-run
 import { adminPublishedImportableArtifactBackfillCapability } from './admin-published-importable-artifact-backfill.ts'
 import { adminPublishedSourceSnapshotBackfillCapability } from './admin-published-source-snapshot-backfill.ts'
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
+import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
@@ -184,6 +185,7 @@ export const adminDomain = defineDomain({
 		adminPublishedImportableArtifactBackfillCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminCredentialInventoryScanCapability,
+		adminCredentialPathSegmentImpactCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,
