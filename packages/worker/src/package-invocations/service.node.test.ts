@@ -488,22 +488,58 @@ test('completed keyed invocation reports terminal persistence failure instead of
 		status: 500,
 		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
 	})
-	const rowAfterTouch = db.runLog.ledgerRows[0]
-	expect(rowAfterTouch?.status).toBe('in_progress')
-	// Touch refreshes the lease so a long sandbox run does not leave the
-	// original claim timestamp past the same-owner grace.
-	const claimAgeMs = Date.now() - Date.parse(rowAfterTouch!.updatedAt)
+	const rowAfterStage = db.runLog.ledgerRows[0]
+	expect(rowAfterStage?.status).toBe('in_progress')
+	// Staged response is the execution fence: reclaim must not re-run even
+	// after the same-owner grace.
+	expect(rowAfterStage?.responseJson).toEqual(expect.any(String))
+	const claimAgeMs = Date.now() - Date.parse(rowAfterStage!.updatedAt)
 	expect(claimAgeMs).toBeLessThan(5_000)
 
+	rowAfterStage!.updatedAt = new Date(Date.now() - 61_000).toISOString()
 	expect(await invoke(db, request)).toMatchObject({
-		status: 409,
-		body: { ok: false, error: { code: 'invocation_in_progress' } },
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
 	})
 	expect(runMock).toHaveBeenCalledTimes(1)
 	expect(consoleError).toHaveBeenCalledWith(
 		'package invocation completed-result persistence failed',
 		'RunLog finish unavailable',
 	)
+})
+
+test('staged completed outcome promotes without re-executing after finish recovers', async () => {
+	consoleError.mockImplementation(() => {})
+	const db = createDatabase({ failFinish: true })
+	seedPackageResolution()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['completed'] })
+	const deliveryId = 'delivery-stage-promote'
+	const request = dispatchRequest('evt-stage-promote', {
+		source: 'webhook',
+		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
+	})
+
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	const staged = db.runLog.ledgerRows[0]
+	expect(staged).toMatchObject({
+		status: 'in_progress',
+		responseJson: expect.any(String),
+	})
+
+	// Finish recovers; promote beyond the same-owner grace without re-running.
+	db.runLog.options.failFinish = false
+	staged!.updatedAt = new Date(Date.now() - 61_000).toISOString()
+	expect(await invoke(db, request)).toMatchObject({
+		status: 200,
+		body: { ok: true, result: { handled: true } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(db.runLog.ledgerRows[0]?.status).toBe('completed')
 })
 
 test('oversized terminal responses are not stored so backups stay restorable', async () => {

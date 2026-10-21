@@ -900,9 +900,90 @@ export async function finishPackageInvocationRecord(input: {
  * evidence instead of a vanished zero-log attempt).
  */
 /**
+ * Persist a successful execute outcome onto an `in_progress` claim (and its
+ * run row) when the atomic terminal finish fails. The staged `response_json`
+ * fences reclaim so retries promote the ledger without re-executing.
+ */
+export async function stagePackageInvocationResultRecord(input: {
+	env: Env
+	userId: OwnerId
+	handle: RunRecordHandle | null
+	invocationId: string
+	claimUpdatedAt: string
+	responseJson: string | null
+	status: RunTerminalStatus
+	logs?: Array<RunRecordLogInput>
+	error?: unknown
+	result?: unknown
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<{
+	staged: boolean
+	claimUpdatedAt: string | null
+	record: PackageInvocationLedgerRecord | null
+}> {
+	const handle = input.handle
+	let run: RunLogRowInput | null = null
+	if (handle) {
+		const finishedAt = new Date().toISOString()
+		const durationMs = Math.max(
+			0,
+			Date.parse(finishedAt) - Date.parse(handle.startedAt),
+		)
+		const { errorName, errorMessage } = getErrorFields(input.error)
+		const metadata =
+			input.result === undefined
+				? handle.context.metadata
+				: {
+						...handle.context.metadata,
+						result: snapshotRunRecordResult(input.result),
+					}
+		run = buildRunRow({
+			handle: {
+				...handle,
+				context: {
+					...handle.context,
+					metadata,
+				},
+			},
+			status: input.status,
+			finishedAt,
+			durationMs,
+			errorName,
+			errorMessage,
+			updatedAt: finishedAt,
+		})
+	}
+	const staged = await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).stagePackageInvocationResult({
+		invocationId: input.invocationId,
+		claimUpdatedAt: input.claimUpdatedAt,
+		responseJson: input.responseJson,
+		run,
+		logs: run ? normalizeLogs(input.logs) : [],
+	})
+	if (staged.staged && handle && run) {
+		const sideEffects = dispatchTerminalRunRecordSideEffects({
+			env: input.env,
+			handle,
+			persistedRun: run,
+			status: input.status,
+			waitUntil: input.waitUntil,
+		})
+		if (input.waitUntil) {
+			input.waitUntil(sideEffects)
+		} else {
+			await sideEffects
+		}
+	}
+	return staged
+}
+
+/**
  * Refresh `updated_at` on a live claim after a successful execute whose
- * terminal persist failed, so same-owner reclaim grace does not treat the
- * original claim timestamp as already expired.
+ * terminal persist failed when staging is also unavailable, so same-owner
+ * reclaim grace does not treat the original claim timestamp as already expired.
  */
 export async function touchPackageInvocationRecord(input: {
 	env: Env

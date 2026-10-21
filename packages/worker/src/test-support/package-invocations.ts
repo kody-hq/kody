@@ -138,6 +138,7 @@ export function createFakeRunLog(
 					existing.updatedAt <= input.sameOwnerStaleBefore
 				const reclaimable =
 					existing.status === 'in_progress' &&
+					existing.responseJson == null &&
 					existing.requestHash === input.invocation.requestHash &&
 					(existing.updatedAt <= input.staleBefore || sameOwnerReclaim)
 				if (!reclaimable) {
@@ -316,6 +317,37 @@ export function createFakeRunLog(
 				record: ledgerUpdated ? null : row ? clone(row) : null,
 			}
 		},
+		async stagePackageInvocationResult(input: {
+			invocationId: string
+			claimUpdatedAt: string
+			responseJson: string | null
+			run: Record<string, unknown> | null
+			logs: Array<unknown>
+		}) {
+			const row =
+				ledgerRows.find((candidate) => candidate.id === input.invocationId) ??
+				null
+			if (
+				!row ||
+				row.status !== 'in_progress' ||
+				row.updatedAt !== input.claimUpdatedAt
+			) {
+				return {
+					staged: false,
+					claimUpdatedAt: null,
+					record: row ? clone(row) : null,
+				}
+			}
+			const now = new Date().toISOString()
+			row.responseJson = input.responseJson
+			row.updatedAt = now
+			if (input.run) {
+				const runId = String(input.run['id'])
+				runLogs.set(runId, input.logs.map(logMessage))
+				runRows.set(runId, clone(input.run))
+			}
+			return { staged: true, claimUpdatedAt: now, record: null }
+		},
 		async touchPackageInvocation(input: {
 			invocationId: string
 			claimUpdatedAt: string
@@ -445,6 +477,8 @@ export function createFakeRunLog(
 			row.responseJson = completed.responseJson
 			row.updatedAt = new Date().toISOString()
 		},
+		/** Mutable so tests can recover finish after a staged persist failure. */
+		options,
 	}
 }
 

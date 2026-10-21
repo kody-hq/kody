@@ -2461,8 +2461,12 @@ class RunLogBase extends DurableObject<Env> {
 				existing.claimOwner === claimOwner &&
 				input.sameOwnerStaleBefore != null &&
 				existing.updatedAt <= input.sameOwnerStaleBefore
+			// A non-null `response_json` on an `in_progress` row means execute
+			// already produced a durable outcome that is waiting on terminal
+			// ledger promotion — never reclaim/re-run that work.
 			const reclaimable =
 				existing.status === 'in_progress' &&
+				existing.responseJson == null &&
 				existing.requestHash === input.invocation.requestHash &&
 				(existing.updatedAt <= input.staleBefore || sameOwnerReclaim)
 			if (!reclaimable) {
@@ -2605,11 +2609,82 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
+	 * Persist a successful execute outcome onto an `in_progress` claim without
+	 * promoting the ledger to `completed` yet. Used when the atomic terminal
+	 * finish fails: the staged `response_json` is an execution fence so
+	 * same-owner (and stale) reclaim cannot re-run side effects, while retries
+	 * can promote the row to `completed` from the staged payload.
+	 */
+	async stagePackageInvocationResult(input: {
+		invocationId: string
+		claimUpdatedAt: string
+		responseJson: string | null
+		run: RunLogRowInput | null
+		logs: Array<RunLogEntryInput>
+	}): Promise<{
+		staged: boolean
+		claimUpdatedAt: string | null
+		record: PackageInvocationLedgerRecord | null
+	}> {
+		const now = new Date().toISOString()
+		const current = this.getInvocationLedgerRowById(input.invocationId)
+		if (
+			!current ||
+			current.status !== 'in_progress' ||
+			current.updatedAt !== input.claimUpdatedAt
+		) {
+			return {
+				staged: false,
+				claimUpdatedAt: null,
+				record: current,
+			}
+		}
+		this.transactionSyncWithMetaCache(() => {
+			this.ctx.storage.sql.exec(
+				`UPDATE package_invocation_ledger
+				SET response_json = ?, updated_at = ?
+				WHERE id = ?`,
+				input.responseJson,
+				now,
+				input.invocationId,
+			)
+			if (input.run) {
+				const previousStatus = this.getRunStatus(input.run.id)
+				const existed = previousStatus != null
+				this.clearSystemPlatformInterruptTriageBeforeErrorFinish(input.run)
+				this.upsertRun(input.run, 'replace')
+				this.replaceLogs(input.run.id, input.logs)
+				if (!existed) {
+					this.adjustRunCount(1)
+				}
+				this.recordTerminalRunSideEffects({
+					previousStatus,
+					run: input.run,
+				})
+			}
+		})
+		if (input.run) {
+			this.retentionIdleConfirmed = false
+			this.invalidateReadMemos()
+			this.resetRetentionEmptyBackoff()
+			this.maybeEnforceRetention()
+			await this.ensureRetentionAlarm()
+		} else {
+			this.retentionIdleConfirmed = false
+		}
+		return {
+			staged: true,
+			claimUpdatedAt: now,
+			record: null,
+		}
+	}
+
+	/**
 	 * Bump `updated_at` on a live `in_progress` claim (fenced on
 	 * `claimUpdatedAt`). Used after a successful execute whose terminal
-	 * persist failed, so same-owner reclaim grace restarts from now instead
-	 * of from the original claim time (which may already exceed the grace
-	 * after a long sandbox run).
+	 * persist failed when staging the result is also unavailable, so
+	 * same-owner reclaim grace restarts from now instead of from the
+	 * original claim time.
 	 */
 	async touchPackageInvocation(input: {
 		invocationId: string
@@ -4268,6 +4343,17 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 		logs: Array<RunLogEntryInput>
 	}) => Promise<{
 		ledgerUpdated: boolean
+		record: PackageInvocationLedgerRecord | null
+	}>
+	stagePackageInvocationResult: (input: {
+		invocationId: string
+		claimUpdatedAt: string
+		responseJson: string | null
+		run: RunLogRowInput | null
+		logs: Array<RunLogEntryInput>
+	}) => Promise<{
+		staged: boolean
+		claimUpdatedAt: string | null
 		record: PackageInvocationLedgerRecord | null
 	}>
 	touchPackageInvocation: (input: {

@@ -162,11 +162,13 @@ idempotency key and pass the delivery id as the package-invocation `claimOwner`.
 Same-owner retries may reclaim an `in_progress` ledger row after a short grace
 (60s from the claim's last `updated_at` — inside the ~5-minute ack retry budget,
 but not on the immediate next 30s retry), so a hung or canceled first attempt
-cannot burn the whole budget on `invocation_in_progress`. Owner equality alone
-is not enough: a failed terminal persist after a successful execute touches the
-claim lease so grace restarts from the persist failure (sandbox runs can already
-exceed 60s by then). A different delivery with the same caller `Idempotency-Key`
-still waits for a terminal response or the normal 15-minute stale window.
+cannot burn the whole budget on `invocation_in_progress`. A failed terminal
+persist after a successful execute stages the response onto the still-
+`in_progress` row (`response_json` set): that is an execution fence — reclaim is
+blocked even past the grace / 15-minute stale window, and the next delivery
+promotes the ledger to `completed` without re-running side effects. A different
+delivery with the same caller `Idempotency-Key` still waits for a terminal
+response or the normal 15-minute stale window (when no staged outcome exists).
 Request-mode caller `Idempotency-Key` messages set `callerIdempotency` so the
 consumer hashes the JSON body (same as sync). Unique-key ack claims omit that
 flag and hash the `{ webhook, request }` envelope. Transient ledger

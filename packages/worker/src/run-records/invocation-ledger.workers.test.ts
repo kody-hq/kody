@@ -16,6 +16,7 @@ import {
 	getPackageInvocationRecord,
 	getRunRecord,
 	releasePackageInvocationRecord,
+	stagePackageInvocationResultRecord,
 	touchPackageInvocationRecord,
 } from './service.ts'
 import {
@@ -375,6 +376,65 @@ test('touchPackageInvocation refreshes updated_at so same-owner grace restarts',
 		claimUpdatedAt: agedUpdatedAt,
 	})
 	expect(staleFence.touched).toBe(false)
+})
+
+test('staged response fences reclaim; finish promotes without a new claim', async () => {
+	const userId = uniqueUserId('stage-fence')
+	const deliveryOwner = 'delivery-stage-1'
+	const seeded = await claim(userId, 'evt-stage', {
+		claimOwner: deliveryOwner,
+	})
+	const responseJson = JSON.stringify({
+		status: 200,
+		body: { ok: true, result: { staged: true } },
+	})
+	const staged = await stagePackageInvocationResultRecord({
+		env,
+		userId,
+		handle: seeded.handle,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: seeded.claimUpdatedAt,
+		responseJson,
+		status: 'success',
+		logs: ['staged'],
+		result: { staged: true },
+	})
+	expect(staged.staged).toBe(true)
+	expect(await getLedger(userId, 'evt-stage')).toMatchObject({
+		status: 'in_progress',
+		responseJson,
+	})
+
+	// Past same-owner grace and the global stale window: still not reclaimable.
+	const aged = new Date(Date.now() - 16 * 60_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		aged,
+		seeded.invocationId,
+	)
+	const blocked = await claimRaw(userId, 'evt-stage', {
+		claimOwner: deliveryOwner,
+	})
+	expect(blocked.outcome).toBe('existing')
+	if (blocked.outcome !== 'existing') throw new Error('unreachable')
+	expect(blocked.record.responseJson).toBe(responseJson)
+
+	const promoted = await finishPackageInvocationRecord({
+		env,
+		userId,
+		handle: null,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: aged,
+		ledgerStatus: 'completed',
+		responseJson,
+		status: 'success',
+	})
+	expect(promoted.ledgerUpdated).toBe(true)
+	expect(await getLedger(userId, 'evt-stage')).toMatchObject({
+		status: 'completed',
+		responseJson,
+	})
 })
 
 test('stale in-progress claims are reclaimed atomically; mismatched hashes are not', async () => {
