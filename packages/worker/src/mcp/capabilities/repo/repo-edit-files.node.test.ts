@@ -34,6 +34,8 @@ function createContext() {
 
 const deleteMiss =
 	'repo session delete edit target "src/index.js" was not found.'
+const directoryMiss =
+	'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.'
 
 test('repoEditFiles maps structural delete and move failures to McpCallerError', async () => {
 	const applyEdits = vi.fn().mockRejectedValue(new Error(deleteMiss))
@@ -80,6 +82,24 @@ test('repoEditFiles maps structural delete and move failures to McpCallerError',
 
 	expect(nestedError).toBeInstanceOf(McpCallerError)
 	expect((nestedError as Error).message).toBe(nestedMessage)
+
+	mocks.repoSessionRpc.mockReturnValue({
+		applyEdits: vi.fn().mockRejectedValue(new Error(directoryMiss)),
+	})
+	const directoryError = await repoEditFilesCapability
+		.handler(
+			{
+				session_id: 'session-1',
+				edits: [{ kind: 'write', path: 'src', content: 'export {}\n' }],
+			},
+			createContext(),
+		)
+		.then(
+			() => null,
+			(thrown: unknown) => thrown,
+		)
+	expect(directoryError).toBeInstanceOf(McpCallerError)
+	expect((directoryError as Error).message).toBe(directoryMiss)
 
 	const boom = new Error('Durable Object storage unavailable')
 	mocks.repoSessionRpc.mockReturnValue({

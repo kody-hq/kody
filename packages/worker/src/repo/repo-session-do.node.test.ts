@@ -56,6 +56,9 @@ vi.mock('@cloudflare/shell', () => ({
 		exists(path: string) {
 			return mockModule.workspaceExists(path)
 		}
+		stat(path: string) {
+			return mockModule.workspaceStat(path)
+		}
 		readFile(path: string) {
 			return mockModule.workspaceReadFile(path)
 		}
@@ -818,6 +821,84 @@ test('applyPatch is all-or-nothing on size-limit failures and applies modify, de
 			path: 'src/new-name.ts',
 			content: 'export const name = "new"\n',
 		}),
+	)
+})
+
+test('applyEdits rejects write, replace, and writeJson targets that are directories', async () => {
+	setCommonSessionFixtures()
+	mockModule.workspaceStat.mockImplementation(async (path: string) =>
+		path === '/session/src'
+			? {
+					path: '/session/src',
+					name: 'src',
+					type: 'directory' as const,
+					mimeType: 'inode/directory',
+					size: 0,
+					createdAt: 0,
+					updatedAt: 0,
+				}
+			: null,
+	)
+	const repo = repoSession()
+	const directoryMessage =
+		/repo session (write|replace|writeJson) edit target "src" is a directory\. Pass a file path/
+
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [{ kind: 'write', path: 'src', content: 'export {}\n' }],
+		}),
+	).rejects.toThrow(directoryMessage)
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'replace',
+					path: 'src',
+					search: 'a',
+					replacement: 'b',
+				},
+			],
+		}),
+	).rejects.toThrow(directoryMessage)
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [{ kind: 'writeJson', path: 'src', value: { ok: true } }],
+		}),
+	).rejects.toThrow(directoryMessage)
+	expect(lastWorkspaceBackend().applyEditPlan).not.toHaveBeenCalled()
+})
+
+test('applyEdits remaps raw Cloudflare shell EISDIR from applyEditPlan', async () => {
+	setCommonSessionFixtures()
+	vi.mocked(createWorkspaceStateBackend).mockImplementationOnce(
+		() =>
+			({
+				planEdits: vi.fn(),
+				applyEditPlan: vi.fn(async () => {
+					throw new Error('EISDIR: /session/src is a directory')
+				}),
+				walkTree: vi.fn(),
+			}) as unknown as ReturnType<typeof createWorkspaceStateBackend>,
+	)
+
+	// Preflight passes (stat is null); the shell still throws EISDIR — remap
+	// so callers never see the raw filesystem error. KODY-A6.
+	await expect(
+		repoSession().applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'write',
+					path: 'src/index.ts',
+					content: 'export {}\n',
+				},
+			],
+		}),
+	).rejects.toThrow(
+		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
 	)
 })
 

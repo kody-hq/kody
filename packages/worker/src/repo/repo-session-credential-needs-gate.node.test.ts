@@ -45,6 +45,9 @@ vi.mock('@cloudflare/shell', () => ({
 		exists(path: string) {
 			return mockModule.workspaceExists(path)
 		}
+		stat(path: string) {
+			return mockModule.workspaceStat(path)
+		}
 		readFile(path: string) {
 			return mockModule.workspaceReadFile(path)
 		}

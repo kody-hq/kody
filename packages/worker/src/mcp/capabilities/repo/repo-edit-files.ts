@@ -5,7 +5,10 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { isRepoSessionStructuralEditCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
+import {
+	isRepoSessionDirectoryTargetCallerMessage,
+	isRepoSessionStructuralEditCallerMessage,
+} from '#worker/repo/repo-session-caller-error.ts'
 import { authorizeRepoSessionPackageWrite } from './authorize-repo-session-package.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
@@ -112,13 +115,13 @@ export const repoEditFilesCapability = defineDomainCapability(
 					rollbackOnError: args.rollback_on_error,
 				})
 			} catch (error) {
-				// Structural delete/move validation is caller-correctable. DO
-				// RPC may lose Error subclass identity, so match the stable
-				// message phrase. KODY-9B.
-				const structuralMessage =
-					getRepoSessionStructuralEditCallerMessage(error)
-				if (structuralMessage) {
-					throw new McpCallerError(structuralMessage, { cause: error })
+				// Structural delete/move validation and directory edit targets
+				// are caller-correctable. DO RPC may lose Error subclass
+				// identity, so match the stable message phrases. KODY-9B,
+				// KODY-A6.
+				const callerMessage = getRepoSessionEditCallerMessage(error)
+				if (callerMessage) {
+					throw new McpCallerError(callerMessage, { cause: error })
 				}
 				throw error
 			}
@@ -136,11 +139,12 @@ export const repoEditFilesCapability = defineDomainCapability(
 	},
 )
 
-function getRepoSessionStructuralEditCallerMessage(error: unknown) {
+function getRepoSessionEditCallerMessage(error: unknown) {
 	const match = getErrorCauseChain(error).find(
 		(entry) =>
 			entry instanceof Error &&
-			isRepoSessionStructuralEditCallerMessage(entry.message),
+			(isRepoSessionStructuralEditCallerMessage(entry.message) ||
+				isRepoSessionDirectoryTargetCallerMessage(entry.message)),
 	)
 	return match instanceof Error ? match.message : null
 }
