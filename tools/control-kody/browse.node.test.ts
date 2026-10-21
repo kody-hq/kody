@@ -269,6 +269,51 @@ test('openBrowseSession rejects a login redirect before screenshot', async () =>
 	expect(screenshotCalls).toEqual([])
 })
 
+test('openBrowseSession revalidates landing after load wait before screenshot', async () => {
+	const screenshotCalls: Array<unknown> = []
+	let currentUrl = 'https://kody-pr-9.example/account'
+	const page = {
+		goto: async () => {
+			currentUrl = 'https://kody-pr-9.example/account'
+		},
+		url: () => currentUrl,
+		waitForLoadState: async () => {
+			currentUrl = 'https://kody-pr-9.example/login'
+		},
+		screenshot: async (options: unknown) => {
+			screenshotCalls.push(options)
+		},
+		on: () => {},
+	}
+	const context = {
+		addCookies: async () => {},
+		newPage: async () => page,
+		close: async () => {},
+	}
+	const browser = {
+		newContext: async () => context,
+		close: async () => {},
+		on: () => {},
+		isConnected: () => true,
+	}
+	await expect(
+		openBrowseSession({
+			origin: 'https://kody-pr-9.example',
+			path: '/account',
+			cookieHeader: 'kody_session=seed',
+			headed: false,
+			screenshotPath: path.join(
+				tmpdir(),
+				`control-kody-post-load-${Date.now()}.png`,
+			),
+			chromium: {
+				launch: async () => browser as never,
+			},
+		}),
+	).rejects.toThrow(/login/)
+	expect(screenshotCalls).toEqual([])
+})
+
 test('openBrowseSession refuses an empty cookie header', async () => {
 	await expect(
 		openBrowseSession({

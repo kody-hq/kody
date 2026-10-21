@@ -227,11 +227,19 @@ export async function openBrowseSession(
 					})
 				: null
 		await page.goto(url, { waitUntil: 'domcontentloaded' })
-		const finalUrl = page.url()
-		assertBrowseLandedOnTarget({ requestedUrl: url, finalUrl })
+		assertBrowseLandedOnTarget({
+			requestedUrl: url,
+			finalUrl: page.url(),
+		})
 		if (screenshotPath) {
 			await page.waitForLoadState('load', {
 				timeout: browseScreenshotLoadTimeoutMs,
+			})
+			// Re-check after the load wait: client navigations (login, cross-origin)
+			// can land after domcontentloaded and before capture.
+			assertBrowseLandedOnTarget({
+				requestedUrl: url,
+				finalUrl: page.url(),
 			})
 			await page.screenshot({
 				path: screenshotPath,
@@ -239,6 +247,9 @@ export async function openBrowseSession(
 				type: 'png',
 			})
 		}
+
+		const finalUrl = page.url()
+		assertBrowseLandedOnTarget({ requestedUrl: url, finalUrl })
 
 		const report: BrowseSessionReport = {
 			ok: true,
