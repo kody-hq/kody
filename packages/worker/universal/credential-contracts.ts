@@ -123,7 +123,7 @@ export type EffectiveCredentialMapping = {
 	status: EffectiveCredentialMappingStatus
 	credentials: Array<CredentialRef>
 	candidates: Array<CredentialRef>
-	/** Absolute creation link; set when status is not `ready`. */
+	/** Absolute creation link; set when status is neither `ready` nor `expired`. */
 	createUrl: string | null
 }
 
