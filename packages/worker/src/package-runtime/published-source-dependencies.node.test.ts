@@ -1,8 +1,11 @@
 import { expect, test } from 'vitest'
 import {
+	assertPublishedSourceCanRebuildWithoutInstallingDeps,
 	canKeepPreviousNpmBundleDuringRebuild,
+	isPublishedRuntimeBundleMissingError,
 	isPublishedSourceWithinNpmBundleRebuildWindow,
 	publishedNpmBundleRebuildWindowMs,
+	publishedRuntimeBundleMissingMessage,
 } from './published-source-dependencies.ts'
 
 test('npm rebuild window uses publishedAt and ignores missing timestamps', () => {
@@ -51,4 +54,31 @@ test('keep-previous treats a missing finalize clock as still in the rebuild wind
 			nowMs,
 		}),
 	).toBe(false)
+})
+
+test('isPublishedRuntimeBundleMissingError matches the assert message only', () => {
+	expect(isPublishedRuntimeBundleMissingError(null)).toBe(false)
+	expect(isPublishedRuntimeBundleMissingError(new Error('other'))).toBe(false)
+	expect(() =>
+		assertPublishedSourceCanRebuildWithoutInstallingDeps({
+			sourceFiles: {
+				'package.json': JSON.stringify({
+					dependencies: { kleur: '^4.1.5' },
+				}),
+			},
+			bundleLabel: 'Saved package app "example"',
+		}),
+	).toThrow(publishedRuntimeBundleMissingMessage)
+	try {
+		assertPublishedSourceCanRebuildWithoutInstallingDeps({
+			sourceFiles: {
+				'package.json': JSON.stringify({
+					dependencies: { kleur: '^4.1.5' },
+				}),
+			},
+			bundleLabel: 'Saved package app "example"',
+		})
+	} catch (error) {
+		expect(isPublishedRuntimeBundleMissingError(error)).toBe(true)
+	}
 })

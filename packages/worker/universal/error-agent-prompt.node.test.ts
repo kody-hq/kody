@@ -129,6 +129,15 @@ test('presets cover internal and package-app failures', () => {
 	expect(crashed).toContain('pkg_123')
 	expect(crashed).toContain('runGet')
 
+	const pending = buildPackageAppErrorAgentPrompt({
+		kind: 'runtime-bundle-pending',
+		packageName: '@acme/app',
+		kodyId: 'pkg_123',
+		path: '/@acme/packages/pkg_123/',
+	})
+	expect(pending).toContain('package_app_runtime_bundle_pending')
+	expect(pending).toContain('still preparing')
+
 	const oauth = buildConnectOauthFailureAgentPrompt({
 		statusMessage: 'Unable to save OAuth tokens.',
 		provider: 'linear',
