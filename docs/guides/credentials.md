@@ -126,8 +126,9 @@ named; query; path; and/or body). Null means anywhere. New credentials default
 to headers-only. The per-request header **intersects** with that placement (it
 never widens it). Distinct from **inject**, which only steers a scoped
 `credential()` client. Edit fill placement on the credential detail page, via
-`secretSet` / `credentialUpdate`, or the account secret editor. The gateway logs
-would-block today and does not refuse yet; enforcement ships later.
+`secretSet` / `credentialUpdate`, or the account secret editor. The gateway
+fills placeholders regardless of placement and logs would-block when a fill is
+outside the declared parts.
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):

@@ -53,17 +53,16 @@ boundary, on the final serialized request, and only for hosts you approved.
 
 - **Placeholders in `fetch`** — `{{secret:githubAccessToken}}` in an outbound
   HTTPS `fetch` (a header, the URL path or query, or a text body) resolves when
-  the request leaves Kody, if the host is one you approved for that secret and
-  the fill site is allowed by the credential's **fill placement**. Null
-  placement means anywhere; new credentials default to headers-only. Set
+  the request leaves Kody, if the host is one you approved for that secret. Each
+  credential also stores a **fill placement** (headers, query, path, and/or
+  body). Null means anywhere; new credentials default to headers-only. Set
   placement on create/edit (`secretSet` / `credentialUpdate`, the credential
-  detail page, or `/connect/secret-set`). The gateway does not refuse disallowed
-  parts yet (observe mode logs would-block); enforcement ships later. On plain
-  `http://` or an unapproved host the request is refused with an error naming
-  the secret and host; a placeholder is never sent unfilled. External providers
-  use the same boundary; see [Custom secret providers](./secret-providers.md).
-  This is not general string interpolation; it works only in secret-aware
-  `fetch`.
+  detail page, or `/connect/secret-set`). The gateway fills every part and logs
+  would-block when a fill is outside the declared placement. On plain `http://`
+  or an unapproved host the request is refused with an error naming the secret
+  and host; a placeholder is never sent unfilled. External providers use the
+  same boundary; see [Custom secret providers](./secret-providers.md). This is
+  not general string interpolation; it works only in secret-aware `fetch`.
 - **Derived headers** — when an API wants Basic Auth built from two secrets,
   `secretHeaders.basic({ usernameSecret, passwordSecret })` from `kody:runtime`
   produces the header without exposing either half. Each secret argument accepts
@@ -97,9 +96,9 @@ Saving a secret does not by itself let anything use it.
   module that originated the call — so dependents statically import the owning
   export instead of needing their own grant. Packages you authored and community
   forks you adopted after reviewing the source get read/use automatically.
-  Unadopted forks need an explicit grant. Updating or deleting a user secret
-  from package code always needs the grant. Only the account owner can add a
-  package to that grant on `/@<slug>/-/secrets/user/:name` or
+  Unadopted forks need an explicit grant. Updating, disconnecting, or deleting a
+  user secret from package code always needs the grant. Only the account owner
+  can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
   `/@<slug>/-/secrets/approve` — a focused Allow page, the same spirit as host
   approval on `/connect/secrets`. `secretLock` returns that approval URL for the
   owner to click; it does not change `allowed_packages`. Send the link and wait.
@@ -108,11 +107,9 @@ Saving a secret does not by itself let anything use it.
 Bulk approval URLs (`/@<slug>/-/secrets/approve?package_id=…&names=a,b`) let you
 approve several pending secrets for one package in a click.
 
-Starting Wednesday, Oct 21, 2026, a non-empty `allowed_packages` list is
-enforced for every package use of that credential (including when the package is
-used through another package or loaded in a one-off `execute` run). Publish and
-save may warn beforehand when a package fills a credential it is not listed for;
-approve the package or move the use into an already-allowed package.
+Publish and save warn when a package fills a user credential whose
+`allowed_packages` list is non-empty and does not include that package. Approve
+the package or move the use into an already-allowed package.
 
 ## Scopes
 

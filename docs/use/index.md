@@ -97,6 +97,8 @@ reference detail those docs link into.
   the owner operates a container or machine and the package calls it
 - [Public packages](./community-packages.md) — share, browse, and fork published
   packages on the same deployment; public catalogs live at `/@username`
+- [Plain repos](./repos.md) — Artifacts-backed live-at-HEAD storage; promote
+  with `repoPromoteToPackage` when you want runtime surfaces
 - [Repo-backed editing sessions](./repo-sessions.md)
 - [Raw MCP content blocks](./raw-content-blocks.md)
 - [Secrets and host approval](./secrets-and-values.md) — includes external

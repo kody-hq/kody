@@ -94,7 +94,7 @@ A one-file fetch handler is a complete app (see
 
 Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
 (and on verified custom domains). That URL is the app. Legacy
-`/packages/<package-name>/…` on the same host still serves during the cutover.
+`/packages/<package-name>/…` on the same host still resolves to the same app.
 `https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
 who may run the app hand off to it; everyone else stays on the package page (or
 a same-origin landing).

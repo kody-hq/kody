@@ -286,25 +286,24 @@ Unadopted community-forked packages need explicit **package** approval
 (`allowed_packages`) before those read/use paths. Approval is checked against
 the **stamped** package — the module that originated the call — not the
 importing run. Dependents statically import the owning export; they do not need
-their own grant for secrets locked to that owner. Updating or deleting a user
-secret from package code (`secretSet`, `secretDelete`) always needs the grant on
-the stamp package, including for self-authored and adopted packages. Only the
-account owner can add a package to that grant on `/@<slug>/-/secrets/user/:name`
-or `/@<slug>/-/secrets/approve`. **`secretLock`** returns an approval URL for
-the owner to click (one-click Allow, same spirit as `/connect/secrets`); it does
-not change `allowed_packages`. Send the link and wait. Removing a grant is also
+their own grant for secrets locked to that owner. Updating, disconnecting, or
+deleting a user secret from package code (`secretSet`, `secretDisconnect`,
+`secretDelete`) always needs the grant on the stamp package, including for
+self-authored and adopted packages. Disconnect clears the value but keeps the
+row, placement, and grants; Delete removes the credential. Only the account
+owner can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
+`/@<slug>/-/secrets/approve`. **`secretLock`** returns an approval URL for the
+owner to click (one-click Allow, same spirit as `/connect/secrets`); it does not
+change `allowed_packages`. Send the link and wait. Removing a grant is also
 website-only. `secretSet` cannot change `allowed_packages`. Official OAuth token
 rotation (`createAuthenticatedFetch` 401 retry via `integrationTokenRefresh`)
 persists host-side and does not need that write grant.
 
-Starting **Wednesday, Oct 21, 2026**, Kody applies each user credential's
-`allowed_packages` list on every package use of that credential — including when
-the package is used through another package (an imported dependency) and when it
-is loaded in a one-off `execute` run. Until then, publish and save may warn when
-a package fills a credential whose list is non-empty and does not include that
-package; publishing and saving still succeed. To fix: approve the package on the
-secret's page (or via the approval link in the warning), or move the credential
-use into a package that is already on the list.
+Publish and save warn when a package fills a user credential whose
+`allowed_packages` list is non-empty and does not include that package;
+publishing and saving still succeed. Approve the package on the secret's page
+(or via the approval link in the warning), or move the credential use into a
+package that is already on the list.
 
 **Host approval is separate and is never automatic**, including for
 self-authored and adopted packages. An empty host allowlist blocks

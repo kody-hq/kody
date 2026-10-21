@@ -405,10 +405,10 @@ When a package will use user-scoped secrets (`{{secret:name}}` placeholders or
    ([Credentials](./credentials.md#keys-and-placeholders)).
 2. Self-authored packages and community forks the owner adopted on the website
    after a real source review get automatic read/use access to user secrets
-   (host approval still applies; `secretSet` / `secretDelete` still need an
-   `allowed_packages` grant). After save/publish, read
-   `pending_secret_package_approvals` from the tool result — it is non-null only
-   for unadopted community forks.
+   (host approval still applies; `secretSet` / `secretDisconnect` /
+   `secretDelete` still need an `allowed_packages` grant). After save/publish,
+   read `pending_secret_package_approvals` from the tool result — it is non-null
+   only for unadopted community forks.
 3. When pending approvals are present, either review the fork source and send
    the user the `approval_url` from `communityForkAdopt` (only the owner can
    adopt, on the website), or send the user `bulk_approval_url` / each

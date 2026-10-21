@@ -207,8 +207,9 @@ credentials; opt-in types that a package can declare are described in
   headers-only. See
   [Credentials](../guides/credentials.md#keys-and-placeholders) and
   [ADR 0068 amendment 2026-10-20](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-20-package-manifest-fill-placement).
-  The fetch gateway still fills today; enforcement ships later. Placeholders
-  work over HTTPS to a host the secret or integration allows. See
+  The fetch gateway fills placeholders regardless of placement and logs
+  would-block when a fill is outside the declared parts. Placeholders work over
+  HTTPS to a host the secret or integration allows. See
   [Placeholders in `fetch`](./secrets-and-values.md#placeholders-in-fetch).
 
 #### Declare what a stamped package may use
@@ -556,11 +557,9 @@ authority when another package or ad hoc execute statically imports it. The
 importer does not need its own `allowed_packages` grant. The importer's own code
 still cannot read that secret, including by passing the declaring package's id
 to `kody.packageSecretGet` / `Has`. See
-[Package approval](./secrets-and-values.md#package-approval). Starting
-Wednesday, Oct 21, 2026, a non-empty `allowed_packages` list is enforced for
-those stamped uses everywhere (including through another package or a one-off
-`execute` load); publish/save warnings tip owners to approve or move the use
-before then.
+[Package approval](./secrets-and-values.md#package-approval). Publish and save
+warn when a package fills a user credential whose `allowed_packages` list is
+non-empty and does not include that package.
 
 ### Ambient `storage` is not a `kody:runtime` export
 
@@ -578,7 +577,7 @@ app route.
 Production-hosted package apps run on per-user subdomains of Kody's separate
 `kody.run` domain (`https://{username}.kody.run/<package-name>/...`), or on a
 verified custom domain, not on the signed-in app origin. Legacy
-`/packages/<package-name>/...` on the subdomain still serves during the cutover.
+`/packages/<package-name>/...` on the subdomain still resolves to the same app.
 The package page links there. People who may run the app still open it through a
 short-lived session handoff from kody.codes, because the hosted origin cannot
 see the kody.codes session cookie. Package author JavaScript cannot use the

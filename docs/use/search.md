@@ -101,9 +101,10 @@ names a connected MCP server; that query participates in ranking so the package
 and MCP server can appear together. Kody also recognizes current-origin
 `/account/packages/:packageId` URLs (which redirect to the package page),
 owner-matching `/@username/:name` package pages, and per-user package-app
-subdomain URLs (`https://{username}.<package-app host>/packages/:name`) — so a
-URL copied from an open app resolves too. Exact package identities never compete
-with semantic capability results. Hidden exact query matches still require
+subdomain URLs (`https://{username}.<package-app host>/{package-name}`, plus
+legacy `/packages/{package-name}` on the same host) — so a URL copied from an
+open app resolves too. Exact package identities never compete with semantic
+capability results. Hidden exact query matches still require
 `includeHiddenPackages: true`; exact `entity` lookup by UUID or package name
 leaf ignores the hidden discovery preference.
 
