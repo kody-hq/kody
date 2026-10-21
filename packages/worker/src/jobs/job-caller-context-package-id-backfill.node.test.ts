@@ -87,6 +87,15 @@ test('jobCallerContextNeedsPackageIdRepair detects missing and mismatched packag
 			}),
 		}),
 	).toEqual({ needsRepair: false, packageId })
+	// Whitespace around a matching id still needs repair (do not trim for eq).
+	expect(
+		jobCallerContextNeedsPackageIdRepair({
+			jobId,
+			callerContextJson: JSON.stringify({
+				storageContext: { packageId: ` ${packageId} ` },
+			}),
+		}),
+	).toEqual({ needsRepair: true, packageId })
 	expect(
 		jobCallerContextNeedsPackageIdRepair({
 			jobId: 'not-a-package-job',

@@ -687,7 +687,8 @@ export async function updateJobRowCallerContextJson(input: {
 	const result = await input.db
 		.prepare(
 			`UPDATE jobs SET caller_context_json = ?, updated_at = ?
-			WHERE id = ? AND user_id = ? AND caller_context_json = ?`,
+			WHERE id = ? AND user_id = ? AND caller_context_json = ?
+				AND deleted_at IS NULL`,
 		)
 		.bind(
 			input.callerContextJson,

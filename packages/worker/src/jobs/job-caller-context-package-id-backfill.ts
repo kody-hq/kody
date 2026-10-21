@@ -62,13 +62,15 @@ function parseStoredCallerContextJson(callerContextJson: string): {
 			storageContext?: { packageId?: unknown }
 		}
 		const packageIdRaw = parsed.storageContext?.packageId
+		// Keep the raw stored string for equality checks; only treat
+		// blank/whitespace as missing.
 		const packageId =
-			typeof packageIdRaw === 'string' && packageIdRaw.trim()
-				? packageIdRaw.trim()
+			typeof packageIdRaw === 'string' && packageIdRaw.trim() !== ''
+				? packageIdRaw
 				: null
 		const baseUrlRaw = parsed.baseUrl
 		const baseUrl =
-			typeof baseUrlRaw === 'string' && baseUrlRaw.trim()
+			typeof baseUrlRaw === 'string' && baseUrlRaw.trim() !== ''
 				? baseUrlRaw.trim()
 				: null
 		return { packageId, baseUrl }
