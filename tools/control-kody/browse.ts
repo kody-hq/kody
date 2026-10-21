@@ -248,24 +248,29 @@ export async function openBrowseSession(
 			})
 		}
 
-		const finalUrl = page.url()
-		assertBrowseLandedOnTarget({ requestedUrl: url, finalUrl })
-
-		const report: BrowseSessionReport = {
-			ok: true,
-			origin,
-			path: browsePath,
-			url: finalUrl,
-			headed,
-			record,
-			videoDir,
-			screenshotPath,
-			detail: `opened ${finalUrl} (signed in)`,
+		const buildSignedInReport = () => {
+			const finalUrl = page.url()
+			assertBrowseLandedOnTarget({ requestedUrl: url, finalUrl })
+			return {
+				ok: true as const,
+				origin,
+				path: browsePath,
+				url: finalUrl,
+				headed,
+				record,
+				videoDir,
+				screenshotPath,
+				detail: `opened ${finalUrl} (signed in)`,
+			} satisfies BrowseSessionReport
 		}
+
+		let report = buildSignedInReport()
 
 		if (closeAfterMs != null) {
 			if (closeAfterMs > 0) {
 				await delay(closeAfterMs)
+				// Session may navigate during the hold (login, cross-origin).
+				report = buildSignedInReport()
 			}
 			await context.close()
 			context = null

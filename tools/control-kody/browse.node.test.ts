@@ -314,6 +314,48 @@ test('openBrowseSession revalidates landing after load wait before screenshot', 
 	expect(screenshotCalls).toEqual([])
 })
 
+test('openBrowseSession revalidates landing after closeAfterMs hold', async () => {
+	const screenshotCalls: Array<unknown> = []
+	let currentUrl = 'https://kody-pr-9.example/account'
+	const page = {
+		goto: async () => {
+			currentUrl = 'https://kody-pr-9.example/account'
+		},
+		url: () => currentUrl,
+		waitForLoadState: async () => {},
+		screenshot: async (options: unknown) => {
+			screenshotCalls.push(options)
+		},
+		on: () => {},
+	}
+	const context = {
+		addCookies: async () => {},
+		newPage: async () => page,
+		close: async () => {},
+	}
+	const browser = {
+		newContext: async () => context,
+		close: async () => {},
+		on: () => {},
+		isConnected: () => true,
+	}
+	const session = openBrowseSession({
+		origin: 'https://kody-pr-9.example',
+		path: '/account',
+		cookieHeader: 'kody_session=seed',
+		headed: false,
+		closeAfterMs: 20,
+		chromium: {
+			launch: async () => browser as never,
+		},
+	})
+	// Navigate after the report would previously have been frozen.
+	await new Promise<void>((resolve) => setTimeout(resolve, 5))
+	currentUrl = 'https://kody-pr-9.example/login'
+	await expect(session).rejects.toThrow(/login/)
+	expect(screenshotCalls).toEqual([])
+})
+
 test('openBrowseSession refuses an empty cookie header', async () => {
 	await expect(
 		openBrowseSession({
