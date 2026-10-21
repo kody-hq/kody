@@ -231,9 +231,12 @@ While it runs, `kody dev`:
   is taken. `--port <n>` is used exactly.
 
 Local-only settings live in `package.json#kody.dev`. Publish ignores them.
-`prebuild` is a shell command run from the package root before every build (with
-`KODY_DEV=1`), for generated CSS, icons, or data files. `ignore` lists
-root-relative path prefixes the watcher skips:
+`prebuild` is a shell command run from the package root before every `kody dev`
+serve rebuild (with `KODY_DEV=1`), for generated CSS, icons, or data files. It
+does **not** run for `kody dev check` or publish — those use the working-tree /
+git snapshot as-is. Generated files that exports import must be committed (or
+produced somewhere publish can see). `ignore` lists root-relative path prefixes
+the watcher skips:
 
 ```json
 {

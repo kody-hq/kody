@@ -342,8 +342,10 @@ ${orgBlock}
              Serves \`kody.app.client\` at /_assets/client.<hash>.js
              (packageContext.clientModuleUrl), \`kody.app.assets\` under
              /_assets/, and /_assets/__version.json. \`kody.dev.prebuild\`
-             (shell command, run before every build) regenerates assets;
-             \`kody.dev.ignore\` lists watcher path prefixes to skip.
+             (shell command) runs only for \`kody dev\` serve rebuilds — not
+             \`kody dev check\` or publish — to regenerate assets; commit
+             generated files that exports import. \`kody.dev.ignore\` lists
+             watcher path prefixes to skip.
              Agents: \`--json\` streams NDJSON events (ready, rebuild_start,
              rebuild_ok, build_error, runtime_error, log); GET
              /__kody/dev/status returns build id + last error;
@@ -357,15 +359,17 @@ ${orgBlock}
              (\`kody dev webhook\`), schedules (\`kody dev job\` — runs once,
              never schedules locally), subscriptions
              (\`kody dev emit <event> --body event.json\`). \`kody dev check\`
-             bundles + light publish validations without running, then
-             runs the server publish checks on the same tree (\`packageCheck\`,
-             the checks publish runs, credential stamp gate included) with
-             your login, so a passing check means publish will not refuse
-             it. \`--offline\` skips the server checks (a WARN says so); when the
-             package uses credentialed fetch and \`.kody/mocks.ts\` is
-             missing, check soft-suggests adding that file. A fetch that
-             sends a non-literal body without \`x-kody-secret-resolution\`
-             prints a WARNING and still passes. On
+             bundles + light publish validations without running (and fails
+             when a bundle input is gitignored / untracked-ignored, since
+             publish builds the git snapshot), then runs the server publish
+             checks on the same tree (\`packageCheck\`, the checks publish
+             runs, credential stamp gate included) with your login. Without
+             \`--offline\`, a passing check means publish will not refuse it;
+             \`--offline\` skips the server checks (a WARN says so) and that
+             guarantee does not apply. When the package uses credentialed
+             fetch and \`.kody/mocks.ts\` is missing, check soft-suggests
+             adding that file. A fetch that sends a non-literal body without
+             \`x-kody-secret-resolution\` prints a WARNING and still passes. On
              \`--target mock\`, \`kody:@\` deps resolve from this package's
              exports, \`.kody/deps.json\` / \`package.json#kody.localDeps\`
              path maps, then published package-graph when a login/API token

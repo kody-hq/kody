@@ -9,9 +9,12 @@ import * as esbuild from 'esbuild'
 import { join, resolve } from 'node:path'
 import {
 	BundleError,
+	bundleInputs,
 	createBundleError,
 	localBundleOptions,
 } from '../local-bundle.js'
+
+export { bundleInputs } from '../local-bundle.js'
 
 export type DevBundle = {
 	code: string
@@ -66,15 +69,6 @@ export function createDevBundler(input: {
 			await (await current?.catch(() => null))?.dispose()
 		},
 	}
-}
-
-export function bundleInputs(
-	metafile: esbuild.Metafile | undefined,
-	workingDir: string,
-): Array<string> {
-	return Object.keys(metafile?.inputs ?? {})
-		.filter((path) => !path.includes('node_modules') && !path.includes(':'))
-		.map((path) => resolve(workingDir, path))
 }
 
 export function readBundle(

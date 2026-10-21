@@ -32,8 +32,13 @@ import {
 import { StructuredCliError } from './structured-error.js'
 import { type KodyTarget } from './target.js'
 import { formatToolResult } from './tool-result.js'
-import { bundleLocalUserModule } from './local-bundle.js'
-import { collectPackageCheckFiles } from './package-check-files.js'
+import { bundleLocalUserModuleWithInputs } from './local-bundle.js'
+import {
+	collectPackageCheckFiles,
+	formatUnpublishedBundleInputMessage,
+	listPackageCheckPaths,
+	unpublishedBundleInputPaths,
+} from './package-check-files.js'
 import { formatDevEvent, type DevEvent } from './dev/dev-events.js'
 import { defaultDevPort } from './dev/dev-port.js'
 import {
@@ -657,9 +662,10 @@ export function parsePackageCheckResult(value: unknown): PackageCheckResult {
 
 /**
  * Local bundles + light validations, then the server publish checks on the
- * same tree (`packageCheck`, the exact `runRepoChecks` call publish makes),
- * so `kody dev check` never passes a package that publish refuses. Nothing
- * runs, saves, or publishes. Soft-suggests `.kody/mocks.ts` when credentialed
+ * same tree (`packageCheck`, the exact `runRepoChecks` call publish makes).
+ * Local bundles also fail when an input is not in the publish snapshot file
+ * set (gitignored / untracked-ignored), so `--offline` cannot green-pass a
+ * tree publish will not have. Soft-suggests `.kody/mocks.ts` when credentialed
  * fetch is detected. `offline` skips the server checks and says so.
  */
 export async function runDevCheck(input: {
@@ -681,6 +687,8 @@ export async function runDevCheck(input: {
 	}> = []
 	const credentialSignals: Array<CredentialedFetchSignal> = []
 	const fetchBodyHits: Array<{ path: string; line: number }> = []
+	const snapshotPaths = new Set(await listPackageCheckPaths(manifest.root))
+	const hasPrebuild = Boolean(manifest.dev?.prebuild)
 
 	const push = (
 		name: string,
@@ -701,10 +709,27 @@ export async function runDevCheck(input: {
 		modulePath: string,
 	): Promise<void> => {
 		try {
-			const bundled = await bundleLocalUserModule(modulePath)
+			const bundled = await bundleLocalUserModuleWithInputs(modulePath)
+			const unpublished = unpublishedBundleInputPaths({
+				absoluteInputs: bundled.inputs,
+				packageRoot: manifest.root,
+				snapshotPaths,
+			})
+			if (unpublished.length > 0) {
+				push(
+					label,
+					false,
+					unpublished
+						.map((path) =>
+							formatUnpublishedBundleInputMessage(path, { hasPrebuild }),
+						)
+						.join('\n'),
+				)
+				return
+			}
 			push(label, true, label.startsWith('app.entry') ? modulePath : undefined)
 			credentialSignals.push(
-				...(await detectCredentialedFetchInSource(bundled, label)),
+				...(await detectCredentialedFetchInSource(bundled.code, label)),
 			)
 			fetchBodyHits.push(
 				...(await findPackageFetchBodyWarnings({

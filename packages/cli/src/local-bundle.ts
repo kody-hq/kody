@@ -89,6 +89,19 @@ export const nodeBuiltinModuleNames = [
 ] as const
 
 /**
+ * Absolute paths of every non-node_modules package input in an esbuild
+ * metafile (`absWorkingDir`-relative keys → absolute).
+ */
+export function bundleInputs(
+	metafile: esbuild.Metafile | undefined,
+	workingDir: string,
+): Array<string> {
+	return Object.keys(metafile?.inputs ?? {})
+		.filter((path) => !path.includes('node_modules') && !path.includes(':'))
+		.map((path) => resolve(workingDir, path))
+}
+
+/**
  * esbuild options shared by one-shot bundles and `kody dev` rebuilds: follow
  * relative imports and npm packages, keep `kody:*` external for package-graph
  * + runtime binding, and leave Node builtins (`node:*` and bare `stream`,
@@ -100,11 +113,11 @@ export function localBundleOptions(entry: string) {
 		entryPoints: [entry],
 		bundle: true,
 		write: false,
-		format: 'esm',
-		platform: 'neutral',
+		format: 'esm' as const,
+		platform: 'neutral' as const,
 		target: 'esnext',
-		logLevel: 'silent',
-		packages: 'bundle',
+		logLevel: 'silent' as const,
+		packages: 'bundle' as const,
 		external: [
 			'kody:*',
 			'node:*',
@@ -113,17 +126,25 @@ export function localBundleOptions(entry: string) {
 	} satisfies esbuild.BuildOptions
 }
 
+export type LocalUserBundle = {
+	code: string
+	/** Absolute paths of every non-node_modules input in the graph. */
+	inputs: Array<string>
+}
+
 /**
  * Bundle a `--file` entry for local workerd the same way hosted execute /
- * publish resolves code.
+ * publish resolves code. Includes the input graph (metafile) so callers can
+ * compare against the publish snapshot.
  */
-export async function bundleLocalUserModule(
+export async function bundleLocalUserModuleWithInputs(
 	modulePath: string,
-): Promise<string> {
+): Promise<LocalUserBundle> {
 	const entry = resolve(modulePath)
-	let result: esbuild.BuildResult
+	const options = { ...localBundleOptions(entry), metafile: true as const }
+	let result: esbuild.BuildResult<{ metafile: true; write: false }>
 	try {
-		result = await esbuild.build(localBundleOptions(entry))
+		result = await esbuild.build(options)
 	} catch (error) {
 		throw createBundleError(modulePath, error)
 	}
@@ -137,7 +158,20 @@ export async function bundleLocalUserModule(
 	if (result.errors.length > 0) {
 		throw createBundleError(modulePath, { errors: result.errors })
 	}
-	return output.text
+	return {
+		code: output.text,
+		inputs: bundleInputs(result.metafile, options.absWorkingDir),
+	}
+}
+
+/**
+ * Bundle a `--file` entry for local workerd the same way hosted execute /
+ * publish resolves code.
+ */
+export async function bundleLocalUserModule(
+	modulePath: string,
+): Promise<string> {
+	return (await bundleLocalUserModuleWithInputs(modulePath)).code
 }
 
 /**
