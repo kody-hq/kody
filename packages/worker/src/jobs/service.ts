@@ -35,11 +35,12 @@ import {
 	finishRunRecord,
 	getJobRunObservability,
 	getRunRecord,
-	getRunRecordByIdempotencyKey,
+	listRunRecords,
 	upsertJobRunObservability,
 } from '#worker/run-records/service.ts'
 import {
 	runPersistenceForContext,
+	runRecordMaxPageSize,
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
 import {
@@ -1986,28 +1987,44 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 	const { row, claimToken } = input
 	const error = scheduledJobHungExecutionMessage
 	const scheduledFor = row.claimed_scheduled_for
-	const idempotencyKey =
+	const occurrenceIdempotencyKeyPrefix =
 		scheduledFor == null
 			? null
 			: buildScheduledJobIdempotencyKey({
 					jobId: row.id,
 					scheduledFor,
 				})
-	if (idempotencyKey) {
-		const running = await getRunRecordByIdempotencyKey({
+	if (occurrenceIdempotencyKeyPrefix) {
+		// Scheduled ticks persist one run per enablement under
+		// `${base}:enablement:${id}`; exact base-key lookup misses those.
+		const page = await listRunRecords({
 			env: input.env,
 			userId: input.userId,
-			idempotencyKey,
-			surface: 'job',
-		}).catch(() => null)
-		if (running?.status === 'running') {
+			filter: {
+				surface: 'job',
+				status: 'running',
+				jobId: row.id,
+			},
+			limit: runRecordMaxPageSize,
+		}).catch(() => ({ runs: [], nextCursor: null }))
+		for (const running of page.runs) {
+			const runKey = running.idempotencyKey?.trim()
+			if (
+				runKey == null ||
+				!(
+					runKey === occurrenceIdempotencyKeyPrefix ||
+					runKey.startsWith(`${occurrenceIdempotencyKeyPrefix}:`)
+				)
+			) {
+				continue
+			}
 			const handle: RunRecordHandle = {
 				id: running.id,
 				userId: input.userId,
 				startedAt: running.startedAt,
 				persistence: runPersistenceForContext({
 					surface: 'job',
-					idempotencyKey,
+					idempotencyKey: runKey,
 				}),
 				context: {
 					surface: 'job',
@@ -2018,7 +2035,7 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 					publishedCommit: running.publishedCommit,
 					packageId: running.packageId,
 					kodyId: running.kodyId,
-					idempotencyKey,
+					idempotencyKey: runKey,
 					metadata: running.metadata,
 				},
 			}

@@ -29,8 +29,7 @@ const claimRunRecord = vi.fn()
 const upsertJobRunObservability = vi.fn()
 const getJobRunObservability = vi.fn()
 const finishRunRecord = vi.fn<typeof RunRecordsServiceModule.finishRunRecord>()
-const getRunRecordByIdempotencyKey =
-	vi.fn<typeof RunRecordsServiceModule.getRunRecordByIdempotencyKey>()
+const listRunRecords = vi.fn<typeof RunRecordsServiceModule.listRunRecords>()
 const getEntitySourceByIdForUser = vi.fn()
 const getSavedPackageById = vi.fn()
 
@@ -94,11 +93,9 @@ vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
 			...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 		) => finishRunRecord(...args),
 		getRunRecord: vi.fn(),
-		getRunRecordByIdempotencyKey: (
-			...args: Parameters<
-				typeof RunRecordsServiceModule.getRunRecordByIdempotencyKey
-			>
-		) => getRunRecordByIdempotencyKey(...args),
+		listRunRecords: (
+			...args: Parameters<typeof RunRecordsServiceModule.listRunRecords>
+		) => listRunRecords(...args),
 	}
 })
 
@@ -715,34 +712,69 @@ test('a hung Workers cancellation settles the claimed job as a visible failure',
 		errorCount: 1,
 		updatedAt: now.toISOString(),
 	})
-	getRunRecordByIdempotencyKey.mockReset()
-	getRunRecordByIdempotencyKey.mockResolvedValueOnce({
-		id: 'run-hung',
-		surface: 'job',
-		status: 'running',
-		name: record.name,
-		packageId: null,
-		kodyId: null,
-		sourceId: record.sourceId,
-		publishedCommit: null,
-		storageId: record.storageId,
-		jobId: record.id,
-		workflowId: null,
-		invocationId: null,
-		sessionId: null,
-		idempotencyKey: `scheduled-job:${record.id}:${record.nextRunAt}`,
-		parentRunId: null,
-		startedAt: now.toISOString(),
-		finishedAt: null,
-		durationMs: null,
-		errorName: null,
-		errorMessage: null,
-		errorTriage: null,
-		triageNote: null,
-		triagedAt: null,
-		triagedBy: null,
-		metadata: { scheduledFor: record.nextRunAt },
-		logCount: 0,
+	const occurrenceKey = `scheduled-job:${record.id}:${record.nextRunAt}`
+	const enablementKey = `${occurrenceKey}:enablement:enablement-fenced`
+	listRunRecords.mockReset()
+	listRunRecords.mockResolvedValueOnce({
+		runs: [
+			{
+				id: 'run-hung-enablement',
+				surface: 'job',
+				status: 'running',
+				name: record.name,
+				packageId: null,
+				kodyId: null,
+				sourceId: record.sourceId,
+				publishedCommit: null,
+				storageId: record.storageId,
+				jobId: record.id,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: enablementKey,
+				parentRunId: null,
+				startedAt: now.toISOString(),
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				errorTriage: null,
+				triageNote: null,
+				triagedAt: null,
+				triagedBy: null,
+				metadata: { scheduledFor: record.nextRunAt },
+				logCount: 0,
+			},
+			{
+				id: 'run-other-occurrence',
+				surface: 'job',
+				status: 'running',
+				name: record.name,
+				packageId: null,
+				kodyId: null,
+				sourceId: record.sourceId,
+				publishedCommit: null,
+				storageId: record.storageId,
+				jobId: record.id,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: `scheduled-job:${record.id}:2026-07-30T18:00:00.000Z:enablement:enablement-fenced`,
+				parentRunId: null,
+				startedAt: now.toISOString(),
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				errorTriage: null,
+				triageNote: null,
+				triagedAt: null,
+				triagedBy: null,
+				metadata: { scheduledFor: '2026-07-30T18:00:00.000Z' },
+				logCount: 0,
+			},
+		],
+		nextCursor: null,
 	})
 	getEntitySourceByIdForUser.mockRejectedValueOnce(
 		new Error(workersHungRequestMessage),
@@ -763,10 +795,26 @@ test('a hung Workers cancellation settles the claimed job as a visible failure',
 			},
 		],
 	})
+	expect(listRunRecords).toHaveBeenCalledWith(
+		expect.objectContaining({
+			filter: {
+				surface: 'job',
+				status: 'running',
+				jobId: record.id,
+			},
+		}),
+	)
+	expect(finishRunRecord).toHaveBeenCalledTimes(1)
 	expect(finishRunRecord).toHaveBeenCalledWith(
 		expect.objectContaining({
 			status: 'error',
 			error: scheduledJobHungExecutionMessage,
+			handle: expect.objectContaining({
+				id: 'run-hung-enablement',
+				context: expect.objectContaining({
+					idempotencyKey: enablementKey,
+				}),
+			}),
 		}),
 	)
 	expect(upsertJobRunObservability).toHaveBeenCalledWith(
@@ -794,8 +842,8 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 	finishRunRecord.mockResolvedValue(true)
 	upsertJobRunObservability.mockClear()
 	upsertJobRunObservability.mockResolvedValue(null)
-	getRunRecordByIdempotencyKey.mockReset()
-	getRunRecordByIdempotencyKey.mockResolvedValueOnce(null)
+	listRunRecords.mockReset()
+	listRunRecords.mockResolvedValueOnce({ runs: [], nextCursor: null })
 
 	await expect(
 		settleHungDueJobsForUser({
@@ -816,5 +864,14 @@ test('settleHungDueJobsForUser finishes stranded claimed jobs after a hung HOST 
 			},
 		],
 	})
+	expect(listRunRecords).toHaveBeenCalledWith(
+		expect.objectContaining({
+			filter: {
+				surface: 'job',
+				status: 'running',
+				jobId: record.id,
+			},
+		}),
+	)
 	expect(finalizeClaimedJobRow).toHaveBeenCalledOnce()
 })

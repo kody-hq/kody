@@ -40,6 +40,7 @@ import {
 	durableObjectCodeUpdatedResetMessage,
 	executorSandboxTimeoutMessage,
 } from '#worker/sentry-options.ts'
+import { scheduledJobHungExecutionMessage } from '@kody-internal/shared/workers-hung-request.ts'
 import { assertGeneratedExecutorSourceIsBundleSafe } from './kody-remote-proxy-source.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import { createEvaluationSideEffectTracker } from '#mcp/evaluation-side-effects.ts'
@@ -1088,6 +1089,24 @@ test('createExecuteExecutor rejects reserved provider names, keeps side-effect c
 		logs: [],
 		hostMediatedSideEffects: { dispatcherAttempts: 1, fetchAttempts: 0 },
 	})
+
+	const workersHungMessage =
+		"The Workers runtime canceled this request because it detected that your Worker's code had hung and would never generate a response. Refer to: https://developers.cloudflare.com/workers/observability/errors/"
+	const hungCancel = await runExecutor({
+		env: createExecutorTestEnv(
+			createEvaluateLoader(async () => {
+				throw new Error(workersHungMessage)
+			}),
+		),
+		gatewayProps: createGatewayProps('hung-cancel-user'),
+	})
+	expect(hungCancel).toEqual({
+		result: undefined,
+		error: scheduledJobHungExecutionMessage,
+		logs: [],
+		hostMediatedSideEffects: { dispatcherAttempts: 0, fetchAttempts: 0 },
+	})
+	expect(hungCancel.error).not.toContain('Workers runtime canceled')
 
 	await runExecutor(
 		{ env: createExecutorTestEnv(fakeLoader.loader) },
