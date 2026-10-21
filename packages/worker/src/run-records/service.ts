@@ -724,6 +724,11 @@ export async function claimPackageInvocationRecord(input: {
 	invocation: PackageInvocationClaimInput
 	/** ISO cutoff for in-place stale `in_progress` reclaims. */
 	staleBefore: string
+	/**
+	 * ISO cutoff for same-`claimOwner` reclaims of a fresh `in_progress` row.
+	 * Omit to disable same-owner reclaim (only the global stale window applies).
+	 */
+	sameOwnerStaleBefore?: string
 }): Promise<
 	| {
 			outcome: 'claimed'
@@ -761,6 +766,9 @@ export async function claimPackageInvocationRecord(input: {
 	}).claimPackageInvocation({
 		invocation: input.invocation,
 		staleBefore: input.staleBefore,
+		...(input.sameOwnerStaleBefore
+			? { sameOwnerStaleBefore: input.sameOwnerStaleBefore }
+			: {}),
 		run,
 		// Same RPC as the running row: an isolate killed before finish still
 		// has a diagnostic line for Activity and runGet.

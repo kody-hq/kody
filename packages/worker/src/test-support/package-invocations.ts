@@ -117,6 +117,7 @@ export function createFakeRunLog(
 				'status' | 'responseJson' | 'createdAt' | 'updatedAt' | 'claimOwner'
 			> & { claimOwner?: string | null }
 			staleBefore: string
+			sameOwnerStaleBefore?: string
 			run: Record<string, unknown> | null
 			initialLogs?: Array<unknown>
 		}) {
@@ -132,7 +133,9 @@ export function createFakeRunLog(
 				const sameOwnerReclaim =
 					claimOwner != null &&
 					existing.claimOwner != null &&
-					existing.claimOwner === claimOwner
+					existing.claimOwner === claimOwner &&
+					input.sameOwnerStaleBefore != null &&
+					existing.updatedAt <= input.sameOwnerStaleBefore
 				const reclaimable =
 					existing.status === 'in_progress' &&
 					existing.requestHash === input.invocation.requestHash &&

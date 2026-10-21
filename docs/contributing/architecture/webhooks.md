@@ -159,16 +159,18 @@ Ack messages carry the accepted delivery id, idempotency key, scoped endpoint
 identity, export name, and already-authenticated payload (inline `body`, or a
 user-scoped KV key when the body was spilled). Queue retries reuse that exact
 idempotency key and pass the delivery id as the package-invocation `claimOwner`.
-Same-owner retries may reclaim a fresh `in_progress` ledger row (so a hung or
-canceled first attempt cannot burn the ~5-minute ack retry budget on
-`invocation_in_progress`); a different delivery with the same caller
-`Idempotency-Key` still waits for a terminal response or the normal stale
-window. Request-mode caller `Idempotency-Key` messages set `callerIdempotency`
-so the consumer hashes the JSON body (same as sync). Unique-key ack claims omit
-that flag and hash the `{ webhook, request }` envelope. Transient ledger
-lookup/terminal-persistence failures, still-in-progress replays, and other
-pre-execution infrastructure codes (`idempotency_conflict_unresolved`,
-`artifact_preparation_failed`, … — see
+Same-owner retries may reclaim an `in_progress` ledger row after a short grace
+(60s — inside the ~5-minute ack retry budget, but not on the immediate next 30s
+retry), so a hung or canceled first attempt cannot burn the whole budget on
+`invocation_in_progress`. Owner equality alone is not enough: a failed terminal
+persist after a successful execute must not be re-run on the next delivery. A
+different delivery with the same caller `Idempotency-Key` still waits for a
+terminal response or the normal 15-minute stale window. Request-mode caller
+`Idempotency-Key` messages set `callerIdempotency` so the consumer hashes the
+JSON body (same as sync). Unique-key ack claims omit that flag and hash the
+`{ webhook, request }` envelope. Transient ledger lookup/terminal-persistence
+failures, still-in-progress replays, and other pre-execution infrastructure
+codes (`idempotency_conflict_unresolved`, `artifact_preparation_failed`, … — see
 `readPreExecutionPackageInvocationInfrastructureCode`) are retried. On the last
 consumer attempt (`max_retries`, currently 10) those retries record a visible
 `webhook` Activity failure (`invocation_retry_exhausted`, with diagnostic logs)

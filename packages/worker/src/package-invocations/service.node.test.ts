@@ -411,6 +411,10 @@ test('same claimOwner reclaims a fresh in-progress claim so ack retries are not 
 	const deliveryId = 'delivery-ack-reclaim'
 	const idempotencyKey = 'heartbeat:1:1:enablement:en-1'
 	db.runLog.seedFreshInvocation(idempotencyKey, deliveryId)
+	const freshRow = db.runLog.ledgerRows.find(
+		(row) => row.idempotencyKey === idempotencyKey,
+	)
+	if (!freshRow) throw new Error('Expected seeded in-progress claim.')
 	runMock.mockClear()
 	runMock.mockResolvedValue({ result: { handled: true }, logs: ['retried'] })
 
@@ -430,7 +434,23 @@ test('same claimOwner reclaims a fresh in-progress claim so ack retries are not 
 	})
 	expect(runMock).not.toHaveBeenCalled()
 
-	// Queue retry of the same delivery takes over and runs the handler.
+	// Same owner still waits the same-owner grace (not equality alone).
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: deliveryId,
+			}),
+		),
+	).toMatchObject({
+		status: 409,
+		body: { ok: false, error: { code: 'invocation_in_progress' } },
+	})
+	expect(runMock).not.toHaveBeenCalled()
+
+	// Past the grace window, the same delivery takes over and runs.
+	freshRow.updatedAt = new Date(Date.now() - 61_000).toISOString()
 	expect(
 		await invoke(
 			db,

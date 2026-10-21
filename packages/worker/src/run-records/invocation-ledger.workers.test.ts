@@ -84,12 +84,14 @@ function claimRaw(
 	invocation?: ClaimOverrides,
 	context: RunRecordContext | null = exportContext({ idempotencyKey }),
 ) {
+	const nowMs = Date.now()
 	return claimPackageInvocationRecord({
 		env,
 		userId: ownerIdFromStored(userId),
 		context,
 		invocation: claimInput({ idempotencyKey, ...invocation }),
 		staleBefore: freshStaleBefore(),
+		sameOwnerStaleBefore: new Date(nowMs - 60_000).toISOString(),
 	})
 }
 
@@ -274,7 +276,7 @@ test('late failed subscription finish reopens a system-ignored platform interrup
 	})
 })
 
-test('same claimOwner reclaims a fresh in-progress row; a different owner does not', async () => {
+test('same claimOwner reclaims after the same-owner grace; a different owner does not', async () => {
 	const userId = uniqueUserId('same-owner-reclaim')
 	const deliveryOwner = 'delivery-ack-1'
 	const seeded = await claim(userId, 'evt-owner', { claimOwner: deliveryOwner })
@@ -283,8 +285,15 @@ test('same claimOwner reclaims a fresh in-progress row; a different owner does n
 		claimOwner: deliveryOwner,
 	})
 
+	// Owner equality alone must not steal a brand-new claim (protects a
+	// failed terminal persist from immediate re-execution on the next retry).
+	const tooFresh = await claimRaw(userId, 'evt-owner', {
+		claimOwner: deliveryOwner,
+	})
+	expect(tooFresh.outcome).toBe('existing')
+
 	// A distinct delivery with the same idempotency key must still see
-	// invocation_in_progress (dedupe), not steal the fresh claim.
+	// invocation_in_progress (dedupe), not steal the claim.
 	const otherDelivery = await claimRaw(userId, 'evt-owner', {
 		claimOwner: 'delivery-ack-2',
 	})
@@ -296,8 +305,15 @@ test('same claimOwner reclaims a fresh in-progress row; a different owner does n
 		claimOwner: deliveryOwner,
 	})
 
-	// Queue retry of the same delivery takes over before the 15-minute stale
-	// window — the ack retry budget is only ~5 minutes.
+	// Past the same-owner grace (60s) but still inside the 15-minute global
+	// stale window: the ack queue retry of this delivery can take over.
+	const graceUpdatedAt = new Date(Date.now() - 61_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		graceUpdatedAt,
+		seeded.invocationId,
+	)
 	const retried = await claim(userId, 'evt-owner', {
 		claimOwner: deliveryOwner,
 	})
@@ -305,7 +321,7 @@ test('same claimOwner reclaims a fresh in-progress row; a different owner does n
 		invocationId: seeded.invocationId,
 		reclaimed: true,
 	})
-	expect(retried.claimUpdatedAt > seeded.claimUpdatedAt).toBe(true)
+	expect(retried.claimUpdatedAt > graceUpdatedAt).toBe(true)
 	expect(await getLedger(userId, 'evt-owner')).toMatchObject({
 		status: 'in_progress',
 		claimOwner: deliveryOwner,

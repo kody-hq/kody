@@ -43,6 +43,13 @@ import {
 } from './repo.ts'
 
 export const packageInvocationStaleAfterMs = 15 * 60 * 1000
+/**
+ * Same-delivery reclaim grace. Shorter than the ack queue retry budget
+ * (~5 minutes) so a hung first attempt can be taken over, but longer than a
+ * single 30s queue retry so a failed terminal persist after a successful
+ * execute is not immediately reclaimed and re-run on the next delivery.
+ */
+export const packageInvocationSameOwnerStaleAfterMs = 60_000
 const packageInvocationPollIntervalMs = 100
 const packageInvocationPollBudgetMs = 1_000
 
@@ -61,13 +68,20 @@ function canReclaimInProgressInvocation(input: {
 	claimOwner: string | null
 	now?: Date
 }) {
-	if (isStaleInvocation(input.record.updatedAt, input.now ?? new Date())) {
+	const now = input.now ?? new Date()
+	if (isStaleInvocation(input.record.updatedAt, now)) {
 		return true
 	}
+	if (
+		input.claimOwner == null ||
+		input.record.claimOwner == null ||
+		input.claimOwner !== input.record.claimOwner
+	) {
+		return false
+	}
 	return (
-		input.claimOwner != null &&
-		input.record.claimOwner != null &&
-		input.claimOwner === input.record.claimOwner
+		Date.parse(input.record.updatedAt) <=
+		now.getTime() - packageInvocationSameOwnerStaleAfterMs
 	)
 }
 
@@ -245,8 +259,9 @@ export async function invokeSavedPackageModule(input: {
 	}
 
 	const claimOwner = normalizeClaimOwner(input.claimOwner)
-	const attemptClaim = async () =>
-		await claimPackageInvocationRecord({
+	const attemptClaim = async () => {
+		const nowMs = Date.now()
+		return await claimPackageInvocationRecord({
 			env: input.env,
 			userId: input.actor.orgId,
 			context: buildRunRecordContext(),
@@ -260,9 +275,13 @@ export async function invokeSavedPackageModule(input: {
 				claimOwner,
 			},
 			staleBefore: new Date(
-				Date.now() - packageInvocationStaleAfterMs,
+				nowMs - packageInvocationStaleAfterMs,
+			).toISOString(),
+			sameOwnerStaleBefore: new Date(
+				nowMs - packageInvocationSameOwnerStaleAfterMs,
 			).toISOString(),
 		})
+	}
 	const lookupLedger = async () =>
 		await getPackageInvocationRecord({
 			env: input.env,

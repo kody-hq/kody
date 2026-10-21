@@ -2436,6 +2436,12 @@ class RunLogBase extends DurableObject<Env> {
 		invocation: PackageInvocationClaimInput
 		/** ISO cutoff: matching `in_progress` rows at or before it are reclaimable. */
 		staleBefore: string
+		/**
+		 * ISO cutoff for same-`claimOwner` reclaim of a fresh `in_progress` row.
+		 * Owner equality alone is not enough — the claim must also be at least
+		 * this old so a failed terminal persist is not immediately re-executed.
+		 */
+		sameOwnerStaleBefore?: string
 		/** Eager `running` run row for this attempt; `null` when the caller owns the run record (workflow-sourced invokes). */
 		run: RunLogRowInput | null
 		/**
@@ -2452,7 +2458,9 @@ class RunLogBase extends DurableObject<Env> {
 			const sameOwnerReclaim =
 				claimOwner != null &&
 				existing.claimOwner != null &&
-				existing.claimOwner === claimOwner
+				existing.claimOwner === claimOwner &&
+				input.sameOwnerStaleBefore != null &&
+				existing.updatedAt <= input.sameOwnerStaleBefore
 			const reclaimable =
 				existing.status === 'in_progress' &&
 				existing.requestHash === input.invocation.requestHash &&
@@ -4204,6 +4212,7 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	claimPackageInvocation: (input: {
 		invocation: PackageInvocationClaimInput
 		staleBefore: string
+		sameOwnerStaleBefore?: string
 		run: RunLogRowInput | null
 		initialLogs?: Array<RunLogEntryInput>
 	}) => Promise<PackageInvocationClaimResult>
