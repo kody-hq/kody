@@ -182,7 +182,8 @@ test('bundleLocalUserModule syntax errors carry file:line:col and a code frame',
 })
 
 test('bundleInputs drops node_modules segments, not node_modules-named files', () => {
-	const workingDir = '/pkg'
+	// Platform-absolute so resolve() and join() agree on Windows (drive letter).
+	const workingDir = join(process.cwd(), 'pkg')
 	const inputs = bundleInputs(
 		{
 			inputs: {
