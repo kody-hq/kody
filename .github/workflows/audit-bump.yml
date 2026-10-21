@@ -99,7 +99,8 @@ jobs:
             echo
             echo "✅ Validate is dispatched on this branch because GITHUB_TOKEN pushes do not trigger pull_request workflows."
           } > audit-pr-body.md
-          pr="$(gh pr list --head "$BUMP_BRANCH" --base main --state open --json number --jq '.[0].number // empty')"
+          # Owner-qualified head so a fork branch with the same name never matches.
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&head=$GITHUB_REPOSITORY_OWNER:$BUMP_BRANCH" --jq '.[0].number // empty')"
           if [ -n "$pr" ]; then
             # Someone pushed a manual override or floor to the open PR: keep
             # their work and only refresh the findings in the body.
