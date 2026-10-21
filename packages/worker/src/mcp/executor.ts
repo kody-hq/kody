@@ -1327,10 +1327,16 @@ export type ExecutionErrorDetails =
 			packageName: string | null
 			packageId: string | null
 			editorUrl: string | null
-			suggestedAction: {
-				type: 'edit_secret_policy'
-				policyField: 'scope'
-			}
+			missingPackageContext: boolean
+			suggestedAction:
+				| {
+						type: 'edit_secret_policy'
+						policyField: 'scope'
+				  }
+				| {
+						type: 'republish_package'
+				  }
+				| null
 	  }
 	| {
 			kind: 'secret_required'
@@ -1653,18 +1659,36 @@ export function getExecutionErrorDetails(
 	const scopeUnavailableDetails = parseSecretScopeUnavailableMessage(message)
 	if (scopeUnavailableDetails) {
 		const editorUrl = extractFirstUrl(message)
+		if (scopeUnavailableDetails.missingPackageContext) {
+			return {
+				kind: 'secret_scope_unavailable',
+				message,
+				nextStep:
+					"This runtime belongs to the secret's package but is missing package context. Republish the package so the job/app/webhook gets a fresh package context, then retry. Do not widen the secret scope.",
+				secretNames: [scopeUnavailableDetails.secretName],
+				scope: scopeUnavailableDetails.scope,
+				packageName: scopeUnavailableDetails.packageName,
+				packageId: scopeUnavailableDetails.packageId,
+				editorUrl,
+				missingPackageContext: true,
+				suggestedAction: {
+					type: 'republish_package',
+				},
+			}
+		}
 		return {
 			kind: 'secret_scope_unavailable',
 			message,
 			nextStep:
 				scopeUnavailableDetails.scope === 'package'
-					? 'This secret exists on a package this runtime cannot see. Either invoke the work through that package, or send the user the editor link so they can change the secret scope, then retry.'
-					: 'This secret exists in another scope this runtime cannot see. Send the user the editor link so they can change the secret scope, or retry from a runtime that can see it.',
+					? 'This secret exists on a package this runtime cannot see. Prefer invoking the work through an export of the owning package. Changing the secret scope is an explicit, owner-reviewed choice only — ask the account owner before doing that.'
+					: 'This secret exists in another scope this runtime cannot see. Prefer retrying from a runtime that can see it. Changing the secret scope is an explicit, owner-reviewed choice only — ask the account owner before doing that.',
 			secretNames: [scopeUnavailableDetails.secretName],
 			scope: scopeUnavailableDetails.scope,
 			packageName: scopeUnavailableDetails.packageName,
 			packageId: scopeUnavailableDetails.packageId,
 			editorUrl,
+			missingPackageContext: false,
 			suggestedAction: {
 				type: 'edit_secret_policy',
 				policyField: 'scope',

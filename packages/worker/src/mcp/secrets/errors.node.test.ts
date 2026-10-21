@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	createSecretScopeUnavailableMessage,
 	parseHostApprovalRequiredBatchMessage,
 	parseHostApprovalRequiredMessage,
 	parseMissingSecretMessage,
@@ -65,6 +66,7 @@ test('secret error message helpers parse auth, missing-secret, and approval payl
 		scope: 'package',
 		packageName: 'discord-gateway',
 		packageId: null,
+		missingPackageContext: false,
 	})
 	expect(
 		parseSecretScopeUnavailableMessage(
@@ -75,6 +77,7 @@ test('secret error message helpers parse auth, missing-secret, and approval payl
 		scope: 'package',
 		packageName: null,
 		packageId: 'pkg-1',
+		missingPackageContext: false,
 	})
 	expect(parseMissingSecretMessage(scopeUnavailableMessage)).toBeNull()
 	expect(
@@ -82,4 +85,71 @@ test('secret error message helpers parse auth, missing-secret, and approval payl
 			'Secret "discordBotToken" was not found.',
 		),
 	).toBeNull()
+})
+
+test('package secret scope errors distinguish missing package context from a different package runtime', () => {
+	const differentPackageRuntime = createSecretScopeUnavailableMessage([
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-1',
+			packageName: 'discord-gateway',
+			sessionId: null,
+			editorUrl:
+				'https://example.com/@acme/-/secrets/package/pkg-1/discordBotToken',
+		},
+	])
+	expect(differentPackageRuntime).toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(differentPackageRuntime).toContain(
+		"Changing the secret's scope is an explicit, owner-reviewed choice only",
+	)
+	expect(differentPackageRuntime).toContain(
+		'https://example.com/@acme/-/secrets/package/pkg-1/discordBotToken',
+	)
+	expect(differentPackageRuntime).not.toContain('Do not widen the secret')
+	expect(parseSecretScopeUnavailableMessage(differentPackageRuntime)).toEqual({
+		secretName: 'discordBotToken',
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+
+	const missingPackageContext = createSecretScopeUnavailableMessage([
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-1',
+			packageName: 'discord-gateway',
+			sessionId: null,
+			editorUrl:
+				'https://example.com/@acme/-/secrets/package/pkg-1/discordBotToken',
+			missingPackageContext: {
+				kind: 'missing_package_context',
+				runtimeLabel: 'job "nightly"',
+				contextSavedAt: '2026-04-20T00:00:00.000Z',
+			},
+		},
+	])
+	expect(missingPackageContext).toContain('job "nightly"')
+	expect(missingPackageContext).toContain('but its package context is missing')
+	expect(missingPackageContext).toContain(
+		'Republish the package so this runtime gets a fresh package context (package context last saved 2026-04-20T00:00:00.000Z)',
+	)
+	expect(missingPackageContext).toContain(
+		"Do not widen the secret's scope to work around a missing package context",
+	)
+	expect(missingPackageContext).not.toContain('Editor link:')
+	expect(missingPackageContext).not.toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(parseSecretScopeUnavailableMessage(missingPackageContext)).toEqual({
+		secretName: 'discordBotToken',
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: true,
+	})
 })

@@ -276,6 +276,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 		scope: 'package',
 		packageName: null,
 		packageId: 'pkg-discord',
+		missingPackageContext: false,
 	})
 	await expect(
 		createUnresolvedSecretMessage({

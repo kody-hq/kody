@@ -1390,13 +1390,41 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 		packageName: 'discord-gateway',
 		packageId: null,
 		editorUrl,
+		missingPackageContext: false,
 		suggestedAction: { type: 'edit_secret_policy', policyField: 'scope' },
 	})
 	expect(getExecutionErrorDetails(scopeUnavailable(null))).toMatchObject({
 		kind: 'secret_scope_unavailable',
 		packageName: null,
 		packageId: 'pkg-1',
+		missingPackageContext: false,
 	})
+	const missingPackageContextError = new Error(
+		createSecretScopeUnavailableMessage([
+			{
+				secretName: 'discordBotToken',
+				scope: 'package',
+				packageId: 'pkg-1',
+				packageName: 'discord-gateway',
+				sessionId: null,
+				editorUrl: null,
+				missingPackageContext: {
+					kind: 'missing_package_context',
+					runtimeLabel: 'job "nightly"',
+					contextSavedAt: null,
+				},
+			},
+		]),
+	)
+	expect(getExecutionErrorDetails(missingPackageContextError)).toMatchObject({
+		kind: 'secret_scope_unavailable',
+		missingPackageContext: true,
+		suggestedAction: { type: 'republish_package' },
+		editorUrl: null,
+	})
+	expect(
+		getExecutionErrorDetails(missingPackageContextError)?.nextStep,
+	).toContain('Do not widen the secret scope')
 
 	// Plan-limit errors classify from the typed instance and from the bare
 	// serialized message.

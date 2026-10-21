@@ -20,6 +20,14 @@ export function createMissingSecretMessage(secretName: string) {
 	return `Secret "${secretName}" was not found.`
 }
 
+export type SecretScopeMissingPackageContext = {
+	kind: 'missing_package_context'
+	/** Human label for the job/app/webhook runtime that lost package context. */
+	runtimeLabel: string
+	/** Package (or job context) last-saved timestamp when cheaply known. */
+	contextSavedAt: string | null
+}
+
 export type SecretScopeUnavailableMatch = {
 	secretName: string
 	scope: SecretScope
@@ -27,6 +35,11 @@ export type SecretScopeUnavailableMatch = {
 	packageName: string | null
 	sessionId: string | null
 	editorUrl: string | null
+	/**
+	 * When set, this package-scoped secret belongs to the same package as the
+	 * current storage bucket, but the runtime has no usable packageId binding.
+	 */
+	missingPackageContext?: SecretScopeMissingPackageContext | null
 }
 
 function describeSecretScopeLocation(match: SecretScopeUnavailableMatch) {
@@ -50,6 +63,26 @@ function describeSecretScopeLocation(match: SecretScopeUnavailableMatch) {
 	}
 }
 
+function describeMissingPackageContextGuidance(
+	issue: SecretScopeMissingPackageContext,
+) {
+	const savedSuffix = issue.contextSavedAt
+		? ` (package context last saved ${issue.contextSavedAt})`
+		: ''
+	return (
+		` This runtime is ${issue.runtimeLabel}, which belongs to that package, but its package context is missing.` +
+		` Republish the package so this runtime gets a fresh package context${savedSuffix}.` +
+		` Do not widen the secret's scope to work around a missing package context.`
+	)
+}
+
+function describeDifferentPackageRuntimeGuidance() {
+	return (
+		" Prefer calling through an export of the owning package so the package-scoped secret is visible in that package's runtime." +
+		" Changing the secret's scope is an explicit, owner-reviewed choice only — ask the account owner before doing that."
+	)
+}
+
 export function createSecretScopeUnavailableMessage(
 	matches: Array<SecretScopeUnavailableMatch>,
 ) {
@@ -61,10 +94,16 @@ export function createSecretScopeUnavailableMessage(
 		rest.length === 0
 			? ''
 			: ` It also exists in ${rest.map(describeSecretScopeLocation).join(', ')}.`
+	const missingPackageContext =
+		matches.find((match) => match.missingPackageContext)
+			?.missingPackageContext ?? null
+	if (missingPackageContext) {
+		return `Secret "${first.secretName}" exists in ${describeSecretScopeLocation(first)} and is not visible from this runtime.${extra}${describeMissingPackageContextGuidance(missingPackageContext)}`
+	}
 	const hasPackageMatch = matches.some((match) => match.scope === 'package')
 	const guidance = hasPackageMatch
-		? " Package-scoped secrets are only available while that package runs. Either invoke this work through the owning package, or ask the user to change the secret's scope in the account secrets UI."
-		: " Ask the user to change the secret's scope in the account secrets UI, or retry from a runtime that can see this scope."
+		? describeDifferentPackageRuntimeGuidance()
+		: " Prefer retrying from a runtime that can see this scope. Changing the secret's scope is an explicit, owner-reviewed choice only — ask the account owner before doing that."
 	const editorUrl = matches.find((match) => match.editorUrl)?.editorUrl ?? null
 	const editorSuffix = editorUrl ? ` Editor link: ${editorUrl}` : ''
 	return `Secret "${first.secretName}" exists in ${describeSecretScopeLocation(first)} and is not visible from this runtime.${extra}${guidance}${editorSuffix}`
@@ -286,6 +325,9 @@ export function parseSecretScopeUnavailableMessage(message: string) {
 		scope,
 		packageName: usesPackageId ? null : label,
 		packageId: usesPackageId ? label : null,
+		missingPackageContext: message.includes(
+			'but its package context is missing',
+		),
 	}
 }
 
