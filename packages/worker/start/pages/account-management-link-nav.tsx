@@ -141,8 +141,8 @@ const accountNavLinkCss: CSSObject = {
 	padding: '0.5rem 0.7rem',
 	borderRadius: '10px',
 	color: colors.textMuted,
-	fontWeight: 550,
-	fontSize: '0.98rem',
+	fontWeight: 400,
+	fontSize: '0.875rem',
 	textDecoration: 'none',
 	transition: `color ${transitions.fast}, background-color ${transitions.fast}`,
 	'& [data-icon]': {
@@ -152,6 +152,7 @@ const accountNavLinkCss: CSSObject = {
 		'&:hover': { color: colors.text, backgroundColor: colors.surface },
 	},
 	'&[aria-current]': {
+		fontWeight: 500,
 		color: colors.primaryText,
 		backgroundColor: colors.primarySoft,
 	},

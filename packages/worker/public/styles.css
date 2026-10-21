@@ -77,7 +77,7 @@
 :root {
 	color-scheme: light dark;
 
-	/* Colors - Light mode (flat grey canvas, green accent) */
+	/* Colors - Light mode (near-white canvas, green accent) */
 	--color-primary: oklch(0.54 0.18 145);
 	--color-primary-hover: oklch(0.48 0.17 145);
 	--color-primary-active: oklch(0.48 0.17 145);
@@ -91,8 +91,8 @@
 	   under the 4.5:1 AA floor. 0.455 reads 4.63:1 there and improves every
 	   other green-on-light-ground use of this token too. */
 	--color-primary-text: oklch(0.455 0.17 145);
-	--color-background: oklch(0.93 0.004 250);
-	--color-surface: oklch(0.975 0.002 250);
+	--color-background: oklch(0.98 0.002 250);
+	--color-surface: oklch(1 0 0);
 	--color-text: oklch(0.22 0.012 260);
 	--color-text-muted: oklch(0.44 0.014 260);
 	--color-border: oklch(0.84 0.008 250);
@@ -609,6 +609,16 @@ html.is-settled {
 	html.is-settled {
 		scroll-behavior: auto;
 	}
+}
+
+[data-app-interface] {
+	--font-size-sm: 0.8125rem;
+	--font-size-base: 0.875rem;
+	--font-size-lg: 1.125rem;
+	--font-size-xl: 1.5rem;
+	--font-size-2xl: 2rem;
+	font-size: 0.9375rem;
+	line-height: 1.5;
 }
 
 .app-shell {
