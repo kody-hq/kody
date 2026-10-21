@@ -447,6 +447,11 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 		.bind(orgHostname, orgId, now, now, now)
 		.run()
 
+	const robots = await workerFetch(`https://${orgHostname}/robots.txt`)
+	expect(robots.status).toBe(200)
+	expect(robots.headers.get('x-kody-default')).toBe('robots.txt')
+	await expect(robots.text()).resolves.toBe('User-agent: *\nAllow: /\n')
+
 	// Session-gated apps still hand off to the org domain.
 	const memberSession = await createAuthCookie(
 		{
