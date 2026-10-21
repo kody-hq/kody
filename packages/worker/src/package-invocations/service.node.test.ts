@@ -12,7 +12,10 @@ import {
 } from '#worker/test-support/console-spies.ts'
 import { invokePackageExport, invokePackageSubscription } from './service.ts'
 import { invalidateInvokeContractFreshness } from './invoke-contract-cache.ts'
-import { maxStoredInvocationResponseJsonBytes } from './repo.ts'
+import {
+	maxStoredInvocationResponseJsonBytes,
+	packageInvocationStagedOversizedFenceJson,
+} from './repo.ts'
 import {
 	packageInvocationsRepoMockModule as repoMockModule,
 	createDatabase,
@@ -540,6 +543,42 @@ test('staged completed outcome promotes without re-executing after finish recove
 	})
 	expect(runMock).toHaveBeenCalledTimes(1)
 	expect(db.runLog.ledgerRows[0]?.status).toBe('completed')
+})
+
+test('oversized staged outcome still fences reclaim and promotes without re-executing', async () => {
+	consoleError.mockImplementation(() => {})
+	const db = createDatabase({ failFinish: true })
+	seedPackageResolution()
+	runMock.mockResolvedValue({
+		result: { blob: 'x'.repeat(maxStoredInvocationResponseJsonBytes + 1) },
+		logs: [],
+	})
+	const deliveryId = 'delivery-stage-oversized'
+	const request = dispatchRequest('evt-stage-oversized', {
+		source: 'webhook',
+		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
+	})
+
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
+	})
+	const staged = db.runLog.ledgerRows[0]
+	// Must be the non-null oversized fence — null would look reclaimable.
+	expect(staged?.responseJson).toBe(packageInvocationStagedOversizedFenceJson)
+
+	db.runLog.options.failFinish = false
+	staged!.updatedAt = new Date(Date.now() - 61_000).toISOString()
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_response_unavailable' } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(db.runLog.ledgerRows[0]).toMatchObject({
+		status: 'completed',
+		responseJson: null,
+	})
 })
 
 test('oversized terminal responses are not stored so backups stay restorable', async () => {

@@ -36,6 +36,31 @@ export function boundedResponseJson(
 	return responseJson
 }
 
+/**
+ * Non-null ledger marker when execute succeeded but the response was too large
+ * to cache. Staging must never write SQL NULL for a completed execute: a null
+ * `response_json` looks like an unfinished claim and same-owner reclaim would
+ * re-run side effects. Promote strips this sentinel back to NULL on the
+ * terminal completed row (same as a normal oversized finish).
+ */
+export const packageInvocationStagedOversizedFenceJson =
+	'{"kody":"staged_oversized"}'
+
+/** Always-non-null payload for staging an execute outcome onto `in_progress`. */
+export function executionFenceResponseJson(bounded: string | null): string {
+	return bounded ?? packageInvocationStagedOversizedFenceJson
+}
+
+/** Map a staged fence payload back to the terminal ledger `response_json`. */
+export function terminalResponseJsonFromExecutionFence(
+	value: string | null,
+): string | null {
+	if (value == null || value === packageInvocationStagedOversizedFenceJson) {
+		return null
+	}
+	return value
+}
+
 export function parseStoredResponse(
 	value: string | null,
 ): PackageInvocationStoredResponse | null {

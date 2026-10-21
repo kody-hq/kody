@@ -40,7 +40,9 @@ import { buildJsonErrorResponse } from './responses.ts'
 import { buildSubscriptionInvocationRunMetadata } from './subscription-envelope.ts'
 import {
 	boundedResponseJson,
+	executionFenceResponseJson,
 	parseStoredResponse,
+	terminalResponseJsonFromExecutionFence,
 	type PackageInvocationStoredResponse,
 } from './repo.ts'
 
@@ -310,6 +312,9 @@ export async function invokeSavedPackageModule(input: {
 	const promoteStagedInvocation = async (
 		record: PackageInvocationLedgerRecord,
 	): Promise<PackageInvocationStoredResponse> => {
+		const terminalResponseJson = terminalResponseJsonFromExecutionFence(
+			record.responseJson,
+		)
 		try {
 			const finished = await finishPackageInvocationRecord({
 				env: input.env,
@@ -318,13 +323,13 @@ export async function invokeSavedPackageModule(input: {
 				invocationId: record.id,
 				claimUpdatedAt: record.updatedAt,
 				ledgerStatus: 'completed',
-				responseJson: record.responseJson,
+				responseJson: terminalResponseJson,
 				status: 'success',
 				waitUntil: input.waitUntil,
 			})
 			if (finished.ledgerUpdated) {
 				return (
-					parseStoredResponse(record.responseJson) ??
+					parseStoredResponse(terminalResponseJson) ??
 					buildJsonErrorResponse({
 						status: 500,
 						code: 'idempotency_response_unavailable',
@@ -603,7 +608,9 @@ export async function invokeSavedPackageModule(input: {
 					'package invocation completed-result persistence failed',
 					getErrorMessage(error),
 				)
-				const responseJson = boundedResponseJson(outcome.response)
+				const responseJson = executionFenceResponseJson(
+					boundedResponseJson(outcome.response),
+				)
 				try {
 					const staged = await stagePackageInvocationResultRecord({
 						env: input.env,
