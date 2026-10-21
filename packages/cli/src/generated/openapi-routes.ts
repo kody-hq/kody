@@ -607,6 +607,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'packageCheck',
+		method: 'POST',
+		pathTemplate: '/v1/packages/check',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'packageCollaboratorList',
 		method: 'GET',
 		pathTemplate: '/v1/packages/{package_id}/collaborators',

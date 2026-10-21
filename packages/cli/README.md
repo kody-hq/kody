@@ -233,7 +233,8 @@ kody dev fetch /health           # agent-friendly HTTP probe
 kody dev job heartbeat           # run a declared job once (never schedules locally)
 kody dev webhook ping --body ./fixture.json
 kody dev emit demo.event --body ./event.json   # subscription delivery shape
-kody dev check                   # bundle + light publish validations
+kody dev check                   # local bundles + the exact publish checks (needs login)
+kody dev check --offline         # local checks only; publish can still refuse
 
 # Four surfaces against mock then prod:
 kody execute --target mock --invoke ./greet --params '{"name":"kent"}'

@@ -138,6 +138,7 @@ const cliFlagOptions = {
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
+	offline: { type: 'boolean' },
 	passthrough: { type: 'string' },
 	port: { type: 'string' },
 	'app-base-path': { type: 'string' },
@@ -350,6 +351,14 @@ async function dispatch(
 	) {
 		throw new Error(
 			'`--reset-storage` is only used with --target mock on execute, search, or dev.',
+		)
+	}
+	if (
+		parsed.values.offline === true &&
+		(parsed.command !== 'dev' || parsed.positionals[0] !== 'check')
+	) {
+		throw new Error(
+			'`--offline` is only used with `kody dev check` (skips the server publish checks).',
 		)
 	}
 	if (parsed.values['dry-run'] === true && parsed.command !== 'dev') {
@@ -1257,11 +1266,47 @@ async function dispatch(
 			const io = { stdout: write, stderr: writeErr }
 			const bodyPath =
 				typeof parsed.values.body === 'string' ? parsed.values.body : undefined
-			// `check` only bundles + validates the package tree; it never talks to
-			// mock/prod, so skip auth (and the mock server) to avoid leaking a listen
-			// handle that would keep the process alive after printing results.
+			// `check` bundles + validates the package tree locally, then runs the
+			// server publish checks (`packageCheck`) on prod with the stored login,
+			// whatever the target: those checks run no package code and read no
+			// secrets. It never starts the mock server, so no listen handle keeps
+			// the process alive after printing results.
 			if (subcommand === 'check') {
-				return await runDevCheck({ target, json, io })
+				const offline = parsed.values.offline === true
+				return await runDevCheck({
+					target,
+					json,
+					io,
+					offline,
+					...(offline
+						? {}
+						: {
+								runPublishChecks: async (files) => {
+									const token = await accessTokenForOpenApi({
+										tokenValues,
+										apiUrl: prodApiUrl,
+										mcpUrl,
+										org,
+									})
+									const [
+										{ callOpenApiOperation },
+										{ parsePackageCheckResult },
+									] = await Promise.all([
+										import('./open-api-client.js'),
+										import('./dev-command.js'),
+									])
+									return parsePackageCheckResult(
+										await callOpenApiOperation({
+											operationId: 'packageCheck',
+											params: { files },
+											token,
+											apiUrl: prodApiUrl,
+											...(org ? { org } : {}),
+										}),
+									)
+								},
+							}),
+				})
 			}
 			const dryRun = parsed.values['dry-run'] === true
 			if (

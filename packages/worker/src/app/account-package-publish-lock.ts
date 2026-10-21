@@ -3,7 +3,10 @@ import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadPublicTreeFiles } from '#app/package-files-data.ts'
 import { buildPublishCommitDiff } from '#app/package-publish-diff.ts'
-import { type AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
+import {
+	type AccountPackageApprovePublishLoaderData,
+	type AccountPackagePublishCheckPayload,
+} from '#universal/loader-data.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { routes } from '#universal/routes.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -364,8 +367,7 @@ async function changePackagePublishState(
 			return packageMutationResult(
 				{
 					ok: false,
-					error:
-						'Publish checks failed for this commit. Fix the package and try again.',
+					error: formatPublishChecksFailedMessage(publishResult.failed_checks),
 					failed_checks: publishResult.failed_checks,
 				},
 				400,
@@ -392,5 +394,95 @@ async function changePackagePublishState(
 			const exhaustive: never = publishResult
 			throw new Error(`Unknown approve-publish status: ${String(exhaustive)}`)
 		}
+	}
+}
+
+export const publishChecksFailedLead =
+	'Publish checks failed for this commit. Fix the package, push a new commit, and approve that one.'
+
+/** Lead line plus each failed check message, as publish reports them. */
+export function formatPublishChecksFailedMessage(
+	failedChecks: ReadonlyArray<{ ok?: boolean; message: string }>,
+): string {
+	const messages = failedChecks
+		.filter((check) => check.ok !== true)
+		.map((check) => check.message.trim())
+		.filter((message) => message.length > 0)
+	return messages.length > 0
+		? `${publishChecksFailedLead}\n\n${messages.join('\n\n')}`
+		: publishChecksFailedLead
+}
+
+/**
+ * Run the authoring publish checks on the commit an approve-publish page
+ * would promote, without publishing it. Same clone and checks Promote runs
+ * (RepoSession `checkExternalRef`), so a failing commit shows its failures
+ * on the page instead of at Promote. Promote still re-runs the checks.
+ */
+export async function checkAccountPackagePublishCommit(input: {
+	env: Env
+	request: Request
+	user: AuthenticatedUser
+	packageId: string
+	commit: string
+}): Promise<{ data: AccountPackagePublishCheckPayload; status: number }> {
+	const packageId = input.packageId.trim()
+	const resolved = packageId
+		? await loadWritableAccountSavedPackage({
+				env: input.env,
+				user: input.user,
+				packageId,
+				permission: 'package:write',
+			})
+		: null
+	if (!resolved?.ok) {
+		return { data: { ok: false, error: 'Package not found.' }, status: 404 }
+	}
+	const commit = input.commit.trim().toLowerCase()
+	if (!isGitCommitSha(commit)) {
+		return {
+			data: { ok: false, error: fullGitCommitShaRequiredMessage },
+			status: 400,
+		}
+	}
+	const { savedPackage, ownerUserId } = resolved.package
+	const source = await getEntitySourceById(
+		input.env.APP_DB,
+		savedPackage.sourceId,
+	)
+	if (!source || source.user_id !== ownerUserId) {
+		return {
+			data: { ok: false, error: 'Package source not found.' },
+			status: 404,
+		}
+	}
+	const sessionId = `approve-publish-check-${savedPackage.id}`
+	try {
+		const result = await repoSessionRpc(input.env, sessionId).checkExternalRef({
+			sourceId: source.id,
+			userId: ownerUserId,
+			commit,
+			baseUrl: getAppBaseUrl({
+				env: input.env,
+				requestUrl: input.request.url,
+			}),
+		})
+		return {
+			data: {
+				ok: true,
+				commit: result.commit,
+				checksOk: result.ok,
+				failedChecks: result.results
+					.filter((check) => !check.ok)
+					.map((check) => ({ kind: check.kind, message: check.message })),
+			},
+			status: 200,
+		}
+	} catch (error) {
+		const message = getErrorMessage(error)
+		if (isUnknownRequestedCommitMessage(message)) {
+			return { data: { ok: false, error: message }, status: 400 }
+		}
+		throw error
 	}
 }

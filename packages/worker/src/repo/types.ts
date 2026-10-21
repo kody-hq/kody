@@ -397,3 +397,10 @@ export type RepoSessionRebaseResult = {
 	headCommit: string | null
 	merged: boolean
 }
+
+/** Authoring publish checks on one pushed commit, without publishing it. */
+export type RepoExternalRefCheckResult = {
+	commit: string
+	ok: boolean
+	results: NonNullable<RepoSessionCheckStatus['results']>
+}

@@ -74,6 +74,7 @@ import {
 	validatePackageBundles,
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
+import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
@@ -100,6 +101,7 @@ import {
 	type RepoSearchMode,
 	type RepoSearchOutputMode,
 	type RepoExternalPublishResult,
+	type RepoExternalRefCheckResult,
 	type RepoSourceBootstrapResult,
 	type RepoSessionApplyEditsResult,
 	type RepoSessionEdit,
@@ -3628,26 +3630,18 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
-	async publishFromExternalRef(input: {
-		sessionId: string
-		sourceId: string
-		userId: OwnerId
-		newCommit: string
+	/**
+	 * In-memory clone of one source commit, the workspace publish checks read.
+	 * Shared by {@link publishFromExternalRef} and {@link checkExternalRef} so
+	 * the approve-publish preview checks exactly what Promote will check.
+	 */
+	private async cloneExternalRefForPublish(input: {
+		source: EntitySourceRow
+		commit: string
 		expectedHead?: string | null
-		allowForce?: boolean
-		destructiveOverwriteConfirmed?: boolean
-		baseUrl?: string
-		rebuildPackageArtifacts?: boolean
-		expectedPackageScope?: string
-		allowLockedPublish?: boolean
-		credentialNeedsApproved?: boolean
-		requestedByUserId?: string | null
-		deferBundleCheckToRebuild?: boolean
-	}): Promise<RepoExternalPublishResult> {
-		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
-		if (!source || source.user_id !== input.userId) {
-			throw new Error('Repo source was not found for this user.')
-		}
+		phaseTimings: PublishPhaseTimings
+	}) {
+		const { source } = input
 		const sourceRepo = await resolveArtifactSourceRepo(this.env, source.repo_id)
 		const sourceInfo = await sourceRepo.info()
 		const sourceAccess = await ensureArtifactRepoRemote({
@@ -3655,19 +3649,18 @@ class RepoSessionBase extends DurableObject<Env> {
 			scope: 'read',
 		})
 		const targetBranch = sourceInfo?.defaultBranch ?? defaultSessionBranch
-		const phaseTimings: PublishPhaseTimings = {}
 		let publishClone: Awaited<ReturnType<typeof cloneExternalPublishWorkspace>>
 		try {
 			// In-memory clone: publish verification does not need the session
 			// Durable Object workspace (KODY-CLOUDFLARE-57).
 			;({ value: publishClone } = await timePublishExternalPushPhase(
-				{ phase: 'clone', sourceId: source.id, timings: phaseTimings },
+				{ phase: 'clone', sourceId: source.id, timings: input.phaseTimings },
 				async () => {
 					const cloned = await cloneExternalPublishWorkspace({
 						remote: sourceAccess.remote,
 						token: sourceAccess.token,
 						branch: targetBranch,
-						checkoutCommit: input.newCommit,
+						checkoutCommit: input.commit,
 					})
 					// Race protection without a second Artifacts REST HEAD resolve:
 					// the single-branch clone tip is the remote default-branch HEAD
@@ -3685,10 +3678,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				},
 			))
 		} catch (error) {
-			const classified = classifyExternalPublishCloneError(
-				error,
-				input.newCommit,
-			)
+			const classified = classifyExternalPublishCloneError(error, input.commit)
 			switch (classified.kind) {
 				case 'rethrow':
 					throw error
@@ -3718,6 +3708,84 @@ class RepoSessionBase extends DurableObject<Env> {
 				}
 			}
 		}
+		return { sourceRepo, publishClone }
+	}
+
+	/**
+	 * Run the authoring publish checks on one pushed commit without publishing,
+	 * moving HEAD, or touching the session workspace. The approve-publish page
+	 * calls this so a failing commit shows its failures before Promote.
+	 */
+	async checkExternalRef(input: {
+		sourceId: string
+		userId: OwnerId
+		commit: string
+		baseUrl?: string
+		expectedPackageScope?: string
+	}): Promise<RepoExternalRefCheckResult> {
+		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
+		if (!source || source.user_id !== input.userId) {
+			throw new Error('Repo source was not found for this user.')
+		}
+		if (source.entity_kind !== 'package') {
+			throw new Error('Publish checks run on packages only.')
+		}
+		const phaseTimings: PublishPhaseTimings = {}
+		const { publishClone } = await this.cloneExternalRefForPublish({
+			source,
+			commit: input.commit,
+			phaseTimings,
+		})
+		const publishDir = publishClone.dir || externalPublishWorkspaceDir
+		const checks = await runAuthoringPublishChecks({
+			workspace: publishClone.workspace,
+			manifestPath: resolveRepoWorkspacePath(source.manifest_path, publishDir),
+			sourceRoot: resolveRepoWorkspacePath(
+				source.source_root || publishDir,
+				publishDir,
+			),
+			env: this.env,
+			baseUrl: input.baseUrl ?? source.source_root,
+			userId: input.userId,
+			sourceId: source.id,
+			...(input.expectedPackageScope !== undefined
+				? { expectedPackageScope: input.expectedPackageScope }
+				: {}),
+		})
+		return {
+			commit: input.commit,
+			ok: checks.ok,
+			results: checks.results,
+		}
+	}
+
+	async publishFromExternalRef(input: {
+		sessionId: string
+		sourceId: string
+		userId: OwnerId
+		newCommit: string
+		expectedHead?: string | null
+		allowForce?: boolean
+		destructiveOverwriteConfirmed?: boolean
+		baseUrl?: string
+		rebuildPackageArtifacts?: boolean
+		expectedPackageScope?: string
+		allowLockedPublish?: boolean
+		credentialNeedsApproved?: boolean
+		requestedByUserId?: string | null
+		deferBundleCheckToRebuild?: boolean
+	}): Promise<RepoExternalPublishResult> {
+		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
+		if (!source || source.user_id !== input.userId) {
+			throw new Error('Repo source was not found for this user.')
+		}
+		const phaseTimings: PublishPhaseTimings = {}
+		const { sourceRepo, publishClone } = await this.cloneExternalRefForPublish({
+			source,
+			commit: input.newCommit,
+			expectedHead: input.expectedHead,
+			phaseTimings,
+		})
 		const runId = crypto.randomUUID()
 		const publishDir = publishClone.dir || externalPublishWorkspaceDir
 		// Always collect a binary-safe snapshot before publish. Do not skip this

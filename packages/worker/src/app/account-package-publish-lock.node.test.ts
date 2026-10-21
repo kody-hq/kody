@@ -29,6 +29,7 @@ const mockModule = vi.hoisted(() => ({
 	getEntitySourceById: vi.fn(),
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	checkExternalRef: vi.fn(),
 	getCommunityListingByOwnerAndPackage: vi.fn(),
 	loadPublicTreeFiles: vi.fn(async (_input: { commit: string | null }) => ({
 		files: {} as Record<string, string>,
@@ -91,6 +92,7 @@ vi.mock('#worker/repo/artifact-file.ts', () => ({
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 	repoSessionRpc: () => ({
 		publishFromExternalRef: mockModule.publishFromExternalRef,
+		checkExternalRef: mockModule.checkExternalRef,
 	}),
 }))
 vi.mock('#worker/community/repo.ts', () => ({
@@ -105,7 +107,9 @@ const {
 	lockAccountPackage,
 	unlockAccountPackage,
 	approveAccountPackagePublish,
+	checkAccountPackagePublishCommit,
 	loadAccountPackageApprovePublishData,
+	publishChecksFailedLead,
 } = await import('./account-package-publish-lock.ts')
 
 type ActionInput = Parameters<typeof lockAccountPackage>[0]
@@ -498,4 +502,129 @@ test('approve-publish does not relabel a later missing object as an unknown comm
 			commit: fullCommit,
 		}),
 	).rejects.toThrow('Could not find abcdef.')
+})
+
+const stampGateFailure = {
+	kind: 'credentials' as const,
+	ok: false,
+	message:
+		'Credential stamp publish gate (issue #3836 phase 1):\nPublish failed. src/index.ts uses |scope=package.',
+}
+
+function checkCommit(commit: string) {
+	return checkAccountPackagePublishCommit({
+		env,
+		request: new Request('https://example.com/_serverFn/package', {
+			method: 'POST',
+		}),
+		user,
+		packageId: 'pkg-1',
+		commit,
+	})
+}
+
+test('approve-publish check shows the publish failures for a commit that cannot publish', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(unknownCommit))
+	mockModule.checkExternalRef.mockReset()
+	mockModule.publishFromExternalRef.mockClear()
+	mockModule.checkExternalRef.mockResolvedValueOnce({
+		commit: fullCommit,
+		ok: false,
+		results: [
+			{ kind: 'manifest', ok: true, message: 'Validated package.json.' },
+			stampGateFailure,
+		],
+	})
+	const response = await checkCommit(fullCommit.toUpperCase())
+	expect(response.status).toBe(200)
+	expect(response.data).toEqual({
+		ok: true,
+		commit: fullCommit,
+		checksOk: false,
+		failedChecks: [{ kind: 'credentials', message: stampGateFailure.message }],
+	})
+	expect(mockModule.checkExternalRef).toHaveBeenCalledWith({
+		sourceId: 'source-1',
+		userId: lockedPackage.userId,
+		commit: fullCommit,
+		baseUrl: 'https://example.com',
+	})
+	// A preview never publishes.
+	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('approve-publish check reports a passing commit', async () => {
+	mockModule.writablePackage = unlockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(unknownCommit))
+	mockModule.checkExternalRef.mockReset()
+	mockModule.checkExternalRef.mockResolvedValueOnce({
+		commit: fullCommit,
+		ok: true,
+		results: [{ kind: 'manifest', ok: true, message: 'ok' }],
+	})
+	const response = await checkCommit(fullCommit)
+	expect(response.data).toEqual({
+		ok: true,
+		commit: fullCommit,
+		checksOk: true,
+		failedChecks: [],
+	})
+})
+
+test('approve-publish check rejects a short SHA and maps an unknown commit', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
+	mockModule.checkExternalRef.mockReset()
+	const short = await checkCommit(shortCommit)
+	expect(short).toEqual({
+		status: 400,
+		data: { ok: false, error: fullGitCommitShaRequiredMessage },
+	})
+	expect(mockModule.checkExternalRef).not.toHaveBeenCalled()
+
+	mockModule.checkExternalRef.mockRejectedValueOnce(
+		new Error(buildUnknownRequestedCommitMessage(unknownCommit)),
+	)
+	const unknown = await checkCommit(unknownCommit)
+	expect(unknown).toEqual({
+		status: 400,
+		data: {
+			ok: false,
+			error: buildUnknownRequestedCommitMessage(unknownCommit),
+		},
+	})
+})
+
+test('approve-publish check refuses a package the viewer cannot write', async () => {
+	mockModule.writablePackage = null
+	mockModule.checkExternalRef.mockReset()
+	const response = await checkCommit(fullCommit)
+	expect(response).toEqual({
+		status: 404,
+		data: { ok: false, error: 'Package not found.' },
+	})
+	expect(mockModule.checkExternalRef).not.toHaveBeenCalled()
+})
+
+test('Promote names each failed publish check instead of a generic error', async () => {
+	mockModule.writablePackage = lockedPackage
+	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(unknownCommit))
+	mockModule.publishFromExternalRef.mockResolvedValueOnce({
+		status: 'checks_failed',
+		failed_checks: [stampGateFailure],
+		manifest: null,
+		run_id: 'run-1',
+	})
+	const response = await act({
+		action: 'approve-publish',
+		packageId: 'pkg-1',
+		commit: fullCommit,
+	})
+	expect(response?.status).toBe(400)
+	expect(response?.data.ok).toBe(false)
+	expect(response?.data.error).toBe(
+		`${publishChecksFailedLead}\n\n${stampGateFailure.message}`,
+	)
+	expect(response?.data.failed_checks).toEqual([stampGateFailure])
 })

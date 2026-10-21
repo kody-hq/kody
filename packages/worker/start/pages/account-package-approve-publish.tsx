@@ -1,5 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { approvePackagePublish } from '#start/server/package-mutations'
+import {
+	approvePackagePublish,
+	checkPackagePublishCommit,
+} from '#start/server/package-mutations'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -29,6 +32,10 @@ import {
 	type AccountPackageListingBehindHint,
 	type AccountPackageApprovePublishLoaderData,
 } from '#universal/loader-data.ts'
+import {
+	PublishChecksPanel,
+	usePublishCommitChecks,
+} from './account-package-publish-checks.tsx'
 function approvePublishDetailItems(
 	payload: AccountPackageApprovePublishLoaderData,
 ) {
@@ -158,6 +165,16 @@ export function AccountPackageApprovePublishRoute({
 		payload?.pendingIsDefaultHead === false &&
 		upToDateShort != null
 	const detailItems = approvePublishDetailItems(payload)
+	const checks = usePublishCommitChecks({
+		packageId: payload.package.id,
+		commit: nothingToPublish || promotedListing ? null : payload.pendingCommit,
+		check: checkPackagePublishCommit,
+	})
+	// Promote waits for the preview and stays off while it reports failures.
+	// A preview that could not run leaves Promote on: Promote runs the same
+	// checks again before it publishes anything.
+	const promoteBlocked =
+		checks.status === 'running' || checks.status === 'failed'
 	return (
 		<AccountManagementShell currentHref={currentHref} busy={busy}>
 			<AccountPageHeader
@@ -279,6 +296,10 @@ export function AccountPackageApprovePublishRoute({
 							{payload.allowedPackagesPublishNotice}
 						</p>
 					) : null}
+					<PublishChecksPanel
+						state={checks}
+						locked={Boolean(payload.package.lockedAt)}
+					/>
 					{nothingToPublish && headUpToDate ? (
 						<p
 							data-testid="approve-publish-empty-state"
@@ -320,7 +341,7 @@ export function AccountPackageApprovePublishRoute({
 								<button
 									type="button"
 									data-testid="approve-package-publish"
-									disabled={busy}
+									disabled={busy || promoteBlocked}
 									css={getPillButtonCss({ size: 'sm' })}
 									onClick={() => void promoteCommit()}
 								>

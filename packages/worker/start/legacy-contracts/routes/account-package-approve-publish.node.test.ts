@@ -2,6 +2,7 @@ import { jsx } from 'react/jsx-runtime'
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import { AccountPackageApprovePublishRoute } from '../../pages/account-package-approve-publish.tsx'
+import { PublishChecksPanel } from '../../pages/account-package-publish-checks.tsx'
 import { type AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
 
 const approvePublishHref =
@@ -226,4 +227,39 @@ test('approve-publish SSR shows the allowed-packages publish warning', async () 
 	expect(html).toContain('RESEND_API_KEY')
 	expect(html).toContain('@kodykoala/notes')
 	expect(html).toContain('Wednesday, Oct 21, 2026')
+})
+
+test('approve-publish holds Promote while publish checks run for the commit', async () => {
+	const html = await renderToString(
+		jsx(AccountPackageApprovePublishRoute, {
+			payload: loaderData,
+			username: 'kodykoala',
+			kodyId: 'gmail-drafts',
+		}),
+		approvePublishHref,
+	)
+	expect(html).toContain('data-testid="approve-publish-checks-running"')
+	const promote = html.slice(
+		html.lastIndexOf('<button', html.indexOf('Promote this commit')),
+	)
+	expect(promote.slice(0, promote.indexOf('>'))).toContain('disabled')
+})
+
+test('approve-publish lists each publish check failure for a commit that cannot publish', async () => {
+	const failure =
+		'Credential stamp publish gate (issue #3836 phase 1):\nsrc/index.ts uses |scope=package.'
+	const html = await renderToString(
+		jsx(PublishChecksPanel, {
+			state: {
+				status: 'failed',
+				failedChecks: [{ kind: 'credentials', message: failure }],
+			},
+			locked: true,
+		}),
+		approvePublishHref,
+	)
+	expect(html).toContain('data-testid="approve-publish-checks-failed"')
+	expect(html).toContain('Publish checks failed for this commit')
+	expect(html).toContain('credentials')
+	expect(html).toContain('Credential stamp publish gate')
 })

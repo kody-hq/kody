@@ -19,6 +19,7 @@ import {
 	type RepoSessionDiscardResult,
 	type RepoSessionEdit,
 	type RepoExternalPublishResult,
+	type RepoExternalRefCheckResult,
 	type RepoSessionInfoResult,
 	type RepoSessionPublishResult,
 	type RepoSessionRebaseResult,
@@ -221,6 +222,13 @@ export type RepoSessionRpc = {
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
 	}) => Promise<RepoExternalPublishResult>
+	checkExternalRef: (payload: {
+		sourceId: string
+		userId: string
+		commit: string
+		baseUrl?: string
+		expectedPackageScope?: string
+	}) => Promise<RepoExternalRefCheckResult>
 }
 
 export function repoSessionRpc(env: Env, sessionId: string): RepoSessionRpc {

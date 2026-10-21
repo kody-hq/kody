@@ -673,3 +673,47 @@ test('changed credential needs pause the publish unless the owner approved them'
 	expect(approved.status).toBe('published')
 	expect(mockModule.requireCredentialNeedsApproval).not.toHaveBeenCalled()
 })
+
+test('locked package with failing checks answers checks_failed, never locked or approval_required', async () => {
+	setupPublish()
+	const stampFailure = {
+		kind: 'credentials',
+		ok: false,
+		message:
+			'Credential stamp publish gate (issue #3836 phase 1):\nPublish failed. src/index.ts uses |scope=',
+	}
+	mockModule.runRepoChecks.mockResolvedValue({
+		ok: false,
+		results: [{ kind: 'manifest', ok: true, message: 'ok' }, stampFailure],
+		manifest,
+		sourceFiles: {},
+	})
+	mockModule.loadLockedSavedPackage.mockResolvedValue({
+		id: 'package-1',
+		userId: ownerIdFromStored('user-1'),
+		name: '@scope/demo',
+		kodyId: 'demo',
+		description: 'Demo',
+		tags: [],
+		searchText: null,
+		sourceId: 'source-1',
+		hasApp: false,
+		hasSkills: false,
+		hidden: false,
+		isPrivate: false,
+		isInternetVisible: false,
+		lockedAt: '2026-08-28T12:00:00.000Z',
+		createdAt: '2026-05-04T00:00:00.000Z',
+		updatedAt: '2026-05-04T00:00:00.000Z',
+	})
+
+	const result = await publish()
+	// The approval link comes from the locked / approval_required answers.
+	// A commit that fails checks must never reach either.
+	expect(result).toMatchObject({
+		status: 'checks_failed',
+		failed_checks: [stampFailure],
+	})
+	expect(mockModule.requireCredentialNeedsApproval).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+})

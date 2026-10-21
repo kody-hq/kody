@@ -2176,6 +2176,20 @@ export type AccountPackageListingBehindHint = {
 	updateUrl: string
 }
 
+/**
+ * Authoring publish checks for the commit an approve-publish page would
+ * promote. The page runs them before it enables Promote, so a commit that
+ * cannot publish shows its failures where the approval would start.
+ */
+export type AccountPackagePublishCheckPayload =
+	| {
+			ok: true
+			commit: string
+			checksOk: boolean
+			failedChecks: Array<{ kind: string; message: string }>
+	  }
+	| { ok: false; error: string }
+
 export type AccountPackageApprovePublishLoaderData = {
 	ok: true
 	email: string

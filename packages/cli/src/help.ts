@@ -79,7 +79,7 @@ Usage:
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
-  kody dev check [--target prod|mock] [--json]
+  kody dev check [--target prod|mock] [--offline] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -357,7 +357,11 @@ ${orgBlock}
              (\`kody dev webhook\`), schedules (\`kody dev job\` — runs once,
              never schedules locally), subscriptions
              (\`kody dev emit <event> --body event.json\`). \`kody dev check\`
-             bundles + light publish validations without running; when the
+             bundles + light publish validations without running, then
+             runs the server publish checks on the same tree (\`packageCheck\`,
+             the checks publish runs, credential stamp gate included) with
+             your login, so a passing check means publish will not refuse
+             it. \`--offline\` skips the server checks (a WARN says so); when the
              package uses credentialed fetch and \`.kody/mocks.ts\` is
              missing, check soft-suggests adding that file. A fetch that
              sends a non-literal body without \`x-kody-secret-resolution\`

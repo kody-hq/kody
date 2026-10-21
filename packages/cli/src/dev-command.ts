@@ -33,6 +33,7 @@ import { StructuredCliError } from './structured-error.js'
 import { type KodyTarget } from './target.js'
 import { formatToolResult } from './tool-result.js'
 import { bundleLocalUserModule } from './local-bundle.js'
+import { collectPackageCheckFiles } from './package-check-files.js'
 import { formatDevEvent, type DevEvent } from './dev/dev-events.js'
 import { defaultDevPort } from './dev/dev-port.js'
 import {
@@ -615,15 +616,61 @@ export async function runDevEmit(input: {
 	})
 }
 
+export type PackageCheckResult = {
+	ok: boolean
+	checks: Array<{ kind: string; ok: boolean; message: string }>
+}
+
 /**
- * Bundle the package surfaces + light publish validations without running them.
- * Soft-suggests `.kody/mocks.ts` when credentialed fetch is detected.
+ * Runs the server publish checks (`packageCheck`) on a local package tree.
+ * Those are the same checks, with the same options, that publish runs.
+ */
+export type RunPublishChecks = (
+	files: Record<string, string>,
+) => Promise<PackageCheckResult>
+
+export const devCheckOfflineDetail =
+	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
+
+/** Parse a `packageCheck` response body (Open API structured result). */
+export function parsePackageCheckResult(value: unknown): PackageCheckResult {
+	const body =
+		value && typeof value === 'object' && !Array.isArray(value)
+			? (value as Record<string, unknown>)
+			: null
+	const checks = Array.isArray(body?.checks) ? body.checks : null
+	if (!body || typeof body.ok !== 'boolean' || !checks) {
+		throw new Error('packageCheck returned an unexpected response.')
+	}
+	return {
+		ok: body.ok,
+		checks: checks.map((entry) => {
+			const check = (entry ?? {}) as Record<string, unknown>
+			return {
+				kind: typeof check.kind === 'string' ? check.kind : 'unknown',
+				ok: check.ok === true,
+				message: typeof check.message === 'string' ? check.message : '',
+			}
+		}),
+	}
+}
+
+/**
+ * Local bundles + light validations, then the server publish checks on the
+ * same tree (`packageCheck`, the exact `runRepoChecks` call publish makes),
+ * so `kody dev check` never passes a package that publish refuses. Nothing
+ * runs, saves, or publishes. Soft-suggests `.kody/mocks.ts` when credentialed
+ * fetch is detected. `offline` skips the server checks and says so.
  */
 export async function runDevCheck(input: {
 	target: KodyTarget
 	cwd?: string
 	json?: boolean
 	io: DevIo
+	/** Skip the server publish checks (no network). Reported as a warning. */
+	offline?: boolean
+	/** Required unless `offline`; a missing runner fails the check. */
+	runPublishChecks?: RunPublishChecks
 }): Promise<number> {
 	const manifest = await loadPackageManifest(input.cwd)
 	const checks: Array<{
@@ -737,6 +784,42 @@ export async function runDevCheck(input: {
 		push('secret-resolution', true, fetchBodyWarning, 'warning')
 	}
 
+	let publishChecksOk: boolean | null = null
+	if (input.offline) {
+		push('publish checks', true, devCheckOfflineDetail, 'warning')
+	} else if (!input.runPublishChecks) {
+		push(
+			'publish checks',
+			false,
+			'not run. Sign in with `kody login` (or pass --token), or pass --offline to run only the local checks.',
+		)
+	} else {
+		try {
+			const tree = await collectPackageCheckFiles(manifest.root)
+			const outcome = await input.runPublishChecks(tree.files)
+			publishChecksOk = outcome.ok
+			for (const check of outcome.checks) {
+				push(`publish:${check.kind}`, check.ok, check.message || undefined)
+			}
+			if (!outcome.ok && !outcome.checks.some((check) => !check.ok)) {
+				push('publish checks', false, 'publish checks failed')
+			}
+			if (tree.skippedBinary.length > 0) {
+				push(
+					'publish checks',
+					true,
+					`left out ${tree.skippedBinary.length} binary file(s); they only count toward publish size limits`,
+				)
+			}
+		} catch (error) {
+			push(
+				'publish checks',
+				false,
+				`could not run: ${error instanceof Error ? error.message : String(error)}. Sign in with \`kody login\` (or pass --token), or pass --offline to run only the local checks.`,
+			)
+		}
+	}
+
 	const failed = checks.filter((check) => !check.ok)
 	if (input.json) {
 		input.io.stdout(
@@ -745,6 +828,9 @@ export async function runDevCheck(input: {
 					target: input.target,
 					checks,
 					ok: failed.length === 0,
+					publishChecks: input.offline
+						? { ran: false, skipped: 'offline' }
+						: { ran: publishChecksOk !== null, ok: publishChecksOk },
 					...(credentialSignals.length > 0
 						? {
 								credentialedFetch: {

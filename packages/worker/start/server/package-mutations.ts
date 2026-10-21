@@ -60,6 +60,34 @@ export const approvePackagePublish = createServerFn({ method: 'POST' })
 		})
 	})
 
+/**
+ * Read-only: authoring publish checks for the commit the approve-publish page
+ * would promote. The page calls this before it enables Promote.
+ */
+export const checkPackagePublishCommit = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({ packageId: z.string().trim().min(1), commit: z.string() }),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteRead },
+			{ checkAccountPackagePublishCommit },
+			{ setResponseStatus },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/account-package-publish-lock.ts'),
+			import('@tanstack/react-start/server'),
+		])
+		return withWebsiteRead({}, async (context) => {
+			const result = await checkAccountPackagePublishCommit({
+				...context,
+				...data,
+			})
+			setResponseStatus(result.status)
+			return result.data
+		})
+	})
+
 export const setPackageVisibility = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

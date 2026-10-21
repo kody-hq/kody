@@ -18,7 +18,7 @@ import {
 	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
-import { runRepoChecks } from './checks.ts'
+import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import { type PublishPhaseTimings } from './publish-phase-timing.ts'
 import {
 	type EntitySourceRow,
@@ -347,7 +347,9 @@ export async function publishFromExternalRef(input: {
 	// will run (unlocked, or allowLockedPublish).
 	const deferBundleCheckToRebuild =
 		input.deferBundleCheckToRebuild === true && lockedPackage == null
-	const checks = await runRepoChecks({
+	// Checks run before the locked answer and before any approval request, so
+	// no approval link is ever issued for a commit that cannot publish.
+	const checks = await runAuthoringPublishChecks({
 		workspace: input.workspace,
 		manifestPath: input.manifestPath ?? source.manifest_path,
 		sourceRoot: input.sourceRoot ?? source.source_root,

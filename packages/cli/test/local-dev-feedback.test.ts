@@ -159,6 +159,7 @@ export default async function main() {
 		const code = await runDevCheck({
 			target: 'mock',
 			cwd: root,
+			offline: true,
 			json: true,
 			io: {
 				stdout: (text) => {
@@ -222,6 +223,7 @@ export default async function post(userReport: string) {
 		const code = await runDevCheck({
 			target: 'mock',
 			cwd: root,
+			offline: true,
 			io: {
 				stdout: (text) => {
 					stdout += text
@@ -253,6 +255,7 @@ export default async function post(userReport: string) {
 		const optedCode = await runDevCheck({
 			target: 'mock',
 			cwd: root,
+			offline: true,
 			io: {
 				stdout: (text) => {
 					opted += text

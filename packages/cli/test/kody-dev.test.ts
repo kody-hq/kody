@@ -66,9 +66,14 @@ test('loadPackageManifest reads four surfaces from the fixture', async () => {
 
 test('kody dev check passes on the fixture', async () => {
 	let stdout = ''
+	let sentFiles: Array<string> = []
 	const code = await runDevCheck({
 		target: 'mock',
 		cwd: fixtureRoot,
+		runPublishChecks: async (files) => {
+			sentFiles = Object.keys(files)
+			return { ok: true, checks: [{ kind: 'manifest', ok: true, message: '' }] }
+		},
 		io: {
 			stdout: (text) => {
 				stdout += text
@@ -78,6 +83,7 @@ test('kody dev check passes on the fixture', async () => {
 	})
 	assert.equal(code, 0)
 	assert.match(stdout, /passed/)
+	assert.ok(sentFiles.includes('package.json'))
 })
 
 test('kody dev check via CLI exits without leaving the mock server open', async () => {
@@ -85,12 +91,15 @@ test('kody dev check via CLI exits without leaving the mock server open', async 
 	let stdout = ''
 	try {
 		process.chdir(fixtureRoot)
-		const code = await runCli(['dev', 'check', '--target', 'mock', '--json'], {
-			stdout: (text) => {
-				stdout += text
+		const code = await runCli(
+			['dev', 'check', '--target', 'mock', '--offline', '--json'],
+			{
+				stdout: (text) => {
+					stdout += text
+				},
+				stderr: () => {},
 			},
-			stderr: () => {},
-		})
+		)
 		assert.equal(code, 0)
 		assert.match(stdout, /"ok": true/)
 	} finally {
