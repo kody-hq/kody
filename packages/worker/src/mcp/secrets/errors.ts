@@ -332,12 +332,17 @@ export function parseSecretScopeUnavailableMessage(message: string) {
 	if (!scope) return null
 	const label = match[4] ?? null
 	const usesPackageId = Boolean(match[3])
+	// Only search guidance after the visibility marker so a secret name that
+	// happens to contain the missing-context phrase cannot flip the parser.
+	const visibilityMarker = ' and is not visible from this runtime.'
+	const visibilityIndex = message.indexOf(visibilityMarker, match[0].length)
+	const guidance = visibilityIndex === -1 ? '' : message.slice(visibilityIndex)
 	return {
 		secretName: match[1],
 		scope,
 		packageName: usesPackageId ? null : label,
 		packageId: usesPackageId ? label : null,
-		missingPackageContext: message.includes(
+		missingPackageContext: guidance.includes(
 			'but its package context is missing',
 		),
 	}

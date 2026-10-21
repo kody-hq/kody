@@ -154,6 +154,20 @@ test('package secret scope errors distinguish missing package context from a dif
 	})
 })
 
+test('parseSecretScopeUnavailableMessage ignores missing-context phrasing in the secret name', () => {
+	expect(
+		parseSecretScopeUnavailableMessage(
+			'Secret "but its package context is missing" exists in package scope for package "discord-gateway" and is not visible from this runtime. Prefer calling through an export of the owning package so the package-scoped secret is visible in that package\'s runtime.',
+		),
+	).toEqual({
+		secretName: 'but its package context is missing',
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+})
+
 test('missing-context guidance leads with the package that owns this runtime', () => {
 	const message = createSecretScopeUnavailableMessage([
 		{

@@ -125,6 +125,7 @@ async function listInaccessibleSecretMatches(input: {
 					? null
 					: resolveMissingPackageContext({
 							secretPackageId: packageId,
+							requestedScope: input.requestedScope,
 							storageContext: input.storageContext,
 							contextSavedAt: packageUpdatedAt.get(packageId) ?? null,
 						})
@@ -164,9 +165,12 @@ async function listInaccessibleSecretMatches(input: {
  */
 function resolveMissingPackageContext(input: {
 	secretPackageId: string
+	requestedScope: SecretScope | null
 	storageContext: StorageContext | null
 	contextSavedAt: string | null
 }): SecretScopeMissingPackageContext | null {
+	// A pinned non-package scope hides the secret regardless of package context.
+	if (input.requestedScope && input.requestedScope !== 'package') return null
 	const storageId = input.storageContext?.storageId?.trim() || null
 	if (!storageId) return null
 	if (

@@ -228,6 +228,27 @@ test('unresolved package secrets name a job that lost package context and do not
 	expect(stampedWrongPackageOnOwnedJob).toContain('job "nightly"')
 	expect(stampedWrongPackageOnOwnedJob).not.toContain('Editor link:')
 
+	const pinnedSessionOnOwnedJob = await unresolved({
+		scope: 'session',
+		storageContext: {
+			...noPackage,
+			storageId: `job:package-job:${owningPackageId}:nightly`,
+		},
+	})
+	expect(parseSecretScopeUnavailableMessage(pinnedSessionOnOwnedJob)).toEqual({
+		secretName,
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+	expect(pinnedSessionOnOwnedJob).toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(pinnedSessionOnOwnedJob).not.toContain(
+		'but its package context is missing',
+	)
+
 	const wrongPackageRuntime = await unresolved({
 		storageContext: {
 			...noPackage,
