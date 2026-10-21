@@ -390,6 +390,37 @@ test('an expired package-bound Key reads as expired, not missing, and skips atte
 	expect(view.incomplete.some((item) => item.needKey === 'mail')).toBe(false)
 })
 
+test('several expired-only matches stay expired with candidates, not a multi-selection', async () => {
+	const t = await setup()
+	for (const name of ['resend-old-a', 'resend-old-b'] as const) {
+		await t.storeKey(name, 'resend')
+		await t.db
+			.prepare(
+				`UPDATE secret_entries SET expires_at = '2020-01-01T00:00:00.000Z'
+				WHERE name = ? AND bucket_id IN (
+					SELECT id FROM secret_buckets WHERE user_id = ? AND scope = 'user'
+				)`,
+			)
+			.bind(name, t.acmeId)
+			.run()
+	}
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const mail = view.needs.find((need) => need.key === 'mail')
+	expect(mail?.effective).toMatchObject({
+		source: 'auto',
+		status: 'expired',
+		credentials: [],
+		createUrl: null,
+	})
+	expect(mail!.effective.candidates.map((ref) => ref.name).sort()).toEqual([
+		'resend-old-a',
+		'resend-old-b',
+	])
+	expect(view.incomplete.some((item) => item.needKey === 'mail')).toBe(false)
+})
+
 test('the viewer scope binds the :username org and needs package:execute', async () => {
 	const t = await setup()
 	const viewer = (person: keyof typeof t.people) => ({

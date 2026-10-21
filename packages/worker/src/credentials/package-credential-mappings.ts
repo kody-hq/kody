@@ -339,11 +339,18 @@ function effectiveMapping(
 		}
 	}
 	if (resolution.status === 'expired') {
+		// autoPick was null: several expired-only matches. Contract allows at
+		// most one selected ref unless the need is multiple, so keep them as
+		// candidates (Expired alternatives), not a fake multi-selection.
 		return {
 			source: 'auto',
 			status: 'expired',
-			credentials: resolution.candidates.map(toCredentialRef),
-			candidates: [],
+			credentials: need.multiple
+				? resolution.candidates.map(toCredentialRef)
+				: [],
+			candidates: need.multiple
+				? []
+				: resolution.candidates.map(toCredentialRef),
 			createUrl: null,
 		}
 	}

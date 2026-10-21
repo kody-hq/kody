@@ -121,7 +121,9 @@ export type EffectiveCredentialMapping = {
 	 * - `ambiguous`: nothing mapped and several candidates (`candidates`).
 	 * - `unusable`: a trigger mapping names a credential the enabler cannot Use.
 	 * - `expired`: bound to a Key whose expiry has passed (still listed; not
-	 *   missing). Runtime still refuses to fill expired values.
+	 *   missing). A sole auto-pick sits in `credentials`; several expired-only
+	 *   matches for a non-`multiple` need sit in `candidates` with empty
+	 *   `credentials`. Runtime still refuses to fill expired values.
 	 */
 	status: 'ready' | 'none' | 'unbound' | 'ambiguous' | 'unusable' | 'expired'
 	credentials: Array<CredentialRef>
