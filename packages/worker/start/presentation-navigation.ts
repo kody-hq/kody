@@ -22,6 +22,16 @@ type Match = {
 }
 export type CommittedPage = { location: Location; matches: readonly Match[] }
 
+/** Tracking and return-path keys stay in the URL; they do not authorize a new read. */
+function isAttributionSearchKey(key: string) {
+	return (
+		key === 'ref' ||
+		key === 'referrer' ||
+		key === 'landing_path' ||
+		key.startsWith('utm_')
+	)
+}
+
 /** Reuse the mounted page scope for declared filters. New reads authorize themselves. */
 export function isPresentationNavigation(input: {
 	committed: CommittedPage | null
@@ -68,11 +78,11 @@ export function isPresentationNavigation(input: {
 	if (!keys?.length) return false
 	const before = new URLSearchParams(committed.location.searchStr)
 	const after = new URLSearchParams(location.searchStr)
-	let changed = false
 	for (const key of new Set([...before.keys(), ...after.keys()])) {
 		if (deepEqual(before.getAll(key), after.getAll(key))) continue
+		if (isAttributionSearchKey(key)) continue
 		if (!keys.includes(key)) return false
-		changed = true
 	}
-	return changed
+	// Declared filter or presentation keys changed, or only attribution did.
+	return true
 }

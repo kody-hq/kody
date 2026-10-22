@@ -6,10 +6,12 @@ import {
 	type Page,
 } from './playwright-utils.ts'
 
-/** Viewport top of the first rail content (workspace switcher / eyebrow). */
+/** Viewport top of the pinned workspace switcher above the scrolling rail. */
 async function accountRailContentTop(page: Page) {
 	await page.evaluate(() => window.scrollTo(0, 0))
-	const heading = page.locator('[data-account-nav] [data-account-nav-heading]')
+	const heading = page.locator(
+		'[aria-label="Workspace navigation"] [data-account-nav-heading]',
+	)
 	await expect(heading).toBeVisible()
 	return heading.evaluate((element) => element.getBoundingClientRect().top)
 }

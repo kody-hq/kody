@@ -22,6 +22,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 			'hidden',
 			'app',
 			'package',
+			'view',
 		],
 		workspaceLayout: 'profile',
 		navigation: { rail: 'workspace', item: 'overview' },

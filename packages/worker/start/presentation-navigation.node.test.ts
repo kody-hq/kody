@@ -71,6 +71,19 @@ test('typing skips authority calls but selected, reentry, invalidation and actor
 	await router.navigate({ href: '/@team/-/jobs?selected=one&q=x&unknown=1' })
 	commit()
 	expect(checks).toHaveLength(7)
+	await router.navigate({ href: '/@team/-/jobs?selected=one&q=x' })
+	commit()
+	expect(checks).toHaveLength(8)
+	await router.navigate({
+		href: '/@team/-/jobs?selected=one&q=x&utm_source=email',
+	})
+	commit()
+	expect(checks).toHaveLength(8)
+	await router.navigate({
+		href: '/@team/-/jobs?selected=one&q=x&utm_source=other',
+	})
+	commit()
+	expect(checks).toHaveLength(8)
 })
 
 test('uncommitted, failed, invalid and different org snapshots cannot authorize presentation changes', () => {
@@ -176,4 +189,16 @@ test('server filter keys reuse only the same committed route and resource select
 			location: { ...input.location, searchStr: '?unknown=one' },
 		}),
 	).toBe(false)
+	expect(
+		isPresentationNavigation({
+			...input,
+			location: { ...input.location, searchStr: '?q=abc&utm_source=email' },
+		}),
+	).toBe(true)
+	expect(
+		isPresentationNavigation({
+			...input,
+			location: { ...input.location, searchStr: '?utm_source=email' },
+		}),
+	).toBe(true)
 })
