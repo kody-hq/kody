@@ -137,10 +137,12 @@ function __kodyNormalizeSecretAlias(alias, method) {
 	}
 	return normalized;
 }
-// A stamped package with no binding in scope may still act through the
-// run's own (unbound) surface when it is the run's package: that identity is
-// its own. Any other package would silently act as the caller instead, so
-// fail and say why (GHSA-5fv3-qv7j-rqf5).
+// A stamped package with no binding in scope may still use the run's own
+// (unbound) fetch and dispatcher when it is the run's package: that identity
+// is its own. Any other package would silently act as the caller instead, so
+// fail and say why (GHSA-5fv3-qv7j-rqf5). packageStorage() and packageSecrets
+// need no such guard: unbound, they hand the stamped id to the host, which
+// answers only for the run's own package.
 function __kodyAssertUnboundIsRunPackage(packageId, surface) {
 	const runPackageId = __kodyGetRuntimeStore()?.packageContext?.packageId;
 	if (typeof runPackageId === 'string' && runPackageId === packageId) return;
@@ -153,7 +155,11 @@ export function __kodyCreatePackageBoundFetch(packageId) {
 		const binding = __kodyPackageBindingFor(packageId);
 		if (binding == null) {
 			// The run's own package acting through the run's own fetch.
-			__kodyAssertUnboundIsRunPackage(packageId, 'fetch');
+			try {
+				__kodyAssertUnboundIsRunPackage(packageId, 'fetch');
+			} catch (error) {
+				return Promise.reject(error);
+			}
 			return __kodyReflectApply(__kodyCapturedGlobalFetch, undefined, [input, init]);
 		}
 		return binding.fetch(input, init);
@@ -190,7 +196,11 @@ export function __kodyCreatePackageBoundKody(packageId) {
 					binding == null &&
 					!__kodyReflectApply(__kodyStringStartsWith, name, ['mcp:'])
 				) {
-					__kodyAssertUnboundIsRunPackage(packageId, \`kody.\${name}\`);
+					try {
+						__kodyAssertUnboundIsRunPackage(packageId, \`kody.\${name}\`);
+					} catch (error) {
+						return Promise.reject(error);
+					}
 				}
 				const store = __kodyGetRuntimeStore();
 				const exp = store?.kody;
@@ -641,7 +651,6 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 		if (binding != null && typeof binding.packageStorageCall === 'function') {
 			return __kodyCreateBindingPackageStorage(binding, packageId);
 		}
-		__kodyAssertUnboundIsRunPackage(packageId, 'packageStorage()');
 		return __kodyResolvePackageStorage(packageId);
 	};
 }
@@ -675,7 +684,6 @@ export function __kodyCreatePackageBoundSecrets(packageId) {
 				? await binding.packageSecretGet(normalizedAlias)
 				: await binding.packageSecretHas(normalizedAlias);
 		}
-		__kodyAssertUnboundIsRunPackage(packageId, \`packageSecrets.\${method}\`);
 		const secrets = __kodyResolvePackageSecrets(packageId);
 		const fn = secrets[method];
 		return await __kodyReflectApply(fn, secrets, [normalizedAlias]);

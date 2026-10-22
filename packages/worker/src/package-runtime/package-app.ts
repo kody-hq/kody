@@ -2451,7 +2451,14 @@ async function resolvePackageAppBundledArtifact(input: {
 	) {
 		return servePublishedArtifact(currentArtifact)
 	}
-	const sourceFiles = await resolvePackageAppSourceFiles(input)
+	let sourceFiles: Awaited<ReturnType<typeof resolvePackageAppSourceFiles>>
+	try {
+		sourceFiles = await resolvePackageAppSourceFiles(input)
+	} catch (error) {
+		// No source to rebuild from: keep serving the published bundle.
+		if (currentArtifact) return servePublishedArtifact(currentArtifact)
+		throw error
+	}
 	if (
 		currentArtifact &&
 		!publishedArtifactNeedsPackageBindingRebuild({

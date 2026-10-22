@@ -732,9 +732,10 @@ test('trusted package bindings are shared across hydrated runtime.js copies and 
 			const fetchB = rootCopy.__kodyCreatePackageBoundFetch('pkg-b')
 			const secretsA = siblingCopy.__kodyCreatePackageBoundSecrets('pkg-a')
 
-			// Outside the wrapper scope nothing is bound.
-			expect(await (await fetchA('https://example.com/out')).text()).toBe(
-				'global',
+			// Outside the wrapper scope nothing is bound, and a package that is
+			// not the run's own fails instead of acting as the caller.
+			await expect(fetchA('https://example.com/out')).rejects.toThrow(
+				/fetch for package "pkg-a" has no package binding in this run/,
 			)
 			// A package code forgery of the legacy globals changes nothing.
 			const globals = globalThis as unknown as GlobalSymbols
@@ -749,8 +750,8 @@ test('trusted package bindings are shared across hydrated runtime.js copies and 
 					'pkg-a',
 				)
 				// B has no binding of its own and cannot name A's.
-				expect(await (await fetchB('https://example.com/b')).text()).toBe(
-					'global',
+				await expect(fetchB('https://example.com/b')).rejects.toThrow(
+					/fetch for package "pkg-b" has no package binding in this run/,
 				)
 				// Alias normalization uses the trim captured at module init.
 				let trimCalls = 0
@@ -766,18 +767,15 @@ test('trusted package bindings are shared across hydrated runtime.js copies and 
 				expect(trimCalls).toBe(0)
 			})
 			// A callback that outlives the scope is unbound again.
-			expect(await (await fetchA('https://example.com/after')).text()).toBe(
-				'global',
+			await expect(fetchA('https://example.com/after')).rejects.toThrow(
+				/has no package binding in this run/,
 			)
 			expect(boundCalls).toEqual([
 				'pkg-a https://example.com/a',
 				'pkg-a get wakeToken',
 			])
-			expect(globalCalls).toEqual([
-				'https://example.com/out',
-				'https://example.com/b',
-				'https://example.com/after',
-			])
+			// None of them reached the run's own fetch.
+			expect(globalCalls).toEqual([])
 			delete globals[Symbol.for('kody.getSecretAuthority')]
 		} finally {
 			globalThis.fetch = originalFetch

@@ -1,9 +1,8 @@
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { createRelativeImportSpecifier } from './module-graph-path-basics.ts'
+import { runtimeModulePath } from './module-graph-path-basics.ts'
 import { listMissingPublishedSourceInstalledDependencies } from './published-source-dependencies.ts'
 import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
 import {
-	buildPackageRuntimeModulePath,
 	isKodyPublicRuntimeModulePath,
 	isKodyRuntimeModulePath,
 	parsePackageRuntimeModulePathPackageId,
@@ -13,13 +12,14 @@ import {
  * Published bundles built before GHSA-5fv3-qv7j-rqf5 shipped have no lexical
  * package `fetch`: a package's free `fetch` used to pick up that package's
  * identity from an ambient scope the metering wrapper entered. The fix made
- * identity lexical (`import { __kodyBoundFetch as fetch }` from the package's
- * own runtime facade, added at build time), so those older bundles now reach
- * the run's fetch and act as the caller.
+ * identity lexical (each stamped module gets a `fetch` and `kody` bound to
+ * its package at build time; the bundler inlines them as
+ * `var __kodyBoundFetch = __kodyCreatePackageBoundFetch(<id>)`), so those
+ * older bundles now reach the run's fetch and act as the caller.
  *
  * Bundles built with the lexical rewrite carry this marker. Unmarked bundles
- * that still mention `__kodyBoundFetch` were built by the fixed builder
- * before the marker existed.
+ * that already name a bound creator were built by the fixed builder before
+ * the marker existed.
  */
 export const packageBindingRewriteVersion = 1
 
@@ -30,8 +30,69 @@ type RepairableArtifact = {
 	packageBindingRewrite?: number
 }
 
-const boundFetchExportName = '__kodyBoundFetch'
+const lexicalBindingNames = [
+	'__kodyCreatePackageBoundFetch',
+	'__kodyCreatePackageBoundKody',
+	'__kodyBoundFetch',
+]
+const repairFetchCreatorName = '__kodyPreBindingBoundFetch'
+const repairKodyCreatorName = '__kodyPreBindingBoundKody'
 const freeFetchPattern = /\bfetch\b/
+// A bundled `import { ..., kody, ... } from "<...>/.__kody_virtual__/runtime.js"`.
+const sharedRuntimeImportPattern =
+	/^import\s*\{([^}]*)\}\s*from\s*("[^"\n]*\.__kody_virtual__\/runtime\.js");?[ \t]*$/gm
+
+function parseImportedNames(list: string) {
+	return list
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter(Boolean)
+		.map((entry) => {
+			const match = /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/.exec(
+				entry,
+			)
+			return match
+				? { entry, imported: match[1]!, local: match[2] ?? match[1]! }
+				: { entry, imported: null, local: null }
+		})
+}
+
+/**
+ * Drop `kody` from the module's shared-runtime imports and report the local
+ * names it was bound to, so the repair can rebind them to the package.
+ */
+function stripSharedKodyImports(source: string) {
+	const kodyLocalNames: Array<string> = []
+	const nextSource = source.replace(
+		sharedRuntimeImportPattern,
+		(statement, list: string, specifier: string) => {
+			const names = parseImportedNames(list)
+			if (names.some((name) => name.imported == null)) return statement
+			const kept = names.filter((name) => {
+				if (name.imported !== 'kody') return true
+				kodyLocalNames.push(name.local!)
+				return false
+			})
+			if (kept.length === names.length) return statement
+			if (kept.length === 0) return ''
+			return `import { ${kept.map((name) => name.entry).join(', ')} } from ${specifier};`
+		},
+	)
+	return { source: nextSource, kodyLocalNames }
+}
+
+function importsSharedKody(source: string) {
+	return stripSharedKodyImports(source).kodyLocalNames.length > 0
+}
+
+/**
+ * Specifier from a bundle module to the artifact's shared runtime module.
+ * Bundle module paths are relative to the artifact root.
+ */
+function runtimeSpecifierFrom(modulePath: string) {
+	const depth = modulePath.split('/').filter(Boolean).length - 1
+	return `${depth > 0 ? '../'.repeat(depth) : './'}${runtimeModulePath}`
+}
 
 function moduleSource(module: WorkerLoaderModules[string]) {
 	if (typeof module === 'string') return module
@@ -62,15 +123,20 @@ export function isPreBindingPublishedArtifact(artifact: RepairableArtifact) {
 	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
 		return false
 	}
-	let mentionsFetch = false
+	let needsBinding = false
 	for (const [modulePath, module] of Object.entries(artifact.modules)) {
 		if (isPlatformRuntimeModulePath(modulePath)) continue
 		const source = moduleSource(module)
 		if (source == null) continue
-		if (source.includes(boundFetchExportName)) return false
-		if (!mentionsFetch && freeFetchPattern.test(source)) mentionsFetch = true
+		if (lexicalBindingNames.some((name) => source.includes(name))) return false
+		if (
+			!needsBinding &&
+			(freeFetchPattern.test(source) || importsSharedKody(source))
+		) {
+			needsBinding = true
+		}
 	}
-	return mentionsFetch
+	return needsBinding
 }
 
 /**
@@ -83,15 +149,18 @@ export function publishedArtifactInlinesOtherPackages(
 ) {
 	const ownPackageId = artifact.packageContext?.packageId ?? null
 	return artifact.dependencies.some(
-		(dependency) => !dependency.packageId || dependency.packageId !== ownPackageId,
+		(dependency) =>
+			!dependency.packageId || dependency.packageId !== ownPackageId,
 	)
 }
 
 /**
- * Bind a pre-fix single-package bundle's free `fetch` to its own package,
- * exactly as the builder now does for package source: every module gets
- * `import { __kodyBoundFetch as fetch }` from the package's runtime facade,
- * so outbound calls act as that package through its host-minted binding.
+ * Bind a pre-fix single-package bundle's free `fetch` and its shared-runtime
+ * `kody` to its own package, the same bindings the builder now inlines for
+ * package source: each module gets a top-level `fetch` and `kody` from the
+ * shared runtime's `__kodyCreatePackageBoundFetch(<own id>)` and
+ * `__kodyCreatePackageBoundKody(<own id>)`, so outbound calls act as that
+ * package through its host-minted binding.
  * Identity comes from the artifact's stored package context (bundler
  * provenance), never from anything the sandbox supplies. Bundles that are
  * current, have no package context, or inline other packages come back
@@ -104,19 +173,51 @@ export function repairPreBindingPublishedArtifact<
 	if (!ownPackageId) return artifact
 	if (!isPreBindingPublishedArtifact(artifact)) return artifact
 	if (publishedArtifactInlinesOtherPackages(artifact)) return artifact
-	const facadePath = buildPackageRuntimeModulePath(ownPackageId)
 	let modules: WorkerLoaderModules | null = null
 	for (const [modulePath, module] of Object.entries(artifact.modules)) {
 		if (isPlatformRuntimeModulePath(modulePath)) continue
-		const source = moduleSource(module)
-		if (source == null || !freeFetchPattern.test(source)) continue
-		const collisions = collectTopLevelFetchCollisionNames(source)
-		if (!collisions || collisions.has('fetch')) continue
-		const prefix = `import { ${boundFetchExportName} as fetch } from ${JSON.stringify(
-			createRelativeImportSpecifier(modulePath, facadePath),
-		)};\n`
+		const original = moduleSource(module)
+		if (original == null) continue
+		const collisions = collectTopLevelFetchCollisionNames(original)
+		if (
+			!collisions ||
+			collisions.has(repairFetchCreatorName) ||
+			collisions.has(repairKodyCreatorName)
+		) {
+			continue
+		}
+		const { source, kodyLocalNames } = stripSharedKodyImports(original)
+		const bindFetch = freeFetchPattern.test(source) && !collisions.has('fetch')
+		if (!bindFetch && kodyLocalNames.length === 0) continue
+		const packageIdLiteral = JSON.stringify(ownPackageId)
+		const imported = [
+			bindFetch
+				? `__kodyCreatePackageBoundFetch as ${repairFetchCreatorName}`
+				: null,
+			kodyLocalNames.length > 0
+				? `__kodyCreatePackageBoundKody as ${repairKodyCreatorName}`
+				: null,
+		].filter(Boolean)
+		const lines = [
+			`import { ${imported.join(', ')} } from ${JSON.stringify(
+				runtimeSpecifierFrom(modulePath),
+			)};`,
+		]
+		if (bindFetch) {
+			lines.push(
+				`const fetch = ${repairFetchCreatorName}(${packageIdLiteral});`,
+			)
+		}
+		for (const localName of kodyLocalNames) {
+			lines.push(
+				`const ${localName} = ${repairKodyCreatorName}(${packageIdLiteral});`,
+			)
+		}
 		modules ??= { ...artifact.modules }
-		modules[modulePath] = withModuleSource(module, prefix + source)
+		modules[modulePath] = withModuleSource(
+			module,
+			`${lines.join('\n')}\n${source}`,
+		)
 	}
 	if (!modules) return artifact
 	return { ...artifact, modules }
