@@ -3,12 +3,20 @@
 	"name": "io.github.kody-hq/kody",
 	"title": "Kody",
 	"description": "Your agents' cloud for individuals and teams. Search, execute, packages, jobs, and credentials.",
-	"version": "1.0.6",
+	"version": "1.0.7",
 	"websiteUrl": "https://kody.codes",
 	"repository": {
 		"url": "https://github.com/kody-hq/kody",
 		"source": "github"
 	},
+	"icons": [
+		{
+			"src": "https://kody.codes/logo.png",
+			"mimeType": "image/png",
+			"sizes": ["512x512"],
+			"theme": "light"
+		}
+	],
 	"remotes": [
 		{
 			"type": "streamable-http",
