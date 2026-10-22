@@ -57,7 +57,12 @@ export function SignupChooseUsernamePage(props: {
 	const submitLabel = confirming ? 'Yes, create account' : 'Continue'
 	const canSubmit =
 		availability.status === 'available' ||
-		(confirming && availability.status !== 'taken')
+		availability.status === 'unknown' ||
+		(confirming &&
+			availability.status !== 'taken' &&
+			availability.status !== 'reserved' &&
+			availability.status !== 'invalid' &&
+			availability.status !== 'checking')
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()

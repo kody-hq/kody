@@ -26,7 +26,7 @@ export type UsernameAvailabilityView =
 	| { status: 'idle' }
 	| { status: 'checking' }
 	| {
-			status: 'available' | 'taken' | 'reserved' | 'invalid'
+			status: 'available' | 'taken' | 'reserved' | 'invalid' | 'unknown'
 			username: string
 			reason: string | null
 			suggestions: Array<string>
@@ -112,12 +112,12 @@ export function UsernameChoiceField(props: {
 					if (seq !== requestSeq.current) return
 					if (!result || result.ok !== true) {
 						setAvailability({
-							status: 'invalid',
+							status: 'unknown',
 							username: trimmed.toLowerCase(),
 							reason:
 								typeof result?.error === 'string'
 									? result.error
-									: 'Unable to check username availability.',
+									: 'Unable to check username availability. You can still continue; we will verify on submit.',
 							suggestions: [],
 						})
 						return
@@ -134,9 +134,10 @@ export function UsernameChoiceField(props: {
 						status !== 'invalid'
 					) {
 						setAvailability({
-							status: 'invalid',
+							status: 'unknown',
 							username,
-							reason: 'Unable to check username availability.',
+							reason:
+								'Unable to check username availability. You can still continue; we will verify on submit.',
 							suggestions: [],
 						})
 						return
@@ -158,9 +159,10 @@ export function UsernameChoiceField(props: {
 					if (lifecycle.current?.signal.aborted) return
 					if (seq !== requestSeq.current) return
 					setAvailability({
-						status: 'invalid',
+						status: 'unknown',
 						username: trimmed.toLowerCase(),
-						reason: 'Unable to check username availability.',
+						reason:
+							'Unable to check username availability. You can still continue; we will verify on submit.',
 						suggestions: [],
 					})
 				}
@@ -271,6 +273,11 @@ function availabilityMessage(view: UsernameAvailabilityView) {
 		case 'reserved':
 		case 'invalid':
 			return view.reason ?? 'That username cannot be used.'
+		case 'unknown':
+			return (
+				view.reason ??
+				'Unable to check username availability. You can still continue; we will verify on submit.'
+			)
 		default: {
 			const exhaustive: never = view
 			return exhaustive
@@ -298,6 +305,9 @@ const availabilityCss: CSSObject = {
 		{
 			color: colors.error,
 		},
+	'&[data-status="unknown"]': {
+		color: colors.textMuted,
+	},
 }
 
 const suggestionsCss: CSSObject = {
