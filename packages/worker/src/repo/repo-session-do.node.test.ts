@@ -1820,6 +1820,53 @@ test('publishSession maps non-fast-forward PushRejectedError to base_moved witho
 	)
 })
 
+test('publishSession does not report success or move published pointers when the source ref never shows the pushed commit', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	mockModule.gitState.headCommit = 'commit-session-head'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	// The push call reports success, but the remote ref never moves (the
+	// failure mode where Artifacts acknowledged a push that did not land).
+	mockModule.gitState.remoteRefs.set('refs/heads/main', 'commit-base')
+	mockModule.rawPush.mockImplementation(async () => ({
+		ok: true,
+		error: null,
+		refs: {},
+	}))
+	const packageFile = { 'package.json': userPackageJson }
+	seedWorkspace(packageFile)
+	const state = await checkedPublishState(packageFile)
+
+	const error = await repoSession(createEnv(), state)
+		.publishSession(session)
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).name).toBe('RemoteRefNotConfirmedError')
+	expect((error as Error).message).toContain(
+		'refs/heads/main is at commit-base, expected commit-session-head',
+	)
+	expect(mockModule.listArtifactServerRefs).toHaveBeenCalledWith(
+		expect.objectContaining({ prefix: 'refs/heads/main' }),
+	)
+	// Nothing advanced: no published snapshot, no D1 pointer, no session
+	// base/checkpoint/published move, and session scratch is kept for retry.
+	expect(mockModule.writePublishedSourceSnapshot).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+	expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ status: 'published' }),
+	)
+	expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ baseCommit: 'commit-session-head' }),
+	)
+	expect(mockModule.deleteStorageBucketInventory).not.toHaveBeenCalled()
+})
+
 test('runChecks forwards expectedPackageScope for a still-plain repo so promote can run package checks', async () => {
 	setCommonSessionFixtures()
 	mockModule.getEntitySourceById.mockResolvedValue(
@@ -1923,14 +1970,13 @@ test('confirmed destructive overwrite replaces history with an orphan root commi
 			},
 		),
 	)
-	mockModule.listArtifactServerRefs.mockResolvedValue([
-		{ ref: 'refs/heads/sessions/sourcesync-canary', oid: priorCanaryCommit },
-		{
-			ref: 'refs/heads/sessions/sourcesync-stale-prior',
-			oid: priorCanaryCommit,
-		},
-		{ ref: 'refs/heads/main', oid: priorCanaryCommit },
-	])
+	for (const ref of [
+		'refs/heads/sessions/sourcesync-canary',
+		'refs/heads/sessions/sourcesync-stale-prior',
+		'refs/heads/main',
+	]) {
+		mockModule.gitState.remoteRefs.set(ref, priorCanaryCommit)
+	}
 
 	const result = await publish({ destructiveOverwriteConfirmed: true })
 

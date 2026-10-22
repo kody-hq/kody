@@ -176,7 +176,7 @@ async function materializePublishedCommitWorkspace(input: {
 	return { git, http, workspace, onAuth, authenticatedRemote }
 }
 
-async function syncWorkspaceFiles(input: {
+export async function syncWorkspaceFiles(input: {
 	git: Awaited<ReturnType<typeof loadIsomorphicGit>>['git']
 	filesystem: ReturnType<typeof createEphemeralGitWorkspace>['filesystem']
 	fs: ReturnType<typeof createEphemeralGitWorkspace>['fs']

@@ -54,6 +54,12 @@ export const repoSessionMockModule = (() => {
 		headCommit: 'commit-head',
 		statusEntries: [] as Array<{ status: string }>,
 		remotes: [] as Array<{ remote: string; url: string }>,
+		/**
+		 * Simulated Artifacts ref advertisement. Baseline raw pushes write the
+		 * pushed head here and `listArtifactServerRefs` reads it back, so
+		 * publish's post-push ref confirmation sees what a real remote would.
+		 */
+		remoteRefs: new Map<string, string>(),
 	}
 
 	const git = {
@@ -104,7 +110,15 @@ export const repoSessionMockModule = (() => {
 			fetchHeadDescription: 'main',
 		})),
 		pull: vi.fn(async () => ({ pulled: true })),
-		push: vi.fn(async () => ({ ok: true, refs: {} })),
+		push: vi.fn(async (opts?: { ref?: string }) => {
+			if (opts?.ref) {
+				const fullRef = opts.ref.startsWith('refs/')
+					? opts.ref
+					: `refs/heads/${opts.ref}`
+				gitState.remoteRefs.set(fullRef, gitState.headCommit)
+			}
+			return { ok: true, refs: {} }
+		}),
 		diff: vi.fn(async () => []),
 	}
 
@@ -321,6 +335,26 @@ export function restoreRepoSessionMockBaseline() {
 		gitState.headCommit = 'commit-orphan-root'
 		return gitState.headCommit
 	})
+	gitState.remoteRefs.clear()
+	mocks.rawPush.mockImplementation(async (input) => {
+		const target = input.remoteRef ?? input.ref
+		if (target) {
+			const fullRef = target.startsWith('refs/')
+				? target
+				: `refs/heads/${target}`
+			if (input.delete) {
+				gitState.remoteRefs.delete(fullRef)
+			} else {
+				gitState.remoteRefs.set(fullRef, gitState.headCommit)
+			}
+		}
+		return { ok: true, error: null, refs: {} }
+	})
+	mocks.listArtifactServerRefs.mockImplementation(async (input) =>
+		[...gitState.remoteRefs.entries()]
+			.filter(([ref]) => !input.prefix || ref.startsWith(input.prefix))
+			.map(([ref, oid]) => ({ ref, oid })),
+	)
 	mocks.resolveExistingArtifactSourceRepo.mockResolvedValue({
 		info: vi.fn(async () => ({
 			id: 'source-repo-id',

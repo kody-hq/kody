@@ -74,6 +74,7 @@ import {
 	validatePackageBundles,
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
+import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
@@ -751,15 +752,24 @@ class RepoSessionBase extends DurableObject<Env> {
 		return commit.oid
 	}
 
+	/**
+	 * Push the session branch to the source branch, then require the remote
+	 * advertisement to show `expectedCommit` at that ref. Publish moves
+	 * `published_commit` and releases session scratch right after this, so a
+	 * push that "succeeds" without a durable ref update must fail here
+	 * ({@link RemoteRefNotConfirmedError}) instead of stranding the commit.
+	 */
 	private async pushBranchToRemoteRef(input: {
 		branch: string
 		remoteRef: string
+		remote: string
 		token: string
+		expectedCommit: string
 		force?: boolean
 	}) {
 		const auth = buildArtifactsGitAuth({ token: input.token })
 		const { git, http } = await loadIsomorphicGit()
-		return git.push({
+		const result = await git.push({
 			fs: this.rawGitFileSystem as RawGitPushInput['fs'],
 			http,
 			dir: repoSessionWorkspacePrefix,
@@ -771,6 +781,13 @@ class RepoSessionBase extends DurableObject<Env> {
 				return auth
 			},
 		})
+		await confirmRemoteRefAtCommit({
+			remote: input.remote,
+			token: input.token,
+			ref: input.remoteRef,
+			commit: input.expectedCommit,
+		})
+		return result
 	}
 
 	private buildPublishBaseMovedResult(input: {
@@ -2011,14 +2028,23 @@ class RepoSessionBase extends DurableObject<Env> {
 				`Source "${source.id}" first-publish from dest HEAD produced an empty workspace snapshot.`,
 			)
 		}
-		await pushServerTiming(serverTiming, 'bootstrap-git-push', async () =>
-			(await this.ensureGit()).push({
+		await pushServerTiming(serverTiming, 'bootstrap-git-push', async () => {
+			await (
+				await this.ensureGit()
+			).push({
 				dir: repoSessionWorkspacePrefix,
 				remote: 'source',
 				ref: targetBranch,
 				...buildArtifactsGitAuth({ token: remoteSetup.token }),
-			}),
-		)
+			})
+			// published_commit is set below; require the ref to hold it first.
+			await confirmRemoteRefAtCommit({
+				remote: remoteSetup.remote,
+				token: remoteSetup.token,
+				ref: targetBranch,
+				commit: publishedCommit,
+			})
+		})
 		await pushServerTiming(serverTiming, 'bootstrap-git-note', () =>
 			this.attachSourcePublishGitNote({
 				source,
@@ -3352,7 +3378,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			await this.pushBranchToRemoteRef({
 				branch: sessionBranch,
 				remoteRef: input.sessionRow.source_branch,
+				remote: input.sessionAccess.remote,
 				token: input.sessionAccess.token,
+				expectedCommit: sessionHeadCommit ?? input.sessionRow.base_commit,
 			})
 		} catch (error) {
 			if (isGitPushNotFastForwardError(error)) {
@@ -3642,7 +3670,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			await this.pushBranchToRemoteRef({
 				branch: sessionBranch,
 				remoteRef: sessionRow.source_branch,
+				remote: sessionAccess.remote,
 				token: sessionAccess.token,
+				expectedCommit: publishedCommit,
 				...(forceSourcePush ? { force: true } : {}),
 			})
 		} catch (error) {

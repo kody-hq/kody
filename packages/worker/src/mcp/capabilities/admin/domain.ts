@@ -69,6 +69,7 @@ import { adminUnverifiedAccountPurgeRunCapability } from './admin-unverified-acc
 import { adminSoftDeletePurgeRunCapability } from './admin-soft-delete-purge-run.ts'
 import { adminPublishedImportableArtifactBackfillCapability } from './admin-published-importable-artifact-backfill.ts'
 import { adminPublishedSourceSnapshotBackfillCapability } from './admin-published-source-snapshot-backfill.ts'
+import { adminPublishedCommitRefRepairCapability } from './admin-published-commit-ref-repair.ts'
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
@@ -186,6 +187,7 @@ export const adminDomain = defineDomain({
 		adminPackageCodemodOwnerNoticeCapability,
 		adminPublishedImportableArtifactBackfillCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
+		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialBackfillCapability,
