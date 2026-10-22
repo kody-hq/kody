@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import { writeGeneratedConfig } from './write-generated-config.ts'
 import path from 'node:path'
 import { parseJsonc } from './ci/resource-utils.ts'
 import { localizeMigrations } from './local-dev-migrations.ts'
@@ -69,6 +70,9 @@ export async function writeLocalAuxiliaryDevConfig({
 	vars.WRANGLER_IS_LOCAL_DEV = 'true'
 
 	const outputPath = path.join(path.dirname(configPath), generatedBasename)
-	await writeFile(outputPath, `${JSON.stringify(config, null, '\t')}\n`)
+	await writeGeneratedConfig(
+		outputPath,
+		`${JSON.stringify(config, null, '\t')}\n`,
+	)
 	return outputPath
 }

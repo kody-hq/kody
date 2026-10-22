@@ -80,7 +80,7 @@ test('logged-in header has only the account menu; the org switcher lives in the 
 		menu.indexOf('data-testid="account-menu-manage-group"'),
 		menu.indexOf('data-testid="org-switcher-account-group"'),
 	)
-	expect(manage).toMatch(/href="\/@acme"[^>]*>[\s\S]*?>@acme</)
+	expect(manage).toMatch(/href="\/@acme\/-\/overview"[^>]*>[\s\S]*?>@acme</)
 	expect(manage).toMatch(/href="\/@ada\/-\/overview"[^>]*>[\s\S]*?>@ada</)
 	expect(manage).not.toContain('>Overview<')
 	const account = menu.slice(
@@ -115,6 +115,38 @@ test('logged-out header shows Log in without an Account link', async () => {
 	expect(html).toContain('>Log in</a>')
 	expect(html).not.toContain('data-testid="site-header-account"')
 	expect(html).not.toContain('data-testid="site-header-account-menu"')
+})
+
+test('home brand wordmark is larger than other routes', async () => {
+	const home = await renderToString(
+		jsx(SiteHeader, {
+			loggedIn: false,
+			displayName: '',
+			username: '',
+			avatarUrl: null,
+			showAdminLink: false,
+			showDemoIndicator: false,
+			loginHref: '/login',
+			currentPathname: '/',
+		}),
+	)
+	const pricing = await renderToString(
+		jsx(SiteHeader, {
+			loggedIn: false,
+			displayName: '',
+			username: '',
+			avatarUrl: null,
+			showAdminLink: false,
+			showDemoIndicator: false,
+			loginHref: '/login',
+			currentPathname: '/pricing',
+		}),
+	)
+	expect(home).toContain('1.75rem')
+	expect(home).toContain('0.7rem')
+	expect(pricing).not.toContain('1.75rem')
+	expect(pricing).toContain('1.25rem')
+	expect(pricing).toContain('0.6rem')
 })
 
 test('desktop and mobile headers include the complete Features navigation', async () => {
@@ -166,7 +198,9 @@ test('focused header keeps only the brand and the account menu', async () => {
 	)
 
 	expect(html).toContain('data-focused-header')
-	expect(html).toContain('src="/images/kody-mark.png"')
+	expect(html).toContain('viewBox="220.727 325.009973 807.440627 593.242027"')
+	expect(html).toContain('fill="currentColor"')
+	expect(html).not.toContain('src="/images/kody-mark.png"')
 	expect(html).toContain('data-testid="account-menu"')
 	expect(html).toContain('aria-label="Ada Lovelace: your account"')
 	expect(html).not.toContain('aria-label="Main"')
@@ -255,9 +289,10 @@ test('account menu Manage lists every workspace by handle, the current one first
 			link.detail,
 			link.icon,
 		])
-	// The org in the URL is the one Manage lists first.
+	// The org in the URL is the one Manage lists first. Role-bearing workspaces
+	// open the overview; grant-only collaborators keep the org home.
 	expect(links('/@kody/-/credentials')).toEqual([
-		['@kody', '/@kody', null, 'users'],
+		['@kody', '/@kody/-/overview', null, 'users'],
 		['@kentcdodds', '/@kentcdodds/-/overview', null, 'user'],
 		['@acme', '/@acme', null, 'users'],
 	])
@@ -266,7 +301,7 @@ test('account menu Manage lists every workspace by handle, the current one first
 	expect(links('/account')).toEqual([
 		['@kentcdodds', '/@kentcdodds/-/overview', null, 'user'],
 		['@acme', '/@acme', null, 'users'],
-		['@kody', '/@kody', null, 'users'],
+		['@kody', '/@kody/-/overview', null, 'users'],
 	])
 	// A stale session list leaves the URL org's kind unknown (a renamed
 	// person's signup org keeps its old slug), so the row takes the path
@@ -289,7 +324,7 @@ test('account menu shows a Manage section before the person links, in the phone 
 			showAdminLink: false,
 			showDemoIndicator: false,
 			loginHref: '/login',
-			currentPathname: '/@kody',
+			currentPathname: '/@kody/-/overview',
 			organizations: [
 				{ slug: 'kody', displayName: 'Kody', role: 'owner', personal: false },
 				{
@@ -315,7 +350,7 @@ test('account menu shows a Manage section before the person links, in the phone 
 	expect(manage).toContain('aria-label="Manage"')
 	expect(manage).toContain('>Manage<')
 	expect(manage).toMatch(
-		/<a\b(?=[^>]*href="\/@kody")(?=[^>]*aria-current="page")[^>]*>[\s\S]*?data-icon="users"[\s\S]*?>@kody</,
+		/<a\b(?=[^>]*href="\/@kody\/-\/overview")(?=[^>]*aria-current="page")[^>]*>[\s\S]*?data-icon="users"[\s\S]*?>@kody</,
 	)
 	expect(manage).toMatch(
 		/href="\/@kentcdodds\/-\/overview"[^>]*>[\s\S]*?data-icon="user"[\s\S]*?>@kentcdodds</,
@@ -333,7 +368,9 @@ test('account menu shows a Manage section before the person links, in the phone 
 		menu.indexOf('data-testid="account-menu-manage-group"'),
 		menu.indexOf('data-testid="org-switcher-account-group"'),
 	)
-	expect(phoneManage).toMatch(/href="\/@kody"[^>]*>[\s\S]*?>@kody</)
+	expect(phoneManage).toMatch(
+		/href="\/@kody\/-\/overview"[^>]*>[\s\S]*?>@kody</,
+	)
 	expect(phoneManage).not.toContain('>Overview<')
 	// No org switcher in the header, so the phone Manage group lists every
 	// other workspace too.

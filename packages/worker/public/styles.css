@@ -468,126 +468,12 @@ html.is-settled {
 	}
 
 	/* Page-open choreography: full document loads only — SPA navigations
-	   set html[data-spa-nav] (client-router) and get the view transition
-	   as their entrance instead. `both` + opacity 0 delays LCP on the
+	   set html[data-spa-nav] and cut directly to the next page. `both` + opacity 0 delays LCP on the
 	   homepage h1 (PSI lab). Keep the motion anyway — the entrance is
 	   worth that hit. */
 	html.js:not([data-spa-nav]) [data-rise] {
 		animation: rise 700ms var(--ease-out) both;
 		animation-delay: calc(60ms + var(--rise, 0) * 90ms);
-	}
-
-	/* SPA route transitions (View Transitions API). The router wraps the
-	   DOM swap in startViewTransition (client/client-router.tsx). Motion
-	   lives on `page` (`<main>`), not `root` — otherwise the account rail
-	   (inside main, no name of its own until lifted) fades and slides with
-	   the content. Always-present chrome is pinned static. The rail is
-	   named so it lifts out of `page`, but it is *not* always on screen:
-	   leaving `/account` or `/admin` has an old snapshot and no new one.
-	   Pinning old/new (`animation: none`) froze that leftover rail on top
-	   of the destination. Old/new fade; only the group stays still so
-	   account↔admin (rail on both sides) does not morph/squash. Intra-docs
-	   guide switches skip this API entirely (client-router shell areas).
-	   The docs sidebar is also named `docs-nav` so a leftover transition
-	   cannot slide the rail. Browsers without the API never match these
-	   pseudos — the swap is instant. */
-	::view-transition-old(root),
-	::view-transition-new(root) {
-		animation: none;
-	}
-
-	::view-transition-old(page) {
-		animation: vt-page-out 120ms var(--ease-out) both;
-	}
-
-	::view-transition-new(page) {
-		animation: vt-page-in 220ms var(--ease-out) both;
-	}
-
-	::view-transition-old(site-header),
-	::view-transition-new(site-header),
-	::view-transition-group(site-header),
-	::view-transition-old(site-footer),
-	::view-transition-new(site-footer),
-	::view-transition-group(site-footer),
-	::view-transition-old(nav-progress),
-	::view-transition-new(nav-progress),
-	::view-transition-group(nav-progress),
-	::view-transition-group(account-nav),
-	::view-transition-group(docs-nav),
-	::view-transition-group(files-back),
-	::view-transition-group(files-head),
-	::view-transition-group(files-tree),
-	::view-transition-group(files-blob) {
-		animation: none;
-	}
-
-	/* Keep a shared header steady, but dismiss its snapshot when the next
-	   screen has no header, including login and the workspace. */
-	::view-transition-old(site-header):only-child {
-		animation: vt-header-out 120ms var(--ease-out) both;
-	}
-
-	::view-transition-new(site-header):only-child {
-		animation: vt-header-in 220ms var(--ease-out) both;
-	}
-
-	@keyframes vt-header-out {
-		to {
-			opacity: 0;
-			transform: translateY(-12px);
-		}
-	}
-
-	@keyframes vt-header-in {
-		from {
-			opacity: 0;
-			transform: translateY(-12px);
-		}
-	}
-
-	/* Same treatment for the whole package files explorer: switching files is
-	   an in-place content swap, so nothing there may lift and slide the way a
-	   route change does. Every part is named (lifted out of `page`) with its
-	   group pinned — the file pane's height changes per file, and an unpinned
-	   group would squash between the two sizes. Old/new cross-fade rather
-	   than being pinned outright: none of these are on screen outside
-	   `/files`, and pinning old/new strands the leftover snapshot. */
-	::view-transition-old(account-nav),
-	::view-transition-old(docs-nav),
-	::view-transition-old(files-back),
-	::view-transition-old(files-head),
-	::view-transition-old(files-tree),
-	::view-transition-old(files-blob) {
-		animation: vt-page-out 120ms var(--ease-out) both;
-	}
-
-	::view-transition-new(account-nav),
-	::view-transition-new(docs-nav),
-	::view-transition-new(files-back),
-	::view-transition-new(files-head),
-	::view-transition-new(files-tree),
-	::view-transition-new(files-blob) {
-		animation: vt-account-nav-in 220ms var(--ease-out) both;
-	}
-
-	@keyframes vt-page-out {
-		to {
-			opacity: 0;
-		}
-	}
-
-	@keyframes vt-page-in {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-	}
-
-	@keyframes vt-account-nav-in {
-		from {
-			opacity: 0;
-		}
 	}
 
 	@keyframes rise {
@@ -818,20 +704,7 @@ html.is-settled {
 	margin: clamp(1.75rem, 4vw, 2.5rem) auto 0;
 	overflow-x: auto;
 	scrollbar-width: none;
-	mask-image: linear-gradient(
-		to right,
-		transparent,
-		#000 var(--agent-fade),
-		#000 calc(100% - var(--agent-fade)),
-		transparent
-	);
-	-webkit-mask-image: linear-gradient(
-		to right,
-		transparent,
-		#000 var(--agent-fade),
-		#000 calc(100% - var(--agent-fade)),
-		transparent
-	);
+	--tw-fade-size-x: var(--agent-fade);
 }
 
 .landing-agents::-webkit-scrollbar {
@@ -1018,9 +891,7 @@ html.is-settled {
 	   focus ring, and must stay within the hero's smallest side padding
 	   (1.25rem) so the strip never widens the page on phones. */
 	--chooser-bleed: 1.2rem;
-	--chooser-fade: 2.75rem;
-	--chooser-fade-start: black;
-	--chooser-fade-end: black;
+	--tw-fade-size-x: 2.75rem;
 	position: relative;
 	display: flex;
 	gap: 0.6rem;
@@ -1039,25 +910,6 @@ html.is-settled {
 
 .landing-hero-chooser:focus-visible {
 	outline: none;
-}
-
-.landing-hero-chooser[data-overflow-start] {
-	--chooser-fade-start: transparent;
-}
-
-.landing-hero-chooser[data-overflow-end] {
-	--chooser-fade-end: transparent;
-}
-
-.landing-hero-chooser[data-overflow-start],
-.landing-hero-chooser[data-overflow-end] {
-	mask-image: linear-gradient(
-		to right,
-		var(--chooser-fade-start),
-		black var(--chooser-fade),
-		black calc(100% - var(--chooser-fade)),
-		var(--chooser-fade-end)
-	);
 }
 
 .landing-hero-chooser-option {

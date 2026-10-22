@@ -63,10 +63,13 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	).toBeVisible()
 	await expect(page.getByTestId('org-home')).toBeVisible()
 	await waitForClientHydration(page)
+	const workspaceNav = page.getByRole('complementary', {
+		name: 'Workspace navigation',
+	})
 	const workspaceRail = page.getByRole('navigation', {
 		name: 'Workspace sections',
 	})
-	await expect(workspaceRail.getByTestId('org-switcher')).toBeVisible()
+	await expect(workspaceNav.getByTestId('org-switcher')).toBeVisible()
 	await expect(page.getByTestId('org-home-nav')).toHaveCount(0)
 	await workspaceRail
 		.getByRole('link', { name: 'Repositories', exact: true })
@@ -123,7 +126,10 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	const manageLinks = manageGroup.getByRole('link')
 	await expect(manageLinks).toHaveCount(2)
 	await expect(manageLinks.nth(0)).toHaveAccessibleName(`@pinned-${runId}`)
-	await expect(manageLinks.nth(0)).toHaveAttribute('href', `/@pinned-${runId}`)
+	await expect(manageLinks.nth(0)).toHaveAttribute(
+		'href',
+		`/@pinned-${runId}/-/overview`,
+	)
 	await expect(manageLinks.nth(1)).toHaveAccessibleName(`@${user.username}`)
 	await expect(manageLinks.nth(1)).toHaveAttribute(
 		'href',
@@ -195,16 +201,18 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	}
 	await expect(
 		teamRail.getByRole('link', { name: 'Overview', exact: true }),
-	).toHaveAttribute('href', `/@pinned-${runId}`)
+	).toHaveAttribute('href', `/@pinned-${runId}/-/overview`)
 	await expect(
 		teamRail.getByRole('link', { name: 'Credentials', exact: true }),
 	).toHaveAttribute('href', `/@pinned-${runId}/-/credentials`)
 	await expect(page.getByTestId('org-switcher')).toHaveAccessibleName(
 		`@pinned-${runId}: switch organization`,
 	)
-	await expect(teamRail.getByTestId('org-switcher')).toContainText(
-		`@pinned-${runId}`,
-	)
+	await expect(
+		page
+			.getByRole('complementary', { name: 'Workspace navigation' })
+			.getByTestId('org-switcher'),
+	).toContainText(`@pinned-${runId}`)
 	await expect(page.getByTestId('delete-org')).toBeVisible()
 
 	// Teams, Collaborators, and Grants are tabs on Members.

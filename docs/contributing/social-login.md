@@ -57,8 +57,16 @@ Callback resolution order:
    other connections / reset tokens cleared) so a squatted password signup
    cannot keep access. The provider also marks the account email verified, since
    it asserted ownership of the same address.
-4. Otherwise a new account is created. Signup is open in every environment. New
-   accounts start on the `free` plan.
+4. Otherwise the callback parks the verified provider identity in a short-lived
+   signed `kody_oauth_pending` cookie and redirects to
+   `/signup/choose-username`. No user row is written yet. The person picks a
+   permanent username (prefilled with an available suggestion from the provider
+   handle or email local part), with the same validation, claim checks, live
+   availability, and suggestions as password signup. Submitting creates the
+   user + personal org, links the provider, clears the pending cookie
+   (single-use), and issues the session (or `kody_verify` when 2FA is already
+   enabled). Tampered or expired pending state is rejected. Signup is open in
+   every environment. New accounts start on the `free` plan.
 
 X frequently does not share an email (it requires the "Request email from users"
 app permission and a confirmed email), in which case only paths 1 and 2 work:

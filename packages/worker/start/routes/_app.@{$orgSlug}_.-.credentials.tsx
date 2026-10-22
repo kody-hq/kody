@@ -16,7 +16,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/credentials')({
 		orgScope: { section: 'credentials' },
 		presentationSearchKeys: credentialPresentationSearchKeys,
 	},
-	shouldReload: ({ context }) => !context.presentationOnly,
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload, params }) =>
 		loadPageQuery(
 			context.queryClient,

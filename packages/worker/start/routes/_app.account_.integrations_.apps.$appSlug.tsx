@@ -4,7 +4,6 @@ export const Route = createFileRoute(
 	'/_app/account_/integrations_/apps/$appSlug',
 )({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'credentials' },
 	},
 	preload: false,

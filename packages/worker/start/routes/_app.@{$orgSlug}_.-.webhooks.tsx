@@ -10,11 +10,13 @@ const pageQuery = createPageQuery('loadWebhooksPage', loadWebhooksPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/webhooks')({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: { section: 'webhooks' },
 		navigation: { rail: 'workspace', item: 'webhooks' },
 		orgScope: { section: 'webhooks' },
 	},
 	context: ({ params }) => ({ pageQueryInput: { orgSlug: params.orgSlug } }),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

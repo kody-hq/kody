@@ -54,8 +54,8 @@ Also watch:
 
 **Approving gives that agent full access to this Kody account** — not a limited
 permission set. Kody does not control or supervise what your agent does with the
-access you grant. Connect agents you trust, and revoke one from the Connected
-agents panel on `/account` when you stop using it.
+access you grant. Connect agents you trust, and revoke one from Agents
+(`/@<slug>/-/agents`) when you stop using it.
 
 Some hosts bind MCP tools when a conversation starts. If Kody's tools do not
 appear right after authorizing (Claude Desktop is the usual case), start a new

@@ -53,7 +53,7 @@ import {
 	AccountPageHeader,
 } from './account-management-components.tsx'
 import { emailResumeMutationOptions } from './email-resume-mutation.ts'
-import { emailKeys } from './email-resources.ts'
+import { emailKeys, emailSearch } from './email-resources.ts'
 import {
 	renderEmailVerificationPrompt,
 	requestResendVerification,
@@ -347,7 +347,9 @@ export function AccountEmailPage({
 	const currentPage = data.page
 	const searchQuery = data.query
 	const classificationFilter =
-		data.classification === 'quarantined' ? 'quarantined' : 'all'
+		emailSearch(pageLocation.search).classification === 'quarantined'
+			? 'quarantined'
+			: 'all'
 	const showUnverified = !data.emailVerified
 
 	return (

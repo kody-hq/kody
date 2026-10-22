@@ -3,6 +3,7 @@ import { deepEqual } from '@tanstack/react-router'
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {
 		presentationSearchKeys?: readonly string[]
+		filterSearchKeys?: readonly string[]
 	}
 }
 type Location = { pathname: string; searchStr: string; hash: string }
@@ -14,11 +15,24 @@ type Match = {
 	status: string
 	error: unknown
 	context: unknown
-	staticData: { presentationSearchKeys?: readonly string[] }
+	staticData: {
+		presentationSearchKeys?: readonly string[]
+		filterSearchKeys?: readonly string[]
+	}
 }
 export type CommittedPage = { location: Location; matches: readonly Match[] }
 
-/** Continue filtering the same mounted payload, never authorize another read. */
+/** Tracking and return-path keys stay in the URL; they do not authorize a new read. */
+function isAttributionSearchKey(key: string) {
+	return (
+		key === 'ref' ||
+		key === 'referrer' ||
+		key === 'landing_path' ||
+		key.startsWith('utm_')
+	)
+}
+
+/** Reuse the mounted page scope for declared filters. New reads authorize themselves. */
 export function isPresentationNavigation(input: {
 	committed: CommittedPage | null
 	location: Location
@@ -56,15 +70,19 @@ export function isPresentationNavigation(input: {
 		})
 	)
 		return false
-	const keys = matches.at(-1)?.staticData.presentationSearchKeys
+	const leaf = matches.at(-1)?.staticData
+	const keys = [
+		...(leaf?.presentationSearchKeys ?? []),
+		...(leaf?.filterSearchKeys ?? []),
+	]
 	if (!keys?.length) return false
 	const before = new URLSearchParams(committed.location.searchStr)
 	const after = new URLSearchParams(location.searchStr)
-	let changed = false
 	for (const key of new Set([...before.keys(), ...after.keys()])) {
 		if (deepEqual(before.getAll(key), after.getAll(key))) continue
+		if (isAttributionSearchKey(key)) continue
 		if (!keys.includes(key)) return false
-		changed = true
 	}
-	return changed
+	// Declared filter or presentation keys changed, or only attribution did.
+	return true
 }

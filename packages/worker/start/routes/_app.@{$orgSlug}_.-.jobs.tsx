@@ -28,6 +28,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/jobs')({
 			selected: search.selected,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

@@ -97,7 +97,6 @@ function NavigationProgress() {
 				zIndex: 9999,
 				pointerEvents: 'none',
 				backgroundColor: 'transparent',
-				viewTransitionName: 'nav-progress',
 			}}
 		>
 			<div

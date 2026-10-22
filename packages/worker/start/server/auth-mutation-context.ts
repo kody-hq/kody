@@ -20,6 +20,18 @@ export async function publicAuthContext() {
 	return { request, env }
 }
 
+/**
+ * Username availability checks while typing need a higher per-IP budget than
+ * auth POSTs. The operation applies its own dedicated rate limit.
+ */
+export async function publicUsernameCheckContext() {
+	const request = getRequest()
+	const env = getStartRequestEnv()
+	setAuthSessionSecret(env.COOKIE_SECRET)
+	setResponseHeader('Cache-Control', 'private, no-store')
+	return { request, env }
+}
+
 type UnionKeys<T> = T extends T ? keyof T : never
 type ResultFields<T> = {
 	[K in UnionKeys<T>]?: T extends Record<K, infer V> ? V : never

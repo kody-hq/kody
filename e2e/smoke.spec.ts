@@ -56,10 +56,13 @@ test('smoke test covers shell, auth redirect, and login', async ({ page }) => {
 	await expect(page.getByTestId('org-switcher')).toHaveCount(0)
 	await page.goto(`/@${primaryTestUser.username}/-/jobs`)
 	await waitForClientHydration(page)
+	const workspaceNav = page.getByRole('complementary', {
+		name: 'Workspace navigation',
+	})
 	const workspaceRail = page.getByRole('navigation', {
 		name: 'Workspace sections',
 	})
-	await expect(workspaceRail.getByTestId('org-switcher')).toHaveAccessibleName(
+	await expect(workspaceNav.getByTestId('org-switcher')).toHaveAccessibleName(
 		`@${primaryTestUser.username}: switch organization`,
 	)
 	await expect(

@@ -91,8 +91,19 @@ const metaRunCountKey = 'run_count'
 const metaFinishesSinceRetentionKey = 'finishes_since_retention'
 const metaRetentionEmptyBackoffKey = 'retention_empty_backoff_ms'
 const metaSchemaVersionKey = 'schema_version'
+/** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
+const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 12
+const runLogSchemaVersion = 13
+
+function utcDayToMetaInt(day: string): number {
+	return Number(day.replaceAll('-', ''))
+}
+
+function metaIntToUtcDay(value: number): string {
+	const digits = String(value).padStart(8, '0')
+	return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+}
 
 type RunLogSqlBillingOp =
 	| 'listRuns'
@@ -168,6 +179,7 @@ type RunLogSqlTableCounts = {
 	runLogs: number
 	packageInvocationLedger: number
 	workflowProjections: number
+	runDayCounts: number
 }
 
 export type RunLogSqlBillingInspection = {
@@ -193,6 +205,7 @@ const sqlBillingCountableTables = {
 	run_logs: 'run_logs',
 	package_invocation_ledger: 'package_invocation_ledger',
 	workflow_projections: 'workflow_projections',
+	run_day_counts: 'run_day_counts',
 } as const
 
 /**
@@ -963,6 +976,32 @@ class RunLogBase extends DurableObject<Env> {
 				package_id TEXT
 			)
 		`)
+		// Durable per-UTC-day Overview aggregates. Survives the 2,000-run cap so
+		// busy workspaces keep a complete 7-day chart. Top-level non-export only;
+		// no backfill (pre-deploy history cannot be recovered).
+		this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS run_day_counts (
+				day TEXT NOT NULL,
+				surface TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('running', 'success', 'error')),
+				count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
+				PRIMARY KEY (day, surface, status)
+			)
+		`)
+		this.ctx.storage.sql.exec(
+			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
+			ON run_day_counts(day)`,
+		)
+		// Warm objects only: record the migration UTC day as the coverage floor.
+		// Fresh objects keep a null boundary (no partial-history note).
+		if (installedVersion != null && installedVersion < 13) {
+			if (this.getMeta(metaRunDayCountsSinceKey) == null) {
+				this.setMeta(
+					metaRunDayCountsSinceKey,
+					utcDayToMetaInt(new Date().toISOString().slice(0, 10)),
+				)
+			}
+		}
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
@@ -1294,6 +1333,107 @@ class RunLogBase extends DurableObject<Env> {
 		return mapRunRow(row, Number(row['log_count'] ?? 0) || 0)
 	}
 
+	/**
+	 * Overview charts count top-level non-export runs only (same filter as the
+	 * former dashboardBuckets scan). Child runs and package exports are omitted
+	 * so totals are not double-counted.
+	 */
+	private countsTowardDashboard(run: {
+		surface: string
+		parentRunId?: string | null
+	}): boolean {
+		return run.surface !== 'export' && !run.parentRunId
+	}
+
+	private utcDayFromIso(iso: string): string {
+		return iso.slice(0, 10)
+	}
+
+	private adjustRunDayCount(input: {
+		day: string
+		surface: string
+		status: RunStatus
+		delta: number
+	}) {
+		if (input.delta === 0) return
+		if (input.delta > 0) {
+			this.ctx.storage.sql.exec(
+				`INSERT INTO run_day_counts (day, surface, status, count)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(day, surface, status) DO UPDATE SET
+					count = count + excluded.count`,
+				input.day,
+				input.surface,
+				input.status,
+				input.delta,
+			)
+			return
+		}
+		const remove = -input.delta
+		this.ctx.storage.sql.exec(
+			`UPDATE run_day_counts
+			SET count = count - ?
+			WHERE day = ? AND surface = ? AND status = ? AND count >= ?`,
+			remove,
+			input.day,
+			input.surface,
+			input.status,
+			remove,
+		)
+		this.ctx.storage.sql.exec(
+			`DELETE FROM run_day_counts
+			WHERE day = ? AND surface = ? AND status = ? AND count <= 0`,
+			input.day,
+			input.surface,
+			input.status,
+		)
+	}
+
+	/**
+	 * Move durable day counts when a dashboard-eligible run starts, finishes,
+	 * or is marked stale. Cap eviction must not call this: history stays in
+	 * run_day_counts after the runs row is gone.
+	 */
+	private runDayCountsCoverageSince(): string | null {
+		const meta = this.getMeta(metaRunDayCountsSinceKey)
+		return meta == null ? null : metaIntToUtcDay(meta)
+	}
+
+	/** Clamp startedAt to the warm coverage floor when counting day aggregates. */
+	private runDayCountDayFromStartedAt(startedAt: string): string {
+		let day = this.utcDayFromIso(startedAt)
+		const coverageSince = this.runDayCountsCoverageSince()
+		if (coverageSince != null && day < coverageSince) day = coverageSince
+		return day
+	}
+
+	private applyRunDayCountTransition(input: {
+		previousStatus: RunStatus | null
+		run: Pick<
+			RunLogRowInput,
+			'surface' | 'parentRunId' | 'startedAt' | 'status'
+		>
+	}) {
+		if (!this.countsTowardDashboard(input.run)) return
+		// Clamp pre-migration startedAt days up to the warm coverage floor so
+		// MIN(day) cannot drift before the no-backfill boundary.
+		const day = this.runDayCountDayFromStartedAt(input.run.startedAt)
+		const surface = input.run.surface
+		const next = input.run.status
+		if (input.previousStatus == null) {
+			this.adjustRunDayCount({ day, surface, status: next, delta: 1 })
+			return
+		}
+		if (input.previousStatus === next) return
+		this.adjustRunDayCount({
+			day,
+			surface,
+			status: input.previousStatus,
+			delta: -1,
+		})
+		this.adjustRunDayCount({ day, surface, status: next, delta: 1 })
+	}
+
 	private insertRunningRun(run: RunLogRowInput) {
 		const existed = this.runExists(run.id)
 		if (!existed) {
@@ -1301,6 +1441,10 @@ class RunLogBase extends DurableObject<Env> {
 			// INSERT OR IGNORE: count only when the row is new.
 			if (this.runExists(run.id)) {
 				this.adjustRunCount(1)
+				this.applyRunDayCountTransition({
+					previousStatus: null,
+					run,
+				})
 				// New row ⇒ future age/stale work exists; idle conclusion is stale.
 				// Clear armed too: a new `running` row may need an earlier wake.
 				this.retentionIdleConfirmed = false
@@ -1473,6 +1617,8 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private deleteRunsByIds(ids: Array<string>) {
+		// Cap/age eviction deletes runs rows only. Durable run_day_counts keep
+		// Overview history for the retention window.
 		for (const id of ids) {
 			this.ctx.storage.sql.exec(`DELETE FROM run_logs WHERE run_id = ?`, id)
 			this.ctx.storage.sql.exec(`DELETE FROM runs WHERE id = ?`, id)
@@ -1498,8 +1644,23 @@ class RunLogBase extends DurableObject<Env> {
 		surface: RunSurface
 		idempotencyKey: string | null
 		startedAt: string
+		parentRunId?: string | null
 		finishedAt?: string
 	}) {
+		const existing = this.ctx.storage.sql
+			.exec<{
+				status: string
+				surface: string
+				started_at: string
+				parent_run_id: string | null
+			}>(
+				`SELECT status, surface, started_at, parent_run_id
+				FROM runs WHERE id = ? LIMIT 1`,
+				input.id,
+			)
+			.toArray()[0]
+		if (!existing || existing.status !== 'running') return
+
 		const finishedAt = input.finishedAt ?? new Date().toISOString()
 		const startedMs = Date.parse(input.startedAt)
 		const finishedMs = Date.parse(finishedAt)
@@ -1535,6 +1696,20 @@ class RunLogBase extends DurableObject<Env> {
 			finishedAt,
 			input.id,
 		)
+		this.applyRunDayCountTransition({
+			previousStatus: 'running',
+			run: {
+				surface: isRunSurface(existing.surface)
+					? existing.surface
+					: input.surface,
+				parentRunId:
+					existing.parent_run_id == null
+						? null
+						: String(existing.parent_run_id),
+				startedAt: String(existing.started_at),
+				status: 'error',
+			},
+		})
 		// Row became terminal: age-prune now applies, so any prior idle
 		// conclusion is stale (covers reconcile + heal-on-read callers).
 		this.retentionIdleConfirmed = false
@@ -1718,6 +1893,19 @@ class RunLogBase extends DurableObject<Env> {
 			consider(Date.parse(oldestFinished.started_at) + retentionMs)
 		}
 
+		const oldestDayCount = this.ctx.storage.sql
+			.exec<{ day: string }>(`SELECT MIN(day) AS day FROM run_day_counts`)
+			.toArray()[0]
+		if (oldestDayCount?.day) {
+			// Prune deletes day < (now - retention).day, so day D first becomes
+			// eligible at the start of D+1 plus retention (not D midnight).
+			consider(
+				Date.parse(`${oldestDayCount.day}T00:00:00.000Z`) +
+					24 * 60 * 60 * 1000 +
+					retentionMs,
+			)
+		}
+
 		const oldestTerminalLedgerRow = this.ctx.storage.sql
 			.exec<{ created_at: string }>(
 				`SELECT created_at FROM package_invocation_ledger
@@ -1848,8 +2036,23 @@ class RunLogBase extends DurableObject<Env> {
 
 		this.pruneInvocationLedgerForRetention()
 		this.pruneWorkflowProjectionsForRetention()
+		this.pruneRunDayCountsForRetention()
 		this.setFinishesSinceRetention(0)
 		return { runDeletes: expired.length + excessIds.length }
+	}
+
+	/**
+	 * Age-prune durable Overview day counts after the same horizon as runs.
+	 * Cap eviction never touches this table.
+	 */
+	private pruneRunDayCountsForRetention() {
+		const cutoffDay = new Date(Date.now() - retentionMs)
+			.toISOString()
+			.slice(0, 10)
+		this.ctx.storage.sql.exec(
+			`DELETE FROM run_day_counts WHERE day < ?`,
+			cutoffDay,
+		)
 	}
 
 	/**
@@ -2091,13 +2294,32 @@ class RunLogBase extends DurableObject<Env> {
 		runId: string
 	}): Promise<{ deleted: boolean }> {
 		const row = this.ctx.storage.sql
-			.exec<{ status: string }>(
-				`SELECT status FROM runs WHERE id = ? LIMIT 1`,
+			.exec<{
+				status: string
+				surface: string
+				started_at: string
+				parent_run_id: string | null
+			}>(
+				`SELECT status, surface, started_at, parent_run_id
+				FROM runs WHERE id = ? LIMIT 1`,
 				input.runId,
 			)
 			.toArray()[0]
 		if (!row || row.status !== 'running') {
 			return { deleted: false }
+		}
+		const surface = isRunSurface(row.surface) ? row.surface : 'execute'
+		const parentRunId =
+			row.parent_run_id == null ? null : String(row.parent_run_id)
+		if (this.countsTowardDashboard({ surface, parentRunId })) {
+			// Same clamp as applyRunDayCountTransition: abandon must decrement
+			// the floor day when start was clamped up from a pre-migration day.
+			this.adjustRunDayCount({
+				day: this.runDayCountDayFromStartedAt(String(row.started_at)),
+				surface,
+				status: 'running',
+				delta: -1,
+			})
 		}
 		this.deleteRunsByIds([input.runId])
 		this.retentionIdleConfirmed = false
@@ -2375,6 +2597,10 @@ class RunLogBase extends DurableObject<Env> {
 			if (!existed) {
 				this.adjustRunCount(1)
 			}
+			this.applyRunDayCountTransition({
+				previousStatus,
+				run: input.run,
+			})
 			this.recordTerminalRunSideEffects({
 				previousStatus,
 				run: input.run,
@@ -2585,6 +2811,10 @@ class RunLogBase extends DurableObject<Env> {
 				if (!existed) {
 					this.adjustRunCount(1)
 				}
+				this.applyRunDayCountTransition({
+					previousStatus,
+					run: input.run,
+				})
 				// Activation + job observability follow the run transition, not
 				// the ledger fence: the attempt still happened and must count
 				// once even when a competing reclaim owns the ledger row.
@@ -2658,6 +2888,10 @@ class RunLogBase extends DurableObject<Env> {
 				if (!existed) {
 					this.adjustRunCount(1)
 				}
+				this.applyRunDayCountTransition({
+					previousStatus,
+					run: input.run,
+				})
 				this.recordTerminalRunSideEffects({
 					previousStatus,
 					run: input.run,
@@ -2768,6 +3002,10 @@ class RunLogBase extends DurableObject<Env> {
 					if (!existed) {
 						this.adjustRunCount(1)
 					}
+					this.applyRunDayCountTransition({
+						previousStatus,
+						run: releasedRun,
+					})
 					this.recordTerminalRunSideEffects({
 						previousStatus,
 						run: releasedRun,
@@ -3318,6 +3556,7 @@ class RunLogBase extends DurableObject<Env> {
 			runLogs: this.countTableRows('run_logs'),
 			packageInvocationLedger: this.countTableRows('package_invocation_ledger'),
 			workflowProjections: this.countTableRows('workflow_projections'),
+			runDayCounts: this.countTableRows('run_day_counts'),
 		}
 		const runCountMeta = this.getMeta(metaRunCountKey)
 		const runCountActual = tableCounts.runs
@@ -3539,20 +3778,40 @@ class RunLogBase extends DurableObject<Env> {
 		}
 	}
 
-	async dashboardBuckets(input: {
-		since: string
-		until: string
-	}): Promise<Array<WorkspaceRunBucket>> {
-		return this.execSqlTracked<WorkspaceRunBucket>(
+	async dashboardBuckets(input: { since: string; until: string }): Promise<{
+		buckets: Array<WorkspaceRunBucket>
+		countsSince: string | null
+	}> {
+		const sinceDay = input.since.slice(0, 10)
+		const untilDay = input.until.slice(0, 10)
+		// Warm migration floor only (null for fresh DOs). Not MIN(day): a legacy
+		// running finish must not pull the displayed boundary before no-backfill.
+		const countsSince = this.runDayCountsCoverageSince()
+		const lowerDay =
+			countsSince != null && countsSince > sinceDay ? countsSince : sinceDay
+		const buckets = this.execSqlTracked<WorkspaceRunBucket>(
 			'summarize',
-			`SELECT substr(started_at, 1, 10) AS day, surface, status, COUNT(*) AS count
-			FROM runs
-			WHERE started_at >= ? AND started_at <= ?
-			AND parent_run_id IS NULL AND surface != 'export'
-			GROUP BY day, surface, status ORDER BY day, surface, status`,
-			input.since,
-			input.until,
-		).toArray()
+			`SELECT day, surface, status, count
+			FROM run_day_counts
+			WHERE day >= ? AND day <= ?
+			ORDER BY day, surface, status`,
+			lowerDay,
+			untilDay,
+		)
+			.toArray()
+			.map((row) => ({
+				day: String(row.day),
+				surface: (isRunSurface(String(row.surface))
+					? String(row.surface)
+					: 'execute') as WorkspaceRunBucket['surface'],
+				status: (row.status === 'success' ||
+				row.status === 'error' ||
+				row.status === 'running'
+					? row.status
+					: 'error') as WorkspaceRunBucket['status'],
+				count: Number(row.count ?? 0) || 0,
+			}))
+		return { buckets, countsSince }
 	}
 
 	async summarize(input: { since: string }): Promise<RunRecordSummary> {
@@ -4437,10 +4696,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	inspectSqlBilling: () => Promise<RunLogSqlBillingInspection>
 	listPackageRunSuccesses: () => Promise<Array<PackageRunSuccessRecord>>
 	listActivationMilestones: () => Promise<Array<ActivationMilestoneRecord>>
-	dashboardBuckets: (input: {
-		since: string
-		until: string
-	}) => Promise<Array<WorkspaceRunBucket>>
+	dashboardBuckets: (input: { since: string; until: string }) => Promise<{
+		buckets: Array<WorkspaceRunBucket>
+		countsSince: string | null
+	}>
 	summarize: (input: { since: string }) => Promise<RunRecordSummary>
 	listStorageIds: () => Promise<Array<string>>
 	exportRuns: (input: ExportRunsInput) => Promise<ExportRunsResult>

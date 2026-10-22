@@ -1,21 +1,10 @@
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { glob, readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { startReleaseBase } from '../vite-start-release.ts'
 
-async function javascriptFiles(directory: string): Promise<Array<string>> {
-	const entries = await readdir(directory, { withFileTypes: true })
-	const nested = await Promise.all(
-		entries.map(async (entry) => {
-			const file = path.join(directory, entry.name)
-			return entry.isDirectory()
-				? javascriptFiles(file)
-				: entry.name.endsWith('.js')
-					? [file]
-					: []
-		}),
-	)
-	return nested.flat()
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /** Verify the actual Cloudflare output, including embedded Start manifest URLs. */
@@ -55,20 +44,36 @@ export async function verifyStartReleaseBuild(
 		if (!(await stat(path.join(client, base.slice(1), file))).isFile())
 			throw new Error(`Missing release public file: ${file}`)
 	}
-	const sources = (
-		await Promise.all(
-			(await javascriptFiles(server)).map((file) => readFile(file, 'utf8')),
-		)
-	).join('\n')
+	const serverSources: Array<string> = []
+	for await (const file of glob('**/*.js', { cwd: server })) {
+		serverSources.push(await readFile(path.join(server, file), 'utf8'))
+	}
+	const sources = serverSources.join('\n')
 	if (!sources.includes(`${base}_serverFn/`))
 		throw new Error('Server RPC namespace is missing')
-	const assetPattern = new RegExp(`${base}assets/[A-Za-z0-9_.-]+`, 'g')
+	const assetPattern = new RegExp(
+		`${escapeRegExp(base)}assets/[^"'\\s]+\\.(?:js|css)`,
+		'g',
+	)
 	const references = new Set(sources.match(assetPattern))
 	if (references.size === 0)
 		throw new Error('Start SSR manifest contains no release asset references')
 	for (const reference of references) {
-		if (!(await stat(path.join(client, reference.slice(1)))).isFile())
+		const asset = path.join(client, reference.slice(1))
+		const assetStat = await stat(asset).catch((error: unknown) => {
+			if (
+				error &&
+				typeof error === 'object' &&
+				'code' in error &&
+				error.code === 'ENOENT'
+			) {
+				return null
+			}
+			throw error
+		})
+		if (!assetStat?.isFile()) {
 			throw new Error(`Missing SSR manifest asset: ${reference}`)
+		}
 	}
 	if (sources.includes('__VITE_PUBLIC_ASSET__')) {
 		throw new Error(

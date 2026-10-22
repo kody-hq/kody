@@ -1,4 +1,5 @@
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
+import { completeUsernameChoice } from './complete-username-choice.ts'
 import {
 	clearAuthRateLimitsInE2eDatabase,
 	executeE2eD1Command,
@@ -35,6 +36,7 @@ ${buildDeleteUserAndPersonalOrgSql({
 	await page.goto('/login')
 	await waitForClientHydration(page)
 	await page.getByRole('button', { name: 'Continue with GitHub' }).click()
+	await completeUsernameChoice(page, 'mock-octo')
 
 	// A brand-new social account lands on onboarding rather than the account
 	// page, matching where password signups go after verification.

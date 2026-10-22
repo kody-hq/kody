@@ -21,13 +21,13 @@ test('checks embedded SSR references against the unchanged Cloudflare asset bind
 		)
 		await writeFile(
 			path.join(server, 'index.js'),
-			`const manifest = {script: '${base}assets/app.js', css: '${base}assets/root.css'}; const rpc = '${base}_serverFn/';`,
+			`const manifest = {script: '${base}assets/_app.@__orgSlug__.-.agents-abc123.js', css: '${base}assets/root.css'}; const rpc = '${base}_serverFn/';`,
 		)
 		for (const file of [
 			'page-init.js',
 			'site.webmanifest',
 			'fonts/wix-madefor-text-latin.woff2',
-			'assets/app.js',
+			'assets/_app.@__orgSlug__.-.agents-abc123.js',
 		]) {
 			await writeFile(path.join(publicDirectory, file), '')
 		}
@@ -47,11 +47,16 @@ test('checks embedded SSR references against the unchanged Cloudflare asset bind
 			path.join(publicDirectory, 'assets/root.css'),
 			`@font-face{src:url(${base}fonts/wix-madefor-text-latin.woff2)}`,
 		)
-		await rm(path.join(publicDirectory, 'assets/app.js'))
-		await expect(verifyStartReleaseBuild(directory, release)).rejects.toThrow(
-			'ENOENT',
+		await rm(
+			path.join(publicDirectory, 'assets/_app.@__orgSlug__.-.agents-abc123.js'),
 		)
-		await writeFile(path.join(publicDirectory, 'assets/app.js'), '')
+		await expect(verifyStartReleaseBuild(directory, release)).rejects.toThrow(
+			'Missing SSR manifest asset',
+		)
+		await writeFile(
+			path.join(publicDirectory, 'assets/_app.@__orgSlug__.-.agents-abc123.js'),
+			'',
+		)
 		await writeFile(
 			path.join(server, 'wrangler.json'),
 			JSON.stringify({ assets: { directory: `../client${base}` } }),

@@ -29,7 +29,7 @@ meter.
   run: the same user and published graph reuse one isolate; a different graph or
   a different user is a different isolate.
 
-Account usage (`/account/usage` and `usageGet`) shows this meter as **Worker
+Workspace usage (`/@<slug>/-/usage` and `usageGet`) shows this meter as **Worker
 compute**, next to **Rows read** and the execute caps. The $12 Pro plan includes
 a monthly amount of both. Past the include, usage is charged from prepaid
 credits until they run out, and then usage past the include stops. Free, and Pro

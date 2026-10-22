@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
-import { publicAsset } from '../public-assets.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
 import { type CSSObject } from '@emotion/react'
+import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
+import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { useEffect, useState } from 'react'
 import {
@@ -73,6 +74,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 	const workspaceHref = personal
 		? workspaceHomeHref(personal)
 		: '/account/organizations'
+	const brandLinkCss = props.currentPathname === '/' ? homeBrandCss : brandCss
 	useEffect(() => {
 		dismissOpenPopoverPanel(document.getElementById(menuPanelId))
 	}, [props.currentPathname])
@@ -84,15 +86,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 		return (
 			<header className="site-header" data-focused-header css={headerCss}>
 				<div css={navCss}>
-					<SiteLink href="/" css={brandCss}>
-						<img
-							src={publicAsset('/images/kody-mark.png')}
-							alt=""
-							width={34}
-							height={34}
-						/>
-						<span>Kody</span>
-					</SiteLink>
+					<BrandContextMenu>
+						<SiteLink href="/" css={brandLinkCss}>
+							<KodyMark size={34} />
+							<span>Kody</span>
+						</SiteLink>
+					</BrandContextMenu>
 					<div
 						css={{
 							marginLeft: 'auto',
@@ -126,15 +125,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 	return (
 		<header className="site-header" css={headerCss}>
 			<nav aria-label="Main" css={navCss}>
-				<SiteLink href="/" css={brandCss}>
-					<img
-						src={publicAsset('/images/kody-mark.png')}
-						alt=""
-						width={34}
-						height={34}
-					/>
-					<span>Kody</span>
-				</SiteLink>
+				<BrandContextMenu>
+					<SiteLink href="/" css={brandLinkCss}>
+						<KodyMark size={34} />
+						<span>Kody</span>
+					</SiteLink>
+				</BrandContextMenu>
 				<div css={navLinksCss}>
 					<FeaturesMenu currentPathname={props.currentPathname} />
 					{marketingLinks.map((link) => (
@@ -238,7 +234,6 @@ const headerCss: CSSObject = {
 	position: 'sticky' as const,
 	top: 0,
 	zIndex: 10,
-	viewTransitionName: 'site-header',
 	background: `oklch(from ${colors.background} l c h / 0.85)`,
 	'@supports (backdrop-filter: blur(1px))': {
 		backdropFilter: 'blur(14px)',
@@ -267,6 +262,13 @@ const brandCss: CSSObject = {
 	textDecoration: 'none',
 	letterSpacing: '-0.01em',
 	'&:hover': { color: colors.text },
+}
+
+/** Home-only brand wordmark sizing; other routes keep brandCss. */
+const homeBrandCss: CSSObject = {
+	...brandCss,
+	gap: '0.7rem',
+	font: `700 1.75rem/1 ${typography.fontFamilyDisplay}`,
 }
 
 /**

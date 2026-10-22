@@ -12,7 +12,16 @@ const pageQuery = createPageQuery('loadOrgRepositories', loadOrgRepositories, {
 })
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/repositories')({
 	staticData: {
-		motionGroup: 'profile',
+		presentationSearchKeys: [
+			'q',
+			'sort',
+			'dir',
+			'visibility',
+			'listing',
+			'hidden',
+			'app',
+			'package',
+		],
 		workspaceSwitch: { section: 'repositories' },
 		navigation: { rail: 'workspace', item: 'repositories' },
 		orgScope: { section: 'repositories' },
@@ -29,6 +38,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/repositories')({
 			...repositoryInput(location.searchStr),
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

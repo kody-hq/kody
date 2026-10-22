@@ -14,7 +14,7 @@ npm run control-kody -- health --origin https://kody.codes
 ## Assert
 
 - Core: `/`, `/pricing`, `/docs`, `/docs/$slug`, `/blog`, `/support`, `/about`,
-  `/contact`, `/privacy`, `/terms`, `/faq`, `/discord`
+  `/brand-guide`, `/contact`, `/privacy`, `/terms`, `/faq`, `/discord`
 - Feeds: `/llms.txt`, `/sitemap.xml`, `/robots.txt`, `/guides.json`
 - Compare / use-cases / features pages under `/compare`, `/use-cases`,
   `/features`, `/for`, `/with`

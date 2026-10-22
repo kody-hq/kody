@@ -13,7 +13,6 @@ export const Route = createFileRoute(
 	'/_app/account_/packages/$packageId/files/$',
 )({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'packages' },
 		shell: { gutters: 'page' },
 	},

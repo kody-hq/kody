@@ -1,6 +1,7 @@
+import { useFilteredPageQuery } from '../page-query.ts'
 import {
 	queryOptions,
-	useSuspenseQueries,
+	useSuspenseQuery,
 	type QueryClient,
 } from '@tanstack/react-query'
 import { isNotFound } from '@tanstack/react-router'
@@ -71,13 +72,21 @@ export function useEmailResources(
 	actor: string | null,
 	input: EmailResourceInput,
 ) {
-	const [list, detail, destinations] = useSuspenseQueries({
-		queries: queries(actor, input),
-	})
+	const list = useFilteredPageQuery(emailListQuery(actor, input.list), [
+		actor,
+		input.list.org,
+		'email-list',
+	])
+	const detail = useSuspenseQuery(
+		emailDetailQuery(actor, input.list.org, input.messageId),
+	)
+	const destinations = useSuspenseQuery(emailDestinationsQuery(actor))
 	for (const result of [list, detail, destinations])
 		if (isNotFound(result.error)) throw result.error
 	return {
-		payload: { ...list.data, selectedMessage: detail.data },
+		payload: list.data
+			? { ...list.data, selectedMessage: detail.data }
+			: undefined,
 		destinations: destinations.data,
 	}
 }

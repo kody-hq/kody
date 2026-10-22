@@ -1,6 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { adminPageNumber } from '../admin-read-input.ts'
-import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
+import {
+	loadPageQuery,
+	createPageQuery,
+	useFilteredPageQuery,
+} from '../page-query.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { AdminPlatformFeedbackPage } from '../pages/admin-platform-feedback.tsx'
 import { loadAdminPlatformFeedback } from '#start/server/admin-platform-feedback'
@@ -13,13 +17,16 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/platform-feedback')({
 	staticData: {
-		motionGroup: 'admin',
+		filterSearchKeys: ['page', 'pageSize', 'status', 'category'],
 		navigation: { rail: 'admin', item: 'platform-feedback' },
 	},
-	loaderDeps: ({ search }) => search,
-	context: ({ location }) => ({
-		pageQueryInput: {
-			returnTo: location.pathname + location.searchStr,
+	validateSearch: (search: Record<string, unknown>) => search,
+	loaderDeps: ({ search }) => ({
+		feedbackId: search.feedbackId,
+	}),
+	context: ({ location, context }) => {
+		const pageQueryInput = {
+			returnTo: location.pathname,
 			page: adminPageNumber(
 				new URLSearchParams(location.searchStr).get('page'),
 				1,
@@ -32,8 +39,15 @@ export const Route = createFileRoute('/_app/admin/platform-feedback')({
 			status: new URLSearchParams(location.searchStr).get('status'),
 			category: new URLSearchParams(location.searchStr).get('category'),
 			feedbackId: new URLSearchParams(location.searchStr).get('feedbackId'),
-		},
-	}),
+		}
+		return {
+			pageQueryInput,
+			pageHeadQueryKey: [
+				...pageQuery(context.actorKey, pageQueryInput).queryKey,
+			],
+		}
+	},
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,
@@ -46,6 +60,7 @@ export const Route = createFileRoute('/_app/admin/platform-feedback')({
 function PlatformFeedbackPage() {
 	const data = usePageData()
 	const { pageLocation: location } = Route.useRouteContext()
+	if (!data) return null
 	return data.forbidden ? (
 		<p>Forbidden</p>
 	) : (
@@ -57,6 +72,9 @@ function PlatformFeedbackPage() {
 }
 
 function usePageData() {
-	const { actorKey, pageQueryInput } = Route.useRouteContext()
-	return usePageQuery(pageQuery(actorKey, pageQueryInput)).data
+	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
+	return useFilteredPageQuery(pageQuery(actorKey, pageQueryInput), [
+		actorKey,
+		pageLocation.pathname,
+	]).data
 }

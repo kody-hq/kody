@@ -1,5 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
+import {
+	loadPageQuery,
+	createPageQuery,
+	useFilteredPageQuery,
+} from '../page-query.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { AdminCommunityReportsPage } from '../pages/admin-community-reports.tsx'
 import { loadAdminCommunityReports } from '#start/server/admin-community-reports'
@@ -12,16 +16,22 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/community-reports')({
 	staticData: {
-		motionGroup: 'admin',
+		filterSearchKeys: ['status'],
 		navigation: { rail: 'admin', item: 'community-reports' },
 	},
-	loaderDeps: ({ search }) => search,
-	context: ({ location }) => ({
-		pageQueryInput: {
-			returnTo: location.pathname + location.searchStr,
+	context: ({ location, context }) => {
+		const pageQueryInput = {
+			returnTo: location.pathname,
 			status: new URLSearchParams(location.searchStr).get('status'),
-		},
-	}),
+		}
+		return {
+			pageQueryInput,
+			pageHeadQueryKey: [
+				...pageQuery(context.actorKey, pageQueryInput).queryKey,
+			],
+		}
+	},
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,
@@ -34,6 +44,7 @@ export const Route = createFileRoute('/_app/admin/community-reports')({
 function CommunityReportsPage() {
 	const data = usePageData()
 	const { pageLocation: location } = Route.useRouteContext()
+	if (!data) return null
 	return data.forbidden ? (
 		<p>Forbidden</p>
 	) : (
@@ -45,6 +56,9 @@ function CommunityReportsPage() {
 }
 
 function usePageData() {
-	const { actorKey, pageQueryInput } = Route.useRouteContext()
-	return usePageQuery(pageQuery(actorKey, pageQueryInput)).data
+	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
+	return useFilteredPageQuery(pageQuery(actorKey, pageQueryInput), [
+		actorKey,
+		pageLocation.pathname,
+	]).data
 }

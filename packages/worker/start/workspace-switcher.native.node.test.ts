@@ -126,7 +126,7 @@ test('switcher opens the org home when the current page is not open to that role
 			ada,
 		],
 	})
-	expect(rowHref(billing, 'zeta')).toBe('/@zeta')
+	expect(rowHref(billing, 'zeta')).toBe('/@zeta/-/overview')
 	// The signup org has no Teams page either, so it opens its overview.
 	expect(rowHref(billing, 'ada')).toBe('/@ada/-/overview')
 })

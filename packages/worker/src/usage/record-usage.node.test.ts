@@ -154,6 +154,19 @@ test('usageEventBlobs default actor to org billing id and map automation sources
 			ts,
 		)[usageEventBlobIndexes.errorName],
 	).toBe('credential_need_undeclared')
+	// Unsupported automation sources must not take the empty-actor branch.
+	const unsupported = usageEventBlobs(
+		{
+			userId: ownerIdFromStored('org-1'),
+			eventType: 'job_run',
+			outcome: 'success',
+			actorUserId: '',
+			automationSource: 'cron',
+		},
+		ts,
+	)
+	expect(unsupported[usageEventBlobIndexes.actorUserId]).toBe('org-1')
+	expect(unsupported[usageEventBlobIndexes.automationSource]).toBe('')
 })
 
 test('usageAttributionFieldsFromRequest maps user and automation runs', () => {

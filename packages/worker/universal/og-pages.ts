@@ -185,6 +185,14 @@ export const publicOgPages = {
 			"Kody is Your agents' cloud for individuals and teams. Built by Kent C. Dodds at kody.codes.",
 		path: '/about',
 	},
+	'brand-guide': {
+		imageTitle: 'Brand guide',
+		imageSubtitle: 'Download the Kody mark and follow simple usage rules.',
+		ogTitle: 'Brand guide — Kody',
+		ogDescription:
+			'Download the Kody koala mark as SVG or PNG, and see light and dark treatments.',
+		path: '/brand-guide',
+	},
 	contact: {
 		imageTitle: 'Contact Kody',
 		imageSubtitle: 'Support, teams, security, and community channels.',

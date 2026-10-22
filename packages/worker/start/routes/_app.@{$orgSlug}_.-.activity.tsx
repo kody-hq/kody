@@ -7,22 +7,25 @@ import { documentHead } from '../components/document-head.ts'
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/activity')({
 	staticData: {
+		filterSearchKeys: [
+			'view',
+			'status',
+			'surface',
+			'error_triage',
+			'triage',
+			'cursor',
+		],
 		workspaceSwitch: { section: 'activity' },
 		navigation: { rail: 'workspace', item: 'activity' },
 		orgScope: { section: 'activity' },
 	},
 	loaderDeps: ({ search }: { search: Record<string, unknown> }) => ({
 		selected: search.selected,
-		view: search.view,
-		status: search.status,
-		surface: search.surface,
-		error_triage: search.error_triage,
-		triage: search.triage,
-		cursor: search.cursor,
 	}),
-	context: ({ params, location }) => ({
+	beforeLoad: ({ params, location }) => ({
 		pageQueryInput: activityInput(params.orgSlug, location.searchStr),
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadActivityQuery(
 			context.queryClient,

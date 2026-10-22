@@ -233,7 +233,6 @@ const docsSidebarCss = {
 	scrollbarWidth: 'thin' as const,
 	// Lift out of `<main>` / `page` if a view transition still starts.
 	// Intra-docs clicks skip VT; leaving docs fades this name (styles.css).
-	viewTransitionName: 'docs-nav',
 	[mq.tablet]: {
 		display: 'none',
 	},

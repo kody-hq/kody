@@ -19,7 +19,6 @@ const pageQuery = createPageQuery('loadDoc', loadDoc, {
 export const Route = createFileRoute('/docs/$slug')({
 	staticData: {
 		anonymousDocumentCache: 'marketing',
-		motionGroup: 'docs',
 		shell: { gutters: 'page' },
 		sessionVerification: 'public-doc',
 	},

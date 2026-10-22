@@ -18,7 +18,9 @@ test('homepage renders agent-led connect links and a deterministic accessible ma
 	expect(html).toContain('href="/docs/connect-your-agent"')
 	expect(html).toContain('aria-label="Agents that work with Kody"')
 	const marquee =
-		html.match(/<nav[^>]*class="landing-agents"[\s\S]*?<\/nav>/)?.[0] ?? ''
+		html.match(
+			/<nav[^>]*class="landing-agents(?:\s[^"]*)?"[\s\S]*?<\/nav>/,
+		)?.[0] ?? ''
 	const order = [...marquee.matchAll(/href="\/with\/([^"]+)"/g)].map(
 		(match) => match[1],
 	)

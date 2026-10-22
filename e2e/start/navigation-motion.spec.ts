@@ -5,7 +5,7 @@ import {
 	expectSingleCommitTransition,
 } from '../main-transitions.ts'
 
-test('page navigation preserves selective motion and suppresses repeated homepage entrance', async ({
+test('page navigation cuts directly and suppresses repeated homepage entrance', async ({
 	page,
 }) => {
 	await page.emulateMedia({ reducedMotion: 'no-preference' })
@@ -39,22 +39,16 @@ test('page navigation preserves selective motion and suppresses repeated homepag
 	await waitForClientHydration(page)
 	await expect(page.locator('html')).not.toHaveAttribute('data-spa-nav')
 	const timeOrigin = await page.evaluate(() => performance.timeOrigin)
-	const supported = await page.evaluate(
-		() => typeof document.startViewTransition === 'function',
-	)
 	await page.locator('a[href="/pricing"]').first().click()
 	await expect(page).toHaveURL(/\/pricing$/)
 	await expect(page.locator('html')).toHaveAttribute('data-spa-nav', '')
-	if (supported)
-		await expect
-			.poll(() =>
-				page.evaluate(() =>
-					(
-						window as unknown as { motionAnimations: Array<string> }
-					).motionAnimations.includes('vt-page-in'),
-				),
-			)
-			.toBe(true)
+	expect(
+		await page.evaluate(
+			() =>
+				(window as unknown as { motionTransitions: Array<unknown> })
+					.motionTransitions,
+		),
+	).toEqual([])
 	await page.locator('a[href="/"]').first().click()
 	await expect(page).toHaveURL(/\/$/)
 	await expect(page.locator('[data-rise]').first()).toHaveCSS(

@@ -1,15 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { publicAsset } from '../public-assets.ts'
-import {
-	handlePermanentNote,
-	handleUrlPreview,
-} from '@kody-internal/shared/handle-permanence.ts'
-import { handleFormatHint } from '@kody-internal/shared/handle-rules.ts'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
-import { permanentHandleInputProps } from '#client/handle-field.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { type CSSObject } from '@emotion/react'
 import { type CSSProperties, type FormEvent } from 'react'
+import { KodyMark } from '../components/kody-mark.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	fieldErrorProps,
@@ -33,6 +27,10 @@ import {
 	hoverMq,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
+import {
+	UsernameChoiceField,
+	type UsernameAvailabilityView,
+} from '../components/username-choice-field.tsx'
 import { type AuthStatus } from './login.tsx'
 
 const motionOk = '@media (prefers-reduced-motion: no-preference)'
@@ -51,12 +49,7 @@ function renderBrand(
 			tabIndex={options.decorative ? -1 : undefined}
 			css={extraCss}
 		>
-			<img
-				src={publicAsset('/images/kody-mark.png')}
-				alt=""
-				width={34}
-				height={34}
-			/>
+			<KodyMark size={34} />
 			<span>Kody</span>
 		</SiteLink>
 	)
@@ -146,19 +139,22 @@ export function AuthForm(
 	props: LoginFormSharedProps & {
 		isSignup: boolean
 		signupUsername: string
+		signupEmail: string
+		usernameConfirming: boolean
 		onSignupUsernameInput: (value: string) => void
-		onSignupUsernameBlur?: (value: string) => void
+		onSignupEmailInput: (value: string) => void
+		onUsernameAvailabilityChange: (view: UsernameAvailabilityView) => void
 		submitLabel: string
 		submitBusyLabel: string
 		onSubmit: (event: FormEvent<HTMLFormElement>) => void
 		onPasskeySignIn: () => void
 	},
 ) {
-	const usernameNoteId = `${props.handleId}-username-note`
 	const statusId = `${props.handleId}-form-status`
 	const invalidFields = invalidFieldsForMessage(props.status, props.message, [
 		'email',
 		'password',
+		'username',
 	])
 	return (
 		<form
@@ -190,75 +186,55 @@ export function AuthForm(
 				}}
 			/>
 			{props.isSignup ? (
-				<div css={authFieldCss}>
-					<label htmlFor={`${props.handleId}-username`} css={authFieldLabelCss}>
-						Username
-					</label>
-					<input
-						id={`${props.handleId}-username`}
-						type="text"
-						name="username"
-						required
-						autoFocus
-						autoComplete="username"
-						placeholder="kent"
-						data-field-ring
-						{...permanentHandleInputProps({ caseInsensitivePattern: true })}
-						{...fieldErrorProps('username', invalidFields, statusId)}
-						onBlur={(event) =>
-							props.onSignupUsernameBlur?.(event.currentTarget.value)
-						}
-						aria-describedby={[
-							usernameNoteId,
-							fieldErrorProps('username', invalidFields, statusId)[
-								'aria-describedby'
-							],
-						]
-							.filter(Boolean)
-							.join(' ')}
-						onInput={(event) =>
-							props.onSignupUsernameInput(event.currentTarget.value)
-						}
-						css={authInputCss}
-					/>
-					<p
-						id={usernameNoteId}
-						css={{
-							margin: 0,
-							fontSize: typography.fontSize.sm,
-							color: colors.textMuted,
-						}}
-					>
-						{handleFormatHint} {handlePermanentNote} Your profile URL will be{' '}
-						<strong>
-							{handleUrlPreview(
-								props.signupUsername.trim().toLowerCase() || 'your-username',
-							)}
-						</strong>
-						.
-					</p>
-				</div>
+				<UsernameChoiceField
+					value={props.signupUsername}
+					onChange={props.onSignupUsernameInput}
+					onAvailabilityChange={props.onUsernameAvailabilityChange}
+					seeds={{ email: props.signupEmail }}
+					autoFocus
+					inputId={`${props.handleId}-username`}
+					confirming={props.usernameConfirming}
+					disabled={props.isSubmitting}
+					invalid={invalidFields.has('username')}
+					statusId={statusId}
+				/>
 			) : null}
 			<div css={authFieldCss}>
 				<label htmlFor={`${props.handleId}-email`} css={authFieldLabelCss}>
 					Email
 				</label>
-				<input
-					id={`${props.handleId}-email`}
-					type="email"
-					name="email"
-					required
-					autoFocus={!props.isSignup}
-					// Login uses username so vault entries that store the email
-					// in the username field (1Password's default) can autofill.
-					// Signup email stays email; the username field above is the
-					// Kody handle.
-					autoComplete={props.isSignup ? 'email' : 'username'}
-					placeholder="you@yourdomain.dev"
-					data-field-ring
-					{...fieldErrorProps('email', invalidFields, statusId)}
-					css={authInputCss}
-				/>
+				{props.isSignup ? (
+					<input
+						id={`${props.handleId}-email`}
+						type="email"
+						name="email"
+						required
+						autoComplete="email"
+						placeholder="you@yourdomain.dev"
+						data-field-ring
+						value={props.signupEmail}
+						onChange={(event) =>
+							props.onSignupEmailInput(event.currentTarget.value)
+						}
+						{...fieldErrorProps('email', invalidFields, statusId)}
+						css={authInputCss}
+					/>
+				) : (
+					<input
+						id={`${props.handleId}-email`}
+						type="email"
+						name="email"
+						required
+						autoFocus
+						// Login uses username so vault entries that store the email
+						// in the username field (1Password's default) can autofill.
+						autoComplete="username"
+						placeholder="you@yourdomain.dev"
+						data-field-ring
+						{...fieldErrorProps('email', invalidFields, statusId)}
+						css={authInputCss}
+					/>
+				)}
 			</div>
 			<div css={authFieldCss}>
 				{props.isSignup ? (

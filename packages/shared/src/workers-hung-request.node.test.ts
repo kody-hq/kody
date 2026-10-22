@@ -2,9 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	isWorkersHungRequestCanceledError,
 	isWorkersHungRequestCanceledMessage,
-	scheduledJobHungExecutionMessage,
-	workersHungExecutionMessage,
-	workersHungRequestCanceledMessageFragment,
 } from './workers-hung-request.ts'
 
 const platformHungMessage =
@@ -14,11 +11,6 @@ test('isWorkersHungRequestCanceledMessage matches the stable platform hung claus
 	expect(isWorkersHungRequestCanceledMessage(platformHungMessage)).toBe(true)
 	expect(
 		isWorkersHungRequestCanceledMessage(`Error: ${platformHungMessage}`),
-	).toBe(true)
-	expect(
-		isWorkersHungRequestCanceledMessage(
-			workersHungRequestCanceledMessageFragment,
-		),
 	).toBe(true)
 	expect(
 		isWorkersHungRequestCanceledMessage(
@@ -41,7 +33,4 @@ test('isWorkersHungRequestCanceledError walks the cause chain', () => {
 		),
 	).toBe(true)
 	expect(isWorkersHungRequestCanceledError(new Error('other'))).toBe(false)
-	expect(workersHungExecutionMessage).not.toContain('Scheduled job')
-	expect(scheduledJobHungExecutionMessage).toContain('scheduler could continue')
-	expect(scheduledJobHungExecutionMessage).not.toBe(workersHungExecutionMessage)
 })

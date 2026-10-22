@@ -44,7 +44,7 @@ test('signup shows an inline username error instead of native constraint focus',
 	await page.goto('/signup')
 	await waitForClientHydration(page)
 
-	const username = page.getByLabel('Username')
+	const username = page.getByRole('textbox', { name: 'Username' })
 	await username.fill('Ján Kováč')
 	await page.getByLabel('Email').fill('jan.kovac@example.com')
 	await page.getByLabel('Password', { exact: true }).fill('password123')
@@ -86,15 +86,24 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 			page.getByRole('heading', { name: 'Create your account' }),
 		).toBeVisible()
 
-		await page.getByLabel('Username').fill(username)
+		await page.getByRole('textbox', { name: 'Username' }).fill(username)
 		await page.getByLabel('Email').fill(email)
 		await page.getByLabel('Password', { exact: true }).fill(password)
+		await expect(
+			page.getByRole('status').filter({ hasText: `${username} is available` }),
+		).toBeVisible()
 		// Handles are permanent: the first submit shows the final URL and asks once.
 		await page
 			.getByRole('button', { name: 'Create account', exact: true })
 			.click()
-		await expect(page.getByRole('status')).toContainText(
-			`kody.codes/@${username}`,
+		await expect(
+			page.getByRole('button', { name: 'Yes, create account' }),
+		).toBeVisible()
+		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
+			`You're choosing ${username}`,
+		)
+		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
+			"You can't change this later",
 		)
 		await page.getByRole('button', { name: 'Yes, create account' }).click()
 

@@ -116,15 +116,15 @@ const accountRailItems: Array<AccountRailItem> = [
 	},
 ]
 
-/**
- * Where an organization's workspace opens: a team org's home at `/@slug`,
- * or the signup org's `/@slug/-/overview` (its `/@slug` is the public
- * profile).
- */
-export function workspaceHomeHref(org: { slug: string; personal: boolean }) {
-	return org.personal
-		? orgOverviewPath(org.slug)
-		: routes.profile.href({ username: org.slug })
+/** Members open the workspace dashboard; collaborators open the org home. */
+export function workspaceHomeHref(org: {
+	slug: string
+	personal: boolean
+	role?: OrganizationSummary['role']
+}) {
+	return org.role === null
+		? routes.profile.href({ username: org.slug })
+		: orgOverviewPath(org.slug)
 }
 
 /** Target policy is presentation only; destination loaders authorize every request. */
@@ -165,10 +165,7 @@ export function accountRailGroups(): Array<AccountRailGroup> {
 	return [{ label: null, items: accountRailItems }]
 }
 
-function overviewRailItem(
-	orgSlug: string | null | undefined,
-	personal = true,
-): AccountRailItem {
+function overviewRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	if (!orgSlug) {
 		return {
 			href: routes.account.href(),
@@ -178,17 +175,7 @@ function overviewRailItem(
 			description: 'Every section this workspace owns, one click away.',
 		}
 	}
-	// Team orgs already use `/@slug` as their overview (the server redirects
-	// `/-/overview` there). Link straight to the home so a refresh keeps it.
-	if (!personal) {
-		return {
-			href: routes.profile.href({ username: orgSlug }),
-			id: 'overview',
-			label: 'Overview',
-			icon: 'home',
-			description: 'Every section this workspace owns, one click away.',
-		}
-	}
+
 	return {
 		href: orgOverviewPath(orgSlug),
 		id: 'overview',
@@ -573,9 +560,7 @@ export function workspaceRailGroups(input: {
 				]
 
 	return [
-		...(orgSlug
-			? [{ label: null, items: [overviewRailItem(orgSlug, personal)] }]
-			: []),
+		...(orgSlug ? [{ label: null, items: [overviewRailItem(orgSlug)] }] : []),
 		...workspaceResourceGroups(orgSlug, personal),
 		{ label: 'Organization', items: organizationItems },
 	]

@@ -20,6 +20,8 @@ import {
 	startProviderFlow,
 	testCookieSecret,
 } from '#worker/test-support/auth-provider-harness.ts'
+import { completeOauthPendingSignup } from '#worker/identity/oauth-pending-signup-operations.ts'
+import { setOauthPendingSignupSecret } from '#app/oauth-pending-signup.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
@@ -48,7 +50,48 @@ const msw = createMswNodeServer()
 
 beforeAll(() => {
 	setAuthSessionSecret(testCookieSecret)
+	setOauthPendingSignupSecret(testCookieSecret)
 })
+
+function pendingCookieFrom(response: Response) {
+	const pair = response.headers
+		.getSetCookie()
+		.map(getCookiePair)
+		.find((cookie) => cookie.startsWith('kody_oauth_pending='))
+	expect(pair).toBeTruthy()
+	return pair ?? ''
+}
+
+async function completePendingFromCallback(
+	env: Env,
+	callbackResponse: Response,
+	username: string,
+) {
+	const pendingCookie = pendingCookieFrom(callbackResponse)
+	// CSRF is inside the signed cookie; complete with a mismatch first to prove
+	// rejection, then read via completing with the real token from a second
+	// park is awkward in unit tests — extract csrf by completing with the
+	// suggested username after parsing is not exposed. Use the operation's
+	// load path instead.
+	const { loadOauthPendingSignupPage } =
+		await import('#worker/identity/oauth-pending-signup-operations.ts')
+	const loaded = await loadOauthPendingSignupPage({
+		env,
+		request: new Request('http://example.com/signup/choose-username', {
+			headers: { Cookie: pendingCookie },
+		}),
+	})
+	expect(loaded.ok).toBe(true)
+	if (!loaded.ok) throw new Error('expected pending signup')
+	return completeOauthPendingSignup({
+		env,
+		request: new Request('http://example.com/signup/choose-username', {
+			method: 'POST',
+			headers: { Cookie: pendingCookie },
+		}),
+		body: { username, csrf: loaded.csrf },
+	})
+}
 
 afterEach(() => {
 	msw.resetHandlers()
@@ -100,15 +143,6 @@ async function sessionCookieFor(email: string) {
 			false,
 		),
 	)
-}
-
-function sessionCookieFrom(response: Response) {
-	const pair = response.headers
-		.getSetCookie()
-		.map(getCookiePair)
-		.find((cookie) => cookie.startsWith('kody_session='))
-	expect(pair).toBeTruthy()
-	return pair ?? ''
 }
 
 function setsCookie(response: Response, prefix: string, cleared = false) {
@@ -226,7 +260,7 @@ test('providers api lists only configured providers', async () => {
 	})
 })
 
-test('github sign-in creates a verified account, then signs it back in', async () => {
+test('github first sign-in parks pending signup until username is chosen', async () => {
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db)
 
@@ -270,15 +304,35 @@ test('github sign-in creates a verified account, then signs it back in', async (
 	expect(start.stateCookie).toContain('kody_oauth_login=')
 	expect(start.state.length).toBeGreaterThan(0)
 	expect(callbackResponse.status).toBe(302)
-	// An explicit redirectTo still wins over the new-account onboarding default,
-	// and accountCreated=1 is appended so Fathom can record account_created.
 	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
-		'/community?accountCreated=1',
+		'/signup/choose-username',
 	)
-	expect(setsCookie(callbackResponse, 'kody_session=')).toBe(true)
-	// The one-shot state and referral cookies are cleared on the callback.
+	expect(setsCookie(callbackResponse, 'kody_oauth_pending=')).toBe(true)
+	expect(setsCookie(callbackResponse, 'kody_session=')).toBe(false)
 	expect(setsCookie(callbackResponse, 'kody_oauth_login=', true)).toBe(true)
-	expect(setsCookie(callbackResponse, 'kody_ref=', true)).toBe(true)
+	expect(countRows(sqlite, 'users')).toBe(0)
+
+	const completed = await completePendingFromCallback(
+		env,
+		callbackResponse,
+		'octo-cat',
+	)
+	expect(completed.status).toBe(200)
+	expect(completed.data).toMatchObject({
+		ok: true,
+		redirectTo: '/community?accountCreated=1',
+	})
+	expect(
+		[...completed.headers.getSetCookie()].some((cookie) =>
+			cookie.startsWith('kody_session='),
+		),
+	).toBe(true)
+	expect(
+		[...completed.headers.getSetCookie()].some(
+			(cookie) =>
+				cookie.startsWith('kody_ref=') && cookie.includes('Max-Age=0'),
+		),
+	).toBe(true)
 
 	const user = sqlite
 		.prepare(`SELECT * FROM users WHERE email = ?`)
@@ -295,7 +349,6 @@ test('github sign-in creates a verified account, then signs it back in', async (
 			.prepare(`SELECT id FROM orgs WHERE id = ?`)
 			.get(user.personal_org_id),
 	).toEqual({ id: user.personal_org_id })
-	// Provider-verified email skips the verification-email flow.
 	expect(user.email_verified_at).toBeTruthy()
 	expect(
 		countRows(
@@ -329,17 +382,14 @@ test('github sign-in creates a verified account, then signs it back in', async (
 		attribution: null,
 	})
 
-	// A second sign-in with the same provider identity reuses the account.
 	const { response: secondCallback } = await completeProviderFlow(env, 'github')
 	expect(secondCallback.status).toBe(302)
 	expect(new Headers(secondCallback.headers).get('Location')).toBe('/account')
 	expect(setsCookie(secondCallback, 'kody_session=')).toBe(true)
 	expect(countRows(sqlite, 'users')).toBe(1)
-	// The first callback signs the user up and logs them in; the second
-	// callback is a pure login. Nothing else is audited.
 	expect(auditEventSummaries()).toEqual([
+		'oauth_signup_pending:success',
 		'oauth_signup:success',
-		'oauth_login:success',
 		'oauth_login:success',
 	])
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
@@ -352,7 +402,7 @@ test('github sign-in creates a verified account, then signs it back in', async (
 	)
 })
 
-test('github sign-in to MCP authorize strips prompt=login on return', async () => {
+test('github sign-in to MCP authorize resumes after username choice', async () => {
 	const { db } = createMigratedDb()
 	const env = createAppEnv(db)
 
@@ -386,9 +436,19 @@ test('github sign-in to MCP authorize strips prompt=login on return', async () =
 	})
 	expect(response.status).toBe(302)
 	expect(new Headers(response.headers).get('Location')).toBe(
-		'/oauth/authorize?client_id=c&state=s&code_challenge=x&code_challenge_method=S256&accountCreated=1',
+		'/signup/choose-username',
 	)
-	expect(setsCookie(response, 'kody_session=')).toBe(true)
+	const completed = await completePendingFromCallback(
+		env,
+		response,
+		'authorize-octo',
+	)
+	expect(completed.status).toBe(200)
+	expect(completed.data).toMatchObject({
+		ok: true,
+		redirectTo:
+			'/oauth/authorize?client_id=c&state=s&code_challenge=x&code_challenge_method=S256&accountCreated=1',
+	})
 })
 
 test('google sign-in links a matching verified email to the existing account', async () => {
@@ -583,8 +643,19 @@ test('discord sign-in creates a verified account and assigns the guild role', as
 	expect(start.location).toContain('scope=identify+email+guilds.join')
 	expect(callbackResponse.status).toBe(302)
 	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
-		'/onboarding?accountCreated=1',
+		'/signup/choose-username',
 	)
+	expect(countRows(sqlite, 'users')).toBe(0)
+	const completed = await completePendingFromCallback(
+		env,
+		callbackResponse,
+		'koala-fan',
+	)
+	expect(completed.status).toBe(200)
+	expect(completed.data).toMatchObject({
+		ok: true,
+		redirectTo: '/onboarding?accountCreated=1',
+	})
 	const user = sqlite
 		.prepare(`SELECT * FROM users WHERE email = ?`)
 		.get('koala-fan@example.com') as {
@@ -613,7 +684,12 @@ test('discord sign-in creates a verified account and assigns the guild role', as
 		'555555555555555555',
 	])
 
-	const sessionCookiePair = sessionCookieFrom(callbackResponse)
+	const sessionCookiePair =
+		completed.headers
+			.getSetCookie()
+			.map(getCookiePair)
+			.find((value) => value.startsWith('kody_session=')) ?? ''
+	expect(sessionCookiePair).toBeTruthy()
 	const connectionsHandler = testAccountConnectionsApiHandler(env)
 	const syncResponse = await runConnectionsOperation(
 		connectionsHandler,
@@ -972,11 +1048,19 @@ test('MOCK_ client ids run the whole flow in-worker and refuse disconnecting the
 	expect(callbackUrl.pathname).toBe('/auth/github/callback')
 	expect(callbackUrl.searchParams.get('state')).toBe(start.state)
 	expect(callbackResponse.status).toBe(302)
-	// A brand-new social account lands on onboarding, the same place password
-	// signups reach after verification.
 	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
-		'/onboarding?accountCreated=1',
+		'/signup/choose-username',
 	)
+	const completed = await completePendingFromCallback(
+		env,
+		callbackResponse,
+		'mock-octo',
+	)
+	expect(completed.status).toBe(200)
+	expect(completed.data).toMatchObject({
+		ok: true,
+		redirectTo: '/onboarding?accountCreated=1',
+	})
 	const user = sqlite
 		.prepare(`SELECT * FROM users WHERE email = ?`)
 		.get('mock-github-user@example.com') as Record<string, unknown>
@@ -985,7 +1069,12 @@ test('MOCK_ client ids run the whole flow in-worker and refuse disconnecting the
 
 	// The social signup has no usable password, so its single connection
 	// must not be removable.
-	const cookie = sessionCookieFrom(callbackResponse)
+	const cookie =
+		completed.headers
+			.getSetCookie()
+			.map(getCookiePair)
+			.find((value) => value.startsWith('kody_session=')) ?? ''
+	expect(cookie).toBeTruthy()
 	const connectionsHandler = testAccountConnectionsApiHandler(env)
 	const listResponse = await runConnectionsOperation(
 		connectionsHandler,
@@ -1016,8 +1105,18 @@ test('OAuth signup persists first-touch UTMs from the start URL through login st
 	)
 	expect(callbackResponse.status).toBe(302)
 	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
-		'/onboarding?accountCreated=1',
+		'/signup/choose-username',
 	)
+	const completed = await completePendingFromCallback(
+		env,
+		callbackResponse,
+		'utm-oauth',
+	)
+	expect(completed.status).toBe(200)
+	expect(completed.data).toMatchObject({
+		ok: true,
+		redirectTo: '/onboarding?accountCreated=1',
+	})
 	const user = sqlite
 		.prepare(
 			`SELECT utm_source, utm_medium, utm_campaign, first_touch_landing_path
@@ -1094,12 +1193,33 @@ test('github signup skips a KV-reserved provider handle', async () => {
 		'github',
 	)
 	expect(callbackResponse.status).toBe(302)
+	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
+		'/signup/choose-username',
+	)
+	const { loadOauthPendingSignupPage } =
+		await import('#worker/identity/oauth-pending-signup-operations.ts')
+	const loaded = await loadOauthPendingSignupPage({
+		env,
+		request: new Request('http://example.com/signup/choose-username', {
+			headers: { Cookie: pendingCookieFrom(callbackResponse) },
+		}),
+	})
+	expect(loaded.ok).toBe(true)
+	if (!loaded.ok) throw new Error('expected pending')
+	expect(loaded.suggestedUsername).not.toBe('octo-cat')
+	expect(loaded.suggestedUsername.includes('octocat')).toBe(false)
+	expect(getUsernameValidationError(loaded.suggestedUsername)).toBeNull()
+
+	const completed = await completePendingFromCallback(
+		env,
+		callbackResponse,
+		loaded.suggestedUsername,
+	)
+	expect(completed.status).toBe(200)
 	const user = sqlite
 		.prepare(`SELECT username FROM users WHERE email = ?`)
 		.get('octo-reserved@example.com') as { username: string }
-	expect(user.username).not.toBe('octo-cat')
-	expect(user.username.includes('octocat')).toBe(false)
-	expect(getUsernameValidationError(user.username)).toBeNull()
+	expect(user.username).toBe(loaded.suggestedUsername)
 })
 
 async function runConnectionsOperation(

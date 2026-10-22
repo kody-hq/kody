@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({ payload: {} as unknown }))
 vi.mock('./page-query.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof PageQueryModule>()),
 	usePageQuery: () => ({ data: { payload: state.payload } }),
+	useFilteredPageQuery: () => ({ data: { payload: state.payload } }),
 }))
 afterEach(() => vi.restoreAllMocks())
 

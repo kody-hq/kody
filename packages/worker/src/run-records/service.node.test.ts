@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 			runLogs: 0,
 			packageInvocationLedger: 0,
 			workflowProjections: 0,
+			runDayCounts: 0,
 		},
 		runCount: { meta: 0, actual: 0, matches: true },
 		explainRunLogsDeleteByRunId: [],

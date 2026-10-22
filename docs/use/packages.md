@@ -117,12 +117,8 @@ Important fields:
 
 For predictable package resolution, saved packages must use a scoped
 `package.json.name`. The leaf segment is the URL slug. The scope is the account
-username. Changing your username on `/account` rewrites every saved package to
-the new `@{username}/…` name (including same-account `kody:@` imports and
-`kody.dependencies`), publishes an automatic update commit per package, and
-republishes to Community any public package that was already pinned to that
-package's latest commit. Third-party integrations and dynamic invocations that
-hard-code a previous `@{username}` scope need updates from their owners.
+username. Usernames are permanent (chosen at signup); they also appear in
+`{username}.kody.run` package-app URLs and `{username}@` platform email.
 
 ### Credential slots (`kody.credentials`)
 
@@ -226,12 +222,11 @@ may use only a declared server or integration name. Slots its imports declare
 count too. `credential.named()` is refused. This does not depend on the
 `credential-need-enforcement` flag.
 
-A package with no stamp keeps the previous path. Your own unstamped package
+A package with no stamp uses the unstamped path. Your own unstamped package
 needs no declarations: a package in your personal org that is not an unadopted
 Community fork and is not internet-visible. When the
 `credential-need-enforcement` flag is on, a package anyone else runs may use
-only the credentials it declares. The flag stays off until that legacy path can
-go away, so unstamped packages keep working as they do today. See
+only the credentials it declares. The flag is off by default. See
 [ADR 0068](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-16-stamped-packages-fail-closed).
 
 #### Opt-in: credential clients

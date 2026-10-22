@@ -15,7 +15,6 @@ export const Route = createFileRoute(
 	staticData: {
 		workspaceLayout: 'resource',
 		anonymousDocumentCache: 'visibility',
-		motionGroup: 'package',
 		shell: { gutters: 'page' },
 	},
 	context: ({ location, params }) => ({

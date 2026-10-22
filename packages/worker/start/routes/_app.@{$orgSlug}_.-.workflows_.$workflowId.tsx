@@ -13,6 +13,7 @@ export const Route = createFileRoute(
 	'/_app/@{$orgSlug}_/-/workflows_/$workflowId',
 )({
 	staticData: {
+		presentationSearchKeys: ['q', 'view'],
 		workspaceSwitch: {
 			section: 'workflows',
 			suffix: [{ param: 'workflowId' }],
@@ -32,6 +33,7 @@ export const Route = createFileRoute(
 			selected: search.selected,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

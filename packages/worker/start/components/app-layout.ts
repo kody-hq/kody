@@ -21,7 +21,6 @@ export function appMainCss(
 		width: '100%',
 		boxSizing: 'border-box',
 		flex: 1,
-		viewTransitionName: 'page',
 		...(auth
 			? { display: 'grid' }
 			: illustratedError || shell.gutters === 'page'

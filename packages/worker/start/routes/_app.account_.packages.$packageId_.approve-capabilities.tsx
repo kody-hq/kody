@@ -5,7 +5,7 @@ import { NotFoundPage } from '../components/not-found-page.tsx'
 export const Route = createFileRoute(
 	'/_app/account_/packages/$packageId_/approve-capabilities',
 )({
-	staticData: { motionGroup: 'account', shell: { mode: 'focused' } },
+	staticData: { shell: { mode: 'focused' } },
 	loaderDeps: ({ search }) => search,
 	loader: ({ abortController, params, location }) =>
 		loadAccountPackageAlias({

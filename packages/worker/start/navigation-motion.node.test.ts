@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	createMemoryHistory,
 	createRootRoute,
@@ -7,13 +7,7 @@ import {
 	redirect,
 	type AnyRoute,
 } from '@tanstack/react-router'
-import {
-	installNavigationMotion,
-	navigationMotionGroup,
-	shouldUseViewTransition,
-} from './navigation-motion.ts'
-import { routeTree } from './routeTree.gen.ts'
-import { QueryClient } from '@tanstack/react-query'
+import { installNavigationMotion } from './navigation-motion.ts'
 
 function fixture() {
 	const root = createRootRoute()
@@ -32,13 +26,6 @@ function fixture() {
 		createRoute({
 			getParentRoute: () => root,
 			path,
-			staticData: {
-				motionGroup: path.startsWith('/docs')
-					? 'docs'
-					: path.startsWith('/account')
-						? 'account'
-						: undefined,
-			},
 		}),
 	)
 	children.push(
@@ -62,14 +49,10 @@ function fixture() {
 		history: createMemoryHistory({ initialEntries: ['/'] }),
 		isServer: false,
 		origin: 'https://motion.test',
+		defaultViewTransition: false,
 	})
-	let reduced = false
-	let supported = true
 	let marked = 0
 	const stop = installNavigationMotion(router, {
-		canStart: () => supported,
-		prefersReducedMotion: () => reduced,
-		hasPersistentShell: () => false,
 		markSpaNavigation: () => {
 			marked++
 		},
@@ -87,22 +70,16 @@ function fixture() {
 		},
 		releaseSlow,
 		marked: () => marked,
-		reduce: () => {
-			reduced = true
-		},
-		unsupported: () => {
-			supported = false
-		},
 	}
 }
 
-test('foreground motion policy covers initial load, pages, shell tabs, reduced motion and unsupported browsers', async () => {
+test('page navigation cuts directly and marks only committed client navigation', async () => {
 	const f = fixture()
 	await f.router.load()
 	expect(f.marked()).toBe(0)
 	expect(f.router.options.defaultViewTransition).toBe(false)
 	await f.router.navigate({ href: '/pricing' })
-	expect(f.router.options.defaultViewTransition).toBe(true)
+	expect(f.router.options.defaultViewTransition).toBe(false)
 	expect(f.marked()).toBe(1)
 	await f.router.navigate({ href: '/docs/one' })
 	await f.router.navigate({ href: '/docs/two' })
@@ -110,16 +87,14 @@ test('foreground motion policy covers initial load, pages, shell tabs, reduced m
 	const marks = f.marked()
 	await f.router.invalidate()
 	expect(f.marked()).toBe(marks)
-	f.reduce()
 	await f.router.navigate({ href: '/pricing' })
 	expect(f.router.options.defaultViewTransition).toBe(false)
-	f.unsupported()
 	await f.router.navigate({ href: '/' })
 	expect(f.router.options.defaultViewTransition).toBe(false)
 	f.stop()
 })
 
-test('history and redirects recompute policy and mark committed client navigation', async () => {
+test('history and redirects cut directly and mark committed client navigation', async () => {
 	const f = fixture()
 	await f.router.load()
 	await f.router.navigate({ href: '/docs/one' })
@@ -131,7 +106,7 @@ test('history and redirects recompute policy and mark committed client navigatio
 	await f.router.navigate({ href: '/pricing' })
 	await f.router.navigate({ href: '/redirect' })
 	expect(f.router.state.location.pathname).toBe('/docs/one')
-	expect(f.router.options.defaultViewTransition).toBe(true)
+	expect(f.router.options.defaultViewTransition).toBe(false)
 	expect(f.marked()).toBeGreaterThan(0)
 	f.stop()
 })
@@ -146,7 +121,7 @@ test('superseded slow navigation never mounts or marks its stale destination', a
 	await navigation
 	expect(f.router.state.location.pathname).toBe('/docs/one')
 	expect(f.marked()).toBe(marks)
-	expect(f.router.options.defaultViewTransition).toBe(true)
+	expect(f.router.options.defaultViewTransition).toBe(false)
 	f.stop()
 })
 
@@ -154,7 +129,7 @@ test('history traversal never starts a view transition', async () => {
 	const f = fixture()
 	await f.router.load()
 	await f.router.navigate({ href: '/pricing' })
-	expect(f.router.options.defaultViewTransition).toBe(true)
+	expect(f.router.options.defaultViewTransition).toBe(false)
 	f.router.history.back()
 	await f.router.load()
 	expect(f.router.options.defaultViewTransition).toBe(false)
@@ -162,56 +137,23 @@ test('history traversal never starts a view transition', async () => {
 	await f.router.load()
 	expect(f.router.options.defaultViewTransition).toBe(false)
 	await f.router.navigate({ href: '/docs/one' })
-	expect(f.router.options.defaultViewTransition).toBe(true)
+	expect(f.router.options.defaultViewTransition).toBe(false)
 	f.stop()
 })
 
-test('native chrome metadata preserves shell wizard profile and package transition exclusions', () => {
-	const router = createRouter({
-		origin: 'https://motion.test',
-		routeTree,
-		history: createMemoryHistory(),
-		context: { queryClient: new QueryClient(), getCommittedPage: () => null },
+test('route updates bypass the browser transition API', async () => {
+	const f = fixture()
+	const startViewTransition = vi.fn(() => {
+		throw new DOMException('busy', 'InvalidStateError')
 	})
-	const transition = (from: string, to: string) =>
-		shouldUseViewTransition({
-			from,
-			to,
-			fromGroup: navigationMotionGroup(
-				router,
-				new URL(from, 'https://kody.test').pathname,
-			),
-			toGroup: navigationMotionGroup(
-				router,
-				new URL(to, 'https://kody.test').pathname,
-			),
-			canStart: true,
-			prefersReducedMotion: false,
-		})
-	for (const [from, to] of [
-		['/account', '/account/security'],
-		['/account/jobs', '/account/packages/pkg/files/src'],
-		['/admin/users', '/admin/platform-integrations/new'],
-		['/docs', '/docs/secrets'],
-		['/onboarding/step-1/cursor', '/onboarding/step-3/claude-code'],
-		['/@alice?sort=popular', '/@alice?sort=newest'],
-		['/@acme/-/repositories?sort=popular', '/@acme/-/repositories?sort=newest'],
-		['/@alice/tool', '/@alice/tool/tree/main/src/index.ts'],
-		['/@alice/tool/files/src/index.ts', '/@alice/tool/settings'],
-		['/@ALICE/TOOL/credentials', '/@alice/tool/mappings'],
-		['/@alice/%74ool', '/@alice/tool/settings'],
-		['/@alice/tool/triggers', '/@alice/tool/collaborators'],
-	] as const)
-		expect(transition(from, to)).toBe(false)
-	for (const [from, to] of [
-		['/account', '/admin/users'],
-		['/docs', '/pricing'],
-		['/account/security', '/account/not-a-real-page'],
-		['/@alice', '/@bob'],
-		['/@alice/tool', '/@alice/other'],
-		['/@alice/tool', '/@alice/tool/approve-capabilities'],
-		['/@alice/-/credentials', '/@alice/-/settings'],
-		['/community/listing', '/community/listing/files/src'],
-	] as const)
-		expect(transition(from, to)).toBe(true)
+	vi.stubGlobal('document', { startViewTransition })
+	try {
+		const update = vi.fn(async () => {})
+		await f.router.startViewTransition(update)
+		expect(update).toHaveBeenCalledTimes(1)
+		expect(startViewTransition).not.toHaveBeenCalled()
+	} finally {
+		vi.unstubAllGlobals()
+		f.stop()
+	}
 })

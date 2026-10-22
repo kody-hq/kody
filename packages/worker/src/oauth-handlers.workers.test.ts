@@ -739,6 +739,7 @@ test('authorize info, denial, approval, and default scopes follow the OAuth work
 	const defaultScopeOptions = defaultScopeCompletion.mock.lastCall?.[0]
 	expect(defaultScopeOptions?.scope).toEqual(oauthScopes)
 	expect(defaultScopeOptions?.request.issuer).toBe('https://example.com')
+	expect(defaultScopeOptions?.revokeExistingGrants).toBe(false)
 })
 
 test('inline OAuth password login with 2FA challenges through /verify and strips id_token_hint', async () => {
@@ -1064,6 +1065,84 @@ test('worker entrypoint completes ChatGPT-shaped CIMD authorize and token exchan
 		token_type: 'bearer',
 		resource: mcpResource,
 		scope: 'profile email',
+	})
+})
+
+test('two authorizations of the same CIMD client keep both refresh grants valid', async () => {
+	const email = `chatgpt-concurrent-${crypto.randomUUID()}@example.com`
+	await seedWorkerUser(email)
+	const clientId = 'https://chatgpt.com/oauth/client.json'
+	const redirectUri = 'https://chatgpt.com/connector/oauthshared'
+	using _fetch = stubClientMetadataFetch(clientId, () =>
+		jsonResponse({
+			client_id: clientId,
+			client_uri: 'https://chatgpt.com/',
+			redirect_uris: [redirectUri],
+			token_endpoint_auth_method: 'none',
+			token_endpoint_auth_methods_supported: ['none'],
+			grant_types: ['authorization_code', 'refresh_token'],
+			response_types: ['code'],
+			client_name: 'ChatGPT',
+		}),
+	)
+
+	async function authorizeAndExchange(verifier: string) {
+		const authorizeUrl = await heykodyAuthorizeUrl(
+			{
+				client_id: clientId,
+				redirect_uri: redirectUri,
+				scope: 'profile email',
+				state: `state-${verifier}`,
+			},
+			verifier,
+		)
+		const { code } = await workerApprove(authorizeUrl, email)
+		const tokenResponse = await exchangeCode({
+			client_id: clientId,
+			code,
+			redirect_uri: redirectUri,
+			code_verifier: verifier,
+		})
+		expect(tokenResponse.status).toBe(200)
+		const body = (await tokenResponse.json()) as {
+			access_token?: string
+			refresh_token?: string
+		}
+		expect(body.access_token).toBeTruthy()
+		expect(body.refresh_token).toBeTruthy()
+		return body as { access_token: string; refresh_token: string }
+	}
+
+	const first = await authorizeAndExchange('chatgpt-concurrent-verifier-1')
+	const second = await authorizeAndExchange('chatgpt-concurrent-verifier-2')
+	expect(first.refresh_token).not.toBe(second.refresh_token)
+
+	async function refresh(refreshToken: string) {
+		return workerFetch(
+			formRequest(
+				{
+					grant_type: 'refresh_token',
+					refresh_token: refreshToken,
+					client_id: clientId,
+					resource: mcpResource,
+				},
+				{},
+				'https://heykody.dev/oauth/token',
+			),
+		)
+	}
+
+	const firstRefresh = await refresh(first.refresh_token)
+	const secondRefresh = await refresh(second.refresh_token)
+	expect(firstRefresh.status).toBe(200)
+	expect(secondRefresh.status).toBe(200)
+	await expect(firstRefresh.json()).resolves.toMatchObject({
+		token_type: 'bearer',
+		resource: mcpResource,
+	})
+	await expect(secondRefresh.json()).resolves.toMatchObject({
+		token_type: 'bearer',
+		resource: mcpResource,
 	})
 })
 

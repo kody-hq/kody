@@ -24,16 +24,17 @@ catalog search (`search:read`) plus their grants. See
 
 ## Personal vs team
 
-|                    | Personal                                             | Team                                                                                                                                                                         |
-| ------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                           |
-| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                          |
-| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                               |
-| Resource web pages | Secrets, jobs, packages, connections, and the rest   | Every resource page reads the org. Connections shows your agents approved for that org; Repositories shows the org's packages you can see plus every plain repo the org owns |
+|                    | Personal                                             | Team                                                                                                                                                                    |
+| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                      |
+| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                     |
+| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                          |
+| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; Repositories lists the org's packages you can see plus every plain repo the org owns |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
-MCP consent. One connection binds one org.
+MCP consent. Overview is `/@<slug>/-/overview` on a personal org and `/@<slug>`
+on a team org. One connection binds one org.
 
 ## Invites
 

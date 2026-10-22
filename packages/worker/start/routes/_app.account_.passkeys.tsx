@@ -10,7 +10,6 @@ const pageQuery = createPageQuery('loadAccountSecurity', loadAccountSecurity, {
 
 export const Route = createFileRoute('/_app/account_/passkeys')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'account', item: 'security' },
 	},
 	context: () => ({ pageQueryInput: 'passkeys' as const }),

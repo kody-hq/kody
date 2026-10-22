@@ -1,8 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { type CSSObject } from '@emotion/react'
 import {
+	formatWorkspaceChartUtcDay,
 	type WorkspaceBilling,
 	type WorkspaceRunCharts,
+	workspaceChartsPartialSince,
 } from '#universal/workspace-charts.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { chartColor } from '#client/charts/chart-theme.ts'
@@ -44,6 +46,10 @@ export function WorkspaceCharts({
 			values: charts.days.map((day) => day.running),
 		},
 	]
+	const partialSince = workspaceChartsPartialSince(charts)
+	const partialNote = partialSince
+		? `Showing runs since ${formatWorkspaceChartUtcDay(partialSince)}.`
+		: null
 	return (
 		<div css={gridCss}>
 			<section css={panelCss} aria-labelledby="execution-history">
@@ -73,6 +79,7 @@ export function WorkspaceCharts({
 							</span>
 						))}
 					</div>
+					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
 					<p css={noteCss}>Package exports and child runs excluded.</p>
 				</div>
 			</section>
@@ -98,6 +105,7 @@ export function WorkspaceCharts({
 					) : (
 						<p css={emptyCss}>No top-level executions in this period.</p>
 					)}
+					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
 				</div>
 			</section>
 			{billing && spend ? (

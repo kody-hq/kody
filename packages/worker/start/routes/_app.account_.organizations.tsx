@@ -6,7 +6,6 @@ import { OrganizationsPage } from '../pages/org-organizations.tsx'
 
 export const Route = createFileRoute('/_app/account_/organizations')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'account', item: 'organizations' },
 	},
 	loader: ({ context, preload }) =>

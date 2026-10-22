@@ -1,5 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
+import {
+	loadPageQuery,
+	createPageQuery,
+	useFilteredPageQuery,
+} from '../page-query.ts'
 import { memoriesInput } from '../memories-input.ts'
 import { memoriesSearch } from '../filter-search.ts'
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
@@ -12,6 +16,7 @@ const pageQuery = createPageQuery('loadMemoriesPage', loadMemoriesPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/memories')({
 	staticData: {
+		filterSearchKeys: ['q', 'includeDeleted'],
 		workspaceSwitch: { section: 'memories' },
 		navigation: { rail: 'workspace', item: 'memories' },
 		orgScope: { section: 'memories' },
@@ -20,12 +25,17 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/memories')({
 	search: { middlewares: [stripSearchParams({ includeDeleted: false })] },
 	loaderDeps: ({ search }) => ({
 		selected: search.selected,
-		q: search.q,
-		includeDeleted: search.includeDeleted,
 	}),
-	beforeLoad: ({ search, params }) => ({
-		pageQueryInput: memoriesInput(params.orgSlug, search, undefined),
-	}),
+	beforeLoad: ({ search, params, context }) => {
+		const pageQueryInput = memoriesInput(params.orgSlug, search, undefined)
+		return {
+			pageQueryInput,
+			pageHeadQueryKey: [
+				...pageQuery(context.actorKey, pageQueryInput).queryKey,
+			],
+		}
+	},
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,
@@ -36,8 +46,10 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/memories')({
 	component: CollectionPage,
 })
 function CollectionPage() {
-	const { payload } = usePageData()
+	const data = usePageData()
 	const { pageLocation: location, pageQueryInput } = Route.useRouteContext()
+	if (!data) return null
+	const { payload } = data
 	const selectedId = pageQueryInput.selected?.trim() || null
 	return (
 		<AccountMemoriesPage
@@ -49,6 +61,9 @@ function CollectionPage() {
 }
 
 function usePageData() {
-	const { actorKey, pageQueryInput } = Route.useRouteContext()
-	return usePageQuery(pageQuery(actorKey, pageQueryInput)).data
+	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
+	return useFilteredPageQuery(pageQuery(actorKey, pageQueryInput), [
+		actorKey,
+		pageLocation.pathname,
+	]).data
 }

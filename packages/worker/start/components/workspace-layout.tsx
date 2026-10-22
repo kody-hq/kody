@@ -3,7 +3,10 @@ import { Outlet, useMatches } from '@tanstack/react-router'
 import { useShellData } from '../routes/__root.tsx'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
-import { ShellNavigation } from '../pages/account-management-components.tsx'
+import {
+	ShellNavigation,
+	ShellWorkspaceSwitcher,
+} from '../pages/account-management-components.tsx'
 import { accountManagementNarrowMq } from '../pages/account-management-link-nav.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
 import { AccountMenu } from './org-switcher.tsx'
@@ -41,14 +44,10 @@ export function WorkspaceLayout() {
 						boxSizing: 'border-box',
 						display: 'flex',
 						flexDirection: 'column',
-						padding: '1rem',
-						gap: '1rem',
 						borderRight: `1px solid ${colors.border}`,
 						background: colors.background,
 						'& [data-account-navigation]': {
 							minHeight: 0,
-							overflowY: 'auto',
-							flex: 1,
 							paddingTop: 0,
 						},
 						'& [data-account-nav]': { width: '100%', height: 'auto' },
@@ -58,7 +57,6 @@ export function WorkspaceLayout() {
 							height: 'auto',
 							borderRight: 0,
 							borderBottom: `1px solid ${colors.border}`,
-							gap: '0.5rem',
 							'& [data-account-navigation]': {
 								overflow: 'visible',
 								paddingTop: 0,
@@ -68,6 +66,8 @@ export function WorkspaceLayout() {
 				>
 					<div
 						css={{
+							padding: '1rem',
+							flexShrink: 0,
 							display: 'flex',
 							alignItems: 'center',
 							justifyContent: 'space-between',
@@ -102,54 +102,102 @@ export function WorkspaceLayout() {
 							avatarUrl={session.avatarUrl}
 						/>
 					</div>
-					{session.featureFlags['demo-indicator'] ? <DemoIndicator /> : null}
-					<ShellNavigation navigation={navigation} />
-					<nav
-						aria-label="Resources"
+					<ShellWorkspaceSwitcher navigation={navigation} />
+					<div
+						className="fade-y fade-size-xs"
+						data-workspace-scroll
 						css={{
-							display: 'grid',
-							gap: '0.25rem',
-							borderTop: `1px solid ${colors.border}`,
-							paddingTop: '0.75rem',
-							fontSize: '0.875rem',
-							'& a': {
-								display: 'flex',
-								alignItems: 'center',
-								gap: '0.5rem',
-								padding: '0.4rem 0.65rem',
-								borderRadius: '0.5rem',
-								color: colors.textMuted,
-								textDecoration: 'none',
-								'&:hover': {
-									background: colors.primarySoftest,
-									color: colors.text,
-								},
+							flex: 1,
+							minHeight: 0,
+							overflowY: 'auto',
+							padding: '0 1rem 1rem',
+							display: 'flex',
+							flexDirection: 'column',
+							gap: '1rem',
+							'& > *': { flexShrink: 0 },
+							[accountManagementNarrowMq]: {
+								overflow: 'visible',
+								maskImage: 'none',
+								flex: 'none',
 							},
 						}}
 					>
-						<h2
+						{session.featureFlags['demo-indicator'] ? <DemoIndicator /> : null}
+						<ShellNavigation
+							navigation={navigation}
+							separateWorkspaceSwitcher
+						/>
+						<nav
+							aria-label="Resources"
 							css={{
-								margin: '0 0 0.25rem',
-								paddingInline: '0.65rem',
-								fontSize: '0.7rem',
-								fontWeight: 600,
-								letterSpacing: '0.06em',
-								textTransform: 'uppercase',
-								color: colors.textMuted,
+								display: 'grid',
+								gap: '0.25rem',
+								borderTop: `1px solid ${colors.border}`,
+								paddingTop: '0.75rem',
+								fontSize: '0.875rem',
+								'& a': {
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.5rem',
+									padding: '0.4rem 0.65rem',
+									borderRadius: '0.5rem',
+									color: colors.textMuted,
+									textDecoration: 'none',
+									'&:hover': {
+										background: colors.primarySoftest,
+										color: colors.text,
+									},
+								},
 							}}
 						>
-							Resources
-						</h2>
-						<SiteLink href="/docs">
-							<span aria-hidden="true">
-								{renderIcon('book', { size: '1rem' })}
-							</span>
-							Documentation
-						</SiteLink>
-						{session.roles.includes('admin') ? (
-							<SiteLink href="/admin/users">Admin</SiteLink>
-						) : null}
-					</nav>
+							<h2
+								css={{
+									margin: '0 0 0.25rem',
+									paddingInline: '0.65rem',
+									fontSize: '0.7rem',
+									fontWeight: 600,
+									letterSpacing: '0.06em',
+									textTransform: 'uppercase',
+									color: colors.textMuted,
+								}}
+							>
+								Resources
+							</h2>
+							<SiteLink href="/docs">
+								<span aria-hidden="true">
+									{renderIcon('book', { size: '1rem' })}
+								</span>
+								Documentation
+							</SiteLink>
+						</nav>
+					</div>
+					{session.roles.includes('admin') ? (
+						<div
+							css={{
+								flexShrink: 0,
+								padding: '0.75rem 1rem',
+								borderTop: `1px solid ${colors.border}`,
+							}}
+						>
+							<SiteLink
+								href="/admin/users"
+								css={{
+									display: 'block',
+									padding: '0.4rem 0.65rem',
+									borderRadius: '0.5rem',
+									color: colors.textMuted,
+									textDecoration: 'none',
+									fontSize: '0.875rem',
+									'&:hover': {
+										background: colors.primarySoftest,
+										color: colors.text,
+									},
+								}}
+							>
+								Admin
+							</SiteLink>
+						</div>
+					) : null}
 				</aside>
 				<main
 					id="main"
@@ -169,7 +217,6 @@ export function WorkspaceLayout() {
 							'--control-font-size': '1rem',
 							'--control-min-height': '44px',
 						},
-						viewTransitionName: 'page',
 						padding: 'clamp(1rem, 3vw, 2.5rem)',
 					}}
 				>

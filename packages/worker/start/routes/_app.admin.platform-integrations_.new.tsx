@@ -13,17 +13,17 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/platform-integrations_/new')({
 	staticData: {
-		motionGroup: 'admin',
+		presentationSearchKeys: ['q'],
 		navigation: { rail: 'admin', item: 'platform-integrations' },
 	},
 	validateSearch: textSearch,
-	loaderDeps: ({ search }) => search,
 	context: ({ location }) => ({
 		pageQueryInput: {
-			returnTo: location.pathname + location.searchStr,
+			returnTo: location.pathname,
 			view: 'new' as const,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

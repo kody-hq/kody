@@ -2,7 +2,6 @@ import { jsx } from '@emotion/react/jsx-runtime'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import {
-	chooserOverflow,
 	LandingHeroVideo,
 	nextChooserIndex,
 } from './components/landing-hero-video.tsx'
@@ -38,20 +37,6 @@ test('nextChooserIndex moves along the strip, wraps at the ends, ignores other k
 	expect(nextChooserIndex(1, 'Enter', 3)).toBeNull()
 	expect(nextChooserIndex(1, 'a', 3)).toBeNull()
 	expect(nextChooserIndex(0, 'ArrowRight', 0)).toBeNull()
-})
-
-test('chooserOverflow only reports an edge when there is content past it', () => {
-	const fits = { scrollLeft: 0, clientWidth: 400, scrollWidth: 400 }
-	expect(chooserOverflow(fits)).toEqual({ start: false, end: false })
-	const atStart = { scrollLeft: 0, clientWidth: 400, scrollWidth: 900 }
-	expect(chooserOverflow(atStart)).toEqual({ start: false, end: true })
-	const middle = { scrollLeft: 200, clientWidth: 400, scrollWidth: 900 }
-	expect(chooserOverflow(middle)).toEqual({ start: true, end: true })
-	const atEnd = { scrollLeft: 500, clientWidth: 400, scrollWidth: 900 }
-	expect(chooserOverflow(atEnd)).toEqual({ start: true, end: false })
-	// Sub-pixel scroll positions do not flicker the fades.
-	const nearlyEnd = { scrollLeft: 499.5, clientWidth: 400, scrollWidth: 900 }
-	expect(chooserOverflow(nearlyEnd)).toEqual({ start: true, end: false })
 })
 
 test('hero video renders playlist order in the player and listbox', async () => {

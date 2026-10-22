@@ -219,7 +219,7 @@ After that deploy, open the connected agents page as the seed user and verify
 the connection profile controls:
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /account/connected-agents
+npm run control-kody -- browse --origin <preview> --path /@user-me/-/agents
 ```
 
 Without the label, the next preview seed deletes that allowlisted override, and

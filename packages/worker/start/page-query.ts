@@ -1,10 +1,13 @@
 import {
 	queryOptions,
+	useQuery,
+	hashKey,
 	useSuspenseQuery,
 	type QueryKey,
 	type QueryClient,
 	type FetchQueryOptions,
 	type UseSuspenseQueryOptions,
+	type UseQueryOptions,
 } from '@tanstack/react-query'
 import { isNotFound } from '@tanstack/react-router'
 import { type ResolvedDocumentHead } from '#universal/document-head.ts'
@@ -82,4 +85,27 @@ export async function loadPageQuery<
 	// Only content resources own reactive metadata. Shared resources leave it
 	// to the matched route, such as Profile, Security and Data using one account read.
 	return { head, ...(head ? { pageHeadQueryKey: options.queryKey } : {}) }
+}
+
+/** Previous rows belong only to the same account and mounted resource scope. */
+export function filteredPageQueryOptions<TData, TKey extends QueryKey>(
+	options: UseSuspenseQueryOptions<TData, Error, TData, TKey>,
+	scope: QueryKey,
+): UseQueryOptions<TData, Error, TData, TKey> {
+	const filterScope = hashKey(scope)
+	return {
+		...options,
+		meta: { ...options.meta, filterScope },
+		placeholderData: (data, previous) =>
+			previous?.meta?.filterScope === filterScope ? data : undefined,
+		throwOnError: true,
+	}
+}
+
+/** Filter changes stay inside Query rather than suspending the mounted page. */
+export function useFilteredPageQuery<TData, TKey extends QueryKey>(
+	options: UseSuspenseQueryOptions<TData, Error, TData, TKey>,
+	scope: QueryKey,
+) {
+	return useQuery(filteredPageQueryOptions(options, scope))
 }

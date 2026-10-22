@@ -65,7 +65,14 @@ export function AdminCommunityReportsPage({
 	payload: AdminCommunityReportsLoaderData
 	currentHref: string
 }) {
-	const { reports, statusFilter } = payload
+	const { reports } = payload
+	const requestedStatus = new URL(
+		currentHref,
+		'https://kody.local',
+	).searchParams.get('status')
+	const statusFilter =
+		statusOptions.find((option) => option.value === requestedStatus)?.value ??
+		'open'
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const mutation = useMutation({
 		mutationFn: ({

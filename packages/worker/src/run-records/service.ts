@@ -1522,11 +1522,12 @@ export async function loadWorkspaceRunCharts(input: {
 	now?: Date
 }) {
 	const window = workspaceChartWindow(input.now)
-	const buckets = runLogBinding(input.env)
-		? await runLogRpc({
-				env: input.env,
-				userId: input.userId,
-			}).dashboardBuckets(window)
-		: []
-	return buildWorkspaceRunCharts(window, buckets)
+	if (!runLogBinding(input.env)) {
+		return buildWorkspaceRunCharts(window, [], null)
+	}
+	const { buckets, countsSince } = await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).dashboardBuckets(window)
+	return buildWorkspaceRunCharts(window, buckets, countsSince)
 }

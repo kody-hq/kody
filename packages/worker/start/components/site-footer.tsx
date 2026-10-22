@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { publicAsset } from '../public-assets.ts'
 import { type CSSObject } from '@emotion/react'
+import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
 import {
@@ -22,12 +22,7 @@ export function SiteFooter(props: SiteFooterProps) {
 		<footer css={footerCss}>
 			<div css={footerInnerCss}>
 				<SiteLink href="/" css={brandCss}>
-					<img
-						src={publicAsset('/images/kody-mark.png')}
-						alt=""
-						width={28}
-						height={28}
-					/>
+					<KodyMark size={28} />
 					<span>Kody</span>
 				</SiteLink>
 				<p css={taglineCss}>
@@ -51,6 +46,7 @@ export function SiteFooter(props: SiteFooterProps) {
 					<SiteLink href="/pricing">Pricing</SiteLink>
 					<SiteLink href="/faq">FAQ</SiteLink>
 					<SiteLink href="/about">About</SiteLink>
+					<SiteLink href="/brand-guide">Brand</SiteLink>
 					<SiteLink href="/contact">Contact</SiteLink>
 					<SiteLink href="/support">Support</SiteLink>
 					<SiteLink href="/blog">Blog</SiteLink>
@@ -80,7 +76,6 @@ export function SiteFooter(props: SiteFooterProps) {
 
 const footerCss: CSSObject = {
 	borderTop: `1px solid ${colors.border}`,
-	viewTransitionName: 'site-footer',
 }
 
 const footerLinkColumnMin = '7.5rem'

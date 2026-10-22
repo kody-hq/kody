@@ -11,15 +11,16 @@ const pageQuery = createPageQuery('loadConnectionsPage', loadConnectionsPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/agents')({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: { section: 'agents' },
 		navigation: { rail: 'workspace', item: 'agents' },
 		orgScope: { section: 'agents' },
 	},
-	loaderDeps: ({ search }) => search,
 	context: ({ location, params }) => ({
 		queryInput: { orgSlug: params.orgSlug, view: 'list' as const },
 		pageQueryInput: location.pathname + location.searchStr,
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: async ({ context, preload, params }) => {
 		const [page] = await Promise.all([
 			loadPageQuery(

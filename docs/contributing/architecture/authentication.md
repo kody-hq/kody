@@ -86,9 +86,23 @@ request so cookie signing and verification are available to handlers.
 
 ### Signup posture
 
-Anyone can create an account from `/signup` (password or social). New accounts
-start on the `free` plan. Referral share links (`?ref=`) are a separate growth
-program.
+Anyone can create an account from `/signup` (password or social). Every
+self-serve path requires choosing a permanent username before the account
+exists:
+
+- Password signup: the shared username field on `/signup` (prefilled from the
+  email local part as they type), with live availability, suggestions, and an
+  explicit permanence confirmation before create
+- Social signup: after the provider callback verifies the identity, the person
+  lands on `/signup/choose-username` (same shared field). The verified provider
+  identity is held in a short-lived signed `kody_oauth_pending` cookie (CSRF,
+  expiry, single-use); the account is created only on submit
+
+Usernames are permanent (no self-serve rename). Live availability is checked
+through a rate-limited endpoint that reuses
+`getEffectiveUsernameValidationError` and `isUsernameClaimedInIdentity`. New
+accounts start on the `free` plan. Referral share links (`?ref=`) are a separate
+growth program.
 
 Account signup Kit tagging (password and OAuth signup):
 
@@ -843,6 +857,22 @@ Token lifetimes are set on the `OAuthProvider` in
   created through `OAuthHelpers.createClient()` are unexpiring. A DCR client
   record that already has a KV TTL still expires at that instant unless the host
   re-registers
+
+`completeAuthorization` passes `revokeExistingGrants: false` so concurrent MCP
+hosts that share one `client_id` (OpenAI CIMD surfaces such as ChatGPT and the
+Codex app use the same client metadata URL and redirect URI) each keep a grant.
+The provider default (`true`) would delete every older grant for that
+user+client on every reconnect, which 401s `/mcp` on the sibling surface and
+fails refresh with `invalid_grant` (`grant_not_found`). After each successful
+authorization, `pruneUserClientOAuthGrants`
+(`packages/worker/src/oauth-grant-prune.ts`) keeps the newest 10 grants per
+user+client (oldest excess only). It does not prune by `createdAt` age — refresh
+tokens do not expire, so an old grant can still be actively refreshed on a
+sibling host. Revoking a grant still deletes its tokens. A `connection_pruned`
+audit event is recorded when pruning revokes anything. Token/refresh failures
+report `code` + `internal.category`/`reason` (and client id when available)
+through `onError` → `reportOAuthProviderError` without logging tokens, secrets,
+or emails.
 
 The provider still rotates refresh tokens on use and keeps only the current hash
 plus the immediately previous hash on the grant. MCP hosts on one machine often

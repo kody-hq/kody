@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import {
 	createPageQuery,
+	filteredPageQueryOptions,
 	ensurePageQuery,
 	loadPageQuery,
 } from './page-query.ts'
@@ -280,4 +281,52 @@ it('leaves route metadata ownership intact for shared resources without a head',
 		head,
 		pageHeadQueryKey: detail.queryKey,
 	})
+})
+
+it('filter observers retain rows only within the same account and mounted resource, and reuse cached filters', async () => {
+	const cache = client()
+	const waiting = deferred<{ rows: string[] }>()
+	const read = vi.fn(
+		async ({ data }: { data: { q: string }; signal: AbortSignal }) =>
+			data.q === 'slow' ? waiting.promise : { rows: [data.q] },
+	)
+	const query = createPageQuery('filtered-list', read)
+	const first = filteredPageQueryOptions(query('actor-a', { q: 'first' }), [
+		'actor-a',
+		'org-a',
+	])
+	await cache.fetchQuery(first)
+	const observer = new QueryObserver(cache, first)
+	const unsubscribe = observer.subscribe(() => {})
+	observer.setOptions(
+		filteredPageQueryOptions(query('actor-a', { q: 'slow' }), [
+			'actor-a',
+			'org-a',
+		]),
+	)
+	expect(observer.getCurrentResult().data).toEqual({ rows: ['first'] })
+	expect(observer.getCurrentResult().isPlaceholderData).toBe(true)
+	observer.setOptions(
+		filteredPageQueryOptions(query('actor-a', { q: 'slow' }), [
+			'actor-a',
+			'org-b',
+		]),
+	)
+	expect(observer.getCurrentResult().data).toBeUndefined()
+	observer.setOptions(
+		filteredPageQueryOptions(query('actor-b', { q: 'slow' }), [
+			'actor-b',
+			'org-b',
+		]),
+	)
+	expect(observer.getCurrentResult().data).toBeUndefined()
+	observer.setOptions(first)
+	expect(observer.getCurrentResult().data).toEqual({ rows: ['first'] })
+	expect(
+		read.mock.calls.filter(([input]) => input.data.q === 'first'),
+	).toHaveLength(1)
+	waiting.resolve({ rows: ['slow'] })
+	unsubscribe()
+	observer.destroy()
+	cache.clear()
 })
