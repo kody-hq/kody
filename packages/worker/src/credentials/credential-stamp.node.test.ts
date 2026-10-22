@@ -373,6 +373,38 @@ test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access',
 	expect(functionLocalAlias.keys).toEqual(['home'])
 	expect(functionLocalAlias.failures).toEqual([])
 
+	const shadowedRestParam = scanLiteralMcpServerKeys({
+		'package.json': manifest(),
+		'src/index.ts': [
+			"import { kody } from 'kody:runtime'",
+			'const mcp = kody.mcp',
+			'export default async function run(...mcp: unknown[]) {',
+			'\treturn mcp',
+			'}',
+			'export function other() {',
+			'\treturn mcp.linear.list_issues({})',
+			'}',
+		].join('\n'),
+	})
+	expect(shadowedRestParam.keys).toEqual(['linear'])
+	expect(shadowedRestParam.failures).toEqual([])
+
+	const shadowedArrayParam = scanLiteralMcpServerKeys({
+		'package.json': manifest(),
+		'src/index.ts': [
+			"import { kody } from 'kody:runtime'",
+			'const mcp = kody.mcp',
+			'export default async function run([mcp]: [unknown]) {',
+			'\treturn mcp',
+			'}',
+			'export function other() {',
+			'\treturn mcp.home.set_pin({ pin: "1" })',
+			'}',
+		].join('\n'),
+	})
+	expect(shadowedArrayParam.keys).toEqual(['home'])
+	expect(shadowedArrayParam.failures).toEqual([])
+
 	const dynamic = scanLiteralMcpServerKeys({
 		'package.json': manifest(),
 		'src/index.ts': [

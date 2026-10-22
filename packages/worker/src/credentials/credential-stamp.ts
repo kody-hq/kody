@@ -1092,6 +1092,17 @@ function collectBindingNamesFromPattern(
 	if (pattern.type === 'AssignmentPattern') {
 		return collectBindingNamesFromPattern(pattern.left)
 	}
+	if (pattern.type === 'RestElement' || pattern.type === 'RestProperty') {
+		return collectBindingNamesFromPattern(pattern.argument)
+	}
+	if (pattern.type === 'ArrayPattern') {
+		const names: Array<string> = []
+		for (const element of pattern.elements ?? []) {
+			if (!element) continue
+			names.push(...collectBindingNamesFromPattern(element))
+		}
+		return names
+	}
 	if (pattern.type === 'ObjectPattern') {
 		const names: Array<string> = []
 		for (const property of pattern.properties ?? []) {
