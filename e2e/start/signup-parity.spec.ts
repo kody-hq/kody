@@ -33,9 +33,9 @@ test('signup confirms the permanent handle before sending credentials and suppor
 	await expect(password).toHaveAttribute('type', 'text')
 	await page.getByRole('button', { name: 'Hide password', exact: true }).click()
 	await expect(password).toHaveAttribute('type', 'password')
-	await expect(page.locator('[data-status="available"]')).toContainText(
-		'parity-test is available',
-	)
+	await expect(
+		page.getByRole('status').filter({ hasText: 'parity-test is available' }),
+	).toBeVisible()
 	await page
 		.getByRole('button', { name: 'Create account', exact: true })
 		.click()
@@ -44,9 +44,9 @@ test('signup confirms the permanent handle before sending credentials and suppor
 	).toBeVisible()
 	expect(submissions).toBe(0)
 	await usernameField.fill('other-handle')
-	await expect(page.locator('[data-status="available"]')).toContainText(
-		'other-handle is available',
-	)
+	await expect(
+		page.getByRole('status').filter({ hasText: 'other-handle is available' }),
+	).toBeVisible()
 	await page
 		.getByRole('button', { name: 'Create account', exact: true })
 		.click()

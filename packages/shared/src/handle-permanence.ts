@@ -39,5 +39,5 @@ export function signupUsernameSurfacesPreview(slug: string) {
 
 export function handlePermanenceConfirmMessage(slug: string) {
 	const handle = slug.trim().toLowerCase() || 'your-username'
-	return `You're choosing ${handle}. You can't change this later. It appears in package names, ${handle}.kody.run URLs, and your ${handle}@ email address. Submit again to create your account.`
+	return `You're choosing ${handle}. You can't change this later. Submit again to create your account.`
 }

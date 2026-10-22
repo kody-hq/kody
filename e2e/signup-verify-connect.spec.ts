@@ -89,9 +89,9 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 		await page.getByRole('textbox', { name: 'Username' }).fill(username)
 		await page.getByLabel('Email').fill(email)
 		await page.getByLabel('Password', { exact: true }).fill(password)
-		await expect(page.locator('[data-status="available"]')).toContainText(
-			`${username} is available`,
-		)
+		await expect(
+			page.getByRole('status').filter({ hasText: `${username} is available` }),
+		).toBeVisible()
 		// Handles are permanent: the first submit shows the final URL and asks once.
 		await page
 			.getByRole('button', { name: 'Create account', exact: true })
@@ -100,7 +100,7 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 			page.getByRole('button', { name: 'Yes, create account' }),
 		).toBeVisible()
 		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
-			`${username}.kody.run`,
+			`You're choosing ${username}`,
 		)
 		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
 			"You can't change this later",
