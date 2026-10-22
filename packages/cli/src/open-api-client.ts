@@ -22,10 +22,54 @@ import { type ToolCallResult } from './tool-result.js'
 import { readPackageVersion } from './package-info.js'
 import { userCacheDir } from './workerd-binary.js'
 
+/** One Open API HTTP exchange, reported to `onHttpDebug` (`--debug`). */
+export type OpenApiHttpDebugEvent = {
+	method: string
+	url: string
+	/** UTF-8 bytes of the JSON request body; 0 when there was none. */
+	requestBytes: number
+	elapsedMs: number
+	/** HTTP status, or null when no response arrived. */
+	status: number | null
+	/** Server error code from the JSON error body, when there was one. */
+	code: string | null
+	/** `error.details.reason` from the error body, when the server sent one. */
+	reason: string | null
+	/** `X-Kody-Request-Id` response header (the Cloudflare ray id). */
+	requestId: string | null
+	/** Network error text when `fetch` rejected before a response. */
+	networkError?: string
+}
+
+/** Render a debug event as one line (`kody dev check --debug`). */
+export function formatOpenApiHttpDebugLine(event: OpenApiHttpDebugEvent) {
+	const outcome =
+		event.status === null
+			? `no response (${event.networkError ?? 'network error'})`
+			: `HTTP ${event.status}`
+	const parts = [
+		`${event.method} ${event.url} -> ${outcome}`,
+		...(event.code ? [`code ${event.code}`] : []),
+		...(event.reason ? [`reason ${event.reason}`] : []),
+		`request id ${event.requestId ?? 'none'}`,
+		`${(event.elapsedMs / 1000).toFixed(1)} s`,
+		`sent ${formatByteCount(event.requestBytes)}`,
+	]
+	return `debug: ${parts.join(', ')}`
+}
+
+function formatByteCount(bytes: number) {
+	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+	if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+	return `${bytes} B`
+}
+
 export type OpenApiClientInput = {
 	apiUrl?: string
 	token: string
 	fetchFn?: typeof fetch
+	/** Called once per HTTP exchange with its status, error code and request id. */
+	onHttpDebug?: (event: OpenApiHttpDebugEvent) => void
 	/**
 	 * User-owned API token org selection (ADR 0070). Appended as `?org=<slug>`
 	 * on Open API requests. Ignored when unset (personal org default).
@@ -36,6 +80,10 @@ export type OpenApiClientInput = {
 export class OpenApiError extends Error {
 	readonly status: number | null
 	readonly code: string | null
+	/** `X-Kody-Request-Id` from the failed response, when there was one. */
+	readonly requestId: string | null
+	/** `error.details.reason` from the failed response, when there was one. */
+	readonly reason: string | null
 	/**
 	 * Set when `fetch` rejected before an HTTP response. `false` = connect
 	 * phase (nothing sent); `"unknown"` = body may have reached the server.
@@ -47,6 +95,8 @@ export class OpenApiError extends Error {
 		options: {
 			status?: number | null
 			code?: string | null
+			requestId?: string | null
+			reason?: string | null
 			sent?: RequestSentStatus
 		} = {},
 	) {
@@ -54,6 +104,8 @@ export class OpenApiError extends Error {
 		this.name = 'OpenApiError'
 		this.status = options.status ?? null
 		this.code = options.code ?? null
+		this.requestId = options.requestId ?? null
+		this.reason = options.reason ?? null
 		if (options.sent !== undefined) this.sent = options.sent
 	}
 }
@@ -222,21 +274,49 @@ export async function openApiRequest(
 		body = JSON.stringify(input.body)
 	}
 	const fetchFn = input.fetchFn ?? fetch
+	const startedAt = Date.now()
+	const debugBase = {
+		method,
+		url: `${url.origin}${url.pathname}`,
+		requestBytes: body ? Buffer.byteLength(body) : 0,
+	}
 	let response: Response
 	try {
 		response = await fetchFn(url, { method, headers, body })
 	} catch (error) {
+		input.onHttpDebug?.({
+			...debugBase,
+			elapsedMs: Date.now() - startedAt,
+			status: null,
+			code: null,
+			reason: null,
+			requestId: null,
+			networkError: error instanceof Error ? error.message : String(error),
+		})
 		throw new OpenApiError(
 			formatUnreachableApiMessage({ origin: url.origin, error }),
 			{ sent: requestSentStatus(error) },
 		)
 	}
 	const responseBody = await readJson(response)
+	const requestId = response.headers.get(apiRequestIdHeader)?.trim() || null
+	const failure = response.ok ? null : readErrorBody(responseBody)
+	input.onHttpDebug?.({
+		...debugBase,
+		elapsedMs: Date.now() - startedAt,
+		status: response.status,
+		code: failure?.code ?? null,
+		reason: failure?.reason ?? null,
+		requestId,
+	})
 	if (!response.ok) {
-		throw describeOpenApiFailure(response.status, responseBody, url)
+		throw describeOpenApiFailure(response.status, responseBody, url, requestId)
 	}
 	return responseBody
 }
+
+/** Response header naming one API request (set by the `api.kody.codes` edge). */
+export const apiRequestIdHeader = 'x-kody-request-id'
 
 /**
  * Call one Open API operation by `operationId` + flat `params`, matching the
@@ -276,6 +356,7 @@ export async function callOpenApiOperation(
 		token: input.token,
 		apiUrl,
 		fetchFn: input.fetchFn,
+		...(input.onHttpDebug ? { onHttpDebug: input.onHttpDebug } : {}),
 		...(input.org ? { org: input.org } : {}),
 		method: built.method,
 		path: built.path,
@@ -594,34 +675,39 @@ async function readJson(response: Response): Promise<unknown> {
 
 function readErrorBody(
 	body: unknown,
-): { code: string | null; message: string } | null {
+): { code: string | null; message: string; reason: string | null } | null {
 	if (!isRecord(body) || body.error == null) return null
 	const { error } = body
-	if (typeof error === 'string') return { code: null, message: error }
+	if (typeof error === 'string') {
+		return { code: null, message: error, reason: null }
+	}
 	if (isRecord(error)) {
 		const code = typeof error.code === 'string' ? error.code : null
 		const message =
 			typeof error.message === 'string'
 				? error.message
 				: (code ?? JSON.stringify(error))
-		return { code, message }
+		const reason =
+			isRecord(error.details) && typeof error.details.reason === 'string'
+				? error.details.reason
+				: null
+		return { code, message, reason }
 	}
-	return { code: null, message: String(error) }
+	return { code: null, message: String(error), reason: null }
 }
 
 function describeOpenApiFailure(
 	status: number,
 	body: unknown,
 	url: URL,
+	requestId: string | null = null,
 ): OpenApiError {
 	const failure = readErrorBody(body)
 	const code = failure?.code ?? null
+	const meta = { status, code, requestId, reason: failure?.reason ?? null }
 	const detail = failure?.message ? ` Server said: ${failure.message}` : ''
 	if (status === 401) {
-		return new OpenApiError(rejectedApiTokenMessage(detail), {
-			status,
-			code,
-		})
+		return new OpenApiError(rejectedApiTokenMessage(detail), meta)
 	}
 	if (status === 403 && code === 'insufficient_scope') {
 		return new OpenApiError(
@@ -629,19 +715,21 @@ function describeOpenApiFailure(
 				...readInsufficientScopeDetails(body),
 				currentLifetime: currentStoredTokenLifetimeAlias(url.origin),
 			})}${detail}`,
-			{ status, code },
+			meta,
 		)
 	}
 	if (code === 'feature_disabled') {
-		return new OpenApiError(`Kody returned feature_disabled.${detail}`, {
-			status,
-			code,
-		})
+		return new OpenApiError(`Kody returned feature_disabled.${detail}`, meta)
 	}
-	return new OpenApiError(
+	const message =
 		failure?.message ??
-			`Kody API request failed with HTTP ${status} (${url.pathname}).`,
-		{ status, code },
+		`Kody API request failed with HTTP ${status} (${url.pathname}).`
+	// Server-side failures carry the request id so it can be quoted.
+	return new OpenApiError(
+		status >= 500 && requestId && !message.includes(requestId)
+			? `${message} (request id ${requestId})`
+			: message,
+		meta,
 	)
 }
 

@@ -6,6 +6,8 @@ import { test } from 'node:test'
 import {
 	OpenApiError,
 	assertApiOperationAllowed,
+	formatOpenApiHttpDebugLine,
+	type OpenApiHttpDebugEvent,
 	buildOpenApiHttpRequest,
 	callOpenApiOperation,
 	clearOpenApiRouteCache,
@@ -490,4 +492,49 @@ test('loadOpenApiOperations keeps the parsed route map on disk by content hash a
 		if (previousCacheDir === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previousCacheDir
 	}
+})
+
+test('openApiRequest keeps the status, error code, reason and request id of a server failure', async () => {
+	const events: Array<OpenApiHttpDebugEvent> = []
+	const fetchFn = (async () =>
+		Response.json(
+			{
+				error: {
+					code: 'internal_error',
+					message: 'Origin failed.',
+					details: { reason: 'origin_unreachable' },
+				},
+			},
+			{ status: 503, headers: { 'X-Kody-Request-Id': 'ray-42' } },
+		)) as typeof fetch
+	await assert.rejects(
+		() =>
+			openApiRequest({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				method: 'POST',
+				path: 'v1/packages/check',
+				body: { files: { 'package.json': '{}' } },
+				fetchFn,
+				onHttpDebug: (event) => events.push(event),
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.status, 503)
+			assert.equal(error.code, 'internal_error')
+			assert.equal(error.reason, 'origin_unreachable')
+			assert.equal(error.requestId, 'ray-42')
+			assert.equal(error.message, 'Origin failed. (request id ray-42)')
+			return true
+		},
+	)
+	assert.equal(events.length, 1)
+	assert.equal(events[0]!.status, 503)
+	assert.equal(events[0]!.requestId, 'ray-42')
+	assert.ok(events[0]!.requestBytes > 0)
+	const line = formatOpenApiHttpDebugLine(events[0]!)
+	assert.match(
+		line,
+		/^debug: POST https:\/\/api\.kody\.codes\/v1\/packages\/check -> HTTP 503, code internal_error, reason origin_unreachable, request id ray-42, /,
+	)
 })

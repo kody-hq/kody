@@ -882,11 +882,13 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 
 type McpAliasTable = {
 	moduleNames: Set<string>
+	/** Every registered alias name, so non-alias identifiers skip the scope walk. */
+	names: Set<string>
 	declarators: Array<{ node: AstNode; name: string }>
 }
 
 function createMcpAliasTable(): McpAliasTable {
-	return { moduleNames: new Set(), declarators: [] }
+	return { moduleNames: new Set(), names: new Set(), declarators: [] }
 }
 
 function isNestedBindingScope(type: string): boolean {
@@ -1019,6 +1021,7 @@ function registerMcpAlias(
 	ancestors: ReadonlyArray<AstNode>,
 ) {
 	table.declarators.push({ node: declarator, name })
+	table.names.add(name)
 	if (isModuleScopeAncestors(ancestors)) table.moduleNames.add(name)
 }
 
@@ -1027,6 +1030,11 @@ function isActiveMcpAlias(
 	ancestors: ReadonlyArray<AstNode>,
 	table: McpAliasTable,
 ): boolean {
+	// The scan asks this for every identifier in every module. A name that was
+	// never registered as an alias cannot be one, whatever its scope, so skip
+	// the ancestor walk (it made the stamp scan several times slower on large
+	// packages).
+	if (!table.names.has(name)) return false
 	const binding = innermostBindingOfName(name, ancestors)
 	if (binding == null) return table.moduleNames.has(name)
 	if (binding.declarator == null) return false

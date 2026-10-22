@@ -74,7 +74,10 @@ import {
 	validatePackageBundles,
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
-import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
+import {
+	runAuthoringPublishChecks,
+	runAuthoringPublishChecksOnFiles,
+} from './authoring-publish-checks.ts'
 import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
@@ -93,6 +96,8 @@ import {
 } from './isolated-artifact-rebuild.ts'
 import {
 	isolatedCheckStagingKeyBelongsToUser,
+	type IsolatedAuthoringChecksOutcome,
+	type IsolatedAuthoringChecksRequest,
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
@@ -2886,6 +2891,72 @@ class RepoSessionBase extends DurableObject<Env> {
 		throw new Error(
 			`Unsupported isolated check phase: ${JSON.stringify(exhaustive)}`,
 		)
+	}
+
+	/**
+	 * The full authoring publish checks for a staged in-memory tree
+	 * (`packageCheck`, which `kody dev check` calls), invoked on a throwaway
+	 * Durable Object id so the run never shares the origin request isolate's
+	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session and no
+	 * storage on this instance; heavy phases still fan out to their own
+	 * throwaway isolates from inside `runRepoChecks`.
+	 */
+	async runIsolatedAuthoringChecks(
+		input: IsolatedAuthoringChecksRequest,
+	): Promise<IsolatedAuthoringChecksOutcome> {
+		if (
+			!isolatedCheckStagingKeyBelongsToUser({
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+			})
+		) {
+			return {
+				ok: false,
+				results: [
+					{
+						kind: 'manifest',
+						ok: false,
+						message:
+							'Publish check staging key does not belong to the requesting user.',
+					},
+				],
+			}
+		}
+		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
+			sourceFiles?: Record<string, string>
+		}>(input.stagingKey, 'json')
+		const sourceFiles = staged?.sourceFiles
+		if (!sourceFiles) {
+			return {
+				ok: false,
+				results: [
+					{
+						kind: 'manifest',
+						ok: false,
+						message:
+							'Publish check staging data expired or is missing; run the checks again.',
+					},
+				],
+			}
+		}
+		const checks = await runAuthoringPublishChecksOnFiles({
+			files: sourceFiles,
+			env: this.env,
+			baseUrl: input.baseUrl,
+			userId: input.userId,
+			...(input.sourceId ? { sourceId: input.sourceId } : {}),
+			...(input.expectedPackageScope !== undefined
+				? { expectedPackageScope: input.expectedPackageScope }
+				: {}),
+		})
+		return {
+			ok: checks.ok,
+			results: checks.results.map((result) => ({
+				kind: result.kind,
+				ok: result.ok,
+				message: result.message,
+			})),
+		}
 	}
 
 	async listPublishedPackageArtifactTargets(input: {

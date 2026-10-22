@@ -235,6 +235,7 @@ kody dev webhook ping --body ./fixture.json
 kody dev emit demo.event --body ./event.json   # subscription delivery shape
 kody dev check                   # local bundles + snapshot membership + publish checks (needs login)
 kody dev check --offline         # local bundles + snapshot membership only; publish can still refuse
+kody dev check --debug           # also print the publish checks call: HTTP status, error code, request id
 
 # Four surfaces against mock then prod:
 kody execute --target mock --invoke ./greet --params '{"name":"kent"}'

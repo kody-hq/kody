@@ -1983,3 +1983,75 @@ test('confirmed destructive overwrite replaces history with an orphan root commi
 		mockModule.writePublishedSourceSnapshot.mock.calls[0]![0].files
 	expect(JSON.stringify(publishedFiles)).not.toContain('FAKE-CANARY-7f3a')
 })
+
+test('isolated authoring checks run the publish checks on staged files and reject expired or cross-user staging keys', async () => {
+	restoreRepoSessionMockBaseline()
+	const staged = { sourceFiles: { 'package.json': '{"name":"@kody/demo"}' } }
+	const kv = { get: vi.fn(async () => staged) }
+	const repo = repoSession(kvEnv(kv))
+	mockModule.runRepoChecks.mockResolvedValueOnce({
+		ok: false,
+		results: [
+			{ kind: 'manifest', ok: true, message: 'Validated package.json.' },
+			{ kind: 'lint', ok: false, message: 'Lint failed.' },
+		],
+		manifest: null,
+		sourceFiles: {},
+	})
+	await expect(
+		repo.runIsolatedAuthoringChecks({
+			stagingKey: 'repo-checks-staging:v1:user-1:abc',
+			userId: ownerIdFromStored('user-1'),
+			baseUrl: 'https://kody.test',
+			sourceId: 'source-1',
+			expectedPackageScope: 'kody',
+		}),
+	).resolves.toEqual({
+		ok: false,
+		results: [
+			{ kind: 'manifest', ok: true, message: 'Validated package.json.' },
+			{ kind: 'lint', ok: false, message: 'Lint failed.' },
+		],
+	})
+	expect(mockModule.runRepoChecks).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			manifestPath: 'package.json',
+			sourceRoot: '/',
+			baseUrl: 'https://kody.test',
+			userId: ownerIdFromStored('user-1'),
+			sourceId: 'source-1',
+			expectedPackageScope: 'kody',
+		}),
+	)
+
+	const [{ workspace }] = mockModule.runRepoChecks.mock.lastCall as [
+		{ workspace: { readFile(path: string): Promise<string | null> } },
+	]
+	await expect(workspace.readFile('package.json')).resolves.toBe(
+		staged.sourceFiles['package.json'],
+	)
+
+	const callsBefore = mockModule.runRepoChecks.mock.calls.length
+	await expect(
+		repo.runIsolatedAuthoringChecks({
+			stagingKey: 'repo-checks-staging:v1:user-2:abc',
+			userId: ownerIdFromStored('user-1'),
+			baseUrl: 'https://kody.test',
+		}),
+	).resolves.toMatchObject({
+		ok: false,
+		results: [{ message: expect.stringMatching(/does not belong/) }],
+	})
+	kv.get.mockResolvedValueOnce(null as never)
+	await expect(
+		repo.runIsolatedAuthoringChecks({
+			stagingKey: 'repo-checks-staging:v1:user-1:gone',
+			userId: ownerIdFromStored('user-1'),
+			baseUrl: 'https://kody.test',
+		}),
+	).resolves.toMatchObject({
+		ok: false,
+		results: [{ message: expect.stringMatching(/expired or is missing/) }],
+	})
+	expect(mockModule.runRepoChecks.mock.calls.length).toBe(callsBefore)
+})

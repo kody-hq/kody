@@ -634,6 +634,75 @@ export type RunPublishChecks = (
 	files: Record<string, string>,
 ) => Promise<PackageCheckResult>
 
+/**
+ * Thrown by a {@link RunPublishChecks} runner when it could not get a usable
+ * login (no stored session, expired login, no token). Only these failures,
+ * and HTTP 401 / insufficient-scope answers, get the `kody login` hint.
+ */
+export class PublishChecksAuthError extends Error {
+	constructor(message: string, options?: { cause?: unknown }) {
+		super(message, options)
+		this.name = 'PublishChecksAuthError'
+	}
+}
+
+type PublishChecksFailureMeta = {
+	status: number | null
+	code: string | null
+	reason: string | null
+	requestId: string | null
+}
+
+function readPublishChecksFailureMeta(
+	error: unknown,
+): PublishChecksFailureMeta {
+	const record =
+		error && typeof error === 'object' ? (error as Record<string, unknown>) : {}
+	const text = (key: string) =>
+		typeof record[key] === 'string' ? (record[key] as string) : null
+	return {
+		status: typeof record.status === 'number' ? record.status : null,
+		code: text('code'),
+		reason: text('reason'),
+		requestId: text('requestId'),
+	}
+}
+
+/** True when the publish checks could not run because of the login. */
+export function isPublishChecksAuthFailure(error: unknown): boolean {
+	if (error instanceof PublishChecksAuthError) return true
+	const meta = readPublishChecksFailureMeta(error)
+	return (
+		meta.status === 401 ||
+		meta.code === 'unauthorized' ||
+		meta.code === 'insufficient_scope'
+	)
+}
+
+/**
+ * Detail for a publish-checks run that could not finish. The login hint is
+ * only for auth failures; every other failure names the server status, error
+ * code and request id so it can be reported.
+ */
+export function formatPublishChecksRunFailure(error: unknown): string {
+	const message = (
+		error instanceof Error ? error.message : String(error)
+	).replace(/\.+$/, '')
+	if (isPublishChecksAuthFailure(error)) {
+		return `could not run: ${message}. Sign in with \`kody login\` (or pass --token), or pass --offline to run only the local checks.`
+	}
+	const meta = readPublishChecksFailureMeta(error)
+	const facts = [
+		...(meta.status !== null ? [`HTTP ${meta.status}`] : []),
+		...(meta.code ? [`code ${meta.code}`] : []),
+		...(meta.reason ? [`reason ${meta.reason}`] : []),
+		...(meta.requestId && !message.includes(meta.requestId)
+			? [`request id ${meta.requestId}`]
+			: []),
+	]
+	return `could not run: ${message}${facts.length > 0 ? ` (${facts.join(', ')})` : ''}. Pass --debug for the HTTP details, or --offline to run only the local checks.`
+}
+
 export const devCheckOfflineDetail =
 	'skipped (--offline). Only local checks ran; publish runs the full publish checks and can still refuse this package.'
 
@@ -810,6 +879,9 @@ export async function runDevCheck(input: {
 	}
 
 	let publishChecksOk: boolean | null = null
+	let publishChecksError:
+		| ({ message: string } & PublishChecksFailureMeta)
+		| null = null
 	if (input.offline) {
 		push('publish checks', true, devCheckOfflineDetail, 'warning')
 	} else if (!input.runPublishChecks) {
@@ -837,11 +909,11 @@ export async function runDevCheck(input: {
 				)
 			}
 		} catch (error) {
-			push(
-				'publish checks',
-				false,
-				`could not run: ${error instanceof Error ? error.message : String(error)}. Sign in with \`kody login\` (or pass --token), or pass --offline to run only the local checks.`,
-			)
+			publishChecksError = {
+				message: error instanceof Error ? error.message : String(error),
+				...readPublishChecksFailureMeta(error),
+			}
+			push('publish checks', false, formatPublishChecksRunFailure(error))
 		}
 	}
 
@@ -855,7 +927,11 @@ export async function runDevCheck(input: {
 					ok: failed.length === 0,
 					publishChecks: input.offline
 						? { ran: false, skipped: 'offline' }
-						: { ran: publishChecksOk !== null, ok: publishChecksOk },
+						: {
+								ran: publishChecksOk !== null,
+								ok: publishChecksOk,
+								...(publishChecksError ? { error: publishChecksError } : {}),
+							},
 					...(credentialSignals.length > 0
 						? {
 								credentialedFetch: {

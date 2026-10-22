@@ -1,8 +1,10 @@
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
 import {
 	type PackageBundleTarget,
 	type PackageTypecheckTarget,
+	type RepoCheckResult,
 } from './checks.ts'
 import { isolatedRunnerResourceLimitAdvice } from './isolated-runner-limit-message.ts'
 
@@ -87,6 +89,29 @@ type IsolatedCheckPhaseStub = {
 	): Promise<IsolatedCheckPhaseOutcome>
 }
 
+/**
+ * The whole authoring publish check run (`runAuthoringPublishChecksOnFiles`)
+ * for a staged in-memory tree, as `packageCheck` (`kody dev check`) asks.
+ */
+export type IsolatedAuthoringChecksRequest = {
+	stagingKey: string
+	userId: OwnerId
+	baseUrl: string
+	sourceId?: string
+	expectedPackageScope?: string
+}
+
+export type IsolatedAuthoringChecksOutcome = {
+	ok: boolean
+	results: Array<RepoCheckResult>
+}
+
+type IsolatedAuthoringChecksStub = {
+	runIsolatedAuthoringChecks(
+		input: IsolatedAuthoringChecksRequest,
+	): Promise<IsolatedAuthoringChecksOutcome>
+}
+
 export type IsolatedCheckPhaseRunner = {
 	stage(input: {
 		userId: string
@@ -169,5 +194,91 @@ export function createIsolatedCheckPhaseRunner(
 				// Best effort: the staging entry expires via its TTL anyway.
 			}
 		},
+	}
+}
+
+/**
+ * Message for a `packageCheck` run whose throwaway isolate hit a memory or
+ * CPU reset. Names the limit so callers never see a generic outage.
+ */
+export function authoringChecksResourceLimitMessage() {
+	return (
+		'The publish checks ran out of memory or CPU time in the check runner ' +
+		'before they finished. This is a server limit, not a login or network ' +
+		'problem. Retry once; if it repeats, report it with the package size. ' +
+		isolatedRunnerResourceLimitAdvice()
+	)
+}
+
+/**
+ * Run the full authoring publish checks for an in-memory tree in a fresh,
+ * throwaway `REPO_SESSION` isolate, the same kind of Durable Object isolate
+ * publish runs its checks in. `packageCheck` used to run them inline in the
+ * shared origin request isolate, where a large tree (every module parsed for
+ * the credential stamp, lint, and the bundler snapshot) could push that
+ * isolate over its memory limit. That reset killed the request and the API
+ * edge could only answer 503 "temporarily unavailable".
+ *
+ * Returns null when the env lacks the bindings (unit tests, minimal envs);
+ * callers then run the checks inline.
+ */
+export async function runAuthoringChecksInIsolate(input: {
+	env: Env | undefined
+	userId: OwnerId
+	baseUrl: string
+	files: Record<string, string>
+	sourceId?: string
+	expectedPackageScope?: string
+}): Promise<IsolatedAuthoringChecksOutcome | null> {
+	const namespace = (
+		input.env as (Env & { REPO_SESSION?: DurableObjectNamespace }) | undefined
+	)?.REPO_SESSION
+	const stagingKv = (
+		input.env as (Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace }) | undefined
+	)?.BUNDLE_ARTIFACTS_KV
+	if (!namespace || !stagingKv) return null
+	const stagingKey = isolatedCheckStagingKeyForUser(input.userId)
+	await stagingKv.put(
+		stagingKey,
+		JSON.stringify({ sourceFiles: input.files }),
+		{ expirationTtl: stagingTtlSeconds },
+	)
+	try {
+		const stub = namespace.get(
+			namespace.idFromName(
+				`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
+			),
+		) as unknown as IsolatedAuthoringChecksStub
+		try {
+			return await stub.runIsolatedAuthoringChecks({
+				stagingKey,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				...(input.sourceId ? { sourceId: input.sourceId } : {}),
+				...(input.expectedPackageScope !== undefined
+					? { expectedPackageScope: input.expectedPackageScope }
+					: {}),
+			})
+		} catch (error) {
+			if (isDurableObjectResourceLimitResetError(error)) {
+				return {
+					ok: false,
+					results: [
+						{
+							kind: 'bundle',
+							ok: false,
+							message: authoringChecksResourceLimitMessage(),
+						},
+					],
+				}
+			}
+			throw error
+		}
+	} finally {
+		try {
+			await stagingKv.delete(stagingKey)
+		} catch {
+			// Best effort: the staging entry expires via its TTL anyway.
+		}
 	}
 }

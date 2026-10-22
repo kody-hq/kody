@@ -79,7 +79,7 @@ Usage:
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
-  kody dev check [--target prod|mock] [--offline] [--json]
+  kody dev check [--target prod|mock] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -366,7 +366,9 @@ ${orgBlock}
              runs, credential stamp gate included) with your login. Without
              \`--offline\`, a passing check means publish will not refuse it;
              \`--offline\` skips the server checks (a WARN says so) and that
-             guarantee does not apply. When the package uses credentialed
+             guarantee does not apply. \`--debug\` prints the publish checks
+             call to stderr: HTTP status, server error code, request id,
+             time, and upload size. When the package uses credentialed
              fetch and \`.kody/mocks.ts\` is missing, check soft-suggests
              adding that file. A fetch that sends a non-literal body without
              \`x-kody-secret-resolution\` prints a WARNING and still passes. On
