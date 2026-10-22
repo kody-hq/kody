@@ -1,4 +1,4 @@
-import { isPreBindingPublishedArtifact } from './pre-binding-artifact-repair.ts'
+import { isUnrepairablePreBindingArtifact } from './pre-binding-artifact-repair.ts'
 import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
 import {
 	loadPackageSourceBySourceId,
@@ -153,13 +153,13 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 	if (!artifact?.artifact) {
 		return null
 	}
-	// The reader already bound single-package pre-fix bundles in place. A
-	// bundle that is still pre-fix inlines other packages, so its modules
-	// cannot be bound to one package. Never copy it into this build (the new
-	// bundle would carry the binding marker over unbound code): build this
-	// package from source instead. When that source needs an npm install, the
-	// source path below fails with an explicit republish error.
-	if (isPreBindingPublishedArtifact(artifact.artifact)) {
+	// A pre-fix bundle that inlines other packages cannot be bound to one
+	// package in place (the reader binds single-package ones). Never copy it
+	// into this build, because the new bundle would carry the binding marker
+	// over unbound code: build this package from source instead. When that
+	// source needs an npm install, the source path below fails with an
+	// explicit republish error.
+	if (isUnrepairablePreBindingArtifact(artifact.artifact)) {
 		return null
 	}
 	const artifactPrefix = joinPath(

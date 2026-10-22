@@ -15,6 +15,7 @@ import type * as McpAuthUserContext from '#worker/mcp-auth-user-context.ts'
 import type * as RunRecordsServiceModule from '#worker/run-records/service.ts'
 import type * as Registry from '#mcp/capabilities/registry.ts'
 import type * as PackageInvocationsService from '#worker/package-invocations/service.ts'
+import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 
 const packageAppSourceText = await readFile(
 	new URL('./package-app.ts', import.meta.url),
@@ -1681,6 +1682,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 })
 
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {
+	// The fixture bundle is pre-fix shaped and the build passes no source, so
+	// serving it is logged.
+	silenceExpectedConsoleWarns([/pre_binding_bundle_served_without_source/])
 	const { env } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(undefined, {

@@ -1,6 +1,5 @@
 import {
-	isPreBindingPublishedArtifact,
-	publishedArtifactInlinesOtherPackages,
+	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
 } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
@@ -217,9 +216,7 @@ async function ensureModuleArtifactUncached(input: {
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
 	const mayNeedBindingRebuild =
-		currentArtifact != null &&
-		isPreBindingPublishedArtifact(currentArtifact) &&
-		publishedArtifactInlinesOtherPackages(currentArtifact)
+		currentArtifact != null && isUnrepairablePreBindingArtifact(currentArtifact)
 	if (currentArtifact && !mayNeedBindingRebuild) {
 		return {
 			artifact: currentArtifact,

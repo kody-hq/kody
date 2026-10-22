@@ -256,21 +256,41 @@ export function repairPreBindingPublishedArtifact<
 }
 
 /**
+ * True for a bundle built before package `fetch` became lexical that inlines
+ * other packages, so the read-time repair cannot bind it in place.
+ */
+export function isUnrepairablePreBindingArtifact(artifact: RepairableArtifact) {
+	if (!artifact.packageContext?.packageId) return false
+	return (
+		isPreBindingPublishedArtifact(artifact) &&
+		publishedArtifactInlinesOtherPackages(artifact)
+	)
+}
+
+/**
  * True when a load site holding the package's published source should
  * rebuild this bundle instead of serving it: it predates lexical package
- * `fetch`, inlines other packages (so it cannot be repaired in place), and
- * the source can rebuild without installing npm dependencies. Bundles that
- * cannot rebuild keep serving as before.
+ * `fetch` and inlines other packages (so it cannot be repaired in place), and the
+ * source can rebuild without installing npm dependencies. Bundles that
+ * cannot rebuild keep serving and log `pre_binding_bundle_needs_republish`.
  */
 export function publishedArtifactNeedsPackageBindingRebuild(input: {
 	artifact: RepairableArtifact
 	sourceFiles: Record<string, string>
 }) {
-	if (!input.artifact.packageContext?.packageId) return false
-	if (!isPreBindingPublishedArtifact(input.artifact)) return false
-	if (!publishedArtifactInlinesOtherPackages(input.artifact)) return false
-	return (
-		listMissingPublishedSourceInstalledDependencies(input.sourceFiles)
-			.length === 0
+	if (!isUnrepairablePreBindingArtifact(input.artifact)) return false
+	const missing = listMissingPublishedSourceInstalledDependencies(
+		input.sourceFiles,
 	)
+	if (missing.length === 0) return true
+	// Rebuilding needs an npm install, which only a republish can do. Keep
+	// serving, but make the unbound bundle visible.
+	console.warn(
+		JSON.stringify({
+			event: 'pre_binding_bundle_needs_republish',
+			sourceId: input.artifact.sourceId ?? null,
+			missingDependencyCount: missing.length,
+		}),
+	)
+	return false
 }

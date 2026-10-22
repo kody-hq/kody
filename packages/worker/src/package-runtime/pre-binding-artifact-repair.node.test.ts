@@ -134,3 +134,31 @@ test('reports a module the repair cannot bind instead of skipping it silently', 
 		warn.mockRestore()
 	}
 })
+
+test('a multi-package pre-fix bundle that needs an npm install to rebuild is reported', () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	try {
+		const mixed = artifact(preFixSource, {
+			dependencies: [{ packageId: 'pkg-other' }],
+			sourceId: 'src-own',
+		})
+		expect(
+			publishedArtifactNeedsPackageBindingRebuild({
+				artifact: mixed,
+				sourceFiles: {
+					'package.json': JSON.stringify({ dependencies: { marked: '1.0.0' } }),
+					'src/index.ts': 'export const wake = () => fetch("x")',
+				},
+			}),
+		).toBe(false)
+		expect(warn.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual([
+			{
+				event: 'pre_binding_bundle_needs_republish',
+				sourceId: 'src-own',
+				missingDependencyCount: 1,
+			},
+		])
+	} finally {
+		warn.mockRestore()
+	}
+})

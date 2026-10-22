@@ -1,6 +1,5 @@
 import {
-	isPreBindingPublishedArtifact,
-	publishedArtifactInlinesOtherPackages,
+	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
 } from './pre-binding-artifact-repair.ts'
 import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
@@ -2442,13 +2441,7 @@ async function resolvePackageAppBundledArtifact(input: {
 	})
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-	if (
-		currentArtifact &&
-		!(
-			isPreBindingPublishedArtifact(currentArtifact) &&
-			publishedArtifactInlinesOtherPackages(currentArtifact)
-		)
-	) {
+	if (currentArtifact && !isUnrepairablePreBindingArtifact(currentArtifact)) {
 		return servePublishedArtifact(currentArtifact)
 	}
 	// Only a caller that passes no source at all keeps serving the published
