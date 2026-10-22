@@ -113,9 +113,18 @@ async function writeMarker(cacheRoot: string, directory: string) {
 
 test('browser cache follows the host platform', () => {
 	expect(playwrightCacheRoot('/home/test', 'linux')).toBe(
-		'/home/test/.cache/ms-playwright',
+		path.join('/home/test', '.cache', 'ms-playwright'),
 	)
 	expect(playwrightCacheRoot('/Users/test', 'darwin')).toBe(
-		'/Users/test/Library/Caches/ms-playwright',
+		path.join('/Users/test', 'Library', 'Caches', 'ms-playwright'),
 	)
+	expect(playwrightCacheRoot('C:\\Users\\test', 'win32')).toBe(
+		path.join('C:\\Users\\test', 'AppData', 'Local', 'ms-playwright'),
+	)
+	expect(
+		playwrightCacheRoot('C:\\Users\\test', 'win32', {
+			USERPROFILE: 'C:\\Users\\test',
+			LOCALAPPDATA: 'D:\\Local',
+		}),
+	).toBe(path.join('D:\\Local', 'ms-playwright'))
 })

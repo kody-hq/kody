@@ -77,11 +77,17 @@ export function inspectPlaywrightBrowsers(input: {
 export function playwrightCacheRoot(
 	homeDir: string,
 	platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
 ) {
 	if (platform === 'darwin')
 		return path.join(homeDir, 'Library', 'Caches', 'ms-playwright')
-	if (platform === 'win32')
-		return path.join(homeDir, 'AppData', 'Local', 'ms-playwright')
+	if (platform === 'win32') {
+		const localAppData =
+			env.LOCALAPPDATA && (homeDir === env.USERPROFILE || homeDir === env.HOME)
+				? env.LOCALAPPDATA
+				: path.join(homeDir, 'AppData', 'Local')
+		return path.join(localAppData, 'ms-playwright')
+	}
 	return path.join(homeDir, '.cache', 'ms-playwright')
 }
 

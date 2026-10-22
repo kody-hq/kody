@@ -108,7 +108,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 
 			<CommunityListingsContent
 				{...data}
-				query={searchQuery}
+				query={searchQuery || null}
 				sort={sort}
 				category={category}
 			/>
