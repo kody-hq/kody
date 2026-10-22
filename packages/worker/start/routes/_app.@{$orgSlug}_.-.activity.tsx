@@ -22,7 +22,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/activity')({
 	loaderDeps: ({ search }: { search: Record<string, unknown> }) => ({
 		selected: search.selected,
 	}),
-	context: ({ params, location }) => ({
+	beforeLoad: ({ params, location }) => ({
 		pageQueryInput: activityInput(params.orgSlug, location.searchStr),
 	}),
 	shouldReload: ({ context }) => !context.inPlaceNavigation,

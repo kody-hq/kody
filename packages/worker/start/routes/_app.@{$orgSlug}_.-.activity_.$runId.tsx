@@ -22,7 +22,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/activity_/$runId')({
 	loaderDeps: ({ search }: { search: Record<string, unknown> }) => ({
 		selected: search.selected,
 	}),
-	context: ({ params, location }) => ({
+	beforeLoad: ({ params, location }) => ({
 		pageQueryInput: activityInput(
 			params.orgSlug,
 			location.searchStr,

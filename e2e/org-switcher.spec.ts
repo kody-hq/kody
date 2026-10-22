@@ -126,7 +126,10 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	const manageLinks = manageGroup.getByRole('link')
 	await expect(manageLinks).toHaveCount(2)
 	await expect(manageLinks.nth(0)).toHaveAccessibleName(`@pinned-${runId}`)
-	await expect(manageLinks.nth(0)).toHaveAttribute('href', `/@pinned-${runId}`)
+	await expect(manageLinks.nth(0)).toHaveAttribute(
+		'href',
+		`/@pinned-${runId}/-/overview`,
+	)
 	await expect(manageLinks.nth(1)).toHaveAccessibleName(`@${user.username}`)
 	await expect(manageLinks.nth(1)).toHaveAttribute(
 		'href',
