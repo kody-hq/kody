@@ -65,7 +65,10 @@ export function joinCredentialUrl(base: URL, path: string) {
 	const { pathname, query } = readRelativePath(path)
 	const url = new URL(base.href)
 	url.hash = ''
-	if (pathname) {
+	// URL.pathname is never empty: '', '/', and '?q' all arrive as '/' (or
+	// '/?q'). Treat that bare '/' as "no path to append" so the stored URL
+	// stays the source of truth; still append any query below.
+	if (pathname && pathname !== '/') {
 		url.pathname = `${url.pathname.replace(/\/+$/, '')}${pathname}`
 	}
 	if (query) {

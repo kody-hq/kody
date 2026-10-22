@@ -433,3 +433,38 @@ test('joinCredentialUrl appends the path and adds the query to the credential UR
 	)
 	expect(joinCredentialUrl(base, '').href).toBe(base.href)
 })
+
+/**
+ * credential-client builds path from `requestUrl.pathname + requestUrl.search`.
+ * URL.pathname is never empty, so fetch(''), fetch('/'), and fetch('?a=1') all
+ * arrive here as '/' or '/?a=1'. A bare '/' must not rewrite the stored path.
+ */
+test('joinCredentialUrl keeps the stored path for bare "/" and query-only refs', () => {
+	const file = new URL('https://example.com/path/file.ext')
+	const fileSlash = new URL('https://example.com/path/file.ext/')
+	const dir = new URL('https://example.com/path/')
+	const dirNoSlash = new URL('https://example.com/path')
+
+	expect(joinCredentialUrl(file, '/').href).toBe(
+		'https://example.com/path/file.ext',
+	)
+	expect(joinCredentialUrl(file, '/?a=1').href).toBe(
+		'https://example.com/path/file.ext?a=1',
+	)
+	expect(joinCredentialUrl(fileSlash, '/').href).toBe(
+		'https://example.com/path/file.ext/',
+	)
+	expect(joinCredentialUrl(fileSlash, '/?a=1').href).toBe(
+		'https://example.com/path/file.ext/?a=1',
+	)
+	expect(joinCredentialUrl(dir, '/').href).toBe('https://example.com/path/')
+	expect(joinCredentialUrl(dirNoSlash, '/').href).toBe(
+		'https://example.com/path',
+	)
+	expect(joinCredentialUrl(dir, '/sub').href).toBe(
+		'https://example.com/path/sub',
+	)
+	expect(joinCredentialUrl(dirNoSlash, '/sub').href).toBe(
+		'https://example.com/path/sub',
+	)
+})
