@@ -139,6 +139,7 @@ const cliFlagOptions = {
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
 	offline: { type: 'boolean' },
+	debug: { type: 'boolean' },
 	passthrough: { type: 'string' },
 	port: { type: 'string' },
 	'app-base-path': { type: 'string' },
@@ -359,6 +360,14 @@ async function dispatch(
 	) {
 		throw new Error(
 			'`--offline` is only used with `kody dev check` (skips the server publish checks).',
+		)
+	}
+	if (
+		parsed.values.debug === true &&
+		(parsed.command !== 'dev' || parsed.positionals[0] !== 'check')
+	) {
+		throw new Error(
+			'`--debug` is only used with `kody dev check` (prints the HTTP status, server error code and request id of the publish checks call).',
 		)
 	}
 	if (parsed.values['dry-run'] === true && parsed.command !== 'dev') {
@@ -1273,6 +1282,7 @@ async function dispatch(
 			// the process alive after printing results.
 			if (subcommand === 'check') {
 				const offline = parsed.values.offline === true
+				const debug = parsed.values.debug === true
 				return await runDevCheck({
 					target,
 					json,
@@ -1282,19 +1292,27 @@ async function dispatch(
 						? {}
 						: {
 								runPublishChecks: async (files) => {
-									const token = await accessTokenForOpenApi({
-										tokenValues,
-										apiUrl: prodApiUrl,
-										mcpUrl,
-										org,
-									})
 									const [
-										{ callOpenApiOperation },
-										{ parsePackageCheckResult },
+										{ callOpenApiOperation, formatOpenApiHttpDebugLine },
+										{ parsePackageCheckResult, PublishChecksAuthError },
 									] = await Promise.all([
 										import('./open-api-client.js'),
 										import('./dev-command.js'),
 									])
+									let token: string
+									try {
+										token = await accessTokenForOpenApi({
+											tokenValues,
+											apiUrl: prodApiUrl,
+											mcpUrl,
+											org,
+										})
+									} catch (error) {
+										throw new PublishChecksAuthError(
+											error instanceof Error ? error.message : String(error),
+											{ cause: error },
+										)
+									}
 									return parsePackageCheckResult(
 										await callOpenApiOperation({
 											operationId: 'packageCheck',
@@ -1302,6 +1320,14 @@ async function dispatch(
 											token,
 											apiUrl: prodApiUrl,
 											...(org ? { org } : {}),
+											...(debug
+												? {
+														onHttpDebug: (event) =>
+															writeErr(
+																`${formatOpenApiHttpDebugLine(event)}\n`,
+															),
+													}
+												: {}),
 										}),
 									)
 								},

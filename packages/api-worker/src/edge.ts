@@ -60,7 +60,7 @@ export const apiEdgeRateLimitPolicy = 'ip;q=600;w=60, token;q=300;w=60'
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',
 	'Access-Control-Expose-Headers':
-		'WWW-Authenticate, Retry-After, RateLimit-Policy, Allow, ETag',
+		'WWW-Authenticate, Retry-After, RateLimit-Policy, Allow, ETag, X-Kody-Request-Id',
 } as const
 
 const corsPreflightHeaders = {
@@ -207,9 +207,31 @@ async function rateLimitKeys(request: Request) {
 	}
 }
 
+/** Response header that names one API request, for support and logs. */
+export const apiRequestIdHeader = 'X-Kody-Request-Id'
+
+/**
+ * Cloudflare's ray id when present (it also keys the Workers logs for this
+ * request), otherwise a random id.
+ */
+function readRequestId(request: Request) {
+	return request.headers.get('CF-Ray')?.trim() || crypto.randomUUID()
+}
+
 export async function handleApiEdgeRequest(
 	request: Request,
 	env: ApiWorkerEnv,
+): Promise<Response> {
+	const requestId = readRequestId(request)
+	const response = await routeApiEdgeRequest(request, env, requestId)
+	response.headers.set(apiRequestIdHeader, requestId)
+	return response
+}
+
+async function routeApiEdgeRequest(
+	request: Request,
+	env: ApiWorkerEnv,
+	requestId: string,
 ): Promise<Response> {
 	const url = new URL(request.url)
 	if (url.pathname === '/health') {
@@ -275,7 +297,7 @@ export async function handleApiEdgeRequest(
 			requestInit.body = request.body
 			requestInit.duplex = 'half'
 		}
-		return fetchOrigin(env, new Request(url.toString(), requestInit))
+		return fetchOrigin(env, new Request(url.toString(), requestInit), requestId)
 	}
 
 	let body: Uint8Array<ArrayBuffer> | undefined
@@ -296,19 +318,69 @@ export async function handleApiEdgeRequest(
 		headers: buildForwardHeaders(request.headers),
 		...(body && body.byteLength > 0 ? { body } : {}),
 	})
-	return fetchOrigin(env, forwarded)
+	return fetchOrigin(env, forwarded, requestId)
 }
 
-async function fetchOrigin(env: ApiWorkerEnv, forwarded: Request) {
+/**
+ * Cloudflare rejects the origin call with one of these when the origin
+ * invocation ran past its memory or CPU limit. Retrying the same request
+ * usually fails the same way, so say so instead of "temporarily unavailable".
+ */
+const originResourceLimitPattern =
+	/exceeded (?:its )?(?:memory|cpu)|memory limit|cpu time limit|resource limits?/i
+
+export function describeOriginForwardFailure(
+	error: unknown,
+	requestId: string,
+) {
+	const detail = error instanceof Error ? error.message : String(error)
+	if (originResourceLimitPattern.test(detail)) {
+		return {
+			reason: 'origin_resource_limit' as const,
+			message: `The Kody API ran out of server memory or CPU time before it answered this request (request id ${requestId}). This is a server limit, not a login or network problem; retrying the same request usually fails the same way. Quote the request id when you report it.`,
+		}
+	}
+	return {
+		reason: 'origin_unreachable' as const,
+		message: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
+	}
+}
+
+async function fetchOrigin(
+	env: ApiWorkerEnv,
+	forwarded: Request,
+	requestId: string,
+) {
 	try {
 		return withEdgeHeaders(await env.KODY_API.fetch(forwarded))
 	} catch (error) {
-		console.error('api-worker-forward-failed', error)
-		return errorResponse(
-			503,
-			'internal_error',
-			'The Kody API is temporarily unavailable.',
-			{ 'Retry-After': '5' },
+		const failure = describeOriginForwardFailure(error, requestId)
+		console.error('api-worker-forward-failed', error, {
+			requestId,
+			reason: failure.reason,
+			path: new URL(forwarded.url).pathname,
+		})
+		return withEdgeHeaders(
+			Response.json(
+				{
+					error: {
+						code: 'internal_error',
+						message: failure.message,
+						details: { reason: failure.reason, request_id: requestId },
+					},
+				},
+				{
+					status: 503,
+					// A resource-limit failure usually repeats, so do not invite an
+					// automatic retry of the same request.
+					headers: {
+						'Cache-Control': 'no-store',
+						...(failure.reason === 'origin_unreachable'
+							? { 'Retry-After': '5' }
+							: {}),
+					},
+				},
+			),
 		)
 	}
 }

@@ -6,9 +6,11 @@ import { test } from 'node:test'
 import { runCli } from '../src/cli.js'
 import {
 	parsePackageCheckResult,
+	PublishChecksAuthError,
 	runDevCheck,
 	type PackageCheckResult,
 } from '../src/dev-command.js'
+import { OpenApiError } from '../src/open-api-client.js'
 
 const stampGateMessage =
 	'Credential stamp publish gate (issue #3836 phase 1):\nsrc/index.ts uses a computed |scope= placeholder.'
@@ -158,6 +160,89 @@ test('kody dev check fails closed when publish checks cannot run', async () => {
 		)
 		assert.match(noRunner.stdout, /^FAIL\s+publish checks/m)
 	})
+})
+
+test('kody dev check shows the login hint only for auth failures', async () => {
+	await withPackage(async (root) => {
+		const serverDown = capture()
+		assert.equal(
+			await runDevCheck({
+				target: 'mock',
+				cwd: root,
+				json: true,
+				io: serverDown.io,
+				runPublishChecks: async () => {
+					throw new OpenApiError(
+						'The Kody API ran out of server memory or CPU time before it answered this request (request id ray-1).',
+						{
+							status: 503,
+							code: 'internal_error',
+							reason: 'origin_resource_limit',
+							requestId: 'ray-1',
+						},
+					)
+				},
+			}),
+			1,
+		)
+		const parsed = JSON.parse(serverDown.stdout) as {
+			checks: Array<{ name: string; ok: boolean; detail?: string }>
+			publishChecks: Record<string, unknown>
+		}
+		const failure = parsed.checks.find(
+			(check) => check.name === 'publish checks',
+		)
+		assert.ok(failure && !failure.ok)
+		assert.doesNotMatch(failure.detail ?? '', /kody login/)
+		assert.match(
+			failure.detail ?? '',
+			/\(HTTP 503, code internal_error, reason origin_resource_limit\)/,
+		)
+		assert.match(failure.detail ?? '', /request id ray-1/)
+		assert.deepEqual(parsed.publishChecks, {
+			ran: false,
+			ok: null,
+			error: {
+				message:
+					'The Kody API ran out of server memory or CPU time before it answered this request (request id ray-1).',
+				status: 503,
+				code: 'internal_error',
+				reason: 'origin_resource_limit',
+				requestId: 'ray-1',
+			},
+		})
+
+		for (const authError of [
+			new PublishChecksAuthError('Not signed in.'),
+			new OpenApiError('Kody rejected the API token.', {
+				status: 401,
+				code: 'unauthorized',
+			}),
+		]) {
+			const out = capture()
+			await runDevCheck({
+				target: 'mock',
+				cwd: root,
+				io: out.io,
+				runPublishChecks: async () => {
+					throw authError
+				},
+			})
+			assert.match(out.stdout, /Sign in with `kody login`/)
+		}
+	})
+})
+
+test('--debug is only accepted by kody dev check', async () => {
+	let stderr = ''
+	const code = await runCli(['search', 'x', '--debug'], {
+		stdout: () => {},
+		stderr: (text) => {
+			stderr += text
+		},
+	})
+	assert.notEqual(code, 0)
+	assert.match(stderr, /--debug/)
 })
 
 test('kody dev check --offline runs local checks only and says publish can still refuse', async () => {

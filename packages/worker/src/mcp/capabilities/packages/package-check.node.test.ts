@@ -158,3 +158,77 @@ test('packageCheck rejects paths outside the package root', async () => {
 		check({ ...stampedScopePackageFiles(), '../secrets.txt': 'nope' }),
 	).rejects.toThrow(/relative to the package root/)
 })
+
+function isolatedCheckEnv(
+	runIsolatedAuthoringChecks: (request: Record<string, unknown>) => unknown,
+) {
+	const kv = {
+		put: vi.fn(async (_key: string, _value: string, _options: unknown) => {}),
+		delete: vi.fn(async (_key: string) => {}),
+	}
+	const namespace = {
+		idFromName: vi.fn((name: string) => ({ name })),
+		get: vi.fn(() => ({ runIsolatedAuthoringChecks })),
+	}
+	return {
+		kv,
+		namespace,
+		env: {
+			APP_DB: {},
+			REPO_SESSION: namespace,
+			BUNDLE_ARTIFACTS_KV: kv,
+		} as unknown as Env,
+	}
+}
+
+test('packageCheck runs the publish checks in a throwaway check isolate when the bindings exist', async () => {
+	resetMocks()
+	const files = stampedScopePackageFiles()
+	const runIsolatedAuthoringChecks = vi.fn(async () => ({
+		ok: true,
+		results: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
+	}))
+	const isolated = isolatedCheckEnv(runIsolatedAuthoringChecks)
+	const result = (await packageCheckCapability.handler(
+		{ files },
+		{ env: isolated.env, callerContext: callerContext() },
+	)) as { ok: boolean; checks: Array<{ kind: string; ok: boolean }> }
+	expect(result).toMatchObject({
+		ok: true,
+		checks: [{ kind: 'manifest', ok: true }],
+	})
+	const [stagingKey, staged] = isolated.kv.put.mock.calls[0]!
+	expect(stagingKey).toMatch(/^repo-checks-staging:v1:user-1:/)
+	expect(JSON.parse(staged)).toEqual({ sourceFiles: files })
+	expect(isolated.namespace.idFromName).toHaveBeenCalledWith(
+		expect.stringMatching(/^isolated-authoring-checks-user-1-/),
+	)
+	expect(runIsolatedAuthoringChecks).toHaveBeenCalledWith({
+		stagingKey,
+		userId: owner.ownerUserId,
+		baseUrl: 'https://kody.test',
+		expectedPackageScope: 'acme',
+	})
+	expect(isolated.kv.delete).toHaveBeenCalledWith(stagingKey)
+})
+
+test('packageCheck names the memory or CPU limit when the check isolate is reset', async () => {
+	resetMocks()
+	const isolated = isolatedCheckEnv(async () => {
+		throw new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset.",
+		)
+	})
+	const result = (await packageCheckCapability.handler(
+		{ files: stampedScopePackageFiles() },
+		{ env: isolated.env, callerContext: callerContext() },
+	)) as {
+		ok: boolean
+		checks: Array<{ kind: string; ok: boolean; message: string }>
+	}
+	expect(result.ok).toBe(false)
+	expect(result.checks).toHaveLength(1)
+	expect(result.checks[0]).toMatchObject({ kind: 'bundle', ok: false })
+	expect(result.checks[0]!.message).toMatch(/ran out of memory or CPU time/)
+	expect(isolated.kv.delete).toHaveBeenCalled()
+})

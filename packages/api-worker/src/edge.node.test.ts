@@ -191,12 +191,69 @@ test('reports origin failures with the error envelope', async () => {
 		env,
 	)
 	expect(response.status).toBe(503)
+	const requestId = response.headers.get('X-Kody-Request-Id')
+	expect(requestId).toBeTruthy()
+	expect(response.headers.get('Retry-After')).toBe('5')
 	expect(await response.json()).toMatchObject({
-		error: { code: 'internal_error' },
+		error: {
+			code: 'internal_error',
+			message: expect.stringContaining(`request id ${requestId}`),
+			details: { reason: 'origin_unreachable', request_id: requestId },
+		},
 	})
 	expect(consoleError).toHaveBeenCalledWith(
 		'api-worker-forward-failed',
 		expect.any(Error),
+		expect.objectContaining({ requestId, reason: 'origin_unreachable' }),
+	)
+})
+
+test('names an origin memory or CPU limit and echoes the ray id as the request id', async () => {
+	consoleError.mockImplementation(() => {})
+	const env: ApiWorkerEnv = {
+		KODY_API: {
+			async fetch() {
+				throw new Error('Worker exceeded memory limit.')
+			},
+		} as unknown as Fetcher,
+	}
+	const response = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/v1/packages/check', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+				'CF-Ray': '8f00aa11bb22cc33-SJC',
+			},
+			body: JSON.stringify({ files: { 'package.json': '{}' } }),
+		}),
+		env,
+	)
+	expect(response.status).toBe(503)
+	expect(response.headers.get('X-Kody-Request-Id')).toBe('8f00aa11bb22cc33-SJC')
+	expect(response.headers.get('Retry-After')).toBeNull()
+	const body = (await response.json()) as {
+		error: { code: string; message: string; details: unknown }
+	}
+	expect(body.error.code).toBe('internal_error')
+	expect(body.error.details).toEqual({
+		reason: 'origin_resource_limit',
+		request_id: '8f00aa11bb22cc33-SJC',
+	})
+	expect(body.error.message).toMatch(/ran out of server memory or CPU time/)
+	expect(body.error.message).not.toMatch(/temporarily unavailable/)
+})
+
+test('every edge response carries a request id header', async () => {
+	const { env } = createEnv()
+	const response = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/nope'),
+		env,
+	)
+	expect(response.status).toBe(404)
+	expect(response.headers.get('X-Kody-Request-Id')).toMatch(/\S/)
+	expect(response.headers.get('Access-Control-Expose-Headers')).toMatch(
+		/X-Kody-Request-Id/,
 	)
 })
 

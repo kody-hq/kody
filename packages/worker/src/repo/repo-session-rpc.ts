@@ -6,6 +6,8 @@ import {
 	type IsolatedArtifactRebuildRequest,
 } from './isolated-artifact-rebuild.ts'
 import {
+	type IsolatedAuthoringChecksOutcome,
+	type IsolatedAuthoringChecksRequest,
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
@@ -147,6 +149,9 @@ export type RepoSessionRpc = {
 	runIsolatedCheckPhase: (
 		payload: IsolatedCheckPhaseRequest,
 	) => Promise<IsolatedCheckPhaseOutcome>
+	runIsolatedAuthoringChecks: (
+		payload: IsolatedAuthoringChecksRequest,
+	) => Promise<IsolatedAuthoringChecksOutcome>
 	getCheckStatus: (payload: {
 		sessionId: string
 		userId: string

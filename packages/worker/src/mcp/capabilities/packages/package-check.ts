@@ -10,6 +10,7 @@ import { resolvePackageOwnerContext } from '#worker/package-registry/package-own
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { runAuthoringPublishChecksOnFiles } from '#worker/repo/authoring-publish-checks.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
+import { runAuthoringChecksInIsolate } from '#worker/repo/isolated-check-phases.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 
@@ -122,14 +123,20 @@ export const packageCheckCapability = defineDomainCapability(
 					sourceId = undefined
 				}
 			}
-			const checks = await runAuthoringPublishChecksOnFiles({
+			const checkInput = {
 				files,
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,
 				expectedPackageScope: owner.ownerScope,
 				...(sourceId ? { sourceId } : {}),
-			})
+			}
+			// Run in a throwaway check isolate, like publish does, never in the
+			// shared request isolate: a large tree there can exceed the isolate
+			// memory limit and kill the request with no answer at all.
+			const checks =
+				(await runAuthoringChecksInIsolate(checkInput)) ??
+				(await runAuthoringPublishChecksOnFiles(checkInput))
 			return {
 				ok: checks.ok,
 				package_name: packageName,
