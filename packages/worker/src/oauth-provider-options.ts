@@ -1,6 +1,7 @@
 // `import type * as` is fully erased under verbatimModuleSyntax; a named
 // `{ type X }` import would keep a side-effect import of the provider (and its
 // `cloudflare:workers` dependency) on the platform/runtime startup path.
+import { waitUntil } from 'cloudflare:workers'
 import type * as WorkersOAuthProvider from '@cloudflare/workers-oauth-provider'
 import { oauthPaths } from '#universal/oauth-paths.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
@@ -85,7 +86,14 @@ export function createSharedOAuthProviderOptions(
 		// CIMD lookup failures stay generic on the wire and keep the provider's own
 		// CIMD console.warn. Unexpected throws still reach fetch catch + Sentry.
 		onError: (error) => {
-			void reportOAuthProviderError(error)
+			// Provider does not await onError; pin reporting to the request so
+			// client-id lookup + audit are not dropped when the OAuth response
+			// returns first.
+			waitUntil(
+				reportOAuthProviderError(error).catch((reportError) => {
+					console.warn('oauth-provider-error-report-failed', reportError)
+				}),
+			)
 		},
 		// v1.2 removed allowPlainPKCE / allowImplicitFlow (S256 + auth code only).
 		// App-layer getPkceValidationError remains defense in depth. See

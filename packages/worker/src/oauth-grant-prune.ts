@@ -69,7 +69,20 @@ export function selectOAuthGrantsToPrune(input: {
 	}
 
 	if (retained.length > maxGrants) {
-		for (const grant of retained.slice(maxGrants)) {
+		// Grants that share the newest positive createdAt stay (same-second
+		// concurrent CIMD auths); only older timestamps are excess candidates.
+		const newestPositiveCreatedAt = retained.reduce((newest, grant) => {
+			const createdAt = grantCreatedAtSeconds(grant)
+			return createdAt > 0 && createdAt > newest ? createdAt : newest
+		}, 0)
+		const excessCandidates = retained.filter(
+			(grant) => grantCreatedAtSeconds(grant) !== newestPositiveCreatedAt,
+		)
+		const protectedCount = retained.length - excessCandidates.length
+		const olderToKeep = Math.max(0, maxGrants - protectedCount)
+		// retained is newest-first; excessCandidates keeps that order, so the
+		// oldest excess are at the end.
+		for (const grant of excessCandidates.slice(olderToKeep)) {
 			toRevoke.push({ id: grant.id, reason: 'excess' })
 		}
 	}

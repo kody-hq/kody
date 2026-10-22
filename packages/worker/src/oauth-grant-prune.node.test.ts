@@ -65,6 +65,30 @@ test('selectOAuthGrantsToPrune never revokes keepGrantIds', () => {
 	).toEqual([{ id: 'grant-10', reason: 'excess' }])
 })
 
+test('selectOAuthGrantsToPrune keeps every grant tied at the newest createdAt', () => {
+	const nowSeconds = 1_700_000_000
+	const grants = [
+		grant('tie-a', nowSeconds),
+		grant('tie-b', nowSeconds),
+		grant('tie-c', nowSeconds),
+		...Array.from({ length: 10 }, (_, index) =>
+			grant(`older-${index}`, nowSeconds - (index + 1) * 60),
+		),
+	]
+
+	expect(
+		selectOAuthGrantsToPrune({
+			grants,
+			nowSeconds,
+			maxGrants: 10,
+		}),
+	).toEqual([
+		{ id: 'older-7', reason: 'excess' },
+		{ id: 'older-8', reason: 'excess' },
+		{ id: 'older-9', reason: 'excess' },
+	])
+})
+
 test('pruneUserClientOAuthGrants revokes selected grants and audits once', async () => {
 	const nowSeconds = 1_700_000_000
 	const revoked: Array<string> = []
