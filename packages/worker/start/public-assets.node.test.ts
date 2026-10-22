@@ -16,6 +16,7 @@ test('release public files use the immutable namespace, document and service URL
 		'/site.webmanifest',
 		'/favicon.ico',
 		'/favicon.svg',
+		'/favicon-32x32-dark.png',
 		'/images/kody-mark.png',
 		'/images/brand/kody-mark.svg',
 		'/logo-64.webp',

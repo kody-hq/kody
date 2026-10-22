@@ -22,6 +22,7 @@ export async function renderStartPage(
 	session: SessionInfo | null = null,
 	seedQueries?: (client: QueryClient) => void,
 	shell?: Partial<AppShell>,
+	routeStaticData?: Record<string, unknown>,
 ) {
 	const cache = createCache({ key: 'native-test' })
 	const queryClient = new QueryClient({
@@ -61,7 +62,7 @@ export async function renderStartPage(
 	const route = createRoute({
 		getParentRoute: () => root,
 		path: '$',
-		staticData: { shell },
+		staticData: { shell, ...routeStaticData },
 		component: () => page,
 	})
 	const router = createRouter({

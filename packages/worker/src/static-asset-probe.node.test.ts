@@ -52,6 +52,7 @@ test('public files and client bundles still probe ASSETS', () => {
 		'/assets/index-abc123.js',
 		'/favicon.ico',
 		'/favicon.svg',
+		'/favicon-32x32-dark.png',
 		'/og/kody-logo.png',
 		'/fonts/bricolage-grotesque-latin.woff2',
 		'/images/kody-mark.png',

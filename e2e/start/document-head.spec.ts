@@ -19,17 +19,36 @@ test('SSR preserves document metadata and critical resource ordering', async ({
 				'utf-8',
 			)
 			await expect(
+				page.locator(
+					'head link[rel="icon"][href="/favicon-32x32.png"][media="(prefers-color-scheme: light)"]',
+				),
+			).toHaveAttribute('sizes', '32x32')
+			await expect(
+				page.locator(
+					'head link[rel="icon"][href="/favicon-16x16.png"][media="(prefers-color-scheme: light)"]',
+				),
+			).toHaveAttribute('sizes', '16x16')
+			await expect(
+				page.locator(
+					'head link[rel="icon"][href="/favicon-32x32-dark.png"][media="(prefers-color-scheme: dark)"]',
+				),
+			).toHaveAttribute('sizes', '32x32')
+			await expect(
+				page.locator(
+					'head link[rel="icon"][href="/favicon-16x16-dark.png"][media="(prefers-color-scheme: dark)"]',
+				),
+			).toHaveAttribute('sizes', '16x16')
+			await expect(
+				page.locator('head link[rel="icon"][href="/favicon.ico"]'),
+			).toHaveAttribute('sizes', 'any')
+			await expect(
+				page.locator(
+					'head link[rel="apple-touch-icon"][href="/apple-touch-icon.png"]',
+				),
+			).toHaveAttribute('sizes', '180x180')
+			await expect(
 				page.locator('head link[rel="icon"][type="image/svg+xml"]'),
-			).toHaveAttribute('href', '/favicon.svg')
-			for (const [rel, href, sizes] of [
-				['icon', '/favicon.ico', 'any'],
-				['icon', '/favicon-32x32.png', '32x32'],
-				['icon', '/favicon-16x16.png', '16x16'],
-				['apple-touch-icon', '/apple-touch-icon.png', '180x180'],
-			])
-				await expect(
-					page.locator(`head link[rel="${rel}"][href="${href}"]`),
-				).toHaveAttribute('sizes', sizes!)
+			).toHaveCount(0)
 			await expect(page.locator('head link[rel="manifest"]')).toHaveAttribute(
 				'href',
 				'/site.webmanifest',

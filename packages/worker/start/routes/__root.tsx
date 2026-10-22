@@ -392,24 +392,37 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name="viewport" content={documentViewport} />
-				<link
-					rel="icon"
-					href={publicAsset('/favicon.svg')}
-					type="image/svg+xml"
-				/>
-				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
+				{/* Transparent PNGs (no padding): black for light OS chrome, white
+				    for dark. Uses prefers-color-scheme, not the in-app theme. */}
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="32x32"
 					href={publicAsset('/favicon-32x32.png')}
+					media="(prefers-color-scheme: light)"
 				/>
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="16x16"
 					href={publicAsset('/favicon-16x16.png')}
+					media="(prefers-color-scheme: light)"
 				/>
+				<link
+					rel="icon"
+					type="image/png"
+					sizes="32x32"
+					href={publicAsset('/favicon-32x32-dark.png')}
+					media="(prefers-color-scheme: dark)"
+				/>
+				<link
+					rel="icon"
+					type="image/png"
+					sizes="16x16"
+					href={publicAsset('/favicon-16x16-dark.png')}
+					media="(prefers-color-scheme: dark)"
+				/>
+				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
 				<link
 					rel="apple-touch-icon"
 					sizes="180x180"

@@ -5,11 +5,12 @@ import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import { ShellNavigation } from '../pages/account-management-components.tsx'
 import { accountManagementNarrowMq } from '../pages/account-management-link-nav.tsx'
+import { BrandContextMenu } from './brand-context-menu.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
+import { KodyMark } from './kody-mark.tsx'
 import { AccountMenu } from './org-switcher.tsx'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
-import { publicAsset } from '../public-assets.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 export function WorkspaceLayout() {
@@ -73,27 +74,24 @@ export function WorkspaceLayout() {
 							justifyContent: 'space-between',
 						}}
 					>
-						<SiteLink
-							href="/"
-							aria-label="Kody home"
-							css={{
-								display: 'flex',
-								alignItems: 'center',
-								gap: '0.5rem',
-								color: colors.text,
-								textDecoration: 'none',
-								fontWeight: 750,
-								fontSize: '1.2rem',
-							}}
-						>
-							<img
-								src={publicAsset('/images/kody-mark.png')}
-								alt=""
-								width={30}
-								height={30}
-							/>
-							Kody
-						</SiteLink>
+						<BrandContextMenu>
+							<SiteLink
+								href="/"
+								aria-label="Kody home"
+								css={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.5rem',
+									color: colors.text,
+									textDecoration: 'none',
+									fontWeight: 750,
+									fontSize: '1.2rem',
+								}}
+							>
+								<KodyMark size={30} />
+								Kody
+							</SiteLink>
+						</BrandContextMenu>
 						<AccountMenu
 							placement="sidebar"
 							organizations={session.organizations ?? []}
