@@ -510,7 +510,7 @@ export does not list them.
      - blob7: `executeShape ?? ''`
      - blob8: `cacheReuse ?? ''`
      - blob9: `packageId ?? ''` (empty means Ad hoc for customer credit
-       attribution on `/account/usage`)
+       attribution on `/@<slug>/-/usage`)
      - blob10: `actorUserId` (`''` for Automation; otherwise defaults to org
        billing id when unset on the event)
      - blob11: `automationSource` (`''` | `webhook` | `schedule` | `email`)
@@ -564,10 +564,10 @@ export does not list them.
    one point lookup per user, metric, and month.
 
 3. **D1 `usage_attribution_daily`** (billable-unit breakdown for
-   `/account/usage`) stores daily units per org billing id, package, and meter.
-   Columns `actor_user_id` and `automation_source` mirror Analytics Engine
-   `blob10` and `blob11`. Local dev upserts them on each billable `recordUsage`
-   write; production recomputes from Analytics Engine in
+   `/@<slug>/-/usage`) stores daily units per org billing id, package, and
+   meter. Columns `actor_user_id` and `automation_source` mirror Analytics
+   Engine `blob10` and `blob11`. Local dev upserts them on each billable
+   `recordUsage` write; production recomputes from Analytics Engine in
    `packages/worker/src/usage/credit-attribution.ts`. Writers should populate
    attribution on the event (or rely on the `usageEventBlobs()` defaults) so
    these columns are not left null when actor or automation context exists.
@@ -583,14 +583,12 @@ export does not list them.
    (only when it returned rows for yesterday; today's rows are never deleted
    because ingestion lags), and prunes days older than 14. Local dev upserts on
    each `recordUsage` write. Rows with an empty `credential_kind` predate
-   connection tracking. `/account/connection-usage.json` (`loadConnectionUsage`
-   in `connection-usage.ts`) reads it for the page org: everyone sees their own
-   connections; `billing:read` adds Automation, other people by username only,
-   and untracked units. The org comes from the Referer on `/@slug/-/agents`,
-   like `/account/connected-agents.json`. Package names follow the team
-   Repositories rule (`canSeeResource`): a package the viewer cannot see keeps
-   its units under a generic label, and team packages do not link until they
-   have detail pages.
+   connection tracking. `loadConnectionUsage` in `connection-usage.ts` reads it
+   for the page org on `/@<slug>/-/agents`: everyone sees their own connections;
+   `billing:read` adds Automation, other people by username only, and untracked
+   units. Package names follow the team Repositories rule (`canSeeResource`): a
+   package the viewer cannot see keeps its units under a generic label, and team
+   packages do not link until they have detail pages.
 
 ## Agent package conversation uses
 

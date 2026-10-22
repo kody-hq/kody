@@ -116,8 +116,8 @@ PKCE land a per-app host-only `__Host-kody_pkg_session_<hash>` cookie on the app
 origin (`*.kody.run` or a verified custom domain). Shared hosts keep one cookie
 per package leaf so logout of one app does not sign the visitor out of siblings.
 Redirect URIs are limited to `/-/auth/callback` on those origins (legacy
-`/_kody/auth/callback` still accepted). **Open app** still uses the `/open`
-handoff path until in-app OAuth fully replaces it.
+`/_kody/auth/callback` still accepted). **Open app** uses the `/open` handoff
+path.
 
 Near-zero-config helper:
 

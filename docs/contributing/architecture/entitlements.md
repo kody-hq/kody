@@ -328,8 +328,8 @@ drops to Free limits.
 
 Internally the 50× figure is a ceiling on how far credits go. Customer copy
 never frames it as something a balance unlocks, and never names Max; the rate
-card in the Credits section of `/account/usage` is where customers see the debit
-rates.
+card in the Credits section of `/@<slug>/-/usage` is where customers see the
+debit rates.
 
 **Debits.** The `usage_aggregation` lane runs `runCreditDebits`
 (`packages/worker/src/billing/credit-debits.ts`) right after it recomputes
@@ -362,8 +362,9 @@ overage-invoice ledger.
 **Top-ups.** `POST /account/credits/top-up.json` (Pro only) opens a one-off
 Checkout Session (`mode=payment`, `price_data`, card saved with
 `setup_future_usage=off_session`, metadata `kody_credit_top_up`). The
-`/account/usage?topup=success` redirect and the `checkout.session.completed`
-webhook both call `applyCreditTopUpFromCheckoutSession`, which credits Stripe's
+`/@<slug>/-/usage?topup=success` redirect (`/account/usage?topup=success` 302s
+there with the query intact) and the `checkout.session.completed` webhook both
+call `applyCreditTopUpFromCheckoutSession`, which credits Stripe's
 `amount_total` after verifying the signed `client_reference_id`. The unique
 `stripe_reference` makes replays no-ops. Packs are $10 / $25 /
 $50 or a custom
@@ -399,9 +400,9 @@ The balance is held until the account is credit-eligible Pro (include → credit
 Free. The grant runs at account creation as best-effort: person-account inserts
 set `orgs.signup_welcome_credits_pending = 1` in the same write, then clear it
 after a confirmed grant. If D1 fails during the grant, signup still succeeds and
-the flag stays set. Password / OAuth / passkey / 2FA login and `/account/usage`
-wallet loads call `reconcileSignupWelcomeCreditsIfPending`, which retries only
-when that flag is set. When Stripe later flips `stripe_credits_eligible` on,
+the flag stays set. Password / OAuth / passkey / 2FA login and usage-page wallet
+loads call `reconcileSignupWelcomeCreditsIfPending`, which retries only when
+that flag is set. When Stripe later flips `stripe_credits_eligible` on,
 `refreshStripePlanForUser` calls `forgiveCreditUsageBeforeUnlock` so Free-period
 usage above the Pro include is not charged against the welcome balance.
 
@@ -528,12 +529,13 @@ only when crossing the include would stop runs: an empty purchasable-Pro wallet
 (`computeIncludeWarningPutsAccessAtRisk` in `universal/usage-presentation.ts`).
 Free and other wallet-less plans never get those mails (the include never
 charges or stops them), and funded wallets get the low-balance and auto-refill
-cap mails instead. `/account/usage` (one page; `/account/credits` redirects to
-its `#credits` section) uses the same framing from that module: activity (code
-executions and runs) first, included compute as a bar capped at 100% with
-past-include usage shown as dollars on credits, and one credits alarm only when
-the wallet or access is at risk. Free sees Worker compute and Rows read as
-informational counts only. Usage above an include debits a funded
+cap mails instead. `/@<slug>/-/usage` uses the same framing from that module:
+activity (code executions and runs) first, included compute as a bar capped at
+100% with past-include usage shown as dollars on credits, and one credits alarm
+only when the wallet or access is at risk. `/account/usage` 302s to the personal
+org's usage page. `/account/credits` 302s to `/@<slug>/-/credits`, or to usage
+`#credits` when the URL carries `?topup`. Free sees Worker compute and Rows read
+as informational counts only. Usage above an include debits a funded
 purchasable-Pro wallet, stops new compute on an empty one, and is neither
 charged nor stopped on plans without a wallet; see
 [Prepaid credits](#prepaid-credits). Execute and outbound fetches are daily and
