@@ -218,6 +218,21 @@ test('credits alarm fires only when the wallet or access is at risk', () => {
 	})
 	expect(
 		alarm({
+			creditWallet: 'empty',
+			meters: past,
+			canBuyCredits: false,
+			hasPaidProSubscription: true,
+			autoRefill: null,
+		}),
+	).toMatchObject({
+		kind: 'include_used_no_credits',
+		body: expect.stringContaining(
+			'Buying credits is currently unavailable for this account.',
+		),
+		action: { label: 'Manage credits' },
+	})
+	expect(
+		alarm({
 			creditWallet: 'funded',
 			meters: past,
 			balanceMicroUsd: 3_000_000,

@@ -71,6 +71,7 @@ function wallet(
 		configured: true,
 		canSwitchToPro: true,
 		canBuyCredits: true,
+		hasPaidProSubscription: true,
 		balanceMicroUsd: 18_420_000,
 		hasCredits: true,
 		packsCents: [1_000, 2_500, 5_000],
@@ -311,7 +312,12 @@ test('auto-refill on shows its settings, cap notices, and the card note', async 
 
 test('eligible wallet that cannot buy explains paid subscription, not purchase UI', async () => {
 	const { html, text } = await renderUsagePage(
-		usage({ credits: wallet({ canBuyCredits: false }) }),
+		usage({
+			credits: wallet({
+				canBuyCredits: false,
+				hasPaidProSubscription: false,
+			}),
+		}),
 	)
 	expect(text).toContain(
 		'Buying credits requires a paid Pro subscription. A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.',
@@ -322,6 +328,23 @@ test('eligible wallet that cannot buy explains paid subscription, not purchase U
 	expect(html).toContain('>Start a Pro subscription<')
 	expect(html).not.toContain('Custom amount ($)')
 	expect(html).not.toContain('>$25<')
+})
+
+test('paid Pro without customer does not claim a plan grant', async () => {
+	const { html, text } = await renderUsagePage(
+		usage({
+			credits: wallet({
+				canBuyCredits: false,
+				hasPaidProSubscription: true,
+				canSwitchToPro: true,
+			}),
+		}),
+	)
+	expect(text).toContain(
+		'Buying credits is currently unavailable for this account. Top-ups need a linked Stripe customer on your Pro subscription.',
+	)
+	expect(html).not.toContain('>Start a Pro subscription<')
+	expect(html).not.toContain('Custom amount ($)')
 })
 
 test('credits notice from a top-up shows in the Credits section', async () => {

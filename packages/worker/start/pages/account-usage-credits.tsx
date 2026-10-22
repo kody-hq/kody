@@ -42,6 +42,7 @@ import {
 	type CreditAutoRefillSettings,
 	type CreditNotifySettings,
 } from '#universal/credits.ts'
+import { buyCreditsUnavailableGuidance } from '#universal/usage-presentation.ts'
 import {
 	type AccountUsageCredits,
 	type AccountUsageCreditsWallet,
@@ -540,14 +541,17 @@ export function AccountUsageCreditsSection(
 	}
 
 	function renderPurchaseUnavailable(credits: AccountUsageCreditsWallet) {
+		const unavailable = buyCreditsUnavailableGuidance(
+			credits.hasPaidProSubscription,
+		)
 		return (
 			<AccountManagementPanel title="Add credits">
 				<p css={descriptionCss}>
-					Buying credits requires a paid Pro subscription. A plan grant covers
-					Pro limits and an eligible wallet, but not self-serve top-ups or
-					auto-refill.
+					{credits.hasPaidProSubscription
+						? `${unavailable} Top-ups need a linked Stripe customer on your Pro subscription.`
+						: `${unavailable} A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.`}
 				</p>
-				{credits.canSwitchToPro ? (
+				{!credits.hasPaidProSubscription && credits.canSwitchToPro ? (
 					<>
 						<p css={descriptionCss}>
 							Start a Pro subscription if you want to buy credits yourself.
@@ -591,7 +595,7 @@ export function AccountUsageCreditsSection(
 							? 'Usage past your monthly include is charged from these credits.'
 							: credits.canBuyCredits
 								? 'With no credits left, usage past your monthly include stops. Add credits to keep going.'
-								: 'With no credits left, usage past your monthly include stops. Buying credits requires a paid Pro subscription.'}
+								: `With no credits left, usage past your monthly include stops. ${buyCreditsUnavailableGuidance(credits.hasPaidProSubscription)}`}
 					</p>
 				</AccountManagementPanel>
 

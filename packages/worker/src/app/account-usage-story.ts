@@ -57,6 +57,8 @@ export async function loadAccountUsageStory(input: {
 	plan: PlanName
 	creditWallet: CreditWalletState
 	canBuyCredits: boolean
+	/** Stripe purchasable Pro; see {@link resolveCreditsAlarm}. */
+	hasPaidProSubscription?: boolean
 	computeOverage: AccountUsageComputeOverage | null
 	now: Date
 	/** Already-read wallet state; read here when omitted and a wallet exists. */
@@ -101,6 +103,7 @@ export async function loadAccountUsageStory(input: {
 			meters: includedCompute,
 			balanceMicroUsd: wallet?.balanceMicroUsd ?? 0,
 			canBuyCredits: input.canBuyCredits,
+			hasPaidProSubscription: input.hasPaidProSubscription === true,
 			autoRefill: wallet?.autoRefill ?? null,
 		}),
 	}

@@ -3156,6 +3156,11 @@ export type AccountUsageCreditsWallet = {
 	 * deployment with billing configured.
 	 */
 	canBuyCredits: boolean
+	/**
+	 * Stripe purchasable Pro subscription (`isPayingForCreditsPro`), even when
+	 * a missing customer id still blocks {@link canBuyCredits}.
+	 */
+	hasPaidProSubscription: boolean
 	balanceMicroUsd: number
 	/**
 	 * Eligible wallet with credits left: usage past the include runs on

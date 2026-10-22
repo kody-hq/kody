@@ -202,6 +202,8 @@ export async function loadAccountUsageCredits(input: {
 	entitlement: UserEntitlement
 	/** {@link canBuyCreditsForUser}; billing configuration is checked here. */
 	canBuyCredits: boolean
+	/** {@link isPayingForCreditsPro}; independent of Stripe customer id. */
+	hasPaidProSubscription: boolean
 	computeOverage: AccountUsageComputeOverage | null
 	now: Date
 	/** When set, skip the credit_wallets read. */
@@ -251,6 +253,7 @@ export async function loadAccountUsageCredits(input: {
 			configured,
 			canSwitchToPro,
 			canBuyCredits: configured && input.canBuyCredits,
+			hasPaidProSubscription: input.hasPaidProSubscription,
 			balanceMicroUsd: wallet.balanceMicroUsd,
 			hasCredits: input.entitlement.creditWallet === 'funded',
 			packsCents: [...creditTopUpPackCents],

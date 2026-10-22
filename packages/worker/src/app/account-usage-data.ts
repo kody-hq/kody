@@ -10,6 +10,7 @@ import { readCreditWallet } from '#worker/billing/credit-wallet.ts'
 import { reconcileSignupWelcomeCreditsIfPending } from '#worker/billing/signup-welcome-credits.ts'
 import { readAccountComputeOverage } from '#worker/billing/compute-overage-account.ts'
 import {
+	isPayingForCreditsPro,
 	resolveUserEntitlementFromRow,
 	resolveUserPlanFromRow,
 	userEntitlementColumnsSql,
@@ -166,12 +167,14 @@ export async function loadAccountUsageData(input: {
 		entitlement,
 		stripeCustomerId,
 	})
+	const hasPaidProSubscription = isPayingForCreditsPro(row)
 	const billingHref = orgBillingPath(input.org.slug)
 	const { credits, wallet: creditsWallet } = await loadAccountUsageCredits({
 		env: input.env,
 		stableUserId: usageUserId,
 		entitlement,
 		canBuyCredits,
+		hasPaidProSubscription,
 		computeOverage,
 		now,
 		billingHref,
@@ -184,6 +187,7 @@ export async function loadAccountUsageData(input: {
 			plan: entitlement.plan,
 			creditWallet: entitlement.creditWallet,
 			canBuyCredits: canBuyCredits && isBillingConfigured(input.env),
+			hasPaidProSubscription,
 			computeOverage,
 			now,
 			...(creditsWallet ? { wallet: creditsWallet } : {}),
