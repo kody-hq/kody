@@ -276,6 +276,25 @@ test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access',
 	expect(destructuredHelper.keys).toEqual(['home'])
 	expect(destructuredHelper.failures).toEqual([])
 
+	const shadowedLooseHelper = scanLiteralMcpServerKeys({
+		'package.json': manifest({
+			credentials: {
+				home: { kind: 'mcp', description: 'Home connector.' },
+			},
+		}),
+		'src/index.ts': [
+			'export type KodyKasa = { mcp: { home: unknown } }',
+			'export function getHome(cm: KodyKasa) {',
+			'\t{',
+			'\t\tconst cm = { mcp: { home: true } }',
+			'\t\treturn cm.mcp.home',
+			'\t}',
+			'}',
+		].join('\n'),
+	})
+	expect(shadowedLooseHelper.keys).toEqual([])
+	expect(shadowedLooseHelper.failures).toEqual([])
+
 	const unrelatedMcpData = scanLiteralMcpServerKeys({
 		'package.json': manifest(),
 		'src/index.ts': [

@@ -1176,6 +1176,9 @@ function isLooseDeclaredMcpRoot(
 	) {
 		return false
 	}
+	if (innermostBindingOfName(objectName, ancestors)?.declarator != null) {
+		return false
+	}
 	return isEnclosingFunctionParameter(objectName, ancestors)
 }
 
