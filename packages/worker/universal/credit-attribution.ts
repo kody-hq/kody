@@ -54,14 +54,14 @@ export function normalizeCreditAttributionPackageId(
  * `''` for "not automation"; coerce that (and any other invalid value) to
  * NULL so hourly rollups do not fail the CHECK.
  */
-export const creditAttributionAutomationSources = [
+const creditAttributionAutomationSources = [
 	'webhook',
 	'schedule',
 	'email',
 	'event',
 ] as const
 
-export type CreditAttributionAutomationSource =
+type CreditAttributionAutomationSource =
 	(typeof creditAttributionAutomationSources)[number]
 
 const creditAttributionAutomationSourceSet: ReadonlySet<string> = new Set(
