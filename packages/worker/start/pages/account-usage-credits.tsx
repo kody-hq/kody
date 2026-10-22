@@ -544,14 +544,19 @@ export function AccountUsageCreditsSection(
 		const unavailable = buyCreditsUnavailableGuidance(
 			credits.hasPaidProSubscription,
 		)
+		const detail = !credits.configured
+			? 'Billing is not configured on this deployment.'
+			: credits.hasPaidProSubscription
+				? 'Top-ups need a linked Stripe customer on your Pro subscription.'
+				: 'A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.'
 		return (
 			<AccountManagementPanel title="Add credits">
 				<p css={descriptionCss}>
-					{credits.hasPaidProSubscription
-						? `${unavailable} Top-ups need a linked Stripe customer on your Pro subscription.`
-						: `${unavailable} A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.`}
+					{unavailable} {detail}
 				</p>
-				{!credits.hasPaidProSubscription && credits.canSwitchToPro ? (
+				{credits.configured &&
+				!credits.hasPaidProSubscription &&
+				credits.canSwitchToPro ? (
 					<>
 						<p css={descriptionCss}>
 							Start a Pro subscription if you want to buy credits yourself.

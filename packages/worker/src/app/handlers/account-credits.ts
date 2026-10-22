@@ -181,7 +181,9 @@ export async function startWebsiteCreditTopUp(input: {
 		return operationResult(
 			{
 				ok: false,
-				error: 'Buying credits requires a paid Pro subscription.',
+				error: creditsUser?.hasPaidProSubscription
+					? 'Buying credits is currently unavailable for this account.'
+					: 'Buying credits requires a paid Pro subscription.',
 			},
 			409,
 		)
@@ -275,7 +277,9 @@ export async function saveWebsiteCreditSettings(input: {
 		return operationResult(
 			{
 				ok: false,
-				error: 'Changing credit settings requires a paid Pro subscription.',
+				error: creditsUser?.hasPaidProSubscription
+					? 'Changing credit settings is currently unavailable for this account.'
+					: 'Changing credit settings requires a paid Pro subscription.',
 			},
 			409,
 		)

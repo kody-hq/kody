@@ -99,6 +99,8 @@ export type AccountCreditsUser = {
 	stableUserId: string
 	stripeCustomerId: string | null
 	entitlement: UserEntitlement
+	/** Paying for the purchasable Pro, independent of Stripe customer id. */
+	hasPaidProSubscription: boolean
 	/** Paying for the purchasable Pro: may buy credits and auto-refill. */
 	canBuyCredits: boolean
 }
@@ -158,6 +160,7 @@ export async function loadAccountCreditsUser(input: {
 			stableUserId: row.stable_user_id,
 			stripeCustomerId,
 			entitlement,
+			hasPaidProSubscription: isPayingForCreditsPro(row),
 			canBuyCredits: canBuyCreditsForUser({
 				row,
 				entitlement,
@@ -185,6 +188,7 @@ export async function loadAccountCreditsUser(input: {
 		stableUserId: input.orgId,
 		stripeCustomerId,
 		entitlement,
+		hasPaidProSubscription: isPayingForCreditsPro(row),
 		canBuyCredits: canBuyCreditsForUser({ row, entitlement, stripeCustomerId }),
 	}
 }

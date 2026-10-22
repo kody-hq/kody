@@ -319,8 +319,9 @@ test('eligible wallet that cannot buy explains paid subscription, not purchase U
 			}),
 		}),
 	)
+	expect(text).toContain('Buying credits requires a paid Pro subscription.')
 	expect(text).toContain(
-		'Buying credits requires a paid Pro subscription. A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.',
+		'A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.',
 	)
 	expect(text).toContain(
 		'Start a Pro subscription if you want to buy credits yourself.',
@@ -341,10 +342,34 @@ test('paid Pro without customer does not claim a plan grant', async () => {
 		}),
 	)
 	expect(text).toContain(
-		'Buying credits is currently unavailable for this account. Top-ups need a linked Stripe customer on your Pro subscription.',
+		'Buying credits is currently unavailable for this account.',
+	)
+	expect(text).toContain(
+		'Top-ups need a linked Stripe customer on your Pro subscription.',
 	)
 	expect(html).not.toContain('>Start a Pro subscription<')
 	expect(html).not.toContain('Custom amount ($)')
+})
+
+test('unconfigured billing does not blame a missing Stripe customer', async () => {
+	const { text, html } = await renderUsagePage(
+		usage({
+			credits: wallet({
+				configured: false,
+				canBuyCredits: false,
+				hasPaidProSubscription: true,
+				canSwitchToPro: false,
+			}),
+		}),
+	)
+	expect(text).toContain(
+		'Buying credits is currently unavailable for this account.',
+	)
+	expect(text).toContain('Billing is not configured on this deployment.')
+	expect(text).not.toContain(
+		'Top-ups need a linked Stripe customer on your Pro subscription.',
+	)
+	expect(html).not.toContain('>Start a Pro subscription<')
 })
 
 test('credits notice from a top-up shows in the Credits section', async () => {
