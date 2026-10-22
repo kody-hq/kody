@@ -99,7 +99,6 @@
     "test:e2e:a11y": "playwright test e2e/a11y.spec.ts",
     "test:e2e:run": "node tools/run-nx.ts run worker:test-e2e",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:install": "node tools/ensure-playwright-browser.ts",
     "test:mcp": "node tools/run-nx.ts run worker:test-mcp",
     "hooks:ensure": "node tools/ensure-cloud-agent-hooks.ts",
     "prepare": "husky && node tools/ensure-cloud-agent-hooks.ts",

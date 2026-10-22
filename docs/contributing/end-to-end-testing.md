@@ -163,7 +163,7 @@ handled by the static asset fetcher in `packages/worker/src/index.ts`.
 Common commands:
 
 - `npm run test:e2e:run`
-- `npm run test:e2e:install`
+- `npm run test:e2e:ensure`
 - `npm run test:e2e:run -- --grep "smoke test"`
 - `npx playwright test`
 - `npx playwright test e2e/login.spec.ts`
