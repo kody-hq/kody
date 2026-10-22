@@ -723,7 +723,7 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 		const constants = moduleConstants(path)
 		const body = parsed.program?.body ?? []
 		const kodyAliases = new Set<string>(['kody'])
-		const mcpAliases = new Set<string>()
+		const mcpAliases = createMcpAliasTable()
 		for (const node of body) {
 			if (node.type !== 'ImportDeclaration') continue
 			if (getNodeName(node.source) !== 'kody:runtime') continue
@@ -751,10 +751,10 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 				if (
 					node.id?.type === 'Identifier' &&
 					node.init &&
-					isKodyMcpRoot(node.init, kodyAliases, mcpAliases)
+					isKodyMcpRoot(node.init, kodyAliases, mcpAliases, ancestors)
 				) {
 					const local = getNodeName(node.id)
-					if (local) mcpAliases.add(local)
+					if (local) registerMcpAlias(mcpAliases, local, node, ancestors)
 				}
 				if (
 					node.id?.type === 'ObjectPattern' &&
@@ -775,7 +775,9 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 						const value = property.value as AstNode | undefined
 						if (value?.type === 'Identifier') {
 							const local = getNodeName(value)
-							if (local) mcpAliases.add(local)
+							if (local) {
+								registerMcpAlias(mcpAliases, local, node, ancestors)
+							}
 							continue
 						}
 						if (value?.type === 'ObjectPattern') {
@@ -798,7 +800,7 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 				if (
 					node.id?.type === 'ObjectPattern' &&
 					node.init &&
-					isKodyMcpRoot(node.init, kodyAliases, mcpAliases)
+					isKodyMcpRoot(node.init, kodyAliases, mcpAliases, ancestors)
 				) {
 					collectLiteralMcpServersFromObjectPattern({
 						pattern: node.id,
@@ -844,7 +846,7 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 			// Fail closed when a bare kody.mcp / mcp alias escapes as a value
 			// (passed to a call, returned, stored in a container, …) instead of
 			// a literal member access or supported alias/destructure binding.
-			if (!isKodyMcpRoot(node, kodyAliases, mcpAliases)) return
+			if (!isKodyMcpRoot(node, kodyAliases, mcpAliases, ancestors)) return
 			const parent = ancestors.at(-1)
 			if (!parent) return
 			if (parent.type.startsWith('Import')) return
@@ -878,13 +880,170 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 	return { keys: [...keys].sort(), failures: dedupeFailures(failures) }
 }
 
+type McpAliasTable = {
+	moduleNames: Set<string>
+	declarators: Array<{ node: AstNode; name: string }>
+}
+
+function createMcpAliasTable(): McpAliasTable {
+	return { moduleNames: new Set(), declarators: [] }
+}
+
+function isNestedBindingScope(type: string): boolean {
+	switch (type) {
+		case 'FunctionDeclaration':
+		case 'FunctionExpression':
+		case 'ArrowFunctionExpression':
+		case 'ClassMethod':
+		case 'ClassPrivateMethod':
+		case 'ObjectMethod':
+		case 'ClassDeclaration':
+		case 'ClassExpression':
+		case 'BlockStatement':
+		case 'CatchClause':
+		case 'ForStatement':
+		case 'ForOfStatement':
+		case 'ForInStatement':
+		case 'SwitchCase':
+			return true
+		default:
+			return false
+	}
+}
+
+function isModuleScopeAncestors(ancestors: ReadonlyArray<AstNode>): boolean {
+	return !ancestors.some((ancestor) => isNestedBindingScope(ancestor.type))
+}
+
+function firstMatchingBindingInStatements(
+	statements: ReadonlyArray<AstNode>,
+	name: string,
+): { declarator: AstNode | null } | null {
+	for (const statement of statements) {
+		if (statement.type === 'VariableDeclaration') {
+			for (const declarator of statement.declarations ?? []) {
+				if (collectBindingNamesFromPattern(declarator.id).includes(name)) {
+					return { declarator }
+				}
+			}
+		}
+		if (
+			(statement.type === 'FunctionDeclaration' ||
+				statement.type === 'ClassDeclaration') &&
+			getNodeName(statement.id) === name
+		) {
+			return { declarator: null }
+		}
+	}
+	return null
+}
+
+/**
+ * Innermost binding of `name` visible at `ancestors`. A VariableDeclarator
+ * binding can be a registered MCP alias; params and other bindings shadow.
+ */
+function innermostBindingOfName(
+	name: string,
+	ancestors: ReadonlyArray<AstNode>,
+): { declarator: AstNode | null } | null {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (ancestor.type === 'Program') break
+		if (
+			isFunctionLikeAstNode(ancestor) ||
+			ancestor.type === 'ClassPrivateMethod'
+		) {
+			if (
+				(ancestor.type === 'FunctionDeclaration' ||
+					ancestor.type === 'FunctionExpression') &&
+				getNodeName(ancestor.id) === name
+			) {
+				return { declarator: null }
+			}
+			if (functionParamNames(ancestor).includes(name)) {
+				return { declarator: null }
+			}
+		}
+		if (
+			ancestor.type === 'ClassExpression' &&
+			getNodeName(ancestor.id) === name
+		) {
+			return { declarator: null }
+		}
+		if (
+			ancestor.type === 'CatchClause' &&
+			collectBindingNamesFromPattern(ancestor.param).includes(name)
+		) {
+			return { declarator: null }
+		}
+		if (
+			ancestor.type === 'ForOfStatement' ||
+			ancestor.type === 'ForInStatement'
+		) {
+			const left = ancestor.left
+			if (left?.type === 'VariableDeclaration') {
+				for (const declarator of left.declarations ?? []) {
+					if (collectBindingNamesFromPattern(declarator.id).includes(name)) {
+						return { declarator }
+					}
+				}
+			} else if (collectBindingNamesFromPattern(left).includes(name)) {
+				return { declarator: null }
+			}
+		}
+		if (ancestor.type === 'ForStatement' && ancestor.init) {
+			if (ancestor.init.type === 'VariableDeclaration') {
+				for (const declarator of ancestor.init.declarations ?? []) {
+					if (collectBindingNamesFromPattern(declarator.id).includes(name)) {
+						return { declarator }
+					}
+				}
+			}
+		}
+		if (ancestor.type === 'SwitchCase' && Array.isArray(ancestor.consequent)) {
+			const found = firstMatchingBindingInStatements(ancestor.consequent, name)
+			if (found) return found
+		}
+		if (ancestor.type === 'BlockStatement' && Array.isArray(ancestor.body)) {
+			const found = firstMatchingBindingInStatements(ancestor.body, name)
+			if (found) return found
+		}
+	}
+	return null
+}
+
+function registerMcpAlias(
+	table: McpAliasTable,
+	name: string,
+	declarator: AstNode,
+	ancestors: ReadonlyArray<AstNode>,
+) {
+	table.declarators.push({ node: declarator, name })
+	if (isModuleScopeAncestors(ancestors)) table.moduleNames.add(name)
+}
+
+function isActiveMcpAlias(
+	name: string,
+	ancestors: ReadonlyArray<AstNode>,
+	table: McpAliasTable,
+): boolean {
+	const binding = innermostBindingOfName(name, ancestors)
+	if (binding == null) return table.moduleNames.has(name)
+	if (binding.declarator == null) return false
+	return table.declarators.some(
+		(entry) => entry.node === binding.declarator && entry.name === name,
+	)
+}
+
 function isKodyMcpRoot(
 	node: AstNode,
 	kodyAliases: Set<string>,
-	mcpAliases: Set<string>,
+	mcpAliases: McpAliasTable,
+	ancestors: ReadonlyArray<AstNode> = [],
 ): boolean {
 	if (node.type === 'Identifier') {
-		return mcpAliases.has(getNodeName(node) ?? '')
+		const name = getNodeName(node)
+		return name != null && isActiveMcpAlias(name, ancestors, mcpAliases)
 	}
 	if (
 		node.type !== 'MemberExpression' &&
@@ -987,7 +1146,7 @@ function isEnclosingFunctionParameter(
 function isLooseDeclaredMcpRoot(
 	node: AstNode,
 	kodyAliases: Set<string>,
-	mcpAliases: Set<string>,
+	mcpAliases: McpAliasTable,
 	ancestors: ReadonlyArray<AstNode>,
 ): boolean {
 	if (
@@ -1000,7 +1159,12 @@ function isLooseDeclaredMcpRoot(
 	if (node.object?.type !== 'Identifier') return false
 	const objectName = getNodeName(node.object)
 	if (objectName == null) return false
-	if (kodyAliases.has(objectName) || mcpAliases.has(objectName)) return false
+	if (
+		kodyAliases.has(objectName) ||
+		isActiveMcpAlias(objectName, ancestors, mcpAliases)
+	) {
+		return false
+	}
 	return isEnclosingFunctionParameter(objectName, ancestors)
 }
 
@@ -1071,7 +1235,7 @@ function literalMcpServerName(
 function mcpServerFromMember(
 	node: AstNode,
 	kodyAliases: Set<string>,
-	mcpAliases: Set<string>,
+	mcpAliases: McpAliasTable,
 	constants: ReadonlyMap<string, string> = new Map(),
 	declaredMcpKeys: ReadonlySet<string> = new Set(),
 	ancestors: ReadonlyArray<AstNode> = [],
@@ -1082,11 +1246,14 @@ function mcpServerFromMember(
 	) {
 		return undefined
 	}
-	if (isKodyMcpRoot(node, kodyAliases, mcpAliases)) {
+	if (isKodyMcpRoot(node, kodyAliases, mcpAliases, ancestors)) {
 		// Bare `kody.mcp` / `mcp` root — wait for a child member when present.
 		return undefined
 	}
-	if (node.object && isKodyMcpRoot(node.object, kodyAliases, mcpAliases)) {
+	if (
+		node.object &&
+		isKodyMcpRoot(node.object, kodyAliases, mcpAliases, ancestors)
+	) {
 		const server = literalMcpServerName(node, constants)
 		// `kody.mcp?.[CANVA_MCP_NAME]` when CANVA_MCP_NAME = 'canva' at module
 		// scope — same as credential("KEY") const folding. Dynamic → fail.

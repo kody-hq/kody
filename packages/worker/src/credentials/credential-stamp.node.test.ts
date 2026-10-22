@@ -331,6 +331,48 @@ test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access',
 	expect(viaAlias.keys).toEqual(['linear'])
 	expect(viaAlias.failures).toEqual([])
 
+	const shadowedParam = scanLiteralMcpServerKeys({
+		'package.json': manifest(),
+		'src/index.ts': [
+			"import { kody } from 'kody:runtime'",
+			'const mcp = kody.mcp',
+			'export default async function run(mcp: unknown) {',
+			'\treturn mcp',
+			'}',
+			'export function other() {',
+			'\treturn mcp.linear.list_issues({})',
+			'}',
+		].join('\n'),
+	})
+	expect(shadowedParam.keys).toEqual(['linear'])
+	expect(shadowedParam.failures).toEqual([])
+
+	const shadowedParamMember = scanLiteralMcpServerKeys({
+		'package.json': manifest(),
+		'src/index.ts': [
+			"import { kody } from 'kody:runtime'",
+			'const mcp = kody.mcp',
+			'export default async function run(mcp: { linear: { list_issues: Function } }) {',
+			'\treturn mcp.linear.list_issues({})',
+			'}',
+		].join('\n'),
+	})
+	expect(shadowedParamMember.keys).toEqual([])
+	expect(shadowedParamMember.failures).toEqual([])
+
+	const functionLocalAlias = scanLiteralMcpServerKeys({
+		'package.json': manifest(),
+		'src/index.ts': [
+			"import { kody } from 'kody:runtime'",
+			'export default async function run() {',
+			'\tconst mcp = kody.mcp',
+			'\treturn mcp.home.set_pin({ pin: "1" })',
+			'}',
+		].join('\n'),
+	})
+	expect(functionLocalAlias.keys).toEqual(['home'])
+	expect(functionLocalAlias.failures).toEqual([])
+
 	const dynamic = scanLiteralMcpServerKeys({
 		'package.json': manifest(),
 		'src/index.ts': [
