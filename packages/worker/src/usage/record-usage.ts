@@ -250,8 +250,13 @@ export function usageAttributionFieldsFromRequest(
 
 function resolvedUsageAttributionBlobs(
 	event: Pick<UsageEvent, 'userId' | 'actorUserId' | 'automationSource'>,
-): [string, string] {
-	const automationSource = event.automationSource?.trim() ?? ''
+): [string, string | null] {
+	// Normalize before actor selection so unsupported sources (e.g. empty or
+	// "cron") do not take the automation branch and then become NULL at D1
+	// write time with an empty actor. Fall back to billing userId instead.
+	const automationSource = normalizeCreditAttributionAutomationSource(
+		event.automationSource,
+	)
 	const actorTrimmed = event.actorUserId?.trim()
 	if (actorTrimmed) {
 		return [actorTrimmed, automationSource]
@@ -259,7 +264,7 @@ function resolvedUsageAttributionBlobs(
 	if (automationSource) {
 		return ['', automationSource]
 	}
-	return [event.userId, '']
+	return [event.userId, null]
 }
 
 export const usageEventDoubleIndexes = {
@@ -314,7 +319,7 @@ export function usageEventBlobs(
 		event.cacheReuse ?? '',
 		event.packageId?.trim() || '',
 		actorUserId,
-		automationSource,
+		automationSource ?? '',
 		event.connectionKey?.trim() || '',
 		event.outcome === 'success'
 			? usageErrorNameUnrecorded
@@ -567,7 +572,7 @@ async function writeUsageAttributionDaily(
 				eventCount,
 				timestamp,
 				actorUserId,
-				normalizeCreditAttributionAutomationSource(automationSource),
+				automationSource,
 			)
 			.run()
 	} catch (error) {
