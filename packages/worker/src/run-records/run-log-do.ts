@@ -1399,6 +1399,14 @@ class RunLogBase extends DurableObject<Env> {
 		return meta == null ? null : metaIntToUtcDay(meta)
 	}
 
+	/** Clamp startedAt to the warm coverage floor when counting day aggregates. */
+	private runDayCountDayFromStartedAt(startedAt: string): string {
+		let day = this.utcDayFromIso(startedAt)
+		const coverageSince = this.runDayCountsCoverageSince()
+		if (coverageSince != null && day < coverageSince) day = coverageSince
+		return day
+	}
+
 	private applyRunDayCountTransition(input: {
 		previousStatus: RunStatus | null
 		run: Pick<
@@ -1409,9 +1417,7 @@ class RunLogBase extends DurableObject<Env> {
 		if (!this.countsTowardDashboard(input.run)) return
 		// Clamp pre-migration startedAt days up to the warm coverage floor so
 		// MIN(day) cannot drift before the no-backfill boundary.
-		let day = this.utcDayFromIso(input.run.startedAt)
-		const coverageSince = this.runDayCountsCoverageSince()
-		if (coverageSince != null && day < coverageSince) day = coverageSince
+		const day = this.runDayCountDayFromStartedAt(input.run.startedAt)
 		const surface = input.run.surface
 		const next = input.run.status
 		if (input.previousStatus == null) {
@@ -2306,8 +2312,10 @@ class RunLogBase extends DurableObject<Env> {
 		const parentRunId =
 			row.parent_run_id == null ? null : String(row.parent_run_id)
 		if (this.countsTowardDashboard({ surface, parentRunId })) {
+			// Same clamp as applyRunDayCountTransition: abandon must decrement
+			// the floor day when start was clamped up from a pre-migration day.
 			this.adjustRunDayCount({
-				day: this.utcDayFromIso(String(row.started_at)),
+				day: this.runDayCountDayFromStartedAt(String(row.started_at)),
 				surface,
 				status: 'running',
 				delta: -1,

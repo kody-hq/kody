@@ -1240,6 +1240,62 @@ test('warm schema v12 objects upgrade to v13 with an empty run_day_counts table'
 				count: 1,
 			},
 		])
+
+		const abandonStartedAt = '2026-09-15T12:00:00.000Z'
+		await instance.startRun({
+			run: {
+				id: 'legacy-abandon',
+				surface: 'execute',
+				status: 'running',
+				name: 'legacy-abandon',
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				publishedCommit: null,
+				storageId: null,
+				jobId: null,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: null,
+				parentRunId: null,
+				startedAt: abandonStartedAt,
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				metadataJson: '{}',
+				createdAt: abandonStartedAt,
+				updatedAt: abandonStartedAt,
+			},
+		})
+		const whileRunning = await instance.dashboardBuckets({
+			since: chartSince,
+			until: chartUntil,
+		})
+		expect(whileRunning.buckets).toEqual(
+			expect.arrayContaining([
+				{
+					day: migrationDay,
+					surface: 'execute',
+					status: 'running',
+					count: 1,
+				},
+			]),
+		)
+		await instance.deleteRunIfRunning({ runId: 'legacy-abandon' })
+		const afterAbandon = await instance.dashboardBuckets({
+			since: chartSince,
+			until: chartUntil,
+		})
+		expect(afterAbandon.buckets).toEqual([
+			{
+				day: migrationDay,
+				surface: 'execute',
+				status: 'success',
+				count: 1,
+			},
+		])
 	})
 })
 
