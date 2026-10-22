@@ -19,7 +19,7 @@
     "skills"
   ],
   "scripts": {
-    "prepare": "node scripts/build.mjs",
+    "prepare": "npm run build",
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
