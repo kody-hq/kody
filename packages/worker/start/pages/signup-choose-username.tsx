@@ -165,10 +165,10 @@ export function SignupChooseUsernamePage(props: {
 							onChange={(value) => {
 								setUsername(value)
 								setConfirmedUsername(null)
-								if (status === 'error') {
-									setStatus('idle')
-									setMessage(null)
-								}
+								// Clear confirm and error copy so the form never still
+								// claims the previous handle is about to be locked.
+								setStatus('idle')
+								setMessage(null)
 							}}
 							onAvailabilityChange={setAvailability}
 							seeds={{

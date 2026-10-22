@@ -49,6 +49,40 @@ async function pendingCookie(input: {
 	)
 }
 
+test('pending signup cookie encrypts provider access tokens at rest', async () => {
+	const plaintextToken = 'discord-access-token-plaintext'
+	const cookie = await createOauthPendingSignupCookie(
+		{
+			provider: 'discord',
+			providerUserId: 'discord-user-1',
+			email: 'discord@example.com',
+			providerUsername: 'discord-user',
+			displayName: 'Discord User',
+			suggestedUsername: 'discord-user',
+			redirectTo: null,
+			attribution: null,
+			csrf: 'csrf-discord',
+			accessToken: plaintextToken,
+			issuedAt: Date.now(),
+		},
+		false,
+	)
+	const pair = getCookiePair(cookie)
+	expect(pair).not.toContain(plaintextToken)
+	expect(decodeURIComponent(pair)).not.toContain(plaintextToken)
+
+	const pending = await readOauthPendingSignup(
+		new Request('http://example.com/signup/choose-username', {
+			headers: { Cookie: pair },
+		}),
+	)
+	expect(pending).toMatchObject({
+		provider: 'discord',
+		email: 'discord@example.com',
+		accessToken: plaintextToken,
+	})
+})
+
 test('readOauthPendingSignup rejects tampered and expired cookies', async () => {
 	const cookie = await pendingCookie({})
 	const pair = getCookiePair(cookie)
