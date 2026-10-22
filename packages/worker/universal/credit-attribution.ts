@@ -48,6 +48,36 @@ export function normalizeCreditAttributionPackageId(
 	return trimmed.length > 0 ? trimmed : creditAttributionAdHocPackageId
 }
 
+/**
+ * D1 `usage_attribution_daily.automation_source` CHECK allows NULL or one of
+ * webhook / schedule / email / event. Analytics Engine and local writers use
+ * `''` for "not automation"; coerce that (and any other invalid value) to
+ * NULL so hourly rollups do not fail the CHECK.
+ */
+export const creditAttributionAutomationSources = [
+	'webhook',
+	'schedule',
+	'email',
+	'event',
+] as const
+
+export type CreditAttributionAutomationSource =
+	(typeof creditAttributionAutomationSources)[number]
+
+const creditAttributionAutomationSourceSet: ReadonlySet<string> = new Set(
+	creditAttributionAutomationSources,
+)
+
+export function normalizeCreditAttributionAutomationSource(
+	value: string | null | undefined,
+): CreditAttributionAutomationSource | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	if (!trimmed) return null
+	if (!creditAttributionAutomationSourceSet.has(trimmed)) return null
+	return trimmed as CreditAttributionAutomationSource
+}
+
 export type CreditAttributionDailyUnit = {
 	day: string
 	packageId: string

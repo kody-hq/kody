@@ -42,6 +42,7 @@ import {
 } from '#universal/connection-usage.ts'
 import {
 	creditAttributionMeterFromUsageEventType,
+	normalizeCreditAttributionAutomationSource,
 	normalizeCreditAttributionPackageId,
 } from '#universal/credit-attribution.ts'
 import {
@@ -566,7 +567,7 @@ async function writeUsageAttributionDaily(
 				eventCount,
 				timestamp,
 				actorUserId,
-				automationSource,
+				normalizeCreditAttributionAutomationSource(automationSource),
 			)
 			.run()
 	} catch (error) {

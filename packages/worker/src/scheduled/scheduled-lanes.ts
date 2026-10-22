@@ -152,6 +152,7 @@ export async function runScheduledLane(input: {
 				await aggregateCreditAttributionDaily(input.env, input.scheduledAt)
 			} catch (error) {
 				console.warn('credit-attribution-aggregation-failed', error)
+				Sentry.captureException(error)
 			}
 			try {
 				await aggregateConnectionUsageDaily(input.env, input.scheduledAt)

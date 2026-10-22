@@ -10,6 +10,7 @@ import {
 	creditAttributionMeterFromComputeResource,
 	creditAttributionMeters,
 	creditAttributionUsageEventTypes,
+	normalizeCreditAttributionAutomationSource,
 	type CreditAttributionBreakdown,
 	type CreditAttributionDailyUnit,
 	type CreditAttributionMeter,
@@ -156,10 +157,9 @@ export async function aggregateCreditAttributionDaily(
 		const actorUserId =
 			(typeof row.actor_user_id === 'string' && row.actor_user_id.trim()) ||
 			row.user_id
-		const automationSource =
-			typeof row.automation_source === 'string'
-				? row.automation_source.trim()
-				: ''
+		const automationSource = normalizeCreditAttributionAutomationSource(
+			row.automation_source,
+		)
 		upsertStatements.push(
 			env.APP_DB.prepare(attributionUpsertStatement).bind(
 				row.user_id,
