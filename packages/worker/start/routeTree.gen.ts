@@ -17,6 +17,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthDotmdRouteImport } from './routes/auth[.]md'
 import { Route as BelieveRouteImport } from './routes/believe'
+import { Route as BrandGuideRouteImport } from './routes/brand-guide'
 import { Route as CaseStudiesRouteImport } from './routes/case-studies'
 import { Route as CommunityRouteImport } from './routes/community'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -303,6 +304,11 @@ const AuthDotmdRoute = AuthDotmdRouteImport.update({
 const BelieveRoute = BelieveRouteImport.update({
   id: '/believe',
   path: '/believe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandGuideRoute = BrandGuideRouteImport.update({
+  id: '/brand-guide',
+  path: '/brand-guide',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CaseStudiesRoute = CaseStudiesRouteImport.update({
@@ -1686,6 +1692,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
+  '/brand-guide': typeof BrandGuideRoute
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
@@ -1943,6 +1950,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
+  '/brand-guide': typeof BrandGuideRoute
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
@@ -2201,6 +2209,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
+  '/brand-guide': typeof BrandGuideRoute
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
@@ -2460,6 +2469,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth.md'
     | '/believe'
+    | '/brand-guide'
     | '/case-studies'
     | '/community'
     | '/contact'
@@ -2717,6 +2727,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth.md'
     | '/believe'
+    | '/brand-guide'
     | '/case-studies'
     | '/community'
     | '/contact'
@@ -2974,6 +2985,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auth.md'
     | '/believe'
+    | '/brand-guide'
     | '/case-studies'
     | '/community'
     | '/contact'
@@ -3233,6 +3245,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   AuthDotmdRoute: typeof AuthDotmdRoute
   BelieveRoute: typeof BelieveRoute
+  BrandGuideRoute: typeof BrandGuideRoute
   CaseStudiesRoute: typeof CaseStudiesRoute
   CommunityRoute: typeof CommunityRoute
   ContactRoute: typeof ContactRoute
@@ -3399,6 +3412,13 @@ declare module '@tanstack/react-router' {
       path: '/believe'
       fullPath: '/believe'
       preLoaderRoute: typeof BelieveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/brand-guide': {
+      id: '/brand-guide'
+      path: '/brand-guide'
+      fullPath: '/brand-guide'
+      preLoaderRoute: typeof BrandGuideRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/case-studies': {
@@ -5531,6 +5551,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   AuthDotmdRoute: AuthDotmdRoute,
   BelieveRoute: BelieveRoute,
+  BrandGuideRoute: BrandGuideRoute,
   CaseStudiesRoute: CaseStudiesRoute,
   CommunityRoute: CommunityRoute,
   ContactRoute: ContactRoute,

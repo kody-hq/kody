@@ -18,6 +18,9 @@ test('SSR preserves document metadata and critical resource ordering', async ({
 				'charset',
 				'utf-8',
 			)
+			await expect(
+				page.locator('head link[rel="icon"][type="image/svg+xml"]'),
+			).toHaveAttribute('href', '/favicon.svg')
 			for (const [rel, href, sizes] of [
 				['icon', '/favicon.ico', 'any'],
 				['icon', '/favicon-32x32.png', '32x32'],

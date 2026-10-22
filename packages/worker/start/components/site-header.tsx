@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
-import { publicAsset } from '../public-assets.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
 import { type CSSObject } from '@emotion/react'
+import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
+import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { useEffect, useState } from 'react'
 import {
@@ -84,15 +85,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 		return (
 			<header className="site-header" data-focused-header css={headerCss}>
 				<div css={navCss}>
-					<SiteLink href="/" css={brandCss}>
-						<img
-							src={publicAsset('/images/kody-mark.png')}
-							alt=""
-							width={34}
-							height={34}
-						/>
-						<span>Kody</span>
-					</SiteLink>
+					<BrandContextMenu>
+						<SiteLink href="/" css={brandCss}>
+							<KodyMark size={34} />
+							<span>Kody</span>
+						</SiteLink>
+					</BrandContextMenu>
 					<div
 						css={{
 							marginLeft: 'auto',
@@ -126,15 +124,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 	return (
 		<header className="site-header" css={headerCss}>
 			<nav aria-label="Main" css={navCss}>
-				<SiteLink href="/" css={brandCss}>
-					<img
-						src={publicAsset('/images/kody-mark.png')}
-						alt=""
-						width={34}
-						height={34}
-					/>
-					<span>Kody</span>
-				</SiteLink>
+				<BrandContextMenu>
+					<SiteLink href="/" css={brandCss}>
+						<KodyMark size={34} />
+						<span>Kody</span>
+					</SiteLink>
+				</BrandContextMenu>
 				<div css={navLinksCss}>
 					<FeaturesMenu currentPathname={props.currentPathname} />
 					{marketingLinks.map((link) => (

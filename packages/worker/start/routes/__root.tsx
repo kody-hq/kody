@@ -392,6 +392,11 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name="viewport" content={documentViewport} />
+				<link
+					rel="icon"
+					href={publicAsset('/favicon.svg')}
+					type="image/svg+xml"
+				/>
 				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
 				<link
 					rel="icon"

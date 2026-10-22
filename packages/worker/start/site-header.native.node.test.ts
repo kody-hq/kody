@@ -166,7 +166,9 @@ test('focused header keeps only the brand and the account menu', async () => {
 	)
 
 	expect(html).toContain('data-focused-header')
-	expect(html).toContain('src="/images/kody-mark.png"')
+	expect(html).toContain('viewBox="220.727 325.009973 807.440627 593.242027"')
+	expect(html).toContain('fill="currentColor"')
+	expect(html).not.toContain('src="/images/kody-mark.png"')
 	expect(html).toContain('data-testid="account-menu"')
 	expect(html).toContain('aria-label="Ada Lovelace: your account"')
 	expect(html).not.toContain('aria-label="Main"')

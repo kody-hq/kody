@@ -1,5 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { publicAsset } from '../public-assets.ts'
 import {
 	handlePermanentNote,
 	handleUrlPreview,
@@ -10,6 +9,7 @@ import { permanentHandleInputProps } from '#client/handle-field.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { type CSSObject } from '@emotion/react'
 import { type CSSProperties, type FormEvent } from 'react'
+import { KodyMark } from '../components/kody-mark.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	fieldErrorProps,
@@ -51,12 +51,7 @@ function renderBrand(
 			tabIndex={options.decorative ? -1 : undefined}
 			css={extraCss}
 		>
-			<img
-				src={publicAsset('/images/kody-mark.png')}
-				alt=""
-				width={34}
-				height={34}
-			/>
+			<KodyMark size={34} />
 			<span>Kody</span>
 		</SiteLink>
 	)

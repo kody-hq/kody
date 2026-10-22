@@ -15,7 +15,9 @@ test('release public files use the immutable namespace, document and service URL
 		'/fonts/wix-madefor-text-latin.woff2',
 		'/site.webmanifest',
 		'/favicon.ico',
+		'/favicon.svg',
 		'/images/kody-mark.png',
+		'/images/brand/kody-mark.svg',
 		'/logo-64.webp',
 	]) {
 		expect(publicAsset(file)).toBe(
