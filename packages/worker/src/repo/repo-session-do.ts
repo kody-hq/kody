@@ -1548,13 +1548,26 @@ class RepoSessionBase extends DurableObject<Env> {
 				// Same for EISDIR: map to a stable caller-correctable phrase
 				// when preflight missed (race, or wrapped batch error). KODY-A6.
 				if (isRawWorkspaceEisdirMessage(message)) {
+					const extractedPath = externalPathFromRawWorkspaceEisdirMessage(
+						message,
+						repoSessionWorkspacePrefix,
+					)
+					const targetEdit = extractedPath
+						? plan.edits.find(
+								(edit) =>
+									toExternalRepoPath(edit.path, repoSessionWorkspacePrefix) ===
+									extractedPath,
+							)
+						: undefined
 					const fallbackPath = toExternalRepoPath(
-						plan.edits.find((edit) => edit.changed)?.path ??
+						targetEdit?.path ??
+							plan.edits.find((edit) => edit.changed)?.path ??
 							plan.edits[0]?.path ??
 							'file',
 						repoSessionWorkspacePrefix,
 					)
-					const instructionKind = plan.edits[0]?.instruction.kind
+					const instructionKind =
+						targetEdit?.instruction.kind ?? plan.edits[0]?.instruction.kind
 					const kind: RepoSessionDirectoryTargetKind =
 						instructionKind === 'replace' || instructionKind === 'writeJson'
 							? instructionKind

@@ -203,8 +203,20 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 					isRepoDisallowedPathMessage(entry.message) ||
 					isRepoSessionStructuralEditCallerMessage(entry.message) ||
 					isRepoSessionDirectoryTargetCallerMessage(entry.message) ||
-					isRawWorkspaceEisdirMessage(entry.message) ||
 					isRepoSessionApplyPatchCallerMessage(entry.message)),
+		)
+	) {
+		return true
+	}
+	// Raw shell EISDIR that escaped the DO remap. Only edit/patch/write
+	// capabilities can raise it from a caller-supplied path; other EISDIR
+	// (git commit, clone, publish snapshot, bundle) must still reach Sentry.
+	if (
+		(payload.capabilityName === 'repoEditFiles' ||
+			payload.capabilityName === 'repoApplyPatch') &&
+		getErrorCauseChain(cause).some(
+			(entry) =>
+				entry instanceof Error && isRawWorkspaceEisdirMessage(entry.message),
 		)
 	) {
 		return true

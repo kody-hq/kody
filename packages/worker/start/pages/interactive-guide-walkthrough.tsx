@@ -582,6 +582,9 @@ const inlineMarkCss = {
 	width: '1em',
 	height: '1em',
 	display: 'block',
+	// Brand guide: black on light / white on dark. Do not inherit the
+	// tool-name accent (`colors.primaryText`).
+	color: colors.text,
 } satisfies CSSObject
 
 export const interactiveGuideToolSummaryCss = {

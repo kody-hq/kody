@@ -392,3 +392,38 @@ test('applyEdits remaps raw Cloudflare shell EISDIR from applyEditPlan', async (
 		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
 	)
 })
+
+test('applyEdits EISDIR remap uses the failing path kind in a multi-edit plan', async () => {
+	setCommonSessionFixtures()
+	vi.mocked(createWorkspaceStateBackend).mockImplementationOnce(
+		() =>
+			({
+				planEdits: vi.fn(),
+				applyEditPlan: vi.fn(async () => {
+					throw new Error('EISDIR: /session/src/my file.ts is a directory')
+				}),
+				walkTree: vi.fn(),
+			}) as unknown as ReturnType<typeof createWorkspaceStateBackend>,
+	)
+
+	await expect(
+		repoSession().applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'write',
+					path: 'readme.md',
+					content: '# hi\n',
+				},
+				{
+					kind: 'replace',
+					path: 'src/my file.ts',
+					search: 'a',
+					replacement: 'b',
+				},
+			],
+		}),
+	).rejects.toThrow(
+		'repo session replace edit target "src/my file.ts" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	)
+})

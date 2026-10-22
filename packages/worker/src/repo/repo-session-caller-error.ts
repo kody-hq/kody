@@ -314,7 +314,9 @@ export function externalPathFromRawWorkspaceEisdirMessage(
 	message: string,
 	workspacePrefix: string,
 ): string | null {
-	const match = /^EISDIR:\s+(\S+)\s+is a directory/.exec(message)
+	// `@cloudflare/shell` preserves the failing path; allow spaces so a
+	// target like `src/my file.ts` still extracts before the fixed trailer.
+	const match = /^EISDIR:\s+(.+)\s+is a directory$/.exec(message)
 	if (!match) return null
 	const absolutePath = match[1]!
 	if (absolutePath === workspacePrefix) return '.'

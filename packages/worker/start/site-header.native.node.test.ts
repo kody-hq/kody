@@ -143,10 +143,10 @@ test('home brand wordmark is larger than other routes', async () => {
 		}),
 	)
 	expect(home).toContain('1.75rem')
-	expect(home).toContain('0.7rem')
+	expect(home).toContain('gap:0.7rem')
 	expect(pricing).not.toContain('1.75rem')
 	expect(pricing).toContain('1.25rem')
-	expect(pricing).toContain('0.6rem')
+	expect(pricing).toContain('gap:0.6rem')
 })
 
 test('desktop and mobile headers include the complete Features navigation', async () => {

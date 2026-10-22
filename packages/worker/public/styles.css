@@ -870,8 +870,9 @@ html.is-settled {
    `data-active` (wrapping) and scroll it into view; Enter picks. The strip
    bleeds past the video's edges by `--chooser-bleed` (negative margin +
    matching padding) so the zoomed thumb has room and the first/last thumb
-   still align with the player at rest. Edges fade only when there is more to
-   scroll to on that side (`data-overflow-*`, set from scroll position).
+   still align with the player at rest. Horizontal fade (`fade-x`) is applied
+   only while the strip overflows; otherwise `fade-none-x` keeps edge thumbs
+   fully visible in browsers without scroll-driven animation fallbacks.
    Each option reserves a title slot (padding-bottom) below its thumbnail; the
    title rests *behind* the thumb (translated up, z-index 0, faded so it cannot
    peek through the rounded corners) and slides down into    the slot on hover or

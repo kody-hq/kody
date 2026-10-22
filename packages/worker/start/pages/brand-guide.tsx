@@ -126,9 +126,18 @@ export function BrandGuideRoute() {
 				<ul css={downloadListCss}>
 					<li>
 						<a href={publicAsset(kodyBrandAssets.svg)} download="kody-mark.svg">
-							Download SVG
+							Download SVG (black)
 						</a>
 						<span>Black mark, evenodd path</span>
+					</li>
+					<li>
+						<a
+							href={publicAsset(kodyBrandAssets.svgWhite)}
+							download="kody-mark-white.svg"
+						>
+							Download SVG (white)
+						</a>
+						<span>White mark for dark surfaces</span>
 					</li>
 					<li>
 						<a

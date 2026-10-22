@@ -529,9 +529,19 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				new Error('Saved package "demo" was not found.'),
 			),
 		)
+		// Raw EISDIR outside edit/patch capabilities is platform-visible
+		// (git/clone/publish/bundle paths must not be hidden from Sentry).
+		logMcpEvent(
+			handlerFailure(
+				'packagePublish',
+				'packages',
+				'Error',
+				new Error('EISDIR: /tmp/snapshot is a directory'),
+			),
+		)
 	})
 
-	expect(sentryMock.captureException).toHaveBeenCalledTimes(7)
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(8)
 	expect(sentryMock.captureException).toHaveBeenNthCalledWith(
 		1,
 		expect.objectContaining({ message: 'platform handler blew up' }),
@@ -567,6 +577,12 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 		7,
 		expect.objectContaining({
 			message: 'Saved package "demo" was not found.',
+		}),
+	)
+	expect(sentryMock.captureException).toHaveBeenNthCalledWith(
+		8,
+		expect.objectContaining({
+			message: 'EISDIR: /tmp/snapshot is a directory',
 		}),
 	)
 	expect(sentryMock.scope.setLevel).toHaveBeenCalledWith('error')

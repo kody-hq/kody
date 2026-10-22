@@ -342,8 +342,11 @@ export function parseSecretScopeUnavailableMessage(message: string) {
 		scope,
 		packageName: usesPackageId ? null : label,
 		packageId: usesPackageId ? label : null,
-		missingPackageContext: guidance.includes(
-			'but its package context is missing',
+		// Anchor to the fixed terminal sentence so an interpolated package
+		// name or runtime label that happens to contain the short phrase
+		// cannot flip missing-context detection.
+		missingPackageContext: guidance.endsWith(
+			" Do not widen the secret's scope to work around a missing package context.",
 		),
 	}
 }

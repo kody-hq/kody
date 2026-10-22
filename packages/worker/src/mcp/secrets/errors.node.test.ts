@@ -168,6 +168,35 @@ test('parseSecretScopeUnavailableMessage ignores missing-context phrasing in the
 	})
 })
 
+test('parseSecretScopeUnavailableMessage ignores missing-context phrasing in secondary package names', () => {
+	const message = createSecretScopeUnavailableMessage([
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-aaa',
+			packageName: 'discord-gateway',
+			sessionId: null,
+			editorUrl: null,
+		},
+		{
+			secretName: 'discordBotToken',
+			scope: 'package',
+			packageId: 'pkg-bbb',
+			packageName: 'but its package context is missing',
+			sessionId: null,
+			editorUrl: null,
+		},
+	])
+	expect(message).toContain('but its package context is missing')
+	expect(parseSecretScopeUnavailableMessage(message)).toEqual({
+		secretName: 'discordBotToken',
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+})
+
 test('missing-context guidance leads with the package that owns this runtime', () => {
 	const message = createSecretScopeUnavailableMessage([
 		{

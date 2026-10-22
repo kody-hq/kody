@@ -45,9 +45,15 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 	const [coords, setCoords] = useState({ x: 0, y: 0 })
 	const [activeIndex, setActiveIndex] = useState(0)
 
-	const close = useCallback(() => {
+	const close = useCallback((options?: { restoreFocus?: boolean }) => {
 		setOpen(false)
 		setActiveIndex(0)
+		if (options?.restoreFocus) {
+			const focusTarget = rootRef.current?.querySelector<HTMLElement>(
+				'a, button, [tabindex]:not([tabindex="-1"])',
+			)
+			focusTarget?.focus()
+		}
 	}, [])
 
 	const copySvg = useCallback(async () => {
@@ -108,7 +114,7 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 
 	const activate = useCallback(
 		async (item: MenuItem) => {
-			close()
+			close({ restoreFocus: true })
 			if (item.kind === 'link') {
 				await navigate({ to: item.href })
 				return
@@ -156,6 +162,20 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 		function onKey(event: KeyboardEvent) {
 			if (event.key === 'Escape') {
 				event.preventDefault()
+				close({ restoreFocus: true })
+				return
+			}
+			const target = event.target
+			const focusInsideMenu =
+				target instanceof Node && Boolean(menuRef.current?.contains(target))
+			if (!focusInsideMenu) {
+				// Focus already left (for example after Tab): drop the menu so
+				// the document listener stops intercepting page controls.
+				close()
+				return
+			}
+			if (event.key === 'Tab') {
+				// Let Tab move focus, then close so later keys are not stolen.
 				close()
 				return
 			}
@@ -187,11 +207,20 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 			}
 		}
 
+		function onFocusOut(event: FocusEvent) {
+			const next = event.relatedTarget
+			if (next instanceof Node && menuRef.current?.contains(next)) return
+			close()
+		}
+
 		document.addEventListener('pointerdown', onPointerDown, true)
 		document.addEventListener('keydown', onKey, true)
+		menuRef.current?.addEventListener('focusout', onFocusOut)
+		const menuNode = menuRef.current
 		return () => {
 			document.removeEventListener('pointerdown', onPointerDown, true)
 			document.removeEventListener('keydown', onKey, true)
+			menuNode?.removeEventListener('focusout', onFocusOut)
 		}
 	}, [open, activeIndex, close, items, activate])
 

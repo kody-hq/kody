@@ -119,6 +119,20 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 	expect(isRepoSessionDirectoryTargetCallerMessage(writeDirectoryMessage)).toBe(
 		true,
 	)
+	const directoryTargetCases = [
+		[
+			'move',
+			'repo session move edit source "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+		],
+		[
+			'delete',
+			'repo session delete edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+		],
+	] as const
+	for (const [kind, message] of directoryTargetCases) {
+		expect(buildRepoSessionDirectoryTargetMessage(kind, 'src')).toBe(message)
+		expect(isRepoSessionDirectoryTargetCallerMessage(message)).toBe(true)
+	}
 
 	const platformMessages = [
 		'EISDIR: /session/src is a directory',
@@ -148,6 +162,12 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 			'/session',
 		),
 	).toBe('src')
+	expect(
+		externalPathFromRawWorkspaceEisdirMessage(
+			'EISDIR: /session/src/my file.ts is a directory',
+			'/session',
+		),
+	).toBe('src/my file.ts')
 	expect(
 		externalPathFromRawWorkspaceEisdirMessage(
 			'EISDIR: cannot write to root directory',

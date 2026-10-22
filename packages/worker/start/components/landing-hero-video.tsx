@@ -37,6 +37,18 @@ export function nextChooserIndex(
 	}
 }
 
+/**
+ * Whether the chooser strip has horizontal overflow. Browsers without
+ * scroll-driven animations keep a static `fade-x` mask; skip that mask when
+ * every thumb already fits.
+ */
+export function chooserHasHorizontalOverflow(input: {
+	clientWidth: number
+	scrollWidth: number
+}) {
+	return input.scrollWidth > input.clientWidth + 1
+}
+
 function prefersReducedMotion() {
 	return (
 		typeof window !== 'undefined' &&
@@ -63,6 +75,7 @@ export function LandingHeroVideo({
 	const videos = presentLandingHeroVideos(suppliedVideos)
 	const [selection, setSelection] = useState({ index: 0, chosen: false })
 	const [active, setActiveIndex] = useState(0)
+	const [horizontalOverflow, setHorizontalOverflow] = useState(false)
 	const scroller = useRef<HTMLDivElement>(null)
 	const id = useId()
 	const playerId = id + '-player'
@@ -70,6 +83,21 @@ export function LandingHeroVideo({
 	const selectedIndex = selection.index < videos.length ? selection.index : 0
 	const activeIndex = active < videos.length ? active : 0
 	const chosen = selection.chosen
+	useEffect(() => {
+		const node = scroller.current
+		if (!node) return
+		function sync() {
+			if (node) setHorizontalOverflow(chooserHasHorizontalOverflow(node))
+		}
+		const observer = new ResizeObserver(sync)
+		observer.observe(node)
+		node.addEventListener('scroll', sync, { passive: true })
+		sync()
+		return () => {
+			observer.disconnect()
+			node.removeEventListener('scroll', sync)
+		}
+	}, [videos.length])
 	useEffect(() => {
 		const node = scroller.current,
 			option = document.getElementById(id + '-video-' + activeIndex)
@@ -117,7 +145,11 @@ export function LandingHeroVideo({
 					aria-activedescendant={optionId(activeIndex)}
 					data-rise
 					style={{ '--rise': '1.5' } as CSSProperties}
-					className="landing-hero-chooser fade-x"
+					className={
+						horizontalOverflow
+							? 'landing-hero-chooser fade-x'
+							: 'landing-hero-chooser fade-none-x'
+					}
 					data-testid="landing-hero-chooser"
 					ref={scroller}
 					onKeyDown={(event) => {

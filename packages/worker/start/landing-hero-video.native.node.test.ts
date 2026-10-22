@@ -3,6 +3,7 @@ import { renderStartPage as renderToString } from './test-support/render-start-p
 import { expect, test } from 'vitest'
 import {
 	LandingHeroVideo,
+	chooserHasHorizontalOverflow,
 	nextChooserIndex,
 } from './components/landing-hero-video.tsx'
 
@@ -37,6 +38,26 @@ test('nextChooserIndex moves along the strip, wraps at the ends, ignores other k
 	expect(nextChooserIndex(1, 'Enter', 3)).toBeNull()
 	expect(nextChooserIndex(1, 'a', 3)).toBeNull()
 	expect(nextChooserIndex(0, 'ArrowRight', 0)).toBeNull()
+})
+
+test('chooserHasHorizontalOverflow is true only when the strip scrolls', () => {
+	expect(
+		chooserHasHorizontalOverflow({ clientWidth: 400, scrollWidth: 400 }),
+	).toBe(false)
+	expect(
+		chooserHasHorizontalOverflow({ clientWidth: 400, scrollWidth: 401 }),
+	).toBe(false)
+	expect(
+		chooserHasHorizontalOverflow({ clientWidth: 400, scrollWidth: 402 }),
+	).toBe(true)
+})
+
+test('hero chooser starts without fade-x until overflow is measured', async () => {
+	const html = await renderToString(
+		jsx(LandingHeroVideo, { videos: fixtureVideos }),
+	)
+	expect(html).toContain('landing-hero-chooser fade-none-x')
+	expect(html).not.toContain('landing-hero-chooser fade-x')
 })
 
 test('hero video renders playlist order in the player and listbox', async () => {
