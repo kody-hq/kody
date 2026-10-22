@@ -14,7 +14,7 @@ import { KodyMark } from './kody-mark.tsx'
 import { AccountMenu } from './org-switcher.tsx'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
-import { colors } from '#universal/styles/tokens.ts'
+import { colors, typography } from '#universal/styles/tokens.ts'
 
 export function WorkspaceLayout() {
 	const { session } = useShellData()
@@ -79,16 +79,16 @@ export function WorkspaceLayout() {
 								href="/"
 								aria-label="Kody home"
 								css={{
-									display: 'flex',
+									display: 'inline-flex',
 									alignItems: 'center',
-									gap: '0.5rem',
+									gap: '0.7rem',
 									color: colors.text,
 									textDecoration: 'none',
-									fontWeight: 750,
-									fontSize: '1.2rem',
+									font: `700 1.75rem/1 ${typography.fontFamilyDisplay}`,
+									letterSpacing: '-0.01em',
 								}}
 							>
-								<KodyMark size={30} />
+								<KodyMark size={34} />
 								Kody
 							</SiteLink>
 						</BrandContextMenu>

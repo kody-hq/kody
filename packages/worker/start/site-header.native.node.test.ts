@@ -117,7 +117,7 @@ test('logged-out header shows Log in without an Account link', async () => {
 	expect(html).not.toContain('data-testid="site-header-account-menu"')
 })
 
-test('home brand wordmark is larger than other routes', async () => {
+test('site header brand wordmark uses the larger display size on every route', async () => {
 	const home = await renderToString(
 		jsx(SiteHeader, {
 			loggedIn: false,
@@ -130,7 +130,7 @@ test('home brand wordmark is larger than other routes', async () => {
 			currentPathname: '/',
 		}),
 	)
-	const pricing = await renderToString(
+	const features = await renderToString(
 		jsx(SiteHeader, {
 			loggedIn: false,
 			displayName: '',
@@ -139,14 +139,13 @@ test('home brand wordmark is larger than other routes', async () => {
 			showAdminLink: false,
 			showDemoIndicator: false,
 			loginHref: '/login',
-			currentPathname: '/pricing',
+			currentPathname: '/features',
 		}),
 	)
-	expect(home).toContain('1.75rem')
-	expect(home).toContain('gap:0.7rem')
-	expect(pricing).not.toContain('1.75rem')
-	expect(pricing).toContain('1.25rem')
-	expect(pricing).toContain('gap:0.6rem')
+	for (const html of [home, features]) {
+		expect(html).toContain('font:700 1.75rem/1 var(--font-display)')
+		expect(html).toContain('gap:0.7rem')
+	}
 })
 
 test('desktop and mobile headers include the complete Features navigation', async () => {

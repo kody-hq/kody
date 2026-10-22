@@ -38,6 +38,9 @@ test('workspace sidebar brand uses the theme SVG mark and a context-menu host', 
 	expect(html).toContain('viewBox="220.727 325.009973 807.440627 593.242027"')
 	expect(html).toContain('fill="currentColor"')
 	expect(html).not.toContain('src="/images/kody-mark.png"')
+	expect(html).toContain('1.75rem')
+	expect(html).toContain('0.7rem')
+	expect(html).toMatch(/font-family:[^;]*var\(--font-display\)/)
 	// Menu is closed until right-click; SSR should not emit menu items.
 	expect(html).not.toContain('Copy logo as SVG')
 	expect(html).not.toContain('Go to brand guide')

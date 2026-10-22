@@ -74,7 +74,6 @@ export function SiteHeader(props: SiteHeaderProps) {
 	const workspaceHref = personal
 		? workspaceHomeHref(personal)
 		: '/account/organizations'
-	const brandLinkCss = props.currentPathname === '/' ? homeBrandCss : brandCss
 	useEffect(() => {
 		dismissOpenPopoverPanel(document.getElementById(menuPanelId))
 	}, [props.currentPathname])
@@ -87,7 +86,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 			<header className="site-header" data-focused-header css={headerCss}>
 				<div css={navCss}>
 					<BrandContextMenu>
-						<SiteLink href="/" css={brandLinkCss}>
+						<SiteLink href="/" css={brandCss}>
 							<KodyMark size={34} />
 							<span>Kody</span>
 						</SiteLink>
@@ -126,7 +125,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 		<header className="site-header" css={headerCss}>
 			<nav aria-label="Main" css={navCss}>
 				<BrandContextMenu>
-					<SiteLink href="/" css={brandLinkCss}>
+					<SiteLink href="/" css={brandCss}>
 						<KodyMark size={34} />
 						<span>Kody</span>
 					</SiteLink>
@@ -255,20 +254,13 @@ const navCss: CSSObject = {
 const brandCss: CSSObject = {
 	display: 'inline-flex',
 	alignItems: 'center',
-	gap: '0.6rem',
+	gap: '0.7rem',
 	minHeight: siteHeaderBrandMinHeight,
-	font: `700 1.25rem/1 ${typography.fontFamilyDisplay}`,
+	font: `700 1.75rem/1 ${typography.fontFamilyDisplay}`,
 	color: colors.text,
 	textDecoration: 'none',
 	letterSpacing: '-0.01em',
 	'&:hover': { color: colors.text },
-}
-
-/** Home-only brand wordmark sizing; other routes keep brandCss. */
-const homeBrandCss: CSSObject = {
-	...brandCss,
-	gap: '0.7rem',
-	font: `700 1.75rem/1 ${typography.fontFamilyDisplay}`,
 }
 
 /**
