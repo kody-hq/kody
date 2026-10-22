@@ -1,6 +1,5 @@
 import { expect, test, vi } from 'vitest'
 import {
-	mcpOAuthGrantMaxAgeSeconds,
 	mcpOAuthMaxGrantsPerUserClient,
 	pruneUserClientOAuthGrants,
 	selectOAuthGrantsToPrune,
@@ -24,7 +23,6 @@ test('selectOAuthGrantsToPrune keeps the newest N and marks older excess', () =>
 	expect(
 		selectOAuthGrantsToPrune({
 			grants,
-			nowSeconds,
 			maxGrants: mcpOAuthMaxGrantsPerUserClient,
 		}),
 	).toEqual([
@@ -33,18 +31,17 @@ test('selectOAuthGrantsToPrune keeps the newest N and marks older excess', () =>
 	])
 })
 
-test('selectOAuthGrantsToPrune revokes stale grants even under the N cap', () => {
+test('selectOAuthGrantsToPrune does not revoke by age alone', () => {
 	const nowSeconds = 1_700_000_000
 	const fresh = grant('fresh', nowSeconds - 60)
-	const stale = grant('stale', nowSeconds - mcpOAuthGrantMaxAgeSeconds - 1)
+	const oldButActive = grant('old-active', nowSeconds - 200 * 24 * 60 * 60)
 
 	expect(
 		selectOAuthGrantsToPrune({
-			grants: [fresh, stale],
-			nowSeconds,
+			grants: [fresh, oldButActive],
 			maxGrants: mcpOAuthMaxGrantsPerUserClient,
 		}),
-	).toEqual([{ id: 'stale', reason: 'stale' }])
+	).toEqual([])
 })
 
 test('selectOAuthGrantsToPrune never revokes keepGrantIds', () => {
@@ -58,7 +55,6 @@ test('selectOAuthGrantsToPrune never revokes keepGrantIds', () => {
 	expect(
 		selectOAuthGrantsToPrune({
 			grants,
-			nowSeconds,
 			maxGrants: 10,
 			keepGrantIds: new Set(['grant-11']),
 		}),
@@ -79,7 +75,6 @@ test('selectOAuthGrantsToPrune keeps every grant tied at the newest createdAt', 
 	expect(
 		selectOAuthGrantsToPrune({
 			grants,
-			nowSeconds,
 			maxGrants: 10,
 		}),
 	).toEqual([
@@ -98,7 +93,6 @@ test('pruneUserClientOAuthGrants revokes selected grants and audits once', async
 				grant('keep-new', nowSeconds),
 				grant('keep-2', nowSeconds - 10),
 				grant('excess-old', nowSeconds - 20),
-				grant('stale', nowSeconds - mcpOAuthGrantMaxAgeSeconds - 5),
 			],
 		}),
 		revokeGrant: vi.fn(async (grantId: string, userId: string) => {
@@ -113,20 +107,19 @@ test('pruneUserClientOAuthGrants revokes selected grants and audits once', async
 			userId: 'user-1',
 			clientId: 'https://chatgpt.com/oauth/client.json',
 			env: {},
-			nowSeconds,
 			maxGrants: 2,
 		}),
-	).resolves.toEqual({ revoked: 2, stale: 1, excess: 1 })
+	).resolves.toEqual({ revoked: 1, excess: 1 })
 
-	expect(revoked.sort()).toEqual(['excess-old', 'stale'])
-	expect(helpers.revokeGrant).toHaveBeenCalledTimes(2)
+	expect(revoked).toEqual(['excess-old'])
+	expect(helpers.revokeGrant).toHaveBeenCalledTimes(1)
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
 		expect.objectContaining({
 			category: 'oauth',
 			action: 'connection_pruned',
 			result: 'success',
 			clientId: 'https://chatgpt.com/oauth/client.json',
-			reason: 'revoked=2;stale=1;excess=1',
+			reason: 'revoked=1;excess=1',
 		}),
 	)
 })
@@ -146,7 +139,7 @@ test('pruneUserClientOAuthGrants is best-effort when listing fails', async () =>
 			clientId: 'client-a',
 			env: {},
 		}),
-	).resolves.toEqual({ revoked: 0, stale: 0, excess: 0 })
+	).resolves.toEqual({ revoked: 0, excess: 0 })
 
 	expect(helpers.revokeGrant).not.toHaveBeenCalled()
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
@@ -167,8 +160,8 @@ test('pruneUserClientOAuthGrants reports completed revokes when a later revoke f
 		listUserGrants: async () => ({
 			items: [
 				grant('keep', nowSeconds),
-				grant('stale', nowSeconds - mcpOAuthGrantMaxAgeSeconds - 5),
-				grant('excess-old', nowSeconds - 20),
+				grant('excess-a', nowSeconds - 20),
+				grant('excess-b', nowSeconds - 40),
 			],
 		}),
 		revokeGrant: vi
@@ -183,10 +176,9 @@ test('pruneUserClientOAuthGrants reports completed revokes when a later revoke f
 			userId: 'user-1',
 			clientId,
 			env: {},
-			nowSeconds,
 			maxGrants: 1,
 		}),
-	).resolves.toEqual({ revoked: 1, stale: 1, excess: 0 })
+	).resolves.toEqual({ revoked: 1, excess: 1 })
 
 	expect(helpers.revokeGrant).toHaveBeenCalledTimes(2)
 	expect(logAuditEventSpy).toHaveBeenCalledWith(
@@ -195,7 +187,7 @@ test('pruneUserClientOAuthGrants reports completed revokes when a later revoke f
 			action: 'connection_pruned',
 			result: 'failure',
 			clientId,
-			reason: 'prune_failed;revoked=1;stale=1;excess=0',
+			reason: 'prune_failed;revoked=1;excess=1',
 		}),
 	)
 })

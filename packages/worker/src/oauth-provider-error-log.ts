@@ -137,7 +137,7 @@ export async function reportOAuthProviderError(
 		}),
 	)
 
-	void logAuditEvent({
+	await logAuditEvent({
 		db: undefined,
 		category: 'oauth',
 		action: 'token_error',

@@ -852,11 +852,13 @@ user+client on every reconnect, which 401s `/mcp` on the sibling surface and
 fails refresh with `invalid_grant` (`grant_not_found`). After each successful
 authorization, `pruneUserClientOAuthGrants`
 (`packages/worker/src/oauth-grant-prune.ts`) keeps the newest 10 grants per
-user+client and revokes grants whose `createdAt` is older than 90 days. Revoking
-a grant still deletes its tokens. A `connection_pruned` audit event is recorded
-when pruning revokes anything. Token/refresh failures report `code` +
-`internal.category`/`reason` (and client id when available) through `onError` →
-`reportOAuthProviderError` without logging tokens, secrets, or emails.
+user+client (oldest excess only). It does not prune by `createdAt` age — refresh
+tokens do not expire, so an old grant can still be actively refreshed on a
+sibling host. Revoking a grant still deletes its tokens. A `connection_pruned`
+audit event is recorded when pruning revokes anything. Token/refresh failures
+report `code` + `internal.category`/`reason` (and client id when available)
+through `onError` → `reportOAuthProviderError` without logging tokens, secrets,
+or emails.
 
 The provider still rotates refresh tokens on use and keeps only the current hash
 plus the immediately previous hash on the grant. MCP hosts on one machine often
