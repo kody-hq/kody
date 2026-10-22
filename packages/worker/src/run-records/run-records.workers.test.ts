@@ -1596,8 +1596,9 @@ test('dashboard aggregates complete owner history and excludes exports, child ru
 			.every((day) => day.success + day.error + day.running === 0),
 	).toBe(true)
 	expect(charts.sources).toEqual([{ surface: 'execute', count: 31 }])
-	// Out-of-window finish still lands in day counts; charts filter the window.
-	expect(charts.countsSince).toBe(iso(since - 1).slice(0, 10))
+	// Fresh DOs have no warm no-backfill floor; out-of-window days stay in the
+	// table but do not set countsSince.
+	expect(charts.countsSince).toBeNull()
 })
 
 test('dashboard day counts survive the 2000-run cap across several UTC days', async () => {
@@ -1679,5 +1680,6 @@ test('dashboard day counts survive the 2000-run cap across several UTC days', as
 		expect(day.success).toBe(343)
 	}
 	expect(charts.sources).toEqual([{ surface: 'execute', count: totalCounted }])
-	expect(charts.countsSince).toBe('2026-10-16')
+	// Cap survival does not imply a warm migration floor.
+	expect(charts.countsSince).toBeNull()
 })

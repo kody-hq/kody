@@ -73,8 +73,9 @@ export function buildWorkspaceRunCharts(
 }
 
 /**
- * When durable counting started after the chart window, return that UTC day so
- * the UI can say "Showing runs since …". Otherwise null (full window covered).
+ * When a warm RunLog's no-backfill coverage floor falls inside the chart window,
+ * return that UTC day so the UI can say "Showing runs since …". Fresh objects
+ * keep countsSince null (empty early days are truly empty). Otherwise null.
  */
 export function workspaceChartsPartialSince(
 	charts: Pick<WorkspaceRunCharts, 'since' | 'countsSince'>,

@@ -1039,6 +1039,21 @@ test('fresh schema v13 creates run_day_counts beside job_run_observability', asy
 					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM run_day_counts`)
 					.one().n,
 			).toBe(0)
+			expect(
+				state.storage.sql
+					.exec<{ value: number }>(
+						`SELECT value FROM run_log_meta WHERE key = 'run_day_counts_since' LIMIT 1`,
+					)
+					.toArray(),
+			).toEqual([])
+			expect(
+				(
+					await instance.dashboardBuckets({
+						since: '2026-10-16T00:00:00.000Z',
+						until: '2026-10-22T23:59:59.999Z',
+					})
+				).countsSince,
+			).toBeNull()
 		},
 	)
 
@@ -1064,6 +1079,8 @@ test('fresh schema v13 creates run_day_counts beside job_run_observability', asy
 
 test('warm schema v12 objects upgrade to v13 with an empty run_day_counts table', async () => {
 	const userId = uniqueUserId('schema-v12-warm-day-counts')
+	const migrationDay = new Date().toISOString().slice(0, 10)
+	const migrationDayMeta = Number(migrationDay.replaceAll('-', ''))
 	await upgradeFromLegacySchema(
 		userId,
 		12,
@@ -1130,8 +1147,100 @@ test('warm schema v12 objects upgrade to v13 with an empty run_day_counts table'
 					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
 					.one().n,
 			).toBe(1)
+			expect(
+				state.storage.sql
+					.exec<{ value: number }>(
+						`SELECT value FROM run_log_meta WHERE key = 'run_day_counts_since' LIMIT 1`,
+					)
+					.one().value,
+			).toBe(migrationDayMeta)
 		},
 	)
+
+	const windowStart = new Date(`${migrationDay}T00:00:00.000Z`)
+	windowStart.setUTCDate(windowStart.getUTCDate() - 6)
+	const chartSince = windowStart.toISOString()
+	const chartUntil = `${migrationDay}T23:59:59.999Z`
+
+	await runInDurableObject(runLogStub(userId), async (instance: RunLog) => {
+		const empty = await instance.dashboardBuckets({
+			since: chartSince,
+			until: chartUntil,
+		})
+		expect(empty.buckets).toEqual([])
+		expect(empty.countsSince).toBe(migrationDay)
+
+		const startedAt = '2026-10-01T12:00:00.000Z'
+		const finishedAt = `${migrationDay}T18:00:00.000Z`
+		await instance.startRun({
+			run: {
+				id: 'legacy-running',
+				surface: 'execute',
+				status: 'running',
+				name: 'legacy',
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				publishedCommit: null,
+				storageId: null,
+				jobId: null,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: null,
+				parentRunId: null,
+				startedAt,
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				metadataJson: '{}',
+				createdAt: startedAt,
+				updatedAt: startedAt,
+			},
+		})
+		await instance.finishRun({
+			run: {
+				id: 'legacy-running',
+				surface: 'execute',
+				status: 'success',
+				name: 'legacy',
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				publishedCommit: null,
+				storageId: null,
+				jobId: null,
+				workflowId: null,
+				invocationId: null,
+				sessionId: null,
+				idempotencyKey: null,
+				parentRunId: null,
+				startedAt,
+				finishedAt,
+				durationMs: 1,
+				errorName: null,
+				errorMessage: null,
+				metadataJson: '{}',
+				createdAt: startedAt,
+				updatedAt: finishedAt,
+			},
+			logs: [],
+		})
+		const after = await instance.dashboardBuckets({
+			since: chartSince,
+			until: chartUntil,
+		})
+		expect(after.countsSince).toBe(migrationDay)
+		expect(after.buckets).toEqual([
+			{
+				day: migrationDay,
+				surface: 'execute',
+				status: 'success',
+				count: 1,
+			},
+		])
+	})
 })
 
 test('warm schema v7 and v8 objects upgrade to v13 without losing job data', async () => {

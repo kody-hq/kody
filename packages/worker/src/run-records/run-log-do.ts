@@ -91,8 +91,19 @@ const metaRunCountKey = 'run_count'
 const metaFinishesSinceRetentionKey = 'finishes_since_retention'
 const metaRetentionEmptyBackoffKey = 'retention_empty_backoff_ms'
 const metaSchemaVersionKey = 'schema_version'
+/** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
+const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
 const runLogSchemaVersion = 13
+
+function utcDayToMetaInt(day: string): number {
+	return Number(day.replaceAll('-', ''))
+}
+
+function metaIntToUtcDay(value: number): string {
+	const digits = String(value).padStart(8, '0')
+	return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+}
 
 type RunLogSqlBillingOp =
 	| 'listRuns'
@@ -981,6 +992,16 @@ class RunLogBase extends DurableObject<Env> {
 			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
 			ON run_day_counts(day)`,
 		)
+		// Warm objects only: record the migration UTC day as the coverage floor.
+		// Fresh objects keep a null boundary (no partial-history note).
+		if (installedVersion != null && installedVersion < 13) {
+			if (this.getMeta(metaRunDayCountsSinceKey) == null) {
+				this.setMeta(
+					metaRunDayCountsSinceKey,
+					utcDayToMetaInt(new Date().toISOString().slice(0, 10)),
+				)
+			}
+		}
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
@@ -1373,6 +1394,11 @@ class RunLogBase extends DurableObject<Env> {
 	 * or is marked stale. Cap eviction must not call this: history stays in
 	 * run_day_counts after the runs row is gone.
 	 */
+	private runDayCountsCoverageSince(): string | null {
+		const meta = this.getMeta(metaRunDayCountsSinceKey)
+		return meta == null ? null : metaIntToUtcDay(meta)
+	}
+
 	private applyRunDayCountTransition(input: {
 		previousStatus: RunStatus | null
 		run: Pick<
@@ -1381,7 +1407,11 @@ class RunLogBase extends DurableObject<Env> {
 		>
 	}) {
 		if (!this.countsTowardDashboard(input.run)) return
-		const day = this.utcDayFromIso(input.run.startedAt)
+		// Clamp pre-migration startedAt days up to the warm coverage floor so
+		// MIN(day) cannot drift before the no-backfill boundary.
+		let day = this.utcDayFromIso(input.run.startedAt)
+		const coverageSince = this.runDayCountsCoverageSince()
+		if (coverageSince != null && day < coverageSince) day = coverageSince
 		const surface = input.run.surface
 		const next = input.run.status
 		if (input.previousStatus == null) {
@@ -3746,13 +3776,18 @@ class RunLogBase extends DurableObject<Env> {
 	}> {
 		const sinceDay = input.since.slice(0, 10)
 		const untilDay = input.until.slice(0, 10)
+		// Warm migration floor only (null for fresh DOs). Not MIN(day): a legacy
+		// running finish must not pull the displayed boundary before no-backfill.
+		const countsSince = this.runDayCountsCoverageSince()
+		const lowerDay =
+			countsSince != null && countsSince > sinceDay ? countsSince : sinceDay
 		const buckets = this.execSqlTracked<WorkspaceRunBucket>(
 			'summarize',
 			`SELECT day, surface, status, count
 			FROM run_day_counts
 			WHERE day >= ? AND day <= ?
 			ORDER BY day, surface, status`,
-			sinceDay,
+			lowerDay,
 			untilDay,
 		)
 			.toArray()
@@ -3768,13 +3803,6 @@ class RunLogBase extends DurableObject<Env> {
 					: 'error') as WorkspaceRunBucket['status'],
 				count: Number(row.count ?? 0) || 0,
 			}))
-		const countsSinceRow = this.ctx.storage.sql
-			.exec<{ day: string | null }>(
-				`SELECT MIN(day) AS day FROM run_day_counts`,
-			)
-			.toArray()[0]
-		const countsSince =
-			countsSinceRow?.day == null ? null : String(countsSinceRow.day)
 		return { buckets, countsSince }
 	}
 
