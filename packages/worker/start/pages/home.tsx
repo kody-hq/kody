@@ -199,13 +199,27 @@ export function HomeRoute({
 				<ul className="landing-vs-list">
 					{landingIsNotItems.map((item) => (
 						<li key={item.kicker} className="landing-vs-item" ref={revealRef()}>
-							<p className="landing-vs-kicker">{item.kicker}</p>
-							<p className="landing-vs-body">{item.body}</p>
+							<span className="landing-vs-mark" aria-hidden="true">
+								<svg viewBox="0 0 16 16">
+									<path d="M5 5l6 6M11 5l-6 6" />
+								</svg>
+							</span>
+							<div>
+								<p className="landing-vs-kicker">{item.kicker}</p>
+								<p className="landing-vs-body">{item.body}</p>
+							</div>
 						</li>
 					))}
 					<li className="landing-vs-item landing-vs-item-is" ref={revealRef()}>
-						<p className="landing-vs-kicker">{landingIsItem.kicker}</p>
-						<p className="landing-vs-body">{landingIsItem.body}</p>
+						<span className="landing-vs-mark" aria-hidden="true">
+							<svg viewBox="0 0 16 16">
+								<path d="M3.5 8.5l3 3 6-7" />
+							</svg>
+						</span>
+						<div>
+							<p className="landing-vs-kicker">{landingIsItem.kicker}</p>
+							<p className="landing-vs-body">{landingIsItem.body}</p>
+						</div>
 					</li>
 				</ul>
 			</section>
