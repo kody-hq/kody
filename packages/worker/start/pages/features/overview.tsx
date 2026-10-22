@@ -52,8 +52,8 @@ export function FeaturesOverview() {
 									src={publicAsset(
 										`/images/features/${card.id === 'integrations' ? 'credentials' : card.id}.svg`,
 									)}
-									width="38"
-									height="38"
+									width="44"
+									height="44"
 									alt=""
 								/>
 								<h2>{card.name}</h2>

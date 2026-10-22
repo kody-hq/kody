@@ -102,8 +102,8 @@ export function FeaturesMenu(props: Props) {
 						>
 							<img
 								src={publicAsset(`/images/features/${feature.id}.svg`)}
-								width="36"
-								height="36"
+								width="40"
+								height="40"
 								alt=""
 							/>
 							<span>
@@ -273,7 +273,7 @@ const featureCss: CSSObject = {
 	textDecoration: 'none',
 	color: colors.text,
 	'& > span': { display: 'grid', gap: '.25rem' },
-	// Apps (and the other stroke icons) mush below ~16px; keep a hard floor.
+	// Full orbs need room for the white glyph; keep a 16px floor.
 	'& img': { flexShrink: 0, minWidth: 16, minHeight: 16 },
 	'& strong': { fontWeight: 600, fontSize: '.95rem' },
 	'& small': { fontSize: '.8rem', lineHeight: 1.4, color: colors.textMuted },
@@ -297,7 +297,7 @@ const mobileCss: CSSObject = {
 	'& summary > span': { display: 'inline-flex' },
 	'&[open] summary > span': { rotate: '180deg' },
 	'& small': { display: 'none' },
-	'& img': { width: '26px', height: '26px', minWidth: 16, minHeight: 16 },
+	'& img': { width: '32px', height: '32px', minWidth: 16, minHeight: 16 },
 	'& a': { fontSize: '.9rem', minHeight: '44px' },
 	'& summary:focus-visible': {
 		outline: `2px solid ${colors.primaryText}`,

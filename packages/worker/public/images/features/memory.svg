@@ -1,4 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ef4444" aria-hidden="true">
-  <path d="M18 21 12 17.5 6 21V5.5A2.5 2.5 0 0 1 8.5 3h7A2.5 2.5 0 0 1 18 5.5z" />
-  <path d="M9.5 8.5h5M9.5 12h3" />
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+  <defs>
+    <radialGradient id="orb" cx="36%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#f87171"/>
+      <stop offset="48%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="32" fill="url(#orb)"/>
+  <g
+    transform="translate(32 32) scale(1.15) translate(-12 -12)"
+    fill="none"
+    stroke="#fff"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M18 21 12 17.5 6 21V5.5A2.5 2.5 0 0 1 8.5 3h7A2.5 2.5 0 0 1 18 5.5z"/>
+    <path d="M9.5 8.5h5M9.5 12h3"/>
+  </g>
 </svg>
