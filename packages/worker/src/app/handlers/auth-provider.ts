@@ -8,43 +8,37 @@ import {
 	readAuthSessionResult,
 } from '#app/auth-session.ts'
 import { clearedFactorsAuditReason } from '#app/clear-account-factors.ts'
-import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
 import {
 	destroyOauthLoginStateCookie,
 	readOauthLoginState,
 	setOauthLoginStateSecret,
 } from '#app/oauth-login-state.ts'
 import {
+	createOauthPendingSignupCookie,
+	setOauthPendingSignupSecret,
+} from '#app/oauth-pending-signup.ts'
+import {
+	generateOauthRandomValue,
 	getOauthClientConfig,
 	isOauthProviderId,
 	resolveOauthProfile,
 	type OauthProfile,
 	type OauthProviderId,
 } from '#app/oauth-providers.ts'
-import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { isTwoFactorEnabled } from '#app/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
 } from '#app/verify-session.ts'
-import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
-import { firstTouchAttributionCreateFields } from '#universal/first-touch-attribution.ts'
 import { type OauthLoginErrorCode } from '#universal/oauth-login-errors.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	assessAccountEmail,
 	type AccountEmailRejectionCode,
 } from '#worker/identity/account-email-policy.ts'
-import { resolvePlanWrite } from '#universal/plans.ts'
-import {
-	resolveReferralCodeForSignup,
-	serializeReferralCookie,
-} from '#universal/referral-cookie.ts'
+import { serializeReferralCookie } from '#universal/referral-cookie.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	defaultPostVerificationRedirect,
-	resolvePostAuthLandingPath,
-} from '#universal/safe-redirect.ts'
+import { resolvePostAuthLandingPath } from '#universal/safe-redirect.ts'
 import {
 	AccountDeletionInProgressError,
 	assertAccountWritableDb,
@@ -54,51 +48,27 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import {
-	maybeGrantSignupWelcomeCredits,
-	reconcileSignupWelcomeCreditsIfPending,
-} from '#worker/billing/signup-welcome-credits.ts'
+import { reconcileSignupWelcomeCreditsIfPending } from '#worker/billing/signup-welcome-credits.ts'
 import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { createDb, oauthConnectionsTable, usersTable } from '#worker/db.ts'
 import {
 	maybeJoinOfficialDiscordGuild,
 	maybeSyncDiscordGuildRolesForUser,
 } from '#worker/discord/guild-role.ts'
-import { ensureDefaultEmailInbox } from '#worker/email/default-inbox.ts'
-import { getPlatformEmailDomain } from '#worker/email/platform-address.ts'
-import { attributeReferralAtSignup } from '#worker/entitlements/referral-program.ts'
 import { touchLastActiveAt } from '#worker/identity/activation-stamps.ts'
-import {
-	allocateSignupIdentity,
-	claimAccountEmail,
-} from '#worker/identity/email-claims.ts'
+import { findActiveEmailClaim } from '#worker/identity/email-claims.ts'
 import { getAvailableUsernameFromBase } from '#worker/identity/generated-username.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { getCallbackRedirectUri } from '#worker/identity/oauth-provider-redirect.ts'
 import { recordOnboardingFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
-import { assignUserRole } from '#worker/identity/permissions-db.ts'
-import { scheduleUserCreatedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { usernameFromEmail } from '#worker/identity/username.ts'
-import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { type OAuthGrantHelpers } from '#worker/oauth-grants.ts'
-import {
-	mintPersonalOrgIdForSignup,
-	provisionPersonalOrgForSignup,
-	rollbackPersonalOrgAfterFailedSignup,
-} from '#worker/orgs/signup-provision.ts'
 import {
 	personIdFromStored,
 	personalOrgId,
-	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-
-/**
- * Accounts created through social login have no usable password until the
- * user sets one via password reset; verifyPassword rejects this sentinel.
- */
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-const oauthNoUsablePasswordHash = unusablePasswordHash.oauthCreated
 
 function oauthCodeForAccountEmail(
 	code: AccountEmailRejectionCode,
@@ -620,8 +590,9 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			})
 		}
 
-		// 4. New account. Reject addresses we would not store before any
-		// identity allocation or user-row write.
+		// 4. New account. Reject addresses we would not store, then park the
+		// verified provider identity so the person chooses a permanent
+		// username before any user row is written.
 		const emailDecision = await assessAccountEmail(email, {
 			allowExampleDomain: isNonProductionRuntime(env),
 		})
@@ -631,225 +602,47 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				emailDecision.code,
 			)
 		}
-
-		let username: string
-		let stableUserId: OwnerId
-		let signupPersonalOrgId: OwnerId
-		let newUser: {
-			id: number
-			stable_user_id: string
-			email: string
-		} | null = null
-
-		async function rollbackNewUser(userId: number) {
-			invalidatePackageAppOwnerCache({ stableUserId })
-			await rollbackPersonalOrgAfterFailedSignup(
-				env.APP_DB,
-				stableUserId,
-				signupPersonalOrgId,
-			)
-			try {
-				await env.APP_DB.prepare(
-					`DELETE FROM users WHERE id = ?${andLiveDeletedAtSql()}`,
-				)
-					.bind(userId)
-					.run()
-			} catch (rollbackError) {
-				console.error(
-					'Failed to roll back OAuth-created user row:',
-					rollbackError,
-				)
-			}
+		// Former-email claims block new accounts; fail before parking pending
+		// so the person never reaches the username chooser for a dead end.
+		if (await findActiveEmailClaim(env.APP_DB, email)) {
+			return fail('email-claimed', 'former_email_claimed')
 		}
 
-		try {
-			username = await getAvailableUsernameFromBase(
-				env.APP_DB,
-				profile.username ?? usernameFromEmail(email),
-				env,
-			)
-			const allocated = await allocateSignupIdentity(env.APP_DB, email)
-			if (!allocated.ok) {
-				if (allocated.reason === 'former_email_claimed') {
-					return fail('email-claimed', 'former_email_claimed')
-				}
-				return fail('account-error', 'user_create_conflict')
-			}
-			stableUserId = personalOrgId(allocated.stableUserId)
-			signupPersonalOrgId = mintPersonalOrgIdForSignup()
-			recordOnboardingFunnelEvent(env, {
-				stage: 'signup_started',
-				userId: stableUserId,
-			})
-			const createdAt = new Date().toISOString()
-			const signupAttribution = loginState.attribution
-			const createdUser = await db.create(
-				usersTable,
-				{
-					username,
-					email,
-					stable_user_id: stableUserId,
-					personal_org_id: signupPersonalOrgId,
-					password_hash: oauthNoUsablePasswordHash,
-					email_verified_at: createdAt,
-					...firstTouchAttributionCreateFields(signupAttribution),
-					last_active_at: createdAt,
-				},
-				{ returnRow: true },
-			)
-			newUser = { id: createdUser.id, stable_user_id: stableUserId, email }
-			await provisionPersonalOrgForSignup(env.APP_DB, {
-				stableUserId,
-				orgId: signupPersonalOrgId,
-				username,
-				createdAt,
-				plan: resolvePlanWrite(null),
-				signupWelcomeCreditsPending: 1,
-			})
-		} catch (error) {
-			if (newUser) {
-				await rollbackNewUser(newUser.id)
-			}
-			const uniqueField = getUniqueConstraintField(error)
-			if (
-				uniqueField === 'stable_user_id' ||
-				uniqueField === 'personal_org_id'
-			) {
-				return fail('email-claimed', 'former_email_claimed')
-			}
-			if (uniqueField) {
-				return fail('account-error', 'user_create_conflict')
-			}
-			throw error
-		}
-
-		if (!newUser) {
-			return fail('account-error', 'user_create_conflict')
-		}
-
-		let assigned = false
-		try {
-			;({ assigned } = await assignUserRole({
-				db: env.APP_DB,
-				userId: newUser.id,
-				roleName: 'user',
-			}))
-		} catch (error) {
-			console.error('Failed to assign default role at OAuth signup:', error)
-		}
-		if (!assigned) {
-			await rollbackNewUser(newUser.id)
-			return fail('account-error', 'default_role_assignment_failed')
-		}
-
-		try {
-			await claimAccountEmail(env.APP_DB, {
-				userId: newUser.id,
+		const suggestedUsername = await getAvailableUsernameFromBase(
+			env.APP_DB,
+			profile.username ?? usernameFromEmail(email),
+			env,
+		)
+		setOauthPendingSignupSecret(env.COOKIE_SECRET)
+		const pendingCookie = await createOauthPendingSignupCookie(
+			{
+				provider,
+				providerUserId: profile.providerUserId,
 				email,
-			})
-		} catch (error) {
-			console.error('Failed to claim OAuth signup email:', error)
-			await rollbackNewUser(newUser.id)
-			return fail('account-error', 'email_claim_failed')
-		}
-
-		try {
-			await createConnection({ provider, profile, userId: newUser.id })
-		} catch (error) {
-			console.error('Failed to store OAuth connection at signup:', error)
-			await rollbackNewUser(newUser.id)
-			return fail('account-error', 'connection_create_failed')
-		}
-		await completeDiscordGuildLogin({
-			provider,
-			userId: newUser.id,
-			discordUserId: profile.providerUserId,
-			accessToken,
-		})
-
-		// Best-effort, mirroring password signup: the automatic
-		// {username}@<platform domain> inbox is also provisioned on first
-		// inbound mail, so a failure here must not fail the signup.
-		const platformEmailDomain = getPlatformEmailDomain(env)
-		if (platformEmailDomain) {
-			try {
-				await ensureDefaultEmailInbox({
-					db: env.APP_DB,
-					userId: signupPersonalOrgId,
-					actorPersonId: stableUserId,
-					username,
-					domain: platformEmailDomain,
-				})
-			} catch (error) {
-				console.warn(
-					'Failed to provision default email inbox at OAuth signup:',
-					error,
-				)
-			}
-		}
-
-		// Best-effort: if this email is already in Kit,
-		// add signed_up::kody without removing other tags.
-		await maybeTagKitSubscriberOnSignup({
-			env,
-			email,
-		})
-		scheduleKitSubscriberSync({
-			env,
-			email,
-			stableUserId,
-		})
-		scheduleUserCreatedEvent({
-			env,
-			user: {
-				id: stableUserId,
-				username,
-				email,
+				providerUsername: profile.username,
+				displayName: profile.displayName,
+				suggestedUsername,
+				redirectTo,
+				attribution: loginState.attribution,
+				csrf: generateOauthRandomValue(),
+				accessToken,
+				issuedAt: Date.now(),
 			},
-			source: 'oauth',
-			attribution: loginState.attribution,
-		})
-		await maybeGrantSignupWelcomeCredits({
-			db: env.APP_DB,
-			userId: signupPersonalOrgId,
-		})
-		try {
-			await attributeReferralAtSignup({
-				db: env.APP_DB,
-				refereeStableUserId: stableUserId,
-				refereeUsername: username,
-				referralCode: resolveReferralCodeForSignup({
-					searchParams: url.searchParams,
-					cookieHeader: request.headers.get('Cookie'),
-				}),
-			})
-		} catch (error) {
-			console.warn('referral-attribution-failed', error)
-		}
-
+			secure,
+		)
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'auth',
-			action: 'oauth_signup',
+			action: 'oauth_signup_pending',
 			result: 'success',
 			email,
 			ip: requestIp,
 			path: url.pathname,
 			reason: `provider=${provider}`,
 		})
-		recordOnboardingFunnelEvent(env, {
-			stage: 'signup_completed',
-			userId: stableUserId,
-		})
-		recordOnboardingFunnelEvent(env, {
-			stage: 'email_verified',
-			userId: stableUserId,
-		})
-		return issueLogin(newUser, defaultPostVerificationRedirect, {
-			destination: withAccountCreatedQuery(
-				redirectTo ?? defaultPostVerificationRedirect,
-			),
-			clearReferralCookie: true,
-		})
+		return redirect('/signup/choose-username', [
+			pendingCookie,
+			clearStateCookie,
+		])
 	}
 }

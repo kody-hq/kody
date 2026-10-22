@@ -539,6 +539,7 @@ export const routes = {
 	unsubscribeTips: { href: () => '/unsubscribe/tips' },
 	pendingVerification: { href: () => '/pending-verification' },
 	signup: { href: () => '/signup' },
+	signupChooseUsername: { href: () => '/signup/choose-username' },
 	account: { href: () => '/account' },
 	accountSecurity: { href: () => '/account/security' },
 	accountData: { href: () => '/account/data' },

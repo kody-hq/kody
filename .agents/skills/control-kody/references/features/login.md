@@ -16,3 +16,4 @@ npm run control-kody -- request GET /login --skip-login --contains 'Sign in'
 - `POST /auth` `{ email, password, mode: "login" }` sets the session cookie
 - `GET /session` returns the signed-in user JSON
 - MCP endpoint without OAuth returns 401 (expected for seed users)
+- Returning social users still land on `/account` (or resume OAuth authorize)

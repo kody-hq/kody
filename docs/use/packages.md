@@ -117,12 +117,8 @@ Important fields:
 
 For predictable package resolution, saved packages must use a scoped
 `package.json.name`. The leaf segment is the URL slug. The scope is the account
-username. Changing your username on `/account` rewrites every saved package to
-the new `@{username}/…` name (including same-account `kody:@` imports and
-`kody.dependencies`), publishes an automatic update commit per package, and
-republishes to Community any public package that was already pinned to that
-package's latest commit. Third-party integrations and dynamic invocations that
-hard-code a previous `@{username}` scope need updates from their owners.
+username. Usernames are permanent (chosen at signup); they also appear in
+`{username}.kody.run` package-app URLs and `{username}@` platform email.
 
 ### Credential slots (`kody.credentials`)
 

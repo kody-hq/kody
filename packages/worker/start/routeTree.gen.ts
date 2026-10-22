@@ -96,6 +96,7 @@ import { Route as OnboardingIndexRouteImport } from './routes/onboarding.index'
 import { Route as OnboardingStep1RouteImport } from './routes/onboarding.step-1'
 import { Route as OnboardingStep2RouteImport } from './routes/onboarding.step-2'
 import { Route as OnboardingStep3RouteImport } from './routes/onboarding.step-3'
+import { Route as SignupChooseUsernameRouteImport } from './routes/signup_.choose-username'
 import { Route as UnsubscribeTipsRouteImport } from './routes/unsubscribe.tips'
 import { Route as UseCasesAiWorkflowAutomationRouteImport } from './routes/use-cases_.ai-workflow-automation'
 import { Route as UseCasesClaudeCodeCustomToolsRouteImport } from './routes/use-cases_.claude-code-custom-tools'
@@ -708,6 +709,11 @@ const OnboardingStep3Route = OnboardingStep3RouteImport.update({
   id: '/step-3',
   path: '/step-3',
   getParentRoute: () => OnboardingRoute,
+} as any)
+const SignupChooseUsernameRoute = SignupChooseUsernameRouteImport.update({
+  id: '/signup_/choose-username',
+  path: '/signup/choose-username',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const UnsubscribeTipsRoute = UnsubscribeTipsRouteImport.update({
   id: '/unsubscribe/tips',
@@ -1768,6 +1774,7 @@ export interface FileRoutesByFullPath {
   '/onboarding/step-1': typeof OnboardingStep1Route
   '/onboarding/step-2': typeof OnboardingStep2Route
   '/onboarding/step-3': typeof OnboardingStep3Route
+  '/signup/choose-username': typeof SignupChooseUsernameRoute
   '/unsubscribe/tips': typeof UnsubscribeTipsRoute
   '/use-cases/ai-workflow-automation': typeof UseCasesAiWorkflowAutomationRoute
   '/use-cases/claude-code-custom-tools': typeof UseCasesClaudeCodeCustomToolsRoute
@@ -2025,6 +2032,7 @@ export interface FileRoutesByTo {
   '/onboarding/step-1': typeof OnboardingStep1Route
   '/onboarding/step-2': typeof OnboardingStep2Route
   '/onboarding/step-3': typeof OnboardingStep3Route
+  '/signup/choose-username': typeof SignupChooseUsernameRoute
   '/unsubscribe/tips': typeof UnsubscribeTipsRoute
   '/use-cases/ai-workflow-automation': typeof UseCasesAiWorkflowAutomationRoute
   '/use-cases/claude-code-custom-tools': typeof UseCasesClaudeCodeCustomToolsRoute
@@ -2285,6 +2293,7 @@ export interface FileRoutesById {
   '/onboarding/step-1': typeof OnboardingStep1Route
   '/onboarding/step-2': typeof OnboardingStep2Route
   '/onboarding/step-3': typeof OnboardingStep3Route
+  '/signup_/choose-username': typeof SignupChooseUsernameRoute
   '/unsubscribe/tips': typeof UnsubscribeTipsRoute
   '/use-cases_/ai-workflow-automation': typeof UseCasesAiWorkflowAutomationRoute
   '/use-cases_/claude-code-custom-tools': typeof UseCasesClaudeCodeCustomToolsRoute
@@ -2545,6 +2554,7 @@ export interface FileRouteTypes {
     | '/onboarding/step-1'
     | '/onboarding/step-2'
     | '/onboarding/step-3'
+    | '/signup/choose-username'
     | '/unsubscribe/tips'
     | '/use-cases/ai-workflow-automation'
     | '/use-cases/claude-code-custom-tools'
@@ -2802,6 +2812,7 @@ export interface FileRouteTypes {
     | '/onboarding/step-1'
     | '/onboarding/step-2'
     | '/onboarding/step-3'
+    | '/signup/choose-username'
     | '/unsubscribe/tips'
     | '/use-cases/ai-workflow-automation'
     | '/use-cases/claude-code-custom-tools'
@@ -3061,6 +3072,7 @@ export interface FileRouteTypes {
     | '/onboarding/step-1'
     | '/onboarding/step-2'
     | '/onboarding/step-3'
+    | '/signup_/choose-username'
     | '/unsubscribe/tips'
     | '/use-cases_/ai-workflow-automation'
     | '/use-cases_/claude-code-custom-tools'
@@ -3316,6 +3328,7 @@ export interface RootRouteChildren {
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OgChar123pageChar125DotpngRoute: typeof OgChar123pageChar125DotpngRoute
+  SignupChooseUsernameRoute: typeof SignupChooseUsernameRoute
   UnsubscribeTipsRoute: typeof UnsubscribeTipsRoute
   UseCasesAiWorkflowAutomationRoute: typeof UseCasesAiWorkflowAutomationRoute
   UseCasesClaudeCodeCustomToolsRoute: typeof UseCasesClaudeCodeCustomToolsRoute
@@ -3966,6 +3979,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/onboarding/step-3'
       preLoaderRoute: typeof OnboardingStep3RouteImport
       parentRoute: typeof OnboardingRoute
+    }
+    '/signup_/choose-username': {
+      id: '/signup_/choose-username'
+      path: '/signup/choose-username'
+      fullPath: '/signup/choose-username'
+      preLoaderRoute: typeof SignupChooseUsernameRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/unsubscribe/tips': {
       id: '/unsubscribe/tips'
@@ -5622,6 +5642,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OgChar123pageChar125DotpngRoute: OgChar123pageChar125DotpngRoute,
+  SignupChooseUsernameRoute: SignupChooseUsernameRoute,
   UnsubscribeTipsRoute: UnsubscribeTipsRoute,
   UseCasesAiWorkflowAutomationRoute: UseCasesAiWorkflowAutomationRoute,
   UseCasesClaudeCodeCustomToolsRoute: UseCasesClaudeCodeCustomToolsRoute,

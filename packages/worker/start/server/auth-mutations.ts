@@ -285,3 +285,45 @@ export const startWebsiteOAuth = createServerFn({ method: 'POST' })
 			}),
 		)
 	})
+
+export const checkWebsiteUsernameAvailability = createServerFn({
+	method: 'POST',
+})
+	.inputValidator(z.record(z.string(), z.unknown()))
+	.handler(async ({ data }) => {
+		const [
+			{ checkWebsiteUsernameAvailability: operation },
+			{ publishAuthResult, publicUsernameCheckContext },
+		] = await Promise.all([
+			import('../../src/identity/username-availability-operations.ts'),
+			import('./auth-mutation-context.ts'),
+		])
+		const { env, request } = await publicUsernameCheckContext()
+		return publishAuthResult(
+			await operation({
+				env,
+				request,
+				body: data,
+			}),
+		)
+	})
+
+export const completeOauthPendingSignup = createServerFn({ method: 'POST' })
+	.inputValidator(z.record(z.string(), z.unknown()))
+	.handler(async ({ data }) => {
+		const [
+			{ completeOauthPendingSignup: operation },
+			{ publishAuthResult, publicAuthContext },
+		] = await Promise.all([
+			import('../../src/identity/oauth-pending-signup-operations.ts'),
+			import('./auth-mutation-context.ts'),
+		])
+		const { env, request } = await publicAuthContext()
+		return publishAuthResult(
+			await operation({
+				env,
+				request,
+				body: data,
+			}),
+		)
+	})

@@ -1,8 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useServerFn } from '@tanstack/react-start'
-import { getHandleFormatError } from '@kody-internal/shared/handle-rules.ts'
+import {
+	getHandleFormatError,
+	suggestHandle,
+} from '@kody-internal/shared/handle-rules.ts'
 import { validateAuthFormFields } from '#client/auth-form-validation.ts'
-import { invalidFieldsForMessage } from '#client/form-error-fields.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { fathomEventNames, trackFathomEvent } from '#client/fathom-events.ts'
 import {
@@ -29,7 +31,7 @@ import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { type CSSObject } from '@emotion/react'
-import { handleUrlPreview } from '@kody-internal/shared/handle-permanence.ts'
+import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
 import {
 	startAuthentication,
 	WebAuthnAbortService,
@@ -47,6 +49,7 @@ import { ProviderIcon } from '../components/provider-icons.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
+import { type UsernameAvailabilityView } from '../components/username-choice-field.tsx'
 import {
 	AuthForm,
 	formMessageCss,
@@ -79,7 +82,10 @@ export function LoginPage({
 	const [status, setStatus] = useState<AuthStatus>('idle')
 	const [message, setMessage] = useState<string | null>(null)
 	const [signupUsername, setSignupUsername] = useState('')
-	const usernameFormatLive = useRef(false)
+	const [signupEmail, setSignupEmail] = useState('')
+	const [usernameAvailability, setUsernameAvailability] =
+		useState<UsernameAvailabilityView>({ status: 'idle' })
+	const usernameTouched = useRef(false)
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
 	)
@@ -147,20 +153,33 @@ export function LoginPage({
 			username,
 		})
 		if (clientValidation) {
-			if (clientValidation.field === 'username')
-				usernameFormatLive.current = true
+			if (clientValidation.field === 'username') usernameTouched.current = true
 			setState('error', clientValidation.message)
 			return
 		}
 
-		if (mode === 'signup' && confirmedUsername !== username.toLowerCase()) {
-			setConfirmedUsername(username.toLowerCase())
-			setSignupUsername(username)
-			setState(
-				'idle',
-				`Your profile URL will be ${handleUrlPreview(username.toLowerCase())}. This can't be changed. Submit again to create your account.`,
-			)
-			return
+		if (mode === 'signup') {
+			if (usernameAvailability.status === 'checking') {
+				setState('error', 'Wait for the availability check to finish.')
+				return
+			}
+			if (
+				usernameAvailability.status === 'taken' ||
+				usernameAvailability.status === 'reserved' ||
+				usernameAvailability.status === 'invalid'
+			) {
+				setState(
+					'error',
+					usernameAvailability.reason ?? 'That username cannot be used.',
+				)
+				return
+			}
+			if (confirmedUsername !== username.toLowerCase()) {
+				setConfirmedUsername(username.toLowerCase())
+				setSignupUsername(username)
+				setState('idle', handlePermanenceConfirmMessage(username.toLowerCase()))
+				return
+			}
 		}
 
 		setState('submitting')
@@ -381,37 +400,36 @@ export function LoginPage({
 						isInteractive={hydrated}
 						isSignup={isSignup}
 						signupUsername={signupUsername}
+						signupEmail={signupEmail}
+						usernameConfirming={
+							confirmedUsername !== null &&
+							confirmedUsername === signupUsername.trim().toLowerCase()
+						}
+						onSignupEmailInput={(value) => {
+							setSignupEmail(value)
+							if (!usernameTouched.current) {
+								const local = value.split('@')[0] ?? ''
+								const suggestion = suggestHandle(local) ?? ''
+								setSignupUsername(suggestion)
+								setConfirmedUsername(null)
+							}
+						}}
 						onSignupUsernameInput={(value) => {
+							usernameTouched.current = true
 							setSignupUsername(value)
 							setConfirmedUsername(null)
-							const error = usernameFormatLive.current
-								? getHandleFormatError(value)
-								: null
+							const error = getHandleFormatError(value)
 							setState(error ? 'error' : 'idle', error)
 						}}
+						onUsernameAvailabilityChange={setUsernameAvailability}
 						submitLabel={submitLabel}
 						submitBusyLabel={submitBusyLabel}
 						onSubmit={handleSubmit}
 						onPasskeySignIn={handlePasskeySignIn}
 						onFieldEdit={() => {
-							if (
-								mode === 'signup' &&
-								usernameFormatLive.current &&
-								getHandleFormatError(signupUsername)
-							)
+							if (mode === 'signup' && getHandleFormatError(signupUsername))
 								return
 							clearFieldError()
-						}}
-						onSignupUsernameBlur={(value) => {
-							setSignupUsername(value)
-							usernameFormatLive.current = true
-							const error = getHandleFormatError(value)
-							if (error) setState('error', error)
-							else if (
-								status === 'error' &&
-								invalidFieldsForMessage('error', message, []).has('username')
-							)
-								clearFieldError()
 						}}
 					/>
 

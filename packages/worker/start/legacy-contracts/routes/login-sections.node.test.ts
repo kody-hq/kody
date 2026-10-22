@@ -10,7 +10,11 @@ const shared = {
 	isInteractive: true,
 	onFieldEdit: () => {},
 	signupUsername: '',
+	signupEmail: '',
+	usernameConfirming: false,
 	onSignupUsernameInput: () => {},
+	onSignupEmailInput: () => {},
+	onUsernameAvailabilityChange: () => {},
 }
 
 test('credential errors associate the status message with email and password', async () => {

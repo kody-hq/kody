@@ -86,9 +86,23 @@ request so cookie signing and verification are available to handlers.
 
 ### Signup posture
 
-Anyone can create an account from `/signup` (password or social). New accounts
-start on the `free` plan. Referral share links (`?ref=`) are a separate growth
-program.
+Anyone can create an account from `/signup` (password or social). Every
+self-serve path requires choosing a permanent username before the account
+exists:
+
+- Password signup: the shared username field on `/signup` (prefilled from the
+  email local part as they type), with live availability, suggestions, and an
+  explicit permanence confirmation before create
+- Social signup: after the provider callback verifies the identity, the person
+  lands on `/signup/choose-username` (same shared field). The verified provider
+  identity is held in a short-lived signed `kody_oauth_pending` cookie (CSRF,
+  expiry, single-use); the account is created only on submit
+
+Usernames are permanent (no self-serve rename). Live availability is checked
+through a rate-limited endpoint that reuses
+`getEffectiveUsernameValidationError` and `isUsernameClaimedInIdentity`. New
+accounts start on the `free` plan. Referral share links (`?ref=`) are a separate
+growth program.
 
 Account signup Kit tagging (password and OAuth signup):
 
