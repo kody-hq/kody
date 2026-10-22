@@ -9,9 +9,12 @@ import {
 /** Viewport top of the pinned workspace switcher above the scrolling rail. */
 async function accountRailContentTop(page: Page) {
 	await page.evaluate(() => window.scrollTo(0, 0))
-	const heading = page.locator(
-		'[aria-label="Workspace navigation"] [data-account-nav-heading]',
-	)
+	// Rail and drawer both mount a heading; pin the desktop rail copy by its
+	// trigger test id (drawer uses org-switcher-drawer).
+	const heading = page
+		.getByRole('complementary', { name: 'Workspace navigation' })
+		.locator('[data-account-nav-heading]')
+		.filter({ has: page.getByTestId('org-switcher') })
 	await expect(heading).toBeVisible()
 	return heading.evaluate((element) => element.getBoundingClientRect().top)
 }
