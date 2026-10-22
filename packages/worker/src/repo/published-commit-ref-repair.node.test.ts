@@ -307,6 +307,7 @@ test('apply backs up, fast-forwards with the snapshot tree, confirms refs, then 
 			publishedCommit: repairedCommit,
 			files: snapshotFiles,
 			rebuildPackageArtifacts: false,
+			allowLockedPublish: true,
 		}),
 	)
 })

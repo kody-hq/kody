@@ -369,6 +369,9 @@ async function applyRepair(input: {
 		files: input.files,
 		baseUrl: live.source_root,
 		rebuildPackageArtifacts: false,
+		// Repair re-points the already published tree; a package lock blocks
+		// new content, not restoring what is already live.
+		allowLockedPublish: true,
 	})
 	await input.rebuildArtifacts({
 		sourceId: live.id,
