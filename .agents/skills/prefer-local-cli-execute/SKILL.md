@@ -17,7 +17,9 @@ with local execute. Do not use hosted MCP `execute`. This skill and
 [Local CLI execute](https://kody.codes/docs/local-execute)
 (`guide:local_execute`,
 [docs/guides/local-execute.md](../../../docs/guides/local-execute.md)) are the
-source of truth. Open API fallback: [Open API](https://kody.codes/docs/open-api)
+source of truth. In this repo, `npm install` runs `packages/cli` `prepare` so
+`npx @kodycodes/cli` resolves the workspace `dist/bin.js` without a manual CLI
+build. Open API fallback: [Open API](https://kody.codes/docs/open-api)
 (`guide:open_api`).
 
 Local CPU is not counted as `execute` or `dynamic_worker_day`. Capabilities

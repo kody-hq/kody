@@ -315,7 +315,10 @@ prefer `npx @kodycodes/cli execute --local` over hosted MCP `execute` for
 one-off modules and smoke tests — including modules with static `kody:@…`
 imports (CLI downloads stamped modules via
 `POST /v1/local-execute/package-graph` and embeds them in local workerd; keep
-`--local`).
+`--local`). Workspace `@kodycodes/cli` builds `dist/bin.js` during `npm install`
+(`packages/cli` `prepare`), so that `npx` command works without a manual
+`cli:validate`. Against production only, `npx @kodycodes/cli@latest` uses the
+published tarball instead of the workspace link.
 
 Interactive / desktop agents prefer `cliCredentialBootstrap` (MCP session →
 one-shot CLI code) or `kody login`, and omit pasting `KODY_API_TOKEN`. Cloud
