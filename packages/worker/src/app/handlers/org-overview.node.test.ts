@@ -5,6 +5,27 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
+	loadProfileData: vi.fn(),
+	loadAccountActivityData: vi.fn(),
+	loadAccountJobsData: vi.fn(),
+	loadWorkspaceRunCharts: vi.fn(),
+	loadOrgUsagePageResult: vi.fn(),
+}))
+
+vi.mock('#worker/run-records/service.ts', () => ({
+	loadWorkspaceRunCharts: mocks.loadWorkspaceRunCharts,
+}))
+vi.mock('#app/handlers/org-usage.ts', () => ({
+	loadOrgUsagePageResult: mocks.loadOrgUsagePageResult,
+}))
+vi.mock('#app/profile-data.ts', () => ({
+	loadProfileData: mocks.loadProfileData,
+}))
+vi.mock('#app/account-activity-data.ts', () => ({
+	loadAccountActivityData: mocks.loadAccountActivityData,
+}))
+vi.mock('#app/account-jobs-data.ts', () => ({
+	loadAccountJobsData: mocks.loadAccountJobsData,
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -106,6 +127,18 @@ async function getOverview(env: Env, orgSlug: string) {
 }
 
 beforeEach(() => {
+	vi.clearAllMocks()
+	mocks.loadWorkspaceRunCharts.mockResolvedValue({ days: [], sources: [] })
+	mocks.loadOrgUsagePageResult.mockResolvedValue({
+		kind: 'denied',
+		status: 403,
+	})
+	mocks.loadProfileData.mockResolvedValue({ packages: [] })
+	mocks.loadAccountActivityData.mockResolvedValue({
+		summary: { total: 0, errors: 0, running: 0 },
+		runs: [],
+	})
+	mocks.loadAccountJobsData.mockResolvedValue({ jobs: [] })
 	mocks.readAuthenticatedAppUser.mockReset()
 	native.setResponseHeader.mockClear()
 	mocks.readAuthenticatedAppUser.mockResolvedValue({
@@ -115,7 +148,15 @@ beforeEach(() => {
 })
 
 test('the signup org overview renders without remembering the org', async () => {
-	expect(await getOverview(await createEnv(), 'ada')).toEqual({ slug: 'ada' })
+	expect(await getOverview(await createEnv(), 'ada')).toEqual({
+		slug: 'ada',
+		charts: { days: [], sources: [] },
+		billing: null,
+		repositories: [],
+		runs: [],
+		upcomingJobs: [],
+		summary: { total: 0, errors: 0, running: 0 },
+	})
 	expect(native.setResponseHeader.mock.calls).toEqual([
 		['Cache-Control', 'private, no-store'],
 	])
@@ -129,10 +170,87 @@ test('an org you do not belong to is a 404', async () => {
 	await expect(getOverview(await createEnv(), 'bob')).rejects.toMatchObject({
 		isNotFound: true,
 	})
+	expect(mocks.loadProfileData).not.toHaveBeenCalled()
+	expect(mocks.loadAccountActivityData).not.toHaveBeenCalled()
+	expect(mocks.loadAccountJobsData).not.toHaveBeenCalled()
 })
 test('signed-out visitors go to login', async () => {
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
 	await expect(getOverview(await createEnv(), 'ada')).rejects.toMatchObject({
 		options: { href: expect.stringContaining('/login') },
 	})
+})
+
+test('dashboard shows only runnable jobs, soonest first, and caps activity', async () => {
+	const job = { enabled: true, killSwitchEnabled: false, expired: false }
+	mocks.loadAccountJobsData.mockResolvedValue({
+		jobs: [
+			{ ...job, id: 'later', nextRunAt: '2026-10-23T10:00:00Z' },
+			{
+				...job,
+				id: 'paused',
+				enabled: false,
+				nextRunAt: '2026-10-20T10:00:00Z',
+			},
+			{
+				...job,
+				id: 'stopped',
+				killSwitchEnabled: true,
+				nextRunAt: '2026-10-20T10:00:00Z',
+			},
+			{
+				...job,
+				id: 'expired',
+				expired: true,
+				nextRunAt: '2026-10-20T10:00:00Z',
+			},
+			{ ...job, id: 'next', nextRunAt: '2026-10-22T10:00:00Z' },
+		],
+	})
+	mocks.loadAccountActivityData.mockResolvedValue({
+		summary: { total: 12 },
+		runs: Array.from({ length: 12 }, (_, i) => ({ id: String(i) })),
+	})
+	const result = await getOverview(await createEnv(), 'ada')
+	expect(result.upcomingJobs.map((job) => job.id)).toEqual(['next', 'later'])
+	expect(result.runs).toHaveLength(6)
+	expect(result.summary.total).toBe(12)
+	expect(mocks.loadProfileData).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.anything(),
+		'ada-renamed',
+		undefined,
+		{ query: '', limit: 5 },
+	)
+})
+
+test('dashboard uses the scoped billing reader and returns only dashboard fields', async () => {
+	mocks.loadOrgUsagePageResult.mockResolvedValue({
+		kind: 'data',
+		payload: {
+			whereItWent: { rows: [] },
+			includedCompute: [],
+			creditsAlarm: null,
+			privateExtra: 'not-needed',
+		},
+	})
+	const result = await getOverview(await createEnv(), 'ada')
+	expect(result.billing).toEqual({
+		whereItWent: { rows: [] },
+		includedCompute: [],
+		creditsAlarm: null,
+	})
+	expect(mocks.loadOrgUsagePageResult).toHaveBeenCalledWith(
+		expect.objectContaining({
+			orgSlug: 'ada',
+			user: expect.objectContaining({
+				request: expect.objectContaining({
+					org: expect.objectContaining({ id: adaId }),
+				}),
+			}),
+		}),
+	)
+	expect(mocks.loadWorkspaceRunCharts).toHaveBeenCalledWith(
+		expect.objectContaining({ userId: adaId }),
+	)
 })

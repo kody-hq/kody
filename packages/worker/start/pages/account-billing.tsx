@@ -308,6 +308,7 @@ export function AccountBillingPage({
 
 	return (
 		<AccountManagementShell
+			layout="form"
 			currentHref={currentHref}
 			maxWidth={layoutMaxWidths.content}
 			busy={false}

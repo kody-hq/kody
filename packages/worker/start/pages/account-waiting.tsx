@@ -43,7 +43,11 @@ export function AccountWaitingPage({
 	const { orgSlug } = useMatchedPageScope()
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="waiting"
 				title="Waiting"

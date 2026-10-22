@@ -209,7 +209,7 @@ export function OrgCreditsPage({
 		? ledger.hasNextPage
 		: Boolean(payload.ledger?.nextCursor)
 	return (
-		<AccountManagementShell currentHref={currentHref}>
+		<AccountManagementShell layout="detail" currentHref={currentHref}>
 			<AccountPageHeader
 				entity="credits"
 				title="Credits"

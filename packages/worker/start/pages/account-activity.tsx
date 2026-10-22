@@ -151,7 +151,11 @@ export function AccountActivityPage({
 	})
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="activity"
 				title="Activity"

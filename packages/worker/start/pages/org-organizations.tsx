@@ -68,7 +68,7 @@ export function OrganizationsPage({
 	const inviteActions = usePendingInviteActions()
 	const restore = useOrganizationRestore()
 	return (
-		<AccountManagementShell currentHref={pageLocation.href}>
+		<AccountManagementShell layout="list" currentHref={pageLocation.href}>
 			<AccountPageHeader
 				title="Organizations"
 				description="Each organization has its own repositories, secrets, and members. Open one to work in it, or switch from your avatar menu. Deleted organizations you owned can be restored here for 30 days."
@@ -203,6 +203,7 @@ function CreateOrganizationForm() {
 
 	return (
 		<AccountManagementShell
+			layout="form"
 			currentHref="/account/organizations/new"
 			maxWidth="40rem"
 		>

@@ -142,6 +142,7 @@ export function AccountMcpOauthClientsPage({
 
 	return (
 		<AccountManagementShell
+			layout="detail"
 			currentHref={currentHref}
 			maxWidth={layoutMaxWidths.content}
 			busy={false}

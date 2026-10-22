@@ -549,7 +549,7 @@ export function ConnectCredentialRoute({
 			? href
 			: new URL(href, window.location.origin).toString()
 	return (
-		<AccountManagementShell>
+		<AccountManagementShell layout="form">
 			<section css={stackedPageCss} data-testid="connect-credential">
 				<header css={pageHeaderCss}>
 					<span css={pageEyebrowCss}>Add a credential</span>

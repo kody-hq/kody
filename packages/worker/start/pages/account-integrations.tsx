@@ -441,7 +441,11 @@ export function AccountIntegrationsPage({
 		: null
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="integrations"
 				title="Integrations"

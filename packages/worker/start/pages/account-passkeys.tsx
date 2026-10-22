@@ -229,6 +229,7 @@ export function AccountPasskeysPage({
 
 	return (
 		<AccountManagementShell
+			layout="form"
 			currentHref={currentHref}
 			maxWidth={layoutMaxWidths.content}
 			busy={false}

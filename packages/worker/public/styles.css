@@ -388,7 +388,7 @@ input[type='checkbox'] {
    column lets the shell (flex-grow in AccountManagementShell) take that
    growth, so the rail runs down to the footer instead of stopping above an
    empty band. */
-main:has([data-account-shell]) {
+main:not([data-workspace-panel]):has([data-account-shell]) {
 	padding: 0;
 	display: flex;
 	flex-direction: column;
@@ -520,6 +520,30 @@ html.is-settled {
 	::view-transition-group(files-tree),
 	::view-transition-group(files-blob) {
 		animation: none;
+	}
+
+	/* Keep a shared header steady, but dismiss its snapshot when the next
+	   screen has no header, including login and the workspace. */
+	::view-transition-old(site-header):only-child {
+		animation: vt-header-out 120ms var(--ease-out) both;
+	}
+
+	::view-transition-new(site-header):only-child {
+		animation: vt-header-in 220ms var(--ease-out) both;
+	}
+
+	@keyframes vt-header-out {
+		to {
+			opacity: 0;
+			transform: translateY(-12px);
+		}
+	}
+
+	@keyframes vt-header-in {
+		from {
+			opacity: 0;
+			transform: translateY(-12px);
+		}
 	}
 
 	/* Same treatment for the whole package files explorer: switching files is

@@ -65,7 +65,7 @@ const railEyebrowCss = {
 
 const railNameCss = {
 	fontWeight: 650,
-	fontSize: '0.98rem',
+	fontSize: '0.875rem',
 	color: colors.text,
 	overflow: 'hidden',
 	textOverflow: 'ellipsis',
@@ -74,7 +74,7 @@ const railNameCss = {
 
 const railGroupLabelCss = {
 	margin: 0,
-	padding: '0.85rem 0.7rem 0.3rem',
+	padding: '1rem 0.7rem 0.2rem',
 	fontSize: '0.72rem',
 	fontWeight: 650,
 	letterSpacing: '0.06em',
@@ -85,7 +85,7 @@ const railGroupLabelCss = {
 const railGroupCss = {
 	display: 'flex',
 	flexDirection: 'column' as const,
-	gap: '0.15rem',
+	gap: '0.1rem',
 }
 
 function renderRailHeading(heading: AccountManagementLinkNavProps['heading']) {
@@ -138,11 +138,11 @@ const accountNavLinkCss: CSSObject = {
 	display: 'flex',
 	alignItems: 'center',
 	gap: '0.5rem',
-	padding: '0.5rem 0.7rem',
+	padding: '0.35rem 0.7rem',
 	borderRadius: '10px',
 	color: colors.textMuted,
 	fontWeight: 550,
-	fontSize: '0.98rem',
+	fontSize: '0.875rem',
 	textDecoration: 'none',
 	transition: `color ${transitions.fast}, background-color ${transitions.fast}`,
 	'& [data-icon]': {
@@ -190,7 +190,7 @@ const accountMobileMenuCss: CSSObject = {
 	},
 	'& > nav': {
 		display: 'grid',
-		gap: '0.15rem',
+		gap: '0.1rem',
 		padding: '0.4rem 0.6rem 0.7rem',
 		borderTop: `1px solid ${colors.border}`,
 	},
@@ -259,7 +259,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 							paddingTop: accountRailGapBelowHeader,
 							display: 'flex',
 							flexDirection: 'column',
-							gap: '0.15rem',
+							gap: '0.1rem',
 						}}
 					>
 						{props.workspaceSwitcher ? (

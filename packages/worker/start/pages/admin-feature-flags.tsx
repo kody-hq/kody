@@ -235,6 +235,7 @@ export function AdminFeatureFlagsPage({
 	const staleFlags = featureFlags.filter((flag) => flag.stale)
 	return (
 		<AccountManagementShell
+			layout="list"
 			currentHref={currentHref}
 			busy={actionState !== 'idle'}
 		>

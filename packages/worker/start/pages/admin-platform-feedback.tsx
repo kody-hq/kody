@@ -124,6 +124,7 @@ export function AdminPlatformFeedbackPage({
 	const hasActiveFilters = Boolean(filters.status || filters.category)
 	return (
 		<AccountManagementShell
+			layout="list"
 			currentHref={currentHref}
 			maxWidth="min(100%, 92rem)"
 			busy={pending}

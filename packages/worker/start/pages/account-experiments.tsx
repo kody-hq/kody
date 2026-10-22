@@ -63,7 +63,11 @@ export function AccountExperimentsPage({
 	}
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={saving}>
+		<AccountManagementShell
+			layout="form"
+			currentHref={currentHref}
+			busy={saving}
+		>
 			<AccountPageHeader
 				entity="experiments"
 				title="Experiments"

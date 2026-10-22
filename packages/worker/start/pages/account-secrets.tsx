@@ -715,7 +715,11 @@ export function AccountSecretsPage({
 			? approval
 			: null
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="secrets"
 				title="Secrets"

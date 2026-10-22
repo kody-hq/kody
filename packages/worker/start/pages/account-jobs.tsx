@@ -209,7 +209,11 @@ export function AccountJobsPage({
 	const showJobNotFound = selectedId != null && !detail
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="jobs"
 				title="Jobs"

@@ -245,7 +245,11 @@ export function AccountMemoriesPage({
 	const showMemoryNotFound = selectedId !== null && !detailMemory
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="memories"
 				title="Memories"

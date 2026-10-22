@@ -134,6 +134,7 @@ export function AccountSecretProvidersPage({
 	const approval = payload.approval
 	return (
 		<AccountManagementShell
+			layout="detail"
 			currentHref={currentHref}
 			busy={status === 'saving'}
 		>

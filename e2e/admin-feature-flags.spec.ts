@@ -49,7 +49,6 @@ test('admin feature flags: global toggle and per-user override visibility', asyn
 		mode: 'login',
 	})
 	await page.goto('/')
-	await expect(page.getByTestId('demo-indicator')).toHaveCount(0)
 
 	await page.getByRole('link', { name: 'Admin', exact: true }).click()
 	await page.getByRole('link', { name: 'Feature flags', exact: true }).click()

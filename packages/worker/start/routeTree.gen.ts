@@ -12,9 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as R404RouteImport } from './routes/404'
 import { Route as R500RouteImport } from './routes/500'
-import { Route as AtChar123usernameChar125RouteImport } from './routes/@{$username}'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as AboutRouteImport } from './routes/about'
-import { Route as AccountRouteImport } from './routes/account'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthDotmdRouteImport } from './routes/auth[.]md'
 import { Route as BelieveRouteImport } from './routes/believe'
@@ -52,47 +51,11 @@ import { Route as VerifyEmailDestinationRouteImport } from './routes/verify-emai
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known_.api-catalog'
 import { Route as DotwellKnownOpenaiAppsChallengeRouteImport } from './routes/[.]well-known_.openai-apps-challenge'
 import { Route as DotwellKnownSecurityDottxtRouteImport } from './routes/[.]well-known_.security[.]txt'
-import { Route as AtChar123usernameChar125KodyIdRouteImport } from './routes/@{$username}_.$kodyId'
-import { Route as AccountActivityRouteImport } from './routes/account_.activity'
-import { Route as AccountAgentsRouteImport } from './routes/account_.agents'
-import { Route as AccountBillingRouteImport } from './routes/account_.billing'
-import { Route as AccountConnectionsRouteImport } from './routes/account_.connections'
-import { Route as AccountCredentialsRouteImport } from './routes/account_.credentials'
-import { Route as AccountCreditsRouteImport } from './routes/account_.credits'
-import { Route as AccountDataRouteImport } from './routes/account_.data'
-import { Route as AccountEmailRouteImport } from './routes/account_.email'
-import { Route as AccountExperimentsRouteImport } from './routes/account_.experiments'
+import { Route as AppAtChar123usernameChar125RouteImport } from './routes/_app.@{$username}'
+import { Route as AppAccountRouteImport } from './routes/_app.account'
 import { Route as AccountExportDotjsonRouteImport } from './routes/account_.export[.]json'
-import { Route as AccountIntegrationsRouteImport } from './routes/account_.integrations'
-import { Route as AccountJobsRouteImport } from './routes/account_.jobs'
-import { Route as AccountMcpOauthClientsRouteImport } from './routes/account_.mcp-oauth-clients'
-import { Route as AccountMcpServersRouteImport } from './routes/account_.mcp-servers'
-import { Route as AccountMemoriesRouteImport } from './routes/account_.memories'
 import { Route as AccountMemoriesExportDotjsonRouteImport } from './routes/account_.memories-export[.]json'
-import { Route as AccountOrganizationsRouteImport } from './routes/account_.organizations'
 import { Route as AccountPackagesDotjsonRouteImport } from './routes/account_.packages[.]json'
-import { Route as AccountPasskeysRouteImport } from './routes/account_.passkeys'
-import { Route as AccountSecretProvidersRouteImport } from './routes/account_.secret-providers'
-import { Route as AccountSecretsRouteImport } from './routes/account_.secrets'
-import { Route as AccountSecurityRouteImport } from './routes/account_.security'
-import { Route as AccountTwoFactorRouteImport } from './routes/account_.two-factor'
-import { Route as AccountUsageRouteImport } from './routes/account_.usage'
-import { Route as AccountWaitingRouteImport } from './routes/account_.waiting'
-import { Route as AccountWebhooksRouteImport } from './routes/account_.webhooks'
-import { Route as AccountWorkflowsRouteImport } from './routes/account_.workflows'
-import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as AdminSplatRouteImport } from './routes/admin.$'
-import { Route as AdminCodemodsRouteImport } from './routes/admin.codemods'
-import { Route as AdminCommunityReportsRouteImport } from './routes/admin.community-reports'
-import { Route as AdminFeatureFlagsRouteImport } from './routes/admin.feature-flags'
-import { Route as AdminInsightsRouteImport } from './routes/admin.insights'
-import { Route as AdminPlatformFeedbackRouteImport } from './routes/admin.platform-feedback'
-import { Route as AdminPlatformIntegrationsRouteImport } from './routes/admin.platform-integrations'
-import { Route as AdminProviderMarksRouteImport } from './routes/admin.provider-marks'
-import { Route as AdminReservedUsernamesRouteImport } from './routes/admin.reserved-usernames'
-import { Route as AdminRolesRouteImport } from './routes/admin.roles'
-import { Route as AdminSystemEmailRouteImport } from './routes/admin.system-email'
-import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as BlogRssDotxmlRouteImport } from './routes/blog_.rss[.]xml'
@@ -144,65 +107,46 @@ import { Route as YoutubeThumbVideoIdRouteImport } from './routes/youtube-thumb_
 import { Route as Char91Char93AuthSplatRouteImport } from './routes/[-].auth.$'
 import { Route as DotwellKnownAgentSkillsIndexDotjsonRouteImport } from './routes/[.]well-known_.agent-skills_.index[.]json'
 import { Route as DotwellKnownMcpServerCardDotjsonRouteImport } from './routes/[.]well-known_.mcp_.server-card[.]json'
-import { Route as AtChar123orgSlugChar125ActivityRouteImport } from './routes/@{$orgSlug}_.-.activity'
-import { Route as AtChar123orgSlugChar125AgentsRouteImport } from './routes/@{$orgSlug}_.-.agents'
-import { Route as AtChar123orgSlugChar125BillingRouteImport } from './routes/@{$orgSlug}_.-.billing'
-import { Route as AtChar123orgSlugChar125CollaboratorsRouteImport } from './routes/@{$orgSlug}_.-.collaborators'
 import { Route as AtChar123orgSlugChar125ConnectionsRouteImport } from './routes/@{$orgSlug}_.-.connections'
-import { Route as AtChar123orgSlugChar125CredentialsRouteImport } from './routes/@{$orgSlug}_.-.credentials'
-import { Route as AtChar123orgSlugChar125CreditsRouteImport } from './routes/@{$orgSlug}_.-.credits'
-import { Route as AtChar123orgSlugChar125EmailRouteImport } from './routes/@{$orgSlug}_.-.email'
-import { Route as AtChar123orgSlugChar125FollowsRouteImport } from './routes/@{$orgSlug}_.-.follows'
-import { Route as AtChar123orgSlugChar125GrantsRouteImport } from './routes/@{$orgSlug}_.-.grants'
-import { Route as AtChar123orgSlugChar125IntegrationsRouteImport } from './routes/@{$orgSlug}_.-.integrations'
-import { Route as AtChar123orgSlugChar125JobsRouteImport } from './routes/@{$orgSlug}_.-.jobs'
-import { Route as AtChar123orgSlugChar125McpServersRouteImport } from './routes/@{$orgSlug}_.-.mcp-servers'
-import { Route as AtChar123orgSlugChar125MembersRouteImport } from './routes/@{$orgSlug}_.-.members'
-import { Route as AtChar123orgSlugChar125MemoriesRouteImport } from './routes/@{$orgSlug}_.-.memories'
-import { Route as AtChar123orgSlugChar125OverviewRouteImport } from './routes/@{$orgSlug}_.-.overview'
-import { Route as AtChar123orgSlugChar125PackagesRouteImport } from './routes/@{$orgSlug}_.-.packages'
-import { Route as AtChar123orgSlugChar125RepositoriesRouteImport } from './routes/@{$orgSlug}_.-.repositories'
-import { Route as AtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/@{$orgSlug}_.-.secret-providers'
-import { Route as AtChar123orgSlugChar125SecretsRouteImport } from './routes/@{$orgSlug}_.-.secrets'
-import { Route as AtChar123orgSlugChar125SettingsRouteImport } from './routes/@{$orgSlug}_.-.settings'
-import { Route as AtChar123orgSlugChar125TeamsRouteImport } from './routes/@{$orgSlug}_.-.teams'
-import { Route as AtChar123orgSlugChar125UsageRouteImport } from './routes/@{$orgSlug}_.-.usage'
-import { Route as AtChar123orgSlugChar125WaitingRouteImport } from './routes/@{$orgSlug}_.-.waiting'
-import { Route as AtChar123orgSlugChar125WebhooksRouteImport } from './routes/@{$orgSlug}_.-.webhooks'
-import { Route as AtChar123orgSlugChar125WorkflowsRouteImport } from './routes/@{$orgSlug}_.-.workflows'
-import { Route as AtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport } from './routes/@{$username}_.$kodyId_.approve-capabilities'
-import { Route as AtChar123usernameChar125KodyIdApproveCredentialsRouteImport } from './routes/@{$username}_.$kodyId_.approve-credentials'
-import { Route as AtChar123usernameChar125KodyIdApprovePublishRouteImport } from './routes/@{$username}_.$kodyId_.approve-publish'
-import { Route as AtChar123usernameChar125KodyIdCollaboratorsRouteImport } from './routes/@{$username}_.$kodyId_.collaborators'
-import { Route as AtChar123usernameChar125KodyIdCredentialsRouteImport } from './routes/@{$username}_.$kodyId_.credentials'
-import { Route as AtChar123usernameChar125KodyIdMappingsRouteImport } from './routes/@{$username}_.$kodyId_.mappings'
-import { Route as AtChar123usernameChar125KodyIdSettingsRouteImport } from './routes/@{$username}_.$kodyId_.settings'
-import { Route as AtChar123usernameChar125KodyIdTriggersRouteImport } from './routes/@{$username}_.$kodyId_.triggers'
+import { Route as AppAtChar123usernameChar125KodyIdRouteImport } from './routes/_app.@{$username}_.$kodyId'
+import { Route as AppAccountActivityRouteImport } from './routes/_app.account_.activity'
+import { Route as AppAccountAgentsRouteImport } from './routes/_app.account_.agents'
+import { Route as AppAccountBillingRouteImport } from './routes/_app.account_.billing'
+import { Route as AppAccountConnectionsRouteImport } from './routes/_app.account_.connections'
+import { Route as AppAccountCredentialsRouteImport } from './routes/_app.account_.credentials'
+import { Route as AppAccountCreditsRouteImport } from './routes/_app.account_.credits'
+import { Route as AppAccountDataRouteImport } from './routes/_app.account_.data'
+import { Route as AppAccountEmailRouteImport } from './routes/_app.account_.email'
+import { Route as AppAccountExperimentsRouteImport } from './routes/_app.account_.experiments'
+import { Route as AppAccountIntegrationsRouteImport } from './routes/_app.account_.integrations'
+import { Route as AppAccountJobsRouteImport } from './routes/_app.account_.jobs'
+import { Route as AppAccountMcpOauthClientsRouteImport } from './routes/_app.account_.mcp-oauth-clients'
+import { Route as AppAccountMcpServersRouteImport } from './routes/_app.account_.mcp-servers'
+import { Route as AppAccountMemoriesRouteImport } from './routes/_app.account_.memories'
+import { Route as AppAccountOrganizationsRouteImport } from './routes/_app.account_.organizations'
+import { Route as AppAccountPasskeysRouteImport } from './routes/_app.account_.passkeys'
+import { Route as AppAccountSecretProvidersRouteImport } from './routes/_app.account_.secret-providers'
+import { Route as AppAccountSecretsRouteImport } from './routes/_app.account_.secrets'
+import { Route as AppAccountSecurityRouteImport } from './routes/_app.account_.security'
+import { Route as AppAccountTwoFactorRouteImport } from './routes/_app.account_.two-factor'
+import { Route as AppAccountUsageRouteImport } from './routes/_app.account_.usage'
+import { Route as AppAccountWaitingRouteImport } from './routes/_app.account_.waiting'
+import { Route as AppAccountWebhooksRouteImport } from './routes/_app.account_.webhooks'
+import { Route as AppAccountWorkflowsRouteImport } from './routes/_app.account_.workflows'
+import { Route as AppAdminIndexRouteImport } from './routes/_app.admin.index'
+import { Route as AppAdminSplatRouteImport } from './routes/_app.admin.$'
+import { Route as AppAdminCodemodsRouteImport } from './routes/_app.admin.codemods'
+import { Route as AppAdminCommunityReportsRouteImport } from './routes/_app.admin.community-reports'
+import { Route as AppAdminFeatureFlagsRouteImport } from './routes/_app.admin.feature-flags'
+import { Route as AppAdminInsightsRouteImport } from './routes/_app.admin.insights'
+import { Route as AppAdminPlatformFeedbackRouteImport } from './routes/_app.admin.platform-feedback'
+import { Route as AppAdminPlatformIntegrationsRouteImport } from './routes/_app.admin.platform-integrations'
+import { Route as AppAdminProviderMarksRouteImport } from './routes/_app.admin.provider-marks'
+import { Route as AppAdminReservedUsernamesRouteImport } from './routes/_app.admin.reserved-usernames'
+import { Route as AppAdminRolesRouteImport } from './routes/_app.admin.roles'
+import { Route as AppAdminSystemEmailRouteImport } from './routes/_app.admin.system-email'
+import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
 import { Route as KodyAuthSplatRouteImport } from './routes/[_]kody.auth.$'
-import { Route as AccountActivityRunIdRouteImport } from './routes/account_.activity_.$runId'
-import { Route as AccountAgentsNewRouteImport } from './routes/account_.agents_.new'
-import { Route as AccountAgentsUsageRouteImport } from './routes/account_.agents_.usage'
-import { Route as AccountBillingSuccessRouteImport } from './routes/account_.billing_.success'
-import { Route as AccountConnectionsNewRouteImport } from './routes/account_.connections_.new'
-import { Route as AccountConnectionsUsageRouteImport } from './routes/account_.connections_.usage'
-import { Route as AccountEmailMessageIdRouteImport } from './routes/account_.email_.$messageId'
-import { Route as AccountIntegrationsIntegrationNameRouteImport } from './routes/account_.integrations_.$integrationName'
-import { Route as AccountIntegrationsApproveRouteImport } from './routes/account_.integrations_.approve'
-import { Route as AccountJobsJobIdRouteImport } from './routes/account_.jobs_.$jobId'
-import { Route as AccountMcpServersServerIdRouteImport } from './routes/account_.mcp-servers_.$serverId'
-import { Route as AccountMcpServersNewRouteImport } from './routes/account_.mcp-servers_.new'
-import { Route as AccountMemoriesMemoryIdRouteImport } from './routes/account_.memories_.$memoryId'
-import { Route as AccountOrganizationsNewRouteImport } from './routes/account_.organizations_.new'
-import { Route as AccountPackagesIndexRouteImport } from './routes/account_.packages.index'
-import { Route as AccountPackagesPackageIdRouteImport } from './routes/account_.packages.$packageId'
-import { Route as AccountSecretProvidersApproveRouteImport } from './routes/account_.secret-providers_.approve'
-import { Route as AccountSecretsApproveRouteImport } from './routes/account_.secrets_.approve'
-import { Route as AccountSecretsNewRouteImport } from './routes/account_.secrets_.new'
-import { Route as AccountWorkflowsWorkflowIdRouteImport } from './routes/account_.workflows_.$workflowId'
-import { Route as AdminAccountDeletionsApprovalIdRouteImport } from './routes/admin.account-deletions_.$approvalId'
-import { Route as AdminPlatformIntegrationsSlugRouteImport } from './routes/admin.platform-integrations_.$slug'
-import { Route as AdminPlatformIntegrationsNewRouteImport } from './routes/admin.platform-integrations_.new'
-import { Route as AdminUsersStableUserIdRouteImport } from './routes/admin.users_.$stableUserId'
 import { Route as AuthProviderCallbackRouteImport } from './routes/auth_.$provider_.callback'
 import { Route as BlogSlugOgDotpngRouteImport } from './routes/blog_.$slug_.og[.]png'
 import { Route as CommunityListingIdOgDotpngRouteImport } from './routes/community_.$listingId_.og[.]png'
@@ -215,55 +159,112 @@ import { Route as OnboardingStep2ServiceRouteImport } from './routes/onboarding.
 import { Route as OnboardingStep3AgentRouteImport } from './routes/onboarding.step-3_.$agent'
 import { Route as ProfilesUsernameOgDotpngRouteImport } from './routes/profiles_.$username_.og[.]png'
 import { Route as DotwellKnownAgentSkillsSkillIdSKILLDotmdRouteImport } from './routes/[.]well-known_.agent-skills_.$skillId_.SKILL[.]md'
-import { Route as AtChar123orgSlugChar125ActivityRunIdRouteImport } from './routes/@{$orgSlug}_.-.activity_.$runId'
-import { Route as AtChar123orgSlugChar125AgentsNewRouteImport } from './routes/@{$orgSlug}_.-.agents_.new'
-import { Route as AtChar123orgSlugChar125AgentsUsageRouteImport } from './routes/@{$orgSlug}_.-.agents_.usage'
-import { Route as AtChar123orgSlugChar125ApprovalsBundleIdRouteImport } from './routes/@{$orgSlug}_.-.approvals.$bundleId'
-import { Route as AtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/@{$orgSlug}_.-.billing_.success'
 import { Route as AtChar123orgSlugChar125ConnectionsSplatRouteImport } from './routes/@{$orgSlug}_.-.connections_.$'
-import { Route as AtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/@{$orgSlug}_.-.credentials_.$credentialId'
-import { Route as AtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/@{$orgSlug}_.-.credentials_.new'
-import { Route as AtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/@{$orgSlug}_.-.email_.$messageId'
-import { Route as AtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/@{$orgSlug}_.-.integrations_.$integrationName'
-import { Route as AtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/@{$orgSlug}_.-.integrations_.approve'
-import { Route as AtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/@{$orgSlug}_.-.jobs_.$jobId'
-import { Route as AtChar123orgSlugChar125McpServersServerIdRouteImport } from './routes/@{$orgSlug}_.-.mcp-servers_.$serverId'
-import { Route as AtChar123orgSlugChar125McpServersNewRouteImport } from './routes/@{$orgSlug}_.-.mcp-servers_.new'
-import { Route as AtChar123orgSlugChar125MemoriesMemoryIdRouteImport } from './routes/@{$orgSlug}_.-.memories_.$memoryId'
-import { Route as AtChar123orgSlugChar125SecretProvidersApproveRouteImport } from './routes/@{$orgSlug}_.-.secret-providers_.approve'
-import { Route as AtChar123orgSlugChar125SecretsApproveRouteImport } from './routes/@{$orgSlug}_.-.secrets_.approve'
-import { Route as AtChar123orgSlugChar125SecretsNewRouteImport } from './routes/@{$orgSlug}_.-.secrets_.new'
-import { Route as AtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport } from './routes/@{$orgSlug}_.-.workflows_.$workflowId'
 import { Route as AtChar123usernameChar125KodyIdAssetsSplatRouteImport } from './routes/@{$username}_.$kodyId_.assets_.$'
-import { Route as AtChar123usernameChar125KodyIdFilesSplatRouteImport } from './routes/@{$username}_.$kodyId_.files.$'
 import { Route as AtChar123usernameChar125KodyIdIconIconCommitRouteImport } from './routes/@{$username}_.$kodyId_.icon_.$iconCommit'
-import { Route as AccountAgentsNewAgentRouteImport } from './routes/account_.agents_.new_.$agent'
-import { Route as AccountConnectionsNewAgentRouteImport } from './routes/account_.connections_.new_.$agent'
-import { Route as AccountIntegrationsAppsAppSlugRouteImport } from './routes/account_.integrations_.apps.$appSlug'
+import { Route as AppAtChar123orgSlugChar125ActivityRouteImport } from './routes/_app.@{$orgSlug}_.-.activity'
+import { Route as AppAtChar123orgSlugChar125AgentsRouteImport } from './routes/_app.@{$orgSlug}_.-.agents'
+import { Route as AppAtChar123orgSlugChar125BillingRouteImport } from './routes/_app.@{$orgSlug}_.-.billing'
+import { Route as AppAtChar123orgSlugChar125CollaboratorsRouteImport } from './routes/_app.@{$orgSlug}_.-.collaborators'
+import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials'
+import { Route as AppAtChar123orgSlugChar125CreditsRouteImport } from './routes/_app.@{$orgSlug}_.-.credits'
+import { Route as AppAtChar123orgSlugChar125EmailRouteImport } from './routes/_app.@{$orgSlug}_.-.email'
+import { Route as AppAtChar123orgSlugChar125FollowsRouteImport } from './routes/_app.@{$orgSlug}_.-.follows'
+import { Route as AppAtChar123orgSlugChar125GrantsRouteImport } from './routes/_app.@{$orgSlug}_.-.grants'
+import { Route as AppAtChar123orgSlugChar125IntegrationsRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations'
+import { Route as AppAtChar123orgSlugChar125JobsRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs'
+import { Route as AppAtChar123orgSlugChar125McpServersRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers'
+import { Route as AppAtChar123orgSlugChar125MembersRouteImport } from './routes/_app.@{$orgSlug}_.-.members'
+import { Route as AppAtChar123orgSlugChar125MemoriesRouteImport } from './routes/_app.@{$orgSlug}_.-.memories'
+import { Route as AppAtChar123orgSlugChar125OverviewRouteImport } from './routes/_app.@{$orgSlug}_.-.overview'
+import { Route as AppAtChar123orgSlugChar125PackagesRouteImport } from './routes/_app.@{$orgSlug}_.-.packages'
+import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './routes/_app.@{$orgSlug}_.-.repositories'
+import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
+import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
+import { Route as AppAtChar123orgSlugChar125SettingsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings'
+import { Route as AppAtChar123orgSlugChar125TeamsRouteImport } from './routes/_app.@{$orgSlug}_.-.teams'
+import { Route as AppAtChar123orgSlugChar125UsageRouteImport } from './routes/_app.@{$orgSlug}_.-.usage'
+import { Route as AppAtChar123orgSlugChar125WaitingRouteImport } from './routes/_app.@{$orgSlug}_.-.waiting'
+import { Route as AppAtChar123orgSlugChar125WebhooksRouteImport } from './routes/_app.@{$orgSlug}_.-.webhooks'
+import { Route as AppAtChar123orgSlugChar125WorkflowsRouteImport } from './routes/_app.@{$orgSlug}_.-.workflows'
+import { Route as AppAtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-capabilities'
+import { Route as AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-credentials'
+import { Route as AppAtChar123usernameChar125KodyIdApprovePublishRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-publish'
+import { Route as AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport } from './routes/_app.@{$username}_.$kodyId_.collaborators'
+import { Route as AppAtChar123usernameChar125KodyIdCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.credentials'
+import { Route as AppAtChar123usernameChar125KodyIdMappingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.mappings'
+import { Route as AppAtChar123usernameChar125KodyIdSettingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.settings'
+import { Route as AppAtChar123usernameChar125KodyIdTriggersRouteImport } from './routes/_app.@{$username}_.$kodyId_.triggers'
+import { Route as AppAccountActivityRunIdRouteImport } from './routes/_app.account_.activity_.$runId'
+import { Route as AppAccountAgentsNewRouteImport } from './routes/_app.account_.agents_.new'
+import { Route as AppAccountAgentsUsageRouteImport } from './routes/_app.account_.agents_.usage'
+import { Route as AppAccountBillingSuccessRouteImport } from './routes/_app.account_.billing_.success'
+import { Route as AppAccountConnectionsNewRouteImport } from './routes/_app.account_.connections_.new'
+import { Route as AppAccountConnectionsUsageRouteImport } from './routes/_app.account_.connections_.usage'
+import { Route as AppAccountEmailMessageIdRouteImport } from './routes/_app.account_.email_.$messageId'
+import { Route as AppAccountIntegrationsIntegrationNameRouteImport } from './routes/_app.account_.integrations_.$integrationName'
+import { Route as AppAccountIntegrationsApproveRouteImport } from './routes/_app.account_.integrations_.approve'
+import { Route as AppAccountJobsJobIdRouteImport } from './routes/_app.account_.jobs_.$jobId'
+import { Route as AppAccountMcpServersServerIdRouteImport } from './routes/_app.account_.mcp-servers_.$serverId'
+import { Route as AppAccountMcpServersNewRouteImport } from './routes/_app.account_.mcp-servers_.new'
+import { Route as AppAccountMemoriesMemoryIdRouteImport } from './routes/_app.account_.memories_.$memoryId'
+import { Route as AppAccountOrganizationsNewRouteImport } from './routes/_app.account_.organizations_.new'
+import { Route as AppAccountPackagesIndexRouteImport } from './routes/_app.account_.packages.index'
+import { Route as AppAccountPackagesPackageIdRouteImport } from './routes/_app.account_.packages.$packageId'
+import { Route as AppAccountSecretProvidersApproveRouteImport } from './routes/_app.account_.secret-providers_.approve'
+import { Route as AppAccountSecretsApproveRouteImport } from './routes/_app.account_.secrets_.approve'
+import { Route as AppAccountSecretsNewRouteImport } from './routes/_app.account_.secrets_.new'
+import { Route as AppAccountWorkflowsWorkflowIdRouteImport } from './routes/_app.account_.workflows_.$workflowId'
+import { Route as AppAdminAccountDeletionsApprovalIdRouteImport } from './routes/_app.admin.account-deletions_.$approvalId'
+import { Route as AppAdminPlatformIntegrationsSlugRouteImport } from './routes/_app.admin.platform-integrations_.$slug'
+import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_app.admin.platform-integrations_.new'
+import { Route as AppAdminUsersStableUserIdRouteImport } from './routes/_app.admin.users_.$stableUserId'
 import { Route as AccountMcpServersLogosServerIdRouteImport } from './routes/account_.mcp-servers_.logos_.$serverId'
 import { Route as AccountMcpServersOauthCallbackRouteImport } from './routes/account_.mcp-servers_.oauth_.callback'
-import { Route as AccountPackagesPackageIdApproveCapabilitiesRouteImport } from './routes/account_.packages.$packageId_.approve-capabilities'
-import { Route as AccountPackagesPackageIdApprovePublishRouteImport } from './routes/account_.packages.$packageId_.approve-publish'
-import { Route as AccountSecretsUserSecretNameRouteImport } from './routes/account_.secrets_.user.$secretName'
 import { Route as CommunityListingIdFilesSplatRouteImport } from './routes/community_.$listingId.files.$'
 import { Route as CommunityListingIdAssetsSplatRouteImport } from './routes/community_.$listingId_.assets_.$'
 import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/community_.$listingId_.icon_.$iconCommit'
 import { Route as CommunityListingIdRawSplatRouteImport } from './routes/community_.$listingId_.raw_.$'
 import { Route as OrgsOrgSlugAvatarFileRouteImport } from './routes/orgs_.$orgSlug_.avatar_.$file'
 import { Route as ProfilesUsernameAvatarFileRouteImport } from './routes/profiles_.$username_.avatar_.$file'
-import { Route as AtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/@{$orgSlug}_.-.agents_.new_.$agent'
-import { Route as AtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/@{$orgSlug}_.-.integrations_.apps.$appSlug'
-import { Route as AtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
-import { Route as AtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/@{$orgSlug}_.-.secrets_.user.$secretName'
 import { Route as AtChar123usernameChar125KodyIdRawRefSplatRouteImport } from './routes/@{$username}_.$kodyId_.raw_.$ref_.$'
-import { Route as AtChar123usernameChar125KodyIdTreeRefSplatRouteImport } from './routes/@{$username}_.$kodyId_.tree.$ref.$'
 import { Route as AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRouteImport } from './routes/@{$username}_.webhooks_.$packageKodyId_.$webhookName_.$urlSecret'
-import { Route as AccountPackagesPackageIdFilesSplatRouteImport } from './routes/account_.packages.$packageId.files.$'
+import { Route as AppAtChar123orgSlugChar125ActivityRunIdRouteImport } from './routes/_app.@{$orgSlug}_.-.activity_.$runId'
+import { Route as AppAtChar123orgSlugChar125AgentsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new'
+import { Route as AppAtChar123orgSlugChar125AgentsUsageRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.usage'
+import { Route as AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport } from './routes/_app.@{$orgSlug}_.-.approvals.$bundleId'
+import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.success'
+import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
+import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
+import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
+import { Route as AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.$integrationName'
+import { Route as AppAtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.approve'
+import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs_.$jobId'
+import { Route as AppAtChar123orgSlugChar125McpServersServerIdRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId'
+import { Route as AppAtChar123orgSlugChar125McpServersNewRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.new'
+import { Route as AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport } from './routes/_app.@{$orgSlug}_.-.memories_.$memoryId'
+import { Route as AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers_.approve'
+import { Route as AppAtChar123orgSlugChar125SecretsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.approve'
+import { Route as AppAtChar123orgSlugChar125SecretsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.new'
+import { Route as AppAtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport } from './routes/_app.@{$orgSlug}_.-.workflows_.$workflowId'
+import { Route as AppAtChar123usernameChar125KodyIdFilesSplatRouteImport } from './routes/_app.@{$username}_.$kodyId_.files.$'
+import { Route as AppAccountAgentsNewAgentRouteImport } from './routes/_app.account_.agents_.new_.$agent'
+import { Route as AppAccountConnectionsNewAgentRouteImport } from './routes/_app.account_.connections_.new_.$agent'
+import { Route as AppAccountIntegrationsAppsAppSlugRouteImport } from './routes/_app.account_.integrations_.apps.$appSlug'
+import { Route as AppAccountPackagesPackageIdApproveCapabilitiesRouteImport } from './routes/_app.account_.packages.$packageId_.approve-capabilities'
+import { Route as AppAccountPackagesPackageIdApprovePublishRouteImport } from './routes/_app.account_.packages.$packageId_.approve-publish'
+import { Route as AppAccountSecretsUserSecretNameRouteImport } from './routes/_app.account_.secrets_.user.$secretName'
 import { Route as AccountReposRepoIdIconIconCommitRouteImport } from './routes/account_.repos_.$repoId_.icon_.$iconCommit'
-import { Route as AccountSecretsPackagePackageIdSecretNameRouteImport } from './routes/account_.secrets_.package.$packageId.$secretName'
-import { Route as AccountSecretsSessionSessionIdSecretNameRouteImport } from './routes/account_.secrets_.session.$sessionId.$secretName'
-import { Route as AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport } from './routes/@{$orgSlug}_.-.secrets_.package.$packageId.$secretName'
-import { Route as AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport } from './routes/@{$orgSlug}_.-.secrets_.session.$sessionId.$secretName'
+import { Route as AppAtChar123orgSlugChar125AgentsNewAgentRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new_.$agent'
+import { Route as AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.apps.$appSlug'
+import { Route as AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId_.authorize'
+import { Route as AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.user.$secretName'
+import { Route as AppAtChar123usernameChar125KodyIdTreeRefSplatRouteImport } from './routes/_app.@{$username}_.$kodyId_.tree.$ref.$'
+import { Route as AppAccountPackagesPackageIdFilesSplatRouteImport } from './routes/_app.account_.packages.$packageId.files.$'
+import { Route as AppAccountSecretsPackagePackageIdSecretNameRouteImport } from './routes/_app.account_.secrets_.package.$packageId.$secretName'
+import { Route as AppAccountSecretsSessionSessionIdSecretNameRouteImport } from './routes/_app.account_.secrets_.session.$sessionId.$secretName'
+import { Route as AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.package.$packageId.$secretName'
+import { Route as AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.session.$sessionId.$secretName'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -280,20 +281,13 @@ const R500Route = R500RouteImport.update({
   path: '/500',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AtChar123usernameChar125Route =
-  AtChar123usernameChar125RouteImport.update({
-    id: '/@{$username}',
-    path: '/@{$username}',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountRoute = AccountRouteImport.update({
-  id: '/account',
-  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -483,85 +477,20 @@ const DotwellKnownSecurityDottxtRoute =
     path: '/.well-known/security.txt',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123usernameChar125KodyIdRoute =
-  AtChar123usernameChar125KodyIdRouteImport.update({
-    id: '/@{$username}_/$kodyId',
-    path: '/@{$username}/$kodyId',
-    getParentRoute: () => rootRouteImport,
+const AppAtChar123usernameChar125Route =
+  AppAtChar123usernameChar125RouteImport.update({
+    id: '/@{$username}',
+    path: '/@{$username}',
+    getParentRoute: () => AppRoute,
   } as any)
-const AccountActivityRoute = AccountActivityRouteImport.update({
-  id: '/account_/activity',
-  path: '/account/activity',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountAgentsRoute = AccountAgentsRouteImport.update({
-  id: '/account_/agents',
-  path: '/account/agents',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountBillingRoute = AccountBillingRouteImport.update({
-  id: '/account_/billing',
-  path: '/account/billing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountConnectionsRoute = AccountConnectionsRouteImport.update({
-  id: '/account_/connections',
-  path: '/account/connections',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountCredentialsRoute = AccountCredentialsRouteImport.update({
-  id: '/account_/credentials',
-  path: '/account/credentials',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountCreditsRoute = AccountCreditsRouteImport.update({
-  id: '/account_/credits',
-  path: '/account/credits',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountDataRoute = AccountDataRouteImport.update({
-  id: '/account_/data',
-  path: '/account/data',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountEmailRoute = AccountEmailRouteImport.update({
-  id: '/account_/email',
-  path: '/account/email',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountExperimentsRoute = AccountExperimentsRouteImport.update({
-  id: '/account_/experiments',
-  path: '/account/experiments',
-  getParentRoute: () => rootRouteImport,
+const AppAccountRoute = AppAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AppRoute,
 } as any)
 const AccountExportDotjsonRoute = AccountExportDotjsonRouteImport.update({
   id: '/account_/export.json',
   path: '/account/export.json',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountIntegrationsRoute = AccountIntegrationsRouteImport.update({
-  id: '/account_/integrations',
-  path: '/account/integrations',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountJobsRoute = AccountJobsRouteImport.update({
-  id: '/account_/jobs',
-  path: '/account/jobs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountMcpOauthClientsRoute = AccountMcpOauthClientsRouteImport.update({
-  id: '/account_/mcp-oauth-clients',
-  path: '/account/mcp-oauth-clients',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountMcpServersRoute = AccountMcpServersRouteImport.update({
-  id: '/account_/mcp-servers',
-  path: '/account/mcp-servers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountMemoriesRoute = AccountMemoriesRouteImport.update({
-  id: '/account_/memories',
-  path: '/account/memories',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountMemoriesExportDotjsonRoute =
@@ -570,125 +499,9 @@ const AccountMemoriesExportDotjsonRoute =
     path: '/account/memories-export.json',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AccountOrganizationsRoute = AccountOrganizationsRouteImport.update({
-  id: '/account_/organizations',
-  path: '/account/organizations',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AccountPackagesDotjsonRoute = AccountPackagesDotjsonRouteImport.update({
   id: '/account_/packages.json',
   path: '/account/packages.json',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountPasskeysRoute = AccountPasskeysRouteImport.update({
-  id: '/account_/passkeys',
-  path: '/account/passkeys',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountSecretProvidersRoute = AccountSecretProvidersRouteImport.update({
-  id: '/account_/secret-providers',
-  path: '/account/secret-providers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountSecretsRoute = AccountSecretsRouteImport.update({
-  id: '/account_/secrets',
-  path: '/account/secrets',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountSecurityRoute = AccountSecurityRouteImport.update({
-  id: '/account_/security',
-  path: '/account/security',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountTwoFactorRoute = AccountTwoFactorRouteImport.update({
-  id: '/account_/two-factor',
-  path: '/account/two-factor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountUsageRoute = AccountUsageRouteImport.update({
-  id: '/account_/usage',
-  path: '/account/usage',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountWaitingRoute = AccountWaitingRouteImport.update({
-  id: '/account_/waiting',
-  path: '/account/waiting',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountWebhooksRoute = AccountWebhooksRouteImport.update({
-  id: '/account_/webhooks',
-  path: '/account/webhooks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountWorkflowsRoute = AccountWorkflowsRouteImport.update({
-  id: '/account_/workflows',
-  path: '/account/workflows',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminSplatRoute = AdminSplatRouteImport.update({
-  id: '/admin/$',
-  path: '/admin/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminCodemodsRoute = AdminCodemodsRouteImport.update({
-  id: '/admin/codemods',
-  path: '/admin/codemods',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminCommunityReportsRoute = AdminCommunityReportsRouteImport.update({
-  id: '/admin/community-reports',
-  path: '/admin/community-reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminFeatureFlagsRoute = AdminFeatureFlagsRouteImport.update({
-  id: '/admin/feature-flags',
-  path: '/admin/feature-flags',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminInsightsRoute = AdminInsightsRouteImport.update({
-  id: '/admin/insights',
-  path: '/admin/insights',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminPlatformFeedbackRoute = AdminPlatformFeedbackRouteImport.update({
-  id: '/admin/platform-feedback',
-  path: '/admin/platform-feedback',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminPlatformIntegrationsRoute =
-  AdminPlatformIntegrationsRouteImport.update({
-    id: '/admin/platform-integrations',
-    path: '/admin/platform-integrations',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AdminProviderMarksRoute = AdminProviderMarksRouteImport.update({
-  id: '/admin/provider-marks',
-  path: '/admin/provider-marks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminReservedUsernamesRoute = AdminReservedUsernamesRouteImport.update({
-  id: '/admin/reserved-usernames',
-  path: '/admin/reserved-usernames',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRolesRoute = AdminRolesRouteImport.update({
-  id: '/admin/roles',
-  path: '/admin/roles',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminSystemEmailRoute = AdminSystemEmailRouteImport.update({
-  id: '/admin/system-email',
-  path: '/admin/system-email',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
@@ -956,342 +769,212 @@ const DotwellKnownMcpServerCardDotjsonRoute =
     path: '/.well-known/mcp/server-card.json',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123orgSlugChar125ActivityRoute =
-  AtChar123orgSlugChar125ActivityRouteImport.update({
-    id: '/@{$orgSlug}_/-/activity',
-    path: '/@{$orgSlug}/-/activity',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125AgentsRoute =
-  AtChar123orgSlugChar125AgentsRouteImport.update({
-    id: '/@{$orgSlug}_/-/agents',
-    path: '/@{$orgSlug}/-/agents',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125BillingRoute =
-  AtChar123orgSlugChar125BillingRouteImport.update({
-    id: '/@{$orgSlug}_/-/billing',
-    path: '/@{$orgSlug}/-/billing',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125CollaboratorsRoute =
-  AtChar123orgSlugChar125CollaboratorsRouteImport.update({
-    id: '/@{$orgSlug}_/-/collaborators',
-    path: '/@{$orgSlug}/-/collaborators',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AtChar123orgSlugChar125ConnectionsRoute =
   AtChar123orgSlugChar125ConnectionsRouteImport.update({
     id: '/@{$orgSlug}_/-/connections',
     path: '/@{$orgSlug}/-/connections',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123orgSlugChar125CredentialsRoute =
-  AtChar123orgSlugChar125CredentialsRouteImport.update({
-    id: '/@{$orgSlug}_/-/credentials',
-    path: '/@{$orgSlug}/-/credentials',
-    getParentRoute: () => rootRouteImport,
+const AppAtChar123usernameChar125KodyIdRoute =
+  AppAtChar123usernameChar125KodyIdRouteImport.update({
+    id: '/@{$username}_/$kodyId',
+    path: '/@{$username}/$kodyId',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125CreditsRoute =
-  AtChar123orgSlugChar125CreditsRouteImport.update({
-    id: '/@{$orgSlug}_/-/credits',
-    path: '/@{$orgSlug}/-/credits',
-    getParentRoute: () => rootRouteImport,
+const AppAccountActivityRoute = AppAccountActivityRouteImport.update({
+  id: '/account_/activity',
+  path: '/account/activity',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountAgentsRoute = AppAccountAgentsRouteImport.update({
+  id: '/account_/agents',
+  path: '/account/agents',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountBillingRoute = AppAccountBillingRouteImport.update({
+  id: '/account_/billing',
+  path: '/account/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountConnectionsRoute = AppAccountConnectionsRouteImport.update({
+  id: '/account_/connections',
+  path: '/account/connections',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountCredentialsRoute = AppAccountCredentialsRouteImport.update({
+  id: '/account_/credentials',
+  path: '/account/credentials',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountCreditsRoute = AppAccountCreditsRouteImport.update({
+  id: '/account_/credits',
+  path: '/account/credits',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountDataRoute = AppAccountDataRouteImport.update({
+  id: '/account_/data',
+  path: '/account/data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountEmailRoute = AppAccountEmailRouteImport.update({
+  id: '/account_/email',
+  path: '/account/email',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountExperimentsRoute = AppAccountExperimentsRouteImport.update({
+  id: '/account_/experiments',
+  path: '/account/experiments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountIntegrationsRoute = AppAccountIntegrationsRouteImport.update({
+  id: '/account_/integrations',
+  path: '/account/integrations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountJobsRoute = AppAccountJobsRouteImport.update({
+  id: '/account_/jobs',
+  path: '/account/jobs',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountMcpOauthClientsRoute =
+  AppAccountMcpOauthClientsRouteImport.update({
+    id: '/account_/mcp-oauth-clients',
+    path: '/account/mcp-oauth-clients',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125EmailRoute =
-  AtChar123orgSlugChar125EmailRouteImport.update({
-    id: '/@{$orgSlug}_/-/email',
-    path: '/@{$orgSlug}/-/email',
-    getParentRoute: () => rootRouteImport,
+const AppAccountMcpServersRoute = AppAccountMcpServersRouteImport.update({
+  id: '/account_/mcp-servers',
+  path: '/account/mcp-servers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountMemoriesRoute = AppAccountMemoriesRouteImport.update({
+  id: '/account_/memories',
+  path: '/account/memories',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountOrganizationsRoute = AppAccountOrganizationsRouteImport.update({
+  id: '/account_/organizations',
+  path: '/account/organizations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountPasskeysRoute = AppAccountPasskeysRouteImport.update({
+  id: '/account_/passkeys',
+  path: '/account/passkeys',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountSecretProvidersRoute =
+  AppAccountSecretProvidersRouteImport.update({
+    id: '/account_/secret-providers',
+    path: '/account/secret-providers',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125FollowsRoute =
-  AtChar123orgSlugChar125FollowsRouteImport.update({
-    id: '/@{$orgSlug}_/-/follows',
-    path: '/@{$orgSlug}/-/follows',
-    getParentRoute: () => rootRouteImport,
+const AppAccountSecretsRoute = AppAccountSecretsRouteImport.update({
+  id: '/account_/secrets',
+  path: '/account/secrets',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
+  id: '/account_/security',
+  path: '/account/security',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountTwoFactorRoute = AppAccountTwoFactorRouteImport.update({
+  id: '/account_/two-factor',
+  path: '/account/two-factor',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountUsageRoute = AppAccountUsageRouteImport.update({
+  id: '/account_/usage',
+  path: '/account/usage',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountWaitingRoute = AppAccountWaitingRouteImport.update({
+  id: '/account_/waiting',
+  path: '/account/waiting',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountWebhooksRoute = AppAccountWebhooksRouteImport.update({
+  id: '/account_/webhooks',
+  path: '/account/webhooks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountWorkflowsRoute = AppAccountWorkflowsRouteImport.update({
+  id: '/account_/workflows',
+  path: '/account/workflows',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminSplatRoute = AppAdminSplatRouteImport.update({
+  id: '/admin/$',
+  path: '/admin/$',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminCodemodsRoute = AppAdminCodemodsRouteImport.update({
+  id: '/admin/codemods',
+  path: '/admin/codemods',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminCommunityReportsRoute =
+  AppAdminCommunityReportsRouteImport.update({
+    id: '/admin/community-reports',
+    path: '/admin/community-reports',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125GrantsRoute =
-  AtChar123orgSlugChar125GrantsRouteImport.update({
-    id: '/@{$orgSlug}_/-/grants',
-    path: '/@{$orgSlug}/-/grants',
-    getParentRoute: () => rootRouteImport,
+const AppAdminFeatureFlagsRoute = AppAdminFeatureFlagsRouteImport.update({
+  id: '/admin/feature-flags',
+  path: '/admin/feature-flags',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminInsightsRoute = AppAdminInsightsRouteImport.update({
+  id: '/admin/insights',
+  path: '/admin/insights',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminPlatformFeedbackRoute =
+  AppAdminPlatformFeedbackRouteImport.update({
+    id: '/admin/platform-feedback',
+    path: '/admin/platform-feedback',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125IntegrationsRoute =
-  AtChar123orgSlugChar125IntegrationsRouteImport.update({
-    id: '/@{$orgSlug}_/-/integrations',
-    path: '/@{$orgSlug}/-/integrations',
-    getParentRoute: () => rootRouteImport,
+const AppAdminPlatformIntegrationsRoute =
+  AppAdminPlatformIntegrationsRouteImport.update({
+    id: '/admin/platform-integrations',
+    path: '/admin/platform-integrations',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125JobsRoute =
-  AtChar123orgSlugChar125JobsRouteImport.update({
-    id: '/@{$orgSlug}_/-/jobs',
-    path: '/@{$orgSlug}/-/jobs',
-    getParentRoute: () => rootRouteImport,
+const AppAdminProviderMarksRoute = AppAdminProviderMarksRouteImport.update({
+  id: '/admin/provider-marks',
+  path: '/admin/provider-marks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminReservedUsernamesRoute =
+  AppAdminReservedUsernamesRouteImport.update({
+    id: '/admin/reserved-usernames',
+    path: '/admin/reserved-usernames',
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125McpServersRoute =
-  AtChar123orgSlugChar125McpServersRouteImport.update({
-    id: '/@{$orgSlug}_/-/mcp-servers',
-    path: '/@{$orgSlug}/-/mcp-servers',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125MembersRoute =
-  AtChar123orgSlugChar125MembersRouteImport.update({
-    id: '/@{$orgSlug}_/-/members',
-    path: '/@{$orgSlug}/-/members',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125MemoriesRoute =
-  AtChar123orgSlugChar125MemoriesRouteImport.update({
-    id: '/@{$orgSlug}_/-/memories',
-    path: '/@{$orgSlug}/-/memories',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125OverviewRoute =
-  AtChar123orgSlugChar125OverviewRouteImport.update({
-    id: '/@{$orgSlug}_/-/overview',
-    path: '/@{$orgSlug}/-/overview',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125PackagesRoute =
-  AtChar123orgSlugChar125PackagesRouteImport.update({
-    id: '/@{$orgSlug}_/-/packages',
-    path: '/@{$orgSlug}/-/packages',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125RepositoriesRoute =
-  AtChar123orgSlugChar125RepositoriesRouteImport.update({
-    id: '/@{$orgSlug}_/-/repositories',
-    path: '/@{$orgSlug}/-/repositories',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretProvidersRoute =
-  AtChar123orgSlugChar125SecretProvidersRouteImport.update({
-    id: '/@{$orgSlug}_/-/secret-providers',
-    path: '/@{$orgSlug}/-/secret-providers',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretsRoute =
-  AtChar123orgSlugChar125SecretsRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets',
-    path: '/@{$orgSlug}/-/secrets',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SettingsRoute =
-  AtChar123orgSlugChar125SettingsRouteImport.update({
-    id: '/@{$orgSlug}_/-/settings',
-    path: '/@{$orgSlug}/-/settings',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125TeamsRoute =
-  AtChar123orgSlugChar125TeamsRouteImport.update({
-    id: '/@{$orgSlug}_/-/teams',
-    path: '/@{$orgSlug}/-/teams',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125UsageRoute =
-  AtChar123orgSlugChar125UsageRouteImport.update({
-    id: '/@{$orgSlug}_/-/usage',
-    path: '/@{$orgSlug}/-/usage',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125WaitingRoute =
-  AtChar123orgSlugChar125WaitingRouteImport.update({
-    id: '/@{$orgSlug}_/-/waiting',
-    path: '/@{$orgSlug}/-/waiting',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125WebhooksRoute =
-  AtChar123orgSlugChar125WebhooksRouteImport.update({
-    id: '/@{$orgSlug}_/-/webhooks',
-    path: '/@{$orgSlug}/-/webhooks',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125WorkflowsRoute =
-  AtChar123orgSlugChar125WorkflowsRouteImport.update({
-    id: '/@{$orgSlug}_/-/workflows',
-    path: '/@{$orgSlug}/-/workflows',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdApproveCapabilitiesRoute =
-  AtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport.update({
-    id: '/@{$username}_/$kodyId_/approve-capabilities',
-    path: '/@{$username}/$kodyId/approve-capabilities',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdApproveCredentialsRoute =
-  AtChar123usernameChar125KodyIdApproveCredentialsRouteImport.update({
-    id: '/@{$username}_/$kodyId_/approve-credentials',
-    path: '/@{$username}/$kodyId/approve-credentials',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdApprovePublishRoute =
-  AtChar123usernameChar125KodyIdApprovePublishRouteImport.update({
-    id: '/@{$username}_/$kodyId_/approve-publish',
-    path: '/@{$username}/$kodyId/approve-publish',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdCollaboratorsRoute =
-  AtChar123usernameChar125KodyIdCollaboratorsRouteImport.update({
-    id: '/@{$username}_/$kodyId_/collaborators',
-    path: '/@{$username}/$kodyId/collaborators',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdCredentialsRoute =
-  AtChar123usernameChar125KodyIdCredentialsRouteImport.update({
-    id: '/@{$username}_/$kodyId_/credentials',
-    path: '/@{$username}/$kodyId/credentials',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdMappingsRoute =
-  AtChar123usernameChar125KodyIdMappingsRouteImport.update({
-    id: '/@{$username}_/$kodyId_/mappings',
-    path: '/@{$username}/$kodyId/mappings',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdSettingsRoute =
-  AtChar123usernameChar125KodyIdSettingsRouteImport.update({
-    id: '/@{$username}_/$kodyId_/settings',
-    path: '/@{$username}/$kodyId/settings',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdTriggersRoute =
-  AtChar123usernameChar125KodyIdTriggersRouteImport.update({
-    id: '/@{$username}_/$kodyId_/triggers',
-    path: '/@{$username}/$kodyId/triggers',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
+  id: '/admin/roles',
+  path: '/admin/roles',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminSystemEmailRoute = AppAdminSystemEmailRouteImport.update({
+  id: '/admin/system-email',
+  path: '/admin/system-email',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => AppRoute,
+} as any)
 const KodyAuthSplatRoute = KodyAuthSplatRouteImport.update({
   id: '/_kody/auth/$',
   path: '/_kody/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountActivityRunIdRoute = AccountActivityRunIdRouteImport.update({
-  id: '/account_/activity_/$runId',
-  path: '/account/activity/$runId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountAgentsNewRoute = AccountAgentsNewRouteImport.update({
-  id: '/account_/agents_/new',
-  path: '/account/agents/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountAgentsUsageRoute = AccountAgentsUsageRouteImport.update({
-  id: '/account_/agents_/usage',
-  path: '/account/agents/usage',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountBillingSuccessRoute = AccountBillingSuccessRouteImport.update({
-  id: '/account_/billing_/success',
-  path: '/account/billing/success',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountConnectionsNewRoute = AccountConnectionsNewRouteImport.update({
-  id: '/account_/connections_/new',
-  path: '/account/connections/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountConnectionsUsageRoute = AccountConnectionsUsageRouteImport.update({
-  id: '/account_/connections_/usage',
-  path: '/account/connections/usage',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountEmailMessageIdRoute = AccountEmailMessageIdRouteImport.update({
-  id: '/account_/email_/$messageId',
-  path: '/account/email/$messageId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountIntegrationsIntegrationNameRoute =
-  AccountIntegrationsIntegrationNameRouteImport.update({
-    id: '/account_/integrations_/$integrationName',
-    path: '/account/integrations/$integrationName',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountIntegrationsApproveRoute =
-  AccountIntegrationsApproveRouteImport.update({
-    id: '/account_/integrations_/approve',
-    path: '/account/integrations/approve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountJobsJobIdRoute = AccountJobsJobIdRouteImport.update({
-  id: '/account_/jobs_/$jobId',
-  path: '/account/jobs/$jobId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountMcpServersServerIdRoute =
-  AccountMcpServersServerIdRouteImport.update({
-    id: '/account_/mcp-servers_/$serverId',
-    path: '/account/mcp-servers/$serverId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountMcpServersNewRoute = AccountMcpServersNewRouteImport.update({
-  id: '/account_/mcp-servers_/new',
-  path: '/account/mcp-servers/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountMemoriesMemoryIdRoute = AccountMemoriesMemoryIdRouteImport.update({
-  id: '/account_/memories_/$memoryId',
-  path: '/account/memories/$memoryId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountOrganizationsNewRoute = AccountOrganizationsNewRouteImport.update({
-  id: '/account_/organizations_/new',
-  path: '/account/organizations/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountPackagesIndexRoute = AccountPackagesIndexRouteImport.update({
-  id: '/account_/packages/',
-  path: '/account/packages/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountPackagesPackageIdRoute =
-  AccountPackagesPackageIdRouteImport.update({
-    id: '/account_/packages/$packageId',
-    path: '/account/packages/$packageId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountSecretProvidersApproveRoute =
-  AccountSecretProvidersApproveRouteImport.update({
-    id: '/account_/secret-providers_/approve',
-    path: '/account/secret-providers/approve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountSecretsApproveRoute = AccountSecretsApproveRouteImport.update({
-  id: '/account_/secrets_/approve',
-  path: '/account/secrets/approve',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountSecretsNewRoute = AccountSecretsNewRouteImport.update({
-  id: '/account_/secrets_/new',
-  path: '/account/secrets/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountWorkflowsWorkflowIdRoute =
-  AccountWorkflowsWorkflowIdRouteImport.update({
-    id: '/account_/workflows_/$workflowId',
-    path: '/account/workflows/$workflowId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AdminAccountDeletionsApprovalIdRoute =
-  AdminAccountDeletionsApprovalIdRouteImport.update({
-    id: '/admin/account-deletions_/$approvalId',
-    path: '/admin/account-deletions/$approvalId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AdminPlatformIntegrationsSlugRoute =
-  AdminPlatformIntegrationsSlugRouteImport.update({
-    id: '/admin/platform-integrations_/$slug',
-    path: '/admin/platform-integrations/$slug',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AdminPlatformIntegrationsNewRoute =
-  AdminPlatformIntegrationsNewRouteImport.update({
-    id: '/admin/platform-integrations_/new',
-    path: '/admin/platform-integrations/new',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AdminUsersStableUserIdRoute = AdminUsersStableUserIdRouteImport.update({
-  id: '/admin/users_/$stableUserId',
-  path: '/admin/users/$stableUserId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthProviderCallbackRoute = AuthProviderCallbackRouteImport.update({
@@ -1360,118 +1043,10 @@ const DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute =
     path: '/.well-known/agent-skills/$skillId/SKILL.md',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123orgSlugChar125ActivityRunIdRoute =
-  AtChar123orgSlugChar125ActivityRunIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/activity_/$runId',
-    path: '/@{$orgSlug}/-/activity/$runId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125AgentsNewRoute =
-  AtChar123orgSlugChar125AgentsNewRouteImport.update({
-    id: '/@{$orgSlug}_/-/agents_/new',
-    path: '/@{$orgSlug}/-/agents/new',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125AgentsUsageRoute =
-  AtChar123orgSlugChar125AgentsUsageRouteImport.update({
-    id: '/@{$orgSlug}_/-/agents_/usage',
-    path: '/@{$orgSlug}/-/agents/usage',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125ApprovalsBundleIdRoute =
-  AtChar123orgSlugChar125ApprovalsBundleIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/approvals/$bundleId',
-    path: '/@{$orgSlug}/-/approvals/$bundleId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125BillingSuccessRoute =
-  AtChar123orgSlugChar125BillingSuccessRouteImport.update({
-    id: '/@{$orgSlug}_/-/billing_/success',
-    path: '/@{$orgSlug}/-/billing/success',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AtChar123orgSlugChar125ConnectionsSplatRoute =
   AtChar123orgSlugChar125ConnectionsSplatRouteImport.update({
     id: '/@{$orgSlug}_/-/connections_/$',
     path: '/@{$orgSlug}/-/connections/$',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125CredentialsCredentialIdRoute =
-  AtChar123orgSlugChar125CredentialsCredentialIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/credentials_/$credentialId',
-    path: '/@{$orgSlug}/-/credentials/$credentialId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125CredentialsNewRoute =
-  AtChar123orgSlugChar125CredentialsNewRouteImport.update({
-    id: '/@{$orgSlug}_/-/credentials_/new',
-    path: '/@{$orgSlug}/-/credentials/new',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125EmailMessageIdRoute =
-  AtChar123orgSlugChar125EmailMessageIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/email_/$messageId',
-    path: '/@{$orgSlug}/-/email/$messageId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
-  AtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport.update({
-    id: '/@{$orgSlug}_/-/integrations_/$integrationName',
-    path: '/@{$orgSlug}/-/integrations/$integrationName',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125IntegrationsApproveRoute =
-  AtChar123orgSlugChar125IntegrationsApproveRouteImport.update({
-    id: '/@{$orgSlug}_/-/integrations_/approve',
-    path: '/@{$orgSlug}/-/integrations/approve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125JobsJobIdRoute =
-  AtChar123orgSlugChar125JobsJobIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/jobs_/$jobId',
-    path: '/@{$orgSlug}/-/jobs/$jobId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125McpServersServerIdRoute =
-  AtChar123orgSlugChar125McpServersServerIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/mcp-servers_/$serverId',
-    path: '/@{$orgSlug}/-/mcp-servers/$serverId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125McpServersNewRoute =
-  AtChar123orgSlugChar125McpServersNewRouteImport.update({
-    id: '/@{$orgSlug}_/-/mcp-servers_/new',
-    path: '/@{$orgSlug}/-/mcp-servers/new',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125MemoriesMemoryIdRoute =
-  AtChar123orgSlugChar125MemoriesMemoryIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/memories_/$memoryId',
-    path: '/@{$orgSlug}/-/memories/$memoryId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretProvidersApproveRoute =
-  AtChar123orgSlugChar125SecretProvidersApproveRouteImport.update({
-    id: '/@{$orgSlug}_/-/secret-providers_/approve',
-    path: '/@{$orgSlug}/-/secret-providers/approve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretsApproveRoute =
-  AtChar123orgSlugChar125SecretsApproveRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets_/approve',
-    path: '/@{$orgSlug}/-/secrets/approve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretsNewRoute =
-  AtChar123orgSlugChar125SecretsNewRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets_/new',
-    path: '/@{$orgSlug}/-/secrets/new',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125WorkflowsWorkflowIdRoute =
-  AtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport.update({
-    id: '/@{$orgSlug}_/-/workflows_/$workflowId',
-    path: '/@{$orgSlug}/-/workflows/$workflowId',
     getParentRoute: () => rootRouteImport,
   } as any)
 const AtChar123usernameChar125KodyIdAssetsSplatRoute =
@@ -1480,34 +1055,346 @@ const AtChar123usernameChar125KodyIdAssetsSplatRoute =
     path: '/@{$username}/$kodyId/assets/$',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123usernameChar125KodyIdFilesSplatRoute =
-  AtChar123usernameChar125KodyIdFilesSplatRouteImport.update({
-    id: '/@{$username}_/$kodyId_/files/$',
-    path: '/@{$username}/$kodyId/files/$',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AtChar123usernameChar125KodyIdIconIconCommitRoute =
   AtChar123usernameChar125KodyIdIconIconCommitRouteImport.update({
     id: '/@{$username}_/$kodyId_/icon_/$iconCommit',
     path: '/@{$username}/$kodyId/icon/$iconCommit',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AccountAgentsNewAgentRoute = AccountAgentsNewAgentRouteImport.update({
-  id: '/account_/agents_/new_/$agent',
-  path: '/account/agents/new/$agent',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountConnectionsNewAgentRoute =
-  AccountConnectionsNewAgentRouteImport.update({
-    id: '/account_/connections_/new_/$agent',
-    path: '/account/connections/new/$agent',
-    getParentRoute: () => rootRouteImport,
+const AppAtChar123orgSlugChar125ActivityRoute =
+  AppAtChar123orgSlugChar125ActivityRouteImport.update({
+    id: '/@{$orgSlug}_/-/activity',
+    path: '/@{$orgSlug}/-/activity',
+    getParentRoute: () => AppRoute,
   } as any)
-const AccountIntegrationsAppsAppSlugRoute =
-  AccountIntegrationsAppsAppSlugRouteImport.update({
-    id: '/account_/integrations_/apps/$appSlug',
-    path: '/account/integrations/apps/$appSlug',
-    getParentRoute: () => rootRouteImport,
+const AppAtChar123orgSlugChar125AgentsRoute =
+  AppAtChar123orgSlugChar125AgentsRouteImport.update({
+    id: '/@{$orgSlug}_/-/agents',
+    path: '/@{$orgSlug}/-/agents',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125BillingRoute =
+  AppAtChar123orgSlugChar125BillingRouteImport.update({
+    id: '/@{$orgSlug}_/-/billing',
+    path: '/@{$orgSlug}/-/billing',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125CollaboratorsRoute =
+  AppAtChar123orgSlugChar125CollaboratorsRouteImport.update({
+    id: '/@{$orgSlug}_/-/collaborators',
+    path: '/@{$orgSlug}/-/collaborators',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125CredentialsRoute =
+  AppAtChar123orgSlugChar125CredentialsRouteImport.update({
+    id: '/@{$orgSlug}_/-/credentials',
+    path: '/@{$orgSlug}/-/credentials',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125CreditsRoute =
+  AppAtChar123orgSlugChar125CreditsRouteImport.update({
+    id: '/@{$orgSlug}_/-/credits',
+    path: '/@{$orgSlug}/-/credits',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125EmailRoute =
+  AppAtChar123orgSlugChar125EmailRouteImport.update({
+    id: '/@{$orgSlug}_/-/email',
+    path: '/@{$orgSlug}/-/email',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125FollowsRoute =
+  AppAtChar123orgSlugChar125FollowsRouteImport.update({
+    id: '/@{$orgSlug}_/-/follows',
+    path: '/@{$orgSlug}/-/follows',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125GrantsRoute =
+  AppAtChar123orgSlugChar125GrantsRouteImport.update({
+    id: '/@{$orgSlug}_/-/grants',
+    path: '/@{$orgSlug}/-/grants',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125IntegrationsRoute =
+  AppAtChar123orgSlugChar125IntegrationsRouteImport.update({
+    id: '/@{$orgSlug}_/-/integrations',
+    path: '/@{$orgSlug}/-/integrations',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125JobsRoute =
+  AppAtChar123orgSlugChar125JobsRouteImport.update({
+    id: '/@{$orgSlug}_/-/jobs',
+    path: '/@{$orgSlug}/-/jobs',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125McpServersRoute =
+  AppAtChar123orgSlugChar125McpServersRouteImport.update({
+    id: '/@{$orgSlug}_/-/mcp-servers',
+    path: '/@{$orgSlug}/-/mcp-servers',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125MembersRoute =
+  AppAtChar123orgSlugChar125MembersRouteImport.update({
+    id: '/@{$orgSlug}_/-/members',
+    path: '/@{$orgSlug}/-/members',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125MemoriesRoute =
+  AppAtChar123orgSlugChar125MemoriesRouteImport.update({
+    id: '/@{$orgSlug}_/-/memories',
+    path: '/@{$orgSlug}/-/memories',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125OverviewRoute =
+  AppAtChar123orgSlugChar125OverviewRouteImport.update({
+    id: '/@{$orgSlug}_/-/overview',
+    path: '/@{$orgSlug}/-/overview',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125PackagesRoute =
+  AppAtChar123orgSlugChar125PackagesRouteImport.update({
+    id: '/@{$orgSlug}_/-/packages',
+    path: '/@{$orgSlug}/-/packages',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125RepositoriesRoute =
+  AppAtChar123orgSlugChar125RepositoriesRouteImport.update({
+    id: '/@{$orgSlug}_/-/repositories',
+    path: '/@{$orgSlug}/-/repositories',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretProvidersRoute =
+  AppAtChar123orgSlugChar125SecretProvidersRouteImport.update({
+    id: '/@{$orgSlug}_/-/secret-providers',
+    path: '/@{$orgSlug}/-/secret-providers',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretsRoute =
+  AppAtChar123orgSlugChar125SecretsRouteImport.update({
+    id: '/@{$orgSlug}_/-/secrets',
+    path: '/@{$orgSlug}/-/secrets',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SettingsRoute =
+  AppAtChar123orgSlugChar125SettingsRouteImport.update({
+    id: '/@{$orgSlug}_/-/settings',
+    path: '/@{$orgSlug}/-/settings',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125TeamsRoute =
+  AppAtChar123orgSlugChar125TeamsRouteImport.update({
+    id: '/@{$orgSlug}_/-/teams',
+    path: '/@{$orgSlug}/-/teams',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125UsageRoute =
+  AppAtChar123orgSlugChar125UsageRouteImport.update({
+    id: '/@{$orgSlug}_/-/usage',
+    path: '/@{$orgSlug}/-/usage',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125WaitingRoute =
+  AppAtChar123orgSlugChar125WaitingRouteImport.update({
+    id: '/@{$orgSlug}_/-/waiting',
+    path: '/@{$orgSlug}/-/waiting',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125WebhooksRoute =
+  AppAtChar123orgSlugChar125WebhooksRouteImport.update({
+    id: '/@{$orgSlug}_/-/webhooks',
+    path: '/@{$orgSlug}/-/webhooks',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125WorkflowsRoute =
+  AppAtChar123orgSlugChar125WorkflowsRouteImport.update({
+    id: '/@{$orgSlug}_/-/workflows',
+    path: '/@{$orgSlug}/-/workflows',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute =
+  AppAtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport.update({
+    id: '/@{$username}_/$kodyId_/approve-capabilities',
+    path: '/@{$username}/$kodyId/approve-capabilities',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdApproveCredentialsRoute =
+  AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport.update({
+    id: '/@{$username}_/$kodyId_/approve-credentials',
+    path: '/@{$username}/$kodyId/approve-credentials',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdApprovePublishRoute =
+  AppAtChar123usernameChar125KodyIdApprovePublishRouteImport.update({
+    id: '/@{$username}_/$kodyId_/approve-publish',
+    path: '/@{$username}/$kodyId/approve-publish',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdCollaboratorsRoute =
+  AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport.update({
+    id: '/@{$username}_/$kodyId_/collaborators',
+    path: '/@{$username}/$kodyId/collaborators',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdCredentialsRoute =
+  AppAtChar123usernameChar125KodyIdCredentialsRouteImport.update({
+    id: '/@{$username}_/$kodyId_/credentials',
+    path: '/@{$username}/$kodyId/credentials',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdMappingsRoute =
+  AppAtChar123usernameChar125KodyIdMappingsRouteImport.update({
+    id: '/@{$username}_/$kodyId_/mappings',
+    path: '/@{$username}/$kodyId/mappings',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdSettingsRoute =
+  AppAtChar123usernameChar125KodyIdSettingsRouteImport.update({
+    id: '/@{$username}_/$kodyId_/settings',
+    path: '/@{$username}/$kodyId/settings',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdTriggersRoute =
+  AppAtChar123usernameChar125KodyIdTriggersRouteImport.update({
+    id: '/@{$username}_/$kodyId_/triggers',
+    path: '/@{$username}/$kodyId/triggers',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountActivityRunIdRoute = AppAccountActivityRunIdRouteImport.update({
+  id: '/account_/activity_/$runId',
+  path: '/account/activity/$runId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountAgentsNewRoute = AppAccountAgentsNewRouteImport.update({
+  id: '/account_/agents_/new',
+  path: '/account/agents/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountAgentsUsageRoute = AppAccountAgentsUsageRouteImport.update({
+  id: '/account_/agents_/usage',
+  path: '/account/agents/usage',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountBillingSuccessRoute =
+  AppAccountBillingSuccessRouteImport.update({
+    id: '/account_/billing_/success',
+    path: '/account/billing/success',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountConnectionsNewRoute =
+  AppAccountConnectionsNewRouteImport.update({
+    id: '/account_/connections_/new',
+    path: '/account/connections/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountConnectionsUsageRoute =
+  AppAccountConnectionsUsageRouteImport.update({
+    id: '/account_/connections_/usage',
+    path: '/account/connections/usage',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountEmailMessageIdRoute =
+  AppAccountEmailMessageIdRouteImport.update({
+    id: '/account_/email_/$messageId',
+    path: '/account/email/$messageId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountIntegrationsIntegrationNameRoute =
+  AppAccountIntegrationsIntegrationNameRouteImport.update({
+    id: '/account_/integrations_/$integrationName',
+    path: '/account/integrations/$integrationName',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountIntegrationsApproveRoute =
+  AppAccountIntegrationsApproveRouteImport.update({
+    id: '/account_/integrations_/approve',
+    path: '/account/integrations/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountJobsJobIdRoute = AppAccountJobsJobIdRouteImport.update({
+  id: '/account_/jobs_/$jobId',
+  path: '/account/jobs/$jobId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountMcpServersServerIdRoute =
+  AppAccountMcpServersServerIdRouteImport.update({
+    id: '/account_/mcp-servers_/$serverId',
+    path: '/account/mcp-servers/$serverId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountMcpServersNewRoute = AppAccountMcpServersNewRouteImport.update({
+  id: '/account_/mcp-servers_/new',
+  path: '/account/mcp-servers/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountMemoriesMemoryIdRoute =
+  AppAccountMemoriesMemoryIdRouteImport.update({
+    id: '/account_/memories_/$memoryId',
+    path: '/account/memories/$memoryId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountOrganizationsNewRoute =
+  AppAccountOrganizationsNewRouteImport.update({
+    id: '/account_/organizations_/new',
+    path: '/account/organizations/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountPackagesIndexRoute = AppAccountPackagesIndexRouteImport.update({
+  id: '/account_/packages/',
+  path: '/account/packages/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountPackagesPackageIdRoute =
+  AppAccountPackagesPackageIdRouteImport.update({
+    id: '/account_/packages/$packageId',
+    path: '/account/packages/$packageId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountSecretProvidersApproveRoute =
+  AppAccountSecretProvidersApproveRouteImport.update({
+    id: '/account_/secret-providers_/approve',
+    path: '/account/secret-providers/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountSecretsApproveRoute =
+  AppAccountSecretsApproveRouteImport.update({
+    id: '/account_/secrets_/approve',
+    path: '/account/secrets/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountSecretsNewRoute = AppAccountSecretsNewRouteImport.update({
+  id: '/account_/secrets_/new',
+  path: '/account/secrets/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountWorkflowsWorkflowIdRoute =
+  AppAccountWorkflowsWorkflowIdRouteImport.update({
+    id: '/account_/workflows_/$workflowId',
+    path: '/account/workflows/$workflowId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminAccountDeletionsApprovalIdRoute =
+  AppAdminAccountDeletionsApprovalIdRouteImport.update({
+    id: '/admin/account-deletions_/$approvalId',
+    path: '/admin/account-deletions/$approvalId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminPlatformIntegrationsSlugRoute =
+  AppAdminPlatformIntegrationsSlugRouteImport.update({
+    id: '/admin/platform-integrations_/$slug',
+    path: '/admin/platform-integrations/$slug',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminPlatformIntegrationsNewRoute =
+  AppAdminPlatformIntegrationsNewRouteImport.update({
+    id: '/admin/platform-integrations_/new',
+    path: '/admin/platform-integrations/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminUsersStableUserIdRoute =
+  AppAdminUsersStableUserIdRouteImport.update({
+    id: '/admin/users_/$stableUserId',
+    path: '/admin/users/$stableUserId',
+    getParentRoute: () => AppRoute,
   } as any)
 const AccountMcpServersLogosServerIdRoute =
   AccountMcpServersLogosServerIdRouteImport.update({
@@ -1519,24 +1406,6 @@ const AccountMcpServersOauthCallbackRoute =
   AccountMcpServersOauthCallbackRouteImport.update({
     id: '/account_/mcp-servers_/oauth_/callback',
     path: '/account/mcp-servers/oauth/callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountPackagesPackageIdApproveCapabilitiesRoute =
-  AccountPackagesPackageIdApproveCapabilitiesRouteImport.update({
-    id: '/account_/packages/$packageId_/approve-capabilities',
-    path: '/account/packages/$packageId/approve-capabilities',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountPackagesPackageIdApprovePublishRoute =
-  AccountPackagesPackageIdApprovePublishRouteImport.update({
-    id: '/account_/packages/$packageId_/approve-publish',
-    path: '/account/packages/$packageId/approve-publish',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AccountSecretsUserSecretNameRoute =
-  AccountSecretsUserSecretNameRouteImport.update({
-    id: '/account_/secrets_/user/$secretName',
-    path: '/account/secrets/user/$secretName',
     getParentRoute: () => rootRouteImport,
   } as any)
 const CommunityListingIdFilesSplatRoute =
@@ -1574,40 +1443,10 @@ const ProfilesUsernameAvatarFileRoute =
     path: '/profiles/$username/avatar/$file',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AtChar123orgSlugChar125AgentsNewAgentRoute =
-  AtChar123orgSlugChar125AgentsNewAgentRouteImport.update({
-    id: '/@{$orgSlug}_/-/agents_/new_/$agent',
-    path: '/@{$orgSlug}/-/agents/new/$agent',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
-  AtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
-    id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
-    path: '/@{$orgSlug}/-/integrations/apps/$appSlug',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute =
-  AtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport.update({
-    id: '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize',
-    path: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretsUserSecretNameRoute =
-  AtChar123orgSlugChar125SecretsUserSecretNameRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets_/user/$secretName',
-    path: '/@{$orgSlug}/-/secrets/user/$secretName',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AtChar123usernameChar125KodyIdRawRefSplatRoute =
   AtChar123usernameChar125KodyIdRawRefSplatRouteImport.update({
     id: '/@{$username}_/$kodyId_/raw_/$ref_/$',
     path: '/@{$username}/$kodyId/raw/$ref/$',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123usernameChar125KodyIdTreeRefSplatRoute =
-  AtChar123usernameChar125KodyIdTreeRefSplatRouteImport.update({
-    id: '/@{$username}_/$kodyId_/tree/$ref/$',
-    path: '/@{$username}/$kodyId/tree/$ref/$',
     getParentRoute: () => rootRouteImport,
   } as any)
 const AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute =
@@ -1618,11 +1457,155 @@ const AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   )
-const AccountPackagesPackageIdFilesSplatRoute =
-  AccountPackagesPackageIdFilesSplatRouteImport.update({
-    id: '/files/$',
-    path: '/files/$',
-    getParentRoute: () => AccountPackagesPackageIdRoute,
+const AppAtChar123orgSlugChar125ActivityRunIdRoute =
+  AppAtChar123orgSlugChar125ActivityRunIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/activity_/$runId',
+    path: '/@{$orgSlug}/-/activity/$runId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125AgentsNewRoute =
+  AppAtChar123orgSlugChar125AgentsNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/agents_/new',
+    path: '/@{$orgSlug}/-/agents/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125AgentsUsageRoute =
+  AppAtChar123orgSlugChar125AgentsUsageRouteImport.update({
+    id: '/@{$orgSlug}_/-/agents_/usage',
+    path: '/@{$orgSlug}/-/agents/usage',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125ApprovalsBundleIdRoute =
+  AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/approvals/$bundleId',
+    path: '/@{$orgSlug}/-/approvals/$bundleId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125BillingSuccessRoute =
+  AppAtChar123orgSlugChar125BillingSuccessRouteImport.update({
+    id: '/@{$orgSlug}_/-/billing_/success',
+    path: '/@{$orgSlug}/-/billing/success',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125CredentialsCredentialIdRoute =
+  AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/credentials_/$credentialId',
+    path: '/@{$orgSlug}/-/credentials/$credentialId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125CredentialsNewRoute =
+  AppAtChar123orgSlugChar125CredentialsNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/credentials_/new',
+    path: '/@{$orgSlug}/-/credentials/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125EmailMessageIdRoute =
+  AppAtChar123orgSlugChar125EmailMessageIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/email_/$messageId',
+    path: '/@{$orgSlug}/-/email/$messageId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
+  AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport.update({
+    id: '/@{$orgSlug}_/-/integrations_/$integrationName',
+    path: '/@{$orgSlug}/-/integrations/$integrationName',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125IntegrationsApproveRoute =
+  AppAtChar123orgSlugChar125IntegrationsApproveRouteImport.update({
+    id: '/@{$orgSlug}_/-/integrations_/approve',
+    path: '/@{$orgSlug}/-/integrations/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125JobsJobIdRoute =
+  AppAtChar123orgSlugChar125JobsJobIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/jobs_/$jobId',
+    path: '/@{$orgSlug}/-/jobs/$jobId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125McpServersServerIdRoute =
+  AppAtChar123orgSlugChar125McpServersServerIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/mcp-servers_/$serverId',
+    path: '/@{$orgSlug}/-/mcp-servers/$serverId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125McpServersNewRoute =
+  AppAtChar123orgSlugChar125McpServersNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/mcp-servers_/new',
+    path: '/@{$orgSlug}/-/mcp-servers/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125MemoriesMemoryIdRoute =
+  AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/memories_/$memoryId',
+    path: '/@{$orgSlug}/-/memories/$memoryId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretProvidersApproveRoute =
+  AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport.update({
+    id: '/@{$orgSlug}_/-/secret-providers_/approve',
+    path: '/@{$orgSlug}/-/secret-providers/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretsApproveRoute =
+  AppAtChar123orgSlugChar125SecretsApproveRouteImport.update({
+    id: '/@{$orgSlug}_/-/secrets_/approve',
+    path: '/@{$orgSlug}/-/secrets/approve',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretsNewRoute =
+  AppAtChar123orgSlugChar125SecretsNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/secrets_/new',
+    path: '/@{$orgSlug}/-/secrets/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute =
+  AppAtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/workflows_/$workflowId',
+    path: '/@{$orgSlug}/-/workflows/$workflowId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdFilesSplatRoute =
+  AppAtChar123usernameChar125KodyIdFilesSplatRouteImport.update({
+    id: '/@{$username}_/$kodyId_/files/$',
+    path: '/@{$username}/$kodyId/files/$',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountAgentsNewAgentRoute =
+  AppAccountAgentsNewAgentRouteImport.update({
+    id: '/account_/agents_/new_/$agent',
+    path: '/account/agents/new/$agent',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountConnectionsNewAgentRoute =
+  AppAccountConnectionsNewAgentRouteImport.update({
+    id: '/account_/connections_/new_/$agent',
+    path: '/account/connections/new/$agent',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountIntegrationsAppsAppSlugRoute =
+  AppAccountIntegrationsAppsAppSlugRouteImport.update({
+    id: '/account_/integrations_/apps/$appSlug',
+    path: '/account/integrations/apps/$appSlug',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountPackagesPackageIdApproveCapabilitiesRoute =
+  AppAccountPackagesPackageIdApproveCapabilitiesRouteImport.update({
+    id: '/account_/packages/$packageId_/approve-capabilities',
+    path: '/account/packages/$packageId/approve-capabilities',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountPackagesPackageIdApprovePublishRoute =
+  AppAccountPackagesPackageIdApprovePublishRouteImport.update({
+    id: '/account_/packages/$packageId_/approve-publish',
+    path: '/account/packages/$packageId/approve-publish',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountSecretsUserSecretNameRoute =
+  AppAccountSecretsUserSecretNameRouteImport.update({
+    id: '/account_/secrets_/user/$secretName',
+    path: '/account/secrets/user/$secretName',
+    getParentRoute: () => AppRoute,
   } as any)
 const AccountReposRepoIdIconIconCommitRoute =
   AccountReposRepoIdIconIconCommitRouteImport.update({
@@ -1630,38 +1613,76 @@ const AccountReposRepoIdIconIconCommitRoute =
     path: '/account/repos/$repoId/icon/$iconCommit',
     getParentRoute: () => rootRouteImport,
   } as any)
-const AccountSecretsPackagePackageIdSecretNameRoute =
-  AccountSecretsPackagePackageIdSecretNameRouteImport.update({
+const AppAtChar123orgSlugChar125AgentsNewAgentRoute =
+  AppAtChar123orgSlugChar125AgentsNewAgentRouteImport.update({
+    id: '/@{$orgSlug}_/-/agents_/new_/$agent',
+    path: '/@{$orgSlug}/-/agents/new/$agent',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute =
+  AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport.update({
+    id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug',
+    path: '/@{$orgSlug}/-/integrations/apps/$appSlug',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute =
+  AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport.update({
+    id: '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize',
+    path: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SecretsUserSecretNameRoute =
+  AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport.update({
+    id: '/@{$orgSlug}_/-/secrets_/user/$secretName',
+    path: '/@{$orgSlug}/-/secrets/user/$secretName',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdTreeRefSplatRoute =
+  AppAtChar123usernameChar125KodyIdTreeRefSplatRouteImport.update({
+    id: '/@{$username}_/$kodyId_/tree/$ref/$',
+    path: '/@{$username}/$kodyId/tree/$ref/$',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountPackagesPackageIdFilesSplatRoute =
+  AppAccountPackagesPackageIdFilesSplatRouteImport.update({
+    id: '/files/$',
+    path: '/files/$',
+    getParentRoute: () => AppAccountPackagesPackageIdRoute,
+  } as any)
+const AppAccountSecretsPackagePackageIdSecretNameRoute =
+  AppAccountSecretsPackagePackageIdSecretNameRouteImport.update({
     id: '/account_/secrets_/package/$packageId/$secretName',
     path: '/account/secrets/package/$packageId/$secretName',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AppRoute,
   } as any)
-const AccountSecretsSessionSessionIdSecretNameRoute =
-  AccountSecretsSessionSessionIdSecretNameRouteImport.update({
+const AppAccountSecretsSessionSessionIdSecretNameRoute =
+  AppAccountSecretsSessionSessionIdSecretNameRouteImport.update({
     id: '/account_/secrets_/session/$sessionId/$secretName',
     path: '/account/secrets/session/$sessionId/$secretName',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AppRoute,
   } as any)
-const AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute =
-  AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName',
-    path: '/@{$orgSlug}/-/secrets/package/$packageId/$secretName',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute =
-  AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport.update({
-    id: '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName',
-    path: '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute =
+  AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport.update(
+    {
+      id: '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName',
+      path: '/@{$orgSlug}/-/secrets/package/$packageId/$secretName',
+      getParentRoute: () => AppRoute,
+    } as any,
+  )
+const AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute =
+  AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport.update(
+    {
+      id: '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName',
+      path: '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName',
+      getParentRoute: () => AppRoute,
+    } as any,
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/404': typeof R404Route
   '/500': typeof R500Route
-  '/@{$username}': typeof AtChar123usernameChar125Route
   '/about': typeof AboutRoute
-  '/account': typeof AccountRoute
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
@@ -1699,46 +1720,11 @@ export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
-  '/@{$username}/$kodyId': typeof AtChar123usernameChar125KodyIdRoute
-  '/account/activity': typeof AccountActivityRoute
-  '/account/agents': typeof AccountAgentsRoute
-  '/account/billing': typeof AccountBillingRoute
-  '/account/connections': typeof AccountConnectionsRoute
-  '/account/credentials': typeof AccountCredentialsRoute
-  '/account/credits': typeof AccountCreditsRoute
-  '/account/data': typeof AccountDataRoute
-  '/account/email': typeof AccountEmailRoute
-  '/account/experiments': typeof AccountExperimentsRoute
+  '/@{$username}': typeof AppAtChar123usernameChar125Route
+  '/account': typeof AppAccountRoute
   '/account/export.json': typeof AccountExportDotjsonRoute
-  '/account/integrations': typeof AccountIntegrationsRoute
-  '/account/jobs': typeof AccountJobsRoute
-  '/account/mcp-oauth-clients': typeof AccountMcpOauthClientsRoute
-  '/account/mcp-servers': typeof AccountMcpServersRoute
-  '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
-  '/account/organizations': typeof AccountOrganizationsRoute
   '/account/packages.json': typeof AccountPackagesDotjsonRoute
-  '/account/passkeys': typeof AccountPasskeysRoute
-  '/account/secret-providers': typeof AccountSecretProvidersRoute
-  '/account/secrets': typeof AccountSecretsRoute
-  '/account/security': typeof AccountSecurityRoute
-  '/account/two-factor': typeof AccountTwoFactorRoute
-  '/account/usage': typeof AccountUsageRoute
-  '/account/waiting': typeof AccountWaitingRoute
-  '/account/webhooks': typeof AccountWebhooksRoute
-  '/account/workflows': typeof AccountWorkflowsRoute
-  '/admin/$': typeof AdminSplatRoute
-  '/admin/codemods': typeof AdminCodemodsRoute
-  '/admin/community-reports': typeof AdminCommunityReportsRoute
-  '/admin/feature-flags': typeof AdminFeatureFlagsRoute
-  '/admin/insights': typeof AdminInsightsRoute
-  '/admin/platform-feedback': typeof AdminPlatformFeedbackRoute
-  '/admin/platform-integrations': typeof AdminPlatformIntegrationsRoute
-  '/admin/provider-marks': typeof AdminProviderMarksRoute
-  '/admin/reserved-usernames': typeof AdminReservedUsernamesRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/system-email': typeof AdminSystemEmailRoute
-  '/admin/users': typeof AdminUsersRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -1784,71 +1770,51 @@ export interface FileRoutesByFullPath {
   '/webhooks/stripe': typeof WebhooksStripeRoute
   '/with/$agent': typeof WithAgentRoute
   '/youtube-thumb/$videoId': typeof YoutubeThumbVideoIdRoute
-  '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
   '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known/agent-skills/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known/mcp/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
-  '/@{$orgSlug}/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
-  '/@{$orgSlug}/-/agents': typeof AtChar123orgSlugChar125AgentsRoute
-  '/@{$orgSlug}/-/billing': typeof AtChar123orgSlugChar125BillingRoute
-  '/@{$orgSlug}/-/collaborators': typeof AtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/connections': typeof AtChar123orgSlugChar125ConnectionsRoute
-  '/@{$orgSlug}/-/credentials': typeof AtChar123orgSlugChar125CredentialsRoute
-  '/@{$orgSlug}/-/credits': typeof AtChar123orgSlugChar125CreditsRoute
-  '/@{$orgSlug}/-/email': typeof AtChar123orgSlugChar125EmailRoute
-  '/@{$orgSlug}/-/follows': typeof AtChar123orgSlugChar125FollowsRoute
-  '/@{$orgSlug}/-/grants': typeof AtChar123orgSlugChar125GrantsRoute
-  '/@{$orgSlug}/-/integrations': typeof AtChar123orgSlugChar125IntegrationsRoute
-  '/@{$orgSlug}/-/jobs': typeof AtChar123orgSlugChar125JobsRoute
-  '/@{$orgSlug}/-/mcp-servers': typeof AtChar123orgSlugChar125McpServersRoute
-  '/@{$orgSlug}/-/members': typeof AtChar123orgSlugChar125MembersRoute
-  '/@{$orgSlug}/-/memories': typeof AtChar123orgSlugChar125MemoriesRoute
-  '/@{$orgSlug}/-/overview': typeof AtChar123orgSlugChar125OverviewRoute
-  '/@{$orgSlug}/-/packages': typeof AtChar123orgSlugChar125PackagesRoute
-  '/@{$orgSlug}/-/repositories': typeof AtChar123orgSlugChar125RepositoriesRoute
-  '/@{$orgSlug}/-/secret-providers': typeof AtChar123orgSlugChar125SecretProvidersRoute
-  '/@{$orgSlug}/-/secrets': typeof AtChar123orgSlugChar125SecretsRoute
-  '/@{$orgSlug}/-/settings': typeof AtChar123orgSlugChar125SettingsRoute
-  '/@{$orgSlug}/-/teams': typeof AtChar123orgSlugChar125TeamsRoute
-  '/@{$orgSlug}/-/usage': typeof AtChar123orgSlugChar125UsageRoute
-  '/@{$orgSlug}/-/waiting': typeof AtChar123orgSlugChar125WaitingRoute
-  '/@{$orgSlug}/-/webhooks': typeof AtChar123orgSlugChar125WebhooksRoute
-  '/@{$orgSlug}/-/workflows': typeof AtChar123orgSlugChar125WorkflowsRoute
-  '/@{$username}/$kodyId/approve-capabilities': typeof AtChar123usernameChar125KodyIdApproveCapabilitiesRoute
-  '/@{$username}/$kodyId/approve-credentials': typeof AtChar123usernameChar125KodyIdApproveCredentialsRoute
-  '/@{$username}/$kodyId/approve-publish': typeof AtChar123usernameChar125KodyIdApprovePublishRoute
-  '/@{$username}/$kodyId/collaborators': typeof AtChar123usernameChar125KodyIdCollaboratorsRoute
-  '/@{$username}/$kodyId/credentials': typeof AtChar123usernameChar125KodyIdCredentialsRoute
-  '/@{$username}/$kodyId/mappings': typeof AtChar123usernameChar125KodyIdMappingsRoute
-  '/@{$username}/$kodyId/settings': typeof AtChar123usernameChar125KodyIdSettingsRoute
-  '/@{$username}/$kodyId/triggers': typeof AtChar123usernameChar125KodyIdTriggersRoute
+  '/@{$username}/$kodyId': typeof AppAtChar123usernameChar125KodyIdRoute
+  '/account/activity': typeof AppAccountActivityRoute
+  '/account/agents': typeof AppAccountAgentsRoute
+  '/account/billing': typeof AppAccountBillingRoute
+  '/account/connections': typeof AppAccountConnectionsRoute
+  '/account/credentials': typeof AppAccountCredentialsRoute
+  '/account/credits': typeof AppAccountCreditsRoute
+  '/account/data': typeof AppAccountDataRoute
+  '/account/email': typeof AppAccountEmailRoute
+  '/account/experiments': typeof AppAccountExperimentsRoute
+  '/account/integrations': typeof AppAccountIntegrationsRoute
+  '/account/jobs': typeof AppAccountJobsRoute
+  '/account/mcp-oauth-clients': typeof AppAccountMcpOauthClientsRoute
+  '/account/mcp-servers': typeof AppAccountMcpServersRoute
+  '/account/memories': typeof AppAccountMemoriesRoute
+  '/account/organizations': typeof AppAccountOrganizationsRoute
+  '/account/passkeys': typeof AppAccountPasskeysRoute
+  '/account/secret-providers': typeof AppAccountSecretProvidersRoute
+  '/account/secrets': typeof AppAccountSecretsRoute
+  '/account/security': typeof AppAccountSecurityRoute
+  '/account/two-factor': typeof AppAccountTwoFactorRoute
+  '/account/usage': typeof AppAccountUsageRoute
+  '/account/waiting': typeof AppAccountWaitingRoute
+  '/account/webhooks': typeof AppAccountWebhooksRoute
+  '/account/workflows': typeof AppAccountWorkflowsRoute
+  '/admin/$': typeof AppAdminSplatRoute
+  '/admin/codemods': typeof AppAdminCodemodsRoute
+  '/admin/community-reports': typeof AppAdminCommunityReportsRoute
+  '/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
+  '/admin/insights': typeof AppAdminInsightsRoute
+  '/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
+  '/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
+  '/admin/provider-marks': typeof AppAdminProviderMarksRoute
+  '/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
+  '/admin/roles': typeof AppAdminRolesRoute
+  '/admin/system-email': typeof AppAdminSystemEmailRoute
+  '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
-  '/account/activity/$runId': typeof AccountActivityRunIdRoute
-  '/account/agents/new': typeof AccountAgentsNewRoute
-  '/account/agents/usage': typeof AccountAgentsUsageRoute
-  '/account/billing/success': typeof AccountBillingSuccessRoute
-  '/account/connections/new': typeof AccountConnectionsNewRoute
-  '/account/connections/usage': typeof AccountConnectionsUsageRoute
-  '/account/email/$messageId': typeof AccountEmailMessageIdRoute
-  '/account/integrations/$integrationName': typeof AccountIntegrationsIntegrationNameRoute
-  '/account/integrations/approve': typeof AccountIntegrationsApproveRoute
-  '/account/jobs/$jobId': typeof AccountJobsJobIdRoute
-  '/account/mcp-servers/$serverId': typeof AccountMcpServersServerIdRoute
-  '/account/mcp-servers/new': typeof AccountMcpServersNewRoute
-  '/account/memories/$memoryId': typeof AccountMemoriesMemoryIdRoute
-  '/account/organizations/new': typeof AccountOrganizationsNewRoute
-  '/account/packages/$packageId': typeof AccountPackagesPackageIdRouteWithChildren
-  '/account/secret-providers/approve': typeof AccountSecretProvidersApproveRoute
-  '/account/secrets/approve': typeof AccountSecretsApproveRoute
-  '/account/secrets/new': typeof AccountSecretsNewRoute
-  '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
-  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
-  '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
-  '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
-  '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
@@ -1860,65 +1826,120 @@ export interface FileRoutesByFullPath {
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
   '/profiles/$username/og.png': typeof ProfilesUsernameOgDotpngRoute
-  '/account/packages/': typeof AccountPackagesIndexRoute
+  '/admin/': typeof AppAdminIndexRoute
   '/.well-known/agent-skills/$skillId/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
-  '/@{$orgSlug}/-/activity/$runId': typeof AtChar123orgSlugChar125ActivityRunIdRoute
-  '/@{$orgSlug}/-/agents/new': typeof AtChar123orgSlugChar125AgentsNewRoute
-  '/@{$orgSlug}/-/agents/usage': typeof AtChar123orgSlugChar125AgentsUsageRoute
-  '/@{$orgSlug}/-/approvals/$bundleId': typeof AtChar123orgSlugChar125ApprovalsBundleIdRoute
-  '/@{$orgSlug}/-/billing/success': typeof AtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/connections/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
-  '/@{$orgSlug}/-/credentials/$credentialId': typeof AtChar123orgSlugChar125CredentialsCredentialIdRoute
-  '/@{$orgSlug}/-/credentials/new': typeof AtChar123orgSlugChar125CredentialsNewRoute
-  '/@{$orgSlug}/-/email/$messageId': typeof AtChar123orgSlugChar125EmailMessageIdRoute
-  '/@{$orgSlug}/-/integrations/$integrationName': typeof AtChar123orgSlugChar125IntegrationsIntegrationNameRoute
-  '/@{$orgSlug}/-/integrations/approve': typeof AtChar123orgSlugChar125IntegrationsApproveRoute
-  '/@{$orgSlug}/-/jobs/$jobId': typeof AtChar123orgSlugChar125JobsJobIdRoute
-  '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AtChar123orgSlugChar125McpServersServerIdRoute
-  '/@{$orgSlug}/-/mcp-servers/new': typeof AtChar123orgSlugChar125McpServersNewRoute
-  '/@{$orgSlug}/-/memories/$memoryId': typeof AtChar123orgSlugChar125MemoriesMemoryIdRoute
-  '/@{$orgSlug}/-/secret-providers/approve': typeof AtChar123orgSlugChar125SecretProvidersApproveRoute
-  '/@{$orgSlug}/-/secrets/approve': typeof AtChar123orgSlugChar125SecretsApproveRoute
-  '/@{$orgSlug}/-/secrets/new': typeof AtChar123orgSlugChar125SecretsNewRoute
-  '/@{$orgSlug}/-/workflows/$workflowId': typeof AtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/@{$username}/$kodyId/assets/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
-  '/@{$username}/$kodyId/files/$': typeof AtChar123usernameChar125KodyIdFilesSplatRoute
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
-  '/account/agents/new/$agent': typeof AccountAgentsNewAgentRoute
-  '/account/connections/new/$agent': typeof AccountConnectionsNewAgentRoute
-  '/account/integrations/apps/$appSlug': typeof AccountIntegrationsAppsAppSlugRoute
+  '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
+  '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
+  '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
+  '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
+  '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
+  '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
+  '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
+  '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
+  '/@{$orgSlug}/-/jobs': typeof AppAtChar123orgSlugChar125JobsRoute
+  '/@{$orgSlug}/-/mcp-servers': typeof AppAtChar123orgSlugChar125McpServersRoute
+  '/@{$orgSlug}/-/members': typeof AppAtChar123orgSlugChar125MembersRoute
+  '/@{$orgSlug}/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
+  '/@{$orgSlug}/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
+  '/@{$orgSlug}/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/@{$orgSlug}/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
+  '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
+  '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
+  '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
+  '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
+  '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
+  '/@{$orgSlug}/-/webhooks': typeof AppAtChar123orgSlugChar125WebhooksRoute
+  '/@{$orgSlug}/-/workflows': typeof AppAtChar123orgSlugChar125WorkflowsRoute
+  '/@{$username}/$kodyId/approve-capabilities': typeof AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute
+  '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
+  '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
+  '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
+  '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
+  '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
+  '/account/activity/$runId': typeof AppAccountActivityRunIdRoute
+  '/account/agents/new': typeof AppAccountAgentsNewRoute
+  '/account/agents/usage': typeof AppAccountAgentsUsageRoute
+  '/account/billing/success': typeof AppAccountBillingSuccessRoute
+  '/account/connections/new': typeof AppAccountConnectionsNewRoute
+  '/account/connections/usage': typeof AppAccountConnectionsUsageRoute
+  '/account/email/$messageId': typeof AppAccountEmailMessageIdRoute
+  '/account/integrations/$integrationName': typeof AppAccountIntegrationsIntegrationNameRoute
+  '/account/integrations/approve': typeof AppAccountIntegrationsApproveRoute
+  '/account/jobs/$jobId': typeof AppAccountJobsJobIdRoute
+  '/account/mcp-servers/$serverId': typeof AppAccountMcpServersServerIdRoute
+  '/account/mcp-servers/new': typeof AppAccountMcpServersNewRoute
+  '/account/memories/$memoryId': typeof AppAccountMemoriesMemoryIdRoute
+  '/account/organizations/new': typeof AppAccountOrganizationsNewRoute
+  '/account/packages/$packageId': typeof AppAccountPackagesPackageIdRouteWithChildren
+  '/account/secret-providers/approve': typeof AppAccountSecretProvidersApproveRoute
+  '/account/secrets/approve': typeof AppAccountSecretsApproveRoute
+  '/account/secrets/new': typeof AppAccountSecretsNewRoute
+  '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
+  '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
-  '/account/packages/$packageId/approve-capabilities': typeof AccountPackagesPackageIdApproveCapabilitiesRoute
-  '/account/packages/$packageId/approve-publish': typeof AccountPackagesPackageIdApprovePublishRoute
-  '/account/secrets/user/$secretName': typeof AccountSecretsUserSecretNameRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
-  '/@{$orgSlug}/-/agents/new/$agent': typeof AtChar123orgSlugChar125AgentsNewAgentRoute
-  '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
-  '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
-  '/@{$orgSlug}/-/secrets/user/$secretName': typeof AtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/account/packages/': typeof AppAccountPackagesIndexRoute
   '/@{$username}/$kodyId/raw/$ref/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
-  '/@{$username}/$kodyId/tree/$ref/$': typeof AtChar123usernameChar125KodyIdTreeRefSplatRoute
   '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
-  '/account/packages/$packageId/files/$': typeof AccountPackagesPackageIdFilesSplatRoute
+  '/@{$orgSlug}/-/activity/$runId': typeof AppAtChar123orgSlugChar125ActivityRunIdRoute
+  '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
+  '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
+  '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
+  '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
+  '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
+  '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
+  '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
+  '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
+  '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
+  '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
+  '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
+  '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/@{$orgSlug}/-/workflows/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
+  '/@{$username}/$kodyId/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
+  '/account/agents/new/$agent': typeof AppAccountAgentsNewAgentRoute
+  '/account/connections/new/$agent': typeof AppAccountConnectionsNewAgentRoute
+  '/account/integrations/apps/$appSlug': typeof AppAccountIntegrationsAppsAppSlugRoute
+  '/account/packages/$packageId/approve-capabilities': typeof AppAccountPackagesPackageIdApproveCapabilitiesRoute
+  '/account/packages/$packageId/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
+  '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
-  '/account/secrets/package/$packageId/$secretName': typeof AccountSecretsPackagePackageIdSecretNameRoute
-  '/account/secrets/session/$sessionId/$secretName': typeof AccountSecretsSessionSessionIdSecretNameRoute
-  '/@{$orgSlug}/-/secrets/package/$packageId/$secretName': typeof AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
-  '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName': typeof AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
+  '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
+  '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
+  '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/@{$username}/$kodyId/tree/$ref/$': typeof AppAtChar123usernameChar125KodyIdTreeRefSplatRoute
+  '/account/packages/$packageId/files/$': typeof AppAccountPackagesPackageIdFilesSplatRoute
+  '/account/secrets/package/$packageId/$secretName': typeof AppAccountSecretsPackagePackageIdSecretNameRoute
+  '/account/secrets/session/$sessionId/$secretName': typeof AppAccountSecretsSessionSessionIdSecretNameRoute
+  '/@{$orgSlug}/-/secrets/package/$packageId/$secretName': typeof AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
+  '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName': typeof AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/404': typeof R404Route
   '/500': typeof R500Route
-  '/@{$username}': typeof AtChar123usernameChar125Route
   '/about': typeof AboutRoute
-  '/account': typeof AccountRoute
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
@@ -1955,46 +1976,11 @@ export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/.well-known/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known/security.txt': typeof DotwellKnownSecurityDottxtRoute
-  '/@{$username}/$kodyId': typeof AtChar123usernameChar125KodyIdRoute
-  '/account/activity': typeof AccountActivityRoute
-  '/account/agents': typeof AccountAgentsRoute
-  '/account/billing': typeof AccountBillingRoute
-  '/account/connections': typeof AccountConnectionsRoute
-  '/account/credentials': typeof AccountCredentialsRoute
-  '/account/credits': typeof AccountCreditsRoute
-  '/account/data': typeof AccountDataRoute
-  '/account/email': typeof AccountEmailRoute
-  '/account/experiments': typeof AccountExperimentsRoute
+  '/@{$username}': typeof AppAtChar123usernameChar125Route
+  '/account': typeof AppAccountRoute
   '/account/export.json': typeof AccountExportDotjsonRoute
-  '/account/integrations': typeof AccountIntegrationsRoute
-  '/account/jobs': typeof AccountJobsRoute
-  '/account/mcp-oauth-clients': typeof AccountMcpOauthClientsRoute
-  '/account/mcp-servers': typeof AccountMcpServersRoute
-  '/account/memories': typeof AccountMemoriesRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
-  '/account/organizations': typeof AccountOrganizationsRoute
   '/account/packages.json': typeof AccountPackagesDotjsonRoute
-  '/account/passkeys': typeof AccountPasskeysRoute
-  '/account/secret-providers': typeof AccountSecretProvidersRoute
-  '/account/secrets': typeof AccountSecretsRoute
-  '/account/security': typeof AccountSecurityRoute
-  '/account/two-factor': typeof AccountTwoFactorRoute
-  '/account/usage': typeof AccountUsageRoute
-  '/account/waiting': typeof AccountWaitingRoute
-  '/account/webhooks': typeof AccountWebhooksRoute
-  '/account/workflows': typeof AccountWorkflowsRoute
-  '/admin/$': typeof AdminSplatRoute
-  '/admin/codemods': typeof AdminCodemodsRoute
-  '/admin/community-reports': typeof AdminCommunityReportsRoute
-  '/admin/feature-flags': typeof AdminFeatureFlagsRoute
-  '/admin/insights': typeof AdminInsightsRoute
-  '/admin/platform-feedback': typeof AdminPlatformFeedbackRoute
-  '/admin/platform-integrations': typeof AdminPlatformIntegrationsRoute
-  '/admin/provider-marks': typeof AdminProviderMarksRoute
-  '/admin/reserved-usernames': typeof AdminReservedUsernamesRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/system-email': typeof AdminSystemEmailRoute
-  '/admin/users': typeof AdminUsersRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -2040,71 +2026,51 @@ export interface FileRoutesByTo {
   '/webhooks/stripe': typeof WebhooksStripeRoute
   '/with/$agent': typeof WithAgentRoute
   '/youtube-thumb/$videoId': typeof YoutubeThumbVideoIdRoute
-  '/admin': typeof AdminIndexRoute
   '/blog': typeof BlogIndexRoute
   '/docs': typeof DocsIndexRoute
   '/onboarding': typeof OnboardingIndexRoute
   '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known/agent-skills/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known/mcp/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
-  '/@{$orgSlug}/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
-  '/@{$orgSlug}/-/agents': typeof AtChar123orgSlugChar125AgentsRoute
-  '/@{$orgSlug}/-/billing': typeof AtChar123orgSlugChar125BillingRoute
-  '/@{$orgSlug}/-/collaborators': typeof AtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}/-/connections': typeof AtChar123orgSlugChar125ConnectionsRoute
-  '/@{$orgSlug}/-/credentials': typeof AtChar123orgSlugChar125CredentialsRoute
-  '/@{$orgSlug}/-/credits': typeof AtChar123orgSlugChar125CreditsRoute
-  '/@{$orgSlug}/-/email': typeof AtChar123orgSlugChar125EmailRoute
-  '/@{$orgSlug}/-/follows': typeof AtChar123orgSlugChar125FollowsRoute
-  '/@{$orgSlug}/-/grants': typeof AtChar123orgSlugChar125GrantsRoute
-  '/@{$orgSlug}/-/integrations': typeof AtChar123orgSlugChar125IntegrationsRoute
-  '/@{$orgSlug}/-/jobs': typeof AtChar123orgSlugChar125JobsRoute
-  '/@{$orgSlug}/-/mcp-servers': typeof AtChar123orgSlugChar125McpServersRoute
-  '/@{$orgSlug}/-/members': typeof AtChar123orgSlugChar125MembersRoute
-  '/@{$orgSlug}/-/memories': typeof AtChar123orgSlugChar125MemoriesRoute
-  '/@{$orgSlug}/-/overview': typeof AtChar123orgSlugChar125OverviewRoute
-  '/@{$orgSlug}/-/packages': typeof AtChar123orgSlugChar125PackagesRoute
-  '/@{$orgSlug}/-/repositories': typeof AtChar123orgSlugChar125RepositoriesRoute
-  '/@{$orgSlug}/-/secret-providers': typeof AtChar123orgSlugChar125SecretProvidersRoute
-  '/@{$orgSlug}/-/secrets': typeof AtChar123orgSlugChar125SecretsRoute
-  '/@{$orgSlug}/-/settings': typeof AtChar123orgSlugChar125SettingsRoute
-  '/@{$orgSlug}/-/teams': typeof AtChar123orgSlugChar125TeamsRoute
-  '/@{$orgSlug}/-/usage': typeof AtChar123orgSlugChar125UsageRoute
-  '/@{$orgSlug}/-/waiting': typeof AtChar123orgSlugChar125WaitingRoute
-  '/@{$orgSlug}/-/webhooks': typeof AtChar123orgSlugChar125WebhooksRoute
-  '/@{$orgSlug}/-/workflows': typeof AtChar123orgSlugChar125WorkflowsRoute
-  '/@{$username}/$kodyId/approve-capabilities': typeof AtChar123usernameChar125KodyIdApproveCapabilitiesRoute
-  '/@{$username}/$kodyId/approve-credentials': typeof AtChar123usernameChar125KodyIdApproveCredentialsRoute
-  '/@{$username}/$kodyId/approve-publish': typeof AtChar123usernameChar125KodyIdApprovePublishRoute
-  '/@{$username}/$kodyId/collaborators': typeof AtChar123usernameChar125KodyIdCollaboratorsRoute
-  '/@{$username}/$kodyId/credentials': typeof AtChar123usernameChar125KodyIdCredentialsRoute
-  '/@{$username}/$kodyId/mappings': typeof AtChar123usernameChar125KodyIdMappingsRoute
-  '/@{$username}/$kodyId/settings': typeof AtChar123usernameChar125KodyIdSettingsRoute
-  '/@{$username}/$kodyId/triggers': typeof AtChar123usernameChar125KodyIdTriggersRoute
+  '/@{$username}/$kodyId': typeof AppAtChar123usernameChar125KodyIdRoute
+  '/account/activity': typeof AppAccountActivityRoute
+  '/account/agents': typeof AppAccountAgentsRoute
+  '/account/billing': typeof AppAccountBillingRoute
+  '/account/connections': typeof AppAccountConnectionsRoute
+  '/account/credentials': typeof AppAccountCredentialsRoute
+  '/account/credits': typeof AppAccountCreditsRoute
+  '/account/data': typeof AppAccountDataRoute
+  '/account/email': typeof AppAccountEmailRoute
+  '/account/experiments': typeof AppAccountExperimentsRoute
+  '/account/integrations': typeof AppAccountIntegrationsRoute
+  '/account/jobs': typeof AppAccountJobsRoute
+  '/account/mcp-oauth-clients': typeof AppAccountMcpOauthClientsRoute
+  '/account/mcp-servers': typeof AppAccountMcpServersRoute
+  '/account/memories': typeof AppAccountMemoriesRoute
+  '/account/organizations': typeof AppAccountOrganizationsRoute
+  '/account/passkeys': typeof AppAccountPasskeysRoute
+  '/account/secret-providers': typeof AppAccountSecretProvidersRoute
+  '/account/secrets': typeof AppAccountSecretsRoute
+  '/account/security': typeof AppAccountSecurityRoute
+  '/account/two-factor': typeof AppAccountTwoFactorRoute
+  '/account/usage': typeof AppAccountUsageRoute
+  '/account/waiting': typeof AppAccountWaitingRoute
+  '/account/webhooks': typeof AppAccountWebhooksRoute
+  '/account/workflows': typeof AppAccountWorkflowsRoute
+  '/admin/$': typeof AppAdminSplatRoute
+  '/admin/codemods': typeof AppAdminCodemodsRoute
+  '/admin/community-reports': typeof AppAdminCommunityReportsRoute
+  '/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
+  '/admin/insights': typeof AppAdminInsightsRoute
+  '/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
+  '/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
+  '/admin/provider-marks': typeof AppAdminProviderMarksRoute
+  '/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
+  '/admin/roles': typeof AppAdminRolesRoute
+  '/admin/system-email': typeof AppAdminSystemEmailRoute
+  '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
-  '/account/activity/$runId': typeof AccountActivityRunIdRoute
-  '/account/agents/new': typeof AccountAgentsNewRoute
-  '/account/agents/usage': typeof AccountAgentsUsageRoute
-  '/account/billing/success': typeof AccountBillingSuccessRoute
-  '/account/connections/new': typeof AccountConnectionsNewRoute
-  '/account/connections/usage': typeof AccountConnectionsUsageRoute
-  '/account/email/$messageId': typeof AccountEmailMessageIdRoute
-  '/account/integrations/$integrationName': typeof AccountIntegrationsIntegrationNameRoute
-  '/account/integrations/approve': typeof AccountIntegrationsApproveRoute
-  '/account/jobs/$jobId': typeof AccountJobsJobIdRoute
-  '/account/mcp-servers/$serverId': typeof AccountMcpServersServerIdRoute
-  '/account/mcp-servers/new': typeof AccountMcpServersNewRoute
-  '/account/memories/$memoryId': typeof AccountMemoriesMemoryIdRoute
-  '/account/organizations/new': typeof AccountOrganizationsNewRoute
-  '/account/packages/$packageId': typeof AccountPackagesPackageIdRouteWithChildren
-  '/account/secret-providers/approve': typeof AccountSecretProvidersApproveRoute
-  '/account/secrets/approve': typeof AccountSecretsApproveRoute
-  '/account/secrets/new': typeof AccountSecretsNewRoute
-  '/account/workflows/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
-  '/admin/account-deletions/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
-  '/admin/platform-integrations/$slug': typeof AdminPlatformIntegrationsSlugRoute
-  '/admin/platform-integrations/new': typeof AdminPlatformIntegrationsNewRoute
-  '/admin/users/$stableUserId': typeof AdminUsersStableUserIdRoute
   '/auth/$provider/callback': typeof AuthProviderCallbackRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
@@ -2116,66 +2082,122 @@ export interface FileRoutesByTo {
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
   '/profiles/$username/og.png': typeof ProfilesUsernameOgDotpngRoute
-  '/account/packages': typeof AccountPackagesIndexRoute
+  '/admin': typeof AppAdminIndexRoute
   '/.well-known/agent-skills/$skillId/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
-  '/@{$orgSlug}/-/activity/$runId': typeof AtChar123orgSlugChar125ActivityRunIdRoute
-  '/@{$orgSlug}/-/agents/new': typeof AtChar123orgSlugChar125AgentsNewRoute
-  '/@{$orgSlug}/-/agents/usage': typeof AtChar123orgSlugChar125AgentsUsageRoute
-  '/@{$orgSlug}/-/approvals/$bundleId': typeof AtChar123orgSlugChar125ApprovalsBundleIdRoute
-  '/@{$orgSlug}/-/billing/success': typeof AtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/connections/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
-  '/@{$orgSlug}/-/credentials/$credentialId': typeof AtChar123orgSlugChar125CredentialsCredentialIdRoute
-  '/@{$orgSlug}/-/credentials/new': typeof AtChar123orgSlugChar125CredentialsNewRoute
-  '/@{$orgSlug}/-/email/$messageId': typeof AtChar123orgSlugChar125EmailMessageIdRoute
-  '/@{$orgSlug}/-/integrations/$integrationName': typeof AtChar123orgSlugChar125IntegrationsIntegrationNameRoute
-  '/@{$orgSlug}/-/integrations/approve': typeof AtChar123orgSlugChar125IntegrationsApproveRoute
-  '/@{$orgSlug}/-/jobs/$jobId': typeof AtChar123orgSlugChar125JobsJobIdRoute
-  '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AtChar123orgSlugChar125McpServersServerIdRoute
-  '/@{$orgSlug}/-/mcp-servers/new': typeof AtChar123orgSlugChar125McpServersNewRoute
-  '/@{$orgSlug}/-/memories/$memoryId': typeof AtChar123orgSlugChar125MemoriesMemoryIdRoute
-  '/@{$orgSlug}/-/secret-providers/approve': typeof AtChar123orgSlugChar125SecretProvidersApproveRoute
-  '/@{$orgSlug}/-/secrets/approve': typeof AtChar123orgSlugChar125SecretsApproveRoute
-  '/@{$orgSlug}/-/secrets/new': typeof AtChar123orgSlugChar125SecretsNewRoute
-  '/@{$orgSlug}/-/workflows/$workflowId': typeof AtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/@{$username}/$kodyId/assets/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
-  '/@{$username}/$kodyId/files/$': typeof AtChar123usernameChar125KodyIdFilesSplatRoute
   '/@{$username}/$kodyId/icon/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
-  '/account/agents/new/$agent': typeof AccountAgentsNewAgentRoute
-  '/account/connections/new/$agent': typeof AccountConnectionsNewAgentRoute
-  '/account/integrations/apps/$appSlug': typeof AccountIntegrationsAppsAppSlugRoute
+  '/@{$orgSlug}/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
+  '/@{$orgSlug}/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/@{$orgSlug}/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
+  '/@{$orgSlug}/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
+  '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
+  '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
+  '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
+  '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
+  '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
+  '/@{$orgSlug}/-/jobs': typeof AppAtChar123orgSlugChar125JobsRoute
+  '/@{$orgSlug}/-/mcp-servers': typeof AppAtChar123orgSlugChar125McpServersRoute
+  '/@{$orgSlug}/-/members': typeof AppAtChar123orgSlugChar125MembersRoute
+  '/@{$orgSlug}/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
+  '/@{$orgSlug}/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
+  '/@{$orgSlug}/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/@{$orgSlug}/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
+  '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
+  '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
+  '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
+  '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
+  '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
+  '/@{$orgSlug}/-/webhooks': typeof AppAtChar123orgSlugChar125WebhooksRoute
+  '/@{$orgSlug}/-/workflows': typeof AppAtChar123orgSlugChar125WorkflowsRoute
+  '/@{$username}/$kodyId/approve-capabilities': typeof AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute
+  '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
+  '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
+  '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
+  '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
+  '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
+  '/account/activity/$runId': typeof AppAccountActivityRunIdRoute
+  '/account/agents/new': typeof AppAccountAgentsNewRoute
+  '/account/agents/usage': typeof AppAccountAgentsUsageRoute
+  '/account/billing/success': typeof AppAccountBillingSuccessRoute
+  '/account/connections/new': typeof AppAccountConnectionsNewRoute
+  '/account/connections/usage': typeof AppAccountConnectionsUsageRoute
+  '/account/email/$messageId': typeof AppAccountEmailMessageIdRoute
+  '/account/integrations/$integrationName': typeof AppAccountIntegrationsIntegrationNameRoute
+  '/account/integrations/approve': typeof AppAccountIntegrationsApproveRoute
+  '/account/jobs/$jobId': typeof AppAccountJobsJobIdRoute
+  '/account/mcp-servers/$serverId': typeof AppAccountMcpServersServerIdRoute
+  '/account/mcp-servers/new': typeof AppAccountMcpServersNewRoute
+  '/account/memories/$memoryId': typeof AppAccountMemoriesMemoryIdRoute
+  '/account/organizations/new': typeof AppAccountOrganizationsNewRoute
+  '/account/packages/$packageId': typeof AppAccountPackagesPackageIdRouteWithChildren
+  '/account/secret-providers/approve': typeof AppAccountSecretProvidersApproveRoute
+  '/account/secrets/approve': typeof AppAccountSecretsApproveRoute
+  '/account/secrets/new': typeof AppAccountSecretsNewRoute
+  '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
+  '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
+  '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
-  '/account/packages/$packageId/approve-capabilities': typeof AccountPackagesPackageIdApproveCapabilitiesRoute
-  '/account/packages/$packageId/approve-publish': typeof AccountPackagesPackageIdApprovePublishRoute
-  '/account/secrets/user/$secretName': typeof AccountSecretsUserSecretNameRoute
   '/community/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
-  '/@{$orgSlug}/-/agents/new/$agent': typeof AtChar123orgSlugChar125AgentsNewAgentRoute
-  '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
-  '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
-  '/@{$orgSlug}/-/secrets/user/$secretName': typeof AtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/account/packages': typeof AppAccountPackagesIndexRoute
   '/@{$username}/$kodyId/raw/$ref/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
-  '/@{$username}/$kodyId/tree/$ref/$': typeof AtChar123usernameChar125KodyIdTreeRefSplatRoute
   '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
-  '/account/packages/$packageId/files/$': typeof AccountPackagesPackageIdFilesSplatRoute
+  '/@{$orgSlug}/-/activity/$runId': typeof AppAtChar123orgSlugChar125ActivityRunIdRoute
+  '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
+  '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
+  '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
+  '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
+  '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
+  '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
+  '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
+  '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
+  '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
+  '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
+  '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
+  '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/@{$orgSlug}/-/workflows/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
+  '/@{$username}/$kodyId/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
+  '/account/agents/new/$agent': typeof AppAccountAgentsNewAgentRoute
+  '/account/connections/new/$agent': typeof AppAccountConnectionsNewAgentRoute
+  '/account/integrations/apps/$appSlug': typeof AppAccountIntegrationsAppsAppSlugRoute
+  '/account/packages/$packageId/approve-capabilities': typeof AppAccountPackagesPackageIdApproveCapabilitiesRoute
+  '/account/packages/$packageId/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
+  '/account/secrets/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account/repos/$repoId/icon/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
-  '/account/secrets/package/$packageId/$secretName': typeof AccountSecretsPackagePackageIdSecretNameRoute
-  '/account/secrets/session/$sessionId/$secretName': typeof AccountSecretsSessionSessionIdSecretNameRoute
-  '/@{$orgSlug}/-/secrets/package/$packageId/$secretName': typeof AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
-  '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName': typeof AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
+  '/@{$orgSlug}/-/agents/new/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/@{$orgSlug}/-/integrations/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
+  '/@{$orgSlug}/-/mcp-servers/$serverId/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
+  '/@{$orgSlug}/-/secrets/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/@{$username}/$kodyId/tree/$ref/$': typeof AppAtChar123usernameChar125KodyIdTreeRefSplatRoute
+  '/account/packages/$packageId/files/$': typeof AppAccountPackagesPackageIdFilesSplatRoute
+  '/account/secrets/package/$packageId/$secretName': typeof AppAccountSecretsPackagePackageIdSecretNameRoute
+  '/account/secrets/session/$sessionId/$secretName': typeof AppAccountSecretsSessionSessionIdSecretNameRoute
+  '/@{$orgSlug}/-/secrets/package/$packageId/$secretName': typeof AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
+  '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName': typeof AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/404': typeof R404Route
   '/500': typeof R500Route
-  '/@{$username}': typeof AtChar123usernameChar125Route
+  '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
-  '/account': typeof AccountRoute
   '/auth': typeof AuthRoute
   '/auth.md': typeof AuthDotmdRoute
   '/believe': typeof BelieveRoute
@@ -2213,46 +2235,11 @@ export interface FileRoutesById {
   '/.well-known_/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/.well-known_/openai-apps-challenge': typeof DotwellKnownOpenaiAppsChallengeRoute
   '/.well-known_/security.txt': typeof DotwellKnownSecurityDottxtRoute
-  '/@{$username}_/$kodyId': typeof AtChar123usernameChar125KodyIdRoute
-  '/account_/activity': typeof AccountActivityRoute
-  '/account_/agents': typeof AccountAgentsRoute
-  '/account_/billing': typeof AccountBillingRoute
-  '/account_/connections': typeof AccountConnectionsRoute
-  '/account_/credentials': typeof AccountCredentialsRoute
-  '/account_/credits': typeof AccountCreditsRoute
-  '/account_/data': typeof AccountDataRoute
-  '/account_/email': typeof AccountEmailRoute
-  '/account_/experiments': typeof AccountExperimentsRoute
+  '/_app/@{$username}': typeof AppAtChar123usernameChar125Route
+  '/_app/account': typeof AppAccountRoute
   '/account_/export.json': typeof AccountExportDotjsonRoute
-  '/account_/integrations': typeof AccountIntegrationsRoute
-  '/account_/jobs': typeof AccountJobsRoute
-  '/account_/mcp-oauth-clients': typeof AccountMcpOauthClientsRoute
-  '/account_/mcp-servers': typeof AccountMcpServersRoute
-  '/account_/memories': typeof AccountMemoriesRoute
   '/account_/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
-  '/account_/organizations': typeof AccountOrganizationsRoute
   '/account_/packages.json': typeof AccountPackagesDotjsonRoute
-  '/account_/passkeys': typeof AccountPasskeysRoute
-  '/account_/secret-providers': typeof AccountSecretProvidersRoute
-  '/account_/secrets': typeof AccountSecretsRoute
-  '/account_/security': typeof AccountSecurityRoute
-  '/account_/two-factor': typeof AccountTwoFactorRoute
-  '/account_/usage': typeof AccountUsageRoute
-  '/account_/waiting': typeof AccountWaitingRoute
-  '/account_/webhooks': typeof AccountWebhooksRoute
-  '/account_/workflows': typeof AccountWorkflowsRoute
-  '/admin/$': typeof AdminSplatRoute
-  '/admin/codemods': typeof AdminCodemodsRoute
-  '/admin/community-reports': typeof AdminCommunityReportsRoute
-  '/admin/feature-flags': typeof AdminFeatureFlagsRoute
-  '/admin/insights': typeof AdminInsightsRoute
-  '/admin/platform-feedback': typeof AdminPlatformFeedbackRoute
-  '/admin/platform-integrations': typeof AdminPlatformIntegrationsRoute
-  '/admin/provider-marks': typeof AdminProviderMarksRoute
-  '/admin/reserved-usernames': typeof AdminReservedUsernamesRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/system-email': typeof AdminSystemEmailRoute
-  '/admin/users': typeof AdminUsersRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog_/rss.xml': typeof BlogRssDotxmlRoute
   '/blog_/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -2298,71 +2285,51 @@ export interface FileRoutesById {
   '/webhooks_/stripe': typeof WebhooksStripeRoute
   '/with/$agent': typeof WithAgentRoute
   '/youtube-thumb_/$videoId': typeof YoutubeThumbVideoIdRoute
-  '/admin/': typeof AdminIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/onboarding/': typeof OnboardingIndexRoute
   '/-/auth/$': typeof Char91Char93AuthSplatRoute
   '/.well-known_/agent-skills_/index.json': typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   '/.well-known_/mcp_/server-card.json': typeof DotwellKnownMcpServerCardDotjsonRoute
-  '/@{$orgSlug}_/-/activity': typeof AtChar123orgSlugChar125ActivityRoute
-  '/@{$orgSlug}_/-/agents': typeof AtChar123orgSlugChar125AgentsRoute
-  '/@{$orgSlug}_/-/billing': typeof AtChar123orgSlugChar125BillingRoute
-  '/@{$orgSlug}_/-/collaborators': typeof AtChar123orgSlugChar125CollaboratorsRoute
   '/@{$orgSlug}_/-/connections': typeof AtChar123orgSlugChar125ConnectionsRoute
-  '/@{$orgSlug}_/-/credentials': typeof AtChar123orgSlugChar125CredentialsRoute
-  '/@{$orgSlug}_/-/credits': typeof AtChar123orgSlugChar125CreditsRoute
-  '/@{$orgSlug}_/-/email': typeof AtChar123orgSlugChar125EmailRoute
-  '/@{$orgSlug}_/-/follows': typeof AtChar123orgSlugChar125FollowsRoute
-  '/@{$orgSlug}_/-/grants': typeof AtChar123orgSlugChar125GrantsRoute
-  '/@{$orgSlug}_/-/integrations': typeof AtChar123orgSlugChar125IntegrationsRoute
-  '/@{$orgSlug}_/-/jobs': typeof AtChar123orgSlugChar125JobsRoute
-  '/@{$orgSlug}_/-/mcp-servers': typeof AtChar123orgSlugChar125McpServersRoute
-  '/@{$orgSlug}_/-/members': typeof AtChar123orgSlugChar125MembersRoute
-  '/@{$orgSlug}_/-/memories': typeof AtChar123orgSlugChar125MemoriesRoute
-  '/@{$orgSlug}_/-/overview': typeof AtChar123orgSlugChar125OverviewRoute
-  '/@{$orgSlug}_/-/packages': typeof AtChar123orgSlugChar125PackagesRoute
-  '/@{$orgSlug}_/-/repositories': typeof AtChar123orgSlugChar125RepositoriesRoute
-  '/@{$orgSlug}_/-/secret-providers': typeof AtChar123orgSlugChar125SecretProvidersRoute
-  '/@{$orgSlug}_/-/secrets': typeof AtChar123orgSlugChar125SecretsRoute
-  '/@{$orgSlug}_/-/settings': typeof AtChar123orgSlugChar125SettingsRoute
-  '/@{$orgSlug}_/-/teams': typeof AtChar123orgSlugChar125TeamsRoute
-  '/@{$orgSlug}_/-/usage': typeof AtChar123orgSlugChar125UsageRoute
-  '/@{$orgSlug}_/-/waiting': typeof AtChar123orgSlugChar125WaitingRoute
-  '/@{$orgSlug}_/-/webhooks': typeof AtChar123orgSlugChar125WebhooksRoute
-  '/@{$orgSlug}_/-/workflows': typeof AtChar123orgSlugChar125WorkflowsRoute
-  '/@{$username}_/$kodyId_/approve-capabilities': typeof AtChar123usernameChar125KodyIdApproveCapabilitiesRoute
-  '/@{$username}_/$kodyId_/approve-credentials': typeof AtChar123usernameChar125KodyIdApproveCredentialsRoute
-  '/@{$username}_/$kodyId_/approve-publish': typeof AtChar123usernameChar125KodyIdApprovePublishRoute
-  '/@{$username}_/$kodyId_/collaborators': typeof AtChar123usernameChar125KodyIdCollaboratorsRoute
-  '/@{$username}_/$kodyId_/credentials': typeof AtChar123usernameChar125KodyIdCredentialsRoute
-  '/@{$username}_/$kodyId_/mappings': typeof AtChar123usernameChar125KodyIdMappingsRoute
-  '/@{$username}_/$kodyId_/settings': typeof AtChar123usernameChar125KodyIdSettingsRoute
-  '/@{$username}_/$kodyId_/triggers': typeof AtChar123usernameChar125KodyIdTriggersRoute
+  '/_app/@{$username}_/$kodyId': typeof AppAtChar123usernameChar125KodyIdRoute
+  '/_app/account_/activity': typeof AppAccountActivityRoute
+  '/_app/account_/agents': typeof AppAccountAgentsRoute
+  '/_app/account_/billing': typeof AppAccountBillingRoute
+  '/_app/account_/connections': typeof AppAccountConnectionsRoute
+  '/_app/account_/credentials': typeof AppAccountCredentialsRoute
+  '/_app/account_/credits': typeof AppAccountCreditsRoute
+  '/_app/account_/data': typeof AppAccountDataRoute
+  '/_app/account_/email': typeof AppAccountEmailRoute
+  '/_app/account_/experiments': typeof AppAccountExperimentsRoute
+  '/_app/account_/integrations': typeof AppAccountIntegrationsRoute
+  '/_app/account_/jobs': typeof AppAccountJobsRoute
+  '/_app/account_/mcp-oauth-clients': typeof AppAccountMcpOauthClientsRoute
+  '/_app/account_/mcp-servers': typeof AppAccountMcpServersRoute
+  '/_app/account_/memories': typeof AppAccountMemoriesRoute
+  '/_app/account_/organizations': typeof AppAccountOrganizationsRoute
+  '/_app/account_/passkeys': typeof AppAccountPasskeysRoute
+  '/_app/account_/secret-providers': typeof AppAccountSecretProvidersRoute
+  '/_app/account_/secrets': typeof AppAccountSecretsRoute
+  '/_app/account_/security': typeof AppAccountSecurityRoute
+  '/_app/account_/two-factor': typeof AppAccountTwoFactorRoute
+  '/_app/account_/usage': typeof AppAccountUsageRoute
+  '/_app/account_/waiting': typeof AppAccountWaitingRoute
+  '/_app/account_/webhooks': typeof AppAccountWebhooksRoute
+  '/_app/account_/workflows': typeof AppAccountWorkflowsRoute
+  '/_app/admin/$': typeof AppAdminSplatRoute
+  '/_app/admin/codemods': typeof AppAdminCodemodsRoute
+  '/_app/admin/community-reports': typeof AppAdminCommunityReportsRoute
+  '/_app/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
+  '/_app/admin/insights': typeof AppAdminInsightsRoute
+  '/_app/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
+  '/_app/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
+  '/_app/admin/provider-marks': typeof AppAdminProviderMarksRoute
+  '/_app/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
+  '/_app/admin/roles': typeof AppAdminRolesRoute
+  '/_app/admin/system-email': typeof AppAdminSystemEmailRoute
+  '/_app/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
-  '/account_/activity_/$runId': typeof AccountActivityRunIdRoute
-  '/account_/agents_/new': typeof AccountAgentsNewRoute
-  '/account_/agents_/usage': typeof AccountAgentsUsageRoute
-  '/account_/billing_/success': typeof AccountBillingSuccessRoute
-  '/account_/connections_/new': typeof AccountConnectionsNewRoute
-  '/account_/connections_/usage': typeof AccountConnectionsUsageRoute
-  '/account_/email_/$messageId': typeof AccountEmailMessageIdRoute
-  '/account_/integrations_/$integrationName': typeof AccountIntegrationsIntegrationNameRoute
-  '/account_/integrations_/approve': typeof AccountIntegrationsApproveRoute
-  '/account_/jobs_/$jobId': typeof AccountJobsJobIdRoute
-  '/account_/mcp-servers_/$serverId': typeof AccountMcpServersServerIdRoute
-  '/account_/mcp-servers_/new': typeof AccountMcpServersNewRoute
-  '/account_/memories_/$memoryId': typeof AccountMemoriesMemoryIdRoute
-  '/account_/organizations_/new': typeof AccountOrganizationsNewRoute
-  '/account_/packages/$packageId': typeof AccountPackagesPackageIdRouteWithChildren
-  '/account_/secret-providers_/approve': typeof AccountSecretProvidersApproveRoute
-  '/account_/secrets_/approve': typeof AccountSecretsApproveRoute
-  '/account_/secrets_/new': typeof AccountSecretsNewRoute
-  '/account_/workflows_/$workflowId': typeof AccountWorkflowsWorkflowIdRoute
-  '/admin/account-deletions_/$approvalId': typeof AdminAccountDeletionsApprovalIdRoute
-  '/admin/platform-integrations_/$slug': typeof AdminPlatformIntegrationsSlugRoute
-  '/admin/platform-integrations_/new': typeof AdminPlatformIntegrationsNewRoute
-  '/admin/users_/$stableUserId': typeof AdminUsersStableUserIdRoute
   '/auth_/$provider_/callback': typeof AuthProviderCallbackRoute
   '/blog_/$slug_/og.png': typeof BlogSlugOgDotpngRoute
   '/community_/$listingId_/og.png': typeof CommunityListingIdOgDotpngRoute
@@ -2374,57 +2341,114 @@ export interface FileRoutesById {
   '/onboarding/step-2_/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3_/$agent': typeof OnboardingStep3AgentRoute
   '/profiles_/$username_/og.png': typeof ProfilesUsernameOgDotpngRoute
-  '/account_/packages/': typeof AccountPackagesIndexRoute
+  '/_app/admin/': typeof AppAdminIndexRoute
   '/.well-known_/agent-skills_/$skillId_/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
-  '/@{$orgSlug}_/-/activity_/$runId': typeof AtChar123orgSlugChar125ActivityRunIdRoute
-  '/@{$orgSlug}_/-/agents_/new': typeof AtChar123orgSlugChar125AgentsNewRoute
-  '/@{$orgSlug}_/-/agents_/usage': typeof AtChar123orgSlugChar125AgentsUsageRoute
-  '/@{$orgSlug}_/-/approvals/$bundleId': typeof AtChar123orgSlugChar125ApprovalsBundleIdRoute
-  '/@{$orgSlug}_/-/billing_/success': typeof AtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}_/-/connections_/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
-  '/@{$orgSlug}_/-/credentials_/$credentialId': typeof AtChar123orgSlugChar125CredentialsCredentialIdRoute
-  '/@{$orgSlug}_/-/credentials_/new': typeof AtChar123orgSlugChar125CredentialsNewRoute
-  '/@{$orgSlug}_/-/email_/$messageId': typeof AtChar123orgSlugChar125EmailMessageIdRoute
-  '/@{$orgSlug}_/-/integrations_/$integrationName': typeof AtChar123orgSlugChar125IntegrationsIntegrationNameRoute
-  '/@{$orgSlug}_/-/integrations_/approve': typeof AtChar123orgSlugChar125IntegrationsApproveRoute
-  '/@{$orgSlug}_/-/jobs_/$jobId': typeof AtChar123orgSlugChar125JobsJobIdRoute
-  '/@{$orgSlug}_/-/mcp-servers_/$serverId': typeof AtChar123orgSlugChar125McpServersServerIdRoute
-  '/@{$orgSlug}_/-/mcp-servers_/new': typeof AtChar123orgSlugChar125McpServersNewRoute
-  '/@{$orgSlug}_/-/memories_/$memoryId': typeof AtChar123orgSlugChar125MemoriesMemoryIdRoute
-  '/@{$orgSlug}_/-/secret-providers_/approve': typeof AtChar123orgSlugChar125SecretProvidersApproveRoute
-  '/@{$orgSlug}_/-/secrets_/approve': typeof AtChar123orgSlugChar125SecretsApproveRoute
-  '/@{$orgSlug}_/-/secrets_/new': typeof AtChar123orgSlugChar125SecretsNewRoute
-  '/@{$orgSlug}_/-/workflows_/$workflowId': typeof AtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/@{$username}_/$kodyId_/assets_/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
-  '/@{$username}_/$kodyId_/files/$': typeof AtChar123usernameChar125KodyIdFilesSplatRoute
   '/@{$username}_/$kodyId_/icon_/$iconCommit': typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
-  '/account_/agents_/new_/$agent': typeof AccountAgentsNewAgentRoute
-  '/account_/connections_/new_/$agent': typeof AccountConnectionsNewAgentRoute
-  '/account_/integrations_/apps/$appSlug': typeof AccountIntegrationsAppsAppSlugRoute
+  '/_app/@{$orgSlug}_/-/activity': typeof AppAtChar123orgSlugChar125ActivityRoute
+  '/_app/@{$orgSlug}_/-/agents': typeof AppAtChar123orgSlugChar125AgentsRoute
+  '/_app/@{$orgSlug}_/-/billing': typeof AppAtChar123orgSlugChar125BillingRoute
+  '/_app/@{$orgSlug}_/-/collaborators': typeof AppAtChar123orgSlugChar125CollaboratorsRoute
+  '/_app/@{$orgSlug}_/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
+  '/_app/@{$orgSlug}_/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
+  '/_app/@{$orgSlug}_/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/_app/@{$orgSlug}_/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
+  '/_app/@{$orgSlug}_/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
+  '/_app/@{$orgSlug}_/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
+  '/_app/@{$orgSlug}_/-/jobs': typeof AppAtChar123orgSlugChar125JobsRoute
+  '/_app/@{$orgSlug}_/-/mcp-servers': typeof AppAtChar123orgSlugChar125McpServersRoute
+  '/_app/@{$orgSlug}_/-/members': typeof AppAtChar123orgSlugChar125MembersRoute
+  '/_app/@{$orgSlug}_/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
+  '/_app/@{$orgSlug}_/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
+  '/_app/@{$orgSlug}_/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/_app/@{$orgSlug}_/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
+  '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
+  '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
+  '/_app/@{$orgSlug}_/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/_app/@{$orgSlug}_/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
+  '/_app/@{$orgSlug}_/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
+  '/_app/@{$orgSlug}_/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
+  '/_app/@{$orgSlug}_/-/webhooks': typeof AppAtChar123orgSlugChar125WebhooksRoute
+  '/_app/@{$orgSlug}_/-/workflows': typeof AppAtChar123orgSlugChar125WorkflowsRoute
+  '/_app/@{$username}_/$kodyId_/approve-capabilities': typeof AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute
+  '/_app/@{$username}_/$kodyId_/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
+  '/_app/@{$username}_/$kodyId_/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
+  '/_app/@{$username}_/$kodyId_/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/_app/@{$username}_/$kodyId_/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/_app/@{$username}_/$kodyId_/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
+  '/_app/@{$username}_/$kodyId_/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
+  '/_app/@{$username}_/$kodyId_/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
+  '/_app/account_/activity_/$runId': typeof AppAccountActivityRunIdRoute
+  '/_app/account_/agents_/new': typeof AppAccountAgentsNewRoute
+  '/_app/account_/agents_/usage': typeof AppAccountAgentsUsageRoute
+  '/_app/account_/billing_/success': typeof AppAccountBillingSuccessRoute
+  '/_app/account_/connections_/new': typeof AppAccountConnectionsNewRoute
+  '/_app/account_/connections_/usage': typeof AppAccountConnectionsUsageRoute
+  '/_app/account_/email_/$messageId': typeof AppAccountEmailMessageIdRoute
+  '/_app/account_/integrations_/$integrationName': typeof AppAccountIntegrationsIntegrationNameRoute
+  '/_app/account_/integrations_/approve': typeof AppAccountIntegrationsApproveRoute
+  '/_app/account_/jobs_/$jobId': typeof AppAccountJobsJobIdRoute
+  '/_app/account_/mcp-servers_/$serverId': typeof AppAccountMcpServersServerIdRoute
+  '/_app/account_/mcp-servers_/new': typeof AppAccountMcpServersNewRoute
+  '/_app/account_/memories_/$memoryId': typeof AppAccountMemoriesMemoryIdRoute
+  '/_app/account_/organizations_/new': typeof AppAccountOrganizationsNewRoute
+  '/_app/account_/packages/$packageId': typeof AppAccountPackagesPackageIdRouteWithChildren
+  '/_app/account_/secret-providers_/approve': typeof AppAccountSecretProvidersApproveRoute
+  '/_app/account_/secrets_/approve': typeof AppAccountSecretsApproveRoute
+  '/_app/account_/secrets_/new': typeof AppAccountSecretsNewRoute
+  '/_app/account_/workflows_/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
+  '/_app/admin/account-deletions_/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/_app/admin/platform-integrations_/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
+  '/_app/admin/platform-integrations_/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/_app/admin/users_/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account_/mcp-servers_/logos_/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account_/mcp-servers_/oauth_/callback': typeof AccountMcpServersOauthCallbackRoute
-  '/account_/packages/$packageId_/approve-capabilities': typeof AccountPackagesPackageIdApproveCapabilitiesRoute
-  '/account_/packages/$packageId_/approve-publish': typeof AccountPackagesPackageIdApprovePublishRoute
-  '/account_/secrets_/user/$secretName': typeof AccountSecretsUserSecretNameRoute
   '/community_/$listingId/files/$': typeof CommunityListingIdFilesSplatRoute
   '/community_/$listingId_/assets_/$': typeof CommunityListingIdAssetsSplatRoute
   '/community_/$listingId_/icon_/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community_/$listingId_/raw_/$': typeof CommunityListingIdRawSplatRoute
   '/orgs_/$orgSlug_/avatar_/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles_/$username_/avatar_/$file': typeof ProfilesUsernameAvatarFileRoute
-  '/@{$orgSlug}_/-/agents_/new_/$agent': typeof AtChar123orgSlugChar125AgentsNewAgentRoute
-  '/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
-  '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
-  '/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/_app/account_/packages/': typeof AppAccountPackagesIndexRoute
   '/@{$username}_/$kodyId_/raw_/$ref_/$': typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
-  '/@{$username}_/$kodyId_/tree/$ref/$': typeof AtChar123usernameChar125KodyIdTreeRefSplatRoute
   '/@{$username}_/webhooks_/$packageKodyId_/$webhookName_/$urlSecret': typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
-  '/account_/packages/$packageId/files/$': typeof AccountPackagesPackageIdFilesSplatRoute
+  '/_app/@{$orgSlug}_/-/activity_/$runId': typeof AppAtChar123orgSlugChar125ActivityRunIdRoute
+  '/_app/@{$orgSlug}_/-/agents_/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
+  '/_app/@{$orgSlug}_/-/agents_/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
+  '/_app/@{$orgSlug}_/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/_app/@{$orgSlug}_/-/billing_/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
+  '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
+  '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/_app/@{$orgSlug}_/-/integrations_/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
+  '/_app/@{$orgSlug}_/-/integrations_/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
+  '/_app/@{$orgSlug}_/-/jobs_/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
+  '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
+  '/_app/@{$orgSlug}_/-/mcp-servers_/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
+  '/_app/@{$orgSlug}_/-/memories_/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/_app/@{$orgSlug}_/-/secret-providers_/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
+  '/_app/@{$orgSlug}_/-/secrets_/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
+  '/_app/@{$orgSlug}_/-/secrets_/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/_app/@{$orgSlug}_/-/workflows_/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
+  '/_app/@{$username}_/$kodyId_/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
+  '/_app/account_/agents_/new_/$agent': typeof AppAccountAgentsNewAgentRoute
+  '/_app/account_/connections_/new_/$agent': typeof AppAccountConnectionsNewAgentRoute
+  '/_app/account_/integrations_/apps/$appSlug': typeof AppAccountIntegrationsAppsAppSlugRoute
+  '/_app/account_/packages/$packageId_/approve-capabilities': typeof AppAccountPackagesPackageIdApproveCapabilitiesRoute
+  '/_app/account_/packages/$packageId_/approve-publish': typeof AppAccountPackagesPackageIdApprovePublishRoute
+  '/_app/account_/secrets_/user/$secretName': typeof AppAccountSecretsUserSecretNameRoute
   '/account_/repos_/$repoId_/icon_/$iconCommit': typeof AccountReposRepoIdIconIconCommitRoute
-  '/account_/secrets_/package/$packageId/$secretName': typeof AccountSecretsPackagePackageIdSecretNameRoute
-  '/account_/secrets_/session/$sessionId/$secretName': typeof AccountSecretsSessionSessionIdSecretNameRoute
-  '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName': typeof AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
-  '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName': typeof AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
+  '/_app/@{$orgSlug}_/-/agents_/new_/$agent': typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
+  '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
+  '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
+  '/_app/@{$username}_/$kodyId_/tree/$ref/$': typeof AppAtChar123usernameChar125KodyIdTreeRefSplatRoute
+  '/_app/account_/packages/$packageId/files/$': typeof AppAccountPackagesPackageIdFilesSplatRoute
+  '/_app/account_/secrets_/package/$packageId/$secretName': typeof AppAccountSecretsPackagePackageIdSecretNameRoute
+  '/_app/account_/secrets_/session/$sessionId/$secretName': typeof AppAccountSecretsSessionSessionIdSecretNameRoute
+  '/_app/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName': typeof AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
+  '/_app/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName': typeof AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -2432,9 +2456,7 @@ export interface FileRouteTypes {
     | '/'
     | '/404'
     | '/500'
-    | '/@{$username}'
     | '/about'
-    | '/account'
     | '/auth'
     | '/auth.md'
     | '/believe'
@@ -2472,46 +2494,11 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
-    | '/@{$username}/$kodyId'
-    | '/account/activity'
-    | '/account/agents'
-    | '/account/billing'
-    | '/account/connections'
-    | '/account/credentials'
-    | '/account/credits'
-    | '/account/data'
-    | '/account/email'
-    | '/account/experiments'
+    | '/@{$username}'
+    | '/account'
     | '/account/export.json'
-    | '/account/integrations'
-    | '/account/jobs'
-    | '/account/mcp-oauth-clients'
-    | '/account/mcp-servers'
-    | '/account/memories'
     | '/account/memories-export.json'
-    | '/account/organizations'
     | '/account/packages.json'
-    | '/account/passkeys'
-    | '/account/secret-providers'
-    | '/account/secrets'
-    | '/account/security'
-    | '/account/two-factor'
-    | '/account/usage'
-    | '/account/waiting'
-    | '/account/webhooks'
-    | '/account/workflows'
-    | '/admin/$'
-    | '/admin/codemods'
-    | '/admin/community-reports'
-    | '/admin/feature-flags'
-    | '/admin/insights'
-    | '/admin/platform-feedback'
-    | '/admin/platform-integrations'
-    | '/admin/provider-marks'
-    | '/admin/reserved-usernames'
-    | '/admin/roles'
-    | '/admin/system-email'
-    | '/admin/users'
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
@@ -2557,18 +2544,71 @@ export interface FileRouteTypes {
     | '/webhooks/stripe'
     | '/with/$agent'
     | '/youtube-thumb/$videoId'
-    | '/admin/'
     | '/blog/'
     | '/docs/'
     | '/onboarding/'
     | '/-/auth/$'
     | '/.well-known/agent-skills/index.json'
     | '/.well-known/mcp/server-card.json'
+    | '/@{$orgSlug}/-/connections'
+    | '/@{$username}/$kodyId'
+    | '/account/activity'
+    | '/account/agents'
+    | '/account/billing'
+    | '/account/connections'
+    | '/account/credentials'
+    | '/account/credits'
+    | '/account/data'
+    | '/account/email'
+    | '/account/experiments'
+    | '/account/integrations'
+    | '/account/jobs'
+    | '/account/mcp-oauth-clients'
+    | '/account/mcp-servers'
+    | '/account/memories'
+    | '/account/organizations'
+    | '/account/passkeys'
+    | '/account/secret-providers'
+    | '/account/secrets'
+    | '/account/security'
+    | '/account/two-factor'
+    | '/account/usage'
+    | '/account/waiting'
+    | '/account/webhooks'
+    | '/account/workflows'
+    | '/admin/$'
+    | '/admin/codemods'
+    | '/admin/community-reports'
+    | '/admin/feature-flags'
+    | '/admin/insights'
+    | '/admin/platform-feedback'
+    | '/admin/platform-integrations'
+    | '/admin/provider-marks'
+    | '/admin/reserved-usernames'
+    | '/admin/roles'
+    | '/admin/system-email'
+    | '/admin/users'
+    | '/_kody/auth/$'
+    | '/auth/$provider/callback'
+    | '/blog/$slug/og.png'
+    | '/community/$listingId/og.png'
+    | '/docs/$slug/og.png'
+    | '/integrations/logos/$integrationSlug'
+    | '/integrations/provider-marks/$slug'
+    | '/oauth/package-app/authorize'
+    | '/onboarding/step-1/$agent'
+    | '/onboarding/step-2/$service'
+    | '/onboarding/step-3/$agent'
+    | '/profiles/$username/og.png'
+    | '/admin/'
+    | '/.well-known/agent-skills/$skillId/SKILL.md'
+    | '/@{$orgSlug}/-/connections/$'
+    | '/@{$username}/$kodyId/assets/$'
+    | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
-    | '/@{$orgSlug}/-/connections'
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
@@ -2598,7 +2638,6 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
-    | '/_kody/auth/$'
     | '/account/activity/$runId'
     | '/account/agents/new'
     | '/account/agents/usage'
@@ -2622,25 +2661,22 @@ export interface FileRouteTypes {
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
-    | '/auth/$provider/callback'
-    | '/blog/$slug/og.png'
-    | '/community/$listingId/og.png'
-    | '/docs/$slug/og.png'
-    | '/integrations/logos/$integrationSlug'
-    | '/integrations/provider-marks/$slug'
-    | '/oauth/package-app/authorize'
-    | '/onboarding/step-1/$agent'
-    | '/onboarding/step-2/$service'
-    | '/onboarding/step-3/$agent'
-    | '/profiles/$username/og.png'
+    | '/account/mcp-servers/logos/$serverId'
+    | '/account/mcp-servers/oauth/callback'
+    | '/community/$listingId/files/$'
+    | '/community/$listingId/assets/$'
+    | '/community/$listingId/icon/$iconCommit'
+    | '/community/$listingId/raw/$'
+    | '/orgs/$orgSlug/avatar/$file'
+    | '/profiles/$username/avatar/$file'
     | '/account/packages/'
-    | '/.well-known/agent-skills/$skillId/SKILL.md'
+    | '/@{$username}/$kodyId/raw/$ref/$'
+    | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
     | '/@{$orgSlug}/-/activity/$runId'
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
     | '/@{$orgSlug}/-/billing/success'
-    | '/@{$orgSlug}/-/connections/$'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
@@ -2654,32 +2690,20 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
     | '/@{$orgSlug}/-/workflows/$workflowId'
-    | '/@{$username}/$kodyId/assets/$'
     | '/@{$username}/$kodyId/files/$'
-    | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/account/agents/new/$agent'
     | '/account/connections/new/$agent'
     | '/account/integrations/apps/$appSlug'
-    | '/account/mcp-servers/logos/$serverId'
-    | '/account/mcp-servers/oauth/callback'
     | '/account/packages/$packageId/approve-capabilities'
     | '/account/packages/$packageId/approve-publish'
     | '/account/secrets/user/$secretName'
-    | '/community/$listingId/files/$'
-    | '/community/$listingId/assets/$'
-    | '/community/$listingId/icon/$iconCommit'
-    | '/community/$listingId/raw/$'
-    | '/orgs/$orgSlug/avatar/$file'
-    | '/profiles/$username/avatar/$file'
+    | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
-    | '/@{$username}/$kodyId/raw/$ref/$'
     | '/@{$username}/$kodyId/tree/$ref/$'
-    | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
     | '/account/packages/$packageId/files/$'
-    | '/account/repos/$repoId/icon/$iconCommit'
     | '/account/secrets/package/$packageId/$secretName'
     | '/account/secrets/session/$sessionId/$secretName'
     | '/@{$orgSlug}/-/secrets/package/$packageId/$secretName'
@@ -2689,9 +2713,7 @@ export interface FileRouteTypes {
     | '/'
     | '/404'
     | '/500'
-    | '/@{$username}'
     | '/about'
-    | '/account'
     | '/auth'
     | '/auth.md'
     | '/believe'
@@ -2728,46 +2750,11 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/.well-known/openai-apps-challenge'
     | '/.well-known/security.txt'
-    | '/@{$username}/$kodyId'
-    | '/account/activity'
-    | '/account/agents'
-    | '/account/billing'
-    | '/account/connections'
-    | '/account/credentials'
-    | '/account/credits'
-    | '/account/data'
-    | '/account/email'
-    | '/account/experiments'
+    | '/@{$username}'
+    | '/account'
     | '/account/export.json'
-    | '/account/integrations'
-    | '/account/jobs'
-    | '/account/mcp-oauth-clients'
-    | '/account/mcp-servers'
-    | '/account/memories'
     | '/account/memories-export.json'
-    | '/account/organizations'
     | '/account/packages.json'
-    | '/account/passkeys'
-    | '/account/secret-providers'
-    | '/account/secrets'
-    | '/account/security'
-    | '/account/two-factor'
-    | '/account/usage'
-    | '/account/waiting'
-    | '/account/webhooks'
-    | '/account/workflows'
-    | '/admin/$'
-    | '/admin/codemods'
-    | '/admin/community-reports'
-    | '/admin/feature-flags'
-    | '/admin/insights'
-    | '/admin/platform-feedback'
-    | '/admin/platform-integrations'
-    | '/admin/provider-marks'
-    | '/admin/reserved-usernames'
-    | '/admin/roles'
-    | '/admin/system-email'
-    | '/admin/users'
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
@@ -2813,18 +2800,71 @@ export interface FileRouteTypes {
     | '/webhooks/stripe'
     | '/with/$agent'
     | '/youtube-thumb/$videoId'
-    | '/admin'
     | '/blog'
     | '/docs'
     | '/onboarding'
     | '/-/auth/$'
     | '/.well-known/agent-skills/index.json'
     | '/.well-known/mcp/server-card.json'
+    | '/@{$orgSlug}/-/connections'
+    | '/@{$username}/$kodyId'
+    | '/account/activity'
+    | '/account/agents'
+    | '/account/billing'
+    | '/account/connections'
+    | '/account/credentials'
+    | '/account/credits'
+    | '/account/data'
+    | '/account/email'
+    | '/account/experiments'
+    | '/account/integrations'
+    | '/account/jobs'
+    | '/account/mcp-oauth-clients'
+    | '/account/mcp-servers'
+    | '/account/memories'
+    | '/account/organizations'
+    | '/account/passkeys'
+    | '/account/secret-providers'
+    | '/account/secrets'
+    | '/account/security'
+    | '/account/two-factor'
+    | '/account/usage'
+    | '/account/waiting'
+    | '/account/webhooks'
+    | '/account/workflows'
+    | '/admin/$'
+    | '/admin/codemods'
+    | '/admin/community-reports'
+    | '/admin/feature-flags'
+    | '/admin/insights'
+    | '/admin/platform-feedback'
+    | '/admin/platform-integrations'
+    | '/admin/provider-marks'
+    | '/admin/reserved-usernames'
+    | '/admin/roles'
+    | '/admin/system-email'
+    | '/admin/users'
+    | '/_kody/auth/$'
+    | '/auth/$provider/callback'
+    | '/blog/$slug/og.png'
+    | '/community/$listingId/og.png'
+    | '/docs/$slug/og.png'
+    | '/integrations/logos/$integrationSlug'
+    | '/integrations/provider-marks/$slug'
+    | '/oauth/package-app/authorize'
+    | '/onboarding/step-1/$agent'
+    | '/onboarding/step-2/$service'
+    | '/onboarding/step-3/$agent'
+    | '/profiles/$username/og.png'
+    | '/admin'
+    | '/.well-known/agent-skills/$skillId/SKILL.md'
+    | '/@{$orgSlug}/-/connections/$'
+    | '/@{$username}/$kodyId/assets/$'
+    | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/@{$orgSlug}/-/activity'
     | '/@{$orgSlug}/-/agents'
     | '/@{$orgSlug}/-/billing'
     | '/@{$orgSlug}/-/collaborators'
-    | '/@{$orgSlug}/-/connections'
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
@@ -2854,7 +2894,6 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
-    | '/_kody/auth/$'
     | '/account/activity/$runId'
     | '/account/agents/new'
     | '/account/agents/usage'
@@ -2878,25 +2917,22 @@ export interface FileRouteTypes {
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
-    | '/auth/$provider/callback'
-    | '/blog/$slug/og.png'
-    | '/community/$listingId/og.png'
-    | '/docs/$slug/og.png'
-    | '/integrations/logos/$integrationSlug'
-    | '/integrations/provider-marks/$slug'
-    | '/oauth/package-app/authorize'
-    | '/onboarding/step-1/$agent'
-    | '/onboarding/step-2/$service'
-    | '/onboarding/step-3/$agent'
-    | '/profiles/$username/og.png'
+    | '/account/mcp-servers/logos/$serverId'
+    | '/account/mcp-servers/oauth/callback'
+    | '/community/$listingId/files/$'
+    | '/community/$listingId/assets/$'
+    | '/community/$listingId/icon/$iconCommit'
+    | '/community/$listingId/raw/$'
+    | '/orgs/$orgSlug/avatar/$file'
+    | '/profiles/$username/avatar/$file'
     | '/account/packages'
-    | '/.well-known/agent-skills/$skillId/SKILL.md'
+    | '/@{$username}/$kodyId/raw/$ref/$'
+    | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
     | '/@{$orgSlug}/-/activity/$runId'
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
     | '/@{$orgSlug}/-/billing/success'
-    | '/@{$orgSlug}/-/connections/$'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
@@ -2910,32 +2946,20 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
     | '/@{$orgSlug}/-/workflows/$workflowId'
-    | '/@{$username}/$kodyId/assets/$'
     | '/@{$username}/$kodyId/files/$'
-    | '/@{$username}/$kodyId/icon/$iconCommit'
     | '/account/agents/new/$agent'
     | '/account/connections/new/$agent'
     | '/account/integrations/apps/$appSlug'
-    | '/account/mcp-servers/logos/$serverId'
-    | '/account/mcp-servers/oauth/callback'
     | '/account/packages/$packageId/approve-capabilities'
     | '/account/packages/$packageId/approve-publish'
     | '/account/secrets/user/$secretName'
-    | '/community/$listingId/files/$'
-    | '/community/$listingId/assets/$'
-    | '/community/$listingId/icon/$iconCommit'
-    | '/community/$listingId/raw/$'
-    | '/orgs/$orgSlug/avatar/$file'
-    | '/profiles/$username/avatar/$file'
+    | '/account/repos/$repoId/icon/$iconCommit'
     | '/@{$orgSlug}/-/agents/new/$agent'
     | '/@{$orgSlug}/-/integrations/apps/$appSlug'
     | '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
     | '/@{$orgSlug}/-/secrets/user/$secretName'
-    | '/@{$username}/$kodyId/raw/$ref/$'
     | '/@{$username}/$kodyId/tree/$ref/$'
-    | '/@{$username}/webhooks/$packageKodyId/$webhookName/$urlSecret'
     | '/account/packages/$packageId/files/$'
-    | '/account/repos/$repoId/icon/$iconCommit'
     | '/account/secrets/package/$packageId/$secretName'
     | '/account/secrets/session/$sessionId/$secretName'
     | '/@{$orgSlug}/-/secrets/package/$packageId/$secretName'
@@ -2945,9 +2969,8 @@ export interface FileRouteTypes {
     | '/'
     | '/404'
     | '/500'
-    | '/@{$username}'
+    | '/_app'
     | '/about'
-    | '/account'
     | '/auth'
     | '/auth.md'
     | '/believe'
@@ -2985,46 +3008,11 @@ export interface FileRouteTypes {
     | '/.well-known_/api-catalog'
     | '/.well-known_/openai-apps-challenge'
     | '/.well-known_/security.txt'
-    | '/@{$username}_/$kodyId'
-    | '/account_/activity'
-    | '/account_/agents'
-    | '/account_/billing'
-    | '/account_/connections'
-    | '/account_/credentials'
-    | '/account_/credits'
-    | '/account_/data'
-    | '/account_/email'
-    | '/account_/experiments'
+    | '/_app/@{$username}'
+    | '/_app/account'
     | '/account_/export.json'
-    | '/account_/integrations'
-    | '/account_/jobs'
-    | '/account_/mcp-oauth-clients'
-    | '/account_/mcp-servers'
-    | '/account_/memories'
     | '/account_/memories-export.json'
-    | '/account_/organizations'
     | '/account_/packages.json'
-    | '/account_/passkeys'
-    | '/account_/secret-providers'
-    | '/account_/secrets'
-    | '/account_/security'
-    | '/account_/two-factor'
-    | '/account_/usage'
-    | '/account_/waiting'
-    | '/account_/webhooks'
-    | '/account_/workflows'
-    | '/admin/$'
-    | '/admin/codemods'
-    | '/admin/community-reports'
-    | '/admin/feature-flags'
-    | '/admin/insights'
-    | '/admin/platform-feedback'
-    | '/admin/platform-integrations'
-    | '/admin/provider-marks'
-    | '/admin/reserved-usernames'
-    | '/admin/roles'
-    | '/admin/system-email'
-    | '/admin/users'
     | '/blog/$slug'
     | '/blog_/rss.xml'
     | '/blog_/{$slug}.md'
@@ -3070,71 +3058,51 @@ export interface FileRouteTypes {
     | '/webhooks_/stripe'
     | '/with/$agent'
     | '/youtube-thumb_/$videoId'
-    | '/admin/'
     | '/blog/'
     | '/docs/'
     | '/onboarding/'
     | '/-/auth/$'
     | '/.well-known_/agent-skills_/index.json'
     | '/.well-known_/mcp_/server-card.json'
-    | '/@{$orgSlug}_/-/activity'
-    | '/@{$orgSlug}_/-/agents'
-    | '/@{$orgSlug}_/-/billing'
-    | '/@{$orgSlug}_/-/collaborators'
     | '/@{$orgSlug}_/-/connections'
-    | '/@{$orgSlug}_/-/credentials'
-    | '/@{$orgSlug}_/-/credits'
-    | '/@{$orgSlug}_/-/email'
-    | '/@{$orgSlug}_/-/follows'
-    | '/@{$orgSlug}_/-/grants'
-    | '/@{$orgSlug}_/-/integrations'
-    | '/@{$orgSlug}_/-/jobs'
-    | '/@{$orgSlug}_/-/mcp-servers'
-    | '/@{$orgSlug}_/-/members'
-    | '/@{$orgSlug}_/-/memories'
-    | '/@{$orgSlug}_/-/overview'
-    | '/@{$orgSlug}_/-/packages'
-    | '/@{$orgSlug}_/-/repositories'
-    | '/@{$orgSlug}_/-/secret-providers'
-    | '/@{$orgSlug}_/-/secrets'
-    | '/@{$orgSlug}_/-/settings'
-    | '/@{$orgSlug}_/-/teams'
-    | '/@{$orgSlug}_/-/usage'
-    | '/@{$orgSlug}_/-/waiting'
-    | '/@{$orgSlug}_/-/webhooks'
-    | '/@{$orgSlug}_/-/workflows'
-    | '/@{$username}_/$kodyId_/approve-capabilities'
-    | '/@{$username}_/$kodyId_/approve-credentials'
-    | '/@{$username}_/$kodyId_/approve-publish'
-    | '/@{$username}_/$kodyId_/collaborators'
-    | '/@{$username}_/$kodyId_/credentials'
-    | '/@{$username}_/$kodyId_/mappings'
-    | '/@{$username}_/$kodyId_/settings'
-    | '/@{$username}_/$kodyId_/triggers'
+    | '/_app/@{$username}_/$kodyId'
+    | '/_app/account_/activity'
+    | '/_app/account_/agents'
+    | '/_app/account_/billing'
+    | '/_app/account_/connections'
+    | '/_app/account_/credentials'
+    | '/_app/account_/credits'
+    | '/_app/account_/data'
+    | '/_app/account_/email'
+    | '/_app/account_/experiments'
+    | '/_app/account_/integrations'
+    | '/_app/account_/jobs'
+    | '/_app/account_/mcp-oauth-clients'
+    | '/_app/account_/mcp-servers'
+    | '/_app/account_/memories'
+    | '/_app/account_/organizations'
+    | '/_app/account_/passkeys'
+    | '/_app/account_/secret-providers'
+    | '/_app/account_/secrets'
+    | '/_app/account_/security'
+    | '/_app/account_/two-factor'
+    | '/_app/account_/usage'
+    | '/_app/account_/waiting'
+    | '/_app/account_/webhooks'
+    | '/_app/account_/workflows'
+    | '/_app/admin/$'
+    | '/_app/admin/codemods'
+    | '/_app/admin/community-reports'
+    | '/_app/admin/feature-flags'
+    | '/_app/admin/insights'
+    | '/_app/admin/platform-feedback'
+    | '/_app/admin/platform-integrations'
+    | '/_app/admin/provider-marks'
+    | '/_app/admin/reserved-usernames'
+    | '/_app/admin/roles'
+    | '/_app/admin/system-email'
+    | '/_app/admin/users'
     | '/_kody/auth/$'
-    | '/account_/activity_/$runId'
-    | '/account_/agents_/new'
-    | '/account_/agents_/usage'
-    | '/account_/billing_/success'
-    | '/account_/connections_/new'
-    | '/account_/connections_/usage'
-    | '/account_/email_/$messageId'
-    | '/account_/integrations_/$integrationName'
-    | '/account_/integrations_/approve'
-    | '/account_/jobs_/$jobId'
-    | '/account_/mcp-servers_/$serverId'
-    | '/account_/mcp-servers_/new'
-    | '/account_/memories_/$memoryId'
-    | '/account_/organizations_/new'
-    | '/account_/packages/$packageId'
-    | '/account_/secret-providers_/approve'
-    | '/account_/secrets_/approve'
-    | '/account_/secrets_/new'
-    | '/account_/workflows_/$workflowId'
-    | '/admin/account-deletions_/$approvalId'
-    | '/admin/platform-integrations_/$slug'
-    | '/admin/platform-integrations_/new'
-    | '/admin/users_/$stableUserId'
     | '/auth_/$provider_/callback'
     | '/blog_/$slug_/og.png'
     | '/community_/$listingId_/og.png'
@@ -3146,66 +3114,122 @@ export interface FileRouteTypes {
     | '/onboarding/step-2_/$service'
     | '/onboarding/step-3_/$agent'
     | '/profiles_/$username_/og.png'
-    | '/account_/packages/'
+    | '/_app/admin/'
     | '/.well-known_/agent-skills_/$skillId_/SKILL.md'
-    | '/@{$orgSlug}_/-/activity_/$runId'
-    | '/@{$orgSlug}_/-/agents_/new'
-    | '/@{$orgSlug}_/-/agents_/usage'
-    | '/@{$orgSlug}_/-/approvals/$bundleId'
-    | '/@{$orgSlug}_/-/billing_/success'
     | '/@{$orgSlug}_/-/connections_/$'
-    | '/@{$orgSlug}_/-/credentials_/$credentialId'
-    | '/@{$orgSlug}_/-/credentials_/new'
-    | '/@{$orgSlug}_/-/email_/$messageId'
-    | '/@{$orgSlug}_/-/integrations_/$integrationName'
-    | '/@{$orgSlug}_/-/integrations_/approve'
-    | '/@{$orgSlug}_/-/jobs_/$jobId'
-    | '/@{$orgSlug}_/-/mcp-servers_/$serverId'
-    | '/@{$orgSlug}_/-/mcp-servers_/new'
-    | '/@{$orgSlug}_/-/memories_/$memoryId'
-    | '/@{$orgSlug}_/-/secret-providers_/approve'
-    | '/@{$orgSlug}_/-/secrets_/approve'
-    | '/@{$orgSlug}_/-/secrets_/new'
-    | '/@{$orgSlug}_/-/workflows_/$workflowId'
     | '/@{$username}_/$kodyId_/assets_/$'
-    | '/@{$username}_/$kodyId_/files/$'
     | '/@{$username}_/$kodyId_/icon_/$iconCommit'
-    | '/account_/agents_/new_/$agent'
-    | '/account_/connections_/new_/$agent'
-    | '/account_/integrations_/apps/$appSlug'
+    | '/_app/@{$orgSlug}_/-/activity'
+    | '/_app/@{$orgSlug}_/-/agents'
+    | '/_app/@{$orgSlug}_/-/billing'
+    | '/_app/@{$orgSlug}_/-/collaborators'
+    | '/_app/@{$orgSlug}_/-/credentials'
+    | '/_app/@{$orgSlug}_/-/credits'
+    | '/_app/@{$orgSlug}_/-/email'
+    | '/_app/@{$orgSlug}_/-/follows'
+    | '/_app/@{$orgSlug}_/-/grants'
+    | '/_app/@{$orgSlug}_/-/integrations'
+    | '/_app/@{$orgSlug}_/-/jobs'
+    | '/_app/@{$orgSlug}_/-/mcp-servers'
+    | '/_app/@{$orgSlug}_/-/members'
+    | '/_app/@{$orgSlug}_/-/memories'
+    | '/_app/@{$orgSlug}_/-/overview'
+    | '/_app/@{$orgSlug}_/-/packages'
+    | '/_app/@{$orgSlug}_/-/repositories'
+    | '/_app/@{$orgSlug}_/-/secret-providers'
+    | '/_app/@{$orgSlug}_/-/secrets'
+    | '/_app/@{$orgSlug}_/-/settings'
+    | '/_app/@{$orgSlug}_/-/teams'
+    | '/_app/@{$orgSlug}_/-/usage'
+    | '/_app/@{$orgSlug}_/-/waiting'
+    | '/_app/@{$orgSlug}_/-/webhooks'
+    | '/_app/@{$orgSlug}_/-/workflows'
+    | '/_app/@{$username}_/$kodyId_/approve-capabilities'
+    | '/_app/@{$username}_/$kodyId_/approve-credentials'
+    | '/_app/@{$username}_/$kodyId_/approve-publish'
+    | '/_app/@{$username}_/$kodyId_/collaborators'
+    | '/_app/@{$username}_/$kodyId_/credentials'
+    | '/_app/@{$username}_/$kodyId_/mappings'
+    | '/_app/@{$username}_/$kodyId_/settings'
+    | '/_app/@{$username}_/$kodyId_/triggers'
+    | '/_app/account_/activity_/$runId'
+    | '/_app/account_/agents_/new'
+    | '/_app/account_/agents_/usage'
+    | '/_app/account_/billing_/success'
+    | '/_app/account_/connections_/new'
+    | '/_app/account_/connections_/usage'
+    | '/_app/account_/email_/$messageId'
+    | '/_app/account_/integrations_/$integrationName'
+    | '/_app/account_/integrations_/approve'
+    | '/_app/account_/jobs_/$jobId'
+    | '/_app/account_/mcp-servers_/$serverId'
+    | '/_app/account_/mcp-servers_/new'
+    | '/_app/account_/memories_/$memoryId'
+    | '/_app/account_/organizations_/new'
+    | '/_app/account_/packages/$packageId'
+    | '/_app/account_/secret-providers_/approve'
+    | '/_app/account_/secrets_/approve'
+    | '/_app/account_/secrets_/new'
+    | '/_app/account_/workflows_/$workflowId'
+    | '/_app/admin/account-deletions_/$approvalId'
+    | '/_app/admin/platform-integrations_/$slug'
+    | '/_app/admin/platform-integrations_/new'
+    | '/_app/admin/users_/$stableUserId'
     | '/account_/mcp-servers_/logos_/$serverId'
     | '/account_/mcp-servers_/oauth_/callback'
-    | '/account_/packages/$packageId_/approve-capabilities'
-    | '/account_/packages/$packageId_/approve-publish'
-    | '/account_/secrets_/user/$secretName'
     | '/community_/$listingId/files/$'
     | '/community_/$listingId_/assets_/$'
     | '/community_/$listingId_/icon_/$iconCommit'
     | '/community_/$listingId_/raw_/$'
     | '/orgs_/$orgSlug_/avatar_/$file'
     | '/profiles_/$username_/avatar_/$file'
-    | '/@{$orgSlug}_/-/agents_/new_/$agent'
-    | '/@{$orgSlug}_/-/integrations_/apps/$appSlug'
-    | '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
-    | '/@{$orgSlug}_/-/secrets_/user/$secretName'
+    | '/_app/account_/packages/'
     | '/@{$username}_/$kodyId_/raw_/$ref_/$'
-    | '/@{$username}_/$kodyId_/tree/$ref/$'
     | '/@{$username}_/webhooks_/$packageKodyId_/$webhookName_/$urlSecret'
-    | '/account_/packages/$packageId/files/$'
+    | '/_app/@{$orgSlug}_/-/activity_/$runId'
+    | '/_app/@{$orgSlug}_/-/agents_/new'
+    | '/_app/@{$orgSlug}_/-/agents_/usage'
+    | '/_app/@{$orgSlug}_/-/approvals/$bundleId'
+    | '/_app/@{$orgSlug}_/-/billing_/success'
+    | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
+    | '/_app/@{$orgSlug}_/-/credentials_/new'
+    | '/_app/@{$orgSlug}_/-/email_/$messageId'
+    | '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
+    | '/_app/@{$orgSlug}_/-/integrations_/approve'
+    | '/_app/@{$orgSlug}_/-/jobs_/$jobId'
+    | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId'
+    | '/_app/@{$orgSlug}_/-/mcp-servers_/new'
+    | '/_app/@{$orgSlug}_/-/memories_/$memoryId'
+    | '/_app/@{$orgSlug}_/-/secret-providers_/approve'
+    | '/_app/@{$orgSlug}_/-/secrets_/approve'
+    | '/_app/@{$orgSlug}_/-/secrets_/new'
+    | '/_app/@{$orgSlug}_/-/workflows_/$workflowId'
+    | '/_app/@{$username}_/$kodyId_/files/$'
+    | '/_app/account_/agents_/new_/$agent'
+    | '/_app/account_/connections_/new_/$agent'
+    | '/_app/account_/integrations_/apps/$appSlug'
+    | '/_app/account_/packages/$packageId_/approve-capabilities'
+    | '/_app/account_/packages/$packageId_/approve-publish'
+    | '/_app/account_/secrets_/user/$secretName'
     | '/account_/repos_/$repoId_/icon_/$iconCommit'
-    | '/account_/secrets_/package/$packageId/$secretName'
-    | '/account_/secrets_/session/$sessionId/$secretName'
-    | '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName'
-    | '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName'
+    | '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
+    | '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
+    | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
+    | '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
+    | '/_app/@{$username}_/$kodyId_/tree/$ref/$'
+    | '/_app/account_/packages/$packageId/files/$'
+    | '/_app/account_/secrets_/package/$packageId/$secretName'
+    | '/_app/account_/secrets_/session/$sessionId/$secretName'
+    | '/_app/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName'
+    | '/_app/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   R404Route: typeof R404Route
   R500Route: typeof R500Route
-  AtChar123usernameChar125Route: typeof AtChar123usernameChar125Route
+  AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
-  AccountRoute: typeof AccountRoute
   AuthRoute: typeof AuthRoute
   AuthDotmdRoute: typeof AuthDotmdRoute
   BelieveRoute: typeof BelieveRoute
@@ -3243,46 +3267,9 @@ export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
   DotwellKnownOpenaiAppsChallengeRoute: typeof DotwellKnownOpenaiAppsChallengeRoute
   DotwellKnownSecurityDottxtRoute: typeof DotwellKnownSecurityDottxtRoute
-  AtChar123usernameChar125KodyIdRoute: typeof AtChar123usernameChar125KodyIdRoute
-  AccountActivityRoute: typeof AccountActivityRoute
-  AccountAgentsRoute: typeof AccountAgentsRoute
-  AccountBillingRoute: typeof AccountBillingRoute
-  AccountConnectionsRoute: typeof AccountConnectionsRoute
-  AccountCredentialsRoute: typeof AccountCredentialsRoute
-  AccountCreditsRoute: typeof AccountCreditsRoute
-  AccountDataRoute: typeof AccountDataRoute
-  AccountEmailRoute: typeof AccountEmailRoute
-  AccountExperimentsRoute: typeof AccountExperimentsRoute
   AccountExportDotjsonRoute: typeof AccountExportDotjsonRoute
-  AccountIntegrationsRoute: typeof AccountIntegrationsRoute
-  AccountJobsRoute: typeof AccountJobsRoute
-  AccountMcpOauthClientsRoute: typeof AccountMcpOauthClientsRoute
-  AccountMcpServersRoute: typeof AccountMcpServersRoute
-  AccountMemoriesRoute: typeof AccountMemoriesRoute
   AccountMemoriesExportDotjsonRoute: typeof AccountMemoriesExportDotjsonRoute
-  AccountOrganizationsRoute: typeof AccountOrganizationsRoute
   AccountPackagesDotjsonRoute: typeof AccountPackagesDotjsonRoute
-  AccountPasskeysRoute: typeof AccountPasskeysRoute
-  AccountSecretProvidersRoute: typeof AccountSecretProvidersRoute
-  AccountSecretsRoute: typeof AccountSecretsRoute
-  AccountSecurityRoute: typeof AccountSecurityRoute
-  AccountTwoFactorRoute: typeof AccountTwoFactorRoute
-  AccountUsageRoute: typeof AccountUsageRoute
-  AccountWaitingRoute: typeof AccountWaitingRoute
-  AccountWebhooksRoute: typeof AccountWebhooksRoute
-  AccountWorkflowsRoute: typeof AccountWorkflowsRoute
-  AdminSplatRoute: typeof AdminSplatRoute
-  AdminCodemodsRoute: typeof AdminCodemodsRoute
-  AdminCommunityReportsRoute: typeof AdminCommunityReportsRoute
-  AdminFeatureFlagsRoute: typeof AdminFeatureFlagsRoute
-  AdminInsightsRoute: typeof AdminInsightsRoute
-  AdminPlatformFeedbackRoute: typeof AdminPlatformFeedbackRoute
-  AdminPlatformIntegrationsRoute: typeof AdminPlatformIntegrationsRoute
-  AdminProviderMarksRoute: typeof AdminProviderMarksRoute
-  AdminReservedUsernamesRoute: typeof AdminReservedUsernamesRoute
-  AdminRolesRoute: typeof AdminRolesRoute
-  AdminSystemEmailRoute: typeof AdminSystemEmailRoute
-  AdminUsersRoute: typeof AdminUsersRoute
   BlogSlugRoute: typeof BlogSlugRoute
   BlogRssDotxmlRoute: typeof BlogRssDotxmlRoute
   BlogChar123slugChar125DotmdRoute: typeof BlogChar123slugChar125DotmdRoute
@@ -3325,70 +3312,13 @@ export interface RootRouteChildren {
   WebhooksStripeRoute: typeof WebhooksStripeRoute
   WithAgentRoute: typeof WithAgentRoute
   YoutubeThumbVideoIdRoute: typeof YoutubeThumbVideoIdRoute
-  AdminIndexRoute: typeof AdminIndexRoute
   BlogIndexRoute: typeof BlogIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   Char91Char93AuthSplatRoute: typeof Char91Char93AuthSplatRoute
   DotwellKnownAgentSkillsIndexDotjsonRoute: typeof DotwellKnownAgentSkillsIndexDotjsonRoute
   DotwellKnownMcpServerCardDotjsonRoute: typeof DotwellKnownMcpServerCardDotjsonRoute
-  AtChar123orgSlugChar125ActivityRoute: typeof AtChar123orgSlugChar125ActivityRoute
-  AtChar123orgSlugChar125AgentsRoute: typeof AtChar123orgSlugChar125AgentsRoute
-  AtChar123orgSlugChar125BillingRoute: typeof AtChar123orgSlugChar125BillingRoute
-  AtChar123orgSlugChar125CollaboratorsRoute: typeof AtChar123orgSlugChar125CollaboratorsRoute
   AtChar123orgSlugChar125ConnectionsRoute: typeof AtChar123orgSlugChar125ConnectionsRoute
-  AtChar123orgSlugChar125CredentialsRoute: typeof AtChar123orgSlugChar125CredentialsRoute
-  AtChar123orgSlugChar125CreditsRoute: typeof AtChar123orgSlugChar125CreditsRoute
-  AtChar123orgSlugChar125EmailRoute: typeof AtChar123orgSlugChar125EmailRoute
-  AtChar123orgSlugChar125FollowsRoute: typeof AtChar123orgSlugChar125FollowsRoute
-  AtChar123orgSlugChar125GrantsRoute: typeof AtChar123orgSlugChar125GrantsRoute
-  AtChar123orgSlugChar125IntegrationsRoute: typeof AtChar123orgSlugChar125IntegrationsRoute
-  AtChar123orgSlugChar125JobsRoute: typeof AtChar123orgSlugChar125JobsRoute
-  AtChar123orgSlugChar125McpServersRoute: typeof AtChar123orgSlugChar125McpServersRoute
-  AtChar123orgSlugChar125MembersRoute: typeof AtChar123orgSlugChar125MembersRoute
-  AtChar123orgSlugChar125MemoriesRoute: typeof AtChar123orgSlugChar125MemoriesRoute
-  AtChar123orgSlugChar125OverviewRoute: typeof AtChar123orgSlugChar125OverviewRoute
-  AtChar123orgSlugChar125PackagesRoute: typeof AtChar123orgSlugChar125PackagesRoute
-  AtChar123orgSlugChar125RepositoriesRoute: typeof AtChar123orgSlugChar125RepositoriesRoute
-  AtChar123orgSlugChar125SecretProvidersRoute: typeof AtChar123orgSlugChar125SecretProvidersRoute
-  AtChar123orgSlugChar125SecretsRoute: typeof AtChar123orgSlugChar125SecretsRoute
-  AtChar123orgSlugChar125SettingsRoute: typeof AtChar123orgSlugChar125SettingsRoute
-  AtChar123orgSlugChar125TeamsRoute: typeof AtChar123orgSlugChar125TeamsRoute
-  AtChar123orgSlugChar125UsageRoute: typeof AtChar123orgSlugChar125UsageRoute
-  AtChar123orgSlugChar125WaitingRoute: typeof AtChar123orgSlugChar125WaitingRoute
-  AtChar123orgSlugChar125WebhooksRoute: typeof AtChar123orgSlugChar125WebhooksRoute
-  AtChar123orgSlugChar125WorkflowsRoute: typeof AtChar123orgSlugChar125WorkflowsRoute
-  AtChar123usernameChar125KodyIdApproveCapabilitiesRoute: typeof AtChar123usernameChar125KodyIdApproveCapabilitiesRoute
-  AtChar123usernameChar125KodyIdApproveCredentialsRoute: typeof AtChar123usernameChar125KodyIdApproveCredentialsRoute
-  AtChar123usernameChar125KodyIdApprovePublishRoute: typeof AtChar123usernameChar125KodyIdApprovePublishRoute
-  AtChar123usernameChar125KodyIdCollaboratorsRoute: typeof AtChar123usernameChar125KodyIdCollaboratorsRoute
-  AtChar123usernameChar125KodyIdCredentialsRoute: typeof AtChar123usernameChar125KodyIdCredentialsRoute
-  AtChar123usernameChar125KodyIdMappingsRoute: typeof AtChar123usernameChar125KodyIdMappingsRoute
-  AtChar123usernameChar125KodyIdSettingsRoute: typeof AtChar123usernameChar125KodyIdSettingsRoute
-  AtChar123usernameChar125KodyIdTriggersRoute: typeof AtChar123usernameChar125KodyIdTriggersRoute
   KodyAuthSplatRoute: typeof KodyAuthSplatRoute
-  AccountActivityRunIdRoute: typeof AccountActivityRunIdRoute
-  AccountAgentsNewRoute: typeof AccountAgentsNewRoute
-  AccountAgentsUsageRoute: typeof AccountAgentsUsageRoute
-  AccountBillingSuccessRoute: typeof AccountBillingSuccessRoute
-  AccountConnectionsNewRoute: typeof AccountConnectionsNewRoute
-  AccountConnectionsUsageRoute: typeof AccountConnectionsUsageRoute
-  AccountEmailMessageIdRoute: typeof AccountEmailMessageIdRoute
-  AccountIntegrationsIntegrationNameRoute: typeof AccountIntegrationsIntegrationNameRoute
-  AccountIntegrationsApproveRoute: typeof AccountIntegrationsApproveRoute
-  AccountJobsJobIdRoute: typeof AccountJobsJobIdRoute
-  AccountMcpServersServerIdRoute: typeof AccountMcpServersServerIdRoute
-  AccountMcpServersNewRoute: typeof AccountMcpServersNewRoute
-  AccountMemoriesMemoryIdRoute: typeof AccountMemoriesMemoryIdRoute
-  AccountOrganizationsNewRoute: typeof AccountOrganizationsNewRoute
-  AccountPackagesPackageIdRoute: typeof AccountPackagesPackageIdRouteWithChildren
-  AccountSecretProvidersApproveRoute: typeof AccountSecretProvidersApproveRoute
-  AccountSecretsApproveRoute: typeof AccountSecretsApproveRoute
-  AccountSecretsNewRoute: typeof AccountSecretsNewRoute
-  AccountWorkflowsWorkflowIdRoute: typeof AccountWorkflowsWorkflowIdRoute
-  AdminAccountDeletionsApprovalIdRoute: typeof AdminAccountDeletionsApprovalIdRoute
-  AdminPlatformIntegrationsSlugRoute: typeof AdminPlatformIntegrationsSlugRoute
-  AdminPlatformIntegrationsNewRoute: typeof AdminPlatformIntegrationsNewRoute
-  AdminUsersStableUserIdRoute: typeof AdminUsersStableUserIdRoute
   AuthProviderCallbackRoute: typeof AuthProviderCallbackRoute
   BlogSlugOgDotpngRoute: typeof BlogSlugOgDotpngRoute
   CommunityListingIdOgDotpngRoute: typeof CommunityListingIdOgDotpngRoute
@@ -3397,55 +3327,20 @@ export interface RootRouteChildren {
   IntegrationsProviderMarksSlugRoute: typeof IntegrationsProviderMarksSlugRoute
   OauthPackageAppAuthorizeRoute: typeof OauthPackageAppAuthorizeRoute
   ProfilesUsernameOgDotpngRoute: typeof ProfilesUsernameOgDotpngRoute
-  AccountPackagesIndexRoute: typeof AccountPackagesIndexRoute
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
-  AtChar123orgSlugChar125ActivityRunIdRoute: typeof AtChar123orgSlugChar125ActivityRunIdRoute
-  AtChar123orgSlugChar125AgentsNewRoute: typeof AtChar123orgSlugChar125AgentsNewRoute
-  AtChar123orgSlugChar125AgentsUsageRoute: typeof AtChar123orgSlugChar125AgentsUsageRoute
-  AtChar123orgSlugChar125ApprovalsBundleIdRoute: typeof AtChar123orgSlugChar125ApprovalsBundleIdRoute
-  AtChar123orgSlugChar125BillingSuccessRoute: typeof AtChar123orgSlugChar125BillingSuccessRoute
   AtChar123orgSlugChar125ConnectionsSplatRoute: typeof AtChar123orgSlugChar125ConnectionsSplatRoute
-  AtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AtChar123orgSlugChar125CredentialsCredentialIdRoute
-  AtChar123orgSlugChar125CredentialsNewRoute: typeof AtChar123orgSlugChar125CredentialsNewRoute
-  AtChar123orgSlugChar125EmailMessageIdRoute: typeof AtChar123orgSlugChar125EmailMessageIdRoute
-  AtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AtChar123orgSlugChar125IntegrationsIntegrationNameRoute
-  AtChar123orgSlugChar125IntegrationsApproveRoute: typeof AtChar123orgSlugChar125IntegrationsApproveRoute
-  AtChar123orgSlugChar125JobsJobIdRoute: typeof AtChar123orgSlugChar125JobsJobIdRoute
-  AtChar123orgSlugChar125McpServersServerIdRoute: typeof AtChar123orgSlugChar125McpServersServerIdRoute
-  AtChar123orgSlugChar125McpServersNewRoute: typeof AtChar123orgSlugChar125McpServersNewRoute
-  AtChar123orgSlugChar125MemoriesMemoryIdRoute: typeof AtChar123orgSlugChar125MemoriesMemoryIdRoute
-  AtChar123orgSlugChar125SecretProvidersApproveRoute: typeof AtChar123orgSlugChar125SecretProvidersApproveRoute
-  AtChar123orgSlugChar125SecretsApproveRoute: typeof AtChar123orgSlugChar125SecretsApproveRoute
-  AtChar123orgSlugChar125SecretsNewRoute: typeof AtChar123orgSlugChar125SecretsNewRoute
-  AtChar123orgSlugChar125WorkflowsWorkflowIdRoute: typeof AtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   AtChar123usernameChar125KodyIdAssetsSplatRoute: typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
-  AtChar123usernameChar125KodyIdFilesSplatRoute: typeof AtChar123usernameChar125KodyIdFilesSplatRoute
   AtChar123usernameChar125KodyIdIconIconCommitRoute: typeof AtChar123usernameChar125KodyIdIconIconCommitRoute
-  AccountAgentsNewAgentRoute: typeof AccountAgentsNewAgentRoute
-  AccountConnectionsNewAgentRoute: typeof AccountConnectionsNewAgentRoute
-  AccountIntegrationsAppsAppSlugRoute: typeof AccountIntegrationsAppsAppSlugRoute
   AccountMcpServersLogosServerIdRoute: typeof AccountMcpServersLogosServerIdRoute
   AccountMcpServersOauthCallbackRoute: typeof AccountMcpServersOauthCallbackRoute
-  AccountPackagesPackageIdApproveCapabilitiesRoute: typeof AccountPackagesPackageIdApproveCapabilitiesRoute
-  AccountPackagesPackageIdApprovePublishRoute: typeof AccountPackagesPackageIdApprovePublishRoute
-  AccountSecretsUserSecretNameRoute: typeof AccountSecretsUserSecretNameRoute
   CommunityListingIdAssetsSplatRoute: typeof CommunityListingIdAssetsSplatRoute
   CommunityListingIdIconIconCommitRoute: typeof CommunityListingIdIconIconCommitRoute
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
   OrgsOrgSlugAvatarFileRoute: typeof OrgsOrgSlugAvatarFileRoute
   ProfilesUsernameAvatarFileRoute: typeof ProfilesUsernameAvatarFileRoute
-  AtChar123orgSlugChar125AgentsNewAgentRoute: typeof AtChar123orgSlugChar125AgentsNewAgentRoute
-  AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
-  AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
-  AtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AtChar123orgSlugChar125SecretsUserSecretNameRoute
   AtChar123usernameChar125KodyIdRawRefSplatRoute: typeof AtChar123usernameChar125KodyIdRawRefSplatRoute
-  AtChar123usernameChar125KodyIdTreeRefSplatRoute: typeof AtChar123usernameChar125KodyIdTreeRefSplatRoute
   AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute: typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute
   AccountReposRepoIdIconIconCommitRoute: typeof AccountReposRepoIdIconIconCommitRoute
-  AccountSecretsPackagePackageIdSecretNameRoute: typeof AccountSecretsPackagePackageIdSecretNameRoute
-  AccountSecretsSessionSessionIdSecretNameRoute: typeof AccountSecretsSessionSessionIdSecretNameRoute
-  AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute: typeof AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
-  AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute: typeof AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -3471,11 +3366,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof R500RouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$username}': {
-      id: '/@{$username}'
-      path: '/@{$username}'
-      fullPath: '/@{$username}'
-      preLoaderRoute: typeof AtChar123usernameChar125RouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -3483,13 +3378,6 @@ declare module '@tanstack/react-router' {
       path: '/about'
       fullPath: '/about'
       preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account': {
-      id: '/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -3751,116 +3639,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownSecurityDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$username}_/$kodyId': {
-      id: '/@{$username}_/$kodyId'
-      path: '/@{$username}/$kodyId'
-      fullPath: '/@{$username}/$kodyId'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/@{$username}': {
+      id: '/_app/@{$username}'
+      path: '/@{$username}'
+      fullPath: '/@{$username}'
+      preLoaderRoute: typeof AppAtChar123usernameChar125RouteImport
+      parentRoute: typeof AppRoute
     }
-    '/account_/activity': {
-      id: '/account_/activity'
-      path: '/account/activity'
-      fullPath: '/account/activity'
-      preLoaderRoute: typeof AccountActivityRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/agents': {
-      id: '/account_/agents'
-      path: '/account/agents'
-      fullPath: '/account/agents'
-      preLoaderRoute: typeof AccountAgentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/billing': {
-      id: '/account_/billing'
-      path: '/account/billing'
-      fullPath: '/account/billing'
-      preLoaderRoute: typeof AccountBillingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/connections': {
-      id: '/account_/connections'
-      path: '/account/connections'
-      fullPath: '/account/connections'
-      preLoaderRoute: typeof AccountConnectionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/credentials': {
-      id: '/account_/credentials'
-      path: '/account/credentials'
-      fullPath: '/account/credentials'
-      preLoaderRoute: typeof AccountCredentialsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/credits': {
-      id: '/account_/credits'
-      path: '/account/credits'
-      fullPath: '/account/credits'
-      preLoaderRoute: typeof AccountCreditsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/data': {
-      id: '/account_/data'
-      path: '/account/data'
-      fullPath: '/account/data'
-      preLoaderRoute: typeof AccountDataRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/email': {
-      id: '/account_/email'
-      path: '/account/email'
-      fullPath: '/account/email'
-      preLoaderRoute: typeof AccountEmailRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/experiments': {
-      id: '/account_/experiments'
-      path: '/account/experiments'
-      fullPath: '/account/experiments'
-      preLoaderRoute: typeof AccountExperimentsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account': {
+      id: '/_app/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AppAccountRouteImport
+      parentRoute: typeof AppRoute
     }
     '/account_/export.json': {
       id: '/account_/export.json'
       path: '/account/export.json'
       fullPath: '/account/export.json'
       preLoaderRoute: typeof AccountExportDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/integrations': {
-      id: '/account_/integrations'
-      path: '/account/integrations'
-      fullPath: '/account/integrations'
-      preLoaderRoute: typeof AccountIntegrationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/jobs': {
-      id: '/account_/jobs'
-      path: '/account/jobs'
-      fullPath: '/account/jobs'
-      preLoaderRoute: typeof AccountJobsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/mcp-oauth-clients': {
-      id: '/account_/mcp-oauth-clients'
-      path: '/account/mcp-oauth-clients'
-      fullPath: '/account/mcp-oauth-clients'
-      preLoaderRoute: typeof AccountMcpOauthClientsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/mcp-servers': {
-      id: '/account_/mcp-servers'
-      path: '/account/mcp-servers'
-      fullPath: '/account/mcp-servers'
-      preLoaderRoute: typeof AccountMcpServersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/memories': {
-      id: '/account_/memories'
-      path: '/account/memories'
-      fullPath: '/account/memories'
-      preLoaderRoute: typeof AccountMemoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/account_/memories-export.json': {
@@ -3870,172 +3667,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountMemoriesExportDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/account_/organizations': {
-      id: '/account_/organizations'
-      path: '/account/organizations'
-      fullPath: '/account/organizations'
-      preLoaderRoute: typeof AccountOrganizationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/account_/packages.json': {
       id: '/account_/packages.json'
       path: '/account/packages.json'
       fullPath: '/account/packages.json'
       preLoaderRoute: typeof AccountPackagesDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/passkeys': {
-      id: '/account_/passkeys'
-      path: '/account/passkeys'
-      fullPath: '/account/passkeys'
-      preLoaderRoute: typeof AccountPasskeysRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secret-providers': {
-      id: '/account_/secret-providers'
-      path: '/account/secret-providers'
-      fullPath: '/account/secret-providers'
-      preLoaderRoute: typeof AccountSecretProvidersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secrets': {
-      id: '/account_/secrets'
-      path: '/account/secrets'
-      fullPath: '/account/secrets'
-      preLoaderRoute: typeof AccountSecretsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/security': {
-      id: '/account_/security'
-      path: '/account/security'
-      fullPath: '/account/security'
-      preLoaderRoute: typeof AccountSecurityRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/two-factor': {
-      id: '/account_/two-factor'
-      path: '/account/two-factor'
-      fullPath: '/account/two-factor'
-      preLoaderRoute: typeof AccountTwoFactorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/usage': {
-      id: '/account_/usage'
-      path: '/account/usage'
-      fullPath: '/account/usage'
-      preLoaderRoute: typeof AccountUsageRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/waiting': {
-      id: '/account_/waiting'
-      path: '/account/waiting'
-      fullPath: '/account/waiting'
-      preLoaderRoute: typeof AccountWaitingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/webhooks': {
-      id: '/account_/webhooks'
-      path: '/account/webhooks'
-      fullPath: '/account/webhooks'
-      preLoaderRoute: typeof AccountWebhooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/workflows': {
-      id: '/account_/workflows'
-      path: '/account/workflows'
-      fullPath: '/account/workflows'
-      preLoaderRoute: typeof AccountWorkflowsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/': {
-      id: '/admin/'
-      path: '/admin'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/$': {
-      id: '/admin/$'
-      path: '/admin/$'
-      fullPath: '/admin/$'
-      preLoaderRoute: typeof AdminSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/codemods': {
-      id: '/admin/codemods'
-      path: '/admin/codemods'
-      fullPath: '/admin/codemods'
-      preLoaderRoute: typeof AdminCodemodsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/community-reports': {
-      id: '/admin/community-reports'
-      path: '/admin/community-reports'
-      fullPath: '/admin/community-reports'
-      preLoaderRoute: typeof AdminCommunityReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/feature-flags': {
-      id: '/admin/feature-flags'
-      path: '/admin/feature-flags'
-      fullPath: '/admin/feature-flags'
-      preLoaderRoute: typeof AdminFeatureFlagsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/insights': {
-      id: '/admin/insights'
-      path: '/admin/insights'
-      fullPath: '/admin/insights'
-      preLoaderRoute: typeof AdminInsightsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/platform-feedback': {
-      id: '/admin/platform-feedback'
-      path: '/admin/platform-feedback'
-      fullPath: '/admin/platform-feedback'
-      preLoaderRoute: typeof AdminPlatformFeedbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/platform-integrations': {
-      id: '/admin/platform-integrations'
-      path: '/admin/platform-integrations'
-      fullPath: '/admin/platform-integrations'
-      preLoaderRoute: typeof AdminPlatformIntegrationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/provider-marks': {
-      id: '/admin/provider-marks'
-      path: '/admin/provider-marks'
-      fullPath: '/admin/provider-marks'
-      preLoaderRoute: typeof AdminProviderMarksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/reserved-usernames': {
-      id: '/admin/reserved-usernames'
-      path: '/admin/reserved-usernames'
-      fullPath: '/admin/reserved-usernames'
-      preLoaderRoute: typeof AdminReservedUsernamesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/roles': {
-      id: '/admin/roles'
-      path: '/admin/roles'
-      fullPath: '/admin/roles'
-      preLoaderRoute: typeof AdminRolesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/system-email': {
-      id: '/admin/system-email'
-      path: '/admin/system-email'
-      fullPath: '/admin/system-email'
-      preLoaderRoute: typeof AdminSystemEmailRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog/': {
@@ -4395,34 +4031,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownMcpServerCardDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$orgSlug}_/-/activity': {
-      id: '/@{$orgSlug}_/-/activity'
-      path: '/@{$orgSlug}/-/activity'
-      fullPath: '/@{$orgSlug}/-/activity'
-      preLoaderRoute: typeof AtChar123orgSlugChar125ActivityRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/agents': {
-      id: '/@{$orgSlug}_/-/agents'
-      path: '/@{$orgSlug}/-/agents'
-      fullPath: '/@{$orgSlug}/-/agents'
-      preLoaderRoute: typeof AtChar123orgSlugChar125AgentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/billing': {
-      id: '/@{$orgSlug}_/-/billing'
-      path: '/@{$orgSlug}/-/billing'
-      fullPath: '/@{$orgSlug}/-/billing'
-      preLoaderRoute: typeof AtChar123orgSlugChar125BillingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/collaborators': {
-      id: '/@{$orgSlug}_/-/collaborators'
-      path: '/@{$orgSlug}/-/collaborators'
-      fullPath: '/@{$orgSlug}/-/collaborators'
-      preLoaderRoute: typeof AtChar123orgSlugChar125CollaboratorsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/@{$orgSlug}_/-/connections': {
       id: '/@{$orgSlug}_/-/connections'
       path: '/@{$orgSlug}/-/connections'
@@ -4430,382 +4038,277 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123orgSlugChar125ConnectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$orgSlug}_/-/credentials': {
-      id: '/@{$orgSlug}_/-/credentials'
-      path: '/@{$orgSlug}/-/credentials'
-      fullPath: '/@{$orgSlug}/-/credentials'
-      preLoaderRoute: typeof AtChar123orgSlugChar125CredentialsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/@{$username}_/$kodyId': {
+      id: '/_app/@{$username}_/$kodyId'
+      path: '/@{$username}/$kodyId'
+      fullPath: '/@{$username}/$kodyId'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/credits': {
-      id: '/@{$orgSlug}_/-/credits'
-      path: '/@{$orgSlug}/-/credits'
-      fullPath: '/@{$orgSlug}/-/credits'
-      preLoaderRoute: typeof AtChar123orgSlugChar125CreditsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/activity': {
+      id: '/_app/account_/activity'
+      path: '/account/activity'
+      fullPath: '/account/activity'
+      preLoaderRoute: typeof AppAccountActivityRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/email': {
-      id: '/@{$orgSlug}_/-/email'
-      path: '/@{$orgSlug}/-/email'
-      fullPath: '/@{$orgSlug}/-/email'
-      preLoaderRoute: typeof AtChar123orgSlugChar125EmailRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/agents': {
+      id: '/_app/account_/agents'
+      path: '/account/agents'
+      fullPath: '/account/agents'
+      preLoaderRoute: typeof AppAccountAgentsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/follows': {
-      id: '/@{$orgSlug}_/-/follows'
-      path: '/@{$orgSlug}/-/follows'
-      fullPath: '/@{$orgSlug}/-/follows'
-      preLoaderRoute: typeof AtChar123orgSlugChar125FollowsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/billing': {
+      id: '/_app/account_/billing'
+      path: '/account/billing'
+      fullPath: '/account/billing'
+      preLoaderRoute: typeof AppAccountBillingRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/grants': {
-      id: '/@{$orgSlug}_/-/grants'
-      path: '/@{$orgSlug}/-/grants'
-      fullPath: '/@{$orgSlug}/-/grants'
-      preLoaderRoute: typeof AtChar123orgSlugChar125GrantsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/connections': {
+      id: '/_app/account_/connections'
+      path: '/account/connections'
+      fullPath: '/account/connections'
+      preLoaderRoute: typeof AppAccountConnectionsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/integrations': {
-      id: '/@{$orgSlug}_/-/integrations'
-      path: '/@{$orgSlug}/-/integrations'
-      fullPath: '/@{$orgSlug}/-/integrations'
-      preLoaderRoute: typeof AtChar123orgSlugChar125IntegrationsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/credentials': {
+      id: '/_app/account_/credentials'
+      path: '/account/credentials'
+      fullPath: '/account/credentials'
+      preLoaderRoute: typeof AppAccountCredentialsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/jobs': {
-      id: '/@{$orgSlug}_/-/jobs'
-      path: '/@{$orgSlug}/-/jobs'
-      fullPath: '/@{$orgSlug}/-/jobs'
-      preLoaderRoute: typeof AtChar123orgSlugChar125JobsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/credits': {
+      id: '/_app/account_/credits'
+      path: '/account/credits'
+      fullPath: '/account/credits'
+      preLoaderRoute: typeof AppAccountCreditsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/mcp-servers': {
-      id: '/@{$orgSlug}_/-/mcp-servers'
-      path: '/@{$orgSlug}/-/mcp-servers'
-      fullPath: '/@{$orgSlug}/-/mcp-servers'
-      preLoaderRoute: typeof AtChar123orgSlugChar125McpServersRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/data': {
+      id: '/_app/account_/data'
+      path: '/account/data'
+      fullPath: '/account/data'
+      preLoaderRoute: typeof AppAccountDataRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/members': {
-      id: '/@{$orgSlug}_/-/members'
-      path: '/@{$orgSlug}/-/members'
-      fullPath: '/@{$orgSlug}/-/members'
-      preLoaderRoute: typeof AtChar123orgSlugChar125MembersRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/email': {
+      id: '/_app/account_/email'
+      path: '/account/email'
+      fullPath: '/account/email'
+      preLoaderRoute: typeof AppAccountEmailRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/memories': {
-      id: '/@{$orgSlug}_/-/memories'
-      path: '/@{$orgSlug}/-/memories'
-      fullPath: '/@{$orgSlug}/-/memories'
-      preLoaderRoute: typeof AtChar123orgSlugChar125MemoriesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/experiments': {
+      id: '/_app/account_/experiments'
+      path: '/account/experiments'
+      fullPath: '/account/experiments'
+      preLoaderRoute: typeof AppAccountExperimentsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/overview': {
-      id: '/@{$orgSlug}_/-/overview'
-      path: '/@{$orgSlug}/-/overview'
-      fullPath: '/@{$orgSlug}/-/overview'
-      preLoaderRoute: typeof AtChar123orgSlugChar125OverviewRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/integrations': {
+      id: '/_app/account_/integrations'
+      path: '/account/integrations'
+      fullPath: '/account/integrations'
+      preLoaderRoute: typeof AppAccountIntegrationsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/packages': {
-      id: '/@{$orgSlug}_/-/packages'
-      path: '/@{$orgSlug}/-/packages'
-      fullPath: '/@{$orgSlug}/-/packages'
-      preLoaderRoute: typeof AtChar123orgSlugChar125PackagesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/jobs': {
+      id: '/_app/account_/jobs'
+      path: '/account/jobs'
+      fullPath: '/account/jobs'
+      preLoaderRoute: typeof AppAccountJobsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/repositories': {
-      id: '/@{$orgSlug}_/-/repositories'
-      path: '/@{$orgSlug}/-/repositories'
-      fullPath: '/@{$orgSlug}/-/repositories'
-      preLoaderRoute: typeof AtChar123orgSlugChar125RepositoriesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/mcp-oauth-clients': {
+      id: '/_app/account_/mcp-oauth-clients'
+      path: '/account/mcp-oauth-clients'
+      fullPath: '/account/mcp-oauth-clients'
+      preLoaderRoute: typeof AppAccountMcpOauthClientsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/secret-providers': {
-      id: '/@{$orgSlug}_/-/secret-providers'
-      path: '/@{$orgSlug}/-/secret-providers'
-      fullPath: '/@{$orgSlug}/-/secret-providers'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretProvidersRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/mcp-servers': {
+      id: '/_app/account_/mcp-servers'
+      path: '/account/mcp-servers'
+      fullPath: '/account/mcp-servers'
+      preLoaderRoute: typeof AppAccountMcpServersRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/secrets': {
-      id: '/@{$orgSlug}_/-/secrets'
-      path: '/@{$orgSlug}/-/secrets'
-      fullPath: '/@{$orgSlug}/-/secrets'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/memories': {
+      id: '/_app/account_/memories'
+      path: '/account/memories'
+      fullPath: '/account/memories'
+      preLoaderRoute: typeof AppAccountMemoriesRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/settings': {
-      id: '/@{$orgSlug}_/-/settings'
-      path: '/@{$orgSlug}/-/settings'
-      fullPath: '/@{$orgSlug}/-/settings'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SettingsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/organizations': {
+      id: '/_app/account_/organizations'
+      path: '/account/organizations'
+      fullPath: '/account/organizations'
+      preLoaderRoute: typeof AppAccountOrganizationsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/teams': {
-      id: '/@{$orgSlug}_/-/teams'
-      path: '/@{$orgSlug}/-/teams'
-      fullPath: '/@{$orgSlug}/-/teams'
-      preLoaderRoute: typeof AtChar123orgSlugChar125TeamsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/passkeys': {
+      id: '/_app/account_/passkeys'
+      path: '/account/passkeys'
+      fullPath: '/account/passkeys'
+      preLoaderRoute: typeof AppAccountPasskeysRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/usage': {
-      id: '/@{$orgSlug}_/-/usage'
-      path: '/@{$orgSlug}/-/usage'
-      fullPath: '/@{$orgSlug}/-/usage'
-      preLoaderRoute: typeof AtChar123orgSlugChar125UsageRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/secret-providers': {
+      id: '/_app/account_/secret-providers'
+      path: '/account/secret-providers'
+      fullPath: '/account/secret-providers'
+      preLoaderRoute: typeof AppAccountSecretProvidersRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/waiting': {
-      id: '/@{$orgSlug}_/-/waiting'
-      path: '/@{$orgSlug}/-/waiting'
-      fullPath: '/@{$orgSlug}/-/waiting'
-      preLoaderRoute: typeof AtChar123orgSlugChar125WaitingRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/secrets': {
+      id: '/_app/account_/secrets'
+      path: '/account/secrets'
+      fullPath: '/account/secrets'
+      preLoaderRoute: typeof AppAccountSecretsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/webhooks': {
-      id: '/@{$orgSlug}_/-/webhooks'
-      path: '/@{$orgSlug}/-/webhooks'
-      fullPath: '/@{$orgSlug}/-/webhooks'
-      preLoaderRoute: typeof AtChar123orgSlugChar125WebhooksRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/security': {
+      id: '/_app/account_/security'
+      path: '/account/security'
+      fullPath: '/account/security'
+      preLoaderRoute: typeof AppAccountSecurityRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/workflows': {
-      id: '/@{$orgSlug}_/-/workflows'
-      path: '/@{$orgSlug}/-/workflows'
-      fullPath: '/@{$orgSlug}/-/workflows'
-      preLoaderRoute: typeof AtChar123orgSlugChar125WorkflowsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/two-factor': {
+      id: '/_app/account_/two-factor'
+      path: '/account/two-factor'
+      fullPath: '/account/two-factor'
+      preLoaderRoute: typeof AppAccountTwoFactorRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/approve-capabilities': {
-      id: '/@{$username}_/$kodyId_/approve-capabilities'
-      path: '/@{$username}/$kodyId/approve-capabilities'
-      fullPath: '/@{$username}/$kodyId/approve-capabilities'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/usage': {
+      id: '/_app/account_/usage'
+      path: '/account/usage'
+      fullPath: '/account/usage'
+      preLoaderRoute: typeof AppAccountUsageRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/approve-credentials': {
-      id: '/@{$username}_/$kodyId_/approve-credentials'
-      path: '/@{$username}/$kodyId/approve-credentials'
-      fullPath: '/@{$username}/$kodyId/approve-credentials'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdApproveCredentialsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/waiting': {
+      id: '/_app/account_/waiting'
+      path: '/account/waiting'
+      fullPath: '/account/waiting'
+      preLoaderRoute: typeof AppAccountWaitingRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/approve-publish': {
-      id: '/@{$username}_/$kodyId_/approve-publish'
-      path: '/@{$username}/$kodyId/approve-publish'
-      fullPath: '/@{$username}/$kodyId/approve-publish'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdApprovePublishRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/webhooks': {
+      id: '/_app/account_/webhooks'
+      path: '/account/webhooks'
+      fullPath: '/account/webhooks'
+      preLoaderRoute: typeof AppAccountWebhooksRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/collaborators': {
-      id: '/@{$username}_/$kodyId_/collaborators'
-      path: '/@{$username}/$kodyId/collaborators'
-      fullPath: '/@{$username}/$kodyId/collaborators'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdCollaboratorsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/account_/workflows': {
+      id: '/_app/account_/workflows'
+      path: '/account/workflows'
+      fullPath: '/account/workflows'
+      preLoaderRoute: typeof AppAccountWorkflowsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/credentials': {
-      id: '/@{$username}_/$kodyId_/credentials'
-      path: '/@{$username}/$kodyId/credentials'
-      fullPath: '/@{$username}/$kodyId/credentials'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdCredentialsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/admin/': {
+      id: '/_app/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AppAdminIndexRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/mappings': {
-      id: '/@{$username}_/$kodyId_/mappings'
-      path: '/@{$username}/$kodyId/mappings'
-      fullPath: '/@{$username}/$kodyId/mappings'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdMappingsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/admin/$': {
+      id: '/_app/admin/$'
+      path: '/admin/$'
+      fullPath: '/admin/$'
+      preLoaderRoute: typeof AppAdminSplatRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/settings': {
-      id: '/@{$username}_/$kodyId_/settings'
-      path: '/@{$username}/$kodyId/settings'
-      fullPath: '/@{$username}/$kodyId/settings'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdSettingsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/admin/codemods': {
+      id: '/_app/admin/codemods'
+      path: '/admin/codemods'
+      fullPath: '/admin/codemods'
+      preLoaderRoute: typeof AppAdminCodemodsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$username}_/$kodyId_/triggers': {
-      id: '/@{$username}_/$kodyId_/triggers'
-      path: '/@{$username}/$kodyId/triggers'
-      fullPath: '/@{$username}/$kodyId/triggers'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdTriggersRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/admin/community-reports': {
+      id: '/_app/admin/community-reports'
+      path: '/admin/community-reports'
+      fullPath: '/admin/community-reports'
+      preLoaderRoute: typeof AppAdminCommunityReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/feature-flags': {
+      id: '/_app/admin/feature-flags'
+      path: '/admin/feature-flags'
+      fullPath: '/admin/feature-flags'
+      preLoaderRoute: typeof AppAdminFeatureFlagsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/insights': {
+      id: '/_app/admin/insights'
+      path: '/admin/insights'
+      fullPath: '/admin/insights'
+      preLoaderRoute: typeof AppAdminInsightsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/platform-feedback': {
+      id: '/_app/admin/platform-feedback'
+      path: '/admin/platform-feedback'
+      fullPath: '/admin/platform-feedback'
+      preLoaderRoute: typeof AppAdminPlatformFeedbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/platform-integrations': {
+      id: '/_app/admin/platform-integrations'
+      path: '/admin/platform-integrations'
+      fullPath: '/admin/platform-integrations'
+      preLoaderRoute: typeof AppAdminPlatformIntegrationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/provider-marks': {
+      id: '/_app/admin/provider-marks'
+      path: '/admin/provider-marks'
+      fullPath: '/admin/provider-marks'
+      preLoaderRoute: typeof AppAdminProviderMarksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/reserved-usernames': {
+      id: '/_app/admin/reserved-usernames'
+      path: '/admin/reserved-usernames'
+      fullPath: '/admin/reserved-usernames'
+      preLoaderRoute: typeof AppAdminReservedUsernamesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/roles': {
+      id: '/_app/admin/roles'
+      path: '/admin/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AppAdminRolesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/system-email': {
+      id: '/_app/admin/system-email'
+      path: '/admin/system-email'
+      fullPath: '/admin/system-email'
+      preLoaderRoute: typeof AppAdminSystemEmailRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/users': {
+      id: '/_app/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AppAdminUsersRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_kody/auth/$': {
       id: '/_kody/auth/$'
       path: '/_kody/auth/$'
       fullPath: '/_kody/auth/$'
       preLoaderRoute: typeof KodyAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/activity_/$runId': {
-      id: '/account_/activity_/$runId'
-      path: '/account/activity/$runId'
-      fullPath: '/account/activity/$runId'
-      preLoaderRoute: typeof AccountActivityRunIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/agents_/new': {
-      id: '/account_/agents_/new'
-      path: '/account/agents/new'
-      fullPath: '/account/agents/new'
-      preLoaderRoute: typeof AccountAgentsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/agents_/usage': {
-      id: '/account_/agents_/usage'
-      path: '/account/agents/usage'
-      fullPath: '/account/agents/usage'
-      preLoaderRoute: typeof AccountAgentsUsageRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/billing_/success': {
-      id: '/account_/billing_/success'
-      path: '/account/billing/success'
-      fullPath: '/account/billing/success'
-      preLoaderRoute: typeof AccountBillingSuccessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/connections_/new': {
-      id: '/account_/connections_/new'
-      path: '/account/connections/new'
-      fullPath: '/account/connections/new'
-      preLoaderRoute: typeof AccountConnectionsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/connections_/usage': {
-      id: '/account_/connections_/usage'
-      path: '/account/connections/usage'
-      fullPath: '/account/connections/usage'
-      preLoaderRoute: typeof AccountConnectionsUsageRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/email_/$messageId': {
-      id: '/account_/email_/$messageId'
-      path: '/account/email/$messageId'
-      fullPath: '/account/email/$messageId'
-      preLoaderRoute: typeof AccountEmailMessageIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/integrations_/$integrationName': {
-      id: '/account_/integrations_/$integrationName'
-      path: '/account/integrations/$integrationName'
-      fullPath: '/account/integrations/$integrationName'
-      preLoaderRoute: typeof AccountIntegrationsIntegrationNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/integrations_/approve': {
-      id: '/account_/integrations_/approve'
-      path: '/account/integrations/approve'
-      fullPath: '/account/integrations/approve'
-      preLoaderRoute: typeof AccountIntegrationsApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/jobs_/$jobId': {
-      id: '/account_/jobs_/$jobId'
-      path: '/account/jobs/$jobId'
-      fullPath: '/account/jobs/$jobId'
-      preLoaderRoute: typeof AccountJobsJobIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/mcp-servers_/$serverId': {
-      id: '/account_/mcp-servers_/$serverId'
-      path: '/account/mcp-servers/$serverId'
-      fullPath: '/account/mcp-servers/$serverId'
-      preLoaderRoute: typeof AccountMcpServersServerIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/mcp-servers_/new': {
-      id: '/account_/mcp-servers_/new'
-      path: '/account/mcp-servers/new'
-      fullPath: '/account/mcp-servers/new'
-      preLoaderRoute: typeof AccountMcpServersNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/memories_/$memoryId': {
-      id: '/account_/memories_/$memoryId'
-      path: '/account/memories/$memoryId'
-      fullPath: '/account/memories/$memoryId'
-      preLoaderRoute: typeof AccountMemoriesMemoryIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/organizations_/new': {
-      id: '/account_/organizations_/new'
-      path: '/account/organizations/new'
-      fullPath: '/account/organizations/new'
-      preLoaderRoute: typeof AccountOrganizationsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/packages/': {
-      id: '/account_/packages/'
-      path: '/account/packages'
-      fullPath: '/account/packages/'
-      preLoaderRoute: typeof AccountPackagesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/packages/$packageId': {
-      id: '/account_/packages/$packageId'
-      path: '/account/packages/$packageId'
-      fullPath: '/account/packages/$packageId'
-      preLoaderRoute: typeof AccountPackagesPackageIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secret-providers_/approve': {
-      id: '/account_/secret-providers_/approve'
-      path: '/account/secret-providers/approve'
-      fullPath: '/account/secret-providers/approve'
-      preLoaderRoute: typeof AccountSecretProvidersApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secrets_/approve': {
-      id: '/account_/secrets_/approve'
-      path: '/account/secrets/approve'
-      fullPath: '/account/secrets/approve'
-      preLoaderRoute: typeof AccountSecretsApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secrets_/new': {
-      id: '/account_/secrets_/new'
-      path: '/account/secrets/new'
-      fullPath: '/account/secrets/new'
-      preLoaderRoute: typeof AccountSecretsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/workflows_/$workflowId': {
-      id: '/account_/workflows_/$workflowId'
-      path: '/account/workflows/$workflowId'
-      fullPath: '/account/workflows/$workflowId'
-      preLoaderRoute: typeof AccountWorkflowsWorkflowIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/account-deletions_/$approvalId': {
-      id: '/admin/account-deletions_/$approvalId'
-      path: '/admin/account-deletions/$approvalId'
-      fullPath: '/admin/account-deletions/$approvalId'
-      preLoaderRoute: typeof AdminAccountDeletionsApprovalIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/platform-integrations_/$slug': {
-      id: '/admin/platform-integrations_/$slug'
-      path: '/admin/platform-integrations/$slug'
-      fullPath: '/admin/platform-integrations/$slug'
-      preLoaderRoute: typeof AdminPlatformIntegrationsSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/platform-integrations_/new': {
-      id: '/admin/platform-integrations_/new'
-      path: '/admin/platform-integrations/new'
-      fullPath: '/admin/platform-integrations/new'
-      preLoaderRoute: typeof AdminPlatformIntegrationsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/users_/$stableUserId': {
-      id: '/admin/users_/$stableUserId'
-      path: '/admin/users/$stableUserId'
-      fullPath: '/admin/users/$stableUserId'
-      preLoaderRoute: typeof AdminUsersStableUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth_/$provider_/callback': {
@@ -4892,137 +4395,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$orgSlug}_/-/activity_/$runId': {
-      id: '/@{$orgSlug}_/-/activity_/$runId'
-      path: '/@{$orgSlug}/-/activity/$runId'
-      fullPath: '/@{$orgSlug}/-/activity/$runId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125ActivityRunIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/agents_/new': {
-      id: '/@{$orgSlug}_/-/agents_/new'
-      path: '/@{$orgSlug}/-/agents/new'
-      fullPath: '/@{$orgSlug}/-/agents/new'
-      preLoaderRoute: typeof AtChar123orgSlugChar125AgentsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/agents_/usage': {
-      id: '/@{$orgSlug}_/-/agents_/usage'
-      path: '/@{$orgSlug}/-/agents/usage'
-      fullPath: '/@{$orgSlug}/-/agents/usage'
-      preLoaderRoute: typeof AtChar123orgSlugChar125AgentsUsageRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/approvals/$bundleId': {
-      id: '/@{$orgSlug}_/-/approvals/$bundleId'
-      path: '/@{$orgSlug}/-/approvals/$bundleId'
-      fullPath: '/@{$orgSlug}/-/approvals/$bundleId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125ApprovalsBundleIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/billing_/success': {
-      id: '/@{$orgSlug}_/-/billing_/success'
-      path: '/@{$orgSlug}/-/billing/success'
-      fullPath: '/@{$orgSlug}/-/billing/success'
-      preLoaderRoute: typeof AtChar123orgSlugChar125BillingSuccessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/@{$orgSlug}_/-/connections_/$': {
       id: '/@{$orgSlug}_/-/connections_/$'
       path: '/@{$orgSlug}/-/connections/$'
       fullPath: '/@{$orgSlug}/-/connections/$'
       preLoaderRoute: typeof AtChar123orgSlugChar125ConnectionsSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/credentials_/$credentialId': {
-      id: '/@{$orgSlug}_/-/credentials_/$credentialId'
-      path: '/@{$orgSlug}/-/credentials/$credentialId'
-      fullPath: '/@{$orgSlug}/-/credentials/$credentialId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125CredentialsCredentialIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/credentials_/new': {
-      id: '/@{$orgSlug}_/-/credentials_/new'
-      path: '/@{$orgSlug}/-/credentials/new'
-      fullPath: '/@{$orgSlug}/-/credentials/new'
-      preLoaderRoute: typeof AtChar123orgSlugChar125CredentialsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/email_/$messageId': {
-      id: '/@{$orgSlug}_/-/email_/$messageId'
-      path: '/@{$orgSlug}/-/email/$messageId'
-      fullPath: '/@{$orgSlug}/-/email/$messageId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125EmailMessageIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/integrations_/$integrationName': {
-      id: '/@{$orgSlug}_/-/integrations_/$integrationName'
-      path: '/@{$orgSlug}/-/integrations/$integrationName'
-      fullPath: '/@{$orgSlug}/-/integrations/$integrationName'
-      preLoaderRoute: typeof AtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/integrations_/approve': {
-      id: '/@{$orgSlug}_/-/integrations_/approve'
-      path: '/@{$orgSlug}/-/integrations/approve'
-      fullPath: '/@{$orgSlug}/-/integrations/approve'
-      preLoaderRoute: typeof AtChar123orgSlugChar125IntegrationsApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/jobs_/$jobId': {
-      id: '/@{$orgSlug}_/-/jobs_/$jobId'
-      path: '/@{$orgSlug}/-/jobs/$jobId'
-      fullPath: '/@{$orgSlug}/-/jobs/$jobId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125JobsJobIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/mcp-servers_/$serverId': {
-      id: '/@{$orgSlug}_/-/mcp-servers_/$serverId'
-      path: '/@{$orgSlug}/-/mcp-servers/$serverId'
-      fullPath: '/@{$orgSlug}/-/mcp-servers/$serverId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125McpServersServerIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/mcp-servers_/new': {
-      id: '/@{$orgSlug}_/-/mcp-servers_/new'
-      path: '/@{$orgSlug}/-/mcp-servers/new'
-      fullPath: '/@{$orgSlug}/-/mcp-servers/new'
-      preLoaderRoute: typeof AtChar123orgSlugChar125McpServersNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/memories_/$memoryId': {
-      id: '/@{$orgSlug}_/-/memories_/$memoryId'
-      path: '/@{$orgSlug}/-/memories/$memoryId'
-      fullPath: '/@{$orgSlug}/-/memories/$memoryId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125MemoriesMemoryIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/secret-providers_/approve': {
-      id: '/@{$orgSlug}_/-/secret-providers_/approve'
-      path: '/@{$orgSlug}/-/secret-providers/approve'
-      fullPath: '/@{$orgSlug}/-/secret-providers/approve'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretProvidersApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/secrets_/approve': {
-      id: '/@{$orgSlug}_/-/secrets_/approve'
-      path: '/@{$orgSlug}/-/secrets/approve'
-      fullPath: '/@{$orgSlug}/-/secrets/approve'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsApproveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/secrets_/new': {
-      id: '/@{$orgSlug}_/-/secrets_/new'
-      path: '/@{$orgSlug}/-/secrets/new'
-      fullPath: '/@{$orgSlug}/-/secrets/new'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/workflows_/$workflowId': {
-      id: '/@{$orgSlug}_/-/workflows_/$workflowId'
-      path: '/@{$orgSlug}/-/workflows/$workflowId'
-      fullPath: '/@{$orgSlug}/-/workflows/$workflowId'
-      preLoaderRoute: typeof AtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/@{$username}_/$kodyId_/assets_/$': {
@@ -5032,13 +4409,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123usernameChar125KodyIdAssetsSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$username}_/$kodyId_/files/$': {
-      id: '/@{$username}_/$kodyId_/files/$'
-      path: '/@{$username}/$kodyId/files/$'
-      fullPath: '/@{$username}/$kodyId/files/$'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdFilesSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/@{$username}_/$kodyId_/icon_/$iconCommit': {
       id: '/@{$username}_/$kodyId_/icon_/$iconCommit'
       path: '/@{$username}/$kodyId/icon/$iconCommit'
@@ -5046,26 +4416,404 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123usernameChar125KodyIdIconIconCommitRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/account_/agents_/new_/$agent': {
-      id: '/account_/agents_/new_/$agent'
-      path: '/account/agents/new/$agent'
-      fullPath: '/account/agents/new/$agent'
-      preLoaderRoute: typeof AccountAgentsNewAgentRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/@{$orgSlug}_/-/activity': {
+      id: '/_app/@{$orgSlug}_/-/activity'
+      path: '/@{$orgSlug}/-/activity'
+      fullPath: '/@{$orgSlug}/-/activity'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ActivityRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/account_/connections_/new_/$agent': {
-      id: '/account_/connections_/new_/$agent'
-      path: '/account/connections/new/$agent'
-      fullPath: '/account/connections/new/$agent'
-      preLoaderRoute: typeof AccountConnectionsNewAgentRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/@{$orgSlug}_/-/agents': {
+      id: '/_app/@{$orgSlug}_/-/agents'
+      path: '/@{$orgSlug}/-/agents'
+      fullPath: '/@{$orgSlug}/-/agents'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/account_/integrations_/apps/$appSlug': {
-      id: '/account_/integrations_/apps/$appSlug'
-      path: '/account/integrations/apps/$appSlug'
-      fullPath: '/account/integrations/apps/$appSlug'
-      preLoaderRoute: typeof AccountIntegrationsAppsAppSlugRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_app/@{$orgSlug}_/-/billing': {
+      id: '/_app/@{$orgSlug}_/-/billing'
+      path: '/@{$orgSlug}/-/billing'
+      fullPath: '/@{$orgSlug}/-/billing'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125BillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/collaborators': {
+      id: '/_app/@{$orgSlug}_/-/collaborators'
+      path: '/@{$orgSlug}/-/collaborators'
+      fullPath: '/@{$orgSlug}/-/collaborators'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CollaboratorsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/credentials': {
+      id: '/_app/@{$orgSlug}_/-/credentials'
+      path: '/@{$orgSlug}/-/credentials'
+      fullPath: '/@{$orgSlug}/-/credentials'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/credits': {
+      id: '/_app/@{$orgSlug}_/-/credits'
+      path: '/@{$orgSlug}/-/credits'
+      fullPath: '/@{$orgSlug}/-/credits'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CreditsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/email': {
+      id: '/_app/@{$orgSlug}_/-/email'
+      path: '/@{$orgSlug}/-/email'
+      fullPath: '/@{$orgSlug}/-/email'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/follows': {
+      id: '/_app/@{$orgSlug}_/-/follows'
+      path: '/@{$orgSlug}/-/follows'
+      fullPath: '/@{$orgSlug}/-/follows'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125FollowsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/grants': {
+      id: '/_app/@{$orgSlug}_/-/grants'
+      path: '/@{$orgSlug}/-/grants'
+      fullPath: '/@{$orgSlug}/-/grants'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125GrantsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/integrations': {
+      id: '/_app/@{$orgSlug}_/-/integrations'
+      path: '/@{$orgSlug}/-/integrations'
+      fullPath: '/@{$orgSlug}/-/integrations'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125IntegrationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/jobs': {
+      id: '/_app/@{$orgSlug}_/-/jobs'
+      path: '/@{$orgSlug}/-/jobs'
+      fullPath: '/@{$orgSlug}/-/jobs'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125JobsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/mcp-servers': {
+      id: '/_app/@{$orgSlug}_/-/mcp-servers'
+      path: '/@{$orgSlug}/-/mcp-servers'
+      fullPath: '/@{$orgSlug}/-/mcp-servers'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125McpServersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/members': {
+      id: '/_app/@{$orgSlug}_/-/members'
+      path: '/@{$orgSlug}/-/members'
+      fullPath: '/@{$orgSlug}/-/members'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125MembersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/memories': {
+      id: '/_app/@{$orgSlug}_/-/memories'
+      path: '/@{$orgSlug}/-/memories'
+      fullPath: '/@{$orgSlug}/-/memories'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125MemoriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/overview': {
+      id: '/_app/@{$orgSlug}_/-/overview'
+      path: '/@{$orgSlug}/-/overview'
+      fullPath: '/@{$orgSlug}/-/overview'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125OverviewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/packages': {
+      id: '/_app/@{$orgSlug}_/-/packages'
+      path: '/@{$orgSlug}/-/packages'
+      fullPath: '/@{$orgSlug}/-/packages'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125PackagesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/repositories': {
+      id: '/_app/@{$orgSlug}_/-/repositories'
+      path: '/@{$orgSlug}/-/repositories'
+      fullPath: '/@{$orgSlug}/-/repositories'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125RepositoriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secret-providers': {
+      id: '/_app/@{$orgSlug}_/-/secret-providers'
+      path: '/@{$orgSlug}/-/secret-providers'
+      fullPath: '/@{$orgSlug}/-/secret-providers'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secrets': {
+      id: '/_app/@{$orgSlug}_/-/secrets'
+      path: '/@{$orgSlug}/-/secrets'
+      fullPath: '/@{$orgSlug}/-/secrets'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/settings': {
+      id: '/_app/@{$orgSlug}_/-/settings'
+      path: '/@{$orgSlug}/-/settings'
+      fullPath: '/@{$orgSlug}/-/settings'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/teams': {
+      id: '/_app/@{$orgSlug}_/-/teams'
+      path: '/@{$orgSlug}/-/teams'
+      fullPath: '/@{$orgSlug}/-/teams'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125TeamsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/usage': {
+      id: '/_app/@{$orgSlug}_/-/usage'
+      path: '/@{$orgSlug}/-/usage'
+      fullPath: '/@{$orgSlug}/-/usage'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125UsageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/waiting': {
+      id: '/_app/@{$orgSlug}_/-/waiting'
+      path: '/@{$orgSlug}/-/waiting'
+      fullPath: '/@{$orgSlug}/-/waiting'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125WaitingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/webhooks': {
+      id: '/_app/@{$orgSlug}_/-/webhooks'
+      path: '/@{$orgSlug}/-/webhooks'
+      fullPath: '/@{$orgSlug}/-/webhooks'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125WebhooksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/workflows': {
+      id: '/_app/@{$orgSlug}_/-/workflows'
+      path: '/@{$orgSlug}/-/workflows'
+      fullPath: '/@{$orgSlug}/-/workflows'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125WorkflowsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/approve-capabilities': {
+      id: '/_app/@{$username}_/$kodyId_/approve-capabilities'
+      path: '/@{$username}/$kodyId/approve-capabilities'
+      fullPath: '/@{$username}/$kodyId/approve-capabilities'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdApproveCapabilitiesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/approve-credentials': {
+      id: '/_app/@{$username}_/$kodyId_/approve-credentials'
+      path: '/@{$username}/$kodyId/approve-credentials'
+      fullPath: '/@{$username}/$kodyId/approve-credentials'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/approve-publish': {
+      id: '/_app/@{$username}_/$kodyId_/approve-publish'
+      path: '/@{$username}/$kodyId/approve-publish'
+      fullPath: '/@{$username}/$kodyId/approve-publish'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdApprovePublishRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/collaborators': {
+      id: '/_app/@{$username}_/$kodyId_/collaborators'
+      path: '/@{$username}/$kodyId/collaborators'
+      fullPath: '/@{$username}/$kodyId/collaborators'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/credentials': {
+      id: '/_app/@{$username}_/$kodyId_/credentials'
+      path: '/@{$username}/$kodyId/credentials'
+      fullPath: '/@{$username}/$kodyId/credentials'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/mappings': {
+      id: '/_app/@{$username}_/$kodyId_/mappings'
+      path: '/@{$username}/$kodyId/mappings'
+      fullPath: '/@{$username}/$kodyId/mappings'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdMappingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/settings': {
+      id: '/_app/@{$username}_/$kodyId_/settings'
+      path: '/@{$username}/$kodyId/settings'
+      fullPath: '/@{$username}/$kodyId/settings'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/triggers': {
+      id: '/_app/@{$username}_/$kodyId_/triggers'
+      path: '/@{$username}/$kodyId/triggers'
+      fullPath: '/@{$username}/$kodyId/triggers'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdTriggersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/activity_/$runId': {
+      id: '/_app/account_/activity_/$runId'
+      path: '/account/activity/$runId'
+      fullPath: '/account/activity/$runId'
+      preLoaderRoute: typeof AppAccountActivityRunIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/agents_/new': {
+      id: '/_app/account_/agents_/new'
+      path: '/account/agents/new'
+      fullPath: '/account/agents/new'
+      preLoaderRoute: typeof AppAccountAgentsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/agents_/usage': {
+      id: '/_app/account_/agents_/usage'
+      path: '/account/agents/usage'
+      fullPath: '/account/agents/usage'
+      preLoaderRoute: typeof AppAccountAgentsUsageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/billing_/success': {
+      id: '/_app/account_/billing_/success'
+      path: '/account/billing/success'
+      fullPath: '/account/billing/success'
+      preLoaderRoute: typeof AppAccountBillingSuccessRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/connections_/new': {
+      id: '/_app/account_/connections_/new'
+      path: '/account/connections/new'
+      fullPath: '/account/connections/new'
+      preLoaderRoute: typeof AppAccountConnectionsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/connections_/usage': {
+      id: '/_app/account_/connections_/usage'
+      path: '/account/connections/usage'
+      fullPath: '/account/connections/usage'
+      preLoaderRoute: typeof AppAccountConnectionsUsageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/email_/$messageId': {
+      id: '/_app/account_/email_/$messageId'
+      path: '/account/email/$messageId'
+      fullPath: '/account/email/$messageId'
+      preLoaderRoute: typeof AppAccountEmailMessageIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/integrations_/$integrationName': {
+      id: '/_app/account_/integrations_/$integrationName'
+      path: '/account/integrations/$integrationName'
+      fullPath: '/account/integrations/$integrationName'
+      preLoaderRoute: typeof AppAccountIntegrationsIntegrationNameRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/integrations_/approve': {
+      id: '/_app/account_/integrations_/approve'
+      path: '/account/integrations/approve'
+      fullPath: '/account/integrations/approve'
+      preLoaderRoute: typeof AppAccountIntegrationsApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/jobs_/$jobId': {
+      id: '/_app/account_/jobs_/$jobId'
+      path: '/account/jobs/$jobId'
+      fullPath: '/account/jobs/$jobId'
+      preLoaderRoute: typeof AppAccountJobsJobIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/mcp-servers_/$serverId': {
+      id: '/_app/account_/mcp-servers_/$serverId'
+      path: '/account/mcp-servers/$serverId'
+      fullPath: '/account/mcp-servers/$serverId'
+      preLoaderRoute: typeof AppAccountMcpServersServerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/mcp-servers_/new': {
+      id: '/_app/account_/mcp-servers_/new'
+      path: '/account/mcp-servers/new'
+      fullPath: '/account/mcp-servers/new'
+      preLoaderRoute: typeof AppAccountMcpServersNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/memories_/$memoryId': {
+      id: '/_app/account_/memories_/$memoryId'
+      path: '/account/memories/$memoryId'
+      fullPath: '/account/memories/$memoryId'
+      preLoaderRoute: typeof AppAccountMemoriesMemoryIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/organizations_/new': {
+      id: '/_app/account_/organizations_/new'
+      path: '/account/organizations/new'
+      fullPath: '/account/organizations/new'
+      preLoaderRoute: typeof AppAccountOrganizationsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/packages/': {
+      id: '/_app/account_/packages/'
+      path: '/account/packages'
+      fullPath: '/account/packages/'
+      preLoaderRoute: typeof AppAccountPackagesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/packages/$packageId': {
+      id: '/_app/account_/packages/$packageId'
+      path: '/account/packages/$packageId'
+      fullPath: '/account/packages/$packageId'
+      preLoaderRoute: typeof AppAccountPackagesPackageIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/secret-providers_/approve': {
+      id: '/_app/account_/secret-providers_/approve'
+      path: '/account/secret-providers/approve'
+      fullPath: '/account/secret-providers/approve'
+      preLoaderRoute: typeof AppAccountSecretProvidersApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/secrets_/approve': {
+      id: '/_app/account_/secrets_/approve'
+      path: '/account/secrets/approve'
+      fullPath: '/account/secrets/approve'
+      preLoaderRoute: typeof AppAccountSecretsApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/secrets_/new': {
+      id: '/_app/account_/secrets_/new'
+      path: '/account/secrets/new'
+      fullPath: '/account/secrets/new'
+      preLoaderRoute: typeof AppAccountSecretsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/workflows_/$workflowId': {
+      id: '/_app/account_/workflows_/$workflowId'
+      path: '/account/workflows/$workflowId'
+      fullPath: '/account/workflows/$workflowId'
+      preLoaderRoute: typeof AppAccountWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/account-deletions_/$approvalId': {
+      id: '/_app/admin/account-deletions_/$approvalId'
+      path: '/admin/account-deletions/$approvalId'
+      fullPath: '/admin/account-deletions/$approvalId'
+      preLoaderRoute: typeof AppAdminAccountDeletionsApprovalIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/platform-integrations_/$slug': {
+      id: '/_app/admin/platform-integrations_/$slug'
+      path: '/admin/platform-integrations/$slug'
+      fullPath: '/admin/platform-integrations/$slug'
+      preLoaderRoute: typeof AppAdminPlatformIntegrationsSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/platform-integrations_/new': {
+      id: '/_app/admin/platform-integrations_/new'
+      path: '/admin/platform-integrations/new'
+      fullPath: '/admin/platform-integrations/new'
+      preLoaderRoute: typeof AppAdminPlatformIntegrationsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/users_/$stableUserId': {
+      id: '/_app/admin/users_/$stableUserId'
+      path: '/admin/users/$stableUserId'
+      fullPath: '/admin/users/$stableUserId'
+      preLoaderRoute: typeof AppAdminUsersStableUserIdRouteImport
+      parentRoute: typeof AppRoute
     }
     '/account_/mcp-servers_/logos_/$serverId': {
       id: '/account_/mcp-servers_/logos_/$serverId'
@@ -5079,27 +4827,6 @@ declare module '@tanstack/react-router' {
       path: '/account/mcp-servers/oauth/callback'
       fullPath: '/account/mcp-servers/oauth/callback'
       preLoaderRoute: typeof AccountMcpServersOauthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/packages/$packageId_/approve-capabilities': {
-      id: '/account_/packages/$packageId_/approve-capabilities'
-      path: '/account/packages/$packageId/approve-capabilities'
-      fullPath: '/account/packages/$packageId/approve-capabilities'
-      preLoaderRoute: typeof AccountPackagesPackageIdApproveCapabilitiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/packages/$packageId_/approve-publish': {
-      id: '/account_/packages/$packageId_/approve-publish'
-      path: '/account/packages/$packageId/approve-publish'
-      fullPath: '/account/packages/$packageId/approve-publish'
-      preLoaderRoute: typeof AccountPackagesPackageIdApprovePublishRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account_/secrets_/user/$secretName': {
-      id: '/account_/secrets_/user/$secretName'
-      path: '/account/secrets/user/$secretName'
-      fullPath: '/account/secrets/user/$secretName'
-      preLoaderRoute: typeof AccountSecretsUserSecretNameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/community_/$listingId/files/$': {
@@ -5144,46 +4871,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfilesUsernameAvatarFileRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$orgSlug}_/-/agents_/new_/$agent': {
-      id: '/@{$orgSlug}_/-/agents_/new_/$agent'
-      path: '/@{$orgSlug}/-/agents/new/$agent'
-      fullPath: '/@{$orgSlug}/-/agents/new/$agent'
-      preLoaderRoute: typeof AtChar123orgSlugChar125AgentsNewAgentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
-      id: '/@{$orgSlug}_/-/integrations_/apps/$appSlug'
-      path: '/@{$orgSlug}/-/integrations/apps/$appSlug'
-      fullPath: '/@{$orgSlug}/-/integrations/apps/$appSlug'
-      preLoaderRoute: typeof AtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': {
-      id: '/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
-      path: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
-      fullPath: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
-      preLoaderRoute: typeof AtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$orgSlug}_/-/secrets_/user/$secretName': {
-      id: '/@{$orgSlug}_/-/secrets_/user/$secretName'
-      path: '/@{$orgSlug}/-/secrets/user/$secretName'
-      fullPath: '/@{$orgSlug}/-/secrets/user/$secretName'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsUserSecretNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/@{$username}_/$kodyId_/raw_/$ref_/$': {
       id: '/@{$username}_/$kodyId_/raw_/$ref_/$'
       path: '/@{$username}/$kodyId/raw/$ref/$'
       fullPath: '/@{$username}/$kodyId/raw/$ref/$'
       preLoaderRoute: typeof AtChar123usernameChar125KodyIdRawRefSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/@{$username}_/$kodyId_/tree/$ref/$': {
-      id: '/@{$username}_/$kodyId_/tree/$ref/$'
-      path: '/@{$username}/$kodyId/tree/$ref/$'
-      fullPath: '/@{$username}/$kodyId/tree/$ref/$'
-      preLoaderRoute: typeof AtChar123usernameChar125KodyIdTreeRefSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/@{$username}_/webhooks_/$packageKodyId_/$webhookName_/$urlSecret': {
@@ -5193,12 +4885,180 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/account_/packages/$packageId/files/$': {
-      id: '/account_/packages/$packageId/files/$'
-      path: '/files/$'
-      fullPath: '/account/packages/$packageId/files/$'
-      preLoaderRoute: typeof AccountPackagesPackageIdFilesSplatRouteImport
-      parentRoute: typeof AccountPackagesPackageIdRoute
+    '/_app/@{$orgSlug}_/-/activity_/$runId': {
+      id: '/_app/@{$orgSlug}_/-/activity_/$runId'
+      path: '/@{$orgSlug}/-/activity/$runId'
+      fullPath: '/@{$orgSlug}/-/activity/$runId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ActivityRunIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/agents_/new': {
+      id: '/_app/@{$orgSlug}_/-/agents_/new'
+      path: '/@{$orgSlug}/-/agents/new'
+      fullPath: '/@{$orgSlug}/-/agents/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/agents_/usage': {
+      id: '/_app/@{$orgSlug}_/-/agents_/usage'
+      path: '/@{$orgSlug}/-/agents/usage'
+      fullPath: '/@{$orgSlug}/-/agents/usage'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsUsageRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/approvals/$bundleId': {
+      id: '/_app/@{$orgSlug}_/-/approvals/$bundleId'
+      path: '/@{$orgSlug}/-/approvals/$bundleId'
+      fullPath: '/@{$orgSlug}/-/approvals/$bundleId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/billing_/success': {
+      id: '/_app/@{$orgSlug}_/-/billing_/success'
+      path: '/@{$orgSlug}/-/billing/success'
+      fullPath: '/@{$orgSlug}/-/billing/success'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/credentials_/$credentialId': {
+      id: '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
+      path: '/@{$orgSlug}/-/credentials/$credentialId'
+      fullPath: '/@{$orgSlug}/-/credentials/$credentialId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/credentials_/new': {
+      id: '/_app/@{$orgSlug}_/-/credentials_/new'
+      path: '/@{$orgSlug}/-/credentials/new'
+      fullPath: '/@{$orgSlug}/-/credentials/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/email_/$messageId': {
+      id: '/_app/@{$orgSlug}_/-/email_/$messageId'
+      path: '/@{$orgSlug}/-/email/$messageId'
+      fullPath: '/@{$orgSlug}/-/email/$messageId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/integrations_/$integrationName': {
+      id: '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
+      path: '/@{$orgSlug}/-/integrations/$integrationName'
+      fullPath: '/@{$orgSlug}/-/integrations/$integrationName'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/integrations_/approve': {
+      id: '/_app/@{$orgSlug}_/-/integrations_/approve'
+      path: '/@{$orgSlug}/-/integrations/approve'
+      fullPath: '/@{$orgSlug}/-/integrations/approve'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/jobs_/$jobId': {
+      id: '/_app/@{$orgSlug}_/-/jobs_/$jobId'
+      path: '/@{$orgSlug}/-/jobs/$jobId'
+      fullPath: '/@{$orgSlug}/-/jobs/$jobId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId': {
+      id: '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId'
+      path: '/@{$orgSlug}/-/mcp-servers/$serverId'
+      fullPath: '/@{$orgSlug}/-/mcp-servers/$serverId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/mcp-servers_/new': {
+      id: '/_app/@{$orgSlug}_/-/mcp-servers_/new'
+      path: '/@{$orgSlug}/-/mcp-servers/new'
+      fullPath: '/@{$orgSlug}/-/mcp-servers/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125McpServersNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/memories_/$memoryId': {
+      id: '/_app/@{$orgSlug}_/-/memories_/$memoryId'
+      path: '/@{$orgSlug}/-/memories/$memoryId'
+      fullPath: '/@{$orgSlug}/-/memories/$memoryId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secret-providers_/approve': {
+      id: '/_app/@{$orgSlug}_/-/secret-providers_/approve'
+      path: '/@{$orgSlug}/-/secret-providers/approve'
+      fullPath: '/@{$orgSlug}/-/secret-providers/approve'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secrets_/approve': {
+      id: '/_app/@{$orgSlug}_/-/secrets_/approve'
+      path: '/@{$orgSlug}/-/secrets/approve'
+      fullPath: '/@{$orgSlug}/-/secrets/approve'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsApproveRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secrets_/new': {
+      id: '/_app/@{$orgSlug}_/-/secrets_/new'
+      path: '/@{$orgSlug}/-/secrets/new'
+      fullPath: '/@{$orgSlug}/-/secrets/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/workflows_/$workflowId': {
+      id: '/_app/@{$orgSlug}_/-/workflows_/$workflowId'
+      path: '/@{$orgSlug}/-/workflows/$workflowId'
+      fullPath: '/@{$orgSlug}/-/workflows/$workflowId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/files/$': {
+      id: '/_app/@{$username}_/$kodyId_/files/$'
+      path: '/@{$username}/$kodyId/files/$'
+      fullPath: '/@{$username}/$kodyId/files/$'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdFilesSplatRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/agents_/new_/$agent': {
+      id: '/_app/account_/agents_/new_/$agent'
+      path: '/account/agents/new/$agent'
+      fullPath: '/account/agents/new/$agent'
+      preLoaderRoute: typeof AppAccountAgentsNewAgentRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/connections_/new_/$agent': {
+      id: '/_app/account_/connections_/new_/$agent'
+      path: '/account/connections/new/$agent'
+      fullPath: '/account/connections/new/$agent'
+      preLoaderRoute: typeof AppAccountConnectionsNewAgentRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/integrations_/apps/$appSlug': {
+      id: '/_app/account_/integrations_/apps/$appSlug'
+      path: '/account/integrations/apps/$appSlug'
+      fullPath: '/account/integrations/apps/$appSlug'
+      preLoaderRoute: typeof AppAccountIntegrationsAppsAppSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/packages/$packageId_/approve-capabilities': {
+      id: '/_app/account_/packages/$packageId_/approve-capabilities'
+      path: '/account/packages/$packageId/approve-capabilities'
+      fullPath: '/account/packages/$packageId/approve-capabilities'
+      preLoaderRoute: typeof AppAccountPackagesPackageIdApproveCapabilitiesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/packages/$packageId_/approve-publish': {
+      id: '/_app/account_/packages/$packageId_/approve-publish'
+      path: '/account/packages/$packageId/approve-publish'
+      fullPath: '/account/packages/$packageId/approve-publish'
+      preLoaderRoute: typeof AppAccountPackagesPackageIdApprovePublishRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/secrets_/user/$secretName': {
+      id: '/_app/account_/secrets_/user/$secretName'
+      path: '/account/secrets/user/$secretName'
+      fullPath: '/account/secrets/user/$secretName'
+      preLoaderRoute: typeof AppAccountSecretsUserSecretNameRouteImport
+      parentRoute: typeof AppRoute
     }
     '/account_/repos_/$repoId_/icon_/$iconCommit': {
       id: '/account_/repos_/$repoId_/icon_/$iconCommit'
@@ -5207,36 +5067,425 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountReposRepoIdIconIconCommitRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/account_/secrets_/package/$packageId/$secretName': {
-      id: '/account_/secrets_/package/$packageId/$secretName'
+    '/_app/@{$orgSlug}_/-/agents_/new_/$agent': {
+      id: '/_app/@{$orgSlug}_/-/agents_/new_/$agent'
+      path: '/@{$orgSlug}/-/agents/new/$agent'
+      fullPath: '/@{$orgSlug}/-/agents/new/$agent'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug': {
+      id: '/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug'
+      path: '/@{$orgSlug}/-/integrations/apps/$appSlug'
+      fullPath: '/@{$orgSlug}/-/integrations/apps/$appSlug'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize': {
+      id: '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId_/authorize'
+      path: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
+      fullPath: '/@{$orgSlug}/-/mcp-servers/$serverId/authorize'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/secrets_/user/$secretName': {
+      id: '/_app/@{$orgSlug}_/-/secrets_/user/$secretName'
+      path: '/@{$orgSlug}/-/secrets/user/$secretName'
+      fullPath: '/@{$orgSlug}/-/secrets/user/$secretName'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/tree/$ref/$': {
+      id: '/_app/@{$username}_/$kodyId_/tree/$ref/$'
+      path: '/@{$username}/$kodyId/tree/$ref/$'
+      fullPath: '/@{$username}/$kodyId/tree/$ref/$'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdTreeRefSplatRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/packages/$packageId/files/$': {
+      id: '/_app/account_/packages/$packageId/files/$'
+      path: '/files/$'
+      fullPath: '/account/packages/$packageId/files/$'
+      preLoaderRoute: typeof AppAccountPackagesPackageIdFilesSplatRouteImport
+      parentRoute: typeof AppAccountPackagesPackageIdRoute
+    }
+    '/_app/account_/secrets_/package/$packageId/$secretName': {
+      id: '/_app/account_/secrets_/package/$packageId/$secretName'
       path: '/account/secrets/package/$packageId/$secretName'
       fullPath: '/account/secrets/package/$packageId/$secretName'
-      preLoaderRoute: typeof AccountSecretsPackagePackageIdSecretNameRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAccountSecretsPackagePackageIdSecretNameRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/account_/secrets_/session/$sessionId/$secretName': {
-      id: '/account_/secrets_/session/$sessionId/$secretName'
+    '/_app/account_/secrets_/session/$sessionId/$secretName': {
+      id: '/_app/account_/secrets_/session/$sessionId/$secretName'
       path: '/account/secrets/session/$sessionId/$secretName'
       fullPath: '/account/secrets/session/$sessionId/$secretName'
-      preLoaderRoute: typeof AccountSecretsSessionSessionIdSecretNameRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAccountSecretsSessionSessionIdSecretNameRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName': {
-      id: '/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName'
+    '/_app/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName': {
+      id: '/_app/@{$orgSlug}_/-/secrets_/package/$packageId/$secretName'
       path: '/@{$orgSlug}/-/secrets/package/$packageId/$secretName'
       fullPath: '/@{$orgSlug}/-/secrets/package/$packageId/$secretName'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName': {
-      id: '/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName'
+    '/_app/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName': {
+      id: '/_app/@{$orgSlug}_/-/secrets_/session/$sessionId/$secretName'
       path: '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName'
       fullPath: '/@{$orgSlug}/-/secrets/session/$sessionId/$secretName'
-      preLoaderRoute: typeof AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
+
+interface AppAccountPackagesPackageIdRouteChildren {
+  AppAccountPackagesPackageIdFilesSplatRoute: typeof AppAccountPackagesPackageIdFilesSplatRoute
+}
+
+const AppAccountPackagesPackageIdRouteChildren: AppAccountPackagesPackageIdRouteChildren =
+  {
+    AppAccountPackagesPackageIdFilesSplatRoute:
+      AppAccountPackagesPackageIdFilesSplatRoute,
+  }
+
+const AppAccountPackagesPackageIdRouteWithChildren =
+  AppAccountPackagesPackageIdRoute._addFileChildren(
+    AppAccountPackagesPackageIdRouteChildren,
+  )
+
+interface AppRouteChildren {
+  AppAtChar123usernameChar125Route: typeof AppAtChar123usernameChar125Route
+  AppAccountRoute: typeof AppAccountRoute
+  AppAtChar123usernameChar125KodyIdRoute: typeof AppAtChar123usernameChar125KodyIdRoute
+  AppAccountActivityRoute: typeof AppAccountActivityRoute
+  AppAccountAgentsRoute: typeof AppAccountAgentsRoute
+  AppAccountBillingRoute: typeof AppAccountBillingRoute
+  AppAccountConnectionsRoute: typeof AppAccountConnectionsRoute
+  AppAccountCredentialsRoute: typeof AppAccountCredentialsRoute
+  AppAccountCreditsRoute: typeof AppAccountCreditsRoute
+  AppAccountDataRoute: typeof AppAccountDataRoute
+  AppAccountEmailRoute: typeof AppAccountEmailRoute
+  AppAccountExperimentsRoute: typeof AppAccountExperimentsRoute
+  AppAccountIntegrationsRoute: typeof AppAccountIntegrationsRoute
+  AppAccountJobsRoute: typeof AppAccountJobsRoute
+  AppAccountMcpOauthClientsRoute: typeof AppAccountMcpOauthClientsRoute
+  AppAccountMcpServersRoute: typeof AppAccountMcpServersRoute
+  AppAccountMemoriesRoute: typeof AppAccountMemoriesRoute
+  AppAccountOrganizationsRoute: typeof AppAccountOrganizationsRoute
+  AppAccountPasskeysRoute: typeof AppAccountPasskeysRoute
+  AppAccountSecretProvidersRoute: typeof AppAccountSecretProvidersRoute
+  AppAccountSecretsRoute: typeof AppAccountSecretsRoute
+  AppAccountSecurityRoute: typeof AppAccountSecurityRoute
+  AppAccountTwoFactorRoute: typeof AppAccountTwoFactorRoute
+  AppAccountUsageRoute: typeof AppAccountUsageRoute
+  AppAccountWaitingRoute: typeof AppAccountWaitingRoute
+  AppAccountWebhooksRoute: typeof AppAccountWebhooksRoute
+  AppAccountWorkflowsRoute: typeof AppAccountWorkflowsRoute
+  AppAdminSplatRoute: typeof AppAdminSplatRoute
+  AppAdminCodemodsRoute: typeof AppAdminCodemodsRoute
+  AppAdminCommunityReportsRoute: typeof AppAdminCommunityReportsRoute
+  AppAdminFeatureFlagsRoute: typeof AppAdminFeatureFlagsRoute
+  AppAdminInsightsRoute: typeof AppAdminInsightsRoute
+  AppAdminPlatformFeedbackRoute: typeof AppAdminPlatformFeedbackRoute
+  AppAdminPlatformIntegrationsRoute: typeof AppAdminPlatformIntegrationsRoute
+  AppAdminProviderMarksRoute: typeof AppAdminProviderMarksRoute
+  AppAdminReservedUsernamesRoute: typeof AppAdminReservedUsernamesRoute
+  AppAdminRolesRoute: typeof AppAdminRolesRoute
+  AppAdminSystemEmailRoute: typeof AppAdminSystemEmailRoute
+  AppAdminUsersRoute: typeof AppAdminUsersRoute
+  AppAdminIndexRoute: typeof AppAdminIndexRoute
+  AppAtChar123orgSlugChar125ActivityRoute: typeof AppAtChar123orgSlugChar125ActivityRoute
+  AppAtChar123orgSlugChar125AgentsRoute: typeof AppAtChar123orgSlugChar125AgentsRoute
+  AppAtChar123orgSlugChar125BillingRoute: typeof AppAtChar123orgSlugChar125BillingRoute
+  AppAtChar123orgSlugChar125CollaboratorsRoute: typeof AppAtChar123orgSlugChar125CollaboratorsRoute
+  AppAtChar123orgSlugChar125CredentialsRoute: typeof AppAtChar123orgSlugChar125CredentialsRoute
+  AppAtChar123orgSlugChar125CreditsRoute: typeof AppAtChar123orgSlugChar125CreditsRoute
+  AppAtChar123orgSlugChar125EmailRoute: typeof AppAtChar123orgSlugChar125EmailRoute
+  AppAtChar123orgSlugChar125FollowsRoute: typeof AppAtChar123orgSlugChar125FollowsRoute
+  AppAtChar123orgSlugChar125GrantsRoute: typeof AppAtChar123orgSlugChar125GrantsRoute
+  AppAtChar123orgSlugChar125IntegrationsRoute: typeof AppAtChar123orgSlugChar125IntegrationsRoute
+  AppAtChar123orgSlugChar125JobsRoute: typeof AppAtChar123orgSlugChar125JobsRoute
+  AppAtChar123orgSlugChar125McpServersRoute: typeof AppAtChar123orgSlugChar125McpServersRoute
+  AppAtChar123orgSlugChar125MembersRoute: typeof AppAtChar123orgSlugChar125MembersRoute
+  AppAtChar123orgSlugChar125MemoriesRoute: typeof AppAtChar123orgSlugChar125MemoriesRoute
+  AppAtChar123orgSlugChar125OverviewRoute: typeof AppAtChar123orgSlugChar125OverviewRoute
+  AppAtChar123orgSlugChar125PackagesRoute: typeof AppAtChar123orgSlugChar125PackagesRoute
+  AppAtChar123orgSlugChar125RepositoriesRoute: typeof AppAtChar123orgSlugChar125RepositoriesRoute
+  AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
+  AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
+  AppAtChar123orgSlugChar125SettingsRoute: typeof AppAtChar123orgSlugChar125SettingsRoute
+  AppAtChar123orgSlugChar125TeamsRoute: typeof AppAtChar123orgSlugChar125TeamsRoute
+  AppAtChar123orgSlugChar125UsageRoute: typeof AppAtChar123orgSlugChar125UsageRoute
+  AppAtChar123orgSlugChar125WaitingRoute: typeof AppAtChar123orgSlugChar125WaitingRoute
+  AppAtChar123orgSlugChar125WebhooksRoute: typeof AppAtChar123orgSlugChar125WebhooksRoute
+  AppAtChar123orgSlugChar125WorkflowsRoute: typeof AppAtChar123orgSlugChar125WorkflowsRoute
+  AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute: typeof AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute
+  AppAtChar123usernameChar125KodyIdApproveCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
+  AppAtChar123usernameChar125KodyIdApprovePublishRoute: typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
+  AppAtChar123usernameChar125KodyIdCollaboratorsRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  AppAtChar123usernameChar125KodyIdCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  AppAtChar123usernameChar125KodyIdMappingsRoute: typeof AppAtChar123usernameChar125KodyIdMappingsRoute
+  AppAtChar123usernameChar125KodyIdSettingsRoute: typeof AppAtChar123usernameChar125KodyIdSettingsRoute
+  AppAtChar123usernameChar125KodyIdTriggersRoute: typeof AppAtChar123usernameChar125KodyIdTriggersRoute
+  AppAccountActivityRunIdRoute: typeof AppAccountActivityRunIdRoute
+  AppAccountAgentsNewRoute: typeof AppAccountAgentsNewRoute
+  AppAccountAgentsUsageRoute: typeof AppAccountAgentsUsageRoute
+  AppAccountBillingSuccessRoute: typeof AppAccountBillingSuccessRoute
+  AppAccountConnectionsNewRoute: typeof AppAccountConnectionsNewRoute
+  AppAccountConnectionsUsageRoute: typeof AppAccountConnectionsUsageRoute
+  AppAccountEmailMessageIdRoute: typeof AppAccountEmailMessageIdRoute
+  AppAccountIntegrationsIntegrationNameRoute: typeof AppAccountIntegrationsIntegrationNameRoute
+  AppAccountIntegrationsApproveRoute: typeof AppAccountIntegrationsApproveRoute
+  AppAccountJobsJobIdRoute: typeof AppAccountJobsJobIdRoute
+  AppAccountMcpServersServerIdRoute: typeof AppAccountMcpServersServerIdRoute
+  AppAccountMcpServersNewRoute: typeof AppAccountMcpServersNewRoute
+  AppAccountMemoriesMemoryIdRoute: typeof AppAccountMemoriesMemoryIdRoute
+  AppAccountOrganizationsNewRoute: typeof AppAccountOrganizationsNewRoute
+  AppAccountPackagesPackageIdRoute: typeof AppAccountPackagesPackageIdRouteWithChildren
+  AppAccountSecretProvidersApproveRoute: typeof AppAccountSecretProvidersApproveRoute
+  AppAccountSecretsApproveRoute: typeof AppAccountSecretsApproveRoute
+  AppAccountSecretsNewRoute: typeof AppAccountSecretsNewRoute
+  AppAccountWorkflowsWorkflowIdRoute: typeof AppAccountWorkflowsWorkflowIdRoute
+  AppAdminAccountDeletionsApprovalIdRoute: typeof AppAdminAccountDeletionsApprovalIdRoute
+  AppAdminPlatformIntegrationsSlugRoute: typeof AppAdminPlatformIntegrationsSlugRoute
+  AppAdminPlatformIntegrationsNewRoute: typeof AppAdminPlatformIntegrationsNewRoute
+  AppAdminUsersStableUserIdRoute: typeof AppAdminUsersStableUserIdRoute
+  AppAccountPackagesIndexRoute: typeof AppAccountPackagesIndexRoute
+  AppAtChar123orgSlugChar125ActivityRunIdRoute: typeof AppAtChar123orgSlugChar125ActivityRunIdRoute
+  AppAtChar123orgSlugChar125AgentsNewRoute: typeof AppAtChar123orgSlugChar125AgentsNewRoute
+  AppAtChar123orgSlugChar125AgentsUsageRoute: typeof AppAtChar123orgSlugChar125AgentsUsageRoute
+  AppAtChar123orgSlugChar125ApprovalsBundleIdRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  AppAtChar123orgSlugChar125BillingSuccessRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRoute
+  AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
+  AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
+  AppAtChar123orgSlugChar125IntegrationsApproveRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
+  AppAtChar123orgSlugChar125JobsJobIdRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRoute
+  AppAtChar123orgSlugChar125McpServersServerIdRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
+  AppAtChar123orgSlugChar125McpServersNewRoute: typeof AppAtChar123orgSlugChar125McpServersNewRoute
+  AppAtChar123orgSlugChar125MemoriesMemoryIdRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  AppAtChar123orgSlugChar125SecretProvidersApproveRoute: typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
+  AppAtChar123orgSlugChar125SecretsApproveRoute: typeof AppAtChar123orgSlugChar125SecretsApproveRoute
+  AppAtChar123orgSlugChar125SecretsNewRoute: typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute: typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
+  AppAtChar123usernameChar125KodyIdFilesSplatRoute: typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
+  AppAccountAgentsNewAgentRoute: typeof AppAccountAgentsNewAgentRoute
+  AppAccountConnectionsNewAgentRoute: typeof AppAccountConnectionsNewAgentRoute
+  AppAccountIntegrationsAppsAppSlugRoute: typeof AppAccountIntegrationsAppsAppSlugRoute
+  AppAccountPackagesPackageIdApproveCapabilitiesRoute: typeof AppAccountPackagesPackageIdApproveCapabilitiesRoute
+  AppAccountPackagesPackageIdApprovePublishRoute: typeof AppAccountPackagesPackageIdApprovePublishRoute
+  AppAccountSecretsUserSecretNameRoute: typeof AppAccountSecretsUserSecretNameRoute
+  AppAtChar123orgSlugChar125AgentsNewAgentRoute: typeof AppAtChar123orgSlugChar125AgentsNewAgentRoute
+  AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute: typeof AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute
+  AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute
+  AppAtChar123orgSlugChar125SecretsUserSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsUserSecretNameRoute
+  AppAtChar123usernameChar125KodyIdTreeRefSplatRoute: typeof AppAtChar123usernameChar125KodyIdTreeRefSplatRoute
+  AppAccountSecretsPackagePackageIdSecretNameRoute: typeof AppAccountSecretsPackagePackageIdSecretNameRoute
+  AppAccountSecretsSessionSessionIdSecretNameRoute: typeof AppAccountSecretsSessionSessionIdSecretNameRoute
+  AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute
+  AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute: typeof AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAtChar123usernameChar125Route: AppAtChar123usernameChar125Route,
+  AppAccountRoute: AppAccountRoute,
+  AppAtChar123usernameChar125KodyIdRoute:
+    AppAtChar123usernameChar125KodyIdRoute,
+  AppAccountActivityRoute: AppAccountActivityRoute,
+  AppAccountAgentsRoute: AppAccountAgentsRoute,
+  AppAccountBillingRoute: AppAccountBillingRoute,
+  AppAccountConnectionsRoute: AppAccountConnectionsRoute,
+  AppAccountCredentialsRoute: AppAccountCredentialsRoute,
+  AppAccountCreditsRoute: AppAccountCreditsRoute,
+  AppAccountDataRoute: AppAccountDataRoute,
+  AppAccountEmailRoute: AppAccountEmailRoute,
+  AppAccountExperimentsRoute: AppAccountExperimentsRoute,
+  AppAccountIntegrationsRoute: AppAccountIntegrationsRoute,
+  AppAccountJobsRoute: AppAccountJobsRoute,
+  AppAccountMcpOauthClientsRoute: AppAccountMcpOauthClientsRoute,
+  AppAccountMcpServersRoute: AppAccountMcpServersRoute,
+  AppAccountMemoriesRoute: AppAccountMemoriesRoute,
+  AppAccountOrganizationsRoute: AppAccountOrganizationsRoute,
+  AppAccountPasskeysRoute: AppAccountPasskeysRoute,
+  AppAccountSecretProvidersRoute: AppAccountSecretProvidersRoute,
+  AppAccountSecretsRoute: AppAccountSecretsRoute,
+  AppAccountSecurityRoute: AppAccountSecurityRoute,
+  AppAccountTwoFactorRoute: AppAccountTwoFactorRoute,
+  AppAccountUsageRoute: AppAccountUsageRoute,
+  AppAccountWaitingRoute: AppAccountWaitingRoute,
+  AppAccountWebhooksRoute: AppAccountWebhooksRoute,
+  AppAccountWorkflowsRoute: AppAccountWorkflowsRoute,
+  AppAdminSplatRoute: AppAdminSplatRoute,
+  AppAdminCodemodsRoute: AppAdminCodemodsRoute,
+  AppAdminCommunityReportsRoute: AppAdminCommunityReportsRoute,
+  AppAdminFeatureFlagsRoute: AppAdminFeatureFlagsRoute,
+  AppAdminInsightsRoute: AppAdminInsightsRoute,
+  AppAdminPlatformFeedbackRoute: AppAdminPlatformFeedbackRoute,
+  AppAdminPlatformIntegrationsRoute: AppAdminPlatformIntegrationsRoute,
+  AppAdminProviderMarksRoute: AppAdminProviderMarksRoute,
+  AppAdminReservedUsernamesRoute: AppAdminReservedUsernamesRoute,
+  AppAdminRolesRoute: AppAdminRolesRoute,
+  AppAdminSystemEmailRoute: AppAdminSystemEmailRoute,
+  AppAdminUsersRoute: AppAdminUsersRoute,
+  AppAdminIndexRoute: AppAdminIndexRoute,
+  AppAtChar123orgSlugChar125ActivityRoute:
+    AppAtChar123orgSlugChar125ActivityRoute,
+  AppAtChar123orgSlugChar125AgentsRoute: AppAtChar123orgSlugChar125AgentsRoute,
+  AppAtChar123orgSlugChar125BillingRoute:
+    AppAtChar123orgSlugChar125BillingRoute,
+  AppAtChar123orgSlugChar125CollaboratorsRoute:
+    AppAtChar123orgSlugChar125CollaboratorsRoute,
+  AppAtChar123orgSlugChar125CredentialsRoute:
+    AppAtChar123orgSlugChar125CredentialsRoute,
+  AppAtChar123orgSlugChar125CreditsRoute:
+    AppAtChar123orgSlugChar125CreditsRoute,
+  AppAtChar123orgSlugChar125EmailRoute: AppAtChar123orgSlugChar125EmailRoute,
+  AppAtChar123orgSlugChar125FollowsRoute:
+    AppAtChar123orgSlugChar125FollowsRoute,
+  AppAtChar123orgSlugChar125GrantsRoute: AppAtChar123orgSlugChar125GrantsRoute,
+  AppAtChar123orgSlugChar125IntegrationsRoute:
+    AppAtChar123orgSlugChar125IntegrationsRoute,
+  AppAtChar123orgSlugChar125JobsRoute: AppAtChar123orgSlugChar125JobsRoute,
+  AppAtChar123orgSlugChar125McpServersRoute:
+    AppAtChar123orgSlugChar125McpServersRoute,
+  AppAtChar123orgSlugChar125MembersRoute:
+    AppAtChar123orgSlugChar125MembersRoute,
+  AppAtChar123orgSlugChar125MemoriesRoute:
+    AppAtChar123orgSlugChar125MemoriesRoute,
+  AppAtChar123orgSlugChar125OverviewRoute:
+    AppAtChar123orgSlugChar125OverviewRoute,
+  AppAtChar123orgSlugChar125PackagesRoute:
+    AppAtChar123orgSlugChar125PackagesRoute,
+  AppAtChar123orgSlugChar125RepositoriesRoute:
+    AppAtChar123orgSlugChar125RepositoriesRoute,
+  AppAtChar123orgSlugChar125SecretProvidersRoute:
+    AppAtChar123orgSlugChar125SecretProvidersRoute,
+  AppAtChar123orgSlugChar125SecretsRoute:
+    AppAtChar123orgSlugChar125SecretsRoute,
+  AppAtChar123orgSlugChar125SettingsRoute:
+    AppAtChar123orgSlugChar125SettingsRoute,
+  AppAtChar123orgSlugChar125TeamsRoute: AppAtChar123orgSlugChar125TeamsRoute,
+  AppAtChar123orgSlugChar125UsageRoute: AppAtChar123orgSlugChar125UsageRoute,
+  AppAtChar123orgSlugChar125WaitingRoute:
+    AppAtChar123orgSlugChar125WaitingRoute,
+  AppAtChar123orgSlugChar125WebhooksRoute:
+    AppAtChar123orgSlugChar125WebhooksRoute,
+  AppAtChar123orgSlugChar125WorkflowsRoute:
+    AppAtChar123orgSlugChar125WorkflowsRoute,
+  AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute:
+    AppAtChar123usernameChar125KodyIdApproveCapabilitiesRoute,
+  AppAtChar123usernameChar125KodyIdApproveCredentialsRoute:
+    AppAtChar123usernameChar125KodyIdApproveCredentialsRoute,
+  AppAtChar123usernameChar125KodyIdApprovePublishRoute:
+    AppAtChar123usernameChar125KodyIdApprovePublishRoute,
+  AppAtChar123usernameChar125KodyIdCollaboratorsRoute:
+    AppAtChar123usernameChar125KodyIdCollaboratorsRoute,
+  AppAtChar123usernameChar125KodyIdCredentialsRoute:
+    AppAtChar123usernameChar125KodyIdCredentialsRoute,
+  AppAtChar123usernameChar125KodyIdMappingsRoute:
+    AppAtChar123usernameChar125KodyIdMappingsRoute,
+  AppAtChar123usernameChar125KodyIdSettingsRoute:
+    AppAtChar123usernameChar125KodyIdSettingsRoute,
+  AppAtChar123usernameChar125KodyIdTriggersRoute:
+    AppAtChar123usernameChar125KodyIdTriggersRoute,
+  AppAccountActivityRunIdRoute: AppAccountActivityRunIdRoute,
+  AppAccountAgentsNewRoute: AppAccountAgentsNewRoute,
+  AppAccountAgentsUsageRoute: AppAccountAgentsUsageRoute,
+  AppAccountBillingSuccessRoute: AppAccountBillingSuccessRoute,
+  AppAccountConnectionsNewRoute: AppAccountConnectionsNewRoute,
+  AppAccountConnectionsUsageRoute: AppAccountConnectionsUsageRoute,
+  AppAccountEmailMessageIdRoute: AppAccountEmailMessageIdRoute,
+  AppAccountIntegrationsIntegrationNameRoute:
+    AppAccountIntegrationsIntegrationNameRoute,
+  AppAccountIntegrationsApproveRoute: AppAccountIntegrationsApproveRoute,
+  AppAccountJobsJobIdRoute: AppAccountJobsJobIdRoute,
+  AppAccountMcpServersServerIdRoute: AppAccountMcpServersServerIdRoute,
+  AppAccountMcpServersNewRoute: AppAccountMcpServersNewRoute,
+  AppAccountMemoriesMemoryIdRoute: AppAccountMemoriesMemoryIdRoute,
+  AppAccountOrganizationsNewRoute: AppAccountOrganizationsNewRoute,
+  AppAccountPackagesPackageIdRoute:
+    AppAccountPackagesPackageIdRouteWithChildren,
+  AppAccountSecretProvidersApproveRoute: AppAccountSecretProvidersApproveRoute,
+  AppAccountSecretsApproveRoute: AppAccountSecretsApproveRoute,
+  AppAccountSecretsNewRoute: AppAccountSecretsNewRoute,
+  AppAccountWorkflowsWorkflowIdRoute: AppAccountWorkflowsWorkflowIdRoute,
+  AppAdminAccountDeletionsApprovalIdRoute:
+    AppAdminAccountDeletionsApprovalIdRoute,
+  AppAdminPlatformIntegrationsSlugRoute: AppAdminPlatformIntegrationsSlugRoute,
+  AppAdminPlatformIntegrationsNewRoute: AppAdminPlatformIntegrationsNewRoute,
+  AppAdminUsersStableUserIdRoute: AppAdminUsersStableUserIdRoute,
+  AppAccountPackagesIndexRoute: AppAccountPackagesIndexRoute,
+  AppAtChar123orgSlugChar125ActivityRunIdRoute:
+    AppAtChar123orgSlugChar125ActivityRunIdRoute,
+  AppAtChar123orgSlugChar125AgentsNewRoute:
+    AppAtChar123orgSlugChar125AgentsNewRoute,
+  AppAtChar123orgSlugChar125AgentsUsageRoute:
+    AppAtChar123orgSlugChar125AgentsUsageRoute,
+  AppAtChar123orgSlugChar125ApprovalsBundleIdRoute:
+    AppAtChar123orgSlugChar125ApprovalsBundleIdRoute,
+  AppAtChar123orgSlugChar125BillingSuccessRoute:
+    AppAtChar123orgSlugChar125BillingSuccessRoute,
+  AppAtChar123orgSlugChar125CredentialsCredentialIdRoute:
+    AppAtChar123orgSlugChar125CredentialsCredentialIdRoute,
+  AppAtChar123orgSlugChar125CredentialsNewRoute:
+    AppAtChar123orgSlugChar125CredentialsNewRoute,
+  AppAtChar123orgSlugChar125EmailMessageIdRoute:
+    AppAtChar123orgSlugChar125EmailMessageIdRoute,
+  AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
+    AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
+  AppAtChar123orgSlugChar125IntegrationsApproveRoute:
+    AppAtChar123orgSlugChar125IntegrationsApproveRoute,
+  AppAtChar123orgSlugChar125JobsJobIdRoute:
+    AppAtChar123orgSlugChar125JobsJobIdRoute,
+  AppAtChar123orgSlugChar125McpServersServerIdRoute:
+    AppAtChar123orgSlugChar125McpServersServerIdRoute,
+  AppAtChar123orgSlugChar125McpServersNewRoute:
+    AppAtChar123orgSlugChar125McpServersNewRoute,
+  AppAtChar123orgSlugChar125MemoriesMemoryIdRoute:
+    AppAtChar123orgSlugChar125MemoriesMemoryIdRoute,
+  AppAtChar123orgSlugChar125SecretProvidersApproveRoute:
+    AppAtChar123orgSlugChar125SecretProvidersApproveRoute,
+  AppAtChar123orgSlugChar125SecretsApproveRoute:
+    AppAtChar123orgSlugChar125SecretsApproveRoute,
+  AppAtChar123orgSlugChar125SecretsNewRoute:
+    AppAtChar123orgSlugChar125SecretsNewRoute,
+  AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute:
+    AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute,
+  AppAtChar123usernameChar125KodyIdFilesSplatRoute:
+    AppAtChar123usernameChar125KodyIdFilesSplatRoute,
+  AppAccountAgentsNewAgentRoute: AppAccountAgentsNewAgentRoute,
+  AppAccountConnectionsNewAgentRoute: AppAccountConnectionsNewAgentRoute,
+  AppAccountIntegrationsAppsAppSlugRoute:
+    AppAccountIntegrationsAppsAppSlugRoute,
+  AppAccountPackagesPackageIdApproveCapabilitiesRoute:
+    AppAccountPackagesPackageIdApproveCapabilitiesRoute,
+  AppAccountPackagesPackageIdApprovePublishRoute:
+    AppAccountPackagesPackageIdApprovePublishRoute,
+  AppAccountSecretsUserSecretNameRoute: AppAccountSecretsUserSecretNameRoute,
+  AppAtChar123orgSlugChar125AgentsNewAgentRoute:
+    AppAtChar123orgSlugChar125AgentsNewAgentRoute,
+  AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
+    AppAtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
+  AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:
+    AppAtChar123orgSlugChar125McpServersServerIdAuthorizeRoute,
+  AppAtChar123orgSlugChar125SecretsUserSecretNameRoute:
+    AppAtChar123orgSlugChar125SecretsUserSecretNameRoute,
+  AppAtChar123usernameChar125KodyIdTreeRefSplatRoute:
+    AppAtChar123usernameChar125KodyIdTreeRefSplatRoute,
+  AppAccountSecretsPackagePackageIdSecretNameRoute:
+    AppAccountSecretsPackagePackageIdSecretNameRoute,
+  AppAccountSecretsSessionSessionIdSecretNameRoute:
+    AppAccountSecretsSessionSessionIdSecretNameRoute,
+  AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute:
+    AppAtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute,
+  AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute:
+    AppAtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface OnboardingRouteChildren {
   OnboardingStep1Route: typeof OnboardingStep1Route
@@ -5273,28 +5522,12 @@ const CommunityListingIdRouteChildren: CommunityListingIdRouteChildren = {
 const CommunityListingIdRouteWithChildren =
   CommunityListingIdRoute._addFileChildren(CommunityListingIdRouteChildren)
 
-interface AccountPackagesPackageIdRouteChildren {
-  AccountPackagesPackageIdFilesSplatRoute: typeof AccountPackagesPackageIdFilesSplatRoute
-}
-
-const AccountPackagesPackageIdRouteChildren: AccountPackagesPackageIdRouteChildren =
-  {
-    AccountPackagesPackageIdFilesSplatRoute:
-      AccountPackagesPackageIdFilesSplatRoute,
-  }
-
-const AccountPackagesPackageIdRouteWithChildren =
-  AccountPackagesPackageIdRoute._addFileChildren(
-    AccountPackagesPackageIdRouteChildren,
-  )
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   R404Route: R404Route,
   R500Route: R500Route,
-  AtChar123usernameChar125Route: AtChar123usernameChar125Route,
+  AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
-  AccountRoute: AccountRoute,
   AuthRoute: AuthRoute,
   AuthDotmdRoute: AuthDotmdRoute,
   BelieveRoute: BelieveRoute,
@@ -5332,46 +5565,9 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
   DotwellKnownOpenaiAppsChallengeRoute: DotwellKnownOpenaiAppsChallengeRoute,
   DotwellKnownSecurityDottxtRoute: DotwellKnownSecurityDottxtRoute,
-  AtChar123usernameChar125KodyIdRoute: AtChar123usernameChar125KodyIdRoute,
-  AccountActivityRoute: AccountActivityRoute,
-  AccountAgentsRoute: AccountAgentsRoute,
-  AccountBillingRoute: AccountBillingRoute,
-  AccountConnectionsRoute: AccountConnectionsRoute,
-  AccountCredentialsRoute: AccountCredentialsRoute,
-  AccountCreditsRoute: AccountCreditsRoute,
-  AccountDataRoute: AccountDataRoute,
-  AccountEmailRoute: AccountEmailRoute,
-  AccountExperimentsRoute: AccountExperimentsRoute,
   AccountExportDotjsonRoute: AccountExportDotjsonRoute,
-  AccountIntegrationsRoute: AccountIntegrationsRoute,
-  AccountJobsRoute: AccountJobsRoute,
-  AccountMcpOauthClientsRoute: AccountMcpOauthClientsRoute,
-  AccountMcpServersRoute: AccountMcpServersRoute,
-  AccountMemoriesRoute: AccountMemoriesRoute,
   AccountMemoriesExportDotjsonRoute: AccountMemoriesExportDotjsonRoute,
-  AccountOrganizationsRoute: AccountOrganizationsRoute,
   AccountPackagesDotjsonRoute: AccountPackagesDotjsonRoute,
-  AccountPasskeysRoute: AccountPasskeysRoute,
-  AccountSecretProvidersRoute: AccountSecretProvidersRoute,
-  AccountSecretsRoute: AccountSecretsRoute,
-  AccountSecurityRoute: AccountSecurityRoute,
-  AccountTwoFactorRoute: AccountTwoFactorRoute,
-  AccountUsageRoute: AccountUsageRoute,
-  AccountWaitingRoute: AccountWaitingRoute,
-  AccountWebhooksRoute: AccountWebhooksRoute,
-  AccountWorkflowsRoute: AccountWorkflowsRoute,
-  AdminSplatRoute: AdminSplatRoute,
-  AdminCodemodsRoute: AdminCodemodsRoute,
-  AdminCommunityReportsRoute: AdminCommunityReportsRoute,
-  AdminFeatureFlagsRoute: AdminFeatureFlagsRoute,
-  AdminInsightsRoute: AdminInsightsRoute,
-  AdminPlatformFeedbackRoute: AdminPlatformFeedbackRoute,
-  AdminPlatformIntegrationsRoute: AdminPlatformIntegrationsRoute,
-  AdminProviderMarksRoute: AdminProviderMarksRoute,
-  AdminReservedUsernamesRoute: AdminReservedUsernamesRoute,
-  AdminRolesRoute: AdminRolesRoute,
-  AdminSystemEmailRoute: AdminSystemEmailRoute,
-  AdminUsersRoute: AdminUsersRoute,
   BlogSlugRoute: BlogSlugRoute,
   BlogRssDotxmlRoute: BlogRssDotxmlRoute,
   BlogChar123slugChar125DotmdRoute: BlogChar123slugChar125DotmdRoute,
@@ -5414,87 +5610,15 @@ const rootRouteChildren: RootRouteChildren = {
   WebhooksStripeRoute: WebhooksStripeRoute,
   WithAgentRoute: WithAgentRoute,
   YoutubeThumbVideoIdRoute: YoutubeThumbVideoIdRoute,
-  AdminIndexRoute: AdminIndexRoute,
   BlogIndexRoute: BlogIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   Char91Char93AuthSplatRoute: Char91Char93AuthSplatRoute,
   DotwellKnownAgentSkillsIndexDotjsonRoute:
     DotwellKnownAgentSkillsIndexDotjsonRoute,
   DotwellKnownMcpServerCardDotjsonRoute: DotwellKnownMcpServerCardDotjsonRoute,
-  AtChar123orgSlugChar125ActivityRoute: AtChar123orgSlugChar125ActivityRoute,
-  AtChar123orgSlugChar125AgentsRoute: AtChar123orgSlugChar125AgentsRoute,
-  AtChar123orgSlugChar125BillingRoute: AtChar123orgSlugChar125BillingRoute,
-  AtChar123orgSlugChar125CollaboratorsRoute:
-    AtChar123orgSlugChar125CollaboratorsRoute,
   AtChar123orgSlugChar125ConnectionsRoute:
     AtChar123orgSlugChar125ConnectionsRoute,
-  AtChar123orgSlugChar125CredentialsRoute:
-    AtChar123orgSlugChar125CredentialsRoute,
-  AtChar123orgSlugChar125CreditsRoute: AtChar123orgSlugChar125CreditsRoute,
-  AtChar123orgSlugChar125EmailRoute: AtChar123orgSlugChar125EmailRoute,
-  AtChar123orgSlugChar125FollowsRoute: AtChar123orgSlugChar125FollowsRoute,
-  AtChar123orgSlugChar125GrantsRoute: AtChar123orgSlugChar125GrantsRoute,
-  AtChar123orgSlugChar125IntegrationsRoute:
-    AtChar123orgSlugChar125IntegrationsRoute,
-  AtChar123orgSlugChar125JobsRoute: AtChar123orgSlugChar125JobsRoute,
-  AtChar123orgSlugChar125McpServersRoute:
-    AtChar123orgSlugChar125McpServersRoute,
-  AtChar123orgSlugChar125MembersRoute: AtChar123orgSlugChar125MembersRoute,
-  AtChar123orgSlugChar125MemoriesRoute: AtChar123orgSlugChar125MemoriesRoute,
-  AtChar123orgSlugChar125OverviewRoute: AtChar123orgSlugChar125OverviewRoute,
-  AtChar123orgSlugChar125PackagesRoute: AtChar123orgSlugChar125PackagesRoute,
-  AtChar123orgSlugChar125RepositoriesRoute:
-    AtChar123orgSlugChar125RepositoriesRoute,
-  AtChar123orgSlugChar125SecretProvidersRoute:
-    AtChar123orgSlugChar125SecretProvidersRoute,
-  AtChar123orgSlugChar125SecretsRoute: AtChar123orgSlugChar125SecretsRoute,
-  AtChar123orgSlugChar125SettingsRoute: AtChar123orgSlugChar125SettingsRoute,
-  AtChar123orgSlugChar125TeamsRoute: AtChar123orgSlugChar125TeamsRoute,
-  AtChar123orgSlugChar125UsageRoute: AtChar123orgSlugChar125UsageRoute,
-  AtChar123orgSlugChar125WaitingRoute: AtChar123orgSlugChar125WaitingRoute,
-  AtChar123orgSlugChar125WebhooksRoute: AtChar123orgSlugChar125WebhooksRoute,
-  AtChar123orgSlugChar125WorkflowsRoute: AtChar123orgSlugChar125WorkflowsRoute,
-  AtChar123usernameChar125KodyIdApproveCapabilitiesRoute:
-    AtChar123usernameChar125KodyIdApproveCapabilitiesRoute,
-  AtChar123usernameChar125KodyIdApproveCredentialsRoute:
-    AtChar123usernameChar125KodyIdApproveCredentialsRoute,
-  AtChar123usernameChar125KodyIdApprovePublishRoute:
-    AtChar123usernameChar125KodyIdApprovePublishRoute,
-  AtChar123usernameChar125KodyIdCollaboratorsRoute:
-    AtChar123usernameChar125KodyIdCollaboratorsRoute,
-  AtChar123usernameChar125KodyIdCredentialsRoute:
-    AtChar123usernameChar125KodyIdCredentialsRoute,
-  AtChar123usernameChar125KodyIdMappingsRoute:
-    AtChar123usernameChar125KodyIdMappingsRoute,
-  AtChar123usernameChar125KodyIdSettingsRoute:
-    AtChar123usernameChar125KodyIdSettingsRoute,
-  AtChar123usernameChar125KodyIdTriggersRoute:
-    AtChar123usernameChar125KodyIdTriggersRoute,
   KodyAuthSplatRoute: KodyAuthSplatRoute,
-  AccountActivityRunIdRoute: AccountActivityRunIdRoute,
-  AccountAgentsNewRoute: AccountAgentsNewRoute,
-  AccountAgentsUsageRoute: AccountAgentsUsageRoute,
-  AccountBillingSuccessRoute: AccountBillingSuccessRoute,
-  AccountConnectionsNewRoute: AccountConnectionsNewRoute,
-  AccountConnectionsUsageRoute: AccountConnectionsUsageRoute,
-  AccountEmailMessageIdRoute: AccountEmailMessageIdRoute,
-  AccountIntegrationsIntegrationNameRoute:
-    AccountIntegrationsIntegrationNameRoute,
-  AccountIntegrationsApproveRoute: AccountIntegrationsApproveRoute,
-  AccountJobsJobIdRoute: AccountJobsJobIdRoute,
-  AccountMcpServersServerIdRoute: AccountMcpServersServerIdRoute,
-  AccountMcpServersNewRoute: AccountMcpServersNewRoute,
-  AccountMemoriesMemoryIdRoute: AccountMemoriesMemoryIdRoute,
-  AccountOrganizationsNewRoute: AccountOrganizationsNewRoute,
-  AccountPackagesPackageIdRoute: AccountPackagesPackageIdRouteWithChildren,
-  AccountSecretProvidersApproveRoute: AccountSecretProvidersApproveRoute,
-  AccountSecretsApproveRoute: AccountSecretsApproveRoute,
-  AccountSecretsNewRoute: AccountSecretsNewRoute,
-  AccountWorkflowsWorkflowIdRoute: AccountWorkflowsWorkflowIdRoute,
-  AdminAccountDeletionsApprovalIdRoute: AdminAccountDeletionsApprovalIdRoute,
-  AdminPlatformIntegrationsSlugRoute: AdminPlatformIntegrationsSlugRoute,
-  AdminPlatformIntegrationsNewRoute: AdminPlatformIntegrationsNewRoute,
-  AdminUsersStableUserIdRoute: AdminUsersStableUserIdRoute,
   AuthProviderCallbackRoute: AuthProviderCallbackRoute,
   BlogSlugOgDotpngRoute: BlogSlugOgDotpngRoute,
   CommunityListingIdOgDotpngRoute: CommunityListingIdOgDotpngRoute,
@@ -5503,90 +5627,37 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsProviderMarksSlugRoute: IntegrationsProviderMarksSlugRoute,
   OauthPackageAppAuthorizeRoute: OauthPackageAppAuthorizeRoute,
   ProfilesUsernameOgDotpngRoute: ProfilesUsernameOgDotpngRoute,
-  AccountPackagesIndexRoute: AccountPackagesIndexRoute,
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute:
     DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute,
-  AtChar123orgSlugChar125ActivityRunIdRoute:
-    AtChar123orgSlugChar125ActivityRunIdRoute,
-  AtChar123orgSlugChar125AgentsNewRoute: AtChar123orgSlugChar125AgentsNewRoute,
-  AtChar123orgSlugChar125AgentsUsageRoute:
-    AtChar123orgSlugChar125AgentsUsageRoute,
-  AtChar123orgSlugChar125ApprovalsBundleIdRoute:
-    AtChar123orgSlugChar125ApprovalsBundleIdRoute,
-  AtChar123orgSlugChar125BillingSuccessRoute:
-    AtChar123orgSlugChar125BillingSuccessRoute,
   AtChar123orgSlugChar125ConnectionsSplatRoute:
     AtChar123orgSlugChar125ConnectionsSplatRoute,
-  AtChar123orgSlugChar125CredentialsCredentialIdRoute:
-    AtChar123orgSlugChar125CredentialsCredentialIdRoute,
-  AtChar123orgSlugChar125CredentialsNewRoute:
-    AtChar123orgSlugChar125CredentialsNewRoute,
-  AtChar123orgSlugChar125EmailMessageIdRoute:
-    AtChar123orgSlugChar125EmailMessageIdRoute,
-  AtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
-    AtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
-  AtChar123orgSlugChar125IntegrationsApproveRoute:
-    AtChar123orgSlugChar125IntegrationsApproveRoute,
-  AtChar123orgSlugChar125JobsJobIdRoute: AtChar123orgSlugChar125JobsJobIdRoute,
-  AtChar123orgSlugChar125McpServersServerIdRoute:
-    AtChar123orgSlugChar125McpServersServerIdRoute,
-  AtChar123orgSlugChar125McpServersNewRoute:
-    AtChar123orgSlugChar125McpServersNewRoute,
-  AtChar123orgSlugChar125MemoriesMemoryIdRoute:
-    AtChar123orgSlugChar125MemoriesMemoryIdRoute,
-  AtChar123orgSlugChar125SecretProvidersApproveRoute:
-    AtChar123orgSlugChar125SecretProvidersApproveRoute,
-  AtChar123orgSlugChar125SecretsApproveRoute:
-    AtChar123orgSlugChar125SecretsApproveRoute,
-  AtChar123orgSlugChar125SecretsNewRoute:
-    AtChar123orgSlugChar125SecretsNewRoute,
-  AtChar123orgSlugChar125WorkflowsWorkflowIdRoute:
-    AtChar123orgSlugChar125WorkflowsWorkflowIdRoute,
   AtChar123usernameChar125KodyIdAssetsSplatRoute:
     AtChar123usernameChar125KodyIdAssetsSplatRoute,
-  AtChar123usernameChar125KodyIdFilesSplatRoute:
-    AtChar123usernameChar125KodyIdFilesSplatRoute,
   AtChar123usernameChar125KodyIdIconIconCommitRoute:
     AtChar123usernameChar125KodyIdIconIconCommitRoute,
-  AccountAgentsNewAgentRoute: AccountAgentsNewAgentRoute,
-  AccountConnectionsNewAgentRoute: AccountConnectionsNewAgentRoute,
-  AccountIntegrationsAppsAppSlugRoute: AccountIntegrationsAppsAppSlugRoute,
   AccountMcpServersLogosServerIdRoute: AccountMcpServersLogosServerIdRoute,
   AccountMcpServersOauthCallbackRoute: AccountMcpServersOauthCallbackRoute,
-  AccountPackagesPackageIdApproveCapabilitiesRoute:
-    AccountPackagesPackageIdApproveCapabilitiesRoute,
-  AccountPackagesPackageIdApprovePublishRoute:
-    AccountPackagesPackageIdApprovePublishRoute,
-  AccountSecretsUserSecretNameRoute: AccountSecretsUserSecretNameRoute,
   CommunityListingIdAssetsSplatRoute: CommunityListingIdAssetsSplatRoute,
   CommunityListingIdIconIconCommitRoute: CommunityListingIdIconIconCommitRoute,
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,
   OrgsOrgSlugAvatarFileRoute: OrgsOrgSlugAvatarFileRoute,
   ProfilesUsernameAvatarFileRoute: ProfilesUsernameAvatarFileRoute,
-  AtChar123orgSlugChar125AgentsNewAgentRoute:
-    AtChar123orgSlugChar125AgentsNewAgentRoute,
-  AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute:
-    AtChar123orgSlugChar125IntegrationsAppsAppSlugRoute,
-  AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute:
-    AtChar123orgSlugChar125McpServersServerIdAuthorizeRoute,
-  AtChar123orgSlugChar125SecretsUserSecretNameRoute:
-    AtChar123orgSlugChar125SecretsUserSecretNameRoute,
   AtChar123usernameChar125KodyIdRawRefSplatRoute:
     AtChar123usernameChar125KodyIdRawRefSplatRoute,
-  AtChar123usernameChar125KodyIdTreeRefSplatRoute:
-    AtChar123usernameChar125KodyIdTreeRefSplatRoute,
   AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute:
     AtChar123usernameChar125WebhooksPackageKodyIdWebhookNameUrlSecretRoute,
   AccountReposRepoIdIconIconCommitRoute: AccountReposRepoIdIconIconCommitRoute,
-  AccountSecretsPackagePackageIdSecretNameRoute:
-    AccountSecretsPackagePackageIdSecretNameRoute,
-  AccountSecretsSessionSessionIdSecretNameRoute:
-    AccountSecretsSessionSessionIdSecretNameRoute,
-  AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute:
-    AtChar123orgSlugChar125SecretsPackagePackageIdSecretNameRoute,
-  AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute:
-    AtChar123orgSlugChar125SecretsSessionSessionIdSecretNameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

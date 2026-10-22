@@ -28,6 +28,7 @@ import {
 	recordRunRecord,
 	runLogRpc,
 	summarizeRunRecords,
+	loadWorkspaceRunCharts,
 	updateRunErrorTriage,
 } from './service.ts'
 import {
@@ -1537,4 +1538,46 @@ test('idempotency lookup is surface-scoped and abandon releases running claims',
 	expect((await lookup('workflow'))?.metadata['result']).toEqual({
 		from: 'workflow',
 	})
+})
+
+test('dashboard aggregates complete owner history and excludes exports, child runs, and out-of-window runs', async () => {
+	const userId = uniqueUserId('dashboard')
+	const otherUser = uniqueUserId('dashboard-other')
+	const now = new Date()
+	const start = new Date(now.toISOString().slice(0, 10) + 'T00:00:00.000Z')
+	start.setUTCDate(start.getUTCDate() - 6)
+	const since = start.getTime()
+	for (let i = 0; i < 31; i++) {
+		await finishRunRecord({
+			env,
+			handle: handleFor(
+				userId,
+				crypto.randomUUID(),
+				{ surface: 'execute' },
+				since + 1000,
+			),
+			status: i === 0 ? 'error' : 'success',
+		})
+	}
+	for (const [owner, context, time] of [
+		[userId, { surface: 'export' }, since + 1000],
+		[userId, { surface: 'execute', parentRunId: 'parent' }, since + 1000],
+		[otherUser, { surface: 'execute' }, since + 1000],
+		[userId, { surface: 'execute' }, since - 1],
+	] as const) {
+		await finishRunRecord({
+			env,
+			handle: handleFor(owner, crypto.randomUUID(), context, time),
+			status: 'error',
+		})
+	}
+	const charts = await loadWorkspaceRunCharts({ env, userId, now })
+	expect(charts.days).toHaveLength(7)
+	expect(charts.days[0]).toMatchObject({ success: 30, error: 1, running: 0 })
+	expect(
+		charts.days
+			.slice(1)
+			.every((day) => day.success + day.error + day.running === 0),
+	).toBe(true)
+	expect(charts.sources).toEqual([{ surface: 'execute', count: 31 }])
 })

@@ -1,7 +1,7 @@
 import { createElement, type ComponentType } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { Route as memoriesList } from './routes/@{$orgSlug}_.-.memories.tsx'
-import { Route as memoriesDetail } from './routes/@{$orgSlug}_.-.memories_.$memoryId.tsx'
+import { Route as memoriesList } from './routes/_app.@{$orgSlug}_.-.memories.tsx'
+import { Route as memoriesDetail } from './routes/_app.@{$orgSlug}_.-.memories_.$memoryId.tsx'
 import type * as PageQueryModule from './page-query.ts'
 import { renderStartPage } from './test-support/render-start-page.ts'
 

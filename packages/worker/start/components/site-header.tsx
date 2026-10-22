@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { DemoIndicator } from './demo-indicator.tsx'
+import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { publicAsset } from '../public-assets.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
 import { type CSSObject } from '@emotion/react'
@@ -65,6 +67,12 @@ const menuPanelId = 'site-menu'
 
 export function SiteHeader(props: SiteHeaderProps) {
 	const [menuOpen, setMenuOpen] = useState(false)
+	const personal = props.organizationSession?.organizations.find(
+		(org) => org.personal,
+	)
+	const workspaceHref = personal
+		? workspaceHomeHref(personal)
+		: '/account/organizations'
 	useEffect(() => {
 		dismissOpenPopoverPanel(document.getElementById(menuPanelId))
 	}, [props.currentPathname])
@@ -85,14 +93,26 @@ export function SiteHeader(props: SiteHeaderProps) {
 						/>
 						<span>Kody</span>
 					</SiteLink>
-					<div css={{ marginLeft: 'auto', display: 'flex' }}>
+					<div
+						css={{
+							marginLeft: 'auto',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '1rem',
+						}}
+					>
 						{props.loggedIn ? (
-							<AccountMenu
-								username={props.username}
-								displayName={props.displayName}
-								avatarUrl={props.avatarUrl}
-								organizations={props.organizationSession?.organizations ?? []}
-							/>
+							<>
+								<SiteLink href={workspaceHref} css={navLoginCss}>
+									Workspace
+								</SiteLink>
+								<AccountMenu
+									username={props.username}
+									displayName={props.displayName}
+									avatarUrl={props.avatarUrl}
+									organizations={props.organizationSession?.organizations ?? []}
+								/>
+							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
 								Log in
@@ -138,17 +158,16 @@ export function SiteHeader(props: SiteHeaderProps) {
 				<div css={navActionsCss}>
 					{props.loggedIn ? (
 						<>
+							<SiteLink href={workspaceHref} css={navLoginCss}>
+								Workspace
+							</SiteLink>
 							<AccountMenu
 								organizations={props.organizationSession?.organizations ?? []}
 								username={props.username}
 								displayName={props.displayName}
 								avatarUrl={props.avatarUrl}
 							/>
-							{props.showDemoIndicator ? (
-								<span data-testid="demo-indicator" css={demoIndicatorCss}>
-									Demo
-								</span>
-							) : null}
+							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (
 						<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -234,6 +253,7 @@ const navCss: CSSObject = {
 	alignItems: 'center',
 	gap: '1.8rem',
 	flexWrap: 'wrap' as const,
+	'@media (max-width: 820px)': { gap: '0.75rem' },
 	'@media (min-width: 821px) and (max-width: 1000px)': { gap: '0.8rem' },
 }
 
@@ -280,12 +300,12 @@ const navActionsCss: CSSObject = {
 	gap: '0.9rem',
 	// The links are gone at this width, so the actions take the free space
 	// and keep the toggle pinned to the right edge.
-	[headerNavMq]: { display: 'none' },
+	[headerNavMq]: { display: 'flex', marginLeft: 'auto', gap: '0.5rem' },
 }
 
 const menuToggleCss: CSSObject = {
 	display: 'none',
-	marginLeft: 'auto',
+	marginLeft: 0,
 	alignItems: 'center',
 	justifyContent: 'center',
 	width: '44px',
@@ -436,16 +456,4 @@ const navLoginCss: CSSObject = {
 	padding: '0.7rem 0.25rem',
 	whiteSpace: 'nowrap' as const,
 	'&:hover': { color: colors.primaryText },
-}
-
-const demoIndicatorCss: CSSObject = {
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.medium,
-	color: colors.textMuted,
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.375rem',
-	padding: `0 ${spacing.xs}`,
-	lineHeight: 1.6,
-	letterSpacing: '0.02em',
-	textTransform: 'uppercase' as const,
 }

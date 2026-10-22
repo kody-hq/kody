@@ -321,7 +321,11 @@ export function AccountMcpServersPage({
 	const showServerNotFound = selection.selectedId != null && !server
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="mcp-servers"
 				title="MCP servers"

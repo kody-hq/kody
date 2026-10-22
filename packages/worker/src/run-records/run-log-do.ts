@@ -1,3 +1,4 @@
+import { type WorkspaceRunBucket } from '#universal/workspace-charts.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import {
@@ -3370,6 +3371,22 @@ class RunLogBase extends DurableObject<Env> {
 		}
 	}
 
+	async dashboardBuckets(input: {
+		since: string
+		until: string
+	}): Promise<Array<WorkspaceRunBucket>> {
+		return this.execSqlTracked<WorkspaceRunBucket>(
+			'summarize',
+			`SELECT substr(started_at, 1, 10) AS day, surface, status, COUNT(*) AS count
+			FROM runs
+			WHERE started_at >= ? AND started_at <= ?
+			AND parent_run_id IS NULL AND surface != 'export'
+			GROUP BY day, surface, status ORDER BY day, surface, status`,
+			input.since,
+			input.until,
+		).toArray()
+	}
+
 	async summarize(input: { since: string }): Promise<RunRecordSummary> {
 		const since = input.since
 		const cacheKey = this.summarizeCacheKey(since)
@@ -4232,6 +4249,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	inspectSqlBilling: () => Promise<RunLogSqlBillingInspection>
 	listPackageRunSuccesses: () => Promise<Array<PackageRunSuccessRecord>>
 	listActivationMilestones: () => Promise<Array<ActivationMilestoneRecord>>
+	dashboardBuckets: (input: {
+		since: string
+		until: string
+	}) => Promise<Array<WorkspaceRunBucket>>
 	summarize: (input: { since: string }) => Promise<RunRecordSummary>
 	listStorageIds: () => Promise<Array<string>>
 	exportRuns: (input: ExportRunsInput) => Promise<ExportRunsResult>

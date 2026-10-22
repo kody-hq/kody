@@ -105,7 +105,7 @@ export function AccountMcpServerAuthorizePage({
 	const { pending } = data
 	const mode = pending ? clientModeCopy(pending.clientMode) : null
 	return (
-		<AccountManagementShell currentHref={href} maxWidth="40rem">
+		<AccountManagementShell layout="form" currentHref={href} maxWidth="40rem">
 			<AccountPageHeader
 				entity="mcp-servers"
 				title={`Authorize ${data.serverName}`}

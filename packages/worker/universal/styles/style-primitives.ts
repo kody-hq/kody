@@ -944,13 +944,15 @@ type AuthInputCssOptions = {
  */
 export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 	return {
-		font: `400 1rem/1.2 ${typography.fontFamilyBody}`,
+		font: `400 var(--control-font-size, 1rem)/var(--control-line-height, 1.2) ${typography.fontFamilyBody}`,
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
 		border: `1.5px solid ${colors.fieldBorder}`,
-		borderRadius: '12px',
-		padding: '0.85rem 1.05rem',
+		borderRadius: 'var(--control-radius, 12px)',
+		padding:
+			'var(--control-padding-y, 0.85rem) var(--control-padding-x, 1.05rem)',
+		minHeight: 'var(--control-min-height, auto)',
 		minWidth: 0,
 		width: '100%',
 		boxSizing: 'border-box' as const,
@@ -990,7 +992,7 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
  * own green ring.
  */
 export function getSelectCss(options: AuthInputCssOptions = {}) {
-	const chevronInset = '1.05rem'
+	const chevronInset = 'var(--control-padding-x, 1.05rem)'
 	return {
 		...getAuthInputCss(options),
 		appearance: 'none' as const,

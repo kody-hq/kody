@@ -224,6 +224,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 
 	return (
 		<AccountManagementShell
+			layout="detail"
 			currentHref={currentHref}
 			busy={busy}
 			maxWidth="46rem"

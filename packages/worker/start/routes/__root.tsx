@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { homeSoftwareApplicationJsonLdScriptText } from '#universal/home-json-ld.ts'
+import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
 import { publicAsset } from '../public-assets.ts'
 import { pageNavigationForMatches } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
@@ -23,6 +24,7 @@ import {
 	Outlet,
 	Scripts,
 	useLocation,
+	useMatches,
 	useLoaderData,
 	useRouteContext,
 	useRouter,
@@ -279,12 +281,14 @@ function LoadedAppLayout() {
 	)
 	const authShell = appShell.mode === 'auth'
 	const focused = appShell.mode === 'focused'
+	const workspace = Boolean(workspaceLayoutNavigation(useMatches(), session))
+	const Content = workspace ? 'div' : 'main'
 	return (
 		<div data-app-frame css={appFrameCss}>
 			<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 				Skip to content
 			</a>
-			{authShell ? null : (
+			{authShell || workspace ? null : (
 				<SiteHeader
 					focused={focused}
 					loggedIn={session !== null}
@@ -298,14 +302,18 @@ function LoadedAppLayout() {
 					currentPathname={pathname}
 				/>
 			)}
-			<main
-				id="main"
+			<Content
+				id={workspace ? undefined : 'main'}
 				tabIndex={-1}
-				css={appMainCss(appShell, illustratedError)}
+				css={
+					workspace
+						? { width: '100%', flex: 1 }
+						: appMainCss(appShell, illustratedError)
+				}
 			>
 				<Outlet />
-			</main>
-			{authShell || focused ? null : (
+			</Content>
+			{authShell || focused || workspace ? null : (
 				<SiteFooter loggedIn={session !== null} loginHref={loginHref} />
 			)}
 			<YouTubeWatchOverlay snapshot={youtubeWatch} location={shellLocation} />

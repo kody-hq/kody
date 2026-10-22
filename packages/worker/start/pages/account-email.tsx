@@ -352,6 +352,7 @@ export function AccountEmailPage({
 
 	return (
 		<AccountManagementShell
+			layout="list"
 			currentHref={currentHref}
 			maxWidth="min(100%, 92rem)"
 			busy={false}

@@ -165,8 +165,7 @@ test('every workspace section is reachable from /account through the avatar menu
 	).toHaveAttribute('aria-current', 'page')
 
 	// Account pages have no workspace rail (so no switcher); the avatar
-	// menu's Manage group opens the signup org's overview, which links every
-	// section.
+	// menu's Manage group opens the signup org's dashboard.
 	await page.goto('/account/security')
 	await waitForClientHydration(page)
 	await expect(page.getByTestId('org-switcher')).toHaveCount(0)
@@ -185,22 +184,20 @@ test('every workspace section is reachable from /account through the avatar menu
 			.getByRole('navigation', { name: 'Workspace sections' })
 			.getByRole('link', { name: 'Overview', exact: true }),
 	).toHaveAttribute('aria-current', 'page')
-	const overview = page.locator('[data-testid^="org-overview-"]')
-	for (const label of [
-		'Repositories',
-		'Agents',
-		'Credentials',
-		'Jobs',
-		'Memories',
-		'Billing',
+	const overview = page.getByTestId('workspace-dashboard')
+	for (const heading of [
+		'Executions',
+		'Recent repositories',
+		'Recent activity',
+		'Upcoming jobs',
 	]) {
 		await expect(
-			overview.getByRole('link', { name: new RegExp(`^${label}`) }),
+			overview.getByRole('heading', { name: new RegExp(`^${heading}`) }),
 		).toBeVisible()
 	}
 	await page
-		.getByTestId('org-overview-credentials')
-		.getByRole('link', { name: /^Credentials/ })
+		.getByRole('navigation', { name: 'Workspace sections' })
+		.getByRole('link', { name: 'Credentials', exact: true })
 		.click()
 	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credentials$`))
 	await expect(

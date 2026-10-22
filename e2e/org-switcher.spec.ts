@@ -63,18 +63,15 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	).toBeVisible()
 	await expect(page.getByTestId('org-home')).toBeVisible()
 	await waitForClientHydration(page)
-	await expect(page.getByTestId('org-home-nav-workspace')).toHaveAttribute(
-		'href',
-		`/@pinned-${runId}/-/repositories`,
-	)
-	// The header has no switcher; it heads the workspace rail.
-	await expect(page.getByTestId('org-switcher')).toHaveCount(0)
-	await page.getByTestId('org-home-nav-workspace').click()
-	await expect(page).toHaveURL(new RegExp(`/@pinned-${runId}/-/repositories$`))
 	const workspaceRail = page.getByRole('navigation', {
 		name: 'Workspace sections',
 	})
 	await expect(workspaceRail.getByTestId('org-switcher')).toBeVisible()
+	await expect(page.getByTestId('org-home-nav')).toHaveCount(0)
+	await workspaceRail
+		.getByRole('link', { name: 'Repositories', exact: true })
+		.click()
+	await expect(page).toHaveURL(new RegExp(`/@pinned-${runId}/-/repositories$`))
 
 	const wide = await openSwitcher(page)
 	await expect(

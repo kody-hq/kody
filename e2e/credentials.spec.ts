@@ -499,19 +499,11 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 		`${names.length} of ${names.length}`,
 	)
 	const longTop = await accountRailContentTop(page)
-	const longNavHeight = await page
-		.locator('[data-account-nav]')
-		.evaluate((element) => element.getBoundingClientRect().height)
-	const longRailHeight = await page
-		.locator('[data-account-nav] > div')
-		.first()
-		.evaluate((element) => element.getBoundingClientRect().height)
-	expect(
-		longNavHeight,
-		'full list must stretch the nav taller than the rail so sticky engages',
-	).toBeGreaterThan(longRailHeight + 1)
-	// Pre-fix long-list look: first rail content at 5rem (80px at 16px root).
-	expect(Math.abs(longTop - 80)).toBeLessThanOrEqual(0.5)
+	const sidebar = page.getByRole('complementary', {
+		name: 'Workspace navigation',
+	})
+	const longSidebar = await sidebar.boundingBox()
+	expect(longSidebar).toMatchObject({ y: 0, height: 900 })
 
 	await page.getByLabel('Search credentials', { exact: true }).fill('AUDIBLE')
 	await expect(page).toHaveURL(/[?&]q=AUDIBLE/)
@@ -520,14 +512,7 @@ test('account rail top stays put when credentials search shrinks a tall list', a
 	).toBeVisible()
 	await expect(table.getByText(/of \d+/)).toContainText(`1 of ${names.length}`)
 	const shortTop = await accountRailContentTop(page)
-	const shortNavHeight = await page
-		.locator('[data-account-nav]')
-		.evaluate((element) => element.getBoundingClientRect().height)
-	expect(
-		shortNavHeight,
-		'filtered list should leave the nav about as tall as the rail',
-	).toBeLessThanOrEqual(longRailHeight + 1)
-
+	const shortSidebar = await sidebar.boundingBox()
+	expect(shortSidebar).toEqual(longSidebar)
 	expect(Math.abs(shortTop - longTop)).toBeLessThanOrEqual(0.5)
-	expect(Math.abs(shortTop - 80)).toBeLessThanOrEqual(0.5)
 })

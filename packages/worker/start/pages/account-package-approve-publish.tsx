@@ -176,7 +176,11 @@ export function AccountPackageApprovePublishRoute({
 	const promoteBlocked =
 		checks.status === 'running' || checks.status === 'failed'
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={busy}>
+		<AccountManagementShell
+			layout="detail"
+			currentHref={currentHref}
+			busy={busy}
+		>
 			<AccountPageHeader
 				title={
 					promotedListing

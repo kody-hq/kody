@@ -1,3 +1,7 @@
+import {
+	buildWorkspaceRunCharts,
+	workspaceChartWindow,
+} from '#universal/workspace-charts.ts'
 import { toJsonSafeValue } from '@kody-internal/shared/json-safe-value.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { packageInvocationStartedLog } from '#worker/caller-disconnect.ts'
@@ -1398,3 +1402,18 @@ export {
 	workflowProjectionCreatingTtlMs,
 	workflowProjectionReservationStatuses,
 } from './workflow-projection.ts'
+
+export async function loadWorkspaceRunCharts(input: {
+	env: Env
+	userId: OwnerId
+	now?: Date
+}) {
+	const window = workspaceChartWindow(input.now)
+	const buckets = runLogBinding(input.env)
+		? await runLogRpc({
+				env: input.env,
+				userId: input.userId,
+			}).dashboardBuckets(window)
+		: []
+	return buildWorkspaceRunCharts(window, buckets)
+}

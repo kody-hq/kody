@@ -188,7 +188,70 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 		if (resolution.org.id !== personalOrgIdForPerson(input.user.mcpUser))
 			throw redirect({ href: `/@${encodeURIComponent(slug)}` })
 
-		return { slug }
+		const [
+			{ loadProfileData },
+			{ loadAccountActivityData },
+			{ loadAccountJobsData },
+			{ loadWorkspaceRunCharts },
+			{ loadOrgUsagePageResult },
+		] = await Promise.all([
+			import('../../src/app/profile-data.ts'),
+			import('../../src/app/account-activity-data.ts'),
+			import('../../src/app/account-jobs-data.ts'),
+			import('../../src/run-records/service.ts'),
+			import('../../src/app/handlers/org-usage.ts'),
+		])
+		const [repositories, activity, jobs, charts, usage] = await Promise.all([
+			loadProfileData(
+				input.env,
+				input.request,
+				input.user.username,
+				undefined,
+				{ query: '', limit: 5 },
+			),
+			loadAccountActivityData({
+				...input,
+				selectedRunId: null,
+				viewFilter: 'recent',
+				statusFilter: 'all',
+				surfaceFilter: 'all',
+				triageFilter: 'all',
+				cursor: null,
+			}),
+			loadAccountJobsData({ ...input, selectedJobId: null }),
+			loadWorkspaceRunCharts({
+				env: input.env,
+				userId: input.user.request.org.id,
+			}),
+			loadOrgUsagePageResult({
+				...input,
+				orgSlug: slug,
+				credits: null,
+				error: null,
+				topup: null,
+				sessionId: null,
+			}),
+		])
+		if (!repositories) throw notFound()
+		return {
+			slug,
+			charts,
+			billing:
+				usage.kind === 'data'
+					? {
+							whereItWent: usage.payload.whereItWent,
+							includedCompute: usage.payload.includedCompute,
+							creditsAlarm: usage.payload.creditsAlarm,
+						}
+					: null,
+			repositories: repositories.packages,
+			summary: activity.summary,
+			runs: activity.runs.slice(0, 6),
+			upcomingJobs: jobs.jobs
+				.filter((job) => job.enabled && !job.killSwitchEnabled && !job.expired)
+				.sort((a, b) => Date.parse(a.nextRunAt) - Date.parse(b.nextRunAt))
+				.slice(0, 4),
+		}
 	})
 
 export const loadOrgRepositories = createServerFn({ method: 'GET' })

@@ -12,6 +12,7 @@ import {
 	packageCredentialsTabs,
 } from '#universal/package-credentials-page.ts'
 import { renderPackageStatusSignifiers } from './package-status-signifiers.tsx'
+import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 
@@ -131,11 +132,9 @@ export function renderPackageRepoChrome(input: {
 	actions?: ReactNode
 }) {
 	const backHref = input.viewerIsOwner
-		? routes.profile.href({ username: input.username })
+		? orgResourcePath(input.username, 'repositories')
 		: routes.community.href()
-	const backLabel = input.viewerIsOwner
-		? `@${input.username}`
-		: 'Public packages'
+	const backLabel = input.viewerIsOwner ? 'Repositories' : 'Public packages'
 	const profileHref =
 		input.ownerProfilePublic === false
 			? null

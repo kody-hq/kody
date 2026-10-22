@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
+import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import {
 	profilePageCss,
 	profileLayoutCss,
@@ -35,6 +36,7 @@ import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
  * management.
  */
 function renderOrgHomeMain(input: {
+	showNavigation: boolean
 	slug: string
 	handle: string
 	role: OrgRole | null
@@ -50,7 +52,7 @@ function renderOrgHomeMain(input: {
 			: []
 	return (
 		<div css={mainCss} data-testid="org-home">
-			{homeItems.length > 0 ? (
+			{input.showNavigation && homeItems.length > 0 ? (
 				<nav
 					aria-label={`${input.handle} sections`}
 					data-testid="org-home-nav"
@@ -328,6 +330,7 @@ export function OrgHomePage({
 		role: OrgRole | null
 	}
 }) {
+	const inWorkspace = useContext(WorkspaceLayoutContext)
 	const identity = orgIdentity(
 		{ ...org, personal: false },
 		{
@@ -337,7 +340,12 @@ export function OrgHomePage({
 	)
 	return (
 		<section css={profilePageCss} data-testid="org-page">
-			<div css={profileLayoutCss}>
+			<div
+				css={[
+					profileLayoutCss,
+					inWorkspace && { gridTemplateColumns: 'minmax(0, 1fr)' },
+				]}
+			>
 				{renderOrgIdentity({
 					name: identity.name,
 					handle: identity.handle,
@@ -345,6 +353,7 @@ export function OrgHomePage({
 					role: orgRoleLabel(org.role),
 				})}
 				{renderOrgHomeMain({
+					showNavigation: !inWorkspace,
 					slug: org.slug,
 					handle: identity.handle,
 					role: org.role,

@@ -479,8 +479,8 @@ Related handlers:
 - Native sign-out function: `packages/worker/start/server/security-mutations.ts`
 - `POST /session`: `packages/worker/src/app/handlers/session.ts` for session
   status checks
-- `GET /account`: `packages/worker/start/routes/account.tsx` (redirects to login
-  if missing session)
+- `GET /account`: `packages/worker/start/routes/_app.account.tsx` (redirects to
+  login if missing session)
 
 ### Client session refresh behavior
 

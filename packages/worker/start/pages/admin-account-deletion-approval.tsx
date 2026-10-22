@@ -52,7 +52,7 @@ export function AdminAccountDeletionApprovalPage(props: {
 		: false
 
 	return (
-		<AccountManagementShell currentHref={props.currentHref}>
+		<AccountManagementShell layout="detail" currentHref={props.currentHref}>
 			<AdminPageHeader
 				title="Delete account"
 				description="Review this account, then approve the hard delete. Nothing is removed until you approve."

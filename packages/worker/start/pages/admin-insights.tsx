@@ -14,6 +14,7 @@ export function AdminInsightsRoute({
 	const currentHref = useMatchedPageScope().pageLocation.href
 	return (
 		<AccountManagementShell
+			layout="dashboard"
 			currentHref={currentHref}
 			maxWidth="min(100%, 92rem)"
 		>

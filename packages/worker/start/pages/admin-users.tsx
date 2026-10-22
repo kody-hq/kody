@@ -487,7 +487,11 @@ export function AdminUsersPage(props: {
 			: (selectedUser?.plan ?? 'free')
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={pending}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={pending}
+		>
 			<AdminPageHeader
 				title="Admin users"
 				description="Review account metadata and manage role assignments and entitlement plans. User content is never shown here."

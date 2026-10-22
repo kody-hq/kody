@@ -134,7 +134,7 @@ export function PendingVerificationPage({
 		}
 	}
 	return (
-		<AccountManagementShell maxWidth={layoutMaxWidths.content}>
+		<AccountManagementShell layout="form" maxWidth={layoutMaxWidths.content}>
 			<div
 				data-testid="pending-verification-page"
 				css={pendingVerificationLayoutCss}

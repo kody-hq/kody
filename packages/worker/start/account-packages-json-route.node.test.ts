@@ -30,7 +30,7 @@ test('POST /account/packages.json is an exact protocol route with GET HEAD POST'
 
 test('retired sibling account JSON companions no longer empty-405 JSON POSTs', () => {
 	const [, params, route] = router.getMatchedRoutes('/account/secrets.json')
-	expect(route?.id).toBe('/account')
+	expect(route?.id).toBe('/_app/account')
 	expect(params['**']).toBe('secrets.json')
 	const rejection = routeMethodRejection(
 		'POST',

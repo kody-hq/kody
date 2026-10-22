@@ -32,7 +32,10 @@ export function OrgCollaboratorsPage({
 	queryKey: QueryKey
 }) {
 	return (
-		<AccountManagementShell currentHref={`/@${data.org.slug}/-/collaborators`}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={`/@${data.org.slug}/-/collaborators`}
+		>
 			<AccountPageHeader
 				title="Collaborators"
 				description="People with grants on this organization who are not members."

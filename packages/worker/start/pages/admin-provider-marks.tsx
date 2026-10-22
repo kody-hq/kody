@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import type { ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
+import { type ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
 import {
 	saveAdminProviderMark,
 	deleteAdminProviderMark,
@@ -478,6 +478,7 @@ export function AdminProviderMarksRoute({
 	const isMutating = actionState !== 'idle'
 	return (
 		<AccountManagementShell
+			layout="list"
 			currentHref={currentHref}
 			busy={actionState !== 'idle'}
 		>

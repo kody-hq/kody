@@ -119,7 +119,10 @@ function OrgMembersContent({
 	}
 
 	return (
-		<AccountManagementShell currentHref={routes.orgMembers.href(args)}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={routes.orgMembers.href(args)}
+		>
 			<AccountPageHeader
 				title="Members"
 				description="People who belong to this organization."

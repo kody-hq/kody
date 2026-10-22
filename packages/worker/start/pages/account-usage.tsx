@@ -366,7 +366,11 @@ export function AccountUsagePage({
 		: null
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="dashboard"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="usage"
 				title="Usage"

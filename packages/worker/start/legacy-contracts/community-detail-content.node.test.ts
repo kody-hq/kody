@@ -338,8 +338,8 @@ test('package chrome is shared for public listings and private owner packages', 
 		testId('package-repo-nav-repo'),
 		testId('package-repo-nav-files'),
 		'href="/@kentcdodds/github-triage/settings"',
-		'href="/@kentcdodds"',
-		'← @kentcdodds',
+		'href="/@kentcdodds/-/repositories"',
+		'← Repositories',
 	])
 	expect(
 		await render({ viewerIsOwner: true, viewerCanManage: true }),

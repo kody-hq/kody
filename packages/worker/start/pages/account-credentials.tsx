@@ -293,7 +293,7 @@ export function AccountCredentialsRoute({
 		})),
 	]
 	return (
-		<AccountManagementShell currentHref={currentHref}>
+		<AccountManagementShell layout="list" currentHref={currentHref}>
 			<AccountPageHeader
 				entity="credentials"
 				title="Credentials"

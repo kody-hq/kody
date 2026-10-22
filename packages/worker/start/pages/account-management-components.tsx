@@ -3,7 +3,8 @@ import { useMatches, useRouteContext } from '@tanstack/react-router'
 import { type MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
 import { type CSSObject } from '@emotion/react'
-import { type ReactNode, type FormEvent } from 'react'
+import { useContext, type ReactNode, type FormEvent } from 'react'
+import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -167,7 +168,21 @@ export const accountDisclosureCss: CSSObject = {
 
 type AccountManagementSlot = ReactNode
 
+type WorkspacePageLayout = 'form' | 'detail' | 'list' | 'dashboard'
+
+// The former 72rem shell minus its 200px navigation, 4.5rem gap, and 5rem gutters.
+const previousContentWidth = `calc(${layoutMaxWidths.extended} - 200px - 9.5rem)`
+
+const workspacePageWidths: Record<WorkspacePageLayout, string> = {
+	form: previousContentWidth,
+	detail: previousContentWidth,
+	list: 'none',
+	dashboard: 'none',
+}
+
 type AccountManagementShellProps = {
+	/** Content shape inside the shared workspace, independent of the sidebar. */
+	layout?: WorkspacePageLayout
 	currentHref?: string
 	/**
 	 * Optional cap on the content column (not the whole grid). Useful for
@@ -190,22 +205,33 @@ const accountSectionGap = 'clamp(2rem, 4vw, 2.75rem)'
 
 export function AccountManagementShell(props: AccountManagementShellProps) {
 	const shell = useMatches({ select: appShellForMatches })
-	const hasNavigation = Boolean(props.currentHref && shell.mode !== 'focused')
+	const sharedLayout = useContext(WorkspaceLayoutContext)
+	const hasNavigation = Boolean(
+		props.currentHref && shell.mode !== 'focused' && !sharedLayout,
+	)
 	return (
 		<section
 			data-account-shell
+			data-workspace-page-layout={
+				sharedLayout ? (props.layout ?? 'detail') : undefined
+			}
 			aria-busy={props.busy ? 'true' : undefined}
 			css={{
 				width: '100%',
-				maxWidth: hasNavigation
-					? layoutMaxWidths.extended
-					: (props.maxWidth ?? layoutMaxWidths.extended),
-				margin: '0 auto',
+				maxWidth: sharedLayout
+					? props.maxWidth &&
+						(props.layout === 'form' || props.layout === 'detail')
+						? `min(${previousContentWidth}, ${props.maxWidth})`
+						: workspacePageWidths[props.layout ?? 'detail']
+					: hasNavigation
+						? layoutMaxWidths.extended
+						: (props.maxWidth ?? layoutMaxWidths.extended),
+				margin: sharedLayout ? 0 : '0 auto',
 				flexGrow: 1,
 				boxSizing: 'border-box',
 				display: 'grid',
 				alignContent: 'start',
-				padding: `0 ${pageGutter} clamp(3rem, 7vw, 5rem)`,
+				padding: sharedLayout ? 0 : `0 ${pageGutter} clamp(3rem, 7vw, 5rem)`,
 				...(hasNavigation
 					? {
 							gridTemplateColumns: '200px minmax(0, 1fr)',
@@ -220,15 +246,21 @@ export function AccountManagementShell(props: AccountManagementShellProps) {
 				data-account-content
 				css={{
 					minWidth: 0,
-					paddingTop: 'clamp(2rem, 5vw, 3.5rem)',
+					paddingTop: sharedLayout ? 0 : 'clamp(2rem, 5vw, 3.5rem)',
 					display: 'grid',
 					alignContent: 'start',
 					alignItems: 'start',
 					gap: hasNavigation ? accountSectionGap : spacing.xl,
-					...(props.maxWidth ? { '& > *': { maxWidth: props.maxWidth } } : {}),
+					...(!sharedLayout && props.maxWidth
+						? { '& > *': { maxWidth: props.maxWidth } }
+						: {}),
 					[accountManagementNarrowMq]: {
 						gap: spacing.xl,
-						paddingTop: hasNavigation ? spacing.xl : 'clamp(2rem, 5vw, 3.5rem)',
+						paddingTop: sharedLayout
+							? 0
+							: hasNavigation
+								? spacing.xl
+								: 'clamp(2rem, 5vw, 3.5rem)',
 					},
 				}}
 			>
@@ -251,9 +283,12 @@ export function AccountManagementShell(props: AccountManagementShellProps) {
 	)
 }
 
-function ShellNavigation() {
+export function ShellNavigation({
+	navigation,
+}: { navigation?: MatchedPageNavigation } = {}) {
 	const session = useShellData().session
-	const { pageNavigation } = useRouteContext({ strict: false })
+	const context = useRouteContext({ strict: false })
+	const pageNavigation = navigation ?? context.pageNavigation
 	const admin = pageNavigation?.rail === 'admin'
 	const rail = pageRail({ session, navigation: pageNavigation })
 	return (
@@ -292,7 +327,7 @@ type AccountManagementHeaderProps = {
 	/** Context above the H1, such as the package a decision is about. */
 	eyebrow?: AccountManagementSlot
 	title: string
-	description: string
+	description?: string
 	actions?: AccountManagementSlot
 	titleAside?: AccountManagementSlot
 }
@@ -332,7 +367,11 @@ export function AccountManagementHeader(props: AccountManagementHeaderProps) {
 					</h1>
 					{props.titleAside ?? null}
 				</div>
-				<p css={{ color: colors.textMuted, margin: 0 }}>{props.description}</p>
+				{props.description ? (
+					<p css={{ color: colors.textMuted, margin: 0 }}>
+						{props.description}
+					</p>
+				) : null}
 			</div>
 			{props.actions ? (
 				<div
@@ -426,7 +465,7 @@ const adminNavItems = [
 type AccountPageHeaderProps = {
 	entity?: EntityExplainerId
 	title: string
-	description: string
+	description?: string
 	currentHref: string
 	actions?: AccountManagementSlot
 }

@@ -37,7 +37,11 @@ export function AccountWebhooksPage({
 	const mintedCount = webhooks.filter((webhook) => webhook.minted).length
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="webhooks"
 				title="Webhooks"

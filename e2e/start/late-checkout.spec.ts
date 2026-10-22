@@ -52,7 +52,7 @@ for (const returnToBilling of [false, true]) {
 			await expect.poll(() => checkoutUrl).not.toBe('')
 			await held
 			await page
-				.getByRole('navigation', { name: 'Main', exact: true })
+				.getByRole('navigation', { name: 'Workspace help', exact: true })
 				.getByRole('link', { name: 'Docs', exact: true })
 				.click()
 			await expect(page).toHaveURL(/\/docs$/)

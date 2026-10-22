@@ -19,7 +19,11 @@ export function AdminRolesPage({
 	const status: string = 'ready'
 	const roles = data.roles
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={pending}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={pending}
+		>
 			<AdminPageHeader
 				title="Admin roles"
 				description="Read-only view of roles and the permissions attached to each."

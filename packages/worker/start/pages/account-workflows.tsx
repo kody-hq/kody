@@ -310,7 +310,11 @@ export function AccountWorkflowsPage({
 	const canCancel = detail ? isActiveAccountWorkflow(detail) : false
 
 	return (
-		<AccountManagementShell currentHref={currentHref} busy={false}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			busy={false}
+		>
 			<AccountPageHeader
 				entity="workflows"
 				title="Workflows"

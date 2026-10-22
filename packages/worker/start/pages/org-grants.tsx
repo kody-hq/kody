@@ -51,7 +51,10 @@ function OrgGrantsContent({
 	} | null>(null)
 	const mutation = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
 	return (
-		<AccountManagementShell currentHref={`/@${data.org.slug}/-/grants`}>
+		<AccountManagementShell
+			layout="list"
+			currentHref={`/@${data.org.slug}/-/grants`}
+		>
 			<AccountPageHeader
 				title="Grants"
 				description="Who can use packages and other resources in this organization."

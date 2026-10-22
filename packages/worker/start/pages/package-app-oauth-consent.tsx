@@ -71,7 +71,7 @@ export function PackageAppOauthConsentPage({
 	]
 
 	return (
-		<AccountManagementShell maxWidth="40rem">
+		<AccountManagementShell layout="form" maxWidth="40rem">
 			<AccountManagementHeader
 				title={`Allow ${data.packageName}?`}
 				description={`${data.packageName} wants to use your Kody account. Review what it can see, then allow or cancel.`}

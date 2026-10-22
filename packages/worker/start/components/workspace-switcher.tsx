@@ -268,7 +268,7 @@ const triggerCss = {
 	background: 'transparent',
 	color: colors.text,
 	// Buttons do not inherit the page face on their own.
-	font: `650 0.98rem/1 ${typography.fontFamily}`,
+	font: `650 0.875rem/1 ${typography.fontFamily}`,
 	textAlign: 'start' as const,
 	cursor: 'pointer',
 	transition: `border-color ${transitions.fast}, background-color ${transitions.fast}`,

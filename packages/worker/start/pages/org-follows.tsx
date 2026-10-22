@@ -134,7 +134,7 @@ export function OrgFollowsPage({
 		}
 	}
 	return (
-		<AccountManagementShell currentHref={currentHref}>
+		<AccountManagementShell layout="list" currentHref={currentHref}>
 			<AccountPageHeader
 				title="Follows"
 				description="Packages and repositories this workspace follows. Their new versions and pushes arrive here as events."

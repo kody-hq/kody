@@ -76,7 +76,7 @@ export function AccountConnectionsPage({
 			? { kind: 'error', message: usage.error.message }
 			: { kind: 'loading' }
 	return (
-		<AccountManagementShell currentHref={currentHref}>
+		<AccountManagementShell layout="detail" currentHref={currentHref}>
 			<AccountPageHeader
 				entity="connections"
 				title="Agents"

@@ -357,6 +357,7 @@ function renderAccountGroup(input: {
 }
 
 export function AccountMenu(props: {
+	placement?: 'header' | 'sidebar'
 	organizations?: Array<OrganizationSummary>
 	username: string
 	displayName: string
@@ -408,7 +409,19 @@ export function AccountMenu(props: {
 				id={accountMenuPanelId}
 				popover="auto"
 				data-testid="account-menu-panel"
-				css={accountMenuPanelCss}
+				css={[
+					accountMenuPanelCss,
+					props.placement === 'sidebar' && {
+						left: '1rem',
+						right: 'auto',
+						top: '3.75rem',
+						'@supports (anchor-name: --a)': {
+							left: 'anchor(left)',
+							right: 'auto',
+							positionTryFallbacks: 'flip-inline',
+						},
+					},
+				]}
 				onToggle={(event) => setOpen(event.nativeEvent.newState === 'open')}
 			>
 				<div css={accountMenuIdentityCss}>
