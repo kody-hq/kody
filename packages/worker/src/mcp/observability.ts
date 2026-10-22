@@ -208,12 +208,13 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 	) {
 		return true
 	}
-	// Raw shell EISDIR that escaped the DO remap. Only edit/patch/write
+	// Raw shell EISDIR that escaped the DO remap. Only edit/patch/restore
 	// capabilities can raise it from a caller-supplied path; other EISDIR
 	// (git commit, clone, publish snapshot, bundle) must still reach Sentry.
 	if (
 		(payload.capabilityName === 'repoEditFiles' ||
-			payload.capabilityName === 'repoApplyPatch') &&
+			payload.capabilityName === 'repoApplyPatch' ||
+			payload.capabilityName === 'repoRestore') &&
 		getErrorCauseChain(cause).some(
 			(entry) =>
 				entry instanceof Error && isRawWorkspaceEisdirMessage(entry.message),
