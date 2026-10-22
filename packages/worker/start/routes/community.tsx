@@ -1,5 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
+import {
+	loadPageQuery,
+	createPageQuery,
+	useFilteredPageQuery,
+} from '../page-query.ts'
 import { communityReadInput } from '../public-read-input.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { CommunityRoute } from '../pages/community.tsx'
@@ -10,19 +14,21 @@ const pageQuery = createPageQuery('loadCommunity', loadCommunity)
 
 export const Route = createFileRoute('/community')({
 	staticData: {
+		filterSearchKeys: ['q', 'sort', 'category', 'limit'],
 		anonymousDocumentCache: 'marketing',
 		shell: { gutters: 'page' },
 	},
 	validateSearch: (search: Record<string, unknown>) => search,
-	loaderDeps: ({ search }) => ({
-		q: search.q,
-		sort: search.sort,
-		category: search.category,
-		limit: search.limit,
-	}),
-	context: ({ location }) => ({
-		pageQueryInput: communityReadInput(location.searchStr),
-	}),
+	context: ({ location, context }) => {
+		const pageQueryInput = communityReadInput(location.searchStr)
+		return {
+			pageQueryInput,
+			pageHeadQueryKey: [
+				...pageQuery(context.actorKey, pageQueryInput).queryKey,
+			],
+		}
+	},
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,
@@ -33,10 +39,14 @@ export const Route = createFileRoute('/community')({
 	component: Community,
 })
 function Community() {
-	return <CommunityRoute data={usePageData().data} />
+	const data = usePageData()
+	return data ? <CommunityRoute data={data.data} /> : null
 }
 
 function usePageData() {
 	const { actorKey, pageQueryInput } = Route.useRouteContext()
-	return usePageQuery(pageQuery(actorKey, pageQueryInput)).data
+	return useFilteredPageQuery(pageQuery(actorKey, pageQueryInput), [
+		actorKey,
+		'community',
+	]).data
 }

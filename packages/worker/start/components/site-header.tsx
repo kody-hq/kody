@@ -238,7 +238,6 @@ const headerCss: CSSObject = {
 	position: 'sticky' as const,
 	top: 0,
 	zIndex: 10,
-	viewTransitionName: 'site-header',
 	background: `oklch(from ${colors.background} l c h / 0.85)`,
 	'@supports (backdrop-filter: blur(1px))': {
 		backdropFilter: 'blur(14px)',

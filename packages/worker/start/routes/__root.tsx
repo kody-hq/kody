@@ -70,6 +70,7 @@ import {
 	mainGutterPaddingCss,
 } from '../components/app-layout.ts'
 import { AppBrowserEffects } from '../components/app-browser-effects.tsx'
+import 'tw-fade/dist/tw-fade.css'
 import '../../public/styles.css'
 
 export const Route = createRootRouteWithContext<{
@@ -120,11 +121,11 @@ export const Route = createRootRouteWithContext<{
 				pageLocation: location,
 				appShell,
 				verifyAccess: false,
-				presentationOnly: false,
+				inPlaceNavigation: false,
 			}
 		}
 		const actorKey = parseDocumentActor(readDocumentActor())
-		const presentationOnly = isPresentationNavigation({
+		const inPlaceNavigation = isPresentationNavigation({
 			committed: context.getCommittedPage(),
 			location,
 			matches,
@@ -136,9 +137,9 @@ export const Route = createRootRouteWithContext<{
 			pageNavigation,
 			pageLocation: location,
 			appShell,
-			presentationOnly,
+			inPlaceNavigation,
 			verifyAccess:
-				!preload && requiresSessionVerification(matches) && !presentationOnly,
+				!preload && requiresSessionVerification(matches) && !inPlaceNavigation,
 		}
 	},
 	loader: {
@@ -152,7 +153,7 @@ export const Route = createRootRouteWithContext<{
 					context.queryClient,
 					context.actorKey,
 					location.searchStr,
-					!context.presentationOnly,
+					!context.inPlaceNavigation,
 				),
 				context.verifyAccess
 					? verifySession({
@@ -227,7 +228,8 @@ function LoadedAppLayout() {
 	const { shellLocation, appShell } = Route.useLoaderData()
 	const { session, youtubeWatch } = useShellData()
 	const router = useRouter()
-	const { queryClient, actorKey, pageNavigation } = Route.useRouteContext()
+	const { queryClient, actorKey, pageNavigation, pageLocation } =
+		Route.useRouteContext()
 	useEffect(
 		() =>
 			refreshOnActivation({
@@ -274,7 +276,7 @@ function LoadedAppLayout() {
 				(match) => match.status === 'notFound' || match.status === 'error',
 			),
 	})
-	const authReturnHref = `${shellLocation.pathname}${shellLocation.searchStr}`
+	const authReturnHref = `${pageLocation.pathname}${pageLocation.searchStr}`
 	const loginHref = buildAuthLink(
 		'/login',
 		appShell.preserveLoginReturn ? authReturnHref : null,

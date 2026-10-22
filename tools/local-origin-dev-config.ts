@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import { writeGeneratedConfig } from './write-generated-config.ts'
 import path from 'node:path'
 import { parseJsonc } from './ci/resource-utils.ts'
 
@@ -122,6 +123,9 @@ export async function writeLocalOriginDevConfig({
 		path.dirname(originConfigPath),
 		generatedBasename,
 	)
-	await writeFile(outputPath, `${JSON.stringify(config, null, '\t')}\n`)
+	await writeGeneratedConfig(
+		outputPath,
+		`${JSON.stringify(config, null, '\t')}\n`,
+	)
 	return outputPath
 }

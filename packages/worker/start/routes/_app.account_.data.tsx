@@ -9,7 +9,6 @@ const pageQuery = createPageQuery('loadAccountPage', loadAccountPage, {
 
 export const Route = createFileRoute('/_app/account_/data')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'account', item: 'data' },
 	},
 	// Account data is independent of presentation and attribution parameters.

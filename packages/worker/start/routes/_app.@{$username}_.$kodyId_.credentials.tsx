@@ -13,7 +13,7 @@ const pageQuery = createPageQuery(
 export const Route = createFileRoute(
 	'/_app/@{$username}_/$kodyId_/credentials',
 )({
-	staticData: { workspaceLayout: 'resource', motionGroup: 'package' },
+	staticData: { workspaceLayout: 'resource' },
 	loaderDeps: ({ search }) => search,
 	context: ({ location, params }) => ({
 		pageQueryInput: {

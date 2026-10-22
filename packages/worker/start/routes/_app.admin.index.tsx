@@ -5,7 +5,6 @@ import { loadAdminIndex } from '#start/server/admin-index'
 
 export const Route = createFileRoute('/_app/admin/')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'users' },
 	},
 	head: staticDocumentHead('admin'),

@@ -4,7 +4,6 @@ export const Route = createFileRoute(
 	'/_app/account_/secrets_/user/$secretName',
 )({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'credentials' },
 	},
 	preload: false,

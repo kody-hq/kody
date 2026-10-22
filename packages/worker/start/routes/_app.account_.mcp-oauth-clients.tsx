@@ -11,7 +11,6 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/account_/mcp-oauth-clients')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'agents' },
 	},
 	context: () => ({ pageQueryInput: {} }),

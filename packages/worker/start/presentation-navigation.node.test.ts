@@ -126,3 +126,54 @@ test('uncommitted, failed, invalid and different org snapshots cannot authorize 
 		}),
 	).toBe(false)
 })
+
+test('server filter keys reuse only the same committed route and resource selection', () => {
+	const match = {
+		id: 'memories',
+		routeId: 'memories',
+		loaderDeps: { selected: undefined },
+		invalid: false,
+		status: 'success',
+		error: undefined,
+		context: { actorKey: 'actor' },
+		staticData: { filterSearchKeys: ['q', 'includeDeleted'] },
+	}
+	const committed: CommittedPage = {
+		location: { pathname: '/@team/-/memories', searchStr: '', hash: '' },
+		matches: [match],
+	}
+	const input = {
+		committed,
+		location: { ...committed.location, searchStr: '?q=abc' },
+		matches: [match],
+		actorKey: 'actor',
+	}
+	expect(isPresentationNavigation(input)).toBe(true)
+	expect(isPresentationNavigation({ ...input, actorKey: 'other' })).toBe(false)
+	expect(
+		isPresentationNavigation({
+			...input,
+			matches: [{ ...match, invalid: true }],
+		}),
+	).toBe(false)
+	expect(
+		isPresentationNavigation({
+			...input,
+			location: { ...input.location, pathname: '/@other/-/memories' },
+		}),
+	).toBe(false)
+	expect(
+		isPresentationNavigation({
+			...input,
+			matches: [
+				{ ...match, id: 'selected-memory', loaderDeps: { selected: 'one' } },
+			],
+		}),
+	).toBe(false)
+	expect(
+		isPresentationNavigation({
+			...input,
+			location: { ...input.location, searchStr: '?unknown=one' },
+		}),
+	).toBe(false)
+})

@@ -6,6 +6,7 @@ import { expect, test } from 'vitest'
 import {
 	defaultPlaywrightBrowsersJsonPath,
 	inspectPlaywrightBrowsers,
+	playwrightCacheRoot,
 } from './playwright-browsers.ts'
 
 const fixtureBrowsersJson = JSON.stringify({
@@ -34,7 +35,7 @@ const fixtureBrowsersJson = JSON.stringify({
 test('doctor requires the browsers.json chromium revision, not any INSTALLATION_COMPLETE marker', async () => {
 	const homeDir = await mkdtemp(path.join(tmpdir(), 'playwright-browsers-'))
 	const browsersJsonPath = path.join(homeDir, 'browsers.json')
-	const cacheRoot = path.join(homeDir, '.cache', 'ms-playwright')
+	const cacheRoot = playwrightCacheRoot(homeDir)
 	const repoRoot = path.resolve(import.meta.dirname, '../..')
 	try {
 		const missingFile = inspectPlaywrightBrowsers({
@@ -109,3 +110,12 @@ async function writeMarker(cacheRoot: string, directory: string) {
 	await mkdir(browserDirectory, { recursive: true })
 	await writeFile(path.join(browserDirectory, 'INSTALLATION_COMPLETE'), '')
 }
+
+test('browser cache follows the host platform', () => {
+	expect(playwrightCacheRoot('/home/test', 'linux')).toBe(
+		'/home/test/.cache/ms-playwright',
+	)
+	expect(playwrightCacheRoot('/Users/test', 'darwin')).toBe(
+		'/Users/test/Library/Caches/ms-playwright',
+	)
+})

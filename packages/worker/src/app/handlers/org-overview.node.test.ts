@@ -6,6 +6,7 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 const mocks = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
 	loadProfileData: vi.fn(),
+	loadOrgRepositoriesData: vi.fn(),
 	loadAccountActivityData: vi.fn(),
 	loadAccountJobsData: vi.fn(),
 	loadWorkspaceRunCharts: vi.fn(),
@@ -17,6 +18,9 @@ vi.mock('#worker/run-records/service.ts', () => ({
 }))
 vi.mock('#app/handlers/org-usage.ts', () => ({
 	loadOrgUsagePageResult: mocks.loadOrgUsagePageResult,
+}))
+vi.mock('#app/org-repositories-data.ts', () => ({
+	loadOrgRepositoriesData: mocks.loadOrgRepositoriesData,
 }))
 vi.mock('#app/profile-data.ts', () => ({
 	loadProfileData: mocks.loadProfileData,
@@ -134,6 +138,7 @@ beforeEach(() => {
 		status: 403,
 	})
 	mocks.loadProfileData.mockResolvedValue({ packages: [] })
+	mocks.loadOrgRepositoriesData.mockResolvedValue({ packages: [] })
 	mocks.loadAccountActivityData.mockResolvedValue({
 		summary: { total: 0, errors: 0, running: 0 },
 		runs: [],
@@ -161,11 +166,52 @@ test('the signup org overview renders without remembering the org', async () => 
 		['Cache-Control', 'private, no-store'],
 	])
 })
-test('a team org overview redirects to the team home', async () => {
-	await expect(getOverview(await createEnv(), 'acme')).rejects.toMatchObject({
-		options: { href: '/@acme' },
-	})
-})
+test.each(['owner', 'member', 'billing'])(
+	'a team org %s gets a dashboard scoped to the org',
+	async (role) => {
+		const env = await createEnv()
+		await env.APP_DB.prepare(
+			'UPDATE org_memberships SET role = ? WHERE org_id = ?',
+		)
+			.bind(role, 'org-acme')
+			.run()
+		mocks.loadOrgRepositoriesData.mockResolvedValue({
+			packages: [{ kodyId: 'team-repo' }],
+		})
+		const result = await getOverview(env, 'acme')
+		expect(result.slug).toBe('acme')
+		expect(result.repositories).toEqual([{ kodyId: 'team-repo' }])
+		expect(mocks.loadProfileData).not.toHaveBeenCalled()
+		expect(mocks.loadOrgRepositoriesData).toHaveBeenCalledWith(
+			expect.objectContaining({
+				binding: expect.objectContaining({
+					org: expect.objectContaining({ id: 'org-acme' }),
+				}),
+				query: '',
+				limit: 5,
+			}),
+		)
+		for (const reader of [
+			mocks.loadAccountActivityData,
+			mocks.loadAccountJobsData,
+			mocks.loadOrgUsagePageResult,
+		]) {
+			expect(reader).toHaveBeenCalledWith(
+				expect.objectContaining({
+					user: expect.objectContaining({
+						request: expect.objectContaining({
+							org: expect.objectContaining({ id: 'org-acme' }),
+						}),
+					}),
+				}),
+			)
+		}
+		expect(mocks.loadWorkspaceRunCharts).toHaveBeenCalledWith({
+			env,
+			userId: 'org-acme',
+		})
+	},
+)
 test('an org you do not belong to is a 404', async () => {
 	await expect(getOverview(await createEnv(), 'bob')).rejects.toMatchObject({
 		isNotFound: true,
@@ -174,6 +220,29 @@ test('an org you do not belong to is a 404', async () => {
 	expect(mocks.loadAccountActivityData).not.toHaveBeenCalled()
 	expect(mocks.loadAccountJobsData).not.toHaveBeenCalled()
 })
+test('grant-only collaborators cannot read the org dashboard', async () => {
+	const env = await createEnv()
+	await env.APP_DB.prepare('DELETE FROM org_memberships WHERE org_id = ?')
+		.bind('org-acme')
+		.run()
+	await env.APP_DB.prepare(`INSERT INTO grants (
+		id, org_id, resource_type, resource_id, subject_type, subject_id,
+		preset, created_by_user_id, created_at, updated_at
+	) VALUES ('grant-ada', 'org-acme', 'package', 'pkg-shared', 'user', ?,
+		'use', ?, '2026-01-01', '2026-01-01')`)
+		.bind(adaId, bobId)
+		.run()
+	await expect(getOverview(env, 'acme')).rejects.toMatchObject({
+		isNotFound: true,
+	})
+	expect(mocks.loadProfileData).not.toHaveBeenCalled()
+	expect(mocks.loadOrgRepositoriesData).not.toHaveBeenCalled()
+	expect(mocks.loadAccountActivityData).not.toHaveBeenCalled()
+	expect(mocks.loadAccountJobsData).not.toHaveBeenCalled()
+	expect(mocks.loadWorkspaceRunCharts).not.toHaveBeenCalled()
+	expect(mocks.loadOrgUsagePageResult).not.toHaveBeenCalled()
+})
+
 test('signed-out visitors go to login', async () => {
 	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
 	await expect(getOverview(await createEnv(), 'ada')).rejects.toMatchObject({

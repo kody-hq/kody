@@ -7,10 +7,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query'
 import { InternalErrorPage } from './components/internal-error-page.tsx'
 import { captureClientException } from '#client/sentry-client.ts'
-import {
-	installNavigationMotion,
-	persistentShellNavSelector,
-} from './navigation-motion.ts'
+import { installNavigationMotion } from './navigation-motion.ts'
 import { readDocumentActor } from './document-actor.ts'
 import { shouldDehydrateAppQuery } from './query-dehydration.ts'
 import { routeTree } from './routeTree.gen'
@@ -48,6 +45,7 @@ export function getRouter() {
 		caseSensitive: true,
 		defaultErrorComponent: InternalErrorPage,
 		defaultOnCatch: captureClientException,
+		defaultViewTransition: false,
 		scrollRestoration: true,
 		scrollRestorationBehavior: 'instant',
 		defaultPreload: 'intent',
@@ -66,11 +64,6 @@ export function getRouter() {
 	})
 	if (typeof document !== 'undefined') {
 		installNavigationMotion(router, {
-			canStart: () => typeof document.startViewTransition === 'function',
-			prefersReducedMotion: () =>
-				matchMedia('(prefers-reduced-motion: reduce)').matches,
-			hasPersistentShell: () =>
-				Boolean(document.querySelector(persistentShellNavSelector)),
 			markSpaNavigation: () =>
 				document.documentElement.setAttribute('data-spa-nav', ''),
 		})

@@ -12,7 +12,6 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/provider-marks')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'provider-marks' },
 	},
 	context: () => ({ pageQueryInput: undefined }),

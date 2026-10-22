@@ -9,22 +9,18 @@ import {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/email')({
 	staticData: {
+		filterSearchKeys: ['q', 'classification', 'page', 'pageSize'],
 		workspaceSwitch: { section: 'email' },
 		navigation: { rail: 'workspace', item: 'email' },
 		orgScope: { section: 'email' },
 	},
 	validateSearch: emailSearch,
 	search: { middlewares: [stripSearchParams(emailSearch({}))] },
-	loaderDeps: ({ search }) => ({
-		q: search.q,
-		classification: search.classification,
-		page: search.page,
-		pageSize: search.pageSize,
-		selected: search.selected,
+	loaderDeps: ({ search }) => ({ selected: search.selected }),
+	beforeLoad: ({ params, search }) => ({
+		emailInput: emailResourceInput(params, search),
 	}),
-	context: ({ params, deps }) => ({
-		emailInput: emailResourceInput(params, deps),
-	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: async ({ context }) => {
 		await loadEmailResources(
 			context.queryClient,
@@ -39,6 +35,7 @@ function Page() {
 	const { actorKey, pageLocation, emailInput } = Route.useRouteContext()
 	const emailHref = pageLocation.href
 	const { payload, destinations } = useEmailResources(actorKey, emailInput)
+	if (!payload) return null
 	return (
 		<AccountEmailPage
 			selectedId={emailInput.messageId}

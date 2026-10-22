@@ -3,7 +3,6 @@ import { resolveOrgAlias } from '#start/server/org-alias'
 export const Route = createFileRoute('/_app/account_/connections_/new_/$agent')(
 	{
 		staticData: {
-			motionGroup: 'account',
 			navigation: { rail: 'workspace', item: 'connections' },
 		},
 		preload: false,

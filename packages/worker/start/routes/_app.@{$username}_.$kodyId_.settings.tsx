@@ -14,7 +14,6 @@ const pageQuery = createPageQuery('loadPackage', loadPackage, {
 export const Route = createFileRoute('/_app/@{$username}_/$kodyId_/settings')({
 	staticData: {
 		workspaceLayout: 'resource',
-		motionGroup: 'package',
 		shell: { gutters: 'page' },
 	},
 	loaderDeps: ({ search }) => search,

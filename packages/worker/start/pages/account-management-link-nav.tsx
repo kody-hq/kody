@@ -243,7 +243,6 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						// Normal flow reserves the full rail height in server-rendered HTML.
 						height: '100%',
 						width: '200px',
-						viewTransitionName: 'account-nav',
 						[accountManagementNarrowMq]: {
 							display: 'none',
 						},

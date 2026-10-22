@@ -5,7 +5,6 @@ import { loadPageQuery } from '../page-query.ts'
 import { CreateOrganizationPage } from '../pages/org-organizations.tsx'
 export const Route = createFileRoute('/_app/account_/organizations_/new')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'account', item: 'organizations' },
 	},
 	loader: ({ context, preload }) =>

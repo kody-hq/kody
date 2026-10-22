@@ -538,7 +538,6 @@ const articleCss = packageDetailPageCss
 
 const backLinkCss = {
 	// Pinned out of the `page` transition with the rest of the explorer chrome.
-	viewTransitionName: 'files-back',
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: spacing.xs,
@@ -552,7 +551,6 @@ const backLinkCss = {
 const headCss = {
 	// Lifted out of the `page` view transition (see `public/styles.css`) so the
 	// title does not slide on every in-explorer file switch.
-	viewTransitionName: 'files-head',
 	// The back link reads as part of this head, so it sits tight to the title.
 	marginTop: spacing.sm,
 	display: 'grid',
@@ -585,7 +583,6 @@ const treeCss = {
 	borderRadius: radius.md,
 	backgroundColor: colors.surface,
 	minWidth: 0,
-	viewTransitionName: 'files-tree',
 	// 5rem clears the sticky site header, as on the timeline and account nav.
 	position: 'sticky' as const,
 	top: '5rem',
@@ -786,7 +783,6 @@ const contentCss = {
 	// Named so the file pane cross-fades in place instead of sliding up with
 	// the page; its group is pinned so the box does not morph between the
 	// old and new file's heights.
-	viewTransitionName: 'files-blob',
 	minWidth: 0,
 	border: `1px solid ${colors.border}`,
 	borderRadius: radius.md,

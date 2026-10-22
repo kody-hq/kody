@@ -21,7 +21,7 @@ export const Route = createFileRoute(
 		orgScope: { section: 'credentials' },
 		presentationSearchKeys: credentialPresentationSearchKeys,
 	},
-	shouldReload: ({ context }) => !context.presentationOnly,
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload, params }) =>
 		loadPageQuery(
 			context.queryClient,

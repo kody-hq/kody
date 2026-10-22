@@ -10,7 +10,6 @@ const pageQuery = createPageQuery('loadUsagePage', loadUsagePage, {
 
 export const Route = createFileRoute('/_app/account_/usage')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'usage' },
 	},
 	server: { middleware: [creditTopUpHead] },

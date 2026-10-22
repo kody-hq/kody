@@ -12,12 +12,10 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/reserved-usernames')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'reserved-usernames' },
 	},
-	loaderDeps: ({ search }) => search,
 	context: ({ location }) => ({
-		pageQueryInput: { returnTo: location.pathname + location.searchStr },
+		pageQueryInput: { returnTo: location.pathname },
 	}),
 	loader: ({ context, preload }) =>
 		loadPageQuery(

@@ -10,7 +10,6 @@ const pageQuery = createPageQuery('loadAdminInsights', loadAdminInsights, {
 
 export const Route = createFileRoute('/_app/admin/insights')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'insights' },
 	},
 	context: () => ({ pageQueryInput: undefined }),

@@ -38,7 +38,7 @@ export function LandingAgentMarquee({
 	return (
 		<nav
 			ref={stage}
-			className="landing-agents"
+			className="landing-agents fade-x"
 			aria-label="Agents that work with Kody"
 		>
 			<span id={hintId} hidden>

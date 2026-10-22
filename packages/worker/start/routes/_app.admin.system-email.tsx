@@ -13,7 +13,6 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/system-email')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'system-email' },
 	},
 	loaderDeps: ({ search }) => search,

@@ -13,8 +13,17 @@ const pageQuery = createPageQuery('loadProfile', loadProfile, {
 
 export const Route = createFileRoute('/_app/@{$username}')({
 	staticData: {
+		presentationSearchKeys: [
+			'q',
+			'sort',
+			'dir',
+			'visibility',
+			'listing',
+			'hidden',
+			'app',
+			'package',
+		],
 		workspaceLayout: 'profile',
-		motionGroup: 'profile',
 		navigation: { rail: 'workspace', item: 'overview' },
 		shell: { gutters: 'page' },
 	},
@@ -26,6 +35,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 	context: ({ location, params }) => ({
 		pageQueryInput: profileReadInput(params.username, location.searchStr),
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

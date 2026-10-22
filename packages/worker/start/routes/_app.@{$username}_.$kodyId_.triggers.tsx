@@ -11,7 +11,7 @@ const pageQuery = createPageQuery(
 	{ freshAuthorization: true },
 )
 export const Route = createFileRoute('/_app/@{$username}_/$kodyId_/triggers')({
-	staticData: { workspaceLayout: 'resource', motionGroup: 'package' },
+	staticData: { workspaceLayout: 'resource' },
 	loaderDeps: ({ search }) => search,
 	context: ({ location, params }) => ({
 		pageQueryInput: {

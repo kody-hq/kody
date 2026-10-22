@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { formatTimestamp } from '../components/local-timestamp.tsx'
-import { useSuspenseInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, hashKey } from '@tanstack/react-query'
 import { activityQuery } from '../activity-query.ts'
 import { useRouter } from '@tanstack/react-router'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -64,9 +64,20 @@ export function AccountActivityPage({
 	pageQueryInput: Parameters<typeof activityQuery>[1]
 	currentHref: string
 }) {
-	const query = useSuspenseInfiniteQuery(
-		activityQuery(actorKey, pageQueryInput),
-	)
+	const filterScope = hashKey([
+		actorKey,
+		pageQueryInput.orgSlug,
+		pageQueryInput.selectedRunId,
+	])
+	const query = useInfiniteQuery({
+		...activityQuery(actorKey, pageQueryInput),
+		meta: { actorKey, filterScope },
+		placeholderData: (data, previous) =>
+			previous?.meta?.filterScope === filterScope ? data : undefined,
+		throwOnError: true,
+	})
+	const router = useRouter()
+	if (!query.data) return null
 	const first = query.data.pages[0]!.payload
 	const { selectedRun, summary, retentionDays } = first
 	const seen = new Set<string>()
@@ -77,10 +88,9 @@ export function AccountActivityPage({
 			seen.add(run.id)
 			return true
 		})
-	const nextCursor = query.hasNextPage
+	const nextCursor = query.hasNextPage && !query.isPlaceholderData
 	const loadingMore = query.isFetchingNextPage
 	const message = query.error?.message ?? null
-	const router = useRouter()
 	const navigate = (href: string) =>
 		void router.navigate({ to: href, resetScroll: false })
 	const replaceLocation = (href: string) =>
@@ -154,7 +164,7 @@ export function AccountActivityPage({
 		<AccountManagementShell
 			layout="list"
 			currentHref={currentHref}
-			busy={false}
+			busy={query.isFetching && !query.isFetchingNextPage}
 		>
 			<AccountPageHeader
 				entity="activity"

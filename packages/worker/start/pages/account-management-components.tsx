@@ -4,6 +4,7 @@ import { type MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
 import { type CSSObject } from '@emotion/react'
 import { useContext, type ReactNode, type FormEvent } from 'react'
+import { WorkspaceSwitcher } from '../components/workspace-switcher.tsx'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
@@ -283,9 +284,28 @@ export function AccountManagementShell(props: AccountManagementShellProps) {
 	)
 }
 
+export function ShellWorkspaceSwitcher({
+	navigation,
+}: {
+	navigation: MatchedPageNavigation
+}) {
+	const session = useShellData().session
+	const rail = pageRail({ session, navigation })
+	if (navigation.rail === 'admin' || !rail.workspaceSwitcher) return null
+	return (
+		<div css={{ flexShrink: 0, padding: '0 1rem 0.75rem' }}>
+			<WorkspaceSwitcher {...rail.workspaceSwitcher} placement="rail" />
+		</div>
+	)
+}
+
 export function ShellNavigation({
 	navigation,
-}: { navigation?: MatchedPageNavigation } = {}) {
+	separateWorkspaceSwitcher = false,
+}: {
+	navigation?: MatchedPageNavigation
+	separateWorkspaceSwitcher?: boolean
+} = {}) {
 	const session = useShellData().session
 	const context = useRouteContext({ strict: false })
 	const pageNavigation = navigation ?? context.pageNavigation
@@ -300,9 +320,13 @@ export function ShellNavigation({
 			}}
 		>
 			<AccountManagementLinkNav
-				workspaceSwitcher={admin ? undefined : rail.workspaceSwitcher}
+				workspaceSwitcher={
+					admin || separateWorkspaceSwitcher
+						? undefined
+						: rail.workspaceSwitcher
+				}
 				label={admin ? 'Admin sections' : rail.label}
-				heading={admin ? undefined : rail.heading}
+				heading={admin || separateWorkspaceSwitcher ? undefined : rail.heading}
 				groups={
 					admin
 						? [

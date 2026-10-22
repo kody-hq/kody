@@ -89,11 +89,20 @@ test('account rail holds the person: profile, security, organizations, experimen
 	expect(items.some((item) => item.label.startsWith('@'))).toBe(false)
 })
 
-test('workspace home is the overview for the signup org and /@slug for a team', () => {
+test('workspace home is the overview for personal and team workspaces', () => {
 	expect(workspaceHomeHref({ slug: 'jane', personal: true })).toBe(
 		'/@jane/-/overview',
 	)
-	expect(workspaceHomeHref({ slug: 'acme', personal: false })).toBe('/@acme')
+	expect(workspaceHomeHref({ slug: 'acme', personal: false })).toBe(
+		'/@acme/-/overview',
+	)
+	expect(workspaceHomeHref({ slug: 'acme', personal: false, role: null })).toBe(
+		'/@acme',
+	)
+	expect(
+		workspaceRailGroups({ orgSlug: 'acme', personal: false, role: 'owner' })[0]
+			?.items[0]?.href,
+	).toBe('/@acme/-/overview')
 })
 
 test('workspace landing opens Repositories so the rail is one click away', () => {
@@ -283,13 +292,13 @@ test('team organization rail shares the sections and keeps members, settings, an
 		['Settings', expect.any(String)],
 		['Credits', 'Your monthly budget and what it has spent.'],
 	])
-	// Team Overview is selected by the native org home route only.
+	// Personal and team workspaces use the same overview route.
 	const teamOverview = teamOwner[0]?.items[0]
-	expect(teamOverview?.href).toBe('/@acme')
-	expect(navigation('/@acme')?.item).toBe(teamOverview?.id)
-	expect(teamOverview && isAccountNavItemActive(teamOverview, '/@acme')).toBe(
-		true,
-	)
+	expect(teamOverview?.href).toBe('/@acme/-/overview')
+	expect(navigation('/@acme/-/overview')?.item).toBe(teamOverview?.id)
+	expect(
+		teamOverview && isAccountNavItemActive(teamOverview, '/@acme/-/overview'),
+	).toBe(true)
 	expect(
 		teamOverview &&
 			isAccountNavItemActive(teamOverview, '/@acme/-/repositories'),
@@ -370,7 +379,9 @@ test('switching workspaces keeps the page when the role can open it there', () =
 		'/@acme/-/usage',
 	)
 	expect(workspaceSwitchHref({ section: 'usage' }, jane)).toBe('/@jane/-/usage')
-	expect(workspaceSwitchHref({ section: 'teams' }, acmeBilling)).toBe('/@acme')
+	expect(workspaceSwitchHref({ section: 'teams' }, acmeBilling)).toBe(
+		'/@acme/-/overview',
+	)
 	expect(workspaceSwitchHref({ section: 'settings' }, jane)).toBe(
 		'/@jane/-/overview',
 	)
@@ -383,7 +394,9 @@ test('switching workspaces keeps the page when the role can open it there', () =
 	expect(workspaceSwitchHref({ section: 'secrets' }, acmeGuest)).toBe('/@acme')
 	expect(workspaceSwitchHref({ section: 'usage' }, acmeGuest)).toBe('/@acme')
 	const acmeMember = { ...acmeOwner, role: 'member' } as const
-	expect(workspaceSwitchHref({ section: 'usage' }, acmeMember)).toBe('/@acme')
+	expect(workspaceSwitchHref({ section: 'usage' }, acmeMember)).toBe(
+		'/@acme/-/overview',
+	)
 	expect(workspaceSwitchHref({ section: 'credits' }, acmeMember)).toBe(
 		'/@acme/-/credits',
 	)

@@ -203,5 +203,8 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
+  },
+  "dependencies": {
+    "tw-fade": "0.8.0"
   }
 }

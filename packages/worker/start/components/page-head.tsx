@@ -115,6 +115,14 @@ export function PageHead({
 				)
 			)
 				return undefined
+			if (isPageHeadReference(match.context)) {
+				return {
+					...match.context,
+					head: isPageHeadReference(match.loaderData)
+						? match.loaderData.head
+						: undefined,
+				}
+			}
 			return isPageHeadReference(match.loaderData)
 				? match.loaderData
 				: undefined

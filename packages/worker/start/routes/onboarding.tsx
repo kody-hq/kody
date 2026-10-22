@@ -10,7 +10,6 @@ import { OnboardingRoute } from '../pages/onboarding.tsx'
 export const Route = createFileRoute('/onboarding')({
 	staticData: {
 		anonymousDocumentCache: 'marketing',
-		motionGroup: 'onboarding',
 		shell: { gutters: 'page' },
 	},
 	head: staticDocumentHead('onboarding'),

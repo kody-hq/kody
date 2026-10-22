@@ -3,6 +3,7 @@ import { deepEqual } from '@tanstack/react-router'
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {
 		presentationSearchKeys?: readonly string[]
+		filterSearchKeys?: readonly string[]
 	}
 }
 type Location = { pathname: string; searchStr: string; hash: string }
@@ -14,11 +15,14 @@ type Match = {
 	status: string
 	error: unknown
 	context: unknown
-	staticData: { presentationSearchKeys?: readonly string[] }
+	staticData: {
+		presentationSearchKeys?: readonly string[]
+		filterSearchKeys?: readonly string[]
+	}
 }
 export type CommittedPage = { location: Location; matches: readonly Match[] }
 
-/** Continue filtering the same mounted payload, never authorize another read. */
+/** Reuse the mounted page scope for declared filters. New reads authorize themselves. */
 export function isPresentationNavigation(input: {
 	committed: CommittedPage | null
 	location: Location
@@ -56,7 +60,11 @@ export function isPresentationNavigation(input: {
 		})
 	)
 		return false
-	const keys = matches.at(-1)?.staticData.presentationSearchKeys
+	const leaf = matches.at(-1)?.staticData
+	const keys = [
+		...(leaf?.presentationSearchKeys ?? []),
+		...(leaf?.filterSearchKeys ?? []),
+	]
 	if (!keys?.length) return false
 	const before = new URLSearchParams(committed.location.searchStr)
 	const after = new URLSearchParams(location.searchStr)

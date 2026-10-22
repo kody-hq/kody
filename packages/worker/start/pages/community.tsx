@@ -1,6 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { parseCommunityListingCategory } from '#universal/community-categories.ts'
 import { type CSSObject } from '@emotion/react'
-import { type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type CommunityIndexLoaderData } from '#universal/loader-data.ts'
 import { landingArtAttrs } from '../public-assets.ts'
@@ -16,7 +18,17 @@ import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { CommunityListingsContent } from '../components/community-listings-content.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
-	const { query: searchQuery, sort, category } = data
+	const { pageLocation } = useMatchedPageScope()
+	const params = new URLSearchParams(pageLocation.searchStr)
+	const searchQuery = params.get('q')?.trim() ?? ''
+	const sort = params.get('sort') === 'newest' ? 'newest' : 'best'
+	const category = parseCommunityListingCategory(params.get('category'))
+	const [draft, setDraft] = useState(searchQuery)
+	const [previousQuery, setPreviousQuery] = useState(searchQuery)
+	if (previousQuery !== searchQuery) {
+		setPreviousQuery(searchQuery)
+		setDraft(searchQuery)
+	}
 	const explainer = resolveEntityExplainer('community')
 	const navigate = useNavigate()
 	return (
@@ -65,10 +77,10 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						</label>
 						<input
 							id="pkg-q"
-							key={`${searchQuery}:${sort}:${category ?? ''}`}
 							type="search"
 							name="q"
-							defaultValue={searchQuery ?? ''}
+							value={draft}
+							onChange={(event) => setDraft(event.currentTarget.value)}
 							placeholder="Search by name, description, or tags"
 							css={searchInputCss}
 						/>
@@ -94,7 +106,12 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 				/>
 			</header>
 
-			<CommunityListingsContent {...data} />
+			<CommunityListingsContent
+				{...data}
+				query={searchQuery}
+				sort={sort}
+				category={category}
+			/>
 
 			<div css={communityCloseCss}>
 				<p>

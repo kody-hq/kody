@@ -15,7 +15,6 @@ export const Route = createFileRoute(
 	'/_app/admin/account-deletions_/$approvalId',
 )({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'users' },
 	},
 	loaderDeps: ({ search }) => search,

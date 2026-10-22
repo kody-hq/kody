@@ -12,7 +12,6 @@ const pageQuery = createPageQuery(
 
 export const Route = createFileRoute('/_app/admin/feature-flags')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'feature-flags' },
 	},
 	context: () => ({ pageQueryInput: undefined }),

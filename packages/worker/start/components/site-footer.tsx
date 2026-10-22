@@ -80,7 +80,6 @@ export function SiteFooter(props: SiteFooterProps) {
 
 const footerCss: CSSObject = {
 	borderTop: `1px solid ${colors.border}`,
-	viewTransitionName: 'site-footer',
 }
 
 const footerLinkColumnMin = '7.5rem'

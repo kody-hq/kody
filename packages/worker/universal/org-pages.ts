@@ -179,9 +179,7 @@ export function orgCreditsPath(slug: string) {
 }
 
 /**
- * `/@acme/-/overview`: the workspace landing that links every section the
- * organization owns. A team org's overview is its home at `/@slug`, so the
- * server redirects there.
+ * `/@acme/-/overview`: the dashboard for personal and team workspaces.
  */
 export function parseOrgOverviewPath(
 	pathname: string,

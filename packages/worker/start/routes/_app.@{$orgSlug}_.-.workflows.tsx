@@ -11,6 +11,7 @@ const pageQuery = createPageQuery('loadWorkflowsPage', loadWorkflowsPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/workflows')({
 	staticData: {
+		presentationSearchKeys: ['q', 'view'],
 		workspaceSwitch: { section: 'workflows' },
 		navigation: { rail: 'workspace', item: 'workflows' },
 		orgScope: { section: 'workflows' },
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/workflows')({
 			selected: search.selected,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

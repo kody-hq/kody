@@ -4,7 +4,6 @@ import { loadAccountPackageAlias } from '#start/server/package-alias'
 import { NotFoundPage } from '../components/not-found-page.tsx'
 export const Route = createFileRoute('/_app/account_/packages/$packageId')({
 	staticData: {
-		motionGroup: 'account',
 		navigation: { rail: 'workspace', item: 'packages' },
 	},
 	loaderDeps: ({ search }) => search,

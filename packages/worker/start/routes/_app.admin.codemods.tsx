@@ -10,7 +10,6 @@ const pageQuery = createPageQuery('loadAdminCodemods', loadAdminCodemods, {
 
 export const Route = createFileRoute('/_app/admin/codemods')({
 	staticData: {
-		motionGroup: 'admin',
 		navigation: { rail: 'admin', item: 'codemods' },
 	},
 	loaderDeps: ({ search }) => search,
