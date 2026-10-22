@@ -117,6 +117,38 @@ test('logged-out header shows Log in without an Account link', async () => {
 	expect(html).not.toContain('data-testid="site-header-account-menu"')
 })
 
+test('home brand wordmark is larger than other routes', async () => {
+	const home = await renderToString(
+		jsx(SiteHeader, {
+			loggedIn: false,
+			displayName: '',
+			username: '',
+			avatarUrl: null,
+			showAdminLink: false,
+			showDemoIndicator: false,
+			loginHref: '/login',
+			currentPathname: '/',
+		}),
+	)
+	const pricing = await renderToString(
+		jsx(SiteHeader, {
+			loggedIn: false,
+			displayName: '',
+			username: '',
+			avatarUrl: null,
+			showAdminLink: false,
+			showDemoIndicator: false,
+			loginHref: '/login',
+			currentPathname: '/pricing',
+		}),
+	)
+	expect(home).toContain('1.75rem')
+	expect(home).toContain('0.7rem')
+	expect(pricing).not.toContain('1.75rem')
+	expect(pricing).toContain('1.25rem')
+	expect(pricing).toContain('0.6rem')
+})
+
 test('desktop and mobile headers include the complete Features navigation', async () => {
 	const html = await renderToString(
 		jsx(SiteHeader, {
