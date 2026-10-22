@@ -1154,58 +1154,150 @@ html.is-settled {
 	}
 }
 
+/* Before/after comparison under the hero plug line. Three columns (without,
+   arrows, with) share one row grid through subgrid, so each pain lines up
+   with the fix beside it and an arrow joins the pair. Narrow screens stack
+   the cards and drop the arrows. */
 .landing-compare {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: clamp(1rem, 2.5vw, 1.5rem);
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	grid-template-rows: auto repeat(3, auto);
+	column-gap: clamp(0.75rem, 2vw, 1.25rem);
 	margin: clamp(2.5rem, 5vw, 3.5rem) auto 0;
-	max-width: 52rem;
+	max-width: 58rem;
 	text-align: left;
 }
 
 .landing-compare-col {
-	padding: 1.25rem 1.3rem 1.35rem;
-	background: var(--color-surface);
-	border: 1px solid var(--color-border);
-	border-radius: 16px;
+	grid-row: span 4;
+	display: grid;
+	grid-template-rows: subgrid;
+	padding: 0.5rem 1.5rem;
+	border-radius: 20px;
+}
+
+.landing-compare-col-without {
+	grid-column: 1;
+	background: color-mix(
+		in oklch,
+		var(--color-text) 3%,
+		var(--color-background)
+	);
+	border: 1px dashed var(--color-border);
 }
 
 .landing-compare-col-with {
-	border-color: color-mix(
-		in oklch,
-		var(--color-primary) 40%,
-		var(--color-border)
-	);
-	background: color-mix(
-		in oklch,
-		var(--color-primary) 7%,
-		var(--color-surface)
-	);
+	grid-column: 3;
+	position: relative;
+	background:
+		radial-gradient(
+			120% 80% at 100% 0%,
+			color-mix(in oklch, var(--color-primary) 12%, transparent),
+			transparent 60%
+		),
+		var(--color-surface);
+	border: 1px solid
+		color-mix(in oklch, var(--color-primary) 45%, var(--color-border));
+	box-shadow:
+		0 1px 2px rgb(0 0 0 / 0.04),
+		0 12px 32px -12px color-mix(in oklch, var(--color-primary) 35%, transparent);
 }
 
 .landing-compare-title {
 	margin: 0;
-	font-size: 1.05rem;
+	padding: 1rem 0 0.85rem;
+	font-size: 0.8rem;
 	font-weight: 700;
-	letter-spacing: -0.015em;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-text-muted);
+}
+
+.landing-compare-col-with .landing-compare-title {
+	color: var(--color-primary-text);
 }
 
 .landing-compare-list {
-	margin: 0.85rem 0 0;
-	padding-left: 1.15rem;
-	color: var(--color-text-muted);
+	grid-row: span 3;
 	display: grid;
-	gap: 0.45rem;
-	font-size: 0.98rem;
+	grid-template-rows: subgrid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.landing-compare-item {
+	display: flex;
+	align-items: center;
+	gap: 0.85rem;
+	padding: 1rem 0;
+	border-top: 1px solid
+		color-mix(in oklch, var(--color-border) 70%, transparent);
+	font-size: 1rem;
 	line-height: 1.4;
 	text-wrap: pretty;
 }
 
-.landing-compare-caption {
-	margin: 1.1rem auto 0;
+.landing-compare-col-without .landing-compare-item {
 	color: var(--color-text-muted);
-	font-size: 0.98rem;
+}
+
+.landing-compare-col-with .landing-compare-item {
+	color: var(--color-text);
 	font-weight: 550;
+}
+
+.landing-compare-mark {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 1.6rem;
+	height: 1.6rem;
+	border-radius: var(--radius-full);
+}
+
+.landing-compare-mark svg,
+.landing-compare-arrow svg {
+	width: 0.95rem;
+	height: 0.95rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.landing-compare-col-without .landing-compare-mark {
+	color: var(--color-text-muted);
+	background: color-mix(in oklch, var(--color-text) 7%, transparent);
+}
+
+.landing-compare-col-with .landing-compare-mark {
+	color: var(--color-on-primary);
+	background: var(--color-primary);
+}
+
+.landing-compare-arrows {
+	grid-column: 2;
+	grid-row: 2 / span 3;
+	display: grid;
+	grid-template-rows: subgrid;
+}
+
+.landing-compare-arrow {
+	display: grid;
+	place-items: center;
+	/* Optical nudge for the card padding so arrows sit on the row midline. */
+	padding-top: 1px;
+	color: color-mix(in oklch, var(--color-primary) 70%, var(--color-text-muted));
+}
+
+.landing-compare-caption {
+	margin: clamp(1.5rem, 3vw, 2rem) auto 0;
+	font-size: clamp(1.1rem, 2vw, 1.3rem);
+	font-weight: 700;
+	letter-spacing: -0.015em;
+	color: var(--color-primary-text);
 }
 
 /* Primitives block: intro heading, then the five-orb lantern with the five
@@ -2858,7 +2950,23 @@ html:not(.js) .landing-connect-copy {
 
 @media (max-width: 800px) {
 	.landing-compare {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: none;
+		row-gap: 1rem;
+	}
+
+	.landing-compare-col {
+		grid-column: auto;
+		grid-row: auto;
+	}
+
+	.landing-compare-col,
+	.landing-compare-list {
+		grid-template-rows: none;
+	}
+
+	.landing-compare-arrows {
+		display: none;
 	}
 
 	.landing-primitives-stage {
