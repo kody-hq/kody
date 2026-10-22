@@ -30,8 +30,12 @@ vi.mock('#worker/jobs/jobs-data.ts', () => ({
 	}),
 }))
 
-const { hardPurgeOrg, PersonalOrgHardPurgeBlockedForLiveUserError } =
-	await import('./hard-purge.ts')
+const {
+	finishLegacyUserDeletion,
+	hardPurgeOrg,
+	LegacyUserDeletionNotPendingError,
+	PersonalOrgHardPurgeBlockedForLiveUserError,
+} = await import('./hard-purge.ts')
 
 function createAuditDb() {
 	const auditSqlite = new DatabaseSync(':memory:')
@@ -622,4 +626,151 @@ test('hardPurgeOrg sweeps team org-avatars from COMMUNITY_ASSETS', async () => {
 	expect(assets.has(avatarKey)).toBe(false)
 	expect(assets.has(`user-avatars/${orgId}/face.png`)).toBe(false)
 	expect(assets.has(otherKey)).toBe(true)
+})
+
+async function seedLegacyFencedPerson(input: {
+	appDb: D1Database
+	personId: string
+	ts: string
+	deletingAt: string | null
+	deletedAt?: string | null
+}) {
+	const { appDb, personId, ts } = input
+	await appDb
+		.prepare(
+			`INSERT INTO users (
+				id, username, email, password_hash, stable_user_id, personal_org_id,
+				created_at, updated_at, deleting_at, deleted_at
+			) VALUES (7, 'legacy-person', 'legacy@example.com', 'hash', ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(personId, personId, ts, ts, input.deletingAt, input.deletedAt ?? null)
+		.run()
+	// The Teams backfill gave every person a personal org, a handle, and an
+	// owner membership, including people already fenced for deletion.
+	await appDb
+		.prepare(
+			`INSERT INTO orgs (
+				id, slug, display_name, plan, entitlement_ladder,
+				created_at, updated_at
+			) VALUES (?, 'legacy-person', 'Legacy', 'free', 'public', ?, ?)`,
+		)
+		.bind(personId, ts, ts)
+		.run()
+	await appDb
+		.prepare(
+			`INSERT INTO handles (handle, org_id, created_at) VALUES ('legacy-person', ?, ?)`,
+		)
+		.bind(personId, ts)
+		.run()
+	await appDb
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'owner', ?)`,
+		)
+		.bind(personId, personId, ts)
+		.run()
+}
+
+test('finishLegacyUserDeletion finishes a fenced pre-soft-delete deletion and tolerates storage that is already gone', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const appDb = createD1FromSqlite(sqlite)
+	const auditDb = createAuditDb()
+	const personId = ownerIdFromStored('person-legacy-finish')
+	const ts = '2026-08-20T00:00:00.000Z'
+	await seedLegacyFencedPerson({ appDb, personId, ts, deletingAt: ts })
+	// One bundle key the first attempt already removed, one still present.
+	const goneKey = 'bundle-artifact:v1:legacy-gone'
+	const liveKey = 'bundle-artifact:v1:legacy-live'
+	for (const [id, sourceId, kvKey] of [
+		['pba-legacy-gone', 'legacy-src-gone', goneKey],
+		['pba-legacy-live', 'legacy-src-live', liveKey],
+	] as const) {
+		await appDb
+			.prepare(
+				`INSERT INTO published_bundle_artifacts (
+					id, user_id, source_id, published_commit, artifact_kind, artifact_name,
+					entry_point, kv_key, dependencies_json, created_at, updated_at
+				) VALUES (?, ?, ?, 'abc123', 'module', 'main', 'index.js', ?, '[]', ?, ?)`,
+			)
+			.bind(id, personId, sourceId, kvKey, ts, ts)
+			.run()
+	}
+	const { store, kv } = createKv()
+	await kv.put(liveKey, 'artifact')
+	await kv.put('bundle-artifact:v1:someone-else', 'keep')
+	const env = createSuccessfulDeletionEnv(appDb, {
+		AUDIT_DB: auditDb,
+		BUNDLE_ARTIFACTS_KV: kv,
+	}) as unknown as Env
+
+	const first = await finishLegacyUserDeletion({
+		env,
+		dbUserId: 7,
+		stableUserId: personId,
+	})
+	expect(first.alreadyGone).toBe(false)
+	for (const [table, column] of [
+		['users', 'stable_user_id'],
+		['orgs', 'id'],
+		['handles', 'org_id'],
+		['org_memberships', 'org_id'],
+		['published_bundle_artifacts', 'user_id'],
+	] as const) {
+		const row = await appDb
+			.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`)
+			.bind(personId)
+			.first<{ n: number }>()
+		expect({ table, n: row?.n }).toEqual({ table, n: 0 })
+	}
+	expect(store.has(liveKey)).toBe(false)
+	expect(store.has('bundle-artifact:v1:someone-else')).toBe(true)
+	const audit = await auditDb
+		.prepare(
+			`SELECT action, details_json FROM org_audit_events
+			 WHERE org_id = ? AND action = 'user.purged'`,
+		)
+		.bind(personId)
+		.first<{ action: string; details_json: string }>()
+	expect(audit?.details_json).toContain('legacy_deletion_finish')
+
+	// A retry after success is a no-op.
+	const second = await finishLegacyUserDeletion({
+		env,
+		dbUserId: 7,
+		stableUserId: personId,
+	})
+	expect(second.alreadyGone).toBe(true)
+})
+
+test('finishLegacyUserDeletion refuses live and soft-deleted rows', async () => {
+	for (const state of ['live', 'soft_deleted'] as const) {
+		const sqlite = new DatabaseSync(':memory:')
+		applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+		const appDb = createD1FromSqlite(sqlite)
+		const personId = ownerIdFromStored(`person-legacy-${state}`)
+		const ts = '2026-08-20T00:00:00.000Z'
+		await seedLegacyFencedPerson({
+			appDb,
+			personId,
+			ts,
+			deletingAt: null,
+			deletedAt: state === 'soft_deleted' ? ts : null,
+		})
+		const env = createSuccessfulDeletionEnv(appDb, {
+			AUDIT_DB: createAuditDb(),
+		}) as unknown as Env
+		await expect(
+			finishLegacyUserDeletion({ env, dbUserId: 7, stableUserId: personId }),
+		).rejects.toBeInstanceOf(LegacyUserDeletionNotPendingError)
+		const stillThere = await appDb
+			.prepare(`SELECT COUNT(*) AS n FROM users WHERE id = 7`)
+			.first<{ n: number }>()
+		expect({ state, n: stillThere?.n }).toEqual({ state, n: 1 })
+		const orgStillThere = await appDb
+			.prepare(`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`)
+			.bind(personId)
+			.first<{ n: number }>()
+		expect({ state, n: orgStillThere?.n }).toEqual({ state, n: 1 })
+	}
 })

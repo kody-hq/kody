@@ -11,9 +11,25 @@ const hardPurgeOrg = vi.fn(async (input: { env: Env; orgId: string }) => {
 	return { orgId: input.orgId, deletedTables: { orgs: 1 } }
 })
 
+const finishLegacyUserDeletion = vi.fn(
+	async (input: { env: Env; dbUserId: number; stableUserId: string }) => {
+		await input.env.APP_DB.prepare(`DELETE FROM users WHERE id = ?`)
+			.bind(input.dbUserId)
+			.run()
+		return { alreadyGone: false }
+	},
+)
+
+const hardPurgeSoftDeletedUser = vi.fn()
+
 vi.mock('./hard-purge.ts', () => ({
 	hardPurgeOrg: (input: { env: Env; orgId: string }) => hardPurgeOrg(input),
-	hardPurgeSoftDeletedUser: vi.fn(),
+	hardPurgeSoftDeletedUser: (input: unknown) => hardPurgeSoftDeletedUser(input),
+	finishLegacyUserDeletion: (input: {
+		env: Env
+		dbUserId: number
+		stableUserId: string
+	}) => finishLegacyUserDeletion(input),
 }))
 
 const {
@@ -63,8 +79,53 @@ async function seedSoftDeletedOrg(db: D1Database, orgId: string) {
 		.run()
 }
 
+async function seedUser(
+	db: D1Database,
+	input: {
+		id: number
+		stableUserId: string
+		deletingAt: string | null
+		deletedAt: string | null
+	},
+) {
+	const ts = '2026-01-01T00:00:00.000Z'
+	await db
+		.prepare(
+			`INSERT INTO users (
+				id, username, email, password_hash, stable_user_id,
+				created_at, updated_at, deleting_at, deleted_at
+			) VALUES (?, ?, ?, 'hash', ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			input.id,
+			input.stableUserId,
+			`${input.stableUserId}@example.com`,
+			input.stableUserId,
+			ts,
+			ts,
+			input.deletingAt,
+			input.deletedAt,
+		)
+		.run()
+}
+
+async function userRow(db: D1Database, id: number) {
+	return await db
+		.prepare(`SELECT deleting_at, deleted_at FROM users WHERE id = ?`)
+		.bind(id)
+		.first<{ deleting_at: string | null; deleted_at: string | null }>()
+}
+
 beforeEach(() => {
 	hardPurgeOrg.mockClear()
+	hardPurgeSoftDeletedUser.mockClear()
+	finishLegacyUserDeletion.mockClear()
+	finishLegacyUserDeletion.mockImplementation(async (input) => {
+		await input.env.APP_DB.prepare(`DELETE FROM users WHERE id = ?`)
+			.bind(input.dbUserId)
+			.run()
+		return { alreadyGone: false }
+	})
 })
 
 test('purge dry-run lists old soft-deleted org', async () => {
@@ -102,4 +163,150 @@ test('real purge with enabled flag hard-deletes idempotently', async () => {
 	expect(gone).toBeNull()
 	const second = await pruneSoftDeleted({ env, now, dryRun: false })
 	expect(second.purged).toBe(0)
+})
+
+test('legacy stuck deletions are listed without the restore window', async () => {
+	const { env, db } = await createEnv(false)
+	// Fenced by the pre-soft-delete flow nine days ago, never finished.
+	await seedUser(db, {
+		id: 11,
+		stableUserId: 'legacy-stuck',
+		deletingAt: '2026-09-22T12:00:00.000Z',
+		deletedAt: null,
+	})
+	// Live account: never a candidate.
+	await seedUser(db, {
+		id: 12,
+		stableUserId: 'live-person',
+		deletingAt: null,
+		deletedAt: null,
+	})
+	// Deletion started an hour ago and may still be running.
+	await seedUser(db, {
+		id: 13,
+		stableUserId: 'in-flight',
+		deletingAt: '2026-10-01T11:00:00.000Z',
+		deletedAt: null,
+	})
+	// Soft-deleted inside the 30-day window: restorable, not a candidate.
+	await seedUser(db, {
+		id: 14,
+		stableUserId: 'restorable',
+		deletingAt: null,
+		deletedAt: '2026-09-22T12:00:00.000Z',
+	})
+	const preview = await listSoftDeletePurgeCandidates({ env, now })
+	expect(
+		preview.candidates.map((candidate) => ({
+			id: candidate.id,
+			legacy: candidate.legacy ?? false,
+		})),
+	).toEqual([{ id: 'legacy-stuck', legacy: true }])
+	expect(preview.candidates[0]?.ageDays).toBe(9)
+})
+
+test('scheduled pass finishes legacy deletions while soft-delete writes stay off', async () => {
+	const { env, db } = await createEnv(false)
+	await seedSoftDeletedOrg(db, 'org-still-dry-run')
+	await seedUser(db, {
+		id: 21,
+		stableUserId: 'legacy-a',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	await seedUser(db, {
+		id: 22,
+		stableUserId: 'legacy-b',
+		deletingAt: '2026-08-20 00:00:00',
+		deletedAt: null,
+	})
+	// The scheduled lane passes no dryRun flag.
+	const result = await pruneSoftDeleted({ env, now })
+	expect(result.dryRun).toBe(true)
+	expect(result.legacyDryRun).toBe(false)
+	expect(result.failed).toBe(0)
+	expect(result.purged).toBe(2)
+	expect(hardPurgeOrg).not.toHaveBeenCalled()
+	expect(finishLegacyUserDeletion).toHaveBeenCalledTimes(2)
+	expect(
+		result.outcomes.map((outcome) => [outcome.id, outcome.outcome]),
+	).toEqual([
+		['org-still-dry-run', 'would_purge'],
+		['legacy-a', 'purged'],
+		['legacy-b', 'purged'],
+	])
+	expect(await userRow(db, 21)).toBeNull()
+	expect(await userRow(db, 22)).toBeNull()
+	// Idempotent: nothing left to do on the next pass.
+	finishLegacyUserDeletion.mockClear()
+	const again = await pruneSoftDeleted({ env, now })
+	expect(again.purged).toBe(0)
+	expect(finishLegacyUserDeletion).not.toHaveBeenCalled()
+})
+
+test('explicit dryRun previews legacy deletions without claiming', async () => {
+	const { env, db } = await createEnv(true)
+	const deletingAt = '2026-08-20T00:00:00.000Z'
+	await seedUser(db, {
+		id: 31,
+		stableUserId: 'legacy-preview',
+		deletingAt,
+		deletedAt: null,
+	})
+	const result = await pruneSoftDeleted({ env, now, dryRun: true })
+	expect(result.legacyDryRun).toBe(true)
+	expect(result.outcomes).toEqual([
+		expect.objectContaining({
+			id: 'legacy-preview',
+			outcome: 'would_purge',
+			legacy: true,
+		}),
+	])
+	expect(finishLegacyUserDeletion).not.toHaveBeenCalled()
+	expect((await userRow(db, 31))?.deleting_at).toBe(deletingAt)
+})
+
+test('failed legacy deletion is audited, backs off, and retries later', async () => {
+	const { env, db } = await createEnv(false)
+	await seedUser(db, {
+		id: 41,
+		stableUserId: 'legacy-retry',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	finishLegacyUserDeletion.mockImplementationOnce(async () => {
+		throw new Error('Artifact repo cleanup failed: upstream 500')
+	})
+	const failed = await pruneSoftDeleted({ env, now })
+	expect(failed.failed).toBe(1)
+	expect(failed.outcomes[0]).toEqual(
+		expect.objectContaining({
+			id: 'legacy-retry',
+			outcome: 'failed',
+			legacy: true,
+		}),
+	)
+	// The row stays fenced, the claim restamped the fence, and deleted_at
+	// stays null so it never becomes restorable.
+	const afterFailure = await userRow(db, 41)
+	expect(afterFailure?.deleted_at).toBeNull()
+	expect(afterFailure?.deleting_at).toBe(now.toISOString())
+	const audit = await env.AUDIT_DB.prepare(
+		`SELECT action, details_json FROM org_audit_events WHERE org_id = ?`,
+	)
+		.bind('legacy-retry')
+		.first<{ action: string; details_json: string }>()
+	expect(audit?.action).toBe('user.purge_failed')
+	expect(audit?.details_json).toContain('legacy_deletion_finish')
+
+	// Inside the six-hour backoff: not picked up again.
+	const soon = new Date(now.getTime() + 60 * 60 * 1000)
+	const skipped = await pruneSoftDeleted({ env, now: soon })
+	expect(skipped.scanned).toBe(0)
+
+	// After the backoff the next pass retries and finishes.
+	const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+	const retried = await pruneSoftDeleted({ env, now: later })
+	expect(retried.purged).toBe(1)
+	expect(await userRow(db, 41)).toBeNull()
 })

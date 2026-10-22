@@ -1303,3 +1303,149 @@ test('published-only codemod revert of an aligned apply uses syncArtifactSourceS
 	expect(mocks.syncArtifactSourceSnapshot).toHaveBeenCalledTimes(1)
 	expect(mocks.syncPublishedSourceSnapshotOnly).not.toHaveBeenCalled()
 })
+
+async function seedOwnersMidDeletion(db: D1Database) {
+	// Legacy deletion: fenced with deleting_at, never finished.
+	await db
+		.prepare(
+			`INSERT INTO users (username, email, password_hash, stable_user_id, deleting_at)
+			VALUES ('legacy', 'legacy@example.com', 'hash', 'owner-legacy', '2026-08-20T00:00:00.000Z')`,
+		)
+		.run()
+	// Soft-deleted person inside the restore window.
+	await db
+		.prepare(
+			`INSERT INTO users (username, email, password_hash, stable_user_id, deleted_at)
+			VALUES ('restorable', 'restorable@example.com', 'hash', 'owner-soft', '2026-10-01T00:00:00.000Z')`,
+		)
+		.run()
+	// Team org being purged.
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, plan, entitlement_ladder, deleting_at, created_at, updated_at)
+			VALUES ('org-deleting', 'org-deleting', 'Deleting', 'free', 'public', '2026-10-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO users (username, email, password_hash, stable_user_id)
+			VALUES ('live', 'live@example.com', 'hash', 'owner-live')`,
+		)
+		.run()
+}
+
+test('fleet codemod steps skip packages whose owner is mid-deletion or deleted', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	await seedOwnersMidDeletion(env.APP_DB)
+	const fleet = [
+		savedPackage('pkg-a-legacy', { userId: 'owner-legacy' }),
+		savedPackage('pkg-b-live', { userId: 'owner-live' }),
+		savedPackage('pkg-c-org', { userId: 'org-deleting' }),
+		savedPackage('pkg-d-soft', { userId: 'owner-soft' }),
+	]
+	mocks.listSavedPackagesPage.mockImplementation(
+		async (_db: D1Database, input: { afterId: string | null }) =>
+			fleet.filter(
+				(pkg) =>
+					input.afterId == null || pkg.id.localeCompare(input.afterId) > 0,
+			),
+	)
+	mockSourcesByIdWith(cleanFiles)
+
+	for (const mode of ['scan', 'dry-run'] as const) {
+		mocks.loadPackageSourceBySourceId.mockClear()
+		const result = await step(env, {
+			initiatedByUserId: 'admin-1',
+			mode,
+			scope: fleetScope,
+		})
+		expect(result.items.map((item) => item.packageId)).toEqual(['pkg-b-live'])
+		expect(result.summary.failed ?? 0).toBe(0)
+		expect(result.nextCursor).toBeNull()
+		expect(mocks.loadPackageSourceBySourceId).toHaveBeenCalledTimes(1)
+	}
+})
+
+test('user-scoped codemod step on an owner mid-deletion records no items', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	await seedOwnersMidDeletion(env.APP_DB)
+	mocks.listSavedPackagesByUserId.mockResolvedValue([
+		savedPackage('pkg-legacy-1', { userId: 'owner-legacy' }),
+		savedPackage('pkg-legacy-2', { userId: 'owner-legacy' }),
+	])
+	mockSourcesByIdWith(cleanFiles)
+	const result = await step(env, {
+		scope: { kind: 'user', userId: ownerIdFromStored('owner-legacy') },
+	})
+	expect(result.items).toEqual([])
+	expect(result.nextCursor).toBeNull()
+	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
+})
+
+test('fleet codemod revert skips applied items whose owner is mid-deletion', async () => {
+	setupMocks()
+	const { env, kv } = createEnv()
+	await seedOwnersMidDeletion(env.APP_DB)
+	await createPriorFleetApply(env.APP_DB, 'prior-apply-deleting-owner')
+	const priorItems = [
+		{ id: 'item-legacy', userId: 'owner-legacy', kodyId: 'legacy' },
+		{ id: 'item-live', userId: 'owner-live', kodyId: 'live' },
+	].map((prior) => ({
+		...prior,
+		userId: ownerIdFromStored(prior.userId),
+		packageId: `pkg-${prior.kodyId}`,
+		sourceId: `source-${prior.kodyId}`,
+	}))
+	for (const prior of priorItems) {
+		const revertSnapshotKey = buildPackageCodemodRevertSnapshotKvKey({
+			userId: prior.userId,
+			itemId: prior.id,
+		})
+		await insertPackageCodemodRunItem(env.APP_DB, {
+			id: prior.id,
+			runId: 'prior-apply-deleting-owner',
+			userId: prior.userId,
+			packageId: prior.packageId,
+			kodyId: prior.kodyId,
+			status: 'applied',
+			beforeCommit: `commit-${prior.sourceId}-before`,
+			afterCommit: `commit-${prior.sourceId}`,
+			changedPaths: ['index.ts'],
+			revertSnapshotKey,
+		})
+		await kv.namespace.put(
+			revertSnapshotKey,
+			JSON.stringify({
+				codemodId,
+				userId: prior.userId,
+				packageId: prior.packageId,
+				beforeCommit: `commit-${prior.sourceId}-before`,
+				files: cleanFiles(),
+			}),
+		)
+	}
+	mocks.listSavedPackagesByUserId.mockImplementation(
+		async (_db: D1Database, input: { userId: string }) =>
+			priorItems
+				.filter((prior) => prior.userId === input.userId)
+				.map((prior) => savedPackage(prior.packageId, prior)),
+	)
+	mockSourcesByIdWith(cleanFiles)
+	mocks.syncArtifactSourceSnapshot.mockResolvedValue('commit-reverted')
+
+	const revert = await step(env, {
+		initiatedByUserId: 'admin-1',
+		mode: 'revert',
+		scope: fleetScope,
+		revertOfRunId: 'prior-apply-deleting-owner',
+	})
+	expect(revert.items.map((item) => [item.packageId, item.status])).toEqual([
+		['pkg-live', 'reverted'],
+	])
+	expect(mocks.syncArtifactSourceSnapshot).toHaveBeenCalledTimes(1)
+	expect(
+		(await getPackageCodemodRunItemById(env.APP_DB, 'item-legacy'))?.status,
+	).toBe('applied')
+})

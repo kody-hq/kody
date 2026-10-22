@@ -1,5 +1,6 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
+import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
 import {
 	credentialNeedEnforcementScope,
 	selectCredentialNeedEnforcementScope,
@@ -402,6 +403,24 @@ async function applyScopeFilter(
 	return await selectCredentialNeedEnforcementScope(env.APP_DB, packages)
 }
 
+/**
+ * Drop packages whose owner is mid-deletion or deleted. Account deletion or
+ * the purge lane owns their storage, so running a codemod there only records
+ * noise failures (and could write to storage that is being removed).
+ */
+async function dropOwnersPendingDeletion(
+	env: Env,
+	packages: Array<SavedPackageRecord>,
+) {
+	if (packages.length === 0) return packages
+	const pending = await listOwnerIdsPendingDeletion(
+		env.APP_DB,
+		packages.map((savedPackage) => savedPackage.userId),
+	)
+	if (pending.size === 0) return packages
+	return packages.filter((savedPackage) => !pending.has(savedPackage.userId))
+}
+
 async function listCandidatePackages(input: {
 	env: Env
 	scope: PackageCodemodRunScope
@@ -420,12 +439,15 @@ async function listCandidatePackages(input: {
 				userId: input.scope.userId,
 			})
 			const ordered = (
-				await applyScopeFilter(
+				await dropOwnersPendingDeletion(
 					input.env,
-					all.filter((savedPackage) =>
-						matchesFilters(savedPackage, input.filters),
+					await applyScopeFilter(
+						input.env,
+						all.filter((savedPackage) =>
+							matchesFilters(savedPackage, input.filters),
+						),
+						input.filters,
 					),
-					input.filters,
 				)
 			).sort((left, right) => compareBinaryIds(left.id, right.id))
 			const startIndex =
@@ -461,12 +483,15 @@ async function listCandidatePackages(input: {
 					return { packages, nextCursor: null }
 				}
 				const matching = new Set(
-					await applyScopeFilter(
+					await dropOwnersPendingDeletion(
 						input.env,
-						page.filter((savedPackage) =>
-							matchesFilters(savedPackage, input.filters),
+						await applyScopeFilter(
+							input.env,
+							page.filter((savedPackage) =>
+								matchesFilters(savedPackage, input.filters),
+							),
+							input.filters,
 						),
-						input.filters,
 					),
 				)
 				for (const savedPackage of page) {
@@ -1050,6 +1075,10 @@ async function processRevertStep(input: {
 				summary,
 			}
 		}
+		const ownersPendingDeletion = await listOwnerIdsPendingDeletion(
+			input.env.APP_DB,
+			page.map((priorItem) => priorItem.userId),
+		)
 		for (const priorItem of page) {
 			cursor = priorItem.id
 			if (input.scope.kind !== 'user' && input.scope.kind !== 'fleet') {
@@ -1067,6 +1096,11 @@ async function processRevertStep(input: {
 			) {
 				// Filter skips advance the cursor but do not count toward limit;
 				// the fleet page ceiling still bounds work per step.
+				continue
+			}
+			if (ownersPendingDeletion.has(priorItem.userId)) {
+				// Owner is mid-deletion or deleted: account deletion removes this
+				// package, so there is nothing to revert. Skip like a filter miss.
 				continue
 			}
 			const itemId = crypto.randomUUID()

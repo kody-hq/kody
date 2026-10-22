@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
 	listSavedPackagesPage: vi.fn(),
+	listOwnerIdsPendingDeletion: vi.fn(),
 	getEntitySourceById: vi.fn(),
 	readPublishedSourceSnapshot: vi.fn(),
 	resolveExistingArtifactSourceRepo: vi.fn(),
@@ -28,6 +29,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesPage: (...args: Array<unknown>) =>
 		mocks.listSavedPackagesPage(...args),
+}))
+vi.mock('#worker/account/owner-deletion-state.ts', () => ({
+	listOwnerIdsPendingDeletion: (...args: Array<unknown>) =>
+		mocks.listOwnerIdsPendingDeletion(...args),
 }))
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	readPublishedSourceSnapshot: (...args: Array<unknown>) =>
@@ -97,8 +102,12 @@ const snapshotFiles = {
 	'src/index.ts': 'export default 1\n',
 }
 
-function savedPackage(id = 'package-1', sourceId = 'source-1') {
-	return { id, userId: ownerUserId, sourceId }
+function savedPackage(
+	id = 'package-1',
+	sourceId = 'source-1',
+	userId: string = ownerUserId,
+) {
+	return { id, userId, sourceId }
 }
 
 function sourceRow(overrides: Record<string, unknown> = {}) {
@@ -120,6 +129,7 @@ const rebuildArtifacts = vi.fn()
 beforeEach(() => {
 	vi.clearAllMocks()
 	mocks.calls.length = 0
+	mocks.listOwnerIdsPendingDeletion.mockResolvedValue(new Set<string>())
 	mocks.resolveExistingArtifactSourceRepo.mockResolvedValue({
 		info: async () => ({
 			remote: 'https://artifacts.test/repo-1.git',
@@ -367,4 +377,57 @@ test('apply never repairs a package whose published commit is reachable', async 
 	expect(result).toMatchObject({ consistent: 1, repaired: 0 })
 	expect(kvPut).not.toHaveBeenCalled()
 	expect(mocks.git.push).not.toHaveBeenCalled()
+})
+
+test('scan skips packages whose owner is mid-deletion or deleted', async () => {
+	const deletingOwner = ownerIdFromStored('owner-deleting')
+	mocks.listSavedPackagesPage.mockResolvedValueOnce([
+		savedPackage('pkg-live', 'src-live'),
+		savedPackage('pkg-deleting', 'src-deleting', deletingOwner),
+	])
+	mocks.listOwnerIdsPendingDeletion.mockResolvedValue(new Set([deletingOwner]))
+	mocks.getEntitySourceById.mockImplementation(
+		async (_db: unknown, sourceId: string) =>
+			sourceRow({ id: sourceId, published_commit: lostCommit }),
+	)
+	const result = await runPublishedCommitRefRepair({
+		env,
+		baseUrl: 'https://kody.test',
+		rebuildArtifacts,
+	})
+	expect(mocks.listOwnerIdsPendingDeletion).toHaveBeenCalledWith(env.APP_DB, [
+		ownerUserId,
+		deletingOwner,
+	])
+	expect(result.skippedOwnerDeleting).toBe(1)
+	expect(result.scannedPackages).toBe(1)
+	expect(result.failed).toBe(0)
+	expect(result.outcomes.map((outcome) => outcome.packageId)).toEqual([
+		'pkg-live',
+	])
+	expect(mocks.getEntitySourceById).toHaveBeenCalledTimes(1)
+	expect(mocks.getEntitySourceById).not.toHaveBeenCalledWith(
+		env.APP_DB,
+		'src-deleting',
+	)
+})
+
+test('apply with explicit ids still skips a package whose owner is being deleted', async () => {
+	const deletingOwner = ownerIdFromStored('owner-deleting')
+	mocks.listSavedPackagesPage.mockResolvedValueOnce([
+		savedPackage('pkg-deleting', 'src-deleting', deletingOwner),
+	])
+	mocks.listOwnerIdsPendingDeletion.mockResolvedValue(new Set([deletingOwner]))
+	const result = await runPublishedCommitRefRepair({
+		env,
+		baseUrl: 'https://kody.test',
+		dryRun: false,
+		packageIds: ['pkg-deleting'],
+		rebuildArtifacts,
+	})
+	expect(result.skippedOwnerDeleting).toBe(1)
+	expect(result.scannedPackages).toBe(0)
+	expect(result.repaired + result.failed).toBe(0)
+	expect(mocks.git.push).not.toHaveBeenCalled()
+	expect(kvPut).not.toHaveBeenCalled()
 })

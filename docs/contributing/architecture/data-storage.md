@@ -209,11 +209,15 @@ id (`purgeOwnerOutOfBandSurfaces`), deletes those objects, then deletes D1 rows
 including owner-scoped inventory without `deleted_at` (for example
 `published_bundle_artifacts`). Personal org hard purge (org id == person id) is
 org-graph only so the following user purge can still inventory those keys.
-`SOFT_DELETE_PURGE_ENABLED` stays `false`, so the purge lane dry-runs.
-Out-of-band surfaces (Durable Objects, KV schemes, R2, Vectorize, Artifacts) are
-declared in `user-owned-surfaces.ts` and consumed by both deletion and export.
-Growth-table retention dispositions are linked in
-`account-retention-dispositions.ts`.
+`SOFT_DELETE_PURGE_ENABLED` stays `false`, so the purge lane dry-runs for
+soft-deleted rows. Legacy account deletions (`deleting_at` set, `deleted_at`
+null) are finished by the same lane regardless of that flag; see
+[authentication](./authentication.md). Fleet scans (published-commit ref repair
+and package codemods) skip packages whose owner is mid-deletion or deleted
+(`account/owner-deletion-state.ts`). Out-of-band surfaces (Durable Objects, KV
+schemes, R2, Vectorize, Artifacts) are declared in `user-owned-surfaces.ts` and
+consumed by both deletion and export. Growth-table retention dispositions are
+linked in `account-retention-dispositions.ts`.
 `packages/worker/src/account/export.node.test.ts` applies the live migrations to
 SQLite and fails if a `user_id` / `*_user_id` column is not covered by the
 export list. The hard invariant is the same as every storage path: callers pass

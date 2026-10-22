@@ -1,5 +1,6 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
 import { listSavedPackagesPage } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
@@ -77,6 +78,11 @@ export type PublishedCommitRefRepairResult = {
 	repaired: number
 	failed: number
 	skippedUnpublished: number
+	/**
+	 * Packages whose owner is mid-deletion or deleted. Account deletion or the
+	 * purge lane owns their storage, so they are counted and not inspected.
+	 */
+	skippedOwnerDeleting: number
 	nextCursor: string | null
 	outcomes: Array<PublishedCommitRefRepairOutcome>
 }
@@ -388,23 +394,47 @@ async function listCandidatePackages(input: {
 	packageIds?: ReadonlySet<string>
 }) {
 	const packages: Array<SavedPackageRecord> = []
+	let skippedOwnerDeleting = 0
 	let cursor = input.afterId
 	for (let pages = 1; ; pages += 1) {
 		const page = await listSavedPackagesPage(input.env.APP_DB, {
 			afterId: cursor,
 			limit: scanPageSize,
 		})
-		if (page.length === 0) return { packages, nextCursor: null }
+		if (page.length === 0) {
+			return { packages, nextCursor: null, skippedOwnerDeleting }
+		}
+		const ownersPendingDeletion = await listOwnerIdsPendingDeletion(
+			input.env.APP_DB,
+			page
+				.filter(
+					(savedPackage) =>
+						!input.packageIds || input.packageIds.has(savedPackage.id),
+				)
+				.map((savedPackage) => savedPackage.userId),
+		)
 		for (const savedPackage of page) {
 			cursor = savedPackage.id
 			if (input.packageIds && !input.packageIds.has(savedPackage.id)) continue
+			if (ownersPendingDeletion.has(savedPackage.userId)) {
+				skippedOwnerDeleting += 1
+				continue
+			}
 			packages.push(savedPackage)
 			if (packages.length >= input.limit) {
-				return { packages, nextCursor: savedPackage.id }
+				return {
+					packages,
+					nextCursor: savedPackage.id,
+					skippedOwnerDeleting,
+				}
 			}
 		}
-		if (page.length < scanPageSize) return { packages, nextCursor: null }
-		if (pages >= maxScanPages) return { packages, nextCursor: cursor }
+		if (page.length < scanPageSize) {
+			return { packages, nextCursor: null, skippedOwnerDeleting }
+		}
+		if (pages >= maxScanPages) {
+			return { packages, nextCursor: cursor, skippedOwnerDeleting }
+		}
 	}
 }
 
@@ -439,12 +469,13 @@ export async function runPublishedCommitRefRepair(input: {
 				: publishedCommitRefRepairApplyLimitMax,
 		),
 	)
-	const { packages, nextCursor } = await listCandidatePackages({
-		env: input.env,
-		afterId: input.afterId ?? null,
-		limit,
-		packageIds,
-	})
+	const { packages, nextCursor, skippedOwnerDeleting } =
+		await listCandidatePackages({
+			env: input.env,
+			afterId: input.afterId ?? null,
+			limit,
+			packageIds,
+		})
 	const result: PublishedCommitRefRepairResult = {
 		dryRun,
 		scannedPackages: packages.length,
@@ -454,6 +485,7 @@ export async function runPublishedCommitRefRepair(input: {
 		repaired: 0,
 		failed: 0,
 		skippedUnpublished: 0,
+		skippedOwnerDeleting,
 		nextCursor,
 		outcomes: [],
 	}

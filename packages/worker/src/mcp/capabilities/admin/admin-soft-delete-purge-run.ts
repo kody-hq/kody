@@ -35,11 +35,18 @@ const outcomeSchema = z.object({
 	kind: z.enum(['org', 'user']),
 	id: z.string(),
 	outcome: z.enum(['purged', 'failed', 'skipped_claim', 'would_purge']),
+	legacy: z
+		.literal(true)
+		.optional()
+		.describe(
+			'Legacy account deletion (deleting_at set, deleted_at null) finished without the restore window.',
+		),
 	error: z.string().optional(),
 })
 
 const outputSchema = z.object({
 	dryRun: z.boolean(),
+	legacyDryRun: z.boolean(),
 	scanned: z.number().int(),
 	purged: z.number().int(),
 	failed: z.number().int(),
@@ -53,7 +60,7 @@ export const adminSoftDeletePurgeRunCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		name: 'adminSoftDeletePurgeRun',
 		description:
-			'Run one bounded pass of the soft-delete purge lane (orgs and person accounts past the 30-day restore window). dryRun defaults to true and lists candidates without hard deletes. Set dryRun false to execute writes (respects SOFT_DELETE_PURGE_ENABLED on the worker unless dryRun is explicitly false). Admin-only and destructive.',
+			'Run one bounded pass of the soft-delete purge lane (orgs and person accounts past the 30-day restore window, plus legacy account deletions left with deleting_at set and deleted_at null, which have no restore window). dryRun defaults to true and lists candidates without hard deletes. Set dryRun false to execute writes (respects SOFT_DELETE_PURGE_ENABLED on the worker unless dryRun is explicitly false). Admin-only and destructive.',
 		keywords: [
 			'admin',
 			'soft delete',
@@ -80,6 +87,7 @@ export const adminSoftDeletePurgeRunCapability = defineDomainCapability(
 						})
 						return {
 							dryRun: true,
+							legacyDryRun: true,
 							scanned: preview.scanned,
 							purged: 0,
 							failed: 0,
@@ -88,6 +96,7 @@ export const adminSoftDeletePurgeRunCapability = defineDomainCapability(
 								kind: candidate.kind,
 								id: candidate.id,
 								outcome: 'would_purge' as const,
+								...(candidate.legacy ? { legacy: true as const } : {}),
 							})),
 						}
 					}
