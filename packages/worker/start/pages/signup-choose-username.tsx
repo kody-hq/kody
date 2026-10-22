@@ -10,6 +10,7 @@ import {
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
 import {
+	useEffect,
 	useId,
 	useRef,
 	useState,
@@ -40,6 +41,11 @@ export function SignupChooseUsernamePage(props: {
 	const hydrated = useHydrated()
 	const handleId = useId()
 	const lifecycle = useRef<AbortController | null>(null)
+	useEffect(() => {
+		const controller = new AbortController()
+		lifecycle.current = controller
+		return () => controller.abort()
+	}, [])
 	const [username, setUsername] = useState(props.suggestedUsername)
 	const [availability, setAvailability] = useState<UsernameAvailabilityView>({
 		status: 'idle',
@@ -56,13 +62,11 @@ export function SignupChooseUsernamePage(props: {
 	const isSubmitting = status === 'submitting'
 	const submitLabel = confirming ? 'Yes, create account' : 'Continue'
 	const canSubmit =
-		availability.status === 'available' ||
-		availability.status === 'unknown' ||
-		(confirming &&
-			availability.status !== 'taken' &&
-			availability.status !== 'reserved' &&
-			availability.status !== 'invalid' &&
-			availability.status !== 'checking')
+		availability.status !== 'idle' &&
+		availability.status !== 'taken' &&
+		availability.status !== 'reserved' &&
+		availability.status !== 'invalid' &&
+		(!confirming || availability.status !== 'checking')
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -70,11 +74,6 @@ export function SignupChooseUsernamePage(props: {
 		if (!nextUsername) {
 			setStatus('error')
 			setMessage('Username is required.')
-			return
-		}
-		if (availability.status === 'checking') {
-			setStatus('error')
-			setMessage('Wait for the availability check to finish.')
 			return
 		}
 		if (
@@ -90,6 +89,11 @@ export function SignupChooseUsernamePage(props: {
 			setConfirmedUsername(nextUsername)
 			setStatus('idle')
 			setMessage(handlePermanenceConfirmMessage(nextUsername))
+			return
+		}
+		if (availability.status === 'checking') {
+			setStatus('error')
+			setMessage('Wait for the availability check to finish.')
 			return
 		}
 

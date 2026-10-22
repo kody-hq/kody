@@ -118,10 +118,11 @@ export async function checkUsernameAvailability(input: {
 	const suggestionLimit = input.suggestionLimit ?? 3
 
 	async function suggestionsExcluding(exclude: string) {
+		const maxCandidatesChecked = 12
 		const candidates = collectUsernameSuggestionCandidates(
 			exclude || input.username,
 			input.seeds,
-		)
+		).slice(0, maxCandidatesChecked)
 		const available: Array<string> = []
 		for (const candidate of candidates) {
 			if (candidate === exclude) continue

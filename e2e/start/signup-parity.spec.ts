@@ -24,7 +24,8 @@ test('signup confirms the permanent handle before sending credentials and suppor
 	})
 	await page.goto('/signup')
 	await waitForClientHydration(page)
-	await page.getByLabel('Username', { exact: true }).fill('parity-test')
+	const usernameField = page.getByRole('textbox', { name: 'Username' })
+	await usernameField.fill('parity-test')
 	await page.getByLabel('Email', { exact: true }).fill('parity@example.com')
 	const password = page.getByLabel('Password', { exact: true })
 	await password.fill('test-password-only')
@@ -32,6 +33,9 @@ test('signup confirms the permanent handle before sending credentials and suppor
 	await expect(password).toHaveAttribute('type', 'text')
 	await page.getByRole('button', { name: 'Hide password', exact: true }).click()
 	await expect(password).toHaveAttribute('type', 'password')
+	await expect(page.locator('[data-status="available"]')).toContainText(
+		'parity-test is available',
+	)
 	await page
 		.getByRole('button', { name: 'Create account', exact: true })
 		.click()
@@ -39,11 +43,19 @@ test('signup confirms the permanent handle before sending credentials and suppor
 		page.getByRole('button', { name: 'Yes, create account', exact: true }),
 	).toBeVisible()
 	expect(submissions).toBe(0)
-	await page.getByLabel('Username', { exact: true }).fill('other-handle')
+	await usernameField.fill('other-handle')
+	await expect(page.locator('[data-status="available"]')).toContainText(
+		'other-handle is available',
+	)
 	await page
 		.getByRole('button', { name: 'Create account', exact: true })
 		.click()
-	await expect(page.getByRole('status')).toContainText('other-handle')
+	await expect(
+		page.getByRole('button', { name: 'Yes, create account', exact: true }),
+	).toBeVisible()
+	await expect(page.getByTestId('username-permanence-confirm')).toContainText(
+		'other-handle',
+	)
 	expect(submissions).toBe(0)
 	await page
 		.getByRole('button', { name: 'Yes, create account', exact: true })

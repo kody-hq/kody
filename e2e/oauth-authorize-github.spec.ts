@@ -2,6 +2,7 @@ import { requestHasMutationDataFields } from './server-function-requests.ts'
 import { createHash, randomBytes } from 'node:crypto'
 import { type APIRequestContext } from '@playwright/test'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
+import { completeUsernameChoice } from './complete-username-choice.ts'
 import {
 	clearAuthRateLimitsInE2eDatabase,
 	executeE2eD1Command,
@@ -75,6 +76,7 @@ test('GitHub-only account authorizes while already signed in', async ({
 	await page.goto('/login')
 	await waitForClientHydration(page)
 	await page.getByRole('button', { name: 'Continue with GitHub' }).click()
+	await completeUsernameChoice(page, 'mock-octo')
 	await expect(page).toHaveURL(/\/onboarding\/step-1\?accountCreated=1$/)
 
 	const clientId = await registerPublicClient(request)
@@ -164,8 +166,9 @@ test('GitHub sign-in from authorize returns with OAuth params intact', async ({
 
 	await githubButton.click()
 
-	// New GitHub account still resumes authorize (explicit redirectTo wins);
-	// prompt=login is stripped after the completed social auth.
+	// New GitHub account parks on username choice, then resumes authorize
+	// (explicit redirectTo wins); prompt=login is stripped after create.
+	await completeUsernameChoice(page, 'mock-octo')
 	await expect(page).toHaveURL(/\/oauth\/authorize\?/)
 	await expect(page).not.toHaveURL(/prompt=login/)
 	await expect(page).toHaveURL(new RegExp(`client_id=${clientId}`))

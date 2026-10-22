@@ -159,10 +159,6 @@ export function LoginPage({
 		}
 
 		if (mode === 'signup') {
-			if (usernameAvailability.status === 'checking') {
-				setState('error', 'Wait for the availability check to finish.')
-				return
-			}
 			if (
 				usernameAvailability.status === 'taken' ||
 				usernameAvailability.status === 'reserved' ||
@@ -178,6 +174,10 @@ export function LoginPage({
 				setConfirmedUsername(username.toLowerCase())
 				setSignupUsername(username)
 				setState('idle', handlePermanenceConfirmMessage(username.toLowerCase()))
+				return
+			}
+			if (usernameAvailability.status === 'checking') {
+				setState('error', 'Wait for the availability check to finish.')
 				return
 			}
 		}

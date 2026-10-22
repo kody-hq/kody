@@ -137,7 +137,7 @@ export async function completeOauthPendingSignup({
 		env,
 		provider: pending.provider,
 		providerUserId: pending.providerUserId,
-		providerDisplayName: pending.displayName ?? pending.providerUsername,
+		providerDisplayName: pending.providerUsername ?? pending.displayName,
 		email: pending.email,
 		username,
 		attribution: pending.attribution,
