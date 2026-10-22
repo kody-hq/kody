@@ -159,3 +159,43 @@ test('pruneUserClientOAuthGrants is best-effort when listing fails', async () =>
 		}),
 	)
 })
+
+test('pruneUserClientOAuthGrants reports completed revokes when a later revoke fails', async () => {
+	const nowSeconds = 1_700_000_000
+	const clientId = 'https://chatgpt.com/oauth/client.json'
+	const helpers = {
+		listUserGrants: async () => ({
+			items: [
+				grant('keep', nowSeconds),
+				grant('stale', nowSeconds - mcpOAuthGrantMaxAgeSeconds - 5),
+				grant('excess-old', nowSeconds - 20),
+			],
+		}),
+		revokeGrant: vi
+			.fn()
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('kv write failed')),
+	}
+
+	await expect(
+		pruneUserClientOAuthGrants({
+			helpers,
+			userId: 'user-1',
+			clientId,
+			env: {},
+			nowSeconds,
+			maxGrants: 1,
+		}),
+	).resolves.toEqual({ revoked: 1, stale: 1, excess: 0 })
+
+	expect(helpers.revokeGrant).toHaveBeenCalledTimes(2)
+	expect(logAuditEventSpy).toHaveBeenCalledWith(
+		expect.objectContaining({
+			category: 'oauth',
+			action: 'connection_pruned',
+			result: 'failure',
+			clientId,
+			reason: 'prune_failed;revoked=1;stale=1;excess=0',
+		}),
+	)
+})

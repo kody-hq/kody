@@ -132,10 +132,38 @@ export async function pruneUserClientOAuthGrants(input: {
 
 		let stale = 0
 		let excess = 0
-		for (const item of selected) {
-			await revokeOAuthGrant(input.helpers, item.id, input.userId)
-			if (item.reason === 'stale') stale += 1
-			else excess += 1
+		try {
+			for (const item of selected) {
+				await revokeOAuthGrant(input.helpers, item.id, input.userId)
+				if (item.reason === 'stale') stale += 1
+				else excess += 1
+			}
+		} catch (error) {
+			const revoked = stale + excess
+			console.info(
+				'oauth-grant-prune-failed',
+				JSON.stringify({
+					clientId: input.clientId,
+					message: getErrorMessage(error),
+					revoked,
+					stale,
+					excess,
+				}),
+			)
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(input.env),
+				category: 'oauth',
+				action: 'connection_pruned',
+				result: 'failure',
+				email: input.email,
+				ip: input.ip,
+				clientId: input.clientId,
+				reason:
+					revoked > 0
+						? `prune_failed;revoked=${revoked};stale=${stale};excess=${excess}`
+						: 'prune_failed',
+			})
+			return { revoked, stale, excess }
 		}
 
 		void logAuditEvent({
