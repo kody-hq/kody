@@ -2451,14 +2451,20 @@ async function resolvePackageAppBundledArtifact(input: {
 	) {
 		return servePublishedArtifact(currentArtifact)
 	}
-	let sourceFiles: Awaited<ReturnType<typeof resolvePackageAppSourceFiles>>
-	try {
-		sourceFiles = await resolvePackageAppSourceFiles(input)
-	} catch (error) {
-		// No source to rebuild from: keep serving the published bundle.
-		if (currentArtifact) return servePublishedArtifact(currentArtifact)
-		throw error
+	// Only a caller that passes no source at all keeps serving the published
+	// bundle (logged so the unbound bundle is visible). A source load that
+	// fails propagates instead of silently serving an unrepaired bundle.
+	if (currentArtifact && !input.sourceFiles && !input.loadSourceFiles) {
+		console.warn(
+			JSON.stringify({
+				event: 'pre_binding_bundle_served_without_source',
+				sourceId: input.savedPackage.sourceId,
+				surface: 'app',
+			}),
+		)
+		return servePublishedArtifact(currentArtifact)
 	}
+	const sourceFiles = await resolvePackageAppSourceFiles(input)
 	if (
 		currentArtifact &&
 		!publishedArtifactNeedsPackageBindingRebuild({

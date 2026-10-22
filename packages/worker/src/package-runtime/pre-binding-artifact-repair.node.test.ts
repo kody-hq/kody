@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	isPreBindingPublishedArtifact,
 	packageBindingRewriteVersion,
@@ -97,4 +97,40 @@ test('multi-package pre-fix bundles rebuild only when source needs no npm instal
 			sourceFiles: {},
 		}),
 	).toBe(false)
+})
+
+test('reports a module the repair cannot bind instead of skipping it silently', () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	try {
+		const unparsable = artifact('export const run = ( => fetch("x")', {
+			sourceId: 'src-own',
+		})
+		expect(repairPreBindingPublishedArtifact(unparsable).modules).toEqual(
+			unparsable.modules,
+		)
+		const collision = artifact(
+			'const __kodyPreBindingBoundFetch = 1;\nexport const run = () => fetch("x");',
+			{ sourceId: 'src-own' },
+		)
+		expect(repairPreBindingPublishedArtifact(collision).modules).toEqual(
+			collision.modules,
+		)
+		const events = warn.mock.calls.map((call) => JSON.parse(String(call[0])))
+		expect(events).toEqual([
+			{
+				event: 'pre_binding_module_unrepaired',
+				sourceId: 'src-own',
+				modulePath: 'bundle.js',
+				reason: 'parse-failed',
+			},
+			{
+				event: 'pre_binding_module_unrepaired',
+				sourceId: 'src-own',
+				modulePath: 'bundle.js',
+				reason: 'creator-name-collision',
+			},
+		])
+	} finally {
+		warn.mockRestore()
+	}
 })

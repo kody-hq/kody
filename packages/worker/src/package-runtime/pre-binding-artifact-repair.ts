@@ -28,6 +28,27 @@ type RepairableArtifact = {
 	dependencies: Array<{ packageId?: string }>
 	packageContext: { packageId: string } | null
 	packageBindingRewrite?: number
+	sourceId?: string
+}
+
+/**
+ * A module the repair cannot bind keeps its pre-fix `fetch`. Report it so the
+ * gap is visible instead of silent. The repair runs on every read (it is not
+ * persisted), so the warning repeats until the package is republished.
+ */
+function warnUnrepairedModule(input: {
+	artifact: RepairableArtifact
+	modulePath: string
+	reason: 'parse-failed' | 'creator-name-collision'
+}) {
+	console.warn(
+		JSON.stringify({
+			event: 'pre_binding_module_unrepaired',
+			sourceId: input.artifact.sourceId ?? null,
+			modulePath: input.modulePath,
+			reason: input.reason,
+		}),
+	)
 }
 
 const lexicalBindingNames = [
@@ -179,11 +200,22 @@ export function repairPreBindingPublishedArtifact<
 		const original = moduleSource(module)
 		if (original == null) continue
 		const collisions = collectTopLevelFetchCollisionNames(original)
+		if (!collisions) {
+			// The module does not parse, so its top-level names are unknown and
+			// inserting bindings could shadow or break it.
+			warnUnrepairedModule({ artifact, modulePath, reason: 'parse-failed' })
+			continue
+		}
 		if (
-			!collisions ||
 			collisions.has(repairFetchCreatorName) ||
 			collisions.has(repairKodyCreatorName)
 		) {
+			// The module already declares a name the repair would insert.
+			warnUnrepairedModule({
+				artifact,
+				modulePath,
+				reason: 'creator-name-collision',
+			})
 			continue
 		}
 		const { source, kodyLocalNames } = stripSharedKodyImports(original)

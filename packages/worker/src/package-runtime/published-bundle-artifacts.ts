@@ -168,7 +168,7 @@ export async function persistPublishedBundleArtifact(
 		packageContext: input.packageContext ?? null,
 		createdAt: new Date().toISOString(),
 		// Persisted modules come from the current builder, which binds package
-		// \`fetch\` lexically.
+		// `fetch` lexically and never inlines an unbound pre-fix bundle.
 		packageBindingRewrite: packageBindingRewriteVersion,
 	}
 	const rowInput = toDbRowInput({
