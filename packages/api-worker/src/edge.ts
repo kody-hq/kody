@@ -371,7 +371,14 @@ async function fetchOrigin(
 				},
 				{
 					status: 503,
-					headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' },
+					// A resource-limit failure usually repeats, so do not invite an
+					// automatic retry of the same request.
+					headers: {
+						'Cache-Control': 'no-store',
+						...(failure.reason === 'origin_unreachable'
+							? { 'Retry-After': '5' }
+							: {}),
+					},
 				},
 			),
 		)

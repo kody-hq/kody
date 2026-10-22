@@ -193,6 +193,7 @@ test('reports origin failures with the error envelope', async () => {
 	expect(response.status).toBe(503)
 	const requestId = response.headers.get('X-Kody-Request-Id')
 	expect(requestId).toBeTruthy()
+	expect(response.headers.get('Retry-After')).toBe('5')
 	expect(await response.json()).toMatchObject({
 		error: {
 			code: 'internal_error',
@@ -230,6 +231,7 @@ test('names an origin memory or CPU limit and echoes the ray id as the request i
 	)
 	expect(response.status).toBe(503)
 	expect(response.headers.get('X-Kody-Request-Id')).toBe('8f00aa11bb22cc33-SJC')
+	expect(response.headers.get('Retry-After')).toBeNull()
 	const body = (await response.json()) as {
 		error: { code: string; message: string; details: unknown }
 	}
