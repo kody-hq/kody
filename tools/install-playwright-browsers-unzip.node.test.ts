@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
+import { playwrightCacheRoot } from './control-kody/playwright-browsers.ts'
 import {
 	installPlaywrightBrowsersUnzip,
 	isCloudAgentEnvironment,
@@ -100,7 +101,7 @@ test('Cloud Agent Linux uses native unzip and plans curl plus unzip for the brow
 	expect(isCloudAgentEnvironment(agentEnv)).toBe(false)
 	await mkdir(path.join(homeDir, '.cursor', 'agent-hooks'), { recursive: true })
 	expect(isCloudAgentEnvironment(agentEnv)).toBe(true)
-	const cacheRoot = path.join(homeDir, '.cache', 'ms-playwright')
+	const cacheRoot = playwrightCacheRoot(homeDir)
 	const markInstalled = async (dirName: string) => {
 		await mkdir(path.join(cacheRoot, dirName), { recursive: true })
 		await writeFile(path.join(cacheRoot, dirName, 'INSTALLATION_COMPLETE'), '')

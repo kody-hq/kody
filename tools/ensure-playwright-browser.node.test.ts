@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
+import { playwrightCacheRoot } from './control-kody/playwright-browsers.ts'
 import {
 	ensurePlaywrightChromium,
 	playwrightChromiumInstallArgs,
@@ -22,7 +23,7 @@ test('Playwright Chromium install skips apt deps on GitHub Actions and keeps the
 test('ensure skips install when the browsers.json revision markers already exist', async () => {
 	const homeDir = await mkdtemp(path.join(tmpdir(), 'playwright-ensure-'))
 	const browsersJsonPath = path.join(homeDir, 'browsers.json')
-	const cacheRoot = path.join(homeDir, '.cache', 'ms-playwright')
+	const cacheRoot = playwrightCacheRoot(homeDir)
 	try {
 		await writeFile(
 			browsersJsonPath,

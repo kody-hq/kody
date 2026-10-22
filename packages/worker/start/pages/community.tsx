@@ -106,12 +106,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 				/>
 			</header>
 
-			<CommunityListingsContent
-				{...data}
-				query={searchQuery || null}
-				sort={sort}
-				category={category}
-			/>
+			<CommunityListingsContent {...data} />
 
 			<div css={communityCloseCss}>
 				<p>
