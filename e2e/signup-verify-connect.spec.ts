@@ -100,7 +100,10 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 			page.getByRole('button', { name: 'Yes, create account' }),
 		).toBeVisible()
 		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
-			`kody.codes/@${username}`,
+			`${username}.kody.run`,
+		)
+		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
+			"You can't change this later",
 		)
 		await page.getByRole('button', { name: 'Yes, create account' }).click()
 
