@@ -128,14 +128,27 @@ async function getOverview(env: Env, orgSlug: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks()
-	mocks.loadWorkspaceRunCharts.mockResolvedValue({ days: [], sources: [] })
+	mocks.loadWorkspaceRunCharts.mockResolvedValue({
+		since: '2026-01-01T00:00:00.000Z',
+		until: '2026-01-07T12:00:00.000Z',
+		countsSince: null,
+		days: [],
+		sources: [],
+	})
 	mocks.loadOrgUsagePageResult.mockResolvedValue({
 		kind: 'denied',
 		status: 403,
 	})
 	mocks.loadProfileData.mockResolvedValue({ packages: [] })
 	mocks.loadAccountActivityData.mockResolvedValue({
-		summary: { total: 0, errors: 0, running: 0 },
+		summary: {
+			since: '2025-12-31T12:00:00.000Z',
+			total: 0,
+			errors: 0,
+			running: 0,
+			ignored: 0,
+			resolved: 0,
+		},
 		runs: [],
 	})
 	mocks.loadAccountJobsData.mockResolvedValue({ jobs: [] })
@@ -150,12 +163,25 @@ beforeEach(() => {
 test('the signup org overview renders without remembering the org', async () => {
 	expect(await getOverview(await createEnv(), 'ada')).toEqual({
 		slug: 'ada',
-		charts: { days: [], sources: [] },
+		charts: {
+			since: '2026-01-01T00:00:00.000Z',
+			until: '2026-01-07T12:00:00.000Z',
+			countsSince: null,
+			days: [],
+			sources: [],
+		},
 		billing: null,
 		repositories: [],
 		runs: [],
 		upcomingJobs: [],
-		summary: { total: 0, errors: 0, running: 0 },
+		summary: {
+			since: '2026-01-01T00:00:00.000Z',
+			total: 0,
+			errors: 0,
+			running: 0,
+			ignored: 0,
+			resolved: 0,
+		},
 	})
 	expect(native.setResponseHeader.mock.calls).toEqual([
 		['Cache-Control', 'private, no-store'],
@@ -208,13 +234,41 @@ test('dashboard shows only runnable jobs, soonest first, and caps activity', asy
 		],
 	})
 	mocks.loadAccountActivityData.mockResolvedValue({
-		summary: { total: 12 },
+		summary: {
+			since: '2025-12-31T12:00:00.000Z',
+			total: 99,
+			errors: 3,
+			running: 1,
+			ignored: 0,
+			resolved: 0,
+		},
 		runs: Array.from({ length: 12 }, (_, i) => ({ id: String(i) })),
+	})
+	mocks.loadWorkspaceRunCharts.mockResolvedValue({
+		since: '2026-01-01T00:00:00.000Z',
+		until: '2026-01-07T12:00:00.000Z',
+		countsSince: '2026-01-03',
+		days: [
+			{ day: '2026-01-01', success: 0, error: 0, running: 0 },
+			{ day: '2026-01-02', success: 0, error: 0, running: 0 },
+			{ day: '2026-01-03', success: 10, error: 2, running: 0 },
+			{ day: '2026-01-04', success: 0, error: 0, running: 0 },
+			{ day: '2026-01-05', success: 0, error: 0, running: 0 },
+			{ day: '2026-01-06', success: 0, error: 0, running: 0 },
+			{ day: '2026-01-07', success: 0, error: 0, running: 0 },
+		],
+		sources: [{ surface: 'execute', count: 12 }],
 	})
 	const result = await getOverview(await createEnv(), 'ada')
 	expect(result.upcomingJobs.map((job) => job.id)).toEqual(['next', 'later'])
 	expect(result.runs).toHaveLength(6)
-	expect(result.summary.total).toBe(12)
+	// Total/Running come from charts; Open errors stays Activity untriaged.
+	expect(result.summary).toMatchObject({
+		since: '2026-01-01T00:00:00.000Z',
+		total: 12,
+		running: 0,
+		errors: 3,
+	})
 	expect(mocks.loadProfileData).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.anything(),

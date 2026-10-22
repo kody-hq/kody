@@ -194,12 +194,14 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 			{ loadAccountJobsData },
 			{ loadWorkspaceRunCharts },
 			{ loadOrgUsagePageResult },
+			{ overviewExecutionTotals },
 		] = await Promise.all([
 			import('../../src/app/profile-data.ts'),
 			import('../../src/app/account-activity-data.ts'),
 			import('../../src/app/account-jobs-data.ts'),
 			import('../../src/run-records/service.ts'),
 			import('../../src/app/handlers/org-usage.ts'),
+			import('../../universal/workspace-charts.ts'),
 		])
 		const [repositories, activity, jobs, charts, usage] = await Promise.all([
 			loadProfileData(
@@ -233,6 +235,10 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 			}),
 		])
 		if (!repositories) throw notFound()
+		// Total runs and Running match the chart window/filters. Open errors
+		// stays Activity's untriaged count (live "is anything broken?") and is
+		// labeled separately in the UI so it does not contradict Error bars.
+		const chartTotals = overviewExecutionTotals(charts)
 		return {
 			slug,
 			charts,
@@ -245,7 +251,13 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 						}
 					: null,
 			repositories: repositories.packages,
-			summary: activity.summary,
+			summary: {
+				...activity.summary,
+				since: charts.since,
+				total: chartTotals.total,
+				running: chartTotals.running,
+				errors: activity.summary.errors,
+			},
 			runs: activity.runs.slice(0, 6),
 			upcomingJobs: jobs.jobs
 				.filter((job) => job.enabled && !job.killSwitchEnabled && !job.expired)

@@ -1091,10 +1091,24 @@ test('alarm lifecycle: fresh arm, self-termination when idle, re-arm after idle,
 		startedAtMs + runRecordRetentionDays * dayMs - 5_000,
 	)
 
-	// Age the row past the retention cutoff and fire the alarm directly;
-	// with nothing left to keep, the alarm self-terminates (no re-arm).
+	// Age the row past the retention cutoff and fire the alarm directly.
+	// Runs prune first; durable day counts outlive them, so the alarm stays
+	// armed for the day-count horizon instead of self-terminating.
 	await expireAndFireAlarm('first-run')
 	expect(await countRuns(userId)).toBe(0)
+	expect(await getAlarm(userId)).toBeTypeOf('number')
+
+	const expireDayCountsAndFire = () =>
+		runInDurableObject(stub, async (instance: RunLog, state) => {
+			const oldDay = iso(
+				Date.now() - (runRecordRetentionDays + 3) * dayMs,
+			).slice(0, 10)
+			state.storage.sql.exec(`UPDATE run_day_counts SET day = ?`, oldDay)
+			seedRunLogMeta(instance, { finishesSinceRetention: 0 })
+			await state.storage.deleteAlarm()
+			await instance.alarm()
+		})
+	await expireDayCountsAndFire()
 	expect(await getAlarm(userId)).toBeNull()
 
 	// Write after idle re-arms the alarm for the new row.
@@ -1103,9 +1117,11 @@ test('alarm lifecycle: fresh arm, self-termination when idle, re-arm after idle,
 	expect(await getAlarm(userId)).toBeTypeOf('number')
 
 	// Age the post-idle run past the cutoff without bumping the amortized finish
-	// counter; alarm fires, prunes it, then self-terminates again.
+	// counter; alarm fires, prunes the run, keeps day-count work scheduled.
 	await expireAndFireAlarm(runId)
 	expect(await getRun(userId, runId)).toBeNull()
+	expect(await getAlarm(userId)).toBeTypeOf('number')
+	await expireDayCountsAndFire()
 	expect(await getAlarm(userId)).toBeNull()
 })
 
@@ -1580,4 +1596,88 @@ test('dashboard aggregates complete owner history and excludes exports, child ru
 			.every((day) => day.success + day.error + day.running === 0),
 	).toBe(true)
 	expect(charts.sources).toEqual([{ surface: 'execute', count: 31 }])
+	// Out-of-window finish still lands in day counts; charts filter the window.
+	expect(charts.countsSince).toBe(iso(since - 1).slice(0, 10))
+})
+
+test('dashboard day counts survive the 2000-run cap across several UTC days', async () => {
+	const userId = uniqueUserId('dashboard-cap')
+	const now = new Date('2026-10-22T18:00:00.000Z')
+	const windowStart = new Date('2026-10-16T00:00:00.000Z')
+	const perDay = 350
+	const dayCount = 7
+	const totalCounted = perDay * dayCount
+	expect(totalCounted).toBeGreaterThan(runRecordMaxRunsPerUser)
+
+	await runInDurableObject(runLogStub(userId), async (instance: RunLog) => {
+		expect(instance).toBeInstanceOf(RunLog)
+		for (let dayIndex = 0; dayIndex < dayCount; dayIndex++) {
+			const dayStart = windowStart.getTime() + dayIndex * dayMs + 60 * 60 * 1000
+			for (let i = 0; i < perDay; i++) {
+				const id = `cap-${dayIndex}-${i}`
+				const startedAt = iso(dayStart + i * 1000)
+				const run = {
+					id,
+					surface: 'execute' as const,
+					status: 'running' as const,
+					name: 'cap-test',
+					packageId: null,
+					kodyId: null,
+					sourceId: null,
+					publishedCommit: null,
+					storageId: null,
+					jobId: null,
+					workflowId: null,
+					invocationId: null,
+					sessionId: null,
+					idempotencyKey: null,
+					parentRunId: null,
+					startedAt,
+					finishedAt: null,
+					durationMs: null,
+					errorName: null,
+					errorMessage: null,
+					metadataJson: '{}',
+					createdAt: startedAt,
+					updatedAt: startedAt,
+				}
+				await instance.startRun({ run })
+				await instance.finishRun({
+					run: {
+						...run,
+						status: i % 50 === 0 ? 'error' : 'success',
+						finishedAt: startedAt,
+						durationMs: 1,
+						updatedAt: startedAt,
+					},
+					logs: [],
+				})
+			}
+		}
+		const proto = Object.getPrototypeOf(instance) as {
+			enforceRetention: () => { runDeletes: number }
+		}
+		for (let pass = 0; pass < 40; pass++) {
+			const { runDeletes } = proto.enforceRetention.call(instance)
+			if (runDeletes === 0) break
+		}
+	})
+
+	expect(await countRuns(userId)).toBe(runRecordMaxRunsPerUser)
+
+	const charts = await loadWorkspaceRunCharts({ env, userId, now })
+	expect(charts.days).toHaveLength(7)
+	const chartTotal = charts.days.reduce(
+		(sum, day) => sum + day.success + day.error + day.running,
+		0,
+	)
+	expect(chartTotal).toBe(totalCounted)
+	for (const day of charts.days) {
+		expect(day.success + day.error).toBe(perDay)
+		expect(day.running).toBe(0)
+		expect(day.error).toBe(7)
+		expect(day.success).toBe(343)
+	}
+	expect(charts.sources).toEqual([{ surface: 'execute', count: totalCounted }])
+	expect(charts.countsSince).toBe('2026-10-16')
 })

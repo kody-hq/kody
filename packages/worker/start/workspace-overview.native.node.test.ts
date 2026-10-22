@@ -9,6 +9,7 @@ const empty: Data = {
 	charts: {
 		since: '2026-10-15T00:00:00Z',
 		until: '2026-10-21T12:00:00Z',
+		countsSince: null,
 		days: [],
 		sources: [],
 	},
@@ -89,6 +90,8 @@ test('dashboard links real activity and scheduled jobs to their details', async 
 	expect(html).toContain('selected=run-1')
 	expect(html).toContain('href="/@jane/-/jobs?selected=job-1"')
 	expect(html).toContain('view=errors&amp;status=error&amp;triage=open')
+	expect(html).toContain('Open errors')
+	expect(html).toContain('Untriaged, all retained')
 	expect(html).toContain('>42</strong>')
 	expect(html).not.toContain('No executions')
 })

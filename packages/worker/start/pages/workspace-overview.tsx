@@ -59,12 +59,18 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 							},
 							{
 								label: 'Open errors',
+								hint: 'Untriaged, all retained',
 								value: data.summary.errors,
 								href: `${base}/activity?view=errors&status=error&triage=open`,
 							},
 						].map((item) => (
 							<SiteLink key={item.label} href={item.href} css={metricCss}>
-								<span css={mutedCss}>{item.label}</span>
+								<span css={mutedCss}>
+									{item.label}
+									{'hint' in item && item.hint ? (
+										<span css={hintCss}> · {item.hint}</span>
+									) : null}
+								</span>
 								<strong
 									css={{
 										fontSize: '1.35rem',
@@ -226,6 +232,10 @@ const mutedCss: CSSObject = {
 	fontSize: '0.8rem',
 	fontWeight: 400,
 	color: colors.textMuted,
+}
+const hintCss: CSSObject = {
+	fontWeight: 400,
+	opacity: 0.85,
 }
 const summaryCss: CSSObject = {
 	display: 'grid',

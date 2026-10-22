@@ -228,7 +228,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(12)
+			expect(schemaVersion(state)).toBe(13)
 			verify(state)
 		},
 	)
@@ -1012,13 +1012,13 @@ test('export cursors always make progress across phase handoffs and empty tails'
 	}
 })
 
-test('fresh schema v12 creates the final runs and job_run_observability contract', async () => {
-	const userId = uniqueUserId('schema-v12-fresh')
+test('fresh schema v13 creates run_day_counts beside job_run_observability', async () => {
+	const userId = uniqueUserId('schema-v13-fresh')
 	await runInDurableObject(
 		runLogStub(userId),
 		async (instance: RunLog, state) => {
 			expect(instance).toBeInstanceOf(RunLog)
-			expect(schemaVersion(state)).toBe(12)
+			expect(schemaVersion(state)).toBe(13)
 			expect(columnNames(state, 'job_run_observability')).toEqual(
 				jobRunObservabilityColumns,
 			)
@@ -1028,6 +1028,17 @@ test('fresh schema v12 creates the final runs and job_run_observability contract
 			expect(columnNames(state, 'package_invocation_ledger')).toEqual(
 				expect.arrayContaining(['claim_owner']),
 			)
+			expect(columnNames(state, 'run_day_counts')).toEqual([
+				'day',
+				'surface',
+				'status',
+				'count',
+			])
+			expect(
+				state.storage.sql
+					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM run_day_counts`)
+					.one().n,
+			).toBe(0)
 		},
 	)
 
@@ -1051,7 +1062,79 @@ test('fresh schema v12 creates the final runs and job_run_observability contract
 	})
 })
 
-test('warm schema v7 and v8 objects upgrade to v12 without losing job data', async () => {
+test('warm schema v12 objects upgrade to v13 with an empty run_day_counts table', async () => {
+	const userId = uniqueUserId('schema-v12-warm-day-counts')
+	await upgradeFromLegacySchema(
+		userId,
+		12,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE runs (
+					id TEXT PRIMARY KEY NOT NULL,
+					surface TEXT NOT NULL,
+					status TEXT NOT NULL,
+					name TEXT,
+					package_id TEXT,
+					package_kody_id TEXT,
+					source_id TEXT,
+					published_commit TEXT,
+					storage_id TEXT,
+					job_id TEXT,
+					workflow_id TEXT,
+					invocation_id TEXT,
+					session_id TEXT,
+					idempotency_key TEXT,
+					parent_run_id TEXT,
+					started_at TEXT NOT NULL,
+					finished_at TEXT,
+					duration_ms INTEGER,
+					error_name TEXT,
+					error_message TEXT,
+					metadata_json TEXT NOT NULL DEFAULT '{}',
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					error_triage TEXT,
+					triage_note TEXT,
+					triaged_at TEXT,
+					triaged_by TEXT,
+					log_count INTEGER NOT NULL DEFAULT 0
+				)
+			`)
+			// Pre-deploy retained row: migration must not backfill day counts.
+			state.storage.sql.exec(
+				`INSERT INTO runs (
+					id, surface, status, started_at, finished_at, metadata_json,
+					created_at, updated_at, log_count
+				) VALUES (?, 'execute', 'success', ?, ?, '{}', ?, ?, 0)`,
+				'pre-deploy-run',
+				'2026-10-01T00:00:00.000Z',
+				'2026-10-01T00:00:01.000Z',
+				'2026-10-01T00:00:00.000Z',
+				'2026-10-01T00:00:01.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'run_day_counts')).toEqual([
+				'day',
+				'surface',
+				'status',
+				'count',
+			])
+			expect(
+				state.storage.sql
+					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM run_day_counts`)
+					.one().n,
+			).toBe(0)
+			expect(
+				state.storage.sql
+					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
+					.one().n,
+			).toBe(1)
+		},
+	)
+})
+
+test('warm schema v7 and v8 objects upgrade to v13 without losing job data', async () => {
 	const retiredColumn = ['legacy', 'seeded'].join('_')
 	for (const installedVersion of [7, 8]) {
 		const userId = uniqueUserId(`schema-v${installedVersion}-warm`)
@@ -1129,7 +1212,7 @@ test('warm schema v7 and v8 objects upgrade to v12 without losing job data', asy
 	}
 })
 
-test('warm schema v9 objects upgrade to v12 with error triage and log_count columns', async () => {
+test('warm schema v9 objects upgrade to v13 with error triage and log_count columns', async () => {
 	await upgradeFromLegacySchema(
 		uniqueUserId('schema-v9-warm-triage'),
 		9,
@@ -1177,7 +1260,7 @@ test('warm schema v9 objects upgrade to v12 with error triage and log_count colu
 	)
 })
 
-test('warm schema v10 objects backfill denormalized log_count on upgrade to v12', async () => {
+test('warm schema v10 objects backfill denormalized log_count on upgrade to v13', async () => {
 	const userId = uniqueUserId('schema-v10-warm-log-count')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1237,7 +1320,7 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v12'
 	])
 })
 
-test('warm schema v11 objects gain claim_owner on upgrade to v12', async () => {
+test('warm schema v11 objects gain claim_owner on upgrade to v13', async () => {
 	await upgradeFromLegacySchema(
 		uniqueUserId('schema-v11-warm-claim-owner'),
 		11,
@@ -1393,7 +1476,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(12)
+	expect(inspection.schemaVersion).toBe(13)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

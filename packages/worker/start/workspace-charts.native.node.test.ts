@@ -8,9 +8,11 @@ import {
 } from '#universal/workspace-charts.ts'
 
 const window = workspaceChartWindow(new Date('2026-01-03T12:00:00Z'))
-const charts = buildWorkspaceRunCharts(window, [
-	{ day: '2025-12-31', surface: 'job', status: 'error', count: 4 },
-])
+const charts = buildWorkspaceRunCharts(
+	window,
+	[{ day: '2025-12-31', surface: 'job', status: 'error', count: 4 }],
+	'2025-12-30',
+)
 
 test('chart window fills missing UTC days across a year boundary', () => {
 	expect(charts.days.map((day) => day.day)).toEqual([
@@ -24,6 +26,7 @@ test('chart window fills missing UTC days across a year boundary', () => {
 	])
 	expect(charts.days[3]?.error).toBe(4)
 	expect(charts.sources).toEqual([{ surface: 'job', count: 4 }])
+	expect(charts.countsSince).toBe('2025-12-30')
 })
 
 test('charts hide billing when access is unavailable and link execution sources', async () => {
@@ -32,6 +35,7 @@ test('charts hide billing when access is unavailable and link execution sources'
 	)
 	expect(html).toContain('Execution history')
 	expect(html).toContain('surface=job')
+	expect(html).toContain('Showing runs since Dec 30, 2025.')
 	expect(html).not.toContain('Credits spent by package')
 })
 
