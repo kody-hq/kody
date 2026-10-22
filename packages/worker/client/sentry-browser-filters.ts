@@ -1446,6 +1446,29 @@ function filterCloudflareTurnstileClientSentryEvent<
 }
 
 /**
+ * TanStack Router `notFound()` control flow (KODY-AH). `usePageQuery`
+ * rethrows a `{ isNotFound: true }` object during render so the router's
+ * not-found boundary can render, but React still invokes `onCaughtError`
+ * for boundary-handled throws (e.g. settings page refetching a just-deleted
+ * org). This is expected routing, not an application error.
+ */
+export function isTanStackRouterNotFoundError(error: unknown) {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'isNotFound' in error &&
+		error.isNotFound === true
+	)
+}
+
+function filterTanStackRouterNotFoundSentryEvent<
+	T extends SentryErrorEventLike,
+>(event: T, originalException?: unknown): T | null {
+	if (isTanStackRouterNotFoundError(originalException)) return null
+	return event
+}
+
+/**
  * Sentry Session Replay / rrweb cross-origin iframe instrumentation noise
  * (getsentry/sentry-javascript#23795 / KODY-8W, issue 7777463624).
  * `ShadowDomManager.observeAttachShadow` reads `iframeWindow.Element`
@@ -1975,6 +1998,11 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	if (
 		filterCloudflareTurnstileClientSentryEvent(event, originalException) ===
 		null
+	) {
+		return null
+	}
+	if (
+		filterTanStackRouterNotFoundSentryEvent(event, originalException) === null
 	) {
 		return null
 	}

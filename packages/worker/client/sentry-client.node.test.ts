@@ -52,6 +52,32 @@ test('keeps component stacks with their errors before and after Sentry loads', a
 	expect(capture).toHaveBeenLastCalledWith(expect.any(Error), undefined)
 })
 
+test('skips TanStack Router notFound control flow (KODY-AH)', async () => {
+	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal('requestIdleCallback', vi.fn())
+	const { initSentryClient, captureClientException } =
+		await import('./sentry-client.ts')
+	const doc = {
+		querySelector: () => ({
+			getAttribute: () =>
+				JSON.stringify({
+					dsn: 'https://key@o1.ingest.sentry.io/2',
+					environment: 'production',
+					tunnel: '/sentry-tunnel',
+				}),
+		}),
+	} as unknown as Document
+	expect(initSentryClient(doc)).toBe(true)
+	captureClientException(
+		{ isNotFound: true },
+		{ componentStack: '\n    at Page' },
+	)
+	const real = new Error('real failure')
+	captureClientException(real)
+	await vi.waitFor(() => expect(capture).toHaveBeenCalledWith(real, undefined))
+	expect(capture).toHaveBeenCalledTimes(1)
+})
+
 test('skips Sentry when a stale route chunk reload fires, then reports the next miss', async () => {
 	const store = new Map<string, string>()
 	const reload = vi.fn()

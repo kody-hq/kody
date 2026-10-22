@@ -12,6 +12,7 @@ import {
 	isMetaMaskWalletNoAccountError,
 	isLocalViteDevError,
 	isSyntaxHighlightCoreDynamicImportFailureError,
+	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
 	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
@@ -84,7 +85,8 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isTanStackServerFnFetchNetworkError(error) ||
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||
-		isCloudflareTurnstileClientError(error)
+		isCloudflareTurnstileClientError(error) ||
+		isTanStackRouterNotFoundError(error)
 	)
 }
 
