@@ -12,8 +12,6 @@ lerna-debug.log*
 
 node_modules
 dist
-dist-ssr
-dist-start
 *.local
 bun.lock
 
@@ -32,28 +30,17 @@ bun.lock
 .tmp
 .husky/_/
 .env
-mock-data
 playwright-report
 blob-report
 test-results
-packages/worker/public/client-entry.js
-packages/worker/public/client-entry.js.map
-packages/worker/public/assets/
-packages/worker/public/client-manifest.json
 packages/worker/wrangler-*.generated.json
 packages/worker/.generated/
 packages/worker/src/generated/
-packages/runtime-worker/wrangler-local-dev.generated.json
 packages/runtime-worker/wrangler-*.generated.json
-packages/platform-worker/wrangler-local-dev.generated.json
 packages/platform-worker/wrangler-*.generated.json
-packages/jobs-worker/wrangler-local-dev.generated.json
 packages/jobs-worker/wrangler-*.generated.json
-packages/highlight-worker/wrangler-local-dev.generated.json
 packages/highlight-worker/wrangler-*.generated.json
 packages/api-worker/wrangler-*.generated.json
-
-/test-results-start/
 
 packages/start-routing-worker/wrangler-*.generated.json
 packages/start-routing-worker/start-entry.generated.ts
