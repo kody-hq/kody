@@ -1,3 +1,4 @@
+import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import {
 	normalizePackageExportKey,
@@ -82,7 +83,13 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 		artifactName: exportName,
 		entryPoint,
 	})
-	if (loadedArtifact?.artifact) {
+	if (
+		loadedArtifact?.artifact &&
+		!publishedArtifactNeedsPackageBindingRebuild({
+			artifact: loadedArtifact.artifact,
+			sourceFiles: loaded.files,
+		})
+	) {
 		return loadedArtifact.artifact
 	}
 	assertPublishedSourceCanRebuildWithoutInstallingDeps({

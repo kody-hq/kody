@@ -1,3 +1,4 @@
+import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
 import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
 import {
 	loadPackageSourceBySourceId,
@@ -150,6 +151,16 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		entryPoint,
 	})
 	if (!artifact?.artifact) {
+		return null
+	}
+	// A pre-fix bundle that inlines other packages cannot bind each
+	// package's fetch in place; build this package from source instead.
+	if (
+		publishedArtifactNeedsPackageBindingRebuild({
+			artifact: artifact.artifact,
+			sourceFiles: input.loaded.files,
+		})
+	) {
 		return null
 	}
 	const artifactPrefix = joinPath(

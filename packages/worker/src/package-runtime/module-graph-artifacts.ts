@@ -3,6 +3,7 @@ import {
 	normalizePackageWorkspacePath,
 } from '#worker/package-registry/manifest.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,
 	type BundleArtifactDynamicDependency,
@@ -300,5 +301,6 @@ export function createPublishedBundleArtifact(input: {
 		dynamicDependencies: input.dynamicDependencies ?? [],
 		packageContext: input.packageContext ?? null,
 		createdAt: new Date().toISOString(),
+		packageBindingRewrite: packageBindingRewriteVersion,
 	}
 }

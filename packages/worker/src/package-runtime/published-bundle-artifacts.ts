@@ -1,3 +1,4 @@
+import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type AuthoredPackageJson,
 	type SavedPackageRecord,
@@ -166,6 +167,9 @@ export async function persistPublishedBundleArtifact(
 		dynamicDependencies: input.dynamicDependencies ?? [],
 		packageContext: input.packageContext ?? null,
 		createdAt: new Date().toISOString(),
+		// Persisted modules come from the current builder, which binds package
+		// \`fetch\` lexically.
+		packageBindingRewrite: packageBindingRewriteVersion,
 	}
 	const rowInput = toDbRowInput({
 		userId: input.userId,

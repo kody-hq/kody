@@ -1,3 +1,4 @@
+import { publishedArtifactNeedsPackageBindingRebuild } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
 	type OwnerId,
 	type PersonId,
@@ -322,6 +323,12 @@ async function ensurePublishedBundleArtifactForJob(input: {
 			artifact: artifact.artifact,
 			rowPublishedCommit: artifact.row?.publishedCommit,
 			currentPublishedCommit: resolved.source.published_commit,
+		}) &&
+		// Pre-fix bundles that inline other packages rebuild once so each
+		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
+		!publishedArtifactNeedsPackageBindingRebuild({
+			artifact: artifact.artifact,
+			sourceFiles: resolved.files,
 		})
 	) {
 		logJobSchedulerEvent({

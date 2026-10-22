@@ -1,3 +1,8 @@
+import {
+	isPreBindingPublishedArtifact,
+	publishedArtifactInlinesOtherPackages,
+	publishedArtifactNeedsPackageBindingRebuild,
+} from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
@@ -203,13 +208,21 @@ async function ensureModuleArtifactUncached(input: {
 		entryPoint: resolution.entryPoint,
 	})
 	const currentPublishedCommit = packageManifest.source.published_commit
-	if (
+	const currentArtifact =
 		loaded?.artifact &&
 		loaded.artifact.publishedCommit === currentPublishedCommit &&
 		loaded.row.publishedCommit === currentPublishedCommit
-	) {
+			? loaded.artifact
+			: null
+	// A pre-fix bundle that inlines other packages may need one rebuild so
+	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
+	const mayNeedBindingRebuild =
+		currentArtifact != null &&
+		isPreBindingPublishedArtifact(currentArtifact) &&
+		publishedArtifactInlinesOtherPackages(currentArtifact)
+	if (currentArtifact && !mayNeedBindingRebuild) {
 		return {
-			artifact: loaded.artifact,
+			artifact: currentArtifact,
 			source: packageManifest.source,
 			entryPoint: resolution.entryPoint,
 		}
@@ -220,6 +233,19 @@ async function ensureModuleArtifactUncached(input: {
 		userId: input.userId,
 		sourceId: input.savedPackage.sourceId,
 	})
+	if (
+		currentArtifact &&
+		!publishedArtifactNeedsPackageBindingRebuild({
+			artifact: currentArtifact,
+			sourceFiles: packageSource.files,
+		})
+	) {
+		return {
+			artifact: currentArtifact,
+			source: packageManifest.source,
+			entryPoint: resolution.entryPoint,
+		}
+	}
 	// The caller's manifest may come from the freshness-cached source row and
 	// trail a republish by up to the freshness TTL, while the source load
 	// above is always current. Re-derive the module resolution from the

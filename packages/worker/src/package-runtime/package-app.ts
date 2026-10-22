@@ -1,3 +1,9 @@
+import {
+	isPreBindingPublishedArtifact,
+	publishedArtifactInlinesOtherPackages,
+	publishedArtifactNeedsPackageBindingRebuild,
+} from './pre-binding-artifact-repair.ts'
+import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
@@ -2419,22 +2425,42 @@ async function resolvePackageAppBundledArtifact(input: {
 		artifactName: null,
 		entryPoint: appEntry,
 	})
-	if (
+	const currentArtifact =
 		loadedArtifact?.artifact &&
 		isPublishedBundleArtifactCurrentForCommit({
 			artifact: loadedArtifact.artifact,
 			rowPublishedCommit: loadedArtifact.row?.publishedCommit,
 			currentPublishedCommit: input.savedPackage.publishedCommit,
 		})
+			? loadedArtifact.artifact
+			: null
+	const servePublishedArtifact = (artifact: PublishedBundleArtifact) => ({
+		mainModule: artifact.mainModule,
+		modules: artifact.modules,
+		dependencies: artifact.dependencies,
+		dynamicDependencies: artifact.dynamicDependencies,
+	})
+	// A pre-fix bundle that inlines other packages may need one rebuild so
+	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
+	if (
+		currentArtifact &&
+		!(
+			isPreBindingPublishedArtifact(currentArtifact) &&
+			publishedArtifactInlinesOtherPackages(currentArtifact)
+		)
 	) {
-		return {
-			mainModule: loadedArtifact.artifact.mainModule,
-			modules: loadedArtifact.artifact.modules,
-			dependencies: loadedArtifact.artifact.dependencies,
-			dynamicDependencies: loadedArtifact.artifact.dynamicDependencies,
-		}
+		return servePublishedArtifact(currentArtifact)
 	}
 	const sourceFiles = await resolvePackageAppSourceFiles(input)
+	if (
+		currentArtifact &&
+		!publishedArtifactNeedsPackageBindingRebuild({
+			artifact: currentArtifact,
+			sourceFiles,
+		})
+	) {
+		return servePublishedArtifact(currentArtifact)
+	}
 	assertPublishedSourceCanRebuildWithoutInstallingDeps({
 		sourceFiles,
 		bundleLabel: `Saved package app "${input.savedPackage.kodyId}"`,

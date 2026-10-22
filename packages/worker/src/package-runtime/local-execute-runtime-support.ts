@@ -1214,16 +1214,22 @@ export function createLocalExecutePackageRuntimeModuleSource(
 ) {
 	const baseRuntimeSpecifier = '../runtime.js'
 	return `
-export { kody, secretHeaders, packageContext, email, workflows, packages, events } from ${JSON.stringify(
+export { secretHeaders, packageContext, email, workflows, packages, events } from ${JSON.stringify(
 		baseRuntimeSpecifier,
 	)};
 import __kodyBaseRuntimeDefault, {
+	__kodyCreatePackageBoundFetch,
+	__kodyCreatePackageBoundKody,
 	__kodyCreatePackageBoundStorage,
 	__kodyCreatePackageBoundSecrets,
 	__kodyCreatePackageBoundAuthenticatedFetch,
 	__kodyCreatePackageBoundOauthClientCredentials,
 	__kodyCreatePackageBoundCredentialRuntime,
 } from ${JSON.stringify(baseRuntimeSpecifier)};
+// Same lexical bindings as the hosted facade (GHSA-5fv3-qv7j-rqf5): stamped
+// modules import \`fetch\` and \`kody\` from here, so they act as this package.
+export const __kodyBoundFetch = __kodyCreatePackageBoundFetch(${JSON.stringify(packageId)});
+export const kody = __kodyCreatePackageBoundKody(${JSON.stringify(packageId)});
 export const packageStorage = __kodyCreatePackageBoundStorage(${JSON.stringify(
 		packageId,
 	)});
@@ -1249,6 +1255,7 @@ export const credentials = __kodyPackageCredentialRuntime.credentials;
 const __kodyPackageRuntimeDefault = new Proxy(
 	Object.freeze({
 		...__kodyBaseRuntimeDefault,
+		kody,
 		packageStorage,
 		packageSecrets,
 		createAuthenticatedFetch,
@@ -1258,6 +1265,7 @@ const __kodyPackageRuntimeDefault = new Proxy(
 	}),
 	{
 		get(target, property, receiver) {
+			if (property === "kody") return kody;
 			if (property === "packageStorage") return packageStorage;
 			if (property === "packageSecrets") return packageSecrets;
 			if (property === "createAuthenticatedFetch") return createAuthenticatedFetch;

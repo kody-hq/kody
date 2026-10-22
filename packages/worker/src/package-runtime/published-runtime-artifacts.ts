@@ -1,6 +1,7 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
+import { repairPreBindingPublishedArtifact } from './pre-binding-artifact-repair.ts'
 
 const sourceSnapshotVersion = 1
 const sourceManifestSnapshotVersion = 1
@@ -127,6 +128,11 @@ export type PublishedBundleArtifact = {
 		sourceId: string
 	} | null
 	createdAt: string
+	/**
+	 * Set on bundles built with lexical package `fetch` (GHSA-5fv3-qv7j-rqf5).
+	 * See `pre-binding-artifact-repair.ts`.
+	 */
+	packageBindingRewrite?: number
 }
 
 type StoredPublishedBundleArtifact = Omit<
@@ -591,7 +597,7 @@ export async function readPublishedBundleArtifact(input: {
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
 		return null
 	}
-	return {
+	return repairPreBindingPublishedArtifact({
 		version: artifact.version,
 		kind: artifact.kind,
 		artifactName: artifact.artifactName,
@@ -609,7 +615,10 @@ export async function readPublishedBundleArtifact(input: {
 			: null,
 		modules: deserializeWorkerLoaderModules(artifact.modules),
 		createdAt: artifact.createdAt,
-	} satisfies PublishedBundleArtifact
+		...(artifact.packageBindingRewrite === undefined
+			? {}
+			: { packageBindingRewrite: artifact.packageBindingRewrite }),
+	} satisfies PublishedBundleArtifact)
 }
 
 export async function deletePublishedBundleArtifact(input: {

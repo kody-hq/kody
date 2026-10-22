@@ -137,12 +137,23 @@ function __kodyNormalizeSecretAlias(alias, method) {
 	}
 	return normalized;
 }
+// A stamped package with no binding in scope may still act through the
+// run's own (unbound) surface when it is the run's package: that identity is
+// its own. Any other package would silently act as the caller instead, so
+// fail and say why (GHSA-5fv3-qv7j-rqf5).
+function __kodyAssertUnboundIsRunPackage(packageId, surface) {
+	const runPackageId = __kodyGetRuntimeStore()?.packageContext?.packageId;
+	if (typeof runPackageId === 'string' && runPackageId === packageId) return;
+	throw new __kodyErrorCtor(
+		\`\${surface} for package "\${packageId}" has no package binding in this run, so it cannot act as that package. Kody does not fall back to the caller's identity. Report this run so the platform can rebuild the package's published bundle.\`,
+	);
+}
 export function __kodyCreatePackageBoundFetch(packageId) {
 	return function fetch(input, init) {
 		const binding = __kodyPackageBindingFor(packageId);
-		// No binding on this surface: an unbound fetch with the run's own
-		// identity only (never this package's).
 		if (binding == null) {
+			// The run's own package acting through the run's own fetch.
+			__kodyAssertUnboundIsRunPackage(packageId, 'fetch');
 			return __kodyReflectApply(__kodyCapturedGlobalFetch, undefined, [input, init]);
 		}
 		return binding.fetch(input, init);
@@ -175,6 +186,12 @@ export function __kodyCreatePackageBoundKody(packageId) {
 				}
 				// Unbound surface (or the flat mcp: teaching error): the run's
 				// own dispatcher, which never carries this package's authority.
+				if (
+					binding == null &&
+					!__kodyReflectApply(__kodyStringStartsWith, name, ['mcp:'])
+				) {
+					__kodyAssertUnboundIsRunPackage(packageId, \`kody.\${name}\`);
+				}
 				const store = __kodyGetRuntimeStore();
 				const exp = store?.kody;
 				const fn = exp == null ? undefined : exp[property];
@@ -624,6 +641,7 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 		if (binding != null && typeof binding.packageStorageCall === 'function') {
 			return __kodyCreateBindingPackageStorage(binding, packageId);
 		}
+		__kodyAssertUnboundIsRunPackage(packageId, 'packageStorage()');
 		return __kodyResolvePackageStorage(packageId);
 	};
 }
@@ -657,6 +675,7 @@ export function __kodyCreatePackageBoundSecrets(packageId) {
 				? await binding.packageSecretGet(normalizedAlias)
 				: await binding.packageSecretHas(normalizedAlias);
 		}
+		__kodyAssertUnboundIsRunPackage(packageId, \`packageSecrets.\${method}\`);
 		const secrets = __kodyResolvePackageSecrets(packageId);
 		const fn = secrets[method];
 		return await __kodyReflectApply(fn, secrets, [normalizedAlias]);
