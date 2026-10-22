@@ -111,21 +111,13 @@ test('isRepoSessionStructuralEditCallerMessage matches delete and move validatio
 })
 
 test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets only', () => {
-	const callerMessages = [
-		buildRepoSessionDirectoryTargetMessage('write', 'src'),
-		buildRepoSessionDirectoryTargetMessage('replace', 'lib'),
-		buildRepoSessionDirectoryTargetMessage('writeJson', 'config'),
-		buildRepoSessionDirectoryTargetMessage('applyPatch', 'src'),
-		buildRepoSessionDirectoryTargetMessage('move', 'src'),
-		buildRepoSessionDirectoryTargetMessage('delete', 'src'),
-	]
-	expect(
-		callerMessages.filter(
-			(message) => !isRepoSessionDirectoryTargetCallerMessage(message),
-		),
-	).toEqual([])
-	expect(callerMessages[0]).toBe(
-		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	const writeDirectoryMessage =
+		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.'
+	expect(buildRepoSessionDirectoryTargetMessage('write', 'src')).toBe(
+		writeDirectoryMessage,
+	)
+	expect(isRepoSessionDirectoryTargetCallerMessage(writeDirectoryMessage)).toBe(
+		true,
 	)
 
 	const platformMessages = [

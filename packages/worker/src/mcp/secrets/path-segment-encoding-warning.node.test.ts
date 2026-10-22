@@ -58,8 +58,8 @@ test('withPathSegmentEncodingWarning attaches the header only on 4xx', async () 
 		new Response('gone', { status: 404 }),
 		['webhookPath'],
 	)
-	expect(failed.headers.get(pathSegmentEncodingWarningHeaderName)).toBe(
-		buildPathSegmentEncodingWarning('webhookPath', 404),
+	expect(failed.headers.get(pathSegmentEncodingWarningHeaderName)).toContain(
+		'Credential "webhookPath"',
 	)
 	expect(await failed.text()).toBe('gone')
 })

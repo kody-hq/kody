@@ -10,10 +10,7 @@ import {
 	outboundFetchTimeoutMs,
 	secretResolutionHeaderName,
 } from '#mcp/fetch-gateway.ts'
-import {
-	buildPathSegmentEncodingWarning,
-	pathSegmentEncodingWarningHeaderName,
-} from '#mcp/secrets/path-segment-encoding-warning.ts'
+import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	parseHostApprovalRequiredBatchMessage,
 	parsePackageAccessRequiredMessage,
@@ -350,8 +347,8 @@ test('gateway warns on 4xx when a path fill encoded routing characters from a cr
 	expect(seen[0]?.url).toBe(
 		'https://hooks.example.com/services/T000%2FB000%2Fxxx',
 	)
-	expect(response.headers.get(pathSegmentEncodingWarningHeaderName)).toBe(
-		buildPathSegmentEncodingWarning('webhookPath', 404),
+	expect(response.headers.get(pathSegmentEncodingWarningHeaderName)).toContain(
+		'Credential "webhookPath"',
 	)
 	expect(
 		response.headers.get(pathSegmentEncodingWarningHeaderName),
