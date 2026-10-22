@@ -418,8 +418,9 @@ export function LoginPage({
 							usernameTouched.current = true
 							setSignupUsername(value)
 							setConfirmedUsername(null)
-							const error = getHandleFormatError(value)
-							setState(error ? 'error' : 'idle', error)
+							// Format errors stay in UsernameChoiceField; keep the form
+							// message for submit / confirm copy only.
+							setState('idle')
 						}}
 						onUsernameAvailabilityChange={setUsernameAvailability}
 						submitLabel={submitLabel}
