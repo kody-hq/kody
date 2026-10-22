@@ -112,6 +112,14 @@ async function startE2eWebServer() {
 		throw new Error(staleOrigin)
 	}
 
+	// Pin before prepare/migrate so standalone `e2e:web-server` matches
+	// Playwright's webServer.env. migrate:e2e must use wrangler env=test D1
+	// names (not production defaults) so Vite's later env=test origin opens
+	// the same migrated databases.
+	process.env.CLOUDFLARE_ENV = 'test'
+	process.env.SENTRY_DSN = ''
+	process.env.SENTRY_ENVIRONMENT = 'test'
+
 	runSetup(process.execPath, ['tools/prepare-e2e-env.ts'])
 	runSetup(resolveNpmCommand(), ['run', 'migrate:e2e'])
 
