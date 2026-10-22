@@ -39,6 +39,11 @@ type AccountManagementLinkNavProps = {
 	heading?: { eyebrow: string; name?: string }
 	/** Draws the heading as the organization switcher (workspace rails). */
 	workspaceSwitcher?: WorkspaceSwitcherData
+	/**
+	 * Where to render `workspaceSwitcher`. `drawer` keeps the mobile menu
+	 * switcher when the desktop rail copy lives outside this component.
+	 */
+	workspaceSwitcherPlacement?: 'both' | 'rail' | 'drawer'
 	groups: Array<AccountManagementLinkNavGroup>
 }
 
@@ -234,6 +239,13 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 		const current = props.groups
 			.flatMap((group) => group.items)
 			.find((item) => item.active)
+		const switcherPlacement = props.workspaceSwitcherPlacement ?? 'both'
+		const showRailSwitcher =
+			Boolean(props.workspaceSwitcher) &&
+			(switcherPlacement === 'both' || switcherPlacement === 'rail')
+		const showDrawerSwitcher =
+			Boolean(props.workspaceSwitcher) &&
+			(switcherPlacement === 'both' || switcherPlacement === 'drawer')
 		return (
 			<>
 				<nav
@@ -262,7 +274,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 							gap: '0.1rem',
 						}}
 					>
-						{props.workspaceSwitcher ? (
+						{showRailSwitcher && props.workspaceSwitcher ? (
 							<WorkspaceSwitcher
 								{...props.workspaceSwitcher}
 								placement="rail"
@@ -293,7 +305,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						) : null}
 					</summary>
 					<nav aria-label={props.label}>
-						{props.workspaceSwitcher ? (
+						{showDrawerSwitcher && props.workspaceSwitcher ? (
 							<WorkspaceSwitcher
 								{...props.workspaceSwitcher}
 								placement="drawer"

@@ -293,7 +293,14 @@ export function ShellWorkspaceSwitcher({
 	const rail = pageRail({ session, navigation })
 	if (navigation.rail === 'admin' || !rail.workspaceSwitcher) return null
 	return (
-		<div css={{ flexShrink: 0, padding: '0 1rem 0.75rem' }}>
+		<div
+			css={{
+				flexShrink: 0,
+				padding: '0 1rem 0.75rem',
+				// Narrow layouts use the drawer switcher inside the mobile menu.
+				[accountManagementNarrowMq]: { display: 'none' },
+			}}
+		>
 			<WorkspaceSwitcher {...rail.workspaceSwitcher} placement="rail" />
 		</div>
 	)
@@ -320,10 +327,11 @@ export function ShellNavigation({
 			}}
 		>
 			<AccountManagementLinkNav
-				workspaceSwitcher={
-					admin || separateWorkspaceSwitcher
-						? undefined
-						: rail.workspaceSwitcher
+				workspaceSwitcher={admin ? undefined : rail.workspaceSwitcher}
+				// Rail copy lives in ShellWorkspaceSwitcher above the scroll region;
+				// keep the drawer copy so narrow viewports still get a switcher.
+				workspaceSwitcherPlacement={
+					separateWorkspaceSwitcher ? 'drawer' : 'both'
 				}
 				label={admin ? 'Admin sections' : rail.label}
 				heading={admin || separateWorkspaceSwitcher ? undefined : rail.heading}
