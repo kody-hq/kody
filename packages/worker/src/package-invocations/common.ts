@@ -52,6 +52,12 @@ export type PackageInvocationRequest = {
 	 * envelope fields) do not turn a retry into `idempotency_mismatch`.
 	 */
 	idempotencyHashParams?: Record<string, unknown>
+	/**
+	 * Delivery/attempt lineage for the idempotency claim (webhook ack
+	 * `deliveryId`). Same-owner queue retries reclaim a dead attempt's
+	 * fresh `in_progress` row; omit when only stale-window reclaim applies.
+	 */
+	claimOwner?: string | null
 	source?: string | null
 	topic?: string | null
 }

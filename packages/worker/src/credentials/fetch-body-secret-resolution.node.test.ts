@@ -112,6 +112,22 @@ test('skips author-written bodies and explicit resolution modes', () => {
 			})
 		`),
 	).toEqual([])
+	expect(
+		lines(`
+			fetch(url, {
+				headers: { 'x-kody-secret-resolution': 'ON' },
+				body: userText,
+			})
+		`),
+	).toEqual([2])
+	expect(
+		lines(`
+			fetch(url, {
+				headers: { 'x-kody-secret-resolution': ' ON ' },
+				body: userText,
+			})
+		`),
+	).toEqual([2])
 	expect(lines(`fetch(url, init)`)).toEqual([])
 	expect(lines(`fetch(url)`)).toEqual([])
 })

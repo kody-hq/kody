@@ -6,7 +6,10 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { isRepoLargeFileMessage } from '#worker/repo/large-file-policy.ts'
-import { isRepoSessionApplyPatchCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
+import {
+	isRepoSessionApplyPatchCallerMessage,
+	isRepoSessionDirectoryTargetCallerMessage,
+} from '#worker/repo/repo-session-caller-error.ts'
 import { authorizeRepoSessionPackageWrite } from './authorize-repo-session-package.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
@@ -79,6 +82,7 @@ function getRepoSessionApplyPatchCallerMessage(error: unknown) {
 		(entry) =>
 			entry instanceof Error &&
 			(isRepoSessionApplyPatchCallerMessage(entry.message) ||
+				isRepoSessionDirectoryTargetCallerMessage(entry.message) ||
 				isRepoLargeFileMessage(entry.message)),
 	)
 	return match instanceof Error ? match.message : null

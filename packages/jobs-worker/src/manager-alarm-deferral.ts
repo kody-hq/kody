@@ -3,6 +3,7 @@ import {
 	logJobSchedulerEvent,
 	schedulerErrorFields,
 } from '@kody-internal/shared/jobs/scheduler-logging.ts'
+import { isWorkersHungRequestCanceledError } from '@kody-internal/shared/workers-hung-request.ts'
 
 /**
  * Backoff when JobManager alarm work hits a transient D1 platform lock/export
@@ -53,5 +54,48 @@ export async function tryRearmAlarmForRetryableD1Failure(input: {
 			currentAlarmAt == null ? null : new Date(currentAlarmAt).toISOString(),
 		...schedulerErrorFields(input.error),
 	})
+	return true
+}
+
+/**
+ * When HOST.runDueJobsForUser was canceled as a hung Workers request, settle
+ * claimed jobs on a fresh HOST RPC and return true so the alarm can syncAlarm
+ * and complete without rethrowing (CF alarm retries would re-hang).
+ */
+export async function trySettleHungRunDueJobsFailure(input: {
+	settleHungDueJobsForUser: (args: {
+		userId: string
+	}) => Promise<{ settledCount: number }>
+	userId: string
+	error: unknown
+	retryCount?: number
+	isRetry?: boolean
+}): Promise<boolean> {
+	if (!isWorkersHungRequestCanceledError(input.error)) {
+		return false
+	}
+	try {
+		const settled = await input.settleHungDueJobsForUser({
+			userId: input.userId,
+		})
+		logJobSchedulerEvent({
+			event: 'alarm_hung_request_settled',
+			userId: input.userId,
+			retryCount: input.retryCount,
+			isRetry: input.isRetry,
+			errorCount: settled.settledCount,
+			reason: 'workers_hung_request',
+			...schedulerErrorFields(input.error),
+		})
+	} catch (settleError) {
+		logJobSchedulerEvent({
+			event: 'alarm_hung_request_settle_failed',
+			userId: input.userId,
+			retryCount: input.retryCount,
+			isRetry: input.isRetry,
+			reason: 'workers_hung_request',
+			...schedulerErrorFields(settleError),
+		})
+	}
 	return true
 }

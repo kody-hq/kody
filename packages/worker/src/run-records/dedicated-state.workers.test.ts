@@ -228,7 +228,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(11)
+			expect(schemaVersion(state)).toBe(12)
 			verify(state)
 		},
 	)
@@ -1012,18 +1012,21 @@ test('export cursors always make progress across phase handoffs and empty tails'
 	}
 })
 
-test('fresh schema v11 creates the final runs and job_run_observability contract', async () => {
-	const userId = uniqueUserId('schema-v11-fresh')
+test('fresh schema v12 creates the final runs and job_run_observability contract', async () => {
+	const userId = uniqueUserId('schema-v12-fresh')
 	await runInDurableObject(
 		runLogStub(userId),
 		async (instance: RunLog, state) => {
 			expect(instance).toBeInstanceOf(RunLog)
-			expect(schemaVersion(state)).toBe(11)
+			expect(schemaVersion(state)).toBe(12)
 			expect(columnNames(state, 'job_run_observability')).toEqual(
 				jobRunObservabilityColumns,
 			)
 			expect(columnNames(state, 'runs')).toEqual(
 				expect.arrayContaining(runsTriageColumns),
+			)
+			expect(columnNames(state, 'package_invocation_ledger')).toEqual(
+				expect.arrayContaining(['claim_owner']),
 			)
 		},
 	)
@@ -1048,7 +1051,7 @@ test('fresh schema v11 creates the final runs and job_run_observability contract
 	})
 })
 
-test('warm schema v7 and v8 objects upgrade to v11 without losing job data', async () => {
+test('warm schema v7 and v8 objects upgrade to v12 without losing job data', async () => {
 	const retiredColumn = ['legacy', 'seeded'].join('_')
 	for (const installedVersion of [7, 8]) {
 		const userId = uniqueUserId(`schema-v${installedVersion}-warm`)
@@ -1126,7 +1129,7 @@ test('warm schema v7 and v8 objects upgrade to v11 without losing job data', asy
 	}
 })
 
-test('warm schema v9 objects upgrade to v11 with error triage and log_count columns', async () => {
+test('warm schema v9 objects upgrade to v12 with error triage and log_count columns', async () => {
 	await upgradeFromLegacySchema(
 		uniqueUserId('schema-v9-warm-triage'),
 		9,
@@ -1174,7 +1177,7 @@ test('warm schema v9 objects upgrade to v11 with error triage and log_count colu
 	)
 })
 
-test('warm schema v10 objects backfill denormalized log_count on upgrade to v11', async () => {
+test('warm schema v10 objects backfill denormalized log_count on upgrade to v12', async () => {
 	const userId = uniqueUserId('schema-v10-warm-log-count')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1232,6 +1235,62 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v11'
 	expect((await listRunRecords({ env, userId })).runs).toEqual([
 		expect.objectContaining({ logCount: 3 }),
 	])
+})
+
+test('warm schema v11 objects gain claim_owner on upgrade to v12', async () => {
+	await upgradeFromLegacySchema(
+		uniqueUserId('schema-v11-warm-claim-owner'),
+		11,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE package_invocation_ledger (
+					id TEXT PRIMARY KEY NOT NULL,
+					token_id TEXT NOT NULL,
+					package_id TEXT NOT NULL,
+					package_kody_id TEXT NOT NULL,
+					export_name TEXT NOT NULL,
+					idempotency_key TEXT NOT NULL,
+					request_hash TEXT NOT NULL,
+					source TEXT,
+					topic TEXT,
+					status TEXT NOT NULL,
+					response_json TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				)
+			`)
+			state.storage.sql.exec(
+				`INSERT INTO package_invocation_ledger (
+					id, token_id, package_id, package_kody_id, export_name,
+					idempotency_key, request_hash, source, topic, status,
+					response_json, created_at, updated_at
+				) VALUES (?, 'token-1', 'pkg-1', 'pkg-one', './export',
+					'evt-warm-v11', 'hash-1', NULL, NULL, 'completed',
+					NULL, ?, ?)`,
+				'inv-warm-v11',
+				'2026-07-01T00:00:00.000Z',
+				'2026-07-01T00:00:01.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'package_invocation_ledger')).toEqual(
+				expect.arrayContaining(['claim_owner']),
+			)
+			expect(
+				state.storage.sql
+					.exec<Record<string, SqlStorageValue>>(
+						`SELECT id, status, claim_owner FROM package_invocation_ledger
+						WHERE id = ?`,
+						'inv-warm-v11',
+					)
+					.one(),
+			).toEqual({
+				id: 'inv-warm-v11',
+				status: 'completed',
+				claim_owner: null,
+			})
+		},
+	)
 })
 
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
@@ -1334,7 +1393,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(11)
+	expect(inspection.schemaVersion).toBe(12)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

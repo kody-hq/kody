@@ -35,9 +35,19 @@ import {
 	finishRunRecord,
 	getJobRunObservability,
 	getRunRecord,
+	listRunRecords,
 	upsertJobRunObservability,
 } from '#worker/run-records/service.ts'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	runPersistenceForContext,
+	runRecordMaxPageSize,
+	type RunRecordHandle,
+} from '#worker/run-records/types.ts'
+import {
+	isWorkersHungRequestCanceledError,
+	scheduledJobHungExecutionMessage,
+	workersHungExecutionMessage,
+} from '@kody-internal/shared/workers-hung-request.ts'
 import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { applyExecutionOutcome, processDueJobs } from './process-due-jobs.ts'
 import { syncJobManagerAlarm } from './manager-client.ts'
@@ -132,6 +142,7 @@ import {
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	logJobSchedulerEvent,
+	summarizeSchedulerJobOutcomes,
 	type SchedulerJobOutcomeLog,
 } from './scheduler-logging.ts'
 import {
@@ -154,8 +165,9 @@ function requirePersistableJobCallerContext(
 
 /**
  * The clicker's request reaches run-now through the jobs worker RPC, so its
- * lineage is re-validated, not trusted. Run now runs as the clicker, so a
- * request with no person behind it runs nothing.
+ * lineage is re-validated, not trusted. Attribution (billing / actor) is the
+ * clicker; package storage context comes from the job row, not this source.
+ * A request with no person behind it runs nothing.
  */
 function runNowRequestSource(
 	callerContext: McpCallerContext | null | undefined,
@@ -166,7 +178,7 @@ function runNowRequestSource(
 		: null
 	if (!lineage?.actor) {
 		throw new McpCallerError(
-			`Job "${jobId}" can only be run now by a signed-in person, who it then runs as.`,
+			`Job "${jobId}" can only be run now by a signed-in person.`,
 		)
 	}
 	return { kind: 'inherited', lineage }
@@ -1118,10 +1130,7 @@ export async function executeJobOnce(input: {
 						idempotencyKey: input.idempotencyKey,
 					})
 					if (result.error) {
-						const errorMessage =
-							typeof result.error === 'string'
-								? result.error
-								: formatJobError(result.error)
+						const errorMessage = formatScheduledJobExecutionError(result.error)
 						// Claimed scheduled occurrences already retry
 						// TransientJobExecutionError (D1 blips, DO isolate
 						// resets including "instance is no longer active",
@@ -1148,10 +1157,7 @@ export async function executeJobOnce(input: {
 					execution = result.error
 						? {
 								ok: false,
-								error:
-									typeof result.error === 'string'
-										? result.error
-										: formatJobError(result.error),
+								error: formatScheduledJobExecutionError(result.error),
 								logs: result.logs ?? [],
 							}
 						: {
@@ -1166,15 +1172,18 @@ export async function executeJobOnce(input: {
 					throw error
 				}
 				if (input.runRecordHandle && isTransientJobExecutionError(error)) {
-					throw new TransientJobExecutionError(formatJobError(error), {
-						cause: error,
-					})
+					throw new TransientJobExecutionError(
+						formatScheduledJobExecutionError(error),
+						{
+							cause: error,
+						},
+					)
 				}
 				outcome = 'error'
 				usageErrorName = usageErrorNameFromUnknown(error)
 				execution = {
 					ok: false,
-					error: formatJobError(error),
+					error: formatScheduledJobExecutionError(error),
 					logs: [],
 				}
 				// Daily job-run quota denials, account suspension, and org
@@ -1292,6 +1301,17 @@ async function runRepoBackedJob(input: {
 	})
 }
 
+/**
+ * Run a job immediately for a signed-in clicker.
+ *
+ * Authorization (owner or a grant with `job:execute`) must already have
+ * passed at the call site. Execution uses the job row's stored package
+ * storage context so package secrets fill like a scheduled run. The clicker
+ * is only attribution (`source`); their interactive callerContext must never
+ * be written back onto the job row — that used to strip
+ * `storageContext.packageId` and break every later scheduled tick until
+ * republish.
+ */
 export async function runJobNow(input: {
 	env: Env
 	userId: OwnerId
@@ -1317,14 +1337,18 @@ export async function runJobNow(input: {
 					`Job "${input.jobId}" expired at ${row.record.expiresAt} and cannot be run.`,
 				)
 			}
-			const activeCallerContext = input.callerContext
-				? requirePersistableJobCallerContext(input.callerContext)
-				: row.callerContext
+			// Clicker lineage for attribution only; never for storage context.
 			const source = runNowRequestSource(input.callerContext, row.record.id)
+			const storedCallerContext = row.callerContext
+			if (!storedCallerContext) {
+				throw new McpCallerError(
+					`Job "${input.jobId}" has no stored execution context. Re-publish the package to refresh it.`,
+				)
+			}
 			const outcome = await executeJobOnce({
 				env: input.env,
 				job: row.record,
-				callerContext: activeCallerContext,
+				callerContext: storedCallerContext,
 				source,
 				repoCheckPolicyOverride: input.repoCheckPolicyOverride,
 				waitUntil: input.waitUntil,
@@ -1345,12 +1369,11 @@ export async function runJobNow(input: {
 			// Successful once jobs are retained for account/platform cleanup
 			// rather than deleted immediately.
 			const deletedAfterRun = false
+			// Outcome / schedule only — keep the published package caller context.
 			await jobsData(input.env).updateJob({
 				userId: input.userId,
 				job: updated,
-				callerContextJson: activeCallerContext
-					? serializeCallerContext(activeCallerContext)
-					: row.callerContextJson,
+				callerContextJson: row.callerContextJson,
 			})
 			const job = await hydrateJobViewFromRunLog({
 				env: input.env,
@@ -1395,6 +1418,22 @@ async function resolveScheduledJobRunAttribution(input: {
 		packageId,
 		kodyId: savedPackage?.kodyId ?? null,
 	}
+}
+
+/**
+ * Map executor / platform hung cancel text to the scheduled-job owner message.
+ * The executor returns {@link workersHungExecutionMessage} for all surfaces;
+ * job Activity / jobGet should name the scheduler path.
+ */
+function formatScheduledJobExecutionError(error: unknown): string {
+	if (isWorkersHungRequestCanceledError(error)) {
+		return scheduledJobHungExecutionMessage
+	}
+	const message = typeof error === 'string' ? error : formatJobError(error)
+	if (message === workersHungExecutionMessage) {
+		return scheduledJobHungExecutionMessage
+	}
+	return message
 }
 
 /**
@@ -1834,6 +1873,31 @@ export async function runDueJobsForUser(input: {
 					errorCount += result.errorCount
 					jobOutcomes.push(...result.jobOutcomes)
 				} catch (error) {
+					if (isWorkersHungRequestCanceledError(error)) {
+						// A never-settling job emptied the sandbox event loop;
+						// Cloudflare canceled the host request. Prefer settling
+						// this claim as a visible failure over aborting the alarm
+						// (which strands `running` rows and CF-retries the hang).
+						const settled = await settleClaimedScheduledJobAsHungFailure({
+							env: input.env,
+							userId: input.userId,
+							row,
+							claimToken,
+							now: input.now ?? new Date(),
+						})
+						if (settled.settled) {
+							errorCount += 1
+							jobOutcomes.push({
+								jobId: row.id,
+								scheduleType: row.record.schedule.type,
+								outcome: 'failure',
+								nextRunAt: settled.nextRunAt,
+								deleted: false,
+								error: settled.error,
+							})
+						}
+						continue
+					}
 					if (!(error instanceof TransientJobExecutionError)) {
 						throw error
 					}
@@ -1876,6 +1940,258 @@ export async function runDueJobsForUser(input: {
 			}
 		},
 	})
+}
+
+/**
+ * After Cloudflare cancels a hung HOST request, JobManager calls this on a
+ * fresh RPC so actively claimed scheduled jobs are recorded as failures,
+ * stranded `running` run rows are finished, and the next alarm can arm.
+ */
+export async function settleHungDueJobsForUser(input: {
+	env: Env
+	userId: OwnerId
+	now?: Date
+}): Promise<{
+	settledCount: number
+	jobOutcomes: Array<SchedulerJobOutcomeLog>
+}> {
+	return await withAccountWriteLease({
+		db: input.env.APP_DB,
+		stableUserId: input.userId,
+		env: input.env,
+		async write() {
+			const now = input.now ?? new Date()
+			const rows = await jobsData(input.env).listJobsForUser({
+				userId: input.userId,
+			})
+			const claimedRows = rows.filter(
+				(row) =>
+					typeof row.claim_token === 'string' &&
+					row.claim_token.length > 0 &&
+					typeof row.claimed_scheduled_for === 'string' &&
+					row.claimed_scheduled_for.length > 0,
+			)
+			const jobOutcomes: Array<SchedulerJobOutcomeLog> = []
+			let settledCount = 0
+			for (const row of claimedRows) {
+				const settled = await settleClaimedScheduledJobAsHungFailure({
+					env: input.env,
+					userId: input.userId,
+					row,
+					claimToken: row.claim_token!,
+					now,
+				})
+				if (!settled.settled) continue
+				settledCount += 1
+				jobOutcomes.push({
+					jobId: row.id,
+					scheduleType: row.record.schedule.type,
+					outcome: 'failure',
+					nextRunAt: settled.nextRunAt,
+					deleted: false,
+					error: settled.error,
+				})
+			}
+			logJobSchedulerEvent({
+				event: 'settle_hung_due_jobs',
+				userId: input.userId,
+				dueJobCount: claimedRows.length,
+				errorCount: settledCount,
+				reason:
+					settledCount === 0 ? 'no_claimed_jobs' : 'settled_hung_claimed_jobs',
+				...summarizeSchedulerJobOutcomes(jobOutcomes),
+			})
+			return { settledCount, jobOutcomes }
+		},
+	})
+}
+
+async function settleClaimedScheduledJobAsHungFailure(input: {
+	env: Env
+	userId: OwnerId
+	row: JobRow
+	claimToken: string
+	now: Date
+}): Promise<{ settled: boolean; nextRunAt: string; error: string }> {
+	const { row, claimToken } = input
+	const error = scheduledJobHungExecutionMessage
+	const scheduledFor = row.claimed_scheduled_for
+	const occurrenceIdempotencyKeyPrefix =
+		scheduledFor == null
+			? null
+			: buildScheduledJobIdempotencyKey({
+					jobId: row.id,
+					scheduledFor,
+				})
+	const nowIso = input.now.toISOString()
+	const startedAt = row.running_since ?? nowIso
+	const durationMs = Math.max(
+		0,
+		input.now.valueOf() - new Date(startedAt).valueOf(),
+	)
+	const slotAt = scheduledFor ?? nowIso
+	// finishRunRecord already increments job_run_observability for terminal
+	// job runs. Only upsert when no occurrence run was finished, so a stranded
+	// claim without a running row still gets lastRunError without double-count.
+	let finishedOccurrenceRun = false
+	if (occurrenceIdempotencyKeyPrefix) {
+		// Scheduled ticks persist one run per enablement under
+		// `${base}:enablement:${id}`; exact base-key lookup misses those.
+		// Fail closed on list/finish errors: never finalize the claim while a
+		// matching running row may still be open in Activity.
+		let cursor: string | null = null
+		let unfinishedOccurrenceRun = false
+		try {
+			do {
+				const page = await listRunRecords({
+					env: input.env,
+					userId: input.userId,
+					filter: {
+						surface: 'job',
+						status: 'running',
+						jobId: row.id,
+					},
+					limit: runRecordMaxPageSize,
+					cursor,
+				})
+				for (const running of page.runs) {
+					const runKey = running.idempotencyKey?.trim()
+					if (
+						runKey == null ||
+						!(
+							runKey === occurrenceIdempotencyKeyPrefix ||
+							runKey.startsWith(`${occurrenceIdempotencyKeyPrefix}:`)
+						)
+					) {
+						continue
+					}
+					const handle: RunRecordHandle = {
+						id: running.id,
+						userId: input.userId,
+						startedAt: running.startedAt,
+						persistence: runPersistenceForContext({
+							surface: 'job',
+							idempotencyKey: runKey,
+						}),
+						context: {
+							surface: 'job',
+							name: running.name,
+							jobId: running.jobId ?? row.id,
+							storageId: running.storageId,
+							sourceId: running.sourceId,
+							publishedCommit: running.publishedCommit,
+							packageId: running.packageId,
+							kodyId: running.kodyId,
+							idempotencyKey: runKey,
+							metadata: running.metadata,
+						},
+					}
+					const finished = await finishRunRecord({
+						env: input.env,
+						handle,
+						status: 'error',
+						error,
+					}).catch((finishError: unknown) => {
+						console.warn('scheduled-job-hung-run-finish-failed', finishError)
+						return false
+					})
+					if (finished) finishedOccurrenceRun = true
+					else unfinishedOccurrenceRun = true
+				}
+				cursor = page.nextCursor
+			} while (cursor)
+		} catch (listError: unknown) {
+			console.warn('scheduled-job-hung-run-list-failed', listError)
+			return {
+				settled: false,
+				nextRunAt: scheduledFor ?? nowIso,
+				error,
+			}
+		}
+		if (unfinishedOccurrenceRun) {
+			return {
+				settled: false,
+				nextRunAt: scheduledFor ?? nowIso,
+				error,
+			}
+		}
+	}
+	if (!finishedOccurrenceRun) {
+		await upsertJobRunObservability({
+			env: input.env,
+			userId: input.userId,
+			outcome: {
+				jobId: row.id,
+				status: 'error',
+				ranAt: slotAt,
+				error,
+				durationMs,
+			},
+		}).catch((observabilityError: unknown) => {
+			console.warn(
+				'scheduled-job-hung-observability-failed',
+				observabilityError,
+			)
+		})
+	}
+	const outcome: JobExecutionOutcome = {
+		execution: { ok: false, error, logs: [] },
+		startedAt,
+		finishedAt: nowIso,
+		durationMs,
+	}
+	if (row.record.schedule.type === 'once' || !scheduledFor) {
+		const nextRunAt = computeJobRetryAt({
+			now: input.now,
+			retryCount: row.retry_count,
+		})
+		const settled = await jobsData(input.env).retryClaimedJob({
+			userId: input.userId,
+			jobId: row.id,
+			claimToken,
+			nextRunAt,
+		})
+		logJobSchedulerEvent({
+			event: settled
+				? 'scheduled_job_hung_settled'
+				: 'claim_lost_before_hung_settle',
+			userId: input.userId,
+			jobId: row.id,
+			scheduleType: row.record.schedule.type,
+			reason: settled ? 'workers_hung_request' : 'fenced_claim_superseded',
+			errorMessage: settled ? error : undefined,
+		})
+		return { settled, nextRunAt, error }
+	}
+	const updated = applyExecutionOutcome(row.record, outcome, {
+		updatedAt: nowIso,
+		nextRunAt: computeNextRunAt({
+			schedule: row.record.schedule,
+			timezone: row.record.timezone,
+			from: input.now,
+		}),
+	})
+	const finalized = await jobsData(input.env).finalizeClaimedJob({
+		userId: input.userId,
+		job: updated,
+		claimToken,
+		scheduledFor,
+	})
+	logJobSchedulerEvent({
+		event: finalized
+			? 'scheduled_job_hung_settled'
+			: 'claim_lost_before_hung_settle',
+		userId: input.userId,
+		jobId: row.id,
+		scheduleType: row.record.schedule.type,
+		reason: finalized ? 'workers_hung_request' : 'fenced_claim_superseded',
+		errorMessage: finalized ? error : undefined,
+	})
+	return {
+		settled: Boolean(finalized),
+		nextRunAt: updated.nextRunAt,
+		error,
+	}
 }
 
 export async function getNextRunnableJob(input: {

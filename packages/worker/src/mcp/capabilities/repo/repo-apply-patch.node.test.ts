@@ -126,6 +126,26 @@ test('repoApplyPatch maps malformed, unclean, and empty patch failures to McpCal
 	expect(rawParseError).toBeInstanceOf(McpCallerError)
 	expect((rawParseError as Error).message).toBe(rawDiffParse)
 
+	const directoryTarget =
+		'repo session apply patch target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.'
+	mocks.repoSessionRpc.mockReturnValue({
+		applyPatch: vi.fn().mockRejectedValue(new Error(directoryTarget)),
+	})
+	const directoryError = await repoApplyPatchCapability
+		.handler(
+			{
+				session_id: 'session-1',
+				patch: '--- a/src\n+++ b/src\n@@ -1 +1 @@\n-a\n+b\n',
+			},
+			createContext(),
+		)
+		.then(
+			() => null,
+			(thrown: unknown) => thrown,
+		)
+	expect(directoryError).toBeInstanceOf(McpCallerError)
+	expect((directoryError as Error).message).toBe(directoryTarget)
+
 	const boom = new Error('Durable Object storage unavailable')
 	mocks.repoSessionRpc.mockReturnValue({
 		applyPatch: vi.fn().mockRejectedValue(boom),

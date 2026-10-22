@@ -26,6 +26,14 @@ async function settle<T>(pending: Promise<T>) {
 test('transient Durable Object reset retry recovers thrown and result errors then exhausts', async () => {
 	const transientCases: Array<[unknown, boolean]> = [
 		[new Error(durableObjectCodeUpdatedResetMessage), true],
+		// KODY-A9: D1 bindings surface the same code-updated reset under D1_ERROR:.
+		[new Error(`D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`), true],
+		[
+			new Error(
+				`Error: D1_ERROR: ${durableObjectCodeUpdatedResetMessage.replace(/\.$/, '')}`,
+			),
+			true,
+		],
 		[
 			new Error('wrapped', {
 				cause: new Error(durableObjectCodeUpdatedResetMessage),
@@ -36,6 +44,12 @@ test('transient Durable Object reset retry recovers thrown and result errors the
 		[durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''), true],
 		[new Error(durableObjectSqliteOutOfMemoryMessage), true],
 		[new Error('user code failed'), false],
+		[
+			new Error(
+				`serveMcp could not recover after retries: D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
+			),
+			false,
+		],
 	]
 	expect(
 		transientCases.filter(

@@ -395,6 +395,22 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				'repo session edits cannot combine a delete/move touching "src/a.ts" with a write/replace/writeJson edit for the same path in one call. Split them into separate repoEditFiles calls.',
 			),
 		),
+		// Directory edit targets (KODY-A6). Agents pass a folder from
+		// repoTree; keep the remapped phrase and raw EISDIR off Sentry.
+		handlerFailure(
+			'repoEditFiles',
+			'repo',
+			'Error',
+			new Error(
+				'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+			),
+		),
+		handlerFailure(
+			'repoEditFiles',
+			'repo',
+			'Error',
+			new Error('EISDIR: /session/src is a directory'),
+		),
 		// Malformed / non-applying patches (KODY-A3 / KODY-A4). Plain Error
 		// from DO RPC, including the legacy `git apply patch: …` wrap.
 		handlerFailure(
@@ -438,7 +454,7 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 		for (const event of callerFailures) logMcpEvent(event)
 	})
 
-	expect(payloads).toHaveLength(35)
+	expect(payloads).toHaveLength(37)
 	expect(JSON.parse(payloads[0]!)).toMatchObject({
 		tool: 'execute',
 		outcome: 'failure',
@@ -654,6 +670,52 @@ test('package name, missing-import, execute-input, and description caller errors
 		)
 	})
 	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+})
+
+test('mcpServerAdd duplicate-name caller error stays off Sentry (KODY-A5)', () => {
+	const duplicateName = new McpCallerError(
+		'An MCP server with this name already exists. Pick another name, or call mcpServerList to find the existing server and use mcpServerReconnect or mcpServerRemove as needed.',
+	)
+	const payloads = captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'mcpServerAdd',
+				'mcpServers',
+				'McpCallerError',
+				duplicateName,
+			),
+		)
+	})
+	expect(payloads).toHaveLength(1)
+	expect(JSON.parse(payloads[0]!)).toMatchObject({
+		tool: 'capability',
+		capabilityName: 'mcpServerAdd',
+		domain: 'mcpServers',
+		outcome: 'failure',
+		failurePhase: 'handler',
+		errorName: 'McpCallerError',
+		errorMessage: expect.stringMatching(
+			/^An MCP server with this name already exists\./,
+		),
+	})
+	expectNoSentry()
+
+	captureMcpEvents(() => {
+		logMcpEvent(
+			handlerFailure(
+				'mcpServerAdd',
+				'mcpServers',
+				'Error',
+				new Error('Unable to connect to MCP server: hub unreachable'),
+			),
+		)
+	})
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+	expect(sentryMock.captureException).toHaveBeenCalledWith(
+		expect.objectContaining({
+			message: 'Unable to connect to MCP server: hub unreachable',
+		}),
+	)
 })
 
 test('unauthenticated capability calls stay off Sentry (KODY-9C)', () => {

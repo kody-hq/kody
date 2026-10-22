@@ -23,6 +23,7 @@ import {
 	sumJobRowsStorageBytesForUser,
 	transferJobRowsOwner,
 	updateJobRow,
+	updateJobRowCallerContextJson,
 	type JobCountBySourceId,
 	type JobRow,
 } from './repo.ts'
@@ -92,6 +93,17 @@ export type JobsStore = {
 		jobId: string
 		sourceId: string
 		publishedCommit: string | null
+		callerContextJson: string
+		updatedAt: string
+	}): Promise<boolean>
+	/**
+	 * Narrow caller-context rewrite with an optimistic concurrency guard on
+	 * the previous JSON. Does not touch schedule, claims, or retries.
+	 */
+	updateJobCallerContextJson(input: {
+		userId: string
+		jobId: string
+		expectedCallerContextJson: string
 		callerContextJson: string
 		updatedAt: string
 	}): Promise<boolean>
@@ -181,6 +193,8 @@ export function createD1JobsStore(db: D1Database): JobsStore {
 		retryClaimedJob: (input) => retryClaimedJobRow({ db, ...input }),
 		refreshPackageJobIdentity: (input) =>
 			refreshPackageJobRowIdentity({ db, ...input }),
+		updateJobCallerContextJson: (input) =>
+			updateJobRowCallerContextJson({ db, ...input }),
 		deleteJob: (input) => deleteJobRow(db, input.userId, input.jobId),
 		disableExpiredJobsForUser: (input) =>
 			disableExpiredJobRowsForUser({ db, ...input }),

@@ -227,7 +227,7 @@ function LoadedAppLayout() {
 	const { shellLocation, appShell } = Route.useLoaderData()
 	const { session, youtubeWatch } = useShellData()
 	const router = useRouter()
-	const { queryClient, actorKey } = Route.useRouteContext()
+	const { queryClient, actorKey, pageNavigation } = Route.useRouteContext()
 	useEffect(
 		() =>
 			refreshOnActivation({
@@ -284,7 +284,11 @@ function LoadedAppLayout() {
 	const workspace = Boolean(workspaceLayoutNavigation(useMatches(), session))
 	const Content = workspace ? 'div' : 'main'
 	return (
-		<div data-app-frame css={appFrameCss}>
+		<div
+			data-app-frame
+			data-app-interface={pageNavigation ? '' : undefined}
+			css={appFrameCss}
+		>
 			<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 				Skip to content
 			</a>

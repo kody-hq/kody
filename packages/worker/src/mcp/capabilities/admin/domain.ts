@@ -70,10 +70,12 @@ import { adminSoftDeletePurgeRunCapability } from './admin-soft-delete-purge-run
 import { adminPublishedImportableArtifactBackfillCapability } from './admin-published-importable-artifact-backfill.ts'
 import { adminPublishedSourceSnapshotBackfillCapability } from './admin-published-source-snapshot-backfill.ts'
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
+import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
 import { adminJobOwnerEnablementBackfillCapability } from './admin-job-owner-enablement-backfill.ts'
+import { adminJobCallerContextPackageIdBackfillCapability } from './admin-job-caller-context-package-id-backfill.ts'
 import { adminMemoryPersonalizeCopyCapability } from './admin-memory-personalize-copy.ts'
 import { adminMemoryPersonalizePurgeCapability } from './admin-memory-personalize-purge.ts'
 
@@ -132,6 +134,7 @@ export const adminDomain = defineDomain({
 		'credential inventory',
 		'credential backfill',
 		'job owner enablement backfill',
+		'job caller context package id backfill',
 		'cron enablement backfill',
 		'memory personalize',
 		'memory copy',
@@ -184,10 +187,12 @@ export const adminDomain = defineDomain({
 		adminPublishedImportableArtifactBackfillCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminCredentialInventoryScanCapability,
+		adminCredentialPathSegmentImpactCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,
 		adminJobOwnerEnablementBackfillCapability,
+		adminJobCallerContextPackageIdBackfillCapability,
 		adminMemoryPersonalizeCopyCapability,
 		adminMemoryPersonalizePurgeCapability,
 		adminAuditLogQueryCapability,

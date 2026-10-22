@@ -84,6 +84,8 @@ const storageRules: ReadonlyArray<StorageRule> = [
 				'Admin org resource transfer re-seals ciphertext from the source to the target owner context; plaintext never leaves the function.',
 			'packages/worker/src/orgs/convert-personal-org.ts':
 				'Personal-org conversion re-seals user secrets, OAuth apps, and integrations into the new personal org context; plaintext never leaves the function.',
+			'packages/worker/src/credentials/credential-path-segment-impact.ts':
+				'Admin path-segment impact inventory: decrypts only to test /, ?, # and never returns values.',
 		},
 	},
 	{

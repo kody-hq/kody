@@ -11,6 +11,10 @@ import {
 	secretResolutionHeaderName,
 } from '#mcp/fetch-gateway.ts'
 import {
+	buildPathSegmentEncodingWarning,
+	pathSegmentEncodingWarningHeaderName,
+} from '#mcp/secrets/path-segment-encoding-warning.ts'
+import {
 	parseHostApprovalRequiredBatchMessage,
 	parsePackageAccessRequiredMessage,
 } from '#mcp/secrets/errors.ts'
@@ -319,6 +323,65 @@ test('fetch gateway URL fill keeps routing and unrelated query bytes as written'
 	expect(signed.url).toBe(
 		'https://api.example.com/v1?sig=a%20b&list=x+y&token=queryToken-value',
 	)
+})
+
+test('gateway warns on 4xx when a path fill encoded routing characters from a credential', async () => {
+	vi.spyOn(usageModule, 'recordUsage').mockResolvedValue(undefined)
+	vi.spyOn(secretService, 'resolveSecret').mockImplementation(
+		async ({ name }) =>
+			userSecret(name === 'webhookPath' ? 'T000/B000/xxx' : `${name}-value`, [
+				'hooks.example.com',
+			]),
+	)
+	const seen: Array<Request> = []
+	const globalFetch = vi.fn(async (outbound: Request) => {
+		seen.push(outbound)
+		return new Response('not found', { status: 404 })
+	})
+	const response = await executeGatewayFetch({
+		env,
+		props,
+		request: new Request(
+			'https://hooks.example.com/services/{{secret:webhookPath}}',
+		),
+		globalFetch: globalFetch as unknown as typeof fetch,
+	})
+	expect(response.status).toBe(404)
+	expect(seen[0]?.url).toBe(
+		'https://hooks.example.com/services/T000%2FB000%2Fxxx',
+	)
+	expect(response.headers.get(pathSegmentEncodingWarningHeaderName)).toBe(
+		buildPathSegmentEncodingWarning('webhookPath', 404),
+	)
+	expect(
+		response.headers.get(pathSegmentEncodingWarningHeaderName),
+	).not.toContain('T000')
+
+	// A 200 does not warn, even when path encoding happened.
+	globalFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
+	const ok = await executeGatewayFetch({
+		env,
+		props,
+		request: new Request(
+			'https://hooks.example.com/services/{{secret:webhookPath}}',
+		),
+		globalFetch: globalFetch as unknown as typeof fetch,
+	})
+	expect(ok.status).toBe(200)
+	expect(ok.headers.get(pathSegmentEncodingWarningHeaderName)).toBeNull()
+
+	// A one-segment secret on a 4xx does not warn.
+	globalFetch.mockResolvedValueOnce(new Response('gone', { status: 404 }))
+	const plain = await executeGatewayFetch({
+		env,
+		props,
+		request: new Request(
+			'https://hooks.example.com/services/{{secret:plainToken}}',
+		),
+		globalFetch: globalFetch as unknown as typeof fetch,
+	})
+	expect(plain.status).toBe(404)
+	expect(plain.headers.get(pathSegmentEncodingWarningHeaderName)).toBeNull()
 })
 
 test('fetch gateway keeps byte bodies as bytes, adding no Content-Type', async () => {

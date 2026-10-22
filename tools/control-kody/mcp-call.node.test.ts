@@ -183,6 +183,20 @@ test('control-kody MCP execute and search reuse the OAuth client and print struc
 			}),
 		).toBeNull()
 		expect(
+			readExecuteResult({
+				isError: false,
+				structuredContent: {
+					inProgress: true,
+					runId: 'run-follow-budget',
+					idempotencyKey: 'execute:budget-key',
+				},
+			}),
+		).toEqual({
+			inProgress: true,
+			runId: 'run-follow-budget',
+			idempotencyKey: 'execute:budget-key',
+		})
+		expect(
 			readSearchResult({
 				isError: false,
 				structuredContent: {

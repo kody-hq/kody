@@ -18,7 +18,7 @@ export const emailMessageListCapability = defineDomainCapability(
 		name: 'emailMessageList',
 		orgPermission: 'email:read',
 		description:
-			'List stored inbound and outbound email messages owned by the signed-in user.',
+			'List stored inbound and outbound email messages for the current org.',
 		keywords: ['email', 'message', 'inbox', 'list', 'quarantine'],
 		readOnly: true,
 		idempotent: true,

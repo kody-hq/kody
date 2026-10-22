@@ -728,6 +728,11 @@ export async function claimPackageInvocationRecord(input: {
 	invocation: PackageInvocationClaimInput
 	/** ISO cutoff for in-place stale `in_progress` reclaims. */
 	staleBefore: string
+	/**
+	 * ISO cutoff for same-`claimOwner` reclaims of a fresh `in_progress` row.
+	 * Omit to disable same-owner reclaim (only the global stale window applies).
+	 */
+	sameOwnerStaleBefore?: string
 }): Promise<
 	| {
 			outcome: 'claimed'
@@ -765,6 +770,9 @@ export async function claimPackageInvocationRecord(input: {
 	}).claimPackageInvocation({
 		invocation: input.invocation,
 		staleBefore: input.staleBefore,
+		...(input.sameOwnerStaleBefore
+			? { sameOwnerStaleBefore: input.sameOwnerStaleBefore }
+			: {}),
 		run,
 		// Same RPC as the running row: an isolate killed before finish still
 		// has a diagnostic line for Activity and runGet.
@@ -895,6 +903,111 @@ export async function finishPackageInvocationRecord(input: {
  * run as an error with diagnostic logs (so Activity keeps pre-execution
  * evidence instead of a vanished zero-log attempt).
  */
+/**
+ * Persist a successful execute outcome onto an `in_progress` claim (and its
+ * run row) when the atomic terminal finish fails. The staged `response_json`
+ * fences reclaim so retries promote the ledger without re-executing.
+ */
+export async function stagePackageInvocationResultRecord(input: {
+	env: Env
+	userId: OwnerId
+	handle: RunRecordHandle | null
+	invocationId: string
+	claimUpdatedAt: string
+	responseJson: string | null
+	status: RunTerminalStatus
+	logs?: Array<RunRecordLogInput>
+	error?: unknown
+	result?: unknown
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<{
+	staged: boolean
+	claimUpdatedAt: string | null
+	record: PackageInvocationLedgerRecord | null
+}> {
+	const handle = input.handle
+	let run: RunLogRowInput | null = null
+	if (handle) {
+		const finishedAt = new Date().toISOString()
+		const durationMs = Math.max(
+			0,
+			Date.parse(finishedAt) - Date.parse(handle.startedAt),
+		)
+		const { errorName, errorMessage } = getErrorFields(input.error)
+		const metadata =
+			input.result === undefined
+				? handle.context.metadata
+				: {
+						...handle.context.metadata,
+						result: snapshotRunRecordResult(input.result),
+					}
+		run = buildRunRow({
+			handle: {
+				...handle,
+				context: {
+					...handle.context,
+					metadata,
+				},
+			},
+			status: input.status,
+			finishedAt,
+			durationMs,
+			errorName,
+			errorMessage,
+			updatedAt: finishedAt,
+		})
+	}
+	const staged = await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).stagePackageInvocationResult({
+		invocationId: input.invocationId,
+		claimUpdatedAt: input.claimUpdatedAt,
+		responseJson: input.responseJson,
+		run,
+		logs: run ? normalizeLogs(input.logs) : [],
+	})
+	if (staged.staged && handle && run) {
+		const sideEffects = dispatchTerminalRunRecordSideEffects({
+			env: input.env,
+			handle,
+			persistedRun: run,
+			status: input.status,
+			waitUntil: input.waitUntil,
+		})
+		if (input.waitUntil) {
+			input.waitUntil(sideEffects)
+		} else {
+			await sideEffects
+		}
+	}
+	return staged
+}
+
+/**
+ * Refresh `updated_at` on a live claim after a successful execute whose
+ * terminal persist failed when staging is also unavailable, so same-owner
+ * reclaim grace does not treat the original claim timestamp as already expired.
+ */
+export async function touchPackageInvocationRecord(input: {
+	env: Env
+	userId: OwnerId
+	invocationId: string
+	claimUpdatedAt: string
+}): Promise<{
+	touched: boolean
+	claimUpdatedAt: string | null
+	record: PackageInvocationLedgerRecord | null
+}> {
+	return await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).touchPackageInvocation({
+		invocationId: input.invocationId,
+		claimUpdatedAt: input.claimUpdatedAt,
+	})
+}
+
 export async function releasePackageInvocationRecord(input: {
 	env: Env
 	userId: OwnerId

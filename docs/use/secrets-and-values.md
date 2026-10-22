@@ -131,12 +131,29 @@ refused, so filling one can never change where a request goes. In a JSON body
 each value is JSON-escaped; in a form-encoded body or query string each value is
 form-encoded, and the other keys and values keep their bytes as written. In the
 URL path each value is encoded as segment data, so a `/`, `?`, or `#` in it
-cannot change the route. A placeholder encoded with `encodeURIComponent` in the
-URL path or query, or in a form-urlencoded component the gateway already fills,
-is found too. Literal `{{…}}` placeholders in `multipart/*` parts are filled the
-same way. Streamed bodies are filled chunk by chunk. A percent-encoded or
-base64-encoded placeholder form the gateway will not fill is refused, with an
-error that names the form.
+cannot change the route. Prefer a literal path prefix plus a one-segment secret
+for webhook-style URLs (Slack, Discord, and similar): put the stable path in
+code and only the token segment in the credential.
+
+```ts
+// Literal prefix + one-segment secret. The gateway fills the token as one
+// path segment. Do not store the whole `/services/T…/B…/…` path in one secret
+// and place it in the path — `/` becomes `%2F` and the remote typically 404s.
+await fetch('https://hooks.example.com/services/{{secret:webhookToken}}', {
+	method: 'POST',
+	body,
+})
+```
+
+When a credential filled into the path did contain `/`, `?`, or `#` and the
+remote returns 4xx, the gateway adds an `x-kody-path-segment-warning` response
+header (and a matching run-log line) that names the credential — never its value
+— and points at this pattern. A placeholder encoded with `encodeURIComponent` in
+the URL path or query, or in a form-urlencoded component the gateway already
+fills, is found too. Literal `{{…}}` placeholders in `multipart/*` parts are
+filled the same way. Streamed bodies are filled chunk by chunk. A
+percent-encoded or base64-encoded placeholder form the gateway will not fill is
+refused, with an error that names the form.
 
 The `x-kody-secret-resolution` header changes this per request, and Kody strips
 it before the request leaves:

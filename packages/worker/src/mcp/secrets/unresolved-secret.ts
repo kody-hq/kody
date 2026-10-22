@@ -1,11 +1,17 @@
+import { packageJobIdPrefix } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { isSecretExpired } from '@kody-internal/shared/secret-expires-at.ts'
 import { type StorageContext } from '#mcp/storage.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
+	isPackageOwnedStorageId,
+	packageIdFromCanonicalPackageStorageId,
+} from '#worker/storage-ids.ts'
+import {
 	createMissingSecretMessage,
 	createSecretScopeUnavailableMessage,
+	type SecretScopeMissingPackageContext,
 	type SecretScopeUnavailableMatch,
 } from './errors.ts'
 import { isReservedSecretName } from './name-guards.ts'
@@ -88,6 +94,7 @@ async function listInaccessibleSecretMatches(input: {
 		() => null,
 	)
 	const packageNames = new Map<string, string>()
+	const packageUpdatedAt = new Map<string, string>()
 	await Promise.all(
 		packageIds.map(async (packageId) => {
 			try {
@@ -97,6 +104,9 @@ async function listInaccessibleSecretMatches(input: {
 				})
 				if (savedPackage?.kodyId) {
 					packageNames.set(packageId, savedPackage.kodyId)
+				}
+				if (savedPackage?.updatedAt) {
+					packageUpdatedAt.set(packageId, savedPackage.updatedAt)
 				}
 			} catch {
 				// Keep the package id in the error when the title lookup fails.
@@ -110,20 +120,32 @@ async function listInaccessibleSecretMatches(input: {
 				location.scope === 'package' ? location.binding_key : null
 			const sessionId =
 				location.scope === 'session' ? location.binding_key : null
+			const missingPackageContext =
+				packageId == null
+					? null
+					: resolveMissingPackageContext({
+							secretPackageId: packageId,
+							requestedScope: input.requestedScope,
+							storageContext: input.storageContext,
+							contextSavedAt: packageUpdatedAt.get(packageId) ?? null,
+						})
 			return {
 				secretName: input.name,
 				scope: location.scope,
 				packageId,
 				packageName: packageId ? (packageNames.get(packageId) ?? null) : null,
 				sessionId,
-				editorUrl: buildSecretScopeEditorUrl({
-					baseUrl: input.baseUrl,
-					orgSlug,
-					name: input.name,
-					scope: location.scope,
-					packageId,
-					sessionId,
-				}),
+				editorUrl: missingPackageContext
+					? null
+					: buildSecretScopeEditorUrl({
+							baseUrl: input.baseUrl,
+							orgSlug,
+							name: input.name,
+							scope: location.scope,
+							packageId,
+							sessionId,
+						}),
+				missingPackageContext,
 			}
 		})
 		.sort((left, right) => {
@@ -134,6 +156,68 @@ async function listInaccessibleSecretMatches(input: {
 				right.packageId ?? right.sessionId ?? '',
 			)
 		})
+}
+
+/**
+ * The storage bucket still belongs to the secret's package (job/app/webhook),
+ * but `packageId` on the runtime is missing or wrong — so package-scoped
+ * secrets cannot bind. Widening scope is the wrong fix.
+ */
+function resolveMissingPackageContext(input: {
+	secretPackageId: string
+	requestedScope: SecretScope | null
+	storageContext: StorageContext | null
+	contextSavedAt: string | null
+}): SecretScopeMissingPackageContext | null {
+	// A pinned non-package scope hides the secret regardless of package context.
+	if (input.requestedScope && input.requestedScope !== 'package') return null
+	const storageId = input.storageContext?.storageId?.trim() || null
+	if (!storageId) return null
+	if (
+		!isPackageOwnedStorageId({
+			packageId: input.secretPackageId,
+			storageId,
+		})
+	) {
+		return null
+	}
+	const runtimePackageId = input.storageContext?.packageId?.trim() || null
+	if (runtimePackageId === input.secretPackageId) {
+		// Visible binding should have matched; do not classify as missing.
+		return null
+	}
+	return {
+		kind: 'missing_package_context',
+		runtimeLabel: describeOwnedPackageRuntime(storageId),
+		contextSavedAt: input.contextSavedAt,
+	}
+}
+
+function describeOwnedPackageRuntime(storageId: string): string {
+	if (storageId.startsWith('job:')) {
+		const jobId = storageId.slice('job:'.length)
+		const jobName = jobNameFromPackageJobId(jobId)
+		if (jobName) return `job "${jobName}"`
+		return `job runtime "${jobId}"`
+	}
+	if (packageIdFromCanonicalPackageStorageId(storageId)) {
+		return 'the package app runtime'
+	}
+	return `runtime "${storageId}"`
+}
+
+function jobNameFromPackageJobId(jobId: string): string | null {
+	if (!jobId.startsWith(packageJobIdPrefix)) return null
+	const rest = jobId.slice(packageJobIdPrefix.length)
+	const separatorIndex = rest.indexOf(':')
+	if (separatorIndex <= 0) return null
+	const encodedName = rest.slice(separatorIndex + 1)
+	if (!encodedName) return null
+	try {
+		return decodeURIComponent(encodedName)
+	} catch {
+		return encodedName
+	}
 }
 
 function isSecretVisibleToLookup(input: {

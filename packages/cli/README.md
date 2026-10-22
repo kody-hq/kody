@@ -233,8 +233,8 @@ kody dev fetch /health           # agent-friendly HTTP probe
 kody dev job heartbeat           # run a declared job once (never schedules locally)
 kody dev webhook ping --body ./fixture.json
 kody dev emit demo.event --body ./event.json   # subscription delivery shape
-kody dev check                   # local bundles + the exact publish checks (needs login)
-kody dev check --offline         # local checks only; publish can still refuse
+kody dev check                   # local bundles + snapshot membership + publish checks (needs login)
+kody dev check --offline         # local bundles + snapshot membership only; publish can still refuse
 
 # Four surfaces against mock then prod:
 kody execute --target mock --invoke ./greet --params '{"name":"kent"}'
@@ -289,10 +289,13 @@ kody search --target mock local
   are served under `/_assets/`. Both are `no-store` and rebuild on save; editing
   an asset reloads open pages.
 - **Prebuild**: `kody.dev.prebuild` runs a shell command from the package root
-  before every build (with `KODY_DEV=1`), for generated CSS, icons, or data
-  files. Its output is tagged `[prebuild]`. A non-zero exit is shown as a build
-  error. File changes made while it runs do not trigger another build.
-  `kody.dev.ignore` lists root-relative path prefixes the watcher skips:
+  before every `kody dev` serve rebuild (with `KODY_DEV=1`), for generated CSS,
+  icons, or data files. It does **not** run for `kody dev check` or publish.
+  Publish builds the pushed git snapshot, so generated files that exports import
+  must be committed (or produced somewhere publish can see). Prebuild output is
+  tagged `[prebuild]`. A non-zero exit is shown as a build error. File changes
+  made while it runs do not trigger another build. `kody.dev.ignore` lists
+  root-relative path prefixes the watcher skips:
 
   ```json
   {
@@ -310,7 +313,7 @@ kody search --target mock local
   }
   ```
 
-  `kody.dev` only affects `kody dev`; publish ignores it.
+  `kody.dev` only affects `kody dev` serve; publish ignores it.
 
 - **Cleanup**: Ctrl-C, `SIGTERM`, and `SIGHUP` stop workerd and remove the
   `kody-dev-*` temp dir. If the CLI is killed outright, a small reaper process

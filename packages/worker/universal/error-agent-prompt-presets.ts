@@ -112,6 +112,7 @@ export type PackageAppFailureKindForPrompt =
 	| 'package-entrypoint'
 	| 'realtime-connect'
 	| 'include-used-up'
+	| 'runtime-bundle-pending'
 
 /** Package-app visitor HTML failures (kody.run / package subdomain). */
 export function buildPackageAppErrorAgentPrompt(input: {
@@ -127,6 +128,7 @@ export function buildPackageAppErrorAgentPrompt(input: {
 		'package-entrypoint': 'Package app crashed',
 		'realtime-connect': 'Package realtime connection failed',
 		'include-used-up': 'Monthly include used up',
+		'runtime-bundle-pending': 'Package app is still preparing',
 	}
 	const causes: Record<PackageAppFailureKindForPrompt, string> = {
 		'host-setup':
@@ -137,6 +139,8 @@ export function buildPackageAppErrorAgentPrompt(input: {
 			'Kody could not establish the realtime session for this package app.',
 		'include-used-up':
 			'This month’s included Pro usage is used up and there are no credits left.',
+		'runtime-bundle-pending':
+			'The published runtime bundle is not ready yet (common right after a publish while npm dependencies are installed).',
 	}
 	const nextByKind: Record<PackageAppFailureKindForPrompt, Array<string>> = {
 		'host-setup': [
@@ -155,6 +159,10 @@ export function buildPackageAppErrorAgentPrompt(input: {
 		'include-used-up': [
 			'Explain how to add credits or wait for the UTC month reset.',
 			'Do not invent a bypass for the entitlement limit.',
+		],
+		'runtime-bundle-pending': [
+			'Retry shortly while the post-publish runtime bundle rebuild finishes.',
+			'If this persists long after publish, ask the owner to republish so artifacts rebuild.',
 		],
 	}
 	return buildErrorAgentPrompt({

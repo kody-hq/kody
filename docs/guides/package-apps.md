@@ -231,9 +231,12 @@ While it runs, `kody dev`:
   is taken. `--port <n>` is used exactly.
 
 Local-only settings live in `package.json#kody.dev`. Publish ignores them.
-`prebuild` is a shell command run from the package root before every build (with
-`KODY_DEV=1`), for generated CSS, icons, or data files. `ignore` lists
-root-relative path prefixes the watcher skips:
+`prebuild` is a shell command run from the package root before every `kody dev`
+serve rebuild (with `KODY_DEV=1`), for generated CSS, icons, or data files. It
+does **not** run for `kody dev check` or publish — those use the working-tree /
+git snapshot as-is. Generated files that exports import must be committed (or
+produced somewhere publish can see). `ignore` lists root-relative path prefixes
+the watcher skips:
 
 ```json
 {
@@ -847,40 +850,6 @@ declaration (`KodyRuntime`, `packageContext`, `packageStorage`, …).
 - **JSX compiled to `React.createElement`** — missing
   `"jsxImportSource": "remix/component"` in `tsconfig.json` and no
   `@jsxImportSource remix/component` pragma. The host does not sniff the graph.
-
-## Migrating an island app
-
-An app built on the island pattern — `src/app.ts` rendering an HTML string,
-`kody.app.client` with an npm Remix UI build listed in `externals`, an import
-map pointing at `esm.sh` or a vendored build in `public/`, and a hand-written
-Navigation API router in the client — moves to a Remix router in one publish:
-
-1. **Dependencies.** Drop the `client.externals` entry and the
-   `<script type="importmap">` for Remix, and remove the vendored
-   `public/vendor/remix-ui.js` (or the `esm.sh` URL). Put `"remix": "3.0.0"` in
-   `dependencies` so publish installs it (and `"@remix-run/ui": "0.12.1"` if the
-   app imports primitives).
-2. **Manifest.** Point `entry` at `./app/router.ts` and `client` at
-   `./app/assets/entry.ts`. `assets` stays `./public`. Do not set
-   `kody.app.runtime`.
-3. **Server.** Replace the fetch handler with the Remix recipe: remount in
-   `app/router.ts`, render a `Document` through `renderToStream`
-   (`app/ui/render.tsx`), turn each path into a route in `app/routes.ts`
-   (prefixed with `packageContext.appBasePath`) with a controller in
-   `app/controllers/`, and replace `appUrl()` / manual URL joins with
-   `routes.x.href()`. Reads of `packageContext`, `packageStorage()`, and secrets
-   move to `get(KodyRuntime)`.
-4. **Client.** The custom SPA router goes away: `run({ loadModule })` in
-   `app/assets/entry.ts` hydrates `clientEntry` islands, real anchors and forms
-   navigate, and `<Frame>` covers partial reloads. Interactive pieces become
-   named `clientEntry` components registered in the entry; page-level state that
-   lived in the SPA router becomes server-rendered props.
-5. **Service worker and `__version.json`.** Unchanged — see
-   [Service worker and PWA files](#service-worker-and-pwa-files).
-
-Router apps and fetch handlers serve `/_assets/*` the same way, so
-`assetBasePath`, `clientModuleUrl`, and `__version.json` keep their meaning
-across the move.
 
 ## Service worker and PWA files
 

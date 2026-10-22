@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 
 const repo = vi.hoisted(() => ({
 	listEnabledMcpServerSettingRows: vi.fn(),
@@ -183,6 +184,52 @@ test('resolveMcpServerOAuthClientUrls prefers APP_BASE_URL over the request host
 			clientMetadataUrl,
 		})
 	}
+})
+
+test('addMcpServer rejects a duplicate name as McpCallerError without contacting the hub', async () => {
+	repo.getMcpServerSettingRowByName.mockResolvedValue(createSettingRow('dup'))
+	mockModule.hubClient.addServer.mockClear()
+	repo.insertMcpServerSettingRow.mockClear()
+	const error = await addMcpServer({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		name: 'server-dup',
+		url: 'https://mcp.example.com/mcp',
+		baseUrl: 'https://kody.codes',
+	}).then(
+		() => null,
+		(thrown: unknown) => thrown,
+	)
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toMatch(
+		/^An MCP server with this name already exists\./,
+	)
+	expect((error as Error).message).toContain('mcpServerList')
+	expect((error as Error).message).toContain('mcpServerReconnect')
+	expect((error as Error).message).toContain('mcpServerRemove')
+	expect(mockModule.hubClient.addServer).not.toHaveBeenCalled()
+	expect(repo.insertMcpServerSettingRow).not.toHaveBeenCalled()
+})
+
+test('addMcpServer keeps connection failures as plain Errors for Sentry', async () => {
+	repo.getMcpServerSettingRowByName.mockResolvedValue(null)
+	mockModule.hubClient.addServer.mockRejectedValueOnce(
+		new Error('hub unreachable'),
+	)
+	await expect(
+		addMcpServer({
+			env,
+			userId: ownerIdFromStored('user-1'),
+			name: 'linear',
+			url: 'https://mcp.example.com/mcp',
+			baseUrl: 'https://kody.codes',
+		}),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof Error &&
+			!(error instanceof McpCallerError) &&
+			error.message === 'Unable to connect to MCP server: hub unreachable',
+	)
 })
 
 test('addMcpServer forwards bearer tokens as Authorization headers and persists a discover-timeout lastError', async () => {

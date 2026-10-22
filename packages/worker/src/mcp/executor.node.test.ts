@@ -40,6 +40,7 @@ import {
 	durableObjectCodeUpdatedResetMessage,
 	executorSandboxTimeoutMessage,
 } from '#worker/sentry-options.ts'
+import { workersHungExecutionMessage } from '@kody-internal/shared/workers-hung-request.ts'
 import { assertGeneratedExecutorSourceIsBundleSafe } from './kody-remote-proxy-source.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import { createEvaluationSideEffectTracker } from '#mcp/evaluation-side-effects.ts'
@@ -1089,6 +1090,25 @@ test('createExecuteExecutor rejects reserved provider names, keeps side-effect c
 		hostMediatedSideEffects: { dispatcherAttempts: 1, fetchAttempts: 0 },
 	})
 
+	const workersHungMessage =
+		"The Workers runtime canceled this request because it detected that your Worker's code had hung and would never generate a response. Refer to: https://developers.cloudflare.com/workers/observability/errors/"
+	const hungCancel = await runExecutor({
+		env: createExecutorTestEnv(
+			createEvaluateLoader(async () => {
+				throw new Error(workersHungMessage)
+			}),
+		),
+		gatewayProps: createGatewayProps('hung-cancel-user'),
+	})
+	expect(hungCancel).toEqual({
+		result: undefined,
+		error: workersHungExecutionMessage,
+		logs: [],
+		hostMediatedSideEffects: { dispatcherAttempts: 0, fetchAttempts: 0 },
+	})
+	expect(hungCancel.error).not.toContain('Workers runtime canceled')
+	expect(hungCancel.error).not.toContain('Scheduled job')
+
 	await runExecutor(
 		{ env: createExecutorTestEnv(fakeLoader.loader) },
 		'async () => await kody.search({ q: "ok" })',
@@ -1390,13 +1410,41 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 		packageName: 'discord-gateway',
 		packageId: null,
 		editorUrl,
+		missingPackageContext: false,
 		suggestedAction: { type: 'edit_secret_policy', policyField: 'scope' },
 	})
 	expect(getExecutionErrorDetails(scopeUnavailable(null))).toMatchObject({
 		kind: 'secret_scope_unavailable',
 		packageName: null,
 		packageId: 'pkg-1',
+		missingPackageContext: false,
 	})
+	const missingPackageContextError = new Error(
+		createSecretScopeUnavailableMessage([
+			{
+				secretName: 'discordBotToken',
+				scope: 'package',
+				packageId: 'pkg-1',
+				packageName: 'discord-gateway',
+				sessionId: null,
+				editorUrl: null,
+				missingPackageContext: {
+					kind: 'missing_package_context',
+					runtimeLabel: 'job "nightly"',
+					contextSavedAt: null,
+				},
+			},
+		]),
+	)
+	expect(getExecutionErrorDetails(missingPackageContextError)).toMatchObject({
+		kind: 'secret_scope_unavailable',
+		missingPackageContext: true,
+		suggestedAction: { type: 'republish_package' },
+		editorUrl: null,
+	})
+	expect(
+		getExecutionErrorDetails(missingPackageContextError)?.nextStep,
+	).toContain('Do not widen the secret scope')
 
 	// Plan-limit errors classify from the typed instance and from the bare
 	// serialized message.

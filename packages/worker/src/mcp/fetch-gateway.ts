@@ -83,6 +83,10 @@ import { assertCredentialUsesDeclared } from '#worker/credentials/credential-nee
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import {
+	pathSegmentEncodedCredentialNames,
+	withPathSegmentEncodingWarning,
+} from '#mcp/secrets/path-segment-encoding-warning.ts'
+import {
 	applyCredentialClientPlacement,
 	resolveCredentialClientPlacement,
 	withCredentialClientHint,
@@ -267,6 +271,7 @@ export async function executeGatewayFetch(input: {
 		const { bodyFillDone, deferRedirectFollow } = expanded
 		let transformed = expanded.request
 		let substitutedValues = expanded.substitutedValues
+		const pathSegmentEncodedNames = expanded.pathSegmentEncodedNames
 		if (credentialClient) {
 			transformed = applyCredentialClientPlacement(
 				transformed,
@@ -320,7 +325,10 @@ export async function executeGatewayFetch(input: {
 				substitutedValues,
 			)
 		}
-		const redacted = redactEchoedSecrets(response, substitutedValues)
+		const redacted = withPathSegmentEncodingWarning(
+			redactEchoedSecrets(response, substitutedValues),
+			pathSegmentEncodedNames,
+		)
 		return credentialClient
 			? withCredentialClientHint(redacted, credentialClient.shape)
 			: redacted
@@ -422,6 +430,11 @@ export async function expandSecretPlaceholders(input: {
 	 * credential was filled and the hop does not replay a body.
 	 */
 	deferRedirectFollow: boolean
+	/**
+	 * Credential display names whose path fill encoded `/`, `?`, or `#`.
+	 * Used to warn on a 4xx; never includes values.
+	 */
+	pathSegmentEncodedNames: Array<string>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -467,6 +480,7 @@ export async function expandSecretPlaceholders(input: {
 			substitutedValues: [],
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
+			pathSegmentEncodedNames: [],
 		}
 	}
 
@@ -490,6 +504,8 @@ export async function expandSecretPlaceholders(input: {
 
 	const replacements = new Map<string, string>()
 	const resolvedValues = new Map<string, string>()
+	/** Placeholder → credential display name (never a value). */
+	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
 	let referencedAnyCredential = false
@@ -842,6 +858,7 @@ export async function expandSecretPlaceholders(input: {
 		)
 		for (const { referenced, value } of resolvedSecretResults) {
 			const placeholder = buildSecretPlaceholder(referenced)
+			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
 				replacements.set(placeholder, value)
 				substitutedValues.push(value)
@@ -852,6 +869,7 @@ export async function expandSecretPlaceholders(input: {
 		}
 		for (const { name, value } of resolvedIntegrationTokens) {
 			const placeholder = buildIntegrationTokenPlaceholder(name)
+			credentialNamesByPlaceholder.set(placeholder, name)
 			if (!replacements.has(placeholder)) {
 				replacements.set(placeholder, value)
 				substitutedValues.push(value)
@@ -859,6 +877,10 @@ export async function expandSecretPlaceholders(input: {
 		}
 		for (const { referenced, resolved } of resolvedProviderSecrets) {
 			const placeholder = buildProviderSecretPlaceholder(referenced)
+			credentialNamesByPlaceholder.set(
+				placeholder,
+				`${referenced.provider}:${referenced.ref}`,
+			)
 			if (!replacements.has(placeholder)) {
 				replacements.set(placeholder, resolved.value)
 				substitutedValues.push(resolved.value)
@@ -872,6 +894,13 @@ export async function expandSecretPlaceholders(input: {
 	for (const [key, value] of Array.from(headers.entries())) {
 		headers.set(key, replaceSecretPlaceholders(value, replacements))
 	}
+	const pathSegmentEncodedNames = fillsUrlAndBody
+		? pathSegmentEncodedCredentialNames({
+				pathname: decodeSecretPlaceholderPunctuation(requestUrl.pathname),
+				replacements,
+				credentialNames: credentialNamesByPlaceholder,
+			})
+		: []
 	const nextUrl = fillsUrlAndBody
 		? fillUrlPlaceholders(requestUrl, replacements)
 		: requestUrl
@@ -960,6 +989,7 @@ export async function expandSecretPlaceholders(input: {
 		substitutedValues,
 		bodyFillDone,
 		deferRedirectFollow,
+		pathSegmentEncodedNames,
 	}
 }
 

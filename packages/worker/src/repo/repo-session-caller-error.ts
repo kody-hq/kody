@@ -212,6 +212,119 @@ export function isRepoSessionStructuralEditCallerMessage(message: string) {
 }
 
 /**
+ * Stable phrases when a write/replace/writeJson/delete/move/applyPatch target
+ * is an existing directory (`src` instead of `src/index.ts`). Agents often
+ * pass a folder from `repoTree`; the shell then throws raw `EISDIR`, which is
+ * caller-correctable. Subclass identity does not survive Durable Object RPC,
+ * so MCP observability and capabilities match these phrases. KODY-A6.
+ */
+export const repoSessionDirectoryTargetGuidance =
+	'Pass a file path (for example src/index.ts), not a folder.'
+
+export const repoSessionDirectoryTargetMessagePhrase =
+	'is a directory. Pass a file path'
+
+export type RepoSessionDirectoryTargetKind =
+	| 'write'
+	| 'replace'
+	| 'writeJson'
+	| 'applyPatch'
+	| 'move'
+	| 'delete'
+
+const repoSessionDirectoryTargetSuffix = `" is a directory. ${repoSessionDirectoryTargetGuidance}`
+
+export function buildRepoSessionDirectoryTargetMessage(
+	kind: RepoSessionDirectoryTargetKind,
+	path: string,
+) {
+	switch (kind) {
+		case 'write':
+			return `repo session write edit target "${path}${repoSessionDirectoryTargetSuffix}`
+		case 'replace':
+			return `repo session replace edit target "${path}${repoSessionDirectoryTargetSuffix}`
+		case 'writeJson':
+			return `repo session writeJson edit target "${path}${repoSessionDirectoryTargetSuffix}`
+		case 'applyPatch':
+			return `repo session apply patch target "${path}${repoSessionDirectoryTargetSuffix}`
+		case 'move':
+			return `repo session move edit source "${path}${repoSessionDirectoryTargetSuffix}`
+		case 'delete':
+			return `repo session delete edit target "${path}${repoSessionDirectoryTargetSuffix}`
+		default: {
+			const exhaustive: never = kind
+			throw new Error(
+				`Unsupported directory target kind: ${String(exhaustive)}`,
+			)
+		}
+	}
+}
+
+export function isRepoSessionDirectoryTargetCallerMessage(message: string) {
+	if (!message.includes(repoSessionDirectoryTargetMessagePhrase)) return false
+	return (
+		matchesQuotedRepoSessionPath(
+			message,
+			'repo session write edit target "',
+			repoSessionDirectoryTargetSuffix,
+		) ||
+		matchesQuotedRepoSessionPath(
+			message,
+			'repo session replace edit target "',
+			repoSessionDirectoryTargetSuffix,
+		) ||
+		matchesQuotedRepoSessionPath(
+			message,
+			'repo session writeJson edit target "',
+			repoSessionDirectoryTargetSuffix,
+		) ||
+		matchesQuotedRepoSessionPath(
+			message,
+			'repo session apply patch target "',
+			repoSessionDirectoryTargetSuffix,
+		) ||
+		matchesQuotedRepoSessionPath(
+			message,
+			repoSessionMoveSourcePrefix,
+			repoSessionDirectoryTargetSuffix,
+		) ||
+		matchesQuotedRepoSessionPath(
+			message,
+			repoSessionDeleteTargetPrefix,
+			repoSessionDirectoryTargetSuffix,
+		)
+	)
+}
+
+/**
+ * Raw `@cloudflare/shell` EISDIR wording (`EISDIR: /session/src is a
+ * directory`, `EISDIR: cannot write to root directory`). Remap inside the
+ * DO so callers never see the opaque form; also recognize it after RPC for
+ * in-flight DO builds that still escape.
+ */
+export function isRawWorkspaceEisdirMessage(message: string) {
+	return message.includes('EISDIR')
+}
+
+/**
+ * Pull the workspace-relative path from a raw shell EISDIR message when
+ * present (`EISDIR: /session/src is a directory` → `src`).
+ */
+export function externalPathFromRawWorkspaceEisdirMessage(
+	message: string,
+	workspacePrefix: string,
+): string | null {
+	const match = /^EISDIR:\s+(\S+)\s+is a directory/.exec(message)
+	if (!match) return null
+	const absolutePath = match[1]!
+	if (absolutePath === workspacePrefix) return '.'
+	if (absolutePath.startsWith(`${workspacePrefix}/`)) {
+		return absolutePath.slice(workspacePrefix.length + 1)
+	}
+	return absolutePath.replace(/^\//, '')
+}
+
+/**
  * Stable prefix for `repoApplyPatch` / `applyUnifiedDiff` caller failures.
  * Agents send malformed or non-applying unified diffs; those are
  * caller-correctable. Subclass identity does not survive Durable Object RPC,

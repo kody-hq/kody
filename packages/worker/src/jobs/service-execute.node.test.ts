@@ -26,10 +26,14 @@ import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidenta
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import { TransientJobExecutionError } from './execution-safety.ts'
-import { buildPackageJobId } from './package-job-id.ts'
+import {
+	buildPackageJobId,
+	requirePackageIdFromJobId,
+} from './package-job-id.ts'
 import * as schedule from './schedule.ts'
 import { executeJobOnce, runJobNow, updateJob } from './service.ts'
 import { type JobRecord, type PersistedJobCallerContext } from './types.ts'
+import { jobsData } from './jobs-data.ts'
 import {
 	identityMockModule,
 	resetJobServiceMocks,
@@ -929,6 +933,77 @@ test('runJobNow refuses a run that has no person', async () => {
 		}),
 	).rejects.toThrow('can only be run now by a signed-in person')
 	expect(executeSpy).not.toHaveBeenCalled()
+})
+
+test('runJobNow keeps the job row package storage context so later scheduled runs can fill package secrets', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { db, env } = createExecuteEnv()
+	mockRepoPersistence()
+	const clickerContext = createBaseCallerContext()
+	const ownerId = personalOrgId(clickerContext.user.userId)
+	const jobView = await insertPackageJob({
+		env,
+		callerContext: clickerContext,
+		body: {
+			name: 'preserve-package-context',
+			schedule: { type: 'interval', every: '15m' },
+			code: 'export default async () => ({ filled: "{{secret:PKG_TOKEN}}" })',
+		},
+	})
+	const packageId = requirePackageIdFromJobId(jobView.id)
+	const inserted = await getJobRowById(db, ownerId, jobView.id)
+	if (!inserted) throw new Error('expected inserted job')
+	const packageCallerContextJson = JSON.stringify({
+		...clickerContext,
+		executionOrigin: 'background',
+		storageContext: {
+			sessionId: null,
+			appId: packageId,
+			packageId,
+			storageId: null,
+		},
+	})
+	await jobsData(env).updateJob({
+		userId: ownerId,
+		job: inserted.record,
+		callerContextJson: packageCallerContextJson,
+	})
+	const before = await getJobRowById(db, ownerId, jobView.id)
+	expect(before?.callerContext?.storageContext?.packageId).toBe(packageId)
+
+	const executeSpy = vi
+		.spyOn(registry, 'runBundledModuleWithRegistry')
+		.mockResolvedValue({
+			result: { ok: true },
+			logs: [],
+		})
+
+	await runJobNow({
+		env,
+		userId: ownerId,
+		jobId: jobView.id,
+		// Clicker has no packageId — the old bug persisted this onto the row.
+		callerContext: clickerContext,
+	})
+
+	const afterRunNow = await getJobRowById(db, ownerId, jobView.id)
+	expect(afterRunNow?.callerContext?.storageContext?.packageId).toBe(packageId)
+	expect(afterRunNow?.callerContextJson).toBe(packageCallerContextJson)
+	expect(executeSpy.mock.lastCall?.[1].storageContext?.packageId).toBe(
+		packageId,
+	)
+
+	executeSpy.mockClear()
+	const scheduled = await executeJobOnce({
+		env,
+		job: afterRunNow!.record,
+		callerContext: afterRunNow!.callerContext,
+		source: { kind: 'schedule', jobId: jobView.id },
+	})
+	expect(scheduled.execution.ok).toBe(true)
+	expect(executeSpy.mock.lastCall?.[1].storageContext?.packageId).toBe(
+		packageId,
+	)
 })
 
 test('runJobNow keeps once jobs instead of deleting them', async () => {

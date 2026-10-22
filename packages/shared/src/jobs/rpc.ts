@@ -56,9 +56,21 @@ export type RunJobNowResult = {
  * package runtime, run records, entitlements, and email subsystems — so the
  * jobs worker calls back through this deliberately small surface.
  */
+export type SettleHungDueJobsResult = {
+	settledCount: number
+	jobOutcomes: Array<SchedulerJobOutcomeLog>
+}
+
 export type JobsHostContract = {
 	/** Execute all currently due jobs for one user (JobManager alarm body). */
 	runDueJobsForUser(input: { userId: string }): Promise<RunDueJobsResult>
+	/**
+	 * After Cloudflare cancels a hung `runDueJobsForUser` request, settle any
+	 * actively claimed jobs for the user as visible failures on a fresh RPC.
+	 */
+	settleHungDueJobsForUser(input: {
+		userId: string
+	}): Promise<SettleHungDueJobsResult>
 	/** Execute a single job immediately (JobManager `runNow` body). */
 	runJobNow(input: {
 		userId: string

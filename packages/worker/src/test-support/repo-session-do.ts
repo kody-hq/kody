@@ -140,6 +140,7 @@ export const repoSessionMockModule = (() => {
 			if (text == null) return null
 			return new TextEncoder().encode(text)
 		}),
+		workspaceStat: vi.fn<Workspace['stat']>(async () => null),
 		workspaceWriteFile: vi.fn<Workspace['writeFile']>(async () => undefined),
 		workspaceWriteFileBytes: vi.fn<Workspace['writeFileBytes']>(
 			async () => undefined,
@@ -294,6 +295,7 @@ export function restoreRepoSessionMockBaseline() {
 		mocks.rawPush,
 		mocks.rawCommit,
 		mocks.workspaceExists,
+		mocks.workspaceStat,
 		mocks.cloneExternalPublishWorkspace,
 		mocks.resolveExistingArtifactSourceRepo,
 	]) {
@@ -306,6 +308,7 @@ export function restoreRepoSessionMockBaseline() {
 	mocks.storageBucketInventoryExists.mockResolvedValue(false)
 
 	mocks.workspaceExists.mockResolvedValue(false)
+	mocks.workspaceStat.mockResolvedValue(null)
 	mocks.workspaceReadFileBytes.mockImplementation(async (path) => {
 		const text = await mocks.workspaceReadFile(path)
 		if (text == null) return null

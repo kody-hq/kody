@@ -58,11 +58,15 @@ boundary, on the final serialized request, and only for hosts you approved.
   body). Null means anywhere; new credentials default to headers-only. Set
   placement on create/edit (`secretSet` / `credentialUpdate`, the credential
   detail page, or `/connect/secret-set`). The gateway fills every part and logs
-  would-block when a fill is outside the declared placement. On plain `http://`
-  or an unapproved host the request is refused with an error naming the secret
-  and host; a placeholder is never sent unfilled. External providers use the
-  same boundary; see [Custom secret providers](./secret-providers.md). This is
-  not general string interpolation; it works only in secret-aware `fetch`.
+  would-block when a fill is outside the declared placement. A path fill is one
+  encoded segment: store only the token for webhook URLs, with the path prefix
+  literal in code (see
+  [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch)).
+  On plain `http://` or an unapproved host the request is refused with an error
+  naming the secret and host; a placeholder is never sent unfilled. External
+  providers use the same boundary; see
+  [Custom secret providers](./secret-providers.md). This is not general string
+  interpolation; it works only in secret-aware `fetch`.
 - **Derived headers** — when an API wants Basic Auth built from two secrets,
   `secretHeaders.basic({ usernameSecret, passwordSecret })` from `kody:runtime`
   produces the header without exposing either half. Each secret argument accepts

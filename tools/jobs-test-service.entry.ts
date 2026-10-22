@@ -8,6 +8,7 @@ import jobsInitSql from '../packages/jobs-worker/migrations/0001-jobs-init.sql'
 import jobsSoftDeleteSql from '../packages/jobs-worker/migrations/0002-teams-expand-actor-and-soft-delete.sql'
 import jobsEnabledBeforeSoftDeleteSql from '../packages/jobs-worker/migrations/0003-job-enabled-before-soft-delete.sql'
 import jobsDropPreservedSql from '../packages/jobs-worker/migrations/0005-drop-preserved-and-archived-artifacts.sql'
+import jobsRepairCallerContextPackageIdSql from '../packages/jobs-worker/migrations/0006-repair-job-caller-context-package-id.sql'
 
 /**
  * Auxiliary worker for the workers-unit vitest pool: the main worker's test
@@ -39,6 +40,8 @@ const schemaStatements = [
 	...migrationStatements(jobsSoftDeleteSql),
 	...migrationStatements(jobsEnabledBeforeSoftDeleteSql),
 	...migrationStatements(jobsDropPreservedSql),
+	// 0004 is assert-only. 0006 repairs missing packageId and is idempotent.
+	...migrationStatements(jobsRepairCallerContextPackageIdSql),
 ]
 
 // Runs on every call (not memoized): the pool's isolated storage can reset
@@ -80,6 +83,7 @@ const storeMethodNames = [
 	'finalizeClaimedJob',
 	'retryClaimedJob',
 	'refreshPackageJobIdentity',
+	'updateJobCallerContextJson',
 	'deleteJob',
 	'disableExpiredJobsForUser',
 	'countJobsForUser',

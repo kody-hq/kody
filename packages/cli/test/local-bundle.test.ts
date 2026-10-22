@@ -3,7 +3,11 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { BundleError, bundleLocalUserModule } from '../src/local-bundle.js'
+import {
+	BundleError,
+	bundleInputs,
+	bundleLocalUserModule,
+} from '../src/local-bundle.js'
 import { listSavedPackageImports } from '../src/local-package-graph.js'
 
 function writeFixture(files: Record<string, string>): string {
@@ -174,5 +178,30 @@ test('bundleLocalUserModule syntax errors carry file:line:col and a code frame',
 			assert.match(error.message, /  2 \|   const x y = 1\n {4}\| {11}\^/)
 			return true
 		},
+	)
+})
+
+test('bundleInputs drops node_modules segments, not node_modules-named files', () => {
+	// Platform-absolute so resolve() and join() agree on Windows (drive letter).
+	const workingDir = join(process.cwd(), 'pkg')
+	const inputs = bundleInputs(
+		{
+			inputs: {
+				'src/index.ts': { bytes: 1, imports: [] },
+				'src/node_modules-generated.ts': { bytes: 1, imports: [] },
+				'node_modules/dep/index.js': { bytes: 1, imports: [] },
+				'nested/node_modules/dep/index.js': { bytes: 1, imports: [] },
+				'virtual:module': { bytes: 1, imports: [] },
+			},
+			outputs: {},
+		},
+		workingDir,
+	)
+	assert.deepEqual(
+		new Set(inputs),
+		new Set([
+			join(workingDir, 'src/index.ts'),
+			join(workingDir, 'src/node_modules-generated.ts'),
+		]),
 	)
 })

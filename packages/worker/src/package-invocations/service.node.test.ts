@@ -12,7 +12,10 @@ import {
 } from '#worker/test-support/console-spies.ts'
 import { invokePackageExport, invokePackageSubscription } from './service.ts'
 import { invalidateInvokeContractFreshness } from './invoke-contract-cache.ts'
-import { maxStoredInvocationResponseJsonBytes } from './repo.ts'
+import {
+	maxStoredInvocationResponseJsonBytes,
+	packageInvocationStagedOversizedFenceJson,
+} from './repo.ts'
 import {
 	packageInvocationsRepoMockModule as repoMockModule,
 	createDatabase,
@@ -399,30 +402,183 @@ test('invokePackageExport enforces idempotency replay, mismatch, corruption, and
 	)
 })
 
+test('same claimOwner reclaims a fresh in-progress claim so ack retries are not dropped', async () => {
+	const db = createDatabase()
+	seedPackageResolution()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['ok'] })
+	// Seed a completed row so seedFreshInvocation can clone ledger shape.
+	expect(
+		(await invoke(db, dispatchRequest('evt-seed-shape', { source: 'webhook' })))
+			.status,
+	).toBe(200)
+	const deliveryId = 'delivery-ack-reclaim'
+	const idempotencyKey = 'heartbeat:1:1:enablement:en-1'
+	db.runLog.seedFreshInvocation(idempotencyKey, deliveryId)
+	const freshRow = db.runLog.ledgerRows.find(
+		(row) => row.idempotencyKey === idempotencyKey,
+	)
+	if (!freshRow) throw new Error('Expected seeded in-progress claim.')
+	runMock.mockClear()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['retried'] })
+
+	// Without the same claimOwner, a fresh in_progress claim blocks execution
+	// for the full stale window (longer than the webhook ack retry budget).
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: 'other-delivery',
+			}),
+		),
+	).toMatchObject({
+		status: 409,
+		body: { ok: false, error: { code: 'invocation_in_progress' } },
+	})
+	expect(runMock).not.toHaveBeenCalled()
+
+	// Same owner still waits the same-owner grace (not equality alone).
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: deliveryId,
+			}),
+		),
+	).toMatchObject({
+		status: 409,
+		body: { ok: false, error: { code: 'invocation_in_progress' } },
+	})
+	expect(runMock).not.toHaveBeenCalled()
+
+	// Past the grace window, the same delivery takes over and runs.
+	freshRow.updatedAt = new Date(Date.now() - 61_000).toISOString()
+	expect(
+		await invoke(
+			db,
+			dispatchRequest(idempotencyKey, {
+				source: 'webhook',
+				claimOwner: deliveryId,
+			}),
+		),
+	).toMatchObject({
+		status: 200,
+		body: { ok: true, result: { handled: true } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(
+		db.runLog.ledgerRows.find((row) => row.idempotencyKey === idempotencyKey),
+	).toMatchObject({
+		status: 'completed',
+		claimOwner: deliveryId,
+	})
+})
+
 test('completed keyed invocation reports terminal persistence failure instead of false success', async () => {
 	consoleError.mockImplementation(() => {})
 	const db = createDatabase({ failFinish: true })
 	seedPackageResolution()
 	runMock.mockResolvedValue({ result: { handled: true }, logs: ['completed'] })
+	const deliveryId = 'delivery-finish-failure'
 	const request = dispatchRequest('evt-finish-failure', {
 		source: 'webhook',
 		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
 	})
 
 	expect(await invoke(db, request)).toMatchObject({
 		status: 500,
 		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
 	})
+	const rowAfterStage = db.runLog.ledgerRows[0]
+	expect(rowAfterStage?.status).toBe('in_progress')
+	// Staged response is the execution fence: reclaim must not re-run even
+	// after the same-owner grace.
+	expect(rowAfterStage?.responseJson).toEqual(expect.any(String))
+	const claimAgeMs = Date.now() - Date.parse(rowAfterStage!.updatedAt)
+	expect(claimAgeMs).toBeLessThan(5_000)
+
+	rowAfterStage!.updatedAt = new Date(Date.now() - 61_000).toISOString()
 	expect(await invoke(db, request)).toMatchObject({
-		status: 409,
-		body: { ok: false, error: { code: 'invocation_in_progress' } },
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
 	})
 	expect(runMock).toHaveBeenCalledTimes(1)
-	expect(db.runLog.ledgerRows[0]?.status).toBe('in_progress')
 	expect(consoleError).toHaveBeenCalledWith(
 		'package invocation completed-result persistence failed',
 		'RunLog finish unavailable',
 	)
+})
+
+test('staged completed outcome promotes without re-executing after finish recovers', async () => {
+	consoleError.mockImplementation(() => {})
+	const db = createDatabase({ failFinish: true })
+	seedPackageResolution()
+	runMock.mockResolvedValue({ result: { handled: true }, logs: ['completed'] })
+	const deliveryId = 'delivery-stage-promote'
+	const request = dispatchRequest('evt-stage-promote', {
+		source: 'webhook',
+		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
+	})
+
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	const staged = db.runLog.ledgerRows[0]
+	expect(staged).toMatchObject({
+		status: 'in_progress',
+		responseJson: expect.any(String),
+	})
+
+	// Finish recovers; promote beyond the same-owner grace without re-running.
+	db.runLog.options.failFinish = false
+	staged!.updatedAt = new Date(Date.now() - 61_000).toISOString()
+	expect(await invoke(db, request)).toMatchObject({
+		status: 200,
+		body: { ok: true, result: { handled: true } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(db.runLog.ledgerRows[0]?.status).toBe('completed')
+})
+
+test('oversized staged outcome still fences reclaim and promotes without re-executing', async () => {
+	consoleError.mockImplementation(() => {})
+	const db = createDatabase({ failFinish: true })
+	seedPackageResolution()
+	runMock.mockResolvedValue({
+		result: { blob: 'x'.repeat(maxStoredInvocationResponseJsonBytes + 1) },
+		logs: [],
+	})
+	const deliveryId = 'delivery-stage-oversized'
+	const request = dispatchRequest('evt-stage-oversized', {
+		source: 'webhook',
+		topic: 'webhook:discord-gateway:message',
+		claimOwner: deliveryId,
+	})
+
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_persistence_failed' } },
+	})
+	const staged = db.runLog.ledgerRows[0]
+	// Must be the non-null oversized fence — null would look reclaimable.
+	expect(staged?.responseJson).toBe(packageInvocationStagedOversizedFenceJson)
+
+	db.runLog.options.failFinish = false
+	staged!.updatedAt = new Date(Date.now() - 61_000).toISOString()
+	expect(await invoke(db, request)).toMatchObject({
+		status: 500,
+		body: { ok: false, error: { code: 'idempotency_response_unavailable' } },
+	})
+	expect(runMock).toHaveBeenCalledTimes(1)
+	expect(db.runLog.ledgerRows[0]).toMatchObject({
+		status: 'completed',
+		responseJson: null,
+	})
 })
 
 test('oversized terminal responses are not stored so backups stay restorable', async () => {

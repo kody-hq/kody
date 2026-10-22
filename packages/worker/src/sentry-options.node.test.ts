@@ -178,6 +178,11 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		durableObjectIsolateMemoryResetMessage,
 		`Error: ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`,
 		noPeriod(durableObjectCodeUpdatedResetMessage),
+		// KODY-A9: D1 bindings surface DO isolate platform-resets under D1_ERROR:.
+		`D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
+		`Error: D1_ERROR: ${noPeriod(durableObjectCodeUpdatedResetMessage)}`,
+		`D1_ERROR: ${durableObjectStorageOperationTimeoutResetMessage}`,
+		`D1_ERROR: ${durableObjectInstanceInactiveCloseMessage}`,
 		noPeriod(durableObjectStorageOperationTimeoutResetMessage),
 		'Internal error in Durable Object storage caused object to be reset; reference = 849rqmf61lg3qbmtb3j6moc4',
 		'Error: Internal error in Durable Object storage caused object to be reset; reference = e_Gz3hrU_5c47162d21d24e238a5c25e98b89ee39',
@@ -240,6 +245,8 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		'D1_ERROR: Internal error while starting up Durable Object storage caused object to be reset',
 		'Internal error while starting up the package executor',
 		`serveMcp could not recover after retries: Internal error while starting up Durable Object storage caused object to be reset; reference = 9k2mnpq7rstuvwxyzabcdefg`,
+		// KODY-A9: wrappers that embed the D1-prefixed code-updated sentence stay visible.
+		`serveMcp could not recover after retries: D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
 		'Durable Object was reset during migration',
 		`serveMcp could not recover after retries: ${durableObjectOverloadedRequestsQueuedTooLongMessage}`,
 		`authorize could not recover after ${cimdFetch404}`,

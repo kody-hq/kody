@@ -1075,6 +1075,7 @@ export async function handleWebhookIngressRequest(
 				exportName: declared.exportName,
 				params: exportParams,
 				idempotencyKey,
+				claimOwner: deliveryId,
 				...(idempotencyParamsHash ? { idempotencyParamsHash } : {}),
 				...(idempotencyHashParams ? { idempotencyHashParams } : {}),
 			}),

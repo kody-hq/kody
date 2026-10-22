@@ -158,20 +158,31 @@ Route: `GET|POST /@:username/webhooks/:packageKodyId/:webhookName/:urlSecret`
 Ack messages carry the accepted delivery id, idempotency key, scoped endpoint
 identity, export name, and already-authenticated payload (inline `body`, or a
 user-scoped KV key when the body was spilled). Queue retries reuse that exact
-idempotency key. Request-mode caller `Idempotency-Key` messages set
-`callerIdempotency` so the consumer hashes the JSON body (same as sync).
-Unique-key ack claims omit that flag and hash the `{ webhook, request }`
-envelope. Transient ledger lookup/terminal-persistence failures,
-still-in-progress replays, and other pre-execution infrastructure codes
-(`idempotency_conflict_unresolved`, `artifact_preparation_failed`, … — see
+idempotency key and pass the delivery id as the package-invocation `claimOwner`.
+Same-owner retries may reclaim an `in_progress` ledger row after a short grace
+(60s from the claim's last `updated_at` — inside the ~5-minute ack retry budget,
+but not on the immediate next 30s retry), so a hung or canceled first attempt
+cannot burn the whole budget on `invocation_in_progress`. A failed terminal
+persist after a successful execute stages the response onto the still-
+`in_progress` row (`response_json` set): that is an execution fence — reclaim is
+blocked even past the grace / 15-minute stale window, and the next delivery
+promotes the ledger to `completed` without re-running side effects. A different
+delivery with the same caller `Idempotency-Key` still waits for a terminal
+response or the normal 15-minute stale window (when no staged outcome exists).
+Request-mode caller `Idempotency-Key` messages set `callerIdempotency` so the
+consumer hashes the JSON body (same as sync). Unique-key ack claims omit that
+flag and hash the `{ webhook, request }` envelope. Transient ledger
+lookup/terminal-persistence failures, still-in-progress replays, and other
+pre-execution infrastructure codes (`idempotency_conflict_unresolved`,
+`artifact_preparation_failed`, … — see
 `readPreExecutionPackageInvocationInfrastructureCode`) are retried. On the last
-consumer attempt (`max_retries`, currently 10) those retries record
-`invocation_retry_exhausted` (with diagnostic logs) and ack instead of falling
-through to the dead-letter queue. Terminal package errors are recorded with logs
-and acknowledged. A missing spilled body is a terminal failure
-(`ack_queue_payload_missing`). The consumer runs the export with
-`backgroundExecutorTimeoutMs` (5 minutes), so genuinely longer package work ends
-as an explicit timeout rather than an unknown interrupted outcome. Sync
+consumer attempt (`max_retries`, currently 10) those retries record a visible
+`webhook` Activity failure (`invocation_retry_exhausted`, with diagnostic logs)
+and ack instead of falling through to the dead-letter queue. Terminal package
+errors are recorded with logs and acknowledged. A missing spilled body is a
+terminal failure (`ack_queue_payload_missing`). The consumer runs the export
+with `backgroundExecutorTimeoutMs` (5 minutes), so genuinely longer package work
+ends as an explicit timeout rather than an unknown interrupted outcome. Sync
 deliveries keep the 90s interactive budget behind the 30s
 `webhookSyncInvocationTimeoutMs` race. `webhook` run records use a 10-minute
 stale-`running` TTL so a full-length ack run is not reconciled early.

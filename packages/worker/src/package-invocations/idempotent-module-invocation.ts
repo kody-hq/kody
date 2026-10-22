@@ -10,6 +10,8 @@ import {
 	finishPackageInvocationRecord,
 	getPackageInvocationRecord,
 	releasePackageInvocationRecord,
+	stagePackageInvocationResultRecord,
+	touchPackageInvocationRecord,
 	type PackageInvocationLedgerRecord,
 } from '#worker/run-records/service.ts'
 import {
@@ -38,16 +40,62 @@ import { buildJsonErrorResponse } from './responses.ts'
 import { buildSubscriptionInvocationRunMetadata } from './subscription-envelope.ts'
 import {
 	boundedResponseJson,
+	executionFenceResponseJson,
 	parseStoredResponse,
+	terminalResponseJsonFromExecutionFence,
 	type PackageInvocationStoredResponse,
 } from './repo.ts'
 
 export const packageInvocationStaleAfterMs = 15 * 60 * 1000
+/**
+ * Same-delivery reclaim grace. Shorter than the ack queue retry budget
+ * (~5 minutes) so a hung first attempt can be taken over, but longer than a
+ * single 30s queue retry so a failed terminal persist after a successful
+ * execute is not immediately reclaimed and re-run on the next delivery.
+ * Staged outcomes (`response_json` set while still `in_progress`) never
+ * reclaim — see {@link canReclaimInProgressInvocation}.
+ */
+export const packageInvocationSameOwnerStaleAfterMs = 60_000
 const packageInvocationPollIntervalMs = 100
 const packageInvocationPollBudgetMs = 1_000
 
 function isStaleInvocation(updatedAt: string, now: Date) {
 	return Date.parse(updatedAt) <= now.getTime() - packageInvocationStaleAfterMs
+}
+
+function normalizeClaimOwner(value: string | null | undefined): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : null
+}
+
+function canReclaimInProgressInvocation(input: {
+	record: Pick<
+		PackageInvocationLedgerRecord,
+		'updatedAt' | 'claimOwner' | 'responseJson'
+	>
+	claimOwner: string | null
+	now?: Date
+}) {
+	// Staged execute outcome: durable fence — retries promote, never re-run.
+	if (input.record.responseJson != null) {
+		return false
+	}
+	const now = input.now ?? new Date()
+	if (isStaleInvocation(input.record.updatedAt, now)) {
+		return true
+	}
+	if (
+		input.claimOwner == null ||
+		input.record.claimOwner == null ||
+		input.claimOwner !== input.record.claimOwner
+	) {
+		return false
+	}
+	return (
+		Date.parse(input.record.updatedAt) <=
+		now.getTime() - packageInvocationSameOwnerStaleAfterMs
+	)
 }
 
 function readInvocationErrorCode(body: unknown): string | null {
@@ -105,6 +153,12 @@ export async function invokeSavedPackageModule(input: {
 	idempotencyKey: string
 	idempotencyParamsHash?: 'ignore'
 	idempotencyHashParams?: Record<string, unknown>
+	/**
+	 * Delivery/attempt lineage for reclaim (for example webhook ack
+	 * `deliveryId`). Same-owner retries take over a fresh `in_progress`
+	 * claim; omit for callers that only reclaim after the stale window.
+	 */
+	claimOwner?: string | null
 	source: string | null
 	topic: string | null
 	notFoundCode: 'export_not_found' | 'subscription_not_found'
@@ -217,8 +271,10 @@ export async function invokeSavedPackageModule(input: {
 		}
 	}
 
-	const attemptClaim = async () =>
-		await claimPackageInvocationRecord({
+	const claimOwner = normalizeClaimOwner(input.claimOwner)
+	const attemptClaim = async () => {
+		const nowMs = Date.now()
+		return await claimPackageInvocationRecord({
 			env: input.env,
 			userId: input.actor.orgId,
 			context: buildRunRecordContext(),
@@ -229,11 +285,16 @@ export async function invokeSavedPackageModule(input: {
 				requestHash,
 				source: input.source,
 				topic: input.topic,
+				claimOwner,
 			},
 			staleBefore: new Date(
-				Date.now() - packageInvocationStaleAfterMs,
+				nowMs - packageInvocationStaleAfterMs,
+			).toISOString(),
+			sameOwnerStaleBefore: new Date(
+				nowMs - packageInvocationSameOwnerStaleAfterMs,
 			).toISOString(),
 		})
+	}
 	const lookupLedger = async () =>
 		await getPackageInvocationRecord({
 			env: input.env,
@@ -248,20 +309,66 @@ export async function invokeSavedPackageModule(input: {
 		return buildPersistenceFailedResponse()
 	}
 
+	const promoteStagedInvocation = async (
+		record: PackageInvocationLedgerRecord,
+	): Promise<PackageInvocationStoredResponse> => {
+		const terminalResponseJson = terminalResponseJsonFromExecutionFence(
+			record.responseJson,
+		)
+		try {
+			const finished = await finishPackageInvocationRecord({
+				env: input.env,
+				userId: input.actor.orgId,
+				handle: null,
+				invocationId: record.id,
+				claimUpdatedAt: record.updatedAt,
+				ledgerStatus: 'completed',
+				responseJson: terminalResponseJson,
+				status: 'success',
+				waitUntil: input.waitUntil,
+			})
+			if (finished.ledgerUpdated) {
+				return (
+					parseStoredResponse(terminalResponseJson) ??
+					buildJsonErrorResponse({
+						status: 500,
+						code: 'idempotency_response_unavailable',
+						message: 'Package invocation result lost its recovery claim.',
+						idempotencyKey: input.idempotencyKey,
+					})
+				)
+			}
+			return finished.record
+				? resolveLedgerRecord(finished.record)
+				: buildPersistenceFailedResponse()
+		} catch (error) {
+			console.error(
+				'package invocation staged-result promotion failed',
+				getErrorMessage(error),
+			)
+			return buildPersistenceFailedResponse()
+		}
+	}
+
 	// Resolve an existing DO owner: mismatch and terminal rows resolve
 	// immediately; fresh in-progress rows are polled within the budget; stale
-	// in-progress rows are reclaimed atomically by a second claim call (which
-	// loops back here when a competitor wins the reclaim).
+	// or same-claimOwner in-progress rows are reclaimed atomically by a second
+	// claim call (which loops back here when a competitor wins the reclaim).
+	// Staged `response_json` on an in-progress row is an execution fence:
+	// promote to completed without re-running.
 	while (claim.outcome === 'existing') {
 		let record: PackageInvocationLedgerRecord | null = claim.record
 		if (record.requestHash !== requestHash || record.status !== 'in_progress') {
 			return resolveLedgerRecord(record)
 		}
+		if (record.responseJson != null) {
+			return await promoteStagedInvocation(record)
+		}
 		const pollDeadline = Date.now() + packageInvocationPollBudgetMs
 		while (
 			record &&
 			record.status === 'in_progress' &&
-			!isStaleInvocation(record.updatedAt, new Date()) &&
+			!canReclaimInProgressInvocation({ record, claimOwner }) &&
 			Date.now() < pollDeadline
 		) {
 			await new Promise((resolve) =>
@@ -288,7 +395,10 @@ export async function invokeSavedPackageModule(input: {
 		if (record.status !== 'in_progress') {
 			return resolveLedgerRecord(record)
 		}
-		if (!isStaleInvocation(record.updatedAt, new Date())) {
+		if (record.responseJson != null) {
+			return await promoteStagedInvocation(record)
+		}
+		if (!canReclaimInProgressInvocation({ record, claimOwner })) {
 			return resolveLedgerRecord(record)
 		}
 		try {
@@ -491,13 +601,64 @@ export async function invokeSavedPackageModule(input: {
 						})
 			} catch (error) {
 				// The module succeeded, but the atomic ledger + run terminal write
-				// did not. Do not report success: durable callers must retry the
-				// same key until the terminal response can be persisted. The live
-				// claim prevents that retry from duplicating the completed work.
+				// did not. Stage the response (execution fence) so retries promote
+				// without re-running side effects; fall back to a lease touch when
+				// staging is also unavailable.
 				console.error(
 					'package invocation completed-result persistence failed',
 					getErrorMessage(error),
 				)
+				const responseJson = executionFenceResponseJson(
+					boundedResponseJson(outcome.response),
+				)
+				try {
+					const staged = await stagePackageInvocationResultRecord({
+						env: input.env,
+						userId: input.actor.orgId,
+						handle: claimed.handle,
+						invocationId: claimed.invocationId,
+						claimUpdatedAt: claimed.claimUpdatedAt,
+						responseJson,
+						status: 'success',
+						logs: outcome.logs,
+						result: outcome.result,
+						waitUntil: input.waitUntil,
+					})
+					if (staged.staged && staged.claimUpdatedAt) {
+						claimed.claimUpdatedAt = staged.claimUpdatedAt
+					} else {
+						const touched = await touchPackageInvocationRecord({
+							env: input.env,
+							userId: input.actor.orgId,
+							invocationId: claimed.invocationId,
+							claimUpdatedAt: claimed.claimUpdatedAt,
+						})
+						if (touched.touched && touched.claimUpdatedAt) {
+							claimed.claimUpdatedAt = touched.claimUpdatedAt
+						}
+					}
+				} catch (stageError) {
+					console.warn(
+						'package invocation result staging after persist failure failed',
+						getErrorMessage(stageError),
+					)
+					try {
+						const touched = await touchPackageInvocationRecord({
+							env: input.env,
+							userId: input.actor.orgId,
+							invocationId: claimed.invocationId,
+							claimUpdatedAt: claimed.claimUpdatedAt,
+						})
+						if (touched.touched && touched.claimUpdatedAt) {
+							claimed.claimUpdatedAt = touched.claimUpdatedAt
+						}
+					} catch (touchError) {
+						console.warn(
+							'package invocation claim touch after persist failure failed',
+							getErrorMessage(touchError),
+						)
+					}
+				}
 				return buildPersistenceFailedResponse()
 			}
 		}

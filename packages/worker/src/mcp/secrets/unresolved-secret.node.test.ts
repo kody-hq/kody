@@ -82,7 +82,14 @@ test('unresolved secret errors distinguish inaccessible scopes from a true miss'
 		scope: 'package',
 		packageName: 'discord-gateway',
 		packageId: null,
+		missingPackageContext: false,
 	})
+	expect(packageMiss).toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(packageMiss).toContain(
+		"Changing the secret's scope is an explicit, owner-reviewed choice only",
+	)
 	expect(mockModule.getSavedPackageById).toHaveBeenCalledWith(env.APP_DB, {
 		userId,
 		packageId: 'pkg-1',
@@ -112,6 +119,7 @@ test('unresolved secret errors distinguish inaccessible scopes from a true miss'
 		scope: 'user',
 		packageName: null,
 		packageId: null,
+		missingPackageContext: false,
 	})
 	expect(pinnedPackageMiss).toContain(
 		'https://example.com/@acme/-/secrets/user/discordBotToken',
@@ -128,6 +136,7 @@ test('unresolved secret errors distinguish inaccessible scopes from a true miss'
 		scope: 'user',
 		packageName: null,
 		packageId: null,
+		missingPackageContext: false,
 	})
 	expect(noOrgMiss).not.toContain('/secrets/')
 
@@ -157,4 +166,111 @@ test('unresolved secret errors distinguish inaccessible scopes from a true miss'
 		new Error('d1 unavailable'),
 	)
 	expect(parseMissingSecretMessage(await unresolved())).toEqual({ secretName })
+})
+
+const owningPackageId = 'b2fda105-005a-4e2b-9f22-1513b6752da2'
+const otherPackageId = '11c7ff51-aa34-4ab8-94d6-bdd5e6af6d40'
+
+test('unresolved package secrets name a job that lost package context and do not suggest widening scope', async () => {
+	mockModule.listSecretLocationsByNameForUser.mockResolvedValue([
+		{
+			scope: 'package',
+			binding_key: owningPackageId,
+			name: secretName,
+			expires_at: null,
+		},
+	])
+	mockModule.getSavedPackageById.mockResolvedValue({
+		id: owningPackageId,
+		kodyId: 'discord-gateway',
+		name: '@user/discord-gateway',
+		updatedAt: '2026-04-20T00:00:00.000Z',
+	})
+
+	const missingContext = await unresolved({
+		storageContext: {
+			...noPackage,
+			storageId: `job:package-job:${owningPackageId}:nightly%20sync`,
+		},
+	})
+	expect(parseSecretScopeUnavailableMessage(missingContext)).toEqual({
+		secretName,
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: true,
+	})
+	expect(missingContext).toContain('job "nightly sync"')
+	expect(missingContext).toContain('but its package context is missing')
+	expect(missingContext).toContain(
+		'package context last saved 2026-04-20T00:00:00.000Z',
+	)
+	expect(missingContext).toContain(
+		"Do not widen the secret's scope to work around a missing package context",
+	)
+	expect(missingContext).not.toContain('Editor link:')
+	expect(missingContext).not.toContain(
+		'Prefer calling through an export of the owning package',
+	)
+
+	const stampedWrongPackageOnOwnedJob = await unresolved({
+		storageContext: {
+			...noPackage,
+			packageId: otherPackageId,
+			storageId: `job:package-job:${owningPackageId}:nightly`,
+		},
+	})
+	expect(
+		parseSecretScopeUnavailableMessage(stampedWrongPackageOnOwnedJob),
+	).toMatchObject({
+		missingPackageContext: true,
+	})
+	expect(stampedWrongPackageOnOwnedJob).toContain('job "nightly"')
+	expect(stampedWrongPackageOnOwnedJob).not.toContain('Editor link:')
+
+	const pinnedSessionOnOwnedJob = await unresolved({
+		scope: 'session',
+		storageContext: {
+			...noPackage,
+			storageId: `job:package-job:${owningPackageId}:nightly`,
+		},
+	})
+	expect(parseSecretScopeUnavailableMessage(pinnedSessionOnOwnedJob)).toEqual({
+		secretName,
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+	expect(pinnedSessionOnOwnedJob).toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(pinnedSessionOnOwnedJob).not.toContain(
+		'but its package context is missing',
+	)
+
+	const wrongPackageRuntime = await unresolved({
+		storageContext: {
+			...noPackage,
+			packageId: otherPackageId,
+			storageId: `job:package-job:${otherPackageId}:other-job`,
+		},
+	})
+	expect(parseSecretScopeUnavailableMessage(wrongPackageRuntime)).toEqual({
+		secretName,
+		scope: 'package',
+		packageName: 'discord-gateway',
+		packageId: null,
+		missingPackageContext: false,
+	})
+	expect(wrongPackageRuntime).toContain(
+		'Prefer calling through an export of the owning package',
+	)
+	expect(wrongPackageRuntime).toContain(
+		"Changing the secret's scope is an explicit, owner-reviewed choice only",
+	)
+	expect(wrongPackageRuntime).toContain('/secrets/package/')
+	expect(wrongPackageRuntime).not.toContain(
+		'but its package context is missing',
+	)
 })

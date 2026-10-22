@@ -244,6 +244,43 @@ function headersPresent(request: Request, names: Array<string>) {
 	return names.filter((name) => request.headers.has(name))
 }
 
+test('handlePackageAppRequest treats a missing published runtime bundle as a retryable 503 without Sentry', async () => {
+	consoleError.mockImplementation(() => {})
+	const pending = new Error(
+		'Saved package app "example" declares npm dependencies ("kleur") but no published runtime bundle artifact is available yet. Republish the package so Kody can install dependencies and persist a fresh runtime bundle artifact.',
+	)
+	mockModule.loadInvokeManifestBySourceId.mockResolvedValueOnce({
+		source: {
+			published_commit: 'commit-1',
+			manifest_path: 'package.json',
+			source_root: '/',
+		},
+		manifest: {
+			name: '@kody/example',
+			kody: { id: 'example', app: { entry: 'app.js' } },
+		},
+	})
+	mockModule.buildPackageAppWorker.mockRejectedValueOnce(pending)
+
+	const response = await request('/@test-user/packages/example', {
+		headers: { accept: 'application/json' },
+	})
+	expect(response.status).toBe(503)
+	await expect(response.json()).resolves.toMatchObject({
+		error: 'Package app is still preparing',
+		message: expect.stringContaining('not ready yet'),
+		next_step: expect.stringContaining('Try again shortly'),
+	})
+	expect(mockModule.captureException).not.toHaveBeenCalled()
+	expect(consoleError).toHaveBeenCalledWith(
+		'package-app-http-error',
+		expect.objectContaining({
+			status: 503,
+			phase: 'runtime-bundle-pending',
+		}),
+	)
+})
+
 test('handlePackageAppRequest reports host setup failures with helpful responses and Sentry context', async () => {
 	consoleError.mockImplementation(() => {})
 

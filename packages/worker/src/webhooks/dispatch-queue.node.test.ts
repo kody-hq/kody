@@ -247,6 +247,76 @@ test('queue records a terminal failure when retryable artifact prep is exhausted
 	)
 })
 
+test('ack retries pass deliveryId as claimOwner so a dead attempt can be taken over', async () => {
+	mocks.dispatchWebhookInvocation.mockResolvedValue({
+		status: 409,
+		body: {
+			ok: false,
+			error: {
+				code: 'invocation_in_progress',
+				message:
+					'This idempotency key is already processing for the requested package export.',
+			},
+		},
+	})
+	mocks.recordWebhookDelivery.mockResolvedValue(undefined)
+	const message = createMessage()
+	const retry = createQueueMessage('owner-retry', message)
+	retry.attempts = 2
+
+	await handleWebhookDispatchQueue(createBatch([retry]), {} as Env)
+
+	expect(mocks.dispatchWebhookInvocation).toHaveBeenCalledWith(
+		expect.objectContaining({
+			idempotencyKey: message.idempotencyKey,
+			claimOwner: message.deliveryId,
+		}),
+	)
+	expect(queueOutcome(retry)).toEqual(retried)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+})
+
+test('exhausted invocation_in_progress records a visible failed delivery', async () => {
+	mocks.dispatchWebhookInvocation.mockResolvedValue({
+		status: 409,
+		body: {
+			ok: false,
+			error: {
+				code: 'invocation_in_progress',
+				message:
+					'This idempotency key is already processing for the requested package export.',
+			},
+		},
+	})
+	mocks.recordWebhookDelivery.mockResolvedValue(undefined)
+	const exhausted = createQueueMessage('in-progress-exhausted', createMessage())
+	exhausted.attempts = webhookDispatchMaxRetries
+
+	await handleWebhookDispatchQueue(createBatch([exhausted]), {} as Env)
+
+	expect(queueOutcome(exhausted)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: 'failed',
+			httpStatus: 502,
+			error: 'invocation_retry_exhausted',
+			invocationId: 'delivery-1',
+			invocationErrorCode: 'invocation_in_progress',
+			requirePersistence: true,
+			logs: expect.arrayContaining([
+				expect.objectContaining({
+					level: 'error',
+					message: expect.stringMatching(/gave up after/i),
+				}),
+				expect.objectContaining({
+					level: 'error',
+					message: 'Invocation error code: invocation_in_progress',
+				}),
+			]),
+		}),
+	)
+})
+
 test('queue retries pre-execution conflict codes and records failed invokes with logs', async () => {
 	mocks.dispatchWebhookInvocation
 		.mockResolvedValueOnce({

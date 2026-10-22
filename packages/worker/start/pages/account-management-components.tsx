@@ -69,8 +69,8 @@ const accountSectionCss: CSSObject = {
 /** `.account-section h2` — display face, quiet weight. */
 const accountSectionTitleCss: CSSObject = {
 	margin: 0,
-	fontSize: '1.35rem',
-	fontWeight: 720,
+	fontSize: '1.25rem',
+	fontWeight: 600,
 	letterSpacing: '-0.014em',
 	color: colors.text,
 	lineHeight: 1.2,
@@ -355,8 +355,8 @@ export function AccountManagementHeader(props: AccountManagementHeaderProps) {
 				>
 					<h1
 						css={{
-							fontSize: 'clamp(2rem, 4vw, 2.7rem)',
-							fontWeight: 760,
+							fontSize: 'clamp(1.75rem, 3vw, 2rem)',
+							fontWeight: 650,
 							letterSpacing: '-0.026em',
 							lineHeight: 1.08,
 							color: colors.text,

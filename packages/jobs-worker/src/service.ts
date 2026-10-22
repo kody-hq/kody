@@ -125,6 +125,16 @@ export class JobsService
 		return jobsStore(this.env).refreshPackageJobIdentity(input)
 	}
 
+	async updateJobCallerContextJson(input: {
+		userId: string
+		jobId: string
+		expectedCallerContextJson: string
+		callerContextJson: string
+		updatedAt: string
+	}): Promise<boolean> {
+		return jobsStore(this.env).updateJobCallerContextJson(input)
+	}
+
 	async deleteJob(input: { userId: string; jobId: string }): Promise<boolean> {
 		return jobsStore(this.env).deleteJob(input)
 	}

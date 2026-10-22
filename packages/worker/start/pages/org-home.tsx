@@ -266,8 +266,8 @@ const navIconCss = {
 const headingCss = {
 	margin: 0,
 	fontFamily: typography.fontFamilyDisplay,
-	fontSize: 'clamp(1.35rem, 2.4vw, 1.7rem)',
-	fontWeight: 720,
+	fontSize: '1.375rem',
+	fontWeight: 600,
 	letterSpacing: '-0.018em',
 	color: colors.text,
 }
@@ -310,8 +310,8 @@ const stepActionsCss = {
 }
 const stepTitleCss = {
 	margin: 0,
-	fontSize: '1.05rem',
-	fontWeight: 650,
+	fontSize: '0.9375rem',
+	fontWeight: 600,
 	color: colors.text,
 }
 const stepBodyCss = {

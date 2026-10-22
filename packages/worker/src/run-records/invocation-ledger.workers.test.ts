@@ -16,6 +16,8 @@ import {
 	getPackageInvocationRecord,
 	getRunRecord,
 	releasePackageInvocationRecord,
+	stagePackageInvocationResultRecord,
+	touchPackageInvocationRecord,
 } from './service.ts'
 import {
 	packageInvocationLedgerRetentionDays,
@@ -54,6 +56,9 @@ function claimInput(overrides?: Partial<Record<string, string | null>>) {
 		requestHash: String(overrides?.requestHash ?? 'hash-1'),
 		source: overrides?.source === undefined ? 'webhook' : overrides.source,
 		topic: overrides?.topic === undefined ? null : overrides.topic,
+		...(overrides && 'claimOwner' in overrides
+			? { claimOwner: overrides.claimOwner }
+			: {}),
 	}
 }
 
@@ -81,12 +86,14 @@ function claimRaw(
 	invocation?: ClaimOverrides,
 	context: RunRecordContext | null = exportContext({ idempotencyKey }),
 ) {
+	const nowMs = Date.now()
 	return claimPackageInvocationRecord({
 		env,
 		userId: ownerIdFromStored(userId),
 		context,
 		invocation: claimInput({ idempotencyKey, ...invocation }),
 		staleBefore: freshStaleBefore(),
+		sameOwnerStaleBefore: new Date(nowMs - 60_000).toISOString(),
 	})
 }
 
@@ -268,6 +275,165 @@ test('late failed subscription finish reopens a system-ignored platform interrup
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+	})
+})
+
+test('same claimOwner reclaims after the same-owner grace; a different owner does not', async () => {
+	const userId = uniqueUserId('same-owner-reclaim')
+	const deliveryOwner = 'delivery-ack-1'
+	const seeded = await claim(userId, 'evt-owner', { claimOwner: deliveryOwner })
+	expect(await getLedger(userId, 'evt-owner')).toMatchObject({
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+	})
+
+	// Owner equality alone must not steal a brand-new claim (protects a
+	// failed terminal persist from immediate re-execution on the next retry).
+	const tooFresh = await claimRaw(userId, 'evt-owner', {
+		claimOwner: deliveryOwner,
+	})
+	expect(tooFresh.outcome).toBe('existing')
+
+	// A distinct delivery with the same idempotency key must still see
+	// invocation_in_progress (dedupe), not steal the claim.
+	const otherDelivery = await claimRaw(userId, 'evt-owner', {
+		claimOwner: 'delivery-ack-2',
+	})
+	expect(otherDelivery.outcome).toBe('existing')
+	if (otherDelivery.outcome !== 'existing') throw new Error('unreachable')
+	expect(otherDelivery.record).toMatchObject({
+		id: seeded.invocationId,
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+	})
+
+	// Past the same-owner grace (60s) but still inside the 15-minute global
+	// stale window: the ack queue retry of this delivery can take over.
+	const graceUpdatedAt = new Date(Date.now() - 61_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		graceUpdatedAt,
+		seeded.invocationId,
+	)
+	const retried = await claim(userId, 'evt-owner', {
+		claimOwner: deliveryOwner,
+	})
+	expect(retried).toMatchObject({
+		invocationId: seeded.invocationId,
+		reclaimed: true,
+	})
+	expect(retried.claimUpdatedAt > graceUpdatedAt).toBe(true)
+	expect(await getLedger(userId, 'evt-owner')).toMatchObject({
+		status: 'in_progress',
+		claimOwner: deliveryOwner,
+		updatedAt: retried.claimUpdatedAt,
+	})
+
+	const finished = await finish(
+		userId,
+		retried,
+		failedOutcome('retry after hung first attempt'),
+	)
+	expect(finished.ledgerUpdated).toBe(true)
+	expect((await getLedger(userId, 'evt-owner'))?.status).toBe('failed')
+})
+
+test('touchPackageInvocation refreshes updated_at so same-owner grace restarts', async () => {
+	const userId = uniqueUserId('touch-claim')
+	const deliveryOwner = 'delivery-touch-1'
+	const seeded = await claim(userId, 'evt-touch', {
+		claimOwner: deliveryOwner,
+	})
+	const agedUpdatedAt = new Date(Date.now() - 5 * 60_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		agedUpdatedAt,
+		seeded.invocationId,
+	)
+
+	const touched = await touchPackageInvocationRecord({
+		env,
+		userId,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: agedUpdatedAt,
+	})
+	expect(touched.touched).toBe(true)
+	expect(touched.claimUpdatedAt).toBeTruthy()
+	expect(touched.claimUpdatedAt! > agedUpdatedAt).toBe(true)
+
+	// Still inside the refreshed grace: same owner cannot reclaim yet.
+	const tooFresh = await claimRaw(userId, 'evt-touch', {
+		claimOwner: deliveryOwner,
+	})
+	expect(tooFresh.outcome).toBe('existing')
+
+	const staleFence = await touchPackageInvocationRecord({
+		env,
+		userId,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: agedUpdatedAt,
+	})
+	expect(staleFence.touched).toBe(false)
+})
+
+test('staged response fences reclaim; finish promotes without a new claim', async () => {
+	const userId = uniqueUserId('stage-fence')
+	const deliveryOwner = 'delivery-stage-1'
+	const seeded = await claim(userId, 'evt-stage', {
+		claimOwner: deliveryOwner,
+	})
+	const responseJson = JSON.stringify({
+		status: 200,
+		body: { ok: true, result: { staged: true } },
+	})
+	const staged = await stagePackageInvocationResultRecord({
+		env,
+		userId,
+		handle: seeded.handle,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: seeded.claimUpdatedAt,
+		responseJson,
+		status: 'success',
+		logs: ['staged'],
+		result: { staged: true },
+	})
+	expect(staged.staged).toBe(true)
+	expect(await getLedger(userId, 'evt-stage')).toMatchObject({
+		status: 'in_progress',
+		responseJson,
+	})
+
+	// Past same-owner grace and the global stale window: still not reclaimable.
+	const aged = new Date(Date.now() - 16 * 60_000).toISOString()
+	await sqlExec(
+		userId,
+		`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
+		aged,
+		seeded.invocationId,
+	)
+	const blocked = await claimRaw(userId, 'evt-stage', {
+		claimOwner: deliveryOwner,
+	})
+	expect(blocked.outcome).toBe('existing')
+	if (blocked.outcome !== 'existing') throw new Error('unreachable')
+	expect(blocked.record.responseJson).toBe(responseJson)
+
+	const promoted = await finishPackageInvocationRecord({
+		env,
+		userId,
+		handle: null,
+		invocationId: seeded.invocationId,
+		claimUpdatedAt: aged,
+		ledgerStatus: 'completed',
+		responseJson,
+		status: 'success',
+	})
+	expect(promoted.ledgerUpdated).toBe(true)
+	expect(await getLedger(userId, 'evt-stage')).toMatchObject({
+		status: 'completed',
+		responseJson,
 	})
 })
 

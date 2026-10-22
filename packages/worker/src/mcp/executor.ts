@@ -8,6 +8,10 @@ import {
 	getErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
+import {
+	isWorkersHungRequestCanceledError,
+	workersHungExecutionMessage,
+} from '@kody-internal/shared/workers-hung-request.ts'
 import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { exports as workerExports } from 'cloudflare:workers'
 import { loadNormalizeCode } from '#worker/codemode-normalize-load.ts'
@@ -20,6 +24,7 @@ import {
 	retrieverOutboundFetchDeniedMessage,
 	type FetchGatewayProps,
 } from '#mcp/fetch-gateway.ts'
+import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
 	type RawFetchHostSink,
@@ -129,6 +134,13 @@ export const defaultExecutionResponseLimitBytes = 102_400
 const maxSupportedExecutorTimeoutMs = 2_147_483_647
 const dynamicWorkerMainModule = 'executor.js'
 const hostEvaluationDrainGraceMs = 100
+/**
+ * Cloudflare hang-detects requests that only wait on timers once a dynamic
+ * worker's event loop is empty (~15–25s observed). `scheduler.wait` is real
+ * I/O on Workers and keeps the host deadline alive until evaluate settles or
+ * the sandbox budget fires. Interval stays well under that hung window.
+ */
+const hostEvaluationKeepAliveIntervalMs = 5_000
 const reservedProviderNames = new Set([
 	'__dispatchers',
 	'__invocation',
@@ -348,6 +360,55 @@ function throwIfEvaluationDeadlineAborted(signal?: AbortSignal) {
 	throw new Error(executorSandboxTimeoutMessage)
 }
 
+async function waitHostEvaluationKeepAliveMs(ms: number) {
+	if (
+		typeof scheduler !== 'undefined' &&
+		typeof scheduler.wait === 'function'
+	) {
+		await scheduler.wait(ms)
+		return
+	}
+	await new Promise<void>((resolve) => {
+		setTimeout(resolve, ms)
+	})
+}
+
+/**
+ * Abortable delay so a settled evaluate/timeout can stop the keepalive loop
+ * without waiting out the full interval (important for short test budgets).
+ */
+async function waitHostEvaluationKeepAliveInterval(
+	ms: number,
+	signal: AbortSignal,
+) {
+	if (signal.aborted) {
+		throw new DOMException('The operation was aborted.', 'AbortError')
+	}
+	await Promise.race([
+		waitHostEvaluationKeepAliveMs(ms),
+		new Promise<never>((_resolve, reject) => {
+			const onAbort = () => {
+				reject(new DOMException('The operation was aborted.', 'AbortError'))
+			}
+			signal.addEventListener('abort', onAbort, { once: true })
+			if (signal.aborted) onAbort()
+		}),
+	])
+}
+
+async function keepHostEvaluationRequestAlive(signal: AbortSignal) {
+	while (!signal.aborted) {
+		try {
+			await waitHostEvaluationKeepAliveInterval(
+				hostEvaluationKeepAliveIntervalMs,
+				signal,
+			)
+		} catch {
+			return
+		}
+	}
+}
+
 /**
  * Host-side deadline around Worker Loader `evaluate` (and its permit wait).
  * The sandbox also races an internal timer, but that only helps once the
@@ -357,6 +418,12 @@ function throwIfEvaluationDeadlineAborted(signal?: AbortSignal) {
  *
  * The AbortSignal is shared with the permit queue so a timed-out waiter is
  * removed and cannot start `evaluate` after `execute` has already returned.
+ *
+ * A parallel `scheduler.wait` keepalive keeps the host IoContext alive when
+ * the dynamic worker awaits a never-settling Promise with an empty event
+ * loop. Without it, Cloudflare hang-detects the host (~20s) before this
+ * deadline can fire, cancels JobManager's HOST RPC, and leaves the scheduled
+ * run stranded as `running` (KODY-AB).
  */
 export async function raceWithHostEvaluationDeadline<T>(
 	evaluate: (signal: AbortSignal) => Promise<T>,
@@ -370,6 +437,7 @@ export async function raceWithHostEvaluationDeadline<T>(
 		return await evaluate(new AbortController().signal)
 	}
 	const controller = new AbortController()
+	const keepaliveController = new AbortController()
 	let timeoutId: ReturnType<typeof setTimeout> | undefined
 	let rejectDeadline: ((error: Error) => void) | undefined
 	const abortWith = (error: Error) => {
@@ -412,6 +480,9 @@ export async function raceWithHostEvaluationDeadline<T>(
 	const evaluationPromise = Promise.resolve().then(
 		async () => await evaluate(controller.signal),
 	)
+	const keepalivePromise = keepHostEvaluationRequestAlive(
+		keepaliveController.signal,
+	)
 	try {
 		return await Promise.race([evaluationPromise, timeoutPromise])
 	} catch (error) {
@@ -426,6 +497,8 @@ export async function raceWithHostEvaluationDeadline<T>(
 		}
 		throw error
 	} finally {
+		keepaliveController.abort()
+		await settleWithin(keepalivePromise, hostEvaluationDrainGraceMs)
 		if (timeoutId !== undefined) {
 			clearTimeout(timeoutId)
 		}
@@ -844,6 +917,22 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 							sideEffects,
 						)
 					}
+					if (isWorkersHungRequestCanceledError(error)) {
+						// Dynamic-worker empty-event-loop hangs surface as this
+						// platform cancel. Prefer an owner-readable outcome over
+						// rethrowing (which aborts JobManager before claim settle)
+						// or returning Cloudflare's cancel string. Scheduled jobs
+						// remap to scheduledJobHungExecutionMessage in the jobs layer.
+						outcome = 'error'
+						return attachHostSideEffects(
+							{
+								result: undefined,
+								error: workersHungExecutionMessage,
+								logs: [],
+							},
+							sideEffects,
+						)
+					}
 					if (error instanceof Error && error.name === 'AbortError') {
 						outcome = 'error'
 						return attachHostSideEffects(
@@ -1038,10 +1127,15 @@ function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
 		`          __kodyFetchHeaders.set(${JSON.stringify(secretAuthorityHeaderName)}, __kodySecretAuthority);`,
 		'        }',
 		'        if (!__kodyRunFetcher) throw new Error("Outbound fetch is unavailable for this run.");',
-		'        return __kodyRunFetcher.fetch(input, {',
+		'        const __kodyResponse = await __kodyRunFetcher.fetch(input, {',
 		'          ...init,',
 		'          headers: __kodyFetchHeaders,',
 		'        });',
+		`        const __kodyPathSegmentWarning = __kodyResponse.headers.get(${JSON.stringify(pathSegmentEncodingWarningHeaderName)});`,
+		'        if (__kodyPathSegmentWarning) {',
+		'          console.warn(__kodyPathSegmentWarning);',
+		'        }',
+		'        return __kodyResponse;',
 		'      })();',
 		'    };',
 	]
@@ -1327,10 +1421,16 @@ export type ExecutionErrorDetails =
 			packageName: string | null
 			packageId: string | null
 			editorUrl: string | null
-			suggestedAction: {
-				type: 'edit_secret_policy'
-				policyField: 'scope'
-			}
+			missingPackageContext: boolean
+			suggestedAction:
+				| {
+						type: 'edit_secret_policy'
+						policyField: 'scope'
+				  }
+				| {
+						type: 'republish_package'
+				  }
+				| null
 	  }
 	| {
 			kind: 'secret_required'
@@ -1653,18 +1753,36 @@ export function getExecutionErrorDetails(
 	const scopeUnavailableDetails = parseSecretScopeUnavailableMessage(message)
 	if (scopeUnavailableDetails) {
 		const editorUrl = extractFirstUrl(message)
+		if (scopeUnavailableDetails.missingPackageContext) {
+			return {
+				kind: 'secret_scope_unavailable',
+				message,
+				nextStep:
+					"This runtime belongs to the secret's package but is missing package context. Republish the package so the job/app/webhook gets a fresh package context, then retry. Do not widen the secret scope.",
+				secretNames: [scopeUnavailableDetails.secretName],
+				scope: scopeUnavailableDetails.scope,
+				packageName: scopeUnavailableDetails.packageName,
+				packageId: scopeUnavailableDetails.packageId,
+				editorUrl,
+				missingPackageContext: true,
+				suggestedAction: {
+					type: 'republish_package',
+				},
+			}
+		}
 		return {
 			kind: 'secret_scope_unavailable',
 			message,
 			nextStep:
 				scopeUnavailableDetails.scope === 'package'
-					? 'This secret exists on a package this runtime cannot see. Either invoke the work through that package, or send the user the editor link so they can change the secret scope, then retry.'
-					: 'This secret exists in another scope this runtime cannot see. Send the user the editor link so they can change the secret scope, or retry from a runtime that can see it.',
+					? 'This secret exists on a package this runtime cannot see. Prefer invoking the work through an export of the owning package. Changing the secret scope is an explicit, owner-reviewed choice only — ask the account owner before doing that.'
+					: 'This secret exists in another scope this runtime cannot see. Prefer retrying from a runtime that can see it. Changing the secret scope is an explicit, owner-reviewed choice only — ask the account owner before doing that.',
 			secretNames: [scopeUnavailableDetails.secretName],
 			scope: scopeUnavailableDetails.scope,
 			packageName: scopeUnavailableDetails.packageName,
 			packageId: scopeUnavailableDetails.packageId,
 			editorUrl,
+			missingPackageContext: false,
 			suggestedAction: {
 				type: 'edit_secret_policy',
 				policyField: 'scope',

@@ -1009,6 +1009,50 @@ test('an app past the monthly include with no credits gets a 429 pause page, not
 	})
 })
 
+test('missing published runtime bundle returns 503 without reporting a host-setup failure', async () => {
+	consoleError.mockImplementation(() => {})
+	seedFixture({ kodyId: 'runtime-bundle-pending-app' })
+	const pending = new Error(
+		'Saved package app "runtime-bundle-pending-app" declares npm dependencies ("kleur") but no published runtime bundle artifact is available yet. Republish the package so Kody can install dependencies and persist a fresh runtime bundle artifact.',
+	)
+	mockModule.buildPackageAppWorker.mockRejectedValueOnce(pending)
+
+	const html = await serveHelloWorld({ kodyId: 'runtime-bundle-pending-app' })
+	expect(html.status).toBe(503)
+	const page = await html.text()
+	expect(page).toContain('Package app is still preparing')
+	expect(page).toContain('Try again shortly')
+	expect(page).toContain('data-error-agent-prompt')
+	// Expected transient: structured 503 log only (no platform "handler failed"
+	// console.error). Stuck rebuilds stay visible via these logs + publish
+	// rebuild failures; invoke already returns the same class as 503.
+	expect(consoleError).toHaveBeenCalledWith(
+		'package-app-http-error',
+		expect.objectContaining({
+			status: 503,
+			phase: 'runtime-bundle-pending',
+			pathname: '/@kentcdodds/packages/runtime-bundle-pending-app',
+		}),
+	)
+	expect(consoleError).not.toHaveBeenCalledWith(
+		'Package app handler failed:',
+		expect.anything(),
+	)
+
+	mockModule.buildPackageAppWorker.mockRejectedValueOnce(pending)
+	const json = await serveHelloWorld({
+		kodyId: 'runtime-bundle-pending-app',
+		dispatch: { synthetic: true },
+	})
+	expect(json.status).toBe(503)
+	await expect(json.json()).resolves.toMatchObject({
+		error: 'Package app is still preparing',
+		message: expect.stringContaining('not ready yet'),
+		next_step: expect.stringContaining('Try again shortly'),
+		cause: pending.message,
+	})
+})
+
 test('custom hostnames mount the bound app at the host root', () => {
 	expect(
 		parsePackageAppCustomHostnamePath({

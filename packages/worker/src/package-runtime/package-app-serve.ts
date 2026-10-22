@@ -46,6 +46,7 @@ import {
 	parsePackageAppAssetRequestPath,
 	servePackageAppAssetRequest,
 } from '#worker/package-runtime/package-app-assets.ts'
+import { isPublishedRuntimeBundleMissingError } from '#worker/package-runtime/published-source-dependencies.ts'
 import {
 	buildPackageAppNotFoundMessage,
 	isPackageAppSyntheticRequest,
@@ -344,11 +345,67 @@ function reportPackageAppFailure(input: {
 	}
 }
 
+/**
+ * Expected host-setup outcomes that must not open platform Sentry issues.
+ * Matches invoke's `isTransientModuleArtifactError` treatment of a missing
+ * published npm runtime bundle (503, retryable). Stuck rebuilds stay visible
+ * via publish rebuild failures and repeated 503 `package-app-http-error` logs.
+ */
+function resolveExpectedPackageAppHostSetupFailure(input: {
+	request: Request
+	error: unknown
+	kodyId: string
+	packageName: string
+	synthetic?: boolean
+}): Response | null {
+	if (isComputeOverageLimitError(input.error)) {
+		return createPackageAppErrorResponse({
+			request: input.request,
+			kind: 'include-used-up',
+			kodyId: input.kodyId,
+			packageName: input.packageName,
+			synthetic: input.synthetic,
+			cause: input.error.message,
+		})
+	}
+	if (isPublishedRuntimeBundleMissingError(input.error)) {
+		return createPackageAppErrorResponse({
+			request: input.request,
+			kind: 'runtime-bundle-pending',
+			kodyId: input.kodyId,
+			packageName: input.packageName,
+			synthetic: input.synthetic,
+			cause: getErrorMessage(input.error),
+			runtimeRunId: runtimeRunIdFromError(input.error),
+		})
+	}
+	return null
+}
+
 type PackageAppFailureKind =
 	| 'host-setup'
 	| 'package-entrypoint'
 	| 'realtime-connect'
 	| 'include-used-up'
+	| 'runtime-bundle-pending'
+
+function packageAppFailureStatus(kind: PackageAppFailureKind) {
+	switch (kind) {
+		case 'include-used-up':
+			return 429
+		case 'runtime-bundle-pending':
+			return 503
+		case 'host-setup':
+		case 'package-entrypoint':
+		case 'realtime-connect':
+			return 500
+		default: {
+			const exhaustive: never = kind
+			void exhaustive
+			return 500
+		}
+	}
+}
 
 function createPackageAppErrorResponse(input: {
 	request: Request
@@ -387,12 +444,19 @@ function createPackageAppErrorResponse(input: {
 				'This month’s included Pro usage is used up and there are no credits left, so the app is paused.',
 			nextStep: `Add credits at ${accountCreditsPath} to keep going, or wait for the include to reset next UTC month.`,
 		},
+		'runtime-bundle-pending': {
+			title: 'Package app is still preparing',
+			summary:
+				'The published runtime for this package app is not ready yet. This is common right after a publish while Kody installs npm dependencies and builds the runtime bundle.',
+			nextStep:
+				'Try again shortly. If this keeps happening long after publishing, ask the package owner to republish the package.',
+		},
 	} satisfies Record<
 		PackageAppFailureKind,
 		{ title: string; summary: string; nextStep: string }
 	>
 	const message = messages[input.kind]
-	const status = input.kind === 'include-used-up' ? 429 : 500
+	const status = packageAppFailureStatus(input.kind)
 	logPackageAppHttpError({
 		request: input.request,
 		status,
@@ -808,6 +872,16 @@ export async function servePackageAppRequest(input: {
 				serverTiming,
 			)
 		} catch (error) {
+			const expected = resolveExpectedPackageAppHostSetupFailure({
+				request,
+				error,
+				kodyId: savedPackage.kodyId,
+				packageName: savedPackage.name,
+				synthetic: dispatch?.synthetic === true,
+			})
+			if (expected) {
+				return attachPackageAppServerTiming(expected, serverTiming)
+			}
 			console.error('Package app asset handler failed:', error)
 			reportPackageAppFailure({
 				error,
@@ -892,18 +966,15 @@ export async function servePackageAppRequest(input: {
 			dispatch,
 		)
 	} catch (error) {
-		if (isComputeOverageLimitError(error)) {
-			return attachPackageAppServerTiming(
-				createPackageAppErrorResponse({
-					request,
-					kind: 'include-used-up',
-					kodyId: savedPackage.kodyId,
-					packageName: savedPackage.name,
-					synthetic: dispatch?.synthetic === true,
-					cause: error.message,
-				}),
-				serverTiming,
-			)
+		const expected = resolveExpectedPackageAppHostSetupFailure({
+			request,
+			error,
+			kodyId: savedPackage.kodyId,
+			packageName: savedPackage.name,
+			synthetic: dispatch?.synthetic === true,
+		})
+		if (expected) {
+			return attachPackageAppServerTiming(expected, serverTiming)
 		}
 		console.error('Package app handler failed:', error)
 		reportPackageAppFailure({

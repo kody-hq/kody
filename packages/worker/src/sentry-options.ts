@@ -234,9 +234,10 @@ export function filterIntegrationTokenRefreshCallerSentryEvent(
  * isolate / storage handle; app-level retry of non-idempotent work is still
  * unsafe, and moving heavy Agent/MCP startup out of `onStart` is an
  * architectural change outside a triage fix. Match only the bare platform
- * strings (plus the storage form that requires a support `reference =`
- * token) so wrapped failures such as exhausted
- * `packagePublishExternalPush` recovery messages stay visible.
+ * strings (optional `Error:` / `D1_ERROR:` prefixes — KODY-A9 — plus the
+ * storage form that requires a support `reference =` token) so wrapped
+ * failures such as exhausted `packagePublishExternalPush` recovery messages
+ * stay visible.
  */
 export const durableObjectIsolateMemoryResetMessage =
 	"Durable Object's isolate exceeded its memory limit and was reset."
@@ -298,8 +299,18 @@ export const durableObjectInstanceInactiveCloseMessage =
 const durableObjectStorageObjectResetPattern =
 	/^internal error (?:in|while starting up) Durable Object storage caused object to be reset;\s*reference\s*=\s*[A-Za-z0-9_-]+$/i
 
+/**
+ * Strip the same optional platform prefixes D1 bindings attach (`Error:` then
+ * `D1_ERROR:`) before matching exact DO isolate-reset sentences. D1 is
+ * DO-backed, so deploy/code-updated resets can arrive as
+ * `D1_ERROR: Durable Object reset because its code was updated.` (KODY-A9).
+ * Same order as `stripD1ErrorPrefixes` in `d1-retry.ts`.
+ */
 function normalizeDurableObjectIsolateResetMessage(message: string) {
-	const withoutErrorPrefix = message.trim().replace(/^Error:\s*/i, '')
+	const withoutErrorPrefix = message
+		.trim()
+		.replace(/^Error:\s*/i, '')
+		.replace(/^D1_ERROR:\s*/i, '')
 	return withoutErrorPrefix.endsWith('.')
 		? withoutErrorPrefix
 		: `${withoutErrorPrefix}.`

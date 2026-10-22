@@ -671,6 +671,36 @@ export async function refreshPackageJobRowIdentity(input: {
 	return (result.meta.changes ?? 0) > 0
 }
 
+/**
+ * Replace only `caller_context_json` (and `updated_at`) when the row still
+ * holds `expectedCallerContextJson`. Does not touch schedule, claims, or
+ * retry fields — for repair backfills that must not race a live tick.
+ */
+export async function updateJobRowCallerContextJson(input: {
+	db: D1Database
+	userId: string
+	jobId: string
+	expectedCallerContextJson: string
+	callerContextJson: string
+	updatedAt: string
+}) {
+	const result = await input.db
+		.prepare(
+			`UPDATE jobs SET caller_context_json = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND caller_context_json = ?
+				AND deleted_at IS NULL`,
+		)
+		.bind(
+			input.callerContextJson,
+			input.updatedAt,
+			input.jobId,
+			input.userId,
+			input.expectedCallerContextJson,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function softDeleteJobRowsForUser(input: {
 	db: D1Database
 	userId: string

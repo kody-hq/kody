@@ -1,9 +1,13 @@
 import { expect, test } from 'vitest'
 import {
 	buildRepoApplyPatchParseCallerMessage,
+	buildRepoSessionDirectoryTargetMessage,
+	externalPathFromRawWorkspaceEisdirMessage,
 	isGitPushNotFastForwardError,
 	isGitPushNotFastForwardMessage,
+	isRawWorkspaceEisdirMessage,
 	isRepoSessionApplyPatchCallerMessage,
+	isRepoSessionDirectoryTargetCallerMessage,
 	isRepoSessionInactiveMessage,
 	isRepoSessionNotFoundMessage,
 	isRepoSessionStructuralEditCallerMessage,
@@ -104,6 +108,60 @@ test('isRepoSessionStructuralEditCallerMessage matches delete and move validatio
 			isRepoSessionStructuralEditCallerMessage(message),
 		),
 	).toEqual([])
+})
+
+test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets only', () => {
+	const callerMessages = [
+		buildRepoSessionDirectoryTargetMessage('write', 'src'),
+		buildRepoSessionDirectoryTargetMessage('replace', 'lib'),
+		buildRepoSessionDirectoryTargetMessage('writeJson', 'config'),
+		buildRepoSessionDirectoryTargetMessage('applyPatch', 'src'),
+		buildRepoSessionDirectoryTargetMessage('move', 'src'),
+		buildRepoSessionDirectoryTargetMessage('delete', 'src'),
+	]
+	expect(
+		callerMessages.filter(
+			(message) => !isRepoSessionDirectoryTargetCallerMessage(message),
+		),
+	).toEqual([])
+	expect(callerMessages[0]).toBe(
+		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	)
+
+	const platformMessages = [
+		'EISDIR: /session/src is a directory',
+		'repo session delete edit target "src/index.js" was not found.',
+		'repo session move edit source "src" was not found.',
+		'repo session write edits require content.',
+		'Source "abc" was not found.',
+		'git apply patch did not apply cleanly to src/index.ts.',
+		'repo session write edit target "" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	]
+	expect(
+		platformMessages.filter((message) =>
+			isRepoSessionDirectoryTargetCallerMessage(message),
+		),
+	).toEqual([])
+
+	expect(
+		isRawWorkspaceEisdirMessage('EISDIR: /session/src is a directory'),
+	).toBe(true)
+	expect(
+		isRawWorkspaceEisdirMessage('EISDIR: cannot write to root directory'),
+	).toBe(true)
+	expect(isRawWorkspaceEisdirMessage('ENOENT: no such file')).toBe(false)
+	expect(
+		externalPathFromRawWorkspaceEisdirMessage(
+			'EISDIR: /session/src is a directory',
+			'/session',
+		),
+	).toBe('src')
+	expect(
+		externalPathFromRawWorkspaceEisdirMessage(
+			'EISDIR: cannot write to root directory',
+			'/session',
+		),
+	).toBe(null)
 })
 
 test('isRepoSessionApplyPatchCallerMessage matches apply-patch caller phrases only', () => {

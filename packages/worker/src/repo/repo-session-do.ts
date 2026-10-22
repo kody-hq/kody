@@ -137,9 +137,13 @@ import {
 } from './repo-session-blobs.ts'
 import {
 	buildRepoApplyPatchParseCallerMessage,
+	buildRepoSessionDirectoryTargetMessage,
 	buildRepoSessionNotFoundForUserMessage,
 	buildRepoSessionNotFoundMessage,
+	externalPathFromRawWorkspaceEisdirMessage,
 	isGitPushNotFastForwardError,
+	isRawWorkspaceEisdirMessage,
+	type RepoSessionDirectoryTargetKind,
 } from './repo-session-caller-error.ts'
 import {
 	assertPackagePrivateVisibilityChangeAllowed,
@@ -1177,6 +1181,46 @@ class RepoSessionBase extends DurableObject<Env> {
 		this.initializedSessionId = input.sessionId
 	}
 
+	/**
+	 * Reject write-like targets that are existing directories before the shell
+	 * throws raw `EISDIR`. Agents often pass a folder from `repoTree`
+	 * (`src` instead of `src/index.ts`). KODY-A6.
+	 */
+	private async assertWorkspaceEditTargetIsFile(input: {
+		path: string
+		kind: RepoSessionDirectoryTargetKind
+	}) {
+		const workspacePath = resolveRepoWorkspacePath(
+			input.path,
+			repoSessionWorkspacePrefix,
+		)
+		const stat = await this.workspace.stat(workspacePath)
+		if (stat?.type === 'directory') {
+			throw new Error(
+				buildRepoSessionDirectoryTargetMessage(input.kind, input.path),
+			)
+		}
+	}
+
+	private remapWorkspaceEisdirError(
+		error: unknown,
+		kind: RepoSessionDirectoryTargetKind,
+		fallbackPath?: string,
+	): never {
+		const message = error instanceof Error ? error.message : String(error)
+		if (!isRawWorkspaceEisdirMessage(message)) {
+			throw error
+		}
+		const extracted = externalPathFromRawWorkspaceEisdirMessage(
+			message,
+			repoSessionWorkspacePrefix,
+		)
+		const path = extracted ?? fallbackPath ?? 'file'
+		throw new Error(buildRepoSessionDirectoryTargetMessage(kind, path), {
+			cause: error,
+		})
+	}
+
 	private async applyWorkspaceEdits(input: {
 		edits: Array<RepoSessionEdit>
 		dryRun?: boolean
@@ -1257,6 +1301,7 @@ class RepoSessionBase extends DurableObject<Env> {
 						`repo session delete edit target "${path}" was not found.`,
 					)
 				}
+				await this.assertWorkspaceEditTargetIsFile({ path, kind: 'delete' })
 				const currentContent =
 					(await this.workspace.readFile(workspacePath)) ?? ''
 				plannedStructural.push({
@@ -1315,6 +1360,10 @@ class RepoSessionBase extends DurableObject<Env> {
 					`repo session move edit source "${fromPath}" was not found.`,
 				)
 			}
+			await this.assertWorkspaceEditTargetIsFile({
+				path: fromPath,
+				kind: 'move',
+			})
 			const targetExists = await this.workspace.exists(targetWorkspacePath)
 			if (targetExists) {
 				throw new Error(
@@ -1355,6 +1404,15 @@ class RepoSessionBase extends DurableObject<Env> {
 			edits: [],
 		}
 		if (contentEdits.length > 0) {
+			// Reject directory targets before the shell throws raw EISDIR.
+			for (const edit of contentEdits) {
+				const path = edit.path.trim()
+				if (!path) continue
+				await this.assertWorkspaceEditTargetIsFile({
+					path,
+					kind: edit.kind,
+				})
+			}
 			// @cloudflare/shell planEdits reads every instruction against the
 			// file at batch start, so same-path writes overwrite one another.
 			// Plan through a staged overlay so sequential edits observe prior
@@ -1486,6 +1544,22 @@ class RepoSessionBase extends DurableObject<Env> {
 						? measureRepoSourceFileLines(oversized.content)
 						: maxRepoSourceFileDiffLines + 1
 					throw new Error(buildRepoDiffTooLargeMessage({ path, lineCount }))
+				}
+				// Same for EISDIR: map to a stable caller-correctable phrase
+				// when preflight missed (race, or wrapped batch error). KODY-A6.
+				if (isRawWorkspaceEisdirMessage(message)) {
+					const fallbackPath = toExternalRepoPath(
+						plan.edits.find((edit) => edit.changed)?.path ??
+							plan.edits[0]?.path ??
+							'file',
+						repoSessionWorkspacePrefix,
+					)
+					const instructionKind = plan.edits[0]?.instruction.kind
+					const kind: RepoSessionDirectoryTargetKind =
+						instructionKind === 'replace' || instructionKind === 'writeJson'
+							? instructionKind
+							: 'write'
+					this.remapWorkspaceEisdirError(error, kind, fallbackPath)
 				}
 				throw error
 			}
@@ -2210,10 +2284,18 @@ class RepoSessionBase extends DurableObject<Env> {
 				buildRepoLargeFileMessage({ path: input.path, byteLength }),
 			)
 		}
-		await this.workspace.writeFile(
-			resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
-			input.content,
-		)
+		await this.assertWorkspaceEditTargetIsFile({
+			path: input.path,
+			kind: 'write',
+		})
+		try {
+			await this.workspace.writeFile(
+				resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
+				input.content,
+			)
+		} catch (error) {
+			this.remapWorkspaceEisdirError(error, 'write', input.path)
+		}
 		await updateRepoSession(this.env, {
 			id: input.sessionId,
 			userId: sessionRow.user_id,
@@ -2325,11 +2407,26 @@ class RepoSessionBase extends DurableObject<Env> {
 				sourcePath,
 				repoSessionWorkspacePrefix,
 			)
+			await this.assertWorkspaceEditTargetIsFile({
+				path: targetPath,
+				kind: 'applyPatch',
+			})
+			if (sourcePath !== targetPath) {
+				await this.assertWorkspaceEditTargetIsFile({
+					path: sourcePath,
+					kind: 'applyPatch',
+				})
+			}
 			const stagedContent = stagedContents.get(sourceWorkspacePath)
-			const currentContent =
-				stagedContent !== undefined
-					? (stagedContent ?? '')
-					: ((await this.workspace.readFile(sourceWorkspacePath)) ?? '')
+			let currentContent: string
+			try {
+				currentContent =
+					stagedContent !== undefined
+						? (stagedContent ?? '')
+						: ((await this.workspace.readFile(sourceWorkspacePath)) ?? '')
+			} catch (error) {
+				this.remapWorkspaceEisdirError(error, 'applyPatch', sourcePath)
+			}
 			const nextContent = applyPatch(currentContent, patch)
 			if (nextContent === false) {
 				throw new Error(
@@ -2374,7 +2471,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				if (op.isDelete) {
 					await this.workspace.rm(op.workspacePath, { force: true })
 				} else {
-					await this.workspace.writeFile(op.workspacePath, op.nextContent)
+					try {
+						await this.workspace.writeFile(op.workspacePath, op.nextContent)
+					} catch (error) {
+						this.remapWorkspaceEisdirError(
+							error,
+							'applyPatch',
+							toExternalRepoPath(op.workspacePath, repoSessionWorkspacePrefix),
+						)
+					}
 					if (op.isRename) {
 						await this.workspace.rm(op.sourceWorkspacePath, { force: true })
 					}

@@ -301,7 +301,7 @@ Scheduled behavior should not be its first real execution. When the CLI is
 available, prefer
 [`kody dev job`](#local-cli-testing-when-the-host-can-run-code) while
 unpublished. Without the CLI, publish first — session/tool-only lane:
-`repoRunChecks` then `repoPublishSession`; git lane: push then
+`repoRunChecks` then `repoPublishSession`; git lane: commit, push, then
 `packagePublishExternalPush` (do **not** use `repoRunChecks` on an unpublished
 push; `repoOpenSession` refuses that HEAD) — then call the published `execute`
 import below before enabling the schedule. Package job manifests do not supply
