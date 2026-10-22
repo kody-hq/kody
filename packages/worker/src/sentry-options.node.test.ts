@@ -15,6 +15,7 @@ import {
 import { type EntitySourceRow } from './repo/types.ts'
 import { isUserCodeError, UserCodeError } from './user-code-error.ts'
 import {
+	buildSentryOptions,
 	cloudflareArtifactsOpaqueInternalErrorMessage,
 	cloudflareOpaqueInternalErrorMessage,
 	durableObjectBlockConcurrencyWhileTimeoutResetMessage,
@@ -29,11 +30,13 @@ import {
 	executorSandboxTimeoutMessageExplanation,
 	executorSandboxTimeoutMessagePrefix,
 	filterSentryEvent,
+	getWorkerSentryOptions,
 	isCloudflareOpaqueInternalErrorMessage,
 	isDurableObjectIsolateResourceLimitResetMessage,
 	isMcpAgentSessionDestroyedAbortMessage,
 	mcpAgentSessionDestroyedAbortMessage,
 	redactKodyCredentialsInSentryEvent,
+	resolveWorkerSentryDsn,
 } from './sentry-options.ts'
 
 function exceptionEvent(
@@ -581,4 +584,25 @@ test('redactKodyCredentialsInSentryEvent leaves non-credential events unchanged'
 		logentry: { message: 'No credentials here' },
 		exception: { values: [{ value: 'Ordinary error' }] },
 	})
+})
+
+test('test-env config with a DSN present still yields no Sentry options', () => {
+	// Local packages/worker/.env may inject a real DSN into wrangler env=test;
+	// automated runs must never initialize ingest (KODY-AG / KODY-AF).
+	const testEnvDsn = 'https://examplePublicKey@o0.ingest.sentry.io/0'
+	const testEnv = {
+		SENTRY_DSN: testEnvDsn,
+		SENTRY_ENVIRONMENT: 'test',
+	} as Env
+
+	expect(resolveWorkerSentryDsn(testEnv)).toBeUndefined()
+	expect(buildSentryOptions(testEnv).dsn).toBeUndefined()
+	expect(getWorkerSentryOptions(testEnv)).toBeUndefined()
+
+	const productionEnv = {
+		SENTRY_DSN: testEnvDsn,
+		SENTRY_ENVIRONMENT: 'production',
+	} as Env
+	expect(resolveWorkerSentryDsn(productionEnv)).toBe(testEnvDsn)
+	expect(getWorkerSentryOptions(productionEnv)?.dsn).toBe(testEnvDsn)
 })

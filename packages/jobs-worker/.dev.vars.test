@@ -1,0 +1,3 @@
+# Wrangler env=test loads this instead of a sibling .env so a real SENTRY_DSN
+# from local secrets cannot reach the jobs worker during automated tests.
+SENTRY_DSN=

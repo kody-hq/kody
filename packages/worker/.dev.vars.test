@@ -1,0 +1,5 @@
+# Wrangler env=test (workers-unit, mcp-e2e, Playwright e2e) loads this file
+# instead of packages/worker/.env. Keep SENTRY_DSN empty so a developer's real
+# DSN in .env cannot reach the Worker. Interactive `npm run dev` uses
+# env=production and still reads .env / .dev.vars as usual.
+SENTRY_DSN=

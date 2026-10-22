@@ -156,6 +156,10 @@ async function startE2eWebServer() {
 		WRANGLER_PERSIST_TO: '.wrangler/state/e2e',
 		X_LOCAL_EXPLORER: 'false',
 		KODY_E2E_WEB_SERVER: '1',
+		// Node --env-file does not override existing keys: clear any real DSN
+		// inherited from the parent shell before Vite/wrangler start.
+		SENTRY_DSN: '',
+		SENTRY_ENVIRONMENT: 'test',
 	}
 
 	function spawnVite() {

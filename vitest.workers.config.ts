@@ -50,6 +50,12 @@ export default mergeConfig(
 						TEST_AUDIT_MIGRATIONS: await readD1Migrations(
 							resolve(rootDir, 'packages/worker/audit-migrations'),
 						),
+						// Beat packages/worker/.env: wrangler loads that file as
+						// secrets and can override env.test's SENTRY_ENVIRONMENT
+						// (and inject a real SENTRY_DSN). mergeWorkerOptions applies
+						// these bindings last so deliberate test faults never ingest.
+						SENTRY_DSN: '',
+						SENTRY_ENVIRONMENT: 'test',
 					},
 					// The test env's JOBS and HIGHLIGHT service bindings target
 					// sibling workers that local `wrangler dev` runs alongside

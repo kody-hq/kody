@@ -650,8 +650,25 @@ export function filterSentryEvent(event: ErrorEvent, hint?: EventHint) {
 	return redactKodyCredentialsInSentryEvent(event)
 }
 
-export function buildSentryOptions(env: Env): CloudflareOptions {
+/**
+ * Resolve the Worker ingest DSN. Wrangler `env.test` (workers-unit, mcp-e2e,
+ * Playwright e2e) must never ingest, even when a developer's
+ * `packages/worker/.env` carries a real `SENTRY_DSN` — the pool logs "Using
+ * secrets defined in packages/worker/.env" and those keys override wrangler
+ * vars. Committed `.dev.vars.test` keeps the file-based secret empty; this
+ * guard is the backstop when a DSN is still present on a test-env binding.
+ */
+export function resolveWorkerSentryDsn(env: {
+	SENTRY_DSN?: string | undefined
+	SENTRY_ENVIRONMENT?: string | undefined
+}): string | undefined {
+	if (env.SENTRY_ENVIRONMENT?.trim() === 'test') return undefined
 	const dsn = env.SENTRY_DSN?.trim()
+	return dsn || undefined
+}
+
+export function buildSentryOptions(env: Env): CloudflareOptions {
+	const dsn = resolveWorkerSentryDsn(env)
 	const environment = env.SENTRY_ENVIRONMENT?.trim() || 'development'
 	const release = env.APP_COMMIT_SHA?.trim()
 	// Default 1.0 = full trace sampling (low-traffic / personal use). Override with

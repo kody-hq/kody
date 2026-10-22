@@ -164,6 +164,8 @@ test('Stripe simulator config is restricted to the isolated test runner', () => 
 	expect(collectLocalOriginDevVars(values)).toMatchObject({
 		STRIPE_SECRET_KEY: 'sk_test_e2e_fixture',
 		STRIPE_API_BASE_URL: 'http://127.0.0.1:1234',
+		SENTRY_ENVIRONMENT: 'test',
+		SENTRY_DSN: '',
 	})
 	expect(
 		collectLocalOriginDevVars({ ...values, CLOUDFLARE_ENV: 'production' }),
@@ -174,4 +176,22 @@ test('Stripe simulator config is restricted to the isolated test runner', () => 
 			STRIPE_API_BASE_URL: 'https://api.stripe.com',
 		}),
 	).toThrow('loopback')
+})
+
+test('e2e test runner pins empty Sentry DSN and test environment', () => {
+	expect(
+		collectLocalOriginDevVars({
+			KODY_E2E_WEB_SERVER: '1',
+			CLOUDFLARE_ENV: 'test',
+		}),
+	).toMatchObject({
+		SENTRY_DSN: '',
+		SENTRY_ENVIRONMENT: 'test',
+	})
+	expect(
+		collectLocalOriginDevVars({
+			KODY_E2E_WEB_SERVER: '1',
+			CLOUDFLARE_ENV: 'production',
+		}),
+	).not.toHaveProperty('SENTRY_DSN')
 })

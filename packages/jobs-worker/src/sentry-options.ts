@@ -13,8 +13,21 @@ export function filterJobsWorkerSentryEvent(event: ErrorEvent) {
 	return event
 }
 
-export function buildSentryOptions(env: JobsWorkerEnv): CloudflareOptions {
+/**
+ * Same test-env DSN suppression as the origin worker: wrangler `env.test`
+ * must never ingest even when a local `.env` supplies a real DSN.
+ */
+export function resolveJobsWorkerSentryDsn(env: {
+	SENTRY_DSN?: string | undefined
+	SENTRY_ENVIRONMENT?: string | undefined
+}): string | undefined {
+	if (env.SENTRY_ENVIRONMENT?.trim() === 'test') return undefined
 	const dsn = env.SENTRY_DSN?.trim()
+	return dsn || undefined
+}
+
+export function buildSentryOptions(env: JobsWorkerEnv): CloudflareOptions {
+	const dsn = resolveJobsWorkerSentryDsn(env)
 	const environment = env.SENTRY_ENVIRONMENT?.trim() || 'development'
 	const release = env.APP_COMMIT_SHA?.trim()
 	const tracesSampleRate =

@@ -158,12 +158,16 @@ async function startHarnessWithCloudflareMock() {
 		CLOUDFLARE_ACCOUNT_ID: 'cf_account_mock_123',
 		CLOUDFLARE_API_SOURCE_SNAPSHOTS: 'true',
 	}
+	// Empty DSN binding so a developer .env cannot enable ingest during mcp-e2e
+	// (same class as vitest.workers.config.ts miniflare bindings).
+	const sentryTestSecrets = { SENTRY_DSN: '' }
 	const harness = createTestHarness({
 		root: projectRoot,
 		workers: [
 			{
 				configPath: compiled.configPath,
 				vars: cloudflareVars,
+				secrets: sentryTestSecrets,
 				bindingOverrides: {
 					CLOUDFLARE_API_MOCK: 'kody-mock-cloudflare-test',
 				},
@@ -176,6 +180,7 @@ async function startHarnessWithCloudflareMock() {
 			{
 				configPath: 'packages/jobs-worker/wrangler.jsonc',
 				env: 'test',
+				secrets: sentryTestSecrets,
 			},
 			{
 				configPath: 'packages/highlight-worker/wrangler.jsonc',

@@ -51,6 +51,15 @@ export function collectLocalOriginDevVars(
 		vars.STRIPE_API_BASE_URL = stripe.origin
 		vars.STRIPE_SECRET_KEY = env.KODY_E2E_STRIPE_TOKEN
 	}
+	// Playwright e2e uses CLOUDFLARE_ENV=test. Keep SENTRY_ENVIRONMENT pinned so
+	// a developer .env cannot retag deliberate faults as production; the options
+	// builder also drops any DSN when environment is `test`. Empty SENTRY_DSN
+	// here loses to .env secrets when that key is set — `.dev.vars.test` and the
+	// options guard cover that path.
+	if (env.KODY_E2E_WEB_SERVER === '1' && env.CLOUDFLARE_ENV === 'test') {
+		vars.SENTRY_ENVIRONMENT = 'test'
+		vars.SENTRY_DSN = ''
+	}
 	return vars
 }
 

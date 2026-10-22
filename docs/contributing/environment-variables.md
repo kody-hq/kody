@@ -59,7 +59,11 @@ Optional Worker secret and vars (see `packages/worker/src/env-schema.ts` and
   will not send events without a DSN. The DSN (a publishable client key) is also
   exposed to the browser via the `kody:sentry` meta tag to enable client error
   capture and error-only session replay through the same-origin `/sentry-tunnel`
-  route.
+  route. Wrangler `env=test` (workers-unit, mcp-e2e, Playwright e2e) loads
+  `packages/worker/.dev.vars.test` with an empty DSN instead of
+  `packages/worker/.env`, and `buildSentryOptions` / `getWorkerSentryOptions`
+  drop any DSN when `SENTRY_ENVIRONMENT` is `test`, so local test faults never
+  ingest into the real project.
 - `SENTRY_ENVIRONMENT` — also set as a Wrangler `var` per environment in
   `packages/worker/wrangler.jsonc` for deploys.
 - `SENTRY_TRACES_SAMPLE_RATE` — optional `0`–`1`; defaults to **`1.0`** (sample
