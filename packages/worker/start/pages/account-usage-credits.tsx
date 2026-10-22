@@ -542,11 +542,20 @@ export function AccountUsageCreditsSection(
 	function renderPurchaseUnavailable(credits: AccountUsageCreditsWallet) {
 		return (
 			<AccountManagementPanel title="Add credits">
-				<p css={descriptionCss}>Subscribe to Pro to add credits.</p>
+				<p css={descriptionCss}>
+					Buying credits requires a paid Pro subscription. A plan grant covers
+					Pro limits and an eligible wallet, but not self-serve top-ups or
+					auto-refill.
+				</p>
 				{credits.canSwitchToPro ? (
-					<div css={accountActionsCss}>
-						{renderSwitchToProButton('Subscribe to Pro')}
-					</div>
+					<>
+						<p css={descriptionCss}>
+							Start a Pro subscription if you want to buy credits yourself.
+						</p>
+						<div css={accountActionsCss}>
+							{renderSwitchToProButton('Start a Pro subscription')}
+						</div>
+					</>
 				) : null}
 			</AccountManagementPanel>
 		)
@@ -580,7 +589,9 @@ export function AccountUsageCreditsSection(
 					<p css={descriptionCss} data-credits-balance-note>
 						{credits.hasCredits
 							? 'Usage past your monthly include is charged from these credits.'
-							: 'With no credits left, usage past your monthly include stops. Add credits to keep going.'}
+							: credits.canBuyCredits
+								? 'With no credits left, usage past your monthly include stops. Add credits to keep going.'
+								: 'With no credits left, usage past your monthly include stops. Buying credits requires a paid Pro subscription.'}
 					</p>
 				</AccountManagementPanel>
 

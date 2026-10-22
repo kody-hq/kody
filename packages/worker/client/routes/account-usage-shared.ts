@@ -2,7 +2,7 @@ import { type AdminPlanName } from '#universal/loader-data.ts'
 import { type CreditWalletState } from '#universal/plans.ts'
 
 type CreditsAction = {
-	label: 'Add credits' | 'Switch to Pro' | 'Subscribe to Pro'
+	label: 'Add credits' | 'Switch to Pro' | 'Manage credits'
 	href: string
 }
 
@@ -18,7 +18,12 @@ export function creditsActionForWallet(
 			return null
 		case 'empty':
 			return {
-				label: canBuyCredits ? 'Add credits' : 'Subscribe to Pro',
+				/**
+				 * Empty Pro wallets without self-serve top-up (for example an
+				 * admin grant) open the Credits section instead of implying they
+				 * must subscribe for Pro they may already have.
+				 */
+				label: canBuyCredits ? 'Add credits' : 'Manage credits',
 				href: creditsHref,
 			}
 		case 'none':

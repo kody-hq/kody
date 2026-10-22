@@ -88,19 +88,19 @@ const week = (current: number, limit: number) => ({
 	overEightyPercent: current / limit >= 0.8,
 })
 
-test('credits action follows the wallet: add, switch, subscribe, or nothing', () => {
+test('credits action follows the wallet: add, switch, manage, or nothing', () => {
 	const creditsHref = '/@danj/-/usage#credits'
 	const add = { label: 'Add credits', href: creditsHref }
 	const switchToPro = { label: 'Switch to Pro', href: creditsHref }
-	const subscribe = {
-		label: 'Subscribe to Pro',
+	const manage = {
+		label: 'Manage credits',
 		href: creditsHref,
 	}
 	const cases = [
 		['empty', 'pro', true, add],
 		['none', 'standard', false, switchToPro],
 		['none', 'pro', false, switchToPro],
-		['empty', 'pro', false, subscribe],
+		['empty', 'pro', false, manage],
 		['funded', 'pro', true, null],
 		['none', 'max', false, null],
 	] as const

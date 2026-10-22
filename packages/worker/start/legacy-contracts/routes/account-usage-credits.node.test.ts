@@ -309,11 +309,17 @@ test('auto-refill on shows its settings, cap notices, and the card note', async 
 	expect(html).not.toContain('Balance at or below $5')
 })
 
-test('eligible wallet that cannot buy shows subscribe, not purchase UI', async () => {
-	const { html } = await renderUsagePage(
+test('eligible wallet that cannot buy explains paid subscription, not purchase UI', async () => {
+	const { html, text } = await renderUsagePage(
 		usage({ credits: wallet({ canBuyCredits: false }) }),
 	)
-	expect(html).toContain('Subscribe to Pro to add credits.')
+	expect(text).toContain(
+		'Buying credits requires a paid Pro subscription. A plan grant covers Pro limits and an eligible wallet, but not self-serve top-ups or auto-refill.',
+	)
+	expect(text).toContain(
+		'Start a Pro subscription if you want to buy credits yourself.',
+	)
+	expect(html).toContain('>Start a Pro subscription<')
 	expect(html).not.toContain('Custom amount ($)')
 	expect(html).not.toContain('>$25<')
 })

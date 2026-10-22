@@ -21,6 +21,8 @@ type UsageDbInput = {
 	durableObjectRowsRead?: number
 	activity?: Record<string, number>
 	creditsEligible?: boolean
+	/** Admin-set wallet eligibility; never written by Stripe. */
+	adminCreditsEligible?: boolean
 	creditBalanceMicroUsd?: number
 	giftExpiresAt?: string
 }
@@ -50,8 +52,10 @@ function createUsageTestDb(
 							stripe_plan: input.stripePlan ?? null,
 							entitlement_ladder: input.entitlementLadder ?? 'public',
 							stripe_credits_eligible: input.creditsEligible ? 1 : 0,
+							admin_credits_eligible: input.adminCreditsEligible ? 1 : 0,
 							second_agent_standard_gift_expires_at:
 								input.giftExpiresAt ?? null,
+							referral_standard_credit_expires_at: null,
 							stable_user_id: stableUserId,
 							personal_org_id: stableUserId,
 							org_id: stableUserId,
@@ -71,7 +75,9 @@ function createUsageTestDb(
 							stripe_plan: input.stripePlan ?? null,
 							entitlement_ladder: input.entitlementLadder ?? 'public',
 							stripe_credits_eligible: input.creditsEligible ? 1 : 0,
+							admin_credits_eligible: input.adminCreditsEligible ? 1 : 0,
 							second_agent_standard_gift_expires_at: null,
+							referral_standard_credit_expires_at: null,
 							stripe_customer_id: input.stripeCustomerId ?? null,
 						} as T
 					}
@@ -442,12 +448,44 @@ test('purchasable Pro with credits runs past the include on credits; at $0 it st
 	expect(noCustomer.data?.canBuyCredits).toBe(false)
 	expect(noCustomer.data?.creditsAlarm).toMatchObject({
 		kind: 'include_used_no_credits',
-		action: { label: 'Subscribe to Pro', href: '#credits' },
+		action: { label: 'Manage credits', href: '#credits' },
 	})
 	expect(noCustomer.data?.credits).toMatchObject({
 		eligible: true,
 		configured: true,
 		canBuyCredits: false,
+	})
+})
+
+test('admin-granted Pro with wallet eligibility cannot buy credits', async () => {
+	const { data } = await loadUsage(
+		{
+			userId: 28,
+			email: 'usage-granted-pro@example.com',
+			plan: 'pro',
+			stripePlan: null,
+			adminCreditsEligible: true,
+			creditBalanceMicroUsd: 3_000_000,
+			uniqueWorkerDays: 400,
+			stripeCustomerId: null,
+		},
+		{ env: { STRIPE_SECRET_KEY: 'sk_test_usage' } },
+	)
+	expect(data?.plan).toBe('pro')
+	expect(data?.manualPlan).toBe('pro')
+	expect(data?.stripePlan).toBeNull()
+	expect(data?.computeOverage.creditWallet).toBe('funded')
+	expect(data?.canBuyCredits).toBe(false)
+	expect(data?.credits).toMatchObject({
+		eligible: true,
+		configured: true,
+		canBuyCredits: false,
+		balanceMicroUsd: 3_000_000,
+		hasCredits: true,
+	})
+	expect(data?.creditsAlarm).toMatchObject({
+		kind: 'credits_low',
+		action: { label: 'Manage credits', href: '#credits' },
 	})
 })
 

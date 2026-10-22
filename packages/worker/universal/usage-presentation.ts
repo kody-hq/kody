@@ -254,7 +254,11 @@ export type CreditsAlarm = {
 	title: string
 	body: string
 	action: {
-		label: 'Add credits' | 'Subscribe to Pro'
+		/**
+		 * Buy when the account can top up; otherwise open the Credits section
+		 * (self-serve purchases still need a paid Pro subscription).
+		 */
+		label: 'Add credits' | 'Manage credits'
 		href: typeof usageCreditsSectionHref
 	}
 }
@@ -306,7 +310,7 @@ export function resolveCreditsAlarm(input: {
 	autoRefill: CreditsAlarmAutoRefill | null
 }): CreditsAlarm | null {
 	const action = {
-		label: input.canBuyCredits ? 'Add credits' : 'Subscribe to Pro',
+		label: input.canBuyCredits ? 'Add credits' : 'Manage credits',
 		href: usageCreditsSectionHref,
 	} as const
 	const pastInclude = input.meters.some(
@@ -328,7 +332,7 @@ export function resolveCreditsAlarm(input: {
 					title: 'Runs past the include are stopped',
 					body: input.canBuyCredits
 						? "This month's include is used up and there are no credits left. Add credits to keep going."
-						: "This month's include is used up and there are no credits left. Subscribe to Pro to add credits.",
+						: "This month's include is used up and there are no credits left. Buying credits requires a paid Pro subscription.",
 					action,
 				}
 			}
@@ -337,7 +341,9 @@ export function resolveCreditsAlarm(input: {
 					kind: 'include_nearly_used_no_credits',
 					tone: 'info',
 					title: "This month's include is nearly used",
-					body: 'With no credits, usage past the include stops. Add credits to keep going past it.',
+					body: input.canBuyCredits
+						? 'With no credits, usage past the include stops. Add credits to keep going past it.'
+						: 'With no credits, usage past the include stops. Buying credits requires a paid Pro subscription.',
 					action,
 				}
 			}

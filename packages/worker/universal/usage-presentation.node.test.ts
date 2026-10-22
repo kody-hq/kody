@@ -196,7 +196,25 @@ test('credits alarm fires only when the wallet or access is at risk', () => {
 	).toMatchObject({
 		kind: 'include_nearly_used_no_credits',
 		tone: 'info',
-		action: { label: 'Subscribe to Pro' },
+		body: expect.stringContaining(
+			'Buying credits requires a paid Pro subscription.',
+		),
+		action: { label: 'Manage credits' },
+	})
+	expect(
+		alarm({
+			creditWallet: 'empty',
+			meters: past,
+			canBuyCredits: false,
+			autoRefill: null,
+		}),
+	).toMatchObject({
+		kind: 'include_used_no_credits',
+		tone: 'warn',
+		body: expect.stringContaining(
+			'Buying credits requires a paid Pro subscription.',
+		),
+		action: { label: 'Manage credits', href: '#credits' },
 	})
 	expect(
 		alarm({
@@ -207,6 +225,19 @@ test('credits alarm fires only when the wallet or access is at risk', () => {
 	).toMatchObject({
 		kind: 'credits_low',
 		body: expect.stringContaining('$3.00'),
+		action: { label: 'Add credits' },
+	})
+	expect(
+		alarm({
+			creditWallet: 'funded',
+			meters: past,
+			balanceMicroUsd: 3_000_000,
+			canBuyCredits: false,
+			autoRefill: null,
+		}),
+	).toMatchObject({
+		kind: 'credits_low',
+		action: { label: 'Manage credits', href: '#credits' },
 	})
 	// Low balance within the include is not an alarm (nothing stops).
 	expect(
