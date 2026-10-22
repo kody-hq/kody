@@ -35,6 +35,7 @@ export const loadSignupChooseUsernamePage = createServerFn({
 			statusCode: 302,
 		})
 	}
+	setResponseHeader('Cache-Control', 'private, no-store')
 	return {
 		csrf: result.csrf,
 		suggestedUsername: result.suggestedUsername,

@@ -4,7 +4,8 @@ import { loadSignupChooseUsernamePage } from '#start/server/signup-choose-userna
 import { SignupChooseUsernamePage } from '../pages/signup-choose-username.tsx'
 
 export const Route = createFileRoute('/signup_/choose-username')({
-	staticData: { anonymousDocumentCache: 'marketing', shell: { mode: 'auth' } },
+	// Personalized: email, provider identity, and CSRF must not be publicly cached.
+	staticData: { shell: { mode: 'auth' } },
 	loader: ({ abortController }) =>
 		loadSignupChooseUsernamePage({ signal: abortController.signal }),
 	head: () => ({ meta: [{ title: 'Choose your username' }] }),
