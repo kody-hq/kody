@@ -212,7 +212,7 @@ export function UsernameChoiceField(props: {
 				<button
 					type="button"
 					popoverTarget={tipId}
-					aria-label="Username details"
+					aria-label="About this handle"
 					disabled={props.disabled}
 					css={{ ...tipButtonCss, anchorName: tipAnchor }}
 				>
@@ -222,7 +222,7 @@ export function UsernameChoiceField(props: {
 					id={tipId}
 					popover="auto"
 					role="dialog"
-					aria-label="Username details"
+					aria-label="About this handle"
 					css={{ ...tipPanelCss, positionAnchor: tipAnchor }}
 				>
 					<p css={tipBodyCss}>{signupUsernamePermanentNote}</p>

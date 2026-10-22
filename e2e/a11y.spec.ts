@@ -37,7 +37,9 @@ const publicRoutes: RouteScenario[] = [
 			await expect(
 				page.getByRole('heading', { name: 'Create your account' }),
 			).toBeVisible()
-			await expect(page.getByLabel('Username')).toBeVisible()
+			await expect(
+				page.getByRole('textbox', { name: 'Username' }),
+			).toBeVisible()
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
 		},
