@@ -32,12 +32,15 @@ Kody access tokens last one hour. A host that stores the refresh token should
 call `/oauth/token` and stay signed in. Cursor does this. Some Codex builds send
 the expired access token, get a 401, and ask for a full browser login instead.
 
-Concurrent MCP hosts that share one stored Kody OAuth client can refresh at the
-same time. Reusing the previous refresh token returns the current family tokens
-instead of minting a new one that invalidates siblings. A consumed token's
-one-hour replay is the maximum retention, not a guarantee: after the next
-rotation that replay no longer matches and is `invalid_grant`. Tokens outside
-the current/previous pair and that window also need a new browser login.
+OpenAI surfaces (ChatGPT, Codex, and similar) share one OAuth client id. Kody
+keeps a separate grant per authorization so reconnecting one surface does not
+revoke the others. Concurrent hosts that share one stored refresh family can
+also refresh at the same time: reusing the previous refresh token returns the
+current family tokens instead of minting a new one that invalidates siblings. A
+consumed token's one-hour replay is the maximum retention, not a guarantee:
+after the next rotation that replay no longer matches and is `invalid_grant`.
+Tokens outside the current/previous pair and that window also need a new browser
+login.
 
 Try this first:
 

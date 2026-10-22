@@ -5,6 +5,7 @@ import type * as WorkersOAuthProvider from '@cloudflare/workers-oauth-provider'
 import { oauthPaths } from '#universal/oauth-paths.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
 import { stampOrgIdOnTokenExchange } from '#worker/orgs/oauth-grant.ts'
+import { reportOAuthProviderError } from '#worker/oauth-provider-error-log.ts'
 
 /**
  * MCP HTTP path and OAuthProvider `apiRoute`. v1 requires every protected route
@@ -77,12 +78,15 @@ export function createSharedOAuthProviderOptions(
 		// Advertised, not enforced — the MCP handler uses `insufficientScope()`
 		// when a presented token lacks these.
 		requiredScopes: mcpOauthScopes,
-		// Provider default onError logs every structured OAuth error via console.warn.
-		// Keep those responses on the wire without duplicating them into worker logs /
-		// test console guards. CIMD lookup failures stay generic on the wire
-		// (unknown-client / invalid_client); they are caller or upstream outcomes,
-		// not platform defects. Unexpected throws still reach fetch catch + Sentry.
-		onError: () => {},
+		// Provider default onError console.warns every structured OAuth error, which
+		// trips test console guards and used to discard refresh failure reasons.
+		// Report token/refresh failures (code + internal category/reason + client id
+		// when available) without secrets; leave the wire response unchanged.
+		// CIMD lookup failures stay generic on the wire and keep the provider's own
+		// CIMD console.warn. Unexpected throws still reach fetch catch + Sentry.
+		onError: (error) => {
+			void reportOAuthProviderError(error)
+		},
 		// v1.2 removed allowPlainPKCE / allowImplicitFlow (S256 + auth code only).
 		// App-layer getPkceValidationError remains defense in depth. See
 		// docs/contributing/security.md.

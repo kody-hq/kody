@@ -54,6 +54,7 @@ import {
 	listUserOAuthGrantsForClient,
 	revokeOAuthGrant,
 } from '#worker/oauth-grants.ts'
+import { pruneUserClientOAuthGrants } from '#worker/oauth-grant-prune.ts'
 import {
 	countConnectedAgentEcosystems,
 	hasSecondConnectedMcpClient,
@@ -1400,19 +1401,31 @@ export async function tryHandleSilentOidcAuthorize(
 				...profileFields.props,
 				...bindingFields.props,
 			},
+			// Concurrent hosts sharing one client_id (e.g. ChatGPT + Codex CIMD)
+			// each keep a grant; pruneUserClientOAuthGrants bounds buildup.
+			revokeExistingGrants: false,
 		})
 	const redirectTo = stampClientAuthorizationRedirect(
 		providerRedirectTo,
 		request,
 		env,
 	)
+	const requestIp = getRequestIp(request) ?? undefined
+	await pruneUserClientOAuthGrants({
+		helpers,
+		userId: approvedUserId,
+		clientId: authRequest.clientId,
+		env,
+		email: approvedEmail,
+		ip: requestIp,
+	})
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'oauth',
 		action: 'authorize',
 		result: 'success',
 		email: approvedEmail,
-		ip: getRequestIp(request) ?? undefined,
+		ip: requestIp,
 		clientId: authRequest.clientId,
 	})
 	recordMcpConnectFunnelEvent(env, {
@@ -1913,12 +1926,23 @@ export async function decideOAuthAuthorization({
 					...profileFields.props,
 					...bindingFields.props,
 				},
+				// Concurrent hosts sharing one client_id (e.g. ChatGPT + Codex CIMD)
+				// each keep a grant; pruneUserClientOAuthGrants bounds buildup.
+				revokeExistingGrants: false,
 			})
 		const redirectTo = stampClientAuthorizationRedirect(
 			providerRedirectTo,
 			request,
 			env,
 		)
+		await pruneUserClientOAuthGrants({
+			helpers,
+			userId,
+			clientId: authRequest.clientId,
+			env,
+			email: approvedEmail,
+			ip: requestIp,
+		})
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'oauth',

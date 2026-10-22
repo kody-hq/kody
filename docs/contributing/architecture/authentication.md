@@ -844,6 +844,20 @@ Token lifetimes are set on the `OAuthProvider` in
   record that already has a KV TTL still expires at that instant unless the host
   re-registers
 
+`completeAuthorization` passes `revokeExistingGrants: false` so concurrent MCP
+hosts that share one `client_id` (OpenAI CIMD surfaces such as ChatGPT and the
+Codex app use the same client metadata URL and redirect URI) each keep a grant.
+The provider default (`true`) would delete every older grant for that
+user+client on every reconnect, which 401s `/mcp` on the sibling surface and
+fails refresh with `invalid_grant` (`grant_not_found`). After each successful
+authorization, `pruneUserClientOAuthGrants`
+(`packages/worker/src/oauth-grant-prune.ts`) keeps the newest 10 grants per
+user+client and revokes grants whose `createdAt` is older than 90 days. Revoking
+a grant still deletes its tokens. A `connection_pruned` audit event is recorded
+when pruning revokes anything. Token/refresh failures report `code` +
+`internal.category`/`reason` (and client id when available) through `onError` →
+`reportOAuthProviderError` without logging tokens, secrets, or emails.
+
 The provider still rotates refresh tokens on use and keeps only the current hash
 plus the immediately previous hash on the grant. MCP hosts on one machine often
 share one stored client and each keep their own copy of the last refresh token
