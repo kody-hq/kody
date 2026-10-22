@@ -428,6 +428,15 @@ test('apply with explicit ids still skips a package whose owner is being deleted
 	expect(result.skippedOwnerDeleting).toBe(1)
 	expect(result.scannedPackages).toBe(0)
 	expect(result.repaired + result.failed).toBe(0)
+	expect(result.outcomes).toEqual([
+		{
+			packageId: 'pkg-deleting',
+			ownerUserId: deletingOwner,
+			sourceId: 'src-deleting',
+			publishedCommit: null,
+			outcome: 'skipped_owner_deleting',
+		},
+	])
 	expect(mocks.git.push).not.toHaveBeenCalled()
 	expect(kvPut).not.toHaveBeenCalled()
 })

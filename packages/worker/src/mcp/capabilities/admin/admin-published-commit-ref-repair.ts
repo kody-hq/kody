@@ -24,6 +24,7 @@ const outcomeSchema = z.object({
 		'unrecoverable',
 		'repaired',
 		'skipped_unpublished',
+		'skipped_owner_deleting',
 		'failed',
 	]),
 	defaultBranch: z.string().optional(),

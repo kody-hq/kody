@@ -53,6 +53,7 @@ export type PublishedCommitRefRepairStatus =
 	| 'unrecoverable'
 	| 'repaired'
 	| 'skipped_unpublished'
+	| 'skipped_owner_deleting'
 	| 'failed'
 
 export type PublishedCommitRefRepairOutcome = {
@@ -394,7 +395,7 @@ async function listCandidatePackages(input: {
 	packageIds?: ReadonlySet<string>
 }) {
 	const packages: Array<SavedPackageRecord> = []
-	let skippedOwnerDeleting = 0
+	const skippedOwnerDeleting: Array<SavedPackageRecord> = []
 	let cursor = input.afterId
 	for (let pages = 1; ; pages += 1) {
 		const page = await listSavedPackagesPage(input.env.APP_DB, {
@@ -417,7 +418,7 @@ async function listCandidatePackages(input: {
 			cursor = savedPackage.id
 			if (input.packageIds && !input.packageIds.has(savedPackage.id)) continue
 			if (ownersPendingDeletion.has(savedPackage.userId)) {
-				skippedOwnerDeleting += 1
+				skippedOwnerDeleting.push(savedPackage)
 				continue
 			}
 			packages.push(savedPackage)
@@ -485,9 +486,21 @@ export async function runPublishedCommitRefRepair(input: {
 		repaired: 0,
 		failed: 0,
 		skippedUnpublished: 0,
-		skippedOwnerDeleting,
+		skippedOwnerDeleting: skippedOwnerDeleting.length,
 		nextCursor,
 		outcomes: [],
+	}
+	// Explicit requests list every requested package, so name the skipped ones.
+	if (packageIds) {
+		for (const savedPackage of skippedOwnerDeleting) {
+			result.outcomes.push({
+				packageId: savedPackage.id,
+				ownerUserId: savedPackage.userId,
+				sourceId: savedPackage.sourceId,
+				publishedCommit: null,
+				outcome: 'skipped_owner_deleting',
+			})
+		}
 	}
 	for (const savedPackage of packages) {
 		const base = {
