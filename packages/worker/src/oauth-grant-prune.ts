@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import {
 	listUserOAuthGrantsForClient,
@@ -96,41 +97,64 @@ export async function pruneUserClientOAuthGrants(input: {
 	maxAgeSeconds?: number
 	keepGrantIds?: ReadonlySet<string>
 }): Promise<{ revoked: number; stale: number; excess: number }> {
-	const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1000)
-	const grants = await listUserOAuthGrantsForClient(
-		input.helpers,
-		input.userId,
-		input.clientId,
-	)
-	const selected = selectOAuthGrantsToPrune({
-		grants,
-		nowSeconds,
-		maxGrants: input.maxGrants,
-		maxAgeSeconds: input.maxAgeSeconds,
-		keepGrantIds: input.keepGrantIds,
-	})
-	if (selected.length === 0) {
+	// Best-effort: authorize already minted the new grant. A list/revoke
+	// failure must not turn the success redirect into handleAuthorizeRouteException.
+	try {
+		const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1000)
+		const grants = await listUserOAuthGrantsForClient(
+			input.helpers,
+			input.userId,
+			input.clientId,
+		)
+		const selected = selectOAuthGrantsToPrune({
+			grants,
+			nowSeconds,
+			maxGrants: input.maxGrants,
+			maxAgeSeconds: input.maxAgeSeconds,
+			keepGrantIds: input.keepGrantIds,
+		})
+		if (selected.length === 0) {
+			return { revoked: 0, stale: 0, excess: 0 }
+		}
+
+		let stale = 0
+		let excess = 0
+		for (const item of selected) {
+			await revokeOAuthGrant(input.helpers, item.id, input.userId)
+			if (item.reason === 'stale') stale += 1
+			else excess += 1
+		}
+
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(input.env),
+			category: 'oauth',
+			action: 'connection_pruned',
+			result: 'success',
+			email: input.email,
+			ip: input.ip,
+			clientId: input.clientId,
+			reason: `revoked=${selected.length};stale=${stale};excess=${excess}`,
+		})
+
+		return { revoked: selected.length, stale, excess }
+	} catch (error) {
+		console.info(
+			'oauth-grant-prune-failed',
+			JSON.stringify({
+				clientId: input.clientId,
+				message: getErrorMessage(error),
+			}),
+		)
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(input.env),
+			category: 'oauth',
+			action: 'connection_pruned',
+			result: 'failure',
+			email: input.email,
+			ip: input.ip,
+			clientId: input.clientId,
+			reason: 'prune_failed',
+		})
 		return { revoked: 0, stale: 0, excess: 0 }
 	}
-
-	let stale = 0
-	let excess = 0
-	for (const item of selected) {
-		await revokeOAuthGrant(input.helpers, item.id, input.userId)
-		if (item.reason === 'stale') stale += 1
-		else excess += 1
-	}
-
-	void logAuditEvent({
-		db: auditDatabaseFromEnv(input.env),
-		category: 'oauth',
-		action: 'connection_pruned',
-		result: 'success',
-		email: input.email,
-		ip: input.ip,
-		clientId: input.clientId,
-		reason: `revoked=${selected.length};stale=${stale};excess=${excess}`,
-	})
-
-	return { revoked: selected.length, stale, excess }
 }

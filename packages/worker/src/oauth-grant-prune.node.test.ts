@@ -106,3 +106,32 @@ test('pruneUserClientOAuthGrants revokes selected grants and audits once', async
 		}),
 	)
 })
+
+test('pruneUserClientOAuthGrants is best-effort when listing fails', async () => {
+	const helpers = {
+		listUserGrants: async () => {
+			throw new Error('kv unavailable')
+		},
+		revokeGrant: vi.fn(async () => undefined),
+	}
+
+	await expect(
+		pruneUserClientOAuthGrants({
+			helpers,
+			userId: 'user-1',
+			clientId: 'client-a',
+			env: {},
+		}),
+	).resolves.toEqual({ revoked: 0, stale: 0, excess: 0 })
+
+	expect(helpers.revokeGrant).not.toHaveBeenCalled()
+	expect(logAuditEventSpy).toHaveBeenCalledWith(
+		expect.objectContaining({
+			category: 'oauth',
+			action: 'connection_pruned',
+			result: 'failure',
+			clientId: 'client-a',
+			reason: 'prune_failed',
+		}),
+	)
+})

@@ -45,6 +45,15 @@ test('shouldReportOAuthProviderError keeps refresh and invalid_grant reasons', (
 			},
 		}),
 	).toBe(false)
+	expect(
+		shouldReportOAuthProviderError({
+			code: 'invalid_token',
+			internal: {
+				category: 'protected-resource',
+				reason: 'token_not_found',
+			},
+		}),
+	).toBe(false)
 })
 
 test('safeClientIdFromBasicAuthorization returns only the client id half', () => {

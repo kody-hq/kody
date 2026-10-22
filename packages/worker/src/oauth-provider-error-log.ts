@@ -34,13 +34,20 @@ export type OAuthProviderErrorReport = {
 
 /**
  * Whether this provider error is a token/refresh failure worth recording.
- * Skips CIMD metadata noise (already warned by the provider) and routine
- * request-shape rejects.
+ * Skips CIMD metadata noise (already warned by the provider), routine
+ * request-shape rejects, and protected-resource `invalid_token` (common
+ * `/mcp` bearer rejects that would flood logs/audit).
  */
 export function shouldReportOAuthProviderError(
 	error: Pick<OAuthProviderErrorReport, 'code' | 'internal'>,
 ) {
 	if (error.internal.category === 'client-id-metadata-document') return false
+	if (
+		error.code === 'invalid_token' &&
+		error.internal.category === 'protected-resource'
+	) {
+		return false
+	}
 	if (reportedErrorCodes.has(error.code)) return true
 	return reportedInternalCategories.has(error.internal.category)
 }
