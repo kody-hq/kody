@@ -129,7 +129,12 @@ you only have the MCP URL.
   or repository MCP config are also available in the app.
 - **Devin** — In Devin Desktop, add a custom remote MCP server and paste the MCP
   URL. Complete OAuth when Devin opens it. The same connector works from the
-  mobile-friendly web app.
+  mobile-friendly web app. Sessions created through the Devin API or run by a
+  Devin service user cannot use a Personal OAuth MCP connection. Devin keeps the
+  personal token under the human user, so those sessions report "requires OAuth
+  authorization" even when Kody issued a valid token. Set the Kody MCP server in
+  Devin to Organization access (Customize, then MCPs) and connect it once, or
+  create sessions as the user with Devin's `create_as_user_id`.
 - **Gemini** — In the Gemini app or Jules, add a custom MCP connector and paste
   the MCP URL. Complete OAuth when Google prompts you.
 - **OpenClaw** — Run
