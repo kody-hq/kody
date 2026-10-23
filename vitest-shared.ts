@@ -6,6 +6,15 @@ import { markdownAsText } from './tools/vite-markdown-as-text.ts'
 import { suppressThirdPartySourcemapWarnings } from './tools/vite-suppress-sourcemap-warnings.ts'
 
 export const rootDir = fileURLToPath(new URL('.', import.meta.url))
+// Scratch trees under `.tmp/` (pre-commit typecheck worktrees, worker dry-run
+// outdirs) must not be collected as tests. Each project replaces `test.exclude`
+// entirely, so keep this list in one place.
+export const sharedTestExclude = [
+	'**/node_modules/**',
+	'**/.git/**',
+	'**/.worktrees/**',
+	'**/.tmp/**',
+] as const
 // Match CI. Workers-unit first Durable Object RPC in a file is ~10s in the
 // Vitest pool (decision 0011); a 5s local default timed that out and forced
 // `--no-verify`. Also covers workerd-only work such as worker-bundler.

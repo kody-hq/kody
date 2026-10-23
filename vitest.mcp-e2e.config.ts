@@ -1,6 +1,10 @@
 import { resolve } from 'node:path'
 import { defineProject, mergeConfig } from 'vitest/config'
-import { rootDir, sharedProjectConfig } from './vitest-shared.ts'
+import {
+	rootDir,
+	sharedProjectConfig,
+	sharedTestExclude,
+} from './vitest-shared.ts'
 
 // This suite is intentionally just a couple of smoke journeys. They share one
 // Wrangler test harness (see getSharedMcpE2eServer) and each test seeds its
@@ -15,7 +19,7 @@ export default mergeConfig(
 			name: 'mcp-e2e',
 			environment: 'node',
 			include: ['**/*.mcp-e2e.test.ts'],
-			exclude: ['**/node_modules/**', '**/.git/**', '**/.worktrees/**'],
+			exclude: [...sharedTestExclude],
 			testTimeout: mcpE2eTimeout,
 			hookTimeout: mcpE2eTimeout,
 			// Shared harness lives on globalThis; keep one worker and one module

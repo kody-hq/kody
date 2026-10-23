@@ -5,7 +5,11 @@ import {
 	readD1Migrations,
 } from '@cloudflare/vitest-pool-workers'
 import { defineProject, mergeConfig } from 'vitest/config'
-import { rootDir, sharedProjectConfig } from './vitest-shared.ts'
+import {
+	rootDir,
+	sharedProjectConfig,
+	sharedTestExclude,
+} from './vitest-shared.ts'
 
 // The pool restarts a Wrangler config read per test file, and each read logs
 // "Using secrets defined in packages/worker/.env" at the default log level.
@@ -85,7 +89,7 @@ export default mergeConfig(
 		test: {
 			name: 'workers-unit',
 			include: ['**/*.workers.test.ts'],
-			exclude: ['**/node_modules/**', '**/.git/**', '**/.worktrees/**'],
+			exclude: [...sharedTestExclude],
 			testTimeout: workersTestTimeout,
 			hookTimeout: workersTestTimeout,
 			maxWorkers: workersMaxWorkers,
