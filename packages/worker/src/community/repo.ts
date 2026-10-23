@@ -643,6 +643,7 @@ export async function listCommunityListingCandidates(
 	input: {
 		includeDelisted: boolean
 		limit: number
+		offset?: number
 		query?: string | null
 		category?: CommunityListingCategory | null
 	},
@@ -680,9 +681,9 @@ export async function listCommunityListingCandidates(
 			${communityListingSourceJoin}
 			${whereClause}${andLiveDeletedAtSql('community_listings')}
 			ORDER BY community_listings.published_at DESC
-			LIMIT ?`,
+			LIMIT ? OFFSET ?`,
 		)
-		.bind(...bindings, input.limit)
+		.bind(...bindings, input.limit, input.offset ?? 0)
 		.all<Record<string, unknown>>()
 	return (rows.results ?? []).map(mapCommunityListingRow)
 }

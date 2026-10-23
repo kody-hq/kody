@@ -175,6 +175,12 @@ export const COMMUNITY_SEARCH_PARTIAL_TERM_MIN_LENGTH = 3
 // category approaches this size.
 export const COMMUNITY_SEARCH_CANDIDATE_LIMIT = 500
 
+// The LIKE pre-filter is looser than the term scorer (a short term such as
+// "go" matches inside "going"), so a full candidate page can be rejected
+// entirely while an older listing holds the exact term. Search reads further
+// prefiltered pages until it has enough matches, up to this many pages.
+export const COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES = 4
+
 function normalizeCommunityActivityPage(value: number | undefined) {
 	if (value === undefined || !Number.isFinite(value)) return 1
 	return Math.max(1, Math.trunc(value))
@@ -1108,12 +1114,15 @@ export async function searchCommunityListings(input: {
 }): Promise<Array<CommunityListingSearchResult>> {
 	const trimmedQuery = input.query.trim()
 	const sort = resolveCommunityListingSort(input.sort)
-	const listings = await listCommunityListingCandidates(input.env.APP_DB, {
-		includeDelisted: false,
-		limit: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
-		query: trimmedQuery || null,
-		category: input.category ?? null,
-	})
+	const readCandidates = (page: number) =>
+		listCommunityListingCandidates(input.env.APP_DB, {
+			includeDelisted: false,
+			limit: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
+			offset: page * COMMUNITY_SEARCH_CANDIDATE_LIMIT,
+			query: trimmedQuery || null,
+			category: input.category ?? null,
+		})
+	const listings = await readCandidates(0)
 	if (!trimmedQuery) {
 		const withAggregates = await attachListingAggregatesBatch(
 			input.env.APP_DB,
@@ -1127,18 +1136,32 @@ export async function searchCommunityListings(input: {
 			input,
 		)
 	}
-	// The SQL LIKE pre-filter keeps listings that contain a query term as a
-	// substring, which covers what the term scorer accepts, so a miss here is
-	// a real no-results answer and needs no second unfiltered read.
-	const scoredMatches = listings
-		.map((listing) => ({
-			listing,
-			relevance: scoreCommunityListingSearch({
-				query: trimmedQuery,
-				document: buildListingSearchDocument(listing),
-			}),
-		}))
-		.filter((entry) => entry.relevance >= COMMUNITY_SEARCH_MIN_RELEVANCE)
+	// The SQL LIKE pre-filter keeps every listing that contains a query term
+	// as a substring, a superset of what the term scorer accepts, so a miss
+	// across the prefiltered pages is a real no-results answer. No unfiltered
+	// fallback read.
+	const scoreListings = (page: Array<CommunityListingRecord>) =>
+		page
+			.map((listing) => ({
+				listing,
+				relevance: scoreCommunityListingSearch({
+					query: trimmedQuery,
+					document: buildListingSearchDocument(listing),
+				}),
+			}))
+			.filter((entry) => entry.relevance >= COMMUNITY_SEARCH_MIN_RELEVANCE)
+	const scoredMatches = scoreListings(listings)
+	let lastPage = listings
+	for (
+		let page = 1;
+		page < COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES &&
+		lastPage.length >= COMMUNITY_SEARCH_CANDIDATE_LIMIT &&
+		scoredMatches.length < input.limit;
+		page += 1
+	) {
+		lastPage = await readCandidates(page)
+		scoredMatches.push(...scoreListings(lastPage))
+	}
 	const relevanceById = new Map(
 		scoredMatches.map((entry) => [entry.listing.id, entry.relevance]),
 	)

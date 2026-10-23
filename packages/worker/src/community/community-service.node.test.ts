@@ -131,8 +131,7 @@ vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 vi.mock('./repo.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CommunityRepo>()
 	return {
-		// Pure helper used by the service to decide whether the SQL LIKE
-		// pre-filter was applied; keep the real implementation.
+		// Pure helper; keep the real implementation.
 		extractCommunityListingLikeTokens: actual.extractCommunityListingLikeTokens,
 		...pickMocks(
 			'getCommunityBan',
@@ -194,6 +193,7 @@ const {
 	adoptCommunityFork,
 	inspectCommunityForkAdoption,
 	absorbCommunityForkUpstream,
+	COMMUNITY_SEARCH_CANDIDATE_LIMIT,
 } = await import('./service.ts')
 
 const testBundleArtifactsKv = {
@@ -711,6 +711,59 @@ test('searchCommunityListings answers a no-match query from the LIKE prefilter a
 	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.objectContaining({ query: 'discord' }),
+	)
+})
+
+test('searchCommunityListings reads past a full prefilter page the scorer rejects', async () => {
+	// "go" is a LIKE hit inside "going" but the scorer wants the exact short
+	// term, so a full page of newer near misses must not hide an older match.
+	const nearMisses = Array.from(
+		{ length: COMMUNITY_SEARCH_CANDIDATE_LIMIT },
+		(_, index) =>
+			sampleListing({
+				id: `listing-near-miss-${index}`,
+				kodyId: `near-miss-${index}`,
+				name: `@owner/near-miss-${index}`,
+				description: 'Keeps things going',
+				tags: ['ongoing'],
+				searchText: 'going',
+				readmeContent: '# Near miss',
+			}),
+	)
+	const olderMatch = sampleListing({
+		id: 'listing-go-match',
+		kodyId: 'go-tools',
+		name: '@owner/go-tools',
+		description: 'Helpers for go modules',
+		tags: ['go'],
+		searchText: 'go modules',
+		readmeContent: '# Go tools',
+	})
+	mockModule.listCommunityListingCandidates
+		.mockResolvedValueOnce(nearMisses)
+		.mockResolvedValueOnce([olderMatch])
+	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue(
+		emptyAggregates(['listing-go-match']),
+	)
+	mockModule.countCommunityForksByListingIds.mockResolvedValue({
+		'listing-go-match': 0,
+	})
+
+	const results = await searchCommunityListings({
+		env: createEnv(),
+		query: 'go',
+		limit: 10,
+	})
+
+	expect(results.map((listing) => listing.id)).toEqual(['listing-go-match'])
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledTimes(2)
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenNthCalledWith(
+		2,
+		expect.anything(),
+		expect.objectContaining({
+			query: 'go',
+			offset: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
+		}),
 	)
 })
 
