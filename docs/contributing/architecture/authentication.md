@@ -769,8 +769,21 @@ routed from `packages/worker/src/index.ts`.
   CIMD register via `/oauth/register`. Failed CIMD fetches throw
   `CimdFetchError`: authorize maps that to an unknown-client page, and the token
   endpoint still returns generic `invalid_client`. Any DCR retry after that is
-  the client's own recovery, not a server-side fallback. CIMD metadata fetches
-  rely on the `global_fetch_strictly_public` compatibility flag in
+  the client's own recovery, not a server-side fallback. Refresh-token grants
+  are the exception (`packages/worker/src/oauth-cimd-refresh-cache.ts`): the
+  provider resolves the CIMD client on every token request and caches it only as
+  long as the origin's `Cache-Control` allows, so a `no-store` document (VS
+  Code's `https://vscode.dev/oauth/client-metadata.json`) is fetched live on
+  every refresh, and one blip from that host used to drop the host's session.
+  Before a refresh reaches the provider, Kody seeds the provider's CIMD Cache
+  API entry for at least five minutes and keeps a last known good copy in
+  `BUNDLE_ARTIFACTS_KV` (seven days, the provider's own CIMD cache cap). When
+  the live fetch times out, errors, or returns 5xx/429, the last known good copy
+  serves that refresh; a 4xx or invalid document never falls back. The provider
+  still validates every cached document. Authorize and code exchange always use
+  a live document. Token-endpoint CIMD failures are reported through `onError`
+  with the client URL and the fetch reason. CIMD metadata fetches rely on the
+  `global_fetch_strictly_public` compatibility flag in
   `packages/worker/wrangler.jsonc` for SSRF safety; the provider only advertises
   `client_id_metadata_document_supported` when both are set. ChatGPT CIMD
   documents prefer `private_key_jwt` while also offering `none`; the provider

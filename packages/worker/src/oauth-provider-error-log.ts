@@ -1,3 +1,4 @@
+import { oauthPaths } from '#universal/oauth-paths.ts'
 import { logAuditEvent } from '#worker/audit-log.ts'
 
 /**
@@ -32,16 +33,31 @@ export type OAuthProviderErrorReport = {
 	request?: Request
 }
 
+const cimdCategory = 'client-id-metadata-document'
+
+function isTokenEndpointRequest(request: Request | undefined) {
+	if (!request) return false
+	try {
+		return new URL(request.url).pathname === oauthPaths.token
+	} catch {
+		return false
+	}
+}
+
 /**
  * Whether this provider error is a token/refresh failure worth recording.
- * Skips CIMD metadata noise (already warned by the provider), routine
- * request-shape rejects, and protected-resource `invalid_token` (common
- * `/mcp` bearer rejects that would flood logs/audit).
+ * CIMD metadata failures count only at the token endpoint (a refresh or code
+ * exchange that failed because the client's document did not resolve);
+ * authorize and `/mcp` lookups keep the provider's own warning. Skips routine
+ * request-shape rejects and protected-resource `invalid_token` (common `/mcp`
+ * bearer rejects that would flood logs/audit).
  */
 export function shouldReportOAuthProviderError(
-	error: Pick<OAuthProviderErrorReport, 'code' | 'internal'>,
+	error: Pick<OAuthProviderErrorReport, 'code' | 'internal' | 'request'>,
 ) {
-	if (error.internal.category === 'client-id-metadata-document') return false
+	if (error.internal.category === cimdCategory) {
+		return isTokenEndpointRequest(error.request)
+	}
 	if (
 		error.code === 'invalid_token' &&
 		error.internal.category === 'protected-resource'
@@ -112,16 +128,41 @@ async function safeClientIdFromRequest(request: Request | undefined) {
 }
 
 /**
+ * CIMD failures carry the metadata URL (the public client id) and the
+ * provider's fetch/validation message in `internal.detail`. Read only those
+ * two fields, bounded, so the log names the client and why it failed.
+ */
+function cimdFailureDetail(internal: OAuthProviderErrorInternal) {
+	if (internal.category !== cimdCategory) return {}
+	const detail = internal.detail
+	if (typeof detail !== 'object' || detail === null) return {}
+	const { metadataUrl, message } = detail as {
+		metadataUrl?: unknown
+		message?: unknown
+	}
+	return {
+		...(typeof metadataUrl === 'string' && metadataUrl.length <= 2048
+			? { clientId: metadataUrl }
+			: {}),
+		...(typeof message === 'string'
+			? { cimdFailure: message.slice(0, 200) }
+			: {}),
+	}
+}
+
+/**
  * Record token/refresh failures with code + internal reason (+ client id when
  * available). Uses the audit-event console.info path; never logs token values,
- * secrets, emails, or `internal.detail`.
+ * secrets, emails, or `internal.detail` beyond the CIMD URL and message.
  */
 export async function reportOAuthProviderError(
 	error: OAuthProviderErrorReport,
 ) {
 	if (!shouldReportOAuthProviderError(error)) return
 
-	const clientId = await safeClientIdFromRequest(error.request)
+	const cimd = cimdFailureDetail(error.internal)
+	const clientId =
+		cimd.clientId ?? (await safeClientIdFromRequest(error.request))
 	const reason = oauthProviderErrorAuditReason(error)
 	const path = error.request ? new URL(error.request.url).pathname : undefined
 
@@ -134,6 +175,7 @@ export async function reportOAuthProviderError(
 			reason: error.internal.reason,
 			...(clientId ? { clientId } : {}),
 			...(path ? { path } : {}),
+			...(cimd.cimdFailure ? { cimdFailure: cimd.cimdFailure } : {}),
 		}),
 	)
 

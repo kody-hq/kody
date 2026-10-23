@@ -84,7 +84,9 @@ export function createSharedOAuthProviderOptions(
 		// Report token/refresh failures (code + internal category/reason + client id
 		// when available) without secrets; leave the wire response unchanged.
 		// CIMD lookup failures stay generic on the wire and keep the provider's own
-		// CIMD console.warn. Unexpected throws still reach fetch catch + Sentry.
+		// CIMD console.warn; at the token endpoint they are also reported with the
+		// client URL and fetch reason. Unexpected throws still reach fetch catch +
+		// Sentry.
 		onError: (error) => {
 			// Provider does not await onError; pin reporting to the request so
 			// client-id lookup + audit are not dropped when the OAuth response

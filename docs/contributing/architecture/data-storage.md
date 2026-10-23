@@ -1664,6 +1664,13 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   `expirationTtl` (two hours / one hour). Registered as user-owned KV surfaces
   and prefix-deleted by account deletion; the TTL covers a refresh that races
   deletion.
+- `derived-cache:v1:oauth-cimd-last-known-good:{sha256(clientIdUrl)}`: last
+  known good Client ID Metadata Document (`{ document, storedAt }`) for a CIMD
+  OAuth client, used only when a refresh-token grant's live metadata fetch times
+  out, errors, or returns 5xx/429
+  (`packages/worker/src/oauth-cimd-refresh-cache.ts`). Public client metadata,
+  not user-owned. Written with a seven-day KV `expirationTtl` and rewritten at
+  most daily while unchanged.
 - `derived-cache:v1:usage-rollups:user:{userId}:asof:{YYYY-MM}` — derived
   per-user usage read model written with KV `expirationTtl`; retention is five
   minutes, so immediate account-deletion cleanup is not required.

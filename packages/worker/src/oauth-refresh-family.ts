@@ -5,6 +5,7 @@ import {
 	encryptSecretValue,
 } from '#worker/mcp/secrets/crypto.ts'
 import { isCloudflareKvTransientHttpErrorMessage } from './cloudflare-kv-platform-error.ts'
+import { primeCimdClientForRefresh } from './oauth-cimd-refresh-cache.ts'
 
 /**
  * MCP hosts on one machine often share a stored OAuth client but keep their
@@ -338,6 +339,14 @@ async function completeMcpOAuthTokenRequest(
 				grantType,
 			}
 		}
+	}
+	if (grantType === 'refresh_token') {
+		// CIMD hosts with `no-store` documents (VS Code) would otherwise fail
+		// the refresh on any metadata fetch blip. See oauth-cimd-refresh-cache.
+		await primeCimdClientForRefresh({
+			env: input.env,
+			clientId: readFormString(formData?.get('client_id')),
+		})
 	}
 	const response = await input.fetchProvider(input.request)
 	if (response.ok) {

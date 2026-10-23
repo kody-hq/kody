@@ -9,7 +9,11 @@ import {
 } from '@cloudflare/workers-oauth-provider'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	cimdLastKnownGoodKey,
+	providerCimdCacheName,
+} from '#worker/oauth-cimd-refresh-cache.ts'
 import {
 	createAuthCookie,
 	readAuthSessionResult,
@@ -1143,6 +1147,139 @@ test('two authorizations of the same CIMD client keep both refresh grants valid'
 	await expect(secondRefresh.json()).resolves.toMatchObject({
 		token_type: 'bearer',
 		resource: mcpResource,
+	})
+})
+
+test('VS Code-shaped no-store CIMD refresh survives a metadata host outage', async () => {
+	const email = `vscode-oauth-${crypto.randomUUID()}@example.com`
+	await seedWorkerUser(email)
+	// VS Code's real document is served `cache-control: no-store`, so the
+	// provider resolves it live on every token request.
+	const clientId = `https://vscode.example/${crypto.randomUUID()}/client-metadata.json`
+	const redirectUri = 'https://vscode.example/redirect'
+	const metadata = {
+		client_id: clientId,
+		client_name: 'Visual Studio Code',
+		redirect_uris: [redirectUri, 'http://127.0.0.1:33418/'],
+		token_endpoint_auth_method: 'none',
+		grant_types: [
+			'authorization_code',
+			'refresh_token',
+			'urn:ietf:params:oauth:grant-type:device_code',
+		],
+		response_types: ['code'],
+	}
+	let metadataHost: 'up' | 'network-error' | 'unavailable' | 'gone' = 'up'
+	let metadataFetches = 0
+	using _fetch = stubClientMetadataFetch(clientId, () => {
+		metadataFetches += 1
+		if (metadataHost === 'network-error') throw new TypeError('fetch failed')
+		if (metadataHost === 'unavailable')
+			return new Response('upstream unavailable', { status: 503 })
+		if (metadataHost === 'gone') return new Response('gone', { status: 404 })
+		return new Response(JSON.stringify(metadata), {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/json',
+				'Cache-Control': 'no-store,no-cache,max-age=0',
+			},
+		})
+	})
+	consoleWarn.mockImplementation(() => {})
+	const providerCache = await caches.open(providerCimdCacheName)
+
+	const verifier = 'vscode-verifier-0123456789'
+	const authorizeUrl = await heykodyAuthorizeUrl(
+		{
+			client_id: clientId,
+			redirect_uri: redirectUri,
+			scope: 'openid profile email',
+			state: 'vscode-state',
+		},
+		verifier,
+	)
+	const { code } = await workerApprove(authorizeUrl, email)
+	const exchanged = await exchangeCode({
+		client_id: clientId,
+		code,
+		redirect_uri: redirectUri,
+		code_verifier: verifier,
+	})
+	expect(exchanged.status).toBe(200)
+	let { refresh_token: refreshToken } = (await exchanged.json()) as {
+		refresh_token: string
+	}
+	expect(refreshToken).toBeTruthy()
+	// No-store: the provider kept nothing to fall back on.
+	expect(await providerCache.match(clientId)).toBeUndefined()
+
+	async function refresh() {
+		const response = await workerFetch(
+			formRequest(
+				{
+					client_id: clientId,
+					grant_type: 'refresh_token',
+					refresh_token: refreshToken,
+					resource: mcpResource,
+				},
+				{},
+				'https://heykody.dev/oauth/token',
+			),
+		)
+		const body = (await response.json()) as {
+			refresh_token?: string
+			error?: string
+		}
+		if (response.ok && body.refresh_token) refreshToken = body.refresh_token
+		return { status: response.status, body }
+	}
+
+	// A healthy refresh fetches once and keeps a floor-TTL copy for the
+	// provider plus a last known good copy.
+	metadataFetches = 0
+	await expect(refresh()).resolves.toMatchObject({ status: 200 })
+	expect(metadataFetches).toBe(1)
+	expect(await providerCache.match(clientId)).toBeDefined()
+	await expect(
+		env.BUNDLE_ARTIFACTS_KV.get(await cimdLastKnownGoodKey(clientId)),
+	).resolves.toContain('Visual Studio Code')
+
+	// An hour later the floor copy is gone and the host is down.
+	for (const outage of ['network-error', 'unavailable'] as const) {
+		await providerCache.delete(clientId)
+		metadataHost = outage
+		await expect(refresh()).resolves.toMatchObject({ status: 200 })
+	}
+	expect(consoleWarn.mock.calls.flat().join(' ')).toContain(
+		'oauth-cimd-refresh-fallback',
+	)
+
+	// A removed document never falls back to the old copy.
+	await providerCache.delete(clientId)
+	metadataHost = 'gone'
+	consoleInfo.mockClear()
+	await expect(refresh()).resolves.toMatchObject({
+		status: 401,
+		body: { error: 'invalid_client' },
+	})
+	const reported = consoleInfo.mock.calls
+		.filter((call) => call[0] === 'oauth-provider-error')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(reported).toContainEqual(
+		expect.objectContaining({
+			category: 'client-id-metadata-document',
+			clientId,
+			path: '/oauth/token',
+			cimdFailure: 'Failed to fetch client metadata: HTTP 404',
+		}),
+	)
+
+	// With no last known good copy an outage still fails, as before.
+	await env.BUNDLE_ARTIFACTS_KV.delete(await cimdLastKnownGoodKey(clientId))
+	metadataHost = 'unavailable'
+	await expect(refresh()).resolves.toMatchObject({
+		status: 401,
+		body: { error: 'invalid_client' },
 	})
 })
 
