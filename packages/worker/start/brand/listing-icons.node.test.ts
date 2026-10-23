@@ -37,9 +37,9 @@ test('tab favicons are solid, full-bleed tiles for light and dark OS chrome', as
 		['favicon-32x32.png', 255],
 		['favicon-16x16-dark.png', 0],
 		['favicon-32x32-dark.png', 0],
-		['apple-touch-icon.png', 0],
-		['android-chrome-192x192.png', 0],
-		['android-chrome-512x512.png', 0],
+		['apple-touch-icon.png', 255],
+		['android-chrome-192x192.png', 255],
+		['android-chrome-512x512.png', 255],
 	]
 	for (const [file, background] of tiles) {
 		const bytes = readFileSync(path.join(publicDir, file))
