@@ -5,7 +5,10 @@
  * fail-closed for that package (issue #3836 phase 3).
  */
 import * as Sentry from '@sentry/cloudflare'
-import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceById,
+	listEntitySourcesByIds,
+} from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { resolveSavedPackageImport } from '#worker/package-runtime/package-import-resolution.ts'
 import { collectStaticKodyPackageImportsFromFiles } from '#worker/package-runtime/static-kody-imports.ts'
@@ -56,7 +59,7 @@ async function loadDependencyStamps(input: {
 				.filter((name) => name !== input.packageName),
 		),
 	].sort()
-	const deps = await Promise.all(
+	const resolutions = await Promise.all(
 		names.map(async (packageName) => {
 			const resolution = await resolveSavedPackageImport({
 				db: input.env.APP_DB,
@@ -64,10 +67,26 @@ async function loadDependencyStamps(input: {
 				specifier: { packageName, exportName: '.' },
 			})
 			if (!resolution?.row.sourceId) return null
-			const source = await getEntitySourceById(
-				input.env.APP_DB,
-				resolution.row.sourceId,
-			)
+			return resolution
+		}),
+	)
+	const found = resolutions.filter(
+		(resolution): resolution is NonNullable<typeof resolution> =>
+			resolution !== null,
+	)
+	if (found.length === 0) return []
+	const sourceIds = found.map((resolution) => resolution.row.sourceId)
+	const [singleId] = sourceIds
+	const sourceRows =
+		sourceIds.length === 1 && singleId
+			? await getEntitySourceById(input.env.APP_DB, singleId).then((row) =>
+					row ? [row] : [],
+				)
+			: await listEntitySourcesByIds(input.env.APP_DB, sourceIds)
+	const sourcesById = new Map(sourceRows.map((row) => [row.id, row]))
+	const deps = await Promise.all(
+		found.map(async (resolution) => {
+			const source = sourcesById.get(resolution.row.sourceId)
 			const publishedCommit = source?.published_commit
 			if (!publishedCommit) return null
 			const stored = await readPublishedCredentialStamp({

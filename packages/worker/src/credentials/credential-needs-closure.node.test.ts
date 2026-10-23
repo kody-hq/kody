@@ -54,6 +54,11 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 vi.mock('#worker/repo/entity-sources.ts', () => ({
 	getEntitySourceById: async (_db: unknown, id: string) =>
 		mocks.sources.get(id) ?? null,
+	listEntitySourcesByIds: async (_db: unknown, ids: ReadonlyArray<string>) =>
+		ids.flatMap((id) => {
+			const row = mocks.sources.get(id)
+			return row ? [row] : []
+		}),
 }))
 
 vi.mock('#worker/repo/published-source.ts', () => ({

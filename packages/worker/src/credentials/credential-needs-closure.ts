@@ -14,7 +14,10 @@ import {
 	writePublishedCredentialNeeds,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { collectStaticKodyPackageImportsFromFiles } from '#worker/package-runtime/static-kody-imports.ts'
-import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceById,
+	listEntitySourcesByIds,
+} from '#worker/repo/entity-sources.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
@@ -79,13 +82,30 @@ export async function loadPublishedCredentialNeeds(input: {
 	env: Env
 	userId: string
 	sourceId: string
+	/**
+	 * Preloaded entity-source row (same freshness as a direct
+	 * {@link getEntitySourceById}). Callers that already batched
+	 * `listEntitySourcesByIds` pass the row so the gateway path does not
+	 * re-query. Omit to read from D1.
+	 */
+	source?: EntitySourceRow | null
 	visiting?: ReadonlySet<string>
 	fresh?: boolean
 }): Promise<Array<CredentialNeed>> {
 	const visiting = input.visiting ?? new Set<string>()
 	if (visiting.has(input.sourceId)) return []
-	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
-	if (!source?.published_commit || source.user_id !== input.userId) return []
+	const source =
+		input.source !== undefined
+			? input.source
+			: await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	if (
+		!source ||
+		source.id !== input.sourceId ||
+		!source.published_commit ||
+		source.user_id !== input.userId
+	) {
+		return []
+	}
 	const stored = input.fresh
 		? null
 		: readStoredCredentialNeeds(
@@ -123,6 +143,11 @@ export async function loadPublishedCredentialNeeds(input: {
  * dependent's bundle snapshots. A package that is not in this org is left to
  * the bundle check, which reports it; any other failure throws, so a partial
  * closure is never stored.
+ *
+ * Resolves every import name first, then loads all entity-source rows in one
+ * `IN (…)` (KODY-AK). Awaiting `resolveSavedPackageImport` before each
+ * `getEntitySourceById` used to defeat the microtask batcher and leave an N+1
+ * on KodyFetchGateway credential-need checks.
  */
 async function loadDependencyCredentialNeeds(input: {
 	env: Env
@@ -138,7 +163,7 @@ async function loadDependencyCredentialNeeds(input: {
 				.filter((name) => name !== input.manifest.name),
 		),
 	].sort()
-	const dependencies = await Promise.all(
+	const resolutions = await Promise.all(
 		names.map(async (packageName) => {
 			const resolution = await resolveSavedPackageImport({
 				db: input.env.APP_DB,
@@ -146,16 +171,35 @@ async function loadDependencyCredentialNeeds(input: {
 				specifier: { packageName, exportName: '.' },
 			})
 			if (!resolution) return null
+			return { packageName, resolution }
+		}),
+	)
+	const found = resolutions.filter(
+		(entry): entry is NonNullable<typeof entry> => entry !== null,
+	)
+	if (found.length === 0) return []
+	const sourceIds = found.map(({ resolution }) => resolution.row.sourceId)
+	const [singleId] = sourceIds
+	const sourceRows =
+		sourceIds.length === 1 && singleId
+			? await getEntitySourceById(input.env.APP_DB, singleId).then((row) =>
+					row ? [row] : [],
+				)
+			: await listEntitySourcesByIds(input.env.APP_DB, sourceIds)
+	const sourcesById = new Map(sourceRows.map((row) => [row.id, row]))
+	const dependencies = await Promise.all(
+		found.map(async ({ packageName, resolution }) => {
 			const needs = await loadPublishedCredentialNeeds({
 				env: input.env,
 				userId: resolution.row.userId,
 				sourceId: resolution.row.sourceId,
+				source: sourcesById.get(resolution.row.sourceId) ?? null,
 				visiting: input.visiting,
 			})
 			return { packageName, needs }
 		}),
 	)
-	return dependencies.filter((entry) => entry !== null)
+	return dependencies
 }
 
 /** `files` are relative to the package's source root. */
