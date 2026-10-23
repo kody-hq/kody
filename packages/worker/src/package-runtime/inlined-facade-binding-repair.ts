@@ -4,16 +4,27 @@ import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
  * Published bundles inline each package's `kody:runtime` facade (only the
  * shared runtime module stays external). Facades built before
  * `createAuthenticatedFetch` and `oauthClientCredentials` joined
- * `packageBoundRuntimeExports` import those two straight from the shared
+ * `packageBoundRuntimeExports` take those two straight from the shared
  * runtime, so package code calls the run's own helper and acts as the caller
  * (an integration locked to the package refuses it as "execute").
  *
  * This read-time repair binds them the way the current builder does: inside
- * each inlined facade section it swaps the shared import for
- * `var <local> = __kodyCreatePackageBound...(<id>)`. The id is the one the
- * facade already binds `kody` to, and it must be bundler provenance for the
- * artifact. The bound helper only reaches the authority that facade's
- * `kody` and `fetch` already hold. Current bundles have nothing to rewrite.
+ * each inlined facade section it adds
+ * `var <local> = __kodyCreatePackageBound...(<id>)` and points the facade's
+ * named and default exports at it. The id is the one the facade already
+ * binds its storage, secrets, and credentials (and, after GHSA-5fv3, `kody`
+ * and `fetch`) to, and it must be bundler provenance for the artifact, so
+ * the bound helper only reaches authority that facade already holds.
+ * Current bundles have nothing to rewrite.
+ *
+ * Facades come in two stored shapes, and both are repaired:
+ * - named: `export { ... } from` the shared runtime (Sep 23, 2026 on). The
+ *   bundle keeps the shared import line, the base default import, and the
+ *   first bound export. Bundles from before GHSA-5fv3 bind only storage,
+ *   secrets, and credentials there; later ones start with `fetch` and `kody`.
+ * - star: `export * from` the shared runtime (before Sep 23, 2026). esbuild
+ *   turns the facade into an `__export` namespace object that re-exports the
+ *   shared runtime namespace, and package code reads helpers off it.
  */
 
 type RepairableArtifact = {
@@ -22,24 +33,56 @@ type RepairableArtifact = {
 	packageContext: { packageId: string } | null
 }
 
+const identifierSource = String.raw`[A-Za-z_$][\w$]*`
+const runtimeSpecifierSource = String.raw`("[^"\n]*\.__kody_virtual__\/runtime\.js")`
+const baseDefaultImportSource = (specifierGroup: number) =>
+	String.raw`import\s+__kodyBaseRuntimeDefault\d*\s*,\s*\{([^}]*)\}\s*from\s*` +
+	`\\${specifierGroup}` +
+	String.raw`;?[ \t]*\n`
+const firstBoundExportSource = String.raw`var ${identifierSource} = __kodyCreatePackageBound[A-Za-z]+\d*\(("[^"\n]*")\);`
+
 /**
- * The head of a facade as the builder emits it and esbuild keeps it: the
- * shared-runtime re-export import, the base default import from the same
- * module, then the lexical `fetch` and `kody` bound to the package id.
- * Matching the whole head (not a banner comment) also finds facades of
- * packages inlined from another package's published bundle.
+ * Head of a named facade as esbuild keeps it: the shared-runtime re-export
+ * import, the base default import from the same module, then the first
+ * export bound to the package id. Matching the whole head (not a banner
+ * comment) also finds facades of packages inlined from another package's
+ * published bundle.
  */
-const facadeHeadPattern = new RegExp(
+const namedFacadeHeadPattern = new RegExp(
 	[
-		String.raw`^import\s*\{([^}]*)\}\s*from\s*("[^"\n]*\.__kody_virtual__\/runtime\.js");?[ \t]*\n`,
-		String.raw`import\s+__kodyBaseRuntimeDefault\d*\s*,\s*\{[^}]*\}\s*from\s*\2;?[ \t]*\n`,
-		String.raw`var __kodyBoundFetch\d* = __kodyCreatePackageBoundFetch\d*\(("[^"\n]*")\);[ \t]*\n`,
-		String.raw`var kody\d* = __kodyCreatePackageBoundKody\d*\(\3\);`,
+		String.raw`^import\s*\{([^}]*)\}\s*from\s*${runtimeSpecifierSource};?[ \t]*\n`,
+		baseDefaultImportSource(2),
+		firstBoundExportSource,
 	].join(''),
 	'gm',
 )
+
+/**
+ * Head of a star facade as esbuild emits it: the namespace object with the
+ * facade's own exports, the re-export of the shared runtime namespace, that
+ * namespace import, the base default import, then the first bound export.
+ */
+const starFacadeHeadPattern = new RegExp(
+	[
+		String.raw`^var (${identifierSource}) = \{\};[ \t]*\n`,
+		String.raw`__export\(\1, \{\n([^}]*)\n\}\);[ \t]*\n`,
+		String.raw`__reExport\(\1, (${identifierSource})(?:, ${identifierSource})?\);[ \t]*\n`,
+		String.raw`import \* as \3 from ${runtimeSpecifierSource};[ \t]*\n`,
+		baseDefaultImportSource(4),
+		firstBoundExportSource,
+	].join(''),
+	'gm',
+)
+
 const facadeEndPattern = /^var KodyRuntime\d* = /m
 const boundDefaultEntriesPattern = /Object\.entries\(\{([^}]*)\}\)/
+/** The default export proxy's `get(target, property, receiver) {` line. */
+const proxyGetHeadPattern = new RegExp(
+	String.raw`get\(${identifierSource}, (${identifierSource}), ${identifierSource}\) \{[ \t]*\n`,
+)
+const boundCreatorCallPattern =
+	/__kodyCreatePackageBound[A-Za-z]+\d*\(("[^"\n]*")\)/g
+const boundCreatorNamePattern = /^__kodyCreatePackageBound[A-Za-z]+$/
 
 /** Shared-runtime imports a facade must bind, and the creator for each. */
 const facadeRepairCreators: Record<string, string> = {
@@ -95,13 +138,57 @@ function createNameAllocator(source: string) {
 	}
 }
 
-function repairFacadeImport(input: {
-	importList: string
+type FacadeRepair = {
+	/** Replacement for the matched head. */
+	head: string
+	/** Rewrite of the facade body (head end to the end marker). */
+	patchBody: (body: string) => string
+}
+
+type FacadeRepairInput = {
+	match: RegExpMatchArray
+	packageId: string
+	allocate: (base: string) => string
+}
+
+type FacadeMatch = {
+	match: RegExpMatchArray
+	repair: (input: FacadeRepairInput) => FacadeRepair | null
+	/** The package id literal the facade's first bound export names. */
+	idLiteral: string
+	/** Names imported next to the base runtime default. */
+	creatorList: string
+}
+
+/** Creator imports and `var` bindings for the helpers a facade must bind. */
+function createBoundHelpers(input: {
+	names: Array<{ imported: string; local: string }>
 	specifier: string
 	packageId: string
 	allocate: (base: string) => string
 }) {
-	const entries = parseImportEntries(input.importList)
+	const id = JSON.stringify(input.packageId)
+	const creatorImports: Array<string> = []
+	const bindings: Array<string> = []
+	for (const name of input.names) {
+		const creator = facadeRepairCreators[name.imported]!
+		const alias = input.allocate(creator)
+		creatorImports.push(alias === creator ? creator : `${creator} as ${alias}`)
+		bindings.push(`var ${name.local} = ${alias}(${id});`)
+	}
+	return {
+		creatorImport: `import { ${creatorImports.join(', ')} } from ${input.specifier};`,
+		bindings: bindings.join('\n'),
+	}
+}
+
+/**
+ * Named facade: drop the helpers from the shared import, bind them after the
+ * head, and add them to the default export's bound entries.
+ */
+function repairNamedFacade(input: FacadeRepairInput): FacadeRepair | null {
+	const [head, importList, specifier] = input.match
+	const entries = parseImportEntries(importList!)
 	if (entries.some((entry) => entry == null)) return null
 	const parsed = entries.filter((entry) => entry != null)
 	const targets = parsed.filter((entry) =>
@@ -109,29 +196,127 @@ function repairFacadeImport(input: {
 	)
 	if (targets.length === 0) return null
 	const kept = parsed.filter((entry) => !targets.includes(entry))
-	const id = JSON.stringify(input.packageId)
-	const creatorImports: Array<string> = []
-	const bindings: Array<string> = []
-	for (const target of targets) {
-		const creator = facadeRepairCreators[target.imported]!
-		const alias = input.allocate(creator)
-		creatorImports.push(alias === creator ? creator : `${creator} as ${alias}`)
-		bindings.push(`var ${target.local} = ${alias}(${id});`)
-	}
+	const helpers = createBoundHelpers({
+		names: targets,
+		specifier: specifier!,
+		packageId: input.packageId,
+		allocate: input.allocate,
+	})
+	const imports = [
+		...(kept.length > 0
+			? [
+					`import { ${kept.map((entry) => entry.entry).join(', ')} } from ${specifier};`,
+				]
+			: []),
+		helpers.creatorImport,
+	].join('\n')
+	// Shared import first, then the rest of the head (base default import and
+	// the first bound export), then the bound helpers.
+	const restOfHead = head.slice(head.indexOf('\n') + 1)
+	const defaultEntries = targets
+		.map((target) => `${target.imported}: ${target.local}`)
+		.join(', ')
 	return {
-		imports: [
-			...(kept.length > 0
-				? [
-						`import { ${kept.map((entry) => entry.entry).join(', ')} } from ${input.specifier};`,
-					]
-				: []),
-			`import { ${creatorImports.join(', ')} } from ${input.specifier};`,
-		].join('\n'),
-		bindings: bindings.join('\n'),
-		defaultEntries: targets
-			.map((target) => `${target.imported}: ${target.local}`)
-			.join(', '),
+		head: `${imports}\n${restOfHead}\n${helpers.bindings}`,
+		patchBody: (body) =>
+			body.replace(
+				boundDefaultEntriesPattern,
+				(_whole, entriesBody: string) =>
+					`Object.entries({${entriesBody.trimEnd()}, ${defaultEntries} })`,
+			),
 	}
+}
+
+/**
+ * Star facade: give the namespace object its own getters for the helpers
+ * (esbuild's `__reExport` skips names the object already has), bind them
+ * after the head, and answer them from the default export's proxy.
+ */
+function repairStarFacade(input: FacadeRepairInput): FacadeRepair | null {
+	const [head, exportsName, exportEntries, , specifier] = input.match
+	const ownNames = new Set(
+		[...exportEntries!.matchAll(/^\s*([A-Za-z_$][\w$]*):/gm)].map(
+			(entry) => entry[1]!,
+		),
+	)
+	const targets = Object.keys(facadeRepairCreators)
+		.filter((name) => !ownNames.has(name))
+		.map((name) => ({ imported: name, local: input.allocate(name) }))
+	if (targets.length === 0) return null
+	const helpers = createBoundHelpers({
+		names: targets,
+		specifier: specifier!,
+		packageId: input.packageId,
+		allocate: input.allocate,
+	})
+	const exportsHead = `var ${exportsName} = {};\n__export(${exportsName}, {\n${exportEntries!.trimEnd()},\n${targets
+		.map((target) => `  ${target.imported}: () => ${target.local}`)
+		.join(',\n')}\n});\n`
+	const restOfHead = head.slice(head.indexOf('__reExport('))
+	return {
+		head: `${exportsHead}${restOfHead}\n${helpers.creatorImport}\n${helpers.bindings}`,
+		patchBody: (body) =>
+			body.replace(
+				proxyGetHeadPattern,
+				(whole, property: string) =>
+					`${whole}${targets
+						.map(
+							(target) =>
+								`    if (${property} === ${JSON.stringify(target.imported)} && ${target.local} !== void 0) return ${target.local};\n`,
+						)
+						.join('')}`,
+			),
+	}
+}
+
+function parseStringLiteral(literal: string) {
+	try {
+		const value: unknown = JSON.parse(literal)
+		return typeof value === 'string' ? value : null
+	} catch {
+		return null
+	}
+}
+
+/** Every bound creator in the facade names the same package. */
+function bindsOnlyPackage(text: string, idLiteral: string) {
+	for (const call of text.matchAll(boundCreatorCallPattern)) {
+		if (call[1] !== idLiteral) return false
+	}
+	return true
+}
+
+/** The base default import names only bound creators (a real facade). */
+function importsOnlyBoundCreators(list: string) {
+	const entries = parseImportEntries(list)
+	return (
+		entries.length > 0 &&
+		entries.every(
+			(entry) => entry != null && boundCreatorNamePattern.test(entry.imported),
+		)
+	)
+}
+
+function collectFacadeMatches(source: string): Array<FacadeMatch> {
+	const named = [...source.matchAll(namedFacadeHeadPattern)].map(
+		(match): FacadeMatch => ({
+			match,
+			repair: repairNamedFacade,
+			creatorList: match[3]!,
+			idLiteral: match[4]!,
+		}),
+	)
+	const star = [...source.matchAll(starFacadeHeadPattern)].map(
+		(match): FacadeMatch => ({
+			match,
+			repair: repairStarFacade,
+			creatorList: match[5]!,
+			idLiteral: match[6]!,
+		}),
+	)
+	return [...named, ...star].sort(
+		(left, right) => left.match.index! - right.match.index!,
+	)
 }
 
 /** Rewrite one bundle module, or null when it has nothing to repair. */
@@ -139,54 +324,32 @@ export function repairInlinedFacadeBindings(input: {
 	source: string
 	allowedPackageIds: ReadonlySet<string>
 }) {
-	if (!input.source.includes('__kodyCreatePackageBoundKody')) return null
+	if (!input.source.includes('__kodyBaseRuntimeDefault')) return null
 	const allocate = createNameAllocator(input.source)
 	const pieces: Array<string> = []
 	let cursor = 0
-	const matches = [...input.source.matchAll(facadeHeadPattern)]
-	for (const [matchIndex, match] of matches.entries()) {
-		const [head, importList, specifier, idLiteral] = match
-		let packageId: unknown
-		try {
-			packageId = JSON.parse(idLiteral!)
-		} catch {
-			continue
-		}
-		if (
-			typeof packageId !== 'string' ||
-			!input.allowedPackageIds.has(packageId)
-		) {
-			continue
-		}
-		const repaired = repairFacadeImport({
-			importList: importList!,
-			specifier: specifier!,
-			packageId,
-			allocate,
-		})
-		if (repaired == null) continue
-		const headStart = match.index
-		const headEnd = headStart + head.length
-		// Shared import first, then the rest of the head (base default import,
-		// fetch, kody), then the bound helpers.
-		const restOfHead = head.slice(head.indexOf('\n') + 1)
+	const matches = collectFacadeMatches(input.source)
+	for (const [matchIndex, facade] of matches.entries()) {
+		const { match } = facade
+		const packageId = parseStringLiteral(facade.idLiteral)
+		if (packageId == null || !input.allowedPackageIds.has(packageId)) continue
+		if (!importsOnlyBoundCreators(facade.creatorList)) continue
+		const headStart = match.index!
+		const headEnd = headStart + match[0].length
 		// A facade ends before the next facade head, so a facade without its
 		// end marker never swallows (and duplicates) the next one.
-		const sectionEnd = matches[matchIndex + 1]?.index ?? input.source.length
+		const sectionEnd =
+			matches[matchIndex + 1]?.match.index ?? input.source.length
 		const tail = input.source.slice(headEnd, sectionEnd)
 		const facadeEnd = facadeEndPattern.exec(tail)
 		const facadeBody = facadeEnd ? tail.slice(0, facadeEnd.index) : ''
-		const patchedBody = facadeEnd
-			? facadeBody.replace(
-					boundDefaultEntriesPattern,
-					(_whole, body: string) =>
-						`Object.entries({${body.trimEnd()}, ${repaired.defaultEntries} })`,
-				)
-			: ''
+		if (!bindsOnlyPackage(facadeBody, facade.idLiteral)) continue
+		const repaired = facade.repair({ match, packageId, allocate })
+		if (repaired == null) continue
 		pieces.push(
 			input.source.slice(cursor, headStart),
-			`${repaired.imports}\n${restOfHead}\n${repaired.bindings}`,
-			patchedBody,
+			repaired.head,
+			facadeEnd ? repaired.patchBody(facadeBody) : '',
 		)
 		cursor = headEnd + facadeBody.length
 	}

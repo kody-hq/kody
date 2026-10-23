@@ -167,3 +167,165 @@ test('a facade without its end marker does not swallow the next facade', () => {
 	expect(repaired).toContain(innerCode)
 	expect(repaired).toContain(outerCode)
 })
+
+/**
+ * A facade as builders before GHSA-5fv3 (fe2aca6a9) emitted it and esbuild
+ * inlined it: storage, secrets, and credentials are bound, with no lexical
+ * `fetch` or `kody`.
+ */
+function preFixFacade(packageId: string, n = '') {
+	const id = JSON.stringify(packageId)
+	const renamed = (name: string) => (n ? `${name} as ${name}${n}` : name)
+	const spec = '"./.__kody_virtual__/runtime.js"'
+	return [
+		`import { ${['kody', 'createAuthenticatedFetch', 'secretHeaders', 'oauthClientCredentials', 'packageContext'].map(renamed).join(', ')} } from ${spec};`,
+		`import __kodyBaseRuntimeDefault${n}, { ${['__kodyCreatePackageBoundStorage', '__kodyCreatePackageBoundSecrets', '__kodyCreatePackageBoundCredentialRuntime'].map(renamed).join(', ')} } from ${spec};`,
+		`var packageStorage${n} = __kodyCreatePackageBoundStorage${n}(${id});`,
+		`var packageSecrets${n} = __kodyCreatePackageBoundSecrets${n}(${id});`,
+		`var __kodyPackageCredentialRuntime${n} = __kodyCreatePackageBoundCredentialRuntime${n}(${id});`,
+		`var credential${n} = __kodyPackageCredentialRuntime${n}.credential;`,
+		`var credentials${n} = __kodyPackageCredentialRuntime${n}.credentials;`,
+		`var __kodyPackageBound${n} = Object.fromEntries(`,
+		`  Object.entries({ packageStorage${n ? `: packageStorage${n}` : ''}, credential${n ? `: credential${n}` : ''} }).filter(([, value]) => value !== void 0)`,
+		`);`,
+		`var KodyRuntime${n} = Object.freeze({ defaultValue: __kodyPackageBound${n} });`,
+	].join('\n')
+}
+
+test('binds a pre-fix facade that has no lexical fetch or kody', () => {
+	const source = [
+		preFixFacade('pkg-outer'),
+		preFixFacade('pkg-inner', '2'),
+		innerCode,
+		outerCode,
+	].join('\n')
+	expect(source).not.toContain('__kodyCreatePackageBoundKody')
+	const repaired = repairInlinedFacadeBindings({
+		source,
+		allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
+	})!
+	expect(repaired).toContain(
+		'import { kody, secretHeaders, packageContext } from "./.__kody_virtual__/runtime.js";\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials } from "./.__kody_virtual__/runtime.js";',
+	)
+	expect(repaired).toContain(
+		'var packageStorage = __kodyCreatePackageBoundStorage("pkg-outer");\nvar createAuthenticatedFetch = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");\nvar oauthClientCredentials = __kodyCreatePackageBoundOauthClientCredentials("pkg-outer");',
+	)
+	expect(repaired).toContain(
+		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
+	)
+	expect(repaired).toContain(
+		'Object.entries({ packageStorage, credential, createAuthenticatedFetch: createAuthenticatedFetch, oauthClientCredentials: oauthClientCredentials })',
+	)
+	expect(repaired).toContain(innerCode)
+	expect(repaired).toContain(outerCode)
+	expect(
+		repairInlinedFacadeBindings({
+			source: repaired,
+			allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
+		}),
+	).toBeNull()
+})
+
+test('binds a pre-fix facade after the single-package repair rebinds kody', () => {
+	// repairPreBindingPublishedArtifact runs first on single-package bundles:
+	// it drops `kody` from the shared import and prepends bound fetch/kody.
+	const source = [
+		'import { __kodyCreatePackageBoundFetch as __kodyPreBindingBoundFetch, __kodyCreatePackageBoundKody as __kodyPreBindingBoundKody } from "./.__kody_virtual__/runtime.js";',
+		'const fetch = __kodyPreBindingBoundFetch("pkg-outer");',
+		'const kody = __kodyPreBindingBoundKody("pkg-outer");',
+		preFixFacade('pkg-outer').replace('import { kody, ', 'import { '),
+		outerCode,
+	].join('\n')
+	const repaired = repairInlinedFacadeBindings({
+		source,
+		allowedPackageIds: new Set(['pkg-outer']),
+	})!
+	expect(repaired).toContain(
+		'var createAuthenticatedFetch = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");',
+	)
+	expect(repaired).toContain(
+		'const kody = __kodyPreBindingBoundKody("pkg-outer");',
+	)
+})
+
+/** A facade from the `export *` era as esbuild inlined it. */
+function starFacade(packageId: string, n = '') {
+	const id = JSON.stringify(packageId)
+	const short = n ? `${n}` : ''
+	return [
+		`var f${short}_exports = {};`,
+		`__export(f${short}_exports, {`,
+		`  KodyRuntime: () => KodyRuntime${n},`,
+		`  default: () => f${short}_default,`,
+		`  packageStorage: () => packageStorage${n}`,
+		`});`,
+		`__reExport(f${short}_exports, runtime_star${n});`,
+		`import * as runtime_star${n} from "./.__kody_virtual__/runtime.js";`,
+		`import __kodyBaseRuntimeDefault${n}, { __kodyCreatePackageBoundStorage${n ? ` as __kodyCreatePackageBoundStorage${n}` : ''} } from "./.__kody_virtual__/runtime.js";`,
+		`var packageStorage${n} = __kodyCreatePackageBoundStorage${n}(${id});`,
+		`var __kodyPackageRuntimeDefault${n} = new Proxy(__kodyBaseRuntimeDefault${n}, {`,
+		`  get(target, property, receiver) {`,
+		`    if (property === "packageStorage") return packageStorage${n};`,
+		`    return Reflect.get(target, property, receiver);`,
+		`  }`,
+		`});`,
+		`var f${short}_default = __kodyPackageRuntimeDefault${n};`,
+		`var KodyRuntime${n} = Object.freeze({ defaultValue: __kodyPackageRuntimeDefault${n} });`,
+	].join('\n')
+}
+
+test('binds an `export *` era facade on its namespace and default export', () => {
+	const code =
+		'async function call() {\n  return await (0, f_exports.createAuthenticatedFetch)("svc");\n}'
+	const source = [
+		starFacade('pkg-outer'),
+		starFacade('pkg-inner', '2'),
+		code,
+	].join('\n')
+	const repaired = repairInlinedFacadeBindings({
+		source,
+		allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
+	})!
+	expect(repaired).toContain(
+		'  packageStorage: () => packageStorage,\n  createAuthenticatedFetch: () => createAuthenticatedFetch1,\n  oauthClientCredentials: () => oauthClientCredentials\n});\n__reExport(f_exports, runtime_star);',
+	)
+	expect(repaired).toContain(
+		'var packageStorage = __kodyCreatePackageBoundStorage("pkg-outer");\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials } from "./.__kody_virtual__/runtime.js";\nvar createAuthenticatedFetch1 = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");',
+	)
+	expect(repaired).toContain(
+		'  get(target, property, receiver) {\n    if (property === "createAuthenticatedFetch" && createAuthenticatedFetch1 !== void 0) return createAuthenticatedFetch1;\n',
+	)
+	expect(repaired).toContain(
+		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
+	)
+	expect(repaired).toContain(code)
+	expect(
+		repairInlinedFacadeBindings({
+			source: repaired,
+			allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
+		}),
+	).toBeNull()
+})
+
+test('skips a facade that binds more than one package or imports non-creators', () => {
+	const mixedIds = preFixFacade('pkg-outer').replace(
+		'__kodyCreatePackageBoundSecrets("pkg-outer")',
+		'__kodyCreatePackageBoundSecrets("pkg-other")',
+	)
+	expect(
+		repairInlinedFacadeBindings({
+			source: `${mixedIds}\n${outerCode}`,
+			allowedPackageIds: new Set(['pkg-outer', 'pkg-other']),
+		}),
+	).toBeNull()
+	const notAFacade = preFixFacade('pkg-outer').replace(
+		'__kodyCreatePackageBoundSecrets, ',
+		'__kodyCreatePackageBoundSecrets, somethingElse, ',
+	)
+	expect(
+		repairInlinedFacadeBindings({
+			source: `${notAFacade}\n${outerCode}`,
+			allowedPackageIds: new Set(['pkg-outer']),
+		}),
+	).toBeNull()
+})
