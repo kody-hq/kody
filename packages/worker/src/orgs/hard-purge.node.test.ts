@@ -5,6 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
+import { purgePersistedMcpAgentSession } from '#mcp/session-registry.ts'
 
 vi.mock('#worker/jobs/manager-client.ts', () => ({
 	purgeJobManagerForUser: vi.fn(async () => ({
@@ -879,4 +880,108 @@ test('finishLegacyUserDeletion cleans up an orphaned package and source after th
 		stableUserId: personId,
 	})
 	expect(second.alreadyGone).toBe(true)
+})
+
+test('finishLegacyUserDeletion finishes when an MCP agent session DO was already wiped', async () => {
+	// Exact production retry state after a partial purge: personal org already
+	// gone, package/source rows remain, mcp_agent_sessions still indexes a DO
+	// whose storage was cleared on the earlier attempt. The wipe left no
+	// persisted props owner; treating that as a scope mismatch blocked the
+	// retry even though nothing remained to steal.
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const appDb = createD1FromSqlite(sqlite)
+	const auditDb = createAuditDb()
+	const personId = ownerIdFromStored('person-legacy-mcp-wiped')
+	const ts = '2026-08-20T00:00:00.000Z'
+	const wipedDoId = '00000000-0000-4000-8000-000000000001'
+	await seedLegacyFencedPerson({ appDb, personId, ts, deletingAt: ts })
+	await appDb
+		.prepare(
+			`INSERT INTO entity_sources (
+				id, user_id, entity_kind, entity_id, repo_id, published_commit,
+				created_at, updated_at
+			) VALUES ('src-mcp-wiped', ?, 'package', 'pkg-mcp-wiped', 'repo-mcp-wiped', 'abc123', ?, ?)`,
+		)
+		.bind(personId, ts, ts)
+		.run()
+	await appDb
+		.prepare(
+			`INSERT INTO saved_packages (
+				id, user_id, name, kody_id, description, source_id, created_at, updated_at
+			) VALUES ('pkg-mcp-wiped', ?, 'wiped', 'wiped', 'Wiped', 'src-mcp-wiped', ?, ?)`,
+		)
+		.bind(personId, ts, ts)
+		.run()
+	await appDb
+		.prepare(
+			`INSERT INTO mcp_agent_sessions (do_id, user_id, org_id, created_at)
+			 VALUES (?, ?, ?, ?)`,
+		)
+		.bind(wipedDoId, personId, personId, ts)
+		.run()
+	for (const table of ['org_memberships', 'handles', 'orgs'] as const) {
+		const column = table === 'orgs' ? 'id' : 'org_id'
+		await appDb
+			.prepare(`DELETE FROM ${table} WHERE ${column} = ?`)
+			.bind(personId)
+			.run()
+	}
+	let mcpPurgeCalls = 0
+	const emptyStorage: Pick<DurableObjectStorage, 'get' | 'deleteAll'> = {
+		get: (async (_key: string | Array<string>) =>
+			undefined) as DurableObjectStorage['get'],
+		async deleteAll() {
+			mcpPurgeCalls += 1
+		},
+	}
+	const { kv } = createKv()
+	const env = createSuccessfulDeletionEnv(appDb, {
+		AUDIT_DB: auditDb,
+		BUNDLE_ARTIFACTS_KV: kv,
+		ARTIFACTS: {
+			create: async () => {
+				throw new Error('unexpected create')
+			},
+			get: async (name: string) => {
+				throw new Error(`ArtifactsError: Repository not found: ${name}`)
+			},
+			delete: async (name: string) => {
+				throw new Error(`ArtifactsError: Repository not found: ${name}`)
+			},
+			list: async () => ({ repos: [], total: 0 }),
+		},
+		MCP_OBJECT: {
+			idFromString: (id: string) => ({ toString: () => id }),
+			get: (id: { toString(): string }) => ({
+				purgeForAccountDeletion: async (payload: { userId: string }) => {
+					await purgePersistedMcpAgentSession({
+						storage: emptyStorage,
+						doId: id.toString(),
+						userId: payload.userId,
+					})
+				},
+			}),
+		},
+	}) as unknown as Env
+
+	const result = await finishLegacyUserDeletion({
+		env,
+		dbUserId: 7,
+		stableUserId: personId,
+	})
+	expect(result.alreadyGone).toBe(false)
+	expect(mcpPurgeCalls).toBe(1)
+	for (const [table, column] of [
+		['users', 'stable_user_id'],
+		['saved_packages', 'user_id'],
+		['entity_sources', 'user_id'],
+		['mcp_agent_sessions', 'user_id'],
+	] as const) {
+		const row = await appDb
+			.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`)
+			.bind(personId)
+			.first<{ n: number }>()
+		expect({ table, n: row?.n }).toEqual({ table, n: 0 })
+	}
 })
