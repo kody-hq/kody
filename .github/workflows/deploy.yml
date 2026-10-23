@@ -1018,7 +1018,14 @@ jobs:
         env:
           # Scan-only: tools/ci/collect-wrangler-logs.ts drops any log file
           # that contains one of these values. Values are never printed.
-          WRANGLER_LOG_SCAN_SECRETS: ${{ toJSON(secrets) }}
+          # List each secret this job uses by name. Never serialize the
+          # whole secrets context: it hands every repository secret to the
+          # step, and once it landed every Deploy run was held as
+          # action_required.
+          # tools/ci/wrangler-log-scan-secrets.node.test.ts keeps this in sync.
+          WRANGLER_LOG_SCAN_SECRETS: >-
+            {"CLOUDFLARE_API_TOKEN": ${{ toJSON(secrets.CLOUDFLARE_API_TOKEN)
+            }}, "SENTRY_DSN": ${{ toJSON(secrets.SENTRY_DSN) }}}
         run: |
           if [ ! -f tools/ci/collect-wrangler-logs.ts ]; then exit 0; fi
           node tools/ci/collect-wrangler-logs.ts --from "$HOME/.config/.wrangler/logs" --out "$RUNNER_TEMP/wrangler-logs"
@@ -1902,7 +1909,56 @@ jobs:
         env:
           # Scan-only: tools/ci/collect-wrangler-logs.ts drops any log file
           # that contains one of these values. Values are never printed.
-          WRANGLER_LOG_SCAN_SECRETS: ${{ toJSON(secrets) }}
+          # List each secret this job uses by name. Never serialize the
+          # whole secrets context: it hands every repository secret to the
+          # step, and once it landed every Deploy run was held as
+          # action_required.
+          # tools/ci/wrangler-log-scan-secrets.node.test.ts keeps this in sync.
+          WRANGLER_LOG_SCAN_SECRETS: >-
+            {"AI_GATEWAY_ID": ${{ toJSON(secrets.AI_GATEWAY_ID) }},
+            "CAPABILITY_REINDEX_SECRET": ${{
+            toJSON(secrets.CAPABILITY_REINDEX_SECRET) }},
+            "CLOUDFLARE_API_TOKEN": ${{ toJSON(secrets.CLOUDFLARE_API_TOKEN) }},
+            "CLOUDFLARE_APP_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_APP_API_TOKEN) }},
+            "CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN) }},
+            "CLOUDFLARE_RUNTIME_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_RUNTIME_API_TOKEN) }}, "COOKIE_SECRET":
+            ${{ toJSON(secrets.COOKIE_SECRET) }}, "DISCORD_BOT_TOKEN": ${{
+            toJSON(secrets.DISCORD_BOT_TOKEN) }}, "DISCORD_GUILD_ID": ${{
+            toJSON(secrets.DISCORD_GUILD_ID) }}, "DISCORD_MEMBER_ROLE_ID": ${{
+            toJSON(secrets.DISCORD_MEMBER_ROLE_ID) }}, "DISCORD_PRO_ROLE_ID":
+            ${{ toJSON(secrets.DISCORD_PRO_ROLE_ID) }},
+            "DISCORD_STANDARD_ROLE_ID": ${{
+            toJSON(secrets.DISCORD_STANDARD_ROLE_ID) }}, "GITHUB_TOKEN": ${{
+            toJSON(secrets.GITHUB_TOKEN) }}, "KIT_API_KEY": ${{
+            toJSON(secrets.KIT_API_KEY) }}, "OAUTH_DISCORD_CLIENT_ID": ${{
+            toJSON(secrets.OAUTH_DISCORD_CLIENT_ID) }},
+            "OAUTH_DISCORD_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_DISCORD_CLIENT_SECRET) }},
+            "OAUTH_GITHUB_CLIENT_ID": ${{ toJSON(secrets.OAUTH_GITHUB_CLIENT_ID)
+            }}, "OAUTH_GITHUB_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_GITHUB_CLIENT_SECRET) }},
+            "OAUTH_GOOGLE_CLIENT_ID": ${{ toJSON(secrets.OAUTH_GOOGLE_CLIENT_ID)
+            }}, "OAUTH_GOOGLE_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_GOOGLE_CLIENT_SECRET) }}, "OAUTH_X_CLIENT_ID":
+            ${{ toJSON(secrets.OAUTH_X_CLIENT_ID) }}, "OAUTH_X_CLIENT_SECRET":
+            ${{ toJSON(secrets.OAUTH_X_CLIENT_SECRET) }}, "OIDC_SIGNING_KEY_ID":
+            ${{ toJSON(secrets.OIDC_SIGNING_KEY_ID) }},
+            "OIDC_SIGNING_PRIVATE_KEY_PEM": ${{
+            toJSON(secrets.OIDC_SIGNING_PRIVATE_KEY_PEM) }},
+            "PACKAGE_APP_TICKET_KEYS": ${{
+            toJSON(secrets.PACKAGE_APP_TICKET_KEYS) }}, "PACKAGE_APP_ZONE_ID":
+            ${{ toJSON(secrets.PACKAGE_APP_ZONE_ID) }}, "SECRET_STORE_KEY": ${{
+            toJSON(secrets.SECRET_STORE_KEY) }}, "SENTRY_AUTH_TOKEN": ${{
+            toJSON(secrets.SENTRY_AUTH_TOKEN) }}, "SENTRY_DSN": ${{
+            toJSON(secrets.SENTRY_DSN) }}, "STATUS_INCIDENT_EVENT_SECRET": ${{
+            toJSON(secrets.STATUS_INCIDENT_EVENT_SECRET) }},
+            "STRIPE_SECRET_KEY": ${{ toJSON(secrets.STRIPE_SECRET_KEY) }},
+            "STRIPE_WEBHOOK_SECRET": ${{ toJSON(secrets.STRIPE_WEBHOOK_SECRET)
+            }}, "YOUTUBE_DATA_API_KEY": ${{ toJSON(secrets.YOUTUBE_DATA_API_KEY)
+            }}}
         run: |
           if [ ! -f tools/ci/collect-wrangler-logs.ts ]; then exit 0; fi
           node tools/ci/collect-wrangler-logs.ts --from "$HOME/.config/.wrangler/logs" --out "$RUNNER_TEMP/wrangler-logs"
