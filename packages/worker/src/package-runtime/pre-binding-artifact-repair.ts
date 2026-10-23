@@ -294,3 +294,23 @@ export function publishedArtifactNeedsPackageBindingRebuild(input: {
 	)
 	return false
 }
+
+/**
+ * True when load sites holding `sourceFiles` refuse to serve this stored
+ * bundle and build the package from source instead (see
+ * {@link publishedArtifactNeedsPackageBindingRebuild}). Local execute has no
+ * source fallback, so a refused bundle reads there as a missing importable
+ * artifact. Publish repair uses this to treat such a bundle as not built.
+ * Without source files it falls back to the shape check alone. Does not log.
+ */
+export function isPublishedArtifactRefusedByLoadSites(input: {
+	artifact: RepairableArtifact
+	sourceFiles?: Record<string, string> | null
+}) {
+	if (!isUnrepairablePreBindingArtifact(input.artifact)) return false
+	if (!input.sourceFiles) return true
+	return (
+		listMissingPublishedSourceInstalledDependencies(input.sourceFiles)
+			.length === 0
+	)
+}

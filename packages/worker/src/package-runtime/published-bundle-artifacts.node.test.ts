@@ -958,3 +958,228 @@ test('sequential reuse checks without a shared dependency cache see a dependency
 	expect(await reusePublishedPackageArtifactIfUnchanged(reuseInput)).toBe(false)
 	expect(mockModule.listEntitySourcesByIds).toHaveBeenCalledTimes(2)
 })
+
+/**
+ * A subpath importable bundle stored before lexical package identity that
+ * inlines another package: free `fetch`, no binding marker, and a dependency
+ * on a different saved package. Load sites refuse it, so local execute
+ * reports the export as having no published importable-module artifact.
+ */
+function preBindingCrossPackageArtifact(
+	input: {
+		publishedCommit?: string
+		overrides?: Record<string, unknown>
+	} = {},
+) {
+	const publishedCommit = input.publishedCommit ?? 'commit-1'
+	const entryPoint = 'src/a.ts'
+	const artifactName = './a'
+	return {
+		row: makeRow({
+			id: 'row-importable-a',
+			publishedCommit,
+			artifactKind: 'importable-module',
+			artifactName,
+			entryPoint,
+			kvKey: `bundle-artifact:v1:source-1:${publishedCommit}:importable-module:${artifactName}:${entryPoint}`,
+		}),
+		artifact: makeKvArtifact({
+			kind: 'importable-module',
+			artifactName,
+			publishedCommit,
+			entryPoint,
+			mainModule: 'dist/a.js',
+			modules: {
+				'dist/a.js':
+					'export default async function a() { return fetch("https://example.com") }',
+			},
+			dependencies: [
+				{
+					sourceId: 'source-dep',
+					publishedCommit: 'dep-1',
+					kodyId: 'dep',
+					packageId: 'pkg-dep',
+				},
+			],
+			packageContext: {
+				packageId: 'pkg-1',
+				kodyId: 'multi-export',
+				sourceId: 'source-1',
+			},
+			...input.overrides,
+		}),
+	}
+}
+
+const importableTargetA = {
+	kind: 'importable-module',
+	artifactName: './a',
+	entryPoint: 'src/a.ts',
+	bundleKind: 'importable-module',
+} as const
+
+function resetArtifactMocks() {
+	mockModule.getPublishedBundleArtifactByIdentity.mockReset()
+	mockModule.readPublishedBundleArtifact.mockReset()
+	mockModule.readPublishedSourceSnapshot.mockReset()
+	mockModule.writePublishedBundleArtifact.mockReset()
+	mockModule.updatePublishedBundleArtifactRow.mockReset()
+	mockModule.getEntitySourceByIdForUser.mockReset()
+	mockModule.getEntitySourceById.mockReset()
+}
+
+test('isPublishedPackageArtifactBuiltForCommit treats a bundle the load sites refuse as not built', async () => {
+	resetArtifactMocks()
+	const isBuilt = () =>
+		isPublishedPackageArtifactBuiltForCommit({
+			env: kvEnv,
+			userId: ownerIdFromStored('user-1'),
+			sourceId: 'source-1',
+			publishedCommit: 'commit-1',
+			target: importableTargetA,
+		})
+	const stub = (
+		loaded: ReturnType<typeof preBindingCrossPackageArtifact>,
+		files: Record<string, string> | null = reusePreviousFiles,
+	) => {
+		mockModule.getPublishedBundleArtifactByIdentity.mockResolvedValue(
+			loaded.row,
+		)
+		mockModule.readPublishedBundleArtifact.mockResolvedValue(loaded.artifact)
+		mockModule.readPublishedSourceSnapshot.mockResolvedValue(
+			files ? { files } : null,
+		)
+	}
+
+	// Row and KV payload exist at this commit, but the bundle predates
+	// lexical package identity and inlines another package: a gap that
+	// already_published and the importable backfill must repair.
+	stub(preBindingCrossPackageArtifact())
+	expect(await isBuilt()).toBe(false)
+	// Same without a source snapshot: the shape alone decides.
+	stub(preBindingCrossPackageArtifact(), null)
+	expect(await isBuilt()).toBe(false)
+
+	// Bundles from the current builder carry the binding marker.
+	stub(
+		preBindingCrossPackageArtifact({
+			overrides: { packageBindingRewrite: 1 },
+		}),
+	)
+	expect(await isBuilt()).toBe(true)
+
+	// Single-package pre-binding bundles are bound in place on read.
+	stub(preBindingCrossPackageArtifact({ overrides: { dependencies: [] } }))
+	expect(await isBuilt()).toBe(true)
+
+	// Load sites keep serving bundles whose source needs an npm install to
+	// rebuild, so publish repair does not churn on them either.
+	stub(preBindingCrossPackageArtifact(), {
+		...reusePreviousFiles,
+		'package.json': JSON.stringify({
+			name: '@alice/multi-export',
+			exports: { '.': './src/a.ts' },
+			dependencies: { 'left-pad': '^1.0.0' },
+			kody: { id: 'multi-export', description: 'fixture' },
+		}),
+	})
+	expect(await isBuilt()).toBe(true)
+})
+
+test('reusePublishedPackageArtifactIfUnchanged never carries a refused pre-binding bundle onto a new commit', async () => {
+	resetArtifactMocks()
+	mockModule.writePublishedBundleArtifact.mockResolvedValue('kv:reused')
+	mockModule.updatePublishedBundleArtifactRow.mockResolvedValue(true)
+	mockModule.getEntitySourceByIdForUser.mockResolvedValue({
+		id: 'source-dep',
+		user_id: ownerIdFromStored('user-1'),
+		published_commit: 'dep-1',
+	})
+	stubSnapshots({ 'commit-old': {}, 'commit-2': {} })
+	const reuse = () =>
+		reusePublishedPackageArtifactIfUnchanged({
+			env: kvEnv,
+			userId: ownerIdFromStored('user-1'),
+			sourceId: 'source-1',
+			publishedCommit: 'commit-2',
+			target: importableTargetA,
+		})
+	const stub = (loaded: ReturnType<typeof preBindingCrossPackageArtifact>) => {
+		mockModule.getPublishedBundleArtifactByIdentity.mockResolvedValue(
+			loaded.row,
+		)
+		mockModule.readPublishedBundleArtifact.mockResolvedValue(loaded.artifact)
+	}
+
+	// Inputs are unchanged and the dependency is current, but copying would
+	// keep the refused bundle at commit-2 too. Rebuild instead.
+	stub(preBindingCrossPackageArtifact({ publishedCommit: 'commit-old' }))
+	expect(await reuse()).toBe(false)
+	expect(mockModule.writePublishedBundleArtifact).not.toHaveBeenCalled()
+	expect(mockModule.updatePublishedBundleArtifactRow).not.toHaveBeenCalled()
+
+	// A bundle from the current builder still reuses.
+	stub(
+		preBindingCrossPackageArtifact({
+			publishedCommit: 'commit-old',
+			overrides: { packageBindingRewrite: 1 },
+		}),
+	)
+	expect(await reuse()).toBe(true)
+	expect(mockModule.writePublishedBundleArtifact).toHaveBeenCalledWith(
+		expect.objectContaining({
+			kvKey:
+				'bundle-artifact:v1:source-1:commit-2:importable-module:./a:src/a.ts',
+			artifact: expect.objectContaining({
+				publishedCommit: 'commit-2',
+				packageBindingRewrite: 1,
+			}),
+		}),
+	)
+})
+
+test('rebuildPublishedPackageArtifacts rebuilds a refused pre-binding importable bundle at an already-published commit', async () => {
+	resetArtifactMocks()
+	mockModule.writePublishedBundleArtifact.mockResolvedValue('kv:key')
+	mockModule.updatePublishedBundleArtifactRow.mockResolvedValue(true)
+	mockModule.insertPublishedBundleArtifactRow.mockResolvedValue(undefined)
+	const stale = preBindingCrossPackageArtifact()
+	mockModule.getPublishedBundleArtifactByIdentity.mockImplementation(
+		async (_db: unknown, query: { artifactKind: string }) =>
+			query.artifactKind === 'importable-module' ? stale.row : null,
+	)
+	mockModule.readPublishedBundleArtifact.mockImplementation(
+		async (input: { kvKey: string }) =>
+			input.kvKey === stale.row.kvKey ? stale.artifact : null,
+	)
+	stubSnapshots({ 'commit-1': {} })
+	const rebuilt = 'export default async function a() { return "rebuilt" }'
+	const buildModuleBundle = makeBuilder('', rebuilt)
+	const buildImportableModuleBundle = makeBuilder('importable_', rebuilt)
+
+	await rebuildPublishedPackageArtifacts(
+		makeRebuildInput({
+			name: '@alice/multi-export',
+			description: 'fixture',
+			exports: { './a': './src/a.ts' },
+			publishedCommit: 'commit-1',
+			env: kvEnv,
+			buildModuleBundle,
+			buildImportableModuleBundle,
+		}),
+	)
+
+	expect(buildImportableModuleBundle).toHaveBeenCalledWith({
+		entryPoint: 'src/a.ts',
+	})
+	expect(mockModule.writePublishedBundleArtifact).toHaveBeenCalledWith(
+		expect.objectContaining({
+			artifact: expect.objectContaining({
+				kind: 'importable-module',
+				artifactName: './a',
+				publishedCommit: 'commit-1',
+				packageBindingRewrite: 1,
+			}),
+		}),
+	)
+})

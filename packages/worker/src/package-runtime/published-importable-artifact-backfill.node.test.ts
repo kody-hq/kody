@@ -125,6 +125,7 @@ test('dry-run reports missing importable-module artifacts without rebuilding', a
 		publishedPackages: 2,
 		packagesNeedingRebuild: 1,
 		missingImportableArtifacts: 1,
+		packagesMissingSubpathImportable: 1,
 		rebuiltPackages: 0,
 		failedPackages: 0,
 		alreadyBuiltPackages: 1,
@@ -212,6 +213,7 @@ test('apply rebuilds only missing importable targets and keeps gap details on fa
 		dryRun: false,
 		packagesNeedingRebuild: 1,
 		missingImportableArtifacts: 1,
+		packagesMissingSubpathImportable: 0,
 		rebuiltPackages: 0,
 		failedPackages: 1,
 	})

@@ -64,12 +64,23 @@ export type PublishedImportableArtifactBackfillResult = {
 	publishedPackages: number
 	packagesNeedingRebuild: number
 	missingImportableArtifacts: number
+	/**
+	 * Packages in this page with at least one missing subpath (non-root)
+	 * importable-module artifact. Subset of `packagesNeedingRebuild`.
+	 */
+	packagesMissingSubpathImportable: number
 	rebuiltPackages: number
 	failedPackages: number
 	alreadyBuiltPackages: number
 	skippedUnpublished: number
 	nextCursor: string | null
 	outcomes: Array<PublishedImportableArtifactBackfillOutcome>
+}
+
+function isSubpathImportableTarget(
+	target: PublishedPackageArtifactBuildTarget,
+) {
+	return target.artifactName != null && target.artifactName !== '.'
 }
 
 function importableTargets(
@@ -202,6 +213,7 @@ export async function runPublishedImportableArtifactBackfill(input: {
 	let publishedPackages = 0
 	let packagesNeedingRebuild = 0
 	let missingImportableArtifacts = 0
+	let packagesMissingSubpathImportable = 0
 	let rebuiltPackages = 0
 	let failedPackages = 0
 	let alreadyBuiltPackages = 0
@@ -264,6 +276,9 @@ export async function runPublishedImportableArtifactBackfill(input: {
 			}
 			packagesNeedingRebuild += 1
 			missingImportableArtifacts += missing.length
+			if (missing.some(isSubpathImportableTarget)) {
+				packagesMissingSubpathImportable += 1
+			}
 			if (dryRun) {
 				outcomes.push({
 					packageId: savedPackage.id,
@@ -332,6 +347,7 @@ export async function runPublishedImportableArtifactBackfill(input: {
 		publishedPackages,
 		packagesNeedingRebuild,
 		missingImportableArtifacts,
+		packagesMissingSubpathImportable,
 		rebuiltPackages,
 		failedPackages,
 		alreadyBuiltPackages,

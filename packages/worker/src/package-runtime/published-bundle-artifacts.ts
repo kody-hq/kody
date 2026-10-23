@@ -1,4 +1,8 @@
-import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
+import {
+	isPublishedArtifactRefusedByLoadSites,
+	isUnrepairablePreBindingArtifact,
+	packageBindingRewriteVersion,
+} from './pre-binding-artifact-repair.ts'
 import {
 	type AuthoredPackageJson,
 	type SavedPackageRecord,
@@ -313,6 +317,18 @@ export async function isPublishedPackageArtifactBuiltForCommit(input: {
 	) {
 		return false
 	}
+	// A row + KV payload at this commit is not enough: a bundle the load
+	// sites refuse (built before lexical package identity and inlining other
+	// packages) is a gap. Local execute has no source fallback and reports it
+	// as a missing importable artifact, so publish repair must rebuild it.
+	if (
+		isPublishedArtifactRefusedByLoadSites({
+			artifact: loaded.artifact,
+			sourceFiles: snapshot?.files ?? null,
+		})
+	) {
+		return false
+	}
 	return true
 }
 
@@ -428,6 +444,13 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	}
 	const priorCommit = loaded.artifact.publishedCommit
 	if (loaded.row.publishedCommit !== priorCommit) {
+		return false
+	}
+	// Never carry a bundle the current builder would not produce onto the new
+	// commit. A pre-binding bundle that inlines other packages cannot be bound
+	// in place, so copying it forward would keep the gap at every later
+	// commit. Rebuild it from source instead.
+	if (isUnrepairablePreBindingArtifact(loaded.artifact)) {
 		return false
 	}
 	const [previousSnapshot, nextSnapshot] = await Promise.all([
