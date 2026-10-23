@@ -39,7 +39,10 @@ CodeRabbit when the change is **high** risk (or the user explicitly asks).
 
 1. Mark ready — `kody:@kentcdodds/github/pr/set-review-status`
    `{ prUrl, status: 'ready' }` (or owner/repo/prNumber).
-2. Wait for CI — `gh pr checks` (or compose `loop-on-ci` / `fix-ci`).
+2. Wait for CI: `gh pr checks` (or compose `loop-on-ci` / `fix-ci`). Cursor:
+   prefer a one-shot `subscribe_timer` over polling. Without one, poll with a
+   plain `sleep` of 60 to 120 seconds, cap the total wait (about 45 minutes),
+   then report the stuck state instead of waiting forever.
 3. Fix failures; for **medium+**, wait on AI reviewer(s) (Bugbot first; see
    above for CodeRabbit) and address valid feedback. Rebase only when actually
    unmergeable. Local gate is `npm run validate`. If the change touches login /
@@ -51,8 +54,9 @@ CodeRabbit when the change is **high** risk (or the user explicitly asks).
 ## Gates ≠ CI
 
 Blocked on a release / trusted-publishing / calendar gate → **end the run** and
-schedule a wake (Kody `job_schedule` + `createRun`). Don't sleep-poll or
-code-thrash an intentional time window.
+schedule a wake (Kody `job_schedule` + Cursor `createRun`, or your runtime's own
+wake, such as Devin `sendMessage`). With no wake mechanism, park and report the
+gate. Don't sleep-poll or code-thrash an intentional time window.
 
 ## Merge / publish
 
@@ -63,7 +67,10 @@ When policy + risk allow: squash-merge via `kody:@kentcdodds/github/pr/merge`
 
 ## Done → Discord
 
-Always summarize (merged or not) with agent / PR / CI / publish links:
+Always summarize (merged or not) with agent / PR / CI / publish links. Name the
+agent truthfully: a Cursor agent link only from a real `bc-` id; Codex, Claude,
+Devin, or other agents name themselves and link only a real session URL. Never
+fabricate a Cursor id or model.
 
 ```javascript
 import postMessage from 'kody:@kentcdodds/discord/post-message'

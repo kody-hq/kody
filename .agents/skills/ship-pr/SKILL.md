@@ -53,22 +53,32 @@ npx @kodycodes/cli execute --local \
 
 ## Failure
 
-- `exit.status` is `waiting`. Do **not** tight-loop. End the turn only after
-  arming **both** (1) the relevant GitHub CI subscription when waiting on CI,
-  and (2) a one-shot Cursor `subscribe_timer` from `exit.wakeHints` (name,
-  `delaySeconds`, `once: true`, `prompt`). CI subscriptions can miss a delivery;
-  without the timer a green PR can sit unmerged for hours (#3750 / #3746). On
-  timer wake: re-tick; if still `waiting`, re-arm from the new `exit.wakeHints`.
-  Blocked on soak / parity / calendar gates the same way — schedule a wake; do
-  not sleep-poll.
+- `exit.status` is `waiting`. Do **not** tight-loop. In Cursor (preferred), end
+  the turn only after arming **both** (1) the relevant GitHub CI subscription
+  when waiting on CI, and (2) a one-shot Cursor `subscribe_timer` from
+  `exit.wakeHints` (name, `delaySeconds`, `once: true`, `prompt`). CI
+  subscriptions can miss a delivery; without the timer a green PR can sit
+  unmerged for hours (#3750 / #3746). On timer wake: re-tick; if still
+  `waiting`, re-arm from the new `exit.wakeHints`. Blocked on soak / parity /
+  calendar gates the same way: schedule a wake; do not sleep-poll.
+- No `subscribe_timer` (Codex, Claude, Devin, other): use a bounded poll. Plain
+  `sleep` 60 to 120 seconds between brief re-ticks, cap the total wait (about 45
+  minutes), then stop and report the stuck state (focus, blocking check or gate,
+  PR URL) instead of waiting forever. Use the runtime's own wake when it has one
+  (Devin: see above). Gates longer than the cap: park and report.
 - A check or bot finding you will not fix: `./decide` with a reason (`ignored`,
   `skipped`, `wontfix`, or `accepted`).
 - A valid finding: fix, push, and `./reply-review` with `Fixed in <sha>: ...`.
 - Focus `merge`: `./merge`. Focus `friction`:
   [file-friction](../file-friction/SKILL.md). Focus `report`: the printed
-  `./send-summary`. Take `agentId` and `model` from the agent socket. Omit
-  `model` when the socket has none. Do not invent URLs. When UI routes deployed,
-  put verified page links in Discord `extras`.
+  `./send-summary`. Identify yourself truthfully. In Cursor, pass `agentId` (the
+  `bc-` id from the Cursor agent socket or your launch URL). Anywhere else
+  (Codex, Claude, Devin, other), omit `agentId` and pass
+  `agent: { kind: 'codex' | 'claude' | 'devin' | 'other', id?, url?, name? }`,
+  with `id` and `url` only when your runtime really exposes them (`other` needs
+  `name`). Never fabricate a Cursor id. Take `model` only from deterministic
+  runtime metadata and omit it when there is none. Do not invent URLs. When UI
+  routes deployed, put verified page links in Discord `extras`.
 - This repo, medium or high: verify locally with
   [control-kody](../control-kody/SKILL.md) (`dev`/`login`/`request`/`browse`/
   `execute`). Use a PR preview only when local cannot exercise the change
