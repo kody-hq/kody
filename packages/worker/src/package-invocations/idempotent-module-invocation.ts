@@ -45,6 +45,7 @@ import {
 	terminalResponseJsonFromExecutionFence,
 	type PackageInvocationStoredResponse,
 } from './repo.ts'
+import { summarizeInvocationError } from './invocation-error-summary.ts'
 
 export const packageInvocationStaleAfterMs = 15 * 60 * 1000
 /**
@@ -104,6 +105,14 @@ function readInvocationErrorCode(body: unknown): string | null {
 	if (!error || typeof error !== 'object' || Array.isArray(error)) return null
 	const code = (error as Record<string, unknown>)['code']
 	return typeof code === 'string' ? code : null
+}
+
+function readInvocationErrorMessage(body: unknown): string | null {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+	const error = (body as Record<string, unknown>)['error']
+	if (!error || typeof error !== 'object' || Array.isArray(error)) return null
+	const message = (error as Record<string, unknown>)['message']
+	return typeof message === 'string' ? message : null
 }
 
 function toResolvableLedgerRecord(
@@ -529,10 +538,21 @@ export async function invokeSavedPackageModule(input: {
 			// Finish the claimed run as an error with logs (do not delete it)
 			// so Activity keeps pre-execution evidence instead of a vanished
 			// zero-log attempt.
-			const releaseReason =
+			const releaseSummary =
 				outcome.kind === 'artifact-unavailable'
 					? 'Package artifact preparation failed before execution.'
 					: 'Package invocation denied before execution.'
+			// Keep the real cause (sanitized) on the run record so Activity
+			// and any webhook run that wraps this export show why it failed.
+			const releaseDetail =
+				outcome.kind === 'artifact-unavailable'
+					? summarizeInvocationError(outcome.error)
+					: summarizeInvocationError(
+							readInvocationErrorMessage(outcome.response.body),
+						)
+			const releaseReason = releaseDetail
+				? `${releaseSummary} ${releaseDetail}`
+				: releaseSummary
 			const releaseErrorCode = readInvocationErrorCode(outcome.response.body)
 			const release = await releasePackageInvocationRecord({
 				env: input.env,

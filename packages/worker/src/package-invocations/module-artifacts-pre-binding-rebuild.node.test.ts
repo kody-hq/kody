@@ -37,10 +37,6 @@ vi.mock('#worker/repo/repo-session-do.ts', async () =>
 		await import('#worker/test-support/jobs-service-mocks.ts')
 	).repoSessionDoMock(),
 )
-// Typechecking the source is not under test; the rebuild decision is.
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: async () => ({ ok: true }),
-}))
 vi.mock('#worker/worker-bundler-modules.ts', async () =>
 	(
 		await import('#worker/test-support/jobs-service-mocks.ts')

@@ -60,11 +60,6 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		repoMockModule.persistPublishedBundleArtifact(...args),
 }))
 
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: (...args: Array<unknown>) =>
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles(...args),
-}))
-
 vi.mock('#mcp/run-kody-registry.ts', () => ({
 	runBundledModuleWithRegistry: (...args: Array<unknown>) =>
 		repoMockModule.runBundledModuleWithRegistry(...args),
@@ -776,11 +771,18 @@ test('invokePackageExport treats a missing npm-backed runtime bundle as retryabl
 				'Package artifact preparation failed before execution. Please retry.',
 		},
 	})
-	expect(
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles,
-	).not.toHaveBeenCalled()
 	expect(repoMockModule.persistPublishedBundleArtifact).not.toHaveBeenCalled()
 	expect(runMock).not.toHaveBeenCalled()
+	// The owner's run record keeps the real cause, not only the generic line.
+	const preparationRun = [...db.runLog.runRows.values()].find(
+		(row) => row['errorName'] === 'artifact_preparation_failed',
+	)
+	expect(preparationRun?.['errorMessage']).toMatch(
+		/^Package artifact preparation failed before execution\. \S/,
+	)
+	expect(String(preparationRun?.['errorMessage'])).not.toBe(
+		'Package artifact preparation failed before execution.',
+	)
 })
 
 test('invokePackageSubscription uses the normal capability registry with package storage and source metadata intact', async () => {

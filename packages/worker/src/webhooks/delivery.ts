@@ -6,6 +6,7 @@ import {
 	type PackageInvocationResponse,
 } from '#worker/package-invocations/service.ts'
 import { type EnablementRun } from '#worker/request-context/request-context.ts'
+import { sanitizeInvocationErrorMessage } from '#worker/package-invocations/invocation-error-summary.ts'
 import { recordRunRecord } from '#worker/run-records/service.ts'
 import { type RunRecordLogInput } from '#worker/run-records/types.ts'
 import {
@@ -37,6 +38,12 @@ export async function recordWebhookDelivery(input: {
 	receivedAt?: string
 	/** Underlying package-invocation error code when the export failed. */
 	invocationErrorCode?: string | null
+	/**
+	 * Bound export's invocation response body. On failure its error message
+	 * (sanitized) is copied into the webhook run's error and logs, so
+	 * Activity shows why the export failed instead of only the HTTP status.
+	 */
+	invocationBody?: unknown
 	logs?: Array<RunRecordLogInput>
 	waitUntil?: (promise: Promise<unknown>) => void
 	requirePersistence?: boolean
@@ -44,6 +51,13 @@ export async function recordWebhookDelivery(input: {
 	synthetic?: boolean
 }) {
 	const status = input.outcome === 'delivered' ? 'success' : 'error'
+	const failure =
+		status === 'error'
+			? describeWebhookDeliveryFailure({
+					error: input.error ?? null,
+					invocationBody: input.invocationBody,
+				})
+			: null
 	const record = await recordRunRecord({
 		env: input.env,
 		userId: input.endpoint.userId,
@@ -66,9 +80,10 @@ export async function recordWebhookDelivery(input: {
 			},
 		},
 		status,
-		error: input.error ?? undefined,
+		error: failure?.error ?? input.error ?? undefined,
 		result: input.result,
-		logs: input.logs,
+		logs:
+			failure?.log != null ? [...(input.logs ?? []), failure.log] : input.logs,
 		startedAt: input.startedAt,
 		waitUntil: input.waitUntil,
 	})
@@ -76,6 +91,36 @@ export async function recordWebhookDelivery(input: {
 		throw new Error('Webhook delivery record was not persisted.')
 	}
 	return record
+}
+
+/**
+ * Webhook run error for a failed delivery. The stable code (for example
+ * `invocation_status_500`) stays the error name and leads the message; the
+ * export's own sanitized error message follows it. Without a message in the
+ * invocation body the code alone is kept, as before.
+ */
+export function describeWebhookDeliveryFailure(input: {
+	error: string | null
+	invocationBody?: unknown
+}): {
+	error: { name: string; message: string }
+	log: RunRecordLogInput
+} | null {
+	const invocationError = readWebhookInvocationError(input.invocationBody)
+	if (!invocationError.message) return null
+	const detail = sanitizeInvocationErrorMessage(invocationError.message)
+	if (!detail) return null
+	const code = input.error ?? invocationError.code ?? 'invocation_failed'
+	return {
+		error: { name: code, message: `${code}: ${detail}` },
+		log: {
+			level: 'error',
+			message: `Export error: ${detail}`,
+			...(invocationError.code
+				? { fields: { code: invocationError.code } }
+				: {}),
+		},
+	}
 }
 
 export function readWebhookInvocationResult(body: unknown): unknown {

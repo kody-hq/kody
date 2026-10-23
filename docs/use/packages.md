@@ -435,6 +435,10 @@ exhaustive.
   that they resolve. Without a `tsconfig.json`, publish only checks that job,
   subscription, and retriever entrypoints default export a function, and the
   typecheck message says that source files and exports are not typechecked.
+  Publish (and `kody dev check`, which runs the same checks) is the only
+  typecheck. Running a published export, job, or subscription never typechecks,
+  so a package that published keeps running even when its artifact is rebuilt
+  later.
 - Add JSDoc to every public export. Search Purpose comes from that JSDoc;
   missing comments fall back to `Package export.` See
   [Export JSDoc](../guides/package-authoring.md#export-jsdoc) in the package

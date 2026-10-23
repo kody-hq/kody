@@ -131,7 +131,7 @@ import {
 	type parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { typecheckPackageEntrypointsFromSourceFiles } from '#worker/repo/checks.ts'
+import { checkPublishedEntrypointsForRebuild } from '#worker/repo/published-entrypoint-checks.ts'
 import {
 	recordUsage,
 	usageErrorNameFromUnknown,
@@ -366,17 +366,14 @@ async function ensurePublishedBundleArtifactForJob(input: {
 		artifactCacheHit: false,
 		reason: 'bundle_not_found',
 	})
-	const typecheckResult = await typecheckPackageEntrypointsFromSourceFiles({
+	// Invocation trusts what publish accepted: no typecheck here, only the
+	// structural preconditions execution needs anyway.
+	const entrypointCheck = checkPublishedEntrypointsForRebuild({
 		sourceFiles: resolved.files,
-		entryPoints: [
-			{
-				path: resolved.entryPoint,
-			},
-		],
-		emittedEventTopics: resolved.emittedEventTopics,
+		entryPoints: [{ path: resolved.entryPoint }],
 	})
-	if (!typecheckResult.ok) {
-		throw new Error(typecheckResult.message)
+	if (!entrypointCheck.ok) {
+		throw new Error(entrypointCheck.message)
 	}
 	await persistPublishedJobBundleArtifact({
 		env: input.env,

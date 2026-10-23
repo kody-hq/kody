@@ -43,11 +43,7 @@ import {
 	collectStaticKodyPackageImportsFromFiles,
 	isTypeDeclarationFilePath,
 } from '#worker/package-runtime/static-kody-imports.ts'
-import {
-	hasTopLevelDefaultExport,
-	parseModuleSource,
-	type ModuleAstNode,
-} from '#worker/module-source.ts'
+import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
 	importWorkerBundler,
 	importWorkerBundlerTypescript,
@@ -55,9 +51,12 @@ import {
 import {
 	createRepoCapabilitiesModuleTypecheckHarness,
 	mapRepoCapabilitiesModuleTypecheckHarnessLines,
-	repoBackedModuleEntrypointExportErrorMessage,
 	repoCapabilitiesModuleTypecheckHarnessPath,
 } from './repo-kody-execution.ts'
+import {
+	collectEntrypointsMissingDefaultExport,
+	formatMissingDefaultExportMessage,
+} from './published-entrypoint-checks.ts'
 import {
 	createIsolatedCheckPhaseRunner,
 	isolatedBundleChunkConcurrency,
@@ -962,10 +961,10 @@ const sourceFilesNotTypecheckedMessage =
 function getPackageTypecheckDiagnostics(input: {
 	targets: Array<PackageTypecheckTarget>
 	/**
-	 * When present, diagnostics inside these files are reported too. Runtime
-	 * rebuilds of already-published source always omit it and only verify the
-	 * callable contract, so the publish-time source check never breaks
-	 * packages retroactively.
+	 * When present, diagnostics inside these files are reported too. Only
+	 * publish (and `kody dev check`) typechecks; runtime rebuilds of
+	 * already-published source never do (see published-entrypoint-checks.ts),
+	 * so no check here can break a published package retroactively.
 	 */
 	reachableSourceFilePaths?: Array<string>
 	languageService: {
@@ -1085,113 +1084,6 @@ function formatPackageTypecheckDiagnostics(
 	return diagnostics.flatMap(({ fileName, diagnostics: fileDiagnostics }) =>
 		formatTypecheckDiagnostics(fileName, fileDiagnostics),
 	)
-}
-
-function collectEntrypointsMissingDefaultExport(input: {
-	snapshot: { read(path: string): string | null }
-	targets: Array<{ path: string }>
-}) {
-	return [
-		...new Set(
-			input.targets
-				.map((target) => target.path)
-				.filter((path) => {
-					const source = input.snapshot.read(path)
-					return source != null && !hasTopLevelDefaultExport(source)
-				}),
-		),
-	]
-}
-
-function formatMissingDefaultExportMessage(paths: Array<string>) {
-	return `${repoBackedModuleEntrypointExportErrorMessage} Missing default export in: ${paths
-		.map((path) => `"${path}"`)
-		.join(', ')}.`
-}
-
-export async function typecheckPackageEntrypointsFromSourceFiles(input: {
-	sourceFiles: Record<string, string>
-	entryPoints: Array<{
-		path: string
-	}>
-	emittedEventTopics?: Array<string>
-}): Promise<{
-	ok: boolean
-	message: string
-}> {
-	const { createFileSystemSnapshot } = await loadWorkerBundlerSnapshotTools()
-	const snapshot = await createFileSystemSnapshot(
-		(async function* () {
-			for (const [path, content] of Object.entries(input.sourceFiles)) {
-				yield [path, content] as const
-			}
-		})(),
-	)
-	const missingEntryPoints = input.entryPoints
-		.map((target) => target.path)
-		.filter((path) => snapshot.read(path) == null)
-	if (missingEntryPoints.length > 0) {
-		return {
-			ok: false,
-			message: `Typecheck skipped because package runtime entrypoint(s) are missing from the published source snapshot: ${missingEntryPoints
-				.map((path) => `"${path}"`)
-				.join(', ')}.`,
-		}
-	}
-	const missingDefaultExports = collectEntrypointsMissingDefaultExport({
-		snapshot,
-		targets: input.entryPoints,
-	})
-	if (missingDefaultExports.length > 0) {
-		return {
-			ok: false,
-			message: formatMissingDefaultExportMessage(missingDefaultExports),
-		}
-	}
-	const typecheckFileSystem = createRepoChecksFileSystem({
-		fileSystem: snapshot,
-	})
-	const baseTsconfig = snapshot.read(repoChecksSyntheticTsconfigPath)
-	if (baseTsconfig != null) {
-		typecheckFileSystem.write(
-			repoChecksSyntheticTsconfigExtendsPath.slice('./'.length),
-			baseTsconfig,
-		)
-	}
-	typecheckFileSystem.write(
-		repoChecksSyntheticTsconfigPath,
-		buildRepoChecksTsconfig(baseTsconfig),
-	)
-	const created = await createRepoChecksTypescriptLanguageService({
-		fileSystem: typecheckFileSystem,
-	})
-	if (!created.ok) {
-		return created
-	}
-	const { fileSystem, languageService } = created
-	try {
-		const diagnostics = getPackageTypecheckDiagnostics({
-			targets: input.entryPoints.map((entryPoint) => ({
-				path: entryPoint.path,
-				kind: 'callable',
-				emittedEventTopics: input.emittedEventTopics ?? [],
-			})),
-			languageService,
-			fileSystem,
-		})
-		const ok = diagnostics.every((entry) => entry.diagnostics.length === 0)
-		return {
-			ok,
-			message: ok
-				? `No semantic diagnostics for ${input.entryPoints.length} package runtime entrypoint(s).`
-				: formatPackageTypecheckDiagnostics(diagnostics).join('\n'),
-		}
-	} finally {
-		// `using` needs Symbol.dispose in the worker lib target; manual
-		// disposal releases the compiler program eagerly instead of keeping
-		// the whole TypeScript program reachable until GC gets around to it.
-		languageService.dispose()
-	}
 }
 
 function formatBundleCheckMessage(input: {

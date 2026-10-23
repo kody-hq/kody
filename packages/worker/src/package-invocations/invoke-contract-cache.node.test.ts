@@ -23,7 +23,6 @@ const mockModule = vi.hoisted(() => ({
 	loadPublishedEntitySource: vi.fn(),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
 	persistPublishedBundleArtifact: vi.fn(),
-	typecheckPackageEntrypointsFromSourceFiles: vi.fn(),
 	buildKodyModuleBundle: vi.fn(),
 }))
 
@@ -53,11 +52,6 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		mockModule.loadPublishedBundleArtifactByIdentity(...args),
 	persistPublishedBundleArtifact: (...args: Array<unknown>) =>
 		mockModule.persistPublishedBundleArtifact(...args),
-}))
-
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: (...args: Array<unknown>) =>
-		mockModule.typecheckPackageEntrypointsFromSourceFiles(...args),
 }))
 
 vi.mock('#worker/package-runtime/module-graph.ts', () => ({
@@ -273,9 +267,6 @@ function mockModuleArtifactRebuild(
 		source: fixture.source,
 		files,
 		snapshotCreatedAt: snapshotCreatedAt ?? null,
-	})
-	mockModule.typecheckPackageEntrypointsFromSourceFiles.mockResolvedValue({
-		ok: true,
 	})
 	mockModule.buildKodyModuleBundle.mockResolvedValue({
 		mainModule: 'main.js',
@@ -502,15 +493,8 @@ test('an artifact rebuild resolves its entry point from the fresh source, not th
 		userId,
 	})
 
-	// Typecheck, bundle, and persisted identity all use the v2 entry point, even
+	// Bundle and persisted identity both use the v2 entry point, even
 	// though this isolate's cached manifest still says v1.
-	expect(
-		mockModule.typecheckPackageEntrypointsFromSourceFiles,
-	).toHaveBeenCalledWith(
-		expect.objectContaining({
-			entryPoints: [{ path: 'src/probe-v2.ts' }],
-		}),
-	)
 	expect(mockModule.buildKodyModuleBundle).toHaveBeenCalledWith(
 		expect.objectContaining({ entryPoint: 'src/probe-v2.ts' }),
 	)
@@ -605,7 +589,6 @@ test('ensureModuleArtifact keeps serving the previous npm-backed bundle while a 
 	}
 	mockModule.persistPublishedBundleArtifact.mockClear()
 	mockModule.buildKodyModuleBundle.mockClear()
-	mockModule.typecheckPackageEntrypointsFromSourceFiles.mockClear()
 	mockModuleArtifactRebuild(fixture, npmFiles, new Date().toISOString())
 	mockModule.loadPublishedEntityManifest.mockResolvedValue({
 		source: fixture.source,
@@ -627,9 +610,6 @@ test('ensureModuleArtifact keeps serving the previous npm-backed bundle while a 
 	expect(served.artifact.publishedCommit).toBe('commit-old')
 	expect(mockModule.persistPublishedBundleArtifact).not.toHaveBeenCalled()
 	expect(mockModule.buildKodyModuleBundle).not.toHaveBeenCalled()
-	expect(
-		mockModule.typecheckPackageEntrypointsFromSourceFiles,
-	).not.toHaveBeenCalled()
 })
 
 test('ensureModuleArtifact stops serving a previous npm-backed bundle after the rebuild window', async () => {
@@ -766,4 +746,98 @@ test('package-app slug cache evicts by name leaf from kody:@ refs and packageApp
 		slug: 'new-leaf',
 		load: async () => ({ savedPackage, retired: false }),
 	})
+})
+
+test('ensureModuleArtifact rebuilds a published export without typechecking it', async () => {
+	// The reported shape: a required, narrowly typed params argument is not
+	// assignable to `(params?: Record<string, unknown>) => unknown`, which
+	// publish never checks for exports. Invocation must not reject it.
+	const fixture = createFixture({
+		userId: ownerIdFromStored('user-no-invoke-typecheck'),
+		publishedCommit: 'commit-typed',
+		suffix: 'no-invoke-typecheck',
+	})
+	const files = {
+		'package.json': JSON.stringify({
+			name: fixture.savedPackage.name,
+			exports: { './get-issue-state': './src/get-issue-state.ts' },
+			kody: {
+				id: fixture.savedPackage.kodyId,
+				description: 'Sentry triage helpers',
+			},
+		}),
+		'src/get-issue-state.ts':
+			'export default async function main(params: { issueId: string }) { return params.issueId }',
+	}
+	mockModule.persistPublishedBundleArtifact.mockClear()
+	mockModule.buildKodyModuleBundle.mockClear()
+	mockModuleArtifactRebuild(fixture, files)
+	mockModule.loadPublishedEntityManifest.mockResolvedValue({
+		source: fixture.source,
+		content: files['package.json'],
+	})
+	mockModule.loadPublishedBundleArtifactByIdentity
+		.mockResolvedValueOnce(null)
+		.mockResolvedValueOnce({
+			row: { kvKey: 'kv-key' },
+			artifact: {
+				publishedCommit: 'commit-typed',
+				entryPoint: 'src/get-issue-state.ts',
+			},
+		})
+
+	const rebuilt = await ensureModuleArtifact({
+		env: createEnv(),
+		baseUrl: 'https://kody.dev',
+		savedPackage: fixture.savedPackage,
+		selector: { kind: 'export', exportName: 'get-issue-state' },
+		userId: fixture.savedPackage.userId,
+	})
+
+	expect(rebuilt.artifact.publishedCommit).toBe('commit-typed')
+	expect(mockModule.buildKodyModuleBundle).toHaveBeenCalledWith(
+		expect.objectContaining({ entryPoint: 'src/get-issue-state.ts' }),
+	)
+	expect(mockModule.persistPublishedBundleArtifact).toHaveBeenCalledTimes(1)
+})
+
+test('ensureModuleArtifact names a published export that has no default export', async () => {
+	const fixture = createFixture({
+		userId: ownerIdFromStored('user-no-default-export'),
+		publishedCommit: 'commit-no-default',
+		suffix: 'no-default-export',
+	})
+	const files = {
+		'package.json': JSON.stringify({
+			name: fixture.savedPackage.name,
+			exports: { './get-issue-state': './src/get-issue-state.ts' },
+			kody: {
+				id: fixture.savedPackage.kodyId,
+				description: 'Sentry triage helpers',
+			},
+		}),
+		'src/get-issue-state.ts': 'export const issueState = "open"',
+	}
+	mockModule.persistPublishedBundleArtifact.mockClear()
+	mockModule.buildKodyModuleBundle.mockClear()
+	mockModuleArtifactRebuild(fixture, files)
+	mockModule.loadPublishedEntityManifest.mockResolvedValue({
+		source: fixture.source,
+		content: files['package.json'],
+	})
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValueOnce(null)
+
+	await expect(
+		ensureModuleArtifact({
+			env: createEnv(),
+			baseUrl: 'https://kody.dev',
+			savedPackage: fixture.savedPackage,
+			selector: { kind: 'export', exportName: 'get-issue-state' },
+			userId: fixture.savedPackage.userId,
+		}),
+	).rejects.toThrow(
+		'must default export a function so Kody can invoke them with execute semantics. Missing default export in: "src/get-issue-state.ts".',
+	)
+	expect(mockModule.buildKodyModuleBundle).not.toHaveBeenCalled()
+	expect(mockModule.persistPublishedBundleArtifact).not.toHaveBeenCalled()
 })

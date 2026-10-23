@@ -32,7 +32,6 @@ export const packageInvocationsRepoMockModule = (() => {
 		getEntitySourceById: vi.fn(),
 		loadPublishedBundleArtifactByIdentity: vi.fn(),
 		persistPublishedBundleArtifact: vi.fn(),
-		typecheckPackageEntrypointsFromSourceFiles: vi.fn(),
 		runBundledModuleWithRegistry: vi.fn(),
 		recordAgentPackageConversationUse: vi.fn(),
 		dispatchRunErrorSubscriptionEvents: vi.fn(),
@@ -711,12 +710,6 @@ export function seedPackageResolution() {
 				},
 				createdAt: '2026-04-27T00:00:00.000Z',
 			},
-		},
-	)
-	packageInvocationsRepoMockModule.typecheckPackageEntrypointsFromSourceFiles.mockResolvedValue(
-		{
-			ok: true,
-			message: 'ok',
 		},
 	)
 	packageInvocationsRepoMockModule.persistPublishedBundleArtifact.mockResolvedValue(

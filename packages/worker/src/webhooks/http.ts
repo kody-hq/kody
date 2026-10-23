@@ -1092,6 +1092,7 @@ export async function handleWebhookIngressRequest(
 				payloadBytes: bodyBytes.byteLength,
 				invocationId: deliveryId,
 				result: readWebhookInvocationResult(response.body),
+				invocationBody: response.body,
 				startedAt: receivedAt,
 				waitUntil,
 			})
@@ -1115,6 +1116,7 @@ export async function handleWebhookIngressRequest(
 			payloadBytes: bodyBytes.byteLength,
 			invocationId: deliveryId,
 			result: readWebhookInvocationResult(response.body),
+			invocationBody: response.body,
 			startedAt: receivedAt,
 			waitUntil,
 		})

@@ -1134,6 +1134,9 @@ export async function dispatchSyntheticWebhookForUser(input: {
 		errorBody?: { code: string; message: string }
 	}): Promise<SyntheticWebhookDispatchResult> => {
 		const record = await recordWebhookDelivery({
+			...(inputFinish.errorBody
+				? { invocationBody: { error: inputFinish.errorBody } }
+				: {}),
 			env: input.env,
 			endpoint,
 			kodyId: savedPackage.kodyId,

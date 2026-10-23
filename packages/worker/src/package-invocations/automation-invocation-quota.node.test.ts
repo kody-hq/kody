@@ -83,11 +83,6 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		repoMockModule.persistPublishedBundleArtifact(...args),
 }))
 
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: (...args: Array<unknown>) =>
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles(...args),
-}))
-
 vi.mock('#mcp/run-kody-registry.ts', () => ({
 	runBundledModuleWithRegistry: (...args: Array<unknown>) =>
 		repoMockModule.runBundledModuleWithRegistry(...args),

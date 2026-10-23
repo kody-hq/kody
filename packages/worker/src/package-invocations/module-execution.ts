@@ -88,7 +88,12 @@ export type SavedPackageModuleRunOutcome =
 			logs: Array<string>
 			error: unknown
 	  }
-	| { kind: 'artifact-unavailable'; response: PackageInvocationResponse }
+	| {
+			kind: 'artifact-unavailable'
+			response: PackageInvocationResponse
+			/** Underlying preparation failure, for the owner's run record. */
+			error: unknown
+	  }
 	| { kind: 'pre-execution-denied'; response: PackageInvocationResponse }
 
 export type SavedPackageModuleRunInput = {
@@ -495,6 +500,7 @@ export async function runSavedPackageModuleOnce(
 						'Package artifact preparation failed before execution. Please retry.',
 					idempotencyKey: input.idempotencyKey ?? undefined,
 				}),
+				error,
 			}
 		}
 		if (isMissingPackageModuleError(error)) {
