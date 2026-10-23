@@ -1,4 +1,11 @@
+import { createExecuteHelperPrelude } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import {
+	createPackageBoundRuntimeExportLines,
+	packageBoundRuntimeCreatorNames,
+	packageBoundRuntimeExportNames,
+} from './package-bound-runtime-exports.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
 import { collectLiteralImportNodes } from './import-specifiers.ts'
 import {
@@ -921,6 +928,43 @@ export const credential = __kodyOptionalRuntimeFunctionExport('credential') &&
 	));
 export const credentials = __kodyOptionalRuntimeFunctionExport('credentials');
 
+// Package-bound integration helpers (GHSA-5fv3): the run's own helper
+// source, with its capability calls and outbound fetches sent through one
+// package's trusted binding. Integration package locks, package-scoped
+// secrets, and credential needs then see that package, the same as local
+// execute, jobs, and webhooks. Without a binding in scope the run's own
+// helper answers, as before.
+function __kodyCreateBindingExecuteHelpers(${kodyCallDispatcherName}, fetch) {
+${createExecuteHelperPrelude()}
+	return { createAuthenticatedFetch, oauthClientCredentials };
+}
+function __kodyBindingExecuteHelpersFor(packageId) {
+	const binding = __kodyPackageBindingFor(packageId);
+	if (binding == null) return null;
+	return __kodyCreateBindingExecuteHelpers(
+		(name, args) => __kodyReflectApply(binding.kodyCall, binding, [name, args]),
+		(input, init) => __kodyReflectApply(binding.fetch, binding, [input, init]),
+	);
+}
+export function __kodyCreatePackageBoundAuthenticatedFetch(packageId) {
+	const unbound = __kodyOptionalRuntimeFunctionExport('createAuthenticatedFetch');
+	if (unbound === undefined) return undefined;
+	return async function createAuthenticatedFetch(providerName) {
+		const helpers = __kodyBindingExecuteHelpersFor(packageId);
+		if (helpers == null) return await unbound(providerName);
+		return await helpers.createAuthenticatedFetch(providerName);
+	};
+}
+export function __kodyCreatePackageBoundOauthClientCredentials(packageId) {
+	const unbound = __kodyOptionalRuntimeFunctionExport('oauthClientCredentials');
+	if (unbound === undefined) return undefined;
+	return async function oauthClientCredentials(input) {
+		const helpers = __kodyBindingExecuteHelpersFor(packageId);
+		if (helpers == null) return await unbound(input);
+		return await helpers.oauthClientCredentials(input);
+	};
+}
+
 // Factory for the per-package virtual runtime modules: an imported package's
 // \`credential(key)\` resolves as that package (its needs, mappings, and
 // bound Keys). With a trusted per-package binding in scope (GHSA-5fv3) the
@@ -1118,7 +1162,7 @@ export function parsePackageRuntimeModulePathPackageId(modulePath: string) {
  * handed, so package-facing modules must list exports explicitly, never
  * `export *`.
  */
-const kodyRuntimeSharedExportNames = [
+export const kodyRuntimeSharedExportNames = [
 	'kody',
 	'createAuthenticatedFetch',
 	'secretHeaders',
@@ -1131,11 +1175,6 @@ const kodyRuntimeSharedExportNames = [
 	'packages',
 	'events',
 ] as const
-
-const packageBoundCredentialExportNames: ReadonlySet<string> = new Set([
-	'credential',
-	'credentials',
-])
 
 /**
  * `kody:runtime` target for modules without saved-package provenance (ad hoc
@@ -1164,45 +1203,35 @@ export function isKodyPublicRuntimeModulePath(modulePath: string) {
 
 /**
  * Virtual runtime module for one saved package: re-exports the shared
- * runtime's public surface and overrides `packageStorage` with a variant
- * bound to the package's immutable id. The bundler rewrites `kody:runtime` imports in
- * modules that originate from that package to this module, so
- * `packageStorage()` keeps resolving to the declaring package's bucket even
- * when the module is statically imported into a foreign execution context.
- * The id baked in here is identity routing only; the host grants access from
- * its own provenance metadata (see `createPackageStorageKodyTools`).
+ * runtime's public surface and overrides every export in
+ * `packageBoundRuntimeExports` (storage, secrets, credentials, integration
+ * helpers, `kody`) with a variant bound to the package's immutable id. The
+ * bundler rewrites `kody:runtime` imports in modules that originate from that
+ * package to this module, so those exports keep acting as the declaring
+ * package even when the module is statically imported into a foreign
+ * execution context. The id baked in here is identity routing only; the host
+ * grants access from its own provenance metadata (see
+ * `createPackageStorageKodyTools`).
  */
 export function createPackageRuntimeModuleSource(packageId: string) {
 	// Per-package modules sit one directory below the shared runtime module
 	// (`.__kody_virtual__/package-runtime/<hex>.js` next to
 	// `.__kody_virtual__/runtime.js`), in every graph or artifact prefix.
 	const baseRuntimeSpecifier = '../runtime.js'
+	const boundNames = new Set<string>(packageBoundRuntimeExportNames)
 	const sharedExportNames = kodyRuntimeSharedExportNames.filter(
-		(name) => !packageBoundCredentialExportNames.has(name) && name !== 'kody',
+		(name) => !boundNames.has(name),
 	)
 	return `
 export { ${sharedExportNames.join(', ')} } from ${JSON.stringify(baseRuntimeSpecifier)};
-import __kodyBaseRuntimeDefault, { __kodyCreatePackageBoundStorage, __kodyCreatePackageBoundSecrets, __kodyCreatePackageBoundCredentialRuntime, __kodyCreatePackageBoundFetch, __kodyCreatePackageBoundKody } from ${JSON.stringify(
+import __kodyBaseRuntimeDefault, { ${packageBoundRuntimeCreatorNames().join(', ')} } from ${JSON.stringify(
 		baseRuntimeSpecifier,
 	)};
-export const __kodyBoundFetch = __kodyCreatePackageBoundFetch(${JSON.stringify(packageId)});
-export const kody = __kodyCreatePackageBoundKody(${JSON.stringify(packageId)});
-export const packageStorage = __kodyCreatePackageBoundStorage(${JSON.stringify(
-		packageId,
-	)});
-export const packageSecrets = __kodyCreatePackageBoundSecrets(${JSON.stringify(
-		packageId,
-	)});
-const __kodyPackageCredentialRuntime = __kodyCreatePackageBoundCredentialRuntime(${JSON.stringify(
-		packageId,
-	)});
-export const credential = __kodyPackageCredentialRuntime.credential;
-export const credentials = __kodyPackageCredentialRuntime.credentials;
-// The default export mirrors the shared runtime default but resolves
-// packageStorage / packageSecrets / credential / credentials to this
-// package's bound variants.
+${createPackageBoundRuntimeExportLines(packageId)}
+// The default export mirrors the shared runtime default but resolves every
+// package-bound export to this package's bound variant.
 const __kodyPackageBound = Object.fromEntries(
-	Object.entries({ packageStorage, packageSecrets, credential, credentials }).filter(
+	Object.entries({ ${packageBoundRuntimeExportNames.join(', ')} }).filter(
 		([, value]) => value !== undefined,
 	),
 );
@@ -1217,8 +1246,8 @@ const __kodyPackageRuntimeDefault = new Proxy(__kodyBaseRuntimeDefault, {
 });
 export default __kodyPackageRuntimeDefault;
 // Per-package request-context key: \`context.get(KodyRuntime)\` resolves
-// packageStorage / packageSecrets to the declaring package, matching the
-// named exports above.
+// the package-bound exports to the declaring package, matching the named
+// exports above.
 export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDefault });
 `.trim()
 }

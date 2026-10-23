@@ -1,6 +1,7 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
+import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
 	repairPreBindingPublishedArtifact,
@@ -626,7 +627,9 @@ export async function readPublishedBundleArtifact(input: {
 	// repair imports the shared runtime module, which only resolves inside a
 	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
 	if (!isRepairableArtifactKind(loaded.kind)) return loaded
-	return repairPreBindingPublishedArtifact(loaded)
+	return repairInlinedFacadeBindingsInArtifact(
+		repairPreBindingPublishedArtifact(loaded),
+	)
 }
 
 export async function deletePublishedBundleArtifact(input: {

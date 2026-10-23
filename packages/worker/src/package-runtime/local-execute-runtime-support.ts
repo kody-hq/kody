@@ -15,6 +15,12 @@ import {
 	normalizeWorkspaceModulePath,
 	runtimeModulePath,
 } from './module-graph-path-basics.ts'
+import {
+	createPackageBoundRuntimeExportLines,
+	packageBoundRuntimeCreatorNames,
+	packageBoundRuntimeExportNames,
+	sharedRuntimeExportReasons,
+} from './package-bound-runtime-exports.ts'
 
 export {
 	moduleSourceHasInlinedKodyRuntime,
@@ -1214,85 +1220,43 @@ export const KodyRuntime = Object.freeze({
 
 /**
  * Per-package virtual runtime for local execute: same surface as cloud's
- * createPackageRuntimeModuleSource, but createAuthenticatedFetch closes over
- * the stamped package id so CapabilityProxy / fetch-gateway integration
- * approvals see package identity.
+ * createPackageRuntimeModuleSource, built from the same
+ * `packageBoundRuntimeExports` list, so every export that reaches a
+ * credential (createAuthenticatedFetch, oauthClientCredentials, credential,
+ * packageSecrets, ...) closes over the stamped package id and CapabilityProxy
+ * / fetch-gateway approvals see package identity.
  */
 export function createLocalExecutePackageRuntimeModuleSource(
 	packageId: string,
 ) {
 	const baseRuntimeSpecifier = '../runtime.js'
+	const boundNames = packageBoundRuntimeExportNames
+	const sharedNames = Object.keys(sharedRuntimeExportReasons)
 	return `
-export { secretHeaders, packageContext, email, workflows, packages, events } from ${JSON.stringify(
-		baseRuntimeSpecifier,
-	)};
+export { ${sharedNames.join(', ')} } from ${JSON.stringify(baseRuntimeSpecifier)};
 import __kodyBaseRuntimeDefault, {
-	__kodyCreatePackageBoundFetch,
-	__kodyCreatePackageBoundKody,
-	__kodyCreatePackageBoundStorage,
-	__kodyCreatePackageBoundSecrets,
-	__kodyCreatePackageBoundAuthenticatedFetch,
-	__kodyCreatePackageBoundOauthClientCredentials,
-	__kodyCreatePackageBoundCredentialRuntime,
+	${packageBoundRuntimeCreatorNames().join(',\n\t')},
 } from ${JSON.stringify(baseRuntimeSpecifier)};
 // Same lexical bindings as the hosted facade (GHSA-5fv3-qv7j-rqf5): stamped
 // modules import \`fetch\` and \`kody\` from here, so they act as this package.
-export const __kodyBoundFetch = __kodyCreatePackageBoundFetch(${JSON.stringify(packageId)});
-export const kody = __kodyCreatePackageBoundKody(${JSON.stringify(packageId)});
-export const packageStorage = __kodyCreatePackageBoundStorage(${JSON.stringify(
-		packageId,
-	)});
-export const packageSecrets = __kodyCreatePackageBoundSecrets(${JSON.stringify(
-		packageId,
-	)});
-export const createAuthenticatedFetch = __kodyCreatePackageBoundAuthenticatedFetch(${JSON.stringify(
-		packageId,
-	)});
-export const oauthClientCredentials = __kodyCreatePackageBoundOauthClientCredentials(${JSON.stringify(
-		packageId,
-	)});
-const __kodyPackageCredentialRuntime = __kodyCreatePackageBoundCredentialRuntime(${JSON.stringify(
-		packageId,
-	)});
-export const credential = __kodyPackageCredentialRuntime.credential;
-export const credentials = __kodyPackageCredentialRuntime.credentials;
+${createPackageBoundRuntimeExportLines(packageId)}
+const __kodyPackageBound = { ${boundNames.join(', ')} };
 // Local base runtime default is Object.freeze'd. Proxying that frozen target
-// while returning different packageStorage / packageSecrets /
-// createAuthenticatedFetch / oauthClientCredentials values violates Proxy
-// invariants and throws on default-export property access. Clone with the
-// bound overrides first.
+// while returning different package-bound values violates Proxy invariants
+// and throws on default-export property access. Clone with the bound
+// overrides first.
 const __kodyPackageRuntimeDefault = new Proxy(
 	Object.freeze({
 		...__kodyBaseRuntimeDefault,
-		kody,
-		packageStorage,
-		packageSecrets,
-		createAuthenticatedFetch,
-		oauthClientCredentials,
-		credential,
-		credentials,
+		...__kodyPackageBound,
 	}),
 	{
 		get(target, property, receiver) {
-			if (property === "kody") return kody;
-			if (property === "packageStorage") return packageStorage;
-			if (property === "packageSecrets") return packageSecrets;
-			if (property === "createAuthenticatedFetch") return createAuthenticatedFetch;
-			if (property === "oauthClientCredentials") return oauthClientCredentials;
-			if (property === "credential") return credential;
-			if (property === "credentials") return credentials;
+			if (Object.hasOwn(__kodyPackageBound, property)) return __kodyPackageBound[property];
 			return Reflect.get(target, property, receiver);
 		},
 		has(target, property) {
-			return (
-				property === "packageStorage" ||
-				property === "packageSecrets" ||
-				property === "createAuthenticatedFetch" ||
-				property === "oauthClientCredentials" ||
-				property === "credential" ||
-				property === "credentials" ||
-				Reflect.has(target, property)
-			);
+			return Object.hasOwn(__kodyPackageBound, property) || Reflect.has(target, property);
 		},
 	},
 );
