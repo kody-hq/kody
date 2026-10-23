@@ -295,12 +295,19 @@ export const packageCredentialNeedSchema = z.object({
 	status: z
 		.enum(['ready', 'ambiguous', 'unbound', 'expired'])
 		.describe(
-			'ready: exactly one of your credentials matches the need (kind filter and provider) and resolves with no call map entry. ambiguous: several match; pick one with a call map. unbound: none match. expired: the matching Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it).',
+			'ready: a stored default mapping (yours, then the org default) names a credential you can Use, or exactly one of your credentials matches the need (kind filter and provider); it resolves with no call map entry. ambiguous: several match and no default mapping applies; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it).',
 		),
 	autoPick: z
 		.string()
 		.nullable()
-		.describe('The credential name used when no call map entry is given.'),
+		.describe(
+			'The credential name used when no call map entry is given. For a mapping of several credentials, the first one.',
+		),
+	source: z
+		.enum(['mine', 'org', 'auto'])
+		.describe(
+			'Where status and autoPick come from: mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead.',
+		),
 	yourOptions: z
 		.array(
 			z.object({

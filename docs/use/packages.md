@@ -179,9 +179,12 @@ credentials; opt-in types that a package can declare are described in
   key. Omitting `kind` is compatible with a dependency that declares a
   fetch-capable kind (the declared kind is kept).
 - `packageGet` returns that closure as `credentials.needs`, each need with how
-  it resolves for you: `status` is `ready` (exactly one credential you can Use
-  matches the need's kind filter and provider; `autoPick` names it), `ambiguous`
-  (several do), or `unbound` (none). `yourOptions` lists what you could pick
+  it resolves for you: `status` is `ready` (a default mapping, yours and then
+  the org's, names a credential you can Use, or exactly one credential you can
+  Use matches the need's kind filter and provider; `autoPick` names it),
+  `ambiguous` (several match and no default mapping applies), or `unbound`
+  (none, or a default maps the need to no credential on purpose). `source` says
+  which: `mine`, `org`, or `auto`. `yourOptions` lists what you could pick
   (name, `org` or `personal` scope, hosts): the matches plus matching-kind
   credentials with no provider, which resolve automatically once their provider
   is set (`credentialUpdate`). Only credentials you can Use are listed, and
