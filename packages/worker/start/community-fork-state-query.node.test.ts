@@ -10,6 +10,8 @@ vi.mock('#start/server/community-mutations', () => ({
 const { communityForkStateQuery, FORK_IN_PROGRESS_POLL_MS } =
 	await import('./community-fork-state-query.ts')
 
+type ForkStateQueryOptions = ReturnType<typeof communityForkStateQuery>
+
 const done: CommunityForkState = {
 	state: 'adaptation_required',
 	targetName: '@viewer/demo',
@@ -28,7 +30,7 @@ function setup(states: Array<CommunityForkState>) {
 	return { client, load, options }
 }
 
-async function mount(client: QueryClient, options: object) {
+async function mount(client: QueryClient, options: ForkStateQueryOptions) {
 	const observer = new QueryObserver(client, options)
 	const results: Array<CommunityForkState | undefined> = []
 	const unsubscribe = observer.subscribe((result) => {

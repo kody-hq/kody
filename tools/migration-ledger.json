@@ -651,6 +651,10 @@
 		{
 			"filename": "0176-credential-allowed-packages-would-block.sql",
 			"sha256": "a28587dad7ad2e43254029a5e6aed50554b273efd37fd72409cea3c7e125075b"
+		},
+		{
+			"filename": "0177-community-fork-claims.sql",
+			"sha256": "89914e509f92644b3be836258334af9bb6db9e4649cdb38127c3dd672024a1b2"
 		}
 	]
 }
