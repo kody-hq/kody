@@ -122,6 +122,8 @@ export function buildPackageAppErrorAgentPrompt(input: {
 	path: string
 	cause?: string | null
 	runtimeRunId?: string | null
+	/** Cloudflare ray of the failed visitor request. */
+	rayId?: string | null
 }) {
 	const titles: Record<PackageAppFailureKindForPrompt, string> = {
 		'host-setup': 'Package app could not be prepared',
@@ -174,6 +176,7 @@ export function buildPackageAppErrorAgentPrompt(input: {
 			packageKodyId: input.kodyId,
 			path: input.path,
 			runId: input.runtimeRunId,
+			requestId: input.rayId,
 		},
 		likelyCause: input.cause?.trim()
 			? `${causes[input.kind]} Detail: ${input.cause.trim()}`

@@ -2226,8 +2226,15 @@ export async function createPackageAppWorkerId(input: {
 	return `package-app-${hash.slice(0, 43)}`
 }
 
+/**
+ * Keys the cached build, which carries the bridge and gateway props (visitor,
+ * org binding, request context, credential client binding). Every identity
+ * input those props derive from is part of the key, so a request only ever
+ * reuses a build made for the same visitor, role, and org.
+ */
 function createPackageAppWorkerCacheKey(input: {
 	userId: OwnerId
+	orgSlug: string | null
 	visitor: RuntimePackageAppVisitor | null
 	packageId: string
 	kodyId: string
@@ -2244,6 +2251,7 @@ function createPackageAppWorkerCacheKey(input: {
 	}
 	return JSON.stringify([
 		input.userId,
+		input.orgSlug,
 		input.visitor?.userId ?? null,
 		input.visitor?.username ?? null,
 		input.visitor?.role ?? null,
@@ -2837,12 +2845,14 @@ export async function buildPackageAppWorker(input: {
 	})
 	return await pushServerTiming(input.serverTiming, 'appLoader', async () => {
 		const publicContext = await buildPackageAppPublicContext(input)
+		const { orgSlug, visitor } = packageAppVisitorOf(
+			input.runtime.callerContext,
+			input.runtime.servingUsername,
+		)
 		const cacheKey = createPackageAppWorkerCacheKey({
 			userId: input.userId,
-			visitor: packageAppVisitorOf(
-				input.runtime.callerContext,
-				input.runtime.servingUsername,
-			).visitor,
+			orgSlug,
+			visitor,
 			packageId: input.savedPackage.id,
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,

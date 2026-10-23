@@ -409,6 +409,15 @@ function packageAppFailureStatus(kind: PackageAppFailureKind) {
 	}
 }
 
+/**
+ * The Cloudflare ray of the visitor request, shown on the crash page so an
+ * owner can match a report to logs. Only a well-formed ray id is echoed.
+ */
+function cloudflareRayIdOf(request: Request) {
+	const ray = request.headers.get('cf-ray')?.trim() ?? ''
+	return /^[0-9a-f]{16}(?:-[A-Z]{3})?$/i.test(ray) ? ray : null
+}
+
 function createPackageAppErrorResponse(input: {
 	request: Request
 	kind: PackageAppFailureKind
@@ -466,6 +475,7 @@ function createPackageAppErrorResponse(input: {
 		runtimeRunId: input.runtimeRunId ?? null,
 	})
 	const requestPath = new URL(input.request.url).pathname
+	const rayId = cloudflareRayIdOf(input.request)
 	const body = {
 		error: message.title,
 		message: message.summary,
@@ -563,6 +573,12 @@ function createPackageAppErrorResponse(input: {
 												<dd><code>${input.runtimeRunId}</code></dd>`
 										: ''
 								}
+								${
+									rayId
+										? html`<dt>Ray ID</dt>
+												<dd><code>${rayId}</code></dd>`
+										: ''
+								}
 							</dl>
 							${html.raw`${renderErrorAgentPromptStaticHtml(
 								buildPackageAppErrorAgentPrompt({
@@ -573,6 +589,7 @@ function createPackageAppErrorResponse(input: {
 									// Visitor HTML must not include host exception text;
 									// JSON synthetic responses still carry `cause`.
 									runtimeRunId: input.runtimeRunId,
+									rayId,
 								}),
 							)}`}
 						</section>

@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { readFile } from 'node:fs/promises'
 import { expect, test, vi } from 'vitest'
+import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
@@ -1396,7 +1397,7 @@ test('buildPackageAppWorker skips published artifact lookup when publishedCommit
 })
 
 test('package app runtime bridge returns opaque secret refs and merges metadata via waitUntil', async () => {
-	const opaqueRef = '{{secret:apiToken|scope=user}}'
+	const opaqueRef = buildSecretPlaceholder({ name: 'apiToken', scope: 'user' })
 	packageAppRuntimeMock.resolveCredential.mockResolvedValue({
 		alias: 'api-token',
 		name: 'apiToken',
@@ -1473,7 +1474,7 @@ test('package app runtime bridge returns opaque secret refs and merges metadata 
 })
 
 test('package app secret mounts ignore author-selected packageId and forged authority fields', async () => {
-	const ref = '{{secret:apiToken|scope=user}}'
+	const ref = buildSecretPlaceholder({ name: 'apiToken', scope: 'user' })
 	packageAppRuntimeMock.resolveCredential.mockResolvedValue({
 		alias: 'api-token',
 		name: 'apiToken',
@@ -1718,6 +1719,99 @@ test('buildPackageAppWorker mints request-bound loopback bindings on every loade
 	expect(second.env.__kodyPackageContext).toEqual(
 		first.env.__kodyPackageContext,
 	)
+})
+
+test("buildPackageAppWorker never reuses one visitor's cached build, request context, or credential binding for another", async () => {
+	// The cached build carries bridge and gateway props (request context,
+	// credential client binding). A later request may reuse it only when it
+	// would derive the same identity: same visitor, role, and org.
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const key = 'visitor-isolation'
+	const orgId = `user-${key}`
+	const visit = (
+		actorId: string,
+		role: 'owner' | 'member',
+		orgSlug: string = key,
+	) =>
+		makeBuildInput(env, key, {
+			runtime: {
+				callerContext: {
+					user: {
+						userId: actorId,
+						email: `${key}@example.com`,
+						displayName: `${key} User`,
+					},
+					request: {
+						org: { id: orgId, slug: orgSlug },
+						actor: { userId: actorId, username: actorId },
+						attribution: { kind: 'user', userId: actorId },
+						credential: {
+							kind: 'package-app',
+							id: null,
+							orgId,
+							scopes: null,
+							profileName: null,
+						},
+						membership: { role },
+					},
+				},
+			} as never,
+		})
+	type MaterializedBridge = {
+		props: {
+			visitor: { userId: string; role: string | null } | null
+			orgSlug: string | null
+			credentialClientBinding: string
+			gatewayProps: {
+				credentialClientBinding?: string | null
+				request: { actor: { userId: string } | null } | null
+			}
+		}
+	}
+	const loads: Array<{ id: string; bridge: MaterializedBridge }> = []
+	const serve = async (input: BuildInput) => {
+		await buildPackageAppWorker(input)
+		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
+			string,
+			() => { env: { KODY_RUNTIME: MaterializedBridge } },
+		]
+		loads.push({ id, bridge: factory().env.KODY_RUNTIME })
+	}
+
+	await serve(visit('person-a', 'owner'))
+	await serve(visit('person-b', 'member'))
+	await serve(visit('person-a', 'member'))
+	await serve(visit('person-a', 'owner', 'renamed-org'))
+	await serve(visit('person-a', 'owner'))
+
+	const [first, other, demoted, renamed, again] = loads
+	// The same visitor, role, and org reuses the build and its isolate.
+	expect(again!.id).toBe(first!.id)
+	expect(again!.bridge.props).toEqual(first!.bridge.props)
+	// Anyone else gets their own build, worker id, and run binding.
+	for (const load of [other!, demoted!, renamed!]) {
+		expect(load.id).not.toBe(first!.id)
+		expect(load.bridge.props.credentialClientBinding).not.toBe(
+			first!.bridge.props.credentialClientBinding,
+		)
+	}
+	expect(new Set(loads.map((load) => load.id)).size).toBe(4)
+	expect(other!.bridge.props.visitor).toMatchObject({
+		userId: 'person-b',
+		role: 'member',
+	})
+	expect(other!.bridge.props.gatewayProps.request?.actor?.userId).toBe(
+		'person-b',
+	)
+	expect(other!.bridge.props.gatewayProps.credentialClientBinding).toBe(
+		other!.bridge.props.credentialClientBinding,
+	)
+	expect(demoted!.bridge.props.visitor?.role).toBe('member')
+	expect(renamed!.bridge.props.orgSlug).toBe('renamed-org')
 })
 
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {

@@ -927,7 +927,7 @@ test('a tagged runtime throw becomes the package-entrypoint page with the run id
 	})
 })
 
-test('an entrypoint rejection records an owner-visible error run and shows its id on the crash page', async () => {
+test('an entrypoint rejection records an owner-visible error run and shows its id and ray on the crash page', async () => {
 	// The app worker can fail before its wrapper starts a run (no runList
 	// entry, app try/catch never runs). The host records the run instead.
 	consoleError.mockImplementation(() => {})
@@ -982,12 +982,32 @@ test('an entrypoint rejection records an owner-visible error run and shows its i
 	// Host exception text stays internal.
 	expect(finished.error.message).not.toContain('internal platform detail')
 
+	// The HTML crash page shows the run id and the request's Cloudflare ray.
+	const htmlWithRun = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		init: { headers: { 'cf-ray': '8f00aa11bb22cc33-DEN' } },
+	})
+	expect(htmlWithRun.status).toBe(500)
+	const pageWithRun = await htmlWithRun.text()
+	expect(pageWithRun).toMatch(
+		/<dt>Run ID<\/dt>\s*<dd><code>host-run-1<\/code><\/dd>/,
+	)
+	expect(pageWithRun).toMatch(
+		/<dt>Ray ID<\/dt>\s*<dd><code>8f00aa11bb22cc33-DEN<\/code><\/dd>/,
+	)
+	expect(pageWithRun).not.toContain('internal platform detail')
+
+	// No run recorded and no well-formed ray: neither row is shown.
 	mockModule.beginRunRecord.mockReset()
-	const html = await serveHelloWorld({ kodyId: 'entrypoint-reject-app' })
+	const html = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		init: { headers: { 'cf-ray': '<script>' } },
+	})
 	expect(html.status).toBe(500)
 	const page = await html.text()
 	expect(page).toContain('Package app crashed')
 	expect(page).not.toContain('Run ID')
+	expect(page).not.toContain('Ray ID')
 })
 
 test('author 200 responses that set the runtime-error header stay successful', async () => {
