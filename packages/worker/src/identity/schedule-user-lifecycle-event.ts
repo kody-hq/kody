@@ -52,12 +52,15 @@ export function scheduleUserCreatedEvent(input: {
 export function scheduleUserDeletedEvent(input: {
 	env: UserLifecycleScheduleEnv
 	user: UserLifecycleIdentity
+	/** The account's `users.created_at`, read before the row is removed. */
+	createdAt: string
 	deletedAt?: string
 }) {
 	scheduleUserLifecycleSubscriptionEvent({
 		env: input.env,
 		event: buildUserDeletedEvent({
 			user: input.user,
+			createdAt: input.createdAt,
 			deletedAt: input.deletedAt ?? new Date().toISOString(),
 		}),
 	})

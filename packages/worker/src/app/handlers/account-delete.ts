@@ -139,6 +139,8 @@ export async function deleteAccount({
 			username: user.username,
 			email: user.email,
 		},
+		// Soft delete keeps the row, so the signup time read above is current.
+		createdAt: userRow.created_at,
 	})
 
 	void logAuditEvent({

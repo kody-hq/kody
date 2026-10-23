@@ -20,6 +20,7 @@ test('user lifecycle event builders keep a metadata-only identity snapshot', () 
 	})
 	const deleted = buildUserDeletedEvent({
 		user: created.user,
+		createdAt: '2026-08-20T12:00:00.000Z',
 		deletedAt: '2026-08-20T13:00:00.000Z',
 	})
 
@@ -75,6 +76,7 @@ test('user lifecycle event builders keep a metadata-only identity snapshot', () 
 	expect(deleted).toEqual({
 		event: userDeletedTopic,
 		user: created.user,
+		created_at: '2026-08-20T12:00:00.000Z',
 		deleted_at: '2026-08-20T13:00:00.000Z',
 	})
 	expect(isUserLifecycleEventTopic('user.updated')).toBe(false)
@@ -94,4 +96,27 @@ test('user lifecycle event builders keep a metadata-only identity snapshot', () 
 	).toBe(
 		'user-lifecycle:user.deleted:user-1:2026-08-20T13:00:00.000Z:package-1',
 	)
+})
+
+test('user.deleted created_at normalizes stored signup timestamps to ISO', () => {
+	const user = { id: 'user-1', username: 'ada', email: 'ada@example.com' }
+	const deletedAt = '2026-08-20T13:00:00.000Z'
+	const createdAtFor = (createdAt: string) =>
+		buildUserDeletedEvent({ user, createdAt, deletedAt }).created_at
+
+	// SQLite CURRENT_TIMESTAMP rows carry no zone and are UTC.
+	expect(createdAtFor('2026-08-20 12:59:30')).toBe('2026-08-20T12:59:30.000Z')
+	expect(createdAtFor('2026-08-20T12:59:30Z')).toBe('2026-08-20T12:59:30.000Z')
+	expect(createdAtFor('2026-08-20T12:59:30.123Z')).toBe(
+		'2026-08-20T12:59:30.123Z',
+	)
+	expect(createdAtFor('not-a-date')).toBe('not-a-date')
+	expect(
+		buildUserDeletedEvent({ user, createdAt: deletedAt, deletedAt }),
+	).toEqual({
+		event: userDeletedTopic,
+		user,
+		created_at: deletedAt,
+		deleted_at: deletedAt,
+	})
 })

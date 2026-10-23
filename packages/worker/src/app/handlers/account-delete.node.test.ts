@@ -100,6 +100,7 @@ test('account deletion requires GOODBYE KODY, password when one exists, and soft
 	mocks.findOne.mockResolvedValue({
 		id: 7,
 		password_hash: 'pbkdf2_sha256$100000$salt$hash',
+		created_at: '2026-09-30 08:15:00',
 	})
 	mocks.verifyPassword.mockResolvedValue(false)
 	mocks.softDeleteUserAccount.mockResolvedValue({
@@ -151,6 +152,7 @@ test('account deletion requires GOODBYE KODY, password when one exists, and soft
 			username: 'ada',
 			email: 'ada@example.com',
 		},
+		createdAt: '2026-09-30 08:15:00',
 	})
 
 	mocks.findOne.mockResolvedValue({
