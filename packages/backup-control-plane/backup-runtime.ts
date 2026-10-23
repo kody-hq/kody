@@ -343,8 +343,10 @@ export async function runBackupRuntime(
 				timeout: '15 minutes',
 			},
 			async () => {
-				// Refresh may restart the export when the short-lived poll result
-				// has expired; the returned bookmark defines the immutable object key.
+				// Refresh only re-polls the durable export bookmark for a fresh
+				// signed URL. It never starts a new export: an expired poll result
+				// fails the instance (export-result-expired) so the instance retry
+				// runs one new export instead of a second blocking export here.
 				const refreshed = await refreshCompletedD1Export(
 					sourceEnv,
 					exported.bookmark,

@@ -205,31 +205,22 @@ test('export poll and refresh workflow covers pending, expired, and malformed st
 		backupError('export-malformed-response'),
 	)
 
+	// An expired poll result fails the refresh instead of starting a second
+	// (database-blocking) export inside the same upload step.
 	const bodies: unknown[] = []
-	const responses = [
-		exportEnvelope('lost'),
-		exportEnvelope('active', 'bookmark-2'),
-		exportEnvelope('complete', 'bookmark-2', 'https://download.example/fresh'),
-	]
-	const refreshed = await refreshCompletedD1Export(
-		environment(),
-		'bookmark-1',
-		{
+	await assert.rejects(
+		refreshCompletedD1Export(environment(), 'bookmark-1', {
 			fetcher: async (_input, init) => {
 				bodies.push(JSON.parse(String(init?.body)))
-				return responses.shift()!
+				return bodies.length === 1
+					? exportEnvelope('lost')
+					: exportEnvelope('complete', 'bookmark-2')
 			},
 			sleep: noSleep,
-			earlyPollDelayMs: 1,
-			pollDelayMs: 1,
-		},
+		}),
+		backupError('export-result-expired', false),
 	)
-	assert.equal(refreshed.kind, 'complete')
-	assert.equal(refreshed.bookmark, 'bookmark-2')
-	assert.equal(refreshed.signedUrl, 'https://download.example/fresh')
 	assert.deepEqual(bodies, [
 		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
-		{ output_format: 'polling' },
-		{ output_format: 'polling', current_bookmark: 'bookmark-2' },
 	])
 })

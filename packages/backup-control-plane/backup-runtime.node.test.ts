@@ -395,6 +395,39 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 	)
 })
 
+test('an expired export result fails the upload step without starting a second export', async () => {
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const exportBodies: unknown[] = []
+	const downloadUrls: string[] = []
+	await assert.rejects(
+		runDay(env, payload, new CachedUploadStep(() => undefined), {
+			api: completeApi((init) => {
+				exportBodies.push(JSON.parse(String(init?.body)))
+				// The durable export completes; the upload-step refresh then
+				// finds the short-lived poll result already expired.
+				return exportBodies.length === 1
+					? exportEnvelope('complete', 'bookmark-1')
+					: exportEnvelope('lost')
+			}),
+			downloadFetcher: async (input) => {
+				downloadUrls.push(String(input))
+				return okDownload()
+			},
+		}),
+		backupError('export-result-expired', false),
+	)
+	// Exactly one export start; the refresh only polls the original bookmark.
+	assert.deepEqual(exportBodies, [
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
+	])
+	assert.deepEqual(downloadUrls, [])
+	assert.equal(bucket.puts.length, 0)
+	assert.equal(await bucket.head(payload.manifestKey), null)
+})
+
 test('a replayed finalization tolerates the already-written manifest and stats', async () => {
 	const consoleError = vi.spyOn(console, 'error')
 	consoleError.mockImplementation(() => undefined)

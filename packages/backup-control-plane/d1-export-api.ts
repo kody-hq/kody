@@ -407,10 +407,14 @@ export async function refreshCompletedD1Export(
 				true,
 			)
 		case 'lost':
-			// Short-lived poll results expire quickly; start a fresh export and
-			// fast-poll to completion. Callers must key objects by the returned
-			// bookmark (new export ⇒ new object key).
-			return awaitExportReady(env, { kind: 'lost' }, options)
+			// The poll result for this bookmark has expired. Starting a fresh
+			// export here would block the source database a second time inside
+			// one upload step, so fail the instance instead and let the normal
+			// instance retry (catch-up restart) run a single new export.
+			throw new BackupError(
+				'export-result-expired',
+				'D1 export result expired before upload; the instance retry will start a new export',
+			)
 		default: {
 			const exhaustive: never = state
 			throw exhaustive
