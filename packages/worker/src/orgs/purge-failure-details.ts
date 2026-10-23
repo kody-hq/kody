@@ -9,12 +9,13 @@ export const purgeFailureDetailMaxEntries = 10
 export const purgeFailureDetailMaxLength = 300
 
 /**
- * Tokens that look like identifiers: long enough and carrying a digit, or a
- * long run of id characters. Repo names, source/package/storage ids, KV keys,
- * and Stripe ids all match; ordinary English words do not.
+ * Tokens that look like identifiers: prefixed Stripe ids (even without
+ * digits), tokens carrying a digit, or a long run of id characters. Repo
+ * names, source/package/storage ids, and KV keys match; ordinary English
+ * words do not.
  */
 const identifierLikeToken =
-	/[A-Za-z0-9][A-Za-z0-9_:./@+-]*\d[A-Za-z0-9_:./@+-]*|[A-Za-z0-9_-]{24,}/g
+	/\b(?:acct|ch|cn|cs|cus|evt|ii|in|pi|pm|price|prod|re|seti|si|sub|txn)_[A-Za-z0-9]+|[A-Za-z0-9][A-Za-z0-9_:./@+-]*\d[A-Za-z0-9_:./@+-]*|[A-Za-z0-9_-]{24,}/g
 
 /**
  * Strip ids and emails from one deletion warning so it can go to the audit log

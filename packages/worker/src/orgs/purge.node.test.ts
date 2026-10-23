@@ -329,6 +329,7 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 				'Artifact repo delete failed for u-7f3a9c21e5-pkg-src: Repository not found',
 				'KV delete failed for bundle-artifact:v1:src-8812abc: timeout',
 				'Stripe cleanup failed for person@example.com',
+				'Subscription cancel failed for sub_AbCdEfGhIj',
 			],
 			{} as never,
 		)
@@ -346,6 +347,7 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 		'Artifact repo delete failed for <id> Repository not found',
 		'KV delete failed for <id> timeout',
 		'Stripe cleanup failed for <email>',
+		'Subscription cancel failed for <id>',
 	]
 	expect(JSON.parse(audit?.details_json ?? '{}')).toEqual({
 		error: 'Account deletion cleanup could not complete safely.',
