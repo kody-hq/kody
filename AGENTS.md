@@ -19,5 +19,5 @@ Open the page that owns the task:
 - Dependency bump or audit fix: reuse an open PR, never open a duplicate
   ([rule](./docs/contributing/dependency-overrides.md#dependency-bump-prs))
 - Never run `wrangler deploy`, `versions upload|deploy`, or `secret put|bulk`
-  against `kody-production` or any other production Worker; deploy only via the
-  Deploy workflow ([rule](./docs/contributing/rollback.md#ci-only-production-deploys))
+  against `kody-production` or any production Worker; only the Deploy workflow
+  deploys ([rule](./docs/contributing/rollback.md#ci-only-production-deploys))
