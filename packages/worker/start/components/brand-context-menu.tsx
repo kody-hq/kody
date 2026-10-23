@@ -376,13 +376,21 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 			close()
 		}
 
+		// Native context menus dismiss on resize; do the same so the menu
+		// never sits outside a viewport that shrank under it.
+		function onResize() {
+			close()
+		}
+
 		document.addEventListener('pointerdown', onPointerDown, true)
 		document.addEventListener('keydown', onKey, true)
+		window.addEventListener('resize', onResize)
 		menuRef.current?.addEventListener('focusout', onFocusOut)
 		const menuNode = menuRef.current
 		return () => {
 			document.removeEventListener('pointerdown', onPointerDown, true)
 			document.removeEventListener('keydown', onKey, true)
+			window.removeEventListener('resize', onResize)
 			menuNode?.removeEventListener('focusout', onFocusOut)
 		}
 	}, [open, activeIndex, close, items, activate])
