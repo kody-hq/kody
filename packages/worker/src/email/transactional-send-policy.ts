@@ -56,6 +56,7 @@ export const holdableTransactionalEmailKinds = [
 	'entitlement_warning',
 	'error_rate',
 	'package_owner_error_spike',
+	'job_auto_disabled',
 ] as const
 
 export type EssentialTransactionalEmailKind =

@@ -642,6 +642,37 @@ export function buildPackageOwnerErrorSpikeEmail(input: {
 	})
 }
 
+export function buildJobAutoDisabledEmail(input: {
+	appBaseUrl: string
+	jobsUrl: string
+	supportUrl: string
+	ownerLabel: string
+	jobName: string
+	reason: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Kody turned off your job "${input.jobName}"`,
+		preheader: 'It will not run again until you turn it back on.',
+		heading: 'A scheduled job was turned off',
+		body: [
+			`Kody turned off the scheduled job "${input.jobName}" for ${input.ownerLabel}. Nobody on your account did this; Kody did it because the job could not be scheduled again.`,
+			`Reason: ${input.reason}`,
+			'The job will not run again until you fix its schedule and turn it back on from Jobs.',
+		],
+		action: { label: 'Review jobs', url: input.jobsUrl },
+		afterAction: [`Support: ${input.supportUrl}`],
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because Kody turned off a scheduled job on an account you own.",
+	})
+}
+
 function formatSpikeStarted(iso: string) {
 	const ms = Date.parse(iso)
 	if (!Number.isFinite(ms)) return iso

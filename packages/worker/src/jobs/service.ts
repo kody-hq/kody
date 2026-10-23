@@ -50,6 +50,7 @@ import {
 	workersHungExecutionMessage,
 } from '@kody-internal/shared/workers-hung-request.ts'
 import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
+import { notifyOwnersOfJobAutoDisabled } from './job-auto-disabled-notice.ts'
 import { applyExecutionOutcome, processDueJobs } from './process-due-jobs.ts'
 import { syncJobManagerAlarm } from './manager-client.ts'
 import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
@@ -1879,6 +1880,21 @@ export async function runDueJobsForUser(input: {
 					successCount += result.successCount
 					errorCount += result.errorCount
 					jobOutcomes.push(...result.jobOutcomes)
+					if (!updated.enabled && row.record.schedule.type !== 'once') {
+						// The scheduler turned a recurring job off (it could not
+						// compute the next run). Nobody on the account did this, so
+						// say why and tell the owners.
+						const rescheduleError = result.jobOutcomes.find(
+							(entry) => entry.rescheduleError,
+						)?.rescheduleError
+						await notifyOwnersOfJobAutoDisabled({
+							env: input.env,
+							ownerId: input.userId,
+							jobId: row.id,
+							jobName: row.record.name,
+							reason: `Kody could not compute the next run from the job's schedule${rescheduleError ? ` (${rescheduleError})` : ''}.`,
+						})
+					}
 				} catch (error) {
 					if (isWorkersHungRequestCanceledError(error)) {
 						// A never-settling job emptied the sandbox event loop;
