@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -31,7 +32,7 @@ test('copies clean logs and drops logs that contain a secret value', async () =>
 			out,
 			secretsJson: JSON.stringify({
 				CLOUDFLARE_API_TOKEN: 'fake-secret-value-123',
-				SHORT: 'abc',
+				EMPTY: '',
 				FOUR: 'q7Zx',
 			}),
 		})
@@ -55,6 +56,30 @@ test('fails closed without secret input', () => {
 	})
 	expect(result.copied).toEqual([])
 	expect(result.reason).toContain('copied nothing')
+})
+
+test('fails closed when a nonempty secret is too short to scan', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'wrangler-logs-'))
+	try {
+		const from = join(root, 'logs')
+		const out = join(root, 'out')
+		await import('node:fs/promises').then((fs) => fs.mkdir(from))
+		await writeFile(join(from, 'clean.log'), 'Uploaded kody-production\n')
+		const result = collectWranglerLogs({
+			from,
+			out,
+			secretsJson: JSON.stringify({
+				CLOUDFLARE_API_TOKEN: 'fake-secret-value-123',
+				SHORT: 'abc',
+			}),
+		})
+		expect(result.copied).toEqual([])
+		expect(result.reason).toContain('1 secret value(s) shorter than 4')
+		expect(result.reason).not.toContain('abc')
+		expect(existsSync(out)).toBe(false)
+	} finally {
+		await rm(root, { recursive: true, force: true })
+	}
 })
 
 test('parseSecretValues covers each line of multi-line values', () => {

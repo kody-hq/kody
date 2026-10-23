@@ -8,8 +8,9 @@
  * verifies each file against every secret value the job can see
  * (`WRANGLER_LOG_SCAN_SECRETS`, the JSON of the workflow `secrets` context)
  * and against bearer-token shapes. Any match drops that file. Missing or
- * unparsable secret input copies nothing (fail closed). Values are never
- * printed; only file names and counts are.
+ * unparsable secret input, or any nonempty secret too short to scan, copies
+ * nothing (fail closed). Values are never printed; only file names and
+ * counts are.
  *
  * Usage:
  *   node tools/ci/collect-wrangler-logs.ts --from <dir> --out <dir>
@@ -29,8 +30,9 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 export const secretsEnvName = 'WRANGLER_LOG_SCAN_SECRETS'
 
 /**
- * Every secret of 4+ characters is scanned. A shorter value cannot be a
- * credential, and matching it would drop every log file.
+ * Every secret of 4+ characters is scanned. A shorter value would match
+ * almost any log, so a nonempty secret below this length makes the whole
+ * collection fail closed instead of being skipped.
  */
 const minimumSecretLength = 4
 
@@ -62,6 +64,24 @@ export function parseSecretValues(raw: string | undefined) {
 	return needles
 }
 
+function countUnscannableSecrets(raw: string | undefined) {
+	if (!raw) return 0
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(raw)
+	} catch {
+		return 0
+	}
+	if (typeof parsed !== 'object' || parsed === null) return 0
+	let count = 0
+	for (const value of Object.values(parsed as Record<string, unknown>)) {
+		if (typeof value !== 'string') continue
+		const trimmed = value.trim()
+		if (trimmed.length > 0 && trimmed.length < minimumSecretLength) count++
+	}
+	return count
+}
+
 export function logLeaksSecret(text: string, needles: ReadonlySet<string>) {
 	for (const needle of needles) {
 		if (text.includes(needle)) return true
@@ -80,6 +100,14 @@ export function collectWranglerLogs(input: {
 			copied: [] as Array<string>,
 			dropped: [] as Array<string>,
 			reason: `${secretsEnvName} missing or invalid; copied nothing`,
+		}
+	}
+	const unscannable = countUnscannableSecrets(input.secretsJson)
+	if (unscannable > 0) {
+		return {
+			copied: [] as Array<string>,
+			dropped: [] as Array<string>,
+			reason: `${String(unscannable)} secret value(s) shorter than ${String(minimumSecretLength)} characters cannot be scanned safely; copied nothing`,
 		}
 	}
 	if (!existsSync(input.from)) {
