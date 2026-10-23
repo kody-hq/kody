@@ -1010,7 +1010,13 @@ async function serveInternetVisiblePackageApp(input: {
 	})
 	if (!approvedPublishedCommit) return null
 	// Only an app that will actually serve pays the identity lookup.
-	const identity = (await input.resolveIdentity?.()) ?? null
+	// The lookup only adds identity, so a failure serves the visitor anonymously.
+	let identity: RuntimePackageAppIdentity | null = null
+	try {
+		identity = (await input.resolveIdentity?.()) ?? null
+	} catch (error) {
+		console.warn('package-app-identity-lookup-failed', error)
+	}
 	const response = await servePackageAppRequest({
 		request: input.request,
 		env: input.env,
