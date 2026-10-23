@@ -23,6 +23,10 @@ import {
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import {
+	scheduleAllowedPackagesWouldBlock,
+	type AllowedPackagesWouldBlockAccessKind,
+} from '#worker/credentials/allowed-packages-would-block.ts'
 
 type SecretMountDefinition = {
 	name: string
@@ -69,7 +73,7 @@ export function isPackageSecretAccessUnavailableError(error: unknown) {
  */
 const inflightImplicitUserSecretAccess = new WeakMap<
 	D1Database,
-	Map<string, Promise<boolean>>
+	Map<string, Promise<AllowedPackagesWouldBlockAccessKind | null>>
 >()
 
 /**
@@ -83,6 +87,18 @@ export async function packageHasImplicitUserSecretReadAccess(input: {
 	userId: OwnerId
 	packageId: string
 }): Promise<boolean> {
+	return (await implicitUserSecretReadAccessKind(input)) !== null
+}
+
+/**
+ * Same check as `packageHasImplicitUserSecretReadAccess`, but says why access
+ * is implied (`self_authored` or `adopted`), or null when it is not.
+ */
+export async function implicitUserSecretReadAccessKind(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	packageId: string
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
 	const db = input.env.APP_DB
 	const cacheKey = `${input.userId}\0${input.packageId}`
 	let inflight = inflightImplicitUserSecretAccess.get(db)
@@ -103,17 +119,30 @@ async function loadImplicitUserSecretReadAccess(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
 	packageId: string
-}): Promise<boolean> {
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId: input.packageId,
 	})
-	if (!savedPackage) return false
-	return await savedPackageHasImplicitUserSecretReadAccess({
+	if (!savedPackage) return null
+	return await savedPackageImplicitUserSecretReadAccessKind({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		savedPackage,
 	})
+}
+
+async function savedPackageImplicitUserSecretReadAccessKind(input: {
+	db: D1Database
+	userId: OwnerId
+	savedPackage: SavedPackageRecord
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
+	const communityFork = await getCommunityForkByForkedPackageId(input.db, {
+		forkerUserId: input.userId,
+		forkedPackageId: input.savedPackage.id,
+	})
+	if (!communityFork) return 'self_authored'
+	return communityFork.adoptedAt ? 'adopted' : null
 }
 
 async function savedPackageHasImplicitUserSecretReadAccess(input: {
@@ -121,11 +150,7 @@ async function savedPackageHasImplicitUserSecretReadAccess(input: {
 	userId: OwnerId
 	savedPackage: SavedPackageRecord
 }): Promise<boolean> {
-	const communityFork = await getCommunityForkByForkedPackageId(input.db, {
-		forkerUserId: input.userId,
-		forkedPackageId: input.savedPackage.id,
-	})
-	return !communityFork || Boolean(communityFork.adoptedAt)
+	return (await savedPackageImplicitUserSecretReadAccessKind(input)) !== null
 }
 
 export async function resolveSecretPageOrgSlug(input: {
@@ -204,16 +229,33 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	// fetch auth shares one package + fork load (KODY-9K). Missing packages
 	// still fall through to the explicit not-found error below. Nested use
 	// must apply the GHSA-5fv3 hybrid rule below, so it never short-circuits.
-	if (
-		intent === 'use' &&
-		!nested &&
-		(await packageHasImplicitUserSecretReadAccess({
+	if (intent === 'use' && !nested) {
+		const implicitKind = await implicitUserSecretReadAccessKind({
 			env: input.env,
 			userId: input.userId,
 			packageId,
-		}))
-	) {
-		return
+		})
+		if (implicitKind) {
+			// Warn-only exception (#4129): the list is non-empty and leaves this
+			// package out, but self-authored/adopted access is still allowed.
+			// Record a deduped would-block marker off the hot path so we can
+			// size enforcement. Never blocks, never awaits D1, never logs values.
+			if (input.resolved.allowedPackages.length > 0) {
+				const credentialId = input.resolved.credentialId?.trim()
+				if (credentialId) {
+					scheduleAllowedPackagesWouldBlock({
+						env: input.env,
+						marker: {
+							ownerId: String(input.userId),
+							credentialId,
+							packageId,
+							accessKind: implicitKind,
+						},
+					})
+				}
+			}
+			return
+		}
 	}
 
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {

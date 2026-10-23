@@ -72,6 +72,7 @@ import { adminPublishedSourceSnapshotBackfillCapability } from './admin-publishe
 import { adminPublishedCommitRefRepairCapability } from './admin-published-commit-ref-repair.ts'
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
+import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
@@ -190,6 +191,7 @@ export const adminDomain = defineDomain({
 		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,
 		adminCredentialPathSegmentImpactCapability,
+		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,
