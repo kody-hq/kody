@@ -127,6 +127,30 @@ export function workspaceHomeHref(org: {
 		: orgOverviewPath(org.slug)
 }
 
+/**
+ * Where to land after leaving one of an owner's pages (for example after
+ * deleting a package). A public handle can differ from the org slug, so
+ * match the viewer's own workspaces first and fall back to the public page.
+ */
+export function ownerWorkspaceHref(input: {
+	ownerHandle: string
+	ownerIsPersonal: boolean
+	organizations: ReadonlyArray<
+		Pick<OrganizationSummary, 'slug' | 'personal' | 'role'>
+	>
+}) {
+	const org =
+		input.organizations.find(
+			(entry) => entry.slug === input.ownerHandle && entry.role !== null,
+		) ??
+		(input.ownerIsPersonal
+			? input.organizations.find((entry) => entry.personal)
+			: undefined)
+	return org
+		? orgOverviewPath(org.slug)
+		: routes.profile.href({ username: input.ownerHandle })
+}
+
 /** Target policy is presentation only; destination loaders authorize every request. */
 export function workspaceSwitchHref(
 	target: WorkspaceSwitchTarget | undefined,

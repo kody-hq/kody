@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	isAccountNavItemSelected,
+	ownerWorkspaceHref,
 	workspaceHomeHref,
 	workspaceLandingItem,
 	workspaceRailGroups,
@@ -121,4 +122,41 @@ test('workspace home links open Overview for members, the org home for collabora
 	expect(workspaceHomeHref({ slug: 'acme', personal: false, role: null })).toBe(
 		'/@acme',
 	)
+})
+
+test('leaving an owner page opens that workspace Overview by org slug', () => {
+	const organizations = [
+		{ slug: 'jane', personal: true, role: 'owner' as const },
+		{ slug: 'acme', personal: false, role: 'member' as const },
+		{ slug: 'shared-co', personal: false, role: null },
+	]
+	expect(
+		ownerWorkspaceHref({
+			ownerHandle: 'acme',
+			ownerIsPersonal: false,
+			organizations,
+		}),
+	).toBe('/@acme/-/overview')
+	// A renamed person's handle differs from the personal org slug.
+	expect(
+		ownerWorkspaceHref({
+			ownerHandle: 'jane-new',
+			ownerIsPersonal: true,
+			organizations,
+		}),
+	).toBe('/@jane/-/overview')
+	expect(
+		ownerWorkspaceHref({
+			ownerHandle: 'shared-co',
+			ownerIsPersonal: false,
+			organizations,
+		}),
+	).toBe('/@shared-co')
+	expect(
+		ownerWorkspaceHref({
+			ownerHandle: 'acme-public',
+			ownerIsPersonal: false,
+			organizations,
+		}),
+	).toBe('/@acme-public')
 })

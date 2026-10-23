@@ -16,7 +16,8 @@ import { writeClipboardText } from '#client/clipboard.ts'
 import { useRouter } from '@tanstack/react-router'
 import { copyPromptTooltipCss } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { orgOverviewPath } from '#universal/org-pages.ts'
+import { ownerWorkspaceHref } from '#client/routes/account-rail.ts'
+import { useShellData } from '../routes/__root.tsx'
 import {
 	colors,
 	radius,
@@ -60,6 +61,7 @@ export function AccountPackageDeleteDialog(props: {
 	)
 	const capture = useSubmitterScope()
 	const router = useRouter()
+	const { session } = useShellData()
 	const busyRef = useRef(false),
 		mounted = useRef(false)
 	const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
@@ -137,7 +139,11 @@ export function AccountPackageDeleteDialog(props: {
 			busyRef.current = false
 			closeDialog()
 			void router.navigate({
-				to: orgOverviewPath(props.ownerUsername),
+				to: ownerWorkspaceHref({
+					ownerHandle: props.ownerUsername,
+					ownerIsPersonal: packageDetail.ownerIsPersonal,
+					organizations: session?.organizations ?? [],
+				}),
 			})
 		} catch (caught) {
 			if (!isCurrent()) return
