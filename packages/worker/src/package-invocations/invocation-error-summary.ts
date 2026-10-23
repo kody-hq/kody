@@ -19,13 +19,16 @@ const urlUserInfo = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
 /** Secret-carrying query parameters. */
 const sensitiveQueryParam =
 	/([?&](?:access_token|refresh_token|id_token|token|api_key|apikey|key|secret|client_secret|password|signature|sig|code)=)[^&\s"'<>]+/gi
-/**
- * `password=...`, `password: ...`, and `"apiKey": "..."` style assignments in
- * free text. An unquoted colon value that is a TypeScript type (for example
- * `secret: string` in a diagnostic) is kept so type errors stay readable.
- */
+/** `password=...` / `"apiKey": "..."` style assignments in free text. */
 const sensitiveAssignment =
-	/(\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*(?:=\s*["']?|:\s*["']?))(?!\[redacted\])(?!(?:string|number|boolean|bigint|symbol|unknown|any|never|undefined|null|object|void|Record|Array|ReadonlyArray|Promise|Partial|Readonly)\b)[^\s"',;}&]{4,}/gi
+	/(\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*(?:=\s*["']?|:\s*["']))(?!\[redacted\])[^\s"',;}&]{4,}/gi
+/**
+ * Unquoted `password: ...` values. A value that is a TypeScript type (for
+ * example `secret: string` in a diagnostic) is kept so type errors stay
+ * readable; quoted values are always redacted by `sensitiveAssignment`.
+ */
+const sensitiveUnquotedColonValue =
+	/(\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*:\s*)(?!\[redacted\])(?!(?:string|number|boolean|bigint|symbol|unknown|any|never|undefined|null|object|void|Record|Array|ReadonlyArray|Promise|Partial|Readonly)\b)[^\s"',;}&]{4,}/gi
 
 /** Drop control characters other than newline and tab. */
 function stripControlCharacters(value: string) {
@@ -60,6 +63,10 @@ export function sanitizeInvocationErrorMessage(message: string) {
 		)
 		.replace(
 			sensitiveAssignment,
+			(_match, prefix: string) => `${prefix}${redacted}`,
+		)
+		.replace(
+			sensitiveUnquotedColonValue,
 			(_match, prefix: string) => `${prefix}${redacted}`,
 		)
 	const printable = stripControlCharacters(cleaned).trim()

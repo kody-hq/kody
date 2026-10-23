@@ -52,6 +52,11 @@ test('redacts unquoted colon-form secrets but keeps TypeScript type annotations'
 	const diagnostic =
 		"Type '{ password: string; apiKey: Record<string, unknown>; secret: Promise<string>; }' is not assignable"
 	expect(sanitizeInvocationErrorMessage(diagnostic)).toBe(diagnostic)
+	expect(
+		sanitizeInvocationErrorMessage(
+			'config {"password": "string", "apiKey": "any1"}',
+		),
+	).toBe('config {"password": "[redacted]", "apiKey": "[redacted]"}')
 })
 
 test('bounds long messages and drops control characters', () => {
