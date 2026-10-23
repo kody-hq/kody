@@ -76,6 +76,32 @@ export function getRegistrableDomain(url: URL) {
 }
 
 /**
+ * Registrable domains of every configured app and package-app origin,
+ * including legacy dual-serve hosts. This is the single list both the
+ * custom-hostname runtime guard and custom-hostname registration read, so the
+ * two can never disagree about which parent domains belong to Kody.
+ */
+export function listKodyRegistrableDomains(env: AppBaseUrlEnv): Array<string> {
+	const domains: Array<string> = []
+	for (const raw of [
+		env.APP_BASE_URL,
+		env.PACKAGE_APP_BASE_URL,
+		...parseLegacyHosts(env.APP_LEGACY_HOSTS),
+		...parseLegacyHosts(env.PACKAGE_APP_LEGACY_HOSTS),
+	]) {
+		if (!raw) continue
+		try {
+			const value = raw.includes('://') ? raw : `https://${raw}`
+			const domain = getRegistrableDomain(new URL(value))
+			if (!domains.includes(domain)) domains.push(domain)
+		} catch {
+			// Ignore unparsable configured hosts.
+		}
+	}
+	return domains
+}
+
+/**
  * True when `hostname` is on the same registrable domain as any configured
  * app or package-app origin (including legacy dual-serve hosts). Custom
  * hostnames must stay cross-site from those origins so author code cannot
@@ -87,26 +113,30 @@ export function hostnameSharesKodyRegistrableDomain(input: {
 }): boolean {
 	const hostname = input.hostname.trim().toLowerCase().replace(/\.+$/, '')
 	if (!hostname) return false
-	const candidates: Array<string> = []
-	for (const raw of [
-		input.env.APP_BASE_URL,
-		input.env.PACKAGE_APP_BASE_URL,
-		...parseLegacyHosts(input.env.APP_LEGACY_HOSTS),
-		...parseLegacyHosts(input.env.PACKAGE_APP_LEGACY_HOSTS),
-	]) {
-		if (!raw) continue
-		try {
-			const value = raw.includes('://') ? raw : `https://${raw}`
-			candidates.push(getRegistrableDomain(new URL(value)))
-		} catch {
-			// Ignore unparsable configured hosts.
-		}
-	}
-	const hostnameDomain =
-		getDomain(hostname) ?? hostname.toLowerCase().replace(/\.+$/, '')
+	const candidates = listKodyRegistrableDomains(input.env)
+	const hostnameDomain = getDomain(hostname) ?? hostname
 	return candidates.some(
 		(domain) => hostnameDomain === domain || hostname === domain,
 	)
+}
+
+/**
+ * True when `hostname` can never serve package apps as a customer custom
+ * hostname: it shares a registrable domain with a Kody origin (see
+ * {@link hostnameSharesKodyRegistrableDomain}) or is a `*.workers.dev` host.
+ * The package-app runtime refuses these hosts, so registration must refuse
+ * them too instead of accepting a hostname that will only ever 404.
+ */
+export function isKodyReservedCustomHostname(input: {
+	env: AppBaseUrlEnv
+	hostname: string
+}): boolean {
+	const hostname = input.hostname.trim().toLowerCase().replace(/\.+$/, '')
+	if (!hostname) return false
+	if (hostname === 'workers.dev' || hostname.endsWith('.workers.dev')) {
+		return true
+	}
+	return hostnameSharesKodyRegistrableDomain(input)
 }
 
 export type PackageAppHostRole = 'canonical' | 'legacy'

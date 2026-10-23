@@ -6,6 +6,7 @@ import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import {
 	packageAppCustomHostnameDnsHintSchema,
 	packageAppCustomHostnameRowSchema,
+	packageAppCustomHostnameSetupSchema,
 	packageAppCustomHostnameVerificationSchema,
 } from '#mcp/capabilities/orgs/package-app-custom-hostname-schemas.ts'
 import { resolvePackageAppCustomHostnameActingUserId } from '#mcp/capabilities/orgs/package-app-custom-hostname-acting-user.ts'
@@ -22,7 +23,7 @@ export const packageAppCustomHostnameSyncCapability = defineDomainCapability(
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:
-			'Refresh one custom hostname from Cloudflare for SaaS: pull hostname and SSL status, ownership TXT / SSL validation records, and update the local row. Use after the customer publishes DNS (CNAME and optional ownership/SSL TXT). Pass hostname or the row id from packageAppCustomHostnameList.',
+			'Refresh one custom hostname from Cloudflare for SaaS right now: pull hostname and SSL status, ownership TXT / SSL validation records, update the local row, and return setup (the exact DNS records and steps). Optional: Kody already re-checks pending hostnames every few minutes, so call this once for an immediate check instead of polling. Pass hostname or the row id from packageAppCustomHostnameList.',
 		keywords: [
 			'custom domain',
 			'hostname',
@@ -43,6 +44,7 @@ export const packageAppCustomHostnameSyncCapability = defineDomainCapability(
 			hostname: packageAppCustomHostnameRowSchema,
 			dns: packageAppCustomHostnameDnsHintSchema,
 			verification: packageAppCustomHostnameVerificationSchema,
+			setup: packageAppCustomHostnameSetupSchema,
 		}),
 		async handler(args, ctx) {
 			const request = requireMcpRequest(ctx.callerContext)

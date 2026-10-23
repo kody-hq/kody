@@ -394,16 +394,12 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name="viewport" content={documentViewport} />
-				{/* Full-bleed solid tiles, mark edge to edge: black mark on white for
-				    light OS chrome, white mark on black for dark. The SVG switches
-				    with an embedded prefers-color-scheme query, the PNGs by media.
-				    ICO and apple-touch fallbacks use the light tile, like the PWA
-				    icons. Follows the OS preference, not the in-app theme. */}
-				<link
-					rel="icon"
-					type="image/svg+xml"
-					href={publicAsset('/favicon.svg')}
-				/>
+				{/* Rounded tiles: outlined black mark on white for light OS chrome,
+				    solid white mark on black for dark. Order matters: Chromium
+				    ignores `media` on icon links and picks the last best match, so
+				    the ICO is sized (not `any`) and the scheme-aware SVG comes last.
+				    Follows the OS preference, not the in-app theme. */}
+				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="32x32" />
 				<link
 					rel="icon"
 					type="image/png"
@@ -432,7 +428,11 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/favicon-16x16-dark.png')}
 					media="(prefers-color-scheme: dark)"
 				/>
-				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="any" />
+				<link
+					rel="icon"
+					type="image/svg+xml"
+					href={publicAsset('/favicon.svg')}
+				/>
 				<link
 					rel="apple-touch-icon"
 					sizes="180x180"

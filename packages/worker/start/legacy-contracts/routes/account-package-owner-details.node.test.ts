@@ -271,3 +271,84 @@ for (const fails of [false, true]) {
 		}
 	})
 }
+
+test('owner details show custom domain status, with records only while not active', async () => {
+	const html = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'acme',
+			packageDetail: packageDetail({
+				ownerIsPersonal: false,
+				customDomains: [
+					{
+						id: 'domain-pending',
+						hostname: 'apps.example.com',
+						bindingKind: 'app',
+						status: {
+							state: 'pending',
+							reason: 'Waiting for Cloudflare to find the CNAME.',
+						},
+						records: [
+							{
+								type: 'CNAME',
+								name: 'apps.example.com',
+								relativeName: 'apps',
+								value: 'domains.kody.run',
+								purpose: 'routing',
+							},
+						],
+						verifiedAt: null,
+						lastCheckedAt: '2026-10-20T12:00:00.000Z',
+					},
+					{
+						id: 'domain-active',
+						hostname: 'live.example.com',
+						bindingKind: 'app',
+						status: { state: 'active', reason: null },
+						records: [
+							{
+								type: 'CNAME',
+								name: 'live.example.com',
+								relativeName: 'live',
+								value: 'domains.kody.run',
+								purpose: 'routing',
+							},
+						],
+						verifiedAt: '2026-10-20T12:00:00.000Z',
+						lastCheckedAt: '2026-10-20T12:00:00.000Z',
+					},
+				],
+			}),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: true,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(html).toContain('data-testid="package-custom-domains"')
+	expect(html).toContain('data-custom-domain-state="pending"')
+	expect(html).toContain('data-custom-domain-state="active"')
+	expect(html).toContain('DNS only')
+	expect(html).toContain('domains.kody.run')
+	expect(html).toContain('href="https://live.example.com/"')
+	expect(html).toContain('href="/@acme/-/settings"')
+	const activeRow = html.slice(
+		html.indexOf('data-testid="custom-domain-domain-active"'),
+	)
+	expect(activeRow).not.toContain('<table')
+})
+
+test('owner details omit the custom domain section when the package has none', async () => {
+	const html = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'acme',
+			packageDetail: packageDetail(),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: true,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(html).not.toContain('package-custom-domains')
+})

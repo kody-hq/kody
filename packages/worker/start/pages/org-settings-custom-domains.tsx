@@ -25,7 +25,12 @@ import {
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
+	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
+import {
+	CustomDomainRecords,
+	CustomDomainStatusBadge,
+} from '../components/custom-domain-status.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 /** The organization settings query owns domain state and refreshes after writes. */
@@ -80,51 +85,40 @@ export function OrgSettingsCustomDomains({
 	return (
 		<AccountManagementPanel title="Custom domains">
 			<p css={accountFieldNoteCss}>
-				Point a CNAME at{' '}
-				<code css={handleValueCss}>
-					{domains.dnsTarget ?? 'domains.<package-app host>'}
-				</code>
-				, publish any ownership and SSL validation records shown per domain,
-				then sync until hostname and certificate are both active. Prefer TXT SSL
-				validation so the cert can issue before traffic switches (ADR 0071).
+				Add a hostname you own (not under Kody&apos;s own domains), then publish
+				the DNS records shown for it at your DNS provider, set to DNS only. Kody
+				checks pending domains every few minutes and emails org owners when one
+				goes live. Sync checks right away.{' '}
+				<a css={primaryLinkCss} href="/docs/package-app-custom-domains">
+					Setup guide
+				</a>
 			</p>
 			{domains.hostnames.length ? (
 				<ul data-testid="org-custom-hostnames" css={hostnameListCss}>
 					{domains.hostnames.map((row) => {
-						const verified =
-							row.hostnameStatus === 'active' && row.sslStatus === 'active'
-						const records = [
-							...(row.ownershipVerification ? [row.ownershipVerification] : []),
-							...row.sslValidationRecords,
-						]
+						const active = row.status.state === 'active'
 						return (
 							<li key={row.id} css={hostnameRowCss}>
 								<div css={hostnameMetaCss}>
-									<strong css={handleValueCss}>{row.hostname}</strong>
+									<div css={hostnameHeadCss}>
+										<strong css={handleValueCss}>{row.hostname}</strong>
+										<CustomDomainStatusBadge status={row.status} />
+									</div>
 									<span css={identityDetailCss}>
-										{row.bindingKind === 'app' ? 'App' : 'Org'} · host{' '}
-										{row.hostnameStatus} · ssl {row.sslStatus}
-										{verified ? ' · verified' : ''}
+										{row.bindingKind === 'app'
+											? 'One public app at /'
+											: 'Private apps at /packages/…'}
 									</span>
-									{!verified && records.length ? (
-										<ul
-											css={verificationListCss}
+									{row.status.reason ? (
+										<span css={identityDetailCss}>{row.status.reason}</span>
+									) : null}
+									{active ? null : (
+										<div
 											data-testid={`org-custom-hostname-verification-${row.id}`}
 										>
-											{records.map((record) => (
-												<li
-													css={verificationRowCss}
-													key={`${record.type}:${record.name}:${record.value}`}
-												>
-													<span css={identityDetailCss}>
-														{record.type.toUpperCase()}
-													</span>
-													<code css={handleValueCss}>{record.name}</code>
-													<code css={handleValueCss}>{record.value}</code>
-												</li>
-											))}
-										</ul>
-									) : null}
+											<CustomDomainRecords records={row.setupRecords} />
+										</div>
+									)}
 								</div>
 								{data.canManage ? (
 									<div css={hostnameActionsCss}>
@@ -190,7 +184,7 @@ export function OrgSettingsCustomDomains({
 									packageId: bindingKind === 'app' ? packageId : undefined,
 									sslMethod,
 								}),
-							'Custom domain registered. Publish the verification records below, then sync.',
+							'Custom domain added. Publish the DNS records shown for it (DNS only). Kody checks automatically and emails org owners when it goes live.',
 							() => {
 								setHostname('')
 								setPackageId('')
@@ -321,16 +315,9 @@ const hostnameActionsCss: CSSObject = {
 	gap: spacing.sm,
 }
 
-const verificationListCss: CSSObject = {
-	listStyle: 'none',
-	margin: `${spacing.sm} 0 0`,
-	padding: 0,
-	display: 'grid',
-	gap: spacing.xs,
-}
-
-const verificationRowCss: CSSObject = {
-	display: 'grid',
-	gap: '0.15rem',
-	fontSize: typography.fontSize.sm,
+const hostnameHeadCss: CSSObject = {
+	display: 'flex',
+	flexWrap: 'wrap' as const,
+	alignItems: 'center',
+	gap: spacing.sm,
 }

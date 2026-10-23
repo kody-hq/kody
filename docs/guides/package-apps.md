@@ -34,6 +34,10 @@ not a host mode.
 Open a heading with `search({ entity: "guide:package_apps#remix-recipe" })` (or
 another slug below) when you need one recipe.
 
+To serve an app on a domain you own (for example `apps.example.com`), see
+[Custom domains](./package-app-custom-domains.md)
+(`guide:package_app_custom_domains`).
+
 > [!WATCH] https://www.youtube.com/watch?v=WjogtbCssZc Watch: Build a Software
 > Pipeline: Help your agent help you
 

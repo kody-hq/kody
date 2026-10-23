@@ -22,6 +22,7 @@ import {
 	deletePackageAppCustomHostname,
 	listPackageAppCustomHostnames,
 	PackageAppCustomHostnameError,
+	packageAppCustomDomainRecordViews,
 	syncPackageAppCustomHostname,
 } from '#worker/package-app-custom-hostnames/service.ts'
 
@@ -58,6 +59,12 @@ async function loadCustomDomainsView(
 				dnsMissingSince: row.dns_missing_since,
 				ownershipVerification: row.verification.ownership_verification,
 				sslValidationRecords: row.verification.ssl_validation_records,
+				status: row.status,
+				setupRecords: packageAppCustomDomainRecordViews(env, {
+					hostname: row.hostname,
+					ownershipVerification: row.verification.ownership_verification,
+					sslValidationRecords: row.verification.ssl_validation_records,
+				}),
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
 			})),

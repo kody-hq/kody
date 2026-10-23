@@ -82,6 +82,7 @@ test('custom hostname client adds, reads, and deletes with the dedicated token',
 				value: 'ssl-token',
 			},
 		],
+		verificationErrors: [],
 	})
 
 	const fetched = await client.getCustomHostname({ id: 'hostname-1' })

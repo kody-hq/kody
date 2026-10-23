@@ -1,4 +1,5 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { listPackageAppCustomDomainViewsForPackage } from '#worker/package-app-custom-hostnames/service.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	buildForkListingDiffHref,
@@ -565,7 +566,7 @@ async function toDetailWithListingState(input: {
 	username?: string
 	record: SavedPackageWithCommunityProvenanceRecord
 }): Promise<AccountPackageDetail> {
-	const [ownerIsPersonal, detailBase] = await Promise.all([
+	const [ownerIsPersonal, detailBase, customDomains] = await Promise.all([
 		resolveOwnerIsPersonal(input.env.APP_DB, input.userId),
 		toDetail({
 			env: input.env,
@@ -577,6 +578,11 @@ async function toDetailWithListingState(input: {
 			listingNeedsRepublish: false,
 			ownerIsPersonal: true,
 		}),
+		// Owner-only, like credit attribution: `username` is set only for
+		// viewers who can manage the package.
+		input.username
+			? loadPackageCustomDomains(input.env, input.record.id)
+			: Promise.resolve(undefined),
 	])
 	const listingState = await loadActiveCommunityListingState({
 		db: input.env.APP_DB,
@@ -588,6 +594,20 @@ async function toDetailWithListingState(input: {
 		...detailBase,
 		...listingState,
 		ownerIsPersonal,
+		...(customDomains?.length ? { customDomains } : {}),
+	}
+}
+
+async function loadPackageCustomDomains(env: Env, packageId: string) {
+	if (typeof env.APP_DB?.prepare !== 'function') return undefined
+	try {
+		return await listPackageAppCustomDomainViewsForPackage({ env, packageId })
+	} catch (error) {
+		// Fixture databases without the custom-hostnames table read as none.
+		if (!/no such table/i.test(String(error))) {
+			console.warn('package-custom-domains-load-failed', error)
+		}
+		return undefined
 	}
 }
 
