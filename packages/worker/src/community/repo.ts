@@ -3,6 +3,7 @@ import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { tokenizeSearchText } from '#worker/vectorize/scoring.ts'
 import {
 	emptyCommunityCategoryCounts,
 	parseCommunityListingCategory,
@@ -271,6 +272,9 @@ const communityListingSearchTextColumns = [
 ] as const
 
 const maxCommunityListingLikeTokens = 8
+// Each token binds one LIKE per search column (6); 12 stays under D1's bound
+// parameter limit and leaves room for camelCase parts.
+const maxCommunityListingSearchTokens = 12
 
 export function extractCommunityListingLikeTokens(
 	query: string,
@@ -280,6 +284,17 @@ export function extractCommunityListingLikeTokens(
 	return Array.from(
 		new Set(query.toLowerCase().match(/[a-z0-9]+/g) ?? []),
 	).slice(0, maxCommunityListingLikeTokens)
+}
+
+// Community search prefilter tokens: the same terms the search scorer uses,
+// including camelCase parts, so "photoPortfolio" also prefilters on "photo"
+// and "portfolio". Clauses are ORed, so extra parts only widen the read.
+// [a-z0-9]+ only, safe inside LIKE patterns without escaping.
+function extractCommunityListingSearchTokens(query: string): Array<string> {
+	return Array.from(tokenizeSearchText(query)).slice(
+		0,
+		maxCommunityListingSearchTokens,
+	)
 }
 
 export async function insertCommunityListing(
@@ -660,7 +675,7 @@ export async function listCommunityListingCandidates(
 		conditions.push(`community_listings.category = ?`)
 		bindings.push(input.category)
 	}
-	const tokens = extractCommunityListingLikeTokens(input.query ?? '')
+	const tokens = extractCommunityListingSearchTokens(input.query ?? '')
 	if (tokens.length > 0) {
 		const tokenClauses = tokens.map((token) => {
 			const pattern = d1ContainsLikePattern(token, { escape: false })
@@ -680,7 +695,7 @@ export async function listCommunityListingCandidates(
 			FROM community_listings
 			${communityListingSourceJoin}
 			${whereClause}${andLiveDeletedAtSql('community_listings')}
-			ORDER BY community_listings.published_at DESC
+			ORDER BY community_listings.published_at DESC, community_listings.id DESC
 			LIMIT ? OFFSET ?`,
 		)
 		.bind(...bindings, input.limit, input.offset ?? 0)

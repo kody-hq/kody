@@ -178,7 +178,8 @@ export const COMMUNITY_SEARCH_CANDIDATE_LIMIT = 500
 // The LIKE pre-filter is looser than the term scorer (a short term such as
 // "go" matches inside "going"), so a full candidate page can be rejected
 // entirely while an older listing holds the exact term. Search reads further
-// prefiltered pages until it has enough matches, up to this many pages.
+// prefiltered pages until it has enough matches (every page when a
+// resultFilter applies), up to this many pages.
 export const COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES = 4
 
 function normalizeCommunityActivityPage(value: number | undefined) {
@@ -1156,7 +1157,9 @@ export async function searchCommunityListings(input: {
 		let page = 1;
 		page < COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES &&
 		lastPage.length >= COMMUNITY_SEARCH_CANDIDATE_LIMIT &&
-		scoredMatches.length < input.limit;
+		// resultFilter runs after scoring, so scored matches do not prove
+		// enough eligible results; read through the page cap instead.
+		(input.resultFilter != null || scoredMatches.length < input.limit);
 		page += 1
 	) {
 		lastPage = await readCandidates(page)
