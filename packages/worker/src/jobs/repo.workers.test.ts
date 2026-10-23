@@ -46,6 +46,7 @@ async function ensureJobsSchema() {
 			retry_scheduled_for TEXT,
 			retry_count INTEGER NOT NULL DEFAULT 0,
 			last_completed_scheduled_for TEXT,
+			disabled_reason TEXT,
 			deleted_at TEXT
 		)`,
 	).run()
@@ -55,6 +56,13 @@ async function ensureJobsSchema() {
 		).run()
 	} catch {
 		// Column already present when migrations or a prior CREATE included it.
+	}
+	try {
+		await env.APP_DB.prepare(
+			`ALTER TABLE jobs ADD COLUMN disabled_reason TEXT`,
+		).run()
+	} catch {
+		// Column already present when a prior CREATE included it.
 	}
 	await ensureSoftDeleteTestColumns(env.APP_DB, ['jobs'])
 	await env.APP_DB.prepare(`DELETE FROM jobs`).run()

@@ -41,6 +41,12 @@ export type JobRecord = {
 	 * Separate from `lease_expires_at` (claim lease).
 	 */
 	expiresAt: string | null
+	/**
+	 * Why the job is off, in plain words: the reason given when someone turned
+	 * it off, or what Kody did (auto-disable, expiry, one-time job finished).
+	 * Null while the job is on, and for jobs turned off before this existed.
+	 */
+	disabledReason?: string | null
 	createdAt: string
 	updatedAt: string
 	lastRunAt?: string

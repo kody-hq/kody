@@ -128,6 +128,14 @@ export function renderAccountJobDetail(input: {
 							</span>
 						),
 					},
+					...(detail.enabled
+						? []
+						: [
+								{
+									label: 'Why it is off',
+									value: detail.disabledReason ?? 'No reason was saved.',
+								},
+							]),
 					{
 						label: 'Schedule',
 						value: detail.scheduleSummary,

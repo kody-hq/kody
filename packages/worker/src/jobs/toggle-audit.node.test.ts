@@ -11,6 +11,8 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	automationToggleActor,
 	listToggleAudit,
+	manualDisabledReason,
+	nextDisabledReason,
 	normalizeToggleReason,
 	recordToggleAudit,
 	toggleActorFromRequest,
@@ -177,4 +179,54 @@ test('no change, or no audit database, records nothing and never throws', async 
 		}),
 	).toBe(false)
 	expect(await listToggleAudit({ env: noAudit, orgId })).toEqual([])
+})
+
+test('nextDisabledReason keeps the job explanation in step with its on/off state', () => {
+	const fallback = manualDisabledReason('web')
+	expect(fallback).toBe('Turned off on the web. No reason was given.')
+	expect(
+		nextDisabledReason({
+			wasEnabled: true,
+			enabled: false,
+			previousReason: null,
+			reason: '  Too noisy  ',
+			fallback,
+		}),
+	).toBe('Too noisy')
+	expect(
+		nextDisabledReason({
+			wasEnabled: true,
+			enabled: false,
+			previousReason: null,
+			reason: undefined,
+			fallback,
+		}),
+	).toBe(fallback)
+	expect(
+		nextDisabledReason({
+			wasEnabled: false,
+			enabled: false,
+			previousReason: 'Old reason',
+			reason: undefined,
+			fallback,
+		}),
+	).toBe('Old reason')
+	expect(
+		nextDisabledReason({
+			wasEnabled: false,
+			enabled: false,
+			previousReason: 'Old reason',
+			reason: 'New reason',
+			fallback,
+		}),
+	).toBe('New reason')
+	expect(
+		nextDisabledReason({
+			wasEnabled: false,
+			enabled: true,
+			previousReason: 'Old reason',
+			reason: 'ignored',
+			fallback,
+		}),
+	).toBeNull()
 })

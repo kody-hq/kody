@@ -29,6 +29,8 @@ export type AccountJobListItem = {
 	scheduleType: JobSchedule['type']
 	timezone: string
 	enabled: boolean
+	/** Why the job is off, or null while it is on. */
+	disabledReason: string | null
 	killSwitchEnabled: boolean
 	expiresAt: string | null
 	expired: boolean
@@ -127,6 +129,7 @@ function toListItem(
 		scheduleType: job.schedule.type,
 		timezone: job.timezone,
 		enabled: job.enabled,
+		disabledReason: inspection.disabled_reason,
 		killSwitchEnabled: job.killSwitchEnabled,
 		expiresAt: inspection.expires_at,
 		expired: inspection.expired,

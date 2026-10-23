@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
+import { jobExpiredDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -203,4 +204,64 @@ test('transferJobsOwner refuses running or foreign jobs and moves nothing', asyn
 	expect(
 		sqlite.prepare(`SELECT user_id FROM jobs WHERE id = 'job-a'`).get(),
 	).toEqual({ user_id: 'org-from' })
+})
+
+test('the jobs store saves a disabled reason only while the job is off', async () => {
+	const { sqlite, db } = createJobsDb()
+	const userId = ownerIdFromStored('org-reasons')
+	insertJob(sqlite, { id: 'job-reason', userId })
+	const store = createD1JobsStore(db)
+	const row = await store.getJobById({ userId, jobId: 'job-reason' })
+	if (!row) throw new Error('expected the seeded job')
+	expect(row.record.disabledReason).toBeNull()
+
+	await store.updateJob({
+		userId,
+		job: {
+			...row.record,
+			enabled: false,
+			disabledReason: 'Paused for the migration.',
+		},
+		callerContextJson: row.callerContextJson,
+	})
+	expect(
+		sqlite
+			.prepare(`SELECT disabled_reason FROM jobs WHERE id = 'job-reason'`)
+			.get(),
+	).toEqual({ disabled_reason: 'Paused for the migration.' })
+	const off = await store.getJobById({ userId, jobId: 'job-reason' })
+	expect(off?.record.disabledReason).toBe('Paused for the migration.')
+
+	// A job that is on never carries a stale reason.
+	await store.updateJob({
+		userId,
+		job: { ...off!.record, enabled: true },
+		callerContextJson: row.callerContextJson,
+	})
+	expect(
+		sqlite
+			.prepare(`SELECT disabled_reason FROM jobs WHERE id = 'job-reason'`)
+			.get(),
+	).toEqual({ disabled_reason: null })
+})
+
+test('an expired job turns off with the expiry saved as its disabled reason', async () => {
+	const { sqlite, db } = createJobsDb()
+	const userId = ownerIdFromStored('org-expiry')
+	insertJob(sqlite, { id: 'job-expired', userId })
+	sqlite
+		.prepare(
+			`UPDATE jobs SET enabled = 1, expires_at = '2026-09-03T00:00:00.000Z' WHERE id = 'job-expired'`,
+		)
+		.run()
+	const store = createD1JobsStore(db)
+	expect(
+		await store.disableExpiredJobsForUser({
+			userId,
+			nowIso: '2026-09-04T00:00:00.000Z',
+		}),
+	).toBe(1)
+	const row = await store.getJobById({ userId, jobId: 'job-expired' })
+	expect(row?.record.enabled).toBe(false)
+	expect(row?.record.disabledReason).toBe(jobExpiredDisabledReason)
 })

@@ -140,6 +140,7 @@ test('processDueJobs handles cron batching and once-job retain, preserve, and re
 			expect.objectContaining({
 				id,
 				enabled: false,
+				disabledReason: 'The one-time job finished its run.',
 				lastRunStatus: execution.ok ? 'success' : 'error',
 				lastRunAt: expect.any(String),
 				runCount: 0,
@@ -202,6 +203,8 @@ test('processDueJobs handles cron batching and once-job retain, preserve, and re
 		expect.objectContaining({
 			id: 'job-reschedule-failure',
 			enabled: false,
+			disabledReason:
+				"Kody could not compute the next run from the job's schedule (Cron expressions must use standard 5-field syntax: minute hour day-of-month month day-of-week.).",
 			lastRunStatus: 'error',
 			runCount: 0,
 			successCount: 0,

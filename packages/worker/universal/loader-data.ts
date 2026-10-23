@@ -2513,6 +2513,8 @@ export type AccountJobListItem = {
 	scheduleType: AccountJobSchedule['type']
 	timezone: string
 	enabled: boolean
+	/** Why the job is off, or null while it is on. */
+	disabledReason: string | null
 	killSwitchEnabled: boolean
 	expiresAt: string | null
 	expired: boolean

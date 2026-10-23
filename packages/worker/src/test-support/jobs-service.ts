@@ -603,6 +603,7 @@ export function createDatabase(
 									last_run_at: params[16],
 									last_run_status: params[17],
 									next_run_at: params[18],
+									disabled_reason: params[19] ?? null,
 								}
 								upsert(
 									'jobs',
@@ -679,12 +680,12 @@ export function createDatabase(
 								const existingJob = selectOne(
 									'jobs',
 									(existing) =>
-										existing['id'] === params[16] &&
-										existing['user_id'] === params[17],
+										existing['id'] === params[17] &&
+										existing['user_id'] === params[18],
 								)
 								const row = {
-									id: params[16],
-									user_id: params[17],
+									id: params[17],
+									user_id: params[18],
 									name: params[0],
 									source_id: params[1],
 									published_commit: params[2],
@@ -701,6 +702,7 @@ export function createDatabase(
 									last_run_at: params[13],
 									last_run_status: params[14],
 									next_run_at: params[15],
+									disabled_reason: params[16] ?? null,
 									created_at: existingJob?.['created_at'] ?? params[12],
 								}
 								upsert(

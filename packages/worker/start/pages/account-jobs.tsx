@@ -292,7 +292,12 @@ export function AccountJobsPage({
 					cells: {
 						name: <span css={clampedCellCss}>{item.name}</span>,
 						status: (
-							<span css={{ color: statusColor(item) }}>
+							<span
+								css={{ color: statusColor(item) }}
+								title={
+									item.enabled ? undefined : (item.disabledReason ?? undefined)
+								}
+							>
 								{statusLabel(item)}
 							</span>
 						),

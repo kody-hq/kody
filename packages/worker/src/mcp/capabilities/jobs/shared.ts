@@ -135,6 +135,12 @@ export const jobInspectionSchema = z.object({
 	schedule_summary: z.string(),
 	timezone: z.string(),
 	enabled: z.boolean(),
+	disabled_reason: z
+		.string()
+		.nullable()
+		.describe(
+			'Why the job is off: the reason given when someone turned it off, or what Kody did (expiry, auto-disable, one-time job finished). Null while the job is on.',
+		),
 	kill_switch_enabled: z.boolean(),
 	expires_at: z
 		.string()
@@ -218,6 +224,12 @@ export const jobViewOutputSchema = z.object({
 	schedule_summary: z.string(),
 	timezone: z.string(),
 	enabled: z.boolean(),
+	disabled_reason: z
+		.string()
+		.nullable()
+		.describe(
+			'Why the job is off: the reason given when someone turned it off, or what Kody did (expiry, auto-disable, one-time job finished). Null while the job is on.',
+		),
 	kill_switch_enabled: z.boolean(),
 	expires_at: z.string().nullable(),
 	expired: z.boolean(),
@@ -311,7 +323,7 @@ export const jobUpdateInputSchema = z
 			.max(500)
 			.optional()
 			.describe(
-				'Optional short reason for turning the job on or off. Recorded in the org audit log with who changed it, when, and from where.',
+				'Optional short reason for turning the job on or off. Recorded in the org audit log with who changed it, when, and from where. When turning the job off, it is also saved as the job disabled_reason.',
 			),
 		code: z
 			.unknown()
@@ -468,6 +480,7 @@ export function buildJobViewOutput(
 		schedule_summary: job.scheduleSummary,
 		timezone: job.timezone,
 		enabled: job.enabled,
+		disabled_reason: job.enabled ? null : (job.disabledReason ?? null),
 		kill_switch_enabled: job.killSwitchEnabled,
 		expires_at: expiresAt,
 		expired,
@@ -534,6 +547,7 @@ export function buildJobInspectionOutput(
 		schedule_summary: job.scheduleSummary,
 		timezone: job.timezone,
 		enabled: job.enabled,
+		disabled_reason: job.enabled ? null : (job.disabledReason ?? null),
 		kill_switch_enabled: job.killSwitchEnabled,
 		expires_at: expiresAt,
 		expired,

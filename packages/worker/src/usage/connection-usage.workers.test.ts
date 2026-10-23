@@ -68,7 +68,8 @@ async function ensureSchema() {
 			claimed_scheduled_for TEXT,
 			retry_scheduled_for TEXT,
 			retry_count INTEGER NOT NULL DEFAULT 0,
-			last_completed_scheduled_for TEXT
+			last_completed_scheduled_for TEXT,
+			disabled_reason TEXT
 		)`,
 	).run()
 	await ensureSoftDeleteTestColumns(env.APP_DB, [

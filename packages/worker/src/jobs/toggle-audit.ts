@@ -71,6 +71,44 @@ export function normalizeToggleReason(reason: string | null | undefined) {
 		: trimmed
 }
 
+const sourceLabels: Record<ToggleAuditSource, string> = {
+	web: 'on the web',
+	mcp: 'over MCP',
+	api: 'through the API',
+	cli: 'from the CLI',
+	'package-app': 'from a package app',
+	enablement: 'with its enablement',
+	scheduler: 'by the scheduler',
+	offboarding: 'when its creator left the org',
+	automation: 'by an automation',
+}
+
+/**
+ * The saved disabled reason for a job someone turned off without saying why,
+ * so the job never shows as off with no explanation.
+ */
+export function manualDisabledReason(source: ToggleAuditSource) {
+	return `Turned off ${sourceLabels[source]}. No reason was given.`
+}
+
+/**
+ * The disabled reason a job should keep after an update: cleared when it is
+ * on, the stated reason (or a fallback) when it just turned off, and the old
+ * reason when it stays off unless a new one was given.
+ */
+export function nextDisabledReason(input: {
+	wasEnabled: boolean
+	enabled: boolean
+	previousReason: string | null | undefined
+	reason: string | null | undefined
+	fallback: string
+}) {
+	if (input.enabled) return null
+	const stated = normalizeToggleReason(input.reason)
+	if (input.wasEnabled) return stated ?? input.fallback
+	return stated ?? input.previousReason ?? null
+}
+
 /** The surface a request came through, from its credential. */
 export function toggleSourceFromRequest(
 	request: Pick<RequestContext, 'credential'> | null | undefined,

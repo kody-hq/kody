@@ -1,3 +1,7 @@
+import {
+	oneTimeJobFinishedReason,
+	rescheduleFailedDisabledReason,
+} from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { type SchedulerJobOutcomeLog } from './scheduler-logging.ts'
 import { computeNextRunAt, formatJobError } from './schedule.ts'
 import {
@@ -55,6 +59,7 @@ export async function processDueJobs(input: {
 			const updated = applyExecutionOutcome(job, outcome, {
 				updatedAt: now.toISOString(),
 				enabled: false,
+				disabledReason: oneTimeJobFinishedReason,
 			})
 			saveJobs.push(updated)
 			jobOutcomes.push({
@@ -108,6 +113,7 @@ export async function processDueJobs(input: {
 				{
 					updatedAt: now.toISOString(),
 					enabled: false,
+					disabledReason: rescheduleFailedDisabledReason(rescheduleError),
 				},
 			)
 			saveJobs.push(updated)
@@ -145,6 +151,10 @@ export function applyExecutionOutcome(
 		lastRunStatus: status,
 		nextRunAt: overrides.nextRunAt ?? job.nextRunAt,
 		enabled: overrides.enabled ?? job.enabled,
+		disabledReason:
+			overrides.disabledReason === undefined
+				? job.disabledReason
+				: overrides.disabledReason,
 		killSwitchEnabled: overrides.killSwitchEnabled ?? job.killSwitchEnabled,
 	}
 }

@@ -31,6 +31,7 @@ import { listToggleAudit } from '#worker/jobs/toggle-audit.ts'
 import {
 	disableEnablementForCaller,
 	enableTriggerForCaller,
+	enableTriggerWithJobForCaller,
 } from './service.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -278,6 +279,49 @@ test('a member without job:write gets their enablement but the job stays as its 
 		instanceId: t.jobId,
 	})
 	expect(live).toHaveLength(1)
+})
+
+async function enableWithJob(
+	t: Awaited<ReturnType<typeof setup>>,
+	person: 'owner' | 'bea',
+) {
+	return await enableTriggerWithJobForCaller({
+		env: t.env,
+		baseUrl: 'https://kody.example',
+		request: await t.requestFor(person),
+		packageIdOrKodyId: 'pkg-shared',
+		kind: 'cron',
+		name: jobName,
+	})
+}
+
+test('a member without job:write is told the job stayed off, why, and how to get it', async () => {
+	const t = await setup()
+	const { enablement, job } = await enableWithJob(t, 'bea')
+	expect(enablement.state).toBe('on')
+	expect(job).toMatchObject({
+		jobId: t.jobId,
+		state: 'left_off',
+		missingPermission: 'job:write',
+	})
+	expect(job?.message).toContain('job:write')
+	expect(job?.message).toContain('Ask an Owner')
+	expect((await t.readJob()).enabled).toBe(false)
+})
+
+test('the job outcome says armed for job:write holders and already_on when nothing was needed', async () => {
+	const t = await setup()
+	expect((await enableWithJob(t, 'owner')).job).toMatchObject({
+		state: 'armed',
+		missingPermission: null,
+		message: null,
+	})
+	// The job is on now, so a member without job:write is not warned.
+	expect((await enableWithJob(t, 'bea')).job).toMatchObject({
+		state: 'already_on',
+		missingPermission: null,
+		message: null,
+	})
 })
 
 test('an expired job stays off', async () => {

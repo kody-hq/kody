@@ -18,6 +18,7 @@ import {
 	type ArmJobForEnablementResult,
 } from '#worker/jobs/arm-job-for-enablement.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
+import { jobsData } from '#worker/jobs/jobs-data.ts'
 import {
 	deliverPlannedEnablementToggle,
 	planEnablementToggle,
@@ -692,6 +693,67 @@ export async function enableTriggerForCaller(input: {
 	kind: EnablementTriggerKind
 	name: string
 }): Promise<EnablementRecord> {
+	return (await enableTriggerWithJobForCaller(input)).enablement
+}
+
+/**
+ * What turning a cron enablement on did to its job. `left_off` means the job
+ * row is still off because the caller lacks `job:write`; `message` says why
+ * and how to get it.
+ */
+export type EnablementJobOutcome = {
+	jobId: string
+	state: 'armed' | 'already_on' | 'left_off' | 'expired' | 'missing'
+	missingPermission: 'job:write' | null
+	message: string | null
+}
+
+export function jobLeftOffMessage(jobName: string | null) {
+	const job = jobName ? `job "${jobName}"` : 'job'
+	return `The enablement is on, but its ${job} is still off, so it will not run yet. Turning a job on needs job:write (what jobUpdate needs), and you do not hold it in this org. Ask an Owner to grant you job:write (accessGrant on the org), or to turn the job on with jobUpdate.`
+}
+
+function toEnablementJobOutcome(input: {
+	jobId: string
+	jobName: string | null
+	result: ArmJobForEnablementResult | 'left_off'
+}): EnablementJobOutcome {
+	if (input.result === 'left_off') {
+		return {
+			jobId: input.jobId,
+			state: 'left_off',
+			missingPermission: 'job:write',
+			message: jobLeftOffMessage(input.jobName),
+		}
+	}
+	return {
+		jobId: input.jobId,
+		state: input.result,
+		missingPermission: null,
+		message:
+			input.result === 'expired'
+				? 'The enablement is on, but its job passed its expiry time and stays off. Change or clear expiresAt with jobUpdate to run it again.'
+				: input.result === 'missing'
+					? 'The enablement is on, but its job was not found.'
+					: null,
+	}
+}
+
+/**
+ * {@link enableTriggerForCaller} plus what happened to a cron enablement's job,
+ * so a caller without `job:write` learns the job stayed off and why.
+ */
+export async function enableTriggerWithJobForCaller(input: {
+	env: Env
+	baseUrl: string
+	request: RequestContext
+	packageIdOrKodyId: string
+	kind: EnablementTriggerKind
+	name: string
+}): Promise<{
+	enablement: EnablementRecord
+	job: EnablementJobOutcome | null
+}> {
 	requireActor(input.request)
 	const savedPackage = await resolveOrgPackage({
 		db: input.env.APP_DB,
@@ -728,12 +790,12 @@ export async function enableTriggerForCaller(input: {
 		name: input.name,
 	})
 	if (plan.enablement) {
-		await armCronJobForCallerEnablement({
+		const job = await armCronJobWithOutcome({
 			env: input.env,
 			request: input.request,
 			enablement: plan.enablement,
 		})
-		return plan.enablement
+		return { enablement: plan.enablement, job }
 	}
 	if (input.kind === 'webhook') {
 		const approvalUrl = buildWebhookApprovalUrl({
@@ -776,12 +838,41 @@ export async function enableTriggerForCaller(input: {
 		id: plan.enablementId,
 	})
 	if (!created) throw new Error('Unable to read the new enablement.')
-	await armCronJobForCallerEnablement({
+	const job = await armCronJobWithOutcome({
 		env: input.env,
 		request: input.request,
 		enablement: created,
 	})
-	return created
+	return { enablement: created, job }
+}
+
+async function armCronJobWithOutcome(input: {
+	env: Env
+	request: RequestContext
+	enablement: EnablementRecord
+}): Promise<EnablementJobOutcome | null> {
+	const result = await armCronJobForCallerEnablement(input)
+	if (result === 'not_applicable') return null
+	const jobId = input.enablement.instanceId
+	const row = await jobsData(input.env).getJobById({
+		userId: input.enablement.orgId,
+		jobId,
+	})
+	if (result === 'not_permitted') {
+		// The job:write gate stays. Only explain it when the job is actually off.
+		if (!row)
+			return toEnablementJobOutcome({ jobId, jobName: null, result: 'missing' })
+		return toEnablementJobOutcome({
+			jobId,
+			jobName: row.record.name,
+			result: row.record.enabled ? 'already_on' : 'left_off',
+		})
+	}
+	return toEnablementJobOutcome({
+		jobId,
+		jobName: row?.record.name ?? null,
+		result,
+	})
 }
 
 /**

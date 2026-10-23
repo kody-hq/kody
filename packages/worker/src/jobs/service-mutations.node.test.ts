@@ -232,6 +232,50 @@ test('updateJob clears params, updates timezone, and disables a job', async () =
 	expect(updated.enabled).toBe(false)
 })
 
+test('updateJob saves why a job was turned off and clears it when the job turns back on', async () => {
+	const { env, callerContext, userId } = setup()
+	const created = await insertJob(env, callerContext, 'reasoned-job')
+	const job = { env, callerContext }
+
+	const off = await updateJob({
+		...job,
+		body: {
+			id: created.id,
+			enabled: false,
+			reason: 'Paused for the migration.',
+		},
+	})
+	expect(off.disabledReason).toBe('Paused for the migration.')
+	const stored = await getJob({
+		env,
+		userId: personalOrgId(userId),
+		jobId: created.id,
+	})
+	expect(stored.disabledReason).toBe('Paused for the migration.')
+
+	// An edit that leaves the job off keeps the saved reason.
+	const stillOff = await updateJob({
+		...job,
+		body: { id: created.id, timezone: 'America/Denver' },
+	})
+	expect(stillOff.disabledReason).toBe('Paused for the migration.')
+
+	const on = await updateJob({
+		...job,
+		body: { id: created.id, enabled: true },
+	})
+	expect(on.disabledReason).toBeNull()
+
+	// Turning it off without a reason still says how it happened.
+	const offAgain = await updateJob({
+		...job,
+		body: { id: created.id, enabled: false },
+	})
+	expect(offAgain.disabledReason).toMatch(
+		/^Turned off .+\. No reason was given\.$/,
+	)
+})
+
 test('insertJob refuses a job id that is not a package job', async () => {
 	const { env, callerContext, userId } = setup()
 	const created = await insertJob(env, callerContext, 'not-a-package-job')

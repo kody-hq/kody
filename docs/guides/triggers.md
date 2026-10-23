@@ -66,6 +66,17 @@ behavior it runs:
 - `jobUpdate` adjusts schedule, timezone, enabled state, params, and
   `expires_at`; `jobRunNow` fires one run for debugging. Name and source stay in
   the repo — change them there and publish.
+- A job that is off carries `disabled_reason`: the `reason` passed to
+  `jobUpdate` when someone turned it off (or how it was turned off when no
+  reason was given), or what Kody did (it passed its expiry time, a one-time job
+  finished, the scheduler could not compute the next run, its creator left the
+  org). It is cleared when the job turns back on and shows as **Why it is off**
+  on the job page.
+- `enablementEnable` on a cron trigger also turns its job on when you hold
+  `job:write`. Without it the enablement still turns on, the job stays off, and
+  the result's `job` field says so (`state: "left_off"`,
+  `missing_permission: "job:write"`) with how to get it: ask an Owner to grant
+  `job:write` or to turn the job on.
 
 Jobs do not hang off an integration or an MCP connection. If a "job" has no
 package, save the package first. Runs show up on `/@<slug>/-/jobs`.

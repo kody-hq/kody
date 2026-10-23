@@ -52,7 +52,15 @@ import {
 import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { notifyOwnersOfJobAutoDisabled } from './job-auto-disabled-notice.ts'
 import {
+	jobExpiredDisabledReason,
+	oneTimeJobFinishedReason,
+	rescheduleFailedDisabledReason,
+} from '@kody-internal/shared/jobs/disabled-reason.ts'
+import {
 	automationToggleActor,
+	manualDisabledReason,
+	nextDisabledReason,
+	normalizeToggleReason,
 	recordEnablementToggle,
 	recordToggleAudit,
 	toggleActorFromRequest,
@@ -996,6 +1004,18 @@ export async function updateJob(input: {
 					timezone: nextTimezone,
 				})
 			}
+			const forcedOffByExpiry =
+				expired && input.body.enabled !== false && existing.enabled
+			const toggleSource = toggleSourceFromRequest(input.callerContext.request)
+			const disabledReason = nextDisabledReason({
+				wasEnabled: existing.enabled,
+				enabled: nextEnabled,
+				previousReason: existing.disabledReason,
+				reason: input.body.reason,
+				fallback: forcedOffByExpiry
+					? jobExpiredDisabledReason
+					: manualDisabledReason(toggleSource),
+			})
 			const shouldRecomputeNextRunAt =
 				scheduleChanged ||
 				nextTimezone !== existing.timezone ||
@@ -1009,6 +1029,7 @@ export async function updateJob(input: {
 				schedule: nextSchedule,
 				timezone: nextTimezone,
 				enabled: nextEnabled,
+				disabledReason,
 				killSwitchEnabled:
 					input.body.killSwitchEnabled ?? existing.killSwitchEnabled,
 				expiresAt: nextExpiresAt,
@@ -1063,8 +1084,6 @@ export async function updateJob(input: {
 				userId: ownerId,
 			})
 			if (existing.enabled !== updated.enabled) {
-				const forcedOffByExpiry =
-					expired && input.body.enabled !== false && existing.enabled
 				await recordToggleAudit({
 					env: input.env,
 					orgId: ownerId,
@@ -1073,13 +1092,13 @@ export async function updateJob(input: {
 					name: updated.name,
 					from: existing.enabled ? 'on' : 'off',
 					to: updated.enabled ? 'on' : 'off',
-					source: toggleSourceFromRequest(input.callerContext.request),
+					source: toggleSource,
 					actor: toggleActorFromRequest(input.callerContext.request, {
 						siteAdmin: callerContext.user.roles?.includes('admin') ?? false,
 					}),
 					reason:
-						input.body.reason ??
-						(forcedOffByExpiry ? 'The job passed its expiry time.' : null),
+						normalizeToggleReason(input.body.reason) ??
+						(forcedOffByExpiry ? jobExpiredDisabledReason : null),
 				})
 			}
 			return toJobView(updated)
@@ -1409,7 +1428,7 @@ export async function runJobNow(input: {
 				row.record,
 				outcome,
 				row.record.schedule.type === 'once'
-					? { enabled: false }
+					? { enabled: false, disabledReason: oneTimeJobFinishedReason }
 					: {
 							nextRunAt: computeNextRunAt({
 								schedule: row.record.schedule,
@@ -1979,7 +1998,7 @@ async function runDueJobsForUserUnderLease(
 							ownerId: input.userId,
 							jobId: row.id,
 							jobName: row.record.name,
-							reason: `Kody could not compute the next run from the job's schedule${rescheduleError ? ` (${rescheduleError})` : ''}.`,
+							reason: rescheduleFailedDisabledReason(rescheduleError),
 						})
 					}
 				} catch (error) {
