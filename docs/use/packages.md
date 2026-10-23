@@ -181,14 +181,16 @@ credentials; opt-in types that a package can declare are described in
 - `packageGet` returns that closure as `credentials.needs`, each need with how
   it resolves for you: `status` is `ready` (a default mapping, yours and then
   the org's, names a credential you can Use, or exactly one credential you can
-  Use matches the need's kind filter and provider; `autoPick` names it),
-  `ambiguous` (several match and no default mapping applies), or `unbound`
-  (none, or a default maps the need to no credential on purpose). `source` says
-  which: `mine`, `org`, or `auto`. `yourOptions` lists what you could pick
-  (name, `org` or `personal` scope, hosts): the matches plus matching-kind
-  credentials with no provider, which resolve automatically once their provider
-  is set (`credentialUpdate`). Only credentials you can Use are listed, and
-  needs inherited from a dependency carry `from`.
+  Use matches the need's kind filter and provider, or one Key bound to this
+  package is named exactly like the need key; `autoPick` names it), `ambiguous`
+  (several match and neither a default mapping nor a package-bound Key named for
+  the need picks one), or `unbound` (none, or a default maps the need to no
+  credential on purpose). `source` says which: `mine`, `org`, or `auto`.
+  `yourOptions` lists what you could pick (name, `org` or `personal` scope,
+  hosts): the matches plus matching-kind credentials with no provider, which
+  resolve automatically once their provider is set (`credentialUpdate`). Only
+  credentials you can Use are listed, and needs inherited from a dependency
+  carry `from`.
 - To choose which credential a need uses, an agent calls
   `credentialMappingPropose` with org defaults, your own defaults, or mappings
   for your instance of a trigger. It writes nothing and returns an approval

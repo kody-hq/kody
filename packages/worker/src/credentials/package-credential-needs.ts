@@ -94,7 +94,8 @@ export async function describePackageCredentialNeeds(input: {
 			}),
 			loadCredentialMappings({
 				db: input.env.APP_DB,
-				orgId: input.ownerUserId,
+				// Same scope a run reads (credential-client resolveMappedNeed).
+				orgId: input.request.org.id,
 				packageId: input.packageId,
 				personId: input.request.actor?.userId ?? null,
 			}),
