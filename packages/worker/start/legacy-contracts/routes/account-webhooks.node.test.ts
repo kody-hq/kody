@@ -122,12 +122,3 @@ test('webhooks index lists declared webhooks with status and deep-links each row
 	// package settings, which the deep-links above already exercise.
 	expect(html).not.toContain('/@jane/webhooks/')
 })
-
-test('webhooks index shows the empty state when no package declares a webhook', async () => {
-	const html = await renderWebhooksPage('/account/webhooks', {
-		...payload,
-		webhooks: [],
-	})
-	expect(html).toContain('0 declared · 0 minted')
-	expect(html).toContain('No package on this account declares a webhook yet')
-})

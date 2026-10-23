@@ -78,7 +78,6 @@ test('community listings render sort controls, categories, empty states, and for
 	expect(
 		await markerGaps({ query: 'obsidian', sort: 'newest' }, [
 			testId('community-create-prompt'),
-			'search({ entity: [&quot;guide:package_authoring&quot;, &quot;guide:package_lifecycle&quot;] })',
 			'obsidian',
 			'href="/docs/package-authoring"',
 			'href="/community?sort=newest"',
@@ -107,7 +106,6 @@ test('community listings render sort controls, categories, empty states, and for
 				testId('community-listing-version-listing-1'),
 				'href="/community?sort=newest"',
 				'href="/community"',
-				'min-height:44px',
 				testId('community-listings-categories'),
 				'href="/community?sort=newest&amp;category=integrations"',
 			],

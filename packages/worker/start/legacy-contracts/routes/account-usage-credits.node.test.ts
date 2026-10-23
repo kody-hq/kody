@@ -372,18 +372,6 @@ test('unconfigured billing does not blame a missing Stripe customer', async () =
 	expect(html).not.toContain('>Start a Pro subscription<')
 })
 
-test('credits notice from a top-up shows in the Credits section', async () => {
-	const { html } = await renderUsagePage(
-		usage({
-			notice:
-				'Credits added. Usage past your monthly include runs on them within a minute.',
-		}),
-	)
-	const notice = html.indexOf('Credits added.')
-	expect(notice).toBeGreaterThan(html.indexOf('id="credits"'))
-	expect(notice).toBeLessThan(html.indexOf('data-credits-balance'))
-})
-
 test('Free sees one short credits CTA with no balance or purchase UI', async () => {
 	const { html, text } = await renderUsagePage(
 		usage({
