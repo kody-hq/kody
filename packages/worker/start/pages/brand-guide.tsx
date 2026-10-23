@@ -26,8 +26,9 @@ export function BrandGuideRoute() {
 			<header css={pageHeaderCss}>
 				<h1 css={pageTitleCss}>Brand guide</h1>
 				<p css={pageDescriptionCss}>
-					The Kody mark is a koala head. Use black on light surfaces and white
-					on dark surfaces. Do not recolor it beyond those two treatments.
+					The Kody mark is a koala head. On light surfaces use the outlined
+					line-art mark (black). On dark surfaces use the solid mark (white). Do
+					not recolor beyond those two treatments.
 				</p>
 			</header>
 
@@ -36,18 +37,19 @@ export function BrandGuideRoute() {
 					Solid backgrounds
 				</h2>
 				<p css={descriptionCss}>
-					These are the most broadly useful downloads: fully opaque 4096×4096
-					squares for places where light and dark mode cannot be controlled
-					(plugin directories, OAuth consent screens, slides, docs, chat
-					avatars, social posts). Prefer black-on-white for marketplace and
-					app-icon uploads.
+					Fully opaque 4096×4096 squares for places where light and dark mode
+					cannot be controlled (plugin directories, OAuth consent screens,
+					slides, docs, chat avatars, social posts). Prefer solid black-on-white
+					for marketplace and app-icon uploads. Prefer the outlined-on-white
+					plate when you want the light-mode line-art look on a fixed white
+					square.
 				</p>
 				<div css={previewGridCss}>
 					<figure css={previewCardCss}>
 						<div css={[previewStageCss, previewLightCss]}>
 							<img
 								src={publicAsset(kodyBrandAssets.pngSolidLight)}
-								alt="Black Kody mark on a white square"
+								alt="Solid black Kody mark on a white square"
 								width={280}
 								height={280}
 								css={solidPreviewImgCss}
@@ -58,16 +60,38 @@ export function BrandGuideRoute() {
 								href={publicAsset(kodyBrandAssets.pngSolidLight)}
 								download="kody-mark-solid-light.png"
 							>
-								Download PNG — black on white
+								Download PNG: solid black on white
 							</a>
-							<span>4096×4096, opaque</span>
+							<span>4096×4096, opaque. Best for dark-ink app icons.</span>
+						</figcaption>
+					</figure>
+					<figure css={previewCardCss}>
+						<div css={[previewStageCss, previewLightCss]}>
+							<img
+								src={publicAsset(kodyBrandAssets.pngOutlinedSolidLight)}
+								alt="Outlined black Kody mark on a white square"
+								width={280}
+								height={280}
+								css={solidPreviewImgCss}
+							/>
+						</div>
+						<figcaption>
+							<a
+								href={publicAsset(kodyBrandAssets.pngOutlinedSolidLight)}
+								download="kody-mark-outlined-solid-light.png"
+							>
+								Download PNG: outlined black on white
+							</a>
+							<span>
+								4096×4096, opaque. Light-mode line-art on a white plate.
+							</span>
 						</figcaption>
 					</figure>
 					<figure css={previewCardCss}>
 						<div css={[previewStageCss, previewDarkCss]}>
 							<img
 								src={publicAsset(kodyBrandAssets.pngSolidDark)}
-								alt="White Kody mark on a black square"
+								alt="Solid white Kody mark on a black square"
 								width={280}
 								height={280}
 								css={solidPreviewImgCss}
@@ -78,9 +102,9 @@ export function BrandGuideRoute() {
 								href={publicAsset(kodyBrandAssets.pngSolidDark)}
 								download="kody-mark-solid-dark.png"
 							>
-								Download PNG — white on black
+								Download PNG: solid white on black
 							</a>
-							<span>4096×4096, opaque</span>
+							<span>4096×4096, opaque. For dark surfaces without a theme.</span>
 						</figcaption>
 					</figure>
 				</div>
@@ -91,26 +115,28 @@ export function BrandGuideRoute() {
 					Theme-aware mark
 				</h2>
 				<p css={descriptionCss}>
-					Inline UI uses <code>currentColor</code> so the mark follows the page
-					theme. Prefer these transparent assets when you control the
-					background.
+					Inline UI follows the page theme: outlined black on light backgrounds,
+					solid white on dark. Prefer the transparent downloads when you control
+					the background.
 				</p>
 				<div css={previewGridCss}>
 					<figure css={previewCardCss}>
 						<div css={[previewStageCss, previewLightCss]}>
 							<span css={previewMarkCss}>
-								<KodyMark size={160} title="Kody" />
+								<KodyMark size={160} variant="outlined" title="Kody" />
 							</span>
 						</div>
-						<figcaption>Light — black mark</figcaption>
+						<figcaption>
+							Light: outlined mark (for light backgrounds)
+						</figcaption>
 					</figure>
 					<figure css={previewCardCss}>
 						<div css={[previewStageCss, previewDarkCss]}>
 							<span css={[previewMarkCss, previewMarkOnDarkCss]}>
-								<KodyMark size={160} title="Kody" />
+								<KodyMark size={160} variant="solid" title="Kody" />
 							</span>
 						</div>
-						<figcaption>Dark — white mark</figcaption>
+						<figcaption>Dark: solid mark (for dark backgrounds)</figcaption>
 					</figure>
 				</div>
 			</section>
@@ -125,26 +151,44 @@ export function BrandGuideRoute() {
 				</p>
 				<ul css={downloadListCss}>
 					<li>
-						<a href={publicAsset(kodyBrandAssets.svg)} download="kody-mark.svg">
-							Download SVG (black)
+						<a
+							href={publicAsset(kodyBrandAssets.svgOutlined)}
+							download="kody-mark-outlined.svg"
+						>
+							Download SVG (outlined, for light backgrounds)
 						</a>
-						<span>Black mark, evenodd path</span>
+						<span>Black line-art outline with solid eyes and nose</span>
+					</li>
+					<li>
+						<a href={publicAsset(kodyBrandAssets.svg)} download="kody-mark.svg">
+							Download SVG (solid black)
+						</a>
+						<span>Solid evenodd path; same geometry as the dark mark</span>
 					</li>
 					<li>
 						<a
 							href={publicAsset(kodyBrandAssets.svgWhite)}
 							download="kody-mark-white.svg"
 						>
-							Download SVG (white)
+							Download SVG (solid white, for dark backgrounds)
 						</a>
-						<span>White mark for dark surfaces</span>
+						<span>White solid mark for dark surfaces</span>
+					</li>
+					<li>
+						<a
+							href={publicAsset(kodyBrandAssets.pngOutlined)}
+							download="kody-mark-outlined.png"
+						>
+							Download PNG (transparent / outlined)
+						</a>
+						<span>2048×1505, transparent. For light backgrounds.</span>
 					</li>
 					<li>
 						<a
 							href={publicAsset(kodyBrandAssets.pngBlack)}
 							download="kody-mark-black.png"
 						>
-							Download PNG (transparent / black)
+							Download PNG (transparent / solid black)
 						</a>
 						<span>2048×1505, transparent</span>
 					</li>
@@ -153,9 +197,9 @@ export function BrandGuideRoute() {
 							href={publicAsset(kodyBrandAssets.pngWhite)}
 							download="kody-mark-white.png"
 						>
-							Download PNG (transparent / white)
+							Download PNG (transparent / solid white)
 						</a>
-						<span>2048×1505, transparent</span>
+						<span>2048×1505, transparent. For dark backgrounds.</span>
 					</li>
 				</ul>
 			</section>
@@ -175,9 +219,10 @@ export function BrandGuideRoute() {
 						stretch, skew, rotate into a lockup, or crop the ears or snout.
 					</li>
 					<li>
-						<strong>Color.</strong> Black on light backgrounds, white on dark
-						backgrounds. Do not recolor beyond those two values, add gradients,
-						or place the mark on busy photos without a solid scrim.
+						<strong>Color.</strong> Outlined black on light backgrounds, solid
+						white on dark backgrounds. Do not recolor beyond those two values,
+						add gradients, or place the mark on busy photos without a solid
+						scrim.
 					</li>
 					<li>
 						<strong>Wordmark.</strong> When pairing with the word “Kody”, keep

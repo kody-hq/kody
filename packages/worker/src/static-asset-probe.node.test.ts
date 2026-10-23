@@ -57,8 +57,10 @@ test('public files and client bundles still probe ASSETS', () => {
 		'/fonts/bricolage-grotesque-latin.woff2',
 		'/images/kody-mark.png',
 		'/images/brand/kody-mark.svg',
+		'/images/brand/kody-mark-outlined.svg',
 		'/images/brand/kody-mark-solid-light.png',
 		'/images/brand/kody-mark-solid-dark.png',
+		'/images/brand/kody-mark-outlined-solid-light.png',
 	]
 	expect(
 		probedPaths.filter((pathname) => requestSkipsAssetProbe(pathname)),

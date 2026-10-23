@@ -14,7 +14,10 @@ import {
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from '#client/toast.ts'
 import { publicAsset } from '../public-assets.ts'
-import { kodyBrandAssets, kodyMarkSvgMarkup } from '../brand/kody-mark-path.ts'
+import {
+	kodyBrandAssets,
+	kodyMarkOutlinedSvgMarkup,
+} from '../brand/kody-mark-path.ts'
 import { colors, shadows, transitions } from '#universal/styles/tokens.ts'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
 
@@ -58,10 +61,10 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 
 	const copySvg = useCallback(async () => {
 		try {
-			await navigator.clipboard.writeText(kodyMarkSvgMarkup('#000000'))
+			await navigator.clipboard.writeText(kodyMarkOutlinedSvgMarkup('#000000'))
 			toast.success('Copied SVG to clipboard', {
 				id: 'kody-mark-svg-copied',
-				description: 'Black mark markup is ready to paste.',
+				description: 'Outlined light-mode mark markup is ready to paste.',
 			})
 		} catch {
 			toast.error('Could not copy SVG', {
@@ -92,15 +95,19 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 			{
 				kind: 'action',
 				id: 'download-svg',
-				label: 'Download SVG',
-				run: () => download(kodyBrandAssets.svg, 'kody-mark.svg'),
+				label: 'Download SVG (outlined)',
+				run: () =>
+					download(kodyBrandAssets.svgOutlined, 'kody-mark-outlined.svg'),
 			},
 			{
 				kind: 'action',
 				id: 'download-png',
-				label: 'Download PNG',
+				label: 'Download PNG (outlined on white)',
 				run: () =>
-					download(kodyBrandAssets.pngSolidLight, 'kody-mark-solid-light.png'),
+					download(
+						kodyBrandAssets.pngOutlinedSolidLight,
+						'kody-mark-outlined-solid-light.png',
+					),
 			},
 			{
 				kind: 'link',
