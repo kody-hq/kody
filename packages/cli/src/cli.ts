@@ -46,6 +46,10 @@ import {
 	parsePackageCollaboratorCommand,
 	runPackageCollaboratorPlan,
 } from './package-collaborators.js'
+import {
+	formatLoginUrlNotice,
+	loginBrowserOpenFailedNotice,
+} from './login-notice.js'
 import { readPackageVersion } from './package-info.js'
 import { redactError } from './redact.js'
 
@@ -409,7 +413,7 @@ async function dispatch(
 			return 0
 		case 'login': {
 			const { login } = await import('./auth.js')
-			write('Opening the Kody login page in your browser…\n')
+			const openBrowser = parsed.values['no-browser'] !== true
 			const result = await login({
 				mcpUrl,
 				apiUrl: apiUrlFrom({
@@ -422,9 +426,12 @@ async function dispatch(
 					? { lifetime: parsed.values.lifetime === 'short' ? 'short' : 'long' }
 					: {}),
 				...(orgFlagOnly ? { org: orgFlagOnly } : {}),
-				openBrowser: parsed.values['no-browser'] !== true,
+				openBrowser,
 				onAuthorizationUrl: (url) => {
-					write(`If the browser does not open, visit:\n${url.href}\n`)
+					write(formatLoginUrlNotice({ url, openBrowser }))
+				},
+				onBrowserOpenResult: ({ opened }) => {
+					if (!opened) write(loginBrowserOpenFailedNotice)
 				},
 			})
 			const orgLabel = result.org

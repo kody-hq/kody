@@ -4,6 +4,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from 'node:http'
+import { dirname } from 'node:path'
 import { isScopedApiToken, notAuthenticatedMessage } from './api-token.js'
 import {
 	accessTokenSkewMs,
@@ -16,6 +17,12 @@ import {
 	discoverLoginIdentity,
 	type LoginIdentity,
 } from './discover-login-identity.js'
+import {
+	CredentialDirError,
+	credentialDirFor,
+	ensureCredentialDirWritable,
+	isCredentialFolderError,
+} from './credential-dir.js'
 import { discoverOrgSlugFromAccessToken } from './discover-org.js'
 import {
 	loginCallbackErrorFromOAuthError,
@@ -55,7 +62,20 @@ export type LoginOptions = {
 	timeoutMs?: number
 	now?: () => number
 	fetchFn?: typeof fetch
+	/**
+	 * Called with the sign-in URL every time, before the browser is opened, so
+	 * the CLI can always print it as a fallback.
+	 */
 	onAuthorizationUrl?: (url: URL) => void
+	/**
+	 * Called after trying to open the browser. `opened` is false when the
+	 * system opener failed, so the CLI can tell the user to use the printed URL.
+	 */
+	onBrowserOpenResult?: (result: { opened: boolean }) => void
+	/** Test seam for opening the browser. Defaults to {@link openUrl}. */
+	openUrlFn?: (url: string) => Promise<boolean>
+	/** Test seam: platform used for the fix steps in folder errors. */
+	platform?: NodeJS.Platform
 	/**
 	 * Test seam: resolve org + account after the code exchange so the localhost
 	 * callback page can show them (and multi-org storage can name the login).
@@ -555,6 +575,21 @@ export async function login(options: LoginOptions = {}): Promise<{
 	const apiUrl = options.apiUrl ?? defaultApiUrl
 	const orgHint =
 		options.org === undefined ? undefined : orgSlugFromFlag(options.org)
+	// Check the credential folder before any browser step: a folder macOS (or
+	// a stray sudo) made unwritable used to surface only after the user had
+	// already approved the sign-in, as a generic "sign-in failed".
+	const credentialDir =
+		options.backend?.kind === 'file' && options.backend.path
+			? dirname(options.backend.path)
+			: options.backend
+				? undefined
+				: credentialDirFor(mcpUrl, options.resolution)
+	if (credentialDir) {
+		ensureCredentialDirWritable(
+			credentialDir,
+			options.platform ? { platform: options.platform } : {},
+		)
+	}
 	const redirectUri = cliRedirectUrl()
 	const expectedState = crypto.randomUUID()
 	const issuer = new URL(mcpUrl).origin
@@ -574,7 +609,13 @@ export async function login(options: LoginOptions = {}): Promise<{
 	const server = await startCallbackServer(redirectUri)
 	options.onAuthorizationUrl?.(authorizationUrl)
 	if (options.openBrowser !== false) {
-		await openUrl(authorizationUrl.href)
+		let opened = false
+		try {
+			opened = await (options.openUrlFn ?? openUrl)(authorizationUrl.href)
+		} catch {
+			opened = false
+		}
+		options.onBrowserOpenResult?.({ opened })
 	}
 	let completeCallback: CallbackSuccess['complete'] | undefined
 	try {
@@ -662,11 +703,25 @@ export async function login(options: LoginOptions = {}): Promise<{
 			scopes: device.scopes,
 			org,
 		})
-		const saved = saveCredentials(
-			credentials,
-			options.backend,
-			options.resolution,
-		)
+		let saved: ReturnType<typeof saveCredentials>
+		try {
+			saved = saveCredentials(credentials, options.backend, options.resolution)
+		} catch (error) {
+			completeCallback?.({ kind: 'error', error: 'save_failed' })
+			completeCallback = undefined
+			if (isCredentialFolderError(error)) {
+				throw new CredentialDirError({
+					dir: credentialDir ?? credentialDirFor(mcpUrl, options.resolution),
+					cause: redactError(error),
+					phase: 'save',
+					...(options.platform ? { platform: options.platform } : {}),
+				})
+			}
+			throw new Error(
+				`You approved the sign-in, but Kody could not save it on this computer. What went wrong: ${redactError(error).message}`,
+				{ cause: error },
+			)
+		}
 
 		completeCallback?.({
 			kind: 'success',
