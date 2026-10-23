@@ -13,7 +13,7 @@ import {
 	kodyMarkViewBox,
 } from '../brand/kody-mark-path.ts'
 
-export type KodyMarkVariant = 'auto' | 'solid' | 'outlined'
+type KodyMarkVariant = 'auto' | 'solid' | 'outlined'
 
 export type KodyMarkProps = {
 	/** Rendered height in CSS pixels; width follows the natural aspect ratio. */
