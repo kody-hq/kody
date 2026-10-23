@@ -12,15 +12,15 @@ const brandDir = path.resolve(
 	'../../public/images/brand',
 )
 
-test('published outlined SVG matches the markup helper', () => {
+test('published mark SVGs match the markup helper', () => {
 	const published = readFileSync(
 		path.join(brandDir, 'kody-mark-outlined.svg'),
 		'utf8',
 	)
 	expect(published).toBe(kodyMarkOutlinedSvgMarkup('#000000'))
 	const publishedSolid = readFileSync(
-		path.join(brandDir, 'kody-mark.svg'),
+		path.join(brandDir, 'kody-mark-white.svg'),
 		'utf8',
 	)
-	expect(publishedSolid).toBe(kodyMarkSvgMarkup('#000000'))
+	expect(publishedSolid).toBe(kodyMarkSvgMarkup('#ffffff'))
 })

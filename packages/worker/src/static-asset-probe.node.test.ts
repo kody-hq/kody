@@ -56,7 +56,7 @@ test('public files and client bundles still probe ASSETS', () => {
 		'/og/kody-logo.png',
 		'/fonts/bricolage-grotesque-latin.woff2',
 		'/images/kody-mark.png',
-		'/images/brand/kody-mark.svg',
+		'/images/brand/kody-mark-white.svg',
 		'/images/brand/kody-mark-outlined.svg',
 		'/images/brand/kody-mark-solid-dark.png',
 		'/images/brand/kody-mark-outlined-solid-light.png',

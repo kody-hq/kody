@@ -42,11 +42,9 @@ export const kodyMarkAspectRatio = 807.440627 / 593.242027
 
 /** Public asset paths for brand downloads. */
 export const kodyBrandAssets = {
-	svg: '/images/brand/kody-mark.svg',
 	svgWhite: '/images/brand/kody-mark-white.svg',
 	/** Outlined line-art mark for light backgrounds. */
 	svgOutlined: '/images/brand/kody-mark-outlined.svg',
-	pngBlack: '/images/brand/kody-mark-black.png',
 	pngWhite: '/images/brand/kody-mark-white.png',
 	/** Transparent outlined mark (black ink). */
 	pngOutlined: '/images/brand/kody-mark-outlined.png',
