@@ -11,7 +11,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import { type JobRecord } from '#worker/jobs/types.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
@@ -40,6 +40,15 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 const now = '2026-10-11T00:00:00.000Z'
 const jobName = 'daily'
 const staleNextRunAt = '2026-10-01T11:15:00.000Z'
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(now)
+})
+
+afterEach(() => {
+	vi.useRealTimers()
+})
 
 async function insertAccount(
 	db: D1Database,
@@ -199,15 +208,13 @@ async function setup(job: Partial<JobRecord> = {}) {
 
 test('enablementEnable turns a disabled cron job on and schedules it from now', async () => {
 	const t = await setup()
-	const before = Date.now()
 	expect(await t.enable('owner')).toMatchObject({
 		triggerKind: 'cron',
 		state: 'on',
 	})
 	const job = await t.readJob()
 	expect(job.enabled).toBe(true)
-	expect(job.nextRunAt).not.toBe(staleNextRunAt)
-	expect(new Date(job.nextRunAt!).valueOf()).toBeGreaterThan(before)
+	expect(job.nextRunAt).toBe('2026-10-11T01:00:00.000Z')
 })
 
 test('re-enabling an enablement that is already on still turns its disabled job on', async () => {

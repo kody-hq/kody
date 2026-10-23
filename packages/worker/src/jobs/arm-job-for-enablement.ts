@@ -59,7 +59,8 @@ export async function armJobForEnablement(input: {
 			return 'armed'
 		},
 	})
-	if (result === 'armed') {
+	// Also on `already_on`: a retry after a failed sync restores the alarm.
+	if (result === 'armed' || result === 'already_on') {
 		await syncJobManagerAlarm({ env: input.env, userId: input.orgId })
 	}
 	return result
