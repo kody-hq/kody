@@ -5,7 +5,7 @@ import {
 	encryptSecretValue,
 } from '#worker/mcp/secrets/crypto.ts'
 import { isCloudflareKvTransientHttpErrorMessage } from './cloudflare-kv-platform-error.ts'
-import { primeCimdClientForRefresh } from './oauth-cimd-refresh-cache.ts'
+import { prepareCimdClientForRefresh } from './oauth-cimd-refresh-cache.ts'
 
 /**
  * MCP hosts on one machine often share a stored OAuth client but keep their
@@ -340,15 +340,23 @@ async function completeMcpOAuthTokenRequest(
 			}
 		}
 	}
-	if (grantType === 'refresh_token') {
-		// CIMD hosts with `no-store` documents (VS Code) would otherwise fail
-		// the refresh on any metadata fetch blip. See oauth-cimd-refresh-cache.
-		await primeCimdClientForRefresh({
-			env: input.env,
-			clientId: readFormString(formData?.get('client_id')),
-		})
+	// CIMD hosts with `no-store` documents (VS Code) would otherwise fail the
+	// refresh on any metadata fetch blip. See oauth-cimd-refresh-cache.
+	const cimd =
+		grantType === 'refresh_token'
+			? await prepareCimdClientForRefresh({
+					env: input.env,
+					clientId: readFormString(formData?.get('client_id')),
+				})
+			: null
+	let response: Response
+	try {
+		response = await input.fetchProvider(input.request)
+	} catch (error) {
+		await cimd?.settle(false)
+		throw error
 	}
-	const response = await input.fetchProvider(input.request)
+	await cimd?.settle(response.ok)
 	if (response.ok) {
 		await persistRefreshFamilyBestEffort({
 			env: input.env,

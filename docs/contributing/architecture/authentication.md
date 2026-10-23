@@ -775,14 +775,18 @@ routed from `packages/worker/src/index.ts`.
   long as the origin's `Cache-Control` allows, so a `no-store` document (VS
   Code's `https://vscode.dev/oauth/client-metadata.json`) is fetched live on
   every refresh, and one blip from that host used to drop the host's session.
-  Before a refresh reaches the provider, Kody seeds the provider's CIMD Cache
-  API entry for at least five minutes and keeps a last known good copy in
-  `BUNDLE_ARTIFACTS_KV` (seven days, the provider's own CIMD cache cap). When
-  the live fetch times out, errors, or returns 5xx/429, the last known good copy
-  serves that refresh; a 4xx or invalid document never falls back. The provider
-  still validates every cached document. Authorize and code exchange always use
-  a live document. Token-endpoint CIMD failures are reported through `onError`
-  with the client URL and the fetch reason. CIMD metadata fetches rely on the
+  Before a refresh reaches the provider, Kody fetches the document and seeds the
+  provider's CIMD Cache API entry for at least five minutes. When the provider
+  accepts the refresh, that document becomes the last known good copy in
+  `BUNDLE_ARTIFACTS_KV` (seven days, the provider's own CIMD cache cap), so
+  rejected token requests never write KV. When the live fetch times out, errors,
+  or returns 5xx/429, the last known good copy is seeded for that refresh only
+  and deleted once the provider answers; a 4xx or invalid document never falls
+  back. The provider still validates every cached document. Authorize and code
+  exchange never use a last known good copy beyond the refresh that seeded it,
+  though they may reuse a document fetched live in the last five minutes.
+  Token-endpoint CIMD failures are reported through `onError` with the client
+  URL and the fetch reason. CIMD metadata fetches rely on the
   `global_fetch_strictly_public` compatibility flag in
   `packages/worker/wrangler.jsonc` for SSRF safety; the provider only advertises
   `client_id_metadata_document_supported` when both are set. ChatGPT CIMD

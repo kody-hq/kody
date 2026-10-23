@@ -1244,11 +1244,13 @@ test('VS Code-shaped no-store CIMD refresh survives a metadata host outage', asy
 		env.BUNDLE_ARTIFACTS_KV.get(await cimdLastKnownGoodKey(clientId)),
 	).resolves.toContain('Visual Studio Code')
 
-	// An hour later the floor copy is gone and the host is down.
+	// An hour later the floor copy is gone and the host is down. The last
+	// known good copy serves only that refresh.
 	for (const outage of ['network-error', 'unavailable'] as const) {
 		await providerCache.delete(clientId)
 		metadataHost = outage
 		await expect(refresh()).resolves.toMatchObject({ status: 200 })
+		expect(await providerCache.match(clientId)).toBeUndefined()
 	}
 	expect(consoleWarn.mock.calls.flat().join(' ')).toContain(
 		'oauth-cimd-refresh-fallback',
@@ -1281,6 +1283,15 @@ test('VS Code-shaped no-store CIMD refresh survives a metadata host outage', asy
 		status: 401,
 		body: { error: 'invalid_client' },
 	})
+
+	// A refresh the provider rejects never records a last known good copy.
+	await providerCache.delete(clientId)
+	metadataHost = 'up'
+	refreshToken = 'not-a-user:not-a-grant:not-a-secret'
+	await expect(refresh()).resolves.toMatchObject({ status: 400 })
+	await expect(
+		env.BUNDLE_ARTIFACTS_KV.get(await cimdLastKnownGoodKey(clientId)),
+	).resolves.toBeNull()
 })
 
 test('worker entrypoint treats a failed ChatGPT CIMD fetch as an unknown client', async () => {

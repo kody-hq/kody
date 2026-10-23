@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	cimdLastKnownGoodKey,
 	isCimdClientIdUrl,
-	primeCimdClientForRefresh,
+	prepareCimdClientForRefresh,
 } from '#worker/oauth-cimd-refresh-cache.ts'
 
 test('isCimdClientIdUrl matches HTTPS client ids with a path', () => {
@@ -28,11 +28,11 @@ test('cimdLastKnownGoodKey hashes the client id under the derived cache prefix',
 	expect(key).not.toContain('vscode')
 })
 
-test('primeCimdClientForRefresh ignores registered client ids', async () => {
+test('prepareCimdClientForRefresh ignores registered client ids', async () => {
 	await expect(
-		primeCimdClientForRefresh({ env: {} as Env, clientId: 'dcr-client' }),
-	).resolves.toBe('not-cimd')
+		prepareCimdClientForRefresh({ env: {} as Env, clientId: 'dcr-client' }),
+	).resolves.toMatchObject({ outcome: 'not-cimd' })
 	await expect(
-		primeCimdClientForRefresh({ env: {} as Env, clientId: null }),
-	).resolves.toBe('not-cimd')
+		prepareCimdClientForRefresh({ env: {} as Env, clientId: null }),
+	).resolves.toMatchObject({ outcome: 'not-cimd' })
 })
