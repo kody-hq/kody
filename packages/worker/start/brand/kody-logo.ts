@@ -19,8 +19,8 @@ import {
  * opsz 28 (what the browser picks at 28px), so the files never depend on the
  * font being installed.
  */
-export const kodyLogoHeight = 34
-export const kodyLogoWidth = 123.76
+const kodyLogoHeight = 34
+const kodyLogoWidth = 123.76
 export const kodyLogoViewBox = `0 0 ${kodyLogoWidth} ${kodyLogoHeight}`
 
 /** Natural width÷height of the logo viewBox. */
