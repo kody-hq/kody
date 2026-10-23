@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./packages/worker/public/logo.png" alt="kody logo" width="400" />
+  <img src="./packages/worker/public/images/brand/kody-logo-outlined.svg" alt="Kody logo" width="400" />
 
   <p>
     <strong>Your agents' cloud: the memory, keys, code, and automations your AI agent keeps, portable across every MCP host. Built on Cloudflare Workers.</strong>
