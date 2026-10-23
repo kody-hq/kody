@@ -86,10 +86,16 @@ test('a memory detail click wins over an earlier pending search navigation', asy
 	await expect(
 		page.getByRole('link', { name: 'Navigation fixture', exact: true }),
 	).toHaveCount(0)
-	// Keep filter state as a native boolean across navigation and a full reload.
-	await page
-		.getByRole('checkbox', { name: 'Include deleted', exact: true })
-		.check()
+	// Soft delete returns to the list after the mutation. Wait for that
+	// navigation and an enabled filter before toggling includeDeleted so a
+	// still-in-flight list replace cannot win and uncheck the box.
+	await expect(page).toHaveURL((url) => url.pathname === listPath)
+	const includeDeleted = page.getByRole('checkbox', {
+		name: 'Include deleted',
+		exact: true,
+	})
+	await expect(includeDeleted).toBeEnabled()
+	await includeDeleted.check()
 	await expect(page).toHaveURL(
 		(url) => url.searchParams.get('includeDeleted') === 'true',
 	)
