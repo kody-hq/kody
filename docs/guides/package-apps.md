@@ -152,6 +152,44 @@ Platform routes on every package-app host (host root, not under `/{leaf}`):
 
 Legacy `/_kody/auth/*` paths remain accepted on the same hosts.
 
+#### Who is visiting, from server code
+
+The platform checks the visitor's session before your app code runs, then
+removes `Cookie` and `Authorization` from the request it forwards. App server
+code never sees the session cookie, so a server-side `fetch` to `/-/auth/me`
+from app code always returns 401. `/-/auth/me` is for the browser, which sends
+the cookie itself.
+
+On the server, ask the platform instead. `kody.metaGetCurrentUser({})` from
+`kody:runtime` answers for the visitor of the current request:
+
+```ts
+import { kody } from 'kody:runtime'
+
+export default {
+	async fetch(request: Request) {
+		let visitor: { user_id: string; username: string } | null = null
+		try {
+			const me = await kody.metaGetCurrentUser({})
+			visitor = { user_id: me.user_id, username: me.username }
+		} catch {
+			// Anonymous visitor of an internet-visible app: not signed in.
+		}
+		return Response.json({ signedIn: visitor !== null, visitor })
+	},
+}
+```
+
+- `user_id` and `username` identify the visitor and are verified by the
+  platform. Use `user_id` as the stable key for per-visitor data.
+- `org.slug` is the org that owns the app, not the visitor's org.
+- Do not treat `email` or `display_name` from this call as the visitor's inside
+  an app request. Request `email` through the OAuth helper above when the app
+  needs the visitor's email.
+- An anonymous visitor (internet-visible app, no sign-in) has no identity, so
+  the call throws "Authenticated MCP user is required". Treat that as signed
+  out.
+
 Default claims: user id, name, avatar, and access level for the app. Email only
 when requested and consented. Consent is skipped for apps the user (or their
 org) already owns/can execute, except when requesting `email` without a prior

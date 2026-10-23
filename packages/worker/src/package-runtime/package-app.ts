@@ -2137,20 +2137,63 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 type PackageAppWorkerOptions = Parameters<Env['APP_LOADER']['load']>[0]
 
-type PackageAppWorkerBuild = {
-	workerId: string | null
-	workerOptions: PackageAppWorkerOptions
+/**
+ * Request-independent part of a package app worker build: modules, compat
+ * settings, plain env values, and the props the request-bound bindings carry.
+ * The loopback bindings themselves (`KODY_RUNTIME` and the `KodyFetchGateway`
+ * globalOutbound) are request-bound I/O objects, so they are minted per
+ * request by `materializePackageAppWorkerOptions` instead of being cached.
+ */
+type PackageAppWorkerTemplate = {
+	options: Omit<PackageAppWorkerOptions, 'env' | 'globalOutbound'> & {
+		env: Record<string, unknown>
+	}
+	bridgeProps: PackageAppRuntimeBridgeProps
+	gatewayProps: FetchGatewayProps
 }
 
-// Caches the built worker options (bundle lookup + hydration + wrapper), not
-// loader stubs: worker-loader stubs are bound to the request that created them
-// and must be re-acquired per request via APP_LOADER.get/load.
+type PackageAppWorkerBuild = {
+	workerId: string | null
+	template: PackageAppWorkerTemplate
+}
+
+// Caches the request-independent build (bundle lookup + hydration + wrapper +
+// binding props). Never cache loader stubs or loopback bindings: both are
+// bound to the request that created them. A cached `KODY_RUNTIME` /
+// `KodyFetchGateway` fetcher made the loader fail with "Cannot perform I/O on
+// behalf of a different request" whenever it (re)loaded the dynamic isolate
+// from any request other than the one that built the options.
 const packageAppWorkerOptionsCache =
 	new PromiseLruCache<PackageAppWorkerBuild>()
 
+/**
+ * Mint the request-bound loopback bindings for one loader call. Call it inside
+ * the `APP_LOADER.get` callback (or right before `APP_LOADER.load`) so the
+ * bindings belong to the request that loads the isolate.
+ */
+export function materializePackageAppWorkerOptions(
+	template: PackageAppWorkerTemplate,
+): PackageAppWorkerOptions {
+	return {
+		...template.options,
+		env: {
+			...template.options.env,
+			[packageAppRuntimeBindingName]: requireLocalPackageAppRuntimeBridge()({
+				props: template.bridgeProps,
+			}),
+		},
+		globalOutbound: workerExports?.KodyFetchGateway
+			? workerExports.KodyFetchGateway({ props: template.gatewayProps })
+			: null,
+	} as PackageAppWorkerOptions
+}
+
 export async function createPackageAppWorkerId(input: {
 	cacheKey: string
-	workerOptions: PackageAppWorkerOptions
+	workerOptions: Pick<
+		PackageAppWorkerOptions,
+		'modules' | 'compatibilityDate' | 'compatibilityFlags' | 'mainModule'
+	>
 }) {
 	const moduleEntries = Object.entries(input.workerOptions.modules ?? {})
 	if (
@@ -2570,7 +2613,7 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 		hostedOrigin?: string
 		mount?: PackageAppMount
 	}
-}): Promise<PackageAppWorkerOptions> {
+}): Promise<PackageAppWorkerTemplate> {
 	const publicContext = await buildPackageAppPublicContext(input)
 	const manifest = resolvePackageAppManifest({
 		manifest: input.manifest,
@@ -2669,46 +2712,47 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 			publishedCommit: input.savedPackage.publishedCommit,
 		}),
 	}
+	// Fail the build (host-setup) when this script cannot mint the bridge,
+	// instead of failing later inside the loader callback.
+	requireLocalPackageAppRuntimeBridge()
 	return {
-		...createDynamicWorkerCompatibilityOptions(),
-		mainModule,
-		modules,
-		env: {
-			[packageAppRuntimeBindingName]: requireLocalPackageAppRuntimeBridge()({
-				props: {
-					baseUrl: input.baseUrl,
-					userId: input.userId,
-					...packageAppVisitorOf(
-						input.runtime.callerContext,
-						input.runtime.servingUsername,
-					),
-					email: input.runtime.callerContext.user?.email ?? '',
-					displayName:
-						input.runtime.callerContext.user?.displayName ??
-						`package:${input.savedPackage.id}`,
+		options: {
+			...createDynamicWorkerCompatibilityOptions(),
+			mainModule,
+			modules,
+			env: {
+				__kodyPackageContext: {
 					packageId: input.savedPackage.id,
 					kodyId: input.savedPackage.kodyId,
 					sourceId: input.savedPackage.sourceId,
 					publishedCommit: input.savedPackage.publishedCommit,
-					packageStorageGrantIds,
-					credentialClientBinding,
-					packageSecretRefKey,
-					packageBindingToken,
-					gatewayProps,
+					...publicContext,
+					...assetContext,
 				},
-			}),
-			__kodyPackageContext: {
-				packageId: input.savedPackage.id,
-				kodyId: input.savedPackage.kodyId,
-				sourceId: input.savedPackage.sourceId,
-				publishedCommit: input.savedPackage.publishedCommit,
-				...publicContext,
-				...assetContext,
 			},
 		},
-		globalOutbound: workerExports?.KodyFetchGateway
-			? workerExports.KodyFetchGateway({ props: gatewayProps })
-			: null,
+		bridgeProps: {
+			baseUrl: input.baseUrl,
+			userId: input.userId,
+			...packageAppVisitorOf(
+				input.runtime.callerContext,
+				input.runtime.servingUsername,
+			),
+			email: input.runtime.callerContext.user?.email ?? '',
+			displayName:
+				input.runtime.callerContext.user?.displayName ??
+				`package:${input.savedPackage.id}`,
+			packageId: input.savedPackage.id,
+			kodyId: input.savedPackage.kodyId,
+			sourceId: input.savedPackage.sourceId,
+			publishedCommit: input.savedPackage.publishedCommit,
+			packageStorageGrantIds,
+			credentialClientBinding,
+			packageSecretRefKey,
+			packageBindingToken,
+			gatewayProps,
+		},
+		gatewayProps,
 	}
 }
 
@@ -2814,7 +2858,9 @@ export async function buildPackageAppWorker(input: {
 		if (!cacheKey) {
 			return {
 				stub: input.env.APP_LOADER.load(
-					await buildPackageAppWorkerOptionsUncached(input),
+					materializePackageAppWorkerOptions(
+						await buildPackageAppWorkerOptionsUncached(input),
+					),
 				),
 				entrypointName: packageAppEntrypointName,
 			}
@@ -2822,19 +2868,28 @@ export async function buildPackageAppWorker(input: {
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
-				const workerOptions = await buildPackageAppWorkerOptionsUncached(input)
+				const template = await buildPackageAppWorkerOptionsUncached(input)
 				return {
-					workerId: await createPackageAppWorkerId({ cacheKey, workerOptions }),
-					workerOptions,
+					workerId: await createPackageAppWorkerId({
+						cacheKey,
+						workerOptions: template.options,
+					}),
+					template,
 				}
 			},
 		})
 		// Acquire the request-bound stub before claiming the day. A failed
 		// `APP_LOADER.get()` must not persist a (day, workerId) that a retry
-		// would then skip without a `dynamic_worker_day` event.
+		// would then skip without a `dynamic_worker_day` event. The loopback
+		// bindings are minted in this request: the loader may (re)load the
+		// isolate from any request that reuses the cached build.
 		const stub = build.workerId
-			? input.env.APP_LOADER.get(build.workerId, () => build.workerOptions)
-			: input.env.APP_LOADER.load(build.workerOptions)
+			? input.env.APP_LOADER.get(build.workerId, () =>
+					materializePackageAppWorkerOptions(build.template),
+				)
+			: input.env.APP_LOADER.load(
+					materializePackageAppWorkerOptions(build.template),
+				)
 		if (build.workerId) {
 			schedulePackageAppUniqueWorkerDay({
 				env: input.env,

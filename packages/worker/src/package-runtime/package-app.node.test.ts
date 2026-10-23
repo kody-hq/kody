@@ -1681,11 +1681,50 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	expect(getStorageRunner).toHaveBeenCalledTimes(3)
 })
 
+test('buildPackageAppWorker mints request-bound loopback bindings on every loader callback, never from the cached build', async () => {
+	// Loopback fetchers (KODY_RUNTIME, KodyFetchGateway) are bound to the
+	// request that creates them. When the loader (re)loads the isolate from a
+	// later request, reusing the cached build's fetcher fails with "Cannot
+	// perform I/O on behalf of a different request" before app code runs.
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const buildInput = makeBuildInput(env, 'per-request-bindings')
+
+	await buildPackageAppWorker(buildInput)
+	await buildPackageAppWorker(buildInput)
+
+	// Building (and reusing) the cached options mints nothing by itself.
+	expect(packageAppRuntimeMock.packageAppRuntimeBridge).not.toHaveBeenCalled()
+	expect(loader.get).toHaveBeenCalledTimes(2)
+	const [firstId, firstFactory] = loader.get.mock.calls[0] as unknown as [
+		string,
+		() => { env: Record<string, unknown>; modules: Record<string, string> },
+	]
+	const [secondId, secondFactory] = loader.get.mock.calls[1] as unknown as [
+		string,
+		() => { env: Record<string, unknown>; modules: Record<string, string> },
+	]
+	expect(secondId).toBe(firstId)
+	const first = firstFactory()
+	const second = secondFactory()
+	expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalledTimes(2)
+	// A fresh binding object per load, carrying the same per-build props.
+	expect(second.env.KODY_RUNTIME).not.toBe(first.env.KODY_RUNTIME)
+	expect(second.env.KODY_RUNTIME).toEqual(first.env.KODY_RUNTIME)
+	expect(second.modules).toBe(first.modules)
+	expect(second.env.__kodyPackageContext).toEqual(
+		first.env.__kodyPackageContext,
+	)
+})
+
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {
 	// The fixture bundle is pre-fix shaped and the build passes no source, so
 	// serving it is logged.
 	silenceExpectedConsoleWarns([/pre_binding_bundle_served_without_source/])
-	const { env } = createPackageAppTestEnv()
+	const { env, loader } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(undefined, {
 			dependencies: [
@@ -1715,6 +1754,8 @@ test('buildPackageAppWorker passes packageStorage grant ids from root, static, a
 	await buildPackageAppWorker(
 		makeBuildInput(env, 'grants', { savedPackage: { id: 'root-package' } }),
 	)
+	// The bridge is minted when the loader asks for the worker options.
+	loaderWorkerOptions(loader)
 
 	expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalledWith({
 		props: expect.objectContaining({

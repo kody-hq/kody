@@ -94,6 +94,16 @@ const mockModule = vi.hoisted(() => ({
 	persistPublishedBundleArtifact: vi.fn(),
 	createWorker: vi.fn(),
 	packageRealtimeConnect: vi.fn(),
+	beginRunRecord: vi.fn((..._args: Array<unknown>): unknown => undefined),
+	finishRunRecord: vi.fn(async (..._args: Array<unknown>) => true),
+}))
+
+vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	beginRunRecord: (...args: Array<unknown>) =>
+		mockModule.beginRunRecord(...args),
+	finishRunRecord: (...args: Array<unknown>) =>
+		mockModule.finishRunRecord(...args),
 }))
 
 vi.mock('#worker/package-registry/source.ts', async () => {
@@ -915,6 +925,69 @@ test('a tagged runtime throw becomes the package-entrypoint page with the run id
 		phase: 'package-entrypoint',
 		runtimeRunId: 'run-thrown-1',
 	})
+})
+
+test('an entrypoint rejection records an owner-visible error run and shows its id on the crash page', async () => {
+	// The app worker can fail before its wrapper starts a run (no runList
+	// entry, app try/catch never runs). The host records the run instead.
+	consoleError.mockImplementation(() => {})
+	seedFixture({ kodyId: 'entrypoint-reject-app' })
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					throw new Error('internal platform detail')
+				},
+			}),
+		},
+	})
+	mockModule.beginRunRecord.mockImplementation((...args: Array<unknown>) => ({
+		id: 'host-run-1',
+		context: (args[0] as { context: unknown }).context,
+	}))
+	mockModule.finishRunRecord.mockClear()
+
+	const response = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		restPath: '/items',
+		init: { headers: { Accept: 'application/json' } },
+	})
+	expect(response.status).toBe(500)
+	await expect(response.json()).resolves.toMatchObject({
+		error: 'Package app crashed',
+		run_id: 'host-run-1',
+	})
+	expect(mockModule.beginRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			context: expect.objectContaining({
+				packageId: 'pkg-entrypoint-reject-app',
+				surface: 'app_fetch',
+				name: '/items',
+				publishedCommit: 'commit-1',
+				metadata: expect.objectContaining({ phase: 'package-entrypoint' }),
+			}),
+		}),
+	)
+	expect(mockModule.finishRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			status: 'error',
+			handle: expect.objectContaining({ id: 'host-run-1' }),
+		}),
+	)
+	const finished = mockModule.finishRunRecord.mock.calls[0]?.[0] as unknown as {
+		error: Error
+	}
+	// Host exception text stays internal.
+	expect(finished.error.message).not.toContain('internal platform detail')
+
+	mockModule.beginRunRecord.mockReset()
+	const html = await serveHelloWorld({ kodyId: 'entrypoint-reject-app' })
+	expect(html.status).toBe(500)
+	const page = await html.text()
+	expect(page).toContain('Package app crashed')
+	expect(page).not.toContain('Run ID')
 })
 
 test('author 200 responses that set the runtime-error header stay successful', async () => {

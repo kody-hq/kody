@@ -27,24 +27,40 @@ export function createPublishedPackageCacheKey(input: {
 	])
 }
 
-export class PromiseLruCache<T> {
-	private readonly cache = new Map<
-		string,
-		{
-			expiresAt: number
-			pending: Promise<T>
-		}
-	>()
+/**
+ * How long a request waits on another request's in-flight entry before it
+ * starts its own `create()`. A Workers isolate serves many requests, and a
+ * promise created by one request never settles once that request ends or is
+ * canceled (for example when its client disconnects). A request that awaits
+ * such a promise has no I/O of its own, so the runtime cancels it as hung
+ * ("error code: 1101"). The timer keeps the waiter alive and lets it recover.
+ */
+export const promiseLruCacheInFlightWaitMs = 5_000
 
-	constructor(input?: { ttlMs?: number; limit?: number }) {
+type PromiseLruCacheEntry<T> = {
+	expiresAt: number
+	pending: Promise<T>
+	settled: boolean
+}
+
+export class PromiseLruCache<T> {
+	private readonly cache = new Map<string, PromiseLruCacheEntry<T>>()
+
+	constructor(input?: {
+		ttlMs?: number
+		limit?: number
+		inFlightWaitMs?: number
+	}) {
 		this.ttlMs = input?.ttlMs ?? publishedPackageCacheTtlMs
 		this.limit = input?.limit ?? publishedPackageCacheLimit
+		this.inFlightWaitMs = input?.inFlightWaitMs ?? promiseLruCacheInFlightWaitMs
 	}
 
 	private readonly ttlMs: number
 	private readonly limit: number
+	private readonly inFlightWaitMs: number
 
-	get(key: string) {
+	private getEntry(key: string) {
 		const cached = this.cache.get(key)
 		if (!cached) {
 			return null
@@ -55,23 +71,46 @@ export class PromiseLruCache<T> {
 		}
 		this.cache.delete(key)
 		this.cache.set(key, cached)
-		return cached.pending
+		return cached
+	}
+
+	get(key: string) {
+		return this.getEntry(key)?.pending ?? null
 	}
 
 	set(key: string, pending: Promise<T>) {
-		this.cache.set(key, {
+		const entry: PromiseLruCacheEntry<T> = {
 			expiresAt: Date.now() + this.ttlMs,
 			pending,
-		})
+			settled: false,
+		}
+		this.cache.set(key, entry)
+		void pending.then(
+			() => {
+				entry.settled = true
+			},
+			() => {},
+		)
 		this.enforceLimit()
 		return pending
 	}
 
 	getOrCreate(input: { cacheKey: string; create: () => Promise<T> }) {
-		const cached = this.get(input.cacheKey)
-		if (cached) {
-			return cached
+		const cached = this.getEntry(input.cacheKey)
+		if (cached?.settled) {
+			return cached.pending
 		}
+		if (cached) {
+			return this.waitForInFlight(cached, input)
+		}
+		return this.createEntry(input)
+	}
+
+	delete(key: string) {
+		this.cache.delete(key)
+	}
+
+	private createEntry(input: { cacheKey: string; create: () => Promise<T> }) {
 		let pending: Promise<T>
 		pending = input.create().catch((error) => {
 			if (this.cache.get(input.cacheKey)?.pending === pending) {
@@ -83,8 +122,44 @@ export class PromiseLruCache<T> {
 		return pending
 	}
 
-	delete(key: string) {
-		this.cache.delete(key)
+	/**
+	 * Await an entry another request may own. If it has not settled within
+	 * `inFlightWaitMs`, treat it as orphaned: replace it (when it is still the
+	 * cached entry) and run `create()` in this request.
+	 */
+	private waitForInFlight(
+		entry: PromiseLruCacheEntry<T>,
+		input: { cacheKey: string; create: () => Promise<T> },
+	) {
+		return new Promise<T>((resolve, reject) => {
+			let done = false
+			const timer = setTimeout(() => {
+				if (done) return
+				done = true
+				if (this.cache.get(input.cacheKey) === entry) {
+					this.delete(input.cacheKey)
+				}
+				const current = this.getEntry(input.cacheKey)
+				const next = current?.settled
+					? current.pending
+					: this.createEntry(input)
+				next.then(resolve, reject)
+			}, this.inFlightWaitMs)
+			entry.pending.then(
+				(value) => {
+					if (done) return
+					done = true
+					clearTimeout(timer)
+					resolve(value)
+				},
+				(error: unknown) => {
+					if (done) return
+					done = true
+					clearTimeout(timer)
+					reject(error)
+				},
+			)
+		})
 	}
 
 	private enforceLimit() {
