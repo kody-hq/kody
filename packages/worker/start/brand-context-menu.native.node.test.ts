@@ -23,5 +23,5 @@ test('site header brand wraps a context-menu host around the home link', async (
 	expect(html).toContain('>Kody</span>')
 	// Menu is closed until right-click; SSR should not emit menu items.
 	expect(html).not.toContain('Copy logo as SVG')
-	expect(html).not.toContain('Go to brand guide')
+	expect(html).not.toContain('All brand assets')
 })

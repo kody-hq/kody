@@ -43,5 +43,5 @@ test('workspace sidebar brand uses the theme SVG mark and a context-menu host', 
 	expect(html).toMatch(/font-family:[^;]*var\(--font-display\)/)
 	// Menu is closed until right-click; SSR should not emit menu items.
 	expect(html).not.toContain('Copy logo as SVG')
-	expect(html).not.toContain('Go to brand guide')
+	expect(html).not.toContain('All brand assets')
 })
