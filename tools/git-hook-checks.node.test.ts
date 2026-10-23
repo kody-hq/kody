@@ -1105,15 +1105,17 @@ test('withStagedTreeForTypecheck fails closed when write-tree or commit-tree fai
 test('hook scripts can create foreign repositories without inherited worktree state', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'hook-env-'))
 	try {
+		const source = { ...process.env }
+		delete source.NODE_OPTIONS
 		const env = gitHookScriptEnv({
-			...process.env,
+			...source,
 			GIT_DIR: join(root, 'wrong.git'),
 			GIT_WORK_TREE: join(root, 'wrong-worktree'),
 			GIT_INDEX_FILE: join(root, 'wrong-index'),
 			KODY_HOOK_TEST: 'preserved',
 		})
 		expect(env.KODY_HOOK_TEST).toBe('preserved')
-		expect(env.NODE_OPTIONS).toMatch(/--max-old-space-size=8192/)
+		expect(env.NODE_OPTIONS).toBe('--max-old-space-size=8192')
 		const target = join(root, 'fixture')
 		const init = spawnSync('git', ['init', target], { env, encoding: 'utf8' })
 		expect({ status: init.status, error: init.error }).toEqual({

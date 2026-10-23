@@ -20,11 +20,12 @@ export function resolveNpmCommand() {
 /** Default Cloud Agent / CI typecheck heap. Node's ~2GB default OOMs here. */
 export const nodeHeapFloorMb = 8192
 
-const maxOldSpaceSizePattern = /(?:^|\s)--max-old-space-size(?:=|\s)/
+const maxOldSpaceSizePattern = /(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s)/
 
 /**
  * Ensure `NODE_OPTIONS` includes a heap floor. Leaves an explicit
- * `--max-old-space-size` alone so callers can raise or lower it.
+ * `--max-old-space-size` or `--max_old_space_size` alone so callers can
+ * raise or lower it.
  */
 export function envWithNodeHeapFloor(
 	env: NodeJS.ProcessEnv = process.env,
