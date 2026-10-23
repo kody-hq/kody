@@ -396,6 +396,8 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 })
 
 test('an expired export result fails the upload step without starting a second export', async () => {
+	const consoleError = vi.spyOn(console, 'error')
+	consoleError.mockImplementation(() => undefined)
 	const bucket = new MemoryBucket()
 	const env = environment(bucket)
 	const payload = julyPayload(env)
@@ -426,6 +428,7 @@ test('an expired export result fails the upload step without starting a second e
 	assert.deepEqual(downloadUrls, [])
 	assert.equal(bucket.puts.length, 0)
 	assert.equal(await bucket.head(payload.manifestKey), null)
+	assert.deepEqual(consoleEvents(consoleError), ['backup-failure'])
 })
 
 test('a replayed finalization tolerates the already-written manifest and stats', async () => {
