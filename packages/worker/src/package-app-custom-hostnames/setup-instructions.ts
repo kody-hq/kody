@@ -70,7 +70,13 @@ function toSetupRecord(input: {
  */
 export function buildPackageAppCustomHostnameSetup(input: {
 	hostname: string
+	bindingKind: 'app' | 'org'
 	cnameTarget: string | null
+	/**
+	 * True when Cloudflare no longer has the hostname. The local binding is
+	 * stale, so the only fix is to delete it and add the hostname again.
+	 */
+	gone?: boolean
 	ownershipVerification: PackageAppCustomHostnameDnsRecord | null
 	sslValidationRecords: ReadonlyArray<PackageAppCustomHostnameDnsRecord>
 }): PackageAppCustomHostnameSetup {
@@ -120,14 +126,39 @@ export function buildPackageAppCustomHostnameSetup(input: {
 			}),
 		)
 	}
+	const servesAt =
+		input.bindingKind === 'app'
+			? `the app serves at https://${input.hostname}/`
+			: `your organization's private apps serve at https://${input.hostname}/packages/{kodyId}`
+	if (input.gone) {
+		return {
+			records: [],
+			steps: [
+				`${input.hostname} is no longer registered with Cloudflare, so its records will never validate.`,
+				'Delete this custom hostname (packageAppCustomHostnameDelete, or Remove in organization settings), then add it again to get fresh records.',
+			],
+			provider_notes: [...packageAppCustomHostnameProviderNotes],
+		}
+	}
 	const providerLabel = zone ?? input.hostname
+	const hasTxt = records.some((record) => record.type === 'TXT')
 	const steps = [
 		`Open the DNS settings for ${providerLabel} at the provider that hosts its DNS.`,
 		records.length
 			? `Add the ${records.length === 1 ? 'record' : `${records.length} records`} listed in records exactly as shown (type, name, value). Set every record to DNS only, with any proxy or CDN option turned off.`
 			: 'Add a CNAME for the hostname pointing at the package-app domains host. Set it to DNS only, with any proxy or CDN option turned off.',
+		...(input.cnameTarget
+			? []
+			: [
+					'This environment has no routing target configured, so the routing CNAME is not listed. The hostname cannot serve traffic until a CNAME points at the package-app domains host.',
+				]),
+		...(hasTxt && input.cnameTarget
+			? [
+					`If ${input.hostname} already serves traffic somewhere else, publish the TXT records first, wait until ssl_status is "active", and only then switch the CNAME, so the move has no downtime.`,
+				]
+			: []),
 		'Wait. Kody re-checks pending hostnames every few minutes, and most go active a few minutes after the records are published. There is no need to call sync repeatedly; call it once only if you want an immediate check.',
-		`When hostname_status and ssl_status are both "active", the app serves at https://${input.hostname}/.`,
+		`When hostname_status and ssl_status are both "active", ${servesAt}.`,
 	]
 	return {
 		records,

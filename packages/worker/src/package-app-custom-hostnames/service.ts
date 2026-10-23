@@ -251,11 +251,14 @@ export function assertCustomHostnameNotKodyReserved(
 
 function setupFor(
 	env: Env,
-	hostname: string,
+	row: { hostname: string; bindingKind: PackageAppCustomHostnameBindingKind },
 	verification: PackageAppCustomHostnameVerification,
+	options: { gone?: boolean } = {},
 ) {
 	return buildPackageAppCustomHostnameSetup({
-		hostname,
+		hostname: row.hostname,
+		bindingKind: row.bindingKind,
+		gone: options.gone,
 		cnameTarget: packageAppCustomDomainsCnameTargetFromBaseUrl(
 			env.PACKAGE_APP_BASE_URL,
 		),
@@ -753,7 +756,11 @@ export async function addPackageAppCustomHostname(input: {
 		hostname: publicRow(rowFromSql(row)),
 		dns: dnsHint(input.env, hostname),
 		verification,
-		setup: setupFor(input.env, hostname, verification),
+		setup: setupFor(
+			input.env,
+			{ hostname, bindingKind: input.bindingKind },
+			verification,
+		),
 		billing_note: billingNote,
 	}
 }
@@ -816,7 +823,9 @@ export async function syncPackageAppCustomHostname(input: {
 		hostname: publicRow(updated),
 		dns: dnsHint(input.env, updated.hostname),
 		verification,
-		setup: setupFor(input.env, updated.hostname, verification),
+		setup: setupFor(input.env, updated, verification, {
+			gone: isCloudflareCustomHostnameGone(cfOrGone),
+		}),
 	}
 }
 

@@ -718,4 +718,6 @@ test('sync marks Cloudflare-missing hostnames deleted and starts grace', async (
 	expect(synced.hostname.hostname_status).toBe('deleted')
 	expect(synced.hostname.dns_missing_since).toBe('2026-10-13T12:00:00.000Z')
 	expect(synced.verification.ownership_verification).toBeNull()
+	expect(synced.setup.records).toEqual([])
+	expect(synced.setup.steps.join('\n')).toMatch(/Delete this custom hostname/)
 })

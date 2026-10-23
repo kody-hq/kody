@@ -2,9 +2,9 @@
 id: package_app_custom_domains
 title: Custom domains
 summary:
-  Serve an app on a domain you own. Covers which hostnames are allowed,
-  the exact DNS records (DNS only, proxy off), how Kody checks status for you,
-  and what each status means.
+  Serve an app on a domain you own. Covers which hostnames are allowed, the
+  exact DNS records (DNS only, proxy off), how Kody checks status for you, and
+  what each status means.
 category: platform
 ---
 
