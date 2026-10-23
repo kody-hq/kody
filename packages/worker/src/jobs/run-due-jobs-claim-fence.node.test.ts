@@ -415,8 +415,24 @@ test('a recurring job the scheduler turns off tells the owners why', async () =>
 			publishedCommit: null,
 		}),
 	)
+	// Email delivery must not hold the account write lease.
+	let leaseHeld = false
+	const sentWhileLeaseHeld: Array<boolean> = []
+	withAccountWriteLease.mockImplementationOnce(async (lease) => {
+		leaseHeld = true
+		try {
+			return await lease.write()
+		} finally {
+			leaseHeld = false
+		}
+	})
+	notifyOwnersOfJobAutoDisabled.mockImplementationOnce(async () => {
+		sentWhileLeaseHeld.push(leaseHeld)
+		return { recipients: 1, delivered: 1 }
+	})
 
 	await runDue(broken.userId)
+	expect(sentWhileLeaseHeld).toEqual([false])
 
 	const finalized = finalizeClaimedJobRow.mock.calls[0]?.[0] as {
 		job: JobRecord

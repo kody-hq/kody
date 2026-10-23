@@ -1768,6 +1768,37 @@ export async function runDueJobsForUser(input: {
 	now?: Date
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
+	// Owner notices for jobs the scheduler turned off. Sent after the account
+	// write lease is released so email delivery never holds it.
+	const autoDisabledNotices: Array<
+		Parameters<typeof notifyOwnersOfJobAutoDisabled>[0]
+	> = []
+	try {
+		return await runDueJobsForUserUnderLease(input, autoDisabledNotices)
+	} finally {
+		if (autoDisabledNotices.length > 0) {
+			const sending = Promise.all(
+				autoDisabledNotices.map((notice) =>
+					notifyOwnersOfJobAutoDisabled(notice),
+				),
+			)
+			if (input.waitUntil) input.waitUntil(sending)
+			else await sending
+		}
+	}
+}
+
+async function runDueJobsForUserUnderLease(
+	input: {
+		env: Env
+		userId: OwnerId
+		now?: Date
+		waitUntil?: (promise: Promise<unknown>) => void
+	},
+	autoDisabledNotices: Array<
+		Parameters<typeof notifyOwnersOfJobAutoDisabled>[0]
+	>,
+) {
 	return await withAccountWriteLease({
 		db: input.env.APP_DB,
 		stableUserId: input.userId,
@@ -1887,7 +1918,7 @@ export async function runDueJobsForUser(input: {
 						const rescheduleError = result.jobOutcomes.find(
 							(entry) => entry.rescheduleError,
 						)?.rescheduleError
-						await notifyOwnersOfJobAutoDisabled({
+						autoDisabledNotices.push({
 							env: input.env,
 							ownerId: input.userId,
 							jobId: row.id,
