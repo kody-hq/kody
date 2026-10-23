@@ -188,7 +188,7 @@ test('a 10013 on versions deploy retries the same version without re-uploading',
 test('a version already uploaded with this tag is reused instead of uploading again', async () => {
 	const h = harness({
 		list: [
-			JSON.stringify([{ id: versionId, annotations: { 'workers/tag': tag } }]),
+			`▲ [WARNING] Multiple environments are defined [code: 1]\n${JSON.stringify([{ id: versionId, annotations: { 'workers/tag': tag } }], null, 2)}\n▲ [WARNING] trailing [note]`,
 		],
 	})
 	const result = await runSplitWorkerDeploy({

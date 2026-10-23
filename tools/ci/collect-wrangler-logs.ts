@@ -28,8 +28,11 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 
 export const secretsEnvName = 'WRANGLER_LOG_SCAN_SECRETS'
 
-/** Shorter values are too generic to scan for (and are not credentials). */
-const minimumSecretLength = 8
+/**
+ * Every secret of 4+ characters is scanned. A shorter value cannot be a
+ * credential, and matching it would drop every log file.
+ */
+const minimumSecretLength = 4
 
 const credentialShapePatterns = [
 	/\bBearer\s+[A-Za-z0-9._~+/-]{20,}/,

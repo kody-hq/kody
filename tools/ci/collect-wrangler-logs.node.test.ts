@@ -21,6 +21,7 @@ test('copies clean logs and drops logs that contain a secret value', async () =>
 			join(from, 'leaky.log'),
 			'debug value fake-secret-value-123 here\n',
 		)
+		await writeFile(join(from, 'short.log'), 'value q7Zx\n')
 		await writeFile(
 			join(from, 'bearer.log'),
 			'Bearer abcdefghijklmnopqrstuvwxyz0123\n',
@@ -31,10 +32,15 @@ test('copies clean logs and drops logs that contain a secret value', async () =>
 			secretsJson: JSON.stringify({
 				CLOUDFLARE_API_TOKEN: 'fake-secret-value-123',
 				SHORT: 'abc',
+				FOUR: 'q7Zx',
 			}),
 		})
 		expect(result.copied).toEqual(['clean.log'])
-		expect(result.dropped.sort()).toEqual(['bearer.log', 'leaky.log'])
+		expect(result.dropped.sort()).toEqual([
+			'bearer.log',
+			'leaky.log',
+			'short.log',
+		])
 		expect(await readdir(out)).toEqual(['clean.log'])
 	} finally {
 		await rm(root, { recursive: true, force: true })

@@ -32,8 +32,8 @@ import {
  * Opt in with `KODY_SPLIT_DEPLOY_TAG` (and optionally
  * `KODY_SPLIT_DEPLOY_MESSAGE`); without it callers keep the classic path.
  */
-export const splitDeployTagEnvName = 'KODY_SPLIT_DEPLOY_TAG'
-export const splitDeployMessageEnvName = 'KODY_SPLIT_DEPLOY_MESSAGE'
+const splitDeployTagEnvName = 'KODY_SPLIT_DEPLOY_TAG'
+const splitDeployMessageEnvName = 'KODY_SPLIT_DEPLOY_MESSAGE'
 
 const ansiEscapePattern = new RegExp(`${'\u001b'}\\[[0-9;]*m`, 'g')
 const versionIdPattern =
@@ -136,13 +136,22 @@ export function splitDeployArgs(args: ReadonlyArray<string>) {
 
 function parseJsonFromWranglerStdout(output: string): unknown {
 	const text = output.replace(ansiEscapePattern, '')
-	const start = text.search(/[[{]/)
-	if (start === -1) return null
-	try {
-		return JSON.parse(text.slice(start))
-	} catch {
-		return null
+	// stdout and stderr are merged, so `▲ [WARNING]` lines can surround the
+	// payload. Try each line-start `[`/`{` up to each line-end `]`/`}` until
+	// one parses.
+	const starts = [...text.matchAll(/^[[{]/gm)].map((match) => match.index)
+	const ends = [...text.matchAll(/[\]}][ \t]*$/gm)].map((match) => match.index)
+	for (const start of starts) {
+		for (const end of ends) {
+			if (end < start) continue
+			try {
+				return JSON.parse(text.slice(start, end + 1))
+			} catch {
+				// Not the JSON payload; try the next candidate.
+			}
+		}
 	}
+	return null
 }
 
 export function findVersionIdByTag(versions: unknown, tag: string) {
