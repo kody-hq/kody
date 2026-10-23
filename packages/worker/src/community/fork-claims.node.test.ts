@@ -7,6 +7,7 @@ import {
 	acquireCommunityForkClaim,
 	getActiveCommunityForkClaim,
 	releaseCommunityForkClaim,
+	renewCommunityForkClaim,
 	withCommunityForkClaim,
 } from './fork-claims.ts'
 
@@ -116,4 +117,59 @@ test('withCommunityForkClaim gives up with an in-progress error instead of runni
 		withCommunityForkClaim({ db, ...key, pollMs: 5, waitMs: 20 }, work),
 	).rejects.toBeInstanceOf(CommunityForkInProgressError)
 	expect(work).not.toHaveBeenCalled()
+})
+
+test('a holder renews its lease so a slow fork is not taken over mid-flight', async () => {
+	const db = createDb()
+	const now = new Date('2026-10-23T18:00:00.000Z')
+	const claimId = await acquireCommunityForkClaim(db, { ...key, now })
+	const nearExpiry = new Date(now.getTime() + 4 * 60_000)
+	expect(
+		await renewCommunityForkClaim(db, {
+			...key,
+			claimId: claimId!,
+			now: nearExpiry,
+		}),
+	).toBe(true)
+	// Past the original lease, but the renewed one still holds.
+	const pastOriginal = new Date(now.getTime() + 6 * 60_000)
+	expect(
+		await acquireCommunityForkClaim(db, { ...key, now: pastOriginal }),
+	).toBeNull()
+	// A stale holder cannot renew a claim someone else took over.
+	expect(
+		await renewCommunityForkClaim(db, { ...key, claimId: 'someone-else' }),
+	).toBe(false)
+})
+
+test('withCommunityForkClaim keeps renewing while work runs', async () => {
+	const db = createDb()
+	const leases: Array<string> = []
+	let finish: () => void = () => {}
+	const gate = new Promise<void>((resolve) => {
+		finish = resolve
+	})
+	const running = withCommunityForkClaim(
+		{ db, ...key, renewMs: 5 },
+		async () => {
+			await gate
+			return 'done'
+		},
+	)
+	await vi.waitFor(async () => {
+		const claim = await getActiveCommunityForkClaim(db, {
+			ownerIds: ['org-1'],
+			listingId: 'listing-1',
+		})
+		if (claim && !leases.includes(claim.expiresAt)) leases.push(claim.expiresAt)
+		expect(leases.length).toBeGreaterThan(1)
+	})
+	finish()
+	await expect(running).resolves.toBe('done')
+	expect(
+		await getActiveCommunityForkClaim(db, {
+			ownerIds: ['org-1'],
+			listingId: 'listing-1',
+		}),
+	).toBeNull()
 })

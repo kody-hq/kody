@@ -13,6 +13,13 @@ const communityForkClaimLeaseMs = 5 * 60_000
 /** How long a second request waits for an in-flight fork before giving up. */
 const communityForkClaimWaitMs = 25_000
 const communityForkClaimPollMs = 750
+/**
+ * A live holder renews its lease this often, so a slow fork (Artifacts
+ * fallback, waiting for a stale repo to clear) never outlives its claim and
+ * lets a second request start the same fork. Only a crashed request stops
+ * renewing.
+ */
+const communityForkClaimRenewMs = Math.floor(communityForkClaimLeaseMs / 5)
 
 type CommunityForkClaim = {
 	ownerId: string
@@ -103,6 +110,35 @@ export async function releaseCommunityForkClaim(
 		.run()
 }
 
+/**
+ * Push this holder's lease out again. Returns false when the claim is no
+ * longer held by `claimId` (released, or expired and taken over).
+ */
+export async function renewCommunityForkClaim(
+	db: D1Database,
+	input: {
+		ownerId: string
+		listingId: string
+		claimId: string
+		now?: Date
+		leaseMs?: number
+	},
+): Promise<boolean> {
+	const now = input.now ?? new Date()
+	const expiresAt = new Date(
+		now.getTime() + (input.leaseMs ?? communityForkClaimLeaseMs),
+	).toISOString()
+	const row = await db
+		.prepare(
+			`UPDATE community_fork_claims SET expires_at = ?
+			WHERE owner_id = ? AND listing_id = ? AND claim_id = ?
+			RETURNING claim_id`,
+		)
+		.bind(expiresAt, input.ownerId, input.listingId, input.claimId)
+		.first<{ claim_id: string }>()
+	return row?.claim_id === input.claimId
+}
+
 /** Live (unexpired) claims for a listing held by any of these owners. */
 export async function getActiveCommunityForkClaim(
 	db: D1Database,
@@ -139,6 +175,7 @@ export async function withCommunityForkClaim<T>(
 		requestedKodyId?: string | null
 		waitMs?: number
 		pollMs?: number
+		renewMs?: number
 		sleep?: (ms: number) => Promise<void>
 		onWaiting?: (claim: CommunityForkClaim | null) => void | Promise<void>
 	},
@@ -158,9 +195,28 @@ export async function withCommunityForkClaim<T>(
 			requestedKodyId: input.requestedKodyId,
 		})
 		if (claimId) {
+			const claimKey = {
+				ownerId: input.ownerId,
+				listingId: input.listingId,
+				claimId,
+			}
+			const renewal = setInterval(() => {
+				void renewCommunityForkClaim(input.db, claimKey)
+					.then((held) => {
+						if (!held) {
+							console.error(
+								'community fork claim lost before the fork finished',
+							)
+						}
+					})
+					.catch((error: unknown) => {
+						console.error('community fork claim renewal failed', error)
+					})
+			}, input.renewMs ?? communityForkClaimRenewMs)
 			try {
 				return await work()
 			} finally {
+				clearInterval(renewal)
 				try {
 					await releaseCommunityForkClaim(input.db, {
 						ownerId: input.ownerId,
