@@ -31,6 +31,14 @@ import * as stampPresence from './credential-stamp-presence.ts'
 import { attestedPackageStamp, claimedPackageStamp } from './package-stamp.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 vi.mock('cloudflare:workers', async (importOriginal) => ({
 	...(await importOriginal<typeof import('cloudflare:workers')>()),
 	waitUntil: () => {},

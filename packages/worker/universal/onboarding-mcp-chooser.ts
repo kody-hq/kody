@@ -13,13 +13,8 @@
  */
 
 import { type OnboardingFeaturedListing } from '#universal/community-public-types.ts'
-import {
-	randomOnboardingInt,
-	shuffleOnboardingAgentIds,
-	type OnboardingRandomInt,
-} from '#universal/onboarding-mcp-clients.ts'
 
-export const onboardingFeaturedMcpServerIds = [
+const onboardingFeaturedMcpServerIds = [
 	'notion',
 	'linear',
 	'atlassian',
@@ -56,14 +51,6 @@ export type OnboardingFeaturedMcpServerOption = {
 	listingId: string
 	/** Official MCP is easier; a user-owned OAuth app or PAT is more powerful. */
 	hasOauthPatAlternative: boolean
-}
-
-/** Featured grid slots on the step-2 index — overflow lives under Show more. */
-export const onboardingFeaturedMcpSlotCount = 11
-
-export type OnboardingServiceChooserPick = {
-	featured: Array<OnboardingFeaturedMcpServerId>
-	overflow: Array<OnboardingFeaturedMcpServerId>
 }
 
 export type OnboardingFeaturedMcpServer = OnboardingFeaturedMcpServerOption & {
@@ -307,31 +294,6 @@ export function formatOnboardingFeaturedMcpAddHint(): string {
 		.join(', ')
 }
 
-export function pickOnboardingServiceChooser(
-	randomInt: OnboardingRandomInt = randomOnboardingInt,
-): OnboardingServiceChooserPick {
-	const shuffled = shuffleOnboardingAgentIds(
-		onboardingFeaturedMcpServerIds,
-		randomInt,
-	)
-	const slotCount = Math.min(onboardingFeaturedMcpSlotCount, shuffled.length)
-	return {
-		featured: shuffled.slice(0, slotCount),
-		overflow: shuffled.slice(slotCount),
-	}
-}
-
-export function canonicalOnboardingServiceChooser(): OnboardingServiceChooserPick {
-	const slotCount = Math.min(
-		onboardingFeaturedMcpSlotCount,
-		onboardingFeaturedMcpServerIds.length,
-	)
-	return {
-		featured: onboardingFeaturedMcpServerIds.slice(0, slotCount),
-		overflow: onboardingFeaturedMcpServerIds.slice(slotCount),
-	}
-}
-
 export function normalizeOnboardingMcpServerUrl(url: string): string {
 	try {
 		const parsed = new URL(url.trim())
@@ -536,16 +498,6 @@ export function listOnboardingCustomMcpServers(
 		})
 }
 
-export function customOnboardingMcpFingerprint(
-	servers: Array<OnboardingCustomMcpServer>,
-): string {
-	return servers
-		.map((server) =>
-			[server.id, server.state ?? '', server.connected ? '1' : '0'].join(':'),
-		)
-		.join('|')
-}
-
 export function hasConnectedOnboardingCustomMcpServer(
 	servers: Array<OnboardingCustomMcpServer>,
 ): boolean {
@@ -588,18 +540,4 @@ export function firstConnectedOnboardingWorkspaceLabel(input: {
 	if (featured) return featured.label
 	const custom = input.customMcpServers.find((server) => server.connected)
 	return custom?.name ?? null
-}
-
-/**
- * A later success (popup message or connected poll) must not lose to a leftover
- * `?auth=error` from the same-tab fallback.
- */
-export function resolveOnboardingMcpOAuthBanner(input: {
-	connected: boolean
-	returnedSuccess: boolean
-	returnedError: string | null
-	urlError: string | null
-}): string | null {
-	if (input.connected || input.returnedSuccess) return null
-	return input.returnedError ?? input.urlError
 }

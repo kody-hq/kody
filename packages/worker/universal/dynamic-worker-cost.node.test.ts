@@ -4,7 +4,6 @@ import {
 	estimateDynamicWorkerUsd,
 	fleetDynamicWorkerCostAlertUsd,
 	fleetFreeDynamicWorkerNearAllotmentUsd,
-	formatDynamicWorkerUsd,
 	toAdminDynamicWorkerCost,
 } from './dynamic-worker-cost.ts'
 
@@ -29,8 +28,6 @@ test('toAdminDynamicWorkerCost truncates to a non-negative integer day count', (
 		usdPerUniqueDay: 0.002,
 		includedPerAccountMonth: 50,
 	})
-	expect(formatDynamicWorkerUsd(0.002)).toBe('$0.002')
-	expect(formatDynamicWorkerUsd(1)).toBe('$1.00')
 	expect(fleetDynamicWorkerCostAlertUsd('free')).toBe(2)
 	expect(fleetDynamicWorkerCostAlertUsd('standard')).toBe(12)
 	expect(fleetDynamicWorkerCostAlertUsd('pro')).toBe(49)

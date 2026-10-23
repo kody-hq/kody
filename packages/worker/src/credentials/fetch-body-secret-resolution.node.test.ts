@@ -1,9 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	fetchBodySecretResolutionWarningLead,
-	findFetchBodiesMissingSecretResolution,
-	formatFetchBodySecretResolutionWarning,
-} from './fetch-body-secret-resolution.ts'
+import { findFetchBodiesMissingSecretResolution } from './fetch-body-secret-resolution.ts'
 
 function lines(source: string) {
 	return findFetchBodiesMissingSecretResolution(source).map((hit) => hit.line)
@@ -201,22 +197,4 @@ test('warns for shorthand bodies, templates, and new Request', () => {
 			client.fetch(url, { body: payload })
 		`),
 	).toEqual([2])
-})
-
-test('formats one non-blocking warning and caps the site list', () => {
-	const warning = formatFetchBodySecretResolutionWarning([
-		{ path: 'src/b.ts', line: 4 },
-		{ path: 'src/a.ts', line: 2 },
-	])
-	expect(warning?.startsWith(fetchBodySecretResolutionWarningLead)).toBe(true)
-	expect(warning).toContain('- src/a.ts:2')
-	expect(warning).toContain('- src/b.ts:4')
-	const many = formatFetchBodySecretResolutionWarning(
-		Array.from({ length: 10 }, (_, index) => ({
-			path: 'src/post.ts',
-			line: index + 1,
-		})),
-	)
-	expect(many).toContain('- 2 more')
-	expect(formatFetchBodySecretResolutionWarning([])).toBeNull()
 })

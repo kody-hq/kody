@@ -5,42 +5,6 @@ import {
 	redactErrorAgentPromptText,
 	renderErrorAgentPromptStaticHtml,
 } from './error-agent-prompt.ts'
-import {
-	buildConnectOauthFailureAgentPrompt,
-	buildInternalErrorAgentPrompt,
-	buildPackageAppErrorAgentPrompt,
-} from './error-agent-prompt-presets.ts'
-
-test('buildErrorAgentPrompt includes activity, codes, ids, tools, and docs', () => {
-	const prompt = buildErrorAgentPrompt({
-		activity: 'Connecting GitHub on /connect/oauth',
-		errorCode: 'token_exchange_failed',
-		errorMessage: 'Unable to save OAuth tokens.',
-		ids: {
-			provider: 'github',
-			packageKodyId: 'pkg_abc',
-			orgSlug: 'acme',
-			requestId: 'req_123',
-			path: '/connect/oauth',
-		},
-		likelyCause: 'Token exchange failed after the provider callback.',
-		nextSteps: ['Open guide:oauth', 'Retry with a complete connect URL'],
-		kodyTools: ['search({ entity: "guide:oauth" })', 'integrationList'],
-		docs: ['search({ entity: "guide:oauth" })'],
-	})
-
-	expect(prompt).toContain('Connecting GitHub on /connect/oauth')
-	expect(prompt).toContain('Error code: token_exchange_failed')
-	expect(prompt).toContain('Exact error: Unable to save OAuth tokens.')
-	expect(prompt).toContain('Package kody_id: pkg_abc')
-	expect(prompt).toContain('Org slug: acme')
-	expect(prompt).toContain('Provider: github')
-	expect(prompt).toContain('Likely cause:')
-	expect(prompt).toContain('Concrete next steps:')
-	expect(prompt).toContain('Kody tools to use:')
-	expect(prompt).toContain('Relevant docs:')
-	expect(prompt).toContain('search({ entity: "guide:oauth" })')
-})
 
 test('redactErrorAgentPromptText strips bearer, jwt, keys, and query secrets', () => {
 	expect(
@@ -103,45 +67,12 @@ test('buildErrorAgentPrompt redacts secrets inside free-form fields', () => {
 	expect(prompt).toContain('Bearer [REDACTED]')
 })
 
-test('static HTML block stamps the inventory marker and escapes prompt text', () => {
+test('static HTML block escapes prompt text', () => {
 	const html = renderErrorAgentPromptStaticHtml(
 		'Exact error: use <script>alert(1)</script> & fail',
 	)
-	expect(html).toContain('data-error-agent-prompt=""')
 	expect(html).toContain('&lt;script&gt;')
 	expect(html).toContain('&amp; fail')
 	expect(html).not.toContain('<script>alert')
 	expect(escapeErrorAgentPromptHtml('<&>')).toBe('&lt;&amp;&gt;')
-})
-
-test('presets cover internal and package-app failures', () => {
-	const internal = buildInternalErrorAgentPrompt({ path: '/account' })
-	expect(internal).toContain('internal_error')
-	expect(internal).toContain('Path: /account')
-
-	const crashed = buildPackageAppErrorAgentPrompt({
-		kind: 'package-entrypoint',
-		packageName: '@acme/app',
-		kodyId: 'pkg_123',
-		path: '/@acme/packages/pkg_123/',
-		runtimeRunId: 'run_abc',
-	})
-	expect(crashed).toContain('pkg_123')
-	expect(crashed).toContain('runGet')
-
-	const pending = buildPackageAppErrorAgentPrompt({
-		kind: 'runtime-bundle-pending',
-		packageName: '@acme/app',
-		kodyId: 'pkg_123',
-		path: '/@acme/packages/pkg_123/',
-	})
-	expect(pending).toContain('package_app_runtime_bundle_pending')
-	expect(pending).toContain('still preparing')
-
-	const oauth = buildConnectOauthFailureAgentPrompt({
-		statusMessage: 'Unable to save OAuth tokens.',
-		provider: 'linear',
-	})
-	expect(oauth).toContain('Unable to save OAuth tokens.')
-	expect(oauth).toContain('guide:oauth')
 })

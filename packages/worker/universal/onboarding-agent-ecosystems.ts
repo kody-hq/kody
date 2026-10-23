@@ -142,7 +142,7 @@ export const onboardingStep3EcosystemGroups = [
 
 export type OnboardingSecondAgentDisableReason = 'connected'
 
-export type OnboardingGreyedSecondAgent = {
+type OnboardingGreyedSecondAgent = {
 	id: McpClientKind
 	reason: OnboardingSecondAgentDisableReason
 }
@@ -156,7 +156,7 @@ export type OnboardingConnectedAgentKind = {
  * (`kind: null`) stay off this set — Not listed remains a path for a new
  * unlisted host.
  */
-export function onboardingConnectedChooserKinds(
+function onboardingConnectedChooserKinds(
 	connectedAgents: ReadonlyArray<OnboardingConnectedAgentKind>,
 ): Array<McpClientKind> {
 	const kinds = new Set<McpClientKind>()
@@ -196,7 +196,7 @@ export function hasSecondAgentEcosystem(ecosystemCount: number) {
  * we already classified, plus Grok Bot when Cursor Cloud is connected.
  * Marked hosts stay selectable so connect steps can be re-viewed.
  */
-export function listOnboardingGreyedSecondAgents(
+function listOnboardingGreyedSecondAgents(
 	connectedAgents: ReadonlyArray<OnboardingConnectedAgentKind> = [],
 ): Array<OnboardingGreyedSecondAgent> {
 	const known = onboardingConnectedChooserKinds(connectedAgents)

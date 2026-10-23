@@ -66,31 +66,6 @@ test('scanCredentialStamp collects sorted literal keys from credential() and pla
 	expect(result.keys).toEqual(['API_KEY', 'GITHUB'])
 })
 
-test('non-literal and unstampable gate failures teach fixed slots plus the credentials call map', () => {
-	const scanned = scanCredentialStamp({
-		'package.json': manifest(),
-		'src/index.ts':
-			'import { credential } from "kody:runtime"\nexport const run = (name: string) => credential(name)',
-	})
-	const failure = scanned.failures.find((f) => f.code === 'non_literal')
-	expect(failure?.message).toMatch(/kody\.credentials/)
-	expect(failure?.message).toMatch(/credentials call map/)
-	expect(failure?.message).toMatch(/--credential|SLOT/)
-
-	const scoped = scanCredentialStamp({
-		'package.json': manifest(),
-		'src/index.ts':
-			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' }",
-	})
-	expect(
-		scoped.failures.some(
-			(f) =>
-				f.code === 'unstampable_pattern' &&
-				/credentials call map/.test(f.message),
-		),
-	).toBe(true)
-})
-
 test('scanCredentialStamp fails non-literal credential(), createAuthenticatedFetch, and secretJwtSign names', () => {
 	const credentialVar = scanCredentialStamp({
 		'package.json': manifest(),

@@ -62,8 +62,7 @@ those pages. Non-admins get the same not-found response as a missing slug.
 | Admin              | [admin-events.md](./admin-events.md) — website and search only for signed-in admins; excluded from the sitemap                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Wizard/checklist alignment for the Get started playbooks lives in
-`packages/worker/universal/onboarding-process.ts` and is checked by
-`onboarding-process.node.test.ts`.
+`packages/worker/universal/onboarding-process.ts`.
 
 ## Provider docs
 

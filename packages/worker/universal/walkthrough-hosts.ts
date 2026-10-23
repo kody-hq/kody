@@ -52,7 +52,7 @@ export type WalkthroughHostPick = {
 	allRow: Array<WalkthroughHost>
 }
 
-export const walkthroughHostCatalog = [
+const walkthroughHostCatalog = [
 	{
 		id: 'cursor',
 		label: 'Cursor',
@@ -235,11 +235,11 @@ function walkthroughHostIsChat(host: WalkthroughHost) {
 	return host.kind === 'chat' || host.kind === 'both'
 }
 
-export function listCodingWalkthroughHosts(): Array<WalkthroughHost> {
+function listCodingWalkthroughHosts(): Array<WalkthroughHost> {
 	return walkthroughHostCatalog.filter(walkthroughHostIsCoding)
 }
 
-export function listChatWalkthroughHosts(): Array<WalkthroughHost> {
+function listChatWalkthroughHosts(): Array<WalkthroughHost> {
 	return walkthroughHostCatalog.filter(walkthroughHostIsChat)
 }
 
@@ -247,7 +247,7 @@ export function listAllWalkthroughHosts(): Array<WalkthroughHost> {
 	return [...walkthroughHostCatalog]
 }
 
-export function shuffleWalkthroughHosts(
+function shuffleWalkthroughHosts(
 	hosts: ReadonlyArray<WalkthroughHost>,
 	randomInt: WalkthroughRandomInt,
 ): Array<WalkthroughHost> {
@@ -265,7 +265,7 @@ export function shuffleWalkthroughHosts(
 	return next
 }
 
-export function listValidWalkthroughHostPicks(): Array<
+function listValidWalkthroughHostPicks(): Array<
 	Omit<WalkthroughHostPick, 'codingRow' | 'chatRow' | 'allRow'>
 > {
 	const codingHosts = listCodingWalkthroughHosts()

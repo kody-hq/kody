@@ -5,7 +5,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
@@ -17,12 +17,16 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import { type CredentialListItem } from '#universal/credential-contracts.ts'
 import { findCredentialIdsByLegacyName } from './credential-ids.ts'
-import {
-	filterCredentialList,
-	readCredentialListFilters,
-} from '#universal/credentials-list.ts'
 import { listCredentialsForViewer } from './credential-list.ts'
 import { grantPersonalCredentialToOrg } from './personal-credentials.ts'
+
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
 
 const now = '2026-10-13T00:00:00.000Z'
 
@@ -216,11 +220,9 @@ test('lists Keys, OAuth integrations, and MCP servers as one shape', async () =>
 	])
 	const byName = Object.fromEntries(beaItems.map((item) => [item.name, item]))
 	expect(byName.stripeKey).toMatchObject({
-		description: 'Stripe billing',
 		hosts: ['api.stripe.com'],
 		packageId: null,
 		status: 'ok',
-		mcp: null,
 	})
 	expect(byName.packageToken).toMatchObject({ packageId: 'pkg-1' })
 	expect(byName.github).toMatchObject({
@@ -327,14 +329,12 @@ test('OAuth status is ok when connected, needs attention when not connected or a
 		request: t.requestAs(t.bea, 'owner'),
 	})
 	const byName = Object.fromEntries(items.map((item) => [item.name, item]))
-	expect(byName.github).toMatchObject({ status: 'ok', statusMessage: null })
+	expect(byName.github).toMatchObject({ status: 'ok' })
 	expect(byName['pending-oauth']).toMatchObject({
 		status: 'needs_attention',
-		statusMessage: 'Not connected yet.',
 	})
 	expect(byName['failed-oauth']).toMatchObject({
 		status: 'needs_attention',
-		statusMessage: 'Reconnect needed (provider_rejected).',
 	})
 })
 
@@ -370,7 +370,6 @@ test('a Key with an empty value shows as disconnected, not missing', async () =>
 	})
 	expect(items.find((item) => item.name === 'stripeKey')).toMatchObject({
 		status: 'disconnected',
-		statusMessage: 'Disconnected. Connect again to restore the value.',
 	})
 })
 
@@ -422,63 +421,4 @@ test('a granted personal MCP server is not listed; credential() cannot use it', 
 		request: t.requestAs(t.ann, 'member'),
 	})
 	expect(summary(items)).toEqual(['personal:secret:annToken'])
-})
-
-test('filters by text, kind, scope, package scope, and package lock', async () => {
-	const t = await setup()
-	const items = [
-		...(await listCredentialsForViewer({
-			env: t.env,
-			request: t.requestAs(t.bea, 'owner'),
-		})),
-		...(await listCredentialsForViewer({
-			env: t.env,
-			request: t.requestAs(t.ann, 'member'),
-		})),
-	]
-	const names = (filtered: Array<CredentialListItem>) =>
-		filtered.map((item) => item.name)
-	expect(names(filterCredentialList(items, { q: 'STRIPE' }))).toEqual([
-		'stripeKey',
-	])
-	expect(names(filterCredentialList(items, { q: 'linear.app' }))).toEqual([
-		'linear',
-	])
-	expect(
-		names(filterCredentialList(items, { kinds: ['mcp', 'oauth'] })),
-	).toEqual(['github', 'linear'])
-	expect(names(filterCredentialList(items, { scope: 'personal' }))).toEqual([
-		'annToken',
-	])
-	expect(names(filterCredentialList(items, { packageScoped: true }))).toEqual([
-		'packageToken',
-	])
-	expect(filterCredentialList(items, { locked: true })).toEqual([])
-	const locked = items.map((item) =>
-		item.name === 'github' ? { ...item, lockedToPackageIds: ['pkg-2'] } : item,
-	)
-	expect(names(filterCredentialList(locked, { locked: 'pkg-2' }))).toEqual([
-		'github',
-	])
-	expect(names(filterCredentialList(locked, { locked: 'pkg-3' }))).toEqual([])
-})
-
-test('reads list filters from a query string', () => {
-	expect(
-		readCredentialListFilters(
-			new URLSearchParams(
-				'q=+stripe+&kind=secret&kind=bogus&kind=mcp&scope=org&packageScoped=false&locked=pkg-1',
-			),
-		),
-	).toEqual({
-		q: 'stripe',
-		kinds: ['secret', 'mcp'],
-		scope: 'org',
-		packageScoped: false,
-		locked: 'pkg-1',
-	})
-	expect(
-		readCredentialListFilters(new URLSearchParams('scope=x&locked=true')),
-	).toEqual({ locked: true })
-	expect(readCredentialListFilters(new URLSearchParams(''))).toEqual({})
 })

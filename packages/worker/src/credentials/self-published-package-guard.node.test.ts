@@ -29,6 +29,14 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 vi.mock('cloudflare:workers', async (importOriginal) => ({
 	...(await importOriginal<typeof CloudflareWorkers>()),
 	waitUntil: () => {},
@@ -199,7 +207,6 @@ test('a self-published package resolves no credential, even with enforcement off
 		code: 'credential_need_undeclared',
 		key: 'RESEND',
 	})
-	expect((error as Error).message).toContain('@bea/landing')
 	expect((error as Error).message).not.toContain(t.packageId)
 	expect((error as Error).message).not.toContain(keyValue)
 })

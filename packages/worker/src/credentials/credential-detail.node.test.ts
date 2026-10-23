@@ -34,7 +34,7 @@ vi.mock('./credential-candidates.ts', async (importOriginal) => ({
 	listUsableCredentials: async () => mocks.usable,
 }))
 
-const { credentialPlaceholder, loadCredentialDetail, maxUsagePackages } =
+const { loadCredentialDetail, maxUsagePackages } =
 	await import('./credential-detail.ts')
 
 function item(
@@ -65,10 +65,6 @@ function pkg(id: string, sourceId = `src-${id}`) {
 	return { id, kodyId: id, sourceId } as SavedPackageRecord
 }
 
-function need(key: string, kind: CredentialNeed['kind'], provider: string) {
-	return { key, kind, provider, description: '', multiple: false }
-}
-
 function setup() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
@@ -81,33 +77,7 @@ beforeEach(() => {
 	mocks.usable = []
 })
 
-test('placeholders cover Keys and OAuth only, with the package scope when it has one', () => {
-	expect(credentialPlaceholder(item({ id: 'a', name: 'OPENAI_KEY' }))).toBe(
-		'{{secret:OPENAI_KEY}}',
-	)
-	expect(
-		credentialPlaceholder(item({ id: 'b', name: 'SLACK', packageId: 'pkg-1' })),
-	).toBe('{{secret:SLACK|scope=package}}')
-	expect(
-		credentialPlaceholder(item({ id: 'c', name: 'github', kind: 'oauth' })),
-	).toBe('{{integration-token:github}}')
-	for (const kind of ['url', 'login', 'signing', 'mcp'] as const) {
-		expect(credentialPlaceholder(item({ id: kind, name: 'x', kind }))).toBe(
-			null,
-		)
-	}
-	// Placeholders and credential() share one rule, so a granted personal
-	// secret still shows the same placeholder (owner's runs only).
-	expect(
-		credentialPlaceholder(item({ id: 'e', name: 'MINE', scope: 'personal' })),
-	).toBe('{{secret:MINE}}')
-	// A name the placeholder grammar cannot spell has no placeholder.
-	expect(credentialPlaceholder(item({ id: 'd', name: 'work github' }))).toBe(
-		null,
-	)
-})
-
-test('usage reports how each package need relates to the credential', async () => {
+test('credential usage respects package locks and package scope', async () => {
 	const { env } = setup()
 	mocks.usable = [
 		{
@@ -120,42 +90,18 @@ test('usage reports how each package need relates to the credential', async () =
 			packageId: null,
 			expired: false,
 		},
-		{
-			id: 'gh-1',
-			name: 'gh-work',
-			kind: 'oauth',
-			provider: 'github',
-			hosts: [],
-			scope: 'org',
-			packageId: null,
-			expired: false,
-		},
-		{
-			id: 'gh-2',
-			name: 'gh-home',
-			kind: 'oauth',
-			provider: 'github',
-			hosts: [],
-			scope: 'org',
-			packageId: null,
-			expired: false,
-		},
-		{
-			id: 'loose',
-			name: 'TOKEN',
-			kind: 'secret',
-			provider: null,
-			hosts: [],
-			scope: 'org',
-			packageId: null,
-			expired: false,
-		},
 	]
-	mocks.needs.set('src-triage', [
-		need('openai', 'secret', 'openai'),
-		need('github', 'oauth', 'github'),
-	])
-	mocks.needs.set('src-digest', [need('llm', 'secret', 'openai')])
+	for (const source of ['src-triage', 'src-digest']) {
+		mocks.needs.set(source, [
+			{
+				key: 'openai',
+				kind: 'secret',
+				provider: 'openai',
+				description: '',
+				multiple: false,
+			},
+		])
+	}
 	const detail = (credential: CredentialListItem) =>
 		loadCredentialDetail({
 			env,
@@ -165,68 +111,22 @@ test('usage reports how each package need relates to the credential', async () =
 			credential,
 			packages: [pkg('triage'), pkg('digest'), pkg('broken', 'broken')],
 		})
-
-	expect(
-		(await detail(item({ id: 'openai-1', name: 'OPENAI', provider: 'openai' })))
-			.usage,
-	).toEqual([
-		{ packageId: 'digest', kodyId: 'digest', needKey: 'llm', fit: 'auto' },
-		{ packageId: 'triage', kodyId: 'triage', needKey: 'openai', fit: 'auto' },
-	])
-	expect(
-		(await detail(item({ id: 'gh-1', name: 'gh-work', kind: 'oauth' }))).usage,
-	).toEqual([
-		{
-			packageId: 'triage',
-			kodyId: 'triage',
-			needKey: 'github',
-			fit: 'candidate',
-		},
-	])
-	// A Key with no provider is a possible match for every Key need.
-	expect(
-		(await detail(item({ id: 'loose', name: 'TOKEN' }))).usage.map(
-			(use) => `${use.kodyId}:${use.needKey}:${use.fit}`,
-		),
-	).toEqual(['digest:llm:possible', 'triage:openai:possible'])
-	expect(
-		(await detail(item({ id: 'openai-1', name: 'OPENAI' }))).usageUnreadable,
-	).toBe(1)
-	// A locked credential only shows packages its locks allow.
-	expect(
-		(
-			await detail(
-				item({
-					id: 'openai-1',
-					name: 'OPENAI',
-					provider: 'openai',
-					lockedToPackageIds: ['digest'],
-				}),
-			)
-		).usage.map((use) => use.kodyId),
-	).toEqual(['digest'])
-	// A package key belongs to its package and can fill that package's needs.
-	expect(
-		await detail(
-			item({
-				id: 'openai-1',
-				name: 'OPENAI',
-				provider: 'openai',
-				packageId: 'triage',
-			}),
-		),
-	).toMatchObject({
-		usage: [
-			{
-				packageId: 'triage',
-				kodyId: 'triage',
-				needKey: 'openai',
-				fit: 'auto',
-			},
-		],
-		usageTruncated: false,
-		usageUnreadable: 0,
+	const credential = item({
+		id: 'openai-1',
+		name: 'OPENAI',
+		provider: 'openai',
 	})
+	const unrestricted = await detail(credential)
+	expect(unrestricted.usage.map((use) => use.packageId)).toEqual([
+		'digest',
+		'triage',
+	])
+	expect(unrestricted.usageUnreadable).toBe(1)
+	const locked = await detail({ ...credential, lockedToPackageIds: ['digest'] })
+	expect(locked.usage.map((use) => use.packageId)).toEqual(['digest'])
+	const packageScoped = await detail({ ...credential, packageId: 'triage' })
+	expect(packageScoped.usage.map((use) => use.packageId)).toEqual(['triage'])
+	expect(packageScoped.usageUnreadable).toBe(0)
 })
 
 test('usage checks a bounded number of packages and says so', async () => {

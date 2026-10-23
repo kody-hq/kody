@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	activityEmptyLabel,
 	buildActivitySearch,
 	readAccountActivityFilters,
 	statusFilterToRunStatus,
@@ -72,21 +71,4 @@ test('activity URL defaults stay on open errors and recent runs flip to all hist
 		'?view=recent',
 		'?view=recent&status=success&surface=job&error_triage=open',
 	])
-
-	expect(activityEmptyLabel({ ...errorsDefault, summaryTotal: 0 })).toMatch(
-		/No failures in the last 7 days/,
-	)
-	expect(activityEmptyLabel({ ...errorsDefault, summaryTotal: 4 })).toMatch(
-		/Switch to Recent runs/,
-	)
-	expect(activityEmptyLabel({ ...recentDefault, summaryTotal: 0 })).toBe(
-		'Nothing ran in the last 7 days.',
-	)
-	expect(
-		activityEmptyLabel({
-			...recentDefault,
-			status: 'success',
-			summaryTotal: 3,
-		}),
-	).toBe('No runs match the current filters.')
 })

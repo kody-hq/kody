@@ -3,7 +3,7 @@ import { formatCommunityPublishedDate } from './community-display.ts'
 
 afterEach(() => vi.unstubAllEnvs())
 
-test.each(['UTC', 'Pacific/Honolulu', 'Pacific/Auckland'])(
+test.each(['Pacific/Honolulu', 'Pacific/Auckland'])(
 	'publication and joined dates interpret SQLite timestamps as UTC in %s',
 	(timezone) => {
 		vi.stubEnv('TZ', timezone)

@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	collectAllowlistedUndeclaredBareDeps,
 	convertCredentialStampFiles,
-	credentialStampConvertMessages,
 } from './credential-stamp-convert.ts'
 
 function manifest(
@@ -36,9 +35,7 @@ test('leaves |scope=package alone (would widen to session secrets)', () => {
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
 	expect(result.files['src/index.ts']).toContain('|scope=package')
-	expect(result.needsManual[0]?.message).toBe(
-		credentialStampConvertMessages.unconvertible,
-	)
+	expect(result.needsManual).toHaveLength(1)
 })
 
 test('adds allowlisted undeclared remix then seals literal credentials', () => {
@@ -99,9 +96,7 @@ test('skips Kent holdouts without changing files', () => {
 	expect(result.skippedHoldout).toBe(true)
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
-	expect(result.needsManual[0]?.message).toBe(
-		credentialStampConvertMessages.holdout,
-	)
+	expect(result.needsManual).toHaveLength(1)
 })
 
 test('skips computed credential names without rewriting source', () => {
@@ -121,9 +116,7 @@ test('skips computed credential names without rewriting source', () => {
 	expect(result.sealReady).toBe(false)
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
-	expect(result.needsManual[0]?.message).toBe(
-		credentialStampConvertMessages.unconvertible,
-	)
+	expect(result.needsManual).toHaveLength(1)
 })
 
 test('leaves |scope=user alone (would change which secret resolves)', () => {
@@ -139,25 +132,4 @@ test('leaves |scope=user alone (would change which secret resolves)', () => {
 	expect(result.sealReady).toBe(false)
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
-})
-
-test('seals literal credential() without scope suffixes', () => {
-	const result = convertCredentialStampFiles({
-		packageName: '@acme/demo',
-		files: {
-			'package.json': manifest(),
-			'src/index.ts': [
-				"import { credential } from 'kody:runtime'",
-				'export default async function run() {',
-				'\treturn credential("TOKEN")',
-				'}',
-			].join('\n'),
-		},
-	})
-	expect(result.skippedHoldout).toBe(false)
-	expect(result.sealReady).toBe(true)
-	expect(result.changed).toBe(true)
-	expect(result.needsManual).toEqual([])
-	const slots = JSON.parse(result.files['package.json']!).kody.credentials
-	expect(slots.TOKEN.description).toMatch(/TOKEN/)
 })

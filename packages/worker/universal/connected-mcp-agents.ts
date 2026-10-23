@@ -186,9 +186,7 @@ function connectionLabelFromClientUrl(clientId: string) {
 	}
 }
 
-export function connectedAgentIconName(
-	kind: McpClientKind | null,
-): string | null {
+function connectedAgentIconName(kind: McpClientKind | null): string | null {
 	if (!kind) return null
 	return onboardingAgentIconName(kind)
 }

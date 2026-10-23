@@ -4,7 +4,7 @@ import {
 	personalOrgId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -22,6 +22,14 @@ import {
 	listPersonalCredentialCandidates,
 	revokePersonalCredentialOrgGrant,
 } from './personal-credentials.ts'
+
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
 
 const now = '2026-10-11T00:00:00.000Z'
 

@@ -17,6 +17,14 @@ import {
 } from './credential-approval.ts'
 import { describePackageCredentialNeeds } from './package-credential-needs.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
 vi.mock('#worker/package-registry/source.ts', () => ({

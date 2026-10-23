@@ -18,6 +18,14 @@ import {
 import { buildWriteCredentialMappingStatement } from './credential-mappings.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
 vi.mock('#worker/package-registry/source.ts', () => ({

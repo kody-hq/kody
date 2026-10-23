@@ -6,7 +6,6 @@ import {
 	latin1StringToBytes,
 	looksLikeSvg,
 	maxPackageFilePreviewBytes,
-	packageFileKindLabel,
 	resolvePackageFileRawType,
 	safeContentDispositionFilename,
 	shouldStoreArtifactBlobAsLatin1,
@@ -134,9 +133,6 @@ test('latin1 snapshot helpers recover binary bytes and skip SVG', () => {
 	const utf8Corrupted = new TextDecoder().decode(pngBytes)
 	expect(utf8Corrupted.charCodeAt(0)).toBe(0xfffd)
 	expect(latin1StringToBytes(utf8Corrupted)[0]).toBe(0xfd)
-	expect(packageFileKindLabel('docs/logo.PNG', 'image')).toBe('PNG')
-	expect(packageFileKindLabel('clip.webm', 'video')).toBe('WEBM')
-	expect(packageFileKindLabel('app.wasm', 'binary')).toBe('Binary')
 	expect(safeContentDispositionFilename('docs/my"file\n.png')).toBe(
 		'my_file_.png',
 	)

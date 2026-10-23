@@ -28,6 +28,14 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { attestedPackageStamp } from './package-stamp.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 const argumentSentinel = 'ARGUMENT_SENTINEL_9f3a'
 const resultSentinel = 'RESULT_SENTINEL_9f3a'
 const messageSentinel = 'user@example.com'
