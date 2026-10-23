@@ -188,10 +188,26 @@ test('individual browser Sentry filters drop AbortError, Firefox Xray, and injec
 test('filterBrowserSentryEvent drops third-party and platform noise and keeps real errors', () => {
 	const dropped: Array<Case> = [
 		['Error', 'AbortError: The user aborted a request.'],
-		// Fathom script DOM crash.
+		// Fathom script DOM crash (removeChild: KODY-CLOUDFLARE-3Q / 4C).
 		[
 			'TypeError',
 			"Cannot read properties of null (reading 'removeChild')",
+			[{ abs_path: 'https://cdn.usefathom.com/script.js' }],
+		],
+		// Fathom appendChild-on-null twin (KODY-AJ / issue 7807558933).
+		[
+			'TypeError',
+			"Cannot read properties of null (reading 'appendChild')",
+			[{ abs_path: 'https://cdn.usefathom.com/script.js' }],
+		],
+		[
+			'TypeError',
+			"Cannot read properties of null (reading 'appendChild')",
+			[{ filename: '/script.js' }],
+		],
+		[
+			'TypeError',
+			"null is not an object (evaluating 'n.appendChild(e)')",
 			[{ abs_path: 'https://cdn.usefathom.com/script.js' }],
 		],
 		// Chrome extension noise families.
@@ -468,6 +484,17 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			'TypeError',
 			"Cannot read properties of null (reading 'removeChild')",
 			[appChunk],
+		],
+		// Same appendChild wording with only Kody frames must stay visible.
+		[
+			'TypeError',
+			"Cannot read properties of null (reading 'appendChild')",
+			[appChunk],
+		],
+		[
+			'TypeError',
+			"null is not an object (evaluating 'n.appendChild(e)')",
+			[kodyEntry],
 		],
 		['UnhandledRejection', 'something else entirely'],
 		['Error', 'Could not establish connection to the MCP server.'],

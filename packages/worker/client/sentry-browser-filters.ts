@@ -248,24 +248,27 @@ export function filterBrowserInjectedGlobalNoiseSentryEvent<
 
 /**
  * Fathom Analytics (`cdn.usefathom.com/script.js`) tracks pageviews with a
- * temporary `<img>` beacon and removes it from `load`/`error` handlers via
- * `img.parentNode.removeChild(img)`. When the beacon was already detached
- * (SPA navigation / soft reload), `parentNode` is null and the browser throws.
- * Chromium: issue 7653117289 / KODY-CLOUDFLARE-3Q. Mobile Safari/WebKit:
- * issue 7661146106 / KODY-CLOUDFLARE-4C.
+ * temporary `<img>` beacon. During rapid SPA navigation the DOM node it
+ * appends to (or removes from) can be momentarily null, and the browser
+ * throws from Fathom's `send` / `trackPageview`:
+ * - `removeChild` on a detached beacon parent: Chromium issue 7653117289 /
+ *   KODY-CLOUDFLARE-3Q; Mobile Safari/WebKit issue 7661146106 /
+ *   KODY-CLOUDFLARE-4C.
+ * - `appendChild` when the attach target is null: Chromium issue 7807558933 /
+ *   KODY-AJ (same beacon path, twin of removeChild).
  *
- * Match is intentionally narrow: removeChild-on-null TypeError text AND a
- * stack frame attributable to the Fathom script (CDN hostname or the
- * cross-origin-sanitized `/script.js` path). Never blanket-drop removeChild
- * errors from app code.
+ * Match is intentionally narrow: appendChild- or removeChild-on-null
+ * TypeError text AND a stack frame attributable to the Fathom script (CDN
+ * hostname or the cross-origin-sanitized `/script.js` path). Never
+ * blanket-drop appendChild / removeChild errors from app code.
  */
-const fathomRemoveChildNullMessage =
-	/^(?:(?:TypeError:\s*)?Cannot read propert(?:y|ies) of null \(reading ['"]removeChild['"]\)|(?:TypeError:\s*)?null is not an object \(evaluating ['"][^'"]*\.removeChild[^'"]*['"]\))$/
+const fathomDomNullChildMessage =
+	/^(?:(?:TypeError:\s*)?Cannot read propert(?:y|ies) of null \(reading ['"](?:appendChild|removeChild)['"]\)|(?:TypeError:\s*)?null is not an object \(evaluating ['"][^'"]*\.(?:appendChild|removeChild)[^'"]*['"]\))$/
 
 const fathomAnalyticsHostname = 'cdn.usefathom.com'
 
-function isFathomRemoveChildNullMessage(message: string) {
-	return fathomRemoveChildNullMessage.test(message.trim())
+function isFathomDomNullChildMessage(message: string) {
+	return fathomDomNullChildMessage.test(message.trim())
 }
 
 function isFathomAnalyticsStackFrameUrl(url: string) {
@@ -284,19 +287,19 @@ function isFathomAnalyticsStackFrameUrl(url: string) {
 	return normalized === '/script.js'
 }
 
-function isFathomRemoveChildNullSentryEvent(event: SentryErrorEventLike) {
-	const hasRemoveChildNull = sentryEventMessages(event).some(
+function isFathomDomNullChildSentryEvent(event: SentryErrorEventLike) {
+	const hasDomNullChild = sentryEventMessages(event).some(
 		(message) =>
-			typeof message === 'string' && isFathomRemoveChildNullMessage(message),
+			typeof message === 'string' && isFathomDomNullChildMessage(message),
 	)
-	if (!hasRemoveChildNull) return false
+	if (!hasDomNullChild) return false
 	return sentryEventStackFrameUrls(event).some(isFathomAnalyticsStackFrameUrl)
 }
 
-function filterFathomRemoveChildNullSentryEvent<T extends SentryErrorEventLike>(
+function filterFathomDomNullChildSentryEvent<T extends SentryErrorEventLike>(
 	event: T,
 ): T | null {
-	if (isFathomRemoveChildNullSentryEvent(event)) return null
+	if (isFathomDomNullChildSentryEvent(event)) return null
 	return event
 }
 
@@ -1881,7 +1884,7 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	) {
 		return null
 	}
-	if (filterFathomRemoveChildNullSentryEvent(event) === null) {
+	if (filterFathomDomNullChildSentryEvent(event) === null) {
 		return null
 	}
 	if (
