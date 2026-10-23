@@ -116,7 +116,6 @@ import {
 	type parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { typecheckPackageEntrypointsFromSourceFiles } from '#worker/repo/checks.ts'
 import {
 	recordUsage,
 	usageErrorNameFromUnknown,
@@ -300,95 +299,6 @@ function isPublishedJobBundleCurrent(input: {
 	return isPublishedBundleArtifactCurrentForCommit(input)
 }
 
-async function ensurePublishedBundleArtifactForJob(input: {
-	env: Env
-	job: JobRecord
-	callerContext: PersistedJobCallerContext
-}) {
-	const resolved = await resolvePublishedJobSource({
-		env: input.env,
-		userId: input.job.userId,
-		job: input.job,
-	})
-	const artifact = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.job.userId,
-		sourceId: input.job.sourceId,
-		kind: 'job',
-		artifactName: resolved.artifactName,
-		entryPoint: resolved.entryPoint,
-	})
-	if (
-		artifact?.artifact &&
-		isPublishedJobBundleCurrent({
-			artifact: artifact.artifact,
-			rowPublishedCommit: artifact.row?.publishedCommit,
-			currentPublishedCommit: resolved.source.published_commit,
-		}) &&
-		// Pre-fix bundles that inline other packages rebuild once so each
-		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-		!publishedArtifactNeedsPackageBindingRebuild({
-			artifact: artifact.artifact,
-			sourceFiles: resolved.files,
-		})
-	) {
-		logJobSchedulerEvent({
-			event: 'job_bundle_cache_hit',
-			userId: input.job.userId,
-			jobId: input.job.id,
-			sourceId: input.job.sourceId,
-			artifactEntryPoint: artifact.row?.entryPoint ?? 'unknown',
-			artifactCacheHit: true,
-			dependencyCount: artifact.artifact.dependencies.length,
-		})
-		return artifact.artifact
-	}
-	logJobSchedulerEvent({
-		event: 'job_bundle_cache_miss',
-		userId: input.job.userId,
-		jobId: input.job.id,
-		sourceId: input.job.sourceId,
-		artifactCacheHit: false,
-		reason: 'bundle_not_found',
-	})
-	const typecheckResult = await typecheckPackageEntrypointsFromSourceFiles({
-		sourceFiles: resolved.files,
-		entryPoints: [
-			{
-				path: resolved.entryPoint,
-			},
-		],
-		emittedEventTopics: resolved.emittedEventTopics,
-	})
-	if (!typecheckResult.ok) {
-		throw new Error(typecheckResult.message)
-	}
-	await persistPublishedJobBundleArtifact({
-		env: input.env,
-		job: input.job,
-		callerContext: input.callerContext,
-		sourceId: input.job.sourceId,
-		sourceFiles: resolved.files,
-		entryPoint: resolved.entryPoint,
-		artifactName: resolved.artifactName,
-		packageContext: resolved.packageContext,
-	})
-	const loadedArtifact = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.job.userId,
-		sourceId: input.job.sourceId,
-		kind: 'job',
-		artifactName: resolved.artifactName,
-		entryPoint: resolved.entryPoint,
-	})
-	if (!loadedArtifact?.artifact) {
-		throw new Error(
-			`Published bundle artifact for job "${input.job.id}" could not be loaded after rebuild.`,
-		)
-	}
-	return loadedArtifact.artifact
-}
-
 async function rebuildAndExecuteJobArtifact(input: {
 	env: Env
 	job: JobRecord
@@ -444,9 +354,7 @@ async function executePublishedJobArtifact(input: {
 	job: JobRecord
 	callerContext: PersistedJobCallerContext
 	source: RequestSource
-	artifact:
-		| PublishedBundleArtifact
-		| Awaited<ReturnType<typeof ensurePublishedBundleArtifactForJob>>
+	artifact: PublishedBundleArtifact
 	bypassLogs: Array<string>
 	waitUntil?: (promise: Promise<unknown>) => void
 	runRecordHandle?: RunRecordHandle | null
@@ -1280,6 +1188,14 @@ async function runRepoBackedJob(input: {
 			artifact: loadedArtifact.artifact,
 			rowPublishedCommit: loadedArtifact.row?.publishedCommit,
 			currentPublishedCommit: resolved.source.published_commit,
+		}) &&
+		// Pre-fix bundles that inline other packages rebuild once so each
+		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5). Without
+		// this, a scheduled job keeps running the stored bundle and an inlined
+		// dependency's fetch acts as the job's package.
+		!publishedArtifactNeedsPackageBindingRebuild({
+			artifact: loadedArtifact.artifact,
+			sourceFiles: resolved.files,
 		})
 	) {
 		return await executePublishedJobArtifact({
