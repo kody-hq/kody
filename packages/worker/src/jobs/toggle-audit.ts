@@ -5,6 +5,12 @@ import {
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 } from '#worker/orgs/org-audit.ts'
+import {
+	commitOrgAuditOutbox,
+	orgAuditOutboxInsertStatement,
+	planOrgAuditOutbox,
+	type OrgAuditOutboxPlan,
+} from '#worker/orgs/org-audit-outbox.ts'
 
 /**
  * One org audit row per job or enablement on/off change, so an owner can see
@@ -247,6 +253,67 @@ export async function recordEnablementToggle(input: {
 		name: input.enablement.triggerName,
 		triggerKind: input.enablement.triggerKind,
 	})
+}
+
+/** An enablement toggle row planned for the same APP_DB batch as the change. */
+export type PlannedEnablementToggle = {
+	writer: OrgAuditWriter
+	plan: OrgAuditOutboxPlan
+}
+
+/**
+ * Plan the audit row for an enablement a request turns on or off, so the
+ * outbox insert commits in the same APP_DB batch as the enablement row. Null
+ * when no audit database is configured.
+ */
+export function planEnablementToggle(input: {
+	env: Env
+	request: RequestContext | null
+	enablement: ToggleAuditEnablement
+	from: ToggleAuditState
+	to: ToggleAuditState
+	reason?: string | null
+}): PlannedEnablementToggle | null {
+	const actor = toggleActorFromRequest(input.request)
+	const writer = toggleAuditWriter(input.env, actor)
+	if (!writer) return null
+	const plan = planOrgAuditOutbox(
+		writer,
+		enablementToggleEvent({
+			enablement: input.enablement,
+			from: input.from,
+			to: input.to,
+			source: toggleSourceFromRequest(input.request),
+			actorKind: actor.kind,
+			reason: input.reason,
+		}),
+	)
+	return { writer, plan }
+}
+
+/**
+ * The outbox insert for a planned toggle. With `onlyIfChanged`, it writes only
+ * when the statement just before it in the batch changed a row.
+ */
+export function plannedEnablementToggleStatements(
+	planned: PlannedEnablementToggle | null,
+	options: { onlyIfChanged?: boolean } = {},
+): Array<D1PreparedStatement> {
+	if (!planned) return []
+	return [
+		orgAuditOutboxInsertStatement(planned.writer.appDb, planned.plan, options),
+	]
+}
+
+/**
+ * Deliver a committed toggle row to AUDIT_DB. Never throws; a failed delivery
+ * stays in the outbox for the scheduled drain.
+ */
+export async function deliverPlannedEnablementToggle(
+	planned: PlannedEnablementToggle | null,
+) {
+	if (!planned) return
+	await commitOrgAuditOutbox(planned.writer, planned.plan)
 }
 
 export type ToggleAuditEntry = {

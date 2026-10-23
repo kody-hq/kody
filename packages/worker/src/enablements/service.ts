@@ -19,7 +19,9 @@ import {
 } from '#worker/jobs/arm-job-for-enablement.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import {
-	recordEnablementToggle,
+	deliverPlannedEnablementToggle,
+	planEnablementToggle,
+	plannedEnablementToggleStatements,
 	toggleActorFromRequest,
 } from '#worker/jobs/toggle-audit.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
@@ -47,7 +49,7 @@ import {
 	buildEnablementInsertedGuardStatement,
 	buildInsertEnablementStatement,
 	buildInsertWebhookEnablementStatement,
-	disableEnablement,
+	buildDisableEnablementStatement,
 	emailSenderEnablementConflictMessage,
 	findLiveEmailSenderEnablement,
 	getEnablementById,
@@ -749,20 +751,31 @@ export async function enableTriggerForCaller(input: {
 			}; enablementEnable cannot do it.`,
 		)
 	}
-	await runNewEnablementPlans({ db: input.env.APP_DB, plans: [plan] })
+	const toggle = planEnablementToggle({
+		env: input.env,
+		request: input.request,
+		enablement: {
+			id: plan.enablementId,
+			orgId: plan.orgId,
+			triggerKind: plan.kind,
+			triggerName: plan.triggerName,
+			instanceId: plan.instanceId,
+		},
+		from: 'off',
+		to: 'on',
+	})
+	await runNewEnablementPlans({
+		db: input.env.APP_DB,
+		plans: [plan],
+		after: plannedEnablementToggleStatements(toggle),
+	})
+	await deliverPlannedEnablementToggle(toggle)
 	const created = await getEnablementById({
 		db: input.env.APP_DB,
 		orgId: savedPackage.userId,
 		id: plan.enablementId,
 	})
 	if (!created) throw new Error('Unable to read the new enablement.')
-	await recordEnablementToggle({
-		env: input.env,
-		request: input.request,
-		enablement: created,
-		from: 'off',
-		to: 'on',
-	})
 	await armCronJobForCallerEnablement({
 		env: input.env,
 		request: input.request,
@@ -858,19 +871,22 @@ export async function disableEnablementForCaller(input: {
 		// Someone else's enablement is invisible to non-Owners.
 		if (!access.isOwner) throw notFound
 	}
-	const changed = await disableEnablement({ db, orgId, id: enablement.id })
+	const toggle = planEnablementToggle({
+		env: input.env,
+		request: input.request,
+		enablement,
+		from: enablement.state,
+		to: 'off',
+		reason: input.reason,
+	})
+	// The audit row commits with the turn-off and only when it changed a row.
+	await db.batch([
+		buildDisableEnablementStatement({ db, orgId, id: enablement.id }),
+		...plannedEnablementToggleStatements(toggle, { onlyIfChanged: true }),
+	])
+	await deliverPlannedEnablementToggle(toggle)
 	const updated = await getEnablementById({ db, orgId, id: enablement.id })
 	if (!updated) throw notFound
-	if (changed) {
-		await recordEnablementToggle({
-			env: input.env,
-			request: input.request,
-			enablement: updated,
-			from: enablement.state,
-			to: 'off',
-			reason: input.reason,
-		})
-	}
 	return updated
 }
 

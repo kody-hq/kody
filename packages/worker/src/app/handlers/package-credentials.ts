@@ -1,5 +1,9 @@
 import { type loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
-import { recordEnablementToggle } from '#worker/jobs/toggle-audit.ts'
+import {
+	deliverPlannedEnablementToggle,
+	planEnablementToggle,
+	plannedEnablementToggleStatements,
+} from '#worker/jobs/toggle-audit.ts'
 import {
 	MappingWriteRefused,
 	resolveMappingChanges,
@@ -197,11 +201,7 @@ async function applyEnablementActions(input: {
 				createInstance: true,
 			})
 			if (plan.enablement) continue
-			await runNewEnablementPlans({
-				db: input.env.APP_DB,
-				plans: [plan],
-			})
-			await recordEnablementToggle({
+			const toggle = planEnablementToggle({
 				env: input.env,
 				request: input.scope.request,
 				enablement: {
@@ -214,6 +214,12 @@ async function applyEnablementActions(input: {
 				from: 'off',
 				to: 'on',
 			})
+			await runNewEnablementPlans({
+				db: input.env.APP_DB,
+				plans: [plan],
+				after: plannedEnablementToggleStatements(toggle),
+			})
+			await deliverPlannedEnablementToggle(toggle)
 			// The new enablement is committed. Arming is best-effort here: a thrown
 			// error would invite a retry, and a retried createInstance inserts a
 			// second enablement. Turning the trigger on again (without

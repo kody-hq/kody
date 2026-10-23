@@ -495,21 +495,30 @@ export async function resumeEnablement(input: {
 }
 
 /** Turn an enablement off for good. Returns false when it was already off. */
-export async function disableEnablement(input: {
+/** The turn-off statement; changes no row when the enablement is already off. */
+export function buildDisableEnablementStatement(input: {
 	db: D1Database
 	orgId: string
 	id: string
 	now?: string
-}): Promise<boolean> {
+}) {
 	const now = input.now ?? new Date().toISOString()
-	const result = await input.db
+	return input.db
 		.prepare(
 			`UPDATE enablements
 			 SET state = 'off', disabled_at = ?, updated_at = ?
 			 WHERE id = ? AND org_id = ? AND state <> 'off'`,
 		)
 		.bind(now, now, input.id, input.orgId)
-		.run()
+}
+
+export async function disableEnablement(input: {
+	db: D1Database
+	orgId: string
+	id: string
+	now?: string
+}): Promise<boolean> {
+	const result = await buildDisableEnablementStatement(input).run()
 	return (result.meta.changes ?? 0) > 0
 }
 

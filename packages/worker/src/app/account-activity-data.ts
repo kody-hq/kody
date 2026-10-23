@@ -118,7 +118,7 @@ export type AccountActivityLoaderData = {
 	retentionDays: number
 	/**
 	 * Recent job and enablement on/off changes (newest first). Owners only:
-	 * null for everyone else and on later pages.
+	 * null for everyone else, on later pages, and when the read fails.
 	 */
 	toggleChanges: Array<AccountToggleChange> | null
 }
@@ -150,7 +150,8 @@ async function loadToggleChanges(input: {
 		console.warn('activity-toggle-changes-failed', {
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return []
+		// Hide the panel: an empty list would read as "nothing changed".
+		return null
 	}
 }
 
