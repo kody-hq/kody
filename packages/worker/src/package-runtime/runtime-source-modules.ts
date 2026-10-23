@@ -1222,6 +1222,12 @@ export function createPackageRuntimeModuleSource(packageId: string) {
 	const sharedExportNames = kodyRuntimeSharedExportNames.filter(
 		(name) => !boundNames.has(name),
 	)
+	// The hosted default export keeps resolving `kody` through the shared
+	// runtime default (unchanged since GHSA-5fv3); the named `kody` export
+	// above is the bound one stamped modules use.
+	const defaultOverrideNames = packageBoundRuntimeExportNames.filter(
+		(name) => name !== 'kody',
+	)
 	return `
 export { ${sharedExportNames.join(', ')} } from ${JSON.stringify(baseRuntimeSpecifier)};
 import __kodyBaseRuntimeDefault, { ${packageBoundRuntimeCreatorNames().join(', ')} } from ${JSON.stringify(
@@ -1231,7 +1237,7 @@ ${createPackageBoundRuntimeExportLines(packageId)}
 // The default export mirrors the shared runtime default but resolves every
 // package-bound export to this package's bound variant.
 const __kodyPackageBound = Object.fromEntries(
-	Object.entries({ ${packageBoundRuntimeExportNames.join(', ')} }).filter(
+	Object.entries({ ${defaultOverrideNames.join(', ')} }).filter(
 		([, value]) => value !== undefined,
 	),
 );

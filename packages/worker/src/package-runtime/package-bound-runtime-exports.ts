@@ -50,9 +50,20 @@ const credentialRuntimeName = '__kodyPackageCredentialRuntime'
  * lexical `fetch` creator every stamped module uses.
  */
 export function packageBoundRuntimeCreatorNames() {
-	return [
+	// Lexical `fetch` and `kody` creators go last, the order bundles have
+	// used since GHSA-5fv3, so stored-bundle tooling that edits that import
+	// keeps matching.
+	const lexical = [
 		'__kodyCreatePackageBoundFetch',
-		...new Set(packageBoundRuntimeExports.map((entry) => entry.creator)),
+		'__kodyCreatePackageBoundKody',
+	]
+	return [
+		...new Set(
+			packageBoundRuntimeExports
+				.map((entry) => entry.creator as string)
+				.filter((creator) => !lexical.includes(creator)),
+		),
+		...lexical,
 	]
 }
 
