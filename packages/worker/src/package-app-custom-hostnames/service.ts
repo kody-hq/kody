@@ -30,6 +30,13 @@ import {
 	listKodyRegistrableDomains,
 } from '#worker/app-base-url.ts'
 import {
+	describePackageAppCustomDomainStatus,
+	type PackageAppCustomDomainRecordView,
+	type PackageAppCustomDomainStatus,
+	type PackageAppCustomDomainView,
+} from '#universal/package-app-custom-domain-status.ts'
+import { notifyOwnersOfCustomHostnameStatus } from '#worker/package-app-custom-hostnames/status-notice.ts'
+import {
 	isPackageAppCustomHostnameVerified,
 	normalizeCustomHostname,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
@@ -62,6 +69,9 @@ export type PackageAppCustomHostnamePublic = {
 	verified_at: string | null
 	dns_missing_since: string | null
 	verification: PackageAppCustomHostnameVerification
+	/** pending / active / needs_attention with a plain-language reason. */
+	status: PackageAppCustomDomainStatus
+	needs_attention_at: string | null
 	created_at: string
 	updated_at: string
 }
@@ -86,6 +96,9 @@ type CustomHostnameRowSql = {
 	dns_missing_since: string | null
 	ownership_verification_json: string | null
 	ssl_validation_records_json: string | null
+	verification_errors_json?: string | null
+	check_window_started_at?: string | null
+	needs_attention_at?: string | null
 	created_by_user_id: string | null
 	created_at: string
 	updated_at: string
@@ -138,6 +151,24 @@ function parseSslValidationRecordsJson(
 	}
 }
 
+function parseVerificationErrorsJson(raw: string | null | undefined) {
+	if (!raw?.trim()) return []
+	try {
+		const parsed = JSON.parse(raw) as unknown
+		if (!Array.isArray(parsed)) return []
+		return parsed.filter(
+			(entry): entry is string =>
+				typeof entry === 'string' && entry.trim().length > 0,
+		)
+	} catch {
+		return []
+	}
+}
+
+export function serializeVerificationErrors(errors: ReadonlyArray<string>) {
+	return errors.length ? JSON.stringify(errors) : null
+}
+
 function serializeOwnershipVerification(
 	record: PackageAppCustomHostnameDnsRecord | null,
 ): string | null {
@@ -169,6 +200,11 @@ function rowFromSql(row: CustomHostnameRowSql): PackageAppCustomHostnameRow {
 		sslValidationRecords: parseSslValidationRecordsJson(
 			row.ssl_validation_records_json,
 		),
+		verificationErrors: parseVerificationErrorsJson(
+			row.verification_errors_json,
+		),
+		checkWindowStartedAt: row.check_window_started_at ?? null,
+		needsAttentionAt: row.needs_attention_at ?? null,
 		createdByUserId: row.created_by_user_id,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
@@ -198,6 +234,8 @@ function publicRow(
 		verified_at: row.verifiedAt,
 		dns_missing_since: row.dnsMissingSince,
 		verification: verificationFromRow(row),
+		status: describePackageAppCustomDomainStatus(row),
+		needs_attention_at: row.needsAttentionAt,
 		created_at: row.createdAt,
 		updated_at: row.updatedAt,
 	}
@@ -264,6 +302,61 @@ function setupFor(
 		),
 		ownershipVerification: verification.ownership_verification,
 		sslValidationRecords: verification.ssl_validation_records,
+	})
+}
+
+/** Records in the camelCase shape the package page and org settings render. */
+export function packageAppCustomDomainRecordViews(
+	env: Env,
+	row: {
+		hostname: string
+		ownershipVerification: PackageAppCustomHostnameDnsRecord | null
+		sslValidationRecords: Array<PackageAppCustomHostnameDnsRecord>
+	},
+): Array<PackageAppCustomDomainRecordView> {
+	// Only the records are used here, and they do not depend on the binding kind.
+	return setupFor(
+		env,
+		{ hostname: row.hostname, bindingKind: 'app' },
+		{
+			ownership_verification: row.ownershipVerification,
+			ssl_validation_records: row.sslValidationRecords,
+		},
+	).records.map((record) => ({
+		type: record.type,
+		name: record.name,
+		relativeName: record.relative_name,
+		value: record.value,
+		purpose: record.purpose,
+	}))
+}
+
+/**
+ * App-level custom hostnames bound to one package, for the owner's package
+ * page. Read-only; never calls Cloudflare.
+ */
+export async function listPackageAppCustomDomainViewsForPackage(input: {
+	env: Env
+	packageId: string
+}): Promise<Array<PackageAppCustomDomainView>> {
+	const rows = await input.env.APP_DB.prepare(
+		`SELECT * FROM package_app_custom_hostnames
+		 WHERE package_id = ? AND binding_kind = 'app'
+		 ORDER BY created_at ASC`,
+	)
+		.bind(input.packageId)
+		.all<CustomHostnameRowSql>()
+	return (rows.results ?? []).map((sql) => {
+		const row = rowFromSql(sql)
+		return {
+			id: row.id,
+			hostname: row.hostname,
+			bindingKind: row.bindingKind,
+			status: describePackageAppCustomDomainStatus(row),
+			records: packageAppCustomDomainRecordViews(input.env, row),
+			verifiedAt: row.verifiedAt,
+			lastCheckedAt: row.updatedAt,
+		}
 	})
 }
 
@@ -371,6 +464,7 @@ function deletedCloudflareHostnameResult(
 		sslStatus: row.sslStatus,
 		ownershipVerification: null,
 		sslValidationRecords: [],
+		verificationErrors: [],
 	}
 }
 
@@ -404,7 +498,8 @@ async function insertCustomHostnameRow(input: {
 						cloudflare_hostname_id, cloudflare_zone_id,
 						hostname_status, ssl_status,
 						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at
+						created_by_user_id, created_at, updated_at,
+						check_window_started_at
 					) VALUES (?, ?, 'app', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 				.bind(
@@ -420,6 +515,7 @@ async function insertCustomHostnameRow(input: {
 					input.createdByUserId,
 					input.now,
 					input.now,
+					input.now,
 				)
 				.run()
 			return
@@ -431,8 +527,9 @@ async function insertCustomHostnameRow(input: {
 						cloudflare_hostname_id, cloudflare_zone_id,
 						hostname_status, ssl_status,
 						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at
-					) VALUES (?, ?, 'org', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+						created_by_user_id, created_at, updated_at,
+						check_window_started_at
+					) VALUES (?, ?, 'org', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 				.bind(
 					input.id,
@@ -445,6 +542,7 @@ async function insertCustomHostnameRow(input: {
 					ownershipJson,
 					sslRecordsJson,
 					input.createdByUserId,
+					input.now,
 					input.now,
 					input.now,
 				)
@@ -494,6 +592,26 @@ function shouldStartDnsMissingGrace(input: {
 	return input.hostnameStatus === 'moved' || input.hostnameStatus === 'deleted'
 }
 
+/**
+ * Record the first time a hostname goes active. Returns true for exactly one
+ * caller (sync or the reconcile cron), which then owns the owner notice.
+ */
+export async function claimPackageAppCustomHostnameActivation(input: {
+	db: D1Database
+	id: string
+	nowIso: string
+}): Promise<boolean> {
+	const result = await input.db
+		.prepare(
+			`UPDATE package_app_custom_hostnames
+			 SET verified_at = ?, needs_attention_at = NULL
+			 WHERE id = ? AND verified_at IS NULL`,
+		)
+		.bind(input.nowIso, input.id)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 async function applyCloudflareStatus(input: {
 	env: Env
 	row: PackageAppCustomHostnameRow
@@ -516,20 +634,40 @@ async function applyCloudflareStatus(input: {
 	) {
 		dnsMissingSince = dnsMissingSince ?? input.nowIso
 	}
+	const firstActivation =
+		verified && !input.row.verifiedAt
+			? await claimPackageAppCustomHostnameActivation({
+					db: input.env.APP_DB,
+					id: input.row.id,
+					nowIso: input.nowIso,
+				})
+			: false
 	const verifiedAt =
 		verified && !input.row.verifiedAt ? input.nowIso : input.row.verifiedAt
 	const hostnameStatus = input.cf.hostnameStatus
 	const sslStatus = input.cf.sslStatus ?? input.row.sslStatus
 	const ownershipVerification = input.cf.ownershipVerification
 	const sslValidationRecords = input.cf.sslValidationRecords
+	const verificationErrors = input.cf.verificationErrors
+	// A manual sync on a hostname that is still not active means the person
+	// just changed DNS: clear needs-attention and restart the re-check window.
+	const restartWindow = !verified && !input.row.verifiedAt
+	const checkWindowStartedAt = restartWindow
+		? input.nowIso
+		: input.row.checkWindowStartedAt
+	const needsAttentionAt =
+		verified || restartWindow ? null : input.row.needsAttentionAt
 	await input.env.APP_DB.prepare(
 		`UPDATE package_app_custom_hostnames
 			 SET hostname_status = ?,
 			     ssl_status = ?,
-			     verified_at = ?,
+			     verified_at = COALESCE(verified_at, ?),
 			     dns_missing_since = ?,
 			     ownership_verification_json = ?,
 			     ssl_validation_records_json = ?,
+			     verification_errors_json = ?,
+			     check_window_started_at = ?,
+			     needs_attention_at = ?,
 			     updated_at = ?
 			 WHERE id = ?`,
 	)
@@ -540,11 +678,14 @@ async function applyCloudflareStatus(input: {
 			dnsMissingSince,
 			serializeOwnershipVerification(ownershipVerification),
 			serializeSslValidationRecords(sslValidationRecords),
+			serializeVerificationErrors(verificationErrors),
+			checkWindowStartedAt,
+			needsAttentionAt,
 			input.nowIso,
 			input.row.id,
 		)
 		.run()
-	return {
+	const updated: PackageAppCustomHostnameRow = {
 		...input.row,
 		hostnameStatus,
 		sslStatus,
@@ -552,8 +693,19 @@ async function applyCloudflareStatus(input: {
 		dnsMissingSince,
 		ownershipVerification,
 		sslValidationRecords,
+		verificationErrors,
+		checkWindowStartedAt,
+		needsAttentionAt,
 		updatedAt: input.nowIso,
 	}
+	if (firstActivation) {
+		await notifyOwnersOfCustomHostnameStatus({
+			env: input.env,
+			row: updated,
+			event: 'active',
+		})
+	}
+	return updated
 }
 
 export async function addPackageAppCustomHostname(input: {

@@ -3,8 +3,8 @@ id: package_app_custom_domains
 title: Custom domains
 summary:
   Serve an app on a domain you own. Covers which hostnames are allowed, the
-  exact DNS records (DNS only, proxy off), how Kody checks status for you, and
-  what each status means.
+  exact DNS records (DNS only, proxy off), how Kody checks status and emails
+  you, and what pending, active, and needs attention mean.
 category: platform
 ---
 
@@ -59,12 +59,14 @@ or ALIAS records.
 3. **Turn the proxy off.** Every record must be **DNS only**. In Cloudflare DNS
    that is the grey cloud, not the orange one. A proxied record never validates,
    and the hostname stays pending.
-4. **Wait.** Kody re-checks pending hostnames every few minutes, so you do not
-   need to call `packageAppCustomHostnameSync` in a loop. Most hostnames go
-   active a few minutes after DNS is published. Call sync once if you want an
-   immediate check; it returns the same `setup` block.
-5. **Done.** When `hostname_status` and `ssl_status` are both `active`, the app
-   serves on the hostname.
+4. **Wait.** Kody re-checks pending hostnames on its own: every few minutes for
+   the first hour, then less often, for up to 48 hours. You do not need to call
+   `packageAppCustomHostnameSync` in a loop. Most hostnames go active a few
+   minutes after DNS is published. Call sync once if you want an immediate
+   check; it returns the same `setup` block.
+5. **Done.** When the hostname goes active, Kody emails the owners and the
+   package's **Settings** page shows it as **Active**. The app serves on the
+   hostname.
 
 ## Provider notes
 
@@ -78,14 +80,21 @@ or ALIAS records.
 
 ## Status
 
-`packageAppCustomHostnameList` shows every hostname with `hostname_status` and
-`ssl_status` from Cloudflare.
+`packageAppCustomHostnameList` (and add, sync, org settings, and the package's
+Settings page) show a single `status` for each hostname:
 
-- `pending` (either field): Cloudflare has not seen the records yet, or the
-  certificate is still issuing. Check that every record matches `setup` and is
-  DNS only.
-- `active` on both: serving.
-- `moved` or `deleted`: the CNAME no longer points at Kody. A previously active
-  hostname gets a grace period before Kody removes it.
+- **Pending** (`pending`): Cloudflare has not found the records yet, or the
+  certificate is still issuing. Kody keeps checking. The reason says what
+  Cloudflare is waiting on.
+- **Active** (`active`): the hostname and its certificate are both active, and
+  the app is serving.
+- **Needs attention** (`needs_attention`): the hostname never went active in 48
+  hours, so Kody stopped checking and emailed the owners, or Cloudflare reported
+  a terminal problem (for example the CNAME moved). The reason says what to fix.
+  After fixing DNS, sync once and Kody starts checking again.
+
+The raw Cloudflare fields (`hostname_status`, `ssl_status`) are still there for
+debugging. A previously active hostname whose CNAME disappears gets a grace
+period before Kody removes it.
 
 Remove a hostname with `packageAppCustomHostnameDelete`.

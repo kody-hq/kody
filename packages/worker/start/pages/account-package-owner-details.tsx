@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { PackageCustomDomainsSection } from '../components/custom-domain-status.tsx'
 import {
 	setPackageVisibility,
 	setPackageInternetVisible,
@@ -274,6 +275,16 @@ export function AccountPackageOwnerDetails(props: {
 					{packageDetail.hasCommunityListing ? 'Listed' : 'Not listed'}
 				</span>
 			</div>
+			{packageDetail.customDomains?.length ? (
+				<PackageCustomDomainsSection
+					domains={packageDetail.customDomains}
+					manageHref={
+						packageDetail.ownerIsPersonal
+							? null
+							: routes.orgSettings.href({ orgSlug: props.ownerUsername })
+					}
+				/>
+			) : null}
 			{props.viewerCanPublish ? (
 				<PackagePublishingPanel
 					ownerUsername={props.ownerUsername}

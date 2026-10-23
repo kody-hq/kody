@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { packageAppCustomHostnameBindingKinds } from '#worker/package-app-custom-hostnames/types.ts'
+import { packageAppCustomDomainStates } from '#universal/package-app-custom-domain-status.ts'
 
 export const packageAppCustomHostnameDnsRecordSchema = z.object({
 	type: z.string(),
@@ -58,6 +59,15 @@ export const packageAppCustomHostnameRowSchema = z.object({
 	verified_at: z.string().nullable(),
 	dns_missing_since: z.string().nullable(),
 	verification: packageAppCustomHostnameVerificationSchema,
+	status: z
+		.object({
+			state: z.enum(packageAppCustomDomainStates),
+			reason: z.string().nullable(),
+		})
+		.describe(
+			'pending (Kody re-checks automatically), active, or needs_attention (Kody stopped re-checking; fix DNS and sync).',
+		),
+	needs_attention_at: z.string().nullable(),
 	created_at: z.string(),
 	updated_at: z.string(),
 })

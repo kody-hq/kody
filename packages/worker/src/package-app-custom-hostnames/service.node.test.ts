@@ -21,6 +21,7 @@ const migrationsDir = join(
 const migrationSql = [
 	'0133-package-app-custom-hostnames.sql',
 	'0135-package-app-custom-hostname-verification.sql',
+	'0175-package-app-custom-hostname-auto-check.sql',
 ]
 	.map((name) => readFileSync(join(migrationsDir, name), 'utf8'))
 	.join('\n')
@@ -542,6 +543,7 @@ test('sync refreshes Cloudflare status and returns verification records', async 
 	expect(synced.hostname.hostname_status).toBe('active')
 	expect(synced.hostname.ssl_status).toBe('active')
 	expect(synced.hostname.verified_at).toBe('2026-10-13T12:00:00.000Z')
+	expect(synced.hostname.status).toEqual({ state: 'active', reason: null })
 	expect(synced.verification.ownership_verification?.name).toBe(
 		'_cf-custom-hostname.team.example.com',
 	)
@@ -720,4 +722,59 @@ test('sync marks Cloudflare-missing hostnames deleted and starts grace', async (
 	expect(synced.verification.ownership_verification).toBeNull()
 	expect(synced.setup.records).toEqual([])
 	expect(synced.setup.steps.join('\n')).toMatch(/Delete this custom hostname/)
+})
+
+test('sync on a stalled pending hostname clears needs attention and restarts the check window', async () => {
+	const db = createDb()
+	await db
+		.prepare(
+			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO package_app_custom_hostnames (
+				id, hostname, binding_kind, package_id, org_id,
+				cloudflare_hostname_id, cloudflare_zone_id,
+				hostname_status, ssl_status, created_by_user_id,
+				needs_attention_at, created_at, updated_at
+			) VALUES (
+				'row-1', 'team.example.com', 'org', NULL, 'org-1',
+				'cf-org', 'zonetest123', 'pending', 'pending', 'person-1',
+				'2026-10-12T00:00:00.000Z',
+				'2026-10-10T00:00:00.000Z', '2026-10-12T00:00:00.000Z'
+			)`,
+		)
+		.run()
+	const fetcher = {
+		fetch: vi.fn(async () =>
+			cfHostnameResponse({ id: 'cf-org', hostname: 'team.example.com' }),
+		),
+	} as unknown as Fetcher
+	const synced = await syncPackageAppCustomHostname({
+		env: { ...createEnv(db), fetcher } as unknown as Env,
+		orgId: 'org-1',
+		actingUserId: 1,
+		id: 'row-1',
+		now: new Date('2026-10-13T12:00:00.000Z'),
+	})
+	expect(synced.hostname.status.state).toBe('pending')
+	expect(synced.hostname.needs_attention_at).toBeNull()
+	const stored = await db
+		.prepare(
+			`SELECT check_window_started_at, needs_attention_at FROM package_app_custom_hostnames WHERE id = 'row-1'`,
+		)
+		.first<{
+			check_window_started_at: string | null
+			needs_attention_at: string | null
+		}>()
+	expect(stored).toEqual({
+		check_window_started_at: '2026-10-13T12:00:00.000Z',
+		needs_attention_at: null,
+	})
 })

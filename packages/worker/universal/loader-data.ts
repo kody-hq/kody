@@ -28,6 +28,11 @@ import { type PackageCollaboratorsLoaderData } from '#universal/package-collabor
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
+import {
+	type PackageAppCustomDomainRecordView,
+	type PackageAppCustomDomainStatus,
+	type PackageAppCustomDomainView,
+} from '#universal/package-app-custom-domain-status.ts'
 import { type PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
 import { type LandingHeroVideo } from '#universal/landing-hero-copy.ts'
@@ -1291,6 +1296,8 @@ type OrgSettingsCustomHostnameView = {
 	dnsMissingSince: string | null
 	ownershipVerification: OrgSettingsCustomHostnameDnsRecord | null
 	sslValidationRecords: Array<OrgSettingsCustomHostnameDnsRecord>
+	status: PackageAppCustomDomainStatus
+	setupRecords: Array<PackageAppCustomDomainRecordView>
 	createdAt: string
 	updatedAt: string
 }
@@ -2159,6 +2166,11 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * view). Always a row for owners (zero credits when nothing past include).
 	 */
 	creditAttribution?: CreditAttributionRow | null
+	/**
+	 * App-level custom hostnames bound to this package (owner view). Absent
+	 * or empty when the package has none.
+	 */
+	customDomains?: Array<PackageAppCustomDomainView>
 }
 
 type AccountPackagePublishDiffFile = {

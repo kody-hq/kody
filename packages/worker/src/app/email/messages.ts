@@ -673,6 +673,65 @@ export function buildJobAutoDisabledEmail(input: {
 	})
 }
 
+export function buildCustomDomainActiveEmail(input: {
+	appBaseUrl: string
+	hostname: string
+	/** Where the domain now serves, for example "the app demo". */
+	servesLabel: string
+	openUrl: string
+	openLabel: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Your custom domain ${input.hostname} is live`,
+		preheader: 'The hostname and its certificate are both active.',
+		heading: 'Your custom domain is live',
+		body: [
+			`${input.hostname} now serves ${input.servesLabel}. The hostname and its HTTPS certificate are both active.`,
+			'Kody checked it for you, so there is nothing else to do. Keep the DNS records in place; removing them takes the domain offline.',
+		],
+		action: { label: input.openLabel, url: input.openUrl },
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because a custom domain on an account you own just went live.",
+	})
+}
+
+export function buildCustomDomainNeedsAttentionEmail(input: {
+	appBaseUrl: string
+	hostname: string
+	reason: string
+	manageUrl: string
+	docsUrl: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Your custom domain ${input.hostname} needs attention`,
+		preheader: 'It is still not active, so Kody stopped checking.',
+		heading: 'A custom domain needs attention',
+		body: [
+			`Kody checked ${input.hostname} for 48 hours and it never went active, so Kody stopped checking.`,
+			`Reason: ${input.reason}`,
+			'Check that every DNS record matches the setup exactly and is DNS only (proxy off). Then sync the domain, and Kody will start checking again.',
+		],
+		action: { label: 'Review custom domains', url: input.manageUrl },
+		afterAction: [`Setup guide: ${input.docsUrl}`],
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because a custom domain on an account you own needs attention.",
+	})
+}
+
 function formatSpikeStarted(iso: string) {
 	const ms = Date.parse(iso)
 	if (!Number.isFinite(ms)) return iso
