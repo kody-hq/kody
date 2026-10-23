@@ -1,8 +1,10 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { buildPendingCommunityForkLookupMessage } from './pending-fork-lookup.ts'
-import { findPendingCommunityForkForLookup } from './repo.ts'
+import {
+	buildPendingCommunityForkLookupMessage,
+	findPendingCommunityForkForLookup,
+} from './pending-fork-lookup.ts'
 
 const ownerId = 'org-owner-1'
 const otherOwnerId = 'org-owner-2'

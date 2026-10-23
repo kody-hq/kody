@@ -36,7 +36,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 		mockModule.resolveSavedPackageRef(...args),
 }))
 
-vi.mock('#worker/community/repo.ts', () => ({
+vi.mock('#worker/community/pending-fork-lookup.ts', () => ({
+	buildPendingCommunityForkLookupMessage: () => '',
 	// No pending community fork in these cases; the not-found copy stays generic.
 	findPendingCommunityForkForLookup: async () => null,
 }))

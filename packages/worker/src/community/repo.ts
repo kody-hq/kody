@@ -74,10 +74,10 @@ export function mapCommunityListingRow(
 	}
 }
 
-const communityForkSelectColumns = `id, listing_id, forker_user_id, origin_commit, forked_package_id,
+export const communityForkSelectColumns = `id, listing_id, forker_user_id, origin_commit, forked_package_id,
 	forked_source_id, target_kody_id, created_at, adopted_at, adoption_note`
 
-function mapCommunityForkRow(
+export function mapCommunityForkRow(
 	row: Record<string, unknown>,
 ): CommunityForkRecord {
 	return {
@@ -1016,45 +1016,6 @@ export async function getCommunityForkByListingAndUser(
 			WHERE listing_id = ? AND forker_user_id = ?`,
 		)
 		.bind(input.listingId, input.userId)
-		.first<Record<string, unknown>>()
-	return row ? mapCommunityForkRow(row) : null
-}
-
-/**
- * A community fork is inert until its first `repoPublishSession`: it has an
- * entity source, an Artifacts repo, and a `community_forks` row, but no
- * `saved_packages` row. Package lookups (`packageGet`, `packageGetGitRemote`,
- * and other name / package_id resolvers) read `saved_packages` only, so the
- * `package_id` and name leaf `communityFork` just returned looked missing.
- *
- * This finds that pending fork so the not-found error can point the caller at
- * the fork's source session instead. Any saved package row, even a
- * soft-deleted one, means the fork was published before and is not pending.
- */
-export async function findPendingCommunityForkForLookup(
-	db: D1Database,
-	input: {
-		forkerUserId: string
-		packageIdOrKodyId: string
-	},
-): Promise<CommunityForkRecord | null> {
-	const ref = input.packageIdOrKodyId.trim()
-	if (!ref) return null
-	const row = await db
-		.prepare(
-			`SELECT ${communityForkSelectColumns}
-			FROM community_forks
-			WHERE forker_user_id = ?
-				AND (forked_package_id = ? OR target_kody_id = ?)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM saved_packages
-					WHERE saved_packages.id = community_forks.forked_package_id
-				)
-			ORDER BY created_at DESC
-			LIMIT 1`,
-		)
-		.bind(input.forkerUserId, ref, ref)
 		.first<Record<string, unknown>>()
 	return row ? mapCommunityForkRow(row) : null
 }

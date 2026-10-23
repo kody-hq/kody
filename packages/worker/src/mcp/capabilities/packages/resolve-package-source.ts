@@ -1,8 +1,10 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { buildPendingCommunityForkLookupMessage } from '#worker/community/pending-fork-lookup.ts'
-import { findPendingCommunityForkForLookup } from '#worker/community/repo.ts'
+import {
+	buildPendingCommunityForkLookupMessage,
+	findPendingCommunityForkForLookup,
+} from '#worker/community/pending-fork-lookup.ts'
 import { normalizePackageNameInput } from '#worker/package-registry/package-name.ts'
 import {
 	getSavedPackageById,

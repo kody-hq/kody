@@ -9,8 +9,10 @@ import {
 import { toSecretCapabilityOutput } from '#mcp/capabilities/secrets/shared.ts'
 import { listPackageSecretsByPackageIds } from '#mcp/secrets/service.ts'
 import { applySavedPackageForkListingAncestry } from '#worker/community/fork-listing-relation.ts'
-import { buildPendingCommunityForkLookupMessage } from '#worker/community/pending-fork-lookup.ts'
-import { findPendingCommunityForkForLookup } from '#worker/community/repo.ts'
+import {
+	buildPendingCommunityForkLookupMessage,
+	findPendingCommunityForkForLookup,
+} from '#worker/community/pending-fork-lookup.ts'
 import { describePackageCredentialNeeds } from '#worker/credentials/package-credential-needs.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
