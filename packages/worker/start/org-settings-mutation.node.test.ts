@@ -6,6 +6,60 @@ import {
 } from '@tanstack/react-query'
 import { orgSettingsMutationOptions } from './org-settings-mutation.ts'
 
+test('organization delete removes the page query instead of refetching not-found', async () => {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	})
+	const key = ['page', 'actor-a', 'loadOrgSettings', { slug: 'team-a' }]
+	const shellKey = ['shell', 'actor-a', '']
+	const orgsKey = ['page', 'actor-a', 'loadOrganizations']
+	client.setQueryData(key, { org: { slug: 'team-a' } })
+	client.setQueryData(shellKey, { orgs: [{ slug: 'team-a' }] })
+	client.setQueryData(orgsKey, { organizations: [{ slug: 'team-a' }] })
+	const pageRead = vi.fn(async () => {
+		throw Object.assign(new Error('not found'), { isNotFound: true })
+	})
+	const shellRead = vi.fn(async () => ({ orgs: [] }))
+	const orgsRead = vi.fn(async () => ({ organizations: [] }))
+	const page = new QueryObserver(client, {
+		queryKey: key,
+		queryFn: pageRead,
+		staleTime: Infinity,
+	})
+	const shell = new QueryObserver(client, {
+		queryKey: shellKey,
+		queryFn: shellRead,
+		staleTime: Infinity,
+	})
+	const orgs = new QueryObserver(client, {
+		queryKey: orgsKey,
+		queryFn: orgsRead,
+		staleTime: Infinity,
+	})
+	const stop = [page, shell, orgs].map((observer) =>
+		observer.subscribe(() => {}),
+	)
+	const accepted = { ok: true as const, redirectTo: '/account/organizations' }
+	const send = vi.fn(async (_input: { data: { orgSlug: string } }) => accepted)
+	const mutation = new MutationObserver(
+		client,
+		orgSettingsMutationOptions(client, key, 'actor-a', send),
+	)
+	await expect(mutation.mutate({ orgSlug: 'team-a' })).resolves.toEqual(
+		accepted,
+	)
+	expect(send).toHaveBeenCalledWith({ data: { orgSlug: 'team-a' } })
+	expect(pageRead).not.toHaveBeenCalled()
+	expect(client.getQueryData(key)).toBeUndefined()
+	expect(page.getCurrentResult().data).toEqual({ org: { slug: 'team-a' } })
+	await vi.waitFor(() => {
+		expect(shellRead).toHaveBeenCalled()
+		expect(orgsRead).toHaveBeenCalled()
+	})
+	for (const unsubscribe of stop) unsubscribe()
+	client.clear()
+})
+
 test('accepted organization settings writes survive a failed confirmation read', async () => {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
