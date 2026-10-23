@@ -40,6 +40,20 @@ test('redacts credential-shaped values before copying an error', () => {
 	)
 })
 
+test('redacts unquoted colon-form secrets but keeps TypeScript type annotations', () => {
+	const sanitized = sanitizeInvocationErrorMessage(
+		'login failed with password: mySecret123 and apiKey: abc123def456',
+	)
+	expect(sanitized).not.toContain('mySecret123')
+	expect(sanitized).not.toContain('abc123def456')
+	expect(sanitized).toBe(
+		'login failed with password: [redacted] and apiKey: [redacted]',
+	)
+	const diagnostic =
+		"Type '{ password: string; apiKey: Record<string, unknown>; secret: Promise<string>; }' is not assignable"
+	expect(sanitizeInvocationErrorMessage(diagnostic)).toBe(diagnostic)
+})
+
 test('bounds long messages and drops control characters', () => {
 	const sanitized = sanitizeInvocationErrorMessage(
 		`boom\u0000\u0007 ${'x'.repeat(invocationErrorSummaryMaxLength * 2)}`,
