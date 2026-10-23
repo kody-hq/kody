@@ -273,7 +273,7 @@ export function reportSentryUploadSoftFailure(input: {
 	env?: NodeJS.ProcessEnv
 }) {
 	const env = input.env ?? process.env
-	const detail = `Sentry source map upload failed for ${input.label} (exit ${String(input.status)}) after retries. Preview deploy stays green; production uploads remain strict.`
+	const detail = `Sentry source map upload failed for ${input.label} (exit ${String(input.status)}) after retries. Workers stay deployed; retryable upstream Sentry failures do not fail the job.`
 	console.log(`::warning::${detail}`)
 	appendStepSummary(`### Sentry source map upload warning\n\n${detail}\n`, env)
 }
@@ -324,9 +324,9 @@ export async function runSentrySourcemapUpload(
 		const message = `sentry-upload-sourcemaps: ${label} upload failed with status ${String(result.status)}`
 		console.error(message)
 		if (softFail && isRetryableSentryUploadFailure(result.output)) {
-			// Preview deploy already succeeded; exhausted upstream 5xx/timeout
-			// retries become a loud warning instead of a red job. Auth/config
-			// 4xx and other non-retryable failures stay hard even on preview.
+			// Deploy already succeeded; exhausted upstream 5xx/timeout retries
+			// become a loud warning instead of a red job. Auth/config 4xx and
+			// other non-retryable failures stay hard.
 			reportSentryUploadSoftFailure({
 				label,
 				status: result.status,
