@@ -643,11 +643,11 @@ export const packageAppEntrypointFailureMessage =
 
 /**
  * Record an `app_fetch` error run for a request whose app worker threw before
- * the wrapper could start its own run. Returns the run id, or null when run
- * records are unavailable. The host exception text stays out of the run: it
+ * the wrapper could start its own run. Returns the run id, or null when the run
+ * could not be stored. The host exception text stays out of the run: it
  * is platform-internal, not something the package owner can act on.
  */
-export function recordPackageAppEntrypointFailure(input: {
+export async function recordPackageAppEntrypointFailure(input: {
 	env: Env
 	ownerId: OwnerId
 	savedPackage: { id: string; kodyId: string; sourceId: string }
@@ -656,7 +656,7 @@ export function recordPackageAppEntrypointFailure(input: {
 	method: string
 	error: unknown
 	waitUntil?: (promise: Promise<unknown>) => void
-}): string | null {
+}): Promise<string | null> {
 	const sink = input.waitUntil ?? scheduleWorkerWaitUntil
 	try {
 		const handle = beginRunRecord({
@@ -683,17 +683,15 @@ export function recordPackageAppEntrypointFailure(input: {
 			input.error instanceof Error && input.error.name
 				? input.error.name
 				: 'Error'
-		sink(
-			finishRunRecord({
-				env: input.env,
-				handle,
-				status: 'error',
-				error: failure,
-			}).catch((finishError: unknown) => {
-				console.warn('package-app-entrypoint-run-record-failed', finishError)
-			}),
-		)
-		return handle.id
+		// Only show a run id on the crash page once the run is really stored.
+		const persisted = await finishRunRecord({
+			env: input.env,
+			handle,
+			status: 'error',
+			error: failure,
+			waitUntil: sink,
+		})
+		return persisted ? handle.id : null
 	} catch (recordError) {
 		console.warn('package-app-entrypoint-run-record-failed', recordError)
 		return null
@@ -1093,7 +1091,7 @@ export async function servePackageAppRequest(input: {
 		// and the crash page shows its run id.
 		const runtimeRunId =
 			runtimeRunIdFromError(error) ??
-			recordPackageAppEntrypointFailure({
+			(await recordPackageAppEntrypointFailure({
 				env,
 				ownerId: owner.userId,
 				savedPackage,
@@ -1101,7 +1099,7 @@ export async function servePackageAppRequest(input: {
 				name: forwardedPackageRestPath,
 				method: request.method,
 				error,
-			})
+			}))
 		return attachPackageAppServerTiming(
 			createPackageAppErrorResponse({
 				request,

@@ -172,8 +172,11 @@ export default {
 		try {
 			const me = await kody.metaGetCurrentUser({})
 			visitor = { user_id: me.user_id, username: me.username }
-		} catch {
+		} catch (error) {
 			// Anonymous visitor of an internet-visible app: not signed in.
+			// Rethrow anything else.
+			const message = error instanceof Error ? error.message : ''
+			if (!message.includes('Authenticated MCP user is required')) throw error
 		}
 		return Response.json({ signedIn: visitor !== null, visitor })
 	},

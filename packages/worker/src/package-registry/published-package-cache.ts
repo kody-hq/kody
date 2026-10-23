@@ -139,10 +139,14 @@ export class PromiseLruCache<T> {
 				if (this.cache.get(input.cacheKey) === entry) {
 					this.delete(input.cacheKey)
 				}
+				// Another waiter may already have started a rebuild: share it
+				// instead of replacing it with a second create().
 				const current = this.getEntry(input.cacheKey)
-				const next = current?.settled
-					? current.pending
-					: this.createEntry(input)
+				const next = !current
+					? this.createEntry(input)
+					: current.settled
+						? current.pending
+						: this.waitForInFlight(current, input)
 				next.then(resolve, reject)
 			}, this.inFlightWaitMs)
 			entry.pending.then(

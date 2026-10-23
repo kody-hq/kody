@@ -71,3 +71,36 @@ test('a rejected create is evicted so the next call retries', async () => {
 		cache.getOrCreate({ cacheKey: 'k', create: async () => 'ok' }),
 	).resolves.toBe('ok')
 })
+
+test('waiters that time out later share the first rebuild instead of starting another', async () => {
+	vi.useFakeTimers()
+	const cache = new PromiseLruCache<string>({ inFlightWaitMs: 50 })
+	void cache.getOrCreate({
+		cacheKey: 'k',
+		create: () => new Promise<string>(() => {}),
+	})
+	let resolveRebuild!: (value: string) => void
+	const firstRecover = vi.fn(
+		() =>
+			new Promise<string>((resolve) => {
+				resolveRebuild = resolve
+			}),
+	)
+	const firstWaiter = cache.getOrCreate({ cacheKey: 'k', create: firstRecover })
+	await vi.advanceTimersByTimeAsync(20)
+	const secondRecover = vi.fn(async () => 'second')
+	const secondWaiter = cache.getOrCreate({
+		cacheKey: 'k',
+		create: secondRecover,
+	})
+	// First waiter times out and starts the rebuild.
+	await vi.advanceTimersByTimeAsync(30)
+	expect(firstRecover).toHaveBeenCalledTimes(1)
+	// Second waiter times out on the orphan while the rebuild is pending.
+	await vi.advanceTimersByTimeAsync(20)
+	expect(secondRecover).not.toHaveBeenCalled()
+	resolveRebuild('rebuilt')
+	await expect(firstWaiter).resolves.toBe('rebuilt')
+	await expect(secondWaiter).resolves.toBe('rebuilt')
+	expect(secondRecover).not.toHaveBeenCalled()
+})
