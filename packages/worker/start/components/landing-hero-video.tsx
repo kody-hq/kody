@@ -42,7 +42,7 @@ export function nextChooserIndex(
  * scroll-driven animations keep a static `fade-x` mask; skip that mask when
  * every thumb already fits.
  */
-export function chooserHasHorizontalOverflow(input: {
+function chooserHasHorizontalOverflow(input: {
 	clientWidth: number
 	scrollWidth: number
 }) {

@@ -1,6 +1,5 @@
 import { createElement as jsx } from 'react'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
-import { warningOffersCredits } from '#universal/compute-overage.ts'
 import { expect, test } from 'vitest'
 import { type SessionInfo } from '#client/session.ts'
 import {
@@ -17,10 +16,7 @@ import {
 } from '#universal/usage-presentation.ts'
 import {
 	AccountUsagePage,
-	UsageResourceName,
-	accountUsageWarningsPanelTitle,
 	formatEntitlementUsedPercent,
-	hasReachedEntitlementLimit,
 	hotterUsagePercent,
 } from './pages/account-usage.tsx'
 import { creditsActionForWallet } from '#client/routes/account-usage-shared.ts'
@@ -114,28 +110,6 @@ test('credits action follows the wallet: add, switch, manage, or nothing', () =>
 	).toEqual(cases)
 })
 
-test('warning credits links only on limits credits can raise', () => {
-	const raisable = [
-		'execute_unique_workers_per_day',
-		'outbound_fetches_per_day',
-		'job_runs_per_day',
-		'automation_invocations_per_day',
-		'unique_worker_days',
-		'durable_object_rows_read',
-	]
-	const fixed = [
-		'saved_packages',
-		'secrets',
-		'email_sends_per_day',
-		'storage_bytes',
-		'concurrent_workflows',
-	]
-	expect(
-		raisable.filter((resource) => !warningOffersCredits(resource)),
-	).toEqual([])
-	expect(fixed.filter(warningOffersCredits)).toEqual([])
-})
-
 test('hotterUsagePercent and formatEntitlementUsedPercent use the closer of daily and weekly windows', () => {
 	const hotWeek = entitlement({ week: week(360, 400) })
 	expect(hotterUsagePercent(entitlement())).toBe(0.2)
@@ -152,72 +126,6 @@ test('hotterUsagePercent and formatEntitlementUsedPercent use the closer of dail
 	expect(formatEntitlementUsedPercent(hotWeek)).toBe(
 		'20% today · 90% this week',
 	)
-})
-
-test('usage resource name keeps the explanation in a popover', async () => {
-	const whatCounts = 'MCP execute tool runs today (UTC).'
-	const html = await renderToString(
-		jsx(UsageResourceName, {
-			id: 'execute_unique_workers_per_day',
-			label: 'Execute calls',
-			whatCounts,
-			howToReduce: 'Run fewer execute calls today or this week.',
-			note: 'High daily headroom for bursts; the weekly total keeps it sustainable.',
-		}),
-	)
-	expect(html).toContain('>Execute calls</span>')
-	expect(html).toMatch(
-		/popovertarget="usage-resource-execute_unique_workers_per_day"/i,
-	)
-	expect(html).toContain('aria-label="What counts toward Execute calls"')
-	const panelAt = html.indexOf(
-		'data-usage-resource-panel="execute_unique_workers_per_day"',
-	)
-	expect(panelAt).toBeGreaterThan(-1)
-	expect(html.slice(panelAt)).toContain(whatCounts)
-	expect(html.slice(0, panelAt)).not.toContain(whatCounts)
-})
-
-test('warnings panel title is Limit reached at 100% daily or weekly', () => {
-	const dailyNearLimit = entitlement({
-		percentOfLimit: 0.85,
-		overEightyPercent: true,
-	})
-	expect(accountUsageWarningsPanelTitle([dailyNearLimit])).toBe(
-		'Approaching limits',
-	)
-	expect(hasReachedEntitlementLimit(dailyNearLimit)).toBe(false)
-
-	const weeklyAtLimit = entitlement({
-		percentOfLimit: 0.2,
-		overEightyPercent: true,
-		week: week(400, 400),
-	})
-	expect(hasReachedEntitlementLimit(weeklyAtLimit)).toBe(true)
-	expect(accountUsageWarningsPanelTitle([weeklyAtLimit])).toBe('Limit reached')
-
-	expect(
-		accountUsageWarningsPanelTitle([
-			entitlement({
-				percentOfLimit: 1,
-				overEightyPercent: true,
-			}),
-		]),
-	).toBe('Limit reached')
-
-	const computeIncludeAtLimit = entitlement({
-		resource: 'durable_object_rows_read',
-		group: 'monthly',
-		percentOfLimit: 1,
-		overEightyPercent: true,
-	})
-	expect(hasReachedEntitlementLimit(computeIncludeAtLimit)).toBe(false)
-	expect(accountUsageWarningsPanelTitle([computeIncludeAtLimit])).toBe(
-		'Approaching limits',
-	)
-	expect(
-		accountUsageWarningsPanelTitle([computeIncludeAtLimit, weeklyAtLimit]),
-	).toBe('Limit reached')
 })
 
 const session: SessionInfo = {

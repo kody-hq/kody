@@ -38,7 +38,9 @@ for (const family of ['connections', 'integrations'] as const) {
 			const completion = mutation
 				.mutate({ actorKey: 'actor', orgSlug: 'org', write })
 				.catch(() => undefined)
-			await vi.waitFor(() => expect(releaseWrite).toBeTypeOf('function'))
+			await vi.waitFor(() => expect(releaseWrite).toBeTypeOf('function'), {
+				interval: 1,
+			})
 			const read = vi.fn(async () => {
 				const snapshot = committed
 				if (!snapshot)
@@ -51,7 +53,9 @@ for (const family of ['connections', 'integrations'] as const) {
 				queryKey: key(resource),
 				queryFn: read,
 			})
-			await vi.waitFor(() => expect(releaseRead).toBeTypeOf('function'))
+			await vi.waitFor(() => expect(releaseRead).toBeTypeOf('function'), {
+				interval: 1,
+			})
 			releaseWrite()
 			await Promise.resolve()
 			releaseRead()

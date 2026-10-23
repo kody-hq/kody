@@ -270,7 +270,7 @@ export type AccountMenuManageLink = {
  * section, so any section stays two clicks from the avatar. Unlike switcher
  * rows, which keep the current page, these always open a workspace home.
  */
-export function accountMenuManageLinks(input: {
+function accountMenuManageLinks(input: {
 	pathname: string
 	organizations: ReadonlyArray<OrganizationSummary>
 }): Array<AccountMenuManageLink> {

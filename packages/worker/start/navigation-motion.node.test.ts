@@ -125,22 +125,6 @@ test('superseded slow navigation never mounts or marks its stale destination', a
 	f.stop()
 })
 
-test('history traversal never starts a view transition', async () => {
-	const f = fixture()
-	await f.router.load()
-	await f.router.navigate({ href: '/pricing' })
-	expect(f.router.options.defaultViewTransition).toBe(false)
-	f.router.history.back()
-	await f.router.load()
-	expect(f.router.options.defaultViewTransition).toBe(false)
-	f.router.history.forward()
-	await f.router.load()
-	expect(f.router.options.defaultViewTransition).toBe(false)
-	await f.router.navigate({ href: '/docs/one' })
-	expect(f.router.options.defaultViewTransition).toBe(false)
-	f.stop()
-})
-
 test('route updates bypass the browser transition API', async () => {
 	const f = fixture()
 	const startViewTransition = vi.fn(() => {

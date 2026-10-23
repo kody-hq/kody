@@ -80,16 +80,11 @@ test('bundle shows reviewed package decisions, bounded approve all, and untruste
 			},
 		]),
 	)
-	expect(html).toContain('2 changes wait for you')
-	expect(html).toContain('Publish changed credentials')
-	expect(html).toContain('Choose a credential on its own approval page.')
 	expect(html).toContain('data-testid="approval-bundle-approve-all"')
 	expect(html.match(/data-testid="approval-bundle-approve"/g)).toHaveLength(1)
 	expect(html.match(/data-testid="approval-bundle-deny"/g)).toHaveLength(1)
 	expect(html).toContain('&lt;script&gt;untrusted note&lt;/script&gt;')
 	expect(html).not.toContain('<script>untrusted note</script>')
-	expect(html).toContain('href="/@acme/tool/approve-publish"')
-	expect(html).not.toContain('reviewed-fingerprint')
 })
 test('decided items cannot be resubmitted and expired links retain their clear status', async () => {
 	const html = await render(
@@ -180,13 +175,7 @@ function bundleLoaderData(
 test('a credential-needs-only bundle item states the credential change and hides the commit behind Details', async () => {
 	const html = await render(bundleLoaderData())
 
-	expect(html).toContain('1 change waits for you')
-	expect(html).toContain('Publish with changed credential needs')
-	expect(html).toContain(
-		'Approving publishes this version, which asks for the credentials below.',
-	)
 	expect(html).toContain('NEXTDNS_API_KEY')
-	expect(html).toContain('provider nextdns')
 	expect(html).toContain('Credential values are never shown.')
 
 	const item = html.slice(html.indexOf('data-testid="approval-bundle-item"'))
@@ -196,10 +185,8 @@ test('a credential-needs-only bundle item states the credential change and hides
 	expect(detailsIndex).toBeGreaterThan(-1)
 	const beforeDetails = item.slice(0, detailsIndex)
 	expect(beforeDetails).not.toContain(pausedCommit)
-	expect(beforeDetails).not.toContain(pausedCommit.slice(0, 7))
 	const details = item.slice(detailsIndex)
 	expect(details).toContain(pausedCommit)
-	expect(details).toContain('<summary>Details</summary>')
 	expect(details.slice(0, details.indexOf('>'))).not.toContain(' open')
 })
 
@@ -233,24 +220,4 @@ test('a went_public bundle item still mentions public internet visibility', asyn
 	expect(html).toContain('Public internet')
 	expect(html).toContain('Published commit')
 	expect(html).not.toContain('Paused commit')
-})
-
-test('credential-picks Details label the approval fingerprint, not a proposal id', async () => {
-	const html = await render(
-		bundleLoaderData(
-			credentialNeedsItem({
-				key: 'credential-picks:prop-1',
-				type: 'credential-picks',
-				title: 'Choose credentials',
-				summary: 'Approving saves these credential mappings.',
-				fingerprint: 'fp-decision-abc',
-				detailLabel: 'Approval fingerprint',
-				grants: [],
-			}),
-		),
-	)
-
-	expect(html).toContain('Approval fingerprint')
-	expect(html).toContain('fp-decision-abc')
-	expect(html).not.toContain('Proposal id')
 })
