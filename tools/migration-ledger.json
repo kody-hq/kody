@@ -647,6 +647,10 @@
 		{
 			"filename": "0175-package-app-custom-hostname-auto-check.sql",
 			"sha256": "ed67d65abaabb9a59eb55cf8dc30cd1ff9ef479b7ad1b5eca235f5244f5da684"
+		},
+		{
+			"filename": "0176-credential-allowed-packages-would-block.sql",
+			"sha256": "a28587dad7ad2e43254029a5e6aed50554b273efd37fd72409cea3c7e125075b"
 		}
 	]
 }

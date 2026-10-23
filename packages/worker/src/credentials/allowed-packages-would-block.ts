@@ -9,6 +9,7 @@
  * a single deduped upsert flushed through `waitUntil`. Never stores values.
  */
 import { waitUntil } from 'cloudflare:workers'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export type AllowedPackagesWouldBlockAccessKind = 'self_authored' | 'adopted'
 
@@ -279,9 +280,9 @@ export async function buildAllowedPackagesWouldBlockReport(input: {
 					MIN(w.first_seen_at) AS first_seen_at,
 					MAX(w.last_seen_at) AS last_seen_at
 				 FROM credential_allowed_packages_would_block w
-				 LEFT JOIN orgs o ON o.id = w.owner_id
-				 LEFT JOIN secret_entries s ON s.id = w.credential_id
-				 LEFT JOIN saved_packages p ON p.id = w.package_id
+				 LEFT JOIN orgs o ON o.id = w.owner_id${andLiveDeletedAtSql('o')}
+				 LEFT JOIN secret_entries s ON s.id = w.credential_id${andLiveDeletedAtSql('s')}
+				 LEFT JOIN saved_packages p ON p.id = w.package_id${andLiveDeletedAtSql('p')}
 				 WHERE w.owner_id = ? AND ${where}
 				 GROUP BY w.owner_id, w.credential_id, w.package_id
 				 ORDER BY observations DESC, w.credential_id ASC, w.package_id ASC`,

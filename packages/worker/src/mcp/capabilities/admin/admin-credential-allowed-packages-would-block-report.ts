@@ -11,14 +11,26 @@ import {
 	resolveActingAdminPerson,
 } from './admin-shared.ts'
 
-const utcDaySchema = z
+export const utcDaySchema = z
 	.string()
 	.regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a UTC day like 2026-10-23.')
+	.refine(
+		(value) => {
+			const parsed = new Date(`${value}T00:00:00.000Z`)
+			return (
+				!Number.isNaN(parsed.getTime()) &&
+				parsed.toISOString().slice(0, 10) === value
+			)
+		},
+		{ message: 'Use a real calendar day like 2026-10-23.' },
+	)
 
 const inputSchema = z.object({
 	since: utcDaySchema
 		.optional()
-		.describe('First UTC day to include (YYYY-MM-DD). Defaults to 7 days ago.'),
+		.describe(
+			'First UTC day to include (YYYY-MM-DD). Defaults to the last 7 UTC days, today included.',
+		),
 	until: utcDaySchema
 		.optional()
 		.describe('UTC day to stop before, exclusive (YYYY-MM-DD). Omit for now.'),
@@ -85,8 +97,9 @@ const outputSchema = z.object({
 		),
 })
 
-function defaultSinceDay(now = new Date()) {
-	return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+/** Today plus the 6 UTC days before it: 7 calendar days with `day >= since`. */
+export function defaultSinceDay(now = new Date()) {
+	return new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
 		.toISOString()
 		.slice(0, 10)
 }

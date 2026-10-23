@@ -16,8 +16,11 @@ vi.mock('#worker/credentials/allowed-packages-would-block.ts', () => ({
 		mocks.buildAllowedPackagesWouldBlockReport(...args),
 }))
 
-const { adminCredentialAllowedPackagesWouldBlockReportCapability } =
-	await import('./admin-credential-allowed-packages-would-block-report.ts')
+const {
+	adminCredentialAllowedPackagesWouldBlockReportCapability,
+	defaultSinceDay,
+	utcDaySchema,
+} = await import('./admin-credential-allowed-packages-would-block-report.ts')
 
 function createContext(roles: Array<string>) {
 	const actorId = personIdFromStored('actor-1')
@@ -115,4 +118,13 @@ test('allowed-packages would-block report is admin-only and read-only', async ()
 		'adminCredentialAllowedPackagesWouldBlockReport:success',
 		'adminCredentialAllowedPackagesWouldBlockReport:success',
 	])
+})
+
+test('default window is 7 UTC days including today, and days must be real dates', () => {
+	expect(defaultSinceDay(new Date('2026-10-23T18:00:00.000Z'))).toBe(
+		'2026-10-17',
+	)
+	expect(utcDaySchema.safeParse('2026-10-17').success).toBe(true)
+	expect(utcDaySchema.safeParse('2026-02-30').success).toBe(false)
+	expect(utcDaySchema.safeParse('2026-13-01').success).toBe(false)
 })
