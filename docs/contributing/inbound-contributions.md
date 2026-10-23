@@ -32,16 +32,22 @@ There is no exception for docs-only or one-line patches.
    I have read the CLA and I hereby sign the CLA
    ```
 
-4. Your exact signing comment satisfies the `CLA` check for your identity. After
-   this pull request merges, a workflow opens a signer pull request to add you
-   to [`.github/cla-signers.json`](../../.github/cla-signers.json) on `main`;
-   that pull request is merged only after `✅ Validate` succeeds.
+4. The exact phrase, allowing surrounding whitespace, satisfies the `CLA` check
+   only when posted by the pull request author or a commit author on that pull
+   request. A bystander's comment does not sign for another contributor.
 
 Signing once covers past, present, and future contributions from that GitHub
 identity. Unsigned prior contributors sign the same way before their next merge.
 The workflow reads existing signers from `main`, not from the pull request
 branch, so adding your own username on the branch does not pass the check. Only
 the GitHub identity that posted the exact signing comment is treated as signed.
+
+After a pull request merges, the recorder scans it and the most recent 50 merged
+pull requests, so a replaced or missed run is healed by a later run. A
+maintainer can also start the recorder manually with `workflow_dispatch`. New
+signers are recorded by a bot pull request on the fixed `cla/record-signers`
+branch. It merges only after `✅ Validate` succeeds for the exact head SHA that
+was validated.
 
 ## How to sign (entity)
 
@@ -74,10 +80,13 @@ authors the pull request as `kentcdodds` and the commits as `cursoragent`.
 
 Do not merge a pull request while the `CLA` check is red.
 
-Individual signatures are recorded automatically after merge through a
-bot-generated pull request that must pass `✅ Validate`. After an accepted
-Entity CLA, add each authorized username to `.github/cla-signers.json` on `main`
-with `signedAt` as an ISO date (`YYYY-MM-DD`) and `cla` of `entity`.
+Individual signatures are recorded automatically after merge through the
+`cla/record-signers` bot pull request. The recorder self-heals over the most
+recent 50 merged pull requests and can be started manually with
+`workflow_dispatch`; the signer PR merges only when `✅ Validate` succeeds on
+the exact validated head SHA. After an accepted Entity CLA, add each authorized
+username to `.github/cla-signers.json` on `main` with `signedAt` as an ISO date
+(`YYYY-MM-DD`) and `cla` of `entity`.
 
 Make the `CLA` check required for `main` in GitHub branch protection so a green
 review cannot skip it.
