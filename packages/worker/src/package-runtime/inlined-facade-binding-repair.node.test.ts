@@ -136,3 +136,34 @@ test('repairs artifact modules using the artifact provenance only', () => {
 	const unrelated = { ...artifact, packageContext: null, dependencies: [] }
 	expect(repairInlinedFacadeBindingsInArtifact(unrelated)).toBe(unrelated)
 })
+
+test('a facade without its end marker does not swallow the next facade', () => {
+	const truncated = legacyFacade('pkg-outer')
+		.split('\n')
+		.filter((line) => !line.startsWith('var KodyRuntime'))
+		.join('\n')
+	const innerHead = legacyFacade(
+		'pkg-inner',
+		'2',
+		'./.__kody_packages__/@a/inner/.__published_bundle__/00',
+	)
+	const source = [truncated, innerHead, innerCode, outerCode].join('\n')
+	const repaired = repairInlinedFacadeBindings({
+		source,
+		allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
+	})!
+	const count = (needle: string) => repaired.split(needle).length - 1
+	expect(count('var kody2 = __kodyCreatePackageBoundKody2("pkg-inner");')).toBe(
+		1,
+	)
+	expect(count('var kody = __kodyCreatePackageBoundKody("pkg-outer");')).toBe(1)
+	expect(count('var KodyRuntime2 = ')).toBe(1)
+	expect(repaired).toContain(
+		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
+	)
+	expect(repaired).toContain(
+		'Object.entries({ credential: credential2, createAuthenticatedFetch: createAuthenticatedFetch2, oauthClientCredentials: oauthClientCredentials2 })',
+	)
+	expect(repaired).toContain(innerCode)
+	expect(repaired).toContain(outerCode)
+})

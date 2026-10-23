@@ -143,7 +143,8 @@ export function repairInlinedFacadeBindings(input: {
 	const allocate = createNameAllocator(input.source)
 	const pieces: Array<string> = []
 	let cursor = 0
-	for (const match of input.source.matchAll(facadeHeadPattern)) {
+	const matches = [...input.source.matchAll(facadeHeadPattern)]
+	for (const [matchIndex, match] of matches.entries()) {
 		const [head, importList, specifier, idLiteral] = match
 		let packageId: unknown
 		try {
@@ -169,7 +170,10 @@ export function repairInlinedFacadeBindings(input: {
 		// Shared import first, then the rest of the head (base default import,
 		// fetch, kody), then the bound helpers.
 		const restOfHead = head.slice(head.indexOf('\n') + 1)
-		const tail = input.source.slice(headEnd)
+		// A facade ends before the next facade head, so a facade without its
+		// end marker never swallows (and duplicates) the next one.
+		const sectionEnd = matches[matchIndex + 1]?.index ?? input.source.length
+		const tail = input.source.slice(headEnd, sectionEnd)
 		const facadeEnd = facadeEndPattern.exec(tail)
 		const facadeBody = facadeEnd ? tail.slice(0, facadeEnd.index) : ''
 		const patchedBody = facadeEnd
