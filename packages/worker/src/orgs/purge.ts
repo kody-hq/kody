@@ -23,6 +23,10 @@ import {
 	hardPurgeSoftDeletedUser,
 } from '#worker/orgs/hard-purge.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
+import {
+	purgeFailureDetails,
+	redactPurgeFailureDetail,
+} from '#worker/orgs/purge-failure-details.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
@@ -425,7 +429,20 @@ export async function pruneSoftDeleted(input: {
 			})
 		} catch (error) {
 			failed += 1
-			const message = error instanceof Error ? error.message : String(error)
+			const message = redactPurgeFailureDetail(
+				error instanceof Error ? error.message : String(error),
+			)
+			const cleanupErrors = purgeFailureDetails(error)
+			const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
+			console.warn(
+				JSON.stringify({
+					message: 'soft_delete_purge_candidate_failed',
+					kind: candidate.kind,
+					lane,
+					error: message,
+					cleanupErrors,
+				}),
+			)
 			outcomes.push({
 				kind: candidate.kind,
 				id: candidate.id,
@@ -440,11 +457,11 @@ export async function pruneSoftDeleted(input: {
 				action:
 					candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
 				result: 'failure',
-				detailsJson: JSON.stringify(
-					candidate.legacy
-						? { error: message, lane: 'legacy_deletion_finish' }
-						: { error: message },
-				),
+				detailsJson: JSON.stringify({
+					error: message,
+					...(candidate.legacy ? { lane } : {}),
+					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+				}),
 				createdAt: nowIso,
 			})
 		}

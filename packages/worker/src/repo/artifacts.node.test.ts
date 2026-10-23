@@ -812,3 +812,35 @@ test('isArtifactRepoNotFoundError matches repo-scoped messages only', () => {
 		),
 	).toBe('NOT_FOUND')
 })
+
+test('native binding delete treats a repo that is already gone as deleted', async () => {
+	const nativeDelete = vi.fn(async (name: string): Promise<boolean> => {
+		throw new Error(`ArtifactsError: Repository not found: ${name}`)
+	})
+	const env = {
+		ARTIFACTS_NAMESPACE: 'production',
+		ARTIFACTS: {
+			create: vi.fn(),
+			get: vi.fn(),
+			delete: nativeDelete,
+			list: vi.fn(async () => ({ repos: [], total: 0 })),
+		},
+	} as unknown as Env
+	const binding = getArtifactsBinding(env)
+
+	await expect(binding.delete('repo-gone')).resolves.toEqual({
+		id: null,
+		alreadyDeleted: true,
+	})
+
+	nativeDelete.mockImplementationOnce(async () => true)
+	await expect(binding.delete('repo-live')).resolves.toEqual({
+		id: null,
+		alreadyDeleted: false,
+	})
+
+	nativeDelete.mockImplementationOnce(async () => {
+		throw new Error('ArtifactsError: Memory limit exceeded')
+	})
+	await expect(binding.delete('repo-busy')).rejects.toThrow('Memory limit')
+})

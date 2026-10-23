@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 
 const hardPurgeOrg = vi.fn(async (input: { env: Env; orgId: string }) => {
 	await input.env.APP_DB.prepare(`DELETE FROM orgs WHERE id = ?`)
@@ -277,6 +278,7 @@ test('failed legacy deletion is audited, backs off, and retries later', async ()
 	finishLegacyUserDeletion.mockImplementationOnce(async () => {
 		throw new Error('Artifact repo cleanup failed: upstream 500')
 	})
+	consoleWarn.mockImplementation(() => {})
 	const failed = await pruneSoftDeleted({ env, now })
 	expect(failed.failed).toBe(1)
 	expect(failed.outcomes[0]).toEqual(
@@ -309,4 +311,59 @@ test('failed legacy deletion is audited, backs off, and retries later', async ()
 	const retried = await pruneSoftDeleted({ env, now: later })
 	expect(retried.purged).toBe(1)
 	expect(await userRow(db, 41)).toBeNull()
+})
+
+test('failed legacy deletion records the specific cleanup errors without ids', async () => {
+	const { env, db } = await createEnv(false)
+	await seedUser(db, {
+		id: 42,
+		stableUserId: 'legacy-cleanup-detail',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	const { AccountDeletionCleanupError } =
+		await import('#app/account-deletion.ts')
+	finishLegacyUserDeletion.mockImplementationOnce(async () => {
+		throw new AccountDeletionCleanupError(
+			[
+				'Artifact repo delete failed for u-7f3a9c21e5-pkg-src: Repository not found',
+				'KV delete failed for bundle-artifact:v1:src-8812abc: timeout',
+				'Stripe cleanup failed for person@example.com',
+			],
+			{} as never,
+		)
+	})
+	consoleWarn.mockImplementation(() => {})
+	const result = await pruneSoftDeleted({ env, now })
+	expect(result.failed).toBe(1)
+	const audit = await env.AUDIT_DB.prepare(
+		`SELECT details_json FROM org_audit_events
+			 WHERE org_id = ? AND action = 'user.purge_failed'`,
+	)
+		.bind('legacy-cleanup-detail')
+		.first<{ details_json: string }>()
+	const expectedCleanupErrors = [
+		'Artifact repo delete failed for <id> Repository not found',
+		'KV delete failed for <id> timeout',
+		'Stripe cleanup failed for <email>',
+	]
+	expect(JSON.parse(audit?.details_json ?? '{}')).toEqual({
+		error: 'Account deletion cleanup could not complete safely.',
+		lane: 'legacy_deletion_finish',
+		cleanupErrors: expectedCleanupErrors,
+	})
+	const logged = consoleWarn.mock.calls
+		.map(([line]) => (typeof line === 'string' ? line : ''))
+		.filter((line) => line.includes('soft_delete_purge_candidate_failed'))
+		.map((line) => JSON.parse(line) as Record<string, unknown>)
+	expect(logged).toEqual([
+		{
+			message: 'soft_delete_purge_candidate_failed',
+			kind: 'user',
+			lane: 'legacy_deletion_finish',
+			error: 'Account deletion cleanup could not complete safely.',
+			cleanupErrors: expectedCleanupErrors,
+		},
+	])
+	expect(JSON.stringify(logged)).not.toContain('legacy-cleanup-detail')
 })
