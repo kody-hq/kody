@@ -37,19 +37,25 @@ function extractGeneratedSource(startMarker: string, endMarker: string) {
 }
 
 const kodyProxySource = extractGeneratedSource(
-	'function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {',
+	'function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null) {',
 	'\nfunction createRealtimeProxy',
+)
+const identityOnlyAnswerSource = extractGeneratedSource(
+	'function __kodyIdentityOnlyAnswer(identity, name) {',
+	'\nlet __kodyCapturedRuntimeBridge',
 )
 
 function createKodyProxyForTest(
 	runtimeBridge: unknown,
 	mcpServerNames: Array<string> | (() => Promise<Array<string>>) = [],
+	identity: unknown = null,
 ) {
 	return new Function(
 		'runtimeBridge',
 		'mcpServerNamesOrLoader',
-		`${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader);`,
-	)(runtimeBridge, mcpServerNames) as Record<string, unknown>
+		'identity',
+		`${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
+	)(runtimeBridge, mcpServerNames, identity) as Record<string, unknown>
 }
 
 /** Workerd-style: [[OwnPropertyKeys]] then GOPD.value (not plain Get). */
@@ -221,6 +227,47 @@ test('package app kody.mcp supports calls, advertises connected servers, and ded
 	} finally {
 		delete (globalThis as unknown as Record<symbol, unknown>)[authoritySymbol]
 	}
+})
+
+test('package app kody proxy answers only metaGetCurrentUser for an identity-only visitor', async () => {
+	const calls: Array<string> = []
+	const runtimeBridge = {
+		callCapability: async ({ name }: { name: string }) => {
+			calls.push(name)
+			throw new Error('Authenticated MCP user is required for this capability')
+		},
+	}
+	const identity = Object.freeze({
+		user_id: 'person-outsider',
+		username: 'outsider',
+		email: '',
+		display_name: 'outsider',
+		org: Object.freeze({ slug: 'owner' }),
+	})
+	const proxy = createKodyProxyForTest(runtimeBridge, [], identity) as Record<
+		string,
+		(args?: unknown) => Promise<unknown>
+	>
+	await expect(proxy['metaGetCurrentUser']!({})).resolves.toEqual({
+		user_id: 'person-outsider',
+		username: 'outsider',
+		email: '',
+		display_name: 'outsider',
+		org: { slug: 'owner' },
+	})
+	expect(calls).toEqual([])
+	// Every other capability still goes to the anonymous bridge and fails closed.
+	await expect(proxy['secretList']!({})).rejects.toThrow(
+		'Authenticated MCP user is required',
+	)
+	expect(calls).toEqual(['secretList'])
+
+	// Without an identity, metaGetCurrentUser goes to the bridge too.
+	const anonymous = createKodyProxyForTest(runtimeBridge) as typeof proxy
+	await expect(anonymous['metaGetCurrentUser']!({})).rejects.toThrow(
+		'Authenticated MCP user is required',
+	)
+	expect(calls).toEqual(['secretList', 'metaGetCurrentUser'])
 })
 
 test('package app kody.mcp loads server names lazily on first mcp touch', async () => {
@@ -821,7 +868,7 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 		`${createCredentialClientRuntimeSource()}
 		${extractGeneratedSource(
 			'function createCredentialRuntime(runtimeBridge, call) {',
-			'\nfunction createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader) {',
+			'\nfunction createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {',
 		)}
 		return createCredentialRuntime(runtimeBridge, call);`,
 	) as (
