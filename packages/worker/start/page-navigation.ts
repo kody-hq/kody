@@ -30,6 +30,7 @@ export type PageNavigation = {
 		| 'platform-integrations'
 		| 'profile'
 		| 'provider-marks'
+		| 'public-profile'
 		| 'repositories'
 		| 'reserved-usernames'
 		| 'roles'

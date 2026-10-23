@@ -16,7 +16,7 @@ import { writeClipboardText } from '#client/clipboard.ts'
 import { useRouter } from '@tanstack/react-router'
 import { copyPromptTooltipCss } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { routes } from '#universal/routes.ts'
+import { orgOverviewPath } from '#universal/org-pages.ts'
 import {
 	colors,
 	radius,
@@ -137,7 +137,7 @@ export function AccountPackageDeleteDialog(props: {
 			busyRef.current = false
 			closeDialog()
 			void router.navigate({
-				to: routes.profile.href({ username: props.ownerUsername }),
+				to: orgOverviewPath(props.ownerUsername),
 			})
 		} catch (caught) {
 			if (!isCurrent()) return

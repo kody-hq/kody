@@ -129,7 +129,7 @@ test('retained page reads its own route context while destination loader is pend
 test('profile identity stays distinct from an explicitly scoped workspace', () => {
 	expect(resolve('/@acme')).toEqual({
 		rail: 'workspace',
-		item: 'overview',
+		item: 'public-profile',
 		orgSlug: null,
 		profileSlug: 'acme',
 	})

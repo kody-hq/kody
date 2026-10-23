@@ -232,7 +232,7 @@ test('accepting an addressed membership invite joins the org', async () => {
 	signIn(joiner)
 	expect(await post('accept', inviteId)).toEqual({
 		status: 200,
-		body: { ok: true, redirectTo: '/@zeta-works' },
+		body: { ok: true, redirectTo: '/@zeta-works/-/overview' },
 	})
 	expect(inviteStatus(inviteId)).toBe('accepted')
 	expect(

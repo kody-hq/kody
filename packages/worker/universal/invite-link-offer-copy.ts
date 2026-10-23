@@ -1,5 +1,6 @@
 import { type OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
+import { orgOverviewPath } from '#universal/org-pages.ts'
 
 type JoinPageData = Extract<OrgInviteJoinLoaderData, { ok: true }>
 
@@ -34,7 +35,7 @@ export function inviteLinkOfferCopy(data: JoinPageData): InviteLinkOfferCopy {
 				subjectDetail: `Organization · ${offer.roleLabel}`,
 				notice: null,
 				acceptLabel: `Join ${name}`,
-				openHref: `/@${data.org.slug}`,
+				openHref: orgOverviewPath(data.org.slug),
 				openLabel: `Open ${name}`,
 			}
 		case 'team':

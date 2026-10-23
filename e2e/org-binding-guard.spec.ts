@@ -46,7 +46,7 @@ test('an org the person cannot use is a 404 on every section, never their own da
 		.getByRole('button', { name: 'Create organization', exact: true })
 		.click()
 	await page.getByRole('button', { name: 'Yes, create organization' }).click()
-	await expect(page).toHaveURL(new RegExp(`/@${vault}$`))
+	await expect(page).toHaveURL(new RegExp(`/@${vault}/-/overview$`))
 	await page.context().clearCookies()
 
 	await login({

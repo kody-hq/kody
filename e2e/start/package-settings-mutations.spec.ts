@@ -157,7 +157,9 @@ test('package settings persist locks and visibility, deny another account, and d
 			expect(await deniedDelete.text()).toContain('Package not found.')
 			expect((await page.request.get(`${path}/settings`)).status()).toBe(200)
 			release()
-			await expect(page).toHaveURL(new RegExp(`/@${owner.username}$`))
+			await expect(page).toHaveURL(
+				new RegExp(`/@${owner.username}/-/overview$`),
+			)
 			// Fresh requests verify server persistence, independent of Query cache.
 			expect((await page.request.get(path)).status()).toBe(404)
 			expect((await page.request.get(`${path}/settings`)).status()).toBe(404)

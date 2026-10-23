@@ -7,6 +7,7 @@ import {
 	type RequestOrg,
 } from '@kody-internal/shared/request-context.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
+import { personalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import {
 	andActiveOrgSql,
 	andLiveDeletedAtSql,
@@ -204,13 +205,20 @@ export async function listOrganizationsForPerson(
 			        o.display_name AS display_name,
 			        o.avatar_key AS avatar_key,
 			        m.role AS role,
-			        CASE WHEN o.id = ? THEN 1 ELSE 0 END AS personal
+			        CASE WHEN o.id = COALESCE(
+			          (SELECT ${personalOrgIdSql}
+			           FROM users u
+			           WHERE u.stable_user_id = ?
+			             AND u.deleted_at IS NULL
+			           LIMIT 1),
+			          ?
+			        ) THEN 1 ELSE 0 END AS personal
 			 FROM org_memberships m
 			 INNER JOIN orgs o ON o.id = m.org_id
 			 WHERE m.user_id = ?
 			   AND m.deleted_at IS NULL${andActiveOrgSql('o')}`,
 		)
-		.bind(personId, personId)
+		.bind(personId, personId, personId)
 		.all<{
 			slug: string
 			display_name: string | null

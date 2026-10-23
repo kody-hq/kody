@@ -25,7 +25,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 			'view',
 		],
 		workspaceLayout: 'profile',
-		navigation: { rail: 'workspace', item: 'overview' },
+		navigation: { rail: 'workspace', item: 'public-profile' },
 		shell: { gutters: 'page' },
 	},
 	validateSearch: (search: Record<string, unknown>) => search,

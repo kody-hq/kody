@@ -48,7 +48,7 @@ test('switching orgs from Credentials loads the destination org, not the one you
 		.getByRole('button', { name: 'Create organization', exact: true })
 		.click()
 	await page.getByRole('button', { name: 'Yes, create organization' }).click()
-	await expect(page).toHaveURL(new RegExp(`/@switch-${runId}$`))
+	await expect(page).toHaveURL(new RegExp(`/@switch-${runId}/-/overview$`))
 
 	await page.goto(`/@${user.username}/-/credentials`)
 	await waitForClientHydration(page)
