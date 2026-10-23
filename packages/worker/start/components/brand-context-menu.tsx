@@ -268,7 +268,8 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 	)
 
 	function openAt(clientX: number, clientY: number) {
-		setCoords({ x: clientX, y: clientY })
+		// Sit just below the pointer; the layout effect clamps to the viewport.
+		setCoords({ x: clientX, y: clientY + 4 })
 		setActiveIndex(0)
 		setOpen(true)
 	}
@@ -471,7 +472,11 @@ const menuCss: CSSObject = {
 	backgroundColor: colors.surface,
 	boxShadow: shadows.md,
 	color: colors.text,
-	transform: 'translate(0, 0.25rem)',
+	/* Short viewports (landscape phones, zoomed desktops): scroll rather
+	   than push the last rows off-screen. */
+	maxHeight: 'calc(100dvh - 16px)',
+	overflowY: 'auto',
+	overscrollBehavior: 'contain',
 }
 
 const activeItemCss: CSSObject = {
