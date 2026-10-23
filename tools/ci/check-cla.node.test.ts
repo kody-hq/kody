@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 
 import {
 	applyIndividualClaSigningComment,
+	applyIndividualClaSigningComments,
 	checkClaIdentities,
 	formatClaFailure,
 	individualClaSigningPhrase,
@@ -69,6 +70,12 @@ test('CLA check allowlists the Licensor, bots, signed humans, and rejects everyo
 		'someone@example.com has no GitHub login and is not a Licensor email',
 	])
 	expect(formatClaFailure(failing)).toContain(individualClaSigningPhrase)
+	expect(formatClaFailure(failing)).toContain(
+		'That signing comment on the pull request satisfies this check.',
+	)
+	expect(formatClaFailure(failing)).toContain(
+		'The signer is recorded on main after the pull request merges.',
+	)
 })
 
 test('CLA signing comment records the commenter once and ignores everything else', () => {
@@ -139,4 +146,94 @@ test('CLA signing comment records the commenter once and ignores everything else
 			comment: individualClaSigningPhrase,
 		}),
 	).toEqual({ file: empty, status: 'ignored', reason: 'missing_login' })
+})
+
+test('CLA check accepts the PR author signing in a comment', () => {
+	const author = {
+		githubLogin: 'example-signer',
+		name: 'Example Signer',
+		email: null,
+	}
+	const comments = [
+		{
+			login: 'example-signer',
+			createdAt: '2026-08-16T10:30:00Z',
+			body: individualClaSigningPhrase,
+		},
+	]
+
+	const signed = applyIndividualClaSigningComments(signersFile(), comments)
+	expect(signed.recorded).toEqual(['example-signer'])
+	expect(checkClaIdentities([author], signed.file)).toEqual({ ok: true })
+})
+
+test('CLA check rejects a signing comment from another login or with extra text', () => {
+	const author = {
+		githubLogin: 'example-signer',
+		name: 'Example Signer',
+		email: null,
+	}
+	const otherLogin = applyIndividualClaSigningComments(signersFile(), [
+		{
+			login: 'different-signer',
+			createdAt: '2026-08-16T10:30:00Z',
+			body: individualClaSigningPhrase,
+		},
+	])
+	const extraText = applyIndividualClaSigningComments(signersFile(), [
+		{
+			login: 'example-signer',
+			createdAt: '2026-08-16T10:30:00Z',
+			body: `${individualClaSigningPhrase} thanks`,
+		},
+	])
+
+	expect(checkClaIdentities([author], otherLogin.file).ok).toBe(false)
+	expect(checkClaIdentities([author], extraText.file).ok).toBe(false)
+})
+
+test('multiple CLA signing comments record each new signer only once', () => {
+	const initial = signersFile({
+		signers: [
+			{ github: 'AlreadySigned', signedAt: '2026-08-01', cla: 'individual' },
+		],
+	})
+	const result = applyIndividualClaSigningComments(initial, [
+		{
+			login: 'FirstSigner',
+			createdAt: '2026-08-16T10:30:00Z',
+			body: individualClaSigningPhrase,
+		},
+		{
+			login: 'SecondSigner',
+			createdAt: '2026-08-17T11:45:00Z',
+			body: individualClaSigningPhrase,
+		},
+		{
+			login: 'firstsigner',
+			createdAt: '2026-08-18T12:00:00Z',
+			body: individualClaSigningPhrase,
+		},
+		{
+			login: 'alreadysigned',
+			createdAt: '2026-08-19T12:00:00Z',
+			body: individualClaSigningPhrase,
+		},
+	])
+
+	expect(result.recorded).toEqual(['FirstSigner', 'SecondSigner'])
+	expect(result.file.signers).toEqual([
+		...initial.signers,
+		{ github: 'FirstSigner', signedAt: '2026-08-16', cla: 'individual' },
+		{ github: 'SecondSigner', signedAt: '2026-08-17', cla: 'individual' },
+	])
+
+	const alreadySigned = applyIndividualClaSigningComments(result.file, [
+		{
+			login: 'firstsigner',
+			createdAt: '2026-08-20T12:00:00Z',
+			body: individualClaSigningPhrase,
+		},
+	])
+	expect(alreadySigned).toEqual({ file: result.file, recorded: [] })
 })
