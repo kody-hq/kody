@@ -100,6 +100,21 @@ test('ignores a fork once its saved package exists (published)', async () => {
 	).resolves.toBeNull()
 })
 
+test('ignores a fork whose saved package was published and later soft-deleted', async () => {
+	const { sqlite, db } = createDb()
+	sqlite
+		.prepare(
+			'insert into saved_packages (id, user_id, kody_id, deleted_at) values (?, ?, ?, ?)',
+		)
+		.run(packageId, ownerId, 'starter-site', '2026-01-02T00:00:00.000Z')
+	await expect(
+		findPendingCommunityForkForLookup(db, {
+			forkerUserId: ownerId,
+			packageIdOrKodyId: 'starter-site',
+		}),
+	).resolves.toBeNull()
+})
+
 test('blank refs never match', async () => {
 	const { db } = createDb()
 	await expect(
@@ -124,5 +139,6 @@ test('not-found message points at the fork source session and publish step', () 
 	expect(message).toContain(`source_id "${sourceId}"`)
 	expect(message).toContain('repoOpenSession')
 	expect(message).toContain('repoPublishSession')
+	expect(message).toContain(`packageGet works with package_id ${packageId}`)
 	expect(message).not.toContain('@@')
 })

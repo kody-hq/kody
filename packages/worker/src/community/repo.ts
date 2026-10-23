@@ -1028,7 +1028,8 @@ export async function getCommunityForkByListingAndUser(
  * `package_id` and name leaf `communityFork` just returned looked missing.
  *
  * This finds that pending fork so the not-found error can point the caller at
- * the fork's source session instead.
+ * the fork's source session instead. Any saved package row, even a
+ * soft-deleted one, means the fork was published before and is not pending.
  */
 export async function findPendingCommunityForkForLookup(
 	db: D1Database,
@@ -1049,7 +1050,6 @@ export async function findPendingCommunityForkForLookup(
 					SELECT 1
 					FROM saved_packages
 					WHERE saved_packages.id = community_forks.forked_package_id
-						AND saved_packages.deleted_at IS NULL
 				)
 			ORDER BY created_at DESC
 			LIMIT 1`,
