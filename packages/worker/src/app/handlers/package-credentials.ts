@@ -200,12 +200,23 @@ async function applyEnablementActions(input: {
 				db: input.env.APP_DB,
 				plans: [plan],
 			})
-			await armCronJobsForCallerEnablementIds({
-				env: input.env,
-				request: input.scope.request,
-				orgId: input.scope.savedPackage.userId,
-				enablementIds: [plan.enablementId],
-			})
+			// The new enablement is committed. Arming is best-effort here: a thrown
+			// error would invite a retry, and a retried createInstance inserts a
+			// second enablement. Turning the trigger on again (without
+			// createInstance) or jobUpdate({ enabled: true }) arms it later.
+			try {
+				await armCronJobsForCallerEnablementIds({
+					env: input.env,
+					request: input.scope.request,
+					orgId: input.scope.savedPackage.userId,
+					enablementIds: [plan.enablementId],
+				})
+			} catch (error) {
+				console.error('package-credentials: arming new cron instance failed', {
+					enablementId: plan.enablementId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 			continue
 		}
 		if (action.enablementId) {

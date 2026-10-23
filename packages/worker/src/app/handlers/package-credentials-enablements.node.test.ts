@@ -160,6 +160,39 @@ test('the viewer can disable its scoped instance and explicitly add another with
 	expect(state.write).not.toHaveBeenCalled()
 })
 
+test('a createInstance arm failure does not fail the committed enablement', async () => {
+	state.plan.mockResolvedValue({
+		enablement: null,
+		new: true,
+		enablementId: 'new-instance',
+	})
+	state.arm.mockRejectedValueOnce(new Error('alarm sync failed'))
+	const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+	try {
+		const result = await mutatePackageCredentialMappings({
+			scope,
+			body: {
+				enablements: [
+					{
+						trigger: { kind: 'cron', name: 'daily' },
+						state: 'on',
+						createInstance: true,
+					},
+				],
+			},
+		})
+		// A thrown error would invite a retry that inserts a second instance.
+		expect(result.status).toBe(200)
+		expect(state.apply).toHaveBeenCalledOnce()
+		expect(errorSpy).toHaveBeenCalledWith(
+			'package-credentials: arming new cron instance failed',
+			expect.objectContaining({ enablementId: 'new-instance' }),
+		)
+	} finally {
+		errorSpy.mockRestore()
+	}
+})
+
 test('invalid turn-on actions cannot commit a valid mapping change first', async () => {
 	for (const action of [
 		{ trigger: { kind: 'cron', name: 'undeclared' }, state: 'on' },
