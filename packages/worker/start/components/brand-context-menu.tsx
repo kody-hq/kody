@@ -101,6 +101,13 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 			},
 			{
 				kind: 'action',
+				id: 'download-logo-svg',
+				label: 'Download full logo SVG',
+				run: () =>
+					download(kodyBrandAssets.logoSvgOutlined, 'kody-logo-outlined.svg'),
+			},
+			{
+				kind: 'action',
 				id: 'download-png',
 				label: 'Download PNG (outlined on white)',
 				run: () =>
