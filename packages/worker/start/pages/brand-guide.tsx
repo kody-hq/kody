@@ -31,6 +31,41 @@ const solidDownloads = [
 	},
 ]
 
+const logoDownloads = [
+	{
+		format: 'SVG',
+		href: kodyBrandAssets.logoSvgOutlined,
+		filename: 'kody-logo-outlined.svg',
+		label: 'Download full logo SVG (outlined, for light backgrounds)',
+		note: 'Outlined mark with the black wordmark',
+		size: 'Vector',
+	},
+	{
+		format: 'SVG',
+		href: kodyBrandAssets.logoSvgWhite,
+		filename: 'kody-logo-white.svg',
+		label: 'Download full logo SVG (solid white, for dark backgrounds)',
+		note: 'Solid mark with the white wordmark',
+		size: 'Vector',
+	},
+	{
+		format: 'PNG',
+		href: kodyBrandAssets.logoPngOutlined,
+		filename: 'kody-logo-outlined.png',
+		label: 'Download full logo PNG (transparent / outlined)',
+		note: 'Transparent. For light backgrounds.',
+		size: '2048×563',
+	},
+	{
+		format: 'PNG',
+		href: kodyBrandAssets.logoPngWhite,
+		filename: 'kody-logo-white.png',
+		label: 'Download full logo PNG (transparent / solid white)',
+		note: 'Transparent. For dark backgrounds.',
+		size: '2048×563',
+	},
+]
+
 const sourceDownloads = [
 	{
 		format: 'SVG',
@@ -97,7 +132,7 @@ const usageRules = [
 	},
 	{
 		title: 'Wordmark.',
-		body: 'When pairing with the word “Kody”, keep the mark to the left and optically aligned to the wordmark’s cap height.',
+		body: 'Use the full logo files instead of setting “Kody” next to the mark yourself. The wordmark is outlined, so it renders the same without the font installed.',
 	},
 ]
 
@@ -143,9 +178,39 @@ export function BrandGuideRoute() {
 				</p>
 			</section>
 
+			<section aria-labelledby="logo-heading" css={sectionCss}>
+				<SectionIntro number="01" id="logo-heading" title="Full logo">
+					The mark and the “Kody” wordmark in Bricolage Grotesque, spaced
+					exactly like the site header. Outlined on light, solid white on dark.
+				</SectionIntro>
+				<div css={splitCss}>
+					<figure css={[splitHalfCss, logoHalfCss, splitLightCss]}>
+						<img
+							src={publicAsset(kodyBrandAssets.logoSvgOutlined)}
+							alt="Kody logo: outlined mark and black wordmark"
+							width={364}
+							height={100}
+							css={logoImgCss}
+						/>
+						<figcaption>Light: outlined logo</figcaption>
+					</figure>
+					<figure css={[splitHalfCss, logoHalfCss, splitDarkCss]}>
+						<img
+							src={publicAsset(kodyBrandAssets.logoSvgWhite)}
+							alt="Kody logo: solid white mark and wordmark"
+							width={364}
+							height={100}
+							css={logoImgCss}
+						/>
+						<figcaption>Dark: solid white logo</figcaption>
+					</figure>
+				</div>
+				<DownloadList downloads={logoDownloads} />
+			</section>
+
 			<section aria-labelledby="solid-downloads-heading" css={sectionCss}>
 				<SectionIntro
-					number="01"
+					number="02"
 					id="solid-downloads-heading"
 					title="Solid backgrounds"
 				>
@@ -183,36 +248,18 @@ export function BrandGuideRoute() {
 
 			<section aria-labelledby="downloads-heading" css={sectionCss}>
 				<SectionIntro
-					number="02"
+					number="03"
 					id="downloads-heading"
 					title="SVG and transparent PNG"
 				>
 					SVG is the source of truth. Transparent PNGs are 2048px wide for
 					compositing onto your own backgrounds.
 				</SectionIntro>
-				<ul css={sourceListCss}>
-					{sourceDownloads.map((download) => (
-						<li key={download.href} css={sourceRowCss}>
-							<span css={formatBadgeCss}>{download.format}</span>
-							<span css={sourceTextCss}>
-								<a
-									href={publicAsset(download.href)}
-									download={download.filename}
-									css={stretchedLinkCss}
-								>
-									{download.label}
-								</a>
-								<span>{download.note}</span>
-							</span>
-							<span css={[metaCss, sourceSizeCss]}>{download.size}</span>
-							<DownloadIcon />
-						</li>
-					))}
-				</ul>
+				<DownloadList downloads={sourceDownloads} />
 			</section>
 
 			<section aria-labelledby="usage-heading" css={sectionCss}>
-				<SectionIntro number="03" id="usage-heading" title="Usage">
+				<SectionIntro number="04" id="usage-heading" title="Usage">
 					A few rules keep the mark recognizable everywhere it shows up.
 				</SectionIntro>
 				<ol css={usageListCss}>
@@ -247,6 +294,39 @@ function SectionIntro({
 			<h2 id={id}>{title}</h2>
 			<p>{children}</p>
 		</header>
+	)
+}
+
+type BrandDownload = {
+	format: string
+	href: string
+	filename: string
+	label: string
+	note: string
+	size: string
+}
+
+function DownloadList({ downloads }: { downloads: Array<BrandDownload> }) {
+	return (
+		<ul css={sourceListCss}>
+			{downloads.map((download) => (
+				<li key={download.href} css={sourceRowCss}>
+					<span css={formatBadgeCss}>{download.format}</span>
+					<span css={sourceTextCss}>
+						<a
+							href={publicAsset(download.href)}
+							download={download.filename}
+							css={stretchedLinkCss}
+						>
+							{download.label}
+						</a>
+						<span>{download.note}</span>
+					</span>
+					<span css={[metaCss, sourceSizeCss]}>{download.size}</span>
+					<DownloadIcon />
+				</li>
+			))}
+		</ul>
 	)
 }
 
@@ -341,6 +421,17 @@ const splitLightCss: CSSObject = {
 const splitDarkCss: CSSObject = {
 	background: '#000000',
 	color: '#ffffff',
+}
+
+const logoHalfCss: CSSObject = {
+	minHeight: 'clamp(11rem, 22vw, 15rem)',
+	padding: '2.5rem 1.5rem 3.5rem',
+}
+
+const logoImgCss: CSSObject = {
+	display: 'block',
+	width: 'clamp(11rem, 26vw, 17rem)',
+	height: 'auto',
 }
 
 const heroNoteCss: CSSObject = {
