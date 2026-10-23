@@ -29,6 +29,26 @@ export function isWorkflowBindingName(
 
 export type WorkflowProjectionSourceType = 'package' | 'inline'
 
+/**
+ * How a package workflow resolves its source on each attempt.
+ *
+ * - `latest`: every attempt runs the package's published revision at the time
+ *   that attempt starts (the default, and the behavior of workflows queued
+ *   before this field existed).
+ * - `pinned`: every attempt must run the commit resolved at enqueue; an
+ *   attempt refuses to run when the package was republished since.
+ */
+export const workflowSourceRevisionPolicies = ['latest', 'pinned'] as const
+
+export type WorkflowSourceRevisionPolicy =
+	(typeof workflowSourceRevisionPolicies)[number]
+
+export function parseWorkflowProjectionSourceRevision(
+	value: unknown,
+): WorkflowSourceRevisionPolicy | null {
+	return value === 'latest' || value === 'pinned' ? value : null
+}
+
 export type WorkflowProjectionRecord = {
 	id: string
 	bindingName: string
@@ -46,6 +66,9 @@ export type WorkflowProjectionRecord = {
 	updatedAt: string
 	completedAt: string | null
 	lastError: string | null
+	/** Package workflows: published commit resolved at enqueue (null before v14). */
+	enqueuedCommit: string | null
+	sourceRevision: WorkflowSourceRevisionPolicy | null
 }
 
 export type WorkflowProjectionUpsertInput = {
@@ -65,6 +88,10 @@ export type WorkflowProjectionUpsertInput = {
 	updatedAt?: string | null
 	completedAt?: string | null
 	lastError?: string | null
+	/** Insert-only: later status upserts never change it. */
+	enqueuedCommit?: string | null
+	/** Insert-only: later status upserts never change it. */
+	sourceRevision?: WorkflowSourceRevisionPolicy | null
 }
 
 export type WorkflowProjectionReserveResult = {

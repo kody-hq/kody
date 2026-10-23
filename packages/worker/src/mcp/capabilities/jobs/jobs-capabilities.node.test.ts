@@ -604,6 +604,28 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 				updatedAt: '2026-05-03T12:00:01.000Z',
 				completedAt: '2026-05-03T12:00:01.000Z',
 				lastError: null,
+				enqueuedCommit: null,
+				sourceRevision: null,
+			},
+			{
+				id: 'pkgwf-123',
+				userId: ownerIdFromStored('user-123'),
+				sourceType: 'package',
+				packageId: 'pkg-1',
+				kodyId: 'shade-automation',
+				sourceId: 'source-1',
+				workflowName: './sync',
+				exportName: './sync',
+				idempotencyKey: 'pinned-sync',
+				runAt: '2026-05-03T12:00:00.000Z',
+				planDate: null,
+				status: 'queued',
+				createdAt: '2026-05-03T11:59:00.000Z',
+				updatedAt: '2026-05-03T11:59:00.000Z',
+				completedAt: null,
+				lastError: null,
+				enqueuedCommit: 'commit-a',
+				sourceRevision: 'pinned',
 			},
 		])
 		const workflowListResult = await workflowListCapability.handler(
@@ -614,6 +636,14 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			expect.objectContaining({ userId: ownerIdFromStored('user-123') }),
 		)
 		expect(workflowListResult.workflows[0]?.status).toBe('complete')
+		expect(workflowListResult.workflows[0]).toMatchObject({
+			enqueued_commit: null,
+			source_revision: null,
+		})
+		expect(workflowListResult.workflows[1]).toMatchObject({
+			enqueued_commit: 'commit-a',
+			source_revision: 'pinned',
+		})
 	} finally {
 		vi.useRealTimers()
 	}

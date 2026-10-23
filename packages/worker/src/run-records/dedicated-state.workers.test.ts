@@ -221,7 +221,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(13)
+			expect(schemaVersion(state)).toBe(14)
 			verify(state)
 		},
 	)
@@ -1005,7 +1005,7 @@ test('export cursors always make progress across phase handoffs and empty tails'
 	}
 })
 
-test('warm schema v7 and v8 objects upgrade to v13 without losing job data', async () => {
+test('warm schema v7 and v8 objects upgrade to v14 without losing job data', async () => {
 	const retiredColumn = ['legacy', 'seeded'].join('_')
 	for (const installedVersion of [7, 8]) {
 		const userId = uniqueUserId(`schema-v${installedVersion}-warm`)
@@ -1083,7 +1083,7 @@ test('warm schema v7 and v8 objects upgrade to v13 without losing job data', asy
 	}
 })
 
-test('warm schema v10 objects backfill denormalized log_count on upgrade to v13', async () => {
+test('warm schema v10 objects backfill denormalized log_count on upgrade to v14', async () => {
 	const userId = uniqueUserId('schema-v10-warm-log-count')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1141,6 +1141,86 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v13'
 	expect((await listRunRecords({ env, userId })).runs).toEqual([
 		expect.objectContaining({ logCount: 3 }),
 	])
+})
+
+test('warm schema v13 workflow projections gain insert-only source revision columns', async () => {
+	const userId = uniqueUserId('schema-v13-warm-wf-revision')
+	await upgradeFromLegacySchema(
+		userId,
+		13,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE workflow_projections (
+					id TEXT PRIMARY KEY NOT NULL,
+					binding_name TEXT NOT NULL,
+					source_type TEXT NOT NULL CHECK (source_type IN ('package', 'inline')),
+					package_id TEXT,
+					kody_id TEXT,
+					source_id TEXT,
+					workflow_name TEXT NOT NULL,
+					export_name TEXT,
+					idempotency_key TEXT NOT NULL,
+					run_at TEXT NOT NULL,
+					plan_date TEXT,
+					status TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					completed_at TEXT,
+					last_error TEXT
+				)
+			`)
+			state.storage.sql.exec(
+				`INSERT INTO workflow_projections (
+					id, binding_name, source_type, workflow_name, idempotency_key,
+					run_at, status, created_at, updated_at
+				) VALUES (?, ?, 'package', 'legacy', 'idem-legacy', ?, 'queued', ?, ?)`,
+				'wf-legacy',
+				dynamicBinding,
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'workflow_projections')).toEqual(
+				expect.arrayContaining(['enqueued_commit', 'source_revision']),
+			)
+		},
+	)
+	expect(
+		await getWorkflowProjection({
+			env,
+			userId,
+			id: 'wf-legacy',
+		}),
+	).toMatchObject({ enqueuedCommit: null, sourceRevision: null })
+
+	await upsertWorkflow(userId, 'wf-pinned', {
+		sourceType: 'package',
+		status: 'queued',
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'pinned',
+		updatedAt: '2026-07-31T00:00:00.000Z',
+	})
+	// Later status writes carry no provenance and must not erase it.
+	await upsertWorkflow(userId, 'wf-pinned', {
+		sourceType: 'package',
+		status: 'running',
+		enqueuedCommit: null,
+		sourceRevision: null,
+		updatedAt: '2026-07-31T00:00:01.000Z',
+	})
+	expect(
+		await getWorkflowProjection({
+			env,
+			userId,
+			id: 'wf-pinned',
+		}),
+	).toMatchObject({
+		status: 'running',
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'pinned',
+	})
 })
 
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
@@ -1243,7 +1323,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(13)
+	expect(inspection.schemaVersion).toBe(14)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

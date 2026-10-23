@@ -37,7 +37,12 @@ export const runRecordSchema = z.object({
 	package_id: z.string().nullable(),
 	kody_id: z.string().nullable(),
 	source_id: z.string().nullable(),
-	published_commit: z.string().nullable(),
+	published_commit: z
+		.string()
+		.nullable()
+		.describe(
+			'Immutable commit SHA of the package source this run executed. Package workflow runs record it per attempt; see metadata.enqueued_commit for the commit resolved at enqueue.',
+		),
 	storage_id: z.string().nullable(),
 	job_id: z.string().nullable(),
 	workflow_id: z.string().nullable(),

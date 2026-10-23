@@ -75,6 +75,13 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				input.lastError === undefined
 					? (existing?.lastError ?? null)
 					: input.lastError,
+			// Insert-only, like the RunLog DO.
+			enqueuedCommit: existing
+				? existing.enqueuedCommit
+				: (input.enqueuedCommit ?? null),
+			sourceRevision: existing
+				? existing.sourceRevision
+				: (input.sourceRevision ?? null),
 		}
 	}
 
@@ -391,6 +398,8 @@ export function createStatefulWorkflowBinding() {
  */
 export function createWorkflowRunsDatabase(options?: {
 	savedPackage?: Record<string, unknown> | null
+	/** Seeds the package's entity source with this published commit. */
+	publishedCommit?: string
 	users?: Array<{
 		email: string
 		plan: string | null
@@ -470,6 +479,24 @@ export function createWorkflowRunsDatabase(options?: {
 				Number(savedPackage['is_private'] ?? 1),
 				String(savedPackage['created_at'] ?? now),
 				String(savedPackage['updated_at'] ?? now),
+			)
+	}
+	if (savedPackage && options?.publishedCommit) {
+		sqlite
+			.prepare(
+				`INSERT INTO entity_sources (
+					id, user_id, entity_kind, entity_id, repo_id, published_commit,
+					indexed_commit, manifest_path, source_root, created_at, updated_at
+				) VALUES (?, ?, 'package', ?, ?, ?, NULL, 'package.json', '/', ?, ?)`,
+			)
+			.run(
+				String(savedPackage['source_id']),
+				String(savedPackage['user_id']),
+				String(savedPackage['id']),
+				`repo-${String(savedPackage['id'])}`,
+				options.publishedCommit,
+				now,
+				now,
 			)
 	}
 	return createD1FromSqlite(sqlite)

@@ -27,6 +27,8 @@ import {
 	readRetryablePackageInvocationInfrastructureCode,
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageExport } from '#worker/package-invocations/service.ts'
+import { sourceRevisionChangedErrorCode } from '#worker/package-invocations/common.ts'
+import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import { packageWorkflowInvocationSource } from './package-invocation-sources.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -57,8 +59,10 @@ import {
 import {
 	creatingWorkflowProjectionStatus,
 	isWorkflowBindingName,
+	parseWorkflowProjectionSourceRevision,
 	workflowProjectionReservationStatuses,
 	type WorkflowBindingName,
+	type WorkflowSourceRevisionPolicy,
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
 import { isTransientDurableObjectResetError } from '#worker/durable-object-reset-retry.ts'
@@ -97,12 +101,19 @@ export type PackageWorkflowCreateInput = WorkflowCreateBaseInput &
 		| {
 				exportName: string
 				packageId?: string
+				/**
+				 * `latest` (default): each attempt runs the package's published
+				 * revision when that attempt starts. `pinned`: each attempt must run
+				 * the commit resolved at enqueue, or it refuses to run.
+				 */
+				sourceRevision?: WorkflowSourceRevisionPolicy
 				code?: never
 		  }
 		| {
 				code: string
 				exportName?: never
 				packageId?: never
+				sourceRevision?: never
 		  }
 	)
 
@@ -115,6 +126,10 @@ export type PackageWorkflowCreateResult = {
 	export_name?: string | null
 	run_at: string
 	plan_date: string | null
+	/** Package workflows: the published commit resolved at enqueue. */
+	enqueued_commit?: string | null
+	/** Package workflows: `latest` or `pinned` (see `sourceRevision`). */
+	source_revision?: WorkflowSourceRevisionPolicy | null
 	status?: string
 }
 
@@ -133,6 +148,13 @@ export type DynamicCallableWorkflowPayload =
 			planDate: string | null
 			params?: PackageWorkflowParams
 			lineage?: RequestLineage
+			/**
+			 * Published commit resolved at enqueue. Absent on instances queued
+			 * before enqueue provenance existed (and when nothing was published).
+			 */
+			enqueuedCommit?: string
+			/** Absent means `latest`. */
+			sourceRevision?: 'pinned'
 	  }
 	| {
 			version: 3
@@ -170,6 +192,8 @@ export type WorkflowRunInspection = {
 	updatedAt: string
 	completedAt: string | null
 	lastError: string | null
+	enqueuedCommit: string | null
+	sourceRevision: WorkflowSourceRevisionPolicy | null
 }
 
 function resolveWorkflowEngineBinding(
@@ -330,6 +354,10 @@ function throwWorkflowInvocationFailure(response: {
 	throw new Error(message)
 }
 
+function isNonRetryableError(error: unknown) {
+	return error instanceof NonRetryableError
+}
+
 function normalizeNonEmptyString(value: string, fieldName: string) {
 	const trimmed = value.trim()
 	if (!trimmed) {
@@ -481,10 +509,19 @@ function createDynamicPackageWorkflowPayload(input: {
 	params?: PackageWorkflowParams | null
 	planDate?: string | null
 	lineage: RequestLineage | null
+	enqueuedCommit?: string | null
+	sourceRevision?: WorkflowSourceRevisionPolicy | null
 }): DynamicCallableWorkflowPayload {
 	const runAt = normalizeRunAt(input.runAt)
 	const idempotencyKey = normalizeWorkflowIdempotencyKey(input.idempotencyKey)
 	const params = normalizePackageWorkflowParams(input.params)
+	const enqueuedCommit = input.enqueuedCommit?.trim() || null
+	const pinned = input.sourceRevision === 'pinned'
+	if (pinned && !enqueuedCommit) {
+		throw new Error(
+			'Package workflow payload is pinned but has no enqueued commit.',
+		)
+	}
 	const workflowName = normalizeNonEmptyString(
 		normalizeOptionalWorkflowName(input.workflowName, input.exportName),
 		'workflowName',
@@ -503,6 +540,8 @@ function createDynamicPackageWorkflowPayload(input: {
 		planDate: input.planDate?.trim() || createPackageWorkflowPlanDate(runAt),
 		...(params === undefined ? {} : { params }),
 		...(input.lineage ? { lineage: input.lineage } : {}),
+		...(enqueuedCommit ? { enqueuedCommit } : {}),
+		...(pinned ? { sourceRevision: 'pinned' as const } : {}),
 	}
 }
 
@@ -590,6 +629,13 @@ function validateDynamicCallableWorkflowPayload(
 			planDate:
 				typeof record['planDate'] === 'string' ? record['planDate'] : null,
 			lineage,
+			enqueuedCommit:
+				typeof record['enqueuedCommit'] === 'string'
+					? record['enqueuedCommit']
+					: null,
+			sourceRevision: parseWorkflowProjectionSourceRevision(
+				record['sourceRevision'],
+			),
 		})
 	}
 	throw new Error('Dynamic callable workflow payload sourceType is invalid.')
@@ -655,8 +701,20 @@ function createWorkflowCreateResult(input: {
 			input.payload.sourceType === 'package' ? input.payload.exportName : null,
 		run_at: input.payload.runAt,
 		plan_date: input.payload.planDate,
+		...(input.payload.sourceType === 'package'
+			? {
+					enqueued_commit: input.payload.enqueuedCommit ?? null,
+					source_revision: payloadSourceRevision(input.payload),
+				}
+			: {}),
 		status: input.summary.status,
 	}
+}
+
+function payloadSourceRevision(
+	payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'package' }>,
+): WorkflowSourceRevisionPolicy {
+	return payload.sourceRevision === 'pinned' ? 'pinned' : 'latest'
 }
 
 function createWorkflowCreateResultFromRow(
@@ -671,6 +729,12 @@ function createWorkflowCreateResultFromRow(
 		export_name: row.sourceType === 'package' ? row.exportName : null,
 		run_at: row.runAt,
 		plan_date: row.planDate,
+		...(row.sourceType === 'package'
+			? {
+					enqueued_commit: row.enqueuedCommit,
+					source_revision: row.sourceRevision,
+				}
+			: {}),
 		...(row.status ? { status: row.status } : {}),
 	}
 }
@@ -702,6 +766,8 @@ function mapWorkflowProjectionToInspection(
 		updatedAt: projection.updatedAt,
 		completedAt: projection.completedAt,
 		lastError: projection.lastError,
+		enqueuedCommit: projection.enqueuedCommit ?? null,
+		sourceRevision: projection.sourceRevision ?? null,
 	}
 }
 
@@ -774,6 +840,12 @@ function buildWorkflowProjectionUpsert(input: {
 		updatedAt: now,
 		completedAt: input.completedAt ?? null,
 		lastError: input.lastError ?? null,
+		...(input.payload.sourceType === 'package'
+			? {
+					enqueuedCommit: input.payload.enqueuedCommit ?? null,
+					sourceRevision: payloadSourceRevision(input.payload),
+				}
+			: {}),
 	}
 }
 
@@ -793,6 +865,10 @@ function payloadFromWorkflowInspection(
 			idempotencyKey: row.idempotencyKey,
 			runAt: row.runAt,
 			planDate: row.planDate,
+			...(row.enqueuedCommit ? { enqueuedCommit: row.enqueuedCommit } : {}),
+			...(row.sourceRevision === 'pinned' && row.enqueuedCommit
+				? { sourceRevision: 'pinned' as const }
+				: {}),
 		}
 	}
 	return {
@@ -925,6 +1001,19 @@ function assertWorkflowCreateBodyShape(body: PackageWorkflowCreateInput): {
 			'workflows.create requires exactly one of exportName or code.',
 		)
 	}
+	const sourceRevision = record.sourceRevision
+	if (sourceRevision !== undefined) {
+		if (sourceRevision !== 'latest' && sourceRevision !== 'pinned') {
+			throw new Error(
+				'workflows.create sourceRevision must be "latest" or "pinned".',
+			)
+		}
+		if (code) {
+			throw new Error(
+				'workflows.create sourceRevision applies to package exports only; inline code is already stored with the workflow.',
+			)
+		}
+	}
 	return { code, exportName }
 }
 
@@ -971,6 +1060,18 @@ async function resolveWorkflowPayload(input: {
 			`Package "${packageIdOrKodyId}" was not found or is not owned by the current user.`,
 		)
 	}
+	const sourceRevision = input.body.sourceRevision ?? 'latest'
+	// Enqueue provenance: the revision an attempt would run if it started now.
+	const sourceRow = await getEntitySourceByIdForUser(input.env.APP_DB, {
+		id: savedPackage.sourceId,
+		userId: input.userId,
+	})
+	const enqueuedCommit = sourceRow?.published_commit?.trim() || null
+	if (sourceRevision === 'pinned' && !enqueuedCommit) {
+		throw new Error(
+			`workflows.create cannot pin package "${savedPackage.kodyId}": it has no published revision yet. Publish it first, or omit sourceRevision.`,
+		)
+	}
 	return createDynamicPackageWorkflowPayload({
 		userId: input.userId,
 		packageId: savedPackage.id,
@@ -982,6 +1083,8 @@ async function resolveWorkflowPayload(input: {
 		runAt: input.body.runAt,
 		params: input.body.params,
 		lineage: input.lineage,
+		enqueuedCommit,
+		sourceRevision,
 	})
 }
 
@@ -1644,6 +1747,18 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		instanceId: string,
 		stepCtx?: WorkflowStepAttemptContext,
 	): Promise<JsonValue> {
+		const sourceRevision = payloadSourceRevision(payload)
+		const enqueuedCommit = payload.enqueuedCommit ?? null
+		const pinnedCommit = sourceRevision === 'pinned' ? enqueuedCommit : null
+		const runMetadata: Record<string, unknown> = {
+			sourceType: 'package',
+			exportName: payload.exportName,
+			...(stepCtx?.attempt != null
+				? { workflow_step_attempt: stepCtx.attempt }
+				: {}),
+			source_revision: sourceRevision,
+			...(enqueuedCommit ? { enqueued_commit: enqueuedCommit } : {}),
+		}
 		const runHandle = beginRunRecord({
 			env: this.env,
 			userId: payload.userId,
@@ -1655,13 +1770,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				sourceId: payload.sourceId,
 				workflowId: instanceId,
 				idempotencyKey: payload.idempotencyKey,
-				metadata: {
-					sourceType: 'package',
-					exportName: payload.exportName,
-					...(stepCtx?.attempt != null
-						? { workflow_step_attempt: stepCtx.attempt }
-						: {}),
-				},
+				metadata: runMetadata,
 			},
 			waitUntil: (promise) => {
 				this.ctx.waitUntil(promise)
@@ -1695,12 +1804,43 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				},
 				ephemeral: true,
 				executorTimeoutMs: backgroundExecutorTimeoutMs,
+				sourceRevision: {
+					pinnedCommit,
+					// Per-attempt provenance, captured before any sandbox work.
+					onResolved: (resolvedCommit) => {
+						if (!runHandle) return
+						const changed =
+							enqueuedCommit != null && resolvedCommit !== enqueuedCommit
+						// A refused pinned attempt ran nothing, so it records no
+						// published commit; the commit it found stays in metadata.
+						const refused = pinnedCommit != null && changed
+						runHandle.context = {
+							...runHandle.context,
+							publishedCommit: refused ? null : resolvedCommit,
+							metadata: {
+								...runMetadata,
+								...(changed
+									? {
+											source_revision_changed: true,
+											resolved_commit: resolvedCommit,
+										}
+									: {}),
+							},
+						}
+					},
+				},
 			})
 			logs = readWorkflowInvocationLogs(response.body)
-			if (
-				readWorkflowInvocationErrorCode(response) === accountSuspendedErrorCode
-			) {
+			const errorCode = readWorkflowInvocationErrorCode(response)
+			if (errorCode === accountSuspendedErrorCode) {
 				throw new AccountSuspendedError()
+			}
+			if (errorCode === sourceRevisionChangedErrorCode) {
+				// A retry would hit the same moved revision; fail the step once.
+				throw new NonRetryableError(
+					getWorkflowInvocationErrorMessage(response),
+					'SourceRevisionChangedError',
+				)
 			}
 			if (response.status < 200 || response.status >= 300) {
 				throwWorkflowInvocationFailure(response)
@@ -1726,8 +1866,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				error,
 			})
 			// Suspension becomes NonRetryableError in the step wrapper — leave
-			// that run open. Other failures still retry up to the step limit.
-			if (!isAccountSuspendedError(error)) {
+			// that run open, like a moved pinned revision. Other failures still
+			// retry up to the step limit.
+			if (!isAccountSuspendedError(error) && !isNonRetryableError(error)) {
 				await this.markRetryableWorkflowRunIgnored({
 					userId: payload.userId,
 					runId: runHandle?.id,

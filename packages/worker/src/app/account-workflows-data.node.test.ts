@@ -66,6 +66,8 @@ function makeWorkflow(
 		updatedAt: '2026-07-27T12:00:00.000Z',
 		completedAt: null,
 		lastError: null,
+		enqueuedCommit: null,
+		sourceRevision: null,
 		...overrides,
 	}
 }

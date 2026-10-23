@@ -88,6 +88,10 @@ Both shapes accept:
   fresh run
 - `params`: optional JSON object passed to the workflow body
 
+`exportName` workflows also accept `sourceRevision`: `'latest'` (the default) or
+`'pinned'`. See
+[Source revision across queue waits and retries](#source-revision-across-queue-waits-and-retries).
+
 Calling `create` again with the same explicit `idempotencyKey` and matching
 workflow identity for the same user returns the existing workflow instead of
 starting a duplicate. Choose keys that include the logical job identity, for
@@ -98,6 +102,63 @@ workflow limit from the account plan (see
 
 Use `workflowRunList` to inspect recent workflow runs and statuses, and
 `workflowRunCancel` to stop a run by id.
+
+## Source revision across queue waits and retries
+
+A package workflow (`exportName`) runs the package's published code, so the
+question is which published commit each attempt runs. Kody records both ends:
+
+- At enqueue, `workflows.create` resolves the package's current
+  `published_commit` and stores it with the workflow. The create result and
+  `workflowRunList` return it as `enqueued_commit`, plus `source_revision`
+  (`latest` or `pinned`).
+- At each attempt, the run record gets the exact immutable commit SHA that
+  attempt loaded and ran, as `published_commit` on `runList` and `runGet` (and
+  **Published commit** on the Activity run page). The run's
+  `metadata.enqueued_commit` and `metadata.source_revision` repeat the enqueue
+  side, so one run record answers "what was queued and what actually ran".
+
+Each attempt resolves the published revision when it starts: after the `runAt`
+wait, after any queue delay, and again on every step retry. What happens when
+the package was republished in between depends on `sourceRevision`:
+
+- `latest` (default): the attempt runs the commit that is published when it
+  starts. If that differs from `enqueued_commit`, the run record says so with
+  `metadata.source_revision_changed: true` and `metadata.resolved_commit`. A
+  retry after a republish runs the new commit, and its own run record shows
+  which one. This is the default so a queued or self-rescheduling workflow picks
+  up a fix you publish while it waits.
+- `pinned`: every attempt must run `enqueued_commit`. If the package was
+  republished since enqueue, the attempt refuses before any package code runs,
+  fails once with error code `source_revision_changed` (no retries, since a
+  retry would find the same moved commit), and records `published_commit: null`
+  with the commit it found in `metadata.resolved_commit`. Kody does not keep
+  older published bundles around to run, so a pin guarantees the exact revision
+  or nothing. To run the new revision, create a new workflow (a new
+  `idempotencyKey`). Pinning needs a published commit at enqueue;
+  `workflows.create` rejects `sourceRevision: 'pinned'` for a package that has
+  never been published.
+
+```ts
+import { workflows } from 'kody:runtime'
+
+export default async function main() {
+	return await workflows.create({
+		exportName: './nightly-sync',
+		sourceRevision: 'pinned',
+		idempotencyKey: 'nightly-sync:2026-10-24',
+	})
+}
+```
+
+Inline `code` workflows store their module source in the workflow itself, so
+every attempt runs that same code. Their run records leave `published_commit`
+null, and `sourceRevision` is rejected for them. Static `kody:@` imports inside
+inline code still load each imported package's current published revision at
+attempt time.
+
+Workflows queued before Kody recorded enqueue revisions have no
+`enqueued_commit` and behave as `latest`.
 
 ## Cancelling workflow runs
 

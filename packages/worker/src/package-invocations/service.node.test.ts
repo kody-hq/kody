@@ -1096,3 +1096,45 @@ test('disconnect finish fence loss returns the durable ledger response', async (
 		finishSpy.mockRestore()
 	}
 })
+
+test('key-less invokes report the commit they resolve and refuse a moved pinned commit before running', async () => {
+	const db = createDatabase()
+	invalidateSeededInvokeContract()
+	seedPackageResolution()
+	runMock.mockReset()
+	runMock.mockResolvedValue({ result: { ok: true }, logs: [] })
+	const resolved: Array<string | null> = []
+	const invokeKeyless = (pinnedCommit: string | null) =>
+		invokePackageExport({
+			env: createEnv(db),
+			baseUrl: 'https://kody.dev',
+			token: createToken(),
+			request: dispatchRequest('unused-key'),
+			ephemeral: true,
+			sourceRevision: {
+				pinnedCommit,
+				onResolved: (commit) => resolved.push(commit),
+			},
+		})
+
+	const latest = await invokeKeyless(null)
+	expect(latest.status).toBe(200)
+	const pinnedMatch = await invokeKeyless('commit-1')
+	expect(pinnedMatch.status).toBe(200)
+	expect(runMock).toHaveBeenCalledTimes(2)
+
+	const moved = await invokeKeyless('commit-0')
+	expect(moved.status).toBe(409)
+	expect(moved.body).toMatchObject({
+		ok: false,
+		error: {
+			code: 'source_revision_changed',
+			message: expect.stringContaining(
+				'pinned to commit commit-0 but the published commit is now commit-1',
+			),
+		},
+	})
+	// Refused before any sandbox work.
+	expect(runMock).toHaveBeenCalledTimes(2)
+	expect(resolved).toEqual(['commit-1', 'commit-1', 'commit-1'])
+})

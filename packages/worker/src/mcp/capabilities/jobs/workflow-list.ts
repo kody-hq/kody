@@ -37,6 +37,18 @@ const workflowRunSchema = z.object({
 	updated_at: z.string(),
 	completed_at: z.string().nullable(),
 	last_error: z.string().nullable(),
+	enqueued_commit: z
+		.string()
+		.nullable()
+		.describe(
+			'Package workflows: the published commit resolved when the workflow was queued. Each attempt records the commit it actually ran as published_commit on its run (runList / runGet).',
+		),
+	source_revision: z
+		.enum(['latest', 'pinned'])
+		.nullable()
+		.describe(
+			'Package workflows: latest runs the published revision at each attempt start; pinned refuses to run if the package moved since enqueue. Null for inline workflows and package workflows queued before this was recorded.',
+		),
 })
 
 export const workflowListCapability = defineDomainCapability(
@@ -104,6 +116,8 @@ export const workflowListCapability = defineDomainCapability(
 					updated_at: workflow.updatedAt,
 					completed_at: workflow.completedAt,
 					last_error: workflow.lastError,
+					enqueued_commit: workflow.enqueuedCommit,
+					source_revision: workflow.sourceRevision,
 				})),
 			}
 		},

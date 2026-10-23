@@ -135,6 +135,25 @@ export {
 } from './subscription-envelope.ts'
 export const internalPackageEventSubscriptionTokenId = 'internal:package-events'
 export const maxPackageRuntimeInvokeDepth = 8
+
+/**
+ * Error code for an invoke that refused to run because the package's published
+ * revision no longer matches the revision the caller pinned (a pinned package
+ * workflow whose package was republished after it was queued).
+ */
+export const sourceRevisionChangedErrorCode = 'source_revision_changed'
+
+/**
+ * Source-revision hooks for callers that own the run record (package
+ * workflows). `onResolved` receives the immutable commit of the artifact about
+ * to run, before any sandbox work. When `pinnedCommit` is set and the artifact
+ * is at a different commit, the invoke is refused with
+ * {@link sourceRevisionChangedErrorCode} and nothing runs.
+ */
+export type PackageSourceRevisionOptions = {
+	pinnedCommit?: string | null
+	onResolved?: (publishedCommit: string | null) => void
+}
 export const packageInvocationScopeWildcard = '*'
 
 const npmScopedPackageNamePattern = /^@[^/\s]+\/[^/\s]+$/

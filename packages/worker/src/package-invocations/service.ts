@@ -12,6 +12,7 @@ import {
 	type PackageInvocationTokenScope,
 	type PackageRuntimeContext,
 	type PackageRuntimeToolFactories,
+	type PackageSourceRevisionOptions,
 } from './common.ts'
 import { invokePackageExportWithToolFactories } from './http-invoke.ts'
 import { type PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
@@ -71,6 +72,8 @@ export async function invokePackageExport(input: {
 	executorTimeoutMs?: number | null
 	/** Inbound request abort. Caller disconnect finishes the keyed run. */
 	signal?: AbortSignal
+	/** Report, and optionally pin, the commit the invoke resolves. */
+	sourceRevision?: PackageSourceRevisionOptions | null
 }): Promise<PackageInvocationResponse> {
 	return await invokePackageExportWithToolFactories({
 		...input,

@@ -129,9 +129,12 @@ type FinishArgs = { status: string; logs?: Array<string>; error: unknown }
 const runAt = '2026-05-03T12:34:56.000Z'
 const packageBody = { packageId: 'pkg-1', exportName: './workflow-run-event' }
 
-function createWorkflowEnv(binding: { workflow: Workflow }) {
+function createWorkflowEnv(
+	binding: { workflow: Workflow },
+	db = createWorkflowRunsDatabase(),
+) {
 	return {
-		APP_DB: createWorkflowRunsDatabase(),
+		APP_DB: db,
 		DYNAMIC_CALLABLE_WORKFLOWS: binding.workflow,
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
@@ -159,9 +162,13 @@ async function queueWorkflow(
 		kodyId: string
 		sourceId: string
 	} | null = null,
+	options: { publishedCommit?: string } = {},
 ) {
 	const binding = createStatefulWorkflowBinding()
-	const env = createWorkflowEnv(binding)
+	const env = createWorkflowEnv(
+		binding,
+		createWorkflowRunsDatabase({ publishedCommit: options.publishedCommit }),
+	)
 	const created = await createDynamicCallableWorkflow({
 		env,
 		userId: ownerIdFromStored('user-1'),
@@ -687,4 +694,176 @@ test('workflow steps inherit the request that started the workflow', async () =>
 		undefined,
 		expect.anything(),
 	)
+})
+
+type InvokeInput = Parameters<
+	typeof PackageInvocationsService.invokePackageExport
+>[0]
+type FinishHandleArgs = {
+	status: string
+	handle: {
+		context: {
+			publishedCommit?: string | null
+			metadata?: Record<string, unknown> | null
+		}
+	} | null
+}
+
+/** Stands in for module execution: reports the commit the attempt resolved. */
+function resolveCommitThen(
+	commit: string,
+	response: PackageInvocationStoredResponse,
+) {
+	return async (input: InvokeInput) => {
+		input.sourceRevision?.onResolved?.(commit)
+		return response
+	}
+}
+
+function lastFinish() {
+	return runRecordMocks.finishRunRecord.mock
+		.lastCall?.[0] as unknown as FinishHandleArgs
+}
+
+test('package workflows record the enqueue commit and the exact commit each attempt ran', async () => {
+	runRecordMocks.resetProjections()
+	const { created, queued, run } = await queueWorkflow(
+		{ ...packageBody, runAt, idempotencyKey: 'provenance-latest' },
+		null,
+		{ publishedCommit: 'commit-a' },
+	)
+	expect(created).toMatchObject({
+		enqueued_commit: 'commit-a',
+		source_revision: 'latest',
+	})
+	expect(queued.params).toMatchObject({ enqueuedCommit: 'commit-a' })
+	expect(queued.params).not.toHaveProperty('sourceRevision')
+	expect(findRun(created.id)).toMatchObject({
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'latest',
+	})
+
+	invocationMocks.invokePackageExport.mockImplementationOnce(
+		resolveCommitThen('commit-a', {
+			status: 200,
+			body: { result: { ok: true } },
+		}),
+	)
+	await run()
+	const invokeInput = invocationMocks.invokePackageExport.mock
+		.lastCall?.[0] as InvokeInput
+	expect(invokeInput.sourceRevision?.pinnedCommit).toBeNull()
+	const finish = lastFinish()
+	expect(finish.status).toBe('success')
+	expect(finish.handle?.context.publishedCommit).toBe('commit-a')
+	expect(finish.handle?.context.metadata).toMatchObject({
+		source_revision: 'latest',
+		enqueued_commit: 'commit-a',
+	})
+	expect(finish.handle?.context.metadata).not.toHaveProperty(
+		'source_revision_changed',
+	)
+
+	// Republished while queued: a `latest` attempt runs the new commit and
+	// says so.
+	invocationMocks.invokePackageExport.mockImplementationOnce(
+		resolveCommitThen('commit-b', {
+			status: 200,
+			body: { result: { ok: true } },
+		}),
+	)
+	await run()
+	expect(lastFinish().handle?.context.publishedCommit).toBe('commit-b')
+	expect(lastFinish().handle?.context.metadata).toMatchObject({
+		enqueued_commit: 'commit-a',
+		source_revision_changed: true,
+		resolved_commit: 'commit-b',
+	})
+})
+
+test('pinned package workflows run only the enqueue commit and fail once when it moved', async () => {
+	runRecordMocks.resetProjections()
+	const { created, queued, run } = await queueWorkflow(
+		{
+			...packageBody,
+			runAt,
+			idempotencyKey: 'provenance-pinned',
+			sourceRevision: 'pinned',
+		},
+		null,
+		{ publishedCommit: 'commit-a' },
+	)
+	expect(created).toMatchObject({
+		enqueued_commit: 'commit-a',
+		source_revision: 'pinned',
+	})
+	expect(queued.params).toMatchObject({
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'pinned',
+	})
+
+	invocationMocks.invokePackageExport.mockImplementationOnce(
+		resolveCommitThen('commit-a', {
+			status: 200,
+			body: { result: { ok: true } },
+		}),
+	)
+	await run()
+	const pinnedInvoke = invocationMocks.invokePackageExport.mock
+		.lastCall?.[0] as InvokeInput
+	expect(pinnedInvoke.sourceRevision?.pinnedCommit).toBe('commit-a')
+	expect(lastFinish().handle?.context.publishedCommit).toBe('commit-a')
+
+	const refusal =
+		'Package "shade-automation" was republished after this run was queued.'
+	invocationMocks.invokePackageExport.mockImplementationOnce(
+		resolveCommitThen('commit-b', {
+			status: 409,
+			body: {
+				ok: false,
+				error: { code: 'source_revision_changed', message: refusal },
+			},
+		}),
+	)
+	await expect(run()).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof NonRetryableError &&
+			error.name === 'SourceRevisionChangedError' &&
+			error.message === refusal,
+	)
+	const finish = lastFinish()
+	expect(finish.status).toBe('error')
+	// Nothing ran, so the attempt claims no published commit.
+	expect(finish.handle?.context.publishedCommit).toBeNull()
+	expect(finish.handle?.context.metadata).toMatchObject({
+		source_revision: 'pinned',
+		enqueued_commit: 'commit-a',
+		source_revision_changed: true,
+		resolved_commit: 'commit-b',
+	})
+})
+
+test('workflows.create validates sourceRevision', async () => {
+	runRecordMocks.resetProjections()
+	await expect(
+		queueWorkflow({
+			code: 'export default async function main() { return 1 }',
+			idempotencyKey: 'inline-pinned',
+			sourceRevision: 'pinned',
+		}),
+	).rejects.toThrow('sourceRevision applies to package exports only')
+	await expect(
+		queueWorkflow({
+			...packageBody,
+			idempotencyKey: 'bad-revision',
+			sourceRevision: 'HEAD',
+		}),
+	).rejects.toThrow('sourceRevision must be "latest" or "pinned"')
+	await expect(
+		queueWorkflow({
+			...packageBody,
+			idempotencyKey: 'pinned-unpublished',
+			sourceRevision: 'pinned',
+		}),
+	).rejects.toThrow('it has no published revision yet')
 })

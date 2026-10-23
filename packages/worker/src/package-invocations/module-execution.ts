@@ -37,10 +37,12 @@ import {
 	resolveInvocationMeteringSurface,
 	resolveInvocationRuntimeName,
 	resolveInvocationRuntimeSurface,
+	sourceRevisionChangedErrorCode,
 	type PackageInvocationActor,
 	type PackageInvocationResponse,
 	type PackageModuleSelector,
 	type PackageRuntimeToolFactories,
+	type PackageSourceRevisionOptions,
 } from './common.ts'
 import {
 	ensureModuleArtifact,
@@ -67,7 +69,7 @@ import {
  *   any sandbox work started. Nothing executed, so keyed callers release
  *   their claim and key-less callers can simply retry.
  * - `pre-execution-denied`: a gate before sandbox work rejected the invoke
- *   (today: daily automation quota). Same release semantics as
+ *   (daily automation quota, or a pinned source revision that moved). Same release semantics as
  *   `artifact-unavailable` so a keyed retry can succeed after the UTC day
  *   rolls or the limit rises; do not terminal-store the 429 under the key.
  *
@@ -142,6 +144,8 @@ export type SavedPackageModuleRunInput = {
 	 * that is only known after the artifact loads.
 	 */
 	externalRunRecordHandle?: RunRecordHandle | null
+	/** Report, and optionally pin, the commit this run resolves. */
+	sourceRevision?: PackageSourceRevisionOptions | null
 }
 
 export async function runSavedPackageModuleOnce(
@@ -170,6 +174,21 @@ export async function runSavedPackageModuleOnce(
 						id: artifact.packageContext.sourceId,
 						userId: input.actor.orgId,
 					})
+		const resolvedPublishedCommit =
+			artifact.publishedCommit ?? repoSource?.published_commit ?? null
+		input.sourceRevision?.onResolved?.(resolvedPublishedCommit)
+		const pinnedCommit = input.sourceRevision?.pinnedCommit ?? null
+		if (pinnedCommit && pinnedCommit !== resolvedPublishedCommit) {
+			return {
+				kind: 'pre-execution-denied',
+				response: buildJsonErrorResponse({
+					status: 409,
+					code: sourceRevisionChangedErrorCode,
+					message: `Package "${input.savedPackage.kodyId}" was republished after this run was queued: it was pinned to commit ${pinnedCommit} but the published commit is now ${resolvedPublishedCommit ?? 'unknown'}. Nothing ran. Create a new workflow to run the current revision.`,
+					idempotencyKey: input.idempotencyKey ?? undefined,
+				}),
+			}
+		}
 		if (
 			shouldConsumeAutomationInvocationEntitlement({
 				actorTokenId: input.actor.sourceId,
@@ -270,8 +289,7 @@ export async function runSavedPackageModuleOnce(
 			// not know the published commit yet; enrich it for the terminal write.
 			externalHandle.context = {
 				...externalHandle.context,
-				publishedCommit:
-					artifact.publishedCommit ?? repoSource?.published_commit ?? null,
+				publishedCommit: resolvedPublishedCommit,
 			}
 		}
 		const runRecord: RunRecordContext | null = externalHandle
@@ -282,8 +300,7 @@ export async function runSavedPackageModuleOnce(
 						packageId: input.savedPackage.id,
 						kodyId: input.savedPackage.kodyId,
 						sourceId: input.savedPackage.sourceId,
-						publishedCommit:
-							artifact.publishedCommit ?? repoSource?.published_commit ?? null,
+						publishedCommit: resolvedPublishedCommit,
 						surface: runtimeSurface,
 						name: resolveInvocationRuntimeName({
 							surface: runtimeSurface,

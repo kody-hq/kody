@@ -97,6 +97,8 @@ export function createFakeRunLogNamespace() {
 						updatedAt: nextUpdatedAt,
 						completedAt: input.completedAt ?? null,
 						lastError: input.lastError ?? null,
+						enqueuedCommit: input.enqueuedCommit ?? null,
+						sourceRevision: input.sourceRevision ?? null,
 					})
 					return { ok: true as const }
 				}
@@ -201,6 +203,8 @@ export function createFakeRunLogNamespace() {
 					updatedAt,
 					completedAt: null,
 					lastError: null,
+					enqueuedCommit: input.enqueuedCommit ?? null,
+					sourceRevision: input.sourceRevision ?? null,
 				})
 				const projection = projections.get(input.id)
 				if (!projection) {
