@@ -38,7 +38,6 @@ export async function openUrl(
 			() => finish(true),
 			options.settleMs ?? openerSettleMs,
 		)
-		timer.unref?.()
 		let child: ReturnType<typeof spawn>
 		try {
 			child = spawnFn(command, args, {
