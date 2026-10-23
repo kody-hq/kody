@@ -1,11 +1,12 @@
 # CLI local `credential()` / `credentials()` contract
 
-Contract for `@kodycodes/cli` (`kody-bot/cli`) so ad hoc and unpublished package
+Contract for `@kodycodes/cli` (`packages/cli`) so ad hoc and unpublished package
 code can `import { credential, credentials } from 'kody:runtime'` under
 `execute --local` with the same resolution and security as hosted execute (ADR
-0068).
+0068). Host `kody:runtime` lives in `packages/cli/src/local-runtime-source.ts`
+(and `package-local-runtime-source.ts` for package checkouts).
 
-Origin already:
+Origin:
 
 - Serves CapabilityProxy tools `credentialClientOpen` / `Sign` / `CallTool` /
   `Refresh` (metadata + opaque handles only; never secret values).
@@ -14,8 +15,8 @@ Origin already:
 - Places credentials only in the fetch gateway when a request carries
   `x-kody-credential-client`.
 
-CLI 1.13.3’s host `kody:runtime` omits `credential` / `credentials`, so
-unpublished / `--file` / `--code` modules fail at import time:
+A CLI whose host `kody:runtime` omits `credential` / `credentials` fails ad hoc
+`--file` / `--code` modules at import time:
 
 ```text
 The requested module 'kody:runtime' does not provide an export named 'credential'
@@ -23,9 +24,9 @@ The requested module 'kody:runtime' does not provide an export named 'credential
 
 ## Required CLI host surface
 
-`createLocalRuntimeModuleSource()` must export `credential` and `credentials` on
-the workerd module named `kody:runtime`, and include them on the ALS default
-object (Dropbox-style inlined optional exports).
+`createLocalRuntimeModuleSource()` exports `credential` and `credentials` on the
+workerd module named `kody:runtime`, and includes them on the ALS default object
+(Dropbox-style inlined optional exports).
 
 Implementation (same shape as the origin shim in
 `packages/worker/src/package-runtime/local-execute-runtime-support.ts`):
@@ -65,20 +66,9 @@ CapabilityProxy paths used:
 - Wrong hosts fail with `host_not_allowed` before any upstream call that would
   need the value.
 
-## Apply patch
+## Example
 
-Ready-to-apply diff for `kody-bot/cli` (against the commit that shipped CLI
-1.13.3 / `--file` bundling):
-
-[`cli-local-credential-runtime.patch`](./cli-local-credential-runtime.patch)
-
-```bash
-cd /path/to/kody-bot/cli
-git apply path/to/cli-local-credential-runtime.patch
-npm test -- test/local-execute.test.ts   # or: node --import tsx --test test/local-execute.test.ts
-```
-
-After release, ad hoc local execute matches hosted:
+Ad hoc local execute matches hosted:
 
 ```ts
 import { credential } from 'kody:runtime'
