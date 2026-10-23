@@ -106,7 +106,8 @@ export function OrganizationsPage({
 								key: org.slug,
 								slug: org.slug,
 								displayName: org.displayName,
-								avatarUrl: org.avatarUrl,
+								// The org avatar route only serves live orgs, so deleted rows
+								// keep the initial fallback.
 								personal: false,
 								viewer: data.viewer,
 								detail: (
