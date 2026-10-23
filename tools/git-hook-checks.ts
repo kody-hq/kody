@@ -8,7 +8,11 @@ import {
 	symlinkSync,
 } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
-import { resolveNpmCommand, isExecutedDirectly } from './node-runtime.ts'
+import {
+	envWithNodeHeapFloor,
+	isExecutedDirectly,
+	resolveNpmCommand,
+} from './node-runtime.ts'
 import {
 	createFileProvenanceStore,
 	hasProvenanceCheck,
@@ -838,7 +842,7 @@ export function gitHookScriptEnv(source: NodeJS.ProcessEnv = process.env) {
 	// Tests create foreign repositories. Inherited worktree variables would
 	// redirect their Git commands back into the repository being pushed.
 	for (const name of result.stdout.trim().split(/\s+/)) delete env[name]
-	return env
+	return envWithNodeHeapFloor(env)
 }
 
 /** Label for progress logs (`npm run X` or a bare `node …` command). */

@@ -1,5 +1,9 @@
 import { spawn } from 'node:child_process'
-import { isExecutedDirectly, resolveLocalBinary } from './node-runtime.ts'
+import {
+	envWithNodeHeapFloor,
+	isExecutedDirectly,
+	resolveLocalBinary,
+} from './node-runtime.ts'
 import {
 	envWithoutUnusableNxRemoteCache,
 	formatNxRemoteCacheProbe,
@@ -128,7 +132,7 @@ export function spawnNx(
 	return new Promise((resolve) => {
 		const chunks: Array<string> = []
 		const child = spawn(resolveLocalBinary('nx'), [...args], {
-			env,
+			env: envWithNodeHeapFloor(env ?? process.env),
 			stdio: ['inherit', 'pipe', 'pipe'],
 		})
 		function forward(

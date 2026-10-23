@@ -1113,6 +1113,7 @@ test('hook scripts can create foreign repositories without inherited worktree st
 			KODY_HOOK_TEST: 'preserved',
 		})
 		expect(env.KODY_HOOK_TEST).toBe('preserved')
+		expect(env.NODE_OPTIONS).toMatch(/--max-old-space-size=8192/)
 		const target = join(root, 'fixture')
 		const init = spawnSync('git', ['init', target], { env, encoding: 'utf8' })
 		expect({ status: init.status, error: init.error }).toEqual({
