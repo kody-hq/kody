@@ -1,5 +1,8 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import {
+	type RuntimePackageAppIdentity,
+	type RuntimePackageAppVisitor,
+} from '@kody-internal/shared/runtime-worker.ts'
 import { html } from 'remix/html-template'
 import { createHtmlResponse } from 'remix/response/html'
 import {
@@ -56,6 +59,7 @@ import {
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
+import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
 import { handlePackageAppOauthHostAuth } from '#app/package-app-oauth-host-auth.ts'
 import {
 	resolvePackageAppOrgOwnerByHandle,
@@ -382,7 +386,12 @@ type AuthorizedPackageAppServe =
 			sessionIssuedAt: number
 	  }
 	| { kind: 'session-required' }
-	| { kind: 'forbidden'; visitorEmail: string }
+	| {
+			kind: 'forbidden'
+			visitorEmail: string
+			/** The live session person, for an identity-only internet-visible serve. */
+			person: RuntimePackageAppIdentity
+	  }
 
 /**
  * Resolve the org named in the host/path, confirm the session person is still
@@ -452,7 +461,11 @@ async function authorizePackageAppVisitorForOrg(input: {
 		cachePackageAppAccessDecision({ ...decisionScope, decision })
 	}
 	if (!decision.allowed) {
-		return { kind: 'forbidden', visitorEmail: person.email }
+		return {
+			kind: 'forbidden',
+			visitorEmail: person.email,
+			person: { userId: viewer.userId, username: person.username },
+		}
 	}
 
 	// Team org entitlements resolve by org id alone. Pairing the visitor's
@@ -973,6 +986,12 @@ async function serveInternetVisiblePackageApp(input: {
 	handle: string
 	packagePath: PackageAppPath
 	serverTiming: Array<ServerTimingEntry>
+	/**
+	 * Names a signed-in person who cannot run the app but signed in to it with
+	 * Kody. They are served exactly like an anonymous visitor except that
+	 * package code can read who they are. Grants nothing.
+	 */
+	resolveIdentity?: () => Promise<RuntimePackageAppIdentity | null>
 }): Promise<Response | null> {
 	const org = await resolvePackageAppOrgOwnerByHandle({
 		env: input.env,
@@ -990,6 +1009,8 @@ async function serveInternetVisiblePackageApp(input: {
 		requestUrl: input.request.url,
 	})
 	if (!approvedPublishedCommit) return null
+	// Only an app that will actually serve pays the identity lookup.
+	const identity = (await input.resolveIdentity?.()) ?? null
 	const response = await servePackageAppRequest({
 		request: input.request,
 		env: input.env,
@@ -1000,11 +1021,38 @@ async function serveInternetVisiblePackageApp(input: {
 			displayName: org.displayName,
 		},
 		visitor: null,
+		identity,
 		approvedPublishedCommit,
 		packagePath: input.packagePath,
 		serverTiming: input.serverTiming,
 	})
-	return applyPackageAppCacheHeaders(response, 'anonymous')
+	// A response that may name the visitor must never reach a shared cache.
+	return applyPackageAppCacheHeaders(
+		response,
+		identity ? 'signed-in' : 'anonymous',
+	)
+}
+
+/**
+ * The identity-only visitor for an internet-visible serve: a live session
+ * person who cannot run the app, but only while they hold a live Sign in with
+ * Kody grant for it (the same bar `/-/auth/me` uses). A stale handoff session
+ * from someone who lost access gets nothing.
+ */
+async function resolvePackageAppIdentityOnlyVisitor(input: {
+	env: Env
+	authorized: AuthorizedPackageAppServe
+	handle: string
+	packagePath: PackageAppPath
+}): Promise<RuntimePackageAppIdentity | null> {
+	if (input.authorized.kind !== 'forbidden') return null
+	const grant = await findLivePackageAppOauthGrant({
+		db: input.env.APP_DB,
+		personId: input.authorized.person.userId,
+		orgUsername: input.handle.toLowerCase(),
+		kodyId: input.packagePath.kodyId,
+	})
+	return grant ? input.authorized.person : null
 }
 
 function withSetCookie(response: Response, setCookie: string) {
@@ -1161,6 +1209,13 @@ async function servePackageAppForSession(input: {
 		handle,
 		packagePath,
 		serverTiming,
+		resolveIdentity: () =>
+			resolvePackageAppIdentityOnlyVisitor({
+				env,
+				authorized,
+				handle,
+				packagePath,
+			}),
 	})
 	if (anonymous) return anonymous
 

@@ -749,6 +749,35 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 		{ headers: { Cookie: outsider, Accept: 'application/json' } },
 	)
 	expect(outsiderOnPublic.status).toBe(500)
+	expect(outsiderOnPublic.headers.get('Cache-Control') ?? '').not.toContain(
+		'private',
+	)
+
+	// Changed deliberately (identity-only visitors): an outsider who signed in
+	// to the public app with Kody is still served as an anonymous visitor, but
+	// the response may name them, so it is forced private. Without a live
+	// grant (or after revoking it) they are plain anonymous again.
+	await ensurePackageAppOauthGrantsTable()
+	const signedInOutsider = await sessionCookieForFixtureOutsider(publicApp.slug)
+	const fetchPublicAsSignedInOutsider = () =>
+		workerFetch(`${accessFixtureOrigin}/packages/${publicApp.slug}`, {
+			headers: { Cookie: signedInOutsider, Accept: 'application/json' },
+		})
+	const beforeGrant = await fetchPublicAsSignedInOutsider()
+	expect(beforeGrant.status).toBe(500)
+	expect(beforeGrant.headers.get('Cache-Control') ?? '').not.toContain(
+		'private',
+	)
+	await grantFixtureOutsiderSignIn(publicApp.slug)
+	const withGrant = await fetchPublicAsSignedInOutsider()
+	expect(withGrant.status).toBe(500)
+	expect(withGrant.headers.get('Cache-Control')).toContain('private')
+	expect(withGrant.headers.get('Vary')).toContain('Cookie')
+	await revokeFixtureOutsiderSignIn(publicApp.slug)
+	const afterRevoke = await fetchPublicAsSignedInOutsider()
+	expect(afterRevoke.headers.get('Cache-Control') ?? '').not.toContain(
+		'private',
+	)
 	const outsiderOnPrivate = await workerFetch(
 		`${accessFixtureOrigin}/packages/${privateApp.slug}`,
 		{ headers: { Cookie: outsider } },
@@ -866,8 +895,50 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	}
 })
 
-async function sessionCookieForFixtureOutsider() {
-	const email = 'cost-outsider@example.com'
+const fixtureOutsiderEmail = 'cost-outsider@example.com'
+
+async function ensurePackageAppOauthGrantsTable() {
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+			id TEXT PRIMARY KEY NOT NULL,
+			person_id TEXT NOT NULL,
+			org_username TEXT NOT NULL,
+			kody_id TEXT NOT NULL,
+			scopes TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			revoked_at TEXT
+		)`,
+	).run()
+}
+
+async function grantFixtureOutsiderSignIn(slug: string) {
+	await env.APP_DB.prepare(
+		`INSERT INTO package_app_oauth_grants (
+			id, person_id, org_username, kody_id, scopes, created_at
+		) VALUES (?, ?, ?, ?, 'profile', ?)`,
+	)
+		.bind(
+			`grant-outsider-${slug}`,
+			testStableUserIdFromEmail(fixtureOutsiderEmail),
+			accessFixture.orgSlug,
+			slug,
+			new Date().toISOString(),
+		)
+		.run()
+}
+
+async function revokeFixtureOutsiderSignIn(slug: string) {
+	await env.APP_DB.prepare(
+		`UPDATE package_app_oauth_grants SET revoked_at = ? WHERE id = ?`,
+	)
+		.bind(new Date().toISOString(), `grant-outsider-${slug}`)
+		.run()
+}
+
+async function sessionCookieForFixtureOutsider(
+	slug: string = accessFixture.privateApp.slug,
+) {
+	const email = fixtureOutsiderEmail
 	await seedAccount({ db: env.APP_DB, email, username: 'cost-outsider' })
 	const setCookies = await createPackageAppSessionCookie({
 		env,
@@ -875,7 +946,7 @@ async function sessionCookieForFixtureOutsider() {
 			stableUserId: testStableUserIdFromEmail(email),
 			username: accessFixture.orgSlug,
 		},
-		slug: accessFixture.privateApp.slug,
+		slug,
 		secure: true,
 		expiresAt: Date.now() + 60 * 60 * 1000,
 	})

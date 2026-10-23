@@ -61,6 +61,18 @@ export type RuntimePackageAppVisitor = {
 	role: OrgRole | null
 }
 
+/**
+ * A signed-in person who cannot run the app (no `app:execute` in the owning
+ * org) but signed in to it with Kody. Read-only: it names who is visiting so
+ * `metaGetCurrentUser` and the visitor header can answer, and grants nothing.
+ * The request is still served as an anonymous visitor (no actor, no org
+ * binding, anonymous billing and storage).
+ */
+export type RuntimePackageAppIdentity = {
+	userId: PersonId
+	username: string
+}
+
 export type RuntimePackageAppPath = {
 	username: string
 	kodyId: string
@@ -77,6 +89,11 @@ export type RuntimePackageAppServeInput = {
 	 * that need an actor then fail closed.
 	 */
 	visitor: RuntimePackageAppVisitor | null
+	/**
+	 * With a null visitor: the signed-in person behind an otherwise anonymous
+	 * request, when they signed in to this app with Kody. Identity only.
+	 */
+	identity?: RuntimePackageAppIdentity | null
 	/**
 	 * With a null visitor: the published commit the owner approved for
 	 * internet-visible serving (ADR 0069). Serve refuses an anonymous request

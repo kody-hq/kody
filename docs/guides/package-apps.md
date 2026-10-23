@@ -193,9 +193,27 @@ export default {
 - Do not treat `email` or `display_name` from this call as the visitor's inside
   an app request. Request `email` through the OAuth helper above when the app
   needs the visitor's email.
-- An anonymous visitor (internet-visible app, no sign-in) has no identity, so
-  the call throws "Authenticated MCP user is required". Treat that as signed
-  out.
+- A signed-in visitor who cannot run the app (no `app:execute` in the owning
+  org, for example someone who only used Sign in with Kody on an
+  internet-visible app) gets `user_id` and `username` too, while their Sign in
+  with Kody grant for the app is live. Identity is all they get: the request is
+  otherwise served exactly like an anonymous visitor, so storage, credentials,
+  and capabilities that need permission fail closed, and usage is metered as
+  anonymous. To give a specific person real access, grant them Use on the app
+  (`inviteCreate` with `kind: "grant"`, `resource_type: "app"`).
+- A visitor who is not signed in has no identity, so the call throws
+  "Authenticated MCP user is required". Treat that as signed out.
+
+The same verified identity is on the request your fetch handler receives, in the
+`X-Kody-Visitor` header: JSON with `userId`, `username`, and `role` (the
+visitor's role in the owning org, `null` for anyone who is not a member). The
+platform strips any inbound `X-Kody-*` header before setting it, so it cannot be
+forged, and it is absent for anonymous visitors. The OAuth helper's `getUser`,
+`requireUser`, and `resolveUser` read it in server code; `/-/auth/me` stays the
+browser's way to ask (it adds avatar and consented email).
+
+Responses to a request that names a visitor are forced `private` so no shared
+cache can mix visitors.
 
 Default claims: user id, name, avatar, and access level for the app. Email only
 when requested and consented. Consent is skipped for apps the user (or their

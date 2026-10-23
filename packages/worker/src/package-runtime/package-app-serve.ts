@@ -1,5 +1,8 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import {
+	type RuntimePackageAppIdentity,
+	type RuntimePackageAppVisitor,
+} from '@kody-internal/shared/runtime-worker.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { waitUntil as scheduleWorkerWaitUntil } from 'cloudflare:workers'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -56,6 +59,7 @@ import {
 	packageAppSyntheticHeaderValue,
 	type PackageAppTrustedDispatch,
 } from '#worker/package-runtime/package-app-synthetic.ts'
+import { withPackageAppVisitorHeader } from '#worker/package-runtime/package-app-visitor-header.ts'
 import { packageRealtimeSessionRpc } from '#worker/package-runtime/realtime-session.ts'
 import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 import {
@@ -721,6 +725,8 @@ export async function servePackageAppRequest(input: {
 	owner: PackageAppServeOwner
 	/** Null for an anonymous visitor of an internet-visible app. */
 	visitor: RuntimePackageAppVisitor | null
+	/** See `RuntimePackageAppServeInput.identity`. Ignored with a visitor. */
+	identity?: RuntimePackageAppIdentity | null
 	/** See `RuntimePackageAppServeInput.approvedPublishedCommit`. */
 	approvedPublishedCommit?: string | null
 	packagePath: PackageAppPath
@@ -753,6 +759,7 @@ export async function servePackageAppRequest(input: {
 			request: input.request,
 			owner: input.owner,
 			visitor: input.visitor,
+			identity: input.identity ?? null,
 			approvedPublishedCommit: input.approvedPublishedCommit,
 			packagePath: input.packagePath,
 			dispatch: input.dispatch,
@@ -760,6 +767,9 @@ export async function servePackageAppRequest(input: {
 	}
 
 	const { request, env, owner, visitor, packagePath, dispatch } = input
+	// Identity rides only on an otherwise anonymous request; a visitor already
+	// names the person.
+	const identity = visitor ? null : (input.identity ?? null)
 	const serverTiming = input.serverTiming ?? []
 	const requestUrl = new URL(request.url)
 	const { kodyId } = packagePath
@@ -1050,7 +1060,10 @@ export async function servePackageAppRequest(input: {
 		const forwardedUrl = new URL(requestUrl)
 		forwardedUrl.pathname = forwardedPackageRestPath
 		forwardedRequest = applyTrustedPackageAppDispatch(
-			createPackageCodeRequest(request, forwardedUrl),
+			withPackageAppVisitorHeader(
+				createPackageCodeRequest(request, forwardedUrl),
+				{ visitor, identity },
+			),
 			dispatch,
 		)
 	} catch (error) {

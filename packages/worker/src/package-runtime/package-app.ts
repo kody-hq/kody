@@ -125,6 +125,7 @@ import {
 	packageAppSyntheticHeaderName,
 	packageAppSyntheticHeaderValue,
 } from './package-app-synthetic.ts'
+import { packageAppVisitorHeaderName } from './package-app-visitor-header.ts'
 import {
 	buildPackageAppAssetBasePath,
 	buildPackageAppClientModuleUrl,
@@ -157,6 +158,14 @@ function createPackageAppWorkerSource(input: {
 	packageBindingIds: Array<string>
 	/** Per-build bridge capability; lives only in this module's private scope. */
 	packageBindingToken: string
+	/**
+	 * Set for an anonymous build (no actor): the owning org's slug. Then a
+	 * signed-in visitor named by the platform's visitor header gets a
+	 * read-only `metaGetCurrentUser` answer, while every other call stays
+	 * anonymous. Null for a build that acts as a visitor, where the bridge
+	 * answers.
+	 */
+	identityOnlyOrgSlug: string | null
 }) {
 	const mcpServerNamesExpr = input.preloadMcpServerNames
 		? 'await runtimeBridge.listMcpServerNames().catch(() => [])'
@@ -209,6 +218,54 @@ const __kodyRequestCaptured = Request;
 const __kodyStringTrimCaptured = String.prototype.trim;
 const __kodyPackageBindingToken = ${JSON.stringify(input.packageBindingToken)};
 const __kodyPackageBindingIds = __kodyObjectFreezeCaptured(${JSON.stringify(input.packageBindingIds)});
+const __kodyIdentityOnlyOrgSlug = ${JSON.stringify(input.identityOnlyOrgSlug)};
+const __kodyJsonParseCaptured = JSON.parse;
+
+// An anonymous build serves signed-in people who cannot run the app as
+// anonymous visitors. The platform names them in ${packageAppVisitorHeaderName}
+// (inbound X-Kody-* headers are stripped before it is set), so
+// metaGetCurrentUser can say who is visiting. That answer is the only thing
+// the header changes: it grants no storage, credentials, or capability.
+function __kodyReadIdentityOnlyVisitor(request) {
+	if (__kodyIdentityOnlyOrgSlug === null) return null;
+	let raw = null;
+	try {
+		raw = request?.headers?.get(${JSON.stringify(packageAppVisitorHeaderName)}) ?? null;
+	} catch {
+		return null;
+	}
+	if (!raw) return null;
+	try {
+		const parsed = __kodyJsonParseCaptured(raw);
+		if (
+			!parsed ||
+			typeof parsed.userId !== 'string' ||
+			!parsed.userId ||
+			typeof parsed.username !== 'string'
+		) {
+			return null;
+		}
+		return __kodyObjectFreezeCaptured({
+			user_id: parsed.userId,
+			username: parsed.username,
+			email: '',
+			display_name: parsed.username,
+			org: __kodyObjectFreezeCaptured({ slug: __kodyIdentityOnlyOrgSlug }),
+		});
+	} catch {
+		return null;
+	}
+}
+function __kodyIdentityOnlyAnswer(identity, name) {
+	if (!identity || name !== 'metaGetCurrentUser') return null;
+	return {
+		user_id: identity.user_id,
+		username: identity.username,
+		email: identity.email,
+		display_name: identity.display_name,
+		org: { slug: identity.org.slug },
+	};
+}
 let __kodyCapturedRuntimeBridge = null;
 function __kodyCaptureRuntimeBridge(env) {
 	// First capture happens on the first request, before the user module is
@@ -218,19 +275,22 @@ function __kodyCaptureRuntimeBridge(env) {
 	}
 	return __kodyCapturedRuntimeBridge;
 }
-function __kodyCreateAppPackageBindings(bridge) {
+function __kodyCreateAppPackageBindings(bridge, identity) {
 	const map = new __kodyMapCaptured();
 	for (let index = 0; index < __kodyPackageBindingIds.length; index += 1) {
 		const packageId = __kodyPackageBindingIds[index];
 		const token = __kodyPackageBindingToken;
-		const boundCapability = async (callInput) =>
-			await bridge.packageBoundCall({
+		const boundCapability = async (callInput) => {
+			const identityAnswer = __kodyIdentityOnlyAnswer(identity, callInput?.name);
+			if (identityAnswer) return identityAnswer;
+			return await bridge.packageBoundCall({
 				token,
 				packageId,
 				op: 'capability',
 				name: callInput?.name,
 				args: callInput?.args ?? {},
 			});
+		};
 		let mcp = null;
 		const binding = __kodyObjectFreezeCaptured({
 			// Package-locked MCP servers check the caller's package, so this
@@ -292,9 +352,9 @@ function __kodyCreateAppPackageBindings(bridge) {
 	}
 	return map;
 }
-async function __kodyRunUserCode(env, callback) {
+async function __kodyRunUserCode(env, callback, identity = null) {
 	await __kodyEnsureRuntimeLoaded();
-	const bindings = __kodyCreateAppPackageBindings(__kodyCaptureRuntimeBridge(env));
+	const bindings = __kodyCreateAppPackageBindings(__kodyCaptureRuntimeBridge(env), identity);
 	if (typeof __kodyRunWithPackageBindingsFn !== 'function') {
 		return await callback();
 	}
@@ -352,7 +412,7 @@ function buildFacetClassExportName(rawFacetName) {
 		: \`App_\${sanitizedFacetName}_\${hashSuffix}\`;
 }
 
-function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {
+function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null) {
 	const isProxyLookupKey = (name) =>
 		typeof name !== 'string' || name === 'then';
 	const createOpenNamespaceProxy = (getValue) =>
@@ -465,11 +525,14 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {
 					\`MCP server tool "\${property}" is not available as a flat kody function. Use kody.mcp[serverName].toolName(input) instead.\`,
 				);
 			}
-			return async (args = {}) =>
-				await runtimeBridge.callCapability({
+			return async (args = {}) => {
+				const identityAnswer = __kodyIdentityOnlyAnswer(identity, property);
+				if (identityAnswer) return identityAnswer;
+				return await runtimeBridge.callCapability({
 					name: property,
 					args,
 				});
+			};
 		},
 		has(_target, property) {
 			return property === 'mcp';
@@ -756,7 +819,7 @@ function createCredentialRuntime(runtimeBridge, call) {
 	);
 }
 
-function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader) {
+function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {
 	const packageId = packageContext?.packageId ?? '';
 	const packageSecrets =
 		packageId.length > 0
@@ -775,7 +838,7 @@ function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader) {
 				}
 	const credentialRuntime = createCredentialRuntime(runtimeBridge);
 	return {
-		kody: createKodyProxy(runtimeBridge, mcpServerNamesOrLoader),
+		kody: createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity),
 		storage: undefined,
 		__kodyPackageSecrets: (secretsPackageId) =>
 			createPackageSecretsProxy(runtimeBridge, secretsPackageId),
@@ -1016,6 +1079,8 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
 		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
 		const requestUrl = new URL(request.url);
+		// Read before any package code runs.
+		const identityOnlyVisitor = __kodyReadIdentityOnlyVisitor(request);
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_fetch',
 			name: requestUrl.pathname,
@@ -1030,6 +1095,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
 			${mcpServerNamesExpr},
+			identityOnlyVisitor,
 		);
 		try {
 			consoleCapture.install();
@@ -1047,7 +1113,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 					throw new Error('Package apps must default export a fetch handler or an object with fetch().');
 				}
 				return await fetchHandler(request, runtimeEnv, this.ctx);
-			}));
+			}, identityOnlyVisitor));
 			// Authors (or proxied upstreams) must not set the internal throw
 			// marker; only the catch path below may attach it.
 			let outgoing = withoutAuthorRuntimeErrorHeader(response);
@@ -2292,6 +2358,19 @@ function packageAppVisitorOf(
 	}
 }
 
+/**
+ * The owning org's slug when the build is anonymous (no actor), so the
+ * wrapper may answer `metaGetCurrentUser` for a signed-in visitor named by
+ * the platform's visitor header. Null when the build acts as a visitor.
+ */
+function identityOnlyOrgSlugOf(runtime: {
+	callerContext: McpCallerContext
+	servingUsername?: string
+}): string | null {
+	if (runtime.callerContext.request) return null
+	return runtime.servingUsername ?? ''
+}
+
 function getUsernameFromPackageName(packageName: string) {
 	const separatorIndex = packageName.indexOf('/')
 	if (!packageName.startsWith('@') || separatorIndex <= 1) {
@@ -2692,6 +2771,7 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 			rewriteNullPackagesInvoke:
 				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
+			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
 		}),
 	}
 	// One binding for this worker-options build (visitor-scoped via the cache
