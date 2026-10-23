@@ -133,8 +133,8 @@ for someone else. `enablementList` shows your enablements (an Owner can list the
 whole org's). `enablementDisable` turns one off; its enabler or an Owner may do
 that.
 
-Every time a job or an enablement turns on or off, the org audit log records
-who did it (a person, an automation run, or a site admin), when, the old and new
+Every time a job or an enablement turns on or off, the org audit log records who
+did it (a person, an automation run, or a site admin), when, the old and new
 state, where it came from (web app, MCP, API, CLI, the scheduler, and so on),
 and the reason when one was given (`jobUpdate` and `enablementDisable` take an
 optional `reason`). Owners see the last 7 days under **On/off changes** on the

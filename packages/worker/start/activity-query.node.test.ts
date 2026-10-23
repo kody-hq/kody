@@ -58,6 +58,7 @@ function activityPage(
 			selectedRun: null,
 			selectedRunId: null,
 			retentionDays: 30,
+			toggleChanges: null,
 		},
 		head: absolutizeDocumentHead(
 			resolveDocumentHead('orgActivity', '/account/activity'),
