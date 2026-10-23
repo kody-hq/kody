@@ -7,7 +7,7 @@ import {
 	getErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
-import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import {
 	AuthorizationError,
@@ -24,7 +24,7 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import {
-	isRetryableD1LockError,
+	isRetryableD1LockMessage,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import {
@@ -228,8 +228,16 @@ export function toApiError(error: unknown): ApiError {
 	}
 	// Transient D1 before caller-error mapping: package prep and other hosts
 	// wrap retryable D1 failures in McpCallerError, and those must stay 503
-	// with Retry-After rather than becoming a 400 invalid_request.
-	if (isRetryableD1LockError(error)) {
+	// with Retry-After rather than becoming a 400 invalid_request. Match only
+	// non-caller entries: a McpCallerError message can echo caller input (for
+	// example a job id of "SQLITE_BUSY") and must not turn a 404 into a 503.
+	if (
+		getErrorCauseChain(error).some(
+			(entry) =>
+				!(entry instanceof McpCallerError) &&
+				isRetryableD1LockMessage(getErrorMessage(entry)),
+		)
+	) {
 		return new ApiError({
 			status: 503,
 			code: 'internal_error',
