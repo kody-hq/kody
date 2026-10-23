@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { availableParallelism } from 'node:os'
 import {
 	cloudflareTest,
 	readD1Migrations,
@@ -25,9 +26,7 @@ const underValidateLoad =
 	process.env.KODY_VALIDATE_LOAD === 'true'
 const workersTestTimeout = 40_000
 const workersMaxWorkers = process.env.CI
-	? underValidateLoad
-		? 2
-		: 3
+	? Math.min(underValidateLoad ? 2 : 4, availableParallelism())
 	: undefined
 
 export default mergeConfig(

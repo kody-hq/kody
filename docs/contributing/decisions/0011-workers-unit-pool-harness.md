@@ -33,7 +33,8 @@ required. Keep a shared Vitest `testTimeout` of 20s (and `CI=1` on `test:push` /
 validate’s test and e2e legs) so the pool’s per-file DO cold load does not fail
 the default budget. When `npm run validate` runs workers-unit beside the rest of
 the parallel gate (`KODY_VALIDATE_LOAD=1` on that leg only; #2939 / #2475),
-`vitest.workers.config.ts` drops `maxWorkers` from 3 to 2. Workers-unit's
+`vitest.workers.config.ts` caps `maxWorkers` at 2 rather than the dedicated CI
+Workers job's 4; both caps respect available CPU affinity. Workers-unit's
 `testTimeout`/`hookTimeout` is 40s everywhere (not only under the flag) so the
 budget a cached `test-workers` result passed under is the one CI enforces. On
 machines with at most 4 cores or under 24GB RAM, `tools/run-validate.ts` also
