@@ -427,8 +427,9 @@ const stretchedLinkCss: CSSObject = {
 	},
 	'&:focus-visible': { outline: 'none' },
 	'&:focus-visible::after': {
+		/* Inset so the download list's `overflow: hidden` cannot clip it. */
 		outline: `2px solid ${colors.primary}`,
-		outlineOffset: '2px',
+		outlineOffset: '-2px',
 	},
 }
 
