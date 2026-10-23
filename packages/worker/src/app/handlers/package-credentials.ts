@@ -10,6 +10,7 @@ import {
 } from '#worker/credentials/package-credential-mappings.ts'
 import { getEnablementById } from '#worker/enablements/repo.ts'
 import {
+	armCronJobsForCallerEnablementIds,
 	disableEnablementForCaller,
 	enableTriggerForCaller,
 	planTriggerEnablementForCaller,
@@ -198,6 +199,12 @@ async function applyEnablementActions(input: {
 			await runNewEnablementPlans({
 				db: input.env.APP_DB,
 				plans: [plan],
+			})
+			await armCronJobsForCallerEnablementIds({
+				env: input.env,
+				request: input.scope.request,
+				orgId: input.scope.savedPackage.userId,
+				enablementIds: [plan.enablementId],
 			})
 			continue
 		}

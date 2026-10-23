@@ -4,13 +4,19 @@
  * someone else, and publishing never turns anything on. An enabler, or an
  * Owner, can turn an enablement off.
  */
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	authorize,
+	checkPermission,
 	computeEffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
+import {
+	armJobForEnablement,
+	type ArmJobForEnablementResult,
+} from '#worker/jobs/arm-job-for-enablement.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
@@ -715,7 +721,14 @@ export async function enableTriggerForCaller(input: {
 		kind: input.kind,
 		name: input.name,
 	})
-	if (plan.enablement) return plan.enablement
+	if (plan.enablement) {
+		await armCronJobForCallerEnablement({
+			env: input.env,
+			request: input.request,
+			enablement: plan.enablement,
+		})
+		return plan.enablement
+	}
 	if (input.kind === 'webhook') {
 		const approvalUrl = buildWebhookApprovalUrl({
 			baseUrl: input.baseUrl,
@@ -739,7 +752,62 @@ export async function enableTriggerForCaller(input: {
 		id: plan.enablementId,
 	})
 	if (!created) throw new Error('Unable to read the new enablement.')
+	await armCronJobForCallerEnablement({
+		env: input.env,
+		request: input.request,
+		enablement: created,
+	})
 	return created
+}
+
+/**
+ * A scheduled tick runs only when the job row is enabled and an enablement is
+ * on. Turning a cron enablement on must not leave its job row off (with a
+ * stale `next_run_at`), so when the caller may also write jobs (`job:write`,
+ * what `jobUpdate` needs) the job is turned on and rescheduled from now.
+ * Without `job:write` the job keeps the state its writers chose.
+ */
+export async function armCronJobForCallerEnablement(input: {
+	env: Env
+	request: RequestContext
+	enablement: EnablementRecord
+}): Promise<ArmJobForEnablementResult | 'not_permitted' | 'not_applicable'> {
+	const { enablement } = input
+	if (enablement.triggerKind !== 'cron' || enablement.state !== 'on') {
+		return 'not_applicable'
+	}
+	const access = await computeEffectivePermissions({
+		env: input.env,
+		request: input.request,
+	})
+	if (!checkPermission(access, 'job:write').allowed) return 'not_permitted'
+	return await armJobForEnablement({
+		env: input.env,
+		orgId: enablement.orgId,
+		jobId: enablement.instanceId,
+	})
+}
+
+/** {@link armCronJobForCallerEnablement} for enablements written by id. */
+export async function armCronJobsForCallerEnablementIds(input: {
+	env: Env
+	request: RequestContext
+	orgId: OwnerId
+	enablementIds: ReadonlyArray<string>
+}) {
+	for (const id of new Set(input.enablementIds)) {
+		const enablement = await getEnablementById({
+			db: input.env.APP_DB,
+			orgId: input.orgId,
+			id,
+		})
+		if (!enablement) continue
+		await armCronJobForCallerEnablement({
+			env: input.env,
+			request: input.request,
+			enablement,
+		})
+	}
 }
 
 /** Turn an enablement off for good. Only its enabler or an Owner may. */

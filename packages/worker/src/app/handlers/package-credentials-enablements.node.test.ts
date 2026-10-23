@@ -7,9 +7,13 @@ const state = vi.hoisted(() => ({
 	enable: vi.fn(),
 	plan: vi.fn(),
 	apply: vi.fn(),
+	arm: vi.fn(),
 }))
-vi.mock('#worker/enablements/repo.ts', () => ({ getEnablementById: state.row }))
+vi.mock('#worker/enablements/repo.ts', () => ({
+	getEnablementById: state.row,
+}))
 vi.mock('#worker/enablements/service.ts', () => ({
+	armCronJobsForCallerEnablementIds: state.arm,
 	disableEnablementForCaller: state.disable,
 	enableTriggerForCaller: state.enable,
 	planTriggerEnablementForCaller: state.plan,
@@ -121,7 +125,11 @@ test('the viewer can disable its scoped instance and explicitly add another with
 	expect(state.disable).toHaveBeenCalledWith(
 		expect.objectContaining({ request: scope.request, enablementId: 'mine' }),
 	)
-	state.plan.mockResolvedValue({ enablement: null, new: true })
+	state.plan.mockResolvedValue({
+		enablement: null,
+		new: true,
+		enablementId: 'new-instance',
+	})
 	await mutatePackageCredentialMappings({
 		scope,
 		body: {
@@ -142,6 +150,13 @@ test('the viewer can disable its scoped instance and explicitly add another with
 		}),
 	)
 	expect(state.apply).toHaveBeenCalledOnce()
+	// The new instance's job row is turned on too, not only the enablement.
+	expect(state.arm).toHaveBeenCalledWith(
+		expect.objectContaining({
+			request: scope.request,
+			enablementIds: ['new-instance'],
+		}),
+	)
 	expect(state.write).not.toHaveBeenCalled()
 })
 

@@ -6,6 +6,7 @@
  */
 import {
 	EmailSenderInsertAdopted,
+	armCronJobsForCallerEnablementIds,
 	planTriggerEnablementForCaller,
 	runNewEnablementPlans,
 	TriggerEnablementError,
@@ -701,12 +702,21 @@ export async function writeMappingChanges(
 		for (const plan of auditPlans) {
 			await commitOrgAuditOutbox({ ...audit, appDb: db }, plan)
 		}
+		return [...enabledIds, ...newInstanceIds]
+			.filter(([trigger]) => trigger.kind === 'cron')
+			.map(([, enablementId]) => enablementId)
 	}
 	// A concurrent approval of the same sender inserts first. The batch rolls
 	// back; planning again attaches mappings to that row instead of a second run.
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
-			await commitMappingWrite()
+			const cronEnablementIds = await commitMappingWrite()
+			await armCronJobsForCallerEnablementIds({
+				env: scope.env,
+				request: scope.request,
+				orgId: scope.savedPackage.userId,
+				enablementIds: cronEnablementIds,
+			})
 			return
 		} catch (error) {
 			if (!(error instanceof EmailSenderInsertAdopted)) throw error
