@@ -7,12 +7,27 @@ this document covers Cloud Agent VM gotchas only.
 
 ## Node 26
 
-The repo requires Node **>=26** (`engines` in root `package.json`). Cloud Agent
-VMs may ship Node 22 at `/exec-daemon/node`, which takes precedence over nvm
-unless nvm’s Node 26 bin directory is prepended to `PATH`. Verify with
-`node --version` before running scripts. Node 22 ships npm 10, which is below
-the root `devEngines.packageManager` range (npm 10 also misreads this lockfile),
-so `npm ci` stops with `EBADDEVENGINES`. Fix `PATH` and rerun `npm ci`. Do not
+The repo requires Node **>=26**. Root `package.json` declares it in
+`devEngines.runtime` with `onFail: "error"` (and the same range in
+`engines.node`), so `npm ci`, `npm install`, and `npm run` stop with
+`EBADDEVENGINES` on any older Node, including Node 24. `.nvmrc` pins `26`.
+
+Cloud Agent VMs may ship Node 22 at `/exec-daemon/node`, which takes precedence
+over nvm unless nvm's Node 26 bin directory is prepended to `PATH`. Node 22 also
+ships npm 10, which is below the root `devEngines.packageManager` range (npm 10
+misreads this lockfile). Put Node 26 first before installing or running scripts:
+
+```bash
+source "$NVM_DIR/nvm.sh"
+nvm install 26
+export PATH="$NVM_DIR/versions/node/$(nvm version 26)/bin:$PATH"
+node --version   # expect v26.x
+npm --version    # expect 11.11.1 or newer
+npm ci
+```
+
+The Cursor dashboard install command for this repo must do the same `PATH` step
+before `npm ci`, or the snapshot install fails with `EBADDEVENGINES`. Do not
 fall back to `npm install` and do not commit the lockfile it rewrites.
 
 ## Playwright browsers

@@ -5,8 +5,87 @@ import {
 	floorInstallArgs,
 	formatFloorInstallFailure,
 	lockfileWorkspacePaths,
+	readNodeFloor,
 	readNpmFloor,
+	setupNodeVersionsIn,
 } from './check-npm-install-floor.ts'
+
+const nodeSupported = {
+	engines: { node: '>=26' },
+	devEngines: {
+		runtime: { name: 'node', version: '>=26', onFail: 'error' },
+	},
+}
+
+const nodeInput = {
+	currentNode: 'v26.12.1',
+	nvmrc: '26\n',
+	setupNodeVersions: [
+		{ file: '.github/workflows/validate.yml', version: '26' },
+	],
+}
+
+test('readNodeFloor accepts a matching runtime, engines, .nvmrc, and setup-node', () => {
+	expect(readNodeFloor(nodeSupported, nodeInput)).toEqual({
+		ok: true,
+		range: '>=26',
+	})
+	expect(readNodeFloor(nodeSupported, { ...nodeInput, nvmrc: null })).toEqual({
+		ok: true,
+		range: '>=26',
+	})
+})
+
+test('readNodeFloor requires devEngines.runtime so an old Node fails fast', () => {
+	const result = readNodeFloor({ engines: { node: '>=26' } }, nodeInput)
+	expect(result.ok ? [] : result.errors).toEqual([
+		expect.stringContaining('devEngines.runtime is missing'),
+	])
+})
+
+test('readNodeFloor rejects a warn-only runtime, a non-node name, and drifted engines', () => {
+	const result = readNodeFloor(
+		{
+			engines: { node: '>=24' },
+			devEngines: {
+				runtime: { name: 'bun', version: '>=26', onFail: 'warn' },
+			},
+		},
+		nodeInput,
+	)
+	expect(result.ok ? [] : result.errors).toEqual([
+		expect.stringContaining('runtime.name must be "node"'),
+		expect.stringContaining('runtime.onFail must be "error"'),
+		expect.stringContaining('engines.node must match'),
+	])
+})
+
+test('readNodeFloor rejects an older running Node, .nvmrc, or setup-node version', () => {
+	const result = readNodeFloor(nodeSupported, {
+		currentNode: 'v24.21.0',
+		nvmrc: '22',
+		setupNodeVersions: [{ file: '.github/workflows/old.yml', version: '24.x' }],
+	})
+	expect(result.ok ? [] : result.errors).toEqual([
+		expect.stringContaining('ran on Node v24.21.0, outside'),
+		expect.stringContaining('.nvmrc ("22") is outside'),
+		'.github/workflows/old.yml sets up Node 24.x, outside devEngines.runtime.version >=26.',
+	])
+})
+
+test('setupNodeVersionsIn reads literal node-version values and skips expressions', () => {
+	const yaml = [
+		'      - uses: actions/setup-node@v6',
+		'        with:',
+		'          node-version: 26',
+		"          node-version: '26.1'",
+		'          node-version: ${{ matrix.node }}',
+	].join('\n')
+	expect(setupNodeVersionsIn('a.yml', yaml)).toEqual([
+		{ file: 'a.yml', version: '26' },
+		{ file: 'a.yml', version: '26.1' },
+	])
+})
 
 const supported = {
 	packageManager: 'npm@11.11.1',

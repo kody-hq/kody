@@ -1,5 +1,5 @@
 /**
- * Keep the supported npm range honest.
+ * Keep the supported Node and npm ranges honest.
  *
  * `package-lock.json` is written by whatever npm the author ran, and older
  * npm releases read some lockfiles differently. npm 10.x through 11.6.2, for
@@ -7,7 +7,13 @@
  * `msw@^2` while the repo locks `msw@3`) and then `npm ci` fails with
  * `Missing: msw@2.x from lock file` even though the newer npm in CI is happy.
  *
- * Two guards:
+ * Three guards:
+ * - Runtime: root `package.json` declares the Node floor in
+ *   `devEngines.runtime` (node, `onFail: "error"`) and `engines.node` with the
+ *   same range, so npm stops on an older Node (for example Node 22 or 24 ahead
+ *   of Node 26 on `PATH`) with `EBADDEVENGINES`. The Node running this check,
+ *   `.nvmrc`, and every `actions/setup-node` `node-version` in `.github` must
+ *   satisfy that range.
  * - Static: root `package.json` declares the supported npm range in
  *   `devEngines.packageManager` with `onFail: "error"`, so an unsupported npm
  *   stops every `npm ci` / `npm install` / `npm run` with a clear
@@ -22,7 +28,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -32,7 +38,11 @@ import { isExecutedDirectly, resolveNpmCommand } from './node-runtime.ts'
 type RootPackageJson = {
 	packageManager?: unknown
 	workspaces?: unknown
+	engines?: {
+		node?: unknown
+	}
 	devEngines?: {
+		runtime?: unknown
 		packageManager?: unknown
 	}
 }
@@ -56,6 +66,136 @@ export type NpmFloorResult =
 
 const fixHint =
 	'Declare it in root package.json as "devEngines": { "packageManager": { "name": "npm", "version": ">=<floor>", "onFail": "error" } }.'
+
+export type NodeFloorInput = {
+	/** `process.version` of the Node running the check. */
+	currentNode: string
+	/** Contents of `.nvmrc`, or `null` when the file is absent. */
+	nvmrc: string | null
+	/** `node-version` values from `actions/setup-node` steps in `.github`. */
+	setupNodeVersions: Array<{ file: string; version: string }>
+}
+
+export type NodeFloorResult =
+	| { ok: true; range: string }
+	| { ok: false; errors: Array<string> }
+
+const runtimeFixHint =
+	'Declare it in root package.json as "devEngines": { "runtime": { "name": "node", "version": ">=<floor>", "onFail": "error" } }.'
+
+const nodePathHint =
+	'Put Node 26 first on PATH (for nvm: `nvm install 26 && nvm use 26`, or `export PATH="$NVM_DIR/versions/node/$(nvm version 26)/bin:$PATH"`) and rerun.'
+
+function satisfiesNodeRange(version: string, range: string) {
+	const coerced = semver.coerce(version.trim())
+	return coerced ? semver.satisfies(coerced, range) : false
+}
+
+export function readNodeFloor(
+	pkg: RootPackageJson,
+	input: NodeFloorInput,
+): NodeFloorResult {
+	const errors: Array<string> = []
+	const declared = pkg.devEngines?.runtime
+	let range: string | undefined
+	if (!declared || typeof declared !== 'object' || Array.isArray(declared)) {
+		errors.push(
+			`devEngines.runtime is missing or not a single object. ${runtimeFixHint}`,
+		)
+	} else {
+		const entry = declared as Record<string, unknown>
+		if (entry.name !== 'node') {
+			errors.push(
+				`devEngines.runtime.name must be "node" (found ${JSON.stringify(entry.name)}).`,
+			)
+		}
+		if (entry.onFail !== 'error') {
+			errors.push(
+				`devEngines.runtime.onFail must be "error" so an unsupported Node stops before it runs repo scripts (found ${JSON.stringify(entry.onFail)}).`,
+			)
+		}
+		if (
+			typeof entry.version !== 'string' ||
+			!semver.validRange(entry.version) ||
+			!semver.minVersion(entry.version)
+		) {
+			errors.push(
+				`devEngines.runtime.version must be a semver range with a minimum (found ${JSON.stringify(entry.version)}).`,
+			)
+		} else {
+			range = entry.version
+		}
+	}
+
+	if (range && pkg.engines?.node !== range) {
+		errors.push(
+			`engines.node must match devEngines.runtime.version ${range} (found ${JSON.stringify(pkg.engines?.node)}). Move them together.`,
+		)
+	}
+	if (!range) return { ok: false, errors }
+
+	if (!satisfiesNodeRange(input.currentNode, range)) {
+		errors.push(
+			`This check ran on Node ${input.currentNode}, outside devEngines.runtime.version ${range}. ${nodePathHint}`,
+		)
+	}
+	if (input.nvmrc !== null && !satisfiesNodeRange(input.nvmrc, range)) {
+		errors.push(
+			`.nvmrc (${JSON.stringify(input.nvmrc.trim())}) is outside devEngines.runtime.version ${range}.`,
+		)
+	}
+	for (const { file, version } of input.setupNodeVersions) {
+		if (!satisfiesNodeRange(version, range)) {
+			errors.push(
+				`${file} sets up Node ${version}, outside devEngines.runtime.version ${range}.`,
+			)
+		}
+	}
+
+	return errors.length > 0 ? { ok: false, errors } : { ok: true, range }
+}
+
+/**
+ * `node-version:` values in workflow and composite action YAML. Expressions
+ * (`${{ ... }}`) are skipped since they are only known at run time.
+ */
+export function setupNodeVersionsIn(file: string, yaml: string) {
+	const versions: Array<{ file: string; version: string }> = []
+	for (const match of yaml.matchAll(
+		/^\s*node-version:\s*['"]?([^'"\s#]+)['"]?/gm,
+	)) {
+		const version = match[1]
+		if (!version || version.startsWith('${{')) continue
+		versions.push({ file, version })
+	}
+	return versions
+}
+
+function listYamlFiles(dir: string): Array<string> {
+	if (!existsSync(dir)) return []
+	const files: Array<string> = []
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const entryPath = path.join(dir, entry.name)
+		if (entry.isDirectory()) files.push(...listYamlFiles(entryPath))
+		else if (/\.ya?ml$/.test(entry.name)) files.push(entryPath)
+	}
+	return files.toSorted()
+}
+
+function readNodeFloorInput(repoRoot: string): NodeFloorInput {
+	const nvmrcPath = path.join(repoRoot, '.nvmrc')
+	return {
+		currentNode: process.version,
+		nvmrc: existsSync(nvmrcPath) ? readFileSync(nvmrcPath, 'utf8') : null,
+		setupNodeVersions: listYamlFiles(path.join(repoRoot, '.github')).flatMap(
+			(file) =>
+				setupNodeVersionsIn(
+					path.relative(repoRoot, file).split(path.sep).join('/'),
+					readFileSync(file, 'utf8'),
+				),
+		),
+	}
+}
 
 export function readNpmFloor(pkg: RootPackageJson): NpmFloorResult {
 	const errors: Array<string> = []
@@ -290,13 +430,21 @@ async function main() {
 	const pkg = JSON.parse(
 		await readFile('package.json', 'utf8'),
 	) as RootPackageJson
+	const nodeResult = readNodeFloor(pkg, readNodeFloorInput(process.cwd()))
 	const result = readNpmFloor(pkg)
-	if (!result.ok) {
-		for (const error of result.errors) console.error(error)
+	const staticErrors = [
+		...(nodeResult.ok ? [] : nodeResult.errors),
+		...(result.ok ? [] : result.errors),
+	]
+	if (staticErrors.length > 0 || !nodeResult.ok || !result.ok) {
+		for (const error of staticErrors) console.error(error)
 		process.exitCode = 1
 		return
 	}
 	const { npmFloor } = result
+	console.log(
+		`node-floor: devEngines node ${nodeResult.range} (running ${process.version}; .nvmrc and setup-node agree).`,
+	)
 	const runInstall =
 		process.argv.includes('--install') || Boolean(process.env.CI)
 	if (!runInstall) {

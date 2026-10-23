@@ -117,15 +117,18 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   keeps only the last value). Skills-lock (`tools/check-skills-lock.ts`) fails
   when `skills-lock.json` drifts from the committed skill folders it records.
   The npm floor (`tools/check-npm-install-floor.ts`) fails when root
-  `package.json` lacks `devEngines.packageManager` (npm, `onFail: "error"`) or
-  when the `packageManager` pin falls outside it. In CI (or with `--install`) it
-  also runs `npm ci --dry-run` with the lowest npm that range allows, so a
-  lockfile only a newer npm can read fails there instead of in a fresh clone.
-  `ship-pr` must stay a repo-owned local skill (so `skills update` does not
-  reinstall it from kentcdodds/kcd-skills) and its `computedHash` must match the
-  folder hash. Edit the skill and refresh `computedHash`, or the check fails.
-  `install:check` stays on the git hooks / `prevalidate` path and is not part of
-  this group.
+  `package.json` lacks `devEngines.runtime` (node, `onFail: "error"`) or
+  `devEngines.packageManager` (npm, `onFail: "error"`), when `engines.node`
+  differs from the runtime range, when the running Node, `.nvmrc`, or any
+  `actions/setup-node` `node-version` under `.github` falls outside the runtime
+  range, or when the `packageManager` pin falls outside the npm range. In CI (or
+  with `--install`) it also runs `npm ci --dry-run` with the lowest npm that
+  range allows, so a lockfile only a newer npm can read fails there instead of
+  in a fresh clone. `ship-pr` must stay a repo-owned local skill (so
+  `skills update` does not reinstall it from kentcdodds/kcd-skills) and its
+  `computedHash` must match the folder hash. Edit the skill and refresh
+  `computedHash`, or the check fails. `install:check` stays on the git hooks /
+  `prevalidate` path and is not part of this group.
 - `npm run soft-delete-read-filter:check` and `npm run error-agent-prompt:check`
   run in local `validate` and the CI static job (they are not part of the docs
   or deps groups).

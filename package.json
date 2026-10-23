@@ -185,6 +185,11 @@
     "node": ">=26"
   },
   "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=26",
+      "onFail": "error"
+    },
     "packageManager": {
       "name": "npm",
       "version": ">=11.11.1",
