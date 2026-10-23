@@ -39,10 +39,17 @@ test('deploy.yml never serializes the whole secrets context', () => {
 
 test('each wrangler log scan lists every secret its job uses', () => {
 	const text = readFileSync(workflowPath, 'utf8')
-	const jobs = splitJobs(text).filter((job) => scanBlock(job.body) !== null)
+	const jobs = splitJobs(text).filter((job) =>
+		job.body.includes('collect-wrangler-logs.ts'),
+	)
 	expect(jobs.length).toBeGreaterThan(0)
 	for (const job of jobs) {
-		const block = scanBlock(job.body) ?? ''
+		const block = scanBlock(job.body)
+		expect({ job: job.name, hasScanBlock: block !== null }).toEqual({
+			job: job.name,
+			hasScanBlock: true,
+		})
+		if (block === null) continue
 		const used = new Set(
 			[...job.body.matchAll(/secrets\.([A-Z][A-Z0-9_]*)/g)].map(
 				(match) => match[1],
