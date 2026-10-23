@@ -87,7 +87,7 @@ before opening a Feature Map PR.
   flags stay off unless the PR is labeled `preview-flag:<key>` for a key in
   `tools/preview-seed-flag-allowlist.ts`. Example: label
   `preview-flag:connection-profiles`, wait for 🔎 Preview, then open
-  `/account/connected-agents` with `browse` and check the profile controls.
+  `/@<slug>/-/agents` with `browse` and check the profile controls.
 - `/admin` 403 and `/mcp` 401 are expected for those seeds
 - Admin-gated states cannot be preview-tested with the public seed; use the
   local admin account plus Workers or unit tests

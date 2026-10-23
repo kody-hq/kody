@@ -71,12 +71,12 @@ connection profiles:
 # node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
 #   --email me@kentcdodds.com --password ilikecode \
 #   --enable-flag connection-profiles
-npm run control-kody -- preview --pr 42 --check /account/connected-agents
+npm run control-kody -- preview --pr 42 --check /@<slug>/-/agents
 ```
 
-Open `/account/connected-agents` in the signed-in browser and verify the
-connection profile controls. A successful HTML check alone does not prove the
-flag-gated interaction works.
+Open `/@<slug>/-/agents` in the signed-in browser and verify the connection
+profile controls. A successful HTML check alone does not prove the flag-gated
+interaction works.
 
 `--enable-flag` with `--remote` fails unless the wrangler env is `preview`.
 

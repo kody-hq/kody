@@ -128,9 +128,9 @@ package-app surfaces:
     verified at creation. Signed-in linking of a provider to a password account
     also requires that live verified email.
 14. **Password-reset confirmation clears second factors and linked providers.**
-    `POST /password-reset/confirm` disables TOTP, deletes passkeys and
-    `oauth_connections`, and tells the owner in the confirmation email.
-    Signed-in `POST /account/password.json` leaves those factors in place.
+    `confirmWebsitePasswordReset` on `/reset-password` disables TOTP, deletes
+    passkeys and `oauth_connections`, and tells the owner in the confirmation
+    email. Signed-in `changePassword` leaves those factors in place.
 15. **User-secret trust grants are never applied by MCP or package runtimes.**
     `secretLock` returns a website approval URL and does not write
     `allowed_packages`. Community fork adoption widens implicit user-secret
@@ -413,18 +413,21 @@ tests, and self-hosted configs fall back to a D1 atomic limiter. Production
 fails closed: env validation (`packages/worker/src/app/env.ts`) rejects a
 production runtime without the binding, so the D1 fallback can never silently
 become the production limiter. The shared bucket means brute-force attempts
-cannot fan out across parallel paths. Covered paths (`rateLimitedAuthPaths` in
-`packages/worker/src/origin-handler.ts`):
+cannot fan out across parallel paths. Covered HTTP paths (`rateLimitedAuthPaths`
+in `packages/worker/src/origin-handler.ts`):
 
 - `POST /auth` (password login/signup)
 - `POST /auth/github`, `POST /auth/google`, `POST /auth/x`, `POST /auth/discord`
   (social login start)
 - `POST /oauth/authorize` (inline OAuth login)
-- `POST /password-reset` (reset request)
-- `POST /password-reset/confirm` (reset confirmation)
-- `POST /account/password.json` (signed-in password change or first-time set)
-- `POST /verify/2fa.json` and `POST /account/two-factor.json` (two-factor)
+- `POST /oauth/package-app/authorize` (package-app OAuth)
 - `POST /webauthn/authentication` (passkey authentication)
+
+Password reset (`requestWebsitePasswordReset` / `confirmWebsitePasswordReset`)
+and two-factor login (`verifyWebsiteTwoFactor`) join the same `auth:ip` bucket
+from their Start functions. Two-factor management also uses a per-user
+`auth:2fa-manage` budget. Signed-in password change (`changePassword`) uses a
+per-user `password-change` budget only.
 
 Public signup requires Turnstile in production: both `TURNSTILE_SITE_KEY` and
 `TURNSTILE_SECRET_KEY` must be set or the worker refuses to boot. If either key
@@ -679,13 +682,13 @@ change to these decisions here so future agents do not relitigate them.
 - **Stateless sessions revoke after a password change and expire at the absolute
   lifetime.** `kody_session` is a signed cookie with no server store, so there
   is no separate "log out everywhere" button. Password reset confirmation and
-  signed-in password change (`POST /account/password.json`) both revoke every
-  MCP OAuth grant for the user, stamp `users.password_changed_at`, then revoke
-  again. Password-reset confirmation also disables TOTP, deletes passkeys, and
-  deletes `oauth_connections`. Browser and package-app sessions carry
-  `issuedAt`; `resolveRequestAuth` rejects cookies issued at or before that
-  timestamp (missing `issuedAt` fails closed once a password change exists) and
-  also rejects cookies whose `issuedAt` plus the cookie TTL (7 days, or 30 with
+  signed-in password change (`changePassword`) both revoke every MCP OAuth grant
+  for the user, stamp `users.password_changed_at`, then revoke again.
+  Password-reset confirmation also disables TOTP, deletes passkeys, and deletes
+  `oauth_connections`. Browser and package-app sessions carry `issuedAt`;
+  `resolveRequestAuth` rejects cookies issued at or before that timestamp
+  (missing `issuedAt` fails closed once a password change exists) and also
+  rejects cookies whose `issuedAt` plus the cookie TTL (7 days, or 30 with
   remember-me) is in the past, clearing the cookie the same way as a
   password-change revocation. A cookie that omits `issuedAt` is treated as
   already expired. Package-app sessions expire server-side via `expiresAt` (12
