@@ -248,6 +248,25 @@ test('tools:typecheck cache hash ignores CI', async () => {
 	expect(includesCiEnv(inputs)).toBe(false)
 })
 
+test.each([
+	['test-node', 'NODE_TEST_SHARD'],
+	['test-e2e', 'E2E_SHARD'],
+])(
+	'%s hashes its shard separately from local unsharded runs',
+	async (target, env) => {
+		expect(includesEnvInput(await getWorkerDeclaredInputs(target), env)).toBe(
+			true,
+		)
+	},
+)
+
+test('E2E cache restores blob reports for the merge job', async () => {
+	const project = await getProjectNode('worker')
+	expect(project.data.targets?.['test-e2e']?.outputs).toContain(
+		'{workspaceRoot}/blob-report',
+	)
+})
+
 // KODY_VALIDATE_LOAD only lowers workers-unit maxWorkers; measured on an
 // isolated 4-core VM, the same 104 files / 401 tests pass with and without it
 // (448s vs 526s). Hashing it would keep validate's test-workers artifact (flag

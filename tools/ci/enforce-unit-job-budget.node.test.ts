@@ -139,7 +139,10 @@ test('unit job budgets warn at watch and fail only past the hard ceiling', () =>
 	expect(workflow).toMatch(
 		/name: ☁️ Workers\n\s+# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 30/,
 	)
-	expect(workflow).toMatch(/name: 🧪 Node\n\s+timeout-minutes: 15/)
+	expect(workflow).toMatch(
+		/name: 🧪 Node \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?timeout-minutes: 15/,
+	)
+	expect(workflow).toContain('Unit shard budget (watch 700s / hard 840s)')
 
 	process.exitCode = undefined
 	main([

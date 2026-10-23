@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { parseCiShard } from './tools/ci-shard.ts'
 
 const hasExplicitBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 const defaultPlaywrightPort = '3847'
@@ -12,6 +13,7 @@ export default defineConfig({
 	// `*.node.test.ts`; do not treat them as Playwright tests.
 	testIgnore: ['**/*.node.test.ts'],
 	fullyParallel: true,
+	shard: parseCiShard(process.env.E2E_SHARD),
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 1 : 0,
 	// CI runs `validate`, which executes unit, MCP, and Playwright suites

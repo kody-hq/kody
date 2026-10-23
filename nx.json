@@ -65,6 +65,9 @@
 				"workspace",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "NODE_TEST_SHARD"
 				}
 			]
 		},
@@ -99,6 +102,9 @@
 				"{workspaceRoot}/playwright.config.ts",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "E2E_SHARD"
 				}
 			]
 		},
