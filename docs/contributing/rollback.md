@@ -133,8 +133,11 @@ pass. Origin attributes `worker` vs `miss` from the highlight worker's
 [Cloudflare rollbacks](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/)
 create a new deployment of a stored Worker version and send 100% of traffic
 there. You can only roll back to one of the 100 most recently published
-versions. Kody production deploys are single-version `wrangler deploy` uploads
-(no gradual split).
+versions. Kody production deploys are single-version deploys (no gradual split):
+the Deploy workflow runs `wrangler versions upload` with
+`--tag gh-<run_id>-<attempt>` and `--message <sha>`, then
+`wrangler versions deploy <version-id>@100%`, then `wrangler triggers deploy`
+([split deploy](#ci-only-production-deploys)).
 
 ### Freeze the deploy queue
 
@@ -272,8 +275,11 @@ same SHA can be redeployed later. The evidence that counts is the GitHub Deploy
 
 1. Identify the Deploy run that produced the tuple
    (`gh run list --workflow=deploy.yml`).
-2. Read the version ids from that run's deploy-step logs. Wrangler prints
-   `Current Version ID: <uuid>` after each `Uploaded <script>` line:
+2. Read the version ids from that run's deploy-step logs. Each deploy step
+   prints `Current Version ID: <uuid>` after the `Uploaded <script>` line (the
+   split deploy prints the same line once `versions deploy` and
+   `triggers deploy` succeed). The version's tag `gh-<run_id>-<attempt>` in
+   `npx wrangler versions list --name <script>` names the run as well:
 
    ```sh
    gh run view <id> --log | grep -E 'Uploaded |Current Version ID:'
@@ -485,6 +491,47 @@ npx wrangler versions list --name kody-highlight
       without putting it in chat or tickets.
 - [ ] Confirm Path A safety on the last deploy: no Durable Object migration tag,
       no non-additive D1 migration, no secret rotation in the same window.
+
+## CI-only production deploys
+
+Production Workers (`kody-production`, `kody-platform`, `kody-runtime`,
+`kody-jobs`, and the other production scripts) change only through
+`.github/workflows/deploy.yml`. Agents and local shells never run
+`wrangler deploy`, `wrangler versions upload`, `wrangler versions deploy`,
+`wrangler secret put`, `wrangler secret bulk`, or
+`wrangler versions secret bulk` against them. Read-only commands
+(`versions list`, `versions view`, `deployments status`) are fine. The rollback
+commands above are an incident-only exception for a human operator.
+
+Why: an upload that never gets deployed leaves the Worker's newest version
+undeployed. Classic `wrangler secret bulk` then fails with Cloudflare 10215 on
+every later deploy until something promotes a newer version.
+
+How the workflow avoids and reports that state
+(`tools/ci/split-worker-deploy.ts`, `tools/ci/worker-orphan-check.ts`):
+
+- Each production deploy step sets
+  `KODY_SPLIT_DEPLOY_TAG=gh-<run_id>-<attempt>`. The deploy uploads with
+  `wrangler versions upload --tag <tag> --message <sha>`, captures the version
+  id, and deploys it with `wrangler versions deploy <id>@100%`. Transient
+  failures (10013 and the other classes in `tools/ci/retry-classifiers.ts`)
+  retry the deployment of that same id. A retry never uploads a second version.
+  An outer workflow retry first looks up a version with the same tag and reuses
+  it.
+- `wrangler triggers deploy` then applies routes, custom domains, crons, queue
+  consumers, and workflows, the same work `wrangler deploy` does after its
+  deployment call.
+- A pending Durable Object migration cannot ride a version upload, so that case
+  falls back to `wrangler deploy`, whose script upload applies the migration and
+  deploys in one call.
+- Secrets synced earlier in the job carry over: `versions upload` inherits
+  secrets from the latest version exactly like `wrangler deploy` does.
+- Before secret sync, and again when the job fails, a read-only check compares
+  each Worker's newest version with its active deployment. A mismatch is written
+  to the job summary (version id, time, tag, message) with an error annotation.
+- On failure, the job uploads `~/.config/.wrangler/logs` as a short-lived
+  `wrangler-logs-*` artifact. `tools/ci/collect-wrangler-logs.ts` drops any log
+  file that contains a secret value or a credential-shaped string first.
 
 ## Related
 

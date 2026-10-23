@@ -13,7 +13,7 @@ import {
 	readConfigFlag,
 	readNameFlag,
 } from './origin-worker-config.ts'
-import { runWranglerDeployWithRetry } from './ci/retry-classifiers.ts'
+import { runWorkerDeploy } from './ci/split-worker-deploy.ts'
 import { retainClientAssets } from './retain-client-assets.ts'
 
 function run(
@@ -151,7 +151,7 @@ export async function deploy(args: ReadonlyArray<string>) {
 			archiveDirectory: '.tmp/deployed-client-assets',
 		})
 	}
-	const result = await runWranglerDeployWithRetry({
+	const result = await runWorkerDeploy({
 		command: resolveWranglerCommand(),
 		args: originViteDeployArgs(args, workerName),
 		env: {
