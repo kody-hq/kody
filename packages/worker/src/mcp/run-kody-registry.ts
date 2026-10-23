@@ -4,7 +4,6 @@ import {
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import {
 	resolveProvider,
@@ -116,7 +115,10 @@ import {
 import { shouldRecordExecuteUsageForRun } from '#worker/usage/execute-usage-surface.ts'
 import { createDynamicCallableWorkflow } from '#worker/package-runtime/package-workflows.ts'
 import { findKodyRuntimeModulePath } from '#worker/package-runtime/runtime-source-modules.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import { requestLineage } from '#worker/request-context/request-context.ts'
 import {
 	isDirectBundleDependency,
@@ -384,17 +386,19 @@ export function createWorkflowTools(input: {
 	const packageContext = input.packageContext
 	return {
 		create: async (body) => {
-			const userId = input.callerContext.user
-				? personalOrgId(input.callerContext.user.userId)
-				: undefined
 			const request = input.callerContext.request
-			if (!userId || !request) {
+			if (!input.callerContext.user || !request) {
 				throw new Error('workflows.create requires an authenticated user.')
 			}
+			// Same owner as workflowRunList, runList, and package lookup. Branding
+			// the person id here keyed workflows to an org that is not the
+			// caller's when the signup personal org id differs from the person
+			// id, or when the request acts in a team org.
+			const userId = ownerIdFromCaller(input.callerContext)
 			return await createDynamicCallableWorkflow({
 				env: input.env,
 				userId,
-				userEmail: input.callerContext.user?.email,
+				userEmail: entitlementEmailForOwner(input.callerContext, userId),
 				packageContext,
 				body,
 				lineage: requestLineage(request),
