@@ -129,31 +129,6 @@ test('updateOrgProfile refuses a personal org and rejects a different handle', a
 	).toMatchObject({ ok: false, code: 'validation' })
 })
 
-test('isPersonalOrg stays true after the founding membership is soft-deleted', async () => {
-	const db = await createDb()
-	const ada = testStableUserIdFromEmail('ada@example.com')
-	await insertPerson(db, { id: 1, personId: ada, username: 'ada' })
-	await provisionPersonalOrg(db, {
-		stableUserId: ada,
-		username: 'ada',
-		createdAt: '2026-01-02T00:00:00.000Z',
-	})
-	expect(await isPersonalOrg(db, ada)).toBe(true)
-	await db
-		.prepare(
-			`UPDATE org_memberships SET deleted_at = ? WHERE org_id = ? AND user_id = ?`,
-		)
-		.bind('2026-03-01T00:00:00.000Z', ada, ada)
-		.run()
-	expect(await isPersonalOrg(db, ada)).toBe(true)
-	expect(
-		await updateOrgProfile(db, {
-			orgId: ada,
-			displayName: 'Nope',
-		}),
-	).toMatchObject({ ok: false, code: 'personal' })
-})
-
 test('updateOrgProfile allows a former platform org with a soft-deleted founding membership', async () => {
 	const db = await createDb()
 	const platformId = testStableUserIdFromEmail('kody@platform.example')

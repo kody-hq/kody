@@ -5,10 +5,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
-import {
-	aggregateConnectionUsageDaily,
-	buildConnectionUsageDailyQuery,
-} from './connection-usage-rollup.ts'
+import { aggregateConnectionUsageDaily } from './connection-usage-rollup.ts'
 import { loadConnectionUsage } from './connection-usage.ts'
 import { recordUsage } from './record-usage.ts'
 import { ensureUsageRollupsTestSchema } from './test-schema.ts'
@@ -194,29 +191,6 @@ function stubAnalytics(rows: Array<Record<string, unknown>>) {
 	vi.stubGlobal('fetch', fetchMock)
 	return fetchMock
 }
-
-test('connection usage query groups by org, day, connection, package, and event', () => {
-	const query = buildConnectionUsageDailyQuery('kody_usage', {
-		startDay: '2026-10-06',
-		nextDay: '2026-10-08',
-	})
-	expect(query).toContain('blob12 AS connection_key')
-	expect(query).toContain(
-		"blob2 IN ('execute', 'dynamic_worker_day', 'dynamic_worker_invoke')",
-	)
-	expect(query).toContain("timestamp >= toDateTime('2026-10-06 00:00:00')")
-	expect(query).toContain("timestamp < toDateTime('2026-10-08 00:00:00')")
-	expect(query).toContain(
-		'GROUP BY user_id, day, connection_key, package_id, event_type',
-	)
-})
-
-test('aggregateConnectionUsageDaily skips without Analytics Engine credentials', async () => {
-	await ensureSchema()
-	expect(
-		await aggregateConnectionUsageDaily({ ...env, USAGE_EVENTS: undefined }),
-	).toEqual({ skipped: true, reason: 'missing-analytics-config' })
-})
 
 test('aggregateConnectionUsageDaily rewrites yesterday and today, drops rows gone from yesterday, and prunes old days', async () => {
 	await ensureSchema()

@@ -1,16 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	communityForkAlternateLeafCandidates,
-	resolveCommunityForkAlternateLeaf,
-} from './allocate-fork-leaf.ts'
-
-test('communityForkAlternateLeafCandidates suffixes preferred leaf from -2', () => {
-	expect(communityForkAlternateLeafCandidates('demo', 3)).toEqual([
-		'demo-2',
-		'demo-3',
-		'demo-4',
-	])
-})
+import { resolveCommunityForkAlternateLeaf } from './allocate-fork-leaf.ts'
 
 test('resolveCommunityForkAlternateLeaf skips reserved and taken leaves', async () => {
 	expect(

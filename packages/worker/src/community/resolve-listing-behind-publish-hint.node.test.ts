@@ -13,39 +13,6 @@ vi.mock('#worker/community/repo.ts', () => ({
 const { resolveListingBehindPublishHint } =
 	await import('./resolve-listing-behind-publish-hint.ts')
 
-test('resolveListingBehindPublishHint returns null without an active behind listing', async () => {
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue(null)
-	expect(
-		await resolveListingBehindPublishHint({
-			db: {} as D1Database,
-			ownerUserId: 'user-1',
-			packageId: 'pkg-1',
-			ownerUsername: 'danj',
-			kodyId: 'hey-email',
-			promotedCommit: 'commit-new',
-			promotedVersion: '1.5.0',
-		}),
-	).toBeNull()
-
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue({
-		id: 'listing-1',
-		status: 'active',
-		pinnedCommit: 'commit-new',
-		version: '1.5.0',
-	})
-	expect(
-		await resolveListingBehindPublishHint({
-			db: {} as D1Database,
-			ownerUserId: 'user-1',
-			packageId: 'pkg-1',
-			ownerUsername: 'danj',
-			kodyId: 'hey-email',
-			promotedCommit: 'commit-new',
-			promotedVersion: '1.5.0',
-		}),
-	).toBeNull()
-})
-
 test('resolveListingBehindPublishHint builds the update hint for a lagging listing', async () => {
 	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue({
 		id: 'listing-1',

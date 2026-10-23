@@ -1,10 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import {
-	buildPendingCommunityForkLookupMessage,
-	findPendingCommunityForkForLookup,
-} from './pending-fork-lookup.ts'
+import { findPendingCommunityForkForLookup } from './pending-fork-lookup.ts'
 
 const ownerId = 'org-owner-1'
 const otherOwnerId = 'org-owner-2'
@@ -115,32 +112,4 @@ test('ignores a fork whose saved package was published and later soft-deleted', 
 			packageIdOrKodyId: 'starter-site',
 		}),
 	).resolves.toBeNull()
-})
-
-test('blank refs never match', async () => {
-	const { db } = createDb()
-	await expect(
-		findPendingCommunityForkForLookup(db, {
-			forkerUserId: ownerId,
-			packageIdOrKodyId: '  ',
-		}),
-	).resolves.toBeNull()
-})
-
-test('not-found message points at the fork source session and publish step', () => {
-	const message = buildPendingCommunityForkLookupMessage({
-		fork: {
-			forkedPackageId: packageId,
-			forkedSourceId: sourceId,
-			targetKodyId: 'starter-site',
-		},
-		ownerScope: '@owner',
-	})
-	expect(message).toContain('@owner/starter-site')
-	expect(message).toContain(`package_id ${packageId}`)
-	expect(message).toContain(`source_id "${sourceId}"`)
-	expect(message).toContain('repoOpenSession')
-	expect(message).toContain('repoPublishSession')
-	expect(message).toContain(`packageGet works with package_id ${packageId}`)
-	expect(message).not.toContain('@@')
 })

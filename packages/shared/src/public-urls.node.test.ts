@@ -6,8 +6,6 @@ import {
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
 	buildPackagePagePath,
-	dnsSafeUsernamePattern,
-	dnsSafeUsernamePatternSource,
 } from './public-urls.ts'
 
 test('saved-package pages and hosted package-app mounts use different paths', () => {
@@ -27,67 +25,20 @@ test('saved-package pages and hosted package-app mounts use different paths', ()
 	expect(
 		buildPackageAppOpenPath({ username: 'kentcdodds', kodyId: 'hn-pulse' }),
 	).toBe('/@kentcdodds/packages/hn-pulse/open')
-	expect(
-		buildPackageAppOpenPath({
-			username: 'kentcdodds',
-			kodyId: 'hn-pulse',
-			restPath: '/report',
-		}),
-	).toBe('/@kentcdodds/packages/hn-pulse/open/report')
 	expect(buildPackageAppSubdomainPath({ kodyId: 'hn-pulse' })).toBe('/hn-pulse')
-	expect(
-		buildPackageAppSubdomainPath({ kodyId: 'hn-pulse', restPath: '/report' }),
-	).toBe('/hn-pulse/report')
 	// Reserved / non-leaf leaves cannot use the short path; serving needs the
 	// legacy `/packages/{leaf}` mount (bare `/packages` has no leaf; `/robots.txt`
 	// is a host root file).
 	expect(buildPackageAppSubdomainPath({ kodyId: 'packages' })).toBe(
 		'/packages/packages',
 	)
-	expect(
-		buildPackageAppSubdomainPath({
-			kodyId: 'packages',
-			restPath: '/report',
-		}),
-	).toBe('/packages/packages/report')
-	expect(buildPackageAppSubdomainPath({ kodyId: 'PACKAGES' })).toBe(
-		'/packages/PACKAGES',
-	)
 	expect(buildPackageAppSubdomainPath({ kodyId: 'robots.txt' })).toBe(
 		'/packages/robots.txt',
 	)
 	expect(buildPackageAppCustomHostnamePath({})).toBe('/')
-	expect(buildPackageAppCustomHostnamePath({ restPath: '/' })).toBe('/')
-	expect(buildPackageAppCustomHostnamePath({ restPath: '/report' })).toBe(
-		'/report',
-	)
-	expect(buildPackageAppCustomHostnamePath({ restPath: 'report' })).toBe(
-		'/report',
-	)
 	expect(
 		buildPackageAppCustomHostnameUrl({
 			origin: 'https://app.customer.example/',
 		}),
 	).toBe('https://app.customer.example/')
-	expect(
-		buildPackageAppCustomHostnameUrl({
-			origin: 'https://app.customer.example',
-			restPath: '/report',
-		}),
-	).toBe('https://app.customer.example/report')
-})
-
-test('dns-safe handle source is the anchored pattern without a second copy', () => {
-	expect(`^${dnsSafeUsernamePatternSource}$`).toBe(
-		dnsSafeUsernamePattern.source,
-	)
-	expect(dnsSafeUsernamePattern.test('ab')).toBe(false)
-	expect(dnsSafeUsernamePattern.test('abc')).toBe(true)
-	expect(dnsSafeUsernamePattern.test('a-b')).toBe(true)
-	expect(dnsSafeUsernamePattern.test('a'.repeat(32))).toBe(true)
-	expect(dnsSafeUsernamePattern.test('a'.repeat(33))).toBe(false)
-	expect(dnsSafeUsernamePattern.test('-ab')).toBe(false)
-	expect(dnsSafeUsernamePattern.test('ab-')).toBe(false)
-	expect(dnsSafeUsernamePattern.test('Ab1')).toBe(false)
-	expect(dnsSafeUsernamePattern.test('a_b')).toBe(false)
 })

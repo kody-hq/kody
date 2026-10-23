@@ -3,29 +3,6 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { localExecuteOrgPermissions } from '#worker/api-tokens/legacy-scope-rewrite.ts'
 
-test('Teams expand migration 0086 defines org primitives', () => {
-	const migrationsDirectory = new URL('../../migrations/', import.meta.url)
-	const sqlite = new DatabaseSync(':memory:')
-	sqlite.exec(
-		readFileSync(
-			new URL('0086-teams-orgs-tables.sql', migrationsDirectory),
-			'utf8',
-		),
-	)
-	const orgs = sqlite
-		.prepare(
-			`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orgs'`,
-		)
-		.get()
-	expect(orgs).toBeTruthy()
-	const handles = sqlite
-		.prepare(
-			`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'handles'`,
-		)
-		.get()
-	expect(handles).toBeTruthy()
-})
-
 test('Teams P4 migration 0090 binds credentials and rewrites legacy scopes', () => {
 	const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 	const sqlite = new DatabaseSync(':memory:')

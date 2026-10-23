@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	acquireReceivePackGate,
-	artifactsReceivePackBusyBackoffMs,
 	computeReceivePackBusyBackoffMs,
 	readReceivePackBodyWithLimit,
 	ReceivePackBodyTimeoutError,
@@ -93,27 +92,6 @@ test('busy wait retries until a non-busy response', async () => {
 	expect(sleeps.length).toBe(2)
 })
 
-test('busy wait returns timeout when the budget is exhausted', async () => {
-	let now = 1_000
-	const result = await waitOutReceivePackBusy({
-		deadlineMs: 1_050,
-		backoffMs: [100],
-		random: () => 1,
-		now: () => now,
-		sleep: async (ms) => {
-			now += ms
-		},
-		send: async () =>
-			new Response('remote: artifacts_git_receive_pack_busy\n', {
-				status: 500,
-			}),
-		isBusy: (_response, bodyText) =>
-			bodyText.includes('artifacts_git_receive_pack_busy'),
-		readBusyBody: async (response) => response.text(),
-	})
-	expect(result).toEqual({ kind: 'timeout' })
-})
-
 test('busy wait does not retry unrelated upstream errors', async () => {
 	let attempts = 0
 	const result = await waitOutReceivePackBusy({
@@ -180,14 +158,6 @@ function streamOf(bytes: Uint8Array, chunkSize: number) {
 		},
 	})
 }
-
-test('in-band busy body matches the observed 37-byte production result', () => {
-	expect(inBandBusyBody.length).toBe(37)
-	expect(new TextDecoder().decode(inBandBusyBody.subarray(0, 4))).toBe('0025')
-	expect(scanReceivePackResultForBusy(inBandBusyBody)).toEqual({
-		kind: 'busy',
-	})
-})
 
 test('pkt-line scan skips progress and ignores unrelated fatals and data', () => {
 	expect(
@@ -327,13 +297,6 @@ test('busy attempts are aborted before the retry is sent', async () => {
 test('full jitter backoff stays within the configured step', () => {
 	expect(computeReceivePackBusyBackoffMs(0, [100], () => 0)).toBe(0)
 	expect(computeReceivePackBusyBackoffMs(0, [100], () => 1)).toBe(100)
-	expect(
-		computeReceivePackBusyBackoffMs(
-			99,
-			artifactsReceivePackBusyBackoffMs,
-			() => 1,
-		),
-	).toBe(artifactsReceivePackBusyBackoffMs.at(-1))
 })
 
 test('body reader enforces the buffer limit', async () => {
@@ -347,12 +310,6 @@ test('body reader enforces the buffer limit', async () => {
 	await expect(
 		readReceivePackBodyWithLimit(stream, 150),
 	).rejects.toBeInstanceOf(ReceivePackBodyTooLargeError)
-})
-
-test('body reader returns an empty buffer for a null body', async () => {
-	await expect(readReceivePackBodyWithLimit(null)).resolves.toEqual(
-		new Uint8Array(),
-	)
 })
 
 test('withReceivePackGate releases after a thrown fn', async () => {

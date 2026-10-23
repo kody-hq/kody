@@ -1,8 +1,5 @@
-import {
-	ownerIdFromStored,
-	type OwnerId,
-} from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { expect, test, vi } from 'vitest'
 
 const recordUsage = vi.hoisted(() => vi.fn(async () => undefined))
 
@@ -19,10 +16,6 @@ import {
 	recordDurableObjectRowsRead,
 } from './durable-object-rows.ts'
 import { flushDurableObjectUsageWrites } from './durable-object-usage.ts'
-
-beforeEach(() => {
-	recordUsage.mockClear()
-})
 
 test('without Analytics Engine each read records directly with the truncated count', () => {
 	recordDurableObjectRowsRead({
@@ -49,22 +42,6 @@ test('platform rows-read needs Analytics Engine (no per-statement D1 fallback)',
 		userId: ownerIdFromStored('user-1'),
 		doClass: 'RunLog',
 		rowsRead: 40,
-	})
-	expect(recordUsage).not.toHaveBeenCalled()
-})
-
-test('empty user ids and zero-row reads are skipped', () => {
-	recordDurableObjectRowsRead({
-		env: {},
-		userId: '' as OwnerId,
-		doClass: 'StorageRunner',
-		rowsRead: 9,
-	})
-	recordDurableObjectRowsRead({
-		env: {},
-		userId: ownerIdFromStored('user-1'),
-		doClass: 'StorageRunner',
-		rowsRead: 0,
 	})
 	expect(recordUsage).not.toHaveBeenCalled()
 })

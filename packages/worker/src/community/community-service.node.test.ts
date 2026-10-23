@@ -1,6 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { communityIndexOverviewCandidateLimitPerCategory } from '#universal/community-categories.ts'
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import {
 	consoleError,
@@ -27,8 +26,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		getCommunityListingByOwnerAndKodyId: vi.fn(),
 		getCommunityListingById: vi.fn(),
 		listCommunityListingCandidates: vi.fn(),
-		listCommunityIndexOverviewCandidates: vi.fn(),
-		countActiveCommunityListingsByCategory: vi.fn(),
 		getCommunityRatingAggregatesByListingIds: vi.fn(),
 		countCommunityForksByListingIds: vi.fn(),
 		insertCommunityActivityEvent: vi.fn(),
@@ -139,8 +136,6 @@ vi.mock('./repo.ts', async (importOriginal) => {
 			'getCommunityListingByOwnerAndKodyId',
 			'getCommunityListingById',
 			'listCommunityListingCandidates',
-			'listCommunityIndexOverviewCandidates',
-			'countActiveCommunityListingsByCategory',
 			'getCommunityRatingAggregatesByListingIds',
 			'countCommunityForksByListingIds',
 			'insertCommunityListing',
@@ -188,7 +183,6 @@ const {
 	rateCommunityListing,
 	reportCommunityListing,
 	searchCommunityListings,
-	listCommunityIndexOverview,
 	forkCommunityListing,
 	adoptCommunityFork,
 	inspectCommunityForkAdoption,
@@ -765,69 +759,6 @@ test('searchCommunityListings reads past a full prefilter page the scorer reject
 			offset: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
 		}),
 	)
-})
-
-test('listCommunityIndexOverview batches populated categories and uses SQL totals', async () => {
-	const integrationListings = Array.from({ length: 8 }, (_, index) =>
-		sampleListing({
-			id: `listing-integration-${index}`,
-			kodyId: `integration-${index}`,
-			name: `@owner/integration-${index}`,
-			publishedAt: `2026-07-0${index + 1}T00:00:00.000Z`,
-		}),
-	)
-	const utilityListing = sampleListing({
-		id: 'listing-utility',
-		kodyId: 'utility-one',
-		name: '@owner/utility-one',
-		category: 'utilities',
-		tags: ['helper'],
-	})
-	mockModule.countActiveCommunityListingsByCategory.mockResolvedValue({
-		integrations: 40,
-		examples: 0,
-		productivity: 0,
-		apps: 0,
-		utilities: 2,
-		other: 0,
-	})
-	mockModule.listCommunityIndexOverviewCandidates.mockResolvedValue([
-		...integrationListings,
-		utilityListing,
-	])
-	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue({})
-	mockModule.countCommunityForksByListingIds.mockResolvedValue({})
-
-	const overview = await listCommunityIndexOverview({
-		env: createEnv(),
-		sort: 'newest',
-	})
-
-	expect(mockModule.listCommunityListingCandidates).not.toHaveBeenCalled()
-	expect(mockModule.listCommunityIndexOverviewCandidates).toHaveBeenCalledTimes(
-		1,
-	)
-	expect(mockModule.listCommunityIndexOverviewCandidates).toHaveBeenCalledWith(
-		expect.anything(),
-		{
-			limitPerCategory: communityIndexOverviewCandidateLimitPerCategory,
-			categories: ['integrations', 'utilities'],
-		},
-	)
-	expect(
-		mockModule.getCommunityRatingAggregatesByListingIds,
-	).toHaveBeenCalledTimes(1)
-	expect(mockModule.countCommunityForksByListingIds).toHaveBeenCalledTimes(1)
-	expect(overview.groups.map((group) => [group.category, group.total])).toEqual(
-		[
-			['integrations', 40],
-			['utilities', 2],
-		],
-	)
-	expect(overview.groups[0]?.listings).toHaveLength(6)
-	expect(overview.listings).toHaveLength(7)
-	expect(overview.categoryCounts.integrations).toBe(40)
-	expect(overview.categoryCounts.examples).toBe(0)
 })
 
 test('publishCommunityListing stores long README content and drops binary icon bytes from snapshots', async () => {

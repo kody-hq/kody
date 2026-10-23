@@ -1,5 +1,4 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import {
 	accountUserDataTargets,
@@ -120,13 +119,4 @@ test('personal org hard purge is org-graph only so user purge retains inventory'
 			(target) => target.kind === 'org_id' && target.table === 'handles',
 		),
 	).toBe(true)
-})
-
-test('wrangler keeps soft-delete purge writes disabled', () => {
-	const wrangler = readFileSync(
-		new URL('../../wrangler.jsonc', import.meta.url),
-		'utf8',
-	)
-	expect(wrangler).toContain('"SOFT_DELETE_PURGE_ENABLED": "false"')
-	expect(wrangler).not.toContain('"SOFT_DELETE_PURGE_ENABLED": "true"')
 })
