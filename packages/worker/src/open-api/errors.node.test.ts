@@ -134,6 +134,30 @@ test('toApiError maps transient D1 unavailability to a retryable 503', () => {
 	}
 })
 
+test('toApiError remaps exhausted artifact-rebuild D1 export wrappers to 503 (KODY-AP)', () => {
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+		{ cause: new Error('Currently processing a long-running export.') },
+	)
+	const rebuildFailed = new Error(
+		'Package source publish succeeded, but bundle artifact rebuild failed for source "source-1" at commit "commit-1". Succeeded: none. Failed: D1_ERROR: Currently processing a long-running export. Caused by: Currently processing a long-running export.. Re-run the publish capability to repair artifacts.',
+		{ cause: d1Export },
+	)
+	const exhausted = new Error(
+		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after 5 transient platform error attempts: ${rebuildFailed.message}`,
+		{ cause: rebuildFailed },
+	)
+
+	const apiError = toApiError(exhausted)
+	expect(apiError).toMatchObject({
+		status: 503,
+		code: 'internal_error',
+		message: transientDatabaseUnavailableMessage,
+		headers: { 'Retry-After': '5' },
+	})
+	expect(apiError.cause).toBe(exhausted)
+})
+
 test('toApiError keeps non-transient internal failures as generic 500', () => {
 	const original = new Error('unexpected storage corruption')
 	const apiError = toApiError(original)

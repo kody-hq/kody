@@ -41,8 +41,10 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		mockModule.reusePublishedPackageArtifactIfUnchanged(...args),
 }))
 
-const { rebuildPublishedPackageArtifactsViaRepoSession } =
-	await import('./package-artifact-rebuild.ts')
+const {
+	publishedPackageArtifactRebuildD1LockRetryDelaysMs,
+	rebuildPublishedPackageArtifactsViaRepoSession,
+} = await import('./package-artifact-rebuild.ts')
 
 const sampleTargets = [...'abcdefghi'].map((letter, index) => ({
 	kind: 'module' as const,
@@ -319,8 +321,22 @@ test('falls back to per-target session rebuild when isolated runner bindings are
 	expect(mockModule.rebuildPublishedPackageArtifact).toHaveBeenCalledTimes(3)
 })
 
+async function settleRebuild<T>(pending: Promise<T>) {
+	// Attach before advancing timers so exhaustion rejects are not unhandled
+	// while `runAllTimersAsync` flushes nested retry delays.
+	const settled = pending.then(
+		(value) => ({ ok: true as const, value }),
+		(error: unknown) => ({ ok: false as const, error }),
+	)
+	await vi.runAllTimersAsync()
+	const result = await settled
+	if (!result.ok) throw result.error
+	return result.value
+}
+
 test('retries transient platform errors during staging and target rebuild, then exhausts', async () => {
 	consoleWarn.mockImplementation(() => {})
+	vi.useFakeTimers()
 	const codeUpdatedReset = new Error(
 		'Durable Object reset because its code was updated.',
 	)
@@ -331,56 +347,100 @@ test('retries transient platform errors during staging and target rebuild, then 
 		)
 	}
 
-	const staged = setup({ targets: [sampleTargets[0]!], stageKey: null })
-	mockModule.stagePublishedPackageArtifactRebuild
-		.mockRejectedValueOnce(codeUpdatedReset)
-		.mockResolvedValueOnce({
-			stagingKey: 'repo-artifact-rebuild-staging:v1:user-1:stage-retry',
+	try {
+		const staged = setup({ targets: [sampleTargets[0]!], stageKey: null })
+		mockModule.stagePublishedPackageArtifactRebuild
+			.mockRejectedValueOnce(codeUpdatedReset)
+			.mockResolvedValueOnce({
+				stagingKey: 'repo-artifact-rebuild-staging:v1:user-1:stage-retry',
+			})
+
+		await settleRebuild(rebuild())
+
+		expect(
+			mockModule.stagePublishedPackageArtifactRebuild,
+		).toHaveBeenCalledTimes(2)
+		expect(staged.run).toHaveBeenCalledTimes(1)
+		expect(staged.discard).toHaveBeenCalledWith(
+			'repo-artifact-rebuild-staging:v1:user-1:stage-retry',
+		)
+		expectOneTransientWarn()
+
+		consoleWarn.mockClear()
+		const d1Run = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: false,
+				message: 'internal error; reference = s46pgsm6st3fg81p6qumom80',
+			})
+			.mockResolvedValueOnce({ ok: true, message: 'rebuilt' })
+		const d1 = setup({ targets: [sampleTargets[0]!], run: d1Run })
+
+		await settleRebuild(rebuild())
+
+		expect(d1Run).toHaveBeenCalledTimes(2)
+		expect(
+			mockModule.stagePublishedPackageArtifactRebuild,
+		).toHaveBeenCalledTimes(2)
+		expect(d1.discard).toHaveBeenCalledTimes(2)
+		expectOneTransientWarn()
+
+		consoleWarn.mockClear()
+		setup({ targets: [sampleTargets[0]!], stageKey: null })
+		mockModule.stagePublishedPackageArtifactRebuild.mockRejectedValue(
+			codeUpdatedReset,
+		)
+
+		await expect(settleRebuild(rebuild())).rejects.toThrow(
+			/could not recover after 3 transient platform error attempts/,
+		)
+		expect(
+			mockModule.stagePublishedPackageArtifactRebuild,
+		).toHaveBeenCalledTimes(3)
+		expect(consoleWarn).toHaveBeenCalledTimes(3)
+
+		// D1 long-running export uses the longer bounded backoff (KODY-AP).
+		consoleWarn.mockClear()
+		const exportError = new Error(
+			'D1_ERROR: Currently processing a long-running export.',
+			{ cause: new Error('Currently processing a long-running export.') },
+		)
+		setup({ targets: [sampleTargets[0]!], stageKey: null })
+		mockModule.stagePublishedPackageArtifactRebuild.mockRejectedValue(
+			exportError,
+		)
+		await expect(settleRebuild(rebuild())).rejects.toSatisfy(
+			(error: unknown) => {
+				expect(error).toBeInstanceOf(Error)
+				expect(String(error)).toMatch(
+					new RegExp(
+						`could not recover after ${publishedPackageArtifactRebuildD1LockRetryDelaysMs.length + 1} transient platform error attempts`,
+					),
+				)
+				// Exhaustion preserves the rebuild-failure wrapper as cause so
+				// exact D1 platform sentences remain walkable for toApiError.
+				expect(error).toMatchObject({
+					cause: expect.objectContaining({ cause: exportError }),
+				})
+				return true
+			},
+		)
+		expect(
+			mockModule.stagePublishedPackageArtifactRebuild,
+		).toHaveBeenCalledTimes(
+			publishedPackageArtifactRebuildD1LockRetryDelaysMs.length + 1,
+		)
+		expect(consoleWarn).toHaveBeenCalledTimes(
+			publishedPackageArtifactRebuildD1LockRetryDelaysMs.length + 1,
+		)
+		const firstWarn = JSON.parse(String(consoleWarn.mock.calls[0]?.[0]))
+		expect(firstWarn).toMatchObject({
+			attempt: 1,
+			nextDelayMs: publishedPackageArtifactRebuildD1LockRetryDelaysMs[0],
 		})
-
-	await rebuild()
-
-	expect(mockModule.stagePublishedPackageArtifactRebuild).toHaveBeenCalledTimes(
-		2,
-	)
-	expect(staged.run).toHaveBeenCalledTimes(1)
-	expect(staged.discard).toHaveBeenCalledWith(
-		'repo-artifact-rebuild-staging:v1:user-1:stage-retry',
-	)
-	expectOneTransientWarn()
-
-	consoleWarn.mockClear()
-	const d1Run = vi
-		.fn()
-		.mockResolvedValueOnce({
-			ok: false,
-			message: 'internal error; reference = s46pgsm6st3fg81p6qumom80',
-		})
-		.mockResolvedValueOnce({ ok: true, message: 'rebuilt' })
-	const d1 = setup({ targets: [sampleTargets[0]!], run: d1Run })
-
-	await rebuild()
-
-	expect(d1Run).toHaveBeenCalledTimes(2)
-	expect(mockModule.stagePublishedPackageArtifactRebuild).toHaveBeenCalledTimes(
-		2,
-	)
-	expect(d1.discard).toHaveBeenCalledTimes(2)
-	expectOneTransientWarn()
-
-	consoleWarn.mockClear()
-	setup({ targets: [sampleTargets[0]!], stageKey: null })
-	mockModule.stagePublishedPackageArtifactRebuild.mockRejectedValue(
-		codeUpdatedReset,
-	)
-
-	await expect(rebuild()).rejects.toThrow(
-		/could not recover after 3 transient platform error attempts/,
-	)
-	expect(mockModule.stagePublishedPackageArtifactRebuild).toHaveBeenCalledTimes(
-		3,
-	)
-	expect(consoleWarn).toHaveBeenCalledTimes(3)
+	} finally {
+		vi.useRealTimers()
+	}
 })
 
 test('does not retry non-transient rebuild failures', async () => {

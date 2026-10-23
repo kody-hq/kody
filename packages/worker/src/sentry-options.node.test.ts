@@ -6,6 +6,7 @@ import {
 	ComputeOverageLimitError,
 	EntitlementLimitError,
 } from './entitlements/errors.ts'
+import { transientDatabaseUnavailableMessage } from './d1-retry.ts'
 import { artifactsGitTemporarilyUnavailableMessage } from './open-api/errors.ts'
 import {
 	buildArtifactsOpaqueInternalErrorMessage,
@@ -454,6 +455,48 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 			{ originalException: new Error(entitlementLimitError.message) },
 		),
 	).not.toBeNull()
+
+	// KODY-AP: Open API remaps exhausted D1 export rebuild wrappers to ApiError
+	// (503 internal_error). MCP api captures the original exhaustion wrapper.
+	// Drop via hint.originalException; bare event messages alone stay visible
+	// (#3859) so unrelated recovery wrappers are not swallowed.
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+		{ cause: new Error('Currently processing a long-running export.') },
+	)
+	const rebuildFailedWithExport = new Error(
+		`Package source publish succeeded, but bundle artifact rebuild failed for source "source-1" at commit "commit-1". Succeeded: none. Failed: ${d1Export.message} Caused by: Currently processing a long-running export.. Re-run the publish capability to repair artifacts.`,
+		{ cause: d1Export },
+	)
+	const rebuildExhaustedExport = new Error(
+		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after 5 transient platform error attempts: ${rebuildFailedWithExport.message}`,
+		{ cause: rebuildFailedWithExport },
+	)
+	const remappedD1StorageApiError = new Error(
+		transientDatabaseUnavailableMessage,
+		{ cause: rebuildExhaustedExport },
+	)
+	remappedD1StorageApiError.name = 'ApiError'
+	const remappedD1Event = exceptionEvent({
+		type: 'ApiError',
+		value: remappedD1StorageApiError.message,
+	})
+	expect(
+		filterSentryEvent(remappedD1Event, {
+			originalException: remappedD1StorageApiError,
+		}),
+	).toBeNull()
+	expect(filterSentryEvent(remappedD1Event)).toBe(remappedD1Event)
+	const exhaustedExportEvent = exceptionEvent(
+		rebuildExhaustedExport.message,
+		d1Export.message,
+	)
+	expect(
+		filterSentryEvent(exhaustedExportEvent, {
+			originalException: rebuildExhaustedExport,
+		}),
+	).toBeNull()
+	expect(filterSentryEvent(exhaustedExportEvent)).toBe(exhaustedExportEvent)
 
 	// KODY-8P: Open API remaps exhausted Artifacts git transients to ApiError
 	// (503 internal_error) with the wrapper as cause. Drop via the cause chain

@@ -151,20 +151,41 @@ export function isBareRetryableD1LockMessage(message: string) {
 	)
 }
 
-export function isRetryableD1LockMessage(message: string) {
+/**
+ * D1 storage unavailability only: lock, long-running export, binding
+ * transport, overload, and opaque internal-error blips. Excludes Durable
+ * Object platform-reset sentences that also match
+ * {@link isRetryableD1LockMessage} because D1 is DO-backed — callers that
+ * need a longer export backoff or Sentry remap must not treat a bare
+ * code-updated reset as an export-class blip.
+ */
+export function isRetryableD1StorageUnavailabilityMessage(message: string) {
 	return (
 		message.includes('SQLITE_BUSY') ||
 		message.includes('database is locked') ||
 		message.includes(d1LongRunningExportMessage) ||
 		isD1NetworkConnectionLostMessage(message) ||
 		isD1DbOverloadedMessage(message) ||
-		isD1InternalErrorMessage(message) ||
+		isD1InternalErrorMessage(message)
+	)
+}
+
+export function isRetryableD1LockMessage(message: string) {
+	return (
+		isRetryableD1StorageUnavailabilityMessage(message) ||
 		isD1DurableObjectPlatformResetMessage(message)
 	)
 }
 
 export function isRetryableD1LockError(error: unknown) {
 	return errorCauseChainIncludes(error, isRetryableD1LockMessage)
+}
+
+export function isRetryableD1StorageUnavailabilityError(error: unknown) {
+	return errorCauseChainIncludes(
+		error,
+		isRetryableD1StorageUnavailabilityMessage,
+	)
 }
 
 /**

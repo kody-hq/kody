@@ -5,7 +5,10 @@ import {
 	formatErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
-import { isRetryableD1LockError } from '#worker/d1-retry.ts'
+import {
+	isRetryableD1LockError,
+	isRetryableD1StorageUnavailabilityError,
+} from '#worker/d1-retry.ts'
 import {
 	isPublishedPackageArtifactBuiltForCommit,
 	reusePublishedPackageArtifactIfUnchanged,
@@ -37,13 +40,24 @@ export const publishedPackageArtifactRebuildConcurrency =
 	isolatedArtifactRebuildChunkConcurrency
 
 /**
- * Deploy-time DO code resets, other platform isolate resets, and D1
- * `internal error; reference = …` blips during staging or target rebuilds
- * are transient. Rebuilds are idempotent (already-built targets are skipped),
- * so a short bounded retry recovers without re-running publish. Matches
- * packagePublishExternalPush delays.
+ * Deploy-time DO code resets and other platform isolate resets during
+ * staging or target rebuilds are transient. Rebuilds are idempotent
+ * (already-built targets are skipped), so a short bounded retry recovers
+ * without re-running publish. Matches packagePublishExternalPush delays.
  */
 export const publishedPackageArtifactRebuildRetryDelaysMs = [100, 500] as const
+
+/**
+ * D1 lock / long-running export blips need a longer bounded budget than DO
+ * code resets. Nightly DR export (02:15 UTC) holds APP_DB far longer than the
+ * DO-reset window; waiting tens of seconds gives publish a real chance near
+ * export end without holding the MCP request for the full export. Exhausted
+ * attempts still surface as retryable 503 via toApiError
+ * (`isRetryableD1LockError`).
+ */
+export const publishedPackageArtifactRebuildD1LockRetryDelaysMs = [
+	500, 2_000, 5_000, 10_000,
+] as const
 
 function isTransientDurableObjectResetError(error: unknown) {
 	return errorCauseChainIncludes(error, isDurableObjectIsolateResetMessage)
@@ -53,6 +67,18 @@ function isTransientArtifactRebuildError(error: unknown) {
 	return (
 		isTransientDurableObjectResetError(error) || isRetryableD1LockError(error)
 	)
+}
+
+function artifactRebuildRetryDelaysMsFor(
+	error: unknown,
+): ReadonlyArray<number> {
+	// Nightly export / SQLITE_BUSY / overload / opaque D1 internal blips get
+	// the longer window. DO isolate resets (including D1_ERROR:-prefixed
+	// code-updated) share the broader D1 retry matcher because D1 is
+	// DO-backed — keep their short budget.
+	return isRetryableD1StorageUnavailabilityError(error)
+		? publishedPackageArtifactRebuildD1LockRetryDelaysMs
+		: publishedPackageArtifactRebuildRetryDelaysMs
 }
 
 function logArtifactRebuildRetry(input: {
@@ -539,10 +565,10 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	targets?: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	force?: boolean
 }): Promise<RebuildPublishedPackageArtifactsResult> {
-	const maxAttempts = publishedPackageArtifactRebuildRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
-	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-		const attempt = attemptIndex + 1
+	let attempt = 0
+	for (;;) {
+		attempt += 1
 		try {
 			return await rebuildPublishedPackageArtifactsViaRepoSessionOnce(input)
 		} catch (error) {
@@ -550,11 +576,10 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 				throw error
 			}
 			lastTransientError = error
-			const willRetry =
-				attemptIndex < publishedPackageArtifactRebuildRetryDelaysMs.length
-			const nextDelayMs = willRetry
-				? (publishedPackageArtifactRebuildRetryDelaysMs[attemptIndex] ?? 0)
-				: 0
+			const delays = artifactRebuildRetryDelaysMsFor(error)
+			const delayIndex = attempt - 1
+			const willRetry = delayIndex < delays.length
+			const nextDelayMs = willRetry ? (delays[delayIndex] ?? 0) : 0
 			logArtifactRebuildRetry({
 				sourceId: input.sourceId,
 				publishedCommit: input.publishedCommit,
@@ -568,9 +593,13 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 			await delay(nextDelayMs)
 		}
 	}
+	// Preserve the last transient as `cause` so toApiError / Sentry remap can
+	// walk exact D1 platform sentences (export, overload, internal error with
+	// reference) that are only embedded — not bare — in the outer message.
 	throw new Error(
-		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after ${maxAttempts} transient platform error attempts: ${getErrorMessage(
+		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after ${attempt} transient platform error attempts: ${getErrorMessage(
 			lastTransientError,
 		)}`,
+		lastTransientError === null ? undefined : { cause: lastTransientError },
 	)
 }

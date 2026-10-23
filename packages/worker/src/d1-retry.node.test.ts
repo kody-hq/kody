@@ -5,8 +5,12 @@ import {
 	isBareRetryableD1LockMessage,
 	isRetryableD1LockError,
 	isRetryableD1LockMessage,
+	isRetryableD1LockRemapError,
 	isRetryableD1LockSentryEvent,
+	isRetryableD1StorageUnavailabilityError,
+	isRetryableD1StorageUnavailabilityMessage,
 	runD1WithRetry,
+	transientDatabaseUnavailableMessage,
 } from './d1-retry.ts'
 
 const d1SqliteBusy = 'D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY'
@@ -333,4 +337,90 @@ test('isRetryableD1LockSentryEvent drops bare D1 blips and keeps recovery wrappe
 			exception: { values: [{ value: d1SqliteBusy }] },
 		}),
 	).toBe(false)
+})
+
+test('isRetryableD1StorageUnavailabilityMessage excludes DO platform resets', () => {
+	expect(
+		isRetryableD1StorageUnavailabilityMessage(
+			'D1_ERROR: Currently processing a long-running export.',
+		),
+	).toBe(true)
+	expect(isRetryableD1StorageUnavailabilityMessage(d1SqliteBusy)).toBe(true)
+	expect(
+		isRetryableD1StorageUnavailabilityMessage(
+			'Durable Object reset because its code was updated.',
+		),
+	).toBe(false)
+	expect(
+		isRetryableD1StorageUnavailabilityError(
+			new Error('Durable Object reset because its code was updated.'),
+		),
+	).toBe(false)
+	expect(
+		isRetryableD1LockError(
+			new Error('Durable Object reset because its code was updated.'),
+		),
+	).toBe(true)
+})
+
+test('isRetryableD1LockRemapError drops Open API / rebuild-exhaustion remaps (KODY-AP)', () => {
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+	)
+	const rebuildFailed = new Error(rebuildFailureWrapper(d1Export.message), {
+		cause: d1Export,
+	})
+	const exhausted = new Error(
+		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after 5 transient platform error attempts: ${rebuildFailed.message}`,
+		{ cause: rebuildFailed },
+	)
+	expect(isRetryableD1LockRemapError(exhausted)).toBe(true)
+	expect(
+		isRetryableD1LockRemapError(
+			new Error(transientDatabaseUnavailableMessage, { cause: exhausted }),
+		),
+	).toBe(true)
+	// Unrelated recovery that nests a D1 cause stays non-remapped (#3859).
+	expect(
+		isRetryableD1LockRemapError(
+			new Error('serveMcp could not recover after retries', {
+				cause: d1Export,
+			}),
+		),
+	).toBe(false)
+	expect(
+		isRetryableD1LockRemapError(
+			new Error(rebuildFailureWrapper(d1Export.message), { cause: d1Export }),
+		),
+	).toBe(false)
+	// DO-reset rebuild exhaustion is retryable via the shared D1 matcher but
+	// is not a storage-unavailability remap — keep it Sentry-visible.
+	const doReset = new Error(
+		'Durable Object reset because its code was updated.',
+	)
+	expect(
+		isRetryableD1LockRemapError(
+			new Error(
+				`rebuildPublishedPackageArtifactsViaRepoSession could not recover after 3 transient platform error attempts: ${doReset.message}`,
+				{ cause: doReset },
+			),
+		),
+	).toBe(false)
+
+	const remappedEvent = exceptionEvent(transientDatabaseUnavailableMessage)
+	expect(isRetryableD1LockSentryEvent(remappedEvent)).toBe(false)
+	expect(
+		isRetryableD1LockSentryEvent(remappedEvent, {
+			originalException: new Error(transientDatabaseUnavailableMessage, {
+				cause: exhausted,
+			}),
+		}),
+	).toBe(true)
+	const exhaustedEvent = exceptionEvent(exhausted.message, d1Export.message)
+	expect(isRetryableD1LockSentryEvent(exhaustedEvent)).toBe(false)
+	expect(
+		isRetryableD1LockSentryEvent(exhaustedEvent, {
+			originalException: exhausted,
+		}),
+	).toBe(true)
 })

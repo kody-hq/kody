@@ -61,8 +61,11 @@ export function redactKodyCredentialsInSentryEvent(
  * Shared Sentry options for the Cloudflare Worker and Durable Objects.
  * `dsn` may be undefined when Sentry is not configured (local dev / opt-out).
  */
-export function filterRetryableD1LockSentryEvent(event: ErrorEvent) {
-	if (!isRetryableD1LockSentryEvent(event)) return event
+export function filterRetryableD1LockSentryEvent(
+	event: ErrorEvent,
+	hint?: EventHint,
+) {
+	if (!isRetryableD1LockSentryEvent(event, hint)) return event
 	return null
 }
 
@@ -630,7 +633,7 @@ export function filterSentryEvent(event: ErrorEvent, hint?: EventHint) {
 	// Marker first: primary mechanism for user-authored failures.
 	if (filterUserCodeErrorSentryEvent(event, hint) === null) return null
 	if (filterEntitlementLimitErrorSentryEvent(event, hint) === null) return null
-	if (filterRetryableD1LockSentryEvent(event) === null) return null
+	if (filterRetryableD1LockSentryEvent(event, hint) === null) return null
 	// String-match backstops for paths that cannot yet be marked.
 	if (filterUserModuleBundlerFailureSentryEvent(event) === null) return null
 	if (filterExecutorSandboxTimeoutSentryEvent(event) === null) return null
@@ -694,7 +697,9 @@ export function buildSentryOptions(env: Env): CloudflareOptions {
 		// platform load, and opaque D1 "internal error …; reference = …"
 		// platform faults (including storage object-reset). These are
 		// transient platform unavailability errors retried in app code and
-		// should not open or regress Sentry issues.
+		// should not open or regress Sentry issues — including when Open API
+		// remaps them to ApiError / rebuild exhaustion wrappers with the D1
+		// blip as cause (KODY-AP), matching Artifacts git remaps (KODY-8P).
 		//
 		// User-authored failures are dropped primarily via `UserCodeError`
 		// (`filterUserCodeErrorSentryEvent`). Plan-limit denials

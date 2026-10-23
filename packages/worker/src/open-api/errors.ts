@@ -23,7 +23,10 @@ import {
 	isJobIntervalFloorError,
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
-import { isRetryableD1LockError } from '#worker/d1-retry.ts'
+import {
+	isRetryableD1LockError,
+	transientDatabaseUnavailableMessage,
+} from '#worker/d1-retry.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -32,9 +35,8 @@ import {
 } from '#worker/repo/artifacts-git-retry.ts'
 
 export { artifactsGitTemporarilyUnavailableMessage }
+export { transientDatabaseUnavailableMessage }
 
-export const transientDatabaseUnavailableMessage =
-	'Kody storage was briefly unavailable. Retry in a few seconds.'
 const transientDatabaseRetryAfterSeconds = '5'
 
 export const apiErrorCodes = [
