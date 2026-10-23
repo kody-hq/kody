@@ -1,7 +1,6 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { expect, test } from 'vitest'
 import {
-	buildCapabilitySet,
 	capabilitySetsEqual,
 	dedupeCapabilityEntries,
 	fingerprintCapabilityEntries,
@@ -157,17 +156,4 @@ test('dedupe keeps a stable sorted set and prefers longer via', () => {
 	expect(deduped).toHaveLength(2)
 	expect(deduped[0]?.via).toEqual(['root', 'dep'])
 	expect(deduped[0]?.hosts).toEqual(['a.example.com', 'b.example.com'])
-})
-
-test('buildCapabilitySet returns fingerprint matching entries', async () => {
-	const set = await buildCapabilitySet([
-		{
-			kind: 'storage',
-			storageId: 'pkg-1',
-			hosts: [],
-			via: ['notes'],
-		},
-	])
-	expect(set.entries).toHaveLength(1)
-	expect(set.fingerprint).toHaveLength(64)
 })

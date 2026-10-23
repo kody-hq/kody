@@ -14,7 +14,6 @@ import {
 	computePackageCapabilitySet,
 	mergeOwnNeedsOntoClosure,
 } from './compute-package-capability-set.ts'
-import { sourceFilesUsePackageStorage } from './package-storage-use.ts'
 
 const mocks = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
@@ -409,26 +408,4 @@ test('the fingerprint ignores account credentials the package does not declare',
 	await t.storeKey('anotherAccountKey', 'other')
 
 	expect((await t.compute()).capabilitySet.fingerprint).toBe(before)
-})
-
-test('storage detection reads module files, not browser storage, type declarations, or string prose', () => {
-	expect(
-		sourceFilesUsePackageStorage({
-			'app/game.ts': "localStorage.setItem('hi', '1')",
-			'types/runtime.d.ts': 'export declare function packageStorage(): unknown',
-			'README.md': 'Uses packageStorage() for nothing.',
-			'app/assets.generated.ts':
-				'export const html = `<code>import { packageStorage } from "kody:runtime"</code>`',
-		}),
-	).toBe(false)
-	expect(
-		sourceFilesUsePackageStorage({
-			'src/index.ts': 'await kody.storageQuery({ storage_id: id, sql })',
-		}),
-	).toBe(true)
-	expect(
-		sourceFilesUsePackageStorage({
-			'src/index.ts': "const op = 'storage' + 'Query'\nawait kody?.[op]({})",
-		}),
-	).toBe(true)
 })

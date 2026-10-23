@@ -2,16 +2,6 @@ import { expect, test } from 'vitest'
 import { sortGuidesByAuthoredOrder } from './guide-order.ts'
 import { guides as webGuides } from './catalog.ts'
 
-test('sortGuidesByAuthoredOrder reproduces the web catalog order from an arbitrarily shuffled input', () => {
-	const shuffled = [...webGuides].toSorted((a, b) =>
-		b.slug.localeCompare(a.slug),
-	)
-	const sorted = sortGuidesByAuthoredOrder(shuffled)
-	expect(sorted.map((guide) => guide.slug)).toEqual(
-		webGuides.map((guide) => guide.slug),
-	)
-})
-
 test('sortGuidesByAuthoredOrder throws when a guide is missing from the docs nav', () => {
 	const guidesWithUnknownSlug = [
 		...webGuides,

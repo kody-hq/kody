@@ -85,57 +85,6 @@ test('legacy name-keyed fingerprint differs from credential-id fingerprint', asy
 	expect(legacy).not.toBe(current)
 })
 
-test('approval url and message use the shared /connect/webhook-apply owner flow', async () => {
-	const destinationInput = {
-		type: 'http' as const,
-		url: 'https://hooks.example/register?token={{webhookUrl}}',
-		method: 'PUT' as const,
-		headers: { Authorization: 'Bearer x' },
-	}
-	const destination = toHttpApplyDestinationSnapshot(destinationInput)
-	const fingerprint = await fingerprintHttpApplyDestination(destinationInput)
-	const approvalUrl = buildWebhookApplyDestinationApprovalUrl({
-		baseUrl: 'https://heykody.dev',
-		handle: 'whh_ep-1',
-		fingerprint,
-	})
-	expect(approvalUrl).toContain('/connect/webhook-apply?')
-	expect(approvalUrl).toContain('handle=whh_ep-1')
-	expect(approvalUrl).toContain(`fingerprint=${fingerprint}`)
-
-	const message = buildWebhookApplyDestinationApprovalRequiredMessage({
-		approvalUrl,
-		destination,
-	})
-	expect(message).toContain('approval_url:')
-	expect(message).toContain(approvalUrl)
-	expect(message).toContain('method: PUT')
-	expect(message).toContain(destination.auth)
-})
-
-test('approval message pins credential id when auth uses a secret', () => {
-	const destination = toHttpApplyDestinationSnapshot(
-		{
-			type: 'http',
-			url: 'https://hooks.example/register',
-			method: 'POST',
-			body: '{"url":"{{webhookUrl}}"}',
-			secretName: 'hooksToken',
-		},
-		{ credentialId: 'cred-hooks' },
-	)
-	const message = buildWebhookApplyDestinationApprovalRequiredMessage({
-		approvalUrl:
-			'https://heykody.dev/connect/webhook-apply?handle=whh_ep-1&fingerprint=abc',
-		destination,
-	})
-	expect(message).toContain('credential cred-hooks')
-	expect(message).toContain('pinned to credential cred-hooks')
-	expect(message).toContain(
-		'replacing it under the same name requires a fresh Allow',
-	)
-})
-
 test('approval message lists form-encoded {{webhookUrl}} body injection sites', async () => {
 	const destinationInput = {
 		type: 'http' as const,

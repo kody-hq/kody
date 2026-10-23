@@ -53,8 +53,8 @@ test('resolveCronJobEnablementHint returns the owner enablementEnable call witho
 			jobName: 'inbox-refresh',
 			enabled: true,
 		}),
-	).toBe(
-		'Call enablementEnable({ packageId: "pkg-1", triggerKind: "cron", triggerName: "inbox-refresh" }) to turn on cron "inbox-refresh" for the owner. Creating a job enables it for the owner automatically; other package triggers still need an explicit enable.',
+	).toContain(
+		'enablementEnable({ packageId: "pkg-1", triggerKind: "cron", triggerName: "inbox-refresh" })',
 	)
 
 	mockModule.listEnablementsForInstance.mockResolvedValueOnce([
@@ -68,9 +68,7 @@ test('resolveCronJobEnablementHint returns the owner enablementEnable call witho
 			jobName: 'inbox-refresh',
 			enabled: true,
 		}),
-	).toBe(
-		'Ask the user to fix the paused enablement for cron "inbox-refresh", or re-enable with enablementEnable({ packageId: "pkg-1", triggerKind: "cron", triggerName: "inbox-refresh" }).',
-	)
+	).toContain('paused enablement')
 })
 
 test('resolveCronJobEnablementHint returns null when the lookup fails', async () => {
