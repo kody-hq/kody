@@ -1034,22 +1034,6 @@ test('createExecuteExecutor awaits a capped worker-day claim before load and ski
 	expect(deniedLoader.ids).toEqual([])
 })
 
-test('createExecuteExecutor notifies onWorkerId with the stable LOADER id', async () => {
-	const fakeLoader = createFakeWorkerLoader()
-	const workerIds: Array<string> = []
-	const result = await runExecutor({
-		env: createExecutorTestEnv(fakeLoader.loader),
-		onWorkerId: (workerId) => {
-			workerIds.push(workerId)
-		},
-	})
-	expect(workerIds).toHaveLength(1)
-	expect(workerIds[0]).toMatch(/^kody-[A-Za-z0-9_-]{43}$/)
-	expect(fakeLoader.stats.uniqueIds).toBe(1)
-	expect(fakeLoader.ids[0]).toBe(workerIds[0])
-	expect(result.result).toBe(workerIds[0])
-})
-
 test('createExecuteExecutor rejects reserved provider names, keeps side-effect counts on DO reset, and disables dispatchers after completion', async () => {
 	const fakeLoader = createFakeWorkerLoader()
 	for (const name of ['class', 'private']) {

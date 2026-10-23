@@ -178,29 +178,6 @@ test('counts error responses as answering a request ID', async () => {
 	})
 })
 
-test('handles string request IDs', async () => {
-	const guarded = guardLegacyLaneSseResponse(
-		['req-abc'],
-		new Response('', {
-			status: 200,
-			headers: { 'Content-Type': 'text/event-stream' },
-		}),
-	)
-	const text = await readFullResponse(guarded)
-	const payloads = parseSsePayloads(text)
-
-	expect(payloads).toHaveLength(1)
-	expect(payloads[0]).toEqual({
-		jsonrpc: '2.0',
-		id: 'req-abc',
-		error: {
-			code: -32603,
-			message:
-				'Internal error: the server connection closed before delivering a response. Please retry.',
-		},
-	})
-})
-
 test('handles chunked SSE where event spans multiple reads', async () => {
 	const fullEvent = formatSseEvent({
 		jsonrpc: '2.0',

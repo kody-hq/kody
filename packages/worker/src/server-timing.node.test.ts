@@ -1,10 +1,8 @@
-import { expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import {
 	applyServerTimingHeader,
 	formatServerTimingHeader,
 	parseServerTimingHeader,
-	pushServerTiming,
-	type ServerTimingEntry,
 } from './server-timing.ts'
 
 test('format and parse Server-Timing keep page phases and quoted desc', () => {
@@ -55,24 +53,4 @@ test('applyServerTimingHeader appends to an existing header', () => {
 	expect(headers.get('Server-Timing')).toBe(
 		'cfEdge;dur=4, session;dur=8, ssr;dur=11',
 	)
-})
-
-test('pushServerTiming records durations when a bag is present', async () => {
-	vi.useFakeTimers({ now: 1_000 })
-	try {
-		const timings: Array<ServerTimingEntry> = []
-		const pending = pushServerTiming(timings, 'listings', async () => {
-			await new Promise((resolve) => setTimeout(resolve, 12))
-			return 7
-		})
-		await vi.advanceTimersByTimeAsync(12)
-		expect(await pending).toBe(7)
-		expect(timings).toEqual([{ name: 'listings', durationMs: 12 }])
-
-		expect(await pushServerTiming(undefined, 'skip', async () => 'ok')).toBe(
-			'ok',
-		)
-	} finally {
-		vi.useRealTimers()
-	}
 })

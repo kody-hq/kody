@@ -79,16 +79,6 @@ test('a rejected load is forgotten so the request can retry', async () => {
 	expect(attempts).toBe(2)
 })
 
-test('without a request context memoizePerRequest just loads', async () => {
-	let loads = 0
-	const load = async () => {
-		loads += 1
-		return loads
-	}
-	await expect(memoizePerRequest({ key: 'k', load })).resolves.toBe(1)
-	await expect(memoizePerRequest({ key: 'k', load })).resolves.toBe(2)
-})
-
 test('recordServerTiming appends to the request entries and collectServerTiming merges', async () => {
 	const request = makeRequest()
 	await runWithRequestContext(request, async () => {

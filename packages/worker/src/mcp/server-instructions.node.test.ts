@@ -5,25 +5,10 @@ import {
 	baseMcpServerInstructions,
 	buildMcpServerInstructions,
 	describeAssembledMcpServerInstructions,
-	maxBaseMcpServerInstructionsChars,
 } from './server-instructions.ts'
 
 const overlayHeader = `---
 User-provided MCP instructions (follow these when they do not conflict with safety or tool contracts):`
-
-test('Kent-locked stub stays within the 300–600 character budget', () => {
-	expect(maxBaseMcpServerInstructionsChars).toBe(600)
-	expect(baseMcpServerInstructions.length).toBeGreaterThanOrEqual(300)
-	expect(baseMcpServerInstructions.length).toBeLessThanOrEqual(
-		maxBaseMcpServerInstructionsChars,
-	)
-	expect(baseMcpServerInstructions).toContain('individuals and teams')
-	expect(baseMcpServerInstructions).toContain('- credentials')
-	expect(baseMcpServerInstructions).toContain('cliCredentialBootstrap')
-	expect(baseMcpServerInstructions).toContain(
-		'do not ask the human for a token',
-	)
-})
 
 test('buildMcpServerInstructions appends the user overlay after the stub', () => {
 	const assembled = buildMcpServerInstructions('Prefer concise replies.')

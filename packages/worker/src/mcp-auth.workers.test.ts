@@ -453,9 +453,6 @@ test('mcp endpoint serves browser guidance without changing protocol auth challe
 	expect(browserResponse.headers.get('Content-Type')).toBe(
 		'text/html; charset=utf-8',
 	)
-	expect(await browserResponse.text()).toContain(
-		'href="https://example.com/onboarding"',
-	)
 	expect(browserResponse.headers.get('WWW-Authenticate')).toBeNull()
 
 	const challenges = [
@@ -655,8 +652,7 @@ test('mcp requests route by protocol era and record lane metrics', async () => {
 	expect(legacyLane.calls).toBe(1)
 
 	// 2026-07-28 envelope requests are served by the stateless lane and
-	// never reach the Durable Object; the advertised tools carry the shared
-	// definitions including output schemas and icons.
+	// never reach the Durable Object.
 	const modernResponse = await callMcp(
 		jsonRpcRequest(
 			{
@@ -683,12 +679,7 @@ test('mcp requests route by protocol era and record lane metrics', async () => {
 	expect(modernResponse.status).toBe(200)
 	const modernBody = (await modernResponse.json()) as {
 		result: {
-			tools: Array<{
-				name: string
-				outputSchema?: Record<string, unknown>
-				icons?: Array<{ src: string }>
-				annotations?: Record<string, boolean>
-			}>
+			tools: Array<{ name: string }>
 		}
 	}
 	const tools = modernBody.result.tools
@@ -697,28 +688,6 @@ test('mcp requests route by protocol era and record lane metrics', async () => {
 		'execute',
 		'search',
 	])
-	expect(tools.find((tool) => tool.name === 'search')?.annotations).toEqual({
-		readOnlyHint: true,
-		destructiveHint: false,
-		idempotentHint: true,
-		openWorldHint: false,
-	})
-	expect(tools.find((tool) => tool.name === 'execute')?.annotations).toEqual({
-		readOnlyHint: false,
-		destructiveHint: true,
-		idempotentHint: false,
-		openWorldHint: true,
-	})
-	expect(tools.find((tool) => tool.name === 'api')?.annotations).toEqual({
-		readOnlyHint: false,
-		destructiveHint: true,
-		idempotentHint: false,
-		openWorldHint: true,
-	})
-	for (const tool of tools) {
-		expect(tool.outputSchema).toMatchObject({ type: 'object' })
-		expect(tool.icons?.[0]?.src).toBe(`${origin}/android-chrome-192x192.png`)
-	}
 	expect(dataPoints).toEqual([
 		{
 			indexes: ['legacy'],

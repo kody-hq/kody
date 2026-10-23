@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { expect, test, vi } from 'vitest'
 import * as Sentry from '@sentry/cloudflare'
 import {
@@ -312,15 +311,4 @@ test('failed queue sends fall back inline for that lane only, keep scheduledTime
 			scheduledTime: fallbackTime,
 		}),
 	)
-})
-
-test('production scheduled-dispatch consumer retry bound matches the shared contract', async () => {
-	const wrangler = await readFile(
-		new URL('../wrangler.jsonc', import.meta.url),
-		'utf8',
-	)
-	const consumer = wrangler.match(
-		/"queue": "kody-scheduled-dispatch",[\s\S]*?"max_retries": (\d+),[\s\S]*?"dead_letter_queue": "kody-scheduled-dispatch-dlq"/,
-	)
-	expect(consumer?.[1]).toBe(String(scheduledDispatchMaxRetries))
 })

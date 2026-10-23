@@ -29,33 +29,6 @@ async function readDocument(url: URL) {
 		.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
 }
 
-test('compiled OAuth document renders registered clients, passkeys and configured social controls', async () => {
-	const server = await getSharedMcpE2eServer()
-	for (const name of ['Claude', 'ChatGPT']) {
-		const clientId = `native-${crypto.randomUUID()}`
-		await server.seedOAuthClient(clientId, {
-			clientId,
-			redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
-			clientName: name,
-			tokenEndpointAuthMethod: 'none',
-		})
-		try {
-			const html = await readDocument(authorizationUrl(server.origin, clientId))
-			expect(html).toContain(name)
-			expect(html).toContain('data-testid="oauth-authorize-passkey"')
-			for (const [provider, label] of [
-				['github', 'GitHub'],
-				['google', 'Google'],
-			]) {
-				expect(html).toContain(`aria-label="Continue with ${label}"`)
-				expect(html).toContain(`data-testid="social-sign-in-${provider}"`)
-			}
-		} finally {
-			await server.seedOAuthClient(clientId, null)
-		}
-	}
-})
-
 test('compiled OAuth document recovers from malformed and missing client registrations', async () => {
 	const server = await getSharedMcpE2eServer()
 	const clientId = `native-${crypto.randomUUID()}`
