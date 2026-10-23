@@ -7,13 +7,15 @@ import {
 import { invalidateCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
 import { isPackageAppCustomHostnameVerified } from '#worker/package-app-custom-hostnames/lookup.ts'
 import {
-	claimPackageAppCustomHostnameActivation,
+	claimedInBatch,
 	listPackageAppCustomHostnamesForReconcile,
+	prepareClaimPackageAppCustomHostnameActivation,
 	removePackageAppCustomHostnameRow,
 	serializeVerificationErrors,
 } from '#worker/package-app-custom-hostnames/service.ts'
 import { notifyOwnersOfCustomHostnameStatus } from '#worker/package-app-custom-hostnames/status-notice.ts'
 import {
+	isPackageAppCustomDomainFailedStatus,
 	packageAppCustomDomainCheckWindowMs,
 	packageAppCustomDomainRecheckIntervalMs,
 } from '#universal/package-app-custom-domain-status.ts'
@@ -119,20 +121,18 @@ function planPendingRecheck(
 	return { due: true, windowOver: false, checkingForMs }
 }
 
-async function claimNeedsAttention(input: {
+function prepareClaimNeedsAttention(input: {
 	db: D1Database
 	id: string
 	nowIso: string
-}) {
-	const result = await input.db
+}): D1PreparedStatement {
+	return input.db
 		.prepare(
 			`UPDATE package_app_custom_hostnames
 			 SET needs_attention_at = ?
 			 WHERE id = ? AND needs_attention_at IS NULL AND verified_at IS NULL`,
 		)
 		.bind(input.nowIso, input.id)
-		.run()
-	return (result.meta.changes ?? 0) > 0
 }
 
 async function readReconcileCursor(db: D1Database): Promise<string> {
@@ -282,25 +282,24 @@ export async function reconcilePackageAppCustomHostnames(input: {
 					afterId = row.id
 					continue
 				}
-				const firstActivation =
-					verified && !row.verifiedAt
-						? await claimPackageAppCustomHostnameActivation({
-								db: input.env.APP_DB,
-								id: row.id,
-								nowIso,
-							})
-						: false
-				const markedNeedsAttention =
-					!verified && plan.windowOver
-						? await claimNeedsAttention({
-								db: input.env.APP_DB,
-								id: row.id,
-								nowIso,
-							})
-						: false
 				const sslStatus = cf.sslStatus ?? row.sslStatus
-				await input.env.APP_DB.prepare(
-					`UPDATE package_app_custom_hostnames
+				const claimActivation = verified && !row.verifiedAt
+				// Never-verified hostnames stop at the end of the window, or as
+				// soon as Cloudflare reports a terminal failure that waiting will
+				// not fix. Rows in the DNS-missing grace path are left to it.
+				const claimAttention =
+					!verified &&
+					!row.verifiedAt &&
+					!dnsMissingSince &&
+					(plan.windowOver ||
+						isPackageAppCustomDomainFailedStatus({
+							hostnameStatus: cf.hostnameStatus,
+							sslStatus,
+						}))
+				const db = input.env.APP_DB
+				const update = db
+					.prepare(
+						`UPDATE package_app_custom_hostnames
 						 SET hostname_status = ?,
 						     ssl_status = ?,
 						     verified_at = COALESCE(verified_at, ?),
@@ -310,7 +309,7 @@ export async function reconcilePackageAppCustomHostnames(input: {
 						     verification_errors_json = ?,
 						     updated_at = ?
 						 WHERE id = ?`,
-				)
+					)
 					.bind(
 						cf.hostnameStatus,
 						sslStatus,
@@ -324,7 +323,24 @@ export async function reconcilePackageAppCustomHostnames(input: {
 						nowIso,
 						row.id,
 					)
-					.run()
+				// Claim and row update commit together, so a failed update can
+				// never leave a claim behind that suppresses the notice or stops
+				// future checks.
+				const claim = claimActivation
+					? prepareClaimPackageAppCustomHostnameActivation({
+							db,
+							id: row.id,
+							nowIso,
+						})
+					: claimAttention
+						? prepareClaimNeedsAttention({ db, id: row.id, nowIso })
+						: null
+				const results = claim
+					? await db.batch([claim, update])
+					: [await update.run()]
+				const claimed = claim ? claimedInBatch(results[0]) : false
+				const firstActivation = claimActivation && claimed
+				const markedNeedsAttention = claimAttention && claimed
 				invalidateCachedPackageAppCustomHostname(input.env.APP_DB, row.hostname)
 				result.updated += 1
 				afterId = row.id

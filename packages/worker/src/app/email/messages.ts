@@ -706,16 +706,23 @@ export function buildCustomDomainNeedsAttentionEmail(input: {
 	appBaseUrl: string
 	hostname: string
 	reason: string
+	/** `failed`: Cloudflare reported a terminal error before the 48 hour window ended. */
+	cause?: 'timed_out' | 'failed'
 	manageUrl: string
 	docsUrl: string
 }) {
+	const failed = input.cause === 'failed'
 	return renderTransactionalEmail({
 		appBaseUrl: input.appBaseUrl,
 		subject: `Your custom domain ${input.hostname} needs attention`,
-		preheader: 'It is still not active, so Kody stopped checking.',
+		preheader: failed
+			? 'Cloudflare reported a problem, so Kody stopped checking.'
+			: 'It is still not active, so Kody stopped checking.',
 		heading: 'A custom domain needs attention',
 		body: [
-			`Kody checked ${input.hostname} for 48 hours and it never went active, so Kody stopped checking.`,
+			failed
+				? `Cloudflare reported a problem with ${input.hostname} that waiting will not fix, so Kody stopped checking.`
+				: `Kody checked ${input.hostname} for 48 hours and it never went active, so Kody stopped checking.`,
 			`Reason: ${input.reason}`,
 			'Check that every DNS record matches the setup exactly and is DNS only (proxy off). Then sync the domain, and Kody will start checking again.',
 		],

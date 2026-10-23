@@ -158,7 +158,7 @@ export function buildPackageAppCustomHostnameSetup(input: {
 				]
 			: []),
 		'Wait. Kody re-checks pending hostnames every few minutes, and most go active a few minutes after the records are published. There is no need to call sync repeatedly; call it once only if you want an immediate check.',
-		`When status.state is "active" (hostname_status and ssl_status both "active"), ${servesAt} and Kody emails the owners. If it is still not active after 48 hours, Kody stops checking, marks it needs_attention with a reason, and emails the owners.`,
+		`When status.state is "active" (hostname_status and ssl_status both "active"), ${servesAt} and Kody emails the owners. If a hostname that has never been active is still not active after 48 hours, or Cloudflare reports a terminal failure first, Kody stops checking, marks it needs_attention with a reason, and emails the owners. A hostname that was active before and loses its records follows the grace period instead.`,
 	]
 	return {
 		records,

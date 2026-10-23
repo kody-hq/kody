@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test, vi } from 'vitest'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import type * as StatusNotice from './status-notice.ts'
 
@@ -254,4 +255,78 @@ test('hostnames that were already stale long before the window ended get the sta
 		now.toISOString(),
 	)
 	expect(notifyOwnersOfCustomHostnameStatus).not.toHaveBeenCalled()
+})
+
+test('a terminal Cloudflare failure marks needs attention before the window ends and stops checking', async () => {
+	notifyOwnersOfCustomHostnameStatus.mockClear()
+	const db = createDb()
+	await insertPending(db, { id: 'timedout', createdAt: hoursAgo(2) })
+	const fetcher = cloudflareFetcher({
+		status: 'pending',
+		sslStatus: 'validation_timed_out',
+	})
+	const result = await reconcilePackageAppCustomHostnames({
+		env: envFor(db, fetcher),
+		now,
+	})
+	expect(result.needsAttention).toBe(1)
+	expect(await readRow(db, 'timedout')).toMatchObject({
+		ssl_status: 'validation_timed_out',
+		needs_attention_at: now.toISOString(),
+	})
+	expect(notifyOwnersOfCustomHostnameStatus).toHaveBeenCalledTimes(1)
+	expect(notifyOwnersOfCustomHostnameStatus.mock.calls[0]?.[0]).toMatchObject({
+		event: 'needs_attention',
+		row: { id: 'timedout', sslStatus: 'validation_timed_out' },
+	})
+
+	await reconcilePackageAppCustomHostnames({
+		env: envFor(db, fetcher),
+		now: new Date(now.getTime() + 2 * hour),
+	})
+	expect(fetcher.fetch).toHaveBeenCalledTimes(1)
+	expect(notifyOwnersOfCustomHostnameStatus).toHaveBeenCalledTimes(1)
+})
+
+test('a failed row write does not leave an activation claim behind', async () => {
+	notifyOwnersOfCustomHostnameStatus.mockClear()
+	const db = createDb()
+	await insertPending(db, { id: 'flaky', createdAt: hoursAgo(0.1) })
+	const fetcher = cloudflareFetcher({ status: 'active', sslStatus: 'active' })
+	let failBatch = true
+	const flakyDb = new Proxy(db, {
+		get(target, prop, receiver) {
+			if (prop === 'batch') {
+				return async (statements: Array<D1PreparedStatement>) => {
+					if (failBatch) {
+						failBatch = false
+						throw new Error('D1 write failed')
+					}
+					return target.batch(statements)
+				}
+			}
+			const value = Reflect.get(target, prop, receiver)
+			return typeof value === 'function' ? value.bind(target) : value
+		},
+	})
+	consoleError.mockImplementation(() => {})
+	const first = await reconcilePackageAppCustomHostnames({
+		env: envFor(flakyDb, fetcher),
+		now,
+	})
+	expect(first.errors).toBe(1)
+	expect(consoleError).toHaveBeenCalledWith(
+		'package_app_custom_hostnames reconcile failed:',
+		'flaky.example.com',
+		'D1 write failed',
+	)
+	expect((await readRow(db, 'flaky'))?.verified_at).toBeNull()
+	expect(notifyOwnersOfCustomHostnameStatus).not.toHaveBeenCalled()
+
+	const second = await reconcilePackageAppCustomHostnames({
+		env: envFor(flakyDb, fetcher),
+		now: new Date(now.getTime() + 5 * 60 * 1000),
+	})
+	expect(second.activated).toBe(1)
+	expect(notifyOwnersOfCustomHostnameStatus).toHaveBeenCalledTimes(1)
 })

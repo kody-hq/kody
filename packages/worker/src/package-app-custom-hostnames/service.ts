@@ -31,6 +31,7 @@ import {
 } from '#worker/app-base-url.ts'
 import {
 	describePackageAppCustomDomainStatus,
+	isPackageAppCustomDomainFailedStatus,
 	type PackageAppCustomDomainRecordView,
 	type PackageAppCustomDomainStatus,
 	type PackageAppCustomDomainView,
@@ -593,23 +594,28 @@ function shouldStartDnsMissingGrace(input: {
 }
 
 /**
- * Record the first time a hostname goes active. Returns true for exactly one
- * caller (sync or the reconcile cron), which then owns the owner notice.
+ * Claim the first time a hostname goes active. Run it in the same
+ * `db.batch()` as the status update so the claim and the row write commit
+ * together; the statement changes one row for exactly one caller (sync or
+ * the reconcile cron), which then owns the owner notice.
  */
-export async function claimPackageAppCustomHostnameActivation(input: {
+export function prepareClaimPackageAppCustomHostnameActivation(input: {
 	db: D1Database
 	id: string
 	nowIso: string
-}): Promise<boolean> {
-	const result = await input.db
+}): D1PreparedStatement {
+	return input.db
 		.prepare(
 			`UPDATE package_app_custom_hostnames
 			 SET verified_at = ?, needs_attention_at = NULL
 			 WHERE id = ? AND verified_at IS NULL`,
 		)
 		.bind(input.nowIso, input.id)
-		.run()
-	return (result.meta.changes ?? 0) > 0
+}
+
+/** Whether a claim statement from a `db.batch()` result changed its row. */
+export function claimedInBatch(result: D1Result | undefined): boolean {
+	return (result?.meta.changes ?? 0) > 0
 }
 
 async function applyCloudflareStatus(input: {
@@ -634,14 +640,7 @@ async function applyCloudflareStatus(input: {
 	) {
 		dnsMissingSince = dnsMissingSince ?? input.nowIso
 	}
-	const firstActivation =
-		verified && !input.row.verifiedAt
-			? await claimPackageAppCustomHostnameActivation({
-					db: input.env.APP_DB,
-					id: input.row.id,
-					nowIso: input.nowIso,
-				})
-			: false
+	const claimActivation = verified && !input.row.verifiedAt
 	const verifiedAt =
 		verified && !input.row.verifiedAt ? input.nowIso : input.row.verifiedAt
 	const hostnameStatus = input.cf.hostnameStatus
@@ -651,14 +650,26 @@ async function applyCloudflareStatus(input: {
 	const verificationErrors = input.cf.verificationErrors
 	// A manual sync on a hostname that is still not active means the person
 	// just changed DNS: clear needs-attention and restart the re-check window.
-	const restartWindow = !verified && !input.row.verifiedAt
+	// A terminal Cloudflare failure will not clear by waiting, so it keeps
+	// (or gains) needs-attention instead; the person is already looking.
+	const neverVerified = !verified && !input.row.verifiedAt
+	const failed =
+		neverVerified &&
+		isPackageAppCustomDomainFailedStatus({ hostnameStatus, sslStatus })
+	const restartWindow = neverVerified && !failed
 	const checkWindowStartedAt = restartWindow
 		? input.nowIso
 		: input.row.checkWindowStartedAt
 	const needsAttentionAt =
-		verified || restartWindow ? null : input.row.needsAttentionAt
-	await input.env.APP_DB.prepare(
-		`UPDATE package_app_custom_hostnames
+		verified || restartWindow
+			? null
+			: failed
+				? (input.row.needsAttentionAt ?? input.nowIso)
+				: input.row.needsAttentionAt
+	const db = input.env.APP_DB
+	const update = db
+		.prepare(
+			`UPDATE package_app_custom_hostnames
 			 SET hostname_status = ?,
 			     ssl_status = ?,
 			     verified_at = COALESCE(verified_at, ?),
@@ -670,7 +681,7 @@ async function applyCloudflareStatus(input: {
 			     needs_attention_at = ?,
 			     updated_at = ?
 			 WHERE id = ?`,
-	)
+		)
 		.bind(
 			hostnameStatus,
 			sslStatus,
@@ -684,7 +695,17 @@ async function applyCloudflareStatus(input: {
 			input.nowIso,
 			input.row.id,
 		)
-		.run()
+	const results = claimActivation
+		? await db.batch([
+				prepareClaimPackageAppCustomHostnameActivation({
+					db,
+					id: input.row.id,
+					nowIso: input.nowIso,
+				}),
+				update,
+			])
+		: [await update.run()]
+	const firstActivation = claimActivation && claimedInBatch(results[0])
 	const updated: PackageAppCustomHostnameRow = {
 		...input.row,
 		hostnameStatus,

@@ -88,10 +88,11 @@ Settings page) show a single `status` for each hostname:
   Cloudflare is waiting on.
 - **Active** (`active`): the hostname and its certificate are both active, and
   the app is serving.
-- **Needs attention** (`needs_attention`): the hostname never went active in 48
-  hours, so Kody stopped checking and emailed the owners, or Cloudflare reported
-  a terminal problem (for example the CNAME moved). The reason says what to fix.
-  After fixing DNS, sync once and Kody starts checking again.
+- **Needs attention** (`needs_attention`): a hostname that was never active did
+  not go active in 48 hours, or Cloudflare reported a terminal problem first, so
+  Kody stopped checking and emailed the owners. The reason says what to fix.
+  After fixing DNS, sync once and Kody starts checking again. Some Cloudflare
+  failures need the hostname removed and added again; the reason says when.
 
 The raw Cloudflare fields (`hostname_status`, `ssl_status`) are still there for
 debugging. A previously active hostname whose CNAME disappears gets a grace

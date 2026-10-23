@@ -66,7 +66,12 @@ export function CustomDomainRecords({
 						<tr key={`${record.type}:${record.name}:${record.value}`}>
 							<td>{record.type}</td>
 							<td>
-								<code title={record.name}>{record.relativeName}</code>
+								<code>{record.relativeName}</code>
+								{record.name !== record.relativeName ? (
+									<span css={recordFullNameCss}>
+										Full name: <code>{record.name}</code>
+									</span>
+								) : null}
 							</td>
 							<td>
 								<code>{record.value}</code>
@@ -77,7 +82,7 @@ export function CustomDomainRecords({
 			</table>
 			<p css={recordsNoteCss}>
 				Names are shown without your domain. Some providers want the full name
-				instead (hover a name to see it).
+				instead, shown under each name.
 			</p>
 		</div>
 	)
@@ -268,6 +273,14 @@ const recordsNoteCss: CSSObject = {
 	margin: 0,
 	fontSize: typography.fontSize.sm,
 	color: colors.textMuted,
+}
+
+const recordFullNameCss: CSSObject = {
+	display: 'block',
+	marginTop: '0.125rem',
+	fontSize: typography.fontSize.sm,
+	color: colors.textMuted,
+	overflowWrap: 'anywhere',
 }
 
 const recordsTableCss: CSSObject = {

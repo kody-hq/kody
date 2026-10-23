@@ -10,8 +10,7 @@ export const packageAppCustomDomainStates = [
 	'needs_attention',
 ] as const
 
-type PackageAppCustomDomainState =
-	(typeof packageAppCustomDomainStates)[number]
+type PackageAppCustomDomainState = (typeof packageAppCustomDomainStates)[number]
 
 export type PackageAppCustomDomainStatus = {
 	state: PackageAppCustomDomainState
@@ -40,6 +39,21 @@ const failedSslStatuses: Readonly<Record<string, string>> = {
 	issuance_timed_out: 'The certificate could not be issued in time.',
 	deployment_timed_out: 'The certificate could not be deployed in time.',
 	deletion_timed_out: 'The certificate could not be removed in time.',
+}
+
+/**
+ * True when Cloudflare reports a terminal failure for the hostname or its
+ * certificate. Waiting longer will not fix these, so Kody marks a
+ * never-verified hostname as needing attention as soon as it sees one.
+ */
+export function isPackageAppCustomDomainFailedStatus(input: {
+	hostnameStatus: string
+	sslStatus: string
+}): boolean {
+	return (
+		input.hostnameStatus in failedHostnameStatuses ||
+		input.sslStatus in failedSslStatuses
+	)
 }
 
 export function describePackageAppCustomDomainStatus(input: {

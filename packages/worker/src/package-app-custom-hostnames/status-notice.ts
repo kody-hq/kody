@@ -10,7 +10,10 @@ import {
 	loadOrgSlug,
 	loadOrgUsernameFallback,
 } from '#worker/orgs/owner-emails.ts'
-import { describePackageAppCustomDomainStatus } from '#universal/package-app-custom-domain-status.ts'
+import {
+	describePackageAppCustomDomainStatus,
+	isPackageAppCustomDomainFailedStatus,
+} from '#universal/package-app-custom-domain-status.ts'
 import { routes } from '#universal/routes.ts'
 import { type PackageAppCustomHostnameRow } from '#worker/package-app-custom-hostnames/types.ts'
 
@@ -25,7 +28,9 @@ async function resolveOwner(db: D1Database, row: PackageAppCustomHostnameRow) {
 	if (row.orgId) return { ownerId: row.orgId, kodyId: null }
 	if (!row.packageId) return null
 	const saved = await db
-		.prepare(`SELECT user_id, kody_id FROM saved_packages WHERE id = ? AND deleted_at IS NULL`)
+		.prepare(
+			`SELECT user_id, kody_id FROM saved_packages WHERE id = ? AND deleted_at IS NULL`,
+		)
 		.bind(row.packageId)
 		.first<{ user_id: string; kody_id: string }>()
 	if (!saved) return null
@@ -97,6 +102,9 @@ export async function notifyOwnersOfCustomHostnameStatus(input: {
 						reason:
 							describePackageAppCustomDomainStatus(input.row).reason ??
 							'The hostname is not active yet.',
+						cause: isPackageAppCustomDomainFailedStatus(input.row)
+							? 'failed'
+							: 'timed_out',
 						manageUrl,
 						docsUrl: joinAppUrl({
 							env: input.env,
