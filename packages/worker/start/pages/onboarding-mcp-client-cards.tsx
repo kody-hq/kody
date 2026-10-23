@@ -233,11 +233,7 @@ export function InstallDeepLink(props: {
 
 export function PluginPrimaryInstall(props: {
 	href: string
-	label:
-		| 'Add to Cursor'
-		| 'Add to Cursor Local'
-		| 'Add to Cursor Cloud'
-		| 'Add to Grok Bot'
+	label: 'Add to Cursor' | 'Add to Cursor Local' | 'Add to Cursor Cloud'
 	alternativeValue?: string
 	alternativeCopyLabel?: string
 }) {

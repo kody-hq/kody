@@ -286,10 +286,14 @@ export function renderPanelContent(
 						{kodyBotTemplateSummary}
 					</p>
 					<OnboardingManualDetails summaryLead="Or add the Kody plugin to a Grok Bot you already use">
-						<PluginPrimaryInstall
-							href={grokBotInstallUrl}
-							label="Add to Grok Bot"
-						/>
+						<p>
+							<SiteLink
+								href={grokBotInstallUrl}
+								data-onboarding-connect-action="true"
+							>
+								Add the Kody plugin to Grok Bot
+							</SiteLink>
+						</p>
 						<p>
 							{surface === 'mobile' ? (
 								<>

@@ -388,7 +388,7 @@ test('Grok Bot leads with the Kody Bot template and keeps the plugin as the manu
 			'data-testid="onboarding-mcp-manual-json"',
 			'Or add the Kody plugin to a Grok Bot you already use',
 			`href="${grokBotInstallUrl}"`,
-			'Add to Grok Bot',
+			'Add the Kody plugin to Grok Bot',
 		]),
 	).toEqual([])
 	const html = grokBot ?? ''
