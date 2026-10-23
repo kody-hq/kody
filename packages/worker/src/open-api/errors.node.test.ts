@@ -8,7 +8,11 @@ import {
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
-import { ApiError, toApiError } from './errors.ts'
+import {
+	ApiError,
+	toApiError,
+	transientDatabaseUnavailableMessage,
+} from './errors.ts'
 
 test('ApiError.toBody redacts Kody credentials in error details', () => {
 	const apiToken = `kody_at_${'a'.repeat(20)}_${'B'.repeat(43)}`
@@ -108,6 +112,26 @@ test('toApiError maps exhausted Artifacts git failures to 503 internal_error wit
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('"message":"artifacts-git-unavailable"'),
 	)
+})
+
+test('toApiError maps transient D1 unavailability to a retryable 503', () => {
+	for (const message of [
+		'D1_ERROR: Currently processing a long-running export',
+		'D1_ERROR: D1 DB is overloaded. Requests queued for too long.',
+		'internal error; reference = abc123def456ghi789jkl0mn',
+	]) {
+		const original = new Error(message)
+		const apiError = toApiError(new Error('load failed', { cause: original }))
+
+		expect(apiError).toMatchObject({
+			status: 503,
+			code: 'internal_error',
+			message: transientDatabaseUnavailableMessage,
+			headers: { 'Retry-After': '5' },
+		})
+		expect(apiError.message).not.toContain('D1')
+		expect(apiError.message).not.toContain('reference')
+	}
 })
 
 test('toApiError keeps non-transient internal failures as generic 500', () => {

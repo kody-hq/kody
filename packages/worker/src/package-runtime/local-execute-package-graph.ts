@@ -1,4 +1,5 @@
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
+import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-support-load.ts'
 import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
@@ -451,6 +452,10 @@ function mapPrepareFailure(
 	// Open API `insufficient_scope` (names `package:execute`), not as a
 	// misleading "package was not found".
 	if (error instanceof AuthorizationError) throw error
+	// Transient D1 unavailability is not a resolution failure: let the API
+	// layer report it as a retryable 503 instead of a 400 that blames the
+	// caller's imports.
+	if (isRetryableD1LockError(error)) throw error
 	const message =
 		error instanceof Error
 			? error.message

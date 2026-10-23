@@ -16,6 +16,7 @@ import {
 	createLocalExecutePackageRuntimeModuleSource,
 	createLocalExecuteRuntimeShimSource,
 } from './local-execute-runtime-support.ts'
+import { toApiError } from '#worker/open-api/errors.ts'
 import {
 	normalizeWorkspaceModulePath,
 	resolveRelativeModulePath,
@@ -1436,6 +1437,29 @@ export default async () => hello()`
 	).rejects.toMatchObject({
 		code: 'package_import_unpublished',
 	} satisfies Partial<LocalExecutePackageGraphError>)
+})
+
+test('buildLocalExecutePackageGraph surfaces transient D1 unavailability instead of blaming the imports', async () => {
+	const exportInProgress = new Error(
+		'D1_ERROR: Currently processing a long-running export',
+	)
+	mockModule.getSavedPackageByName.mockRejectedValue(exportInProgress)
+	const code = `import x from 'kody:@kentcdodds/example-package/hello'
+export default async () => x`
+	const rejection = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code,
+	}).then(
+		() => {
+			throw new Error('expected package graph to reject')
+		},
+		(error: unknown) => error,
+	)
+	expect(rejection).toBe(exportInProgress)
+	expect(toApiError(rejection)).toMatchObject({
+		status: 503,
+		code: 'internal_error',
+	})
 })
 
 test('buildLocalExecutePackageGraph maps missing runtime bundles to retry-or-report', async () => {
