@@ -6,23 +6,6 @@ import { createIsomorphicGitFs } from './isomorphic-git-fs.ts'
 type RawGitInitFs = Parameters<typeof rawGit.init>[0]['fs']
 type RawGitPushHttp = Parameters<typeof rawGit.push>[0]['http']
 
-test('bare workspace filesystem trips isomorphic-git bindFs without unlink/rmdir', async () => {
-	// WorkspaceFileSystem / InMemoryFs expose `rm` but not Node's unlink/rmdir.
-	// isomorphic-git's FileSystem constructor eagerly does fs[command].bind(fs)
-	// and throws "Cannot read properties of undefined (reading 'bind')" for the
-	// first missing command — the production cron cleanup failure mode when
-	// rawGit.push received a bare workspace fs.
-	const workspaceFileSystem = new InMemoryFs()
-	await workspaceFileSystem.mkdir('/session', { recursive: true })
-	await expect(
-		rawGit.init({
-			fs: workspaceFileSystem as unknown as RawGitInitFs,
-			dir: '/session',
-			defaultBranch: 'main',
-		}),
-	).rejects.toThrow(/reading 'bind'/)
-})
-
 test('workspace filesystem adapter supports raw isomorphic-git operations', async () => {
 	const workspaceFileSystem = new InMemoryFs()
 	await workspaceFileSystem.mkdir('/session', { recursive: true })

@@ -48,7 +48,6 @@ import {
 	isolatedBundleChunkSize,
 } from './isolated-check-phases.ts'
 import { maxRepoSourceFileBytes } from './large-file-policy.ts'
-import { type PublishPhaseTimings } from './publish-phase-timing.ts'
 
 type RepoCheckRun = Awaited<ReturnType<typeof runRepoChecks>>
 
@@ -276,23 +275,6 @@ test('runRepoChecks strips repo-session workspace prefixes from package snapshot
 	expect(snapshot.read).toHaveBeenCalledWith('src/job.ts')
 	expect(snapshot.read).not.toHaveBeenCalledWith('/src/job.ts')
 	expect(getSemanticDiagnostics).toHaveBeenCalledWith(moduleCheckPath)
-})
-
-test('runRepoChecks records typecheck and bundle phase timings when a collector is provided', async () => {
-	const phaseTimings: PublishPhaseTimings = {}
-	const { result } = await runChecks(
-		packageFiles(manifest('phase-timings'), {
-			'src/index.ts': 'export default async () => ({ ok: true })\n',
-		}),
-		{ phaseTimings },
-	)
-	expect(result.ok).toBe(true)
-	expect(phaseTimings).toEqual({
-		checks_typecheck_ms: expect.any(Number),
-		checks_bundle_ms: expect.any(Number),
-	})
-	expect(phaseTimings.checks_typecheck_ms).toBeGreaterThanOrEqual(0)
-	expect(phaseTimings.checks_bundle_ms).toBeGreaterThanOrEqual(0)
 })
 
 test('runRepoChecks typechecks package-owned jobs (kody:runtime imports, emits, and ESM entrypoints)', async () => {

@@ -488,34 +488,42 @@ test('publishSession does not report success or move published pointers when the
 	seedWorkspace(packageFile)
 	const state = await checkedPublishState(packageFile)
 
-	const error = await repoSession(createEnv(), state)
-		.publishSession(session)
-		.then(
-			() => null,
-			(caught: unknown) => caught,
-		)
+	vi.useFakeTimers()
+	try {
+		const publishSession = repoSession(createEnv(), state)
+			.publishSession(session)
+			.then(
+				() => null,
+				(caught: unknown) => caught,
+			)
+		await vi.advanceTimersByTimeAsync(0)
+		await vi.advanceTimersByTimeAsync(1_250)
+		const error = await publishSession
 
-	expect(error).toBeInstanceOf(Error)
-	expect((error as Error).name).toBe('RemoteRefNotConfirmedError')
-	expect((error as Error).message).toContain(
-		'refs/heads/main is at commit-base, expected commit-session-head',
-	)
-	expect(mockModule.listArtifactServerRefs).toHaveBeenCalledWith(
-		expect.objectContaining({ prefix: 'refs/heads/main' }),
-	)
-	// Nothing advanced: no published snapshot, no D1 pointer, no session
-	// base/checkpoint/published move, and session scratch is kept for retry.
-	expect(mockModule.writePublishedSourceSnapshot).not.toHaveBeenCalled()
-	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
-	expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
-		expect.anything(),
-		expect.objectContaining({ status: 'published' }),
-	)
-	expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
-		expect.anything(),
-		expect.objectContaining({ baseCommit: 'commit-session-head' }),
-	)
-	expect(mockModule.deleteStorageBucketInventory).not.toHaveBeenCalled()
+		expect(error).toBeInstanceOf(Error)
+		expect((error as Error).name).toBe('RemoteRefNotConfirmedError')
+		expect((error as Error).message).toContain(
+			'refs/heads/main is at commit-base, expected commit-session-head',
+		)
+		expect(mockModule.listArtifactServerRefs).toHaveBeenCalledWith(
+			expect.objectContaining({ prefix: 'refs/heads/main' }),
+		)
+		// Nothing advanced: no published snapshot, no D1 pointer, no session
+		// base/checkpoint/published move, and session scratch is kept for retry.
+		expect(mockModule.writePublishedSourceSnapshot).not.toHaveBeenCalled()
+		expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+		expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ status: 'published' }),
+		)
+		expect(mockModule.updateRepoSession).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ baseCommit: 'commit-session-head' }),
+		)
+		expect(mockModule.deleteStorageBucketInventory).not.toHaveBeenCalled()
+	} finally {
+		vi.useRealTimers()
+	}
 })
 
 test('getSessionInfo heals published inventory without failing on cleanup errors', async () => {

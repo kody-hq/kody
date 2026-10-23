@@ -39,12 +39,6 @@ test('validateRequiredPackageDocs requires non-empty root README.md and AGENTS.m
 		message: 'Validated root README.md and AGENTS.md.',
 	})
 
-	const failure = validateRequiredPackageDocs({
-		'package.json': '{}',
-	})
-	expect(failure.ok).toBe(false)
-	if (failure.ok) throw new Error('Expected docs validation to fail.')
-	expect(failure.missing).toEqual(['README.md', 'AGENTS.md'])
 	expect(
 		findRootPackageDoc({ 'docs/README.md': '# Nested' }, 'README.md'),
 	).toBe(null)

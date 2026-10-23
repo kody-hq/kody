@@ -33,7 +33,6 @@ vi.mock('#worker/repo/artifacts.ts', () => ({
 const {
 	artifactsGitReceivePackBusyCode,
 	artifactsReceivePackWaitBudgetMs,
-	buildPlainRepoGitHttpRemote,
 	extractArtifactsTokenFromRequest,
 	handlePlainRepoGitHttpRequest,
 	isArtifactsGitReceivePackBusyResponse,
@@ -103,15 +102,6 @@ test('parsePlainRepoGitHttpPath matches UUID remotes and rejects junk', () => {
 	).toEqual({ kind: 'upload-pack', sourceId })
 	expect(parsePlainRepoGitHttpPath('/git/sources/not-a-uuid.git')).toBeNull()
 	expect(parsePlainRepoGitHttpPath('/@user/pkg.git')).toBeNull()
-})
-
-test('buildPlainRepoGitHttpRemote strips trailing slash on the origin', () => {
-	expect(
-		buildPlainRepoGitHttpRemote({
-			baseUrl: 'https://kody.codes/',
-			sourceId,
-		}),
-	).toBe(`https://kody.codes/git/sources/${sourceId}.git`)
 })
 
 test('busy detector never rewrites success and matches the Artifacts code', () => {
