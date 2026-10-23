@@ -2,6 +2,7 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { expect, test, vi } from 'vitest'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
+import type * as ManagerClient from '#worker/jobs/manager-client.ts'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import {
@@ -16,6 +17,20 @@ import { writeMappingChanges } from './package-credential-mapping-changes.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
+
+const alarm = vi.hoisted(() => ({ fail: false }))
+vi.mock('#worker/jobs/manager-client.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof ManagerClient>()
+	return {
+		...actual,
+		syncJobManagerAlarm: async (
+			input: Parameters<typeof actual.syncJobManagerAlarm>[0],
+		) => {
+			if (alarm.fail) throw new Error('alarm sync failed')
+			return await actual.syncJobManagerAlarm(input)
+		},
+	}
+})
 
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
@@ -502,4 +517,53 @@ test('approving a mapping that turns a cron trigger on turns its disabled job on
 	const job = (await getJobRowById(t.db, t.acmeId, jobId))!.record
 	expect(job.enabled).toBe(true)
 	expect(job.nextRunAt).not.toBe(stale)
+})
+
+test('an alarm sync failure after the approval commits is logged, not thrown', async () => {
+	const t = await setup()
+	const jobId = buildPackageJobId(t.savedPackage.id, 'daily')
+	const stale = '2026-01-01T00:00:00.000Z'
+	await insertJobRow({
+		db: t.db,
+		userId: t.acmeId,
+		job: {
+			version: 1,
+			id: jobId,
+			userId: t.acmeId,
+			name: 'daily',
+			sourceId: t.savedPackage.sourceId,
+			publishedCommit: 'commit-1',
+			storageId: `job-storage-${jobId}`,
+			schedule: { type: 'interval', every: '1d' },
+			timezone: 'UTC',
+			enabled: false,
+			killSwitchEnabled: false,
+			expiresAt: null,
+			createdAt: now,
+			updatedAt: now,
+			nextRunAt: stale,
+			runCount: 0,
+			successCount: 0,
+			errorCount: 0,
+		},
+		callerContextJson: '{}',
+	})
+	const prod = await t.storeKey('resend-prod', 'resend')
+	const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+	alarm.fail = true
+	try {
+		// A thrown error would invite a retry that inserts a second instance.
+		const resolved = await t.apply('bea', 'owner', [
+			{ target: daily, needKey: 'mail', credentials: [{ id: prod }] },
+		])
+		expect(resolved.map((change) => change.willEnable)).toEqual([true])
+		expect(await t.enablementCount()).toBe(1)
+		expect(errorSpy).toHaveBeenCalledWith(
+			'credential mapping: arming cron jobs failed',
+			expect.objectContaining({ enablementIds: [expect.any(String)] }),
+		)
+	} finally {
+		alarm.fail = false
+		errorSpy.mockRestore()
+	}
 })

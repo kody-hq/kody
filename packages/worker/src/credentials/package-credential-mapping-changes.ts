@@ -711,12 +711,22 @@ export async function writeMappingChanges(
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
 			const cronEnablementIds = await commitMappingWrite()
-			await armCronJobsForCallerEnablementIds({
-				env: scope.env,
-				request: scope.request,
-				orgId: scope.savedPackage.userId,
-				enablementIds: cronEnablementIds,
-			})
+			// The write is committed. Arming is best-effort: a thrown error would
+			// invite a retry, and a retried createInstance inserts a second
+			// enablement. Turning the trigger on again or jobUpdate arms it later.
+			try {
+				await armCronJobsForCallerEnablementIds({
+					env: scope.env,
+					request: scope.request,
+					orgId: scope.savedPackage.userId,
+					enablementIds: cronEnablementIds,
+				})
+			} catch (error) {
+				console.error('credential mapping: arming cron jobs failed', {
+					enablementIds: cronEnablementIds,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 			return
 		} catch (error) {
 			if (!(error instanceof EmailSenderInsertAdopted)) throw error
