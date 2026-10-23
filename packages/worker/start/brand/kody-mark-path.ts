@@ -31,11 +31,11 @@ export const kodyMarkRightEyePathD = kodyMarkPathSubpaths[2]!
 export const kodyMarkNosePathD = kodyMarkPathSubpaths[3]!
 
 /**
- * Visible outline weight in viewBox units (~10% of face diameter).
- * Inner-stroke technique uses `2 ×` this value under a clip to the outer path
- * so the outer edge matches the solid mark exactly.
+ * Visible outline weight in viewBox units (calibrated to the light-mode
+ * line-art reference). Inner-stroke technique uses `2 ×` this value under a
+ * clip to the outer path so the outer edge matches the solid mark exactly.
  */
-export const kodyMarkOutlineStrokeWidth = 40
+export const kodyMarkOutlineStrokeWidth = 15
 
 /** Natural width÷height of the mark viewBox. */
 export const kodyMarkAspectRatio = 807.440627 / 593.242027

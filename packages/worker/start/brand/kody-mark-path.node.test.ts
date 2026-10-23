@@ -46,7 +46,7 @@ test('outlined mark splits the solid path and uses an inner stroke', () => {
 	expect(kodyMarkLeftEyePathD.startsWith('M-9.054543')).toBe(true)
 	expect(kodyMarkRightEyePathD.startsWith('M230.969703')).toBe(true)
 	expect(kodyMarkNosePathD.startsWith('M94 338')).toBe(true)
-	expect(kodyMarkOutlineStrokeWidth).toBe(40)
+	expect(kodyMarkOutlineStrokeWidth).toBe(15)
 	const outlined = kodyMarkOutlinedSvgMarkup('#000000')
 	expect(outlined).toContain('clipPath')
 	expect(outlined).toContain(`stroke-width="${kodyMarkOutlineStrokeWidth * 2}"`)
