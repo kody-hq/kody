@@ -573,6 +573,40 @@ export function refreshGitCredentialHelperPinIfNeeded(input?: {
 	return true
 }
 
+export type SetupGitCredentialSource = 'flag' | 'stored'
+
+/**
+ * Name the kind of credential without echoing it. Only the prefix is read.
+ */
+export function describeKodyCredentialKind(token: string): string {
+	const value = token.trim()
+	if (value.startsWith('kody_at_')) return 'a Kody API token (kody_at_)'
+	if (value.startsWith('kody_bc_')) {
+		return 'a one-time bootstrap code (kody_bc_), not an API token'
+	}
+	return 'a value that is not a Kody API token (expected kody_at_)'
+}
+
+/** Actionable copy for a 401 from GET /v1/tokens/current during setup-git. */
+export function describeSetupGitUnauthorized(input: {
+	apiUrl: string
+	token: string
+	source: SetupGitCredentialSource
+}): string {
+	const kind = describeKodyCredentialKind(input.token)
+	const from =
+		input.source === 'flag'
+			? 'passed with --token'
+			: 'stored on this computer by an earlier login or setup'
+	const fix =
+		input.source === 'flag'
+			? input.token.trim().startsWith('kody_bc_')
+				? 'Redeem the code with the `kody auth bootstrap` command that came with it, then run `kody auth setup-git` without --token.'
+				: 'Run `kody auth setup-git` without --token after `kody login`, or pass a current kody_at_ token.'
+			: 'Run `kody login`, then `kody auth setup-git` again. It mints a fresh token when the stored one no longer works.'
+	return `Could not read token metadata from ${input.apiUrl}: it rejected ${kind} ${from} (401 unauthorized: revoked, expired, or not a token). ${fix}`
+}
+
 export type AuthSetupGitResult = {
 	host: string
 	helperCommand: string
@@ -626,6 +660,9 @@ export async function authSetupGit(input: {
 
 	let probeMetadata: TokenCurrentMetadata | null = null
 	if (probeToken) {
+		const probeSource: SetupGitCredentialSource = input.token
+			? 'flag'
+			: 'stored'
 		try {
 			probeMetadata = await fetchTokenCurrentMetadata({
 				token: probeToken,
@@ -633,15 +670,23 @@ export async function authSetupGit(input: {
 				fetchFn: input.fetchFn,
 			})
 		} catch (error) {
-			if (error instanceof OpenApiError && error.status === 401) {
+			if (!(error instanceof OpenApiError && error.status === 401)) {
+				throw error
+			}
+			// A dead stored token (revoked, expired, or replaced) should not block
+			// setup when a login session can mint a fresh one.
+			if (!(probeSource === 'stored' && hasLoginSession)) {
 				throw new Error(
-					`Could not read token metadata from ${apiUrl} (unauthorized). Run \`kody login\` or pass a valid --token / ${apiTokenEnvVar}.`,
+					describeSetupGitUnauthorized({
+						apiUrl,
+						token: probeToken,
+						source: probeSource,
+					}),
 				)
 			}
-			throw error
 		}
 		// Any live token's /tokens/current shape proves the origin supports org_binding.
-		assertUserOwnedTokensLive(probeMetadata)
+		if (probeMetadata) assertUserOwnedTokensLive(probeMetadata)
 	}
 
 	let storedMetadata: TokenCurrentMetadata | null = null
