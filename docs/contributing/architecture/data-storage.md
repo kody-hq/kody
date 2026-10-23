@@ -560,14 +560,16 @@ Job schedule metadata lives in the dedicated `kody-jobs` D1 database bound as
 
 - `jobs`: persisted package job metadata, caller context, schedule state,
   package source pointers, and optional `expires_at` (UTC ISO; when reached the
-  scheduler skips the job and auto-disables it with `enabled = 0`). Every row id
-  is a `package-job:` id (asserted by migration `0004`, ADR 0032). Rows are
-  created, updated, and removed by package publish sync, package deletion, and
-  account deletion; `expires_at` stops scheduling only — it does not delete
-  rows. This database keeps schedule fields (`next_run_at`, `schedule_json`, …)
-  and `last_run_at` / `last_run_status`; terminal run error, duration, and
-  counters for observability live in the per-user `RunLog`
-  `job_run_observability` table (see [Run records](./run-records.md)).
+  scheduler skips the job and auto-disables it with `enabled = 0`). After a
+  recurring run, the scheduler also turns the job off and emails the org owners
+  when it cannot compute the next run. Every row id is a `package-job:` id
+  (asserted by migration `0004`, ADR 0032). Rows are created, updated, and
+  removed by package publish sync, package deletion, and account deletion;
+  `expires_at` stops scheduling only — it does not delete rows. This database
+  keeps schedule fields (`next_run_at`, `schedule_json`, …) and `last_run_at` /
+  `last_run_status`; terminal run error, duration, and counters for
+  observability live in the per-user `RunLog` `job_run_observability` table (see
+  [Run records](./run-records.md)).
 
 ## Analytics Engine reporting
 

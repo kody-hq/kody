@@ -782,7 +782,9 @@ state, kill-switch state, params, `expires_at` (UTC ISO auto-disable; null
 clears). Jobs keep name and source in the package repo — change, add, or remove
 the job entry there and publish. `jobRunNow` triggers an existing package job
 immediately for debugging. When `expires_at` is reached the platform stops
-scheduling and auto-disables the job.
+scheduling and auto-disables the job. The scheduler also turns a recurring job
+off, and emails the org owners, when it cannot compute the next run from the
+schedule. The job stays off until someone turns it back on (`/@<slug>/-/jobs`).
 
 ## Save and edit packages
 

@@ -145,7 +145,10 @@ the package apps guide.
   that path errors if the name is taken. Forking the same listing again errors
   with the existing fork's identity instead of minting another leaf.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
-  subscriptions, or package app.
+  subscriptions, or package app. Lookups that need a saved package
+  (`packageGet`, `packageGetGitRemote`) name the pending fork and point at
+  `repoOpenSession` with its `source_id`. After the first publish, those lookups
+  work with the `package_id` and name.
 
 The fork result lists **cross-scope references** that can never resolve across
 user scopes:

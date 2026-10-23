@@ -175,11 +175,12 @@ turns anything on.
   credentials back to a value it proposed and you approved, with
   `credentialTriggerPickSet`. It cannot pick anything else or turn a trigger on:
   it has to propose again.
-- `enablementEnable` turns a job (`cron`) or subscription topic on for you. You
-  need execute access to the package. A webhook's first turn-on goes through
-  Approve instead; `enablementEnable` refuses it with the approval link and only
-  returns a webhook enablement that already exists. A webhook URL has at most
-  one live enablement, so a second person's Approve is refused.
+- `enablementEnable` turns a job (`cron`) or subscription topic on for you. For
+  a cron job it also turns the job's own `enabled` flag on and schedules the
+  next tick. You need execute access to the package. A webhook's first turn-on
+  goes through Approve instead; `enablementEnable` refuses it with the approval
+  link and only returns a webhook enablement that already exists. A webhook URL
+  has at most one live enablement, so a second person's Approve is refused.
 - `enablementList` shows yours (`scope: "mine"`); Owners can list the whole org
   (`scope: "org"`). `enablementDisable` turns one off.
 - If you lose access to the package, the org, or a credential the run uses, the
