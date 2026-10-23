@@ -41,6 +41,9 @@ export type CommunityInstallApiPayload = {
 	targetName?: string
 	agentPrompt?: string
 	failedChecks?: Array<{ kind: string; message: string }>
+	/** The account already had this fork; nothing new was created. */
+	alreadyInstalled?: boolean
+	message?: string | null
 	error?: string
 }
 
@@ -50,4 +53,5 @@ export type CommunityInstallOutcome = {
 	agentPrompt: string
 	packageId: string | null
 	failedChecks: Array<{ kind: string; message: string }>
+	alreadyInstalled: boolean
 }

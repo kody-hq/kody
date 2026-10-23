@@ -199,3 +199,17 @@ export type OnboardingFeaturedListing = {
 	/** Set only for signed-in viewers who already forked or installed this listing. */
 	viewerInstall?: ViewerListingInstall | null
 }
+
+/**
+ * Live fork state for one listing and the signed-in viewer, read on mount,
+ * focus, and return so the Fork button never offers a second fork while one
+ * exists or is still being created.
+ */
+export type CommunityForkState =
+	| { state: 'none' }
+	| { state: 'in_progress'; startedAt: string }
+	| {
+			state: 'installed' | 'adaptation_required'
+			targetName: string
+			href: string
+	  }

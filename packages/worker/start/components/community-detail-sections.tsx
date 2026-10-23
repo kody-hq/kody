@@ -37,9 +37,11 @@ export type InstallStripProps = {
 
 export function renderInstallStrip(props: InstallStripProps) {
 	const installAnnouncement = props.installOutcome
-		? props.installOutcome.status === 'installed'
-			? `Installed as ${props.installOutcome.targetName}.`
-			: `Forked as ${props.installOutcome.targetName}; it needs adaptation before it can run.`
+		? props.installOutcome.alreadyInstalled
+			? `You already forked this as ${props.installOutcome.targetName}. Kody kept that fork instead of making a duplicate.`
+			: props.installOutcome.status === 'installed'
+				? `Installed as ${props.installOutcome.targetName}.`
+				: `Forked as ${props.installOutcome.targetName}; it needs adaptation before it can run.`
 		: ''
 	return (
 		<div data-testid="community-install" css={installStripCss}>

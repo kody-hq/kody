@@ -343,6 +343,15 @@ export type ForkCommunityListingResult = {
 	 * `serverTiming`. Returned on the response only — not stored.
 	 */
 	serverTiming?: Array<{ name: string; durationMs: number }>
+	/**
+	 * True when this account already had a fork of the listing (or one was
+	 * in flight and finished while this request waited), so that fork is
+	 * returned instead of creating a duplicate. `files` is empty and
+	 * `filesCount` is 0 in that case: nothing was copied.
+	 */
+	alreadyForked?: boolean
+	/** Human/agent readable note; set when `alreadyForked` is true. */
+	message?: string
 }
 
 export type CommunityReportResolutionAction = 'dismiss' | 'delist' | 'delete'

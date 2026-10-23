@@ -59,3 +59,23 @@ export const reportCommunityPackage = createServerFn({ method: 'POST' })
 			).data
 		})
 	})
+export const loadCommunityForkState = createServerFn({ method: 'GET' })
+	.validator(z.object({ listingId: z.string().min(1) }))
+	.handler(async ({ data }) => {
+		const { withWebsiteRead, WebsiteAuthenticationError } =
+			await import('./mutation-context.ts')
+		return withWebsiteRead({}, async ({ env, user }) => {
+			const { loadWebsiteCommunityForkState } =
+				await import('../../src/app/handlers/community-fork-state.ts')
+			return loadWebsiteCommunityForkState({
+				env,
+				user,
+				listingId: data.listingId,
+			})
+		}).catch((error: unknown) => {
+			// Signed-out viewers have no fork; the button already links to login.
+			if (error instanceof WebsiteAuthenticationError)
+				return { state: 'none' as const }
+			throw error
+		})
+	})

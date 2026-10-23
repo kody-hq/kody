@@ -113,3 +113,51 @@ test('communityFork keeps legacy equal-id personal orgs working', async () => {
 		}),
 	)
 })
+
+test('communityFork returns an existing fork with already_forked and a message', async () => {
+	mocks.forkCommunityListing.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.forkCommunityListing.mockResolvedValue({
+		forkId: 'fork-1',
+		packageId: 'pkg-1',
+		sourceId: 'source-1',
+		targetKodyId: 'google',
+		targetName: '@adwin/google',
+		originCommit: 'commit-1',
+		crossScopeReferences: [],
+		filesCount: 0,
+		files: {},
+		alreadyForked: true,
+		message: 'You already forked this listing as "@adwin/google".',
+	})
+	const result = await communityForkCapability.handler(
+		{ listing_id: 'listing-1' },
+		createContext({}),
+	)
+	expect(result).toMatchObject({
+		fork_id: 'fork-1',
+		package_id: 'pkg-1',
+		already_forked: true,
+		message: 'You already forked this listing as "@adwin/google".',
+	})
+	expect(result).not.toHaveProperty('files_count')
+
+	mocks.forkCommunityListing.mockResolvedValue({
+		forkId: 'fork-2',
+		packageId: 'pkg-2',
+		sourceId: 'source-2',
+		targetKodyId: 'google-2',
+		targetName: '@adwin/google-2',
+		originCommit: 'commit-1',
+		crossScopeReferences: [],
+		filesCount: 3,
+		files: {},
+	})
+	expect(
+		await communityForkCapability.handler(
+			{ listing_id: 'listing-1', kody_id: 'google-2' },
+			createContext({}),
+		),
+	).toMatchObject({ files_count: 3, already_forked: false })
+})

@@ -30,6 +30,15 @@ const communityInstallPostSchema = z.object({
 const thirdPartyInstallConfirmError =
 	'This listing is from another account. Confirm to install it.'
 
+function alreadyInstalledFields(result: {
+	alreadyInstalled?: boolean
+	message?: string
+}) {
+	return result.alreadyInstalled
+		? { alreadyInstalled: true, message: result.message ?? null }
+		: {}
+}
+
 function installResult<T>(data: T, status = 200) {
 	return { data, status }
 }
@@ -111,6 +120,7 @@ export async function installWebsiteCommunityPackage(input: {
 				packageId: result.packageId,
 				sourceId: result.sourceId,
 				targetName: result.targetName,
+				...alreadyInstalledFields(result),
 				failedChecks: result.failedChecks.map((check) => ({
 					kind: check.kind,
 					message: check.message,
@@ -127,6 +137,7 @@ export async function installWebsiteCommunityPackage(input: {
 			packageId: result.packageId,
 			sourceId: result.sourceId,
 			targetName: result.targetName,
+			...alreadyInstalledFields(result),
 			agentPrompt: buildInstallSuccessPrompt({
 				targetName: result.targetName,
 			}),

@@ -1,5 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import {
 	consoleError,
@@ -218,9 +220,29 @@ const testCommunityListingPublishedQueue = {
 	send: vi.fn(),
 } as unknown as Queue
 
+/**
+ * Repo reads/writes are mocked; only `community_fork_claims` (the
+ * idempotency guard) runs real SQL so concurrent forks race for real.
+ */
+function createClaimsDb() {
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`CREATE TABLE community_fork_claims (
+		owner_id TEXT NOT NULL,
+		listing_id TEXT NOT NULL,
+		claim_id TEXT NOT NULL,
+		requested_kody_id TEXT,
+		started_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		PRIMARY KEY (owner_id, listing_id)
+	)`)
+	return createD1FromSqlite(sqlite)
+}
+
+const sharedClaimsDb = createClaimsDb()
+
 function createEnv() {
 	return {
-		APP_DB: {} as D1Database,
+		APP_DB: sharedClaimsDb,
 		BUNDLE_ARTIFACTS_KV: testBundleArtifactsKv,
 		COMMUNITY_ASSETS: testCommunityAssets,
 		COMMUNITY_ACTIVITY_DISPATCH_QUEUE: testCommunityActivityQueue,
@@ -1152,23 +1174,119 @@ test('forkCommunityListing rejects stale array-shaped kody.dependencies as Commu
 	expect(mockModule.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
 })
 
-test('forkCommunityListing rejects a repeat fork without a new kody_id and allows one with a different kody_id', async () => {
+test('forkCommunityListing returns the existing fork for a repeat fork and still allows a different kody_id', async () => {
 	mockForkable()
 	mockModule.listCommunityForksByListingAndUser.mockResolvedValue([
 		forkRecord({ targetKodyId: 'discord-gateway' }),
 	])
 
-	await expect(fork()).rejects.toThrow(
-		'You already forked this listing as package name "discord-gateway". Resume the existing fork with source_id "fork-source-1" (package_id "package-fork-1") via repoOpenSession, or pass a different package name leaf to fork again.',
+	const repeat = await fork()
+	expect(repeat).toMatchObject({
+		alreadyForked: true,
+		forkId: 'fork-1',
+		packageId: 'package-fork-1',
+		sourceId: 'fork-source-1',
+		targetKodyId: 'discord-gateway',
+		targetName: '@jane/discord-gateway',
+	})
+	expect(repeat.message).toContain(
+		'You already forked this listing as "@jane/discord-gateway"',
 	)
+	expect(repeat.message).toContain('instead of creating a duplicate')
+	// Same leaf passed explicitly is the same fork, not a new one.
+	expect(await fork({ kodyId: 'discord-gateway' })).toMatchObject({
+		alreadyForked: true,
+		forkId: 'fork-1',
+	})
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
+	expect(mockModule.insertCommunityFork).not.toHaveBeenCalled()
 
+	// A deliberately different name is still a new fork.
 	const result = await fork({ kodyId: 'my-second-fork' })
+	expect(result.alreadyForked).toBeUndefined()
 	expect(result.targetKodyId).toBe('my-second-fork')
 	expect(mockModule.insertCommunityFork).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.objectContaining({ target_kody_id: 'my-second-fork' }),
 	)
+})
+
+test('forkCommunityListing concurrent double submit creates one fork and returns it to both callers', async () => {
+	mockForkable()
+	const forks: Array<ReturnType<typeof forkRecord>> = []
+	mockModule.listCommunityForksByListingAndUser.mockImplementation(async () => [
+		...forks,
+	])
+	let releaseSync: () => void = () => {}
+	const syncGate = new Promise<void>((resolve) => {
+		releaseSync = resolve
+	})
+	mockModule.syncArtifactSourceSnapshot.mockImplementation(async () => {
+		// Hold the first fork mid-flight so the second request overlaps it.
+		await syncGate
+		return 'commit-fork-1'
+	})
+	mockModule.insertCommunityFork.mockImplementation(
+		async (_db: unknown, row: Record<string, string>) => {
+			forks.push(
+				forkRecord({
+					id: row.id,
+					forkedPackageId: row.forked_package_id,
+					forkedSourceId: row.forked_source_id,
+					targetKodyId: row.target_kody_id,
+				}),
+			)
+		},
+	)
+	const env = { ...createEnv(), APP_DB: createClaimsDb() } as Env
+	const input = {
+		env,
+		claimPollMs: 5,
+		claimWaitMs: 5_000,
+	}
+	const first = fork(input)
+	await vi.waitFor(() =>
+		expect(mockModule.syncArtifactSourceSnapshot).toHaveBeenCalledTimes(1),
+	)
+	const onWaiting = vi.fn()
+	const second = fork({ ...input, onWaiting })
+	await vi.waitFor(() => expect(onWaiting).toHaveBeenCalledTimes(1))
+	releaseSync()
+	const [firstResult, secondResult] = await Promise.all([first, second])
+
+	expect(mockModule.insertCommunityFork).toHaveBeenCalledTimes(1)
+	expect(mockModule.ensureEntitySource).toHaveBeenCalledTimes(1)
+	expect(firstResult.alreadyForked).toBeUndefined()
+	expect(secondResult).toMatchObject({
+		alreadyForked: true,
+		forkId: firstResult.forkId,
+		packageId: firstResult.packageId,
+		targetKodyId: 'discord-gateway',
+	})
+	// The claim is released once the fork row exists.
+	expect(
+		await env.APP_DB.prepare('SELECT COUNT(*) AS n FROM community_fork_claims')
+			.bind()
+			.first<{ n: number }>(),
+	).toEqual({ n: 0 })
+})
+
+test('forkCommunityListing reports an in-progress fork instead of starting a second one when the wait runs out', async () => {
+	mockForkable()
+	const env = { ...createEnv(), APP_DB: createClaimsDb() } as Env
+	const { acquireCommunityForkClaim } = await import('./fork-claims.ts')
+	expect(
+		await acquireCommunityForkClaim(env.APP_DB, {
+			ownerId: 'user-2',
+			listingId: 'listing-1',
+		}),
+	).toEqual(expect.any(String))
+
+	await expect(fork({ env, claimPollMs: 5, claimWaitMs: 30 })).rejects.toThrow(
+		/already in progress, so a second fork was not started/,
+	)
+	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
+	expect(mockModule.insertCommunityFork).not.toHaveBeenCalled()
 })
 
 test('forkCommunityListing auto-picks a free leaf when an unrelated same-leaf package exists', async () => {
@@ -1247,7 +1365,7 @@ test('forkCommunityListing skips taken alternates and still rejects an explicit 
 	)
 })
 
-test('forkCommunityListing does not auto-pick past a real fork of the listing', async () => {
+test('forkCommunityListing returns a published fork at the listing leaf instead of auto-picking past it', async () => {
 	mockForkable()
 	mockModule.listCommunityForksByListingAndUser.mockResolvedValue([
 		forkRecord({ targetKodyId: 'discord-gateway' }),
@@ -1260,13 +1378,14 @@ test('forkCommunityListing does not auto-pick past a real fork of the listing', 
 	mockModule.resolveSavedPackageRef.mockResolvedValue(publishedFork)
 	mockModule.getSavedPackageByName.mockResolvedValue(publishedFork)
 
-	await expect(fork()).rejects.toThrow(
-		'You already have a saved package named "discord-gateway". Pass a different package name leaf to fork this listing.',
-	)
+	expect(await fork()).toMatchObject({
+		alreadyForked: true,
+		targetKodyId: 'discord-gateway',
+	})
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
 })
 
-test('forkCommunityListing rejects a repeat default fork after an alternate leaf was used', async () => {
+test('forkCommunityListing returns the alternate-leaf fork on a repeat default fork', async () => {
 	mockForkable()
 	const unrelatedSameLeaf = {
 		...validSavedPackage(),
@@ -1296,13 +1415,17 @@ test('forkCommunityListing rejects a repeat default fork after an alternate leaf
 		}),
 	])
 
-	await expect(fork()).rejects.toThrow(
-		'You already forked this listing as package name "discord-gateway-2". Resume the existing fork with source_id "fork-source-alt" (package_id "package-fork-alt") via repoOpenSession, or pass a different package name leaf to fork again.',
-	)
+	expect(await fork()).toMatchObject({
+		alreadyForked: true,
+		targetKodyId: 'discord-gateway-2',
+		sourceId: 'fork-source-alt',
+		packageId: 'package-fork-alt',
+	})
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
 
 	const explicit = await fork({ kodyId: 'discord-gateway-3' })
 	expect(explicit.targetKodyId).toBe('discord-gateway-3')
+	expect(explicit.alreadyForked).toBeUndefined()
 })
 
 test('forkCommunityListing cleans up entity source when snapshot sync fails', async () => {

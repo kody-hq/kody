@@ -127,6 +127,7 @@ import {
 	scanCrossScopeReferences,
 } from './fork-scan.ts'
 import { rethrowCommunityForkFailure } from './fork-resource-limit.ts'
+import { withCommunityForkClaim } from './fork-claims.ts'
 import {
 	deleteCommunitySnapshot,
 	readCommunitySnapshot,
@@ -1839,14 +1840,128 @@ export async function persistPreparedCommunityFork(
 	}
 }
 
-export async function forkCommunityListing(
-	input: PrepareCommunityForkInput,
-): Promise<ForkCommunityListingResult> {
-	const serverTiming: Array<ServerTimingEntry> = []
-	const prepared = await pushServerTiming(serverTiming, 'prepare', () =>
-		prepareCommunityFork(input),
+export function buildAlreadyForkedMessage(input: {
+	targetName: string
+	forkedPackageId: string
+	forkedSourceId: string
+}) {
+	return `You already forked this listing as "${input.targetName}" (package_id "${input.forkedPackageId}", source_id "${input.forkedSourceId}"). Returned that fork instead of creating a duplicate. Resume it with repoOpenSession, or pass a different package name leaf to fork the listing again under a new name.`
+}
+
+/**
+ * The fork a repeat request should get back instead of a new one. With an
+ * explicit leaf, only a fork at that leaf counts (a different leaf is a
+ * deliberate "fork again under a new name"). Without one, any fork of the
+ * listing counts: prefer the fork at the listing leaf, else the newest.
+ */
+export async function findExistingCommunityFork(input: {
+	env: Env
+	userId: OwnerId
+	listingId: string
+	kodyId?: string
+}): Promise<CommunityForkRecord | null> {
+	const forks = await listCommunityForksByListingAndUser(input.env.APP_DB, {
+		listingId: input.listingId,
+		userId: input.userId,
+	})
+	if (forks.length === 0) return null
+	const explicitKodyId = input.kodyId?.trim() || undefined
+	if (explicitKodyId) {
+		return forks.find((fork) => fork.targetKodyId === explicitKodyId) ?? null
+	}
+	const listing = await getCommunityListingById(input.env.APP_DB, {
+		listingId: input.listingId,
+		includeDelisted: true,
+	})
+	const atListingLeaf = listing
+		? forks.find((fork) => fork.targetKodyId === listing.kodyId)
+		: undefined
+	return atListingLeaf ?? forks[forks.length - 1] ?? null
+}
+
+/**
+ * Fork idempotently per (target owner, listing): hold the
+ * `community_fork_claims` row while checking for an existing fork and
+ * creating a new one, so concurrent requests (double submit, a retry after
+ * navigating away mid-fork, an agent and the web UI at once) wait for the
+ * first fork and then get it back instead of creating a duplicate.
+ */
+export async function runIdempotentCommunityFork<T>(
+	input: Pick<
+		PrepareCommunityForkInput,
+		'env' | 'userId' | 'listingId' | 'kodyId' | 'creatorUserId'
+	> & {
+		onWaiting?: () => void | Promise<void>
+		claimWaitMs?: number
+		claimPollMs?: number
+	},
+	handlers: {
+		existing: (fork: CommunityForkRecord) => Promise<T>
+		create: () => Promise<T>
+	},
+): Promise<T> {
+	// Banned accounts get neither a new fork nor a handle to an old one.
+	await Promise.all([
+		assertNotCommunityBanned(input.env.APP_DB, input.userId),
+		input.creatorUserId && input.creatorUserId !== input.userId
+			? assertNotCommunityBanned(input.env.APP_DB, input.creatorUserId)
+			: undefined,
+	])
+	return await withCommunityForkClaim(
+		{
+			db: input.env.APP_DB,
+			ownerId: input.userId,
+			listingId: input.listingId,
+			requestedKodyId: input.kodyId?.trim() || null,
+			waitMs: input.claimWaitMs,
+			pollMs: input.claimPollMs,
+			onWaiting: input.onWaiting,
+		},
+		async () => {
+			const existing = await findExistingCommunityFork(input)
+			if (existing) return await handlers.existing(existing)
+			return await handlers.create()
+		},
 	)
-	return await persistPreparedCommunityFork(prepared, { serverTiming })
+}
+
+export async function forkCommunityListing(
+	input: PrepareCommunityForkInput & {
+		onWaiting?: () => void | Promise<void>
+		claimWaitMs?: number
+		claimPollMs?: number
+	},
+): Promise<ForkCommunityListingResult> {
+	return await runIdempotentCommunityFork(input, {
+		existing: async (fork) => {
+			const packageScope = input.expectedPackageScope.replace(/^@/, '')
+			const targetName = `@${packageScope}/${fork.targetKodyId}`
+			return {
+				forkId: fork.id,
+				packageId: fork.forkedPackageId,
+				sourceId: fork.forkedSourceId,
+				targetKodyId: fork.targetKodyId,
+				targetName,
+				originCommit: fork.originCommit,
+				crossScopeReferences: [],
+				filesCount: 0,
+				files: {},
+				alreadyForked: true,
+				message: buildAlreadyForkedMessage({
+					targetName,
+					forkedPackageId: fork.forkedPackageId,
+					forkedSourceId: fork.forkedSourceId,
+				}),
+			}
+		},
+		create: async () => {
+			const serverTiming: Array<ServerTimingEntry> = []
+			const prepared = await pushServerTiming(serverTiming, 'prepare', () =>
+				prepareCommunityFork(input),
+			)
+			return await persistPreparedCommunityFork(prepared, { serverTiming })
+		},
+	})
 }
 
 export type OrphanedCommunityFork = {
