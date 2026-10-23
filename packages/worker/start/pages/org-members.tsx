@@ -124,6 +124,7 @@ function OrgMembersContent({
 			currentHref={routes.orgMembers.href(args)}
 		>
 			<AccountPageHeader
+				entity="members"
 				title="Members"
 				description="People who belong to this organization."
 				currentHref={routes.orgMembers.href(args)}

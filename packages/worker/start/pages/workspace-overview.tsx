@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { WorkspaceCharts } from './workspace-charts.tsx'
 import {
 	type WorkspaceRunCharts,
@@ -33,14 +34,18 @@ type OverviewData = {
 }
 
 export function WorkspaceOverview({ data }: { data: OverviewData }) {
+	const explainer = resolveEntityExplainer('overview')
 	const base = `/@${encodeURIComponent(data.slug)}/-`
 	const activity = `${base}/activity?view=recent&status=all&triage=all`
 	return (
 		<AccountManagementShell layout="dashboard" currentHref={`${base}/overview`}>
 			<div css={dashboardCss} data-testid="workspace-dashboard">
-				<h1 css={{ margin: 0, fontSize: '1.5rem', lineHeight: 1.3 }}>
-					Overview
-				</h1>
+				<div css={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+					<h1 css={{ margin: 0, fontSize: '1.5rem', lineHeight: 1.3 }}>
+						Overview
+					</h1>
+					{explainer ? <EntityExplainer copy={explainer} /> : null}
+				</div>
 				<section aria-labelledby="execution-summary">
 					<h2 id="execution-summary" css={headingCss}>
 						Executions <span css={mutedCss}>Last 7 days</span>

@@ -55,6 +55,7 @@ function Page() {
 	return (
 		<AccountManagementShell layout="list" currentHref={href}>
 			<AccountPageHeader
+				entity="repositories"
 				title="Repositories"
 				description="Every repository in this workspace, private ones included. Your public profile shows visitors the public ones."
 				currentHref={href}

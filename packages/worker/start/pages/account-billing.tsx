@@ -314,6 +314,7 @@ export function AccountBillingPage({
 			busy={false}
 		>
 			<AccountPageHeader
+				entity="billing"
 				title="Billing"
 				description={
 					payload.org.personal

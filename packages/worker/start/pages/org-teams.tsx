@@ -109,6 +109,7 @@ function OrgTeamsContent({
 			currentHref={routes.orgTeams.href(args)}
 		>
 			<AccountPageHeader
+				entity="teams"
 				title="Teams"
 				description="Groups inside this organization for package grants and shared work."
 				currentHref={routes.orgTeams.href(args)}

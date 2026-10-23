@@ -151,6 +151,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 			currentHref={`/@${data.org.slug}/-/settings`}
 		>
 			<AccountPageHeader
+				entity="settings"
 				title="Settings"
 				description="The organization's name, handle, and photo."
 				currentHref={`/@${data.org.slug}/-/settings`}

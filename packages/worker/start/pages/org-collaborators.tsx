@@ -37,6 +37,7 @@ export function OrgCollaboratorsPage({
 			currentHref={`/@${data.org.slug}/-/collaborators`}
 		>
 			<AccountPageHeader
+				entity="collaborators"
 				title="Collaborators"
 				description="People with grants on this organization who are not members."
 				currentHref={`/@${data.org.slug}/-/collaborators`}

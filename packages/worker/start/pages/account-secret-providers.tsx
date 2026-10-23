@@ -139,6 +139,7 @@ export function AccountSecretProvidersPage({
 			busy={status === 'saving'}
 		>
 			<AccountPageHeader
+				entity="secret-providers"
 				title="Secret providers"
 				description="Bind a saved package to a provider id such as 1password, and grant other packages use of canonical item refs. Values never appear here."
 				currentHref={currentHref}

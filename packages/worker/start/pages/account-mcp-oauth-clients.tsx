@@ -148,6 +148,7 @@ export function AccountMcpOauthClientsPage({
 			busy={false}
 		>
 			<AccountPageHeader
+				entity="mcp-oauth-clients"
 				title="MCP OAuth clients"
 				description="Pre-register a confidential client when a host cannot finish dynamic OAuth registration. Most hosts do not need this."
 				currentHref={currentHref}

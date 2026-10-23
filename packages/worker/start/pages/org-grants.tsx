@@ -56,6 +56,7 @@ function OrgGrantsContent({
 			currentHref={`/@${data.org.slug}/-/grants`}
 		>
 			<AccountPageHeader
+				entity="grants"
 				title="Grants"
 				description="Who can use packages and other resources in this organization."
 				currentHref={`/@${data.org.slug}/-/grants`}
