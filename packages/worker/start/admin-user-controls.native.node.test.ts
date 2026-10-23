@@ -58,5 +58,6 @@ test('native destination panel retains explicit ownership warning and email acti
 	expect(html).toContain('after the person proves they own it')
 	expect(html).toContain('type="email"')
 	expect(html).toContain('aria-label="Destination email"')
+	expect(html).toContain('aria-label="Mark email destination verified"')
 	expect(html).toContain('Mark destination verified')
 })
