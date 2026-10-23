@@ -25,7 +25,7 @@ async function resolveOwner(db: D1Database, row: PackageAppCustomHostnameRow) {
 	if (row.orgId) return { ownerId: row.orgId, kodyId: null }
 	if (!row.packageId) return null
 	const saved = await db
-		.prepare(`SELECT user_id, kody_id FROM saved_packages WHERE id = ?`)
+		.prepare(`SELECT user_id, kody_id FROM saved_packages WHERE id = ? AND deleted_at IS NULL`)
 		.bind(row.packageId)
 		.first<{ user_id: string; kody_id: string }>()
 	if (!saved) return null

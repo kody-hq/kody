@@ -94,7 +94,7 @@ function formatCheckedAt(iso: string) {
  * the records to publish. Kody re-checks pending hostnames itself, so there
  * is no refresh control here.
  */
-export function CustomDomainSummary({
+function CustomDomainSummary({
 	domain,
 }: {
 	domain: PackageAppCustomDomainView

@@ -10,7 +10,7 @@ export const packageAppCustomDomainStates = [
 	'needs_attention',
 ] as const
 
-export type PackageAppCustomDomainState =
+type PackageAppCustomDomainState =
 	(typeof packageAppCustomDomainStates)[number]
 
 export type PackageAppCustomDomainStatus = {
