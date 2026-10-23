@@ -351,8 +351,8 @@ export type RepoExternalPublishResult =
 			/** Names stale static dependents still reading kept or removed mounts. */
 			secret_mount_compat?: string | null
 			/**
-			 * Advance warning when this package fills a user credential whose
-			 * allowed-packages list excludes it (enforcement Oct 21, 2026).
+			 * Warning when this package fills a user credential whose
+			 * allowed-packages list excludes it.
 			 */
 			allowed_packages_publish_notice?: string | null
 	  }

@@ -401,7 +401,7 @@ const allowedPackagesPublishNoticeSchema = z
 	.nullable()
 	.optional()
 	.describe(
-		'Advance warning when this package fills a user credential whose allowed-packages list excludes it. Stricter enforcement of that setting starts Wednesday, Oct 21, 2026. Null/omitted when there is nothing to warn about. Does not block publish.',
+		'Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
 const artifactsRebuiltSchema = z

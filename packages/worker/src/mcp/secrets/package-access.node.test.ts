@@ -442,3 +442,76 @@ test('findMissingPackageApprovals uses the team org slug and keeps empty links s
 	})
 	expect(unresolved[0]?.approvalUrl).toBe('')
 })
+
+test('a non-empty allowed list is enforced for self-authored and adopted packages (#4129)', async () => {
+	const lockedToOther = {
+		...userSecretResolved,
+		allowedPackages: ['pkg-other'],
+	}
+	const expectNotOnList = (error: unknown) => {
+		expectAccessDenied(error)
+		const message = (error as Error).message
+		expect(message).toContain(
+			"the credential's allowed-packages list does not include this package",
+		)
+		expect(message).toContain('including ones you authored or adopted')
+		expect(message).toContain('Approval link: https://example.com/')
+		return true
+	}
+
+	// Self-authored: no implicit shortcut once the list is non-empty.
+	clearLookups()
+	mockModule.getSavedPackageById.mockResolvedValueOnce(savedPackage)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+	expect(mockModule.getCommunityForkByForkedPackageId).not.toHaveBeenCalled()
+
+	// Adopted fork: same. The fork lookup is skipped because the list check
+	// runs first, so adoption cannot widen a non-empty list.
+	clearLookups()
+	mockModule.getSavedPackageById.mockResolvedValueOnce(savedPackage)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+
+	// Nested self-authored authority under its own run: still denied.
+	clearLookups()
+	mockModule.getSavedPackageById.mockResolvedValue(savedPackage)
+	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(null)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({
+				resolved: lockedToOther,
+				authorityPackageId: 'pkg-1',
+				runContextPackageId: null,
+			}),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
+
+	// Empty list keeps implicit read for self-authored packages.
+	lookups(savedPackage, null)
+	await expect(
+		assertPackageCanAccessResolvedSecret(accessInput()),
+	).resolves.toBeUndefined()
+
+	// Package on the list is allowed without any lookups.
+	clearLookups()
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({
+				resolved: {
+					...userSecretResolved,
+					allowedPackages: ['pkg-other', 'pkg-1'],
+				},
+			}),
+		),
+	).resolves.toBeUndefined()
+	expect(mockModule.getSavedPackageById).not.toHaveBeenCalled()
+})

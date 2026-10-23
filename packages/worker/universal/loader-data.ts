@@ -2241,9 +2241,9 @@ export type AccountPackageApprovePublishLoaderData = {
 	 */
 	secretMountCompatNotice: string | null
 	/**
-	 * Advance warning when this package fills a user credential whose
-	 * allowed-packages list excludes it. Stricter enforcement starts
-	 * Wednesday, Oct 21, 2026. Null when there is nothing to warn about.
+	 * Warning when this package fills a user credential whose
+	 * allowed-packages list excludes it. Null when there is nothing to warn
+	 * about.
 	 */
 	allowedPackagesPublishNotice: string | null
 	diff: {

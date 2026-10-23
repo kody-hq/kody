@@ -75,8 +75,11 @@ const inflightImplicitUserSecretAccess = new WeakMap<
 /**
  * Self-authored packages (no `community_forks` row) and adopted community
  * forks may read/use user secrets without an explicit `allowed_packages`
- * grant. Missing packages and unadopted forks do not. Host allowlists are
- * a separate gate and are never implied by this check.
+ * grant, but only while that secret's `allowed_packages` list is empty. A
+ * non-empty list is enforced for every package (issue #4129); callers check
+ * the list before relying on this. Missing packages and unadopted forks do
+ * not get implicit access. Host allowlists are a separate gate and are never
+ * implied by this check.
  */
 export async function packageHasImplicitUserSecretReadAccess(input: {
 	env: Pick<Env, 'APP_DB'>
@@ -193,6 +196,9 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	})
 	if (!packageId || input.resolved.scope !== 'user') return
 	if (input.resolved.allowedPackages.includes(packageId)) return
+	// A non-empty allowed-packages list is enforced for every package,
+	// including self-authored and adopted ones (issue #4129).
+	const lockedToOtherPackages = input.resolved.allowedPackages.length > 0
 
 	const intent = input.intent ?? 'use'
 	const runContext =
@@ -207,6 +213,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	if (
 		intent === 'use' &&
 		!nested &&
+		!lockedToOtherPackages &&
 		(await packageHasImplicitUserSecretReadAccess({
 			env: input.env,
 			userId: input.userId,
@@ -231,7 +238,6 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 			userId: input.userId,
 			packageId,
 		})
-		const lockedToOther = input.resolved.allowedPackages.length > 0
 		const runCanUse = async () => {
 			if (runContext === null) return true
 			if (input.resolved.allowedPackages.includes(runContext)) return true
@@ -241,7 +247,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 				packageId: runContext,
 			})
 		}
-		if (authorityImplicit && !lockedToOther && (await runCanUse())) {
+		if (authorityImplicit && !lockedToOtherPackages && (await runCanUse())) {
 			return
 		}
 	}
@@ -272,6 +278,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 			secretName: input.secretName,
 			packageName: savedPackage.kodyId,
 			approvalUrl,
+			notOnAllowedList: lockedToOtherPackages,
 		}),
 	)
 }
