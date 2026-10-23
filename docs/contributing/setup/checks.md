@@ -65,8 +65,12 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   measures the bundle, not contention from e2e and Worker builds (#2475, #2759).
   The unit-test and Playwright legs set `CI=1` so timeouts, worker limits, and
   Nx cache hashes match GitHub Actions. CI runs the same checks as separate jobs
-  (🧹 Static, two 🧪 Node shards, ☁️ Workers, 🔌 MCP, six 🎭 E2E shards,
-  aggregated by ✅ Validate). Heavy Validate jobs use
+  (🧹 Static, two 🧪 Node shards, ☁️ Workers, 🔌 MCP, two 🎭 E2E shards,
+  aggregated by ✅ Validate). Two E2E shards split the pruned 30-test suite's
+  ~420s serial load into roughly 245s including ~35s setup per runner, without
+  six copies of setup. Node remains sharded: its pruned full suite still took
+  ~379s locally (versus ~479s before pruning). These are local estimates, not
+  new CI percentiles. Heavy Validate jobs use
   `runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}` (set repo
   variable `CI_RUNNER=ubuntu-latest` to drop WarpBuild in one place); the final
   ✅ Validate gate always runs on GitHub-hosted `ubuntu-latest`. If

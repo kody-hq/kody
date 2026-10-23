@@ -555,18 +555,18 @@ jobs:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
-    name: 🎭 E2E (${{ matrix.shard }}/6)
+    name: 🎭 E2E (${{ matrix.shard }}/2)
     # Each shard owns its own runner (and D1 file), so shards never share
     # SQLITE_BUSY. Keep workers: 1 inside a shard (playwright.config.ts).
-    # Six shards reduce the ~23m serial test load; each adds ~35s setup.
+    # Two shards split ~420s of pruned tests with ~35s setup per runner.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2]
     env:
-      E2E_SHARD: ${{ matrix.shard }}/6
+      E2E_SHARD: ${{ matrix.shard }}/2
     # Room for one shard plus one permitted workerd-crash
-    # retry. Serial E2E was 40m; shards should finish well under that.
+    # retry.
     timeout-minutes: 25
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
@@ -646,7 +646,7 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: e2e-${{ matrix.shard }}/6"
+            echo "- job: e2e-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -827,7 +827,7 @@ jobs:
           def main():
               payload = json.loads(os.environ["JOBS_JSON"])
               jobs = payload.get("jobs", [])
-              # Sharded E2E jobs are named "🎭 E2E (1/6)" … "🎭 E2E (6/6)" (or
+              # Sharded E2E jobs are named "🎭 E2E (1/2)" … "🎭 E2E (2/2)" (or
               # nested under validate-bench). Match any job whose leaf starts
               # with "🎭 E2E (" so timings stay accurate after the split.
               e2e_prefix = "🎭 E2E ("

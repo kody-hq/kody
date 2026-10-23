@@ -111,7 +111,7 @@ Avoid `page.locator('css')` unless no accessible alternative exists.
   Cloudflare inspector) so validate does not require killing `dev:ensure`
   (#3731). Set `PLAYWRIGHT_BASE_URL` to reuse an existing server instead. It
   also restarts Vite once if the first process exits before Playwright reaches
-  `/health`. On CI, Validate runs Playwright as six `E2E_SHARD=i/6` matrix jobs
+  `/health`. On CI, Validate runs Playwright as two `E2E_SHARD=i/2` matrix jobs
   (each on its own runner / D1 file; `workers: 1` stays). Each shard retries
   once when `tools/ci/retry-classifiers.ts e2e` matches a webServer start crash
   (`Process from config.webServer was not able to start`, including Vite

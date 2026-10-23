@@ -89,7 +89,7 @@ source/test paths. Global configuration/setup/migration inputs or unreadable
 paths fall back to full `npm run test:push`; only full suites record test
 provenance. Existing validate-recorded Knip/test tree skips remain. See
 [checks](./setup/checks.md) for the fallback list. CI remains the full gate,
-with two Node shards and six cacheable E2E shards; local validate is unsharded.
+with two Node shards and two cacheable E2E shards; local validate is unsharded.
 A docs-only push skips typecheck, Knip and the suites. A push that touches
 `skills-lock.json` or `.agents/skills/` still runs
 `node tools/check-skills-lock.ts` (also part of `npm run deps:check`).
