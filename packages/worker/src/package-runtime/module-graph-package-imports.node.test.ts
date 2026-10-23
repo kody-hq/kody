@@ -1,5 +1,9 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import {
+	consoleWarn,
+	silenceExpectedConsoleWarns,
+} from '#worker/test-support/console-spies.ts'
 import type * as PublishedBundleArtifactsModule from './published-bundle-artifacts.ts'
 import {
 	moduleGraphMockModule as mockModule,
@@ -816,4 +820,61 @@ test('buildKodyModuleBundle follows self kody imports when recording reachable d
 	expect(paths).not.toContain(
 		'.__kody_packages__/@alice/reachable-package/src/index.js',
 	)
+})
+
+test('a pre-fix multi-package npm artifact that cannot rebuild is still composed, and reported', async () => {
+	silenceExpectedConsoleWarns([/pre_binding_bundle_needs_republish/])
+	mockModule.createWorker.mockResolvedValue(
+		createBundleResult('published-artifact'),
+	)
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource(
+			{
+				...examplePackage,
+				exports: { './html': './src/html.ts' },
+				dependencies: { marked: '18.0.2' },
+			},
+			{
+				'src/html.ts':
+					'import { marked } from "marked"\nexport default async function render() { return marked.parse("**ok**") }',
+			},
+		),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockImplementation(
+		async (input: { kind: string }) =>
+			input.kind === 'importable-module'
+				? makeArtifactHit({
+						artifactName: './html',
+						entryPoint: 'src/html.ts',
+						mainModule: 'dist/html.js',
+						modules: {
+							'dist/html.js':
+								'export default async function render() { return await fetch("https://example.com") }',
+						},
+						dependencies: [
+							{
+								sourceId: 'source-other',
+								publishedCommit: 'commit-other',
+								kodyId: 'other-package',
+								packageId: 'pkg-other',
+							},
+						],
+					})
+				: null,
+	)
+	await buildLocal({
+		'index.js':
+			'import render from "kody:@kentcdodds/example-package/html"\nexport default render\n',
+	})
+	const artifactEntry = Object.entries(bundlerFiles()).find(
+		([path]) =>
+			path.includes('.__published_bundle__') && path.endsWith('/dist/html.js'),
+	)?.[1]
+	expect(artifactEntry).toContain('fetch("https://example.com")')
+	expect(
+		consoleWarn.mock.calls.some((call) =>
+			String(call[0]).includes('pre_binding_bundle_needs_republish'),
+		),
+	).toBe(true)
 })
