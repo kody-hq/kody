@@ -314,8 +314,13 @@ jobs:
             const repo = context.repo.repo
             // Prefer recently merged PRs over recently updated ones: comment
             // activity on older merged PRs must not crowd out a new signer.
+            // GitHub cannot list by merged_at, so scan by updated_at (always
+            // >= merged_at) until the page reaches PRs updated before the 50th
+            // newest merge: nothing older can merge later than that cutoff.
+            const byMergedDesc = (left, right) =>
+              Date.parse(right.merged_at) - Date.parse(left.merged_at)
             const mergedByNumber = new Map()
-            for (let page = 1; page <= 10; page += 1) {
+            for (let page = 1; page <= 200; page += 1) {
               const response = await github.rest.pulls.list({
                 owner,
                 repo,
@@ -323,20 +328,24 @@ jobs:
                 base: 'main',
                 sort: 'updated',
                 direction: 'desc',
-                per_page: 50,
+                per_page: 100,
                 page,
               })
               if (response.data.length === 0) break
               for (const pull of response.data) {
                 if (pull.merged_at) mergedByNumber.set(pull.number, pull)
               }
-              if (response.data.length < 50) break
+              if (response.data.length < 100) break
+              if (mergedByNumber.size >= 50) {
+                const cutoff = Date.parse(
+                  [...mergedByNumber.values()].sort(byMergedDesc)[49].merged_at,
+                )
+                const oldestUpdated = Date.parse(response.data.at(-1).updated_at)
+                if (oldestUpdated < cutoff) break
+              }
             }
             const mergedPulls = [...mergedByNumber.values()]
-              .sort(
-                (left, right) =>
-                  Date.parse(right.merged_at) - Date.parse(left.merged_at),
-              )
+              .sort(byMergedDesc)
               .slice(0, 50)
 
             const candidates = new Map(
