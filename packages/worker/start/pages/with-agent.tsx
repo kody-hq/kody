@@ -7,7 +7,11 @@ import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { docHref } from '#universal/docs-nav.ts'
 import { landingHomePrimitives } from '#universal/landing-home-copy.ts'
 import { primitiveFeatureHref } from '#universal/primitive-cards.ts'
-import { pageGutter, pageHeadCss } from '#universal/styles/style-primitives.ts'
+import {
+	getPillButtonCss,
+	pageGutter,
+	pageHeadCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import {
 	withAgentHref,
@@ -55,6 +59,24 @@ export function WithAgentRoute({ agent }: { agent: WithAgent }) {
 						)}
 					</p>
 				)}
+				{agent.primaryAction ? (
+					<div css={primaryActionCss} data-testid="with-agent-primary-action">
+						<SiteLink
+							href={agent.primaryAction.href}
+							target="_blank"
+							rel="noreferrer noopener"
+							css={primaryActionButtonCss}
+						>
+							{agent.primaryAction.label}
+						</SiteLink>
+						<p>{agent.primaryAction.description}</p>
+					</div>
+				) : null}
+				{agent.primaryAction ? (
+					<h3 css={alternativeTitleCss}>
+						{agent.primaryAction.alternativeTitle}
+					</h3>
+				) : null}
 				<ol>{agent.steps.map((step, index) => renderStep(step, index))}</ol>
 				{agent.official ? (
 					<div css={promptCss}>
@@ -233,6 +255,34 @@ const connectCss = {
 	},
 	'& li::marker': { fontWeight: 700, color: colors.primaryText },
 	'& li > p': { margin: 0, lineHeight: 1.55 },
+}
+
+const primaryActionCss = {
+	display: 'grid',
+	justifyItems: 'start',
+	gap: '0.75rem',
+	marginTop: '1.25rem',
+	'& p': {
+		margin: 0,
+		maxWidth: '38rem',
+		lineHeight: 1.55,
+		color: colors.textMuted,
+		textWrap: 'pretty' as const,
+	},
+}
+
+const primaryActionButtonCss = {
+	...getPillButtonCss(),
+	textDecoration: 'none',
+}
+
+const alternativeTitleCss = {
+	margin: '1.5rem 0 0',
+	paddingTop: '1.25rem',
+	borderTop: `1px solid ${colors.border}`,
+	fontSize: '1rem',
+	fontWeight: 650,
+	lineHeight: 1.4,
 }
 
 const stepLinkCss = {

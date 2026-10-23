@@ -470,6 +470,24 @@ const kodyMarketplacePluginId = '56286216'
 /** Confirmed Grok Bot one-click add for the official Kody plugin. */
 export const grokBotInstallUrl = `grokbot://app/v1/plugin/add?id=${kodyMarketplacePluginId}`
 
+/**
+ * Public Grok Bot template ("Kody Bot") that ships with the Kody plugin, mints
+ * its own long-lived Kody CLI credential, installs the Kody CLI, and runs
+ * `kody auth setup-git`. The primary Grok Bot setup path; the plugin add above
+ * is the manual alternative for an existing Grok Bot.
+ */
+export const kodyBotTemplateUrl = 'https://x.ai/bot/yTSGElYcIjFW_5IXu2I-e'
+
+/** Primary call to action for the Kody Bot template, on every Grok Bot surface. */
+export const kodyBotTemplateLabel = 'Use the Kody Bot template'
+
+/**
+ * One-line summary of what the template sets up. Keep it to what the template
+ * actually does.
+ */
+export const kodyBotTemplateSummary =
+	'Kody Bot is a Grok Bot template with the Kody plugin built in. It mints its own long-lived Kody CLI login so you never copy a token, installs the Kody CLI, sets up git for your Kody repos, and walks you through a first chat.'
+
 const grokBotConnectPluginsUrl =
 	'https://cursor.com/help/grok-bot/connect-plugins'
 

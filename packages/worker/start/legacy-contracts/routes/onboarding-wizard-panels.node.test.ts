@@ -1,6 +1,11 @@
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
-import { defaultKodyMcpUrl } from '../../../client/routes/onboarding-mcp-clients.ts'
+import {
+	defaultKodyMcpUrl,
+	grokBotInstallUrl,
+	kodyBotTemplateLabel,
+	kodyBotTemplateUrl,
+} from '../../../client/routes/onboarding-mcp-clients.ts'
 import {
 	renderAccessPanel,
 	renderConnectAgentPanel,
@@ -367,4 +372,35 @@ test('step 3 groups ecosystems and folds in a portability proof', async () => {
 	expect(notListedDeepLink).toContain('data-picker="ecosystem"')
 	expect(notListedDeepLink).toContain('data-agent-kind="unknown"')
 	expect(notListedDeepLink).not.toContain('data-greyed="true"')
+})
+
+test('Grok Bot leads with the Kody Bot template and keeps the plugin as the manual path', async () => {
+	const grokBot = await connectPanel({
+		selectedAgent: 'grok-bot',
+		selectedAgentLabel: 'Grok Bot',
+		loggedIn: true,
+	})
+	expect(
+		missing(grokBot, [
+			`href="${kodyBotTemplateUrl}"`,
+			kodyBotTemplateLabel,
+			'data-testid="onboarding-kody-bot-template-summary"',
+			'data-testid="onboarding-mcp-manual-json"',
+			'Or add the Kody plugin to a Grok Bot you already use',
+			`href="${grokBotInstallUrl}"`,
+			'Add to Grok Bot',
+		]),
+	).toEqual([])
+	const html = grokBot ?? ''
+	const templateAt = html.indexOf(`href="${kodyBotTemplateUrl}"`)
+	const manualAt = html.indexOf('data-testid="onboarding-mcp-manual-json"')
+	const pluginAt = html.indexOf(`href="${grokBotInstallUrl}"`)
+	expect(templateAt).toBeGreaterThan(-1)
+	expect(templateAt).toBeLessThan(manualAt)
+	expect(manualAt).toBeLessThan(pluginAt)
+	// The plugin path sits inside the collapsed disclosure, not above it.
+	expect(
+		html.slice(manualAt).startsWith('data-testid="onboarding-mcp-manual-json"'),
+	).toBe(true)
+	expect(html.slice(manualAt, pluginAt)).not.toContain(' open=""')
 })

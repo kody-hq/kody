@@ -48,7 +48,11 @@ Also watch:
    chooser or you only need the URL.
 2. Follow those steps. On [kody.codes](https://kody.codes) the MCP URL is
    `https://kody.codes/mcp`; a preview or self-hosted deployment uses that
-   origin's `/mcp`.
+   origin's `/mcp`. Using Grok Bot? Start from the
+   [Kody Bot template](https://x.ai/bot/yTSGElYcIjFW_5IXu2I-e). It comes with
+   the Kody plugin, sets up the Kody CLI and git on its own, and walks you
+   through a first chat. Adding the Kody plugin to a Grok Bot you already use is
+   the manual alternative.
 3. Complete the OAuth flow when the host opens it. Sign in to Kody if needed,
    then approve access.
 

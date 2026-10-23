@@ -131,13 +131,13 @@ function renderAgentAuthHint(
 		case 'grok-bot':
 			return surface === 'mobile' ? (
 				<>
-					After adding the plugin, complete <strong>Authorize</strong> when Grok
-					Bot prompts you on your phone or on a computer.
+					Complete <strong>Authorize</strong> when Grok Bot asks to connect
+					Kody, on your phone or on a computer.
 				</>
 			) : (
 				<>
-					After adding the plugin, complete <strong>Authorize</strong> when Grok
-					Bot prompts you.
+					Complete <strong>Authorize</strong> when Grok Bot asks to connect
+					Kody.
 				</>
 			)
 		case 'opencode':

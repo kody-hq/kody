@@ -32,6 +32,9 @@ import {
 	hermesMcpTokensPath,
 	isDefaultKodyMcpUrl,
 	kodyAppIconFilename,
+	kodyBotTemplateLabel,
+	kodyBotTemplateSummary,
+	kodyBotTemplateUrl,
 	kodyChatGptPluginUrl,
 	kodyCursorAddPluginCommand,
 	kodyCursorMarketplaceUrl,
@@ -274,22 +277,32 @@ export function renderPanelContent(
 		case 'grok-bot':
 			return (
 				<>
-					<PluginPrimaryInstall
-						href={grokBotInstallUrl}
-						label="Add to Grok Bot"
+					<PrimaryActionLink
+						href={kodyBotTemplateUrl}
+						label={kodyBotTemplateLabel}
+						external
 					/>
-					<p>
-						{surface === 'mobile' ? (
-							<>
-								Or add Kody from <strong>Plugins</strong> on a computer.
-							</>
-						) : (
-							<>
-								Or add Kody from <strong>Plugins</strong> in the Grok Bot
-								sidebar.
-							</>
-						)}
+					<p data-testid="onboarding-kody-bot-template-summary">
+						{kodyBotTemplateSummary}
 					</p>
+					<OnboardingManualDetails summaryLead="Or add the Kody plugin to a Grok Bot you already use">
+						<PluginPrimaryInstall
+							href={grokBotInstallUrl}
+							label="Add to Grok Bot"
+						/>
+						<p>
+							{surface === 'mobile' ? (
+								<>
+									Or add Kody from <strong>Plugins</strong> on a computer.
+								</>
+							) : (
+								<>
+									Or add Kody from <strong>Plugins</strong> in the Grok Bot
+									sidebar.
+								</>
+							)}
+						</p>
+					</OnboardingManualDetails>
 				</>
 			)
 		case 'claude-code': {

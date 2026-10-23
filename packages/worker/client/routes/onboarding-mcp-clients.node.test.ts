@@ -22,6 +22,9 @@ import {
 	buildVsCodeMcpJson,
 	defaultKodyMcpUrl,
 	isDefaultKodyMcpUrl,
+	kodyBotTemplateLabel,
+	kodyBotTemplateSummary,
+	kodyBotTemplateUrl,
 	mcpClientTabs,
 	onboardingDataHref,
 	onboardingDesktopFeaturedAgentIds,
@@ -180,4 +183,17 @@ test('onboarding MCP client builders emit the structured configs each host expec
 		type: 'http',
 		url: mcpServerUrl,
 	})
+})
+
+test('Kody Bot template is the public Grok Bot template and its copy stays plain', () => {
+	expect(kodyBotTemplateUrl).toBe('https://x.ai/bot/yTSGElYcIjFW_5IXu2I-e')
+	expect(kodyBotTemplateLabel).toBe('Use the Kody Bot template')
+	for (const text of [kodyBotTemplateLabel, kodyBotTemplateSummary]) {
+		expect(text).not.toContain('\u2014')
+		expect(text).not.toContain('@')
+	}
+	// Name the pieces the template really sets up, nothing more.
+	expect(kodyBotTemplateSummary).toContain('Kody plugin')
+	expect(kodyBotTemplateSummary).toContain('Kody CLI')
+	expect(kodyBotTemplateSummary).toContain('git')
 })

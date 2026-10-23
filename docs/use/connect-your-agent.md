@@ -63,7 +63,13 @@ you only have the MCP URL.
   writes `~/.grok/config.toml`. OAuth opens a browser on first use; in the TUI,
   `/mcps` then `i` authenticates. `grok mcp doctor kody` checks the connection.
   See xAI's [Grok CLI MCP docs](https://docs.x.ai/build/features/mcp-servers).
-- **Grok Bot** — Grok Bot is Cursor's desktop assistant, not grok.com. Add the
+- **Grok Bot**: Grok Bot is Cursor's desktop assistant, not grok.com. Start from
+  the [Kody Bot template](https://x.ai/bot/yTSGElYcIjFW_5IXu2I-e). It ships with
+  the Kody plugin, mints its own long-lived Kody CLI credential so you never
+  copy a token, installs `@kodycodes/cli`, runs `kody auth setup-git`, and
+  includes skills for setup, the CLI workflow, search, and Kody foundations,
+  plus a first-chat onboarding. Complete **Authorize** when Grok Bot asks to
+  connect Kody. To add Kody to a Grok Bot you already use instead, add the
   official Kody plugin with
   [`grokbot://app/v1/plugin/add?id=56286216`](grokbot://app/v1/plugin/add?id=56286216),
   or open **Plugins** in the Grok Bot sidebar and add Kody. See Cursor's

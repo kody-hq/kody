@@ -8,6 +8,9 @@ import {
 	defaultKodyMcpUrl,
 	grokBotInstallUrl,
 	grokConnectorsUrl,
+	kodyBotTemplateLabel,
+	kodyBotTemplateSummary,
+	kodyBotTemplateUrl,
 	kodyChatGptPluginUrl,
 	kodyCursorAddPluginCommand,
 	kodyCursorMarketplaceUrl,
@@ -46,6 +49,16 @@ export type WithAgent = {
 	/** Replaces the default note shown above unofficial agents' steps. */
 	note?: string
 	pitch: string
+	/**
+	 * Recommended setup shown as the primary button above `steps`. When set,
+	 * `steps` become the manual alternative under `alternativeTitle`.
+	 */
+	primaryAction?: {
+		label: string
+		href: string
+		description: string
+		alternativeTitle: string
+	}
 	steps: ReadonlyArray<WithAgentStep>
 }
 
@@ -223,7 +236,13 @@ export const withAgents = [
 		icon: 'grokbot',
 		official: true,
 		pitch:
-			'Add Kody to Grok Bot in one click and reach your team\u2019s packages from your desktop assistant.',
+			'Start from the Kody Bot template and Grok Bot works on your Kody repos and packages through the Kody CLI and git.',
+		primaryAction: {
+			label: kodyBotTemplateLabel,
+			href: kodyBotTemplateUrl,
+			description: kodyBotTemplateSummary,
+			alternativeTitle: 'Or add the Kody plugin to a Grok Bot you already use',
+		},
 		steps: [
 			{
 				text: 'Add the Kody plugin to Grok Bot.',
