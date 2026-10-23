@@ -503,9 +503,12 @@ test('publishSession does not report success or move published pointers when the
 					return caught
 				},
 			)
-		for (let i = 0; i < 200 && !settled; i += 1) {
-			await vi.advanceTimersByTimeAsync(250)
-		}
+		await vi.waitFor(
+			() => {
+				if (!settled) throw new Error('publishSession still pending')
+			},
+			{ timeout: 15_000, interval: 250 },
+		)
 		const error = await publishSession
 
 		expect(error).toBeInstanceOf(Error)
