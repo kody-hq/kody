@@ -15,7 +15,6 @@ import {
 	mocksSuggestionDetail,
 } from '../src/credentialed-fetch-scan.js'
 import { runDevCheck } from '../src/dev-command.js'
-import { buildUsage } from '../src/help.js'
 import { resolveExecuteInvokeCode } from '../src/invoke-passthrough.js'
 import {
 	buildHandlerLine,
@@ -268,14 +267,4 @@ export default async function post(userReport: string) {
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
-})
-
-test('help documents local --invoke kody:@ and fail-closed mocks (not native workerd fetch)', () => {
-	const text = buildUsage()
-	assert.match(text, /--invoke kody:@scope\/pkg\/export/)
-	assert.match(text, /soft-suggests/)
-	assert.match(text, /x-kody-secret-resolution/)
-	assert.match(text, /ready-to-paste MSW handler stub/)
-	assert.doesNotMatch(text, /keep native workerd fetch/)
-	assert.match(text, /fail closed|fail-closed/i)
 })

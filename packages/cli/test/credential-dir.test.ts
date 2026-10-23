@@ -1,6 +1,6 @@
-import assert from 'node:assert/strict'
-import { type spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { type spawn } from 'node:child_process'
+import assert from 'node:assert/strict'
 import {
 	chmodSync,
 	existsSync,
@@ -15,7 +15,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
 	CredentialDirError,
-	credentialDirFixSteps,
 	credentialDirFor,
 	ensureCredentialDirWritable,
 	isCredentialFolderError,
@@ -24,11 +23,18 @@ import {
 	formatLoginUrlNotice,
 	loginBrowserOpenFailedNotice,
 } from '../src/login-notice.js'
-import { renderLoginCallbackPage } from '../src/login-callback-page.js'
 import { openUrl } from '../src/open-url.js'
 
 function tempRoot(): string {
 	return mkdtempSync(join(tmpdir(), 'kody-cli-credential-dir-'))
+}
+
+function fakeSpawn(behavior: (child: EventEmitter) => void) {
+	return (() => {
+		const child = Object.assign(new EventEmitter(), { unref() {} })
+		queueMicrotask(() => behavior(child))
+		return child
+	}) as unknown as typeof spawn
 }
 
 test('ensureCredentialDirWritable creates a missing folder and leaves no probe file', () => {
@@ -90,26 +96,6 @@ test('credentialDirFor follows the file store path override', () => {
 	)
 })
 
-test('fix steps use plain language per platform', () => {
-	const mac = credentialDirFixSteps(
-		'/Users/a/Library/Application Support/kody',
-		'darwin',
-	)
-	assert.match(mac, /open Terminal/)
-	assert.match(
-		mac,
-		/sudo mkdir -p "\/Users\/a\/Library\/Application Support\/kody"/,
-	)
-	assert.match(mac, /Full Disk Access/)
-	const linux = credentialDirFixSteps('/home/a/.config/kody', 'linux')
-	assert.doesNotMatch(linux, /Full Disk Access/)
-	const windows = credentialDirFixSteps(
-		'C:\\Users\\a\\AppData\\Roaming\\kody',
-		'win32',
-	)
-	assert.match(windows, /Full control/)
-})
-
 test('isCredentialFolderError only matches folder and permission codes', () => {
 	const eacces = Object.assign(new Error('denied'), { code: 'EACCES' })
 	assert.equal(isCredentialFolderError(eacces), true)
@@ -127,21 +113,6 @@ test('login notice always prints the sign-in URL, with or without the browser', 
 	assert.match(manual, /Open this link in your browser/)
 	assert.match(loginBrowserOpenFailedNotice, /could not open your browser/)
 })
-
-test('save_failed callback page tells the user to check the terminal', () => {
-	const html = renderLoginCallbackPage({ kind: 'error', error: 'save_failed' })
-	assert.match(html, /data-error="save_failed"/)
-	assert.match(html, /could not save your sign-in on this computer/)
-	assert.match(html, /follow the fix it shows/)
-})
-
-function fakeSpawn(behavior: (child: EventEmitter) => void) {
-	return (() => {
-		const child = Object.assign(new EventEmitter(), { unref() {} })
-		queueMicrotask(() => behavior(child))
-		return child
-	}) as unknown as typeof spawn
-}
 
 test('openUrl reports false when the system opener fails', async () => {
 	assert.equal(

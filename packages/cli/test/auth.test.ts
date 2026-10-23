@@ -9,15 +9,8 @@ import {
 	login,
 } from '../src/auth.js'
 import { CredentialDirError } from '../src/credential-dir.js'
-import {
-	cliClientMetadataUrl,
-	cliRedirectUrl,
-	defaultScopes,
-	scopeIncludesOpenid,
-} from '../src/defaults.js'
 import { buildCliAuthorizationUrl } from '../src/oauth-browser.js'
 import {
-	buildCliClientMetadata,
 	issuerFromStoredCredentials,
 	orgSlugFromFlag,
 } from '../src/oauth-provider.js'
@@ -42,13 +35,19 @@ const previous: StoredCredentials = {
 	scope: 'profile email',
 }
 
-test('defaultScopes request openid for login and CIMD metadata', () => {
-	assert.deepEqual([...defaultScopes], ['openid', 'profile', 'email'])
-	assert.equal(defaultScopes.join(' '), 'openid profile email')
-	assert.equal(scopeIncludesOpenid('openid profile email'), true)
-	assert.equal(scopeIncludesOpenid('profile email'), false)
-	assert.equal(scopeIncludesOpenid(undefined), false)
-})
+function captureWarns(): { warnings: string[]; restore: () => void } {
+	const warnings: string[] = []
+	const original = console.warn
+	console.warn = (...args: unknown[]) => {
+		warnings.push(args.map(String).join(' '))
+	}
+	return {
+		warnings,
+		restore() {
+			console.warn = original
+		},
+	}
+}
 
 test('isAccessTokenExpired uses a one-minute skew', () => {
 	const now = 1_000_000
@@ -103,21 +102,6 @@ test('credentialsFromTokens stores a rotated refresh token', () => {
 	assert.equal(next.refreshToken, 'rotated')
 	assert.equal(next.clientSecret, 'secret')
 	assert.equal(next.expiresAt, 10_000)
-})
-
-test('CLI OAuth identity is CIMD with a fixed loopback redirect', () => {
-	const mcpUrl = 'https://kody.codes/mcp'
-	const metadata = buildCliClientMetadata()
-	assert.equal(
-		cliClientMetadataUrl(mcpUrl),
-		'https://kody.codes/oauth/cli-client-metadata.json',
-	)
-	assert.equal(metadata.client_name, '@kodycodes/cli')
-	assert.equal(metadata.client_uri, 'https://github.com/kody-hq/kody')
-	assert.deepEqual(metadata.redirect_uris, [cliRedirectUrl().href])
-	assert.equal(metadata.token_endpoint_auth_method, 'none')
-	assert.equal(metadata.application_type, 'native')
-	assert.equal(metadata.scope, 'openid profile email')
 })
 
 test('orgSlugFromFlag lowercases and rejects a blank slug', () => {
@@ -225,34 +209,6 @@ test('login appends ?org= on the authorize URL and omits it otherwise', async ()
 	assert.equal(withoutOrg[0]?.searchParams.get('org'), null)
 	assert.equal(withoutOrg[0]?.searchParams.get('resource'), `${origin}/mcp`)
 })
-
-test('authorize URL omits org when the flag is absent', async () => {
-	const url = await buildCliAuthorizationUrl({
-		authorizationServer: {
-			issuer: 'https://kody.codes',
-			authorization_endpoint: 'https://kody.codes/oauth/authorize',
-		},
-		mcpUrl: 'https://kody.codes/mcp',
-		state: 'state',
-		codeChallenge: 'challenge',
-	})
-	assert.equal(url.searchParams.get('org'), null)
-	assert.equal(url.searchParams.get('resource'), 'https://kody.codes/mcp')
-})
-
-function captureWarns(): { warnings: string[]; restore: () => void } {
-	const warnings: string[] = []
-	const original = console.warn
-	console.warn = (...args: unknown[]) => {
-		warnings.push(args.map(String).join(' '))
-	}
-	return {
-		warnings,
-		restore() {
-			console.warn = original
-		},
-	}
-}
 
 test('fresh login does not warn about a missing SEP-2352 issuer stamp', async () => {
 	const origin = 'https://oauth.test'

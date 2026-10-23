@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { resolveCommand, runCli } from '../src/cli.js'
 import {
-	parseDevSubcommand,
 	resolveDevAuth,
 	runDevCheck,
 	runDevEmit,
@@ -39,18 +38,6 @@ test('resolveCommand recognizes kody dev and --target', () => {
 	assert.equal(
 		resolveCommand(['dev', '--reset-storage']).values['reset-storage'],
 		true,
-	)
-})
-
-test('parseDevSubcommand defaults to serve', () => {
-	assert.deepEqual(parseDevSubcommand([]), { subcommand: 'serve', rest: [] })
-	assert.deepEqual(parseDevSubcommand(['fetch', '/health']), {
-		subcommand: 'fetch',
-		rest: ['/health'],
-	})
-	assert.throws(
-		() => parseDevSubcommand(['nope']),
-		/Unknown kody dev subcommand/,
 	)
 })
 

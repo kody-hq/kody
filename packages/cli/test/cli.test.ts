@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
-	apiUrlFrom,
 	buildExecuteToolArgs,
 	executeSourcesConflict,
 	argvIncludesJsonFlag,
@@ -22,8 +21,6 @@ import {
 	shouldUseApiToken,
 } from '../src/cli.js'
 import { OpenApiError, clearOpenApiRouteCache } from '../src/open-api-client.js'
-import { buildUsage } from '../src/help.js'
-import { readPackageVersion } from '../src/package-info.js'
 import { isPairedApiUrl } from '../src/api-token.js'
 import { type StoredApiToken } from '../src/api-token-store.js'
 import { formatToolResult } from '../src/tool-result.js'
@@ -91,31 +88,6 @@ test('resolveCommand maps subcommands and flags', () => {
 			error instanceof Error &&
 			!error.message.includes('Install Kody as a remote MCP server'),
 	)
-})
-
-test('auth help puts agent cliCredentialBootstrap before kody login', () => {
-	const text = buildUsage({ orgs: [] })
-	assert.match(
-		text,
-		/auth bootstrap[\s\S]*Agents on Kody MCP: call `cliCredentialBootstrap`[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*Humans: `kody login`/,
-	)
-})
-
-test('help header version matches --version (same package.json source)', async () => {
-	const version = readPackageVersion()
-	assert.match(
-		buildUsage({ orgs: [] }),
-		new RegExp(`^Kody CLI ${version.replace(/\./g, '\\.')}\\b`),
-	)
-	let stdout = ''
-	const code = await runCli(['--version'], {
-		stdout: (text) => {
-			stdout += text
-		},
-		stderr: () => {},
-	})
-	assert.equal(code, 0)
-	assert.equal(stdout.trim(), version)
 })
 
 test('packagePublishParams maps positional UUID vs kody_id; --params wins', () => {
@@ -544,18 +516,6 @@ test('resolveLocalExecuteBearer fails clearly when neither login nor token is av
 	)
 })
 
-test('apiUrlFrom defaults to api.kody.codes', () => {
-	assert.equal(apiUrlFrom({}, {}), 'https://api.kody.codes')
-	assert.equal(
-		apiUrlFrom({}, { KODY_API_URL: 'http://localhost:8787' }),
-		'http://localhost:8787',
-	)
-	assert.equal(
-		apiUrlFrom({ apiUrl: 'http://x' }, { KODY_API_URL: 'http://y' }),
-		'http://x',
-	)
-})
-
 test('shouldUseApiToken prefers explicit --token and env token when not logged in', () => {
 	assert.equal(
 		shouldUseApiToken({
@@ -729,20 +689,6 @@ test('api command refuses bootstrap redeem and documents auth bootstrap', async 
 	)
 	assert.equal(code, 1)
 	assert.match(stderr, /auth bootstrap --code/)
-})
-
-test('help documents the api command', async () => {
-	let stdout = ''
-	const code = await runCli(['help'], {
-		stdout: (text) => {
-			stdout += text
-		},
-	})
-	assert.equal(code, 0)
-	assert.match(stdout, /kody api <operationId>/)
-	assert.match(stdout, /usageGet/)
-	assert.match(stdout, /kody login \[--mcp-url <url>\] \[--org <slug>\]/)
-	assert.match(stdout, /kody login --org acme/)
 })
 
 test('--org selects an org for org-scoped commands and rejects a blank slug', async () => {

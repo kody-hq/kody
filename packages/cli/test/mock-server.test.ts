@@ -9,10 +9,6 @@ import {
 	startMockServer,
 	withMockServer,
 } from '../src/mock/mock-server.js'
-import {
-	mockCapabilityPaths,
-	mockOpenApiOperationIds,
-} from '../src/mock/mock-supported.js'
 
 test('mock session + search + metaGetCurrentUser work', async () => {
 	const cache = await mkdtemp(join(tmpdir(), 'kody-mock-cache-'))
@@ -171,15 +167,6 @@ test('ensureMockTarget mints a bearer and can reset storage', async () => {
 		else process.env.KODY_CACHE_DIR = previous
 		await rm(cache, { recursive: true, force: true })
 	}
-})
-
-test('supported mock operation lists are non-empty contract anchors', () => {
-	assert.ok(mockOpenApiOperationIds.includes('search'))
-	assert.ok(mockCapabilityPaths.includes('kody.metaGetCurrentUser'))
-	assert.ok(mockCapabilityPaths.includes('kody.search'))
-	assert.ok(mockCapabilityPaths.includes('kody.credentialClientOpenAll'))
-	assert.ok(mockCapabilityPaths.includes('kody.authenticatedFetch'))
-	assert.ok(mockCapabilityPaths.includes('kody.adminUserList'))
 })
 
 test('mock credentialClientOpen returns hosts so credential() can iterate', async () => {

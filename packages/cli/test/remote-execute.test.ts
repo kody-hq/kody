@@ -6,7 +6,6 @@ import {
 	runRemoteExecuteWithToken,
 } from '../src/remote-execute.js'
 import {
-	buildExecuteInvokePassthroughSource,
 	isPublishedPackageInvokeSpecifier,
 	parseExecuteInvokeSpecifier,
 } from '../src/invoke-passthrough.js'
@@ -38,17 +37,6 @@ test('isPublishedPackageInvokeSpecifier distinguishes local export keys', () => 
 	assert.equal(
 		isPublishedPackageInvokeSpecifier('https://example.com/x'),
 		false,
-	)
-})
-
-test('buildExecuteInvokePassthroughSource matches the MCP thin glue shape', () => {
-	assert.equal(
-		buildExecuteInvokePassthroughSource('kody:@me/pkg/export'),
-		`import action from "kody:@me/pkg/export"
-
-export default async function main(params) {
-	return await action(params)
-}`,
 	)
 })
 

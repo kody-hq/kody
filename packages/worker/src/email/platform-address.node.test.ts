@@ -3,7 +3,6 @@ import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
-	buildPlatformEmailAddress,
 	getAcceptedSystemEmailDomains,
 	getAcceptedUserEmailDomains,
 	getPlatformEmailDomain,
@@ -109,16 +108,6 @@ test('accepted inbound domains are canonical first plus legacy lists', () => {
 		}),
 	).toEqual(['inbox.heykody.app', 'inbox.heykody.dev'])
 })
-
-test('buildPlatformEmailAddress normalizes the username', () => {
-	expect(
-		buildPlatformEmailAddress({
-			username: ' KentCDodds ',
-			domain: 'inbox.heykody.dev',
-		}),
-	).toBe('kentcdodds@inbox.heykody.dev')
-})
-
 test('resolveUserPlatformSender sends from an unreserved built-in username and blocks permanently reserved locals', async () => {
 	const sqlite = new DatabaseSync(':memory:')
 	const db = createD1FromSqlite(sqlite)

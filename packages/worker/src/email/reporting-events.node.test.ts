@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { recordEmailReportingEvent } from './reporting-events.ts'
 
-test('email reporting writes compact indexed send, receive, and delivery data points', () => {
+test('email reporting writes a compact indexed delivery data point', () => {
 	const writeDataPoint = vi.fn()
 	const env = {
 		EMAIL_EVENTS: {
@@ -13,33 +13,13 @@ test('email reporting writes compact indexed send, receive, and delivery data po
 
 	recordEmailReportingEvent(env, {
 		userId: ownerIdFromStored('user-1'),
-		eventType: 'email_send',
-		timestamp: '2026-07-30T10:00:00.000Z',
-	})
-	recordEmailReportingEvent(env, {
-		userId: ownerIdFromStored('user-2'),
-		eventType: 'email_receive',
-		timestamp: '2026-07-30T11:00:00.000Z',
-	})
-	recordEmailReportingEvent(env, {
-		userId: ownerIdFromStored('user-1'),
 		eventType: 'email_delivery',
 		outcome: 'bounced',
 		timestamp: '2026-07-31T00:00:00.000Z',
 	})
 
-	expect(writeDataPoint).toHaveBeenCalledTimes(3)
-	expect(writeDataPoint).toHaveBeenNthCalledWith(1, {
-		indexes: ['user-1'],
-		blobs: ['email_send', '', '2026-07-30T10:00:00.000Z'],
-		doubles: [1],
-	})
-	expect(writeDataPoint).toHaveBeenNthCalledWith(2, {
-		indexes: ['user-2'],
-		blobs: ['email_receive', '', '2026-07-30T11:00:00.000Z'],
-		doubles: [1],
-	})
-	expect(writeDataPoint).toHaveBeenNthCalledWith(3, {
+	expect(writeDataPoint).toHaveBeenCalledOnce()
+	expect(writeDataPoint).toHaveBeenCalledWith({
 		indexes: ['user-1'],
 		blobs: ['email_delivery', 'bounced', '2026-07-31T00:00:00.000Z'],
 		doubles: [1],

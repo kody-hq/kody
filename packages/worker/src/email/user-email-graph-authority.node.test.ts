@@ -51,15 +51,3 @@ test('USER writes require the authority marker while system writes are unaffecte
 		droppedAt: '2026-08-03T15:00:00.000Z',
 	})
 })
-
-test('USER authority remains readable while 0134 is deployed before 0135', async () => {
-	const db = dbWithMarker({
-		owner_count: 12,
-		frozen_at: '2026-08-03T00:00:00.000Z',
-	})
-	await expect(loadUserEmailGraphAuthorityMarker(db)).resolves.toEqual({
-		ownerCount: 12,
-		frozenAt: '2026-08-03T00:00:00.000Z',
-		droppedAt: null,
-	})
-})

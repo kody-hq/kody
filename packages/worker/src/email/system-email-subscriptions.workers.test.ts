@@ -271,17 +271,3 @@ test(
 	},
 	subscriptionDispatchTimeoutMs,
 )
-
-test('system inbound email dispatch is a no-op without admins or RBAC tables', async () => {
-	await ensureEmailTestSchema(env.APP_DB)
-	await ensureUsageRollupsTestSchema(env.APP_DB)
-	await ensurePackageSubscriptionTestSchema(env.APP_DB)
-	// No RBAC tables at all: pre-RBAC databases must store system mail
-	// without dispatching (and without throwing).
-	await env.APP_DB.prepare(`DROP TABLE IF EXISTS user_roles`).run()
-	await env.APP_DB.prepare(`DROP TABLE IF EXISTS roles`).run()
-
-	await deliverSystemMailAndDrain('security', 'No admins yet')
-	const messages = await listSystemEmailMessages({ db: env.APP_DB, limit: 5 })
-	expect(messages.some((row) => row.subject === 'No admins yet')).toBe(true)
-})

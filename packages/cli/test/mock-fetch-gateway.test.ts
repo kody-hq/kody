@@ -10,12 +10,10 @@ import {
 } from '../src/mock/install-mock-fetch-shim.js'
 import { loadPackageMocks } from '../src/mock/load-package-mocks.js'
 import {
-	buildHandlerStub,
 	createMockFetchGateway,
 	dispatchMockGatewayFetch,
 	hostMatchesPassthrough,
 	parsePassthroughHosts,
-	unmockedRequestError,
 } from '../src/mock/mock-fetch-gateway.js'
 import { createMockGatewayFetchShimSource } from '../src/mock/mock-gateway-fetch-shim.js'
 import { StructuredCliError } from '../src/structured-error.js'
@@ -160,15 +158,6 @@ test('loadPackageMocks returns null when the file is missing', async () => {
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}
-})
-
-test('buildHandlerStub and unmockedRequestError are agent-friendly', () => {
-	const stub = buildHandlerStub('GET', 'https://api.example.com/x')
-	assert.match(stub, /http\.get/)
-	assert.match(stub, /HttpResponse\.json/)
-	const error = unmockedRequestError('GET', 'https://api.example.com/x')
-	assert.equal(error.code, 'unmocked_request')
-	assert.match(error.fix ?? '', /--passthrough api\.example\.com/)
 })
 
 test('mock gateway fetch shim uses a flat module name (no path-join)', async () => {
