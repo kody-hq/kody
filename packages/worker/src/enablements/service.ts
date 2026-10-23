@@ -795,19 +795,26 @@ export async function armCronJobsForCallerEnablementIds(input: {
 	orgId: OwnerId
 	enablementIds: ReadonlyArray<string>
 }) {
+	// One failure must not skip the rest; rethrow the first after the loop.
+	const errors: Array<unknown> = []
 	for (const id of new Set(input.enablementIds)) {
-		const enablement = await getEnablementById({
-			db: input.env.APP_DB,
-			orgId: input.orgId,
-			id,
-		})
-		if (!enablement) continue
-		await armCronJobForCallerEnablement({
-			env: input.env,
-			request: input.request,
-			enablement,
-		})
+		try {
+			const enablement = await getEnablementById({
+				db: input.env.APP_DB,
+				orgId: input.orgId,
+				id,
+			})
+			if (!enablement) continue
+			await armCronJobForCallerEnablement({
+				env: input.env,
+				request: input.request,
+				enablement,
+			})
+		} catch (error) {
+			errors.push(error)
+		}
 	}
+	if (errors.length > 0) throw errors[0]
 }
 
 /** Turn an enablement off for good. Only its enabler or an Owner may. */
