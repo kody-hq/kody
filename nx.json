@@ -73,7 +73,13 @@
 		},
 		"test-workers": {
 			"cache": true,
-			"inputs": ["default", "^default", "suiteSupport", { "env": "CI" }]
+			"inputs": [
+				"default",
+				"^default",
+				"suiteSupport",
+				{ "env": "CI" },
+				{ "env": "WORKERS_TEST_SHARD" }
+			]
 		},
 		"test-mcp": {
 			"cache": true,

@@ -41,12 +41,16 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   remote and local tips; new branches diff a merge base from `origin/HEAD`,
   `origin/main`, or `main`. Progress logs tick every 30 seconds.
 - `test:push` retains serial full Node/Workers suites and ADR 0011 Workers
-  isolation. Workers keeps a 40s test/hook timeout; Node keeps 20s. Each CI Node
+  isolation. CI uses two Node and two Workers shards, keyed separately in Nx by
+  `NODE_TEST_SHARD` and `WORKERS_TEST_SHARD`; local suites remain unsharded when
+  these variables are unset. Each Workers shard caps concurrency at three on its
+  runner. Workers keeps a 40s test/hook timeout; Node keeps 20s. Each CI Node
   shard retains its conservative watch 700s / hard 840s job budget until new
-  sharded timing data supports tightening it. `KODY_VALIDATE_LOAD=1` only lowers
-  Workers concurrency during local validate; it is not hashed by Nx because it
-  changes neither assertions nor budgets. Keep `npm run hooks:ensure` wired
-  through the Cloud Agent dispatcher (see
+  sharded timing data supports tightening it. Each Workers shard retains the
+  watch 620s / hard 780s attempt budget and one timeout retry.
+  `KODY_VALIDATE_LOAD=1` only lowers Workers concurrency during local validate;
+  it is not hashed by Nx because it changes neither assertions nor budgets. Keep
+  `npm run hooks:ensure` wired through the Cloud Agent dispatcher (see
   [cloud-agents.md](../cloud-agents.md#git-hooks)).
 - Push-time hooks intentionally stop short of `npm run validate`; Playwright
   E2E, MCP E2E, and repo-wide format checks remain explicit checks because they

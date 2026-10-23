@@ -243,6 +243,7 @@ test('only suite targets key on CI so typecheck and build artifacts are shared',
 
 test.each([
 	['test-node', 'NODE_TEST_SHARD'],
+	['test-workers', 'WORKERS_TEST_SHARD'],
 	['test-e2e', 'E2E_SHARD'],
 ])(
 	'%s hashes its shard separately from local unsharded runs',
@@ -263,8 +264,8 @@ test('E2E cache restores blob reports for the merge job', async () => {
 // KODY_VALIDATE_LOAD only lowers workers-unit maxWorkers; measured on an
 // isolated 4-core VM, the same 104 files / 401 tests pass with and without it
 // (448s vs 526s). Hashing it would keep validate's test-workers artifact (flag
-// on) from ever matching CI's Workers job (flag off), so no cached target may
-// key on it.
+// on) from matching the same shard with the flag off, so no cached target may
+// key on it. Full and sharded Workers runs still have distinct hashes.
 test('no cached test target keys on KODY_VALIDATE_LOAD', async () => {
 	for (const target of ['test', 'test-workers']) {
 		const inputs = await getWorkerDeclaredInputs(target)

@@ -387,7 +387,13 @@ jobs:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
-    name: ☁️ Workers
+    name: ☁️ Workers (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      WORKERS_TEST_SHARD: ${{ matrix.shard }}/2
     # Room for one ≤780s attempt + one retry + setup. Soft-capping the suite
     # below the job wall avoids workers=cancelled mid-suite (#3763).
     timeout-minutes: 30
@@ -486,7 +492,7 @@ jobs:
           fi
           exit "$status"
 
-      - name: ⏱️ Unit job budget (watch 620s / hard 780s)
+      - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
         # Watch warns always; hard fail on pull requests only. Advisory
         # (warning only) on push to main and manual dispatches so a slow
@@ -504,7 +510,7 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: workers"
+            echo "- job: workers-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -929,7 +935,7 @@ jobs:
                       }
                   )
 
-              for name in ("🧹 Static", "☁️ Workers", "🔌 MCP"):
+              for name in ("🧹 Static", "🔌 MCP"):
                   append_job_row(name, find_job(name))
               node_jobs = find_sharded_jobs("🧪 Node (")
               if node_jobs:
@@ -937,6 +943,12 @@ jobs:
                       append_job_row((job.get("name") or "").split(" / ")[-1], job)
               else:
                   append_job_row("🧪 Node", find_job("🧪 Node"))
+              workers_jobs = find_sharded_jobs("☁️ Workers (")
+              if workers_jobs:
+                  for job in workers_jobs:
+                      append_job_row((job.get("name") or "").split(" / ")[-1], job)
+              else:
+                  append_job_row("☁️ Workers", find_job("☁️ Workers"))
               e2e_jobs = find_sharded_jobs(e2e_prefix)
               if e2e_jobs:
                   for job in e2e_jobs:
