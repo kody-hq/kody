@@ -40,6 +40,26 @@ const session: AuthSession = {
 	rememberMe: false,
 }
 
+let migratedSnapshot: Uint8Array | undefined
+let testPasswordHash: Promise<string> | undefined
+
+function createMigratedSqlite() {
+	if (!migratedSnapshot) {
+		const seed = new DatabaseSync(':memory:')
+		applyAllMigrations(seed, new URL('../../../migrations/', import.meta.url))
+		migratedSnapshot = seed.serialize()
+		seed.close()
+	}
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.deserialize(migratedSnapshot)
+	return sqlite
+}
+
+function getTestPasswordHash() {
+	testPasswordHash ??= createPasswordHash('ilikecode')
+	return testPasswordHash
+}
+
 type Handler = ReturnType<typeof testAccountTwoFactorApiHandler>
 
 function runHandler(handler: Handler, request: Request) {
@@ -89,11 +109,10 @@ function isClearedCookie(name: string) {
 async function setupTwoFactor({ seedUser = true } = {}) {
 	setAuthSessionSecret(testCookieSecret)
 	setVerifySessionSecret(testCookieSecret)
-	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, new URL('../../../migrations/', import.meta.url))
+	const sqlite = createMigratedSqlite()
 	const db = createD1FromSqlite(sqlite)
 	if (seedUser) {
-		const passwordHash = await createPasswordHash('ilikecode')
+		const passwordHash = await getTestPasswordHash()
 		const stableUserId = testStableUserIdFromEmail('kody@example.com')
 		sqlite.exec(`
 			INSERT INTO users (id, username, email, stable_user_id, password_hash, email_verified_at)
@@ -225,22 +244,19 @@ test('two-factor setup requires authentication and a valid code before activatin
 	)
 })
 
-test('cancelling a pending setup removes it without touching active 2fa', async () => {
-	const { post, readRow } = await setupTwoFactor()
-	await post({ intent: 'setup' })
-	const cancelResponse = await post({ intent: 'cancel' })
-	expect(cancelResponse.status).toBe(200)
-	expect(cancelResponse.data).toEqual({ ok: true, enabled: false })
-	expect(readRow()).toBeUndefined()
-})
-
-test('cancelling setup preserves an already enabled authenticator', async () => {
+test('cancelling removes pending setup but preserves active 2fa', async () => {
 	const { enable, post, readRow } = await setupTwoFactor()
+	await post({ intent: 'setup' })
+	const pendingCancelResponse = await post({ intent: 'cancel' })
+	expect(pendingCancelResponse.status).toBe(200)
+	expect(pendingCancelResponse.data).toEqual({ ok: true, enabled: false })
+	expect(readRow()).toBeUndefined()
+
 	await enable()
 	const active = readRow()
-	const cancelled = await post({ intent: 'cancel' })
-	expect(cancelled.status).toBe(200)
-	expect(cancelled.data).toEqual({ ok: true, enabled: true })
+	const activeCancelResponse = await post({ intent: 'cancel' })
+	expect(activeCancelResponse.status).toBe(200)
+	expect(activeCancelResponse.data).toEqual({ ok: true, enabled: true })
 	expect(readRow()).toEqual(active)
 })
 

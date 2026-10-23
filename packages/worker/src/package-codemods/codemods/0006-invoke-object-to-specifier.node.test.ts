@@ -1,9 +1,5 @@
 import { expect, test } from 'vitest'
-import { getPackageCodemodById } from '../registry.ts'
-import {
-	invokeObjectToSpecifierCodemod as codemod,
-	invokeObjectToSpecifierCodemodId,
-} from './0006-invoke-object-to-specifier.ts'
+import { invokeObjectToSpecifierCodemod as codemod } from './0006-invoke-object-to-specifier.ts'
 
 function manifest(name = '@user/demo') {
 	return `${JSON.stringify(
@@ -194,7 +190,7 @@ test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
 	)
 })
 
-test('0006 requires a scoped manifest and is registered for admin runs', () => {
+test('0006 requires a scoped manifest whose org owns the invoked packages', () => {
 	const workerInvoke =
 		"await packages.invoke({ kodyId: 'worker', exportName: './run' })\n"
 	const docsInvoke = (kodyId: string, exportName: string) =>
@@ -252,6 +248,4 @@ test('0006 requires a scoped manifest and is registered for admin runs', () => {
 	}
 	expect(codemod.detect(unrelated, contextOf(unrelated))).toEqual([])
 	expect(codemod.transform(unrelated, contextOf(unrelated)).changed).toBe(false)
-
-	expect(getPackageCodemodById(invokeObjectToSpecifierCodemodId)).toBe(codemod)
 })

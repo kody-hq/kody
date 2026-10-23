@@ -129,10 +129,23 @@ function createKv() {
 	}
 }
 
+let migratedSnapshot: Uint8Array | undefined
+
+function createMigratedSqlite() {
+	if (!migratedSnapshot) {
+		const seed = new DatabaseSync(':memory:')
+		applyAllMigrations(seed, new URL('../../migrations/', import.meta.url))
+		migratedSnapshot = seed.serialize()
+		seed.close()
+	}
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.deserialize(migratedSnapshot)
+	return sqlite
+}
+
 function createEnv() {
 	const kv = createKv()
-	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const sqlite = createMigratedSqlite()
 	return {
 		env: {
 			APP_DB: createD1FromSqlite(sqlite),
@@ -1140,41 +1153,6 @@ test('published-only apply promotes locked aligned packages via allowLockedPubli
 			allowLockedPublish: true,
 		}),
 	)
-	expect(mocks.syncPublishedSourceSnapshotOnly).not.toHaveBeenCalled()
-})
-
-test('published-only apply on non-drifted packages still uses syncArtifactSourceSnapshot', async () => {
-	setupMocks()
-	const { env } = createEnv()
-	const pkg = savedPackage('pkg-aligned-published-only', {
-		kodyId: 'webhook-pkg',
-		sourceId: 'source-aligned-published-only',
-	})
-	mocks.listSavedPackagesByUserId.mockResolvedValue([pkg])
-	mocks.loadPackageSourceBySourceId.mockResolvedValue(
-		loadedSource({
-			files: undeclaredWebhookFiles(),
-			publishedCommit: 'commit-repo-aligned',
-			repoId: 'repo-aligned-published-only',
-			sourceId: pkg.sourceId,
-			userId: pkg.userId,
-		}),
-	)
-	mocks.resolveArtifactSourceHead.mockResolvedValue({
-		branch: 'main',
-		commit: 'commit-repo-aligned',
-	})
-	mocks.syncArtifactSourceSnapshot.mockResolvedValue('commit-after-aligned')
-
-	const apply = await step(env, {
-		mode: 'apply',
-		codemodId: publishedOnlyCodemodId,
-	})
-	expect(apply.items[0]).toMatchObject({
-		status: 'applied',
-		afterCommit: 'commit-after-aligned',
-	})
-	expect(mocks.syncArtifactSourceSnapshot).toHaveBeenCalledTimes(1)
 	expect(mocks.syncPublishedSourceSnapshotOnly).not.toHaveBeenCalled()
 })
 

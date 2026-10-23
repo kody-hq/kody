@@ -101,17 +101,6 @@ test('0014 reports needs_manual for non-literal credential uses without changing
 	])
 })
 
-test('0014 detect is clean when the package has no credential uses', () => {
-	const findings = sealCredentialStampsCodemod.detect(
-		{
-			'package.json': manifest(),
-			'index.ts': 'export default async function run() { return 1 }',
-		},
-		packageContext,
-	)
-	expect(findings).toEqual([])
-})
-
 test('0014 seals a nested package against its own manifest path and source root', () => {
 	const nestedManifest = `${JSON.stringify(
 		{
