@@ -681,10 +681,10 @@ test('searchCommunityListings empty query uses publishedAt tiebreaker', async ()
 	])
 })
 
-test('searchCommunityListings falls back to unfiltered candidates when LIKE prefilter rows all fail matching', async () => {
-	// The LIKE prefilter matches on raw columns (e.g. readme_content), so it
-	// can return rows that the in-memory scorer then rejects. The fallback
-	// must still surface matches among other recent listings.
+test('searchCommunityListings answers a no-match query from the LIKE prefilter alone', async () => {
+	// The prefilter can return rows (for example a substring hit deep in the
+	// readme) that the term scorer rejects. That is a real no-results answer:
+	// no second unfiltered read and no unrelated listings.
 	const prefilterOnlyListing = sampleListing({
 		id: 'listing-prefilter-only',
 		kodyId: 'meal-planner',
@@ -694,16 +694,11 @@ test('searchCommunityListings falls back to unfiltered candidates when LIKE pref
 		searchText: 'meal plan grocery',
 		readmeContent: '# Meal Planner\n\n## Intent\n\nPlan meals.',
 	})
-	const fallbackMatchListing = sampleListing({ id: 'listing-fallback-match' })
-	mockModule.listCommunityListingCandidates
-		.mockResolvedValueOnce([prefilterOnlyListing])
-		.mockResolvedValueOnce([prefilterOnlyListing, fallbackMatchListing])
-	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue(
-		emptyAggregates(['listing-fallback-match']),
-	)
-	mockModule.countCommunityForksByListingIds.mockResolvedValue({
-		'listing-fallback-match': 0,
-	})
+	mockModule.listCommunityListingCandidates.mockResolvedValueOnce([
+		prefilterOnlyListing,
+	])
+	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue({})
+	mockModule.countCommunityForksByListingIds.mockResolvedValue({})
 
 	const results = await searchCommunityListings({
 		env: createEnv(),
@@ -711,18 +706,11 @@ test('searchCommunityListings falls back to unfiltered candidates when LIKE pref
 		limit: 10,
 	})
 
-	expect(results.map((listing) => listing.id)).toEqual([
-		'listing-fallback-match',
-	])
-	expect(mockModule.listCommunityListingCandidates).toHaveBeenNthCalledWith(
-		1,
+	expect(results).toEqual([])
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledTimes(1)
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.objectContaining({ query: 'discord' }),
-	)
-	expect(mockModule.listCommunityListingCandidates).toHaveBeenNthCalledWith(
-		2,
-		expect.anything(),
-		expect.not.objectContaining({ query: expect.anything() }),
 	)
 })
 

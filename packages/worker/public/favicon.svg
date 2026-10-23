@@ -1,12 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="220.727 325.009973 807.440627 593.242027" role="img" aria-label="Kody">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="220.727 217.910673 807.440627 807.440627" role="img" aria-label="Kody">
   <style>
+    .plate { fill: #ffffff; }
     .outlined { display: inline; }
     .solid { display: none; }
     @media (prefers-color-scheme: dark) {
+      .plate { fill: #000000; }
       .outlined { display: none; }
       .solid { display: inline; }
     }
   </style>
+  <rect class="plate" x="220.727" y="217.910673" width="807.440627" height="807.440627" fill="#ffffff"/>
   <g class="outlined">
     <defs>
       <clipPath id="kody-favicon-outlined-clip">

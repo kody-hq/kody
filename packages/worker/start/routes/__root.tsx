@@ -394,8 +394,16 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name="viewport" content={documentViewport} />
-				{/* Transparent PNGs (no padding): black for light OS chrome, white
-				    for dark. Uses prefers-color-scheme, not the in-app theme. */}
+				{/* Full-bleed solid tiles, mark edge to edge: outlined black mark on
+				    white for light OS chrome, solid white mark on black for dark.
+				    The SVG switches with an embedded prefers-color-scheme query, the
+				    PNGs by media, and the ICO and apple-touch fallbacks use the
+				    dark tile. Follows the OS preference, not the in-app theme. */}
+				<link
+					rel="icon"
+					type="image/svg+xml"
+					href={publicAsset('/favicon.svg')}
+				/>
 				<link
 					rel="icon"
 					type="image/png"

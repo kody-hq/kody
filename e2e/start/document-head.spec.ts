@@ -48,7 +48,7 @@ test('SSR preserves document metadata and critical resource ordering', async ({
 			).toHaveAttribute('sizes', '180x180')
 			await expect(
 				page.locator('head link[rel="icon"][type="image/svg+xml"]'),
-			).toHaveCount(0)
+			).toHaveAttribute('href', '/favicon.svg')
 			await expect(page.locator('head link[rel="manifest"]')).toHaveAttribute(
 				'href',
 				'/site.webmanifest',

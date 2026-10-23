@@ -19,7 +19,10 @@ export const Route = createFileRoute('/community')({
 		shell: { gutters: 'page' },
 	},
 	validateSearch: (search: Record<string, unknown>) => search,
-	context: ({ location, context }) => {
+	// beforeLoad reruns on every navigation. Route `context` is cached per
+	// match, and search-only filter changes keep the same match, so a
+	// `context` read would keep the first query input after a search submit.
+	beforeLoad: ({ location, context }) => {
 		const pageQueryInput = communityReadInput(location.searchStr)
 		return {
 			pageQueryInput,

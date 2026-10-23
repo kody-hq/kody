@@ -142,6 +142,9 @@ test('community scoring and search rank listings and filter by query', async () 
 		['github', githubDocument, true],
 		['github', buildCommunityListingSearchDocument(mealListing), false],
 		['zzqqxxy', githubDocument, false],
+		['photofklsdafj', githubDocument, false],
+		['triag', githubDocument, true],
+		['gi', githubDocument, false],
 	]
 	for (const [query, document, expected] of matchCases) {
 		expect(isCommunityListingSearchMatch({ query, document })).toBe(expected)
@@ -171,7 +174,13 @@ test('community scoring and search rank listings and filter by query', async () 
 	expect(mealResults.map((listing) => listing.kodyId)).toEqual(['meal-planner'])
 	expect(mealResults[0]?.relevance).toBeGreaterThanOrEqual(0.2)
 
-	for (const query of ['zzqqxxy', 'text to speech audio narration']) {
+	for (const query of [
+		'zzqqxxy',
+		'text to speech audio narration',
+		// Nonsense from a real report: hash embeddings used to let unrelated
+		// listings through for queries like this.
+		'photofklsdafj',
+	]) {
 		expect({ query, results: await search({ query }) }).toEqual({
 			query,
 			results: [],
@@ -238,5 +247,32 @@ test('community search resultFilter applies before limiting', async () => {
 	})
 	expect(providerFiltered.map((listing) => listing.id)).toEqual([
 		'real-provider-listing',
+	])
+})
+
+test('community search returns nothing for nonsense across a large catalog', async () => {
+	// Many unrelated listings: any vector-noise gate lets a few through.
+	const catalog = Array.from({ length: 300 }, (_, index) =>
+		githubListing({
+			id: `listing-${index}`,
+			kodyId: `helper-${index}`,
+			name: `@owner/helper-${index}`,
+			description: `Helper number ${index} for calendars, email, and files`,
+			tags: ['helper', `tag${index}`],
+			searchText: `helper ${index} automation`,
+			readmeContent: `# Helper ${index}\n\nAutomates everyday work.`,
+		}),
+	)
+	mockListings(catalog, {})
+	for (const query of ['photofklsdafj', 'zzqqxxnope', 'qwrtplkjh']) {
+		expect({ query, results: await search({ query }) }).toEqual({
+			query,
+			results: [],
+		})
+	}
+	// A partial word still finds real matches.
+	mockListings([githubListing(), mealListing], {})
+	expect((await search({ query: 'grocer' })).map((l) => l.kodyId)).toEqual([
+		'meal-planner',
 	])
 })

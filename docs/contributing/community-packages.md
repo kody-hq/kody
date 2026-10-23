@@ -447,8 +447,12 @@ cross-scope static imports or foreign `kody.dependencies` entries
 
 1. Build a search document from name, package name leaf, description, tags,
    search text, and a README snippet. Category filters apply after scoring.
-2. Score with the same lexical + deterministic-embedding blend used for
-   capability search (`blendLexicalAndVectorScore`, `deterministicEmbedding`).
+2. Score query terms against that document (`scoreCommunityListingSearch`): an
+   exact term counts 1, a term of 3+ characters inside a longer word counts 0.5,
+   and relevance is the mean. Listings under 0.2 are dropped, so a query with no
+   matching term returns no results. There is no vector component: the
+   hash-based deterministic embedding is not semantic and let unrelated listings
+   through for nonsense queries.
 3. Multiply by a **Bayesian average** of star ratings:
 
    prior mean **3.25**, prior weight **5**
