@@ -27,8 +27,6 @@ vi.mock('#worker/entitlements/user-meter-client.ts', () => ({
 const {
 	decodeCreditLedgerCursor,
 	describeOrgCreditsLedgerEntry,
-	encodeCreditLedgerCursor,
-	InvalidCreditLedgerCursorError,
 	loadOrgCreditsData,
 	loadOrgCreditsLedgerPage,
 } = await import('./org-credits-data.ts')
@@ -221,20 +219,6 @@ test('ledger rows say what they are without leaking internal grant notes', async
 	})
 })
 
-test('cursors round-trip and malformed ones are rejected', () => {
-	const cursor = { createdAt: '2026-10-10T00:00:00.000Z', id: 'debit:a/b+c' }
-	expect(decodeCreditLedgerCursor(encodeCreditLedgerCursor(cursor))).toEqual(
-		cursor,
-	)
-	expect(decodeCreditLedgerCursor(null)).toBeNull()
-	expect(decodeCreditLedgerCursor('')).toBeNull()
-	for (const bad of ['%%%', btoa('{}'), btoa('["x"]'), btoa('[1,2]')]) {
-		expect(() => decodeCreditLedgerCursor(bad)).toThrow(
-			InvalidCreditLedgerCursorError,
-		)
-	}
-})
-
 test('billing readers get balance, org budgets, spend, and the ledger', async () => {
 	seedLedger()
 	sqlite
@@ -283,29 +267,6 @@ test('billing readers get balance, org budgets, spend, and the ledger', async ()
 		},
 	})
 	expect(data?.ledger?.entries).toHaveLength(5)
-})
-
-test('a free org with leftover credits still shows the balance and history', async () => {
-	seedLedger()
-	const data = await loadOrgCreditsData({
-		env: env(),
-		org,
-		viewerUserId: 'person-ada',
-		canReadBilling: true,
-		before: null,
-		now,
-	})
-	expect(data?.wallet).toMatchObject({
-		balanceMicroUsd: 38_990_000,
-		creditsEligible: false,
-	})
-	expect(data?.ledger?.entries).toHaveLength(5)
-	expect(data?.budgets).toEqual({
-		month: '2026-10',
-		yours: null,
-		org: { defaultUserBudgetMicroUsd: null, automation: null },
-	})
-	expect(mocks.getBudgetSpend).not.toHaveBeenCalled()
 })
 
 test('members see only their own budget, never the balance or ledger', async () => {

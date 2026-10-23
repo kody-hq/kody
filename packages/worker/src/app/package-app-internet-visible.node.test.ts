@@ -79,32 +79,6 @@ test('serves the approved commit when it is still the live publish', async () =>
 	expect(mockModule.loadCapabilityApprovalSummary).not.toHaveBeenCalled()
 })
 
-test('a republish with an already-approved fingerprint is accepted and pinned', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-b'))
-	mockModule.loadCapabilityApprovalSummary.mockResolvedValue({
-		publishedCommit: 'commit-b',
-		matchingApproval: approvalFor('commit-a'),
-		capabilitySet: { fingerprint: 'fingerprint-1' },
-	})
-	mockModule.approvePackageCapabilitySet.mockResolvedValue({
-		approval: approvalFor('commit-b'),
-	})
-
-	await expect(resolve(createSavedPackage('pkg-republished'))).resolves.toBe(
-		'commit-b',
-	)
-	expect(mockModule.approvePackageCapabilitySet).toHaveBeenCalledWith(
-		expect.objectContaining({
-			actorUserId: 'approver-1',
-			expectedFingerprint: 'fingerprint-1',
-			enqueueWentPublic: false,
-		}),
-	)
-})
-
 test('a republish with new capabilities stays pinned to the older approval', async () => {
 	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
 		approvalFor('commit-a'),

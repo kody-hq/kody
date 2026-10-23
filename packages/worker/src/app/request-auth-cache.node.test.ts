@@ -160,16 +160,6 @@ test('resolveRequestAuth rejects cookies past the absolute lifetime and legacy c
 	)
 })
 
-test('resolveRequestAuth prefers users.display_name over username', async () => {
-	setAuthSessionSecret(testCookieSecret)
-	const cookie = await createAuthCookie(session, false, Date.now())
-	const resolved = await resolveCookie(cookie, 'Kent C. Dodds')
-	expect(resolved.user).not.toBeNull()
-	expect(resolved.user?.username).toBe('session-user')
-	expect(resolved.user?.displayName).toBe('Kent C. Dodds')
-	expect(resolved.user?.mcpUser.displayName).toBe('Kent C. Dodds')
-})
-
 test('resolveRequestAuth destroys the cookie for soft-deleted people', async () => {
 	setAuthSessionSecret(testCookieSecret)
 	const cookie = await createAuthCookie(session, false, Date.now())

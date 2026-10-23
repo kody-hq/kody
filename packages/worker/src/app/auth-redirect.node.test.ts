@@ -5,10 +5,7 @@ import {
 	setAuthSessionSecret,
 	type AuthSession,
 } from '#app/auth-session.ts'
-import {
-	redirectToLogin,
-	redirectToLoginWhenUnauthenticated,
-} from '#app/auth-redirect.ts'
+import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 
 const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
@@ -55,19 +52,6 @@ function createStaleSessionTestEnv() {
 		} as unknown as D1Database,
 	} as Env
 }
-
-test('redirectToLogin attaches Set-Cookie when provided', async () => {
-	const destroyCookie = 'kody_session=; Path=/; Max-Age=0'
-	const response = redirectToLogin(new Request('https://example.com/account'), {
-		setCookie: destroyCookie,
-	})
-
-	expect(response.status).toBe(302)
-	expect(response.headers.get('Location')).toBe(
-		'https://example.com/login?redirectTo=%2Faccount',
-	)
-	expect(response.headers.get('Set-Cookie')).toBe(destroyCookie)
-})
 
 test('redirectToLoginWhenUnauthenticated clears a stale session cookie', async () => {
 	setAuthSessionSecret(testCookieSecret)

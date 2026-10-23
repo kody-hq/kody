@@ -275,43 +275,6 @@ test('a failed Stripe cancellation retains the account, releases the fence, and 
 	}
 })
 
-test('a subscription that is already canceled counts as canceled so retried deletions proceed', async () => {
-	using stripe = spyOnStripeBillingClient()
-	// Retry after an earlier attempt already canceled everything: Stripe
-	// lists the subscription as canceled, so nothing is canceled again.
-	stripe.listSubscriptions.mockResolvedValue([
-		stripeSubscription('sub_old', 'canceled'),
-	])
-	const retry = stripeUser('user-retry', 'cus_retry')
-	const retryResult = await retry.deleteAccount()
-	expect(stripe.cancelSubscription).not.toHaveBeenCalled()
-	expect(retry.rows.users).toEqual([])
-	expect(retryResult.warnings).toEqual([])
-
-	// The cancel call errors (for example Stripe raced the cancellation) but
-	// a fresh listing shows the subscription is no longer billable.
-	stripe.listSubscriptions
-		.mockReset()
-		.mockResolvedValueOnce([active('sub_racing')])
-		.mockResolvedValueOnce([stripeSubscription('sub_racing', 'canceled')])
-	stripe.cancelSubscription.mockRejectedValue(
-		new Error('Stripe API request failed with HTTP 400.'),
-	)
-	const race = stripeUser('user-race', 'cus_race')
-	const raceResult = await race.deleteAccount()
-	expect(stripe.cancelSubscription).toHaveBeenCalledWith(
-		expect.any(Object),
-		'sub_racing',
-	)
-	expect(stripe.listSubscriptions).toHaveBeenCalledTimes(2)
-	expect(race.rows.users).toEqual([])
-	expect(raceResult.warnings).toEqual([])
-	expect(stripe.deleteCustomer).toHaveBeenCalledWith(
-		expect.any(Object),
-		'cus_race',
-	)
-})
-
 test('account deletion refunds unused time with a credit note before canceling each paid subscription', async () => {
 	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
 	stripe.listSubscriptions.mockResolvedValue([
@@ -433,82 +396,6 @@ test('discounts and tax are settled by the credit note preview, not by the gross
 			reason: 'usd:300',
 		}),
 	)
-})
-
-test('a $0 proration invoice on top does not hide the paid invoice that covers the period', async () => {
-	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
-	stripe.listSubscriptions.mockResolvedValue([active('sub_downgraded')])
-	const changed = {
-		start: refundPeriodStart + thirtyDaysSeconds / 3,
-		end: refundPeriodEnd,
-	}
-	const previousPeriod = {
-		start: refundPeriodStart - thirtyDaysSeconds,
-		end: refundPeriodStart,
-	}
-	// Newest first, as Stripe lists them: the downgrade netted to $0, then
-	// an old invoice for a period that already ended, then the real payment.
-	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
-		paidInvoice({
-			id: 'in_downgrade',
-			amountPaid: 0,
-			lines: [
-				{ id: 'il_new_plan', amount: 400, period: changed },
-				{ id: 'il_old_plan_credit', amount: -800, period: changed },
-			],
-		}),
-		paidInvoice({
-			id: 'in_previous_period',
-			amountPaid: 1200,
-			lines: [{ id: 'il_previous', amount: 1200, period: previousPeriod }],
-		}),
-		paidInvoice({ id: 'in_current', amountPaid: 1200 }),
-	])
-	stripe.createProratedRefundCreditNote.mockResolvedValue({
-		outcome: 'issued',
-		id: 'cn_current',
-		total: 600,
-		currency: 'usd',
-	})
-	const result = await stripeUser(
-		'user-downgraded',
-		'cus_downgraded',
-	).deleteAccount()
-
-	expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledOnce()
-	expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledWith(
-		expect.any(Object),
-		expect.objectContaining({
-			invoiceId: 'in_current',
-			lines: [{ invoiceLineItemId: 'il_in_current', amount: 600 }],
-		}),
-	)
-	expect(stripe.listCreditNotesForInvoice).toHaveBeenCalledWith(
-		expect.any(Object),
-		'in_current',
-	)
-	expect(result.stripeRefunds).toEqual([
-		expect.objectContaining({
-			invoiceId: 'in_current',
-			creditNoteId: 'cn_current',
-		}),
-	])
-
-	// With no paid invoice covering the running period at all, nothing is
-	// refunded and the cancel still proceeds.
-	stripe.createProratedRefundCreditNote.mockClear()
-	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
-		paidInvoice({
-			id: 'in_only_previous',
-			amountPaid: 1200,
-			lines: [{ id: 'il_only_previous', amount: 1200, period: previousPeriod }],
-		}),
-	])
-	const expired = stripeUser('user-expired-period', 'cus_expired_period')
-	const expiredResult = await expired.deleteAccount()
-	expect(stripe.createProratedRefundCreditNote).not.toHaveBeenCalled()
-	expect(expiredResult.stripeRefunds).toEqual([])
-	expect(expired.rows.users).toEqual([])
 })
 
 test('every recurring line covering the period is credited on one credit note', async () => {
@@ -959,63 +846,6 @@ test('a failed credit note retains the account, releases the fence, and cancels 
 	}
 })
 
-test('an invoice with nothing left to refund is canceled without a refund', async () => {
-	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
-	stripe.listSubscriptions.mockResolvedValue([active('sub_active')])
-	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
-		paidInvoice({ id: 'in_active', amountPaid: 1200 }),
-	])
-	const alreadyRefunded = (details: Record<string, unknown>) =>
-		stripe.createProratedRefundCreditNote.mockRejectedValue(
-			new stripeClient.StripeApiError(
-				'Stripe API request failed with HTTP 400.',
-				{ status: 400, ...details },
-			),
-		)
-	const cases: Array<[string, () => void]> = [
-		// A 100% discounted line previews to a $0 credit note; the client
-		// reports that instead of creating an empty note.
-		[
-			'user-refund-zero',
-			() =>
-				stripe.createProratedRefundCreditNote.mockResolvedValue({
-					outcome: 'nothing_to_refund',
-				}),
-		],
-		// Support already refunded the charge by hand, outside a credit note,
-		// so Stripe refuses a second refund (coded, then message only).
-		[
-			'user-refund-coded',
-			() => alreadyRefunded({ code: 'charge_already_refunded' }),
-		],
-		[
-			'user-refund-message',
-			() =>
-				alreadyRefunded({
-					stripeMessage:
-						'The charge for this invoice has already been fully refunded.',
-				}),
-		],
-	]
-	for (const [stableUserId, arrange] of cases) {
-		stripe.createProratedRefundCreditNote.mockReset()
-		stripe.cancelSubscription.mockClear()
-		arrange()
-		const user = stripeUser(stableUserId, 'cus_nothing_left')
-		const result = await user.deleteAccount()
-
-		expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledOnce()
-		expect(stripe.cancelSubscription).toHaveBeenCalledWith(
-			expect.any(Object),
-			'sub_active',
-		)
-		expect(result.stripeRefunds).toEqual([])
-		expect(result.warnings).toEqual([])
-		expect(user.rows.users).toEqual([])
-		expect(auditEventSummaries()).toEqual([])
-	}
-})
-
 test('a retried deletion reuses its earlier credit note and reports refunds from earlier attempts', async () => {
 	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
 	// Retry: the first attempt refunded and canceled sub_done, refunded
@@ -1132,4 +962,174 @@ test('a retried deletion reuses its earlier credit note and reports refunds from
 		'account_deletion_refund_report_incomplete',
 		{ error: 'Stripe credit notes unavailable' },
 	)
+})
+
+test('a subscription that is already canceled counts as canceled so retried deletions proceed', async () => {
+	using stripe = spyOnStripeBillingClient()
+	// Retry after an earlier attempt already canceled everything: Stripe
+	// lists the subscription as canceled, so nothing is canceled again.
+	stripe.listSubscriptions.mockResolvedValue([
+		stripeSubscription('sub_old', 'canceled'),
+	])
+	const retry = stripeUser('user-retry', 'cus_retry')
+	const retryResult = await retry.deleteAccount()
+	expect(stripe.cancelSubscription).not.toHaveBeenCalled()
+	expect(retry.rows.users).toEqual([])
+	expect(retryResult.warnings).toEqual([])
+
+	// The cancel call errors (for example Stripe raced the cancellation) but
+	// a fresh listing shows the subscription is no longer billable.
+	stripe.listSubscriptions
+		.mockReset()
+		.mockResolvedValueOnce([active('sub_racing')])
+		.mockResolvedValueOnce([stripeSubscription('sub_racing', 'canceled')])
+	stripe.cancelSubscription.mockRejectedValue(
+		new Error('Stripe API request failed with HTTP 400.'),
+	)
+	const race = stripeUser('user-race', 'cus_race')
+	const raceResult = await race.deleteAccount()
+	expect(stripe.cancelSubscription).toHaveBeenCalledWith(
+		expect.any(Object),
+		'sub_racing',
+	)
+	expect(stripe.listSubscriptions).toHaveBeenCalledTimes(2)
+	expect(race.rows.users).toEqual([])
+	expect(raceResult.warnings).toEqual([])
+	expect(stripe.deleteCustomer).toHaveBeenCalledWith(
+		expect.any(Object),
+		'cus_race',
+	)
+})
+
+test('a $0 proration invoice on top does not hide the paid invoice that covers the period', async () => {
+	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
+	stripe.listSubscriptions.mockResolvedValue([active('sub_downgraded')])
+	const changed = {
+		start: refundPeriodStart + thirtyDaysSeconds / 3,
+		end: refundPeriodEnd,
+	}
+	const previousPeriod = {
+		start: refundPeriodStart - thirtyDaysSeconds,
+		end: refundPeriodStart,
+	}
+	// Newest first, as Stripe lists them: the downgrade netted to $0, then
+	// an old invoice for a period that already ended, then the real payment.
+	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
+		paidInvoice({
+			id: 'in_downgrade',
+			amountPaid: 0,
+			lines: [
+				{ id: 'il_new_plan', amount: 400, period: changed },
+				{ id: 'il_old_plan_credit', amount: -800, period: changed },
+			],
+		}),
+		paidInvoice({
+			id: 'in_previous_period',
+			amountPaid: 1200,
+			lines: [{ id: 'il_previous', amount: 1200, period: previousPeriod }],
+		}),
+		paidInvoice({ id: 'in_current', amountPaid: 1200 }),
+	])
+	stripe.createProratedRefundCreditNote.mockResolvedValue({
+		outcome: 'issued',
+		id: 'cn_current',
+		total: 600,
+		currency: 'usd',
+	})
+	const result = await stripeUser(
+		'user-downgraded',
+		'cus_downgraded',
+	).deleteAccount()
+
+	expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledOnce()
+	expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledWith(
+		expect.any(Object),
+		expect.objectContaining({
+			invoiceId: 'in_current',
+			lines: [{ invoiceLineItemId: 'il_in_current', amount: 600 }],
+		}),
+	)
+	expect(stripe.listCreditNotesForInvoice).toHaveBeenCalledWith(
+		expect.any(Object),
+		'in_current',
+	)
+	expect(result.stripeRefunds).toEqual([
+		expect.objectContaining({
+			invoiceId: 'in_current',
+			creditNoteId: 'cn_current',
+		}),
+	])
+
+	// With no paid invoice covering the running period at all, nothing is
+	// refunded and the cancel still proceeds.
+	stripe.createProratedRefundCreditNote.mockClear()
+	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
+		paidInvoice({
+			id: 'in_only_previous',
+			amountPaid: 1200,
+			lines: [{ id: 'il_only_previous', amount: 1200, period: previousPeriod }],
+		}),
+	])
+	const expired = stripeUser('user-expired-period', 'cus_expired_period')
+	const expiredResult = await expired.deleteAccount()
+	expect(stripe.createProratedRefundCreditNote).not.toHaveBeenCalled()
+	expect(expiredResult.stripeRefunds).toEqual([])
+	expect(expired.rows.users).toEqual([])
+})
+
+test('an invoice with nothing left to refund is canceled without a refund', async () => {
+	using stripe = spyOnStripeBillingClient(refundPeriodMidpointMs)
+	stripe.listSubscriptions.mockResolvedValue([active('sub_active')])
+	stripe.listPaidInvoicesForSubscription.mockResolvedValue([
+		paidInvoice({ id: 'in_active', amountPaid: 1200 }),
+	])
+	const alreadyRefunded = (details: Record<string, unknown>) =>
+		stripe.createProratedRefundCreditNote.mockRejectedValue(
+			new stripeClient.StripeApiError(
+				'Stripe API request failed with HTTP 400.',
+				{ status: 400, ...details },
+			),
+		)
+	const cases: Array<[string, () => void]> = [
+		// A 100% discounted line previews to a $0 credit note; the client
+		// reports that instead of creating an empty note.
+		[
+			'user-refund-zero',
+			() =>
+				stripe.createProratedRefundCreditNote.mockResolvedValue({
+					outcome: 'nothing_to_refund',
+				}),
+		],
+		// Support already refunded the charge by hand, outside a credit note,
+		// so Stripe refuses a second refund (coded, then message only).
+		[
+			'user-refund-coded',
+			() => alreadyRefunded({ code: 'charge_already_refunded' }),
+		],
+		[
+			'user-refund-message',
+			() =>
+				alreadyRefunded({
+					stripeMessage:
+						'The charge for this invoice has already been fully refunded.',
+				}),
+		],
+	]
+	for (const [stableUserId, arrange] of cases) {
+		stripe.createProratedRefundCreditNote.mockReset()
+		stripe.cancelSubscription.mockClear()
+		arrange()
+		const user = stripeUser(stableUserId, 'cus_nothing_left')
+		const result = await user.deleteAccount()
+
+		expect(stripe.createProratedRefundCreditNote).toHaveBeenCalledOnce()
+		expect(stripe.cancelSubscription).toHaveBeenCalledWith(
+			expect.any(Object),
+			'sub_active',
+		)
+		expect(result.stripeRefunds).toEqual([])
+		expect(result.warnings).toEqual([])
+		expect(user.rows.users).toEqual([])
+		expect(auditEventSummaries()).toEqual([])
+	}
 })

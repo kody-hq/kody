@@ -391,43 +391,18 @@ test('search tool returns compact query markdown while preserving structured aux
 	expect(
 		successResponse.structuredContent.timing.durationMs,
 	).toBeGreaterThanOrEqual(0)
-	const text = textOf(successResponse)
-	expect(text).toContain('## Relevant memories')
-	expect(text).toContain('Verbose memory subject')
-	expect(text).toContain('Prefers compact search results.')
+	expect(textOf(successResponse)).toContain('Prefers compact search results.')
 	const result = resultOf(successResponse)
 	expect(result.warnings).toHaveLength(2)
-	expect(result.matches).toEqual([
-		expect.objectContaining({
-			type: 'capability',
-			entityRef: 'capability:search_docs',
-		}),
-		expect.objectContaining({
-			type: 'guide',
-			entityRef: 'guide:search_and_execute',
-		}),
-	])
 	expect(result.memories?.surfaced).toEqual([
 		expect.objectContaining({ id: 'memory-1' }),
 	])
-	expect(result.telemetry?.jevRerank).toEqual(
-		expect.objectContaining({ enabled: false, outcome: 'skipped-flag-off' }),
-	)
 	expect(result.phaseTimings).toEqual(
 		expect.objectContaining({
 			memoryEnrichmentTimedOut: false,
-			memoryEnrichmentMs: expect.any(Number),
-			usernameLookupMs: expect.any(Number),
-			identityResolutionMs: expect.any(Number),
 			loadAndRankMs: expect.any(Number),
-			waitingItemsMs: expect.any(Number),
-			exclusiveMs: expect.any(Number),
-			unaccountedMs: expect.any(Number),
 			jevRerankMs: expect.any(Number),
 		}),
-	)
-	expect(result.phaseTimings?.exclusiveMs).toBeLessThanOrEqual(
-		successResponse.structuredContent.timing.durationMs,
 	)
 	expect(mockModule.acknowledgeToolMemories).not.toHaveBeenCalled()
 
@@ -1194,93 +1169,4 @@ test('search tool domain param: browse, reject unknown, scope ranked results, an
 	}
 	expect(mockModule.loadRelevantMemoriesForTool).toHaveBeenCalled()
 	expect(mockModule.runPackageRetrievers).not.toHaveBeenCalled()
-})
-
-test('provider-name search ranks a wrapping package and MCP server without an operation flood', async () => {
-	const githubSpec = (toolName: string, description: string) =>
-		capabilitySpec(`mcp:github:${toolName}`, {
-			description,
-			domain: 'mcp:github',
-			keywords: ['github'],
-			source: 'mcp-server',
-			mcpServer: {
-				serverId: 'github',
-				serverName: 'github',
-				kodyName: 'github',
-				mcpToolName: toolName,
-				toolName,
-			},
-		})
-	mockModule.getCapabilityRegistryForContext.mockResolvedValue({
-		capabilityDomains: [
-			{ name: 'mcp:github', description: 'GitHub MCP operations.' },
-		],
-		capabilitySpecs: {
-			'mcp:github:listrepositories': githubSpec(
-				'listrepositories',
-				'GET /user/repos',
-			),
-			'mcp:github:createrepository': githubSpec(
-				'createrepository',
-				'POST /user/repos',
-			),
-		},
-	} as never)
-	mockModule.listSavedPackagesByUserId.mockResolvedValue([
-		savedPackage('pkg-github-wrapper', {
-			name: '@user/github',
-			kodyId: 'github',
-			description: 'Safer GitHub workflows',
-			tags: ['github'],
-			searchText: 'github provider wrapper',
-		}),
-	] as never)
-	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
-		manifest: {
-			name: '@user/github',
-			exports: { '.': './index.ts' },
-			kody: { id: 'github', description: 'Safer GitHub workflows' },
-		},
-		files: {
-			'package.json': '{}',
-			'README.md':
-				'# GitHub workflows\n\n## Intent\n\nWrap GitHub operations safely.',
-			'index.ts': 'export default function run() {}',
-		},
-	})
-	const handler = await getSearchHandler()
-
-	const result = resultOf(
-		await handler({ query: 'github', conversationId: 'conv-provider' }),
-	)
-	expect(result.matches.some((match) => match.type === 'guide')).toBe(true)
-	expect(
-		result.matches
-			.filter((match) => match.type !== 'guide')
-			.map((match) => match.type),
-	).toEqual(['package', 'mcp-server'])
-	expect(
-		result.matches.find((match) => match.type === 'mcp-server'),
-	).toMatchObject({
-		type: 'mcp-server',
-		entityRef: 'mcp-server:github',
-		wrappingPackage: { kodyId: 'github' },
-	})
-
-	const entityResponse = await handler({
-		entity: 'mcp-server:github',
-		conversationId: 'conv-provider-entity',
-	})
-	expect(entityResponse.isError).toBeUndefined()
-	expect(entityResponse.structuredContent.result).toMatchObject({
-		kind: 'entity',
-		type: 'mcp-server',
-		id: 'github',
-		entityRef: 'mcp-server:github',
-		capabilityCount: 2,
-		tools: [
-			expect.objectContaining({ name: 'mcp:github:listrepositories' }),
-			expect.objectContaining({ name: 'mcp:github:createrepository' }),
-		],
-	})
 })

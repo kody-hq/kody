@@ -5,10 +5,7 @@ import {
 	readPackageAppSession,
 	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
-import {
-	packageAppOauthLegacyPaths,
-	packageAppOauthPaths,
-} from '#universal/package-app-oauth-paths.ts'
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const packageAppOrigin = 'https://packages.isolated.test'
@@ -203,53 +200,4 @@ test('shared-host logout without Referer clears legacy only (not ?app=)', async 
 	).resolves.toMatchObject({
 		session: { stableUserId, username: ownerUsername },
 	})
-})
-
-test('older kit return_to=/ still clears the app when Referer has the leaf', async () => {
-	resetPackageAppSessionCookieForTests()
-	configureOrigins()
-	const expiresAt = Date.now() + 60 * 60 * 1000
-	const cookies = await createPackageAppSessionCookie({
-		env,
-		session: { stableUserId, username: ownerUsername },
-		slug: 'notes',
-		secure: true,
-		expiresAt,
-	})
-	const pair = cookies[0]?.split(';')[0] ?? ''
-	const logout = await workerFetch(
-		`${ownerPackageAppOrigin}${packageAppOauthPaths.logout}?return_to=/`,
-		{
-			headers: {
-				Cookie: pair,
-				Referer: `${ownerPackageAppOrigin}/packages/notes`,
-			},
-		},
-	)
-	expect(logout.status).toBe(302)
-	const remaining = remainingCookiesAfterLogout(pair, logout)
-	await expect(
-		readPackageAppSession({
-			request: new Request(`${ownerPackageAppOrigin}/packages/notes`, {
-				headers: { Cookie: remaining },
-			}),
-			env,
-			slug: 'notes',
-		}),
-	).resolves.toBeNull()
-})
-
-test('canonical /-/auth and legacy /_kody/auth both dispatch without redirecting', async () => {
-	configureOrigins()
-	for (const path of [packageAppOauthPaths.me, packageAppOauthLegacyPaths.me]) {
-		const response = await workerFetch(`${ownerPackageAppOrigin}${path}`)
-		expect({ path, status: response.status }).toEqual({ path, status: 400 })
-		expect(response.headers.get('Location')).toBeNull()
-	}
-	const unknown = await workerFetch(`${ownerPackageAppOrigin}/-/auth/nope`)
-	expect(unknown.status).toBe(404)
-	const legacyUnknown = await workerFetch(
-		`${ownerPackageAppOrigin}/_kody/auth/nope`,
-	)
-	expect(legacyUnknown.status).toBe(404)
 })

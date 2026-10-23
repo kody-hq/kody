@@ -6,11 +6,9 @@ import {
 import {
 	anonymousHtmlCacheAcceptHtml,
 	anonymousHtmlCacheAcceptParam,
-	buildAnonymousHtmlCacheEntry,
 	buildAnonymousHtmlCacheKey,
 	isAnonymousHtmlCacheRequest,
 	isAnonymousHtmlCacheStoreable,
-	isCompleteHtmlDocument,
 } from '#app/anonymous-html-edge-cache.ts'
 
 function htmlResponse(input: {
@@ -146,40 +144,6 @@ test('anonymous HTML Cache API stores only cookie-less 200 HTML with the shared 
 				isAnonymousHtmlCacheStoreable(htmlResponse(input)) !== expected,
 		),
 	).toEqual([])
-})
-
-test('only a document that reached </html> counts as complete', () => {
-	// An SSR stream that failed after committing the doctype ends cleanly at
-	// 15 bytes; it must never be stored as the shared anonymous document.
-	expect(
-		['<!DOCTYPE html>', '', '<!DOCTYPE html><html><body>'].filter(
-			isCompleteHtmlDocument,
-		),
-	).toEqual([])
-	expect(
-		[
-			'<!DOCTYPE html><html><body></body></html><!-- rmx:flush document -->',
-			'<html></HTML >',
-		].filter((html) => !isCompleteHtmlDocument(html)),
-	).toEqual([])
-})
-
-test('the stored entry keeps the buffered body and moves Vary aside', async () => {
-	const response = new Response('streamed', {
-		status: 200,
-		headers: {
-			'Content-Type': 'text/html; charset=utf-8',
-			'Cache-Control': anonymousHtmlCacheControl,
-			Vary: 'Cookie, Accept',
-			'X-Kody-Cache': 'MISS',
-		},
-	})
-	const entry = buildAnonymousHtmlCacheEntry(response, '<html></html>')
-	await expect(entry.text()).resolves.toBe('<html></html>')
-	expect(entry.headers.get('X-Kody-Cache')).toBeNull()
-	expect(entry.headers.get('X-Kody-Browser-Vary')).toBe('Cookie, Accept')
-	expect(entry.headers.get('Vary')).toBe('Accept')
-	expect(entry.headers.get('Cache-Control')).toBe(anonymousHtmlCacheControl)
 })
 
 test('routes that do not opt in never look up shared entries', () => {

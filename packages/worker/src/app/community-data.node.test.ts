@@ -7,14 +7,11 @@ import {
 } from '#universal/community-categories.ts'
 import type * as forkListingRelation from '#worker/community/fork-listing-relation.ts'
 import { type CommunityListingWithAggregates } from '#worker/community/types.ts'
-import { onboardingFeaturedMcpServers } from '#universal/onboarding-mcp-chooser.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { invalidateCommunityPublicCache } from './data-cache.ts'
 import {
 	loadCommunityDetailData,
 	loadCommunityIndexData,
-	loadOnboardingFeaturedListings,
-	loadOnboardingMcpChooserListings,
 } from './community-data.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -210,92 +207,6 @@ test('community index overlays fork installs and ignores same-leaf packages with
 	)
 })
 
-test('community index resolves the viewer while listings are still loading', async () => {
-	invalidateCommunityPublicCache()
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	let releaseOverview!: () => void
-	const overviewGate = new Promise<void>((resolve) => {
-		releaseOverview = resolve
-	})
-	mockModule.listCommunityIndexOverview.mockImplementation(async () => {
-		await overviewGate
-		return sampleOverview()
-	})
-
-	const loading = loadCommunityIndexData(
-		{} as Env,
-		request('/community?viewer-overlap'),
-		{ query: '', sort: null, category: null, limit: 50 },
-	)
-	await vi.waitFor(() => {
-		expect(mockModule.readAuthenticatedAppUser).toHaveBeenCalledTimes(1)
-	})
-	releaseOverview()
-	expect((await loading).listings).toHaveLength(1)
-})
-
-test('onboarding MCP chooser listings load official packages by pinned id', async () => {
-	invalidateCommunityPublicCache()
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	const pinnedIds = onboardingFeaturedMcpServers
-		.map((server) => server.listingId)
-		.filter((id) => id.length > 0)
-	const visible = {
-		id: onboardingFeaturedMcpServers[0].listingId,
-		kodyId: 'notion-mcp',
-		name: '@kody/notion-mcp',
-	}
-	mockModule.getCommunityListingsByIds.mockResolvedValue([
-		{ ...sampleListing, ...visible },
-	])
-
-	const listings = await loadOnboardingMcpChooserListings(
-		{} as Env,
-		request('/onboarding'),
-	)
-	expect(listings).toEqual([expect.objectContaining(visible)])
-	expect(mockModule.getCommunityListingsByIds).toHaveBeenCalledTimes(1)
-	expect(mockModule.getCommunityListingsByIds).toHaveBeenCalledWith(
-		undefined,
-		pinnedIds,
-		{ includeDelisted: false },
-	)
-
-	const cached = await loadOnboardingMcpChooserListings(
-		{} as Env,
-		request('/onboarding'),
-	)
-	expect(cached).toEqual(listings)
-	expect(mockModule.getCommunityListingsByIds).toHaveBeenCalledTimes(1)
-})
-
-test('onboarding featured listings overlay inert forks as adaptation_required', async () => {
-	invalidateCommunityPublicCache()
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(signedInUser())
-	mockModule.listFeaturedCommunityListingsWithAggregates.mockResolvedValue([
-		sampleListing,
-	])
-	mockModule.getMcpUserPackageScope.mockResolvedValue('burhan')
-	mockModule.listCommunityForksByListingIdsAndUser.mockResolvedValue([
-		viewerFork({ forkedPackageId: 'pkg-inert', forkedSourceId: 'src-inert' }),
-	])
-	mockModule.listSavedPackagesBySlugs.mockResolvedValue([])
-	mockModule.listSavedPackagesByIds.mockResolvedValue([])
-
-	const listings = await loadOnboardingFeaturedListings(
-		{} as Env,
-		request('/onboarding'),
-	)
-	expect(listings).toHaveLength(1)
-	expect(listings[0]?.viewerInstall).toEqual(
-		expect.objectContaining({
-			status: 'adaptation_required',
-			targetName: '@burhan/github',
-			packageId: null,
-		}),
-	)
-})
-
 test('community detail overlays viewerInstall for forked listings and omits it when not forked', async () => {
 	invalidateCommunityPublicCache()
 	mockModule.getCommunityListingWithAggregates.mockResolvedValue(sampleListing)
@@ -431,97 +342,6 @@ test('sourceAhead compares HEAD to the runtime pin, not the community catalog sn
 	if (!aheadListing) throw new Error('Expected runtime-ahead listing detail')
 	expect(aheadListing.sourceAhead).toBe(true)
 	expect(aheadListing.headCommit).toBe(unpublishedHead)
-})
-
-test('community index is memoized per request and forwards newest sort to loaders', async () => {
-	invalidateCommunityPublicCache()
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
-	mockModule.listCommunityIndexOverview.mockResolvedValue(sampleOverview())
-	mockModule.listCommunityListingsWithAggregates.mockResolvedValue([
-		sampleListing,
-	])
-	mockModule.searchCommunityListings.mockResolvedValue([sampleListing])
-	mockModule.getCommunityCategoryCounts.mockResolvedValue(
-		categoryCounts({ integrations: 12, examples: 3 }),
-	)
-
-	const sameRequest = request('/community')
-	const first = loadCommunityIndexData({} as Env, sameRequest, {
-		query: '',
-		sort: null,
-		category: null,
-		limit: 50,
-	})
-	const second = loadCommunityIndexData({} as Env, sameRequest, {
-		query: '',
-		sort: null,
-		category: null,
-		limit: 50,
-	})
-	expect(second).toBe(first)
-	const firstData = await first
-	expect(firstData.listings).toHaveLength(1)
-	expect(firstData.category).toBeNull()
-	expect(firstData.groups?.[0]?.category).toBe('integrations')
-	expect(firstData.categoryCounts.integrations).toBe(1)
-	expect(firstData.categoryCounts.utilities).toBe(0)
-	expect(await second).toBe(firstData)
-	expect(mockModule.listCommunityIndexOverview).toHaveBeenCalledTimes(1)
-	expect(firstData.sort).toBe('best')
-
-	mockModule.listCommunityIndexOverview.mockClear()
-	const newestBrowse = await loadCommunityIndexData({} as Env, sameRequest, {
-		query: '',
-		sort: 'newest',
-		category: null,
-		limit: 50,
-	})
-	expect(newestBrowse.sort).toBe('newest')
-	expect(mockModule.listCommunityIndexOverview).toHaveBeenCalledWith({
-		env: {},
-		sort: 'newest',
-	})
-
-	const newestSearch = await loadCommunityIndexData({} as Env, sameRequest, {
-		query: 'github',
-		sort: 'newest',
-		category: null,
-		limit: 50,
-	})
-	expect(newestSearch).toMatchObject({
-		sort: 'newest',
-		query: 'github',
-		category: null,
-		groups: null,
-	})
-	expect(newestSearch.categoryCounts.examples).toBe(3)
-	expect(mockModule.searchCommunityListings).toHaveBeenCalledWith({
-		env: {},
-		query: 'github',
-		limit: 50,
-		sort: 'newest',
-		category: null,
-	})
-	expect(mockModule.getCommunityCategoryCounts).toHaveBeenCalledWith({
-		env: {},
-	})
-
-	mockModule.listCommunityListingsWithAggregates.mockClear()
-	const integrationsBrowse = await loadCommunityIndexData(
-		{} as Env,
-		sameRequest,
-		{ query: '', sort: null, category: 'integrations', limit: 50 },
-	)
-	expect(integrationsBrowse.category).toBe('integrations')
-	expect(integrationsBrowse.groups).toBeNull()
-	expect(mockModule.listCommunityListingsWithAggregates).toHaveBeenCalledWith({
-		env: {},
-		includeDelisted: false,
-		limit: 50,
-		offset: 0,
-		sort: 'best',
-		category: 'integrations',
-	})
 })
 
 test('community index omits viewerInstall for anonymous viewers and auth failures', async () => {

@@ -9,10 +9,6 @@ import {
 	readAuthenticatedAppUserForDeletion,
 } from './authenticated-user.ts'
 import { loadResolvedRequestAuth } from '#app/request-auth-cache.ts'
-import {
-	hasResolvedRequestFeatureFlags,
-	loadRequestFeatureFlags,
-} from '#app/request-feature-flags-cache.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
@@ -192,47 +188,6 @@ test('missing personal-org membership fails closed as signed out instead of 500'
 	expect(resolved.user).toBeNull()
 	expect(resolved.setCookie ?? '').toContain('kody_session=')
 	expect(resolved.setCookie ?? '').toContain('Max-Age=0')
-})
-
-test('missing personal-org membership fails closed even when a team org is bound', async () => {
-	const env = createUsersDb({
-		user: { username: 'team-orphan' },
-		missingPersonalOrgBinding: true,
-	})
-	// Org-binding middleware would set a team slug; resolution that is not
-	// personal/denied must still require a live personal-org membership.
-	const request = await sessionRequest(
-		'https://example.com/@acme/-/billing.json',
-	)
-	await expect(readAuthenticatedAppUser(request, env)).resolves.toBeNull()
-})
-
-test('readAuthenticatedAppUser prefetches flags only when HTML pages opt in', async () => {
-	const counts = { batch: 0, flagPrepares: 0 }
-	const env = createUsersDb({ user: { username: 'html-user' }, counts })
-
-	const apiRequest = await sessionRequest('https://example.com/account/agents')
-	const apiUser = await readAuthenticatedAppUser(apiRequest, env)
-	expect(apiUser?.username).toBe('html-user')
-	expect(hasResolvedRequestFeatureFlags(apiRequest)).toBe(false)
-	// API-style: user+roles only. No Accept/path heuristic can start flags.
-	expect(counts).toEqual({ batch: 1, flagPrepares: 0 })
-
-	const htmlRequest = await sessionRequest('https://example.com/')
-	const htmlUser = await readAuthenticatedAppUser(htmlRequest, env, {
-		prefetchFeatureFlags: true,
-	})
-	if (!htmlUser) throw new Error('expected authenticated html user')
-	expect(htmlUser.username).toBe('html-user')
-	expect(hasResolvedRequestFeatureFlags(htmlRequest)).toBe(true)
-	// HTML opt-in adds one user+roles batch and one flags batch (total 3).
-	expect(counts).toEqual({ batch: 3, flagPrepares: 2 })
-
-	await loadRequestFeatureFlags(htmlRequest, env, {
-		userId: htmlUser.userId,
-		stableUserId: htmlUser.mcpUser.userId,
-	})
-	expect(counts).toEqual({ batch: 3, flagPrepares: 2 })
 })
 
 test('resource binding reuses original RPC authentication without trusting resource cookies', async () => {

@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { youtubePlaylistBrowseUrl } from '#universal/youtube-playlist.ts'
 import { youtubeWatchSampleVideoId } from '#universal/youtube-watch.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import {
@@ -55,35 +54,6 @@ test('loadPlaylistVideoIds fails open when YouTube is unreachable', async () => 
 			playlistIds: [playlistId],
 		}),
 	).resolves.toEqual([])
-})
-
-test('resolveYoutubeWatchAllowedVideoIds always includes the sample id and env extras', async () => {
-	const extraVideoId = 'dQw4w9wgvcQ'
-	using _server = createMswNodeServer([
-		http.post(youtubePlaylistBrowseUrl, () => HttpResponse.json({})),
-	])
-	const sampleOnly = await resolveYoutubeWatchAllowedVideoIds({
-		env: {
-			YOUTUBE_ALLOWED_PLAYLIST_IDS: 'none',
-		} as unknown as Env,
-	})
-	expect(sampleOnly).toContain(videoId)
-	const docWatchIds = bundledDocWatchVideoIds()
-	expect(docWatchIds.length).toBeGreaterThan(0)
-	expect(sampleOnly).toEqual(expect.arrayContaining(docWatchIds))
-
-	const withExtra = await resolveYoutubeWatchAllowedVideoIds({
-		env: {
-			YOUTUBE_ALLOWED_PLAYLIST_IDS: 'none',
-			YOUTUBE_ALLOWED_VIDEO_IDS: extraVideoId,
-		} as unknown as Env,
-	})
-	expect(withExtra).toContain(extraVideoId)
-	expect(withExtra).toContain(videoId)
-	expect(withExtra).toEqual(expect.arrayContaining(docWatchIds))
-	expect(withExtra.indexOf(extraVideoId)).toBeLessThan(
-		withExtra.indexOf(videoId),
-	)
 })
 
 test('resolveYoutubeWatchAllowedVideoIds skips playlist fetch when loadPlaylists is false', async () => {

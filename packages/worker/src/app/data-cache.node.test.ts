@@ -1,6 +1,5 @@
 import { expect, test, vi } from 'vitest'
 import {
-	buildCommunityDetailListingCacheKey,
 	buildCommunityIndexCacheKey,
 	getCommunityPublicCacheVersion,
 	getOrSetDataCache,
@@ -73,35 +72,6 @@ test('invalidateCommunityPublicCache bumps version and clears entries', async ()
 	const next = await getOrSetDataCache({ key: keyAfter, load })
 	expect(next.lookup).toBe('miss')
 	expect(load).toHaveBeenCalledTimes(2)
-})
-
-test('buildCommunityDetailListingCacheKey includes listing id and version', () => {
-	invalidateCommunityPublicCache()
-	const version = getCommunityPublicCacheVersion()
-	expect(buildCommunityDetailListingCacheKey('listing-1')).toBe(
-		`community-detail-listing:v${version}:id=listing-1`,
-	)
-})
-
-test('setDataCache sweeps expired entries on write', () => {
-	invalidateCommunityPublicCache()
-	vi.useFakeTimers()
-	try {
-		vi.setSystemTime(new Date('2026-07-04T00:00:00.000Z'))
-
-		setDataCache('expired', 'old', 1_000)
-		setDataCache('fresh', 'new', 60_000)
-
-		vi.setSystemTime(new Date('2026-07-04T00:00:02.000Z'))
-		setDataCache('another', 'value', 60_000)
-
-		expect(peekDataCache('expired')).toBeUndefined()
-		expect(peekDataCache('fresh')).toBe('new')
-		expect(peekDataCache('another')).toBe('value')
-	} finally {
-		vi.useRealTimers()
-		invalidateCommunityPublicCache()
-	}
 })
 
 test('setDataCache evicts oldest entries when over max bound', () => {

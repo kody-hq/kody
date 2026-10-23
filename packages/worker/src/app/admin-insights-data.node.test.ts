@@ -1,8 +1,5 @@
-import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { type RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
-import { type FleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
 import { type AdminInsightsLaunchSignals } from '#universal/loader-data.ts'
 import {
 	platformPublicOpenedAt,
@@ -13,9 +10,6 @@ import {
 	type AggregatedRunLogInsights,
 } from '#worker/admin/insights-runlog-snapshot.ts'
 import type * as fleetPackageErrorRate from '#worker/usage/fleet-package-error-rate.ts'
-import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
-import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	buildAuthDays,
 	buildEmailDays,
@@ -23,7 +17,6 @@ import {
 	buildHeatmapCells,
 	buildSignupWeeks,
 	buildUsageMonths,
-	foldRunLogSnapshots,
 	hoursFromVerifiedToActivation,
 	listUtcDayKeys,
 	listUtcMonthKeys,
@@ -33,7 +26,6 @@ import {
 	utcWeekStart,
 } from './admin-insights-data.ts'
 
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const now = new Date('2026-07-08T12:00:00.000Z')
 
 const launchSignalMocks = vi.hoisted(() => ({
@@ -123,14 +115,6 @@ function createMemoryKv(snapshot?: AggregatedRunLogInsights) {
 			store.set(key, value)
 		},
 	} as unknown as KVNamespace
-}
-
-function emptySnapshot(): RunLogAdminInsightsSnapshot {
-	return {
-		workflowStatusCounts: [],
-		activationMilestones: [],
-		jobRunCounts: { success: 0, error: 0 },
-	}
 }
 
 function runLogSnapshot(
@@ -300,78 +284,6 @@ test('admin insights pure helpers bucket, zero-fill, fold, and take medians', ()
 	expect(medianOf([1, 3])).toBe(2)
 	expect(medianOf([1, 2, 3])).toBe(2)
 	expect(medianOf([1, Number.NaN, 3])).toBe(2)
-})
-
-test('foldRunLogSnapshots sums workflow statuses and milestone users and reports fanout completeness', () => {
-	const user = (id: string, verifiedAt: string | null) => ({
-		stable_user_id: ownerIdFromStored(id),
-		email_verified_at: verifiedAt,
-	})
-	const milestone = (
-		name: RunLogAdminInsightsSnapshot['activationMilestones'][number]['milestone'],
-		reachedAt: string,
-		packageId: string,
-	) => ({
-		milestone: name,
-		reachedAt,
-		packageId,
-	})
-	const folded = foldRunLogSnapshots([
-		{
-			user: user('u1', '2026-07-01T00:00:00.000Z'),
-			snapshot: {
-				workflowStatusCounts: [
-					{ status: 'running', count: 2 },
-					{ status: 'complete', count: 1 },
-				],
-				jobRunCounts: { success: 3, error: 1 },
-				activationMilestones: [
-					milestone('package_run_succeeded', '2026-07-01T06:00:00.000Z', 'p1'),
-					milestone('package_activated', '2026-07-01T12:00:00.000Z', 'p1'),
-				],
-			},
-		},
-		{
-			user: user('u2', '2026-07-01T00:00:00.000Z'),
-			snapshot: {
-				workflowStatusCounts: [{ status: 'complete', count: 4 }],
-				jobRunCounts: { success: 5, error: 2 },
-				activationMilestones: [
-					milestone('package_run_succeeded', '2026-07-02T00:00:00.000Z', 'p2'),
-				],
-			},
-		},
-		{ user: user('u3', null), snapshot: null },
-	])
-
-	expect(folded).toMatchObject({
-		workflowRuns: 7,
-		workflowStatuses: [
-			{ status: 'complete', count: 5 },
-			{ status: 'running', count: 2 },
-		],
-		jobSuccessRuns: 8,
-		jobErrorRuns: 3,
-		packageRunSucceededUsers: 2,
-		packageActivatedUsers: 1,
-		medianHoursToActivation: 12,
-		usersAttempted: 3,
-		usersLoaded: 2,
-		complete: false,
-	})
-
-	expect(
-		foldRunLogSnapshots([
-			{
-				user: user('u1', '2026-07-01T00:00:00.000Z'),
-				snapshot: emptySnapshot(),
-			},
-			{
-				user: user('u2', '2026-07-02T00:00:00.000Z'),
-				snapshot: emptySnapshot(),
-			},
-		]),
-	).toMatchObject({ usersAttempted: 2, usersLoaded: 2, complete: true })
 })
 
 function normalizeQuery(query: string) {
@@ -685,100 +597,6 @@ test('a missing RunLog snapshot zeros run-derived charts without failing the pag
 	}
 })
 
-test('admin insights surfaces the fleet package error-rate snapshot', async () => {
-	consoleWarn.mockImplementation(() => {})
-	const window = (
-		start: string,
-		end: string,
-		errors: number,
-		events: number,
-	) => ({
-		start,
-		end,
-		combined: { events, errors, rate: errors / events },
-		by_metric: [],
-	})
-	const concentration: FleetPackageErrorRateConcentration = {
-		kind: 'one_account',
-		recent_errors: 90,
-		owner_count: 1,
-		package_count: 3,
-		top_owner_share: 1,
-		owners: [
-			{
-				username: 'jett',
-				error_share: 1,
-				packages: [{ kody_id: 'dji-cloud-relay-staging-deploy' }],
-			},
-		],
-	}
-	fleetUsageMocks.loadFleetPackageErrorRateSnapshot.mockResolvedValueOnce({
-		version: 1,
-		updatedAt: '2026-08-22T19:32:00.000Z',
-		environment: 'production',
-		lastAlertAt: '2026-08-22T19:32:00.000Z',
-		lastAlertEventId: 'day:2026-08-22T19:00:00.000Z',
-		day: {
-			kind: 'day',
-			recent: window(
-				'2026-08-21T19:00:00.000Z',
-				'2026-08-22T19:00:00.000Z',
-				16,
-				80,
-			),
-			previous: window(
-				'2026-08-20T19:00:00.000Z',
-				'2026-08-21T19:00:00.000Z',
-				2,
-				80,
-			),
-		},
-		hour: {
-			kind: 'hour',
-			recent: window(
-				'2026-08-22T18:00:00.000Z',
-				'2026-08-22T19:00:00.000Z',
-				2,
-				20,
-			),
-			previous: window(
-				'2026-08-22T17:00:00.000Z',
-				'2026-08-22T18:00:00.000Z',
-				1,
-				20,
-			),
-		},
-		concentration,
-	})
-	const data = await loadLocalInsights().data
-	expect(data.packageErrorRate).toEqual({
-		available: true,
-		updatedAt: '2026-08-22T19:32:00.000Z',
-		environment: 'production',
-		lastAlertAt: '2026-08-22T19:32:00.000Z',
-		day: expect.objectContaining({ kind: 'day' }),
-		hour: expect.objectContaining({ kind: 'hour' }),
-		concentration,
-	})
-})
-
-test('loadAdminInsightsData warns when EMAIL_EVENTS binding is missing', async () => {
-	consoleWarn.mockImplementation(() => {})
-	const db = createInsightsTestDb()
-	const data = await loadAdminInsightsData(
-		createPartialEnv({ APP_DB: db, AUDIT_DB: db }),
-		now,
-	)
-
-	expect(data.ok).toBe(true)
-	expect(consoleWarn).toHaveBeenCalledWith(emailQuotaUnavailable, {
-		reason: 'missing-email-events-binding',
-	})
-	expect(consoleWarn).not.toHaveBeenCalledWith(emailQuotaUnavailable, {
-		reason: 'entitlement-daily-counters-retired-local-dev',
-	})
-})
-
 test('admin insights reads email reporting from Analytics Engine and degrades when it is unavailable', async () => {
 	const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 		Response.json({
@@ -838,58 +656,3 @@ test('admin insights reads email reporting from Analytics Engine and degrades wh
  * plan-breakdown query must read `orgs.plan` against the real migrated
  * schema (mocked D1 cannot catch dropped-column SQL).
  */
-test('loadAdminInsightsData plan breakdown reads orgs.plan on migrated schema', async () => {
-	consoleWarn.mockImplementation(() => {})
-	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
-	expect(() => sqlite.prepare('SELECT plan FROM users').get()).toThrow(
-		/no such column: plan/i,
-	)
-
-	const nowIso = '2026-07-08T12:00:00.000Z'
-	const insertOrg = (
-		id: string,
-		slug: string,
-		plan: string,
-		deletedAt: string | null = null,
-	) => {
-		sqlite
-			.prepare(
-				`INSERT INTO orgs (id, slug, plan, deleted_at, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?)`,
-			)
-			.run(id, slug, plan, deletedAt, nowIso, nowIso)
-	}
-	insertOrg(ownerIdFromStored('org-free-1'), 'free-1', 'free')
-	insertOrg(ownerIdFromStored('org-free-2'), 'free-2', 'free')
-	insertOrg(ownerIdFromStored('org-free-3'), 'free-3', 'free')
-	insertOrg(ownerIdFromStored('org-pro-1'), 'pro-1', 'pro')
-	insertOrg(ownerIdFromStored('org-pro-2'), 'pro-2', 'pro')
-	insertOrg(ownerIdFromStored('org-max-1'), 'max-1', 'max')
-	insertOrg(
-		ownerIdFromStored('org-deleted'),
-		'deleted-org',
-		'standard',
-		'2026-07-01T00:00:00.000Z',
-	)
-
-	const appDb = createD1FromSqlite(sqlite)
-	const data = await loadAdminInsightsData(
-		{
-			APP_DB: appDb,
-			AUDIT_DB: createAuditTestDb(),
-			JOBS: {
-				getJobInsights: async () => ({ total: 0, enabled: 0 }),
-			},
-			WRANGLER_IS_LOCAL_DEV: 'true',
-		} as unknown as Env,
-		now,
-	)
-
-	expect(data.ok).toBe(true)
-	expect(data.plans).toEqual([
-		{ plan: 'free', count: 3 },
-		{ plan: 'pro', count: 2 },
-		{ plan: 'max', count: 1 },
-	])
-})

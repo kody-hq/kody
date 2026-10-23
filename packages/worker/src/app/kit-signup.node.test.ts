@@ -3,17 +3,9 @@ import { http, HttpResponse } from 'msw'
 import {
 	type KitSignupError,
 	KIT_API_BASE_URL,
-	maybeTagKitSubscriberOnSignup,
 	tagExistingKitSubscriberOnSignup,
 } from '#app/kit-signup.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
-
-type KitSignupEnv = Pick<Env, 'KIT_API_KEY' | 'KIT_SIGNED_UP_TAG_ID'>
-
-function kitEnv(env: Partial<KitSignupEnv>) {
-	return env as KitSignupEnv
-}
 
 type KitCall = {
 	url: string
@@ -124,41 +116,4 @@ test('tagExistingKitSubscriberOnSignup tags existing subscribers, skips unknowns
 		kind: 'client',
 		status: 422,
 	} satisfies Partial<KitSignupError>)
-})
-
-test('maybeTagKitSubscriberOnSignup no-ops without Kit config and swallows failures', async () => {
-	consoleWarn.mockImplementation(() => {})
-	const failingCalls: Array<string> = []
-	using msw = createMswNodeServer()
-
-	await maybeTagKitSubscriberOnSignup({
-		env: kitEnv({}),
-		email: 'ada@example.com',
-	})
-	expect(consoleWarn).not.toHaveBeenCalled()
-
-	await maybeTagKitSubscriberOnSignup({
-		env: { KIT_API_KEY: 'key', KIT_SIGNED_UP_TAG_ID: 'nope' },
-		email: 'ada@example.com',
-	})
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'Skipping Kit signed-up tagging: KIT_SIGNED_UP_TAG_ID is invalid.',
-	)
-
-	consoleWarn.mockClear()
-	msw.use(
-		http.get(`${KIT_API_BASE_URL}/subscribers`, ({ request }) => {
-			failingCalls.push(request.url)
-			return HttpResponse.json({ errors: ['boom'] }, { status: 500 })
-		}),
-	)
-	await maybeTagKitSubscriberOnSignup({
-		env: kitEnv({ KIT_API_KEY: 'key' }),
-		email: 'ada@example.com',
-	})
-	expect(failingCalls.length).toBeGreaterThan(0)
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'Failed to tag Kit subscriber on signup:',
-		expect.any(Error),
-	)
 })

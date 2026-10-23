@@ -36,64 +36,6 @@ function migratedAppDb() {
 	return db
 }
 
-test('account deletion coverage matches the migrated APP_DB schema', () => {
-	const db = migratedAppDb()
-	const tables = (
-		db
-			.prepare(
-				`SELECT name FROM sqlite_schema
-				WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
-			)
-			.all() as Array<{ name: string }>
-	).map((row) => row.name)
-
-	// Jobs moved to the jobs worker's D1 (migration 0010 dropped the APP_DB
-	// copies), so the job surface must be sourced over the JOBS binding rather
-	// than an APP_DB table scan.
-	expect(tables).not.toContain('jobs')
-	for (const surface of accountUserOwnedVectorizeSurfaces) {
-		switch (surface.source.kind) {
-			case 'app_db': {
-				expect(tables).toContain(surface.source.table)
-				break
-			}
-			case 'jobs_rpc': {
-				expect(surface.id).toBe('job')
-				break
-			}
-			default: {
-				const unknownSource: never = surface.source
-				throw new Error(
-					`Unknown vectorize source: ${JSON.stringify(unknownSource)}`,
-				)
-			}
-		}
-	}
-
-	// Every live user-owned D1 column is deleted, and nothing stale is listed.
-	const liveUserColumns = new Set<string>()
-	for (const table of tables) {
-		const columns = db
-			.prepare(`PRAGMA table_info(${quoteSqlIdentifier(table)})`)
-			.all() as Array<{ name: string }>
-		if (
-			(accountUserDataPendingDropTables as ReadonlyArray<string>).includes(
-				table,
-			)
-		) {
-			continue
-		}
-		for (const column of columns) {
-			if (column.name === 'user_id' || column.name.endsWith('_user_id')) {
-				liveUserColumns.add(`${table}.${column.name}`)
-			}
-		}
-	}
-	const coveredColumns = getAccountDeletionD1UserColumnCoverage()
-	expect([...liveUserColumns].filter((c) => !coveredColumns.has(c))).toEqual([])
-	expect([...coveredColumns].filter((c) => !liveUserColumns.has(c))).toEqual([])
-})
-
 test('deleteUserAccount enumerates job vectors through JOBS against the real post-0010 APP_DB schema', async () => {
 	const sqlite = migratedAppDb()
 	const db = createD1FromSqlite(sqlite)
@@ -1062,4 +1004,62 @@ test('deleteUserAccount revokes OAuth grants via provider helpers, falls back to
 	expect(neither.rows.users).toEqual([
 		expect.objectContaining({ id: 1, deleting_at: expect.any(String) }),
 	])
+})
+
+test('account deletion coverage matches the migrated APP_DB schema', () => {
+	const db = migratedAppDb()
+	const tables = (
+		db
+			.prepare(
+				`SELECT name FROM sqlite_schema
+				WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+			)
+			.all() as Array<{ name: string }>
+	).map((row) => row.name)
+
+	// Jobs moved to the jobs worker's D1 (migration 0010 dropped the APP_DB
+	// copies), so the job surface must be sourced over the JOBS binding rather
+	// than an APP_DB table scan.
+	expect(tables).not.toContain('jobs')
+	for (const surface of accountUserOwnedVectorizeSurfaces) {
+		switch (surface.source.kind) {
+			case 'app_db': {
+				expect(tables).toContain(surface.source.table)
+				break
+			}
+			case 'jobs_rpc': {
+				expect(surface.id).toBe('job')
+				break
+			}
+			default: {
+				const unknownSource: never = surface.source
+				throw new Error(
+					`Unknown vectorize source: ${JSON.stringify(unknownSource)}`,
+				)
+			}
+		}
+	}
+
+	// Every live user-owned D1 column is deleted, and nothing stale is listed.
+	const liveUserColumns = new Set<string>()
+	for (const table of tables) {
+		const columns = db
+			.prepare(`PRAGMA table_info(${quoteSqlIdentifier(table)})`)
+			.all() as Array<{ name: string }>
+		if (
+			(accountUserDataPendingDropTables as ReadonlyArray<string>).includes(
+				table,
+			)
+		) {
+			continue
+		}
+		for (const column of columns) {
+			if (column.name === 'user_id' || column.name.endsWith('_user_id')) {
+				liveUserColumns.add(`${table}.${column.name}`)
+			}
+		}
+	}
+	const coveredColumns = getAccountDeletionD1UserColumnCoverage()
+	expect([...liveUserColumns].filter((c) => !coveredColumns.has(c))).toEqual([])
+	expect([...coveredColumns].filter((c) => !liveUserColumns.has(c))).toEqual([])
 })
