@@ -24,6 +24,12 @@ import {
 export const packageBindingRewriteVersion = 1
 
 type RepairableArtifact = {
+	/**
+	 * Bundle artifact kind (`BundleArtifactKind`). Only kinds loaded into a
+	 * Worker isolate can be repaired; see {@link isRepairableArtifactKind}.
+	 * Absent means an isolate-loaded bundle.
+	 */
+	kind?: string
 	modules: WorkerLoaderModules
 	dependencies: Array<{ packageId?: string }>
 	packageContext: { packageId: string } | null
@@ -139,8 +145,29 @@ function isPlatformRuntimeModulePath(modulePath: string) {
 	)
 }
 
+/**
+ * Artifact kinds that never load into a Worker isolate. `app-client` is the
+ * browser ESM a package app serves as a static module: its free `fetch` is
+ * the browser's own, it has no package identity to restore, and the shared
+ * runtime module the repair imports does not exist in the browser (the
+ * import 404s and the module never runs). These bundles are served exactly
+ * as built.
+ */
+const browserArtifactKinds = new Set(['app-client'])
+
+/**
+ * True when the artifact kind loads into a Worker isolate, where the shared
+ * runtime module resolves and the pre-binding repair can bind `fetch` and
+ * `kody` to the package. False for browser bundles, which must stay
+ * byte-identical.
+ */
+export function isRepairableArtifactKind(kind: string | null | undefined) {
+	return kind == null || !browserArtifactKinds.has(kind)
+}
+
 /** True for a bundle built before package `fetch` became lexical. */
 export function isPreBindingPublishedArtifact(artifact: RepairableArtifact) {
+	if (!isRepairableArtifactKind(artifact.kind)) return false
 	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
 		return false
 	}
@@ -184,12 +211,13 @@ export function publishedArtifactInlinesOtherPackages(
  * package through its host-minted binding.
  * Identity comes from the artifact's stored package context (bundler
  * provenance), never from anything the sandbox supplies. Bundles that are
- * current, have no package context, or inline other packages come back
- * unchanged.
+ * current, have no package context, inline other packages, or are browser
+ * bundles (`app-client`) come back unchanged.
  */
 export function repairPreBindingPublishedArtifact<
 	Artifact extends RepairableArtifact,
 >(artifact: Artifact): Artifact {
+	if (!isRepairableArtifactKind(artifact.kind)) return artifact
 	const ownPackageId = artifact.packageContext?.packageId?.trim()
 	if (!ownPackageId) return artifact
 	if (!isPreBindingPublishedArtifact(artifact)) return artifact
