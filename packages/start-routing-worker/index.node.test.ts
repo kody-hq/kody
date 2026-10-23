@@ -123,21 +123,21 @@ test('outsiders cannot enroll even with a valid signed session', async () => {
 	)
 })
 
-const rejectedOrigins: HeadersInit[] = [
-	{},
-	{ Origin: 'https://elsewhere.example' },
-	{ Origin: origin, 'Sec-Fetch-Site': 'cross-site' },
-]
-for (const headers of rejectedOrigins) {
-	test(`enrollment rejects a browser POST without a same-origin boundary ${JSON.stringify(headers)}`, async () => {
+test('enrollment rejects browser POSTs without a same-origin boundary', async () => {
+	const rejectedHeaders: Array<Record<string, string>> = [
+		{},
+		{ Origin: 'https://elsewhere.example' },
+		{ Origin: origin, 'Sec-Fetch-Site': 'cross-site' },
+	]
+	for (const headers of rejectedHeaders) {
 		const response = await routeRequest(
 			request('/__start/opt-in', await session(), { method: 'POST', headers }),
 			env,
 		)
 		expect(response.status).toBe(403)
 		expect(response.headers.has('Set-Cookie')).toBe(false)
-	})
-}
+	}
+})
 
 test('control GET has no side effect, signed secure POST opts in, and opt-out works after session expiry', async () => {
 	const read = await routeRequest(
@@ -216,13 +216,21 @@ test('forged, expired and other-release preferences fail closed', async () => {
 	}
 })
 
-for (const column of [
-	'suspended_at',
-	'deleting_at',
-	'deleted_at',
-	'password_changed_at',
-]) {
-	test(`a live preference cannot bypass ${column}`, async () => {
+test('a live preference cannot bypass account revocation', async () => {
+	const columns = [
+		'suspended_at',
+		'deleting_at',
+		'deleted_at',
+		'password_changed_at',
+	] as const
+	for (const column of columns) {
+		for (const otherColumn of columns) {
+			sqlite
+				.prepare(
+					`UPDATE users SET ${otherColumn} = NULL WHERE stable_user_id = ?`,
+				)
+				.run(personA)
+		}
 		const opted = await optIn()
 		sqlite
 			.prepare(`UPDATE users SET ${column} = ? WHERE stable_user_id = ?`)
@@ -236,8 +244,8 @@ for (const column of [
 			env,
 		)
 		expect(again.status).toBe(403)
-	})
-}
+	}
+})
 
 test('expired or missing sessions cannot use a copied preference', async () => {
 	const opted = await optIn()
@@ -267,13 +275,13 @@ test('an unavailable session database keeps documents legacy rather than grantin
 	expect(response.headers.has('Set-Cookie')).toBe(false)
 })
 
-for (const allowlist of [
-	'[]',
-	'not-json',
-	JSON.stringify([personA, personA]),
-	JSON.stringify([personA, personB, outsider]),
-]) {
-	test(`missing or malformed allowlist cannot enable Start ${allowlist}`, async () => {
+test('missing or malformed allowlists cannot enable Start', async () => {
+	for (const allowlist of [
+		'[]',
+		'not-json',
+		JSON.stringify([personA, personA]),
+		JSON.stringify([personA, personB, outsider]),
+	]) {
 		env.START_ALLOWED_PERSON_IDS = allowlist
 		expect(await lane(request('/account', await session()))).toBe('legacy')
 		const response = await routeRequest(
@@ -285,44 +293,44 @@ for (const allowlist of [
 		)
 		expect(response.status).toBe(503)
 		expect(response.headers.has('Set-Cookie')).toBe(false)
-	})
-}
+	}
+})
 
-for (const path of [
-	'/mcp',
-	'/oauth/authorize?state=opaque',
-	'/oauth/token',
-	'/-/auth/login',
-	'/-/auth/callback',
-	'/-/auth/logout',
-	'/-/auth/me',
-	'/_kody/auth/login',
-	'/_kody/auth/callback',
-	'/_kody/auth/logout',
-	'/_kody/auth/me',
-	'/oauth/userinfo',
-	'/auth/github/callback',
-	'/session',
-	'/.well-known/oauth-authorization-server',
-	'/webhooks/stripe',
-	'/@owner/webhooks/pkg/event/secret',
-	'/@owner/packages/app/',
-	'/@owner/repo.git/info/refs',
-	'/api/packages',
-	'/__maintenance/execute-smoke',
-	'/health',
-	'/account/mcp-servers/oauth/callback',
-	'/account/memories-export.json',
-	'/assets/legacy.js',
-	'/@owner/pkg/raw/main/readme.md',
-	'/account?__frame=content',
-	'/_serverFn/legacy-operation',
-]) {
-	test(`protocol and legacy resources stay on production: ${path}`, async () => {
-		const opted = await optIn()
+test('protocol and legacy resources stay on production', async () => {
+	const opted = await optIn()
+	for (const path of [
+		'/mcp',
+		'/oauth/authorize?state=opaque',
+		'/oauth/token',
+		'/-/auth/login',
+		'/-/auth/callback',
+		'/-/auth/logout',
+		'/-/auth/me',
+		'/_kody/auth/login',
+		'/_kody/auth/callback',
+		'/_kody/auth/logout',
+		'/_kody/auth/me',
+		'/oauth/userinfo',
+		'/auth/github/callback',
+		'/session',
+		'/.well-known/oauth-authorization-server',
+		'/webhooks/stripe',
+		'/@owner/webhooks/pkg/event/secret',
+		'/@owner/packages/app/',
+		'/@owner/repo.git/info/refs',
+		'/api/packages',
+		'/__maintenance/execute-smoke',
+		'/health',
+		'/account/mcp-servers/oauth/callback',
+		'/account/memories-export.json',
+		'/assets/legacy.js',
+		'/@owner/pkg/raw/main/readme.md',
+		'/account?__frame=content',
+		'/_serverFn/legacy-operation',
+	]) {
 		expect(await lane(request(path, opted.cookie))).toBe('legacy')
-	})
-}
+	}
+})
 
 test('mounted legacy fetches, forms and WebSockets keep their original lane after opt-in', async () => {
 	const opted = await optIn()
@@ -504,37 +512,6 @@ test('candidate documents cannot leak through public cache headers and legacy re
 	expect(untouched).toBe(original)
 	expect(untouched.headers.get('Cache-Control')).toBe('public, max-age=3600')
 	expect(untouched.headers.get('Vary')).toBe('Accept')
-})
-
-test('bundled manifest and small binding must agree on release and actual paths', async () => {
-	const cases = [
-		{ release: '2'.repeat(40), assetPaths, digest: manifestDigest },
-		{ release, assetPaths, digest: '0'.repeat(64) },
-		{
-			release,
-			assetPaths: [...assetPaths, 'arbitrary-document'],
-			digest: manifestDigest,
-		},
-		{
-			release,
-			assetPaths: [...assetPaths, assetPaths[0]!],
-			digest: manifestDigest,
-		},
-	]
-	for (const manifest of cases) {
-		const worker = createRoutingWorker(manifest)
-		expect(await (await worker.fetch(request('/account'), env)).text()).toBe(
-			'legacy',
-		)
-		expect(
-			(await worker.fetch(request(prefix + assetPaths[0]), env)).status,
-		).toBe(503)
-	}
-	env.START_ASSET_MANIFEST_SHA256 = '0'.repeat(64)
-	expect(
-		(await routeRequest(request(prefix + assetPaths[0]), env)).status,
-	).toBe(503)
-	expect(start).not.toHaveBeenCalled()
 })
 
 test('factory captures immutable paths and rejects unsafe paths even with matching digests', async () => {

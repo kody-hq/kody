@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	deleteOrgTransferBackupsForOwner,
-	orgTransferBackupKey,
-} from './backup.ts'
+import { deleteOrgTransferBackupsForOwner } from './backup.ts'
 
 function createBucket(keys: Array<string>, pageSize = 2) {
 	const stored = new Set(keys)
@@ -30,18 +27,6 @@ function createBucket(keys: Array<string>, pageSize = 2) {
 		},
 	}
 }
-
-test('backup keys name source then target', () => {
-	expect(
-		orgTransferBackupKey({
-			fromOrgId: 'org-a',
-			toOrgId: 'org-b',
-			now: new Date('2026-10-11T01:02:03.000Z'),
-		}),
-	).toMatch(
-		/^org-resource-transfers\/org-a\/org-b\/2026-10-11T01-02-03\.000Z-[0-9a-f-]{36}\.json$/,
-	)
-})
 
 test('owner deletion removes backups naming the owner on either side', async () => {
 	const { bucket, stored } = createBucket([

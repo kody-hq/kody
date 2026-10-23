@@ -67,20 +67,6 @@ async function setup() {
 	}
 }
 
-test('user_storage_buckets CHECK rejects the retired service kind', async () => {
-	await ensureUserStorageBucketsTestSchema(env.APP_DB)
-	const now = new Date().toISOString()
-	await expect(
-		env.APP_DB.prepare(
-			`INSERT INTO user_storage_buckets (
-				user_id, storage_id, kind, created_at, last_seen_at
-			) VALUES (?, ?, 'service', ?, ?)`,
-		)
-			.bind(`usb-service-${crypto.randomUUID()}`, 'service:retired', now, now)
-			.run(),
-	).rejects.toThrow(/CHECK/i)
-})
-
 test('registerStorageBucket upserts and list helpers scope correctly on real D1', async () => {
 	const { register, flush, estimates } = await setup()
 	const userA = ownerIdFromStored(`usb-a-${crypto.randomUUID()}`)

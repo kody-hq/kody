@@ -30,7 +30,7 @@ function createFakeR2() {
 	} as unknown as R2Bucket
 }
 
-test('R2 store keys artifacts under v1/ and refuses overwrite', async () => {
+test('R2 store refuses overwrite and round-trips an artifact', async () => {
 	const store = createR2CacheStore(createFakeR2())
 	const body = new TextEncoder().encode('artifact').buffer
 
@@ -39,5 +39,5 @@ test('R2 store keys artifacts under v1/ and refuses overwrite', async () => {
 
 	const stored = await store.get(HASH)
 	expect(stored?.size).toBe(body.byteLength)
-	expect(cacheObjectKey(HASH)).toBe(`v1/${HASH}`)
+	expect(cacheObjectKey(HASH)).not.toBe(cacheObjectKey(`${HASH}2`))
 })

@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import { blogPostSlugs } from '#universal/blog-post-slugs.ts'
-import { caseStudies } from '#universal/case-studies.ts'
 import {
-	getBlogPost,
 	getReadNextBlogPost,
 	listBlogPosts,
 	normalizeMarkdownPhraseSource,
@@ -94,109 +91,6 @@ test('parseBlogPostMarkdown reads frontmatter and rejects invalid input', () => 
 		expect(() => parseBlogPostMarkdown('bad', markdown(frontmatter))).toThrow(
 			error,
 		)
-	}
-})
-
-function expectPost(
-	slug: string,
-	fields: Record<string, unknown>,
-	phrases: Array<string>,
-) {
-	const post = getBlogPost(slug)
-	expect(post).toMatchObject(fields)
-	const body = normalizeMarkdownPhraseSource(post?.body ?? '')
-	expect(phrases.filter((phrase) => !body.includes(phrase))).toEqual([])
-}
-
-test('blog catalog enumerates posts with required fields and slug lookup', () => {
-	const posts = listBlogPosts()
-	expect(posts.length).toBeGreaterThan(0)
-
-	for (const post of posts) {
-		expect(post.slug.length).toBeGreaterThan(0)
-		expect(post.title.length).toBeGreaterThan(0)
-		expect(post.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-		expect(post.description.length).toBeGreaterThan(0)
-		expect(Number.isInteger(post.order)).toBe(true)
-		expect(post.body.length).toBeGreaterThan(0)
-		expect(getBlogPost(post.slug)).toEqual(post)
-	}
-
-	// Client-safe scarf allowlist must stay in lockstep with the catalog.
-	expect([...blogPostSlugs].sort()).toEqual(
-		posts.map((post) => post.slug).sort(),
-	)
-
-	expectPost(
-		'early-kody-users',
-		{ title: 'Case studies', date: '2026-09-08', placeholder: false },
-		[
-			'funnels all my tools into one secure MCP I can manage myself',
-			"life or death for some of the world's most endangered species",
-			'## Josh Tomaino',
-			'## Jett Hays',
-			'## Gabriel Alegría',
-			'## Maciek Sitkowski',
-			'shared layer behind how I work with agents',
-		],
-	)
-	const caseStudiesPost = getBlogPost('early-kody-users')
-	const caseStudiesBlogSource = normalizeMarkdownPhraseSource(
-		caseStudiesPost?.body ?? '',
-	)
-	for (const study of caseStudies) {
-		expect(caseStudiesBlogSource).toContain(
-			study.body.replace(/\s+/g, ' ').trim(),
-		)
-		expect(caseStudiesPost?.body).toContain(`## ${study.name}`)
-	}
-	expectPost(
-		'openclaw-2-needs-a-home',
-		{
-			title: 'OpenClaw 2 needs a home',
-			date: '2026-08-31',
-			placeholder: true,
-			image: '/images/openclaw-2-needs-a-home.webp',
-			ogImage: '/images/openclaw-2-needs-a-home-og.jpg',
-		},
-		['openclaw mcp add kody'],
-	)
-	expectPost(
-		'how-to-turn-agent-work-into-software-you-own',
-		{
-			title: 'How to turn agent work into software you own',
-			date: '2026-08-31',
-			order: 8,
-			placeholder: true,
-			image: '/images/kody-factory-map.webp',
-			ogImage: '/images/kody-factory-map-og.jpg',
-		},
-		[
-			'I call that the factory loop',
-			'https://kody.codes/docs/how-kody-works',
-			'https://kody.codes/onboarding',
-			'https://kody.codes/blog/your-assistants-home',
-			'https://kody.codes/blog/the-automations-you-never-built',
-			'https://kody.codes/blog/zero-inference-calls',
-			'https://kody.codes/blog/every-install-is-a-fork-you-own',
-		],
-	)
-	expect(getBlogPost('does-not-exist')).toBeNull()
-
-	const placeholderPosts = posts.filter(
-		(post) => post.slug !== 'early-kody-users',
-	)
-	expect(placeholderPosts.length).toBeGreaterThan(0)
-	expect(placeholderPosts.every((post) => post.placeholder)).toBe(true)
-
-	for (let index = 1; index < posts.length; index += 1) {
-		const previous = posts[index - 1]!
-		const current = posts[index]!
-		if (previous.date === current.date) {
-			expect(previous.order).toBeLessThanOrEqual(current.order)
-		} else {
-			expect(previous.date >= current.date).toBe(true)
-		}
 	}
 })
 

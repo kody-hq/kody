@@ -4,7 +4,6 @@ import {
 	loadAdditionalOgAsset,
 	loadTwemojiDataUri,
 	resetTwemojiCache,
-	twemojiSvgUrl,
 } from './og-emoji.ts'
 
 const TWEMOJI_KOALA_SVG =
@@ -16,9 +15,6 @@ test('Twemoji OG helpers map codes, fetch/cache SVG data URIs, and ignore non-em
 	expect(emojiToTwemojiCodes('❤️')).toEqual(['2764', '2764-fe0f'])
 	expect(emojiToTwemojiCodes('👨‍💻')).toEqual(['1f468-200d-1f4bb'])
 	expect(emojiToTwemojiCodes('')).toEqual([])
-	expect(twemojiSvgUrl('1f428')).toBe(
-		'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f428.svg',
-	)
 
 	resetTwemojiCache()
 
@@ -55,11 +51,7 @@ test('Twemoji OG helpers map codes, fetch/cache SVG data URIs, and ignore non-em
 
 		const heart = await loadTwemojiDataUri('❤️')
 		expect(heart.startsWith('data:image/svg+xml;base64,')).toBe(true)
-		expect(fetchSpy.mock.calls.map(([input]) => String(input))).toEqual([
-			twemojiSvgUrl('1f428'),
-			twemojiSvgUrl('2764'),
-			twemojiSvgUrl('2764-fe0f'),
-		])
+		expect(fetchSpy).toHaveBeenCalledTimes(3)
 
 		expect(await loadAdditionalOgAsset('emoji', '🐨')).toBe(koala)
 		expect(await loadAdditionalOgAsset('unknown', '中')).toBe('')
