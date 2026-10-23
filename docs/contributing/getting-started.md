@@ -15,7 +15,11 @@ with an MCP-first architecture.
 
 ## Install dependencies
 
-We use npm for installs and scripts, with Node 26 as the runtime.
+We use npm for installs and scripts, with Node 26 as the runtime. Root
+`package.json` sets the supported npm range in `devEngines.packageManager`, so
+an older npm (Node 22 ships npm 10) stops with `EBADDEVENGINES` before it
+misreads `package-lock.json`. Switch to Node 26 (or run the pinned
+`npx npm@<packageManager version> ci`) when you see it.
 
 ```bash
 npm install

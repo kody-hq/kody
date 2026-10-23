@@ -10,7 +10,10 @@ this document covers Cloud Agent VM gotchas only.
 The repo requires Node **>=26** (`engines` in root `package.json`). Cloud Agent
 VMs may ship Node 22 at `/exec-daemon/node`, which takes precedence over nvm
 unless nvm’s Node 26 bin directory is prepended to `PATH`. Verify with
-`node --version` before running scripts.
+`node --version` before running scripts. Node 22 ships npm 10, which is below
+the root `devEngines.packageManager` range (npm 10 also misreads this lockfile),
+so `npm ci` stops with `EBADDEVENGINES`. Fix `PATH` and rerun `npm ci`. Do not
+fall back to `npm install` and do not commit the lockfile it rewrites.
 
 ## Playwright browsers
 

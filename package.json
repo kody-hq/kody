@@ -184,6 +184,13 @@
   "engines": {
     "node": ">=26"
   },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.11.1",
+      "onFail": "error"
+    }
+  },
   "packageManager": "npm@11.11.1",
   "workspaces": [
     "packages/api-worker",

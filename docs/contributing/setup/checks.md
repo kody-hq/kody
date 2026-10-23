@@ -107,15 +107,20 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   the same line names as absent is ignored. Example trees whose parent directory
   is not in the repo are ignored.
 - `npm run deps:check` (`tools/run-check-group.ts deps`) runs lockfile peer
-  drift, dependency overrides, and skills-lock. Lockfile peer drift fails when a
-  locked direct dependency sits inside its declared range but outside a peer
-  range that range can still reach; `npm install` rewrites `package-lock.json`
-  for that drift (including an optional peer). Overrides fail when a root
-  `package.json` override is not documented in
+  drift, dependency overrides, skills-lock, and the npm floor. Lockfile peer
+  drift fails when a locked direct dependency sits inside its declared range but
+  outside a peer range that range can still reach; `npm install` rewrites
+  `package-lock.json` for that drift (including an optional peer). Overrides
+  fail when a root `package.json` override is not documented in
   [dependency overrides](../dependency-overrides.md), when that doc keeps a
   section for a removed override, or when `package.json` repeats a key (JSON
   keeps only the last value). Skills-lock (`tools/check-skills-lock.ts`) fails
   when `skills-lock.json` drifts from the committed skill folders it records.
+  The npm floor (`tools/check-npm-install-floor.ts`) fails when root
+  `package.json` lacks `devEngines.packageManager` (npm, `onFail: "error"`) or
+  when the `packageManager` pin falls outside it. In CI (or with `--install`) it
+  also runs `npm ci --dry-run` with the lowest npm that range allows, so a
+  lockfile only a newer npm can read fails there instead of in a fresh clone.
   `ship-pr` must stay a repo-owned local skill (so `skills update` does not
   reinstall it from kentcdodds/kcd-skills) and its `computedHash` must match the
   folder hash. Edit the skill and refresh `computedHash`, or the check fails.

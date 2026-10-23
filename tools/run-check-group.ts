@@ -42,6 +42,7 @@ export const checkGroups = {
 			tool: 'tools/check-dependency-overrides.ts',
 		},
 		{ name: 'skills-lock:check', tool: 'tools/check-skills-lock.ts' },
+		{ name: 'npm-floor:check', tool: 'tools/check-npm-install-floor.ts' },
 	],
 } as const satisfies Record<string, readonly CheckGroupMember[]>
 
