@@ -4,34 +4,35 @@ import { renderStartPage } from './test-support/render-start-page.ts'
 import { BrandGuideRoute } from './pages/brand-guide.tsx'
 import { kodyBrandAssets } from './brand/kody-mark-path.ts'
 
-test('brand guide shows solid downloads first, then SVG and transparent PNGs', async () => {
+test('brand guide pairs light and dark previews with their downloads', async () => {
 	const html = await renderStartPage(jsx(BrandGuideRoute, {}), '/brand-guide')
 	expect(html).toContain('Brand guide')
-	expect(html).toContain('Solid backgrounds')
-	expect(html).toContain(kodyBrandAssets.pngOutlinedSolidLight)
-	expect(html).toContain(kodyBrandAssets.pngSolidDark)
-	expect(html).toContain('Download PNG: outlined black on white')
-	expect(html).toContain('Download PNG: solid white on black')
-	expect(html).toContain(kodyBrandAssets.svgOutlined)
-	expect(html).toContain(kodyBrandAssets.svg)
-	expect(html).toContain(kodyBrandAssets.svgWhite)
-	expect(html).toContain('Download SVG (outlined, for light backgrounds)')
-	expect(html).toContain('Download SVG (solid black)')
-	expect(html).toContain('Download SVG (solid white, for dark backgrounds)')
-	expect(html).toContain(kodyBrandAssets.pngOutlined)
-	expect(html).toContain(kodyBrandAssets.pngBlack)
-	expect(html).toContain(kodyBrandAssets.pngWhite)
-	expect(html).toContain('Light: outlined mark (for light backgrounds)')
-	expect(html).toContain('Dark: solid mark (for dark backgrounds)')
+	for (const href of [
+		kodyBrandAssets.logoSvgOutlined,
+		kodyBrandAssets.logoPngOutlined,
+		kodyBrandAssets.logoSvgWhite,
+		kodyBrandAssets.logoPngWhite,
+		kodyBrandAssets.svgOutlined,
+		kodyBrandAssets.pngOutlined,
+		kodyBrandAssets.svgWhite,
+		kodyBrandAssets.pngWhite,
+		kodyBrandAssets.pngOutlinedSolidLight,
+		kodyBrandAssets.pngSolidDark,
+	]) {
+		expect(html).toContain(`href="${href}"`)
+	}
+	expect(html).toContain('aria-label="Download light logo SVG"')
+	expect(html).toContain('aria-label="Download dark mark PNG"')
+	expect(html).toContain('aria-label="Download light app icon PNG"')
+	// No light-mode solid black treatment is offered.
+	expect(html).not.toContain(`href="${kodyBrandAssets.svg}"`)
+	expect(html).not.toContain(kodyBrandAssets.pngBlack)
 	expect(html).toContain('Do not distort')
-	expect(html).toContain('Full logo')
-	expect(html).toContain(kodyBrandAssets.logoSvgOutlined)
-	expect(html).toContain(kodyBrandAssets.logoSvgWhite)
-	expect(html).toContain(kodyBrandAssets.logoPngOutlined)
-	expect(html).toContain(kodyBrandAssets.logoPngWhite)
 	expect(html).not.toContain('—')
-	const solidIndex = html.indexOf('Solid backgrounds')
-	const transparentIndex = html.indexOf('SVG and transparent PNG')
-	expect(solidIndex).toBeGreaterThan(-1)
-	expect(transparentIndex).toBeGreaterThan(solidIndex)
+	const logoIndex = html.indexOf('id="logo-heading"')
+	const markIndex = html.indexOf('id="mark-heading"')
+	const iconIndex = html.indexOf('id="app-icon-heading"')
+	expect(logoIndex).toBeGreaterThan(-1)
+	expect(markIndex).toBeGreaterThan(logoIndex)
+	expect(iconIndex).toBeGreaterThan(markIndex)
 })

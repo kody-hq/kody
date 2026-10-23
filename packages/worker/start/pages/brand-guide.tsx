@@ -1,8 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { type CSSObject } from '@emotion/react'
-import { type ReactNode } from 'react'
 import { publicAsset } from '../public-assets.ts'
-import { KodyMark } from '../components/kody-mark.tsx'
 import { kodyBrandAssets } from '../brand/kody-mark-path.ts'
 import { colors, radius, transitions } from '#universal/styles/tokens.ts'
 import {
@@ -11,133 +9,190 @@ import {
 	pageEyebrowCss,
 	pageGutter,
 	pageHeadCss,
-	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 
-const solidDownloads = [
-	{
-		href: kodyBrandAssets.pngOutlinedSolidLight,
-		filename: 'kody-mark-outlined-solid-light.png',
-		label: 'Download PNG: outlined black on white',
-		alt: 'Outlined black Kody mark on a white square',
-		note: 'For light surfaces, app icons, and marketplace uploads.',
-	},
-	{
-		href: kodyBrandAssets.pngSolidDark,
-		filename: 'kody-mark-solid-dark.png',
-		label: 'Download PNG: solid white on black',
-		alt: 'Solid white Kody mark on a black square',
-		note: 'For dark surfaces without a theme.',
-	},
-]
+type PlateTone = 'light' | 'dark'
 
-const logoDownloads = [
-	{
-		format: 'SVG',
-		href: kodyBrandAssets.logoSvgOutlined,
-		filename: 'kody-logo-outlined.svg',
-		label: 'Download full logo SVG (outlined, for light backgrounds)',
-		note: 'Outlined mark with the black wordmark',
-		size: 'Vector',
-	},
-	{
-		format: 'SVG',
-		href: kodyBrandAssets.logoSvgWhite,
-		filename: 'kody-logo-white.svg',
-		label: 'Download full logo SVG (solid white, for dark backgrounds)',
-		note: 'Solid mark with the white wordmark',
-		size: 'Vector',
-	},
-	{
-		format: 'PNG',
-		href: kodyBrandAssets.logoPngOutlined,
-		filename: 'kody-logo-outlined.png',
-		label: 'Download full logo PNG (transparent / outlined)',
-		note: 'Transparent. For light backgrounds.',
-		size: '2048×563',
-	},
-	{
-		format: 'PNG',
-		href: kodyBrandAssets.logoPngWhite,
-		filename: 'kody-logo-white.png',
-		label: 'Download full logo PNG (transparent / solid white)',
-		note: 'Transparent. For dark backgrounds.',
-		size: '2048×563',
-	},
-]
+type BrandFile = {
+	format: 'SVG' | 'PNG'
+	href: string
+	filename: string
+	label: string
+}
 
-const sourceDownloads = [
+type BrandPreview = {
+	tone: PlateTone
+	caption: string
+	preview: string
+	alt: string
+	files: Array<BrandFile>
+}
+
+type BrandSection = {
+	id: string
+	title: string
+	note: string
+	shape: 'logo' | 'mark' | 'tile'
+	previews: [BrandPreview, BrandPreview]
+}
+
+const brandSections: Array<BrandSection> = [
 	{
-		format: 'SVG',
-		href: kodyBrandAssets.svgOutlined,
-		filename: 'kody-mark-outlined.svg',
-		label: 'Download SVG (outlined, for light backgrounds)',
-		note: 'Black line-art outline with solid eyes and nose',
-		size: 'Vector',
+		id: 'logo',
+		title: 'Logo',
+		note: 'The mark with the “Kody” wordmark. PNGs are 2048px wide and transparent.',
+		shape: 'logo',
+		previews: [
+			{
+				tone: 'light',
+				caption: 'Light',
+				preview: kodyBrandAssets.logoSvgOutlined,
+				alt: 'Kody logo: outlined mark and black wordmark',
+				files: [
+					{
+						format: 'SVG',
+						href: kodyBrandAssets.logoSvgOutlined,
+						filename: 'kody-logo-outlined.svg',
+						label: 'Download light logo SVG',
+					},
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.logoPngOutlined,
+						filename: 'kody-logo-outlined.png',
+						label: 'Download light logo PNG',
+					},
+				],
+			},
+			{
+				tone: 'dark',
+				caption: 'Dark',
+				preview: kodyBrandAssets.logoSvgWhite,
+				alt: 'Kody logo: solid white mark and wordmark',
+				files: [
+					{
+						format: 'SVG',
+						href: kodyBrandAssets.logoSvgWhite,
+						filename: 'kody-logo-white.svg',
+						label: 'Download dark logo SVG',
+					},
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.logoPngWhite,
+						filename: 'kody-logo-white.png',
+						label: 'Download dark logo PNG',
+					},
+				],
+			},
+		],
 	},
 	{
-		format: 'SVG',
-		href: kodyBrandAssets.svg,
-		filename: 'kody-mark.svg',
-		label: 'Download SVG (solid black)',
-		note: 'Solid evenodd path; same geometry as the dark mark',
-		size: 'Vector',
+		id: 'mark',
+		title: 'Mark',
+		note: 'The koala on its own, for tight spaces. PNGs are 2048px wide and transparent.',
+		shape: 'mark',
+		previews: [
+			{
+				tone: 'light',
+				caption: 'Light',
+				preview: kodyBrandAssets.svgOutlined,
+				alt: 'Outlined black Kody mark',
+				files: [
+					{
+						format: 'SVG',
+						href: kodyBrandAssets.svgOutlined,
+						filename: 'kody-mark-outlined.svg',
+						label: 'Download light mark SVG',
+					},
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.pngOutlined,
+						filename: 'kody-mark-outlined.png',
+						label: 'Download light mark PNG',
+					},
+				],
+			},
+			{
+				tone: 'dark',
+				caption: 'Dark',
+				preview: kodyBrandAssets.svgWhite,
+				alt: 'Solid white Kody mark',
+				files: [
+					{
+						format: 'SVG',
+						href: kodyBrandAssets.svgWhite,
+						filename: 'kody-mark-white.svg',
+						label: 'Download dark mark SVG',
+					},
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.pngWhite,
+						filename: 'kody-mark-white.png',
+						label: 'Download dark mark PNG',
+					},
+				],
+			},
+		],
 	},
 	{
-		format: 'SVG',
-		href: kodyBrandAssets.svgWhite,
-		filename: 'kody-mark-white.svg',
-		label: 'Download SVG (solid white, for dark backgrounds)',
-		note: 'White solid mark for dark surfaces',
-		size: 'Vector',
-	},
-	{
-		format: 'PNG',
-		href: kodyBrandAssets.pngOutlined,
-		filename: 'kody-mark-outlined.png',
-		label: 'Download PNG (transparent / outlined)',
-		note: 'Transparent. For light backgrounds.',
-		size: '2048×1505',
-	},
-	{
-		format: 'PNG',
-		href: kodyBrandAssets.pngBlack,
-		filename: 'kody-mark-black.png',
-		label: 'Download PNG (transparent / solid black)',
-		note: 'Transparent. For light backgrounds.',
-		size: '2048×1505',
-	},
-	{
-		format: 'PNG',
-		href: kodyBrandAssets.pngWhite,
-		filename: 'kody-mark-white.png',
-		label: 'Download PNG (transparent / solid white)',
-		note: 'Transparent. For dark backgrounds.',
-		size: '2048×1505',
+		id: 'app-icon',
+		title: 'App icon',
+		note: 'Opaque 4096px squares for avatars, app stores, and anywhere the theme is unknown.',
+		shape: 'tile',
+		previews: [
+			{
+				tone: 'light',
+				caption: 'Light',
+				preview: kodyBrandAssets.pngOutlinedSolidLight,
+				alt: 'Outlined black Kody mark on a white square',
+				files: [
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.pngOutlinedSolidLight,
+						filename: 'kody-mark-outlined-solid-light.png',
+						label: 'Download light app icon PNG',
+					},
+				],
+			},
+			{
+				tone: 'dark',
+				caption: 'Dark',
+				preview: kodyBrandAssets.pngSolidDark,
+				alt: 'Solid white Kody mark on a black square',
+				files: [
+					{
+						format: 'PNG',
+						href: kodyBrandAssets.pngSolidDark,
+						filename: 'kody-mark-solid-dark.png',
+						label: 'Download dark app icon PNG',
+					},
+				],
+			},
+		],
 	},
 ]
 
 const usageRules = [
 	{
-		title: 'Clear space.',
-		body: 'Keep empty space around the mark at least a quarter of its height on every side. The solid downloads already include comfortable padding.',
+		title: 'Two treatments.',
+		body: 'Outlined black on light, solid white on dark. No other colors or gradients.',
+	},
+	{
+		title: 'Give it room.',
+		body: 'Keep clear space of a quarter of the mark’s height on every side.',
 	},
 	{
 		title: 'Do not distort.',
-		body: 'Scale proportionally. Do not stretch, skew, rotate into a lockup, or crop the ears or snout.',
+		body: 'Scale proportionally. No stretching, skewing, rotating, or cropping.',
 	},
 	{
-		title: 'Color.',
-		body: 'Outlined black on light backgrounds, solid white on dark backgrounds. Do not recolor beyond those two values, add gradients, or place the mark on busy photos without a solid scrim.',
-	},
-	{
-		title: 'Wordmark.',
-		body: 'Use the full logo files instead of setting “Kody” next to the mark yourself. The wordmark is outlined, so it renders the same without the font installed.',
+		title: 'Use the files.',
+		body: 'Use the logo files rather than setting “Kody” next to the mark yourself.',
 	},
 ]
 
 /**
- * Public brand guide: mark treatments, downloads, and simple usage rules.
+ * Public brand guide: one light/dark pair per asset, with downloads tucked
+ * into each preview, and a few usage rules.
  */
 export function BrandGuideRoute() {
 	return (
@@ -150,205 +205,66 @@ export function BrandGuideRoute() {
 					<em>Two</em> treatments.
 				</h1>
 				<p>
-					The Kody mark is a koala head. On light surfaces use the outlined
-					line-art mark (black). On dark surfaces use the solid mark (white). Do
-					not recolor beyond those two treatments.
+					Outlined black on light surfaces. Solid white on dark. Hover a preview
+					to download it.
 				</p>
 			</header>
 
-			<section aria-labelledby="mark-preview-heading" css={heroCss}>
-				<h2 id="mark-preview-heading" css={visuallyHiddenCss}>
-					Theme-aware mark
-				</h2>
-				<div css={splitCss}>
-					<figure css={[splitHalfCss, splitLightCss]}>
-						<KodyMark size={168} variant="outlined" title="Kody" />
-						<figcaption>
-							Light: outlined mark (for light backgrounds)
-						</figcaption>
-					</figure>
-					<figure css={[splitHalfCss, splitDarkCss]}>
-						<KodyMark size={168} variant="solid" title="Kody" />
-						<figcaption>Dark: solid mark (for dark backgrounds)</figcaption>
-					</figure>
-				</div>
-				<p css={heroNoteCss}>
-					Inline UI follows the page theme. Prefer the transparent downloads
-					when you control the background.
-				</p>
-			</section>
-
-			<section aria-labelledby="logo-heading" css={sectionCss}>
-				<SectionIntro number="01" id="logo-heading" title="Full logo">
-					The mark and the “Kody” wordmark in Bricolage Grotesque, spaced
-					exactly like the site header. Outlined on light, solid white on dark.
-				</SectionIntro>
-				<div css={splitCss}>
-					<figure css={[splitHalfCss, logoHalfCss, splitLightCss]}>
-						<img
-							src={publicAsset(kodyBrandAssets.logoSvgOutlined)}
-							alt="Kody logo: outlined mark and black wordmark"
-							width={364}
-							height={100}
-							css={logoImgCss}
-						/>
-						<figcaption>Light: outlined logo</figcaption>
-					</figure>
-					<figure css={[splitHalfCss, logoHalfCss, splitDarkCss]}>
-						<img
-							src={publicAsset(kodyBrandAssets.logoSvgWhite)}
-							alt="Kody logo: solid white mark and wordmark"
-							width={364}
-							height={100}
-							css={logoImgCss}
-						/>
-						<figcaption>Dark: solid white logo</figcaption>
-					</figure>
-				</div>
-				<DownloadList downloads={logoDownloads} />
-			</section>
-
-			<section aria-labelledby="solid-downloads-heading" css={sectionCss}>
-				<SectionIntro
-					number="02"
-					id="solid-downloads-heading"
-					title="Solid backgrounds"
+			{brandSections.map((section) => (
+				<section
+					key={section.id}
+					aria-labelledby={`${section.id}-heading`}
+					css={sectionCss}
 				>
-					Fully opaque 4096×4096 squares for places where light and dark mode
-					cannot be controlled: plugin directories, OAuth consent screens,
-					slides, docs, chat avatars, and social posts.
-				</SectionIntro>
-				<div css={solidGridCss}>
-					{solidDownloads.map((download) => (
-						<figure key={download.href} css={solidCardCss}>
-							<img
-								src={publicAsset(download.href)}
-								alt={download.alt}
-								width={512}
-								height={512}
-								loading="lazy"
-								css={solidImgCss}
-							/>
-							<figcaption css={solidCaptionCss}>
-								<a
-									href={publicAsset(download.href)}
-									download={download.filename}
-									css={stretchedLinkCss}
-								>
-									{download.label}
-								</a>
-								<span>{download.note}</span>
-								<span css={metaCss}>PNG · 4096×4096 · Opaque</span>
-							</figcaption>
-							<DownloadIcon />
-						</figure>
-					))}
-				</div>
-			</section>
-
-			<section aria-labelledby="downloads-heading" css={sectionCss}>
-				<SectionIntro
-					number="03"
-					id="downloads-heading"
-					title="SVG and transparent PNG"
-				>
-					SVG is the source of truth. Transparent PNGs are 2048px wide for
-					compositing onto your own backgrounds.
-				</SectionIntro>
-				<DownloadList downloads={sourceDownloads} />
-			</section>
+					<header css={sectionHeadCss}>
+						<h2 id={`${section.id}-heading`}>{section.title}</h2>
+						<p>{section.note}</p>
+					</header>
+					<div css={[splitCss, splitShapeCss[section.shape]]}>
+						{section.previews.map((preview) => (
+							<figure
+								key={preview.tone}
+								css={[plateCss, plateShapeCss[section.shape]]}
+								data-tone={preview.tone}
+							>
+								<img
+									src={publicAsset(preview.preview)}
+									alt={preview.alt}
+									loading="lazy"
+								/>
+								<figcaption>{preview.caption}</figcaption>
+								<div css={downloadsCss}>
+									{preview.files.map((file) => (
+										<a
+											key={file.href}
+											href={publicAsset(file.href)}
+											download={file.filename}
+											aria-label={file.label}
+											css={downloadCss}
+										>
+											<span aria-hidden="true">↓</span> {file.format}
+										</a>
+									))}
+								</div>
+							</figure>
+						))}
+					</div>
+				</section>
+			))}
 
 			<section aria-labelledby="usage-heading" css={sectionCss}>
-				<SectionIntro number="04" id="usage-heading" title="Usage">
-					A few rules keep the mark recognizable everywhere it shows up.
-				</SectionIntro>
-				<ol css={usageListCss}>
+				<header css={sectionHeadCss}>
+					<h2 id="usage-heading">Usage</h2>
+				</header>
+				<ul css={usageListCss}>
 					{usageRules.map((rule) => (
 						<li key={rule.title}>
-							<strong>{rule.title}</strong>
-							<p>{rule.body}</p>
+							<strong>{rule.title}</strong> {rule.body}
 						</li>
 					))}
-				</ol>
+				</ul>
 			</section>
 		</article>
-	)
-}
-
-function SectionIntro({
-	number,
-	id,
-	title,
-	children,
-}: {
-	number: string
-	id: string
-	title: string
-	children: ReactNode
-}) {
-	return (
-		<header css={sectionIntroCss}>
-			<span css={sectionNumberCss} aria-hidden="true">
-				{number}
-			</span>
-			<h2 id={id}>{title}</h2>
-			<p>{children}</p>
-		</header>
-	)
-}
-
-type BrandDownload = {
-	format: string
-	href: string
-	filename: string
-	label: string
-	note: string
-	size: string
-}
-
-function DownloadList({ downloads }: { downloads: Array<BrandDownload> }) {
-	return (
-		<ul css={sourceListCss}>
-			{downloads.map((download) => (
-				<li key={download.href} css={sourceRowCss}>
-					<span css={formatBadgeCss}>{download.format}</span>
-					<span css={sourceTextCss}>
-						<a
-							href={publicAsset(download.href)}
-							download={download.filename}
-							css={stretchedLinkCss}
-						>
-							{download.label}
-						</a>
-						<span>{download.note}</span>
-					</span>
-					<span css={[metaCss, sourceSizeCss]}>{download.size}</span>
-					<DownloadIcon />
-				</li>
-			))}
-		</ul>
-	)
-}
-
-function DownloadIcon() {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="20"
-			height="20"
-			fill="none"
-			aria-hidden="true"
-			focusable={false}
-			data-download-icon
-		>
-			<path
-				stroke="currentColor"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				strokeWidth="1.5"
-				d="M12 4.75v10.5m0 0 4.25-4.25M12 15.25 7.75 11M5.75 19.25h12.5"
-			/>
-		</svg>
 	)
 }
 
@@ -359,14 +275,14 @@ const pageCss: CSSObject = {
 	marginInline: 'auto',
 	padding: `clamp(3rem, 7vw, 5.5rem) ${pageGutter} clamp(4rem, 8vw, 6.5rem)`,
 	display: 'grid',
-	gap: 'clamp(3.5rem, 8vw, 6rem)',
+	gap: 'clamp(3rem, 7vw, 5rem)',
 }
 
 const headCss: CSSObject = {
 	...pageHeadCss,
 	'& > p': {
 		...pageHeadCss['& > p'],
-		maxWidth: '52ch',
+		maxWidth: '44ch',
 	},
 }
 
@@ -375,10 +291,31 @@ const eyebrowCss: CSSObject = {
 	marginBottom: '1rem',
 }
 
-const heroCss: CSSObject = {
-	position: 'relative',
+const sectionCss: CSSObject = {
 	display: 'grid',
-	gap: '1rem',
+	gap: '1.25rem',
+}
+
+const sectionHeadCss: CSSObject = {
+	display: 'flex',
+	flexWrap: 'wrap',
+	alignItems: 'baseline',
+	justifyContent: 'space-between',
+	gap: '0.35rem 2rem',
+	'& h2': {
+		margin: 0,
+		fontSize: 'clamp(1.4rem, 2.6vw, 1.8rem)',
+		fontWeight: 720,
+		letterSpacing: '-0.02em',
+		lineHeight: 1.1,
+	},
+	'& p': {
+		margin: 0,
+		color: colors.textMuted,
+		fontSize: '0.95rem',
+		maxWidth: '52ch',
+		textWrap: 'pretty',
+	},
 }
 
 const splitCss: CSSObject = {
@@ -392,253 +329,107 @@ const splitCss: CSSObject = {
 	},
 }
 
-const splitHalfCss: CSSObject = {
+/* App icons are their own squares, so they sit side by side as separate
+   tiles instead of halves of one frame. */
+const splitShapeCss: Record<BrandSection['shape'], CSSObject> = {
+	logo: {},
+	mark: {},
+	tile: {
+		gridTemplateColumns: 'repeat(2, minmax(0, 15rem))',
+		gap: 'clamp(1rem, 2.5vw, 1.5rem)',
+		border: 0,
+		borderRadius: 0,
+		overflow: 'visible',
+		'@media (max-width: 640px)': {
+			gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+		},
+	},
+}
+
+const downloadsCss: CSSObject = {
+	position: 'absolute',
+	right: '0.9rem',
+	bottom: '0.85rem',
+	display: 'flex',
+	gap: '0.4rem',
+	/* Hidden until the preview is hovered or a link inside it has focus.
+	   Touch screens can't hover, so they always show. */
+	opacity: 0,
+	transform: 'translateY(4px)',
+	transition: `opacity 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}`,
+	'@media (hover: none)': { opacity: 1, transform: 'none' },
+	'@media (prefers-reduced-motion: reduce)': { transform: 'none' },
+}
+
+const plateCss: CSSObject = {
 	position: 'relative',
 	margin: 0,
 	display: 'grid',
 	placeItems: 'center',
-	minHeight: 'clamp(16rem, 34vw, 24rem)',
-	padding: '3rem 1.5rem 4rem',
-	'& svg': {
-		width: 'clamp(9rem, 22vw, 13rem)',
-		height: 'auto',
-	},
-	'& figcaption': {
+	'&[data-tone="light"]': { background: '#ffffff', color: '#000000' },
+	'&[data-tone="dark"]': { background: '#000000', color: '#ffffff' },
+	'& > img': { display: 'block', height: 'auto' },
+	'& > figcaption': {
 		position: 'absolute',
-		insetInline: '1.25rem',
-		bottom: '1.1rem',
+		left: '1.1rem',
+		bottom: '1rem',
 		fontSize: '0.8rem',
 		letterSpacing: '0.01em',
-		opacity: 0.62,
+		opacity: 0.6,
+	},
+	'&:hover > div, &:focus-within > div': { opacity: 1, transform: 'none' },
+}
+
+const plateShapeCss: Record<BrandSection['shape'], CSSObject> = {
+	logo: {
+		minHeight: 'clamp(10rem, 22vw, 15rem)',
+		padding: '2.5rem 1.5rem 3.5rem',
+		'& > img': { width: 'clamp(10rem, 24vw, 16rem)' },
+	},
+	mark: {
+		minHeight: 'clamp(12rem, 26vw, 18rem)',
+		padding: '2.5rem 1.5rem 3.5rem',
+		'& > img': { width: 'clamp(7rem, 16vw, 10rem)' },
+	},
+	tile: {
+		aspectRatio: '1',
+		borderRadius: radius.card,
+		overflow: 'hidden',
+		boxShadow: `0 0 0 1.5px ${colors.border}`,
+		'& > img': { position: 'absolute', inset: 0, width: '100%' },
 	},
 }
 
-const splitLightCss: CSSObject = {
-	background: '#ffffff',
-	color: '#000000',
-}
-
-const splitDarkCss: CSSObject = {
-	background: '#000000',
-	color: '#ffffff',
-}
-
-const logoHalfCss: CSSObject = {
-	minHeight: 'clamp(11rem, 22vw, 15rem)',
-	padding: '2.5rem 1.5rem 3.5rem',
-}
-
-const logoImgCss: CSSObject = {
-	display: 'block',
-	width: 'clamp(11rem, 26vw, 17rem)',
-	height: 'auto',
-}
-
-const heroNoteCss: CSSObject = {
-	margin: 0,
-	color: colors.textMuted,
-	fontSize: '0.92rem',
-	textAlign: 'center',
-	textWrap: 'balance',
-}
-
-const sectionCss: CSSObject = {
-	display: 'grid',
-	gap: 'clamp(1.75rem, 4vw, 2.5rem)',
-	paddingTop: 'clamp(2rem, 5vw, 3rem)',
-	borderTop: `1px solid ${colors.border}`,
-}
-
-const sectionIntroCss: CSSObject = {
-	display: 'grid',
-	gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr)',
-	columnGap: 'clamp(1.5rem, 5vw, 4rem)',
-	rowGap: '0.5rem',
-	alignItems: 'baseline',
-	'& h2': {
-		gridColumn: 1,
-		margin: 0,
-		fontSize: 'clamp(1.6rem, 3vw, 2.1rem)',
-		fontWeight: 720,
-		letterSpacing: '-0.022em',
-		lineHeight: 1.1,
-		textWrap: 'balance',
-	},
-	'& p': {
-		gridColumn: 2,
-		gridRow: '1 / span 2',
-		alignSelf: 'end',
-		margin: 0,
-		color: colors.textMuted,
-		lineHeight: 1.6,
-		maxWidth: '58ch',
-		textWrap: 'pretty',
-	},
-	'@media (max-width: 720px)': {
-		gridTemplateColumns: '1fr',
-		'& p': {
-			gridColumn: 1,
-			gridRow: 'auto',
-			marginTop: '0.25rem',
-		},
-	},
-}
-
-const sectionNumberCss: CSSObject = {
-	gridColumn: 1,
-	font: '600 0.78rem/1 ui-monospace, "SF Mono", Menlo, monospace',
-	letterSpacing: '0.08em',
-	color: colors.primaryText,
-}
-
-const metaCss: CSSObject = {
-	font: '500 0.74rem/1.3 ui-monospace, "SF Mono", Menlo, monospace',
-	letterSpacing: '0.02em',
-	color: colors.textMuted,
-}
-
-/* Pairs with a `position: relative` parent so the whole card or row is the
-   download target while the visible label stays the accessible name. */
-const stretchedLinkCss: CSSObject = {
-	color: colors.text,
-	fontWeight: 600,
-	textDecoration: 'none',
-	'&::after': {
-		content: '""',
-		position: 'absolute',
-		inset: 0,
-		borderRadius: 'inherit',
-	},
-	'&:focus-visible': { outline: 'none' },
-	'&:focus-visible::after': {
-		/* Inset so the download list's `overflow: hidden` cannot clip it. */
-		outline: `2px solid ${colors.primary}`,
-		outlineOffset: '-2px',
-	},
-}
-
-const interactiveSurfaceCss: CSSObject = {
-	position: 'relative',
-	transition: `border-color 160ms ${transitions.easeOut}, background-color 160ms ${transitions.easeOut}`,
-	'& [data-download-icon]': {
-		color: colors.textMuted,
-		transition: `color 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}`,
-	},
-	[hoverMq]: {
-		'&:hover': { borderColor: colors.primary },
-		'&:hover a': { color: colors.primaryText },
-		'&:hover [data-download-icon]': {
-			color: colors.primaryText,
-			transform: 'translateY(2px)',
-		},
-	},
-	'@media (prefers-reduced-motion: reduce)': {
-		'&:hover [data-download-icon]': { transform: 'none' },
-	},
-}
-
-const solidGridCss: CSSObject = {
-	display: 'grid',
-	gap: 'clamp(1rem, 2.5vw, 1.5rem)',
-	gridTemplateColumns: 'repeat(auto-fit, minmax(15rem, 1fr))',
-}
-
-const solidCardCss: CSSObject = {
-	...interactiveSurfaceCss,
-	margin: 0,
-	display: 'grid',
-	gridTemplateColumns: 'minmax(0, 1fr) auto',
-	gap: '1rem 0.75rem',
-	alignContent: 'start',
-	padding: '0.75rem 0.75rem 1.1rem',
-	backgroundColor: colors.surface,
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	'& [data-download-icon]': {
-		...(interactiveSurfaceCss['& [data-download-icon]'] as CSSObject),
-		alignSelf: 'start',
-		marginTop: '0.1rem',
-		marginRight: '0.35rem',
-	},
-}
-
-const solidImgCss: CSSObject = {
-	gridColumn: '1 / -1',
-	display: 'block',
-	width: '100%',
-	height: 'auto',
-	aspectRatio: '1',
-	borderRadius: `calc(${radius.card} - 0.5rem)`,
-	boxShadow: `0 0 0 1px ${colors.border}`,
-}
-
-const solidCaptionCss: CSSObject = {
-	display: 'grid',
-	gap: '0.3rem',
-	paddingInlineStart: '0.35rem',
-	color: colors.textMuted,
-	fontSize: '0.9rem',
-	lineHeight: 1.45,
-	'& > a': { fontSize: '0.98rem' },
-	'& > span:last-of-type': { marginTop: '0.35rem' },
-}
-
-const sourceListCss: CSSObject = {
-	listStyle: 'none',
-	margin: 0,
-	padding: 0,
-	display: 'grid',
-	backgroundColor: colors.surface,
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	overflow: 'hidden',
-}
-
-const sourceRowCss: CSSObject = {
-	...interactiveSurfaceCss,
-	display: 'grid',
-	gridTemplateColumns: '3.25rem minmax(0, 1fr) auto auto',
+const downloadCss: CSSObject = {
+	display: 'inline-flex',
 	alignItems: 'center',
-	gap: '1rem',
-	padding: '1rem 1.25rem',
-	'& + &': { borderTop: `1px solid ${colors.border}` },
+	gap: '0.3rem',
+	padding: '0.4rem 0.65rem',
+	borderRadius: radius.full,
+	font: '600 0.72rem/1 ui-monospace, "SF Mono", Menlo, monospace',
+	letterSpacing: '0.04em',
+	textDecoration: 'none',
+	transition: `background-color 160ms ${transitions.easeOut}`,
+	'[data-tone="light"] &': {
+		color: '#000000',
+		backgroundColor: 'rgb(0 0 0 / 0.06)',
+		boxShadow: 'inset 0 0 0 1px rgb(0 0 0 / 0.14)',
+	},
+	'[data-tone="dark"] &': {
+		color: '#ffffff',
+		backgroundColor: 'rgb(255 255 255 / 0.08)',
+		boxShadow: 'inset 0 0 0 1px rgb(255 255 255 / 0.2)',
+	},
 	[hoverMq]: {
-		'&:hover': { backgroundColor: colors.primarySoftest },
-		'&:hover a': { color: colors.primaryText },
-		'&:hover [data-download-icon]': {
-			color: colors.primaryText,
-			transform: 'translateY(2px)',
+		'[data-tone="light"] &:hover': { backgroundColor: 'rgb(0 0 0 / 0.12)' },
+		'[data-tone="dark"] &:hover': {
+			backgroundColor: 'rgb(255 255 255 / 0.18)',
 		},
 	},
-	'@media (max-width: 640px)': {
-		gridTemplateColumns: '3rem minmax(0, 1fr) auto',
-		padding: '0.9rem 1rem',
+	'&:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: '2px',
 	},
-}
-
-const formatBadgeCss: CSSObject = {
-	justifySelf: 'start',
-	padding: '0.3rem 0.5rem',
-	borderRadius: radius.sm,
-	border: `1px solid ${colors.border}`,
-	font: '600 0.7rem/1 ui-monospace, "SF Mono", Menlo, monospace',
-	letterSpacing: '0.06em',
-	color: colors.textMuted,
-}
-
-const sourceTextCss: CSSObject = {
-	display: 'grid',
-	gap: '0.2rem',
-	minWidth: 0,
-	'& > span': {
-		color: colors.textMuted,
-		fontSize: '0.88rem',
-	},
-}
-
-const sourceSizeCss: CSSObject = {
-	whiteSpace: 'nowrap',
-	'@media (max-width: 640px)': { display: 'none' },
 }
 
 const usageListCss: CSSObject = {
@@ -647,42 +438,9 @@ const usageListCss: CSSObject = {
 	padding: 0,
 	display: 'grid',
 	gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-	gap: 'clamp(1.75rem, 4vw, 2.5rem) clamp(1.5rem, 5vw, 4rem)',
-	'@media (max-width: 720px)': {
-		gridTemplateColumns: '1fr',
-	},
-	counterReset: 'usage',
-	'& > li': {
-		counterIncrement: 'usage',
-		display: 'grid',
-		alignContent: 'start',
-		gridTemplateColumns: '2rem minmax(0, 1fr)',
-		columnGap: '0.75rem',
-		rowGap: '0.4rem',
-	},
-	'& > li::before': {
-		content: 'counter(usage)',
-		gridRow: '1 / span 2',
-		display: 'grid',
-		placeItems: 'center',
-		width: '2rem',
-		height: '2rem',
-		borderRadius: radius.full,
-		backgroundColor: colors.primarySoft,
-		color: colors.primaryText,
-		font: '600 0.82rem/1 ui-monospace, "SF Mono", Menlo, monospace',
-	},
-	'& strong': {
-		alignSelf: 'center',
-		fontSize: '1.05rem',
-		fontWeight: 650,
-		color: colors.text,
-	},
-	'& p': {
-		gridColumn: 2,
-		margin: 0,
-		color: colors.textMuted,
-		lineHeight: 1.6,
-		textWrap: 'pretty',
-	},
+	gap: '0.9rem clamp(1.5rem, 5vw, 4rem)',
+	color: colors.textMuted,
+	lineHeight: 1.55,
+	'& strong': { color: colors.text, fontWeight: 650 },
+	'@media (max-width: 640px)': { gridTemplateColumns: '1fr' },
 }
