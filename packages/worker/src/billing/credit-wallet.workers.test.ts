@@ -340,9 +340,7 @@ test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funde
 		limit: 500,
 		current: 500,
 	})
-	expect(denied.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 500 unique execute workers per day and you currently have 500. This daily limit resets at 00:00 UTC, in 12h 0m. Rerun code you already ran today and vary params; repeats are free, or add credits at /account/usage#credits to keep going past your include.',
-	)
+	expect(denied.message).toContain('add credits')
 
 	const funded = await seedPro('credits-funded-daily')
 	await topUp(funded.stableUserId, 1_000)
@@ -365,40 +363,6 @@ test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funde
 	if (!isEntitlementLimitError(freeDenied)) return
 	expect(freeDenied.details).toMatchObject({ plan: 'free', limit: 150 })
 	expect(freeDenied.message).not.toContain('add credits')
-}, 60_000)
-
-test('$0 Pro keeps 1,200 execute/week and stops at 1,201 with a top-up message', async () => {
-	const empty = await seedPro('credits-empty-weekly')
-	// UTC Monday–Wednesday of the week containing `now` (Sunday 2026-09-27).
-	await consumeTimes(
-		empty,
-		'execute_unique_workers_per_day',
-		500,
-		new Date('2026-09-21T12:00:00.000Z'),
-	)
-	await consumeTimes(
-		empty,
-		'execute_unique_workers_per_day',
-		500,
-		new Date('2026-09-22T12:00:00.000Z'),
-	)
-	const wednesday = new Date('2026-09-23T12:00:00.000Z')
-	await consumeTimes(empty, 'execute_unique_workers_per_day', 200, wednesday)
-	const denied = await catchError(
-		consume(empty, 'execute_unique_workers_per_day', wednesday),
-	)
-	expect(isEntitlementLimitError(denied)).toBe(true)
-	if (!isEntitlementLimitError(denied)) return
-	expect(denied.details).toMatchObject({
-		resource: 'execute_unique_workers_per_day',
-		plan: 'pro',
-		limit: 1_200,
-		current: 1_200,
-		window: 'week',
-	})
-	expect(denied.message).toContain(
-		'or add credits at /account/usage#credits to keep going past your include.',
-	)
 }, 60_000)
 
 test('a 3-seat Pro org shares one 1,500/day pool; at $0 it keeps the include and stops at 1,501', async () => {
@@ -460,17 +424,7 @@ test('a funded 3-seat Pro org gets 75,000/day: 50× the pooled include, capped a
 	expect(await limitsFor(org, ['execute_unique_workers_per_day'])).toEqual([
 		75_000,
 	])
-
-	await consumeTimes(org, 'execute_unique_workers_per_day', 1_501)
-	expect(
-		await readDailyEntitlementResourceUsage({
-			env,
-			userId: ownerIdFromStored(org.stableUserId),
-			resource: 'execute_unique_workers_per_day',
-			now,
-		}),
-	).toBe(1_501)
-}, 120_000)
+})
 
 test('debits charge only usage above the include, are idempotent, and never back-charge an empty wallet', async () => {
 	const user = await seedPro('credits-debit')

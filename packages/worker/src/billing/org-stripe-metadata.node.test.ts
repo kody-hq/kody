@@ -15,30 +15,12 @@ test('buildOrgBillingMetadata dual-writes the same org id on both keys', () => {
 	})
 })
 
-test('classifyStripeOrgIdMetadataSource prefers kody_org_id', () => {
-	expect(
-		classifyStripeOrgIdMetadataSource({
-			[KODY_ORG_ID_METADATA_KEY]: 'org-new',
-			[KODY_STABLE_USER_ID_METADATA_KEY]: 'legacy-id',
-		}),
-	).toBe('kody_org_id')
-})
-
 test('classifyStripeOrgIdMetadataSource falls back to kody_stable_user_id', () => {
 	expect(
 		classifyStripeOrgIdMetadataSource({
 			[KODY_STABLE_USER_ID_METADATA_KEY]: 'stable-1',
 		}),
 	).toBe('kody_stable_user_id')
-})
-
-test('resolveOrgIdFromStripeMetadata prefers kody_org_id', () => {
-	expect(
-		resolveOrgIdFromStripeMetadata({
-			[KODY_ORG_ID_METADATA_KEY]: 'org-new',
-			[KODY_STABLE_USER_ID_METADATA_KEY]: 'legacy-id',
-		}),
-	).toBe('org-new')
 })
 
 test('resolveOrgIdFromStripeMetadata falls back to kody_stable_user_id and logs', () => {

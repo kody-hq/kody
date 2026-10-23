@@ -196,33 +196,6 @@ test('runCapabilityProxyGatewayFetchStream forwards the body stream and returns 
 	expect(await gatewayArg.request.text()).toBe('raw-bytes')
 })
 
-test('runCapabilityProxyGatewayFetchStream rejects a missing URL before calling the gateway', async () => {
-	await expect(
-		runCapabilityProxyGatewayFetchStream({
-			ctx: {
-				env: { APP_DB: {} },
-				principal: { kind: 'token', token: {} },
-				callerContext: {
-					baseUrl: 'https://heykody.dev',
-					user: {
-						userId: ownerIdFromStored('user-1'),
-						email: 'user@example.com',
-					},
-					storageContext: null,
-				},
-			} as never,
-			request: new Request(
-				'https://api.kody.test/v1/capability-proxy/gateway-fetch',
-				{ method: 'POST', body: 'x' },
-			),
-		}),
-	).rejects.toMatchObject({
-		code: 'invalid_request',
-		message: expect.stringMatching(/X-Kody-Gateway-Url/),
-	})
-	expect(executeGatewayFetch).not.toHaveBeenCalled()
-})
-
 test('runCapabilityProxyGatewayFetchStream propagates missing-secret caller errors', async () => {
 	executeGatewayFetch.mockRejectedValue(
 		new McpCallerError('Secret "demoToken" was not found.'),

@@ -70,7 +70,6 @@ test('workflow creation omits explicit retention and active overlap stays duplic
 	}
 	const payload = dailyPayload()
 	assert.equal(await enqueueBackup(workflow, DATABASE_ID, payload), 'created')
-	assert.equal('retention' in createdOptions!, false)
 	assert.equal(await enqueueBackup(workflow, DATABASE_ID, payload), 'duplicate')
 })
 

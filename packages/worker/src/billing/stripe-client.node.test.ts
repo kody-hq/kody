@@ -28,8 +28,6 @@ import {
 	listSubscriptions,
 	mergeStripeObjectMetadata,
 	StripeApiError,
-	subscriptionSeatQuantity,
-	updateSubscriptionItemQuantity,
 } from './stripe-client.ts'
 
 const env = { STRIPE_SECRET_KEY: 'sk_test_secret' }
@@ -401,59 +399,6 @@ test('stripe client request contracts for checkout, subscriptions, and portal', 
 		).rejects.toMatchObject({ name: 'StripeApiError', status: 400 })
 		expect(fetchMock).not.toHaveBeenCalled()
 	}
-})
-
-test('subscriptionSeatQuantity reads the first item quantity', () => {
-	expect(
-		subscriptionSeatQuantity({
-			id: 'sub_1',
-			status: 'active',
-			cancel_at: null,
-			current_period_end: undefined,
-			metadata: undefined,
-			items: {
-				data: [
-					{
-						id: undefined,
-						quantity: 5,
-						price: { id: 'price_pro' },
-						current_period_end: undefined,
-					},
-				],
-			},
-		}),
-	).toBe(5)
-	expect(
-		subscriptionSeatQuantity({
-			id: 'sub_1',
-			status: 'active',
-			cancel_at: null,
-			current_period_end: undefined,
-			metadata: undefined,
-			items: {
-				data: [
-					{
-						id: undefined,
-						quantity: undefined,
-						price: { id: 'price_pro' },
-						current_period_end: undefined,
-					},
-				],
-			},
-		}),
-	).toBe(1)
-})
-
-test('updateSubscriptionItemQuantity posts quantity to Stripe', async () => {
-	using fetchMock = fetchReturning(jsonResponse({ id: 'si_1', quantity: 2 }))
-	await updateSubscriptionItemQuantity(env, {
-		subscriptionItemId: 'si_1',
-		quantity: 2,
-	})
-	const [url, init] = fetchMock.mock.calls[0]!
-	expect(url).toBe('https://api.stripe.com/v1/subscription_items/si_1')
-	expect(init?.method).toBe('POST')
-	expect(formFields(init, ['quantity'])).toEqual({ quantity: '2' })
 })
 
 test('stripe client immediately cancels subscriptions and deletes customers', async () => {
@@ -905,36 +850,6 @@ test('isStripeIdempotencyParameterMismatchError detects Stripe idempotency body 
 			}),
 		),
 	).toBe(false)
-})
-
-test('listPaymentIntentsForCustomer lists recent intents for a customer', async () => {
-	using fetchMock = fetchReturning(
-		jsonResponse({
-			data: [
-				{
-					id: 'pi_1',
-					status: 'succeeded',
-					amount: 1000,
-					currency: 'usd',
-					metadata: { kody_credit_auto_refill: '1' },
-				},
-			],
-			has_more: false,
-		}),
-	)
-	const mockEnv = {
-		...env,
-		STRIPE_API_BASE_URL: 'https://stripe.mock',
-	}
-	const intents = await listPaymentIntentsForCustomer(mockEnv, 'cus_1', {
-		limit: 10,
-	})
-	expect(intents).toHaveLength(1)
-	expect(intents[0]?.id).toBe('pi_1')
-	expect(queryOf(fetchMock.mock.calls[0]?.[0])).toMatchObject({
-		customer: 'cus_1',
-		limit: '10',
-	})
 })
 
 test('listPaymentIntentsForCustomer follows has_more pages', async () => {

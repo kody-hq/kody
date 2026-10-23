@@ -3,9 +3,8 @@ import {
 	applyStuckRenameRecovery,
 	createEmptyEditorState,
 } from './account-secrets-shared.ts'
-test.each(['user', 'package'] as const)(
-	'rename recovery keeps the submitted %s scope and edits the committed casing',
-	(scope) => {
+test('rename recovery keeps the submitted scope and edits the committed casing', () => {
+	for (const scope of ['user', 'package'] as const) {
 		const editor = {
 			...createEmptyEditorState([]),
 			currentId: `${scope}::::Henry`,
@@ -32,5 +31,5 @@ test.each(['user', 'package'] as const)(
 		expect(recovered.href).toContain('?q=henry')
 		expect(recovered.href).not.toContain('Henry')
 		if (scope === 'package') expect(recovered.href).toContain('pkg-1')
-	},
-)
+	}
+})

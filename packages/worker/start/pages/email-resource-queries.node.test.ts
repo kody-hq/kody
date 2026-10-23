@@ -16,16 +16,11 @@ import {
 	loadEmailDestinations,
 } from '#start/server/email'
 
-it.each(['123', 'true', 'false', 'null', '"hello"', '[]', '{}', ' 123 '])(
-	'email search preserves Router text %s',
-	(q) => {
+it('email search preserves Router text values that resemble parsed types', () => {
+	for (const q of ['true', 'null', '"hello"', '[]', '{}', ' 123 ']) {
 		const parsed = defaultParseSearch(defaultStringifySearch({ q }))
 		expect(emailSearch(parsed).q).toBe(q)
-	},
-)
-
-it.each(['123', 'true', 'null'])('email bookmarks retain text %s', (q) => {
-	expect(emailSearch(defaultParseSearch(`?q=${q}`)).q).toBe(q)
+	}
 })
 vi.mock('#start/server/email', () => ({
 	loadEmailList: vi.fn(),

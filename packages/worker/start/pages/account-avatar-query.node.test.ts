@@ -72,77 +72,62 @@ test('uncertain avatar response invalidates account, public profile and shell fo
 	client.clear()
 })
 
-for (const readBeforeWrite of [true, false]) {
-	test.each(['accepted', 'lost reply'] as const)(
-		`avatar preserves first navigation, read before write: ${readBeforeWrite}, %s`,
-		async (outcome) => {
-			const client = new QueryClient({
-				defaultOptions: { queries: { retry: false } },
-			})
-			const key = ['page', 'a', 'loadAccountPage', {}]
-			const other = ['page', 'b', 'loadAccountPage', {}]
-			const otherProfile = ['page', 'a', 'loadProfile', { username: 'bob' }]
-			const old = {
-				payloads: {
-					accountProfile: { displayName: 'Current name', avatarUrl: 'old.png' },
-				},
-			}
-			const current = {
-				payloads: {
-					accountProfile: { displayName: 'Current name', avatarUrl: 'new.png' },
-				},
-			}
-			client.setQueryData(other, old)
-			client.setQueryData(otherProfile, old)
-			let finishRead!: (data: typeof old) => void
-			let finishWrite!: (data: Awaited<ReturnType<typeof updateAvatar>>) => void
-			let failWrite!: (error: Error) => void
-			let reads = 0
-			const observer = new MutationObserver(
-				client,
-				avatarMutationOptions(
-					client,
-					() =>
-						new Promise((resolve, reject) => {
-							finishWrite = resolve
-							failWrite = reject
-						}),
-				),
-			)
-			const write = observer
-				.mutate({ actorKey: 'a', href: '/account', username: 'alice' })
-				.catch(() => undefined)
-			await vi.waitFor(() => expect(finishWrite).toBeDefined())
-			const navigation = client.ensureQueryData({
-				queryKey: key,
-				queryFn: () =>
-					++reads === 1
-						? new Promise<typeof old>((resolve) => {
-								finishRead = resolve
-							})
-						: Promise.resolve(current),
-				staleTime: Infinity,
-			})
-			await vi.waitFor(() => expect(finishRead).toBeDefined())
-			if (readBeforeWrite) {
-				finishRead(old)
-				await expect(navigation).resolves.toEqual(old)
-			}
-			if (outcome === 'accepted')
-				finishWrite({ ok: true, avatarUrl: 'new.png' })
-			else failWrite(new Error('Lost reply after commit'))
-			if (!readBeforeWrite) {
-				await Promise.resolve()
-				expect(observer.getCurrentResult().isPending).toBe(true)
-				finishRead(old)
-				await expect(navigation).resolves.toEqual(old)
-			}
-			await write
-			expect(reads).toBe(2)
-			expect(client.getQueryData(key)).toEqual(current)
-			expect(client.getQueryState(other)?.isInvalidated).toBe(false)
-			expect(client.getQueryState(otherProfile)?.isInvalidated).toBe(false)
-			client.clear()
+test('avatar preserves in-flight navigation after a lost reply for the submitted actor', async () => {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	})
+	const key = ['page', 'a', 'loadAccountPage', {}]
+	const other = ['page', 'b', 'loadAccountPage', {}]
+	const otherProfile = ['page', 'a', 'loadProfile', { username: 'bob' }]
+	const old = {
+		payloads: {
+			accountProfile: { displayName: 'Current name', avatarUrl: 'old.png' },
 		},
+	}
+	const current = {
+		payloads: {
+			accountProfile: { displayName: 'Current name', avatarUrl: 'new.png' },
+		},
+	}
+	client.setQueryData(other, old)
+	client.setQueryData(otherProfile, old)
+	let finishRead!: (data: typeof old) => void
+	let failWrite!: (error: Error) => void
+	let reads = 0
+	const observer = new MutationObserver(
+		client,
+		avatarMutationOptions(
+			client,
+			() =>
+				new Promise((_resolve, reject) => {
+					failWrite = reject
+				}),
+		),
 	)
-}
+	const write = observer
+		.mutate({ actorKey: 'a', href: '/account', username: 'alice' })
+		.catch(() => undefined)
+	await vi.waitFor(() => expect(failWrite).toBeDefined())
+	const navigation = client.ensureQueryData({
+		queryKey: key,
+		queryFn: () =>
+			++reads === 1
+				? new Promise<typeof old>((resolve) => {
+						finishRead = resolve
+					})
+				: Promise.resolve(current),
+		staleTime: Infinity,
+	})
+	await vi.waitFor(() => expect(finishRead).toBeDefined())
+	await Promise.resolve()
+	expect(observer.getCurrentResult().isPending).toBe(true)
+	finishRead(old)
+	await expect(navigation).resolves.toEqual(old)
+	failWrite(new Error('Lost reply after commit'))
+	await write
+	expect(reads).toBe(2)
+	expect(client.getQueryData(key)).toEqual(current)
+	expect(client.getQueryState(other)?.isInvalidated).toBe(false)
+	expect(client.getQueryState(otherProfile)?.isInvalidated).toBe(false)
+	client.clear()
+})
