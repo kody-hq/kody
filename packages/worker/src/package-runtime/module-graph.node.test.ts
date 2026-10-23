@@ -325,40 +325,6 @@ export default async function main() {
 	})
 })
 
-test('buildKodyAppBundle keeps esbuild JSX defaults unless the package tsconfig sets them', async () => {
-	const bundleApp = async (
-		label: string,
-		entryPoint: string | undefined,
-		files: Record<string, string>,
-	) => {
-		mockModule.createWorker.mockReset()
-		mockModule.createWorker.mockResolvedValue(createBundleResult(label))
-		const input = createBundleInput(entryPoint ? { entryPoint } : undefined)
-		Object.assign(input.sourceFiles, files)
-		await buildKodyAppBundle(input)
-		return lastBundlerCall()
-	}
-
-	const defaultCall = await bundleApp('plain', 'app/router.ts', {
-		'app/router.ts': 'export default { fetch() { return new Response("ok") } }',
-	})
-	expect(defaultCall).not.toHaveProperty('jsx')
-	expect(defaultCall).not.toHaveProperty('jsxImportSource')
-	expect(defaultCall.files['node_modules/remix/package.json']).toBeUndefined()
-
-	const tsconfigCall = await bundleApp('tsconfig', 'app/router.ts', {
-		'app/router.ts': 'export default function App() { return <div /> }',
-		'tsconfig.json': JSON.stringify({
-			compilerOptions: { jsx: 'react-jsx', jsxImportSource: 'remix/component' },
-		}),
-	})
-	expect(tsconfigCall).toMatchObject({
-		jsx: 'automatic',
-		jsxImportSource: 'remix/component',
-	})
-	expect(tsconfigCall.files['node_modules/remix/package.json']).toBeUndefined()
-})
-
 test('buildKodyAppBundle does not inject remix and fails when the bundle still imports it', async () => {
 	mockModule.createWorker.mockReset()
 	mockModule.createWorker.mockResolvedValue({

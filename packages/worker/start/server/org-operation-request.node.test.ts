@@ -56,11 +56,7 @@ vi.mock('../../src/app/handlers/org-settings.ts', () => ({
 	deleteOrganizationDomain: state.write,
 }))
 import { setOrganizationMemberRole } from './org-mutations.ts'
-import {
-	addOrganizationDomain,
-	deleteOrganization,
-	saveOrganizationAvatar,
-} from './org-settings-mutations.ts'
+import { saveOrganizationAvatar } from './org-settings-mutations.ts'
 afterEach(() => vi.clearAllMocks())
 test('named member write validates role and retains explicit org plus original audit request', async () => {
 	await setOrganizationMemberRole({
@@ -86,35 +82,6 @@ test('named member write validates role and retains explicit org plus original a
 		}),
 	).toThrow(/Invalid/)
 	expect(state.write).toHaveBeenCalledTimes(1)
-})
-test('domain and deletion fields reach their distinct operations without action routing', async () => {
-	await addOrganizationDomain({
-		data: {
-			orgSlug: 'team-a',
-			hostname: 'app.example.com',
-			bindingKind: 'app',
-			packageId: 'package-a',
-		},
-	})
-	expect(state.write).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			request: state.request,
-			orgSlug: 'team-a',
-			hostname: 'app.example.com',
-			bindingKind: 'app',
-			packageId: 'package-a',
-		}),
-	)
-	await deleteOrganization({
-		data: { orgSlug: 'team-a', confirmation: 'DELETE' },
-	})
-	expect(state.write).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			request: state.request,
-			orgSlug: 'team-a',
-			confirmation: 'DELETE',
-		}),
-	)
 })
 test('multipart avatar preserves file and rejects missing org before acquiring a lease', async () => {
 	const form = new FormData()

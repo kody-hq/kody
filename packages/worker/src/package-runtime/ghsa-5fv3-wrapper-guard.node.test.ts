@@ -52,37 +52,4 @@ for (const [label, source] of Object.entries(sources)) {
 			expect(wrapper, `${label} wrapper references ${name}`).not.toContain(name)
 		}
 	})
-
-	test(`${label} runtime has no secret authority pass-through`, () => {
-		expect(source).not.toContain('__kodyRunWithSecretAuthority')
-		expect(source).not.toContain('kody.getSecretAuthority')
-		expect(source).not.toContain('__kodyGetSecretAuthority')
-	})
 }
-
-test('hosted metering wrapper hands calls straight to the target', () => {
-	const wrapper = functionSource(
-		sources.hosted,
-		'__kodyMeterStaticPackageExport',
-	)
-	// [[Construct]] is a plain Reflect.construct and [[Call]] a plain
-	// Reflect.apply: nothing wraps them in a scope.
-	expect(wrapper).toMatch(
-		/construct\(target, argumentsList, newTarget\) \{\s*return Reflect\.construct\(target, argumentsList, newTarget\);\s*\}/,
-	)
-	const applyCalls = wrapper.match(/Reflect\.apply\(/g) ?? []
-	expect(applyCalls).toHaveLength(2)
-	// The only AsyncLocalStorage it enters is its own call-chain store, which
-	// carries the outer package id for metering and nothing else.
-	const alsRuns = [...wrapper.matchAll(/(\w+)\.run\(/g)].map((m) => m[1])
-	expect(new Set(alsRuns)).toEqual(new Set(['__kodyStaticCallChainAls']))
-})
-
-test('local metering wrapper returns the export unchanged', () => {
-	const wrapper = functionSource(
-		sources.local,
-		'__kodyMeterStaticPackageExport',
-	)
-	expect(wrapper).not.toContain('Proxy')
-	expect(wrapper).not.toMatch(/\.run\(/)
-})

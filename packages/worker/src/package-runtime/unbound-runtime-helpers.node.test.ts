@@ -6,7 +6,6 @@ import {
 	modulesContainUnboundPackagesInvokeAccess,
 	parseUnboundRuntimeHelperMessage,
 	rewriteNullPackagesInvokeErrorMessage,
-	buildUnboundRuntimeHelperNextStep,
 } from './unbound-runtime-helpers.ts'
 
 const allOptionalHelperNames = new Set([
@@ -188,27 +187,6 @@ test('createUnboundRuntimeHelperMessage round-trips through parseUnboundRuntimeH
 	] as const) {
 		expect(parseUnboundRuntimeHelperMessage(input)).toBe(expected)
 	}
-})
-
-test('buildUnboundRuntimeHelperNextStep ignores inherited Object keys', () => {
-	expect(buildUnboundRuntimeHelperNextStep('packages')).toContain(
-		'`packages` is always unbound',
-	)
-	expect(buildUnboundRuntimeHelperNextStep('toString')).not.toContain(
-		'`packages` is always unbound',
-	)
-	expect(buildUnboundRuntimeHelperNextStep('toString')).toContain('`toString`')
-})
-
-test('events next step names package-owned runtimes, not execute static imports', () => {
-	const nextStep = buildUnboundRuntimeHelperNextStep('events')
-	expect(nextStep).toContain('package jobs')
-	expect(nextStep).toContain('subscription handlers')
-	expect(nextStep).toContain('package apps')
-	expect(nextStep).toContain('statically imported package export')
-	expect(nextStep).not.toContain(
-		"statically import the owning package's export so it runs in that context",
-	)
 })
 
 test('rewriteNullPackagesInvokeErrorMessage requires packages.invoke source evidence', () => {

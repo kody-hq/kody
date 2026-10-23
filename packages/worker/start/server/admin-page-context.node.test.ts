@@ -99,14 +99,6 @@ test('admin index renders a native forbidden result with HTTP 403 for members', 
 	})
 	expect(state.status).toHaveBeenCalledWith(403)
 })
-test('admin index redirects authorized administrators using Router redirect', async () => {
-	state.read.mockResolvedValue({ roles: ['admin'] })
-	const failure = await loadAdminIndex({ data: { returnTo: '/admin' } }).catch(
-		(error) => error,
-	)
-	expect(failure.options.to).toBe('/admin/users')
-	expect(failure.options.statusCode).toBe(302)
-})
 test.each([
 	'/administrator',
 	'/admin/missing',

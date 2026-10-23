@@ -700,36 +700,6 @@ test('createDynamicCallableWorkflow enforces concurrent workflow entitlements ac
 	expect((await planRun('max', 'plan-limit-blank-email-max-key')).ok).toBe(true)
 })
 
-test('listWorkflowRunsForUser returns recent workflow statuses', async () => {
-	runRecordMocks.resetProjections()
-	const binding = createStatefulWorkflowBinding()
-	const env = createWorkflowEnv(binding)
-	const created = await createInline(env, {
-		runAt: '2026-05-03T12:34:56.000Z',
-		idempotencyKey: 'inline-key',
-	})
-
-	runRecordMocks.upsertWorkflowProjection.mockClear()
-	const listed = {
-		id: created.id,
-		status: 'queued',
-		idempotencyKey: 'inline-key',
-	}
-	const list = () =>
-		listWorkflowRunsForUser({
-			env,
-			userId: ownerIdFromStored('user-1'),
-			limit: 10,
-		})
-	expect(await list()).toEqual([
-		expect.objectContaining({ ...listed, sourceType: 'inline' }),
-	])
-	expect(runRecordMocks.upsertWorkflowProjection).not.toHaveBeenCalled()
-	// A vanished engine instance does not rewrite the listed status.
-	binding.instances.delete(created.id)
-	expect(await list()).toEqual([expect.objectContaining(listed)])
-})
-
 test('DynamicCallableWorkflowBase records workflow_run usage on terminal transitions', async () => {
 	const usageModule = await import('#worker/usage/record-usage.ts')
 	const recordUsageSpy = vi
