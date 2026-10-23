@@ -31,8 +31,8 @@ export const nxCacheLifecyclePolicy = {
 	],
 }
 
-export function ensureNxCacheResources(options: { dryRun: boolean }) {
-	const bucket = ensureR2Bucket({
+export async function ensureNxCacheResources(options: { dryRun: boolean }) {
+	const bucket = await ensureR2Bucket({
 		name: NX_CACHE_R2_BUCKET_NAME,
 		dryRun: options.dryRun,
 	})
@@ -48,7 +48,7 @@ export function ensureNxCacheResources(options: { dryRun: boolean }) {
 }
 
 if (isExecutedDirectly(import.meta.url)) {
-	ensureNxCacheResources({
+	await ensureNxCacheResources({
 		dryRun: process.argv.includes('--dry-run'),
 	})
 }

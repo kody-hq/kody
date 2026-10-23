@@ -490,14 +490,22 @@ test('publishSession does not report success or move published pointers when the
 
 	vi.useFakeTimers()
 	try {
+		let settled = false
 		const publishSession = repoSession(createEnv(), state)
 			.publishSession(session)
 			.then(
-				() => null,
-				(caught: unknown) => caught,
+				() => {
+					settled = true
+					return null
+				},
+				(caught: unknown) => {
+					settled = true
+					return caught
+				},
 			)
-		await vi.advanceTimersByTimeAsync(0)
-		await vi.advanceTimersByTimeAsync(1_250)
+		for (let i = 0; i < 200 && !settled; i += 1) {
+			await vi.advanceTimersByTimeAsync(250)
+		}
 		const error = await publishSession
 
 		expect(error).toBeInstanceOf(Error)

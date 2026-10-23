@@ -49,6 +49,9 @@ export function isRetryableCloudflareFailure(message: string) {
 		message.includes('upstream connect error') ||
 		message.includes('Cloudflare API request failed (429)') ||
 		/Cloudflare API request failed \(5\d\d\)/.test(message) ||
+		/An unknown error has occurred[\s\S]*\[code:\s*10013\]/i.test(message) ||
+		/internal error[\s\S]*\[code:\s*7500\]/i.test(message) ||
+		/Cloudflare API[\s\S]*\[code:\s*10001\]/i.test(message) ||
 		// Cloudflare platform blip (also appears in wrangler stderr without an
 		// HTTP status envelope). Distinct from permanent "Authentication error".
 		/internal authentication error/i.test(message) ||
@@ -81,6 +84,7 @@ const retryableDeployFailurePatterns = [
 	/workflows\.api\.error\.internal_server/i,
 	/Cloudflare API[\s\S]*\[code:\s*10001\]/i,
 	/Cloudflare API[\s\S]*\[code:\s*10021\]/i,
+	/An unknown error has occurred[\s\S]*\[code:\s*10013\]/i,
 	/Script startup exceeded CPU time limit/i,
 	/Received a malformed response from the API/i,
 	/upstream connect error or disconnect\/reset/i,

@@ -4,6 +4,7 @@ import {
 	deleteEmailSendingEventSubscriptionIfPresent,
 	ensureArtifactsAccountEventSubscription,
 	ensureCloudflareQueue,
+	ensureD1Database,
 	ensureDmarcEmailRoutingRule,
 	ensureDmarcReportingTxtRecords,
 	ensureEmailSendingEventSubscription,
@@ -12,7 +13,6 @@ import {
 	fail,
 	isValidBareHostname,
 	listCloudflareQueues,
-	listD1Databases,
 	listKvNamespaces,
 	listPackageAppHostnames,
 	parseJsonc,
@@ -252,57 +252,6 @@ function emailSendingEventSubscriptionName(input: {
 			? '-system-email-delivery-events'
 			: '-email-delivery-events'
 	return truncateWithSuffix(input.workerName, suffix, 63)
-}
-
-function ensureD1Database({
-	name,
-	configuredId,
-	location,
-	dryRun,
-}: {
-	name: string
-	configuredId: string
-	location?: string
-	dryRun: boolean
-}) {
-	if (dryRun) {
-		console.error(`[dry-run] ensure D1 database: ${name}`)
-		return { name, id: `dry-run-${name}` }
-	}
-
-	const databases = listD1Databases()
-
-	if (configuredId) {
-		const byId = databases.find((entry) => entry.uuid === configuredId)
-		if (byId) {
-			console.error(`D1 database exists by id: ${byId.name} (${byId.uuid})`)
-			return { name: byId.name, id: byId.uuid }
-		}
-	}
-
-	const byName = databases.find((entry) => entry.name === name)
-	if (byName) {
-		console.error(`D1 database exists by name: ${name} (${byName.uuid})`)
-		return { name: byName.name, id: byName.uuid }
-	}
-
-	const args = ['d1', 'create', name]
-	if (location && location.length > 0) {
-		args.push('--location', location)
-	}
-	// If Wrangler prompts to update config, always answer "no".
-	const createResult = runWrangler(args, { input: 'n\n', quiet: true })
-	if (createResult.status !== 0) {
-		fail(`Failed to create D1 database: ${name}`)
-	}
-
-	const created = listD1Databases().find((entry) => entry.name === name)
-	if (!created) {
-		fail(`Created D1 database "${name}" but could not find it via list.`)
-	}
-
-	console.error(`Created D1 database: ${name} (${created.uuid})`)
-	return { name: created.name, id: created.uuid }
 }
 
 function ensureKvNamespace({
@@ -648,13 +597,13 @@ async function ensureProductionResources(options: CliOptions) {
 		`Ensuring production resources for worker: ${bindings.workerName} (D1: ${bindings.d1DatabaseName}, OAuth KV: ${bindings.oauthKvTitle}, Bundle KV: ${bindings.bundleArtifactsKvTitle}, Community R2: ${bindings.communityAssetsBucketName}, Email R2: ${bindings.emailBlobsBucketName}, Email Queue: ${bindings.emailDeliveryQueueName}, Email DLQ: ${bindings.emailDeliveryDeadLetterQueueName}, Artifacts Repo Events Queue: ${bindings.artifactsRepoEventsQueueName}, Artifacts Repo Events DLQ: ${bindings.artifactsRepoEventsDeadLetterQueueName}, Platform Feedback Queue: ${bindings.platformFeedbackDispatchQueueName}, Platform Feedback DLQ: ${bindings.platformFeedbackDispatchDeadLetterQueueName}, Community Activity Queue: ${bindings.communityActivityDispatchQueueName}, Community Activity DLQ: ${bindings.communityActivityDispatchDeadLetterQueueName}, Community Listing Published Queue: ${bindings.communityListingPublishedDispatchQueueName}, Community Listing Published DLQ: ${bindings.communityListingPublishedDispatchDeadLetterQueueName}, Package Events Queue: ${bindings.packageEventsDispatchQueueName}, Package Events DLQ: ${bindings.packageEventsDispatchDeadLetterQueueName}, Webhook Dispatch Queue: ${bindings.webhookDispatchQueueName}, Webhook Dispatch DLQ: ${bindings.webhookDispatchDeadLetterQueueName})`,
 	)
 
-	const d1 = ensureD1Database({
+	const d1 = await ensureD1Database({
 		name: bindings.d1DatabaseName,
 		configuredId: bindings.d1ConfiguredId,
 		location: options.d1Location,
 		dryRun: options.dryRun,
 	})
-	const auditD1 = ensureD1Database({
+	const auditD1 = await ensureD1Database({
 		name: bindings.auditD1DatabaseName,
 		configuredId: bindings.auditD1ConfiguredId,
 		location: options.d1Location,
@@ -670,19 +619,19 @@ async function ensureProductionResources(options: CliOptions) {
 		configuredId: bindings.bundleArtifactsKvConfiguredId,
 		dryRun: options.dryRun,
 	})
-	const emailBlobs = ensureR2Bucket({
+	const emailBlobs = await ensureR2Bucket({
 		name: bindings.emailBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const repoSessionBlobs = ensureR2Bucket({
+	const repoSessionBlobs = await ensureR2Bucket({
 		name: bindings.repoSessionBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const operatorBackups = ensureR2Bucket({
+	const operatorBackups = await ensureR2Bucket({
 		name: bindings.operatorBackupsBucketName,
 		dryRun: options.dryRun,
 	})
-	const communityAssets = ensureR2Bucket({
+	const communityAssets = await ensureR2Bucket({
 		name: bindings.communityAssetsBucketName,
 		dryRun: options.dryRun,
 	})

@@ -21,6 +21,7 @@ import {
 	deleteWorkerScript,
 	ensureArtifactsNamespace,
 	ensureCloudflareQueue,
+	ensureD1Database,
 	ensureR2Bucket,
 	fail,
 	isWranglerNotFoundOutput,
@@ -246,44 +247,6 @@ export function buildPreviewResourceNames(workerName: string) {
 		/** Cloudflare Artifacts namespace: bare preview worker name. */
 		artifactsNamespace: workerName,
 	}
-}
-
-function ensureD1Database({
-	name,
-	location,
-	dryRun,
-}: {
-	name: string
-	location?: string
-	dryRun: boolean
-}) {
-	if (dryRun) {
-		console.error(`[dry-run] ensure D1 database: ${name}`)
-		return { name, id: `dry-run-${name}` }
-	}
-
-	const existing = listD1Databases().find((db) => db.name === name)
-	if (existing) {
-		console.error(`D1 database exists: ${name} (${existing.uuid})`)
-		return { name, id: existing.uuid }
-	}
-
-	const args = ['d1', 'create', name]
-	if (location && location.length > 0) {
-		args.push('--location', location)
-	}
-	// If Wrangler prompts to update config, always answer "no".
-	const createResult = runWrangler(args, { input: 'n\n', quiet: true })
-	if (createResult.status !== 0) {
-		fail(`Failed to create D1 database: ${name}`)
-	}
-
-	const created = listD1Databases().find((db) => db.name === name)
-	if (!created) {
-		fail(`Created D1 database "${name}" but could not find it via list.`)
-	}
-	console.error(`Created D1 database: ${name} (${created.uuid})`)
-	return { name, id: created.uuid }
 }
 
 export async function deletePreviewD1Database({
@@ -608,12 +571,12 @@ async function ensurePreviewResources(options: CliOptions) {
 			`Refusing to create Artifacts namespace "${artifactsNamespace}": it does not match the preview resource naming scheme ${String(previewResourceNamePattern)}. Preview ensure only creates kody-pr-<number>* and kody-branch-<slug>* Artifacts namespaces.`,
 		)
 	}
-	const d1 = ensureD1Database({
+	const d1 = await ensureD1Database({
 		name: d1DatabaseName,
 		location: options.d1Location,
 		dryRun: options.dryRun,
 	})
-	const auditD1 = ensureD1Database({
+	const auditD1 = await ensureD1Database({
 		name: auditD1DatabaseName,
 		location: options.d1Location,
 		dryRun: options.dryRun,
@@ -626,19 +589,19 @@ async function ensurePreviewResources(options: CliOptions) {
 		title: bundleArtifactsKvTitle,
 		dryRun: options.dryRun,
 	})
-	const emailBlobs = ensureR2Bucket({
+	const emailBlobs = await ensureR2Bucket({
 		name: emailBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const repoSessionBlobs = ensureR2Bucket({
+	const repoSessionBlobs = await ensureR2Bucket({
 		name: repoSessionBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const operatorBackups = ensureR2Bucket({
+	const operatorBackups = await ensureR2Bucket({
 		name: operatorBackupsBucketName,
 		dryRun: options.dryRun,
 	})
-	const communityAssets = ensureR2Bucket({
+	const communityAssets = await ensureR2Bucket({
 		name: communityAssetsBucketName,
 		dryRun: options.dryRun,
 	})

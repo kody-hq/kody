@@ -66,6 +66,10 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 		'',
 		'  GET /accounts/acct/workers/scripts/kody-pr-3501-runtime/deployments -> 504 Gateway Timeout',
 	].join('\n')
+	const unknownCloudflare10013Log =
+		'An unknown error has occurred. If this error persists, please file a report in workers-sdk (https://github.com/cloudflare/workers-sdk/issues) or reach out to your account team. [code: 10013]'
+	const d1InternalError7500Log =
+		'internal error; reference = e_61GNS0_bc1361e65fb4404f972d6735a9a3e4b4 [code: 7500]'
 
 	expect(isRetryableDeployFailure(startupCpuLog)).toBe(true)
 	expect(
@@ -77,8 +81,24 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 	expect(isRetryableDeployFailure(deploymentsList200Log)).toBe(true)
 	expect(isRetryableDeployFailure(gatewayTimeout504Log)).toBe(true)
 	expect(isRetryableDeployFailure('504 Gateway Timeout')).toBe(true)
+	expect(isRetryableDeployFailure(unknownCloudflare10013Log)).toBe(true)
 	expect(isRetryableDeployFailure(durableObjectMigrationLog)).toBe(false)
 	expect(isRetryableDeployFailure('')).toBe(false)
+	expect(isRetryableCloudflareFailure(unknownCloudflare10013Log)).toBe(true)
+	expect(isRetryableCloudflareFailure(d1InternalError7500Log)).toBe(true)
+	expect(
+		isRetryableCloudflareFailure(
+			'Cloudflare API request failed: temporary service issue [code: 10001]',
+		),
+	).toBe(true)
+	expect(
+		isRetryableCloudflareFailure('namespace not found [code: 10013]'),
+	).toBe(false)
+	expect(
+		isRetryableCloudflareFailure(
+			'D1 query failed: FOREIGN KEY constraint failed',
+		),
+	).toBe(false)
 
 	const startupLogPath = join(logDir, 'deploy-platform.log')
 	writeFileSync(startupLogPath, startupCpuLog)
