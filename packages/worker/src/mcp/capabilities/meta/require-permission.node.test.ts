@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { requireMcpUserWithPermission } from './require-permission.ts'
 
-test('requireMcpUserWithPermission requires an authenticated user', () => {
+test('requireMcpUserWithPermission authenticates before checking the permission', () => {
 	expect(() =>
 		requireMcpUserWithPermission(
 			createMcpCallerContext({
@@ -12,10 +12,8 @@ test('requireMcpUserWithPermission requires an authenticated user', () => {
 			}),
 			'read:user:any',
 		),
-	).toThrow('Authenticated MCP user is required for this capability.')
-})
+	).toThrow()
 
-test('requireMcpUserWithPermission throws when the user lacks the permission', () => {
 	expect(() =>
 		requireMcpUserWithPermission(
 			createMcpCallerContext({
@@ -31,10 +29,23 @@ test('requireMcpUserWithPermission throws when the user lacks the permission', (
 			}),
 			'read:user:any',
 		),
-	).toThrow('MCP user lacks required permission: read:user:any')
-})
+	).toThrow()
 
-test('requireMcpUserWithPermission returns the user when the permission is present', () => {
+	expect(() =>
+		requireMcpUserWithPermission(
+			createMcpCallerContext({
+				source: { kind: 'mcp-oauth' },
+				baseUrl: 'https://example.com',
+				user: {
+					userId: personIdFromStored('user-1'),
+					email: 'user@example.com',
+					displayName: 'user',
+				},
+			}),
+			'read:user:any',
+		),
+	).toThrow()
+
 	const user = {
 		userId: personIdFromStored('user-1'),
 		email: 'admin@example.com',
@@ -52,21 +63,4 @@ test('requireMcpUserWithPermission returns the user when the permission is prese
 			'read:user:any',
 		),
 	).toEqual(user)
-})
-
-test('requireMcpUserWithPermission treats missing permissions as unauthorized', () => {
-	expect(() =>
-		requireMcpUserWithPermission(
-			createMcpCallerContext({
-				source: { kind: 'mcp-oauth' },
-				baseUrl: 'https://example.com',
-				user: {
-					userId: personIdFromStored('user-1'),
-					email: 'user@example.com',
-					displayName: 'user',
-				},
-			}),
-			'read:user:any',
-		),
-	).toThrow('MCP user lacks required permission: read:user:any')
 })

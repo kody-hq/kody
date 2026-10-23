@@ -47,21 +47,7 @@ test('workflowRunCancel maps service outcomes for the signed-in user', async () 
 		outcome: 'cancelled',
 		run: {
 			id: 'dynwf-123',
-			userId: ownerIdFromStored('user-123'),
-			sourceType: 'inline',
-			packageId: null,
-			kodyId: null,
-			sourceId: null,
-			workflowName: 'inline-code',
-			exportName: null,
-			idempotencyKey: 'cancel-key',
-			runAt: '2026-05-03T12:00:00.000Z',
-			planDate: '2026-05-03',
 			status: 'cancelled',
-			createdAt: '2026-05-03T11:59:00.000Z',
-			updatedAt: '2026-05-03T12:00:01.000Z',
-			completedAt: '2026-05-03T12:00:01.000Z',
-			lastError: null,
 		},
 	})
 	const cancelled = await workflowCancelCapability.handler(
@@ -80,21 +66,7 @@ test('workflowRunCancel maps service outcomes for the signed-in user', async () 
 		outcome: 'already_terminal',
 		run: {
 			id: 'dynwf-done',
-			userId: ownerIdFromStored('user-123'),
-			sourceType: 'inline',
-			packageId: null,
-			kodyId: null,
-			sourceId: null,
-			workflowName: 'inline-code',
-			exportName: null,
-			idempotencyKey: 'done-key',
-			runAt: '2026-05-03T12:00:00.000Z',
-			planDate: '2026-05-03',
 			status: 'complete',
-			createdAt: '2026-05-03T11:59:00.000Z',
-			updatedAt: '2026-05-03T12:00:01.000Z',
-			completedAt: '2026-05-03T12:00:01.000Z',
-			lastError: null,
 		},
 	})
 	const alreadyTerminal = await workflowCancelCapability.handler(

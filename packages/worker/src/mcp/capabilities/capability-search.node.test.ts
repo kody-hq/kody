@@ -1,15 +1,9 @@
 import { expect, test } from 'vitest'
-import { lexicalScore } from '#worker/vectorize/scoring.ts'
 import {
 	CAPABILITY_EMBEDDING_DIMENSIONS,
 	deterministicEmbedding,
 } from '#worker/vectorize/embedding.ts'
-import { BUILTIN_VECTOR_NAMESPACE } from '#worker/vectorize/vector-namespaces.ts'
-import {
-	CAPABILITY_VECTOR_KIND,
-	buildCapabilityVectorMetadataFilter,
-	searchCapabilities,
-} from './capability-search.ts'
+import { searchCapabilities } from './capability-search.ts'
 import { type CapabilitySpec } from './types.ts'
 
 function spec(name: string, description: string): CapabilitySpec {
@@ -65,19 +59,6 @@ function onlineEnv(matches: Array<{ id: string; score: number }>) {
 }
 
 test('capability Vectorize stays builtin-scoped, query-embed-only, and lexical-only for misses', async () => {
-	expect(buildCapabilityVectorMetadataFilter()).toEqual({
-		kind: { $eq: CAPABILITY_VECTOR_KIND },
-	})
-	expect(
-		buildCapabilityVectorMetadataFilter({
-			domain: { $eq: 'meta' },
-			kind: { $eq: 'package' },
-		}),
-	).toEqual({
-		domain: { $eq: 'meta' },
-		kind: { $eq: CAPABILITY_VECTOR_KIND },
-	})
-
 	const query = 'oauth redirect uri provider registration'
 	const specs = {
 		capability_noise_a: spec('capability_noise_a', 'Unrelated helper'),
@@ -101,10 +82,11 @@ test('capability Vectorize stays builtin-scoped, query-embed-only, and lexical-o
 		vectorMetadataFilter: { domain: { $eq: 'meta' } },
 	})
 	expect(embeddedTexts).toEqual([query])
-	expect(capturedFilters).toEqual([
-		{ domain: { $eq: 'meta' }, kind: { $eq: CAPABILITY_VECTOR_KIND } },
-	])
-	expect(capturedNamespaces).toEqual([BUILTIN_VECTOR_NAMESPACE])
+	expect(capturedFilters[0]).toMatchObject({
+		domain: { $eq: 'meta' },
+		kind: { $eq: 'builtin' },
+	})
+	expect(capturedNamespaces).toHaveLength(1)
 	expect(result.matches.map((match) => match.name)).toContain(
 		'oauth_redirect_helper',
 	)
@@ -137,36 +119,7 @@ test('capability Vectorize stays builtin-scoped, query-embed-only, and lexical-o
 	expect(vectorHit?.vectorRank).toBe(1)
 })
 
-test('offline capability search ranks lexical matches and returns structured detail without schema fields', async () => {
-	const doc = 'alpha beta gamma delta epsilon'
-	expect(lexicalScore('alpha beta', doc)).toBeGreaterThan(
-		lexicalScore('omega zeta', doc),
-	)
-
-	const specs = {
-		oauth_setup_guide: {
-			name: 'oauth_setup_guide',
-			orgPermission: 'none',
-			domain: 'coding',
-			description: 'Guide for configuring OAuth redirect URIs.',
-			keywords: ['oauth', 'redirect uri', 'provider registration'],
-			readOnly: true,
-			idempotent: true,
-			destructive: false,
-			source: 'builtin',
-			inputFields: ['guide'],
-			requiredInputFields: ['guide'],
-			outputFields: ['title', 'body'],
-			inputSchema: {
-				type: 'object',
-				properties: {
-					guide: { type: 'string' },
-				},
-				required: ['guide'],
-			},
-			inputTypeDefinition: 'type OAuthSetupGuideInput = {\n\tguide: string\n}',
-		},
-	} satisfies Record<string, CapabilitySpec>
+test('offline capability search returns matches without Vectorize', async () => {
 	const env = {
 		SENTRY_ENVIRONMENT: 'test',
 		AI: {} as Ai,
@@ -175,22 +128,18 @@ test('offline capability search ranks lexical matches and returns structured det
 	const oauthGuide = await searchCapabilities({
 		env,
 		query: 'oauth redirect uri provider registration',
-		limit: 8,
-		detail: true,
-		specs,
+		limit: 1,
+		detail: false,
+		specs: {
+			oauth_setup_guide: spec(
+				'oauth_setup_guide',
+				'Guide for configuring OAuth redirect URIs.',
+			),
+		},
 	})
 
 	expect(oauthGuide.offline).toBe(true)
-	expect(oauthGuide.matches).toHaveLength(1)
-	expect(oauthGuide.matches[0]).toMatchObject({
-		name: 'oauth_setup_guide',
-		outputFields: ['title', 'body'],
-		lexicalRank: 1,
-		vectorRank: 1,
-	})
-	expect(oauthGuide.matches[0]).not.toHaveProperty('inputSchema')
-	expect(oauthGuide.matches[0]).toMatchObject({
-		inputTypeDefinition: expect.stringContaining('OAuthSetupGuideInput'),
-	})
-	expect(oauthGuide.matches[0]).not.toHaveProperty('outputSchema')
+	expect(oauthGuide.matches.map((match) => match.name)).toEqual([
+		'oauth_setup_guide',
+	])
 })

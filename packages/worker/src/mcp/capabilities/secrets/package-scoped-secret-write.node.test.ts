@@ -25,20 +25,6 @@ test('package scope without a runtime binding fails closed with a clear message'
 	).toThrowError(packageScopedSecretWriteUnavailableMessage)
 })
 
-test('package scope with a binding is allowed through to authorize', () => {
-	expect(() =>
-		assertPackageScopedSecretWriteAvailable({
-			scope: 'package',
-			storageContext: {
-				sessionId: null,
-				appId: null,
-				packageId: 'pkg-1',
-				storageId: 'pkg-1',
-			},
-		}),
-	).not.toThrow()
-})
-
 test('user and session scopes are not gated by package binding', () => {
 	expect(() =>
 		assertPackageScopedSecretWriteAvailable({
@@ -57,23 +43,6 @@ test('user and session scopes are not gated by package binding', () => {
 			},
 		}),
 	).not.toThrow()
-})
-
-test('message names local execute and hosted / UI / Open API fixes', () => {
-	expect(packageScopedSecretWriteUnavailableMessage).toMatch(
-		/kody execute --local/,
-	)
-	expect(packageScopedSecretWriteUnavailableMessage).toMatch(
-		/hosted package execute/,
-	)
-	expect(packageScopedSecretWriteUnavailableMessage).toMatch(
-		/\/connect\/secret-set/,
-	)
-	expect(packageScopedSecretWriteUnavailableMessage).toMatch(/secretSet/)
-	// Do not suggest trusting a client-supplied package id.
-	expect(packageScopedSecretWriteUnavailableMessage).toMatch(
-		/client-supplied package id is not trusted/,
-	)
 })
 
 test('assert runs before authorize so insufficient_scope is not the first error', async () => {

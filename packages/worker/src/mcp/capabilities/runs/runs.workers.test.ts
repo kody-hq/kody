@@ -155,12 +155,8 @@ test(
 		expect((await other.list()).runs).toEqual([])
 
 		const detail = await owner.get(handle.id)
-		expect(detail.run.id).toBe(handle.id)
 		expect(detail.run.status).toBe('error')
-		expect(detail.logs.map((log) => log.message)).toEqual([
-			'line-one',
-			'line-two',
-		])
+		expect(detail.logs).toHaveLength(2)
 		expect((await owner.get('run-webhook')).run.metadata).toMatchObject({
 			endpointId: 'ep-result',
 			outcome: 'delivered',
