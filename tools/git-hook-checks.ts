@@ -7,7 +7,7 @@ import {
 	rmSync,
 	symlinkSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve as resolvePath } from 'node:path'
 import { resolveNpmCommand, isExecutedDirectly } from './node-runtime.ts'
 import {
 	createFileProvenanceStore,
@@ -20,38 +20,10 @@ import {
 } from './git-hook-provenance.ts'
 
 /**
- * Husky pre-commit and pre-push gates.
- *
- * A docs-only diff skips install:check, typecheck, migrations:check, knip,
- * and test:push. lint-staged still formats the commit. Any other path,
- * including a comment in a source file, keeps the full check for that hook.
- * An unreadable diff fails closed and runs the check.
- *
- * pre-push also runs `node tools/check-skills-lock.ts` when the push changes
- * skills-lock.json or a path under .agents/skills/, and when the pushed paths
- * cannot be listed.
- * Markdown skill files are docs-only, so they do not run knip or test:push.
- * skills-lock.json alone does not either. Executable files under
- * .agents/skills/ still run knip and test:push.
- *
- * Rename detection is off so a source file renamed to markdown still lists
- * the deleted path.
- *
- * Pre-push runs `npm run knip` (same files/exports/types gate as CI) before
- * `test:push` on non-docs pushes. A knip failure tells the agent to run
- * `npm run knip` and fix. CI keeps its Knip step as the backstop.
- *
- * Pre-push skips `knip` and/or `test:push` when that check's tree SHA is
- * already recorded green from `npm run validate` or a prior successful
- * pre-push of the same check (#3653 / #3719). Knip and test:push provenance
- * are separate so a pre-knip `test:push`-only record cannot skip knip.
- * Progress logs tick every 30s so a long workers-unit run is not a silent
- * hang (#3547). Workers-unit isolation (ADR 0011) is unchanged.
- *
- * Pre-commit typecheck runs in a detached git worktree built from
- * `git write-tree` (the index) so unstaged fixes cannot greenlight a broken
- * index (#3695). The user's worktree is never mutated — no stash pop, no
- * checkout -- ., no moving untracked files aside.
+ * Docs-only commits/pushes skip expensive checks. Unreadable diffs fail closed.
+ * Pre-commit keeps install and migration checks; pre-push typechecks, runs Knip,
+ * and selects related unit tests unless global inputs require the full suites.
+ * Only full successful suites can record test:push provenance.
  */
 
 export type GitHookName = 'pre-commit' | 'pre-push'
@@ -441,11 +413,33 @@ function gitWithoutIndexFile(
 	}
 }
 
+export function isGlobalHookTestPath(filePath: string) {
+	const path = normalizeHookPath(filePath)
+	const basename = path.slice(path.lastIndexOf('/') + 1)
+	return (
+		/^(?:package(?:-lock)?\.json|vitest.*\.ts|vite\.config\.ts|tsconfig.*|wrangler.*\.jsonc|nx\.json|project\.json)$/.test(
+			basename,
+		) ||
+		path.startsWith('tools/vitest-global-setup') ||
+		path.startsWith('packages/worker/src/test-support/') ||
+		path.startsWith('patches/') ||
+		/(?:^|\/)migrations(?:\/|$)/.test(path)
+	)
+}
+
+export function relatedHookTestPaths(paths: ReadonlyArray<string>) {
+	return paths.filter((path) => /\.[cm]?[jt]sx?$/.test(path))
+}
+
 export async function runGitHookChecks(input: {
 	hook: GitHookName
 	stdin?: string | null
 	git?: GitRunner
-	runScript?: (script: string, cwd?: string) => number | Promise<number>
+	runScript?: (
+		script: string,
+		cwd?: string,
+		paths?: ReadonlyArray<string>,
+	) => number | Promise<number>
 	log?: (message: string) => void
 	provenance?: ProvenanceStore
 	now?: () => number
@@ -467,6 +461,7 @@ export async function runGitHookChecks(input: {
 	log(plan.summary)
 
 	let scripts = hookScripts(plan)
+	let relatedPaths: ReadonlyArray<string> | null = null
 	if (input.hook === 'pre-push') {
 		if (scripts.includes('knip')) {
 			const skipKnip = shouldSkipProvenanceCheck({
@@ -490,6 +485,34 @@ export async function runGitHookChecks(input: {
 			if (skipTests.skip && skipTests.reason) {
 				log(skipTests.reason)
 				scripts = scripts.filter((script) => script !== 'test:push')
+			}
+		}
+		if (
+			scripts.includes('test:push') &&
+			paths !== null &&
+			!paths.some(isGlobalHookTestPath)
+		) {
+			const nonDeleted = listPushedPaths(git, input.stdin ?? null, true)
+			if (nonDeleted !== null) {
+				relatedPaths = relatedHookTestPaths(nonDeleted)
+				if (
+					relatedPaths.length > 0 ||
+					nonDeleted.every(skipsPrePushUnitTests)
+				) {
+					scripts = scripts.flatMap((script) =>
+						script === 'test:push'
+							? relatedPaths!.length > 0
+								? [
+										'vitest related --project node-unit',
+										'vitest related --project workers-unit',
+									]
+								: []
+							: [script],
+					)
+					log(
+						`pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`,
+					)
+				}
 			}
 		}
 	}
@@ -522,7 +545,13 @@ export async function runGitHookChecks(input: {
 					run: (cwd) => runScript(script, cwd),
 				})
 			} else {
-				status = await runScript(script)
+				status = await runScript(
+					script,
+					undefined,
+					script.startsWith('vitest related ')
+						? (relatedPaths ?? [])
+						: undefined,
+				)
 			}
 		} finally {
 			clearInterval(heartbeat)
@@ -573,13 +602,13 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths === null) {
 		return {
 			runInstallCheck: true,
-			runTypecheck: true,
+			runTypecheck: false,
 			runMigrationsCheck: true,
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
 			summary:
-				'pre-commit: running install:check, typecheck, and migrations:check (could not list staged paths)',
+				'pre-commit: running install:check and migrations:check (could not list staged paths)',
 		}
 	}
 	if (paths.every(isDocsOnlyHookPath)) {
@@ -590,17 +619,17 @@ function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
-			summary: `pre-commit: skipping install:check, typecheck, and migrations:check (${docsOnlySummary(paths)})`,
+			summary: `pre-commit: skipping install:check and migrations:check (${docsOnlySummary(paths)})`,
 		}
 	}
 	return {
 		runInstallCheck: true,
-		runTypecheck: true,
+		runTypecheck: false,
 		runMigrationsCheck: true,
 		runKnip: false,
 		runUnitTests: false,
 		runSkillsLockCheck: false,
-		summary: `pre-commit: running install:check, typecheck, and migrations:check (${codePathSummary(paths)})`,
+		summary: `pre-commit: running install:check and migrations:check (${codePathSummary(paths)})`,
 	}
 }
 
@@ -608,13 +637,13 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 	if (paths === null) {
 		return {
 			runInstallCheck: false,
-			runTypecheck: false,
+			runTypecheck: true,
 			runMigrationsCheck: false,
 			runKnip: true,
 			runUnitTests: true,
 			runSkillsLockCheck: true,
 			summary:
-				'pre-push: running knip, test:push, and skills-lock (could not list pushed paths)',
+				'pre-push: running typecheck, knip, test:push, and skills-lock (could not list pushed paths)',
 		}
 	}
 	const skillsLock = paths.some(isSkillsLockHookPath)
@@ -640,19 +669,19 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runKnip: false,
 			runUnitTests: false,
 			runSkillsLockCheck: false,
-			summary: `pre-push: skipping knip and test:push (${docsOnlySummary(paths)})`,
+			summary: `pre-push: skipping typecheck, knip and test:push (${docsOnlySummary(paths)})`,
 		}
 	}
 	return {
 		runInstallCheck: false,
-		runTypecheck: false,
+		runTypecheck: true,
 		runMigrationsCheck: false,
 		runKnip: true,
 		runUnitTests: true,
 		runSkillsLockCheck: skillsLock,
 		summary: skillsLock
-			? `pre-push: running skills-lock, knip, and test:push (${codePathSummary(paths)})`
-			: `pre-push: running knip and test:push (${codePathSummary(paths)})`,
+			? `pre-push: running skills-lock, typecheck, knip, and tests (${codePathSummary(paths)})`
+			: `pre-push: running typecheck, knip and tests (${codePathSummary(paths)})`,
 	}
 }
 
@@ -690,6 +719,7 @@ function codePathSummary(paths: ReadonlyArray<string>) {
 function listPushedPaths(
 	git: GitRunner,
 	stdin: string | null,
+	nonDeleted = false,
 ): ReadonlyArray<string> | null {
 	const updates = parsePrePushUpdates(stdin)
 	if (updates === null) return null
@@ -706,6 +736,7 @@ function listPushedPaths(
 			'--name-only',
 			'--no-renames',
 			'-z',
+			...(nonDeleted ? ['--diff-filter=d'] : []),
 			from,
 			update.localSha,
 		])
@@ -812,22 +843,48 @@ export function gitHookScriptEnv(source: NodeJS.ProcessEnv = process.env) {
 
 /** Label for progress logs (`npm run X` or a bare `node …` command). */
 export function hookCommandLabel(script: string) {
-	return script.startsWith('node ') ? script : `npm run ${script}`
+	return script.startsWith('node ') || script.startsWith('vitest related ')
+		? script
+		: `npm run ${script}`
 }
 
-function defaultRunNpmScript(script: string, cwd?: string): Promise<number> {
+function defaultRunNpmScript(
+	script: string,
+	cwd?: string,
+	paths: ReadonlyArray<string> = [],
+): Promise<number> {
 	return new Promise((resolve) => {
-		const child = script.startsWith('node ')
-			? spawn(process.execPath, script.slice('node '.length).split(' '), {
-					stdio: 'inherit',
-					env: gitHookScriptEnv(),
-					cwd,
-				})
-			: spawn(resolveNpmCommand(), ['run', script], {
-					stdio: 'inherit',
-					env: gitHookScriptEnv(),
-					cwd,
-				})
+		const child = script.startsWith('vitest related --project ')
+			? spawn(
+					resolveNpmCommand(),
+					[
+						'exec',
+						'--',
+						'vitest',
+						'related',
+						'--run',
+						'--project',
+						script.slice('vitest related --project '.length),
+						'--passWithNoTests',
+						...paths.map((path) => resolvePath(path)),
+					],
+					{
+						stdio: 'inherit',
+						env: { ...gitHookScriptEnv(), CI: '1' },
+						cwd,
+					},
+				)
+			: script.startsWith('node ')
+				? spawn(process.execPath, script.slice('node '.length).split(' '), {
+						stdio: 'inherit',
+						env: gitHookScriptEnv(),
+						cwd,
+					})
+				: spawn(resolveNpmCommand(), ['run', script], {
+						stdio: 'inherit',
+						env: gitHookScriptEnv(),
+						cwd,
+					})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)
