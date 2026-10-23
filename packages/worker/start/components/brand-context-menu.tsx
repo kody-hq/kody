@@ -13,6 +13,7 @@ import {
 	type ReactNode,
 } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { isPopoverOpen } from '#client/popover-open.ts'
 import { toast } from '#client/toast.ts'
 import { publicAsset } from '../public-assets.ts'
 import {
@@ -299,7 +300,9 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 	useLayoutEffect(() => {
 		if (!open) return
 		const menu = menuRef.current
-		if (!menu || menu.matches(':popover-open')) return
+		// Without the Popover API (Safari < 17) it stays a plain fixed menu.
+		if (!menu || typeof menu.showPopover !== 'function') return
+		if (isPopoverOpen(menu)) return
 		menu.showPopover()
 	}, [open])
 
@@ -481,13 +484,16 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 
 const menuCss: CSSObject = {
 	position: 'fixed',
+	// Top layer ignores this; it still lifts the non-popover fallback.
+	zIndex: 1000,
 	// Reset the UA popover centering; inline left/top place it at the pointer.
 	inset: 'auto',
 	width: 'min(21rem, calc(100vw - 1rem))',
 	margin: 0,
 	padding: '0.35rem',
-	// No base `display`: a closed popover must keep the UA's `display: none`.
-	'&:popover-open': { display: 'grid' },
+	// Only rendered while open, and shown before paint, so a base `display`
+	// never exposes a closed popover; it also keeps the non-popover fallback.
+	display: 'grid',
 	gap: '0.1rem',
 	border: `1.5px solid ${colors.border}`,
 	borderRadius: '12px',
