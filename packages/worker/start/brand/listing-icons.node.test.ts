@@ -84,11 +84,15 @@ test('tab favicons are rounded tiles: outlined on white, solid on black', async 
 				pixel: [plate, plate, plate, 255],
 			})
 		}
-		// The mark contrasts with the plate somewhere inside the tile.
+		// The mark contrasts with the plate somewhere on the opaque tile
+		// (transparent corners read as black and would pass on their own).
 		let strongest = 0
 		for (let y = 0; y < size; y += 1) {
 			for (let x = 0; x < size; x += 1) {
-				strongest = Math.max(strongest, Math.abs(pixel(x, y)[0]! - plate))
+				const [red, , , alpha] = pixel(x, y)
+				if (alpha === 255) {
+					strongest = Math.max(strongest, Math.abs(red! - plate))
+				}
 			}
 		}
 		expect({ file, inked: strongest > 200 }).toEqual({ file, inked: true })
