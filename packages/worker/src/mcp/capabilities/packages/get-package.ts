@@ -9,6 +9,8 @@ import {
 import { toSecretCapabilityOutput } from '#mcp/capabilities/secrets/shared.ts'
 import { listPackageSecretsByPackageIds } from '#mcp/secrets/service.ts'
 import { applySavedPackageForkListingAncestry } from '#worker/community/fork-listing-relation.ts'
+import { buildPendingCommunityForkLookupMessage } from '#worker/community/pending-fork-lookup.ts'
+import { findPendingCommunityForkForLookup } from '#worker/community/repo.ts'
 import { describePackageCredentialNeeds } from '#worker/credentials/package-credential-needs.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
@@ -65,6 +67,21 @@ export const getPackageCapability = defineDomainCapability(
 				if (plainRepo) {
 					throw new McpCallerError(
 						buildPlainRepoPromotionErrorMessage(args.package_id),
+					)
+				}
+				const pendingFork = await findPendingCommunityForkForLookup(
+					ctx.env.APP_DB,
+					{
+						forkerUserId: owner.ownerUserId,
+						packageIdOrKodyId: args.package_id,
+					},
+				)
+				if (pendingFork) {
+					throw new McpCallerError(
+						buildPendingCommunityForkLookupMessage({
+							fork: pendingFork,
+							ownerScope: owner.ownerScope,
+						}),
 					)
 				}
 				throw new McpCallerError('Saved package not found for this user.')
