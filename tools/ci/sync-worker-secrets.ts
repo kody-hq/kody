@@ -488,10 +488,10 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		if (!versionsCommand) {
 			fail('Could not resolve wrangler command for versions secret sync.')
 		}
-		const versionsResult = await runWranglerSecretBulkOnce(
-			versionsCommand,
-			versionsCommandArgs,
-			spawnEnv,
+		// Same bounded retry budget as classic bulk: versions secret bulk still
+		// hits transient Cloudflare 503/gateway flakes independent of 10215.
+		const versionsResult = await retrySecretBulkUpload(() =>
+			runWranglerSecretBulkOnce(versionsCommand, versionsCommandArgs, spawnEnv),
 		)
 		if (versionsResult.exitCode !== 0) {
 			process.exit(versionsResult.exitCode)
