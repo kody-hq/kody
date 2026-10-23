@@ -148,7 +148,11 @@ export function AdminReservedUsernamesPage(props: {
 						css={accountTextareaCss}
 					/>
 				</label>
-				<button type="submit" disabled={isMutating} css={primaryButtonCss}>
+				<button
+					type="submit"
+					disabled={isMutating}
+					css={{ ...primaryButtonCss, justifySelf: 'start' }}
+				>
 					{actionState === 'adding' ? 'Adding…' : 'Add'}
 				</button>
 			</AccountManagementPanel>
