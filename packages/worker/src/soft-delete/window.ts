@@ -6,6 +6,14 @@ export function softDeletePurgeCutoffIso(now: Date = new Date()): string {
 	return cutoff.toISOString()
 }
 
+/** When a row soft-deleted at `deletedAt` stops being restorable. */
+export function softDeleteRestoreDeadlineIso(deletedAt: string) {
+	const deadline = new Date(deletedAt)
+	if (Number.isNaN(deadline.getTime())) return null
+	deadline.setUTCDate(deadline.getUTCDate() + softDeleteRetentionDays)
+	return deadline.toISOString()
+}
+
 export function isWithinSoftDeleteRestoreWindow(
 	deletedAt: string,
 	now: Date = new Date(),

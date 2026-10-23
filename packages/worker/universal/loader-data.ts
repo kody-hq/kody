@@ -1217,6 +1217,8 @@ export type AccountRestorableOrganization = {
 	slug: string
 	displayName: string | null
 	deletedAt: string
+	/** Last moment the org can be restored; null when `deletedAt` is unparseable. */
+	restoreUntil: string | null
 	avatarUrl?: string | null
 }
 
