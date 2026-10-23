@@ -69,16 +69,20 @@ export function kodyLogoOutlinedSvgMarkup(
 	clipId = 'kody-logo-outlined-clip',
 ): string {
 	const strokeWidth = kodyMarkOutlineStrokeWidth * 2
+	// The clip and the stroke it clips carry the full transform themselves, so
+	// both live in root user space. Consumers that resolve `userSpaceOnUse`
+	// against the root instead of the referencing group still clip correctly.
+	const outlineTransform = `${kodyLogoMarkTransform} ${kodyMarkPathTransform}`
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyLogoViewBox}" role="img" aria-label="Kody">
   <defs>
     <clipPath id="${clipId}">
-      <path transform="${kodyMarkPathTransform}" d="${kodyMarkOuterPathD}"/>
+      <path transform="${outlineTransform}" d="${kodyMarkOuterPathD}"/>
     </clipPath>
   </defs>
+  <g clip-path="url(#${clipId})">
+    <path fill="none" stroke="${fill}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" transform="${outlineTransform}" d="${kodyMarkOuterPathD}"/>
+  </g>
   <g transform="${kodyLogoMarkTransform}">
-    <g clip-path="url(#${clipId})">
-      <path fill="none" stroke="${fill}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" transform="${kodyMarkPathTransform}" d="${kodyMarkOuterPathD}"/>
-    </g>
     <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkLeftEyePathD}"/>
     <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkRightEyePathD}"/>
     <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkNosePathD}"/>
