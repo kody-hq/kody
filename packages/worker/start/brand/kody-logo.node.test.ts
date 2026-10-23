@@ -40,9 +40,6 @@ test('logo markup pairs the mark with the outlined wordmark', () => {
 })
 
 test('published logo SVGs match the markup helpers', () => {
-	expect(readPublic(kodyBrandAssets.logoSvg).toString('utf8')).toBe(
-		kodyLogoSvgMarkup('#000000'),
-	)
 	expect(readPublic(kodyBrandAssets.logoSvgWhite).toString('utf8')).toBe(
 		kodyLogoSvgMarkup('#ffffff'),
 	)
@@ -53,7 +50,6 @@ test('published logo SVGs match the markup helpers', () => {
 
 test('logo PNGs are 2048px wide at the logo aspect ratio', () => {
 	for (const assetPath of [
-		kodyBrandAssets.logoPngBlack,
 		kodyBrandAssets.logoPngWhite,
 		kodyBrandAssets.logoPngOutlined,
 	]) {

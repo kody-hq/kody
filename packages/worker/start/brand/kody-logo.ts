@@ -49,8 +49,11 @@ function round(value: number, digits: number) {
 	return Math.round(value * factor) / factor
 }
 
-/** Solid mark + wordmark (black by default; pass white for dark surfaces). */
-export function kodyLogoSvgMarkup(fill = '#000000'): string {
+/**
+ * Dark-mode logo: solid mark + wordmark in white. There is no solid black
+ * logo; light surfaces use {@link kodyLogoOutlinedSvgMarkup}.
+ */
+export function kodyLogoSvgMarkup(fill = '#ffffff'): string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyLogoViewBox}" role="img" aria-label="Kody">
   <g transform="${kodyLogoMarkTransform}">
     <path fill="${fill}" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkPathD}"/>
