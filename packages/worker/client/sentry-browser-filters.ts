@@ -259,8 +259,11 @@ export function filterBrowserInjectedGlobalNoiseSentryEvent<
  *
  * Match is intentionally narrow: appendChild- or removeChild-on-null
  * TypeError text AND a stack frame attributable to the Fathom script (CDN
- * hostname or the cross-origin-sanitized `/script.js` path). Never
- * blanket-drop appendChild / removeChild errors from app code.
+ * hostname or the cross-origin-sanitized `/script.js` path) on the **same**
+ * exception value. Multi-value events (linked `cause` chains) drop only when
+ * every value fully qualifies — never pair a matching message from one value
+ * with a Fathom frame from another. Never blanket-drop appendChild /
+ * removeChild errors from app code.
  */
 const fathomDomNullChildMessage =
 	/^(?:(?:TypeError:\s*)?Cannot read propert(?:y|ies) of null \(reading ['"](?:appendChild|removeChild)['"]\)|(?:TypeError:\s*)?null is not an object \(evaluating ['"][^'"]*\.(?:appendChild|removeChild)[^'"]*['"]\))$/
@@ -287,12 +290,26 @@ function isFathomAnalyticsStackFrameUrl(url: string) {
 	return normalized === '/script.js'
 }
 
-function isFathomDomNullChildSentryEvent(event: SentryErrorEventLike) {
-	const hasDomNullChild = sentryEventMessages(event).some(
-		(message) =>
-			typeof message === 'string' && isFathomDomNullChildMessage(message),
+function exceptionValueIsFathomDomNullChild(value: SentryExceptionValue) {
+	if (typeof value.value !== 'string') return false
+	if (!isFathomDomNullChildMessage(value.value)) return false
+	return (value.stacktrace?.frames ?? []).some((frame) =>
+		stackFrameUrls(frame).some(isFathomAnalyticsStackFrameUrl),
 	)
-	if (!hasDomNullChild) return false
+}
+
+function isFathomDomNullChildSentryEvent(event: SentryErrorEventLike) {
+	const values = event.exception?.values ?? []
+	if (values.length > 0) {
+		return values.every(exceptionValueIsFathomDomNullChild)
+	}
+
+	if (
+		typeof event.message !== 'string' ||
+		!isFathomDomNullChildMessage(event.message)
+	) {
+		return false
+	}
 	return sentryEventStackFrameUrls(event).some(isFathomAnalyticsStackFrameUrl)
 }
 

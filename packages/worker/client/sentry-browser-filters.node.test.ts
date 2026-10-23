@@ -844,6 +844,51 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 	)
 })
 
+test('Fathom DOM-null filter does not pair message and frames across exception values', () => {
+	// App appendChild wording on one value + Fathom frames only on another
+	// must stay visible (CodeRabbit on #4221).
+	const crossValueEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: "Cannot read properties of null (reading 'appendChild')",
+					stacktrace: { frames: [kodyEntry] },
+				},
+				{
+					type: 'TypeError',
+					value: 'unrelated',
+					stacktrace: {
+						frames: [{ abs_path: 'https://cdn.usefathom.com/script.js' }],
+					},
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(crossValueEvent)).toBe(crossValueEvent)
+
+	// Linked app Error + Fathom removeChild cause must stay visible.
+	const linkedEvent = {
+		exception: {
+			values: [
+				{
+					type: 'TypeError',
+					value: "Cannot read properties of null (reading 'removeChild')",
+					stacktrace: {
+						frames: [{ abs_path: 'https://cdn.usefathom.com/script.js' }],
+					},
+				},
+				{
+					type: 'Error',
+					value: 'Account settings failed',
+					stacktrace: { frames: [kodyEntry] },
+				},
+			],
+		},
+	}
+	expect(filterBrowserSentryEvent(linkedEvent)).toBe(linkedEvent)
+})
+
 test('isTanStackServerFnFetchNetworkError requires serverFn stack evidence', () => {
 	expect(
 		isTanStackServerFnFetchNetworkError(
