@@ -22,7 +22,7 @@ const sourceLabels: Record<string, string> = {
 	automation: 'an automation',
 }
 
-export function toggleChangeSubject(change: AccountToggleChange) {
+function toggleChangeSubject(change: AccountToggleChange) {
 	const name = change.name ?? change.resourceId
 	if (change.resource === 'job') return { name, kind: 'Job' }
 	const kind =
@@ -36,13 +36,13 @@ export function toggleChangeSubject(change: AccountToggleChange) {
 	return { name, kind }
 }
 
-export function toggleChangeLabel(change: AccountToggleChange) {
+function toggleChangeLabel(change: AccountToggleChange) {
 	if (change.to === 'on') return 'Turned on'
 	if (change.to === 'off') return 'Turned off'
 	return 'Paused'
 }
 
-export function toggleChangeActor(change: AccountToggleChange) {
+function toggleChangeActor(change: AccountToggleChange) {
 	const who =
 		change.actorKind === 'automation'
 			? 'Kody (automatic)'
