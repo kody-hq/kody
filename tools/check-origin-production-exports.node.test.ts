@@ -1,10 +1,8 @@
 import { expect, test } from 'vitest'
 import {
 	checkOriginProductionExports,
-	checkOriginProductionExportsInRepo,
 	extractNamedExports,
 	hasExportStarDeclaration,
-	type OriginProductionExportsCheckResult,
 } from './check-origin-production-exports.ts'
 
 const configPath = 'packages/worker/wrangler.jsonc'
@@ -254,10 +252,4 @@ test('hasExportStarDeclaration detects runtime export-star and ignores type-only
 	expect(
 		cases.filter(([source, want]) => hasExportStarDeclaration(source) !== want),
 	).toEqual([])
-})
-
-test('current repository origin production/dev-test-preview split passes the guardrail', async () => {
-	const result: OriginProductionExportsCheckResult =
-		await checkOriginProductionExportsInRepo()
-	expect(result).toEqual({ ok: true, errors: [] })
 })

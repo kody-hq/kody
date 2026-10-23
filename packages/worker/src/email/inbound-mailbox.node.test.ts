@@ -27,38 +27,6 @@ function createCapturedWaitUntilContext() {
 	return { ctx, waitUntilPromises }
 }
 
-test('received USER terminal work dispatches Mailbox-authoritative effects through waitUntil', async () => {
-	mocks.processInboundDeliveryEffects.mockResolvedValueOnce({
-		outcome: 'complete',
-	})
-	const { ctx, waitUntilPromises } = createCapturedWaitUntilContext()
-	const env = {} as Parameters<
-		typeof scheduleInboundReceivedTerminalWork
-	>[0]['env']
-
-	await scheduleInboundReceivedTerminalWork({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		messageId: 'message-1',
-		deliveryId: 'delivery-1',
-		expectedFinalizationToken: 'token-1',
-		durationMs: 12,
-		ctx,
-		logLabel: 'Inbound email effect dispatch failed',
-	})
-	await Promise.all(waitUntilPromises)
-
-	expect(waitUntilPromises).toHaveLength(1)
-	expect(mocks.processInboundDeliveryEffects).toHaveBeenCalledWith({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		deliveryId: 'delivery-1',
-		expectedFinalizationToken: 'token-1',
-		durationMs: 12,
-		waitUntil: expect.any(Function),
-	})
-})
-
 test('received terminal work contains effect failures and rejected terminal work is already durable', async () => {
 	consoleError.mockImplementation(() => {})
 	mocks.processInboundDeliveryEffects.mockRejectedValueOnce(

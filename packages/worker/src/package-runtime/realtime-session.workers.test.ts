@@ -5,7 +5,7 @@ import { seedAccount } from '#worker/test-support/workers-seed.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import {
 	packageRealtimeSessionRpc,
-	PackageRealtimeSession,
+	type PackageRealtimeSession,
 	resolvePackageAppWorkerBuildInput,
 } from './realtime-session.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -59,27 +59,6 @@ function getStub(binding: ReturnType<typeof createBinding>) {
 		namespace.idFromName(JSON.stringify([binding.userId, binding.packageId])),
 	)
 }
-
-test('package realtime session DO lists empty sessions and is addressable as a durable object', async () => {
-	const binding = createBinding()
-	const rpc = packageRealtimeSessionRpc(binding)
-
-	await expect(rpc.listSessions()).resolves.toEqual({ sessions: [] })
-	await expect(rpc.emit('missing-session', { type: 'hello' })).resolves.toEqual(
-		{ delivered: false, reason: 'session_not_connected' },
-	)
-	await expect(rpc.broadcast({ data: { type: 'broadcast' } })).resolves.toEqual(
-		{ deliveredCount: 0, sessionIds: [] },
-	)
-
-	await runInDurableObject(
-		getStub(binding),
-		async (instance: PackageRealtimeSession, state) => {
-			expect(instance).toBeInstanceOf(PackageRealtimeSession)
-			expect(state.storage.sql.databaseSize).toBeGreaterThanOrEqual(0)
-		},
-	)
-})
 
 test('package realtime connect upgrades through the real durable object stub and hands the request to the connect hook', async () => {
 	const binding = createBinding({

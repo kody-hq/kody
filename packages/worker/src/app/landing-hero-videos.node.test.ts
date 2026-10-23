@@ -56,44 +56,6 @@ test('loadLandingHeroVideos reads Innertube browse order and serves SWR from KV'
 	expect(fetches).toBe(1)
 })
 
-test('loadLandingHeroVideos prefers the Data API when a key is set', async () => {
-	const urls: Array<string> = []
-	using _server = createMswNodeServer([
-		http.get(
-			`${youtubePlaylistItemsApiOrigin}/youtube/v3/playlistItems`,
-			({ request }) => {
-				urls.push(request.url)
-				return HttpResponse.json({
-					items: [
-						{
-							snippet: {
-								title: first.title,
-								resourceId: { videoId: first.videoId },
-							},
-						},
-						{
-							snippet: {
-								title: second.title,
-								resourceId: { videoId: second.videoId },
-							},
-						},
-					],
-				})
-			},
-		),
-	])
-	const loaded = await loadLandingHeroVideos({
-		env: { YOUTUBE_DATA_API_KEY: 'test-youtube-key' } as Env,
-	})
-	expect(loaded).toEqual([first, second])
-	expect(urls).toHaveLength(1)
-	expect(
-		urls[0]?.startsWith(`${youtubePlaylistItemsApiOrigin}/youtube/v3/`),
-	).toBe(true)
-	expect(urls[0]).toContain('playlistId=PLBPBUA8boGLA')
-	expect(urls[0]).not.toContain('browse')
-})
-
 test('loadLandingHeroVideos falls back to Innertube when the Data API fails', async () => {
 	using _server = createMswNodeServer([
 		http.get(

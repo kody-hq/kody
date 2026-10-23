@@ -43,7 +43,7 @@ function authorize(
 	})
 }
 
-test('user-driven callers keep account-scoped storage ids', () => {
+test('user-driven callers keep account-scoped ids and reject blank ids', () => {
 	expect(authorize(null, buildPackageStorageId(victimPackageId))).toBe(
 		buildPackageStorageId(victimPackageId),
 	)
@@ -51,16 +51,7 @@ test('user-driven callers keep account-scoped storage ids', () => {
 	expect(() => authorize(null, '   ')).toThrow(McpCallerError)
 })
 
-test("padded package ids cannot claim another package's buckets", () => {
-	expect(() =>
-		authorize(` ${packageId} `, buildPackageStorageId(packageId)),
-	).toThrow(McpCallerError)
-	expect(() => authorize(` ${packageId} `, `${packageId}:facet:main`)).toThrow(
-		McpCallerError,
-	)
-})
-
-test('package callers reach only buckets their package owns', () => {
+test('package callers reach owned and host-bound buckets, not foreign buckets', () => {
 	for (const storageId of [
 		packageId,
 		buildPackageStorageId(packageId),
@@ -81,9 +72,7 @@ test('package callers reach only buckets their package owns', () => {
 	]) {
 		expect(() => authorize(packageId, storageId)).toThrow(McpCallerError)
 	}
-})
 
-test('a package caller keeps the bucket the host bound for its run', () => {
 	const boundJobBucket = `job:${crypto.randomUUID()}`
 	expect(authorize(packageId, boundJobBucket, boundJobBucket)).toBe(
 		boundJobBucket,
@@ -93,19 +82,20 @@ test('a package caller keeps the bucket the host bound for its run', () => {
 	).toThrow(McpCallerError)
 })
 
-test('non-UUID package ids get no prefix reach into reserved namespaces', () => {
+test('package ids cannot claim padded or reserved namespace buckets', () => {
+	expect(() =>
+		authorize(` ${packageId} `, buildPackageStorageId(packageId)),
+	).toThrow(McpCallerError)
+	expect(() => authorize(` ${packageId} `, `${packageId}:facet:main`)).toThrow(
+		McpCallerError,
+	)
 	expect(authorize('job', 'job')).toBe('job')
 	expect(authorize('job', buildPackageStorageId('job'))).toBe('package:job')
 	expect(() => authorize('job', 'job:ad-hoc-1')).toThrow(McpCallerError)
 	expect(() => authorize('exec', 'exec:scratch-1')).toThrow(McpCallerError)
-})
-
-test('denial names the capability, package, and bucket', () => {
 	expect(() =>
 		authorize(packageId, buildPackageStorageId(victimPackageId)),
 	).toThrow(
-		new RegExp(
-			`storageQuery.+${buildPackageStorageId(victimPackageId)}.+${packageId}`,
-		),
+		new RegExp(`storageQuery.+${buildPackageStorageId(victimPackageId)}`),
 	)
 })

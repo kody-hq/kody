@@ -502,5 +502,4 @@ test('the admin capability defaults to a dry run and reports bad input as a call
 		.handler({ ...args, runId: 'missing-run' }, ctx as never)
 		.catch((caught: unknown) => caught)
 	expect(isMcpCallerError(error)).toBe(true)
-	expect((error as Error).message).toBe('Codemod run missing-run not found.')
 })

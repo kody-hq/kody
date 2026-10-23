@@ -1,6 +1,7 @@
 /**
  * Gate Validate unit legs on wall-clock with a watch threshold and a hard
- * ceiling (Node watch 700s / hard 840s; Workers watch 620s / hard 780s).
+ * ceiling (each Node shard watch 700s / hard 840s; Workers watch 620s / hard 780s).
+ * Node retains the conservative ceiling until sharded CI timing is collected.
  * Measured from a start epoch recorded at the beginning of the same job.
  * Cache hit or miss does not change the caps.
  *

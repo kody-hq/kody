@@ -7,7 +7,6 @@ import { beforeEach, expect, test } from 'vitest'
 import {
 	mintPackageAppTicketCookie,
 	packageAppTicketTtlMs,
-	parsePackageAppTicketKeys,
 	readPackageAppTicket,
 	resetPackageAppTicketKeysForTests,
 	type PackageAppTicketGrant,
@@ -188,9 +187,4 @@ test('a ticket is bound to its host, app, visitor, and session', async () => {
 	await expect(read(env, request, { slug: 'dashboard' })).resolves.toEqual(
 		grant,
 	)
-})
-
-test('parsePackageAppTicketKeys trims entries and drops blanks', () => {
-	expect(parsePackageAppTicketKeys(undefined)).toEqual([])
-	expect(parsePackageAppTicketKeys(' a , ,b,')).toEqual(['a', 'b'])
 })

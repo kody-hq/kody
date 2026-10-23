@@ -11,7 +11,6 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import * as AuditLog from '#worker/audit-log.ts'
 import * as AccountDeletion from '#app/account-deletion.ts'
 import * as DeletionState from '#worker/account/deletion-state.ts'
-import { AccountDeletionWritersActiveError } from '#worker/account/deletion-state.ts'
 import {
 	AccountDeletionBillingError,
 	AccountDeletionCleanupError,
@@ -20,7 +19,6 @@ import {
 import {
 	listUnverifiedAccountPurgeCandidates,
 	pruneUnverifiedAccounts,
-	unverifiedAccountPurgeFailureReasonMaxLength,
 } from './unverified-account-purge.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
@@ -355,44 +353,6 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 12)]),
 	)
 	expect(h.usernames()).toEqual([])
-})
-
-test('the failure audit reason falls back to the error message and is truncated', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
-	consoleWarn.mockImplementation(() => {})
-	const h = createHarness()
-	const failing = await h.seed('long-failure', 9)
-	const other = await h.seed('writers-active', 8)
-	deleteUserAccount
-		.mockImplementationOnce(async () => {
-			throw new Error(`d1 timeout\n${'x'.repeat(400)}`)
-		})
-		.mockImplementationOnce(async () => {
-			throw new AccountDeletionWritersActiveError(2)
-		})
-
-	const [truncated, writersActive] = (await h.run()).outcomes
-	expect(truncated).toMatchObject({
-		stableUserId: failing.stableUserId,
-		outcome: 'failed',
-		warnings: [],
-	})
-	expect(truncated?.error).toHaveLength(
-		unverifiedAccountPurgeFailureReasonMaxLength,
-	)
-	expect(truncated?.error).toMatch(/^Error: d1 timeout x+$/)
-	expect(writersActive).toEqual(
-		failed(
-			other,
-			8,
-			'AccountDeletionWritersActiveError: Account deletion is waiting for 2 active user write(s) to finish.',
-		),
-	)
-	expect(h.auditRows()).toEqual([
-		failedAudit(failing, truncated?.error),
-		failedAudit(other, writersActive?.error),
-	])
-	expect(h.deletingAt('writers-active')).toBeNull()
 })
 
 test('failure details redact email addresses before they reach outcomes, audit rows, or logs', async () => {

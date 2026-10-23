@@ -42,13 +42,6 @@ renders. It avoids a separate stylesheet request, at the cost of CSS in the
 JavaScript payload and inline server HTML. Router alone does not guarantee that
 an arbitrary external stylesheet has loaded before content paints.
 
-[`history-navigation.spec.ts`](../../e2e/history-navigation.spec.ts) samples
-computed color variables and layout every frame during slow, superseding, and
-Back/Forward navigation, and verifies failed component loading recovers.
-[`public-features.spec.ts`](../../e2e/start/public-features.spec.ts) also
-samples the outgoing feature's computed style through Back navigation, so a
-correct final screenshot alone cannot hide an intermediate unstyled frame.
-
 ## Motion and verification
 
 [`navigation-motion.ts`](../../packages/worker/start/navigation-motion.ts) uses

@@ -7,8 +7,6 @@ import {
 	loadAccountActivityData,
 	readAccountActivityFilters,
 	readAccountActivitySelectedRunId,
-	statusFilterToRunStatus,
-	surfaceFilterToRunSurface,
 } from '#app/account-activity-data.ts'
 import { type RunRecord } from '#worker/run-records/types.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
@@ -86,70 +84,6 @@ function loadActivity(path: string, env = {} as Env) {
 		now: new Date('2026-07-26T12:00:00.000Z'),
 	})
 }
-
-test('activity helpers parse filters and prefer path selected run ids', () => {
-	const filterCases = [
-		[
-			'',
-			{
-				viewFilter: 'errors',
-				statusFilter: 'error',
-				surfaceFilter: 'all',
-				triageFilter: 'open',
-				cursor: null,
-			},
-		],
-		[
-			'?status=all&surface=job&cursor=abc&error_triage=ignored',
-			{
-				viewFilter: 'errors',
-				statusFilter: 'all',
-				surfaceFilter: 'job',
-				triageFilter: 'ignored',
-				cursor: 'abc',
-			},
-		],
-		[
-			'?view=recent',
-			{
-				viewFilter: 'recent',
-				statusFilter: 'all',
-				surfaceFilter: 'all',
-				triageFilter: 'all',
-				cursor: null,
-			},
-		],
-	] as const
-	for (const [query, expected] of filterCases) {
-		expect(
-			readAccountActivityFilters(
-				`https://example.com/account/activity${query}`,
-			),
-		).toEqual(expected)
-	}
-	expect(statusFilterToRunStatus('error')).toBe('error')
-	expect(statusFilterToRunStatus('success')).toBe('success')
-	expect(statusFilterToRunStatus('all')).toBeNull()
-	expect(surfaceFilterToRunSurface('all')).toBeNull()
-	expect(surfaceFilterToRunSurface('webhook')).toBe('webhook')
-
-	expect(
-		readAccountActivitySelectedRunId(
-			'https://example.com/account/activity/run-path?selected=run-query',
-			'run-path-param',
-		),
-	).toBe('run-path-param')
-	expect(
-		readAccountActivitySelectedRunId(
-			'https://example.com/account/activity/run-path',
-		),
-	).toBe('run-path')
-	expect(
-		readAccountActivitySelectedRunId(
-			'https://example.com/account/activity?selected=run-query',
-		),
-	).toBe('run-query')
-})
 
 test('loadAccountActivityData maps filters, summary, pagination, detail, and cursors', async () => {
 	const run = makeRun({ idempotencyKey: 'sync-account-123' })

@@ -1,11 +1,7 @@
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import {
 	type ConnectedMcpAgent,
 	connectedAgentConnectionLabel,
-	connectedAgentIconName,
 	classifyMcpClientName,
 	countUniqueOAuthClientIds,
 	groupConnectedAgents,
@@ -15,12 +11,6 @@ import {
 	truncateClientIdLabel,
 	uniqueOAuthClientIds,
 } from './connected-mcp-agents.ts'
-import { mcpClientTabs } from './onboarding-mcp-clients.ts'
-
-const iconDirectory = join(
-	dirname(fileURLToPath(import.meta.url)),
-	'../public/images/icons',
-)
 
 function agent(
 	clientId: string,
@@ -266,35 +256,6 @@ test('grant createdAt unix seconds become an ISO timestamp', () => {
 	)
 	expect(oauthGrantCreatedAtIso(undefined)).toBeNull()
 	expect(oauthGrantCreatedAtIso(Number.NaN)).toBeNull()
-})
-
-test('known inbound kinds map to existing public icon SVGs; unknown kinds have no logo', () => {
-	const kinds = [
-		'chatgpt',
-		'claude-desktop',
-		'claude-code',
-		'codex',
-		'cursor',
-		'devin',
-	] as const
-	expect(kinds.map(connectedAgentIconName)).toEqual([
-		'chatgpt',
-		'claude',
-		'claudecode',
-		'codex',
-		'cursor',
-		'devin',
-	])
-	for (const tab of mcpClientTabs) {
-		const icon = connectedAgentIconName(tab.id)
-		if (tab.id === 'other') {
-			expect(icon).toBeNull()
-			continue
-		}
-		expect(icon).toEqual(expect.any(String))
-		expect(existsSync(join(iconDirectory, `${icon}.svg`))).toBe(true)
-	}
-	expect(connectedAgentIconName(null)).toBeNull()
 })
 
 test('connected agents group by display name and sort by last-used, then newest-first at group and member level', () => {

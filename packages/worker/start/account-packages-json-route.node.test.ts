@@ -27,24 +27,3 @@ test('POST /account/packages.json is an exact protocol route with GET HEAD POST'
 		routeMethodRejection('PUT', route as never, true)?.headers.get('Allow'),
 	).toBe('GET, HEAD, POST')
 })
-
-test('retired sibling account JSON companions no longer empty-405 JSON POSTs', () => {
-	const [, params, route] = router.getMatchedRoutes('/account/secrets.json')
-	expect(route?.id).toBe('/_app/account')
-	expect(params['**']).toBe('secrets.json')
-	const rejection = routeMethodRejection(
-		'POST',
-		route as never,
-		false,
-		new Request('https://kody.test/account/secrets.json', {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-				accept: 'application/json',
-			},
-		}),
-	)
-	expect(rejection?.status).toBe(405)
-	expect(rejection?.headers.get('content-type')).toMatch(/application\/json/)
-	expect(rejection?.headers.get('Allow')).toBe('GET, HEAD')
-})

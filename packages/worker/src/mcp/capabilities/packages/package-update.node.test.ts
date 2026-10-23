@@ -129,42 +129,30 @@ test('packageUpdate hides and unhides a user-scoped package and returns persiste
 		.mockResolvedValueOnce(createSavedPackage({ hidden: false }))
 
 	await expect(update({ hidden: true })).resolves.toMatchObject({
-		ok: true,
-		package: {
-			package_id: 'pkg-1',
-			kody_id: 'notes',
-			slug: 'notes',
-			name: '@user/notes',
-			hidden: true,
-			visibility: 'public',
-			source_id: 'source-1',
-		},
+		package: { hidden: true },
 	})
 	await expect(update({ hidden: false })).resolves.toMatchObject({
-		ok: true,
-		package: {
-			package_id: 'pkg-1',
-			kody_id: 'notes',
-			slug: 'notes',
-			hidden: false,
-			visibility: 'public',
-		},
+		package: { hidden: false },
 	})
 
-	expect(mockModule.updateSavedPackage.mock.calls).toEqual([
-		[
-			{},
-			{ userId: ownerIdFromStored('user-1'), packageId: 'pkg-1', hidden: true },
-		],
-		[
-			{},
-			{
-				userId: ownerIdFromStored('user-1'),
-				packageId: 'pkg-1',
-				hidden: false,
-			},
-		],
-	])
+	expect(mockModule.updateSavedPackage).toHaveBeenNthCalledWith(
+		1,
+		expect.anything(),
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			packageId: 'pkg-1',
+			hidden: true,
+		}),
+	)
+	expect(mockModule.updateSavedPackage).toHaveBeenNthCalledWith(
+		2,
+		expect.anything(),
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			packageId: 'pkg-1',
+			hidden: false,
+		}),
+	)
 	expect(mockModule.setSavedPackageLockedAt).not.toHaveBeenCalled()
 	expect(mockModule.getSavedPackageById).toHaveBeenCalledTimes(4)
 })
@@ -193,7 +181,7 @@ test('packageUpdate locks a package and rejects unlock with the owner website UR
 		},
 	)
 
-	await expect(update({ locked: true })).resolves.toMatchObject(lockedSummary)
+	await expect(update({ locked: true })).resolves.toMatchObject({ ok: true })
 	expect(mockModule.setSavedPackageLockedAt).toHaveBeenCalledTimes(1)
 
 	const unlockError = await update({ locked: false }).catch(

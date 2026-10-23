@@ -28,7 +28,6 @@ import { readPublishedCredentialStamp } from '#worker/package-runtime/published-
 import {
 	isCredentialStampScanBudgetFailure,
 	runCredentialStampFleet,
-	sampleFleetBlockingFailures,
 } from './credential-stamp-fleet.ts'
 import {
 	resolvePublishedCredentialDepStamps,
@@ -202,24 +201,6 @@ test('credential stamp fleet dry-run classifies stamped, needs_manifest, and unc
 		expect(unconvertible.blockingFailures[0]?.code).toBe('non_literal')
 	}
 	expect(storeStamp).not.toHaveBeenCalled()
-})
-
-test('sampleFleetBlockingFailures keeps one example per code then fills', () => {
-	const long = 'x'.repeat(200)
-	const sampled = sampleFleetBlockingFailures([
-		{ code: 'unstampable_pattern', path: 'a.ts', message: long },
-		{ code: 'unstampable_pattern', path: 'b.ts', message: 'second' },
-		{ code: 'server_eval', path: 'c.ts', message: 'eval' },
-		{ code: 'non_literal', path: 'd.ts', message: 'dyn' },
-		{ code: 'non_literal', path: 'e.ts', message: 'dyn2' },
-	])
-	expect(sampled.map((f) => f.code)).toEqual([
-		'unstampable_pattern',
-		'server_eval',
-		'non_literal',
-	])
-	expect(sampled[0]?.message.endsWith('…')).toBe(true)
-	expect(sampled[0]?.message.length).toBeLessThanOrEqual(120)
 })
 
 test('credential stamp fleet scopes nested package files before seal planning', async () => {

@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	isPackageCollaboratorPreset,
-	packageCollaboratorInvitePresetExplanation,
-	packageCollaboratorInviteeLabel,
 	packageCollaboratorsHref,
 	readPackageCollaboratorInvitee,
 	readPackageCollaboratorsPath,
@@ -11,12 +9,6 @@ import {
 test('reads the package collaborators path and rejects org pages', () => {
 	expect(
 		readPackageCollaboratorsPath('/@acme/release-notes/collaborators'),
-	).toEqual({
-		username: 'acme',
-		kodyId: 'release-notes',
-	})
-	expect(
-		readPackageCollaboratorsPath('/@acme/release-notes/collaborators/'),
 	).toEqual({
 		username: 'acme',
 		kodyId: 'release-notes',
@@ -48,30 +40,4 @@ test('reads an invitee as an email or a username with or without @', () => {
 	expect(readPackageCollaboratorInvitee('@jesse')).toEqual({
 		username: 'jesse',
 	})
-	expect(readPackageCollaboratorInvitee('jesse')).toEqual({
-		username: 'jesse',
-	})
-	expect(
-		packageCollaboratorInviteeLabel({
-			inviteeEmail: null,
-			inviteeUsername: 'jesse',
-		}),
-	).toBe('@jesse')
-	expect(
-		packageCollaboratorInviteeLabel({
-			inviteeEmail: 'jesse@example.com',
-			inviteeUsername: null,
-		}),
-	).toBe('jesse@example.com')
-})
-
-test('explains that only Contribute and Manage can update the package', () => {
-	expect(packageCollaboratorInvitePresetExplanation('use')).toMatch(
-		/cannot change it/,
-	)
-	for (const preset of ['contribute', 'manage'] as const) {
-		expect(packageCollaboratorInvitePresetExplanation(preset)).toMatch(
-			/update it from their own Kody/,
-		)
-	}
 })

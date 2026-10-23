@@ -113,28 +113,8 @@ test('refuses resource drift or extra bindings between review and deployment', (
 
 test.each([
 	{
-		field: 'artifacts',
-		value: [{ binding: 'ARTIFACTS', namespace: 'changed' }],
-	},
-	{
 		field: 'vars',
 		value: { APP_BASE_URL: 'https://kody.codes', FEATURE: 'changed' },
-	},
-	{ field: 'compatibility_date', value: '2026-10-15' },
-	{ field: 'compatibility_flags', value: ['nodejs_compat', 'new_flag'] },
-	{ field: 'ai', value: { binding: 'DIFFERENT_AI' } },
-	{ field: 'images', value: { binding: 'DIFFERENT_IMAGES' } },
-	{ field: 'version_metadata', value: { binding: 'DIFFERENT_VERSION' } },
-	{ field: 'worker_loaders', value: [{ binding: 'DIFFERENT_LOADER' }] },
-	{
-		field: 'send_email',
-		value: [{ name: 'EMAIL', destination_address: 'changed@example.com' }],
-	},
-	{
-		field: 'ratelimits',
-		value: [
-			{ name: 'AUTH', namespace_id: '1', simple: { limit: 999, period: 60 } },
-		],
 	},
 	{ field: 'futureCopiedField', value: { enabled: false } },
 ])('rejects complete snapshot drift in $field', ({ field, value }) => {

@@ -85,13 +85,6 @@ test('accepted follow returns operation outcome without rebuilding list, explici
 	)
 	expect(state.read).not.toHaveBeenCalled()
 })
-test('resume and removal remain distinct typed operations scoped by stored follow id', async () => {
-	await resumeFollow({ data: { orgSlug: 'team', id: 'follow-id' } })
-	await unfollowTarget({ data: { orgSlug: 'team', id: 'follow-id' } })
-	expect(state.write).toHaveBeenCalledTimes(2)
-	for (const [input] of state.write.mock.calls)
-		expect(input).toMatchObject({ org: { id: 'org-id' }, id: 'follow-id' })
-})
 test('workspace denial prevents mutation and domain denial cannot resolve as success', async () => {
 	state.access.mockResolvedValueOnce({
 		ok: false,

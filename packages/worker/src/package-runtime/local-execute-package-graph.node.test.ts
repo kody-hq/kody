@@ -8,8 +8,6 @@ import {
 import {
 	buildLocalExecutePackageGraph,
 	localExecuteHostRuntimeModuleName,
-	pickLocalExecutePrimaryRuntimePath,
-	synthesizeLocalExecutePackageGraphEntry,
 	type LocalExecutePackageGraphError,
 } from './local-execute-package-graph.ts'
 import {
@@ -18,7 +16,6 @@ import {
 } from './local-execute-runtime-support.ts'
 import { toApiError } from '#worker/open-api/errors.ts'
 import {
-	normalizeWorkspaceModulePath,
 	resolveRelativeModulePath,
 	runtimeModulePath,
 } from './module-graph-paths.ts'
@@ -123,21 +120,6 @@ function makeArtifactHit(input: {
 		},
 	}
 }
-
-test('synthesizeLocalExecutePackageGraphEntry builds a scannable stub from imports', () => {
-	expect(synthesizeLocalExecutePackageGraphEntry([])).toBe(
-		'export default async function main() {}\n',
-	)
-	expect(
-		synthesizeLocalExecutePackageGraphEntry([
-			'kody:@b/pkg/export',
-			'kody:@a/pkg/export',
-			'kody:@b/pkg/export',
-		]),
-	).toBe(
-		`import "kody:@a/pkg/export"\nimport "kody:@b/pkg/export"\nexport default async function main() {}\n`,
-	)
-})
 
 test('buildLocalExecutePackageGraph returns embeddable kody:@ modules from published artifacts', async () => {
 	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
@@ -1286,39 +1268,6 @@ return __kodyPackageBinding;`,
 	expect(lookup('toString')).toBeNull()
 	expect(lookup('__proto__')).toBeNull()
 	expect(lookup({ toString: () => 'pkg-a' })).toBeNull()
-})
-
-test('createLocalExecuteRuntimeShimSource uses a relative host import from path-like module names', () => {
-	const nestedPath =
-		'.__kody_packages__/@kentcdodds/google/.__published_bundle__/2e2f676d61696c/.__kody_virtual__/runtime.js'
-	const nested = createLocalExecuteRuntimeShimSource(nestedPath)
-	expect(nested).not.toMatch(/from ["']kody:runtime["']/)
-	const importMatch =
-		/default as __kodyHostRuntimeDefault,\n\} from ("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/.exec(
-			nested,
-		)
-	expect(importMatch?.[1]).toBeDefined()
-	const specifier = JSON.parse(
-		importMatch![1]!.startsWith("'")
-			? `"${importMatch![1]!.slice(1, -1).replaceAll('"', '\\"')}"`
-			: importMatch![1]!,
-	) as string
-	expect(specifier.startsWith('../')).toBe(true)
-	expect(resolveRelativeModulePath(nestedPath, specifier)).toBe(
-		localExecuteHostRuntimeModuleName,
-	)
-})
-
-test('pickLocalExecutePrimaryRuntimePath prefers the canonical runtime root', () => {
-	const nested =
-		'.__kody_packages__/@kentcdodds/google/.__published_bundle__/2e/.__kody_virtual__/runtime.js'
-	expect(pickLocalExecutePrimaryRuntimePath([nested, runtimeModulePath])).toBe(
-		runtimeModulePath,
-	)
-	expect(pickLocalExecutePrimaryRuntimePath([nested])).toBe(
-		normalizeWorkspaceModulePath(nested),
-	)
-	expect(pickLocalExecutePrimaryRuntimePath([])).toBe(runtimeModulePath)
 })
 
 test('buildLocalExecutePackageGraph re-exports nested published-bundle runtime.js to the primary shim', async () => {

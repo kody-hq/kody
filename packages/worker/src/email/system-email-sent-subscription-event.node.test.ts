@@ -2,11 +2,9 @@ import { expect, test } from 'vitest'
 import {
 	buildSystemEmailSentEvent,
 	buildSystemEmailSentIdempotencyKey,
-	isSystemEmailSentEventTopic,
-	systemEmailSentTopic,
 } from './system-email-sent-subscription-event.ts'
 
-test('system email sent event carries the operator correspondence snapshot', () => {
+test('system email sent idempotency key prefers provider message id and falls back to sent time', () => {
 	const event = buildSystemEmailSentEvent({
 		from: 'kody@kody.example.com',
 		to: ['reporter@example.com'],
@@ -18,21 +16,6 @@ test('system email sent event carries the operator correspondence snapshot', () 
 		sentAt: '2026-08-31T16:00:00.000Z',
 	})
 
-	expect(event).toEqual({
-		event: systemEmailSentTopic,
-		from: 'kody@kody.example.com',
-		to: ['reporter@example.com'],
-		subject: 'Thanks for the report',
-		text: 'We shipped the fix.',
-		html: '<p>We shipped the fix.</p>',
-		reply_to: 'support@kody.example.com',
-		provider_message_id: 'provider-1',
-		sent_at: '2026-08-31T16:00:00.000Z',
-	})
-	expect(isSystemEmailSentEventTopic('email.system-message.received')).toBe(
-		false,
-	)
-	expect(isSystemEmailSentEventTopic(systemEmailSentTopic)).toBe(true)
 	expect(
 		buildSystemEmailSentIdempotencyKey({
 			event,

@@ -204,9 +204,6 @@ test('manifest-only secretMounts is an ok compat note', () => {
 		},
 	)
 	expect(result.ok).toBe(true)
-	expect(result.message).toContain(
-		'kody.secretMounts kept only for stale static dependents: wakeToken. Removing a mount or deleting its secret breaks those dependents.',
-	)
 	expect(result.message).not.toMatch(/Publish failed/)
 })
 

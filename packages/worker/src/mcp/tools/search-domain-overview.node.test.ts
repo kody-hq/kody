@@ -4,7 +4,6 @@ import { type Capability } from '#mcp/capabilities/types.ts'
 import {
 	buildDomainIndexMatches,
 	buildDomainOverviewMatches,
-	searchQueryUsesRankingEmbedding,
 } from './search-domain-overview.ts'
 import { understandSearchQuery } from './understand-search-query.ts'
 
@@ -123,20 +122,4 @@ test('domain overviews cover named, plural, exploratory, and non-collapse cases'
 			capabilitySpecs: registry.capabilitySpecs,
 		}),
 	).toBeNull()
-})
-
-test('searchQueryUsesRankingEmbedding skips overviews and empty index queries', () => {
-	expect(searchQueryUsesRankingEmbedding({ query: '' })).toBe(false)
-	expect(searchQueryUsesRankingEmbedding({ query: '   ' })).toBe(false)
-	expect(searchQueryUsesRankingEmbedding({ query: 'what can kody do' })).toBe(
-		false,
-	)
-	expect(searchQueryUsesRankingEmbedding({ query: 'skills' })).toBe(true)
-	expect(
-		searchQueryUsesRankingEmbedding({
-			query: 'what can kody do',
-			domain: 'email',
-		}),
-	).toBe(true)
-	expect(searchQueryUsesRankingEmbedding({ query: 'the the the' })).toBe(true)
 })

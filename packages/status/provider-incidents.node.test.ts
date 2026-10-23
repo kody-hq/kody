@@ -3,7 +3,6 @@ import {
 	cloudflareStatusPageUrl,
 	fetchRelevantProviderIncidents,
 	filterRelevantProviderIncidents,
-	formatProviderIncidentAnnotation,
 	parseProviderIncidentCache,
 	parseProviderIncidentsPayload,
 	providerIncidentCacheStaleMs,
@@ -189,23 +188,4 @@ test('provider shortlinks are restricted to Cloudflare Statuspage HTTPS hosts', 
 			{ ...r2Incident, shortlink: 'javascript:alert(1)' },
 		])[0]?.shortlink,
 	).toBe(cloudflareStatusPageUrl)
-})
-
-test('outage email annotation names active Cloudflare incidents', () => {
-	expect(formatProviderIncidentAnnotation([])).toBeNull()
-	expect(
-		formatProviderIncidentAnnotation([
-			providerIncident(),
-			providerIncident({
-				id: 'inc-d1',
-				name: 'D1 query errors',
-				status: 'monitoring',
-			}),
-		]),
-	).toBe(
-		[
-			'Possibly related Cloudflare incident: R2 Availability Issues (investigating)',
-			'Possibly related Cloudflare incident: D1 query errors (monitoring)',
-		].join('\n'),
-	)
 })

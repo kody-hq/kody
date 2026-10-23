@@ -117,13 +117,13 @@ jobs:
 
           job_keys = [
               "🧹 Static",
-              "🧪 Node",
-              "☁️ Workers",
+              "🧪 Node (1/2)",
+              "🧪 Node (2/2)",
+              "☁️ Workers (1/2)",
+              "☁️ Workers (2/2)",
               "🔌 MCP",
-              "🎭 E2E (1/4)",
-              "🎭 E2E (2/4)",
-              "🎭 E2E (3/4)",
-              "🎭 E2E (4/4)",
+              "🎭 E2E (1/2)",
+              "🎭 E2E (2/2)",
               "🎭 E2E Report",
               "🧰 CLI",
           ]

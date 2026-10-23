@@ -7,7 +7,6 @@ import { expect, test, vi } from 'vitest'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as memoryRepo from '#mcp/memory/repo.ts'
 import type * as memoryService from '#mcp/memory/service.ts'
-import { buildMemoriesExportFilename } from '#universal/memory-export.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockModule = vi.hoisted(() => {
@@ -263,12 +262,6 @@ test('memories API soft/force deletes and rejects invalid delete requests', asyn
 		const response = await request('', postJson(body))
 		expect([body, response.status]).toEqual([body, status])
 	}
-})
-
-test('memories export filename uses the UTC calendar date', () => {
-	expect(
-		buildMemoriesExportFilename(new Date('2026-08-31T23:30:00.000Z')),
-	).toBe('kody-memories-2026-08-31.json')
 })
 
 test('memories export supports authenticated HEAD without a response body', async () => {

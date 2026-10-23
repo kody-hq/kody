@@ -28,7 +28,7 @@ export const saturatedSuiteMemoryBytes = 24 * 1024 * 1024 * 1024
 
 export const serialValidateCommand = 'npm run worker-startup-time:check'
 
-export const parallelValidateLegs = [
+const parallelValidateLegs = [
 	{ name: 'format', command: 'npm run format:check', weight: 'check' },
 	{ name: 'lint', command: 'npm run lint', weight: 'check' },
 	{ name: 'typecheck', command: 'npm run typecheck', weight: 'suite' },

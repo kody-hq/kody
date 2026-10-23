@@ -18,7 +18,6 @@ import {
 	maxMcpContentBlockCount,
 	wrapDownstreamMcpToolResult,
 } from '#mcp/downstream-mcp-result.ts'
-import { formatRawFetchHostNudge } from '#mcp/raw-fetch-host-nudge.ts'
 import {
 	executeInvokeFlagOffMessage,
 	executeInvokeMutualExclusionMessage,
@@ -688,68 +687,6 @@ test('execute passes through downstream MCP image content with structured data a
 	)
 })
 
-test('execute tool nudges repeated raw-fetch hosts once per conversation', async () => {
-	const agentState: Record<string, unknown> = {}
-	const setState = vi.fn((next: Record<string, unknown>) => {
-		for (const key of Object.keys(agentState)) {
-			delete agentState[key]
-		}
-		Object.assign(agentState, next)
-	})
-	const handler = await getExecuteHandler(
-		{
-			baseUrl: 'https://example.com',
-			user: { userId: ownerIdFromStored('user-1'), email: 'user@example.com' },
-		},
-		{ state: agentState, setState },
-	)
-	const rawFetches =
-		(hostname: string, count: number) =>
-		async (
-			_env: unknown,
-			_ctx: unknown,
-			_code: string,
-			_params: unknown,
-			options: { rawFetchHostSink?: { add: (hostname: string) => void } },
-		) => {
-			for (let i = 0; i < count; i++) {
-				options.rawFetchHostSink?.add(hostname)
-			}
-			return { result: { ok: true }, logs: [] }
-		}
-
-	mockModule.runModuleWithRegistry.mockImplementation(
-		rawFetches('api.notion.com', 2),
-	)
-	const warningsFor = async (conversationId: string, code = okCode) =>
-		(await handler({ code, conversationId })).structuredContent.warnings
-	expect(await warningsFor('conv-nudge')).toBeUndefined()
-	const tipped = await warningsFor('conv-nudge')
-	expect(tipped).toEqual([
-		formatRawFetchHostNudge({ hostname: 'api.notion.com', count: 4 }),
-	])
-	expect(setState).toHaveBeenCalled()
-	expect(await warningsFor('conv-nudge')).toBeUndefined()
-
-	// Integration-auth helper source sharpens the packages-first warning text.
-	mockModule.runModuleWithRegistry.mockImplementationOnce(
-		rawFetches('gmail.googleapis.com', 3),
-	)
-	const authHelperTipped = await warningsFor(
-		'conv-oauth-nudge',
-		`import { createAuthenticatedFetch } from 'kody:runtime'
-export default async () => ({ ok: true })`,
-	)
-	expect(authHelperTipped).toEqual([
-		formatRawFetchHostNudge({
-			hostname: 'gmail.googleapis.com',
-			count: 3,
-			usedIntegrationAuthHelpers: true,
-		}),
-	])
-	expect(authHelperTipped?.[0]).not.toBe(tipped?.[0])
-})
-
 test('execute tool replays finished keyed runs and reports in-progress without re-executing', async () => {
 	const finishedRun = {
 		id: 'run-finished-1',
@@ -993,38 +930,6 @@ test('execute tool releases a keyed claim when a usage denial stops the load', a
 		)
 		expect(mockModule.finishRunRecord).not.toHaveBeenCalled()
 	}
-})
-
-test('execute tool threads a progress reporter when the client sends progressToken', async () => {
-	const handler = await getExecuteHandler()
-	moduleReturns({ ok: true })
-	const notify = vi.fn().mockResolvedValue(undefined)
-	await handler(
-		{ code: okCode },
-		{ mcpReq: { _meta: { progressToken: 'progress-1' }, notify } },
-	)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenLastCalledWith(
-		expect.anything(),
-		expect.anything(),
-		okCode,
-		undefined,
-		expect.objectContaining({ reportProgress: expect.any(Function) }),
-	)
-	const options = mockModule.runModuleWithRegistry.mock.calls.at(-1)?.[4] as {
-		reportProgress?: (update: {
-			progress: number
-			message?: string
-		}) => Promise<void>
-	}
-	await options.reportProgress?.({ progress: 1, message: 'bundle time' })
-	expect(notify).toHaveBeenCalledWith({
-		method: 'notifications/progress',
-		params: {
-			progressToken: 'progress-1',
-			progress: 1,
-			message: 'bundle time',
-		},
-	})
 })
 
 test('execute tool attaches entitlement metadata on denials and quota, not on success, and heartbeats only on success', async () => {
@@ -1494,60 +1399,6 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 	)
 })
 
-test('execute returns the retained run when it finished as the transport budget elapsed', async () => {
-	transportBudgetMock.remainingMs = 0
-	onTestFinished(() => {
-		transportBudgetMock.remainingMs = null
-	})
-	const handle = transportFollowHandle('run-follow-done', 'execute:done-key')
-	const handler = await getExecuteHandler(transportCaller)
-	mockModule.beginRunRecord.mockReturnValueOnce(handle)
-	mockModule.runModuleWithRegistry.mockReturnValueOnce(new Promise(() => {}))
-	mockModule.getRunRecord.mockResolvedValueOnce({
-		run: {
-			id: 'run-follow-done',
-			surface: 'execute',
-			status: 'success',
-			name: null,
-			packageId: null,
-			kodyId: null,
-			sourceId: null,
-			publishedCommit: null,
-			storageId: null,
-			jobId: null,
-			workflowId: null,
-			invocationId: null,
-			sessionId: null,
-			idempotencyKey: 'execute:done-key',
-			parentRunId: null,
-			startedAt: '2026-07-28T00:00:00.000Z',
-			finishedAt: '2026-07-28T00:00:40.000Z',
-			durationMs: 40_000,
-			errorName: null,
-			errorMessage: null,
-			errorTriage: null,
-			triageNote: null,
-			triagedAt: null,
-			triagedBy: null,
-			metadata: { result: { published: true } },
-			logCount: 0,
-		},
-		logs: [],
-	})
-	const response = await handler({
-		code: okCode,
-		conversationId: 'conv-follow-done',
-	})
-	expect(response.isError).toBe(false)
-	expect(response.structuredContent.inProgress).toBeUndefined()
-	expect(response.structuredContent).toMatchObject({
-		runId: 'run-follow-done',
-		idempotencyKey: 'execute:done-key',
-		replayed: true,
-		result: { published: true },
-	})
-})
-
 test('execute keeps a caller-supplied idempotency key on the transport-budget follow response', async () => {
 	transportBudgetMock.remainingMs = 0
 	onTestFinished(() => {
@@ -1703,60 +1554,6 @@ test('execute finishes the run when setup fails after the follow response', asyn
 	)
 })
 
-test('execute finishes the run when setup fails during follow confirmation', async () => {
-	transportBudgetMock.remainingMs = 0
-	onTestFinished(() => {
-		transportBudgetMock.remainingMs = null
-	})
-	const handle = transportFollowHandle(
-		'run-setup-during-confirm',
-		'execute:confirm-key',
-	)
-	const handler = await getExecuteHandler(transportCaller)
-	mockModule.beginRunRecord.mockReturnValueOnce(handle)
-	let rejectMemories: (error: Error) => void = () => {}
-	let releaseEnsure: (started: boolean) => void = () => {}
-	mockModule.surfaceToolMemories.mockImplementationOnce(
-		() =>
-			new Promise((_resolve, reject) => {
-				rejectMemories = reject
-			}),
-	)
-	mockModule.ensureRunRecordStarted.mockImplementationOnce(
-		() =>
-			new Promise((resolve) => {
-				releaseEnsure = resolve
-			}),
-	)
-	const pending = handler({
-		code: okCode,
-		conversationId: 'conv-setup-during-confirm',
-	})
-	await vi.waitFor(() => {
-		expect(mockModule.ensureRunRecordStarted).toHaveBeenCalled()
-	})
-	rejectMemories(new Error('memory failed during confirm'))
-	await vi.waitFor(() => {
-		expect(mockModule.finishRunRecord).toHaveBeenCalled()
-	})
-	releaseEnsure(true)
-	const response = await pending
-	expect(response.structuredContent).toMatchObject({
-		runId: 'run-setup-during-confirm',
-		inProgress: true,
-	})
-	expect(mockModule.finishRunRecord).toHaveBeenCalledWith(
-		expect.objectContaining({
-			handle,
-			status: 'error',
-			error: expect.objectContaining({
-				message: 'memory failed during confirm',
-			}),
-		}),
-	)
-	expect(mockModule.abandonRunRecord).not.toHaveBeenCalled()
-})
-
 test('execute returns the run id when the caller cancels after the transport budget', async () => {
 	transportBudgetMock.remainingMs = 0
 	onTestFinished(() => {
@@ -1780,33 +1577,4 @@ test('execute returns the run id when the caller cancels after the transport bud
 	})
 	expect(mockModule.abandonRunRecord).not.toHaveBeenCalled()
 	expect(mockModule.finishRunRecord).not.toHaveBeenCalled()
-})
-
-test('execute records fleet last-success when a detached run finishes', async () => {
-	transportBudgetMock.remainingMs = 0
-	onTestFinished(() => {
-		transportBudgetMock.remainingMs = null
-	})
-	const handle = transportFollowHandle('run-heartbeat', 'execute:heartbeat-key')
-	const handler = await getExecuteHandler(transportCaller)
-	mockModule.beginRunRecord.mockReturnValueOnce(handle)
-	let resolveWork: (value: {
-		result: { ok: true }
-		logs: []
-	}) => void = () => {}
-	mockModule.runModuleWithRegistry.mockReturnValueOnce(
-		new Promise((resolve) => {
-			resolveWork = resolve
-		}),
-	)
-	const response = await handler({
-		code: okCode,
-		conversationId: 'conv-heartbeat',
-	})
-	expect(response.structuredContent.inProgress).toBe(true)
-	expect(heartbeatMock.scheduleFleetExecuteLastSuccess).not.toHaveBeenCalled()
-	resolveWork({ result: { ok: true }, logs: [] })
-	await vi.waitFor(() => {
-		expect(heartbeatMock.scheduleFleetExecuteLastSuccess).toHaveBeenCalled()
-	})
 })

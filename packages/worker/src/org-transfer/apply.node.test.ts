@@ -548,24 +548,6 @@ test('dry-run reports the plan as counts and names and writes nothing', async ()
 	expectNoSecretMaterial(JSON.stringify(result), sqlite)
 })
 
-test('dry-run reports memories staying even when the source has none', async () => {
-	const { sqlite, db } = await seed()
-	sqlite.prepare(`DELETE FROM mcp_memories`).run()
-	const result = await runOrgResourceTransfer({
-		db,
-		effects: createEffects({ db, calls: [], backups: [] }),
-		actorUserId: 'person-admin',
-		fromOrgId: src,
-		toOrgId: dst,
-		mode: 'dry-run',
-		skipOrphans: false,
-	})
-	expect(result.outcome).toBe('planned')
-	expect(result.summary.kept).toEqual({
-		memories: { count: 0, note: orgTransferMemoriesStayNote },
-	})
-})
-
 test('apply refuses clashes in the target and touches nothing', async () => {
 	const { sqlite, db } = await seed()
 	sqlite

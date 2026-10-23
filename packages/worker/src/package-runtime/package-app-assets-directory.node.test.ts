@@ -4,8 +4,6 @@ import {
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import {
-	inferPackageAppAssetContentType,
-	listPackageAppAssetFiles,
 	resolvePackageAppAssetSourcePath,
 	validatePackageAppAssetsDirectory,
 } from './package-app-assets-directory.ts'
@@ -116,12 +114,6 @@ test('validatePackageAppAssetsDirectory rejects root files the platform answers 
 	expect(clean.ok).toBe(true)
 })
 
-test('listPackageAppAssetFiles only returns files inside the directory', () => {
-	expect(
-		listPackageAppAssetFiles({ assetsDirectory: 'public', sourceFiles }),
-	).toEqual(['public/img/logo.png', 'public/index.css'])
-})
-
 test('resolvePackageAppAssetSourcePath blocks traversal and malformed segments', () => {
 	const resolve = (relativePath: string) =>
 		resolvePackageAppAssetSourcePath({
@@ -136,23 +128,4 @@ test('resolvePackageAppAssetSourcePath blocks traversal and malformed segments',
 	expect(resolve('img//logo.png')).toBeNull()
 	expect(resolve('img\\logo.png')).toBeNull()
 	expect(resolve('a\0b')).toBeNull()
-})
-
-test('inferPackageAppAssetContentType maps common web asset extensions and falls back to octet-stream', () => {
-	expect(inferPackageAppAssetContentType('public/app.css')).toBe(
-		'text/css; charset=utf-8',
-	)
-	expect(inferPackageAppAssetContentType('vendor/engine.wasm')).toBe(
-		'application/wasm',
-	)
-	expect(inferPackageAppAssetContentType('img/LOGO.PNG')).toBe('image/png')
-	expect(inferPackageAppAssetContentType('fonts/inter.woff2')).toBe(
-		'font/woff2',
-	)
-	expect(inferPackageAppAssetContentType('data.unknownext')).toBe(
-		'application/octet-stream',
-	)
-	expect(inferPackageAppAssetContentType('LICENSE')).toBe(
-		'application/octet-stream',
-	)
 })

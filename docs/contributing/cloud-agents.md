@@ -82,12 +82,17 @@ Cursor Cloud Agent VMs set `core.hooksPath` to a dispatcher under
 dispatcher with Husky: `core.hooksPath` stays on the dispatcher,
 `.cursor-original-hooks-path` points at `.husky/_`, and `pre-push` /
 `pre-commit` / `commit-msg` become dispatcher symlinks when those user scripts
-exist. `git push` then runs `npm run knip` and `npm run test:push`
-(`test:node` + `test:workers`) when the push changes a non-docs path, and can
-upload those Nx remote-cache artifacts before GitHub Actions starts. A docs-only
-push skips knip and the suites. A push that touches `skills-lock.json` or
-`.agents/skills/` still runs `node tools/check-skills-lock.ts` (also part of
-`npm run deps:check`).
+exist. Pre-commit keeps lint-staged, install:check and migrations:check, but no
+longer typechecks. Non-docs pushes run typecheck, Knip and
+`vitest related --run` for node-unit and workers-unit over pushed non-deleted
+source/test paths. Global configuration/setup/migration inputs or unreadable
+paths fall back to full `npm run test:push`; only full suites record test
+provenance. Existing validate-recorded Knip/test tree skips remain. See
+[checks](./setup/checks.md) for the fallback list. CI remains the full gate,
+with two Node shards, two Workers shards and two cacheable E2E shards; local
+validate is unsharded. A docs-only push skips typecheck, Knip and the suites. A
+push that touches `skills-lock.json` or `.agents/skills/` still runs
+`node tools/check-skills-lock.ts` (also part of `npm run deps:check`).
 
 Playwright E2E is not in the push hook: that suite is heavier than the unit
 gate, and a failed e2e leg skips the unit gate when the push is retried with

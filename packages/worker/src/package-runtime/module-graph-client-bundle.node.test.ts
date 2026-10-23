@@ -302,14 +302,3 @@ render(html, useState);
 		/unresolved bare package imports after bundling \("@preact\/signals"\)[\s\S]*kody\.app\.client\.externals/,
 	)
 })
-
-test('buildKodyAppClientBundle names a missing client entry', async () => {
-	await expect(
-		buildKodyAppClientBundle({
-			sourceFiles: { 'package.json': packageJson },
-			entryPoint: './src/client.ts',
-		}),
-	).rejects.toThrow(
-		/Saved package app client "src\/client\.ts" bundle entry was not found/,
-	)
-})

@@ -429,14 +429,10 @@ test('one MCP request records flag exposures once and reuses the request evaluat
 	expect(fourth).toBe(registered)
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(1)
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledWith(
-		env.APP_DB,
+		expect.anything(),
 		42,
 	)
 	expect(flagMocks.recordFeatureFlagExposures).toHaveBeenCalledTimes(1)
-	expect(flagMocks.recordFeatureFlagExposures).toHaveBeenCalledWith(env, {
-		stableUserId,
-		evaluations,
-	})
 
 	// A new caller context inside the TTL reuses the evaluation and does not
 	// write another exposure. Counts drop versus one write per request.

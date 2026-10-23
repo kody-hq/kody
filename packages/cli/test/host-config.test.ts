@@ -20,15 +20,6 @@ test('mergeHostDocument writes leftover-host remote entries and keeps siblings',
 		},
 	})
 
-	const visualStudio = mergeHostDocument({
-		id: 'visual-studio',
-		existing: null,
-		mcpUrl,
-	})
-	assert.deepEqual(JSON.parse(visualStudio.body), {
-		servers: { kody: { type: 'http', url: mcpUrl } },
-	})
-
 	const amazonQ = mergeHostDocument({ id: 'amazon-q', existing: null, mcpUrl })
 	assert.deepEqual(JSON.parse(amazonQ.body), {
 		mcpServers: { kody: { type: 'http', url: mcpUrl } },

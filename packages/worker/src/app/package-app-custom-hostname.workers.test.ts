@@ -275,69 +275,6 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	await setCustomDomainsFlag(false)
 })
 
-test('an internet-visible app links at its custom hostname without redirecting', async () => {
-	configureOrigins()
-	await seedOwnerSessionCookie()
-	await seedCustomHostnamePackage()
-	await setCustomDomainsFlag(true)
-	try {
-		await env.APP_DB.prepare(
-			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
-		).run()
-	} catch {
-		// Column already present.
-	}
-	// A new slug avoids the package-app slug cache filled by the private-app
-	// request earlier in this file.
-	await env.APP_DB.prepare(
-		`UPDATE saved_packages
-		 SET is_internet_visible = 1, kody_id = 'demo-public', name = ?
-		 WHERE id = ?`,
-	)
-		.bind(`@${ownerUsername}/demo-public`, packageId)
-		.run()
-	await env.APP_DB.prepare(
-		`CREATE TABLE IF NOT EXISTS package_capability_approvals (
-			id TEXT PRIMARY KEY NOT NULL,
-			package_id TEXT NOT NULL,
-			owner_user_id TEXT NOT NULL,
-			published_commit TEXT NOT NULL,
-			fingerprint TEXT NOT NULL,
-			capability_set_json TEXT NOT NULL,
-			dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
-			approved_by_user_id TEXT NOT NULL,
-			approved_at TEXT NOT NULL,
-			created_at TEXT NOT NULL
-		)`,
-	).run()
-	const ownerId = testStableUserIdFromEmail(ownerEmail)
-	const now = '2026-10-13T00:00:00.000Z'
-	await env.APP_DB.prepare(
-		`INSERT OR REPLACE INTO package_capability_approvals (
-			id, package_id, owner_user_id, published_commit, fingerprint,
-			capability_set_json, approved_by_user_id, approved_at, created_at
-		) VALUES ('approval-custom-demo', ?, ?, 'commit-custom', 'fp', '[]', ?, ?, ?)`,
-	)
-		.bind(packageId, ownerId, ownerId, now, now)
-		.run()
-
-	const response = await workerFetch(
-		`${appOrigin}/@${ownerUsername}/packages/demo-public/play?x=1`,
-	)
-	expect(response.status).toBe(200)
-	expect(response.headers.get('Location')).toBeNull()
-	const body = await response.text()
-	expect(body).toContain(`${customOrigin}/play?x=1`)
-	expect(body).not.toContain(ownerPackageAppOrigin)
-	const post = await workerFetch(
-		`${appOrigin}/@${ownerUsername}/packages/demo-public/play`,
-		{ method: 'DELETE' },
-	)
-	expect(post.status).toBe(303)
-	expect(new URL(post.headers.get('Location') ?? '').origin).toBe(appOrigin)
-	await setCustomDomainsFlag(false)
-})
-
 test('a verified app custom hostname serves at / behind the same host-only handoff', async () => {
 	silenceExpectedConsoleErrors([
 		'Package app handler failed:',

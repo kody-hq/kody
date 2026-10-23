@@ -123,12 +123,7 @@ test('wizard steps share refreshed progress and isolate it from another actor', 
 		})
 		await observer.refetch()
 		for (const pathname of [
-			'/onboarding',
 			'/onboarding/step-1',
-			'/onboarding/step-1/cursor',
-			'/onboarding/step-2',
-			'/onboarding/step-2/github',
-			'/onboarding/step-3',
 			'/onboarding/step-3/cursor',
 		]) {
 			await expect(

@@ -68,6 +68,23 @@ test('resolvePackageAppOauthClient accepts a real owner/leaf with has_app', asyn
 	expect(resolved?.savedPackage.hasApp).toBe(true)
 })
 
+test('resolvePackageAppOauthClient rejects packages without has_app', async () => {
+	// Distinct slug so the invoke freshness cache from the has_app=1 case
+	// cannot mask this row.
+	const slug = await seedOwnerWithApp({
+		hasApp: false,
+		slug: 'library-only',
+		packageId: 'pkg-oauth-resolve-library-only',
+	})
+	await expect(
+		resolvePackageAppOauthClient({
+			env,
+			username: ownerUsername,
+			kodyId: slug,
+		}),
+	).resolves.toBeNull()
+})
+
 test('resolvePackageAppOauthClient rejects unknown owner labels', async () => {
 	await seedOwnerWithApp()
 	await expect(
@@ -86,23 +103,6 @@ test('resolvePackageAppOauthClient rejects missing leaf under a real owner', asy
 			env,
 			username: ownerUsername,
 			kodyId: 'no-such-app',
-		}),
-	).resolves.toBeNull()
-})
-
-test('resolvePackageAppOauthClient rejects packages without has_app', async () => {
-	// Distinct slug so the invoke freshness cache from the has_app=1 case
-	// cannot mask this row.
-	const slug = await seedOwnerWithApp({
-		hasApp: false,
-		slug: 'library-only',
-		packageId: 'pkg-oauth-resolve-library-only',
-	})
-	await expect(
-		resolvePackageAppOauthClient({
-			env,
-			username: ownerUsername,
-			kodyId: slug,
 		}),
 	).resolves.toBeNull()
 })

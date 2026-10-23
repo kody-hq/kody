@@ -4,11 +4,6 @@ export function defaultDumpFile() {
 	return path.join('.tmp', 'control-kody-body')
 }
 
-export function rawRequestBody(body: unknown) {
-	if (typeof body === 'string') return body
-	return JSON.stringify(body)
-}
-
 export function missingContainsNeedles(
 	rawBody: string,
 	needles: ReadonlyArray<string>,

@@ -1222,16 +1222,21 @@ test('readFile retries D1 reads and falls back to cached sessions when replicas 
 		.mockResolvedValueOnce(packageSource)
 	mockModule.workspaceReadFile.mockResolvedValue(userPackageJson)
 
-	await expect(
-		repoSession().readFile({
+	vi.useFakeTimers()
+	try {
+		const readFile = repoSession().readFile({
 			sessionId: 'job-runtime-session-replica-lag',
 			userId: ownerIdFromStored('user-1'),
 			path: 'package.json',
-		}),
-	).resolves.toEqual({
-		path: 'package.json',
-		content: userPackageJson,
-	})
+		})
+		await vi.advanceTimersByTimeAsync(2_000)
+		await expect(readFile).resolves.toEqual({
+			path: 'package.json',
+			content: userPackageJson,
+		})
+	} finally {
+		vi.useRealTimers()
+	}
 	expect(mockModule.getRepoSessionById).toHaveBeenCalledTimes(3)
 	expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(2)
 
@@ -1281,20 +1286,30 @@ test('readFile retries D1 reads and falls back to cached sessions when replicas 
 	mockModule.workspaceExists.mockResolvedValue(false)
 	mockModule.workspaceReadFile.mockResolvedValue('export default {}')
 	const cachedFallbackSession = repoSession()
-	await cachedFallbackSession.openSession({
-		sessionId: 'job-runtime-session-1',
-		sourceId: 'source-1',
-		userId: ownerIdFromStored('user-1'),
-		baseUrl: 'https://example.com',
-		sourceRoot: '/',
-	})
-	await expect(
-		cachedFallbackSession.readFile({
+	vi.useFakeTimers()
+	try {
+		const openSession = cachedFallbackSession.openSession({
+			sessionId: 'job-runtime-session-1',
+			sourceId: 'source-1',
+			userId: ownerIdFromStored('user-1'),
+			baseUrl: 'https://example.com',
+			sourceRoot: '/',
+		})
+		await vi.advanceTimersByTimeAsync(2_000)
+		await openSession
+		const readFile = cachedFallbackSession.readFile({
 			sessionId: 'job-runtime-session-1',
 			userId: ownerIdFromStored('user-1'),
 			path: 'src/index.ts',
-		}),
-	).resolves.toEqual({ path: 'src/index.ts', content: 'export default {}' })
+		})
+		await vi.advanceTimersByTimeAsync(2_000)
+		await expect(readFile).resolves.toEqual({
+			path: 'src/index.ts',
+			content: 'export default {}',
+		})
+	} finally {
+		vi.useRealTimers()
+	}
 })
 
 test('publishSession persists the workspace snapshot to BUNDLE_ARTIFACTS_KV for downstream readers and never leaves inconsistent published commits when snapshot collection or persistence fails', async () => {

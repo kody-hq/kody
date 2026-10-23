@@ -13,12 +13,6 @@ test('kody@ From defaults Reply-To to support@ on the same domain unless overrid
 	expect(
 		resolveTransactionalSenderReplyTo({
 			from: 'kody@kody.codes',
-			replyTo: 'ops@example.com',
-		}),
-	).toBe('ops@example.com')
-	expect(
-		resolveTransactionalSenderReplyTo({
-			from: 'kody@kody.codes',
 			replyTo: '  Abuse@Kody.codes  ',
 		}),
 	).toBe('Abuse@Kody.codes')

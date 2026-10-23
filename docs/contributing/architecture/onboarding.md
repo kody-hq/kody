@@ -84,15 +84,11 @@ Waiting (`/@<slug>/-/waiting` and `waitingSummary`) is a separate current-state
 queue. Wizard-resume and first-use cards live there. See
 [Waiting](../../use/waiting.md).
 
-## Alignment check
+## Guide alignment
 
-`packages/worker/universal/onboarding-process.node.test.ts` (part of
-`npm run test:node` / `npm run validate`) requires `docs/guides/first-win.md` to
-name each current wizard step (label or path). `docs/guides/quick-example.md`
-names Step 2's label and the Step 1 path. The first-run briefing is
-`docs/guides/onboarding.md` and must name the six first-win choices.
-
-Change the wizard in `onboarding-process.ts` first, then update those two guides
-until the test passes. The same check requires `docs/guides/portability.md` to
-name Step 3 and stay short. The checklist union has no first-win items; adding
-them fails the same check.
+When changing the wizard in `onboarding-process.ts`, update the Get started
+guides to match. `docs/guides/first-win.md` names the current wizard steps;
+`docs/guides/quick-example.md` names Step 2 and the Step 1 path.
+`docs/guides/onboarding.md` is the first-run briefing and names the six
+first-win choices. `docs/guides/portability.md` names Step 3. The checklist has
+no first-win items.

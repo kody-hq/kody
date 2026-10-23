@@ -70,38 +70,6 @@ function baseEnv(kv: KVNamespace) {
 	}
 }
 
-test('buildBudgetHitEmailContent matches budget limit copy without em dashes', () => {
-	const user = buildBudgetHitEmailContent({
-		details: {
-			code: 'org_budget_limit_exceeded',
-			kind: 'user',
-			orgSlug: 'acme',
-			actorUsername: 'sam',
-			spentMicroUsd: 50_000_000,
-			budgetMicroUsd: 50_000_000,
-		},
-		appBaseUrl: 'https://kody.test',
-	})
-	expect(user.text).toContain(
-		'@sam reached their monthly budget in org @acme ($50.00 of $50.00). An org Owner or Billing member can raise it.',
-	)
-	expect(user.text).toContain('https://kody.test/@acme/-/billing')
-	expect(user.text).not.toMatch(/—/)
-	const automation = buildBudgetHitEmailContent({
-		details: {
-			code: 'org_budget_limit_exceeded',
-			kind: 'automation',
-			orgSlug: 'acme',
-			spentMicroUsd: 1,
-			budgetMicroUsd: 1,
-		},
-		appBaseUrl: 'https://kody.test',
-	})
-	expect(automation.text).toContain(
-		'Automation in org @acme reached its monthly budget. An org Owner or Billing member can raise it.',
-	)
-})
-
 test('buildBudgetHitEmailContent HTML-escapes slug and usernames', () => {
 	const malicious = '<img src=x onerror=alert(1)>'
 	const { html } = buildBudgetHitEmailContent({

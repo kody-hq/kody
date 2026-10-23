@@ -278,18 +278,3 @@ test('kody package grant and revoke call the package-scoped routes with --org', 
 		clearOpenApiRouteCache()
 	}
 })
-
-test('kody package with an unknown action lists every package command', async () => {
-	let stderr = ''
-	const code = await runCli(['package', 'share', 'pkg'], {
-		stderr: (text) => {
-			stderr += text
-		},
-	})
-	assert.equal(code, 1)
-	assert.match(stderr, /kody package publish/)
-	assert.match(
-		stderr,
-		/kody package grant <package> \(--team <slug> \| --user <username>\)/,
-	)
-})

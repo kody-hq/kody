@@ -17,9 +17,22 @@ import {
 
 const codemodId = '0001-ambient-storage-to-package-storage'
 
-function createLedgerDb() {
+let migratedSnapshot: Uint8Array | undefined
+
+function createMigratedSqlite() {
+	if (!migratedSnapshot) {
+		const seed = new DatabaseSync(':memory:')
+		applyAllMigrations(seed, new URL('../../migrations/', import.meta.url))
+		migratedSnapshot = seed.serialize()
+		seed.close()
+	}
 	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	sqlite.deserialize(migratedSnapshot)
+	return sqlite
+}
+
+function createLedgerDb() {
+	const sqlite = createMigratedSqlite()
 	return createD1FromSqlite(sqlite)
 }
 

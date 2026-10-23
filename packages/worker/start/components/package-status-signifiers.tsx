@@ -28,7 +28,7 @@ export type PackageStatusSignifiersInput = {
  * list. Private is the lock. Not published is only for unlisted public
  * packages — plain repos and private packages skip that mark.
  */
-export function listPackageStatusSignifiers(
+function listPackageStatusSignifiers(
 	input: PackageStatusSignifiersInput,
 ): Array<PackageStatusSignifier> {
 	const hasPackage = input.hasPackage !== false

@@ -53,7 +53,42 @@ function resetMocks() {
 	mockModule.getEntitySourceByEntity.mockResolvedValue(source)
 }
 
-test('resolveOwnedUserRepo requires exactly one of repo_id or name', async () => {
+test('resolveOwnedUserRepo resolves names and prefers matching ids', async () => {
+	resetMocks()
+	mockModule.getUserRepoByName.mockResolvedValue(userRepo)
+	const byName = await resolveOwnedUserRepo({
+		db,
+		userId,
+		args: { name: 'notes' },
+	})
+	expect(byName.userRepo.id).toBe(userRepo.id)
+	expect(byName.source.id).toBe(source.id)
+	expect(mockModule.getUserRepoById).not.toHaveBeenCalled()
+
+	resetMocks()
+	mockModule.getUserRepoById.mockResolvedValue(userRepo)
+	const byIdResult = await resolveOwnedUserRepo({
+		db,
+		userId,
+		args: { repo_id: userRepo.id },
+	})
+	expect(byIdResult.userRepo.id).toBe(userRepo.id)
+	expect(mockModule.getUserRepoByName).not.toHaveBeenCalled()
+
+	resetMocks()
+	const conflictingIdResult = { ...userRepo, name: 'other' }
+	mockModule.getUserRepoById.mockResolvedValue(conflictingIdResult)
+	mockModule.getUserRepoByName.mockResolvedValue(userRepo)
+	const preferred = await resolveOwnedUserRepo({
+		db,
+		userId,
+		args: { repo_id: userRepo.id },
+	})
+	expect(preferred.userRepo.name).toBe('other')
+	expect(mockModule.getUserRepoByName).not.toHaveBeenCalled()
+})
+
+test('resolveOwnedUserRepo validates identifiers and reports missing repos', async () => {
 	resetMocks()
 	await expect(resolveOwnedUserRepo({ db, userId, args: {} })).rejects.toThrow(
 		McpCallerError,
@@ -65,53 +100,7 @@ test('resolveOwnedUserRepo requires exactly one of repo_id or name', async () =>
 			args: { repo_id: userRepo.id, name: 'notes' },
 		}),
 	).rejects.toThrow(/exactly one/)
-})
 
-test('resolveOwnedUserRepo resolves name and repo_id UUID', async () => {
-	resetMocks()
-	mockModule.getUserRepoByName.mockResolvedValue(userRepo)
-	await expect(
-		resolveOwnedUserRepo({ db, userId, args: { name: 'notes' } }),
-	).resolves.toEqual({ userRepo, source })
-	expect(mockModule.getUserRepoById).not.toHaveBeenCalled()
-
-	resetMocks()
-	mockModule.getUserRepoById.mockResolvedValue(userRepo)
-	await expect(
-		resolveOwnedUserRepo({ db, userId, args: { repo_id: userRepo.id } }),
-	).resolves.toEqual({ userRepo, source })
-	expect(mockModule.getUserRepoByName).not.toHaveBeenCalled()
-})
-
-test('resolveOwnedUserRepo treats repo_id path values as id-or-name', async () => {
-	resetMocks()
-	mockModule.getUserRepoById.mockResolvedValue(null)
-	mockModule.getUserRepoByName.mockResolvedValue(userRepo)
-	await expect(
-		resolveOwnedUserRepo({ db, userId, args: { repo_id: 'notes' } }),
-	).resolves.toEqual({ userRepo, source })
-	expect(mockModule.getUserRepoById).toHaveBeenCalledWith(db, {
-		userId,
-		repoId: 'notes',
-	})
-	expect(mockModule.getUserRepoByName).toHaveBeenCalledWith(db, {
-		userId,
-		name: 'notes',
-	})
-})
-
-test('resolveOwnedUserRepo prefers id when repo_id matches both', async () => {
-	resetMocks()
-	const byId = { ...userRepo, name: 'other' }
-	mockModule.getUserRepoById.mockResolvedValue(byId)
-	mockModule.getUserRepoByName.mockResolvedValue(userRepo)
-	await expect(
-		resolveOwnedUserRepo({ db, userId, args: { repo_id: userRepo.id } }),
-	).resolves.toEqual({ userRepo: byId, source })
-	expect(mockModule.getUserRepoByName).not.toHaveBeenCalled()
-})
-
-test('resolveOwnedUserRepo throws when neither id nor name matches', async () => {
 	resetMocks()
 	mockModule.getUserRepoById.mockResolvedValue(null)
 	mockModule.getUserRepoByName.mockResolvedValue(null)

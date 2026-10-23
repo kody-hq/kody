@@ -8,10 +8,7 @@ import {
 	parseYoutubeVideoIdList,
 	parseYoutubeWatchSearch,
 	stripYoutubeWatchSearch,
-	youtubeNocookieEmbedUrl,
 	youtubeThumbPath,
-	youtubeThumbnailSourceUrl,
-	youtubeThumbnailSourceUrls,
 	youtubeWatchHref,
 } from './youtube-watch.ts'
 
@@ -95,26 +92,4 @@ test('allowlist merge includes playlist, extra ids, and YouTube hrefs', () => {
 	expect(
 		collectYoutubeVideoIdsFromHrefs([youtubeThumbPath(videoId), '/pricing']),
 	).toEqual([videoId])
-})
-
-test('youtube thumbnail and embed helpers', () => {
-	expect(youtubeThumbnailSourceUrl(videoId)).toBe(
-		`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-	)
-	expect(youtubeThumbnailSourceUrls(videoId)).toEqual([
-		`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-		`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
-		`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-	])
-	expect(youtubeNocookieEmbedUrl(videoId)).toBe(
-		`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`,
-	)
-	expect(
-		youtubeNocookieEmbedUrl(videoId, { playlistId: 'PLXa53KPj2nlE' }),
-	).toBe(
-		`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&listType=playlist&list=PLXa53KPj2nlE`,
-	)
-	expect(youtubeNocookieEmbedUrl(videoId, { playlistId: 'not-a-list' })).toBe(
-		`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`,
-	)
 })

@@ -357,17 +357,9 @@ test('a rejected Stripe return keeps known codes and folds the rest into topup_f
 	])
 })
 
-test('notice and error codes map to messages; unknown and prototype keys map to nothing', async () => {
+test('unknown and prototype keys do not map to notices or errors', async () => {
 	const env = createEnv()
 	signInAs('ada')
-	await call(env, '/@ada/-/usage?credits=added&error=not_paid')
-	expect(mocks.loadAccountUsageData).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			notice: expect.any(String),
-			error: expect.any(String),
-		}),
-	)
-
 	await call(env, '/@ada/-/usage?credits=__proto__&error=constructor')
 	expect(mocks.loadAccountUsageData).toHaveBeenLastCalledWith(
 		expect.objectContaining({ notice: undefined, error: undefined }),

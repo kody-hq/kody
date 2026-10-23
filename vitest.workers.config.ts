@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { availableParallelism } from 'node:os'
 import {
 	cloudflareTest,
 	readD1Migrations,
@@ -14,8 +15,8 @@ process.env.WRANGLER_LOG ??= 'warn'
 // instead of the shared 20s: the pool's per-file DO cold load already takes
 // ~10s, and under validate's parallel gate cold RPCs stretched past 20s
 // (#2939). One budget means a passing validate run and CI's Workers job
-// verify the same thing, so the Nx `test-workers` hash can ignore
-// `KODY_VALIDATE_LOAD` and CI reuses what validate uploaded. The flag (set on
+// verify the same budget, so each shard's Nx `test-workers` hash can ignore
+// `KODY_VALIDATE_LOAD`. Shards and full runs have distinct hashes. The flag (set on
 // validate's test-workers leg only) now only lowers maxWorkers so the suite
 // shares the box with Playwright and the Wrangler servers. Kept here — not in
 // sharedProjectConfig — so node-unit / mcp-e2e keep the 20s budget. Does not
@@ -25,9 +26,7 @@ const underValidateLoad =
 	process.env.KODY_VALIDATE_LOAD === 'true'
 const workersTestTimeout = 40_000
 const workersMaxWorkers = process.env.CI
-	? underValidateLoad
-		? 2
-		: 3
+	? Math.min(underValidateLoad ? 2 : 3, availableParallelism())
 	: undefined
 
 export default mergeConfig(

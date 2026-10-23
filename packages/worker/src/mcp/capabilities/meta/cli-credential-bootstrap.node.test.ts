@@ -3,12 +3,11 @@ import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { cliCredentialBootstrapCapability } from './cli-credential-bootstrap.ts'
 
-test.each([
-	['saved-package', { packageId: 'package-1' }],
-	['app', { appId: 'app-1' }],
-])(
-	'cliCredentialBootstrap rejects %s runtime contexts',
-	async (_runtime, storageContext) => {
+test('cliCredentialBootstrap rejects saved-package and app runtime contexts', async () => {
+	for (const storageContext of [
+		{ packageId: 'package-1' },
+		{ appId: 'app-1' },
+	]) {
 		await expect(
 			cliCredentialBootstrapCapability.handler(
 				{},
@@ -35,5 +34,5 @@ test.each([
 		).rejects.toThrow(
 			/cannot run inside saved-package, job, webhook, or app runtimes/,
 		)
-	},
-)
+	}
+})

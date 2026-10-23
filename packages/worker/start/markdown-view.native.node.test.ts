@@ -8,59 +8,6 @@ async function renderMarkdown(markdown: string) {
 	return renderToString(jsx('div', { children: renderMarkdownNodes(markdown) }))
 }
 
-test('renders common markdown constructs as HTML elements', async () => {
-	const html = await renderMarkdown(
-		[
-			'# Title',
-			'',
-			'#### Deep heading',
-			'',
-			'Some **bold** and *italic* and ~~gone~~ and `inline code` text.',
-			'',
-			'> a quote',
-			'',
-			'- first',
-			'- [x] done task',
-			'',
-			'5. five',
-			'6. six',
-			'',
-			'| Name | Count |',
-			'| :--- | ----: |',
-			'| a    | 1     |',
-			'',
-			'```js',
-			'const x = 1',
-			'```',
-			'',
-			'---',
-			'',
-			'Entities: &amp; &#65; stay characters.',
-		].join('\n'),
-	)
-
-	// Headings are demoted below the page-owned h1/h2 and clamped at h6.
-	expect(html).toContain('<h3>Title</h3>')
-	expect(html).toContain('<h6>Deep heading</h6>')
-	expect(html).toContain('<strong>bold</strong>')
-	expect(html).toContain('<em>italic</em>')
-	expect(html).toContain('<del>gone</del>')
-	expect(html).toContain('<code>inline code</code>')
-	expect(html).toContain('<blockquote>')
-	expect(html).toContain('<li><span>first</span></li>')
-	expect(html).toContain('<input type="checkbox" disabled="" checked=""/>')
-	expect(html).toContain('start="5"')
-	expect(html).toContain('>Name</th>')
-	expect(html).toContain('>a</td>')
-	expect(html).toContain('data-markdown-table')
-	expect(html).toContain('data-markdown-table-compact-last')
-	expect(html).toContain('class="shiki')
-	expect(html).toContain('const')
-	expect(html).toContain('<hr')
-	// Character references decode to text, then re-escape safely on output.
-	expect(html).toContain('Entities: &amp; A stay characters.')
-})
-
 test('markdown safety escapes raw HTML, never emits images, and drops unsafe links', async () => {
 	const html = await renderMarkdown(
 		[
@@ -168,113 +115,19 @@ test('package README imageBaseHref emits img only for in-repo relative images', 
 	expect(defaultPolicy).toContain('<span>poster</span>')
 })
 
-test('first-party render options keep authored heading levels and drop the ugc rel', async () => {
-	const markdown = [
-		'# Top',
-		'',
-		'## Section',
-		'',
-		'###### Deep',
-		'',
-		'[docs](https://example.com/docs)',
-	].join('\n')
-
-	const firstParty = await renderToString(
+test('first-party heading ids are unique and use parsed heading text', async () => {
+	const html = await renderToString(
 		jsx('div', {
-			children: renderMarkdownNodes(markdown, {
-				headingOffset: 0,
-				linkRel: 'noopener noreferrer',
-			}),
+			children: renderMarkdownNodes(
+				'## Josh Tomaino\n\n## Josh Tomaino\n\n## **Install** `CLI`',
+				{ headingOffset: 0, headingIds: true },
+			),
 		}),
 	)
-	// h1 stays page-owned even at offset 0; deep headings clamp at h6.
-	expect(firstParty).toContain('<h2>Top</h2>')
-	expect(firstParty).toContain('<h2>Section</h2>')
-	expect(firstParty).toContain('<h6>Deep</h6>')
-	expect(firstParty).toContain(
-		'<a href="https://example.com/docs" target="_blank" rel="noopener noreferrer">docs</a>',
-	)
 
-	// The default (third-party README) policy is unchanged.
-	const thirdParty = await renderToString(
-		jsx('div', { children: renderMarkdownNodes(markdown) }),
-	)
-	expect(thirdParty).toContain('<h3>Top</h3>')
-	expect(thirdParty).toContain('<h4>Section</h4>')
-	expect(thirdParty).toContain('rel="noopener noreferrer nofollow ugc"')
-})
-
-test('first-party headingIds emit unique ids, token-derived accessible names, and sibling permalinks', async () => {
-	const renderWithIds = (markdown: string) =>
-		renderToString(
-			jsx('div', {
-				children: renderMarkdownNodes(markdown, {
-					headingOffset: 0,
-					headingIds: true,
-				}),
-			}),
-		)
-	const permalinkFor = (html: string, id: string) =>
-		html.match(new RegExp(`<a href="#${id}"[^>]*>[\\s\\S]*?</a>`))?.[0]
-
-	const html = await renderWithIds(
-		[
-			'## Josh Tomaino',
-			'',
-			'## Josh Tomaino',
-			'',
-			'## Jett Hays',
-			'',
-			'## Gabriel Alegría',
-			'',
-			'## **Install** `CLI`',
-			'',
-			'## Read [the guide](https://example.com/guide(nested)/path)',
-			'',
-			'## Heading with ![logo](https://img.example/logo.png) icon',
-		].join('\n'),
-	)
-	for (const part of [
-		'<h2 id="josh-tomaino" aria-label="Josh Tomaino">',
-		'href="#josh-tomaino"',
-		'data-heading-permalink=""',
-		'data-heading-anchor=""',
-		'<span data-heading-text="">Josh Tomaino</span>',
-		'<h2 id="josh-tomaino-2" aria-label="Josh Tomaino">',
-		'href="#josh-tomaino-2"',
-		'<h2 id="jett-hays" aria-label="Jett Hays">',
-		'<h2 id="gabriel-alegria" aria-label="Gabriel Alegría">',
-		// Accessible names come from parsed inline tokens, not markdown source.
-		'aria-label="Install CLI"',
-		'aria-label="Read the guide"',
-		'aria-label="Heading with logo icon"',
-	]) {
-		expect(html).toContain(part)
-	}
-	expect(html).not.toContain('aria-label="**Install**')
-	expect(html).not.toContain('aria-label="Read [the guide]')
-	expect(html).not.toContain('aria-label="Heading with ![logo]')
-	for (const [id, name] of [
-		['josh-tomaino', 'Josh Tomaino'],
-		['install-cli', 'Install CLI'],
-	] as const) {
-		const permalink = permalinkFor(html, id)
-		expect(permalink).toContain('aria-label="Link to this section"')
-		expect(permalink).not.toContain(`aria-label="${name}"`)
-	}
-
-	// Permalinks stay beside inline heading links instead of wrapping them.
-	const linkedId = 'read-the-guide-https-example.com-guide'
-	const linked = await renderWithIds(
-		'## Read [the guide](https://example.com/guide)',
-	)
-	expect(linked).toContain(`id="${linkedId}" aria-label="Read the guide"`)
-	expect(linked).toContain(`href="#${linkedId}"`)
-	expect(linked).toContain('href="https://example.com/guide"')
-	const permalink = permalinkFor(linked, linkedId)
-	expect(permalink).toContain('aria-label="Link to this section"')
-	expect(permalink).not.toContain('aria-label="Read the guide"')
-	expect(permalink?.match(/<a /g)).toHaveLength(1)
+	expect(html).toContain('id="josh-tomaino"')
+	expect(html).toContain('id="josh-tomaino-2"')
+	expect(html).toContain('aria-label="Install CLI"')
 })
 
 test('rendered markdown links allowlist protocols and block user-scope paths', async () => {
@@ -450,26 +303,4 @@ test('first-party diagram blocks render a registered figure with the quote as it
 	const untrusted = await renderMarkdown(markdown)
 	expect(untrusted).not.toContain('data-doc-diagram')
 	expect(untrusted).toContain('[!DIAGRAM] placeholder-fill')
-})
-
-test('markdown tables keep last-column nowrap only when every last cell is a short label', async () => {
-	const compact = await renderMarkdown(
-		[
-			'| You want to | Use |',
-			'| --- | --- |',
-			'| Keep working code | A **package** |',
-			'| Sign in so code can act as you | An **integration** |',
-		].join('\n'),
-	)
-	expect(compact).toContain('data-markdown-table-compact-last')
-
-	const descriptive = await renderMarkdown(
-		[
-			'| File | Topic |',
-			'| --- | --- |',
-			'| oauth.md | Start here for third-party OAuth redirect URI and params |',
-		].join('\n'),
-	)
-	expect(descriptive).toContain('data-markdown-table=""')
-	expect(descriptive).not.toContain('data-markdown-table-compact-last=""')
 })

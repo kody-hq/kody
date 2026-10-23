@@ -120,32 +120,6 @@ export function readStoredCommunityListingCategory(
 	return parseCommunityListingCategory(raw) ?? defaultCommunityListingCategory
 }
 
-/**
- * One-shot SQL that copies the publish-time tag inference onto existing
- * `other` rows so browse filters and chip counts match the stored column.
- * Keep this next to {@link inferCommunityListingCategoryFromTags}.
- */
-export function buildCommunityListingCategoryBackfillSql(): string {
-	const cases = inferPriority
-		.filter((category) => categoryTagHints[category].length > 0)
-		.map((category) => {
-			const hints = categoryTagHints[category]
-				.map((hint) => `'${hint}'`)
-				.join(', ')
-			return `	WHEN EXISTS (
-		SELECT 1 FROM json_each(community_listings.tags_json)
-		WHERE lower(trim(json_each.value)) IN (${hints})
-	) THEN '${category}'`
-		})
-	return `UPDATE community_listings
-SET category = CASE
-${cases.join('\n')}
-	ELSE category
-END
-WHERE category = 'other';
-`
-}
-
 export function parseCommunityPackageCategory(
 	raw: string | null | undefined,
 ): CommunityPackageCategory | null {

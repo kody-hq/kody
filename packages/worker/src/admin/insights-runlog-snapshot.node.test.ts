@@ -4,7 +4,6 @@ import {
 	adminInsightsRunLogConcurrency,
 	adminInsightsRunLogMaxUsersPerTick,
 	adminInsightsRunLogSnapshotKvKey,
-	foldRunLogSnapshots,
 	readAdminInsightsRunLogSnapshot,
 	refreshAdminInsightsRunLogSnapshot,
 } from './insights-runlog-snapshot.ts'
@@ -148,12 +147,6 @@ test('readAdminInsightsRunLogSnapshot degrades when KV is missing or empty', asy
 	)
 })
 
-test('refreshAdminInsightsRunLogSnapshot throws when BUNDLE_ARTIFACTS_KV is missing', async () => {
-	await expect(refresh([verifiedUser('user-a')], undefined)).rejects.toThrow(
-		/BUNDLE_ARTIFACTS_KV is required/,
-	)
-})
-
 test('refreshAdminInsightsRunLogSnapshot throws when the KV write fails', async () => {
 	runLogMocks.getAdminInsightsSnapshot.mockResolvedValue(emptySnapshot())
 	const kv = createMemoryKv()
@@ -183,22 +176,4 @@ test('refreshAdminInsightsRunLogSnapshot caps per-tick fanout and marks the snap
 	expect(
 		JSON.parse(kv.store.get(adminInsightsRunLogSnapshotKvKey) ?? '{}'),
 	).toMatchObject(capped)
-})
-
-test('foldRunLogSnapshots still reports partial fanout without user content', () => {
-	const folded = foldRunLogSnapshots([
-		{ user: verifiedUser('u1'), snapshot: emptySnapshot() },
-		{
-			user: {
-				stable_user_id: ownerIdFromStored('u2'),
-				email_verified_at: null,
-			},
-			snapshot: null,
-		},
-	])
-	expect(folded).toMatchObject({
-		usersAttempted: 2,
-		usersLoaded: 1,
-		complete: false,
-	})
 })

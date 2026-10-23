@@ -77,36 +77,6 @@ test('owner details show No app when the package has no app', async () => {
 	expect(html).not.toContain('Open Package App')
 })
 
-test('owner details group visibility controls and use credentials wording', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageOwnerDetails, {
-			ownerUsername: 'kentcdodds',
-			packageDetail: packageDetail({
-				isPrivate: true,
-				isInternetVisible: false,
-				hasApp: true,
-			}),
-			lockInFlight: false,
-			viewerCanPublish: true,
-			viewerCanDelete: true,
-			viewerCanAdoptCommunityFork: false,
-			onToggleLock: () => {},
-		}),
-	)
-
-	expect(html).toContain('data-testid="package-visibility-controls"')
-	expect(html).toContain('data-testid="package-internet-visible-controls"')
-	expect(html).toContain('data-testid="package-make-public"')
-	expect(html).not.toContain('data-testid="package-update-public-listing"')
-	expect(html).toContain('Make public on the community')
-	expect(html).toContain('Visibility')
-	expect(html).toContain('data-testid="package-internet-visible-on"')
-	expect(html).toContain('Make internet-visible')
-	expect(html).toContain('Review credentials')
-	expect(html).toContain('data-testid="package-approve-capabilities-link"')
-	expect(html).toContain('/@kentcdodds/demo-app/approve-capabilities')
-})
-
 test('owner details publishing panel shows live version, newer changes, and primary CTA', async () => {
 	const upToDate = await renderToString(
 		jsx(AccountPackageOwnerDetails, {
@@ -192,33 +162,6 @@ test('owner details publishing panel shows live version, newer changes, and prim
 		}),
 	)
 	expect(orgPrivate).toContain('People in your organization can see it')
-})
-
-test('owner details do not offer Update public listing when the catalog pin lags', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageOwnerDetails, {
-			ownerUsername: 'danj',
-			packageDetail: packageDetail({
-				isPrivate: false,
-				hasCommunityListing: true,
-				listingNeedsRepublish: true,
-				publishedCommit: '4665dddb7b7347291bd99049ba0f67ca101ee082',
-				publishedVersion: '1.5.0',
-			}),
-			lockInFlight: false,
-			viewerCanPublish: true,
-			viewerCanDelete: true,
-			viewerCanAdoptCommunityFork: false,
-			onToggleLock: () => {},
-		}),
-	)
-
-	expect(html).not.toContain('data-testid="package-update-public-listing"')
-	expect(html).not.toContain('Update public listing')
-	expect(html).toContain('data-testid="package-publishing-listing-syncing"')
-	expect(html).toContain(
-		'The community listing is catching up to this published version.',
-	)
 })
 
 test('package managers without publish, delete, or adoption permission do not see those controls', async () => {

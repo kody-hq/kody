@@ -19,22 +19,10 @@ test('installSkill writes the bundled skill to user host directories', async () 
 	const targets = await installSkill({ home, sourcePath })
 	assert.equal(targets.length, userSkillTargets(home).length)
 	for (const target of targets) {
-		const body = readFileSync(target.path, 'utf8')
-		assert.match(body, /Install the MCP server \(recommended\)/)
-		assert.match(body, /npx @kodycodes\/cli install/)
-		assert.match(body, /kody login/)
-		assert.match(body, /auth bootstrap|cliCredentialBootstrap/)
-		assert.match(
-			body,
-			/Prefer local CLI execute when\s+Node ≥22\s+and `@kodycodes\/cli` are available/,
+		assert.equal(
+			readFileSync(target.path, 'utf8'),
+			readFileSync(sourcePath, 'utf8'),
 		)
-		assert.match(body, /execute --local/)
-		assert.doesNotMatch(body, /skip the CLI/i)
-		assert.doesNotMatch(
-			body,
-			/Do not keep using the CLI as the everyday interface/,
-		)
-		assert.doesNotMatch(body, /CLI fallback/)
 	}
 })
 

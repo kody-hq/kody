@@ -3,22 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
 import { playwrightCacheRoot } from './control-kody/playwright-browsers.ts'
-import {
-	ensurePlaywrightChromium,
-	playwrightChromiumInstallArgs,
-} from './ensure-playwright-browser.ts'
-
-test('Playwright Chromium install skips apt deps on GitHub Actions and keeps them locally', () => {
-	expect(playwrightChromiumInstallArgs({ githubActions: true })).toEqual([
-		'install',
-		'chromium',
-	])
-	expect(playwrightChromiumInstallArgs({ githubActions: false })).toEqual([
-		'install',
-		'chromium',
-		'--with-deps',
-	])
-})
+import { ensurePlaywrightChromium } from './ensure-playwright-browser.ts'
 
 test('ensure skips install when the browsers.json revision markers already exist', async () => {
 	const homeDir = await mkdtemp(path.join(tmpdir(), 'playwright-ensure-'))

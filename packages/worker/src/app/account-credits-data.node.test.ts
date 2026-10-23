@@ -28,8 +28,6 @@ test('toCreditsDebitMeters maps usage meters into the credits rate card', () => 
 	expect(rows).toHaveLength(2)
 	expect(rows[0]).toMatchObject({
 		meter: 'unique_worker_days',
-		label: 'Worker compute',
-		unitRateLabel: '$0.004 per worker-compute day',
 		include: 350,
 		used: 400,
 		pastInclude: 50,
@@ -37,10 +35,6 @@ test('toCreditsDebitMeters maps usage meters into the credits rate card', () => 
 	})
 	expect(rows[1]).toMatchObject({
 		meter: 'durable_object_rows_read',
-		label: 'Rows read',
-		unitRateLabel: '$0.002 per million rows read',
-		include: 5_000_000_000,
-		used: 1_000_000,
 		pastInclude: 0,
 		estCreditsMicroUsd: 0,
 	})

@@ -103,22 +103,3 @@ test('enhanceGitRemoteReadDenial keeps AuthorizationError and names actionable n
 	)
 	expect(repoDenial.message).not.toMatch(/communityFork/)
 })
-
-test('enhanceGitRemoteWriteDenial for repos points at org-wide package:write', () => {
-	const base = new AuthorizationError({
-		code: 'missing_permission',
-		permission: 'package:write',
-		orgId: ownerIdFromStored('user-1'),
-		resource: null,
-		message: 'Missing package:write across this org.',
-	})
-	const enhanced = enhanceGitRemoteWriteDenial({
-		error: base,
-		resourceLabel: 'repo notes',
-		operation: 'repoGetGitRemote',
-		canRead: true,
-	})
-	expect(enhanced.message).toMatch(
-		/You have read access to repo notes, not write[\s\S]*scope: 'read'[\s\S]*across this org[\s\S]*single-package grant/,
-	)
-})

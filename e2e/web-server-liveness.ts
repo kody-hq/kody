@@ -7,14 +7,13 @@
  * `request.clone()` tee fix.
  */
 
-export const e2eWebServerDeadCode = 'E2E_WEB_SERVER_DEAD'
+const e2eWebServerDeadCode = 'E2E_WEB_SERVER_DEAD'
 
 /**
  * Stable pointer for agents: unread `request.clone()` tees are the common
- * wrangler-dev killer. Named so tests can assert the contract without pinning
- * the surrounding sentence.
+ * wrangler-dev killer.
  */
-export const e2eUnreadRequestCloneTeeRemediation =
+const e2eUnreadRequestCloneTeeRemediation =
 	'If wrangler logs show "Network connection lost" or "Error inside ProxyWorker", ' +
 	'an unread request.clone() body teed the stream and workerd killed the isolate; ' +
 	'wrangler 4.114+ then exits (workers-sdk#14926). Fix: consume the original ' +
@@ -36,7 +35,7 @@ let webServerDead = false
 const connectionRefusedPattern =
 	/(?:ECONNREFUSED|ERR_CONNECTION_REFUSED|net::ERR_CONNECTION_REFUSED)/i
 
-export function isE2eWebServerConnectionError(error: unknown): boolean {
+function isE2eWebServerConnectionError(error: unknown): boolean {
 	const seen = new Set<unknown>()
 	const queue: Array<unknown> = [error]
 	while (queue.length > 0) {
@@ -77,15 +76,6 @@ export function isE2eWebServerConnectionError(error: unknown): boolean {
 	return false
 }
 
-export function isE2eWebServerMarkedDead() {
-	return webServerDead
-}
-
-/** Test-only: clear the process-local dead latch between unit cases. */
-export function resetE2eWebServerLivenessForTests() {
-	webServerDead = false
-}
-
 function webServerDeadMessage(origin: string, detail?: string) {
 	const suffix = detail ? ` (${detail})` : ''
 	return (
@@ -96,7 +86,7 @@ function webServerDeadMessage(origin: string, detail?: string) {
 	)
 }
 
-export function markE2eWebServerDead(origin: string, detail?: string): never {
+function markE2eWebServerDead(origin: string, detail?: string): never {
 	webServerDead = true
 	throw new E2eWebServerDeadError(webServerDeadMessage(origin, detail))
 }

@@ -136,11 +136,7 @@ function seedIdentity(sqlite: DatabaseSync) {
 	)
 }
 
-test('adminHandleGet is admin-only and read-only', async () => {
-	expect(adminHandleGetCapability.requiredRole).toBe('admin')
-	expect(adminHandleGetCapability.readOnly).toBe(true)
-	expect(adminHandleGetCapability.orgPermission).toBe('none')
-
+test('adminHandleGet rejects non-admins', async () => {
 	const { db } = createMigratedDb()
 	await expect(
 		adminHandleGetCapability.handler(

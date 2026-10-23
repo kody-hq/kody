@@ -2,7 +2,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -49,7 +49,7 @@ function createContext(user: { personalOrgId?: string }) {
 	}
 }
 
-beforeEach(() => {
+test('communityFork stores the fork under the personal org when it differs from the person id', async () => {
 	mocks.forkCommunityListing.mockReset()
 	mocks.denyProfileBoundPackageCreate.mockReset()
 	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
@@ -64,9 +64,6 @@ beforeEach(() => {
 		filesCount: 3,
 		files: {},
 	})
-})
-
-test('communityFork stores the fork under the personal org when it differs from the person id', async () => {
 	// New signups mint a personal org id distinct from the person id
 	// (#3053). The fork must land in the org that packageList and
 	// repoOpenSession read, not under the person id.
@@ -88,6 +85,20 @@ test('communityFork stores the fork under the personal org when it differs from 
 })
 
 test('communityFork keeps legacy equal-id personal orgs working', async () => {
+	mocks.forkCommunityListing.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.forkCommunityListing.mockResolvedValue({
+		forkId: 'fork-1',
+		packageId: 'pkg-1',
+		sourceId: 'source-1',
+		targetKodyId: 'google',
+		targetName: '@adwin/google',
+		originCommit: 'commit-1',
+		crossScopeReferences: [],
+		filesCount: 3,
+		files: {},
+	})
 	await communityForkCapability.handler(
 		{ listing_id: 'listing-1' },
 		createContext({}),

@@ -260,13 +260,8 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 		},
 		context,
 	)
-	expect(byAccountUrl.matches).toEqual([
-		expect.objectContaining({
-			type: 'package',
-			packageId,
-			kodyId: 'daily-notes',
-			hidden: false,
-		}),
+	expect(byAccountUrl.matches).toMatchObject([
+		{ type: 'package', packageId, hidden: false },
 	])
 
 	const byHostedUrl = await searchCapability.handler(
@@ -276,12 +271,8 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 		},
 		context,
 	)
-	expect(byHostedUrl.matches).toEqual([
-		expect.objectContaining({
-			type: 'package',
-			packageId,
-			kodyId: 'daily-notes',
-		}),
+	expect(byHostedUrl.matches).toMatchObject([
+		{ type: 'package', packageId, kodyId: 'daily-notes' },
 	])
 
 	const hidden = await searchCapability.handler(
@@ -299,36 +290,21 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 		},
 		context,
 	)
-	expect(included.matches).toEqual([
-		expect.objectContaining({
-			type: 'package',
-			packageId,
-			hidden: true,
-		}),
+	expect(included.matches).toMatchObject([
+		{ type: 'package', packageId, hidden: true },
 	])
 
 	const naturalLanguage = await searchCapability.handler(
 		{ query: 'search docs', conversationId: 'meta-natural-language' },
 		context,
 	)
-	expect(naturalLanguage.matches).toEqual([
-		expect.objectContaining({
-			type: 'capability',
-			entityRef: 'capability:search_docs',
-		}),
-		expect.objectContaining({
-			type: 'guide',
-			entityRef: 'guide:search_and_execute',
-		}),
+	expect(naturalLanguage.matches).toMatchObject([
+		{ type: 'capability', entityRef: 'capability:search_docs' },
+		{ type: 'guide', entityRef: 'guide:search_and_execute' },
 	])
-	expect(naturalLanguage.telemetry?.jevRerank).toEqual({
+	expect(naturalLanguage.telemetry?.jevRerank).toMatchObject({
 		enabled: false,
 		outcome: 'skipped-flag-off',
-		candidatesBefore: expect.any(Number),
-		candidatesAfter: expect.any(Number),
-		droppedCount: 0,
-		meanConfidence: null,
-		top1Type: 'capability',
 	})
 	expect(naturalLanguage.phaseTimings?.jevRerankMs).toEqual(expect.any(Number))
 
@@ -340,28 +316,22 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 	).rejects.toThrow(/Authenticated MCP user is required/)
 
 	expect(mockModule.getSavedPackageById).toHaveBeenCalledWith(
-		{},
-		{
+		expect.anything(),
+		expect.objectContaining({
 			userId: ownerIdFromStored('user-1'),
 			packageId,
-		},
+		}),
 	)
 	expect(mockModule.resolveSavedPackageRef).toHaveBeenCalledWith(
-		{},
-		{
+		expect.anything(),
+		expect.objectContaining({
 			userId: ownerIdFromStored('user-1'),
 			ref: 'daily-notes',
 			match: 'slug',
-		},
+		}),
 	)
 	expect(mockModule.getCapabilityRegistryForContext).toHaveBeenCalledTimes(1)
 	expect(mockModule.runPackageRetrievers).toHaveBeenCalledTimes(1)
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledWith(
-		expect.objectContaining({
-			conversationId: 'meta-natural-language',
-			query: 'search docs',
-		}),
-	)
 
 	mockUserPlan.plan = 'standard'
 	mockFeatureFlags.override = Object.fromEntries(

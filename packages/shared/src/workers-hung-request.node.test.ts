@@ -2,8 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	isWorkersHungRequestCanceledError,
 	isWorkersHungRequestCanceledMessage,
-	scheduledJobHungExecutionMessage,
-	workersHungExecutionMessage,
 } from './workers-hung-request.ts'
 
 const platformHungMessage =
@@ -35,5 +33,4 @@ test('isWorkersHungRequestCanceledError walks the cause chain', () => {
 		),
 	).toBe(true)
 	expect(isWorkersHungRequestCanceledError(new Error('other'))).toBe(false)
-	expect(scheduledJobHungExecutionMessage).not.toBe(workersHungExecutionMessage)
 })

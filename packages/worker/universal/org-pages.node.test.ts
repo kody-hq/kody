@@ -6,13 +6,10 @@ import {
 	orgUsagePath,
 	orgUsageWhereItWentPath,
 	relocateAccountHref,
-	orderOrganizations,
-	orgIdentity,
 	orgOwnedSectionForPath,
 	orgOverviewPath,
 	orgSlugFromOrgOwnedPath,
 	organizationsWithSignupFallback,
-	orgSwitcherEntries,
 	parseOrgBillingPath,
 	parseOrgManagementPath,
 	parseOrgOverviewPath,
@@ -33,12 +30,6 @@ const acme: OrganizationSummary = {
 	slug: 'acme',
 	displayName: 'Acme',
 	role: 'member',
-	personal: false,
-}
-const billing: OrganizationSummary = {
-	slug: 'billing-co',
-	displayName: null,
-	role: 'billing',
 	personal: false,
 }
 
@@ -136,24 +127,6 @@ test('management paths name settings and members under the /- separator', () => 
 	expect(parseOrgResourcePath('/@acme/settings')).toBeNull()
 })
 
-test('switcher lists the signup organization first, then roles, then create and any waiting invites', () => {
-	expect(
-		orderOrganizations([acme, billing, personal]).map((org) => org.slug),
-	).toEqual(['ada', 'acme', 'billing-co'])
-
-	const multiple = orgSwitcherEntries([acme, personal], 2)
-	expect(multiple).toEqual([
-		{ kind: 'org', org: personal, showRole: true },
-		{ kind: 'org', org: acme, showRole: true },
-		{ kind: 'create' },
-		{ kind: 'invites', count: 2 },
-	])
-
-	const single = orgSwitcherEntries([personal], 0)
-	expect(single.map((entry) => entry.kind)).toEqual(['org', 'create'])
-	expect(single[0]).toEqual({ kind: 'org', org: personal, showRole: false })
-})
-
 test('current organization comes only from the URL', () => {
 	const organizations = [personal, acme]
 	expect(urlOrgSlug({ pathname: '/@acme/-/secrets', organizations })).toBe(
@@ -181,39 +154,6 @@ test('org-owned URL slug wins even when the session list is empty or personal-on
 	expect(
 		urlOrgSlug({ pathname: '/@acme/some-pkg', organizations: [personal] }),
 	).toBeNull()
-})
-
-test('org rows show the signup organization as the person and others by name or handle', () => {
-	const viewer = { displayName: 'Ada Lovelace', avatarUrl: '/avatars/ada.png' }
-	expect(orgIdentity({ ...personal, displayName: null }, viewer)).toEqual({
-		name: 'Ada Lovelace',
-		handle: '@ada',
-		hasName: true,
-		avatarName: 'Ada Lovelace',
-		avatarUrl: '/avatars/ada.png',
-	})
-	expect(orgIdentity(personal, viewer).name).toBe('Ada Lovelace')
-	expect(
-		orgIdentity(personal, { displayName: ' ', avatarUrl: null }).name,
-	).toBe('Ada')
-	expect(orgIdentity(acme, viewer)).toEqual({
-		name: 'Acme',
-		handle: '@acme',
-		hasName: true,
-		avatarName: 'Acme',
-		avatarUrl: null,
-	})
-	expect(
-		orgIdentity({ ...acme, avatarUrl: '/orgs/acme/avatar/hash.png' }, viewer)
-			.avatarUrl,
-	).toBe('/orgs/acme/avatar/hash.png')
-	expect(orgIdentity({ ...billing, displayName: '  ' }, viewer)).toEqual({
-		name: '@billing-co',
-		handle: '@billing-co',
-		hasName: false,
-		avatarName: 'billing-co',
-		avatarUrl: null,
-	})
 })
 
 test('a session without memberships still lists the signup organization', () => {

@@ -43,25 +43,7 @@ const cursorNew = makeAgent(
 	'2024-06-01T00:00:00.000Z',
 	'2024-05-01T00:00:00.000Z',
 )
-const chatgptOld = makeAgent(
-	'https://chatgpt.com/oauth/vG3/client.json',
-	'ChatGPT.com',
-	'chatgpt',
-	'2024-03-01T00:00:00.000Z',
-)
-const chatgptNew = makeAgent(
-	'https://chatgpt.com/oauth/vG4/client.json',
-	'ChatGPT.com',
-	'chatgpt',
-	'2024-04-01T00:00:00.000Z',
-)
-const acme = makeAgent(
-	'opaque-client-id-abcdefghijklmnopqrstuvwxyz',
-	'Acme Agent',
-	null,
-	'2024-05-01T00:00:00.000Z',
-)
-const allAgents = [cursorOld, cursorNew, chatgptOld, chatgptNew, acme]
+const allAgents = [cursorOld, cursorNew]
 
 const listedAgents: AccountConnectedAgentsLoaderData = {
 	ok: true,

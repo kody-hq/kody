@@ -11,7 +11,6 @@ import { readRepoSessionStorageBucketCursor } from './repo-session-storage-bucke
 import {
 	clearStorageBucketRegistrationDedupeForTests,
 	flushStorageBucketRegistrationsForTests,
-	formatStorageBucketKindSummary,
 	listPlatformStorageBuckets,
 	listUserStorageBucketEstimates,
 	listUserStorageBucketIds,
@@ -267,21 +266,10 @@ test('summarizeStorageBucketEstimatesByKind groups without exposing storage ids'
 		{ kind: 'repo_session', estimatedBytes: null },
 		{ kind: 'package', estimatedBytes: 512 },
 	])
-	expect(summary).toEqual([
-		{ kind: 'package', label: 'package storage', bytes: 2_097_664, count: 2 },
-		{
-			kind: 'repo_session',
-			label: 'repo session scratch',
-			bytes: 1_048_576,
-			count: 2,
-		},
-	])
 	expect(
-		formatStorageBucketKindSummary([
-			{ kind: 'repo_session', estimatedBytes: 1_048_576 },
-			{ kind: 'package', estimatedBytes: 2_097_152 },
-		]),
-	).toBe(
-		'Inventoried buckets: 1 package storage (2.0 MiB); 1 repo session scratch (1.0 MiB).',
-	)
+		summary.map(({ kind, bytes, count }) => ({ kind, bytes, count })),
+	).toEqual([
+		{ kind: 'package', bytes: 2_097_664, count: 2 },
+		{ kind: 'repo_session', bytes: 1_048_576, count: 2 },
+	])
 })

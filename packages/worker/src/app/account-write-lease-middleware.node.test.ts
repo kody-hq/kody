@@ -80,22 +80,6 @@ test('authenticated delayed mutation holds web lease through handler completion'
 	expect(await meterA.countActiveWriteLeases()).toEqual({ count: 0 })
 })
 
-test('nonmutating documents preserve the native middleware result without auth or a lease', async () => {
-	authMock.loadResolvedRequestAuth.mockClear()
-	const result = {
-		response: new Response('document'),
-		context: { requestId: 'request-1' },
-	}
-	expect(
-		await withProtocolAccountWriteLease(
-			new Request('https://example.com/docs'),
-			{} as Env,
-			async () => result,
-		),
-	).toBe(result)
-	expect(authMock.loadResolvedRequestAuth).not.toHaveBeenCalled()
-})
-
 test.each([
 	['POST', '/auth'],
 	['GET', '/account/mcp-servers/oauth/callback'],

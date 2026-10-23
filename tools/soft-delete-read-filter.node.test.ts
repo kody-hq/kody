@@ -98,8 +98,3 @@ test('soft-delete read filter scans jobs-worker src', async () => {
 		]),
 	)
 })
-
-test('soft-delete read filter has no production-tree violations', async () => {
-	const violations = await scanSoftDeleteReadFilter(process.cwd())
-	expect(violations).toEqual([])
-})

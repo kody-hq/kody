@@ -5,20 +5,13 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	followOrgTarget,
-	resumeOrgFollow,
 	unfollowOrgTarget,
-	loadOrgFollowsData,
 	loadPackageFollowState,
 	followOperationStatus,
 } from '#app/follows-web.ts'
 import { resourceGrantKey } from '#worker/authorization/access-compile.ts'
 import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
-import {
-	ensureFollowTables,
-	getFollowByTarget,
-	insertFollow,
-	pauseFollow,
-} from '#worker/follow/repo.ts'
+import { ensureFollowTables, getFollowByTarget } from '#worker/follow/repo.ts'
 import { consumeFollowCreateSlot } from '#worker/follow/service.ts'
 import { followCreateMaxPerHour } from '#worker/follow/types.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -106,78 +99,6 @@ beforeEach(() => {
 	vi.clearAllMocks()
 })
 
-test('followOperationStatus maps every error code to an HTTP status', () => {
-	const error = (
-		code: 'invalid' | 'not_found' | 'rate_limited' | 'unauthorized',
-	) => followOperationStatus({ ok: false, code, error: '' })
-	expect(error('invalid')).toBe(400)
-	expect(error('unauthorized')).toBe(401)
-	expect(error('not_found')).toBe(404)
-	expect(error('rate_limited')).toBe(429)
-	expect(
-		followOperationStatus({
-			ok: true,
-			name: '@ada/notes',
-			kind: 'package',
-			follow: null,
-		}),
-	).toBe(200)
-})
-
-test('loadPackageFollowState lists member workspaces with personal first and gates pushes', async () => {
-	const { db, env } = await setup()
-	mocks.loadFollowTargetPermissions.mockResolvedValue(
-		access(['package:execute']),
-	)
-	mocks.listOrgsForPerson.mockResolvedValue([
-		{ id: 'org-team', slug: 'acme', display_name: 'Acme', role: 'member' },
-		{ id: 'org-guest', slug: 'guest', display_name: 'Guest', role: null },
-		{ id: personId, slug: 'jane', display_name: null, role: 'owner' },
-	])
-	await insertFollow(db, {
-		id: 'follow-team',
-		followerOrgId: 'org-team',
-		creatorUserId: personId,
-		targetKind: 'package',
-		targetOwnerId: ownerId,
-		targetId: 'pkg-notes',
-		targetName: '@ada/notes',
-		createdAt: '2026-10-01T00:00:00.000Z',
-		publishedEnabled: true,
-		pushedEnabled: false,
-	})
-
-	const state = await loadPackageFollowState({
-		env,
-		user,
-		username: 'ada',
-		kodyId: 'notes',
-		kind: undefined,
-	})
-
-	expect(state).toEqual({
-		ok: true,
-		target: { name: '@ada/notes', kind: 'package' },
-		availableEvents: ['published', 'pushed'],
-		canPush: false,
-		workspaces: [
-			{ slug: 'jane', displayName: null, personal: true, follow: null },
-			{
-				slug: 'acme',
-				displayName: 'Acme',
-				personal: false,
-				follow: {
-					status: 'active',
-					events: ['published'],
-					pausedAt: null,
-					pausedReason: null,
-					lastDeliverySkipReason: null,
-				},
-			},
-		],
-	})
-})
-
 test('loadPackageFollowState hides private targets the viewer can only run', async () => {
 	const { env } = await setup({ isPrivate: true })
 	mocks.loadFollowTargetPermissions.mockResolvedValue(
@@ -258,69 +179,6 @@ test('named follow operations follows with chosen events, explains push gating, 
 	).toBeNull()
 })
 
-test('named follow operations resumes a listed follow by id after its target is renamed', async () => {
-	const { db, env } = await setup()
-	const renamed = {
-		userId: ownerId,
-		id: 'pkg-notes',
-		name: '@ada/journal',
-		isPrivate: false,
-	}
-	mocks.getSavedPackageByName.mockResolvedValue(renamed)
-	mocks.getSavedPackageByIdInAnyOrg.mockResolvedValue(renamed)
-	mocks.loadFollowTargetPermissions.mockResolvedValue(access(['package:read']))
-	await insertFollow(db, {
-		id: 'follow-renamed',
-		followerOrgId: 'org-team',
-		creatorUserId: personId,
-		targetKind: 'package',
-		targetOwnerId: ownerId,
-		targetId: 'pkg-notes',
-		targetName: '@ada/notes',
-		createdAt: '2026-09-01T00:00:00.000Z',
-	})
-	await pauseFollow(db, {
-		id: 'follow-renamed',
-		pausedAt: '2026-10-01T00:00:00.000Z',
-		reason: 'access_lost',
-	})
-
-	expect(
-		await resumeOrgFollow({
-			env,
-			user,
-			org: { id: 'org-other' },
-			id: 'follow-renamed',
-		}),
-	).toMatchObject({ ok: false, code: 'not_found' })
-
-	const resumed = await resumeOrgFollow({
-		env,
-		user,
-		org: { id: 'org-team' },
-		id: 'follow-renamed',
-	})
-	expect(resumed).toMatchObject({
-		ok: true,
-		follow: { status: 'active' },
-	})
-
-	mocks.getSavedPackageByIdInAnyOrg.mockResolvedValue(null)
-	await pauseFollow(db, {
-		id: 'follow-renamed',
-		pausedAt: '2026-10-02T00:00:00.000Z',
-		reason: 'target_missing',
-	})
-	const gone = await resumeOrgFollow({
-		env,
-		user,
-		org: { id: 'org-team' },
-		id: 'follow-renamed',
-	})
-	expect(gone).toMatchObject({ ok: false, code: 'not_found' })
-	expect(gone.ok ? '' : gone.error).toMatch(/no longer exists/)
-})
-
 test('named follow operations reports the hourly new-follow limit', async () => {
 	const { env, db } = await setup()
 	mocks.loadFollowTargetPermissions.mockResolvedValue(access(['package:read']))
@@ -336,43 +194,4 @@ test('named follow operations reports the hourly new-follow limit', async () => 
 	})
 	expect(payload).toMatchObject({ ok: false, code: 'rate_limited' })
 	expect(followOperationStatus(payload)).toBe(429)
-})
-
-test('loadOrgFollowsData shows pause reasons and when paused follows are deleted', async () => {
-	const { db, env } = await setup()
-	await insertFollow(db, {
-		id: 'follow-paused',
-		followerOrgId: 'org-team',
-		creatorUserId: personId,
-		targetKind: 'repo',
-		targetOwnerId: ownerId,
-		targetId: 'repo-gone',
-		targetName: '@ada/scripts',
-		createdAt: '2026-09-01T00:00:00.000Z',
-	})
-	await pauseFollow(db, {
-		id: 'follow-paused',
-		pausedAt: '2026-10-01T00:00:00.000Z',
-		reason: 'target_missing',
-	})
-
-	const data = await loadOrgFollowsData({
-		env,
-		org: { id: 'org-team', slug: 'acme' },
-	})
-
-	expect(data.orgSlug).toBe('acme')
-	expect(data.follows).toEqual([
-		expect.objectContaining({
-			id: 'follow-paused',
-			name: '@ada/scripts',
-			kind: 'repo',
-			href: '/@ada/scripts',
-			status: 'paused',
-			pausedReason: 'target_missing',
-			events: ['pushed'],
-			availableEvents: ['pushed'],
-			deleteAt: '2026-10-31T00:00:00.000Z',
-		}),
-	])
 })

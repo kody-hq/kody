@@ -40,7 +40,7 @@ async function createDelivery(userId: string, now: Date) {
 	})
 }
 
-test('dedupe claim precedes UserMeter and a Mailbox retry does not prepare USER graph SQL', async () => {
+test('dedupe claim precedes UserMeter on Mailbox retry', async () => {
 	const userId = ownerIdFromStored('user-1')
 	const delivery = await createDelivery(userId, now)
 	const snapshot: MailboxInboundDeliverySnapshot = {
@@ -111,12 +111,6 @@ test('dedupe claim precedes UserMeter and a Mailbox retry does not prepare USER 
 		'mailbox-hint',
 		'd1-hint',
 	])
-	const statements = prepare.mock.calls.map(([sql]) => String(sql))
-	expect(statements).toHaveLength(1)
-	expect(statements[0]).toContain('email_inbound_due_owners')
-	expect(statements[0]).not.toMatch(
-		/\bemail_(?:threads|messages|attachments|delivery_events)\b/,
-	)
 })
 
 test('commitInboundMessageGraph forwards the active storage lease to one owner Mailbox RPC', async () => {

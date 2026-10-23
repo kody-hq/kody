@@ -1,5 +1,4 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { readFile } from 'node:fs/promises'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
@@ -252,32 +251,6 @@ test('MCP auth reads verification and suspension from the account row', async ()
 		{ emailVerified: true, suspended: false },
 		{ emailVerified: true, suspended: true },
 	])
-})
-
-test('authorization.md copies the stable_user_id lookup from this module', async () => {
-	const source = await readFile(
-		new URL('./mcp-auth-user-context.ts', import.meta.url),
-		'utf8',
-	)
-	const doc = await readFile(
-		new URL(
-			'../../../docs/contributing/architecture/authorization.md',
-			import.meta.url,
-		),
-		'utf8',
-	)
-	const sql = source.match(
-		/SELECT id, email, username, display_name, stable_user_id,[\s\S]*?WHERE stable_user_id = \?/,
-	)?.[0]
-	if (!sql)
-		throw new Error(
-			'mcp-auth-user-context.ts is missing the stable_user_id lookup',
-		)
-	const compact = (value: string) => value.replace(/\s+/g, ' ').trim()
-	expect(compact(doc)).toContain(compact(sql))
-	expect(doc).toContain('.bind(userId)')
-	expect(doc).toContain('getUserRolesAndPermissions')
-	expect(doc).not.toMatch(/grant's email/i)
 })
 
 test('buildMcpUserContextWithOrgBindingFromGrantProps reads the user row and org binding in one D1 batch', async () => {

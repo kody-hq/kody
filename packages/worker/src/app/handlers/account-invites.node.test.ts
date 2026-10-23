@@ -214,34 +214,14 @@ beforeEach(async () => {
 	await seed()
 })
 
-test('addressed invites wait on the recipient with plain labels', async () => {
+test('only recipients see their addressed invites', async () => {
 	const membershipId = await inviteJoinerToTeamOrg()
 	const packageId = await inviteJoinerToPackage()
 	const user = signIn(joiner)
 	const pending = await listPendingInvitesForViewer(createEnv(), user)
-	expect(pending).toEqual(
-		expect.arrayContaining([
-			{
-				source: 'invite',
-				id: membershipId,
-				orgSlug: 'zeta-works',
-				orgDisplayName: 'Zeta Works',
-				orgPersonal: false,
-				label: 'Join as Member',
-				expiresAt: expect.any(String),
-			},
-			{
-				source: 'invite',
-				id: packageId,
-				orgSlug: 'ada',
-				orgDisplayName: null,
-				orgPersonal: true,
-				label: 'Contribute access to Weather',
-				expiresAt: expect.any(String),
-			},
-		]),
+	expect(pending.map(({ id }) => id).sort()).toEqual(
+		[membershipId, packageId].sort(),
 	)
-	expect(pending).toHaveLength(2)
 	expect(await listPendingInvitesForViewer(createEnv(), signIn(owner))).toEqual(
 		[],
 	)

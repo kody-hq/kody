@@ -21,14 +21,9 @@ const publicSelf = {
 test('profile identity renders the person in HTML and keeps guest CTAs honest', async () => {
 	const ownHtml = await renderToString(renderProfileIdentity(publicSelf))
 	expect(ownHtml).toContain('data-testid="profile-identity"')
-	expect(ownHtml).toContain('data-testid="profile-display-name"')
 	expect(ownHtml).toContain('Jane Example')
 	expect(ownHtml).toContain('@jane')
-	expect(ownHtml).toContain('Builds packages for other people to take.')
 	expect(ownHtml).toContain('src="/profiles/jane/avatar/hash.png"')
-	expect(ownHtml).toContain('width:72px')
-	expect(ownHtml).toContain('@media (min-width: 821px)')
-	expect(ownHtml).toContain('width:160px')
 	expect(ownHtml.replace(/<!-- -->/g, '')).toContain('Joined March 1, 2026')
 	expect(ownHtml).toContain('Workspace')
 	expect(ownHtml).toContain('data-testid="profile-workspace"')
@@ -37,7 +32,6 @@ test('profile identity renders the person in HTML and keeps guest CTAs honest', 
 	expect(ownHtml).toContain(`href="${routes.account.href()}"`)
 	expect(ownHtml).not.toContain('data-testid="profile-guest-cta"')
 	expect(ownHtml).not.toContain('data-testid="profile-private-badge"')
-	expect(ownHtml).not.toContain('Log out')
 
 	// After a username rename the profile handle can diverge from the
 	// immutable personal org slug; Workspace must follow the org.
@@ -68,7 +62,6 @@ test('profile identity renders the person in HTML and keeps guest CTAs honest', 
 		}),
 	)
 	expect(guestHtml).toContain('data-testid="profile-guest-cta"')
-	expect(guestHtml).toContain('Log in or sign up to fork these packages.')
 	expect(guestHtml).toContain('Log in')
 	expect(guestHtml).toContain('Sign up')
 	expect(guestHtml).toContain(

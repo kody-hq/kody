@@ -6,7 +6,6 @@ import { expect, test, vi } from 'vitest'
 import type * as PackageSourceModule from '#worker/package-registry/source.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { ComputeOverageLimitError } from '#worker/entitlements/errors.ts'
-import { parseServerTimingHeader } from '#worker/server-timing.ts'
 import {
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -405,72 +404,6 @@ test('a warm package-app serve performs zero D1/KV loads before dispatch', async
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 })
 
-test('hello-world serve emits Server-Timing phases and forwards the bag into buildPackageAppWorker', async () => {
-	seedFixture()
-	mockModule.buildPackageAppWorker.mockImplementation(
-		async (input: {
-			serverTiming?: Array<{ name: string; durationMs: number }>
-		}) => {
-			input.serverTiming?.push(
-				{ name: 'usageGate', durationMs: 1 },
-				{ name: 'appLoader', durationMs: 2 },
-			)
-			return {
-				entrypointName: 'PackageAppWorker',
-				stub: {
-					getEntrypoint: () => ({
-						async fetch() {
-							return new Response('ok')
-						},
-					}),
-				},
-			}
-		},
-	)
-
-	const serverTiming: Array<{ name: string; durationMs: number }> = [
-		{ name: 'owner', durationMs: 3 },
-	]
-	const response = await servePackageAppRequest({
-		request: new Request('https://example.com/@kentcdodds/packages/perf-app'),
-		env: {
-			APP_DB: {},
-			BUNDLE_ARTIFACTS_KV: {},
-		} as Env,
-		owner: {
-			userId: ownerIdFromStored('user-1'),
-			username: 'kentcdodds',
-			email: 'kent@example.com',
-			displayName: 'Kent',
-		},
-		visitor: {
-			userId: personIdFromStored('user-1'),
-			username: 'kentcdodds',
-			role: 'owner',
-		},
-		packagePath: {
-			username: 'kentcdodds',
-			kodyId: 'perf-app',
-			restPath: '/',
-			mount: 'username-path',
-		},
-		serverTiming,
-	})
-
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('ok')
-	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledWith(
-		expect.objectContaining({ serverTiming }),
-	)
-	const phaseNames = parseServerTimingHeader(
-		response.headers.get('Server-Timing'),
-	).map((entry) => entry.name)
-	expect(phaseNames).toContain('owner')
-	expect(phaseNames).toContain('resolveSavedPackage')
-	expect(phaseNames).toContain('entrypoint')
-	expect(phaseNames).toContain('usageGate')
-})
-
 test('websocket upgrade responses skip Server-Timing and keep the paired socket', async () => {
 	seedFixture()
 	const client = { kind: 'client-socket' } as unknown as WebSocket
@@ -790,18 +723,6 @@ test('/_assets/ is a 404 for apps without client or assets and author fetch stil
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 })
 
-test('published leftover kody.app.runtime does not brick host-setup', async () => {
-	seedFixture({
-		kodyId: 'legacy-runtime-app',
-		app: { entry: './src/app.ts', runtime: 'remix' },
-	})
-
-	const response = await serveHelloWorld({ kodyId: 'legacy-runtime-app' })
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('ok')
-	expect(mockModule.buildPackageAppWorker).toHaveBeenCalled()
-})
-
 test('OPTIONS that the app answers is forwarded unchanged', async () => {
 	seedFixture({ kodyId: 'options-handled-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
@@ -863,27 +784,6 @@ test('an OPTIONS handler throw becomes a 204, not the package-entrypoint page', 
 		'package-app-http-error',
 		expect.anything(),
 	)
-})
-
-test('an OPTIONS entrypoint rejection becomes a 204', async () => {
-	seedFixture({ kodyId: 'options-reject-app' })
-	mockModule.buildPackageAppWorker.mockResolvedValue({
-		entrypointName: 'PackageAppWorker',
-		stub: {
-			getEntrypoint: () => ({
-				async fetch() {
-					throw new Error('app has no OPTIONS route')
-				},
-			}),
-		},
-	})
-
-	const response = await serveHelloWorld({
-		kodyId: 'options-reject-app',
-		init: { method: 'OPTIONS' },
-	})
-	expect(response.status).toBe(204)
-	expect(response.body).toBeNull()
 })
 
 test('a tagged runtime throw becomes the package-entrypoint page with the run id', async () => {

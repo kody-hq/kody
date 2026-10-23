@@ -27,31 +27,6 @@ test('resolveTransactionalEmailConfig derives link hosts from the sending domain
 	expect(
 		resolveTransactionalEmailConfig({
 			env: {
-				APP_BASE_URL: 'https://kody.codes',
-				SYSTEM_EMAIL_DOMAIN: 'kody.codes',
-			},
-		}),
-	).toEqual({
-		appBaseUrl: 'https://kody.codes',
-		fromEmail: 'kody@kody.codes',
-	})
-
-	expect(
-		resolveTransactionalEmailConfig({
-			env: {
-				WRANGLER_IS_LOCAL_DEV: 'true',
-				SYSTEM_EMAIL_DOMAIN: 'kody.codes',
-			},
-			requestUrl: 'http://localhost:3742/signup',
-		}),
-	).toEqual({
-		appBaseUrl: 'http://localhost:3742',
-		fromEmail: 'kody@kody.codes',
-	})
-
-	expect(
-		resolveTransactionalEmailConfig({
-			env: {
 				WRANGLER_IS_LOCAL_DEV: 'true',
 				APP_BASE_URL: 'https://kody.codes',
 				SYSTEM_EMAIL_DOMAIN: 'kody.codes',

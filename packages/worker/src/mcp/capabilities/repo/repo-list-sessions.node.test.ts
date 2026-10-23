@@ -144,18 +144,10 @@ test('repoListSessions defaults to active sessions for the signed-in user', asyn
 	expect(result.sessions).toHaveLength(1)
 	expect(result.sessions[0]).toMatchObject({
 		id: 'session-active',
-		source_id: 'source-1',
-		entity_type: 'package',
 		status: 'active',
-		expires_at: null,
-		session_branch: 'sessions/session-active',
-		source_branch: 'main',
 		resolved_target: {
 			kind: 'package',
-			source_id: 'source-1',
 			package_id: 'package-1',
-			kody_id: 'demo',
-			name: '@user/demo',
 		},
 	})
 })

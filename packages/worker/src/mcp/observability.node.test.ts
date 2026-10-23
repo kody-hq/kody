@@ -461,7 +461,7 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 		for (const event of callerFailures) logMcpEvent(event)
 	})
 
-	expect(payloads).toHaveLength(38)
+	expect(payloads).toHaveLength(callerFailures.length)
 	expect(JSON.parse(payloads[0]!)).toMatchObject({
 		tool: 'execute',
 		outcome: 'failure',

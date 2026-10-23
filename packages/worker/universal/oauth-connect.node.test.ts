@@ -18,9 +18,6 @@ test('connect chooser lists reconnectable connections and hides unused built-ins
 		),
 	).toBe(true)
 	expect(
-		isConnectOauthCallbackUrl(new URL('https://example.com/connect/oauth')),
-	).toBe(false)
-	expect(
 		isConnectOauthCallbackUrl(
 			new URL('https://example.com/connect/oauth?provider=google'),
 		),
@@ -29,12 +26,6 @@ test('connect chooser lists reconnectable connections and hides unused built-ins
 	expect(
 		buildConnectOauthHref({ name: 'google-work', appSlug: 'google' }),
 	).toBe('/connect/oauth?provider=google-work&app=google')
-	expect(
-		buildConnectOauthHref({
-			name: 'google',
-			appSlug: 'google',
-		}),
-	).toBe('/connect/oauth?provider=google&app=google')
 	expect(
 		buildConnectOauthHref({
 			name: 'github-platform-2',

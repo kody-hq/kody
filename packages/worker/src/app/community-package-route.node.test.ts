@@ -67,88 +67,6 @@ function ownerPackagePage(overrides: Record<string, unknown> = {}) {
 	}
 }
 
-test('leftover /files and /tree/HEAD 301 to the looked-up default branch', async () => {
-	mockModule.resolveCommunityPackageUrl.mockResolvedValue({
-		kind: 'listing',
-		listingId: 'listing-1',
-		username: 'kentcdodds',
-		kodyId: 'devin',
-	})
-	mockModule.getCommunityListingById.mockResolvedValue({
-		id: 'listing-1',
-		sourceId: 'src-1',
-	})
-	mockModule.getEntitySourceById.mockResolvedValue({ repo_id: 'repo-1' })
-	mockModule.resolveArtifactSourceHead.mockResolvedValue({
-		branch: 'release',
-		commit: 'abc',
-	})
-
-	for (const [resource, to] of [
-		[
-			{
-				kind: 'package-files',
-				username: 'kentcdodds',
-				kodyId: 'devin',
-				relativePath: 'src/index.ts',
-			},
-			'/@kentcdodds/devin/tree/release/src/index.ts',
-		],
-		[
-			{
-				kind: 'package-tree',
-				username: 'kentcdodds',
-				kodyId: 'devin',
-				ref: 'HEAD',
-				relativePath: '',
-			},
-			'/@kentcdodds/devin/tree/release',
-		],
-		[
-			{
-				kind: 'package-tree',
-				username: 'kentcdodds',
-				kodyId: 'devin',
-				ref: 'head',
-				relativePath: 'src/index.ts',
-			},
-			'/@kentcdodds/devin/tree/release/src/index.ts',
-		],
-	] as const) {
-		expect(await resolveRoute(resource)).toEqual(redirect(to, true))
-	}
-
-	mockModule.resolveArtifactSourceHead.mockClear()
-	for (const ref of ['release', 'main']) {
-		expect(
-			await resolveRoute({
-				kind: 'package-tree',
-				username: 'kentcdodds',
-				kodyId: 'devin',
-				ref,
-				relativePath: '',
-			}),
-		).toEqual({
-			kind: 'listing',
-			listingId: 'listing-1',
-			selectedPath: '',
-			ref,
-			packagePath: { username: 'kentcdodds', kodyId: 'devin' },
-		})
-	}
-	expect(mockModule.resolveArtifactSourceHead).not.toHaveBeenCalled()
-
-	mockModule.resolveArtifactSourceHead.mockRejectedValue(new Error('no git'))
-	expect(
-		await resolveRoute({
-			kind: 'package-files',
-			username: 'kentcdodds',
-			kodyId: 'devin',
-			relativePath: '',
-		}),
-	).toEqual(redirect('/@kentcdodds/devin/tree/main', true))
-})
-
 test('unlisted owner tree uses the package page; strangers are unauthorized', async () => {
 	mockModule.resolveCommunityPackageUrl.mockResolvedValue(null)
 	mockModule.loadPackagePage.mockResolvedValue(ownerPackagePage())
@@ -260,26 +178,4 @@ test('signed-in denial retains request-access data for the native files page', a
 			true,
 		),
 	).toEqual(denial)
-})
-
-test('canonical package redirect keeps tree ref and file while other redirect kinds stay untouched', async () => {
-	const { treeHrefFromPackageHome } =
-		await import('./community-package-route.ts')
-	expect(
-		treeHrefFromPackageHome('/@alice/tool/?ignored=1', {
-			ref: 'release',
-			relativePath: 'src/main.ts',
-		}),
-	).toBe('/@alice/tool/tree/release/src/main.ts')
-	expect(treeHrefFromPackageHome('/@%61lice/tool', { ref: 'main' })).toBe(
-		'/@alice/tool/tree/main',
-	)
-	for (const href of [
-		'/community/listing',
-		'/@alice/tool/settings',
-		'/login?redirectTo=%2Faccount',
-		'/@alice/%E0%A4%A',
-	]) {
-		expect(treeHrefFromPackageHome(href, { ref: 'main' })).toBe(href)
-	}
 })

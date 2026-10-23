@@ -8,7 +8,7 @@
 export const SENTRY_CONFIG_META_NAME = 'kody:sentry'
 
 /** Same-origin envelope tunnel; keeps CSP `connect-src 'self'` intact. */
-export const SENTRY_TUNNEL_PATH = '/sentry-tunnel'
+const SENTRY_TUNNEL_PATH = '/sentry-tunnel'
 
 export type SentryClientConfig = {
 	dsn: string

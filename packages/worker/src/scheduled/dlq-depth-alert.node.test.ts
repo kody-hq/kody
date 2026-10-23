@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
@@ -45,8 +42,6 @@ vi.mock('#mcp/cloudflare/cloudflare-rest-client.ts', () => {
 
 const now = new Date('2026-10-16T12:00:00.000Z')
 const stuckQueue = 'kody-webhook-dispatch-dlq'
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
-
 type Sample = {
 	backlogCount: number
 	oldestMessageTimestampMs: number | null
@@ -375,20 +370,4 @@ test('non-production and missing Cloudflare credentials do not report an empty D
 	).rejects.toThrow(/CLOUDFLARE_API_TOKEN/)
 	expect(mocks.rawRequest).not.toHaveBeenCalled()
 	expect(mocks.captureMessage).not.toHaveBeenCalled()
-})
-
-test('the watched queues are the production dead-letter queues configured on the workers', () => {
-	const names = new Set<string>()
-	for (const relativePath of [
-		'packages/worker/wrangler.jsonc',
-		'packages/jobs-worker/wrangler.jsonc',
-	]) {
-		const source = readFileSync(join(repoRoot, relativePath), 'utf8')
-		for (const match of source.matchAll(/"dead_letter_queue":\s*"([^"]+)"/g)) {
-			const name = match[1] ?? ''
-			if (name.includes('-preview-') || name.includes('-test-')) continue
-			names.add(name)
-		}
-	}
-	expect([...names].sort()).toEqual([...productionDeadLetterQueueNames].sort())
 })

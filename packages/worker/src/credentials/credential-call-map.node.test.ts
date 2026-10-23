@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { z } from 'zod'
 import {
 	credentialCallMapSchema,
 	normalizeCredentialCallMap,
@@ -27,32 +26,6 @@ test('a call map parses names, scoped picks, and lists into picks by key', () =>
 		]),
 	)
 	expect(normalizeCredentialCallMap({})).toBeNull()
-})
-
-test('credentials object pick advertises name and scope field descriptions', () => {
-	const schema = z.toJSONSchema(credentialCallMapSchema) as {
-		additionalProperties?: {
-			anyOf?: Array<{
-				anyOf?: Array<{
-					properties?: {
-						name?: { description?: string }
-						scope?: { description?: string }
-					}
-				}>
-			}>
-		}
-	}
-	const objectBranch = schema.additionalProperties?.anyOf
-		?.flatMap((branch) => branch.anyOf ?? [])
-		.find((branch) => branch.properties?.name && branch.properties?.scope)
-	expect(objectBranch?.properties?.name?.description).toMatch(
-		/Credential name/i,
-	)
-	expect(objectBranch?.properties?.name?.description).not.toMatch(/secret/i)
-	expect(objectBranch?.properties?.scope?.description).toMatch(
-		/org credential and a personal credential/i,
-	)
-	expect(objectBranch?.properties?.scope?.description).not.toMatch(/secret/i)
 })
 
 test('a call map refuses keys that could collide once trimmed', () => {

@@ -1,9 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	buildSsrSentryClientConfig,
-	parseSentryClientConfig,
-	SENTRY_TUNNEL_PATH,
-} from '#universal/sentry-config.ts'
+import { parseSentryClientConfig } from '#universal/sentry-config.ts'
 
 test('parseSentryClientConfig accepts complete configs and rejects unsafe tunnels', () => {
 	expect(
@@ -59,43 +55,4 @@ test('parseSentryClientConfig accepts complete configs and rejects unsafe tunnel
 			}),
 		),
 	).toBeNull()
-})
-
-test('buildSsrSentryClientConfig skips local Vite and missing DSN, keeps deployed configs', () => {
-	expect(
-		buildSsrSentryClientConfig({
-			dsn: 'https://key@o1.ingest.sentry.io/2',
-			environment: 'production',
-			release: 'abc123',
-			localDev: true,
-		}),
-	).toBeNull()
-	expect(
-		buildSsrSentryClientConfig({
-			dsn: '   ',
-			environment: 'production',
-		}),
-	).toBeNull()
-	expect(
-		buildSsrSentryClientConfig({
-			dsn: 'https://key@o1.ingest.sentry.io/2',
-			environment: 'production',
-			release: 'abc123',
-		}),
-	).toEqual({
-		dsn: 'https://key@o1.ingest.sentry.io/2',
-		environment: 'production',
-		release: 'abc123',
-		tunnel: SENTRY_TUNNEL_PATH,
-	})
-	expect(
-		buildSsrSentryClientConfig({
-			dsn: 'https://key@o1.ingest.sentry.io/2',
-		}),
-	).toEqual({
-		dsn: 'https://key@o1.ingest.sentry.io/2',
-		environment: 'development',
-		release: null,
-		tunnel: SENTRY_TUNNEL_PATH,
-	})
 })

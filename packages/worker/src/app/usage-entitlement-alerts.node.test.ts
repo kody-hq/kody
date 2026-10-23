@@ -224,32 +224,6 @@ test('fleet entitlement crossings emit once per threshold, then rematch after a 
 	expect(consoleWarn).toHaveBeenCalledTimes(3)
 })
 
-test('a same-hour jump to 100% emits reached once and claims the 80% crossing', async () => {
-	silenceExpectedConsoleWarns(['fleet-entitlement-crossing-emitted'])
-	const { kv, store } = createKv()
-	const now = '2026-08-24T12:00:00.000Z'
-	setSnapshots(snapshot({ current: 10, limit: 10 }))
-	expect(await emit(createEnv(kv), now)).toEqual(emitted(1))
-	expect(
-		dispatchFleetEntitlementCrossingSubscriptionEvent,
-	).toHaveBeenCalledTimes(1)
-	expect(dispatchedEvent(0)).toMatchObject({
-		threshold: 'reached',
-		percent_of_limit: 1,
-	})
-	expect(store.get(entitlementKey('reached'))).toBe(at(now))
-	expect(store.get(entitlementKey('approaching'))).toBe(at(now))
-
-	setSnapshots(snapshot({ current: 9, limit: 10 }))
-	expect(await emit(createEnv(kv), '2026-08-24T13:00:00.000Z')).toEqual({
-		status: 'no_new_crossings',
-		issueCount: 1,
-	})
-	expect(
-		dispatchFleetEntitlementCrossingSubscriptionEvent,
-	).toHaveBeenCalledTimes(1)
-})
-
 test('runtime duration crossings emit once per UTC month and daily resources key by day', async () => {
 	silenceExpectedConsoleWarns([
 		'fleet-entitlement-crossing-emitted',

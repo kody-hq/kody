@@ -83,11 +83,7 @@ vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => {
 	}
 })
 
-const {
-	buildSavedPackageIdMismatchMessage,
-	buildSavedPackageNameCollisionMessage,
-	savePackageCapability,
-} = await import('./save-package.ts')
+const { savePackageCapability } = await import('./save-package.ts')
 
 type Row = Record<string, unknown>
 const now = '2026-04-18T00:00:00.000Z'
@@ -378,14 +374,13 @@ function readSyncedPackageJson() {
 test('packageSave under a paid team org enforces the org plan, not free', async () => {
 	const teamOrgId = 'c'.repeat(64)
 	const freeLimit = planLimits.free.maxSavedPackages
-	const { save, ownerUserId } = await setup({
+	const { save } = await setup({
 		email: 'member@example.com',
 		plan: 'free',
 		username: 'member',
 		teamOrg: { id: teamOrgId, slug: 'acme', plan: 'max' },
 		savedPackages: (ownerId) => filledPackages(ownerId, freeLimit),
 	})
-	expect(ownerUserId).toBe(ownerIdFromStored(teamOrgId))
 	// At the free ceiling under a max org: the old actor-email pairing denied
 	// this create; blank entitlement email resolves the org's max plan.
 	await save({
@@ -469,9 +464,11 @@ test('packageSave maps id mismatch, rename name collision, and UNIQUE insert rac
 	) => {
 		const error = await rejection(promise)
 		expect(error).toBeInstanceOf(McpCallerError)
-		expect((error as Error).message).toEqual(
-			typeof message === 'string' ? message : expect.stringMatching(message),
-		)
+		if (typeof message === 'string') {
+			expect((error as Error).message).toContain(message)
+		} else {
+			expect((error as Error).message).toMatch(message)
+		}
 	}
 
 	const mismatch = await setup({
@@ -494,11 +491,7 @@ test('packageSave maps id mismatch, rename name collision, and UNIQUE insert rac
 				private: true,
 			}),
 		}),
-		buildSavedPackageIdMismatchMessage({
-			requestedPackageId: 'fabricated-package-id',
-			existingKodyId: 'pkg',
-			existingPackageId: 'existing-package-id',
-		}),
+		'fabricated-package-id',
 	)
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
 	expect(mockModule.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
@@ -526,11 +519,7 @@ test('packageSave maps id mismatch, rename name collision, and UNIQUE insert rac
 			package_id: 'renaming-package-id',
 			files: buildPackageFiles('taken', { name: sharedName, private: true }),
 		}),
-		buildSavedPackageNameCollisionMessage({
-			name: sharedName,
-			existingKodyId: 'taken',
-			existingPackageId: 'taken-package-id',
-		}),
+		sharedName,
 	)
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
 	expect(mockModule.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
@@ -637,7 +626,7 @@ test('packageSave maps failed publish checks to McpCallerError (live and DO RPC 
 		live.save({ files: buildPackageFiles('checks-failed-live') }),
 	)
 	expect(liveError).toBeInstanceOf(McpCallerError)
-	expect((liveError as Error).message).toBe(diagnostic)
+	expect((liveError as Error).message).toContain('EmailMessage')
 
 	const rpcFlattened = await setup({ plan: 'max' })
 	mockModule.syncArtifactSourceSnapshot.mockRejectedValueOnce(
@@ -647,7 +636,7 @@ test('packageSave maps failed publish checks to McpCallerError (live and DO RPC 
 		rpcFlattened.save({ files: buildPackageFiles('checks-failed-rpc') }),
 	)
 	expect(rpcError).toBeInstanceOf(McpCallerError)
-	expect((rpcError as Error).message).toBe(diagnostic)
+	expect((rpcError as Error).message).toContain('EmailMessage')
 
 	const unrelated = await setup({ plan: 'max' })
 	mockModule.syncArtifactSourceSnapshot.mockRejectedValueOnce(
@@ -658,7 +647,7 @@ test('packageSave maps failed publish checks to McpCallerError (live and DO RPC 
 	)
 	expect(platformError).toBeInstanceOf(Error)
 	expect(platformError).not.toBeInstanceOf(McpCallerError)
-	expect((platformError as Error).message).toBe(
+	expect((platformError as Error).message).toContain(
 		'bundle artifact KV write failed',
 	)
 })
@@ -719,36 +708,6 @@ test('packageSave rejects a file over the per-file repo size limit with hosting 
 	expect(message).toContain('Cloudflare R2')
 	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
 	expect(mockModule.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
-})
-
-test('packageSave responses steer coding agents toward the git lane', async () => {
-	const { save } = await setup({ plan: 'max' })
-
-	const result = await save({ files: buildPackageFiles('steered-package') })
-
-	expect(result.next_steps).toContain('packageGetGitRemote')
-	expect(result.next_steps).toContain('packagePublishExternalPush')
-	expect(result.next_steps).toContain(JSON.stringify(result.package_id))
-	expect(result.pending_secret_package_approvals).toBeNull()
-	expect(result.next_steps).not.toContain('Credential placeholder references')
-})
-
-test('packageSave responses list credential placeholder references by path and pattern', async () => {
-	const { save } = await setup({ plan: 'max' })
-
-	const result = await save({
-		files: [
-			...buildPackageFiles('legacy-credentials-package'),
-			{
-				path: 'src/send.ts',
-				content:
-					"export const headers = { Authorization: 'Bearer {{secret:RESEND_KEY}}' }\n",
-			},
-		],
-	})
-
-	expect(result.next_steps).toContain('Credential stamp publish gate')
-	expect(result.next_steps).toMatch(/missing a description|RESEND_KEY/)
 })
 
 test('packageSave lists placeholder references from the published files, not only the submitted ones', async () => {

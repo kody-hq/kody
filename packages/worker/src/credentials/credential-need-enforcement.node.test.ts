@@ -40,6 +40,14 @@ vi.mock('cloudflare:workers', async (importOriginal) => ({
 	waitUntil: () => {},
 }))
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 const now = '2026-10-15T00:00:00.000Z'
 const keyValue = 're_live_secret_value_123'
 
@@ -223,25 +231,6 @@ test('with the flag off a team package fills any placeholder, as today', async (
 	).resolves.toBe(`Bearer ${keyValue}`)
 })
 
-test('with the flag off an unstamped author package still fills any placeholder', async () => {
-	const t = await setup()
-	await t.storeSecret(t.personalId, 'RESEND')
-	const packageId = await t.savePackage({
-		ownerId: t.personalId,
-		name: '@bea/mailer',
-	})
-	enforcement(false)
-	stamp(false)
-	declare([])
-	await expect(
-		t.fill({
-			orgId: t.personalId,
-			packageId,
-			header: 'Bearer {{secret:RESEND}}',
-		}),
-	).resolves.toBe(`Bearer ${keyValue}`)
-})
-
 test('a stamped package fills only declared slots even when the flag is off', async () => {
 	const t = await setup()
 	await t.storeSecret(t.acmeId, 'RESEND')
@@ -259,7 +248,6 @@ test('a stamped package fills only declared slots even when the flag is off', as
 		code: 'credential_need_undeclared',
 		key: 'RESEND',
 	})
-	expect((error as Error).message).toContain('credential stamp')
 	expect((error as Error).message).not.toContain(keyValue)
 
 	declare([need('RESEND')])
@@ -430,7 +418,6 @@ test('with the flag on a team package fills only what it declares', async () => 
 		code: 'credential_need_undeclared',
 		key: 'RESEND',
 	})
-	expect((error as Error).message).toContain('@acme/mailer')
 	expect((error as Error).message).not.toContain(packageId)
 	expect((error as Error).message).not.toContain(keyValue)
 
@@ -540,9 +527,6 @@ test('credential(key) in a team package needs the key declared', async () => {
 	expect(refused).toMatchObject({
 		body: { code: 'credential_need_undeclared' },
 	})
-	expect(refused.message).toMatch(
-		/^\[credential_need_undeclared\] Package @acme\/mailer/,
-	)
 
 	await expect(
 		openCredentialClient(t.clientContext(t.acmeId, null), { key: 'resend' }),

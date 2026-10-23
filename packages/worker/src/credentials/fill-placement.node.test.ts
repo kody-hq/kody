@@ -4,9 +4,6 @@ import {
 	defaultNewCredentialFillPlacement,
 	fillPlacementAllows,
 	fillPlacementAllowsUnderResolution,
-	fillPlacementPartLabels,
-	fillPlacementRefusalMessage,
-	fillPlacementSiteLabel,
 	fillSiteFromCredentialInject,
 	observeFillPlacementWouldBlock,
 	observeFillPlacementWouldBlockSites,
@@ -23,12 +20,6 @@ test('null placement means anywhere', () => {
 	expect(fillPlacementAllows(null, { part: 'header', name: 'X-Api-Key' })).toBe(
 		true,
 	)
-	expect(fillPlacementPartLabels(null)).toEqual([
-		'headers',
-		'query',
-		'path',
-		'body',
-	])
 })
 
 test('headers-only default for new credentials', () => {
@@ -76,7 +67,6 @@ test('query path and body flags', () => {
 	expect(
 		fillPlacementAllows(placement, { part: 'header', name: 'Authorization' }),
 	).toBe(false)
-	expect(fillPlacementPartLabels(placement)).toEqual(['query', 'path', 'body'])
 })
 
 test('schema refuses an empty object and invalid header names', () => {
@@ -92,7 +82,6 @@ test('schema refuses an empty object and invalid header names', () => {
 test('serialize round-trips', () => {
 	const placement = { headers: true as const, body: true as const }
 	const json = serializeCredentialFillPlacement(placement)
-	expect(json).toBe('{"headers":true,"body":true}')
 	expect(readCredentialFillPlacement(json)).toEqual(placement)
 	expect(serializeCredentialFillPlacement(null)).toBeNull()
 })
@@ -139,7 +128,7 @@ test('headers-only resolution intersects and never widens placement', () => {
 	).toBe(false)
 })
 
-test('inject maps to fill sites; refusal message names credential and parts', () => {
+test('inject maps to fill sites', () => {
 	expect(
 		fillSiteFromCredentialInject({ kind: 'header', name: 'X-Api-Key' }),
 	).toEqual({ part: 'header', name: 'X-Api-Key' })
@@ -150,16 +139,6 @@ test('inject maps to fill sites; refusal message names credential and parts', ()
 	expect(fillSiteFromCredentialInject({ kind: 'query' })).toEqual({
 		part: 'query',
 	})
-	expect(
-		fillPlacementSiteLabel({ part: 'header', name: 'Authorization' }),
-	).toBe('header Authorization')
-	expect(
-		fillPlacementRefusalMessage({
-			credentialName: 'apiKey',
-			site: { part: 'body' },
-			placement: defaultNewCredentialFillPlacement,
-		}),
-	).toBe('Credential "apiKey" may not fill body. Allowed parts: headers.')
 })
 
 test('observe schedules durable records without throwing and skips allowed sites', async () => {

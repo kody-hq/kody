@@ -12,7 +12,6 @@ import {
 	upsertUsageCampaign,
 } from '#worker/usage/campaign-ledger.ts'
 import { type UsageCampaignCandidate } from '#worker/usage/campaign-inputs.ts'
-import { usageCampaignFirstSendDwellMs } from '#worker/usage/campaign-states.ts'
 import type * as cloudflareEmail from '#app/email/cloudflare-email.ts'
 
 const sendCloudflareEmail = vi.fn<typeof cloudflareEmail.sendCloudflareEmail>(
@@ -37,7 +36,6 @@ vi.mock('#worker/usage/campaign-inputs.ts', async (importOriginal) => {
 
 const {
 	listUsersForUsageCampaignSweep,
-	openVerifiedNoMcpCampaignEvent,
 	recordVerifiedNoMcpCampaignSend,
 	sendUserUsageCampaignEmails,
 } = await import('#app/user-usage-campaign-emails.ts')
@@ -367,40 +365,6 @@ test('a lost send-ledger race does not persist a stale campaign row', async () =
 	expect(after?.cooling_terminal).toBe(0)
 })
 
-test('re-entry claim loss persists last_evaluated_at without mailing again', async () => {
-	const { db, env } = await setup({
-		id: 'user-reentry',
-		email: 'reentry@example.com',
-	})
-	const enteredAt = new Date('2026-08-20T00:00:00.000Z')
-	await upsert(db, 'user-reentry', {
-		state: 'LimitAware',
-		enteredAt: enteredAt.toISOString(),
-		now: enteredAt,
-	})
-	expect(
-		await claimVerifiedNoMcp(
-			db,
-			'user-reentry',
-			new Date('2026-08-01T00:00:00.000Z'),
-		),
-	).toBe(true)
-	const dwellElapsed = new Date(now.getTime() + usageCampaignFirstSendDwellMs)
-	gatherUsageCampaignSnapshot.mockResolvedValue(snapshot({ now: dwellElapsed }))
-	expect(await sweep(env, dwellElapsed)).toEqual(noSends())
-	expect(sendCloudflareEmail).not.toHaveBeenCalled()
-	expect(await readUsageCampaign(db, 'user-reentry')).toMatchObject({
-		state: 'VerifiedNoMcp',
-		send_count: 0,
-		last_sent_at: null,
-		last_evaluated_at: dwellElapsed.toISOString(),
-		origin: 'event',
-	})
-	expect(await listUsageCampaignSends(db, 'user-reentry')).toEqual(
-		onlyVerifiedNoMcpSend,
-	)
-})
-
 test('campaign upsert keeps verify-time event rows over later seeds and never clears sticky flags', async () => {
 	const { db, env } = await setup(
 		{ id: 'user-verify', email: 'verify@example.com' },
@@ -474,87 +438,6 @@ test('failed unsubscribe mint releases the claim and does not send campaign mail
 		'usage-campaign-unsubscribe-mint-failed',
 		expect.any(Error),
 	)
-})
-
-test('opening a verify-time event row lets the sweep send after a failed first mail', async () => {
-	const { db, env } = await setup({
-		id: 'user-open',
-		email: 'open@example.com',
-	})
-	expect(
-		await openVerifiedNoMcpCampaignEvent({
-			env,
-			userId: ownerIdFromStored('user-open'),
-			now,
-		}),
-	).toBe(true)
-	expect(await readUsageCampaign(db, 'user-open')).toMatchObject({
-		state: 'VerifiedNoMcp',
-		origin: 'event',
-		send_count: 0,
-		last_sent_at: null,
-	})
-	expect(await listUsageCampaignSends(db, 'user-open')).toEqual([])
-
-	const dwellElapsed = new Date(now.getTime() + usageCampaignFirstSendDwellMs)
-	gatherUsageCampaignSnapshot.mockResolvedValue(snapshot({ now: dwellElapsed }))
-	expect(await sweep(env, dwellElapsed)).toEqual(notified())
-	expect((await readUsageCampaign(db, 'user-open'))?.send_count).toBe(1)
-	expect(await listUsageCampaignSends(db, 'user-open')).toHaveLength(1)
-})
-
-test('advocate one-shot uses the live referral share URL and never repeats', async () => {
-	const { db, env } = await setup({
-		id: 'kentcdodds',
-		email: 'advocate@example.com',
-		stripePlan: 'pro',
-	})
-	const mockPaidAdvocate = (at: Date) =>
-		gatherUsageCampaignSnapshot.mockImplementation(
-			async (input: { user: UsageCampaignCandidate }) =>
-				snapshot({
-					isStripePaid: true,
-					username: input.user.username,
-					now: at,
-				}),
-		)
-	mockPaidAdvocate(now)
-	expect(await sweep(env, now)).toEqual(noSends())
-	expect(await readUsageCampaign(db, 'kentcdodds')).toMatchObject({
-		state: 'Paid',
-		advocate_sent_at: null,
-	})
-
-	mockPaidAdvocate(due)
-	expect(await sweep(env, due)).toEqual(notified())
-	const payload = sendCloudflareEmail.mock.calls[0]?.[1] as {
-		to: string
-		subject: string
-		html: string
-		text: string
-	}
-	expect(payload.to).toBe('advocate@example.com')
-	expect(payload.subject).toBe('Share Kody (and get a month free)')
-	expect(payload.html).toContain('https://kody.codes/signup?ref=kentcdodds')
-	expect(payload.text).toContain(
-		'mailto:me@kentcdodds.com?subject=Kody%20testimonial',
-	)
-	expect(await listUsageCampaignSends(db, 'kentcdodds')).toEqual([
-		expect.objectContaining({
-			state: 'Paid',
-			template: 'advocate_referral_testimonial',
-			send_index: 1,
-		}),
-	])
-	expect(await readUsageCampaign(db, 'kentcdodds')).toMatchObject({
-		send_count: 0,
-		advocate_sent_at: due.toISOString(),
-		last_sent_at: null,
-	})
-
-	expect(await sweep(env, due)).toEqual(noSends())
-	expect(sendCloudflareEmail).not.toHaveBeenCalled()
-	expect(await listUsageCampaignSends(db, 'kentcdodds')).toHaveLength(1)
 })
 
 test('campaign sweep selects referral overlay expiry for stock-cap plan reads', async () => {

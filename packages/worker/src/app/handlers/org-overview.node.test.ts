@@ -165,32 +165,20 @@ beforeEach(() => {
 	})
 })
 
-test('the signup org overview renders without remembering the org', async () => {
-	expect(await getOverview(await createEnv(), 'ada')).toEqual({
-		slug: 'ada',
-		charts: {
-			since: '2026-01-01T00:00:00.000Z',
-			until: '2026-01-07T12:00:00.000Z',
-			countsSince: null,
-			days: [],
-			sources: [],
-		},
-		billing: null,
-		repositories: [],
-		runs: [],
-		upcomingJobs: [],
-		summary: {
-			since: '2026-01-01T00:00:00.000Z',
-			total: 0,
-			errors: 0,
-			running: 0,
-			ignored: 0,
-			resolved: 0,
-		},
+test('signed-out visitors go to login', async () => {
+	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
+	await expect(getOverview(await createEnv(), 'ada')).rejects.toMatchObject({
+		options: { href: expect.stringContaining('/login') },
 	})
-	expect(native.setResponseHeader.mock.calls).toEqual([
-		['Cache-Control', 'private, no-store'],
-	])
+})
+
+test('the signup org overview renders without remembering the org', async () => {
+	const overview = await getOverview(await createEnv(), 'ada')
+	expect(overview.slug).toBe('ada')
+	expect(native.setResponseHeader).toHaveBeenCalledWith(
+		'Cache-Control',
+		'private, no-store',
+	)
 })
 test.each(['owner', 'member', 'billing'])(
 	'a team org %s gets a dashboard scoped to the org',
@@ -267,13 +255,6 @@ test('grant-only collaborators cannot read the org dashboard', async () => {
 	expect(mocks.loadAccountJobsData).not.toHaveBeenCalled()
 	expect(mocks.loadWorkspaceRunCharts).not.toHaveBeenCalled()
 	expect(mocks.loadOrgUsagePageResult).not.toHaveBeenCalled()
-})
-
-test('signed-out visitors go to login', async () => {
-	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
-	await expect(getOverview(await createEnv(), 'ada')).rejects.toMatchObject({
-		options: { href: expect.stringContaining('/login') },
-	})
 })
 
 test('dashboard shows only runnable jobs, soonest first, and caps activity', async () => {

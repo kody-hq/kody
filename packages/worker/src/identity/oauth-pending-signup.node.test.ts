@@ -1,6 +1,5 @@
 import {
 	createOauthPendingSignupCookie,
-	destroyOauthPendingSignupCookie,
 	readOauthPendingSignup,
 	setOauthPendingSignupSecret,
 } from '#app/oauth-pending-signup.ts'
@@ -259,12 +258,6 @@ test('username availability endpoint reports status and rate limits', async () =
 	})
 	expect(limited.status).toBe(429)
 	expect(limited.data).toMatchObject({ ok: false, code: 'rate_limited' })
-})
-
-test('destroyOauthPendingSignupCookie clears the pending cookie', async () => {
-	const cleared = await destroyOauthPendingSignupCookie(false)
-	expect(cleared).toContain('kody_oauth_pending=')
-	expect(cleared).toContain('Max-Age=0')
 })
 
 function countUsers(sqlite: import('node:sqlite').DatabaseSync) {

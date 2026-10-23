@@ -5,12 +5,9 @@ import { deterministicEmbedding } from '#worker/vectorize/embedding.ts'
 
 import { searchUnified, type PackageSearchRow } from './search.ts'
 import {
-	buildPackageActionMatches,
-	buildPackageExportParentIdentityFields,
 	hydrateTopPackageMatches,
 	packageSearchEntityPlugin,
 	selectPromotedPackageExportCandidates,
-	shouldPromotePackageExportCandidate,
 } from './search-entity-plugins/package.ts'
 import { resolveJevSearchRecallLimit } from './search-jev-rerank.ts'
 import {
@@ -155,47 +152,6 @@ function createActionMatch(
 		exportLocalMatchedTermCount,
 	}
 }
-
-test('buildPackageActionMatches folds parent tags into export matched terms', () => {
-	const matches = buildPackageActionMatches({
-		query: 'twitter create status',
-		meaningfulTokens: ['twitter', 'create', 'status'],
-		parentIdentityFields: buildPackageExportParentIdentityFields({
-			kodyId: 'social-post',
-			name: '@kody/social-post',
-			tags: ['twitter', 'microblog'],
-		}),
-		exports: [
-			exportFn(
-				'./create-status',
-				'createStatus',
-				'Create a new status update.',
-			),
-			exportFn('./like-status', 'likeStatus', 'Like an existing status.'),
-		],
-	})
-	expect(matches.length).toBeGreaterThan(0)
-	for (const match of matches) {
-		expect(match.matchedTerms).toContain('twitter')
-	}
-	expect(matches.some((match) => match.subpath === './create-status')).toBe(
-		true,
-	)
-})
-
-test('shouldPromotePackageExportCandidate rejects parent-identity-only and requires multi-term or strong score', () => {
-	const cases: Array<[PackageActionMatch, boolean]> = [
-		[createActionMatch('./identity-only', 0.8, ['twitter', 'alpha'], 0), false],
-		[createActionMatch('./weak', 0.2, ['weak']), false],
-		[createActionMatch('./multi', 0.2, ['bond', 'shades']), true],
-	]
-	expect(
-		cases.map(([match]) => [
-			match.subpath,
-			shouldPromotePackageExportCandidate(match),
-		]),
-	).toEqual(cases.map(([match, promoted]) => [match.subpath, promoted]))
-})
 
 test('selectPromotedPackageExportCandidates promotes close runners-up, keeps a clear winner, and looks past the display top-3', () => {
 	const cases: Array<[string, Array<PackageActionMatch>, Array<string>]> = [

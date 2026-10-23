@@ -63,13 +63,13 @@
 		"test-node": {
 			"executor": "nx:run-commands",
 			"options": {
-				"command": "vitest run --project node-unit"
+				"command": "node tools/run-node-tests.ts"
 			}
 		},
 		"test-workers": {
 			"executor": "nx:run-commands",
 			"options": {
-				"command": "vitest run --project workers-unit"
+				"command": "node tools/run-workers-tests.ts"
 			}
 		},
 		"prepare-e2e-env": {
@@ -107,7 +107,8 @@
 			"dependsOn": ["prepare-e2e-env", "prepare-playwright"],
 			"outputs": [
 				"{workspaceRoot}/playwright-report",
-				"{workspaceRoot}/test-results"
+				"{workspaceRoot}/test-results",
+				"{workspaceRoot}/blob-report"
 			],
 			"options": {
 				"command": "playwright test"

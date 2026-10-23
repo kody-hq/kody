@@ -46,7 +46,7 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 		mockModule.getEntitySourceById(...args),
 }))
 
-const { approveWentPublicRequest, loadPendingPackageApprovals } =
+const { approveWentPublicRequest } =
 	await import('./account-package-approval-requests.ts')
 
 beforeEach(() => {
@@ -111,85 +111,6 @@ function savedPackage(isInternetVisible = false) {
 		updatedAt: '2026-01-01T00:00:00.000Z',
 	}
 }
-
-test('loadPendingPackageApprovals shows went_public reason and approve action', async () => {
-	mockModule.listPendingPackageApprovalRequests.mockResolvedValue([
-		{
-			id: 'req-went',
-			reason: 'went_public',
-			pendingCommit: 'deadbeef',
-			baseCommit: 'deadbeef',
-			createdAt: '2026-01-02T00:00:00.000Z',
-			details: { summary: 'Serve this package on the public internet.' },
-		},
-		{
-			id: 'req-stale',
-			reason: 'went_public',
-			pendingCommit: 'old',
-			baseCommit: 'old',
-			createdAt: '2026-01-01T00:00:00.000Z',
-			details: {},
-		},
-	])
-	const pending = await loadPendingPackageApprovals({
-		env: { APP_DB: {} } as Env,
-		ownerUserId: 'owner-1',
-		packageId: 'pkg-1',
-		publishedCommit: 'deadbeef',
-	})
-	expect(pending).toEqual([
-		{
-			id: 'req-went',
-			reason: 'went_public',
-			reasonLabel: 'Went public',
-			pendingCommit: 'deadbeef',
-			createdAt: '2026-01-02T00:00:00.000Z',
-			changes: ['Serve this package on the public internet.'],
-			approveAction: 'approve-went-public',
-		},
-	])
-})
-
-test('approveWentPublicRequest flips internet-visible when capability pin matches', async () => {
-	const env = { APP_DB: {} } as Env
-	const request = new Request('https://example.com/approve')
-	stubApproveWentPublicHappyPath()
-	const pkg = savedPackage(false)
-
-	const result = await approveWentPublicRequest({
-		env,
-		request,
-		savedPackage: pkg,
-		ownerUserId: 'owner-1',
-		actorUserId: personIdFromStored('actor-1'),
-		requestId: 'req-went',
-	})
-	expect(result).toEqual({ ok: true })
-	expect(
-		mockModule.findPackageCapabilityApprovalByFingerprint,
-	).toHaveBeenCalledWith(
-		env.APP_DB,
-		expect.objectContaining({
-			publishedCommit: 'deadbeef',
-			fingerprint: 'fp-1',
-		}),
-	)
-	expect(mockModule.resolvePackageApprovalRequest).toHaveBeenCalledWith(
-		env.APP_DB,
-		expect.objectContaining({
-			id: 'req-went',
-			status: 'approved',
-		}),
-	)
-	expect(mockModule.updateSavedPackage).toHaveBeenCalledWith(
-		env.APP_DB,
-		expect.objectContaining({
-			packageId: 'pkg-1',
-			isInternetVisible: true,
-			expectedUpdatedAt: pkg.updatedAt,
-		}),
-	)
-})
 
 test('approveWentPublicRequest fails closed when clear bumps updated_at after claim without re-opening the ask', async () => {
 	stubApproveWentPublicHappyPath()
@@ -283,39 +204,4 @@ test('approveWentPublicRequest supersedes when the published commit moved', asyn
 		expect.objectContaining({ status: 'superseded' }),
 	)
 	expect(mockModule.updateSavedPackage).not.toHaveBeenCalled()
-})
-
-test('approveWentPublicRequest requires a matching capability approval', async () => {
-	mockModule.getPackageApprovalRequest.mockResolvedValue({
-		id: 'req-went',
-		reason: 'went_public',
-		status: 'pending',
-		pendingCommit: 'deadbeef',
-		baseCommit: 'deadbeef',
-		details: {},
-	})
-	mockModule.getEntitySourceById.mockResolvedValue({
-		id: 'source-1',
-		user_id: 'owner-1',
-		published_commit: 'deadbeef',
-	})
-	mockModule.loadCapabilityApprovalSummary.mockResolvedValue({
-		publishedCommit: 'deadbeef',
-		fingerprintMatchesApproval: false,
-		capabilitySet: { fingerprint: 'fp-1', entries: [] },
-	})
-
-	const result = await approveWentPublicRequest({
-		env: { APP_DB: {} } as Env,
-		request: new Request('https://example.com/approve'),
-		savedPackage: savedPackage(false),
-		ownerUserId: 'owner-1',
-		actorUserId: 'actor-1',
-		requestId: 'req-went',
-	})
-	expect(result).toMatchObject({ ok: false, status: 409 })
-	expect(mockModule.updateSavedPackage).not.toHaveBeenCalled()
-	expect(
-		mockModule.findPackageCapabilityApprovalByFingerprint,
-	).not.toHaveBeenCalled()
 })

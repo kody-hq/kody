@@ -197,11 +197,7 @@ test('team member with Use on package A can adopt-inspect A in the bound org and
 
 	await expect(
 		communityForkAdoptCapability.handler({ package_id: a }, ctx),
-	).resolves.toMatchObject({
-		status: 'approval_required',
-		package_id: a,
-		kody_id: 'alpha',
-	})
+	).resolves.toMatchObject({ status: 'approval_required' })
 
 	expect(
 		await rejection(

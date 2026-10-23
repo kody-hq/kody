@@ -84,7 +84,7 @@ export function hotterUsagePercent(
  * Monthly compute includes (`group: 'monthly'`) are not hard caps, so they
  * never count as a hard "Limit reached."
  */
-export function hasReachedEntitlementLimit(
+function hasReachedEntitlementLimit(
 	item: Pick<
 		AccountUsageEntitlementConsumption,
 		'percentOfLimit' | 'week' | 'group'
@@ -97,7 +97,7 @@ export function hasReachedEntitlementLimit(
 	)
 }
 
-export function accountUsageWarningsPanelTitle(
+function accountUsageWarningsPanelTitle(
 	warnings: ReadonlyArray<
 		Pick<
 			AccountUsageEntitlementConsumption,
@@ -187,7 +187,7 @@ type UsageResourceNameProps = {
  * popover. The table stays scannable; the explanation stays one click away
  * and is not clipped by the cell's overflow.
  */
-export function UsageResourceName({
+function UsageResourceName({
 	id,
 	label,
 	whatCounts,

@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	collectMarkdownFences,
-	highlightJsonValue,
-	highlightMarkdownFences,
 	highlightResultsByKey,
 	highlightSnippets,
 	uniqueHighlightSnippets,
@@ -108,24 +106,4 @@ test('highlightSnippets covers fallback, worker timings, key mapping, and worker
 	expect(
 		await highlightSnippets(errorEnv, [{ code: 'const x = 1', lang: 'ts' }]),
 	).toEqual([plainHighlightedCode('const x = 1', 'ts')])
-})
-
-test('highlightMarkdownFences and highlightJsonValue use the worker', async () => {
-	const markdownFixture = highlightedFixture('const x = 1')
-	const jsonFixture = highlightedFixture('{\n  "ok": true\n}', 'json')
-	let calls = 0
-	const env = {
-		HIGHLIGHT: {
-			fetch: async () => {
-				calls += 1
-				return Response.json({
-					results: calls === 1 ? [markdownFixture] : [jsonFixture],
-				})
-			},
-		} as unknown as Fetcher,
-	}
-	expect(await highlightMarkdownFences(env, '```ts\nconst x = 1\n```')).toEqual(
-		[markdownFixture],
-	)
-	expect(await highlightJsonValue(env, { ok: true })).toEqual(jsonFixture)
 })

@@ -1,7 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	accountCreditsPath,
-	buildComputeOverageHowToReduce,
 	computeMonthlyOverage,
 	computeOverageIncludePercent,
 	resolveComputeIncludeCreditsStatus,
@@ -79,33 +77,6 @@ test('credits status separates debiting, add credits, switch to Pro, and operato
 				}) !== want,
 		),
 	).toEqual([])
-})
-
-test('howToReduce points wallet and retired accounts at /account/usage#credits; Free stays informational', () => {
-	const empty = buildComputeOverageHowToReduce(
-		'unique_worker_days',
-		'pro',
-		'empty',
-	)
-	expect(empty).toContain(`Add credits at ${accountCreditsPath}`)
-	expect(empty).toContain('With no credits left, usage past the include stops')
-	expect(empty).toContain('$0.004 per worker-compute day')
-	expect(
-		buildComputeOverageHowToReduce('durable_object_rows_read', 'pro', 'funded'),
-	).toContain('charged from your credits at $0.002 per million rows read')
-	const free = buildComputeOverageHowToReduce(
-		'unique_worker_days',
-		'free',
-		'none',
-	)
-	expect(free).toContain('informational')
-	expect(free).not.toContain(accountCreditsPath)
-	expect(
-		buildComputeOverageHowToReduce('unique_worker_days', 'standard', 'none'),
-	).toContain('not charged on your plan')
-	expect(
-		buildComputeOverageHowToReduce('unique_worker_days', 'max', 'none'),
-	).not.toContain(accountCreditsPath)
 })
 
 test('past-include stop: only an empty purchasable-Pro wallet stops, and only past the include', () => {

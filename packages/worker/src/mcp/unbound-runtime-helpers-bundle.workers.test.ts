@@ -20,87 +20,64 @@ import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidenta
  * only ever fires in synthetic tests (as shipped in the first iteration).
  */
 test(
-	'guard-less unbound email access in a real bundle gets the bound-context hint',
+	'guard-less unbound runtime helpers in real bundles get the bound-context hint',
 	{ timeout: 60_000 },
 	async () => {
 		silenceIncidentalRuntimeWarnings()
-		const callerContext = createMcpCallerContext({
-			source: { kind: 'mcp-oauth' },
-			baseUrl: 'https://kody.dev',
-			user: {
-				userId: personIdFromStored('user-unbound-repro'),
+		for (const helper of [
+			{
+				name: 'email',
+				userId: 'user-unbound-repro',
 				email: 'repro@example.com',
-				displayName: 'Repro',
-			},
-		})
-		const bundle = await buildKodyModuleBundle({
-			env,
-			baseUrl: 'https://kody.dev',
-			userId: ownerIdFromStored('user-unbound-repro'),
-			sourceFiles: {
-				'entry.ts': [
+				source: [
 					"import { email } from 'kody:runtime'",
 					'export default async function main() {',
 					"\treturn await email.getMessage('m-1')",
 					'}',
 				].join('\n'),
+				error: "Cannot read properties of null (reading 'getMessage')",
 			},
-			entryPoint: 'entry.ts',
-		})
-		const result = await runBundledModuleWithRegistry(
-			env,
-			callerContext,
-			bundle,
-			undefined,
-			{ skipCapabilityRegistry: true },
-		)
-		expect(result.error).toContain(
-			"Cannot read properties of null (reading 'getMessage')",
-		)
-		expect(parseUnboundRuntimeHelperMessage(result.error ?? '')).toBe('email')
-	},
-)
-
-test(
-	'guard-less unbound packageSecrets access in a real bundle gets the bound-context hint',
-	{ timeout: 60_000 },
-	async () => {
-		silenceIncidentalRuntimeWarnings()
-		const callerContext = createMcpCallerContext({
-			source: { kind: 'mcp-oauth' },
-			baseUrl: 'https://kody.dev',
-			user: {
-				userId: personIdFromStored('user-unbound-secrets'),
+			{
+				name: 'packageSecrets',
+				userId: 'user-unbound-secrets',
 				email: 'secrets@example.com',
-				displayName: 'Secrets',
-			},
-		})
-		const bundle = await buildKodyModuleBundle({
-			env,
-			baseUrl: 'https://kody.dev',
-			userId: ownerIdFromStored('user-unbound-secrets'),
-			sourceFiles: {
-				'entry.ts': [
+				source: [
 					"import { packageSecrets } from 'kody:runtime'",
 					'export default async function main() {',
 					"\treturn await packageSecrets.get('token')",
 					'}',
 				].join('\n'),
+				error:
+					'kody:runtime export "packageSecrets" is not available in this execution context.',
 			},
-			entryPoint: 'entry.ts',
-		})
-		const result = await runBundledModuleWithRegistry(
-			env,
-			callerContext,
-			bundle,
-			undefined,
-			{ skipCapabilityRegistry: true },
-		)
-		expect(result.error).toContain(
-			'kody:runtime export "packageSecrets" is not available in this execution context.',
-		)
-		expect(parseUnboundRuntimeHelperMessage(result.error ?? '')).toBe(
-			'packageSecrets',
-		)
+		]) {
+			const callerContext = createMcpCallerContext({
+				source: { kind: 'mcp-oauth' },
+				baseUrl: 'https://kody.dev',
+				user: {
+					userId: personIdFromStored(helper.userId),
+					email: helper.email,
+					displayName: helper.name,
+				},
+			})
+			const bundle = await buildKodyModuleBundle({
+				env,
+				baseUrl: 'https://kody.dev',
+				userId: ownerIdFromStored(helper.userId),
+				sourceFiles: { 'entry.ts': helper.source },
+				entryPoint: 'entry.ts',
+			})
+			const result = await runBundledModuleWithRegistry(
+				env,
+				callerContext,
+				bundle,
+				undefined,
+				{ skipCapabilityRegistry: true },
+			)
+			expect(result.error).toContain(helper.error)
+			expect(parseUnboundRuntimeHelperMessage(result.error ?? '')).toBe(
+				helper.name,
+			)
+		}
 	},
 )

@@ -85,11 +85,12 @@ other packages that share the root projects, for example
     `testTimeout`. Shared `testTimeout` is 20s so the pool’s ~10s first DO RPC
     in a file does not fail the default budget; workers-unit alone uses 40s
     everywhere (CI, validate, local) so one budget covers load-induced stretch
-    and validate’s cached result is the one CI reuses. Full `npm run validate`
-    sets `KODY_VALIDATE_LOAD=1` on `test:workers`, which only lowers
-    `maxWorkers` to 2; node-unit keeps the shared 20s budget. That flag does not
-    loosen production startup CPU budgets. On a machine with at most 4 cores, or
-    under 24GB of RAM, the gate also runs one suite leg at a time (#3147).
+    and cached results use the same budget CI enforces. Full and sharded Workers
+    runs have separate Nx cache keys. Full `npm run validate` sets
+    `KODY_VALIDATE_LOAD=1` on `test:workers`, which only lowers `maxWorkers` to
+    2; node-unit keeps the shared 20s budget. That flag does not loosen
+    production startup CPU budgets. On a machine with at most 4 cores, or under
+    24GB of RAM, the gate also runs one suite leg at a time (#3147).
   - Pool cold load is inherent today; suite wall clock will not match production
     RPC latency until the upstream pool improves.
 - Vitest is configured with `clearMocks` and `mockReset` globally

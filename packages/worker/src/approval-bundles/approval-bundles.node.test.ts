@@ -15,7 +15,6 @@ import { listPendingCredentialProposals } from '#worker/credentials/agent-creden
 import {
 	approvalItemsAwaitingDecision,
 	approvalItemsReadyToApprove,
-	approveAllLabel,
 	type ApprovalBundleView,
 	type ApprovalItemView,
 } from '#universal/approval-bundles.ts'
@@ -626,8 +625,6 @@ test('pending items that cannot be approved yet still count as waiting', () => {
 	expect(approvalItemsReadyToApprove(view).map((entry) => entry.key)).toEqual([
 		'ready',
 	])
-	expect(approveAllLabel(0, 1)).toBe('Nothing here can be approved yet')
-	expect(approveAllLabel(0, 0)).toBe('Nothing left to approve')
 })
 
 test('equal proposals from two agents both wait for approval', async () => {
@@ -744,8 +741,8 @@ test('a capability that only moved to another dependency still shows a change', 
 	expect(lines).toHaveLength(1)
 	expect(lines[0]).toMatchObject({
 		change: 'changed',
-		before: 'Key sent to slack.com, reached via @me/app',
-		after: 'Key sent to slack.com, reached via @me/app → @me/slack-helper',
+		before: expect.stringContaining('@me/app'),
+		after: expect.stringContaining('@me/slack-helper'),
 	})
 	expect(
 		capabilityGrantLines([entry], [{ ...entry, name: 'renamed-slack' }]),

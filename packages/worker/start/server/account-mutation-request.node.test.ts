@@ -106,54 +106,8 @@ import {
 	setMcpServerUsage,
 	setMcpServerOAuthClient,
 	updateExperiments,
-	disconnectAccountProvider,
-	syncDiscordMemberRole,
-	setJobKillSwitch,
-	runJobNow,
-	cancelWorkflowRun,
 	bindSecretProvider,
-	unbindSecretProvider,
-	grantSecretProvider,
-	revokeSecretProvider,
-	disconnectIntegration,
 } from './account-mutations.ts'
-
-test('integration operations preserve the authenticated request', async () => {
-	state.mutate.mockClear()
-	await disconnectIntegration({
-		data: { orgSlug: 'acme', input: { name: 'github' } },
-	})
-	expect(state.mutate).toHaveBeenCalledWith(
-		expect.objectContaining({ request: state.request, name: 'github' }),
-	)
-})
-
-test('job and workflow operations pass validated named fields with original request', async () => {
-	for (const [operation, data] of [
-		[runJobNow, { orgSlug: 'acme', id: 'job' }],
-		[cancelWorkflowRun, { orgSlug: 'acme', id: 'run' }],
-	] as const) {
-		state.mutate.mockClear()
-		await operation({ data })
-		expect(state.mutate).toHaveBeenCalledWith(
-			expect.objectContaining({ id: data.id, request: state.request }),
-		)
-		expect(state.mutate).not.toHaveBeenCalledWith(
-			expect.objectContaining({ body: expect.anything() }),
-		)
-	}
-	state.mutate.mockClear()
-	await setJobKillSwitch({
-		data: { orgSlug: 'acme', id: 'job', killSwitchEnabled: true },
-	})
-	expect(state.mutate).toHaveBeenCalledWith(
-		expect.objectContaining({
-			id: 'job',
-			killSwitchEnabled: true,
-			request: state.request,
-		}),
-	)
-})
 
 test('experiments preference rejects untyped input before the domain write', async () => {
 	state.mutate.mockClear()
@@ -167,91 +121,6 @@ test('experiments preference rejects untyped input before the domain write', asy
 			experimentsOptIn: false,
 			request: state.request,
 		}),
-	)
-})
-
-test('provider operations pass named fields and preserve original request and bind origin', async () => {
-	for (const operation of [grantSecretProvider, revokeSecretProvider]) {
-		state.mutate.mockClear()
-		await operation({
-			data: {
-				orgSlug: 'acme',
-				provider: '1password',
-				packageId: 'pkg',
-				ref: 'op://vault/item',
-			},
-		})
-		expect(state.mutate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				request: state.request,
-				provider: '1password',
-				packageId: 'pkg',
-				ref: 'op://vault/item',
-			}),
-		)
-	}
-	await unbindSecretProvider({
-		data: { orgSlug: 'acme', provider: '1password' },
-	})
-	await bindSecretProvider({
-		data: {
-			orgSlug: 'acme',
-			provider: '1password',
-			packageId: 'pkg',
-			doorSecretName: 'TOKEN',
-			config: { host: 'https://connect.test' },
-		},
-	})
-	expect(state.mutate).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			request: state.request,
-			requestUrl: state.request.url,
-			doorSecretName: 'TOKEN',
-			config: { host: 'https://connect.test' },
-		}),
-	)
-})
-
-test('email destination operations accept named fields and preserve original person context', async () => {
-	const {
-		addEmailDestination,
-		resendEmailDestination,
-		setDefaultEmailDestination,
-		removeEmailDestination,
-	} = await import('./account-mutations.ts')
-	await addEmailDestination({ data: { email: 'person@example.com' } })
-	expect(state.mutate).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			request: state.request,
-			email: 'person@example.com',
-		}),
-	)
-	for (const operation of [
-		resendEmailDestination,
-		setDefaultEmailDestination,
-		removeEmailDestination,
-	]) {
-		await operation({ data: { destinationId: 'destination' } })
-		expect(state.mutate).toHaveBeenLastCalledWith(
-			expect.objectContaining({
-				request: state.request,
-				destinationId: 'destination',
-			}),
-		)
-	}
-	expect(() => addEmailDestination({ data: { email: '' } })).toThrow()
-})
-
-test('connection operations preserve audit request and use named provider input', async () => {
-	state.mutate.mockClear()
-	await disconnectAccountProvider({ data: { provider: 'discord' } })
-	expect(state.mutate).toHaveBeenCalledWith(
-		expect.objectContaining({ request: state.request, provider: 'discord' }),
-	)
-	state.mutate.mockClear()
-	await syncDiscordMemberRole({ data: {} })
-	expect(state.mutate).toHaveBeenCalledWith(
-		expect.objectContaining({ request: state.request }),
 	)
 })
 

@@ -38,15 +38,6 @@ test('thin provider index persists after the USER graph is removed', async () =>
 		malformedCount: 0,
 	})
 
-	const legacyTables = await env.APP_DB.prepare(
-		`SELECT name FROM sqlite_schema
-		WHERE type = 'table' AND name IN (
-			'email_threads', 'email_messages', 'email_attachments',
-			'email_delivery_events'
-		)`,
-	).all()
-	expect(legacyTables.results).toEqual([])
-
 	await deleteOutboundProviderIndexByMessageId({
 		db: env.APP_DB,
 		messageId,

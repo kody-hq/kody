@@ -249,26 +249,6 @@ test('CapabilityProxy caps bootstrap token lifetime to the parent token lifetime
 	).toBeGreaterThan(3000)
 })
 
-test('packages invoke path is rejected as unknown', async () => {
-	const error = await runCapabilityProxyCall({
-		ctx,
-		call: {
-			path: ['packages', 'invoke'],
-			args: ['kody:@owner/pkg/export', { params: {} }],
-		},
-	}).catch((value: unknown) => value)
-	expect(error).toMatchObject({ status: 404, code: 'not_found' })
-	expect(String((error as { message?: string }).message)).toMatch(
-		/Unknown runtime path/,
-	)
-	expect(String((error as { message?: string }).message)).toMatch(
-		/packages\.invoke|packages.*invoke/,
-	)
-	expect(String((error as { message?: string }).message)).not.toMatch(
-		/run execute without --local/,
-	)
-})
-
 test('dotted kody.mcp[server].tool looks up raw tools-map keys, not sanitizeToolName dispatchName', async () => {
 	const rawCapabilityName = 'mcp:home:set_pin'
 	const sanitizedDispatchName = 'mcphomeset_pin'

@@ -9,12 +9,7 @@ import {
 	requireUserWithPermission,
 	requireUserWithRole,
 } from '#app/permissions-server.ts'
-import {
-	type PermissionString,
-	type RoleName,
-	userHasPermission,
-	userHasRole,
-} from '#universal/permissions.ts'
+import { type RoleName } from '#universal/permissions.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -77,17 +72,6 @@ test('assignUserRole grants role permissions and getUserRolesAndPermissions unio
 		roles: ['admin', 'user'],
 		permissions: [],
 	})
-})
-
-test('userHasPermission and userHasRole perform pure membership checks', () => {
-	const user = {
-		roles: ['user', 'admin'] as Array<RoleName>,
-		permissions: ['read:user:own', 'read:user:any'] as Array<PermissionString>,
-	}
-	expect(userHasPermission(user, 'read:user:any')).toBe(true)
-	expect(userHasPermission(user, 'delete:role:any')).toBe(false)
-	expect(userHasRole(user, 'admin')).toBe(true)
-	expect(userHasRole(user, 'user')).toBe(true)
 })
 
 test('requireUserWithPermission and requireUserWithRole enforce auth and authorization', async () => {

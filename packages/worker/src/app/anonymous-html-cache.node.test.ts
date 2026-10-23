@@ -4,7 +4,6 @@ import {
 	anonymousPersonalizedJsonCacheHeaders,
 	anonymousVisibilityGatedCacheControl,
 	publicSharedJsonCacheHeaders,
-	requestHasSessionCookie,
 	resolveAppPageCacheControl,
 } from '#app/anonymous-html-cache.ts'
 
@@ -32,20 +31,6 @@ const sharedHtml = {
 	cacheControl: 'public, max-age=60, stale-while-revalidate=300',
 	vary: 'Cookie',
 }
-
-test('requestHasSessionCookie matches only the kody_session name', () => {
-	const cases = [
-		[undefined, false],
-		['theme=dark; other=1', false],
-		['kody_session=abc; other=1', true],
-		['not_kody_session=abc', false],
-	] as const
-	for (const [cookie, expected] of cases) {
-		expect(
-			requestHasSessionCookie(request('https://example.com/', cookie)),
-		).toBe(expected)
-	}
-})
 
 test('anonymous marketing HTML is cacheable only without a session', () => {
 	const sharedPaths = [

@@ -315,7 +315,13 @@ jobs:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
-    name: 🧪 Node
+    name: 🧪 Node (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      NODE_TEST_SHARD: ${{ matrix.shard }}/2
     timeout-minutes: 15
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
@@ -353,7 +359,7 @@ jobs:
             ${{ github.event.pull_request.base.sha || github.event.before || ''
             }}
 
-      - name: ⏱️ Unit job budget (watch 700s / hard 840s)
+      - name: ⏱️ Unit shard budget (watch 700s / hard 840s)
         if: success()
         # Watch warns always; hard fail on pull requests only. Advisory
         # (warning only) on push to main and manual dispatches so a slow
@@ -371,7 +377,7 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: node"
+            echo "- job: node-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -381,7 +387,13 @@ jobs:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
-    name: ☁️ Workers
+    name: ☁️ Workers (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      WORKERS_TEST_SHARD: ${{ matrix.shard }}/2
     # Room for one ≤780s attempt + one retry + setup. Soft-capping the suite
     # below the job wall avoids workers=cancelled mid-suite (#3763).
     timeout-minutes: 30
@@ -480,7 +492,7 @@ jobs:
           fi
           exit "$status"
 
-      - name: ⏱️ Unit job budget (watch 620s / hard 780s)
+      - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
         # Watch warns always; hard fail on pull requests only. Advisory
         # (warning only) on push to main and manual dispatches so a slow
@@ -498,7 +510,7 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: workers"
+            echo "- job: workers-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -549,17 +561,18 @@ jobs:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
-    name: 🎭 E2E (${{ matrix.shard }}/4)
+    name: 🎭 E2E (${{ matrix.shard }}/2)
     # Each shard owns its own runner (and D1 file), so shards never share
     # SQLITE_BUSY. Keep workers: 1 inside a shard (playwright.config.ts).
-    # N=4 balances wall-clock (~18–21m serial E2E → ~shard_max) against
-    # repeated setup/build cost; see PR body for measured timings.
+    # Two shards split ~420s of pruned tests with ~35s setup per runner.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-    # Room for one shard (~setup + ~¼ suite) plus one permitted workerd-crash
-    # retry. Serial E2E was 40m; shards should finish well under that.
+        shard: [1, 2]
+    env:
+      E2E_SHARD: ${{ matrix.shard }}/2
+    # Room for one shard plus one permitted workerd-crash
+    # retry.
     timeout-minutes: 25
     if: >-
       github.event_name != 'pull_request' || github.event.pull_request.draft ==
@@ -591,16 +604,15 @@ jobs:
       # process stays up (Validate #38206666510). Retry the whole shard
       # once with a fresh server, but only when the failure matches that
       # crash signature — genuine test failures never retry.
-      # --skipNxCache: shard CLI args must not reuse another shard's
-      # cached test-e2e success (run-commands may not hash forwarded args).
+      # E2E_SHARD is an Nx env input; cached shards restore blob-report.
       - name: 🎭 Playwright E2E
         run: |
           # No pipefail: the runner's implicit `bash -e` would abort on the
           # failing pipeline before the flake check; PIPESTATUS captures the
           # suite's exit code instead.
           set -u
-          shard="${{ matrix.shard }}/4"
-          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard" 2>&1 | tee e2e-attempt-1.log
+          shard="$E2E_SHARD"
+          node tools/run-nx.ts run worker:test-e2e 2>&1 | tee e2e-attempt-1.log
           status=${PIPESTATUS[0]}
           if [ "$status" -eq 0 ]; then
             exit 0
@@ -609,7 +621,7 @@ jobs:
             exit "$status"
           fi
           echo "::warning::Playwright webServer died on start or mid-suite; retrying shard ${shard} once with a fresh server."
-          node tools/run-nx.ts run worker:test-e2e --skipNxCache -- --shard="$shard"
+          node tools/run-nx.ts run worker:test-e2e
 
       - name: 📤 Upload Playwright blob report
         if: ${{ !cancelled() }}
@@ -640,7 +652,7 @@ jobs:
           dur=$((end - start))
           {
             echo "### Job wall-clock"
-            echo "- job: e2e-${{ matrix.shard }}/4"
+            echo "- job: e2e-${{ matrix.shard }}/2"
             echo "- runner: \`${RUNNER_NAME:-unknown}\`"
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
@@ -821,7 +833,7 @@ jobs:
           def main():
               payload = json.loads(os.environ["JOBS_JSON"])
               jobs = payload.get("jobs", [])
-              # Sharded E2E jobs are named "🎭 E2E (1/4)" … "🎭 E2E (4/4)" (or
+              # Sharded E2E jobs are named "🎭 E2E (1/2)" … "🎭 E2E (2/2)" (or
               # nested under validate-bench). Match any job whose leaf starts
               # with "🎭 E2E (" so timings stay accurate after the split.
               e2e_prefix = "🎭 E2E ("
@@ -858,7 +870,7 @@ jobs:
                       caller_prefix = name.rsplit(" / ", 1)[0]
                       break
 
-              def find_e2e_jobs():
+              def find_sharded_jobs(prefix):
                   matched = []
                   for job in jobs:
                       name = job.get("name") or ""
@@ -870,7 +882,7 @@ jobs:
                           if " / " in name:
                               continue
                           leaf = name
-                      if leaf.startswith(e2e_prefix):
+                      if leaf.startswith(prefix):
                           matched.append(job)
                   matched.sort(key=lambda j: j.get("name") or "")
                   return matched
@@ -923,9 +935,21 @@ jobs:
                       }
                   )
 
-              for name in ("🧹 Static", "🧪 Node", "☁️ Workers", "🔌 MCP"):
+              for name in ("🧹 Static", "🔌 MCP"):
                   append_job_row(name, find_job(name))
-              e2e_jobs = find_e2e_jobs()
+              node_jobs = find_sharded_jobs("🧪 Node (")
+              if node_jobs:
+                  for job in node_jobs:
+                      append_job_row((job.get("name") or "").split(" / ")[-1], job)
+              else:
+                  append_job_row("🧪 Node", find_job("🧪 Node"))
+              workers_jobs = find_sharded_jobs("☁️ Workers (")
+              if workers_jobs:
+                  for job in workers_jobs:
+                      append_job_row((job.get("name") or "").split(" / ")[-1], job)
+              else:
+                  append_job_row("☁️ Workers", find_job("☁️ Workers"))
+              e2e_jobs = find_sharded_jobs(e2e_prefix)
               if e2e_jobs:
                   for job in e2e_jobs:
                       leaf = (job.get("name") or "").split(" / ")[-1]
@@ -1010,6 +1034,7 @@ jobs:
           retention-days: 30
 
       - name: ✅ All checks passed
+        # needs.node.result aggregates both matrix shards, including failures.
         if: >-
           needs.static.result == 'success' && needs.node.result == 'success' &&
           needs.workers.result == 'success' && needs.mcp.result == 'success' &&

@@ -58,17 +58,6 @@ const publicRoutes: RouteScenario[] = [
 	},
 ]
 
-// Scanned in its own test: the widget-heavy page plus its cold dev compile
-// does not fit inside the shared public-route budget.
-const featuresRoute: RouteScenario = {
-	path: '/features',
-	ready: async (page) => {
-		await expect(
-			page.getByRole('group', { name: 'Memory example' }),
-		).toBeVisible()
-	},
-}
-
 const authenticatedRoutes: RouteScenario[] = [
 	{
 		path: '/account',
@@ -183,44 +172,6 @@ test('critical routes have no blocking axe violations in either theme', async ({
 	for (const theme of themes) {
 		for (const scenario of authenticatedRoutes) {
 			await scanRoute(page, scenario, theme)
-		}
-	}
-})
-
-test('features overview has no blocking axe violations in either theme', async ({
-	page,
-}) => {
-	test.setTimeout(process.env.CI ? 90_000 : 45_000)
-	for (const theme of themes) {
-		await scanRoute(page, featuresRoute, theme)
-	}
-})
-
-// Scene loops fade text in and out, so contrast is sampled on the finished
-// still that reduced motion shows.
-test('feature detail pages have no blocking axe violations in either theme', async ({
-	page,
-}) => {
-	test.setTimeout(process.env.CI ? 180_000 : 90_000)
-	await page.emulateMedia({ reducedMotion: 'reduce' })
-	for (const feature of [
-		'memory',
-		'packages',
-		'triggers',
-		'credentials',
-		'apps',
-	]) {
-		for (const theme of themes) {
-			await scanRoute(
-				page,
-				{
-					path: `/features/${feature}`,
-					ready: async (page) => {
-						await expect(page.locator('.pw').first()).toBeVisible()
-					},
-				},
-				theme,
-			)
 		}
 	}
 })

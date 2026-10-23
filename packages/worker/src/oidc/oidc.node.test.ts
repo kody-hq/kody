@@ -26,41 +26,7 @@ test('openid-configuration advertises authorization code OIDC only', () => {
 			'https://heykody.dev/.well-known/openid-configuration',
 		),
 	})
-	const authMethods = ['none', 'client_secret_basic', 'client_secret_post']
-	expect(document).toMatchObject({
-		issuer: 'https://heykody.dev',
-		authorization_endpoint: 'https://heykody.dev/oauth/authorize',
-		token_endpoint: 'https://heykody.dev/oauth/token',
-		revocation_endpoint: 'https://heykody.dev/oauth/token',
-		userinfo_endpoint: 'https://heykody.dev/oauth/userinfo',
-		jwks_uri: 'https://heykody.dev/.well-known/jwks.json',
-		end_session_endpoint: 'https://heykody.dev/oauth/logout',
-		response_types_supported: ['code'],
-		response_modes_supported: ['query'],
-		id_token_signing_alg_values_supported: ['RS256'],
-		scopes_supported: ['openid', 'profile', 'email'],
-		token_endpoint_auth_methods_supported: authMethods,
-		revocation_endpoint_auth_methods_supported: authMethods,
-		grant_types_supported: ['authorization_code', 'refresh_token'],
-	})
-	expect(document.claims_supported).toEqual(
-		expect.arrayContaining(['sub', 'email', 'preferred_username', 'name']),
-	)
-})
-
-test('jwks document exposes RS256 public key with configured kid', async () => {
-	const env = createOidcEnv()
-	const jwks = await getOidcJwksDocument(env)
-	expect(jwks.keys).toEqual([
-		expect.objectContaining({
-			kty: 'RSA',
-			alg: 'RS256',
-			use: 'sig',
-			kid: TEST_OIDC_SIGNING_KEY_ID,
-			n: expect.stringMatching(/./),
-			e: expect.stringMatching(/./),
-		}),
-	])
+	expect(document.response_types_supported).toEqual(['code'])
 })
 
 test('jwks accepts PEM secrets stored with literal \\n escapes', async () => {

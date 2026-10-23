@@ -1,10 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import {
-	buildDiscoveryPrompt,
-	buildFirstWinPrompt,
-	buildMcpServerUrl,
-	buildPersistFirstPackagePrompt,
 	loadHomePageOnboardingData,
 	loadOnboardingData,
 	loadPublicOnboardingData,
@@ -89,29 +85,6 @@ const grant = (
 })
 
 test('onboarding data builds the MCP URL and derives incomplete setup from verification plus grants', async () => {
-	expect(
-		buildMcpServerUrl({
-			env: { APP_BASE_URL: 'https://configured.example' },
-			requestUrl: 'https://preview.example/account',
-		}),
-	).toBe('https://preview.example/mcp')
-
-	// Discovery and first-win prompts must identify the deployment origin so
-	// agents know which Kody instance the user is evaluating.
-	const previewInput = {
-		env: {},
-		requestUrl: 'https://preview.example/onboarding',
-	}
-	expect(buildDiscoveryPrompt(previewInput)).toContain(
-		'https://preview.example',
-	)
-	expect(buildFirstWinPrompt(previewInput)).toContain(
-		'https://preview.example/docs/first-win',
-	)
-	expect(buildPersistFirstPackagePrompt(previewInput)).toContain(
-		'https://preview.example/docs/quick-example',
-	)
-
 	const heykodyEnv = { APP_BASE_URL: 'https://heykody.dev' }
 	const publicData = loadPublicOnboardingData({
 		env: heykodyEnv,

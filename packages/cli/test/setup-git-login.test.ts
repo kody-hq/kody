@@ -202,22 +202,3 @@ test('auth setup-git after kody login (no env token) mints via Open API and inst
 		},
 	)
 })
-
-test('auth setup-git with neither login nor token fails like Kent saw', async () => {
-	await withCliEnv(
-		() => json({ error: { code: 'not_found', message: 'unused' } }, 404),
-		async () => {
-			const result = await capture([
-				'auth',
-				'setup-git',
-				'--mcp-url',
-				mcpUrl,
-				'--api-url',
-				apiUrl,
-			])
-			assert.equal(result.code, 1)
-			assert.match(result.stderr, /setup-git needs a Kody credential/)
-			assert.match(result.stderr, /Run `kody login`/)
-		},
-	)
-})

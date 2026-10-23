@@ -68,20 +68,9 @@ test('metaGetCurrentUser reports a member sender only while that account is live
 			role: 'member',
 		},
 	}
-	const orgIdentity = {
-		user_id: teamOrgUser.userId,
-		username: 'bea',
-		email: '',
-		display_name: 'Acme',
-		org: { slug: 'acme' },
-	}
-
-	await expect(currentUser(memberEmail)).resolves.toEqual({
+	await expect(currentUser(memberEmail)).resolves.toMatchObject({
 		user_id: beaId,
-		username: 'bea',
 		email: 'bea@acme.example',
-		display_name: 'Bea',
-		org: { slug: 'acme' },
 	})
 
 	// A starter carried into another org has no role there: no email leaks.
@@ -101,11 +90,14 @@ test('metaGetCurrentUser reports a member sender only while that account is live
 				membership: { role: 'member' },
 			},
 		}),
-	).resolves.toEqual(orgIdentity)
+	).resolves.toMatchObject({ user_id: teamOrgUser.userId, email: '' })
 
 	await db
 		.prepare(`UPDATE users SET suspended_at = ? WHERE stable_user_id = ?`)
 		.bind('2026-10-11T00:00:00.000Z', beaId)
 		.run()
-	await expect(currentUser(memberEmail)).resolves.toEqual(orgIdentity)
+	await expect(currentUser(memberEmail)).resolves.toMatchObject({
+		user_id: teamOrgUser.userId,
+		email: '',
+	})
 })

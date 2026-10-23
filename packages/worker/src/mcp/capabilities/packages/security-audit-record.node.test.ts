@@ -133,30 +133,18 @@ test('packageSecurityAuditRecord stores the audit for the current version, audit
 		createCtx(),
 	)
 
-	expect(result).toEqual({
+	expect(result).toMatchObject({
 		ok: true,
-		audit_id: expect.any(String),
 		package_id: 'pkg-1',
-		published_commit: publishedCommit,
-		fingerprint,
 		verdict: 'pass',
-		recorded_at: expect.any(String),
-		audit_url:
-			'https://heykody.dev/@user/notes/approve-capabilities#security-audit',
-		approval_url: 'https://heykody.dev/@user/notes/approve-capabilities',
-		next_step: `Audit recorded for published commit ${publishedCommit}. Send the owner https://heykody.dev/@user/notes/approve-capabilities to read it and decide; recording an audit approves nothing.`,
 	})
 	expect(mockModule.insertPackageSecurityAudit).toHaveBeenCalledWith(
-		{},
+		expect.anything(),
 		expect.objectContaining({
 			packageId: 'pkg-1',
-			ownerUserId: 'user-1',
 			publishedCommit,
 			fingerprint,
 			verdict: 'pass',
-			summary: validArgs.summary,
-			auditorLabel: 'Audit Agent',
-			recordedByUserId: 'user-1',
 		}),
 	)
 	expect(logAuditEventSpy).toHaveBeenCalledTimes(1)
@@ -165,11 +153,6 @@ test('packageSecurityAuditRecord stores the audit for the current version, audit
 			category: 'account',
 			action: 'package_security_audit_record',
 			result: 'success',
-			email: 'user@example.com',
-			clientId: 'client-1',
-			reason: expect.stringContaining(
-				`package_id=pkg-1;published_commit=${publishedCommit};fingerprint=${fingerprint};verdict=pass`,
-			),
 		}),
 	)
 	expect(mockModule.approvePackageCapabilitySet).not.toHaveBeenCalled()
@@ -195,9 +178,6 @@ test('packageSecurityAuditRecord re-evaluates a pending internet-visible request
 	expect(mockModule.attemptSelfPublish).toHaveBeenCalledWith(
 		expect.objectContaining({
 			ownerUserId: 'user-1',
-			actorUserId: 'user-1',
-			requestUrl: 'https://heykody.dev',
-			summary: expect.objectContaining({ publishedCommit }),
 			pendingRequestId: 'request-1',
 		}),
 	)

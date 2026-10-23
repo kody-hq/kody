@@ -2,12 +2,6 @@ import { expect, test } from 'vitest'
 import { creditTopUpSuccessUrl } from '#worker/billing/credit-top-ups.ts'
 import { accountCreditsRedirectUrl } from './account-credits.ts'
 
-test('old /account/credits links land on the personal org credits ledger', () => {
-	expect(
-		accountCreditsRedirectUrl('https://kody.codes/account/credits', 'ada'),
-	).toBe('https://kody.codes/@ada/-/credits')
-})
-
 test('the redirect keeps pre-move Stripe returns and notice codes', () => {
 	expect(
 		accountCreditsRedirectUrl(

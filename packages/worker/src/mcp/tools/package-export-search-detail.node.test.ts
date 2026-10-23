@@ -164,45 +164,6 @@ function formatExport(
 	})
 }
 
-test('heading usage uses the namespace import without a callable and prefers the default export over named helpers', () => {
-	expect(
-		formatExport({
-			description: 'Shade constants.',
-			typeDefinition: 'export const positions = ["open", "closed"] as const',
-			functions: [],
-		}).structured,
-	).toMatchObject({
-		detailMode: 'export',
-		usage:
-			'import * as exported from "kody:@user/home-controls/bond-area-shades"',
-		executeExample: expect.stringContaining(
-			'import * as exported from "kody:@user/home-controls/bond-area-shades"',
-		),
-	})
-
-	const withHelper = formatExport({
-		functions: [
-			defaultFunction(
-				'Lower or raise Bond-controlled shades.',
-				shadeDefinition,
-			),
-			{
-				name: 'describeShade',
-				description: 'Describe one shade.',
-				typeDefinition: 'export function describeShade(id: string): string',
-				referencedTypes: [],
-			},
-		],
-	})
-	expect(withHelper.structured).toMatchObject({
-		detailMode: 'export',
-		usage: 'import action from "kody:@user/home-controls/bond-area-shades"',
-		executeExample: expect.stringContaining(
-			'import action from "kody:@user/home-controls/bond-area-shades"',
-		),
-	})
-})
-
 test('unknown package export heading is a clear per-entity caller error', () => {
 	const format = () =>
 		formatEntityDetailMarkdown(createHomeControlsDetail('missing-export'))

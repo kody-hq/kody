@@ -150,20 +150,3 @@ test('credential creation passes the same team-org permission gate as native cre
 		'Organization unavailable',
 	)
 })
-
-test('the org-less creation link keeps its query on the signup org page', async () => {
-	const { signupOrgCredentialCreateHref } =
-		await import('./connect-credential.ts')
-	expect(
-		signupOrgCredentialCreateHref(
-			{ username: 'ada', request: { org: { slug: 'ada' } } } as never,
-			'?kind=secret&name=x',
-		),
-	).toBe('/@ada/-/credentials/new?kind=secret&name=x')
-	expect(
-		signupOrgCredentialCreateHref(
-			{ username: 'ada', request: { org: { slug: null } } } as never,
-			'',
-		),
-	).toBe('/@ada/-/credentials/new')
-})

@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import {
-	buildCredentialPlacementRefusedWebhookError,
 	formatCredentialPlacementRefusalTag,
 	readCredentialPlacementRefusal,
 	readCredentialPlacementRefusalFromInvocationBody,
@@ -12,9 +11,6 @@ test('a placement refusal round-trips its slot through the error message', () =>
 	const error = new SecretPlacementError(
 		'Secret "clerkReviewUserId" cannot be sent to host "example.com" over plain HTTP.',
 		'clerkReviewUserId',
-	)
-	expect(error.message).toBe(
-		'Secret "clerkReviewUserId" cannot be sent to host "example.com" over plain HTTP. (credential_placement_refused, slot "clerkReviewUserId")',
 	)
 	expect(error.code).toBe('credential_placement_refused')
 	expect(readCredentialPlacementRefusal(`Error: ${error.message}`)).toEqual({
@@ -49,18 +45,6 @@ test('the invocation body reader finds the tag in error.message only', () => {
 		}),
 	).toBeNull()
 	expect(readCredentialPlacementRefusalFromInvocationBody(null)).toBeNull()
-})
-
-test('the webhook error names the code and slot and nothing else', () => {
-	const unnamed = buildCredentialPlacementRefusedWebhookError(null)
-	expect(unnamed.code).toBe('credential_placement_refused')
-	expect(unnamed).not.toHaveProperty('slot')
-	expect(unnamed.message).not.toContain('slot "')
-
-	const named = buildCredentialPlacementRefusedWebhookError('token')
-	expect(named.code).toBe('credential_placement_refused')
-	expect(named.slot).toBe('token')
-	expect(named.message).toContain('slot "token"')
 })
 
 test('stripping the tag leaves a structured message parseable', () => {

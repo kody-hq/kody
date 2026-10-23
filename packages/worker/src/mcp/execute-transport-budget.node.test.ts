@@ -1,20 +1,11 @@
 import { expect, onTestFinished, test, vi } from 'vitest'
 import {
-	createDefaultExecuteIdempotencyKey,
 	createDetachableAbortSignal,
 	hostedExecuteTransportBudgetMs,
 	raceWithTransportBudget,
 	remainingTransportBudgetMs,
 	watchExecuteTransport,
 } from './execute-transport-budget.ts'
-
-test('default execute idempotency keys are unique and within the run-record limit', () => {
-	const first = createDefaultExecuteIdempotencyKey()
-	const second = createDefaultExecuteIdempotencyKey()
-	expect(first).toMatch(/^execute:[0-9a-f-]{36}$/)
-	expect(second).not.toBe(first)
-	expect(first.length).toBeLessThanOrEqual(256)
-})
 
 test('remaining transport budget counts elapsed time and never goes negative', () => {
 	expect(

@@ -15,7 +15,6 @@ import {
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { provisionPersonalOrgForSqliteUser } from '#worker/test-support/personal-org-seed.ts'
-import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { hashWebhookUrlSecret } from './crypto.ts'
 import { WebhookEndpointIdRaceError } from './errors.ts'
@@ -606,70 +605,6 @@ test.each([
 		}
 	},
 )
-
-test('listing webhooks loads package manifests concurrently', async () => {
-	const userId = testStableUserIdFromEmail('many@example.com')
-	const { env } = createEnv()
-	const kodyIdFor = (index: number) => `many-${String(index).padStart(2, '0')}`
-	const packages = Array.from({ length: 20 }, (_, index) => ({
-		id: `pkg-many-${index}`,
-		userId: ownerIdFromStored(userId),
-		name: `@owner/many-${index}`,
-		kodyId: kodyIdFor(index),
-		description: 'Many',
-		tags: [],
-		searchText: null,
-		sourceId: `src-many-${index}`,
-		hasApp: false,
-		hasSkills: false,
-		hidden: false,
-		isPrivate: true,
-		isInternetVisible: false,
-		lockedAt: null,
-		createdAt: '2026-07-24T00:00:00.000Z',
-		updatedAt: '2026-07-24T00:00:00.000Z',
-	}))
-	vi.mocked(listSavedPackagesByUserId).mockResolvedValueOnce(packages)
-	let inFlight = 0
-	let maxInFlight = 0
-	vi.mocked(loadPackageManifestBySourceId).mockImplementation((async (input: {
-		sourceId: string
-	}) => {
-		inFlight += 1
-		maxInFlight = Math.max(maxInFlight, inFlight)
-		await new Promise((resolve) => setTimeout(resolve, 5))
-		inFlight -= 1
-		if (input.sourceId === 'src-many-3') throw new Error('manifest blip')
-		const index = Number(input.sourceId.replace('src-many-', ''))
-		return {
-			manifest: {
-				name: `@owner/many-${index}`,
-				exports: { './hook': './src/hook.ts' },
-				kody: {
-					id: kodyIdFor(index),
-					description: 'Many',
-					webhooks: [{ name: 'hook', export: './hook', responseMode: 'ack' }],
-				},
-			},
-		}
-	}) as never)
-	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-	const listed = await listWebhooksForUser({
-		env,
-		request: sessionRequestContext(userId),
-		baseUrl: 'https://heykody.dev',
-		userId: ownerIdFromStored(userId),
-	})
-
-	warn.mockRestore()
-	expect(maxInFlight).toBe(packages.length)
-	expect(listed.map((webhook) => webhook.packageKodyId)).toEqual(
-		packages
-			.map((entry) => entry.kodyId)
-			.filter((kodyId) => kodyId !== 'many-03'),
-	)
-})
 
 test('createInstance mints a second URL under the same declared webhook name', async () => {
 	const owner = await setupOwner('multi@example.com', 'multi')

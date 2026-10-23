@@ -5,7 +5,6 @@ import {
 	bundledPackageSecretMountReads,
 	describeSecretMountCompat,
 	readPackageManifestSource,
-	readSecretMountAliases,
 	secretMountsKeptCompatNote,
 } from './secret-mount-compat.ts'
 
@@ -43,20 +42,6 @@ test('readPackageManifestSource accepts repo-root and source-root file maps', ()
 			'packages/bot',
 		),
 	).toBe(nested)
-})
-
-test('readSecretMountAliases lists mount aliases and ignores a missing key', () => {
-	expect(
-		readSecretMountAliases(
-			JSON.stringify({
-				kody: { secretMounts: { wakeToken: { name: 'wakeToken' } } },
-			}),
-		),
-	).toEqual(['wakeToken'])
-	expect(readSecretMountAliases(JSON.stringify({ kody: {} }))).toBeNull()
-	expect(
-		readSecretMountAliases(JSON.stringify({ kody: { secretMounts: {} } })),
-	).toEqual([])
 })
 
 test('bundledPackageSecretMountReads names literal packageSecrets.get aliases', () => {

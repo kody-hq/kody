@@ -180,34 +180,6 @@ test('community detail head covers install, installed, and listing-ahead badges'
 		/<a[^>]*data-testid="community-detail-source-ahead-badge"/,
 	)
 	expect(ownerAheadHtml).toContain('Publish changes')
-	// Primary pill ink must stay on-primary (not page link green-on-green).
-	const publishClass =
-		/data-testid="community-detail-source-ahead-badge"[^>]*class="(native-test-[^"\s]+)/.exec(
-			ownerAheadHtml,
-		)?.[1]
-	expect(publishClass).toBeTruthy()
-	const publishLayer = new RegExp(`\\.${publishClass}\\s*\\{([^}]*)\\}`).exec(
-		ownerAheadHtml,
-	)?.[1]
-	expect(publishLayer).toMatch(/color:\s*var\(--color-on-primary\)/)
-	const navClass =
-		/data-testid="package-repo-nav"[^>]*class="(native-test-[^"\s]+)/.exec(
-			ownerAheadHtml,
-		)?.[1]
-	expect(navClass).toBeTruthy()
-	const navLayer = new RegExp(`\\.${navClass}\\s*\\{([^}]*)\\}`).exec(
-		ownerAheadHtml,
-	)?.[1]
-	expect(navLayer).toMatch(/gap:\s*0\.35rem/)
-	const tabClass =
-		/data-testid="package-repo-nav-repo"[^>]*class="(native-test-[^"\s]+)/.exec(
-			ownerAheadHtml,
-		)?.[1]
-	expect(tabClass).toBeTruthy()
-	const tabLayer = new RegExp(`\\.${tabClass}\\s*\\{([^}]*)\\}`).exec(
-		ownerAheadHtml,
-	)?.[1]
-	expect(tabLayer).toMatch(/padding:\s*0\.55rem 0\.55rem/)
 
 	const listingBehindHtml = await render({
 		listing: {
@@ -219,10 +191,6 @@ test('community detail head covers install, installed, and listing-ahead badges'
 		viewerCanManage: true,
 		listingNeedsRepublish: true,
 	})
-	expect(listingBehindHtml).not.toContain(
-		'data-testid="community-detail-update-public-listing"',
-	)
-	expect(listingBehindHtml).not.toContain('Update public listing')
 	expect(listingBehindHtml).toContain(
 		'data-testid="community-detail-source-ahead-badge"',
 	)

@@ -47,7 +47,9 @@ for (const active of [true, false]) {
 				),
 			})
 			const write = mutation.mutate(scope).catch(() => undefined)
-			await vi.waitFor(() => expect(finishWrite).toBeDefined())
+			await vi.waitFor(() => expect(finishWrite).toBeDefined(), {
+				interval: 1,
+			})
 			const options = createPageQuery('loadWorkflowsPage', read, {
 				staleTime: Infinity,
 			})(scope.actorKey, { orgSlug: scope.orgSlug })
@@ -55,7 +57,9 @@ for (const active of [true, false]) {
 			const observer = new QueryObserver(client, options)
 			const stop = active ? observer.subscribe(() => {}) : () => {}
 			// Reads must run while cancellation is pending, without the old barrier.
-			await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+			await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1), {
+				interval: 1,
+			})
 			const otherActor = [
 				'page',
 				'next-actor',
@@ -104,7 +108,7 @@ test('cancellation replaces an older cached background read and invalidates wait
 	read.mockResolvedValue(cancelled)
 	const observer = new QueryObserver(client, { queryKey: key, queryFn: read })
 	const stop = observer.subscribe(() => {})
-	await vi.waitFor(() => expect(finishOld).toBeDefined())
+	await vi.waitFor(() => expect(finishOld).toBeDefined(), { interval: 1 })
 	const waiting = [
 		'page',
 		scope.actorKey,

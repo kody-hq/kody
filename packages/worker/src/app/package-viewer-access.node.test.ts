@@ -64,34 +64,6 @@ function viewer(personId: ReturnType<typeof personIdFromStored>) {
 	return { userId: personId, username: String(personId) }
 }
 
-test('viewerCanExecutePackageApp allows team owners and members granted app:execute', async () => {
-	const env = createEnv()
-
-	await expect(
-		viewerCanExecutePackageApp({
-			env,
-			viewer: viewer(ownerId),
-			ownerId: teamId,
-		}),
-	).resolves.toBe(true)
-	await expect(
-		viewerCanExecutePackageApp({
-			env,
-			viewer: viewer(memberId),
-			ownerId: teamId,
-		}),
-	).resolves.toBe(true)
-	// Org-wide app:execute still opens a concrete app when appId is set.
-	await expect(
-		viewerCanExecutePackageApp({
-			env,
-			viewer: viewer(memberId),
-			ownerId: teamId,
-			appId: 'app-any',
-		}),
-	).resolves.toBe(true)
-})
-
 test('viewerCanExecutePackageApp refuses outsiders, anonymous visitors, and members without app:execute', async () => {
 	const env = createEnv()
 

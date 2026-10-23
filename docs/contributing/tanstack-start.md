@@ -112,12 +112,8 @@ against React, including immediate navigation after a real wheel event. It also
 sends queued updates through their Suspense boundary when an earlier ancestor
 update has retained the subtree. Without that check, a departing Router match
 could render after its store was cleared while the replacement route suspended.
-The [paired Router regression](../../e2e/start/router-retained-match.spec.ts)
-passes with React, fails with uncorrected Redact, and passes with the fix,
-including resuming the replacement. The failed feature module recovery test also
-checks that document recovery emits no unexpected client errors. Browser
-regressions under [`e2e/start`](../../e2e/start) cover cache freshness, identity
-changes, background errors, metadata, and renderer behavior.
+Browser regressions under [`e2e/start`](../../e2e/start) cover identity changes
+and permission revocation.
 
 `npm run build` verifies Redact in both bundles and rejects Kody's retired
 renderer and client router. `npm run validate` runs the complete local gate. SSR
@@ -149,9 +145,7 @@ server data identity. Search controls keep an immediate React draft until their
 navigation completes; functional search updates compose rapid filter changes.
 Typed whitespace stays in presentation state while resource inputs normalize it.
 The shell uses its committed loader location; only navigation-close effects and
-requested-destination error displays use the global location. The
-held-navigation regression is in
-[`cache-navigation.spec.ts`](../../e2e/start/cache-navigation.spec.ts).
+requested-destination error displays use the global location.
 
 ## Resource queries
 
@@ -181,7 +175,5 @@ request binds the destination organization and is checked for denial before data
 access. Resource headers never establish the caller's identity.
 
 See
-[`authorization-waterfall.spec.ts`](../../e2e/start/authorization-waterfall.spec.ts)
-for the delayed authorization/data concurrency regression and
 [`email-resource-queries.node.test.ts`](../../packages/worker/start/pages/email-resource-queries.node.test.ts)
 for resource reuse and independent request startup.

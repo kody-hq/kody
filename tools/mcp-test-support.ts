@@ -282,7 +282,7 @@ WHERE u.email = ? AND r.name = ?`,
 	}
 }
 
-export async function seedMcpTestUser(db: D1Database, user: TestUser) {
+async function seedMcpTestUser(db: D1Database, user: TestUser) {
 	const passwordHash = await createPasswordHash(user.password)
 	await db
 		.prepare(

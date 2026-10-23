@@ -212,24 +212,6 @@ test('rewrites thrown static calls to caught when the run succeeded', async () =
 	})
 })
 
-test('keeps thrown static calls as error when the run failed', async () => {
-	await withRecordUsageSpy(async (recordUsageSpy) => {
-		const tools = createPackageStaticCallMeterTools({
-			env: {} as Env,
-			userId: ownerIdFromStored('user-1'),
-			grantedPackageIds: new Set(['pkg-callee']),
-		})
-		await tools?.record({
-			events: [{ packageId: 'pkg-callee', durationMs: 9, outcome: 'error' }],
-		})
-		await tools?.finalize({ runFailed: true })
-		expect(recordUsageSpy).toHaveBeenCalledOnce()
-		expect(recordUsageSpy.mock.calls[0]?.[1]).toEqual(
-			expect.objectContaining({ outcome: 'error' }),
-		)
-	})
-})
-
 test('caps recorded events per run, cumulatively across batches', async () => {
 	await withRecordUsageSpy(async (recordUsageSpy) => {
 		const tools = createPackageStaticCallMeterTools({

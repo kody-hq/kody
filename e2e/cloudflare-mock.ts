@@ -1,9 +1,8 @@
 import { readE2eCloudflareMockState } from '../tools/e2e-cloudflare-mock-state.ts'
 
-export const verificationEmailSubject =
-	'Verify your email to finish setting up Kody'
+const verificationEmailSubject = 'Verify your email to finish setting up Kody'
 
-export const connectAgentEmailSubject = 'Connect the agent you already use'
+const connectAgentEmailSubject = 'Connect the agent you already use'
 
 export type MockEmailMessage = {
 	id: string

@@ -101,8 +101,11 @@ function seedAttributionUnits(input: {
 		)
 }
 
-test('usageByPackageGet requires a signed-in user', async () => {
-	const { env } = createAttributionEnv()
+test('usageByPackageGet attributes past-include Worker compute credits by package', async () => {
+	const now = new Date()
+	const month = utcMonthKey(now)
+	const day = `${month}-01`
+	const { env, stableUserId, sqlite } = createAttributionEnv()
 	await expect(
 		usageByPackageGetCapability.handler(
 			{},
@@ -115,34 +118,6 @@ test('usageByPackageGet requires a signed-in user', async () => {
 			},
 		),
 	).rejects.toThrow(/Authenticated MCP user/)
-})
-
-test('usageByPackageGet returns an empty current-month breakdown when unused', async () => {
-	const { env, stableUserId } = createAttributionEnv()
-	const result = await usageByPackageGetCapability.handler(
-		{},
-		{
-			env,
-			callerContext: callerContext(stableUserId),
-		},
-	)
-
-	expect(result.month).toBe(utcMonthKey(new Date()))
-	expect(result.totalCreditsMicroUsd).toBe(0)
-	expect(result.rows).toHaveLength(1)
-	expect(result.rows[0]).toMatchObject({
-		isAdHoc: true,
-		creditsMicroUsd: 0,
-		share: 0,
-		meters: [],
-	})
-})
-
-test('usageByPackageGet attributes past-include Worker compute credits by package', async () => {
-	const now = new Date()
-	const month = utcMonthKey(now)
-	const day = `${month}-01`
-	const { env, stableUserId, sqlite } = createAttributionEnv()
 	// Free include is 50 Worker compute days; 55 units → 5 past-include.
 	seedAttributionUnits({
 		sqlite,
@@ -178,19 +153,6 @@ test('usageByPackageGet attributes past-include Worker compute credits by packag
 				meter.label === 'Worker compute',
 		),
 	).toBe(true)
-})
-
-test('usageByPackageGet rejects whitespace-only packageId', async () => {
-	const { env, stableUserId } = createAttributionEnv()
-	await expect(
-		usageByPackageGetCapability.handler(
-			{ packageId: '   ' },
-			{
-				env,
-				callerContext: callerContext(stableUserId),
-			},
-		),
-	).rejects.toThrow(/Invalid input for capability "usageByPackageGet"/)
 })
 
 test('usageByPackageGet packageId returns that package slice of the period', async () => {

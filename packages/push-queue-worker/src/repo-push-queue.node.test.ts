@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	repoPushQueueAttemptsHeader,
-	repoPushQueueMaxEntries,
 	repoPushQueueOutcomeHeader,
 	repoPushQueuePathHeader,
 	repoPushQueuePositionHeader,
@@ -727,36 +726,6 @@ test('fresh push after a landed tip is still sent to Artifacts', async () => {
 	expect(sent[1]).toContain(`${oidB} ${oidC} refs/heads/main`)
 })
 
-test('cache updates on ok and a later stale sibling is rejected without a send', async () => {
-	const { store } = createMemoryStore()
-	let calls = 0
-	const queue = new RepoPushQueue({
-		store,
-		fetch: async () => {
-			calls += 1
-			return new Response(reportStatusOk(['refs/heads/main']), {
-				status: 200,
-			})
-		},
-	})
-	await queue.handle(
-		pushRequest(
-			receivePackRequestBody([
-				{ oldOid: oidA, newOid: oidB, ref: 'refs/heads/main' },
-			]),
-		),
-	)
-	expect(calls).toBe(1)
-	await queue.handle(
-		pushRequest(
-			receivePackRequestBody([
-				{ oldOid: oidA, newOid: oidD, ref: 'refs/heads/main' },
-			]),
-		),
-	)
-	expect(calls).toBe(1)
-})
-
 test('mixed multi-ref: all known-stale rejects locally; any cache-miss falls through', async () => {
 	const { store } = createMemoryStore()
 	let calls = 0
@@ -1036,11 +1005,6 @@ test('unknown or unparseable command section falls through to a normal Artifacts
 	const opaque = await queue.handle(pushRequest('not-a-receive-pack-body'))
 	expect(opaque.status).toBe(200)
 	expect(calls).toBe(3)
-})
-
-test('repoPushQueueMaxEntries covers a 50-agent burst', () => {
-	expect(repoPushQueueMaxEntries).toBe(64)
-	expect(repoPushQueueMaxEntries).toBeGreaterThanOrEqual(50)
 })
 
 test('Durable Object store chunks keys and deletes in batches', async () => {

@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	canonicalizeDependencySnapshot,
-	emptyDependencySnapshot,
 	parseDependencySnapshotJson,
 	serializeDependencySnapshot,
 } from './dependency-snapshot.ts'
@@ -39,17 +38,4 @@ test('serialize round-trips and sorts dependencies', () => {
 		'a',
 		'b',
 	])
-})
-
-test('parse treats empty object as null (PR1 placeholder)', () => {
-	expect(parseDependencySnapshotJson('{}')).toBeNull()
-	expect(parseDependencySnapshotJson(null)).toBeNull()
-	expect(
-		emptyDependencySnapshot({
-			packageId: 'pkg',
-			kodyId: 'leaf',
-			sourceId: 'src',
-			publishedCommit: 'abc',
-		}).dependencies,
-	).toEqual([])
 })

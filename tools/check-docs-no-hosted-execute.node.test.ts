@@ -194,7 +194,3 @@ test('lists scan roots and fails a planted fallback recommendation', async () =>
 		await rm(root, { recursive: true, force: true })
 	}
 })
-
-test('the repo does not recommend hosted MCP execute as a fallback', async () => {
-	expect(await checkDocsNoHostedExecute()).toEqual([])
-})

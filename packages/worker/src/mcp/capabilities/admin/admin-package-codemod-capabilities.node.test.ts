@@ -34,9 +34,7 @@ const { adminPackageCodemodRevertCapability } =
 	await import('./admin-package-codemod-revert.ts')
 const { adminPackageCodemodScanCapability } =
 	await import('./admin-package-codemod-scan.ts')
-const { adminDomain } = await import('./domain.ts')
-
-function createAdminCtx(userId = 'admin-1') {
+function createAdminCtx(userId = 'admin-1', roles: Array<string> = ['admin']) {
 	return {
 		env: { APP_DB: {} } as Env,
 		callerContext: createMcpCallerContext({
@@ -46,7 +44,7 @@ function createAdminCtx(userId = 'admin-1') {
 				userId: personIdFromStored(userId),
 				email: 'admin@example.com',
 				displayName: 'Admin',
-				roles: ['admin'],
+				roles,
 			},
 		}),
 	}
@@ -63,16 +61,12 @@ function stepResult(
 }
 
 test('admin package codemod capabilities are fleet-scoped, audited, and role-gated', async () => {
-	const byName = new Map(
-		adminDomain.capabilities.map((capability) => [capability.name, capability]),
-	)
-	expect(byName.get('adminPackageCodemodScan')?.requiredRole).toBe('admin')
-	expect(byName.get('adminPackageCodemodScan')?.readOnly).toBe(true)
-	expect(byName.get('adminPackageCodemodApply')?.destructive).toBe(true)
-	expect(byName.get('adminPackageCodemodRevert')?.destructive).toBe(true)
-	expect(byName.get('adminCredentialStampMigrate')?.destructive).toBe(true)
-	expect(byName.get('adminCredentialStampMigrate')?.requiredRole).toBe('admin')
-	expect(adminPackageCodemodApplyCapability.destructive).toBe(true)
+	await expect(
+		adminPackageCodemodScanCapability.handler(
+			{ codemodId },
+			createAdminCtx('user-1', ['user']),
+		),
+	).rejects.toThrow(/lacks required role/)
 
 	mockModule.runPackageCodemodStep.mockResolvedValue(
 		stepResult('fleet-scan-1', 'scan'),

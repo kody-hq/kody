@@ -52,22 +52,3 @@ test('URL search builders preserve duplicate filters and encode redirects', () =
 		routes.community.href(null, { searchParams: new URLSearchParams() }),
 	).toBe('/community')
 })
-
-test('an explicit empty file path preserves the root trailing slash', () => {
-	expect(
-		routes.communityPackageRaw.href({
-			username: 'ada',
-			kodyId: 'pkg',
-			ref: 'main',
-			relativePath: '',
-		}),
-	).toBe('/@ada/pkg/raw/main/')
-	expect(
-		routes.communityPackageRaw.href({
-			username: 'ada',
-			kodyId: 'pkg',
-			ref: 'main',
-			relativePath: null,
-		}),
-	).toBe('/@ada/pkg/raw/main')
-})

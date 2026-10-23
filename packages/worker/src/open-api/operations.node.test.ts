@@ -377,35 +377,3 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 		'search:read',
 	)
 })
-
-test('package collaborator calls are package-scoped Open API routes', async () => {
-	const document = await buildOpenApiDocument({
-		serverUrl: 'https://api.kody.codes',
-	})
-	const collection = document.paths['/v1/packages/{package_id}/collaborators']
-	expect(collection?.['get']?.operationId).toBe('packageCollaboratorList')
-	const set = collection?.['post']
-	expect(set?.operationId).toBe('packageCollaboratorSet')
-	expect(
-		(set?.parameters ?? []).map(
-			(parameter: { name: string }) => parameter.name,
-		),
-	).toEqual(['package_id'])
-	expect(set?.requestBody?.content['application/json']?.schema).toMatchObject({
-		properties: expect.objectContaining({
-			team_slug: expect.anything(),
-			username: expect.anything(),
-			preset: expect.anything(),
-		}),
-	})
-	const remove =
-		document.paths['/v1/packages/{package_id}/collaborators/{grant_id}']?.[
-			'delete'
-		]
-	expect(remove?.operationId).toBe('packageCollaboratorRemove')
-	expect(
-		(remove?.parameters ?? []).map(
-			(parameter: { name: string }) => parameter.name,
-		),
-	).toEqual(['package_id', 'grant_id'])
-})

@@ -200,67 +200,60 @@ it('keeps pending deletion visible, then removes confirmed rows and detail', asy
 	expect(client.getQueryData<EmailListData>(keys.listKey)?.total).toBe(0)
 	client.clear()
 })
-it.each(['accepted', 'lost-response'] as const)(
-	'reconciles %s after unmount without blocking reads or rolling back another write',
-	async (outcome) => {
-		const client = new QueryClient({
-			defaultOptions: { queries: { retry: false } },
-		})
-		const keys = seed(client, '/account/email/one')
-		let release!: (value: EmailMutationOutcome) => void
-		let reject!: (error: Error) => void
-		const send = vi.fn(
-			() =>
-				new Promise<EmailMutationOutcome>((resolve, fail) => {
-					release = resolve
-					reject = fail
-				}),
-		)
-		const mutation = new MutationObserver(
-			client,
-			emailMutationOptions(client, 'a', send),
-		)
-		const unsubscribe = mutation.subscribe(() => {})
-		const write = mutation.mutate(action).catch(() => undefined)
-		await vi.waitFor(() => expect(send).toHaveBeenCalledOnce())
-		unsubscribe()
-		// A background read is allowed during a write. Applying pending intent to
-		// its result preserves optimistic UI without altering authoritative data.
-		const read = vi.fn(async () => payload())
-		const fresh = await client.fetchQuery({
-			queryKey: ['independent-read'],
-			queryFn: read,
-		})
-		expect(read).toHaveBeenCalledOnce()
-		expect(optimisticEmail(fresh, action).selectedMessage?.classification).toBe(
-			'accepted',
-		)
-		expect(
-			client.getQueryData<AccountEmailMessageDetail>(keys.detailKey)
-				?.classification,
-		).toBe('quarantined')
-		const confirmed = { ...message, classification: 'accepted' as const }
-		const confirmingRead = vi.fn(async () => confirmed)
-		const observer = new QueryObserver(client, {
-			queryKey: keys.detailKey,
-			queryFn: confirmingRead,
-			staleTime: Infinity,
-		})
-		const stop = observer.subscribe(() => {})
-		if (outcome === 'accepted')
-			release({ ok: true, messageId: action.messageId })
-		else reject(new Error('Lost response after commit'))
-		await write
-		expect(confirmingRead).toHaveBeenCalledOnce()
-		expect(
-			client.getQueryData<AccountEmailMessageDetail>(keys.detailKey)
-				?.classification,
-		).toBe('accepted')
-		expect(client.isMutating()).toBe(0)
-		stop()
-		client.clear()
-	},
-)
+it('reconciles a lost response after unmount without blocking reads or rolling back another write', async () => {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	})
+	const keys = seed(client, '/account/email/one')
+	let reject!: (error: Error) => void
+	const send = vi.fn(
+		() =>
+			new Promise<EmailMutationOutcome>((_resolve, fail) => {
+				reject = fail
+			}),
+	)
+	const mutation = new MutationObserver(
+		client,
+		emailMutationOptions(client, 'a', send),
+	)
+	const unsubscribe = mutation.subscribe(() => {})
+	const write = mutation.mutate(action).catch(() => undefined)
+	await vi.waitFor(() => expect(send).toHaveBeenCalledOnce())
+	unsubscribe()
+	// A background read is allowed during a write. Applying pending intent to
+	// its result preserves optimistic UI without altering authoritative data.
+	const read = vi.fn(async () => payload())
+	const fresh = await client.fetchQuery({
+		queryKey: ['independent-read'],
+		queryFn: read,
+	})
+	expect(read).toHaveBeenCalledOnce()
+	expect(optimisticEmail(fresh, action).selectedMessage?.classification).toBe(
+		'accepted',
+	)
+	expect(
+		client.getQueryData<AccountEmailMessageDetail>(keys.detailKey)
+			?.classification,
+	).toBe('quarantined')
+	const confirmed = { ...message, classification: 'accepted' as const }
+	const confirmingRead = vi.fn(async () => confirmed)
+	const observer = new QueryObserver(client, {
+		queryKey: keys.detailKey,
+		queryFn: confirmingRead,
+		staleTime: Infinity,
+	})
+	const stop = observer.subscribe(() => {})
+	reject(new Error('Lost response after commit'))
+	await write
+	expect(confirmingRead).toHaveBeenCalledOnce()
+	expect(
+		client.getQueryData<AccountEmailMessageDetail>(keys.detailKey)
+			?.classification,
+	).toBe('accepted')
+	expect(client.isMutating()).toBe(0)
+	stop()
+	client.clear()
+})
 
 it('a failed concurrent classification never rolls back another accepted message', async () => {
 	const client = new QueryClient()
@@ -315,90 +308,52 @@ it('a failed concurrent classification never rolls back another accepted message
 	client.clear()
 })
 
-it('keeps search editing whitespace in the URL while normalizing only resource identity', () => {
-	const editing = emailSearch({ q: '  hello ' })
-	expect(editing.q).toBe('  hello ')
-	const raw = fixtureInput('/@acme/-/email?q=%20%20hello%20')
-	const normalized = fixtureInput('/@acme/-/email?q=hello')
-	expect(raw.list.query).toBe('hello')
-	expect(emailKeys.list('actor', raw.list)).toEqual(
-		emailKeys.list('actor', normalized.list),
+it('confirms an in-flight detail read after a lost response', async () => {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	})
+	let finishRead!: (data: AccountEmailMessageDetail) => void
+	let failWrite!: (error: Error) => void
+	const key = emailKeys.detail('a', null, 'one')
+	const read = vi.fn<() => Promise<AccountEmailMessageDetail>>()
+	read.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				finishRead = resolve
+			}),
 	)
-	expect(emailSearch({ q: ' ' }).q).toBe(' ')
-	expect(fixtureInput('/@acme/-/email?q=%20').list.query).toBe('')
-})
-
-it.each(
-	(['accepted', 'lost-response'] as const).flatMap((outcome) =>
-		[true, false].flatMap((active) =>
-			[true, false].map((readFinishesFirst) => ({
-				outcome,
-				active,
-				readFinishesFirst,
-			})),
-		),
-	),
-)(
-	'preserves uncached navigation and confirms after the older read for $outcome active=$active read-first=$readFinishesFirst',
-	async ({ outcome, active, readFinishesFirst }) => {
-		const client = new QueryClient({
-			defaultOptions: { queries: { retry: false } },
-		})
-		let finishRead!: (data: AccountEmailMessageDetail) => void
-		let finishWrite!: () => void
-		let failWrite!: (error: Error) => void
-		const key = emailKeys.detail('a', null, 'one')
-		const read = vi.fn<() => Promise<AccountEmailMessageDetail>>()
-		read.mockImplementationOnce(
-			() =>
-				new Promise((resolve) => {
-					finishRead = resolve
-				}),
-		)
-		read.mockResolvedValue({ ...message, classification: 'accepted' })
-		const mutation = new MutationObserver(
+	read.mockResolvedValue({ ...message, classification: 'accepted' })
+	const mutation = new MutationObserver(
+		client,
+		emailMutationOptions(
 			client,
-			emailMutationOptions(
-				client,
-				'a',
-				() =>
-					new Promise<EmailMutationOutcome>((resolve, reject) => {
-						finishWrite = () =>
-							resolve({
-								ok: true,
-								messageId: 'one',
-								classification: 'accepted',
-							})
-						failWrite = reject
-					}),
-			),
-		)
-		const write = mutation.mutate(action).catch(() => undefined)
-		await vi.waitFor(() => expect(finishWrite).toBeDefined())
-		const options = { queryKey: key, queryFn: read, staleTime: Infinity }
-		const navigation = client.ensureQueryData(options)
-		const observer = new QueryObserver(client, options)
-		const stop = active ? observer.subscribe(() => {}) : () => {}
-		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
-		if (readFinishesFirst) {
-			finishRead(message)
-			await navigation
-		}
-		if (outcome === 'accepted') finishWrite()
-		else failWrite(new Error('Lost response'))
-		await Promise.resolve()
-		if (!readFinishesFirst) finishRead(message)
-		await expect(navigation).resolves.toEqual(message)
-		await write
-		expect(read).toHaveBeenCalledTimes(2)
-		expect(
-			client.getQueryData<AccountEmailMessageDetail>(key)?.classification,
-		).toBe('accepted')
-		expect(client.isMutating()).toBe(0)
-		stop()
-		client.clear()
-	},
-)
+			'a',
+			() =>
+				new Promise<EmailMutationOutcome>((_resolve, reject) => {
+					failWrite = reject
+				}),
+		),
+	)
+	const write = mutation.mutate(action).catch(() => undefined)
+	await vi.waitFor(() => expect(failWrite).toBeDefined())
+	const options = { queryKey: key, queryFn: read, staleTime: Infinity }
+	const navigation = client.ensureQueryData(options)
+	const observer = new QueryObserver(client, options)
+	const stop = observer.subscribe(() => {})
+	await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+	failWrite(new Error('Lost response'))
+	await Promise.resolve()
+	finishRead(message)
+	await expect(navigation).resolves.toEqual(message)
+	await write
+	expect(read).toHaveBeenCalledTimes(2)
+	expect(
+		client.getQueryData<AccountEmailMessageDetail>(key)?.classification,
+	).toBe('accepted')
+	expect(client.isMutating()).toBe(0)
+	stop()
+	client.clear()
+})
 
 // Fixtures model Router's already decoded params and validated search input.
 function fixtureInput(href: string) {

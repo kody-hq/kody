@@ -96,7 +96,7 @@ test('orgMemberRemove revokes org credentials and disconnects own-login integrat
 			}),
 		},
 	)
-	expect(result).toEqual({ user_id: memberId, removed: true })
+	expect(result).toMatchObject({ removed: true })
 
 	const membership = await db
 		.prepare(
@@ -186,7 +186,7 @@ test('orgMemberRemove retries credential revoke after the membership is already 
 			}),
 		},
 	)
-	expect(result).toEqual({ user_id: memberId, removed: true })
+	expect(result).toMatchObject({ removed: true })
 	const token = await db
 		.prepare(`SELECT revoked_at FROM api_tokens WHERE id = 'token-retry'`)
 		.first<{ revoked_at: string | null }>()

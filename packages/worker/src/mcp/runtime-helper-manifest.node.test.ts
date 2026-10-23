@@ -1,27 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import {
-	createRuntimeHelperPreludes,
-	createRuntimeHelperRuntimePropertySource,
-	createUnboundOptionalRuntimeHelperNames,
-} from './runtime-helper-manifest.ts'
-
-test('packages helper is never bound: no prelude and always unbound', () => {
-	const context = {
-		env: {} as Env,
-		callerContext: { user: { userId: ownerIdFromStored('user-1') } } as never,
-		capabilityMap: {},
-	}
-	const preludes = createRuntimeHelperPreludes(context).join('\n')
-	expect(preludes).not.toContain('const packages =')
-	expect(preludes).not.toContain('__kodyPackageInvokeRuntimeBridge')
-	expect(createUnboundOptionalRuntimeHelperNames(context).has('packages')).toBe(
-		true,
-	)
-	expect(createRuntimeHelperRuntimePropertySource()).toContain(
-		"packages: typeof packages === 'undefined' ? null : packages,",
-	)
-})
+import { createRuntimeHelperPreludes } from './runtime-helper-manifest.ts'
 
 test('packageSecrets prelude reads the run package id from evaluate invocation', () => {
 	const first = createRuntimeHelperPreludes({

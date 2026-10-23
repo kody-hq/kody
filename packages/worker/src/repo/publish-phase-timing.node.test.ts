@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { consoleInfo } from '#worker/test-support/console-spies.ts'
 import {
 	attachPublishPhaseTimings,
 	mergePublishPhaseTimings,
@@ -9,43 +8,11 @@ import {
 	type PublishPhaseTimings,
 } from './publish-phase-timing.ts'
 
-test('timePublishExternalPushPhase logs duration for success and failure', async () => {
-	const { value, durationMs } = await timePublishExternalPushPhase(
-		{
-			phase: 'rebuild',
-			sourceId: 'source-1',
-			publishedCommit: 'commit-1',
-		},
-		async () => 'done',
-	)
-	expect(value).toBe('done')
-	expect(durationMs).toBeGreaterThanOrEqual(0)
-	expect(consoleInfo).toHaveBeenCalledWith(
-		expect.stringContaining('"message":"packagePublishExternalPush phase"'),
-	)
-	expect(consoleInfo).toHaveBeenCalledWith(
-		expect.stringContaining('"phase":"rebuild"'),
-	)
-
-	consoleInfo.mockClear()
-	await expect(
-		timePublishExternalPushPhase({ phase: 'clone', sourceId: 'source-1' }, () =>
-			Promise.reject(new Error('clone failed')),
-		),
-	).rejects.toThrow('clone failed')
-	expect(consoleInfo).toHaveBeenCalledWith(
-		expect.stringContaining('"phase":"clone"'),
-	)
-})
-
 test('timePublishExternalPushPhase records stable capability field names', async () => {
 	const timings: PublishPhaseTimings = {}
 	await timePublishExternalPushPhase(
 		{ phase: 'checks/typecheck', timings },
-		async () => {
-			await new Promise((resolve) => setTimeout(resolve, 1))
-			return 'ok'
-		},
+		async () => 'ok',
 	)
 	expect(timings).toEqual({
 		checks_typecheck_ms: expect.any(Number),

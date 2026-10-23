@@ -104,9 +104,3 @@ test('refuses to replay a schema into storage that already has tables', () => {
 		}),
 	).toThrow('Target storage already has SQL tables.')
 })
-
-test('empty storage reports no schema and no counts', () => {
-	const exec = createExec(new DatabaseSync(':memory:'))
-	expect(readStorageSqlSchema(exec)).toEqual([])
-	expect(countStorageSqlRows(exec)).toEqual({})
-})

@@ -7,7 +7,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -30,6 +30,14 @@ import {
 	resolveNeedCandidates,
 } from './credential-candidates.ts'
 import { grantPersonalCredentialToOrg } from './personal-credentials.ts'
+
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
 
 const now = '2026-10-12T00:00:00.000Z'
 
@@ -429,11 +437,7 @@ test('OAuth candidates require connected_at; token-only rows stay hidden until s
 
 test('omitted kind matches any fetch-capable credential for the provider', async () => {
 	const t = await setup()
-	await t.storeSecret({
-		ownerId: t.acmeId,
-		name: 'gh-pat',
-		provider: 'github',
-	})
+	await t.storeSecret({ ownerId: t.acmeId, name: 'gh-pat', provider: 'github' })
 	await t.db
 		.prepare(
 			`INSERT INTO user_oauth_apps (user_id, slug, provider, client_id, token_url, api_base_url, flow)
@@ -620,7 +624,11 @@ test('package-bound Keys fill that package’s needs by name or as the only cand
 
 test('org-reachable credentials include each member personal credential granted to the org', async () => {
 	const t = await setup()
-	await t.storeSecret({ ownerId: t.acmeId, name: 'gh-pat', provider: 'github' })
+	await t.storeSecret({
+		ownerId: t.acmeId,
+		name: 'gh-pat',
+		provider: 'github',
+	})
 	const personal = await t.storeSecret({
 		ownerId: personalOrgId(t.people.ann.personId),
 		name: 'ann-gh',

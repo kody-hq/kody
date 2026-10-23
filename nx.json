@@ -65,12 +65,21 @@
 				"workspace",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "NODE_TEST_SHARD"
 				}
 			]
 		},
 		"test-workers": {
 			"cache": true,
-			"inputs": ["default", "^default", "suiteSupport", { "env": "CI" }]
+			"inputs": [
+				"default",
+				"^default",
+				"suiteSupport",
+				{ "env": "CI" },
+				{ "env": "WORKERS_TEST_SHARD" }
+			]
 		},
 		"test-mcp": {
 			"cache": true,
@@ -99,6 +108,9 @@
 				"{workspaceRoot}/playwright.config.ts",
 				{
 					"env": "CI"
+				},
+				{
+					"env": "E2E_SHARD"
 				}
 			]
 		},
