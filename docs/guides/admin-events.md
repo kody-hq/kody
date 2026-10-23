@@ -684,10 +684,13 @@ committed. On `user.deleted`, `created_at` is the account's signup time (read
 from the account row before admin hard-delete removes it), so handlers can
 compare it with `deleted_at` to spot quick deletes. `attribution` is first-touch
 marketing UTMs and landing path/referrer persisted on the account at signup (all
-null when absent). Timestamps are ISO-8601 UTC. The event omits passwords,
-roles, plan, secrets, packages, and unrelated account content. Notification
-copies already delivered outside Kody cannot be recalled after account deletion.
-Idempotency keys include the topic, user id, timestamp, and package id.
+null when absent). Timestamps are ISO-8601 UTC. `user.deleted` `created_at` is
+normalized from the stored signup value on a best-effort basis: if that value
+cannot be parsed, it is sent unchanged, so handlers should not assume it always
+parses. The event omits passwords, roles, plan, secrets, packages, and unrelated
+account content. Notification copies already delivered outside Kody cannot be
+recalled after account deletion. Idempotency keys include the topic, user id,
+timestamp, and package id.
 
 ## `user.email_verification.failed` (admins)
 
