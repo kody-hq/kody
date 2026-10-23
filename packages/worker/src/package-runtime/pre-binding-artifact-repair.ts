@@ -342,3 +342,43 @@ export function isPublishedArtifactRefusedByLoadSites(input: {
 			.length === 0
 	)
 }
+
+/**
+ * Errors a still-unbound pre-fix bundle produces when an inlined package's
+ * code runs as the caller instead of as itself: package storage and
+ * credentials refuse a caller that is not the owning package, a bound
+ * helper with no binding refuses to fall back, and a package-scoped secret is
+ * not visible from the caller's runtime.
+ */
+const unboundPackageIdentityErrorPatterns = [
+	/packageStorage\(\) for package "[^"]+" is only available to that package's own code/,
+	/credential\(\) for package "[^"]+" is only available to that package's own code/,
+	/for package "[^"]+" has no package binding in this run/,
+	/ and is not visible from this runtime\./,
+]
+
+export const preBindingRepublishHint =
+	"This run used a published bundle built before package code ran as its own package, and the bundle inlines another package's code, so that code acted as the calling package. Kody rebuilds such bundles from source automatically, but this package's source needs an npm install to rebuild. Republish the package (or the imported package) to rebuild it."
+
+/**
+ * Append a republish hint to a run error that comes from a stored pre-fix
+ * bundle the load site could not rebuild (see
+ * {@link publishedArtifactNeedsPackageBindingRebuild}). Returns null when the
+ * bundle is current, is repairable in place, or the error is unrelated, so
+ * ordinary failures keep their message unchanged.
+ */
+export function describePreBindingIdentityError(input: {
+	message: string
+	artifact: RepairableArtifact
+}) {
+	if (input.message.includes(preBindingRepublishHint)) return null
+	if (
+		!unboundPackageIdentityErrorPatterns.some((pattern) =>
+			pattern.test(input.message),
+		)
+	) {
+		return null
+	}
+	if (!isUnrepairablePreBindingArtifact(input.artifact)) return null
+	return `${input.message} ${preBindingRepublishHint}`
+}

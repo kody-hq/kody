@@ -9,6 +9,9 @@ import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { loadPublishedBundleArtifactByIdentity } from '#worker/package-runtime/published-bundle-artifacts.ts'
+import { isUnrepairablePreBindingArtifact } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
+import { type PublishedBundleArtifact } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	type PackageRetrieverManifestCacheEntry,
 	type PackageRetrieverResult,
@@ -89,6 +92,36 @@ function normalizeRetrieverResults(input: {
 	}))
 }
 
+/**
+ * A stored retriever bundle built before package `fetch` became lexical that
+ * inlines other packages cannot be bound in place (GHSA-5fv3-qv7j-rqf5): an
+ * inlined dependency's `packageStorage()` or `fetch` would act as the
+ * retriever's package. Send it through the shared module-artifact load site,
+ * which rebuilds it from source (or keeps serving it and logs
+ * `pre_binding_bundle_needs_republish` when the source needs an npm
+ * install), the same as exports, subscriptions, and workflow steps.
+ */
+async function resolveRunnableRetrieverArtifact(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	savedPackage: SavedPackageRecord
+	exportName: string
+	artifact: PublishedBundleArtifact
+}): Promise<PublishedBundleArtifact> {
+	if (!isUnrepairablePreBindingArtifact(input.artifact)) return input.artifact
+	const { ensureModuleArtifact } =
+		await import('#worker/package-invocations/module-artifacts.ts')
+	const ensured = await ensureModuleArtifact({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		savedPackage: input.savedPackage,
+		selector: { kind: 'export', exportName: input.exportName },
+		userId: input.userId,
+	})
+	return ensured.artifact
+}
+
 async function invokeRetriever(input: {
 	env: Env
 	baseUrl: string
@@ -145,6 +178,14 @@ async function invokeRetriever(input: {
 	if (!loaded?.artifact) {
 		return []
 	}
+	const artifact = await resolveRunnableRetrieverArtifact({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		savedPackage,
+		exportName: input.entry.exportName,
+		artifact: loaded.artifact,
+	})
 	const limit = clampLimit(input.entry.maxResults, input.scope)
 	const callerContext = createMcpCallerContext({
 		baseUrl: input.baseUrl,
@@ -181,9 +222,9 @@ async function invokeRetriever(input: {
 		input.env,
 		callerContext,
 		{
-			mainModule: loaded.artifact.mainModule,
-			modules: loaded.artifact.modules,
-			dependencies: loaded.artifact.dependencies,
+			mainModule: artifact.mainModule,
+			modules: artifact.modules,
+			dependencies: artifact.dependencies,
 		},
 		{
 			query: input.query,

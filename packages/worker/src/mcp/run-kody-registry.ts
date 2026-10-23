@@ -124,6 +124,7 @@ import {
 	isDirectBundleDependency,
 	type BundleArtifactDependency,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { describePreBindingIdentityError } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
@@ -1669,11 +1670,22 @@ ${runtimeHelperRuntimePropertySource}
 				await recordPackageExportUsage('success')
 				return withRunId(sanitizedResult)
 			}
-			const rewrittenMessage = rewriteUnboundRuntimeHelperError({
-				error: result.error,
-				modules: hydratedModules,
-				unboundHelperNames: unboundOptionalRuntimeHelperNames,
-			})
+			const rewrittenMessage =
+				rewriteUnboundRuntimeHelperError({
+					error: result.error,
+					modules: hydratedModules,
+					unboundHelperNames: unboundOptionalRuntimeHelperNames,
+				}) ??
+				// A stored pre-fix bundle the load site could not rebuild runs an
+				// inlined package as the caller; say so and how to fix it.
+				describePreBindingIdentityError({
+					message: getErrorMessage(result.error),
+					artifact: {
+						modules: bundle.modules,
+						dependencies: bundle.dependencies ?? [],
+						packageContext: options?.packageContext ?? null,
+					},
+				})
 			const finalResult = rewrittenMessage
 				? {
 						...sanitizedResult,
