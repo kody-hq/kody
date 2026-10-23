@@ -10,7 +10,7 @@ import {
 	timingSafeEqual,
 	verify,
 } from 'node:crypto'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { lookupSecretsThroughResolveSecret } from '#worker/test-support/secret-lookup.ts'
 import { isMcpCallerError, McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -116,11 +116,8 @@ function rejectsWithoutLeaking(fragment: string, leaked: string) {
 	}
 }
 
-beforeEach(() => {
-	lookupSecretsThroughResolveSecret()
-})
-
 test('secretJwtSign resolves keys and never leaks key material', async () => {
+	lookupSecretsThroughResolveSecret()
 	const { privateKey, publicKey } = createKeyPair()
 	const signed = await signWith(privateKey, {
 		private_key_secret_name: 'serviceAccountKey',
@@ -248,6 +245,7 @@ test('secretJwtSign resolves keys and never leaks key material', async () => {
 })
 
 test('secretJwtSign signs HMAC JWTs from encoded secrets', async () => {
+	lookupSecretsThroughResolveSecret()
 	const hmacKey = Buffer.from('doordash-test-signing-key-32byte')
 	const utf8Secret = 'door-dash-utf8-hmac-secret-padded-to-48-bytes!!!'
 	const hs512Key = Buffer.alloc(64, 7)
@@ -365,6 +363,7 @@ test('secretJwtSign signs HMAC JWTs from encoded secrets', async () => {
 })
 
 test('secretJwtSign signs RS, PS, and ES JWTs from PKCS#8 PEM secrets', async () => {
+	lookupSecretsThroughResolveSecret()
 	const rsa = createKeyPair()
 	const p256 = createEcKeyPair('prime256v1')
 	const p384 = createEcKeyPair('secp384r1')
@@ -434,6 +433,7 @@ test('secretJwtSign signs RS, PS, and ES JWTs from PKCS#8 PEM secrets', async ()
 })
 
 test('decodeHmacKeyMaterial accepts encodings and rejects invalid input without leaking the key', () => {
+	lookupSecretsThroughResolveSecret()
 	const hmacKey = Buffer.from('doordash-test-signing-key-32byte')
 	const utf8Secret = 'plain-hmac-secret-32-bytes-long!'
 	const decode = (
@@ -490,6 +490,7 @@ test('decodeHmacKeyMaterial accepts encodings and rejects invalid input without 
 })
 
 test('secretJwtSign accepts opaque {{secret:…}} refs and remaps share-grant guests to the package owner', async () => {
+	lookupSecretsThroughResolveSecret()
 	const { privateKey } = createKeyPair()
 	const refInput = {
 		private_key_secret_name: '{{secret:serviceAccountKey|scope=user}}',

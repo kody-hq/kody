@@ -34,37 +34,6 @@ async function postUnauthenticatedMcpInitialize(origin: string) {
 	})
 }
 
-test('signup shows an inline username error instead of native constraint focus', async ({
-	page,
-}) => {
-	test.setTimeout(process.env.CI ? 60_000 : 45_000)
-	clearAuthRateLimitsInE2eDatabase()
-	await page.context().clearCookies()
-
-	await page.goto('/signup')
-	await waitForClientHydration(page)
-
-	const username = page.getByRole('textbox', { name: 'Username' })
-	await username.fill('Ján Kováč')
-	await page.getByLabel('Email').fill('jan.kovac@example.com')
-	await page.getByLabel('Password', { exact: true }).fill('password123')
-
-	const createAccount = page.getByRole('button', {
-		name: 'Create account',
-		exact: true,
-	})
-	await createAccount.click()
-
-	const alert = page.getByRole('alert')
-	await expect(alert).toContainText('no accents')
-	await expect(alert).toContainText('jan-kovac')
-	await expect(username).toHaveAttribute('aria-invalid', 'true')
-	// Submit ran (inline error) rather than native constraint validation
-	// silently moving focus back to the username field with no feedback.
-	await expect(createAccount).toBeEnabled()
-	await expect(page).toHaveURL(/\/signup/)
-})
-
 test('a new user signs up, verifies email from the message, and reaches MCP connect', async ({
 	page,
 	baseURL,

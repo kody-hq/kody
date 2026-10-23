@@ -70,7 +70,11 @@ export async function purgePersistedMcpAgentSession(input: {
 	userId: string
 }) {
 	const owner = await readPersistedMcpAgentOwner(input)
-	if (owner.userId !== input.userId) {
+	// A prior deletion attempt may have already wiped this Durable Object while
+	// leaving the mcp_agent_sessions registry row. No persisted owner means
+	// nothing left to steal; deleteAll is idempotent. Only reject when props
+	// identify a *different* live user — that is the cross-user guard.
+	if (owner.userId != null && owner.userId !== input.userId) {
 		throw new Error('MCP agent session user scope mismatch.')
 	}
 	await input.storage.deleteAll()

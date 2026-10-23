@@ -33,16 +33,19 @@ required. Keep a shared Vitest `testTimeout` of 20s (and `CI=1` on `test:push` /
 validate’s test and e2e legs) so the pool’s per-file DO cold load does not fail
 the default budget. When `npm run validate` runs workers-unit beside the rest of
 the parallel gate (`KODY_VALIDATE_LOAD=1` on that leg only; #2939 / #2475),
-`vitest.workers.config.ts` drops `maxWorkers` from 3 to 2. Workers-unit's
-`testTimeout`/`hookTimeout` is 40s everywhere (not only under the flag) so the
-budget a cached `test-workers` result passed under is the one CI enforces. On
-machines with at most 4 cores or under 24GB RAM, `tools/run-validate.ts` also
-runs suite legs one at a time so they do not exhaust the VM (#3147). The load
-flag stays for larger machines, where those legs still share the box. The
-override stays on the workers project only (not `sharedProjectConfig`) so
-node-unit Nx caches stay keyed to the 20s default; do **not** loosen production
-worker startup CPU budgets for that contention (`worker-startup-time:check`
-already runs after validate's parallel phase).
+`vitest.workers.config.ts` caps `maxWorkers` at 2 rather than the dedicated CI
+Workers shard's 3; both caps respect available CPU affinity. CI uses two
+`WORKERS_TEST_SHARD=i/2` jobs with separate Nx hashes; local runs are unsharded
+when that variable is unset. Workers-unit's `testTimeout`/`hookTimeout` is 40s
+everywhere (not only under the flag) so the budget a cached `test-workers`
+result passed under is the one CI enforces. On machines with at most 4 cores or
+under 24GB RAM, `tools/run-validate.ts` also runs suite legs one at a time so
+they do not exhaust the VM (#3147). The load flag stays for larger machines,
+where those legs still share the box. The override stays on the workers project
+only (not `sharedProjectConfig`) so node-unit Nx caches stay keyed to the 20s
+default; do **not** loosen production worker startup CPU budgets for that
+contention (`worker-startup-time:check` already runs after validate's parallel
+phase).
 
 ## Consequences
 

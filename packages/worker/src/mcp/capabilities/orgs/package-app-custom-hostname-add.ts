@@ -6,6 +6,7 @@ import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import {
 	packageAppCustomHostnameDnsHintSchema,
 	packageAppCustomHostnameRowSchema,
+	packageAppCustomHostnameSetupSchema,
 	packageAppCustomHostnameVerificationSchema,
 } from '#mcp/capabilities/orgs/package-app-custom-hostname-schemas.ts'
 import { packageAppCustomHostnameBindingKinds } from '#worker/package-app-custom-hostnames/types.ts'
@@ -23,7 +24,7 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:
-			'Register a custom hostname for this organization’s package apps (Cloudflare for SaaS). App-level hostnames apply to one internet-visible public app and serve it at the host root. Org-level hostnames apply to private apps and serve them at /packages/{kodyId} on the custom host. Only org admins on a paid plan may add domains. Point DNS (usually a CNAME) at the package-app zone before verification completes. Optional ssl_method=txt pre-validates the certificate via TXT before traffic switches.',
+			'Register a custom hostname for this organization’s package apps (Cloudflare for SaaS). App-level hostnames apply to one internet-visible public app and serve it at the host root. Org-level hostnames apply to private apps and serve them at /packages/{kodyId} on the custom host. Only org admins on a paid plan may add domains. Hostnames under Kody’s own domains (for example kody.codes, kody.run) and workers.dev are rejected. The result includes setup: the exact DNS records (all DNS only, proxy off) and plain steps. Kody re-checks pending hostnames automatically every few minutes, so there is no need to loop on packageAppCustomHostnameSync. Optional ssl_method=txt pre-validates the certificate via TXT before traffic switches. Guide: guide:package_app_custom_domains.',
 		keywords: [
 			'custom domain',
 			'hostname',
@@ -58,6 +59,7 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 			hostname: packageAppCustomHostnameRowSchema,
 			dns: packageAppCustomHostnameDnsHintSchema,
 			verification: packageAppCustomHostnameVerificationSchema,
+			setup: packageAppCustomHostnameSetupSchema,
 			billing_note: z.string().nullable(),
 		}),
 		async handler(args, ctx) {

@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import {
 	isPreBindingPublishedArtifact,
+	isUnrepairablePreBindingArtifact,
 	packageBindingRewriteVersion,
 	publishedArtifactNeedsPackageBindingRebuild,
 	repairPreBindingPublishedArtifact,
@@ -161,4 +162,30 @@ test('a multi-package pre-fix bundle that needs an npm install to rebuild is rep
 	} finally {
 		warn.mockRestore()
 	}
+})
+
+test('never treats a browser app-client bundle as pre-binding', () => {
+	const clientSource =
+		'const response = await fetch("/api/items");\nconsole.log(await response.json());'
+	const client = artifact(clientSource, { kind: 'app-client' })
+	expect(isPreBindingPublishedArtifact(client)).toBe(false)
+	expect(repairPreBindingPublishedArtifact(client)).toBe(client)
+	expect(client.modules['bundle.js']).toBe(clientSource)
+	const mixedClient = artifact(clientSource, {
+		kind: 'app-client',
+		dependencies: [{ packageId: 'pkg-other' }],
+	})
+	expect(isUnrepairablePreBindingArtifact(mixedClient)).toBe(false)
+	expect(
+		publishedArtifactNeedsPackageBindingRebuild({
+			artifact: mixedClient,
+			sourceFiles: {},
+		}),
+	).toBe(false)
+	// Isolate-loaded kinds keep the repair.
+	const app = artifact(clientSource, { kind: 'app' })
+	expect(isPreBindingPublishedArtifact(app)).toBe(true)
+	expect(repairPreBindingPublishedArtifact(app).modules['bundle.js']).toContain(
+		'const fetch = __kodyPreBindingBoundFetch("pkg-own");',
+	)
 })

@@ -31,7 +31,7 @@ vi.mock('#worker/email/system-outbound.ts', () => ({
 const { adminSystemEmailSendCapability } =
 	await import('./admin-system-email-send.ts')
 
-function createAdminCtx() {
+function createAdminCtx(roles: Array<string> = ['admin']) {
 	const auditSqlite = new DatabaseSync(':memory:')
 	auditSqlite.exec(`
 		CREATE TABLE audit_events (
@@ -58,17 +58,25 @@ function createAdminCtx() {
 				),
 				email: 'admin@example.com',
 				displayName: 'Admin',
-				roles: ['admin'],
+				roles,
 			},
 		}),
 	}
 }
 
 test('adminSystemEmailSend is admin-gated, validates input, and audits a redacted send', async () => {
-	expect(adminSystemEmailSendCapability.requiredRole).toBe('admin')
-	expect(adminSystemEmailSendCapability.readOnly).toBe(false)
 	const ctx = createAdminCtx()
 	mockModule.sendSystemEmail.mockClear()
+	await expect(
+		adminSystemEmailSendCapability.handler(
+			{
+				to: 'reporter@example.com',
+				subject: 'No body',
+				text: 'Body',
+			},
+			createAdminCtx(['user']),
+		),
+	).rejects.toThrow(/lacks required role/)
 
 	await expect(
 		adminSystemEmailSendCapability.handler(

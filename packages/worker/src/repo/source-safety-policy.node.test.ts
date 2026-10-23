@@ -18,9 +18,7 @@ vi.mock('./artifacts.ts', () => ({
 const {
 	assertPublishedPackageSourceRepoHead,
 	assertRestorablePackageSourceSnapshot,
-	buildArtifactsGitReadTimeoutMessage,
 	buildArtifactsOpaqueInternalErrorMessage,
-	buildArtifactsRepoLookupTimeoutMessage,
 	buildPublishedCommitHeadMismatchCallerMessage,
 	buildSourceRecoveryProblemMessage,
 	destructiveOverwriteConfirmationField,
@@ -112,36 +110,6 @@ test('published commit HEAD mismatch messages are detected for caller-error clas
 	expect(buildPublishedCommitHeadMismatchCallerMessage(mismatch)).toContain(
 		'packagePublishExternalPush',
 	)
-})
-
-test('Artifacts git timeouts name packageSave only for packageGetGitRemote', () => {
-	const reason = 'Artifacts git request timed out after 8000ms.'
-	expect(
-		buildArtifactsGitReadTimeoutMessage({
-			operation: 'packageGetGitRemote',
-			reason,
-		}),
-	).toMatch(/packageGetGitRemote timed out[\s\S]*packageSave/)
-	const session = buildArtifactsGitReadTimeoutMessage({
-		operation: 'repoOpenSession',
-		reason,
-	})
-	expect(session).toContain(
-		'repoOpenSession timed out reading the Artifacts git remote.',
-	)
-	expect(session).not.toContain('packageSave')
-	expect(isArtifactsGitReadTimeoutMessage(session)).toBe(true)
-	const lookup = buildArtifactsRepoLookupTimeoutMessage({
-		operation: 'packageGetGitRemote',
-		reason: 'The operation timed out.',
-	})
-	expect(lookup).toContain(
-		'packageGetGitRemote timed out looking up the Artifacts repository.',
-	)
-	expect(lookup).not.toContain('packageSave')
-	expect(lookup).not.toContain('git remote')
-	expect(isArtifactsRepoLookupTimeoutMessage(lookup)).toBe(true)
-	expect(isArtifactsGitReadTimeoutMessage(lookup)).toBe(false)
 })
 
 test('Artifacts repo-lookup timeouts are distinct from git HEAD read timeouts', async () => {

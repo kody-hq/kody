@@ -1,6 +1,5 @@
 import { expect, test, vi } from 'vitest'
 import {
-	buildLegacyPackageAppSubdomainMountLocation,
 	maybeHandleLegacyPackageAppSubdomainMount,
 	packageAppLegacyMountEventKind,
 	shouldRedirectLegacyPackageAppSubdomainMount,
@@ -44,21 +43,6 @@ test('shouldRedirectLegacyPackageAppSubdomainMount matches browser HTML GET/HEAD
 			}),
 		),
 	).toBe(false)
-})
-
-test('buildLegacyPackageAppSubdomainMountLocation preserves rest and query', () => {
-	expect(
-		buildLegacyPackageAppSubdomainMountLocation({
-			url: new URL('https://alice.kody.run/packages/demo/report?tab=1'),
-			packagePath: { kodyId: 'demo', restPath: '/report' },
-		}),
-	).toBe('/demo/report?tab=1')
-	expect(
-		buildLegacyPackageAppSubdomainMountLocation({
-			url: new URL('https://alice.kody.run/packages/demo'),
-			packagePath: { kodyId: 'demo', restPath: '/' },
-		}),
-	).toBe('/demo')
 })
 
 test('maybeHandleLegacyPackageAppSubdomainMount redirects HTML and rewrites others', () => {

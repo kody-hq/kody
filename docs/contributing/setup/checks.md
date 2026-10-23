@@ -3,81 +3,55 @@
 Husky hooks, `npm run validate`, and the test commands that gate commits and
 pushes. See the [setup index](./index.md) for the other setup pages.
 
-- `git commit` runs the Husky `pre-commit` hook. It applies `oxlint --fix` to
-  staged JavaScript/TypeScript files, then formats staged
-  JavaScript/TypeScript/JSON/Markdown/CSS/YAML files (including
-  `.github/workflows`) with `oxfmt`. Lint autofixes (for example merged
-  duplicate imports) are unformatted, so formatting always runs last. When the
-  staged diff includes a path that is not docs-only, or when that diff cannot be
-  listed, it also runs `npm run install:check`, `npm run typecheck`, and
-  `npm run migrations:check`. Typecheck runs against the **staged** tree
-  (`git stash --keep-index` when unstaged changes exist) so a warm worktree or
-  Nx cache of unstaged fixes cannot greenlight a broken index (#3695). A
-  docs-only diff skips those three commands. `install:check` runs first so a
-  snapshot whose `node_modules` lags `package-lock.json` fails with `run npm ci`
-  instead of a typecheck that can look green from a stale remote cache.
-  Docs-only means every path is under `docs/`, ends in `.md`, `.mdx`, or `.mdc`,
-  or is a `LICENSE` / `LICENCE` / `COPYING` / `NOTICE` text file. A source file
-  in the same commit, including a comment-only edit or a source file renamed to
-  markdown, runs all three checks.
-- `git push` runs the Husky `pre-push` hook. It executes `npm run knip` (same
-  unused files/exports/types gate as CI's Static Knip step) then
-  `npm run test:push` (`CI=1` `test:node` + `test:workers`) when any updated ref
-  changes a path that is not docs-only, or when the pushed paths cannot be
-  listed. A knip failure prints a clear message to run `npm run knip` and fix
-  before pushing; CI keeps its Knip step as the backstop. When a check's tree
-  SHA is already recorded green from a successful `npm run validate` (or a prior
-  pre-push of that same check) under `.tmp/git-hook-provenance.json`, the hook
-  skips that check and logs the provenance hit (#3653 / #3719). Knip and
-  test:push provenance are separate so a pre-knip `test:push`-only record cannot
-  skip knip. Progress lines tick every 30s while a script runs so a long
-  workers-unit leg is not a silent hang (#3547); ADR 0011 workers-unit isolation
-  is unchanged. A docs-only range skips knip and the suites. A push that changes
-  `skills-lock.json` or any path under `.agents/skills/` also runs
-  `node tools/check-skills-lock.ts`. `skills-lock.json` counts with docs for
-  this hook: a push of only the lock, skill markdown, and other docs skips
-  `knip` and `test:push`. A non-markdown file under `.agents/skills/` (a script
-  or a test) still runs `knip` and `test:push`, as does any other source file.
-  An unreadable push path list runs the skills-lock check too. Deleting a remote
-  branch skips knip, the suites, and the skills-lock check. An update diffs the
-  remote tip against the local tip, so a later docs-only push does not retest
-  commits already on the remote. A new branch diffs against the merge base of
-  `origin/HEAD`, `origin/main`, or `main` (never the branch being created).
-  Those suites are the same Nx targets the CI Node / Workers jobs run, so a
-  remote-cache hit is possible after a push that runs them. Bundled guides and
-  other markdown are docs-only, so the local suites skip them.
-  `npm run validate` and CI run those suites for every pull request. Playwright
-  E2E stays in `npm run validate` and the CI E2E job. The push hook stops short
-  of that suite because Playwright E2E is heavier than the unit gate, and a
-  failed e2e leg skips the unit gate when the push is retried with
-  `--no-verify`. Bundler artifacts live under
-  `src/node_modules/.kody-generated/`. Local origin development uses Vite;
-  `wrangler-env.ts` still wraps D1/types and sibling worker deploys. Playwright
-  sets `CLOUDFLARE_ENV=test` so Vite skips platform/runtime auxiliary workers.
-  Cursor Cloud Agent VMs keep Cursor's hook dispatcher as `core.hooksPath` and
-  compose Husky through `npm run hooks:ensure` (`prepare` runs it after `husky`;
-  Cloud Agent environment `start` should run it too) so `pre-push` still reaches
-  `.husky/_` — see [cloud-agents.md](../cloud-agents.md#git-hooks). Vitest's
-  default `testTimeout` is 20s so the workers pool's first Durable Object RPC in
-  a file (~10s) does not fail the default budget (see
-  [decision 0011](../decisions/0011-workers-unit-pool-harness.md)); the push
-  gate also sets `CI=1` so worker count and Nx cache hashes match GitHub
-  Actions. `vitest.workers.config.ts` gives workers-unit a 40s test/hook budget
-  everywhere (CI, validate, local) because the pool's cold DO RPCs stretched
-  past 20s under load (#2939); node-unit keeps 20s. Full `npm run validate` sets
-  `KODY_VALIDATE_LOAD=1` on the `test:workers` leg, which only lowers
-  `maxWorkers` to 2 under the parallel gate without changing production startup
-  CPU budgets (Cloud Agent load flakes: #2475, #2939;
-  `tools/validate-load-contract.node.test.ts` locks the validate script shape).
-  The flag is not part of any Nx cache hash: validate and CI verify the same
-  budget, so the `test-workers` artifact validate uploads is the one CI's
-  Workers job (which runs without the flag) looks up.
-- Because the commit hook already enforces formatting, lint fixes,
-  install:check, and typechecking for commits that include code, agents do not
-  need to run those checks separately before every code commit unless they want
-  earlier feedback or are validating a larger change set before opening a PR.
-  Docs-only commits format staged markdown. Typecheck, install:check, and the
-  unit suites for those commits stay on `npm run validate` and CI.
+- `git commit` runs lint-staged: `oxlint --fix` on staged JavaScript/TypeScript,
+  then `oxfmt` on staged code, JSON, Markdown, CSS and YAML (including
+  workflows). For non-docs changes, `node tools/git-hook-checks.ts pre-commit`
+  then runs `npm run install:check` and `npm run migrations:check`. It does not
+  typecheck. An unreadable staged diff runs both checks. Docs-only means every
+  path is under `docs/`, ends in `.md`, `.mdx` or `.mdc`, or is a LICENSE /
+  LICENCE / COPYING / NOTICE text file. Source renames to markdown still count
+  as code.
+- `git push` runs `node tools/git-hook-checks.ts pre-push`. Non-docs pushes run
+  `npm run typecheck`, `npm run knip`, then `vitest related --run` separately
+  for `node-unit` and `workers-unit`, with `CI=1`. Related inputs are the
+  pushed, non-deleted JavaScript/TypeScript source and test paths (all updated
+  refs, not just the last commit). Projects with no related tests pass. CI and
+  `npm run validate` remain the full gates; local `test:node` and validate are
+  unsharded.
+- Global pushed paths fall back to full `npm run test:push`: any package.json,
+  package-lock.json, vitest*.ts, vite.config.ts, tsconfig*, nx.json,
+  project.json, wrangler*.jsonc, migrations directory, `patches/**`,
+  `tools/vitest-global-setup*`, or `packages/worker/src/test-support/**`.
+  Deleted globals also force full tests. Unreadable pushed paths, or changes
+  without usable related sources (such as assets), fall back to full tests.
+  Deleted-only source changes have no related inputs but still typecheck.
+  Runtime filesystem reads, generated/virtual modules and computed dynamic
+  imports can escape dependency selection: related tests are fast feedback, not
+  proof equivalent to the complete CI gate.
+- Knip and full `test:push` retain independent tree-SHA provenance skips from
+  `npm run validate` or successful full pre-push checks, stored in
+  `.tmp/git-hook-provenance.json`. Related tests **never** record full
+  `test:push` provenance. Typecheck still runs on non-docs pushes, even when
+  provenance skips Knip/tests. The tested worktree must remain unchanged and
+  match a pushed tree before provenance is recorded.
+- Docs-only pushes skip typecheck, Knip and tests. Skills markdown and
+  `skills-lock.json` additionally run `node tools/check-skills-lock.ts`;
+  executable skill files keep the non-docs checks. Unreadable path lists run the
+  skills check too. Branch deletions run no checks. Existing branches diff
+  remote and local tips; new branches diff a merge base from `origin/HEAD`,
+  `origin/main`, or `main`. Progress logs tick every 30 seconds.
+- `test:push` retains serial full Node/Workers suites and ADR 0011 Workers
+  isolation. CI uses two Node and two Workers shards, keyed separately in Nx by
+  `NODE_TEST_SHARD` and `WORKERS_TEST_SHARD`; local suites remain unsharded when
+  these variables are unset. Each Workers shard caps concurrency at three on its
+  runner. Workers keeps a 40s test/hook timeout; Node keeps 20s. Each CI Node
+  shard retains its conservative watch 700s / hard 840s job budget until new
+  sharded timing data supports tightening it. Each Workers shard retains the
+  watch 620s / hard 780s attempt budget and one timeout retry.
+  `KODY_VALIDATE_LOAD=1` only lowers Workers concurrency during local validate;
+  it is not hashed by Nx because it changes neither assertions nor budgets. Keep
+  `npm run hooks:ensure` wired through the Cloud Agent dispatcher (see
+  [cloud-agents.md](../cloud-agents.md#git-hooks)).
 - Push-time hooks intentionally stop short of `npm run validate`; Playwright
   E2E, MCP E2E, and repo-wide format checks remain explicit checks because they
   are heavier than the push gate.
@@ -95,8 +69,12 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   measures the bundle, not contention from e2e and Worker builds (#2475, #2759).
   The unit-test and Playwright legs set `CI=1` so timeouts, worker limits, and
   Nx cache hashes match GitHub Actions. CI runs the same checks as separate jobs
-  (🧹 Static, 🧪 Node, ☁️ Workers, 🔌 MCP, sharded 🎭 E2E, aggregated by ✅
-  Validate). Heavy Validate jobs use
+  (🧹 Static, two 🧪 Node shards, ☁️ Workers, 🔌 MCP, two 🎭 E2E shards,
+  aggregated by ✅ Validate). Two E2E shards split the pruned 30-test suite's
+  ~420s serial load into roughly 245s including ~35s setup per runner, without
+  six copies of setup. Node remains sharded: its pruned full suite still took
+  ~379s locally (versus ~479s before pruning). These are local estimates, not
+  new CI percentiles. Heavy Validate jobs use
   `runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}` (set repo
   variable `CI_RUNNER=ubuntu-latest` to drop WarpBuild in one place); the final
   ✅ Validate gate always runs on GitHub-hosted `ubuntu-latest`. If
@@ -169,8 +147,9 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   the pre-commit hook) and is the explicit opt-in for mutating auto-fixes. It is
   never required to pass `validate`.
 - `npm run format` applies formatting updates on its own.
-- `npm run test:push` runs the same `test:node` and `test:workers` suites
-  enforced by the Husky `pre-push` hook and by the CI Node / Workers jobs.
+- `npm run test:push` runs the full `test:node` and `test:workers` suites. Husky
+  uses it for global/unreadable-path fallbacks; CI always runs full coverage
+  (Node split across two shards).
 - `npm run test:e2e:run` ensures Playwright Chromium is installed before the
   suite starts, so `npm run validate` self-heals on a fresh machine.
 - Use `npm run test:e2e:ensure` when you want to prefetch Playwright browsers

@@ -44,28 +44,6 @@ function cursor(input: {
 	}
 }
 
-test('storage sql reads under the warn line stay quiet', () => {
-	expect(
-		storageSqlReadDisposition({
-			rowsRead: storageSqlRowsReadWarnAt - 1,
-			writeFinished: false,
-		}),
-	).toBe('allow')
-	const source = cursor({
-		rows: [{ value: 1 }, { value: 2 }],
-		rowsReadAt: (index) => index + 1,
-	})
-	const collected = collectStorageSqlCursor(source, {
-		drainOverflow: false,
-		writeFinished: false,
-		maxRows: 1_000,
-	})
-	expect(collected.warning).toBeNull()
-	expect(collected.readCeilingExceeded).toBe(false)
-	expect(collected.rowCount).toBe(2)
-	expect(settleStorageSqlRead(collected).outcome).toBe('success')
-})
-
 test('an oversized storage sql read is allowed and warned', () => {
 	expect(
 		storageSqlReadDisposition({

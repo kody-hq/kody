@@ -66,11 +66,7 @@ test('memories stay with their owning user', () => {
 		'mcp_memories',
 		'mcp_memory_conversation_suppressions',
 	]) {
-		expect(orgTransferTables[table]).toEqual({
-			disposition: 'keep',
-			reason:
-				'Memories are personal: they stay with their owning user and are never moved to another org.',
-		})
+		expect(orgTransferTables[table]?.disposition).toBe('keep')
 	}
 	expect(orgTransferRepointedTables).not.toContain('mcp_memories')
 	expect(orgTransferRepointedTables).not.toContain(

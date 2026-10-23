@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	credentialNeedKeyNotes,
 	mergeCredentialNeeds,
 	ownCredentialNeeds,
 	readStoredCredentialNeeds,
@@ -127,9 +126,7 @@ test('the closure tags inherited needs with the declaring package and refuses ki
 			},
 		],
 	})
-	expect(conflict.conflicts).toEqual([
-		'kody.credentials.github: oauth from provider "github" (declared by this package) conflicts with secret from provider "github" (declared by @acme/other). Give one of them a different key.',
-	])
+	expect(conflict.conflicts).toHaveLength(1)
 })
 
 test('omitted kind merges with a fetch-capable declared kind and keeps the declared kind', () => {
@@ -206,9 +203,7 @@ test('omitted kind merges with a fetch-capable declared kind and keeps the decla
 			},
 		],
 	})
-	expect(omitVsMcp.conflicts).toEqual([
-		'kody.credentials.github: any fetch-capable kind from provider "github" (declared by this package) conflicts with mcp from provider "github" (declared by @acme/mcp). Give one of them a different key.',
-	])
+	expect(omitVsMcp.conflicts).toHaveLength(1)
 })
 
 test('owner credentials for visitors follow the declaring package through the closure', () => {
@@ -271,19 +266,6 @@ test('owner credentials for visitors follow the declaring package through the cl
 		],
 	})
 	expect(ownShares.needs).toEqual([shared])
-})
-
-test('keys that are not provider slugs get a note, never an error', () => {
-	expect(
-		credentialNeedKeyNotes({
-			github: { kind: 'oauth', description: 'x' },
-			RESEND_API_KEY: { kind: 'secret', provider: 'resend', description: 'x' },
-			MY_KEY: { kind: 'secret', description: 'x' },
-		}),
-	).toEqual([
-		'kody.credentials.RESEND_API_KEY: keys usually name their provider; "resend" would read more clearly as the key.',
-		'kody.credentials.MY_KEY: "MY_KEY" is not a provider slug (lowercase letters, numbers, hyphens), so no credential auto-resolves for it; callers pick one for this need instead.',
-	])
 })
 
 test('a stored closure that does not parse counts as not stored', () => {

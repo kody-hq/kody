@@ -34,10 +34,6 @@ const youtubeThumbnailFileNames = [
 	'hqdefault.jpg',
 ] as const
 
-export function youtubeThumbnailSourceUrl(videoId: string): string {
-	return youtubeThumbnailUrl(videoId, 'maxresdefault.jpg')
-}
-
 export function youtubeThumbnailSourceUrls(videoId: string): Array<string> {
 	return youtubeThumbnailFileNames.map((fileName) =>
 		youtubeThumbnailUrl(videoId, fileName),

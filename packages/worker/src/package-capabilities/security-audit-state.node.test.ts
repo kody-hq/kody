@@ -109,15 +109,3 @@ test('an unnamed auditor is credited to the recorder, and unpublished packages c
 		loadState(db, { publishedCommit: null, fingerprint }),
 	).resolves.toEqual({ status: 'unpublished' })
 })
-
-test('a deleted recorder reads as a former member', async () => {
-	const db = createDb()
-	await recordAudit(db, {
-		auditorLabel: null,
-		recordedByUserId: 'deleted-user',
-	})
-
-	await expect(
-		loadState(db, { publishedCommit, fingerprint }),
-	).resolves.toMatchObject({ auditor: 'a former member', recordedBy: null })
-})

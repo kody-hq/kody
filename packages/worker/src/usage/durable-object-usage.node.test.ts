@@ -135,13 +135,3 @@ test('createMeteredDurableObjectStub binds Rpc methods to the real stub, not the
 	await flushDurableObjectUsageWrites()
 	expect(recordUsage).toHaveBeenCalledTimes(1)
 })
-
-test('createMeteredDurableObjectStub is a no-op without Analytics Engine', async () => {
-	await flushDurableObjectUsageWrites()
-	recordUsage.mockClear()
-	const metered = meter(pingStub, {})
-	await expect(metered.ping()).resolves.toBe('pong')
-	expect(metered).toBe(pingStub)
-	await flushDurableObjectUsageWrites()
-	expect(recordUsage).not.toHaveBeenCalled()
-})

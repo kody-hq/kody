@@ -182,14 +182,14 @@ without consuming it, so link scanners do not burn an unused link. A successful
 links from earlier resends stay valid until expiry or the address verifies.
 Identity email change and release stay on their existing flows; destinations do
 not own `users.email`. Add, resend, set-default, and remove live at
-`/@<slug>/-/email`, `/account/email-destinations.json`, and the
-`emailDestination*` capabilities. Add and resend are limited to 3 requests per
-15 minutes per account, 10 verification emails per account per rolling 24 hours,
-and 3 verification emails per recipient address per rolling 24 hours across all
-accounts (the recipient key is a hash of the normalized address). The account
-must be at least 24 hours old (`users.created_at`) before it can request that
-mail. Blocked requests name the limit and the UTC time to retry. The address is
-still saved when the mail is blocked, so an operator can mark that row verified.
+`/@<slug>/-/email` and the `emailDestination*` capabilities. Add and resend are
+limited to 3 requests per 15 minutes per account, 10 verification emails per
+account per rolling 24 hours, and 3 verification emails per recipient address
+per rolling 24 hours across all accounts (the recipient key is a hash of the
+normalized address). The account must be at least 24 hours old
+(`users.created_at`) before it can request that mail. Blocked requests name the
+limit and the UTC time to retry. The address is still saved when the mail is
+blocked, so an operator can mark that row verified.
 `adminEmailDestinationVerify` does not send mail and is not subject to those
 caps. Re-adding a pending unverified address resends a verification email. The
 cap is 5 extras besides the identity email. Unverified extras never receive
@@ -558,7 +558,7 @@ Signed-in password change is `changePassword`
   linked providers
 - Re-issues the current session cookie with `issuedAt` strictly after
   `password_changed_at` so this browser stays signed in
-- Joins the shared auth rate-limit bucket and a per-user password-change budget
+- Uses a per-user password-change budget (5 requests per 15 minutes)
 
 ## Package app origin handoff
 

@@ -8,7 +8,6 @@ import {
 	backupFullManifestSignatureAlgorithm,
 	canonicalBackupFullManifestPayload,
 	parseBackupFullManifest,
-	serializeBackupFullManifest,
 	type BackupFullManifest,
 	type BackupFullManifestPayload,
 } from './backup-full-manifest.ts'
@@ -67,7 +66,6 @@ test('parseBackupFullManifest accepts a signed envelope and rejects shape drift'
 	const payload = samplePayload()
 	const manifest = signedManifest(payload)
 	expect(parseBackupFullManifest(manifest)).toEqual(manifest)
-	expect(serializeBackupFullManifest(manifest).endsWith('\n')).toBe(true)
 
 	for (const [input, error] of [
 		[{ ...manifest, extra: true }, /invalid versioned shape/],

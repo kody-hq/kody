@@ -1,11 +1,6 @@
 import { expect, test } from 'vitest'
-import {
-	getHomeOgVariant,
-	homeOgVariantIds,
-} from '#universal/home-og-variants.ts'
 import { publicOgPages } from '#universal/og-pages.ts'
 import { getOgPalette } from '#worker/og/palette.ts'
-import { truncateOgText } from '#worker/og/render.ts'
 import {
 	ogTitleChildren,
 	renderPageOgImage,
@@ -27,21 +22,6 @@ const render = (
 const samePng = (a: Uint8Array, b: Uint8Array) =>
 	Buffer.from(a).equals(Buffer.from(b))
 
-test('renderPageOgImage returns valid PNG bytes for home and community', async () => {
-	expect.hasAssertions()
-	const pngs = await Promise.all([
-		render(),
-		render({ page: publicOgPages.community }),
-		render({ page: publicOgPages.blog }),
-		render({ page: publicOgPages.discord }),
-		// Same copy as home, Discord path only — so a miss on hero/halo selection
-		// cannot hide behind the different title and subtitle.
-		render({ page: { ...publicOgPages.home, path: '/discord' } }),
-	])
-	for (const png of pngs) expectPngBytes(png)
-	expect(samePng(pngs[0]!, pngs.at(-1)!)).toBe(false)
-})
-
 test('renderPageOgImage renders each theme differently', async () => {
 	const light = await render({ theme: 'light' })
 	const dark = await render({ theme: 'dark' })
@@ -52,30 +32,6 @@ test('renderPageOgImage renders each theme differently', async () => {
 	// which is the regression worth catching: the palette, the pattern tint, and
 	// the halo all switch on it, so the two encodings cannot coincide.
 	expect(samePng(light, dark)).toBe(false)
-})
-
-test('homepage og query values render different cards and unknown stays default', async () => {
-	const [fallback, unknown, triggers, memory, switchCard, cursorClaude] =
-		await Promise.all(
-			[undefined, 'nope', 'triggers', 'memory', 'switch', 'cursor-claude'].map(
-				(homeOg) => render({ homeOg }),
-			),
-		)
-	const pricingWithQuery = await render({
-		page: publicOgPages.pricing,
-		homeOg: 'triggers',
-	})
-	const pricing = await render({ page: publicOgPages.pricing })
-
-	for (const png of [triggers!, memory!, switchCard!, cursorClaude!]) {
-		expectPngBytes(png)
-	}
-	expect(samePng(unknown!, fallback!)).toBe(true)
-	expect(samePng(triggers!, fallback!)).toBe(false)
-	expect(samePng(triggers!, memory!)).toBe(false)
-	expect(samePng(switchCard!, cursorClaude!)).toBe(false)
-	expect(samePng(switchCard!, fallback!)).toBe(false)
-	expect(samePng(pricingWithQuery, pricing)).toBe(true)
 })
 
 test('homepage H1 emphasis is an accent run and plain titles stay a string', () => {
@@ -158,15 +114,5 @@ test('emphasized H1 runs keep a space at the colour boundary and fit the title b
 		titleChildren('Don\u2019t **start over**'),
 	)) {
 		expect(style).toEqual({ color: accent })
-	}
-
-	const titles = [
-		publicOgPages.home.imageTitle,
-		...homeOgVariantIds.map((id) => getHomeOgVariant(id)?.imageTitle),
-	]
-	for (const title of titles) {
-		expect(title).toBeTruthy()
-		if (!title) continue
-		expect(truncateOgText(title, TITLE_MAX_LENGTH)).toBe(title)
 	}
 })

@@ -107,10 +107,3 @@ test('same-batch writers reference the epoch bump in the same module', () => {
 		).toBe(true)
 	}
 })
-
-test('org restore bumps the epoch in the batch that revives the org row', () => {
-	const source = readFileSync(`${workerSrc}orgs/soft-delete.ts`, 'utf8')
-	expect(source).toMatch(
-		/SET deleted_at = NULL, deleting_at = NULL, updated_at = \?,\s*access_epoch = access_epoch \+ 1/,
-	)
-})

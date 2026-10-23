@@ -3,11 +3,9 @@ import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
 	foldOnboardingFunnelRows,
-	onboardingFunnelCountQuery,
 	recordCheckoutFunnelEvent,
 	recordMcpConnectFunnelEvent,
 	recordOnboardingFunnelEvent,
-	resolveOnboardingFunnelDataset,
 } from './onboarding-funnel.ts'
 import { stampFirstSearch } from './activation-stamps.ts'
 
@@ -105,20 +103,7 @@ test('first search emits once even when the stamp is repeated', async () => {
 	})
 })
 
-test('funnel SQL groups distinct users and missing stages stay zero', () => {
-	expect(resolveOnboardingFunnelDataset({})).toBe(
-		'kody_onboarding_funnel_events',
-	)
-	expect(
-		resolveOnboardingFunnelDataset({ SENTRY_ENVIRONMENT: 'preview' }),
-	).toBe('kody_onboarding_funnel_events_preview')
-	const query = onboardingFunnelCountQuery({
-		dataset: 'kody_onboarding_funnel_events',
-		days: 7,
-	})
-	expect(query).toContain('count(DISTINCT index1)')
-	expect(query).toContain("'first_package'")
-	expect(query).toContain("'email_verified'")
+test('funnel rows fold to known stages and missing stages stay zero', () => {
 	const window = foldOnboardingFunnelRows(7, [
 		{ stage: 'signup_completed', users: '4' },
 		{ stage: 'not_a_stage', users: 9 },

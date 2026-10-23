@@ -85,30 +85,6 @@ test('plain repository native payload strips guest source IDs and preserves auth
 	}
 })
 
-test('plain repository chrome has a Repo mark and shows Files and omits unsupported Settings actions', async () => {
-	const html = await renderStartPage(
-		createElement(CommunityDetailContent, {
-			listing: null,
-			username: 'owner',
-			kodyId: 'notes',
-			description: 'Notes',
-			isPrivate: true,
-			ownerProfilePublic: true,
-			viewerIsOwner: true,
-			viewerCanManage: false,
-			repoActions: null,
-			hasPackage: false,
-		}),
-		'/@owner/notes',
-	)
-	expect(html).toContain('data-signifier="repo"')
-	expect(html).toContain('data-signifier="private"')
-	expect(html).not.toContain('data-signifier="package"')
-	expect(html).not.toContain('data-signifier="unpublished"')
-	expect(html).toContain('data-testid="package-repo-nav-files"')
-	expect(html).not.toContain('data-testid="package-repo-nav-settings"')
-})
-
 test('plain repository promotion guidance is limited to members with package-shaped sources', async () => {
 	for (const [viewerIsOwner, packageShaped] of [
 		[true, true],

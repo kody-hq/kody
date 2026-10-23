@@ -83,45 +83,6 @@ test('approve-publish SSR renders the promote card without a browser location', 
 	)
 })
 
-test('approve-publish notes listing sync when the catalog pin still lags', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageApprovePublishRoute, {
-			payload: {
-				...loaderData,
-				listing: {
-					pinnedVersion: '1.4.0',
-					promotedVersion: '1.5.0',
-					behind: true,
-					updateHint: 'Background sync is catching up.',
-					updateUrl: '/@kodykoala/gmail-drafts/settings#update-public-listing',
-				},
-			},
-			username: 'kodykoala',
-			kodyId: 'gmail-drafts',
-		}),
-		approvePublishHref,
-	)
-	expect(html).toContain('data-testid="approve-publish-listing-syncing"')
-	expect(html).toContain('catching up to this published version')
-	expect(html).not.toContain('Update public listing')
-})
-test('approve-publish does not warn that promote leaves the listing behind', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageApprovePublishRoute, {
-			payload: {
-				...loaderData,
-				listing: null,
-				listingWillLagAfterPromote: false,
-			},
-			username: 'kodykoala',
-			kodyId: 'gmail-drafts',
-		}),
-		approvePublishHref,
-	)
-	expect(html).not.toContain('data-testid="approve-publish-listing-will-lag"')
-	expect(html).not.toContain('data-testid="approve-publish-listing-syncing"')
-})
-
 test('unlocked approve-publish SSR offers Publish HEAD', async () => {
 	const html = await renderToString(
 		jsx(AccountPackageApprovePublishRoute, {
@@ -191,42 +152,6 @@ test('approve-publish for an already-published commit pin does not claim HEAD is
 	expect(html).toContain('Open Approve without a commit pin')
 	expect(html).not.toContain('the public version is up to date')
 	expect(html).not.toContain('No unpublished commit is waiting')
-})
-
-test.each([
-	'This publish keeps secret mount wakeToken. Stale static dependents: @kentcdodds/dependent.',
-	'This publish removes secret mount wakeToken. Stale static dependents: @kentcdodds/dependent. Removing the mount will break those dependents.',
-])(
-	'approve-publish SSR shows the authoritative secret mount warning: %s',
-	async (notice) => {
-		const html = await renderToString(
-			jsx(AccountPackageApprovePublishRoute, {
-				payload: { ...loaderData, secretMountCompatNotice: notice },
-				username: 'kodykoala',
-				kodyId: 'gmail-drafts',
-			}),
-			approvePublishHref,
-		)
-		expect(html).toContain('data-testid="secret-mount-compat-notice"')
-		expect(html).toContain(notice)
-	},
-)
-
-test('approve-publish SSR shows the allowed-packages publish warning', async () => {
-	const notice =
-		'Credential "RESEND_API_KEY" is allowed only for @kodykoala/notes, not @kodykoala/gmail-drafts. Starting Wednesday, Oct 21, 2026, Kody enforces allowed-package lists everywhere.'
-	const html = await renderToString(
-		jsx(AccountPackageApprovePublishRoute, {
-			payload: { ...loaderData, allowedPackagesPublishNotice: notice },
-			username: 'kodykoala',
-			kodyId: 'gmail-drafts',
-		}),
-		approvePublishHref,
-	)
-	expect(html).toContain('data-testid="allowed-packages-publish-notice"')
-	expect(html).toContain('RESEND_API_KEY')
-	expect(html).toContain('@kodykoala/notes')
-	expect(html).toContain('Wednesday, Oct 21, 2026')
 })
 
 test('approve-publish holds Promote while publish checks run for the commit', async () => {

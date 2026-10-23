@@ -119,6 +119,11 @@ test('isRetryableSentryUploadFailure matches 5xx and timeouts only', () => {
 	expect(
 		isRetryableSentryUploadFailure('request failure (http status: 502)'),
 	).toBe(true)
+	expect(
+		isRetryableSentryUploadFailure(
+			'sentry reported http status 503 apigateway Downstream service unavailable',
+		),
+	).toBe(true)
 	expect(isRetryableSentryUploadFailure('ETIMEDOUT connecting to sentry')).toBe(
 		true,
 	)
@@ -189,7 +194,7 @@ test('uploadSentrySourcemapsWithRetry does not retry 4xx auth failures', async (
 	expect(attempts).toBe(1)
 })
 
-test('sentryUploadSoftFailEnabled reads preview workflow env flags', () => {
+test('sentryUploadSoftFailEnabled reads workflow env flags', () => {
 	expect(sentryUploadSoftFailEnabled({ SENTRY_UPLOAD_SOFT_FAIL: '1' })).toBe(
 		true,
 	)
@@ -200,6 +205,21 @@ test('sentryUploadSoftFailEnabled reads preview workflow env flags', () => {
 	expect(sentryUploadSoftFailEnabled({ SENTRY_UPLOAD_SOFT_FAIL: '0' })).toBe(
 		false,
 	)
+})
+
+test('production and preview deploy workflows soft-fail retryable Sentry uploads', async () => {
+	const [deploy, preview] = await Promise.all([
+		readFile(
+			new URL('../.github/workflows/deploy.yml', import.meta.url),
+			'utf8',
+		),
+		readFile(
+			new URL('../.github/workflows/preview.yml', import.meta.url),
+			'utf8',
+		),
+	])
+	expect(deploy).toContain("SENTRY_UPLOAD_SOFT_FAIL: '1'")
+	expect(preview).toContain("SENTRY_UPLOAD_SOFT_FAIL: '1'")
 })
 
 test('reportSentryUploadSoftFailure emits a warning annotation and step summary', async () => {

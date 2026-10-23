@@ -15,12 +15,7 @@ import {
 	defaultCommunityListingSort,
 	type CommunityListingSort,
 } from '#universal/community-search.ts'
-import { deterministicEmbedding } from '#worker/vectorize/embedding.ts'
-import {
-	blendLexicalAndVectorScore,
-	cosineSimilarity,
-	lexicalScore,
-} from '#worker/vectorize/scoring.ts'
+import { tokenizeSearchText } from '#worker/vectorize/scoring.ts'
 import { buildPackageReadmeDetail } from '#worker/package-registry/package-readme.ts'
 import {
 	getSavedPackageById,
@@ -104,7 +99,6 @@ import {
 	insertCommunityBan,
 	insertCommunityReport,
 	countActiveCommunityListingsByCategory,
-	extractCommunityListingLikeTokens,
 	listCommunityIndexOverviewCandidates,
 	listCommunityListingCandidates,
 	listCommunityReports as listCommunityReportsFromDb,
@@ -162,15 +156,15 @@ const communityBayesianPriorWeight = 5
 const communityActivityDefaultPageSize = 20
 const communityActivityMaxPageSize = 100
 
-// Offline deterministic embeddings produce small positive cosine scores for
-// unrelated text (~0.10). Related lexical hits use lexical > 0; vector-only
-// semantic matches on listing documents tend to land above ~0.12.
-export const COMMUNITY_SEARCH_VECTOR_MATCH_THRESHOLD = 0.12
-
-// The vector threshold is only a broad candidate gate. Deterministic embeddings
-// can put unrelated documents above it, so require stronger blended query fit
-// before returning a ranked search result.
+// Community search ranks on query terms only. Listings have no semantic
+// embedding, and the hash-based deterministic embedding is not semantic: it
+// scored unrelated listings high enough that nonsense queries returned
+// results. Exact term hits score 1; a term of at least
+// `COMMUNITY_SEARCH_PARTIAL_TERM_MIN_LENGTH` characters inside a longer word
+// (for example "slac" in "slack") scores 0.5. Relevance is the mean term score.
 export const COMMUNITY_SEARCH_MIN_RELEVANCE = 0.2
+
+export const COMMUNITY_SEARCH_PARTIAL_TERM_MIN_LENGTH = 3
 
 // Community search/browse never scores more than this many listings in
 // memory; candidates are pre-filtered (including stored category) and
@@ -180,6 +174,13 @@ export const COMMUNITY_SEARCH_MIN_RELEVANCE = 0.2
 // category. Revisit with a materialized score column if a single
 // category approaches this size.
 export const COMMUNITY_SEARCH_CANDIDATE_LIMIT = 500
+
+// The LIKE pre-filter is looser than the term scorer (a short term such as
+// "go" matches inside "going"), so a full candidate page can be rejected
+// entirely while an older listing holds the exact term. Search reads further
+// prefiltered pages until it has enough matches (every page when a
+// resultFilter applies), up to this many pages.
+export const COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES = 4
 
 function normalizeCommunityActivityPage(value: number | undefined) {
 	if (value === undefined || !Number.isFinite(value)) return 1
@@ -241,19 +242,36 @@ async function deleteCommunityIconAssetsBestEffort(input: {
 	}
 }
 
+export function scoreCommunityListingSearch(input: {
+	query: string
+	document: string
+}): number {
+	const queryTerms = tokenizeSearchText(input.query)
+	if (queryTerms.size === 0) return 0
+	const documentTerms = tokenizeSearchText(input.document)
+	let total = 0
+	for (const term of queryTerms) {
+		if (documentTerms.has(term)) {
+			total += 1
+			continue
+		}
+		if (term.length < COMMUNITY_SEARCH_PARTIAL_TERM_MIN_LENGTH) continue
+		for (const documentTerm of documentTerms) {
+			if (documentTerm.includes(term)) {
+				total += 0.5
+				break
+			}
+		}
+	}
+	return total / queryTerms.size
+}
+
 export function isCommunityListingSearchMatch(input: {
 	query: string
 	document: string
 }): boolean {
-	const trimmedQuery = input.query.trim()
-	if (!trimmedQuery) return true
-	const lexical = lexicalScore(trimmedQuery, input.document)
-	if (lexical > 0) return true
-	const vector = cosineSimilarity(
-		deterministicEmbedding(trimmedQuery),
-		deterministicEmbedding(input.document),
-	)
-	return vector > COMMUNITY_SEARCH_VECTOR_MATCH_THRESHOLD
+	if (!input.query.trim()) return true
+	return scoreCommunityListingSearch(input) >= COMMUNITY_SEARCH_MIN_RELEVANCE
 }
 
 export function buildCommunityListingSearchDocument(
@@ -1097,12 +1115,15 @@ export async function searchCommunityListings(input: {
 }): Promise<Array<CommunityListingSearchResult>> {
 	const trimmedQuery = input.query.trim()
 	const sort = resolveCommunityListingSort(input.sort)
-	let listings = await listCommunityListingCandidates(input.env.APP_DB, {
-		includeDelisted: false,
-		limit: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
-		query: trimmedQuery || null,
-		category: input.category ?? null,
-	})
+	const readCandidates = (page: number) =>
+		listCommunityListingCandidates(input.env.APP_DB, {
+			includeDelisted: false,
+			limit: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
+			offset: page * COMMUNITY_SEARCH_CANDIDATE_LIMIT,
+			query: trimmedQuery || null,
+			category: input.category ?? null,
+		})
+	const listings = await readCandidates(0)
 	if (!trimmedQuery) {
 		const withAggregates = await attachListingAggregatesBatch(
 			input.env.APP_DB,
@@ -1116,54 +1137,54 @@ export async function searchCommunityListings(input: {
 			input,
 		)
 	}
-	const matchesQuery = (listing: CommunityListingRecord) =>
-		isCommunityListingSearchMatch({
-			query: trimmedQuery,
-			document: buildListingSearchDocument(listing),
-		})
-	let matched = listings.filter(matchesQuery)
-	const prefilterApplied =
-		extractCommunityListingLikeTokens(trimmedQuery).length > 0
-	if (matched.length === 0 && prefilterApplied) {
-		// The SQL LIKE pre-filter produced no scoring matches; fall back to a
-		// bounded recent candidate set so vector-threshold matches among other
-		// recent listings keep working. Skipped when the first query was
-		// already unfiltered (no LIKE tokens), since it would return the same
-		// candidates.
-		listings = await listCommunityListingCandidates(input.env.APP_DB, {
-			includeDelisted: false,
-			limit: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
-			category: input.category ?? null,
-		})
-		matched = listings.filter(matchesQuery)
+	// The SQL LIKE pre-filter keeps every listing that contains a query term
+	// as a substring, a superset of what the term scorer accepts, so a miss
+	// across the prefiltered pages is a real no-results answer. No unfiltered
+	// fallback read.
+	const scoreListings = (page: Array<CommunityListingRecord>) =>
+		page
+			.map((listing) => ({
+				listing,
+				relevance: scoreCommunityListingSearch({
+					query: trimmedQuery,
+					document: buildListingSearchDocument(listing),
+				}),
+			}))
+			.filter((entry) => entry.relevance >= COMMUNITY_SEARCH_MIN_RELEVANCE)
+	const scoredMatches = scoreListings(listings)
+	let lastPage = listings
+	for (
+		let page = 1;
+		page < COMMUNITY_SEARCH_MAX_CANDIDATE_PAGES &&
+		lastPage.length >= COMMUNITY_SEARCH_CANDIDATE_LIMIT &&
+		// resultFilter runs after scoring, so scored matches do not prove
+		// enough eligible results; read through the page cap instead.
+		(input.resultFilter != null || scoredMatches.length < input.limit);
+		page += 1
+	) {
+		lastPage = await readCandidates(page)
+		scoredMatches.push(...scoreListings(lastPage))
 	}
+	const relevanceById = new Map(
+		scoredMatches.map((entry) => [entry.listing.id, entry.relevance]),
+	)
 	const withAggregates = await attachListingAggregatesBatch(
 		input.env.APP_DB,
-		matched,
+		scoredMatches.map((entry) => entry.listing),
 	)
-	const queryEmbedding = deterministicEmbedding(trimmedQuery)
 	const scored = withAggregates.map((listing) => {
-		const document = buildListingSearchDocument(listing)
-		const lexical = lexicalScore(trimmedQuery, document)
-		const vector = cosineSimilarity(
-			queryEmbedding,
-			deterministicEmbedding(document),
-		)
-		const blended = blendLexicalAndVectorScore(lexical, vector)
+		const relevance = relevanceById.get(listing.id) ?? 0
 		const bayesian = computeCommunityBayesianScore({
 			averageStars: listing.averageStars,
 			ratingCount: listing.ratingCount,
 		})
 		return {
-			listing: { ...listing, relevance: blended },
-			rankScore: blended * bayesian,
+			listing: { ...listing, relevance },
+			rankScore: relevance * bayesian,
 		}
 	})
 
 	const relevanceOrdered = scored
-		.filter(
-			(entry) => entry.listing.relevance >= COMMUNITY_SEARCH_MIN_RELEVANCE,
-		)
 		.sort((left, right) => {
 			switch (sort) {
 				case 'newest':

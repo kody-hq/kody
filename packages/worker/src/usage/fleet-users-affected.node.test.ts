@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	appendFleetUsersAffectedHistory,
 	baselineFromHistory,
-	buildFleetUsersAffectedPackageActorQuery,
 	clearFleetUsersAffectedPendingNotify,
 	evaluateFleetUsersAffectedTransition,
 	foldFleetUsersAffectedWindow,
@@ -225,31 +224,6 @@ test('fold ranks packages by affected users and labels >50% dominant', () => {
 		metric: 'package_export',
 		affected_users: 6,
 	})
-})
-
-test('fold keeps byMetric when package name lookup is empty', () => {
-	const folded = foldFleetUsersAffectedWindow({
-		windowStart: new Date('2026-10-19T18:00:00.000Z'),
-		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
-		affectedActorCount: 2,
-		activeActorCount: 10,
-		packageActorRows: [
-			{ package_id: 'pkg-a', metric: 'job_run', actor_id: 'u1' },
-			{ package_id: 'pkg-a', metric: 'job_run', actor_id: 'u2' },
-		],
-		packageKodyIds: new Map(),
-	})
-	expect(folded.packages).toEqual([])
-	expect(folded.byMetric).toEqual([{ metric: 'job_run', affected_users: 2 }])
-})
-
-test('buildFleetUsersAffectedPackageActorQuery aggregates distinct tuples', () => {
-	const query = buildFleetUsersAffectedPackageActorQuery({
-		dataset: 'USAGE_EVENTS',
-		windowStart: new Date('2026-10-19T18:00:00.000Z'),
-		windowEnd: new Date('2026-10-19T18:15:00.000Z'),
-	})
-	expect(query).toContain('GROUP BY package_id, metric, actor_id')
 })
 
 test('pending elevate replays on the next window until cleared', () => {

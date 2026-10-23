@@ -47,7 +47,6 @@ vi.mock('#worker/connection-profiles/repo.ts', () => ({
 }))
 
 const {
-	buildSkillResourcesListResult,
 	buildSkillsGetResult,
 	buildSkillsListResult,
 	loadCallerSkillsCatalog,
@@ -309,29 +308,6 @@ test('skills/get returns one skill and rejects unknown URIs with -32602', async 
 	})()
 	expect(failure).toBeInstanceOf(ProtocolError)
 	expect(failure).toMatchObject({ code: -32602 })
-})
-
-test('resources/list exposes every skill file, with the description on SKILL.md', async () => {
-	const own = savedPackage()
-	mocks.listOwn.mockResolvedValue([own])
-	mocks.readIndex.mockResolvedValue(await buildIndex(own))
-	const catalog = await loadCallerSkillsCatalog({ env, callerContext })
-
-	expect(buildSkillResourcesListResult(catalog).resources).toEqual([
-		{
-			uri: 'skill://owner/ship/ship-it/SKILL.md',
-			name: 'ship-it',
-			mimeType: 'text/markdown',
-			size: new TextEncoder().encode(skillMd).byteLength,
-			description: 'Ship the thing.',
-		},
-		{
-			uri: 'skill://owner/ship/ship-it/references/guide.md',
-			name: 'ship-it/references/guide.md',
-			mimeType: 'text/markdown',
-			size: referenceMd.length,
-		},
-	])
 })
 
 test('resources/read returns verified text content and rejects unknown URIs', async () => {

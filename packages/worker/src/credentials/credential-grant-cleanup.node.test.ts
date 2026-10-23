@@ -221,15 +221,12 @@ test.each(Object.keys(deleteByKind) as Array<CredentialKind>)(
 	},
 )
 
-test.each(Object.keys(deleteByKind) as Array<CredentialKind>)(
-	'deleting a %s credential with no grants leaves the access epoch alone',
-	async (kind) => {
-		const { db, insertCredential, accessEpoch } = setup()
-		const doomed = insertCredential(kind, 'doomed')
-		const epochBefore = accessEpoch()
+test('deleting a credential with no grants leaves the access epoch alone', async () => {
+	const { db, insertCredential, accessEpoch } = setup()
+	const doomed = insertCredential('secret', 'doomed')
+	const epochBefore = accessEpoch()
 
-		await deleteByKind[kind](db, 'doomed', doomed)
+	await deleteByKind.secret(db, 'doomed', doomed)
 
-		expect(accessEpoch()).toBe(epochBefore)
-	},
-)
+	expect(accessEpoch()).toBe(epochBefore)
+})

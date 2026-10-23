@@ -2,17 +2,13 @@ import {
 	ownerIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 const recordUsage = vi.hoisted(() => vi.fn(async () => undefined))
 
 vi.mock('./record-usage.ts', () => ({ recordUsage }))
 
 import { recordDynamicWorkerCpu } from './dynamic-worker-cpu.ts'
-
-beforeEach(() => {
-	recordUsage.mockClear()
-})
 
 const props = { userId: ownerIdFromStored('user-1'), workerId: 'dw_abc' }
 const usageEnv = { USAGE_EVENTS: { writeDataPoint() {} } }

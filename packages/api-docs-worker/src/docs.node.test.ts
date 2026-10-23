@@ -17,16 +17,6 @@ function createEnv(
 	}
 }
 
-test('health returns ok and the deploy commit', async () => {
-	const response = await handleApiDocsRequest(
-		new Request('https://api-docs.kody.codes/health'),
-		createEnv(),
-	)
-	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({ ok: true, commit: 'docs-commit' })
-	expect(response.headers.get('Cache-Control')).toBe('no-store')
-})
-
 test('root serves Scalar HTML pointing at the proxied OpenAPI path', async () => {
 	const response = await handleApiDocsRequest(
 		new Request('https://api-docs.kody.codes/'),

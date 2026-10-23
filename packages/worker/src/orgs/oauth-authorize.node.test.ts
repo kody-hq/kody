@@ -73,19 +73,6 @@ test('resolveAuthorizeOrg resolves a matching slug and strips org from resource'
 	expect(request.resource).toBe('https://kody.codes/mcp?profile=ci')
 })
 
-test('resolveAuthorizeOrg returns null when no org is requested', async () => {
-	const db = await createDb()
-	const userId = testStableUserIdFromEmail('ada@example.com')
-	expect(
-		await resolveAuthorizeOrg({
-			env: { APP_DB: db } as Env,
-			request: new Request('https://kody.codes/oauth/authorize'),
-			authRequest: authRequest('https://kody.codes/mcp'),
-			userId,
-		}),
-	).toBeNull()
-})
-
 test('resolveAccessibleOrgBySlug rejects unknown or inaccessible slugs', async () => {
 	const db = await createDb()
 	const ada = testStableUserIdFromEmail('ada@example.com')

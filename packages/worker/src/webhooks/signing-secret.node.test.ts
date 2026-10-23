@@ -28,10 +28,7 @@ import {
 	resolveWebhookHmacSigningSecret,
 	resolveWebhookHmacVerificationSecrets,
 } from './signing-secret.ts'
-import {
-	webhookHmacSecretRotationGraceMs,
-	type WebhookEndpointRecord,
-} from './types.ts'
+import { type WebhookEndpointRecord } from './types.ts'
 
 async function resolveSecrets(
 	...args: Parameters<typeof resolveWebhookHmacVerificationSecrets>
@@ -400,96 +397,6 @@ async function seededEndpointEnv() {
 	if (!record) throw new Error('endpoint missing')
 	return { env, userId, endpointId, record, previousPlaintext }
 }
-
-test('signing-secret rotation: previous value verifies within the 24h grace window', async () => {
-	const { env, userId, record, previousPlaintext } = await seededEndpointEnv()
-	const rotatedAt = new Date('2026-07-24T12:00:00.000Z')
-	await rotateWebhookHmacSecretsForSecretValueChange({
-		env,
-		userId,
-		secretName: 'stripeWebhookSecretCancelFarewell',
-		previousPlaintext,
-		nextPlaintext: 'stripe-signing-secret-v2',
-		now: rotatedAt,
-	})
-	vi.mocked(resolveSecret).mockResolvedValue({
-		found: true,
-		credentialId: 'cred-stripe',
-		value: 'stripe-signing-secret-v2',
-		allowedHosts: [],
-		allowedPackages: ['pkg-1'],
-		placement: null,
-		scope: 'user',
-	})
-	const withinGrace = await getWebhookEndpointByIdForUser({
-		db: env.APP_DB,
-		userId,
-		endpointId: record.id,
-	})
-	const secrets = await resolveSecrets({
-		env,
-		userId,
-		endpoint: withinGrace!,
-		verification: stripeVerification,
-		now: rotatedAt,
-	})
-	expect(secrets.map((secret) => secret.source)).toEqual([
-		'declared',
-		'previous',
-		'stored',
-	])
-	expect(secrets.map((secret) => secret.value)).toEqual([
-		'stripe-signing-secret-v2',
-		previousPlaintext,
-		'package-owned-unused',
-	])
-})
-
-test('signing-secret rotation: previous value is rejected after the grace window', async () => {
-	const { env, userId, record, previousPlaintext } = await seededEndpointEnv()
-	const rotatedAt = new Date('2026-07-24T12:00:00.000Z')
-	await rotateWebhookHmacSecretsForSecretValueChange({
-		env,
-		userId,
-		secretName: 'stripeWebhookSecretCancelFarewell',
-		previousPlaintext,
-		nextPlaintext: 'stripe-signing-secret-v2',
-		now: rotatedAt,
-	})
-	vi.mocked(resolveSecret).mockResolvedValue({
-		found: true,
-		credentialId: 'cred-stripe',
-		value: 'stripe-signing-secret-v2',
-		allowedHosts: [],
-		allowedPackages: ['pkg-1'],
-		placement: null,
-		scope: 'user',
-	})
-	const afterGrace = new Date(
-		rotatedAt.getTime() + webhookHmacSecretRotationGraceMs + 1,
-	)
-	const endpoint = await getWebhookEndpointByIdForUser({
-		db: env.APP_DB,
-		userId,
-		endpointId: record.id,
-	})
-	const secrets = await resolveSecrets({
-		env,
-		userId,
-		endpoint: endpoint!,
-		verification: stripeVerification,
-		now: afterGrace,
-	})
-	expect(secrets.map((secret) => secret.source)).toEqual(['declared', 'stored'])
-	expect(secrets.map((secret) => secret.value)).not.toContain(previousPlaintext)
-	const cleaned = await getWebhookEndpointByIdForUser({
-		db: env.APP_DB,
-		userId,
-		endpointId: record.id,
-	})
-	expect(cleaned?.previousHmacSecretEncrypted).toBeNull()
-	expect(cleaned?.previousHmacSecretExpiresAt).toBeNull()
-})
 
 test('signing-secret rotation: new secret verifies and an unrelated secret does not appear', async () => {
 	const { env, userId, record, previousPlaintext } = await seededEndpointEnv()

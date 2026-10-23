@@ -3,7 +3,6 @@ import {
 	getUsernameFormatValidationError,
 	getUsernameValidationError,
 	resolveDisplayName,
-	resolveStoredDisplayName,
 	usernameFromEmail,
 	usernameRequirements,
 } from './username.ts'
@@ -31,15 +30,4 @@ test('usernames are DNS labels: reject underscores, map email locals, fall back 
 	expect(
 		resolveDisplayName({ email: 'user@example.com', username: 'some_user' }),
 	).toBe('user')
-})
-
-test('resolveStoredDisplayName prefers non-empty trimmed display_name', () => {
-	expect(resolveStoredDisplayName('Kent C. Dodds', 'kentcdodds')).toBe(
-		'Kent C. Dodds',
-	)
-	expect(resolveStoredDisplayName('  Ada  ', 'ada')).toBe('Ada')
-	expect(resolveStoredDisplayName('', 'kentcdodds')).toBe('kentcdodds')
-	expect(resolveStoredDisplayName('   ', 'kentcdodds')).toBe('kentcdodds')
-	expect(resolveStoredDisplayName(null, 'kentcdodds')).toBe('kentcdodds')
-	expect(resolveStoredDisplayName(undefined, 'kentcdodds')).toBe('kentcdodds')
 })

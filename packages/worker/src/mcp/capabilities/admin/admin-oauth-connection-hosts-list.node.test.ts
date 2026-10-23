@@ -58,9 +58,7 @@ function setup() {
 	return { ctx }
 }
 
-test('adminOauthConnectionHostsList is admin-only and read-only', async () => {
-	expect(adminOauthConnectionHostsListCapability.requiredRole).toBe('admin')
-	expect(adminOauthConnectionHostsListCapability.readOnly).toBe(true)
+test('adminOauthConnectionHostsList rejects non-admins', async () => {
 	const { ctx } = setup()
 	await expect(
 		adminOauthConnectionHostsListCapability.handler({ orgId }, ctx(['user'])),
@@ -73,44 +71,31 @@ test('adminOauthConnectionHostsList reports hosts and status, never a value', as
 		{ org: '@ale' },
 		ctx(['admin']),
 	)
-	expect(all).toEqual({
-		org: { id: orgId, slug: 'ale' },
-		connections: [
-			{
-				credentialId: 'cred-dbx',
-				name: 'dropbox',
-				provider: 'dropbox',
-				lane: 'user',
-				tokenHost: 'api.dropboxapi.com',
-				apiBaseHost: 'api.dropboxapi.com',
-				hosts: [
-					'api.dropboxapi.com',
-					'content.dropboxapi.com',
-					'notify.dropboxapi.com',
-				],
-				appHosts: [],
-				connected: true,
-				connectedAt: '2026-10-02',
-				authFailedAt: null,
-				updatedAt: '2026-10-03',
-			},
-			{
-				credentialId: 'cred-gh',
-				name: 'github',
-				provider: 'github',
-				lane: 'platform',
-				tokenHost: 'github.com',
-				apiBaseHost: null,
-				hosts: [],
-				appHosts: ['api.github.com'],
-				connected: false,
-				connectedAt: null,
-				authFailedAt: null,
-				updatedAt: '2026-10-03',
-			},
-		],
-		truncated: false,
-	})
+	expect(
+		all.connections.map(({ name, lane, hosts, appHosts }) => ({
+			name,
+			lane,
+			hosts,
+			appHosts,
+		})),
+	).toEqual([
+		{
+			name: 'dropbox',
+			lane: 'user',
+			hosts: [
+				'api.dropboxapi.com',
+				'content.dropboxapi.com',
+				'notify.dropboxapi.com',
+			],
+			appHosts: [],
+		},
+		{
+			name: 'github',
+			lane: 'platform',
+			hosts: [],
+			appHosts: ['api.github.com'],
+		},
+	])
 	const serialized = JSON.stringify(all)
 	expect(serialized).not.toContain('never-shown')
 

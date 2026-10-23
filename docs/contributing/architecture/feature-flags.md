@@ -125,9 +125,8 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
 
 The registry ships with one permanent flag, `demo-indicator`, which renders a
 small badge in the app chrome and exists so the system stays exercised
-end-to-end (`e2e/admin-feature-flags.spec.ts`). Experiment flags live in the
-same registry and are removed in the same way: delete the definition and every
-gate site.
+end-to-end. Experiment flags live in the same registry and are removed in the
+same way: delete the definition and every gate site.
 
 `jev-search-rerank` is a kill switch (default **off**, registry
 `defaultAudience: experiments_opt_in`) for improved ranked MCP

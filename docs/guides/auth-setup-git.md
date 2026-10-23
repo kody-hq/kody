@@ -11,22 +11,23 @@ category: platform
 # Git credential helper contract (`kody auth setup-git`)
 
 This page is the **server contract** for the CLI `kody auth setup-git` command
-(implemented in `kody-bot/cli`). Persistent HTTPS auth like GitHub's credential
+(implemented in `packages/cli`). Persistent HTTPS auth like GitHub's credential
 helper: after one setup, clone/pull/push over plain
 `https://kody.codes/@owner/name.git` with no re-auth. SSH is out of scope.
 
-## Version detection
+## Origin requirements
 
-| Signal                                                                  | Meaning                                   |
-| ----------------------------------------------------------------------- | ----------------------------------------- |
-| Token metadata includes `org_binding` (`org` \| `user`)                 | User-owned tokens are live                |
-| New `cliCredentialBootstrap` redeems yield `org_binding: "user"`        | CLI tokens are person-owned               |
-| Origin `.git` accepts Basic/Bearer `kody_at_…` (no `gitCredentialMint`) | Persistent git auth is live (this design) |
+`kody auth setup-git` installs the helper only when the origin advertises
+user-owned tokens:
 
-If `org_binding` is absent on token metadata, the CLI must not install the
-helper against this origin (older deploy). Do **not** look for
-`gitCredentialMint` / `POST /v1/git/credentials` — that short-lived mint was
-removed.
+| Signal                                                       | Meaning                           |
+| ------------------------------------------------------------ | --------------------------------- |
+| Token metadata includes `org_binding` (`org` \| `user`)      | Origin supports user-owned tokens |
+| `cliCredentialBootstrap` redeems yield `org_binding: "user"` | CLI tokens are person-owned       |
+| Origin `.git` accepts Basic/Bearer `kody_at_…`               | Persistent git auth               |
+
+If `org_binding` is absent on token metadata, the CLI refuses to install the
+helper. There is no `gitCredentialMint` and no `POST /v1/git/credentials`.
 
 ## User-owned API tokens
 

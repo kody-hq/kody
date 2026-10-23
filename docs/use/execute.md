@@ -257,7 +257,8 @@ module-oriented runtime model:
 - Optional **`expires_at`** on `jobUpdate` stops the platform from scheduling
   the job after that UTC time. When expiry is reached, Kody auto-disables the
   job (`enabled=false`) so it shows as disabled in `jobList` / `jobGet` (with
-  `expired: true`).
+  `expired: true`). The scheduler also turns a recurring job off, and emails the
+  org owners, when it cannot compute the next run from the schedule.
 - **`kody.jobGet({ id, includeCode: true })`** returns the scheduled job
   inspection details plus the stored entrypoint path and source code
 - Remove a job by deleting it from `package.json#kody.jobs` and publishing the

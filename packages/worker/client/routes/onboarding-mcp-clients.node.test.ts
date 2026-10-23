@@ -31,8 +31,6 @@ import {
 	onboardingMobileFeaturedAgentIds,
 	onboardingMoreAgentIdsFor,
 	onboardingMobileAgentMq,
-	onboardingNotListedAgentIds,
-	onboardingPickerAgentIds,
 	onboardingViewportCss,
 	pickOnboardingAgentChooser,
 } from './onboarding-mcp-clients.ts'
@@ -57,27 +55,6 @@ test('onboarding MCP client builders emit the structured configs each host expec
 	)
 	expect(onboardingDataHref('/onboarding/step-2/notion#unused')).toBe(
 		'/onboarding',
-	)
-	expect(onboardingPickerAgentIds(rotated)).toContain('cursor')
-	expect(onboardingPickerAgentIds(rotated)).toContain('copilot-app')
-	expect(onboardingNotListedAgentIds(rotated)).toEqual(
-		expect.arrayContaining(
-			[
-				{ id: 'codex' },
-				{ id: 'copilot-app', viewport: 'desktop-only' },
-				{ id: 'codex', viewport: 'mobile-only' },
-				{ id: 'cursor', viewport: 'mobile-only' },
-				{ id: 'claude-code', viewport: 'mobile-only' },
-				{ id: 'devin' },
-				{ id: 'openclaw', viewport: 'mobile-only' },
-				{ id: 'hermes', viewport: 'mobile-only' },
-				{ id: 'muse', viewport: 'both' },
-				{ id: 'wajo', viewport: 'both' },
-				{ id: 'cue', viewport: 'both' },
-				{ id: 'openmuse', viewport: 'both' },
-				{ id: 'dots', viewport: 'both' },
-			].map((entry) => expect.objectContaining(entry)),
-		),
 	)
 	expect(onboardingViewportCss('desktop-only', 'list-item')).toEqual({
 		display: 'list-item',

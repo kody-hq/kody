@@ -643,6 +643,10 @@
 		{
 			"filename": "0174-credential-placement-origin-and-observations.sql",
 			"sha256": "c0901129de8b5e688c18a5a4ec47c6365ac9b98808d5177fb1088b62392cd089"
+		},
+		{
+			"filename": "0175-package-app-custom-hostname-auto-check.sql",
+			"sha256": "ed67d65abaabb9a59eb55cf8dc30cd1ff9ef479b7ad1b5eca235f5244f5da684"
 		}
 	]
 }

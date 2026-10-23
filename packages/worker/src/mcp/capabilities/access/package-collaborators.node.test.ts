@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	collaboratorCapabilityContext,
 	collaboratorPeople,
@@ -20,10 +20,8 @@ const {
 	packageCollaboratorSetCapability,
 } = await import('./package-collaborators.ts')
 
-let seed: PackageCollaboratorsSeed
-
-beforeEach(async () => {
-	seed = await seedPackageCollaborators()
+async function createSeed(): Promise<PackageCollaboratorsSeed> {
+	const seed = await seedPackageCollaborators()
 	mocks.resolveSavedPackage.mockReset()
 	mocks.resolveSavedPackage.mockImplementation(
 		async (input: { userId: string; packageIdOrKodyId: string }) =>
@@ -34,9 +32,11 @@ beforeEach(async () => {
 						savedPackage.kodyId === input.packageIdOrKodyId),
 			) ?? null,
 	)
-})
+	return seed
+}
 
 test('lists team, member, and outside collaborators', async () => {
+	const seed = await createSeed()
 	insertCollaboratorGrant(seed, {
 		id: 'grant-team',
 		packageId: 'pkg-1',
@@ -109,6 +109,7 @@ test('lists team, member, and outside collaborators', async () => {
 })
 
 test('an outside collaborator with Manage can list; Use cannot', async () => {
+	const seed = await createSeed()
 	insertCollaboratorGrant(seed, {
 		id: 'grant-dan',
 		packageId: 'pkg-1',
@@ -141,16 +142,7 @@ test('an outside collaborator with Manage can list; Use cannot', async () => {
 	).rejects.toThrow(/manage_access/)
 })
 
-test('an unknown package is not found', async () => {
-	await expect(
-		packageCollaboratorListCapability.handler(
-			{ package_id: 'missing' },
-			collaboratorCapabilityContext(seed, 'ada', 'owner'),
-		),
-	).rejects.toThrow('Package was not found in this organization.')
-})
-
-async function auditActions() {
+async function auditActions(seed: PackageCollaboratorsSeed) {
 	const rows = await seed.auditDb
 		.prepare(`SELECT action FROM org_audit_events ORDER BY created_at, rowid`)
 		.all<{ action: string }>()
@@ -158,6 +150,7 @@ async function auditActions() {
 }
 
 test('set adds a team and a member by slug and username, then changes a preset', async () => {
+	const seed = await createSeed()
 	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
 	const team = await packageCollaboratorSetCapability.handler(
 		{ package_id: 'demo-package', team_slug: 'design', preset: 'contribute' },
@@ -196,7 +189,7 @@ test('set adds a team and a member by slug and username, then changes a preset',
 		username: 'bob',
 		preset: 'use',
 	})
-	expect(await auditActions()).toEqual([
+	expect(await auditActions(seed)).toEqual([
 		'grant.created',
 		'grant.created',
 		'grant.updated',
@@ -205,6 +198,7 @@ test('set adds a team and a member by slug and username, then changes a preset',
 })
 
 test('set refuses people outside the org, owners, and ambiguous subjects', async () => {
+	const seed = await createSeed()
 	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
 	await expect(
 		packageCollaboratorSetCapability.handler(
@@ -235,10 +229,11 @@ test('set refuses people outside the org, owners, and ambiguous subjects', async
 			ctx,
 		),
 	).rejects.toThrow(/exactly one/)
-	expect(await auditActions()).toEqual([])
+	expect(await auditActions(seed)).toEqual([])
 })
 
 test('set and remove need manage access on the package', async () => {
+	const seed = await createSeed()
 	insertCollaboratorGrant(seed, {
 		id: 'grant-bob',
 		packageId: 'pkg-1',
@@ -262,6 +257,7 @@ test('set and remove need manage access on the package', async () => {
 })
 
 test('remove revokes a grant on this package only', async () => {
+	const seed = await createSeed()
 	insertCollaboratorGrant(seed, {
 		id: 'grant-dan',
 		packageId: 'pkg-1',
@@ -294,5 +290,5 @@ test('remove revokes a grant on this package only', async () => {
 		ctx,
 	)
 	expect(listed.collaborators).toEqual([])
-	expect(await auditActions()).toEqual(['grant.revoked'])
+	expect(await auditActions(seed)).toEqual(['grant.revoked'])
 })

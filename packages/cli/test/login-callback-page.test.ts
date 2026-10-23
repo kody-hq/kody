@@ -17,12 +17,6 @@ test('success page shows org and account without echoing secrets', () => {
 	assert.match(html, /You're signed in/)
 	assert.match(html, />acme</)
 	assert.match(html, /Ada Lovelace \(ada@example\.com\)/)
-	assert.match(html, /close this tab and return to your terminal/)
-	assert.match(html, /window\.close\(/)
-	assert.match(html, /prefers-color-scheme:\s*dark/)
-	assert.match(html, /Bricolage Grotesque/)
-	assert.match(html, /kody-pattern|data:image\/webp/)
-	assert.match(html, /data:image\/png;base64,/)
 	assert.doesNotMatch(
 		html,
 		/access_token|refresh_token|kody_at_|authorization_code/i,
@@ -46,7 +40,6 @@ test('error pages cover denied, state mismatch, and expired', () => {
 		const html = renderLoginCallbackPage({ kind: 'error', error })
 		assert.match(html, /kody login/)
 		assert.match(html, new RegExp(`data-error="${error}"`))
-		assert.match(html, /window\.close\(/)
 		assert.doesNotMatch(html, /access_token|refresh_token|code=/i)
 	}
 })

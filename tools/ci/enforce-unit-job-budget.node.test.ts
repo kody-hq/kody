@@ -130,16 +130,20 @@ test('unit job budgets warn at watch and fail only past the hard ceiling', () =>
 	)
 	// ADR 0011: retry must not disable per-file isolation or skip verify.
 	const workersUnitStep = workflow.match(
-		/- name: ☁️ Workers unit tests\n([\s\S]*?)\n\n\s+- name: ⏱️ Unit job budget/,
+		/- name: ☁️ Workers unit tests\n([\s\S]*?)\n\n\s+- name: ⏱️ Unit shard budget/,
 	)?.[1]
 	expect(workersUnitStep).toBeTruthy()
 	expect(workersUnitStep).not.toContain('--no-isolate')
 	expect(workersUnitStep).not.toContain('--no-verify')
 	expect(workersUnitStep).not.toContain('setupFiles')
 	expect(workflow).toMatch(
-		/name: ☁️ Workers\n\s+# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 30/,
+		/name: ☁️ Workers \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?# Room for one ≤780s attempt[\s\S]*?timeout-minutes: 30/,
 	)
-	expect(workflow).toMatch(/name: 🧪 Node\n\s+timeout-minutes: 15/)
+	expect(workflow).toMatch(
+		/name: 🧪 Node \(\$\{\{ matrix.shard \}\}\/2\)[\s\S]*?timeout-minutes: 15/,
+	)
+	expect(workflow).toContain('Unit shard budget (watch 700s / hard 840s)')
+	expect(workflow).toContain('Unit shard budget (watch 620s / hard 780s)')
 
 	process.exitCode = undefined
 	main([

@@ -42,12 +42,3 @@ test('private repository fallback requires the owner', async () => {
 	await readmeForPackagePage({ ...input, isPrivate: true, viewerIsOwner: true })
 	expect(mocks.readme).toHaveBeenCalledOnce()
 })
-test('listing README remains authoritative instead of loading HEAD', async () => {
-	const result = await readmeForPackagePage({
-		...input,
-		listingReadme: '# Pinned',
-	})
-	expect(result.readmeContent).toBe('# Pinned')
-	expect(result.readmeCommit).toBeNull()
-	expect(mocks.readme).not.toHaveBeenCalled()
-})

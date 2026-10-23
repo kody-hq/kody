@@ -25,6 +25,12 @@ export type PackageAppCustomHostnameRow = {
 	dnsMissingSince: string | null
 	ownershipVerification: PackageAppCustomHostnameDnsRecord | null
 	sslValidationRecords: Array<PackageAppCustomHostnameDnsRecord>
+	/** Cloudflare's latest reasons the hostname is not active yet. */
+	verificationErrors: Array<string>
+	/** Anchor for the automatic re-check backoff; null falls back to createdAt. */
+	checkWindowStartedAt: string | null
+	/** Set when Kody stopped re-checking because the window ran out. */
+	needsAttentionAt: string | null
 	createdByUserId: string | null
 	createdAt: string
 	updatedAt: string

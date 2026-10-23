@@ -459,6 +459,11 @@ If the keychain is unavailable (common on headless Linux), the CLI writes a
 `0600` file under `$XDG_CONFIG_HOME/kody` (or `%APPDATA%\kody` on Windows,
 `~/Library/Application Support/kody` on macOS). Tokens are never printed.
 
+`kody login` checks that this folder exists and is writable (creating it when
+missing) before it opens the browser. If the folder is blocked, login stops
+early and prints the folder path plus the commands to fix it. The sign-in link
+is always printed too, so you can paste it into a browser if no window appears.
+
 Access tokens refresh automatically on expiry or HTTP 401.
 
 `execute --local` prefers `--token` / `KODY_API_TOKEN` when set; otherwise it

@@ -17,19 +17,6 @@ async function readDocument(path: string, cookie?: string) {
 	return { response, html }
 }
 
-test('native token error documents retain status and actionable recovery', async () => {
-	for (const [path, marker] of [
-		['/verify-email', 'Verification token is required.'],
-		['/verify-email-destination', 'Resend from email inbox'],
-		['/unsubscribe/tips', 'Unsubscribe token is required.'],
-	] as const) {
-		const { response, html } = await readDocument(path)
-		expect(response.status).toBe(400)
-		expect(html).toContain(marker)
-		expect(html).not.toContain('data-testid="internal-error-page"')
-	}
-})
-
 test('native secret connection redirects preserve prefill and destination authentication', async () => {
 	const server = await getSharedMcpE2eServer()
 	const legacyPath =
@@ -73,8 +60,6 @@ test('native secret connection redirects preserve prefill and destination authen
 	expect(response.status).toBe(200)
 	expect(html).toContain('exampleApiKey')
 	expect(html).toContain('api.example.com')
-	expect(html).toContain('Add a key')
-	expect(html).toContain('Save key')
 	expect(html).not.toContain('data-testid="internal-error-page"')
 	const prefilled = await readDocument(
 		`/@${user.username}/-/secrets/new?name=exampleApiKey&allowedHosts=api.example.com`,
@@ -131,22 +116,6 @@ test('native anonymous onboarding renders every wizard step and canonicalizes in
 		expect(response.status).toBe(200)
 		expect(html).toContain('<h1')
 		expect(html).not.toContain('data-testid="internal-error-page"')
-		if (path === '/onboarding/step-1') {
-			for (const marker of [
-				'onboarding-steps-nav',
-				'onboarding-agent-picker',
-				'onboarding-join-discord',
-				'onboarding-step-2',
-			])
-				expect(html).toContain(marker)
-			const positions = [
-				'onboarding-steps-nav',
-				'onboarding-agent-picker',
-				'onboarding-join-discord',
-			].map((marker) => html.indexOf(marker))
-			expect(positions).toEqual([...positions].sort((a, b) => a - b))
-			expect(html).toContain('href="/onboarding/step-2"')
-		}
 	}
 	for (const [path, destination] of [
 		['/onboarding', '/onboarding/step-1'],

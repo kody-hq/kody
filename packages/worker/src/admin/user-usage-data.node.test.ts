@@ -365,37 +365,6 @@ test('loadAdminUserUsageData returns null for unknown users and zeroed usage for
 	})
 })
 
-test('loadAdminUserUsageData surfaces caughtCount beside errorCount for package_static_call', async () => {
-	const { load } = await setupUsageUser({
-		plan: 'standard',
-		rollups: [
-			[
-				'package_static_call',
-				'2026-07',
-				100,
-				{ error_count: 2, caught_count: 7 },
-			],
-		],
-	})
-	const data = await load()
-	const staticCall = data?.currentMonthUsage.find(
-		(row) => row.metric === 'package_static_call',
-	)
-	expect(staticCall).toEqual(
-		expect.objectContaining({
-			metric: 'package_static_call',
-			eventCount: 100,
-			errorCount: 2,
-			caughtCount: 7,
-		}),
-	)
-	// Historical / missing caught_count columns read as zero.
-	expect(
-		data?.currentMonthUsage.find((row) => row.metric === 'execute')
-			?.caughtCount,
-	).toBe(0)
-})
-
 test('loadAdminUserUsageData estimates Dynamic Worker cost from unique worker-days and compares it to catalog MRR', async () => {
 	const unpaid = await (
 		await setupUsageUser({

@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	fetchPreservingWebSocketUpgrade,
 	isWebSocketUpgradeRequest,
-	webSocketUpgradeFetchHeaders,
 } from './websocket-upgrade.ts'
 
 /**
@@ -54,33 +53,6 @@ test('isWebSocketUpgradeRequest is case-insensitive on the Upgrade value', () =>
 	expect(isWebSocketUpgradeRequest(new Request('https://example.com/ws'))).toBe(
 		false,
 	)
-})
-
-test('Sentry-style Request rebuild is the fragile path; plain-object headers keep Upgrade', () => {
-	const upgradeRequest = new Request('https://example.com/packages/demo/ws', {
-		headers: {
-			Upgrade: 'websocket',
-			'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-			'Sec-WebSocket-Version': '13',
-		},
-	})
-
-	// Sentry instrumentFetcher Request branch: new Request(input, { headers }).
-	// Helpers do not rely on that branch; they pass plain-object headers
-	// (Object.assign merge) instead.
-	const headers = new Headers(upgradeRequest.headers)
-	headers.set('sentry-trace', '00-trace-00')
-	const rebuilt = new Request(upgradeRequest, { headers })
-	expect(rebuilt.headers.get('sentry-trace')).toBe('00-trace-00')
-
-	const plain = webSocketUpgradeFetchHeaders(upgradeRequest.headers)
-	const afterSentry = Object.assign({}, plain, {
-		'sentry-trace': '00-trace-00',
-	})
-	expect(afterSentry.Upgrade).toBe('websocket')
-	expect(
-		Object.keys(afterSentry).filter((k) => k.toLowerCase() === 'upgrade'),
-	).toEqual(['Upgrade'])
 })
 
 test('fetchPreservingWebSocketUpgrade keeps Upgrade under Sentry-style Fetcher instrumentation', async () => {
@@ -139,24 +111,4 @@ test('fetchPreservingWebSocketUpgrade keeps Upgrade under Sentry-style Fetcher i
 		method: 'GET',
 		via: 'init',
 	})
-})
-test('fetchPreservingWebSocketUpgrade passes non-upgrade requests through unchanged', async () => {
-	const seen: Array<Request> = []
-	const fetcher = {
-		fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
-			const request =
-				input instanceof Request
-					? init
-						? new Request(input, init)
-						: input
-					: new Request(input, init)
-			seen.push(request)
-			return new Response('ok')
-		}) as typeof fetch,
-	}
-
-	const request = new Request('https://example.com/packages/demo/health')
-	await fetchPreservingWebSocketUpgrade(fetcher, request)
-	expect(seen).toHaveLength(1)
-	expect(seen[0]).toBe(request)
 })

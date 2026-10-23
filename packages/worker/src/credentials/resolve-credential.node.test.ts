@@ -50,6 +50,14 @@ import {
 	resolveCredential,
 } from './resolve-credential.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 const scheduledAudits = vi.hoisted(() => [] as Array<Promise<unknown>>)
 
 vi.mock('cloudflare:workers', async (importOriginal) => ({

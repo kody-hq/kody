@@ -1605,8 +1605,8 @@ test('dashboard day counts survive the 2000-run cap across several UTC days', as
 	const userId = uniqueUserId('dashboard-cap')
 	const now = new Date('2026-10-22T18:00:00.000Z')
 	const windowStart = new Date('2026-10-16T00:00:00.000Z')
-	const perDay = 350
 	const dayCount = 7
+	const perDay = Math.floor(runRecordMaxRunsPerUser / dayCount) + 1
 	const totalCounted = perDay * dayCount
 	expect(totalCounted).toBeGreaterThan(runRecordMaxRunsPerUser)
 
@@ -1676,8 +1676,8 @@ test('dashboard day counts survive the 2000-run cap across several UTC days', as
 	for (const day of charts.days) {
 		expect(day.success + day.error).toBe(perDay)
 		expect(day.running).toBe(0)
-		expect(day.error).toBe(7)
-		expect(day.success).toBe(343)
+		expect(day.error).toBe(Math.ceil(perDay / 50))
+		expect(day.success).toBe(perDay - Math.ceil(perDay / 50))
 	}
 	expect(charts.sources).toEqual([{ surface: 'execute', count: totalCounted }])
 	// Cap survival does not imply a warm migration floor.

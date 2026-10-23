@@ -49,7 +49,7 @@ export function isIntegrationAuthFailureReason(
 	)
 }
 
-export function humanizeConnectionName(name: string) {
+function humanizeConnectionName(name: string) {
 	const trimmed = name.trim()
 	if (!trimmed) return 'This connection'
 	return trimmed

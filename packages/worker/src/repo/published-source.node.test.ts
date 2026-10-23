@@ -122,16 +122,6 @@ test('loadPublishedEntityManifest reads only manifest content from stored snapsh
 	})
 })
 
-test('loadPublishedEntityManifest ignores leftover kody.app.runtime on published snapshots', async () => {
-	mockManifestSnapshot(
-		manifestJson({ app: { runtime: 'remix', entry: './app/router.ts' } }),
-	)
-
-	const manifest = await loadPublishedEntityManifest(loadInput)
-
-	expect(manifest.manifest.kody.app).toEqual({ entry: './app/router.ts' })
-})
-
 test('loadPublishedEntitySource persists fetched snapshots for later reuse', async () => {
 	mockModule.getEntitySourceById.mockResolvedValue(createSourceRow())
 	mockModule.loadPublishedSourceSnapshot.mockResolvedValue(null)

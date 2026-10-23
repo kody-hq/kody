@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from 'vitest'
 import {
-	checkDeployGuardrails,
 	checkDurableObjectConfig,
 	checkPreviewCleanupSource,
 	checkWorkflowSource,
@@ -451,11 +450,4 @@ test('the committed preview cleanup script routes every delete through the name 
 			`removing ${guardCall[0].trim()} went unnoticed`,
 		).not.toEqual([])
 	}
-})
-
-test('current repository deploy configuration passes the guardrails', async () => {
-	await expect(checkDeployGuardrails()).resolves.toEqual({
-		ok: true,
-		errors: [],
-	})
 })

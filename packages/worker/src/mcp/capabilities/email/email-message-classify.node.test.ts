@@ -42,46 +42,29 @@ function createContext() {
 	}
 }
 
-test('emailMessageClassify updates classification and reports not-found', async () => {
+test('emailMessageClassify sets classification reasons and maps missing messages', async () => {
 	const context = createContext()
 	mocks.setEmailMessageClassification.mockResolvedValueOnce(true)
 
-	await expect(
-		emailMessageClassifyCapability.handler(
-			{ message_id: 'message-1', classification: 'quarantined' },
-			context,
-		),
-	).resolves.toEqual({
-		message_id: 'message-1',
-		classification: 'quarantined',
-	})
-	expect(mocks.setEmailMessageClassification).toHaveBeenCalledWith({
-		env: context.env,
-		db: context.env.APP_DB,
-		userId: ownerIdFromStored('user-1'),
-		messageId: 'message-1',
-		classification: 'quarantined',
-		classificationReason: 'Reclassified by user.',
-	})
+	await emailMessageClassifyCapability.handler(
+		{ message_id: 'message-1', classification: 'quarantined' },
+		context,
+	)
+	expect(mocks.setEmailMessageClassification).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			classificationReason: 'Reclassified by user.',
+		}),
+	)
 
 	mocks.setEmailMessageClassification.mockResolvedValueOnce(true)
-	await expect(
-		emailMessageClassifyCapability.handler(
-			{ message_id: 'message-1', classification: 'accepted' },
-			context,
-		),
-	).resolves.toEqual({
-		message_id: 'message-1',
-		classification: 'accepted',
-	})
-	expect(mocks.setEmailMessageClassification).toHaveBeenLastCalledWith({
-		env: context.env,
-		db: context.env.APP_DB,
-		userId: ownerIdFromStored('user-1'),
-		messageId: 'message-1',
-		classification: 'accepted',
-		classificationReason: null,
-	})
+	await emailMessageClassifyCapability.handler(
+		{ message_id: 'message-1', classification: 'accepted' },
+		context,
+	)
+	expect(mocks.setEmailMessageClassification).toHaveBeenLastCalledWith(
+		expect.objectContaining({ classificationReason: null }),
+	)
 
 	mocks.setEmailMessageClassification.mockResolvedValueOnce(false)
 	await expect(

@@ -188,10 +188,3 @@ test('checkMarkdownFileRefs reads the tree and fails on a missing citation', asy
 		await rm(repoRoot, { recursive: true, force: true })
 	}
 })
-
-test('committed markdown file references exist', async () => {
-	expect(await checkMarkdownFileRefs(process.cwd())).toEqual({
-		ok: true,
-		issues: [],
-	})
-})

@@ -1556,6 +1556,10 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           APP_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
+          # Workers are already live; keep sourcemap upstream blips visible
+          # via ::warning:: / step summary instead of failing the job and
+          # skipping API/status siblings (#4116).
+          SENTRY_UPLOAD_SOFT_FAIL: '1'
         run: |
           set -euo pipefail
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then

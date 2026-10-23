@@ -7,11 +7,7 @@ import {
 	buildCredentialAllowedPackagesPublishWarningNotice,
 	buildCredentialAllowedPackagesPublishWarnings,
 	collectLiteralUserSecretNames,
-	credentialAllowedPackagesEnforcementDate,
 	filesForPackageSourceRoot,
-	formatAllowedPackagesList,
-	formatCredentialAllowedPackagesPublishWarning,
-	resolveAllowedPackagesListEntries,
 } from './credential-allowed-packages-publish-warning.ts'
 import { scanPackageCredentials } from './credential-inventory-scan.ts'
 
@@ -97,52 +93,6 @@ function seedEnv(input: {
 		sqlite,
 	}
 }
-
-test('formatAllowedPackagesList labels real packages and non-id entries', () => {
-	expect(
-		formatAllowedPackagesList([
-			{ kind: 'package', id: 'pkg-notes', displayName: '@owner/notes' },
-			{ kind: 'not-a-package-id', value: '@someone/pkg' },
-		]),
-	).toBe('@owner/notes, @someone/pkg (not a package id; fix the list)')
-})
-
-test('formatCredentialAllowedPackagesPublishWarning uses the Oct 21 enforcement wording', () => {
-	const message = formatCredentialAllowedPackagesPublishWarning({
-		credentialName: 'RESEND_API_KEY',
-		allowedEntries: [
-			{ kind: 'package', id: 'pkg-notes', displayName: '@owner/notes' },
-		],
-		packageDisplayName: '@owner/demo',
-		approvalUrl:
-			'https://kody.codes/@owner/-/secrets/user/RESEND_API_KEY?package_id=pkg-demo&package=demo',
-	})
-	expect(message).toContain('Credential "RESEND_API_KEY"')
-	expect(message).toContain('allowed only for @owner/notes, not @owner/demo')
-	expect(message).toContain(credentialAllowedPackagesEnforcementDate)
-	expect(message).toContain(
-		'through another package or loaded in a one-off execute',
-	)
-	expect(message).toContain(
-		'https://kody.codes/@owner/-/secrets/user/RESEND_API_KEY?package_id=pkg-demo&package=demo',
-	)
-	expect(message).not.toMatch(/cipher|value|password/i)
-})
-
-test('resolveAllowedPackagesListEntries marks missing ids', () => {
-	const packagesById = new Map([
-		['pkg-notes', { id: 'pkg-notes', name: '@owner/notes', kodyId: 'notes' }],
-	])
-	expect(
-		resolveAllowedPackagesListEntries({
-			allowedPackages: ['pkg-notes', '@someone/pkg'],
-			packagesById,
-		}),
-	).toEqual([
-		{ kind: 'package', id: 'pkg-notes', displayName: '@owner/notes' },
-		{ kind: 'not-a-package-id', value: '@someone/pkg' },
-	])
-})
 
 test('collectLiteralUserSecretNames skips package/session scopes and integrations', () => {
 	const scan = scanPackageCredentials({
@@ -343,58 +293,6 @@ function seedDualSecretEnv() {
 	} as Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 }
 
-test('builder strips nested repo-rooted trees and ignores sibling fills', async () => {
-	const env = seedDualSecretEnv()
-	const repoFiles = {
-		'packages/demo/package.json': JSON.stringify({
-			name: '@owner/demo',
-			exports: { '.': './src/index.ts' },
-			kody: {
-				id: 'demo',
-				description: 'Demo package.',
-				credentials: {
-					DEMO_KEY: {
-						kind: 'secret',
-						provider: 'resend',
-						description: 'Demo key.',
-					},
-				},
-			},
-		}),
-		'packages/demo/src/index.ts':
-			"export const h = { Authorization: 'Bearer {{secret:DEMO_KEY}}' }\n",
-		'packages/other/src/index.ts': "export const y = '{{secret:OTHER_KEY}}'\n",
-	}
-	const scoped = await buildCredentialAllowedPackagesPublishWarnings({
-		env,
-		baseUrl,
-		userId,
-		packageId: 'pkg-demo',
-		packageDisplayName: '@owner/demo',
-		kodyId: 'demo',
-		files: repoFiles,
-		sourceRoot: 'packages/demo',
-	})
-	expect(scoped.map((warning) => warning.credentialName)).toEqual(['DEMO_KEY'])
-})
-
-test('builder warns on already-stripped package trees when sourceRoot is omitted', async () => {
-	const env = seedDualSecretEnv()
-	const packageRelative = packageFiles('DEMO_KEY')
-	const warnings = await buildCredentialAllowedPackagesPublishWarnings({
-		env,
-		baseUrl,
-		userId,
-		packageId: 'pkg-demo',
-		packageDisplayName: '@owner/demo',
-		kodyId: 'demo',
-		files: packageRelative,
-	})
-	expect(warnings.map((warning) => warning.credentialName)).toEqual([
-		'DEMO_KEY',
-	])
-})
-
 test('builder ignores siblings in monorepo trees that include a root package.json', async () => {
 	const env = seedDualSecretEnv()
 	const monorepo = {
@@ -431,39 +329,4 @@ test('builder ignores siblings in monorepo trees that include a root package.jso
 	expect(warnings.map((warning) => warning.credentialName)).toEqual([
 		'DEMO_KEY',
 	])
-})
-
-test('publish-flow notice appears while the save/publish path stays non-blocking', async () => {
-	const { env } = seedEnv({
-		allowedPackages: ['pkg-notes'],
-		packages: [
-			{ id: 'pkg-demo', name: '@owner/demo', kodyId: 'demo' },
-			{ id: 'pkg-notes', name: '@owner/notes', kodyId: 'notes' },
-		],
-	})
-	const notice = await buildCredentialAllowedPackagesPublishWarningNotice({
-		env,
-		baseUrl,
-		userId,
-		packageId: 'pkg-demo',
-		packageDisplayName: '@owner/demo',
-		kodyId: 'demo',
-		files: packageFiles('RESEND_API_KEY'),
-	})
-	expect(notice).toContain('Credential "RESEND_API_KEY"')
-	expect(notice).toContain('@owner/notes')
-	expect(notice).toContain('not @owner/demo')
-	expect(notice).toContain(credentialAllowedPackagesEnforcementDate)
-	expect(notice).toContain('package_id=pkg-demo')
-
-	const { buildPackageSaveNextSteps } =
-		await import('#mcp/capabilities/packages/save-package.ts')
-	const nextSteps = buildPackageSaveNextSteps({
-		packageId: 'pkg-demo',
-		allowedPackagesPublishNotice: notice,
-	})
-	expect(nextSteps).toContain('packageGetGitRemote')
-	expect(nextSteps).toContain('Credential "RESEND_API_KEY"')
-	// The notice is appended; save/publish still return success with next_steps.
-	expect(nextSteps.startsWith('Coding agents')).toBe(true)
 })

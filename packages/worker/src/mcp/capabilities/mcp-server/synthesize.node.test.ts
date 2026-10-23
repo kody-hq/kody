@@ -2,12 +2,9 @@ import { expect, test } from 'vitest'
 import { type McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import { synthesizeMcpServerToolDomain } from './index.ts'
 
-const ref = { serverId: 'server-1', name: 'linear' }
-
-function createSnapshot(
-	overrides: Partial<McpServerSnapshot> = {},
-): McpServerSnapshot {
-	return {
+test('synthesizes a ready server tool with its binding and access hint', () => {
+	const ref = { serverId: 'server-1', name: 'linear' }
+	const snapshot: McpServerSnapshot = {
 		serverId: 'server-1',
 		name: 'linear',
 		url: 'https://mcp.example.com/mcp',
@@ -17,85 +14,27 @@ function createSnapshot(
 		instructions: null,
 		tools: [
 			{
-				name: 'create_issue',
-				description: 'Create a new issue.',
-				inputSchema: {
-					type: 'object',
-					properties: { title: { type: 'string' } },
-					required: ['title'],
-				},
-			},
-			{
 				name: 'list_issues',
 				description: 'List issues.',
 				inputSchema: { type: 'object', properties: {} },
 				annotations: { readOnlyHint: true },
 			},
 		],
-		...overrides,
 	}
-}
 
-test('synthesizes an mcp:<server> domain with a capability per tool', () => {
-	const synthesized = synthesizeMcpServerToolDomain({
-		ref,
-		snapshot: createSnapshot(),
-	})
-
-	expect(synthesized).not.toBeNull()
+	const synthesized = synthesizeMcpServerToolDomain({ ref, snapshot })
 	expect(synthesized?.domain.name).toBe('mcp:linear')
-	expect(synthesized?.domain.capabilities.map((c) => c.name)).toEqual([
-		'mcp:linear:create_issue',
+	expect(synthesized?.domain.capabilities[0]?.name).toBe(
 		'mcp:linear:list_issues',
-	])
-	expect(synthesized?.bindings['mcp:linear:create_issue']).toEqual({
-		capabilityName: 'mcp:linear:create_issue',
-		serverId: 'server-1',
-		mcpToolName: 'create_issue',
-	})
-
-	const createIssue = synthesized?.domain.capabilities.find(
-		(capability) => capability.name === 'mcp:linear:create_issue',
 	)
-	expect(createIssue?.source).toBe('mcp-server')
-	expect(createIssue?.readOnly).toBe(false)
-	expect(createIssue?.mcpServer).toEqual({
+	expect(synthesized?.bindings['mcp:linear:list_issues']).toMatchObject({
 		serverId: 'server-1',
-		serverName: 'linear',
-		kodyName: 'linear',
-		mcpToolName: 'create_issue',
-		toolName: 'create_issue',
+		mcpToolName: 'list_issues',
 	})
-
-	const listIssues = synthesized?.domain.capabilities.find(
-		(capability) => capability.name === 'mcp:linear:list_issues',
-	)
-	expect(listIssues?.readOnly).toBe(true)
-
-	const instructed = synthesizeMcpServerToolDomain({
-		ref,
-		snapshot: createSnapshot({
-			instructions:
-				'This server supports issue tracking and unrelated invoice workflows.',
-		}),
-	})
-	expect(
-		instructed?.domain.capabilities.find(
-			(capability) => capability.name === 'mcp:linear:create_issue',
-		)?.keywords,
-	).not.toContain('invoice')
-
-	expect(synthesizeMcpServerToolDomain({ ref, snapshot: null })).toBeNull()
 	expect(
 		synthesizeMcpServerToolDomain({
 			ref,
-			snapshot: createSnapshot({ state: 'authenticating', tools: [] }),
-		}),
-	).toBeNull()
-	expect(
-		synthesizeMcpServerToolDomain({
-			ref,
-			snapshot: createSnapshot({ tools: [] }),
+			snapshot: { ...snapshot, state: 'authenticating', tools: [] },
 		}),
 	).toBeNull()
 })

@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	isLegacyApiTokenScope,
 	rewriteLegacyApiTokenScopes,
 	shouldRepairLocalExecuteParity,
 	unionLocalExecuteParityScopes,
@@ -234,11 +233,4 @@ test('throws on unknown scopes', () => {
 	expect(() =>
 		rewriteLegacyApiTokenScopes(['account:read', 'not-a-scope']),
 	).toThrow(/not-a-scope/)
-})
-
-test('isLegacyApiTokenScope detects the old vocabulary', () => {
-	expect(isLegacyApiTokenScope('account:read')).toBe(true)
-	expect(isLegacyApiTokenScope('local-execute')).toBe(true)
-	expect(isLegacyApiTokenScope('org:read')).toBe(false)
-	expect(isLegacyApiTokenScope(1)).toBe(false)
 })

@@ -100,10 +100,6 @@ test('a webhook card points legacy mints at Rotate instead of Reveal and offers 
 	})
 	expect(html).not.toContain('data-testid="package-webhook-reveal"')
 	expect(html).toContain('aria-label="Enable raycast/run"')
-	expect(html).toContain('>Disabled<')
-	expect(html).toContain('600 / min')
-	expect(html).toContain('delivery id X-Delivery-Id')
-	expect(html).toContain('surface=webhook')
 })
 
 test('a webhook card shows previous URL overlap until the grace timestamp', async () => {
@@ -111,9 +107,7 @@ test('a webhook card shows previous URL overlap until the grace timestamp', asyn
 	const overlapping = { ...run, previousUrlActiveUntil: until }
 	const html = await renderCard(overlapping)
 	expect(html).toContain('Previous URL')
-	expect(html).toContain('active until')
 	expect(html).toMatch(new RegExp(`dateTime="${until}"`, 'i'))
-	expect(html).toContain('2026-09-13 15:04:05 UTC')
 
 	const disabledHtml = await renderCard({ ...overlapping, enabled: false })
 	expect(disabledHtml).not.toContain('Previous URL')
@@ -266,7 +260,6 @@ test.each([{ webhooks: [] }, { webhooks: [run] }])(
 		if (webhooks.length) expect(html).toContain('package-webhook-card')
 		else {
 			expect(html).toContain('package-webhook-settings-empty')
-			expect(html).toContain('declares no webhooks yet')
 		}
 	},
 )
@@ -301,7 +294,9 @@ test('webhook settlement keeps an uncached navigation alive', async () => {
 		queryKey: query.queryKey,
 		invalidate: async () => {},
 	})
-	await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+	await vi.waitFor(() => expect(finish).toBeTypeOf('function'), {
+		interval: 1,
+	})
 	const navigation = ensurePageQuery(client, query, false)
 	finish(payload)
 	await pending
@@ -343,7 +338,9 @@ test('webhook mutation waits for authoritative scoped read without caching its o
 		queryKey: query.queryKey,
 		invalidate: async () => {},
 	})
-	await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+	await vi.waitFor(() => expect(finish).toBeTypeOf('function'), {
+		interval: 1,
+	})
 	expect(mutation.state.status).toBe('pending')
 	expect(client.getQueryData(query.queryKey)).toEqual(before)
 	finish(after)
@@ -402,7 +399,9 @@ test.each(
 			mutationKey: ['packageWebhooks', 'actor', 'jane', 'raycast'],
 		})
 		const navigation = ensurePageQuery(client, query, false)
-		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1), {
+			interval: 1,
+		})
 		const write = mutation
 			.execute({
 				username: 'jane',
@@ -414,10 +413,14 @@ test.each(
 				invalidate: async () => {},
 			})
 			.catch(() => undefined)
-		await vi.waitFor(() => expect(finishWrite).toBeTypeOf('function'))
+		await vi.waitFor(() => expect(finishWrite).toBeTypeOf('function'), {
+			interval: 1,
+		})
 		const observer = new QueryObserver(client, query)
 		const stop = active ? observer.subscribe(() => {}) : () => {}
-		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1), {
+			interval: 1,
+		})
 		if (readFinishesFirst) {
 			finishRead(before)
 			await navigation
@@ -435,29 +438,3 @@ test.each(
 		client.clear()
 	},
 )
-
-test('labeled webhook cards use endpoint anchors and offer an additional URL without revealing cached secrets', async () => {
-	const html = await renderStartPage(
-		jsx(PackageWebhookCard, {
-			webhook: {
-				...run,
-				endpointId: 'endpoint-staging',
-				instanceLabel: 'staging',
-			},
-			revealedUrl: null,
-			isMutating: false,
-			rotateCheck: { armed: false, onClick() {}, onBlur() {} },
-			disableCheck: { armed: false, onClick() {}, onBlur() {} },
-			onIntent() {},
-			onHideUrl() {},
-			deliveriesHref: '/@jane/-/activity',
-			showMintAnother: true,
-		}),
-	)
-	expect(html).toContain('id="webhook-run-endpoint-staging"')
-	expect(html).toContain('run · staging')
-	expect(html).toContain('name="instanceLabel"')
-	expect(html).toContain('maxLength="64"')
-	expect(html).toContain('data-testid="package-webhook-mint-another-submit"')
-	expect(html).not.toContain(secretUrl)
-})

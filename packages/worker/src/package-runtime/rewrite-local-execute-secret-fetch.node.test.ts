@@ -76,22 +76,6 @@ const SECRET = '{{secret:demoToken|scope=user}}';
 	expect(injected.source).toMatch(/const fetch = globalThis\.fetch/)
 })
 
-test('injectLocalExecuteGatewayFetchBinding is idempotent when gateway fetch is already bound', () => {
-	const source = `import { __kodyCreatePackageBoundGatewayFetch, __kodySecretRef } from "../../.__kody_virtual__/runtime.js";
-const fetch = __kodyCreatePackageBoundGatewayFetch("pkg-demo");
-const SECRET = __kodySecretRef("demoToken", "user");
-`
-	const again = injectLocalExecuteGatewayFetchBinding({
-		modulePath:
-			'.__kody_packages__/demo/.__published_bundle__/artifact/dist/index.js',
-		source,
-		primaryRuntimePath: '.__kody_virtual__/runtime.js',
-		packageId: 'pkg-demo',
-	})
-	expect(again.rewritten).toBe(false)
-	expect(again.source).toBe(source)
-})
-
 test('ensureLocalExecuteMeterStaticPackageExportImport binds free meter calls', () => {
 	const mergeSource = `import {
 	__kodySecretRef,

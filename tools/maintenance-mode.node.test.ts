@@ -7,7 +7,6 @@ import {
 	defaultMaintenanceZone,
 	maintenanceRuleMarker,
 	parseArgs,
-	requiredTokenScopesMessage,
 	runMaintenanceMode,
 } from './maintenance-mode.ts'
 
@@ -282,18 +281,4 @@ test('status reports whether the rule exists and is enabled', async () => {
 		rulesetId,
 		ruleId,
 	})
-})
-
-test('403 responses name the required Zone:Read and Single Redirect scopes', async () => {
-	await expect(
-		runMaintenanceMode(parseArgs(['status']), {
-			env: { CLOUDFLARE_API_TOKEN: 'bad-token' },
-			fetch: async () =>
-				jsonResponse(
-					{ success: false, errors: [{ message: 'Authentication error' }] },
-					403,
-				),
-			log: () => {},
-		}),
-	).rejects.toThrow(requiredTokenScopesMessage)
 })

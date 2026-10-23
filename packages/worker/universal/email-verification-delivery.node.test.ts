@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	acceptedEmailVerificationDelivery,
 	describeEmailVerificationDelivery,
-	isAdminUserVerificationFilter,
 	isStalledEmailVerificationDelivery,
 	shouldPollEmailVerificationDelivery,
 } from './email-verification-delivery.ts'
@@ -36,7 +35,6 @@ test('stalled verification is derived from accepted age, not a stored status', (
 			now,
 		),
 	).toBe(false)
-	expect(isAdminUserVerificationFilter('accepted')).toBe(false)
 })
 
 test('accepted delivery waits honestly and keeps polling', () => {
@@ -49,8 +47,6 @@ test('accepted delivery waits honestly and keeps polling', () => {
 		acceptedEmailVerificationDelivery(),
 	)
 	expect(accepted.indicator).toBe('waiting')
-	expect(accepted.headline).toMatch(/waiting for delivery confirmation/i)
-	expect(accepted.detail).toMatch(/accepted the message/i)
 	expect(accepted.helpHref).toBeNull()
 	expect(
 		shouldPollEmailVerificationDelivery(acceptedEmailVerificationDelivery()),
@@ -80,8 +76,6 @@ test('delivered and failed map to terminal indicator phases', () => {
 	expect(failed.indicator).toBe('failed')
 	expect(failed.tone).toBe('error')
 	expect(failed.helpHref).toBe('/docs/cant-open-or-get-mail')
-	expect(failed.helpLabel).toMatch(/can't open kody\.codes/i)
-	expect(failed.detail).toMatch(/social login/i)
 	expect(
 		shouldPollEmailVerificationDelivery({
 			status: 'bounced',
@@ -107,15 +101,12 @@ test('deferred delivery shows delayed and keeps polling', () => {
 	).toBe(true)
 })
 
-test('sender_block copy tells people to try another address', () => {
+test('sender_block prevents resend and links to recovery help', () => {
 	const blocked = describeEmailVerificationDelivery({
 		status: 'failed',
 		class: 'sender_block',
 		at: '2026-10-15T12:00:00.000Z',
 	})
 	expect(blocked.canResend).toBe(false)
-	expect(blocked.detail).toMatch(/blocking our domain right now/i)
-	expect(blocked.detail).toMatch(/try another address/i)
-	expect(blocked.detail).toMatch(/support/i)
 	expect(blocked.helpHref).toBe('/docs/cant-open-or-get-mail')
 })

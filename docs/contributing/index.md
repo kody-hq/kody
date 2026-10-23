@@ -44,8 +44,9 @@ style, tests, MCP capabilities, and runtime architecture.
   [CLI streaming gateway-fetch contract](./contracts/cli-streaming-gateway-fetch.md).
   Ad hoc `credential()` on local `kody:runtime`:
   [CLI local credential runtime](./contracts/cli-local-credential-runtime.md).
-  Changing `@kodycodes/cli` (it lives in `kody-bot/cli`; this environment cannot
-  push there): [Changing the CLI](./cloud-agents.md#changing-the-cli)
+  Changing `@kodycodes/cli` (it lives in `packages/cli`; merges to `main`
+  publish through `.github/workflows/publish-cli.yml`):
+  [Changing the CLI](./cloud-agents.md#changing-the-cli)
 - PR system recaps (visual plan/recap blocks in PR descriptions):
   [visual-recap skill](../../.agents/skills/visual-recap/SKILL.md)
 

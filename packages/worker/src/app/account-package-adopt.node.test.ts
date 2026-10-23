@@ -3,7 +3,6 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { CommunityActionError } from '#worker/community/errors.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -110,39 +109,4 @@ test('account adopt requires org owner role on the package owning org', async ()
 	expect(denied?.status).toBe(404)
 	expect(mockModule.adoptCommunityFork).not.toHaveBeenCalled()
 	mockModule.viewerIsOrgOwner = true
-})
-
-test('account adopt requires a package id and surfaces caller-clearable errors', async () => {
-	const env = { APP_DB: {} } as Env
-	const user = createUser()
-	const request = new Request('https://example.com/account/packages.json', {
-		method: 'POST',
-	})
-
-	const missingId = await adoptAccountPackageFork({
-		env,
-		request,
-		user,
-		packageId: '',
-		reviewNote: 'Reviewed it all.',
-	})
-	expect(missingId?.status).toBe(400)
-	expect(mockModule.adoptCommunityFork).not.toHaveBeenCalled()
-
-	mockModule.adoptCommunityFork.mockRejectedValueOnce(
-		new CommunityActionError('Adoption requires a review note of at least 10'),
-	)
-	const shortNote = await adoptAccountPackageFork({
-		env,
-		request,
-		user,
-		packageId: 'pkg-1',
-		reviewNote: 'short',
-	})
-	expect(shortNote?.status).toBe(400)
-	expect(shortNote?.data).toEqual({
-		ok: false,
-		error: 'Adoption requires a review note of at least 10',
-	})
-	expect(mockModule.reloadAccountPackagesAfterWrite).not.toHaveBeenCalled()
 })

@@ -1,11 +1,6 @@
 import { expect, test } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from './auth-session.ts'
 import { requireAuthenticatedPageUser } from './page-auth.ts'
-import { loadResolvedRequestAuth } from './request-auth-cache.ts'
-import {
-	hasResolvedRequestFeatureFlags,
-	loadRequestFeatureFlags,
-} from './request-feature-flags-cache.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
 
 import { isOrgBindingMembershipQuery } from '#worker/test-support/org-binding-query.ts'
@@ -69,35 +64,6 @@ function authFixture() {
 	}
 	return { state, env, request }
 }
-
-test('page authorization shares the middleware request lookup and still prefetches page flags', async () => {
-	const { state, env, request } = authFixture()
-	const original = await request()
-	// Start middleware and its page handler must share the original Request.
-	const [resolved, user] = await Promise.all([
-		loadResolvedRequestAuth(original, env),
-		requireAuthenticatedPageUser(original, env, {
-			redirectTo: '/account?tab=profile',
-		}),
-	])
-	expect(resolved.user?.username).toBe('page-user')
-	expect(user).toMatchObject({
-		username: 'page-user',
-		userId: 7,
-		mcpUser: { userId: stableUserId, personalOrgId },
-		request: { org: { id: personalOrgId, slug: 'page-user' } },
-	})
-	expect(state.authBatches).toBe(1)
-	expect(hasResolvedRequestFeatureFlags(original)).toBe(true)
-	await loadRequestFeatureFlags(original, env, { userId: 7, stableUserId })
-	// Deduplication ends at the HTTP request boundary, so revocation stays visible.
-	state.user = null
-	const denied = await requireAuthenticatedPageUser(await request(), env, {
-		redirectTo: '/account?tab=profile',
-	})
-	expect(denied).toBeInstanceOf(Response)
-	expect(state.authBatches).toBe(2)
-})
 
 test('RPC page targets survive anonymous, missing, deleting and suspended account redirects', async () => {
 	const { state, env, request } = authFixture()

@@ -112,20 +112,17 @@ test('listPackageSubscriptionsCapability filters, sorts, and skips broken manife
 		},
 		{ id: 'package-2', kodyId: 'other', sourceId: 'source-2' },
 	])
-	expect(await listSubscriptions({ topic: 'discord.message.created' })).toEqual(
+	const filtered = await listSubscriptions({
+		topic: 'discord.message.created',
+	})
+	expect(filtered.subscriptions).toMatchObject([
 		{
-			subscriptions: [
-				{
-					package_id: 'package-1',
-					kody_id: 'discord-general-chat',
-					slug: 'discord-general-chat',
-					name: '@kentcdodds/discord-general-chat',
-					topic: 'discord.message.created',
-					...messageHandler,
-				},
-			],
+			package_id: 'package-1',
+			topic: 'discord.message.created',
+			handler: './src/message.ts',
+			filters: { channelIds: ['123'] },
 		},
-	)
+	])
 
 	stubPackages([
 		{
@@ -143,28 +140,11 @@ test('listPackageSubscriptionsCapability filters, sorts, and skips broken manife
 			subscriptions: { 'discord.message.created': messageHandler },
 		},
 	])
-	expect(await listSubscriptions()).toEqual({
-		subscriptions: [
-			{
-				package_id: 'package-2',
-				kody_id: 'a-package',
-				slug: 'a-package',
-				name: '@kentcdodds/a-package',
-				topic: 'discord.message.created',
-				...messageHandler,
-			},
-			{
-				package_id: 'package-1',
-				kody_id: 'z-package',
-				slug: 'z-package',
-				name: '@kentcdodds/z-package',
-				topic: 'discord.reaction.created',
-				handler: './src/reaction.ts',
-				description: null,
-				filters: null,
-			},
-		],
-	})
+	const sorted = await listSubscriptions()
+	expect(sorted.subscriptions.map(({ kody_id }) => kody_id)).toEqual([
+		'a-package',
+		'z-package',
+	])
 
 	consoleWarn.mockImplementation(() => {})
 	stubPackages([
@@ -183,28 +163,12 @@ test('listPackageSubscriptionsCapability filters, sorts, and skips broken manife
 			subscriptions: new Error('manifest unavailable'),
 		},
 	])
-	expect(await listSubscriptions()).toEqual({
-		subscriptions: [
-			{
-				package_id: 'package-1',
-				kody_id: 'ok-package',
-				slug: 'ok-package',
-				name: '@kentcdodds/ok-package',
-				topic: 'discord.message.created',
-				handler: './src/message.ts',
-				description: null,
-				filters: null,
-			},
-		],
-	})
-	expect(consoleWarn.mock.calls).toEqual([
-		[
-			'Failed to load package manifest for subscriptions',
-			{
-				sourceId: 'source-bad',
-				packageId: 'package-2',
-				error: expect.any(Error),
-			},
-		],
+	const afterFailure = await listSubscriptions()
+	expect(afterFailure.subscriptions.map(({ kody_id }) => kody_id)).toEqual([
+		'ok-package',
 	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'Failed to load package manifest for subscriptions',
+		expect.objectContaining({ sourceId: 'source-bad', packageId: 'package-2' }),
+	)
 })

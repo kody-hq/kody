@@ -12,21 +12,6 @@ const dmarcPass = 'mx.example.com; spf=pass; dkim=pass; dmarc=pass'
 const spfPassUnaaligned =
 	'mx.example.com; spf=pass smtp.mailfrom=attacker.example; dkim=none; dmarc=none'
 
-test('classification requires the sender-rules schema', async () => {
-	await ensureEmailTestSchema(env.APP_DB)
-	await env.APP_DB.prepare(`DROP TABLE email_sender_rules`).run()
-
-	await expect(
-		resolveInboundEmailClassification({
-			db: env.APP_DB,
-			userId: ownerIdFromStored('classification-user'),
-			fromAddress: 'sender@example.test',
-			envelopeFrom: 'sender@example.test',
-			authResults: 'dmarc=fail',
-		}),
-	).rejects.toThrow('no such table: email_sender_rules')
-})
-
 test('spoofed sender matching an allow address rule is quarantined', async () => {
 	await ensureEmailTestSchema(env.APP_DB)
 	const userId = ownerIdFromStored(`class-spoof-addr-${crypto.randomUUID()}`)

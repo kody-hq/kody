@@ -4,7 +4,6 @@ import {
 	connectionUsageEntryLabel,
 	connectionUsageHasActivity,
 	connectionUsageOtherCounts,
-	formatConnectionUsageQuantity,
 } from './connection-usage-presentation.ts'
 import { type ConnectionUsageTotals } from './connection-usage.ts'
 
@@ -26,15 +25,6 @@ test('usage drill-in stays on the org page and encodes the focused connection', 
 	expect(
 		accountConnectionsUsageHref('/@acme/-/agents', 'mcp-oauth:p1:client/a'),
 	).toBe('/@acme/-/agents/usage?connection=mcp-oauth%3Ap1%3Aclient%2Fa')
-})
-
-test('quantities pluralize on the rounded value', () => {
-	expect(formatConnectionUsageQuantity('executeCalls', 1)).toBe(
-		'1 execute call',
-	)
-	expect(formatConnectionUsageQuantity('workerLoads', 4020.4)).toBe(
-		'4,020 worker loads',
-	)
 })
 
 test('other counts surface runs-only activity the cap column would hide', () => {

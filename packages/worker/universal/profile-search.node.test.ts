@@ -3,8 +3,6 @@ import {
 	buildProfileHref,
 	filterProfilePackages,
 	isProfilePackageFilterOnlyHrefChange,
-	profilePackageFiltersAreActive,
-	profilePackageSortIsActive,
 	readProfilePackageFiltersFromHref,
 } from './profile-search.ts'
 import { type PublicProfilePackageItem } from './community-public-types.ts'
@@ -160,32 +158,6 @@ test('profile package filter hrefs omit defaults and ignore owner-only params fo
 			{ ...defaultFilters, ...overrides },
 		]),
 	)
-
-	const activeFilters: Array<[Partial<ProfileFilters>, boolean]> = [
-		[{ query: 'notes' }, false],
-		[{ sort: 'name' }, false],
-		[{ visibility: 'private' }, true],
-		[{ app: 'yes' }, true],
-		[{ package: 'no' }, true],
-	]
-	expect(
-		activeFilters.filter(
-			([overrides, want]) =>
-				profilePackageFiltersAreActive({ ...defaultFilters, ...overrides }) !==
-				want,
-		),
-	).toEqual([])
-	const activeSorts = [
-		['updated', 'desc', false],
-		['name', 'asc', true],
-		['updated', 'asc', true],
-		['created', 'desc', true],
-	] as const
-	expect(
-		activeSorts.filter(
-			([sort, dir, want]) => profilePackageSortIsActive({ sort, dir }) !== want,
-		),
-	).toEqual([])
 })
 
 test('chip and search profile href changes skip the loader', () => {

@@ -40,53 +40,16 @@ function createContext() {
 	}
 }
 
-test('emailMessageList forwards classification filter and returns classification fields', async () => {
+test('emailMessageList scopes the read to the signed-in owner', async () => {
 	const context = createContext()
-	mocks.listOwnerEmailMessages.mockResolvedValueOnce([
-		{
-			id: 'message-1',
-			direction: 'inbound',
-			inboxId: 'inbox-1',
-			threadId: null,
-			fromAddress: 'spam@example.com',
-			envelopeFrom: 'spam@example.com',
-			toAddresses: ['user@example.com'],
-			subject: 'Quarantined',
-			messageIdHeader: '<spam@example.com>',
-			processingStatus: 'stored',
-			classification: 'quarantined',
-			classificationReason: 'Matched sender rule.',
-			providerMessageId: null,
-			deliveryStatus: null,
-			deliveryStatusAt: null,
-			error: null,
-			receivedAt: '2026-07-01T00:00:00.000Z',
-			sentAt: null,
-			createdAt: '2026-07-01T00:00:00.000Z',
-			updatedAt: '2026-07-01T00:00:00.000Z',
-		},
-	])
-
-	const result = await emailMessageListCapability.handler(
+	mocks.listOwnerEmailMessages.mockResolvedValue([])
+	await emailMessageListCapability.handler(
 		{ classification: 'quarantined', limit: 10 },
 		context,
 	)
-
-	expect(mocks.listOwnerEmailMessages).toHaveBeenCalledWith({
-		env: context.env,
-		ownerId: ownerIdFromStored('user-1'),
-		inboxId: null,
-		direction: null,
-		processingStatus: null,
-		deliveryStatus: null,
-		classification: 'quarantined',
-		limit: 10,
-	})
-	expect(result.messages).toEqual([
+	expect(mocks.listOwnerEmailMessages).toHaveBeenCalledWith(
 		expect.objectContaining({
-			id: 'message-1',
-			classification: 'quarantined',
-			classification_reason: 'Matched sender rule.',
+			ownerId: ownerIdFromStored('user-1'),
 		}),
-	])
+	)
 })

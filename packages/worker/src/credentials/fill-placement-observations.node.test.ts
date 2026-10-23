@@ -7,6 +7,14 @@ import {
 	recordFillPlacementObservation,
 } from './fill-placement-observations.ts'
 
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
+
 vi.mock('cloudflare:workers', () => ({
 	waitUntil: (promise: Promise<unknown>) => {
 		void promise

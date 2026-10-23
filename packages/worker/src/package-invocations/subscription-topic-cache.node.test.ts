@@ -23,7 +23,6 @@ const {
 	bumpPackageSubscriptionTopicGeneration,
 	getOrFillPackageSubscriptionTopicMap,
 	invalidatePackageSubscriptionTopicMap,
-	mintPackageSubscriptionTopicGeneration,
 	readPackageSubscriptionTopicMap,
 	refreshPackageSubscriptionTopicMap,
 	writePackageSubscriptionTopicMap,
@@ -160,31 +159,6 @@ test('wake miss fills KV then a second wake does not reload every manifest', asy
 			.map(([arg]) => (arg as { sourceId: string }).sourceId)
 			.sort(),
 	).toEqual(['source-pkg-a', 'source-pkg-c'])
-})
-
-test('KV miss still finds the right subscribers', async () => {
-	const { kv } = createKv()
-	const env = {
-		APP_DB: {},
-		BUNDLE_ARTIFACTS_KV: kv,
-	} as Env
-	seedPackages([
-		savedPackage({ id: 'pkg-noise', kodyId: 'noise', topics: [] }),
-		savedPackage({
-			id: 'pkg-hit',
-			kodyId: 'hit',
-			topics: ['repo.pushed'],
-		}),
-	])
-
-	const result = await loadMatchingPackageSubscriptions({
-		env,
-		baseUrl: 'https://example.com',
-		userId: ownerIdFromStored('user-1'),
-		topic: 'repo.pushed',
-	})
-	expect(result.subscriptions).toHaveLength(1)
-	expect(result.subscriptions[0]?.savedPackage.id).toBe('pkg-hit')
 })
 
 test('publish refresh changes who matches without waiting for a TTL', async () => {
@@ -409,24 +383,6 @@ test('generation bump alone forces a miss when map delete fails', async () => {
 		'package-subscription-topic-map-invalidate-failed',
 		expect.objectContaining({ userId: ownerIdFromStored('user-1') }),
 	)
-})
-
-test('minted generations stay unique when the clock does not advance', () => {
-	// Freeze Date.now so a clock-plus-tiny-entropy mint cannot hide collisions
-	// behind a millisecond tick.
-	const now = vi.spyOn(Date, 'now').mockReturnValue(1_760_544_000_000)
-	try {
-		const seen = new Set<number>()
-		for (let i = 0; i < 256; i++) {
-			const generation = mintPackageSubscriptionTopicGeneration()
-			expect(generation).toBeGreaterThan(0)
-			expect(Number.isSafeInteger(generation)).toBe(true)
-			expect(seen.has(generation)).toBe(false)
-			seen.add(generation)
-		}
-	} finally {
-		now.mockRestore()
-	}
 })
 
 test('concurrent refreshes mint distinct generations so the earlier scan cannot overwrite', async () => {

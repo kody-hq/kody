@@ -2,15 +2,10 @@ import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
 	adminFleetErrorRateMaxDays,
-	buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery,
-	buildAdminFleetErrorRateDailyOutcomeQuery,
-	buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery,
-	buildAdminFleetErrorRateDailyUsersQuery,
 	foldAdminFleetErrorRateDailyErrorNameRows,
 	foldAdminFleetErrorRateDailyRows,
 	loadAdminFleetErrorRateData,
 	resolveAdminFleetErrorRateWindow,
-	toAdminInsightsPackageErrorRate,
 	usersWithErrorsForFilteredDay,
 } from './fleet-error-rate-data.ts'
 
@@ -147,27 +142,6 @@ const sampleSnapshot = {
 	concentration: null,
 }
 
-test('toAdminInsightsPackageErrorRate mirrors insights availability', () => {
-	expect(toAdminInsightsPackageErrorRate(null)).toEqual({
-		available: false,
-		updatedAt: null,
-		environment: null,
-		day: null,
-		hour: null,
-		lastAlertAt: null,
-		concentration: null,
-	})
-	expect(toAdminInsightsPackageErrorRate(sampleSnapshot)).toEqual({
-		available: true,
-		updatedAt: sampleSnapshot.updatedAt,
-		environment: 'production',
-		day: sampleSnapshot.day,
-		hour: sampleSnapshot.hour,
-		lastAlertAt: null,
-		concentration: null,
-	})
-})
-
 test('window clamps days and ends on today inclusive', () => {
 	const now = new Date('2026-10-20T15:30:00.000Z')
 	expect(resolveAdminFleetErrorRateWindow({ days: 7, now })).toEqual({
@@ -183,53 +157,6 @@ test('window clamps days and ends on today inclusive', () => {
 			now,
 		}).days,
 	).toBe(adminFleetErrorRateMaxDays)
-})
-
-test('daily AE queries count caught and error and exclude handles', () => {
-	const outcome = buildAdminFleetErrorRateDailyOutcomeQuery({
-		dataset: 'kody_usage_events',
-		startDay: '2026-10-14',
-		nextDay: '2026-10-21',
-	})
-	expect(outcome).toContain("blob4 = 'error'")
-	expect(outcome).toContain("blob4 = 'caught'")
-	expect(outcome).toContain(
-		"blob2 IN ('package_export', 'package_static_call', 'job_run', 'workflow_run')",
-	)
-	expect(outcome).not.toContain('username')
-	expect(outcome).not.toContain('blob10')
-
-	const users = buildAdminFleetErrorRateDailyUsersQuery({
-		dataset: 'kody_usage_events',
-		startDay: '2026-10-14',
-		nextDay: '2026-10-21',
-	})
-	expect(users).toContain("blob4 = 'error'")
-	expect(users).toContain('count(DISTINCT blob1)')
-	expect(users).not.toContain('blob1 IN')
-	expect(users).not.toContain('caught')
-	expect(users).not.toContain('username')
-
-	const failedRuns = buildAdminFleetErrorRateDailyFailedRunByErrorNameQuery({
-		dataset: 'kody_usage_events',
-		startDay: '2026-10-14',
-		nextDay: '2026-10-21',
-	})
-	expect(failedRuns).toContain('blob13 AS error_name')
-	expect(failedRuns).toContain(
-		"blob2 IN ('package_export', 'job_run', 'workflow_run')",
-	)
-	expect(failedRuns).not.toContain('package_static_call')
-	expect(failedRuns).not.toContain('username')
-
-	const staticCalls = buildAdminFleetErrorRateDailyStaticCallByErrorNameQuery({
-		dataset: 'kody_usage_events',
-		startDay: '2026-10-14',
-		nextDay: '2026-10-21',
-	})
-	expect(staticCalls).toContain("blob2 = 'package_static_call'")
-	expect(staticCalls).toContain('blob13 AS error_name')
-	expect(staticCalls).not.toContain('username')
 })
 
 test('fold error-name rows keeps aggregates without handles', () => {

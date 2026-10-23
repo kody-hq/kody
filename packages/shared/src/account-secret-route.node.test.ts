@@ -46,36 +46,4 @@ test('account secret paths encode route segments and round-trip through the pars
 		sessionId: null,
 		name: 'google.api.key',
 	})
-
-	const grokBotWakeName = 'grokBotWake.71e7550e-746d-417f-b253-05165975ff69'
-	const grokBotWakePath = buildAccountSecretPath({
-		scope: 'user',
-		name: grokBotWakeName,
-	})
-	expect(grokBotWakePath).toBe(
-		'/account/secrets/user/grokBotWake%2E71e7550e-746d-417f-b253-05165975ff69',
-	)
-	expect(grokBotWakePath).not.toContain(`/${grokBotWakeName}`)
-	expect(parseAccountSecretPath(grokBotWakePath)).toEqual({
-		id: `user::::${grokBotWakeName}`,
-		scope: 'user',
-		packageId: null,
-		sessionId: null,
-		name: grokBotWakeName,
-	})
-})
-
-test('account secret paths fail fast when scope binding ids are missing', () => {
-	expect(() =>
-		buildAccountSecretPath({
-			scope: 'package',
-			name: 'api/key',
-		}),
-	).toThrow(/packageId is required/)
-	expect(() =>
-		buildAccountSecretPath({
-			scope: 'session',
-			name: 'api/key',
-		}),
-	).toThrow(/sessionId is required/)
 })

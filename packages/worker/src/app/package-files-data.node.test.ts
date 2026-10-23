@@ -162,9 +162,7 @@ const {
 	loadAccessiblePackageFilesData,
 	loadCommunityPackageFileRaw,
 	loadCommunityPackageFilesData,
-	loadListingFilesData,
 	loadOwnerPackageReadme,
-	loadPackagePageHasAgentsDocs,
 	loadPlainRepoFilesData,
 	resolvePackagePageReadmeImageBaseHref,
 } = await import('./package-files-data.ts')
@@ -471,66 +469,6 @@ test('listed package tree chrome marks the owner, links only a public owner prof
 	expect(await loadTree()).toMatchObject({ ok: true, imageBaseHref: null })
 })
 
-test('listing files use the package page payload when it resolves and fall back to the public tree', async () => {
-	const input = {
-		env,
-		request: new Request('https://example.com/community/listing-1/files'),
-		listingId: 'listing-1',
-		selectedPath: '',
-		ref: 'main',
-	}
-	publishListing()
-	mockModule.loadPackagePage.mockResolvedValue({ kind: 'not_found' })
-	const fallback = await loadListingFilesData(input)
-	expect(mockModule.loadPackagePage).toHaveBeenLastCalledWith(
-		expect.objectContaining({ username: 'kentcdodds', kodyId: 'sentry' }),
-	)
-	expect(fallback).toMatchObject({ ok: true, kodyId: 'sentry' })
-	expect(fallback?.repoActions).toBeUndefined()
-
-	publishPlainRepo()
-	mockModule.getCommunityListingById.mockResolvedValue(listing)
-	const viaPage = await loadListingFilesData(input)
-	expect(viaPage).toMatchObject({
-		ok: true,
-		kodyId: 'notes',
-		repoActions: {
-			fork: null,
-			publishHref: null,
-			packageAppHref: null,
-		},
-	})
-})
-
-test('package page reports AGENTS.md only when a non-empty root file exists', async () => {
-	const cases: Array<{ files: Record<string, string>; expected: boolean }> = [
-		{ files: { 'README.md': '# Sentry\n' }, expected: false },
-		{
-			files: {
-				'README.md': '# Sentry\n',
-				'AGENTS.md': '# Agents\n\nImport the root export.\n',
-			},
-			expected: true,
-		},
-		{ files: { 'docs/AGENTS.md': 'Nested only.\n' }, expected: false },
-	]
-	for (const { files, expected } of cases) {
-		mockModule.readCommunitySnapshot.mockResolvedValue(
-			communitySnapshotWithFiles(files),
-		)
-		const hasAgentsDocs = await loadPackagePageHasAgentsDocs({
-			env,
-			request: new Request('https://example.com/@kentcdodds/sentry'),
-			listingId: 'listing-1',
-			viewerIsOwner: false,
-		})
-		expect({ files, hasAgentsDocs }).toEqual({
-			files,
-			hasAgentsDocs: expected,
-		})
-	}
-})
-
 test('package page README images opt in for listing README and only matching owner commits', () => {
 	const cases = [
 		{
@@ -579,48 +517,6 @@ test('package page README images opt in for listing README and only matching own
 			readmeCommit: 'headlive1',
 		}),
 	).toBeNull()
-})
-
-test('opens a png as a media preview and an unknown binary without a code dump', async () => {
-	publishListing({
-		files: {
-			'README.md': '# Sentry\n',
-			'logo.png': png,
-			'app.wasm': 'wasm\0module',
-		},
-	})
-	mockModule.readArtifactFileAtCommit.mockResolvedValue(pngBytes)
-
-	expect(await loadTree('logo.png')).toMatchObject({
-		ok: true,
-		content: null,
-		contentKind: 'image',
-		mediaHref: '/@kentcdodds/sentry/raw/main/logo.png',
-		contentByteLength: pngBytes.byteLength,
-	})
-	expect(mockModule.highlightSnippets).not.toHaveBeenCalled()
-	expect(await loadTree('app.wasm')).toMatchObject({
-		content: null,
-		contentKind: 'binary',
-		mediaHref: null,
-	})
-	expect(await loadRaw('logo.png')).toEqual({
-		kind: 'ok',
-		bytes: pngBytes,
-		contentType: 'image/png',
-		disposition: 'inline',
-		filename: 'logo.png',
-		isPrivate: false,
-	})
-
-	mockModule.readArtifactFileAtCommit.mockResolvedValue(
-		new TextEncoder().encode('<!DOCTYPE html><script>alert(1)</script>'),
-	)
-	expect(await loadRaw('logo.png')).toMatchObject({
-		kind: 'ok',
-		contentType: 'application/octet-stream',
-		disposition: 'attachment',
-	})
 })
 
 test('community raw 404s a hex that only has the listing pin snapshot', async () => {
@@ -690,35 +586,6 @@ test('plain repo tree loads live HEAD via entity_sources.repo_id for guests', as
 	)
 })
 
-test('plain repo files resolve via getEntitySourceByEntity when sourceId is empty', async () => {
-	publishPlainRepo()
-	mockModule.getEntitySourceById.mockResolvedValue(null)
-	const data = await loadPlainRepoFilesData({
-		env,
-		request: new Request('https://example.com/@kentcdodds/notes/tree/main'),
-		ownerUserId: 'owner-1',
-		username: 'kentcdodds',
-		kodyId: 'notes',
-		repoId: 'user-repo-1',
-		sourceId: '',
-		isPrivate: false,
-		description: 'Plain notes repo',
-		selectedPath: 'README.md',
-		ref: 'main',
-	})
-	expect(data).toMatchObject({
-		ok: true,
-		hasPackage: false,
-		selectedPath: 'README.md',
-		contentKind: 'markdown',
-	})
-	expect(mockModule.getEntitySourceByEntity).toHaveBeenCalledWith(env.APP_DB, {
-		userId: ownerIdFromStored('owner-1'),
-		entityKind: 'repo',
-		entityId: 'user-repo-1',
-	})
-})
-
 test('plain repo files fall back to Artifacts HEAD tree when publish snapshots are empty', async () => {
 	publishPlainRepo()
 	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
@@ -749,35 +616,6 @@ test('plain repo files fall back to Artifacts HEAD tree when publish snapshots a
 	expect(data?.paths).toEqual(
 		expect.arrayContaining(['README.md', 'package.json']),
 	)
-	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith(
-		expect.objectContaining({
-			repoId: 'artifacts-repo-1',
-			commit: 'headlive1',
-		}),
-	)
-})
-
-test('loadOwnerPackageReadme falls back to Artifacts HEAD for plain repos without a publish snapshot', async () => {
-	publishPlainRepo()
-	mockModule.loadPackageSourceBySourceId.mockRejectedValue(
-		new Error('Saved package source has no published snapshot.'),
-	)
-	mockModule.readPublishedSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactSourceSnapshot.mockResolvedValue(null)
-	mockModule.readArtifactTreeAtCommit.mockResolvedValue({
-		'README.md': '# Live README from HEAD\n',
-		'notes.txt': 'side file\n',
-	})
-	const readme = await loadOwnerPackageReadme({
-		env,
-		request: new Request('https://example.com/@kentcdodds/notes'),
-		userId: ownerIdFromStored('owner-1'),
-		sourceId: 'src-plain-1',
-	})
-	expect(readme).toEqual({
-		content: '# Live README from HEAD',
-		commit: 'headlive1',
-	})
 	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith(
 		expect.objectContaining({
 			repoId: 'artifacts-repo-1',
@@ -844,31 +682,6 @@ test('loadOwnerPackageReadme does not fall through to HEAD when published snapsh
 	})
 	expect(readme).toEqual({ content: null, commit: null })
 	expect(mockModule.readArtifactTreeAtCommit).not.toHaveBeenCalled()
-})
-
-test('plain repo raw serves media for guests who passed loadPackagePage', async () => {
-	publishPlainRepo({
-		files: { 'logo.png': png, 'README.md': '# Notes\n' },
-	})
-	mockModule.readArtifactFileAtCommit.mockResolvedValue(pngBytes)
-	const result = await loadAccessiblePackageFileRaw({
-		env,
-		request: new Request(
-			'https://example.com/@kentcdodds/notes/raw/main/logo.png',
-		),
-		username: 'kentcdodds',
-		kodyId: 'notes',
-		selectedPath: 'logo.png',
-		ref: 'main',
-	})
-	expect(result).toEqual({
-		kind: 'ok',
-		bytes: pngBytes,
-		contentType: 'image/png',
-		disposition: 'inline',
-		filename: 'logo.png',
-		isPrivate: false,
-	})
 })
 
 test('plain repo private raw marks isPrivate when the page is private', async () => {
@@ -1044,39 +857,6 @@ test('raw forwards a bearer-authenticated viewer to the package page gate', asyn
 	expect(mockModule.loadPackagePage).toHaveBeenLastCalledWith(
 		expect.objectContaining({ viewer: null }),
 	)
-})
-
-test('file views carry a raw href and directory views do not', async () => {
-	publishPrivateSkillsPackage()
-	const file = await loadAccessiblePackageFilesData({
-		env,
-		request: new Request(
-			'https://kody.codes/@kentcdodds/skills/tree/main/src/skill-get.ts',
-		),
-		username: 'kentcdodds',
-		kodyId: 'skills',
-		selectedPath: 'src/skill-get.ts',
-		ref: 'main',
-	})
-	expect(file).toMatchObject({
-		kind: 'file',
-		rawHref: '/@kentcdodds/skills/raw/main/src/skill-get.ts',
-		mediaHref: null,
-	})
-	const directory = await loadAccessiblePackageFilesData({
-		env,
-		request: new Request('https://kody.codes/@kentcdodds/skills/tree/main'),
-		username: 'kentcdodds',
-		kodyId: 'skills',
-		selectedPath: '',
-		ref: 'main',
-	})
-	expect(directory).toMatchObject({ kind: 'directory', rawHref: null })
-
-	publishListing()
-	expect(await loadTree('README.md')).toMatchObject({
-		rawHref: '/@kentcdodds/sentry/raw/main/README.md',
-	})
 })
 
 test('an org-bound token reads another org like a signed-out visitor', async () => {

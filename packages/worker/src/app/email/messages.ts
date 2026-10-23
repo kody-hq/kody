@@ -642,6 +642,103 @@ export function buildPackageOwnerErrorSpikeEmail(input: {
 	})
 }
 
+export function buildJobAutoDisabledEmail(input: {
+	appBaseUrl: string
+	jobsUrl: string
+	supportUrl: string
+	ownerLabel: string
+	jobName: string
+	reason: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Kody turned off your job "${input.jobName}"`,
+		preheader: 'It will not run again until you turn it back on.',
+		heading: 'A scheduled job was turned off',
+		body: [
+			`Kody turned off the scheduled job "${input.jobName}" for ${input.ownerLabel}. Nobody on your account did this; Kody did it because the job could not be scheduled again.`,
+			`Reason: ${input.reason}`,
+			'The job will not run again until you fix its schedule and turn it back on from Jobs.',
+		],
+		action: { label: 'Review jobs', url: input.jobsUrl },
+		afterAction: [`Support: ${input.supportUrl}`],
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because Kody turned off a scheduled job on an account you own.",
+	})
+}
+
+export function buildCustomDomainActiveEmail(input: {
+	appBaseUrl: string
+	hostname: string
+	/** Where the domain now serves, for example "the app demo". */
+	servesLabel: string
+	openUrl: string
+	openLabel: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Your custom domain ${input.hostname} is live`,
+		preheader: 'The hostname and its certificate are both active.',
+		heading: 'Your custom domain is live',
+		body: [
+			`${input.hostname} now serves ${input.servesLabel}. The hostname and its HTTPS certificate are both active.`,
+			'Kody checked it for you, so there is nothing else to do. Keep the DNS records in place; removing them takes the domain offline.',
+		],
+		action: { label: input.openLabel, url: input.openUrl },
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because a custom domain on an account you own just went live.",
+	})
+}
+
+export function buildCustomDomainNeedsAttentionEmail(input: {
+	appBaseUrl: string
+	hostname: string
+	reason: string
+	/** `failed`: Cloudflare reported a terminal error before the 48 hour window ended. */
+	cause?: 'timed_out' | 'failed'
+	manageUrl: string
+	docsUrl: string
+}) {
+	const failed = input.cause === 'failed'
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `Your custom domain ${input.hostname} needs attention`,
+		preheader: failed
+			? 'Cloudflare reported a problem, so Kody stopped checking.'
+			: 'It is still not active, so Kody stopped checking.',
+		heading: 'A custom domain needs attention',
+		body: [
+			failed
+				? `Cloudflare reported a problem with ${input.hostname} that waiting will not fix, so Kody stopped checking.`
+				: `Kody checked ${input.hostname} for 48 hours and it never went active, so Kody stopped checking.`,
+			`Reason: ${input.reason}`,
+			'Check that every DNS record matches the setup exactly and is DNS only (proxy off). Then sync the domain, and Kody will start checking again.',
+		],
+		action: { label: 'Review custom domains', url: input.manageUrl },
+		afterAction: [`Setup guide: ${input.docsUrl}`],
+		illustration: {
+			src: '/images/kody-lantern.png',
+			alt: '',
+			width: 96,
+			height: 96,
+		},
+		footnote:
+			"You're receiving this because a custom domain on an account you own needs attention.",
+	})
+}
+
 function formatSpikeStarted(iso: string) {
 	const ms = Date.parse(iso)
 	if (!Number.isFinite(ms)) return iso

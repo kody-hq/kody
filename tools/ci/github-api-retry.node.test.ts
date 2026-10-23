@@ -4,33 +4,28 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 
 const require = createRequire(import.meta.url)
-const {
-	githubApiErrorStatus,
-	isRetryableGithubApiError,
-	isRetryableGithubApiStatus,
-	withGithubApiRetry,
-} = require(
-	join(dirname(fileURLToPath(import.meta.url)), 'github-api-retry.cjs'),
-) as {
-	githubApiErrorStatus: (error: unknown) => number | undefined
-	isRetryableGithubApiError: (error: unknown) => boolean
-	isRetryableGithubApiStatus: (status: number) => boolean
-	withGithubApiRetry: <T>(
-		run: () => Promise<T>,
-		options?: {
-			maxAttempts?: number
-			baseDelayMs?: number
-			sleep?: (ms: number) => Promise<void>
-			isRetryable?: (error: unknown) => boolean
-			onRetry?: (input: {
-				attempt: number
-				maxAttempts: number
-				delayMs: number
-				error: unknown
-			}) => void
-		},
-	) => Promise<T>
-}
+const { githubApiErrorStatus, isRetryableGithubApiError, withGithubApiRetry } =
+	require(
+		join(dirname(fileURLToPath(import.meta.url)), 'github-api-retry.cjs'),
+	) as {
+		githubApiErrorStatus: (error: unknown) => number | undefined
+		isRetryableGithubApiError: (error: unknown) => boolean
+		withGithubApiRetry: <T>(
+			run: () => Promise<T>,
+			options?: {
+				maxAttempts?: number
+				baseDelayMs?: number
+				sleep?: (ms: number) => Promise<void>
+				isRetryable?: (error: unknown) => boolean
+				onRetry?: (input: {
+					attempt: number
+					maxAttempts: number
+					delayMs: number
+					error: unknown
+				}) => void
+			},
+		) => Promise<T>
+	}
 
 function httpError(status: number, message = 'Server Error') {
 	const error = new Error(message) as Error & {
@@ -42,20 +37,6 @@ function httpError(status: number, message = 'Server Error') {
 	error.response = { status }
 	return error
 }
-
-test('isRetryableGithubApiStatus accepts only 5xx', () => {
-	expect(isRetryableGithubApiStatus(500)).toBe(true)
-	expect(isRetryableGithubApiStatus(502)).toBe(true)
-	expect(isRetryableGithubApiStatus(503)).toBe(true)
-	expect(isRetryableGithubApiStatus(504)).toBe(true)
-	expect(isRetryableGithubApiStatus(599)).toBe(true)
-	expect(isRetryableGithubApiStatus(400)).toBe(false)
-	expect(isRetryableGithubApiStatus(401)).toBe(false)
-	expect(isRetryableGithubApiStatus(403)).toBe(false)
-	expect(isRetryableGithubApiStatus(404)).toBe(false)
-	expect(isRetryableGithubApiStatus(429)).toBe(false)
-	expect(isRetryableGithubApiStatus(200)).toBe(false)
-})
 
 test('isRetryableGithubApiError reads Octokit status and response.status', () => {
 	expect(isRetryableGithubApiError(httpError(502))).toBe(true)

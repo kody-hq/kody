@@ -48,7 +48,6 @@ const expectedDeployedReport = {
 
 const browserAccept =
 	'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-const fetchAccept = '*/*'
 
 function createHealthRequestContext(
 	accept?: string,
@@ -76,12 +75,12 @@ async function readJsonResponse(response: Response) {
 	}
 }
 
-test('health JSON stays unchanged for non-browser Accept values', async () => {
+test('health JSON stays stable for non-browser Accept values and format override', async () => {
 	const handler = createHealthHandler({
 		APP_COMMIT_SHA: commitSha,
 		APP_DEPLOY_INFO: encodeDeployInfo(deployInfo),
 	})
-	const accepts = [undefined, '*/*', 'application/json', fetchAccept] as const
+	const accepts = [undefined, '*/*', 'application/json'] as const
 	for (const accept of accepts) {
 		const response = await handler(createHealthRequestContext(accept))
 		const json = await readJsonResponse(response)
@@ -94,6 +93,22 @@ test('health JSON stays unchanged for non-browser Accept values', async () => {
 			body: expectedDeployedReport,
 		})
 	}
+
+	const formatOverrideResponse = await handler(
+		createHealthRequestContext(
+			browserAccept,
+			'https://example.com/health?format=json',
+		),
+	)
+	const formatOverride = await readJsonResponse(formatOverrideResponse)
+	expect(formatOverride).toEqual({
+		status: 200,
+		contentType: 'application/json',
+		cacheControl: 'no-store',
+		commitHeader: commitSha,
+		bodyText: JSON.stringify(expectedDeployedReport),
+		body: expectedDeployedReport,
+	})
 })
 
 test('health handler reports commit, PR, and deploy metadata for JSON and HTML clients', async () => {
@@ -161,28 +176,6 @@ test('health handler reports commit, PR, and deploy metadata for JSON and HTML c
 	expect(html).toContain('href="?format=json"')
 	expect(html).toContain('<details>')
 	expect(html).toContain('&quot;ok&quot;: true')
-})
-
-test('?format=json returns JSON even when Accept prefers HTML', async () => {
-	const handler = createHealthHandler({
-		APP_COMMIT_SHA: commitSha,
-		APP_DEPLOY_INFO: encodeDeployInfo(deployInfo),
-	})
-	const response = await handler(
-		createHealthRequestContext(
-			browserAccept,
-			'https://example.com/health?format=json',
-		),
-	)
-	const json = await readJsonResponse(response)
-	expect(json).toEqual({
-		status: 200,
-		contentType: 'application/json',
-		cacheControl: 'no-store',
-		commitHeader: commitSha,
-		bodyText: JSON.stringify(expectedDeployedReport),
-		body: expectedDeployedReport,
-	})
 })
 
 test('health HTML escapes hostile field values and refuses non-http hrefs', async () => {

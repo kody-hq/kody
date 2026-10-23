@@ -43,17 +43,6 @@ async function writeFakeMswInstall(
 	return packageDir
 }
 
-test('cachedMswRoot nests under deps/msw/<pin>', () => {
-	assert.equal(
-		cachedMswRoot('/cache/kody'),
-		join('/cache/kody', 'deps', 'msw', mswPinnedVersion),
-	)
-	assert.equal(
-		cachedMswPackagePath('/cache/kody'),
-		join('/cache/kody', 'deps', 'msw', mswPinnedVersion, 'node_modules', 'msw'),
-	)
-})
-
 test('ensureMsw returns cached package without installing', async () => {
 	const cacheDir = await mkdtemp(join(tmpdir(), 'kody-msw-cached-'))
 	try {

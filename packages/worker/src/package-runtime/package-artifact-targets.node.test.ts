@@ -47,33 +47,6 @@ test('kody.app.client adds an app-client target next to the Worker app target', 
 	])
 })
 
-test('apps without kody.app.client keep the Worker-only target set', () => {
-	const targets = collectPublishedPackageArtifactTargets(
-		parseManifest({ entry: './src/app.ts' }),
-	)
-	expect(targets.map((target) => target.kind)).toEqual([
-		'app',
-		'module',
-		'importable-module',
-	])
-	expect(
-		collectPublishedPackageArtifactTargets(parseManifest(undefined)).map(
-			(target) => target.kind,
-		),
-	).toEqual(['module', 'importable-module'])
-})
-
-test('kody.app.assets alone adds no artifact target because static files are served from the source snapshot', () => {
-	const targets = collectPublishedPackageArtifactTargets(
-		parseManifest({ entry: './src/app.ts', assets: './public' }),
-	)
-	expect(targets.map((target) => target.kind)).toEqual([
-		'app',
-		'module',
-		'importable-module',
-	])
-})
-
 test('export artifact names are normalized so bare keys match import lookups', () => {
 	const targets = collectPublishedPackageArtifactTargets(
 		parseAuthoredPackageJson({

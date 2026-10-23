@@ -1,6 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { communityIndexOverviewCandidateLimitPerCategory } from '#universal/community-categories.ts'
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import {
 	consoleError,
@@ -27,8 +26,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		getCommunityListingByOwnerAndKodyId: vi.fn(),
 		getCommunityListingById: vi.fn(),
 		listCommunityListingCandidates: vi.fn(),
-		listCommunityIndexOverviewCandidates: vi.fn(),
-		countActiveCommunityListingsByCategory: vi.fn(),
 		getCommunityRatingAggregatesByListingIds: vi.fn(),
 		countCommunityForksByListingIds: vi.fn(),
 		insertCommunityActivityEvent: vi.fn(),
@@ -131,8 +128,7 @@ vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 vi.mock('./repo.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CommunityRepo>()
 	return {
-		// Pure helper used by the service to decide whether the SQL LIKE
-		// pre-filter was applied; keep the real implementation.
+		// Pure helper; keep the real implementation.
 		extractCommunityListingLikeTokens: actual.extractCommunityListingLikeTokens,
 		...pickMocks(
 			'getCommunityBan',
@@ -140,8 +136,6 @@ vi.mock('./repo.ts', async (importOriginal) => {
 			'getCommunityListingByOwnerAndKodyId',
 			'getCommunityListingById',
 			'listCommunityListingCandidates',
-			'listCommunityIndexOverviewCandidates',
-			'countActiveCommunityListingsByCategory',
 			'getCommunityRatingAggregatesByListingIds',
 			'countCommunityForksByListingIds',
 			'insertCommunityListing',
@@ -189,11 +183,11 @@ const {
 	rateCommunityListing,
 	reportCommunityListing,
 	searchCommunityListings,
-	listCommunityIndexOverview,
 	forkCommunityListing,
 	adoptCommunityFork,
 	inspectCommunityForkAdoption,
 	absorbCommunityForkUpstream,
+	COMMUNITY_SEARCH_CANDIDATE_LIMIT,
 } = await import('./service.ts')
 
 const testBundleArtifactsKv = {
@@ -681,10 +675,10 @@ test('searchCommunityListings empty query uses publishedAt tiebreaker', async ()
 	])
 })
 
-test('searchCommunityListings falls back to unfiltered candidates when LIKE prefilter rows all fail matching', async () => {
-	// The LIKE prefilter matches on raw columns (e.g. readme_content), so it
-	// can return rows that the in-memory scorer then rejects. The fallback
-	// must still surface matches among other recent listings.
+test('searchCommunityListings answers a no-match query from the LIKE prefilter alone', async () => {
+	// The prefilter can return rows (for example a substring hit deep in the
+	// readme) that the term scorer rejects. That is a real no-results answer:
+	// no second unfiltered read and no unrelated listings.
 	const prefilterOnlyListing = sampleListing({
 		id: 'listing-prefilter-only',
 		kodyId: 'meal-planner',
@@ -694,16 +688,11 @@ test('searchCommunityListings falls back to unfiltered candidates when LIKE pref
 		searchText: 'meal plan grocery',
 		readmeContent: '# Meal Planner\n\n## Intent\n\nPlan meals.',
 	})
-	const fallbackMatchListing = sampleListing({ id: 'listing-fallback-match' })
-	mockModule.listCommunityListingCandidates
-		.mockResolvedValueOnce([prefilterOnlyListing])
-		.mockResolvedValueOnce([prefilterOnlyListing, fallbackMatchListing])
-	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue(
-		emptyAggregates(['listing-fallback-match']),
-	)
-	mockModule.countCommunityForksByListingIds.mockResolvedValue({
-		'listing-fallback-match': 0,
-	})
+	mockModule.listCommunityListingCandidates.mockResolvedValueOnce([
+		prefilterOnlyListing,
+	])
+	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue({})
+	mockModule.countCommunityForksByListingIds.mockResolvedValue({})
 
 	const results = await searchCommunityListings({
 		env: createEnv(),
@@ -711,82 +700,65 @@ test('searchCommunityListings falls back to unfiltered candidates when LIKE pref
 		limit: 10,
 	})
 
-	expect(results.map((listing) => listing.id)).toEqual([
-		'listing-fallback-match',
-	])
-	expect(mockModule.listCommunityListingCandidates).toHaveBeenNthCalledWith(
-		1,
+	expect(results).toEqual([])
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledTimes(1)
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.objectContaining({ query: 'discord' }),
 	)
+})
+
+test('searchCommunityListings reads past a full prefilter page the scorer rejects', async () => {
+	// "go" is a LIKE hit inside "going" but the scorer wants the exact short
+	// term, so a full page of newer near misses must not hide an older match.
+	const nearMisses = Array.from(
+		{ length: COMMUNITY_SEARCH_CANDIDATE_LIMIT },
+		(_, index) =>
+			sampleListing({
+				id: `listing-near-miss-${index}`,
+				kodyId: `near-miss-${index}`,
+				name: `@owner/near-miss-${index}`,
+				description: 'Keeps things going',
+				tags: ['ongoing'],
+				searchText: 'going',
+				readmeContent: '# Near miss',
+			}),
+	)
+	const olderMatch = sampleListing({
+		id: 'listing-go-match',
+		kodyId: 'go-tools',
+		name: '@owner/go-tools',
+		description: 'Helpers for go modules',
+		tags: ['go'],
+		searchText: 'go modules',
+		readmeContent: '# Go tools',
+	})
+	mockModule.listCommunityListingCandidates
+		.mockResolvedValueOnce(nearMisses)
+		.mockResolvedValueOnce([olderMatch])
+	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue(
+		emptyAggregates(['listing-go-match']),
+	)
+	mockModule.countCommunityForksByListingIds.mockResolvedValue({
+		'listing-go-match': 0,
+	})
+
+	const results = await searchCommunityListings({
+		env: createEnv(),
+		query: 'go',
+		limit: 10,
+	})
+
+	expect(results.map((listing) => listing.id)).toEqual(['listing-go-match'])
+	expect(mockModule.listCommunityListingCandidates).toHaveBeenCalledTimes(2)
 	expect(mockModule.listCommunityListingCandidates).toHaveBeenNthCalledWith(
 		2,
 		expect.anything(),
-		expect.not.objectContaining({ query: expect.anything() }),
-	)
-})
-
-test('listCommunityIndexOverview batches populated categories and uses SQL totals', async () => {
-	const integrationListings = Array.from({ length: 8 }, (_, index) =>
-		sampleListing({
-			id: `listing-integration-${index}`,
-			kodyId: `integration-${index}`,
-			name: `@owner/integration-${index}`,
-			publishedAt: `2026-07-0${index + 1}T00:00:00.000Z`,
+		expect.objectContaining({
+			query: 'go',
+			offset: COMMUNITY_SEARCH_CANDIDATE_LIMIT,
 		}),
 	)
-	const utilityListing = sampleListing({
-		id: 'listing-utility',
-		kodyId: 'utility-one',
-		name: '@owner/utility-one',
-		category: 'utilities',
-		tags: ['helper'],
-	})
-	mockModule.countActiveCommunityListingsByCategory.mockResolvedValue({
-		integrations: 40,
-		examples: 0,
-		productivity: 0,
-		apps: 0,
-		utilities: 2,
-		other: 0,
-	})
-	mockModule.listCommunityIndexOverviewCandidates.mockResolvedValue([
-		...integrationListings,
-		utilityListing,
-	])
-	mockModule.getCommunityRatingAggregatesByListingIds.mockResolvedValue({})
-	mockModule.countCommunityForksByListingIds.mockResolvedValue({})
-
-	const overview = await listCommunityIndexOverview({
-		env: createEnv(),
-		sort: 'newest',
-	})
-
-	expect(mockModule.listCommunityListingCandidates).not.toHaveBeenCalled()
-	expect(mockModule.listCommunityIndexOverviewCandidates).toHaveBeenCalledTimes(
-		1,
-	)
-	expect(mockModule.listCommunityIndexOverviewCandidates).toHaveBeenCalledWith(
-		expect.anything(),
-		{
-			limitPerCategory: communityIndexOverviewCandidateLimitPerCategory,
-			categories: ['integrations', 'utilities'],
-		},
-	)
-	expect(
-		mockModule.getCommunityRatingAggregatesByListingIds,
-	).toHaveBeenCalledTimes(1)
-	expect(mockModule.countCommunityForksByListingIds).toHaveBeenCalledTimes(1)
-	expect(overview.groups.map((group) => [group.category, group.total])).toEqual(
-		[
-			['integrations', 40],
-			['utilities', 2],
-		],
-	)
-	expect(overview.groups[0]?.listings).toHaveLength(6)
-	expect(overview.listings).toHaveLength(7)
-	expect(overview.categoryCounts.integrations).toBe(40)
-	expect(overview.categoryCounts.examples).toBe(0)
 })
 
 test('publishCommunityListing stores long README content and drops binary icon bytes from snapshots', async () => {

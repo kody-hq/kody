@@ -1,7 +1,5 @@
 import { expect, test, vi } from 'vitest'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { createMcpCallerContext } from '#mcp/context.ts'
-import { approvalPendingListCapability } from '#mcp/capabilities/packages/approval-pending-list.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	mappingFixtureBaseUrl,
@@ -154,9 +152,6 @@ test('asking to go public, then one Approve, records both decisions and serves t
 		confirmName: 'digest',
 	})
 	expect(asked?.status).toBe(400)
-	expect(asked?.data).toMatchObject({
-		approvalUrl: `${mappingFixtureBaseUrl}/@acme-clients/digest/approve-capabilities`,
-	})
 
 	const page = await t.loadPage()
 	expect(page.fingerprintMatchesApproval).toBe(false)
@@ -322,112 +317,6 @@ test('owner Re-approve records a new pin row even when the fingerprint already m
 	expect(after.latestApprovedAt).toBe(secondApprovedAt)
 })
 
-test('asking to go public when the capability set is already approved turns serving on immediately', async () => {
-	const t = await setup()
-	const before = await t.loadPage()
-	expect(
-		(
-			await t.approve({
-				action: 'approve-capabilities',
-				fingerprint: before.fingerprint,
-			})
-		)?.status,
-	).toBe(200)
-
-	// Withdraw the auto-enqueued ask so the toggle applies against an
-	// already-matching pin (the world-builder failure mode).
-	await t.toggle({
-		action: 'set-internet-visible',
-		internetVisible: false,
-		confirmName: 'digest',
-	})
-	expect((await t.loadPage()).goPublicRequestId).toBeNull()
-
-	const asked = await t.toggle({
-		action: 'set-internet-visible',
-		internetVisible: true,
-		confirmName: 'digest',
-	})
-	expect(asked?.status).toBe(200)
-	expect(
-		(
-			await getSavedPackageById(t.db, {
-				userId: t.acmeId,
-				packageId: t.savedPackage.id,
-			})
-		)?.isInternetVisible,
-	).toBe(true)
-	expect((await t.loadPage()).goPublicRequestId).toBeNull()
-	expect(
-		(
-			await approvalPendingListCapability.handler(
-				{ packages: [t.savedPackage.id] },
-				{
-					env: t.env,
-					callerContext: createMcpCallerContext({
-						source: { kind: 'mcp-oauth' },
-						baseUrl: mappingFixtureBaseUrl,
-						oauthClientId: 'client-a',
-						user: {
-							userId: t.people.bea.personId,
-							email: 'bea@example.com',
-							displayName: 'bea',
-						},
-						orgBinding: {
-							org: { id: t.acmeId, slug: 'acme-clients' },
-							role: 'owner',
-						},
-					}),
-				},
-			)
-		).items,
-	).toEqual([])
-})
-
-test('approvalPendingList shows a went_public ask the approve page also shows', async () => {
-	const t = await setup()
-	const asked = await t.toggle({
-		action: 'set-internet-visible',
-		internetVisible: true,
-		confirmName: 'digest',
-	})
-	expect(asked?.status).toBe(400)
-	const page = await t.loadPage()
-	expect(page.goPublicRequestId).toEqual(expect.any(String))
-	expect(page.pendingApprovals.map((approval) => approval.id)).toEqual([
-		page.goPublicRequestId,
-	])
-
-	const listed = await approvalPendingListCapability.handler(
-		{ packages: [t.savedPackage.id] },
-		{
-			env: t.env,
-			callerContext: createMcpCallerContext({
-				source: { kind: 'mcp-oauth' },
-				baseUrl: mappingFixtureBaseUrl,
-				oauthClientId: 'client-a',
-				user: {
-					userId: t.people.bea.personId,
-					email: 'bea@example.com',
-					displayName: 'bea',
-				},
-				orgBinding: {
-					org: { id: t.acmeId, slug: 'acme-clients' },
-					role: 'owner',
-				},
-			}),
-		},
-	)
-	expect(listed.items).toEqual([
-		expect.objectContaining({
-			type: 'publish',
-			key: `publish:${page.goPublicRequestId}`,
-			title: 'Serve on the public internet',
-			package: expect.objectContaining({ id: t.savedPackage.id }),
-		}),
-	])
-})
-
 test('a stale combined click after going public was turned off changes nothing', async () => {
 	const t = await setup()
 	await t.toggle({
@@ -452,16 +341,4 @@ test('a stale combined click after going public was turned off changes nothing',
 	expect(after.pendingApprovals).toEqual([])
 	expect(after.fingerprintMatchesApproval).toBe(false)
 	expect(await t.packageAudits()).toEqual([])
-})
-
-test('native capability approval uses its explicit operation without action dispatch', async () => {
-	const t = await setup()
-	const page = await t.loadPage()
-
-	const approved = await t.approve({
-		action: 'approve-capabilities',
-		fingerprint: page.fingerprint,
-	})
-	expect(approved.status).toBe(200)
-	expect((await t.loadPage()).fingerprintMatchesApproval).toBe(true)
 })

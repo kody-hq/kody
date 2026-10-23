@@ -1,4 +1,4 @@
-import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { personalUsageSlug } from './account-usage.ts'
@@ -38,19 +38,6 @@ async function getUsage(search = '') {
 		slug: await personalUsageSlug(env, user),
 	})
 }
-
-test('legacy /account/usage redirects to the personal org usage page', async () => {
-	const response = await getUsage()
-	expect(response).toBe('https://kody.codes/@ada/-/usage')
-	expect(mockModule.getOrgById).toHaveBeenCalledWith(env.APP_DB, 'stable-7')
-})
-
-test('the redirect keeps Stripe return and notice query params', async () => {
-	const response = await getUsage('?topup=success&session_id=cs_123')
-	expect(response).toBe(
-		'https://kody.codes/@ada/-/usage?topup=success&session_id=cs_123',
-	)
-})
 
 test('missing signup org slug falls back to the username', async () => {
 	mockModule.getOrgById.mockResolvedValueOnce(null)

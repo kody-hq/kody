@@ -6,6 +6,8 @@ import {
 	getPackageAppLegacySubdomainRedirect,
 	getPackageAppOriginConfigurationError,
 	hostnameSharesKodyRegistrableDomain,
+	isKodyReservedCustomHostname,
+	listKodyRegistrableDomains,
 	joinAppUrl,
 	parsePackageAppRequestHost,
 } from './app-base-url.ts'
@@ -303,5 +305,34 @@ test('custom hostnames must not share a registrable domain with Kody origins', (
 			env,
 			hostname: 'app.customer-test.example',
 		}),
+	).toBe(false)
+})
+
+test('reserved custom hostnames come from the same Kody domain list', () => {
+	const env = {
+		APP_BASE_URL: 'https://kody.codes',
+		PACKAGE_APP_BASE_URL: 'https://kody.run',
+		APP_LEGACY_HOSTS: 'legacy-kody.example',
+		PACKAGE_APP_LEGACY_HOSTS: 'www.kody.run',
+	}
+	expect(listKodyRegistrableDomains(env)).toEqual([
+		'kody.codes',
+		'kody.run',
+		'legacy-kody.example',
+	])
+	for (const hostname of [
+		'kody.codes',
+		'docs.kody.codes.',
+		'apps.kody.run',
+		'a.b.legacy-kody.example',
+		'demo.workers.dev',
+	]) {
+		expect(isKodyReservedCustomHostname({ env, hostname })).toBe(true)
+	}
+	expect(
+		isKodyReservedCustomHostname({ env, hostname: 'apps.example.com' }),
+	).toBe(false)
+	expect(
+		isKodyReservedCustomHostname({ env, hostname: 'kody.codes.example.com' }),
 	).toBe(false)
 })

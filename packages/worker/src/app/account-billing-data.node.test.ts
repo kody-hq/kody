@@ -1,6 +1,10 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
+import {
+	BillingPlanUnavailableError,
+	loadAccountBillingData,
+} from '#app/account-billing-data.ts'
 
 const refreshStripePlanForUser = vi.hoisted(() =>
 	vi.fn(async () => ({
@@ -32,13 +36,6 @@ vi.mock('#worker/billing/subscription-sync.ts', () => ({
 vi.mock('#worker/billing/stripe-plan-refresh-client.ts', () => ({
 	scheduleStripePlanRefreshBackstop,
 }))
-
-import {
-	BillingPlanUnavailableError,
-	loadAccountBillingData,
-	resolveBillingErrorMessage,
-	resolveBillingNoticeMessage,
-} from '#app/account-billing-data.ts'
 
 const personalOrg = {
 	id: ownerIdFromStored('stable-user-id'),
@@ -101,14 +98,6 @@ function createBillingEnv(input: {
 }
 
 test('loadAccountBillingData refreshes Stripe status and degrades when refresh is unavailable', async () => {
-	expect(resolveBillingErrorMessage('totally_new_code')).toBe(
-		'totally_new_code',
-	)
-	expect(resolveBillingErrorMessage(null)).toBeUndefined()
-	// Unknown notice codes render nothing (they are not user-typed errors).
-	expect(resolveBillingNoticeMessage('made_up')).toBeUndefined()
-	expect(resolveBillingNoticeMessage(null)).toBeUndefined()
-
 	refreshStripePlanForUser.mockResolvedValueOnce({
 		stripePlan: 'pro',
 		stripeInterval: 'year',
@@ -200,33 +189,6 @@ test('loadAccountBillingData refreshes Stripe status and degrades when refresh i
 	expect(scheduleStripePlanRefreshBackstop).toHaveBeenCalledTimes(2)
 })
 
-test('loadAccountBillingData fails closed when the personal plan row is missing', async () => {
-	const env = {
-		APP_DB: {
-			prepare() {
-				const statement = {
-					bind: () => statement,
-					first: async () => null,
-					all: async () => ({ results: [] }),
-					run: async () => ({ success: true }),
-				}
-				return statement
-			},
-		},
-		STRIPE_SECRET_KEY: 'sk_test',
-		STRIPE_PRO_PRICE_ID: 'price_pro',
-	} as unknown as Env
-
-	await expect(
-		loadAccountBillingData({
-			env,
-			userId: 800,
-			org: personalOrg,
-			seats: 1,
-		}),
-	).rejects.toBeInstanceOf(BillingPlanUnavailableError)
-})
-
 test("a team organization reads and refreshes its own Stripe customer, not the viewer's", async () => {
 	refreshStripePlanForUser.mockClear()
 	refreshStripePlanForOrg.mockClear()
@@ -263,4 +225,31 @@ test("a team organization reads and refreshes its own Stripe customer, not the v
 		}),
 	)
 	expect(refreshStripePlanForUser).not.toHaveBeenCalled()
+})
+
+test('loadAccountBillingData fails closed when the personal plan row is missing', async () => {
+	const env = {
+		APP_DB: {
+			prepare() {
+				const statement = {
+					bind: () => statement,
+					first: async () => null,
+					all: async () => ({ results: [] }),
+					run: async () => ({ success: true }),
+				}
+				return statement
+			},
+		},
+		STRIPE_SECRET_KEY: 'sk_test',
+		STRIPE_PRO_PRICE_ID: 'price_pro',
+	} as unknown as Env
+
+	await expect(
+		loadAccountBillingData({
+			env,
+			userId: 800,
+			org: personalOrg,
+			seats: 1,
+		}),
+	).rejects.toBeInstanceOf(BillingPlanUnavailableError)
 })

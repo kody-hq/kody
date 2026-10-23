@@ -10,9 +10,7 @@ import {
 	jevSearchNecessityTightScoreGap,
 	jevSearchScoreBudgetMs,
 	jevSearchScoreQuestionBatchSize,
-	normalizeJevRunResponse,
 	rerankSearchCandidatesWithJev,
-	resolveJevSearchRecallLimit,
 	hybridCandidateMatchesIdentityTerm,
 	selectJevKeptCandidates,
 } from './search-jev-rerank.ts'
@@ -153,14 +151,6 @@ function rerank(
 		...overrides,
 	})
 }
-
-test('resolveJevSearchRecallLimit widens only when requested', () => {
-	expect(resolveJevSearchRecallLimit({ limit: 15, widerRecall: false })).toBe(
-		15,
-	)
-	expect(resolveJevSearchRecallLimit({ limit: 15, widerRecall: true })).toBe(50)
-	expect(resolveJevSearchRecallLimit({ limit: 80, widerRecall: true })).toBe(80)
-})
 
 test('selectJevKeptCandidates uses high bar, secondary floor with cluster, or empty', () => {
 	const select = (scores: Array<[string, number]>) => {
@@ -647,50 +637,6 @@ test('rerankSearchCandidatesWithJev times out even when the AI binding ignores a
 	} finally {
 		vi.useRealTimers()
 	}
-})
-
-test('normalizeJevRunResponse unwraps gateway envelopes and docs Score payloads', () => {
-	const docsScoreAnswer = {
-		type: 'score' as const,
-		score: 1.04,
-		confidence: 0.94,
-		legend: { '0': 'Calm', '1': 'Frustrated', '2': 'Very angry' },
-		probabilities: { '0': 0, '1': 0.96, '2': 0.04 },
-	}
-	const answers = { frustration: docsScoreAnswer }
-	const docsUsage = { input_tokens: 426, output_tokens: 73 }
-	const docsBody = { model: 'jev-1.13.0', answers, usage: docsUsage }
-
-	expect(normalizeJevRunResponse(docsBody)).toMatchObject({
-		rawTopLevelKeys: ['model', 'answers', 'usage'],
-		resultAnswers: 'missing',
-		payload: { answers, usage: docsUsage },
-	})
-	expect(
-		normalizeJevRunResponse({
-			success: true,
-			errors: [],
-			messages: [],
-			result: docsBody,
-		}),
-	).toMatchObject({
-		rawTopLevelKeys: ['success', 'errors', 'messages', 'result'],
-		resultAnswers: 'object',
-		payload: { answers, usage: docsUsage },
-	})
-	const nestedResponseUsage = { input_tokens: 40, output_tokens: 8 }
-	expect(
-		normalizeJevRunResponse({
-			success: true,
-			result: {
-				response: JSON.stringify({ answers }),
-				usage: nestedResponseUsage,
-			},
-		}),
-	).toMatchObject({
-		resultAnswers: 'missing',
-		payload: { answers, usage: nestedResponseUsage },
-	})
 })
 
 test('rerankSearchCandidatesWithJev applies wrapped gateway Score answers and samples missing-answer keys', async () => {

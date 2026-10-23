@@ -1,9 +1,6 @@
 import { expect, test } from 'vitest'
 import { credentialStampConvertMessages } from '#worker/credentials/credential-stamp-convert.ts'
-import {
-	convertCredentialStampsCodemod,
-	convertCredentialStampsCodemodId,
-} from './0015-convert-credential-stamps.ts'
+import { convertCredentialStampsCodemod } from './0015-convert-credential-stamps.ts'
 
 const packageContext = { packageName: '@acme/demo' }
 
@@ -18,13 +15,6 @@ function manifest(kody: Record<string, unknown> = {}) {
 		'\t',
 	)}\n`
 }
-
-test('0015 id matches the convert module export', () => {
-	expect(convertCredentialStampsCodemod.id).toBe(
-		convertCredentialStampsCodemodId,
-	)
-	expect(convertCredentialStampsCodemod.applyMode).toBe('published-only')
-})
 
 test('0015 leaves |scope=package alone and does not rewrite', () => {
 	const files = {

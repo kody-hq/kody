@@ -28,20 +28,6 @@ function env() {
 	} as unknown as Env
 }
 
-test('syncActiveCommunityListingToPublishedCommit skips when no active listing', async () => {
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue(null)
-	await expect(
-		syncActiveCommunityListingToPublishedCommit({
-			env: env(),
-			baseUrl: 'https://kody.codes',
-			ownerUserId: ownerIdFromStored('user-1'),
-			packageId: 'pkg-1',
-			publishedCommit: 'abc1234',
-		}),
-	).resolves.toBe('skipped')
-	expect(mockModule.publishCommunityListing).not.toHaveBeenCalled()
-})
-
 test('syncActiveCommunityListingToPublishedCommit skips when the pin already matches', async () => {
 	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue({
 		id: 'listing-1',

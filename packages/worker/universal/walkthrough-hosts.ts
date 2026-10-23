@@ -52,7 +52,7 @@ export type WalkthroughHostPick = {
 	allRow: Array<WalkthroughHost>
 }
 
-export const walkthroughHostCatalog = [
+const walkthroughHostCatalog = [
 	{
 		id: 'cursor',
 		label: 'Cursor',
@@ -235,11 +235,11 @@ function walkthroughHostIsChat(host: WalkthroughHost) {
 	return host.kind === 'chat' || host.kind === 'both'
 }
 
-export function listCodingWalkthroughHosts(): Array<WalkthroughHost> {
+function listCodingWalkthroughHosts(): Array<WalkthroughHost> {
 	return walkthroughHostCatalog.filter(walkthroughHostIsCoding)
 }
 
-export function listChatWalkthroughHosts(): Array<WalkthroughHost> {
+function listChatWalkthroughHosts(): Array<WalkthroughHost> {
 	return walkthroughHostCatalog.filter(walkthroughHostIsChat)
 }
 
@@ -247,7 +247,7 @@ export function listAllWalkthroughHosts(): Array<WalkthroughHost> {
 	return [...walkthroughHostCatalog]
 }
 
-export function shuffleWalkthroughHosts(
+function shuffleWalkthroughHosts(
 	hosts: ReadonlyArray<WalkthroughHost>,
 	randomInt: WalkthroughRandomInt,
 ): Array<WalkthroughHost> {
@@ -265,7 +265,7 @@ export function shuffleWalkthroughHosts(
 	return next
 }
 
-export function listValidWalkthroughHostPicks(): Array<
+function listValidWalkthroughHostPicks(): Array<
 	Omit<WalkthroughHostPick, 'codingRow' | 'chatRow' | 'allRow'>
 > {
 	const codingHosts = listCodingWalkthroughHosts()
@@ -442,50 +442,4 @@ export function joinWalkthroughHostLabels(
 	if (labels.length === 1) return labels[0]!
 	if (labels.length === 2) return `${labels[0]} and ${labels[1]}`
 	return `${labels.slice(0, -1).join(', ')}, and ${labels.at(-1)}`
-}
-
-export function isValidWalkthroughHostPick(
-	value: WalkthroughHostPick,
-): boolean {
-	if (!walkthroughHostIsCoding(value.coding)) return false
-	if (!walkthroughHostIsChat(value.invoke)) return false
-	if (value.invoke.id === value.coding.id) return false
-	if (value.notify.id === value.coding.id) return false
-	if (value.notify.id === value.invoke.id) return false
-	const companies = new Set([
-		value.coding.company,
-		value.invoke.company,
-		value.notify.company,
-	])
-	if (companies.size !== 3) return false
-	const codingIds = new Set(listCodingWalkthroughHosts().map((host) => host.id))
-	const chatIds = new Set(listChatWalkthroughHosts().map((host) => host.id))
-	if (value.codingRow.length !== codingIds.size) return false
-	if (new Set(value.codingRow.map((host) => host.id)).size !== codingIds.size) {
-		return false
-	}
-	if (
-		!value.codingRow.every(
-			(host) => walkthroughHostIsCoding(host) && codingIds.has(host.id),
-		)
-	) {
-		return false
-	}
-	if (value.chatRow.length !== chatIds.size) return false
-	if (new Set(value.chatRow.map((host) => host.id)).size !== chatIds.size) {
-		return false
-	}
-	if (
-		!value.chatRow.every(
-			(host) => walkthroughHostIsChat(host) && chatIds.has(host.id),
-		)
-	) {
-		return false
-	}
-	const allIds = new Set(listAllWalkthroughHosts().map((host) => host.id))
-	if (value.allRow.length !== allIds.size) return false
-	if (new Set(value.allRow.map((host) => host.id)).size !== allIds.size) {
-		return false
-	}
-	return value.allRow.every((host) => allIds.has(host.id))
 }

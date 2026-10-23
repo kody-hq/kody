@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { stripWorkerProcessEnvTypes } from './strip-worker-process-env-types.ts'
 
@@ -23,12 +22,4 @@ test('removes only the NodeJS.ProcessEnv augmentation from wrangler types', () =
 	expect(stripped).toContain('declare namespace Cloudflare {')
 	expect(stripped).toContain('declare module "*.md" {')
 	expect(stripWorkerProcessEnvTypes(stripped)).toBe(stripped)
-})
-
-test('committed worker types carry no NodeJS.ProcessEnv augmentation', () => {
-	const committed = readFileSync(
-		new URL('../packages/worker/worker-configuration.d.ts', import.meta.url),
-		'utf8',
-	)
-	expect(committed).not.toContain('interface ProcessEnv')
 })

@@ -26,6 +26,7 @@ export type LoginCallbackErrorKind =
 	| 'state_mismatch'
 	| 'expired'
 	| 'failed'
+	| 'save_failed'
 
 export type LoginCallbackError = {
 	kind: 'error'
@@ -53,6 +54,10 @@ const errorCopy: Record<
 	failed: {
 		title: 'Sign-in failed',
 		body: 'Kody could not finish signing the CLI in.',
+	},
+	save_failed: {
+		title: 'Approved, but not saved',
+		body: 'You approved the connection, but the Kody CLI could not save your sign-in on this computer. Your terminal shows what went wrong and how to fix it.',
 	},
 }
 
@@ -367,7 +372,11 @@ function renderError(page: LoginCallbackError): string {
         <p class="lead">${escapeHtml(copy.body)}</p>
       </div>
     </div>
-    <p class="next">Return to your terminal and run <code>kody login</code> to try again.</p>
+    <p class="next">${
+			page.error === 'save_failed'
+				? 'Return to your terminal, follow the fix it shows, then run <code>kody login</code> again.'
+				: 'Return to your terminal and run <code>kody login</code> to try again.'
+		}</p>
   </section>
 </main>
 ${closeScript()}

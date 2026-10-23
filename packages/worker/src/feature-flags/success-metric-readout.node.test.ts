@@ -4,7 +4,6 @@ import { type FeatureFlagSuccessMetric } from '#universal/feature-flags/registry
 import {
 	attachFeatureFlagMetricReadouts,
 	loadFeatureFlagSuccessMetricReadout,
-	resolveFlagExposuresDataset,
 } from './success-metric-readout.ts'
 import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 
@@ -242,13 +241,6 @@ test('selects D1 locally, stays unavailable without credentials, and degrades on
 		status: 'unavailable',
 		reason: expect.stringContaining(`(422): ${aeError}`),
 	})
-})
-
-test('resolveFlagExposuresDataset picks preview vs production table names', () => {
-	expect(resolveFlagExposuresDataset({})).toBe('kody_flag_exposures')
-	expect(resolveFlagExposuresDataset({ SENTRY_ENVIRONMENT: 'preview' })).toBe(
-		'kody_flag_exposures_preview',
-	)
 })
 
 test('attachFeatureFlagMetricReadouts only fills measured non-stale flags', async () => {

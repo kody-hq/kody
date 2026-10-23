@@ -5,7 +5,7 @@ import { type OnboardingFeaturedListing } from '#universal/community-public-type
  * featured listings by `zero-auth` tag; these ids only stabilize order and act
  * as a fallback identifier when tags are missing.
  */
-export const onboardingExampleListingIds = [
+const onboardingExampleListingIds = [
 	'f619713e-1a01-4fbf-91f2-03660d615832', // @kody/local-conditions
 	'18f8977e-a001-4c83-bddd-f329eefc3f7c', // @kody/hn-pulse
 	'bd541b8f-6c77-4a8d-9151-6e3b36afa069', // @kody/personal-capture
@@ -15,7 +15,7 @@ const onboardingExampleListingIdSet = new Set<string>(
 	onboardingExampleListingIds,
 )
 
-export function isOnboardingExampleListing(listing: {
+function isOnboardingExampleListing(listing: {
 	id: string
 	tags: Array<string>
 }): boolean {
@@ -31,7 +31,7 @@ export function isOnboardingExampleListing(listing: {
  * featured payload includes; callers should tolerate an empty list when
  * curation has not landed yet.
  */
-export function selectOnboardingExampleListings(
+function selectOnboardingExampleListings(
 	featuredListings: Array<OnboardingFeaturedListing>,
 ): Array<OnboardingFeaturedListing> {
 	const examples = featuredListings.filter(isOnboardingExampleListing)
@@ -45,14 +45,6 @@ export function selectOnboardingExampleListings(
 	})
 }
 
-export function hasInstalledOnboardingExample(
-	listings: Array<OnboardingFeaturedListing>,
-): boolean {
-	return selectOnboardingExampleListings(listings).some(
-		(listing) => listing.viewerInstall != null,
-	)
-}
-
 export function firstInstalledOnboardingExampleName(
 	listings: Array<OnboardingFeaturedListing>,
 ): string | null {
@@ -60,68 +52,4 @@ export function firstInstalledOnboardingExampleName(
 		(listing) => listing.viewerInstall != null,
 	)
 	return installed?.viewerInstall?.targetName ?? installed?.name ?? null
-}
-
-/** Poll skip key for Just-try-Kody installs. */
-export function onboardingExampleInstallFingerprint(
-	listings: Array<OnboardingFeaturedListing>,
-): string {
-	return selectOnboardingExampleListings(listings)
-		.map((listing) => `${listing.id}:${listing.viewerInstall?.status ?? ''}`)
-		.join('|')
-}
-
-/** Featured starters under Step 3 Advanced: everything that is not a zero-auth example. */
-export function selectOnboardingServiceStarterListings(
-	featuredListings: Array<OnboardingFeaturedListing>,
-): Array<OnboardingFeaturedListing> {
-	return featuredListings.filter(
-		(listing) => !isOnboardingExampleListing(listing),
-	)
-}
-
-function exampleImportHint(scopedName: string, kodyId: string): string {
-	const searchHint = `Search with search({ query: ${JSON.stringify(scopedName)} }) and inspect that user-owned package.`
-	const specifier = `kody:${scopedName}`
-	switch (kodyId) {
-		case 'local-conditions':
-			return `${searchHint} Example: import getLocalConditions from "${specifier}/getLocalConditions" then await getLocalConditions({ place: "Salt Lake City" }).`
-		case 'hn-pulse':
-			return `${searchHint} Example: import getTopStories from "${specifier}/getTopStories" then await getTopStories({ limit: 5 }).`
-		case 'personal-capture':
-			return `${searchHint} Example: import capture from "${specifier}/capture" then await capture({ text: "Onboarding first build" }), then import listCaptures from "${specifier}/listCaptures" then await listCaptures({ limit: 5 }).`
-		default:
-			return `${searchHint} Open search({ entity: "package:{kodyId}#<subpath>" }) for one export contract, or packageGet for the full export array and secret metadata (it does not return files). Open a repo session and repoReadFile README.md and AGENTS.md, then statically import one export from its scoped kody: module specifier.`
-	}
-}
-
-/**
- * Agent paste after the user picks a Just-try-Kody example. Safe to show while
- * one-click install is still in flight — the agent is told to wait/retry once
- * if the fork is not searchable yet.
- */
-export function buildOnboardingExamplePrompt(input: {
-	listingName: string
-	kodyId: string
-	username: string
-}): string {
-	const scopedName = `@${input.username}/${input.kodyId}`
-	return [
-		`I started a one-click install/fork of the onboarding example "${input.listingName}" (package name leaf: ${input.kodyId}) into my Kody account.`,
-		`Wait until that install is ready: search for my user-owned package by its scoped name "${scopedName}" once, and if it is missing, try again once after I say install finished — do not poll in a loop.`,
-		`Then call MY installed/forked package with a static import from its scoped specifier "kody:${scopedName}" (not "kody:@kody/${input.kodyId}": imports resolve only in my own org, so the copy I own is the one to import).`,
-		exampleImportHint(scopedName, input.kodyId),
-		'Show the result briefly. Explain that the package is one I own.',
-		'Ask if I want to hang a trigger on it (webhook, Kody app, cron, or skip) — list options without recommending one.',
-		'Keep messages short.',
-	].join(' ')
-}
-
-export function buildOnboardingPackageAuthoringPrompt(kodyId: string): string {
-	return [
-		`Help me change my Kody package "${kodyId}" or create a new package.`,
-		'First open search({ entity: ["guide:package_authoring", "guide:package_lifecycle"] }).',
-		`Then call packageGetGitRemote({ create: true, kody_id: ${JSON.stringify(kodyId)} }) or pass the matching @owner/leaf in leftover kody_id so we can work in the package repository.`,
-		'Ask what I want the package to do, then follow the guides.',
-	].join(' ')
 }

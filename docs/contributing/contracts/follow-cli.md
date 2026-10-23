@@ -2,7 +2,7 @@
 
 Contract between origin (`followAdd` / `followList` / `followRemove`) and
 `@kodycodes/cli` (`kody follow add` / `kody follow list` /
-`kody follow remove`). The CLI lives in kody-bot/cli. Origin exposes the
+`kody follow remove`). The CLI lives in `packages/cli`. Origin exposes the
 capabilities on MCP and the Open API. Product keyword: `follow_repo`. Domain:
 `follow`.
 

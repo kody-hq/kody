@@ -15,37 +15,21 @@ function assertPng(png: Uint8Array) {
 	}
 }
 
-test('blog OG renderer produces PNG for catalog posts with and without JPEG artwork', async () => {
-	const textOnly = getBlogPost('your-assistants-home')
-	expect(textOnly).toBeDefined()
+test('blog OG renderer produces a PNG for a post with JPEG artwork', async () => {
+	const post = getBlogPost('openclaw-2-needs-a-home')
+	expect(post).toBeDefined()
+	const artwork = readFileSync(
+		join(
+			dirname(fileURLToPath(import.meta.url)),
+			`../../public${post!.ogImage}`,
+		),
+	)
 	assertPng(
 		await renderBlogPostOgImage({
-			title: textOnly!.title,
-			description: textOnly!.description,
-			date: textOnly!.date,
+			title: post!.title,
+			description: post!.description,
+			date: post!.date,
+			imageDataUri: `data:image/jpeg;base64,${bytesToBase64(artwork)}`,
 		}),
 	)
-
-	for (const slug of [
-		'openclaw-2-needs-a-home',
-		'how-to-turn-agent-work-into-software-you-own',
-	] as const) {
-		const withArt = getBlogPost(slug)
-		expect(withArt).toBeDefined()
-		expect(withArt!.ogImage).toMatch(/^\/images\/.+\.jpe?g$/)
-		const artwork = readFileSync(
-			join(
-				dirname(fileURLToPath(import.meta.url)),
-				`../../public${withArt!.ogImage}`,
-			),
-		)
-		assertPng(
-			await renderBlogPostOgImage({
-				title: withArt!.title,
-				description: withArt!.description,
-				date: withArt!.date,
-				imageDataUri: `data:image/jpeg;base64,${bytesToBase64(artwork)}`,
-			}),
-		)
-	}
 })

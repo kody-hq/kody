@@ -179,13 +179,18 @@ credentials; opt-in types that a package can declare are described in
   key. Omitting `kind` is compatible with a dependency that declares a
   fetch-capable kind (the declared kind is kept).
 - `packageGet` returns that closure as `credentials.needs`, each need with how
-  it resolves for you: `status` is `ready` (exactly one credential you can Use
-  matches the need's kind filter and provider; `autoPick` names it), `ambiguous`
-  (several do), or `unbound` (none). `yourOptions` lists what you could pick
-  (name, `org` or `personal` scope, hosts): the matches plus matching-kind
-  credentials with no provider, which resolve automatically once their provider
-  is set (`credentialUpdate`). Only credentials you can Use are listed, and
-  needs inherited from a dependency carry `from`.
+  it resolves for you: `status` is `ready` (a default mapping, yours and then
+  the org's, names a credential you can Use, or exactly one credential you can
+  Use matches the need's kind filter and provider, or one Key bound to this
+  package is named exactly like the need key; `autoPick` names it), `ambiguous`
+  (several match and neither a default mapping nor a package-bound Key named for
+  the need picks one), or `unbound` (none, or a default maps the need to no
+  credential on purpose). `source` says which: `mine`, `org`, or `auto`.
+  `yourOptions` lists what you could pick (name, `org` or `personal` scope,
+  hosts): the matches plus matching-kind credentials with no provider, which
+  resolve automatically once their provider is set (`credentialUpdate`). Only
+  credentials you can Use are listed, and needs inherited from a dependency
+  carry `from`.
 - To choose which credential a need uses, an agent calls
   `credentialMappingPropose` with org defaults, your own defaults, or mappings
   for your instance of a trigger. It writes nothing and returns an approval
@@ -777,7 +782,9 @@ state, kill-switch state, params, `expires_at` (UTC ISO auto-disable; null
 clears). Jobs keep name and source in the package repo — change, add, or remove
 the job entry there and publish. `jobRunNow` triggers an existing package job
 immediately for debugging. When `expires_at` is reached the platform stops
-scheduling and auto-disables the job.
+scheduling and auto-disables the job. The scheduler also turns a recurring job
+off, and emails the org owners, when it cannot compute the next run from the
+schedule. The job stays off until someone turns it back on (`/@<slug>/-/jobs`).
 
 ## Save and edit packages
 

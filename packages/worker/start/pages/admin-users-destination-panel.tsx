@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { type CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { useState, useRef } from 'react'
+import { useState, useRef, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminDestinationMutationOptions } from '../admin-user-controls-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -8,6 +9,7 @@ import { mq, spacing } from '#universal/styles/tokens.ts'
 import {
 	fieldCss,
 	fieldLabelCss,
+	getAuthInputCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -28,6 +30,10 @@ export function AdminUserDestinationPanel({
 	const [message, setMessage] = useState<string | null>(null)
 	const [tone, setTone] = useState<'info' | 'error'>('info')
 	const busy = useRef(false)
+	function onSubmit(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault()
+		void submit()
+	}
 	async function submit() {
 		if (busy.current || !email.trim()) return
 		busy.current = true
@@ -68,7 +74,10 @@ export function AdminUserDestinationPanel({
 					{message}
 				</AccountManagementMessage>
 			) : null}
-			<div
+			<form
+				noValidate
+				aria-label="Mark email destination verified"
+				onSubmit={onSubmit}
 				css={{
 					display: 'grid',
 					gap: spacing.md,
@@ -82,23 +91,26 @@ export function AdminUserDestinationPanel({
 					<input
 						data-field-ring
 						type="email"
+						autoComplete="off"
 						disabled={mutation.isPending}
 						value={email}
 						aria-label="Destination email"
 						placeholder="extra@example.com"
 						onChange={(event) => setEmail(event.currentTarget.value)}
-						css={{ width: '100%' }}
+						css={inputCss}
 					/>
 				</label>
 				<button
-					type="button"
+					type="submit"
 					disabled={mutation.isPending || !email.trim()}
-					css={getPillButtonCss({ size: 'sm' })}
-					onClick={() => void submit()}
+					css={primaryButtonCss}
 				>
 					{mutation.isPending ? 'Working…' : 'Mark destination verified'}
 				</button>
-			</div>
+			</form>
 		</AccountManagementPanel>
 	)
 }
+
+const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }
+const primaryButtonCss: CSSObject = getPillButtonCss({ size: 'sm' })

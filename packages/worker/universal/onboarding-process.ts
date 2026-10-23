@@ -94,7 +94,7 @@ export const onboardingUnconnectedNotice =
 /** Agent-retrievable first-run guide (bundled + `search({ entity })`). */
 const onboardingGuideEntity = 'guide:onboarding'
 export const onboardingGuideHref = '/docs/onboarding'
-export const portabilityGuideEntity = 'guide:portability'
+const portabilityGuideEntity = 'guide:portability'
 export const portabilityGuideHref = '/docs/portability'
 
 export const onboardingAccessLede =
@@ -279,7 +279,7 @@ export type OnboardingWizardProgress = {
  * First unfinished wizard step. Finished accounts resume on Step 3 so the
  * Connected list stays visible instead of a fresh Step 1 picker.
  */
-export function resumeOnboardingWizardStep(
+function resumeOnboardingWizardStep(
 	progress: OnboardingWizardProgress,
 ): OnboardingWizardStepNumber {
 	if (!progress.hasMcpClient) return 1

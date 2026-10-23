@@ -25,37 +25,30 @@ function deferred<T>() {
 }
 
 describe('page query ownership', () => {
-	it.each([
-		['loadAccountPage', 'profile'],
-		['loadProfile', 'profile'],
-		['loadJobsPage', 'jobs'],
-	])(
-		'loads an invalidated %s independently of its pending write',
-		async (resource, mutationName) => {
-			const cache = client()
-			const write = deferred<void>()
-			const nextRead = deferred<{ title: string }>()
-			const read = vi.fn(() => nextRead.promise)
-			const options = createPageQuery(resource, read)('actor-a', undefined)
-			cache.setQueryData(options.queryKey, { title: 'Previous title' })
-			const mutation = cache.getMutationCache().build(cache, {
-				mutationKey: [mutationName, 'actor-a'],
-				mutationFn: () => write.promise,
-			})
-			const writing = mutation.execute(undefined)
-			await cache.invalidateQueries({
-				queryKey: options.queryKey,
-				refetchType: 'none',
-			})
-			const navigation = ensurePageQuery(cache, options, false)
-			await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
-			nextRead.resolve({ title: 'Server title' })
-			expect(await navigation).toEqual({ title: 'Server title' })
-			expect(cache.isMutating()).toBe(1)
-			write.resolve()
-			await writing
-		},
-	)
+	it('loads an invalidated resource independently of its pending write', async () => {
+		const cache = client()
+		const write = deferred<void>()
+		const nextRead = deferred<{ title: string }>()
+		const read = vi.fn(() => nextRead.promise)
+		const options = createPageQuery('loadProfile', read)('actor-a', undefined)
+		cache.setQueryData(options.queryKey, { title: 'Previous title' })
+		const mutation = cache.getMutationCache().build(cache, {
+			mutationKey: ['profile', 'actor-a'],
+			mutationFn: () => write.promise,
+		})
+		const writing = mutation.execute(undefined)
+		await cache.invalidateQueries({
+			queryKey: options.queryKey,
+			refetchType: 'none',
+		})
+		const navigation = ensurePageQuery(cache, options, false)
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
+		nextRead.resolve({ title: 'Server title' })
+		expect(await navigation).toEqual({ title: 'Server title' })
+		expect(cache.isMutating()).toBe(1)
+		write.resolve()
+		await writing
+	})
 
 	it.each([false, true])(
 		'authorizes independently of a pending write (cached: %s)',

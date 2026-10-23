@@ -48,6 +48,16 @@ const planEnablementRuns = vi.fn(
 	}),
 )
 
+const notifyOwnersOfJobAutoDisabled = vi.fn(async () => ({
+	recipients: 1,
+	delivered: 1,
+}))
+
+vi.mock('./job-auto-disabled-notice.ts', () => ({
+	notifyOwnersOfJobAutoDisabled: (...args: Array<unknown>) =>
+		notifyOwnersOfJobAutoDisabled(...(args as [])),
+}))
+
 vi.mock('#worker/enablements/run-gate.ts', () => ({
 	planEnablementRuns: () => planEnablementRuns(),
 }))
@@ -386,6 +396,78 @@ test('scheduled package job claims carry package identity and the published sour
 			nextRunAt: '2026-07-30T19:00:05.000Z',
 		}),
 	)
+})
+
+test('a recurring job the scheduler turns off tells the owners why', async () => {
+	notifyOwnersOfJobAutoDisabled.mockClear()
+	finalizeClaimedJobRow.mockReset()
+	finalizeClaimedJobRow.mockResolvedValue(true)
+	const broken = createJobRecord({
+		id: 'package-job:pkg-fenced:broken-schedule',
+		name: 'Broken schedule',
+		schedule: { type: 'cron', expression: '* *' },
+	})
+	const row = seedDueClaim(broken)
+	claimRunRecord.mockResolvedValue(
+		alreadyRecordedRun(broken, row, {
+			packageId: null,
+			kodyId: null,
+			publishedCommit: null,
+		}),
+	)
+	// Email delivery must not hold the account write lease.
+	let leaseHeld = false
+	const sentWhileLeaseHeld: Array<boolean> = []
+	withAccountWriteLease.mockImplementationOnce(async (lease) => {
+		leaseHeld = true
+		try {
+			return await lease.write()
+		} finally {
+			leaseHeld = false
+		}
+	})
+	notifyOwnersOfJobAutoDisabled.mockImplementationOnce(async () => {
+		sentWhileLeaseHeld.push(leaseHeld)
+		return { recipients: 1, delivered: 1 }
+	})
+
+	await runDue(broken.userId)
+	expect(sentWhileLeaseHeld).toEqual([false])
+
+	const finalized = finalizeClaimedJobRow.mock.calls[0]?.[0] as {
+		job: JobRecord
+	}
+	expect(finalized.job.enabled).toBe(false)
+	expect(notifyOwnersOfJobAutoDisabled).toHaveBeenCalledOnce()
+	expect(notifyOwnersOfJobAutoDisabled).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ownerId: broken.userId,
+			jobId: broken.id,
+			jobName: 'Broken schedule',
+			reason: expect.stringContaining(
+				'Cron expressions must use standard 5-field syntax',
+			),
+		}),
+	)
+
+	// A healthy recurring run stays on and sends nothing.
+	notifyOwnersOfJobAutoDisabled.mockClear()
+	finalizeClaimedJobRow.mockClear()
+	const healthy = createJobRecord({ id: 'package-job:pkg-fenced:healthy' })
+	const healthyRow = seedDueClaim(healthy)
+	claimRunRecord.mockResolvedValue(
+		alreadyRecordedRun(healthy, healthyRow, {
+			packageId: null,
+			kodyId: null,
+			publishedCommit: null,
+		}),
+	)
+	await runDue(healthy.userId)
+	expect(
+		(finalizeClaimedJobRow.mock.calls[0]?.[0] as { job: JobRecord }).job
+			.enabled,
+	).toBe(true)
+	expect(notifyOwnersOfJobAutoDisabled).not.toHaveBeenCalled()
 })
 
 test('a scheduled slot with no enablement on surfaces the skip and does not use up a once job', async () => {

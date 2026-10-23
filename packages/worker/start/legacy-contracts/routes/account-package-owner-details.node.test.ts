@@ -77,36 +77,6 @@ test('owner details show No app when the package has no app', async () => {
 	expect(html).not.toContain('Open Package App')
 })
 
-test('owner details group visibility controls and use credentials wording', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageOwnerDetails, {
-			ownerUsername: 'kentcdodds',
-			packageDetail: packageDetail({
-				isPrivate: true,
-				isInternetVisible: false,
-				hasApp: true,
-			}),
-			lockInFlight: false,
-			viewerCanPublish: true,
-			viewerCanDelete: true,
-			viewerCanAdoptCommunityFork: false,
-			onToggleLock: () => {},
-		}),
-	)
-
-	expect(html).toContain('data-testid="package-visibility-controls"')
-	expect(html).toContain('data-testid="package-internet-visible-controls"')
-	expect(html).toContain('data-testid="package-make-public"')
-	expect(html).not.toContain('data-testid="package-update-public-listing"')
-	expect(html).toContain('Make public on the community')
-	expect(html).toContain('Visibility')
-	expect(html).toContain('data-testid="package-internet-visible-on"')
-	expect(html).toContain('Make internet-visible')
-	expect(html).toContain('Review credentials')
-	expect(html).toContain('data-testid="package-approve-capabilities-link"')
-	expect(html).toContain('/@kentcdodds/demo-app/approve-capabilities')
-})
-
 test('owner details publishing panel shows live version, newer changes, and primary CTA', async () => {
 	const upToDate = await renderToString(
 		jsx(AccountPackageOwnerDetails, {
@@ -192,33 +162,6 @@ test('owner details publishing panel shows live version, newer changes, and prim
 		}),
 	)
 	expect(orgPrivate).toContain('People in your organization can see it')
-})
-
-test('owner details do not offer Update public listing when the catalog pin lags', async () => {
-	const html = await renderToString(
-		jsx(AccountPackageOwnerDetails, {
-			ownerUsername: 'danj',
-			packageDetail: packageDetail({
-				isPrivate: false,
-				hasCommunityListing: true,
-				listingNeedsRepublish: true,
-				publishedCommit: '4665dddb7b7347291bd99049ba0f67ca101ee082',
-				publishedVersion: '1.5.0',
-			}),
-			lockInFlight: false,
-			viewerCanPublish: true,
-			viewerCanDelete: true,
-			viewerCanAdoptCommunityFork: false,
-			onToggleLock: () => {},
-		}),
-	)
-
-	expect(html).not.toContain('data-testid="package-update-public-listing"')
-	expect(html).not.toContain('Update public listing')
-	expect(html).toContain('data-testid="package-publishing-listing-syncing"')
-	expect(html).toContain(
-		'The community listing is catching up to this published version.',
-	)
 })
 
 test('package managers without publish, delete, or adoption permission do not see those controls', async () => {
@@ -328,3 +271,84 @@ for (const fails of [false, true]) {
 		}
 	})
 }
+
+test('owner details show custom domain status, with records only while not active', async () => {
+	const html = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'acme',
+			packageDetail: packageDetail({
+				ownerIsPersonal: false,
+				customDomains: [
+					{
+						id: 'domain-pending',
+						hostname: 'apps.example.com',
+						bindingKind: 'app',
+						status: {
+							state: 'pending',
+							reason: 'Waiting for Cloudflare to find the CNAME.',
+						},
+						records: [
+							{
+								type: 'CNAME',
+								name: 'apps.example.com',
+								relativeName: 'apps',
+								value: 'domains.kody.run',
+								purpose: 'routing',
+							},
+						],
+						verifiedAt: null,
+						lastCheckedAt: '2026-10-20T12:00:00.000Z',
+					},
+					{
+						id: 'domain-active',
+						hostname: 'live.example.com',
+						bindingKind: 'app',
+						status: { state: 'active', reason: null },
+						records: [
+							{
+								type: 'CNAME',
+								name: 'live.example.com',
+								relativeName: 'live',
+								value: 'domains.kody.run',
+								purpose: 'routing',
+							},
+						],
+						verifiedAt: '2026-10-20T12:00:00.000Z',
+						lastCheckedAt: '2026-10-20T12:00:00.000Z',
+					},
+				],
+			}),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: true,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(html).toContain('data-testid="package-custom-domains"')
+	expect(html).toContain('data-custom-domain-state="pending"')
+	expect(html).toContain('data-custom-domain-state="active"')
+	expect(html).toContain('DNS only')
+	expect(html).toContain('domains.kody.run')
+	expect(html).toContain('href="https://live.example.com/"')
+	expect(html).toContain('href="/@acme/-/settings"')
+	const activeRow = html.slice(
+		html.indexOf('data-testid="custom-domain-domain-active"'),
+	)
+	expect(activeRow).not.toContain('<table')
+})
+
+test('owner details omit the custom domain section when the package has none', async () => {
+	const html = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'acme',
+			packageDetail: packageDetail(),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: true,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(html).not.toContain('package-custom-domains')
+})

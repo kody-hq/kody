@@ -4,7 +4,6 @@ import {
 	buildCredentialApprovalHref,
 	buildCredentialCreateHref,
 	buildCredentialCreateUrl,
-	describeCredentialMappingTarget,
 	isCredentialKind,
 	maxCredentialProposalValues,
 	orgCredentialCreatePath,
@@ -139,15 +138,6 @@ test('picks parse names, scoped names, and ids', () => {
 	expect(parseCredentialPick('name:')).toBeNull()
 	expect(isCredentialKind('mcp')).toBe(true)
 	expect(isCredentialKind('vault')).toBe(false)
-	expect(
-		describeCredentialMappingTarget({ type: 'default', layer: 'org' }),
-	).toBe('org default')
-	expect(
-		describeCredentialMappingTarget({
-			type: 'trigger',
-			trigger: { kind: 'webhook', name: 'push' },
-		}),
-	).toBe('webhook "push"')
 })
 
 test('names that look like prefixes and brackets in names round-trip', () => {

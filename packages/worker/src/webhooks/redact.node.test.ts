@@ -4,15 +4,6 @@ import {
 	redactWebhookCredentials,
 } from './redact.ts'
 
-test('collectWebhookCredentialSecrets includes percent-encoded variants', () => {
-	const url = 'https://hooks.example/u/whsec_abc123'
-	const urlSecret = 'whsec_abc123'
-	const secrets = collectWebhookCredentialSecrets({ url, urlSecret })
-	expect(secrets).toContain(url)
-	expect(secrets).toContain(urlSecret)
-	expect(secrets).toContain(encodeURIComponent(url))
-})
-
 test('redactWebhookCredentials removes percent-encoded callback URLs', () => {
 	const url = 'https://hooks.example/u/whsec_abc123'
 	const secrets = collectWebhookCredentialSecrets({

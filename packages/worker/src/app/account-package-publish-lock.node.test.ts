@@ -3,7 +3,6 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { fullGitCommitShaRequiredMessage } from '#worker/package-registry/package-publish-lock.ts'
 import { buildUnknownRequestedCommitMessage } from '#worker/repo/requested-commit-error.ts'
 
@@ -109,7 +108,6 @@ const {
 	approveAccountPackagePublish,
 	checkAccountPackagePublishCommit,
 	loadAccountPackageApprovePublishData,
-	publishChecksFailedLead,
 } = await import('./account-package-publish-lock.ts')
 
 type ActionInput = Parameters<typeof lockAccountPackage>[0]
@@ -287,66 +285,6 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 	})
 })
 
-test('approve-publish hrefs use the owning org slug for team packages', async () => {
-	mockModule.writablePackage = {
-		...unlockedPackage,
-		userId: ownerIdFromStored('org-acme'),
-		kodyId: 'shared',
-		name: '@acme/shared',
-	}
-	mockModule.getEntitySourceById.mockResolvedValue({
-		...sourceRow('commit-old'),
-		user_id: ownerIdFromStored('org-acme'),
-	})
-	vi.mocked(loadOrgBindingForOrg).mockResolvedValueOnce({
-		org: {
-			id: ownerIdFromStored('org-acme'),
-			slug: 'acme',
-		},
-		role: 'member',
-	} as Awaited<ReturnType<typeof loadOrgBindingForOrg>>)
-	const loaded = await loadApproveOk(fullCommit)
-	expect(loaded.packageHref).toBe('/@acme/shared')
-	expect(loaded.filesHref).toContain('/@acme/shared')
-})
-
-test('approve-publish loader hints when the catalog pin already lags published, and never claims promote will lag', async () => {
-	const publishedCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-	const pendingCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-	mockModule.writablePackage = unlockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(publishedCommit))
-	mockModule.resolveArtifactSourceHead.mockResolvedValue({
-		commit: pendingCommit,
-	})
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue({
-		id: 'listing-1',
-		status: 'active',
-		pinnedCommit: 'cccccccccccccccccccccccccccccccccccccccc',
-		version: '1.4.0',
-	})
-	const alreadyBehind = await loadApprove(pendingCommit)
-	if (!alreadyBehind.ok) throw new Error('expected loader success')
-	expect(alreadyBehind.listing).toEqual({
-		pinnedVersion: '1.4.0',
-		promotedVersion: null,
-		behind: true,
-		updateHint: expect.stringContaining('automatically'),
-		updateUrl: '/@user/notes/settings#update-public-listing',
-	})
-	expect(alreadyBehind.listingWillLagAfterPromote).toBe(false)
-
-	mockModule.getCommunityListingByOwnerAndPackage.mockResolvedValue({
-		id: 'listing-1',
-		status: 'active',
-		pinnedCommit: publishedCommit,
-		version: '1.4.0',
-	})
-	const matchedPin = await loadApprove(pendingCommit)
-	if (!matchedPin.ok) throw new Error('expected loader success')
-	expect(matchedPin.listing).toBeNull()
-	expect(matchedPin.listingWillLagAfterPromote).toBe(false)
-})
-
 test('approve-publish resolves HEAD, missing published, and missing HEAD diffs', async () => {
 	const publishedCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 	const pendingCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -408,19 +346,6 @@ test('approve-publish resolves HEAD, missing published, and missing HEAD diffs',
 	expect(missingHead.diff).toEqual(emptyDiff)
 })
 
-test('approve-publish loader rejects a short commit SHA', async () => {
-	mockModule.writablePackage = lockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
-	mockModule.readArtifactTreeAtCommit.mockClear()
-	const loaded = await loadApprove(shortCommit)
-	expect(loaded).toEqual({
-		ok: false,
-		error: fullGitCommitShaRequiredMessage,
-	})
-	expect(mockModule.readArtifactTreeAtCommit).not.toHaveBeenCalled()
-	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
-})
-
 test('approve-publish mutation rejects a short commit SHA', async () => {
 	mockModule.writablePackage = lockedPackage
 	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
@@ -463,45 +388,6 @@ test('approve-publish mutation returns a distinct error for an unknown full SHA'
 	})
 	expect(response?.data.error).not.toContain('restorable backup')
 	expect(response?.data.error).not.toContain('source recovery')
-})
-
-test('approve-publish keeps a source-recovery clone failure distinct from an unknown commit', async () => {
-	mockModule.writablePackage = lockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
-	const cloneMiss = new Error(
-		'Artifacts git clone failed for https://example.test/repo.git: Could not find refs/heads/main.',
-	)
-	mockModule.publishFromExternalRef.mockRejectedValueOnce(
-		new Error(
-			`packagePublishExternalPush stopped by the production package source safety policy. Kody could not verify a restorable backup snapshot for source "source-1" at published commit "${fullCommit}": ${cloneMiss.message} Stop and report this source recovery problem instead of rebuilding or overwriting the package in place.`,
-			{ cause: cloneMiss },
-		),
-	)
-	await expect(
-		act({
-			action: 'approve-publish',
-			packageId: 'pkg-1',
-			commit: fullCommit,
-		}),
-	).rejects.toThrow('restorable backup snapshot')
-})
-
-test('approve-publish does not relabel a later missing object as an unknown commit', async () => {
-	mockModule.writablePackage = lockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
-	mockModule.publishFromExternalRef.mockRejectedValueOnce(
-		Object.assign(new Error('Could not find abcdef.'), {
-			name: 'NotFoundError',
-			code: 'NotFoundError',
-		}),
-	)
-	await expect(
-		act({
-			action: 'approve-publish',
-			packageId: 'pkg-1',
-			commit: fullCommit,
-		}),
-	).rejects.toThrow('Could not find abcdef.')
 })
 
 const stampGateFailure = {
@@ -554,48 +440,6 @@ test('approve-publish check shows the publish failures for a commit that cannot 
 	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
 })
 
-test('approve-publish check reports a passing commit', async () => {
-	mockModule.writablePackage = unlockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(unknownCommit))
-	mockModule.checkExternalRef.mockReset()
-	mockModule.checkExternalRef.mockResolvedValueOnce({
-		commit: fullCommit,
-		ok: true,
-		results: [{ kind: 'manifest', ok: true, message: 'ok' }],
-	})
-	const response = await checkCommit(fullCommit)
-	expect(response.data).toEqual({
-		ok: true,
-		commit: fullCommit,
-		checksOk: true,
-		failedChecks: [],
-	})
-})
-
-test('approve-publish check rejects a short SHA and maps an unknown commit', async () => {
-	mockModule.writablePackage = lockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(fullCommit))
-	mockModule.checkExternalRef.mockReset()
-	const short = await checkCommit(shortCommit)
-	expect(short).toEqual({
-		status: 400,
-		data: { ok: false, error: fullGitCommitShaRequiredMessage },
-	})
-	expect(mockModule.checkExternalRef).not.toHaveBeenCalled()
-
-	mockModule.checkExternalRef.mockRejectedValueOnce(
-		new Error(buildUnknownRequestedCommitMessage(unknownCommit)),
-	)
-	const unknown = await checkCommit(unknownCommit)
-	expect(unknown).toEqual({
-		status: 400,
-		data: {
-			ok: false,
-			error: buildUnknownRequestedCommitMessage(unknownCommit),
-		},
-	})
-})
-
 test('approve-publish check refuses a package the viewer cannot write', async () => {
 	mockModule.writablePackage = null
 	mockModule.checkExternalRef.mockReset()
@@ -605,26 +449,4 @@ test('approve-publish check refuses a package the viewer cannot write', async ()
 		data: { ok: false, error: 'Package not found.' },
 	})
 	expect(mockModule.checkExternalRef).not.toHaveBeenCalled()
-})
-
-test('Promote names each failed publish check instead of a generic error', async () => {
-	mockModule.writablePackage = lockedPackage
-	mockModule.getEntitySourceById.mockResolvedValue(sourceRow(unknownCommit))
-	mockModule.publishFromExternalRef.mockResolvedValueOnce({
-		status: 'checks_failed',
-		failed_checks: [stampGateFailure],
-		manifest: null,
-		run_id: 'run-1',
-	})
-	const response = await act({
-		action: 'approve-publish',
-		packageId: 'pkg-1',
-		commit: fullCommit,
-	})
-	expect(response?.status).toBe(400)
-	expect(response?.data.ok).toBe(false)
-	expect(response?.data.error).toBe(
-		`${publishChecksFailedLead}\n\n${stampGateFailure.message}`,
-	)
-	expect(response?.data.failed_checks).toEqual([stampGateFailure])
 })

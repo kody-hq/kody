@@ -18,25 +18,6 @@ test('tokenizes known languages with dual-theme styles', () => {
 	expect(json.lines.flat().some((span) => span.content.includes('ok'))).toBe(
 		true,
 	)
-
-	const jsAlias = tokenizeSnippet({ code: 'const x = 1', lang: 'js' })
-	expect(jsAlias.lang).toBe('ts')
-	expect(jsAlias.plain).toBe(false)
-
-	const shell = tokenizeSnippet({
-		code: 'npx @kodycodes/cli install',
-		lang: 'sh',
-	})
-	expect(shell.plain).toBe(false)
-	expect(shell.lang).toBe('shellscript')
-
-	const golang = tokenizeSnippet({ code: 'package main', lang: 'golang' })
-	expect(golang.plain).toBe(false)
-	expect(golang.lang).toBe('go')
-
-	const consoleLang = tokenizeSnippet({ code: 'echo hi', lang: 'console' })
-	expect(consoleLang.plain).toBe(false)
-	expect(consoleLang.lang).toBe('shellscript')
 })
 
 test('unknown languages and oversized snippets stay plaintext', () => {

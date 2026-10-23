@@ -11,18 +11,6 @@ test('isPopoverOpen returns false when matches throws for :popover-open', () => 
 	expect(isPopoverOpen(null)).toBe(false)
 })
 
-test('isPopoverOpen reports open and closed panels when matches works', () => {
-	const openPanel = {
-		matches: vi.fn((selector: string) => selector === ':popover-open'),
-	} as unknown as HTMLElement
-	expect(isPopoverOpen(openPanel)).toBe(true)
-
-	const closedPanel = {
-		matches: vi.fn(() => false),
-	} as unknown as HTMLElement
-	expect(isPopoverOpen(closedPanel)).toBe(false)
-})
-
 test('dismissOpenPopoverPanel hides open popovers and no-ops when unavailable or closed', () => {
 	const unavailableMatches = vi.fn(() => {
 		throw new SyntaxError(

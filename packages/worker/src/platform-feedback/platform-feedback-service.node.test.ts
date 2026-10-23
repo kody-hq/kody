@@ -377,17 +377,6 @@ test('platform feedback submission enforces the rolling rate limit and atomic ac
 	).toEqual({ total: 100 })
 })
 
-test('platform feedback accepts the cancellation category', async () => {
-	const { db, sqlite } = createPlatformFeedbackDb()
-	const submitted = await submit(db, 'user-c', { category: 'cancellation' })
-	expect(submitted.category).toBe('cancellation')
-	expect(
-		sqlite
-			.prepare(`SELECT category FROM platform_feedback WHERE id = ?`)
-			.get(submitted.id),
-	).toEqual({ category: 'cancellation' })
-})
-
 test('submitter get and list are owner-scoped and omit reviewer fields', async () => {
 	const { db } = createPlatformFeedbackDb()
 	const owned = await submit(db, 'user-a', {

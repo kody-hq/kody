@@ -84,7 +84,7 @@ const userErrorRateMinErrors = 5
 const userErrorRateMinPercent = 0.2
 const userErrorRateAbsoluteErrors = 10
 
-export function isElevatedUserErrorRate(input: {
+function isElevatedUserErrorRate(input: {
 	errorCount: number
 	eventCount: number
 }) {
@@ -126,7 +126,7 @@ export type WaitingPausedEnablementSignal = {
 	resourceId: string | null
 }
 
-export const waitingPausedEnablementCap = 3
+const waitingPausedEnablementCap = 3
 
 type WaitingLockedPackageSignal = {
 	id: string

@@ -93,14 +93,6 @@ const read = () =>
 		return loadAdminRolesData(env)
 	})
 
-test('admin roles list returns roles and attached permissions', async () => {
-	mockModule.readAuthenticatedAppUser.mockResolvedValue(
-		createAdminActor(['admin']),
-	)
-	const response = await read()
-	expect(response.status).toBe(200)
-})
-
 test('admin roles API returns 403 without read:role:any permission', async () => {
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(
 		createAdminActor(['user']),

@@ -430,10 +430,19 @@ function adaptNativeArtifactsBinding(
 			}
 		},
 		delete: async (name) => {
-			const deleted = await native.delete(name)
-			return {
-				id: null,
-				alreadyDeleted: !deleted,
+			try {
+				const deleted = await native.delete(name)
+				return {
+					id: null,
+					alreadyDeleted: !deleted,
+				}
+			} catch (error) {
+				// A repo that is already gone counts as deleted, matching the REST
+				// binding's 404 handling, so cleanup retries stay idempotent.
+				if (artifactsBindingErrorCode(error) === 'NOT_FOUND') {
+					return { id: null, alreadyDeleted: true }
+				}
+				throw error
 			}
 		},
 		list: async (opts) => await native.list(opts),

@@ -12,7 +12,6 @@ import {
 import {
 	ensureModuleArtifact,
 	loadInvokeManifestBySourceId,
-	resolveSavedPackage,
 } from './module-artifacts.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -709,25 +708,6 @@ test('an artifact from a different commit is served but never retained', async (
 	}
 	// A commit mismatch means the entry must not be cached under this key.
 	expect(load).toHaveBeenCalledTimes(2)
-})
-
-test('resolveSavedPackage resolves id or slug through one package ref lookup', async () => {
-	const record = { id: 'pkg-by-ref', kodyId: 'shared-key' }
-	mockModule.resolveSavedPackageRef.mockResolvedValue(record)
-
-	await expect(
-		resolveSavedPackage({
-			db: {} as D1Database,
-			userId: ownerIdFromStored('user-resolve-ref'),
-			packageIdOrKodyId: 'shared-key',
-		}),
-	).resolves.toEqual(record)
-	expect(mockModule.resolveSavedPackageRef).toHaveBeenCalledTimes(1)
-	expect(mockModule.resolveSavedPackageRef).toHaveBeenCalledWith(
-		expect.anything(),
-		{ userId: ownerIdFromStored('user-resolve-ref'), ref: 'shared-key' },
-	)
-	expect(mockModule.getSavedPackageById).not.toHaveBeenCalled()
 })
 
 test('package-app slug cache evicts by name leaf from kody:@ refs and packageAppSlugs', async () => {

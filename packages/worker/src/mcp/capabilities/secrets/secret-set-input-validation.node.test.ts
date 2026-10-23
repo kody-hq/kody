@@ -25,7 +25,6 @@ function createCapabilityContext() {
 async function expectParseInputCallerError(args: {
 	capability: typeof secretSetCapability | typeof secretSetManyCapability
 	input: Record<string, unknown>
-	secretValue?: string
 }) {
 	const logSpy = vi.spyOn(observability, 'logMcpEvent')
 	const error = await args.capability
@@ -40,41 +39,37 @@ async function expectParseInputCallerError(args: {
 				event.outcome === 'failure',
 		)
 	logSpy.mockRestore()
-
-	expect(error).toBeInstanceOf(McpCallerError)
-	expect(error).not.toBeInstanceOf(z.ZodError)
-	if (!(error instanceof Error)) {
-		throw new Error('Expected capability failure to be an Error')
-	}
-	expect(error.message).toContain(
-		`Invalid input for capability "${args.capability.name}".`,
-	)
-	if (args.secretValue) {
-		expect(error.message).not.toContain(args.secretValue)
-	}
-
-	expect(failure).toMatchObject({
-		failurePhase: 'parse_input',
-		errorName: 'McpCallerError',
-	})
+	return { error, failure, capabilityName: args.capability.name }
 }
 
-test('secretSet invalid input fails in parse_input as McpCallerError (KODY-8T)', async () => {
+test('secretSet and secretSetMany reject invalid scopes without exposing values', async () => {
 	const secretValue = 'hunter2-should-never-echo'
-	await expectParseInputCallerError({
+	const secretSet = await expectParseInputCallerError({
 		capability: secretSetCapability,
 		input: { name: 'api-key', scope: 'not-a-scope', value: secretValue },
-		secretValue,
 	})
-})
-
-test('secretSetMany invalid input fails in parse_input as McpCallerError', async () => {
-	const secretValue = 'hunter2-batch-should-never-echo'
-	await expectParseInputCallerError({
+	const secretSetMany = await expectParseInputCallerError({
 		capability: secretSetManyCapability,
 		input: {
 			secrets: [{ name: 'api-key', scope: 'not-a-scope', value: secretValue }],
 		},
-		secretValue,
 	})
+	for (const failure of [secretSet, secretSetMany]) {
+		expect(failure.error).toBeInstanceOf(McpCallerError)
+		expect(failure.error).not.toBeInstanceOf(z.ZodError)
+		expect(failure.error).toMatchObject({
+			message: expect.stringContaining(
+				`Invalid input for capability "${failure.capabilityName}".`,
+			),
+		})
+		const errorMessage =
+			failure.error instanceof Error
+				? failure.error.message
+				: String(failure.error)
+		expect(errorMessage).not.toContain(secretValue)
+		expect(failure.failure).toMatchObject({
+			failurePhase: 'parse_input',
+			errorName: 'McpCallerError',
+		})
+	}
 })

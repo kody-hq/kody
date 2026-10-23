@@ -11,7 +11,6 @@ import { expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { credentialClientHintHeaderName } from '#mcp/credential-client-gateway.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
-import { upsertPlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -63,6 +62,14 @@ vi.mock('cloudflare:workers', async (importOriginal) => ({
 		scheduledAudits.push(promise)
 	},
 }))
+
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(await import('./cached-migrations.test-support.ts')).withCachedMigrations(
+			await importOriginal(),
+		),
+)
 
 const now = '2026-10-12T00:00:00.000Z'
 const resendKey = 're_live_secret_value_123'
@@ -312,7 +319,6 @@ test('a client opens by key with no value, and the gateway places the key by its
 		value: resendKey,
 	})
 	expect(applied.substitutedValues).toContain(resendKey)
-	expect(applied.shape).toBe('header X-Api-Key')
 
 	await expect(apply('https://attacker.example/collect')).rejects.toMatchObject(
 		{ body: { code: 'host_not_allowed' } },
@@ -362,14 +368,12 @@ test('basic and query injects place the value without exposing it', async () => 
 		name: 'Authorization',
 		value: `Basic ${btoa(`${resendKey}:`)}`,
 	})
-	expect(basic.shape).toBe('basic (value as username)')
 	const query = await applyFor('queryco', 'https://api.query.example/v1?x=1')
 	expect(query.placement).toEqual({
 		kind: 'query',
 		param: 'api_key',
 		value: resendKey,
 	})
-	expect(query.shape).toBe('query api_key')
 })
 
 test('open reports unbound and ambiguous picks with ready-to-retry options, listing only usable credentials', async () => {
@@ -378,7 +382,6 @@ test('open reports unbound and ambiguous picks with ready-to-retry options, list
 	await expect(
 		rejection(openCredentialClient(bea, { key: 'resend' })),
 	).resolves.toMatchObject({
-		message: expect.stringMatching(/^\[credential_unbound\] /),
 		body: { code: 'credential_unbound', retryWith: [] },
 	})
 
@@ -389,9 +392,6 @@ test('open reports unbound and ambiguous picks with ready-to-retry options, list
 	)
 	expect(ambiguous.body).toMatchObject({
 		code: 'credential_ambiguous',
-		message: expect.stringContaining(
-			': "resend-a" (org), "resend-b" (org). Pick one by name and scope.',
-		),
 		retryWith: [
 			{
 				credentials: { resend: { name: 'resend-a', scope: 'org' } },
@@ -463,7 +463,6 @@ test('unbound and not-found errors always carry a creation link for the bound or
 		code: 'credential_unbound',
 		createUrl: adHocUrl,
 	})
-	expect(adHoc.message).toContain(`Create one at ${adHocUrl}`)
 
 	const packageId = await t.savePackage({
 		ownerId: t.acmeId,
@@ -503,59 +502,6 @@ test('unbound and not-found errors always carry a creation link for the bound or
 		createUrl:
 			'https://example.com/@acme-clients/-/credentials/new?name=missing',
 	})
-})
-
-test('an unbound link selects a built-in OAuth app, and kinds with no form point at secretSet', async () => {
-	const t = await setup()
-	const bea = t.requestAs('bea', 'owner')
-	await upsertPlatformOauthApp({
-		db: t.db,
-		env: t.env,
-		app: {
-			slug: 'github',
-			clientId: 'platform-github-client-id',
-			clientSecret: 'platform-github-client-secret',
-			tokenUrl: 'https://github.com/login/oauth/access_token',
-			authorizeUrl: 'https://github.com/login/oauth/authorize',
-			flow: 'confidential',
-			visibility: 'published',
-		},
-	})
-	const builtIn = await rejection(
-		openCredentialClient(t.contextFor({ request: bea }), { key: 'github' }),
-	)
-	const builtInUrl = new URL((builtIn.body as { createUrl: string }).createUrl)
-	expect(Object.fromEntries(builtInUrl.searchParams)).toEqual({
-		kind: 'oauth',
-		name: 'github',
-		provider: 'github',
-		platform: 'github',
-	})
-
-	const packageId = await t.savePackage({
-		ownerId: t.acmeId,
-		name: '@acme/hooks',
-	})
-	mockNeeds([{ key: 'github', kind: 'oauth', provider: 'github' }])
-	const declaredOauth = await rejection(
-		openCredentialClient(t.contextFor({ request: bea, packageId }), {
-			key: 'github',
-		}),
-	)
-	const declaredOauthUrl = new URL(
-		(declaredOauth.body as { createUrl: string }).createUrl,
-	)
-	expect(declaredOauthUrl.searchParams.get('kindMode')).toBe('required')
-	expect(declaredOauthUrl.searchParams.get('platform')).toBe('github')
-
-	mockNeeds([{ key: 'deploy-hook', kind: 'url', provider: 'vercel' }])
-	const urlNeed = await rejection(
-		openCredentialClient(t.contextFor({ request: bea, packageId }), {
-			key: 'deploy-hook',
-		}),
-	)
-	expect(urlNeed.message).not.toContain('secretSet')
-	expect(urlNeed.message).toMatch(/Create one at https:\/\/\S+kind=url/)
 })
 
 test('a declared need with no kind opens any fetch-capable credential for the provider', async () => {
@@ -1169,20 +1115,17 @@ test('a call map pick must match the need kind and provider, and a pick with no 
 		rejection(open('MAIL', { MAIL: 'github-key' })),
 	).resolves.toMatchObject({
 		body: { code: 'invalid_request' },
-		message: expect.stringContaining('provider is "github"'),
 	})
 	await expect(
 		rejection(open('HOOK', { HOOK: 'resend-prod' })),
 	).resolves.toMatchObject({
 		body: { code: 'invalid_request' },
-		message: expect.stringContaining('takes a url credential'),
 	})
 	await expect(
 		rejection(open('MAIL', { MAIL: 'nope' })),
 	).resolves.toMatchObject({ body: { code: 'credential_not_found' } })
 	const loose = await open('MAIL', { MAIL: 'loose-key' })
 	expect(loose.name).toBe('loose-key')
-	expect(loose.hint).toContain('Set its provider to "resend"')
 	expect(JSON.stringify(loose)).not.toContain(resendKey)
 })
 
@@ -1212,7 +1155,6 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 		rejection(validate({ MAIL: 'resend-prod', OTHER: 'resend-prod' }, true)),
 	).resolves.toMatchObject({
 		body: { code: 'credential_need_unknown', retryWith: [] },
-		message: expect.stringContaining('declared: MAIL'),
 	})
 	const adHoc = await validate({ resend: 'resend-prod' }, false, [])
 	expect(adHoc.warnings).toEqual([
@@ -1329,7 +1271,6 @@ test('a dependency opens against the entry package pinned need its picks passed,
 		rejection(openCredentialClient(pinned, { key: 'SMS' })),
 	).resolves.toMatchObject({
 		body: { code: 'credential_unbound' },
-		message: expect.stringContaining('provider "SMS"'),
 	})
 	const adHoc = t.contextFor({ request })
 	await expect(

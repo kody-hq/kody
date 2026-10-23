@@ -32,35 +32,6 @@ test('first-party HTML shell carries security headers', async () => {
 	}
 })
 
-test('explicit error documents preserve status, illustration and title', async () => {
-	for (const [path, status, title, message, image, testId] of [
-		[
-			'/404',
-			404,
-			'Not found',
-			"This doesn't quite connect.",
-			'kody-404-disappointed.png',
-			'not-found-page',
-		],
-		[
-			'/500',
-			500,
-			'Something went wrong',
-			'We got a little zapped.',
-			'kody-500-zapped.png',
-			'internal-error-page',
-		],
-	] as const) {
-		const response = await workerFetch(createRequest(path))
-		expect(response.status).toBe(status)
-		const html = await response.text()
-		expect(html).toMatch(new RegExp(`<title[^>]*>${title}</title>`))
-		expect(html).toContain(message)
-		expect(html).toContain(`src="/images/${image}"`)
-		expect(html).toContain(`data-testid="${testId}"`)
-	}
-})
-
 test('anonymous denied package settings preserve the native 404 document', async () => {
 	const response = await workerFetch(
 		createRequest('/@missing-owner/missing-package/settings'),

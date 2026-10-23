@@ -122,6 +122,10 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'package-sharing', label: 'Sharing a package' },
 			{ slug: 'package-skills', label: 'Package skills' },
 			{ slug: 'package-apps', label: 'Package apps' },
+			{
+				slug: 'package-app-custom-domains',
+				label: 'Custom domains for apps',
+			},
 			{ slug: 'package-subscriptions', label: 'Subscriptions and events' },
 			{ slug: 'mcp-events', label: 'MCP Events' },
 			{ slug: 'heavy-work-offload', label: 'Offload heavy work' },
@@ -239,14 +243,6 @@ export function isReservedDocsIndexSlug(slug: string): boolean {
 }
 
 /**
- * HTML docs chrome: `/docs`, `/docs/connect`, and `/docs/:slug`. Companion
- * twins (`.md` / `.json` / `llms.txt`) match too; the SPA leaves those.
- */
-export function isDocsPagePath(pathname: string): boolean {
-	return pathname === '/docs' || pathname.startsWith('/docs/')
-}
-
-/**
  * Sidebar section for the current page. `/docs/connect` is the providers
  * index (not a catalog slug), so it resolves to that section.
  */
@@ -284,21 +280,6 @@ export function listDocsNavSlugs(options?: {
 	return visibleDocsNav(options?.includeAdmin !== false).flatMap((section) =>
 		section.items.map((item) => item.slug),
 	)
-}
-
-/**
- * Same-origin hrefs the docs sidebar can navigate to. Used to render-prefetch
- * every guide (and `/docs/connect`) so a click does not wait on a cold loader.
- */
-export function listDocsPrefetchHrefs(options?: {
-	includeAdmin?: boolean
-}): ReadonlyArray<string> {
-	return [
-		...listDocsNavSlugs({ includeAdmin: options?.includeAdmin === true }).map(
-			docHref,
-		),
-		'/docs/connect',
-	]
 }
 
 export function findDocsNavSection(slug: string): DocsNavSection | null {

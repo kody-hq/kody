@@ -54,8 +54,8 @@ To add a search entity:
      copy that enumerates `capability` | `guide` | `integration` | `mcp-server`
      | `package` | `secret`)
    - `docs/use/search.md` (user-facing `{type}:{id}` type list)
-10. Add or update `search-entity-registry.node.test.ts` to prove the registry
-    order and whether the type is entity-backed.
+10. Add or update `search.node.test.ts` to prove the registry-backed search
+    behavior and whether the type is entity-backed.
 
 Current candidate flatten order is:
 

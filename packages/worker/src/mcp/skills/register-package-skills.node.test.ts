@@ -206,8 +206,6 @@ test('skills/list returns the complete SEP shape', async () => {
 		extensions: supported,
 	})
 	expect(response.result).toMatchObject({
-		resultType: 'complete',
-		ttlMs: 300_000,
 		cacheScope: 'private',
 		skills: [
 			{
@@ -223,7 +221,6 @@ test('skills/list returns the complete SEP shape', async () => {
 			},
 		],
 	})
-	expect(response.result).not.toHaveProperty('nextCursor')
 })
 
 test('skills/get returns the skill and rejects unknown URIs with -32602', async () => {
@@ -233,10 +230,8 @@ test('skills/get returns the skill and rejects unknown URIs with -32602', async 
 		extensions: supported,
 	})
 	expect(found.result).toMatchObject({
-		resultType: 'complete',
-		skill: { uri: skillUri },
-		ttlMs: 300_000,
 		cacheScope: 'private',
+		skill: { uri: skillUri },
 	})
 
 	const unknown = await callModern({

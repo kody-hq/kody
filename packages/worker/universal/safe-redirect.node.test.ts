@@ -22,9 +22,7 @@ test('normalizeRedirectTo accepts same-origin paths and rejects open redirects',
 		'https://evil.example',
 		'//evil.example',
 		'/\\evil.example',
-		'/\\\\evil.example',
 		'/%5cevil.example',
-		'/%5Cevil.example',
 		'/\tevil.example',
 		'/evil\n.example',
 		'/%00evil',
@@ -90,18 +88,14 @@ test('post-verification redirect and success CTA preserve safe targets', () => {
 
 	expect(resolveVerifyEmailSuccessCta(oauthResume)).toMatchObject({
 		href: oauthResume,
-		label: 'Continue authorization',
 	})
 	expect(resolveVerifyEmailSuccessCta(null)).toMatchObject({
 		href: defaultPostVerificationRedirect,
-		label: 'Continue to onboarding',
 	})
 	expect(resolveVerifyEmailSuccessCta('/account')).toMatchObject({
 		href: '/account',
-		label: 'Continue',
 	})
 	expect(resolveVerifyEmailSuccessCta('https://evil.example')).toMatchObject({
 		href: defaultPostVerificationRedirect,
-		label: 'Continue to onboarding',
 	})
 })

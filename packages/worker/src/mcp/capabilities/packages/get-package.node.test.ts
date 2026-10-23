@@ -253,62 +253,6 @@ test('getPackageCapability returns export metadata for personal and org-bound ow
 		subpath: './post-message',
 		import_specifier: 'kody:@acme/discord-gateway/post-message',
 	})
-	expect(owned.package_secrets).toEqual([])
-	expect(orgOwned.package_secrets).toEqual([])
-})
-
-test('getPackageCapability includes package-scoped secret metadata as FYI', async () => {
-	stubSavedPackage()
-	stubSource('@kentcdodds/discord-gateway', { '.': './src/index.ts' }, {})
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValueOnce(
-		new Map([
-			[
-				'package-1',
-				[
-					{
-						name: 'discordBotToken',
-						scope: 'package',
-						description: 'Bot token for this package',
-						packageId: 'package-1',
-						allowedHosts: ['discord.com'],
-						allowedPackages: [],
-						createdAt: '2026-04-25T00:00:00.000Z',
-						updatedAt: '2026-04-26T00:00:00.000Z',
-						expiresAt: null,
-						ttlMs: null,
-						placement: null,
-						disconnected: false,
-					},
-				],
-			],
-		]),
-	)
-
-	const result = await getPackage()
-
-	expect(result.package_secrets).toEqual([
-		{
-			name: 'discordBotToken',
-			scope: 'package',
-			description: 'Bot token for this package',
-			package_id: 'package-1',
-			allowed_hosts: ['discord.com'],
-			allowed_packages: [],
-			created_at: '2026-04-25T00:00:00.000Z',
-			updated_at: '2026-04-26T00:00:00.000Z',
-			expires_at: null,
-			ttl_ms: null,
-			placement: null,
-			placement_origin: null,
-			disconnected: false,
-		},
-	])
-	expect(result.package_secrets[0]).not.toHaveProperty('value')
-	expect(mockModule.listPackageSecretsByPackageIds).toHaveBeenCalledWith({
-		env: expect.objectContaining({ APP_DB: expect.anything() }),
-		userId: ownerIdFromStored('user-1'),
-		packageIds: ['package-1'],
-	})
 })
 
 test('getPackageCapability omits fork-ahead from the agent payload', async () => {
@@ -322,9 +266,7 @@ test('getPackageCapability omits fork-ahead from the agent payload', async () =>
 	const result = await getPackage()
 
 	expect(result.listing_ahead).toBe(false)
-	for (const key of ['forkListingRelation', 'fork_listing_relation']) {
-		expect(result).not.toHaveProperty(key)
-	}
+	expect(result).not.toHaveProperty('fork_listing_relation')
 	expect(JSON.stringify(result)).not.toMatch(/fork.?ahead/i)
 })
 

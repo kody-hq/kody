@@ -93,6 +93,13 @@ const outputSchema = z.object({
 	publishedPackages: z.number().int().nonnegative(),
 	packagesNeedingRebuild: z.number().int().nonnegative(),
 	missingImportableArtifacts: z.number().int().nonnegative(),
+	packagesMissingSubpathImportable: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'Packages in this page with at least one missing subpath (non-root) importable-module artifact.',
+		),
 	rebuiltPackages: z.number().int().nonnegative(),
 	failedPackages: z.number().int().nonnegative(),
 	alreadyBuiltPackages: z.number().int().nonnegative(),
@@ -111,7 +118,7 @@ export const adminPublishedImportableArtifactBackfillCapability =
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPublishedImportableArtifactBackfill',
-		description: `Fleet scan/apply for published packages whose importable-module artifacts are missing or stale at the current published commit. Rebuilds artifacts only (no source/content change). Safe and idempotent. ${pagingHint}`,
+		description: `Fleet scan/apply for published packages whose importable-module artifacts are missing, stale, or unusable at the current published commit (a stored bundle the load sites refuse, such as a pre-binding bundle that inlines other packages, counts as missing). Rebuilds artifacts only (no source/content change). Safe and idempotent. ${pagingHint}`,
 		keywords: [
 			'admin',
 			'package',

@@ -15,13 +15,13 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
  * Device sessions live in-memory for the life of the isolate so polls can
  * walk through pending → success (or delayed / denied / expired scenarios).
  */
-export const rehearsalEchoPath = '/__mocks/rehearsal/echo'
-export const rehearsalOauthTokenPath = '/__mocks/rehearsal/oauth/token'
-export const rehearsalOauthDeviceAuthorizePath =
+const rehearsalEchoPath = '/__mocks/rehearsal/echo'
+const rehearsalOauthTokenPath = '/__mocks/rehearsal/oauth/token'
+const rehearsalOauthDeviceAuthorizePath =
 	'/__mocks/rehearsal/oauth/device/authorize'
-export const rehearsalSecretHeader = 'x-rehearsal-secret'
+const rehearsalSecretHeader = 'x-rehearsal-secret'
 
-export const DEVICE_CODE_GRANT_TYPE =
+const DEVICE_CODE_GRANT_TYPE =
 	'urn:ietf:params:oauth:grant-type:device_code' as const
 
 const echoedHeaders = ['authorization', rehearsalSecretHeader] as const
@@ -300,11 +300,6 @@ async function handleOauthToken(request: Request) {
 		},
 		{ headers: { 'Cache-Control': 'no-store' } },
 	)
-}
-
-/** Test helper: drop in-memory device sessions between cases. */
-export function resetRehearsalDeviceSessions() {
-	deviceSessions.clear()
 }
 
 export async function routeRehearsal(request: Request, url: URL) {

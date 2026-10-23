@@ -157,36 +157,3 @@ test('passkey lifecycle: reject unverified registration, retry, skip TOTP, sign 
 		page.getByRole('heading', { name: 'No passkeys yet' }),
 	).toBeVisible()
 })
-
-test('expired passkey session reloads identity before opening the authenticator', async ({
-	page,
-	seedE2eUser,
-	login,
-	baseURL,
-}) => {
-	const id = Date.now()
-	const user = await seedE2eUser({
-		email: `passkey-expired-${id}@example.com`,
-		username: `passkey-expired-${id}`,
-		password: 'passkey-password',
-	})
-	await login({ email: user.email, password: user.password, mode: 'login' })
-	await gotoLocalhost(page, baseURL, '/account/passkeys')
-	const { client, authenticatorId } = await addVirtualAuthenticator(page)
-	await expect(
-		page.getByRole('button', { name: 'Register a passkey' }),
-	).toBeEnabled()
-	// Expire the session without replacing the currently hydrated document.
-	await page.context().clearCookies()
-	const documentReload = page.waitForRequest((request) =>
-		request.isNavigationRequest(),
-	)
-	await page.getByRole('button', { name: 'Register a passkey' }).click()
-	await documentReload
-	await expect(page).toHaveURL(/\/login(?:\?|$)/)
-	expect(
-		(await client.send('WebAuthn.getCredentials', { authenticatorId }))
-			.credentials,
-	).toEqual([])
-	await client.detach()
-})

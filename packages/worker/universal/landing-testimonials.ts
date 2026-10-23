@@ -108,21 +108,6 @@ export const landingTestimonials = [
 	},
 ] as const satisfies ReadonlyArray<LandingTestimonial>
 
-/** Fisher–Yates shuffle. Pass `random` in tests for a deterministic draw. */
-export function shuffleTestimonials<T>(
-	items: ReadonlyArray<T>,
-	random: () => number = Math.random,
-): Array<T> {
-	const next = [...items]
-	for (let index = next.length - 1; index > 0; index -= 1) {
-		const swapIndex = Math.floor(random() * (index + 1))
-		const current = next[index]!
-		next[index] = next[swapIndex]!
-		next[swapIndex] = current
-	}
-	return next
-}
-
 export function testimonialInitials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
 	return parts.map((part) => part[0]?.toUpperCase() ?? '').join('')

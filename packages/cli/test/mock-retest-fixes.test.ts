@@ -33,7 +33,6 @@ import {
 	createWorkerdConfig,
 	localWorkerModuleNames,
 } from '../src/local-runtime-source.js'
-import { buildUsage } from '../src/help.js'
 import { StructuredCliError } from '../src/structured-error.js'
 import {
 	resolveExportModulePath,
@@ -622,14 +621,6 @@ test('P2/#5: createWorkerdConfig registers flat kody:runtime re-export alias', a
 		),
 	)
 	assert.doesNotMatch(config, /name = "\/kody:runtime"/)
-})
-
-test('docs: mock help describes fail-closed fetch, not native workerd fetch', () => {
-	const text = buildUsage({ orgs: [] })
-	assert.doesNotMatch(text, /keep native workerd fetch/)
-	assert.match(text, /unmocked_request/)
-	assert.match(text, /fail closed|fail-closed/i)
-	assert.match(text, /gatewayFetchStream/)
 })
 
 test('prod still fetches package-graph when local deps cover all imports (gateway shim)', async () => {

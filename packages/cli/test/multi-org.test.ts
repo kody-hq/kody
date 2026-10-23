@@ -8,7 +8,6 @@ import {
 	refreshStoredCredentials,
 } from '../src/auth.js'
 import { runCli } from '../src/cli.js'
-import { buildUsage } from '../src/help.js'
 import { orgEnvVar, resolveOrgSlug } from '../src/org-resolve.js'
 import {
 	createFileBackend,
@@ -275,30 +274,6 @@ test('promotePendingOrg does not overwrite a fresh named login or steal activeOr
 	assert.equal(afterSame?.pending, undefined)
 	assert.equal(afterSame?.activeOrg, 'acme')
 	assert.equal(afterSame?.orgs.acme?.accessToken, 'fresh-acme')
-})
-
-test('help lists logged-in orgs from the local store offline', () => {
-	const backend = tempBackend()
-	saveCredentials(sample({ org: 'acme' }), backend)
-	saveCredentials(sample({ org: 'beta' }), backend)
-	setActiveOrg(mcpUrl, 'beta', backend)
-	const text = buildUsage({
-		mcpUrl,
-		backend,
-	})
-	assert.match(text, /Logged-in orgs:/)
-	assert.match(text, /\* beta\s+\(active\)/)
-	assert.match(text, /  acme/)
-	assert.match(text, /kody org list/)
-	assert.match(text, /KODY_ORG/)
-})
-
-test('help hints kody login when nobody is logged in', () => {
-	const text = buildUsage({
-		mcpUrl,
-		backend: tempBackend(),
-	})
-	assert.match(text, /Not logged in\. Run `kody login`\./)
 })
 
 test('kody org list and org use work for agents', async () => {

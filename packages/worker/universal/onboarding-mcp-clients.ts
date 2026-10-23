@@ -554,8 +554,8 @@ export function onboardingAgentHelp(
 
 /**
  * Dedicated ChatGPT / Codex connector icon. ChatGPT wants 256×256 and
- * rejects uploads over 10 KB. This asset is the solid black-on-white mark
- * (same treatment as listing tiles), kept under the size cap.
+ * rejects uploads over 10 KB. This asset is the outlined black-on-white mark
+ * (same treatment as the light favicon), kept under the size cap.
  */
 const kodyAppIconPath = '/images/kody-app-icon.png'
 export const kodyAppIconFilename = kodyAppIconPath.slice(

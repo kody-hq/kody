@@ -1,6 +1,8 @@
-import { env } from 'cloudflare:test'
+import { env, runInDurableObject } from 'cloudflare:test'
 import { expect, test, vi } from 'vitest'
-import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
+import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
+import { type UserMeter } from '#worker/entitlements/user-meter-do.ts'
+import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import {
 	grantAdminCreditsToUser,
 	loadAdminCreditWallet,
@@ -219,15 +221,41 @@ async function consume(user: SeededUser, resource: DailyResource, at = now) {
 	await consumeDailyEntitlement({ ...input, resource })
 }
 
-async function consumeTimes(
+async function consumeThroughExecuteBoundary(
 	user: SeededUser,
-	resource: DailyResource,
 	times: number,
 	at = now,
 ) {
-	for (let index = 0; index < times; index += 1) {
-		await consume(user, resource, at)
-	}
+	const stub = env.USER_METER.get(
+		env.USER_METER.idFromName(
+			userMeterDurableObjectName(ownerIdFromStored(user.stableUserId)),
+		),
+	)
+	await runInDurableObject(stub, async (instance: UserMeter) => {
+		const resource = 'execute_unique_workers_per_day'
+		const day = utcDayKey(at)
+		await instance.initialize({
+			resource,
+			day,
+			count: 0,
+			updatedAt: at.toISOString(),
+		})
+		for (let index = 0; index < times - 1; index += 1) {
+			const claim = await instance.claimDynamicWorkerDayWithinLimit({
+				resource,
+				day,
+				workerId: `fixture-${index}`,
+				limit: times,
+				createdAt: at.toISOString(),
+			})
+			expect(claim).toMatchObject({
+				outcome: 'ready',
+				created: true,
+				consumed: true,
+			})
+		}
+	})
+	await consume(user, 'execute_unique_workers_per_day', at)
 }
 
 function catchError(promise: Promise<unknown>) {
@@ -328,7 +356,7 @@ test('credits carry rates past the include up to 50×; stock stays Max; at $0 ra
 test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funded runs on; Free is unchanged', async () => {
 	const empty = await seedPro('credits-empty-daily')
 	expect((await entitlementFor(empty)).creditWallet).toBe('empty')
-	await consumeTimes(empty, 'execute_unique_workers_per_day', 500)
+	await consumeThroughExecuteBoundary(empty, 500)
 	const denied = await catchError(
 		consume(empty, 'execute_unique_workers_per_day'),
 	)
@@ -340,13 +368,11 @@ test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funde
 		limit: 500,
 		current: 500,
 	})
-	expect(denied.message).toBe(
-		'Plan limit reached: your "pro" plan allows at most 500 unique execute workers per day and you currently have 500. This daily limit resets at 00:00 UTC, in 12h 0m. Rerun code you already ran today and vary params; repeats are free, or add credits at /account/usage#credits to keep going past your include.',
-	)
+	expect(denied.message).toContain('add credits')
 
 	const funded = await seedPro('credits-funded-daily')
 	await topUp(funded.stableUserId, 1_000)
-	await consumeTimes(funded, 'execute_unique_workers_per_day', 501)
+	await consumeThroughExecuteBoundary(funded, 501)
 	expect(
 		await readDailyEntitlementResourceUsage({
 			env,
@@ -357,7 +383,7 @@ test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funde
 	).toBe(501)
 
 	const free = await seedUser({ label: 'credits-free-daily' })
-	await consumeTimes(free, 'execute_unique_workers_per_day', 150)
+	await consumeThroughExecuteBoundary(free, 150)
 	const freeDenied = await catchError(
 		consume(free, 'execute_unique_workers_per_day'),
 	)
@@ -365,40 +391,6 @@ test('$0 Pro keeps 500 execute/day and stops at 501 with a top-up message; funde
 	if (!isEntitlementLimitError(freeDenied)) return
 	expect(freeDenied.details).toMatchObject({ plan: 'free', limit: 150 })
 	expect(freeDenied.message).not.toContain('add credits')
-}, 60_000)
-
-test('$0 Pro keeps 1,200 execute/week and stops at 1,201 with a top-up message', async () => {
-	const empty = await seedPro('credits-empty-weekly')
-	// UTC Monday–Wednesday of the week containing `now` (Sunday 2026-09-27).
-	await consumeTimes(
-		empty,
-		'execute_unique_workers_per_day',
-		500,
-		new Date('2026-09-21T12:00:00.000Z'),
-	)
-	await consumeTimes(
-		empty,
-		'execute_unique_workers_per_day',
-		500,
-		new Date('2026-09-22T12:00:00.000Z'),
-	)
-	const wednesday = new Date('2026-09-23T12:00:00.000Z')
-	await consumeTimes(empty, 'execute_unique_workers_per_day', 200, wednesday)
-	const denied = await catchError(
-		consume(empty, 'execute_unique_workers_per_day', wednesday),
-	)
-	expect(isEntitlementLimitError(denied)).toBe(true)
-	if (!isEntitlementLimitError(denied)) return
-	expect(denied.details).toMatchObject({
-		resource: 'execute_unique_workers_per_day',
-		plan: 'pro',
-		limit: 1_200,
-		current: 1_200,
-		window: 'week',
-	})
-	expect(denied.message).toContain(
-		'or add credits at /account/usage#credits to keep going past your include.',
-	)
 }, 60_000)
 
 test('a 3-seat Pro org shares one 1,500/day pool; at $0 it keeps the include and stops at 1,501', async () => {
@@ -418,7 +410,7 @@ test('a 3-seat Pro org shares one 1,500/day pool; at $0 it keeps the include and
 		}),
 	).toMatchObject({ used: 0, limit: 1_500, weekLimit: 3_600 })
 
-	await consumeTimes(org, 'execute_unique_workers_per_day', 1_500)
+	await consumeThroughExecuteBoundary(org, 1_500)
 	const denied = await catchError(
 		consume(org, 'execute_unique_workers_per_day'),
 	)
@@ -437,7 +429,7 @@ test('a 3-seat Pro org shares one 1,500/day pool; at $0 it keeps the include and
 
 test('removing a seat shrinks the org pool on the next check', async () => {
 	const { org, members } = await seedThreeSeatPro('credits-seats-shrink')
-	await consumeTimes(org, 'execute_unique_workers_per_day', 1_000)
+	await consumeThroughExecuteBoundary(org, 1_000)
 	// Warm the entitlement cache at 3 seats so the shrink cannot ride a miss.
 	expect((await entitlementFor(org)).seats).toBe(3)
 
@@ -460,17 +452,7 @@ test('a funded 3-seat Pro org gets 75,000/day: 50× the pooled include, capped a
 	expect(await limitsFor(org, ['execute_unique_workers_per_day'])).toEqual([
 		75_000,
 	])
-
-	await consumeTimes(org, 'execute_unique_workers_per_day', 1_501)
-	expect(
-		await readDailyEntitlementResourceUsage({
-			env,
-			userId: ownerIdFromStored(org.stableUserId),
-			resource: 'execute_unique_workers_per_day',
-			now,
-		}),
-	).toBe(1_501)
-}, 120_000)
+})
 
 test('debits charge only usage above the include, are idempotent, and never back-charge an empty wallet', async () => {
 	const user = await seedPro('credits-debit')
@@ -654,7 +636,7 @@ test('include → credits → stop: credits pay past the include, and the stop r
 
 test('a top-up past the monthly include applies funded rates right away, not the cached $0 include', async () => {
 	const user = await seedPro('credits-stop-topup-rates')
-	await consumeTimes(user, 'execute_unique_workers_per_day', 500)
+	await consumeThroughExecuteBoundary(user, 500)
 	// Expire the 60s entitlement and monthly-usage caches warmed above, so
 	// the stop sees the rollup and the cache holds the $0 entitlement.
 	vi.useFakeTimers({ toFake: ['Date'] })

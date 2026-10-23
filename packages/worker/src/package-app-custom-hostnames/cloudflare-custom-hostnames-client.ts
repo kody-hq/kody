@@ -30,6 +30,12 @@ export type CloudflareCustomHostnameResult = {
 	sslStatus: string | null
 	ownershipVerification: CustomHostnameDnsRecord | null
 	sslValidationRecords: Array<CustomHostnameDnsRecord>
+	/**
+	 * Cloudflare's latest reasons the hostname or certificate is not active
+	 * yet (`verification_errors` plus `ssl.validation_errors`). Empty when
+	 * Cloudflare reports none.
+	 */
+	verificationErrors: Array<string>
 }
 
 type CustomHostnameApiResult = {
@@ -45,8 +51,10 @@ type CustomHostnameApiResult = {
 		http_url?: unknown
 		http_body?: unknown
 	} | null
+	verification_errors?: unknown
 	ssl?: {
 		status?: unknown
+		validation_errors?: unknown
 		validation_records?: Array<{
 			txt_name?: unknown
 			txt_value?: unknown
@@ -132,6 +140,34 @@ function readSslValidationRecords(
 	return out
 }
 
+const maxVerificationErrors = 5
+const maxVerificationErrorLength = 300
+
+function readVerificationErrors(
+	result: CustomHostnameApiResult,
+): Array<string> {
+	const out: Array<string> = []
+	const push = (value: unknown) => {
+		const text = typeof value === 'string' ? value.trim() : ''
+		if (!text || out.includes(text)) return
+		out.push(text.slice(0, maxVerificationErrorLength))
+	}
+	if (Array.isArray(result.verification_errors)) {
+		for (const entry of result.verification_errors) push(entry)
+	}
+	const sslErrors = result.ssl?.validation_errors
+	if (Array.isArray(sslErrors)) {
+		for (const entry of sslErrors) {
+			push(
+				entry && typeof entry === 'object'
+					? (entry as { message?: unknown }).message
+					: entry,
+			)
+		}
+	}
+	return out.slice(0, maxVerificationErrors)
+}
+
 function readCustomHostnameResult(
 	body: unknown,
 	status: number,
@@ -169,6 +205,7 @@ function readCustomHostnameResult(
 		// Prefer TXT ownership; fall back to HTTP ownership when CF omits TXT.
 		ownershipVerification: ownershipTxt ?? ownershipHttp,
 		sslValidationRecords: readSslValidationRecords(result.ssl),
+		verificationErrors: readVerificationErrors(result),
 	}
 }
 

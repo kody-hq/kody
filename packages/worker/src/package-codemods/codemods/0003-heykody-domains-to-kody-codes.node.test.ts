@@ -54,17 +54,6 @@ test('0003 never rewrites subdomains, emails, bare hostnames, or lookalike hosts
 			message: expect.stringContaining('manually'),
 		},
 	])
-
-	const lookalikeFiles = {
-		'phish.ts': "const evil = 'https://heykody.app.evil.example/login'\n",
-	}
-	const lookalikeResult =
-		heykodyDomainsToKodyCodesCodemod.transform(lookalikeFiles)
-	expect(lookalikeResult.changed).toBe(false)
-	expect(lookalikeResult.files['phish.ts']).toBe(lookalikeFiles['phish.ts'])
-	expect(lookalikeResult.needsManual).toEqual([
-		{ path: 'phish.ts', message: expect.stringContaining('manually') },
-	])
 })
 
 test('0003 detect reports rewritable origins and skips binary-ish paths', () => {

@@ -55,44 +55,35 @@ export const rendered = ['sentence', 'picker'].map(variant => renderToString(
 	}
 }
 
-for (const renderer of ['react', 'redact'] as const) {
-	test(`${renderer} SSR uses native select children and keeps selected marks outside the control`, async () => {
-		const { rendered, selected } = await renderActualIntro(renderer)
-		for (const html of rendered) {
-			const selects = [
-				...html.matchAll(/<select\b[^>]*>[\s\S]*?<\/select>/g),
-			].map((match) => match[0])
-			expect(selects).toHaveLength(3)
-			for (const [index, select] of selects.entries()) {
-				// Older Safari parses only native option content inside a select.
-				// Extra button/span/style nodes are discarded before hydration.
-				expect(select).not.toMatch(/<(?:button|span|style|img)\b/i)
-				const children = select.replace(/^<select\b[^>]*>|<\/select>$/g, '')
-				expect(children).toMatch(/^(?:<option\b[^>]*>[^<]*<\/option>)+$/)
-				expect(select).not.toContain('--chip-icon:')
-				expect(select).toContain(selected[index]!.label)
-				const selectedOption = [...select.matchAll(/<option\b[^>]*>/g)].find(
-					(match) => match[0].includes(`value="${selected[index]!.id}"`),
-				)?.[0]
-				expect(selectedOption).toMatch(/\bselected(?:=|\s|>)/)
-			}
-			expect(
-				html.match(/class="[^"]*\bwalkthrough-host-mark\b[^"]*"/g),
-			).toHaveLength(3)
-			expect(html).toContain('mask-image:var(--chip-icon)')
-			expect(html).not.toContain('appearance:base-select')
-			expect(html).toContain('/images/icons/')
+test('production Redact SSR keeps native select children and selected marks outside the control', async () => {
+	const { rendered, selected } = await renderActualIntro('redact')
+	for (const html of rendered) {
+		const selects = [
+			...html.matchAll(/<select\b[^>]*>[\s\S]*?<\/select>/g),
+		].map((match) => match[0])
+		expect(selects).toHaveLength(3)
+		for (const [index, select] of selects.entries()) {
+			// Older Safari parses only native option content inside a select.
+			// Extra button/span/style nodes are discarded before hydration.
+			expect(select).not.toMatch(/<(?:button|span|style|img)\b/i)
+			const children = select.replace(/^<select\b[^>]*>|<\/select>$/g, '')
+			expect(children).toMatch(/^(?:<option\b[^>]*>[^<]*<\/option>)+$/)
+			expect(select).not.toContain('--chip-icon:')
+			expect(select).toContain(selected[index]!.label)
+			const selectedOption = [...select.matchAll(/<option\b[^>]*>/g)].find(
+				(match) => match[0].includes(`value="${selected[index]!.id}"`),
+			)?.[0]
+			expect(selectedOption).toMatch(/\bselected(?:=|\s|>)/)
 		}
-	})
-}
+		expect(html).toContain('mask-image:var(--chip-icon)')
+	}
+})
 
-for (const renderer of ['react', 'redact'] as const) {
-	test(`${renderer} SSR uses the release asset base supplied by the build`, async () => {
-		const base = `/__start/${'d'.repeat(40)}/`
-		const { rendered } = await renderActualIntro(renderer, base)
-		for (const html of rendered) {
-			expect(html).toContain(`${base}images/icons/`)
-			expect(html).not.toContain('url("/images/icons/')
-		}
-	})
-}
+test('production Redact SSR uses the release asset base supplied by the build', async () => {
+	const base = `/__start/${'d'.repeat(40)}/`
+	const { rendered } = await renderActualIntro('redact', base)
+	for (const html of rendered) {
+		expect(html).toContain(`${base}images/icons/`)
+		expect(html).not.toContain('url("/images/icons/')
+	}
+})

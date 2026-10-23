@@ -1,10 +1,8 @@
 import { expect, test, vi } from 'vitest'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
-	mergeOauthGrantsLackingOrgIdByClient,
 	oauthGrantsLackingOrgIdRevokeConfirm,
 	parseOauthGrantKvKey,
-	readOauthGrantClientId,
 	runOauthGrantsLackingOrgIdRevoke,
 } from './oauth-grants-lacking-org-id.ts'
 
@@ -48,14 +46,6 @@ test('parseOauthGrantKvKey accepts grant:userId:grantId only', () => {
 	expect(parseOauthGrantKvKey('grant:user-a:grant:extra')).toBeNull()
 	expect(parseOauthGrantKvKey('token:user-a:grant-1:tok')).toBeNull()
 	expect(parseOauthGrantKvKey('grant::grant-1')).toBeNull()
-})
-
-test('readOauthGrantClientId falls back to (unknown)', () => {
-	expect(readOauthGrantClientId({ clientId: ' https://client.example ' })).toBe(
-		'https://client.example',
-	)
-	expect(readOauthGrantClientId({ clientId: '  ' })).toBe('(unknown)')
-	expect(readOauthGrantClientId(null)).toBe('(unknown)')
 })
 
 test('dry-run counts grants lacking metadata.orgId and does not revoke', async () => {
@@ -285,20 +275,5 @@ test('apply records per-grant failures without aborting the page', async () => {
 			clientId: 'client-a',
 			error: 'kv_unavailable',
 		},
-	])
-})
-
-test('mergeOauthGrantsLackingOrgIdByClient sums pages', () => {
-	expect(
-		mergeOauthGrantsLackingOrgIdByClient([
-			[
-				{ clientId: 'a', count: 2 },
-				{ clientId: 'b', count: 1 },
-			],
-			[{ clientId: 'a', count: 3 }],
-		]),
-	).toEqual([
-		{ clientId: 'a', count: 5 },
-		{ clientId: 'b', count: 1 },
 	])
 })

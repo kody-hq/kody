@@ -5,6 +5,7 @@ import {
 	filterBrowserSentryEvent,
 	filterFirefoxDomPermissionDeniedSentryEvent,
 	isChromeExtensionMessageChannelDisconnectedError,
+	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
 } from './sentry-browser-filters.ts'
 
@@ -1064,4 +1065,19 @@ test('message-channel filter does not pair message and extension frames across e
 		},
 	}
 	expect(filterBrowserSentryEvent(crossValueEvent)).toBe(crossValueEvent)
+})
+
+test('drops TanStack Router notFound control flow (KODY-AH)', () => {
+	const event = makeEvent([
+		'Error',
+		'Object captured as exception with keys: isNotFound',
+	])
+	expect(isTanStackRouterNotFoundError({ isNotFound: true })).toBe(true)
+	expect(isTanStackRouterNotFoundError({ isNotFound: false })).toBe(false)
+	expect(isTanStackRouterNotFoundError(new Error('isNotFound'))).toBe(false)
+	expect(isTanStackRouterNotFoundError(null)).toBe(false)
+	expect(filterBrowserSentryEvent(event, { isNotFound: true })).toBeNull()
+	expect(filterBrowserSentryEvent(event, { isNotFound: false })).toBe(event)
+	const real = makeEvent(['Error', 'Real failure'])
+	expect(filterBrowserSentryEvent(real, new Error('Real failure'))).toBe(real)
 })

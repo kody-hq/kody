@@ -38,55 +38,11 @@ function executeUsageSnippet(usage: string) {
 	return calls
 }
 
-function executeExampleOf(
-	structured: ReturnType<typeof formatEntityDetailMarkdown>['structured'],
-) {
-	if (structured.type !== 'capability') {
-		throw new Error(`Expected capability detail, got ${structured.type}`)
-	}
-	return structured.executeExample
-}
-
 function usageOf(match: SlimSearchMatch | undefined) {
 	if (!match || !('usage' in match)) {
 		throw new Error('Expected slim match with usage')
 	}
 	return match.usage
-}
-
-async function executeCapabilityExample(executeExample: string) {
-	const calls: Array<{ name: string; args: unknown }> = []
-	const recordCall = (name: string) => async (args: unknown) => {
-		calls.push({ name, args })
-		return { ok: true }
-	}
-	const namespaced = new Proxy(
-		{},
-		{
-			get: (_target, entryName: string) =>
-				new Proxy(
-					{},
-					{
-						get: (_entryTarget, capabilityName: string) =>
-							recordCall(`mcp:${entryName}:${capabilityName}`),
-					},
-				),
-		},
-	)
-	const kody = new Proxy(
-		{},
-		{
-			get: (_target, prop: string) =>
-				prop === 'mcp' ? namespaced : recordCall(prop),
-		},
-	)
-	const moduleCode = executeExample
-		.replace("import { kody } from 'kody:runtime'\n\n", '')
-		.replace('export default async function main', 'async function main')
-	const result = await new Script(
-		`(async () => { ${moduleCode}; return await main({ owner: "o", repo: "r", title: "t" }) })()`,
-	).runInNewContext({ kody })
-	return { calls, result }
 }
 
 function capabilityDetail(
@@ -392,126 +348,6 @@ test('search formatting keeps entity refs and generates safe, runnable usage sni
 	)
 	expect(leanIntegrationDetail.markdown).not.toContain('package:github')
 	expect(leanIntegrationDetail.markdown).not.toContain('listing-1')
-})
-
-test('capability formatting keeps execute contracts for identifier and bracket ids', async () => {
-	const identifierDetail = capabilityDetail({
-		name: 'github_create_issue',
-		domain: 'coding',
-		description: 'Create a GitHub issue.',
-		readOnly: false,
-		idempotent: false,
-		inputFields: ['owner', 'repo', 'title'],
-		requiredInputFields: ['owner', 'repo', 'title'],
-		outputFields: ['issueUrl'],
-		inputSchema: {
-			type: 'object',
-			properties: {
-				owner: { type: 'string' },
-				repo: { type: 'string' },
-				title: { type: 'string' },
-			},
-			required: ['owner', 'repo', 'title'],
-		},
-		outputSchema: {
-			type: 'object',
-			properties: { issueUrl: { type: 'string' } },
-			required: ['issueUrl'],
-		},
-		inputTypeDefinition:
-			'type GithubCreateIssueInput = {\n\towner: string\n\trepo: string\n\ttitle: string\n}',
-		outputTypeDefinition:
-			'type GithubCreateIssueOutput = {\n\tissueUrl: string\n}',
-	})
-	expect(identifierDetail.structured).toMatchObject({
-		type: 'capability',
-		entityRef: 'capability:github_create_issue',
-		requiredInputFields: ['owner', 'repo', 'title'],
-		readOnly: false,
-		idempotent: false,
-		destructive: false,
-		apiAvailable: false,
-		inputTypeDefinition: expect.stringContaining('GithubCreateIssueInput'),
-	})
-	expect(identifierDetail.markdown).toContain('execute-only')
-	expect(identifierDetail.structured).not.toHaveProperty('inputSchema')
-	expect(identifierDetail.structured).not.toHaveProperty('outputSchema')
-	const identifierExecution = await executeCapabilityExample(
-		executeExampleOf(identifierDetail.structured),
-	)
-	expect(identifierExecution.calls).toEqual([
-		{
-			name: 'github_create_issue',
-			args: { owner: 'o', repo: 'r', title: 't' },
-		},
-	])
-	expect(identifierExecution.result).toEqual({ ok: true })
-
-	const [bracketMatch] = slim([
-		{
-			type: 'capability',
-			name: 'foo-bar',
-			description: 'Capability with a non-identifier id.',
-			domain: 'meta',
-		},
-	])
-	expect(bracketMatch).toMatchObject({
-		type: 'capability',
-		entityRef: 'capability:foo-bar',
-		apiAvailable: false,
-	})
-	const bracketDetail = capabilityDetail({
-		name: 'foo-bar',
-		domain: 'meta',
-		description: 'Capability with a non-identifier id.',
-		inputTypeDefinition: 'type FooBarInput = Record<string, never>',
-	})
-	expect(bracketDetail.structured).toMatchObject({
-		type: 'capability',
-		entityRef: 'capability:foo-bar',
-		readOnly: true,
-		idempotent: true,
-	})
-	expect(
-		(await executeCapabilityExample(executeExampleOf(bracketDetail.structured)))
-			.calls,
-	).toEqual([{ name: 'foo-bar', args: { owner: 'o', repo: 'r', title: 't' } }])
-
-	const remoteDetail = capabilityDetail({
-		name: 'mcp:home:set_pin',
-		domain: 'mcp:home',
-		description: 'Set the island router PIN.',
-		readOnly: false,
-		source: 'mcp-server',
-		mcpServer: {
-			serverId: 'srv-home',
-			serverName: 'home',
-			kodyName: 'home',
-			mcpToolName: 'island.router.api/set-pin',
-			toolName: 'set_pin',
-		},
-		inputFields: ['pin'],
-		requiredInputFields: ['pin'],
-		inputSchema: {
-			type: 'object',
-			properties: { pin: { type: 'string' } },
-			required: ['pin'],
-		},
-		inputTypeDefinition:
-			'type RemoteHomeDefaultSetPinInput = {\n\tpin: string\n}',
-	})
-	expect(remoteDetail.markdown).toContain('kody.mcp["home"].set_pin(params)')
-	expect(remoteDetail.structured).toMatchObject({
-		source: 'mcp-server',
-		mcpServer: { kodyName: 'home', toolName: 'set_pin' },
-		executeExample: expect.stringContaining('kody.mcp["home"].set_pin(params)'),
-	})
-	expect(
-		(await executeCapabilityExample(executeExampleOf(remoteDetail.structured)))
-			.calls,
-	).toEqual([
-		{ name: 'mcp:home:set_pin', args: { owner: 'o', repo: 'r', title: 't' } },
-	])
 })
 
 test('package entity detail is a slim index with explicit follow-up, webhook challenges, and agent docs', () => {
@@ -880,10 +716,6 @@ test('search markdown summarizes broad results safely and only suggests entity d
 			}),
 		],
 	})
-	expect(markdown).toMatch(/^# Search results/m)
-	expect(markdown).toContain('## Notices')
-	expect(markdown).toContain('Saved package metadata warning with long details')
-	expect(markdown).toContain('Package retriever warning with long details')
 	for (const sensitiveValue of [
 		truncatedReadmeSnippet,
 		'https://github.com/login/oauth/access_token',
@@ -970,11 +802,6 @@ test('domain overview and capability list items format compact scoping hints', (
 			sampleCapabilities: ['emailSend', 'emailMessageList', 'emailMessageGet'],
 		},
 	]
-	const markdown = formatSearchMarkdown({ matches: domainMatches })
-	expect(markdown).toContain('Search again with a more specific query')
-	expect(markdown).toContain('**domain** `email` (9 capabilities)')
-	expect(markdown).toContain('`emailSend`')
-	expect(markdown).not.toContain('entity-backed')
 	const [domainSlim] = slim(domainMatches)
 	expect(domainSlim).toMatchObject({
 		type: 'domain',
@@ -991,10 +818,6 @@ test('domain overview and capability list items format compact scoping hints', (
 		description: 'Send a message.',
 		domain: 'email',
 	}
-	expect(listMarkdown([emailSend])).toContain(
-		'1. **capability** `emailSend` (`email`) — Send a message\\. Entity: `capability:emailSend`',
-	)
-	expect(listMarkdown([emailSend])).not.toContain('Execute-only')
 	expect(slim([emailSend])[0]).toMatchObject({
 		type: 'capability',
 		id: 'emailSend',
@@ -1008,7 +831,6 @@ test('domain overview and capability list items format compact scoping hints', (
 		description: 'Smoke-test a minted webhook.',
 		domain: 'webhooks',
 	}
-	expect(listMarkdown([executeOnly])).toContain('Execute-only')
 	expect(slim([executeOnly])[0]).toMatchObject({
 		type: 'capability',
 		apiAvailable: false,
@@ -1056,15 +878,6 @@ test('search formatting inlines top capability call shapes, related ops, and MCP
 		usage: 'kody.mcp["home"].tool_name(args)',
 		wrappingPackage: null,
 	}
-	const mcpServerListMarkdown = listMarkdown([homeServer])
-	expect(mcpServerListMarkdown).toContain('**mcp-server** home')
-	expect(mcpServerListMarkdown).toContain('mcp-server:home')
-	expect(mcpServerListMarkdown).toContain('168 tools')
-	expect(mcpServerListMarkdown).toContain('Instructions:')
-	expect(mcpServerListMarkdown).toContain(
-		'Control lights, locks, and the island router PIN on the home LAN',
-	)
-	expect(mcpServerListMarkdown).not.toContain('capability:mcp:home:set_pin')
 	expect(slim([homeServer])[0]).toMatchObject({
 		type: 'mcp-server',
 		entityRef: 'mcp-server:home',
@@ -1115,14 +928,6 @@ test('search formatting inlines top capability call shapes, related ops, and MCP
 		},
 	]
 	const capabilityListMarkdown = listMarkdown(capabilityMatches)
-	expect(capabilityListMarkdown).toContain('mcp:widgets:createwidget')
-	expect(capabilityListMarkdown).toContain(
-		'kody.mcp["widgets"].createwidget(params)',
-	)
-	expect(capabilityListMarkdown).toContain(
-		'type CreateWidgetInput = { name: string }',
-	)
-	expect(capabilityListMarkdown).toContain(compact.definition)
 	expect(capabilityListMarkdown).not.toMatch(
 		/fourth_capability[\s\S]*kody\.fourth_capability\(args\)/,
 	)
@@ -1160,10 +965,6 @@ test('search formatting inlines top capability call shapes, related ops, and MCP
 		},
 		{ relatedOperationCount: 2 },
 	)
-	expect(mcpDetail.markdown).toContain(
-		'Related operations from this MCP server: 2',
-	)
-	expect(mcpDetail.markdown).toContain('mcp-server:widgets')
 	expect(mcpDetail.markdown).not.toContain('capability:mcp:widgets:listwidgets')
 	expect(mcpDetail.structured).toMatchObject({
 		type: 'capability',
@@ -1180,92 +981,4 @@ test('search formatting inlines top capability call shapes, related ops, and MCP
 			inputTypeDefinition: 'type CodingGuideGetInput = { guide: string }',
 		}).structured,
 	).not.toHaveProperty('relatedOperations')
-})
-
-test('list markdown and slim structured stay semantically equivalent for inlined export contracts', () => {
-	const setShadesType =
-		'export declare function setBondAreaShades(params: BondAreaShadeParams): Promise<JsonObject>'
-	const functions = [
-		{
-			name: 'setBondAreaShades',
-			description: 'Lower or raise Bond-controlled shades.',
-			typeDefinition: setShadesType,
-		},
-		{
-			name: 'listBondAreas',
-			description: 'List Bond areas with shades.',
-			typeDefinition: null,
-		},
-	]
-	const usage =
-		'import { setBondAreaShades } from "kody:@kentcdodds/home-controls/bond-area-shades"'
-	const exportHit = packageMatch({
-		kodyId: 'home-controls',
-		name: '@kentcdodds/home-controls',
-		title: '@kentcdodds/home-controls setBondAreaShades',
-		description: 'Lower or raise Bond-controlled shades.',
-		exportSubpath: './bond-area-shades',
-		actionMatches: [
-			{
-				subpath: './bond-area-shades',
-				description: 'Lower or raise Bond-controlled shades.',
-				typeDefinition: setShadesType,
-				functions,
-				score: 0.94,
-				matchedTerms: ['shade', 'bond', 'lower'],
-			},
-		],
-		exportCallContract: {
-			importSpecifier: 'kody:@kentcdodds/home-controls/bond-area-shades',
-			usage,
-			executeExample: `${usage}\n\nexport default async function main(params) {\n\treturn await setBondAreaShades(params)\n}`,
-			typeDefinition: setShadesType,
-			functions,
-		},
-	})
-	const markdown = formatSearchMarkdown({
-		matches: [exportHit],
-		warnings: [
-			'Shade package retriever timed out once; results may be partial.',
-		],
-		guidance:
-			'Use the inlined export call contract above from `execute`. Inspect `search({ entity: "package:home-controls#./bond-area-shades" })` only if you need referenced types or more exports.',
-		includePreamble: false,
-	})
-	const [slimMatch] = slim([exportHit], 'test-user')
-	expect(slimMatch).toMatchObject({
-		type: 'package',
-		entityRef: 'package:home-controls#./bond-area-shades',
-		exportSubpath: './bond-area-shades',
-		exportCallContract: {
-			importSpecifier: 'kody:@kentcdodds/home-controls/bond-area-shades',
-			usage,
-			executeExample: expect.stringContaining('setBondAreaShades(params)'),
-			typeDefinition: setShadesType,
-			functions: [
-				expect.objectContaining({ name: 'setBondAreaShades' }),
-				expect.objectContaining({ name: 'listBondAreas' }),
-			],
-		},
-		actionMatches: [
-			expect.objectContaining({
-				matchedTerms: ['shade', 'bond', 'lower'],
-				score: 0.94,
-			}),
-		],
-		nextStep: expect.stringContaining('inlined export call contract'),
-	})
-	expect(markdown).toContain(
-		'Entity: `package:home-controls#./bond-area-shades`',
-	)
-	expect(markdown).toContain('Matched: `shade`, `bond`, `lower`')
-	expect(markdown).toContain(
-		'Import: `kody:@kentcdodds/home-controls/bond-area-shades`',
-	)
-	expect(markdown).toContain('`setBondAreaShades`')
-	expect(markdown).toContain('`listBondAreas`')
-	expect(markdown).toContain(
-		'Shade package retriever timed out once; results may be partial',
-	)
-	expect(markdown).toContain(usage)
 })

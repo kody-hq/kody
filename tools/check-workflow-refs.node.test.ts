@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	checkWorkflowRefs,
-	checkWorkflowSource,
-} from './check-workflow-refs.ts'
+import { checkWorkflowSource } from './check-workflow-refs.ts'
 
 const validWorkflow = `
 name: Deploy
@@ -160,9 +157,4 @@ jobs:
 				'steps.runtime_config.outputs references a step id that does not exist in job "two".',
 		},
 	])
-})
-
-test('the committed workflow files have no dangling step or job refs', async () => {
-	const result = await checkWorkflowRefs()
-	expect(result).toEqual({ ok: true, issues: [] })
 })

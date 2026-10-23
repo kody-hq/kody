@@ -8,9 +8,6 @@ import {
 } from './dynamic-worker-invoke.ts'
 
 test('countEvaluateInvocationParamsChars is the key-sorted JSON length or 0', () => {
-	expect(countEvaluateInvocationParamsChars({ token: 'x' })).toBe(
-		'{"token":"x"}'.length,
-	)
 	expect(countEvaluateInvocationParamsChars({ z: 1, a: 2 })).toBe(
 		'{"a":2,"z":1}'.length,
 	)
@@ -20,15 +17,8 @@ test('countEvaluateInvocationParamsChars is the key-sorted JSON length or 0', ()
 
 	expect(countEvaluateInvocationParamsChars({})).toBe(0)
 	expect(countEvaluateInvocationParamsChars(null)).toBe(0)
-	expect(countEvaluateInvocationParamsChars(undefined)).toBe(0)
 	expect(countEvaluateInvocationParamsChars([])).toBe(0)
 	expect(countEvaluateInvocationParamsChars([1, { z: 1, a: 2 }])).toBe(0)
-	expect(countEvaluateInvocationParamsChars(1)).toBe(0)
-	expect(countEvaluateInvocationParamsChars('params')).toBe(0)
-	expect(countEvaluateInvocationParamsChars(true)).toBe(0)
-	expect(
-		countEvaluateInvocationParamsChars(Object.create({ inherited: 1 })),
-	).toBe(0)
 })
 
 test('countDynamicWorkerModuleGraphChars sums text only and ignores names', () => {

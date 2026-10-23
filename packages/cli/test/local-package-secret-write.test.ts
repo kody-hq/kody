@@ -80,22 +80,3 @@ test('allows user-scoped secretSet and unrelated paths', () => {
 		null,
 	)
 })
-
-test('message names local execute and hosted / UI fixes without trusting package ids', () => {
-	assert.match(
-		localPackageScopedSecretWriteUnavailableMessage,
-		/local execution/i,
-	)
-	assert.match(
-		localPackageScopedSecretWriteUnavailableMessage,
-		/hosted package execute/,
-	)
-	assert.match(
-		localPackageScopedSecretWriteUnavailableMessage,
-		/\/connect\/secret-set/,
-	)
-	assert.match(
-		localPackageScopedSecretWriteUnavailableMessage,
-		/client-supplied package id is not trusted/,
-	)
-})

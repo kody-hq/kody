@@ -75,6 +75,11 @@ export async function setupPackageCredentialMappingFixture(input: {
 	const now = mappingFixtureNow
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	// Turning a cron enablement on reads its job row (jobs-worker schema).
+	applyAllMigrations(
+		sqlite,
+		new URL('../../../jobs-worker/migrations/', import.meta.url),
+	)
 	const db = createD1FromSqlite(sqlite)
 	const env = {
 		APP_DB: db,

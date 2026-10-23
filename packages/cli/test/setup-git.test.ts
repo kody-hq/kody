@@ -8,6 +8,7 @@ import {
 	cliExactVersionForNpx,
 	cliVersionSupportsGitCredential,
 	decideSetupGitToken,
+	describeKodyCredentialKind,
 	ensureSetupGitScopes,
 	exactNpxHelperVersion,
 	formatAuthRemoveGitReport,
@@ -703,4 +704,170 @@ test('authRemoveGit clears helpers, revokes token, deletes store; idempotent whe
 	assert.equal(empty.tokenRevoked, 'skipped')
 	assert.equal(empty.tokenDeletedLocally, false)
 	assert.match(formatAuthRemoveGitReport(empty), /Nothing to remove/)
+})
+
+test('describeKodyCredentialKind names the kind without echoing the value', () => {
+	const apiToken = `kody_at_${'s'.repeat(20)}_${'T'.repeat(43)}`
+	const code = `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`
+	assert.match(describeKodyCredentialKind(apiToken), /API token \(kody_at_\)/)
+	assert.match(describeKodyCredentialKind(code), /bootstrap code \(kody_bc_\)/)
+	assert.match(
+		describeKodyCredentialKind('oauth-access-xyz'),
+		/not a Kody API token/,
+	)
+	for (const value of [apiToken, code, 'oauth-access-xyz']) {
+		assert.ok(!describeKodyCredentialKind(value).includes(value))
+	}
+})
+
+const unauthorizedFetch = (async (input: Parameters<typeof fetch>[0]) => {
+	const url = String(input instanceof Request ? input.url : input)
+	if (url.includes('/v1/tokens/current')) {
+		return new Response(
+			JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }),
+			{ status: 401, headers: { 'content-type': 'application/json' } },
+		)
+	}
+	return new Response('{}', { status: 404 })
+}) as typeof fetch
+
+test('authSetupGit 401 on a --token bootstrap code says what was rejected and how to fix it', async () => {
+	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-flag-'))
+	const code = `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`
+	await assert.rejects(
+		() =>
+			authSetupGit({
+				apiUrl: 'https://api.setup-git-401.test',
+				mcpUrl: 'https://kody.codes/mcp',
+				token: code,
+				hasLoginSession: true,
+				backend: createFileBackend(join(home, 'missing.json')),
+				mint: async () => {
+					throw new Error('mint should not run')
+				},
+				runGit: () => ({ status: 0, stderr: '' }),
+				fetchFn: unauthorizedFetch,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof Error)
+			assert.match(error.message, /bootstrap code \(kody_bc_\)/)
+			assert.match(error.message, /passed with --token/)
+			assert.match(error.message, /kody auth bootstrap/)
+			assert.ok(!error.message.includes(code))
+			return true
+		},
+	)
+})
+
+test('authSetupGit 401 on a stored token without login tells the user to run kody login', async () => {
+	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-stored-'))
+	const tokenPath = join(home, 'api-token.json')
+	const stored = {
+		...sampleStored([...setupGitRequiredScopes]),
+		apiUrl: 'https://api.setup-git-401.test',
+	}
+	writeFileSync(tokenPath, JSON.stringify(stored))
+	await assert.rejects(
+		() =>
+			authSetupGit({
+				apiUrl: 'https://api.setup-git-401.test',
+				mcpUrl: 'https://kody.codes/mcp',
+				hasLoginSession: false,
+				backend: createFileBackend(tokenPath),
+				mint: async () => {
+					throw new Error('mint should not run')
+				},
+				runGit: () => ({ status: 0, stderr: '' }),
+				fetchFn: unauthorizedFetch,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof Error)
+			assert.match(error.message, /Kody API token \(kody_at_\)/)
+			assert.match(error.message, /stored on this computer/)
+			assert.match(error.message, /Run `kody login`/)
+			assert.ok(!error.message.includes(stored.token))
+			return true
+		},
+	)
+})
+
+test('authSetupGit 401 on a stored token with a login session mints a fresh token', async () => {
+	const home = mkdtempSync(join(tmpdir(), 'kody-setup-git-401-remint-'))
+	const tokenPath = join(home, 'api-token.json')
+	const apiUrl = 'https://api.setup-git-401-remint.test'
+	const deadToken = `kody_at_${'d'.repeat(20)}_${'E'.repeat(43)}`
+	const freshToken = `kody_at_${'f'.repeat(20)}_${'G'.repeat(43)}`
+	writeFileSync(
+		tokenPath,
+		JSON.stringify({
+			...sampleStored([...setupGitRequiredScopes]),
+			apiUrl,
+			token: deadToken,
+		}),
+	)
+	let mints = 0
+	const result = await authSetupGit({
+		apiUrl,
+		mcpUrl: 'https://kody.codes/mcp',
+		hasLoginSession: true,
+		lifetime: resolveCliTokenLifetime({ lifetime: 'long' }),
+		backend: createFileBackend(tokenPath),
+		helperCommand: '!kody git-credential',
+		runGit: () => ({ status: 0, stderr: '' }),
+		mint: async () => {
+			mints += 1
+			return {
+				bootstrap_code: `kody_bc_${'c'.repeat(16)}_${'D'.repeat(32)}`,
+				scopes: setupGitDefaultScopes,
+				idle_ttl_seconds: 1_209_600,
+				max_lifetime_seconds: 7_776_000,
+			}
+		},
+		fetchFn: (async (
+			input: Parameters<typeof fetch>[0],
+			init?: RequestInit,
+		) => {
+			const url = String(input instanceof Request ? input.url : input)
+			if (url.endsWith('/v1/tokens/bootstrap/redeem')) {
+				return new Response(
+					JSON.stringify({
+						token: freshToken,
+						id: 'tok_fresh',
+						name: 'kody-cli-bootstrap',
+						scopes: [...setupGitDefaultScopes],
+						expires_at: '2026-11-01T00:00:00.000Z',
+						max_expires_at: '2027-01-01T00:00:00.000Z',
+						created_via: 'cli-bootstrap',
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } },
+				)
+			}
+			if (url.includes('/v1/tokens/current')) {
+				const auth = new Headers(init?.headers).get('authorization') ?? ''
+				if (auth.includes(deadToken)) {
+					return new Response(
+						JSON.stringify({ error: { code: 'unauthorized', message: 'no' } }),
+						{ status: 401, headers: { 'content-type': 'application/json' } },
+					)
+				}
+				return new Response(
+					JSON.stringify({
+						id: 'tok_fresh',
+						org_binding: 'user',
+						scopes: [...setupGitDefaultScopes],
+						expires_at: '2026-11-01T00:00:00.000Z',
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } },
+				)
+			}
+			return new Response('{}', { status: 404 })
+		}) as typeof fetch,
+	})
+	assert.equal(mints, 1)
+	assert.equal(result.minted, true)
+	assert.equal(result.tokenId, 'tok_fresh')
+	assert.equal(
+		loadStoredApiToken(apiUrl, createFileBackend(tokenPath))?.token,
+		freshToken,
+	)
 })

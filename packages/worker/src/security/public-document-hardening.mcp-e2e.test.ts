@@ -8,14 +8,6 @@ async function workerFetch(request: Request): Promise<Response> {
 	return fetch(new Request(destination, request), { redirect: 'manual' })
 }
 
-test('retired namespace lookalikes remain ordinary missing package documents', async () => {
-	const response = await workerFetch(
-		new Request('https://test.kody.dev/@connector-user/connectors'),
-	)
-	expect(response.status).toBe(404)
-	expect(await response.text()).toContain("This doesn't quite connect.")
-})
-
 test('compiled authentication endpoint rate limits abusive requests', async () => {
 	let rateLimited = false
 	for (let i = 0; i < 25; i++) {

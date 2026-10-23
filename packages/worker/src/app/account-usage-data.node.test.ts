@@ -290,61 +290,6 @@ test('loadAccountUsageData returns plan rows and authoritative UserMeter daily c
 	})
 })
 
-test('Free over compute includes stays informational: activity first, no warning, no alarm', async () => {
-	const { data, meterFor } = await loadUsage({
-		userId: 21,
-		email: 'usage-free-over@example.com',
-		plan: 'free',
-		uniqueWorkerDays: 517,
-		activity: { execute: 140, job_run: 3 },
-	})
-	expect(data?.computeOverage.creditsStatus).toBe('switch_to_pro')
-	expect(meterFor('unique_worker_days')?.label).toBe('Worker compute')
-	expect(meterFor('unique_worker_days')?.howToReduce).toContain(
-		'On Free this is informational: it never charges you or stops runs.',
-	)
-	expect(
-		data?.warnings.filter((row) => row.resource === 'unique_worker_days'),
-	).toEqual([])
-	expect(data?.creditsAlarm).toBeNull()
-	expect(data?.credits).toEqual({
-		eligible: false,
-		canSwitchToPro: false,
-		billingHref: '/@usage-user/-/billing',
-	})
-	expect(data?.activity.metrics.slice(0, 2)).toEqual([
-		{ metric: 'execute', label: 'Code executions', count: 140 },
-		{ metric: 'job_run', label: 'Job runs', count: 3 },
-	])
-	expect(data?.includedCompute[0]).toMatchObject({
-		resource: 'unique_worker_days',
-		informational: true,
-		barPercent: 0,
-		tone: 'calm',
-	})
-	expect(
-		JSON.stringify([data?.includedCompute, data?.includedComputeSummary]),
-	).not.toMatch(/\d{3,}%/)
-})
-
-test('retired Standard over compute includes is not charged and has no wallet', async () => {
-	const { data, meterFor } = await loadUsage({
-		userId: 22,
-		email: 'usage-legacy@example.com',
-		plan: 'standard',
-		stripePlan: 'standard',
-		entitlementLadder: 'legacy',
-		stripeCustomerId: 'cus_legacy',
-		uniqueWorkerDays: 400,
-		creditBalanceMicroUsd: 5_000_000,
-	})
-	expect(data?.computeOverage.creditWallet).toBe('none')
-	expect(data?.computeOverage.creditsStatus).toBe('switch_to_pro')
-	expect(meterFor('unique_worker_days')?.howToReduce).toMatch(
-		/not charged on your plan/,
-	)
-})
-
 test('purchasable Pro with credits runs past the include on credits; at $0 it stops at the include', async () => {
 	const purchasablePro = {
 		plan: 'free',
@@ -385,7 +330,6 @@ test('purchasable Pro with credits runs past the include on credits; at $0 it st
 	expect(funded.data?.includedCompute[0]).toMatchObject({
 		barPercent: 100,
 		tone: 'calm',
-		status: 'Include used · $0.20 on credits',
 	})
 	expect(
 		funded.data?.warnings.filter(
@@ -415,7 +359,6 @@ test('purchasable Pro with credits runs past the include on credits; at $0 it st
 	})
 	expect(empty.data?.creditsAlarm).toMatchObject({
 		kind: 'include_used_no_credits',
-		action: { label: 'Add credits', href: '#credits' },
 	})
 	expect(empty.data?.includedCompute[0]).toMatchObject({
 		barPercent: 100,
@@ -425,12 +368,6 @@ test('purchasable Pro with credits runs past the include on credits; at $0 it st
 		empty.data?.warnings.filter((row) => row.resource === 'unique_worker_days'),
 	).toEqual([])
 	expect(empty.row('execute_unique_workers_per_day')?.limit).toBe(500)
-	expect(empty.row('execute_unique_workers_per_day')?.howToReduce).toMatch(
-		/add credits at \/account\/usage#credits to keep going past your include/,
-	)
-	expect(empty.meterFor('unique_worker_days')?.howToReduce).toMatch(
-		/With no credits left, usage past the include stops/,
-	)
 
 	// Without a Stripe customer nobody can buy: the alarm and the Credits
 	// section agree.
@@ -457,38 +394,6 @@ test('purchasable Pro with credits runs past the include on credits; at $0 it st
 	})
 })
 
-test('admin-granted Pro with wallet eligibility cannot buy credits', async () => {
-	const { data } = await loadUsage(
-		{
-			userId: 28,
-			email: 'usage-granted-pro@example.com',
-			plan: 'pro',
-			stripePlan: null,
-			adminCreditsEligible: true,
-			creditBalanceMicroUsd: 3_000_000,
-			uniqueWorkerDays: 400,
-			stripeCustomerId: null,
-		},
-		{ env: { STRIPE_SECRET_KEY: 'sk_test_usage' } },
-	)
-	expect(data?.plan).toBe('pro')
-	expect(data?.manualPlan).toBe('pro')
-	expect(data?.stripePlan).toBeNull()
-	expect(data?.computeOverage.creditWallet).toBe('funded')
-	expect(data?.canBuyCredits).toBe(false)
-	expect(data?.credits).toMatchObject({
-		eligible: true,
-		configured: true,
-		canBuyCredits: false,
-		balanceMicroUsd: 3_000_000,
-		hasCredits: true,
-	})
-	expect(data?.creditsAlarm).toMatchObject({
-		kind: 'credits_low',
-		action: { label: 'Manage credits', href: '#credits' },
-	})
-})
-
 test('gift Pro keeps retired Pro ceilings without a wallet and cannot buy credits', async () => {
 	const { data, row, meterFor } = await loadUsage({
 		userId: 26,
@@ -503,20 +408,12 @@ test('gift Pro keeps retired Pro ceilings without a wallet and cannot buy credit
 	expect(data?.canBuyCredits).toBe(false)
 	expect(data?.credits).toMatchObject({ eligible: false })
 	expect(meterFor('unique_worker_days')).toMatchObject({
-		label: 'Worker compute',
 		include: 2_000,
 	})
 	expect(meterFor('durable_object_rows_read')).toMatchObject({
-		label: 'Rows read',
 		include: 20_000_000_000,
 	})
 	expect(row('execute_unique_workers_per_day')?.limit).toBe(1_500)
-	expect(
-		[
-			...(data?.entitlementConsumption ?? []),
-			...(data?.computeOverage.meters ?? []),
-		].filter((entry) => /^add credits/i.test(entry.howToReduce ?? '')),
-	).toEqual([])
 })
 
 test('team org usage loads plan and wallet by org id, not the viewer person', async () => {

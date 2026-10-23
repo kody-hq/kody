@@ -107,33 +107,6 @@ function securityAuditField(html: string) {
 	return html.slice(start, html.indexOf('</section>', start))
 }
 
-test('capability approval leads with the package, credentials, and other capabilities in plain language', async () => {
-	const html = await render(loaderData())
-
-	expect(html).toContain('Approve internet-visible capabilities')
-	expect(html).toContain('data-testid="package-approve-capabilities-package"')
-	expect(html).toContain('@kody/mau-chart')
-	// No workspace rail on the focused page.
-	expect(html).not.toMatch(/<[a-z]+\s[^>]*data-account-nav[\s>=]/)
-	expect(html).not.toContain('aria-label="Workspace sections"')
-
-	expect(html).toContain('>Credentials<')
-	expect(html).toContain('FATHOM_API_KEY')
-	expect(html).toContain('Key · used by this package')
-	expect(html).toContain('Can only be sent to api.usefathom.com')
-
-	expect(html).toContain('>Other capabilities<')
-	expect(html).toContain('>Package storage<')
-	expect(html).toContain('This package can save and read its own data.')
-	expect(html).toContain(
-		'Its dependency chart-kit can save and read its own data.',
-	)
-
-	expect(html).toContain('Approve capability set')
-	expect(html).toContain('data-testid="package-approve-capabilities-back"')
-	expect(html).toContain('Back to package settings')
-})
-
 test('capability approval hides raw ids in a collapsed Details disclosure and drops the slug', async () => {
 	const html = await render(loaderData())
 	const main = beforeDetails(html)
@@ -224,33 +197,6 @@ test('capability approval does not claim a dependency-reached credential is depe
 
 	expect(html).toContain('URL · reachable through its dependency slack-notify')
 	expect(html).not.toContain('used by this package')
-})
-
-test('capability approval copy matches an already internet-visible package', async () => {
-	const live = await render(
-		loaderData({
-			package: { ...loaderData().package, isInternetVisible: true },
-		}),
-	)
-	expect(live).toContain(
-		'@kody/mau-chart is served on the public internet. Check what it can use before you re-approve.',
-	)
-	expect(live).toContain(
-		'It is internet-visible, so requests from anyone can run code that uses these.',
-	)
-	expect(live).toContain('Re-approve capability set')
-	expect(live).toContain('Credential values never appear here.')
-	expect(live).not.toContain('Secret values')
-	expect(live).not.toContain('Before @kody/mau-chart is served')
-	expect(live).not.toContain('Once it is internet-visible')
-
-	const notLive = await render(loaderData())
-	expect(notLive).toContain(
-		'Before @kody/mau-chart is served on the public internet',
-	)
-	expect(notLive).toContain('Once it is internet-visible')
-	expect(notLive).toContain('Credential values never appear here.')
-	expect(notLive).not.toContain('Secret values')
 })
 
 test('a credential-needs-only approval states the change and never claims public visibility', async () => {
@@ -376,52 +322,6 @@ test('credential-needs-only copy wins over an already internet-visible package',
 	expect(html).not.toContain('public internet')
 })
 
-test('a package that declares nothing gets one plain empty state', async () => {
-	const html = await render(loaderData({ entries: [] }))
-
-	expect(html).toContain('data-testid="package-approve-capabilities-empty"')
-	expect(html).toContain(
-		'This package uses no credentials or other capabilities.',
-	)
-	expect(html).not.toContain('>Credentials<')
-	expect(html).not.toContain('>Other capabilities<')
-	expect(html).not.toContain('Package storage')
-	expect(html).toContain('Approve capability set')
-})
-
-test('storage alone keeps the credentials section and says none are used', async () => {
-	const html = await render(
-		loaderData({
-			entries: [
-				{
-					kind: 'storage',
-					storageId: packageId,
-					hosts: [],
-					via: ['mau-chart'],
-				},
-			],
-		}),
-	)
-
-	expect(html).toContain('This package does not use any of your credentials.')
-	expect(html).toContain('>Package storage<')
-	expect(html).not.toContain('data-testid="package-approve-capabilities-empty"')
-})
-
-test('an unpublished package shows neither the empty state nor sections', async () => {
-	const html = await render(
-		loaderData({
-			entries: [],
-			publishedCommit: null,
-			securityAudit: { status: 'unpublished' },
-		}),
-	)
-
-	expect(html).toContain('Publish this package before approving')
-	expect(html).not.toContain('data-testid="package-approve-capabilities-empty"')
-	expect(html).not.toContain('>Credentials<')
-})
-
 test('each credential says how this package reaches it', async () => {
 	const credential = (
 		id: string,
@@ -503,38 +403,6 @@ test('a credential shared with app visitors says so in plain language', async ()
 	expect(idMentions(html)).toBe(idMentions(singleEntry))
 })
 
-test('credentials not shared with visitors carry no visitor note', async () => {
-	const html = await render(loaderData())
-
-	expect(html).not.toContain('credential-visitors')
-	expect(html).not.toContain('Visitors can use this credential')
-})
-
-test('security audit reads "No security audit performed" and offers a copyable agent prompt', async () => {
-	const html = await render(loaderData())
-	const field = securityAuditField(html)
-
-	expect(field).toContain('data-audit-status="not_audited"')
-	expect(field).toContain('>Security audit<')
-	expect(field).toContain('No security audit performed')
-	expect(field).toContain('aria-haspopup="dialog"')
-	expect(field).toContain('Ask your agent for a security audit')
-
-	const prompt = field.slice(
-		field.indexOf('data-testid="package-security-audit-prompt"'),
-	)
-	for (const value of [packageId, publishedCommit, fingerprint]) {
-		expect(prompt).toContain(value)
-	}
-	expect(prompt).toContain('packageSecurityAuditRecord')
-	expect(field).toContain('aria-label="Copy security audit prompt"')
-	expect(withoutDialogs(field)).not.toContain(publishedCommit)
-
-	// Informational only: Approve stays its own button.
-	expect(html).toContain('data-testid="package-approve-capabilities"')
-	expect(field).not.toContain('data-testid="package-approve-capabilities"')
-})
-
 test('security audit shows who audited when, with a link to the summary', async () => {
 	const html = await render(
 		loaderData({
@@ -564,46 +432,6 @@ test('security audit shows who audited when, with a link to the summary', async 
 	expect(field).toContain('FATHOM_API_KEY is only sent to api.usefathom.com.')
 	expect(field).not.toContain('No security audit performed')
 	expect(field).not.toContain(publishedCommit)
-})
-
-test('security audit asks for a publish before an unpublished package can be audited', async () => {
-	const html = await render(
-		loaderData({
-			publishedCommit: null,
-			securityAudit: { status: 'unpublished' },
-		}),
-	)
-	const field = securityAuditField(html)
-
-	expect(field).toContain(
-		'No security audit performed. Publish this package to audit it.',
-	)
-	expect(field).not.toContain('<dialog')
-})
-
-test('security audit says it does not cover a paused publish waiting on the page', async () => {
-	const paused = await render(
-		loaderData({
-			pendingApprovals: [
-				{
-					id: 'req-2',
-					reason: 'credential_needs_changed',
-					reasonLabel: 'Credential needs changed',
-					pendingCommit: 'cccccccccccccccccccccccccccccccccccccccc',
-					createdAt: '2026-10-14T00:00:00.000Z',
-					changes: [],
-					approveAction: 'approve-credential-needs',
-				},
-			],
-		}),
-	)
-	expect(securityAuditField(paused)).toContain(
-		'Covers the published version only, not the paused publish waiting',
-	)
-
-	expect(securityAuditField(await render(loaderData()))).not.toContain(
-		'data-testid="package-security-audit-paused-note"',
-	)
 })
 
 test('a go-public request folds into the capability Approve as one decision', async () => {

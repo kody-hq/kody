@@ -105,14 +105,3 @@ test('native account documents render authorized initial state and protect anony
 	)
 	expect(unknown.status).toBe(404)
 })
-
-test('native password reset document renders the token form before hydration', async () => {
-	const server = await getSharedMcpE2eServer()
-	const response = await fetch(
-		`${server.origin}/reset-password?token=reset-token`,
-	)
-	expect(response.status).toBe(200)
-	const html = visibleHtml(await response.text())
-	expect(html).toContain('New password')
-	expect(html).not.toContain('Send reset link')
-})

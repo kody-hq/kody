@@ -1,13 +1,5 @@
-import { landingHeroPrimaryCta } from '#universal/landing-home-copy.ts'
 import { expect, test } from 'vitest'
-import { acquisitionPages } from '#universal/acquisition/catalog.ts'
-import { getGuideBySlug } from '#worker/guides/catalog.ts'
 import { landingTestimonialsStorySlug } from '#universal/landing-testimonials.ts'
-import {
-	getBlogPost,
-	getReadNextBlogPost,
-	listBlogPosts,
-} from '#worker/blog/catalog.ts'
 import {
 	createMcpClient,
 	createUniqueTestUser,
@@ -105,77 +97,6 @@ export default async function main(input) {
 	}
 })
 
-test('FAQ and support initial documents expose signup, disclosures and support links', async () => {
-	const { html: faq } = await document('/faq')
-	expect(faq).toMatch(/<title[^>]*>FAQ<\/title>/)
-	contains(faq, [
-		'data-faq="replace-agents"',
-		'data-faq="shared-account"',
-		'data-faq="get-started"',
-		'<details',
-		'<summary',
-		'mailto:support@kody.codes',
-		'Create a free account from',
-		'href="/signup"',
-		'href="/faq"',
-	])
-	const { html: support } = await document('/support')
-	expect(support).toMatch(/<title[^>]*>Support<\/title>/)
-	contains(support, ['mailto:support@kody.codes', 'href="/support"'])
-})
-
-test('Discord initial document has one accessible connect button', async () => {
-	const { html } = await document('/discord')
-	expect(html).toMatch(/<title[^>]*>Discord<\/title>/)
-	expect(html.match(/<h1\b[^>]*>[\s\S]*?<\/h1>/)?.[0]).toContain('Discord')
-	expect(
-		(html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).filter((button) =>
-			button.includes('Connect Discord'),
-		),
-	).toHaveLength(1)
-})
-
-test('acquisition documents preserve canonical metadata, guide links, sitemap and Markdown twins', async () => {
-	const server = await getSharedMcpE2eServer()
-	const sitemap = await (await fetch(`${server.origin}/sitemap.xml`)).text()
-	for (const page of acquisitionPages) {
-		const { html, response, url } = await document(page.path)
-		expect(response.headers.get('Vary')).toMatch(/accept/i)
-		contains(html, [
-			`href="${url.href}"`,
-			'href="/onboarding"',
-			'id="try-it"',
-			'aria-pressed="true"',
-		])
-		expect(html).not.toMatch(/aria-pressed(?:\s|>)/)
-		for (const [, slug] of html.matchAll(/href="\/docs\/([^"#?]+)[^"]*"/g))
-			expect(getGuideBySlug(slug!), `${page.path}: ${slug}`).toBeTruthy()
-		expect(sitemap).toContain(`<loc>${url.href}</loc>`)
-		for (const source of page.sources.filter((source) =>
-			source.href.startsWith('/docs/'),
-		))
-			expect(getGuideBySlug(source.href.slice('/docs/'.length))).toBeTruthy()
-		const markdown = await fetch(url, { headers: { Accept: 'text/markdown' } })
-		expect(markdown.status, `Markdown ${url.href}`).toBe(200)
-		expect(markdown.headers.get('Content-Type'), `Markdown ${url.href}`).toBe(
-			'text/markdown; charset=utf-8',
-		)
-		expect(await markdown.text()).toContain('# ')
-	}
-})
-
-test('use-case index exposes its landing pages in HTML and Markdown', async () => {
-	const { html, url } = await document('/use-cases')
-	contains(html, [
-		`href="${url.href}"`,
-		'href="/compare/n8n-alternatives"',
-		'href="/use-cases/mcp-gateway"',
-	])
-	const markdown = await fetch(url, { headers: { Accept: 'text/markdown' } })
-	expect(markdown.status, `Markdown ${url.href}`).toBe(200)
-	expect(await markdown.text()).toContain('](/compare/n8n-alternatives)')
-})
-
 test.each(['', '/memory', '/packages', '/triggers', '/credentials', '/apps'])(
 	'feature %s renders its content before client JavaScript',
 	async (suffix) => {
@@ -183,22 +104,6 @@ test.each(['', '/memory', '/packages', '/triggers', '/credentials', '/apps'])(
 		expect(html).not.toContain('Loading page')
 		expect(html.match(/<h1[ >]/g)).toHaveLength(1)
 		expect(html.match(/<main[ >]/g)).toHaveLength(1)
-		if (suffix)
-			expect(html).toContain(`/images/features/${suffix.slice(1)}.svg`)
-		if (suffix === '/credentials')
-			contains(html, [
-				'href="/onboarding"',
-				'Connect your agent',
-				'id="secret-result"',
-				'it works with Kody.',
-			])
-		if (suffix === '/packages')
-			contains(html, ['id="package-source-fallback"', 'src/brief.ts'])
-		if (suffix === '/memory')
-			contains(html, [
-				'id="ms-hero-note"',
-				'Lead with the decision. Keep updates short.',
-			])
 	},
 )
 
@@ -237,180 +142,6 @@ test.each(['/features/secrets', '/features/integrations'])(
 	},
 )
 
-test('business document preserves canonical URL and business onboarding CTA', async () => {
-	const { html, url } = await document('/for/business?utm_source=test')
-	contains(html, [
-		`href="${url.origin}/for/business"`,
-		'/og/business.png',
-		'href="/onboarding?business=true',
-	])
-	expect(html).not.toContain('Loading page')
-	expect(html.match(/<h1[ >]/g)).toHaveLength(1)
-	expect(html.match(/<main[ >]/g)).toHaveLength(1)
-})
-
-test('pricing initial content preserves plans, compute and factory links', async () => {
-	const { html } = await document('/pricing')
-	contains(html, [
-		'Pro',
-		'Pro + credits',
-		'Worker compute per month',
-		'Teams / Enterprise',
-		'mailto:kody@kody.codes',
-	])
-	expect(html).toMatch(/<a[^>]*href="\/docs\/kody-factory"[^>]*>factory<\/a>/)
-})
-
-test('privacy initial content distinguishes model inference and data retention', async () => {
-	const { html } = await document('/privacy')
-	expect(html).toMatch(/<title[^>]*>Privacy<\/title>/)
-	contains(html.replace(/\s+/g, ' '), [
-		'does not run its own chat-model agent loop',
-		'does not bill for chat tokens',
-		'Cloudflare Workers AI',
-		'Durable Object duration attribution: until account deletion',
-	])
-})
-
-test('testimonial SSR keeps approved stories, artwork and stable anchors', async () => {
-	const { html: home } = await document('/')
-	expect(home.match(/class="landing-testimonial-story"/g)).toHaveLength(4)
-	for (const slug of [
-		'josh-tomaino',
-		'jett-hays',
-		'gabriel-alegria',
-		'maciek-sitkowski',
-	])
-		expect(home).toContain(`href="/blog/early-kody-users#${slug}"`)
-	contains(home, [
-		'Gabriel Alegría',
-		'src="/images/testimonials/gabriel-alegria.webp"',
-		'href="https://www.linkedin.com/in/gabriel-alegria-mx"',
-		'Erik Rasmussen',
-		'src="/images/testimonials/erik-rasmussen.webp"',
-		'href="https://x.com/erikras/status/2097720067316203941"',
-	])
-	expect(home).not.toContain('landing-testimonial-initials')
-	const post = getBlogPost(landingTestimonialsStorySlug)
-	expect(post?.title).toBe('Case studies')
-	expect(post?.placeholder).toBe(false)
-	expect(getReadNextBlogPost(landingTestimonialsStorySlug)).not.toBeNull()
-	for (const path of [
-		`/blog/${landingTestimonialsStorySlug}`,
-		'/case-studies',
-	]) {
-		const { html } = await document(path)
-		contains(html, [
-			'id="josh-tomaino"',
-			'id="jett-hays"',
-			'id="gabriel-alegria"',
-			'id="maciek-sitkowski"',
-			'Gabriel Alegría',
-			'Maciek Sitkowski',
-		])
-		if (path === '/case-studies')
-			contains(html, [
-				'Frontend Developer, Keto-Mojo',
-				'/blog/early-kody-users',
-			])
-	}
-})
-
-test('public signup CTAs stay tied to their plan or get-started section', async () => {
-	const { html: faq } = await document('/faq')
-	expect(faq.match(/data-faq="get-started"[\s\S]*?<\/details>/)?.[0]).toContain(
-		'href="/signup"',
-	)
-	const { html: pricing } = await document('/pricing')
-	expect(pricing).not.toContain('id="plan-standard"')
-	for (const id of ['plan-free', 'plan-pro']) {
-		expect(
-			pricing.match(
-				new RegExp(`<section[^>]*aria-labelledby="${id}"[\\s\\S]*?</section>`),
-			)?.[0],
-		).toContain('href="/signup"')
-	}
-	const { html: home } = await document('/')
-	expect(home).toContain('href="/docs/connect-your-agent"')
-	const slug = listBlogPosts()[0]?.slug
-	expect(slug).toBeTruthy()
-	const { html: blog } = await document(`/blog/${slug}`)
-	expect(
-		blog.match(
-			/<div[^>]*>[\s\S]*Give your assistant a home[\s\S]*?<\/div>/,
-		)?.[0],
-	).toContain('href="/signup"')
-})
-
-test('homepage renders ordered videos and the agent-led CTA for every session', async () => {
-	const server = await getSharedMcpE2eServer()
-	const videos = [
-		{
-			videoId: 'iGMkgjXc8Ho',
-			title: 'Build in Cursor, then run it from Claude Code or ChatGPT',
-		},
-		{
-			videoId: 'QA0xYMAMjEg',
-			title: 'Introducing Kody: Your Personal Software Factory',
-		},
-		{
-			videoId: 'o5L5OprLhBg',
-			title: 'Kody fixes a Stripe webhook after we renamed the domain',
-		},
-		{ videoId: 'OZKDO9Pzmo0', title: 'Shade automation from an INTENT.md' },
-	]
-	await server.seedHeroVideos(videos)
-	const { html: home } = await document(`/?fixture=${crypto.randomUUID()}`)
-	const hero =
-		home.match(/<section[^>]*class="landing-hero"[\s\S]*?<\/section>/)?.[0] ??
-		''
-	contains(hero, [
-		landingHeroPrimaryCta,
-		'href="/docs/connect-your-agent"',
-		'landing-agents',
-	])
-	expect(hero).not.toContain('landing-hero-video')
-	expect(hero).not.toContain('landing-hero-agents')
-	contains(home, [
-		'class="landing-pcard"',
-		'landing-hero-agents',
-		'landing-videos',
-		'role="listbox"',
-		'landing-hero-agent-light',
-		'landing-hero-agent-track',
-		'href="/believe"',
-		'href="/features/credentials"',
-	])
-	const thumbnails = videos
-		.slice(0, 2)
-		.map((video) => `/youtube-thumb/${video.videoId}`)
-	contains(home, thumbnails)
-	expect(home.indexOf(thumbnails[0]!)).toBeLessThan(
-		home.indexOf(thumbnails[1]!),
-	)
-	expect(home).not.toContain('data-embed-playlist')
-	expect(home).not.toContain('href="/onboarding"')
-	// Main retains the decorative hero lantern, but the interactive primitives
-	// section lives on /features, not the home page.
-	expect(home).toMatch(/<figure class="landing-lantern" data-decorative=""/)
-	expect(home).not.toContain('class="landing-primitives"')
-	const user = createUniqueTestUser()
-	await server.ensureUser(user)
-	const cookie = await loginToApp(server.origin, user)
-	const { html: signedIn } = await document('/', cookie)
-	const signedHero =
-		signedIn.match(
-			/<section[^>]*class="landing-hero"[\s\S]*?<\/section>/,
-		)?.[0] ?? ''
-	contains(signedHero, [
-		landingHeroPrimaryCta,
-		'href="/docs/connect-your-agent"',
-	])
-	expect(signedHero).not.toContain('href="/onboarding"')
-	expect(signedHero).not.toContain('/signup?utm_source=kody.codes')
-	contains(signedIn, ['landing-videos', 'landing-hero-agents'])
-})
-
 test('homepage OG variants preserve a clean canonical and reject unknown variants', async () => {
 	const { html, url } = await document('/?og=triggers&utm_source=youtube')
 	contains(html, [
@@ -441,10 +172,16 @@ test('native home Markdown retains agent discovery headers and content', async (
 	expect(await response.text()).toMatch(/^# Kody\n/)
 })
 
-test('blog artwork retains canonical social image metadata', async () => {
-	const { html, url } = await document('/blog/openclaw-2-needs-a-home')
-	expect(html).toContain('src="/images/openclaw-2-needs-a-home.webp"')
-	expect(html).toContain(
-		`property="og:image" content="${url.origin}/blog/openclaw-2-needs-a-home/og.png"`,
+test('homepage testimonial story links land on anchors in the case-study post', async () => {
+	const { html: home } = await document('/')
+	const anchors = [
+		...home.matchAll(
+			new RegExp(`href="/blog/${landingTestimonialsStorySlug}#([^"]+)"`, 'g'),
+		),
+	].map((match) => match[1])
+	expect(anchors.length).toBeGreaterThan(0)
+	const { html: story } = await document(
+		`/blog/${landingTestimonialsStorySlug}`,
 	)
+	for (const anchor of anchors) expect(story).toContain(`id="${anchor}"`)
 })

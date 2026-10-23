@@ -23,6 +23,7 @@ import {
 	isJobIntervalFloorError,
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
+import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -31,6 +32,10 @@ import {
 } from '#worker/repo/artifacts-git-retry.ts'
 
 export { artifactsGitTemporarilyUnavailableMessage }
+
+export const transientDatabaseUnavailableMessage =
+	'Kody storage was briefly unavailable. Retry in a few seconds.'
+const transientDatabaseRetryAfterSeconds = '5'
 
 export const apiErrorCodes = [
 	'invalid_request',
@@ -129,7 +134,10 @@ export function notFound(message: string) {
  * 500 with a generic message so internals never leak. Exhausted Artifacts
  * git unavailability is 503 `internal_error` with a report id and upstream
  * status class in the message/details (closed OpenAPI code enum — no new
- * public code).
+ * public code). Transient D1 platform unavailability that outlived the
+ * storage retries (an in-flight export, overload, opaque platform faults) is
+ * 503 `internal_error` with `Retry-After`, so clients can tell it from a real
+ * defect and retry.
  */
 export function toApiError(error: unknown): ApiError {
 	if (error instanceof ApiError) return error
@@ -236,6 +244,15 @@ export function toApiError(error: unknown): ApiError {
 			message: unavailable.message,
 			details: unavailable.toApiDetails(),
 			cause: unavailable,
+		})
+	}
+	if (isRetryableD1LockError(error)) {
+		return new ApiError({
+			status: 503,
+			code: 'internal_error',
+			message: transientDatabaseUnavailableMessage,
+			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
+			cause: error,
 		})
 	}
 	return new ApiError({

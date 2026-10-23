@@ -1,6 +1,7 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import * as Sentry from '@sentry/cloudflare'
+import { waitUntil as scheduleWorkerWaitUntil } from 'cloudflare:workers'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { html } from 'remix/html-template'
 import { createHtmlResponse } from 'remix/response/html'
@@ -31,6 +32,7 @@ import {
 	runtimeRunIdFromError,
 } from '#worker/package-runtime/package-app-diagnostics.ts'
 import { isComputeOverageLimitError } from '#worker/entitlements/errors.ts'
+import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
 import { getUsernameFormatValidationError } from '#worker/identity/username.ts'
 import {
 	loadInvokeManifestBySourceId,
@@ -407,6 +409,15 @@ function packageAppFailureStatus(kind: PackageAppFailureKind) {
 	}
 }
 
+/**
+ * The Cloudflare ray of the visitor request, shown on the crash page so an
+ * owner can match a report to logs. Only a well-formed ray id is echoed.
+ */
+function cloudflareRayIdOf(request: Request) {
+	const ray = request.headers.get('cf-ray')?.trim() ?? ''
+	return /^[0-9a-f]{16}(?:-[A-Z]{3})?$/i.test(ray) ? ray : null
+}
+
 function createPackageAppErrorResponse(input: {
 	request: Request
 	kind: PackageAppFailureKind
@@ -464,6 +475,7 @@ function createPackageAppErrorResponse(input: {
 		runtimeRunId: input.runtimeRunId ?? null,
 	})
 	const requestPath = new URL(input.request.url).pathname
+	const rayId = cloudflareRayIdOf(input.request)
 	const body = {
 		error: message.title,
 		message: message.summary,
@@ -473,6 +485,7 @@ function createPackageAppErrorResponse(input: {
 			kody_id: input.kodyId,
 		},
 		request_path: requestPath,
+		...(input.runtimeRunId ? { run_id: input.runtimeRunId } : {}),
 		...(input.synthetic === true && input.cause ? { cause: input.cause } : {}),
 	}
 	if (input.synthetic === true || wantsJson(input.request)) {
@@ -554,6 +567,18 @@ function createPackageAppErrorResponse(input: {
 								<dd><code>${input.kodyId}</code></dd>
 								<dt>Path</dt>
 								<dd><code>${requestPath}</code></dd>
+								${
+									input.runtimeRunId
+										? html`<dt>Run ID</dt>
+												<dd><code>${input.runtimeRunId}</code></dd>`
+										: ''
+								}
+								${
+									rayId
+										? html`<dt>Ray ID</dt>
+												<dd><code>${rayId}</code></dd>`
+										: ''
+								}
 							</dl>
 							${html.raw`${renderErrorAgentPromptStaticHtml(
 								buildPackageAppErrorAgentPrompt({
@@ -564,6 +589,7 @@ function createPackageAppErrorResponse(input: {
 									// Visitor HTML must not include host exception text;
 									// JSON synthetic responses still carry `cause`.
 									runtimeRunId: input.runtimeRunId,
+									rayId,
 								}),
 							)}`}
 						</section>
@@ -629,6 +655,66 @@ function unhandledPackageAppOptionsResponse() {
  * own host-scoped `kody_pkg_session` cookie, while the non-production inline
  * mode uses the `kody_session` cookie (see `package-app-origin.ts`).
  */
+export const packageAppEntrypointFailureMessage =
+	'The package app worker failed before its request handler ran, so the app code did not see this request. This is a Kody platform failure, not an error in the app.'
+
+/**
+ * Record an `app_fetch` error run for a request whose app worker threw before
+ * the wrapper could start its own run. Returns the run id, or null when the run
+ * could not be stored. The host exception text stays out of the run: it
+ * is platform-internal, not something the package owner can act on.
+ */
+export async function recordPackageAppEntrypointFailure(input: {
+	env: Env
+	ownerId: OwnerId
+	savedPackage: { id: string; kodyId: string; sourceId: string }
+	publishedCommit: string | null
+	name: string
+	method: string
+	error: unknown
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<string | null> {
+	const sink = input.waitUntil ?? scheduleWorkerWaitUntil
+	try {
+		const handle = beginRunRecord({
+			env: input.env,
+			userId: input.ownerId,
+			context: {
+				packageId: input.savedPackage.id,
+				kodyId: input.savedPackage.kodyId,
+				sourceId: input.savedPackage.sourceId,
+				publishedCommit: input.publishedCommit,
+				surface: 'app_fetch',
+				name: input.name,
+				metadata: {
+					method: input.method,
+					phase: 'package-entrypoint',
+					recordedBy: 'host',
+				},
+			},
+			waitUntil: sink,
+		})
+		if (!handle) return null
+		const failure = new Error(packageAppEntrypointFailureMessage)
+		failure.name =
+			input.error instanceof Error && input.error.name
+				? input.error.name
+				: 'Error'
+		// Only show a run id on the crash page once the run is really stored.
+		const persisted = await finishRunRecord({
+			env: input.env,
+			handle,
+			status: 'error',
+			error: failure,
+			waitUntil: sink,
+		})
+		return persisted ? handle.id : null
+	} catch (recordError) {
+		console.warn('package-app-entrypoint-run-record-failed', recordError)
+		return null
+	}
+}
+
 export async function servePackageAppRequest(input: {
 	request: Request
 	env: Env
@@ -911,6 +997,7 @@ export async function servePackageAppRequest(input: {
 
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
+	let servedPublishedCommit: string | null = null
 	try {
 		const [packageManifest, callerContext] = await Promise.all([
 			pushServerTiming(serverTiming, 'manifest', () =>
@@ -933,6 +1020,7 @@ export async function servePackageAppRequest(input: {
 			publishedCommit: packageManifest.source.published_commit,
 		})
 		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
+		servedPublishedCommit = packageManifest.source.published_commit
 		const appWorker = await buildPackageAppWorker({
 			env,
 			baseUrl,
@@ -1015,13 +1103,27 @@ export async function servePackageAppRequest(input: {
 			)
 		}
 		console.error('Package app entrypoint failed:', error)
+		// The app worker failed before its own handler could record a run, so
+		// record one here. Owners then see the failure in runList and Activity,
+		// and the crash page shows its run id.
+		const runtimeRunId =
+			runtimeRunIdFromError(error) ??
+			(await recordPackageAppEntrypointFailure({
+				env,
+				ownerId: owner.userId,
+				savedPackage,
+				publishedCommit: servedPublishedCommit,
+				name: forwardedPackageRestPath,
+				method: request.method,
+				error,
+			}))
 		return attachPackageAppServerTiming(
 			createPackageAppErrorResponse({
 				request,
 				kind: 'package-entrypoint',
 				kodyId: savedPackage.kodyId,
 				packageName: savedPackage.name,
-				runtimeRunId: runtimeRunIdFromError(error),
+				runtimeRunId,
 			}),
 			serverTiming,
 		)

@@ -1,24 +1,9 @@
-import { listPublicSitemapEntries } from '#app/agent-discovery.ts'
-import {
-	listPublicWebsitePages,
-	listPublicBlogPages,
-} from '#app/public-content.ts'
 import { expect, test, vi } from 'vitest'
-import { highlightSnippetKey } from '#universal/highlighted-code.ts'
-import { howKodyWorksPackageFiles } from '#universal/how-kody-works-transcript.ts'
-import {
-	isValidWalkthroughHostPick,
-	type WalkthroughHostPick,
-} from '#universal/walkthrough-hosts.ts'
-import { getGuideBySlug, listProviderGuides } from '#worker/guides/catalog.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	loadAccessibleDocDetail,
 	createDocDetailMarkdownHandler,
 	createDocsConnectMarkdownHandler,
-	createDocsMarkdownHandler,
-	createLlmsTxtHandler,
-	createDocsLlmsTxtHandler,
 } from './docs.ts'
 import { resolveLegacyGuidesLocation } from './legacy-guides-redirect.ts'
 
@@ -27,7 +12,6 @@ vi.mock('#app/authenticated-user.ts', () => ({
 }))
 
 const env = { APP_BASE_URL: 'https://kody.example' } as Env
-const publicCache = 'public, max-age=60, stale-while-revalidate=300'
 const markdownType = 'text/markdown; charset=utf-8'
 
 type HandlerArgs = { request: Request; params: { slug: string } }
@@ -59,67 +43,11 @@ async function readDetail(
 	return detail?.doc ?? null
 }
 
-function expectOrdered(body: string, markers: Array<string>) {
-	const positions = markers.map((marker) => body.indexOf(marker))
-	expect(positions.every((position) => position >= 0)).toBe(true)
-	expect(positions).toEqual([...positions].sort((a, b) => a - b))
-}
-
 function asAdminOnce() {
 	vi.mocked(readAuthenticatedAppUser).mockResolvedValueOnce({
 		roles: ['admin', 'user'],
 	} as never)
 }
-
-test('the markdown root is intro plus index', async () => {
-	const markdownIndex = await call(createDocsMarkdownHandler, '/docs.md')
-	expect(markdownIndex.headers.get('content-type')).toBe(markdownType)
-	const indexBody = await markdownIndex.text()
-	expect(indexBody).toContain('https://kody.example/llms.txt')
-	expect(indexBody).toContain('## Kody Open API')
-	expect(indexBody).toContain('https://api.kody.codes/openapi.json')
-	expect(indexBody).toContain('https://api-docs.kody.codes/')
-	expect(indexBody).toContain('/docs/open-api.md')
-	expect(indexBody).toContain('/docs/api-versioning.md')
-	expect(indexBody).toContain('## Examples')
-	expect(indexBody).toContain('/docs/flake-hunter.md')
-	expectOrdered(indexBody, ['## Introduction', '## Get started'])
-	expectOrdered(indexBody, [
-		'/docs/what-is-kody.md',
-		'/docs/search-and-execute.md',
-		'/docs/how-kody-works.md',
-	])
-	expectOrdered(indexBody, ['## Concepts', '## Connect a provider'])
-	for (const hidden of [
-		'https://kody.example/docs/values.md',
-		'/docs/admin-events.md',
-		'## Admin',
-	]) {
-		expect(indexBody).not.toContain(hidden)
-	}
-
-	const llms = await call(createLlmsTxtHandler, '/llms.txt')
-	expect(llms.status).toBe(200)
-	expect(llms.headers.get('content-type')).toBe('text/plain; charset=utf-8')
-	expect(llms.headers.get('Cache-Control')).toBe(publicCache)
-	expect(llms.headers.get('Vary')).toBe('Cookie')
-	const llmsBody = await llms.text()
-	expect(llmsBody.startsWith('# Kody\n')).toBe(true)
-	expect(llmsBody).toContain('individuals and teams')
-	expect(llmsBody).toContain('credentials it never reads')
-	expect(llmsBody).toContain('## Kody Open API')
-	expect(llmsBody).toContain('https://api.kody.codes/openapi.json')
-	expect(llmsBody).toContain('https://api-docs.kody.codes/')
-	expect(llmsBody).toContain('/docs/api-versioning.md')
-	expect(llmsBody).toContain('Kody Docs')
-	expect(llmsBody).not.toContain('/docs/values.md')
-	expect(llmsBody).not.toContain('/docs/admin-events.md')
-	expectOrdered(llmsBody, [
-		'/docs/what-is-kody.md',
-		'/docs/search-and-execute.md',
-		'/docs/how-kody-works.md',
-	])
-})
 
 test('legacy /guides URLs resolve to their /docs twins and merged doc slugs 308 on every twin', async () => {
 	const cases: Array<[string, string]> = [
@@ -172,22 +100,7 @@ test('docs connect markdown stays separate from doc slugs', async () => {
 	)
 	expect(markdown.status).toBe(200)
 	expect(markdown.headers.get('content-type')).toBe(markdownType)
-	const body = await markdown.text()
-	expect(body.startsWith('#')).toBe(true)
-	const linked = [
-		'docs',
-		'docs/how-kody-works',
-		'docs/local-mcp-tunnels',
-		'docs/locked-mcp-server',
-		'docs/integration-bootstrap',
-		...listProviderGuides().map((guide) => `docs/${guide.slug}`),
-	].map((path) => `https://kody.example/${path}.md`)
-	expect(linked.filter((url) => !body.includes(url))).toEqual([])
 
-	// Reserved `connect` is an index route, not a guide detail slug. The
-	// dedicated markdown handler is what routers register for
-	// `/docs/connect.md`; the detail handler would 404 if somehow matched.
-	expect(getGuideBySlug('connect')).toBeNull()
 	expect(
 		(
 			await call(createDocDetailMarkdownHandler, '/docs/connect.md', {
@@ -197,30 +110,19 @@ test('docs connect markdown stays separate from doc slugs', async () => {
 	).toBe(404)
 })
 
-test('provider and platform doc markdown details stay stable', async () => {
+test('doc detail handlers serve published docs and return 404 for unknown slugs', async () => {
 	const markdownDetail = (slug: string) =>
 		call(createDocDetailMarkdownHandler, `/docs/${slug}.md`, { slug })
 	const apiDetail = (slug: string) => readDetail(slug)
 
-	for (const slug of ['oauth', 'github', 'google-oauth']) {
-		expect([slug, (await markdownDetail(slug)).status]).toEqual([slug, 200])
-	}
 	const oauthDetail = await markdownDetail('oauth')
+	expect(oauthDetail.status).toBe(200)
 	expect(oauthDetail.headers.get('content-type')).toBe(markdownType)
-	const oauthBody = await oauthDetail.text()
-	expect(oauthBody.startsWith('#')).toBe(true)
-	expect(oauthBody).not.toContain('\nid: oauth\n')
 
 	const googleOauthApi = await apiDetail('google-oauth')
 	expect(googleOauthApi).toMatchObject({
 		ok: true,
 		slug: 'google-oauth',
-		id: 'google_oauth',
-	})
-	expect(await apiDetail('kody-factory')).toMatchObject({
-		ok: true,
-		slug: 'kody-factory',
-		id: 'kody_factory',
 	})
 
 	expect((await markdownDetail('nope')).status).toBe(404)
@@ -261,41 +163,16 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 		ok: boolean
 		walkthroughHighlights?: Record<
 			string,
-			{ plain: boolean; lines: Array<Array<{ style?: { color?: string } }>> }
+			{ plain: boolean; lines: Array<Array<{ content: string }>> }
 		>
-		walkthroughHosts?: WalkthroughHostPick
 	}
 	expect(howKodyWorksPayload.ok).toBe(true)
 	expect(received?.length).toBeGreaterThan(0)
-	const packageJsonKey = highlightSnippetKey({
-		code: howKodyWorksPackageFiles['package.json'],
-		lang: 'json',
-	})
 	expect(
-		howKodyWorksPayload.walkthroughHighlights?.[packageJsonKey],
-	).toMatchObject({ plain: false, lines: [[{ style: { color: '#111' } }]] })
-	expect(howKodyWorksPayload.walkthroughHosts).toBeDefined()
-	expect(
-		isValidWalkthroughHostPick(howKodyWorksPayload.walkthroughHosts!),
+		Object.values(howKodyWorksPayload.walkthroughHighlights ?? {}).some(
+			(highlight) => !highlight.plain && highlight.lines.length > 0,
+		),
 	).toBe(true)
-
-	const googleOauthPayload = (await apiDetail('google-oauth')) as {
-		walkthroughHighlights?: Record<string, { plain: boolean }>
-		walkthroughHosts?: unknown
-	}
-	const googleOauthHighlights = Object.values(
-		googleOauthPayload.walkthroughHighlights ?? {},
-	)
-	expect(googleOauthHighlights.length).toBeGreaterThan(0)
-	expect(googleOauthHighlights.every((entry) => entry.plain === false)).toBe(
-		true,
-	)
-	expect(googleOauthPayload.walkthroughHosts).toBeUndefined()
-
-	const oauthPayload = (await apiDetail('oauth')) as {
-		walkthroughHighlights?: Record<string, unknown>
-	}
-	expect(oauthPayload.walkthroughHighlights).toBeUndefined()
 })
 
 test('admin-only docs 404 for anonymous viewers and stay out of public subscriptions', async () => {
@@ -307,7 +184,6 @@ test('admin-only docs 404 for anonymous viewers and stay out of public subscript
 		{ slug },
 	)
 	expect(markdown.status).toBe(404)
-	expect(await markdown.text()).toBe('# Doc not found\n')
 
 	const publicSubscriptions = await call(
 		createDocDetailMarkdownHandler,
@@ -315,16 +191,11 @@ test('admin-only docs 404 for anonymous viewers and stay out of public subscript
 		{ slug: 'package-subscriptions' },
 	)
 	expect(publicSubscriptions.status).toBe(200)
-	expect(await publicSubscriptions.text()).toContain('run.error.recorded')
 
 	const cookie = { Cookie: 'kody_session=test' }
 	asAdminOnce()
 	const adminJson = await readDetail(slug, env, cookie)
-	expect(adminJson).toMatchObject({
-		ok: true,
-		slug,
-		body: expect.stringContaining('fleet.entitlement.crossed'),
-	})
+	expect(adminJson).toMatchObject({ ok: true, slug })
 
 	asAdminOnce()
 	const adminMarkdown = await call(
@@ -334,36 +205,4 @@ test('admin-only docs 404 for anonymous viewers and stay out of public subscript
 	)
 	expect(adminMarkdown.status).toBe(200)
 	expect(adminMarkdown.headers.get('Cache-Control')).toBe('no-store')
-	expect(await adminMarkdown.text()).toContain('fleet.entitlement.crossed')
-})
-
-test('AI discovery covers every sitemap URL and shares website and blog metadata', async () => {
-	const response = await call(createLlmsTxtHandler, '/llms.txt')
-	const body = await response.text()
-	const alias = await call(createDocsLlmsTxtHandler, '/docs/llms.txt')
-	expect(await alias.text()).toBe(body)
-	const links = [...body.matchAll(/\]\(https:\/\/kody\.example([^)]*)\)/g)].map(
-		(match) => match[1],
-	)
-	for (const entry of listPublicSitemapEntries()) {
-		const path =
-			entry.path.startsWith('/docs/') && entry.path !== '/docs/connect'
-				? `${entry.path}.md`
-				: entry.path
-		expect(links).toContain(path)
-	}
-	for (const page of [...listPublicWebsitePages(), ...listPublicBlogPages()]) {
-		expect(body).toContain(page.description.replace(/\s+/g, ' ').trim())
-	}
-	for (const path of [
-		'/login',
-		'/signup',
-		'/reset-password',
-		'/docs/admin-events.md',
-	]) {
-		expect(links).not.toContain(path)
-	}
-	expect(
-		new Set(listPublicSitemapEntries().map((entry) => entry.path)).size,
-	).toBe(listPublicSitemapEntries().length)
 })

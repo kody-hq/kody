@@ -1,9 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import {
-	buildCommunityListingCategoryBackfillSql,
 	countCommunityListingsByCategory,
 	groupCommunityListingsByCategory,
 	inferCommunityListingCategoryFromTags,
@@ -50,15 +46,6 @@ test('community categories parse a closed set and resolve from tags when unset',
 		'integrations',
 	)
 	expect(readStoredCommunityListingCategory('bogus')).toBe('other')
-	expect(
-		readFileSync(
-			join(
-				dirname(fileURLToPath(import.meta.url)),
-				'../migrations/0022-community-listing-category.sql',
-			),
-			'utf8',
-		),
-	).toContain(buildCommunityListingCategoryBackfillSql())
 
 	const grouped = groupCommunityListingsByCategory(
 		[

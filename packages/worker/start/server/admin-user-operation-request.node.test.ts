@@ -48,7 +48,6 @@ import {
 	assignAdminUserRole,
 	suspendAdminUser,
 	unsuspendAdminUser,
-	deleteAdminSystemEmail,
 } from './admin-mutations.ts'
 afterEach(() => vi.clearAllMocks())
 test('named admin role write preserves audit request without coupling writes to list filters', async () => {
@@ -92,17 +91,4 @@ test('suspend and resume are distinct operations with fixed suspension values', 
 			suspended: false,
 		}),
 	)
-})
-test('system email deletion submits its message id without page URL inputs', async () => {
-	await deleteAdminSystemEmail({
-		data: { messageId: 'message-a' },
-	})
-	expect(state.write).toHaveBeenCalledWith(
-		expect.objectContaining({
-			request: state.request,
-			messageId: 'message-a',
-		}),
-	)
-	expect(state.write.mock.lastCall?.[0]).not.toHaveProperty('url')
-	expect(state.write.mock.lastCall?.[0]).not.toHaveProperty('search')
 })

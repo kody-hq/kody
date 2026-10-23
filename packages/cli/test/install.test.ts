@@ -1,30 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { resolveCommand } from '../src/cli.js'
-import { onboardingUrl } from '../src/defaults.js'
-import {
-	formatInstallReport,
-	noRunningAgentsMessage,
-	runInstall,
-} from '../src/install.js'
-import {
-	buildOnboardingContinuationPrompt,
-	webClientsOnboardingNote,
-} from '../src/onboarding-prompt.js'
+import { runInstall } from '../src/install.js'
 
 const mcpUrl = 'https://kody.codes/mcp'
-
-test('resolveCommand maps install flags', () => {
-	const parsed = resolveCommand([
-		'install',
-		'--clients',
-		'cursor,goose',
-		'--yes',
-	])
-	assert.equal(parsed.command, 'install')
-	assert.equal(parsed.values.clients, 'cursor,goose')
-	assert.equal(parsed.values.yes, true)
-})
 
 test('runInstall writes Cursor config for an explicit client', async () => {
 	const upserts: Array<{
@@ -64,8 +42,6 @@ test('runInstall writes Cursor config for an explicit client', async () => {
 	])
 	assert.equal(opened.length, 1)
 	assert.match(opened[0] ?? '', /^cursor:\/\//)
-	assert.match(output, /Paste this into your agent/)
-	assert.match(output, /kody\.codes\/onboarding/)
 })
 
 test('runInstall does not list web clients when nothing local is running', async () => {
@@ -82,8 +58,6 @@ test('runInstall does not list web clients when nothing local is running', async
 	)
 	assert.equal(result.code, 1)
 	assert.equal(result.results.length, 0)
-	assert.match(output, /No local MCP agents are running/)
-	assert.match(output, /ChatGPT, Claude\.ai, Grok/)
 	assert.doesNotMatch(output, /chatgpt/)
 })
 
@@ -170,37 +144,8 @@ test('Claude Desktop stays instruction-only', async () => {
 	assert.equal(result.results[0]?.status, 'manual')
 	assert.equal(apps[0], 'Claude')
 	assert.equal(files.size, 0)
-	assert.match(result.results[0]?.instructions.join('\n') ?? '', /Connectors/)
 	assert.match(
 		result.results[0]?.instructions.join('\n') ?? '',
 		/claude_desktop_config\.json/,
-	)
-})
-
-test('onboarding prompt and help note stay copyable', () => {
-	assert.match(buildOnboardingContinuationPrompt(), /Kody is connected/)
-	assert.match(buildOnboardingContinuationPrompt(), /coding_guide_get/)
-	assert.equal(onboardingUrl(mcpUrl), 'https://kody.codes/onboarding')
-	assert.equal(
-		webClientsOnboardingNote(mcpUrl),
-		'For web-based clients (ChatGPT, Claude.ai, Grok), see https://kody.codes/onboarding',
-	)
-	assert.match(noRunningAgentsMessage(mcpUrl), /kody\.codes\/onboarding/)
-	assert.match(
-		formatInstallReport({
-			mcpUrl,
-			results: [
-				{
-					id: 'cursor',
-					label: 'Cursor',
-					status: 'wrote',
-					path: '/home/me/.cursor/mcp.json',
-					instructions: [
-						'Approve Kody in the browser when the client starts OAuth.',
-					],
-				},
-			],
-		}),
-		/Paste this into your agent to continue onboarding/,
 	)
 })

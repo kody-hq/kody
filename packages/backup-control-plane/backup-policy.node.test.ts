@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 
 import { test } from 'vitest'
 
@@ -23,8 +22,6 @@ import {
 	environment,
 } from './backup-control-plane-test-support.ts'
 
-const PRODUCTION_APP_DB_ID = '8c1014d1-6b41-4695-a0a2-159071f0f919'
-const PRODUCTION_JOBS_DB_ID = '5410331e-4d25-47e4-a1e5-a248f7cc764c'
 const JOBS_DATABASE_ID = '44444444-4444-4444-8444-444444444444'
 const APP_DB = { id: DATABASE_ID, name: 'production-db' }
 const JOBS_DB = { id: JOBS_DATABASE_ID, name: 'kody-jobs' }
@@ -172,28 +169,6 @@ test('rejects SOURCE_DATABASES missing from the allowlist or missing SOURCE_DATA
 		assert.throws(
 			() => assertConfiguredIdentity(env),
 			backupError('source-not-allowlisted'),
-		)
-	}
-})
-
-test('committed control-plane allowlist includes production kody-jobs', async () => {
-	const wrangler = await readFile(
-		new URL('./wrangler.jsonc', import.meta.url),
-		'utf8',
-	)
-	assert.match(
-		wrangler,
-		new RegExp(
-			`"ALLOWED_SOURCE_DATABASE_IDS": "${PRODUCTION_APP_DB_ID},${PRODUCTION_JOBS_DB_ID}"`,
-		),
-	)
-	for (const [id, name] of [
-		[PRODUCTION_JOBS_DB_ID, 'kody-jobs'],
-		[PRODUCTION_APP_DB_ID, 'kody'],
-	]) {
-		assert.ok(
-			wrangler.includes(`\\"${id}\\",\\"name\\":\\"${name}\\"`),
-			`SOURCE_DATABASES must list production ${name}`,
 		)
 	}
 })

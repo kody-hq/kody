@@ -1,4 +1,6 @@
-import { env } from 'cloudflare:test'
+import { env, runInDurableObject } from 'cloudflare:test'
+import { type UserMeter } from '#worker/entitlements/user-meter-do.ts'
+import { userMeterDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { applyAdminOrgLimitOverrideChanges } from '#worker/admin/org-limit-overrides.ts'
@@ -89,10 +91,22 @@ async function admit(org: SeededOrg) {
 	})
 }
 
-async function fillBrake(org: SeededOrg, limit: number) {
-	for (let index = 0; index < limit; index += 1) {
-		await admit(org)
-	}
+async function fillBrake(org: SeededOrg, count: number) {
+	const stub = env.USER_METER.get(
+		env.USER_METER.idFromName(
+			userMeterDurableObjectName(ownerIdFromStored(org.stableUserId)),
+		),
+	)
+	await runInDurableObject(stub, async (instance: UserMeter) => {
+		for (let index = 0; index < count - 1; index += 1) {
+			const result = await instance.admitExecuteCall({
+				nowMs: now.getTime(),
+				limitPerMinute: count,
+			})
+			expect(result.admitted).toBe(true)
+		}
+	})
+	await admit(org)
 }
 
 const adminId = testStableUserIdFromEmail('rate-brake-admin@example.com')

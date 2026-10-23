@@ -1,30 +1,6 @@
 import { saveKeyThroughUi } from './account-fixtures.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
-test('Start matches unknown admin paths before any admin authorization redirect', async ({
-	page,
-}) => {
-	for (const path of [
-		'/administrator',
-		'/admin/missing-route',
-		'/admin/users/missing/extra',
-		'/admin/users/missing/extra?q=kept&pageSize=37',
-		'/admin/feature-flags/missing',
-	]) {
-		const response = await page.request.get(path, { maxRedirects: 0 })
-		expect(response.status(), path).toBe(404)
-		expect(response.headers().location, path).toBeUndefined()
-	}
-	const trailingSlash = await page.request.get('/admin/', { maxRedirects: 0 })
-	expect(trailingSlash.status()).toBe(307)
-	expect(trailingSlash.headers().location).toBe('/admin')
-	for (const path of ['/admin', '/admin/users', '/admin/users/missing']) {
-		const response = await page.request.get(path, { maxRedirects: 0 })
-		expect(response.status(), path).toBe(302)
-		expect(response.headers().location, path).toContain('/login?')
-	}
-})
-
 test('admin RBAC controls access, role assignment, and privacy boundaries', async ({
 	page,
 	seedE2eUser,

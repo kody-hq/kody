@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi, type Mock } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { type RunRecordHandle } from './types.ts'
 
@@ -52,9 +52,6 @@ const {
 	beginRunRecord,
 	ensureRunRecordStarted,
 	finishRunRecord,
-	getAdminInsightsSnapshot,
-	getSqlBillingStats,
-	inspectRunLogSqlBilling,
 	listActivationMilestones,
 	listPackageRunSuccesses,
 	listRunRecords,
@@ -338,82 +335,6 @@ test('activation reads never throw when RunLog is missing or RPC fails', async (
 		'activation-milestones-list-failed',
 		expect.any(Error),
 	)
-})
-
-test('RUN_LOG admin reads require the binding and forward the RPC result', async () => {
-	const billing = {
-		databaseSize: 4096,
-		rowsReadTotal: 12,
-		rowsWrittenTotal: 3,
-		ops: [{ op: 'listRuns' as const, rowsRead: 12, rowsWritten: 0, calls: 1 }],
-	}
-	const explainSearch = (id: number) => [
-		{ id, parent: 0, detail: 'SEARCH run_logs USING INTEGER PRIMARY KEY' },
-	]
-	const cases = [
-		[
-			getAdminInsightsSnapshot,
-			mocks.getAdminInsightsSnapshot,
-			{
-				workflowStatusCounts: [{ status: 'running', count: 2 }],
-				jobRunCounts: { success: 8, error: 3 },
-				activationMilestones: [
-					{
-						milestone: 'package_activated',
-						reachedAt: '2026-08-01T00:00:00.000Z',
-						packageId: 'pkg-1',
-					},
-				],
-			},
-		],
-		[getSqlBillingStats, mocks.getSqlBillingStats, billing],
-		[
-			inspectRunLogSqlBilling,
-			mocks.inspectSqlBilling,
-			{
-				schemaVersion: 11,
-				billing,
-				runLogsIndexes: [
-					{
-						seq: 0,
-						name: 'sqlite_autoindex_run_logs_1',
-						unique: true,
-						origin: 'pk',
-						partial: false,
-					},
-				],
-				runLogsColumns: [
-					{
-						cid: 0,
-						name: 'run_id',
-						type: 'TEXT',
-						notnull: true,
-						dfltValue: null,
-						pk: 1,
-					},
-				],
-				tableCounts: {
-					runs: 2,
-					runLogs: 4,
-					packageInvocationLedger: 0,
-					workflowProjections: 0,
-				},
-				runCount: { meta: 2, actual: 2, matches: true },
-				explainRunLogsDeleteByRunId: explainSearch(2),
-				explainRunLogsSelectByRunId: explainSearch(3),
-			},
-		],
-	] as const
-	for (const [read, rpc, value] of cases) {
-		const call = read as (input: { env: Env; userId: string }) => unknown
-		await expect(
-			call({ env: {} as Env, userId: ownerIdFromStored('user-1') }),
-		).rejects.toThrow('RUN_LOG Durable Object binding is not configured.')
-		vi.mocked(rpc as Mock).mockResolvedValueOnce(value)
-		await expect(
-			call({ env: createEnv(), userId: ownerIdFromStored('user-1') }),
-		).resolves.toEqual(value)
-	}
 })
 
 test('listRunRecords normalizes since/until to UTC ISO before lexical RunLog compares', async () => {

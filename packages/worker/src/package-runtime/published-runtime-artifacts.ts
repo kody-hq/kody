@@ -1,7 +1,10 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { type WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
-import { repairPreBindingPublishedArtifact } from './pre-binding-artifact-repair.ts'
+import {
+	isRepairableArtifactKind,
+	repairPreBindingPublishedArtifact,
+} from './pre-binding-artifact-repair.ts'
 
 const sourceSnapshotVersion = 1
 const sourceManifestSnapshotVersion = 1
@@ -597,7 +600,7 @@ export async function readPublishedBundleArtifact(input: {
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
 		return null
 	}
-	return repairPreBindingPublishedArtifact({
+	const loaded = {
 		version: artifact.version,
 		kind: artifact.kind,
 		artifactName: artifact.artifactName,
@@ -618,7 +621,12 @@ export async function readPublishedBundleArtifact(input: {
 		...(artifact.packageBindingRewrite === undefined
 			? {}
 			: { packageBindingRewrite: artifact.packageBindingRewrite }),
-	} satisfies PublishedBundleArtifact)
+	} satisfies PublishedBundleArtifact
+	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
+	// repair imports the shared runtime module, which only resolves inside a
+	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
+	if (!isRepairableArtifactKind(loaded.kind)) return loaded
+	return repairPreBindingPublishedArtifact(loaded)
 }
 
 export async function deletePublishedBundleArtifact(input: {

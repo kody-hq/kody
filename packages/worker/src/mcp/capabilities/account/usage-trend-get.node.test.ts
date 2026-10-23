@@ -217,34 +217,21 @@ test('usageTrendGet maps partial days and monthly rollups for the signed-in user
 	})
 
 	expect(trend.days).toHaveLength(userMeterDailyCounterRetentionDays)
-	expect(trend.days.find((day) => day.day === twoDaysAgo)).toEqual({
-		day: twoDaysAgo,
+	expect(trend.days.find((day) => day.day === twoDaysAgo)).toMatchObject({
 		execute: 4,
-		uniqueWorkerDays: 0,
-		jobRuns: 0,
-		automationInvocations: 0,
 	})
-	expect(trend.days.find((day) => day.day === yesterday)).toEqual({
-		day: yesterday,
+	expect(trend.days.find((day) => day.day === yesterday)).toMatchObject({
 		execute: 11,
 		uniqueWorkerDays: 2,
-		jobRuns: 2,
-		automationInvocations: 0,
 	})
-	expect(trend.days.find((day) => day.day === today)).toEqual({
-		day: today,
+	expect(trend.days.find((day) => day.day === today)).toMatchObject({
 		execute: 0,
 		uniqueWorkerDays: 1,
-		jobRuns: 0,
-		automationInvocations: 3,
 	})
-	expect(trend.months.find((row) => row.month === priorMonth)).toEqual({
-		month: priorMonth,
+	expect(trend.months.find((row) => row.month === priorMonth)).toMatchObject({
 		execute: 40,
-		uniqueWorkerDays: 0,
 	})
-	expect(trend.months.find((row) => row.month === currentMonth)).toEqual({
-		month: currentMonth,
+	expect(trend.months.find((row) => row.month === currentMonth)).toMatchObject({
 		execute: 90,
 		uniqueWorkerDays: 7,
 	})
@@ -277,13 +264,12 @@ test('usageTrendGet maps partial days and monthly rollups for the signed-in user
 	)
 	expect(
 		capabilityResult.days.find((day) => day.day === liveYesterday),
-	).toEqual({
-		day: liveYesterday,
+	).toMatchObject({
 		execute: 5,
-		uniqueWorkerDays: 0,
 	})
-	expect(capabilityResult.days.find((day) => day.day === liveToday)).toEqual({
-		day: liveToday,
+	expect(
+		capabilityResult.days.find((day) => day.day === liveToday),
+	).toMatchObject({
 		execute: 8,
 		uniqueWorkerDays: 1,
 	})

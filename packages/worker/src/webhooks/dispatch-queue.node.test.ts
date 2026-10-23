@@ -489,25 +489,6 @@ test('queue dispatch unwraps params-mode first args and hashes request-mode call
 	)
 })
 
-test('queue dispatch forwards delivery-id params-hash ignore', async () => {
-	mocks.dispatchWebhookInvocation.mockResolvedValue(handledResponse)
-	mocks.recordWebhookDelivery.mockResolvedValue(undefined)
-	const message = {
-		...createMessage(),
-		idempotencyParamsHash: 'ignore' as const,
-	}
-
-	await expect(processWebhookDispatch(message, {} as Env)).resolves.toBe(
-		'terminal',
-	)
-	expect(mocks.dispatchWebhookInvocation).toHaveBeenCalledWith(
-		expect.objectContaining({
-			idempotencyKey: message.idempotencyKey,
-			idempotencyParamsHash: 'ignore',
-		}),
-	)
-})
-
 test('queue hydrates spilled payloads, deletes them after terminal work, and acks a missing spill', async () => {
 	consoleError.mockImplementation(() => {})
 	mocks.dispatchWebhookInvocation.mockResolvedValue(handledResponse)

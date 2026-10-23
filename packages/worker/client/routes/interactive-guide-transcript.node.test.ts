@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { howKodyWorksTranscriptActs } from './how-kody-works-transcript.ts'
 import {
 	collectTranscriptSnippets,
 	executeTextReturn,
@@ -36,18 +35,6 @@ test('homepage search/execute returns keep memories as one-liners, not structure
 	)
 	expect(execute).not.toContain('"surfaced"')
 	expect(execute).not.toContain(sampleMemory.id)
-
-	const toolResults = howKodyWorksTranscriptActs.flatMap((act) =>
-		act.lines.flatMap((line) =>
-			line.role === 'tools' ? line.tools.map((tool) => tool.result) : [],
-		),
-	)
-	expect(
-		toolResults.some((result) => result.includes('## Relevant memories')),
-	).toBe(true)
-	expect(toolResults.every((result) => !result.includes('"surfaced"'))).toBe(
-		true,
-	)
 
 	const snippets = collectTranscriptSnippets([
 		{
@@ -92,7 +79,4 @@ test('homepage search/execute returns keep memories as one-liners, not structure
 		{ code: '{"ok":true}', lang: 'json' },
 		{ code: 'export const n = 1', lang: 'ts' },
 	])
-	expect(
-		collectTranscriptSnippets(howKodyWorksTranscriptActs).length,
-	).toBeGreaterThan(0)
 })

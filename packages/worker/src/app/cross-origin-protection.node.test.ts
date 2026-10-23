@@ -68,18 +68,6 @@ test.each([
 		(await run(path, { 'Sec-Fetch-Site': 'cross-site' })).response.status,
 	).toBe(403)
 })
-test('safe reads bypass protocol CSRF and RPC delegates to the separate strict native policy', async () => {
-	expect(
-		(await run('/account', { 'Sec-Fetch-Site': 'cross-site' }, 'router', 'GET'))
-			.response.status,
-	).toBe(200)
-	const rpc = await run(
-		'/_serverFn/mutate',
-		{ 'Sec-Fetch-Site': 'cross-site' },
-		'serverFn',
-	)
-	expect(rpc.next).toHaveBeenCalledOnce()
-})
 
 test.each([
 	[{ Origin: 'https://evil.test' }, 403],

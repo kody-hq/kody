@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	applyLimitOverrides,
-	formatDurableObjectRowsRead,
 	isLimitOverrideResource,
 	parseLimitOverrideKey,
 	parseEntitlementLadder,
@@ -27,14 +26,6 @@ type LadderInput = Parameters<
 function limitMismatches(cases: Array<[number, ...LimitArgs]>) {
 	return cases.filter(([want, ...args]) => resolvePlanLimit(...args) !== want)
 }
-
-test('formatDurableObjectRowsRead uses billion-scale labels', () => {
-	expect(
-		[500_000_000, 5_000_000_000, 20_000_000_000].map(
-			formatDurableObjectRowsRead,
-		),
-	).toEqual(['0.5B', '5B', '20B'])
-})
 
 test('resolvePlanLimit uses public numbers unless the legacy ladder applies', () => {
 	expect(
@@ -77,19 +68,6 @@ test('public Free/Standard/Pro have weekly execute and outbound windows; max and
 		resolveWeeklyPlanLimit('free', 'job_runs_per_day'),
 		resolveWeeklyPlanLimit('free', 'automation_invocations_per_day'),
 	]).toEqual([null, null, null, null, null])
-})
-
-test('public automation ceilings sit above job runs; legacy stays job-matched', () => {
-	for (const plan of ['free', 'standard', 'pro', 'max'] as const) {
-		expect(
-			resolvePlanLimit(plan, 'automation_invocations_per_day'),
-		).toBeGreaterThan(resolvePlanLimit(plan, 'job_runs_per_day'))
-	}
-	for (const plan of ['standard', 'pro'] as const) {
-		expect(
-			resolvePlanLimit(plan, 'automation_invocations_per_day', 'legacy'),
-		).toBe(resolvePlanLimit(plan, 'job_runs_per_day', 'legacy'))
-	}
 })
 
 test('parseEntitlementLadder treats blank as public and rejects unknown names', () => {

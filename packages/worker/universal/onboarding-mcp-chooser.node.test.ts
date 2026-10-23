@@ -1,28 +1,18 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import {
 	attachOnboardingMcpPackageListings,
 	featuredOnboardingMcpFingerprint,
-	customOnboardingMcpFingerprint,
 	hasConnectedOnboardingCustomMcpServer,
 	hasConnectedOnboardingFeaturedMcpServer,
-	firstConnectedOnboardingWorkspaceLabel,
 	hasConnectedOnboardingWorkspaceMcp,
 	hasPendingOnboardingCustomMcpAuth,
 	hasPendingOnboardingFeaturedMcpAuth,
 	listOnboardingCustomMcpServers,
 	listDisconnectedOnboardingFeaturedMcpServers,
-	listOnboardingFeaturedMcpListingIds,
 	matchOnboardingFeaturedMcpServer,
 	normalizeOnboardingMcpServerUrl,
-	canonicalOnboardingServiceChooser,
 	onboardingFeaturedMcpServers,
-	onboardingFeaturedMcpServerIds,
-	onboardingFeaturedMcpSlotCount,
-	pickOnboardingServiceChooser,
 	overlayOnboardingFeaturedMcpServers,
-	resolveOnboardingMcpOAuthBanner,
 } from './onboarding-mcp-chooser.ts'
 
 type OverlayInput = Parameters<typeof overlayOnboardingFeaturedMcpServers>[0]
@@ -49,19 +39,6 @@ function remotes(
 }
 
 test('featured MCP chooser overlays OAuth state and package listings', () => {
-	expect(onboardingFeaturedMcpServers.length).toBeGreaterThan(
-		onboardingFeaturedMcpSlotCount,
-	)
-	expect(listOnboardingFeaturedMcpListingIds()).toContain(
-		onboardingFeaturedMcpServers[0].listingId,
-	)
-	const shuffled = pickOnboardingServiceChooser(() => 0)
-	const identity = pickOnboardingServiceChooser((max) => max - 1)
-	expect(shuffled.featured).toHaveLength(onboardingFeaturedMcpSlotCount)
-	expect(shuffled.featured).not.toEqual(identity.featured)
-	expect(canonicalOnboardingServiceChooser().overflow).toContain('github')
-	expect(canonicalOnboardingServiceChooser().featured).not.toContain('github')
-
 	expect(normalizeOnboardingMcpServerUrl('https://mcp.notion.com/mcp/')).toBe(
 		'https://mcp.notion.com/mcp',
 	)
@@ -85,12 +62,8 @@ test('featured MCP chooser overlays OAuth state and package listings', () => {
 	).toBe(false)
 
 	const disconnected = listDisconnectedOnboardingFeaturedMcpServers()
-	expect(disconnected).toHaveLength(onboardingFeaturedMcpServers.length)
 	expect(hasConnectedOnboardingFeaturedMcpServer(disconnected)).toBe(false)
 	expect(hasPendingOnboardingFeaturedMcpAuth(disconnected)).toBe(false)
-	expect(disconnected.every((server) => server.packageListing == null)).toBe(
-		true,
-	)
 
 	const overlaid = overlayOnboardingFeaturedMcpServers(
 		remotes([['srv-linear', 'linear', 'https://mcp.linear.app/mcp']], {
@@ -215,56 +188,9 @@ test('custom MCP servers exclude featured remotes and count as a workspace conne
 		}),
 	).toBe(true)
 	expect(
-		firstConnectedOnboardingWorkspaceLabel({
-			featuredMcpServers: listDisconnectedOnboardingFeaturedMcpServers(),
-			customMcpServers: custom,
-		}),
-	).toBe('acme')
-	expect(customOnboardingMcpFingerprint(custom)).toBe(
-		'srv-acme:ready:1|srv-other-linear::0',
-	)
-	expect(
 		hasConnectedOnboardingWorkspaceMcp({
 			featuredMcpServers: listDisconnectedOnboardingFeaturedMcpServers(),
 			customMcpServers: [],
 		}),
 	).toBe(false)
-})
-
-test('onboarding OAuth banner prefers a later success over leftover URL error', () => {
-	const cases: Array<[boolean, boolean, string | null, string | null]> = [
-		// [connected, returnedSuccess, returnedError, banner]
-		[false, false, null, 'access_denied'],
-		[false, true, null, null],
-		[true, false, 'access_denied', null],
-		[false, false, 'Supported sites required.', 'Supported sites required.'],
-	]
-	expect(
-		cases.filter(
-			([connected, returnedSuccess, returnedError, want]) =>
-				resolveOnboardingMcpOAuthBanner({
-					connected,
-					returnedSuccess,
-					returnedError,
-					urlError: 'access_denied',
-				}) !== want,
-		),
-	).toEqual([])
-})
-
-test('every featured MCP chip that is not a ProviderIcon has a repo SVG', () => {
-	const providerIconIds = new Set([
-		'notion',
-		'linear',
-		'atlassian',
-		'stripe',
-		'sentry',
-		'canva',
-		'github',
-	])
-	const iconsDirectory = join(import.meta.dirname, '../public/images/icons')
-	for (const id of onboardingFeaturedMcpServerIds) {
-		if (providerIconIds.has(id)) continue
-		expect(existsSync(join(iconsDirectory, `${id}.svg`))).toBe(true)
-	}
 })

@@ -35,7 +35,6 @@ import {
 	isDurableObjectIsolateResourceLimitResetMessage,
 	isMcpAgentSessionDestroyedAbortMessage,
 	mcpAgentSessionDestroyedAbortMessage,
-	redactKodyCredentialsInSentryEvent,
 	resolveWorkerSentryDsn,
 } from './sentry-options.ts'
 
@@ -570,20 +569,6 @@ test('filterSentryEvent redacts Kody credentials from event messages', () => {
 	expect(event.exception?.values?.[0]?.value).toBe(
 		'credentials kody_at_[redacted] and kody_bc_[redacted]',
 	)
-})
-
-test('redactKodyCredentialsInSentryEvent leaves non-credential events unchanged', () => {
-	const event = exceptionEvent('Ordinary error')
-	event.message = 'A harmless event'
-	event.logentry = { message: 'No credentials here' }
-
-	expect(redactKodyCredentialsInSentryEvent(event)).toBe(event)
-	expect(event).toEqual({
-		type: undefined,
-		message: 'A harmless event',
-		logentry: { message: 'No credentials here' },
-		exception: { values: [{ value: 'Ordinary error' }] },
-	})
 })
 
 test('test-env config with a DSN present still yields no Sentry options', () => {

@@ -14,19 +14,6 @@ import {
 	type PermissionString,
 } from '#universal/permissions.ts'
 
-test('parsePermissionString splits action, entity, and access', () => {
-	expect(parsePermissionString('read:user:own')).toEqual({
-		action: 'read',
-		entity: 'user',
-		access: 'own',
-	})
-	expect(parsePermissionString('delete:role:any')).toEqual({
-		action: 'delete',
-		entity: 'role',
-		access: 'any',
-	})
-})
-
 test('permission registry and migration seed rows stay aligned', () => {
 	using db = new DatabaseSync(':memory:')
 	applyAllMigrations(db, new URL('../../migrations/', import.meta.url))

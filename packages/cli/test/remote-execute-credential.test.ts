@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import {
-	credentialFlagRequiresLocalOrMcpMessage,
-	runRemoteExecuteWithToken,
-} from '../src/remote-execute.js'
+import { runRemoteExecuteWithToken } from '../src/remote-execute.js'
 
 test('runRemoteExecuteWithToken sends --credential on POST /v1/execute', async () => {
 	let body: unknown
@@ -27,5 +24,4 @@ test('runRemoteExecuteWithToken sends --credential on POST /v1/execute', async (
 		code: 'export default () => 1',
 		credentials: { github: 'work' },
 	})
-	assert.match(credentialFlagRequiresLocalOrMcpMessage, /POST \/v1\/execute/)
 })

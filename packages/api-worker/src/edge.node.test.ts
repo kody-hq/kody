@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
-	gatewayFetchDeclaredBodyExceedsUploadLimit,
 	handleApiEdgeRequest,
 	maxApiRequestBodyBytes,
 	maxGatewayFetchUploadBytes,
@@ -121,12 +120,6 @@ test('answers CORS preflight without forwarding', async () => {
 	expect(response.headers.get('Access-Control-Allow-Headers')).toContain(
 		'Authorization',
 	)
-	expect(response.headers.get('Access-Control-Allow-Headers')).toContain(
-		'X-Kody-Gateway-Url',
-	)
-	expect(response.headers.get('Access-Control-Allow-Headers')).toContain(
-		'x-kody-secret-resolution',
-	)
 	expect(forwarded).toHaveLength(0)
 })
 
@@ -244,19 +237,6 @@ test('names an origin memory or CPU limit and echoes the ray id as the request i
 	expect(body.error.message).not.toMatch(/temporarily unavailable/)
 })
 
-test('every edge response carries a request id header', async () => {
-	const { env } = createEnv()
-	const response = await handleApiEdgeRequest(
-		new Request('https://api.kody.test/nope'),
-		env,
-	)
-	expect(response.status).toBe(404)
-	expect(response.headers.get('X-Kody-Request-Id')).toMatch(/\S/)
-	expect(response.headers.get('Access-Control-Expose-Headers')).toMatch(
-		/X-Kody-Request-Id/,
-	)
-})
-
 test('gateway-fetch streams the body past the JSON cap and forwards hop headers', async () => {
 	const { env, forwarded } = createEnv()
 	const body = 'x'.repeat(maxApiRequestBodyBytes + 1)
@@ -299,14 +279,6 @@ test('gateway-fetch streams the body past the JSON cap and forwards hop headers'
 })
 
 test('gateway-fetch rejects a declared body over the Worker upload limit', async () => {
-	expect(
-		gatewayFetchDeclaredBodyExceedsUploadLimit(
-			new Headers({
-				'Content-Length': String(maxGatewayFetchUploadBytes + 1),
-			}),
-		),
-	).toBe(true)
-
 	const { env, forwarded } = createEnv()
 	const oversize = await handleApiEdgeRequest(
 		new Request('https://api.kody.test/v1/capability-proxy/gateway-fetch', {

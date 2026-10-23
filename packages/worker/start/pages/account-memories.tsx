@@ -152,8 +152,9 @@ export function AccountMemoriesPage({
 	})
 	const actionState = deleteMutation.isPending ? 'busy' : 'idle'
 	const router = useRouter()
+	const [returningToList, setReturningToList] = useState(false)
 	const navigate = (href: string) =>
-		void router.navigate({
+		router.navigate({
 			to: relocateAccountHref(href, currentHref),
 			resetScroll: false,
 		})
@@ -205,9 +206,13 @@ export function AccountMemoriesPage({
 	}
 
 	async function postDelete(input: { memoryId: string; force: boolean }) {
-		if (legacyReadOnly || actionState !== 'idle') return
+		if (legacyReadOnly || actionState !== 'idle' || returningToList) return
 		showMessage(null)
 		const isCurrentSubmitter = captureSubmitter()
+		// Stay busy through the list return. The include-deleted checkbox
+		// enables as soon as the mutation settles; a click in that gap races
+		// this navigation and the list replace drops the new filter.
+		setReturningToList(true)
 		try {
 			await deleteMutation.mutateAsync({
 				...input,
@@ -219,7 +224,7 @@ export function AccountMemoriesPage({
 			showMessage(
 				input.force ? 'Permanently deleted memory.' : 'Soft-deleted memory.',
 			)
-			navigate(memoriesRoute.buildListHref(getCurrentSearch()))
+			await navigate(memoriesRoute.buildListHref(getCurrentSearch()))
 		} catch (error) {
 			if (!isCurrentSubmitter()) return
 			setDeleteMode(null)
@@ -227,6 +232,8 @@ export function AccountMemoriesPage({
 				error instanceof Error ? error.message : 'Unable to delete memory.',
 				'error',
 			)
+		} finally {
+			setReturningToList(false)
 		}
 	}
 
@@ -236,7 +243,7 @@ export function AccountMemoriesPage({
 		clearDeleteMode()
 	}
 
-	const isMutating = actionState !== 'idle'
+	const isMutating = actionState !== 'idle' || returningToList
 	const filters = memoriesSearch(pageLocation.search)
 	const search = filters.q?.trim() ?? ''
 	const includeDeleted = filters.includeDeleted

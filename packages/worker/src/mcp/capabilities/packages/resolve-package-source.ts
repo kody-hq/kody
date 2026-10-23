@@ -1,6 +1,10 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import {
+	buildPendingCommunityForkLookupMessage,
+	findPendingCommunityForkForLookup,
+} from '#worker/community/pending-fork-lookup.ts'
 import { normalizePackageNameInput } from '#worker/package-registry/package-name.ts'
 import {
 	getSavedPackageById,
@@ -69,6 +73,18 @@ export async function resolveOwnedPackageSource(input: {
 				})
 	if (!savedPackage) {
 		const missingId = input.args.package_id ?? input.args.kody_id
+		const pendingFork = await findPendingCommunityForkForLookup(input.db, {
+			forkerUserId: input.userId,
+			packageIdOrKodyId: input.args.package_id ?? requestedKodyId ?? '',
+		})
+		if (pendingFork) {
+			throw new McpCallerError(
+				buildPendingCommunityForkLookupMessage({
+					fork: pendingFork,
+					ownerScope: input.ownerScope,
+				}),
+			)
+		}
 		throw new McpCallerError(
 			`Saved package "${missingId}" was not found in @${input.ownerScope}, the org this connection is bound to. packageList lists the saved packages @${input.ownerScope} owns with their package_id; to use a package another org owns, bind the connection to that org.`,
 		)

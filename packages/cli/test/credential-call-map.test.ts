@@ -3,13 +3,10 @@ import { test } from 'node:test'
 import {
 	formatCredentialClientError,
 	formatCredentialFlagSuggestion,
-	missingCredentialCallMapFeatureMessage,
 	parseCredentialFlag,
 	parseCredentialFlags,
-	sessionSupportsCredentialCallMap,
 } from '../src/credential-call-map.js'
 import { buildExecuteToolArgs, resolveCommand } from '../src/cli.js'
-import { credentialFlagRequiresLocalOrMcpMessage } from '../src/remote-execute.js'
 
 const parseTable: Array<{
 	flags: Array<string>
@@ -125,17 +122,6 @@ test('buildExecuteToolArgs attaches credentials for MCP execute', () => {
 		}),
 		{ code: 'export default () => 1', credentials: { github: 'work' } },
 	)
-})
-
-test('sessionSupportsCredentialCallMap reads the feature flag', () => {
-	assert.equal(sessionSupportsCredentialCallMap(['credential-call-map']), true)
-	assert.equal(sessionSupportsCredentialCallMap(['other']), false)
-	assert.equal(sessionSupportsCredentialCallMap(undefined), false)
-	assert.equal(
-		missingCredentialCallMapFeatureMessage(),
-		'This Kody host does not support --credential yet.',
-	)
-	assert.match(credentialFlagRequiresLocalOrMcpMessage, /--local/)
 })
 
 test('formatCredentialClientError prints code, message, and --credential retries', () => {

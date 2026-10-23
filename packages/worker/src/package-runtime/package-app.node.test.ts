@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { readFile } from 'node:fs/promises'
 import { expect, test, vi } from 'vitest'
+import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
@@ -254,87 +255,6 @@ test('package app kody.mcp loads server names lazily on first mcp touch', async 
 	expect(advertised).toBeTypeOf('object')
 	await expect(advertised.set_pin({ pin: '2' })).resolves.toEqual({ ok: true })
 	expect(loadCount).toBe(1)
-})
-
-test('modulesReferenceKodyMcp detects authored kody.mcp access', async () => {
-	const { modulesReferenceKodyMcp } =
-		await import('./package-app-mcp-preload.ts')
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'export default { async fetch() { return new Response("ok") } }',
-		}),
-	).toBe(false)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody } from "kody:runtime"\nexport default { async fetch() { return kody.mcp.home.ping({}) } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody } from "kody:runtime"\nconst home = kody["mcp"].home\nexport default home',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody as api } from "kody:runtime"\nexport default { async fetch() { const { home } = api.mcp; return home } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody as api } from "../.__kody_virtual__/public-runtime.js"\nexport default { async fetch() { const { home } = api.mcp; return home } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody as api } from "../.__kody_virtual__/package-runtime/abc.js"\nexport default { async fetch() { return api.mcp.home.ping({}) } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody as api } from "kody:runtime"\nexport default { async fetch() { return new Response(api.metaGetCurrentUser ? "ok" : "no") } }',
-		}),
-	).toBe(false)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'import { kody as api } from "../.__kody_virtual__/public-runtime.js"\nexport default { async fetch() { return new Response("ok") } }',
-		}),
-	).toBe(false)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.cjs':
-				'const { kody: api } = require("../.__kody_virtual__/public-runtime.js")\nmodule.exports = { async fetch() { const { home } = api.mcp; return home } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'entry.js':
-				'export default { async fetch() { const { kody: api } = await import("../.__kody_virtual__/public-runtime.js"); return api.mcp.home.ping({}) } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'runtime.js':
-				'export { kody } from "../.__kody_virtual__/public-runtime.js"',
-			'entry.js':
-				'import { kody as api } from "./runtime.js"\nexport default { async fetch() { const { home } = api.mcp; return home } }',
-		}),
-	).toBe(true)
-	expect(
-		modulesReferenceKodyMcp({
-			'runtime.js':
-				'export { kody } from "../.__kody_virtual__/public-runtime.js"',
-			'entry.js':
-				'import { kody as api } from "./runtime.js"\nexport default { async fetch() { return new Response(api.metaGetCurrentUser ? "ok" : "no") } }',
-		}),
-	).toBe(false)
 })
 
 test('package app workflows proxy validates input and forwards to the runtime bridge', async () => {
@@ -1396,7 +1316,7 @@ test('buildPackageAppWorker skips published artifact lookup when publishedCommit
 })
 
 test('package app runtime bridge returns opaque secret refs and merges metadata via waitUntil', async () => {
-	const opaqueRef = '{{secret:apiToken|scope=user}}'
+	const opaqueRef = buildSecretPlaceholder({ name: 'apiToken', scope: 'user' })
 	packageAppRuntimeMock.resolveCredential.mockResolvedValue({
 		alias: 'api-token',
 		name: 'apiToken',
@@ -1473,7 +1393,7 @@ test('package app runtime bridge returns opaque secret refs and merges metadata 
 })
 
 test('package app secret mounts ignore author-selected packageId and forged authority fields', async () => {
-	const ref = '{{secret:apiToken|scope=user}}'
+	const ref = buildSecretPlaceholder({ name: 'apiToken', scope: 'user' })
 	packageAppRuntimeMock.resolveCredential.mockResolvedValue({
 		alias: 'api-token',
 		name: 'apiToken',
@@ -1681,11 +1601,143 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	expect(getStorageRunner).toHaveBeenCalledTimes(3)
 })
 
+test('buildPackageAppWorker mints request-bound loopback bindings on every loader callback, never from the cached build', async () => {
+	// Loopback fetchers (KODY_RUNTIME, KodyFetchGateway) are bound to the
+	// request that creates them. When the loader (re)loads the isolate from a
+	// later request, reusing the cached build's fetcher fails with "Cannot
+	// perform I/O on behalf of a different request" before app code runs.
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const buildInput = makeBuildInput(env, 'per-request-bindings')
+
+	await buildPackageAppWorker(buildInput)
+	await buildPackageAppWorker(buildInput)
+
+	// Building (and reusing) the cached options mints nothing by itself.
+	expect(packageAppRuntimeMock.packageAppRuntimeBridge).not.toHaveBeenCalled()
+	expect(loader.get).toHaveBeenCalledTimes(2)
+	const [firstId, firstFactory] = loader.get.mock.calls[0] as unknown as [
+		string,
+		() => { env: Record<string, unknown>; modules: Record<string, string> },
+	]
+	const [secondId, secondFactory] = loader.get.mock.calls[1] as unknown as [
+		string,
+		() => { env: Record<string, unknown>; modules: Record<string, string> },
+	]
+	expect(secondId).toBe(firstId)
+	const first = firstFactory()
+	const second = secondFactory()
+	expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalledTimes(2)
+	// A fresh binding object per load, carrying the same per-build props.
+	expect(second.env.KODY_RUNTIME).not.toBe(first.env.KODY_RUNTIME)
+	expect(second.env.KODY_RUNTIME).toEqual(first.env.KODY_RUNTIME)
+	expect(second.modules).toBe(first.modules)
+	expect(second.env.__kodyPackageContext).toEqual(
+		first.env.__kodyPackageContext,
+	)
+})
+
+test("buildPackageAppWorker never reuses one visitor's cached build, request context, or credential binding for another", async () => {
+	// The cached build carries bridge and gateway props (request context,
+	// credential client binding). A later request may reuse it only when it
+	// would derive the same identity: same visitor, role, and org.
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const key = 'visitor-isolation'
+	const orgId = `user-${key}`
+	const visit = (
+		actorId: string,
+		role: 'owner' | 'member',
+		orgSlug: string = key,
+	) =>
+		makeBuildInput(env, key, {
+			runtime: {
+				callerContext: {
+					user: {
+						userId: actorId,
+						email: `${key}@example.com`,
+						displayName: `${key} User`,
+					},
+					request: {
+						org: { id: orgId, slug: orgSlug },
+						actor: { userId: actorId, username: actorId },
+						attribution: { kind: 'user', userId: actorId },
+						credential: {
+							kind: 'package-app',
+							id: null,
+							orgId,
+							scopes: null,
+							profileName: null,
+						},
+						membership: { role },
+					},
+				},
+			} as never,
+		})
+	type MaterializedBridge = {
+		props: {
+			visitor: { userId: string; role: string | null } | null
+			orgSlug: string | null
+			credentialClientBinding: string
+			gatewayProps: {
+				credentialClientBinding?: string | null
+				request: { actor: { userId: string } | null } | null
+			}
+		}
+	}
+	const loads: Array<{ id: string; bridge: MaterializedBridge }> = []
+	const serve = async (input: BuildInput) => {
+		await buildPackageAppWorker(input)
+		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
+			string,
+			() => { env: { KODY_RUNTIME: MaterializedBridge } },
+		]
+		loads.push({ id, bridge: factory().env.KODY_RUNTIME })
+	}
+
+	await serve(visit('person-a', 'owner'))
+	await serve(visit('person-b', 'member'))
+	await serve(visit('person-a', 'member'))
+	await serve(visit('person-a', 'owner', 'renamed-org'))
+	await serve(visit('person-a', 'owner'))
+
+	const [first, other, demoted, renamed, again] = loads
+	// The same visitor, role, and org reuses the build and its isolate.
+	expect(again!.id).toBe(first!.id)
+	expect(again!.bridge.props).toEqual(first!.bridge.props)
+	// Anyone else gets their own build, worker id, and run binding.
+	for (const load of [other!, demoted!, renamed!]) {
+		expect(load.id).not.toBe(first!.id)
+		expect(load.bridge.props.credentialClientBinding).not.toBe(
+			first!.bridge.props.credentialClientBinding,
+		)
+	}
+	expect(new Set(loads.map((load) => load.id)).size).toBe(4)
+	expect(other!.bridge.props.visitor).toMatchObject({
+		userId: 'person-b',
+		role: 'member',
+	})
+	expect(other!.bridge.props.gatewayProps.request?.actor?.userId).toBe(
+		'person-b',
+	)
+	expect(other!.bridge.props.gatewayProps.credentialClientBinding).toBe(
+		other!.bridge.props.credentialClientBinding,
+	)
+	expect(demoted!.bridge.props.visitor?.role).toBe('member')
+	expect(renamed!.bridge.props.orgSlug).toBe('renamed-org')
+})
+
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {
 	// The fixture bundle is pre-fix shaped and the build passes no source, so
 	// serving it is logged.
 	silenceExpectedConsoleWarns([/pre_binding_bundle_served_without_source/])
-	const { env } = createPackageAppTestEnv()
+	const { env, loader } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(undefined, {
 			dependencies: [
@@ -1715,6 +1767,8 @@ test('buildPackageAppWorker passes packageStorage grant ids from root, static, a
 	await buildPackageAppWorker(
 		makeBuildInput(env, 'grants', { savedPackage: { id: 'root-package' } }),
 	)
+	// The bridge is minted when the loader asks for the worker options.
+	loaderWorkerOptions(loader)
 
 	expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalledWith({
 		props: expect.objectContaining({

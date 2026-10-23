@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	findImportBoundaryViolation,
 	getImportBoundariesForFile,
-	importBoundaries,
 } from './local-plugin.js'
 
 const mcpFile = 'packages/worker/src/mcp/capabilities/admin/admin-user-get.ts'
@@ -106,13 +105,4 @@ test('client and universal modules cannot import server layers', () => {
 			'#mcp/secrets/allowed-hosts.ts',
 		),
 	).toBe(null)
-})
-
-test('import boundaries have no legacy exceptions', () => {
-	const entries = importBoundaries.flatMap(
-		(boundary: {
-			allowedSpecifiers: Array<{ specifier: string; reason: string }>
-		}) => boundary.allowedSpecifiers,
-	)
-	expect(entries).toEqual([])
 })

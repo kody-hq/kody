@@ -133,3 +133,57 @@ test('cold MCP session owner discovery reads persisted Agents SDK props', async 
 	})
 	expect(purged).toBe(true)
 })
+
+test('purge tolerates an already-empty MCP session DO from a prior deletion attempt', async () => {
+	// Exact retry state: mcp_agent_sessions still indexes the DO id, but a
+	// previous cleanup already ran deleteAll so props are gone. Rejecting null
+	// owner as a scope mismatch left legacy deletions stuck after partial purge.
+	let deleted = false
+	const emptyStorage: Pick<DurableObjectStorage, 'get' | 'deleteAll'> = {
+		get: (async (_key: string | Array<string>) =>
+			undefined) as DurableObjectStorage['get'],
+		async deleteAll() {
+			deleted = true
+		},
+	}
+	await expect(
+		readPersistedMcpAgentOwner({
+			storage: emptyStorage,
+			doId: 'already-wiped-do',
+		}),
+	).resolves.toEqual({ doId: 'already-wiped-do', userId: null })
+	await purgePersistedMcpAgentSession({
+		storage: emptyStorage,
+		doId: 'already-wiped-do',
+		userId: ownerIdFromStored('user-a'),
+	})
+	expect(deleted).toBe(true)
+})
+
+test('purge still rejects an MCP session DO owned by a different user', async () => {
+	const props = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://example.com',
+		executionOrigin: 'interactive',
+		user: {
+			userId: personIdFromStored('user-b'),
+			email: 'b@example.com',
+			displayName: 'User B',
+		},
+	})
+	let deleted = false
+	await expect(
+		purgePersistedMcpAgentSession({
+			storage: {
+				get: (async (_key: string | Array<string>) =>
+					props) as DurableObjectStorage['get'],
+				async deleteAll() {
+					deleted = true
+				},
+			},
+			doId: 'other-user-do',
+			userId: ownerIdFromStored('user-a'),
+		}),
+	).rejects.toThrow('MCP agent session user scope mismatch.')
+	expect(deleted).toBe(false)
+})

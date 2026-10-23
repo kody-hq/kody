@@ -1,9 +1,9 @@
 # CLI streaming gateway-fetch contract
 
-Contract for `@kodycodes/cli` (`kody-bot/cli`) to implement
-`kody.gatewayFetchStream` on the local workerd host. The workerd shim in the
-kody repo calls this method; the CLI host performs the HTTP hop and returns a
-real `Response`.
+Contract for `@kodycodes/cli` (`packages/cli`) to implement
+`kody.gatewayFetchStream` on the local workerd host. The workerd shim in
+`packages/worker` calls this method; the CLI host performs the HTTP hop and
+returns a real `Response`.
 
 This is a **native Open API route**, not `POST /v1/capability-proxy/call` with
 `path: ['kody', 'gatewayFetch']`. Keep that JSON hop for small buffered bodies.

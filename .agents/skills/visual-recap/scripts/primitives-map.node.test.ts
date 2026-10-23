@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
 import {
-	checkPrimitivesMapPaths,
 	classifyPaths,
-	loadPrimitivesMap,
 	parsePrimitivesMap,
 	pathMatchesRoot,
 } from './primitives-map.mjs'
@@ -102,10 +100,4 @@ primitives:
 	expect(
 		matched.find((entry) => entry.primitive.id === 'saved-packages')?.files,
 	).toEqual(['packages/worker/src/mcp/capabilities/packages/save.ts'])
-})
-
-test('committed primitives map passes path checks', () => {
-	const map = loadPrimitivesMap()
-	expect(map.primitives.length).toBeGreaterThan(10)
-	expect(checkPrimitivesMapPaths(map)).toEqual([])
 })

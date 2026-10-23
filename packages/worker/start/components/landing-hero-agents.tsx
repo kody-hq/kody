@@ -60,7 +60,7 @@ export type LandingHeroAgent = (typeof landingHeroSlots)[number] & {
 	icon: string
 }
 
-export function pickLandingHeroRing(
+function pickLandingHeroRing(
 	allRow: ReadonlyArray<WalkthroughHost>,
 	slotCount: number = landingHeroSlots.length,
 ): Array<WalkthroughHost> {
@@ -74,7 +74,7 @@ export function pickLandingHeroRing(
 	return order.filter((host) => selectedIds.has(host.id))
 }
 
-export function placeLandingHeroAgents(
+function placeLandingHeroAgents(
 	hosts?: WalkthroughHostPick | null,
 ): Array<LandingHeroAgent> {
 	const identities = pickLandingHeroRing(
@@ -99,7 +99,7 @@ type LandingHeroLightDirection = 'in' | 'out'
  *  token slowly and is pulled in faster, shrinking as it nears the lantern.
  *  Outbound is the reverse: small at the lantern, growing toward the token.
  *  Fades in leaving and out arriving. `null` while it rests. */
-export function landingHeroLightAt(
+function landingHeroLightAt(
 	agent: Pick<LandingHeroAgent, 'cycle' | 'phase' | 'travel'>,
 	seconds: number,
 	direction: LandingHeroLightDirection = 'in',
@@ -122,7 +122,7 @@ export function landingHeroLightAt(
 const landingHeroLightRateFar = 0.54
 const landingHeroLightRateNear = 2.31
 
-export function landingHeroLightRate(proximity: number) {
+function landingHeroLightRate(proximity: number) {
 	const t = Math.min(1, Math.max(0, proximity))
 	const ease = t * t * (3 - 2 * t)
 	return (
@@ -133,7 +133,7 @@ export function landingHeroLightRate(proximity: number) {
 
 /** How close the controlling point is to the lantern, 0–1. Fine pointers
  *  use the mouse; coarse pointers use the viewport centre (scroll). */
-export function landingHeroLightProximity(input: {
+function landingHeroLightProximity(input: {
 	lantern: { x: number; y: number }
 	pointer: { x: number; y: number } | null
 	viewport: { width: number; height: number }

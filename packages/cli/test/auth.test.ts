@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -8,15 +8,9 @@ import {
 	isAccessTokenExpired,
 	login,
 } from '../src/auth.js'
-import {
-	cliClientMetadataUrl,
-	cliRedirectUrl,
-	defaultScopes,
-	scopeIncludesOpenid,
-} from '../src/defaults.js'
+import { CredentialDirError } from '../src/credential-dir.js'
 import { buildCliAuthorizationUrl } from '../src/oauth-browser.js'
 import {
-	buildCliClientMetadata,
 	issuerFromStoredCredentials,
 	orgSlugFromFlag,
 } from '../src/oauth-provider.js'
@@ -41,13 +35,19 @@ const previous: StoredCredentials = {
 	scope: 'profile email',
 }
 
-test('defaultScopes request openid for login and CIMD metadata', () => {
-	assert.deepEqual([...defaultScopes], ['openid', 'profile', 'email'])
-	assert.equal(defaultScopes.join(' '), 'openid profile email')
-	assert.equal(scopeIncludesOpenid('openid profile email'), true)
-	assert.equal(scopeIncludesOpenid('profile email'), false)
-	assert.equal(scopeIncludesOpenid(undefined), false)
-})
+function captureWarns(): { warnings: string[]; restore: () => void } {
+	const warnings: string[] = []
+	const original = console.warn
+	console.warn = (...args: unknown[]) => {
+		warnings.push(args.map(String).join(' '))
+	}
+	return {
+		warnings,
+		restore() {
+			console.warn = original
+		},
+	}
+}
 
 test('isAccessTokenExpired uses a one-minute skew', () => {
 	const now = 1_000_000
@@ -102,21 +102,6 @@ test('credentialsFromTokens stores a rotated refresh token', () => {
 	assert.equal(next.refreshToken, 'rotated')
 	assert.equal(next.clientSecret, 'secret')
 	assert.equal(next.expiresAt, 10_000)
-})
-
-test('CLI OAuth identity is CIMD with a fixed loopback redirect', () => {
-	const mcpUrl = 'https://kody.codes/mcp'
-	const metadata = buildCliClientMetadata()
-	assert.equal(
-		cliClientMetadataUrl(mcpUrl),
-		'https://kody.codes/oauth/cli-client-metadata.json',
-	)
-	assert.equal(metadata.client_name, '@kodycodes/cli')
-	assert.equal(metadata.client_uri, 'https://github.com/kody-hq/kody')
-	assert.deepEqual(metadata.redirect_uris, [cliRedirectUrl().href])
-	assert.equal(metadata.token_endpoint_auth_method, 'none')
-	assert.equal(metadata.application_type, 'native')
-	assert.equal(metadata.scope, 'openid profile email')
 })
 
 test('orgSlugFromFlag lowercases and rejects a blank slug', () => {
@@ -225,34 +210,6 @@ test('login appends ?org= on the authorize URL and omits it otherwise', async ()
 	assert.equal(withoutOrg[0]?.searchParams.get('resource'), `${origin}/mcp`)
 })
 
-test('authorize URL omits org when the flag is absent', async () => {
-	const url = await buildCliAuthorizationUrl({
-		authorizationServer: {
-			issuer: 'https://kody.codes',
-			authorization_endpoint: 'https://kody.codes/oauth/authorize',
-		},
-		mcpUrl: 'https://kody.codes/mcp',
-		state: 'state',
-		codeChallenge: 'challenge',
-	})
-	assert.equal(url.searchParams.get('org'), null)
-	assert.equal(url.searchParams.get('resource'), 'https://kody.codes/mcp')
-})
-
-function captureWarns(): { warnings: string[]; restore: () => void } {
-	const warnings: string[] = []
-	const original = console.warn
-	console.warn = (...args: unknown[]) => {
-		warnings.push(args.map(String).join(' '))
-	}
-	return {
-		warnings,
-		restore() {
-			console.warn = original
-		},
-	}
-}
-
 test('fresh login does not warn about a missing SEP-2352 issuer stamp', async () => {
 	const origin = 'https://oauth.test'
 	const fetchFn = oauthDiscoveryFetch(origin)
@@ -321,4 +278,162 @@ test('save/load round-trip keeps authorizationServerUrl for issuer reload', asyn
 		loaded ? issuerFromStoredCredentials(loaded) : '',
 		'https://kody.codes',
 	)
+})
+
+test('login stops before the browser when the credential folder is blocked', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'kody-cli-blocked-'))
+	const blocker = join(root, 'Application Support')
+	writeFileSync(blocker, 'not a folder')
+	const blockedDir = join(blocker, 'kody')
+	const opened: Array<string> = []
+	const urls: Array<URL> = []
+	let fetched = false
+	await assert.rejects(
+		() =>
+			login({
+				mcpUrl: 'https://oauth.test/mcp',
+				timeoutMs: 200,
+				platform: 'darwin',
+				resolution: {
+					fileStorePath: () => join(blockedDir, 'credentials.json'),
+				},
+				fetchFn: async () => {
+					fetched = true
+					return new Response('unexpected', { status: 500 })
+				},
+				openUrlFn: async (url) => {
+					opened.push(url)
+					return true
+				},
+				onAuthorizationUrl: (url) => urls.push(url),
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof CredentialDirError)
+			assert.ok(error.message.includes(blockedDir))
+			assert.match(error.message, /chown/)
+			return true
+		},
+	)
+	assert.deepEqual(opened, [])
+	assert.deepEqual(urls, [])
+	assert.equal(fetched, false)
+})
+
+test('login reports the URL even when the browser opener says it worked, and flags a failed open', async () => {
+	const origin = 'https://oauth.test'
+	const fetchFn = oauthDiscoveryFetch(origin)
+	const dir = mkdtempSync(join(tmpdir(), 'kody-cli-open-'))
+	for (const openerResult of [true, false]) {
+		const events: Array<string> = []
+		await assert.rejects(
+			() =>
+				login({
+					mcpUrl: `${origin}/mcp`,
+					timeoutMs: 200,
+					fetchFn,
+					resolution: { fileStorePath: () => join(dir, 'credentials.json') },
+					onAuthorizationUrl: (url) => events.push(`url:${url.origin}`),
+					openUrlFn: async () => {
+						events.push('open')
+						return openerResult
+					},
+					onBrowserOpenResult: ({ opened }) => events.push(`opened:${opened}`),
+				}),
+			/Timed out waiting for the browser login/,
+		)
+		assert.deepEqual(events, [
+			`url:${origin}`,
+			'open',
+			`opened:${openerResult}`,
+		])
+	}
+})
+
+function signInFetch(origin: string, apiOrigin: string): typeof fetch {
+	const discovery = oauthDiscoveryFetch(origin)
+	return async (input, init) => {
+		const url = new URL(
+			typeof input === 'string'
+				? input
+				: input instanceof URL
+					? input.href
+					: input.url,
+		)
+		if (url.origin === origin && url.pathname === '/oauth/token') {
+			return Response.json({
+				access_token: 'oauth-access',
+				token_type: 'bearer',
+				expires_in: 3600,
+			})
+		}
+		if (
+			url.origin === apiOrigin &&
+			url.pathname.endsWith('/v1/tokens/device')
+		) {
+			return Response.json({
+				token: 'kody_at_test_device',
+				scopes: ['execute'],
+				login_org: { slug: 'acme' },
+			})
+		}
+		return discovery(input, init)
+	}
+}
+
+test('login shows the real folder error and the fix when saving fails after sign-in', async () => {
+	const origin = 'https://oauth.test'
+	const apiOrigin = 'https://api.kody.codes'
+	const dir = mkdtempSync(join(tmpdir(), 'kody-cli-save-'))
+	const path = join(dir, 'credentials.json')
+	const backend = createFileBackend(path)
+	backend.set = () => {
+		throw Object.assign(
+			new Error(`EACCES: permission denied, open '${path}'`),
+			{ code: 'EACCES' },
+		)
+	}
+	let callbackHtml = ''
+	await assert.rejects(
+		() =>
+			login({
+				mcpUrl: `${origin}/mcp`,
+				apiUrl: apiOrigin,
+				backend,
+				platform: 'darwin',
+				timeoutMs: 5_000,
+				fetchFn: signInFetch(origin, apiOrigin),
+				discoverIdentity: async () => ({
+					org: 'acme',
+					account: { email: 'person@example.com' },
+				}),
+				openUrlFn: async (href) => {
+					const authorize = new URL(href)
+					const callback = new URL(
+						authorize.searchParams.get('redirect_uri') ?? '',
+					)
+					callback.searchParams.set('code', 'auth-code')
+					callback.searchParams.set(
+						'state',
+						authorize.searchParams.get('state') ?? '',
+					)
+					void fetch(callback).then(async (response) => {
+						callbackHtml = await response.text()
+					})
+					return true
+				},
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof CredentialDirError)
+			assert.match(error.message, /You approved the sign-in/)
+			assert.ok(error.message.includes(dir))
+			assert.match(error.message, /EACCES: permission denied/)
+			assert.match(error.message, /chown/)
+			assert.doesNotMatch(error.message, /kody_at_test_device/)
+			return true
+		},
+	)
+	for (let i = 0; i < 50 && !callbackHtml; i++) {
+		await new Promise((resolve) => setTimeout(resolve, 20))
+	}
+	assert.match(callbackHtml, /data-error="save_failed"/)
 })

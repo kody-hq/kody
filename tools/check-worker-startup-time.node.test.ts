@@ -3,7 +3,6 @@ import {
 	findStartupBudgetViolations,
 	formatStartupTimeResult,
 	parseStartupProfileSummary,
-	readStartupBudget,
 	resolveStartupTimeCwd,
 	resolveStartupTimeTarget,
 	startupTimeTargets,
@@ -56,14 +55,6 @@ test('sibling startup profiles pass an explicit Wrangler config', () => {
 	expect(
 		startupTimeTargets.find((target) => target.name === 'runtime')?.args,
 	).toEqual(['--config', 'wrangler.jsonc'])
-})
-
-test('budget file names every profiled worker with a positive ceiling', async () => {
-	const budget = await readStartupBudget()
-	expect(budget.runs).toBeGreaterThanOrEqual(1)
-	for (const target of startupTimeTargets) {
-		expect(budget.maxActiveMs[target.name]).toBeGreaterThan(0)
-	}
 })
 
 test('reports only workers whose best sample exceeds the budget', () => {

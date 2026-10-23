@@ -120,6 +120,24 @@ export default async function planDay(params) {
 	},
 }
 
+const rosterPackage: FixturePackage = {
+	id: '6f0c9d8e-0000-4000-8000-0000000a0151',
+	name: '@acme/roster',
+	kodyId: 'roster',
+	sourceId: 'source-roster',
+	exportName: './count',
+	entryPoint: 'src/count.ts',
+	files: {
+		'src/count.ts': `import { kody } from 'kody:runtime'
+export default async function count() {
+	const page = await kody.adminUserList({ page: 1, pageSize: 100 })
+	const cached = await kody.packageStorageGet({ key: 'count' })
+	return { total: page.total, cached: cached.value }
+}
+`,
+	},
+}
+
 function packageJsonFor(pkg: FixturePackage) {
 	return {
 		name: pkg.name,
@@ -251,7 +269,7 @@ function artifactHit(
 function installRegistry(
 	artifacts: Map<string, ReturnType<typeof artifactHit>>,
 ) {
-	const packages = [forecastPackage, shadesPackage]
+	const packages = [forecastPackage, shadesPackage, rosterPackage]
 	mockModule.getSavedPackageByName.mockImplementation(
 		async (_db: unknown, input: { name: string }) => {
 			const pkg = packages.find((candidate) => candidate.name === input.name)
@@ -539,4 +557,87 @@ export default async function main(params) { return await planDay(params) }`
 		[forecastPackage.id]: { forecast: { high: 81 } },
 		[shadesPackage.id]: { config: { synced: true } },
 	})
+})
+
+test('execute --local stamped packages reach plain kody.* capabilities through their bound kody', async () => {
+	vi.clearAllMocks()
+	const artifacts = new Map<string, ReturnType<typeof artifactHit>>()
+	installRegistry(artifacts)
+	const bundle = await buildKodyImportableModuleBundle({
+		env,
+		baseUrl,
+		userId,
+		sourceFiles: sourceFilesFor(rosterPackage),
+		entryPoint: rosterPackage.entryPoint,
+		rootPackageId: rosterPackage.id,
+	})
+	artifacts.set(rosterPackage.sourceId, artifactHit(rosterPackage, bundle))
+
+	const code = `import count from 'kody:@acme/roster/count'
+export default async function main() { return await count() }`
+	const graph = await buildLocalExecutePackageGraph({
+		env,
+		baseUrl,
+		userId,
+		actorUserId: 'actor-1',
+		code,
+	})
+	const files: Record<string, string> = {
+		'kody:runtime': createCliHostRuntimeSource(),
+		'entry.js': createCliEntrySource(),
+		'main.js': code.replace(
+			"'kody:@acme/roster/count'",
+			"'./kody:@acme/roster/count'",
+		),
+	}
+	for (const module of graph.modules) files[module.name] = module.esModule
+
+	const calls: Array<{ path: string; args: Array<unknown> }> = []
+	const bridge = async (path: Array<string>, args: Array<unknown>) => {
+		const name = path.join('.')
+		calls.push({ path: name, args })
+		switch (name) {
+			case 'kody.adminUserList':
+				return { total: 3, users: [] }
+			case 'kody.packageStorageGet':
+				return { value: 7 }
+			default:
+				throw new Error(`Unknown runtime function ${name}.`)
+		}
+	}
+	const runtimeStorageSymbol = Symbol.for('kody.runtimeStorage')
+	const previousStorage = Reflect.get(globalThis, runtimeStorageSymbol)
+	Reflect.set(globalThis, runtimeStorageSymbol, new AsyncLocalStorage())
+	Reflect.set(globalThis, '__kodyTestBridge', bridge)
+	const moduleGraph = await createTemporaryModuleGraph(files)
+	let result: unknown
+	try {
+		const entry = (await moduleGraph.importModule('entry.js')) as {
+			run: (params: unknown) => Promise<unknown>
+		}
+		result = await entry.run({})
+	} finally {
+		await moduleGraph.cleanup()
+		Reflect.deleteProperty(globalThis, '__kodyTestBridge')
+		Reflect.set(globalThis, runtimeStorageSymbol, previousStorage)
+	}
+
+	expect(result).toEqual({ total: 3, cached: 7 })
+	// One hop per call, on the capability's own path with the caller's input
+	// as the only argument (never `kody.<name>.call` with a this-arg).
+	expect(calls.map((call) => call.path)).toEqual([
+		'kody.adminUserList',
+		'kody.packageStorageGet',
+	])
+	expect(calls[0]?.args).toEqual([{ page: 1, pageSize: 100 }])
+	expect(calls[1]?.args).toHaveLength(1)
+	const storageInput = calls[1]?.args[0] as { key: string; packageId: string }
+	expect(storageInput.key).toBe('count')
+	expect(
+		await verifyLocalExecutePackageBinding({
+			env,
+			token: storageInput.packageId,
+			subject: { org: userId, actor: 'actor-1' },
+		}),
+	).toBe(rosterPackage.id)
 })

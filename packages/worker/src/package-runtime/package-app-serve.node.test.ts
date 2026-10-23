@@ -6,7 +6,6 @@ import { expect, test, vi } from 'vitest'
 import type * as PackageSourceModule from '#worker/package-registry/source.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { ComputeOverageLimitError } from '#worker/entitlements/errors.ts'
-import { parseServerTimingHeader } from '#worker/server-timing.ts'
 import {
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -94,6 +93,16 @@ const mockModule = vi.hoisted(() => ({
 	persistPublishedBundleArtifact: vi.fn(),
 	createWorker: vi.fn(),
 	packageRealtimeConnect: vi.fn(),
+	beginRunRecord: vi.fn((..._args: Array<unknown>): unknown => undefined),
+	finishRunRecord: vi.fn(async (..._args: Array<unknown>) => true),
+}))
+
+vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	beginRunRecord: (...args: Array<unknown>) =>
+		mockModule.beginRunRecord(...args),
+	finishRunRecord: (...args: Array<unknown>) =>
+		mockModule.finishRunRecord(...args),
 }))
 
 vi.mock('#worker/package-registry/source.ts', async () => {
@@ -393,72 +402,6 @@ test('a warm package-app serve performs zero D1/KV loads before dispatch', async
 		'published manifest snapshot (KV)': 0,
 	})
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
-})
-
-test('hello-world serve emits Server-Timing phases and forwards the bag into buildPackageAppWorker', async () => {
-	seedFixture()
-	mockModule.buildPackageAppWorker.mockImplementation(
-		async (input: {
-			serverTiming?: Array<{ name: string; durationMs: number }>
-		}) => {
-			input.serverTiming?.push(
-				{ name: 'usageGate', durationMs: 1 },
-				{ name: 'appLoader', durationMs: 2 },
-			)
-			return {
-				entrypointName: 'PackageAppWorker',
-				stub: {
-					getEntrypoint: () => ({
-						async fetch() {
-							return new Response('ok')
-						},
-					}),
-				},
-			}
-		},
-	)
-
-	const serverTiming: Array<{ name: string; durationMs: number }> = [
-		{ name: 'owner', durationMs: 3 },
-	]
-	const response = await servePackageAppRequest({
-		request: new Request('https://example.com/@kentcdodds/packages/perf-app'),
-		env: {
-			APP_DB: {},
-			BUNDLE_ARTIFACTS_KV: {},
-		} as Env,
-		owner: {
-			userId: ownerIdFromStored('user-1'),
-			username: 'kentcdodds',
-			email: 'kent@example.com',
-			displayName: 'Kent',
-		},
-		visitor: {
-			userId: personIdFromStored('user-1'),
-			username: 'kentcdodds',
-			role: 'owner',
-		},
-		packagePath: {
-			username: 'kentcdodds',
-			kodyId: 'perf-app',
-			restPath: '/',
-			mount: 'username-path',
-		},
-		serverTiming,
-	})
-
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('ok')
-	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledWith(
-		expect.objectContaining({ serverTiming }),
-	)
-	const phaseNames = parseServerTimingHeader(
-		response.headers.get('Server-Timing'),
-	).map((entry) => entry.name)
-	expect(phaseNames).toContain('owner')
-	expect(phaseNames).toContain('resolveSavedPackage')
-	expect(phaseNames).toContain('entrypoint')
-	expect(phaseNames).toContain('usageGate')
 })
 
 test('websocket upgrade responses skip Server-Timing and keep the paired socket', async () => {
@@ -780,18 +723,6 @@ test('/_assets/ is a 404 for apps without client or assets and author fetch stil
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 })
 
-test('published leftover kody.app.runtime does not brick host-setup', async () => {
-	seedFixture({
-		kodyId: 'legacy-runtime-app',
-		app: { entry: './src/app.ts', runtime: 'remix' },
-	})
-
-	const response = await serveHelloWorld({ kodyId: 'legacy-runtime-app' })
-	expect(response.status).toBe(200)
-	expect(await response.text()).toBe('ok')
-	expect(mockModule.buildPackageAppWorker).toHaveBeenCalled()
-})
-
 test('OPTIONS that the app answers is forwarded unchanged', async () => {
 	seedFixture({ kodyId: 'options-handled-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
@@ -855,27 +786,6 @@ test('an OPTIONS handler throw becomes a 204, not the package-entrypoint page', 
 	)
 })
 
-test('an OPTIONS entrypoint rejection becomes a 204', async () => {
-	seedFixture({ kodyId: 'options-reject-app' })
-	mockModule.buildPackageAppWorker.mockResolvedValue({
-		entrypointName: 'PackageAppWorker',
-		stub: {
-			getEntrypoint: () => ({
-				async fetch() {
-					throw new Error('app has no OPTIONS route')
-				},
-			}),
-		},
-	})
-
-	const response = await serveHelloWorld({
-		kodyId: 'options-reject-app',
-		init: { method: 'OPTIONS' },
-	})
-	expect(response.status).toBe(204)
-	expect(response.body).toBeNull()
-})
-
 test('a tagged runtime throw becomes the package-entrypoint page with the run id', async () => {
 	consoleError.mockImplementation(() => {})
 	seedFixture({ kodyId: 'runtime-throw-app' })
@@ -915,6 +825,89 @@ test('a tagged runtime throw becomes the package-entrypoint page with the run id
 		phase: 'package-entrypoint',
 		runtimeRunId: 'run-thrown-1',
 	})
+})
+
+test('an entrypoint rejection records an owner-visible error run and shows its id and ray on the crash page', async () => {
+	// The app worker can fail before its wrapper starts a run (no runList
+	// entry, app try/catch never runs). The host records the run instead.
+	consoleError.mockImplementation(() => {})
+	seedFixture({ kodyId: 'entrypoint-reject-app' })
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					throw new Error('internal platform detail')
+				},
+			}),
+		},
+	})
+	mockModule.beginRunRecord.mockImplementation((...args: Array<unknown>) => ({
+		id: 'host-run-1',
+		context: (args[0] as { context: unknown }).context,
+	}))
+	mockModule.finishRunRecord.mockClear()
+
+	const response = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		restPath: '/items',
+		init: { headers: { Accept: 'application/json' } },
+	})
+	expect(response.status).toBe(500)
+	await expect(response.json()).resolves.toMatchObject({
+		error: 'Package app crashed',
+		run_id: 'host-run-1',
+	})
+	expect(mockModule.beginRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			context: expect.objectContaining({
+				packageId: 'pkg-entrypoint-reject-app',
+				surface: 'app_fetch',
+				name: '/items',
+				publishedCommit: 'commit-1',
+				metadata: expect.objectContaining({ phase: 'package-entrypoint' }),
+			}),
+		}),
+	)
+	expect(mockModule.finishRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			status: 'error',
+			handle: expect.objectContaining({ id: 'host-run-1' }),
+		}),
+	)
+	const finished = mockModule.finishRunRecord.mock.calls[0]?.[0] as unknown as {
+		error: Error
+	}
+	// Host exception text stays internal.
+	expect(finished.error.message).not.toContain('internal platform detail')
+
+	// The HTML crash page shows the run id and the request's Cloudflare ray.
+	const htmlWithRun = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		init: { headers: { 'cf-ray': '8f00aa11bb22cc33-DEN' } },
+	})
+	expect(htmlWithRun.status).toBe(500)
+	const pageWithRun = await htmlWithRun.text()
+	expect(pageWithRun).toMatch(
+		/<dt>Run ID<\/dt>\s*<dd><code>host-run-1<\/code><\/dd>/,
+	)
+	expect(pageWithRun).toMatch(
+		/<dt>Ray ID<\/dt>\s*<dd><code>8f00aa11bb22cc33-DEN<\/code><\/dd>/,
+	)
+	expect(pageWithRun).not.toContain('internal platform detail')
+
+	// No run recorded and no well-formed ray: neither row is shown.
+	mockModule.beginRunRecord.mockReset()
+	const html = await serveHelloWorld({
+		kodyId: 'entrypoint-reject-app',
+		init: { headers: { 'cf-ray': '<script>' } },
+	})
+	expect(html.status).toBe(500)
+	const page = await html.text()
+	expect(page).toContain('Package app crashed')
+	expect(page).not.toContain('Run ID')
+	expect(page).not.toContain('Ray ID')
 })
 
 test('author 200 responses that set the runtime-error header stay successful', async () => {

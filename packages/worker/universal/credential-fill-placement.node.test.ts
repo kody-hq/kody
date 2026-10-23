@@ -3,7 +3,6 @@ import {
 	defaultFillPlacementDraft,
 	fillPlacementDraftFromView,
 	fillPlacementViewFromDraft,
-	formatFillPlacementSummary,
 } from './credential-fill-placement.ts'
 
 test('new credentials draft headers-only', () => {
@@ -28,7 +27,7 @@ test('anywhere (null) round-trips as all parts checked', () => {
 	expect(fillPlacementViewFromDraft(draft)).toBeNull()
 })
 
-test('named headers and summary', () => {
+test('named headers are parsed with the selected request parts', () => {
 	const placement = fillPlacementViewFromDraft({
 		headers: true,
 		query: false,
@@ -40,12 +39,6 @@ test('named headers and summary', () => {
 		headers: ['Authorization', 'X-Api-Key'],
 		path: true,
 	})
-	expect(formatFillPlacementSummary(placement)).toBe(
-		'headers (Authorization, X-Api-Key), path',
-	)
-	expect(formatFillPlacementSummary(null)).toBe(
-		'Anywhere (headers, query, path, body)',
-	)
 })
 
 test('at least one part is required', () => {

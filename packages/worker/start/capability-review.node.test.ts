@@ -177,33 +177,3 @@ test('pending review offers separate credential and public-serving approvals', a
 	expect(html).toContain('Approve and make internet-visible')
 	expect(html).toContain('data-testid="package-approve-capabilities"')
 })
-
-test('public serving approval is distinct from approving the capability set', async () => {
-	const html = await renderStartPage(
-		jsx(AccountPackageApproveCapabilitiesRoute, {
-			payload: {
-				...payload,
-				pendingApprovals: [
-					{
-						id: 'public-request',
-						reason: 'went_public',
-						reasonLabel: 'Package became public',
-						pendingCommit: 'published-commit',
-						createdAt: '2026-10-13T00:00:00Z',
-						changes: [],
-						approveAction: 'approve-went-public',
-					},
-				],
-			},
-			username: 'owner',
-			kodyId: 'example',
-		}),
-		payload.approveHref,
-	)
-	expect(html).toContain(
-		'Internet-visible serving stays off until you approve.',
-	)
-	expect(html).toContain('Published commit')
-	expect(html).toContain('Approve and make internet-visible')
-	expect(html).toContain('Approve capability set')
-})

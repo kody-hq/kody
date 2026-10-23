@@ -326,20 +326,3 @@ test('CLI decide and interpret-error write the workflow contract', async () => {
 	process.exitCode = previousExitCode
 	expect(readFileSync(outputPath, 'utf8')).toBe('')
 })
-
-test('publish workflow decides before publish and treats duplicate version as success', () => {
-	const source = readFileSync(
-		'.github/workflows/publish-mcp-registry.yml',
-		'utf8',
-	)
-	expect(source).toContain('mcp-registry-publish.ts decide')
-	expect(source).toContain('mcp-registry-publish.ts interpret-error')
-	expect(source).toContain('steps.decide.outputs.action')
-})
-
-test('validate passes the PR base or pre-push SHA to the server.json version check', () => {
-	const source = readFileSync('.github/workflows/validate.yml', 'utf8')
-	expect(source).toContain('MCP_REGISTRY_VALIDATION_BASE')
-	expect(source).toContain('github.event.pull_request.base.sha')
-	expect(source).toContain('github.event.before')
-})

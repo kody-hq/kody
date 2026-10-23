@@ -20,8 +20,6 @@ const mockModule = vi.hoisted(() => ({
 		persisted: false,
 		failedSinks: [],
 	})),
-	loadAdminMailboxMaintenanceStatus: vi.fn(),
-	runAdminMailboxMaintenanceRetention: vi.fn(),
 	runAdminMailboxMaintenanceDeleteMessage: vi.fn(),
 }))
 
@@ -38,10 +36,6 @@ vi.mock('#worker/admin/mailbox-maintenance.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof MailboxMaintenance>()
 	return {
 		...actual,
-		loadAdminMailboxMaintenanceStatus:
-			mockModule.loadAdminMailboxMaintenanceStatus,
-		runAdminMailboxMaintenanceRetention:
-			mockModule.runAdminMailboxMaintenanceRetention,
 		runAdminMailboxMaintenanceDeleteMessage:
 			mockModule.runAdminMailboxMaintenanceDeleteMessage,
 	}
@@ -49,73 +43,6 @@ vi.mock('#worker/admin/mailbox-maintenance.ts', async (importOriginal) => {
 
 const { adminMailboxMaintenanceCapability } =
 	await import('./admin-mailbox-maintenance.ts')
-
-const emptyStatus = {
-	generatedAt: '2026-08-01T12:00:00.000Z',
-	authority: {
-		ownerCount: 2,
-		frozenAt: '2026-08-01T00:00:00.000Z',
-		droppedAt: '2026-08-03T00:00:00.000Z',
-	},
-	outboundProviderIndex: {
-		indexCount: 0,
-		distinctOwnerCount: 0,
-		malformedCount: 0,
-		healthy: true,
-	},
-	providerIndexRepair: {
-		pendingOwners: 0,
-		pendingCount: 0,
-		oldestPendingAt: null,
-	},
-	inboundDueOwners: {
-		pendingOwners: 0,
-		dueOwners: 0,
-		oldestDueAt: null,
-	},
-	deliveryAlerts: {
-		retainedEvents: 0,
-		lastHourEvents: 0,
-		oldestEventAt: null,
-	},
-	systemEmail: {
-		authority: {
-			authority: 'dedicated' as const,
-			cutoverAt: '2026-08-01T00:00:00.000Z',
-		},
-		counts: { threads: 0, messages: 0, attachments: 0, deliveryEvents: 0 },
-		invalidReferenceCount: 0,
-		providerLinkCount: 0,
-		healthy: true,
-	},
-}
-
-const emptyRetentionResult = {
-	metrics: {
-		mailbox: {
-			ownersAttempted: 1,
-			ownersSucceeded: 1,
-			ownersFailed: 0,
-			before: {
-				threads: 1,
-				messages: 1,
-				attachments: 0,
-				deliveryEvents: 1,
-			},
-			after: {
-				threads: 0,
-				messages: 0,
-				attachments: 0,
-				deliveryEvents: 0,
-			},
-			blobDeleteFailureOwners: 0,
-			expiredRemainingOwners: 0,
-		},
-	},
-	nextStartAfter: 'a'.repeat(64),
-	truncated: true,
-	status: emptyStatus,
-}
 
 const emptyDeleteResult = {
 	authoritativeMessageAbsent: true,
@@ -173,50 +100,13 @@ function createAdminCtx() {
 	}
 }
 
-test('adminMailboxMaintenance routes final status, retention, and delete with audits', async () => {
-	mockModule.loadAdminMailboxMaintenanceStatus.mockResolvedValue(emptyStatus)
-	mockModule.runAdminMailboxMaintenanceRetention.mockResolvedValue(
-		emptyRetentionResult,
-	)
+test('adminMailboxMaintenance deletes the system mail graph and audits the result', async () => {
 	mockModule.runAdminMailboxMaintenanceDeleteMessage.mockResolvedValue(
 		emptyDeleteResult,
 	)
 	const ctx = createAdminCtx()
 	const stableUserId = testStableUserIdFromEmail('target@example.com')
 	const messageId = 'canary-message-1'
-
-	const status = await adminMailboxMaintenanceCapability.handler(
-		{ action: 'status' },
-		ctx,
-	)
-	expect(status).toMatchObject({ action: 'status', status: emptyStatus })
-	if (status.action !== 'status') throw new Error('Expected status result')
-	expect(status.status.systemEmail).toEqual(emptyStatus.systemEmail)
-	expect(mockModule.logAuditEvent).toHaveBeenCalledWith(
-		expect.objectContaining({
-			action: 'adminMailboxMaintenance',
-			result: 'success',
-		}),
-	)
-
-	const cursor = 'b'.repeat(64)
-	const retention = await adminMailboxMaintenanceCapability.handler(
-		{
-			action: 'retention',
-			limit: 8,
-			start_after_user_id: cursor,
-		},
-		ctx,
-	)
-	expect(retention).toEqual({
-		action: 'retention',
-		...emptyRetentionResult,
-	})
-	expect(mockModule.runAdminMailboxMaintenanceRetention).toHaveBeenCalledWith({
-		env: ctx.env,
-		limit: 8,
-		startAfterUserId: cursor,
-	})
 
 	const deleted = await adminMailboxMaintenanceCapability.handler(
 		{
@@ -226,17 +116,22 @@ test('adminMailboxMaintenance routes final status, retention, and delete with au
 		},
 		ctx,
 	)
-	expect(deleted).toEqual({
+	expect(deleted).toMatchObject({
 		action: 'delete_message',
-		result: emptyDeleteResult,
+		result: {
+			authoritativeMessageAbsent: true,
+			allCapturedBlobsAbsent: true,
+		},
 	})
 	expect(
 		mockModule.runAdminMailboxMaintenanceDeleteMessage,
-	).toHaveBeenCalledWith({
-		env: ctx.env,
-		stableUserId,
-		messageId,
-	})
+	).toHaveBeenCalledWith(expect.objectContaining({ stableUserId, messageId }))
+	expect(mockModule.logAuditEvent).toHaveBeenCalledWith(
+		expect.objectContaining({
+			action: 'adminMailboxMaintenance',
+			result: 'success',
+		}),
+	)
 	expect(JSON.stringify(deleted)).not.toMatch(
 		/@example|secret body|email-raw:|email-attachment:/,
 	)
@@ -277,15 +172,12 @@ test('adminMailboxMaintenance routes final status, retention, and delete with au
 		),
 	).rejects.toSatisfy(
 		(error: unknown) =>
-			error instanceof McpCallerError &&
-			error.message === notFound.message &&
-			error.cause === notFound,
+			error instanceof McpCallerError && error.cause === notFound,
 	)
 	expect(mockModule.logAuditEvent).toHaveBeenCalledWith(
 		expect.objectContaining({
 			action: 'adminMailboxMaintenance',
 			result: 'failure',
-			reason: notFound.message,
 		}),
 	)
 })

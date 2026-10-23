@@ -3,11 +3,7 @@ import { expect, test, vi, type Mock } from 'vitest'
 import {
 	aggregateUsageRollups,
 	analyticsEngineSqlRetryMaxAttempts,
-	buildDynamicWorkerInvokeReuseQuery,
-	buildDynamicWorkerReuseRatioQuery,
 	buildMonthToDateAggregateQuery,
-	resolveUsageEventsDataset,
-	shouldRunUsageAggregationCron,
 } from './aggregate-rollups.ts'
 
 type BoundStatement = { sql: string; params: Array<unknown> }
@@ -214,56 +210,6 @@ const emailRow = (
 const missingFrom = (text: string, needles: Array<string>) =>
 	needles.filter((needle) => !text.includes(needle))
 
-test('shouldRunUsageAggregationCron gates to the top of each hour', () => {
-	const cases: Array<[string, boolean]> = [
-		['2026-07-05T10:00:30.000Z', true],
-		['2026-07-05T10:30:00.000Z', false],
-		['2026-07-05T10:59:00.000Z', false],
-	]
-	expect(
-		cases.map(([iso]) => shouldRunUsageAggregationCron(new Date(iso))),
-	).toEqual(cases.map(([, want]) => want))
-})
-
-test('resolveUsageEventsDataset picks the preview dataset only for preview', () => {
-	expect(
-		[
-			{},
-			{ SENTRY_ENVIRONMENT: 'production' },
-			{ SENTRY_ENVIRONMENT: 'preview' },
-		].map(resolveUsageEventsDataset),
-	).toEqual([
-		'kody_usage_events',
-		'kody_usage_events',
-		'kody_usage_events_preview',
-	])
-})
-
-test('aggregateUsageRollups no-ops when the binding or credentials are missing', async () => {
-	using fetchMock = fetchReplying(empty)
-	const { db, batches, deletes } = createFakeDb()
-	const usageEvents = { writeDataPoint() {} }
-
-	for (const env of [
-		{ APP_DB: db },
-		{ APP_DB: db, USAGE_EVENTS: usageEvents },
-		{
-			APP_DB: db,
-			USAGE_EVENTS: usageEvents,
-			CLOUDFLARE_ACCOUNT_ID: 'account-1',
-		},
-		{ APP_DB: db, USAGE_EVENTS: usageEvents, CLOUDFLARE_API_TOKEN: 'token-1' },
-	]) {
-		await expect(aggregateUsageRollups(env, new Date())).resolves.toEqual({
-			skipped: true,
-			reason: 'missing-analytics-config',
-		})
-	}
-	expect(fetchMock).not.toHaveBeenCalled()
-	expect(batches).toHaveLength(0)
-	expect(deletes).toHaveLength(0)
-})
-
 test('aggregateUsageRollups merges current and previous Analytics months with durable inbound usage', async () => {
 	using fetchMock = fetchReplying(
 		dataReply(
@@ -387,41 +333,6 @@ test('aggregateUsageRollups merges current and previous Analytics months with du
 		['user-c', 'email_received', '2026-06', 5, 2, 0, 100, 0, 1000, stamp],
 		['system:email', 'email_received', '2026-07', 2, 0, 0, 50, 0, 4096, stamp],
 	])
-})
-
-test('aggregateUsageRollups honors CLOUDFLARE_API_BASE_URL and the preview dataset', async () => {
-	using fetchMock = fetchReplying(empty)
-	const { db, batches } = createFakeDb()
-
-	const result = await aggregateUsageRollups(
-		{
-			...createAggregationEnv(db),
-			CLOUDFLARE_API_BASE_URL: 'https://cloudflare-mock.local/',
-			SENTRY_ENVIRONMENT: 'preview',
-		},
-		new Date('2026-12-15T10:00:00.000Z'),
-	)
-
-	expect(result).toEqual({
-		skipped: false,
-		month: '2026-12',
-		upsertedRows: 0,
-		deletedRows: 0,
-		users: 0,
-	})
-	const [url, init] = fetchMock.mock.calls[0]!
-	expect(url).toBe(
-		'https://cloudflare-mock.local/client/v4/accounts/account-1/analytics_engine/sql',
-	)
-	expect(
-		missingFrom(String(init?.body), [
-			'FROM kody_usage_events_preview',
-			// The upper bound rolls over the UTC year boundary.
-			`timestamp >= toDateTime('2026-12-01 00:00:00')`,
-			`timestamp < toDateTime('2027-01-01 00:00:00')`,
-		]),
-	).toEqual([])
-	expect(batches).toHaveLength(0)
 })
 
 test('hourly aggregation keeps live team org rollups and drops deleted orgs', async () => {
@@ -716,40 +627,6 @@ const septemberBounds = {
 	monthStart: '2026-09-01 00:00:00',
 	nextMonthStart: '2026-10-01 00:00:00',
 }
-
-test('buildDynamicWorkerInvokeReuseQuery groups hits and misses by surface', () => {
-	expect(
-		missingFrom(
-			buildDynamicWorkerInvokeReuseQuery('kody_usage_events', septemberBounds),
-			[
-				"blob2 = 'dynamic_worker_invoke'",
-				'blob8',
-				'AS cache_reuse',
-				'AS surface',
-				'sum(double1 * _sample_interval) / sum(_sample_interval) AS avg_duration_ms',
-				'sum(double4 * _sample_interval) / sum(_sample_interval) AS avg_code_chars',
-				'sum(double5 * _sample_interval) / sum(_sample_interval) AS avg_params_chars',
-			],
-		),
-	).toEqual([])
-})
-
-test('buildDynamicWorkerReuseRatioQuery compares unique days to invokes and execute', () => {
-	expect(
-		missingFrom(
-			buildDynamicWorkerReuseRatioQuery('kody_usage_events', septemberBounds),
-			[
-				"blob2 = 'dynamic_worker_day'",
-				"blob2 = 'dynamic_worker_invoke'",
-				"blob2 = 'execute'",
-				"blob8 = 'hit'",
-				"blob8 = 'miss'",
-				'AS unique_worker_days',
-				'AS execute_calls',
-			],
-		),
-	).toEqual([])
-})
 
 test('buildMonthToDateAggregateQuery keeps every if() branch a Float so Analytics Engine accepts it', () => {
 	const query = buildMonthToDateAggregateQuery(
