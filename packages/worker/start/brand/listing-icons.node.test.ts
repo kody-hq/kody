@@ -31,70 +31,100 @@ test('MCP and PWA chrome icons are opaque PNG tiles', () => {
 	}
 })
 
-test('tab favicons are solid, full-bleed tiles for light and dark OS chrome', async () => {
-	const tiles: Array<[file: string, background: number]> = [
+async function readPixels(file: string) {
+	const bytes = readFileSync(path.join(publicDir, file))
+	const { data, info } = await sharp(bytes)
+		.ensureAlpha()
+		.raw()
+		.toBuffer({ resolveWithObject: true })
+	expect(info.width).toBe(info.height)
+	return {
+		size: info.width,
+		pixel: (x: number, y: number) => {
+			const offset = (y * info.width + x) * 4
+			return [...data.subarray(offset, offset + 4)]
+		},
+	}
+}
+
+test('tab favicons are rounded tiles: outlined on white, solid on black', async () => {
+	const tiles: Array<[file: string, plate: number]> = [
 		['favicon-16x16.png', 255],
 		['favicon-32x32.png', 255],
 		['favicon-16x16-dark.png', 0],
 		['favicon-32x32-dark.png', 0],
-		['apple-touch-icon.png', 255],
-		['android-chrome-192x192.png', 255],
-		['android-chrome-512x512.png', 255],
 	]
-	for (const [file, background] of tiles) {
-		const bytes = readFileSync(path.join(publicDir, file))
-		const { data, info } = await sharp(bytes)
-			.ensureAlpha()
-			.raw()
-			.toBuffer({ resolveWithObject: true })
-		expect(info.width).toBe(info.height)
-		const pixel = (x: number, y: number) => {
-			const offset = (y * info.width + x) * 4
-			return [...data.subarray(offset, offset + 4)]
-		}
-		const last = info.width - 1
-		// Every corner is the opaque plate color: no transparent padding.
+	for (const [file, plate] of tiles) {
+		const { size, pixel } = await readPixels(file)
+		const last = size - 1
+		const middle = Math.floor(size / 2)
+		// Rounded corners: the very corner pixels are transparent.
 		for (const [x, y] of [
 			[0, 0],
 			[last, 0],
 			[0, last],
 			[last, last],
 		] as const) {
+			expect({ file, x, y, alpha: pixel(x, y)[3] }).toEqual({
+				file,
+				x,
+				y,
+				alpha: 0,
+			})
+		}
+		// Edge midpoints sit on the opaque plate.
+		for (const [x, y] of [
+			[middle, 0],
+			[0, middle],
+		] as const) {
 			expect({ file, x, y, pixel: pixel(x, y) }).toEqual({
 				file,
 				x,
 				y,
-				pixel: [background, background, background, 255],
+				pixel: [plate, plate, plate, 255],
 			})
 		}
-		// The mark spans the tile edge to edge: ink reaches the outer columns.
-		const edgeInk = (fromLeft: boolean) => {
-			let strongest = 0
-			for (let step = 0; step < Math.ceil(info.width * 0.04); step += 1) {
-				const x = fromLeft ? step : last - step
-				for (let y = 0; y < info.height; y += 1) {
-					strongest = Math.max(
-						strongest,
-						Math.abs(pixel(x, y)[0]! - background),
-					)
-				}
+		// The mark contrasts with the plate somewhere inside the tile.
+		let strongest = 0
+		for (let y = 0; y < size; y += 1) {
+			for (let x = 0; x < size; x += 1) {
+				strongest = Math.max(strongest, Math.abs(pixel(x, y)[0]! - plate))
 			}
-			return strongest
 		}
-		const leftInk = edgeInk(true) > 24 ? 1 : 0
-		const rightInk = edgeInk(false) > 24 ? 1 : 0
-		expect({ file, leftInk: leftInk > 0, rightInk: rightInk > 0 }).toEqual({
-			file,
-			leftInk: true,
-			rightInk: true,
-		})
+		expect({ file, inked: strongest > 200 }).toEqual({ file, inked: true })
+	}
+	// Light tiles use the outlined mark: the cheek beside the nose stays white
+	// (the solid black mark would ink it).
+	const light = await readPixels('favicon-32x32.png')
+	expect(light.pixel(12, 21)).toEqual([255, 255, 255, 255])
+})
+
+test('home-screen icons are opaque outlined-on-white squares', async () => {
+	for (const file of [
+		'apple-touch-icon.png',
+		'android-chrome-192x192.png',
+		'android-chrome-512x512.png',
+	]) {
+		const { size, pixel } = await readPixels(file)
+		const last = size - 1
+		for (const [x, y] of [
+			[0, 0],
+			[last, last],
+		] as const) {
+			expect({ file, pixel: pixel(x, y) }).toEqual({
+				file,
+				pixel: [255, 255, 255, 255],
+			})
+		}
 	}
 })
 
-test('svg favicon is a full-bleed tile that follows the OS color scheme', () => {
+test('svg favicon is a rounded tile that follows the OS color scheme', () => {
 	const svg = readFileSync(path.join(publicDir, 'favicon.svg'), 'utf8')
-	expect(svg).toContain('<rect')
+	expect(svg).toMatch(/<rect[^>]+rx="/)
 	expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)/)
+	expect(svg).toContain('clip-path=')
+	expect(svg).toContain('fill-rule="evenodd"')
 	const viewBox = svg
 		.match(/viewBox="([^"]+)"/)?.[1]
 		?.split(' ')

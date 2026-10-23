@@ -30,7 +30,6 @@ test('mark path metadata stays evenodd and theme-downloadable', () => {
 	expect(svg).toContain('fill-rule="evenodd"')
 	expect(svg).toContain('fill="#000000"')
 	expect(kodyBrandAssets.guide).toBe('/brand-guide')
-	expect(kodyBrandAssets.pngSolidLight).toContain('solid-light')
 	expect(kodyBrandAssets.pngSolidDark).toContain('solid-dark')
 	expect(kodyBrandAssets.svgOutlined).toContain('outlined')
 	expect(kodyBrandAssets.pngOutlined).toContain('outlined')

@@ -16,18 +16,11 @@ import {
 
 const solidDownloads = [
 	{
-		href: kodyBrandAssets.pngSolidLight,
-		filename: 'kody-mark-solid-light.png',
-		label: 'Download PNG: solid black on white',
-		alt: 'Solid black Kody mark on a white square',
-		note: 'Best for dark-ink app icons and marketplace uploads.',
-	},
-	{
 		href: kodyBrandAssets.pngOutlinedSolidLight,
 		filename: 'kody-mark-outlined-solid-light.png',
 		label: 'Download PNG: outlined black on white',
 		alt: 'Outlined black Kody mark on a white square',
-		note: 'Light-mode line-art on a fixed white plate.',
+		note: 'For light surfaces, app icons, and marketplace uploads.',
 	},
 	{
 		href: kodyBrandAssets.pngSolidDark,

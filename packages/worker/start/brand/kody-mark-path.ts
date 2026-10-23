@@ -50,8 +50,6 @@ export const kodyBrandAssets = {
 	pngWhite: '/images/brand/kody-mark-white.png',
 	/** Transparent outlined mark (black ink). */
 	pngOutlined: '/images/brand/kody-mark-outlined.png',
-	/** Black mark on opaque white — for surfaces without theme control. */
-	pngSolidLight: '/images/brand/kody-mark-solid-light.png',
 	/** White mark on opaque black — for surfaces without theme control. */
 	pngSolidDark: '/images/brand/kody-mark-solid-dark.png',
 	/** Outlined black mark on opaque white — light-background solid plate. */

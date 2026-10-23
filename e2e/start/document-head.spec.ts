@@ -40,7 +40,12 @@ test('SSR preserves document metadata and critical resource ordering', async ({
 			).toHaveAttribute('sizes', '16x16')
 			await expect(
 				page.locator('head link[rel="icon"][href="/favicon.ico"]'),
-			).toHaveAttribute('sizes', 'any')
+			).toHaveAttribute('sizes', '32x32')
+			// Chromium picks the last matching icon link; the scheme-aware SVG
+			// has to win over the light-only ICO and PNGs.
+			await expect(
+				page.locator('head link[rel="icon"]').last(),
+			).toHaveAttribute('href', '/favicon.svg')
 			await expect(
 				page.locator(
 					'head link[rel="apple-touch-icon"][href="/apple-touch-icon.png"]',
