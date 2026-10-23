@@ -1086,6 +1086,13 @@ export function __kodyCreatePackageBoundFetch(packageId) {
 	};
 }
 
+// Captured before package code runs. The host \`kody\` is the CLI's path
+// proxy: every property read (including \`.call\` / \`.apply\`) extends the
+// runtime path, so \`fn.call(kody, args)\` would hop as \`kody.<name>.call\`
+// and fail with "Unknown runtime function". Reflect.apply reaches the
+// proxy's apply trap directly with the \`kody.<name>\` path.
+const __kodyReflectApply = Reflect.apply;
+
 export function __kodyCreatePackageBoundKody(packageId) {
 	const binding = __kodyPackageBinding(packageId);
 	return new Proxy(Object.create(null), {
@@ -1102,9 +1109,11 @@ export function __kodyCreatePackageBoundKody(packageId) {
 				}
 				if (__kodyBindingScopedKodyCalls.has(name)) {
 					const input = args && typeof args === "object" ? args : {};
-					return fn.call(kody, { ...input, packageId: binding ?? "" });
+					return __kodyReflectApply(fn, kody, [
+						{ ...input, packageId: binding ?? "" },
+					]);
 				}
-				return fn.call(kody, args);
+				return __kodyReflectApply(fn, kody, [args]);
 			};
 		},
 	});
