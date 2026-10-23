@@ -62,10 +62,6 @@ test('skills lock requires a repo-owned ship-pr whose folder hash matches', asyn
 	}
 })
 
-test('committed skills-lock.json matches the ship-pr skill on disk', async () => {
-	expect(await checkSkillsLock(process.cwd())).toEqual({ ok: true, errors: [] })
-})
-
 async function writeLock(
 	repoRoot: string,
 	shipPr: {

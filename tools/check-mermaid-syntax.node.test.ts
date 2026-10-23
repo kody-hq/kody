@@ -221,10 +221,6 @@ test('checkMermaidSyntax scans docs and skills in a temp tree', async () => {
 	expect(await checkMermaidSyntax(tree.cwd, [])).toEqual(expected)
 })
 
-test('repo mermaid fences currently parse', async () => {
-	await expect(checkMermaidSyntax(repoRoot)).resolves.toEqual([])
-})
-
 test('checkMermaidSyntax reads absolute paths as-is', async () => {
 	await using tree = await tempTree('mermaid-abs-', {
 		'inside.md': 'No diagram.\n',

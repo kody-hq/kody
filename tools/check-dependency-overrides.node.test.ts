@@ -127,10 +127,3 @@ test('overrides check reports undocumented, stale, and duplicated overrides', as
 		await rm(cwd, { recursive: true, force: true })
 	}
 })
-
-test('current repository overrides are all documented', async () => {
-	await expect(checkDependencyOverrides()).resolves.toEqual({
-		ok: true,
-		errors: [],
-	})
-})

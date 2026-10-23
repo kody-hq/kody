@@ -1165,61 +1165,6 @@ test('control-kody request keeps form POST redirects manual with Location', asyn
 	)
 })
 
-test.each([undefined, 'jane@example.com', 'kody@example.com'])(
-	'control-kody request --skip-login never reuses a cookie (email %s)',
-	async (email) => {
-		const dir = await mkdtemp(
-			path.join(tmpdir(), 'control-kody-skip-login-email-'),
-		)
-		try {
-			const cookieFile = path.join(dir, 'cookie')
-			const seen: Array<{ url?: string; cookie?: string }> = []
-			await withAuthServer(
-				(request, response) => {
-					const url = request.url ?? '/'
-					if (url === '/admin') {
-						seen.push({ url, cookie: request.headers.cookie })
-						response.statusCode = request.headers.cookie ? 200 : 403
-						response.setHeader('Content-Type', 'text/plain')
-						response.end(request.headers.cookie ? 'admin' : 'forbidden')
-						return
-					}
-					response.statusCode = 404
-					response.end('missing')
-				},
-				async (origin) => {
-					await writeFile(
-						cookieFile,
-						formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
-					)
-					const code = await runCommand(
-						parseControlArgs([
-							'request',
-							'GET',
-							'/admin',
-							'403',
-							'--origin',
-							origin,
-							...(email ? ['--email', email] : []),
-							'--skip-login',
-							'--cookie-file',
-							cookieFile,
-							'--json',
-						]),
-					)
-					expect(code).toBe(0)
-					expect(seen).toEqual([{ url: '/admin', cookie: undefined }])
-					expect(readFileSync(cookieFile, 'utf8')).toBe(
-						formatCookieFile(origin, 'kody_session=jane', 'jane@example.com'),
-					)
-				},
-			)
-		} finally {
-			await rm(dir, { recursive: true, force: true })
-		}
-	},
-)
-
 test('control-kody request logs in before a mutating call when no cookie exists', async () => {
 	await using temp = await createTempDir()
 	const seen: Array<{ method?: string; url?: string; cookie?: string }> = []

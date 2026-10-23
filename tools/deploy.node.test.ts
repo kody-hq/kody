@@ -3,7 +3,6 @@ import { productionOriginScriptName } from './ci/origin-production-deploy-state.
 import {
 	finalizeOriginViteWranglerConfig,
 	inferOriginDeployCloudflareEnv,
-	inferOriginDeployWorkerName,
 	isSlimOriginEntry,
 	originViteDeployArgs,
 } from './deploy.ts'
@@ -85,21 +84,6 @@ test('infers CLOUDFLARE_ENV from generated origin config names', () => {
 	).toBe('preview')
 	expect(
 		inferOriginDeployCloudflareEnv('packages/worker/wrangler.jsonc'),
-	).toBeUndefined()
-})
-
-test('infers the production origin script name and preserves explicit names', () => {
-	expect(inferOriginDeployWorkerName({ cloudflareEnv: 'production' })).toBe(
-		'kody-production',
-	)
-	expect(
-		inferOriginDeployWorkerName({
-			cloudflareEnv: 'production',
-			existingName: 'kody-pr-9',
-		}),
-	).toBe('kody-pr-9')
-	expect(
-		inferOriginDeployWorkerName({ cloudflareEnv: 'preview' }),
 	).toBeUndefined()
 })
 

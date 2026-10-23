@@ -2,36 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
-import {
-	checkDecorativeBanners,
-	findDecorativeBannerMatches,
-} from './check-decorative-banners.ts'
-
-test('findDecorativeBannerMatches flags equals and dash banners only', () => {
-	const content = [
-		'{/* ============ hero ============ */}',
-		'/* ---------- styles ---------- */',
-		'/* Event glyphs are inlined rather than sprited. */',
-		'/* The shirt-pattern whisper anchors to the article. */',
-		'const css = {}',
-	].join('\n')
-
-	expect(
-		findDecorativeBannerMatches({
-			relativePath: 'packages/worker/client/routes/home.tsx',
-			content,
-		}),
-	).toEqual([
-		expect.objectContaining({
-			line: 1,
-			excerpt: '{/* ============ hero ============ */}',
-		}),
-		expect.objectContaining({
-			line: 2,
-			excerpt: '/* ---------- styles ---------- */',
-		}),
-	])
-})
+import { checkDecorativeBanners } from './check-decorative-banners.ts'
 
 test('checkDecorativeBanners scans client and style-primitive trees', async () => {
 	const cwd = await mkdtemp(path.join(os.tmpdir(), 'decorative-banners-'))

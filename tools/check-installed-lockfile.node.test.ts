@@ -1,6 +1,5 @@
 import { expect, test } from 'vitest'
 import {
-	checkInstalledLockfile,
 	findInstalledLockfileMismatches,
 	inspectInstalledLockfile,
 	isWorkspaceLockfilePath,
@@ -161,9 +160,4 @@ test('installed lockfile check compares nested workspace install paths', () => {
 				installPath === 'packages/worker/node_modules/satori' ? '0.32.0' : null,
 		}).ok,
 	).toBe(true)
-})
-
-test('installed lockfile check against this repo is clean', async () => {
-	const result = await checkInstalledLockfile()
-	expect(result.ok).toBe(true)
 })

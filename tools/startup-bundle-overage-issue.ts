@@ -39,7 +39,7 @@ function formatStartupBundleOverageWarning(overage: StartupBundleOverage) {
 	)
 }
 
-export function buildStartupBundleOverageIssueBody(
+function buildStartupBundleOverageIssueBody(
 	overage: StartupBundleOverage,
 	context: {
 		sha?: string | null
@@ -184,7 +184,7 @@ function findOpenOverageIssue(
 	)
 }
 
-export function resolveStartupBundleOverageRunUrl(
+function resolveStartupBundleOverageRunUrl(
 	env: NodeJS.ProcessEnv = process.env,
 ) {
 	if (env.GITHUB_RUN_URL) return env.GITHUB_RUN_URL

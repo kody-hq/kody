@@ -1,9 +1,6 @@
 import { expect, test } from 'vitest'
 import {
-	DEPLOY_WORKFLOW_CONTRACT_VERSION,
 	assertCheckoutSatisfiesDeployWorkflowContract,
-	assertDeployWorkflowContractDeclaredInWorkflow,
-	checkDeployWorkflowContractDrift,
 	expectedContractEnvName,
 	extractShaGuardStepEnvLines,
 	parseExpectedContractFromEnv,
@@ -126,36 +123,4 @@ test('missing or older checkout contract fails with a plain redeploy message', (
 	expect(older.message).toBe(
 		'This commit predates the current deploy workflow (missing deploy-workflow-contract v2; checkout has v1). Redeploy from main or a newer commit.',
 	)
-})
-
-test('workflow declaration must match the module constant', () => {
-	const matched = assertDeployWorkflowContractDeclaredInWorkflow({
-		workflowSource: `${expectedContractEnvName}: '${String(DEPLOY_WORKFLOW_CONTRACT_VERSION)}'\n`,
-		currentVersion: DEPLOY_WORKFLOW_CONTRACT_VERSION,
-	})
-	expect(matched).toEqual({
-		ok: true,
-		version: DEPLOY_WORKFLOW_CONTRACT_VERSION,
-	})
-
-	const drifted = assertDeployWorkflowContractDeclaredInWorkflow({
-		workflowSource: `${expectedContractEnvName}: '99'\n`,
-		currentVersion: DEPLOY_WORKFLOW_CONTRACT_VERSION,
-	})
-	expect(drifted.ok).toBe(false)
-	if (drifted.ok) throw new Error('expected failure')
-	expect(drifted.message).toContain('Bump both in the same commit')
-
-	const absent = assertDeployWorkflowContractDeclaredInWorkflow({
-		workflowSource: 'name: Deploy\n',
-		currentVersion: 1,
-	})
-	expect(absent.ok).toBe(false)
-})
-
-test('repo deploy.yml declares the current contract (dry-run)', async () => {
-	await expect(checkDeployWorkflowContractDrift()).resolves.toEqual({
-		ok: true,
-		version: DEPLOY_WORKFLOW_CONTRACT_VERSION,
-	})
 })

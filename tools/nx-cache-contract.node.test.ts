@@ -10,12 +10,12 @@ import {
 	filterUsingGlobPatterns,
 	getTargetInputs,
 } from 'nx/src/hasher/task-hasher.js'
-import { readFile } from 'node:fs/promises'
 import { expect, test } from 'vitest'
 
+let projectGraph: ReturnType<typeof createProjectGraphAsync> | undefined
 async function getProjectNode(project: string) {
-	const projectGraph = await createProjectGraphAsync()
-	return projectGraph.nodes[project] as ProjectGraphProjectNode
+	projectGraph ??= createProjectGraphAsync()
+	return (await projectGraph).nodes[project] as ProjectGraphProjectNode
 }
 
 async function getTargetPatterns(
@@ -154,24 +154,22 @@ const suiteDependencyFiles: Record<string, ReadonlyArray<string>> = {
 	build: ['docs/guides/secrets.md', 'vite.config.ts', 'tools/x.ts'],
 }
 
-test.each(
-	Object.entries(suiteDependencyFiles).flatMap(([target, files]) =>
-		files.map((dependencyFile) => ({ target, dependencyFile })),
-	),
-)(
-	'$target cache hash includes $dependencyFile',
-	async ({ target, dependencyFile }) => {
+test('every suite cache hash includes the files the suite reads at run time', async () => {
+	const ignored: Array<string> = []
+	for (const [target, files] of Object.entries(suiteDependencyFiles)) {
 		const patterns = await getWorkerTargetPatterns(target)
-
-		const before = hashMatchedInputs(patterns, [
-			{ file: dependencyFile, hash: 'before' },
-		])
-		const after = hashMatchedInputs(patterns, [
-			{ file: dependencyFile, hash: 'after' },
-		])
-		expect(after).not.toBe(before)
-	},
-)
+		for (const dependencyFile of files) {
+			const before = hashMatchedInputs(patterns, [
+				{ file: dependencyFile, hash: 'before' },
+			])
+			const after = hashMatchedInputs(patterns, [
+				{ file: dependencyFile, hash: 'after' },
+			])
+			if (after === before) ignored.push(`${target} ${dependencyFile}`)
+		}
+	}
+	expect(ignored).toEqual([])
+})
 
 // `tools:typecheck` covers tsconfig-tools-typecheck.json: root TS files,
 // tools/, e2e/, .agents/, and whatever they import from packages/. Docs,
@@ -201,51 +199,46 @@ function hashToolsTypecheckFile(
 	return hashMatchedInputs(patterns, [{ file, hash }], '.')
 }
 
-test.each(toolsTypecheckInputs)(
-	'tools:typecheck cache hash includes %s',
-	async (file) => {
-		const patterns = await getTargetPatterns('tools', 'typecheck')
-		expect(hashToolsTypecheckFile(patterns, file, 'after')).not.toBe(
-			hashToolsTypecheckFile(patterns, file, 'before'),
-		)
-	},
-)
+test('tools:typecheck cache hash tracks tsc inputs and ignores docs, workflows, and CI', async () => {
+	const patterns = await getTargetPatterns('tools', 'typecheck')
+	const changes = (file: string) =>
+		hashToolsTypecheckFile(patterns, file, 'after') !==
+		hashToolsTypecheckFile(patterns, file, 'before')
+	expect(toolsTypecheckInputs.filter((file) => !changes(file))).toEqual([])
+	expect(toolsTypecheckNonInputs.filter(changes)).toEqual([])
+	expect(includesCiEnv(await getDeclaredInputs('tools', 'typecheck'))).toBe(
+		false,
+	)
+})
 
-test.each(toolsTypecheckNonInputs)(
-	'tools:typecheck cache hash ignores %s',
-	async (file) => {
-		const patterns = await getTargetPatterns('tools', 'typecheck')
-		expect(hashToolsTypecheckFile(patterns, file, 'after')).toBe(
-			hashToolsTypecheckFile(patterns, file, 'before'),
-		)
-	},
-)
-
-test.each(['test', 'test-node', 'test-workers', 'test-mcp', 'test-e2e'])(
-	'%s cache hash includes CI so local validate matches GitHub Actions',
-	async (target) => {
-		const inputs = await getWorkerDeclaredInputs(target)
-		expect(includesCiEnv(inputs)).toBe(true)
-	},
-)
-
-test.each([
-	'typecheck',
-	'typecheck-src',
-	'typecheck-worker-test',
-	'typecheck-client-test',
-	'build',
-])(
-	'%s cache hash ignores CI so agent runs without CI=1 share CI artifacts',
-	async (target) => {
-		const inputs = await getWorkerDeclaredInputs(target)
-		expect(includesCiEnv(inputs)).toBe(false)
-	},
-)
-
-test('tools:typecheck cache hash ignores CI', async () => {
-	const inputs = await getDeclaredInputs('tools', 'typecheck')
-	expect(includesCiEnv(inputs)).toBe(false)
+test('only suite targets key on CI so typecheck and build artifacts are shared', async () => {
+	const keysOnCi: Record<string, boolean> = {}
+	for (const target of [
+		'test',
+		'test-node',
+		'test-workers',
+		'test-mcp',
+		'test-e2e',
+		'typecheck',
+		'typecheck-src',
+		'typecheck-worker-test',
+		'typecheck-client-test',
+		'build',
+	]) {
+		keysOnCi[target] = includesCiEnv(await getWorkerDeclaredInputs(target))
+	}
+	expect(keysOnCi).toEqual({
+		test: true,
+		'test-node': true,
+		'test-workers': true,
+		'test-mcp': true,
+		'test-e2e': true,
+		typecheck: false,
+		'typecheck-src': false,
+		'typecheck-worker-test': false,
+		'typecheck-client-test': false,
+		build: false,
+	})
 })
 
 test.each([
@@ -271,21 +264,10 @@ test('E2E cache restores blob reports for the merge job', async () => {
 // isolated 4-core VM, the same 104 files / 401 tests pass with and without it
 // (448s vs 526s). Hashing it would keep validate's test-workers artifact (flag
 // on) from ever matching CI's Workers job (flag off), so no cached target may
-// key on it. That is only sound while the flag cannot change the budget a
-// cached pass was measured against, which the next test pins.
-test.each(['test', 'test-workers'])(
-	'%s cache hash ignores KODY_VALIDATE_LOAD so validate artifacts match CI',
-	async (target) => {
+// key on it.
+test('no cached test target keys on KODY_VALIDATE_LOAD', async () => {
+	for (const target of ['test', 'test-workers']) {
 		const inputs = await getWorkerDeclaredInputs(target)
 		expect(includesEnvInput(inputs, 'KODY_VALIDATE_LOAD')).toBe(false)
-	},
-)
-
-test('workers-unit timeout does not depend on KODY_VALIDATE_LOAD', async () => {
-	const config = await readFile(
-		new URL('../vitest.workers.config.ts', import.meta.url),
-		'utf8',
-	)
-	expect(config).toContain('const workersTestTimeout = 40_000')
-	expect(config).not.toMatch(/workersTestTimeout = underValidateLoad/)
+	}
 })

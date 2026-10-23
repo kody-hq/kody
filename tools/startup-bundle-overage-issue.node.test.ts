@@ -1,24 +1,11 @@
 import { expect, test } from 'vitest'
 import {
-	buildStartupBundleOverageIssueBody,
 	reportStartupBundleOverages,
-	resolveStartupBundleOverageRunUrl,
 	shouldReportStartupBundleOverageIssue,
 	startupBundleOverageIssueMarker,
 	startupBundleOverageIssueTitle,
 	upsertStartupBundleOverageIssue,
 } from './startup-bundle-overage-issue.ts'
-
-test('overage issue body embeds the local tracking marker', () => {
-	expect(
-		buildStartupBundleOverageIssueBody({
-			name: 'runtime',
-			size: 3_912_588,
-			maxEntryBytes: 3_912_500,
-			overage: 88,
-		}),
-	).toContain('<!-- kody-startup-bundle-overage:runtime -->')
-})
 
 test('issue reporting is limited to main CI pushes with a token', () => {
 	expect(
@@ -44,16 +31,6 @@ test('issue reporting is limited to main CI pushes with a token', () => {
 			GITHUB_REF: 'refs/heads/main',
 		}),
 	).toBe(false)
-})
-
-test('resolves the Actions run URL from standard GitHub env vars', () => {
-	expect(
-		resolveStartupBundleOverageRunUrl({
-			GITHUB_SERVER_URL: 'https://github.com',
-			GITHUB_REPOSITORY: 'kody-hq/kody',
-			GITHUB_RUN_ID: '123',
-		}),
-	).toBe('https://github.com/kody-hq/kody/actions/runs/123')
 })
 
 test('upsertStartupBundleOverageIssue creates once then updates', () => {

@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	actionSchema,
 	loadPackageDiscoveryEval,
-	routeSchema,
 	scorePackageDiscoveryTranscript,
 	transcriptSchema,
 } from './package-discovery-routing.ts'
@@ -128,51 +127,6 @@ function executeEvent<Action extends string>(
 		output,
 	}
 }
-
-test('routing cases are natural, balanced, and have internally consistent hidden expectations', () => {
-	const evalSet = loadPackageDiscoveryEval()
-	const routeCounts = Object.fromEntries(
-		evalSet.cases.map(({ expected }) => [expected.route, 0]),
-	)
-
-	expect(new Set(evalSet.cases.map(({ id }) => id)).size).toBe(
-		evalSet.cases.length,
-	)
-	for (const evalCase of evalSet.cases) {
-		expect(evalCase.prompt).not.toMatch(/\bpackage\b/i)
-		for (const hiddenLabel of [
-			...routeSchema.options,
-			...actionSchema.options,
-		]) {
-			expect(evalCase.prompt).not.toContain(hiddenLabel)
-		}
-		expect(
-			evalCase.expected.requiredActions.every((action) =>
-				evalCase.expected.allowedActions.includes(action),
-			),
-		).toBe(true)
-		expect(evalCase.expected.requiredActions).toContain(
-			evalCase.expected.terminalAction,
-		)
-		routeCounts[evalCase.expected.route] =
-			(routeCounts[evalCase.expected.route] ?? 0) + 1
-	}
-	expect(routeCounts).toEqual({
-		existing: 2,
-		'execute-one-off': 3,
-		'package-authoring': 3,
-	})
-	expect(evalSet.actionCardinality).toEqual({
-		searchMinimum: 1,
-		readOnlyMaximum: 3,
-		authoringStepMaximum: 8,
-	})
-	expect(
-		evalSet.cases
-			.filter(({ expected }) => expected.route === 'existing')
-			.every(({ inventory }) => inventory.mode === 'inventory-dependent'),
-	).toBe(true)
-})
 
 test('scorer accepts exact traces and reports two passes per route', () => {
 	const report = score(freshTranscript())

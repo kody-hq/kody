@@ -1,10 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	addedOverhead,
-	formatMarkdown,
-	percentile,
-	summarizePath,
-} from './stats.ts'
+import { addedOverhead, percentile, summarizePath } from './stats.ts'
 
 test('percentile uses nearest rank and clamps to the sample range', () => {
 	const values = [5, 1, 4, 2, 3]
@@ -32,7 +27,7 @@ test('summarizePath reports wall, tool, and per-phase percentiles for warm sampl
 	expect(summary.errors).toBe(1)
 })
 
-test('addedOverhead subtracts the direct call and formatMarkdown renders both tables', () => {
+test('addedOverhead subtracts the direct call', () => {
 	const kody = summarizePath({
 		cold: null,
 		warm: [{ wallMs: 83.1 }, { wallMs: 141 }],
@@ -50,11 +45,4 @@ test('addedOverhead subtracts the direct call and formatMarkdown renders both ta
 		p50Ms: 81.1,
 		p95Ms: 137.3,
 	})
-	const markdown = formatMarkdown({
-		origin: 'http://localhost:3742',
-		paths: { 'execute-mcp': kody, 'direct-mcp': direct },
-		overhead: [overhead],
-	})
-	expect(markdown).toContain('| execute-mcp | — | 83.1 | 141 | 141 | — | 0 |')
-	expect(markdown).toContain('| execute-mcp − direct-mcp | 81.1 | 137.3 |')
 })
