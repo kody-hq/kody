@@ -63,6 +63,7 @@ test('admin published importable artifact backfill enforces admin and defaults t
 		publishedPackages: 2,
 		packagesNeedingRebuild: 1,
 		missingImportableArtifacts: 3,
+		packagesMissingSubpathImportable: 1,
 		rebuiltPackages: 0,
 		failedPackages: 0,
 		alreadyBuiltPackages: 1,
@@ -87,6 +88,7 @@ test('admin published importable artifact backfill enforces admin and defaults t
 		ownerUserIds: undefined,
 	})
 	expect(result.packagesNeedingRebuild).toBe(1)
+	expect(result.packagesMissingSubpathImportable).toBe(1)
 	expect(auditEventSummaries()).toEqual([
 		'mcp_capability_denied:failure',
 		'adminPublishedImportableArtifactBackfill:success',
