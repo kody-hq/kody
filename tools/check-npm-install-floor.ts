@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -31,6 +31,7 @@ import { isExecutedDirectly, resolveNpmCommand } from './node-runtime.ts'
 
 type RootPackageJson = {
 	packageManager?: unknown
+	workspaces?: unknown
 	devEngines?: {
 		packageManager?: unknown
 	}
@@ -128,6 +129,50 @@ export function lockfileWorkspacePaths(lock: PackageLock): Array<string> {
 		.toSorted()
 }
 
+/**
+ * Workspace directories declared in root `package.json` `workspaces`. Supports
+ * literal paths and a trailing `/*` (one directory level), which is every form
+ * this repo uses. A workspace the lockfile does not list yet still gets staged,
+ * so the floor npm sees the same tree the author's npm saw.
+ */
+export function declaredWorkspacePaths(
+	pkg: RootPackageJson,
+	listDirectories: (relativeDir: string) => Array<string>,
+): Array<string> {
+	const entries = Array.isArray(pkg.workspaces)
+		? pkg.workspaces.filter(
+				(entry): entry is string => typeof entry === 'string',
+			)
+		: []
+	const paths = new Set<string>()
+	for (const entry of entries) {
+		const normalized = entry.replace(/^\.\//, '').replace(/\/+$/, '')
+		if (normalized.endsWith('/*')) {
+			const parent = normalized.slice(0, -2)
+			for (const child of listDirectories(parent)) {
+				paths.add(`${parent}/${child}`)
+			}
+		} else if (normalized) {
+			paths.add(normalized)
+		}
+	}
+	return [...paths].toSorted()
+}
+
+function listDirectoriesUnder(repoRoot: string) {
+	return (relativeDir: string) => {
+		try {
+			return readdirSync(path.join(repoRoot, relativeDir), {
+				withFileTypes: true,
+			})
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => entry.name)
+		} catch {
+			return []
+		}
+	}
+}
+
 export function floorInstallArgs(floor: string, npmArgs: Array<string>) {
 	return ['exec', '--yes', `--package=npm@${floor}`, '--', 'npm', ...npmArgs]
 }
@@ -165,6 +210,13 @@ async function stageManifests(repoRoot: string, stageDir: string) {
 		'utf8',
 	)
 	const lock = JSON.parse(lockText) as PackageLock
+	const pkg = JSON.parse(
+		await readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+	) as RootPackageJson
+	const workspacePaths = new Set([
+		...lockfileWorkspacePaths(lock),
+		...declaredWorkspacePaths(pkg, listDirectoriesUnder(repoRoot)),
+	])
 	await copyFile(
 		path.join(repoRoot, 'package.json'),
 		path.join(stageDir, 'package.json'),
@@ -176,7 +228,7 @@ async function stageManifests(repoRoot: string, stageDir: string) {
 	if (existsSync(path.join(repoRoot, '.npmrc'))) {
 		await copyFile(path.join(repoRoot, '.npmrc'), path.join(stageDir, '.npmrc'))
 	}
-	for (const workspacePath of lockfileWorkspacePaths(lock)) {
+	for (const workspacePath of [...workspacePaths].toSorted()) {
 		const source = path.join(repoRoot, workspacePath, 'package.json')
 		if (!existsSync(source)) continue
 		await mkdir(path.join(stageDir, workspacePath), { recursive: true })
@@ -187,6 +239,9 @@ async function stageManifests(repoRoot: string, stageDir: string) {
 function runNpm(args: Array<string>, cwd: string) {
 	const result = spawnSync(resolveNpmCommand(), args, {
 		cwd,
+		// Node refuses to spawn `npm.cmd` without a shell on Windows. The args
+		// are fixed flags plus a semver version, so the shell sees no user input.
+		shell: process.platform === 'win32',
 		encoding: 'utf8',
 		env: { ...process.env, npm_config_update_notifier: 'false' },
 		timeout: 5 * 60_000,

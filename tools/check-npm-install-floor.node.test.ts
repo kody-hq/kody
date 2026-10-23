@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	declaredWorkspacePaths,
 	floorCiArgs,
 	floorInstallArgs,
 	formatFloorInstallFailure,
@@ -85,6 +86,31 @@ test('lockfileWorkspacePaths lists workspace manifests and skips node_modules', 
 			},
 		}),
 	).toEqual(['packages/cli', 'packages/worker'])
+})
+
+test('declaredWorkspacePaths expands one-level globs so a workspace missing from the lockfile is still staged', () => {
+	const directories: Record<string, Array<string>> = {
+		'packages/mock-servers': ['github', 'brand-new'],
+	}
+	expect(
+		declaredWorkspacePaths(
+			{
+				workspaces: [
+					'packages/worker',
+					'./packages/cli/',
+					'packages/mock-servers/*',
+					'packages/missing/*',
+				],
+			},
+			(dir) => directories[dir] ?? [],
+		),
+	).toEqual([
+		'packages/cli',
+		'packages/mock-servers/brand-new',
+		'packages/mock-servers/github',
+		'packages/worker',
+	])
+	expect(declaredWorkspacePaths({}, () => [])).toEqual([])
 })
 
 test('floorInstallArgs runs the floor npm through npm exec', () => {
