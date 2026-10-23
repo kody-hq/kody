@@ -226,6 +226,18 @@ export function toApiError(error: unknown): ApiError {
 			cause: error,
 		})
 	}
+	// Transient D1 before caller-error mapping: package prep and other hosts
+	// wrap retryable D1 failures in McpCallerError, and those must stay 503
+	// with Retry-After rather than becoming a 400 invalid_request.
+	if (isRetryableD1LockError(error)) {
+		return new ApiError({
+			status: 503,
+			code: 'internal_error',
+			message: transientDatabaseUnavailableMessage,
+			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
+			cause: error,
+		})
+	}
 	if (isMcpCallerError(error) || isJobIntervalFloorError(error)) {
 		const message = getErrorMessage(error)
 		return /\bnot found\b/i.test(message)
@@ -246,15 +258,6 @@ export function toApiError(error: unknown): ApiError {
 			message: unavailable.message,
 			details: unavailable.toApiDetails(),
 			cause: unavailable,
-		})
-	}
-	if (isRetryableD1LockError(error)) {
-		return new ApiError({
-			status: 503,
-			code: 'internal_error',
-			message: transientDatabaseUnavailableMessage,
-			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
-			cause: error,
 		})
 	}
 	return new ApiError({

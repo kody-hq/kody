@@ -26,10 +26,12 @@ export function RecordTableSearch(props: {
 	placeholder: string
 	value: string
 	onInput: (value: string) => void | Promise<void>
+	disabled?: boolean
 }) {
 	const [draft, setDraft] = useState<string | null>(null)
 	const edit = useRef(0)
 	function update(value: string) {
+		if (props.disabled) return
 		const submitted = ++edit.current
 		setDraft(value)
 		const settled = () => {
@@ -53,6 +55,7 @@ export function RecordTableSearch(props: {
 			autoCorrect="off"
 			spellCheck={false}
 			data-field-ring
+			disabled={props.disabled}
 			value={draft ?? props.value}
 			placeholder={props.placeholder}
 			aria-label={props.label}

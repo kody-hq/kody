@@ -93,10 +93,13 @@ link's kind, team or package, and preset in the details.
 A scheduled job, subscription, or webhook runs only after a person turns it on
 for themselves, by approving it on the package's approval page (or, for a job or
 subscription, with `enablementEnable`). Turning a cron enablement on also turns
-that job's `enabled` flag on and schedules the next tick. Minting a webhook URL
-does not turn it on: the mint returns the approval link, and deliveries fail
-with that link until someone approves. A webhook URL runs as one enabler. That
-person is the **enabler**, and every run acts as them:
+that job's `enabled` flag on and schedules the next tick when the enabler holds
+`job:write`. Without `job:write` the enablement still turns on, the job stays
+off, and the enablement result's `job` field says so (`state: "left_off"`,
+`missing_permission: "job:write"`). Minting a webhook URL does not turn it on:
+the mint returns the approval link, and deliveries fail with that link until
+someone approves. A webhook URL runs as one enabler. That person is the
+**enabler**, and every run acts as them:
 
 - The run has the enabler's live access in the org, checked on every run. It can
   do only what the enabler could do by hand at that moment, never more.

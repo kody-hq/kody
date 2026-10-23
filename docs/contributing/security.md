@@ -36,8 +36,10 @@ package-app surfaces:
    (`packages/worker/src/app/deployment-env.ts`) so it is unreachable in
    production.
 4. **Credential endpoints are rate limited.** Any new endpoint that accepts a
-   password, token, or reset code must join the shared auth rate-limit bucket in
-   `packages/worker/src/origin-handler.ts` (`rateLimitedAuthPaths`).
+   password, token, or reset code must join the shared `auth:ip` bucket: either
+   list the path in `packages/worker/src/origin-handler.ts`
+   (`rateLimitedAuthPaths`), or consume the same bucket from the Start function
+   that handles the request (password reset and two-factor login do this today).
 5. **New passwords go through the shared policy.** Use `getPasswordPolicyError`
    from `@kody-internal/shared/password-policy.ts` wherever a password is set.
 6. **OAuth PKCE stays S256-only.** Keep the `getPkceValidationError` check in

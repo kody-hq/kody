@@ -1005,6 +1005,11 @@ export function createComputedPackageImportTools(input: {
 					mainModule: callBundle.mainModule,
 					modules: callBundle.modules,
 					dependencies: callBundle.dependencies,
+					...(callBundle.packageBindingRewrite === undefined
+						? {}
+						: {
+								packageBindingRewrite: callBundle.packageBindingRewrite,
+							}),
 				},
 				rawInput.params,
 				{
@@ -1056,6 +1061,12 @@ export async function runBundledModuleWithRegistry(
 		 * context is granted.
 		 */
 		dependencies?: Array<BundleArtifactDependency>
+		/**
+		 * Marker stamped on post-GHSA lexical-binding publishes. Passed through
+		 * so identity-error rewriting can tell a current artifact from a
+		 * pre-binding one that needs a republish hint.
+		 */
+		packageBindingRewrite?: number
 	},
 	params?: Record<string, unknown>,
 	options?: {
@@ -1684,6 +1695,11 @@ ${runtimeHelperRuntimePropertySource}
 						modules: bundle.modules,
 						dependencies: bundle.dependencies ?? [],
 						packageContext: options?.packageContext ?? null,
+						...(bundle.packageBindingRewrite === undefined
+							? {}
+							: {
+									packageBindingRewrite: bundle.packageBindingRewrite,
+								}),
 					},
 				})
 			const finalResult = rewrittenMessage

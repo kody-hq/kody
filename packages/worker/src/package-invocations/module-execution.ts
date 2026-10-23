@@ -303,6 +303,9 @@ export async function runSavedPackageModuleOnce(
 				mainModule: artifact.mainModule,
 				modules: artifact.modules,
 				dependencies: artifact.dependencies,
+				...(artifact.packageBindingRewrite === undefined
+					? {}
+					: { packageBindingRewrite: artifact.packageBindingRewrite }),
 			},
 			input.params,
 			{

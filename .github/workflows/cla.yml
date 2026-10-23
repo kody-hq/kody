@@ -312,8 +312,10 @@ jobs:
           script: |
             const owner = context.repo.owner
             const repo = context.repo.repo
-            const mergedPulls = []
-            for (let page = 1; mergedPulls.length < 50; page += 1) {
+            // Prefer recently merged PRs over recently updated ones: comment
+            // activity on older merged PRs must not crowd out a new signer.
+            const mergedByNumber = new Map()
+            for (let page = 1; page <= 10; page += 1) {
               const response = await github.rest.pulls.list({
                 owner,
                 repo,
@@ -326,11 +328,16 @@ jobs:
               })
               if (response.data.length === 0) break
               for (const pull of response.data) {
-                if (pull.merged_at) mergedPulls.push(pull)
-                if (mergedPulls.length === 50) break
+                if (pull.merged_at) mergedByNumber.set(pull.number, pull)
               }
               if (response.data.length < 50) break
             }
+            const mergedPulls = [...mergedByNumber.values()]
+              .sort(
+                (left, right) =>
+                  Date.parse(right.merged_at) - Date.parse(left.merged_at),
+              )
+              .slice(0, 50)
 
             const candidates = new Map(
               mergedPulls.map((pull) => [pull.number, pull]),

@@ -530,6 +530,11 @@ async function executePublishedJobArtifact(input: {
 			mainModule: input.artifact.mainModule,
 			modules: input.artifact.modules,
 			dependencies: input.artifact.dependencies,
+			...(input.artifact.packageBindingRewrite === undefined
+				? {}
+				: {
+						packageBindingRewrite: input.artifact.packageBindingRewrite,
+					}),
 		},
 		input.job.params,
 		{
