@@ -109,4 +109,6 @@ export type JobUpdateInput = {
 	killSwitchEnabled?: boolean
 	/** Pass null to clear expiry. Omit to leave unchanged. */
 	expiresAt?: string | null
+	/** Why `enabled` changed, recorded in the org audit log. */
+	reason?: string | null
 }

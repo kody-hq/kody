@@ -5,6 +5,11 @@
  * never saved that the other path would refuse.
  */
 import {
+	enablementToggleEvent,
+	toggleActorFromRequest,
+	toggleSourceFromRequest,
+} from '#worker/jobs/toggle-audit.ts'
+import {
 	EmailSenderInsertAdopted,
 	armCronJobsForCallerEnablementIds,
 	planTriggerEnablementForCaller,
@@ -678,6 +683,27 @@ export async function writeMappingChanges(
 				}),
 			)
 			auditPlans.push(mappingAuditPlan(audit, scope, change))
+		}
+		for (const plan of newEnablements) {
+			auditPlans.push(
+				planOrgAuditOutbox(
+					audit,
+					enablementToggleEvent({
+						enablement: {
+							id: plan.enablementId,
+							orgId: plan.orgId,
+							triggerKind: plan.kind,
+							triggerName: plan.triggerName,
+							instanceId: plan.instanceId,
+						},
+						from: 'off',
+						to: 'on',
+						source: toggleSourceFromRequest(scope.request),
+						actorKind: toggleActorFromRequest(scope.request).kind,
+						reason: 'Approved on the credentials page.',
+					}),
+				),
+			)
 		}
 		try {
 			await runNewEnablementPlans({

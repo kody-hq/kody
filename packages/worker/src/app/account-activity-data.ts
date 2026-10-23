@@ -7,6 +7,8 @@ import {
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { highlightJsonValue } from '#app/highlight-code.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import { listToggleAudit } from '#worker/jobs/toggle-audit.ts'
+import { type AccountToggleChange } from '#universal/loader-data.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import {
 	getRunRecord,
@@ -114,6 +116,42 @@ export type AccountActivityLoaderData = {
 	selectedRun: AccountActivityRunDetail | null
 	selectedRunId: string | null
 	retentionDays: number
+	/**
+	 * Recent job and enablement on/off changes (newest first). Owners only:
+	 * null for everyone else and on later pages.
+	 */
+	toggleChanges: Array<AccountToggleChange> | null
+}
+
+export type { AccountToggleChange }
+
+const toggleChangesLimit = 20
+
+async function loadToggleChanges(input: {
+	env: Env
+	user: AuthenticatedUser
+	orgId: string
+	since: string
+	cursor: string | null
+}): Promise<Array<AccountToggleChange> | null> {
+	if (input.cursor) return null
+	if (input.user.request.membership?.role !== 'owner') return null
+	try {
+		const entries = await listToggleAudit({
+			env: input.env,
+			orgId: input.orgId,
+			since: input.since,
+			limit: toggleChangesLimit,
+		})
+		return entries.map(
+			({ actorUserId: _actorUserId, credentialKind: _kind, ...entry }) => entry,
+		)
+	} catch (error) {
+		console.warn('activity-toggle-changes-failed', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return []
+	}
 }
 
 const accountActivityBasePath = '/account/activity'
@@ -244,7 +282,7 @@ export async function loadAccountActivityData(input: {
 	} = input
 	const since = summarySince(now)
 
-	const [summary, page, selectedRecord] = await Promise.all([
+	const [summary, page, selectedRecord, toggleChanges] = await Promise.all([
 		summarizeRunRecords({
 			env: input.env,
 			userId,
@@ -269,6 +307,13 @@ export async function loadAccountActivityData(input: {
 					runId: selectedRunId,
 				})
 			: Promise.resolve(null),
+		loadToggleChanges({
+			env: input.env,
+			user: input.user,
+			orgId: userId,
+			since,
+			cursor,
+		}),
 	])
 
 	return {
@@ -297,5 +342,6 @@ export async function loadAccountActivityData(input: {
 			: null,
 		selectedRunId,
 		retentionDays: runRecordRetentionDays,
+		toggleChanges,
 	}
 }

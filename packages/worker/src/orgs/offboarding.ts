@@ -5,6 +5,10 @@
  * applying job dispositions. Live listing paths stay filtered elsewhere.
  */
 
+import {
+	automationToggleActor,
+	recordToggleAudit,
+} from '#worker/jobs/toggle-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { deleteApprovalBundlesForMember } from '#worker/approval-bundles/repo.ts'
@@ -444,6 +448,20 @@ async function applyJobDispositions(input: {
 					job: updated,
 					callerContextJson: job.callerContextJson,
 				})
+				if (job.record.enabled) {
+					await recordToggleAudit({
+						env: input.env,
+						orgId: input.orgId,
+						resource: 'job',
+						resourceId: job.record.id,
+						name: job.record.name,
+						from: 'on',
+						to: 'off',
+						source: 'offboarding',
+						actor: automationToggleActor(),
+						reason: 'Canceled when its creator was removed from the org.',
+					})
+				}
 				applied.push(choice)
 				break
 			}

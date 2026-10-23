@@ -5,6 +5,7 @@ import { activityQuery } from '../activity-query.ts'
 import { useRouter } from '@tanstack/react-router'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { renderActivityRunDetail } from './account-activity-detail.tsx'
+import { AccountActivityToggleChanges } from './account-activity-toggle-changes.tsx'
 import {
 	activityEmptyLabel,
 	activityErrorReviewPrompt,
@@ -79,7 +80,7 @@ export function AccountActivityPage({
 	const router = useRouter()
 	if (!query.data) return null
 	const first = query.data.pages[0]!.payload
-	const { selectedRun, summary, retentionDays } = first
+	const { selectedRun, summary, retentionDays, toggleChanges } = first
 	const seen = new Set<string>()
 	const runs = query.data.pages
 		.flatMap((page) => page.payload.runs)
@@ -447,6 +448,9 @@ export function AccountActivityPage({
 						}
 						record={detail ? renderActivityRunDetail(detail) : null}
 					/>
+					{toggleChanges ? (
+						<AccountActivityToggleChanges changes={toggleChanges} />
+					) : null}
 				</>
 			) : null}
 		</AccountManagementShell>

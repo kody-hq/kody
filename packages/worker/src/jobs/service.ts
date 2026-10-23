@@ -51,6 +51,13 @@ import {
 } from '@kody-internal/shared/workers-hung-request.ts'
 import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { notifyOwnersOfJobAutoDisabled } from './job-auto-disabled-notice.ts'
+import {
+	automationToggleActor,
+	recordEnablementToggle,
+	recordToggleAudit,
+	toggleActorFromRequest,
+	toggleSourceFromRequest,
+} from './toggle-audit.ts'
 import { applyExecutionOutcome, processDueJobs } from './process-due-jobs.ts'
 import { syncJobManagerAlarm } from './manager-client.ts'
 import { type JobRow } from '@kody-internal/shared/jobs/repo.ts'
@@ -1030,6 +1037,15 @@ export async function updateJob(input: {
 					jobName: updated.name,
 					enablerUserId: callerContext.user.userId,
 					now: nowIso,
+					onInserted: (enablement) =>
+						recordEnablementToggle({
+							env: input.env,
+							request: input.callerContext.request,
+							enablement,
+							from: 'off',
+							to: 'on',
+							reason: 'Turned on with its job.',
+						}),
 				})
 			}
 			await upsertJobVector(input.env, {
@@ -1046,6 +1062,26 @@ export async function updateJob(input: {
 				env: input.env,
 				userId: ownerId,
 			})
+			if (existing.enabled !== updated.enabled) {
+				const forcedOffByExpiry =
+					expired && input.body.enabled !== false && existing.enabled
+				await recordToggleAudit({
+					env: input.env,
+					orgId: ownerId,
+					resource: 'job',
+					resourceId: updated.id,
+					name: updated.name,
+					from: existing.enabled ? 'on' : 'off',
+					to: updated.enabled ? 'on' : 'off',
+					source: toggleSourceFromRequest(input.callerContext.request),
+					actor: toggleActorFromRequest(input.callerContext.request, {
+						siteAdmin: callerContext.user.roles?.includes('admin') ?? false,
+					}),
+					reason:
+						input.body.reason ??
+						(forcedOffByExpiry ? 'The job passed its expiry time.' : null),
+				})
+			}
 			return toJobView(updated)
 		},
 	})
@@ -1786,9 +1822,21 @@ export async function runDueJobsForUser(input: {
 	} finally {
 		if (autoDisabledNotices.length > 0) {
 			const sending = Promise.all(
-				autoDisabledNotices.map((notice) =>
+				autoDisabledNotices.flatMap((notice) => [
 					notifyOwnersOfJobAutoDisabled(notice),
-				),
+					recordToggleAudit({
+						env: notice.env,
+						orgId: notice.ownerId,
+						resource: 'job',
+						resourceId: notice.jobId,
+						name: notice.jobName,
+						from: 'on',
+						to: 'off',
+						source: 'scheduler',
+						actor: automationToggleActor(),
+						reason: notice.reason,
+					}),
+				]),
 			)
 			if (input.waitUntil) input.waitUntil(sending)
 			else await sending

@@ -2673,6 +2673,24 @@ type AccountActivityLoaderData = {
 	selectedRun: AccountActivityRunDetail | null
 	selectedRunId: string | null
 	retentionDays: number
+	toggleChanges: Array<AccountToggleChange> | null
+}
+
+/** One job or enablement on/off change from the org audit log. */
+export type AccountToggleChange = {
+	id: string
+	resource: 'job' | 'enablement'
+	resourceId: string
+	createdAt: string
+	actorUsername: string | null
+	actorKind: 'person' | 'automation' | 'admin'
+	from: 'on' | 'off' | 'paused'
+	to: 'on' | 'off' | 'paused'
+	source: string
+	reason: string | null
+	jobId: string | null
+	name: string | null
+	triggerKind: string | null
 }
 
 type AccountMemoryStatus = 'active' | 'archived' | 'deleted'

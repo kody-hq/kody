@@ -14,6 +14,7 @@ import {
 import { packageIdFromJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { jobsData, type JobsDataEnv } from '#worker/jobs/jobs-data.ts'
 import { insertEnablement, loadEarliestLiveOwnerId } from './repo.ts'
+import { type EnablementRecord } from './types.ts'
 
 /**
  * True when this enabler already has any cron enablement row for the job,
@@ -87,6 +88,8 @@ export async function ensureOwnerCronEnablementForJob(input: {
 	packageId?: string | null
 	enablerUserId?: PersonId | string | null
 	now?: string
+	/** Runs after a new enablement row is written (for the audit log). */
+	onInserted?: (enablement: EnablementRecord) => Promise<unknown>
 }): Promise<OwnerCronEnablementOutcome> {
 	const packageId = input.packageId ?? packageIdFromJobId(input.jobId) ?? null
 	if (!packageId) return 'skipped_bad_job_id'
@@ -108,7 +111,7 @@ export async function ensureOwnerCronEnablementForJob(input: {
 		return 'already_present'
 	}
 
-	await insertEnablement({
+	const inserted = await insertEnablement({
 		db: input.db,
 		enablement: {
 			orgId: String(input.orgId),
@@ -121,6 +124,7 @@ export async function ensureOwnerCronEnablementForJob(input: {
 		},
 		now: input.now,
 	})
+	await input.onInserted?.(inserted)
 	return 'inserted'
 }
 

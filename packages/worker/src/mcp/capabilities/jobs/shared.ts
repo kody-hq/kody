@@ -305,6 +305,14 @@ export const jobUpdateInputSchema = z
 			.describe(
 				'Optional UTC ISO timestamp after which the platform stops scheduling this job and auto-disables it (enabled=false). Pass null to clear.',
 			),
+		reason: z
+			.string()
+			.trim()
+			.max(500)
+			.optional()
+			.describe(
+				'Optional short reason for turning the job on or off. Recorded in the org audit log with who changed it, when, and from where.',
+			),
 		code: z
 			.unknown()
 			.optional()
@@ -594,6 +602,7 @@ export function resolveJobUpdateBody(
 		enabled: input.enabled,
 		killSwitchEnabled: input.kill_switch_enabled,
 		...(input.expires_at !== undefined ? { expiresAt: input.expires_at } : {}),
+		...(input.reason ? { reason: input.reason } : {}),
 	}
 }
 

@@ -27,7 +27,11 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { disableEnablement, listEnablementsForInstance } from './repo.ts'
-import { enableTriggerForCaller } from './service.ts'
+import { listToggleAudit } from '#worker/jobs/toggle-audit.ts'
+import {
+	disableEnablementForCaller,
+	enableTriggerForCaller,
+} from './service.ts'
 
 const mocks = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
@@ -203,7 +207,24 @@ async function setup(job: Partial<JobRecord> = {}) {
 		})
 	}
 	const readJob = async () => (await getJobRowById(db, orgId, jobId))!.record
-	return { db, orgId, jobId, enable, readJob }
+	const requestFor = async (person: keyof typeof people) => {
+		const row = await db
+			.prepare(
+				`SELECT role FROM org_memberships
+				 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(orgId, people[person].userId)
+			.first<{ role: OrgRole }>()
+		return deriveRequestContext({
+			user: people[person],
+			source: { kind: 'session' },
+			orgBinding: {
+				org: { id: orgId, slug: 'quillworks' },
+				role: row?.role ?? null,
+			},
+		})
+	}
+	return { db, env, orgId, jobId, enable, readJob, requestFor }
 }
 
 test('enablementEnable turns a disabled cron job on and schedules it from now', async () => {
@@ -263,4 +284,74 @@ test('an expired job stays off', async () => {
 	const t = await setup({ expiresAt: '2026-10-02T00:00:00.000Z' })
 	await t.enable('owner')
 	expect((await t.readJob()).enabled).toBe(false)
+})
+
+test('turning a cron enablement on audits the enablement and the job it armed', async () => {
+	const t = await setup()
+	const enablement = await t.enable('owner')
+	const entries = await listToggleAudit({ env: t.env, orgId: t.orgId })
+	expect(entries).toHaveLength(2)
+	expect(entries).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				resource: 'enablement',
+				resourceId: enablement.id,
+				from: 'off',
+				to: 'on',
+				source: 'web',
+				actorKind: 'person',
+				actorUsername: 'owner',
+				jobId: t.jobId,
+				name: jobName,
+				triggerKind: 'cron',
+			}),
+			expect.objectContaining({
+				resource: 'job',
+				resourceId: t.jobId,
+				from: 'off',
+				to: 'on',
+				source: 'enablement',
+				actorKind: 'person',
+				actorUsername: 'owner',
+				reason: 'Turned on with its enablement.',
+			}),
+		]),
+	)
+})
+
+test('a member without job:write audits only their enablement, not the job', async () => {
+	const t = await setup()
+	await t.enable('bea')
+	const entries = await listToggleAudit({ env: t.env, orgId: t.orgId })
+	expect(entries.map((entry) => entry.resource)).toEqual(['enablement'])
+})
+
+test('turning an enablement off records who, from where, and the reason', async () => {
+	const t = await setup()
+	const enablement = await t.enable('owner')
+	await disableEnablementForCaller({
+		env: t.env,
+		request: await t.requestFor('owner'),
+		enablementId: enablement.id,
+		reason: 'Pausing while the API is down',
+	})
+	// A second turn-off changes nothing and records nothing.
+	await disableEnablementForCaller({
+		env: t.env,
+		request: await t.requestFor('owner'),
+		enablementId: enablement.id,
+	})
+	const offs = (
+		await listToggleAudit({ env: t.env, orgId: t.orgId, jobId: t.jobId })
+	).filter((entry) => entry.to === 'off')
+	expect(offs).toEqual([
+		expect.objectContaining({
+			resource: 'enablement',
+			from: 'on',
+			to: 'off',
+			source: 'web',
+			actorUsername: 'owner',
+			reason: 'Pausing while the API is down',
+		}),
+	])
 })

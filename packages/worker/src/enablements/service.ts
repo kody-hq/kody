@@ -18,6 +18,10 @@ import {
 	type ArmJobForEnablementResult,
 } from '#worker/jobs/arm-job-for-enablement.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
+import {
+	recordEnablementToggle,
+	toggleActorFromRequest,
+} from '#worker/jobs/toggle-audit.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
 	listPackageSubscriptions,
@@ -752,6 +756,13 @@ export async function enableTriggerForCaller(input: {
 		id: plan.enablementId,
 	})
 	if (!created) throw new Error('Unable to read the new enablement.')
+	await recordEnablementToggle({
+		env: input.env,
+		request: input.request,
+		enablement: created,
+		from: 'off',
+		to: 'on',
+	})
 	await armCronJobForCallerEnablement({
 		env: input.env,
 		request: input.request,
@@ -785,6 +796,8 @@ export async function armCronJobForCallerEnablement(input: {
 		env: input.env,
 		orgId: enablement.orgId,
 		jobId: enablement.instanceId,
+		actor: toggleActorFromRequest(input.request),
+		enablementId: enablement.id,
 	})
 }
 
@@ -822,6 +835,8 @@ export async function disableEnablementForCaller(input: {
 	env: Env
 	request: RequestContext
 	enablementId: string
+	/** Why it was turned off, recorded in the org audit log. */
+	reason?: string | null
 }): Promise<EnablementRecord> {
 	const actor = requireActor(input.request)
 	const db = input.env.APP_DB
@@ -843,9 +858,19 @@ export async function disableEnablementForCaller(input: {
 		// Someone else's enablement is invisible to non-Owners.
 		if (!access.isOwner) throw notFound
 	}
-	await disableEnablement({ db, orgId, id: enablement.id })
+	const changed = await disableEnablement({ db, orgId, id: enablement.id })
 	const updated = await getEnablementById({ db, orgId, id: enablement.id })
 	if (!updated) throw notFound
+	if (changed) {
+		await recordEnablementToggle({
+			env: input.env,
+			request: input.request,
+			enablement: updated,
+			from: enablement.state,
+			to: 'off',
+			reason: input.reason,
+		})
+	}
 	return updated
 }
 

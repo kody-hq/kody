@@ -3,6 +3,11 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { jobsData } from './jobs-data.ts'
 import { syncJobManagerAlarm } from './manager-client.ts'
 import { computeNextRunAt, isJobExpired } from './schedule.ts'
+import {
+	automationToggleActor,
+	recordToggleAudit,
+	type ToggleAuditActor,
+} from './toggle-audit.ts'
 
 export type ArmJobForEnablementResult =
 	| 'armed'
@@ -24,7 +29,11 @@ export async function armJobForEnablement(input: {
 	orgId: OwnerId
 	jobId: string
 	now?: Date
+	/** Who turned the enablement on; recorded when the job turns on. */
+	actor?: ToggleAuditActor
+	enablementId?: string | null
 }): Promise<ArmJobForEnablementResult> {
+	let jobName: string | null = null
 	const result = await withAccountWriteLease({
 		db: input.env.APP_DB,
 		stableUserId: input.orgId,
@@ -36,6 +45,7 @@ export async function armJobForEnablement(input: {
 			})
 			if (!row) return 'missing'
 			const existing = row.record
+			jobName = existing.name
 			if (existing.enabled) return 'already_on'
 			const now = input.now ?? new Date()
 			if (isJobExpired(existing, now)) return 'expired'
@@ -62,6 +72,20 @@ export async function armJobForEnablement(input: {
 	// Also on `already_on`: a retry after a failed sync restores the alarm.
 	if (result === 'armed' || result === 'already_on') {
 		await syncJobManagerAlarm({ env: input.env, userId: input.orgId })
+	}
+	if (result === 'armed') {
+		await recordToggleAudit({
+			env: input.env,
+			orgId: input.orgId,
+			resource: 'job',
+			resourceId: input.jobId,
+			name: jobName,
+			from: 'off',
+			to: 'on',
+			source: 'enablement',
+			actor: input.actor ?? automationToggleActor(),
+			reason: 'Turned on with its enablement.',
+		})
 	}
 	return result
 }

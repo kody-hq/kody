@@ -18,6 +18,14 @@ export const enablementDisableCapability = defineDomainCapability(
 		destructive: true,
 		inputSchema: z.object({
 			enablementId: z.string().min(1).describe('Enablement id.'),
+			reason: z
+				.string()
+				.trim()
+				.max(500)
+				.optional()
+				.describe(
+					'Optional short reason for turning it off. Recorded in the org audit log with who turned it off, when, and from where.',
+				),
 		}),
 		outputSchema: z.object({ enablement: enablementSchema }),
 		async handler(args, ctx) {
@@ -25,6 +33,7 @@ export const enablementDisableCapability = defineDomainCapability(
 				env: ctx.env,
 				request: requireMcpRequest(ctx.callerContext),
 				enablementId: args.enablementId,
+				reason: args.reason,
 			})
 			return { enablement: toEnablementOutput(enablement) }
 		},
