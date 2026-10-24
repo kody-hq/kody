@@ -30,6 +30,28 @@ export const kodyMarkOutlinedNosePathD =
 /** Natural width÷height of the mark viewBox. */
 export const kodyMarkAspectRatio = 807.440627 / 593.242027
 
+/**
+ * Square favicon viewBox: mark width fills the icon edge to edge (tiny AA
+ * safety margin), mark centered vertically on a transparent square. No plate.
+ */
+const kodyMarkViewBoxParts = kodyMarkViewBox.split(' ').map(Number) as [
+	number,
+	number,
+	number,
+	number,
+]
+const [kodyMarkMinX, kodyMarkMinY, kodyMarkWidth, kodyMarkHeight] =
+	kodyMarkViewBoxParts
+/** ~1/16 device-pixel at 16px: enough for AA, still reads edge to edge. */
+const kodyFaviconSafetyMargin = kodyMarkWidth / 256
+const kodyFaviconSize = kodyMarkWidth + 2 * kodyFaviconSafetyMargin
+const kodyFaviconViewBox = [
+	kodyMarkMinX - kodyFaviconSafetyMargin,
+	kodyMarkMinY - (kodyFaviconSize - kodyMarkHeight) / 2,
+	kodyFaviconSize,
+	kodyFaviconSize,
+].join(' ')
+
 /** Public asset paths for brand downloads. */
 export const kodyBrandAssets = {
 	svgWhite: '/images/brand/kody-mark-white.svg',
@@ -66,6 +88,48 @@ export function kodyMarkOutlinedSvgMarkup(fill = '#000000'): string {
   <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedLeftEyePathD}"/>
   <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRightEyePathD}"/>
   <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedNosePathD}"/>
+</svg>
+`
+}
+
+function kodyFaviconOutlinedPathsMarkup(fill = '#000000'): string {
+	return `  <path fill="${fill}" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRingPathD}"/>
+  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedLeftEyePathD}"/>
+  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRightEyePathD}"/>
+  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedNosePathD}"/>`
+}
+
+/**
+ * Browser-tab favicon: transparent, no plate, mark fills the square.
+ * Light OS chrome gets the outlined mark; dark gets the solid white face.
+ */
+export function kodyFaviconSvgMarkup(): string {
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyFaviconViewBox}" role="img" aria-label="Kody">
+  <style>
+    .dark { display: none; }
+    @media (prefers-color-scheme: dark) {
+      .light { display: none; }
+      .dark { display: inline; }
+    }
+  </style>
+  <g class="light">
+${kodyFaviconOutlinedPathsMarkup('#000000')}
+  </g>
+  <path class="dark" fill="#ffffff" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkPathD}"/>
+</svg>
+`
+}
+
+/** Single-theme favicon SVG for rasterizing light or dark PNG/ICO frames. */
+export function kodyFaviconRasterSvgMarkup(theme: 'light' | 'dark'): string {
+	if (theme === 'light') {
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyFaviconViewBox}" role="img" aria-label="Kody">
+${kodyFaviconOutlinedPathsMarkup('#000000')}
+</svg>
+`
+	}
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyFaviconViewBox}" role="img" aria-label="Kody">
+  <path fill="#ffffff" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkPathD}"/>
 </svg>
 `
 }

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import {
+	kodyFaviconSvgMarkup,
 	kodyMarkOutlinedLeftEyePathD,
 	kodyMarkOutlinedNosePathD,
 	kodyMarkOutlinedRightEyePathD,
@@ -39,4 +40,13 @@ test('outlined mark is filled paths, not stroke-and-clip', () => {
 	expect(outlined).not.toContain('clipPath')
 	expect(outlined).not.toContain('stroke=')
 	expect(outlined).not.toContain('stroke-width')
+})
+
+test('tab favicon markup is transparent edge-to-edge with scheme swap', () => {
+	const favicon = kodyFaviconSvgMarkup()
+	expect(favicon).toContain(kodyMarkOutlinedRingPathD)
+	expect(favicon).toContain('fill="#ffffff"')
+	expect(favicon).toMatch(/@media \(prefers-color-scheme: dark\)/)
+	expect(favicon).not.toContain('<rect')
+	expect(favicon).not.toMatch(/\bplate\b/)
 })
