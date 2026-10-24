@@ -467,6 +467,78 @@ test('meta duration is accepted when present on query results', async () => {
 	expect(results.meta?.duration).toBe(12)
 })
 
+test('delta resume does not emit false deletes for already-scanned keys', async () => {
+	const sqlite = seedDb()
+	const db = asPacedDb(sqlite)
+	const schema = await discoverPacedD1Schema(db)
+	const users = schema.tables.find((table) => table.name === 'users')!
+	const baseWriter = createMemoryPacedD1TableWriter()
+	const base = await walkPacedD1Table({
+		db,
+		table: users,
+		mode: 'full',
+		prev: null,
+		writer: baseWriter,
+		opts: { minGapMs: 0, sleep: async () => {} },
+	})
+	expect(base.done).toBe(true)
+
+	sqlite.exec(`UPDATE users SET name = 'ada2' WHERE id = 'u3'`)
+
+	const deltaWriter = createMemoryPacedD1TableWriter()
+	let nowMs = 0
+	const first = await walkPacedD1Table({
+		db,
+		table: users,
+		mode: 'delta',
+		prev: {
+			schemaHash: users.schemaHash,
+			openIndex: () => createMemoryPacedD1IndexReader(baseWriter.index),
+		},
+		writer: deltaWriter,
+		opts: {
+			minPage: 1,
+			maxPage: 1,
+			budgetMs: 50,
+			minGapMs: 0,
+			sleep: async () => {
+				nowMs = 100
+			},
+			now: () => nowMs,
+		},
+	})
+	expect(first.done).toBe(false)
+	if (first.done) throw new Error('expected partial')
+	const deletesAfterFirst = first.deletes
+
+	const second = await walkPacedD1Table({
+		db,
+		table: users,
+		mode: 'delta',
+		prev: {
+			schemaHash: users.schemaHash,
+			openIndex: () => createMemoryPacedD1IndexReader(baseWriter.index),
+		},
+		writer: deltaWriter,
+		startAfterRowid: first.lastRowid,
+		initialPageSize: first.pageSize,
+		partial: {
+			count: first.count,
+			checksum: first.checksum,
+			upserts: first.upserts,
+			deletes: first.deletes,
+		},
+		opts: { minPage: 1, maxPage: 1, minGapMs: 0, sleep: async () => {} },
+	})
+	expect(second.done).toBe(true)
+	if (!second.done) throw new Error('expected done')
+	expect(second.manifest.deletes).toBe(deletesAfterFirst)
+	expect(second.manifest.count).toBe(3)
+	expect(
+		deltaWriter.data.split('\n').filter((line) => line.startsWith('D\t')),
+	).toHaveLength(0)
+})
+
 test('delta walk emits deletes when a high rowid disappears', async () => {
 	const sqlite = seedDb()
 	const db = asPacedDb(sqlite)
