@@ -1,4 +1,3 @@
-import { waitUntil } from 'cloudflare:workers'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
 
@@ -217,7 +216,7 @@ export async function tryDeliverOrgAuditOutboxPlan(
 			// Only the delivery that inserted the row emits, so a retried or
 			// concurrent drain never emits the same change twice.
 			if (delivery === 'inserted') {
-				scheduleResourceChangeEvent(writer.env, payload)
+				await scheduleResourceChangeEvent(writer.env, payload)
 			}
 			return true
 		}
@@ -232,24 +231,33 @@ export async function tryDeliverOrgAuditOutboxPlan(
  * after the response. Best-effort: delivery failures are logged in
  * `resource-events/dispatch.ts` and never fail the change.
  */
-function scheduleResourceChangeEvent(
+async function scheduleResourceChangeEvent(
 	env: Env | undefined,
 	payload: OrgAuditOutboxPayload,
 ) {
 	if (!env || payload.result !== 'success') return
 	if (!isResourceChangeAuditAction(payload.action)) return
-	const dispatch = import('#worker/resource-events/dispatch.ts')
-		.then(({ dispatchResourceChangeEvent }) =>
-			dispatchResourceChangeEvent({ env, payload }),
-		)
-		.catch((error: unknown) => {
-			console.error('resource-change-event-failed', {
-				action: payload.action,
-				auditId: payload.id,
-				error,
-			})
+	const logFailure = (error: unknown) => {
+		console.error('resource-change-event-failed', {
+			action: payload.action,
+			auditId: payload.id,
+			error,
 		})
-	waitUntil(dispatch)
+	}
+	try {
+		// Loaded lazily so plain Node tools that import the audit outbox (the
+		// CLI OpenAPI generator) do not need the Workers runtime.
+		const { waitUntil } = await import('cloudflare:workers')
+		waitUntil(
+			import('#worker/resource-events/dispatch.ts')
+				.then(({ dispatchResourceChangeEvent }) =>
+					dispatchResourceChangeEvent({ env, payload }),
+				)
+				.catch(logFailure),
+		)
+	} catch (error) {
+		logFailure(error)
+	}
 }
 
 export async function redactOrgAuditOutboxActorIdsForDeletedUser(input: {

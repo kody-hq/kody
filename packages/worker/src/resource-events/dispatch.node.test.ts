@@ -47,7 +47,7 @@ function savedPackage(id: string): SavedPackageRecord {
 		lockedAt: null,
 		createdAt: '2026-01-01T00:00:00.000Z',
 		updatedAt: '2026-01-01T00:00:00.000Z',
-	} as SavedPackageRecord
+	} as unknown as SavedPackageRecord
 }
 
 function subscription(id: string) {
@@ -248,7 +248,7 @@ test('a dropped event writes a warning naming the event and why', async () => {
 		reason: 'own_change',
 		auditId: 'audit-1',
 	})
-	const record = vi.mocked(recordRunRecord).mock.calls[0]![0] as {
+	const record = vi.mocked(recordRunRecord).mock.calls[0]![0] as unknown as {
 		logs: Array<{ level: string; message: string }>
 	}
 	expect(record.logs[0]!.level).toBe('warn')
