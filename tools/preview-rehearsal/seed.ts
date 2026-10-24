@@ -602,7 +602,7 @@ async function seedPersonData(
 /** The person roster. A complete seed has all of these. */
 export const rehearsalSeedEmails = rehearsalUsers.map((user) => user.email)
 
-export const rehearsalSeedRosterSize = rehearsalSeedEmails.length
+const rehearsalSeedRosterSize = rehearsalSeedEmails.length
 
 export type RehearsalSeedState = 'empty' | 'partial' | 'complete'
 
