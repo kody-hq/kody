@@ -230,10 +230,15 @@ async function rollbackUncommittedPublishedBundleArtifactKvs(
 						entryPoint: entry.rowInput.entryPoint,
 					},
 				)
+				// Require the full persist fingerprint so a same-commit KV
+				// overwrite whose D1 update never landed is rolled back (retry
+				// must not see a fresh createdAt and skip). A concurrent writer
+				// that fully committed the same fingerprint keeps the key.
 				if (
 					existing &&
 					existing.kvKey === entry.kvKey &&
-					existing.publishedCommit === entry.rowInput.publishedCommit
+					existing.publishedCommit === entry.rowInput.publishedCommit &&
+					existing.dependenciesJson === entry.rowInput.dependenciesJson
 				) {
 					return
 				}
