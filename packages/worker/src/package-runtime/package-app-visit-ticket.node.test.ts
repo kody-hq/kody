@@ -163,7 +163,7 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 		...live.ticket.slice(packageAppVisitTicketPrefix.length).split('.'),
 	]
 	expect(payload && signature).toBeTruthy()
-	const forgedSig = `${prefix}${payload}.${String(signature).replace(/[A-Za-z]/, 'x')}`
+	const forgedSig = `${prefix}${payload}.${String(signature)}x`
 	await expect(
 		verifyPackageAppVisitTicket({
 			env: secretEnv,
