@@ -51,6 +51,7 @@ function delivery(input: {
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+		startedBy: null,
 		metadata: { endpointId: input.endpointId, httpStatus: 202 },
 		logCount: 0,
 	}

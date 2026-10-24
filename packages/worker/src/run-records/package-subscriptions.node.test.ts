@@ -51,6 +51,7 @@ function errorRun(overrides: Record<string, unknown> = {}) {
 		durationMs: 1000,
 		errorName: 'Error',
 		errorMessage: 'boom',
+		startedBy: null,
 		metadataJson: '{}',
 		createdAt: '2026-07-27T12:00:00.000Z',
 		updatedAt: '2026-07-27T12:00:01.000Z',

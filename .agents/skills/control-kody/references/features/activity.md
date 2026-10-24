@@ -11,3 +11,5 @@ npm run control-kody -- request GET /@jane/-/activity --contains 'Activity'
 
 - `/@{$orgSlug}/-/activity`, `/@{$orgSlug}/-/activity/$runId`
 - Legacy `/account/activity`
+- List and detail show started-by (handle + client); legacy runs without the
+  field render as Unknown

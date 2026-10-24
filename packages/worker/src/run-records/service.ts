@@ -37,6 +37,7 @@ import {
 	type WorkflowProjectionReserveResult,
 	type WorkflowProjectionUpsertInput,
 } from './workflow-projection.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type RunErrorTriage,
 	type RunRecord,
@@ -59,6 +60,10 @@ import {
 	runRecordMaxResultSnapshotBytes,
 	runRecordMaxTextBytes,
 } from './types.ts'
+import {
+	normalizeRunStartedBy,
+	runStartedByFromRequest,
+} from './run-started-by.ts'
 
 export { runLogSqlBillingOps }
 export type { RunLogSqlBillingInspection, RunLogSqlBillingStats }
@@ -229,6 +234,27 @@ function normalizeLogs(
 		})
 }
 
+/**
+ * Stamp started_by onto a run context when the caller passes a request and
+ * the context does not already set it. Call sites can also set `startedBy`
+ * explicitly (for example after resolving a token name label).
+ */
+export function withRunStartedBy(
+	context: RunRecordContext,
+	request?: RequestContext | null,
+	label?: string | null,
+): RunRecordContext {
+	if (context.startedBy) {
+		return {
+			...context,
+			startedBy: normalizeRunStartedBy(context.startedBy),
+		}
+	}
+	const startedBy = runStartedByFromRequest(request, { label })
+	if (!startedBy) return context
+	return { ...context, startedBy }
+}
+
 function buildRunRow(input: {
 	handle: RunRecordHandle
 	status: RunStatus
@@ -260,6 +286,7 @@ function buildRunRow(input: {
 		durationMs: input.durationMs,
 		errorName: input.errorName,
 		errorMessage: input.errorMessage,
+		startedBy: normalizeRunStartedBy(context.startedBy),
 		metadataJson: serializeJson(context.metadata ?? {}),
 		createdAt: input.handle.startedAt,
 		updatedAt: input.updatedAt,
@@ -289,11 +316,17 @@ export function beginRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	/** Live request used to stamp started_by when context omits it. */
+	request?: RequestContext | null
+	/** Optional display label (API token name); never a secret. */
+	startedByLabel?: string | null
 	waitUntil?: (promise: Promise<unknown>) => void
 }): RunRecordHandle | null {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
 	if (!namespace || !userId || !context) return null
 
 	try {
@@ -388,6 +421,8 @@ export async function claimRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 }): Promise<
 	| { claimed: true; handle: RunRecordHandle }
 	| { claimed: false; run: RunRecord }
@@ -395,25 +430,25 @@ export async function claimRunRecord(input: {
 > {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
-	const context = input.context
-	if (!namespace || !userId || !context) return null
-	const idempotencyKey = normalizeOptionalString(context.idempotencyKey)
+	const stamped = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
+	if (!namespace || !userId || !stamped) return null
+	const idempotencyKey = normalizeOptionalString(stamped.idempotencyKey)
 	if (!idempotencyKey) return null
 
 	try {
 		const startedAt = new Date().toISOString()
+		const context = {
+			...stamped,
+			idempotencyKey,
+		}
 		const handle: RunRecordHandle = {
 			id: crypto.randomUUID(),
 			userId,
 			startedAt,
-			persistence: runPersistenceForContext({
-				...context,
-				idempotencyKey,
-			}),
-			context: {
-				...context,
-				idempotencyKey,
-			},
+			persistence: runPersistenceForContext(context),
+			context,
 		}
 		const run = buildRunRow({
 			handle,
@@ -528,6 +563,8 @@ export async function recordRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 	status: RunTerminalStatus
 	logs?: Array<RunRecordLogInput>
 	error?: unknown
@@ -538,6 +575,8 @@ export async function recordRunRecord(input: {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
 	if (!namespace || !userId || !context) return null
 
 	let handle: RunRecordHandle
@@ -590,6 +629,7 @@ export async function listRunRecords(input: {
 		since: normalizeOptionalIsoTimestamp(input.filter?.since),
 		until: normalizeOptionalIsoTimestamp(input.filter?.until),
 		errorTriage: input.filter?.errorTriage ?? null,
+		startedByUserId: normalizeOptionalString(input.filter?.startedByUserId),
 		limit,
 		cursor: input.cursor ?? null,
 	})
@@ -725,6 +765,8 @@ export async function claimPackageInvocationRecord(input: {
 	userId: OwnerId
 	/** `null` when the caller owns the run record (workflow-sourced invokes). */
 	context: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 	invocation: PackageInvocationClaimInput
 	/** ISO cutoff for in-place stale `in_progress` reclaims. */
 	staleBefore: string
@@ -746,13 +788,18 @@ export async function claimPackageInvocationRecord(input: {
 	let handle: RunRecordHandle | null = null
 	let run: RunLogRowInput | null = null
 	if (input.context) {
+		const context = withRunStartedBy(
+			input.context,
+			input.request,
+			input.startedByLabel,
+		)
 		const startedAt = new Date().toISOString()
 		handle = {
 			id: crypto.randomUUID(),
 			userId: input.userId,
 			startedAt,
-			persistence: runPersistenceForContext(input.context),
-			context: input.context,
+			persistence: runPersistenceForContext(context),
+			context,
 		}
 		run = buildRunRow({
 			handle,

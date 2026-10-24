@@ -221,7 +221,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(14)
+			expect(schemaVersion(state)).toBe(15)
 			verify(state)
 		},
 	)
@@ -1005,7 +1005,7 @@ test('export cursors always make progress across phase handoffs and empty tails'
 	}
 })
 
-test('warm schema v7 and v8 objects upgrade to v14 without losing job data', async () => {
+test('warm schema v7 and v8 objects upgrade to v15 without losing job data', async () => {
 	const retiredColumn = ['legacy', 'seeded'].join('_')
 	for (const installedVersion of [7, 8]) {
 		const userId = uniqueUserId(`schema-v${installedVersion}-warm`)
@@ -1083,7 +1083,7 @@ test('warm schema v7 and v8 objects upgrade to v14 without losing job data', asy
 	}
 })
 
-test('warm schema v10 objects backfill denormalized log_count on upgrade to v14', async () => {
+test('warm schema v10 objects backfill denormalized log_count on upgrade to v15', async () => {
 	const userId = uniqueUserId('schema-v10-warm-log-count')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1323,7 +1323,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(14)
+	expect(inspection.schemaVersion).toBe(15)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

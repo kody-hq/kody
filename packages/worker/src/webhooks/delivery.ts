@@ -5,10 +5,15 @@ import {
 	invokePackageExport,
 	type PackageInvocationResponse,
 } from '#worker/package-invocations/service.ts'
-import { type EnablementRun } from '#worker/request-context/request-context.ts'
+import {
+	deriveRequestContext,
+	type EnablementRun,
+} from '#worker/request-context/request-context.ts'
 import { sanitizeInvocationErrorMessage } from '#worker/package-invocations/invocation-error-summary.ts'
+import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { recordRunRecord } from '#worker/run-records/service.ts'
 import { type RunRecordLogInput } from '#worker/run-records/types.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type WebhookDeliveryOutcome,
 	type WebhookEndpointRecord,
@@ -49,6 +54,8 @@ export async function recordWebhookDelivery(input: {
 	requirePersistence?: boolean
 	/** Platform-marked synthetic smoke test (interactive MCP only). */
 	synthetic?: boolean
+	/** Prefer an already-derived request when the caller has one. */
+	request?: RequestContext | null
 }) {
 	const status = input.outcome === 'delivered' ? 'success' : 'error'
 	const failure =
@@ -58,9 +65,16 @@ export async function recordWebhookDelivery(input: {
 					invocationBody: input.invocationBody,
 				})
 			: null
+	const request =
+		input.request ??
+		(await resolveWebhookDeliveryRequest({
+			env: input.env,
+			endpoint: input.endpoint,
+		}))
 	const record = await recordRunRecord({
 		env: input.env,
 		userId: input.endpoint.userId,
+		request,
 		context: {
 			surface: 'webhook',
 			name: input.endpoint.webhookName,
@@ -99,6 +113,36 @@ export async function recordWebhookDelivery(input: {
  * export's own sanitized error message follows it. Without a message in the
  * invocation body the code alone is kept, as before.
  */
+async function resolveWebhookDeliveryRequest(input: {
+	env: Env
+	endpoint: Pick<WebhookEndpointRecord, 'id' | 'userId' | 'packageId'>
+}): Promise<RequestContext | null> {
+	try {
+		const plan = await planEnablementRuns({
+			env: input.env,
+			orgId: input.endpoint.userId,
+			packageId: input.endpoint.packageId,
+			trigger: { kind: 'webhook', instanceId: input.endpoint.id },
+		})
+		const [run] = plan.runs
+		if (!run) return null
+		const user = await resolveBackgroundMcpUser(
+			input.env.APP_DB,
+			input.endpoint.userId,
+		)
+		return deriveRequestContext({
+			user,
+			source: {
+				kind: 'webhook',
+				sourceId: input.endpoint.id,
+				enablement: run,
+			},
+		})
+	} catch {
+		return null
+	}
+}
+
 export function describeWebhookDeliveryFailure(input: {
 	error: string | null
 	invocationBody?: unknown

@@ -10,6 +10,7 @@ import {
 	runLogLevelValues,
 	runRecordDefaultPageSize,
 	runRecordMaxPageSize,
+	runStartedByClientValues,
 	runStatusValues,
 	runSurfaceValues,
 } from '#worker/run-records/types.ts'
@@ -63,6 +64,22 @@ export const runRecordSchema = z.object({
 	triage_note: z.string().nullable(),
 	triaged_at: z.string().nullable(),
 	triaged_by: z.string().nullable(),
+	started_by: z
+		.object({
+			user_id: z.string().nullable(),
+			username: z.string().nullable(),
+			client: z.enum(runStartedByClientValues),
+			label: z
+				.string()
+				.nullable()
+				.describe(
+					'Optional display label such as an API token name or connection profile. Never a secret.',
+				),
+		})
+		.nullable()
+		.describe(
+			'Who started this run (person + client). Null for legacy rows recorded before started_by existed, or when begin had no request context. Background clients (schedule, webhook, inbound-email, platform-event) name the enablement owner, not an interactive click.',
+		),
 	metadata: z.record(z.string(), z.unknown()),
 	log_count: z.number().int().nonnegative(),
 })
@@ -149,6 +166,14 @@ export function formatRunRecord(
 		triage_note: run.triageNote,
 		triaged_at: run.triagedAt,
 		triaged_by: run.triagedBy,
+		started_by: run.startedBy
+			? {
+					user_id: run.startedBy.userId,
+					username: run.startedBy.username,
+					client: run.startedBy.client,
+					label: run.startedBy.label,
+				}
+			: null,
 		metadata: run.metadata,
 		log_count: run.logCount,
 	}

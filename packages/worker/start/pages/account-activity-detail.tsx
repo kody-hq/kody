@@ -4,6 +4,8 @@ import {
 	logLevelColor,
 	runAttributionSubtitle,
 	runDisplayName,
+	startedByClientLabel,
+	startedByHandleLabel,
 	statusColor,
 	statusLabel,
 	surfaceLabel,
@@ -89,6 +91,14 @@ export function renderActivityRunDetail(detail: AccountActivityRunDetail) {
 					{
 						label: 'Surface',
 						value: surfaceLabel(detail.surface),
+					},
+					{
+						label: 'Started by',
+						value: startedByHandleLabel(detail.startedBy),
+					},
+					{
+						label: 'Client',
+						value: startedByClientLabel(detail.startedBy) ?? 'Unknown',
 					},
 					{
 						label: 'Entry',

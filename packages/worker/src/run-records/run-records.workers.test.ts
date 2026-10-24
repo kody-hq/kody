@@ -558,6 +558,7 @@ test('later job success soft-resolves prior open errors for only that job', asyn
 		errorTriage: 'resolved',
 		triageNote: 'auto-resolved: later success of the same job',
 		triagedBy: 'system:auto-resolve',
+		startedBy: null,
 	})
 	expect(byId.get('same-job-ignored')).toMatchObject({
 		status: 'error',
@@ -930,6 +931,7 @@ test('cap and stale retention journey', async () => {
 			errorName: runRecordPlatformInterruptedErrorName,
 			errorTriage: 'ignored',
 			triagedBy: 'system:platform-interrupt',
+			startedBy: null,
 		}
 
 		const page = await listRuns(userId, { errorTriage: 'all' })
@@ -962,6 +964,7 @@ test('cap and stale retention journey', async () => {
 			triageNote: null,
 			triagedAt: null,
 			triagedBy: null,
+			startedBy: null,
 		})
 		for (const runId of ['stale-subscription-delivery', 'stale-keyed-export']) {
 			expect((await getRun(userId, runId))?.run).toMatchObject(autoIgnored)
@@ -1638,6 +1641,7 @@ test('dashboard day counts survive the 2000-run cap across several UTC days', as
 					durationMs: null,
 					errorName: null,
 					errorMessage: null,
+					startedBy: null,
 					metadataJson: '{}',
 					createdAt: startedAt,
 					updatedAt: startedAt,
@@ -1682,4 +1686,81 @@ test('dashboard day counts survive the 2000-run cap across several UTC days', as
 	expect(charts.sources).toEqual([{ surface: 'execute', count: totalCounted }])
 	// Cap survival does not imply a warm migration floor.
 	expect(charts.countsSince).toBeNull()
+})
+
+test('started_by persists on begin/finish and filters runList', async () => {
+	const userId = uniqueUserId('started-by')
+	const alice = personIdFromStored('person-alice')
+	const bob = personIdFromStored('person-bob')
+	const pending: Array<Promise<unknown>> = []
+	const aliceHandle = beginRunRecord({
+		env,
+		userId,
+		waitUntil: (promise) => {
+			pending.push(promise)
+		},
+		context: baseContext({
+			surface: 'execute',
+			name: 'alice-run',
+			startedBy: {
+				userId: alice,
+				username: 'alice',
+				client: 'mcp',
+				label: 'work',
+			},
+		}),
+	})
+	const bobHandle = beginRunRecord({
+		env,
+		userId,
+		waitUntil: (promise) => {
+			pending.push(promise)
+		},
+		context: baseContext({
+			surface: 'execute',
+			name: 'bob-run',
+			startedBy: {
+				userId: bob,
+				username: 'bob',
+				client: 'cli',
+				label: null,
+			},
+		}),
+	})
+	const legacyHandle = beginRunRecord({
+		env,
+		userId,
+		waitUntil: (promise) => {
+			pending.push(promise)
+		},
+		context: baseContext({
+			surface: 'execute',
+			name: 'legacy-run',
+		}),
+	})
+	expect(aliceHandle).not.toBeNull()
+	expect(bobHandle).not.toBeNull()
+	expect(legacyHandle).not.toBeNull()
+	await drainWaitUntil(pending)
+	await finishRunRecord({ env, handle: aliceHandle, status: 'success' })
+	await finishRunRecord({ env, handle: bobHandle, status: 'error' })
+	await finishRunRecord({ env, handle: legacyHandle, status: 'success' })
+
+	const aliceDetail = await getRun(userId, aliceHandle!.id)
+	expect(aliceDetail?.run.startedBy).toEqual({
+		userId: alice,
+		username: 'alice',
+		client: 'mcp',
+		label: 'work',
+	})
+	const legacyDetail = await getRun(userId, legacyHandle!.id)
+	expect(legacyDetail?.run.startedBy).toBeNull()
+
+	const filtered = await listRunRecords({
+		env,
+		userId,
+		filter: { startedByUserId: alice, errorTriage: 'all' },
+	})
+	expect(filtered.runs.map((run) => run.name)).toEqual(['alice-run'])
+	expect(filtered.runs[0]?.startedBy?.username).toBe('alice')
 })

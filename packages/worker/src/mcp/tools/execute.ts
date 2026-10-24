@@ -325,6 +325,8 @@ export async function runExecuteToolCall(input: {
 	mcpAgent?: McpRegistrationAgent
 	args: ExecuteToolCallArgs
 	extra?: McpToolCallExtra
+	/** Cheap display label for started_by (API token name). Never a secret. */
+	startedByLabel?: string | null
 }) {
 	const {
 		code,
@@ -594,10 +596,16 @@ export async function runExecuteToolCall(input: {
 			// cannot record one.
 			await admissionPromise
 		}
+		const executeStartedByLabel =
+			input.startedByLabel?.trim() ||
+			callerContext.request?.credential.profileName ||
+			null
 		if (normalizedIdempotencyKey && storageOwnerId) {
 			const claim = await claimRunRecord({
 				env,
 				userId: storageOwnerId,
+				request: callerContext.request,
+				startedByLabel: executeStartedByLabel,
 				context: {
 					surface: 'execute',
 					name: null,
@@ -627,6 +635,8 @@ export async function runExecuteToolCall(input: {
 				env,
 				userId: storageOwnerId,
 				waitUntil,
+				request: callerContext.request,
+				startedByLabel: executeStartedByLabel,
 				context: {
 					surface: 'execute',
 					name: null,

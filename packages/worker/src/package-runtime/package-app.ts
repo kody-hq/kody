@@ -1740,9 +1740,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		sessionId?: string | null
 		metadata?: Record<string, unknown> | null
 	}): Promise<RunRecordHandle | null> {
+		const callerContext = await this.createCallerContext(null)
 		return beginRunRecord({
 			env: this.env,
 			userId: this.ctx.props.userId,
+			request: callerContext.request,
+			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			context: {
 				packageId: this.ctx.props.packageId,
 				kodyId: this.ctx.props.kodyId,

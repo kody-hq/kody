@@ -19,6 +19,7 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	backgroundRunBilledActor,
+	deriveRequestContext,
 	parseRequestLineage,
 	type RequestOrgBinding,
 	type RequestSource,
@@ -1835,9 +1836,20 @@ async function executeClaimedScheduledJobRun(input: {
 	}).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
+	const jobCallerContext = resolveScheduledJobCallerContext({
+		callerContext: input.row.callerContext,
+	})
+	const jobRequest =
+		jobCallerContext?.user != null
+			? deriveRequestContext({
+					user: jobCallerContext.user,
+					source: input.source,
+				})
+			: null
 	const claim = await claimRunRecord({
 		env: input.env,
 		userId: input.row.record.userId,
+		request: jobRequest,
 		context: {
 			surface: 'job',
 			name: input.row.record.name,

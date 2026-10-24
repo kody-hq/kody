@@ -17,7 +17,9 @@ failures first**, and a **Recent runs** view lists the last 7 days of history
 - filters by status (including success), triage (open / ignored / resolved /
   all), and runtime surface (jobs, webhooks, package apps, workflows, and
   others)
-- a detail view with captured log lines and any triage note
+- who started each run (handle + client such as MCP, CLI, API token, schedule,
+  or webhook; older rows show as unknown)
+- a detail view with captured log lines, started-by, and any triage note
 - cursor pagination for older pages
 
 Ignored and resolved error runs stay in history but are hidden from Open errors
@@ -36,10 +38,13 @@ The MCP **`runs`** domain reads and triages the same data:
 
 - **`runSummary`** — “is anything broken?” open-error totals (plus ignored /
   resolved counts) and per-surface breakdown
-- **`runList`** — filtered history (by surface, status, job, package, time, and
-  `error_triage`; defaults to **open**, hiding ignored/resolved). Pass `status`
-  `success` (or omit `status` with `error_triage` `all`) to inspect what ran.
-- **`runGet`** — one run plus its log lines and triage fields
+- **`runList`** — filtered history (by surface, status, job, package, time,
+  `error_triage`, and optional `started_by` person id; defaults to **open**,
+  hiding ignored/resolved). Pass `status` `success` (or omit `status` with
+  `error_triage` `all`) to inspect what ran. Each run includes `started_by`
+  (person + client such as MCP, CLI, API token, schedule, or webhook) when
+  recorded; older rows omit it.
+- **`runGet`** — one run plus its log lines, triage fields, and `started_by`
 - **`runUpdate`** — mark a retained **error** run as `ignored` or `resolved` (or
   `open` to clear triage), with an optional note — non-destructive soft triage;
   error details stay intact

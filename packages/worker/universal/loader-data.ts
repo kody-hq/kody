@@ -2631,6 +2631,25 @@ export type AccountActivityRunListItem = {
 	entry: 'invoke' | 'code' | null
 	/** Stable LOADER worker id (UWD graph identity) from run metadata. */
 	workerId: string | null
+	/**
+	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
+	 * begin had no request context.
+	 */
+	startedBy: {
+		userId: string | null
+		username: string | null
+		client:
+			| 'session'
+			| 'mcp'
+			| 'cli'
+			| 'api-token'
+			| 'package-app'
+			| 'schedule'
+			| 'webhook'
+			| 'inbound-email'
+			| 'platform-event'
+		label: string | null
+	} | null
 }
 
 type AccountActivityRunLog = {

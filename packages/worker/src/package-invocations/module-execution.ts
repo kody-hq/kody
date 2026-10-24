@@ -6,6 +6,7 @@ import {
 	type RunRecordContext,
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
+import { withRunStartedBy } from '#worker/run-records/service.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import {
@@ -297,27 +298,30 @@ export async function runSavedPackageModuleOnce(
 			? externalHandle.context
 			: runtimeSurface == null
 				? null
-				: {
-						packageId: input.savedPackage.id,
-						kodyId: input.savedPackage.kodyId,
-						sourceId: input.savedPackage.sourceId,
-						publishedCommit: resolvedPublishedCommit,
-						surface: runtimeSurface,
-						name: resolveInvocationRuntimeName({
+				: withRunStartedBy(
+						{
+							packageId: input.savedPackage.id,
+							kodyId: input.savedPackage.kodyId,
+							sourceId: input.savedPackage.sourceId,
+							publishedCommit: resolvedPublishedCommit,
 							surface: runtimeSurface,
-							invocationName: input.invocationName,
-							topic: input.topic,
-						}),
-						invocationId: input.invocationId,
-						idempotencyKey: input.idempotencyKey,
-						metadata: buildSubscriptionInvocationRunMetadata({
-							exportName: input.invocationName,
-							isSubscription: input.moduleSelector.kind === 'subscription',
-							source: input.source,
-							topic: input.topic,
-							params: input.params,
-						}),
-					}
+							name: resolveInvocationRuntimeName({
+								surface: runtimeSurface,
+								invocationName: input.invocationName,
+								topic: input.topic,
+							}),
+							invocationId: input.invocationId,
+							idempotencyKey: input.idempotencyKey,
+							metadata: buildSubscriptionInvocationRunMetadata({
+								exportName: input.invocationName,
+								isSubscription: input.moduleSelector.kind === 'subscription',
+								source: input.source,
+								topic: input.topic,
+								params: input.params,
+							}),
+						},
+						callerContext.request,
+					)
 		executionStarted = true
 		const executionResult = await runBundledModuleWithRegistry(
 			input.env,

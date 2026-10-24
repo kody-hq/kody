@@ -44,6 +44,7 @@ function run(input: {
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+		startedBy: null,
 		metadata: {
 			endpointId: `${input.ownerName}-${input.name}`,
 			httpStatus: input.httpStatus,

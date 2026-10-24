@@ -44,6 +44,10 @@ import {
 	usageErrorNameFromUnknown,
 } from '#worker/usage/record-usage.ts'
 import {
+	runStartedByClientFromCredentialKind,
+	normalizeRunStartedBy,
+} from '#worker/run-records/run-started-by.ts'
+import {
 	beginRunRecord,
 	deleteWorkflowProjectionIfCreating,
 	findWorkflowProjectionByIdempotencyKey,
@@ -279,6 +283,20 @@ function workflowRequestSource(
 	return payload.lineage
 		? { kind: 'inherited', lineage: payload.lineage }
 		: { kind: 'platform-event', sourceId: packageWorkflowTokenId }
+}
+
+/** Person + client from the starter lineage; null for legacy payloads. */
+function workflowStartedBy(
+	payload: Pick<DynamicCallableWorkflowPayload, 'lineage'>,
+) {
+	const lineage = payload.lineage
+	if (!lineage) return null
+	return normalizeRunStartedBy({
+		userId: lineage.actor?.userId ?? null,
+		username: lineage.actor?.username ?? null,
+		client: runStartedByClientFromCredentialKind(lineage.credential.kind),
+		label: lineage.credential.profileName,
+	})
 }
 const maxPackageWorkflowParamsJsonBytes = 16 * 1024
 const workflowStatusRefreshTtlMs = 30_000
@@ -1781,6 +1799,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				sourceId: payload.sourceId,
 				workflowId: instanceId,
 				idempotencyKey: payload.idempotencyKey,
+				startedBy: workflowStartedBy(payload),
 				metadata: runMetadata,
 			},
 			waitUntil: (promise) => {
@@ -1924,12 +1943,14 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		const runHandle = beginRunRecord({
 			env: this.env,
 			userId: payload.userId,
+			request: callerContext.request,
 			context: {
 				surface: 'workflow',
 				name: payload.workflowName,
 				workflowId: instanceId,
 				storageId: null,
 				idempotencyKey: payload.idempotencyKey,
+				startedBy: workflowStartedBy(payload),
 				metadata: {
 					sourceType: 'inline',
 					...(stepCtx?.attempt != null

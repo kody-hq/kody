@@ -21,6 +21,7 @@ import {
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import {
 	buildPackageInvocationStorageId,
 	resolveInvocationRuntimeName,
@@ -188,22 +189,31 @@ export async function invokeSavedPackageModule(input: {
 	// Before the ledger: a suspended owner must neither replay a stored
 	// response nor leave a terminal denial that outlives the suspension.
 	// Other identity failures fall through to module execution, which
-	// reports them as before.
-	const suspension = await resolveBackgroundMcpUser(
+	// reports them as before. Keep a successful identity for started_by.
+	const backgroundIdentity = await resolveBackgroundMcpUser(
 		input.env.APP_DB,
 		input.actor.orgId,
 	).then(
-		() => null,
-		(error: unknown) => (isAccountSuspendedError(error) ? error : null),
+		(user) => ({ ok: true as const, user }),
+		(error: unknown) =>
+			isAccountSuspendedError(error)
+				? { ok: false as const, suspension: error }
+				: { ok: false as const, suspension: null },
 	)
-	if (suspension) {
+	if (!backgroundIdentity.ok && backgroundIdentity.suspension) {
 		return buildJsonErrorResponse({
 			status: 403,
-			code: suspension.code,
-			message: suspension.message,
+			code: backgroundIdentity.suspension.code,
+			message: backgroundIdentity.suspension.message,
 			idempotencyKey: input.idempotencyKey,
 		})
 	}
+	const claimRequest = backgroundIdentity.ok
+		? deriveRequestContext({
+				user: backgroundIdentity.user,
+				source: input.actor.request,
+			})
+		: null
 	const requestHash = await createRequestHash({
 		packageId: input.savedPackage.id,
 		exportName: input.invocationName,
@@ -287,6 +297,7 @@ export async function invokeSavedPackageModule(input: {
 			env: input.env,
 			userId: input.actor.orgId,
 			context: buildRunRecordContext(),
+			request: claimRequest,
 			invocation: {
 				id: crypto.randomUUID(),
 				...ledgerKey,

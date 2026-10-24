@@ -21,3 +21,13 @@ test('runList rejects unknown keys and suggests supported snake_case filters', (
 		'packageId is not a parameter; did you mean package_id?',
 	)
 })
+
+test('runList accepts started_by as an exact person-id filter', () => {
+	const result = runListInputSchema.safeParse({
+		started_by: 'person-alice',
+		error_triage: 'all',
+	})
+	expect(result.success).toBe(true)
+	if (!result.success) return
+	expect(result.data.started_by).toBe('person-alice')
+})
