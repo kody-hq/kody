@@ -629,18 +629,20 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		// event, so re-check suspension per hook; the resolver's short cache
 		// keeps this off the D1 hot path.
 		await resolveBackgroundMcpUser(this.env.APP_DB, input.binding.userId)
-		const appWorker = await this.getPackageAppWorker(input.binding)
-		const entrypoint = appWorker.stub.getEntrypoint(
-			appWorker.entrypointName,
-		) as {
-			handleRealtimeEvent?: (
-				payload: PackageRealtimeHookInput & PackageRealtimeHookContext,
-			) => Promise<PackageRealtimeHookResult>
-		}
-		if (typeof entrypoint.handleRealtimeEvent !== 'function') {
-			return []
-		}
+		let visitNonce: string | null = null
 		try {
+			const appWorker = await this.getPackageAppWorker(input.binding)
+			visitNonce = appWorker.visit.nonce
+			const entrypoint = appWorker.stub.getEntrypoint(
+				appWorker.entrypointName,
+			) as {
+				handleRealtimeEvent?: (
+					payload: PackageRealtimeHookInput & PackageRealtimeHookContext,
+				) => Promise<PackageRealtimeHookResult>
+			}
+			if (typeof entrypoint.handleRealtimeEvent !== 'function') {
+				return []
+			}
 			const result = await entrypoint.handleRealtimeEvent({
 				...input.payload,
 				userId: input.binding.userId,
@@ -651,7 +653,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			})
 			return normalizeHookActions(result)
 		} finally {
-			endPackageAppVisit(appWorker.visit.nonce)
+			endPackageAppVisit(visitNonce)
 		}
 	}
 

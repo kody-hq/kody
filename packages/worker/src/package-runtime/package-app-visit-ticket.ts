@@ -6,8 +6,11 @@
  * request (inbound `X-Kody-*` already stripped), and the wrapper attaches it
  * to every bridge and gateway call. The ticket is HMAC-signed with a
  * host-held key package code never sees, bound to one request nonce, and
- * capped at 60 seconds. Reuse after the request ends, after expiry, on
- * another app, commit, or host, or with a forged signature is refused.
+ * capped at 60 seconds. Verify is HMAC + audience + not burned + (unexpired
+ * or still live on this isolate). Live is not required: mint and verify may
+ * run on different isolates. Reuse after the request ends, after expiry
+ * without a live nonce, on another app, commit, or host, or with a forged
+ * signature is refused.
  *
  * PR 1 keeps today's authority: a ticket with a visitor means the app still
  * acts as that visitor. Grant id and scope set are reserved for later PRs.
@@ -32,6 +35,12 @@ import { newRunCredentialClientBinding } from '#worker/credentials/credential-cl
 
 export const packageAppVisitTicketHeaderName = 'X-Kody-Visit-Ticket'
 export const packageAppVisitTicketTtlMs = 60_000
+/**
+ * How long a mint isolate may keep a nonce live after mint so the same
+ * isolate can still accept the ticket past the 60s cap (streamed bodies,
+ * waitUntil, outbound fetch). Forgotten if `endPackageAppVisit` never runs.
+ */
+export const packageAppVisitLiveHoldMs = 5 * 60_000
 export const packageAppVisitTicketPrefix = 'kvt1.'
 
 const ticketPurpose = 'kody-package-app-visit@v1'
@@ -96,7 +105,7 @@ type StoredVisitTicket = {
 	scopes: Array<string>
 }
 
-const liveNonces = new Set<string>()
+const liveNonces = new Map<string, number>()
 const burnedNonces = new Map<string, number>()
 const signingKeys = new Map<string, Promise<CryptoKey>>()
 let localSigningSecret: string | null = null
@@ -158,9 +167,12 @@ function derivationKey(secretStoreKey: string | undefined) {
 	return key
 }
 
-function pruneBurnedNonces(now: number) {
+function pruneNonceMaps(now: number) {
 	for (const [nonce, until] of burnedNonces) {
 		if (until <= now) burnedNonces.delete(nonce)
+	}
+	for (const [nonce, until] of liveNonces) {
+		if (until <= now) liveNonces.delete(nonce)
 	}
 }
 
@@ -245,9 +257,9 @@ export function resetPackageAppVisitNoncesForTests() {
 }
 
 /** Mark a visit nonce live for this request. Mint already does this. */
-export function beginPackageAppVisit(nonce: string) {
-	pruneBurnedNonces(Date.now())
-	liveNonces.add(nonce)
+export function beginPackageAppVisit(nonce: string, now = Date.now()) {
+	pruneNonceMaps(now)
+	liveNonces.set(nonce, now + packageAppVisitLiveHoldMs)
 }
 
 /**
@@ -258,6 +270,46 @@ export function endPackageAppVisit(nonce: string | null | undefined) {
 	if (!nonce) return
 	liveNonces.delete(nonce)
 	burnedNonces.set(nonce, Date.now() + packageAppVisitTicketTtlMs)
+}
+
+/** Drop the live mark without burning, as if verify ran on another isolate. */
+export function forgetPackageAppVisitLiveForTests(nonce: string) {
+	liveNonces.delete(nonce)
+}
+
+/**
+ * Burn the nonce when the returned body completes, cancels, or cannot be
+ * watched. Header resolve is not the end of the visit: streamed bodies and
+ * waitUntil work still need the ticket.
+ */
+export function endPackageAppVisitWithResponse(
+	response: Response,
+	nonce: string | null | undefined,
+) {
+	if (!nonce) return response
+	const webSocket = 'webSocket' in response ? response.webSocket : null
+	if (webSocket || response.status === 101) {
+		endPackageAppVisit(nonce)
+		return response
+	}
+	const body = response.body
+	if (!body) {
+		endPackageAppVisit(nonce)
+		return response
+	}
+	try {
+		const [forClient, forWatch] = body.tee()
+		void forWatch
+			.pipeTo(new WritableStream({ write() {} }))
+			.catch(() => undefined)
+			.finally(() => {
+				endPackageAppVisit(nonce)
+			})
+		return new Response(forClient, response)
+	} catch {
+		endPackageAppVisit(nonce)
+		return response
+	}
 }
 
 export async function mintPackageAppVisitTicket(input: {
@@ -301,7 +353,7 @@ export async function mintPackageAppVisitTicket(input: {
 		await derivationKey(input.env.SECRET_STORE_KEY),
 		new TextEncoder().encode(`${ticketPurpose}.${payload}`),
 	)
-	beginPackageAppVisit(nonce)
+	beginPackageAppVisit(nonce, now)
 	return {
 		ticket: `${packageAppVisitTicketPrefix}${payload}.${bytesToBase64Url(new Uint8Array(signature))}`,
 		nonce,
@@ -342,12 +394,12 @@ export async function verifyPackageAppVisitTicket(input: {
 	}
 	if (!isStoredVisitTicket(parsed)) throw fail()
 	const now = input.now ?? Date.now()
-	pruneBurnedNonces(now)
+	pruneNonceMaps(now)
+	const liveUntil = liveNonces.get(parsed.nonce) ?? 0
 	if (
-		parsed.exp <= now ||
+		(parsed.exp <= now && liveUntil <= now) ||
 		parsed.exp > now + packageAppVisitTicketTtlMs ||
 		burnedNonces.has(parsed.nonce) ||
-		!liveNonces.has(parsed.nonce) ||
 		!audienceMatches(input.audience, {
 			host: parsed.host,
 			packageId: parsed.pkg,

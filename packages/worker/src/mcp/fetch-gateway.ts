@@ -227,7 +227,20 @@ async function applyPackageAppVisitTicketToGateway(input: {
 	idleTimeoutMs?: number
 }) {
 	const ticket = input.request.headers.get(packageAppVisitTicketHeaderName)
-	if (!ticket) return input
+	if (!ticket) {
+		if (!input.props.visitAudience) return input
+		// A warm Dynamic Worker may keep the first visitor's gateway props.
+		// Ticketless package-app fetch is anonymous and must not inherit that
+		// request or credential binding.
+		return {
+			...input,
+			props: {
+				...input.props,
+				request: null,
+				credentialClientBinding: null,
+			},
+		}
+	}
 	const audience = input.props.visitAudience
 	if (!audience) {
 		throw new Error('Package app visit ticket is not valid.')

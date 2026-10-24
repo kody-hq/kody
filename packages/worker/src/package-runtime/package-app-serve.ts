@@ -62,6 +62,7 @@ import {
 import { withPackageAppVisitorHeader } from '#worker/package-runtime/package-app-visitor-header.ts'
 import {
 	endPackageAppVisit,
+	endPackageAppVisitWithResponse,
 	withPackageAppVisitTicket,
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
 import { packageRealtimeSessionRpc } from '#worker/package-runtime/realtime-session.ts'
@@ -1076,6 +1077,7 @@ export async function servePackageAppRequest(input: {
 			dispatch,
 		)
 	} catch (error) {
+		endPackageAppVisit(visitNonce)
 		const expected = resolveExpectedPackageAppHostSetupFailure({
 			request,
 			error,
@@ -1120,9 +1122,12 @@ export async function servePackageAppRequest(input: {
 			)
 		} catch (error) {
 			if (request.method === 'OPTIONS') {
-				return attachPackageAppServerTiming(
-					unhandledPackageAppOptionsResponse(),
-					serverTiming,
+				return endPackageAppVisitWithResponse(
+					attachPackageAppServerTiming(
+						unhandledPackageAppOptionsResponse(),
+						serverTiming,
+					),
+					visitNonce,
 				)
 			}
 			console.error('Package app entrypoint failed:', error)
@@ -1140,33 +1145,42 @@ export async function servePackageAppRequest(input: {
 					method: request.method,
 					error,
 				}))
-			return attachPackageAppServerTiming(
-				createPackageAppErrorResponse({
-					request,
-					kind: 'package-entrypoint',
-					kodyId: savedPackage.kodyId,
-					packageName: savedPackage.name,
-					runtimeRunId,
-				}),
-				serverTiming,
+			return endPackageAppVisitWithResponse(
+				attachPackageAppServerTiming(
+					createPackageAppErrorResponse({
+						request,
+						kind: 'package-entrypoint',
+						kodyId: savedPackage.kodyId,
+						packageName: savedPackage.name,
+						runtimeRunId,
+					}),
+					serverTiming,
+				),
+				visitNonce,
 			)
 		}
 		if (isPackageAppRuntimeThrownResponse(fetched)) {
 			if (request.method === 'OPTIONS') {
-				return attachPackageAppServerTiming(
-					unhandledPackageAppOptionsResponse(),
-					serverTiming,
+				return endPackageAppVisitWithResponse(
+					attachPackageAppServerTiming(
+						unhandledPackageAppOptionsResponse(),
+						serverTiming,
+					),
+					visitNonce,
 				)
 			}
-			return attachPackageAppServerTiming(
-				createPackageAppErrorResponse({
-					request,
-					kind: 'package-entrypoint',
-					kodyId: savedPackage.kodyId,
-					packageName: savedPackage.name,
-					runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
-				}),
-				serverTiming,
+			return endPackageAppVisitWithResponse(
+				attachPackageAppServerTiming(
+					createPackageAppErrorResponse({
+						request,
+						kind: 'package-entrypoint',
+						kodyId: savedPackage.kodyId,
+						packageName: savedPackage.name,
+						runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
+					}),
+					serverTiming,
+				),
+				visitNonce,
 			)
 		}
 		// Leave x-kody-runtime-run-id on the response. The origin forward reads
@@ -1177,9 +1191,13 @@ export async function servePackageAppRequest(input: {
 			phase: 'entrypoint-response',
 			runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
 		})
-		return attachPackageAppServerTiming(fetched, serverTiming)
-	} finally {
+		return endPackageAppVisitWithResponse(
+			attachPackageAppServerTiming(fetched, serverTiming),
+			visitNonce,
+		)
+	} catch (error) {
 		endPackageAppVisit(visitNonce)
+		throw error
 	}
 }
 

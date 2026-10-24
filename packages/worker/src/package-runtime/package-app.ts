@@ -27,7 +27,6 @@ import { type EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	buildKodyFns,
 	collectPackageStorageGrantIds,
-	type PackageEventTools,
 } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
@@ -621,7 +620,10 @@ function createRealtimeProxy(runtimeBridge) {
 function createPackageSecretsProxy(runtimeBridge) {
 	// Run-identity secrets only; package-bound secrets go through the
 	// trusted per-package binding. Alias trimmed with a captured intrinsic.
-	const secretArgs = (alias) => ({ alias });
+	const secretArgs = (alias) => ({
+		alias,
+		visitTicket: __kodyCurrentVisitTicket(),
+	});
 	return {
 		get: async (alias) => {
 			const normalizedAlias =
@@ -712,7 +714,10 @@ function createWorkflowsProxy(runtimeBridge) {
 				...(exportName ? { exportName } : {}),
 				...(code ? { code } : {}),
 			};
-			return await runtimeBridge.workflowCreate(payload);
+			return await runtimeBridge.workflowCreate(
+				payload,
+				__kodyCurrentVisitTicket(),
+			);
 		},
 	};
 }
@@ -720,7 +725,10 @@ function createWorkflowsProxy(runtimeBridge) {
 function createEventsProxy(runtimeBridge) {
 	return {
 		dispatch: async (input) =>
-			await runtimeBridge.packageEventDispatch(input ?? {}),
+			await runtimeBridge.packageEventDispatch(
+				input ?? {},
+				__kodyCurrentVisitTicket(),
+			),
 	};
 }
 
@@ -729,6 +737,7 @@ function createAuthenticatedFetchHelper(runtimeBridge) {
 		return async (input, init) =>
 			await runtimeBridge.authenticatedFetch({
 				providerName,
+				visitTicket: __kodyCurrentVisitTicket(),
 				request: {
 					url:
 						typeof input === 'string'
@@ -1348,7 +1357,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
 	PackageAppRuntimeBridgeProps
 > {
-	private packageEventTools: Promise<PackageEventTools> | null = null
 	private readonly credentialClientTools = new Map<
 		string,
 		Promise<AdditionalKodyTools>
@@ -1357,17 +1365,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		createExecutionSecretRedactor()
 
 	private async requireVisit(ticket: string | null | undefined) {
-		if (ticket === null || ticket === '') return null
-		const token =
-			typeof ticket === 'string' ? ticket : (this.ctx.props.visitTicket ?? null)
-		if (!token) return null
+		if (typeof ticket !== 'string' || ticket === '') return null
 		const audience = this.ctx.props.visitAudience
 		if (!audience) {
 			throw new Error('Package app visit ticket is not valid.')
 		}
 		return await verifyPackageAppVisitTicket({
 			env: this.env,
-			ticket: token,
+			ticket,
 			audience,
 		})
 	}
@@ -1377,8 +1382,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		ticket?: string | null,
 	) {
 		const visit = await this.requireVisit(ticket)
-		const visitor =
-			visit?.visitor ?? (ticket === undefined ? this.ctx.props.visitor : null)
+		const visitor = visit?.visitor ?? null
 		const email = visit?.owner.email ?? this.ctx.props.email
 		const displayName = visit?.owner.displayName ?? this.ctx.props.displayName
 		const orgSlug = visit?.owner.orgSlug ?? this.ctx.props.orgSlug
@@ -1410,9 +1414,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}
 
 	private credentialBindingFor(visit: PackageAppVisitClaims | null) {
-		return (
-			visit?.credentialClientBinding ?? this.ctx.props.credentialClientBinding
-		)
+		return visit?.credentialClientBinding ?? ''
 	}
 
 	private getStorageRunner(storageId: string) {
@@ -1654,11 +1656,13 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				return await this.packageSecretGetAs(
 					packageId,
 					String(input.alias ?? ''),
+					visitTicket,
 				)
 			case 'packageSecretHas':
 				return await this.packageSecretHasAs(
 					packageId,
 					String(input.alias ?? ''),
+					visitTicket,
 				)
 			case 'packageStorage':
 				return await this.packageStorageCallAs(
@@ -1707,7 +1711,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					request: visit
 						? ((await this.createCallerContext(null, visitTicket)).request ??
 							null)
-						: (gatewayProps.request ?? null),
+						: null,
 					credentialClientBinding: this.credentialBindingFor(visit),
 				},
 			})
@@ -2074,10 +2078,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			headers?: Record<string, string>
 			body?: string
 		}
+		visitTicket?: string | null
 	}) {
 		const kody = await buildKodyFns(
 			this.env,
-			await this.createCallerContext(this.ctx.props.packageId),
+			await this.createCallerContext(
+				this.ctx.props.packageId,
+				input.visitTicket,
+			),
 		)
 		const authenticatedFetch = await createAuthenticatedFetch(
 			kody,
@@ -2094,12 +2102,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		alias: string
 		boundPackageId: string | null
 		access?: 'presence' | 'value'
+		visitTicket?: string | null
 	}) {
 		const packageId = this.resolvePackageSecretAuthorityPackageId(
 			input.boundPackageId,
 		)
 		const callerContext = await this.createCallerContext(
 			this.ctx.props.packageId,
+			input.visitTicket,
 		)
 		return await resolveCredential({
 			env: this.env,
@@ -2118,18 +2128,27 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}
 
 	/** Run-package secrets only; caller-supplied ids are ignored (GHSA-5fv3). */
-	async packageSecretGet(input: { alias: string }) {
-		return await this.packageSecretGetAs(null, String(input?.alias ?? ''))
+	async packageSecretGet(input: {
+		alias: string
+		visitTicket?: string | null
+	}) {
+		return await this.packageSecretGetAs(
+			null,
+			String(input?.alias ?? ''),
+			input.visitTicket,
+		)
 	}
 
 	private async packageSecretGetAs(
 		boundPackageId: string | null,
 		alias: string,
+		visitTicket?: string | null,
 	) {
 		const input = { alias }
 		const resolved = await this.resolvePackageSecretMount({
 			alias,
 			boundPackageId,
+			visitTicket,
 		})
 		// Opaque placeholder string only — never track or return plaintext.
 		let value = resolved.ref
@@ -2153,19 +2172,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}
 
 	/** Run-package secrets only; caller-supplied ids are ignored (GHSA-5fv3). */
-	async packageSecretHas(input: { alias: string }) {
-		return await this.packageSecretHasAs(null, String(input?.alias ?? ''))
+	async packageSecretHas(input: {
+		alias: string
+		visitTicket?: string | null
+	}) {
+		return await this.packageSecretHasAs(
+			null,
+			String(input?.alias ?? ''),
+			input.visitTicket,
+		)
 	}
 
 	private async packageSecretHasAs(
 		boundPackageId: string | null,
 		alias: string,
+		visitTicket?: string | null,
 	) {
 		try {
 			await this.resolvePackageSecretMount({
 				alias,
 				boundPackageId,
 				access: 'presence',
+				visitTicket,
 			})
 			return {
 				has: true,
@@ -2210,8 +2238,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async workflowCreate(input: unknown) {
-		const { request } = await this.createCallerContext(null)
+	async workflowCreate(input: unknown, visitTicket?: string | null) {
+		const { request } = await this.createCallerContext(null, visitTicket)
 		if (!request)
 			throw new Error('workflows.create requires a package app user.')
 		return await createDynamicCallableWorkflow({
@@ -2228,36 +2256,35 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async createPackageEventTools() {
-		if (this.packageEventTools) return await this.packageEventTools
-
+	async createPackageEventTools(visitTicket?: string | null) {
 		// Avoid a top-level package-app -> package-invocations cycle during worker
 		// startup; apps only need this helper when package code calls it.
-		this.packageEventTools =
-			import('#worker/package-invocations/service.ts').then(
-				async ({ createPackageEventTools }) => {
-					const packageContext = {
-						packageId: this.ctx.props.packageId,
-						kodyId: this.ctx.props.kodyId,
-						sourceId: this.ctx.props.sourceId,
-					}
-					return createPackageEventTools({
-						env: this.env,
-						baseUrl: this.ctx.props.baseUrl,
-						callerContext: await this.createCallerContext(
-							this.ctx.props.packageId,
-						),
-						packageContext,
-						parentRunRecord: null,
-						packageInvokeDepth: 0,
-					})
-				},
-			)
-		return await this.packageEventTools
+		// Do not cache: a warm isolate would reuse the first visitor's caller.
+		const { createPackageEventTools } =
+			await import('#worker/package-invocations/service.ts')
+		const packageContext = {
+			packageId: this.ctx.props.packageId,
+			kodyId: this.ctx.props.kodyId,
+			sourceId: this.ctx.props.sourceId,
+		}
+		return createPackageEventTools({
+			env: this.env,
+			baseUrl: this.ctx.props.baseUrl,
+			callerContext: await this.createCallerContext(
+				this.ctx.props.packageId,
+				visitTicket,
+			),
+			packageContext,
+			parentRunRecord: null,
+			packageInvokeDepth: 0,
+		})
 	}
 
-	async packageEventDispatch(input: Record<string, unknown>) {
-		const tools = await this.createPackageEventTools()
+	async packageEventDispatch(
+		input: Record<string, unknown>,
+		visitTicket?: string | null,
+	) {
+		const tools = await this.createPackageEventTools(visitTicket)
 		return await tools.dispatch(input)
 	}
 
@@ -2377,7 +2404,8 @@ const packageAppWorkerOptionsCache =
  * the `APP_LOADER.get` callback (or right before `APP_LOADER.load`) so the
  * bindings belong to the request that loads the isolate. Visitor identity,
  * request context, and the credential binding come from `requestVisit`, never
- * from the cached template.
+ * from the cached template. A warm isolate may skip this factory; ticketless
+ * bridge and gateway paths stay anonymous and do not inherit frozen props.
  */
 export function materializePackageAppWorkerOptions(
 	template: PackageAppWorkerTemplate,

@@ -67,7 +67,7 @@ function getViaOwnKeysThenGopd(target: object, name: string): unknown {
 function createWorkflowsProxyForTest(runtimeBridge: unknown) {
 	return new Function(
 		'runtimeBridge',
-		`${extractGeneratedSource(
+		`function __kodyCurrentVisitTicket() { return null; }\n${extractGeneratedSource(
 			'function createWorkflowsProxy(runtimeBridge) {',
 			'\nfunction createAuthenticatedFetchHelper',
 		)}; return createWorkflowsProxy(runtimeBridge);`,
@@ -969,39 +969,6 @@ test('package app runtime bridge credentialClientCall dispatches known tools and
 	await expect(
 		bridge.credentialClientCall({ name: 'credentialClientNope', args: {} }),
 	).rejects.toThrow('Unknown credential client tool "credentialClientNope".')
-})
-
-test('package app credential client binding comes from bridge props so open and sign share it across RPC instances', async () => {
-	const sharedBinding = 'run:shared-across-rpc-instances'
-	packageAppRuntimeMock.credentialClientBindingsSeen.length = 0
-	packageAppRuntimeMock.createCredentialClientKodyTools.mockClear()
-
-	const opener = createPackageAppRuntimeBridgeForTest({
-		credentialClientBinding: sharedBinding,
-	}).bridge
-	const signer = createPackageAppRuntimeBridgeForTest({
-		credentialClientBinding: sharedBinding,
-	}).bridge
-
-	const { credentialClientToolNames } =
-		await import('#worker/mcp/execute-modules/credential-client-source.ts')
-	await opener.credentialClientCall({
-		name: credentialClientToolNames.open,
-		args: { key: 'powersync-jwt' },
-	})
-	await signer.credentialClientCall({
-		name: credentialClientToolNames.sign,
-		args: {
-			handle: 'h-from-props',
-			host: 'powersync.example',
-			operation: {},
-		},
-	})
-
-	expect(packageAppRuntimeMock.credentialClientBindingsSeen).toEqual([
-		sharedBinding,
-		sharedBinding,
-	])
 })
 
 test('buildPackageAppWorker claims the unique Dynamic Worker day with its surface off the stub path, only after acquiring the stub', async () => {

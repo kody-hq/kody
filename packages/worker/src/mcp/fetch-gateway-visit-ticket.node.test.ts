@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
+import * as usageModule from '#worker/usage/record-usage.ts'
 import {
 	mintPackageAppVisitTicket,
 	resetPackageAppVisitNoncesForTests,
@@ -100,4 +101,68 @@ test('executeGatewayFetch verifies a visit ticket and refuses a forged one', asy
 			globalFetch: globalFetch as unknown as typeof fetch,
 		}),
 	).rejects.toThrow('Package app visit ticket is not valid.')
+})
+
+test('a ticketless gateway fetch does not inherit a warm isolate first visitor', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const recordUsageSpy = vi
+		.spyOn(usageModule, 'recordUsage')
+		.mockResolvedValue(undefined)
+	const waitUntilTasks: Array<Promise<unknown>> = []
+	const response = await executeGatewayFetch({
+		env,
+		props: {
+			baseUrl: 'https://kody.example',
+			userId: ownerIdFromStored('org-1'),
+			email: null,
+			request: {
+				org: { id: ownerIdFromStored('org-1'), slug: 'acme' },
+				actor: {
+					userId: personIdFromStored('person-stale'),
+					username: 'stale',
+				},
+				attribution: {
+					kind: 'user',
+					userId: personIdFromStored('person-stale'),
+				},
+				credential: {
+					kind: 'package-app',
+					id: null,
+					orgId: ownerIdFromStored('org-1'),
+					scopes: null,
+					profileName: null,
+				},
+				membership: { role: 'owner' },
+			},
+			storageContext: {
+				sessionId: null,
+				appId: 'pkg-1',
+				packageId: 'pkg-1',
+				storageId: null,
+			},
+			visitAudience: {
+				host: 'https://apps.example',
+				packageId: 'pkg-1',
+				kodyId: 'demo',
+				sourceId: 'src-1',
+				publishedCommit: 'commit-1',
+			},
+			credentialClientBinding: 'run:first-visitor',
+		},
+		request: new Request('https://example.com/anon'),
+		globalFetch: vi.fn(
+			async () => new Response('anon'),
+		) as unknown as typeof fetch,
+		waitUntil: (promise) => {
+			waitUntilTasks.push(promise)
+		},
+	})
+	await response.arrayBuffer()
+	await Promise.all(waitUntilTasks)
+	expect(recordUsageSpy).toHaveBeenCalled()
+	const usage = recordUsageSpy.mock.calls[0]?.[1] as {
+		actorUserId?: string
+	}
+	expect(usage.actorUserId).toBeUndefined()
+	recordUsageSpy.mockRestore()
 })

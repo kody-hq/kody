@@ -2,11 +2,13 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	createPackageAppRequestVisit,
 	endPackageAppVisit,
+	endPackageAppVisitWithResponse,
+	forgetPackageAppVisitLiveForTests,
 	mintPackageAppVisitTicket,
 	packageAppVisitTicketPrefix,
 	packageAppVisitTicketTtlMs,
@@ -128,6 +130,24 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 
 	resetPackageAppVisitNoncesForTests()
+	const otherIsolate = await mintFor(visitorA, { now })
+	forgetPackageAppVisitLiveForTests(otherIsolate.nonce)
+	await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: otherIsolate.ticket,
+		audience,
+		now,
+	})
+	await expect(
+		verifyPackageAppVisitTicket({
+			env: secretEnv,
+			ticket: otherIsolate.ticket,
+			audience,
+			now: now + packageAppVisitTicketTtlMs + 1,
+		}),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+
+	resetPackageAppVisitNoncesForTests()
 	const live = await mintFor(visitorA, { now })
 	await expect(
 		verifyPackageAppVisitTicket({
@@ -136,7 +156,7 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 			audience,
 			now: now + packageAppVisitTicketTtlMs + 1,
 		}),
-	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	).resolves.toMatchObject({ nonce: live.nonce })
 
 	const [prefix, payload, signature] = [
 		packageAppVisitTicketPrefix,
@@ -241,4 +261,32 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 	expect(anonymous.credentialClientBinding).not.toBe(
 		acting.credentialClientBinding,
 	)
+})
+
+test('endPackageAppVisitWithResponse keeps the ticket live until the body ends', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const minted = await mintFor(visitorA)
+	const { readable, writable } = new TransformStream()
+	const response = endPackageAppVisitWithResponse(
+		new Response(readable),
+		minted.nonce,
+	)
+	await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: minted.ticket,
+		audience,
+	})
+	const writer = writable.getWriter()
+	await writer.write(new TextEncoder().encode('chunk'))
+	await writer.close()
+	await expect(response.text()).resolves.toBe('chunk')
+	await vi.waitFor(async () => {
+		await expect(
+			verifyPackageAppVisitTicket({
+				env: secretEnv,
+				ticket: minted.ticket,
+				audience,
+			}),
+		).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	})
 })
