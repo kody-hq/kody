@@ -543,6 +543,10 @@ async function expandAsPackageAppAuthority(input: {
 		void retry.body?.cancel()
 		return expanded
 	} catch (error) {
+		if (!isPlaceholderAuthorityFailure(error)) {
+			void retry.body?.cancel()
+			throw error
+		}
 		try {
 			const expanded = await expandSecretPlaceholders({
 				...input,
@@ -554,6 +558,18 @@ async function expandAsPackageAppAuthority(input: {
 			throw error
 		}
 	}
+}
+
+/** A credential the filling person cannot resolve, as opposed to a bad request or an outage. */
+export class GatewayCredentialUnavailableError extends Error {}
+
+export function isPlaceholderAuthorityFailure(error: unknown) {
+	return (
+		packageAppAuthorityFallbackKindOf(error) !== null ||
+		error instanceof GatewayCredentialUnavailableError ||
+		error instanceof SecretPlacementError ||
+		error instanceof McpCallerError
+	)
 }
 
 type PlacedPlaceholderSource = {
@@ -1027,7 +1043,9 @@ export async function expandSecretPlaceholders(input: {
 						: error
 				})
 				if (!value) {
-					throw new Error(createMissingIntegrationAccessTokenMessage(name))
+					throw new GatewayCredentialUnavailableError(
+						createMissingIntegrationAccessTokenMessage(name),
+					)
 				}
 				return { name, value }
 			}),
@@ -1036,7 +1054,9 @@ export async function expandSecretPlaceholders(input: {
 			providerSecretsToResolve.map(async ({ referenced, credential }) => {
 				const request = input.props.request
 				if (!request) {
-					throw new Error(fetchSecretAuthRequiredMessage)
+					throw new GatewayCredentialUnavailableError(
+						fetchSecretAuthRequiredMessage,
+					)
 				}
 				const resolved = await resolveCredential({
 					...resolveInput,
@@ -1543,7 +1563,7 @@ function readBulkHostApprovalScope(input: {
 
 function requireFetchUserId(props: FetchGatewayProps): OwnerId {
 	if (!props.userId) {
-		throw new Error(fetchSecretAuthRequiredMessage)
+		throw new GatewayCredentialUnavailableError(fetchSecretAuthRequiredMessage)
 	}
 	return props.userId
 }
@@ -1661,7 +1681,9 @@ function readResolvedSecretValue(
 	const placeholder = buildSecretPlaceholder(referenced)
 	const value = resolvedValues.get(placeholder)
 	if (value == null) {
-		throw new Error(createMissingSecretMessage(referenced.name))
+		throw new GatewayCredentialUnavailableError(
+			createMissingSecretMessage(referenced.name),
+		)
 	}
 	return value
 }

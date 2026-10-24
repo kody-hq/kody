@@ -22,6 +22,7 @@ import {
 import {
 	loadInboundMcpConnectionState,
 	revokeConnectedMcpAgent,
+	type InboundMcpConnectionState,
 } from '#worker/connected-mcp-agents.ts'
 import {
 	type OAuthGrantHelpers,
@@ -34,6 +35,7 @@ import {
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { mapWithConcurrency } from '#worker/webhooks/delivery-outcomes.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 
 type ConnectedAppsUser = NonNullable<
@@ -58,14 +60,34 @@ export async function loadAccountConnectedAppsData(input: {
 	const personId = input.user.mcpUser.userId
 	const [grants, agentState] = await Promise.all([
 		listLivePackageAppOauthGrantsForPerson({ db: input.env.APP_DB, personId }),
-		resolveOAuthHelpers<OAuthGrantListHelpers>(input.env).then((helpers) =>
-			loadInboundMcpConnectionState(helpers, personalOrgId(personId), {
-				env: input.env,
-			}),
-		),
+		resolveOAuthHelpers<OAuthGrantListHelpers>(input.env)
+			.then((helpers) =>
+				loadInboundMcpConnectionState(helpers, personalOrgId(personId), {
+					env: input.env,
+				}),
+			)
+			.catch((): InboundMcpConnectionState => ({
+				uniqueClientCount: 0,
+				agents: [],
+				listingFailed: true,
+			})),
 	])
-	const apps = await Promise.all(
-		grants.map((grant) => describeAppGrant(input.env, grant)),
+	const orgsByHandle = new Map<
+		string,
+		ReturnType<typeof resolvePackageAppOrgOwnerByHandle>
+	>()
+	const resolveOrg = (handle: string) => {
+		let org = orgsByHandle.get(handle)
+		if (!org) {
+			org = resolvePackageAppOrgOwnerByHandle({ env: input.env, handle })
+			orgsByHandle.set(handle, org)
+		}
+		return org
+	}
+	const apps = await mapWithConcurrency(
+		grants,
+		connectedAppLookupConcurrency,
+		(grant) => describeAppGrant(input.env, grant, resolveOrg),
 	)
 	return {
 		ok: true,
@@ -81,19 +103,21 @@ export async function loadAccountConnectedAppsData(input: {
 	}
 }
 
+const connectedAppLookupConcurrency = 8
+
 async function describeAppGrant(
 	env: Env,
 	grant: PackageAppOauthGrant,
+	resolveOrg: (
+		handle: string,
+	) => ReturnType<typeof resolvePackageAppOrgOwnerByHandle>,
 ): Promise<AccountConnectedAppView> {
 	let appName = grant.kodyId
 	let publisherName = grant.orgUsername
 	let iconUrl: string | null = null
 	const needDescriptions: Record<string, string> = {}
 	try {
-		const org = await resolvePackageAppOrgOwnerByHandle({
-			env,
-			handle: grant.orgUsername,
-		})
+		const org = await resolveOrg(grant.orgUsername)
 		if (org) {
 			publisherName = org.displayName || grant.orgUsername
 			const lookup = await resolveSavedPackageForPackageAppSlug({

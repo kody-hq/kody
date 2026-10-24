@@ -77,20 +77,24 @@ export function AccountConnectedAppsPage({
 		setArmed(null)
 		const isCurrent = capture()
 		setRemovedApps((current) => new Set(current).add(app.appKey))
-		appMutation.mutate(app.appKey, {
-			onSuccess: () => {
+		void appMutation.mutateAsync(app.appKey).then(
+			() => {
 				if (isCurrent())
 					toast.success(`${app.appName} can no longer use your Kody account.`)
 			},
-			onError: (error) => {
+			(error: unknown) => {
 				setRemovedApps((current) => {
 					const next = new Set(current)
 					next.delete(app.appKey)
 					return next
 				})
-				if (isCurrent()) toast.error(error.message)
+				if (isCurrent()) {
+					toast.error(
+						error instanceof Error ? error.message : 'Unable to revoke.',
+					)
+				}
 			},
-		})
+		)
 	}
 
 	function revokeAgent(clientIds: ReadonlyArray<string>, label: string) {
