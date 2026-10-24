@@ -14,6 +14,10 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+const credentialAuditCalls = vi.hoisted(() => ({
+	record: vi.fn(async (_writer: unknown, _change: unknown) => {}),
+}))
+
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn<
 		typeof authenticatedUserModule.readAuthenticatedAppUser
@@ -312,6 +316,11 @@ vi.mock('#worker/credentials/credential-fields.ts', async (importOriginal) => {
 
 vi.mock('#worker/orgs/org-audit.ts', () => ({
 	orgAuditWriterFromRequest: () => ({ audit: 'writer' }),
+}))
+
+vi.mock('#worker/credentials/credential-audit.ts', () => ({
+	credentialAuditActions: { renamed: 'credential.renamed' },
+	recordCredentialAudit: credentialAuditCalls.record,
 }))
 
 vi.mock('#worker/integrations/service.ts', async (importOriginal) => {

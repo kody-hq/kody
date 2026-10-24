@@ -95,6 +95,10 @@ import {
 	orgAuditWriterFromRequest,
 	type OrgAuditWriter,
 } from '#worker/orgs/org-audit.ts'
+import {
+	credentialAuditActions,
+	recordCredentialAudit,
+} from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
@@ -1537,9 +1541,11 @@ export async function saveAccountSecret(input: {
 	let renamedInPlace = false
 	if (willRenameInPlace && currentSecret) {
 		try {
+			// Audited once below, after the save succeeds, so a rolled back
+			// rename leaves no audit row.
 			const renamed = await renameSecret({
 				env: input.env,
-				audit: orgAuditWriterFromRequest(input.env, input.user.request),
+				audit: null,
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1704,7 +1710,7 @@ export async function saveAccountSecret(input: {
 			try {
 				await renameSecret({
 					env: input.env,
-					audit: orgAuditWriterFromRequest(input.env, input.user.request),
+					audit: null,
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1729,6 +1735,32 @@ export async function saveAccountSecret(input: {
 			}
 		}
 		return operationResult({ ok: false, error: saveError }, 400)
+	}
+
+	if (renamedInPlace && currentSecret?.scope === 'user') {
+		const orgId = ownerIdFromCaller({
+			request: input.user.request,
+			user: input.user.mcpUser,
+		})
+		const stored = await findSecret({
+			env: input.env,
+			userId: orgId,
+			name,
+			scope: currentSecret.scope,
+			includeExpired: true,
+			storageContext: getSecretContextForAccountSecret(currentSecret),
+		})
+		if (stored.credentialId) {
+			await recordCredentialAudit(
+				orgAuditWriterFromRequest(input.env, input.user.request),
+				{
+					orgId,
+					credential: { id: stored.credentialId, kind: 'secret', name },
+					action: credentialAuditActions.renamed,
+					details: { previousName: currentSecret.name, fields: ['name'] },
+				},
+			)
+		}
 	}
 
 	// Post-commit provider link must not claim the save failed — a create retry
