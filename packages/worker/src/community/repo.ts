@@ -11,6 +11,7 @@ import {
 	type CommunityCategoryCounts,
 	type CommunityListingCategory,
 } from '#universal/community-categories.ts'
+import { CommunityForkClaimLostError } from './errors.ts'
 import { normalizePackageManifestVersion } from './package-version.ts'
 import {
 	type CommunityActivityKind,
@@ -844,8 +845,57 @@ export async function insertCommunityFork(
 		listing_kody_id: string
 		created_at?: string
 		actor?: CommunityForkActor | null
+		/**
+		 * When set, the insert only succeeds while this claim still holds
+		 * `(forker_user_id, listing_id)`. A lost lease inserts zero rows and
+		 * throws {@link CommunityForkClaimLostError}, so a raced create cannot
+		 * write a duplicate after takeover.
+		 */
+		claim_id?: string | null
 	},
 ): Promise<void> {
+	const createdAt = row.created_at ?? new Date().toISOString()
+	const claimId = row.claim_id?.trim() || null
+	if (claimId) {
+		const result = await db
+			.prepare(
+				`INSERT INTO community_forks (
+					id, listing_id, forker_user_id, origin_commit, forked_package_id,
+					forked_source_id, target_kody_id, listing_name, listing_kody_id,
+					created_at, actor
+				)
+				SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				WHERE EXISTS (
+					SELECT 1 FROM community_fork_claims
+					WHERE owner_id = ?
+						AND listing_id = ?
+						AND claim_id = ?
+						AND expires_at > ?
+				)`,
+			)
+			.bind(
+				row.id,
+				row.listing_id,
+				row.forker_user_id,
+				row.origin_commit,
+				row.forked_package_id,
+				row.forked_source_id,
+				row.target_kody_id,
+				row.listing_name,
+				row.listing_kody_id,
+				createdAt,
+				row.actor ?? null,
+				row.forker_user_id,
+				row.listing_id,
+				claimId,
+				createdAt,
+			)
+			.run()
+		if ((result.meta.changes ?? 0) === 0) {
+			throw new CommunityForkClaimLostError()
+		}
+		return
+	}
 	await db
 		.prepare(
 			`INSERT INTO community_forks (
@@ -864,7 +914,7 @@ export async function insertCommunityFork(
 			row.target_kody_id,
 			row.listing_name,
 			row.listing_kody_id,
-			row.created_at ?? new Date().toISOString(),
+			createdAt,
 			row.actor ?? null,
 		)
 		.run()

@@ -51,8 +51,9 @@ export function spawnNpmCi(
 		const child = spawn(resolveNpmCommand(), ['ci', ...extraArgs], {
 			env,
 			stdio: ['inherit', 'pipe', 'pipe'],
-			// Node refuses to spawn `npm.cmd` without a shell on Windows. Args
-			// stay a string array so the shell does not re-parse user input.
+			// Node refuses to spawn `npm.cmd` without a shell on Windows. With
+			// shell enabled, only pass trusted fixed args (CI passes none or
+			// `--prefer-online`); an argv array is not a shell-safety boundary.
 			shell: spawnNpmCiShellOption(),
 		})
 		function forward(

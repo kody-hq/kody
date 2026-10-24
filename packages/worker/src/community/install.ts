@@ -139,7 +139,7 @@ export async function installCommunityListing(
 		},
 		{
 			existing: (fork) => existingInstallResult(input, fork),
-			create: () => createCommunityInstall(input),
+			create: (hold) => createCommunityInstall(input, hold.claimId),
 		},
 	)
 }
@@ -179,6 +179,7 @@ async function existingInstallResult(
 
 async function createCommunityInstall(
 	input: InstallCommunityListingInput,
+	claimId: string,
 ): Promise<InstallCommunityListingResult> {
 	const installStartedAt = Date.now()
 	await reportInstallProgress(input.reportProgress, {
@@ -218,7 +219,7 @@ async function createCommunityInstall(
 			'Typechecking and bundling npm deps — overlapping Artifacts bootstrap…',
 	})
 	const overlapStartedAt = Date.now()
-	const persistPromise = persistPreparedCommunityFork(prepared)
+	const persistPromise = persistPreparedCommunityFork(prepared, { claimId })
 	const checksPromise = runRepoChecks({
 		workspace: createSnapshotFilesWorkspace(prepared.files),
 		manifestPath: 'package.json',

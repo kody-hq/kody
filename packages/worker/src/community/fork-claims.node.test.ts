@@ -14,6 +14,7 @@ import {
 	renewCommunityForkClaim,
 	withCommunityForkClaim,
 } from './fork-claims.ts'
+import { insertCommunityFork } from './repo.ts'
 
 function createDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -207,4 +208,38 @@ test('withCommunityForkClaim aborts work when the claim is taken over', async ()
 	await expect(running).rejects.toBeInstanceOf(CommunityForkClaimLostError)
 	expect(reachedAssert).toBe(true)
 	expect(consoleError).toHaveBeenCalled()
+})
+
+test('insertCommunityFork with claim_id refuses a write after takeover', async () => {
+	const db = createDb()
+	const claimId = await acquireCommunityForkClaim(db, key)
+	expect(claimId).toEqual(expect.any(String))
+	const forkRow = {
+		id: 'fork-1',
+		listing_id: key.listingId,
+		forker_user_id: key.ownerId,
+		origin_commit: 'abc123',
+		forked_package_id: 'pkg-1',
+		forked_source_id: 'src-1',
+		target_kody_id: 'forked-pkg',
+		listing_name: '@owner/listing',
+		listing_kody_id: 'listing',
+		claim_id: claimId!,
+	}
+	await insertCommunityFork(db, forkRow)
+	const pastLease = new Date(Date.now() + 10 * 60_000)
+	const takeover = await acquireCommunityForkClaim(db, {
+		...key,
+		now: pastLease,
+	})
+	expect(takeover).toEqual(expect.any(String))
+	await expect(
+		insertCommunityFork(db, {
+			...forkRow,
+			id: 'fork-2',
+			forked_package_id: 'pkg-2',
+			forked_source_id: 'src-2',
+			claim_id: claimId!,
+		}),
+	).rejects.toBeInstanceOf(CommunityForkClaimLostError)
 })

@@ -1633,10 +1633,15 @@ export async function prepareCommunityFork(
  */
 export async function persistPreparedCommunityFork(
 	prepared: PreparedCommunityFork,
-	options?: { serverTiming?: Array<ServerTimingEntry> },
+	options?: {
+		serverTiming?: Array<ServerTimingEntry>
+		/** Live fork-claim id; fences the community_forks insert on takeover. */
+		claimId?: string | null
+	},
 ): Promise<ForkCommunityListingResult> {
 	const persistStartedAt = Date.now()
 	const serverTiming = options?.serverTiming
+	const claimId = options?.claimId?.trim() || null
 	const destRepoId = buildEntityRepoId({
 		entityKind: 'package',
 		entityId: prepared.packageId,
@@ -1801,6 +1806,7 @@ export async function persistPreparedCommunityFork(
 				listing_name: prepared.listingName,
 				listing_kody_id: prepared.listingKodyId,
 				actor: prepared.actor,
+				...(claimId ? { claim_id: claimId } : {}),
 			})
 			await ensureFollowForCommunityFork({
 				env: prepared.env,
@@ -1904,7 +1910,7 @@ export async function runIdempotentCommunityFork<T>(
 	},
 	handlers: {
 		existing: (fork: CommunityForkRecord) => Promise<T>
-		create: () => Promise<T>
+		create: (hold: { claimId: string }) => Promise<T>
 	},
 ): Promise<T> {
 	// Banned accounts get neither a new fork nor a handle to an old one.
@@ -1929,7 +1935,7 @@ export async function runIdempotentCommunityFork<T>(
 			if (existing) return await handlers.existing(existing)
 			// Fence create on a live claim so a lost lease cannot duplicate.
 			await hold.assertHeld()
-			return await handlers.create()
+			return await handlers.create(hold)
 		},
 	)
 }
@@ -1963,12 +1969,15 @@ export async function forkCommunityListing(
 				}),
 			}
 		},
-		create: async () => {
+		create: async (hold) => {
 			const serverTiming: Array<ServerTimingEntry> = []
 			const prepared = await pushServerTiming(serverTiming, 'prepare', () =>
 				prepareCommunityFork(input),
 			)
-			return await persistPreparedCommunityFork(prepared, { serverTiming })
+			return await persistPreparedCommunityFork(prepared, {
+				serverTiming,
+				claimId: hold.claimId,
+			})
 		},
 	})
 }
