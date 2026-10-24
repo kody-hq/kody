@@ -122,6 +122,9 @@ export function parseAuthoredPackageJson(input: {
 		manifestPath: input.manifestPath ?? packageManifestPath,
 		mode: input.mode ?? 'authoring',
 	})
+	if (input.mode === 'published') {
+		parsed = dropRetiredOnceJobs(parsed)
+	}
 	const invalidCredentialSlots =
 		input.mode === 'published' ? splitPublishedCredentials(parsed) : null
 	const result = authoredPackageJsonSchema.safeParse(parsed)
@@ -281,6 +284,34 @@ function splitPublishedCredentials(
 	}
 	kody.credentials = Object.fromEntries(valid)
 	return invalid.length > 0 ? Object.fromEntries(invalid) : null
+}
+
+// Retired once schedules are inert at snapshot load; authoring still rejects them via packageJobScheduleSchema.
+function dropRetiredOnceJobs(parsed: unknown): unknown {
+	if (!isPlainRecord(parsed) || !isPlainRecord(parsed.kody)) return parsed
+	const jobs = parsed.kody.jobs
+	if (!isPlainRecord(jobs)) return parsed
+
+	const retainedJobs = Object.fromEntries(
+		Object.entries(jobs).filter(([, job]) => {
+			return !(
+				isPlainRecord(job) &&
+				isPlainRecord(job.schedule) &&
+				job.schedule.type === 'once'
+			)
+		}),
+	)
+	if (Object.keys(retainedJobs).length === Object.keys(jobs).length) {
+		return parsed
+	}
+
+	return {
+		...parsed,
+		kody: {
+			...parsed.kody,
+			jobs: retainedJobs,
+		},
+	}
 }
 
 function assertPackageWebhooks(input: {

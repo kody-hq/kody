@@ -436,6 +436,47 @@ test('parseAuthoredPackageJson rejects once job schedules with workflow guidance
 	)
 })
 
+test('published snapshots omit retired once jobs while preserving recurring jobs', () => {
+	const manifest = parse(
+		'@kentcdodds/legacy-once-job',
+		{
+			jobs: {
+				legacy: {
+					entry: './src/legacy.ts',
+					schedule: {
+						type: 'once',
+						runAt: '2027-01-01T16:00:00Z',
+					},
+				},
+				digest: {
+					entry: './src/digest.ts',
+					schedule: { type: 'interval', every: '1h' },
+				},
+			},
+		},
+		{ mode: 'published' },
+	)
+
+	expect(Object.keys(manifest.kody.jobs ?? {})).toEqual(['digest'])
+	expect(
+		parse(
+			'@kentcdodds/legacy-once-job',
+			{
+				jobs: {
+					legacy: {
+						entry: './src/legacy.ts',
+						schedule: {
+							type: 'once',
+							runAt: '2027-01-01T16:00:00Z',
+						},
+					},
+				},
+			},
+			{ mode: 'published' },
+		).kody.jobs,
+	).toEqual({})
+})
+
 test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and secret mounts', () => {
 	const manifest = parse('@kentcdodds/discord-gateway', {
 		secretMounts: {

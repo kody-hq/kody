@@ -529,17 +529,15 @@ async function seedPersonData(
 	const jobIds = jobRows.flatMap((job) =>
 		typeof job.id === 'string' ? [job.id] : [],
 	)
-	if (jobIds.length < 1) {
+	const dailyDigest = jobRows.find((job) =>
+		JSON.stringify(job).includes('daily-digest'),
+	)
+	if (typeof dailyDigest?.id !== 'string') {
 		throw new Error(
 			`${user.role}: expected the daily-digest package job, got ${JSON.stringify(jobs)}`,
 		)
 	}
-	const recurring = jobRows.find((job) =>
-		JSON.stringify(job).includes('daily-digest'),
-	)
-	if (typeof recurring?.id === 'string') {
-		await callCapability(session, 'jobRunNow', { id: recurring.id })
-	}
+	await callCapability(session, 'jobRunNow', { id: dailyDigest.id })
 
 	await connectMockIntegration(session, input.origins)
 	const integrationProof = readRecord(

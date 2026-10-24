@@ -809,6 +809,8 @@ await workflows.create({
 })
 ```
 
+From `execute` (outside the package), also pass `packageId`.
+
 See [Workflows](./workflows.md) for `code`-based runs, retries, and run
 inspection.
 
