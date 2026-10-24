@@ -139,6 +139,11 @@ the package was republished in between depends on `sourceRevision`:
   `workflows.create` rejects `sourceRevision: 'pinned'` for a package that has
   never been published.
 
+Workflow steps retry transient failures up to the engine limit. They do not
+retry when the attempt hits `source_revision_changed` on a pinned workflow, or
+when the owner account is `account_suspended`. Those runs fail once and show as
+errored in Activity.
+
 ```ts
 import { workflows } from 'kody:runtime'
 
