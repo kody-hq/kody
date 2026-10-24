@@ -857,6 +857,10 @@ export async function insertCommunityFork(
 	const createdAt = row.created_at ?? new Date().toISOString()
 	const claimId = row.claim_id?.trim() || null
 	if (claimId) {
+		// Lease check uses a fresh clock sample, not createdAt: an older
+		// created_at (or delay before this statement) must not treat an
+		// expired claim as still live.
+		const leaseNow = new Date().toISOString()
 		const result = await db
 			.prepare(
 				`INSERT INTO community_forks (
@@ -888,7 +892,7 @@ export async function insertCommunityFork(
 				row.forker_user_id,
 				row.listing_id,
 				claimId,
-				createdAt,
+				leaseNow,
 			)
 			.run()
 		if ((result.meta.changes ?? 0) === 0) {
