@@ -21,7 +21,9 @@ import {
 	applyPacedD1NightToState,
 	buildPacedD1RestoreSql,
 	createEmptyPacedD1RestoreState,
+	sliceUtf16Safe,
 } from './backup-d1-paced-restore.ts'
+import { bytesToBase64 } from './base64.ts'
 import {
 	buildPacedD1NightManifest,
 	createMemoryPacedD1IndexReader,
@@ -397,6 +399,71 @@ test('resumable table walk continues from lastRowid', async () => {
 	expect(second.done).toBe(true)
 	if (!second.done) throw new Error('expected done')
 	expect(second.manifest.count).toBe(3)
+})
+
+test('sliceUtf16Safe does not split surrogate pairs', () => {
+	const text = `a${String.fromCodePoint(0x1f600)}b`
+	const first = sliceUtf16Safe(text, 0, 2)
+	expect([...first.chunk]).toEqual(['a'])
+	const second = sliceUtf16Safe(text, first.next, 2)
+	expect([...second.chunk]).toEqual(['😀'])
+})
+
+test('oversized blob rows split into chunked restore SQL', async () => {
+	const blob = { $b: bytesToBase64(new Uint8Array(80_000).fill(7)) }
+	const line = pacedD1RowLine([1, blob])
+	const h = await hashPacedD1RowLine(line)
+	const state = createEmptyPacedD1RestoreState()
+	state.lastManifest = {
+		schemaVersion: 1,
+		databaseName: 'kody',
+		databaseId: '8c1014d1-6b41-4695-a0a2-159071f0f919',
+		day: '2026-10-24',
+		retentionTier: 'daily',
+		startedAt: '2026-10-24T00:00:00.000Z',
+		finishedAt: '2026-10-24T00:01:00.000Z',
+		prevDay: null,
+		prevManifestSha256: null,
+		schemaHash: 'a'.repeat(64),
+		schemaStableDuringWalk: true,
+		timeTravelBookmark: null,
+		extras: [],
+		sqliteSequence: [],
+		tables: {
+			blobs: {
+				mode: 'full',
+				schemaHash: 'b'.repeat(64),
+				sql: 'CREATE TABLE blobs (payload BLOB NOT NULL)',
+				cols: ['__rowid', 'payload'],
+				pk: ['rowid'],
+				declaredPk: [],
+				count: 1,
+				checksum: '0'.repeat(16),
+				upserts: 1,
+				deletes: 0,
+				dataSha256: 'c'.repeat(64),
+				indexSha256: 'd'.repeat(64),
+			},
+		},
+		stats: {
+			wallMs: 1,
+			queries: 1,
+			rowsRead: 1,
+			d1RowsRead: 1,
+			bytesOut: 1,
+			queryMs: { p50: 1, p95: 1, p99: 1, max: 1, sum: 1 },
+			dbTimeShare: 1,
+		},
+		shadow: true,
+	}
+	state.tables.set('blobs', new Map([[1, { h, row: line }]]))
+	state.schema.set('blobs', state.lastManifest.tables.blobs!)
+	const { sql, stats } = buildPacedD1RestoreSql(state)
+	expect(stats.splitRows).toBe(1)
+	expect(sql).toContain(`SET "payload" = "payload" || X'`)
+	expect(
+		sql.split('\n').every((statement) => statement.length <= 100_000),
+	).toBe(true)
 })
 
 test('oversized text rows split into chunked restore SQL', async () => {

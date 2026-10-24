@@ -62,6 +62,37 @@ function utf8Bytes(value: string): number {
 	return new TextEncoder().encode(value).byteLength
 }
 
+function isBlobCell(
+	value: PacedD1EncodedCell,
+): value is { readonly $b: string } {
+	return typeof value === 'object' && value !== null && '$b' in value
+}
+
+/** Slice without splitting a UTF-16 surrogate pair across chunks. */
+export function sliceUtf16Safe(
+	text: string,
+	start: number,
+	maxChars: number,
+): { chunk: string; next: number } {
+	if (maxChars <= 0) return { chunk: '', next: start }
+	let end = Math.min(text.length, start + maxChars)
+	if (end > start && end < text.length) {
+		const code = text.charCodeAt(end - 1)
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end = end === start + 1 ? end + 1 : end - 1
+		}
+	}
+	return { chunk: text.slice(start, end), next: end }
+}
+
+function hexFromBytes(bytes: Uint8Array): string {
+	let hex = ''
+	for (const byte of bytes) {
+		hex += byte.toString(16).padStart(2, '0')
+	}
+	return hex
+}
+
 export function createEmptyPacedD1RestoreState(): PacedD1RestoreChainState {
 	return {
 		tables: new Map(),
@@ -206,26 +237,59 @@ function emitUpsertStatements(input: {
 		) {
 			break
 		}
-		if (typeof input.vals[index] === 'string') {
+		const value = input.vals[index]
+		if (typeof value === 'string') {
 			pending.push(index)
 			reduced[index] = ''
+			continue
+		}
+		if (isBlobCell(value)) {
+			pending.push(index)
+			reduced[index] = { $b: '' }
 		}
 	}
 	input.push(buildInsertSql(input.table, input.cols, reduced))
 	const rowid = Number(input.vals[0])
 	for (const index of pending) {
-		const text = String(input.vals[index])
+		const value = input.vals[index]!
 		const col =
 			input.cols[index] === '__rowid'
 				? 'rowid'
 				: quoteSqlIdentifier(input.cols[index]!)
-		let pos = 0
-		while (pos < text.length) {
-			const chunk = text.slice(pos, pos + pacedD1BackupRestoreTextChunkChars)
-			pos += chunk.length
-			input.push(
-				`UPDATE ${quoteSqlIdentifier(input.table)} SET ${col} = ${col} || ${quoteSqlString(chunk)} WHERE rowid = ${rowid};`,
+		if (typeof value === 'string') {
+			let pos = 0
+			while (pos < value.length) {
+				const { chunk, next } = sliceUtf16Safe(
+					value,
+					pos,
+					pacedD1BackupRestoreTextChunkChars,
+				)
+				if (chunk.length === 0) break
+				pos = next
+				input.push(
+					`UPDATE ${quoteSqlIdentifier(input.table)} SET ${col} = ${col} || ${quoteSqlString(chunk)} WHERE rowid = ${rowid};`,
+				)
+			}
+			continue
+		}
+		if (isBlobCell(value)) {
+			const bytes = base64ToBytes(value.$b)
+			// Hex doubles size; keep each X'...' update under the statement budget.
+			const maxHexChars = Math.min(
+				pacedD1BackupRestoreTextChunkChars,
+				Math.floor((pacedD1BackupMaxSqlStatementBytes - 200) / 2) * 2,
 			)
+			let offset = 0
+			while (offset < bytes.byteLength) {
+				const slice = bytes.subarray(
+					offset,
+					offset + Math.floor(maxHexChars / 2),
+				)
+				offset += slice.byteLength
+				input.push(
+					`UPDATE ${quoteSqlIdentifier(input.table)} SET ${col} = ${col} || X'${hexFromBytes(slice)}' WHERE rowid = ${rowid};`,
+				)
+			}
 		}
 	}
 }
