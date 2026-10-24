@@ -694,10 +694,19 @@ async function sourceNeedsManifest(
 	return !(await sourceHasManifest(s3, day, databaseName))
 }
 
+async function sourceNeedsSeal(
+	s3: DrBackupS3Client,
+	source: PacedD1SourceConfig,
+	day: string,
+) {
+	if (!(await sourceHasManifest(s3, day, source.name))) return false
+	return !(await sourceHasSealedManifest(s3, source, day))
+}
+
 /**
- * Oldest in-progress (crashed) night first, then today when any bound source
- * still lacks a manifest. That way nightly catch-up of a stranded older day
- * cannot skip seeding tonight after the older night finishes.
+ * Oldest unfinished night first: crashed mid-walk, staging without seal, then
+ * today when any bound source still lacks a staging manifest. Catch-up must
+ * reseal failed seals — staging alone is not "done".
  */
 async function findStrandedPacedDay(input: {
 	s3: DrBackupS3Client
@@ -713,11 +722,17 @@ async function findStrandedPacedDay(input: {
 			if (await sourceHasInProgressWork(input.s3, candidate, source.name)) {
 				return candidate
 			}
+			if (await sourceNeedsSeal(input.s3, source, candidate)) {
+				return candidate
+			}
 		}
 	}
 	for (const source of input.sources) {
 		if (!resolvePacedD1Binding(input.env, source.binding)) continue
 		if (await sourceNeedsManifest(input.s3, input.today, source.name)) {
+			return input.today
+		}
+		if (await sourceNeedsSeal(input.s3, source, input.today)) {
 			return input.today
 		}
 	}
@@ -1328,17 +1343,16 @@ export async function runD1PacedBackupWatchdogTick(input: {
 			missingSealed += 1
 			missing.push(`${source.name}:sealed:${day}`)
 		}
-		// Yesterday is required once we are past the first paced night; when
-		// yesterday has neither staging nor sealed, treat as a freshness miss
-		// only if staging for yesterday existed (seal lag) or today is sealed
-		// (proving the lane has been running).
+		// Yesterday seal is required only when yesterday staging existed (seal
+		// lag). The first successful paced night must not page for a missing
+		// yesterday that never ran.
 		if (!hasSealedYesterday) {
 			const yesterdayStaging = await sourceHasManifest(
 				s3,
 				yesterday,
 				source.name,
 			)
-			if (yesterdayStaging || hasSealedToday) {
+			if (yesterdayStaging) {
 				missingSealed += 1
 				missing.push(`${source.name}:sealed:${yesterday}`)
 			}
@@ -1370,11 +1384,10 @@ export async function runD1PacedFreshnessTick(input: {
 	s3?: DrBackupS3Client
 }): Promise<D1PacedBackupWatchdogResult> {
 	const today = formatUtcDay(input.now)
-	const minutes = input.now.getUTCHours() * 60 + input.now.getUTCMinutes()
-	// After the nightly window closes, expect today's sealed night; before that
-	// window finishes, yesterday is the freshness floor.
-	const expectedSealedDay =
-		minutes >= 6 * 60 + 15 ? today : utcDayMinus(today, 1)
+	// Hourly freshness always floors on yesterday so enabling the lane mid-day
+	// (after 06:15) does not page until a paced night has had a chance to run.
+	// The 06:15 watchdog is what asserts today's seal after the nightly window.
+	const expectedSealedDay = utcDayMinus(today, 1)
 	if (!isD1PacedBackupConfigured(input.env)) {
 		return {
 			day: today,
@@ -1406,10 +1419,16 @@ export async function runD1PacedFreshnessTick(input: {
 	for (const source of sources) {
 		if (!resolvePacedD1Binding(input.env, source.binding)) continue
 		configured += 1
-		if (!(await sourceHasSealedManifest(s3, source, expectedSealedDay))) {
-			missingSealed += 1
-			missing.push(source.name)
+		if (await sourceHasSealedManifest(s3, source, expectedSealedDay)) {
+			continue
 		}
+		// No staging for that day means the lane never ran it (e.g. just
+		// enabled) — do not page. Staging without seal is seal lag.
+		if (!(await sourceHasManifest(s3, expectedSealedDay, source.name))) {
+			continue
+		}
+		missingSealed += 1
+		missing.push(source.name)
 	}
 	const result: D1PacedBackupWatchdogResult = {
 		day: today,

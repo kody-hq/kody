@@ -426,20 +426,12 @@ test('missing JOBS_DB binding is skipped without failing the tick', async () => 
 	).toMatchObject({ exists: false })
 })
 
-test('watchdog passes when staging and sealed manifests exist', async () => {
+test('watchdog passes on the first sealed night without yesterday', async () => {
 	const { client } = createMemoryS3()
 	const env = createEnv()
 	await runD1PacedBackupTick({
 		env,
 		now: at('01:00'),
-		s3: client,
-		walkerOpts: fastWalker,
-	})
-	// Seed yesterday sealed so freshness does not fail the watchdog.
-	const yesterday = '2026-10-23'
-	await runD1PacedBackupTick({
-		env,
-		now: new Date(`${yesterday}T01:00:00.000Z`),
 		s3: client,
 		walkerOpts: fastWalker,
 	})
@@ -450,6 +442,30 @@ test('watchdog passes when staging and sealed manifests exist', async () => {
 		incompleteSources: 0,
 		missingSealedSources: 0,
 	})
+})
+
+test('catch-up reseals a day that has staging but no sealed manifest', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv()
+	const olderDay = '2026-10-23'
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${olderDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const sealedKey = pacedD1SealedManifestKey('daily', appId, olderDay)
+	expect(objects.has(sealedKey)).toBe(true)
+	objects.delete(sealedKey)
+	const catchUp = await runD1PacedBackupTick({
+		env,
+		now: at('12:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(catchUp.day).toBe(olderDay)
+	expect(catchUp.nightsSealed).toBeGreaterThanOrEqual(1)
+	expect(objects.has(sealedKey)).toBe(true)
 })
 
 test('restore drill verifies sealed night against live counts', async () => {

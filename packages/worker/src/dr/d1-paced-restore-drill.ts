@@ -312,14 +312,16 @@ async function drillOneSource(input: {
 			tableManifest.count,
 			tableManifest.checksum,
 		)
+		// Live COUNT(*) is advisory only: the tip bookmark is taken at night
+		// start while the walker reads over the rest of the window, so inserts
+		// mid-walk (especially AUDIT_DB) make exact equality unreliable. Pass
+		// or fail on sealed-chain restore checksums and restored row counts.
 		const liveCount = await countLiveTable(
 			input.db,
 			table,
 			tip.manifest.timeTravelBookmark,
 		)
-		const liveOk = liveCount === null || liveCount === tableManifest.count
-		const tableOk =
-			checksumOk && liveOk && restored.size === tableManifest.count
+		const tableOk = checksumOk && restored.size === tableManifest.count
 		if (!tableOk) ok = false
 		tables.push({
 			table,
@@ -331,9 +333,7 @@ async function drillOneSource(input: {
 				? undefined
 				: !checksumOk
 					? 'restore-checksum-mismatch'
-					: !liveOk
-						? 'live-count-mismatch'
-						: 'count-mismatch',
+					: 'count-mismatch',
 		})
 	}
 
