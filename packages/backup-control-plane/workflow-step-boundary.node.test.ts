@@ -2,34 +2,22 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import {
-	BackupError,
-	errorCode,
-	workflowBackupErrorMessage,
-} from './backup-policy.ts'
-import {
-	RetryingWorkflowStep,
-	TestNonRetryableError,
-} from './backup-control-plane-test-support.ts'
+import { NonRetryableError } from 'cloudflare:workflows'
+import { BackupError, errorCode } from './backup-policy.ts'
+import { RetryingWorkflowStep } from './backup-control-plane-test-support.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
-
-function testNonRetryableError(error: BackupError): TestNonRetryableError {
-	return new TestNonRetryableError(workflowBackupErrorMessage(error))
-}
 
 test('Workflow step boundary fails fast for non-retryable errors and retries transient ones', async () => {
 	const nonRetryEngine = new RetryingWorkflowStep()
-	const nonRetryStep = withNonRetryableBackupErrors(
-		nonRetryEngine,
-		testNonRetryableError,
-	)
+	const nonRetryStep = withNonRetryableBackupErrors(nonRetryEngine)
 
 	await assert.rejects(
 		nonRetryStep.do('non-retryable', { retries: { limit: 3 } }, async () => {
 			throw new BackupError('invalid-workflow-payload', 'invalid payload')
 		}),
 		(error: unknown) =>
-			error instanceof TestNonRetryableError &&
+			error instanceof NonRetryableError &&
+			error.name === 'NonRetryableError' &&
 			errorCode(error) === 'invalid-workflow-payload',
 	)
 	assert.equal(nonRetryEngine.attempts, 1)
@@ -39,7 +27,7 @@ test('Workflow step boundary fails fast for non-retryable errors and retries tra
 		new Error('temporary network error'),
 	]) {
 		const engineStep = new RetryingWorkflowStep()
-		const step = withNonRetryableBackupErrors(engineStep, testNonRetryableError)
+		const step = withNonRetryableBackupErrors(engineStep)
 		let callbacks = 0
 		const result = await step.do(
 			'retryable',

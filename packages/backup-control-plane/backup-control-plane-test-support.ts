@@ -533,10 +533,22 @@ export class RetryUploadStep implements BackupRuntimeStep {
 	async sleep(): Promise<void> {}
 }
 
-/** What a `withNonRetryableBackupErrors` mapper returns in tests; the engine never retries it. */
-export class TestNonRetryableError extends Error {}
+/** Cloudflare's default when a step passes no retry config. */
+const engineDefaultRetryLimit = 5
 
-/** Workflow engine double that honors `retries.limit` and records every attempt. */
+/**
+ * The Workflows engine's terminal-failure rule: it checks the name (or a
+ * message prefix), not `instanceof`, because the error crosses an RPC boundary.
+ */
+function engineTreatsAsTerminal(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error.name === 'NonRetryableError' ||
+			error.message.startsWith('NonRetryableError'))
+	)
+}
+
+/** Workflow engine double that retries like the engine and records every attempt. */
 export class RetryingWorkflowStep implements BackupRuntimeStep {
 	attempts = 0
 	readonly names: string[] = []
@@ -548,14 +560,16 @@ export class RetryingWorkflowStep implements BackupRuntimeStep {
 	): Promise<T> {
 		this.names.push(name)
 		const execute = callback ?? (configOrCallback as () => Promise<T>)
-		const retryLimit =
-			(configOrCallback as { retries?: { limit: number } }).retries?.limit ?? 0
+		const retryLimit = callback
+			? ((configOrCallback as { retries?: { limit: number } }).retries?.limit ??
+				engineDefaultRetryLimit)
+			: engineDefaultRetryLimit
 		for (let attempt = 0; ; attempt += 1) {
 			this.attempts += 1
 			try {
 				return await execute()
 			} catch (error) {
-				if (error instanceof TestNonRetryableError || attempt >= retryLimit) {
+				if (engineTreatsAsTerminal(error) || attempt >= retryLimit) {
 					throw error
 				}
 			}
