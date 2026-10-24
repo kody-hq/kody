@@ -281,7 +281,9 @@ export async function loadOnboardingMcpChooserListings(
 
 // One SSR request loads detail data twice: once in the HTML handler for the
 // loaderData embed and once in the frame renderer during streaming. Memoize
-// per Request so the second call reuses the first load.
+// per Request so the second call reuses the first load. Forget rejected loads
+// so `runD1WithRetry` around `loadPackagePageUncached` can re-read after a
+// transient D1 lock instead of replaying the cached rejection (KODY-B7).
 const requestDetailDataStore = new WeakMap<
 	Request,
 	Map<string, Promise<CommunityDetailLoaderData | null>>
@@ -301,6 +303,11 @@ export function loadCommunityDetailData(
 	if (!pending) {
 		pending = loadCommunityDetailDataUncached(env, request, listingId)
 		byListingId.set(listingId, pending)
+		pending.catch(() => {
+			if (byListingId.get(listingId) === pending) {
+				byListingId.delete(listingId)
+			}
+		})
 	}
 	return pending
 }
