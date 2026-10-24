@@ -1780,6 +1780,88 @@ test("buildPackageAppWorker never reuses one visitor's cached build, request con
 	expect(renamed!.bridge.props.orgSlug).toBe('renamed-org')
 })
 
+test('buildPackageAppWorker keeps one worker id per visitor across build cache expiry', async () => {
+	// The cached build expires after a few minutes. A rebuild for the same
+	// visitor, package, and commit must land on the same worker id, or every
+	// expiry mints another unique Dynamic Worker day and a cold isolate.
+	const { env, loader } = createPackageAppTestEnv()
+	const secretEnv = {
+		...env,
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+	} as unknown as Env
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const key = 'stable-across-expiry'
+	type LoadedWorker = {
+		env: { KODY_RUNTIME: { props: { packageBindingToken: string } } }
+		modules: Record<string, string>
+	}
+	const loadOnce = async (input: BuildInput) => {
+		await buildPackageAppWorker(input)
+		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
+			string,
+			() => LoadedWorker,
+		]
+		const worker = factory()
+		return {
+			id,
+			token: worker.env.KODY_RUNTIME.props.packageBindingToken,
+			source: Object.values(worker.modules).join('\n'),
+		}
+	}
+	const start = Date.parse('2026-10-23T12:00:00.000Z')
+	const now = vi.spyOn(Date, 'now').mockReturnValue(start)
+	try {
+		const first = await loadOnce(makeBuildInput(secretEnv, key))
+		// Past the build cache TTL, still the same UTC day.
+		now.mockReturnValue(start + 6 * 60 * 1000)
+		const rebuilt = await loadOnce(makeBuildInput(secretEnv, key))
+		expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalled()
+		expect(rebuilt.id).toBe(first.id)
+		// The binding capability stays sealed: 64 hex chars, carried only by the
+		// bridge props and the wrapper module, and matching across the rebuild
+		// so a warm isolate and its bridge always agree.
+		expect(rebuilt.token).toMatch(/^[0-9a-f]{64}$/)
+		expect(rebuilt.token).toBe(first.token)
+		expect(rebuilt.source).toContain(JSON.stringify(rebuilt.token))
+
+		// Another visitor of the same app and commit still gets its own worker
+		// id and its own binding capability.
+		const other = await loadOnce(
+			makeBuildInput(secretEnv, key, {
+				runtime: {
+					callerContext: {
+						user: {
+							userId: 'person-other',
+							email: `${key}@example.com`,
+							displayName: `${key} User`,
+						},
+						request: {
+							...appVisitorRequest(key),
+							actor: { userId: 'person-other', username: 'person-other' },
+							attribution: { kind: 'user', userId: 'person-other' },
+						},
+					},
+				} as never,
+			}),
+		)
+		expect(other.id).not.toBe(first.id)
+		expect(other.token).not.toBe(first.token)
+		expect(other.source).not.toContain(JSON.stringify(first.token))
+
+		// A new UTC day rotates the capability (and so the worker id), which
+		// matches the daily unit Cloudflare bills anyway.
+		now.mockReturnValue(start + 24 * 60 * 60 * 1000)
+		const nextDay = await loadOnce(makeBuildInput(secretEnv, key))
+		expect(nextDay.token).not.toBe(first.token)
+		expect(nextDay.id).not.toBe(first.id)
+	} finally {
+		now.mockRestore()
+	}
+})
+
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {
 	// The fixture bundle is pre-fix shaped and the build passes no source, so
 	// serving it is logged.

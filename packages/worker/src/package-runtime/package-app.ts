@@ -138,17 +138,13 @@ import {
 	modulesContainUnboundPackagesInvokeAccess,
 } from './unbound-runtime-helpers.ts'
 import { modulesReferenceKodyMcp } from './package-app-mcp-preload.ts'
+import {
+	createRandomPackageBindingToken,
+	packageAppBindingTokenFor,
+} from './package-app-binding-token.ts'
 
 const packageAppEntrypointName = 'PackageAppWorker'
 const packageAppRuntimeBindingName = 'KODY_RUNTIME'
-
-function createPackageBindingToken() {
-	const bytes = new Uint8Array(32)
-	crypto.getRandomValues(bytes)
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
-		'',
-	)
-}
 
 function createPackageAppWorkerSource(input: {
 	mainModule: string
@@ -2677,30 +2673,37 @@ async function resolvePackageAppSourceFiles(input: {
 	return await input.loadSourceFiles()
 }
 
-async function buildPackageAppWorkerOptionsUncached(input: {
-	env: Env
-	baseUrl: string
-	userId: OwnerId
-	savedPackage: {
-		id: string
-		kodyId: string
-		name: string
-		sourceId: string
-		publishedCommit: string | null
-		manifestPath: string
-		sourceRoot: string
-	}
-	source?: EntitySourceRow
-	manifest?: AuthoredPackageJson
-	loadSourceFiles?: () => Promise<Record<string, string>>
-	sourceFiles?: Record<string, string>
-	runtime: {
-		callerContext: ReturnType<typeof createMcpCallerContext>
-		servingUsername?: string
-		hostedOrigin?: string
-		mount?: PackageAppMount
-	}
-}): Promise<PackageAppWorkerTemplate> {
+async function buildPackageAppWorkerOptionsUncached(
+	input: {
+		env: Env
+		baseUrl: string
+		userId: OwnerId
+		savedPackage: {
+			id: string
+			kodyId: string
+			name: string
+			sourceId: string
+			publishedCommit: string | null
+			manifestPath: string
+			sourceRoot: string
+		}
+		source?: EntitySourceRow
+		manifest?: AuthoredPackageJson
+		loadSourceFiles?: () => Promise<Record<string, string>>
+		sourceFiles?: Record<string, string>
+		runtime: {
+			callerContext: ReturnType<typeof createMcpCallerContext>
+			servingUsername?: string
+			hostedOrigin?: string
+			mount?: PackageAppMount
+		}
+	},
+	/**
+	 * The build cache key when this build is cached under a stable worker id;
+	 * null for a one-off load.
+	 */
+	bindingCacheKey: string | null,
+): Promise<PackageAppWorkerTemplate> {
 	const publicContext = await buildPackageAppPublicContext(input)
 	const manifest = resolvePackageAppManifest({
 		manifest: input.manifest,
@@ -2760,8 +2763,16 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 		}),
 	]
 	// Per-build capability for the trusted per-package bindings (GHSA-5fv3).
-	// Embedded only in the wrapper's module scope and the bridge props.
-	const packageBindingToken = createPackageBindingToken()
+	// Embedded only in the wrapper's module scope and the bridge props. A
+	// cached build derives it from its cache key so a rebuild after cache
+	// expiry produces the same module text and worker id; a one-off build
+	// gets a random one.
+	const packageBindingToken = bindingCacheKey
+		? await packageAppBindingTokenFor({
+				secretStoreKey: input.env.SECRET_STORE_KEY,
+				cacheKey: bindingCacheKey,
+			})
+		: createRandomPackageBindingToken()
 	const modules = {
 		...hydratedModules,
 		[mainModule]: createPackageAppWorkerSource({
@@ -2949,7 +2960,7 @@ export async function buildPackageAppWorker(input: {
 			return {
 				stub: input.env.APP_LOADER.load(
 					materializePackageAppWorkerOptions(
-						await buildPackageAppWorkerOptionsUncached(input),
+						await buildPackageAppWorkerOptionsUncached(input, null),
 					),
 				),
 				entrypointName: packageAppEntrypointName,
@@ -2958,7 +2969,10 @@ export async function buildPackageAppWorker(input: {
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
-				const template = await buildPackageAppWorkerOptionsUncached(input)
+				const template = await buildPackageAppWorkerOptionsUncached(
+					input,
+					cacheKey,
+				)
 				return {
 					workerId: await createPackageAppWorkerId({
 						cacheKey,
