@@ -873,6 +873,34 @@ async function workSourceTick(input: {
 			return { timeBudgetExhausted: false, tablesCompleted, manifestWritten }
 		}
 
+		// Table manifest is the commit point for a finished table. If a prior
+		// tick wrote it and then died before advancing progress, adopt it.
+		const existingTableManifest = await input.s3.head(
+			pacedD1StagingTableManifestKey(input.day, input.source.name, table.name),
+		)
+		if (existingTableManifest.exists) {
+			progress = {
+				...progress,
+				completedTables: [...progress.completedTables, table.name],
+				currentTable: null,
+				lastRowid: null,
+				partialUpserts: 0,
+				partialDeletes: 0,
+				partialCount: 0,
+				partialChecksum: '0000000000000000',
+				partCount: 0,
+				revision: progress.revision + 1,
+			}
+			const idx = remainingTables.findIndex(
+				(entry) => entry.name === table.name,
+			)
+			if (idx >= 0) remainingTables.splice(idx, 1)
+			tablesCompleted += 1
+			await persistProgress(input.s3, progress)
+			await persistNightMeta(input.s3, meta)
+			continue
+		}
+
 		const prevTable = prev?.manifest.tables[table.name]
 		const mode = resolvePacedD1TableMode({
 			day: input.day,
@@ -941,6 +969,8 @@ async function workSourceTick(input: {
 		}
 
 		if (!result.done) {
+			// Part files are written first (same part index is overwritten on
+			// retry). Progress is the resume commit point and must land after.
 			progress = {
 				...progress,
 				currentTable: table.name,
@@ -953,10 +983,8 @@ async function workSourceTick(input: {
 				partCount,
 				revision: progress.revision + 1,
 			}
-			await Promise.all([
-				persistProgress(input.s3, progress),
-				persistNightMeta(input.s3, meta),
-			])
+			await persistProgress(input.s3, progress)
+			await persistNightMeta(input.s3, meta)
 			return { timeBudgetExhausted: true, tablesCompleted, manifestWritten }
 		}
 
