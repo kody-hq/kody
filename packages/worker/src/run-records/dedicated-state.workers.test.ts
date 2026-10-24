@@ -1143,7 +1143,7 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v15'
 	])
 })
 
-test('warm schema v15 removes retriever runs and logs without changing day counts', async () => {
+test('warm schema v15 removes retriever runs, logs, and day counts', async () => {
 	const userId = uniqueUserId('schema-v15-warm-retriever-runs')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1222,10 +1222,7 @@ test('warm schema v15 removes retriever runs and logs without changing day count
 						`SELECT surface, count FROM run_day_counts ORDER BY surface`,
 					)
 					.toArray(),
-			).toEqual([
-				{ surface: 'execute', count: 1 },
-				{ surface: 'retriever', count: 2 },
-			])
+			).toEqual([{ surface: 'execute', count: 1 }])
 			expect(
 				state.storage.sql
 					.exec<{ value: number }>(

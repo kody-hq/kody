@@ -911,9 +911,6 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 11) {
 			this.migrateRunsLogCountForV11()
 		}
-		if (installedVersion != null && installedVersion < 15) {
-			this.migrateRetrieverRunsForV15()
-		}
 		// Keyed package-invocation idempotency ledger (migrated from the D1
 		// package_invocations table). No user_id column: the DO identity is the
 		// user. The unique index is the exactly-once claim scope; unlike D1's
@@ -1041,6 +1038,9 @@ class RunLogBase extends DurableObject<Env> {
 			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
 			ON run_day_counts(day)`,
 		)
+		if (installedVersion != null && installedVersion < 15) {
+			this.migrateRetrieverRunsForV15()
+		}
 		// Warm objects only: record the migration UTC day as the coverage floor.
 		// Fresh objects keep a null boundary (no partial-history note).
 		if (installedVersion != null && installedVersion < 13) {
@@ -1187,6 +1187,9 @@ class RunLogBase extends DurableObject<Env> {
 				WHERE run_id IN (SELECT id FROM runs WHERE surface = 'retriever')
 			`)
 			this.ctx.storage.sql.exec(`DELETE FROM runs WHERE surface = 'retriever'`)
+			this.ctx.storage.sql.exec(
+				`DELETE FROM run_day_counts WHERE surface = 'retriever'`,
+			)
 			if (runCount != null) {
 				const countRow = this.ctx.storage.sql
 					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
