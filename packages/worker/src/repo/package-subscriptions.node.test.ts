@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import type * as Artifacts from './artifacts.ts'
 import type * as IdentityIcon from './identity-icon.ts'
@@ -47,9 +48,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	getSavedPackageById: mocks.getSavedPackageById,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('./entity-sources.ts', () => ({
 	getEntitySourceByRepoId: mocks.getEntitySourceByRepoId,

@@ -28,6 +28,39 @@ export const packageInvocationsRepoMockModule = (() => {
 					sourceId: input.source.id,
 				}),
 		),
+		loadPackageSourceRowsForUser: vi.fn<
+			typeof packageSourceModule.loadPackageSourceRowsForUser
+		>(async (input) => {
+			// Stub rows for every requested id so subscription discovery can
+			// exercise loadPackageManifestForSource (and any per-source
+			// reject wired onto loadPackageManifestBySourceId) without a D1
+			// prefetch. Real missing-source behavior is covered by the
+			// admin-package-subscriptions node test against sqlite.
+			const byId = new Map<
+				string,
+				Awaited<
+					ReturnType<typeof packageSourceModule.loadPackageSourceRowForUser>
+				>
+			>()
+			for (const sourceId of [...new Set(input.sourceIds)]) {
+				byId.set(sourceId, {
+					id: sourceId,
+					user_id: input.userId,
+					entity_kind: 'package',
+					entity_id: `package-${sourceId}`,
+					repo_id: `repo-${sourceId}`,
+					published_commit: 'commit-1',
+					indexed_commit: null,
+					manifest_path: 'package.json',
+					source_root: '/',
+					last_external_check_at: null,
+					external_check_until: null,
+					created_at: '2026-01-01T00:00:00.000Z',
+					updated_at: '2026-01-01T00:00:00.000Z',
+				} as never)
+			}
+			return byId
+		}),
 		loadPackageSourceBySourceId: vi.fn(),
 		getEntitySourceById: vi.fn(),
 		loadPublishedBundleArtifactByIdentity: vi.fn(),
