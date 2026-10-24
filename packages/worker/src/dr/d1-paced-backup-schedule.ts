@@ -25,11 +25,30 @@ export function shouldRunD1PacedBackupCatchUpCron(now: Date) {
 
 /**
  * One cron tick after the window closes (06:15–06:19 UTC). Fails loudly when
- * tonight's paced staging manifests are still missing.
+ * tonight's paced staging/sealed manifests are still missing.
  */
 export function shouldRunD1PacedBackupWatchdogCron(now: Date) {
 	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
 	return minutes >= 6 * 60 + 15 && minutes < 6 * 60 + 20
+}
+
+/**
+ * Hourly freshness (xx:45 UTC, outside the nightly window): sealed paced night
+ * for yesterday (or today after 06:15) must exist for every bound source.
+ */
+export function shouldRunD1PacedFreshnessCron(now: Date) {
+	if (shouldRunD1PacedBackupCron(now)) return false
+	if (shouldRunD1PacedBackupWatchdogCron(now)) return false
+	return now.getUTCMinutes() === 45
+}
+
+/**
+ * Weekly restore drill: Sunday 07:00–07:19 UTC (after nightly + watchdog).
+ */
+export function shouldRunD1PacedRestoreDrillCron(now: Date) {
+	if (now.getUTCDay() !== 0) return false
+	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+	return minutes >= 7 * 60 && minutes < 7 * 60 + 20
 }
 
 /**

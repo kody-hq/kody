@@ -18,7 +18,9 @@ import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import {
 	runD1PacedBackupTick,
 	runD1PacedBackupWatchdogTick,
+	runD1PacedFreshnessTick,
 } from '#worker/dr/d1-paced-backup.ts'
+import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
 import {
 	runDrExportTick,
 	runDrExportWatchdogTick,
@@ -339,6 +341,16 @@ export async function runScheduledLane(input: {
 			})
 		case 'dr_d1_paced_backup_watchdog':
 			return runD1PacedBackupWatchdogTick({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'dr_d1_paced_freshness':
+			return runD1PacedFreshnessTick({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'dr_d1_paced_restore_drill':
+			return runD1PacedRestoreDrillTick({
 				env: input.env,
 				now: input.scheduledAt,
 			})

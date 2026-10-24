@@ -67,6 +67,10 @@ import { handleInboundEmail } from '#worker/email/inbound.ts'
 import { handleQueueBatch } from '#worker/queue-handler.ts'
 import { handleDrRestoreRequest } from '#worker/dr/dr-restore.ts'
 import { handleDrExportRequest } from '#worker/dr/dr-export-maintenance.ts'
+import {
+	d1PacedStatusPath,
+	handleD1PacedStatusRequest,
+} from '#worker/dr/d1-paced-status.ts'
 import { handleDoPitrRequest } from '#worker/dr/do-pitr-maintenance.ts'
 import { handleMailboxImportRequest } from '#worker/dr/mailbox-import-maintenance.ts'
 import { handleStatusIncidentEventRequest } from '#worker/status-incidents/maintenance.ts'
@@ -279,6 +283,10 @@ const appHandler = withCors({
 
 		if (url.pathname === '/__maintenance/dr-export') {
 			return handleDrExportRequest(request, env)
+		}
+
+		if (url.pathname === d1PacedStatusPath) {
+			return handleD1PacedStatusRequest(request, env)
 		}
 
 		if (url.pathname === '/__maintenance/do-pitr') {

@@ -30,6 +30,8 @@ export const scheduledLaneNames = [
 	'dr_export_watchdog',
 	'dr_d1_paced_backup',
 	'dr_d1_paced_backup_watchdog',
+	'dr_d1_paced_freshness',
+	'dr_d1_paced_restore_drill',
 	'job_schedule_watchdog',
 	'fleet_users_affected_alert',
 	'org_audit_outbox',
@@ -265,6 +267,23 @@ export function shouldRunD1PacedBackupWatchdogCron(now: Date) {
 	return shouldRunDrExportWatchdogCron(now)
 }
 
+/**
+ * Hourly freshness (xx:45 UTC) outside the nightly paced window: sealed paced
+ * night for yesterday (or today after watchdog) must exist.
+ */
+export function shouldRunD1PacedFreshnessCron(now: Date) {
+	if (shouldRunD1PacedBackupCron(now)) return false
+	if (shouldRunD1PacedBackupWatchdogCron(now)) return false
+	return now.getUTCMinutes() === 45
+}
+
+/** Weekly restore drill: Sunday 07:00–07:19 UTC. */
+export function shouldRunD1PacedRestoreDrillCron(now: Date) {
+	if (now.getUTCDay() !== 0) return false
+	const minutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+	return minutes >= 7 * 60 && minutes < 7 * 60 + 20
+}
+
 export const jobScheduleWatchdogIntervalMinutes = 15
 
 export function shouldRunJobScheduleWatchdogCron(now: Date) {
@@ -341,6 +360,12 @@ export function getScheduledLaneCadence(
 	}
 	if (shouldRunD1PacedBackupWatchdogCron(scheduledAt)) {
 		lanes.push('dr_d1_paced_backup_watchdog')
+	}
+	if (shouldRunD1PacedFreshnessCron(scheduledAt)) {
+		lanes.push('dr_d1_paced_freshness')
+	}
+	if (shouldRunD1PacedRestoreDrillCron(scheduledAt)) {
+		lanes.push('dr_d1_paced_restore_drill')
 	}
 	if (shouldRunJobScheduleWatchdogCron(scheduledAt)) {
 		lanes.push('job_schedule_watchdog')

@@ -43,4 +43,10 @@ test('scheduled lanes use their intended cadences', () => {
 	expect(
 		getScheduledLaneCadence(new Date('2026-10-24T12:05:00.000Z')),
 	).toContain('dr_d1_paced_backup')
+	expect(
+		getScheduledLaneCadence(new Date('2026-10-24T12:45:00.000Z')),
+	).toContain('dr_d1_paced_freshness')
+	expect(
+		getScheduledLaneCadence(new Date('2026-10-25T07:05:00.000Z')),
+	).toContain('dr_d1_paced_restore_drill')
 })
