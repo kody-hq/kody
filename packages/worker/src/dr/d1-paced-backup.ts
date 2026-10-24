@@ -293,8 +293,13 @@ async function finalizeTableParts(input: {
 				),
 			),
 		])
-		const data = dataBytes ?? new Uint8Array()
-		const index = indexBytes ?? new Uint8Array()
+		if (!dataBytes || !indexBytes) {
+			throw new Error(
+				`paced D1 missing staging part ${partIndex} for ${input.databaseName}.${input.table}`,
+			)
+		}
+		const data = dataBytes
+		const index = indexBytes
 		dataPartDigests.push(await sha256HexOfBytes(data))
 		indexPartDigests.push(await sha256HexOfBytes(index))
 		totalBytes += data.byteLength + index.byteLength
@@ -457,8 +462,13 @@ function createStagingPartsIndexReader(input: {
 					partIndex,
 				),
 			)
+			if (!bytes) {
+				throw new Error(
+					`paced D1 missing index part ${partIndex} for ${input.databaseName}.${input.table}`,
+				)
+			}
 			partIndex += 1
-			const text = bytes ? new TextDecoder().decode(bytes) : ''
+			const text = new TextDecoder().decode(bytes)
 			lines = text.length === 0 ? [] : text.replace(/\n$/, '').split('\n')
 			lineIndex = 0
 		}
