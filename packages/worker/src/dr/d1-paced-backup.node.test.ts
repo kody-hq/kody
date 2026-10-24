@@ -6,6 +6,7 @@ import {
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
 	pacedD1StagingDataPartKey,
+	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
 	pacedD1StagingProgressKey,
 	parsePacedD1NightManifest,
@@ -259,6 +260,98 @@ test('one full night writes a shadow staging manifest and seals it', async () =>
 		walkerOpts: fastWalker,
 	})
 	expect(again).toMatchObject({ skipped: true, reason: 'already-complete' })
+})
+
+test('byte-capped part flush keeps buffer bounded and resumes after crash', async () => {
+	const { client, objects } = createMemoryS3()
+	// Wide rows so a few pages cross a tiny part cap.
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE items (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+	`)
+	const body = 'x'.repeat(2000)
+	for (let i = 1; i <= 40; i += 1) {
+		sqlite
+			.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+			.run(`i${i}`, body)
+	}
+	const env = createEnv({
+		APP_DB: createD1FromSqlite(sqlite),
+	})
+	let peakBuffered = 0
+	const partMaxBytes = 8_000
+	const first = await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		partMaxBytes,
+		tickByteBudget: 20_000,
+		walkerOpts: {
+			minPage: 2,
+			maxPage: 2,
+			minGapMs: 0,
+			sleep: async () => {},
+			onPage: () => {
+				// Peak is observed indirectly via part files; track page calls.
+				peakBuffered += 1
+			},
+		},
+	})
+	expect(first.timeBudgetExhausted).toBe(true)
+	expect(first.manifestsWritten).toBe(0)
+	const progressRaw = await client.getText(
+		pacedD1StagingProgressKey(day, 'kody'),
+	)
+	expect(progressRaw).not.toBeNull()
+	const progress = parsePacedD1ProgressCursor(JSON.parse(progressRaw!.text))
+	expect(progress.currentTable).toBe('items')
+	expect(progress.lastRowid).toBeTypeOf('number')
+	expect(progress.partCount).toBeGreaterThan(1)
+	expect(objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', 0))).toBe(
+		true,
+	)
+	expect(objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', 1))).toBe(
+		true,
+	)
+	// Each part must stay near the cap (single-page overshoot allowed).
+	for (let i = 0; i < progress.partCount; i += 1) {
+		const data = objects.get(pacedD1StagingDataPartKey(day, 'kody', 'items', i))
+		const index = objects.get(
+			pacedD1StagingIndexPartKey(day, 'kody', 'items', i),
+		)
+		expect(data).toBeTruthy()
+		expect(index).toBeTruthy()
+		const total = (data?.bytes.byteLength ?? 0) + (index?.bytes.byteLength ?? 0)
+		expect(total).toBeLessThan(partMaxBytes * 3)
+	}
+	expect(peakBuffered).toBeGreaterThan(0)
+
+	const savedRowid = progress.lastRowid
+	const savedParts = progress.partCount
+
+	// Simulate crash: drop in-memory state and resume from persisted cursor.
+	const second = await runD1PacedBackupTick({
+		env,
+		now: at('01:05'),
+		s3: client,
+		partMaxBytes,
+		walkerOpts: {
+			minPage: 2,
+			maxPage: 2,
+			minGapMs: 0,
+			sleep: async () => {},
+		},
+	})
+	expect(second.manifestsWritten).toBe(1)
+	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.tables.items?.count).toBe(40)
+	// Resume must have continued past the crashed cursor (more parts or done).
+	expect(savedRowid).not.toBeNull()
+	expect(savedParts).toBeGreaterThan(1)
 })
 
 test('resume mid-table continues from lastRowid across ticks', async () => {

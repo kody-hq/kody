@@ -80,6 +80,25 @@ export {
 /** Wall budget for one paced D1 cron tick (same order as DR exporter). */
 export const d1PacedBackupRunTimeBudgetMs = 45_000
 
+/**
+ * Flush a staging part when the in-tick TSV buffers reach this many UTF-8
+ * bytes (data + index). Keeps peak heap well under the Workers isolate limit
+ * even on full-base walks of APP/AUDIT.
+ */
+export const d1PacedBackupPartMaxBytes = 4 * 1024 * 1024
+
+/**
+ * Soft per-tick emitted-byte budget. Once flushed bytes for the tick hit this
+ * cap, the walker stops between pages so the next tick resumes — even if wall
+ * time remains.
+ */
+export const d1PacedBackupTickByteBudget = 8 * 1024 * 1024
+
+const utf8Encoder = new TextEncoder()
+
+function utf8ByteLength(text: string) {
+	return utf8Encoder.encode(text).byteLength
+}
 type NightMeta = {
 	schemaVersion: typeof pacedD1BackupSchemaVersion
 	day: string
@@ -166,16 +185,21 @@ function pacedD1LaneProgressKey(day: string) {
 }
 
 /**
- * Tick-local writer: only the current cron tick's lines live in memory. Prior
- * pages stay in staging part objects so large tables (AUDIT_DB) never rewrite
- * a growing TSV through the worker heap.
+ * Tick-local writer: only the current part's lines live in memory. Callers
+ * flush to staging part objects whenever `bufferedBytes` crosses
+ * `d1PacedBackupPartMaxBytes`, then `clear()` so heap stays bounded.
+ *
+ * `finalize()` hashes only the residual buffer (normally empty after a flush).
+ * Full table digests come from `finalizeTableParts` over part objects.
  */
 function createTickTableWriter(): PacedD1TableArtifactWriter & {
 	data: string
 	index: string
+	bufferedBytes: number
 	isEmpty(): boolean
+	clear(): void
 } {
-	const state = { data: '', index: '' }
+	const state = { data: '', index: '', dataBytes: 0, indexBytes: 0 }
 	return {
 		get data() {
 			return state.data
@@ -183,16 +207,29 @@ function createTickTableWriter(): PacedD1TableArtifactWriter & {
 		get index() {
 			return state.index
 		},
+		get bufferedBytes() {
+			return state.dataBytes + state.indexBytes
+		},
 		isEmpty() {
-			return state.data.length === 0 && state.index.length === 0
+			return state.dataBytes === 0 && state.indexBytes === 0
+		},
+		clear() {
+			state.data = ''
+			state.index = ''
+			state.dataBytes = 0
+			state.indexBytes = 0
 		},
 		appendData(line: string) {
 			state.data += line
+			state.dataBytes += utf8ByteLength(line)
 		},
 		appendIndex(line: string) {
 			state.index += line
+			state.indexBytes += utf8ByteLength(line)
 		},
 		async finalize() {
+			// Hash only the residual part buffer — never re-encode a multi-MB
+			// accumulation. Callers must flush oversized buffers before this.
 			return {
 				dataSha256: await sha256HexOfText(state.data),
 				indexSha256: await sha256HexOfText(state.index),
@@ -200,7 +237,6 @@ function createTickTableWriter(): PacedD1TableArtifactWriter & {
 		},
 	}
 }
-
 async function readTimeTravelBookmark(db: D1Database): Promise<string | null> {
 	try {
 		if (typeof db.withSession !== 'function') return null
@@ -869,6 +905,8 @@ async function workSourceTick(input: {
 	startedAtMs: number
 	timeBudgetMs: number
 	walkerOpts?: Partial<PacedD1WalkerOptions>
+	partMaxBytes?: number
+	tickByteBudget?: number
 }): Promise<{
 	timeBudgetExhausted: boolean
 	tablesCompleted: number
@@ -1003,6 +1041,56 @@ async function workSourceTick(input: {
 			progress.currentTable === table.name && progress.lastRowid !== null
 		let partCount = resuming ? progress.partCount : 0
 		const writer = createTickTableWriter()
+		let tickBytesFlushed = 0
+		let stopForByteBudget = false
+		const partMaxBytes = input.partMaxBytes ?? d1PacedBackupPartMaxBytes
+		const tickByteBudget = input.tickByteBudget ?? d1PacedBackupTickByteBudget
+
+		const flushBufferedPart = async (cursor: {
+			lastRowid: number | null
+			pageSize: number
+			count: number
+			checksum: string
+			upserts: number
+			deletes: number
+		}) => {
+			if (writer.isEmpty()) return
+			// Single oversized row: still flush alone so the buffer clears.
+			const partBytes = writer.bufferedBytes
+			await flushTablePart({
+				s3: input.s3,
+				day: input.day,
+				databaseName: input.source.name,
+				table: table.name,
+				partIndex: partCount,
+				data: writer.data,
+				index: writer.index,
+			})
+			partCount += 1
+			tickBytesFlushed += partBytes
+			writer.clear()
+			// Persist cursor after every part so an OOM mid-tick still advances.
+			if (cursor.lastRowid !== null) {
+				progress = {
+					...progress,
+					currentTable: table.name,
+					lastRowid: cursor.lastRowid,
+					pageSize: cursor.pageSize,
+					partialCount: cursor.count,
+					partialChecksum: cursor.checksum,
+					partialUpserts: cursor.upserts,
+					partialDeletes: cursor.deletes,
+					partCount,
+					revision: progress.revision + 1,
+				}
+				await persistProgress(input.s3, progress)
+				await persistNightMeta(input.s3, meta)
+			}
+			if (tickBytesFlushed >= tickByteBudget) {
+				stopForByteBudget = true
+			}
+		}
+		const hostWalkerOpts = input.walkerOpts ?? {}
 		const result = await walkPacedD1Table({
 			db: input.db as PacedD1Database,
 			table,
@@ -1035,8 +1123,38 @@ async function workSourceTick(input: {
 						}
 					: undefined,
 			opts: {
-				budgetMs: budgetLeft,
-				...input.walkerOpts,
+				...hostWalkerOpts,
+				budgetMs: hostWalkerOpts.budgetMs ?? budgetLeft,
+				budgetBytes: hostWalkerOpts.budgetBytes ?? tickByteBudget,
+				shouldStop: () =>
+					stopForByteBudget || hostWalkerOpts.shouldStop?.() === true,
+				onPage: async (info) => {
+					await hostWalkerOpts.onPage?.(info)
+					const overCap = writer.bufferedBytes >= partMaxBytes
+					const beforeFinalize = info.phase === 'before-finalize'
+					if (
+						(overCap || beforeFinalize) &&
+						!writer.isEmpty() &&
+						info.lastRowid !== null
+					) {
+						await flushBufferedPart(info)
+					} else if ((overCap || beforeFinalize) && !writer.isEmpty()) {
+						// Empty-table / no-rowid edge: flush bytes without cursor.
+						const partBytes = writer.bufferedBytes
+						await flushTablePart({
+							s3: input.s3,
+							day: input.day,
+							databaseName: input.source.name,
+							table: table.name,
+							partIndex: partCount,
+							data: writer.data,
+							index: writer.index,
+						})
+						partCount += 1
+						tickBytesFlushed += partBytes
+						writer.clear()
+					}
+				},
 			},
 		})
 
@@ -1047,16 +1165,25 @@ async function workSourceTick(input: {
 		meta.queryMs.push(...result.queryMs)
 
 		if (!writer.isEmpty()) {
-			await flushTablePart({
-				s3: input.s3,
-				day: input.day,
-				databaseName: input.source.name,
-				table: table.name,
-				partIndex: partCount,
-				data: writer.data,
-				index: writer.index,
-			})
-			partCount += 1
+			await flushBufferedPart(
+				result.done
+					? {
+							lastRowid: null,
+							pageSize: progress.pageSize,
+							count: result.manifest.count,
+							checksum: result.manifest.checksum,
+							upserts: result.manifest.upserts,
+							deletes: result.manifest.deletes,
+						}
+					: {
+							lastRowid: result.lastRowid,
+							pageSize: result.pageSize,
+							count: result.count,
+							checksum: result.checksum,
+							upserts: result.upserts,
+							deletes: result.deletes,
+						},
+			)
 		}
 
 		if (!result.done) {
@@ -1129,6 +1256,10 @@ export async function runD1PacedBackupTick(input: {
 	day?: string
 	timeBudgetMs?: number
 	walkerOpts?: Partial<PacedD1WalkerOptions>
+	/** Test override for mid-tick part flush threshold (UTF-8 bytes). */
+	partMaxBytes?: number
+	/** Test override for soft per-tick emitted-byte budget. */
+	tickByteBudget?: number
 }): Promise<D1PacedBackupTickResult> {
 	const now = input.now
 	const today = formatUtcDay(now)
@@ -1252,6 +1383,8 @@ export async function runD1PacedBackupTick(input: {
 			startedAtMs,
 			timeBudgetMs,
 			walkerOpts: input.walkerOpts,
+			partMaxBytes: input.partMaxBytes,
+			tickByteBudget: input.tickByteBudget,
 		})
 		sourcesWorked += 1
 		tablesCompleted += result.tablesCompleted

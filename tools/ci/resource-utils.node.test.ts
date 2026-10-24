@@ -485,11 +485,13 @@ test('writeGeneratedWranglerConfig leaves paced sources alone while the lane fla
 	const outPath = path.join(temp.dir, 'wrangler-production.json')
 	await writeGeneratedWranglerConfig({
 		...productionArgs(outPath),
-		workerVars: { APP_BASE_URL: 'https://heykody.dev' },
+		workerVars: {
+			APP_BASE_URL: 'https://heykody.dev',
+			DR_D1_PACED_BACKUP_ENABLED: 'false',
+		},
 	})
 
 	const production = (await readConfig(outPath)).env?.production
-	// Flag is off while the mid-tick OOM fix is shipping; expansion must not run.
 	expect(production?.vars?.DR_D1_PACED_BACKUP_ENABLED).toBe('false')
 	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).toContain('APP_DB')
 	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).not.toContain(

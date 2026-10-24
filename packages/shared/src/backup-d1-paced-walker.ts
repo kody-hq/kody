@@ -83,6 +83,20 @@ export type PacedD1TableArtifactWriter = {
 	finalize: () => Promise<{ dataSha256: string; indexSha256: string }>
 }
 
+export type PacedD1WalkPageCursor = {
+	table: string
+	ms: number
+	rows: number
+	page: number
+	lastRowid: number | null
+	pageSize: number
+	count: number
+	checksum: string
+	upserts: number
+	deletes: number
+	/** `before-finalize` runs after trailing deletes so the host can flush. */
+	phase: 'page' | 'before-finalize'
+}
 export type PacedD1WalkerOptions = {
 	minPage?: number
 	maxPage?: number
@@ -92,16 +106,18 @@ export type PacedD1WalkerOptions = {
 	minGapMs?: number
 	/** Soft wall budget for one tick; returns when exceeded between pages. */
 	budgetMs?: number
+	/**
+	 * Soft emitted-byte budget for one tick (upsert/delete line UTF-8 bytes).
+	 * Returns between pages once exceeded so peak heap stays bounded with
+	 * part flushes.
+	 */
+	budgetBytes?: number
 	sleep?: (ms: number) => Promise<void>
 	now?: () => number
-	onPage?: (info: {
-		table: string
-		ms: number
-		rows: number
-		page: number
-	}) => void | Promise<void>
+	onPage?: (info: PacedD1WalkPageCursor) => void | Promise<void>
+	/** Checked between pages; when true, return a resumable partial result. */
+	shouldStop?: () => boolean
 }
-
 export type PacedD1PrevTable = {
 	schemaHash: string
 	openIndex: () => PacedD1IndexReader | Promise<PacedD1IndexReader>
@@ -347,26 +363,32 @@ export async function walkPacedD1Table(
 		deletes++
 	}
 
+	const partialResult = (): Extract<
+		PacedD1TableWalkResult,
+		{ done: false }
+	> => ({
+		done: false,
+		lastRowid: lastRowid!,
+		pageSize: page,
+		count,
+		checksum,
+		upserts,
+		deletes,
+		queries,
+		rowsRead,
+		d1RowsRead,
+		bytesOut,
+		queryMs,
+	})
+
 	while (true) {
 		if (
-			opts.budgetMs !== undefined &&
-			now() - started >= opts.budgetMs &&
-			lastRowid !== null
+			lastRowid !== null &&
+			((opts.budgetMs !== undefined && now() - started >= opts.budgetMs) ||
+				(opts.budgetBytes !== undefined && bytesOut >= opts.budgetBytes) ||
+				opts.shouldStop?.() === true)
 		) {
-			return {
-				done: false,
-				lastRowid,
-				pageSize: page,
-				count,
-				checksum,
-				upserts,
-				deletes,
-				queries,
-				rowsRead,
-				d1RowsRead,
-				bytesOut,
-				queryMs,
-			}
+			return partialResult()
 		}
 
 		const sql =
@@ -425,12 +447,43 @@ export async function walkPacedD1Table(
 			ms: durationMs,
 			rows: rows.length,
 			page,
+			lastRowid,
+			pageSize: page,
+			count,
+			checksum,
+			upserts,
+			deletes,
+			phase: 'page',
 		})
+
+		if (
+			lastRowid !== null &&
+			((opts.budgetMs !== undefined && now() - started >= opts.budgetMs) ||
+				(opts.budgetBytes !== undefined && bytesOut >= opts.budgetBytes) ||
+				opts.shouldStop?.() === true)
+		) {
+			return partialResult()
+		}
 
 		if (rows.length < page) {
 			while (await idx.peek()) {
 				await emitDelete(idx.take().k)
 			}
+			// Allow the host to flush the last part before finalize hashes the
+			// (hopefully empty/small) residual buffer.
+			await opts.onPage?.({
+				table: input.table.name,
+				ms: durationMs,
+				rows: rows.length,
+				page,
+				lastRowid,
+				pageSize: page,
+				count,
+				checksum,
+				upserts,
+				deletes,
+				phase: 'before-finalize',
+			})
 			const hashes = await input.writer.finalize()
 			return {
 				done: true,
