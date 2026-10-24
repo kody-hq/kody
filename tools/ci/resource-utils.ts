@@ -274,6 +274,10 @@ function isArtifactsNamespaceNotFoundMessage(message: string) {
 	)
 }
 
+function isArtifactsNamespaceDeletionInProgressMessage(message: string) {
+	return /deletion is already in progress/i.test(message)
+}
+
 async function waitForArtifactsNamespaceActivation(input: {
 	accountId: string
 	apiToken: string
@@ -463,6 +467,12 @@ export async function deleteArtifactsNamespace(input: {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
 			return
 		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
 		throw new CloudflareResourceError(
 			'artifacts',
 			input.namespace,
@@ -507,6 +517,12 @@ export async function deleteArtifactsNamespace(input: {
 		const message = error instanceof Error ? error.message : String(error)
 		if (isArtifactsNamespaceNotFoundMessage(message)) {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
+			return
+		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
 			return
 		}
 		// Namespace DELETE is not always documented; after emptying repos the
