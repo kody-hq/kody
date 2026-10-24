@@ -146,6 +146,7 @@ test('account package delete requires the typed package name then removes the pa
 		packageId: 'pkg-1',
 	})
 	expect(mockModule.deleteSavedPackageProjection).toHaveBeenCalledWith({
+		audit: null,
 		env,
 		userId: ownerIdFromStored('stable-user-1'),
 		actorUserId: 'stable-user-1',

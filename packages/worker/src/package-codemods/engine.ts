@@ -965,6 +965,7 @@ async function processPackageForMode(input: {
 						userId: input.savedPackage.userId,
 						packageId: input.savedPackage.id,
 						sourceId: input.savedPackage.sourceId,
+						audit: null,
 					})
 				} catch (error) {
 					console.error(
@@ -1235,6 +1236,7 @@ async function processRevertStep(input: {
 													userId: priorItem.userId,
 													packageId: priorItem.packageId,
 													sourceId: savedPackage.sourceId,
+													audit: null,
 												})
 											} catch (error) {
 												console.error(
@@ -1335,6 +1337,7 @@ async function processRevertStep(input: {
 													userId: priorItem.userId,
 													packageId: priorItem.packageId,
 													sourceId: savedPackage.sourceId,
+													audit: null,
 												})
 											} catch (error) {
 												console.error(

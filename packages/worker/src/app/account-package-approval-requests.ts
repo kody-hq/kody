@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	ownerIdFromStored,
@@ -498,6 +499,7 @@ export async function approveWentPublicRequest(input: {
 		packageId: input.savedPackage.id,
 		isInternetVisible: true,
 		expectedUpdatedAt: livePackage.updatedAt,
+		audit: optionalOrgAuditWriter(input.env, { userId: input.actorUserId }),
 	})
 	if (!changed) {
 		// Clear (or another writer) won the race after we claimed the request.

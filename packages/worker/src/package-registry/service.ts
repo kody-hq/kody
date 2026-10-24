@@ -41,6 +41,9 @@ import {
 import { deleteSavedPackageVector } from './vectorize.ts'
 import { scheduleSavedPackageSearchIndexUpsert } from './search-index-debt.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
+import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import { packageAuditActions, recordPackageAudit } from './package-audit.ts'
 import { stampFirstSavedPackage } from '#worker/identity/activation-stamps.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
@@ -281,8 +284,14 @@ export async function refreshSavedPackageProjection(input: {
 	 */
 	sourceFiles?: Record<string, string>
 	waitUntil?: (promise: Promise<unknown>) => void
+	/** Records `package.published`. Codemod refreshes pass null. */
+	audit: OrgAuditWriter | null
 }) {
-	return await withAccountWriteLease({
+	// Filled inside the write lease, audited after it commits.
+	const pending: {
+		published: { name: string; first: boolean; fields: Array<string> } | null
+	} = { published: null }
+	const result = await withAccountWriteLease({
 		db: input.env.APP_DB,
 		stableUserId: input.userId,
 		env: input.env,
@@ -380,6 +389,7 @@ export async function refreshSavedPackageProjection(input: {
 					sourceId: row.source_id,
 					hasApp: row.has_app === 1,
 					hasSkills: row.has_skills === 1,
+					audit: null,
 				})
 				// The name leaf is the second half of the package's canonical URL,
 				// so renaming the package moves that URL. Retire the old slug here
@@ -439,6 +449,18 @@ export async function refreshSavedPackageProjection(input: {
 				})
 			}
 			const refreshedAt = new Date().toISOString()
+			pending.published = {
+				name: row.name,
+				first: existing == null,
+				fields: existing
+					? [
+							...(existing.name === row.name ? [] : ['name']),
+							...(existing.description === row.description
+								? []
+								: ['description']),
+						]
+					: [],
+			}
 			const savedPackage = {
 				id: input.packageId,
 				userId: input.userId,
@@ -647,6 +669,17 @@ export async function refreshSavedPackageProjection(input: {
 			}
 		},
 	})
+	const { published } = pending
+	if (published) {
+		await recordPackageAudit(input.audit, {
+			orgId: input.userId,
+			packageId: input.packageId,
+			name: published.name,
+			action: packageAuditActions.published,
+			details: { firstPublish: published.first, fields: published.fields },
+		})
+	}
+	return result
 }
 
 export async function deleteSavedPackageProjection(input: {
@@ -654,8 +687,15 @@ export async function deleteSavedPackageProjection(input: {
 	userId: OwnerId
 	packageId: string
 	actorUserId?: string
+	/** Records `package.deleted` and `job.deleted` for its jobs. */
+	audit: OrgAuditWriter | null
 }) {
-	return await withAccountWriteLease({
+	// Filled inside the write lease, audited after it commits.
+	const removed: {
+		package: { name: string } | null
+		jobs: Array<{ id: string; name: string }>
+	} = { package: null, jobs: [] }
+	const result = await withAccountWriteLease({
 		db: input.env.APP_DB,
 		stableUserId: input.userId,
 		env: input.env,
@@ -668,7 +708,11 @@ export async function deleteSavedPackageProjection(input: {
 				buildPackageStorageId(input.packageId),
 				input.packageId,
 			])
-			let packageJobRows: Array<{ id: string; storage_id?: string | null }> = []
+			let packageJobRows: Array<{
+				id: string
+				name: string
+				storage_id?: string | null
+			}> = []
 			if (savedPackage) {
 				const jobs = jobsData(input.env)
 				const existingRows = await jobs.listJobsForUser({
@@ -800,10 +844,17 @@ export async function deleteSavedPackageProjection(input: {
 				userId: input.userId,
 				packageId: input.packageId,
 			})
-			await deleteSavedPackage(input.env.APP_DB, {
+			const deleted = await deleteSavedPackage(input.env.APP_DB, {
 				userId: input.userId,
 				packageId: input.packageId,
 			})
+			if (deleted && savedPackage) {
+				removed.package = { name: savedPackage.name }
+				removed.jobs = packageJobRows.map((row) => ({
+					id: row.id,
+					name: row.name,
+				}))
+			}
 			await deleteCredentialMappingsForPackage({
 				db: input.env.APP_DB,
 				orgId: input.userId,
@@ -890,4 +941,21 @@ export async function deleteSavedPackageProjection(input: {
 			}
 		},
 	})
+	if (removed.package) {
+		await recordPackageAudit(input.audit, {
+			orgId: input.userId,
+			packageId: input.packageId,
+			name: removed.package.name,
+			action: packageAuditActions.deleted,
+		})
+		for (const job of removed.jobs) {
+			await recordJobAudit(input.audit, {
+				orgId: input.userId,
+				jobId: job.id,
+				name: job.name,
+				action: jobAuditActions.deleted,
+			})
+		}
+	}
+	return result
 }

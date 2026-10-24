@@ -302,6 +302,7 @@ test('package delete removes community_forks so Fork outdated does not linger', 
 		env,
 		userId: ownerIdFromStored('user-kent'),
 		packageId: 'package-live',
+		audit: null,
 	})
 
 	const remaining = await db

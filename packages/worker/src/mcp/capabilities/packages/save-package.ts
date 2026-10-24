@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
 import {
@@ -535,6 +536,10 @@ export const savePackageCapability = defineDomainCapability(
 				packageId,
 				sourceId: ensuredSource.id,
 				waitUntil: ctx.waitUntil,
+				audit: optionalOrgAuditWriter(
+					ctx.env,
+					ctx.callerContext.request ?? null,
+				),
 			})
 			const saved = refreshed.record
 			await reportCapabilityProgress(ctx.reportProgress, {

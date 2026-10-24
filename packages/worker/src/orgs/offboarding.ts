@@ -22,7 +22,9 @@ import {
 	type OAuthGrantHelpers,
 	type OAuthGrantListItem,
 } from '#worker/oauth-grants.ts'
+import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 
 export type OffboardingJobDisposition = 'cancel' | 'delete' | 'keep_running'
@@ -473,6 +475,12 @@ async function applyJobDispositions(input: {
 				await jobsStore.deleteJob({
 					userId: input.orgId,
 					jobId: choice.jobId,
+				})
+				await recordJobAudit(optionalOrgAuditWriter(input.env, null), {
+					orgId: input.orgId,
+					jobId: job.record.id,
+					name: job.record.name,
+					action: jobAuditActions.deleted,
 				})
 				applied.push(choice)
 				break

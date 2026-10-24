@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import {
@@ -327,6 +328,9 @@ async function createCommunityInstall(
 		sourceId: fork.sourceId,
 		sourceFiles: fork.files,
 		waitUntil: input.waitUntil,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.creatorUserId ?? null,
+		}),
 	})
 	logInstallPhaseTiming({
 		phase: 'install-projection',

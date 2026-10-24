@@ -1,5 +1,11 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
+	changedJobFields,
+	jobAuditActions,
+	recordJobAudit,
+} from './job-audit.ts'
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
 	type OwnerId,
 	type PersonId,
 	ownerIdFromStored,
@@ -728,6 +734,7 @@ export async function syncPackageJobsForPackage(input: {
 			}
 			const now = new Date().toISOString()
 			let schedulerStateChanged = false
+			const jobAudits: Array<Parameters<typeof recordJobAudit>[1]> = []
 			const ensureOwnerEnablement = async (job: {
 				id: string
 				name: string
@@ -822,6 +829,16 @@ export async function syncPackageJobsForPackage(input: {
 						job: updated,
 						callerContextJson,
 					})
+					const changedFields = changedJobFields(existing.record, updated)
+					if (changedFields.length > 0) {
+						jobAudits.push({
+							orgId: input.userId,
+							jobId: updated.id,
+							name: jobName,
+							action: jobAuditActions.updated,
+							fields: changedFields,
+						})
+					}
 					await ensureOwnerEnablement({
 						id: updated.id,
 						name: jobName,
@@ -869,6 +886,13 @@ export async function syncPackageJobsForPackage(input: {
 					job: created,
 					callerContextJson,
 				})
+				jobAudits.push({
+					orgId: input.userId,
+					jobId: created.id,
+					name: jobName,
+					action: jobAuditActions.created,
+					enabled,
+				})
 				// New jobs auto-enable for the creator/owner so the schedule runs
 				// without a separate ask-the-user enablementEnable step. Other
 				// package triggers still never auto-enable on publish.
@@ -892,9 +916,22 @@ export async function syncPackageJobsForPackage(input: {
 					userId: input.userId,
 					jobId: row.id,
 				})
+				jobAudits.push({
+					orgId: input.userId,
+					jobId: row.id,
+					name: row.name,
+					action: jobAuditActions.deleted,
+				})
 				await deleteJobVector(input.env, row.id)
 				schedulerStateChanged = true
 			}
+			const writer =
+				jobAudits.length > 0
+					? optionalOrgAuditWriter(input.env, {
+							userId: input.actorUserId ?? null,
+						})
+					: null
+			for (const audit of jobAudits) await recordJobAudit(writer, audit)
 			return schedulerStateChanged
 		},
 	})
@@ -1051,6 +1088,22 @@ export async function updateJob(input: {
 			})
 			if (!didUpdate) {
 				throw new Error(`Job "${updated.id}" could not be updated.`)
+			}
+			const changedFields = changedJobFields(existing, updated)
+			if (changedFields.length > 0) {
+				await recordJobAudit(
+					optionalOrgAuditWriter(
+						input.env,
+						input.callerContext.request ?? null,
+					),
+					{
+						orgId: ownerId,
+						jobId: updated.id,
+						name: updated.name,
+						action: jobAuditActions.updated,
+						fields: changedFields,
+					},
+				)
 			}
 			if (updated.enabled) {
 				await ensureOwnerCronEnablementForJob({

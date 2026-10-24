@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertWithinEntitlement } from '#worker/entitlements/service.ts'
@@ -198,6 +199,9 @@ export async function createSavedPackageFromFiles(input: {
 		userEmail: packageOwnerEntitlementEmail(input.owner),
 		packageId,
 		sourceId: ensuredSource.id,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.owner.actorUserId,
+		}),
 	})
 	return { packageId, kodyId: manifest.kody.id, name: manifest.name }
 }

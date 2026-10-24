@@ -218,6 +218,17 @@ test('asking to go public, then one Approve, records both decisions and serves t
 		},
 		{
 			...shared,
+			actorUsername: null,
+			credentialKind: null,
+			action: 'package.updated',
+			details: {
+				name: '@acme/digest',
+				internetVisible: { before: false, after: true },
+				fields: ['internet_visible'],
+			},
+		},
+		{
+			...shared,
 			action: 'package.went_public.approve',
 			details: expect.objectContaining({
 				packageId: t.savedPackage.id,

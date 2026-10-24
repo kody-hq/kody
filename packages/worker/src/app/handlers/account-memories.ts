@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { memoryLegacyWriteFrozenMessage } from '#mcp/memory/memory-owner.ts'
@@ -28,6 +29,7 @@ async function handleDeleteAction(input: {
 		}),
 		memoryId,
 		force,
+		audit: optionalOrgAuditWriter(input.env, input.user.request),
 	})
 	if (!deleted) {
 		return operationResult({ ok: false, error: 'Memory not found.' }, 404)

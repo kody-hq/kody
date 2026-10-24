@@ -37,6 +37,12 @@ import {
 	type MemorySearchMatch,
 } from './types.ts'
 import { assertPersonalMemoryWritable } from './memory-owner.ts'
+import {
+	changedMemoryFields,
+	memoryAuditActions,
+	recordMemoryAudit,
+} from './memory-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 const maxSubjectLength = 200
 const maxSummaryLength = 500
@@ -83,30 +89,37 @@ type MemoryOwnerContext = {
 	storageContext?: StorageContext | null
 }
 
+type MemoryAuditInput = {
+	/** Records memory.created, .updated, and .deleted; required so writes cannot skip it. */
+	audit: OrgAuditWriter | null
+}
+
 type MemoryEnv = Pick<Env, 'APP_DB'> &
 	Partial<Pick<Env, 'CAPABILITY_VECTOR_INDEX'>> &
 	UserMeterEnv
 
-type MemoryUpsertInput = MemoryOwnerContext & {
-	env: MemoryEnv
-	memoryId?: string | null
-	category?: string | null
-	subject: string
-	summary: string
-	details?: string | null
-	tags?: Array<string> | null
-	sourceUris?: Array<string> | null
-	dedupeKey?: string | null
-	status?: 'active' | 'archived'
-	verificationReference?: string | null
-	waitUntil?: (promise: Promise<unknown>) => void
-}
+type MemoryUpsertInput = MemoryOwnerContext &
+	MemoryAuditInput & {
+		env: MemoryEnv
+		memoryId?: string | null
+		category?: string | null
+		subject: string
+		summary: string
+		details?: string | null
+		tags?: Array<string> | null
+		sourceUris?: Array<string> | null
+		dedupeKey?: string | null
+		status?: 'active' | 'archived'
+		verificationReference?: string | null
+		waitUntil?: (promise: Promise<unknown>) => void
+	}
 
-type MemoryDeleteInput = MemoryOwnerContext & {
-	env: MemoryEnv
-	memoryId: string
-	force?: boolean
-}
+type MemoryDeleteInput = MemoryOwnerContext &
+	MemoryAuditInput & {
+		env: MemoryEnv
+		memoryId: string
+		force?: boolean
+	}
 
 type MemoryGetInput = MemoryOwnerContext & {
 	env: Pick<Env, 'APP_DB'>
@@ -275,6 +288,7 @@ export async function upsertMemory(input: MemoryUpsertInput): Promise<{
 				}),
 			})
 
+			const fields = existing ? changedMemoryFields(existing, row) : []
 			if (existing) {
 				const updated = await updateMemory(
 					input.env.APP_DB,
@@ -300,6 +314,17 @@ export async function upsertMemory(input: MemoryUpsertInput): Promise<{
 				}
 			} else {
 				await insertMemory(input.env.APP_DB, row)
+			}
+			if (!existing || fields.length > 0) {
+				await recordMemoryAudit(input.audit, {
+					orgId: input.userId,
+					memoryId: row.id,
+					subject: row.subject,
+					action: existing
+						? memoryAuditActions.updated
+						: memoryAuditActions.created,
+					fields,
+				})
 			}
 
 			try {
@@ -369,6 +394,12 @@ export async function deleteMemory(
 					{ force: true },
 				)
 				if (!deleted) return null
+				await recordMemoryAudit(input.audit, {
+					orgId: input.userId,
+					memoryId: existing.id,
+					subject: existing.subject,
+					action: memoryAuditActions.deleted,
+				})
 				try {
 					await deleteMemoryVector(input.env as Env, input.memoryId)
 				} catch (error) {
@@ -402,6 +433,15 @@ export async function deleteMemory(
 				},
 			)
 			if (!updated) return null
+			// A soft delete of an already deleted memory is not a change.
+			if (existing.status !== 'deleted') {
+				await recordMemoryAudit(input.audit, {
+					orgId: input.userId,
+					memoryId: existing.id,
+					subject: existing.subject,
+					action: memoryAuditActions.deleted,
+				})
+			}
 
 			const deletedRow = {
 				...existing,

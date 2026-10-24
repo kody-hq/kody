@@ -100,6 +100,7 @@ test('packageDelete requires the owner-typed package name before deleting', asyn
 		package_id: 'pkg-1',
 	})
 	expect(mockModule.deleteSavedPackageProjection).toHaveBeenCalledWith({
+		audit: null,
 		env: expect.objectContaining({ APP_DB: {} }),
 		userId: ownerIdFromStored('user-1'),
 		actorUserId: 'user-1',

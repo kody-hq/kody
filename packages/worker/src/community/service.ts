@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
@@ -794,6 +795,9 @@ export async function publishCommunityListing(input: {
 		userId: input.userId,
 		packageId: input.packageId,
 		isPrivate: false,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.actorUserId ?? input.userId,
+		}),
 	})
 	try {
 		await insertCommunityActivityEvent(input.env.APP_DB, {
@@ -895,6 +899,9 @@ export async function unpublishCommunityListing(input: {
 		userId: input.userId,
 		packageId: listing.packageId,
 		isPrivate: true,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.actorUserId ?? input.userId,
+		}),
 	})
 	invalidateCommunityPublicCache()
 }

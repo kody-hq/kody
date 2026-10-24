@@ -129,6 +129,7 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 		userId: accessFixture.orgId,
 		packageId: accessFixture.privateApp.id,
 		description: 'refreshed on publish',
+		audit: null,
 	})
 	expect(await readEpoch()).toBe(before)
 
@@ -136,6 +137,7 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 		userId: accessFixture.orgId,
 		packageId: accessFixture.privateApp.id,
 		hidden: false,
+		audit: null,
 	})
 	expect(await readEpoch()).toBe(before + 1)
 
@@ -146,6 +148,7 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 		packageId: accessFixture.privateApp.id,
 		hidden: true,
 		expectedUpdatedAt: '2000-01-01T00:00:00.000Z',
+		audit: null,
 	})
 	expect(staleChanged).toBe(false)
 	const missingDeleted = await deleteSavedPackage(env.APP_DB, {

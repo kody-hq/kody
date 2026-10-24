@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
@@ -176,6 +177,9 @@ export async function finalizePublishedEntitySource(
 			// Always pass the published file set so skills indexing runs even
 			// when artifact rebuild is deferred (`rebuildArtifacts: false`).
 			sourceFiles: input.files,
+			audit: optionalOrgAuditWriter(input.env, {
+				userId: input.actorUserId ?? null,
+			}),
 		})
 	} catch (projectionError) {
 		try {

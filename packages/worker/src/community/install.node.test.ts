@@ -167,6 +167,7 @@ test('install publishes clean forks, keeps failed checks inert, and propagates e
 		{ path: 'src/index.ts', type: 'file' },
 	])
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith({
+		audit: null,
 		env,
 		baseUrl: 'https://kody.test',
 		userId: ownerIdFromStored('user-b'),

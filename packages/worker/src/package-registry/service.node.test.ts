@@ -286,6 +286,7 @@ function refresh(env: Env, overrides: Record<string, unknown> = {}) {
 		packageId: 'package-1',
 		sourceId: 'source-1',
 		...overrides,
+		audit: null,
 	})
 }
 
@@ -308,6 +309,7 @@ function deletePackage(
 		userId: ownerIdFromStored('user-1'),
 		packageId,
 		...(actorUserId ? { actorUserId } : {}),
+		audit: null,
 	})
 }
 
