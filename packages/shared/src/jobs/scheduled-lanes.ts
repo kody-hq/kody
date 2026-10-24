@@ -28,6 +28,8 @@ export const scheduledLaneNames = [
 	'kit_subscriber_sync',
 	'dr_export',
 	'dr_export_watchdog',
+	'dr_d1_paced_backup',
+	'dr_d1_paced_backup_watchdog',
 	'job_schedule_watchdog',
 	'fleet_users_affected_alert',
 	'org_audit_outbox',
@@ -247,6 +249,22 @@ export function shouldRunDrExportWatchdogCron(now: Date) {
 	return minutes >= 6 * 60 + 15 && minutes < 6 * 60 + 20
 }
 
+/**
+ * Shadow paced D1 backup shares the DR export nightly window (00:30–06:10 UTC)
+ * so both lanes run during the same low-traffic hours.
+ */
+export function shouldRunD1PacedBackupCron(now: Date) {
+	return shouldRunDrExportCron(now)
+}
+
+export function shouldRunD1PacedBackupCatchUpCron(now: Date) {
+	return shouldRunDrExportCatchUpCron(now)
+}
+
+export function shouldRunD1PacedBackupWatchdogCron(now: Date) {
+	return shouldRunDrExportWatchdogCron(now)
+}
+
 export const jobScheduleWatchdogIntervalMinutes = 15
 
 export function shouldRunJobScheduleWatchdogCron(now: Date) {
@@ -314,6 +332,15 @@ export function getScheduledLaneCadence(
 	}
 	if (shouldRunDrExportWatchdogCron(scheduledAt)) {
 		lanes.push('dr_export_watchdog')
+	}
+	if (
+		shouldRunD1PacedBackupCron(scheduledAt) ||
+		shouldRunD1PacedBackupCatchUpCron(scheduledAt)
+	) {
+		lanes.push('dr_d1_paced_backup')
+	}
+	if (shouldRunD1PacedBackupWatchdogCron(scheduledAt)) {
+		lanes.push('dr_d1_paced_backup_watchdog')
 	}
 	if (shouldRunJobScheduleWatchdogCron(scheduledAt)) {
 		lanes.push('job_schedule_watchdog')

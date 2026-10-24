@@ -2978,6 +2978,8 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId,
 	auditD1DatabaseName,
 	auditD1DatabaseId,
+	jobsD1DatabaseName,
+	jobsD1DatabaseId,
 	oauthKvId,
 	bundleArtifactsKvId,
 	communityAssetsBucketName,
@@ -2999,6 +3001,9 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId: string
 	auditD1DatabaseName: string
 	auditD1DatabaseId: string
+	/** Required when the target env binds JOBS_DB (production paced backup). */
+	jobsD1DatabaseName?: string
+	jobsD1DatabaseId?: string
 	oauthKvId: string
 	bundleArtifactsKvId: string
 	communityAssetsBucketName: string
@@ -3060,23 +3065,40 @@ export async function writeGeneratedWranglerConfig({
 		)
 	}
 
-	for (const binding of [
+	const requiredD1Bindings: Array<{
+		name: string
+		databaseName: string
+		databaseId: string
+		required: boolean
+	}> = [
 		{
 			name: 'APP_DB',
 			databaseName: d1DatabaseName,
 			databaseId: d1DatabaseId,
+			required: true,
 		},
 		{
 			name: 'AUDIT_DB',
 			databaseName: auditD1DatabaseName,
 			databaseId: auditD1DatabaseId,
+			required: true,
 		},
-	]) {
+	]
+	if (jobsD1DatabaseName && jobsD1DatabaseId) {
+		requiredD1Bindings.push({
+			name: 'JOBS_DB',
+			databaseName: jobsD1DatabaseName,
+			databaseId: jobsD1DatabaseId,
+			required: false,
+		})
+	}
+	for (const binding of requiredD1Bindings) {
 		const entryIndex = d1Databases.findIndex((entry) => {
 			if (!entry || typeof entry !== 'object') return false
 			return (entry as Record<string, unknown>).binding === binding.name
 		})
 		if (entryIndex < 0) {
+			if (!binding.required) continue
 			fail(
 				`wrangler config "${baseConfigPath}" has no ${envName} D1 binding for "${binding.name}".`,
 			)
@@ -3087,6 +3109,15 @@ export async function writeGeneratedWranglerConfig({
 			database_name: binding.databaseName,
 			database_id: binding.databaseId,
 		}
+	}
+	const jobsDbIndex = d1Databases.findIndex((entry) => {
+		if (!entry || typeof entry !== 'object') return false
+		return (entry as Record<string, unknown>).binding === 'JOBS_DB'
+	})
+	if (jobsDbIndex >= 0 && !(jobsD1DatabaseName && jobsD1DatabaseId)) {
+		fail(
+			`wrangler config "${baseConfigPath}" binds JOBS_DB in env.${envName} but writeGeneratedWranglerConfig was not given jobsD1DatabaseName/jobsD1DatabaseId.`,
+		)
 	}
 
 	const kvNamespaces = (targetEnv as Record<string, unknown>).kv_namespaces

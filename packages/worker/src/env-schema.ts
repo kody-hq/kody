@@ -397,6 +397,12 @@ export const EnvSchema = object({
 	// unless DR_EXPORT_ENABLED is the literal string "true" and credentials
 	// are present. Secrets are set out-of-band via the Cloudflare API.
 	DR_EXPORT_ENABLED: optionalNonEmptyStringSchema,
+	// Shadow paced D1 backup lane (alongside REST export). Literal "true"
+	// plus DR S3 credentials; sources are DR_D1_PACED_SOURCES JSON.
+	DR_D1_PACED_BACKUP_ENABLED: optionalNonEmptyStringSchema,
+	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
+	// Production ships APP_DB + JOBS_DB; AUDIT_DB waits on the committed UUID.
+	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,
 	// Soft-delete purge lane (Teams P7). Default false: first production
 	// enable is dry-run via adminSoftDeletePurgeRun, then flip to "true".
 	SOFT_DELETE_PURGE_ENABLED: optionalNonEmptyStringSchema,

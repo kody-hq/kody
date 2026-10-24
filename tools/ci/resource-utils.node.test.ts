@@ -96,6 +96,8 @@ const productionArgs = (outConfigPath: string) => ({
 	d1DatabaseId: 'dry-run-kody',
 	auditD1DatabaseName: 'kody-audit',
 	auditD1DatabaseId: 'dry-run-kody-audit',
+	jobsD1DatabaseName: 'kody-jobs',
+	jobsD1DatabaseId: 'dry-run-kody-jobs',
 	oauthKvId: 'dry-run-kody-oauth',
 	bundleArtifactsKvId: 'dry-run-kody-bundle-artifacts',
 	communityAssetsBucketName: 'kody-community-assets',
@@ -248,6 +250,11 @@ test('writeGeneratedWranglerConfig preserves migrations and copies environment a
 			database_name: 'kody-audit',
 			database_id: 'dry-run-kody-audit',
 			migrations_dir: './audit-migrations',
+		},
+		{
+			binding: 'JOBS_DB',
+			database_name: 'kody-jobs',
+			database_id: 'dry-run-kody-jobs',
 		},
 	])
 	expect(production?.r2_buckets).toEqual([

@@ -16,6 +16,10 @@ import { sendUserUsageCampaignEmails } from '#app/user-usage-campaign-emails.ts'
 import { emitFleetEntitlementCrossingEvents } from '#app/usage-entitlement-alerts.ts'
 import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import {
+	runD1PacedBackupTick,
+	runD1PacedBackupWatchdogTick,
+} from '#worker/dr/d1-paced-backup.ts'
+import {
 	runDrExportTick,
 	runDrExportWatchdogTick,
 } from '#worker/dr/exporter.ts'
@@ -325,6 +329,16 @@ export async function runScheduledLane(input: {
 			return runDrExportTick({ env: input.env, now: input.scheduledAt })
 		case 'dr_export_watchdog':
 			return runDrExportWatchdogTick({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'dr_d1_paced_backup':
+			return runD1PacedBackupTick({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'dr_d1_paced_backup_watchdog':
+			return runD1PacedBackupWatchdogTick({
 				env: input.env,
 				now: input.scheduledAt,
 			})

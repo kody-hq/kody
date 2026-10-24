@@ -1,0 +1,327 @@
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test, vi } from 'vitest'
+import {
+	pacedD1StagingDataKey,
+	pacedD1StagingManifestKey,
+	pacedD1StagingProgressKey,
+	parsePacedD1NightManifest,
+	parsePacedD1ProgressCursor,
+} from '@kody-internal/shared/backup-d1-paced.ts'
+import {
+	DrBackupPreconditionFailedError,
+	type DrBackupS3Client,
+	type DrBackupS3PutOptions,
+} from '#worker/dr/backup-s3.ts'
+import {
+	parseD1PacedSources,
+	resolvePacedD1Binding,
+	runD1PacedBackupTick,
+	shouldRunD1PacedBackupCatchUpCron,
+	shouldRunD1PacedBackupCron,
+	shouldRunD1PacedBackupWatchdogCron,
+} from '#worker/dr/d1-paced-backup.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+
+const day = '2026-10-24'
+const appId = '8c1014d1-6b41-4695-a0a2-159071f0f919'
+const jobsId = '5410331e-4d25-47e4-a1e5-a248f7cc764c'
+const auditId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+
+const encode = (text: string) => new TextEncoder().encode(text)
+
+function etagFor(bytes: Uint8Array) {
+	let hash = 0
+	for (const value of bytes) hash = (hash * 31 + value) >>> 0
+	return `"${hash.toString(16)}"`
+}
+
+function createMemoryS3() {
+	const objects = new Map<string, { bytes: Uint8Array; etag: string }>()
+	const client: DrBackupS3Client = {
+		async head(key) {
+			const entry = objects.get(key)
+			return entry
+				? { exists: true, status: 200, etag: entry.etag }
+				: { exists: false, status: 404, etag: null }
+		},
+		async getText(key) {
+			const entry = objects.get(key)
+			if (!entry) return null
+			return {
+				text: new TextDecoder().decode(entry.bytes),
+				etag: entry.etag,
+			}
+		},
+		async getBytes(key) {
+			return objects.get(key)?.bytes ?? null
+		},
+		async put(key, body, options: DrBackupS3PutOptions = {}) {
+			const existing = objects.get(key)
+			if (options.ifNoneMatch === '*' && existing) {
+				throw new DrBackupPreconditionFailedError(key)
+			}
+			if (options.ifMatch) {
+				if (!existing || existing.etag !== options.ifMatch) {
+					throw new DrBackupPreconditionFailedError(key)
+				}
+			}
+			const bytes = typeof body === 'string' ? encode(body) : body
+			const etag = etagFor(bytes)
+			objects.set(key, { bytes, etag })
+			return { etag }
+		},
+	}
+	return { client, objects }
+}
+
+function seedSqlite(rowCount = 3) {
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE items (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+		CREATE TABLE _rate_limits (
+			key TEXT PRIMARY KEY NOT NULL,
+			count INTEGER NOT NULL
+		);
+	`)
+	for (let i = 1; i <= rowCount; i += 1) {
+		sqlite
+			.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+			.run(`i${i}`, `body-${i}`)
+	}
+	sqlite
+		.prepare(`INSERT INTO _rate_limits (key, count) VALUES (?, ?)`)
+		.run('x', 1)
+	return sqlite
+}
+
+function sourcesJson(
+	entries: Array<{ binding: string; name: string; id: string }>,
+) {
+	return JSON.stringify(entries)
+}
+
+function createEnv(overrides: Record<string, unknown> = {}) {
+	return {
+		DR_D1_PACED_BACKUP_ENABLED: 'true',
+		DR_BACKUP_ACCOUNT_ID: 'acct',
+		DR_BACKUP_BUCKET_NAME: 'bucket',
+		DR_BACKUP_ACCESS_KEY_ID: 'key',
+		DR_BACKUP_SECRET_ACCESS_KEY: 'secret',
+		DR_D1_PACED_SOURCES: sourcesJson([
+			{ binding: 'APP_DB', name: 'kody', id: appId },
+		]),
+		APP_DB: createD1FromSqlite(seedSqlite()),
+		AUDIT_DB: createD1FromSqlite(seedSqlite(1)),
+		...overrides,
+	} as unknown as Env
+}
+
+const at = (time: string) => new Date(`${day}T${time}:00.000Z`)
+
+const fastWalker = {
+	minPage: 50,
+	maxPage: 200,
+	minGapMs: 0,
+	sleep: async () => {},
+}
+
+test('paced backup cron windows match the DR export nightly window', () => {
+	expect(
+		['00:25', '00:30', '01:45', '06:10', '06:15'].map((t) =>
+			shouldRunD1PacedBackupCron(at(t)),
+		),
+	).toEqual([false, true, true, true, false])
+	expect(
+		['06:10', '06:15', '06:20'].map((t) =>
+			shouldRunD1PacedBackupWatchdogCron(at(t)),
+		),
+	).toEqual([false, true, false])
+	expect(
+		['01:45', '12:00', '12:05', '12:07'].map((t) =>
+			shouldRunD1PacedBackupCatchUpCron(at(t)),
+		),
+	).toEqual([false, true, true, false])
+})
+
+test('parseD1PacedSources requires UUID ids and known bindings', () => {
+	expect(
+		parseD1PacedSources(
+			sourcesJson([
+				{ binding: 'APP_DB', name: 'kody', id: appId },
+				{ binding: 'JOBS_DB', name: 'kody-jobs', id: jobsId },
+				{ binding: 'AUDIT_DB', name: 'kody-audit', id: auditId },
+			]),
+		),
+	).toHaveLength(3)
+	expect(() =>
+		parseD1PacedSources(
+			sourcesJson([{ binding: 'APP_DB', name: 'kody', id: 'not-a-uuid' }]),
+		),
+	).toThrow(/UUID/)
+})
+
+test('not configured skips without touching S3', async () => {
+	const { client, objects } = createMemoryS3()
+	const putSpy = vi.spyOn(client, 'put')
+	expect(
+		await runD1PacedBackupTick({
+			env: { DR_D1_PACED_BACKUP_ENABLED: 'false' } as unknown as Env,
+			now: at('01:00'),
+			s3: client,
+		}),
+	).toMatchObject({ skipped: true, reason: 'not-configured' })
+	expect(
+		await runD1PacedBackupTick({
+			env: {
+				DR_D1_PACED_BACKUP_ENABLED: 'true',
+				DR_BACKUP_ACCOUNT_ID: 'acct',
+				DR_BACKUP_BUCKET_NAME: 'bucket',
+				DR_BACKUP_ACCESS_KEY_ID: 'key',
+				DR_BACKUP_SECRET_ACCESS_KEY: 'secret',
+				DR_D1_PACED_SOURCES: '',
+			} as unknown as Env,
+			now: at('01:00'),
+			s3: client,
+		}),
+	).toMatchObject({ skipped: true, reason: 'sources-unset' })
+	expect(putSpy).not.toHaveBeenCalled()
+	expect(objects.size).toBe(0)
+})
+
+test('one full night writes a shadow staging manifest', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv()
+	const result = await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(result).toMatchObject({
+		skipped: false,
+		manifestsWritten: 1,
+		tablesCompleted: 1,
+		day,
+	})
+	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
+	expect(raw).not.toBeNull()
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.shadow).toBe(true)
+	expect(manifest.databaseId).toBe(appId)
+	expect(Object.keys(manifest.tables)).toEqual(['items'])
+	expect(manifest.tables.items?.mode).toBe('full')
+	expect(manifest.tables.items?.count).toBe(3)
+	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(true)
+})
+
+test('resume mid-table continues from lastRowid across ticks', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv({
+		APP_DB: createD1FromSqlite(seedSqlite(6)),
+	})
+	let nowMs = 0
+	const first = await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		timeBudgetMs: 50,
+		walkerOpts: {
+			minPage: 1,
+			maxPage: 1,
+			minGapMs: 0,
+			sleep: async () => {
+				nowMs = 100
+			},
+			now: () => nowMs,
+		},
+	})
+	expect(first.timeBudgetExhausted).toBe(true)
+	expect(first.manifestsWritten).toBe(0)
+	const progressRaw = await client.getText(
+		pacedD1StagingProgressKey(day, 'kody'),
+	)
+	expect(progressRaw).not.toBeNull()
+	const progress = parsePacedD1ProgressCursor(JSON.parse(progressRaw!.text))
+	expect(progress.currentTable).toBe('items')
+	expect(progress.lastRowid).toBeTypeOf('number')
+	expect(progress.partialCount).toBeGreaterThan(0)
+
+	const second = await runD1PacedBackupTick({
+		env,
+		now: at('01:05'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(second.manifestsWritten).toBe(1)
+	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.tables.items?.count).toBe(6)
+})
+
+test('delta night reuses previous staging manifest and index', async () => {
+	const { client } = createMemoryS3()
+	const sqlite = seedSqlite(2)
+	const env = createEnv({ APP_DB: createD1FromSqlite(sqlite) })
+	const baseDay = '2026-10-23' // Friday
+	const nextDay = '2026-10-24' // Saturday — daily / delta (Sunday forces full)
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${baseDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+
+	sqlite.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`).run('i3', 'new')
+	sqlite.prepare(`DELETE FROM items WHERE id = ?`).run('i1')
+
+	const delta = await runD1PacedBackupTick({
+		env,
+		now: new Date(`${nextDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(delta.manifestsWritten).toBe(1)
+	const raw = await client.getText(pacedD1StagingManifestKey(nextDay, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.prevDay).toBe(baseDay)
+	expect(manifest.tables.items?.mode).toBe('delta')
+	expect(manifest.tables.items?.count).toBe(2)
+	expect(
+		(manifest.tables.items?.upserts ?? 0) +
+			(manifest.tables.items?.deletes ?? 0),
+	).toBeGreaterThan(0)
+})
+
+test('missing JOBS_DB binding is skipped without failing the tick', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv({
+		DR_D1_PACED_SOURCES: sourcesJson([
+			{ binding: 'APP_DB', name: 'kody', id: appId },
+			{ binding: 'JOBS_DB', name: 'kody-jobs', id: jobsId },
+			{ binding: 'AUDIT_DB', name: 'kody-audit', id: auditId },
+		]),
+		// JOBS_DB intentionally omitted
+	})
+	expect(resolvePacedD1Binding(env, 'JOBS_DB')).toBeNull()
+	const result = await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(result.skipped).toBe(false)
+	expect(result.bindingsMissing).toBeGreaterThanOrEqual(1)
+	expect(result.manifestsWritten).toBe(2)
+	expect(
+		await client.head(pacedD1StagingManifestKey(day, 'kody')),
+	).toMatchObject({ exists: true })
+	expect(
+		await client.head(pacedD1StagingManifestKey(day, 'kody-audit')),
+	).toMatchObject({ exists: true })
+	expect(
+		await client.head(pacedD1StagingManifestKey(day, 'kody-jobs')),
+	).toMatchObject({ exists: false })
+})
