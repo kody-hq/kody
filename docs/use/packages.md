@@ -12,11 +12,13 @@ Kody-specific metadata.
 ### Repositories page vs `package` in the API
 
 In the web UI, the workspace list is **Repositories** (`/@slug/-/repositories`).
-It shows plain repositories and packages together. A package remains a package:
-the API, CLI, and ids keep names like `packageList` and `packageSave`. The
-public catalog at `/community` is titled **Public packages**; back links name
-that page when you leave someone else's listing. Your own package pages link
-back to **Repositories**.
+It shows plain repositories and packages together. A **repository** is the git
+home; a **package** is a repository with a Kody package manifest. The API, CLI,
+and ids keep names like `packageList`, `packageSave`, and
+`guide:package_authoring`. Looking for Packages in the UI? Open
+**Repositories**. The public catalog at `/community` is titled **Public
+packages**; back links name that page when you leave someone else's listing.
+Your own package pages link back to **Repositories**.
 
 Packages are not integrations or MCP servers. See
 [Packages, integrations, and MCP servers](../guides/packages-integrations-mcp.md)
