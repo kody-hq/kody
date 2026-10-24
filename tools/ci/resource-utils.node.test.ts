@@ -479,13 +479,34 @@ test('writeGeneratedWranglerConfig rejects WRANGLER_IS_LOCAL_DEV on deploy envs'
 	)
 })
 
-test('writeGeneratedWranglerConfig expands DR_D1_PACED_SOURCES with live D1 UUIDs including AUDIT_DB', async () => {
+test('writeGeneratedWranglerConfig leaves paced sources alone while the lane flag is off', async () => {
 	consoleError.mockImplementation(() => {})
 	await using temp = await createTempDir()
 	const outPath = path.join(temp.dir, 'wrangler-production.json')
 	await writeGeneratedWranglerConfig({
 		...productionArgs(outPath),
 		workerVars: { APP_BASE_URL: 'https://heykody.dev' },
+	})
+
+	const production = (await readConfig(outPath)).env?.production
+	// Flag is off while the mid-tick OOM fix is shipping; expansion must not run.
+	expect(production?.vars?.DR_D1_PACED_BACKUP_ENABLED).toBe('false')
+	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).toContain('APP_DB')
+	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).not.toContain(
+		'dry-run-kody-audit',
+	)
+})
+
+test('writeGeneratedWranglerConfig expands DR_D1_PACED_SOURCES with live D1 UUIDs including AUDIT_DB when enabled', async () => {
+	consoleError.mockImplementation(() => {})
+	await using temp = await createTempDir()
+	const outPath = path.join(temp.dir, 'wrangler-production.json')
+	await writeGeneratedWranglerConfig({
+		...productionArgs(outPath),
+		workerVars: {
+			APP_BASE_URL: 'https://heykody.dev',
+			DR_D1_PACED_BACKUP_ENABLED: 'true',
+		},
 	})
 
 	const production = (await readConfig(outPath)).env?.production
