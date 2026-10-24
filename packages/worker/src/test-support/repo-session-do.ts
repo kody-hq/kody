@@ -244,6 +244,12 @@ export const repoSessionMockModule = (() => {
 		isPublishedPackageArtifactBuiltForCommit: vi.fn<
 			typeof publishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
 		>(async () => false),
+		loadPublishedBundleArtifactsForPackageTargets: vi.fn<
+			typeof publishedBundleArtifactsModule.loadPublishedBundleArtifactsForPackageTargets
+		>(async () => new Map()),
+		publishedBundleArtifactForPackageTarget: vi.fn<
+			typeof publishedBundleArtifactsModule.publishedBundleArtifactForPackageTarget
+		>(() => null),
 		persistPublishedPackageArtifactTarget: vi.fn<
 			typeof publishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
 		>(async () => 'kv:artifact'),
@@ -303,6 +309,8 @@ export function restoreRepoSessionMockBaseline() {
 		mocks.loadPublishedSourceSnapshot,
 		mocks.loadPublishedSourceManifestSnapshot,
 		mocks.isPublishedPackageArtifactBuiltForCommit,
+		mocks.loadPublishedBundleArtifactsForPackageTargets,
+		mocks.publishedBundleArtifactForPackageTarget,
 		mocks.persistPublishedPackageArtifactTarget,
 		mocks.deletePublishedArtifactsForSource,
 		mocks.getSavedPackageById,
@@ -320,6 +328,11 @@ export function restoreRepoSessionMockBaseline() {
 	mocks.deleteStorageBucketInventory.mockClear()
 	mocks.storageBucketInventoryExists.mockClear()
 	mocks.storageBucketInventoryExists.mockResolvedValue(false)
+	mocks.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(false)
+	mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map(),
+	)
+	mocks.publishedBundleArtifactForPackageTarget.mockReturnValue(null)
 
 	mocks.workspaceExists.mockResolvedValue(false)
 	mocks.workspaceStat.mockResolvedValue(null)

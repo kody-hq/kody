@@ -253,6 +253,16 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
 			>
 		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
+		loadPublishedBundleArtifactsForPackageTargets: (
+			...args: Parameters<
+				typeof PublishedBundleArtifactsModule.loadPublishedBundleArtifactsForPackageTargets
+			>
+		) => mockModule.loadPublishedBundleArtifactsForPackageTargets(...args),
+		publishedBundleArtifactForPackageTarget: (
+			...args: Parameters<
+				typeof PublishedBundleArtifactsModule.publishedBundleArtifactForPackageTarget
+			>
+		) => mockModule.publishedBundleArtifactForPackageTarget(...args),
 		persistPublishedPackageArtifactTarget: (
 			...args: Parameters<
 				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget

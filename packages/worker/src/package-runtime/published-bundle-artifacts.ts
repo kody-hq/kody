@@ -390,6 +390,70 @@ export function isPublishedBundleArtifactCurrentForCommit(input: {
 }
 
 /**
+ * Batch-load identity rows + KV payloads for every rebuild target. Multi-target
+ * rebuild pre-checks should call this once and pass each result as `preloaded`
+ * so D1 does not repeat the per-identity SELECT (Sentry KODY-B2).
+ */
+export async function loadPublishedBundleArtifactsForPackageTargets(input: {
+	env: Env
+	userId: string
+	sourceId: string
+	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+}): Promise<Map<string, LoadedPublishedBundleArtifact | null>> {
+	return await loadPublishedBundleArtifactsByIdentities({
+		env: input.env,
+		userId: input.userId,
+		identities: input.targets.map((target) => ({
+			sourceId: input.sourceId,
+			kind: target.kind,
+			artifactName: target.artifactName,
+			entryPoint: target.entryPoint,
+		})),
+	})
+}
+
+export function publishedBundleArtifactForPackageTarget(input: {
+	sourceId: string
+	target: PublishedPackageArtifactBuildTarget
+	loadedByIdentity: ReadonlyMap<string, LoadedPublishedBundleArtifact | null>
+}): LoadedPublishedBundleArtifact | null {
+	return (
+		input.loadedByIdentity.get(
+			publishedBundleLoadIdentityKey({
+				sourceId: input.sourceId,
+				kind: input.target.kind,
+				artifactName: input.target.artifactName,
+				entryPoint: input.target.entryPoint,
+			}),
+		) ?? null
+	)
+}
+
+async function resolvePublishedBundleArtifactForTarget(input: {
+	env: Env
+	userId: string
+	sourceId: string
+	target: PublishedPackageArtifactBuildTarget
+	/**
+	 * When the property is present (including `null`), skip the identity load.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
+	preloadedProvided: boolean
+}): Promise<LoadedPublishedBundleArtifact | null> {
+	if (input.preloadedProvided) {
+		return input.preloaded ?? null
+	}
+	return await loadPublishedBundleArtifactByIdentity({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		kind: input.target.kind,
+		artifactName: input.target.artifactName,
+		entryPoint: input.target.entryPoint,
+	})
+}
+
+/**
  * True when a published bundle artifact already exists for this target
  * identity at `publishedCommit` (row + KV payload) and the artifact is not
  * older than the snapshot's `invalidateArtifactsBefore` cutoff. Used to
@@ -409,15 +473,21 @@ export async function isPublishedPackageArtifactBuiltForCommit(input: {
 	 * `null` means that load found none. Omit to read it here.
 	 */
 	publishedSnapshot?: PublishedSourceSnapshot | null
+	/**
+	 * When present (including `null`), skips the identity D1/KV load.
+	 * Prefer {@link loadPublishedBundleArtifactsForPackageTargets} for
+	 * multi-target rebuilds.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
 }) {
 	if (!hasPublishedRuntimeArtifacts(input.env)) return false
-	const loaded = await loadPublishedBundleArtifactByIdentity({
+	const loaded = await resolvePublishedBundleArtifactForTarget({
 		env: input.env,
 		userId: input.userId,
 		sourceId: input.sourceId,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
+		target: input.target,
+		preloaded: input.preloaded,
+		preloadedProvided: 'preloaded' in input,
 	})
 	if (!loaded?.artifact) return false
 	if (
@@ -542,15 +612,21 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	 * Prior-commit snapshots still go through `snapshotCache`.
 	 */
 	publishedSnapshot?: PublishedSourceSnapshot | null
+	/**
+	 * When present (including `null`), skips the identity D1/KV load.
+	 * Prefer {@link loadPublishedBundleArtifactsForPackageTargets} for
+	 * multi-target rebuilds.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
 }) {
 	if (!hasPublishedRuntimeArtifacts(input.env)) return false
-	const loaded = await loadPublishedBundleArtifactByIdentity({
+	const loaded = await resolvePublishedBundleArtifactForTarget({
 		env: input.env,
 		userId: input.userId,
 		sourceId: input.sourceId,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
+		target: input.target,
+		preloaded: input.preloaded,
+		preloadedProvided: 'preloaded' in input,
 	})
 	if (!loaded?.artifact) return false
 	if (
@@ -812,11 +888,26 @@ export async function rebuildPublishedPackageArtifacts(
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
 	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
 		new Map()
+	const targets = collectPublishedPackageArtifactTargets(input.manifest)
+	const loadedByIdentity =
+		publishedCommit && hasPublishedRuntimeArtifacts(input.env)
+			? await loadPublishedBundleArtifactsForPackageTargets({
+					env: input.env,
+					userId: input.userId,
+					sourceId: input.source.id,
+					targets,
+				})
+			: null
 	await mapWithConcurrency(
-		collectPublishedPackageArtifactTargets(input.manifest),
+		targets,
 		publishedPackageArtifactRebuildConcurrency,
 		async (target) => {
-			if (publishedCommit) {
+			if (publishedCommit && loadedByIdentity) {
+				const preloaded = publishedBundleArtifactForPackageTarget({
+					sourceId: input.source.id,
+					target,
+					loadedByIdentity,
+				})
 				const alreadyBuilt = await isPublishedPackageArtifactBuiltForCommit({
 					env: input.env,
 					userId: input.userId,
@@ -824,6 +915,7 @@ export async function rebuildPublishedPackageArtifacts(
 					publishedCommit,
 					target,
 					snapshotCache,
+					preloaded,
 				})
 				if (alreadyBuilt) return
 				const reused = await reusePublishedPackageArtifactIfUnchanged({
@@ -834,6 +926,7 @@ export async function rebuildPublishedPackageArtifacts(
 					target,
 					snapshotCache,
 					dependencySourceCache,
+					preloaded,
 				})
 				if (reused) return
 			}

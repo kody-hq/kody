@@ -11,7 +11,11 @@ import {
 	collectPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from './package-artifact-targets.ts'
-import { isPublishedPackageArtifactBuiltForCommit } from './published-bundle-artifacts.ts'
+import {
+	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
+} from './published-bundle-artifacts.ts'
 
 /** Keyset page size when walking `saved_packages` for gap detection. */
 export const publishedImportableArtifactBackfillScanPageSize = 50
@@ -96,14 +100,27 @@ async function findMissingImportableTargets(input: {
 	publishedCommit: string
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 }): Promise<Array<PublishedPackageArtifactBuildTarget>> {
+	const candidates = importableTargets(input.targets)
 	const missing: Array<PublishedPackageArtifactBuildTarget> = []
-	for (const target of importableTargets(input.targets)) {
+	if (candidates.length === 0) return missing
+	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		targets: candidates,
+	})
+	for (const target of candidates) {
 		const built = await isPublishedPackageArtifactBuiltForCommit({
 			env: input.env,
 			userId: input.userId,
 			sourceId: input.sourceId,
 			publishedCommit: input.publishedCommit,
 			target,
+			preloaded: publishedBundleArtifactForPackageTarget({
+				sourceId: input.sourceId,
+				target,
+				loadedByIdentity,
+			}),
 		})
 		if (!built) missing.push(target)
 	}
