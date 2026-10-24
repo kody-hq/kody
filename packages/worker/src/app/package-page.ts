@@ -13,6 +13,11 @@ import {
 import { resolvePackageAppLinks } from '#app/package-repo-actions.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
+import {
+	isRetryableD1LockError,
+	runD1WithRetry,
+	transientDatabaseUnavailableMessage,
+} from '#worker/d1-retry.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
 import {
@@ -147,6 +152,29 @@ function sameKodyId(left: string, right: string) {
 }
 
 /**
+ * Package page APP_DB reads have no per-query `runD1WithRetry`. Nightly DR
+ * exports lock D1 (`Currently processing a long-running export`); without a
+ * retry the raw D1 error dehydrates into the TanStack Start document and the
+ * browser SDK reports it (KODY-B7). Retry the whole load, then remap exhausted
+ * blips to the public storage-unavailable message so the client never sees
+ * the platform sentence.
+ */
+async function loadPackagePageWithD1Retry(input: {
+	env: Env
+	request: Request
+	username: string
+	kodyId: string
+	viewer?: McpUserContext | null
+}): Promise<PackagePageAccess> {
+	try {
+		return await runD1WithRetry(() => loadPackagePageUncached(input))
+	} catch (error) {
+		if (!isRetryableD1LockError(error)) throw error
+		throw new Error(transientDatabaseUnavailableMessage, { cause: error })
+	}
+}
+
+/**
  * One SSR request resolves the same package several times: the page handler,
  * the `community-detail` frame rendered while the response streams, and the
  * files loader that gates on the same access decision. Memoize per request so
@@ -173,7 +201,7 @@ export function loadPackagePage(input: {
 		load: () =>
 			recordServerTiming(
 				'package-page',
-				() => loadPackagePageUncached(input),
+				() => loadPackagePageWithD1Retry(input),
 				input.request,
 			),
 	})

@@ -15,6 +15,32 @@ export const packageAppHostReservedFirstSegments: ReadonlySet<string> = new Set(
 	['-', '.well-known', '_kody', 'robots.txt', 'favicon.ico', 'sitemap.xml'],
 )
 
+/**
+ * First path segments used by scanners and VCS probes. These never identify a
+ * package leaf and never reach package code. Custom hostnames still bind a
+ * package at the host root, so these paths must 404 before the metered
+ * entitlement / seat-count gate.
+ */
+export const packageAppHostProbeFirstSegments: ReadonlySet<string> = new Set([
+	'.git',
+	'.svn',
+	'.hg',
+	'.bzr',
+])
+
+export function isPackageAppHostProbeFirstSegment(segment: string) {
+	return packageAppHostProbeFirstSegments.has(segment.trim().toLowerCase())
+}
+
+/**
+ * True when the pathname is a VCS / scanner probe under the host root
+ * (`/.git/config`, `/.svn/wc.db`, …). Empty and ordinary app paths are false.
+ */
+export function isPackageAppHostProbePath(pathname: string) {
+	const first = pathname.split('/').filter(Boolean)[0]
+	return first != null && isPackageAppHostProbeFirstSegment(first)
+}
+
 /** Default body for package-app host `/robots.txt` (allow all). */
 export const packageAppHostDefaultRobotsTxt = 'User-agent: *\nAllow: /\n'
 
@@ -34,6 +60,7 @@ export function isPackageAppHostReservedPackageLeaf(leaf: string) {
 	const normalized = leaf.trim().toLowerCase()
 	return (
 		isPackageAppHostReservedFirstSegment(normalized) ||
+		isPackageAppHostProbeFirstSegment(normalized) ||
 		normalized === packageAppHostLegacyMountSegment
 	)
 }
@@ -42,6 +69,7 @@ export function isPackageAppHostReservedPackageLeaf(leaf: string) {
 export function listPackageAppHostReservedPackageLeaves(): Array<string> {
 	return [
 		...packageAppHostReservedFirstSegments,
+		...packageAppHostProbeFirstSegments,
 		packageAppHostLegacyMountSegment,
 	].sort()
 }
@@ -52,7 +80,7 @@ export function listPackageAppHostReservedPackageLeaves(): Array<string> {
  */
 export function packageAppHostReservedPackageLeafMessage(leaf: string) {
 	const normalized = leaf.trim().toLowerCase() || leaf
-	return `Cannot create package: ${JSON.stringify(normalized)} is reserved for package-app host paths (system routes under /-/, robots.txt, favicon.ico, sitemap.xml, .well-known, legacy /packages, and _kody). Choose a different package name leaf.`
+	return `Cannot create package: ${JSON.stringify(normalized)} is reserved for package-app host paths (system routes under /-/, robots.txt, favicon.ico, sitemap.xml, .well-known, VCS probe segments such as .git, legacy /packages, and _kody). Choose a different package name leaf.`
 }
 
 /**

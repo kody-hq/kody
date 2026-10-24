@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import type * as PublishedBundleArtifactRepo from '#worker/repo/published-bundle-artifacts-repo.ts'
 import type * as PublishedRuntimeArtifacts from './published-runtime-artifacts.ts'
 import {
@@ -31,6 +31,43 @@ const mockModule = vi.hoisted(() => ({
 		},
 	),
 	getPublishedBundleArtifactByIdentity: vi.fn(),
+	listPublishedBundleArtifactsByIdentities: vi.fn(),
+	identityKey: (identity: {
+		sourceId: string
+		artifactKind: string
+		artifactName: string | null
+		entryPoint: string
+	}) =>
+		[
+			identity.sourceId,
+			identity.artifactKind,
+			identity.artifactName ?? '',
+			identity.entryPoint,
+		].join('\0'),
+	fanOutListPublishedBundleArtifactsByIdentities: async (
+		db: unknown,
+		input: {
+			userId: string
+			identities: ReadonlyArray<{
+				sourceId: string
+				artifactKind: string
+				artifactName: string | null
+				entryPoint: string
+			}>
+		},
+	) => {
+		const found = new Map<string, unknown>()
+		for (const identity of input.identities) {
+			const row = await mockModule.getPublishedBundleArtifactByIdentity(db, {
+				userId: input.userId,
+				...identity,
+			})
+			if (row) {
+				found.set(mockModule.identityKey(identity), row)
+			}
+		}
+		return found
+	},
 	insertPublishedBundleArtifactRow: vi.fn(),
 	readPublishedBundleArtifact: vi.fn(),
 	readPublishedSourceSnapshot: vi.fn(),
@@ -66,6 +103,12 @@ const mockModule = vi.hoisted(() => ({
 	writePublishedBundleArtifact: vi.fn(),
 }))
 
+beforeEach(() => {
+	mockModule.listPublishedBundleArtifactsByIdentities.mockImplementation(
+		mockModule.fanOutListPublishedBundleArtifactsByIdentities,
+	)
+})
+
 vi.mock('#worker/repo/entity-sources.ts', () => ({
 	getEntitySourceById: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceById(...args),
@@ -79,10 +122,13 @@ vi.mock('#worker/repo/published-bundle-artifacts-repo.ts', async () => {
 	const actual = await vi.importActual<typeof PublishedBundleArtifactRepo>(
 		'#worker/repo/published-bundle-artifacts-repo.ts',
 	)
+	mockModule.identityKey = actual.publishedBundleArtifactIdentityKey
 	return {
 		...actual,
 		getPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
 			mockModule.getPublishedBundleArtifactByIdentity(...args),
+		listPublishedBundleArtifactsByIdentities: (...args: Array<unknown>) =>
+			mockModule.listPublishedBundleArtifactsByIdentities(...args),
 		insertPublishedBundleArtifactRow: (...args: Array<unknown>) =>
 			mockModule.insertPublishedBundleArtifactRow(...args),
 		updatePublishedBundleArtifactRow: (...args: Array<unknown>) =>
@@ -776,6 +822,67 @@ test('reusePublishedPackageArtifactIfUnchanged copies clean targets and rebuilds
 	})
 	mockModule.updatePublishedBundleArtifactRow.mockResolvedValueOnce(false)
 	expect(await reuse({ entry: 'a' })).toBe(false)
+})
+
+test('rebuildPublishedPackageArtifacts loads all target identities in one batched D1 read', async () => {
+	mockModule.writePublishedBundleArtifact.mockResolvedValue('kv:key')
+	mockModule.insertPublishedBundleArtifactRow.mockResolvedValue(undefined)
+	mockModule.getPublishedBundleArtifactByIdentity.mockResolvedValue(null)
+	mockModule.readPublishedBundleArtifact.mockResolvedValue(null)
+	mockModule.listPublishedBundleArtifactsByIdentities.mockClear()
+	// Production path must use the batch reader once for every target identity.
+	mockModule.listPublishedBundleArtifactsByIdentities.mockImplementation(
+		async () => new Map(),
+	)
+
+	const buildModuleBundle = makeBuilder('', 'export default {}')
+	const buildImportableModuleBundle = makeBuilder(
+		'importable_',
+		'export default {}',
+	)
+	await rebuildPublishedPackageArtifacts(
+		makeRebuildInput({
+			name: '@alice/batch-identity',
+			description: 'fixture',
+			exports: {
+				'.': './src/a.ts',
+				'./b': './src/b.ts',
+				'./c': './src/c.ts',
+				'./d': './src/d.ts',
+			},
+			publishedCommit: 'commit-new',
+			env: kvEnv,
+			buildModuleBundle,
+			buildImportableModuleBundle,
+		}),
+	)
+
+	expect(
+		mockModule.listPublishedBundleArtifactsByIdentities,
+	).toHaveBeenCalledTimes(1)
+	expect(
+		mockModule.listPublishedBundleArtifactsByIdentities,
+	).toHaveBeenCalledWith(
+		kvEnv.APP_DB,
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			identities: expect.arrayContaining([
+				expect.objectContaining({
+					sourceId: 'source-1',
+					entryPoint: 'src/a.ts',
+				}),
+				expect.objectContaining({
+					sourceId: 'source-1',
+					entryPoint: 'src/d.ts',
+				}),
+			]),
+		}),
+	)
+	const identities = mockModule.listPublishedBundleArtifactsByIdentities.mock
+		.calls[0]![1].identities as Array<{ entryPoint: string }>
+	// module + importable for each of 4 exports.
+	expect(identities.length).toBe(8)
+	expect(buildModuleBundle.mock.calls.length).toBeGreaterThan(0)
 })
 
 test('rebuildPublishedPackageArtifacts reuses unchanged prior artifacts and only rebuilds dirty targets', async () => {

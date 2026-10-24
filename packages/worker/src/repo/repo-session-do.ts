@@ -46,6 +46,8 @@ import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
 	persistPublishedPackageArtifactTarget,
 	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
@@ -3085,9 +3087,19 @@ class RepoSessionBase extends DurableObject<Env> {
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		const remaining: Array<PublishedPackageArtifactBuildTarget> = []
 		const snapshotCache = new Map()
+		const loadedByIdentity =
+			!input.force && hasPublishedRuntimeArtifacts(this.env)
+				? await loadPublishedBundleArtifactsForPackageTargets({
+						env: this.env,
+						userId: input.userId,
+						sourceId: input.sourceId,
+						targets: input.targets,
+					})
+				: null
 		for (const target of input.targets) {
 			const alreadyBuilt =
 				!input.force &&
+				loadedByIdentity != null &&
 				(await isPublishedPackageArtifactBuiltForCommit({
 					env: this.env,
 					userId: input.userId,
@@ -3095,6 +3107,11 @@ class RepoSessionBase extends DurableObject<Env> {
 					publishedCommit: input.publishedCommit,
 					target,
 					snapshotCache,
+					preloaded: publishedBundleArtifactForPackageTarget({
+						sourceId: input.sourceId,
+						target,
+						loadedByIdentity,
+					}),
 				}))
 			if (alreadyBuilt) {
 				results.push({

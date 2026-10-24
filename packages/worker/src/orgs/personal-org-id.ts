@@ -42,11 +42,52 @@ export function personalOrgIdForPerson(user: {
 }
 
 /**
+ * Concurrent identical personal-org lookups against the same `APP_DB` share
+ * one users-row read (KODY-AZ). Cleared when the promise settles so a later
+ * ownership conversion (or any write) in this or another isolate still
+ * re-reads — module state cannot invalidate other isolates.
+ */
+const inflightPersonalOrgIds = new WeakMap<
+	D1Database,
+	Map<string, Promise<OwnerId>>
+>()
+
+/**
  * Resolve personal org id when only a person id and DB are available (no
  * stamped `personalOrgId` on the caller). Prefer this over branding the
  * person id for org-keyed storage lookups.
  */
 export async function loadPersonalOrgIdForPerson(
+	db: D1Database,
+	personId: PersonId,
+): Promise<OwnerId> {
+	let inflight = inflightPersonalOrgIds.get(db)
+	if (!inflight) {
+		inflight = new Map()
+		inflightPersonalOrgIds.set(db, inflight)
+	}
+	const existing = inflight.get(personId)
+	if (existing) return existing
+	const pending = readPersonalOrgIdForPerson(db, personId).finally(() => {
+		if (inflight.get(personId) === pending) inflight.delete(personId)
+	})
+	inflight.set(personId, pending)
+	return pending
+}
+
+/**
+ * Drop an in-flight personal-org id after `users.personal_org_id` changes
+ * (ownership conversion). Safe no-op when nothing is in flight; call after
+ * the write batch commits.
+ */
+export function forgetPersonalOrgIdForPerson(
+	db: D1Database,
+	personId: PersonId,
+) {
+	inflightPersonalOrgIds.get(db)?.delete(personId)
+}
+
+async function readPersonalOrgIdForPerson(
 	db: D1Database,
 	personId: PersonId,
 ): Promise<OwnerId> {

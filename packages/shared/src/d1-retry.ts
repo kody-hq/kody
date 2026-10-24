@@ -152,6 +152,79 @@ export function isBareRetryableD1LockMessage(message: string) {
 }
 
 /**
+ * Public Open API / website message when D1 platform blips outlive storage
+ * retries (in-flight export, overload, opaque platform faults). Shared so
+ * Worker remap, Open API `toApiError`, and the browser Sentry filter agree on
+ * one string.
+ */
+export const transientDatabaseUnavailableMessage =
+	'Kody storage was briefly unavailable. Retry in a few seconds.'
+
+/**
+ * Minimal Sentry error-event shape shared by Worker, jobs-worker, and browser
+ * `beforeSend` filters. Avoids importing `@sentry/*` into shared / client
+ * filter modules.
+ */
+export type RetryableD1LockSentryEventLike = {
+	message?: string | null
+	exception?: {
+		values?: Array<{ value?: string | null } | null> | null
+	} | null
+}
+
+function sentryEventMessages(event: RetryableD1LockSentryEventLike) {
+	return [
+		event.message,
+		...(event.exception?.values?.map((value) => value?.value) ?? []),
+	].filter(
+		(message): message is string =>
+			typeof message === 'string' && message.trim().length > 0,
+	)
+}
+
+/**
+ * True when every reported Sentry message/exception value is a bare D1
+ * platform blip (lock, long-running export, overload, binding drop, opaque
+ * internal error, or D1-prefixed DO reset). Anchored/exact matching so
+ * wrappers that embed those sentences stay Sentry-visible. Worker and
+ * jobs-worker `beforeSend` use this for event-message drops; remapped Open
+ * API / website messages still need `hint.originalException` on the Worker.
+ */
+export function isBareRetryableD1LockSentryEvent(
+	event: RetryableD1LockSentryEventLike,
+) {
+	const messages = sentryEventMessages(event)
+	return (
+		messages.length > 0 &&
+		messages.every((message) => isBareRetryableD1LockMessage(message))
+	)
+}
+
+function isTransientDatabaseUnavailableSentryMessage(message: string) {
+	return stripD1ErrorPrefixes(message) === transientDatabaseUnavailableMessage
+}
+
+/**
+ * Browser `beforeSend` predicate for the same D1 platform-unavailability
+ * family the Worker drops. Includes the remapped public string because
+ * website SSR remaps exhausted export locks before dehydrating to the
+ * client, and the browser SDK has no Worker remap hint.
+ */
+export function isBrowserRetryableD1LockSentryEvent(
+	event: RetryableD1LockSentryEventLike,
+) {
+	const messages = sentryEventMessages(event)
+	return (
+		messages.length > 0 &&
+		messages.every(
+			(message) =>
+				isBareRetryableD1LockMessage(message) ||
+				isTransientDatabaseUnavailableSentryMessage(message),
+		)
+	)
+}
+
+/**
  * D1 storage unavailability only: lock, long-running export, binding
  * transport, overload, and opaque internal-error blips. Excludes Durable
  * Object platform-reset sentences that also match

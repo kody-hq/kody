@@ -373,3 +373,32 @@ test('community index omits viewerInstall for anonymous viewers and auth failure
 	expect(mockModule.listSavedPackagesBySlugs).not.toHaveBeenCalled()
 	expect(consoleError).toHaveBeenCalled()
 })
+
+test('loadCommunityDetailData forgets rejected loads so D1 retries can re-read (KODY-B7)', async () => {
+	invalidateCommunityPublicCache()
+	const sameRequest = request('/community/listing-github-retry')
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+	)
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
+	mockModule.getCommunityListingWithAggregates
+		.mockRejectedValueOnce(d1Export)
+		.mockResolvedValueOnce(sampleListing)
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing)
+	mockModule.getEntitySourceById.mockResolvedValue(null)
+	mockModule.getUserSocialRowByUsername.mockResolvedValue({
+		profile_visibility: 'public',
+		stable_user_id: 'owner-mcp-id',
+	})
+
+	await expect(
+		loadCommunityDetailData({} as Env, sameRequest, 'listing-github'),
+	).rejects.toBe(d1Export)
+	const recovered = await loadCommunityDetailData(
+		{} as Env,
+		sameRequest,
+		'listing-github',
+	)
+	expect(recovered?.listing?.id).toBe('listing-github')
+	expect(mockModule.getCommunityListingWithAggregates).toHaveBeenCalledTimes(2)
+})

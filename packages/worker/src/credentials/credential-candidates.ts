@@ -338,6 +338,34 @@ export async function listOrgReachableCredentials(input: {
 }
 
 /**
+ * Concurrent identical usable-credential lists share one D1 load of org
+ * rows, personal grants, and MCP server settings (KODY-AZ). Cleared when the
+ * promise settles so a later `storeKey` / grant in the same isolate still
+ * re-reads. Package execute's `Promise.all` of `credential(key)` opens hit
+ * this after a sync `ownerCredentialOpen` miss, so the in-flight memo
+ * coalesces them; it must not outlive the load (tests and runs add
+ * credentials between opens on the same request).
+ */
+const inflightUsableCredentials = new WeakMap<
+	D1Database,
+	Map<string, Promise<Array<UsableCredential>>>
+>()
+
+function usableCredentialsCacheKey(input: {
+	orgId: string
+	actorUserId: string | null | undefined
+	membershipRole: string | null | undefined
+	packageId: string | null | undefined
+	scopes: ReadonlyArray<string> | null
+	/** Set only when the caller passed an explicit `now` (expiry boundary). */
+	explicitNow: string | null
+}) {
+	const scopesKey =
+		input.scopes === null ? '*' : [...input.scopes].sort().join(',')
+	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}`
+}
+
+/**
  * Every credential the actor can Use in the run org, by kind: the org's own
  * credentials the actor holds Use on, and the actor's own personal
  * credentials granted to the org. In the actor's personal org, its
@@ -355,28 +383,72 @@ export async function listUsableCredentials(input: {
 	packageId?: string | null
 }): Promise<Array<UsableCredential>> {
 	const orgId = input.request.org.id
-	const now = (input.now ?? new Date()).toISOString()
+	const explicitNow = input.now ? input.now.toISOString() : null
+	const now = explicitNow ?? new Date().toISOString()
+	const db = input.env.APP_DB
+	const cacheKey = usableCredentialsCacheKey({
+		orgId,
+		actorUserId: input.request.actor?.userId,
+		membershipRole: input.request.membership?.role,
+		packageId: input.packageId,
+		scopes: input.request.credential.scopes,
+		explicitNow,
+	})
+	let inflight = inflightUsableCredentials.get(db)
+	if (!inflight) {
+		inflight = new Map()
+		inflightUsableCredentials.set(db, inflight)
+	}
+	const existing = inflight.get(cacheKey)
+	if (existing) return existing
+	const pending = loadUsableCredentials({ ...input, now }).finally(() => {
+		if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
+	})
+	inflight.set(cacheKey, pending)
+	return pending
+}
+
+async function loadUsableCredentials(input: {
+	env: Env
+	request: RequestContext
+	now: string
+	packageId?: string | null
+}): Promise<Array<UsableCredential>> {
+	const orgId = input.request.org.id
+	const { now } = input
+	const actor = input.request.actor?.userId ?? null
 	const secretScope: SecretScopeFilter = {
 		includeUserScope: true,
 		packageId: input.packageId ?? null,
 	}
-	const [secretScopeAuth, integrationScope, orgRows, personal] =
-		await Promise.all([
-			loadResourceListScope(input, 'secret:use', 'credential'),
-			loadResourceListScope(input, 'integration:use', 'credential'),
-			loadRows({
-				db: input.env.APP_DB,
-				ownerId: orgId,
-				ids: null,
-				now,
-				secretScope,
-			}),
-			listPersonalCredentialCandidates({
-				db: input.env.APP_DB,
-				actorPersonId: input.request.actor?.userId ?? null,
-				orgId: orgId as OwnerId,
-			}),
-		])
+	// Start the personal-org read in the same turn as listPersonalCredentialCandidates
+	// so both share one in-flight users SELECT.
+	const personalOrgPromise = actor
+		? loadPersonalOrgIdForPerson(input.env.APP_DB, actor)
+		: Promise.resolve(null)
+	const [
+		secretScopeAuth,
+		integrationScope,
+		orgRows,
+		personal,
+		personalOwnerId,
+	] = await Promise.all([
+		loadResourceListScope(input, 'secret:use', 'credential'),
+		loadResourceListScope(input, 'integration:use', 'credential'),
+		loadRows({
+			db: input.env.APP_DB,
+			ownerId: orgId,
+			ids: null,
+			now,
+			secretScope,
+		}),
+		listPersonalCredentialCandidates({
+			db: input.env.APP_DB,
+			actorPersonId: actor,
+			orgId: orgId as OwnerId,
+		}),
+		personalOrgPromise,
+	])
 	const usable = orgRows
 		.filter((row) =>
 			listScopeIncludes(
@@ -385,15 +457,14 @@ export async function listUsableCredentials(input: {
 			),
 		)
 		.map((row) => toUsable(row, 'org', now))
-	const actor = input.request.actor?.userId
 	// A scoped token narrows personal credentials too: Use of each family.
 	const tokenScopes = input.request.credential.scopes
 	const tokenAllows = (family: 'secret' | 'integration') =>
 		tokenScopes === null || tokenScopes.includes(`${family}:use`)
-	if (actor && personal.length > 0) {
+	if (personalOwnerId && personal.length > 0) {
 		const personalRows = await loadRows({
 			db: input.env.APP_DB,
-			ownerId: await loadPersonalOrgIdForPerson(input.env.APP_DB, actor),
+			ownerId: personalOwnerId,
 			ids: personal.map((credential) => credential.id),
 			now,
 		})

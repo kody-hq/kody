@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { runPublishedImportableArtifactBackfill } from './published-importable-artifact-backfill.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
 	loadPackageSourceRowForUser: vi.fn(),
 	loadPackageManifestForSource: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
+	loadPublishedBundleArtifactsForPackageTargets: vi.fn(),
+	publishedBundleArtifactForPackageTarget: vi.fn(),
 	rebuildPublishedPackageArtifactsViaRepoSession: vi.fn(),
 }))
 
@@ -25,12 +27,23 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 vi.mock('./published-bundle-artifacts.ts', () => ({
 	isPublishedPackageArtifactBuiltForCommit: (...args: Array<unknown>) =>
 		mocks.isPublishedPackageArtifactBuiltForCommit(...args),
+	loadPublishedBundleArtifactsForPackageTargets: (...args: Array<unknown>) =>
+		mocks.loadPublishedBundleArtifactsForPackageTargets(...args),
+	publishedBundleArtifactForPackageTarget: (...args: Array<unknown>) =>
+		mocks.publishedBundleArtifactForPackageTarget(...args),
 }))
 
 vi.mock('#mcp/capabilities/repo/package-artifact-rebuild.ts', () => ({
 	rebuildPublishedPackageArtifactsViaRepoSession: (...args: Array<unknown>) =>
 		mocks.rebuildPublishedPackageArtifactsViaRepoSession(...args),
 }))
+
+beforeEach(() => {
+	mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map(),
+	)
+	mocks.publishedBundleArtifactForPackageTarget.mockReturnValue(null)
+})
 
 const owner = ownerIdFromStored('owner-1')
 const env = { APP_DB: {} } as Env

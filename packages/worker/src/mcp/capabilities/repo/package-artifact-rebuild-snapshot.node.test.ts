@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import type * as PublishedBundleArtifactRepo from '#worker/repo/published-bundle-artifacts-repo.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
 
@@ -7,6 +7,43 @@ const mockModule = vi.hoisted(() => ({
 	listPublishedPackageArtifactTargets: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
 	getPublishedBundleArtifactByIdentity: vi.fn(),
+	listPublishedBundleArtifactsByIdentities: vi.fn(),
+	identityKey: (identity: {
+		sourceId: string
+		artifactKind: string
+		artifactName: string | null
+		entryPoint: string
+	}) =>
+		[
+			identity.sourceId,
+			identity.artifactKind,
+			identity.artifactName ?? '',
+			identity.entryPoint,
+		].join('\0'),
+	fanOutListPublishedBundleArtifactsByIdentities: async (
+		db: unknown,
+		input: {
+			userId: string
+			identities: ReadonlyArray<{
+				sourceId: string
+				artifactKind: string
+				artifactName: string | null
+				entryPoint: string
+			}>
+		},
+	) => {
+		const found = new Map<string, unknown>()
+		for (const identity of input.identities) {
+			const row = await mockModule.getPublishedBundleArtifactByIdentity(db, {
+				userId: input.userId,
+				...identity,
+			})
+			if (row) {
+				found.set(mockModule.identityKey(identity), row)
+			}
+		}
+		return found
+	},
 	readPublishedBundleArtifact: vi.fn(),
 	readPublishedSourceSnapshot: vi.fn(),
 }))
@@ -24,11 +61,20 @@ vi.mock('#worker/repo/published-bundle-artifacts-repo.ts', async () => {
 	const actual = await vi.importActual<typeof PublishedBundleArtifactRepo>(
 		'#worker/repo/published-bundle-artifacts-repo.ts',
 	)
+	mockModule.identityKey = actual.publishedBundleArtifactIdentityKey
 	return {
 		...actual,
 		getPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
 			mockModule.getPublishedBundleArtifactByIdentity(...args),
+		listPublishedBundleArtifactsByIdentities: (...args: Array<unknown>) =>
+			mockModule.listPublishedBundleArtifactsByIdentities(...args),
 	}
+})
+
+beforeEach(() => {
+	mockModule.listPublishedBundleArtifactsByIdentities.mockImplementation(
+		mockModule.fanOutListPublishedBundleArtifactsByIdentities,
+	)
 })
 
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', async () => {

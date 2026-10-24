@@ -59,6 +59,9 @@ test('subdomain paths never parse reserved first segments or a bare /packages', 
 		'/robots.txt',
 		'/favicon.ico',
 		'/sitemap.xml',
+		'/.git/config',
+		'/.svn/wc.db',
+		'/.hg/requires',
 		'/%E0%A4%A',
 	]) {
 		expect(
@@ -1080,4 +1083,31 @@ test('custom hostnames mount the bound app at the host root', () => {
 			kodyId: 'demo',
 		}).restPath,
 	).toBe('/report/today')
+})
+
+test('VCS probe paths 404 before building the package-app worker', async () => {
+	seedFixture({ kodyId: 'probe-app' })
+	mockModule.buildPackageAppWorker.mockClear()
+	const response = await servePackageAppRequest({
+		request: new Request('https://app.example/.git/config'),
+		env: {
+			APP_DB: {},
+			BUNDLE_ARTIFACTS_KV: {},
+		} as Env,
+		owner: {
+			userId: ownerIdFromStored('user-1'),
+			username: 'kentcdodds',
+			email: 'kent@example.com',
+			displayName: 'Kent',
+		},
+		visitor: null,
+		packagePath: {
+			username: 'kentcdodds',
+			kodyId: 'probe-app',
+			restPath: '/.git/config',
+			mount: 'custom-hostname',
+		},
+	})
+	expect(response.status).toBe(404)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
 })

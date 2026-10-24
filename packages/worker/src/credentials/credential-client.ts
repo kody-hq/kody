@@ -479,6 +479,9 @@ function pickOne(input: {
  * A package need's stored mapping (trigger override, then the actor's own
  * default, then the org default), or null to auto-resolve. Interactive runs
  * have no trigger override; a trigger run acts as its enabler.
+ *
+ * Concurrent opens for several need keys share one mappings read via the
+ * microtask batcher in `loadCredentialMappings` (KODY-AZ).
  */
 async function resolveMappedNeed(
 	ctx: CredentialClientContext,

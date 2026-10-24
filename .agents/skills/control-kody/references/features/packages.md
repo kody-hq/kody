@@ -9,6 +9,7 @@ fixtures after `node tools/seed-test-data.ts --local`.
 npm run control-kody -- login
 npm run control-kody -- package-create --origin <preview> --package-name demo-pkg
 npm run control-kody -- request GET /@jane --contains 'Repositories'
+npm run control-kody -- request GET /@jane/-/repositories --contains 'Packages live here too'
 npm run control-kody -- request GET /account/packages.json --contains 'packages'
 ```
 

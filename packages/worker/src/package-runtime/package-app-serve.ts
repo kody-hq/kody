@@ -17,6 +17,8 @@ import {
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostNonLeafFirstSegment,
+	isPackageAppHostProbeFirstSegment,
+	isPackageAppHostProbePath,
 	packageAppHostLegacyMountSegment,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { accountCreditsPath } from '#universal/compute-overage.ts'
@@ -780,6 +782,20 @@ export async function servePackageAppRequest(input: {
 	const { kodyId } = packagePath
 	const packageRealtimeRestPath = packagePath.restPath
 	const forwardedPackageRestPath = packagePath.restPath
+	// Scanner / VCS probes never reach package code. 404 before the metered
+	// entitlement seat-count gate (and before slug lookup) so bot noise does
+	// not pay for live seat reads. Custom hostnames bind a package at `/`, so
+	// restPath is the probe; on subdomain mounts the leaf itself may be the
+	// probe segment.
+	if (
+		isPackageAppHostProbePath(packagePath.restPath) ||
+		isPackageAppHostProbeFirstSegment(packagePath.kodyId)
+	) {
+		return attachPackageAppServerTiming(
+			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+			serverTiming,
+		)
+	}
 	if (owner.username !== packagePath.username) {
 		return attachPackageAppServerTiming(
 			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
