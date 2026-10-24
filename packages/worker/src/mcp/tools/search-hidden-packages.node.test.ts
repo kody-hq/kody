@@ -3,21 +3,42 @@ import { expect, test, vi } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
+	loadPublishedBundleArtifactsByIdentities: vi.fn(),
+	publishedBundleLoadIdentityKey: vi.fn(
+		(input: {
+			sourceId: string
+			kind: string
+			artifactName?: string | null
+			entryPoint: string
+		}) =>
+			[
+				input.sourceId,
+				input.kind,
+				input.artifactName ?? '',
+				input.entryPoint,
+			].join('\0'),
+	),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
 	listPackageRetrieversForScope: mockFns.listPackageRetrieversForScope,
+}))
+
+vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
+	loadPublishedBundleArtifactsByIdentities:
+		mockFns.loadPublishedBundleArtifactsByIdentities,
+	publishedBundleLoadIdentityKey: mockFns.publishedBundleLoadIdentityKey,
 }))
 
 function createHiddenRetrieverFixture(scopes: Array<'search' | 'context'>) {
@@ -59,8 +80,9 @@ function createHiddenRetrieverFixture(scopes: Array<'search' | 'context'>) {
 test('hidden package retrievers skip search by default, honor includeHiddenPackages, and still run for context', async () => {
 	const { entry, hiddenPackage } = createHiddenRetrieverFixture(['search'])
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([entry])
-	mockFns.getSavedPackageById.mockResolvedValue(hiddenPackage)
-	mockFns.getEntitySourceById.mockResolvedValue(null)
+	mockFns.listSavedPackagesByIds.mockResolvedValue([hiddenPackage])
+	mockFns.listEntitySourcesByIds.mockResolvedValue([])
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockResolvedValue(new Map())
 
 	const { runPackageRetrievers } =
 		await import('#worker/package-retrievers/service.ts')
@@ -76,8 +98,15 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		query: 'notes',
 	})
 	expect(excluded.results).toEqual([])
-	expect(mockFns.getEntitySourceById).not.toHaveBeenCalled()
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [])
+	expect(mockFns.loadPublishedBundleArtifactsByIdentities).toHaveBeenCalledWith(
+		expect.objectContaining({
+			identities: [],
+		}),
+	)
 
+	mockFns.listEntitySourcesByIds.mockClear()
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockClear()
 	const included = await runPackageRetrievers({
 		env,
 		baseUrl: 'https://example.com',
@@ -88,14 +117,26 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		includeHiddenPackages: true,
 	})
 	expect(included.results).toEqual([])
-	expect(mockFns.getEntitySourceById).toHaveBeenCalledWith(
-		env.APP_DB,
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
 		'source-hidden',
+	])
+	expect(mockFns.loadPublishedBundleArtifactsByIdentities).toHaveBeenCalledWith(
+		expect.objectContaining({
+			identities: [
+				expect.objectContaining({
+					sourceId: 'source-hidden',
+					kind: 'module',
+					artifactName: './notes',
+					entryPoint: './notes.ts',
+				}),
+			],
+		}),
 	)
 
 	const { entry: contextEntry } = createHiddenRetrieverFixture(['context'])
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([contextEntry])
-	mockFns.getEntitySourceById.mockClear()
+	mockFns.listEntitySourcesByIds.mockClear()
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockClear()
 
 	const contextRun = await runPackageRetrievers({
 		env,
@@ -106,9 +147,17 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		query: 'notes',
 	})
 	expect(contextRun.results).toEqual([])
-	expect(mockFns.getEntitySourceById).toHaveBeenCalledWith(
-		env.APP_DB,
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
 		'source-hidden',
+	])
+	expect(mockFns.loadPublishedBundleArtifactsByIdentities).toHaveBeenCalledWith(
+		expect.objectContaining({
+			identities: [
+				expect.objectContaining({
+					sourceId: 'source-hidden',
+				}),
+			],
+		}),
 	)
 	// The dynamic import above pulls in the retriever service module graph, and a
 	// cold transform of it can exceed the 5s default when the worker pool is

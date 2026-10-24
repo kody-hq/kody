@@ -132,23 +132,53 @@ type RetrieverPrefetch = {
 	artifactsByIdentity: Map<string, LoadedPublishedBundleArtifact | null>
 }
 
+function shouldInvokeRetrieverEntry(input: {
+	scope: PackageRetrieverScope
+	includeHiddenPackages: boolean
+	savedPackage: SavedPackageRecord | undefined
+}) {
+	if (!input.savedPackage) return false
+	// Hidden gating is a search-discovery preference only. Context retrievers
+	// (memory/tool context) must still run for hidden packages.
+	if (
+		input.scope === 'search' &&
+		input.savedPackage.hidden &&
+		!input.includeHiddenPackages
+	) {
+		return false
+	}
+	return true
+}
+
 async function prefetchRetrieverLookups(input: {
 	env: Env
 	userId: string
+	scope: PackageRetrieverScope
+	includeHiddenPackages: boolean
 	entries: ReadonlyArray<PackageRetrieverManifestCacheEntry>
 }): Promise<RetrieverPrefetch> {
 	const packageIds = [...new Set(input.entries.map((entry) => entry.packageId))]
-	const sourceIds = [...new Set(input.entries.map((entry) => entry.sourceId))]
-	const [packages, sources, artifactsByIdentity] = await Promise.all([
-		listSavedPackagesByIds(input.env.APP_DB, {
-			userId: input.userId,
-			packageIds,
+	const packages = await listSavedPackagesByIds(input.env.APP_DB, {
+		userId: input.userId,
+		packageIds,
+	})
+	const savedPackagesById = new Map(
+		packages.map((savedPackage) => [savedPackage.id, savedPackage]),
+	)
+	const runnableEntries = input.entries.filter((entry) =>
+		shouldInvokeRetrieverEntry({
+			scope: input.scope,
+			includeHiddenPackages: input.includeHiddenPackages,
+			savedPackage: savedPackagesById.get(entry.packageId),
 		}),
+	)
+	const sourceIds = [...new Set(runnableEntries.map((entry) => entry.sourceId))]
+	const [sources, artifactsByIdentity] = await Promise.all([
 		listEntitySourcesByIds(input.env.APP_DB, sourceIds),
 		loadPublishedBundleArtifactsByIdentities({
 			env: input.env,
 			userId: input.userId,
-			identities: input.entries.map((entry) => ({
+			identities: runnableEntries.map((entry) => ({
 				sourceId: entry.sourceId,
 				kind: 'module',
 				artifactName: entry.exportName,
@@ -157,9 +187,7 @@ async function prefetchRetrieverLookups(input: {
 		}),
 	])
 	return {
-		savedPackagesById: new Map(
-			packages.map((savedPackage) => [savedPackage.id, savedPackage]),
-		),
+		savedPackagesById,
 		sourcesById: new Map(sources.map((source) => [source.id, source])),
 		artifactsByIdentity,
 	}
@@ -187,16 +215,16 @@ async function invokeRetriever(input: {
 	const savedPackage = input.prefetch.savedPackagesById.get(
 		input.entry.packageId,
 	)
-	if (!savedPackage) {
+	if (
+		!shouldInvokeRetrieverEntry({
+			scope: input.scope,
+			includeHiddenPackages: input.includeHiddenPackages,
+			savedPackage,
+		})
+	) {
 		return []
 	}
-	// Hidden gating is a search-discovery preference only. Context retrievers
-	// (memory/tool context) must still run for hidden packages.
-	if (
-		input.scope === 'search' &&
-		savedPackage.hidden &&
-		!input.includeHiddenPackages
-	) {
+	if (!savedPackage) {
 		return []
 	}
 	const source = input.prefetch.sourcesById.get(input.entry.sourceId)
@@ -360,6 +388,8 @@ export async function runPackageRetrievers(input: {
 	const prefetch = await prefetchRetrieverLookups({
 		env: input.env,
 		userId,
+		scope: input.scope,
+		includeHiddenPackages,
 		entries,
 	})
 	// Soft-fail per retriever: one stalled/buggy package must not fail MCP
