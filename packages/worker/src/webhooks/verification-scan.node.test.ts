@@ -121,6 +121,11 @@ test('the scan lists live webhooks that rely on the URL secret alone, with their
 		},
 	]
 	const prepared: Array<string> = []
+	const endpointWhereClause = (sql: string) => {
+		const whereIndex = sql.indexOf('WHERE e.id > ?')
+		const orderByIndex = sql.indexOf('ORDER BY', whereIndex)
+		return sql.slice(whereIndex, orderByIndex)
+	}
 	const env = {
 		APP_DB: {
 			prepare(sql: string) {
@@ -206,9 +211,11 @@ test('the scan lists live webhooks that rely on the URL secret alone, with their
 		includeSignature: false,
 	})
 
-	expect(prepared[0]).toContain("state <> 'off'")
-	expect(prepared[0]).toContain('AS enabled')
-	expect(prepared[0]).toContain('e.deleted_at IS NULL')
+	const defaultSql = prepared[0] ?? ''
+	const defaultWhere = endpointWhereClause(defaultSql)
+	expect(defaultWhere).toContain("state <> 'off'")
+	expect(defaultSql).toContain('AS enabled')
+	expect(defaultSql).toContain('e.deleted_at IS NULL')
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'webhook-verification-scan-manifest-failed',
 		expect.objectContaining({ sourceId: 'src-broken' }),
@@ -263,9 +270,11 @@ test('the scan lists live webhooks that rely on the URL secret alone, with their
 		includeSignature: true,
 		includeDisabled: true,
 	})
-	expect(prepared.at(-1)).toContain("AND state <> 'off'")
-	expect(prepared.at(-1)).toContain('AS enabled')
-	expect(prepared.at(-1)).toContain('e.deleted_at IS NULL')
+	const includeDisabledSql = prepared.at(-1) ?? ''
+	const includeDisabledWhere = endpointWhereClause(includeDisabledSql)
+	expect(includeDisabledWhere).not.toContain("state <> 'off'")
+	expect(includeDisabledSql).toContain('AS enabled')
+	expect(includeDisabledSql).toContain('e.deleted_at IS NULL')
 	expect(
 		withSignature.endpoints.find((row) => row.endpointId === 'ep-github'),
 	).toMatchObject({
