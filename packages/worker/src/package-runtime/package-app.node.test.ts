@@ -1815,10 +1815,17 @@ test('buildPackageAppWorker keeps one worker id per visitor across build cache e
 	const now = vi.spyOn(Date, 'now').mockReturnValue(start)
 	try {
 		const first = await loadOnce(makeBuildInput(secretEnv, key))
-		// Past the build cache TTL, still the same UTC day.
+		// Past the build cache TTL, still the same UTC day: this is a rebuild,
+		// not a cache hit.
+		const buildsBefore =
+			packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mock.calls
+				.length
 		now.mockReturnValue(start + 6 * 60 * 1000)
 		const rebuilt = await loadOnce(makeBuildInput(secretEnv, key))
-		expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalled()
+		expect(
+			packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mock.calls
+				.length,
+		).toBeGreaterThan(buildsBefore)
 		expect(rebuilt.id).toBe(first.id)
 		// The binding capability stays sealed: 64 hex chars, carried only by the
 		// bridge props and the wrapper module, and matching across the rebuild
