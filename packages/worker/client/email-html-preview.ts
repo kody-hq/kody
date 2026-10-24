@@ -108,20 +108,17 @@ function isFullHtmlDocument(html: string) {
 	return fullHtmlDocumentPattern.test(trimmed) || htmlRootPattern.test(trimmed)
 }
 
+const leadingDoctypePattern = /^\s*<!DOCTYPE[^>]*>/i
+
+/**
+ * Put the head tags at the very start of the document (after a leading
+ * doctype). The parser opens the implicit head for them and merges a later
+ * `<html>` start tag's attributes, so they always land first in the real head
+ * even if a `<head>` lookalike appears earlier in a comment or attribute.
+ */
 function injectPreviewHeadTags(html: string) {
-	if (/<head[\s>]/i.test(html)) {
-		return html.replace(/<head([^>]*)>/i, `<head$1>${previewHeadTags}`)
-	}
-	if (/<html[\s>]/i.test(html)) {
-		return html.replace(/<html([^>]*)>/i, `<html$1>${previewHeadTags}`)
-	}
-	if (/<!DOCTYPE[^>]*>/i.test(html)) {
-		return html.replace(
-			/<!DOCTYPE[^>]*>/i,
-			(doctype) => `${doctype}${previewHeadTags}`,
-		)
-	}
-	return `${previewHeadTags}${html}`
+	const doctype = leadingDoctypePattern.exec(html)?.[0] ?? ''
+	return `${doctype}${previewHeadTags}${html.slice(doctype.length)}`
 }
 
 function wrapEmailHtmlFragment(html: string) {

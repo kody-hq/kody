@@ -26,7 +26,7 @@ test('email HTML preview sanitizes scripts and wraps fragments in a safe documen
 	const preserved = buildAdminEmailHtmlPreviewDocument(fullDocument)
 	expect(preserved).toContain('<title>Newsletter</title>')
 	expect(preserved).toContain(
-		'<head><meta name="referrer" content="no-referrer"><base target="_blank"><title>',
+		'<!DOCTYPE html><meta name="referrer" content="no-referrer"><base target="_blank">\n<html>\n<head><title>',
 	)
 	expect(preserved).not.toMatch(/<html>[\s\S]*<html>/i)
 
@@ -75,20 +75,25 @@ test('email HTML preview reads link attributes like the HTML tokenizer', () => {
 	expect(body).toContain('<abbr target="keep">abbr</abbr>')
 })
 
-test('email HTML preview puts its head tags first in documents without a head', () => {
+test('email HTML preview puts its head tags at the start of the document', () => {
+	const head =
+		'<meta name="referrer" content="no-referrer"><base target="_blank">'
 	const htmlOnly = buildAdminEmailHtmlPreviewDocument(
 		'<html lang="en"><body><a href="https://x.example">x</a></body></html>',
 	)
-	expect(htmlOnly).toMatch(
-		/^<html lang="en"><meta name="referrer" content="no-referrer"><base target="_blank"><body>/,
-	)
+	expect(htmlOnly.startsWith(`${head}<html lang="en"><body>`)).toBe(true)
 
 	const doctypeOnly = buildAdminEmailHtmlPreviewDocument(
 		'<!DOCTYPE html><body>x</body>',
 	)
-	expect(doctypeOnly).toMatch(
-		/^<!DOCTYPE html><meta name="referrer" content="no-referrer"><base target="_blank"><body>/,
+	expect(doctypeOnly.startsWith(`<!DOCTYPE html>${head}<body>`)).toBe(true)
+
+	// A head lookalike in a comment or attribute must not capture the tags.
+	const decoy = buildAdminEmailHtmlPreviewDocument(
+		'<!DOCTYPE html><!-- <head> --><html><head data-x="<head>"><title>t</title></head><body>x</body></html>',
 	)
+	expect(decoy.startsWith(`<!DOCTYPE html>${head}<!-- <head> -->`)).toBe(true)
+	expect(decoy.split(head)).toHaveLength(2)
 })
 
 test('email HTML preview sandbox allows only popups that escape the sandbox', () => {
