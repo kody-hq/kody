@@ -589,7 +589,11 @@ export async function sealFullBackupDay(
 	// Full manifests still require the primary REST D1 identity fields. Turning
 	// restExport off on the primary is supported for REST cron/freshness, but
 	// full-day seal waits until a paced-backed full-seal path lands (#4306).
-	if (!restSources.some((source) => source.id === primary.id)) {
+	if (
+		!restSources.some(
+			(source) => source.id.toLowerCase() === primary.id.toLowerCase(),
+		)
+	) {
 		return {
 			kind: 'incomplete',
 			day,
