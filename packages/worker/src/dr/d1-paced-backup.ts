@@ -1037,23 +1037,31 @@ async function workSourceTick(input: {
 			prevSchemaHash: prevTable?.schemaHash,
 		})
 
-		const resuming =
-			progress.currentTable === table.name && progress.lastRowid !== null
-		let partCount = resuming ? progress.partCount : 0
+		// Mid-table resume: lastRowid set. Walk-complete-pending-finalize:
+		// currentTable set, lastRowid null, partCount > 0 (before-finalize
+		// flushed trailing deletes; must not re-walk or those D lines duplicate).
+		const sameTable = progress.currentTable === table.name
+		const walkCompletePendingFinalize =
+			sameTable && progress.lastRowid === null && progress.partCount > 0
+		const resuming = sameTable && progress.lastRowid !== null
+		let partCount = sameTable ? progress.partCount : 0
 		const writer = createTickTableWriter()
 		let tickBytesFlushed = 0
 		let stopForByteBudget = false
 		const partMaxBytes = input.partMaxBytes ?? d1PacedBackupPartMaxBytes
 		const tickByteBudget = input.tickByteBudget ?? d1PacedBackupTickByteBudget
 
-		const flushBufferedPart = async (cursor: {
-			lastRowid: number | null
-			pageSize: number
-			count: number
-			checksum: string
-			upserts: number
-			deletes: number
-		}) => {
+		const flushBufferedPart = async (
+			cursor: {
+				lastRowid: number | null
+				pageSize: number
+				count: number
+				checksum: string
+				upserts: number
+				deletes: number
+			},
+			persistMode: 'resume' | 'walk-complete',
+		) => {
 			if (writer.isEmpty()) return
 			// Single oversized row: still flush alone so the buffer clears.
 			const partBytes = writer.bufferedBytes
@@ -1069,27 +1077,82 @@ async function workSourceTick(input: {
 			partCount += 1
 			tickBytesFlushed += partBytes
 			writer.clear()
-			// Persist cursor after every part so an OOM mid-tick still advances.
-			if (cursor.lastRowid !== null) {
-				progress = {
-					...progress,
-					currentTable: table.name,
-					lastRowid: cursor.lastRowid,
-					pageSize: cursor.pageSize,
-					partialCount: cursor.count,
-					partialChecksum: cursor.checksum,
-					partialUpserts: cursor.upserts,
-					partialDeletes: cursor.deletes,
-					partCount,
-					revision: progress.revision + 1,
-				}
-				await persistProgress(input.s3, progress)
-				await persistNightMeta(input.s3, meta)
+			// Persist after every part. Mid-walk keeps lastRowid for resume.
+			// before-finalize clears lastRowid so a crash cannot re-emit the
+			// trailing delete lines already in this part.
+			progress = {
+				...progress,
+				currentTable: table.name,
+				lastRowid: persistMode === 'walk-complete' ? null : cursor.lastRowid,
+				pageSize: cursor.pageSize,
+				partialCount: cursor.count,
+				partialChecksum: cursor.checksum,
+				partialUpserts: cursor.upserts,
+				partialDeletes: cursor.deletes,
+				partCount,
+				revision: progress.revision + 1,
 			}
+			await persistProgress(input.s3, progress)
+			await persistNightMeta(input.s3, meta)
 			if (tickBytesFlushed >= tickByteBudget) {
 				stopForByteBudget = true
 			}
 		}
+
+		if (walkCompletePendingFinalize) {
+			const hashes = await finalizeTableParts({
+				s3: input.s3,
+				day: input.day,
+				databaseName: input.source.name,
+				table: table.name,
+				partCount,
+			})
+			const selCols = ['__rowid', ...table.cols]
+			const tableManifest: PacedD1TableManifest = {
+				mode,
+				schemaHash: table.schemaHash,
+				sql: table.sql,
+				cols: selCols,
+				pk: ['rowid'],
+				declaredPk: table.declaredPk,
+				count: progress.partialCount,
+				checksum: progress.partialChecksum,
+				upserts: progress.partialUpserts,
+				deletes: progress.partialDeletes,
+				dataSha256: hashes.dataSha256,
+				indexSha256: hashes.indexSha256,
+			}
+			await input.s3.put(
+				pacedD1StagingTableManifestKey(
+					input.day,
+					input.source.name,
+					table.name,
+				),
+				`${JSON.stringify(tableManifest)}\n`,
+				{ contentType: 'application/json' },
+			)
+			progress = {
+				...progress,
+				completedTables: [...progress.completedTables, table.name],
+				currentTable: null,
+				lastRowid: null,
+				partialUpserts: 0,
+				partialDeletes: 0,
+				partialCount: 0,
+				partialChecksum: '0000000000000000',
+				partCount: 0,
+				revision: progress.revision + 1,
+			}
+			const idx = remainingTables.findIndex(
+				(entry) => entry.name === table.name,
+			)
+			if (idx >= 0) remainingTables.splice(idx, 1)
+			tablesCompleted += 1
+			await persistProgress(input.s3, progress)
+			await persistNightMeta(input.s3, meta)
+			continue
+		}
+
 		const hostWalkerOpts = input.walkerOpts ?? {}
 		const result = await walkPacedD1Table({
 			db: input.db as PacedD1Database,
@@ -1109,19 +1172,16 @@ async function workSourceTick(input: {
 						}
 					: null,
 			writer,
-			startAfterRowid:
-				progress.currentTable === table.name ? progress.lastRowid : null,
-			initialPageSize:
-				progress.currentTable === table.name ? progress.pageSize : undefined,
-			partial:
-				progress.currentTable === table.name && progress.lastRowid !== null
-					? {
-							count: progress.partialCount,
-							checksum: progress.partialChecksum,
-							upserts: progress.partialUpserts,
-							deletes: progress.partialDeletes,
-						}
-					: undefined,
+			startAfterRowid: resuming ? progress.lastRowid : null,
+			initialPageSize: sameTable ? progress.pageSize : undefined,
+			partial: resuming
+				? {
+						count: progress.partialCount,
+						checksum: progress.partialChecksum,
+						upserts: progress.partialUpserts,
+						deletes: progress.partialDeletes,
+					}
+				: undefined,
 			opts: {
 				...hostWalkerOpts,
 				budgetMs: hostWalkerOpts.budgetMs ?? budgetLeft,
@@ -1132,28 +1192,19 @@ async function workSourceTick(input: {
 					await hostWalkerOpts.onPage?.(info)
 					const overCap = writer.bufferedBytes >= partMaxBytes
 					const beforeFinalize = info.phase === 'before-finalize'
-					if (
-						(overCap || beforeFinalize) &&
-						!writer.isEmpty() &&
-						info.lastRowid !== null
-					) {
-						await flushBufferedPart(info)
-					} else if ((overCap || beforeFinalize) && !writer.isEmpty()) {
-						// Empty-table / no-rowid edge: flush bytes without cursor.
-						const partBytes = writer.bufferedBytes
-						await flushTablePart({
-							s3: input.s3,
-							day: input.day,
-							databaseName: input.source.name,
-							table: table.name,
-							partIndex: partCount,
-							data: writer.data,
-							index: writer.index,
-						})
-						partCount += 1
-						tickBytesFlushed += partBytes
-						writer.clear()
+					if (!overCap && !beforeFinalize) return
+					if (writer.isEmpty()) return
+					if (beforeFinalize) {
+						await flushBufferedPart(info, 'walk-complete')
+						return
 					}
+					if (info.lastRowid !== null) {
+						await flushBufferedPart(info, 'resume')
+						return
+					}
+					// Empty-table / no-rowid mid-cap edge: flush bytes, then
+					// mark walk-complete so resume does not reset partCount.
+					await flushBufferedPart(info, 'walk-complete')
 				},
 			},
 		})
@@ -1183,6 +1234,7 @@ async function workSourceTick(input: {
 							upserts: result.upserts,
 							deletes: result.deletes,
 						},
+				result.done ? 'walk-complete' : 'resume',
 			)
 		}
 
