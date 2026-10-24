@@ -846,6 +846,8 @@ export async function deleteSavedPackageProjection(input: {
 					const jobs = jobsData(input.env)
 					for (const row of packageJobRows) {
 						await jobs.deleteJob({ userId: input.userId, jobId: row.id })
+						// Captured per job: a later failure must not lose these.
+						removed.jobs.push({ id: row.id, name: row.name })
 					}
 				}
 				const packageJobsRemoved = packageJobRows.length > 0
@@ -865,10 +867,6 @@ export async function deleteSavedPackageProjection(input: {
 				})
 				if (deleted && savedPackage) {
 					removed.package = { name: savedPackage.name }
-					removed.jobs = packageJobRows.map((row) => ({
-						id: row.id,
-						name: row.name,
-					}))
 				}
 				await deleteCredentialMappingsForPackage({
 					db: input.env.APP_DB,
@@ -964,14 +962,14 @@ export async function deleteSavedPackageProjection(input: {
 				name: removed.package.name,
 				action: packageAuditActions.deleted,
 			})
-			for (const job of removed.jobs) {
-				await recordJobAudit(input.audit, {
-					orgId: input.userId,
-					jobId: job.id,
-					name: job.name,
-					action: jobAuditActions.deleted,
-				})
-			}
+		}
+		for (const job of removed.jobs) {
+			await recordJobAudit(input.audit, {
+				orgId: input.userId,
+				jobId: job.id,
+				name: job.name,
+				action: jobAuditActions.deleted,
+			})
 		}
 	}
 }
