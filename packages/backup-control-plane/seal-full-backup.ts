@@ -27,8 +27,8 @@ import {
 	BackupError,
 	backupPayload,
 	bindSourceDatabase,
-	configuredSourceDatabases,
 	errorCode,
+	restExportSourceDatabases,
 	safeLog,
 	utcDay,
 } from './backup-policy.ts'
@@ -583,7 +583,7 @@ export async function sealFullBackupDay(
 	}
 
 	const d1Sources: Array<BackupFullD1Source> = []
-	for (const source of configuredSourceDatabases(env)) {
+	for (const source of restExportSourceDatabases(env)) {
 		const sourceEnv = bindSourceDatabase(env, source)
 		const sourceResult = await assertSourceDayRestorable(sourceEnv, day)
 		if (sourceResult.kind === 'incomplete') {

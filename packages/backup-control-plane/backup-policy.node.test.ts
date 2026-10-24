@@ -13,7 +13,9 @@ import {
 	primarySourceDatabase,
 	resolveSourceDatabase,
 	restoreImportOrder,
+	restExportSourceDatabases,
 	sourceDatabaseFromObjectPrefix,
+	sourceRestExportEnabled,
 	workflowInstanceId,
 } from './backup-policy.ts'
 import {
@@ -171,6 +173,44 @@ test('rejects SOURCE_DATABASES missing from the allowlist or missing SOURCE_DATA
 			backupError('source-not-allowlisted'),
 		)
 	}
+})
+
+test('SOURCE_DATABASES accepts optional restExport and defaults it to enabled', () => {
+	const env = multiDatabaseEnv()
+	env.SOURCE_DATABASES = JSON.stringify([
+		APP_DB,
+		{ ...JOBS_DB, restExport: false },
+	])
+	const sources = configuredSourceDatabases(env)
+	assert.equal(sources.length, 2)
+	assert.equal(sourceRestExportEnabled(sources[0]!), true)
+	assert.equal(sourceRestExportEnabled(sources[1]!), false)
+	assert.deepEqual(restExportSourceDatabases(env), [
+		{ id: DATABASE_ID, name: 'production-db' },
+	])
+	assert.doesNotThrow(() => assertConfiguredIdentity(env))
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ ...APP_DB, restExport: true },
+		JOBS_DB,
+	])
+	assert.deepEqual(
+		restExportSourceDatabases(env).map((source) => source.name),
+		['production-db', 'kody-jobs'],
+	)
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ id: DATABASE_ID, name: 'production-db', restExport: 'nope' },
+	])
+	assert.throws(
+		() => configuredSourceDatabases(env),
+		backupError('invalid-source-databases'),
+	)
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ id: DATABASE_ID, name: 'production-db', extra: true },
+	])
+	assert.throws(
+		() => configuredSourceDatabases(env),
+		backupError('invalid-source-databases'),
+	)
 })
 
 test('declaredSourceDatabases uses the sealed day list and notes absent configured DBs', () => {
