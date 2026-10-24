@@ -87,6 +87,44 @@ test('tab favicons are transparent and fill the square edge to edge', async () =
 	}
 })
 
+test('light tab favicons fill the face white under black outline ink', async () => {
+	for (const file of ['favicon-16x16.png', 'favicon-32x32.png']) {
+		const { size, pixel } = await readPixels(file)
+		let whiteFace = 0
+		let blackInk = 0
+		let transparentInterior = 0
+		// Central face band: should be opaque white fill, not a hollow hole.
+		const x0 = Math.floor(size * 0.3)
+		const x1 = Math.floor(size * 0.7)
+		const y0 = Math.floor(size * 0.35)
+		const y1 = Math.floor(size * 0.55)
+		for (let y = 0; y < size; y += 1) {
+			for (let x = 0; x < size; x += 1) {
+				const [red, green, blue, alpha] = pixel(x, y)
+				const inFaceBand = x >= x0 && x < x1 && y >= y0 && y < y1
+				if (inFaceBand && alpha < 32) transparentInterior += 1
+				if (alpha < 200) continue
+				if (inFaceBand && red > 200 && green > 200 && blue > 200) {
+					whiteFace += 1
+				}
+				if (red < 48 && green < 48 && blue < 48) blackInk += 1
+			}
+		}
+		expect({
+			file,
+			whiteFace: whiteFace > 0,
+			blackInk: blackInk > 0,
+			// Hollow outline would leave most of this band transparent.
+			mostlyOpaqueFace: transparentInterior < (x1 - x0) * (y1 - y0) * 0.25,
+		}).toEqual({
+			file,
+			whiteFace: true,
+			blackInk: true,
+			mostlyOpaqueFace: true,
+		})
+	}
+})
+
 test('favicon.ico embeds light PNG frames at 16, 32, and 48', () => {
 	const ico = readFileSync(path.join(publicDir, 'favicon.ico'))
 	expect(ico.readUInt16LE(0)).toBe(0)

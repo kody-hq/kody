@@ -27,6 +27,18 @@ export const kodyMarkOutlinedRightEyePathD =
 export const kodyMarkOutlinedNosePathD =
 	'M143.61 487.48C114.17 489.48 86.72 471.11 78.33 443.87C74.66 431.99 75.86 419.30 75.88 407.04C75.89 394.95 74.43 379.86 76.99 368.17C82.95 341.00 105.46 319.66 134.57 317.09C164.24 314.47 191.49 335.36 199.96 361.99C203.66 373.61 202.77 386.05 202.74 398.05C202.70 411.49 204.25 425.93 201.11 439.10C194.94 464.94 171.53 485.59 143.61 487.48Z'
 
+const kodyMarkOutlinedRingSubpaths =
+	kodyMarkOutlinedRingPathD.split(/(?<=Z)\s*(?=M)/)
+
+if (kodyMarkOutlinedRingSubpaths.length !== 2) {
+	throw new Error(
+		`Outlined ring must split into outer + inner (got ${kodyMarkOutlinedRingSubpaths.length})`,
+	)
+}
+
+/** Outer silhouette of the outlined ring (face fill under the black outline). */
+export const kodyMarkOutlinedOuterPathD = kodyMarkOutlinedRingSubpaths[0]!
+
 /** Natural width÷height of the mark viewBox. */
 export const kodyMarkAspectRatio = 807.440627 / 593.242027
 
@@ -92,16 +104,21 @@ export function kodyMarkOutlinedSvgMarkup(fill = '#000000'): string {
 `
 }
 
-function kodyFaviconOutlinedPathsMarkup(fill = '#000000'): string {
-	return `  <path fill="${fill}" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRingPathD}"/>
-  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedLeftEyePathD}"/>
-  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRightEyePathD}"/>
-  <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedNosePathD}"/>`
+/**
+ * Light tab favicon: white face fill under black outline, eyes, and nose.
+ * Outside the silhouette stays transparent.
+ */
+function kodyFaviconLightPathsMarkup(): string {
+	return `  <path fill="#ffffff" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedOuterPathD}"/>
+  <path fill="#000000" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRingPathD}"/>
+  <path fill="#000000" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedLeftEyePathD}"/>
+  <path fill="#000000" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRightEyePathD}"/>
+  <path fill="#000000" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedNosePathD}"/>`
 }
 
 /**
  * Browser-tab favicon: transparent, no plate, mark fills the square.
- * Light OS chrome gets the outlined mark; dark gets the solid white face.
+ * Light OS chrome gets white-filled outlined mark; dark gets solid white face.
  */
 export function kodyFaviconSvgMarkup(): string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyFaviconViewBox}" role="img" aria-label="Kody">
@@ -113,7 +130,7 @@ export function kodyFaviconSvgMarkup(): string {
     }
   </style>
   <g class="light">
-${kodyFaviconOutlinedPathsMarkup('#000000')}
+${kodyFaviconLightPathsMarkup()}
   </g>
   <path class="dark" fill="#ffffff" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkPathD}"/>
 </svg>
@@ -124,7 +141,7 @@ ${kodyFaviconOutlinedPathsMarkup('#000000')}
 export function kodyFaviconRasterSvgMarkup(theme: 'light' | 'dark'): string {
 	if (theme === 'light') {
 		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyFaviconViewBox}" role="img" aria-label="Kody">
-${kodyFaviconOutlinedPathsMarkup('#000000')}
+${kodyFaviconLightPathsMarkup()}
 </svg>
 `
 	}
