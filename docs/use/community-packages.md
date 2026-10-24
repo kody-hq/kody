@@ -142,8 +142,10 @@ the package apps guide.
   When you omit a name, the leaf is the listing leaf. If that leaf is already
   taken by an unrelated package, Kody uses the next free leaf (`leaf-2`, then
   `leaf-3`, …). Pass an explicit leaf (or `@owner/leaf`) to choose the name;
-  that path errors if the name is taken. Forking the same listing again errors
-  with the existing fork's identity instead of minting another leaf.
+  that path errors if the name is taken. Forking the same listing again without
+  a new leaf returns that existing fork (`already_forked: true` and a short
+  `message`) instead of creating a duplicate. Pass a different `@owner/leaf`
+  when you want a second fork of the same listing.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at
