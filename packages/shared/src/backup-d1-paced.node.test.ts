@@ -6,6 +6,8 @@ import {
 	pacedBackupGapMs,
 	pacedD1ForcesFullBase,
 	pacedD1RetentionTierForDay,
+	pacedD1SealedDataPartKey,
+	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingManifestKey,
 	parsePacedD1NightManifest,
@@ -114,6 +116,28 @@ test('key helpers stay under lifecycle prefixes', () => {
 		),
 	).toBe(
 		'daily/d1-paced/8c1014d1-6b41-4695-a0a2-159071f0f919/2026-10-24/manifest.json',
+	)
+	expect(
+		pacedD1SealedDataPartKey(
+			'daily',
+			'8c1014d1-6b41-4695-a0a2-159071f0f919',
+			'2026-10-24',
+			'items',
+			3,
+		),
+	).toBe(
+		'daily/d1-paced/8c1014d1-6b41-4695-a0a2-159071f0f919/2026-10-24/data/items.parts/0003.tsv',
+	)
+	expect(
+		pacedD1SealedIndexPartKey(
+			'weekly',
+			'8c1014d1-6b41-4695-a0a2-159071f0f919',
+			'2026-10-25',
+			'items',
+			0,
+		),
+	).toBe(
+		'weekly/d1-paced/8c1014d1-6b41-4695-a0a2-159071f0f919/2026-10-25/index/items.parts/0000.tsv',
 	)
 })
 

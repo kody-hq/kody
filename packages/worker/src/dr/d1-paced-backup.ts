@@ -2,6 +2,7 @@ import {
 	pacedD1BackupSchemaVersion,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedIndexKey,
+	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
 	pacedD1StagingDataPartKey,
@@ -51,6 +52,10 @@ import {
 	resolvePacedD1Binding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
+import {
+	parsePacedD1PartsPointer,
+	sealPacedD1SourceNight,
+} from '#worker/dr/d1-paced-backup-seal.ts'
 
 export {
 	d1PacedBackupCatchUpLookbackDays,
@@ -58,6 +63,8 @@ export {
 	shouldRunD1PacedBackupCatchUpCron,
 	shouldRunD1PacedBackupCron,
 	shouldRunD1PacedBackupWatchdogCron,
+	shouldRunD1PacedRestoreDrillCron,
+	shouldRunD1PacedFreshnessCron,
 } from '#worker/dr/d1-paced-backup-schedule.ts'
 export {
 	parseD1PacedSources,
@@ -65,6 +72,10 @@ export {
 	type PacedD1SourceBinding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
+export {
+	sealPacedD1SourceNight,
+	type SealPacedD1SourceNightResult,
+} from '#worker/dr/d1-paced-backup-seal.ts'
 
 /** Wall budget for one paced D1 cron tick (same order as DR exporter). */
 export const d1PacedBackupRunTimeBudgetMs = 45_000
@@ -114,6 +125,7 @@ export type D1PacedBackupTickResult = {
 	sourcesWorked: number
 	tablesCompleted: number
 	manifestsWritten: number
+	nightsSealed: number
 	bindingsMissing: number
 }
 
@@ -122,7 +134,9 @@ export type D1PacedBackupWatchdogResult = {
 	skipped: boolean
 	reason?: string
 	incompleteSources: number
+	missingSealedSources: number
 	configuredSources: number
+	expectedSealedDay: string
 }
 
 function formatUtcDay(date: Date) {
@@ -414,37 +428,15 @@ async function loadPreviousNight(input: {
 	}
 }
 
-function parsePartsPointer(text: string): { partCount: number } | null {
-	const trimmed = text.trim()
-	if (!trimmed.startsWith('{')) return null
-	try {
-		const parsed = JSON.parse(trimmed) as {
-			kind?: string
-			partCount?: number
-		}
-		if (
-			parsed.kind === 'paced-d1-parts' &&
-			Number.isSafeInteger(parsed.partCount) &&
-			(parsed.partCount as number) >= 0
-		) {
-			return { partCount: parsed.partCount as number }
-		}
-	} catch {
-		return null
-	}
-	return null
-}
-
 /**
  * Stream previous-night index parts one file at a time so AUDIT-sized indexes
  * never load into the worker heap for a delta merge-join.
  */
-function createStagingPartsIndexReader(input: {
+function createPartsIndexReader(input: {
 	s3: DrBackupS3Client
-	day: string
-	databaseName: string
-	table: string
 	partCount: number
+	partKey: (partIndex: number) => string
+	label: string
 }) {
 	let partIndex = 0
 	let lines: Array<string> = []
@@ -454,17 +446,10 @@ function createStagingPartsIndexReader(input: {
 
 	const refill = async () => {
 		while (lineIndex >= lines.length && partIndex < input.partCount) {
-			const bytes = await input.s3.getBytes(
-				pacedD1StagingIndexPartKey(
-					input.day,
-					input.databaseName,
-					input.table,
-					partIndex,
-				),
-			)
+			const bytes = await input.s3.getBytes(input.partKey(partIndex))
 			if (!bytes) {
 				throw new Error(
-					`paced D1 missing index part ${partIndex} for ${input.databaseName}.${input.table}`,
+					`paced D1 missing index part ${partIndex} for ${input.label}`,
 				)
 			}
 			partIndex += 1
@@ -503,10 +488,11 @@ async function openPrevIndex(input: {
 	prev: PrevNight
 	table: string
 }) {
+	const tier = pacedD1RetentionTierForDay(input.prev.day)
 	const key =
 		input.prev.indexLocation === 'sealed'
 			? pacedD1SealedIndexKey(
-					pacedD1RetentionTierForDay(input.prev.day),
+					tier,
 					input.source.id,
 					input.prev.day,
 					input.table,
@@ -514,14 +500,35 @@ async function openPrevIndex(input: {
 			: pacedD1StagingIndexKey(input.prev.day, input.source.name, input.table)
 	const text = await input.s3.getText(key)
 	const body = text?.text ?? ''
-	const pointer = parsePartsPointer(body)
-	if (pointer && input.prev.indexLocation === 'staging') {
-		return createStagingPartsIndexReader({
+	const pointer = parsePacedD1PartsPointer(body)
+	if (pointer) {
+		const label = `${input.source.name}.${input.table}`
+		if (input.prev.indexLocation === 'sealed') {
+			return createPartsIndexReader({
+				s3: input.s3,
+				partCount: pointer.partCount,
+				label,
+				partKey: (partIndex) =>
+					pacedD1SealedIndexPartKey(
+						tier,
+						input.source.id,
+						input.prev.day,
+						input.table,
+						partIndex,
+					),
+			})
+		}
+		return createPartsIndexReader({
 			s3: input.s3,
-			day: input.prev.day,
-			databaseName: input.source.name,
-			table: input.table,
 			partCount: pointer.partCount,
+			label,
+			partKey: (partIndex) =>
+				pacedD1StagingIndexPartKey(
+					input.prev.day,
+					input.source.name,
+					input.table,
+					partIndex,
+				),
 		})
 	}
 	return createMemoryPacedD1IndexReader(body)
@@ -754,7 +761,7 @@ async function finalizeSourceNight(input: {
 	schema: PacedD1SchemaSnapshot
 	meta: NightMeta
 	progress: PacedD1ProgressCursor
-}): Promise<void> {
+}): Promise<{ sealed: boolean }> {
 	const tables: Record<string, PacedD1TableManifest> = {}
 	for (const tableName of input.progress.completedTables) {
 		const raw = await input.s3.getText(
@@ -799,6 +806,42 @@ async function finalizeSourceNight(input: {
 		{ contentType: 'application/json' },
 	)
 	await clearProgress(input.s3, input.day, input.source.name)
+	await sealPacedD1SourceNight({
+		s3: input.s3,
+		source: input.source,
+		day: input.day,
+		manifest,
+	})
+	return { sealed: true }
+}
+
+async function sourceHasSealedManifest(
+	s3: DrBackupS3Client,
+	source: PacedD1SourceConfig,
+	day: string,
+) {
+	const tier = pacedD1RetentionTierForDay(day)
+	const head = await s3.head(pacedD1SealedManifestKey(tier, source.id, day))
+	return head.exists
+}
+
+async function ensureSourceSealed(input: {
+	s3: DrBackupS3Client
+	source: PacedD1SourceConfig
+	day: string
+}): Promise<boolean> {
+	if (await sourceHasSealedManifest(input.s3, input.source, input.day)) {
+		return false
+	}
+	if (!(await sourceHasManifest(input.s3, input.day, input.source.name))) {
+		return false
+	}
+	await sealPacedD1SourceNight({
+		s3: input.s3,
+		source: input.source,
+		day: input.day,
+	})
+	return true
 }
 
 async function workSourceTick(input: {
@@ -815,11 +858,23 @@ async function workSourceTick(input: {
 	timeBudgetExhausted: boolean
 	tablesCompleted: number
 	manifestWritten: boolean
+	nightSealed: boolean
 }> {
 	let tablesCompleted = 0
 	let manifestWritten = false
+	let nightSealed = false
 	if (await sourceHasManifest(input.s3, input.day, input.source.name)) {
-		return { timeBudgetExhausted: false, tablesCompleted, manifestWritten }
+		nightSealed = await ensureSourceSealed({
+			s3: input.s3,
+			source: input.source,
+			day: input.day,
+		})
+		return {
+			timeBudgetExhausted: false,
+			tablesCompleted,
+			manifestWritten,
+			nightSealed,
+		}
 	}
 
 	const schema = await discoverPacedD1Schema(input.db as PacedD1Database)
@@ -866,7 +921,12 @@ async function workSourceTick(input: {
 		if (budgetLeft <= 0) {
 			await persistProgress(input.s3, progress)
 			await persistNightMeta(input.s3, meta)
-			return { timeBudgetExhausted: true, tablesCompleted, manifestWritten }
+			return {
+				timeBudgetExhausted: true,
+				tablesCompleted,
+				manifestWritten,
+				nightSealed,
+			}
 		}
 
 		const table = pickNext()
@@ -880,7 +940,13 @@ async function workSourceTick(input: {
 				progress,
 			})
 			manifestWritten = true
-			return { timeBudgetExhausted: false, tablesCompleted, manifestWritten }
+			nightSealed = true
+			return {
+				timeBudgetExhausted: false,
+				tablesCompleted,
+				manifestWritten,
+				nightSealed,
+			}
 		}
 
 		// Table manifest is the commit point for a finished table. If a prior
@@ -995,7 +1061,12 @@ async function workSourceTick(input: {
 			}
 			await persistProgress(input.s3, progress)
 			await persistNightMeta(input.s3, meta)
-			return { timeBudgetExhausted: true, tablesCompleted, manifestWritten }
+			return {
+				timeBudgetExhausted: true,
+				tablesCompleted,
+				manifestWritten,
+				nightSealed,
+			}
 		}
 
 		const hashes = await finalizeTableParts({
@@ -1062,6 +1133,7 @@ export async function runD1PacedBackupTick(input: {
 		sourcesWorked: 0,
 		tablesCompleted: 0,
 		manifestsWritten: 0,
+		nightsSealed: 0,
 		bindingsMissing: 0,
 	})
 
@@ -1102,9 +1174,10 @@ export async function runD1PacedBackupTick(input: {
 		}
 	}
 
-	// Cheap exit when every bound source already finished tonight.
+	// Cheap exit when every bound source already finished and sealed tonight.
 	let allDone = true
 	let bindingsMissing = 0
+	let nightsSealed = 0
 	for (const source of sources) {
 		if (!resolvePacedD1Binding(input.env, source.binding)) {
 			bindingsMissing += 1
@@ -1112,18 +1185,23 @@ export async function runD1PacedBackupTick(input: {
 		}
 		if (!(await sourceHasManifest(s3, day, source.name))) {
 			allDone = false
+			continue
+		}
+		if (await ensureSourceSealed({ s3, source, day })) {
+			nightsSealed += 1
 		}
 	}
 	if (allDone) {
 		return {
 			day,
 			mode,
-			skipped: true,
-			reason: 'already-complete',
+			skipped: nightsSealed === 0,
+			reason: nightsSealed === 0 ? 'already-complete' : undefined,
 			timeBudgetExhausted: false,
 			sourcesWorked: 0,
 			tablesCompleted: 0,
 			manifestsWritten: 0,
+			nightsSealed,
 			bindingsMissing,
 		}
 	}
@@ -1143,7 +1221,11 @@ export async function runD1PacedBackupTick(input: {
 		if (!db) {
 			continue
 		}
-		if (await sourceHasManifest(s3, day, source.name)) continue
+		const alreadyManifest = await sourceHasManifest(s3, day, source.name)
+		const alreadySealed = alreadyManifest
+			? await sourceHasSealedManifest(s3, source, day)
+			: false
+		if (alreadyManifest && alreadySealed) continue
 
 		const result = await workSourceTick({
 			env: input.env,
@@ -1159,6 +1241,7 @@ export async function runD1PacedBackupTick(input: {
 		sourcesWorked += 1
 		tablesCompleted += result.tablesCompleted
 		if (result.manifestWritten) manifestsWritten += 1
+		if (result.nightSealed) nightsSealed += 1
 		lane.nextSourceIndex = (index + 1) % sources.length
 		await persistLaneProgress(s3, lane)
 		if (result.timeBudgetExhausted) {
@@ -1179,25 +1262,34 @@ export async function runD1PacedBackupTick(input: {
 		sourcesWorked,
 		tablesCompleted,
 		manifestsWritten,
+		nightsSealed,
 		bindingsMissing,
 	}
 	console.info('dr_d1_paced_backup_tick', JSON.stringify(tickResult))
 	return tickResult
 }
 
+/**
+ * After the nightly window: require staging + sealed manifests for today.
+ * Also require yesterday's sealed night so a missed seal cannot rot quietly.
+ */
 export async function runD1PacedBackupWatchdogTick(input: {
 	env: Env
 	now: Date
 	s3?: DrBackupS3Client
 }): Promise<D1PacedBackupWatchdogResult> {
 	const day = formatUtcDay(input.now)
+	const expectedSealedDay = day
+	const yesterday = utcDayMinus(day, 1)
 	if (!isD1PacedBackupConfigured(input.env)) {
 		return {
 			day,
 			skipped: true,
 			reason: 'not-configured',
 			incompleteSources: 0,
+			missingSealedSources: 0,
 			configuredSources: 0,
+			expectedSealedDay,
 		}
 	}
 	const config = readDrBackupS3Config(input.env)
@@ -1207,31 +1299,131 @@ export async function runD1PacedBackupWatchdogTick(input: {
 			skipped: true,
 			reason: 'not-configured',
 			incompleteSources: 0,
+			missingSealedSources: 0,
 			configuredSources: 0,
+			expectedSealedDay,
 		}
 	}
 	const sources = parseD1PacedSources(input.env.DR_D1_PACED_SOURCES)
 	const s3 = input.s3 ?? createDrBackupS3Client(config)
 	let incomplete = 0
+	let missingSealed = 0
 	let configured = 0
+	const missing: Array<string> = []
 	for (const source of sources) {
 		if (!resolvePacedD1Binding(input.env, source.binding)) continue
 		configured += 1
-		if (!(await sourceHasManifest(s3, day, source.name))) {
+		const hasStaging = await sourceHasManifest(s3, day, source.name)
+		const hasSealedToday = await sourceHasSealedManifest(s3, source, day)
+		const hasSealedYesterday = await sourceHasSealedManifest(
+			s3,
+			source,
+			yesterday,
+		)
+		if (!hasStaging) {
 			incomplete += 1
+			missing.push(`${source.name}:staging:${day}`)
+		}
+		if (!hasSealedToday) {
+			missingSealed += 1
+			missing.push(`${source.name}:sealed:${day}`)
+		}
+		// Yesterday is required once we are past the first paced night; when
+		// yesterday has neither staging nor sealed, treat as a freshness miss
+		// only if staging for yesterday existed (seal lag) or today is sealed
+		// (proving the lane has been running).
+		if (!hasSealedYesterday) {
+			const yesterdayStaging = await sourceHasManifest(
+				s3,
+				yesterday,
+				source.name,
+			)
+			if (yesterdayStaging || hasSealedToday) {
+				missingSealed += 1
+				missing.push(`${source.name}:sealed:${yesterday}`)
+			}
+		}
+	}
+	const ok = incomplete === 0 && missingSealed === 0
+	const result: D1PacedBackupWatchdogResult = {
+		day,
+		skipped: ok,
+		reason: ok ? 'complete' : undefined,
+		incompleteSources: incomplete,
+		missingSealedSources: missingSealed,
+		configuredSources: configured,
+		expectedSealedDay,
+	}
+	console.info('dr_d1_paced_backup_watchdog', JSON.stringify(result))
+	if (!ok) {
+		throw new Error(
+			`paced D1 shadow backup incomplete for ${day}: staging missing ${incomplete}, sealed missing ${missingSealed} (${missing.join(', ')}) of ${configured} sources`,
+		)
+	}
+	return result
+}
+
+/** Mid-day freshness: sealed paced night for yesterday must exist. */
+export async function runD1PacedFreshnessTick(input: {
+	env: Env
+	now: Date
+	s3?: DrBackupS3Client
+}): Promise<D1PacedBackupWatchdogResult> {
+	const today = formatUtcDay(input.now)
+	const minutes = input.now.getUTCHours() * 60 + input.now.getUTCMinutes()
+	// After the nightly window closes, expect today's sealed night; before that
+	// window finishes, yesterday is the freshness floor.
+	const expectedSealedDay =
+		minutes >= 6 * 60 + 15 ? today : utcDayMinus(today, 1)
+	if (!isD1PacedBackupConfigured(input.env)) {
+		return {
+			day: today,
+			skipped: true,
+			reason: 'not-configured',
+			incompleteSources: 0,
+			missingSealedSources: 0,
+			configuredSources: 0,
+			expectedSealedDay,
+		}
+	}
+	const config = readDrBackupS3Config(input.env)
+	if (!config) {
+		return {
+			day: today,
+			skipped: true,
+			reason: 'not-configured',
+			incompleteSources: 0,
+			missingSealedSources: 0,
+			configuredSources: 0,
+			expectedSealedDay,
+		}
+	}
+	const sources = parseD1PacedSources(input.env.DR_D1_PACED_SOURCES)
+	const s3 = input.s3 ?? createDrBackupS3Client(config)
+	let missingSealed = 0
+	let configured = 0
+	const missing: Array<string> = []
+	for (const source of sources) {
+		if (!resolvePacedD1Binding(input.env, source.binding)) continue
+		configured += 1
+		if (!(await sourceHasSealedManifest(s3, source, expectedSealedDay))) {
+			missingSealed += 1
+			missing.push(source.name)
 		}
 	}
 	const result: D1PacedBackupWatchdogResult = {
-		day,
-		skipped: incomplete === 0,
-		reason: incomplete === 0 ? 'complete' : undefined,
-		incompleteSources: incomplete,
+		day: today,
+		skipped: missingSealed === 0,
+		reason: missingSealed === 0 ? 'fresh' : undefined,
+		incompleteSources: 0,
+		missingSealedSources: missingSealed,
 		configuredSources: configured,
+		expectedSealedDay,
 	}
-	console.info('dr_d1_paced_backup_watchdog', JSON.stringify(result))
-	if (incomplete > 0) {
+	console.info('dr_d1_paced_freshness', JSON.stringify(result))
+	if (missingSealed > 0) {
 		throw new Error(
-			`paced D1 shadow backup incomplete for ${day}: ${incomplete}/${configured} sources missing staging manifests`,
+			`paced D1 sealed night missing for ${expectedSealedDay}: ${missing.join(', ')} (${missingSealed}/${configured})`,
 		)
 	}
 	return result

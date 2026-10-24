@@ -1,6 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedDataKey,
+	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
 	pacedD1StagingDataPartKey,
 	pacedD1StagingManifestKey,
@@ -17,10 +20,15 @@ import {
 	parseD1PacedSources,
 	resolvePacedD1Binding,
 	runD1PacedBackupTick,
+	runD1PacedBackupWatchdogTick,
 	shouldRunD1PacedBackupCatchUpCron,
 	shouldRunD1PacedBackupCron,
 	shouldRunD1PacedBackupWatchdogCron,
+	shouldRunD1PacedFreshnessCron,
+	shouldRunD1PacedRestoreDrillCron,
 } from '#worker/dr/d1-paced-backup.ts'
+import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
+import { collectD1PacedStatus } from '#worker/dr/d1-paced-status.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 const day = '2026-10-24'
@@ -145,6 +153,12 @@ test('paced backup cron windows match the DR export nightly window', () => {
 			shouldRunD1PacedBackupCatchUpCron(at(t)),
 		),
 	).toEqual([false, true, true, false])
+	expect(shouldRunD1PacedFreshnessCron(at('12:45'))).toBe(true)
+	expect(shouldRunD1PacedFreshnessCron(at('01:45'))).toBe(false)
+	expect(
+		shouldRunD1PacedRestoreDrillCron(new Date('2026-10-25T07:05:00.000Z')),
+	).toBe(true) // Sunday
+	expect(shouldRunD1PacedRestoreDrillCron(at('07:05'))).toBe(false) // Saturday
 })
 
 test('parseD1PacedSources requires UUID ids and known bindings', () => {
@@ -192,7 +206,7 @@ test('not configured skips without touching S3', async () => {
 	expect(objects.size).toBe(0)
 })
 
-test('one full night writes a shadow staging manifest', async () => {
+test('one full night writes a shadow staging manifest and seals it', async () => {
 	const { client, objects } = createMemoryS3()
 	const env = createEnv()
 	const result = await runD1PacedBackupTick({
@@ -204,6 +218,7 @@ test('one full night writes a shadow staging manifest', async () => {
 	expect(result).toMatchObject({
 		skipped: false,
 		manifestsWritten: 1,
+		nightsSealed: 1,
 		tablesCompleted: 1,
 		day,
 	})
@@ -216,6 +231,34 @@ test('one full night writes a shadow staging manifest', async () => {
 	expect(manifest.tables.items?.mode).toBe('full')
 	expect(manifest.tables.items?.count).toBe(3)
 	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(true)
+	const sealedKey = pacedD1SealedManifestKey(
+		pacedD1RetentionTierForDay(day),
+		appId,
+		day,
+	)
+	expect(objects.has(sealedKey)).toBe(true)
+	expect(
+		objects.has(
+			pacedD1SealedDataKey(
+				pacedD1RetentionTierForDay(day),
+				appId,
+				day,
+				'items',
+			),
+		),
+	).toBe(true)
+	const sealed = await client.getText(sealedKey)
+	expect(
+		parsePacedD1NightManifest(JSON.parse(sealed!.text)).tables.items?.count,
+	).toBe(3)
+	// Seal is immutable: a second seal attempt is idempotent.
+	const again = await runD1PacedBackupTick({
+		env,
+		now: at('01:05'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(again).toMatchObject({ skipped: true, reason: 'already-complete' })
 })
 
 test('resume mid-table continues from lastRowid across ticks', async () => {
@@ -371,6 +414,7 @@ test('missing JOBS_DB binding is skipped without failing the tick', async () => 
 	expect(result.skipped).toBe(false)
 	expect(result.bindingsMissing).toBeGreaterThanOrEqual(1)
 	expect(result.manifestsWritten).toBe(2)
+	expect(result.nightsSealed).toBe(2)
 	expect(
 		await client.head(pacedD1StagingManifestKey(day, 'kody')),
 	).toMatchObject({ exists: true })
@@ -380,4 +424,95 @@ test('missing JOBS_DB binding is skipped without failing the tick', async () => 
 	expect(
 		await client.head(pacedD1StagingManifestKey(day, 'kody-jobs')),
 	).toMatchObject({ exists: false })
+})
+
+test('watchdog passes when staging and sealed manifests exist', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv()
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	// Seed yesterday sealed so freshness does not fail the watchdog.
+	const yesterday = '2026-10-23'
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${yesterday}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	await expect(
+		runD1PacedBackupWatchdogTick({ env, now: at('06:15'), s3: client }),
+	).resolves.toMatchObject({
+		skipped: true,
+		incompleteSources: 0,
+		missingSealedSources: 0,
+	})
+})
+
+test('restore drill verifies sealed night against live counts', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv()
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const drill = await runD1PacedRestoreDrillTick({
+		env,
+		now: new Date('2026-10-25T07:05:00.000Z'),
+		s3: client,
+		day,
+	})
+	expect(drill).toMatchObject({
+		skipped: false,
+		sourcesChecked: 1,
+		sourcesOk: 1,
+	})
+	expect(drill.sources[0]?.tables[0]).toMatchObject({
+		table: 'items',
+		manifestCount: 3,
+		restoredCount: 3,
+		liveCount: 3,
+		ok: true,
+	})
+})
+
+test('paced status reports staging and sealed presence', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv()
+	expect(
+		await collectD1PacedStatus({ env, now: at('01:00'), s3: client }),
+	).toMatchObject({
+		configured: true,
+		stagingPresentCount: 0,
+		sealedPresentCount: 0,
+	})
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const status = await collectD1PacedStatus({
+		env,
+		now: at('06:00'),
+		s3: client,
+	})
+	expect(status).toMatchObject({
+		configured: true,
+		day,
+		stagingPresentCount: 1,
+		sealedPresentCount: 1,
+		boundCount: 1,
+	})
+	expect(status.sources[0]).toMatchObject({
+		name: 'kody',
+		stagingPresent: true,
+		sealedPresent: true,
+		bound: true,
+	})
 })

@@ -258,6 +258,35 @@ export function pacedD1SealedIndexKey(
 	return `${pacedD1SealedPrefix(tier, databaseId, day)}index/${encodeURIComponent(table)}.tsv`
 }
 
+/** Zero-based sealed part file (mirrors staging; used when data/index is a pointer). */
+export function pacedD1SealedDataPartKey(
+	tier: PacedD1RetentionTier,
+	databaseId: string,
+	day: string,
+	table: string,
+	partIndex: number,
+): string {
+	if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+		throw new Error(`invalid paced D1 sealed data part index: ${partIndex}`)
+	}
+	const part = String(partIndex).padStart(4, '0')
+	return `${pacedD1SealedPrefix(tier, databaseId, day)}data/${encodeURIComponent(table)}.parts/${part}.tsv`
+}
+
+export function pacedD1SealedIndexPartKey(
+	tier: PacedD1RetentionTier,
+	databaseId: string,
+	day: string,
+	table: string,
+	partIndex: number,
+): string {
+	if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+		throw new Error(`invalid paced D1 sealed index part index: ${partIndex}`)
+	}
+	const part = String(partIndex).padStart(4, '0')
+	return `${pacedD1SealedPrefix(tier, databaseId, day)}index/${encodeURIComponent(table)}.parts/${part}.tsv`
+}
+
 /**
  * Sunday UTC nights force a full base copy even when the schema is unchanged.
  * Weekday nights may emit per-table deltas against the previous sealed index.
