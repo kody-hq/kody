@@ -189,6 +189,8 @@ export default {
 
 - `user_id` and `username` identify the visitor and are verified by the
   platform. Use `user_id` as the stable key for per-visitor data.
+- `role` is the visitor's role in the owning org, `null` for anyone who is not a
+  member.
 - `org.slug` is the org that owns the app, not the visitor's org.
 - Do not treat `email` or `display_name` from this call as the visitor's inside
   an app request. Request `email` through the OAuth helper above when the app
@@ -225,6 +227,62 @@ org) already owns/can execute, except when requesting `email` without a prior
 email grant. A lapsed or unbound custom domain stops being an allowed redirect
 target. Outstanding access tickets (90s) still gate edge authorization after
 sign-in.
+
+#### Who the app runs as
+
+A package app runs as one person in the owning org: the person who last
+published it, unless an Owner picks someone else with `packageAppRunsAsSet`
+(`username: null` goes back to the publisher). In a personal org with no
+recorded publisher, that is the org owner. That person pays for the app and
+their credentials fill its `kody.credentials` needs. Visitors bring only their
+verified identity. `packageAppRunsAsGet` says who it is, or why the app cannot
+run as anyone.
+
+- The person is checked live on every call. Someone who left the org, or whose
+  account is suspended or deleted, stops the app from acting as them, with an
+  error that says so, until an Owner picks someone else or someone publishes
+  again.
+- A publish with no known person behind it (for example an external push with no
+  requester) clears the recorded publisher, so the app never keeps running as
+  someone who did not ship that code.
+- Authority is capped twice: only the capabilities the app lists in
+  `kody.app.capabilities` run as that person, and only within what that person
+  may do in the org right now.
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "src/index.ts",
+			"capabilities": ["metaMemorySearch"],
+			"visitorNeeds": {
+				"calendar": {
+					"description": "Read your calendar to find a free slot",
+					"credential": "google-calendar"
+				}
+			}
+		}
+	}
+}
+```
+
+`kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
+Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
+consent screen shows the `description`. A need names exactly one of a
+`kody.credentials` key (open it with `credential.visitor('calendar')`) or a
+capability (run it with `kody.visitorNeed({ need: 'calendar', args })`). Both
+run as the visitor and need a live grant that covers the scope, read on every
+call, so revoking the app on **Account > Connected apps** takes effect on the
+next call. They never fall back to the runs-as person.
+
+While apps move over, a call that would fail as the runs-as person (a capability
+missing from `kody.app.capabilities`, for example) still runs as the visitor, as
+it did before, and logs a `package_app_authority_fallback` event with the app,
+the call name, and the kind of difference. Add what the logs name to the
+manifest. Admins count these per app with
+`adminPackageAppAuthorityFallbackReport`, and the
+[0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
+lists published apps that will hit them.
 
 `packageAppFetch` exercises the fetch handler without that browser session. Use
 it for handler smoke tests after publish. When the host can run the CLI, prefer

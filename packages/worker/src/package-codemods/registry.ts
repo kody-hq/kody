@@ -14,6 +14,7 @@ import { declareCredentialNeedsCodemod } from './codemods/0013-declare-credentia
 import { sealCredentialStampsCodemod } from './codemods/0014-seal-credential-stamps.ts'
 import { convertCredentialStampsCodemod } from './codemods/0015-convert-credential-stamps.ts'
 import { shortPackageAppSubdomainPathCodemod } from './codemods/0016-short-package-app-subdomain-path.ts'
+import { detectPackageAppVisitorAuthorityCodemod } from './codemods/0017-detect-package-app-visitor-authority.ts'
 import { type PackageCodemod } from './types.ts'
 
 const packageCodemods: Array<PackageCodemod> = [
@@ -33,6 +34,7 @@ const packageCodemods: Array<PackageCodemod> = [
 	sealCredentialStampsCodemod,
 	convertCredentialStampsCodemod,
 	shortPackageAppSubdomainPathCodemod,
+	detectPackageAppVisitorAuthorityCodemod,
 ]
 
 const packageCodemodsById = new Map(

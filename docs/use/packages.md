@@ -290,11 +290,17 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
 
 #### Let app visitors use the owner's credential
 
-An internet-visible app runs as its visitor: the signed-in person, or no one for
-a signed-out visitor or someone outside the org. A signed-in member with Use can
-still open org credentials they hold; a signed-out visitor and anyone without
-Use cannot. A need the app fills for every visitor (a shared database, an email
-sender) opts in per slot with `ownerCredentialForVisitors: true`:
+Package apps run as their publisher, whose credentials fill the app's needs for
+every visitor; see
+[who the app runs as](../guides/package-apps.md#who-the-app-runs-as). The flag
+in this section still parses and keeps working while apps move over.
+
+On that visitor fallback, an internet-visible app acts as its visitor: the
+signed-in person, or no one for a signed-out visitor or someone outside the org.
+A signed-in member with Use can still open org credentials they hold; a
+signed-out visitor and anyone without Use cannot. A need the app fills for every
+visitor (a shared database, an email sender) opts in per slot with
+`ownerCredentialForVisitors: true`:
 
 ```json
 {

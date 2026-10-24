@@ -68,6 +68,35 @@ export type PackageAppClientDefinition = z.infer<
 	typeof packageAppClientDefinitionSchema
 >
 
+/**
+ * Slot names land inside `{{secret:NAME}}`-style placeholders, so they use the
+ * placeholder name characters. `@` and `/` stay out: `@me/NAME` and
+ * `{{secret/provider:ref}}` are reference grammar, not names.
+ */
+export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
+
+export const packageAppCapabilityNamePattern = /^[A-Za-z][A-Za-z0-9_]{0,99}$/
+
+/** Lowercase so the consent scope `need:<key>` reads the same everywhere. */
+export const packageAppVisitorNeedKeyPattern = /^[a-z][a-z0-9-]{0,39}$/
+
+export const packageAppVisitorNeedSchema = z
+	.strictObject({
+		/** Plain words for the consent screen: what the app will do. */
+		description: z.string().trim().min(1).max(200),
+		/** A `kody.credentials` key resolved from the visitor's own credentials. */
+		credential: z.string().regex(packageCredentialSlotNamePattern).optional(),
+		/** A Kody capability run as the visitor. */
+		capability: z.string().regex(packageAppCapabilityNamePattern).optional(),
+	})
+	.refine(
+		(need) =>
+			(need.credential === undefined) !== (need.capability === undefined),
+		{
+			message: 'A visitor need names exactly one of credential or capability.',
+		},
+	)
+
 export const packageAppDefinitionSchema = z.object({
 	/**
 	 * Server entry bundled for the package-app isolate. The default export
@@ -89,9 +118,31 @@ export const packageAppDefinitionSchema = z.object({
 	 * (no bundling; content types inferred from the extension).
 	 */
 	assets: z.string().trim().min(1).optional(),
+	/**
+	 * Kody capabilities the app may call as the person it runs as (its
+	 * publisher unless an owner chose someone else). Anything not listed
+	 * never runs with that person's authority.
+	 */
+	capabilities: z
+		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
+		.max(100)
+		.optional(),
+	/**
+	 * What the app may do with a signed-in visitor's own data, by key. Each
+	 * key is its own Sign in with Kody consent scope (`need:<key>`), shown to
+	 * the visitor in plain words. Without consent the app only sees who is
+	 * visiting.
+	 */
+	visitorNeeds: z
+		.record(
+			z.string().regex(packageAppVisitorNeedKeyPattern),
+			packageAppVisitorNeedSchema,
+		)
+		.optional(),
 })
 
 export type PackageAppDefinition = z.infer<typeof packageAppDefinitionSchema>
+export type PackageAppVisitorNeed = z.infer<typeof packageAppVisitorNeedSchema>
 
 export const packageSecretMountDefinitionSchema = z.object({
 	name: z.string().min(1),
@@ -117,13 +168,6 @@ export const packageCredentialKindValues = [
 	'signing',
 ] as const
 export type PackageCredentialKind = (typeof packageCredentialKindValues)[number]
-
-/**
- * Slot names land inside `{{secret:NAME}}`-style placeholders, so they use the
- * placeholder name characters. `@` and `/` stay out: `@me/NAME` and
- * `{{secret/provider:ref}}` are reference grammar, not names.
- */
-export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors takes only true. Omit it to keep app visitors from using the owner’s credential.'

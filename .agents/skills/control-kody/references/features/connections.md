@@ -16,3 +16,7 @@ agents.
 - `/@{$orgSlug}/-/agents`, `/@{$orgSlug}/-/agents/new`
 - Legacy redirects: `/account/agents`, `/account/connections`,
   `/@{$orgSlug}/-/connections`
+- `/account/connected-apps`: Sign in with Kody app grants (with what each app
+  may do) and connected agents across every org, each with Revoke. Seed a grant
+  locally with `local-app-db` (`package_app_oauth_grants`) to see a row.
+  `npm run control-kody -- request GET /account/connected-apps --contains 'Connected apps'`

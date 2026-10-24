@@ -1454,6 +1454,47 @@ export const updateExperiments = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const revokeConnectedApp = createServerFn({ method: 'POST' })
+	.validator(z.object({ appKey: z.string().trim().min(1).max(300) }))
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedApp },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedApp({ ...context, appKey: data.appKey }),
+			),
+		)
+	})
+
+export const revokeConnectedAppAgent = createServerFn({ method: 'POST' })
+	.validator(z.object({ clientId: z.string().trim().min(1).max(300) }))
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedAppAgent },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedAppAgent({
+					...context,
+					clientId: data.clientId,
+				}),
+			),
+		)
+	})
+
 export const createMcpOauthClient = createServerFn({ method: 'POST' })
 	.validator(z.object({ label: z.string(), redirectUris: z.string() }))
 	.handler(async ({ data }) => {

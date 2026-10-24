@@ -57,7 +57,8 @@ async function ensureOauthGrantSchema() {
 			kody_id TEXT NOT NULL,
 			scopes TEXT NOT NULL,
 			created_at TEXT NOT NULL,
-			revoked_at TEXT
+			revoked_at TEXT,
+			last_used_at TEXT
 		)`,
 	).run()
 }

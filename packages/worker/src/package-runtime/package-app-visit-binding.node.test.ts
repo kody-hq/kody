@@ -5,6 +5,8 @@ import {
 import { expect, test, vi } from 'vitest'
 import { credentialClientToolNames } from '#worker/mcp/execute-modules/credential-client-source.ts'
 import { PackageAppRuntimeBridge } from './package-app.ts'
+import type * as PackageAppAuthority from './package-app-authority.ts'
+import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
 import {
 	mintPackageAppVisitTicket,
 	resetPackageAppVisitNoncesForTests,
@@ -25,6 +27,23 @@ vi.mock('#worker/mcp/credential-client-tools.ts', () => ({
 			}),
 		}
 	},
+}))
+
+vi.mock('./package-app-authority.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof PackageAppAuthority>()
+	return {
+		...actual,
+		loadPackageAppRunsAs: async () => ({
+			status: 'unavailable',
+			reason: 'not-set',
+			message: actual.packageAppRunsAsUnavailableMessages['not-set'],
+		}),
+	}
+})
+
+vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
+	schedulePackageAppAuthorityFallback: () => {},
 }))
 
 test('credential client binding comes from the visit ticket so open and sign share it across RPC instances', async () => {

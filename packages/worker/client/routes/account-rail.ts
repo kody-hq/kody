@@ -103,6 +103,12 @@ const accountRailItems: Array<AccountRailItem> = [
 		icon: 'users',
 	},
 	{
+		href: routes.accountConnectedApps.href(),
+		id: 'connected-apps',
+		label: 'Connected apps',
+		icon: 'link',
+	},
+	{
 		href: routes.accountExperiments.href(),
 		id: 'experiments',
 		label: 'Experiments',

@@ -96,6 +96,15 @@ import { IntegrationHostNotAllowedError } from './execute-modules/integration-ho
 import { type StorageContext } from '#mcp/storage.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
+	loadPackageAppRunsAs,
+	type PackageAppAuthorityScope,
+	type PackageAppVisitorGrantScope,
+} from '#worker/package-runtime/package-app-authority.ts'
+import {
+	packageAppAuthorityFallbackKindOf,
+	schedulePackageAppAuthorityFallback,
+} from '#worker/package-runtime/package-app-authority-fallback.ts'
+import {
 	consumeDailyEntitlement,
 	findCachedUserAccountByStableUserId,
 } from '#worker/entitlements/service.ts'
@@ -161,6 +170,15 @@ type FetchGatewayProps = {
 	 * handles resolve with its credential authority, not `request`.
 	 */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/**
+	 * Package-app runs only (ADR 0068 amendment 2026-10-24): placeholders
+	 * resolve as the app's runs-as person, and `credential()` handles carry
+	 * who they act as. `request` stays the visitor for usage attribution.
+	 */
+	packageAppAuthority?: {
+		scope: PackageAppAuthorityScope
+		grantScope: PackageAppVisitorGrantScope | null
+	} | null
 	/**
 	 * Per-run HMAC key for package-scoped `packageSecrets.get` placeholders
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
@@ -341,10 +359,11 @@ export async function executeGatewayFetch(input: {
 		const codeRequest = credentialClient
 			? withoutCodePlacement(input.request, credentialClient.placement)
 			: input.request
-		const expanded = await expandSecretPlaceholders({
+		const expanded = await expandAsPackageAppAuthority({
 			request: codeRequest,
 			props: input.props,
 			env: input.env,
+			waitUntil: input.waitUntil,
 		})
 		const { bodyFillDone, deferRedirectFollow } = expanded
 		let transformed = expanded.request
@@ -474,6 +493,67 @@ function readResponseContentLengthBytes(
 		return {}
 	}
 	return { bytes }
+}
+
+/**
+ * Package apps fill placeholders as their runs-as person. When that fails,
+ * the visitor's fill (today's behavior) is tried before giving up, and a
+ * success there leaves a would-break row. Body placeholders fill while the
+ * upload streams, so only header and URL failures can fall back.
+ */
+async function expandAsPackageAppAuthority(input: {
+	request: Request
+	props: FetchGatewayProps
+	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	waitUntil?: (promise: Promise<unknown>) => void
+}) {
+	const authority = input.props.packageAppAuthority
+	if (!authority) return await expandSecretPlaceholders(input)
+	const runsAs = await loadPackageAppRunsAs({
+		env: input.env,
+		scope: authority.scope,
+	})
+	const noteFallback = (error: unknown) =>
+		schedulePackageAppAuthorityFallback({
+			env: input.env,
+			event: {
+				ownerId: authority.scope.orgId,
+				packageId: authority.scope.packageId,
+				callName: 'fetch',
+				kind:
+					runsAs.status === 'ready'
+						? (packageAppAuthorityFallbackKindOf(error) ??
+							'credential_unavailable')
+						: 'runs_as_unavailable',
+				visitorId: input.props.request?.actor?.userId ?? null,
+			},
+			waitUntil: input.waitUntil,
+		})
+	if (runsAs.status !== 'ready') {
+		const expanded = await expandSecretPlaceholders(input)
+		if (expanded.substitutedValues.length > 0) noteFallback(null)
+		return expanded
+	}
+	const retry = input.request.clone() as Request
+	try {
+		const expanded = await expandSecretPlaceholders({
+			...input,
+			props: { ...input.props, request: runsAs.request },
+		})
+		void retry.body?.cancel()
+		return expanded
+	} catch (error) {
+		try {
+			const expanded = await expandSecretPlaceholders({
+				...input,
+				request: retry,
+			})
+			noteFallback(error)
+			return expanded
+		} catch {
+			throw error
+		}
+	}
 }
 
 type PlacedPlaceholderSource = {

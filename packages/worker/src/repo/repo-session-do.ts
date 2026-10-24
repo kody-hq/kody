@@ -3795,6 +3795,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
 			allowLockedPublish: input.allowLockedPublish,
 			actorUserId: input.requestedByUserId ?? undefined,
+			publisherUnknown: !input.requestedByUserId,
 		})
 		if (replaceHistory) {
 			await this.deleteAdvertisedSessionBranches({

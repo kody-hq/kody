@@ -260,6 +260,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'packageCollaboratorRemove',
 		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
+		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
+		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],
 		['POST', '/v1/packages/{package_id}/git-remote', 'packageGetGitRemote'],
 		[

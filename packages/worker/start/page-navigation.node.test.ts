@@ -40,6 +40,7 @@ test.each([
 	],
 	['/account/passkeys', 'account', 'security', null],
 	['/account/two-factor', 'account', 'security', null],
+	['/account/connected-apps', 'account', 'connected-apps', null],
 	['/account/mcp-oauth-clients', 'workspace', 'agents', null],
 	['/@acme/-/integrations/apps/google', 'workspace', 'credentials', 'acme'],
 	['/@acme/-/mcp-servers/server/authorize', 'workspace', 'credentials', 'acme'],

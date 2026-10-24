@@ -3001,6 +3001,7 @@ export type AppLoaderData = {
 	accountWaiting?: AccountWaitingLoaderData
 	orgFollows?: OrgFollowsLoaderData
 	accountExperiments?: AccountExperimentsLoaderData
+	accountConnectedApps?: AccountConnectedAppsLoaderData
 	discord?: DiscordPageLoaderData
 	walkthroughHosts?: WalkthroughHostPick
 	/** Homepage agent marquee: one SSR shuffle of `withAgents` slugs. */
@@ -3316,4 +3317,25 @@ export type AccountWaitingLoaderData = {
 export type AccountExperimentsLoaderData = {
 	ok: true
 	experimentsOptIn: boolean
+}
+
+/** One package app the person signed in to with Kody. */
+export type AccountConnectedAppView = {
+	/** Opaque to the page; names the grant to revoke. Never shown. */
+	appKey: string
+	appName: string
+	publisherName: string
+	iconUrl: string | null
+	/** What the app may see or use, in plain words. */
+	allows: Array<string>
+	connectedAt: string
+	lastUsedAt: string | null
+}
+
+export type AccountConnectedAppsLoaderData = {
+	ok: true
+	apps: Array<AccountConnectedAppView>
+	agents: Array<ConnectedMcpAgent>
+	/** True when the agent list could not load; apps still show. */
+	agentsUnavailable: boolean
 }

@@ -286,6 +286,7 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	) => mockModule.getSavedPackageById(...args),
 }))
 
+vi.mock('#worker/package-runtime/package-app-authority.ts')
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: vi.fn(async () => undefined),
 }))

@@ -19,6 +19,7 @@ import { isAllowedPackageAppOauthRedirectUri } from '#app/package-app-oauth-redi
 import {
 	parsePackageAppOauthScopes,
 	scopesIncludeEmail,
+	visitorNeedKeysOfScopes,
 	type PackageAppOauthScope,
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
@@ -29,7 +30,10 @@ import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
-import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
+import {
+	loadInvokeManifestBySourceId,
+	resolveSavedPackageForPackageAppSlug,
+} from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { getPkceValidationError } from '#worker/oauth-pkce.ts'
@@ -121,7 +125,9 @@ async function shouldSkipConsent(input: {
 			appId: lookup?.savedPackage.id ?? null,
 		})
 		const needsEmail = scopesIncludeEmail(input.scopes)
-		if (canExecute && !needsEmail) return true
+		// A visitor need shares the visitor's own data: always asked once.
+		const needsVisitorData = visitorNeedKeysOfScopes(input.scopes).length > 0
+		if (canExecute && !needsEmail && !needsVisitorData) return true
 	} catch {
 		// Fall through to grant lookup / consent when access tables are incomplete.
 	}
@@ -343,6 +349,31 @@ async function parseAndValidateAuthorizeRequest(input: {
 			}),
 		}
 	}
+	const needKeys = visitorNeedKeysOfScopes(scopes)
+	const visitorNeedDescriptions: Record<string, string> = {}
+	if (needKeys.length > 0) {
+		const { manifest } = await loadInvokeManifestBySourceId({
+			env: input.env,
+			userId: resolved.org.userId,
+			sourceId: resolved.savedPackage.sourceId,
+		})
+		const declared = manifest.kody.app?.visitorNeeds ?? {}
+		for (const key of needKeys) {
+			const need = Object.hasOwn(declared, key) ? declared[key] : undefined
+			if (!need) {
+				return {
+					ok: false as const,
+					response: redirectWithError({
+						redirectUri: safeRedirectUri,
+						state: input.query.state,
+						error: 'invalid_scope',
+						description: `need:${key} is not declared in this app's kody.app.visitorNeeds.`,
+					}),
+				}
+			}
+			visitorNeedDescriptions[key] = need.description
+		}
+	}
 	return {
 		ok: true as const,
 		client,
@@ -350,6 +381,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 		state: input.query.state,
 		codeChallenge: input.query.codeChallenge,
 		scopes,
+		visitorNeedDescriptions,
 	}
 }
 
@@ -511,7 +543,10 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			kodyId: validated.client.kodyId,
 			redirectUri: validated.redirectUri,
 			scopes: [...validated.scopes],
-			claimLabels: packageAppOauthClaimLabels(validated.scopes),
+			claimLabels: packageAppOauthClaimLabels(
+				validated.scopes,
+				validated.visitorNeedDescriptions,
+			),
 			hiddenFields,
 		},
 	}

@@ -10,6 +10,7 @@ export type PageNavigation = {
 		| 'codemods'
 		| 'collaborators'
 		| 'community-reports'
+		| 'connected-apps'
 		| 'connections'
 		| 'credentials'
 		| 'credits'

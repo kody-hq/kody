@@ -39,6 +39,21 @@ const mockModule = vi.hoisted(() => ({
 	syncActiveCommunityListingToPublishedCommit: vi.fn(
 		async (_input?: unknown) => 'skipped' as const,
 	),
+	loadOrgBindingForOrg: vi.fn(async () => ({ role: 'member' })),
+	recordPackageAppPublisher: vi.fn(async (_input: unknown) => {}),
+	recordPackageAppPublisherUnknown: vi.fn(async (_input: unknown) => {}),
+}))
+
+vi.mock('#worker/orgs/repo.ts', async (importOriginal) => ({
+	...(await importOriginal<object>()),
+	loadOrgBindingForOrg: () => mockModule.loadOrgBindingForOrg(),
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	recordPackageAppPublisher: (input: unknown) =>
+		mockModule.recordPackageAppPublisher(input),
+	recordPackageAppPublisherUnknown: (input: unknown) =>
+		mockModule.recordPackageAppPublisherUnknown(input),
 }))
 
 vi.mock(
@@ -493,6 +508,60 @@ test('finalize forwards actorUserId into listing auto-follow sync', async () => 
 			actorUserId: 'actor-approver',
 		}),
 	)
+})
+
+test('finalize records who published a package before the new code serves', async () => {
+	const callOrder: Array<string> = []
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(false)
+	mockModule.recordPackageAppPublisher.mockImplementation(async () => {
+		callOrder.push('recordPackageAppPublisher')
+	})
+	mockModule.recordPackageAppPublisherUnknown.mockImplementation(async () => {
+		callOrder.push('recordPackageAppPublisherUnknown')
+	})
+	mockModule.updateEntitySource.mockImplementation(async () => {
+		callOrder.push('updateEntitySource')
+		return true
+	})
+	mockModule.refreshSavedPackageProjection.mockResolvedValue(undefined)
+	const finalize = (extra: {
+		actorUserId?: string
+		publisherUnknown?: boolean
+	}) =>
+		finalizePublishedEntitySource({
+			env: kvEnv,
+			source: source() as ReturnType<typeof source> & {
+				entity_kind: 'package'
+			},
+			publishedCommit: 'commit-new',
+			files: { 'package.json': '{}' },
+			baseUrl: 'https://kody.test',
+			...extra,
+		})
+
+	await finalize({ actorUserId: 'member-1' })
+	expect(callOrder).toEqual(['recordPackageAppPublisher', 'updateEntitySource'])
+	expect(mockModule.recordPackageAppPublisher).toHaveBeenLastCalledWith(
+		expect.objectContaining({ personId: 'member-1', publisherIsOwner: false }),
+	)
+
+	callOrder.length = 0
+	await finalize({ publisherUnknown: true })
+	expect(callOrder).toEqual([
+		'recordPackageAppPublisherUnknown',
+		'updateEntitySource',
+	])
+
+	callOrder.length = 0
+	await finalize({})
+	expect(callOrder).toEqual(['updateEntitySource'])
+
+	mockModule.recordPackageAppPublisher.mockRejectedValueOnce(
+		new Error('d1 down'),
+	)
+	callOrder.length = 0
+	await expect(finalize({ actorUserId: 'member-1' })).rejects.toThrow('d1 down')
+	expect(callOrder).toEqual([])
 })
 
 test('finalize leaves published_commit alone when snapshot write fails', async () => {

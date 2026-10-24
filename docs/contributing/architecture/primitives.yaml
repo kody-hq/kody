@@ -353,6 +353,7 @@ primitives:
       host strips the app mount before every entry.
     code:
       - packages/worker/src/package-runtime/package-app.ts
+      - packages/worker/src/package-runtime/package-app-authority.ts
       - packages/worker/src/package-runtime/package-app-assets.ts
       - packages/worker/src/package-runtime/package-app-tsconfig.ts
       - packages/worker/src/package-runtime/module-graph-client-bundle.ts

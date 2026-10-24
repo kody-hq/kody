@@ -216,7 +216,21 @@ export type CredentialClientContext = {
 	 * (`callerContext.request`) is unchanged for everything else.
 	 */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/**
+	 * Package-app runs only (ADR 0068 amendment 2026-10-24): how new handles
+	 * are stamped, and who a stamped handle resolves as on each use.
+	 */
+	packageAppAuthority?: PackageAppCredentialAuthority | null
 	waitUntil?: (promise: Promise<unknown>) => void
+}
+
+export type PackageAppCredentialAuthority = {
+	/** Opened as the app's runs-as person, or on a visitor's own need. */
+	issue: { runsAs: true } | { visitorNeed: string } | null
+	/** The live runs-as person, or null when nobody runs the app. */
+	runsAsRequest: () => Promise<RequestContext | null>
+	/** The visitor, or null unless their live consent covers `needKey`. */
+	visitorNeedRequest: (needKey: string) => Promise<RequestContext | null>
 }
 
 export type OpenedCredentialClient = {
@@ -745,7 +759,7 @@ async function issueClient(
 						ownerCredentialForVisitors: true as const,
 						needKey: key,
 					}
-				: {}),
+				: (ctx.packageAppAuthority?.issue ?? {})),
 		},
 	})
 	return {
@@ -976,7 +990,11 @@ export async function validateCredentialCallMap(input: {
 
 type HandleContext = Pick<
 	CredentialClientContext,
-	'env' | 'callerContext' | 'binding' | 'ownerCredentialScope'
+	| 'env'
+	| 'callerContext'
+	| 'binding'
+	| 'ownerCredentialScope'
+	| 'packageAppAuthority'
 >
 
 /** A verified handle and who the door resolves it as. */
@@ -1003,6 +1021,7 @@ async function readHandle(
 		request: RequestContext | null
 		approvedCredentialIds: ReadonlyMap<string, ReadonlySet<string>> | null
 	} = { request: null, approvedCredentialIds: null }
+	let appRequest: RequestContext | null = null
 	const handle = await verifyCredentialClientHandle({
 		env: ctx.env,
 		token: typeof token === 'string' ? token : '',
@@ -1019,12 +1038,26 @@ async function readHandle(
 			authority.approvedCredentialIds = loaded.approvedCredentialIds
 			return loaded.request
 		},
+		runsAsRequest: async () => {
+			const request = (await ctx.packageAppAuthority?.runsAsRequest()) ?? null
+			appRequest = request
+			return request
+		},
+		visitorNeedRequest: async (needKey) => {
+			const request =
+				(await ctx.packageAppAuthority?.visitorNeedRequest(needKey)) ?? null
+			appRequest = request
+			return request
+		},
 	})
 	if (!kinds.includes(handle.kind)) {
 		throw refusal(
 			'invalid_request',
 			`A ${handle.kind} credential has no ${operation}.`,
 		)
+	}
+	if ((handle.runsAs || handle.visitorNeed) && appRequest) {
+		return { handle, request: appRequest }
 	}
 	const viewer = ctx.callerContext.request ?? null
 	const scope = ctx.ownerCredentialScope
@@ -1218,6 +1251,8 @@ export async function applyCredentialClient(input: {
 	binding: string | null | undefined
 	/** See `CredentialClientContext.ownerCredentialScope`. */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/** See `CredentialClientContext.packageAppAuthority`. */
+	packageAppAuthority?: PackageAppCredentialAuthority | null
 	token: string
 	requestUrl: URL
 }): Promise<AppliedCredentialClient> {
@@ -1227,6 +1262,7 @@ export async function applyCredentialClient(input: {
 			packageId: input.packageId,
 			binding: input.binding ?? '',
 			ownerCredentialScope: input.ownerCredentialScope ?? null,
+			packageAppAuthority: input.packageAppAuthority ?? null,
 			callerContext: {
 				baseUrl: input.baseUrl,
 				request: input.request,

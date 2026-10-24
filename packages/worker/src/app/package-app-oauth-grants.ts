@@ -1,4 +1,5 @@
 import {
+	readPackageAppOauthScope,
 	serializePackageAppOauthScopes,
 	type PackageAppOauthScope,
 } from '#app/package-app-oauth-scopes.ts'
@@ -10,15 +11,38 @@ export type PackageAppOauthGrant = {
 	kodyId: string
 	scopes: Array<PackageAppOauthScope>
 	createdAt: string
+	lastUsedAt: string | null
 }
 
+type GrantRow = {
+	id: string
+	person_id: string
+	org_username: string
+	kody_id: string
+	scopes: string
+	created_at: string
+	last_used_at: string | null
+}
+
+const grantColumns = `id, person_id, org_username, kody_id, scopes, created_at, last_used_at`
+
 function parseScopes(raw: string): Array<PackageAppOauthScope> {
-	return raw
-		.split(/\s+/)
-		.filter(
-			(part): part is PackageAppOauthScope =>
-				part === 'profile' || part === 'email',
-		)
+	return raw.split(/\s+/).flatMap((part) => {
+		const scope = readPackageAppOauthScope(part)
+		return scope ? [scope] : []
+	})
+}
+
+function toGrant(row: GrantRow): PackageAppOauthGrant {
+	return {
+		id: row.id,
+		personId: row.person_id,
+		orgUsername: row.org_username,
+		kodyId: row.kody_id,
+		scopes: parseScopes(row.scopes),
+		createdAt: row.created_at,
+		lastUsedAt: row.last_used_at ?? null,
+	}
 }
 
 export async function findLivePackageAppOauthGrant(input: {
@@ -29,30 +53,33 @@ export async function findLivePackageAppOauthGrant(input: {
 }): Promise<PackageAppOauthGrant | null> {
 	const row = await input.db
 		.prepare(
-			`SELECT id, person_id, org_username, kody_id, scopes, created_at
+			`SELECT ${grantColumns}
 			 FROM package_app_oauth_grants
 			 WHERE person_id = ? AND org_username = ? AND kody_id = ?
 			   AND revoked_at IS NULL
 			 LIMIT 1`,
 		)
 		.bind(input.personId, input.orgUsername, input.kodyId)
-		.first<{
-			id: string
-			person_id: string
-			org_username: string
-			kody_id: string
-			scopes: string
-			created_at: string
-		}>()
-	if (!row) return null
-	return {
-		id: row.id,
-		personId: row.person_id,
-		orgUsername: row.org_username,
-		kodyId: row.kody_id,
-		scopes: parseScopes(row.scopes),
-		createdAt: row.created_at,
-	}
+		.first<GrantRow>()
+	return row ? toGrant(row) : null
+}
+
+/** Every live app grant a person gave, newest first (Connected apps page). */
+export async function listLivePackageAppOauthGrantsForPerson(input: {
+	db: D1Database
+	personId: string
+}): Promise<Array<PackageAppOauthGrant>> {
+	const result = await input.db
+		.prepare(
+			`SELECT ${grantColumns}
+			 FROM package_app_oauth_grants
+			 WHERE person_id = ? AND revoked_at IS NULL
+			 ORDER BY created_at DESC, id ASC
+			 LIMIT 200`,
+		)
+		.bind(input.personId)
+		.all<GrantRow>()
+	return (result.results ?? []).map(toGrant)
 }
 
 export function grantCoversScopes(
@@ -63,6 +90,10 @@ export function grantCoversScopes(
 	return requested.every((scope) => have.has(scope))
 }
 
+/**
+ * The grant records the scope set the person consented to. A later request
+ * for more scopes asks again; asking for fewer keeps working.
+ */
 export async function upsertPackageAppOauthGrant(input: {
 	db: D1Database
 	personId: string
@@ -118,5 +149,28 @@ export async function revokePackageAppOauthGrantsForPersonApp(input: {
 			   AND revoked_at IS NULL`,
 		)
 		.bind(now, input.personId, input.orgUsername, input.kodyId)
+		.run()
+}
+
+/** Last-use timestamps move at most once a minute per grant. */
+export const packageAppOauthGrantLastUsedResolutionMs = 60_000
+
+export async function touchPackageAppOauthGrantLastUsed(input: {
+	db: D1Database
+	grantId: string
+	now?: Date
+}) {
+	const now = input.now ?? new Date()
+	const threshold = new Date(
+		now.getTime() - packageAppOauthGrantLastUsedResolutionMs,
+	).toISOString()
+	await input.db
+		.prepare(
+			`UPDATE package_app_oauth_grants
+			 SET last_used_at = ?
+			 WHERE id = ? AND revoked_at IS NULL
+			   AND (last_used_at IS NULL OR last_used_at < ?)`,
+		)
+		.bind(now.toISOString(), input.grantId, threshold)
 		.run()
 }

@@ -114,6 +114,7 @@ import { Route as AppAtChar123usernameChar125KodyIdRouteImport } from './routes/
 import { Route as AppAccountActivityRouteImport } from './routes/_app.account_.activity'
 import { Route as AppAccountAgentsRouteImport } from './routes/_app.account_.agents'
 import { Route as AppAccountBillingRouteImport } from './routes/_app.account_.billing'
+import { Route as AppAccountConnectedAppsRouteImport } from './routes/_app.account_.connected-apps'
 import { Route as AppAccountConnectionsRouteImport } from './routes/_app.account_.connections'
 import { Route as AppAccountCredentialsRouteImport } from './routes/_app.account_.credentials'
 import { Route as AppAccountCreditsRouteImport } from './routes/_app.account_.credits'
@@ -806,6 +807,11 @@ const AppAccountAgentsRoute = AppAccountAgentsRouteImport.update({
 const AppAccountBillingRoute = AppAccountBillingRouteImport.update({
   id: '/account_/billing',
   path: '/account/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountConnectedAppsRoute = AppAccountConnectedAppsRouteImport.update({
+  id: '/account_/connected-apps',
+  path: '/account/connected-apps',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAccountConnectionsRoute = AppAccountConnectionsRouteImport.update({
@@ -1795,6 +1801,7 @@ export interface FileRoutesByFullPath {
   '/account/activity': typeof AppAccountActivityRoute
   '/account/agents': typeof AppAccountAgentsRoute
   '/account/billing': typeof AppAccountBillingRoute
+  '/account/connected-apps': typeof AppAccountConnectedAppsRoute
   '/account/connections': typeof AppAccountConnectionsRoute
   '/account/credentials': typeof AppAccountCredentialsRoute
   '/account/credits': typeof AppAccountCreditsRoute
@@ -2053,6 +2060,7 @@ export interface FileRoutesByTo {
   '/account/activity': typeof AppAccountActivityRoute
   '/account/agents': typeof AppAccountAgentsRoute
   '/account/billing': typeof AppAccountBillingRoute
+  '/account/connected-apps': typeof AppAccountConnectedAppsRoute
   '/account/connections': typeof AppAccountConnectionsRoute
   '/account/credentials': typeof AppAccountCredentialsRoute
   '/account/credits': typeof AppAccountCreditsRoute
@@ -2314,6 +2322,7 @@ export interface FileRoutesById {
   '/_app/account_/activity': typeof AppAccountActivityRoute
   '/_app/account_/agents': typeof AppAccountAgentsRoute
   '/_app/account_/billing': typeof AppAccountBillingRoute
+  '/_app/account_/connected-apps': typeof AppAccountConnectedAppsRoute
   '/_app/account_/connections': typeof AppAccountConnectionsRoute
   '/_app/account_/credentials': typeof AppAccountCredentialsRoute
   '/_app/account_/credits': typeof AppAccountCreditsRoute
@@ -2575,6 +2584,7 @@ export interface FileRouteTypes {
     | '/account/activity'
     | '/account/agents'
     | '/account/billing'
+    | '/account/connected-apps'
     | '/account/connections'
     | '/account/credentials'
     | '/account/credits'
@@ -2833,6 +2843,7 @@ export interface FileRouteTypes {
     | '/account/activity'
     | '/account/agents'
     | '/account/billing'
+    | '/account/connected-apps'
     | '/account/connections'
     | '/account/credentials'
     | '/account/credits'
@@ -3093,6 +3104,7 @@ export interface FileRouteTypes {
     | '/_app/account_/activity'
     | '/_app/account_/agents'
     | '/_app/account_/billing'
+    | '/_app/account_/connected-apps'
     | '/_app/account_/connections'
     | '/_app/account_/credentials'
     | '/_app/account_/credits'
@@ -4104,6 +4116,13 @@ declare module '@tanstack/react-router' {
       path: '/account/billing'
       fullPath: '/account/billing'
       preLoaderRoute: typeof AppAccountBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/connected-apps': {
+      id: '/_app/account_/connected-apps'
+      path: '/account/connected-apps'
+      fullPath: '/account/connected-apps'
+      preLoaderRoute: typeof AppAccountConnectedAppsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/account_/connections': {
@@ -5202,6 +5221,7 @@ interface AppRouteChildren {
   AppAccountActivityRoute: typeof AppAccountActivityRoute
   AppAccountAgentsRoute: typeof AppAccountAgentsRoute
   AppAccountBillingRoute: typeof AppAccountBillingRoute
+  AppAccountConnectedAppsRoute: typeof AppAccountConnectedAppsRoute
   AppAccountConnectionsRoute: typeof AppAccountConnectionsRoute
   AppAccountCredentialsRoute: typeof AppAccountCredentialsRoute
   AppAccountCreditsRoute: typeof AppAccountCreditsRoute
@@ -5337,6 +5357,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountActivityRoute: AppAccountActivityRoute,
   AppAccountAgentsRoute: AppAccountAgentsRoute,
   AppAccountBillingRoute: AppAccountBillingRoute,
+  AppAccountConnectedAppsRoute: AppAccountConnectedAppsRoute,
   AppAccountConnectionsRoute: AppAccountConnectionsRoute,
   AppAccountCredentialsRoute: AppAccountCredentialsRoute,
   AppAccountCreditsRoute: AppAccountCreditsRoute,

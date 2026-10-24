@@ -92,6 +92,7 @@ export const routes = {
 			`/account/packages/${segment(params.packageId)}/files${filePath(params.relativePath)}`,
 	},
 	accountExperiments: { href: () => '/account/experiments' },
+	accountConnectedApps: { href: () => '/account/connected-apps' },
 	accountMemoriesExport: { href: () => '/account/memories-export.json' },
 	accountPackagesApi: { href: () => '/account/packages.json' },
 	accountPasskeys: { href: () => '/account/passkeys' },

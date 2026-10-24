@@ -6,9 +6,11 @@ import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-wor
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
+import { ensureCommunityFlowSchema } from '#worker/community/community-flow-test-schema.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
@@ -103,11 +105,21 @@ export default {
 	},
 }`
 
-async function setup() {
+const notDeclared = /not listed in kody\.app\.capabilities/
+
+async function setup(input: { capabilities?: Array<string> } = {}) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSchema()
 	const ownerId = `user-${crypto.randomUUID()}`
 	const username = `wt-${ownerId.slice(-12)}`
+	await ensureUsersTestSchema({ db: env.APP_DB })
+	await ensureCommunityFlowSchema(env.APP_DB)
+	await env.APP_DB.prepare(
+		`INSERT INTO users (username, email, password_hash, stable_user_id)
+		 VALUES (?, ?, 'hash', ?)`,
+	)
+		.bind(username, `${username}@example.com`, ownerId)
+		.run()
 	await ensurePersonalOrg(env.APP_DB, { stableUserId: ownerId, username })
 	const unique = crypto.randomUUID()
 	const savedPackage = {
@@ -168,7 +180,7 @@ async function setup() {
 			kody: {
 				id: savedPackage.kodyId,
 				description: 'Visitor app',
-				app: { entry: 'src/app.ts' },
+				app: { entry: 'src/app.ts', capabilities: input.capabilities },
 			},
 		}),
 		'src/app.ts': appSource,
@@ -259,12 +271,12 @@ test(
 			username: 'outside-visitor',
 			role: null,
 		})
-		// No new access: permissioned calls still fail closed exactly as for an
-		// anonymous visitor.
+		// No new access: undeclared calls never run as the publisher, and the
+		// visitor's own identity grants nothing.
 		expect(body.secrets).toBeUndefined()
-		expect(String(body.secretsError)).toMatch(/Authenticated MCP user/)
+		expect(String(body.secretsError)).toMatch(notDeclared)
 		expect(body.packages).toBeUndefined()
-		expect(String(body.packagesError)).toMatch(/Authenticated MCP user/)
+		expect(String(body.packagesError)).toMatch(notDeclared)
 	},
 )
 
@@ -286,7 +298,7 @@ test(
 			expect(body.header).toBeNull()
 			expect(body.me).toBeUndefined()
 			expect(String(body.meError)).toMatch(/Authenticated MCP user is required/)
-			expect(String(body.secretsError)).toMatch(/Authenticated MCP user/)
+			expect(String(body.secretsError)).toMatch(notDeclared)
 		}
 	},
 )
@@ -305,6 +317,7 @@ test(
 			// Ignored with a visitor.
 			identity: { userId: `user-${crypto.randomUUID()}`, username: 'nope' },
 		})
+		expect(body.meError).toBeUndefined()
 		expect(body.me).toMatchObject({
 			user_id: t.ownerId,
 			username: t.username,
@@ -315,5 +328,29 @@ test(
 			username: t.username,
 			role: 'owner',
 		})
+	},
+)
+
+test(
+	'a declared capability runs as the publisher for every visitor, and nothing else does',
+	{ timeout: 120_000 },
+	async () => {
+		const t = await setup({ capabilities: ['secretList'] })
+		for (const input of [
+			{ visitor: null, identity: null },
+			{
+				visitor: null,
+				identity: {
+					userId: `user-${crypto.randomUUID()}`,
+					username: 'outsider',
+				},
+			},
+		]) {
+			const body = await t.serve(input)
+			expect(body.secretsError).toBeUndefined()
+			expect(body.secrets).toBeDefined()
+			expect(body.packages).toBeUndefined()
+			expect(String(body.packagesError)).toMatch(notDeclared)
+		}
 	},
 )

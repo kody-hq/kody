@@ -11,6 +11,8 @@ import {
 } from '#worker/storage-runner.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as ModuleGraph from './module-graph.ts'
+import type * as PackageAppAuthority from './package-app-authority.ts'
+import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
 import type * as PublishedBundleArtifacts from './published-bundle-artifacts.ts'
 import type * as McpAuthUserContext from '#worker/mcp-auth-user-context.ts'
 import type * as RunRecordsServiceModule from '#worker/run-records/service.ts'
@@ -438,6 +440,23 @@ vi.mock('#worker/mcp/credential-client-tools.ts', () => ({
 		packageAppRuntimeMock.createCredentialClientKodyTools(
 			...(args as [{ options: { binding: string } }]),
 		),
+}))
+
+vi.mock('./package-app-authority.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof PackageAppAuthority>()
+	return {
+		...actual,
+		loadPackageAppRunsAs: async () => ({
+			status: 'unavailable',
+			reason: 'not-set',
+			message: actual.packageAppRunsAsUnavailableMessages['not-set'],
+		}),
+	}
+})
+
+vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
+	schedulePackageAppAuthorityFallback: () => {},
 }))
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
