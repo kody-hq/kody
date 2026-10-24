@@ -203,12 +203,76 @@ function preparePublishedBundleArtifactPersist(
 	}
 }
 
+type WrittenPublishedBundleArtifactPersist = {
+	env: Env
+	kvKey: string
+	rowInput: PublishedBundleArtifactUpsertInput
+}
+
+/**
+ * Drop KV only when the identity row does not already reflect this persist.
+ * Keeps keys for committed rows; removes keys that would make a retry treat an
+ * unfinished persist as already built (same-commit overwrite + fresh createdAt).
+ */
+async function rollbackUncommittedPublishedBundleArtifactKvs(
+	entries: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
+) {
+	await Promise.all(
+		entries.map(async (entry) => {
+			try {
+				const existing = await getPublishedBundleArtifactByIdentity(
+					entry.env.APP_DB,
+					{
+						userId: entry.rowInput.userId,
+						sourceId: entry.rowInput.sourceId,
+						artifactKind: entry.rowInput.artifactKind,
+						artifactName: entry.rowInput.artifactName,
+						entryPoint: entry.rowInput.entryPoint,
+					},
+				)
+				if (
+					existing &&
+					existing.kvKey === entry.kvKey &&
+					existing.publishedCommit === entry.rowInput.publishedCommit
+				) {
+					return
+				}
+				await deletePublishedBundleArtifact({
+					env: entry.env,
+					kvKey: entry.kvKey,
+				})
+			} catch {
+				// Best effort; preserve the original DB/KV failure as the root cause.
+			}
+		}),
+	)
+}
+
+/** Last write wins per identity — matches upsertPublishedBundleArtifactRows. */
+function dedupePreparedPublishedBundleArtifacts(
+	prepared: ReadonlyArray<PreparedPublishedBundleArtifactPersist>,
+) {
+	const byKey = new Map<string, PreparedPublishedBundleArtifactPersist>()
+	for (const entry of prepared) {
+		byKey.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry,
+		)
+	}
+	return [...byKey.values()]
+}
+
 /**
  * Persist many published bundle artifacts with one batched identity upsert
  * (constant D1 round trips for the row writes). KV writes stay per artifact and
- * run before the D1 upsert. If the upsert phase has started, KV keys are left
- * in place on failure — orphan KV is safe; deleting keys that identity rows
- * already point at is not.
+ * run before the D1 upsert. On failure, KV keys are removed only when the
+ * identity row does not already match this persist (committed rows keep their
+ * keys; unfinished overwrites cannot make rebuild skip the target).
  */
 export async function persistPublishedBundleArtifacts(
 	inputs: ReadonlyArray<PersistPublishedBundleArtifactInput>,
@@ -216,47 +280,70 @@ export async function persistPublishedBundleArtifacts(
 	if (inputs.length === 0) return []
 	const preparedByIndex: Array<PreparedPublishedBundleArtifactPersist | null> =
 		inputs.map((input) => preparePublishedBundleArtifactPersist(input))
-	const prepared = preparedByIndex.filter(
-		(entry): entry is PreparedPublishedBundleArtifactPersist => entry != null,
+	const prepared = dedupePreparedPublishedBundleArtifacts(
+		preparedByIndex.filter(
+			(entry): entry is PreparedPublishedBundleArtifactPersist => entry != null,
+		),
 	)
 	if (prepared.length === 0) {
 		return preparedByIndex.map(() => null)
 	}
-	let upsertStarted = false
+	const written: Array<WrittenPublishedBundleArtifactPersist> = []
 	try {
-		await Promise.all(
+		// Unique kvKeys after identity dedupe — safe to write concurrently.
+		const settled = await Promise.allSettled(
 			prepared.map(async (entry) => {
 				await writePublishedBundleArtifact({
 					env: entry.env,
 					artifact: entry.artifact,
 					kvKey: entry.kvKey,
 				})
+				return entry
 			}),
 		)
-		upsertStarted = true
-		const db = prepared[0]!.env.APP_DB
-		const rowInputs = prepared.map((entry) => entry.rowInput)
-		if (rowInputs.length === 1) {
-			await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
-		} else {
-			await upsertPublishedBundleArtifactRows(db, rowInputs)
+		for (const [index, result] of settled.entries()) {
+			if (result.status !== 'fulfilled') continue
+			const entry = prepared[index]
+			if (!entry) continue
+			written.push({
+				env: entry.env,
+				kvKey: entry.kvKey,
+				rowInput: entry.rowInput,
+			})
 		}
+		const rejected = settled.find((result) => result.status === 'rejected')
+		if (rejected && rejected.status === 'rejected') {
+			throw rejected.reason
+		}
+		await upsertPreparedPublishedBundleArtifactRows(written)
 	} catch (error) {
-		if (!upsertStarted) {
-			await Promise.all(
-				prepared.map(async (entry) => {
-					await deletePublishedBundleArtifact({
-						env: entry.env,
-						kvKey: entry.kvKey,
-					}).catch(() => {
-						// Best effort; preserve the original DB/KV failure as the root cause.
-					})
-				}),
-			)
-		}
+		await rollbackUncommittedPublishedBundleArtifactKvs(written)
 		throw error
 	}
-	return preparedByIndex.map((entry) => entry?.kvKey ?? null)
+	const kvByIdentity = new Map(
+		written.map((entry) => [
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry.kvKey,
+		]),
+	)
+	return preparedByIndex.map((entry) => {
+		if (!entry) return null
+		return (
+			kvByIdentity.get(
+				publishedBundleArtifactIdentityKey({
+					sourceId: entry.rowInput.sourceId,
+					artifactKind: entry.rowInput.artifactKind,
+					artifactName: entry.rowInput.artifactName,
+					entryPoint: entry.rowInput.entryPoint,
+				}),
+			) ?? null
+		)
+	})
 }
 
 async function writePreparedPublishedBundleArtifact(
@@ -270,13 +357,24 @@ async function writePreparedPublishedBundleArtifact(
 }
 
 async function upsertPreparedPublishedBundleArtifactRows(
-	prepared: ReadonlyArray<
-		Pick<PreparedPublishedBundleArtifactPersist, 'env' | 'rowInput'>
-	>,
+	prepared: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
 ) {
 	if (prepared.length === 0) return
-	const db = prepared[0]!.env.APP_DB
-	const rowInputs = prepared.map((entry) => entry.rowInput)
+	const unique = new Map<string, WrittenPublishedBundleArtifactPersist>()
+	for (const entry of prepared) {
+		unique.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry,
+		)
+	}
+	const entries = [...unique.values()]
+	const db = entries[0]!.env.APP_DB
+	const rowInputs = entries.map((entry) => entry.rowInput)
 	if (rowInputs.length === 1) {
 		await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
 		return
@@ -954,6 +1052,7 @@ export async function persistPublishedPackageArtifactTargets(
 				}
 			}
 		} catch (error) {
+			await rollbackUncommittedPublishedBundleArtifactKvs(written)
 			for (const entry of written) {
 				const target = input.targets[entry.index]
 				if (!target) continue
@@ -1051,10 +1150,7 @@ export async function rebuildPublishedPackageArtifacts(
 	// near the concurrency window, then one batched identity upsert. Build
 	// failures are isolated so successful siblings still land (same as the
 	// prior per-target persist loop).
-	const written: Array<{
-		env: Env
-		rowInput: PublishedBundleArtifactUpsertInput
-	}> = []
+	const written: Array<WrittenPublishedBundleArtifactPersist> = []
 	let firstError: unknown = null
 	await mapWithConcurrency(
 		targetsNeedingPersist,
@@ -1080,7 +1176,11 @@ export async function rebuildPublishedPackageArtifacts(
 				)
 				if (!prepared) return
 				await writePreparedPublishedBundleArtifact(prepared)
-				written.push({ env: prepared.env, rowInput: prepared.rowInput })
+				written.push({
+					env: prepared.env,
+					kvKey: prepared.kvKey,
+					rowInput: prepared.rowInput,
+				})
 			} catch (error) {
 				firstError ??= error
 			}
@@ -1090,6 +1190,7 @@ export async function rebuildPublishedPackageArtifacts(
 		try {
 			await upsertPreparedPublishedBundleArtifactRows(written)
 		} catch (error) {
+			await rollbackUncommittedPublishedBundleArtifactKvs(written)
 			firstError ??= error
 		}
 	}
