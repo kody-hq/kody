@@ -1,3 +1,7 @@
+import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
 import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import {
 	isIntegrationAuthFailureReason,
@@ -575,7 +579,58 @@ export async function deleteIntegrationConnection(input: {
 	return (results.at(-1)?.meta.changes ?? 0) > 0
 }
 
+type PendingIntegrationCredentialIdRequest = {
+	userId: string
+	name: string
+	resolve: (credentialId: string | null) => void
+	reject: (error: unknown) => void
+}
+
+/**
+ * Concurrent `getIntegrationCredentialId` calls against the same `APP_DB` in
+ * one isolate turn share one batched `IN (…)` read per owner (KODY-AT). The
+ * fetch gateway resolves N `{{integration-token}}` placeholders via
+ * `Promise.all`, and each `resolveCredential` looked the id up one name at a
+ * time; D1 still ran those as sequential spans. A lone lookup still uses the
+ * single-name query.
+ */
+const pendingIntegrationCredentialIdBatches = new WeakMap<
+	D1Database,
+	Array<PendingIntegrationCredentialIdRequest>
+>()
+
 export async function getIntegrationCredentialId(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<string | null> {
+	const db = input.db
+	return await new Promise<string | null>((resolve, reject) => {
+		const pending = pendingIntegrationCredentialIdBatches.get(db)
+		if (pending) {
+			pending.push({
+				userId: input.userId,
+				name: input.name,
+				resolve,
+				reject,
+			})
+			return
+		}
+		pendingIntegrationCredentialIdBatches.set(db, [
+			{
+				userId: input.userId,
+				name: input.name,
+				resolve,
+				reject,
+			},
+		])
+		queueMicrotask(() => {
+			void flushIntegrationCredentialIdBatch(db)
+		})
+	})
+}
+
+async function loadIntegrationCredentialId(input: {
 	db: D1Database
 	userId: string
 	name: string
@@ -588,6 +643,83 @@ export async function getIntegrationCredentialId(input: {
 		.bind(input.userId, input.name)
 		.first<{ id: string }>()
 	return row?.id ?? null
+}
+
+/**
+ * Fresh D1 read of live integration credential ids for `names` under one
+ * owner. Chunks to stay within D1's bound-parameter cap (one binding for
+ * user id). Missing and soft-deleted names are omitted from the map.
+ */
+async function loadIntegrationCredentialIdsByNames(input: {
+	db: D1Database
+	userId: string
+	names: ReadonlyArray<string>
+}): Promise<Map<string, string>> {
+	const byName = new Map<string, string>()
+	if (input.names.length === 0) return byName
+	const nameChunks = chunkArray([...input.names], maxD1BoundParameters - 1)
+	for (const names of nameChunks) {
+		const placeholders = names.map(() => '?').join(', ')
+		const { results } = await input.db
+			.prepare(
+				`SELECT id, name FROM user_integrations
+				WHERE user_id = ? AND name IN (${placeholders})${andLiveDeletedAtSql()}`,
+			)
+			.bind(input.userId, ...names)
+			.all<{ id: string; name: string }>()
+		for (const row of results ?? []) {
+			byName.set(row.name, row.id)
+		}
+	}
+	return byName
+}
+
+async function flushIntegrationCredentialIdBatch(db: D1Database) {
+	const pending = pendingIntegrationCredentialIdBatches.get(db)
+	pendingIntegrationCredentialIdBatches.delete(db)
+	if (!pending || pending.length === 0) return
+
+	const byUserId = new Map<
+		string,
+		Array<PendingIntegrationCredentialIdRequest>
+	>()
+	for (const request of pending) {
+		const group = byUserId.get(request.userId)
+		if (group) group.push(request)
+		else byUserId.set(request.userId, [request])
+	}
+
+	await Promise.all(
+		[...byUserId.entries()].map(async ([userId, requests]) => {
+			try {
+				const uniqueNames = [
+					...new Set(requests.map((request) => request.name)),
+				]
+				const [singleName] = uniqueNames
+				if (uniqueNames.length === 1 && singleName) {
+					const credentialId = await loadIntegrationCredentialId({
+						db,
+						userId,
+						name: singleName,
+					})
+					for (const request of requests) request.resolve(credentialId)
+					return
+				}
+				const byName = await loadIntegrationCredentialIdsByNames({
+					db,
+					userId,
+					names: uniqueNames,
+				})
+				for (const request of requests) {
+					request.resolve(byName.get(request.name) ?? null)
+				}
+			} catch (error) {
+				// Isolate failures per owner so one D1 error does not reject
+				// unrelated lookups that share the same microtask flush.
+				for (const request of requests) request.reject(error)
+			}
+		}),
+	)
 }
 
 export async function getIntegrationCredentialCiphertexts(input: {
