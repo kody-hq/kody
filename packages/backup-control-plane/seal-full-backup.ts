@@ -28,6 +28,7 @@ import {
 	backupPayload,
 	bindSourceDatabase,
 	errorCode,
+	primarySourceDatabase,
 	restExportSourceDatabases,
 	safeLog,
 	utcDay,
@@ -583,7 +584,19 @@ export async function sealFullBackupDay(
 	}
 
 	const d1Sources: Array<BackupFullD1Source> = []
-	for (const source of restExportSourceDatabases(env)) {
+	const restSources = restExportSourceDatabases(env)
+	const primary = primarySourceDatabase(env)
+	// Full manifests still require the primary REST D1 identity fields. Turning
+	// restExport off on the primary is supported for REST cron/freshness, but
+	// full-day seal waits until a paced-backed full-seal path lands (#4306).
+	if (!restSources.some((source) => source.id === primary.id)) {
+		return {
+			kind: 'incomplete',
+			day,
+			reason: 'primary-rest-export-disabled',
+		}
+	}
+	for (const source of restSources) {
 		const sourceEnv = bindSourceDatabase(env, source)
 		const sourceResult = await assertSourceDayRestorable(sourceEnv, day)
 		if (sourceResult.kind === 'incomplete') {
@@ -611,14 +624,14 @@ export async function sealFullBackupDay(
 	}
 
 	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
-	// Primary may have restExport:false while other DBs still export. Prefer
-	// the primary REST manifest when present; otherwise use the first remaining
-	// REST source. Empty d1Sources (all REST off) still seals non-D1 staging.
-	const primarySource =
-		d1Sources.find((source) => source.manifestKey === d1Payload.manifestKey) ??
-		d1Sources[0]
-	const d1ManifestSha256 = primarySource?.manifestSha256 ?? '0'.repeat(64)
-	const d1ManifestKey = primarySource?.manifestKey ?? d1Payload.manifestKey
+	const primarySource = d1Sources.find(
+		(source) => source.manifestKey === d1Payload.manifestKey,
+	)
+	if (primarySource === undefined) {
+		return { kind: 'incomplete', day, reason: 'd1-manifest-missing' }
+	}
+	const d1ManifestSha256 = primarySource.manifestSha256
+	const d1ManifestKey = d1Payload.manifestKey
 
 	let summary: StagingSummary
 	try {
