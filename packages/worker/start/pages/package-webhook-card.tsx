@@ -26,6 +26,7 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getDangerPillCss,
+	getGhostButtonCss,
 	getPillButtonCss,
 	mutedLinkCss,
 	primaryLinkCss,
@@ -33,7 +34,7 @@ import {
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getPillButtonCss({ size: 'sm' })
+const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 export type WebhookConfirmation = {

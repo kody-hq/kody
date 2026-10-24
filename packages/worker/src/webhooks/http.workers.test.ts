@@ -22,6 +22,8 @@ import { handleWebhookIngressRequest } from './http.ts'
 import {
 	disableEnablement,
 	insertEnablement,
+	pauseEnablement,
+	resumeEnablement,
 } from '#worker/enablements/repo.ts'
 import { encryptWebhookVerificationSnapshot } from './hmac-rotation.ts'
 import { mintPackageOwnedWebhookHmacCiphertext } from './signing-secret.ts'
@@ -1262,14 +1264,30 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 		}
 	}
 
-	await disableEnablement({
-		db: env.APP_DB,
-		orgId,
-		id: await enablementIdOf('stripe-sync-rotate'),
-	})
+	const enablementId = await enablementIdOf('stripe-sync-rotate')
+	const removedAt = new Date().toISOString()
+	expect(
+		await pauseEnablement({
+			db: env.APP_DB,
+			orgId,
+			id: enablementId,
+			pause: { reason: 'org_access' },
+		}),
+	).toBe(true)
+	await env.APP_DB.prepare(
+		`UPDATE org_memberships SET deleted_at = ? WHERE org_id = ? AND user_id = ?`,
+	)
+		.bind(removedAt, orgId, userId)
+		.run()
+	await env.APP_DB.prepare(
+		`UPDATE grants SET deleted_at = ?
+		 WHERE org_id = ? AND subject_type = 'user' AND subject_id = ?`,
+	)
+		.bind(removedAt, orgId, userId)
+		.run()
 	expect(
 		await statusOf('stripe-sync-rotate', await stripeSigned(currentSecret)),
-	).toBe(404)
+	).toBe(409)
 	const afterReject = await env.APP_DB.prepare(
 		`SELECT previous_hmac_secret_encrypted, previous_hmac_secret_expires_at
 		 FROM webhook_endpoints WHERE id = ?`,
@@ -1281,12 +1299,27 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 		}>()
 	expect(afterReject?.previous_hmac_secret_encrypted).toBe(previousEncrypted)
 	expect(afterReject?.previous_hmac_secret_expires_at).toBe(graceUntil)
+	const pausedEnablement = await env.APP_DB.prepare(
+		`SELECT state FROM enablements WHERE id = ?`,
+	)
+		.bind(enablementId)
+		.first<{ state: string }>()
+	expect(pausedEnablement?.state).toBe('paused')
 
 	await env.APP_DB.prepare(
-		`UPDATE enablements SET state = 'on' WHERE instance_id = ?`,
+		`UPDATE org_memberships SET deleted_at = NULL WHERE org_id = ? AND user_id = ?`,
 	)
-		.bind(endpointId)
+		.bind(orgId, userId)
 		.run()
+	await env.APP_DB.prepare(
+		`UPDATE grants SET deleted_at = NULL
+		 WHERE org_id = ? AND subject_type = 'user' AND subject_id = ?`,
+	)
+		.bind(orgId, userId)
+		.run()
+	expect(
+		await resumeEnablement({ db: env.APP_DB, orgId, id: enablementId }),
+	).toBe(true)
 	expect(
 		await statusOf('stripe-sync-rotate', await stripeSigned(previousSecret)),
 	).toBe(200)

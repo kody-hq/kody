@@ -47,7 +47,7 @@ const enablementColumns = `id, org_id, package_id, trigger_kind, trigger_name,
 	paused_resource_type, paused_resource_id, paused_credential_id, paused_at,
 	origin, sender_kind, sender_value, enabled_at, disabled_at, updated_at`
 
-/** Whether a webhook endpoint has ever been turned off. */
+/** 'live': an on or paused row; 'off': only off rows (turned off); 'never': no row (never approved). */
 export async function getWebhookEnablementPresence(input: {
 	db: D1Database
 	orgId: string
