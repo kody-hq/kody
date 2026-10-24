@@ -519,29 +519,29 @@ per-user `UserMeter` Durable Object** (`USER_METER` binding). Code lives in
 storage layout and naming are documented in [Data storage](./data-storage.md).
 UserMeter also stores first-seen Dynamic Worker ids per UTC day so usage
 metering can record `dynamic_worker_day` without double-counting, and inbound
-MCP OAuth last-used stamps so Account → Connections can show which host is safe
-to revoke. `PlanLimits.maxUniqueWorkerDaysPerMonth` is the included allotment
-(Free 50, purchasable Pro and retired Standard 350, retired Pro 2,000) shown on
-`/pricing`. `PlanLimits.maxDurableObjectRowsReadPerMonth` is the included
-Durable Object rows-read allotment (Free 0.5B, Pro and retired Standard 5B,
-retired Pro 20B). Those two fields are the credit debit meters. They are not in
-`entitlementResources`, so `assertWithinEntitlement` does not hard-cut them.
-Hourly user warning emails cover approaching (80%) and reached (100%) includes
-only when crossing the include would stop runs: an empty purchasable-Pro wallet
-(`computeIncludeWarningPutsAccessAtRisk` in `universal/usage-presentation.ts`).
-Free and other wallet-less plans never get those mails (the include never
-charges or stops them), and funded wallets get the low-balance and auto-refill
-cap mails instead. `/@<slug>/-/usage` uses the same framing from that module:
-activity (code executions and runs) first, included compute as a bar capped at
-100% with past-include usage shown as dollars on credits, and one credits alarm
-only when the wallet or access is at risk. `/account/usage` 302s to the personal
-org's usage page. `/account/credits` 302s to `/@<slug>/-/credits`, or to usage
-`#credits` when the URL carries `?topup`. Free sees Worker compute and Rows read
-as informational counts only. Usage above an include debits a funded
-purchasable-Pro wallet, stops new compute on an empty one, and is neither
-charged nor stopped on plans without a wallet; see
-[Prepaid credits](#prepaid-credits). Execute and outbound fetches are daily and
-weekly caps; on purchasable Pro they are the include that credits extend.
+MCP OAuth last-used stamps so Account → Agents (`/@<slug>/-/agents`) can show
+which host is safe to revoke. `PlanLimits.maxUniqueWorkerDaysPerMonth` is the
+included allotment (Free 50, purchasable Pro and retired Standard 350, retired
+Pro 2,000) shown on `/pricing`. `PlanLimits.maxDurableObjectRowsReadPerMonth` is
+the included Durable Object rows-read allotment (Free 0.5B, Pro and retired
+Standard 5B, retired Pro 20B). Those two fields are the credit debit meters.
+They are not in `entitlementResources`, so `assertWithinEntitlement` does not
+hard-cut them. Hourly user warning emails cover approaching (80%) and reached
+(100%) includes only when crossing the include would stop runs: an empty
+purchasable-Pro wallet (`computeIncludeWarningPutsAccessAtRisk` in
+`universal/usage-presentation.ts`). Free and other wallet-less plans never get
+those mails (the include never charges or stops them), and funded wallets get
+the low-balance and auto-refill cap mails instead. `/@<slug>/-/usage` uses the
+same framing from that module: activity (code executions and runs) first,
+included compute as a bar capped at 100% with past-include usage shown as
+dollars on credits, and one credits alarm only when the wallet or access is at
+risk. `/account/usage` 302s to the personal org's usage page. `/account/credits`
+302s to `/@<slug>/-/credits`, or to usage `#credits` when the URL carries
+`?topup`. Free sees Worker compute and Rows read as informational counts only.
+Usage above an include debits a funded purchasable-Pro wallet, stops new compute
+on an empty one, and is neither charged nor stopped on plans without a wallet;
+see [Prepaid credits](#prepaid-credits). Execute and outbound fetches are daily
+and weekly caps; on purchasable Pro they are the include that credits extend.
 Durable Object duration is observed (Cloudflare-measured GB-s plus the
 StorageRunner RPC wall-clock proxy) and is not charged. See
 [Usage metering](./usage-metering.md).

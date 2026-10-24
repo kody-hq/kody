@@ -62,6 +62,25 @@ with an empty honeypot field, and the server then asks you to start over. Use
 the browser Back button when the previous history entry still has `client_id` in
 the URL, or start the connection again from your client.
 
+## Authorize says Kody couldn't load the app's details
+
+Before you can approve, Kody downloads the host's Client ID Metadata Document
+(the short description of the app from the app's own website). When that fetch
+fails (`metadata_fetch` — timeout, 404, network error, or an invalid document),
+the authorize page says so and offers **Retry**. The problem is on the app's
+side, not your Kody account, and it is often temporary.
+
+- **Codex CLI:** sign in with dynamic registration instead. Replace `<server>`
+  with the name from `codex mcp list`:
+  `codex mcp login <server> --oauth-client-registration dcr`.
+- **Codex app or ChatGPT:** there is no DCR switch. Wait a few minutes and
+  retry.
+
+A different card, **This connection is not registered**
+(`missing_registration`), means the app reused a sign-in Kody does not have. Log
+out of Kody in the app and sign in again, or remove Kody and add it again. On
+Codex CLI that is `codex mcp logout <server>` then `codex mcp login <server>`.
+
 ## The host never opens the Kody authorize window
 
 Dynamic OAuth needs the host to open `/oauth/authorize`. If Admin add-connection
@@ -70,7 +89,7 @@ another browser or device. That is a host or environment issue, not a failed
 Kody registration. In Open WebUI, do not set an OAuth MCP tool as a model
 default or pre-enabled tool — enable it in the chat so the host can open the
 authorize window. Hosts that require a pre-registered Client ID and Client
-Secret can mint one at Account → Connections → Advanced → MCP OAuth clients
+Secret can mint one at Account → Agents → Advanced → MCP OAuth clients
 (`/account/mcp-oauth-clients`) and use the host’s static OAuth mode. Static mode
 runs authorize and token exchange.
 
@@ -122,9 +141,10 @@ signed in, user-scoped package results are empty.
   `allowed_packages` grant (or adoption after review). When a credential's
   `allowed_packages` list is non-empty and leaves a package out, that package is
   denied when it is reached through another package or imported in a one-off
-  execute run, even if you authored or adopted it. Running on its own it still
-  works for now, and publish and save warn about it. Approve the package on the
-  secret's page or move the use into a package already on the list. See
+  execute run, even if you authored or adopted it. A self-authored or adopted
+  package that runs on its own still uses the credential; publish and save warn
+  about it. Approve the package on the secret's page or move the use into a
+  package already on the list. See
   [Secrets and host approval](./secrets-and-values.md#package-approval).
 
 ## MCP servers

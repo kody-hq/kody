@@ -117,6 +117,8 @@ you only have the MCP URL.
   `~/.codex/config.toml` `[mcp_servers.kody]` `url` entry. If Codex asks you to
   log in again after about an hour, see
   [Codex keeps asking for `codex mcp login kody`](./troubleshooting.md#codex-keeps-asking-for-codex-mcp-login-kody).
+  If authorize says Kody could not load Codex's details, see
+  [Authorize says Kody couldn't load the app's details](./troubleshooting.md#authorize-says-kody-couldnt-load-the-apps-details).
 
   </details>
 
