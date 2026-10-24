@@ -201,7 +201,9 @@ export function parsePacedD1DataLine(line: string): PacedD1DataLine {
 }
 
 export async function sha256HexOfBytes(bytes: Uint8Array): Promise<string> {
-	const digest = await crypto.subtle.digest('SHA-256', bytes)
+	const copy = new Uint8Array(bytes.byteLength)
+	copy.set(bytes)
+	const digest = await crypto.subtle.digest('SHA-256', copy)
 	return toHex(new Uint8Array(digest))
 }
 

@@ -1,4 +1,4 @@
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 
 import {
@@ -9,6 +9,7 @@ import {
 	pacedD1SealedManifestKey,
 	pacedD1StagingManifestKey,
 	parsePacedD1NightManifest,
+	type PacedD1TableManifest,
 } from './backup-d1-paced.ts'
 import {
 	comparePacedD1Key,
@@ -38,11 +39,12 @@ function asPacedDb(db: DatabaseSync): PacedD1Database {
 	return {
 		prepare(query: string) {
 			return {
-				bind(...params: Array<SQLInputValue>) {
+				bind(...params: Array<unknown>) {
+					const bound = params as Array<null | number | string | Uint8Array>
 					return {
 						async all() {
 							const started = performance.now()
-							const rows = db.prepare(query).all(...params) as Array<
+							const rows = db.prepare(query).all(...bound) as Array<
 								Record<string, unknown>
 							>
 							return {
@@ -54,7 +56,7 @@ function asPacedDb(db: DatabaseSync): PacedD1Database {
 							} satisfies PacedD1QueryResult
 						},
 						async first<T = Record<string, unknown>>() {
-							return (db.prepare(query).get(...params) ?? null) as T | null
+							return (db.prepare(query).get(...bound) ?? null) as T | null
 						},
 					}
 				},
@@ -160,15 +162,7 @@ test('full night then delta restores exactly, including deletes and schema rebas
 	const db = asPacedDb(sqlite)
 	const sleepCalls: Array<number> = []
 	const schema0 = await discoverPacedD1Schema(db)
-	const tableManifests0: Record<
-		string,
-		Awaited<ReturnType<typeof walkPacedD1Table>> extends {
-			done: true
-			manifest: infer M
-		}
-			? M
-			: never
-	> = {}
+	const tableManifests0: Record<string, PacedD1TableManifest> = {}
 	const writers0: Record<
 		string,
 		ReturnType<typeof createMemoryPacedD1TableWriter>
