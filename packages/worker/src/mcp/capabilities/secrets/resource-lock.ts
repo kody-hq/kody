@@ -192,7 +192,9 @@ async function handleSecret(
 			scope: 'user' as const,
 			allowed_packages: state.secret.allowedPackages,
 			usage_url: usageUrl,
-			status: state.alreadyGranted ? 'already_granted' : 'approval_required',
+			status: state.alreadyGranted
+				? ('already_granted' as const)
+				: ('approval_required' as const),
 			approval_url: approvalUrl,
 			message: state.alreadyGranted
 				? createSecretPackageGrantAlreadyPresentMessage({
@@ -234,7 +236,9 @@ async function handleSecretProvider(
 			canonical_ref: state.canonicalRef,
 			package_id: state.savedPackage.id,
 			usage_url: usageUrl,
-			status: state.alreadyGranted ? 'already_granted' : 'approval_required',
+			status: state.alreadyGranted
+				? ('already_granted' as const)
+				: ('approval_required' as const),
 			approval_url: approvalUrl,
 			message: state.alreadyGranted
 				? createSecretProviderGrantAlreadyPresentMessage({
