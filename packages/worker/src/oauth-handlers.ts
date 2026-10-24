@@ -470,7 +470,8 @@ function logAuthorizeClientFailure(input: {
 		category: 'oauth',
 		action: 'authorize',
 		result: 'failure',
-		clientId: input.clientId,
+		// Anonymous page loads reach this, so bound the caller-supplied id.
+		clientId: input.clientId.slice(0, 2048),
 		path: oauthPaths.authorize,
 		reason: cimd
 			? `unknown_client:cimd:${cimdError}:${input.surface}`
