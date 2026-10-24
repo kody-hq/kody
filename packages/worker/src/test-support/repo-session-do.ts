@@ -285,6 +285,35 @@ export const repoSessionMockModule = (() => {
  * module-load defaults. Session/source/artifact-repo lookups and `gitState`
  * are left to the caller.
  */
+/**
+ * vi.mock overrides for published-bundle-artifacts that call through to
+ * {@link repoSessionMockModule}. Keeps per-file mock blocks under the node
+ * test size ratchet.
+ */
+export function publishedBundleArtifactsRepoSessionMocks(
+	mocks: typeof repoSessionMockModule = repoSessionMockModule,
+) {
+	return {
+		isPublishedPackageArtifactBuiltForCommit: (
+			...args: Parameters<typeof mocks.isPublishedPackageArtifactBuiltForCommit>
+		) => mocks.isPublishedPackageArtifactBuiltForCommit(...args),
+		loadPublishedBundleArtifactsForPackageTargets: (
+			...args: Parameters<
+				typeof mocks.loadPublishedBundleArtifactsForPackageTargets
+			>
+		) => mocks.loadPublishedBundleArtifactsForPackageTargets(...args),
+		publishedBundleArtifactForPackageTarget: (
+			...args: Parameters<typeof mocks.publishedBundleArtifactForPackageTarget>
+		) => mocks.publishedBundleArtifactForPackageTarget(...args),
+		persistPublishedPackageArtifactTarget: (
+			...args: Parameters<typeof mocks.persistPublishedPackageArtifactTarget>
+		) => mocks.persistPublishedPackageArtifactTarget(...args),
+		deletePublishedArtifactsForSource: (
+			...args: Parameters<typeof mocks.deletePublishedArtifactsForSource>
+		) => mocks.deletePublishedArtifactsForSource(...args),
+	}
+}
+
 export function restoreRepoSessionMockBaseline() {
 	const mocks = repoSessionMockModule
 	const { gitState } = mocks

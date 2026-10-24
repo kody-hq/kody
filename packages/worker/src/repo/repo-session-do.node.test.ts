@@ -23,6 +23,7 @@ import type * as CredentialNeedsApproval from '#worker/credentials/credential-ne
 import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	restoreRepoSessionMockBaseline,
 	checkedPublishState,
 	createDurableObjectState,
@@ -262,31 +263,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		loadPublishedBundleArtifactsForPackageTargets: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.loadPublishedBundleArtifactsForPackageTargets
-			>
-		) => mockModule.loadPublishedBundleArtifactsForPackageTargets(...args),
-		publishedBundleArtifactForPackageTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.publishedBundleArtifactForPackageTarget
-			>
-		) => mockModule.publishedBundleArtifactForPackageTarget(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
