@@ -33,6 +33,7 @@ import {
 	type PublishedBundleArtifactUpsertInput,
 	updatePublishedBundleArtifactRow,
 	upsertPublishedBundleArtifactRow,
+	upsertPublishedBundleArtifactRows,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
@@ -143,9 +144,16 @@ function matchesPublishedBundleArtifactIdentity(input: {
 	)
 }
 
-export async function persistPublishedBundleArtifact(
+type PreparedPublishedBundleArtifactPersist = {
+	env: Env
+	kvKey: string
+	artifact: PublishedBundleArtifact
+	rowInput: PublishedBundleArtifactUpsertInput
+}
+
+function preparePublishedBundleArtifactPersist(
 	input: PersistPublishedBundleArtifactInput,
-) {
+): PreparedPublishedBundleArtifactPersist | null {
 	if (
 		!input.source.published_commit ||
 		!hasPublishedRuntimeArtifacts(input.env)
@@ -175,36 +183,112 @@ export async function persistPublishedBundleArtifact(
 		packageContext: input.packageContext ?? null,
 		createdAt: new Date().toISOString(),
 		// Persisted modules come from the current builder, which binds package
-		// `fetch` lexically and never inlines an unbound pre-fix bundle.
+		// `fetch` lexically and never inlines an unbound pre-fetch bundle.
 		packageBindingRewrite: packageBindingRewriteVersion,
 	}
-	const rowInput = toDbRowInput({
-		userId: input.userId,
-		sourceId: input.source.id,
-		publishedCommit: input.source.published_commit,
-		kind: input.kind,
-		artifactName,
-		entryPoint,
+	return {
+		env: input.env,
 		kvKey,
-		dependencies: input.dependencies,
-	})
+		artifact,
+		rowInput: toDbRowInput({
+			userId: input.userId,
+			sourceId: input.source.id,
+			publishedCommit: input.source.published_commit,
+			kind: input.kind,
+			artifactName,
+			entryPoint,
+			kvKey,
+			dependencies: input.dependencies,
+		}),
+	}
+}
+
+/**
+ * Persist many published bundle artifacts with one batched identity upsert
+ * (constant D1 round trips for the row writes). KV writes stay per artifact and
+ * run before the D1 upsert. If the upsert phase has started, KV keys are left
+ * in place on failure — orphan KV is safe; deleting keys that identity rows
+ * already point at is not.
+ */
+export async function persistPublishedBundleArtifacts(
+	inputs: ReadonlyArray<PersistPublishedBundleArtifactInput>,
+): Promise<Array<string | null>> {
+	if (inputs.length === 0) return []
+	const preparedByIndex: Array<PreparedPublishedBundleArtifactPersist | null> =
+		inputs.map((input) => preparePublishedBundleArtifactPersist(input))
+	const prepared = preparedByIndex.filter(
+		(entry): entry is PreparedPublishedBundleArtifactPersist => entry != null,
+	)
+	if (prepared.length === 0) {
+		return preparedByIndex.map(() => null)
+	}
+	let upsertStarted = false
 	try {
-		await writePublishedBundleArtifact({
-			env: input.env,
-			artifact,
-			kvKey,
-		})
-		await upsertPublishedBundleArtifactRow(input.env.APP_DB, rowInput)
+		await Promise.all(
+			prepared.map(async (entry) => {
+				await writePublishedBundleArtifact({
+					env: entry.env,
+					artifact: entry.artifact,
+					kvKey: entry.kvKey,
+				})
+			}),
+		)
+		upsertStarted = true
+		const db = prepared[0]!.env.APP_DB
+		const rowInputs = prepared.map((entry) => entry.rowInput)
+		if (rowInputs.length === 1) {
+			await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
+		} else {
+			await upsertPublishedBundleArtifactRows(db, rowInputs)
+		}
 	} catch (error) {
-		await deletePublishedBundleArtifact({
-			env: input.env,
-			kvKey,
-		}).catch(() => {
-			// Best effort; preserve the original DB/KV failure as the root cause.
-		})
+		if (!upsertStarted) {
+			await Promise.all(
+				prepared.map(async (entry) => {
+					await deletePublishedBundleArtifact({
+						env: entry.env,
+						kvKey: entry.kvKey,
+					}).catch(() => {
+						// Best effort; preserve the original DB/KV failure as the root cause.
+					})
+				}),
+			)
+		}
 		throw error
 	}
-	return kvKey
+	return preparedByIndex.map((entry) => entry?.kvKey ?? null)
+}
+
+async function writePreparedPublishedBundleArtifact(
+	prepared: PreparedPublishedBundleArtifactPersist,
+) {
+	await writePublishedBundleArtifact({
+		env: prepared.env,
+		artifact: prepared.artifact,
+		kvKey: prepared.kvKey,
+	})
+}
+
+async function upsertPreparedPublishedBundleArtifactRows(
+	prepared: ReadonlyArray<
+		Pick<PreparedPublishedBundleArtifactPersist, 'env' | 'rowInput'>
+	>,
+) {
+	if (prepared.length === 0) return
+	const db = prepared[0]!.env.APP_DB
+	const rowInputs = prepared.map((entry) => entry.rowInput)
+	if (rowInputs.length === 1) {
+		await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
+		return
+	}
+	await upsertPublishedBundleArtifactRows(db, rowInputs)
+}
+
+export async function persistPublishedBundleArtifact(
+	input: PersistPublishedBundleArtifactInput,
+) {
+	const [kvKey] = await persistPublishedBundleArtifacts([input])
+	return kvKey ?? null
 }
 
 export type LoadedPublishedBundleArtifact = {
@@ -742,6 +826,38 @@ async function buildPublishedPackageArtifactTargetBundle(
 	}
 }
 
+function toPersistPublishedPackageArtifactInput(input: {
+	env: Env
+	userId: string
+	source: EntitySourceRow
+	savedPackage: SavedPackageRecord
+	target: PublishedPackageArtifactBuildTarget
+	bundle: {
+		mainModule: string
+		modules: WorkerLoaderModules
+		dependencies: Array<BundleArtifactDependency>
+		dynamicDependencies?: Array<BundleArtifactDynamicDependency>
+	}
+}): PersistPublishedBundleArtifactInput {
+	return {
+		env: input.env,
+		userId: input.userId,
+		source: input.source,
+		kind: input.target.kind,
+		artifactName: input.target.artifactName,
+		entryPoint: input.target.entryPoint,
+		mainModule: input.bundle.mainModule,
+		modules: input.bundle.modules,
+		dependencies: input.bundle.dependencies,
+		dynamicDependencies: input.bundle.dynamicDependencies,
+		packageContext: {
+			packageId: input.savedPackage.id,
+			kodyId: input.savedPackage.kodyId,
+			sourceId: input.savedPackage.sourceId,
+		},
+	}
+}
+
 export async function persistPublishedPackageArtifactTarget(
 	input: {
 		env: Env
@@ -752,22 +868,110 @@ export async function persistPublishedPackageArtifactTarget(
 	} & PublishedPackageArtifactBuilders,
 ) {
 	const bundle = await buildPublishedPackageArtifactTargetBundle(input)
-	return await persistPublishedBundleArtifact({
-		env: input.env,
-		userId: input.userId,
-		source: input.source,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
-		mainModule: bundle.mainModule,
-		modules: bundle.modules,
-		dependencies: bundle.dependencies,
-		dynamicDependencies: bundle.dynamicDependencies,
-		packageContext: {
-			packageId: input.savedPackage.id,
-			kodyId: input.savedPackage.kodyId,
-			sourceId: input.savedPackage.sourceId,
-		},
+	return await persistPublishedBundleArtifact(
+		toPersistPublishedPackageArtifactInput({ ...input, bundle }),
+	)
+}
+
+export type PersistPublishedPackageArtifactTargetResult =
+	| {
+			ok: true
+			target: PublishedPackageArtifactBuildTarget
+			kvKey: string | null
+	  }
+	| {
+			ok: false
+			target: PublishedPackageArtifactBuildTarget
+			error: unknown
+	  }
+
+/**
+ * Build then persist many package artifact targets with one batched D1 upsert.
+ * Each successful build writes KV immediately (so heap stays one bundle) and
+ * only the identity row writes are batched. Per-target build failures are
+ * isolated; a batch upsert failure marks built targets failed but leaves their
+ * KV keys (orphan KV is safe; deleting keys identity rows may point at is not).
+ */
+export async function persistPublishedPackageArtifactTargets(
+	input: {
+		env: Env
+		userId: string
+		source: EntitySourceRow
+		savedPackage: SavedPackageRecord
+		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+	} & PublishedPackageArtifactBuilders,
+): Promise<Array<PersistPublishedPackageArtifactTargetResult>> {
+	if (input.targets.length === 0) return []
+	const results: Array<PersistPublishedPackageArtifactTargetResult | null> =
+		input.targets.map(() => null)
+	const written: Array<{
+		index: number
+		kvKey: string
+		rowInput: PublishedBundleArtifactUpsertInput
+		env: Env
+	}> = []
+	for (const [index, target] of input.targets.entries()) {
+		try {
+			const bundle = await buildPublishedPackageArtifactTargetBundle({
+				...input,
+				target,
+			})
+			const prepared = preparePublishedBundleArtifactPersist(
+				toPersistPublishedPackageArtifactInput({
+					env: input.env,
+					userId: input.userId,
+					source: input.source,
+					savedPackage: input.savedPackage,
+					target,
+					bundle,
+				}),
+			)
+			if (!prepared) {
+				results[index] = { ok: true, target, kvKey: null }
+				continue
+			}
+			await writePreparedPublishedBundleArtifact(prepared)
+			written.push({
+				index,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+				env: prepared.env,
+			})
+		} catch (error) {
+			results[index] = { ok: false, target, error }
+		}
+	}
+	if (written.length > 0) {
+		try {
+			await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const entry of written) {
+				const target = input.targets[entry.index]
+				if (!target) continue
+				results[entry.index] = {
+					ok: true,
+					target,
+					kvKey: entry.kvKey,
+				}
+			}
+		} catch (error) {
+			for (const entry of written) {
+				const target = input.targets[entry.index]
+				if (!target) continue
+				results[entry.index] = { ok: false, target, error }
+			}
+		}
+	}
+	return results.map((result, index) => {
+		if (result) return result
+		const target = input.targets[index]
+		if (!target) {
+			throw new Error('Published package artifact target missing at index.')
+		}
+		return {
+			ok: false,
+			target,
+			error: new Error('Published package artifact target was not built.'),
+		}
 	})
 }
 
@@ -812,6 +1016,7 @@ export async function rebuildPublishedPackageArtifacts(
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
 	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
 		new Map()
+	const targetsNeedingPersist: Array<PublishedPackageArtifactBuildTarget> = []
 	await mapWithConcurrency(
 		collectPublishedPackageArtifactTargets(input.manifest),
 		publishedPackageArtifactRebuildConcurrency,
@@ -837,19 +1042,58 @@ export async function rebuildPublishedPackageArtifacts(
 				})
 				if (reused) return
 			}
-			await persistPublishedPackageArtifactTarget({
-				env: input.env,
-				userId: input.userId,
-				source: input.source,
-				savedPackage: input.savedPackage,
-				target,
-				buildAppBundle: input.buildAppBundle,
-				buildAppClientBundle: input.buildAppClientBundle,
-				buildModuleBundle: input.buildModuleBundle,
-				buildImportableModuleBundle: input.buildImportableModuleBundle,
-			})
+			targetsNeedingPersist.push(target)
 		},
 	)
+	if (targetsNeedingPersist.length === 0) return
+
+	// Overlap esbuild (cap 2), write each KV immediately so peak heap stays
+	// near the concurrency window, then one batched identity upsert. Build
+	// failures are isolated so successful siblings still land (same as the
+	// prior per-target persist loop).
+	const written: Array<{
+		env: Env
+		rowInput: PublishedBundleArtifactUpsertInput
+	}> = []
+	let firstError: unknown = null
+	await mapWithConcurrency(
+		targetsNeedingPersist,
+		publishedPackageArtifactRebuildConcurrency,
+		async (target) => {
+			try {
+				const bundle = await buildPublishedPackageArtifactTargetBundle({
+					target,
+					buildAppBundle: input.buildAppBundle,
+					buildAppClientBundle: input.buildAppClientBundle,
+					buildModuleBundle: input.buildModuleBundle,
+					buildImportableModuleBundle: input.buildImportableModuleBundle,
+				})
+				const prepared = preparePublishedBundleArtifactPersist(
+					toPersistPublishedPackageArtifactInput({
+						env: input.env,
+						userId: input.userId,
+						source: input.source,
+						savedPackage: input.savedPackage,
+						target,
+						bundle,
+					}),
+				)
+				if (!prepared) return
+				await writePreparedPublishedBundleArtifact(prepared)
+				written.push({ env: prepared.env, rowInput: prepared.rowInput })
+			} catch (error) {
+				firstError ??= error
+			}
+		},
+	)
+	if (written.length > 0) {
+		try {
+			await upsertPreparedPublishedBundleArtifactRows(written)
+		} catch (error) {
+			firstError ??= error
+		}
+	}
+	if (firstError != null) throw firstError
 }
 
 export async function deletePublishedArtifactsForSource(input: {
