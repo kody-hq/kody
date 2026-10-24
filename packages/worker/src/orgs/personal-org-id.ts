@@ -42,15 +42,12 @@ export function personalOrgIdForPerson(user: {
 }
 
 /**
- * Personal-org id lookups against the same `APP_DB` share one users-row read
- * per person for the isolate lifetime (KODY-AZ). Package execute opens
- * `credential(key)` per need and each open also checks author exemption via
- * `assertCredentialUsesDeclared`, which used to re-query
- * `users.personal_org_id` once per need. The id is stable for a person
- * (conversion is rare and typically lands on a later request). Rejected
- * loads are forgotten so a retry can re-read.
+ * Concurrent identical personal-org lookups against the same `APP_DB` share
+ * one users-row read (KODY-AZ). Cleared when the promise settles so a later
+ * ownership conversion (or any write) in this or another isolate still
+ * re-reads — module state cannot invalidate other isolates.
  */
-const personalOrgIdsByDb = new WeakMap<
+const inflightPersonalOrgIds = new WeakMap<
 	D1Database,
 	Map<string, Promise<OwnerId>>
 >()
@@ -64,30 +61,30 @@ export async function loadPersonalOrgIdForPerson(
 	db: D1Database,
 	personId: PersonId,
 ): Promise<OwnerId> {
-	let cache = personalOrgIdsByDb.get(db)
-	if (!cache) {
-		cache = new Map()
-		personalOrgIdsByDb.set(db, cache)
+	let inflight = inflightPersonalOrgIds.get(db)
+	if (!inflight) {
+		inflight = new Map()
+		inflightPersonalOrgIds.set(db, inflight)
 	}
-	const existing = cache.get(personId)
+	const existing = inflight.get(personId)
 	if (existing) return existing
-	const pending = readPersonalOrgIdForPerson(db, personId)
-	cache.set(personId, pending)
-	pending.catch(() => {
-		if (cache.get(personId) === pending) cache.delete(personId)
+	const pending = readPersonalOrgIdForPerson(db, personId).finally(() => {
+		if (inflight.get(personId) === pending) inflight.delete(personId)
 	})
+	inflight.set(personId, pending)
 	return pending
 }
 
 /**
- * Drop a memoized personal-org id after `users.personal_org_id` changes
- * (ownership conversion). Call only after the write batch commits.
+ * Drop an in-flight personal-org id after `users.personal_org_id` changes
+ * (ownership conversion). Safe no-op when nothing is in flight; call after
+ * the write batch commits.
  */
 export function forgetPersonalOrgIdForPerson(
 	db: D1Database,
 	personId: PersonId,
 ) {
-	personalOrgIdsByDb.get(db)?.delete(personId)
+	inflightPersonalOrgIds.get(db)?.delete(personId)
 }
 
 async function readPersonalOrgIdForPerson(

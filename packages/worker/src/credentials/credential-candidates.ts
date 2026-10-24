@@ -416,27 +416,39 @@ async function loadUsableCredentials(input: {
 }): Promise<Array<UsableCredential>> {
 	const orgId = input.request.org.id
 	const { now } = input
+	const actor = input.request.actor?.userId ?? null
 	const secretScope: SecretScopeFilter = {
 		includeUserScope: true,
 		packageId: input.packageId ?? null,
 	}
-	const [secretScopeAuth, integrationScope, orgRows, personal] =
-		await Promise.all([
-			loadResourceListScope(input, 'secret:use', 'credential'),
-			loadResourceListScope(input, 'integration:use', 'credential'),
-			loadRows({
-				db: input.env.APP_DB,
-				ownerId: orgId,
-				ids: null,
-				now,
-				secretScope,
-			}),
-			listPersonalCredentialCandidates({
-				db: input.env.APP_DB,
-				actorPersonId: input.request.actor?.userId ?? null,
-				orgId: orgId as OwnerId,
-			}),
-		])
+	// Start the personal-org read in the same turn as listPersonalCredentialCandidates
+	// so both share one in-flight users SELECT.
+	const personalOrgPromise = actor
+		? loadPersonalOrgIdForPerson(input.env.APP_DB, actor)
+		: Promise.resolve(null)
+	const [
+		secretScopeAuth,
+		integrationScope,
+		orgRows,
+		personal,
+		personalOwnerId,
+	] = await Promise.all([
+		loadResourceListScope(input, 'secret:use', 'credential'),
+		loadResourceListScope(input, 'integration:use', 'credential'),
+		loadRows({
+			db: input.env.APP_DB,
+			ownerId: orgId,
+			ids: null,
+			now,
+			secretScope,
+		}),
+		listPersonalCredentialCandidates({
+			db: input.env.APP_DB,
+			actorPersonId: actor,
+			orgId: orgId as OwnerId,
+		}),
+		personalOrgPromise,
+	])
 	const usable = orgRows
 		.filter((row) =>
 			listScopeIncludes(
@@ -445,15 +457,14 @@ async function loadUsableCredentials(input: {
 			),
 		)
 		.map((row) => toUsable(row, 'org', now))
-	const actor = input.request.actor?.userId
 	// A scoped token narrows personal credentials too: Use of each family.
 	const tokenScopes = input.request.credential.scopes
 	const tokenAllows = (family: 'secret' | 'integration') =>
 		tokenScopes === null || tokenScopes.includes(`${family}:use`)
-	if (actor && personal.length > 0) {
+	if (personalOwnerId && personal.length > 0) {
 		const personalRows = await loadRows({
 			db: input.env.APP_DB,
-			ownerId: await loadPersonalOrgIdForPerson(input.env.APP_DB, actor),
+			ownerId: personalOwnerId,
 			ids: personal.map((credential) => credential.id),
 			now,
 		})

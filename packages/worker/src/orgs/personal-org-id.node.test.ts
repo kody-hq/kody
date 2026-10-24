@@ -98,12 +98,13 @@ test('loadPersonalOrgIdForPerson shares one users read per person (KODY-AZ)', as
 		queries.filter((query) => query.toLowerCase().includes('from users')),
 	).toHaveLength(1)
 
+	// Cleared after settle so a later call (and a post-conversion read) re-queries.
 	await expect(loadPersonalOrgIdForPerson(db, distinctPerson)).resolves.toBe(
 		distinctOrgId,
 	)
 	expect(
 		queries.filter((query) => query.toLowerCase().includes('from users')),
-	).toHaveLength(1)
+	).toHaveLength(2)
 
 	const convertedOrgId = 'e'.repeat(64)
 	await db

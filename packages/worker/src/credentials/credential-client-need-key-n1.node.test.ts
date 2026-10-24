@@ -254,8 +254,9 @@ test('concurrent openCredentialClient for N need keys does not scale mapping/use
 
 	expect(mappingLookups.length).toBeLessThan(needKeys.length)
 	expect(mappingLookups).toHaveLength(1)
+	// Usable-list + author-exemption may each read once; must not scale with N.
 	expect(personalOrgLookups.length).toBeLessThan(needKeys.length)
-	expect(personalOrgLookups).toHaveLength(1)
+	expect(personalOrgLookups.length).toBeLessThanOrEqual(2)
 	expect(mcpLookups.length).toBeLessThan(needKeys.length)
 	expect(mcpLookups).toHaveLength(1)
 })
@@ -288,5 +289,5 @@ test('openCredentialClient query counts stay flat when need key count grows (KOD
 	expect(largeCounts.personalOrg).toBe(smallCounts.personalOrg)
 	expect(largeCounts.mapping).toBe(1)
 	expect(largeCounts.mcp).toBe(1)
-	expect(largeCounts.personalOrg).toBe(1)
+	expect(largeCounts.personalOrg).toBeLessThanOrEqual(2)
 })
