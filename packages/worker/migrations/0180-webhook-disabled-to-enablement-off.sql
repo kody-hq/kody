@@ -73,3 +73,6 @@ WHERE e.owner_user_id IS NOT NULL
 			AND existing.trigger_kind = 'webhook'
 			AND existing.instance_id = e.id
 	);
+
+-- Supports all-state webhook presence lookups; enablements_instance excludes off rows.
+CREATE INDEX IF NOT EXISTS enablements_webhook_instance_all ON enablements (org_id, trigger_kind, instance_id);

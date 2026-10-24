@@ -60,6 +60,15 @@ export const listedWebhookSchema = z.object({
 	minted: z
 		.boolean()
 		.describe('True when a URL secret has been minted for this webhook.'),
+	approved: z
+		.boolean()
+		.describe('True when this webhook has a live enablement.'),
+	approval_url: z
+		.string()
+		.nullable()
+		.describe(
+			'Open this and click Approve to turn the webhook on. Null when approved or not minted.',
+		),
 	endpoint_id: z
 		.string()
 		.nullable()
@@ -171,6 +180,8 @@ export function toListedWebhookCapability(webhook: {
 	replay?: z.infer<typeof webhookReplayPublicSchema>
 	challenge: PackageWebhookChallenge | null
 	minted: boolean
+	approved: boolean
+	approvalUrl: string | null
 	endpointId: string | null
 	instanceLabel: string | null
 	handle: string | null
@@ -193,6 +204,8 @@ export function toListedWebhookCapability(webhook: {
 		replay: webhook.replay ?? null,
 		challenge: webhook.challenge,
 		minted: webhook.minted,
+		approved: webhook.approved,
+		approval_url: webhook.approvalUrl,
 		endpoint_id: webhook.endpointId,
 		instance_label: webhook.instanceLabel,
 		handle: webhook.handle,

@@ -118,7 +118,7 @@ export function PackageWebhookSettings({
 				Inbound webhook URLs this package declares in{' '}
 				<code>package.json#kody.webhooks</code>. Mint a URL here, copy it into
 				the provider that will POST to it, and rotate it if it leaks. Turn it
-				off from Credentials when it goes unused. Rotate keeps the previous URL
+				off from Triggers when it goes unused. Rotate keeps the previous URL
 				live for a short overlap so providers can finish switching. Agents
 				connected over MCP can mint and apply handles but never see these URLs.
 			</p>

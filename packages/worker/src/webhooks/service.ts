@@ -110,7 +110,7 @@ export type ListedWebhook = {
 	urlHost: string | null
 	/**
 	 * True once a person has approved the webhook: it has a live enablement.
-	 * Minting alone leaves this false, and deliveries answer 409 until then.
+	 * Minting alone leaves this false; an off webhook answers 404.
 	 */
 	approved: boolean
 	/** Where to approve it; null when not minted or already approved. */

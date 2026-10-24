@@ -195,6 +195,7 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 				respond: { as: 'text' },
 			},
 			minted: true,
+			approved: false,
 		},
 		{
 			...listedRow,
@@ -210,6 +211,8 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 			createdAt: null,
 			rotatedAt: null,
 			previousUrlActiveUntil: null,
+			approved: false,
+			approvalUrl: null,
 		},
 	])
 	mockModule.mintWebhookUrlForUser.mockResolvedValue(mintedUrl())
@@ -243,6 +246,9 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 	const listed = await webhookListCapability.handler({}, ctx)
 	expect(listed.webhooks[0]).toMatchObject({
 		minted: true,
+		approved: false,
+		approval_url:
+			'https://heykody.dev/@owner/sentry-bridge/approve-credentials?enable=webhook%3Asentry%3Aep-1',
 		handle: 'whh_ep-1',
 		previous_url_active_until: null,
 		challenge: {

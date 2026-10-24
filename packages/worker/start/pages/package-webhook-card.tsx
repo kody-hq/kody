@@ -305,11 +305,11 @@ export function renderPackageWebhookCard(input: {
 							href={packageCredentialsTabHref({
 								username,
 								kodyId,
-								tab: 'credentials',
+								tab: 'triggers',
 							})}
 							css={mutedLinkCss}
 						>
-							Turn off on Credentials
+							Turn off on Triggers
 						</SiteLink>
 					) : null}
 					<button
@@ -341,16 +341,17 @@ export function renderPackageWebhookCard(input: {
 
 			{webhook.minted && !webhook.approved ? (
 				<AccountManagementMessage tone="info">
-					Minting a URL does not turn the webhook on. Deliveries answer 409
-					until you approve it.
+					Minting a URL does not turn the webhook on. Deliveries don't run until
+					you approve it (409 before the first approval, 404 after it was turned
+					off).
 				</AccountManagementMessage>
 			) : null}
 
 			{webhook.minted ? (
 				<p css={descriptionCss}>
-					Turning it off on Credentials makes this URL answer 404. Turn it back
-					on by Approving the same URL. Removing the declaration from the
-					package manifest retires the ingress.{' '}
+					Turning it off on Triggers makes this URL answer 404. Turn it back on
+					by Approving the same URL. Removing the declaration from the package
+					manifest retires the ingress.{' '}
 					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
 						Inbound webhooks docs
 					</SiteLink>

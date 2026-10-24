@@ -105,7 +105,7 @@ test('webhooks index lists declared webhooks with status and deep-links each row
 		'href="/@jane/raycast/settings#webhook-run-11111111-1111-1111-1111-111111111111"',
 	)
 	expect(html).toContain('href="/@jane/sentry-bridge/settings#webhook-sentry"')
-	expect(html).toContain('>Active<')
+	expect(html).toContain('>Approved<')
 	expect(html).toContain('>No URL yet<')
 	expect(html).toContain('URL secret only')
 	expect(html).toContain('hmac-sha256 · sentry-hook-signature')

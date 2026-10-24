@@ -15,7 +15,7 @@ export const webhookListCapability = defineDomainCapability(
 		name: 'webhookList',
 		orgPermission: 'package:read',
 		description:
-			"List package.json#kody.webhooks declarations across the signed-in user's saved packages, joined with minted handles and approval state. Declaring a webhook does not open ingress until webhookUrlMint is called; approve it to turn it on, or use enablementDisable to turn it off. URL secrets and credential URLs are never returned.",
+			"List package.json#kody.webhooks declarations across the signed-in user's saved packages, joined with minted handles and approval state. Declaring a webhook does not open ingress until webhookUrlMint is called; open approval_url and click Approve to turn it on, or use enablementDisable to turn it off. URL secrets and credential URLs are never returned.",
 		keywords: [
 			'webhook',
 			'list',

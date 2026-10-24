@@ -91,14 +91,19 @@ const renderCard = (
 			deliveriesHref: '/@ada/-/activity?view=recent&status=all&surface=webhook',
 		}),
 	)
-test('a webhook card points legacy mints at Rotate instead of Reveal and links approved webhooks to Credentials', async () => {
+test('a webhook card points legacy mints at Rotate instead of Reveal and links approved webhooks to Triggers', async () => {
 	const html = await renderCard({
 		...run,
 		urlRecoverable: false,
 	})
 	expect(html).not.toContain('data-testid="package-webhook-reveal"')
-	expect(html).toContain('Turn off on Credentials')
-	expect(html).toContain('href="/@jane/raycast/credentials"')
+	expect(html).toContain('>Approved<')
+	expect(html).not.toContain('>Active<')
+	expect(html).toContain('Turn off on Triggers')
+	expect(html).toContain('href="/@jane/raycast/triggers"')
+	expect(html).toContain(
+		'Turning it off on Triggers makes this URL answer 404.',
+	)
 })
 
 test('a webhook card shows previous URL overlap until the grace timestamp', async () => {
@@ -111,6 +116,9 @@ test('a webhook card shows previous URL overlap until the grace timestamp', asyn
 	const unapprovedHtml = await renderCard({ ...overlapping, approved: false })
 	expect(unapprovedHtml).not.toContain('Previous URL')
 	expect(unapprovedHtml).toContain('>Needs approval<')
+	expect(unapprovedHtml).toMatch(
+		/Minting a URL does not turn the webhook on\. Deliveries don(?:&#x27;|')t run until you approve it \(409 before the first approval, 404 after it was turned off\)\./,
+	)
 })
 
 test('revealed credential is rendered only while supplied to the local card', async () => {

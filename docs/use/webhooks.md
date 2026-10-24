@@ -11,9 +11,11 @@ package export as its enabler.
 Minting does not turn a webhook on. Mint and rotate return `approval_url` while
 the endpoint has no enablement that is on or paused; a person opens it and
 clicks Approve, which turns the webhook on for them and maps the credentials it
-uses in the same step. Until then deliveries answer **409** `enablement_not_on`
-with that link. An existing enablement is left alone; remint or rotate never
-changes who the webhook runs as.
+uses in the same step. Before the first approval, deliveries answer **409**
+`enablement_not_on` with that link; a paused enablement also answers **409**
+with its approval link. An endpoint with only `off` enablements answers **404**
+before rate limiting. An existing enablement is left alone; remint or rotate
+never changes who the webhook runs as.
 
 This is the HTTP sibling of [email primitives](./email-primitives.md). Webhooks
 are the external HTTP knock: vendor providers (Sentry, GitHub, Stripe) and
@@ -137,13 +139,13 @@ package declares, joined with its minted state, one card per webhook:
   hours**, or until the first accepted delivery arrives on the new URL. Rerun
   `webhookUrlApply` (same handle) or paste the new URL into the provider. The
   card shows “Previous URL active until …” during that overlap.
-- **Turn off** is available from the package's Credentials page. The URL remains
+- **Turn off** is available from the package's Triggers tab. The URL remains
   minted but answers 404. Turn it back on by Approving the same URL again; the
   HMAC secret stays the same.
 
 Rotate changes the URL secret, not whether the webhook is on. A webhook with no
-enablement has not been approved yet and answers 409 with its approval link; one
-with only off enablements answers 404.
+enablement or a paused enablement answers 409 `enablement_not_on` with its
+approval link; one with only off enablements answers 404 before rate limiting.
 
 The URL is the human path. Agents get the handle and `url_host` through MCP and
 either apply the handle (`type: "http"`) or ask the owner to copy the URL from
@@ -275,13 +277,13 @@ package settings.
 
 `GET|POST https://<origin>/@<username>/webhooks/<packageKodyId>/<webhookName>/<urlSecret>`
 
-- Unknown / unminted / disabled / renamed-away / wrong secret → **404** (no
-  distinction).
+- Unknown / unminted / renamed-away / wrong secret → **404** (no distinction).
+- An endpoint with only `off` enablements → **404** before rate limiting; no
+  delivery row is recorded.
 - `GET` is allowed only when the webhook declares a GET-capable
   [`challenge`](#subscription-challenges); otherwise **405**.
 - Payload > **1 MB** → **413**.
-- Minted but not approved (or its enablement was turned off), or paused because
-  its enabler lost access → **409**
+- No enablement or a paused enablement → **409**
   `{ "ok": false, "error": { "code": "enablement_not_on", "message", "details": { "approvalUrl" } } }`.
   The message says which, and includes the approval link.
 - Rate limit per minted webhook → **429**. Default **60**/min; override with
@@ -682,8 +684,9 @@ A webhook that omits `verification` is treated as `url-secret`, and publish
 accepts it. Declare a type so the manifest says how the webhook authenticates:
 `url-secret` when the sender cannot sign, an HMAC type when it can.
 
-Either way, the webhook runs as its enabler, the person who turned it on; with
-no `on` enablement the delivery answers 409 `enablement_not_on`.
+Either way, the webhook runs as its enabler, the person who turned it on. Only
+`off` enablements answer 404 before rate limiting; no enablement or a paused
+enablement answers 409 `enablement_not_on` with the approval link.
 
 ## Synthetic smoke test
 

@@ -66,7 +66,7 @@ type WebhookStatusInput = Pick<PackageWebhookListItem, 'minted' | 'approved'>
 export function webhookStatusLabel(webhook: WebhookStatusInput) {
 	if (!webhook.minted) return 'No URL yet'
 	if (!webhook.approved) return 'Needs approval'
-	return 'Active'
+	return 'Approved'
 }
 
 export function webhookStatusColor(webhook: WebhookStatusInput) {

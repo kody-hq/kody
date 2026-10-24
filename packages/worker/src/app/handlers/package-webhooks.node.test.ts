@@ -261,7 +261,7 @@ test('package webhooks API mints, reveals, and rotates a declared webhook withou
 	const mintedUrl = minted.body.revealed!.url
 	const mintedHandle = minted.body.revealed!.handle
 	// Minting never turns the webhook on: the answer and the list both point
-	// at Approve, and the card must not read Active.
+	// at Approve, and the card must not read Approved.
 	const approvalUrl = `https://kody.example/@owner/sentry-bridge/approve-credentials?enable=webhook%3Alauncher%3A${mintedEndpointId}`
 	expect(minted.body.approvalUrl).toBe(approvalUrl)
 	expect(

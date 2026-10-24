@@ -223,4 +223,16 @@ test('0180 moves disabled live webhook endpoints to off enablements', () => {
 			)
 			.get(),
 	).toEqual({ count: 0 })
+	expect(
+		sqlite
+			.prepare(
+				`SELECT sql FROM sqlite_master
+				 WHERE type = 'index' AND name = 'enablements_webhook_instance_all'`,
+			)
+			.get(),
+	).toMatchObject({
+		sql: expect.stringContaining(
+			'ON enablements (org_id, trigger_kind, instance_id)',
+		),
+	})
 })

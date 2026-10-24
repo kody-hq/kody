@@ -181,7 +181,9 @@ passes:
 - The next event checks again and resumes a paused enablement once access is
   back. There is never a fallback to another person, credential, or Owner.
 - No `on` enablement means nothing runs: a scheduled tick is skipped, a webhook
-  answers 409 `enablement_not_on`, and a subscription event is dropped.
+  with only `off` enablements answers 404 before rate limiting, and one with no
+  enablement or a paused enablement answers 409 `enablement_not_on` with its
+  approval link; a subscription event is dropped.
 
 Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
 
@@ -197,13 +199,13 @@ Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
 People turn jobs and subscriptions on for themselves with `enablementEnable`;
 webhooks turn on only through Approve, including after being turned off.
 `enablementDisable` turns an enablement off (the enabler or an Owner);
-`enablementList` lists them. An off webhook answers 404. Publishing never turns
-anything on, and neither does minting a webhook URL: the mint returns an
-approval link, and Approve on that page creates the enablement. Enablements
-created before minting stopped enabling keep running. A webhook verifies a
-signature only when its manifest declares `verification`; otherwise its URL
-secret is the credential. The generated signing secret on unsigned endpoints is
-stored but not checked.
+`enablementList` lists them. An off webhook answers 404 before rate limiting.
+Publishing never turns anything on, and neither does minting a webhook URL: the
+mint returns an approval link, and Approve on that page creates the enablement.
+Enablements created before minting stopped enabling keep running. A webhook
+verifies a signature only when its manifest declares `verification`; otherwise
+its URL secret is the credential. The generated signing secret on unsigned
+endpoints is stored but not checked.
 
 ### Checking many resources
 
