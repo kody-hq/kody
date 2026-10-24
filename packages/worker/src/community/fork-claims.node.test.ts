@@ -2,7 +2,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { CommunityForkInProgressError } from './errors.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
+import {
+	CommunityForkClaimLostError,
+	CommunityForkInProgressError,
+} from './errors.ts'
 import {
 	acquireCommunityForkClaim,
 	getActiveCommunityForkClaim,
@@ -172,4 +176,35 @@ test('withCommunityForkClaim keeps renewing while work runs', async () => {
 			listingId: 'listing-1',
 		}),
 	).toBeNull()
+})
+
+test('withCommunityForkClaim aborts work when the claim is taken over', async () => {
+	consoleError.mockImplementation(() => {})
+	const db = createDb()
+	let reachedAssert = false
+	const running = withCommunityForkClaim(
+		{ db, ...key, renewMs: 5 },
+		async (hold) => {
+			const claim = await getActiveCommunityForkClaim(db, {
+				ownerIds: ['org-1'],
+				listingId: 'listing-1',
+			})
+			expect(claim?.claimId).toBe(hold.claimId)
+			// Simulate a crashed renew window: expire the lease and let another
+			// request take over while this holder is still "working".
+			const pastLease = new Date(Date.now() + 10 * 60_000)
+			const takeover = await acquireCommunityForkClaim(db, {
+				...key,
+				now: pastLease,
+			})
+			expect(takeover).toEqual(expect.any(String))
+			expect(takeover).not.toBe(hold.claimId)
+			reachedAssert = true
+			await hold.assertHeld()
+			return 'should-not-return'
+		},
+	)
+	await expect(running).rejects.toBeInstanceOf(CommunityForkClaimLostError)
+	expect(reachedAssert).toBe(true)
+	expect(consoleError).toHaveBeenCalled()
 })

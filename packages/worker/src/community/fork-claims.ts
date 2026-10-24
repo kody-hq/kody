@@ -1,4 +1,7 @@
-import { CommunityForkInProgressError } from './errors.ts'
+import {
+	CommunityForkClaimLostError,
+	CommunityForkInProgressError,
+} from './errors.ts'
 
 /**
  * DB-level guard that keeps community forks idempotent per (target owner,
@@ -7,6 +10,17 @@ import { CommunityForkInProgressError } from './errors.ts'
  * fork requests (double submit, a retry after navigating away, an agent and
  * the web UI at once) cannot both create a fork.
  */
+
+/** Live hold passed into `withCommunityForkClaim` work. */
+export type CommunityForkClaimHold = {
+	claimId: string
+	/**
+	 * Confirm this request still owns the claim. Throws
+	 * {@link CommunityForkClaimLostError} after a takeover so create cannot
+	 * run without the lease.
+	 */
+	assertHeld: () => Promise<void>
+}
 
 /** A crashed request releases its claim after this long. */
 const communityForkClaimLeaseMs = 5 * 60_000
@@ -166,6 +180,11 @@ export async function getActiveCommunityForkClaim(
  * Run `work` while holding the (owner, listing) claim. When another request
  * holds it, poll until that fork finishes (then run `work`, which should find
  * and return the finished fork) or the wait budget runs out.
+ *
+ * If renewal reports the claim is gone, `work` is rejected with
+ * {@link CommunityForkClaimLostError} so a former holder cannot keep creating
+ * after a takeover. Callers that create should also `assertHeld()` immediately
+ * before the create write.
  */
 export async function withCommunityForkClaim<T>(
 	input: {
@@ -179,7 +198,7 @@ export async function withCommunityForkClaim<T>(
 		sleep?: (ms: number) => Promise<void>
 		onWaiting?: (claim: CommunityForkClaim | null) => void | Promise<void>
 	},
-	work: () => Promise<T>,
+	work: (hold: CommunityForkClaimHold) => Promise<T>,
 ): Promise<T> {
 	const waitMs = input.waitMs ?? communityForkClaimWaitMs
 	const pollMs = input.pollMs ?? communityForkClaimPollMs
@@ -200,23 +219,49 @@ export async function withCommunityForkClaim<T>(
 				listingId: input.listingId,
 				claimId,
 			}
+			let claimLost = false
+			let rejectLost: ((error: Error) => void) | null = null
+			const lost = new Promise<never>((_, reject) => {
+				rejectLost = reject
+			})
+			const markLost = () => {
+				if (claimLost) return
+				claimLost = true
+				console.error('community fork claim lost before the fork finished')
+				rejectLost?.(new CommunityForkClaimLostError())
+			}
+			const hold: CommunityForkClaimHold = {
+				claimId,
+				assertHeld: async () => {
+					const held = await renewCommunityForkClaim(input.db, claimKey)
+					if (!held) {
+						markLost()
+						throw new CommunityForkClaimLostError()
+					}
+				},
+			}
 			const renewal = setInterval(() => {
 				void renewCommunityForkClaim(input.db, claimKey)
 					.then((held) => {
-						if (!held) {
-							console.error(
-								'community fork claim lost before the fork finished',
-							)
-						}
+						if (!held) markLost()
 					})
 					.catch((error: unknown) => {
+						// Transient renewal failures keep the lease until expiry;
+						// only a confirmed false (takeover) aborts create.
 						console.error('community fork claim renewal failed', error)
 					})
 			}, input.renewMs ?? communityForkClaimRenewMs)
 			try {
-				return await work()
+				return await Promise.race([
+					work(hold).then((value) => {
+						if (claimLost) throw new CommunityForkClaimLostError()
+						return value
+					}),
+					lost,
+				])
 			} finally {
 				clearInterval(renewal)
+				rejectLost = null
 				try {
 					await releaseCommunityForkClaim(input.db, {
 						ownerId: input.ownerId,

@@ -1924,9 +1924,11 @@ export async function runIdempotentCommunityFork<T>(
 			pollMs: input.claimPollMs,
 			onWaiting: input.onWaiting,
 		},
-		async () => {
+		async (hold) => {
 			const existing = await findExistingCommunityFork(input)
 			if (existing) return await handlers.existing(existing)
+			// Fence create on a live claim so a lost lease cannot duplicate.
+			await hold.assertHeld()
 			return await handlers.create()
 		},
 	)

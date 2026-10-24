@@ -65,3 +65,16 @@ export class CommunityForkInProgressError extends CommunityActionError {
 		this.startedAt = startedAt
 	}
 }
+
+/**
+ * This request's fork claim was taken over (lease expired without renewal, or
+ * another holder won). Stop before creating a second fork of the same listing.
+ */
+export class CommunityForkClaimLostError extends CommunityActionError {
+	constructor() {
+		super(
+			'The fork claim for this listing was lost before the fork finished, so creation stopped to avoid a duplicate. Try forking again.',
+		)
+		this.name = 'CommunityForkClaimLostError'
+	}
+}
