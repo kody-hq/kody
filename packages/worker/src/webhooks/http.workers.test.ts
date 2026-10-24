@@ -55,10 +55,13 @@ vi.mock('#worker/package-invocations/service.ts', async () => {
 	}
 })
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
-		mocks.loadPackageManifestBySourceId(...args),
-}))
+vi.mock('#worker/package-registry/source.ts', async () => {
+	const { createSubscriptionDiscoverySourceMocks } =
+		await import('#worker/test-support/package-subscription-source-mocks.ts')
+	return createSubscriptionDiscoverySourceMocks(
+		mocks.loadPackageManifestBySourceId,
+	)
+})
 
 vi.mock('#mcp/secrets/service.ts', () => ({
 	resolveSecret: (...args: Array<unknown>) => mocks.resolveSecret(...args),

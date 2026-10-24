@@ -3,6 +3,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -20,10 +21,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 		mocks.listSavedPackagesByUserId(...args),
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
-		mocks.loadPackageManifestBySourceId(...args),
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#worker/connection-profiles/repo.ts', () => ({
 	resolveConnectionProfileGrants: (...args: Array<unknown>) =>
