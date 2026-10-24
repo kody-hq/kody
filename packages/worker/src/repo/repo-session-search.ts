@@ -1,4 +1,7 @@
-import { buildRepoSearchInvalidRegexCallerMessage } from './repo-session-caller-error.ts'
+import {
+	buildRepoSearchEmptyPatternCallerMessage,
+	buildRepoSearchInvalidRegexCallerMessage,
+} from './repo-session-caller-error.ts'
 import {
 	type RepoSearchFileMatch,
 	type RepoSearchMatch,
@@ -136,7 +139,9 @@ function normalizeSearchQuery(input: {
 }) {
 	const pattern = input.pattern.trim()
 	if (!pattern) {
-		throw new Error('repoSearch requires a non-empty pattern.')
+		// Caller-correctable input. Keep the stable prefix so MCP can classify
+		// this after DO RPC loses Error subclass identity. KODY-BA.
+		throw new Error(buildRepoSearchEmptyPatternCallerMessage())
 	}
 	return {
 		query: pattern,
