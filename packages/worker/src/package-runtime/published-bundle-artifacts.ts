@@ -363,30 +363,33 @@ async function writePreparedPublishedBundleArtifact(
 	})
 }
 
+function writtenPublishedBundleArtifactIdentityKey(
+	entry: WrittenPublishedBundleArtifactPersist,
+) {
+	return publishedBundleArtifactIdentityKey({
+		sourceId: entry.rowInput.sourceId,
+		artifactKind: entry.rowInput.artifactKind,
+		artifactName: entry.rowInput.artifactName,
+		entryPoint: entry.rowInput.entryPoint,
+	})
+}
+
 async function upsertPreparedPublishedBundleArtifactRows(
 	prepared: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
 ): Promise<Array<string | null>> {
 	if (prepared.length === 0) return []
 	const unique = new Map<string, WrittenPublishedBundleArtifactPersist>()
 	for (const entry of prepared) {
-		unique.set(
-			publishedBundleArtifactIdentityKey({
-				sourceId: entry.rowInput.sourceId,
-				artifactKind: entry.rowInput.artifactKind,
-				artifactName: entry.rowInput.artifactName,
-				entryPoint: entry.rowInput.entryPoint,
-			}),
-			entry,
-		)
+		unique.set(writtenPublishedBundleArtifactIdentityKey(entry), entry)
 	}
 	const entries = [...unique.values()]
 	const db = entries[0]!.env.APP_DB
 	const rowInputs = entries.map((entry) => entry.rowInput)
-	const rowIds =
+	const uniqueRowIds =
 		rowInputs.length === 1
 			? [await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)]
 			: await upsertPublishedBundleArtifactRows(db, rowInputs)
-	const refused = entries.filter((_, index) => rowIds[index] == null)
+	const refused = entries.filter((_, index) => uniqueRowIds[index] == null)
 	if (refused.length > 0) {
 		await Promise.all(
 			refused.map(async (entry) => {
@@ -399,7 +402,19 @@ async function upsertPreparedPublishedBundleArtifactRows(
 			}),
 		)
 	}
-	return rowIds
+	const idByIdentity = new Map<string, string | null>()
+	for (const [index, entry] of entries.entries()) {
+		idByIdentity.set(
+			writtenPublishedBundleArtifactIdentityKey(entry),
+			uniqueRowIds[index] ?? null,
+		)
+	}
+	// Expand back to the caller’s written order (duplicates share the winner).
+	return prepared.map(
+		(entry) =>
+			idByIdentity.get(writtenPublishedBundleArtifactIdentityKey(entry)) ??
+			null,
+	)
 }
 
 export async function persistPublishedBundleArtifact(
