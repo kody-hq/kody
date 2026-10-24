@@ -1,19 +1,12 @@
 import { type ErrorEvent, type EventHint } from '@sentry/core'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
-	isBareRetryableD1LockMessage,
+	isBareRetryableD1LockSentryEvent,
 	isRetryableD1StorageUnavailabilityError,
+	transientDatabaseUnavailableMessage,
 } from '@kody-internal/shared/d1-retry.ts'
 
 export * from '@kody-internal/shared/d1-retry.ts'
-
-/**
- * Public Open API / MCP message when D1 platform blips outlive storage
- * retries (in-flight export, overload, opaque platform faults). Kept here so
- * Sentry remap matching and `toApiError` share one string.
- */
-export const transientDatabaseUnavailableMessage =
-	'Kody storage was briefly unavailable. Retry in a few seconds.'
 
 /**
  * Exhausted published-artifact rebuild wrapper (KODY-AP). MCP `api` captures
@@ -45,20 +38,10 @@ export function isRetryableD1LockSentryEvent(
 	hint?: EventHint,
 ) {
 	if (isRetryableD1LockRemapError(hint?.originalException)) return true
-	const messages = [
-		event.message,
-		...(event.exception?.values?.map((value) => value.value) ?? []),
-	].filter(
-		(message): message is string =>
-			typeof message === 'string' && message.trim().length > 0,
-	)
 	// Drop only when every reported message is a bare D1 platform blip.
-	// Use the anchored/exact predicate (not the substring retry matcher) so
+	// Shared anchored/exact predicate (not the substring retry matcher) so
 	// rebuild/recovery wrappers that embed SQLITE_BUSY, export, or reset text
 	// stay Sentry-visible even when the cause is a matching D1 blip — unless
 	// `hint.originalException` matches {@link isRetryableD1LockRemapError}.
-	return (
-		messages.length > 0 &&
-		messages.every((message) => isBareRetryableD1LockMessage(message))
-	)
+	return isBareRetryableD1LockSentryEvent(event)
 }
