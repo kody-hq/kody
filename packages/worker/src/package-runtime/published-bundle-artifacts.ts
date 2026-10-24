@@ -205,8 +205,10 @@ function preparePublishedBundleArtifactPersist(
 
 /**
  * Persist many published bundle artifacts with one batched identity upsert
- * (constant D1 round trips for the row writes). KV writes stay per artifact.
- * On failure, best-effort deletes every KV key written in this call.
+ * (constant D1 round trips for the row writes). KV writes stay per artifact and
+ * run before the D1 upsert. If the upsert phase has started, KV keys are left
+ * in place on failure — orphan KV is safe; deleting keys that identity rows
+ * already point at is not.
  */
 export async function persistPublishedBundleArtifacts(
 	inputs: ReadonlyArray<PersistPublishedBundleArtifactInput>,
@@ -220,6 +222,7 @@ export async function persistPublishedBundleArtifacts(
 	if (prepared.length === 0) {
 		return preparedByIndex.map(() => null)
 	}
+	let upsertStarted = false
 	try {
 		await Promise.all(
 			prepared.map(async (entry) => {
@@ -230,6 +233,7 @@ export async function persistPublishedBundleArtifacts(
 				})
 			}),
 		)
+		upsertStarted = true
 		const db = prepared[0]!.env.APP_DB
 		const rowInputs = prepared.map((entry) => entry.rowInput)
 		if (rowInputs.length === 1) {
@@ -238,19 +242,46 @@ export async function persistPublishedBundleArtifacts(
 			await upsertPublishedBundleArtifactRows(db, rowInputs)
 		}
 	} catch (error) {
-		await Promise.all(
-			prepared.map(async (entry) => {
-				await deletePublishedBundleArtifact({
-					env: entry.env,
-					kvKey: entry.kvKey,
-				}).catch(() => {
-					// Best effort; preserve the original DB/KV failure as the root cause.
-				})
-			}),
-		)
+		if (!upsertStarted) {
+			await Promise.all(
+				prepared.map(async (entry) => {
+					await deletePublishedBundleArtifact({
+						env: entry.env,
+						kvKey: entry.kvKey,
+					}).catch(() => {
+						// Best effort; preserve the original DB/KV failure as the root cause.
+					})
+				}),
+			)
+		}
 		throw error
 	}
 	return preparedByIndex.map((entry) => entry?.kvKey ?? null)
+}
+
+async function writePreparedPublishedBundleArtifact(
+	prepared: PreparedPublishedBundleArtifactPersist,
+) {
+	await writePublishedBundleArtifact({
+		env: prepared.env,
+		artifact: prepared.artifact,
+		kvKey: prepared.kvKey,
+	})
+}
+
+async function upsertPreparedPublishedBundleArtifactRows(
+	prepared: ReadonlyArray<
+		Pick<PreparedPublishedBundleArtifactPersist, 'env' | 'rowInput'>
+	>,
+) {
+	if (prepared.length === 0) return
+	const db = prepared[0]!.env.APP_DB
+	const rowInputs = prepared.map((entry) => entry.rowInput)
+	if (rowInputs.length === 1) {
+		await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
+		return
+	}
+	await upsertPublishedBundleArtifactRows(db, rowInputs)
 }
 
 export async function persistPublishedBundleArtifact(
@@ -856,10 +887,10 @@ export type PersistPublishedPackageArtifactTargetResult =
 
 /**
  * Build then persist many package artifact targets with one batched D1 upsert.
- * Builds stay sequential (caller controls order); only the identity row writes
- * are batched — the N+1 Sentry pattern on multi-target rebuilds. Per-target
- * build failures are isolated; a batch upsert failure marks every built target
- * failed (KV rollback is handled inside persistPublishedBundleArtifacts).
+ * Each successful build writes KV immediately (so heap stays one bundle) and
+ * only the identity row writes are batched. Per-target build failures are
+ * isolated; a batch upsert failure marks built targets failed but leaves their
+ * KV keys (orphan KV is safe; deleting keys identity rows may point at is not).
  */
 export async function persistPublishedPackageArtifactTargets(
 	input: {
@@ -873,15 +904,19 @@ export async function persistPublishedPackageArtifactTargets(
 	if (input.targets.length === 0) return []
 	const results: Array<PersistPublishedPackageArtifactTargetResult | null> =
 		input.targets.map(() => null)
-	const persistInputs: Array<PersistPublishedBundleArtifactInput> = []
-	const persistIndexes: Array<number> = []
+	const written: Array<{
+		index: number
+		kvKey: string
+		rowInput: PublishedBundleArtifactUpsertInput
+		env: Env
+	}> = []
 	for (const [index, target] of input.targets.entries()) {
 		try {
 			const bundle = await buildPublishedPackageArtifactTargetBundle({
 				...input,
 				target,
 			})
-			persistInputs.push(
+			const prepared = preparePublishedBundleArtifactPersist(
 				toPersistPublishedPackageArtifactInput({
 					env: input.env,
 					userId: input.userId,
@@ -891,28 +926,38 @@ export async function persistPublishedPackageArtifactTargets(
 					bundle,
 				}),
 			)
-			persistIndexes.push(index)
+			if (!prepared) {
+				results[index] = { ok: true, target, kvKey: null }
+				continue
+			}
+			await writePreparedPublishedBundleArtifact(prepared)
+			written.push({
+				index,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+				env: prepared.env,
+			})
 		} catch (error) {
 			results[index] = { ok: false, target, error }
 		}
 	}
-	if (persistInputs.length > 0) {
+	if (written.length > 0) {
 		try {
-			const kvKeys = await persistPublishedBundleArtifacts(persistInputs)
-			for (const [persistOffset, inputIndex] of persistIndexes.entries()) {
-				const target = input.targets[inputIndex]
+			await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const entry of written) {
+				const target = input.targets[entry.index]
 				if (!target) continue
-				results[inputIndex] = {
+				results[entry.index] = {
 					ok: true,
 					target,
-					kvKey: kvKeys[persistOffset] ?? null,
+					kvKey: entry.kvKey,
 				}
 			}
 		} catch (error) {
-			for (const inputIndex of persistIndexes) {
-				const target = input.targets[inputIndex]
+			for (const entry of written) {
+				const target = input.targets[entry.index]
 				if (!target) continue
-				results[inputIndex] = { ok: false, target, error }
+				results[entry.index] = { ok: false, target, error }
 			}
 		}
 	}
@@ -1002,32 +1047,53 @@ export async function rebuildPublishedPackageArtifacts(
 	)
 	if (targetsNeedingPersist.length === 0) return
 
-	// Overlap esbuild work, then one batched identity upsert for the chunk.
-	const persistInputs: Array<PersistPublishedBundleArtifactInput> = []
+	// Overlap esbuild (cap 2), write each KV immediately so peak heap stays
+	// near the concurrency window, then one batched identity upsert. Build
+	// failures are isolated so successful siblings still land (same as the
+	// prior per-target persist loop).
+	const written: Array<{
+		env: Env
+		rowInput: PublishedBundleArtifactUpsertInput
+	}> = []
+	let firstError: unknown = null
 	await mapWithConcurrency(
 		targetsNeedingPersist,
 		publishedPackageArtifactRebuildConcurrency,
 		async (target) => {
-			const bundle = await buildPublishedPackageArtifactTargetBundle({
-				target,
-				buildAppBundle: input.buildAppBundle,
-				buildAppClientBundle: input.buildAppClientBundle,
-				buildModuleBundle: input.buildModuleBundle,
-				buildImportableModuleBundle: input.buildImportableModuleBundle,
-			})
-			persistInputs.push(
-				toPersistPublishedPackageArtifactInput({
-					env: input.env,
-					userId: input.userId,
-					source: input.source,
-					savedPackage: input.savedPackage,
+			try {
+				const bundle = await buildPublishedPackageArtifactTargetBundle({
 					target,
-					bundle,
-				}),
-			)
+					buildAppBundle: input.buildAppBundle,
+					buildAppClientBundle: input.buildAppClientBundle,
+					buildModuleBundle: input.buildModuleBundle,
+					buildImportableModuleBundle: input.buildImportableModuleBundle,
+				})
+				const prepared = preparePublishedBundleArtifactPersist(
+					toPersistPublishedPackageArtifactInput({
+						env: input.env,
+						userId: input.userId,
+						source: input.source,
+						savedPackage: input.savedPackage,
+						target,
+						bundle,
+					}),
+				)
+				if (!prepared) return
+				await writePreparedPublishedBundleArtifact(prepared)
+				written.push({ env: prepared.env, rowInput: prepared.rowInput })
+			} catch (error) {
+				firstError ??= error
+			}
 		},
 	)
-	await persistPublishedBundleArtifacts(persistInputs)
+	if (written.length > 0) {
+		try {
+			await upsertPreparedPublishedBundleArtifactRows(written)
+		} catch (error) {
+			firstError ??= error
+		}
+	}
+	if (firstError != null) throw firstError
 }
 
 export async function deletePublishedArtifactsForSource(input: {
