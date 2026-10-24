@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import {
+	agentsSdkSqlErrorMessagePrefix,
 	durableObjectCodeUpdatedResetMessage,
 	durableObjectInstanceInactiveCloseMessage,
 	durableObjectSqliteOutOfMemoryMessage,
@@ -43,10 +44,39 @@ test('transient Durable Object reset retry recovers thrown and result errors the
 		[new Error(durableObjectInstanceInactiveCloseMessage), true],
 		[durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''), true],
 		[new Error(durableObjectSqliteOutOfMemoryMessage), true],
+		// KODY-B9: Agents SDK SqlError wraps the bare DO SQLite OOM; treat the
+		// wrapper the same as the bare platform string for retry classification.
+		[
+			`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, '')}`,
+			true,
+		],
+		[
+			new Error(
+				`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
+				{
+					cause: new Error(
+						durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''),
+					),
+				},
+			),
+			true,
+		],
+		[
+			new Error(
+				`${agentsSdkSqlErrorMessagePrefix} database is locked: SQLITE_BUSY`,
+			),
+			false,
+		],
 		[new Error('user code failed'), false],
 		[
 			new Error(
 				`serveMcp could not recover after retries: D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
+			),
+			false,
+		],
+		[
+			new Error(
+				`serveMcp could not recover after retries: ${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
 			),
 			false,
 		],
