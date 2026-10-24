@@ -299,6 +299,20 @@ async function refreshPlatformIntegrationRequiredHosts(
 	}
 }
 
+/** Comparable OAuth app settings, without timestamps or connection counts. */
+function oauthAppAuditShape(app: JoinedIntegration['app'] | null) {
+	if (!app) return null
+	const settings: Record<string, unknown> = { ...app }
+	delete settings['createdAt']
+	delete settings['updatedAt']
+	delete settings['connectionCount']
+	return JSON.stringify(
+		Object.keys(settings)
+			.sort()
+			.map((key) => [key, settings[key]]),
+	)
+}
+
 /**
  * Audits an OAuth connection save: created for a new connection, otherwise
  * a detail edit naming the fields that changed. Token writes audit
@@ -310,16 +324,17 @@ async function auditIntegrationUpsert(input: {
 	orgId: string
 	name: string
 	before: UserIntegrationConnection | null
+	/** The connection's OAuth app before the save, to catch app setting edits. */
+	beforeApp?: JoinedIntegration['app'] | null
 }) {
 	if (!input.audit) return
-	const after = (
-		await getJoinedIntegrationByName({
-			db: input.db,
-			userId: input.orgId,
-			name: input.name,
-		})
-	)?.connection
-	if (!after) return
+	const joined = await getJoinedIntegrationByName({
+		db: input.db,
+		userId: input.orgId,
+		name: input.name,
+	})
+	const after = joined?.connection
+	if (!joined || !after) return
 	const credential = {
 		id: after.credentialId,
 		kind: 'integration' as const,
@@ -342,6 +357,13 @@ async function auditIntegrationUpsert(input: {
 	if (!sameStringSet(input.before.scopes, after.scopes)) fields.push('scopes')
 	if (!sameStringSet(input.before.requiredHosts, after.requiredHosts)) {
 		fields.push('hosts')
+	}
+	if (
+		input.beforeApp !== undefined &&
+		oauthAppAuditShape(input.beforeApp) !== oauthAppAuditShape(joined.app)
+	) {
+		// Names the field only. App settings never go into audit details.
+		fields.push('config')
 	}
 	if (fields.length === 0) return
 	await recordCredentialAudit(input.audit, {
@@ -441,6 +463,7 @@ export async function upsertIntegration(
 		orgId: input.userId,
 		name: config.name,
 		before: existing?.connection ?? null,
+		beforeApp: existing?.app ?? null,
 	})
 	return saved
 }
@@ -624,6 +647,7 @@ export async function upsertPlatformIntegration(input: {
 		orgId: input.userId,
 		name,
 		before: existing?.connection ?? null,
+		beforeApp: existing?.app ?? null,
 	})
 	return saved
 }

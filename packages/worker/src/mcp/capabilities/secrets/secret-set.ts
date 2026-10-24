@@ -176,7 +176,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else if (typeof parsed.value === 'string' && parsed.value.length > 0) {
 				saved = await saveSecret({
 					env: ctx.env,
-					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					userEmail: user.email,
 					scope: parsed.scope,
@@ -193,7 +196,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else {
 				saved = await updateSecret({
 					env: ctx.env,
-					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					scope: parsed.scope,
 					name: parsed.name,

@@ -80,7 +80,10 @@ export const secretDisconnectCapability = defineDomainCapability(
 			return {
 				disconnected: await disconnectSecret({
 					env: ctx.env,
-					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+					audit:
+						args.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					name: args.name,
 					scope: args.scope,

@@ -377,6 +377,11 @@ export async function saveSecret(
 				: null,
 		}),
 	})
+	// Audit rows land after HMAC rotation so an audit failure cannot skip it.
+	const pendingAudits: Array<{
+		writer: OrgAuditWriter | null
+		change: CredentialAuditChange
+	}> = []
 	let previousPlaintext: string | null = null
 	if (existingEntry) {
 		try {
@@ -449,7 +454,10 @@ export async function saveSecret(
 			detailFields,
 		})
 		if (valueChange) {
-			await recordCredentialAudit(credential.audit.writer, valueChange)
+			pendingAudits.push({
+				writer: credential.audit.writer,
+				change: valueChange,
+			})
 		}
 		placementAfter = readCredentialFillPlacement(credential.placementJson)
 		placementOriginAfter = 'explicit'
@@ -509,7 +517,7 @@ export async function saveSecret(
 						detailFields,
 					})
 				: null
-			if (change) await recordCredentialAudit(input.audit, change)
+			if (change) pendingAudits.push({ writer: input.audit, change })
 		}
 		placementAfter =
 			existingEntry != null
@@ -571,6 +579,9 @@ export async function saveSecret(
 			now,
 			...(input.scope === 'package' ? { packageId: bucket.binding_key } : {}),
 		})
+	}
+	for (const pending of pendingAudits) {
+		await recordCredentialAudit(pending.writer, pending.change)
 	}
 	if (existingEntry == null && input.scope === 'user') {
 		await stampFirstSecret(
@@ -906,23 +917,6 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		}
 		throw error
 	}
-	await recordCredentialAudit(
-		input.audit,
-		prepared.flatMap((entry) => {
-			const change = userSecretWriteAuditChange({
-				orgId: input.userId,
-				credentialId: entry.existingEntry.id,
-				name: entry.name,
-				created: false,
-				valueChanged: entry.valueChanged,
-				detailFields: changedSecretDetailFields(entry.existingEntry, {
-					description: entry.description,
-					expiresAt: entry.existingEntry.expires_at,
-				}),
-			})
-			return change ? [change] : []
-		}),
-	)
 
 	for (const entry of prepared) {
 		let previousPlaintext: string | null = null
@@ -948,6 +942,23 @@ export async function updateUserSecretsForPackageAtomically(input: {
 			now,
 		})
 	}
+	await recordCredentialAudit(
+		input.audit,
+		prepared.flatMap((entry) => {
+			const change = userSecretWriteAuditChange({
+				orgId: input.userId,
+				credentialId: entry.existingEntry.id,
+				name: entry.name,
+				created: false,
+				valueChanged: entry.valueChanged,
+				detailFields: changedSecretDetailFields(entry.existingEntry, {
+					description: entry.description,
+					expiresAt: entry.existingEntry.expires_at,
+				}),
+			})
+			return change ? [change] : []
+		}),
+	)
 
 	return prepared.map((entry) =>
 		toSecretMetadata({
@@ -1147,8 +1158,9 @@ async function saveSecretsAtomically(input: {
 				: {}),
 		})),
 	})
+	const auditChanges: Array<CredentialAuditChange> = []
 	if (input.scope === 'user' && input.audit) {
-		const changes: Array<CredentialAuditChange> = []
+		const changes = auditChanges
 		for (const entry of prepared) {
 			const credentialId =
 				entry.existingEntry?.id ??
@@ -1171,7 +1183,6 @@ async function saveSecretsAtomically(input: {
 			})
 			if (change) changes.push(change)
 		}
-		await recordCredentialAudit(input.audit, changes)
 	}
 	if (packageIdForPlacement && input.baseUrl) {
 		for (const entry of prepared) {
@@ -1260,6 +1271,8 @@ async function saveSecretsAtomically(input: {
 			})
 		}
 	}
+	// After HMAC rotation, so an audit failure cannot skip it.
+	await recordCredentialAudit(input.audit, auditChanges)
 	if (input.scope === 'user' && newSecretCount > 0) {
 		await stampFirstSecret(
 			input.env.APP_DB,
@@ -1860,6 +1873,7 @@ export async function updateSecret(
 			updated_at: now,
 		},
 	})
+	let updateAudit: CredentialAuditChange | null = null
 	if (input.scope === 'user') {
 		const change = userSecretWriteAuditChange({
 			orgId: input.userId,
@@ -1872,7 +1886,7 @@ export async function updateSecret(
 				expiresAt: entryExpiresAt,
 			}),
 		})
-		if (change) await recordCredentialAudit(input.audit, change)
+		if (change) updateAudit = change
 	}
 	if (
 		hasValueUpdate &&
@@ -1890,6 +1904,8 @@ export async function updateSecret(
 			...(input.scope === 'package' ? { packageId: bucket.binding_key } : {}),
 		})
 	}
+	// After HMAC rotation, so an audit failure cannot skip it.
+	if (updateAudit) await recordCredentialAudit(input.audit, updateAudit)
 	return toSecretMetadata({
 		name,
 		scope: input.scope,

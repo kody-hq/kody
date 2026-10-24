@@ -59,9 +59,9 @@ export function credentialAuditEvent(
 		resourceType: 'credential',
 		resourceId: change.credential.id,
 		details: {
+			...change.details,
 			credentialKind: change.credential.kind,
 			name: change.credential.name,
-			...change.details,
 		},
 	}
 }
@@ -116,12 +116,18 @@ export function allowedPackagesAuditChange(input: {
 	before: { usageMode: string; allowedPackageIds: ReadonlyArray<string> }
 	after: { usageMode: string; allowedPackageIds: ReadonlyArray<string> }
 }): CredentialAuditChange | null {
+	const fields: Array<'usage_mode' | 'allowed_packages'> = []
+	if (input.before.usageMode !== input.after.usageMode)
+		fields.push('usage_mode')
 	if (
-		input.before.usageMode === input.after.usageMode &&
-		sameStringSet(input.before.allowedPackageIds, input.after.allowedPackageIds)
+		!sameStringSet(
+			input.before.allowedPackageIds,
+			input.after.allowedPackageIds,
+		)
 	) {
-		return null
+		fields.push('allowed_packages')
 	}
+	if (fields.length === 0) return null
 	return {
 		orgId: input.orgId,
 		credential: input.credential,
@@ -135,7 +141,7 @@ export function allowedPackagesAuditChange(input: {
 				input.before.allowedPackageIds,
 				input.after.allowedPackageIds,
 			),
-			fields: ['allowed_packages'],
+			fields,
 		},
 	}
 }

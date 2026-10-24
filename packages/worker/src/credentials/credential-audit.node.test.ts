@@ -26,6 +26,10 @@ import {
 } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import {
+	allowedPackagesAuditChange,
+	credentialAuditEvent,
+} from './credential-audit.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('org-credential-audit')
@@ -196,6 +200,18 @@ test('OAuth connections audit create, detail edits, package approvals, and delet
 		description: 'Work mail',
 		audit,
 	})
+	// An OAuth app setting edit names config, never the setting itself.
+	await upsertIntegration({
+		env,
+		userId,
+		config: {
+			...googleConfig,
+			requiredHosts: ['www.googleapis.com', 'gmail.googleapis.com'],
+			clientId: 'google-client-id-rotated',
+		},
+		description: 'Work mail',
+		audit,
+	})
 	await setIntegrationUsage({
 		env,
 		userId,
@@ -211,9 +227,11 @@ test('OAuth connections audit create, detail edits, package approvals, and delet
 	expect(audited.map((row) => [row.action, row.details.fields])).toEqual([
 		['credential.created', []],
 		['credential.details_updated', ['description', 'hosts']],
-		['credential.allowed_packages_updated', ['allowed_packages']],
+		['credential.details_updated', ['config']],
+		['credential.allowed_packages_updated', ['usage_mode']],
 		['credential.deleted', []],
 	])
+	expect(JSON.stringify(audited)).not.toContain('google-client-id-rotated')
 	expect(
 		audited.every(
 			(row) =>
@@ -221,9 +239,48 @@ test('OAuth connections audit create, detail edits, package approvals, and delet
 				row.details.name === 'google',
 		),
 	).toBe(true)
-	expect(audited[2]!.details.usageMode).toEqual({
+	expect(audited[3]!.details.usageMode).toEqual({
 		before: 'any',
 		after: 'packages',
 	})
 	expect(JSON.stringify(audited)).not.toContain('google-client-id-value')
+})
+
+test('allowed packages audit names only the parts that changed', () => {
+	const credential = { id: 'cred-1', kind: 'integration' as const, name: 'gh' }
+	const base = { orgId: 'org-1', credential }
+	expect(
+		allowedPackagesAuditChange({
+			...base,
+			before: { usageMode: 'all', allowedPackageIds: ['a'] },
+			after: { usageMode: 'all', allowedPackageIds: ['a'] },
+		}),
+	).toBeNull()
+	expect(
+		allowedPackagesAuditChange({
+			...base,
+			before: { usageMode: 'all', allowedPackageIds: ['a'] },
+			after: { usageMode: 'selected', allowedPackageIds: ['a'] },
+		})?.details?.fields,
+	).toEqual(['usage_mode'])
+	expect(
+		allowedPackagesAuditChange({
+			...base,
+			before: { usageMode: 'selected', allowedPackageIds: ['a'] },
+			after: { usageMode: 'selected', allowedPackageIds: ['a', 'b'] },
+		})?.details?.fields,
+	).toEqual(['allowed_packages'])
+})
+
+test('credential identity in audit details cannot be overridden by extra details', () => {
+	const event = credentialAuditEvent({
+		orgId: 'org-1',
+		credential: { id: 'cred-1', kind: 'secret', name: 'real' },
+		action: 'credential.details_updated',
+		details: { name: 'spoofed', credentialKind: 'integration', fields: [] },
+	})
+	expect(event.details).toMatchObject({
+		name: 'real',
+		credentialKind: 'secret',
+	})
 })

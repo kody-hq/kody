@@ -132,7 +132,9 @@ export const secretSetManyCapability = defineDomainCapability(
 			}
 			const saved = await setSecretsAtomically({
 				env: ctx.env,
-				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+				audit: parsed.secrets.some((secret) => secret.scope === 'user')
+					? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+					: null,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				userEmail: user.email,
 				secrets: parsed.secrets.map((secret) => ({

@@ -85,7 +85,10 @@ export const secretDeleteCapability = defineDomainCapability(
 			if (packageRuntimeDisconnect) {
 				const disconnected = await disconnectSecret({
 					env: ctx.env,
-					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+					audit:
+						args.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					name: args.name,
 					scope: args.scope,
@@ -96,7 +99,10 @@ export const secretDeleteCapability = defineDomainCapability(
 			return {
 				deleted: await deleteSecret({
 					env: ctx.env,
-					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
+					audit:
+						args.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					name: args.name,
 					scope: args.scope,
