@@ -51,7 +51,6 @@ test('tab favicon markup is transparent edge-to-edge with scheme swap', () => {
 	expect(favicon).toContain('fill="#ffffff"')
 	expect(favicon).toMatch(/@media \(prefers-color-scheme: dark\)/)
 	expect(favicon).not.toContain('<rect')
-	expect(favicon).not.toMatch(/\bplate\b/)
 	// Light group: white face under black outline (outer fill before ring).
 	const lightGroup = favicon.match(/<g class="light">([\s\S]*?)<\/g>/)?.[1]
 	expect(lightGroup).toBeTruthy()

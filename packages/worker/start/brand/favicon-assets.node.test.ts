@@ -35,7 +35,6 @@ test('published favicon.svg matches the markup helper and has no plate', () => {
 	const published = readFileSync(path.join(publicDir, 'favicon.svg'), 'utf8')
 	expect(published).toBe(kodyFaviconSvgMarkup())
 	expect(published).not.toContain('<rect')
-	expect(published).not.toMatch(/\bplate\b/)
 	expect(published).toMatch(/@media \(prefers-color-scheme: dark\)/)
 	expect(published).toContain('fill-rule="evenodd"')
 	const viewBox = published

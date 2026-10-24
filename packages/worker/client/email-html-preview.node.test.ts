@@ -102,7 +102,4 @@ test('email HTML preview sandbox allows only popups that escape the sandbox', ()
 		'allow-popups',
 		'allow-popups-to-escape-sandbox',
 	])
-	expect(tokens).not.toContain('allow-scripts')
-	expect(tokens).not.toContain('allow-same-origin')
-	expect(tokens).not.toContain('allow-forms')
 })

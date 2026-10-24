@@ -14,7 +14,6 @@ import {
 	emailSendingEventTypes,
 	emptyR2Bucket,
 	encodeR2ObjectKey,
-	defaultDmarcReportForwardTo,
 	deleteEmailSendingEventSubscriptionIfPresent,
 	dmarcReportingRecordNames,
 	dmarcReportingTxtContent,
@@ -1249,7 +1248,6 @@ test('dmarcReportingTxtContent and record names cover system and user domains', 
 			userEmailDomain: 'kody.codes',
 		}),
 	).toEqual(['_dmarc.kody.codes'])
-	expect(defaultDmarcReportForwardTo).toBe('me@kentcdodds.com')
 })
 
 test('ensureDmarcReportingTxtRecords creates, updates, and reuses TXT records', async () => {

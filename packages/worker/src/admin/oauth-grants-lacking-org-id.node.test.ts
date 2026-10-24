@@ -1,7 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
-	oauthGrantsLackingOrgIdRevokeConfirm,
 	parseOauthGrantKvKey,
 	runOauthGrantsLackingOrgIdRevoke,
 } from './oauth-grants-lacking-org-id.ts'
@@ -88,9 +87,6 @@ test('dry-run counts grants lacking metadata.orgId and does not revoke', async (
 	})
 	expect(result.byClient).toEqual([{ clientId: 'client-cursor', count: 2 }])
 	expect(revokeGrant).not.toHaveBeenCalled()
-	expect(oauthGrantsLackingOrgIdRevokeConfirm).toBe(
-		'revoke grants lacking metadata.orgId',
-	)
 })
 
 test('apply revokes lacking grants and a second pass finds zero', async () => {

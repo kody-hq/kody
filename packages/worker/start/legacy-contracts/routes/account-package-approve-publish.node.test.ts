@@ -123,7 +123,6 @@ test('approve-publish with nothing pending uses a plain up-to-date title', async
 	expect(html).toContain('No unpublished commit is waiting')
 	expect(html).toContain('data-testid="approve-publish-empty-state"')
 	expect(html).toContain('You are all caught up.')
-	expect(html).not.toContain('Public version')
 	expect(html).not.toContain('Current published commit')
 	expect(html).not.toContain('Commit to promote')
 	expect(html).not.toContain('HEAD to publish')

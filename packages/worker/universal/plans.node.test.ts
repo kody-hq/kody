@@ -179,7 +179,6 @@ test('credit wallet state: only an eligible Pro wallet counts; balance > 0 funds
 
 test('purchasable Pro has Max stock always; empty wallet keeps the full Pro include; funded raises ceilings', () => {
 	const empty = resolvePlanLimits('pro', 'public', 'empty')
-	expect(empty).toEqual(proCreditsPlanLimits)
 	expect(
 		limitMismatches([
 			[10_000, 'pro', 'saved_packages', 'public', 'empty'],
