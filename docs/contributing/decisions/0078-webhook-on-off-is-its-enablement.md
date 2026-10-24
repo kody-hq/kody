@@ -1,7 +1,7 @@
 # 0078: Webhook on/off is its enablement
 
 - **Status:** accepted
-- **Date:** 2026-10-20
+- **Date:** 2026-10-24
 
 ## Context
 
