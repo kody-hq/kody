@@ -122,7 +122,7 @@ type InstallCommunityListingInput = {
 export async function installCommunityListing(
 	input: InstallCommunityListingInput,
 ): Promise<InstallCommunityListingResult> {
-	return await runIdempotentCommunityFork(
+	return await runIdempotentCommunityFork<InstallCommunityListingResult>(
 		{
 			env: input.env,
 			userId: input.userId,

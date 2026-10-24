@@ -1947,7 +1947,7 @@ export async function forkCommunityListing(
 		claimPollMs?: number
 	},
 ): Promise<ForkCommunityListingResult> {
-	return await runIdempotentCommunityFork(input, {
+	return await runIdempotentCommunityFork<ForkCommunityListingResult>(input, {
 		existing: async (fork) => {
 			const packageScope = input.expectedPackageScope.replace(/^@/, '')
 			const targetName = `@${packageScope}/${fork.targetKodyId}`
