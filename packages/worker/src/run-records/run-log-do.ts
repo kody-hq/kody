@@ -96,7 +96,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 15
+const runLogSchemaVersion = 16
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -1038,8 +1038,8 @@ class RunLogBase extends DurableObject<Env> {
 			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
 			ON run_day_counts(day)`,
 		)
-		if (installedVersion != null && installedVersion < 15) {
-			this.migrateRetrieverRunsForV15()
+		if (installedVersion != null && installedVersion < 16) {
+			this.migrateRetrieverRunsForV16()
 		}
 		// Warm objects only: record the migration UTC day as the coverage floor.
 		// Fresh objects keep a null boundary (no partial-history note).
@@ -1179,7 +1179,7 @@ class RunLogBase extends DurableObject<Env> {
 		}
 	}
 
-	private migrateRetrieverRunsForV15() {
+	private migrateRetrieverRunsForV16() {
 		this.transactionSyncWithMetaCache(() => {
 			const runCount = this.getMeta(metaRunCountKey)
 			this.ctx.storage.sql.exec(`
