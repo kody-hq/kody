@@ -4,7 +4,10 @@ import {
 	jobAuditActions,
 	recordJobAudit,
 } from './job-audit.ts'
-import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import {
 	type OwnerId,
 	type PersonId,
@@ -1099,6 +1102,7 @@ export async function updateJob(input: {
 					optionalOrgAuditWriter(
 						input.env,
 						input.callerContext.request ?? null,
+						orgAuditCauseFromCaller(input.callerContext),
 					),
 					{
 						orgId: ownerId,
@@ -1158,6 +1162,11 @@ export async function updateJob(input: {
 					reason:
 						normalizeToggleReason(input.body.reason) ??
 						(forcedOffByExpiry ? jobExpiredDisabledReason : null),
+					disabledReason: {
+						before: existing.disabledReason ?? null,
+						after: updated.disabledReason ?? null,
+					},
+					cause: orgAuditCauseFromCaller(input.callerContext),
 				})
 			}
 			return toJobView(updated)

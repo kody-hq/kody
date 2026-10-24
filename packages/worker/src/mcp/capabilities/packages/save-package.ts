@@ -1,4 +1,7 @@
-import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
 import {
@@ -540,6 +543,7 @@ export const savePackageCapability = defineDomainCapability(
 				audit: optionalOrgAuditWriter(
 					ctx.env,
 					ctx.callerContext.request ?? null,
+					orgAuditCauseFromCaller(ctx.callerContext),
 				),
 			})
 			const saved = refreshed.record

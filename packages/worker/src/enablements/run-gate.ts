@@ -83,6 +83,8 @@ export type EnablementSkip = {
 export type EnablementRunPlan = {
 	runs: Array<EnablementRun>
 	skipped: Array<EnablementSkip>
+	/** Each run's enabler access, checked for this event, by run id. */
+	access?: Map<string, EffectivePermissions>
 }
 
 /**
@@ -91,6 +93,11 @@ export type EnablementRunPlan = {
  */
 export type EnablementAudience = {
 	resource: Pick<OrgResource, 'type' | 'id'> | null
+	/**
+	 * An org-level permission that lets the enabler see the event instead,
+	 * for things that are not a grantable resource (org membership).
+	 */
+	orgPermission?: OrgPermission
 }
 
 /**
@@ -103,6 +110,9 @@ export function enablerCanSee(
 	audience: EnablementAudience,
 ): boolean {
 	if (access.isOwner) return true
+	if (audience.orgPermission) {
+		return checkPermission(access, audience.orgPermission).allowed
+	}
 	if (!audience.resource) return false
 	const resource: OrgResource = { ...audience.resource, orgId: access.orgId }
 	const families: ReadonlyArray<string> =
@@ -331,6 +341,7 @@ export async function planEnablementRuns(input: {
 	})
 	const runs: Array<EnablementRun> = []
 	const skipped: Array<EnablementSkip> = []
+	const access = new Map<string, EffectivePermissions>()
 	for (const enablement of enablements) {
 		const skip = (reason: EnablementSkipReason) =>
 			skipped.push({
@@ -391,6 +402,7 @@ export async function planEnablementRuns(input: {
 			continue
 		}
 		runs.push(check.run)
+		access.set(check.run.id, check.access)
 	}
-	return { runs, skipped }
+	return { runs, skipped, access }
 }

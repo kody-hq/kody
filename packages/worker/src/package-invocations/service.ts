@@ -20,6 +20,7 @@ import {
 	createPackageEventToolsWithToolFactories,
 	deliverPackageEventWithToolFactories,
 	invokePackageSubscriptionWithToolFactories,
+	type SubscriptionInvocationInput,
 } from './subscription-dispatch.ts'
 import { type TrustedSyntheticSubscriptionDispatch } from './subscription-envelope.ts'
 
@@ -105,6 +106,8 @@ export async function invokePackageSubscription(input: {
 	actorTokenId?: string
 	request: RequestSource
 	audience?: EnablementAudience | null
+	resourceEventDepth?: number
+	paramsForRun?: SubscriptionInvocationInput['paramsForRun']
 	inboundFromAddress?: string | null
 	inboundFromAuthenticated?: boolean
 	runtimeInvokeDepth?: number

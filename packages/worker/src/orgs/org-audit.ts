@@ -9,6 +9,7 @@ import {
 	orgAuditOutboxInsertStatement,
 	planOrgAuditOutbox,
 	redactOrgAuditOutboxActorIdsForDeletedUser,
+	type OrgAuditCause,
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 } from './org-audit-outbox.ts'
@@ -120,7 +121,7 @@ export async function redactOrgAuditActorIdsForDeletedUser(input: {
 	await redactOrgAuditEventsActorIds(db, input.userId)
 }
 
-export type { OrgAuditWriter } from './org-audit-outbox.ts'
+export type { OrgAuditCause, OrgAuditWriter } from './org-audit-outbox.ts'
 
 export function orgAuditWriterFromRequest(
 	env: Env,
@@ -133,7 +134,24 @@ export function orgAuditWriterFromRequest(
 		actorUsername: request.actor?.username ?? null,
 		credentialKind: request.credential.kind,
 		credentialId: request.credential.id,
+		env,
 	}
+}
+
+/**
+ * What caused a capability call's change: the package whose run made the
+ * call (its storage context) and the resource event depth that started that
+ * run. Null for a call outside a package run.
+ */
+export function orgAuditCauseFromCaller(
+	callerContext: Partial<
+		Pick<McpCallerContext, 'storageContext' | 'resourceEventDepth'>
+	>,
+): OrgAuditCause | null {
+	const packageId = callerContext.storageContext?.packageId?.trim() || null
+	const resourceEventDepth = callerContext.resourceEventDepth ?? 0
+	if (!packageId && resourceEventDepth === 0) return null
+	return { packageId, resourceEventDepth }
 }
 
 /**
@@ -142,12 +160,16 @@ export function orgAuditWriterFromRequest(
  */
 export function orgAuditWriterFromCaller(
 	env: Env,
-	callerContext: Pick<McpCallerContext, 'request'>,
+	callerContext: Pick<McpCallerContext, 'request'> &
+		Partial<Pick<McpCallerContext, 'storageContext' | 'resourceEventDepth'>>,
 ): OrgAuditWriter {
 	if (!callerContext.request) {
 		throw new Error('Credential writes require a signed-in request.')
 	}
-	return orgAuditWriterFromRequest(env, callerContext.request)
+	return {
+		...orgAuditWriterFromRequest(env, callerContext.request),
+		cause: orgAuditCauseFromCaller(callerContext),
+	}
 }
 
 /**
@@ -161,9 +183,13 @@ export function optionalOrgAuditWriter(
 		| RequestContext
 		| { userId: string | null; username?: string | null }
 		| null,
+	cause: OrgAuditCause | null = null,
 ): OrgAuditWriter | null {
 	const db = env.AUDIT_DB ?? auditDatabaseFromEnv(env)
 	if (!db) return null
+	// Callers pass the full worker env; the narrow type only names what the
+	// audit row itself needs.
+	const fullEnv = env as Env
 	if (actor && 'credential' in actor) {
 		return {
 			appDb: env.APP_DB,
@@ -172,6 +198,8 @@ export function optionalOrgAuditWriter(
 			actorUsername: actor.actor?.username ?? null,
 			credentialKind: actor.credential.kind,
 			credentialId: actor.credential.id,
+			cause,
+			env: fullEnv,
 		}
 	}
 	return {
@@ -181,6 +209,8 @@ export function optionalOrgAuditWriter(
 		actorUsername: actor?.username ?? null,
 		credentialKind: null,
 		credentialId: null,
+		cause,
+		env: fullEnv,
 	}
 }
 
@@ -213,6 +243,7 @@ export function orgAuditWriterForPerson(
 		actorUsername: actor.username ?? null,
 		credentialKind: null,
 		credentialId: null,
+		env,
 	}
 }
 

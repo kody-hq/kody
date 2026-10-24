@@ -2,6 +2,7 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import {
 	recordOrgAuditEvent,
+	type OrgAuditCause,
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 } from '#worker/orgs/org-audit.ts'
@@ -59,6 +60,7 @@ export type ToggleAuditDetails = {
 	jobId: string | null
 	name: string | null
 	triggerKind: string | null
+	disabledReason?: { before: string | null; after: string | null }
 }
 
 const maxReasonLength = 500
@@ -165,6 +167,7 @@ export function automationToggleActor(): ToggleAuditActor {
 function toggleAuditWriter(
 	env: Env,
 	actor: ToggleAuditActor,
+	cause: OrgAuditCause | null,
 ): OrgAuditWriter | null {
 	const db = env.AUDIT_DB ?? auditDatabaseFromEnv(env)
 	if (!db) return null
@@ -175,6 +178,8 @@ function toggleAuditWriter(
 		actorUsername: actor.username,
 		credentialKind: actor.credentialKind,
 		credentialId: actor.credentialId,
+		cause,
+		env,
 	}
 }
 
@@ -195,9 +200,13 @@ export async function recordToggleAudit(input: {
 	jobId?: string | null
 	name?: string | null
 	triggerKind?: string | null
+	/** The saved disabled reason before and after, when the caller has both. */
+	disabledReason?: { before: string | null; after: string | null } | null
+	/** The package run that made the change, if any. */
+	cause?: OrgAuditCause | null
 }): Promise<boolean> {
 	if (input.from === input.to) return false
-	const writer = toggleAuditWriter(input.env, input.actor)
+	const writer = toggleAuditWriter(input.env, input.actor, input.cause ?? null)
 	if (!writer) return false
 	const details: ToggleAuditDetails = {
 		from: input.from,
@@ -208,6 +217,7 @@ export async function recordToggleAudit(input: {
 		jobId: input.jobId ?? (input.resource === 'job' ? input.resourceId : null),
 		name: input.name ?? null,
 		triggerKind: input.triggerKind ?? null,
+		...(input.disabledReason ? { disabledReason: input.disabledReason } : {}),
 	}
 	try {
 		await recordOrgAuditEvent(writer, {
@@ -313,7 +323,7 @@ export function planEnablementToggle(input: {
 	reason?: string | null
 }): PlannedEnablementToggle | null {
 	const actor = toggleActorFromRequest(input.request)
-	const writer = toggleAuditWriter(input.env, actor)
+	const writer = toggleAuditWriter(input.env, actor, null)
 	if (!writer) return null
 	const plan = planOrgAuditOutbox(
 		writer,

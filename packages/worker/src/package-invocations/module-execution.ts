@@ -267,6 +267,7 @@ export async function runSavedPackageModuleOnce(
 			},
 			repoContext: repoSource ? createRepoContext(repoSource) : null,
 			source: input.actor.request,
+			resourceEventDepth: input.actor.resourceEventDepth ?? null,
 		})
 		// A run reads org mail only with its person's email:read.
 		const requireRunEmailRead = () =>

@@ -1,4 +1,7 @@
-import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
 import { denyProfileBoundPackageCreate } from '#worker/authorization/authorize.ts'
@@ -311,6 +314,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				audit: optionalOrgAuditWriter(
 					ctx.env,
 					ctx.callerContext.request ?? null,
+					orgAuditCauseFromCaller(ctx.callerContext),
 				),
 			}).catch(() => undefined)
 			// Listing is best-effort after publish committed: throwing here

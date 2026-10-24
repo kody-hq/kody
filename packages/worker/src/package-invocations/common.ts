@@ -74,6 +74,8 @@ export type PackageInvocationActor = {
 	orgId: OwnerId
 	/** How the run is attributed and authenticated. */
 	request: RequestSource
+	/** Resource change event chain depth, for runs a resource event started. */
+	resourceEventDepth?: number
 }
 
 export type PackageModuleSelector =

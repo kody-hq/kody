@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -11,6 +11,20 @@ import {
 	tryDeliverOrgAuditOutboxPlan,
 } from './org-audit-outbox.ts'
 import { redactOrgAuditActorIdsForDeletedUser } from './org-audit.ts'
+
+const resourceEvents = vi.hoisted(() => ({
+	dispatch: vi.fn(async (_input: unknown) => ({ delivered: 0, dropped: [] })),
+	pending: [] as Array<Promise<unknown>>,
+}))
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<object>()),
+	waitUntil: (promise: Promise<unknown>) => {
+		resourceEvents.pending.push(promise)
+	},
+}))
+vi.mock('#worker/resource-events/dispatch.ts', () => ({
+	dispatchResourceChangeEvent: resourceEvents.dispatch,
+}))
 
 function createAppDb() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -152,4 +166,40 @@ test('user purge redacts pending outbox actor ids', async () => {
 		actorUserId: 'deleted-user',
 		actorUsername: 'purge-me',
 	})
+})
+
+test('only the delivery that inserts a successful row emits its event', async () => {
+	const appDb = createAppDb()
+	const auditDb = createAuditTestDb()
+	const writer = {
+		appDb,
+		db: auditDb,
+		actorUserId: 'actor-1',
+		actorUsername: null,
+		credentialKind: null,
+		credentialId: null,
+		cause: { packageId: 'package-1', resourceEventDepth: 1 },
+		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+	}
+	resourceEvents.dispatch.mockClear()
+	const plan = await enqueueOrgAuditOutbox(writer, {
+		orgId: 'org-1',
+		action: 'job.created',
+		resourceType: 'job',
+		resourceId: 'job-1',
+	})
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(true)
+	await Promise.all(resourceEvents.pending)
+	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
+	expect(resourceEvents.dispatch.mock.calls[0]![0]).toMatchObject({
+		payload: {
+			action: 'job.created',
+			cause: { packageId: 'package-1', resourceEventDepth: 1 },
+		},
+	})
+
+	// A redelivery finds the row already there and stays quiet.
+	await tryDeliverOrgAuditOutboxPlan(writer, plan)
+	await Promise.all(resourceEvents.pending)
+	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
 })

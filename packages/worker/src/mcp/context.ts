@@ -44,6 +44,8 @@ type McpCallerContextWireInput = {
 				role: RequestOrgBinding['role']
 		  }
 		| null
+	/** Resource change event chain depth for a package run (see chat.ts). */
+	resourceEventDepth?: number | null
 }
 
 function normalizeWireOrgBinding(
@@ -74,6 +76,9 @@ export function createMcpCallerContextWire(
 			? { oauthClientId: input.oauthClientId.trim() }
 			: {}),
 		orgBinding: normalizeWireOrgBinding(input.orgBinding),
+		...(input.resourceEventDepth && input.resourceEventDepth > 0
+			? { resourceEventDepth: input.resourceEventDepth }
+			: {}),
 	}
 }
 
