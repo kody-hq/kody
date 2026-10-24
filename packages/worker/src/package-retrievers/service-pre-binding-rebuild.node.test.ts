@@ -3,20 +3,34 @@ import { expect, test, vi } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
-	loadPublishedBundleArtifactByIdentity: vi.fn(),
+	loadPublishedBundleArtifactsByIdentities: vi.fn(),
+	publishedBundleLoadIdentityKey: vi.fn(
+		(input: {
+			sourceId: string
+			kind: string
+			artifactName?: string | null
+			entryPoint: string
+		}) =>
+			[
+				input.sourceId,
+				input.kind,
+				input.artifactName ?? '',
+				input.entryPoint,
+			].join('\0'),
+	),
 	ensureModuleArtifact: vi.fn(),
 	runBundledModuleWithRegistry: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -24,8 +38,9 @@ vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
-	loadPublishedBundleArtifactByIdentity:
-		mockFns.loadPublishedBundleArtifactByIdentity,
+	loadPublishedBundleArtifactsByIdentities:
+		mockFns.loadPublishedBundleArtifactsByIdentities,
+	publishedBundleLoadIdentityKey: mockFns.publishedBundleLoadIdentityKey,
 }))
 
 vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
@@ -49,54 +64,58 @@ const packageId = 'pkg-retriever'
 const sourceId = `source-${packageId}`
 
 function seedRetriever() {
-	mockFns.listPackageRetrieversForScope.mockResolvedValue([
+	const entry = {
+		userId: ownerIdFromStored('user-1'),
+		packageId,
+		kodyId: 'retriever-pkg',
+		sourceId,
+		revision: 'commit-1',
+		retrieverKey: 'notes',
+		exportName: './notes',
+		entryPoint: 'src/notes.ts',
+		name: 'notes',
+		description: 'notes retriever',
+		scopes: ['context'] as Array<'search' | 'context'>,
+		timeoutMs: null,
+		maxResults: null,
+	}
+	mockFns.listPackageRetrieversForScope.mockResolvedValue([entry])
+	mockFns.listSavedPackagesByIds.mockResolvedValue([
 		{
+			id: packageId,
 			userId: ownerIdFromStored('user-1'),
-			packageId,
+			name: '@kody/retriever-pkg',
 			kodyId: 'retriever-pkg',
+			description: 'retriever-pkg',
+			tags: [],
+			searchText: 'retriever-pkg',
 			sourceId,
-			revision: 'commit-1',
-			retrieverKey: 'notes',
-			exportName: './notes',
-			entryPoint: 'src/notes.ts',
-			name: 'notes',
-			description: 'notes retriever',
-			scopes: ['context'],
-			timeoutMs: null,
-			maxResults: null,
+			hasApp: false,
+			hidden: false,
+			isPrivate: false,
+			isInternetVisible: false,
+			createdAt: '2026-10-20T00:00:00.000Z',
+			updatedAt: '2026-10-20T00:00:00.000Z',
 		},
 	])
-	mockFns.getSavedPackageById.mockResolvedValue({
-		id: packageId,
-		userId: ownerIdFromStored('user-1'),
-		name: '@kody/retriever-pkg',
-		kodyId: 'retriever-pkg',
-		description: 'retriever-pkg',
-		tags: [],
-		searchText: 'retriever-pkg',
-		sourceId,
-		hasApp: false,
-		hidden: false,
-		isPrivate: false,
-		isInternetVisible: false,
-		createdAt: '2026-10-20T00:00:00.000Z',
-		updatedAt: '2026-10-20T00:00:00.000Z',
-	})
-	mockFns.getEntitySourceById.mockResolvedValue({
-		id: sourceId,
-		user_id: ownerIdFromStored('user-1'),
-		repo_id: `repo-${packageId}`,
-		entity_kind: 'package',
-		entity_id: packageId,
-		manifest_path: 'package.json',
-		source_root: '.',
-		published_commit: 'commit-1',
-		created_at: '2026-10-20T00:00:00.000Z',
-		updated_at: '2026-10-20T00:00:00.000Z',
-	})
+	mockFns.listEntitySourcesByIds.mockResolvedValue([
+		{
+			id: sourceId,
+			user_id: ownerIdFromStored('user-1'),
+			repo_id: `repo-${packageId}`,
+			entity_kind: 'package',
+			entity_id: packageId,
+			manifest_path: 'package.json',
+			source_root: '.',
+			published_commit: 'commit-1',
+			created_at: '2026-10-20T00:00:00.000Z',
+			updated_at: '2026-10-20T00:00:00.000Z',
+		},
+	])
 	mockFns.runBundledModuleWithRegistry.mockResolvedValue({
 		result: { results: [] },
 	})
+	return entry
 }
 
 function artifact(input: {
@@ -135,16 +154,28 @@ async function runContextRetrievers() {
 }
 
 test('a pre-binding retriever bundle that inlines another package goes through the module-artifact rebuild before it runs', async () => {
-	seedRetriever()
-	mockFns.loadPublishedBundleArtifactByIdentity.mockResolvedValue({
-		row: { publishedCommit: 'commit-1' },
-		artifact: artifact({
-			mainModule: 'pre-binding.js',
-			source:
-				'export default async () => { await fetch("https://example.com/"); return { results: [] } }',
-			dependencies: [{ packageId: 'pkg-dependency' }],
-		}),
-	})
+	const entry = seedRetriever()
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockResolvedValue(
+		new Map([
+			[
+				mockFns.publishedBundleLoadIdentityKey({
+					sourceId: entry.sourceId,
+					kind: 'module',
+					artifactName: entry.exportName,
+					entryPoint: entry.entryPoint,
+				}),
+				{
+					row: { publishedCommit: 'commit-1' },
+					artifact: artifact({
+						mainModule: 'pre-binding.js',
+						source:
+							'export default async () => { await fetch("https://example.com/"); return { results: [] } }',
+						dependencies: [{ packageId: 'pkg-dependency' }],
+					}),
+				},
+			],
+		]),
+	)
 	mockFns.ensureModuleArtifact.mockResolvedValue({
 		artifact: artifact({
 			mainModule: 'rebuilt.js',
@@ -171,16 +202,28 @@ test('a pre-binding retriever bundle that inlines another package goes through t
 test('a current retriever bundle runs as stored without a rebuild', async () => {
 	mockFns.ensureModuleArtifact.mockClear()
 	mockFns.runBundledModuleWithRegistry.mockClear()
-	seedRetriever()
-	mockFns.loadPublishedBundleArtifactByIdentity.mockResolvedValue({
-		row: { publishedCommit: 'commit-1' },
-		artifact: artifact({
-			mainModule: 'current.js',
-			source:
-				'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-retriever");\nexport default async () => ({ results: [] })',
-			dependencies: [{ packageId: 'pkg-dependency' }],
-		}),
-	})
+	const entry = seedRetriever()
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockResolvedValue(
+		new Map([
+			[
+				mockFns.publishedBundleLoadIdentityKey({
+					sourceId: entry.sourceId,
+					kind: 'module',
+					artifactName: entry.exportName,
+					entryPoint: entry.entryPoint,
+				}),
+				{
+					row: { publishedCommit: 'commit-1' },
+					artifact: artifact({
+						mainModule: 'current.js',
+						source:
+							'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-retriever");\nexport default async () => ({ results: [] })',
+						dependencies: [{ packageId: 'pkg-dependency' }],
+					}),
+				},
+			],
+		]),
+	)
 
 	await runContextRetrievers()
 

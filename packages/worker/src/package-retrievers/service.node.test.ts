@@ -4,19 +4,33 @@ import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
-	loadPublishedBundleArtifactByIdentity: vi.fn(),
+	loadPublishedBundleArtifactsByIdentities: vi.fn(),
+	publishedBundleLoadIdentityKey: vi.fn(
+		(input: {
+			sourceId: string
+			kind: string
+			artifactName?: string | null
+			entryPoint: string
+		}) =>
+			[
+				input.sourceId,
+				input.kind,
+				input.artifactName ?? '',
+				input.entryPoint,
+			].join('\0'),
+	),
 	runBundledModuleWithRegistry: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -24,8 +38,9 @@ vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
-	loadPublishedBundleArtifactByIdentity:
-		mockFns.loadPublishedBundleArtifactByIdentity,
+	loadPublishedBundleArtifactsByIdentities:
+		mockFns.loadPublishedBundleArtifactsByIdentities,
+	publishedBundleLoadIdentityKey: mockFns.publishedBundleLoadIdentityKey,
 }))
 
 vi.mock('#mcp/run-kody-registry.ts', () => ({
@@ -112,27 +127,50 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 		scopes: ['context'],
 	})
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([healthy, stalled])
-	mockFns.getSavedPackageById.mockImplementation(
-		async (_db: unknown, input: { packageId: string }) =>
-			createSavedPackage({
-				packageId: input.packageId,
-				kodyId:
-					input.packageId === 'pkg-healthy' ? 'healthy-pkg' : 'stalled-pkg',
-			}),
-	)
-	mockFns.getEntitySourceById.mockImplementation(
-		async (_db: unknown, sourceId: string) =>
-			createEntitySource({
-				packageId: sourceId.replace(/^source-/, ''),
-			}),
-	)
-	mockFns.loadPublishedBundleArtifactByIdentity.mockResolvedValue({
+	mockFns.listSavedPackagesByIds.mockResolvedValue([
+		createSavedPackage({
+			packageId: 'pkg-healthy',
+			kodyId: 'healthy-pkg',
+		}),
+		createSavedPackage({
+			packageId: 'pkg-stalled',
+			kodyId: 'stalled-pkg',
+		}),
+	])
+	mockFns.listEntitySourcesByIds.mockResolvedValue([
+		createEntitySource({ packageId: 'pkg-healthy' }),
+		createEntitySource({ packageId: 'pkg-stalled' }),
+	])
+	const artifactPayload = {
+		row: { publishedCommit: 'commit-1' },
 		artifact: {
 			mainModule: 'main.js',
 			modules: { 'main.js': 'export default async () => ({ results: [] })' },
 			dependencies: [],
 		},
-	})
+	}
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockResolvedValue(
+		new Map([
+			[
+				mockFns.publishedBundleLoadIdentityKey({
+					sourceId: healthy.sourceId,
+					kind: 'module',
+					artifactName: healthy.exportName,
+					entryPoint: healthy.entryPoint,
+				}),
+				artifactPayload,
+			],
+			[
+				mockFns.publishedBundleLoadIdentityKey({
+					sourceId: stalled.sourceId,
+					kind: 'module',
+					artifactName: stalled.exportName,
+					entryPoint: stalled.entryPoint,
+				}),
+				artifactPayload,
+			],
+		]),
+	)
 	mockFns.runBundledModuleWithRegistry.mockImplementation(
 		async (
 			_env: unknown,
@@ -185,6 +223,30 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 	expect(run.warnings[0]).toMatch(/timed out/i)
 	expect(consoleError).toHaveBeenCalledTimes(1)
 	expect(mockFns.runBundledModuleWithRegistry).toHaveBeenCalledTimes(2)
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
+	expect(
+		mockFns.loadPublishedBundleArtifactsByIdentities,
+	).toHaveBeenCalledTimes(1)
+	expect(mockFns.loadPublishedBundleArtifactsByIdentities).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('user-1'),
+			identities: expect.arrayContaining([
+				expect.objectContaining({
+					sourceId: healthy.sourceId,
+					kind: 'module',
+					artifactName: healthy.exportName,
+					entryPoint: healthy.entryPoint,
+				}),
+				expect.objectContaining({
+					sourceId: stalled.sourceId,
+					kind: 'module',
+					artifactName: stalled.exportName,
+					entryPoint: stalled.entryPoint,
+				}),
+			]),
+		}),
+	)
 	for (const call of mockFns.runBundledModuleWithRegistry.mock.calls) {
 		expect(call[4]).toEqual(
 			expect.objectContaining({
@@ -195,4 +257,89 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 		expect(call[4]).not.toHaveProperty('packageInvokeTools')
 		expect(call[4]).not.toHaveProperty('packageEventTools')
 	}
+})
+
+test('runPackageRetrievers prefetches packages, sources, and artifacts once for many retrievers', async () => {
+	const entries = [
+		createRetrieverEntry({
+			packageId: 'pkg-a',
+			kodyId: 'pkg-a',
+			retrieverKey: 'one',
+		}),
+		createRetrieverEntry({
+			packageId: 'pkg-b',
+			kodyId: 'pkg-b',
+			retrieverKey: 'two',
+		}),
+		createRetrieverEntry({
+			packageId: 'pkg-c',
+			kodyId: 'pkg-c',
+			retrieverKey: 'three',
+		}),
+	]
+	mockFns.listPackageRetrieversForScope.mockResolvedValue(entries)
+	mockFns.listSavedPackagesByIds.mockResolvedValue(
+		entries.map((entry) =>
+			createSavedPackage({
+				packageId: entry.packageId,
+				kodyId: entry.kodyId,
+			}),
+		),
+	)
+	mockFns.listEntitySourcesByIds.mockResolvedValue(
+		entries.map((entry) => createEntitySource({ packageId: entry.packageId })),
+	)
+	const artifactPayload = {
+		row: { publishedCommit: 'commit-1' },
+		artifact: {
+			mainModule: 'main.js',
+			modules: { 'main.js': 'export default async () => ({ results: [] })' },
+			dependencies: [],
+		},
+	}
+	mockFns.loadPublishedBundleArtifactsByIdentities.mockResolvedValue(
+		new Map(
+			entries.map((entry) => [
+				mockFns.publishedBundleLoadIdentityKey({
+					sourceId: entry.sourceId,
+					kind: 'module',
+					artifactName: entry.exportName,
+					entryPoint: entry.entryPoint,
+				}),
+				artifactPayload,
+			]),
+		),
+	)
+	mockFns.runBundledModuleWithRegistry.mockResolvedValue({
+		result: { results: [] },
+	})
+
+	const { runPackageRetrievers } =
+		await import('#worker/package-retrievers/service.ts')
+	await runPackageRetrievers({
+		env: { APP_DB: {}, BUNDLE_ARTIFACTS_KV: {} } as Env,
+		baseUrl: 'https://example.com',
+		userId: ownerIdFromStored('user-1'),
+		request: sessionRequestContext('user-1'),
+		scope: 'search',
+		query: 'notes',
+	})
+
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
+	expect(
+		mockFns.loadPublishedBundleArtifactsByIdentities,
+	).toHaveBeenCalledTimes(1)
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		{
+			userId: ownerIdFromStored('user-1'),
+			packageIds: ['pkg-a', 'pkg-b', 'pkg-c'],
+		},
+	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		['source-pkg-a', 'source-pkg-b', 'source-pkg-c'],
+	)
+	expect(mockFns.runBundledModuleWithRegistry).toHaveBeenCalledTimes(3)
 })

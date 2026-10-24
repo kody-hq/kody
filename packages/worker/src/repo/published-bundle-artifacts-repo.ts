@@ -1,3 +1,7 @@
+import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -92,6 +96,28 @@ function mapStaticDependentBundleArtifactRow(
 	}
 }
 
+export type PublishedBundleArtifactIdentity = {
+	sourceId: string
+	artifactKind: string
+	artifactName: string | null
+	entryPoint: string
+}
+
+/**
+ * Stable key for identity rows. Matches the unique index's
+ * `COALESCE(artifact_name, '')` null-vs-empty equivalence.
+ */
+export function publishedBundleArtifactIdentityKey(
+	identity: PublishedBundleArtifactIdentity,
+) {
+	return [
+		identity.sourceId,
+		identity.artifactKind,
+		identity.artifactName ?? '',
+		identity.entryPoint,
+	].join('\0')
+}
+
 export async function getPublishedBundleArtifactByIdentity(
 	db: D1Database,
 	input: {
@@ -119,6 +145,75 @@ export async function getPublishedBundleArtifactByIdentity(
 		)
 		.first<Record<string, unknown>>()
 	return row ? mapRow(row) : null
+}
+
+/**
+ * Batch form of {@link getPublishedBundleArtifactByIdentity}. One (or a few
+ * chunked) SELECT(s) for many identities, preserving COALESCE null-vs-empty
+ * artifact_name matching. Returns at most one row per identity key.
+ */
+export async function listPublishedBundleArtifactsByIdentities(
+	db: D1Database,
+	input: {
+		userId: string
+		identities: ReadonlyArray<PublishedBundleArtifactIdentity>
+	},
+): Promise<Map<string, PublishedBundleArtifactRecord>> {
+	const uniqueByKey = new Map<string, PublishedBundleArtifactIdentity>()
+	for (const identity of input.identities) {
+		const key = publishedBundleArtifactIdentityKey(identity)
+		if (!uniqueByKey.has(key)) uniqueByKey.set(key, identity)
+	}
+	const uniqueIdentities = [...uniqueByKey.values()]
+	const found = new Map<string, PublishedBundleArtifactRecord>()
+	if (uniqueIdentities.length === 0) return found
+
+	// user_id + (source_id, artifact_kind, artifact_name, entry_point) per identity
+	const bindsPerIdentity = 4
+	const maxIdentitiesPerChunk = Math.max(
+		1,
+		Math.floor((maxD1BoundParameters - 1) / bindsPerIdentity),
+	)
+	for (const identityChunk of chunkArray(
+		uniqueIdentities,
+		maxIdentitiesPerChunk,
+	)) {
+		const clauses = identityChunk
+			.map(
+				() =>
+					`(source_id = ? AND artifact_kind = ? AND COALESCE(artifact_name, '') = COALESCE(?, '') AND entry_point = ?)`,
+			)
+			.join(' OR ')
+		const binds: Array<string | null> = [input.userId]
+		for (const identity of identityChunk) {
+			binds.push(
+				identity.sourceId,
+				identity.artifactKind,
+				identity.artifactName,
+				identity.entryPoint,
+			)
+		}
+		const result = await db
+			.prepare(
+				`SELECT * FROM published_bundle_artifacts
+				WHERE user_id = ? AND (${clauses})`,
+			)
+			.bind(...binds)
+			.all<Record<string, unknown>>()
+		for (const row of result.results ?? []) {
+			const mapped = mapRow(row)
+			found.set(
+				publishedBundleArtifactIdentityKey({
+					sourceId: mapped.sourceId,
+					artifactKind: mapped.artifactKind,
+					artifactName: mapped.artifactName,
+					entryPoint: mapped.entryPoint,
+				}),
+				mapped,
+			)
+		}
+	}
+	return found
 }
 
 export async function countStaticDependentBundleArtifactPackages(

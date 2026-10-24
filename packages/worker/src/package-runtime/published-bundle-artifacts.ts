@@ -25,7 +25,10 @@ import {
 import {
 	deletePublishedBundleArtifactRowsBySourceId,
 	getPublishedBundleArtifactByIdentity,
+	listPublishedBundleArtifactsByIdentities,
 	listPublishedBundleArtifactsBySourceId,
+	publishedBundleArtifactIdentityKey,
+	type PublishedBundleArtifactIdentity,
 	type PublishedBundleArtifactRecord,
 	type PublishedBundleArtifactUpsertInput,
 	updatePublishedBundleArtifactRow,
@@ -204,6 +207,63 @@ export async function persistPublishedBundleArtifact(
 	return kvKey
 }
 
+export type LoadedPublishedBundleArtifact = {
+	row: PublishedBundleArtifactRecord
+	artifact: PublishedBundleArtifact | null
+}
+
+export function publishedBundleLoadIdentityKey(input: {
+	sourceId: string
+	kind: BundleArtifactKind
+	artifactName?: string | null
+	entryPoint: string
+}) {
+	return publishedBundleArtifactIdentityKey({
+		sourceId: input.sourceId,
+		artifactKind: input.kind,
+		artifactName: normalizeArtifactName(input.artifactName),
+		entryPoint: normalizeEntryPoint(input.entryPoint),
+	})
+}
+
+async function hydratePublishedBundleArtifactRow(input: {
+	env: Env
+	row: PublishedBundleArtifactRecord
+	kind: BundleArtifactKind
+	artifactName: string | null
+	entryPoint: string
+}): Promise<LoadedPublishedBundleArtifact> {
+	const artifact = await readPublishedBundleArtifact({
+		env: input.env,
+		kvKey: input.row.kvKey,
+	})
+	if (!artifact) {
+		return {
+			row: input.row,
+			artifact: null,
+		}
+	}
+	if (
+		!matchesPublishedBundleArtifactIdentity({
+			artifact,
+			sourceId: input.row.sourceId,
+			publishedCommit: input.row.publishedCommit,
+			kind: input.kind,
+			artifactName: input.artifactName,
+			entryPoint: input.entryPoint,
+		})
+	) {
+		return {
+			row: input.row,
+			artifact: null,
+		}
+	}
+	return {
+		row: input.row,
+		artifact,
+	}
+}
+
 export async function loadPublishedBundleArtifactByIdentity(input: {
 	env: Env
 	userId: string
@@ -211,7 +271,7 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 	kind: BundleArtifactKind
 	artifactName?: string | null
 	entryPoint: string
-}) {
+}): Promise<LoadedPublishedBundleArtifact | null> {
 	const artifactName = normalizeArtifactName(input.artifactName)
 	const entryPoint = normalizeEntryPoint(input.entryPoint)
 	const row = await getPublishedBundleArtifactByIdentity(input.env.APP_DB, {
@@ -222,35 +282,92 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 		entryPoint,
 	})
 	if (!row) return null
-	const artifact = await readPublishedBundleArtifact({
+	return await hydratePublishedBundleArtifactRow({
 		env: input.env,
-		kvKey: row.kvKey,
+		row,
+		kind: input.kind,
+		artifactName,
+		entryPoint,
 	})
-	if (!artifact) {
-		return {
-			row,
-			artifact: null,
+}
+
+/**
+ * Batch form of {@link loadPublishedBundleArtifactByIdentity}: one D1 identity
+ * SELECT (chunked only at the D1 bind cap), then parallel KV hydrations.
+ * Keys use {@link publishedBundleLoadIdentityKey}.
+ */
+export async function loadPublishedBundleArtifactsByIdentities(input: {
+	env: Env
+	userId: string
+	identities: ReadonlyArray<{
+		sourceId: string
+		kind: BundleArtifactKind
+		artifactName?: string | null
+		entryPoint: string
+	}>
+}): Promise<Map<string, LoadedPublishedBundleArtifact | null>> {
+	const normalized = new Map<
+		string,
+		{
+			identity: PublishedBundleArtifactIdentity
+			kind: BundleArtifactKind
+			artifactName: string | null
+			entryPoint: string
 		}
-	}
-	if (
-		!matchesPublishedBundleArtifactIdentity({
-			artifact,
-			sourceId: row.sourceId,
-			publishedCommit: row.publishedCommit,
-			kind: input.kind,
+	>()
+	for (const identity of input.identities) {
+		const artifactName = normalizeArtifactName(identity.artifactName)
+		const entryPoint = normalizeEntryPoint(identity.entryPoint)
+		const key = publishedBundleArtifactIdentityKey({
+			sourceId: identity.sourceId,
+			artifactKind: identity.kind,
 			artifactName,
 			entryPoint,
 		})
-	) {
-		return {
-			row,
-			artifact: null,
+		if (!normalized.has(key)) {
+			normalized.set(key, {
+				identity: {
+					sourceId: identity.sourceId,
+					artifactKind: identity.kind,
+					artifactName,
+					entryPoint,
+				},
+				kind: identity.kind,
+				artifactName,
+				entryPoint,
+			})
 		}
 	}
-	return {
-		row,
-		artifact,
-	}
+	const loaded = new Map<string, LoadedPublishedBundleArtifact | null>()
+	if (normalized.size === 0) return loaded
+
+	const rowsByKey = await listPublishedBundleArtifactsByIdentities(
+		input.env.APP_DB,
+		{
+			userId: input.userId,
+			identities: [...normalized.values()].map((entry) => entry.identity),
+		},
+	)
+	await Promise.all(
+		[...normalized.entries()].map(async ([key, entry]) => {
+			const row = rowsByKey.get(key) ?? null
+			if (!row) {
+				loaded.set(key, null)
+				return
+			}
+			loaded.set(
+				key,
+				await hydratePublishedBundleArtifactRow({
+					env: input.env,
+					row,
+					kind: entry.kind,
+					artifactName: entry.artifactName,
+					entryPoint: entry.entryPoint,
+				}),
+			)
+		}),
+	)
+	return loaded
 }
 
 /**

@@ -5,10 +5,14 @@ import { inheritRequest } from '#worker/request-context/request-context.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#mcp/executor.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
-import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { listSavedPackagesByIds } from '#worker/package-registry/repo.ts'
+import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
-import { loadPublishedBundleArtifactByIdentity } from '#worker/package-runtime/published-bundle-artifacts.ts'
+import {
+	loadPublishedBundleArtifactsByIdentities,
+	publishedBundleLoadIdentityKey,
+	type LoadedPublishedBundleArtifact,
+} from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { isUnrepairablePreBindingArtifact } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import { type PublishedBundleArtifact } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -122,6 +126,45 @@ async function resolveRunnableRetrieverArtifact(input: {
 	return ensured.artifact
 }
 
+type RetrieverPrefetch = {
+	savedPackagesById: Map<string, SavedPackageRecord>
+	sourcesById: Map<string, EntitySourceRow>
+	artifactsByIdentity: Map<string, LoadedPublishedBundleArtifact | null>
+}
+
+async function prefetchRetrieverLookups(input: {
+	env: Env
+	userId: string
+	entries: ReadonlyArray<PackageRetrieverManifestCacheEntry>
+}): Promise<RetrieverPrefetch> {
+	const packageIds = [...new Set(input.entries.map((entry) => entry.packageId))]
+	const sourceIds = [...new Set(input.entries.map((entry) => entry.sourceId))]
+	const [packages, sources, artifactsByIdentity] = await Promise.all([
+		listSavedPackagesByIds(input.env.APP_DB, {
+			userId: input.userId,
+			packageIds,
+		}),
+		listEntitySourcesByIds(input.env.APP_DB, sourceIds),
+		loadPublishedBundleArtifactsByIdentities({
+			env: input.env,
+			userId: input.userId,
+			identities: input.entries.map((entry) => ({
+				sourceId: entry.sourceId,
+				kind: 'module',
+				artifactName: entry.exportName,
+				entryPoint: entry.entryPoint,
+			})),
+		}),
+	])
+	return {
+		savedPackagesById: new Map(
+			packages.map((savedPackage) => [savedPackage.id, savedPackage]),
+		),
+		sourcesById: new Map(sources.map((source) => [source.id, source])),
+		artifactsByIdentity,
+	}
+}
+
 async function invokeRetriever(input: {
 	env: Env
 	baseUrl: string
@@ -131,6 +174,7 @@ async function invokeRetriever(input: {
 	entry: PackageRetrieverManifestCacheEntry
 	query: string
 	includeHiddenPackages: boolean
+	prefetch: RetrieverPrefetch
 	memoryContext?: {
 		task?: string
 		query?: string
@@ -140,10 +184,9 @@ async function invokeRetriever(input: {
 	conversationId?: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
-		userId: input.userId,
-		packageId: input.entry.packageId,
-	})
+	const savedPackage = input.prefetch.savedPackagesById.get(
+		input.entry.packageId,
+	)
 	if (!savedPackage) {
 		return []
 	}
@@ -156,10 +199,7 @@ async function invokeRetriever(input: {
 	) {
 		return []
 	}
-	const source = await getEntitySourceById(
-		input.env.APP_DB,
-		input.entry.sourceId,
-	)
+	const source = input.prefetch.sourcesById.get(input.entry.sourceId)
 	if (
 		!source ||
 		!source.published_commit ||
@@ -167,14 +207,14 @@ async function invokeRetriever(input: {
 	) {
 		return []
 	}
-	const loaded = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.entry.sourceId,
-		kind: 'module',
-		artifactName: input.entry.exportName,
-		entryPoint: input.entry.entryPoint,
-	})
+	const loaded = input.prefetch.artifactsByIdentity.get(
+		publishedBundleLoadIdentityKey({
+			sourceId: input.entry.sourceId,
+			kind: 'module',
+			artifactName: input.entry.exportName,
+			entryPoint: input.entry.entryPoint,
+		}),
+	)
 	if (!loaded?.artifact) {
 		return []
 	}
@@ -317,6 +357,11 @@ export async function runPackageRetrievers(input: {
 			scope: input.scope,
 		})
 	).slice(0, input.maxProviders ?? (input.scope === 'context' ? 3 : 10))
+	const prefetch = await prefetchRetrieverLookups({
+		env: input.env,
+		userId,
+		entries,
+	})
 	// Soft-fail per retriever: one stalled/buggy package must not fail MCP
 	// `search` or pre-sandbox execute memory/context enrichment. Callers already
 	// surface `warnings` to agents. This wrap creates a request budget only
@@ -335,6 +380,7 @@ export async function runPackageRetrievers(input: {
 						entry,
 						query,
 						includeHiddenPackages,
+						prefetch,
 						memoryContext: input.memoryContext,
 						conversationId: input.conversationId,
 						waitUntil: input.waitUntil,
