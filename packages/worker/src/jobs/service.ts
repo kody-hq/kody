@@ -19,7 +19,6 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	backgroundRunBilledActor,
-	deriveRequestContext,
 	parseRequestLineage,
 	type RequestOrgBinding,
 	type RequestSource,
@@ -87,6 +86,7 @@ import {
 	isTransientJobExecutionError,
 	markPreExecutionTransientError,
 	resolveScheduledJobCallerContext,
+	resolveScheduledJobRunRequest,
 	TransientJobExecutionError,
 } from './execution-safety.ts'
 import {
@@ -1836,16 +1836,10 @@ async function executeClaimedScheduledJobRun(input: {
 	}).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
-	const jobCallerContext = resolveScheduledJobCallerContext({
+	const jobRequest = resolveScheduledJobRunRequest({
 		callerContext: input.row.callerContext,
+		source: input.source,
 	})
-	const jobRequest =
-		jobCallerContext?.user != null
-			? deriveRequestContext({
-					user: jobCallerContext.user,
-					source: input.source,
-				})
-			: null
 	const claim = await claimRunRecord({
 		env: input.env,
 		userId: input.row.record.userId,

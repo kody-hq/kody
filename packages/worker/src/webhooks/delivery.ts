@@ -108,39 +108,54 @@ export async function recordWebhookDelivery(input: {
 }
 
 /**
- * Webhook run error for a failed delivery. The stable code (for example
- * `invocation_status_500`) stays the error name and leads the message; the
- * export's own sanitized error message follows it. Without a message in the
- * invocation body the code alone is kept, as before.
+ * Request for a webhook delivery run. Prefer an enablement the caller already
+ * chose (the one that invoked); only re-plan when recording a delivery that
+ * never invoked (rejects, missing payload).
  */
 async function resolveWebhookDeliveryRequest(input: {
 	env: Env
 	endpoint: Pick<WebhookEndpointRecord, 'id' | 'userId' | 'packageId'>
+	enablement?: EnablementRun | null
 }): Promise<RequestContext | null> {
 	try {
-		const plan = await planEnablementRuns({
+		const enablement =
+			input.enablement ??
+			(
+				await planEnablementRuns({
+					env: input.env,
+					orgId: input.endpoint.userId,
+					packageId: input.endpoint.packageId,
+					trigger: { kind: 'webhook', instanceId: input.endpoint.id },
+				})
+			).runs[0]
+		if (!enablement) return null
+		return await webhookRequestForEnablement({
 			env: input.env,
-			orgId: input.endpoint.userId,
-			packageId: input.endpoint.packageId,
-			trigger: { kind: 'webhook', instanceId: input.endpoint.id },
-		})
-		const [run] = plan.runs
-		if (!run) return null
-		const user = await resolveBackgroundMcpUser(
-			input.env.APP_DB,
-			input.endpoint.userId,
-		)
-		return deriveRequestContext({
-			user,
-			source: {
-				kind: 'webhook',
-				sourceId: input.endpoint.id,
-				enablement: run,
-			},
+			endpoint: input.endpoint,
+			enablement,
 		})
 	} catch {
 		return null
 	}
+}
+
+async function webhookRequestForEnablement(input: {
+	env: Env
+	endpoint: Pick<WebhookEndpointRecord, 'id' | 'userId'>
+	enablement: EnablementRun
+}): Promise<RequestContext> {
+	const user = await resolveBackgroundMcpUser(
+		input.env.APP_DB,
+		input.endpoint.userId,
+	)
+	return deriveRequestContext({
+		user,
+		source: {
+			kind: 'webhook',
+			sourceId: input.endpoint.id,
+			enablement: input.enablement,
+		},
+	})
 }
 
 export function describeWebhookDeliveryFailure(input: {
@@ -241,13 +256,22 @@ type WebhookInvocationInput = {
 }
 
 /**
+ * Invocation response plus the request for the enablement that ran. Pass
+ * `request` into {@link recordWebhookDelivery} so started_by matches the
+ * invoke instead of re-planning (which can pick a different first enabler).
+ */
+export type WebhookInvocationDispatch = PackageInvocationResponse & {
+	request: RequestContext | null
+}
+
+/**
  * Run a webhook's bound export as the endpoint's enabler. With no on
  * enablement (paused, off, or never approved) nothing runs and the delivery
  * fails with 409 `enablement_not_on`, carrying the approval link.
  */
 export async function dispatchWebhookInvocation(
 	input: WebhookInvocationInput,
-): Promise<PackageInvocationResponse> {
+): Promise<WebhookInvocationDispatch> {
 	const plan = await planEnablementRuns({
 		env: input.env,
 		orgId: input.endpoint.userId,
@@ -263,21 +287,30 @@ export async function dispatchWebhookInvocation(
 			packageKodyId: input.packageKodyId,
 			plan,
 		})
-		return buildJsonErrorResponse({
-			status: 409,
-			code: 'enablement_not_on',
-			message: notOn.message,
-			idempotencyKey: input.idempotencyKey,
-			...(notOn.approvalUrl
-				? { details: { approvalUrl: notOn.approvalUrl } }
-				: {}),
-		})
+		return {
+			...buildJsonErrorResponse({
+				status: 409,
+				code: 'enablement_not_on',
+				message: notOn.message,
+				idempotencyKey: input.idempotencyKey,
+				...(notOn.approvalUrl
+					? { details: { approvalUrl: notOn.approvalUrl } }
+					: {}),
+			}),
+			request: null,
+		}
 	}
-	return await invokeWebhookExport(
+	const request = await webhookRequestForEnablement({
+		env: input.env,
+		endpoint: input.endpoint,
+		enablement: run,
+	}).catch(() => null)
+	const response = await invokeWebhookExport(
 		input,
 		run,
 		`${input.idempotencyKey}:enablement:${run.id}`,
 	)
+	return { ...response, request }
 }
 
 async function invokeWebhookExport(

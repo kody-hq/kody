@@ -358,6 +358,14 @@ test('scheduled package job claims carry package identity and the published sour
 		expect.objectContaining({
 			env: expect.anything(),
 			userId: record.userId,
+			// No persisted caller blob: started_by comes from the enablement.
+			request: expect.objectContaining({
+				actor: {
+					userId: personIdFromStored('user-fenced'),
+					username: 'fenced',
+				},
+				credential: expect.objectContaining({ kind: 'schedule' }),
+			}),
 			context: expect.objectContaining({
 				surface: 'job',
 				jobId: record.id,

@@ -1132,6 +1132,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 		error?: string | null
 		result?: unknown
 		errorBody?: { code: string; message: string }
+		request?: Awaited<ReturnType<typeof dispatchWebhookInvocation>>['request']
 	}): Promise<SyntheticWebhookDispatchResult> => {
 		const record = await recordWebhookDelivery({
 			...(inputFinish.errorBody
@@ -1150,6 +1151,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 			startedAt,
 			requirePersistence: true,
 			synthetic: true,
+			request: inputFinish.request,
 		})
 		if (!record) {
 			throw new Error('Webhook synthetic delivery record was not persisted.')
@@ -1215,6 +1217,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 			status: response.status,
 			outcome: 'delivered',
 			result,
+			request: response.request,
 		})
 	}
 	const errorRecord =
@@ -1232,6 +1235,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 		error: placementRefused
 			? credentialPlacementRefusedCode
 			: `invocation_status_${response.status}`,
+		request: response.request,
 		result,
 		errorBody: {
 			code: placementRefused

@@ -1095,6 +1095,7 @@ export async function handleWebhookIngressRequest(
 				invocationBody: response.body,
 				startedAt: receivedAt,
 				waitUntil,
+				request: response.request,
 			})
 			return jsonResponse(response.body, { status: 409 })
 		}
@@ -1119,6 +1120,7 @@ export async function handleWebhookIngressRequest(
 			invocationBody: response.body,
 			startedAt: receivedAt,
 			waitUntil,
+			request: response.request,
 		})
 		if (!ok) {
 			return jsonResponse(

@@ -7,6 +7,7 @@ import {
 	isTransientJobExecutionError,
 	markPreExecutionTransientError,
 	resolveScheduledJobCallerContext,
+	resolveScheduledJobRunRequest,
 	TransientJobExecutionError,
 } from './execution-safety.ts'
 import { type PersistedJobCallerContext } from './types.ts'
@@ -98,6 +99,57 @@ test('scheduled runs keep a legacy caller context whose user is not the row owne
 		callerContext,
 	)
 	expect(resolveScheduledJobCallerContext({ callerContext: null })).toBeNull()
+})
+
+test('scheduled run request stamps started_by from enablement when caller blob has no user', () => {
+	const enabler = {
+		userId: personIdFromStored('enabler-1'),
+		username: 'enabler',
+	}
+	const fromEnablement = resolveScheduledJobRunRequest({
+		callerContext: null,
+		source: {
+			kind: 'schedule',
+			jobId: 'job-1',
+			enablement: {
+				id: 'en-1',
+				enabler,
+				role: 'member',
+			},
+		},
+	})
+	expect(fromEnablement).toMatchObject({
+		actor: { userId: enabler.userId, username: 'enabler' },
+		credential: { kind: 'schedule' },
+	})
+	expect(
+		resolveScheduledJobRunRequest({
+			callerContext: null,
+			source: { kind: 'schedule', jobId: 'job-1' },
+		}),
+	).toBeNull()
+	const callerUser = {
+		userId: personIdFromStored('caller-1'),
+		username: 'caller',
+	}
+	expect(
+		resolveScheduledJobRunRequest({
+			callerContext: { user: callerUser } as PersistedJobCallerContext,
+			source: {
+				kind: 'schedule',
+				jobId: 'job-1',
+				enablement: {
+					id: 'en-1',
+					enabler,
+					role: 'member',
+				},
+			},
+		}),
+	).toMatchObject({
+		// Enablement still supplies the schedule actor; caller supplies org binding.
+		actor: { userId: enabler.userId },
+		credential: { kind: 'schedule' },
+	})
 })
 
 test('transient platform failures are classified for same-occurrence backoff', () => {
