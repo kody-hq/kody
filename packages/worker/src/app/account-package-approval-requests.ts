@@ -277,6 +277,8 @@ export async function approveCredentialNeedsRequest(input: {
 				allowLockedPublish: true,
 				credentialNeedsApproved: true,
 				expectedHeadCommit: approval.pendingCommit,
+				// The app runs as whoever pushed, not as the approver.
+				requestedByUserId: approval.requestedByUserId ?? null,
 				rebuildPackageArtifacts: true,
 			})
 		} catch (error) {

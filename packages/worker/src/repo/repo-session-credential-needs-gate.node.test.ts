@@ -22,6 +22,7 @@ import {
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { recordPackageAppPublisherUnknown } from '#worker/package-runtime/package-app-authority.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -454,6 +455,29 @@ test('publishSession releases storage inventory after a successful publish', asy
 		storageId: 'repo-session:session-1',
 	})
 	expect(mockModule.maybeRefreshStorageBucketEstimate).not.toHaveBeenCalled()
+})
+
+test('a session publish with no known person clears the publisher; a platform rewrite leaves it alone', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const packageFile = { 'package.json': userPackageJson }
+	for (const [requestedByUserId, clears] of [
+		[undefined, false],
+		[null, true],
+	] as const) {
+		vi.mocked(recordPackageAppPublisherUnknown).mockClear()
+		setCommonSessionFixtures()
+		seedWorkspace(packageFile)
+		const state = await checkedPublishState(packageFile)
+		await expect(
+			repoSession(createEnv(), state).publishSession({
+				...session,
+				...(requestedByUserId === undefined ? {} : { requestedByUserId }),
+			}),
+		).resolves.toMatchObject({ status: 'ok' })
+		expect(vi.mocked(recordPackageAppPublisherUnknown).mock.calls.length).toBe(
+			clears ? 1 : 0,
+		)
+	}
 })
 
 test('publishSession stays ok when scratch inventory delete throws', async () => {

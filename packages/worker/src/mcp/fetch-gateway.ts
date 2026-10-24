@@ -531,7 +531,16 @@ async function expandAsPackageAppAuthority(input: {
 		})
 	if (runsAs.status !== 'ready') {
 		const expanded = await expandSecretPlaceholders(input)
-		if (expanded.substitutedValues.length > 0) noteFallback(null)
+		if (expanded.substitutedValues.length > 0) {
+			noteFallback(null)
+		} else {
+			// Body placeholders fill while the upload streams.
+			void expanded.bodyFillDone
+				.then(() => {
+					if (expanded.substitutedValues.length > 0) noteFallback(null)
+				})
+				.catch(() => {})
+		}
 		return expanded
 	}
 	const retry = input.request.clone() as Request
@@ -540,13 +549,14 @@ async function expandAsPackageAppAuthority(input: {
 			...input,
 			props: { ...input.props, request: runsAs.request },
 		})
-		void retry.body?.cancel()
+		discardUnreadBody(retry.body)
 		return expanded
 	} catch (error) {
 		if (!isPlaceholderAuthorityFailure(error)) {
-			void retry.body?.cancel()
+			discardUnreadBody(retry.body)
 			throw error
 		}
+		discardUnreadBody(input.request.body)
 		try {
 			const expanded = await expandSecretPlaceholders({
 				...input,
@@ -558,6 +568,11 @@ async function expandAsPackageAppAuthority(input: {
 			throw error
 		}
 	}
+}
+
+/** A locked branch is still being read by a failed fill; cancelling it would throw. */
+function discardUnreadBody(body: ReadableStream | null) {
+	if (body && !body.locked) void body.cancel().catch(() => {})
 }
 
 /** A credential the filling person cannot resolve, as opposed to a bad request or an outage. */

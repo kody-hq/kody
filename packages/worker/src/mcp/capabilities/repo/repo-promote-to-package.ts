@@ -242,6 +242,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 					expectedPackageScope: packageScope,
 					// The package's first publish: there are no prior needs to change.
 					credentialNeedsApproved: true,
+					requestedByUserId: ctx.callerContext.user?.userId ?? null,
 				})
 			} catch (error) {
 				// publishSession can throw before finalize (no KV snapshot yet)

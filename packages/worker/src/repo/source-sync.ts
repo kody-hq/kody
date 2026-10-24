@@ -458,7 +458,7 @@ export async function syncArtifactSourceSnapshot(
 			...(input.credentialNeedsApproved === true
 				? { credentialNeedsApproved: true }
 				: {}),
-			...(input.requestedByUserId
+			...(input.requestedByUserId !== undefined
 				? { requestedByUserId: input.requestedByUserId }
 				: {}),
 			...(input.promotePublished === false ? { promotePublished: false } : {}),
