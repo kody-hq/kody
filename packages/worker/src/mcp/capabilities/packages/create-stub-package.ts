@@ -199,6 +199,7 @@ export async function createSavedPackageFromFiles(input: {
 		userEmail: packageOwnerEntitlementEmail(input.owner),
 		packageId,
 		sourceId: ensuredSource.id,
+		firstPublish: true,
 		audit: optionalOrgAuditWriter(input.env, {
 			userId: input.owner.actorUserId,
 		}),

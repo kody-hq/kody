@@ -759,179 +759,183 @@ export async function syncPackageJobsForPackage(input: {
 				})
 			}
 
-			for (const [jobName, definition] of Object.entries(desiredJobs)) {
-				const existing = existingByName.get(jobName)
-				const schedule = normalizeJobSchedule(definition.schedule)
-				const timezone = normalizeJobTimezone(definition.timezone)
-				const enabled = resolvePackageJobEnabled({
-					existingEnabled: existing?.record.enabled,
-					manifestEnabled: definition.enabled,
-				})
-				if (existing) {
-					const schedulerStateMatches =
-						JSON.stringify(existing.record.schedule) ===
-							JSON.stringify(schedule) &&
-						existing.record.timezone === timezone &&
-						existing.record.enabled === enabled
-					if (schedulerStateMatches) {
-						const refreshed = await jobsData(
-							input.env,
-						).refreshPackageJobIdentity({
-							userId: input.userId,
-							jobId: existing.record.id,
+			// Flush in finally: jobs before a failing one already committed.
+			try {
+				for (const [jobName, definition] of Object.entries(desiredJobs)) {
+					const existing = existingByName.get(jobName)
+					const schedule = normalizeJobSchedule(definition.schedule)
+					const timezone = normalizeJobTimezone(definition.timezone)
+					const enabled = resolvePackageJobEnabled({
+						existingEnabled: existing?.record.enabled,
+						manifestEnabled: definition.enabled,
+					})
+					if (existing) {
+						const schedulerStateMatches =
+							JSON.stringify(existing.record.schedule) ===
+								JSON.stringify(schedule) &&
+							existing.record.timezone === timezone &&
+							existing.record.enabled === enabled
+						if (schedulerStateMatches) {
+							const refreshed = await jobsData(
+								input.env,
+							).refreshPackageJobIdentity({
+								userId: input.userId,
+								jobId: existing.record.id,
+								sourceId: input.sourceId,
+								publishedCommit,
+								callerContextJson,
+								updatedAt: now,
+							})
+							if (!refreshed) {
+								throw new Error(
+									`Package job "${existing.record.id}" identity could not be refreshed.`,
+								)
+							}
+							await ensureOwnerEnablement({
+								id: existing.record.id,
+								name: jobName,
+								enabled,
+								isCreate: false,
+							})
+							continue
+						}
+						if (
+							JSON.stringify(existing.record.schedule) !==
+								JSON.stringify(schedule) ||
+							existing.record.timezone !== timezone
+						) {
+							assertJobScheduleIntervalFloor({
+								plan,
+								ladder: entitlement.ladder,
+								creditWallet: entitlement.creditWallet,
+								schedule,
+								timezone,
+							})
+						}
+						const updated: JobRecord = {
+							...existing.record,
+							name: jobName,
 							sourceId: input.sourceId,
 							publishedCommit,
-							callerContextJson,
+							schedule,
+							timezone,
+							enabled,
 							updatedAt: now,
+							nextRunAt: computeNextRunAt({
+								schedule,
+								timezone,
+							}),
+						}
+						await jobsData(input.env).updateJob({
+							userId: input.userId,
+							job: updated,
+							callerContextJson,
 						})
-						if (!refreshed) {
-							throw new Error(
-								`Package job "${existing.record.id}" identity could not be refreshed.`,
-							)
+						const changedFields = changedJobFields(existing.record, updated)
+						if (changedFields.length > 0) {
+							jobAudits.push({
+								orgId: input.userId,
+								jobId: updated.id,
+								name: jobName,
+								action: jobAuditActions.updated,
+								fields: changedFields,
+							})
 						}
 						await ensureOwnerEnablement({
-							id: existing.record.id,
+							id: updated.id,
 							name: jobName,
 							enabled,
 							isCreate: false,
 						})
+						schedulerStateChanged = true
 						continue
 					}
-					if (
-						JSON.stringify(existing.record.schedule) !==
-							JSON.stringify(schedule) ||
-						existing.record.timezone !== timezone
-					) {
-						assertJobScheduleIntervalFloor({
-							plan,
-							ladder: entitlement.ladder,
-							creditWallet: entitlement.creditWallet,
-							schedule,
-							timezone,
-						})
-					}
-					const updated: JobRecord = {
-						...existing.record,
+
+					assertJobScheduleIntervalFloor({
+						plan,
+						ladder: entitlement.ladder,
+						creditWallet: entitlement.creditWallet,
+						schedule,
+						timezone,
+					})
+					const created: JobRecord = {
+						version: 1,
+						id: buildPackageJobId(input.packageId, jobName),
+						userId: input.userId,
 						name: jobName,
 						sourceId: input.sourceId,
 						publishedCommit,
+						storageId: createJobStorageId(
+							buildPackageJobId(input.packageId, jobName),
+						),
 						schedule,
 						timezone,
 						enabled,
+						killSwitchEnabled: false,
+						expiresAt: null,
+						createdAt: now,
 						updatedAt: now,
 						nextRunAt: computeNextRunAt({
 							schedule,
 							timezone,
 						}),
+						runCount: 0,
+						successCount: 0,
+						errorCount: 0,
 					}
-					await jobsData(input.env).updateJob({
+					await jobsData(input.env).insertJob({
 						userId: input.userId,
-						job: updated,
+						job: created,
 						callerContextJson,
 					})
-					const changedFields = changedJobFields(existing.record, updated)
-					if (changedFields.length > 0) {
-						jobAudits.push({
-							orgId: input.userId,
-							jobId: updated.id,
-							name: jobName,
-							action: jobAuditActions.updated,
-							fields: changedFields,
-						})
-					}
+					jobAudits.push({
+						orgId: input.userId,
+						jobId: created.id,
+						name: jobName,
+						action: jobAuditActions.created,
+						enabled,
+					})
+					// New jobs auto-enable for the creator/owner so the schedule runs
+					// without a separate ask-the-user enablementEnable step. Other
+					// package triggers still never auto-enable on publish.
 					await ensureOwnerEnablement({
-						id: updated.id,
+						id: created.id,
 						name: jobName,
 						enabled,
-						isCreate: false,
+						isCreate: true,
 					})
+					await stampFirstJob(
+						input.env.APP_DB,
+						{ stableUserId: input.userId, at: now },
+						input.env,
+					)
 					schedulerStateChanged = true
-					continue
 				}
 
-				assertJobScheduleIntervalFloor({
-					plan,
-					ladder: entitlement.ladder,
-					creditWallet: entitlement.creditWallet,
-					schedule,
-					timezone,
-				})
-				const created: JobRecord = {
-					version: 1,
-					id: buildPackageJobId(input.packageId, jobName),
-					userId: input.userId,
-					name: jobName,
-					sourceId: input.sourceId,
-					publishedCommit,
-					storageId: createJobStorageId(
-						buildPackageJobId(input.packageId, jobName),
-					),
-					schedule,
-					timezone,
-					enabled,
-					killSwitchEnabled: false,
-					expiresAt: null,
-					createdAt: now,
-					updatedAt: now,
-					nextRunAt: computeNextRunAt({
-						schedule,
-						timezone,
-					}),
-					runCount: 0,
-					successCount: 0,
-					errorCount: 0,
+				for (const row of packageRows) {
+					if (desiredNames.has(row.name)) continue
+					await jobsData(input.env).deleteJob({
+						userId: input.userId,
+						jobId: row.id,
+					})
+					jobAudits.push({
+						orgId: input.userId,
+						jobId: row.id,
+						name: row.name,
+						action: jobAuditActions.deleted,
+					})
+					await deleteJobVector(input.env, row.id)
+					schedulerStateChanged = true
 				}
-				await jobsData(input.env).insertJob({
-					userId: input.userId,
-					job: created,
-					callerContextJson,
-				})
-				jobAudits.push({
-					orgId: input.userId,
-					jobId: created.id,
-					name: jobName,
-					action: jobAuditActions.created,
-					enabled,
-				})
-				// New jobs auto-enable for the creator/owner so the schedule runs
-				// without a separate ask-the-user enablementEnable step. Other
-				// package triggers still never auto-enable on publish.
-				await ensureOwnerEnablement({
-					id: created.id,
-					name: jobName,
-					enabled,
-					isCreate: true,
-				})
-				await stampFirstJob(
-					input.env.APP_DB,
-					{ stableUserId: input.userId, at: now },
-					input.env,
-				)
-				schedulerStateChanged = true
+			} finally {
+				const writer =
+					jobAudits.length > 0
+						? optionalOrgAuditWriter(input.env, {
+								userId: input.actorUserId ?? null,
+							})
+						: null
+				for (const audit of jobAudits) await recordJobAudit(writer, audit)
 			}
-
-			for (const row of packageRows) {
-				if (desiredNames.has(row.name)) continue
-				await jobsData(input.env).deleteJob({
-					userId: input.userId,
-					jobId: row.id,
-				})
-				jobAudits.push({
-					orgId: input.userId,
-					jobId: row.id,
-					name: row.name,
-					action: jobAuditActions.deleted,
-				})
-				await deleteJobVector(input.env, row.id)
-				schedulerStateChanged = true
-			}
-			const writer =
-				jobAudits.length > 0
-					? optionalOrgAuditWriter(input.env, {
-							userId: input.actorUserId ?? null,
-						})
-					: null
-			for (const audit of jobAudits) await recordJobAudit(writer, audit)
 			return schedulerStateChanged
 		},
 	})

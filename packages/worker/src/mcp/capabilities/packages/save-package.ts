@@ -536,6 +536,7 @@ export const savePackageCapability = defineDomainCapability(
 				packageId,
 				sourceId: ensuredSource.id,
 				waitUntil: ctx.waitUntil,
+				firstPublish: !existing,
 				audit: optionalOrgAuditWriter(
 					ctx.env,
 					ctx.callerContext.request ?? null,
