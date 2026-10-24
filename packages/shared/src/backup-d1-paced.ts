@@ -128,6 +128,11 @@ export type PacedD1ProgressCursor = {
 	partialCount: number
 	partialChecksum: string
 	revision: number
+	/**
+	 * How many staging part files have been flushed for `currentTable`.
+	 * Mid-table resumes append a new part instead of rewriting the whole TSV.
+	 */
+	partCount: number
 }
 
 export function assertBackupDay(day: string): void {
@@ -179,6 +184,33 @@ export function pacedD1StagingIndexKey(
 	table: string,
 ): string {
 	return `${pacedD1StagingPrefix(day, databaseName)}index/${encodeURIComponent(table)}.tsv`
+}
+
+/** Zero-based part file for a mid-table paced walk (avoids full TSV rewrites). */
+export function pacedD1StagingDataPartKey(
+	day: string,
+	databaseName: string,
+	table: string,
+	partIndex: number,
+): string {
+	if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+		throw new Error(`invalid paced D1 data part index: ${partIndex}`)
+	}
+	const part = String(partIndex).padStart(4, '0')
+	return `${pacedD1StagingPrefix(day, databaseName)}data/${encodeURIComponent(table)}.parts/${part}.tsv`
+}
+
+export function pacedD1StagingIndexPartKey(
+	day: string,
+	databaseName: string,
+	table: string,
+	partIndex: number,
+): string {
+	if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+		throw new Error(`invalid paced D1 index part index: ${partIndex}`)
+	}
+	const part = String(partIndex).padStart(4, '0')
+	return `${pacedD1StagingPrefix(day, databaseName)}index/${encodeURIComponent(table)}.parts/${part}.tsv`
 }
 
 export function pacedD1StagingTimeTravelKey(
@@ -390,9 +422,17 @@ export function parsePacedD1ProgressCursor(
 		!Number.isSafeInteger(value.partialDeletes) ||
 		!Number.isSafeInteger(value.partialCount) ||
 		typeof value.partialChecksum !== 'string' ||
-		!Number.isSafeInteger(value.revision)
+		!Number.isSafeInteger(value.revision) ||
+		!(
+			value.partCount === undefined ||
+			(Number.isSafeInteger(value.partCount) &&
+				(value.partCount as number) >= 0)
+		)
 	) {
 		throw new Error('paced D1 progress cursor has an invalid versioned shape')
 	}
-	return value as PacedD1ProgressCursor
+	return {
+		...(value as PacedD1ProgressCursor),
+		partCount: typeof value.partCount === 'number' ? value.partCount : 0,
+	}
 }

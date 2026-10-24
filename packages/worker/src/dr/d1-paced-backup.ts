@@ -4,7 +4,9 @@ import {
 	pacedD1SealedIndexKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
+	pacedD1StagingDataPartKey,
 	pacedD1StagingIndexKey,
+	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
 	pacedD1StagingPrefix,
 	pacedD1StagingProgressKey,
@@ -14,7 +16,12 @@ import {
 	type PacedD1ProgressCursor,
 	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
-import { sha256HexOfText } from '@kody-internal/shared/backup-d1-paced-encode.ts'
+import {
+	parsePacedD1IndexLine,
+	sha256HexOfBytes,
+	sha256HexOfText,
+	type PacedD1IndexEntry,
+} from '@kody-internal/shared/backup-d1-paced-encode.ts'
 import {
 	buildPacedD1NightManifest,
 	createMemoryPacedD1IndexReader,
@@ -144,17 +151,26 @@ function pacedD1LaneProgressKey(day: string) {
 	return `staging/${day}/d1-paced/lane-progress.json`
 }
 
-function createSeededTableWriter(seed?: {
+/**
+ * Tick-local writer: only the current cron tick's lines live in memory. Prior
+ * pages stay in staging part objects so large tables (AUDIT_DB) never rewrite
+ * a growing TSV through the worker heap.
+ */
+function createTickTableWriter(): PacedD1TableArtifactWriter & {
 	data: string
 	index: string
-}): PacedD1TableArtifactWriter & { data: string; index: string } {
-	const state = { data: seed?.data ?? '', index: seed?.index ?? '' }
+	isEmpty(): boolean
+} {
+	const state = { data: '', index: '' }
 	return {
 		get data() {
 			return state.data
 		},
 		get index() {
 			return state.index
+		},
+		isEmpty() {
+			return state.data.length === 0 && state.index.length === 0
 		},
 		appendData(line: string) {
 			state.data += line
@@ -175,6 +191,9 @@ async function readTimeTravelBookmark(db: D1Database): Promise<string | null> {
 	try {
 		if (typeof db.withSession !== 'function') return null
 		const session = db.withSession()
+		// Workers return null from getBookmark() until the session has run a
+		// query; a cheap SELECT materializes the bookmark for the night meta.
+		await session.prepare('SELECT 1 AS ok').first()
 		const bookmark = session.getBookmark()
 		return typeof bookmark === 'string' && bookmark.trim().length > 0
 			? bookmark
@@ -182,6 +201,173 @@ async function readTimeTravelBookmark(db: D1Database): Promise<string | null> {
 	} catch {
 		return null
 	}
+}
+
+async function flushTablePart(input: {
+	s3: DrBackupS3Client
+	day: string
+	databaseName: string
+	table: string
+	partIndex: number
+	data: string
+	index: string
+}) {
+	await Promise.all([
+		input.s3.put(
+			pacedD1StagingDataPartKey(
+				input.day,
+				input.databaseName,
+				input.table,
+				input.partIndex,
+			),
+			input.data,
+			{ contentType: 'text/tab-separated-values' },
+		),
+		input.s3.put(
+			pacedD1StagingIndexPartKey(
+				input.day,
+				input.databaseName,
+				input.table,
+				input.partIndex,
+			),
+			input.index,
+			{ contentType: 'text/tab-separated-values' },
+		),
+	])
+}
+
+/**
+ * Hash (and, when small enough, assemble) part files into the canonical
+ * staging data/index keys. Large tables keep parts only — the seal/restore
+ * path reads parts in order so the worker never holds the full TSV.
+ */
+const pacedD1AssembleMaxBytes = 8 * 1024 * 1024
+
+async function finalizeTableParts(input: {
+	s3: DrBackupS3Client
+	day: string
+	databaseName: string
+	table: string
+	partCount: number
+}): Promise<{ dataSha256: string; indexSha256: string }> {
+	if (input.partCount <= 0) {
+		await Promise.all([
+			input.s3.put(
+				pacedD1StagingDataKey(input.day, input.databaseName, input.table),
+				'',
+				{ contentType: 'text/tab-separated-values' },
+			),
+			input.s3.put(
+				pacedD1StagingIndexKey(input.day, input.databaseName, input.table),
+				'',
+				{ contentType: 'text/tab-separated-values' },
+			),
+		])
+		const empty = await sha256HexOfText('')
+		return { dataSha256: empty, indexSha256: empty }
+	}
+
+	let totalBytes = 0
+	const dataChunks: Array<Uint8Array> = []
+	const indexChunks: Array<Uint8Array> = []
+	const dataPartDigests: Array<string> = []
+	const indexPartDigests: Array<string> = []
+	let assemble = true
+
+	for (let partIndex = 0; partIndex < input.partCount; partIndex += 1) {
+		const [dataBytes, indexBytes] = await Promise.all([
+			input.s3.getBytes(
+				pacedD1StagingDataPartKey(
+					input.day,
+					input.databaseName,
+					input.table,
+					partIndex,
+				),
+			),
+			input.s3.getBytes(
+				pacedD1StagingIndexPartKey(
+					input.day,
+					input.databaseName,
+					input.table,
+					partIndex,
+				),
+			),
+		])
+		const data = dataBytes ?? new Uint8Array()
+		const index = indexBytes ?? new Uint8Array()
+		dataPartDigests.push(await sha256HexOfBytes(data))
+		indexPartDigests.push(await sha256HexOfBytes(index))
+		totalBytes += data.byteLength + index.byteLength
+		if (assemble && totalBytes <= pacedD1AssembleMaxBytes) {
+			dataChunks.push(data)
+			indexChunks.push(index)
+		} else {
+			assemble = false
+			dataChunks.length = 0
+			indexChunks.length = 0
+		}
+	}
+
+	if (assemble) {
+		const dataBody = concatUtf8Chunks(dataChunks)
+		const indexBody = concatUtf8Chunks(indexChunks)
+		const [dataSha256, indexSha256] = await Promise.all([
+			sha256HexOfBytes(dataBody),
+			sha256HexOfBytes(indexBody),
+		])
+		await Promise.all([
+			input.s3.put(
+				pacedD1StagingDataKey(input.day, input.databaseName, input.table),
+				dataBody,
+				{ contentType: 'text/tab-separated-values' },
+			),
+			input.s3.put(
+				pacedD1StagingIndexKey(input.day, input.databaseName, input.table),
+				indexBody,
+				{ contentType: 'text/tab-separated-values' },
+			),
+		])
+		return { dataSha256, indexSha256 }
+	}
+
+	// Parts remain the durable body. Manifest digests are the sha256 of the
+	// newline-joined per-part digests (one part in memory at a time).
+	const dataSha256 = await sha256HexOfText(`${dataPartDigests.join('\n')}\n`)
+	const indexSha256 = await sha256HexOfText(`${indexPartDigests.join('\n')}\n`)
+	const pointer = `${JSON.stringify({
+		schemaVersion: pacedD1BackupSchemaVersion,
+		kind: 'paced-d1-parts',
+		partCount: input.partCount,
+		dataSha256,
+		indexSha256,
+		dataPartDigests,
+		indexPartDigests,
+	})}\n`
+	await Promise.all([
+		input.s3.put(
+			pacedD1StagingDataKey(input.day, input.databaseName, input.table),
+			pointer,
+			{ contentType: 'application/json' },
+		),
+		input.s3.put(
+			pacedD1StagingIndexKey(input.day, input.databaseName, input.table),
+			pointer,
+			{ contentType: 'application/json' },
+		),
+	])
+	return { dataSha256, indexSha256 }
+}
+
+function concatUtf8Chunks(chunks: Array<Uint8Array>): Uint8Array {
+	let total = 0
+	for (const chunk of chunks) total += chunk.byteLength
+	const out = new Uint8Array(total)
+	let offset = 0
+	for (const chunk of chunks) {
+		out.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	return out
 }
 
 async function loadPreviousNight(input: {
@@ -223,6 +409,84 @@ async function loadPreviousNight(input: {
 	}
 }
 
+function parsePartsPointer(text: string): { partCount: number } | null {
+	const trimmed = text.trim()
+	if (!trimmed.startsWith('{')) return null
+	try {
+		const parsed = JSON.parse(trimmed) as {
+			kind?: string
+			partCount?: number
+		}
+		if (
+			parsed.kind === 'paced-d1-parts' &&
+			Number.isSafeInteger(parsed.partCount) &&
+			(parsed.partCount as number) >= 0
+		) {
+			return { partCount: parsed.partCount as number }
+		}
+	} catch {
+		return null
+	}
+	return null
+}
+
+/**
+ * Stream previous-night index parts one file at a time so AUDIT-sized indexes
+ * never load into the worker heap for a delta merge-join.
+ */
+function createStagingPartsIndexReader(input: {
+	s3: DrBackupS3Client
+	day: string
+	databaseName: string
+	table: string
+	partCount: number
+}) {
+	let partIndex = 0
+	let lines: Array<string> = []
+	let lineIndex = 0
+	let cur: PacedD1IndexEntry | null = null
+	let done = input.partCount === 0
+
+	const refill = async () => {
+		while (lineIndex >= lines.length && partIndex < input.partCount) {
+			const bytes = await input.s3.getBytes(
+				pacedD1StagingIndexPartKey(
+					input.day,
+					input.databaseName,
+					input.table,
+					partIndex,
+				),
+			)
+			partIndex += 1
+			const text = bytes ? new TextDecoder().decode(bytes) : ''
+			lines = text.length === 0 ? [] : text.replace(/\n$/, '').split('\n')
+			lineIndex = 0
+		}
+		if (lineIndex >= lines.length && partIndex >= input.partCount) {
+			done = true
+		}
+	}
+
+	return {
+		async peek() {
+			if (cur || done) return cur
+			await refill()
+			if (done || lineIndex >= lines.length) {
+				done = true
+				return null
+			}
+			cur = parsePacedD1IndexLine(lines[lineIndex++]!)
+			return cur
+		},
+		take() {
+			const value = cur
+			if (!value) throw new Error('paced D1 index reader take() without peek')
+			cur = null
+			return value
+		},
+	}
+}
+
 async function openPrevIndex(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
@@ -239,7 +503,18 @@ async function openPrevIndex(input: {
 				)
 			: pacedD1StagingIndexKey(input.prev.day, input.source.name, input.table)
 	const text = await input.s3.getText(key)
-	return createMemoryPacedD1IndexReader(text?.text ?? '')
+	const body = text?.text ?? ''
+	const pointer = parsePartsPointer(body)
+	if (pointer && input.prev.indexLocation === 'staging') {
+		return createStagingPartsIndexReader({
+			s3: input.s3,
+			day: input.prev.day,
+			databaseName: input.source.name,
+			table: input.table,
+			partCount: pointer.partCount,
+		})
+	}
+	return createMemoryPacedD1IndexReader(body)
 }
 
 async function loadOrCreateNightMeta(input: {
@@ -382,7 +657,8 @@ async function sourceHasManifest(
 	return head.exists
 }
 
-async function sourceIsIncomplete(
+/** Crashed mid-flight: progress or night-meta without a finished manifest. */
+async function sourceHasInProgressWork(
 	s3: DrBackupS3Client,
 	day: string,
 	databaseName: string,
@@ -393,6 +669,19 @@ async function sourceIsIncomplete(
 	return progress.exists || meta.exists
 }
 
+async function sourceNeedsManifest(
+	s3: DrBackupS3Client,
+	day: string,
+	databaseName: string,
+) {
+	return !(await sourceHasManifest(s3, day, databaseName))
+}
+
+/**
+ * Oldest in-progress (crashed) night first, then today when any bound source
+ * still lacks a manifest. That way nightly catch-up of a stranded older day
+ * cannot skip seeding tonight after the older night finishes.
+ */
 async function findStrandedPacedDay(input: {
 	s3: DrBackupS3Client
 	today: string
@@ -400,14 +689,19 @@ async function findStrandedPacedDay(input: {
 	sources: Array<PacedD1SourceConfig>
 	env: Env
 }): Promise<string | null> {
-	for (let offset = input.lookbackDays; offset >= 0; offset -= 1) {
-		const candidate =
-			offset === 0 ? input.today : utcDayMinus(input.today, offset)
+	for (let offset = input.lookbackDays; offset >= 1; offset -= 1) {
+		const candidate = utcDayMinus(input.today, offset)
 		for (const source of input.sources) {
 			if (!resolvePacedD1Binding(input.env, source.binding)) continue
-			if (await sourceIsIncomplete(input.s3, candidate, source.name)) {
+			if (await sourceHasInProgressWork(input.s3, candidate, source.name)) {
 				return candidate
 			}
+		}
+	}
+	for (const source of input.sources) {
+		if (!resolvePacedD1Binding(input.env, source.binding)) continue
+		if (await sourceNeedsManifest(input.s3, input.today, source.name)) {
+			return input.today
 		}
 	}
 	return null
@@ -439,6 +733,7 @@ function createInitialProgress(input: {
 		partialCount: 0,
 		partialChecksum: '0000000000000000',
 		revision: 0,
+		partCount: 0,
 	}
 }
 
@@ -585,19 +880,10 @@ async function workSourceTick(input: {
 			prevSchemaHash: prevTable?.schemaHash,
 		})
 
-		let seed: { data: string; index: string } | undefined
-		if (progress.currentTable === table.name && progress.lastRowid !== null) {
-			const [data, index] = await Promise.all([
-				input.s3.getText(
-					pacedD1StagingDataKey(input.day, input.source.name, table.name),
-				),
-				input.s3.getText(
-					pacedD1StagingIndexKey(input.day, input.source.name, table.name),
-				),
-			])
-			seed = { data: data?.text ?? '', index: index?.text ?? '' }
-		}
-		const writer = createSeededTableWriter(seed)
+		const resuming =
+			progress.currentTable === table.name && progress.lastRowid !== null
+		let partCount = resuming ? progress.partCount : 0
+		const writer = createTickTableWriter()
 		const result = await walkPacedD1Table({
 			db: input.db as PacedD1Database,
 			table,
@@ -641,6 +927,19 @@ async function workSourceTick(input: {
 		meta.bytesOut += result.bytesOut
 		meta.queryMs.push(...result.queryMs)
 
+		if (!writer.isEmpty()) {
+			await flushTablePart({
+				s3: input.s3,
+				day: input.day,
+				databaseName: input.source.name,
+				table: table.name,
+				partIndex: partCount,
+				data: writer.data,
+				index: writer.index,
+			})
+			partCount += 1
+		}
+
 		if (!result.done) {
 			progress = {
 				...progress,
@@ -651,46 +950,33 @@ async function workSourceTick(input: {
 				partialChecksum: result.checksum,
 				partialUpserts: result.upserts,
 				partialDeletes: result.deletes,
+				partCount,
 				revision: progress.revision + 1,
 			}
 			await Promise.all([
-				input.s3.put(
-					pacedD1StagingDataKey(input.day, input.source.name, table.name),
-					writer.data,
-					{ contentType: 'text/tab-separated-values' },
-				),
-				input.s3.put(
-					pacedD1StagingIndexKey(input.day, input.source.name, table.name),
-					writer.index,
-					{ contentType: 'text/tab-separated-values' },
-				),
 				persistProgress(input.s3, progress),
 				persistNightMeta(input.s3, meta),
 			])
 			return { timeBudgetExhausted: true, tablesCompleted, manifestWritten }
 		}
 
-		await Promise.all([
-			input.s3.put(
-				pacedD1StagingDataKey(input.day, input.source.name, table.name),
-				writer.data,
-				{ contentType: 'text/tab-separated-values' },
-			),
-			input.s3.put(
-				pacedD1StagingIndexKey(input.day, input.source.name, table.name),
-				writer.index,
-				{ contentType: 'text/tab-separated-values' },
-			),
-			input.s3.put(
-				pacedD1StagingTableManifestKey(
-					input.day,
-					input.source.name,
-					table.name,
-				),
-				`${JSON.stringify(result.manifest)}\n`,
-				{ contentType: 'application/json' },
-			),
-		])
+		const hashes = await finalizeTableParts({
+			s3: input.s3,
+			day: input.day,
+			databaseName: input.source.name,
+			table: table.name,
+			partCount,
+		})
+		const tableManifest: PacedD1TableManifest = {
+			...result.manifest,
+			dataSha256: hashes.dataSha256,
+			indexSha256: hashes.indexSha256,
+		}
+		await input.s3.put(
+			pacedD1StagingTableManifestKey(input.day, input.source.name, table.name),
+			`${JSON.stringify(tableManifest)}\n`,
+			{ contentType: 'application/json' },
+		)
 		progress = {
 			...progress,
 			completedTables: [...progress.completedTables, table.name],
@@ -700,6 +986,7 @@ async function workSourceTick(input: {
 			partialDeletes: 0,
 			partialCount: 0,
 			partialChecksum: '0000000000000000',
+			partCount: 0,
 			revision: progress.revision + 1,
 		}
 		// Drop finished table from the local remaining list.

@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import {
 	pacedD1StagingDataKey,
+	pacedD1StagingDataPartKey,
 	pacedD1StagingManifestKey,
 	pacedD1StagingProgressKey,
 	parsePacedD1NightManifest,
@@ -218,7 +219,7 @@ test('one full night writes a shadow staging manifest', async () => {
 })
 
 test('resume mid-table continues from lastRowid across ticks', async () => {
-	const { client } = createMemoryS3()
+	const { client, objects } = createMemoryS3()
 	const env = createEnv({
 		APP_DB: createD1FromSqlite(seedSqlite(6)),
 	})
@@ -248,6 +249,12 @@ test('resume mid-table continues from lastRowid across ticks', async () => {
 	expect(progress.currentTable).toBe('items')
 	expect(progress.lastRowid).toBeTypeOf('number')
 	expect(progress.partialCount).toBeGreaterThan(0)
+	expect(progress.partCount).toBeGreaterThan(0)
+	expect(objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', 0))).toBe(
+		true,
+	)
+	// Mid-table resume must not rewrite a monolithic data TSV yet.
+	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(false)
 
 	const second = await runD1PacedBackupTick({
 		env,
@@ -259,6 +266,55 @@ test('resume mid-table continues from lastRowid across ticks', async () => {
 	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
 	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
 	expect(manifest.tables.items?.count).toBe(6)
+	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(true)
+})
+
+test('catch-up seeds today after finishing a stranded older night', async () => {
+	const { client } = createMemoryS3()
+	const olderDay = '2026-10-23'
+	const env = createEnv({
+		APP_DB: createD1FromSqlite(seedSqlite(4)),
+	})
+	let nowMs = 0
+	const stranded = await runD1PacedBackupTick({
+		env,
+		now: new Date(`${olderDay}T01:00:00.000Z`),
+		s3: client,
+		timeBudgetMs: 50,
+		walkerOpts: {
+			minPage: 1,
+			maxPage: 1,
+			minGapMs: 0,
+			sleep: async () => {
+				nowMs = 100
+			},
+			now: () => nowMs,
+		},
+	})
+	expect(stranded.timeBudgetExhausted).toBe(true)
+	expect(stranded.day).toBe(olderDay)
+
+	const finishOlder = await runD1PacedBackupTick({
+		env,
+		now: at('12:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(finishOlder.day).toBe(olderDay)
+	expect(finishOlder.manifestsWritten).toBe(1)
+
+	const startToday = await runD1PacedBackupTick({
+		env,
+		now: at('12:05'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(startToday.skipped).toBe(false)
+	expect(startToday.day).toBe(day)
+	expect(startToday.manifestsWritten).toBe(1)
+	expect(
+		await client.head(pacedD1StagingManifestKey(day, 'kody')),
+	).toMatchObject({ exists: true })
 })
 
 test('delta night reuses previous staging manifest and index', async () => {
