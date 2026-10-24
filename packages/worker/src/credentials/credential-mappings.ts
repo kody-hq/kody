@@ -85,33 +85,87 @@ function targetColumns(target: CredentialMappingRowTarget) {
 	}
 }
 
+type PendingCredentialMappingRequest = {
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds: ReadonlyArray<string>
+	needKey: string | undefined
+	resolve: (rows: Array<CredentialMappingRow>) => void
+	reject: (error: unknown) => void
+}
+
 /**
- * The package's mappings a viewer can see: the org layer, the viewer's own
- * `mine` layer, and overrides on the given enablements.
+ * Concurrent `loadCredentialMappings` calls against the same `APP_DB` in one
+ * isolate turn share one read per (org, package, person, enablements) scope
+ * (KODY-AZ). Package execute opens `credential(key)` for each need via
+ * `Promise.all`, and each open previously issued its own
+ * `need_key = ?` mapping SELECT; D1 still ran those as sequential spans. A
+ * lone lookup still uses the single-key (or unfiltered) query.
  */
-export async function loadCredentialMappings(input: {
+const pendingCredentialMappingBatches = new WeakMap<
+	D1Database,
+	Array<PendingCredentialMappingRequest>
+>()
+
+function mappingScopeKey(input: {
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds: ReadonlyArray<string>
+}) {
+	return `${input.orgId}\0${input.packageId}\0${input.personId ?? ''}\0${[...input.enablementIds].join('\0')}`
+}
+
+function rowsForNeedKey(
+	rows: ReadonlyArray<CredentialMappingRow>,
+	needKey: string | undefined,
+) {
+	return needKey === undefined
+		? [...rows]
+		: rows.filter((row) => row.needKey === needKey)
+}
+
+/**
+ * Fresh D1 read of the package's mappings a viewer can see: the org layer,
+ * the viewer's own `mine` layer, and overrides on the given enablements.
+ * Optional `needKey` / `needKeys` narrow the SQL; callers that batch several
+ * keys prefer one unfiltered (or `IN`) read and filter in memory.
+ */
+async function queryCredentialMappings(input: {
 	db: D1Database
 	orgId: string
 	packageId: string
 	personId: string | null
-	enablementIds?: ReadonlyArray<string>
+	enablementIds: ReadonlyArray<string>
 	needKey?: string
+	needKeys?: ReadonlyArray<string>
 }): Promise<Array<CredentialMappingRow>> {
-	const enablementIds = input.enablementIds ?? []
 	const clauses = [`target = 'org'`]
 	const binds: Array<string> = [input.orgId, input.packageId]
 	if (input.personId) {
 		clauses.push(`(target = 'mine' AND person_user_id = ?)`)
 		binds.push(input.personId)
 	}
-	if (enablementIds.length > 0) {
+	if (input.enablementIds.length > 0) {
 		clauses.push(
-			`(target = 'enablement' AND enablement_id IN (${enablementIds.map(() => '?').join(', ')}))`,
+			`(target = 'enablement' AND enablement_id IN (${input.enablementIds.map(() => '?').join(', ')}))`,
 		)
-		binds.push(...enablementIds)
+		binds.push(...input.enablementIds)
 	}
-	const needFilter = input.needKey === undefined ? '' : ' AND need_key = ?'
-	if (input.needKey !== undefined) binds.push(input.needKey)
+	let needFilter = ''
+	const needKeys = input.needKeys
+		? [...new Set(input.needKeys)]
+		: input.needKey !== undefined
+			? [input.needKey]
+			: null
+	if (needKeys && needKeys.length === 1) {
+		needFilter = ' AND need_key = ?'
+		binds.push(needKeys[0]!)
+	} else if (needKeys && needKeys.length > 1) {
+		needFilter = ` AND need_key IN (${needKeys.map(() => '?').join(', ')})`
+		binds.push(...needKeys)
+	}
 	const result = await input.db
 		.prepare(
 			`SELECT need_key, target, person_user_id, enablement_id,
@@ -147,6 +201,91 @@ export async function loadCredentialMappings(input: {
 				updatedAt: row.updated_at,
 			},
 		]
+	})
+}
+
+async function flushCredentialMappingBatch(db: D1Database) {
+	const pending = pendingCredentialMappingBatches.get(db)
+	pendingCredentialMappingBatches.delete(db)
+	if (!pending || pending.length === 0) return
+
+	const byScope = new Map<string, Array<PendingCredentialMappingRequest>>()
+	for (const request of pending) {
+		const key = mappingScopeKey(request)
+		const group = byScope.get(key)
+		if (group) group.push(request)
+		else byScope.set(key, [request])
+	}
+
+	await Promise.all(
+		[...byScope.values()].map(async (requests) => {
+			const [first] = requests
+			if (!first) return
+			try {
+				const needKeys = requests.map((request) => request.needKey)
+				const wantsAll = needKeys.some((key) => key === undefined)
+				const uniqueNeedKeys = [
+					...new Set(
+						needKeys.filter((key): key is string => key !== undefined),
+					),
+				]
+				const rows = await queryCredentialMappings({
+					db,
+					orgId: first.orgId,
+					packageId: first.packageId,
+					personId: first.personId,
+					enablementIds: first.enablementIds,
+					...(wantsAll
+						? {}
+						: uniqueNeedKeys.length === 1
+							? { needKey: uniqueNeedKeys[0] }
+							: { needKeys: uniqueNeedKeys }),
+				})
+				for (const request of requests) {
+					request.resolve(rowsForNeedKey(rows, request.needKey))
+				}
+			} catch (error) {
+				// Isolate failures per scope so one D1 error does not reject
+				// unrelated lookups that share the same microtask flush.
+				for (const request of requests) request.reject(error)
+			}
+		}),
+	)
+}
+
+/**
+ * The package's mappings a viewer can see: the org layer, the viewer's own
+ * `mine` layer, and overrides on the given enablements.
+ */
+export async function loadCredentialMappings(input: {
+	db: D1Database
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds?: ReadonlyArray<string>
+	needKey?: string
+}): Promise<Array<CredentialMappingRow>> {
+	const enablementIds = input.enablementIds ?? []
+	const db = input.db
+	return await new Promise<Array<CredentialMappingRow>>((resolve, reject) => {
+		const pending = pendingCredentialMappingBatches.get(db)
+		const request: PendingCredentialMappingRequest = {
+			orgId: input.orgId,
+			packageId: input.packageId,
+			personId: input.personId,
+			enablementIds,
+			needKey: input.needKey,
+			resolve,
+			reject,
+		}
+		if (pending) {
+			pending.push(request)
+			return
+		}
+		pendingCredentialMappingBatches.set(db, [request])
+		queueMicrotask(() => {
+			void flushCredentialMappingBatch(db)
+		})
 	})
 }
 

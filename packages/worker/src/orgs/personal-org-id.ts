@@ -42,11 +42,44 @@ export function personalOrgIdForPerson(user: {
 }
 
 /**
+ * Personal-org id lookups against the same `APP_DB` share one users-row read
+ * per person for the isolate lifetime (KODY-AZ). Package execute opens
+ * `credential(key)` per need and each open also checks author exemption via
+ * `assertCredentialUsesDeclared`, which used to re-query
+ * `users.personal_org_id` once per need. The id is stable for a person
+ * (conversion is rare and typically lands on a later request). Rejected
+ * loads are forgotten so a retry can re-read.
+ */
+const personalOrgIdsByDb = new WeakMap<
+	D1Database,
+	Map<string, Promise<OwnerId>>
+>()
+
+/**
  * Resolve personal org id when only a person id and DB are available (no
  * stamped `personalOrgId` on the caller). Prefer this over branding the
  * person id for org-keyed storage lookups.
  */
 export async function loadPersonalOrgIdForPerson(
+	db: D1Database,
+	personId: PersonId,
+): Promise<OwnerId> {
+	let cache = personalOrgIdsByDb.get(db)
+	if (!cache) {
+		cache = new Map()
+		personalOrgIdsByDb.set(db, cache)
+	}
+	const existing = cache.get(personId)
+	if (existing) return existing
+	const pending = readPersonalOrgIdForPerson(db, personId)
+	cache.set(personId, pending)
+	pending.catch(() => {
+		if (cache.get(personId) === pending) cache.delete(personId)
+	})
+	return pending
+}
+
+async function readPersonalOrgIdForPerson(
 	db: D1Database,
 	personId: PersonId,
 ): Promise<OwnerId> {

@@ -71,3 +71,36 @@ test('loadPersonalOrgIdForPerson reads users.personal_org_id', async () => {
 		await loadPersonalOrgIdForPerson(db, personIdFromStored('d'.repeat(64))),
 	).toBe(personIdFromStored('d'.repeat(64)))
 })
+
+test('loadPersonalOrgIdForPerson shares one users read per person (KODY-AZ)', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const db = createD1FromSqlite(sqlite, { queries })
+	const distinctPerson = personIdFromStored(personId)
+	await db
+		.prepare(
+			`INSERT INTO users (id, username, email, password_hash, stable_user_id, personal_org_id)
+			 VALUES (1, 'distinct', 'distinct@example.com', 'x', ?, ?)`,
+		)
+		.bind(distinctPerson, distinctOrgId)
+		.run()
+	queries.length = 0
+
+	const results = await Promise.all(
+		Array.from({ length: 5 }, () =>
+			loadPersonalOrgIdForPerson(db, distinctPerson),
+		),
+	)
+	expect(results.every((id) => id === distinctOrgId)).toBe(true)
+	expect(
+		queries.filter((query) => query.toLowerCase().includes('from users')),
+	).toHaveLength(1)
+
+	await expect(loadPersonalOrgIdForPerson(db, distinctPerson)).resolves.toBe(
+		distinctOrgId,
+	)
+	expect(
+		queries.filter((query) => query.toLowerCase().includes('from users')),
+	).toHaveLength(1)
+})

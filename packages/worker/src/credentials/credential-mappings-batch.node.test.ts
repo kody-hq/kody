@@ -1,0 +1,236 @@
+/**
+ * Concurrent per-need-key mapping loads coalesce into one D1 read (KODY-AZ).
+ */
+import { DatabaseSync } from 'node:sqlite'
+import { expect, test } from 'vitest'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import {
+	buildWriteCredentialMappingStatement,
+	loadCredentialMappings,
+	type CredentialMappingRowTarget,
+} from './credential-mappings.ts'
+
+const migrationsDirectory = new URL('../../migrations/', import.meta.url)
+const now = '2026-10-23T20:00:00.000Z'
+const orgId = 'org-mapping-batch'
+const packageId = 'pkg-mapping-batch'
+const personId = 'person-mapping-batch'
+
+function isCredentialMappingLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return (
+		normalized.includes('from credential_mappings') &&
+		normalized.includes('org_id = ?') &&
+		normalized.includes('package_id = ?') &&
+		normalized.startsWith('select ')
+	)
+}
+
+function isSingleNeedKeyLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return (
+		isCredentialMappingLookup(normalized) &&
+		normalized.includes('need_key = ?') &&
+		!normalized.includes('need_key in (')
+	)
+}
+
+function isMultiNeedKeyLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return (
+		isCredentialMappingLookup(normalized) &&
+		normalized.includes('need_key in (')
+	)
+}
+
+async function writeMapping(input: {
+	db: D1Database
+	needKey: string
+	target: CredentialMappingRowTarget
+	credentialIds: ReadonlyArray<string>
+}) {
+	await buildWriteCredentialMappingStatement({
+		db: input.db,
+		orgId,
+		packageId,
+		needKey: input.needKey,
+		target: input.target,
+		credentialIds: input.credentialIds,
+		updatedByUserId: personId,
+		now,
+	}).run()
+}
+
+test('loadCredentialMappings batches concurrent need keys into one IN read (KODY-AZ)', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const db = createD1FromSqlite(sqlite, { queries })
+	const orgTarget = { target: 'org' as const }
+	const mineTarget = { target: 'mine' as const, personId }
+	await writeMapping({
+		db,
+		needKey: 'mail',
+		target: orgTarget,
+		credentialIds: ['cred-mail'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'chat',
+		target: mineTarget,
+		credentialIds: ['cred-chat'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'docs',
+		target: orgTarget,
+		credentialIds: ['cred-docs'],
+	})
+	queries.length = 0
+
+	const keys = ['mail', 'chat', 'docs'] as const
+	const results = await Promise.all(
+		keys.map((needKey) =>
+			loadCredentialMappings({
+				db,
+				orgId,
+				packageId,
+				personId,
+				needKey,
+			}),
+		),
+	)
+
+	expect(results.map((rows) => rows.map((row) => row.needKey))).toEqual([
+		['mail'],
+		['chat'],
+		['docs'],
+	])
+	expect(results[0]![0]).toMatchObject({
+		needKey: 'mail',
+		target: { target: 'org' },
+		credentialIds: ['cred-mail'],
+	})
+	expect(results[1]![0]).toMatchObject({
+		needKey: 'chat',
+		target: { target: 'mine', personId },
+		credentialIds: ['cred-chat'],
+	})
+	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(1)
+	expect(queries.filter(isSingleNeedKeyLookup)).toHaveLength(0)
+	expect(queries.filter(isMultiNeedKeyLookup)).toHaveLength(1)
+
+	queries.length = 0
+	await expect(
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId,
+			personId,
+			needKey: 'mail',
+		}),
+	).resolves.toEqual([
+		expect.objectContaining({
+			needKey: 'mail',
+			credentialIds: ['cred-mail'],
+		}),
+	])
+	expect(queries.filter(isSingleNeedKeyLookup)).toHaveLength(1)
+	expect(queries.filter(isMultiNeedKeyLookup)).toHaveLength(0)
+})
+
+test('batched loadCredentialMappings keeps org-before-mine precedence per need key', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const db = createD1FromSqlite(sqlite)
+	await writeMapping({
+		db,
+		needKey: 'mail',
+		target: { target: 'org' },
+		credentialIds: ['org-mail'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'mail',
+		target: { target: 'mine', personId },
+		credentialIds: ['mine-mail'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'chat',
+		target: { target: 'org' },
+		credentialIds: ['org-chat'],
+	})
+
+	const [mail, chat] = await Promise.all([
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId,
+			personId,
+			needKey: 'mail',
+		}),
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId,
+			personId,
+			needKey: 'chat',
+		}),
+	])
+
+	expect(mail.map((row) => [row.target.target, row.credentialIds])).toEqual([
+		['mine', ['mine-mail']],
+		['org', ['org-mail']],
+	])
+	expect(chat.map((row) => [row.target.target, row.credentialIds])).toEqual([
+		['org', ['org-chat']],
+	])
+})
+
+test('batched loadCredentialMappings isolates scopes so different packages do not share a read', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const db = createD1FromSqlite(sqlite, { queries })
+	const otherPackageId = 'pkg-other'
+	await writeMapping({
+		db,
+		needKey: 'mail',
+		target: { target: 'org' },
+		credentialIds: ['cred-a'],
+	})
+	await buildWriteCredentialMappingStatement({
+		db,
+		orgId,
+		packageId: otherPackageId,
+		needKey: 'mail',
+		target: { target: 'org' },
+		credentialIds: ['cred-b'],
+		updatedByUserId: personId,
+		now,
+	}).run()
+	queries.length = 0
+
+	const [left, right] = await Promise.all([
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId,
+			personId,
+			needKey: 'mail',
+		}),
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId: otherPackageId,
+			personId,
+			needKey: 'mail',
+		}),
+	])
+
+	expect(left[0]?.credentialIds).toEqual(['cred-a'])
+	expect(right[0]?.credentialIds).toEqual(['cred-b'])
+	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(2)
+})
