@@ -58,6 +58,23 @@ test('email HTML preview opens every link in a new tab without an opener', () =>
 	)
 })
 
+test('email HTML preview reads link attributes like the HTML tokenizer', () => {
+	const doc = buildAdminEmailHtmlPreviewDocument(
+		`<a href="https://x.example/?q=a>b" target="_self" rel="opener">x</a>
+<a title='1 > 0 target=keep' target=_top rel=opener>y</a>
+<a target="_self"href="https://z.example">z</a>
+<a href=https://w.example/a>b target=_top>w</a>
+<abbr target="keep">abbr</abbr>`,
+	)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).toContain('<a href="https://x.example/?q=a>b">x</a>')
+	expect(body).toContain("<a title='1 > 0 target=keep'>y</a>")
+	expect(body).toContain('<a href="https://z.example">z</a>')
+	// Unquoted values end at `>`, so the rest is text, not attributes.
+	expect(body).toContain('<a href=https://w.example/a>b target=_top>w</a>')
+	expect(body).toContain('<abbr target="keep">abbr</abbr>')
+})
+
 test('email HTML preview puts its head tags first in documents without a head', () => {
 	const htmlOnly = buildAdminEmailHtmlPreviewDocument(
 		'<html lang="en"><body><a href="https://x.example">x</a></body></html>',

@@ -25,17 +25,82 @@ export function stripDangerousEmailHtml(html: string) {
 	)
 }
 
+const linkTagStartPattern = /<(?:a|area)(?=[\s/>])/gi
+const droppedLinkAttributes = new Set(['target', 'rel'])
+const whitespaceOrSlashPattern = /[\s/]/
+const whitespacePattern = /\s/
+const attributeNameEndPattern = /[\s/>=]/
+const unquotedValueEndPattern = /[\s>]/
+
+function skipWhile(html: string, index: number, pattern: RegExp) {
+	let i = index
+	while (i < html.length && pattern.test(html.charAt(i))) i++
+	return i
+}
+
+function skipUntil(html: string, index: number, pattern: RegExp) {
+	let i = index
+	while (i < html.length && !pattern.test(html.charAt(i))) i++
+	return i
+}
+
 /**
- * Drop `target` from links so the injected `<base target="_blank">` applies to
- * every link (no in-frame or named-window navigation), and drop `rel` values
- * that would hand the new tab a reference back to the preview.
+ * Read one start tag's attributes the way the HTML tokenizer does (quoted
+ * values may contain `>`), dropping `target` and `rel`. Returns the kept tag
+ * text after the tag name and the index just past the tag.
+ */
+function readLinkTagRest(html: string, from: number) {
+	let kept = ''
+	let dropped = false
+	let i = from
+	while (i < html.length) {
+		const segmentStart = i
+		i = skipWhile(html, i, whitespaceOrSlashPattern)
+		if (i >= html.length || html.charAt(i) === '>') {
+			const tagEnd = Math.min(i + 1, html.length)
+			return { kept: kept + html.slice(segmentStart, tagEnd), end: tagEnd }
+		}
+		const nameStart = i
+		i = skipUntil(html, i + 1, attributeNameEndPattern)
+		const name = html.slice(nameStart, i).toLowerCase()
+		const afterName = skipWhile(html, i, whitespacePattern)
+		if (html.charAt(afterName) === '=') {
+			const valueStart = skipWhile(html, afterName + 1, whitespacePattern)
+			const quote = html.charAt(valueStart)
+			if (quote === '"' || quote === "'") {
+				const close = html.indexOf(quote, valueStart + 1)
+				i = close < 0 ? html.length : close + 1
+			} else {
+				i = skipUntil(html, valueStart, unquotedValueEndPattern)
+			}
+		}
+		if (droppedLinkAttributes.has(name)) {
+			dropped = true
+			continue
+		}
+		const segment = html.slice(segmentStart, i)
+		kept += dropped && nameStart === segmentStart ? ` ${segment}` : segment
+		dropped = false
+	}
+	return { kept, end: html.length }
+}
+
+/**
+ * Drop `target` and `rel` from links so the injected `<base target="_blank">`
+ * applies to every link (no in-frame or named-window navigation) and no `rel`
+ * can hand the new tab a reference back to the preview.
  */
 function normalizeEmailLinks(html: string) {
-	return html.replaceAll(/<(?:a|area)\b[^>]*>/gi, (tag) =>
-		tag
-			.replaceAll(/\s+target\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/gi, '')
-			.replaceAll(/\s+rel\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/gi, ''),
-	)
+	let out = ''
+	let last = 0
+	for (const match of html.matchAll(linkTagStartPattern)) {
+		if (match.index < last) continue
+		const nameEnd = match.index + match[0].length
+		const { kept, end } = readLinkTagRest(html, nameEnd)
+		out += html.slice(last, nameEnd) + kept
+		last = end
+	}
+	return out + html.slice(last)
 }
 
 function isFullHtmlDocument(html: string) {
