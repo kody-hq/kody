@@ -389,12 +389,6 @@ export function withPackageAppVisitTicket(
 	return next
 }
 
-/**
- * Per-request visit context the host attaches when materializing loopback
- * bindings. A signed-in visitor who currently acts as themselves gets a
- * ticket; anonymous and identity-only requests get a fresh binding and no
- * ticket, so they stay actor-less.
- */
 /** Rebuild the request context a verified ticket authorizes. */
 export function requestContextFromVisitClaims(
 	claims: PackageAppVisitClaims,

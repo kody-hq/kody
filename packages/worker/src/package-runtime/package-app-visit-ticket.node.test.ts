@@ -1,5 +1,9 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
+import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	createPackageAppRequestVisit,
 	endPackageAppVisit,
@@ -27,15 +31,15 @@ const audience: PackageAppVisitAudience = {
 	publishedCommit: 'commit-1',
 }
 
-const visitorA = {
-	userId: 'person-a',
+const visitorA: RuntimePackageAppVisitor = {
+	userId: personIdFromStored('person-a'),
 	username: 'alpha',
-	role: 'owner' as const,
+	role: 'owner',
 }
-const visitorB = {
-	userId: 'person-b',
+const visitorB: RuntimePackageAppVisitor = {
+	userId: personIdFromStored('person-b'),
 	username: 'beta',
-	role: 'member' as const,
+	role: 'member',
 }
 const owner = {
 	userId: ownerIdFromStored('org-1'),
@@ -45,7 +49,7 @@ const owner = {
 }
 
 function mintFor(
-	visitor: typeof visitorA,
+	visitor: RuntimePackageAppVisitor,
 	extra: Partial<Parameters<typeof mintPackageAppVisitTicket>[0]> = {},
 ) {
 	return mintPackageAppVisitTicket({
@@ -203,7 +207,7 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 			scopes: null,
 			profileName: null,
 		},
-		membership: { role: visitorA.role },
+		membership: { role: 'owner' as const },
 	}
 	const acting = await createPackageAppRequestVisit({
 		env: secretEnv,

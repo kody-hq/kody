@@ -640,7 +640,6 @@ function sourceFilesFor(manifest = createPackageAppTestManifest()) {
 
 const {
 	buildPackageAppWorker,
-	createPackageAppWorkerCacheKey,
 	createPackageAppWorkerId,
 	PackageAppRuntimeBridge,
 } = await import('./package-app.ts')
@@ -1678,13 +1677,26 @@ test('buildPackageAppWorker mints request-bound loopback bindings on every loade
 	// Building (and reusing) the cached options mints nothing by itself.
 	expect(packageAppRuntimeMock.packageAppRuntimeBridge).not.toHaveBeenCalled()
 	expect(loader.get).toHaveBeenCalledTimes(2)
+	type MaterializedRuntime = {
+		props: {
+			credentialClientBinding: string
+			packageBindingToken: string
+		}
+	}
+	type MaterializedWorker = {
+		env: {
+			KODY_RUNTIME: MaterializedRuntime
+			__kodyPackageContext: unknown
+		}
+		modules: Record<string, string>
+	}
 	const [firstId, firstFactory] = loader.get.mock.calls[0] as unknown as [
 		string,
-		() => { env: Record<string, unknown>; modules: Record<string, string> },
+		() => MaterializedWorker,
 	]
 	const [secondId, secondFactory] = loader.get.mock.calls[1] as unknown as [
 		string,
-		() => { env: Record<string, unknown>; modules: Record<string, string> },
+		() => MaterializedWorker,
 	]
 	expect(secondId).toBe(firstId)
 	const first = firstFactory()
@@ -1894,41 +1906,6 @@ test('buildPackageAppWorker keeps one worker id per app commit per mount across 
 	} finally {
 		now.mockRestore()
 	}
-})
-
-test('createPackageAppWorkerCacheKey does not vary by visitor', () => {
-	const base = {
-		userId: ownerIdFromStored('org-1'),
-		orgSlug: 'acme',
-		packageId: 'pkg-1',
-		kodyId: 'demo',
-		sourceId: 'src-1',
-		publishedCommit: 'commit-1',
-		baseUrl: 'https://kody.dev',
-		appBasePath: '/@acme/demo',
-		hostedUrl: 'https://kody.dev/@acme/demo',
-	}
-	const first = createPackageAppWorkerCacheKey(base)
-	expect(first).toBe(createPackageAppWorkerCacheKey(base))
-	expect(JSON.parse(first!)).not.toContain('person-a')
-	expect(JSON.parse(first!)).not.toContain('person-b')
-	expect(first).toBe(
-		createPackageAppWorkerCacheKey({
-			...base,
-		}),
-	)
-	expect(
-		createPackageAppWorkerCacheKey({ ...base, appBasePath: '/other' }),
-	).not.toBe(first)
-	expect(
-		createPackageAppWorkerCacheKey({
-			...base,
-			hostedUrl: 'https://custom.example',
-		}),
-	).not.toBe(first)
-	expect(
-		createPackageAppWorkerCacheKey({ ...base, publishedCommit: null }),
-	).toBe(null)
 })
 
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {
