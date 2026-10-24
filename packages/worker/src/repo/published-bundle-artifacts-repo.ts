@@ -495,9 +495,13 @@ async function listLivePublishedCommitsBySourceIds(
 				found.set(String(row['id']), publishedCommitFromRow(row))
 			}
 		}
-	} catch {
-		// Tests and callers without entity_sources keep last-write-wins.
-		return found
+	} catch (error) {
+		// Empty map + failure matches getLivePublishedCommit's missing
+		// entity_sources fixture path (last-write-wins). A later chunk failing
+		// after earlier rows landed must not treat unread sources as null live
+		// commits — that would plan unguarded writes over a newer identity.
+		if (found.size === 0) return found
+		throw error
 	}
 	return found
 }

@@ -751,6 +751,64 @@ test('upsertPublishedBundleArtifactRows recovers UNIQUE identity conflicts via s
 	)
 })
 
+test('upsertPublishedBundleArtifactRows does not treat a mid-batch live-commit read failure as null live commits', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-live',
+	})
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-2',
+		publishedCommit: 'commit-live',
+	})
+
+	let entitySourceSelects = 0
+	const guarded = {
+		prepare(query: string) {
+			const stmt = db.prepare(query)
+			return {
+				bind(...values: Array<unknown>) {
+					const bound = stmt.bind(...values)
+					return {
+						first: () => bound.first(),
+						async all() {
+							if (
+								query.includes('FROM entity_sources') &&
+								query.includes('IN (')
+							) {
+								entitySourceSelects += 1
+								if (entitySourceSelects === 1) {
+									return await bound.all()
+								}
+								throw new Error('D1_ERROR: network timeout')
+							}
+							return await bound.all()
+						},
+						run: () => bound.run(),
+					}
+				},
+			}
+		},
+		batch: (statements: Array<D1PreparedStatement>) => db.batch(statements),
+	} as unknown as D1Database
+
+	// Force two live-commit chunks so the second can fail after the first lands.
+	const many = Array.from({ length: 100 }, (_, index) => ({
+		...artifactRow('module', 'commit-stale'),
+		sourceId: `source-${index + 1}`,
+		artifactName: `./export-${index}`,
+		entryPoint: `src/export-${index}.ts`,
+		kvKey: `kv:export-${index}`,
+	}))
+	await expect(
+		upsertPublishedBundleArtifactRows(guarded, many),
+	).rejects.toThrow('D1_ERROR: network timeout')
+	await expect(lookup(db, 'module')).resolves.toBeNull()
+})
+
 test('upsertPublishedBundleArtifactRows preserves COALESCE null-vs-empty artifact_name and last-write-wins without entity_sources', async () => {
 	const db = createPublishedBundleArtifactsDb()
 	// No entity_sources row → liveCommit null → unguarded last-write-wins.
