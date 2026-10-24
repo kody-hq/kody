@@ -178,9 +178,7 @@ export function startedByClientLabel(
 	}
 }
 
-export function startedBySubtitle(
-	startedBy: AccountActivityRunListItem['startedBy'],
-) {
+function startedBySubtitle(startedBy: AccountActivityRunListItem['startedBy']) {
 	const who = startedByHandleLabel(startedBy)
 	const client = startedByClientLabel(startedBy)
 	return client ? `${who} · ${client}` : who
