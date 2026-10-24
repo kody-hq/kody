@@ -5,16 +5,16 @@ import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
  * module scope. It is written into the wrapper module, so it is part of the
  * hashed module graph behind the stable Dynamic Worker id.
  *
- * A cached app build is keyed per visitor, package, and published commit.
- * Deriving the capability from that key (and the UTC day) with a server-held
- * key keeps the module text, and so the worker id, stable when the build cache
- * expires and the build is recreated. A random value per build would mint a
- * new worker id (another unique worker day and a cold isolate) on every
- * rebuild.
+ * A cached app build is keyed per owner, package, published commit, and
+ * mount. Deriving the capability from that key (and the UTC day) with a
+ * server-held key keeps the module text, and so the worker id, stable when
+ * the build cache expires and the build is recreated. A random value per
+ * build would mint a new worker id (another unique worker day and a cold
+ * isolate) on every rebuild.
  *
  * Package code never sees the server key, so it cannot compute the capability
  * for any other build. One build's capability is accepted only by the bridge
- * props of that same build (same visitor, package, commit, and day).
+ * props of that same build (same package, commit, mount, and day).
  */
 
 const bindingTokenInfo = new TextEncoder().encode(

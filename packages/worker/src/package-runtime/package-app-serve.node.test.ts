@@ -266,6 +266,7 @@ function seedFixture(options?: FixtureOptions) {
 	)
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -467,6 +468,7 @@ test('package-app host permanent-308s a retired slug to the current leaf', async
 
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -727,6 +729,7 @@ test('OPTIONS that the app answers is forwarded unchanged', async () => {
 	seedFixture({ kodyId: 'options-handled-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch(request: Request) {
@@ -754,6 +757,7 @@ test('an OPTIONS handler throw becomes a 204, not the package-entrypoint page', 
 	seedFixture({ kodyId: 'options-throw-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -791,6 +795,7 @@ test('a tagged runtime throw becomes the package-entrypoint page with the run id
 	seedFixture({ kodyId: 'runtime-throw-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -834,6 +839,7 @@ test('an entrypoint rejection records an owner-visible error run and shows its i
 	seedFixture({ kodyId: 'entrypoint-reject-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -914,6 +920,7 @@ test('author 200 responses that set the runtime-error header stay successful', a
 	seedFixture({ kodyId: 'author-marker-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {

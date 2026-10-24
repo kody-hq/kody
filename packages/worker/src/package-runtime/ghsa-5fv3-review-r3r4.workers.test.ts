@@ -20,6 +20,7 @@ import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
 } from './package-app.ts'
+import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
@@ -690,7 +691,10 @@ async function serveApp(userId: string, appSource: string) {
 	})
 	const entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
 	const response = await entrypoint.fetch(
-		new Request(`https://${username}.packages.isolated.test/`),
+		withPackageAppVisitTicket(
+			new Request(`https://${username}.packages.isolated.test/`),
+			appWorker.visit.ticket,
+		),
 	)
 	const text = await response.text()
 	return { seen, status: response.status, text }

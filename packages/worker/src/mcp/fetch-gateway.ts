@@ -104,6 +104,11 @@ import {
 	usageAttributionFieldsFromRequest,
 	type UsageEnv,
 } from '#worker/usage/record-usage.ts'
+import {
+	packageAppVisitTicketHeaderName,
+	requestContextFromVisitClaims,
+	verifyPackageAppVisitTicket,
+} from '#worker/package-runtime/package-app-visit-ticket.ts'
 
 type FetchGatewayProps = {
 	baseUrl: string
@@ -161,6 +166,17 @@ type FetchGatewayProps = {
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
 	 */
 	packageSecretRefKey?: string | null
+	/**
+	 * Package-app runs only: audience used to verify a per-request visit
+	 * ticket. Omitted outside package-app serving.
+	 */
+	visitAudience?: {
+		host: string
+		packageId: string
+		kodyId: string
+		sourceId: string
+		publishedCommit: string | null
+	} | null
 }
 export type { FetchGatewayProps }
 
@@ -201,6 +217,40 @@ export const outboundFetchTimeoutMs = 5 * 60_000
 export const retrieverOutboundFetchDeniedMessage =
 	'Outbound fetch is not available in retriever runs.'
 
+async function applyPackageAppVisitTicketToGateway(input: {
+	env: FetchGatewayEnv
+	props: FetchGatewayProps
+	request: Request
+	globalFetch?: typeof fetch
+	waitUntil?: (promise: Promise<unknown>) => void
+	timeoutMs?: number
+	idleTimeoutMs?: number
+}) {
+	const ticket = input.request.headers.get(packageAppVisitTicketHeaderName)
+	if (!ticket) return input
+	const audience = input.props.visitAudience
+	if (!audience) {
+		throw new Error('Package app visit ticket is not valid.')
+	}
+	const claims = await verifyPackageAppVisitTicket({
+		env: input.env,
+		ticket,
+		audience,
+	})
+	const headers = new Headers(input.request.headers)
+	headers.delete(packageAppVisitTicketHeaderName)
+	return {
+		...input,
+		request: new Request(input.request, { headers }),
+		props: {
+			...input.props,
+			email: claims.owner.email,
+			request: requestContextFromVisitClaims(claims),
+			credentialClientBinding: claims.credentialClientBinding,
+		},
+	}
+}
+
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 	async fetch(request: Request) {
 		return executeGatewayFetch({
@@ -223,11 +273,13 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
-	const globalFetch = input.globalFetch ?? fetch
+	const resolved = await applyPackageAppVisitTicketToGateway(input)
+	const globalFetch = resolved.globalFetch ?? fetch
 	const startedAtMs = Date.now()
 	let response: Response | undefined
 	let deadline: OutboundFetchDeadline | undefined
-	let meteredEntityId = readMeteredRequestHostname(input.request.url, null)
+	let meteredEntityId = readMeteredRequestHostname(resolved.request.url, null)
+	input = resolved
 
 	try {
 		if (input.props.allowOutboundFetch === false) {

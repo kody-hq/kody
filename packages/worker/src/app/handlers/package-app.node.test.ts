@@ -229,6 +229,7 @@ function servePackageEntrypoint(
 	})
 	mockModule.buildPackageAppWorker.mockResolvedValueOnce({
 		entrypointName: 'entry',
+		visit: { ticket: null, nonce: null },
 		stub: { getEntrypoint: () => ({ fetch }) },
 	})
 }

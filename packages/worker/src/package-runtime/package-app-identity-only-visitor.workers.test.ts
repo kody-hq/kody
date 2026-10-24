@@ -17,6 +17,7 @@ import {
 	createPackageAppCallerContext,
 } from './package-app.ts'
 import { createPackageCodeRequest } from './package-app-serve.ts'
+import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 import {
 	packageAppVisitorHeaderName,
 	withPackageAppVisitorHeader,
@@ -217,9 +218,12 @@ async function setup() {
 					username: input.identity.username,
 				}
 			: null
-		const request = withPackageAppVisitorHeader(
-			createPackageCodeRequest(inbound),
-			{ visitor: input.visitor, identity: input.visitor ? null : identity },
+		const request = withPackageAppVisitTicket(
+			withPackageAppVisitorHeader(createPackageCodeRequest(inbound), {
+				visitor: input.visitor,
+				identity: input.visitor ? null : identity,
+			}),
+			appWorker.visit.ticket,
 		)
 		const response = await appWorker.stub
 			.getEntrypoint(appWorker.entrypointName)

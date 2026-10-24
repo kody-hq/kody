@@ -17,6 +17,7 @@ import {
 	isComputeOverageLimitError,
 } from '#worker/entitlements/errors.ts'
 import { buildPackageAppWorker } from './package-app.ts'
+import { endPackageAppVisit } from './package-app-visit-ticket.ts'
 import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 
 const includeUsedUpCloseReason = 'include-used-up'
@@ -153,6 +154,7 @@ type PackageRealtimeHookContext = {
 	packageId: string
 	kodyId: string
 	baseUrl: string
+	__kodyVisitTicket?: string | null
 }
 
 type PackageRealtimeConnectPayload = {
@@ -638,14 +640,19 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		if (typeof entrypoint.handleRealtimeEvent !== 'function') {
 			return []
 		}
-		const result = await entrypoint.handleRealtimeEvent({
-			...input.payload,
-			userId: input.binding.userId,
-			packageId: input.binding.packageId,
-			kodyId: input.binding.kodyId,
-			baseUrl: input.binding.baseUrl,
-		})
-		return normalizeHookActions(result)
+		try {
+			const result = await entrypoint.handleRealtimeEvent({
+				...input.payload,
+				userId: input.binding.userId,
+				packageId: input.binding.packageId,
+				kodyId: input.binding.kodyId,
+				baseUrl: input.binding.baseUrl,
+				__kodyVisitTicket: appWorker.visit.ticket,
+			})
+			return normalizeHookActions(result)
+		} finally {
+			endPackageAppVisit(appWorker.visit.nonce)
+		}
 	}
 
 	private async applyHookActions(

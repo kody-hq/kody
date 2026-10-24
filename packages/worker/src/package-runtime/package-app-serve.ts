@@ -60,6 +60,10 @@ import {
 	type PackageAppTrustedDispatch,
 } from '#worker/package-runtime/package-app-synthetic.ts'
 import { withPackageAppVisitorHeader } from '#worker/package-runtime/package-app-visitor-header.ts'
+import {
+	endPackageAppVisit,
+	withPackageAppVisitTicket,
+} from '#worker/package-runtime/package-app-visit-ticket.ts'
 import { packageRealtimeSessionRpc } from '#worker/package-runtime/realtime-session.ts'
 import { isWebSocketUpgradeRequest } from '#worker/package-runtime/websocket-upgrade.ts'
 import {
@@ -1008,6 +1012,7 @@ export async function servePackageAppRequest(input: {
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
 	let servedPublishedCommit: string | null = null
+	let visitNonce: string | null = null
 	try {
 		const [packageManifest, callerContext] = await Promise.all([
 			pushServerTiming(serverTiming, 'manifest', () =>
@@ -1057,12 +1062,16 @@ export async function servePackageAppRequest(input: {
 			},
 		})
 		entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
+		visitNonce = appWorker.visit.nonce
 		const forwardedUrl = new URL(requestUrl)
 		forwardedUrl.pathname = forwardedPackageRestPath
 		forwardedRequest = applyTrustedPackageAppDispatch(
-			withPackageAppVisitorHeader(
-				createPackageCodeRequest(request, forwardedUrl),
-				{ visitor, identity },
+			withPackageAppVisitTicket(
+				withPackageAppVisitorHeader(
+					createPackageCodeRequest(request, forwardedUrl),
+					{ visitor, identity },
+				),
+				appWorker.visit.ticket,
 			),
 			dispatch,
 		)
@@ -1103,71 +1112,75 @@ export async function servePackageAppRequest(input: {
 		)
 	}
 
-	let fetched: Response
 	try {
-		fetched = await pushServerTiming(serverTiming, 'entrypoint', () =>
-			entrypoint.fetch(forwardedRequest),
-		)
-	} catch (error) {
-		if (request.method === 'OPTIONS') {
+		let fetched: Response
+		try {
+			fetched = await pushServerTiming(serverTiming, 'entrypoint', () =>
+				entrypoint.fetch(forwardedRequest),
+			)
+		} catch (error) {
+			if (request.method === 'OPTIONS') {
+				return attachPackageAppServerTiming(
+					unhandledPackageAppOptionsResponse(),
+					serverTiming,
+				)
+			}
+			console.error('Package app entrypoint failed:', error)
+			// The app worker failed before its own handler could record a run, so
+			// record one here. Owners then see the failure in runList and Activity,
+			// and the crash page shows its run id.
+			const runtimeRunId =
+				runtimeRunIdFromError(error) ??
+				(await recordPackageAppEntrypointFailure({
+					env,
+					ownerId: owner.userId,
+					savedPackage,
+					publishedCommit: servedPublishedCommit,
+					name: forwardedPackageRestPath,
+					method: request.method,
+					error,
+				}))
 			return attachPackageAppServerTiming(
-				unhandledPackageAppOptionsResponse(),
+				createPackageAppErrorResponse({
+					request,
+					kind: 'package-entrypoint',
+					kodyId: savedPackage.kodyId,
+					packageName: savedPackage.name,
+					runtimeRunId,
+				}),
 				serverTiming,
 			)
 		}
-		console.error('Package app entrypoint failed:', error)
-		// The app worker failed before its own handler could record a run, so
-		// record one here. Owners then see the failure in runList and Activity,
-		// and the crash page shows its run id.
-		const runtimeRunId =
-			runtimeRunIdFromError(error) ??
-			(await recordPackageAppEntrypointFailure({
-				env,
-				ownerId: owner.userId,
-				savedPackage,
-				publishedCommit: servedPublishedCommit,
-				name: forwardedPackageRestPath,
-				method: request.method,
-				error,
-			}))
-		return attachPackageAppServerTiming(
-			createPackageAppErrorResponse({
-				request,
-				kind: 'package-entrypoint',
-				kodyId: savedPackage.kodyId,
-				packageName: savedPackage.name,
-				runtimeRunId,
-			}),
-			serverTiming,
-		)
-	}
-	if (isPackageAppRuntimeThrownResponse(fetched)) {
-		if (request.method === 'OPTIONS') {
+		if (isPackageAppRuntimeThrownResponse(fetched)) {
+			if (request.method === 'OPTIONS') {
+				return attachPackageAppServerTiming(
+					unhandledPackageAppOptionsResponse(),
+					serverTiming,
+				)
+			}
 			return attachPackageAppServerTiming(
-				unhandledPackageAppOptionsResponse(),
+				createPackageAppErrorResponse({
+					request,
+					kind: 'package-entrypoint',
+					kodyId: savedPackage.kodyId,
+					packageName: savedPackage.name,
+					runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
+				}),
 				serverTiming,
 			)
 		}
-		return attachPackageAppServerTiming(
-			createPackageAppErrorResponse({
-				request,
-				kind: 'package-entrypoint',
-				kodyId: savedPackage.kodyId,
-				packageName: savedPackage.name,
-				runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
-			}),
-			serverTiming,
-		)
+		// Leave x-kody-runtime-run-id on the response. The origin forward reads
+		// it for the runtime-worker hop log, then strips it before the browser.
+		logPackageAppHttpError({
+			request,
+			status: fetched.status,
+			phase: 'entrypoint-response',
+			runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
+		})
+		return attachPackageAppServerTiming(fetched, serverTiming)
+	} finally {
+		endPackageAppVisit(visitNonce)
 	}
-	// Leave x-kody-runtime-run-id on the response. The origin forward reads
-	// it for the runtime-worker hop log, then strips it before the browser.
-	logPackageAppHttpError({
-		request,
-		status: fetched.status,
-		phase: 'entrypoint-response',
-		runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
-	})
-	return attachPackageAppServerTiming(fetched, serverTiming)
 }
 
 export { isPackageAppSyntheticRequest }

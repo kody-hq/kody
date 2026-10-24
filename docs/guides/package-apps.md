@@ -208,9 +208,13 @@ The same verified identity is on the request your fetch handler receives, in the
 `X-Kody-Visitor` header: JSON with `userId`, `username`, and `role` (the
 visitor's role in the owning org, `null` for anyone who is not a member). The
 platform strips any inbound `X-Kody-*` header before setting it, so it cannot be
-forged, and it is absent for anonymous visitors. The OAuth helper's `getUser`,
-`requireUser`, and `resolveUser` read it in server code; `/-/auth/me` stays the
-browser's way to ask (it adds avatar and consented email).
+forged, and it is absent for anonymous visitors. Visitors of one app share one
+worker isolate per commit per mount; identity and authority travel per request
+(the visitor header plus a short-lived host-signed visit ticket on every bridge
+and gateway call), never inside the cached worker. The OAuth helper's `getUser`,
+`requireUser`, and `resolveUser` read the visitor header in server code;
+`/-/auth/me` stays the browser's way to ask (it adds avatar and consented
+email).
 
 Responses to a request that names a visitor are forced `private` so no shared
 cache can mix visitors.
