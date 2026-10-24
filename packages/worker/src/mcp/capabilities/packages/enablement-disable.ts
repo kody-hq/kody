@@ -1,3 +1,4 @@
+import { orgAuditCauseFromCaller } from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -34,6 +35,7 @@ export const enablementDisableCapability = defineDomainCapability(
 				request: requireMcpRequest(ctx.callerContext),
 				enablementId: args.enablementId,
 				reason: args.reason,
+				cause: orgAuditCauseFromCaller(ctx.callerContext),
 			})
 			return { enablement: toEnablementOutput(enablement) }
 		},

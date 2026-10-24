@@ -1,3 +1,4 @@
+import { orgAuditCauseFromCaller } from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -89,6 +90,7 @@ export const enablementEnableCapability = defineDomainCapability(
 				packageIdOrKodyId: args.packageId ?? args.kodyId ?? '',
 				kind: args.triggerKind,
 				name: args.triggerName,
+				cause: orgAuditCauseFromCaller(ctx.callerContext),
 			})
 			return {
 				enablement: toEnablementOutput(enablement),

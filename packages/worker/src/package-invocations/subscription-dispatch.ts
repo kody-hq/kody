@@ -267,6 +267,7 @@ export async function deliverPackageEventWithToolFactories(input: {
 				actorTokenId: `${internalPackageEventSubscriptionTokenId}:${message.source.packageId}`,
 				request: packageEventRequestSource(message),
 				runtimeInvokeDepth: message.invokeDepth,
+				resourceEventDepth: message.resourceEventDepth,
 				toolFactories: input.toolFactories,
 				waitUntil: input.waitUntil,
 			})
@@ -420,6 +421,9 @@ export function createPackageEventToolsWithToolFactories(input: {
 				emittedAt: new Date().toISOString(),
 				...(input.callerContext.request
 					? { lineage: requestLineage(input.callerContext.request) }
+					: {}),
+				...(input.callerContext.resourceEventDepth
+					? { resourceEventDepth: input.callerContext.resourceEventDepth }
 					: {}),
 			}
 			const queue = (input.env as Partial<Env>).PACKAGE_EVENTS_DISPATCH_QUEUE

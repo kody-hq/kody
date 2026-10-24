@@ -1,3 +1,4 @@
+import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
 /**
  * Enablement writes from people (credentials plan v4, section 3.3). Each
  * person turns triggers on for themselves; nobody enables a trigger for
@@ -750,6 +751,8 @@ export async function enableTriggerWithJobForCaller(input: {
 	packageIdOrKodyId: string
 	kind: EnablementTriggerKind
 	name: string
+	/** Set when a package run turns the trigger on. */
+	cause?: OrgAuditCause | null
 }): Promise<{
 	enablement: EnablementRecord
 	job: EnablementJobOutcome | null
@@ -825,6 +828,7 @@ export async function enableTriggerWithJobForCaller(input: {
 		},
 		from: 'off',
 		to: 'on',
+		cause: input.cause ?? null,
 	})
 	await runNewEnablementPlans({
 		db: input.env.APP_DB,
@@ -941,6 +945,8 @@ export async function disableEnablementForCaller(input: {
 	enablementId: string
 	/** Why it was turned off, recorded in the org audit log. */
 	reason?: string | null
+	/** Set when a package run turns the trigger off. */
+	cause?: OrgAuditCause | null
 }): Promise<EnablementRecord> {
 	const actor = requireActor(input.request)
 	const db = input.env.APP_DB
@@ -969,6 +975,7 @@ export async function disableEnablementForCaller(input: {
 		from: enablement.state,
 		to: 'off',
 		reason: input.reason,
+		cause: input.cause ?? null,
 	})
 	// The audit row commits with the turn-off and only when it changed a row.
 	await db.batch([

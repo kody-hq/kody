@@ -181,8 +181,13 @@ export { getJob, getJobInspection, inspectJobsForUser, listJobs }
 function requirePersistableJobCallerContext(
 	callerContext: McpCallerContext,
 ): PersistedJobCallerContext {
-	const { orgBinding: _derivedAtRequestTime, ...wire } =
-		parseMcpCallerContextWire(callerContext)
+	// The chain depth belongs to the run that saved the job, not to its
+	// later scheduled runs.
+	const {
+		orgBinding: _derivedAtRequestTime,
+		resourceEventDepth: _resourceEventDepth,
+		...wire
+	} = parseMcpCallerContextWire(callerContext)
 	if (!wire.user) {
 		throw new Error('Authenticated MCP user is required for job operations.')
 	}
@@ -1129,6 +1134,7 @@ export async function updateJob(input: {
 							from: 'off',
 							to: 'on',
 							reason: 'Turned on with its job.',
+							cause: orgAuditCauseFromCaller(input.callerContext),
 						}),
 				})
 			}

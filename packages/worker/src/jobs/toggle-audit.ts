@@ -286,10 +286,13 @@ export async function recordEnablementToggle(input: {
 	from: ToggleAuditState
 	to: ToggleAuditState
 	reason?: string | null
+	/** Set when a package run made the change. */
+	cause?: OrgAuditCause | null
 }) {
 	return await recordToggleAudit({
 		env: input.env,
 		orgId: input.enablement.orgId,
+		cause: input.cause ?? null,
 		resource: 'enablement',
 		resourceId: input.enablement.id,
 		from: input.from,
@@ -321,9 +324,11 @@ export function planEnablementToggle(input: {
 	from: ToggleAuditState
 	to: ToggleAuditState
 	reason?: string | null
+	/** Set when a package run made the change. */
+	cause?: OrgAuditCause | null
 }): PlannedEnablementToggle | null {
 	const actor = toggleActorFromRequest(input.request)
-	const writer = toggleAuditWriter(input.env, actor, null)
+	const writer = toggleAuditWriter(input.env, actor, input.cause ?? null)
 	if (!writer) return null
 	const plan = planOrgAuditOutbox(
 		writer,
