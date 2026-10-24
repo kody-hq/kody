@@ -13,6 +13,7 @@ import {
 	buildPackagePagePath,
 } from '@kody-internal/shared/public-urls.ts'
 import {
+	isPackageAppHostProbePath,
 	isPackageAppHostRobotsTxtPath,
 	isPackageAppLegacySubdomainMountPath,
 	packageAppHostDefaultRobotsTxt,
@@ -1485,6 +1486,11 @@ async function handleCustomHostnameRequest(input: {
 	mapping: VerifiedAppCustomHostname
 }) {
 	const { request, env, url, mapping } = input
+	// VCS / scanner probes on a bound custom host never reach the app. Refuse
+	// before session handoff and the metered entitlement seat-count gate.
+	if (isPackageAppHostProbePath(url.pathname)) {
+		return createUnmatchedPackageAppPathResponse()
+	}
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
