@@ -49,6 +49,12 @@ const mockModule = vi.hoisted(() => ({
 		files: {} as Record<string, string>,
 	})),
 	isLoopbackArtifactsRemote: vi.fn((..._args: Array<unknown>) => false),
+	recordPackageAppPublish: vi.fn(async (_input: unknown) => {}),
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	recordPackageAppPublish: (input: unknown) =>
+		mockModule.recordPackageAppPublish(input),
 }))
 
 vi.mock('./entity-sources.ts', () => ({
@@ -288,6 +294,8 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 	expect(bootstrap.openSession).not.toHaveBeenCalled()
 	expect(bootstrap.publishSession).not.toHaveBeenCalled()
 
+	expect(mockModule.recordPackageAppPublish).not.toHaveBeenCalled()
+
 	const withAccess = setupSync(sourceRow(), {
 		bootstrapSource: bootstrapped('commit-bootstrap-2'),
 	})
@@ -372,6 +380,46 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 		userId: ownerIdFromStored('user-1'),
 		force: true,
 	})
+})
+
+test('a first publish records who published it before the code serves', async () => {
+	const callOrder: Array<string> = []
+	mockModule.recordPackageAppPublish.mockImplementation(async () => {
+		callOrder.push('recordPackageAppPublish')
+	})
+	const bootstrapSource = vi.fn(async () => {
+		callOrder.push('bootstrapSource')
+		return {
+			sessionId: 'source-sync-source-1-session',
+			publishedCommit: 'commit-bootstrap-person',
+			message: 'Bootstrapped source source-1.',
+		}
+	})
+	setupSync(sourceRow(), { bootstrapSource })
+	await expect(
+		syncArtifactSourceSnapshot({
+			...syncInput,
+			files: packageFiles,
+			requestedByUserId: 'person-1',
+		}),
+	).resolves.toBe('commit-bootstrap-person')
+	expect(callOrder).toEqual(['recordPackageAppPublish', 'bootstrapSource'])
+	expect(mockModule.recordPackageAppPublish).toHaveBeenLastCalledWith({
+		db: syncInput.env.APP_DB,
+		scope: { orgId: ownerIdFromStored('user-1'), packageId: 'package-1' },
+		personId: 'person-1',
+	})
+
+	setupSync(sourceRow(), { bootstrapSource: bootstrapped('commit-unknown') })
+	await syncArtifactSourceSnapshot({
+		...syncInput,
+		files: packageFiles,
+		requestedByUserId: null,
+	})
+	expect(mockModule.recordPackageAppPublish).toHaveBeenLastCalledWith(
+		expect.objectContaining({ personId: null }),
+	)
+	mockModule.recordPackageAppPublish.mockReset()
 })
 
 test('syncArtifactSourceSnapshot runs package checks before updating a published package', async () => {

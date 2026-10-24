@@ -499,7 +499,7 @@ function readResponseContentLengthBytes(
  * Package apps fill placeholders as their runs-as person. When that fails,
  * the visitor's fill (today's behavior) is tried before giving up, and a
  * success there leaves a would-break row. Body placeholders fill while the
- * upload streams, so only header and URL failures can fall back.
+ * upload streams, so they fall back one batch at a time.
  */
 async function expandAsPackageAppAuthority(input: {
 	request: Request
@@ -548,6 +548,7 @@ async function expandAsPackageAppAuthority(input: {
 		const expanded = await expandSecretPlaceholders({
 			...input,
 			props: { ...input.props, request: runsAs.request },
+			bodyFallback: { props: input.props, onFallback: noteFallback },
 		})
 		discardUnreadBody(retry.body)
 		return expanded
@@ -608,6 +609,15 @@ export async function expandSecretPlaceholders(input: {
 	request: Request
 	props: FetchGatewayProps
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	/**
+	 * Body placeholders fill while the upload streams, so a whole-request
+	 * retry is impossible once a chunk is sent; a batch these props cannot
+	 * fill is retried with `props` here instead.
+	 */
+	bodyFallback?: {
+		props: FetchGatewayProps
+		onFallback: (error: unknown) => void
+	}
 }): Promise<{
 	request: Request
 	substitutedValues: Array<string>
@@ -776,6 +786,7 @@ export async function expandSecretPlaceholders(input: {
 
 	const resolvePlaceholderBatch = async (
 		sources: ReadonlyArray<PlacedPlaceholderSource>,
+		batchProps: FetchGatewayProps = input.props,
 	): Promise<void> => {
 		const texts = sources.map((source) => source.text)
 		const placementsByPlaceholder = new Map<
@@ -855,7 +866,7 @@ export async function expandSecretPlaceholders(input: {
 						name: referenced.name,
 						scope: referenced.scope,
 						storageContext,
-						orgSlug: secretPageOrgSlugFromCaller(input.props),
+						orgSlug: secretPageOrgSlugFromCaller(batchProps),
 						requestHost,
 						placements,
 						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
@@ -925,18 +936,18 @@ export async function expandSecretPlaceholders(input: {
 		}
 		referencedAnyCredential = true
 		assertSecretPlacement({ url: requestUrl, values: texts })
-		const callerUserId = requireFetchUserId(input.props)
+		const callerUserId = requireFetchUserId(batchProps)
 		const resolveInput = {
 			env: input.env as Env,
 			orgId: callerUserId,
-			actor: input.props.request,
+			actor: batchProps.request,
 			packageStamp,
-			baseUrl: input.props.baseUrl,
+			baseUrl: batchProps.baseUrl,
 			// Run package id for the nested personal-secret rule (GHSA-5fv3).
 			runContextPackageId:
 				packageStamp?.kind === 'claimed'
 					? undefined
-					: (input.props.storageContext?.packageId ?? null),
+					: (batchProps.storageContext?.packageId ?? null),
 		}
 		const entriesToResolve = <
 			T extends {
@@ -970,7 +981,7 @@ export async function expandSecretPlaceholders(input: {
 		const providerSecretsToResolve = entriesToResolve(referencedProviderSecrets)
 		await assertCredentialUsesDeclared({
 			env: input.env as Env,
-			request: input.props.request,
+			request: batchProps.request,
 			orgId: callerUserId,
 			packageId: packageStamp?.packageId ?? null,
 			references: [
@@ -997,13 +1008,13 @@ export async function expandSecretPlaceholders(input: {
 				if (
 					referenced.scope === 'package' &&
 					referenced.ref &&
-					input.props.packageSecretRefKey
+					batchProps.packageSecretRefKey
 				) {
 					const authorityId = packageStamp?.packageId ?? null
 					const ok =
 						authorityId != null &&
 						(await verifyPackageSecretRef({
-							refKey: input.props.packageSecretRefKey,
+							refKey: batchProps.packageSecretRefKey,
 							packageId: authorityId,
 							alias: referenced.name,
 							ref: referenced.ref,
@@ -1016,7 +1027,7 @@ export async function expandSecretPlaceholders(input: {
 				} else if (
 					referenced.scope === 'package' &&
 					referenced.ref &&
-					!input.props.packageSecretRefKey
+					!batchProps.packageSecretRefKey
 				) {
 					throw new McpCallerError(
 						`Package-scoped secret "${referenced.name}" requires a package runtime that issues secret refs.`,
@@ -1034,7 +1045,7 @@ export async function expandSecretPlaceholders(input: {
 							name: referenced.name,
 							scope: referenced.scope,
 							storageContext,
-							baseUrl: input.props.baseUrl,
+							baseUrl: batchProps.baseUrl,
 						}),
 					)
 				}
@@ -1043,7 +1054,7 @@ export async function expandSecretPlaceholders(input: {
 		)
 		const resolvedSecretResults = readSettledSecretResults({
 			settled: settledSecretResults,
-			props: input.props,
+			props: batchProps,
 			storageContext,
 			requestedHost: requestUrl.hostname,
 		})
@@ -1067,7 +1078,7 @@ export async function expandSecretPlaceholders(input: {
 		)
 		const resolvedProviderSecrets = await Promise.all(
 			providerSecretsToResolve.map(async ({ referenced, credential }) => {
-				const request = input.props.request
+				const request = batchProps.request
 				if (!request) {
 					throw new GatewayCredentialUnavailableError(
 						fetchSecretAuthRequiredMessage,
@@ -1176,7 +1187,22 @@ export async function expandSecretPlaceholders(input: {
 					})),
 				]
 				const before = substitutedValues.length
-				await resolvePlaceholderBatch(sources)
+				const auditedBefore = new Set(auditedPlacementKeys)
+				try {
+					await resolvePlaceholderBatch(sources)
+				} catch (error) {
+					const fallback = input.bodyFallback
+					if (!fallback || !isPlaceholderAuthorityFailure(error)) throw error
+					for (const key of auditedPlacementKeys) {
+						if (!auditedBefore.has(key)) auditedPlacementKeys.delete(key)
+					}
+					try {
+						await resolvePlaceholderBatch(sources, fallback.props)
+					} catch {
+						throw error
+					}
+					fallback.onFallback(error)
+				}
 				return substitutedValues.slice(before)
 			},
 		})

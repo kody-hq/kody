@@ -297,6 +297,32 @@ export async function recordPackageAppPublisherUnknown(input: {
 	forgetPackageAppRunsAs(input.scope)
 }
 
+/**
+ * Record the person behind a publish (null: no known person). Call before the
+ * new code serves, so it never runs as someone the publisher could not act as.
+ */
+export async function recordPackageAppPublish(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string | null
+}) {
+	if (input.personId === null) {
+		await recordPackageAppPublisherUnknown({ db: input.db, scope: input.scope })
+		return
+	}
+	const binding = await loadOrgBindingForOrg(
+		input.db,
+		input.personId,
+		input.scope.orgId,
+	)
+	await recordPackageAppPublisher({
+		db: input.db,
+		scope: input.scope,
+		personId: input.personId,
+		publisherIsOwner: binding?.role === 'owner',
+	})
+}
+
 /** Choose who an app runs as; null goes back to the publisher. */
 export async function setPackageAppRunsAsPerson(input: {
 	db: D1Database
