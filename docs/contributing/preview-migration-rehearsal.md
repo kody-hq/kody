@@ -210,19 +210,18 @@ both `--idle-ttl-seconds` and `--max-lifetime-seconds`.
 An operator can also take the JSON snapshot without Cloudflare credentials:
 `node tools/preview-rehearsal/run.ts json-snapshot --credentials creds/credentials.json --out snap.json`.
 
-The seed writes the post-Teams grant shape (a `use` grant, a grant invite, and
-an ordinary org with an Owner). Finished one-off conversion and audit-backfill
-tooling is gone; use this rehearsal path for future data migrations.
+The seed writes the current grant shape (a `use` grant, a grant invite, and an
+org with an Owner). Use this rehearsal path for data migrations.
 
 ## What the preview cannot rehearse
 
 | Gap                                                                      | Covered by                                                                                                         |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | Inbound email (no `USER_EMAIL_DOMAIN`, no inbound route on previews)     | Workers tests of the `email()` handler                                                                             |
-| Package-app subdomains and cookie binding (`PACKAGE_APP_BASE_URL` unset) | Workers tests, plus a production smoke after cutover; previews rehearse the inline app path                        |
+| Package-app subdomains and cookie binding (`PACKAGE_APP_BASE_URL` unset) | Workers tests, plus a production smoke of the subdomain path; previews rehearse the inline app path                |
 | Seat subscriptions and Stripe-backed auto-refill                         | Workers tests with a stubbed Stripe client; the seed writes auto-refill settings directly                          |
 | Plaintext secret reveal                                                  | Does not exist; decryption is proven by hashes from the mock echo route                                            |
-| Production OAuth, Stripe, and credential-exposure counts                 | Already covered during the teams rollout via the Kody Stripe and Cloudflare packages (Actions workflow removed)    |
+| Production OAuth, Stripe, and credential-exposure counts                 | Covered by the Kody Stripe and Cloudflare packages                                                                 |
 | Rolling back KV, Durable Objects, Artifacts repos, or Vectorize          | Not covered: `restore` rewinds D1 only; run `reindex` after a restore, and re-create the preview for a clean slate |
 
 ## Reference

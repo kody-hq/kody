@@ -401,7 +401,7 @@ const allowedPackagesPublishNoticeSchema = z
 	.nullable()
 	.optional()
 	.describe(
-		'Warning when this package fills a user credential whose allowed-packages list excludes it. Uses through another package or a one-off execute run are already denied; the package running on its own still works for now. Null/omitted when there is nothing to warn about. Does not block publish.',
+		'Warning when this package fills a user credential whose allowed-packages list excludes it. Uses through another package or a one-off execute run are already denied; a self-authored or adopted package that runs on its own still uses the credential. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
 const artifactsRebuiltSchema = z
