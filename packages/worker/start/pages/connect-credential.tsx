@@ -67,7 +67,14 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
+const primaryButtonCss = {
+	...getPrimaryButtonCss({
+		size: 'lg',
+		weight: 'semibold',
+		mobileFullWidth: true,
+	}),
+	justifySelf: 'start',
+}
 const secondaryButtonCss = getSecondaryButtonCss({
 	size: 'lg',
 	weight: 'semibold',
