@@ -3222,6 +3222,32 @@ export async function writeGeneratedWranglerConfig({
 			resolvedVars[key] = value
 		}
 	}
+	// Paced D1 shadow backup: expand DR_D1_PACED_SOURCES with live D1 UUIDs at
+	// deploy time so AUDIT_DB is included without committing its id (operator
+	// accounts leave kody-audit UUID uncommitted). APP + JOBS stay listed in
+	// the committed wrangler vars as the reviewed baseline.
+	if (resolvedVars.DR_D1_PACED_BACKUP_ENABLED === 'true') {
+		const pacedSources: Array<{
+			binding: string
+			name: string
+			id: string
+		}> = [
+			{ binding: 'APP_DB', name: d1DatabaseName, id: d1DatabaseId },
+			{
+				binding: 'AUDIT_DB',
+				name: auditD1DatabaseName,
+				id: auditD1DatabaseId,
+			},
+		]
+		if (jobsD1DatabaseName && jobsD1DatabaseId) {
+			pacedSources.push({
+				binding: 'JOBS_DB',
+				name: jobsD1DatabaseName,
+				id: jobsD1DatabaseId,
+			})
+		}
+		resolvedVars.DR_D1_PACED_SOURCES = JSON.stringify(pacedSources)
+	}
 	// Deployed preview/production must never carry the local-dev Turnstile
 	// bypass. Local `npm run dev` writes a separate generated config.
 	if (resolvedVars.WRANGLER_IS_LOCAL_DEV !== undefined) {
