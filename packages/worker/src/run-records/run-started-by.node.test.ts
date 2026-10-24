@@ -9,7 +9,6 @@ import {
 const person = {
 	userId: personIdFromStored('person-alice'),
 	username: 'alice',
-	personalOrgId: null,
 }
 
 describe('runStartedByFromRequest', () => {
@@ -52,7 +51,6 @@ describe('runStartedByFromRequest', () => {
 					enabler: {
 						userId: personIdFromStored('person-bob'),
 						username: 'bob',
-						personalOrgId: null,
 					},
 					role: 'member',
 				},
