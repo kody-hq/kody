@@ -1,5 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { buildAdminEmailHtmlPreviewDocument } from '#client/email-html-preview.ts'
+import {
+	buildAdminEmailHtmlPreviewDocument,
+	emailHtmlPreviewSandbox,
+} from '#client/email-html-preview.ts'
 import { deleteAdminSystemEmail } from '#start/server/admin-mutations'
 import { type AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
 import {
@@ -310,7 +313,7 @@ export function AdminSystemEmailPage({
 													{selectedMessage.html_body ? (
 														<iframe
 															title="Email HTML preview"
-															sandbox=""
+															sandbox={emailHtmlPreviewSandbox}
 															referrerPolicy="no-referrer"
 															srcDoc={buildAdminEmailHtmlPreviewDocument(
 																selectedMessage.html_body,

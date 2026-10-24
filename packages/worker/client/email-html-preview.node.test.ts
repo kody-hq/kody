@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	buildAdminEmailHtmlPreviewDocument,
+	emailHtmlPreviewSandbox,
 	stripDangerousEmailHtml,
 } from './email-html-preview.ts'
 
@@ -14,6 +15,7 @@ test('email HTML preview sanitizes scripts and wraps fragments in a safe documen
 	)
 	expect(fragment).toMatch(/^<!DOCTYPE html>/i)
 	expect(fragment).toContain('content="no-referrer"')
+	expect(fragment).toContain('<base target="_blank">')
 	expect(fragment).toContain('<p>Invoice <strong>due</strong></p>')
 
 	const fullDocument = `<!DOCTYPE html>
@@ -23,11 +25,62 @@ test('email HTML preview sanitizes scripts and wraps fragments in a safe documen
 </html>`
 	const preserved = buildAdminEmailHtmlPreviewDocument(fullDocument)
 	expect(preserved).toContain('<title>Newsletter</title>')
-	expect(preserved).toContain('content="no-referrer"')
+	expect(preserved).toContain(
+		'<head><meta name="referrer" content="no-referrer"><base target="_blank"><title>',
+	)
 	expect(preserved).not.toMatch(/<html>[\s\S]*<html>/i)
 
 	const scripted = `<html><head></head><body><script>bad()</script><p>ok</p></body></html>`
 	const sanitized = buildAdminEmailHtmlPreviewDocument(scripted)
 	expect(sanitized).toContain('<p>ok</p>')
 	expect(sanitized).not.toMatch(/<script/i)
+})
+
+test('email HTML preview opens every link in a new tab without an opener', () => {
+	const doc = buildAdminEmailHtmlPreviewDocument(
+		`<a href="https://a.example" target="_self">a</a>
+<a href="https://b.example" target='inbox' rel="opener">b</a>
+<A HREF="https://c.example" TARGET=_top REL=opener>c</A>
+<map><area href="https://d.example" target="_parent" rel="opener"></map>
+<a href="https://e.example" data-rel="keep" title="ok">e</a>`,
+	)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).not.toMatch(/\starget\s*=/i)
+	expect(body).not.toMatch(/\srel\s*=/i)
+	expect(doc).toContain('<a href="https://a.example">a</a>')
+	expect(doc).toContain('<A HREF="https://c.example">c</A>')
+	expect(doc).toContain('<area href="https://d.example">')
+	expect(doc).toContain(
+		'<a href="https://e.example" data-rel="keep" title="ok">e</a>',
+	)
+	expect(doc.indexOf('<base target="_blank">')).toBeLessThan(
+		doc.indexOf('<a href'),
+	)
+})
+
+test('email HTML preview puts its head tags first in documents without a head', () => {
+	const htmlOnly = buildAdminEmailHtmlPreviewDocument(
+		'<html lang="en"><body><a href="https://x.example">x</a></body></html>',
+	)
+	expect(htmlOnly).toMatch(
+		/^<html lang="en"><meta name="referrer" content="no-referrer"><base target="_blank"><body>/,
+	)
+
+	const doctypeOnly = buildAdminEmailHtmlPreviewDocument(
+		'<!DOCTYPE html><body>x</body>',
+	)
+	expect(doctypeOnly).toMatch(
+		/^<!DOCTYPE html><meta name="referrer" content="no-referrer"><base target="_blank"><body>/,
+	)
+})
+
+test('email HTML preview sandbox allows only popups that escape the sandbox', () => {
+	const tokens = emailHtmlPreviewSandbox.split(/\s+/)
+	expect(tokens.sort()).toEqual([
+		'allow-popups',
+		'allow-popups-to-escape-sandbox',
+	])
+	expect(tokens).not.toContain('allow-scripts')
+	expect(tokens).not.toContain('allow-same-origin')
+	expect(tokens).not.toContain('allow-forms')
 })

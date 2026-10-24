@@ -2,7 +2,10 @@
 import { SiteLink } from '../components/site-link.tsx'
 import { type CSSObject } from '@emotion/react'
 import { buildCredentialApprovalHref } from '#universal/credential-contracts.ts'
-import { buildAdminEmailHtmlPreviewDocument } from '#client/email-html-preview.ts'
+import {
+	buildAdminEmailHtmlPreviewDocument,
+	emailHtmlPreviewSandbox,
+} from '#client/email-html-preview.ts'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
@@ -371,7 +374,7 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 						{selectedMessage.html_body ? (
 							<iframe
 								title="Email HTML preview"
-								sandbox=""
+								sandbox={emailHtmlPreviewSandbox}
 								referrerPolicy="no-referrer"
 								srcDoc={buildAdminEmailHtmlPreviewDocument(
 									selectedMessage.html_body,
