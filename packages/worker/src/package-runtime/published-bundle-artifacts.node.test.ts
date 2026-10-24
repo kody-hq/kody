@@ -235,7 +235,8 @@ function makeRebuildInput(input: {
 function stubFreshRebuildPersistence(kvKey = 'kv:key') {
 	mockModule.getPublishedBundleArtifactByIdentity.mockResolvedValue(null)
 	mockModule.writePublishedBundleArtifact.mockResolvedValue(kvKey)
-	mockModule.insertPublishedBundleArtifactRow.mockResolvedValue(undefined)
+	// D1 upsert must return an id before KV is written.
+	mockModule.insertPublishedBundleArtifactRow.mockResolvedValue('row-id')
 }
 
 test('isPublishedBundleArtifactCurrentForCommit rejects prior-commit leftovers', async () => {

@@ -209,50 +209,6 @@ type WrittenPublishedBundleArtifactPersist = {
 	rowInput: PublishedBundleArtifactUpsertInput
 }
 
-/**
- * Drop KV only when the identity row does not already reflect this persist.
- * Keeps keys for committed rows; removes keys that would make a retry treat an
- * unfinished persist as already built (same-commit overwrite + fresh createdAt).
- */
-async function rollbackUncommittedPublishedBundleArtifactKvs(
-	entries: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
-) {
-	await Promise.all(
-		entries.map(async (entry) => {
-			try {
-				const existing = await getPublishedBundleArtifactByIdentity(
-					entry.env.APP_DB,
-					{
-						userId: entry.rowInput.userId,
-						sourceId: entry.rowInput.sourceId,
-						artifactKind: entry.rowInput.artifactKind,
-						artifactName: entry.rowInput.artifactName,
-						entryPoint: entry.rowInput.entryPoint,
-					},
-				)
-				// Require the full persist fingerprint so a same-commit KV
-				// overwrite whose D1 update never landed is rolled back (retry
-				// must not see a fresh createdAt and skip). A concurrent writer
-				// that fully committed the same fingerprint keeps the key.
-				if (
-					existing &&
-					existing.kvKey === entry.kvKey &&
-					existing.publishedCommit === entry.rowInput.publishedCommit &&
-					existing.dependenciesJson === entry.rowInput.dependenciesJson
-				) {
-					return
-				}
-				await deletePublishedBundleArtifact({
-					env: entry.env,
-					kvKey: entry.kvKey,
-				})
-			} catch {
-				// Best effort; preserve the original DB/KV failure as the root cause.
-			}
-		}),
-	)
-}
-
 /** Last write wins per identity — matches upsertPublishedBundleArtifactRows. */
 function dedupePreparedPublishedBundleArtifacts(
 	prepared: ReadonlyArray<PreparedPublishedBundleArtifactPersist>,
@@ -274,10 +230,9 @@ function dedupePreparedPublishedBundleArtifacts(
 
 /**
  * Persist many published bundle artifacts with one batched identity upsert
- * (constant D1 round trips for the row writes). KV writes stay per artifact and
- * run before the D1 upsert. On failure, KV keys are removed only when the
- * identity row does not already match this persist (committed rows keep their
- * keys; unfinished overwrites cannot make rebuild skip the target).
+ * (constant D1 round trips for the row writes). D1 is committed first; KV is
+ * written only for accepted rows. That avoids same-commit KV overwrites that
+ * can skip rebuild or strand committed rows when a later step fails.
  */
 export async function persistPublishedBundleArtifacts(
 	inputs: ReadonlyArray<PersistPublishedBundleArtifactInput>,
@@ -293,64 +248,56 @@ export async function persistPublishedBundleArtifacts(
 	if (prepared.length === 0) {
 		return preparedByIndex.map(() => null)
 	}
-	const written: Array<WrittenPublishedBundleArtifactPersist> = []
-	try {
-		// Unique kvKeys after identity dedupe — safe to write concurrently.
-		const settled = await Promise.allSettled(
-			prepared.map(async (entry) => {
-				await writePublishedBundleArtifact({
-					env: entry.env,
-					artifact: entry.artifact,
-					kvKey: entry.kvKey,
-				})
-				return entry
-			}),
-		)
-		for (const [index, result] of settled.entries()) {
-			if (result.status !== 'fulfilled') continue
-			const entry = prepared[index]
-			if (!entry) continue
-			written.push({
+	const written = prepared.map((entry) => ({
+		env: entry.env,
+		kvKey: entry.kvKey,
+		rowInput: entry.rowInput,
+	}))
+	const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+	const accepted: Array<PreparedPublishedBundleArtifactPersist> = []
+	for (const [index, entry] of prepared.entries()) {
+		if (rowIds[index] == null) continue
+		accepted.push(entry)
+	}
+	const settled = await Promise.allSettled(
+		accepted.map(async (entry) => {
+			await writePublishedBundleArtifact({
 				env: entry.env,
+				artifact: entry.artifact,
 				kvKey: entry.kvKey,
-				rowInput: entry.rowInput,
 			})
-		}
-		const rejected = settled.find((result) => result.status === 'rejected')
-		if (rejected && rejected.status === 'rejected') {
-			throw rejected.reason
-		}
-		const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
-		const kvByIdentity = new Map<string, string>()
-		for (const [index, entry] of written.entries()) {
-			if (rowIds[index] == null) continue
-			kvByIdentity.set(
+		}),
+	)
+	const rejected = settled.find((result) => result.status === 'rejected')
+	if (rejected && rejected.status === 'rejected') {
+		throw rejected.reason
+	}
+	const kvByIdentity = new Map<string, string>()
+	for (const [index, entry] of prepared.entries()) {
+		if (rowIds[index] == null) continue
+		kvByIdentity.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry.kvKey,
+		)
+	}
+	return preparedByIndex.map((entry) => {
+		if (!entry) return null
+		return (
+			kvByIdentity.get(
 				publishedBundleArtifactIdentityKey({
 					sourceId: entry.rowInput.sourceId,
 					artifactKind: entry.rowInput.artifactKind,
 					artifactName: entry.rowInput.artifactName,
 					entryPoint: entry.rowInput.entryPoint,
 				}),
-				entry.kvKey,
-			)
-		}
-		return preparedByIndex.map((entry) => {
-			if (!entry) return null
-			return (
-				kvByIdentity.get(
-					publishedBundleArtifactIdentityKey({
-						sourceId: entry.rowInput.sourceId,
-						artifactKind: entry.rowInput.artifactKind,
-						artifactName: entry.rowInput.artifactName,
-						entryPoint: entry.rowInput.entryPoint,
-					}),
-				) ?? null
-			)
-		})
-	} catch (error) {
-		await rollbackUncommittedPublishedBundleArtifactKvs(written)
-		throw error
-	}
+			) ?? null
+		)
+	})
 }
 
 async function writePreparedPublishedBundleArtifact(
@@ -389,19 +336,6 @@ async function upsertPreparedPublishedBundleArtifactRows(
 		rowInputs.length === 1
 			? [await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)]
 			: await upsertPublishedBundleArtifactRows(db, rowInputs)
-	const refused = entries.filter((_, index) => uniqueRowIds[index] == null)
-	if (refused.length > 0) {
-		await Promise.all(
-			refused.map(async (entry) => {
-				await deletePublishedBundleArtifact({
-					env: entry.env,
-					kvKey: entry.kvKey,
-				}).catch(() => {
-					// Best effort; stale gated writes leave no identity row.
-				})
-			}),
-		)
-	}
 	const idByIdentity = new Map<string, string | null>()
 	for (const [index, entry] of entries.entries()) {
 		idByIdentity.set(
@@ -1037,11 +971,9 @@ export async function persistPublishedPackageArtifactTargets(
 	if (input.targets.length === 0) return []
 	const results: Array<PersistPublishedPackageArtifactTargetResult | null> =
 		input.targets.map(() => null)
-	const written: Array<{
+	const pending: Array<{
 		index: number
-		kvKey: string
-		rowInput: PublishedBundleArtifactUpsertInput
-		env: Env
+		prepared: PreparedPublishedBundleArtifactPersist
 	}> = []
 	for (const [index, target] of input.targets.entries()) {
 		try {
@@ -1063,21 +995,20 @@ export async function persistPublishedPackageArtifactTargets(
 				results[index] = { ok: true, target, kvKey: null }
 				continue
 			}
-			await writePreparedPublishedBundleArtifact(prepared)
-			written.push({
-				index,
-				kvKey: prepared.kvKey,
-				rowInput: prepared.rowInput,
-				env: prepared.env,
-			})
+			pending.push({ index, prepared })
 		} catch (error) {
 			results[index] = { ok: false, target, error }
 		}
 	}
-	if (written.length > 0) {
+	if (pending.length > 0) {
 		try {
+			const written = pending.map(({ prepared }) => ({
+				env: prepared.env,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+			}))
 			const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
-			for (const [persistOffset, entry] of written.entries()) {
+			for (const [persistOffset, entry] of pending.entries()) {
 				const target = input.targets[entry.index]
 				if (!target) continue
 				if (rowIds[persistOffset] == null) {
@@ -1090,17 +1021,18 @@ export async function persistPublishedPackageArtifactTargets(
 					}
 					continue
 				}
+				await writePreparedPublishedBundleArtifact(entry.prepared)
 				results[entry.index] = {
 					ok: true,
 					target,
-					kvKey: entry.kvKey,
+					kvKey: entry.prepared.kvKey,
 				}
 			}
 		} catch (error) {
-			await rollbackUncommittedPublishedBundleArtifactKvs(written)
-			for (const entry of written) {
+			for (const entry of pending) {
 				const target = input.targets[entry.index]
 				if (!target) continue
+				if (results[entry.index]) continue
 				results[entry.index] = { ok: false, target, error }
 			}
 		}
@@ -1195,7 +1127,7 @@ export async function rebuildPublishedPackageArtifacts(
 	// near the concurrency window, then one batched identity upsert. Build
 	// failures are isolated so successful siblings still land (same as the
 	// prior per-target persist loop).
-	const written: Array<WrittenPublishedBundleArtifactPersist> = []
+	const pending: Array<PreparedPublishedBundleArtifactPersist> = []
 	let firstError: unknown = null
 	await mapWithConcurrency(
 		targetsNeedingPersist,
@@ -1220,22 +1152,25 @@ export async function rebuildPublishedPackageArtifacts(
 					}),
 				)
 				if (!prepared) return
-				await writePreparedPublishedBundleArtifact(prepared)
-				written.push({
-					env: prepared.env,
-					kvKey: prepared.kvKey,
-					rowInput: prepared.rowInput,
-				})
+				pending.push(prepared)
 			} catch (error) {
 				firstError ??= error
 			}
 		},
 	)
-	if (written.length > 0) {
+	if (pending.length > 0) {
 		try {
-			await upsertPreparedPublishedBundleArtifactRows(written)
+			const written = pending.map((prepared) => ({
+				env: prepared.env,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+			}))
+			const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const [index, prepared] of pending.entries()) {
+				if (rowIds[index] == null) continue
+				await writePreparedPublishedBundleArtifact(prepared)
+			}
 		} catch (error) {
-			await rollbackUncommittedPublishedBundleArtifactKvs(written)
 			firstError ??= error
 		}
 	}
