@@ -298,14 +298,34 @@ export function endPackageAppVisitWithResponse(
 		return response
 	}
 	try {
-		const [forClient, forWatch] = body.tee()
-		void forWatch
-			.pipeTo(new WritableStream({ write() {} }))
-			.catch(() => undefined)
-			.finally(() => {
-				endPackageAppVisit(nonce)
-			})
-		return new Response(forClient, response)
+		const reader = body.getReader()
+		let settled = false
+		const settle = () => {
+			if (settled) return
+			settled = true
+			endPackageAppVisit(nonce)
+		}
+		const watched = new ReadableStream<Uint8Array>({
+			async pull(controller) {
+				try {
+					const { done, value } = await reader.read()
+					if (done) {
+						settle()
+						controller.close()
+						return
+					}
+					controller.enqueue(value)
+				} catch (error) {
+					settle()
+					controller.error(error)
+				}
+			},
+			async cancel(reason) {
+				settle()
+				await reader.cancel(reason)
+			},
+		})
+		return new Response(watched, response)
 	} catch {
 		endPackageAppVisit(nonce)
 		return response

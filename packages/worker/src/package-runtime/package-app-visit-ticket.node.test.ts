@@ -290,3 +290,28 @@ test('endPackageAppVisitWithResponse keeps the ticket live until the body ends',
 		).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 	})
 })
+
+test('endPackageAppVisitWithResponse burns the nonce when the client cancels', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const minted = await mintFor(visitorA)
+	const { readable } = new TransformStream()
+	const response = endPackageAppVisitWithResponse(
+		new Response(readable),
+		minted.nonce,
+	)
+	await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: minted.ticket,
+		audience,
+	})
+	await response.body?.cancel()
+	await vi.waitFor(async () => {
+		await expect(
+			verifyPackageAppVisitTicket({
+				env: secretEnv,
+				ticket: minted.ticket,
+				audience,
+			}),
+		).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	})
+})
