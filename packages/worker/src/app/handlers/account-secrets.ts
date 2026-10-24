@@ -91,7 +91,10 @@ import {
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
 } from '#worker/integrations/service.ts'
-import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
+import {
+	orgAuditWriterFromRequest,
+	type OrgAuditWriter,
+} from '#worker/orgs/org-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
@@ -389,6 +392,7 @@ export async function connectAccountOAuth(input: {
 					platformAppSlug: platformApp.slug,
 					name: provider,
 					scopes,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				})
 			).name
 		: await saveIntegrationConfig({
@@ -417,6 +421,7 @@ export async function connectAccountOAuth(input: {
 							extraAuthorizeParams,
 						}
 					: null,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			})
 	const ownerId = ownerIdFromCaller({
 		request: input.user.request,
@@ -429,6 +434,7 @@ export async function connectAccountOAuth(input: {
 		accessToken,
 		refreshToken,
 		refreshPolicy: inferIntegrationRefreshPolicy(tokenRecord),
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	const connected = await getJoinedIntegration({
 		env: input.env,
@@ -868,6 +874,7 @@ async function saveIntegrationConfig(input: {
 		scopeSeparator: string | null
 		extraAuthorizeParams: Record<string, string>
 	} | null
+	audit: OrgAuditWriter | null
 }) {
 	const providerKey = canonicalIntegrationName(input.provider)
 	if (!providerKey) {
@@ -897,6 +904,7 @@ async function saveIntegrationConfig(input: {
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
 		waitUntil,
+		audit: input.audit,
 	})
 	return integration.name
 }
@@ -1030,6 +1038,7 @@ async function handleApprovalAction(input: {
 					if (secret.allowedPackages.includes(approval.packageId)) continue
 					await setSecretAllowedPackages({
 						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
 						userId: ownerIdFromCaller({
 							request: input.user.request,
 							user: input.user.mcpUser,
@@ -1091,6 +1100,7 @@ async function handleApprovalAction(input: {
 				}
 				await setSecretAllowedPackages({
 					env: input.env,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1141,6 +1151,7 @@ async function handleApprovalAction(input: {
 				}
 				await setSecretAllowedHosts({
 					env: input.env,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1198,6 +1209,7 @@ async function handleApprovalAction(input: {
 					}
 					await setSecretAllowedHosts({
 						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
 						userId: ownerIdFromCaller({
 							request: input.user.request,
 							user: input.user.mcpUser,
@@ -1527,6 +1539,7 @@ export async function saveAccountSecret(input: {
 		try {
 			const renamed = await renameSecret({
 				env: input.env,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1596,6 +1609,7 @@ export async function saveAccountSecret(input: {
 	try {
 		saved = await saveSecret({
 			env: input.env,
+			audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -1654,6 +1668,7 @@ export async function saveAccountSecret(input: {
 		if (setsKeyHosts) {
 			await setSecretAllowedHosts({
 				env: input.env,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1669,6 +1684,7 @@ export async function saveAccountSecret(input: {
 		}
 		await setSecretAllowedPackages({
 			env: input.env,
+			audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -1688,6 +1704,7 @@ export async function saveAccountSecret(input: {
 			try {
 				await renameSecret({
 					env: input.env,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1758,6 +1775,7 @@ export async function saveAccountSecret(input: {
 		try {
 			await deleteSecret({
 				env: input.env,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1828,6 +1846,7 @@ export async function deleteAccountSecret(input: {
 
 	const deleted = await deleteSecret({
 		env: input.env,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 		userId: ownerIdFromCaller({
 			request: input.user.request,
 			user: input.user.mcpUser,
@@ -1861,6 +1880,7 @@ export async function disconnectAccountSecret(input: {
 
 	const disconnected = await disconnectSecret({
 		env: input.env,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 		userId: ownerIdFromCaller({
 			request: input.user.request,
 			user: input.user.mcpUser,

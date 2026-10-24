@@ -59,6 +59,7 @@ test('connect chooser includes saved connections and hides unused built-ins', as
 		platformAppSlug: 'github',
 		name: 'github',
 		scopes: ['read:user'],
+		audit: null,
 	})
 	await upsertIntegration({
 		env,
@@ -76,6 +77,7 @@ test('connect chooser includes saved connections and hides unused built-ins', as
 				extraAuthorizeParams: {},
 			},
 		},
+		audit: null,
 	})
 
 	const chooser = await loadConnectOauthChooser({

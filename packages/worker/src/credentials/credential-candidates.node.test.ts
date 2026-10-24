@@ -119,6 +119,7 @@ async function setup() {
 						},
 					}
 				: {}),
+			audit: null,
 		})
 		const row = await db
 			.prepare(
@@ -325,6 +326,7 @@ test('credential() candidates resolve OAuth after token persist stamps connected
 				scopes: ['openid'],
 			},
 		},
+		audit: null,
 	})
 	expect(
 		resolveNeedCandidates(
@@ -339,6 +341,7 @@ test('credential() candidates resolve OAuth after token persist stamps connected
 		accessToken: 'linkedin-access',
 		refreshToken: 'linkedin-refresh',
 		refreshPolicy: 'required',
+		audit: null,
 	})
 	const resolved = resolveNeedCandidates(
 		{ kind: 'oauth', provider: 'linkedin' },
@@ -367,6 +370,7 @@ test('kody-exchange OAuth keeps provider kody-exchange so package needs resolve'
 				scopes: ['profile', 'threads'],
 			},
 		},
+		audit: null,
 	})
 	await persistIntegrationTokens({
 		env: t.env,
@@ -374,6 +378,7 @@ test('kody-exchange OAuth keeps provider kody-exchange so package needs resolve'
 		name: 'kody-exchange',
 		accessToken: 'kx-access',
 		refreshPolicy: 'required',
+		audit: null,
 	})
 	const row = await t.db
 		.prepare(

@@ -98,6 +98,7 @@ async function createHarness(input: { bound?: boolean; userId?: string } = {}) {
 			scope: 'user',
 			name: doorSecretName,
 			value: 'op-sa-token',
+			audit: null,
 		})
 		await env.APP_DB.prepare(
 			`INSERT INTO secret_provider_bindings (
@@ -140,6 +141,7 @@ async function createHarness(input: { bound?: boolean; userId?: string } = {}) {
 				env,
 				userId: ownerIdFromStored(userId),
 				...grantInput,
+				audit: null,
 			}),
 		isGranted: async (ref = canonicalRef) =>
 			(
@@ -158,6 +160,7 @@ async function createHarness(input: { bound?: boolean; userId?: string } = {}) {
 				providerId,
 				packageId,
 				doorSecretName,
+				audit: null,
 			}),
 	}
 }
@@ -216,6 +219,7 @@ test('revoke drops a package grant before the next resolve', async () => {
 		env: h.env,
 		userId: ownerId,
 		...grantInput,
+		audit: null,
 	})
 	expect(await h.isGranted()).toBe(false)
 	await expect(
@@ -247,7 +251,12 @@ test('rebind to a different package drops grants and the provider cache', async 
 test('unbind drops grants and refuses the next resolve; grant and inspect require a binding', async () => {
 	const h = await createHarness()
 	await h.grant()
-	await unbindSecretProvider({ env: h.env, userId: ownerId, providerId })
+	await unbindSecretProvider({
+		env: h.env,
+		userId: ownerId,
+		providerId,
+		audit: null,
+	})
 	const missingBinding = createMissingProviderBindingMessage(providerId)
 	await expect(h.isGranted()).rejects.toThrow(missingBinding)
 	await expect(h.resolve()).rejects.toThrow(missingBinding)

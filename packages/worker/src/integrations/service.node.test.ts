@@ -46,7 +46,7 @@ function createEnv() {
 	const save = (
 		userId: string,
 		config: Parameters<typeof upsertIntegration>[0]['config'],
-	) => upsertIntegration({ env, userId, config })
+	) => upsertIntegration({ env, userId, config, audit: null })
 	return { sqlite, env, query, googleAppIdentity, save }
 }
 
@@ -131,7 +131,13 @@ function connectPlatform(
 	scopes: Array<string>,
 	platformAppSlug = 'github',
 ) {
-	return upsertPlatformIntegration({ env, userId, platformAppSlug, scopes })
+	return upsertPlatformIntegration({
+		env,
+		userId,
+		platformAppSlug,
+		scopes,
+		audit: null,
+	})
 }
 
 test('upsertIntegration reuses matching app tuples, splits on endpoint mismatch, and normalizes required hosts', async () => {
@@ -239,12 +245,22 @@ test('rotateOauthAppClientCredentials updates sibling joins, blocks delete while
 		'google',
 	)
 	expect(
-		await deleteOauthAppWithConnections({ env, userId, slug: 'GOOGLE' }),
+		await deleteOauthAppWithConnections({
+			env,
+			userId,
+			slug: 'GOOGLE',
+			audit: null,
+		}),
 	).toEqual({ deleted: true, connectionNames: ['google', 'google-mail'] })
 	expect(await listIntegrations({ env, userId })).toEqual([])
 	expect(await getOauthApp({ env, userId, slug: 'google' })).toBeNull()
 	expect(
-		await deleteOauthAppWithConnections({ env, userId, slug: 'google' }),
+		await deleteOauthAppWithConnections({
+			env,
+			userId,
+			slug: 'google',
+			audit: null,
+		}),
 	).toEqual({ deleted: false, connectionNames: [] })
 })
 
@@ -713,6 +729,7 @@ test('upsertPlatformIntegration enforces connect policy, hides secrets, and dele
 			env,
 			userId: ownerIdFromStored('user-deletes'),
 			name: 'github',
+			audit: null,
 		}),
 	).toBe(true)
 	expect(

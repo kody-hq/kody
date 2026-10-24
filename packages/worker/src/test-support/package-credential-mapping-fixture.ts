@@ -137,7 +137,14 @@ export async function setupPackageCredentialMappingFixture(input: {
 			.run()
 	}
 	const storeKey = async (name: string, provider: string) => {
-		await saveSecret({ env, userId: acmeId, scope: 'user', name, value: 'v' })
+		await saveSecret({
+			env,
+			userId: acmeId,
+			scope: 'user',
+			name,
+			value: 'v',
+			audit: null,
+		})
 		const row = await db
 			.prepare(
 				`UPDATE secret_entries SET provider = ?, allowed_hosts = '["api.example.com"]'

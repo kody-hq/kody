@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
+import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
@@ -133,6 +134,20 @@ export function orgAuditWriterFromRequest(
 		credentialKind: request.credential.kind,
 		credentialId: request.credential.id,
 	}
+}
+
+/**
+ * The audit writer for a capability call: the caller's request context.
+ * Throws when the call has no signed-in request (it could not write).
+ */
+export function orgAuditWriterFromCaller(
+	env: Env,
+	callerContext: Pick<McpCallerContext, 'request'>,
+): OrgAuditWriter {
+	if (!callerContext.request) {
+		throw new Error('Credential writes require a signed-in request.')
+	}
+	return orgAuditWriterFromRequest(env, callerContext.request)
 }
 
 export function orgAuditWriterForPerson(

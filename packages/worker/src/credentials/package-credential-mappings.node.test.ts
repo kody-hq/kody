@@ -391,6 +391,7 @@ test('an expired package-bound Key reads as expired, not missing, and skips atte
 			packageId: t.savedPackage.id,
 			storageId: t.savedPackage.id,
 		},
+		audit: null,
 	})
 	await t.db
 		.prepare(

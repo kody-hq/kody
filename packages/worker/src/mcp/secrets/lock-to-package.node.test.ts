@@ -51,6 +51,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 		scope: 'user',
 		name: 'openai-api-key',
 		value: 'sk-test',
+		audit: null,
 	})
 
 	const locked = await lockSecretToPackage({
@@ -58,6 +59,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 		userId,
 		name: 'openai-api-key',
 		packageId: 'pkg-notes',
+		audit: null,
 	})
 	expect(locked).toMatchObject({
 		name: 'openai-api-key',
@@ -70,6 +72,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 		userId,
 		name: 'openai-api-key',
 		packageId: 'pkg-mail',
+		audit: null,
 	})
 	expect(grantedAgain.allowedPackages).toEqual(['pkg-mail', 'pkg-notes'])
 
@@ -78,6 +81,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 		userId,
 		name: 'openai-api-key',
 		packageId: 'pkg-notes',
+		audit: null,
 	})
 	expect(idempotent.allowedPackages).toEqual(['pkg-mail', 'pkg-notes'])
 
@@ -87,6 +91,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 			userId,
 			name: 'openai-api-key',
 			packageId: 'missing-package',
+			audit: null,
 		}),
 	).rejects.toThrow('Saved package not found for this user.')
 	await expect(
@@ -95,6 +100,7 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 			userId,
 			name: 'missing-secret',
 			packageId: 'pkg-notes',
+			audit: null,
 		}),
 	).rejects.toThrow('Secret not found for this scope.')
 })

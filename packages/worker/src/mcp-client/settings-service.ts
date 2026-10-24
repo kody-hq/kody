@@ -22,6 +22,12 @@ import {
 	resolveMcpClientMetadataUrl,
 } from './client-id-metadata.ts'
 import { createMcpClientHubClient } from './hub-client.ts'
+import {
+	allowedPackagesAuditChange,
+	credentialAuditActions,
+	recordCredentialAudit,
+} from '#worker/credentials/credential-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { mcpOAuthAttemptActorFromIds } from './oauth-attempt.ts'
 import { scheduleMcpServerFaviconFill } from './mcp-server-favicon.ts'
 import { deleteMcpServerLogoAsset } from './mcp-server-logo.ts'
@@ -220,6 +226,7 @@ export async function addMcpServer(input: {
 	 */
 	bearerToken?: string | null
 	waitUntil?: (promise: Promise<unknown>) => void
+	audit: OrgAuditWriter | null
 }): Promise<{
 	setting: McpServerSettingMetadata
 	connection: McpServerConnectResult
@@ -294,6 +301,12 @@ export async function addMcpServer(input: {
 		throw error
 	}
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
+	await recordCredentialAudit(input.audit, {
+		orgId: input.userId,
+		credential: { id: row.id, kind: 'mcp-server', name },
+		action: credentialAuditActions.created,
+		details: { fields: [] },
+	})
 	const lastErrorJson = connection.lastError
 		? stringifyMcpServerLastError(connection.lastError)
 		: null
@@ -326,6 +339,7 @@ export async function setMcpServerEnabled(input: {
 	userId: OwnerId
 	id: string
 	enabled: boolean
+	audit: OrgAuditWriter | null
 }): Promise<McpServerSettingMetadata> {
 	const existing = await getMcpServerSettingRowById({
 		db: input.env.APP_DB,
@@ -349,6 +363,17 @@ export async function setMcpServerEnabled(input: {
 		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
+	if (Boolean(existing.enabled) !== input.enabled) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existing.id, kind: 'mcp-server', name: existing.name },
+			action: credentialAuditActions.enabledChanged,
+			details: {
+				enabled: { before: Boolean(existing.enabled), after: input.enabled },
+				fields: ['enabled'],
+			},
+		})
+	}
 	return toMetadata(row)
 }
 
@@ -356,6 +381,7 @@ export async function deleteMcpServer(input: {
 	env: Env
 	userId: OwnerId
 	id: string
+	audit: OrgAuditWriter | null
 }): Promise<boolean> {
 	const existing = await getMcpServerSettingRowById({
 		db: input.env.APP_DB,
@@ -380,6 +406,14 @@ export async function deleteMcpServer(input: {
 		id: input.id,
 	})
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
+	if (deleted) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existing.id, kind: 'mcp-server', name: existing.name },
+			action: credentialAuditActions.deleted,
+			details: { fields: [] },
+		})
+	}
 	return deleted
 }
 
@@ -468,6 +502,7 @@ export async function setMcpServerUsage(input: {
 	id: string
 	usageMode: McpServerUsageMode
 	allowedPackageIds?: Array<string>
+	audit: OrgAuditWriter | null
 }): Promise<McpServerSettingMetadata> {
 	const existing = await getMcpServerSettingRowById({
 		db: input.env.APP_DB,
@@ -493,6 +528,16 @@ export async function setMcpServerUsage(input: {
 		throw new McpCallerError(mcpServerSettingNotFoundMessage)
 	}
 	invalidateEnabledMcpServerRefsCache({ userId: input.userId })
+	const usageChange = allowedPackagesAuditChange({
+		orgId: input.userId,
+		credential: { id: existing.id, kind: 'mcp-server', name: existing.name },
+		before: {
+			usageMode: existing.usage_mode,
+			allowedPackageIds: existing.allowedPackageIds,
+		},
+		after: { usageMode, allowedPackageIds },
+	})
+	if (usageChange) await recordCredentialAudit(input.audit, usageChange)
 	return toMetadata({
 		...existing,
 		usage_mode: usageMode,
@@ -510,6 +555,7 @@ export async function lockMcpServerToPackage(input: {
 	userId: OwnerId
 	id: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }): Promise<McpServerSettingMetadata> {
 	const packageId = input.packageId.trim()
 	if (!packageId) {
@@ -546,6 +592,7 @@ export async function lockMcpServerToPackage(input: {
 		id: input.id,
 		usageMode: 'packages',
 		allowedPackageIds,
+		audit: input.audit,
 	})
 }
 

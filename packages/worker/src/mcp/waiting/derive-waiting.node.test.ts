@@ -487,6 +487,7 @@ test('waiting shows missing_refresh_token only for connections whose refresh is 
 				clientId: `${name}-client`,
 				requiredHosts: ['example.com'],
 			},
+			audit: null,
 		})
 		await persistIntegrationTokens({
 			env,
@@ -494,6 +495,7 @@ test('waiting shows missing_refresh_token only for connections whose refresh is 
 			name,
 			accessToken: tokenPayload.access_token,
 			refreshPolicy: inferIntegrationRefreshPolicy(tokenPayload),
+			audit: null,
 		})
 		await writeIntegrationAuthFailure({
 			db: env.APP_DB,

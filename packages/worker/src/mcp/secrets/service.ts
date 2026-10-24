@@ -78,6 +78,14 @@ import {
 import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
 import { updateSecretEntryPlacement } from '#mcp/secrets/update-secret-placement.ts'
+import {
+	credentialAuditActions,
+	listDelta,
+	recordCredentialAudit,
+	sameStringSet,
+	type CredentialAuditChange,
+	type CredentialDetailField,
+} from '#worker/credentials/credential-audit.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstSecret } from '#worker/identity/activation-stamps.ts'
@@ -89,31 +97,41 @@ type SecretOwnerContext = {
 
 type SecretWriteEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'> & UserMeterEnv
 
-type SaveSecretInput = SecretOwnerContext & {
-	env: SecretWriteEnv
-	scope: SecretScope
-	name: string
-	value: string
-	description?: string | null
-	expiresAt?: string | null
-	sessionExpiresAt?: string | null
-	userEmail?: string | null
-	waitUntil?: (promise: Promise<unknown>) => void
-	credential?: SaveSecretCredential
-	/**
-	 * Placement written only when inserting a new `(bucket, name)` row.
-	 * Omitted → headers-only default. Explicit `null` preserves anywhere when
-	 * a scope/package move copies an existing credential into a new bucket.
-	 */
-	placementOnInsert?: CredentialFillPlacement | null
-	/** How the insert placement was chosen; stored on the row for repair/UI. */
-	placementOriginOnInsert?: CredentialPlacementOrigin | null
-	/**
-	 * When set with a package-scope value write, may re-apply the package's
-	 * declared placement onto an untouched headers-only default.
-	 */
-	baseUrl?: string
+/**
+ * Org audit writer for a credential write. Only user-scope secrets are org
+ * credentials, so other scopes never audit. Null records nothing (tests,
+ * migrations).
+ */
+type SecretAuditInput = {
+	audit: OrgAuditWriter | null
 }
+
+type SaveSecretInput = SecretOwnerContext &
+	SecretAuditInput & {
+		env: SecretWriteEnv
+		scope: SecretScope
+		name: string
+		value: string
+		description?: string | null
+		expiresAt?: string | null
+		sessionExpiresAt?: string | null
+		userEmail?: string | null
+		waitUntil?: (promise: Promise<unknown>) => void
+		credential?: SaveSecretCredential
+		/**
+		 * Placement written only when inserting a new `(bucket, name)` row.
+		 * Omitted → headers-only default. Explicit `null` preserves anywhere when
+		 * a scope/package move copies an existing credential into a new bucket.
+		 */
+		placementOnInsert?: CredentialFillPlacement | null
+		/** How the insert placement was chosen; stored on the row for repair/UI. */
+		placementOriginOnInsert?: CredentialPlacementOrigin | null
+		/**
+		 * When set with a package-scope value write, may re-apply the package's
+		 * declared placement onto an untouched headers-only default.
+		 */
+		baseUrl?: string
+	}
 
 /**
  * Opt-in credential fields (ADR 0068) committed in the same batch as the
@@ -147,20 +165,22 @@ type ResolveSecretInput = SecretOwnerContext & {
 	includeExpired?: boolean
 }
 
-type UpdateSecretInput = SecretOwnerContext & {
-	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
-	name: string
-	scope: SecretScope
-	value?: string | null
-	description?: string | null
-	expiresAt?: string | null
-}
+type UpdateSecretInput = SecretOwnerContext &
+	SecretAuditInput & {
+		env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+		name: string
+		scope: SecretScope
+		value?: string | null
+		description?: string | null
+		expiresAt?: string | null
+	}
 
-type DeleteSecretInput = SecretOwnerContext & {
-	env: Pick<Env, 'APP_DB'>
-	name: string
-	scope: SecretScope
-}
+type DeleteSecretInput = SecretOwnerContext &
+	SecretAuditInput & {
+		env: Pick<Env, 'APP_DB'>
+		name: string
+		scope: SecretScope
+	}
 
 export type ResolvedSecret = {
 	found: boolean
@@ -191,6 +211,95 @@ function assertValueFitsStoredKind(
 		value,
 		hosts: parseAllowedHosts(entry.allowed_hosts),
 	})
+}
+
+function changedSecretDetailFields(
+	existing: { description: string; expires_at: string | null } | null,
+	next: { description: string; expiresAt: string | null },
+): Array<CredentialDetailField> {
+	if (!existing) return []
+	const fields: Array<CredentialDetailField> = []
+	if (existing.description !== next.description) fields.push('description')
+	if ((existing.expires_at ?? null) !== (next.expiresAt ?? null)) {
+		fields.push('expires_at')
+	}
+	return fields
+}
+
+/**
+ * Whether `nextValue` differs from the stored ciphertext. A value that cannot
+ * be decrypted (or a disconnected row) counts as replaced.
+ */
+async function secretValueChanged(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	userId: OwnerId
+	encryptedValue: string
+	nextValue: string
+}) {
+	if (isDisconnectedSecretEncryptedValue(input.encryptedValue)) return true
+	try {
+		const previous = await decryptSecretValue(
+			input.env,
+			input.encryptedValue,
+			userSecretContext(input.userId),
+		)
+		return previous !== input.nextValue
+	} catch {
+		return true
+	}
+}
+
+/**
+ * The audit change for a user-scope value write: created, value replaced, or
+ * a plain detail edit. Null when nothing an audit row records changed.
+ */
+function userSecretWriteAuditChange(input: {
+	orgId: string
+	credentialId: string
+	name: string
+	created: boolean
+	valueChanged: boolean
+	detailFields: Array<CredentialDetailField>
+}): CredentialAuditChange | null {
+	const credential = {
+		id: input.credentialId,
+		kind: 'secret' as const,
+		name: input.name,
+	}
+	if (input.created) {
+		return {
+			orgId: input.orgId,
+			credential,
+			action: credentialAuditActions.created,
+			details: { fields: [] },
+		}
+	}
+	if (input.valueChanged) {
+		return {
+			orgId: input.orgId,
+			credential,
+			action: credentialAuditActions.valueReplaced,
+			details: { fields: ['value', ...input.detailFields] },
+		}
+	}
+	if (input.detailFields.length > 0) {
+		return {
+			orgId: input.orgId,
+			credential,
+			action: credentialAuditActions.detailsUpdated,
+			details: { fields: input.detailFields },
+		}
+	}
+	return null
+}
+
+async function readUserSecretEntryId(input: {
+	db: D1Database
+	bucketId: string
+	name: string
+}) {
+	const entry = await getSecretEntry(input)
+	return entry?.id ?? null
 }
 
 export async function saveSecret(
@@ -285,6 +394,16 @@ export async function saveSecret(
 		existing: existingEntry?.expires_at,
 		requested: input.expiresAt,
 	})
+	const auditsOrgCredential = input.scope === 'user' && input.audit != null
+	const valueChanged =
+		existingEntry == null ||
+		isDisconnectedSecretEncryptedValue(existingEntry.encrypted_value) ||
+		previousPlaintext === null ||
+		previousPlaintext !== value
+	const detailFields = changedSecretDetailFields(existingEntry, {
+		description,
+		expiresAt: entryExpiresAt,
+	})
 	const row = {
 		bucket_id: bucket.id,
 		name,
@@ -319,6 +438,19 @@ export async function saveSecret(
 			],
 			event: credential.audit.event(credentialId),
 		})
+		// The opt-in batch audits the credential fields it changed; what
+		// happened to the value itself is its own row.
+		const valueChange = userSecretWriteAuditChange({
+			orgId: input.userId,
+			credentialId,
+			name,
+			created: existingEntry == null,
+			valueChanged,
+			detailFields,
+		})
+		if (valueChange) {
+			await recordCredentialAudit(credential.audit.writer, valueChange)
+		}
 		placementAfter = readCredentialFillPlacement(credential.placementJson)
 		placementOriginAfter = 'explicit'
 	} else {
@@ -359,6 +491,26 @@ export async function saveSecret(
 					}
 				: {}),
 		})
+		if (auditsOrgCredential) {
+			const credentialId =
+				existingEntry?.id ??
+				(await readUserSecretEntryId({
+					db: input.env.APP_DB,
+					bucketId: bucket.id,
+					name,
+				}))
+			const change = credentialId
+				? userSecretWriteAuditChange({
+						orgId: input.userId,
+						credentialId,
+						name,
+						created: existingEntry == null,
+						valueChanged,
+						detailFields,
+					})
+				: null
+			if (change) await recordCredentialAudit(input.audit, change)
+		}
 		placementAfter =
 			existingEntry != null
 				? readCredentialFillPlacement(existingEntry.placement_json)
@@ -513,11 +665,13 @@ export async function updateUserSecretForPackage(input: {
 	value: string
 	description?: string | null
 	waitUntil?: (promise: Promise<unknown>) => void
+	audit: OrgAuditWriter | null
 }) {
 	const [saved] = await updateUserSecretsForPackageAtomically({
 		env: input.env,
 		userId: input.userId,
 		userEmail: input.userEmail,
+		audit: input.audit,
 		packageId: input.packageId,
 		secrets: [
 			{
@@ -558,6 +712,7 @@ export async function setSecretsAtomically(input: {
 	waitUntil?: (promise: Promise<unknown>) => void
 	/** When set with a full Env, package-scope inserts read manifest placement. */
 	baseUrl?: string
+	audit: OrgAuditWriter | null
 }): Promise<Array<SecretMetadata>> {
 	if (input.secrets.length === 0) {
 		throw new Error('At least one secret is required.')
@@ -602,6 +757,7 @@ export async function setSecretsAtomically(input: {
 			env: input.env,
 			userId: input.userId,
 			userEmail: input.userEmail,
+			audit: input.audit,
 			packageId,
 			secrets: input.secrets.map((secret) => ({
 				name: secret.name,
@@ -626,6 +782,7 @@ export async function setSecretsAtomically(input: {
 		storageContext,
 		waitUntil: input.waitUntil,
 		baseUrl: input.baseUrl,
+		audit: input.audit,
 	})
 }
 
@@ -640,6 +797,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		description?: string | null
 	}>
 	waitUntil?: (promise: Promise<unknown>) => void
+	audit: OrgAuditWriter | null
 }): Promise<Array<SecretMetadata>> {
 	const packageId = input.packageId.trim()
 	if (!packageId) throw new Error('Package id is required.')
@@ -661,6 +819,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		description: string
 		encryptedValue: string
 		existingEntry: NonNullable<Awaited<ReturnType<typeof getSecretEntry>>>
+		valueChanged: boolean
 	}> = []
 	let requestedStorageBytes = 0
 
@@ -703,7 +862,18 @@ export async function updateUserSecretsForPackageAtomically(input: {
 				},
 			},
 		})
-		prepared.push({ name, description, encryptedValue, existingEntry })
+		prepared.push({
+			name,
+			description,
+			encryptedValue,
+			existingEntry,
+			valueChanged: await secretValueChanged({
+				env: input.env,
+				userId: input.userId,
+				encryptedValue: existingEntry.encrypted_value,
+				nextValue: value,
+			}),
+		})
 	}
 
 	await assertWithinStorageBytesEntitlement({
@@ -736,6 +906,23 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		}
 		throw error
 	}
+	await recordCredentialAudit(
+		input.audit,
+		prepared.flatMap((entry) => {
+			const change = userSecretWriteAuditChange({
+				orgId: input.userId,
+				credentialId: entry.existingEntry.id,
+				name: entry.name,
+				created: false,
+				valueChanged: entry.valueChanged,
+				detailFields: changedSecretDetailFields(entry.existingEntry, {
+					description: entry.description,
+					expiresAt: entry.existingEntry.expires_at,
+				}),
+			})
+			return change ? [change] : []
+		}),
+	)
 
 	for (const entry of prepared) {
 		let previousPlaintext: string | null = null
@@ -800,6 +987,7 @@ async function saveSecretsAtomically(input: {
 	storageContext?: StorageContext | null
 	waitUntil?: (promise: Promise<unknown>) => void
 	baseUrl?: string
+	audit: OrgAuditWriter | null
 }): Promise<Array<SecretMetadata>> {
 	const bucket = await getOrCreateSecretBucket({
 		db: input.env.APP_DB,
@@ -815,6 +1003,7 @@ async function saveSecretsAtomically(input: {
 		encryptedValue: string
 		expiresAt: string | null
 		existingEntry: Awaited<ReturnType<typeof getSecretEntry>>
+		valueChanged: boolean
 		placementOnInsert?: CredentialFillPlacement | null
 		placementOriginOnInsert?: CredentialPlacementOrigin | null
 		placementAfter?: CredentialFillPlacement | null
@@ -904,6 +1093,14 @@ async function saveSecretsAtomically(input: {
 				requested: secret.expiresAt,
 			}),
 			existingEntry,
+			valueChanged: existingEntry
+				? await secretValueChanged({
+						env: input.env,
+						userId: input.userId,
+						encryptedValue: existingEntry.encrypted_value,
+						nextValue: value,
+					})
+				: true,
 			...(placementOnInsert !== undefined
 				? {
 						placementOnInsert,
@@ -950,6 +1147,32 @@ async function saveSecretsAtomically(input: {
 				: {}),
 		})),
 	})
+	if (input.scope === 'user' && input.audit) {
+		const changes: Array<CredentialAuditChange> = []
+		for (const entry of prepared) {
+			const credentialId =
+				entry.existingEntry?.id ??
+				(await readUserSecretEntryId({
+					db: input.env.APP_DB,
+					bucketId: bucket.id,
+					name: entry.name,
+				}))
+			if (!credentialId) continue
+			const change = userSecretWriteAuditChange({
+				orgId: input.userId,
+				credentialId,
+				name: entry.name,
+				created: entry.existingEntry == null,
+				valueChanged: entry.valueChanged,
+				detailFields: changedSecretDetailFields(entry.existingEntry, {
+					description: entry.description,
+					expiresAt: entry.expiresAt,
+				}),
+			})
+			if (change) changes.push(change)
+		}
+		await recordCredentialAudit(input.audit, changes)
+	}
 	if (packageIdForPlacement && input.baseUrl) {
 		for (const entry of prepared) {
 			if (!entry.existingEntry) {
@@ -1345,12 +1568,29 @@ export async function deleteSecret(input: DeleteSecretInput) {
 		storageContext: input.storageContext ?? null,
 	})
 	if (!bucket) return false
-	return deleteSecretEntry({
+	const existing =
+		input.scope === 'user' && input.audit
+			? await getSecretEntry({
+					db: input.env.APP_DB,
+					bucketId: bucket.id,
+					name: input.name.trim(),
+				})
+			: null
+	const deleted = await deleteSecretEntry({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		bucketId: bucket.id,
 		name: input.name,
 	})
+	if (deleted && existing) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existing.id, kind: 'secret', name: existing.name },
+			action: credentialAuditActions.deleted,
+			details: { fields: [] },
+		})
+	}
+	return deleted
 }
 
 /**
@@ -1376,12 +1616,21 @@ export async function disconnectSecret(input: DeleteSecretInput) {
 	if (isDisconnectedSecretEncryptedValue(existing.encrypted_value)) {
 		return true
 	}
-	return clearSecretValueEntry({
+	const cleared = await clearSecretValueEntry({
 		db: input.env.APP_DB,
 		bucketId: bucket.id,
 		name: input.name.trim(),
 		updatedAt: new Date().toISOString(),
 	})
+	if (cleared && input.scope === 'user') {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existing.id, kind: 'secret', name: existing.name },
+			action: credentialAuditActions.disconnected,
+			details: { fields: ['connected'] },
+		})
+	}
+	return cleared
 }
 
 /**
@@ -1396,6 +1645,7 @@ export async function renameSecret(input: {
 	fromName: string
 	toName: string
 	storageContext?: StorageContext | null
+	audit: OrgAuditWriter | null
 }): Promise<SecretMetadata> {
 	const fromName = input.fromName.trim()
 	const toName = input.toName.trim()
@@ -1465,6 +1715,14 @@ export async function renameSecret(input: {
 	})
 	if (!updated || updated.name !== toName) {
 		throw new Error('Secret rename did not persist the new name.')
+	}
+	if (input.scope === 'user') {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: updated.id, kind: 'secret', name: toName },
+			action: credentialAuditActions.renamed,
+			details: { previousName: fromName, fields: ['name'] },
+		})
 	}
 	return toSecretMetadata({
 		name: updated.name,
@@ -1579,6 +1837,9 @@ export async function updateSecret(
 		existing: existingEntry.expires_at,
 		requested: input.expiresAt,
 	})
+	const valueChanged =
+		hasValueUpdate &&
+		(previousPlaintext === null || previousPlaintext !== nextValue)
 	await upsertSecretEntry({
 		db: input.env.APP_DB,
 		row: {
@@ -1599,6 +1860,20 @@ export async function updateSecret(
 			updated_at: now,
 		},
 	})
+	if (input.scope === 'user') {
+		const change = userSecretWriteAuditChange({
+			orgId: input.userId,
+			credentialId: existingEntry.id,
+			name,
+			created: false,
+			valueChanged,
+			detailFields: changedSecretDetailFields(existingEntry, {
+				description: nextDescription,
+				expiresAt: entryExpiresAt,
+			}),
+		})
+		if (change) await recordCredentialAudit(input.audit, change)
+	}
 	if (
 		hasValueUpdate &&
 		previousPlaintext !== null &&
@@ -1846,6 +2121,7 @@ export async function setSecretAllowedHosts(input: {
 	scope: SecretScope
 	allowedHosts: Array<string>
 	storageContext?: StorageContext | null
+	audit: OrgAuditWriter | null
 }) {
 	const name = input.name.trim()
 	if (!name) {
@@ -1878,6 +2154,21 @@ export async function setSecretAllowedHosts(input: {
 			updated_at: now,
 		},
 	})
+	const hostsBefore = parseAllowedHosts(existingEntry.allowed_hosts)
+	const hostsAfter = parseAllowedHosts(
+		stringifyAllowedHosts(input.allowedHosts),
+	)
+	if (input.scope === 'user' && !sameStringSet(hostsBefore, hostsAfter)) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existingEntry.id, kind: 'secret', name },
+			action: credentialAuditActions.hostsUpdated,
+			details: {
+				hosts: { before: hostsBefore, after: hostsAfter },
+				fields: ['hosts'],
+			},
+		})
+	}
 	return toSecretMetadata({
 		name,
 		scope: input.scope,
@@ -1903,6 +2194,7 @@ export async function setSecretAllowedPackages(input: {
 	scope: SecretScope
 	allowedPackages: Array<string>
 	storageContext?: StorageContext | null
+	audit: OrgAuditWriter | null
 }) {
 	if (input.scope !== 'user' && input.allowedPackages.length > 0) {
 		throw new Error('Package approvals are only supported for user secrets.')
@@ -1938,6 +2230,21 @@ export async function setSecretAllowedPackages(input: {
 			updated_at: now,
 		},
 	})
+	const packagesBefore = parseAllowedPackages(existingEntry.allowed_packages)
+	const packagesAfter = parseAllowedPackages(
+		stringifyAllowedPackages(input.allowedPackages),
+	)
+	if (input.scope === 'user' && !sameStringSet(packagesBefore, packagesAfter)) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: existingEntry.id, kind: 'secret', name },
+			action: credentialAuditActions.allowedPackagesUpdated,
+			details: {
+				packages: listDelta(packagesBefore, packagesAfter),
+				fields: ['allowed_packages'],
+			},
+		})
+	}
 	return toSecretMetadata({
 		name,
 		scope: input.scope,
@@ -2042,6 +2349,7 @@ export async function lockSecretToPackage(input: {
 	userId: OwnerId
 	name: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }): Promise<SecretMetadata> {
 	const state = await inspectUserSecretPackageGrant(input)
 	if (state.alreadyGranted) {
@@ -2053,5 +2361,6 @@ export async function lockSecretToPackage(input: {
 		name: input.name,
 		scope: 'user',
 		allowedPackages: [...state.secret.allowedPackages, state.savedPackage.id],
+		audit: input.audit,
 	})
 }

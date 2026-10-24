@@ -397,6 +397,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -405,6 +406,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }
@@ -894,6 +896,7 @@ async function setupCredentialVault() {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -902,6 +905,7 @@ async function setupCredentialVault() {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }

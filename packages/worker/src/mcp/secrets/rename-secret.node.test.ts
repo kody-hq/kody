@@ -36,6 +36,7 @@ test('renameSecret persists a case-only name change and keeps the credential id'
 		scope: 'user',
 		name: 'Henry',
 		value: 'secret-value',
+		audit: null,
 	})
 	const before = sqlite
 		.prepare(`SELECT id, name FROM secret_entries WHERE name = 'Henry'`)
@@ -48,6 +49,7 @@ test('renameSecret persists a case-only name change and keeps the credential id'
 		scope: 'user',
 		fromName: 'Henry',
 		toName: 'henry',
+		audit: null,
 	})
 	expect(renamed.name).toBe('henry')
 
@@ -75,6 +77,7 @@ test('renameSecret refuses a destination that already exists with exact casing',
 		scope: 'user',
 		name: 'Alpha',
 		value: 'a',
+		audit: null,
 	})
 	await saveSecret({
 		env,
@@ -82,6 +85,7 @@ test('renameSecret refuses a destination that already exists with exact casing',
 		scope: 'user',
 		name: 'alpha',
 		value: 'b',
+		audit: null,
 	})
 	await expect(
 		renameSecret({
@@ -90,6 +94,7 @@ test('renameSecret refuses a destination that already exists with exact casing',
 			scope: 'user',
 			fromName: 'Alpha',
 			toName: 'alpha',
+			audit: null,
 		}),
 	).rejects.toThrow(/already exists/)
 })

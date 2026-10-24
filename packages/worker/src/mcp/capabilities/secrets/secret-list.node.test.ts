@@ -190,6 +190,7 @@ test('secretList from execute returns caller-owned package metadata with package
 			packageId: 'pkg-discord',
 			storageId: 'pkg-discord',
 		},
+		audit: null,
 	})
 
 	const listed = await secretListCapability.handler(
@@ -247,6 +248,7 @@ test('secretList package scope uses declaring-package authority like secretSet',
 			packageId: providerPackageId,
 			storageId: providerPackageId,
 		},
+		audit: null,
 	})
 	await secretService.saveSecret({
 		env,
@@ -260,6 +262,7 @@ test('secretList package scope uses declaring-package authority like secretSet',
 			packageId: consumerPackageId,
 			storageId: consumerPackageId,
 		},
+		audit: null,
 	})
 
 	const consumerContext = {

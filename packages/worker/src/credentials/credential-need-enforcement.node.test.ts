@@ -96,6 +96,7 @@ async function setup() {
 			scope: 'user',
 			name,
 			value: keyValue,
+			audit: null,
 		})
 		await db
 			.prepare(

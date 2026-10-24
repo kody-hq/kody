@@ -103,6 +103,7 @@ async function setup() {
 		scope: 'user',
 		name: 'annToken',
 		value: 'ann-secret-value',
+		audit: null,
 	})
 	const annTokenId = (
 		await findCredentialIdsByLegacyName(db, annOrgId, {
@@ -209,6 +210,7 @@ test('a grant needs the owner’s own live credential and a live binding to the 
 		scope: 'user',
 		name: 'cyToken',
 		value: 'cy-secret-value',
+		audit: null,
 	})
 	const cyTokenId = (
 		await findCredentialIdsByLegacyName(
@@ -311,6 +313,7 @@ test('distinct personal org id still resolves personal credential grants', async
 		scope: 'user',
 		name: 'deeToken',
 		value: 'dee-secret-value',
+		audit: null,
 	})
 	const tokenId = (
 		await findCredentialIdsByLegacyName(db, distinctOrgId, {
@@ -416,6 +419,7 @@ test('expired secrets, package secrets, and suspended personal orgs are not pers
 			packageId: 'ann-package',
 			storageId: 'ann-package',
 		},
+		audit: null,
 	})
 	const packageTokenId = (
 		await findCredentialIdsByLegacyName(t.db, t.annOrgId, {

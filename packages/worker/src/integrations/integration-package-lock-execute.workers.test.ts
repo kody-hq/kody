@@ -286,6 +286,7 @@ async function connectLockedIntegration(person: Person, packageId: string) {
 				extraAuthorizeParams: {},
 			},
 		},
+		audit: null,
 	})
 	await persistIntegrationTokens({
 		env,
@@ -293,12 +294,14 @@ async function connectLockedIntegration(person: Person, packageId: string) {
 		name: INTEGRATION,
 		accessToken: DUMMY_TOKEN,
 		refreshPolicy: 'required',
+		audit: null,
 	})
 	await lockIntegrationToPackage({
 		env,
 		userId: person.ownerId,
 		name: INTEGRATION,
 		packageId,
+		audit: null,
 	})
 }
 

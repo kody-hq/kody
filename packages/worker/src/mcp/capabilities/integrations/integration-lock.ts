@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -64,6 +65,7 @@ export const integrationLockCapability = defineDomainCapability(
 					userId: ownerIdFromCaller(ctx.callerContext),
 					name: args.name,
 					packageId: args.package_id,
+					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 				})
 				return {
 					name: updated.name,

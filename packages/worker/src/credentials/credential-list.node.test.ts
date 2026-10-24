@@ -85,6 +85,7 @@ async function setup() {
 		name: 'stripeKey',
 		value: 'sk-value',
 		description: 'Stripe billing',
+		audit: null,
 	})
 	sqlite
 		.prepare(
@@ -103,6 +104,7 @@ async function setup() {
 			packageId: 'pkg-1',
 			storageId: 'pkg-1',
 		},
+		audit: null,
 	})
 	sqlite
 		.prepare(
@@ -130,6 +132,7 @@ async function setup() {
 		scope: 'user',
 		name: 'annToken',
 		value: 'ann-value',
+		audit: null,
 	})
 	const annTokenId = (
 		await findCredentialIdsByLegacyName(db, annOrgId, {

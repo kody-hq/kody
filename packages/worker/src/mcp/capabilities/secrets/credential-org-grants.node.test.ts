@@ -102,7 +102,14 @@ async function setup() {
 		.run()
 	const secretOf = async (username: Person, name: string) => {
 		const orgId = personalOrgId(personIdFromStored(ids[username]))
-		await saveSecret({ env, userId: orgId, scope: 'user', name, value: 'v' })
+		await saveSecret({
+			env,
+			userId: orgId,
+			scope: 'user',
+			name,
+			value: 'v',
+			audit: null,
+		})
 		return (
 			await findCredentialIdsByLegacyName(db, orgId, { type: 'secret', name })
 		)[0]!

@@ -16,6 +16,12 @@ import {
 } from './canonicalize.ts'
 import { readDeclaredSecretProviderId } from './declared-provider.ts'
 import {
+	credentialAuditActions,
+	recordCredentialAudit,
+	type CredentialDetailField,
+} from '#worker/credentials/credential-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
 	createBrokenProviderRefMessage,
 	createMissingProviderBindingMessage,
 	createMissingProviderDoorSecretMessage,
@@ -151,6 +157,7 @@ export async function bindSecretProvider(input: {
 	packageId: string
 	doorSecretName: string
 	config?: Record<string, unknown> | null
+	audit: OrgAuditWriter | null
 }) {
 	const providerId = normalizeProviderId(input.providerId)
 	const doorSecretName = input.doorSecretName.trim()
@@ -192,6 +199,12 @@ export async function bindSecretProvider(input: {
 		)
 	}
 	const config = normalizeSecretProviderConfig(input.config)
+	const before = input.audit
+		? await getSecretProviderBinding(input.env.APP_DB, {
+				userId: input.userId,
+				providerId,
+			})
+		: null
 	await upsertSecretProviderBinding(input.env.APP_DB, {
 		userId: input.userId,
 		providerId,
@@ -203,6 +216,13 @@ export async function bindSecretProvider(input: {
 		userId: input.userId,
 		providerId,
 	})
+	await auditVaultBind({
+		db: input.env.APP_DB,
+		audit: input.audit,
+		orgId: input.userId,
+		providerId,
+		before,
+	})
 	return {
 		providerId,
 		packageId: savedPackage.id,
@@ -212,16 +232,75 @@ export async function bindSecretProvider(input: {
 	}
 }
 
+async function auditVaultBind(input: {
+	db: D1Database
+	audit: OrgAuditWriter | null
+	orgId: OwnerId
+	providerId: string
+	before: Awaited<ReturnType<typeof getSecretProviderBinding>>
+}) {
+	if (!input.audit) return
+	const after = await getSecretProviderBinding(input.db, {
+		userId: input.orgId,
+		providerId: input.providerId,
+	})
+	if (!after?.credentialId) return
+	const credential = {
+		id: after.credentialId,
+		kind: 'vault' as const,
+		name: input.providerId,
+	}
+	if (!input.before) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.orgId,
+			credential,
+			action: credentialAuditActions.created,
+			details: { fields: [] },
+		})
+		return
+	}
+	const fields: Array<CredentialDetailField> = []
+	if (
+		input.before.packageId !== after.packageId ||
+		input.before.doorSecretName !== after.doorSecretName ||
+		JSON.stringify(input.before.config) !== JSON.stringify(after.config)
+	) {
+		fields.push('config')
+	}
+	if (fields.length === 0) return
+	await recordCredentialAudit(input.audit, {
+		orgId: input.orgId,
+		credential,
+		action: credentialAuditActions.detailsUpdated,
+		details: { fields },
+	})
+}
+
 export async function unbindSecretProvider(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
 	providerId: string
+	audit: OrgAuditWriter | null
 }) {
 	const providerId = normalizeProviderId(input.providerId)
+	const before = input.audit
+		? await getSecretProviderBinding(input.env.APP_DB, {
+				userId: input.userId,
+				providerId,
+			})
+		: null
 	await deleteSecretProviderBinding(input.env.APP_DB, {
 		userId: input.userId,
 		providerId,
 	})
+	if (before?.credentialId) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: { id: before.credentialId, kind: 'vault', name: providerId },
+			action: credentialAuditActions.deleted,
+			details: { fields: [] },
+		})
+	}
 	clearProviderSecretCacheForBinding({
 		userId: input.userId,
 		providerId,
@@ -244,6 +323,7 @@ export async function grantSecretProviderToPackage(input: {
 	providerId: string
 	ref: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }) {
 	const providerId = normalizeProviderId(input.providerId)
 	const canonicalRef = requireLocalCanonicalRef(providerId, input.ref)
@@ -257,12 +337,29 @@ export async function grantSecretProviderToPackage(input: {
 		userId: input.userId,
 		packageId: input.packageId,
 	})
+	const existingGrant = input.audit
+		? await getSecretProviderGrant(input.env.APP_DB, {
+				userId: input.userId,
+				providerId,
+				canonicalRef,
+				packageId: savedPackage.id,
+			})
+		: null
 	await insertSecretProviderGrant(input.env.APP_DB, {
 		userId: input.userId,
 		providerId,
 		canonicalRef,
 		packageId: savedPackage.id,
 	})
+	if (input.audit && !existingGrant) {
+		await auditVaultGrant({
+			db: input.env.APP_DB,
+			audit: input.audit,
+			orgId: input.userId,
+			providerId,
+			packages: { added: [savedPackage.id], removed: [] },
+		})
+	}
 	return {
 		providerId,
 		canonicalRef,
@@ -271,12 +368,37 @@ export async function grantSecretProviderToPackage(input: {
 	}
 }
 
+async function auditVaultGrant(input: {
+	db: D1Database
+	audit: OrgAuditWriter
+	orgId: OwnerId
+	providerId: string
+	packages: { added: Array<string>; removed: Array<string> }
+}) {
+	const binding = await getSecretProviderBinding(input.db, {
+		userId: input.orgId,
+		providerId: input.providerId,
+	})
+	if (!binding?.credentialId) return
+	await recordCredentialAudit(input.audit, {
+		orgId: input.orgId,
+		credential: {
+			id: binding.credentialId,
+			kind: 'vault',
+			name: input.providerId,
+		},
+		action: credentialAuditActions.allowedPackagesUpdated,
+		details: { packages: input.packages, fields: ['allowed_packages'] },
+	})
+}
+
 export async function revokeSecretProviderGrant(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
 	providerId: string
 	ref: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }) {
 	const providerId = normalizeProviderId(input.providerId)
 	const canonicalRef = requireLocalCanonicalRef(providerId, input.ref)
@@ -285,12 +407,29 @@ export async function revokeSecretProviderGrant(input: {
 		userId: input.userId,
 		packageId: input.packageId,
 	})
+	const existingGrant = input.audit
+		? await getSecretProviderGrant(input.env.APP_DB, {
+				userId: input.userId,
+				providerId,
+				canonicalRef,
+				packageId: savedPackage.id,
+			})
+		: null
 	await deleteSecretProviderGrant(input.env.APP_DB, {
 		userId: input.userId,
 		providerId,
 		canonicalRef,
 		packageId: savedPackage.id,
 	})
+	if (input.audit && existingGrant) {
+		await auditVaultGrant({
+			db: input.env.APP_DB,
+			audit: input.audit,
+			orgId: input.userId,
+			providerId,
+			packages: { added: [], removed: [savedPackage.id] },
+		})
+	}
 }
 
 export async function inspectSecretProviderPackageGrant(input: {

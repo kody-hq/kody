@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { assertCanSetSecrets } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
@@ -131,6 +132,7 @@ export const secretSetManyCapability = defineDomainCapability(
 			}
 			const saved = await setSecretsAtomically({
 				env: ctx.env,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 				userId: ownerIdFromCaller(ctx.callerContext),
 				userEmail: user.email,
 				secrets: parsed.secrets.map((secret) => ({

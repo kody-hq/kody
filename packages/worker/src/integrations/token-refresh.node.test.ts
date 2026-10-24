@@ -97,6 +97,7 @@ async function seedPlatformConnection(
 		userId,
 		platformAppSlug: slug,
 		scopes: extra.scopes ?? [],
+		audit: null,
 	})
 	await seedUserTokens(env, userId, slug)
 }
@@ -124,6 +125,7 @@ async function seedUserTokens(env: Env, userId: string, name: string) {
 		accessToken: 'stale-access-token',
 		refreshToken: 'current-refresh-token',
 		refreshPolicy: 'required',
+		audit: null,
 	})
 }
 
@@ -236,6 +238,7 @@ test('platform-lane refresh uses the decrypted shared client secret and persists
 		userId: ownerIdFromStored('user-no-refresh'),
 		platformAppSlug: 'github',
 		scopes: [],
+		audit: null,
 	})
 	await expect(
 		refreshIntegrationTokens({
@@ -367,7 +370,7 @@ test('user-lane refresh resolves the ciphertext client secret and enforces requi
 			extraAuthorizeParams: {},
 		},
 	}
-	await upsertIntegration({ env, userId, config: googleConfig })
+	await upsertIntegration({ env, userId, config: googleConfig, audit: null })
 	await persistUserOauthAppClientSecret({
 		env,
 		userId,
@@ -402,6 +405,7 @@ test('user-lane refresh resolves the ciphertext client secret and enforces requi
 				...googleConfig,
 				requiredHosts: ['www.googleapis.com', 'oauth2.googleapis.com'],
 			},
+			audit: null,
 		})
 		const result = await refreshIntegrationTokens({
 			env,
@@ -458,6 +462,7 @@ test('successful Google refresh persists userinfo email as account_label when mi
 			platformAppSlug: 'google',
 			scopes: ['openid', 'email'],
 			accountLabel: 'Work',
+			audit: null,
 		})
 		await refreshIntegrationTokens({ env, userId, name: 'google' })
 		const labeled = await getJoinedIntegration({ env, userId, name: 'google' })
@@ -691,6 +696,7 @@ test('refresh policy follows each connect: non-expiring grants skip refresh, exp
 			clientId: 'kent-github-client-id',
 			requiredHosts: ['api.github.com', 'github.com'],
 		},
+		audit: null,
 	})
 	const connect = (tokenPayload: Record<string, unknown>) =>
 		persistIntegrationTokens({
@@ -703,6 +709,7 @@ test('refresh policy follows each connect: non-expiring grants skip refresh, exp
 					? tokenPayload.refresh_token
 					: null,
 			refreshPolicy: inferIntegrationRefreshPolicy(tokenPayload),
+			audit: null,
 		})
 	const writeFailure = (
 		reason: 'missing_refresh_token' | 'provider_rejected',

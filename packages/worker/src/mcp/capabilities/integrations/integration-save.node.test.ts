@@ -1,3 +1,4 @@
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -38,6 +39,7 @@ function createEnv() {
 		sqlite,
 		env: {
 			APP_DB: createD1FromSqlite(sqlite),
+			AUDIT_DB: createAuditTestDb(),
 			SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 		} as unknown as Env,
 	}
@@ -418,6 +420,7 @@ test('integrationSave refuses platform (built-in) connections and persists accou
 		userId: ownerIdFromStored('user-123'),
 		platformAppSlug: 'github',
 		scopes: ['read:user'],
+		audit: null,
 	})
 	await expect(
 		integrationSaveCapability.handler(

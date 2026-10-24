@@ -7,6 +7,10 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { waitUntil } from 'cloudflare:workers'
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	orgAuditWriterFromRequest,
+	type OrgAuditWriter,
+} from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import {
@@ -115,6 +119,7 @@ export async function persistConnectOauthTokens(
 						platformAppSlug: input.platformApp.slug,
 						name: input.provider,
 						scopes: input.scopes,
+						audit: orgAuditWriterFromRequest(input.env, input.request),
 					})
 				).name
 			: await saveIntegrationConfig({
@@ -140,6 +145,7 @@ export async function persistConnectOauthTokens(
 								extraAuthorizeParams: input.extraAuthorizeParams,
 							}
 						: null,
+					audit: orgAuditWriterFromRequest(input.env, input.request),
 				})
 	} catch (error) {
 		return {
@@ -158,6 +164,7 @@ export async function persistConnectOauthTokens(
 		accessToken,
 		refreshToken,
 		refreshPolicy: inferIntegrationRefreshPolicy(input.tokenRecord),
+		audit: orgAuditWriterFromRequest(input.env, input.request),
 	})
 	const connected = await getJoinedIntegration({
 		env: input.env,
@@ -261,6 +268,7 @@ async function saveIntegrationConfig(input: {
 		scopeSeparator: string | null
 		extraAuthorizeParams: Record<string, string>
 	} | null
+	audit: OrgAuditWriter | null
 }) {
 	const providerKey = canonicalIntegrationName(input.provider)
 	if (!providerKey) {
@@ -290,6 +298,7 @@ async function saveIntegrationConfig(input: {
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
 		waitUntil,
+		audit: input.audit,
 	})
 	return integration.name
 }

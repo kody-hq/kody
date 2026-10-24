@@ -79,6 +79,7 @@ test('secretLock returns an approval URL without widening allowed_packages', asy
 		scope: 'user',
 		name: 'openai-api-key',
 		value: 'sk-test',
+		audit: null,
 	})
 
 	const ctx = {
@@ -117,6 +118,7 @@ test('secretLock returns an approval URL without widening allowed_packages', asy
 		userId,
 		name: 'openai-api-key',
 		packageId: 'pkg-notes',
+		audit: null,
 	})
 	expect(websiteGrant.allowedPackages).toEqual(['pkg-notes'])
 

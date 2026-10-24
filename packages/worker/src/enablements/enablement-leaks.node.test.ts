@@ -272,6 +272,7 @@ async function setup() {
 		scope: 'user',
 		name: 'teamToken',
 		value: teamSecretValue,
+		audit: null,
 	})
 	// Only Cy holds Use on the team secret.
 	await grant(cyId, 'secret', 'teamToken')
@@ -702,6 +703,7 @@ test('a pause keeps the credential name people read and its id, and a pause on a
 		scope: 'user',
 		name: 'futureToken',
 		value: 'future-secret-value',
+		audit: null,
 	})
 	await t.sendEmail('cy@acme.example')
 	expect(t.runs).toEqual([])
@@ -757,6 +759,7 @@ test('a run that references a vault with no binding pauses the enablement on Use
 		scope: 'user',
 		name: '1password',
 		value: 'not-the-vault',
+		audit: null,
 	})
 	await t.grant(t.people.cy.userId, 'secret', '1password')
 	t.runs.splice(0)
@@ -813,6 +816,7 @@ test('a grant on a credential deleted since the pause does not resume the enable
 		userId: t.orgId,
 		scope: 'user',
 		name: 'teamToken',
+		audit: null,
 	})
 	t.runs.splice(0)
 	await t.sendEmail('bea@acme.example')

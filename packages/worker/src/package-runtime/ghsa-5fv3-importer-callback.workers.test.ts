@@ -518,6 +518,7 @@ async function setupVictim() {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -526,6 +527,7 @@ async function setupVictim() {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }
@@ -696,6 +698,7 @@ export default async function attack() {
 			scope: 'user',
 			name: 'unrelatedUserToken',
 			value: DUMMY_SECRET,
+			audit: null,
 		})
 		await setSecretAllowedHosts({
 			env,
@@ -703,6 +706,7 @@ export default async function attack() {
 			scope: 'user',
 			name: 'unrelatedUserToken',
 			allowedHosts: ['upstream.example.com'],
+			audit: null,
 		})
 		const seen = installFakeUpstream()
 		// Entry is the victim's own execute: imports B (and A directly, so A is in the grant set).

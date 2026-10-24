@@ -87,7 +87,7 @@ test('loadAccountIntegrationByName covers setup prefill, reconnect, and exact-sl
 
 	expect(await lookup('linear')).toBeNull()
 
-	await upsertIntegration({ env, userId, config: googleConfig })
+	await upsertIntegration({ env, userId, config: googleConfig, audit: null })
 	const calendarSetup = await lookup('google-calendar')
 	expect(calendarSetup).toMatchObject({
 		name: 'google-calendar',
@@ -104,7 +104,12 @@ test('loadAccountIntegrationByName covers setup prefill, reconnect, and exact-sl
 	})
 	expect(JSON.stringify(calendarSetup)).not.toMatch(secretLeakPattern)
 
-	await upsertIntegration({ env, userId, config: googleCalendarConfig })
+	await upsertIntegration({
+		env,
+		userId,
+		config: googleCalendarConfig,
+		audit: null,
+	})
 	expect(await lookup('google-calendar')).toMatchObject({
 		name: 'google-calendar',
 		appSlug: 'google',
@@ -163,6 +168,7 @@ test('platform= never converts an existing connection and wins over a same-slug 
 			name: 'github-mine',
 			clientId: 'user-github-client',
 		},
+		audit: null,
 	})
 	const existingByo = await lookup('github-mine', {
 		platformSlug: 'github-platform',
@@ -211,8 +217,13 @@ test('loadAccountIntegrationsData includes OAuth apps with their connections', a
 	const userId = ownerIdFromStored('user-integrations-apps-loader')
 	const { env, user } = createEnv(userId)
 
-	await upsertIntegration({ env, userId, config: googleConfig })
-	await upsertIntegration({ env, userId, config: googleCalendarConfig })
+	await upsertIntegration({ env, userId, config: googleConfig, audit: null })
+	await upsertIntegration({
+		env,
+		userId,
+		config: googleCalendarConfig,
+		audit: null,
+	})
 	await upsertOauthAppWithoutConnection({
 		env,
 		userId,

@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -47,6 +48,7 @@ export const integrationDeleteCapability = defineDomainCapability(
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				name: args.name,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			return { deleted }
 		},

@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
 
 const repo = vi.hoisted(() => ({
 	listEnabledMcpServerSettingRows: vi.fn(),
@@ -143,6 +144,7 @@ test('listEnabledMcpServerRefsCached warms per user, expires, and invalidates on
 		userId: ownerIdFromStored('user-1'),
 		id: 'server-1',
 		enabled: false,
+		audit: null,
 	})
 	repo.listEnabledMcpServerSettingRows.mockResolvedValue([])
 	expect(
@@ -196,6 +198,7 @@ test('addMcpServer rejects a duplicate name as McpCallerError without contacting
 		name: 'server-dup',
 		url: 'https://mcp.example.com/mcp',
 		baseUrl: 'https://kody.codes',
+		audit: null,
 	}).then(
 		() => null,
 		(thrown: unknown) => thrown,
@@ -223,6 +226,7 @@ test('addMcpServer keeps connection failures as plain Errors for Sentry', async 
 			name: 'linear',
 			url: 'https://mcp.example.com/mcp',
 			baseUrl: 'https://kody.codes',
+			audit: null,
 		}),
 	).rejects.toSatisfy(
 		(error: unknown) =>
@@ -250,6 +254,7 @@ test('addMcpServer forwards bearer tokens as Authorization headers and persists 
 		url: 'https://mcp.example.com/mcp',
 		baseUrl: 'https://heykody.app',
 		bearerToken: 'secret-token',
+		audit: null,
 	})
 	expect(result.setting.name).toBe('linear')
 	expect(mockModule.hubClient.addServer).toHaveBeenCalledWith(
@@ -298,6 +303,7 @@ test('addMcpServer forwards bearer tokens as Authorization headers and persists 
 		name: 'posthog',
 		url: 'https://mcp.example.com/mcp',
 		baseUrl: 'https://kody.codes',
+		audit: null,
 	})
 	expect(timedOut.connection.lastError?.phase).toBe('server/discover')
 	expect(timedOut.setting.lastError).toContain("tool discovery didn't finish")
@@ -387,6 +393,7 @@ test('MCP server usage lock hides the server from execute and grants a package',
 		userId: ownerIdFromStored('user-1'),
 		id: 'server-1',
 		packageId: 'pkg-drafts',
+		audit: null,
 	})
 	expect(locked.usageMode).toBe('packages')
 	expect(locked.allowedPackageIds).toEqual(['pkg-drafts'])
@@ -404,6 +411,7 @@ test('MCP server usage lock hides the server from execute and grants a package',
 		userId: ownerIdFromStored('user-1'),
 		id: 'server-1',
 		usageMode: 'any',
+		audit: null,
 	})
 	expect(unlocked.usageMode).toBe('any')
 	expect(unlocked.allowedPackageIds).toEqual([])
@@ -420,4 +428,42 @@ test('MCP server usage lock hides the server from execute and grants a package',
 		{ serverId: 'server-1', name: 'server-server-1' },
 	])
 	expect(await visibleTo('pkg-other')).toEqual([])
+})
+
+test('setMcpServerEnabled audits a real toggle with its before and after, and skips a no-op', async () => {
+	const audit = createTestOrgAuditWriter({ actorUserId: 'person-1' })
+	repo.getMcpServerSettingRowById.mockResolvedValue(createSettingRow())
+	repo.updateMcpServerSettingRow.mockResolvedValue(true)
+	const toggle = (enabled: boolean) =>
+		setMcpServerEnabled({
+			env,
+			userId: ownerIdFromStored('user-1'),
+			id: 'server-1',
+			enabled,
+			audit,
+		})
+	await toggle(true)
+	await toggle(false)
+	const { results } = await audit.db
+		.prepare(
+			`SELECT action, resource_type, resource_id, details_json FROM org_audit_events`,
+		)
+		.all<{
+			action: string
+			resource_type: string
+			resource_id: string
+			details_json: string
+		}>()
+	expect(results).toHaveLength(1)
+	expect(results[0]).toMatchObject({
+		action: 'credential.enabled_changed',
+		resource_type: 'credential',
+		resource_id: 'server-1',
+	})
+	expect(JSON.parse(results[0]!.details_json)).toEqual({
+		credentialKind: 'mcp-server',
+		name: 'server-server-1',
+		enabled: { before: true, after: false },
+		fields: ['enabled'],
+	})
 })

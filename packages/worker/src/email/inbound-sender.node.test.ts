@@ -275,6 +275,7 @@ async function setup() {
 		scope: 'user',
 		name: 'teamToken',
 		value: teamSecretValue,
+		audit: null,
 	})
 	// Bea may use the team secret.
 	const [teamTokenId] = await findCredentialIdsByLegacyName(db, orgId, {
