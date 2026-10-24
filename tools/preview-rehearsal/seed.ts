@@ -529,9 +529,9 @@ async function seedPersonData(
 	const jobIds = jobRows.flatMap((job) =>
 		typeof job.id === 'string' ? [job.id] : [],
 	)
-	if (jobIds.length < 2) {
+	if (jobIds.length < 1) {
 		throw new Error(
-			`${user.role}: expected two package jobs, got ${JSON.stringify(jobs)}`,
+			`${user.role}: expected the daily-digest package job, got ${JSON.stringify(jobs)}`,
 		)
 	}
 	const recurring = jobRows.find((job) =>
