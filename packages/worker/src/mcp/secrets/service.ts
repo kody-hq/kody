@@ -2290,7 +2290,7 @@ type UserSecretPackageGrantState = {
 
 /**
  * Read-only lookup for a user secret + saved package grant. Does not mutate
- * `allowed_packages`. MCP `secretLock` uses this; applying a grant is
+ * `allowed_packages`. MCP `resourceLock` only inspects this; applying a grant is
  * website-only via `lockSecretToPackage` / `setSecretAllowedPackages`.
  */
 export async function inspectUserSecretPackageGrant(input: {
@@ -2358,7 +2358,7 @@ export async function inspectUserSecretPackageGrant(input: {
  * `allowed_packages`. Additional grants accumulate. Removing a grant is
  * website-only. User-scope only — package secrets do not have this grant.
  * Account secret editor and `/account/secrets/approve` apply grants through
- * `setSecretAllowedPackages` (or this helper). MCP `secretLock` must not.
+ * `setSecretAllowedPackages` (or this helper). MCP `resourceLock` must not.
  */
 export async function lockSecretToPackage(input: {
 	env: Pick<Env, 'APP_DB'>

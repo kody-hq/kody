@@ -217,6 +217,10 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0079 — Remove package retrievers](./0079-remove-package-retrievers.md) —
   remove implicit package execution from search and context enrichment; use
   explicit `execute` calls for package exports
+- [0080 — One `resourceLock` capability; no per-resource lock capabilities](./0080-one-resource-lock-capability.md)
+  — per-kind permission is checked in the handler (`orgPermission: 'none'`);
+  lock REST paths collapse to `POST /v1/resource-locks`; unlock stays
+  website-only
 
 ## Historical / UI / implementation
 

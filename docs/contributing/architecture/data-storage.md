@@ -1499,8 +1499,8 @@ on write unless a migration backfills existing rows.
   grant for read/use only. Mutations from package code (`secretSet` /
   `secretDelete`) always require the grant. Only the account owner can add a
   package to that grant (secret editor or `/@<slug>/-/secrets/approve`).
-  `secretLock` returns an approval URL and does not change `allowed_packages`.
-  Removing a grant is website-only.
+  `resourceLock({ kind: 'secret', name, package_id })` returns an approval URL
+  and does not change `allowed_packages`. Removing a grant is website-only.
 - `secret_provider_bindings` and `secret_provider_grants`
   (`0064-secret-provider-bindings.sql`) pin one saved package plus door-key
   secret name to a provider id per account, and grant saved packages use of a

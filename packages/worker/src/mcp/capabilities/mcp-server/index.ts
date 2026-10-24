@@ -100,7 +100,7 @@ function createCapabilityFromTool(input: {
 			// Package exports imported into execute run under the execute
 			// callerContext (no storageContext.packageId). The bundler stamp
 			// installs ALS secret authority for the callee package id; honor
-			// that so mcpServerLock grants still allow the approved package.
+			// that so resourceLock grants still allow the approved package.
 			const { packageStamp } = attestedPackageStampFromCaller({
 				storageContext: ctx.callerContext.storageContext,
 			})

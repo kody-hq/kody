@@ -155,14 +155,45 @@ function createCapabilityToolDescriptors(capabilities: Array<Capability>) {
 
 function getSchemaPropertyNames(schema: unknown) {
 	const properties = getSchemaRecordProperty(schema, 'properties')
-	return properties ? Object.keys(properties) : []
+	if (properties && Object.keys(properties).length > 0) {
+		return Object.keys(properties)
+	}
+	const variants = getSchemaObjectVariants(schema)
+	return [
+		...new Set(variants.flatMap((variant) => Object.keys(variant.properties))),
+	]
 }
 
 function getSchemaRequiredFields(schema: unknown) {
 	const required = getSchemaArrayProperty(schema, 'required')
-	return required
-		? required.filter((value): value is string => typeof value === 'string')
-		: []
+	if (required) {
+		return required.filter(
+			(value): value is string => typeof value === 'string',
+		)
+	}
+	const variants = getSchemaObjectVariants(schema)
+	if (variants.length === 0) return []
+	const requiredByVariant = variants.map((variant) => {
+		const value = getSchemaArrayProperty(variant.schema, 'required')
+		return new Set(
+			value?.filter((entry): entry is string => typeof entry === 'string') ??
+				[],
+		)
+	})
+	return [...requiredByVariant[0]!].filter((field) =>
+		requiredByVariant.every((fields) => fields.has(field)),
+	)
+}
+
+function getSchemaObjectVariants(schema: unknown) {
+	if (!schema || typeof schema !== 'object') return []
+	const object = schema as Record<string, unknown>
+	const variants = [object.oneOf, object.anyOf].find(Array.isArray)
+	if (!variants) return []
+	return variants.flatMap((variant) => {
+		const properties = getSchemaRecordProperty(variant, 'properties')
+		return properties ? [{ schema: variant, properties }] : []
+	})
 }
 
 function getSchemaRecordProperty(schema: unknown, key: string) {

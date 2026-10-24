@@ -214,7 +214,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	...capabilityRoutes('secrets', [
 		['GET', '/v1/secrets', 'secretList'],
 		['POST', '/v1/secrets/batch', 'secretSetMany'],
-		['POST', '/v1/secrets/lock', 'secretLock'],
+		['POST', '/v1/resource-locks', 'resourceLock'],
 		['POST', '/v1/secrets/jwt', 'secretJwtSign'],
 		['PUT', '/v1/secrets/{scope}/{name}', 'secretSet'],
 		['POST', '/v1/secrets/{scope}/{name}/disconnect', 'secretDisconnect'],
@@ -237,7 +237,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/secret-providers', 'secretProviderList'],
 		['PUT', '/v1/secret-providers/{provider}', 'secretProviderBind'],
 		['DELETE', '/v1/secret-providers/{provider}', 'secretProviderUnbind'],
-		['POST', '/v1/secret-providers/{provider}/lock', 'secretProviderLock'],
 	]),
 	...capabilityRoutes('packages', [
 		['GET', '/v1/packages', 'packageList'],
@@ -377,7 +376,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/integrations/{name}', 'integrationGet'],
 		['PUT', '/v1/integrations/{name}', 'integrationSave'],
 		['DELETE', '/v1/integrations/{name}', 'integrationDelete'],
-		['POST', '/v1/integrations/{name}/lock', 'integrationLock'],
 		['POST', '/v1/integrations/{name}/refresh', 'integrationTokenRefresh'],
 		['GET', '/v1/oauth-apps', 'integrationOauthAppList'],
 		['DELETE', '/v1/oauth-apps/{slug}', 'integrationOauthAppDelete'],
@@ -395,7 +393,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['PUT', '/v1/mcp-servers/{server}/enabled', 'mcpServerSetEnabled'],
 		['POST', '/v1/mcp-servers/{server}/reconnect', 'mcpServerReconnect'],
 		['POST', '/v1/mcp-servers/{server}/refresh', 'mcpServerRefresh'],
-		['POST', '/v1/mcp-servers/{server}/lock', 'mcpServerLock'],
 	]),
 	...capabilityRoutes('runs', [
 		['GET', '/v1/runs', 'runList'],

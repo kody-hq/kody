@@ -370,9 +370,14 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 	expect(
 		Object.keys((secretBody?.['properties'] as object) ?? {}),
 	).not.toContain('name')
+	const resourceLock = document.paths['/v1/resource-locks']?.['post']
+	expect(resourceLock?.['x-kody-permission']).toBe('none')
+	const resourceLockSchema =
+		resourceLock?.requestBody?.content['application/json']?.schema
 	expect(
-		document.paths['/v1/secrets/lock']?.['post']?.['x-kody-permission'],
-	).toBe('secret:use')
+		Array.isArray(resourceLockSchema?.['oneOf']) ||
+			Array.isArray(resourceLockSchema?.['anyOf']),
+	).toBe(true)
 	expect(document.paths['/v1/search']?.['get']?.['x-kody-permission']).toBe(
 		'search:read',
 	)

@@ -330,12 +330,13 @@ metadata, including caller-owned package-scoped rows with **`package_id`**.
 
 Saved integrations and the `integration_*` capabilities live in the
 **integrations** domain (`integrationList`, `integrationGet`, `integrationSave`,
-`integrationLock`, `integrationDelete`, plus `integrationOauthAppList`,
+`integrationDelete`, plus `integrationOauthAppList`,
 `integrationOauthAppDelete`, `integrationOauthAppRotateCredentials` for shared
 OAuth apps, and `integrationTokenRefresh` for host-side metadata-only refresh).
-For a new provider, load `integration_bootstrap` and prefer `communitySearch`
-for a close helpers package before writing fetch code. For integrations.sh
-registry lookup, `communityFork` `@kody/integrations-sh`. See
+Package locks use `resourceLock` in the **secrets** domain. For a new provider,
+load `integration_bootstrap` and prefer `communitySearch` for a close helpers
+package before writing fetch code. For integrations.sh registry lookup,
+`communityFork` `@kody/integrations-sh`. See
 `search({ entity: "guide:openapi_integrations" })` (also at
 `/docs/openapi-integrations`) when the API publishes a spec. For a named
 bind-and-call surface, `communityFork` `@kody/openapi` into the user's org;

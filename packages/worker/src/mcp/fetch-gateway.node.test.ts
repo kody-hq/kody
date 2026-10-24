@@ -920,7 +920,7 @@ test('fetch gateway gates integration tokens by the connection grant and require
 
 	// Package export imported into execute: run has no packageId; the
 	// callee's per-package binding (boundPackageId) carries the package for
-	// integrationLock grants (same as secrets). A header never does.
+	// resourceLock integration grants (same as secrets). A header never does.
 	grantSpy.mockClear()
 	const stampedFromExecute = await expand(
 		integrationRequest('https://example.com/api'),

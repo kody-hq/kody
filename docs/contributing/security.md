@@ -134,15 +134,16 @@ package-app surfaces:
     passkeys and `oauth_connections`, and tells the owner in the confirmation
     email. Signed-in `changePassword` leaves those factors in place.
 15. **User-secret trust grants are never applied by MCP or package runtimes.**
-    `secretLock` returns a website approval URL and does not write
-    `allowed_packages`. Community fork adoption widens implicit user-secret
-    read/use for a fork, so only the signed-in account session writes it
-    (`adopt-community-fork` on `POST /account/packages.json`, from the package
-    settings page). `communityForkAdopt` is read-only and returns that link.
-    Interactive `execute` runs imported package code with the agent's caller
-    context, so no `kody.*` capability may adopt: an unadopted fork would adopt
-    itself. Package apps, jobs, webhooks, and other package runtimes cannot
-    adopt or grant themselves secrets.
+    `resourceLock({ kind: 'secret', name, package_id })` returns a website
+    approval URL and does not write `allowed_packages`. Community fork adoption
+    widens implicit user-secret read/use for a fork, so only the signed-in
+    account session writes it (`adopt-community-fork` on
+    `POST /account/packages.json`, from the package settings page).
+    `communityForkAdopt` is read-only and returns that link. Interactive
+    `execute` runs imported package code with the agent's caller context, so no
+    `kody.*` capability may adopt: an unadopted fork would adopt itself. Package
+    apps, jobs, webhooks, and other package runtimes cannot adopt or grant
+    themselves secrets.
 
 ## First-party HTTP security headers
 

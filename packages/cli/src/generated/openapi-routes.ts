@@ -355,12 +355,6 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
-		operationId: 'integrationLock',
-		method: 'POST',
-		pathTemplate: '/v1/integrations/{name}/lock',
-		pathParamNames: ['name'],
-	},
-	{
 		operationId: 'integrationOauthAppDelete',
 		method: 'DELETE',
 		pathTemplate: '/v1/oauth-apps/{slug}',
@@ -455,12 +449,6 @@ export const bakedOpenApiRoutes = [
 		method: 'GET',
 		pathTemplate: '/v1/mcp-servers',
 		pathParamNames: [],
-	},
-	{
-		operationId: 'mcpServerLock',
-		method: 'POST',
-		pathTemplate: '/v1/mcp-servers/{server}/lock',
-		pathParamNames: ['server'],
 	},
 	{
 		operationId: 'mcpServerReconnect',
@@ -859,6 +847,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['repo_id'],
 	},
 	{
+		operationId: 'resourceLock',
+		method: 'POST',
+		pathTemplate: '/v1/resource-locks',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'runGet',
 		method: 'GET',
 		pathTemplate: '/v1/runs/{run_id}',
@@ -925,12 +919,6 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
-		operationId: 'secretLock',
-		method: 'POST',
-		pathTemplate: '/v1/secrets/lock',
-		pathParamNames: [],
-	},
-	{
 		operationId: 'secretProviderBind',
 		method: 'PUT',
 		pathTemplate: '/v1/secret-providers/{provider}',
@@ -941,12 +929,6 @@ export const bakedOpenApiRoutes = [
 		method: 'GET',
 		pathTemplate: '/v1/secret-providers',
 		pathParamNames: [],
-	},
-	{
-		operationId: 'secretProviderLock',
-		method: 'POST',
-		pathTemplate: '/v1/secret-providers/{provider}/lock',
-		pathParamNames: ['provider'],
 	},
 	{
 		operationId: 'secretProviderUnbind',
