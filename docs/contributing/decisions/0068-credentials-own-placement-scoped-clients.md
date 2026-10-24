@@ -886,8 +886,6 @@ credentials fill its needs. Visitors bring only verified identity.
   scope per need (`need:<key>`) for work on the visitor's own data, checked live
   on every call and never falling back to the runs-as person. Usage stays
   attributed to the visitor.
-- **Fallback.** A call that would fail as the runs-as person but worked as the
-  visitor still runs as the visitor and records a would-break row (app, call
-  name, kind, hashed visitor), counted with
-  `adminPackageAppAuthorityFallbackReport`. The visitor path and
-  `ownerCredentialForVisitors` are removed only after those stay at zero.
+- **No visitor authority.** A call that fails as the runs-as person fails.
+  `ownerCredentialForVisitors` still parses on manifests and is ignored. Usage
+  stays attributed to the visitor.

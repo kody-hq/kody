@@ -41,3 +41,16 @@ codemod.
 
 **Introduced as leftover by:** the change that documents identity as scoped
 `name` or `package_id` while leaving the leftover param in the runtime contract.
+
+## `ownerCredentialForVisitors`
+
+Package apps run as their publisher. `kody.credentials` slots may still declare
+`ownerCredentialForVisitors: true`. The field parses and stays in the capability
+fingerprint so existing approvals do not churn. Runtime ignores it.
+
+**Ready when:** published manifests and capability-set rows no longer need the
+field, and a dedicated removal PR can drop it from the schema without a fleet
+codemod.
+
+**Introduced as leftover by:** the change that removed the visitor-authority
+path and retired the opt-in.

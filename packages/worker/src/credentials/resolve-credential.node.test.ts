@@ -594,7 +594,7 @@ test('a webhook reads only a secret its own package may read (#3245)', async () 
 	}
 })
 
-test('a package app in a team org acts as its visitor, never as the org itself; a deleted org is denied', async () => {
+test('a package app in a team org resolves as a person member, never as the org itself; a deleted org is denied', async () => {
 	const t = await setup()
 	const created = await createOrganization(
 		t.db,

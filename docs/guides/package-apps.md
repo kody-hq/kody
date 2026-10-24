@@ -273,16 +273,11 @@ consent screen shows the `description`. A need names exactly one of a
 capability (run it with `kody.visitorNeed({ need: 'calendar', args })`). Both
 run as the visitor and need a live grant that covers the scope, read on every
 call, so revoking the app on **Account > Connected apps** takes effect on the
-next call. They never fall back to the runs-as person.
-
-While apps move over, a call that would fail as the runs-as person (a capability
-missing from `kody.app.capabilities`, for example) still runs as the visitor, as
-it did before, and logs a `package_app_authority_fallback` event with the app,
-the call name, and the kind of difference. Add what the logs name to the
-manifest. Admins count these per app with
-`adminPackageAppAuthorityFallbackReport`, and the
+next call. They never fall back to the runs-as person. A capability missing from
+`kody.app.capabilities` fails. The
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
-lists published apps that will hit them.
+lists published apps that still call undeclared capabilities or read email
+without consent.
 
 `packageAppFetch` exercises the fetch handler without that browser session. Use
 it for handler smoke tests after publish. When the host can run the CLI, prefer

@@ -659,6 +659,10 @@
 		{
 			"filename": "0178-package-app-publisher-authority.sql",
 			"sha256": "9c068be2ab8baaf73d36f92cde603fed959f63fd2068b3c3a19b61ee3ee08585"
+		},
+		{
+			"filename": "0179-drop-package-app-authority-fallbacks.sql",
+			"sha256": "3027a0f0df7221fd7b76763d1aa2e188afdabf8dace0854b4be63481a3a40034"
 		}
 	]
 }

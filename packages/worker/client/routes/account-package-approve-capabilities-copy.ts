@@ -47,13 +47,14 @@ export function credentialSummary(entry: CapabilityEntry) {
 }
 
 /**
- * Set for a credential the package lets visitors use
- * (`ownerCredentialForVisitors`), null otherwise. Approving is what turns
- * that on, so it reads as its own line, not part of the summary.
+ * Set when a need still declares the deprecated
+ * `ownerCredentialForVisitors` flag. The flag is ignored: apps already use
+ * the publisher's credentials for every visitor.
  */
 export function credentialVisitorsNote(entry: CapabilityEntry) {
 	if (!entry.ownerCredentialForVisitors) return null
-	return 'Visitors can use this credential through the app, whether they are signed out or signed in as someone else. They never see its value.'
+	const need = entry.needKey ? `The ${entry.needKey} need` : 'A need'
+	return `${need} sets ownerCredentialForVisitors, which is deprecated and ignored. The app already uses the publisher’s credentials for every visitor.`
 }
 
 /** Stable list key: one credential can appear once per visitor-shared need. */

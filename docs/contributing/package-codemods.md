@@ -585,23 +585,21 @@ in the linked #3836 cleanup issue.
 ### `0017-detect-package-app-visitor-authority`
 
 Detect only (writes nothing). Package apps run as their publisher (ADR 0068),
-capped to `kody.app.capabilities`; anything else runs with the visitor's
-authority only through the logged would-break fallback. This scan finds package
-apps that would lean on that fallback:
+capped to `kody.app.capabilities`. This scan finds published apps that will fail
+or change now that the visitor-authority path is gone:
 
 - `undeclared capability` / `computed capability`: a `kody.<name>()` call
   missing from `kody.app.capabilities`, or a name picked at run time.
 - `kody.mcp`: an MCP server tool call from the app.
-- `visitor credential`: the app uses credentials, declares no
-  `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,
-  so signed-in visitors now get the publisher's credentials.
+- `visitor credential`: the app uses credentials and declares no
+  `kody.app.visitorNeeds`, so signed-in visitors get the publisher's
+  credentials.
 - `identity email`: the app reads `email` from `metaGetCurrentUser`, which now
   needs the visitor's `email` consent.
 
 Findings carry fixed messages only. Count flagged apps with
 `adminPackageCodemodScan` (`codemodId`
-`0017-detect-package-app-visitor-authority`) and compare with the live fallback
-count from `adminPackageAppAuthorityFallbackReport`.
+`0017-detect-package-app-visitor-authority`).
 
 ## Engine
 
