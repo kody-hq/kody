@@ -1,5 +1,6 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -38,124 +39,118 @@ import { buildMcpServerUsageUrl } from '#worker/mcp-client/package-access.ts'
 import { lockMcpServerToPackage } from '#worker/mcp-client/settings-service.ts'
 import { resolveMcpServerSetting } from '../mcp-servers/shared.ts'
 
-const secretInputSchema = z.object({
-	kind: z
-		.literal('secret')
-		.describe('User-scoped secret (returns an approval URL; does not grant).'),
-	name: z.string().min(1).describe('User-scoped secret name to grant.'),
-	package_id: z
-		.string()
-		.min(1)
-		.describe('Saved package id that may use this secret.'),
-})
-
-const secretProviderInputSchema = z.object({
-	kind: z
-		.literal('secret_provider')
-		.describe(
-			'External secret-provider ref (returns an approval URL; does not grant).',
-		),
-	provider: z.string().min(1).describe('Provider id, for example 1password.'),
-	ref: z
-		.string()
-		.min(1)
-		.describe(
-			'Canonical i/<item-id>/<field> ref (UUID or 1Password Connect 26-char id), or an op:// synonym that already contains that item id.',
-		),
-	package_id: z
-		.string()
-		.min(1)
-		.describe('Saved package id that may use this provider ref.'),
-})
-
-const integrationInputSchema = z.object({
-	kind: z
-		.literal('integration')
-		.describe('Saved OAuth integration (applies a package lock immediately).'),
-	name: z
-		.string()
-		.min(1)
-		.describe('Saved integration connection name (provider key).'),
-	package_id: z
-		.string()
-		.min(1)
-		.describe('Saved package id that may use this integration.'),
-})
-
-const mcpServerInputSchema = z.object({
-	kind: z
-		.literal('mcp_server')
-		.describe('Saved MCP server (applies a package lock immediately).'),
-	server: z.string().min(1).describe('The saved MCP server id or name.'),
-	package_id: z
-		.string()
-		.min(1)
-		.describe('Saved package id that may call this MCP server.'),
-})
-
-const secretOutputSchema = z.object({
-	kind: z.literal('secret'),
-	name: z.string(),
-	scope: z.literal('user'),
-	allowed_packages: z.array(z.string()),
-	usage_url: z.string(),
-	status: z.enum(['approval_required', 'already_granted']),
-	approval_url: z.string(),
-	message: z.string(),
-})
-
-const secretProviderOutputSchema = z.object({
-	kind: z.literal('secret_provider'),
-	provider: z.string(),
-	canonical_ref: z.string(),
-	package_id: z.string(),
-	usage_url: z.string(),
-	status: z.enum(['approval_required', 'already_granted']),
-	approval_url: z.string(),
-	message: z.string(),
-})
-
-const integrationOutputSchema = z.object({
-	kind: z.literal('integration'),
-	name: z.string(),
-	usage_mode: z.literal('packages'),
-	allowed_package_ids: z.array(z.string()),
-	usage_url: z.string(),
-})
-
-const mcpServerOutputSchema = z.object({
-	kind: z.literal('mcp_server'),
-	id: z.string(),
-	name: z.string(),
-	usage_mode: z.literal('packages'),
-	allowed_package_ids: z.array(z.string()),
-	usage_url: z.string(),
-})
+const nonEmptyString = (description: string) =>
+	z.string().min(1).describe(description)
 
 const inputSchema = z.discriminatedUnion('kind', [
-	secretInputSchema,
-	secretProviderInputSchema,
-	integrationInputSchema,
-	mcpServerInputSchema,
+	z.object({
+		kind: z
+			.literal('secret')
+			.describe(
+				'User-scoped secret (returns an approval URL; does not grant).',
+			),
+		name: nonEmptyString('User-scoped secret name to grant.'),
+		package_id: nonEmptyString('Saved package id that may use this secret.'),
+	}),
+	z.object({
+		kind: z
+			.literal('secret_provider')
+			.describe(
+				'External secret-provider ref (returns an approval URL; does not grant).',
+			),
+		provider: nonEmptyString('Provider id, for example 1password.'),
+		ref: nonEmptyString(
+			'Canonical i/<item-id>/<field> ref (UUID or 1Password Connect 26-char id), or an op:// synonym that already contains that item id.',
+		),
+		package_id: nonEmptyString(
+			'Saved package id that may use this provider ref.',
+		),
+	}),
+	z.object({
+		kind: z
+			.literal('integration')
+			.describe(
+				'Saved OAuth integration (applies a package lock immediately).',
+			),
+		name: nonEmptyString('Saved integration connection name (provider key).'),
+		package_id: nonEmptyString(
+			'Saved package id that may use this integration.',
+		),
+	}),
+	z.object({
+		kind: z
+			.literal('mcp_server')
+			.describe('Saved MCP server (applies a package lock immediately).'),
+		server: nonEmptyString('The saved MCP server id or name.'),
+		package_id: nonEmptyString(
+			'Saved package id that may call this MCP server.',
+		),
+	}),
 ])
+
+const approvalOutputFields = {
+	usage_url: z.string(),
+	status: z.enum(['approval_required', 'already_granted']),
+	approval_url: z.string(),
+	message: z.string(),
+}
+
+const packageLockOutputFields = {
+	usage_mode: z.literal('packages'),
+	allowed_package_ids: z.array(z.string()),
+	usage_url: z.string(),
+}
 
 const outputSchema = z.discriminatedUnion('kind', [
-	secretOutputSchema,
-	secretProviderOutputSchema,
-	integrationOutputSchema,
-	mcpServerOutputSchema,
+	z.object({
+		kind: z.literal('secret'),
+		name: z.string(),
+		scope: z.literal('user'),
+		allowed_packages: z.array(z.string()),
+		...approvalOutputFields,
+	}),
+	z.object({
+		kind: z.literal('secret_provider'),
+		provider: z.string(),
+		canonical_ref: z.string(),
+		package_id: z.string(),
+		...approvalOutputFields,
+	}),
+	z.object({
+		kind: z.literal('integration'),
+		name: z.string(),
+		...packageLockOutputFields,
+	}),
+	z.object({
+		kind: z.literal('mcp_server'),
+		id: z.string(),
+		name: z.string(),
+		...packageLockOutputFields,
+	}),
 ])
 
-type SecretInput = z.infer<typeof secretInputSchema>
-type SecretProviderInput = z.infer<typeof secretProviderInputSchema>
-type IntegrationInput = z.infer<typeof integrationInputSchema>
-type McpServerInput = z.infer<typeof mcpServerInputSchema>
+type ResourceLockInput = z.infer<typeof inputSchema>
 
-async function handleSecret(args: SecretInput, ctx: CapabilityContext) {
-	await authorizeSurface(
-		{ env: ctx.env, request: ctx.callerContext.request },
-		'secret:use',
+function toCallerError(error: unknown, fallback: string): never {
+	if (error instanceof McpCallerError) throw error
+	throw new McpCallerError(error instanceof Error ? error.message : fallback, {
+		cause: error,
+	})
+}
+
+function resourceUsageOrgSlug(
+	ctx: CapabilityContext,
+	user: NonNullable<typeof ctx.callerContext.user>,
+) {
+	return (
+		ctx.callerContext.request?.org.slug?.trim() || user.username?.trim() || ''
 	)
+}
+
+async function handleSecret(
+	args: Extract<ResourceLockInput, { kind: 'secret' }>,
+	ctx: CapabilityContext,
+) {
 	await authorizeSecret(ctx, 'secret:use', {
 		name: args.name,
 		scope: 'user',
@@ -191,51 +186,29 @@ async function handleSecret(args: SecretInput, ctx: CapabilityContext) {
 			orgSlug,
 			name: state.secret.name,
 		})
-		if (state.alreadyGranted) {
-			return {
-				kind: 'secret' as const,
-				name: state.secret.name,
-				scope: 'user' as const,
-				allowed_packages: state.secret.allowedPackages,
-				usage_url: usageUrl,
-				status: 'already_granted' as const,
-				approval_url: approvalUrl,
-				message: createSecretPackageGrantAlreadyPresentMessage({
-					packageName: state.savedPackage.kodyId,
-				}),
-			}
-		}
 		return {
 			kind: 'secret' as const,
 			name: state.secret.name,
 			scope: 'user' as const,
 			allowed_packages: state.secret.allowedPackages,
 			usage_url: usageUrl,
-			status: 'approval_required' as const,
+			status: state.alreadyGranted ? 'already_granted' : 'approval_required',
 			approval_url: approvalUrl,
-			message: createSecretPackageGrantRequiresWebsiteMessage({
-				approvalUrl,
-			}),
+			message: state.alreadyGranted
+				? createSecretPackageGrantAlreadyPresentMessage({
+						packageName: state.savedPackage.kodyId,
+					})
+				: createSecretPackageGrantRequiresWebsiteMessage({ approvalUrl }),
 		}
 	} catch (error) {
-		if (error instanceof McpCallerError) throw error
-		throw new McpCallerError(
-			error instanceof Error
-				? error.message
-				: 'Unable to inspect this secret package grant.',
-			{ cause: error },
-		)
+		toCallerError(error, 'Unable to inspect this secret package grant.')
 	}
 }
 
 async function handleSecretProvider(
-	args: SecretProviderInput,
+	args: Extract<ResourceLockInput, { kind: 'secret_provider' }>,
 	ctx: CapabilityContext,
 ) {
-	await authorizeSurface(
-		{ env: ctx.env, request: ctx.callerContext.request },
-		'secret:use',
-	)
 	await authorizeSecretOrgWide(ctx, 'secret:use')
 	try {
 		const state = await inspectSecretProviderPackageGrant({
@@ -255,52 +228,30 @@ async function handleSecretProvider(
 		const usageUrl = buildSecretProviderUsageUrl({
 			baseUrl: ctx.callerContext.baseUrl,
 		})
-		if (state.alreadyGranted) {
-			return {
-				kind: 'secret_provider' as const,
-				provider: state.providerId,
-				canonical_ref: state.canonicalRef,
-				package_id: state.savedPackage.id,
-				usage_url: usageUrl,
-				status: 'already_granted' as const,
-				approval_url: approvalUrl,
-				message: createSecretProviderGrantAlreadyPresentMessage({
-					packageName: state.savedPackage.kodyId,
-				}),
-			}
-		}
 		return {
 			kind: 'secret_provider' as const,
 			provider: state.providerId,
 			canonical_ref: state.canonicalRef,
 			package_id: state.savedPackage.id,
 			usage_url: usageUrl,
-			status: 'approval_required' as const,
+			status: state.alreadyGranted ? 'already_granted' : 'approval_required',
 			approval_url: approvalUrl,
-			message: createSecretProviderGrantRequiresWebsiteMessage({
-				approvalUrl,
-			}),
+			message: state.alreadyGranted
+				? createSecretProviderGrantAlreadyPresentMessage({
+						packageName: state.savedPackage.kodyId,
+					})
+				: createSecretProviderGrantRequiresWebsiteMessage({ approvalUrl }),
 		}
 	} catch (error) {
-		if (error instanceof McpCallerError) throw error
-		throw new McpCallerError(
-			error instanceof Error
-				? error.message
-				: 'Unable to inspect this secret provider grant.',
-			{ cause: error },
-		)
+		toCallerError(error, 'Unable to inspect this secret provider grant.')
 	}
 }
 
 async function handleIntegration(
-	args: IntegrationInput,
+	args: Extract<ResourceLockInput, { kind: 'integration' }>,
 	ctx: CapabilityContext,
-	user: NonNullable<typeof ctx.callerContext.user>,
+	orgSlug: string,
 ) {
-	await authorizeSurface(
-		{ env: ctx.env, request: ctx.callerContext.request },
-		'integration:use',
-	)
 	await authorizeIntegration(
 		ctx,
 		'integration:use',
@@ -321,32 +272,20 @@ async function handleIntegration(
 			allowed_package_ids: updated.allowedPackageIds,
 			usage_url: buildIntegrationUsageUrl({
 				baseUrl: ctx.callerContext.baseUrl,
-				orgSlug:
-					ctx.callerContext.request?.org.slug?.trim() ||
-					user.username?.trim() ||
-					'',
+				orgSlug,
 				name: updated.name,
 			}),
 		}
 	} catch (error) {
-		throw new McpCallerError(
-			error instanceof Error
-				? error.message
-				: 'Unable to lock this integration to a package.',
-			{ cause: error },
-		)
+		toCallerError(error, 'Unable to lock this integration to a package.')
 	}
 }
 
 async function handleMcpServer(
-	args: McpServerInput,
+	args: Extract<ResourceLockInput, { kind: 'mcp_server' }>,
 	ctx: CapabilityContext,
-	user: NonNullable<typeof ctx.callerContext.user>,
+	orgSlug: string,
 ) {
-	await authorizeSurface(
-		{ env: ctx.env, request: ctx.callerContext.request },
-		'integration:use',
-	)
 	const setting = await resolveMcpServerSetting({
 		env: ctx.env,
 		userId: ownerIdFromCaller(ctx.callerContext),
@@ -369,20 +308,12 @@ async function handleMcpServer(
 			allowed_package_ids: updated.allowedPackageIds,
 			usage_url: buildMcpServerUsageUrl({
 				baseUrl: ctx.callerContext.baseUrl,
-				orgSlug:
-					ctx.callerContext.request?.org.slug?.trim() ||
-					user.username?.trim() ||
-					'',
+				orgSlug,
 				serverId: updated.id,
 			}),
 		}
 	} catch (error) {
-		throw new McpCallerError(
-			error instanceof Error
-				? error.message
-				: 'Unable to lock this MCP server to a package.',
-			{ cause: error },
-		)
+		toCallerError(error, 'Unable to lock this MCP server to a package.')
 	}
 }
 
@@ -416,17 +347,27 @@ export const resourceLockCapability = defineDomainCapability(
 		destructive: false,
 		inputSchema,
 		outputSchema,
-		async handler(args, ctx: CapabilityContext) {
+		async handler(args: ResourceLockInput, ctx: CapabilityContext) {
 			const user = requireMcpUser(ctx.callerContext)
+			const kindPermission = {
+				secret: 'secret:use',
+				secret_provider: 'secret:use',
+				integration: 'integration:use',
+				mcp_server: 'integration:use',
+			} as const satisfies Record<ResourceLockInput['kind'], OrgPermission>
+			await authorizeSurface(
+				{ env: ctx.env, request: ctx.callerContext.request },
+				kindPermission[args.kind],
+			)
 			switch (args.kind) {
 				case 'secret':
 					return handleSecret(args, ctx)
 				case 'secret_provider':
 					return handleSecretProvider(args, ctx)
 				case 'integration':
-					return handleIntegration(args, ctx, user)
+					return handleIntegration(args, ctx, resourceUsageOrgSlug(ctx, user))
 				case 'mcp_server':
-					return handleMcpServer(args, ctx, user)
+					return handleMcpServer(args, ctx, resourceUsageOrgSlug(ctx, user))
 			}
 		},
 	},
