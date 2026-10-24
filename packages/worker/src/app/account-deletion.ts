@@ -94,7 +94,6 @@ import {
 	buildPublishedCredentialNeedsKvKey,
 	buildPublishedSourceSnapshotKvKey,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
-import { deleteAllPackageRetrieverCacheEntriesForUser } from '#worker/package-retrievers/manifest-cache.ts'
 import { deleteAllPackageSkillsIndexEntriesForUser } from '#worker/package-registry/skills-index-cache.ts'
 import { deletePackageSubscriptionTopicCacheForUser } from '#worker/package-invocations/subscription-topic-cache.ts'
 import { buildCommunitySnapshotKvKey } from '#worker/community/snapshot.ts'
@@ -1417,23 +1416,14 @@ async function listKvKeysByPrefix(input: {
 	return keys
 }
 
-async function deleteRetrieverCache(input: {
+async function deletePackageSkillsIndexCache(input: {
 	env: Env
 	userId: OwnerId
 	warnings: Array<string>
 }) {
 	let deleted = 0
 	try {
-		deleted = await deleteAllPackageRetrieverCacheEntriesForUser({
-			env: input.env,
-			userId: input.userId,
-		})
-	} catch (error) {
-		const message = getErrorMessage(error)
-		input.warnings.push(`Package retriever KV cleanup failed: ${message}`)
-	}
-	try {
-		deleted += await deleteAllPackageSkillsIndexEntriesForUser({
+		deleted = await deleteAllPackageSkillsIndexEntriesForUser({
 			env: input.env,
 			userId: input.userId,
 		})
@@ -1668,7 +1658,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 				),
 				warnings,
 			})) +
-			(await deleteRetrieverCache({
+			(await deletePackageSkillsIndexCache({
 				env: input.env,
 				userId: input.ownerId,
 				warnings,
@@ -1678,7 +1668,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 		inventory.savedPackages.length > 0
 	) {
 		warnings.push(
-			`BUNDLE_ARTIFACTS_KV binding was unavailable; ${inventory.bundleKvKeys.length} bundle/source/community key(s) and retriever cache entries for ${inventory.savedPackages.length} package(s) referenced by the deleted user were not removed and must be cleaned up manually.`,
+			`BUNDLE_ARTIFACTS_KV binding was unavailable; ${inventory.bundleKvKeys.length} bundle/source/community key(s) for ${inventory.savedPackages.length} package(s) referenced by the deleted user were not removed and must be cleaned up manually.`,
 		)
 	}
 
@@ -2002,7 +1992,7 @@ export async function deleteUserAccount(input: {
 				),
 				warnings,
 			})) +
-			(await deleteRetrieverCache({
+			(await deletePackageSkillsIndexCache({
 				env: input.env,
 				userId: input.mcpUserId,
 				warnings,
@@ -2012,7 +2002,7 @@ export async function deleteUserAccount(input: {
 		inventory.savedPackages.length > 0
 	) {
 		warnings.push(
-			`BUNDLE_ARTIFACTS_KV binding was unavailable; ${inventory.bundleKvKeys.length} bundle/source/community key(s) and retriever cache entries for ${inventory.savedPackages.length} package(s) referenced by the deleted user were not removed and must be cleaned up manually.`,
+			`BUNDLE_ARTIFACTS_KV binding was unavailable; ${inventory.bundleKvKeys.length} bundle/source/community key(s) for ${inventory.savedPackages.length} package(s) referenced by the deleted user were not removed and must be cleaned up manually.`,
 		)
 	}
 

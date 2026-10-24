@@ -30,7 +30,6 @@ const accountActivitySurfaceFilterValues = [
 	'app_realtime',
 	'job',
 	'workflow',
-	'retriever',
 	'webhook',
 ] as const
 

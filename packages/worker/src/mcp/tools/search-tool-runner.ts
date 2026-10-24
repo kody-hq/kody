@@ -642,8 +642,6 @@ export async function runSearchTool(input: {
 		const memorySummary = searchMemories
 			? {
 					memories: searchMemories.surfaced,
-					retrieverResults: searchMemories.retrieverResults,
-					retrieverWarnings: searchMemories.retrieverWarnings ?? [],
 					suppressedCount: searchMemories.suppressedCount,
 					retrievalQuery: searchMemories.retrievalQuery,
 				}

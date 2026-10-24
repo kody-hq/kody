@@ -39,7 +39,6 @@ via `runUpdate`). The account UI is `/@<slug>/-/activity`.
 | `app_realtime` | Package app realtime websocket session                         |
 | `job`          | Scheduled or manually triggered job execution                  |
 | `workflow`     | Cloudflare Workflow run (`DynamicCallableWorkflow`)            |
-| `retriever`    | Package retriever evaluation                                   |
 | `webhook`      | Authenticated inbound webhook delivery (and post-auth rejects) |
 
 The closed union is `RunSurface` in `packages/worker/src/run-records/types.ts`.

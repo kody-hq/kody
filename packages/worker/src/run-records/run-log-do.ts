@@ -911,6 +911,9 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 11) {
 			this.migrateRunsLogCountForV11()
 		}
+		if (installedVersion != null && installedVersion < 15) {
+			this.migrateRetrieverRunsForV15()
+		}
 		// Keyed package-invocation idempotency ledger (migrated from the D1
 		// package_invocations table). No user_id column: the DO identity is the
 		// user. The unique index is the exactly-once claim scope; unlike D1's
@@ -1174,6 +1177,23 @@ class RunLogBase extends DurableObject<Env> {
 				// Column already present on a partially migrated object.
 			}
 		}
+	}
+
+	private migrateRetrieverRunsForV15() {
+		this.transactionSyncWithMetaCache(() => {
+			const runCount = this.getMeta(metaRunCountKey)
+			this.ctx.storage.sql.exec(`
+				DELETE FROM run_logs
+				WHERE run_id IN (SELECT id FROM runs WHERE surface = 'retriever')
+			`)
+			this.ctx.storage.sql.exec(`DELETE FROM runs WHERE surface = 'retriever'`)
+			if (runCount != null) {
+				const countRow = this.ctx.storage.sql
+					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
+					.one()
+				this.setMeta(metaRunCountKey, Number(countRow.n ?? 0) || 0)
+			}
+		})
 	}
 
 	private getMeta(key: string): number | null {
@@ -1848,7 +1868,7 @@ class RunLogBase extends DurableObject<Env> {
 			'reconcileStaleRunning',
 			`SELECT id, started_at, surface, idempotency_key FROM runs
 			WHERE status = 'running' AND (
-				(surface IN ('execute', 'export', 'retriever', 'subscription', 'app_fetch', 'app_realtime')
+				(surface IN ('execute', 'export', 'subscription', 'app_fetch', 'app_realtime')
 					AND started_at < ?)
 				OR (surface = 'webhook' AND started_at < ?)
 				OR (surface = 'job' AND started_at < ?)

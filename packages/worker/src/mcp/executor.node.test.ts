@@ -349,11 +349,6 @@ test('generated kody provider and executor module sources stay bundle-safe and g
 	expect(await moduleSourceFor({ shadowGlobalThis: true })).toContain(
 		`async (globalThis, self, global, __kodyPackageBindings, __kodyPackageBindingStubs, __kodyPackageMcpFactoryRef, ${kodyCallDispatcherName}, ${kodyProviderEvaluateBindingName}, __kodyMcp, __kodyCreateRemoteProxy, __dispatchers) => (`,
 	)
-
-	// Closed-world modules reject fetch in the sandbox before outbound RPC.
-	const denied = await moduleSourceFor({ allowOutboundFetch: false })
-	expect(denied).not.toContain('.call("recordFetch", "[]")')
-	expect(denied).not.toContain('__kodyNativeFetchSymbol](input, init)')
 })
 
 test('generated kody provider source wires mcp proxy dispatch', async () => {
@@ -460,9 +455,9 @@ test('createExecuteExecutor aligns worker compatibility and leaves the fetch dea
 		const { options, runFetcher } = await readWorkerOptions(timeoutMs)
 		expect(
 			(options['globalOutbound'] as { props?: object } | undefined)?.props,
-		).toEqual({ allowOutboundFetch: false })
+		).toEqual({})
 		const gatewayProps = (runFetcher as { props?: object } | undefined)?.props
-		expect(gatewayProps).toMatchObject({ allowOutboundFetch: true })
+		expect(gatewayProps).not.toHaveProperty('allowOutboundFetch')
 		expect(gatewayProps).not.toHaveProperty('outboundFetchTimeoutMs')
 	}
 })

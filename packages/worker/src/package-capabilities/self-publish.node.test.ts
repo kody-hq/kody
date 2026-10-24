@@ -292,7 +292,6 @@ test('self-publish is blocked when the capability set has entries or the tree de
 		{ subscriptions: { tick: {} } },
 		{ emits: { done: { description: 'Done.' } } },
 		{ jobs: { nightly: {} } },
-		{ retrievers: { docs: {} } },
 		{ webhooks: [{ name: 'stripe' }] },
 	]) {
 		publishTree({ 'source-root': kody, 'source-dep': {} })

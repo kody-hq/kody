@@ -319,7 +319,6 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 				'app_realtime',
 				'job',
 				'workflow',
-				'retriever',
 				'webhook',
 			]),
 			triageFilter: z.enum(['open', 'ignored', 'resolved', 'all']),

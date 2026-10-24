@@ -41,7 +41,6 @@ test('reconcileSearchPhaseTimings sums exclusive tiles and leaves overlapping de
 			queryEmbeddingMs: 0,
 			capabilityCandidatesMs: 58,
 			packageCandidatesMs: 55,
-			retrieversMs: 725,
 			rowAndRegistryLoadMs: 1967,
 			memoryEnrichmentMs: 2114,
 			memoryEnrichmentWaitMs: 0,

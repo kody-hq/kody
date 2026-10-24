@@ -1668,15 +1668,11 @@ export function createPackageStorageAccessDeniedMessage(packageId: string) {
  * installed packages' buckets. Cross-user access is structurally impossible:
  * `storageRunnerDurableObjectName` keys the durable object on this run's user id.
  */
-export const packageStorageRetrieverReadOnlyMessage =
-	'packageStorage() is read-only during retriever runs. Persist writes from an export, job, or execute call.'
-
 export function createPackageStorageKodyTools(input: {
 	env: Env
 	userId: OwnerId
 	email?: string | null
 	grantedPackageIds: ReadonlySet<string>
-	writable?: boolean
 	/**
 	 * The run's own package (null for ad hoc execute). Calls through the
 	 * generic dispatcher act as this package; calls through a trusted
@@ -1684,7 +1680,6 @@ export function createPackageStorageKodyTools(input: {
 	 */
 	runPackageId?: string | null
 }) {
-	const writable = input.writable !== false
 	const runPackageId = input.runPackageId?.trim() || null
 	// One cache for the whole sandbox so nested packageStorage() SQL across
 	// granted packages (and repeated CREATE/INSERT in one export) does not
@@ -1703,10 +1698,10 @@ export function createPackageStorageKodyTools(input: {
 			userId: input.userId,
 			email: input.email,
 			storageId: buildPackageStorageId(packageId),
-			writable,
+			writable: true,
 			entitlementCache,
 		})
-		if (writable && (!storageSet || !storageDelete || !storageClear)) {
+		if (!storageSet || !storageDelete || !storageClear) {
 			// createStorageKodyTools only omits these when writable is false.
 			throw new Error('Writable package storage tools are missing writes.')
 		}
@@ -1749,9 +1744,6 @@ export function createPackageStorageKodyTools(input: {
 		}
 		return tools
 	}
-	const rejectReadOnlyWrite = async () => {
-		throw new Error(packageStorageRetrieverReadOnlyMessage)
-	}
 	return {
 		packageStorageGet: async (args: unknown) =>
 			await resolveTools(args).storageGet(args),
@@ -1759,15 +1751,12 @@ export function createPackageStorageKodyTools(input: {
 			await resolveTools(args).storageList(args),
 		packageStorageSql: async (args: unknown) =>
 			await resolveTools(args).storageSql(args),
-		packageStorageSet: writable
-			? async (args: unknown) => await resolveTools(args).storageSet!(args)
-			: rejectReadOnlyWrite,
-		packageStorageDelete: writable
-			? async (args: unknown) => await resolveTools(args).storageDelete!(args)
-			: rejectReadOnlyWrite,
-		packageStorageClear: writable
-			? async (args: unknown) => await resolveTools(args).storageClear!()
-			: rejectReadOnlyWrite,
+		packageStorageSet: async (args: unknown) =>
+			await resolveTools(args).storageSet!(args),
+		packageStorageDelete: async (args: unknown) =>
+			await resolveTools(args).storageDelete!(args),
+		packageStorageClear: async (args: unknown) =>
+			await resolveTools(args).storageClear!(),
 	}
 }
 
@@ -1778,13 +1767,8 @@ export function createPackageStorageKodyTools(input: {
  * through the AsyncLocalStorage runtime store; the host still validates the
  * id against the run's provenance grants in `createPackageStorageKodyTools`.
  */
-export function createPackageStorageHelperPrelude(input?: {
-	writable?: boolean
-}) {
-	const writable = input?.writable !== false
+export function createPackageStorageHelperPrelude() {
 	// `id` mirrors buildPackageStorageId above (covered by a unit test).
-	// Retriever runs pass writable:false so set/delete/clear/sql mutations
-	// fail in the sandbox instead of depending on a convention.
 	return `
 const __kodyPackageStorage = (packageId) => ({
   id: 'package:' + encodeURIComponent(packageId),
@@ -1795,7 +1779,7 @@ const __kodyPackageStorage = (packageId) => ({
       packageId,
       query,
       params,
-      writable: ${writable ? 'true' : 'false'},
+      writable: true,
     }),
   set: async (key, value) => await ${kodyCallDispatcherName}('packageStorageSet', { packageId, key, value }),
   delete: async (key) => await ${kodyCallDispatcherName}('packageStorageDelete', { packageId, key }),

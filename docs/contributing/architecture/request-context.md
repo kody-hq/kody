@@ -50,7 +50,7 @@ it is. The browser equivalent is `AuthenticatedAppUser.request`
 | Inbound email subscription            | `inbound-email` (inbox id, sender)       | Sender\*  |
 | Platform topic subscription           | `platform-event` (source label)          | none      |
 | Nested invoke, run-now, workflow step | `inherited` (the starting run's lineage) | Inherited |
-| Emitted package event, retriever      | `inherited`                              | Inherited |
+| Emitted package event                 | `inherited`                              | Inherited |
 | Sealed secret provider                | `inherited`                              | Inherited |
 
 \* `classifyInboundEmailSender` (`packages/worker/src/email/inbound-sender.ts`)

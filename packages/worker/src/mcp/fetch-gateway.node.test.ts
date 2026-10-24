@@ -1943,27 +1943,3 @@ test('fetch gateway provider placeholders: normalize mixed case, deny wrong host
 		expect.objectContaining({ provider: '1Password', ref: providerRef }),
 	)
 })
-
-test('executeGatewayFetch rejects when allowOutboundFetch is false', async () => {
-	const recordUsageSpy = vi
-		.spyOn(usageModule, 'recordUsage')
-		.mockResolvedValue(undefined)
-	const globalFetch = vi.fn(async () => new Response('ok'))
-	await expect(
-		executeGatewayFetch({
-			env,
-			props: {
-				baseUrl: 'https://kody.example',
-				userId: ownerIdFromStored('user-123'),
-				email: 'user@example.com',
-				request: null,
-				storageContext: null,
-				allowOutboundFetch: false,
-			},
-			request: new Request('https://example.com'),
-			globalFetch: globalFetch as unknown as typeof fetch,
-		}),
-	).rejects.toThrow('Outbound fetch is not available in retriever runs.')
-	expect(globalFetch).not.toHaveBeenCalled()
-	expect(recordUsageSpy).not.toHaveBeenCalled()
-})

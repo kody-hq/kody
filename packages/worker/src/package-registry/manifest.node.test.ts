@@ -40,6 +40,26 @@ function parse(
 	})
 }
 
+test('parseAuthoredPackageJson rejects retrievers but published manifests ignore them', () => {
+	const retrievers = {
+		notes: {
+			export: './notes',
+			name: 'Notes',
+			description: 'Searches saved notes.',
+			scopes: ['search'],
+		},
+	}
+	expect(() => parse('@kentcdodds/notes', { retrievers })).toThrow(
+		'Invalid package.json:\nkody.retrievers was removed; package retrievers no longer run during search or context enrichment. Delete the kody.retrievers block (keep the export if other code still calls it).',
+	)
+	const published = parse(
+		'@kentcdodds/notes',
+		{ retrievers },
+		{ mode: 'published' },
+	)
+	expect(published.kody).not.toHaveProperty('retrievers')
+})
+
 const sentryExports = {
 	exports: { './handle-sentry-webhook': './src/handle-sentry-webhook.ts' },
 }
@@ -260,27 +280,6 @@ test('parseAuthoredPackageJson rejects invalid manifests with a specific error p
 			},
 			/payloadSchema is not a supported JSON Schema subset/,
 		],
-		// kody.retrievers.
-		[
-			'@kentcdodds/personal-inbox',
-			{
-				retrievers: {
-					'notes-search': {
-						export: './search-notes',
-						name: 'Personal notes',
-						description: 'Searches saved notes and snippets.',
-						scopes: [],
-					},
-				},
-			},
-			'Too small',
-			{
-				exports: {
-					'.': './index.ts',
-					'./search-notes': './src/search-notes.ts',
-				},
-			},
-		],
 		// kody.webhooks.
 		[
 			'@kentcdodds/sentry-bridge',
@@ -477,7 +476,7 @@ test('published snapshots omit retired once jobs while preserving recurring jobs
 	).toEqual({})
 })
 
-test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and secret mounts', () => {
+test('parseAuthoredPackageJson accepts subscriptions, emits, and secret mounts', () => {
 	const manifest = parse('@kentcdodds/discord-gateway', {
 		secretMounts: {
 			discordBotToken: {
@@ -494,16 +493,6 @@ test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and sec
 			},
 		},
 		emits: { '@kentcdodds/discord.message.created': discordEvent },
-		retrievers: {
-			'notes-search': {
-				export: './search-notes',
-				name: 'Personal notes',
-				description: 'Searches saved notes and snippets.',
-				scopes: ['context', 'search'],
-				timeoutMs: 250,
-				maxResults: 3,
-			},
-		},
 	})
 
 	expect(manifest.kody.secretMounts).toEqual({
@@ -528,17 +517,6 @@ test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and sec
 			topic: '@kentcdodds/discord.message.created',
 			...discordEvent,
 			payloadSchema: null,
-		},
-	])
-	expect(buildPackageSearchProjection(manifest).retrievers).toEqual([
-		{
-			key: 'notes-search',
-			exportName: './search-notes',
-			name: 'Personal notes',
-			description: 'Searches saved notes and snippets.',
-			scopes: ['context', 'search'],
-			timeoutMs: 250,
-			maxResults: 3,
 		},
 	])
 

@@ -2,11 +2,9 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	getPackageAppAssetsDirectory,
 	getPackageAppClientEntryPath,
-	listPackageRetrievers,
 	listPackageSubscriptions,
 	normalizePackageWorkspacePath,
 	parseAuthoredPackageJson,
-	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
 import {
 	findStaticKodyDependencyCycle,
@@ -618,7 +616,7 @@ export type PackageBundleTarget = {
 }
 
 /**
- * `callable` entrypoints (jobs, subscription handlers, retrievers) are invoked
+ * `callable` entrypoints (jobs, subscription handlers) are invoked
  * through their default export, so they must default export a function.
  * `module` entrypoints are `package.json#exports` modules, which may expose
  * only named exports.
@@ -673,15 +671,6 @@ function collectPackageBundleTargets(manifest: AuthoredPackageJson) {
 	for (const target of collectPublishedPackageArtifactTargets(manifest)) {
 		remember(target.entryPoint, toPackageBundleKind(target))
 	}
-	for (const retriever of listPackageRetrievers(manifest)) {
-		remember(
-			resolvePackageExportPath({
-				manifest,
-				exportName: retriever.exportName,
-			}),
-			'callable',
-		)
-	}
 	return Array.from(targets.values()).sort(compareBundleTargets)
 }
 
@@ -705,15 +694,6 @@ function collectPackageTypecheckTargets(manifest: AuthoredPackageJson) {
 	}
 	for (const subscription of listPackageSubscriptions(manifest)) {
 		remember(subscription.handler, 'callable')
-	}
-	for (const retriever of listPackageRetrievers(manifest)) {
-		remember(
-			resolvePackageExportPath({
-				manifest,
-				exportName: retriever.exportName,
-			}),
-			'callable',
-		)
 	}
 	for (const target of collectPublishedPackageArtifactTargets(manifest)) {
 		if (target.bundleKind === 'importable-module') {
@@ -956,7 +936,7 @@ function collectReachableTypecheckSourceFiles(input: {
  * is opted into by shipping the tsconfig the author's editor already uses.
  */
 const sourceFilesNotTypecheckedMessage =
-	'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, subscription handlers, and retrievers.'
+	'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, and subscription handlers.'
 
 function getPackageTypecheckDiagnostics(input: {
 	targets: Array<PackageTypecheckTarget>
@@ -1096,7 +1076,7 @@ function formatBundleCheckMessage(input: {
 			.join(', ')}.`
 	}
 	if (input.targetCount === 0) {
-		return 'Package defines no app entry, exports, jobs, subscriptions, or retrievers to bundle.'
+		return 'Package defines no app entry, exports, jobs, or subscriptions to bundle.'
 	}
 	return `Resolved ${input.targetCount} package target(s) for bundling.`
 }

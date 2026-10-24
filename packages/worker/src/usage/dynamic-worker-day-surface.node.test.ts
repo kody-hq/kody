@@ -3,7 +3,6 @@ import { runSurfaceValues } from '#worker/run-records/types.ts'
 import {
 	dynamicWorkerDaySurfaceFromRunSurface,
 	resolveDynamicWorkerDaySurface,
-	resolveObservedRunSurface,
 } from './dynamic-worker-day-surface.ts'
 
 test('every run surface maps to a documented UWD surface', () => {
@@ -47,10 +46,4 @@ test('resolveDynamicWorkerDaySurface infers package_export only when the run sur
 			hasPackageContext: true,
 		}),
 	).toBe('webhook')
-	expect(
-		resolveObservedRunSurface({
-			handleSurface: 'retriever',
-			runSurface: 'export',
-		}),
-	).toBe('retriever')
 })

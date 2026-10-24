@@ -1143,6 +1143,100 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v15'
 	])
 })
 
+test('warm schema v15 removes retriever runs and logs without changing day counts', async () => {
+	const userId = uniqueUserId('schema-v15-warm-retriever-runs')
+	await upgradeFromLegacySchema(
+		userId,
+		14,
+		(state) => {
+			state.storage.sql.exec(
+				`CREATE TABLE runs (${legacyRunsColumnsDdl},
+					error_triage TEXT, triage_note TEXT, triaged_at TEXT, triaged_by TEXT,
+					log_count INTEGER NOT NULL DEFAULT 0)`,
+			)
+			state.storage.sql.exec(`
+				CREATE TABLE run_logs (
+					run_id TEXT NOT NULL,
+					sequence INTEGER NOT NULL,
+					level TEXT NOT NULL,
+					message TEXT NOT NULL,
+					fields_json TEXT,
+					PRIMARY KEY (run_id, sequence)
+				)
+			`)
+			state.storage.sql.exec(`
+				CREATE TABLE run_day_counts (
+					day TEXT NOT NULL,
+					surface TEXT NOT NULL,
+					status TEXT NOT NULL,
+					count INTEGER NOT NULL DEFAULT 0,
+					PRIMARY KEY (day, surface, status)
+				)
+			`)
+			for (const [id, surface] of [
+				['run-retriever-a', 'retriever'],
+				['run-retriever-b', 'retriever'],
+				['run-keep', 'execute'],
+			] as const) {
+				state.storage.sql.exec(
+					`INSERT INTO runs (
+						id, surface, status, started_at, created_at, updated_at
+					) VALUES (?, ?, 'success', ?, ?, ?)`,
+					id,
+					surface,
+					'2026-07-01T00:00:00.000Z',
+					'2026-07-01T00:00:00.000Z',
+					'2026-07-01T00:00:00.000Z',
+				)
+				state.storage.sql.exec(
+					`INSERT INTO run_logs (run_id, sequence, level, message)
+					VALUES (?, 0, 'info', 'log')`,
+					id,
+				)
+			}
+			state.storage.sql.exec(
+				`INSERT INTO run_day_counts (day, surface, status, count)
+				VALUES ('2026-07-01', 'retriever', 'success', 2),
+					('2026-07-01', 'execute', 'success', 1)`,
+			)
+			state.storage.sql.exec(
+				`INSERT INTO run_log_meta (key, value) VALUES ('run_count', 3)`,
+			)
+		},
+		(state) => {
+			expect(
+				state.storage.sql
+					.exec<{ id: string }>(`SELECT id FROM runs ORDER BY id`)
+					.toArray(),
+			).toEqual([{ id: 'run-keep' }])
+			expect(
+				state.storage.sql
+					.exec<{ run_id: string }>(
+						`SELECT run_id FROM run_logs ORDER BY run_id`,
+					)
+					.toArray(),
+			).toEqual([{ run_id: 'run-keep' }])
+			expect(
+				state.storage.sql
+					.exec<{ surface: string; count: number }>(
+						`SELECT surface, count FROM run_day_counts ORDER BY surface`,
+					)
+					.toArray(),
+			).toEqual([
+				{ surface: 'execute', count: 1 },
+				{ surface: 'retriever', count: 2 },
+			])
+			expect(
+				state.storage.sql
+					.exec<{ value: number }>(
+						`SELECT value FROM run_log_meta WHERE key = 'run_count'`,
+					)
+					.one(),
+			).toEqual({ value: 1 })
+		},
+	)
+})
+
 test('warm schema v13 workflow projections gain insert-only source revision columns', async () => {
 	const userId = uniqueUserId('schema-v13-warm-wf-revision')
 	await upgradeFromLegacySchema(

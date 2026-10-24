@@ -50,12 +50,6 @@ export type PackageStorageToolOptions = {
 	 * reach only this package's bucket (GHSA-5fv3).
 	 */
 	runPackageId?: string | null
-	/**
-	 * Defaults to writable. Retriever runs set this to false so the sandbox
-	 * can read granted buckets but cannot set, delete, clear, or run mutating
-	 * SQL.
-	 */
-	writable?: boolean
 }
 
 export type PackageSecretToolOptions = {
@@ -542,10 +536,7 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		],
 		unboundNames: [],
 		isBound: (context) => Boolean(context.packageStorageTools),
-		createPrelude: (context) =>
-			createPackageStorageHelperPrelude({
-				writable: context.packageStorageTools?.writable !== false,
-			}),
+		createPrelude: () => createPackageStorageHelperPrelude(),
 		createKodyTools: (context) => {
 			const packageStorageTools = context.packageStorageTools
 			const ownerId = ownerIdFromCaller(context.callerContext)
@@ -555,7 +546,6 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 				userId: ownerId,
 				email: entitlementEmailForOwner(context.callerContext, ownerId),
 				grantedPackageIds: packageStorageTools.grantedPackageIds,
-				writable: packageStorageTools.writable,
 				runPackageId: packageStorageTools.runPackageId ?? null,
 			})
 		},

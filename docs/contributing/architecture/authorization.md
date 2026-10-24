@@ -620,8 +620,8 @@ owner and carries that owner's current roles and permissions.
 (`packages/worker/src/identity/background-mcp-user.ts`) loads them from D1 with
 `getUserRolesAndPermissions` for every `executionOrigin: 'background'` caller it
 builds: package jobs, inbound webhook handlers, package subscription handlers,
-package exports invoked from other package code, package workflows, and
-retrievers. The per-binding identity cache holds a resolved user for up to 60
+package exports invoked from other package code, package workflows, and realtime
+hooks. The per-binding identity cache holds a resolved user for up to 60
 seconds, so a revoked role can still pass background checks until that entry
 expires and the owner is resolved again. Interactive MCP and browser requests
 reload roles on every request.

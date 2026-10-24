@@ -68,7 +68,6 @@ export const surfaceFilterOptions: Array<{
 	{ value: 'app_realtime', label: 'App realtime' },
 	{ value: 'job', label: 'Job' },
 	{ value: 'workflow', label: 'Workflow' },
-	{ value: 'retriever', label: 'Retriever' },
 	{ value: 'webhook', label: 'Webhook' },
 ]
 

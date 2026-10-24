@@ -517,8 +517,8 @@ export async function runExecuteToolCall(input: {
 			throw new Error('Feature flag evaluation failed')
 		}
 		void entitlementPrefetch
-		// Registry assembly overlaps the quota check. Context retrievers
-		// stay after quota and a fresh idempotency claim so a denied
+		// Registry assembly overlaps the quota check. It stays after quota
+		// and a fresh idempotency claim so a denied
 		// call does not run bundled package code.
 		const registryPromise = getCapabilityRegistryForContext({
 			env,

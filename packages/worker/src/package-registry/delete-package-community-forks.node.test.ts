@@ -14,7 +14,6 @@ const mockModule = vi.hoisted(() => ({
 	listJobRowsByUserId: vi.fn(),
 	syncJobManagerAlarm: vi.fn(),
 	deleteSavedPackageVector: vi.fn(),
-	removePackageRetrieverManifestCacheEntries: vi.fn(),
 	deleteAllPackageScopedSecrets: vi.fn(),
 	removeAllSecretApprovalsForPackage: vi.fn(),
 	clearStorage: vi.fn(async () => ({ ok: true as const })),
@@ -37,12 +36,6 @@ vi.mock('#worker/package-config-cleanup.ts', () => ({
 	deleteAllPackageScopedSecrets: mockModule.deleteAllPackageScopedSecrets,
 	removeAllSecretApprovalsForPackage:
 		mockModule.removeAllSecretApprovalsForPackage,
-}))
-
-vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
-	removePackageRetrieverManifestCacheEntries:
-		mockModule.removePackageRetrieverManifestCacheEntries,
-	refreshPackageRetrieverManifestCache: vi.fn(),
 }))
 
 vi.mock('./vectorize.ts', () => ({
@@ -291,7 +284,6 @@ test('package delete removes community_forks so Fork outdated does not linger', 
 	mockModule.listJobRowsByUserId.mockResolvedValue([])
 	for (const cleanup of [
 		mockModule.deleteSavedPackageVector,
-		mockModule.removePackageRetrieverManifestCacheEntries,
 		mockModule.deleteAllPackageScopedSecrets,
 		mockModule.removeAllSecretApprovalsForPackage,
 	]) {

@@ -373,14 +373,6 @@ test('runRepoChecks validates every persisted package artifact target before pub
 					subscriptions: {
 						'email.message.received': { handler: './src/subscription.ts' },
 					},
-					retrievers: {
-						search: {
-							export: './search',
-							name: 'Search',
-							description: 'Searches package records.',
-							scopes: ['search'],
-						},
-					},
 				},
 				{
 					exports: {

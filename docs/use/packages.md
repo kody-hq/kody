@@ -33,7 +33,6 @@ Think in terms of:
 - package apps
 - package subscriptions
 - package-owned jobs
-- package-owned retrievers
 - package-owned webhooks
 
 Packages are the saved-entity unit across search, execute, repo editing, and UI
@@ -62,8 +61,7 @@ durable home, packages add runtime. Four concepts make up its state:
 3. **Package storage** — the package's durable StorageRunner (SQLite) bucket,
    reached via `packageStorage()` from `kody:runtime`. This is the durable-data
    primitive for every package surface: exports/invocations, subscriptions,
-   retrievers, jobs, and package apps. Non-secret knobs and runtime state live
-   here.
+   jobs, and package apps. Non-secret knobs and runtime state live here.
 4. **Package jobs** — scheduled execution owned by the package
    (`package.json#kody.jobs`): schedule/execution metadata lives in D1 job rows;
    each job run binds a job-scoped scratch bucket; package config stays keyed by
@@ -122,7 +120,6 @@ Important fields:
   exports (mint a handle with `webhookUrlMint` and register it with
   `webhookUrlApply`; see [Inbound webhooks](./webhooks.md))
 - `kody.jobs` — optional package-owned schedules
-- `kody.retrievers` — optional package-owned search/context retrievers
 
 `package.json` is the manifest.
 
@@ -445,17 +442,16 @@ exhaustive.
 - Packages may also export non-callable helper modules and values for reuse.
 - Publish typecheck is opt-in through a root `tsconfig.json`. With one, publish
   fails on TypeScript errors in every `.ts` / `.tsx` file reachable from exports
-  (including their `types` targets), jobs, subscription handlers, and
-  retrievers, using that config's compiler options (TypeScript defaults to
-  `strict`). The check has no `node_modules`, so bare imports (npm packages,
-  `remix/*`, `kody:@…`, `node:*`) are typed as `any`; bundling still verifies
-  that they resolve. Without a `tsconfig.json`, publish only checks that job,
-  subscription, and retriever entrypoints default export a function, and the
-  typecheck message says that source files and exports are not typechecked.
-  Publish (and `kody dev check`, which runs the same checks) is the only
-  typecheck. Running a published export, job, or subscription never typechecks,
-  so a package that published keeps running even when its artifact is rebuilt
-  later.
+  (including their `types` targets), jobs, and subscription handlers, using that
+  config's compiler options (TypeScript defaults to `strict`). The check has no
+  `node_modules`, so bare imports (npm packages, `remix/*`, `kody:@…`, `node:*`)
+  are typed as `any`; bundling still verifies that they resolve. Without a
+  `tsconfig.json`, publish only checks that job and subscription entrypoints
+  default export a function, and the typecheck message says that source files
+  and exports are not typechecked. Publish (and `kody dev check`, which runs the
+  same checks) is the only typecheck. Running a published export, job, or
+  subscription never typechecks, so a package that published keeps running even
+  when its artifact is rebuilt later.
 - Add JSDoc to every public export. Search Purpose comes from that JSDoc;
   missing comments fall back to `Package export.` See
   [Export JSDoc](../guides/package-authoring.md#export-jsdoc) in the package
@@ -517,8 +513,7 @@ Every saved package owns one durable storage bucket in the org that owns it
 reads the same bucket. One rule per context:
 
 - **Writing a saved package?** Use `packageStorage()` for the package's own data
-  — from package apps, exports, subscriptions, jobs, and workflows. Retrievers
-  can only read granted buckets.
+  — from package apps, exports, subscriptions, jobs, and workflows.
 - **Writing ad hoc `execute` code?** Persist durable state from a saved package
   with `packageStorage()`, or statically import the owning package's export. Ad
   hoc execute has no scratch SQLite helper.
@@ -527,8 +522,8 @@ reads the same bucket. One rule per context:
   `packageStorage()` does the reading and writing.
 
 `packageStorage()` returns `get`/`set`/`list`/`sql`/`delete`/`clear`/`id`,
-writable except in retriever runs, always bound to the declaring package's own
-bucket no matter where the code runs:
+always bound to the declaring package's own bucket no matter where the code
+runs:
 
 - In the package's own export/invocation runtime it is the only way to reach the
   package bucket.
@@ -1041,24 +1036,23 @@ records it, and then hands you the approval link.
 An agent can make a package internet-visible on its own (self-publish) when the
 capability set the owner would approve is empty, the package and every package
 it depends on declare nothing (no `kody.credentials` slots and no
-`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`,
-`retrievers`, or `webhooks`), and a security audit with verdict `pass` is
-recorded for the current published version. `packageUpdate` (and the settings
-toggle) then turn serving on right away; `packageUpdate` returns
-`self_published: true`. If the audit is missing, the request waits
-(`self_publish_blocker: 'not_audited'`); recording a passing audit with
-`packageSecurityAuditRecord` re-evaluates it and self-publishes then, and so
-does calling `packageUpdate` again. The org activity log records it as
-`package.went_public.self_publish`. A self-published package cannot use any
-credential while it stays public this way, even one it declares later. To give
-it credentials, declare them, publish, turn internet-visible off, and approve
-turning it on again. Agents cannot self-approve a non-empty capability set. When
-anything is declared or listed, `packageUpdate` returns the `approval_url` and a
-`self_publish_blocker` that says why (`unpublished`, `stale_dependencies` (a
-dependency republished since this package was published; publish it again),
-`declares_credentials`, `declares_capabilities`, `not_audited`,
-`audit_concerns`, or `not_permitted` when the caller cannot publish the
-package).
+`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
+`webhooks`), and a security audit with verdict `pass` is recorded for the
+current published version. `packageUpdate` (and the settings toggle) then turn
+serving on right away; `packageUpdate` returns `self_published: true`. If the
+audit is missing, the request waits (`self_publish_blocker: 'not_audited'`);
+recording a passing audit with `packageSecurityAuditRecord` re-evaluates it and
+self-publishes then, and so does calling `packageUpdate` again. The org activity
+log records it as `package.went_public.self_publish`. A self-published package
+cannot use any credential while it stays public this way, even one it declares
+later. To give it credentials, declare them, publish, turn internet-visible off,
+and approve turning it on again. Agents cannot self-approve a non-empty
+capability set. When anything is declared or listed, `packageUpdate` returns the
+`approval_url` and a `self_publish_blocker` that says why (`unpublished`,
+`stale_dependencies` (a dependency republished since this package was published;
+publish it again), `declares_credentials`, `declares_capabilities`,
+`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
+publish the package).
 
 ## Approve many changes at once
 

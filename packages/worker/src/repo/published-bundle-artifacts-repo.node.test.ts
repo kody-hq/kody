@@ -1043,8 +1043,8 @@ test('listPublishedBundleArtifactsByIdentities issues a fixed number of queries 
 	const identities = Array.from({ length: 6 }, (_, index) => ({
 		sourceId: `source-${index}`,
 		artifactKind: 'module',
-		artifactName: `./retriever-${index}`,
-		entryPoint: `src/retriever-${index}.ts`,
+		artifactName: `./optional-${index}`,
+		entryPoint: `src/optional-${index}.ts`,
 	}))
 	for (const [index, identity] of identities.entries()) {
 		await db

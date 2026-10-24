@@ -81,10 +81,7 @@ hints for medium-confidence matches.
 Pass optional **`domain`** with a capability domain id:
 
 - **With `query`** — ranks only that domain's capabilities. User-owned entities
-  (packages, integrations, secrets, retriever results) are excluded because they
-  have no domain. Installed-package retrievers run in a read-only, closed-world
-  sandbox: they can read their package storage and return results, but they
-  cannot write, fetch, invoke, or call capabilities.
+  (packages, integrations, secrets) are excluded because they have no domain.
 - **Without `query`** — lists the domain's capabilities in curated registry
   order (with inlined call shapes for the top hits), which completes the two-hop
   browse flow: broad query → domain overview → domain listing.
@@ -144,13 +141,12 @@ and token use. Public `search` also returns request-scoped
 **`timing.serverTiming`** phases (`{ name, durationMs }`, same shape as execute,
 not stored), including **`jevRerank`** when that stage ran. Execution-level
 tiles (`rateLimit`, `usernameLookup`, `identityResolution`,
-`rowAndRegistryLoad`, `featureFlags`, `loadAndRank`, `retrievers`,
-`memoryEnrichment`) and `unaccounted` (wall clock minus the exclusive tiles)
-appear when that step ran. The `search` meta capability (usable inside
-**execute**) returns the same `telemetry`, `phaseTimings`, and top-level
-`serverTiming` on ranked `query` results. Entity lookups, domain listings,
-empty/broad discovery, `search({ domain })`, and exact package identity omit
-those Jev fields.
+`rowAndRegistryLoad`, `featureFlags`, `loadAndRank`, `memoryEnrichment`) and
+`unaccounted` (wall clock minus the exclusive tiles) appear when that step ran.
+The `search` meta capability (usable inside **execute**) returns the same
+`telemetry`, `phaseTimings`, and top-level `serverTiming` on ranked `query`
+results. Entity lookups, domain listings, empty/broad discovery,
+`search({ domain })`, and exact package identity omit those Jev fields.
 
 Ranked `search({ query })` may also prepend a **`## Waiting`** block when
 something the signed-in human must clear is `block` or `degraded` (reconnectable
@@ -264,24 +260,24 @@ that provider, capped). Ranked query results stay lean and do not run community
 lookup or expand those suggestions.
 
 Package entity detail (`package:{id}`) is a slim index: summary, export subpaths
-with one-line purposes, job and retriever names, and the README `Intent`
-section. Structured content mirrors that index and does not contain a full
-export tree. Open one export with `package:{id}#{subpath}` for that export's
-import specifier, types, and execute snippet. `packageGet` is the bulk metadata
-API: full export array, provenance, and package-scoped secret FYI. When a
-community fork is outdated (the listing pin is not an ancestor of the fork tip),
-detail includes `listingAhead: true` and a one-line absorb next step
-(`communityGet`, then `repoPublishSession` with `absorbed_upstream_commit`).
-Ranked package hits include that same notice only when the fork is outdated.
-`packageGet` does not return files. Open one package file with
-`package:{id}#{path}` (`package:{id}#README.md`,
-`package:{id}#README.md#export-jsdoc`, `package:{id}#src/file.ts#L165`, or
-`package:{id}#src/file.ts#L165-L180`). A fragment that matches an export subpath
-still opens that export. Markdown heading slugs use the same rules as guide
-headings. A missing file, heading, or line fails instead of returning the whole
-file. For the tree, or to edit, open a repo session (`repoOpenSession` +
-`repoReadFile`) or clone with `packageGetGitRemote`. `repoReadFile` accepts the
-same `#L165`, `#L165-L180`, and Markdown heading fragments on `path`. See
+with one-line purposes, job names, and the README `Intent` section. Structured
+content mirrors that index and does not contain a full export tree. Open one
+export with `package:{id}#{subpath}` for that export's import specifier, types,
+and execute snippet. `packageGet` is the bulk metadata API: full export array,
+provenance, and package-scoped secret FYI. When a community fork is outdated
+(the listing pin is not an ancestor of the fork tip), detail includes
+`listingAhead: true` and a one-line absorb next step (`communityGet`, then
+`repoPublishSession` with `absorbed_upstream_commit`). Ranked package hits
+include that same notice only when the fork is outdated. `packageGet` does not
+return files. Open one package file with `package:{id}#{path}`
+(`package:{id}#README.md`, `package:{id}#README.md#export-jsdoc`,
+`package:{id}#src/file.ts#L165`, or `package:{id}#src/file.ts#L165-L180`). A
+fragment that matches an export subpath still opens that export. Markdown
+heading slugs use the same rules as guide headings. A missing file, heading, or
+line fails instead of returning the whole file. For the tree, or to edit, open a
+repo session (`repoOpenSession` + `repoReadFile`) or clone with
+`packageGetGitRemote`. `repoReadFile` accepts the same `#L165`, `#L165-L180`,
+and Markdown heading fragments on `path`. See
 [Repo sessions](./repo-sessions.md). Search `guide:package_authoring` for
 inbound webhooks and maintenance workflows.
 

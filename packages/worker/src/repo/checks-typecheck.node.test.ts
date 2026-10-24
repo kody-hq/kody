@@ -259,7 +259,7 @@ test('without a tsconfig, publish discloses that exports are not typechecked', a
 		kind: 'typecheck',
 		ok: true,
 		message:
-			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, subscription handlers, and retrievers.',
+			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, and subscription handlers.',
 	})
 })
 

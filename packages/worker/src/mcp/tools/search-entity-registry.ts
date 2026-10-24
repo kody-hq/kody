@@ -4,7 +4,6 @@ import { guideSearchEntityPlugin } from './search-entity-plugins/guide.ts'
 import { integrationSearchEntityPlugin } from './search-entity-plugins/integration.ts'
 import { mcpServerSearchEntityPlugin } from './search-entity-plugins/mcp-server.ts'
 import { packageSearchEntityPlugin } from './search-entity-plugins/package.ts'
-import { retrieverResultSearchEntityPlugin } from './search-entity-plugins/retriever-result.ts'
 import { secretSearchEntityPlugin } from './search-entity-plugins/secret.ts'
 import {
 	type SearchEntityDetail,
@@ -18,7 +17,6 @@ export const searchEntityPlugins = [
 	integrationSearchEntityPlugin,
 	mcpServerSearchEntityPlugin,
 	secretSearchEntityPlugin,
-	retrieverResultSearchEntityPlugin,
 	domainSearchEntityPlugin,
 ] as const
 

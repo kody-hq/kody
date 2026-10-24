@@ -108,9 +108,8 @@ export async function installWebsiteCommunityPackage(input: {
 			// Bind the install to origin HEAD (the commit the fork copies)
 			// so a concurrent push cannot activate content the user never saw.
 			expectedPinnedCommit,
-			// Projection already supports deferred search-index upsert and
-			// retriever-cache refresh; without waitUntil those await on the
-			// install response and stretch one-click / onboarding latency.
+			// Search-index upsert can run after the install response; without
+			// waitUntil it stretches one-click / onboarding latency.
 			waitUntil,
 		})
 		if (result.status === 'adaptation_required') {

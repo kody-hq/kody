@@ -184,9 +184,8 @@ Deletion must cover these user-owned surfaces:
   (`repo-session:{durableObjectId}/`). Account deletion enumerates session ids
   and each `purgeSession` prefix-purges that object's keys after `deleteAll`.
 - **KV:** published bundle artifact keys, source/manifest snapshot keys,
-  community listing snapshots, per-user package retriever cache/index keys,
-  package-skills index keys, package codemod revert keys, and MCP OAuth
-  refresh-family snapshot/replay keys
+  community listing snapshots, package-skills index keys, package codemod revert
+  keys, and MCP OAuth refresh-family snapshot/replay keys
   (`derived-cache:v1:mcp-oauth-refresh-{family,replay}:{userId}:`) in
   `BUNDLE_ARTIFACTS_KV` are deleted before D1 projection rows are removed. OAuth
   token/grant KV is owned by the OAuth provider and is handled through provider
@@ -619,11 +618,11 @@ Two D1 reporting projections deliberately remain:
 
 OAuth provider state is stored in `OAUTH_KV` through the
 `@cloudflare/workers-oauth-provider` integration. Published package source
-snapshots, bundle artifacts, package retriever caches, and community listing
-snapshots are stored in `BUNDLE_ARTIFACTS_KV`. That binding also holds the
-platform-owned `platform-settings:v1:reserved-usernames` runtime
-reserved-username override and short-lived encrypted MCP OAuth refresh-family
-snapshots (`derived-cache:v1:mcp-oauth-refresh-family:` /
+snapshots, bundle artifacts, and community listing snapshots are stored in
+`BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
+`platform-settings:v1:reserved-usernames` runtime reserved-username override and
+short-lived encrypted MCP OAuth refresh-family snapshots
+(`derived-cache:v1:mcp-oauth-refresh-family:` /
 `derived-cache:v1:mcp-oauth-refresh-replay:`).
 
 - Bindings are configured in `packages/worker/wrangler.jsonc` (remote KV IDs are
@@ -1331,8 +1330,7 @@ calls `publishFromExternalRef(...)`.
 - advance `entity_sources.published_commit` only after that KV write succeeds
 - delete the never-advertised new snapshot key if the D1 pointer update fails
 - rebuild saved package projections, bundle artifacts, vector search entries,
-  retriever manifests, and package jobs through
-  `refreshSavedPackageProjection(...)`
+  and package jobs through `refreshSavedPackageProjection(...)`
 
 The same helper is used by the existing repo-session publish path after it has
 pushed the session commit to the source Artifacts repo.
@@ -1651,9 +1649,6 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
 - `community-snapshot:v1:{listingId}`.
-- `package-retriever-manifest:v1:{userId}:{packageId}:{revision}`.
-- `package-retriever-index-entry:v1:{userId}:{scope}:{packageId}:{retrieverKey}`
-  for per-entry retriever index rows.
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.

@@ -1111,8 +1111,6 @@ test('execute tool refuses past the per-minute runaway limit before any run work
 		memoryContext: { task: 'recall what the user asked for last time' },
 	})
 	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
-	// Memory retrievers can run package code, so a refused call never starts
-	// them.
 	expect(mockModule.surfaceToolMemories).not.toHaveBeenCalled()
 	expect(refused.isError).toBe(true)
 	expect(refused.structuredContent.error).toMatch(

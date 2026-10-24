@@ -156,11 +156,6 @@ type FetchGatewayProps = {
 	 */
 	boundPackageId?: string | null
 	/**
-	 * When false, every sandbox `fetch` is rejected. Retriever runs use
-	 * this to stay closed-world. Defaults to true.
-	 */
-	allowOutboundFetch?: boolean
-	/**
 	 * The run (or CapabilityProxy credential) `credential()` client handles
 	 * must be bound to. Without it, a client fetch is refused.
 	 */
@@ -231,9 +226,6 @@ export const secretResolutionHeaderName = 'x-kody-secret-resolution'
  * `AbortSignal` also wins.
  */
 export const outboundFetchTimeoutMs = 5 * 60_000
-
-export const retrieverOutboundFetchDeniedMessage =
-	'Outbound fetch is not available in retriever runs.'
 
 async function applyPackageAppVisitTicketToGateway(input: {
 	env: FetchGatewayEnv
@@ -313,9 +305,6 @@ export async function executeGatewayFetch(input: {
 	input = resolved
 
 	try {
-		if (input.props.allowOutboundFetch === false) {
-			throw new Error(retrieverOutboundFetchDeniedMessage)
-		}
 		// Daily outbound-fetch quota: every sandbox fetch leaves through
 		// this gateway, so the atomic counter here bounds cost abuse and
 		// third-party hammering from user code. Consumed before secret
@@ -434,7 +423,7 @@ export async function executeGatewayFetch(input: {
 		throw asCallerFacingBodyFillError(error)
 	} finally {
 		const { userId } = input.props
-		if (input.props.allowOutboundFetch !== false && userId) {
+		if (userId) {
 			const meteredResponse = response
 			// Outcome is settled at headers; duration waits for the body so a
 			// streamed response reports how long it stayed open.

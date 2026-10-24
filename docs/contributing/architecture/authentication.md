@@ -333,9 +333,9 @@ resolution treats a suspended session as signed out (`readAuthenticatedAppUser`
 JSON response after the verification gate, package-app owner resolution refuses
 to serve, webhook ingress rejects with `403 account_suspended`, background
 identity resolution (`resolveBackgroundMcpUser`) throws `AccountSuspendedError`
-for jobs, package invocations, workflows, retrievers, and realtime hooks, and
-both email directions reject (inbound with a bounded `account-suspension`
-rejection event, outbound with an error). See the "Abuse controls" section of
+for jobs, package invocations, workflows, and realtime hooks, and both email
+directions reject (inbound with a bounded `account-suspension` rejection event,
+outbound with an error). See the "Abuse controls" section of
 [`security.md`](../security.md).
 
 - **Email capabilities**: every capability in the MCP `email` domain calls

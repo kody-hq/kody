@@ -344,7 +344,7 @@ export async function runSavedPackageModuleOnce(
 				// Keyed callers own their run record (claimed with the ledger row);
 				// the registry must not begin/finish a second one for this run.
 				// Still pass the observed surface so UWD is not inferred as
-				// package_export for subscription / webhook / retriever keyed runs.
+				// package_export for subscription / webhook keyed runs.
 				runRecord: externalHandle ? null : runRecord,
 				runSurface:
 					runRecord?.surface ??

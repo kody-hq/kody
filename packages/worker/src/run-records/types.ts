@@ -2,7 +2,7 @@
  * Run records: the per-user execution history primitive.
  *
  * Every runtime surface (execute, jobs, workflows, package exports, apps,
- * retrievers, subscriptions, inbound webhooks) reports what it ran and
+ * subscriptions, inbound webhooks) reports what it ran and
  * how it ended through one contract. Records live in a per-user `RunLog`
  * Durable Object, not in the shared D1 writer — see
  * `docs/contributing/architecture/run-records.md`.
@@ -35,7 +35,6 @@ export const runSurfaceValues = [
 	'app_realtime',
 	'job',
 	'workflow',
-	'retriever',
 	'webhook',
 ] as const
 
@@ -102,7 +101,6 @@ export function runErrorTriageForPlatformInterrupt(
 		case 'app_fetch':
 		case 'app_realtime':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return null
 		default: {
@@ -148,7 +146,6 @@ export function runPersistenceForSurface(surface: RunSurface): RunPersistence {
 		case 'app_realtime':
 		case 'job':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return 'eager'
 		default: {
@@ -387,7 +384,6 @@ export function runRecordStaleRunningTtlMsForSurface(
 	switch (surface) {
 		case 'execute':
 		case 'export':
-		case 'retriever':
 		case 'subscription':
 		case 'app_fetch':
 		case 'app_realtime':

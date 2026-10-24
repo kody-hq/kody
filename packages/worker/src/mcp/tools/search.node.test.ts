@@ -210,7 +210,6 @@ function leanPackageRow(
 			exports: [],
 			jobs: [],
 			subscriptions: [],
-			retrievers: [],
 			webhooks: [],
 		},
 		readmeSnippet: null,

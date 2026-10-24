@@ -8,15 +8,10 @@ import { type McpHubConnectResult } from '#worker/mcp-client/types.ts'
 import { invalidateInvokeContractFreshness } from '#worker/package-invocations/invoke-contract-cache.ts'
 import { refreshPackageSubscriptionTopicMap } from '#worker/package-invocations/subscription-topic-cache.ts'
 import { buildSavedPackageEmbedText } from '#worker/package-registry/embed.ts'
-import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { scheduleSavedPackageSearchIndexUpsert } from '#worker/package-registry/search-index-debt.ts'
 import { deleteAllPackageSkillsIndexEntriesForUser } from '#worker/package-registry/skills-index-cache.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { deleteSavedPackageVector } from '#worker/package-registry/vectorize.ts'
-import {
-	deleteAllPackageRetrieverCacheEntriesForUser,
-	refreshPackageRetrieverManifestCache,
-} from '#worker/package-retrievers/manifest-cache.ts'
 import { deleteRepoSessionsBySourceForUser } from '#worker/repo/repo-sessions.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { deleteStorageBucketInventory } from '#worker/storage-buckets/service.ts'
@@ -165,19 +160,6 @@ export async function runOrgTransferPostCommit(input: {
 				userId: toId,
 				embedText: buildSavedPackageEmbedText(loaded.manifest),
 			})
-			const savedPackage = await getSavedPackageById(env.APP_DB, {
-				userId: toId,
-				packageId,
-			})
-			if (savedPackage && loaded.source.published_commit) {
-				await refreshPackageRetrieverManifestCache({
-					env,
-					userId: toId,
-					source: loaded.source,
-					savedPackage,
-					manifest: loaded.manifest,
-				})
-			}
 		})
 		invalidateInvokeContractFreshness({
 			userId: fromId,
@@ -207,9 +189,6 @@ export async function runOrgTransferPostCommit(input: {
 		})
 	}
 
-	await step('clear source retriever cache', () =>
-		deleteAllPackageRetrieverCacheEntriesForUser({ env, userId: fromId }),
-	)
 	await step('clear source skills index', () =>
 		deleteAllPackageSkillsIndexEntriesForUser({ env, userId: fromId }),
 	)

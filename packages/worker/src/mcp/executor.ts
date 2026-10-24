@@ -20,10 +20,7 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import {
-	retrieverOutboundFetchDeniedMessage,
-	type FetchGatewayProps,
-} from '#mcp/fetch-gateway.ts'
+import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
@@ -673,8 +670,6 @@ export function createKodyRemoteProxy(input: {
 	})
 }
 
-export { retrieverOutboundFetchDeniedMessage }
-
 export function createExecuteExecutor(input: {
 	env: Env
 	exports?: WorkerLoopbackExports
@@ -718,17 +713,11 @@ export function createExecuteExecutor(input: {
 	/** Capped unique-worker-day claim awaited before load (hosted execute). */
 	claimWorkerDay?: ClaimWorkerDay
 	/**
-	 * When false, sandbox `fetch` is rejected. Retriever runs use this to stay
-	 * closed-world. Defaults to true.
-	 */
-	allowOutboundFetch?: boolean
-	/**
 	 * When set, unique-worker-day metering and the first-execute activation
 	 * stamp run on `waitUntil` instead of the sandbox critical path.
 	 */
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
-	const allowOutboundFetch = input.allowOutboundFetch !== false
 	const loopbackExports = input.exports ?? workerExports
 	if (!loopbackExports?.KodyFetchGateway) {
 		throw new Error(
@@ -739,28 +728,21 @@ export function createExecuteExecutor(input: {
 		input.timeoutMs === null
 			? maxSupportedExecutorTimeoutMs
 			: (input.timeoutMs ?? defaultExecutorTimeoutMs)
-	const gatewayProps = {
-		...input.gatewayProps,
-		allowOutboundFetch,
-	}
+	const gatewayProps = input.gatewayProps
 	return createStableDynamicWorkerExecutor({
 		loader: input.env.LOADER,
 		timeout,
 		signal: input.signal,
 		// Shared by every evaluate on this isolate; run fetch uses createRunFetcher.
 		globalOutbound: loopbackExports.KodyFetchGateway({
-			props: { allowOutboundFetch: false } as FetchGatewayProps,
+			props: {} as FetchGatewayProps,
 		}),
 		createRunFetcher: () =>
 			loopbackExports.KodyFetchGateway({ props: gatewayProps }),
-		...(allowOutboundFetch
-			? {
-					createPackageFetcher: (packageId: string) =>
-						loopbackExports.KodyFetchGateway({
-							props: { ...gatewayProps, boundPackageId: packageId },
-						}),
-				}
-			: {}),
+		createPackageFetcher: (packageId: string) =>
+			loopbackExports.KodyFetchGateway({
+				props: { ...gatewayProps, boundPackageId: packageId },
+			}),
 		// Tails only run where Analytics Engine is bound (deployed Workers).
 		// Open-source workerd reports zero CPU, and a local tail would outlive
 		// the run with a D1 write per invocation.
@@ -815,7 +797,6 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 				shadowGlobalThis: Object.keys(modules).length === 0,
 				timeoutMs: input.timeout,
 				excludedHostname,
-				allowOutboundFetch: input.gatewayProps.allowOutboundFetch !== false,
 			})
 			const workerOptions = {
 				...createDynamicWorkerCompatibilityOptions(),
@@ -1115,14 +1096,7 @@ function validateProviders(providers: Array<ResolvedProvider>) {
 	return null
 }
 
-function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
-	if (!allowOutboundFetch) {
-		return [
-			'    const __kodyRunFetch = () => {',
-			`      throw new Error(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-			'    };',
-		]
-	}
+function createSandboxRunFetchSource() {
 	return [
 		'    // Generic (unbound) fetch: never carries package secret authority.',
 		'    // Package identity travels only on the per-package gateway binding',
@@ -1175,22 +1149,17 @@ function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
  * runtime module's private binding scope by the host wrapper; package code
  * never sees it and cannot name another package's entry.
  */
-function createPackageBindingSandboxSource(allowOutboundFetch: boolean) {
+function createPackageBindingSandboxSource() {
 	return [
-		'function __kodyCreateSandboxPackageBindings(stubs, hostSideEffects, allowOutboundFetch, mcpFactoryRef) {',
+		'function __kodyCreateSandboxPackageBindings(stubs, hostSideEffects, mcpFactoryRef) {',
 		'  const map = new __kodyMapCaptured();',
 		'  if (stubs == null || typeof stubs !== "object") return map;',
-		// Closed-world runs never emit the outbound path at all.
-		...(allowOutboundFetch
-			? [
-					'  const recordFetch = async () => {',
-					'    if (!hostSideEffects) return;',
-					'    const resJson = await hostSideEffects.call("recordFetch", "[]");',
-					'    const data = __kodyJsonParseCaptured(resJson);',
-					'    if (data.error) throw new __kodyErrorCaptured(data.error);',
-					'  };',
-				]
-			: []),
+		'  const recordFetch = async () => {',
+		'    if (!hostSideEffects) return;',
+		'    const resJson = await hostSideEffects.call("recordFetch", "[]");',
+		'    const data = __kodyJsonParseCaptured(resJson);',
+		'    if (data.error) throw new __kodyErrorCaptured(data.error);',
+		'  };',
 		'  for (const packageId of __kodyObjectKeysCaptured(stubs)) {',
 		'    const stub = stubs[packageId];',
 		'    if (stub == null || typeof stub !== "object") continue;',
@@ -1214,17 +1183,9 @@ function createPackageBindingSandboxSource(allowOutboundFetch: boolean) {
 		'        return mcp;',
 		'      },',
 		'      fetch: async (input, init) => {',
-		...(allowOutboundFetch
-			? [
-					'        if (!fetcher) {',
-					`          throw new __kodyErrorCaptured(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-					'        }',
-					'        await recordFetch();',
-					'        return await fetcher.fetch(input, init);',
-				]
-			: [
-					`        throw new __kodyErrorCaptured(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-				]),
+		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
+		'        await recordFetch();',
+		'        return await fetcher.fetch(input, init);',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
 		// packageStorage() for this package only: the host bound dispatcher
@@ -1255,7 +1216,6 @@ function createExecutorModule(input: {
 	shadowGlobalThis: boolean
 	timeoutMs: number
 	excludedHostname?: string
-	allowOutboundFetch?: boolean
 }) {
 	const normalized = input.normalizedCode
 	const excludedHostname = JSON.stringify(input.excludedHostname ?? '')
@@ -1317,7 +1277,7 @@ function createExecutorModule(input: {
 		'const __kodyJsonStringifyCaptured = JSON.stringify;',
 		'const __kodyErrorCaptured = Error;',
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
-		...createPackageBindingSandboxSource(input.allowOutboundFetch !== false),
+		...createPackageBindingSandboxSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
 		'const __kodyEvaluateFetchStorage =',
 		'  globalThis[__kodyEvaluateFetchStorageSymbol] ??',
@@ -1336,9 +1296,9 @@ function createExecutorModule(input: {
 		'    const __logs = [];',
 		'    const __kodyRawFetchHosts = [];',
 		`    const __kodyExcludedFetchHost = ${excludedHostname};`,
-		...createSandboxRunFetchSource(input.allowOutboundFetch !== false),
+		...createSandboxRunFetchSource(),
 		'    const __kodyPackageMcpFactoryRef = { create: null };',
-		`    const __kodyPackageBindings = __kodyCreateSandboxPackageBindings(__kodyPackageBindingStubs, __dispatchers.${hostSideEffectProviderName} ?? null, ${input.allowOutboundFetch !== false}, __kodyPackageMcpFactoryRef);`,
+		`    const __kodyPackageBindings = __kodyCreateSandboxPackageBindings(__kodyPackageBindingStubs, __dispatchers.${hostSideEffectProviderName} ?? null, __kodyPackageMcpFactoryRef);`,
 		'    return __kodyEvaluateFetchStorage.run({ fetch: __kodyRunFetch }, async () => {',
 		'    const __kodyNativeConsole = globalThis.console;',
 		'    globalThis.console = {',
@@ -1400,7 +1360,6 @@ export async function createExecutorModuleSource({
 	shadowGlobalThis: boolean
 	timeoutMs: number
 	excludedHostname?: string
-	allowOutboundFetch?: boolean
 }) {
 	const normalizeCode = await loadNormalizeCode()
 	return createExecutorModule({ ...input, normalizedCode: normalizeCode(code) })

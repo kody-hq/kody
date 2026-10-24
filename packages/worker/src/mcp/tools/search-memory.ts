@@ -103,7 +103,6 @@ export async function settleSearchMemoryEnrichment(input: {
 	}
 
 	const memoryToolContext = settlement.value
-	const warnings = [...(memoryToolContext?.retrieverWarnings ?? [])]
 	if (!memoryToolContext || memoryToolContext.memories.length === 0) {
 		return {
 			...(memoryToolContext
@@ -112,12 +111,10 @@ export async function settleSearchMemoryEnrichment(input: {
 							surfaced: memoryToolContext.memories,
 							suppressedCount: memoryToolContext.suppressedCount,
 							retrievalQuery: memoryToolContext.retrievalQuery,
-							retrieverResults: memoryToolContext.retrieverResults,
-							retrieverWarnings: memoryToolContext.retrieverWarnings,
 						},
 					}
 				: {}),
-			warnings,
+			warnings: [],
 			phaseTimings: {
 				memoryEnrichmentMs,
 				memoryEnrichmentWaitMs,
@@ -132,10 +129,8 @@ export async function settleSearchMemoryEnrichment(input: {
 			surfaced: memoryToolContext.memories,
 			suppressedCount: memoryToolContext.suppressedCount,
 			retrievalQuery: memoryToolContext.retrievalQuery,
-			retrieverResults: memoryToolContext.retrieverResults,
-			retrieverWarnings: memoryToolContext.retrieverWarnings,
 		},
-		warnings,
+		warnings: [],
 		phaseTimings: {
 			memoryEnrichmentMs,
 			memoryEnrichmentWaitMs,

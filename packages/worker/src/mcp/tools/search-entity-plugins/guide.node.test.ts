@@ -26,7 +26,6 @@ function buildGuideCandidates(domain?: string) {
 		offline: true,
 		registry,
 		optionalRows: emptyOptionalRows,
-		retrieverResults: [],
 		queryEmbedding: [],
 		...(domain ? { domain } : {}),
 	})

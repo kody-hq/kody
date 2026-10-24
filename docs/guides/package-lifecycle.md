@@ -100,8 +100,8 @@ implementation needs a library that does not fit a Worker isolate, keep this
 package as the orchestrator and offload the heavy process — see
 [Offload work that does not fit a Worker isolate](./heavy-work-offload.md). The
 repo rooted at `package.json` is the durable source of truth. Package exports
-form the callable surface, while jobs, subscriptions, retrievers, and apps
-remain package-owned behavior.
+form the callable surface, while jobs, subscriptions, and apps remain
+package-owned behavior.
 
 Recurring schedules belong on a saved package under `package.json#kody.jobs`.
 Deferred one-shot work uses `workflows.create({ runAt })` from `execute` or

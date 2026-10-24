@@ -27,7 +27,6 @@ const searchServerTimingPhases = [
 	['queryEmbedding', 'queryEmbeddingMs'],
 	['loadAndRank', 'loadAndRankMs'],
 	['reranking', 'rerankingMs'],
-	['retrievers', 'retrieversMs'],
 	['memoryEnrichment', 'memoryEnrichmentMs'],
 	['formatting', 'formattingMs'],
 	['waitingItems', 'waitingItemsMs'],
@@ -60,7 +59,7 @@ export function toSearchServerTiming(input: {
 
 /**
  * Exclusive tiles that partition search wall clock. Overlapping detail
- * phases (memory, retrievers, candidate plugins) are published beside
+ * phases (memory, candidate plugins) are published beside
  * these and must not be summed into `exclusiveMs`.
  */
 export const searchExclusivePhaseKeys = [

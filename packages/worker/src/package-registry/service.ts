@@ -50,10 +50,6 @@ import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 import { rebuildPublishedPackageArtifacts } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { type PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
-	refreshPackageRetrieverManifestCache,
-	removePackageRetrieverManifestCacheEntries,
-} from '#worker/package-retrievers/manifest-cache.ts'
-import {
 	buildPackageSkillsIndex,
 	collectPackageSkills,
 } from '#worker/package-registry/package-skills.ts'
@@ -95,29 +91,6 @@ export class PackageStorageCleanupError extends Error {
 		this.name = 'PackageStorageCleanupError'
 		this.failedStorageIds = failedStorageIds
 	}
-}
-
-function logPackageRetrieverProjectionError(input: {
-	action: 'refresh' | 'delete'
-	packageId: string
-	error: unknown
-}) {
-	console.error(
-		JSON.stringify({
-			message: 'package retriever projection update failed',
-			action: input.action,
-			packageId: input.packageId,
-		}),
-	)
-	Sentry.captureException(input.error, {
-		tags: {
-			scope: 'package-retriever-projection',
-			action: input.action,
-		},
-		extra: {
-			packageId: input.packageId,
-		},
-	})
 }
 
 function logPackageSkillsProjectionError(input: {
@@ -567,19 +540,6 @@ export async function refreshSavedPackageProjection(input: {
 					embedText: buildSavedPackageEmbedText(loaded.manifest),
 					waitUntil: input.waitUntil,
 				})
-				const retrieverCacheTask = refreshPackageRetrieverManifestCache({
-					env: input.env,
-					userId: input.userId,
-					source: loaded.source,
-					savedPackage,
-					manifest: loaded.manifest,
-				}).catch((error: unknown) => {
-					logPackageRetrieverProjectionError({
-						action: 'refresh',
-						packageId: input.packageId,
-						error,
-					})
-				})
 				const skillsIndexTask = (async () => {
 					if (collectedSkills === null) return
 					const publishedCommit = loaded.source?.published_commit
@@ -603,10 +563,9 @@ export async function refreshSavedPackageProjection(input: {
 					})
 				})
 				if (input.waitUntil) {
-					input.waitUntil(retrieverCacheTask)
 					input.waitUntil(skillsIndexTask)
 				} else {
-					await Promise.all([retrieverCacheTask, skillsIndexTask])
+					await skillsIndexTask
 				}
 				const { syncPackageJobsForPackage } =
 					await import('#worker/jobs/service.ts')
@@ -891,19 +850,6 @@ export async function deleteSavedPackageProjection(input: {
 					userId: input.userId,
 					packageId: input.packageId,
 				})
-				try {
-					await removePackageRetrieverManifestCacheEntries({
-						env: input.env,
-						userId: input.userId,
-						packageId: input.packageId,
-					})
-				} catch (error) {
-					logPackageRetrieverProjectionError({
-						action: 'delete',
-						packageId: input.packageId,
-						error,
-					})
-				}
 				try {
 					await removePackageSkillsIndexEntries({
 						env: input.env,
