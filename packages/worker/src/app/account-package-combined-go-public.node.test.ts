@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -16,9 +17,9 @@ vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: mocks.readAuthenticatedAppUser,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#app/account-packages-data.ts', () => ({
 	reloadAccountPackagesAfterWrite: mocks.reloadAccountPackagesAfterWrite,

@@ -1,6 +1,7 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import type * as ManagerClient from '#worker/jobs/manager-client.ts'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
@@ -40,9 +41,9 @@ vi.mock('#worker/jobs/manager-client.ts', async (importOriginal) => {
 	}
 })
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const setup = () =>
 	setupPackageCredentialMappingFixture({

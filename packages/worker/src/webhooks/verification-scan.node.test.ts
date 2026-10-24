@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type RunRecord } from '#worker/run-records/types.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { scanWebhookVerification } from './verification-scan.ts'
@@ -12,9 +13,9 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	listRunRecords: mocks.listRunRecords,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 function manifest(webhooks: Array<Record<string, unknown>>) {
 	return { manifest: { name: '@x/pkg', kody: { webhooks } } }

@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import {
 	dailyTarget as daily,
 	mineTarget as mine,
@@ -28,9 +29,9 @@ vi.mock(
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const setup = () =>
 	setupPackageCredentialMappingFixture({
