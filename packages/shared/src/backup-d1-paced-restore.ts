@@ -238,6 +238,7 @@ function emitUpsertStatements(input: {
 			break
 		}
 		const value = input.vals[index]
+		if (value === undefined) continue
 		if (typeof value === 'string') {
 			pending.push(index)
 			reduced[index] = ''
