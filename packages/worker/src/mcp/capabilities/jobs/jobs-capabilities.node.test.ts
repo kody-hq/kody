@@ -223,14 +223,14 @@ test('jobUpdate and jobRunNow require authentication and jobUpdate mutates exist
 
 	mockModule.updateJob.mockResolvedValueOnce(
 		job({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		}),
 	)
 	await jobUpdateCapability.handler(
 		{
-			id: 'job-once',
-			schedule: { type: 'once', run_at: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		},
 		ctx,
 	)
@@ -238,8 +238,8 @@ test('jobUpdate and jobRunNow require authentication and jobUpdate mutates exist
 		env,
 		callerContext,
 		body: expect.objectContaining({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		}),
 	})
 	expect(
@@ -359,7 +359,7 @@ test('jobUpdate accepts interval and cron schedule replacements and round-trips 
 	}
 })
 
-test('jobRunNow executes jobs immediately and preserves failed one-off jobs for inspection', async () => {
+test('jobRunNow executes jobs immediately', async () => {
 	const appContext = createMcpCallerContext({
 		source: { kind: 'mcp-oauth' },
 		baseUrl: 'https://example.com',
@@ -392,7 +392,6 @@ test('jobRunNow executes jobs immediately and preserves failed one-off jobs for 
 			],
 		}),
 		execution: { ok: true, result: { ok: true }, logs: ['ran job'] },
-		deletedAfterRun: false,
 	})
 
 	const successResult = await jobRunNowCapability.handler(
@@ -429,34 +428,7 @@ test('jobRunNow executes jobs immediately and preserves failed one-off jobs for 
 			run_history: [],
 		},
 		execution: { ok: true, result: { ok: true }, logs: ['ran job'] },
-		deleted_after_run: false,
 	})
-
-	mockModule.runJobNowViaManager.mockResolvedValueOnce({
-		job: job({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-20T10:00:00.000Z' },
-			lastRunAt: '2026-04-20T10:00:00.000Z',
-			lastRunStatus: 'error',
-			lastRunError: 'boom',
-			lastDurationMs: 5,
-			runCount: 1,
-			errorCount: 1,
-		}),
-		execution: { ok: false, error: 'boom', logs: ['ran job'] },
-		deletedAfterRun: false,
-	})
-	const failedOneOffResult = await jobRunNowCapability.handler(
-		{ id: 'job-once' },
-		{ env, callerContext: appContext },
-	)
-	expect(failedOneOffResult.deleted_after_run).toBe(false)
-	expect(failedOneOffResult.execution).toEqual({
-		ok: false,
-		error: 'boom',
-		logs: ['ran job'],
-	})
-	expect(failedOneOffResult.job.last_run_error).toBe('boom')
 })
 
 test('jobRunNow refuses a caller without job:execute', async () => {
@@ -474,15 +446,15 @@ test('jobRunNow refuses a caller without job:execute', async () => {
 test('job inspection capabilities expose due-now state, history, alarm status, optional source code, and workflow runs', async () => {
 	vi.useFakeTimers()
 	vi.setSystemTime(new Date('2026-04-20T18:30:00.000Z'))
-	const onceSchedule = { type: 'once', runAt: '2026-04-20T18:30:00.000Z' }
+	const recurringSchedule = { type: 'interval', every: '1h' }
 	mockModule.inspectJobsForUser.mockResolvedValue({
-		jobs: [job({ publishedCommit: 'commit-123', schedule: onceSchedule })],
+		jobs: [job({ publishedCommit: 'commit-123', schedule: recurringSchedule })],
 		alarm: alarm(),
 	})
 	mockModule.getJobInspection.mockResolvedValue({
 		job: job({
 			params: { bridgeId: 'ZPGI01117' },
-			schedule: onceSchedule,
+			schedule: recurringSchedule,
 			lastRunAt: '2026-04-20T09:00:00.000Z',
 			lastRunStatus: 'error',
 			lastRunError: 'Timed out',

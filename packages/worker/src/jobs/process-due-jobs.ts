@@ -1,7 +1,4 @@
-import {
-	oneTimeJobFinishedReason,
-	rescheduleFailedDisabledReason,
-} from '@kody-internal/shared/jobs/disabled-reason.ts'
+import { rescheduleFailedDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { type SchedulerJobOutcomeLog } from './scheduler-logging.ts'
 import { computeNextRunAt, formatJobError } from './schedule.ts'
 import {
@@ -11,7 +8,6 @@ import {
 } from './types.ts'
 
 export type ProcessDueJobsResult = {
-	deleteJobIds: Array<string>
 	saveJobs: Array<JobRecord>
 	successCount: number
 	errorCount: number
@@ -24,7 +20,6 @@ export async function processDueJobs(input: {
 	executeJob: (job: JobRecord) => Promise<JobExecutionOutcome>
 }): Promise<ProcessDueJobsResult> {
 	const now = input.now ?? new Date()
-	const deleteJobIds: Array<string> = []
 	const saveJobs: Array<JobRecord> = []
 	const jobOutcomes: Array<SchedulerJobOutcomeLog> = []
 	let successCount = 0
@@ -51,26 +46,6 @@ export async function processDueJobs(input: {
 			successCount += 1
 		} else {
 			errorCount += 1
-		}
-
-		if (job.schedule.type === 'once') {
-			// Completed once jobs stay on their package (disabled) until the
-			// package drops them.
-			const updated = applyExecutionOutcome(job, outcome, {
-				updatedAt: now.toISOString(),
-				enabled: false,
-				disabledReason: oneTimeJobFinishedReason,
-			})
-			saveJobs.push(updated)
-			jobOutcomes.push({
-				jobId: job.id,
-				scheduleType: job.schedule.type,
-				outcome: outcome.execution.ok ? 'success' : 'failure',
-				nextRunAt: updated.nextRunAt,
-				deleted: false,
-				...(executionError ? { error: executionError } : {}),
-			})
-			continue
 		}
 
 		try {
@@ -130,7 +105,6 @@ export async function processDueJobs(input: {
 	}
 
 	return {
-		deleteJobIds,
 		saveJobs,
 		successCount,
 		errorCount,

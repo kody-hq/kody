@@ -46,7 +46,6 @@ export type RunDueJobsResult = {
 export type RunJobNowResult = {
 	job: JobView
 	execution: JobExecutionResult
-	deletedAfterRun: boolean
 }
 
 /**

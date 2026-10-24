@@ -159,7 +159,7 @@ async function insertTestJob(userId: string, packageId: string) {
 			sourceId: `source-${packageId}`,
 			publishedCommit: null,
 			storageId: createJobStorageId(id),
-			schedule: { type: 'once', runAt: fixedNow },
+			schedule: { type: 'interval', every: '1h' },
 			timezone: 'UTC',
 			enabled: true,
 			killSwitchEnabled: false,

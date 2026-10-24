@@ -142,9 +142,8 @@ did it (a person, an automation run, or a site admin), when, the old and new
 state, where it came from (web app, MCP, API, CLI, the scheduler, and so on),
 and the reason when one was given (`jobUpdate` and `enablementDisable` take an
 optional `reason`). Owners see the last 7 days under **On/off changes** on the
-Activity page. A job that reaches its own expiry time or a one-time job that
-finishes its run turns off without a row, and pause and resume are a separate
-state with their own reason.
+Activity page. A job that reaches its own expiry time turns off without a row,
+and pause and resume are a separate state with their own reason.
 
 Example: Bea is a Member of `@acme` with Use on `@acme/digest`. She turns on its
 nightly job. Each night it runs as Bea, with Bea's grants. It cannot read a

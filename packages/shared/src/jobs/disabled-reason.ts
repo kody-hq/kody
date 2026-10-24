@@ -5,8 +5,6 @@
  */
 export const jobExpiredDisabledReason = 'The job passed its expiry time.'
 
-export const oneTimeJobFinishedReason = 'The one-time job finished its run.'
-
 export function rescheduleFailedDisabledReason(
 	rescheduleError: string | null | undefined,
 ) {

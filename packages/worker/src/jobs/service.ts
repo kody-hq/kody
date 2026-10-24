@@ -62,7 +62,6 @@ import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { notifyOwnersOfJobAutoDisabled } from './job-auto-disabled-notice.ts'
 import {
 	jobExpiredDisabledReason,
-	oneTimeJobFinishedReason,
 	rescheduleFailedDisabledReason,
 } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import {
@@ -1498,22 +1497,13 @@ export async function runJobNow(input: {
 				repoCheckPolicyOverride: input.repoCheckPolicyOverride,
 				waitUntil: input.waitUntil,
 			})
-			const updated = applyExecutionOutcome(
-				row.record,
-				outcome,
-				row.record.schedule.type === 'once'
-					? { enabled: false, disabledReason: oneTimeJobFinishedReason }
-					: {
-							nextRunAt: computeNextRunAt({
-								schedule: row.record.schedule,
-								timezone: row.record.timezone,
-								from: outcome.finishedAt,
-							}),
-						},
-			)
-			// Successful once jobs are retained for account/platform cleanup
-			// rather than deleted immediately.
-			const deletedAfterRun = false
+			const updated = applyExecutionOutcome(row.record, outcome, {
+				nextRunAt: computeNextRunAt({
+					schedule: row.record.schedule,
+					timezone: row.record.timezone,
+					from: outcome.finishedAt,
+				}),
+			})
 			// Outcome / schedule only — keep the published package caller context.
 			await jobsData(input.env).updateJob({
 				userId: input.userId,
@@ -1528,7 +1518,6 @@ export async function runJobNow(input: {
 			return {
 				job,
 				execution: outcome.execution,
-				deletedAfterRun,
 			}
 		},
 	})
@@ -1775,38 +1764,36 @@ async function deferClaimedJobWithoutEnablement(input: {
 		})
 		return { settled, nextRunAt, error }
 	}
-	const nextRunAt =
-		row.record.schedule.type === 'once' || !scheduledFor
-			? computeJobRetryAt({
-					now: input.now,
-					retryCount: row.retry_count,
-				})
-			: computeNextRunAt({
-					schedule: row.record.schedule,
-					timezone: row.record.timezone,
-					from: input.now,
-				})
-	const settled =
-		row.record.schedule.type === 'once' || !scheduledFor
-			? await store.retryClaimedJob({
-					userId: input.userId,
-					jobId: row.id,
-					claimToken: input.claimToken,
+	const nextRunAt = !scheduledFor
+		? computeJobRetryAt({
+				now: input.now,
+				retryCount: row.retry_count,
+			})
+		: computeNextRunAt({
+				schedule: row.record.schedule,
+				timezone: row.record.timezone,
+				from: input.now,
+			})
+	const settled = !scheduledFor
+		? await store.retryClaimedJob({
+				userId: input.userId,
+				jobId: row.id,
+				claimToken: input.claimToken,
+				nextRunAt,
+			})
+		: await store.finalizeClaimedJob({
+				userId: input.userId,
+				job: {
+					...row.record,
+					updatedAt: nowIso,
+					lastRunAt: slotAt,
+					lastRunStatus: 'error',
+					lastRunError: error,
 					nextRunAt,
-				})
-			: await store.finalizeClaimedJob({
-					userId: input.userId,
-					job: {
-						...row.record,
-						updatedAt: nowIso,
-						lastRunAt: slotAt,
-						lastRunStatus: 'error',
-						lastRunError: error,
-						nextRunAt,
-					},
-					claimToken: input.claimToken,
-					scheduledFor,
-				})
+				},
+				claimToken: input.claimToken,
+				scheduledFor,
+			})
 	logJobSchedulerEvent({
 		event: settled
 			? 'scheduled_job_skipped'
@@ -2060,7 +2047,7 @@ async function runDueJobsForUserUnderLease(
 					successCount += result.successCount
 					errorCount += result.errorCount
 					jobOutcomes.push(...result.jobOutcomes)
-					if (!updated.enabled && row.record.schedule.type !== 'once') {
+					if (!updated.enabled) {
 						// The scheduler turned a recurring job off (it could not
 						// compute the next run). Nobody on the account did this, so
 						// say why and tell the owners.
@@ -2343,7 +2330,7 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 		finishedAt: nowIso,
 		durationMs,
 	}
-	if (row.record.schedule.type === 'once' || !scheduledFor) {
+	if (!scheduledFor) {
 		const nextRunAt = computeJobRetryAt({
 			now: input.now,
 			retryCount: row.retry_count,

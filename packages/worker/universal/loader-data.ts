@@ -2500,7 +2500,6 @@ type AccountLoaderJsonValue =
 	| { [key: string]: AccountLoaderJsonValue }
 
 type AccountJobSchedule =
-	| { type: 'once'; runAt: string }
 	| { type: 'interval'; every: string }
 	| { type: 'cron'; expression: string }
 

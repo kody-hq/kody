@@ -43,14 +43,6 @@ test('job schedule helpers normalize schedules and compute the next run time', (
 	expect(
 		computeNextRunAt({
 			schedule: {
-				type: 'once',
-				runAt: '2026-04-17T15:00:00Z',
-			},
-		}),
-	).toBe('2026-04-17T15:00:00.000Z')
-	expect(
-		computeNextRunAt({
-			schedule: {
 				type: 'interval',
 				every: '15m',
 			},
@@ -59,12 +51,7 @@ test('job schedule helpers normalize schedules and compute the next run time', (
 	).toBe('2026-04-17T15:15:00.000Z')
 })
 
-test('estimateScheduleMinIntervalMs measures interval and cron gaps and ignores once', () => {
-	expect(
-		estimateScheduleMinIntervalMs({
-			schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
-		}),
-	).toBeNull()
+test('estimateScheduleMinIntervalMs measures interval and cron gaps', () => {
 	expect(
 		estimateScheduleMinIntervalMs({
 			schedule: { type: 'interval', every: '5m' },

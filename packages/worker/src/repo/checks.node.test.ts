@@ -59,8 +59,8 @@ const bundleContext = {
 	userId: ownerIdFromStored('user-123'),
 }
 
-function onceJob(entry: string) {
-	return { entry, schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' } }
+function recurringJob(entry: string) {
+	return { entry, schedule: { type: 'interval', every: '1h' } }
 }
 
 function manifest(
@@ -252,7 +252,7 @@ test('runRepoChecks strips repo-session workspace prefixes from package snapshot
 				[
 					'/session/package.json',
 					manifest('session-backed-job', {
-						jobs: { session: onceJob('/src/job.ts') },
+						jobs: { session: recurringJob('/src/job.ts') },
 					}),
 				],
 				['/session/src/index.ts', ready],
@@ -278,7 +278,7 @@ test('runRepoChecks strips repo-session workspace prefixes from package snapshot
 })
 
 test('runRepoChecks typechecks package-owned jobs (kody:runtime imports, emits, and ESM entrypoints)', async () => {
-	const jobs = { runtime: onceJob('src/job.ts') }
+	const jobs = { runtime: recurringJob('src/job.ts') }
 	const runtimeGlobals = await runChecks(
 		packageFiles(manifest('runtime-globals-job', { jobs }), {
 			'src/job.ts': `import { kody, packageStorage } from 'kody:runtime'
@@ -369,7 +369,7 @@ test('runRepoChecks validates every persisted package artifact target before pub
 			manifest(
 				'persisted-artifacts',
 				{
-					jobs: { digest: onceJob('src/job.ts') },
+					jobs: { digest: recurringJob('src/job.ts') },
 					subscriptions: {
 						'email.message.received': { handler: './src/subscription.ts' },
 					},
@@ -433,8 +433,8 @@ test('runRepoChecks typechecks every callable through one language-service progr
 				'multi-callable',
 				{
 					jobs: {
-						alpha: onceJob('src/job-a.ts'),
-						beta: onceJob('src/job-b.ts'),
+						alpha: recurringJob('src/job-a.ts'),
+						beta: recurringJob('src/job-b.ts'),
 					},
 					subscriptions: {
 						'email.message.received': { handler: './src/on-email.ts' },
@@ -492,7 +492,7 @@ test('runRepoChecks typechecks every callable through one language-service progr
 test('runRepoChecks still reports unknown globals for package-owned jobs', async () => {
 	const { result } = await runChecks(
 		packageFiles(
-			manifest('broken-job', { jobs: { broken: onceJob('src/job.ts') } }),
+			manifest('broken-job', { jobs: { broken: recurringJob('src/job.ts') } }),
 			{ 'src/job.ts': 'export default async () => totallyMissingThing()\n' },
 		),
 		{
@@ -524,7 +524,7 @@ test('runRepoChecks still reports unknown globals for package-owned jobs', async
 
 test('runRepoChecks injects package tsconfig overlays that allow optional .ts imports', async () => {
 	const packageJson = manifest('ts-extension-job', {
-		jobs: { tsExtension: onceJob('src/job.ts') },
+		jobs: { tsExtension: recurringJob('src/job.ts') },
 	})
 	const sources = {
 		'src/job.ts': 'export { default } from "./helper.ts"\n',

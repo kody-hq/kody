@@ -141,8 +141,8 @@ export function createPackageJobManifest(input: {
 				[input.jobName]: {
 					entry: input.entry ?? './src/job.ts',
 					schedule: input.schedule ?? {
-						type: 'once',
-						runAt: '2026-04-17T15:00:00Z',
+						type: 'interval',
+						every: '1h',
 					},
 				},
 			},

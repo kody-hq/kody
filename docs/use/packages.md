@@ -794,9 +794,23 @@ Recurring schedules belong on a saved package:
   including package exports the job imports. Outbound `fetch` keeps its own
   5-minute deadline and 60s idle timeout
 
-Jobs are part of the package definition. Deferred one-shot work uses
-`workflows.create({ runAt })` from `execute` or package runtime — see
-[Workflows](./workflows.md).
+Jobs are part of the package definition and recur on a cron or interval
+schedule. For a one-shot run at a specific time, use a durable workflow from
+`execute` or package runtime:
+
+```ts
+import { workflows } from 'kody:runtime'
+
+await workflows.create({
+	exportName: './my-export',
+	runAt: '2027-01-01T16:00:00Z',
+	idempotencyKey: 'my-export:2027-01-01',
+	params: {},
+})
+```
+
+See [Workflows](./workflows.md) for `code`-based runs, retries, and run
+inspection.
 
 `jobUpdate` adjusts metadata on an existing job: schedule, timezone, enabled
 state, kill-switch state, params, `expires_at` (UTC ISO auto-disable; null

@@ -468,7 +468,6 @@ async function seedPersonData(
 	stableUserId: string,
 ): Promise<SeededPerson> {
 	const log = input.log ?? (() => {})
-	const now = input.now ?? (() => new Date())
 	const echoUrl = `${input.origins.mockCloudflare}/__mocks/rehearsal/echo`
 	const mockHost = new URL(input.origins.mockCloudflare).host
 
@@ -493,12 +492,10 @@ async function seedPersonData(
 		})
 	}
 
-	const oneOffRunAt = new Date(now().getTime() + 30 * 86_400_000).toISOString()
 	const saved = await callCapability(session, 'packageSave', {
 		files: personalPackageFiles({
 			username: user.username,
 			echoUrl,
-			oneOffRunAt,
 		}),
 	})
 	const packageId = readStringAt(saved, ['package_id'], 'packageSave')

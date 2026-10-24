@@ -159,8 +159,10 @@ function createJobRecord(overrides: Partial<JobRecord> = {}): JobRecord {
 	}
 }
 
-function claimedRow(record: JobRecord) {
-	const scheduledFor = record.nextRunAt
+function claimedRow(
+	record: JobRecord,
+	scheduledFor: string | null = record.nextRunAt,
+) {
 	return {
 		id: record.id,
 		user_id: record.userId,
@@ -234,8 +236,11 @@ function alreadyRecordedRun(
 	}
 }
 
-function seedDueClaim(record: JobRecord) {
-	const row = claimedRow(record)
+function seedDueClaim(
+	record: JobRecord,
+	scheduledFor: string | null = record.nextRunAt,
+) {
+	const row = claimedRow(record, scheduledFor)
 	listDueJobRows.mockResolvedValue([row])
 	claimJobRow.mockResolvedValue(row)
 	return row
@@ -470,7 +475,7 @@ test('a recurring job the scheduler turns off tells the owners why', async () =>
 	expect(notifyOwnersOfJobAutoDisabled).not.toHaveBeenCalled()
 })
 
-test('a scheduled slot with no enablement on surfaces the skip and does not use up a once job', async () => {
+test('a scheduled slot with no enablement on surfaces the skip', async () => {
 	planEnablementRuns.mockResolvedValueOnce({ runs: [], skipped: [] })
 	planEnablementRuns.mockResolvedValueOnce({ runs: [], skipped: [] })
 	claimRunRecord.mockClear()
@@ -530,49 +535,6 @@ test('a scheduled slot with no enablement on surfaces the skip and does not use 
 				error: skipError,
 				durationMs: 0,
 			},
-		}),
-	)
-	expect(claimRunRecord).not.toHaveBeenCalled()
-
-	finalizeClaimedJobRow.mockClear()
-	upsertJobRunObservability.mockClear()
-	renewClaimedJobRow.mockClear()
-	renewClaimedJobRow.mockResolvedValue(true)
-	const once = createJobRecord({
-		id: 'package-job:pkg-fenced:once-skip',
-		schedule: { type: 'once', runAt: '2026-07-30T19:00:00.000Z' },
-	})
-	seedDueClaim(once)
-	await expect(runDue(once.userId)).resolves.toEqual({
-		dueJobCount: 1,
-		successCount: 0,
-		errorCount: 1,
-		jobOutcomes: [
-			{
-				jobId: once.id,
-				scheduleType: 'once',
-				outcome: 'failure',
-				nextRunAt: '2026-07-30T19:00:05.000Z',
-				deleted: false,
-				error: skipError,
-			},
-		],
-	})
-	expect(finalizeClaimedJobRow).not.toHaveBeenCalled()
-	expect(retryClaimedJobRow).toHaveBeenCalledWith(
-		expect.objectContaining({
-			jobId: once.id,
-			nextRunAt: '2026-07-30T19:00:05.000Z',
-		}),
-	)
-	expect(upsertJobRunObservability).toHaveBeenCalledWith(
-		expect.objectContaining({
-			outcome: expect.objectContaining({
-				jobId: once.id,
-				status: 'error',
-				ranAt: slotAt,
-				error: skipError,
-			}),
 		}),
 	)
 	expect(claimRunRecord).not.toHaveBeenCalled()

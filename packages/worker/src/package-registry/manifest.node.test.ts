@@ -410,6 +410,32 @@ test('parseAuthoredPackageJson rejects invalid manifests with a specific error p
 	expect(unmatched).toEqual([])
 })
 
+test('parseAuthoredPackageJson rejects once job schedules with workflow guidance', () => {
+	const error = (() => {
+		try {
+			parse('@kentcdodds/retired-once-job', {
+				jobs: {
+					reminder: {
+						entry: './src/reminder.ts',
+						schedule: {
+							type: 'once',
+							runAt: '2027-01-01T16:00:00Z',
+						},
+					},
+				},
+			})
+		} catch (caught) {
+			return caught instanceof Error ? caught.message : String(caught)
+		}
+		return ''
+	})()
+
+	expect(error).toContain('at kody.jobs.reminder.schedule')
+	expect(error).toContain(
+		"Job schedule type \"once\" was removed: jobs are recurring (cron or interval). For a one-shot run at a set time, delete this job and start a workflow instead: import { workflows } from 'kody:runtime'; await workflows.create({ exportName: './my-export', runAt: '2027-01-01T16:00:00Z', idempotencyKey: 'my-export:2027-01-01', params: {} }). See https://kody.codes/docs/triggers.",
+	)
+})
+
 test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and secret mounts', () => {
 	const manifest = parse('@kentcdodds/discord-gateway', {
 		secretMounts: {

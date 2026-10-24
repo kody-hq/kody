@@ -234,7 +234,7 @@ test('job bodies with a tsconfig are typechecked, not only their default-export 
 			jobs: {
 				nightly: {
 					entry: 'src/job.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 			},
 		}),
@@ -295,11 +295,11 @@ test('multi-callable typecheck keeps per-entrypoint diagnostics from one harness
 			jobs: {
 				a: {
 					entry: 'src/job-a.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 				b: {
 					entry: 'src/job-b.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 			},
 		}),

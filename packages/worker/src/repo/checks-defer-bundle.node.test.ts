@@ -60,7 +60,7 @@ function setupDefaultBundleMocks() {
 const digestJob = {
 	digest: {
 		entry: 'src/job.ts',
-		schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+		schedule: { type: 'interval', every: '1h' },
 	},
 }
 

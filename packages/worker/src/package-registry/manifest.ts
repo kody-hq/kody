@@ -1576,9 +1576,7 @@ export function buildPackageSearchProjection(
 				schedule:
 					job.schedule.type === 'cron'
 						? `cron:${job.schedule.expression}`
-						: job.schedule.type === 'interval'
-							? `interval:${job.schedule.every}`
-							: `once:${job.schedule.runAt}`,
+						: `interval:${job.schedule.every}`,
 				enabled: job.enabled ?? true,
 			}))
 			.sort((left, right) => left.name.localeCompare(right.name)),

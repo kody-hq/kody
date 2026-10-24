@@ -10,10 +10,6 @@ export type JobSchedule =
 			type: 'interval'
 			every: string
 	  }
-	| {
-			type: 'once'
-			runAt: string
-	  }
 
 export type JobRunStatus = 'success' | 'error'
 
@@ -43,7 +39,7 @@ export type JobRecord = {
 	expiresAt: string | null
 	/**
 	 * Why the job is off, in plain words: the reason given when someone turned
-	 * it off, or what Kody did (auto-disable, expiry, one-time job finished).
+	 * it off, or what Kody did (auto-disable or expiry).
 	 * Null while the job is on, and for jobs turned off before this existed.
 	 */
 	disabledReason?: string | null

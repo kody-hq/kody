@@ -67,7 +67,7 @@ afterEach(() => {
 	resetJobServiceMocks()
 })
 
-const onceSchedule = { type: 'once', runAt: '2026-04-17T15:00:00Z' } as const
+const recurringSchedule = { type: 'interval', every: '1h' } as const
 
 function createExecuteEnv(
 	initialRows: Parameters<typeof createDatabase>[0] = {},
@@ -94,7 +94,7 @@ function createJob(
 		userId: ownerIdFromStored('user-123'),
 		publishedCommit: null,
 		storageId: `job:${input.id}`,
-		schedule: onceSchedule,
+		schedule: recurringSchedule,
 		timezone: 'UTC',
 		enabled: true,
 		killSwitchEnabled: false,

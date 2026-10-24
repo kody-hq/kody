@@ -112,13 +112,13 @@ still refuses to write into a non-empty roster.
 | `rh-dave`  | `/auth` signup + `adminUserVerify` (random id)                            | Forked the org listing                                                                                                                                         |
 | `@rh-org`  | `orgCreate` by bob (an ordinary org, no `users` row)                      | Public (listed), private, and hidden packages                                                                                                                  |
 
-Each of alice, bob, carol, and dave has: a package with an inline app, a
-recurring and a one-off job (the recurring one run once), a webhook with a
-minted URL, a package-scoped and a user-level secret (each approved for the mock
-echo host, with a decryption proof checked during seed), a connected OAuth
-integration against the preview's mock token endpoint, four memories, an MCP
-OAuth connection, a CLI bootstrap token, and an API token with every scope.
-Usage comes from the seed's own execute and job runs.
+Each of alice, bob, carol, and dave has: a package with an inline app and a
+recurring job (run once during the rehearsal), a webhook with a minted URL, a
+package-scoped and a user-level secret (each approved for the mock echo host,
+with a decryption proof checked during seed), a connected OAuth integration
+against the preview's mock token endpoint, four memories, an MCP OAuth
+connection, a CLI bootstrap token, and an API token with every scope. Usage
+comes from the seed's own execute and job runs.
 
 Writes go through the product: MCP `execute` and the Start server functions the
 website uses. The only direct D1 writes are the seed-path users (the same SQL as
