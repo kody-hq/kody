@@ -1,3 +1,4 @@
+import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { jobsData } from './jobs-data.ts'
@@ -32,6 +33,8 @@ export async function armJobForEnablement(input: {
 	/** Who turned the enablement on; recorded when the job turns on. */
 	actor?: ToggleAuditActor
 	enablementId?: string | null
+	/** Set when a package run turned the enablement on. */
+	cause?: OrgAuditCause | null
 }): Promise<ArmJobForEnablementResult> {
 	let jobName: string | null = null
 	const result = await withAccountWriteLease({
@@ -85,6 +88,7 @@ export async function armJobForEnablement(input: {
 			source: 'enablement',
 			actor: input.actor ?? automationToggleActor(),
 			reason: 'Turned on with its enablement.',
+			cause: input.cause ?? null,
 		})
 	}
 	return result

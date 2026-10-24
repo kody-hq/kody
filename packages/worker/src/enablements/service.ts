@@ -797,6 +797,7 @@ export async function enableTriggerWithJobForCaller(input: {
 			env: input.env,
 			request: input.request,
 			enablement: plan.enablement,
+			cause: input.cause ?? null,
 		})
 		return { enablement: plan.enablement, job }
 	}
@@ -846,6 +847,7 @@ export async function enableTriggerWithJobForCaller(input: {
 		env: input.env,
 		request: input.request,
 		enablement: created,
+		cause: input.cause ?? null,
 	})
 	return { enablement: created, job }
 }
@@ -854,6 +856,7 @@ async function armCronJobWithOutcome(input: {
 	env: Env
 	request: RequestContext
 	enablement: EnablementRecord
+	cause?: OrgAuditCause | null
 }): Promise<EnablementJobOutcome | null> {
 	const result = await armCronJobForCallerEnablement(input)
 	if (result === 'not_applicable') return null
@@ -890,6 +893,8 @@ export async function armCronJobForCallerEnablement(input: {
 	env: Env
 	request: RequestContext
 	enablement: EnablementRecord
+	/** Set when a package run turned the enablement on. */
+	cause?: OrgAuditCause | null
 }): Promise<ArmJobForEnablementResult | 'not_permitted' | 'not_applicable'> {
 	const { enablement } = input
 	if (enablement.triggerKind !== 'cron' || enablement.state !== 'on') {
@@ -906,6 +911,7 @@ export async function armCronJobForCallerEnablement(input: {
 		jobId: enablement.instanceId,
 		actor: toggleActorFromRequest(input.request),
 		enablementId: enablement.id,
+		cause: input.cause ?? null,
 	})
 }
 
