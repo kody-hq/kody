@@ -18,13 +18,13 @@ vi.mock('./service.ts', () => ({
 	runIdempotentCommunityFork: (
 		_input: unknown,
 		handlers: {
-			create: () => Promise<unknown>
+			create: (hold: { claimId: string }) => Promise<unknown>
 			existing: (fork: unknown) => Promise<unknown>
 		},
 	) =>
 		mockModule.existingFork
 			? handlers.existing(mockModule.existingFork)
-			: handlers.create(),
+			: handlers.create({ claimId: 'test-claim' }),
 	buildAlreadyForkedMessage: (input: { targetName: string }) =>
 		`You already forked this listing as "${input.targetName}".`,
 }))
