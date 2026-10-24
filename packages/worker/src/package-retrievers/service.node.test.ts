@@ -4,19 +4,19 @@ import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
 	runBundledModuleWithRegistry: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -112,19 +112,23 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 		scopes: ['context'],
 	})
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([healthy, stalled])
-	mockFns.getSavedPackageById.mockImplementation(
-		async (_db: unknown, input: { packageId: string }) =>
-			createSavedPackage({
-				packageId: input.packageId,
-				kodyId:
-					input.packageId === 'pkg-healthy' ? 'healthy-pkg' : 'stalled-pkg',
-			}),
+	mockFns.listSavedPackagesByIds.mockImplementation(
+		async (
+			_db: unknown,
+			input: { userId: string; packageIds: Array<string> },
+		) =>
+			input.packageIds.map((packageId) =>
+				createSavedPackage({
+					packageId,
+					kodyId: packageId === 'pkg-healthy' ? 'healthy-pkg' : 'stalled-pkg',
+				}),
+			),
 	)
-	mockFns.getEntitySourceById.mockImplementation(
-		async (_db: unknown, sourceId: string) =>
-			createEntitySource({
-				packageId: sourceId.replace(/^source-/, ''),
-			}),
+	mockFns.listEntitySourcesByIds.mockImplementation(
+		async (_db: unknown, sourceIds: Array<string>) =>
+			sourceIds.map((sourceId) =>
+				createEntitySource({ packageId: sourceId.replace(/^source-/, '') }),
+			),
 	)
 	mockFns.loadPublishedBundleArtifactByIdentity.mockResolvedValue({
 		artifact: {
@@ -184,6 +188,20 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 	expect(run.warnings[0]).toMatch(/stalled-pkg\/inbox/)
 	expect(run.warnings[0]).toMatch(/timed out/i)
 	expect(consoleError).toHaveBeenCalledTimes(1)
+	// Bulk helpers must each be called exactly once (not once per retriever)
+	// to prevent N+1 DB query regressions.
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			packageIds: expect.arrayContaining(['pkg-healthy', 'pkg-stalled']),
+		}),
+	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.arrayContaining(['source-pkg-healthy', 'source-pkg-stalled']),
+	)
 	expect(mockFns.runBundledModuleWithRegistry).toHaveBeenCalledTimes(2)
 	for (const call of mockFns.runBundledModuleWithRegistry.mock.calls) {
 		expect(call[4]).toEqual(

@@ -5,8 +5,14 @@ import { inheritRequest } from '#worker/request-context/request-context.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#mcp/executor.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
-import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import {
+	getSavedPackageById,
+	listSavedPackagesByIds,
+} from '#worker/package-registry/repo.ts'
+import {
+	getEntitySourceById,
+	listEntitySourcesByIds,
+} from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import { loadPublishedBundleArtifactByIdentity } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { isUnrepairablePreBindingArtifact } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
@@ -139,11 +145,18 @@ async function invokeRetriever(input: {
 	} | null
 	conversationId?: string
 	waitUntil?: (promise: Promise<unknown>) => void
+	/** Pre-fetched to avoid N+1 queries. Falls back to a single DB read when absent. */
+	prefetchedSavedPackage?: SavedPackageRecord | null
+	/** Pre-fetched to avoid N+1 queries. Falls back to a single DB read when absent. */
+	prefetchedSource?: EntitySourceRow | null
 }) {
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
-		userId: input.userId,
-		packageId: input.entry.packageId,
-	})
+	const savedPackage =
+		input.prefetchedSavedPackage !== undefined
+			? input.prefetchedSavedPackage
+			: await getSavedPackageById(input.env.APP_DB, {
+					userId: input.userId,
+					packageId: input.entry.packageId,
+				})
 	if (!savedPackage) {
 		return []
 	}
@@ -156,10 +169,10 @@ async function invokeRetriever(input: {
 	) {
 		return []
 	}
-	const source = await getEntitySourceById(
-		input.env.APP_DB,
-		input.entry.sourceId,
-	)
+	const source =
+		input.prefetchedSource !== undefined
+			? input.prefetchedSource
+			: await getEntitySourceById(input.env.APP_DB, input.entry.sourceId)
 	if (
 		!source ||
 		!source.published_commit ||
@@ -317,6 +330,31 @@ export async function runPackageRetrievers(input: {
 			scope: input.scope,
 		})
 	).slice(0, input.maxProviders ?? (input.scope === 'context' ? 3 : 10))
+	// Bulk-load savedPackage and entitySource rows up front so that the
+	// per-retriever fan-out below does not produce N+1 DB queries. If a batch
+	// query fails we fall back to undefined maps so each invokeRetriever call
+	// falls back to its own DB read — keeping the soft-failure semantics of
+	// Promise.allSettled intact rather than rejecting the whole call.
+	const packageIds = entries.map((e) => e.packageId)
+	const sourceIds = entries.map((e) => e.sourceId)
+	let savedPackageById: Map<string, SavedPackageRecord> | undefined
+	let entitySourceById: Map<string, EntitySourceRow> | undefined
+	try {
+		const [savedPackageRows, entitySourceRows] = await Promise.all([
+			listSavedPackagesByIds(input.env.APP_DB, { userId, packageIds }),
+			listEntitySourcesByIds(input.env.APP_DB, sourceIds),
+		])
+		savedPackageById = new Map(savedPackageRows.map((p) => [p.id, p]))
+		entitySourceById = new Map(entitySourceRows.map((s) => [s.id, s]))
+	} catch (error) {
+		console.error(
+			JSON.stringify({
+				message: 'bulk prefetch failed for package retrievers; falling back to per-retriever DB reads',
+				reason: getErrorMessage(error),
+			}),
+		)
+	}
+
 	// Soft-fail per retriever: one stalled/buggy package must not fail MCP
 	// `search` or pre-sandbox execute memory/context enrichment. Callers already
 	// surface `warnings` to agents. This wrap creates a request budget only
@@ -338,6 +376,12 @@ export async function runPackageRetrievers(input: {
 						memoryContext: input.memoryContext,
 						conversationId: input.conversationId,
 						waitUntil: input.waitUntil,
+						prefetchedSavedPackage: savedPackageById
+							? (savedPackageById.get(entry.packageId) ?? null)
+							: undefined,
+						prefetchedSource: entitySourceById
+							? (entitySourceById.get(entry.sourceId) ?? null)
+							: undefined,
 					}),
 				),
 			),

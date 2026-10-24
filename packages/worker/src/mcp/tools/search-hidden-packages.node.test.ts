@@ -3,17 +3,17 @@ import { expect, test, vi } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -59,14 +59,17 @@ function createHiddenRetrieverFixture(scopes: Array<'search' | 'context'>) {
 test('hidden package retrievers skip search by default, honor includeHiddenPackages, and still run for context', async () => {
 	const { entry, hiddenPackage } = createHiddenRetrieverFixture(['search'])
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([entry])
-	mockFns.getSavedPackageById.mockResolvedValue(hiddenPackage)
-	mockFns.getEntitySourceById.mockResolvedValue(null)
+	mockFns.listSavedPackagesByIds.mockResolvedValue([hiddenPackage])
+	// Bulk source prefetch returns empty — source is not available.
+	mockFns.listEntitySourcesByIds.mockResolvedValue([])
 
 	const { runPackageRetrievers } =
 		await import('#worker/package-retrievers/service.ts')
 
 	const env = { APP_DB: {}, BUNDLE_ARTIFACTS_KV: {} } as Env
 
+	// Search with hidden package excluded: bulk prefetch runs once but the
+	// hidden check exits before the source is used.
 	const excluded = await runPackageRetrievers({
 		env,
 		baseUrl: 'https://example.com',
@@ -76,8 +79,14 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		query: 'notes',
 	})
 	expect(excluded.results).toEqual([])
-	expect(mockFns.getEntitySourceById).not.toHaveBeenCalled()
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
+		'source-hidden',
+	])
+	mockFns.listEntitySourcesByIds.mockClear()
 
+	// Search with includeHiddenPackages: passes the hidden check, but source is
+	// null so the retriever still returns no results.
 	const included = await runPackageRetrievers({
 		env,
 		baseUrl: 'https://example.com',
@@ -88,15 +97,15 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		includeHiddenPackages: true,
 	})
 	expect(included.results).toEqual([])
-	expect(mockFns.getEntitySourceById).toHaveBeenCalledWith(
-		env.APP_DB,
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
 		'source-hidden',
-	)
+	])
+	mockFns.listEntitySourcesByIds.mockClear()
 
 	const { entry: contextEntry } = createHiddenRetrieverFixture(['context'])
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([contextEntry])
-	mockFns.getEntitySourceById.mockClear()
 
+	// Context scope: hidden packages are not gated; source still null → no results.
 	const contextRun = await runPackageRetrievers({
 		env,
 		baseUrl: 'https://example.com',
@@ -106,10 +115,9 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		query: 'notes',
 	})
 	expect(contextRun.results).toEqual([])
-	expect(mockFns.getEntitySourceById).toHaveBeenCalledWith(
-		env.APP_DB,
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
 		'source-hidden',
-	)
+	])
 	// The dynamic import above pulls in the retriever service module graph, and a
 	// cold transform of it can exceed the 5s default when the worker pool is
 	// saturated (the suite spends far longer importing than running). Same

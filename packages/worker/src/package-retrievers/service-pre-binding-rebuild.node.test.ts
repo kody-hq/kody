@@ -3,8 +3,8 @@ import { expect, test, vi } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
 	ensureModuleArtifact: vi.fn(),
@@ -12,11 +12,11 @@ const mockFns = vi.hoisted(() => ({
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -66,34 +66,38 @@ function seedRetriever() {
 			maxResults: null,
 		},
 	])
-	mockFns.getSavedPackageById.mockResolvedValue({
-		id: packageId,
-		userId: ownerIdFromStored('user-1'),
-		name: '@kody/retriever-pkg',
-		kodyId: 'retriever-pkg',
-		description: 'retriever-pkg',
-		tags: [],
-		searchText: 'retriever-pkg',
-		sourceId,
-		hasApp: false,
-		hidden: false,
-		isPrivate: false,
-		isInternetVisible: false,
-		createdAt: '2026-10-20T00:00:00.000Z',
-		updatedAt: '2026-10-20T00:00:00.000Z',
-	})
-	mockFns.getEntitySourceById.mockResolvedValue({
-		id: sourceId,
-		user_id: ownerIdFromStored('user-1'),
-		repo_id: `repo-${packageId}`,
-		entity_kind: 'package',
-		entity_id: packageId,
-		manifest_path: 'package.json',
-		source_root: '.',
-		published_commit: 'commit-1',
-		created_at: '2026-10-20T00:00:00.000Z',
-		updated_at: '2026-10-20T00:00:00.000Z',
-	})
+	mockFns.listSavedPackagesByIds.mockResolvedValue([
+		{
+			id: packageId,
+			userId: ownerIdFromStored('user-1'),
+			name: '@kody/retriever-pkg',
+			kodyId: 'retriever-pkg',
+			description: 'retriever-pkg',
+			tags: [],
+			searchText: 'retriever-pkg',
+			sourceId,
+			hasApp: false,
+			hidden: false,
+			isPrivate: false,
+			isInternetVisible: false,
+			createdAt: '2026-10-20T00:00:00.000Z',
+			updatedAt: '2026-10-20T00:00:00.000Z',
+		},
+	])
+	mockFns.listEntitySourcesByIds.mockResolvedValue([
+		{
+			id: sourceId,
+			user_id: ownerIdFromStored('user-1'),
+			repo_id: `repo-${packageId}`,
+			entity_kind: 'package',
+			entity_id: packageId,
+			manifest_path: 'package.json',
+			source_root: '.',
+			published_commit: 'commit-1',
+			created_at: '2026-10-20T00:00:00.000Z',
+			updated_at: '2026-10-20T00:00:00.000Z',
+		},
+	])
 	mockFns.runBundledModuleWithRegistry.mockResolvedValue({
 		result: { results: [] },
 	})
