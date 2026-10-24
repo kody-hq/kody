@@ -358,6 +358,17 @@ function isNonRetryableError(error: unknown) {
 	return error instanceof NonRetryableError
 }
 
+/**
+ * Fails the current step with no further attempts. The Workflows engine treats
+ * a step failure as terminal only when `error.name === 'NonRetryableError'`
+ * (or the message starts with it); errors cross an RPC boundary, so it cannot
+ * use `instanceof`. Passing a custom `name` to `NonRetryableError` silently
+ * makes the step retryable, so this always keeps the default name.
+ */
+function terminalWorkflowStepError(message: string) {
+	return new NonRetryableError(message)
+}
+
 function normalizeNonEmptyString(value: string, fieldName: string) {
 	const trimmed = value.trim()
 	if (!trimmed) {
@@ -1646,7 +1657,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						// Suspension stays in force across step retries, so fail the
 						// step once instead of waiting out the retry backoff.
 						if (isAccountSuspendedError(error)) {
-							throw new NonRetryableError(error.message, error.name)
+							throw terminalWorkflowStepError(error.message)
 						}
 						throw error
 					}
@@ -1837,9 +1848,8 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			}
 			if (errorCode === sourceRevisionChangedErrorCode) {
 				// A retry would hit the same moved revision; fail the step once.
-				throw new NonRetryableError(
+				throw terminalWorkflowStepError(
 					getWorkflowInvocationErrorMessage(response),
-					'SourceRevisionChangedError',
 				)
 			}
 			if (response.status < 200 || response.status >= 300) {

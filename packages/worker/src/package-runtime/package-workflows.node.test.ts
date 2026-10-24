@@ -154,6 +154,41 @@ function createInlineStep(attempt = 1) {
 	} as unknown as WorkflowStep
 }
 
+/**
+ * Mirrors how the Workflows engine retries `step.do`: attempts 1..limit+1, and
+ * a failure stops early only when its `name` is `NonRetryableError` (or its
+ * message starts with it). The engine sees the error after an RPC hop, so it
+ * cannot rely on `instanceof`.
+ */
+function createRetryingStep() {
+	const attempts = new Map<string, number>()
+	const step = {
+		sleepUntil: vi.fn(),
+		do: vi.fn(
+			async (
+				name: string,
+				config: { retries?: { limit: number } },
+				callback: (ctx?: { attempt: number }) => unknown,
+			) => {
+				const limit = config.retries?.limit ?? 0
+				for (let attempt = 1; ; attempt++) {
+					attempts.set(name, attempt)
+					try {
+						return await callback({ attempt })
+					} catch (error) {
+						const terminal =
+							error instanceof Error &&
+							(error.name === 'NonRetryableError' ||
+								error.message.startsWith('NonRetryableError'))
+						if (terminal || attempt > limit) throw error
+					}
+				}
+			},
+		),
+	} as unknown as WorkflowStep
+	return { step, attempts }
+}
+
 /** Queues a run for `user-1` on a fresh stateful binding; `run()` executes its queued payload. */
 async function queueWorkflow(
 	body: Record<string, unknown>,
@@ -162,7 +197,7 @@ async function queueWorkflow(
 		kodyId: string
 		sourceId: string
 	} | null = null,
-	options: { publishedCommit?: string } = {},
+	options: { publishedCommit?: string; step?: WorkflowStep } = {},
 ) {
 	const binding = createStatefulWorkflowBinding()
 	const env = createWorkflowEnv(
@@ -178,7 +213,7 @@ async function queueWorkflow(
 	})
 	const queued = binding.instances.get(created.id)
 	if (!queued?.params) throw new Error('Expected queued workflow payload.')
-	const step = createInlineStep()
+	const step = options.step ?? createInlineStep()
 	const run = (payload: unknown = queued.params, instanceId = created.id) =>
 		new DynamicCallableWorkflowBase(
 			{ waitUntil: vi.fn() } as unknown as ExecutionContext,
@@ -521,7 +556,10 @@ test('suspended owners fail inline and package workflow steps once without retri
 	]
 	for (const body of bodies) {
 		runRecordMocks.resetProjections()
-		const { created, run } = await queueWorkflow({ ...body, runAt })
+		const { step, attempts } = createRetryingStep()
+		const { created, run } = await queueWorkflow({ ...body, runAt }, null, {
+			step,
+		})
 		invocationMocks.runModuleWithRegistry.mockReset()
 		invocationMocks.invokePackageExport.mockReset()
 		// The inline path resolves the owner itself; the package path gets the
@@ -540,10 +578,16 @@ test('suspended owners fail inline and package workflow steps once without retri
 		await expect(run()).rejects.toSatisfy(
 			(error: unknown) =>
 				error instanceof NonRetryableError &&
-				error.name === 'AccountSuspendedError' &&
 				error.message === accountSuspendedMessage,
 		)
 		expect(invocationMocks.runModuleWithRegistry).not.toHaveBeenCalled()
+		expect(
+			attempts.get(
+				'code' in body
+					? 'execute inline workflow code'
+					: 'invoke saved package workflow export',
+			),
+		).toBe(1)
 		expect(findRun(created.id)).toMatchObject({
 			status: 'errored',
 			lastError: accountSuspendedMessage,
@@ -783,6 +827,7 @@ test('package workflows record the enqueue commit and the exact commit each atte
 
 test('pinned package workflows run only the enqueue commit and fail once when it moved', async () => {
 	runRecordMocks.resetProjections()
+	const pinnedStep = createRetryingStep()
 	const { created, queued, run } = await queueWorkflow(
 		{
 			...packageBody,
@@ -791,7 +836,7 @@ test('pinned package workflows run only the enqueue commit and fail once when it
 			sourceRevision: 'pinned',
 		},
 		null,
-		{ publishedCommit: 'commit-a' },
+		{ publishedCommit: 'commit-a', step: pinnedStep.step },
 	)
 	expect(created).toMatchObject({
 		enqueued_commit: 'commit-a',
@@ -816,7 +861,9 @@ test('pinned package workflows run only the enqueue commit and fail once when it
 
 	const refusal =
 		'Package "shade-automation" was republished after this run was queued.'
-	invocationMocks.invokePackageExport.mockImplementationOnce(
+	// Every attempt would find the same moved commit.
+	invocationMocks.invokePackageExport.mockReset()
+	invocationMocks.invokePackageExport.mockImplementation(
 		resolveCommitThen('commit-b', {
 			status: 409,
 			body: {
@@ -827,9 +874,12 @@ test('pinned package workflows run only the enqueue commit and fail once when it
 	)
 	await expect(run()).rejects.toSatisfy(
 		(error: unknown) =>
-			error instanceof NonRetryableError &&
-			error.name === 'SourceRevisionChangedError' &&
-			error.message === refusal,
+			error instanceof NonRetryableError && error.message === refusal,
+	)
+	// The engine must not retry the refused step.
+	expect(invocationMocks.invokePackageExport).toHaveBeenCalledTimes(1)
+	expect(pinnedStep.attempts.get('invoke saved package workflow export')).toBe(
+		1,
 	)
 	const finish = lastFinish()
 	expect(finish.status).toBe('error')
@@ -841,6 +891,7 @@ test('pinned package workflows run only the enqueue commit and fail once when it
 		source_revision_changed: true,
 		resolved_commit: 'commit-b',
 	})
+	invocationMocks.invokePackageExport.mockReset()
 })
 
 test('workflows.create validates sourceRevision', async () => {
