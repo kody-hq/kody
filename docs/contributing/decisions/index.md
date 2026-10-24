@@ -213,6 +213,7 @@ Open these before proposing a new primitive, surface, or storage home.
   — one server backend (`device_start` / `device_poll`), two entry points
   (`/connect/oauth` + MCP); `device_code` and client secret stay server-side;
   additive `device_authorization_url` + `flow=device`
+- [0078 — Webhook on/off is its enablement](./0078-webhook-on-off-is-its-enablement.md)
 
 ## Historical / UI / implementation
 

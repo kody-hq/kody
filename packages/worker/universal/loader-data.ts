@@ -1766,7 +1766,6 @@ export type PackageWebhookListItem = {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	/** True once a person approved it (a live enablement exists). */
 	approved: boolean
 	/** Where to approve a minted webhook; null when unminted or approved. */

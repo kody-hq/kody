@@ -1294,14 +1294,14 @@ test('turning a trigger on again keeps one enablement per person', async () => {
 	)
 })
 
-test('an approved webhook URL that has no signing secret gets one when it is turned on again', async () => {
+test('webhook approval initializes its signing secret', async () => {
 	const t = await setup()
 	await t.db
 		.prepare(
 			`INSERT INTO webhook_endpoints (
 				id, user_id, package_id, webhook_name, url_secret_hash,
-				url_secret_encrypted, enabled, created_at, rotated_at
-			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', 0, ?, ?)`,
+				url_secret_encrypted, created_at, rotated_at
+			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', ?, ?)`,
 		)
 		.bind(t.orgId, now, now)
 		.run()

@@ -339,8 +339,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/webhooks/apply', 'webhookUrlApply'],
 		['POST', '/v1/webhooks/{webhookName}/url', 'webhookUrlMint'],
 		['POST', '/v1/webhooks/{webhookName}/url/rotate', 'webhookUrlRotate'],
-		['POST', '/v1/webhooks/{webhookName}/enable', 'webhookEnable'],
-		['POST', '/v1/webhooks/{webhookName}/disable', 'webhookDisable'],
 		['GET', '/v1/webhooks/{webhookName}/deliveries', 'webhookDeliveryList'],
 	]),
 	...capabilityRoutes('email', [

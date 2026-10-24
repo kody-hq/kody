@@ -206,7 +206,8 @@ test('the scan lists live webhooks that rely on the URL secret alone, with their
 		includeSignature: false,
 	})
 
-	expect(prepared[0]).toContain('e.enabled = 1')
+	expect(prepared[0]).toContain("state <> 'off'")
+	expect(prepared[0]).toContain('AS enabled')
 	expect(prepared[0]).toContain('e.deleted_at IS NULL')
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'webhook-verification-scan-manifest-failed',
@@ -262,7 +263,8 @@ test('the scan lists live webhooks that rely on the URL secret alone, with their
 		includeSignature: true,
 		includeDisabled: true,
 	})
-	expect(prepared.at(-1)).not.toContain('e.enabled = 1')
+	expect(prepared.at(-1)).toContain("AND state <> 'off'")
+	expect(prepared.at(-1)).toContain('AS enabled')
 	expect(prepared.at(-1)).toContain('e.deleted_at IS NULL')
 	expect(
 		withSignature.endpoints.find((row) => row.endpointId === 'ep-github'),

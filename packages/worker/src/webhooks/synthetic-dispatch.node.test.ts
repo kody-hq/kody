@@ -77,7 +77,6 @@ vi.mock('./repo.ts', () => ({
 		mocks.getWebhookEndpointByKey(...args),
 	getWebhookEndpointByIdForUser: vi.fn(),
 	listWebhookEndpointsForUser: vi.fn(),
-	setWebhookEndpointEnabled: vi.fn(),
 	upsertWebhookEndpointSecret: vi.fn(),
 }))
 
@@ -157,7 +156,6 @@ function mockPackage(
 					userId: ownerIdFromStored('user-1'),
 					packageId: 'pkg-1',
 					webhookName: 'hook',
-					enabled: true,
 				},
 	)
 	mocks.dispatchWebhookInvocation.mockResolvedValue({

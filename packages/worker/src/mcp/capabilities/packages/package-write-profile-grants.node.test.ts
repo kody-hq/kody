@@ -18,8 +18,6 @@ const mocks = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	syncArtifactSourceSnapshot: vi.fn(),
 	resolveSavedPackage: vi.fn(),
-	setWebhookEndpointEnabled: vi.fn(),
-	getWebhookEndpointByKey: vi.fn(),
 	getRepoSessionById: vi.fn(),
 	sqlQuery: vi.fn(),
 	deleteSavedPackageProjection: vi.fn(),
@@ -87,17 +85,6 @@ vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
 		mocks.resolveSavedPackage(...args),
 }))
 
-vi.mock('#worker/webhooks/repo.ts', async (importOriginal) => {
-	const actual = await importOriginal()
-	return {
-		...(actual as object),
-		setWebhookEndpointEnabled: (...args: Array<unknown>) =>
-			mocks.setWebhookEndpointEnabled(...args),
-		getWebhookEndpointByKey: (...args: Array<unknown>) =>
-			mocks.getWebhookEndpointByKey(...args),
-	}
-})
-
 vi.mock('#worker/repo/repo-sessions.ts', async (importOriginal) => {
 	const actual = await importOriginal()
 	return {
@@ -160,7 +147,6 @@ const { savePackageCapability } = await import('./save-package.ts')
 const { publishExternalPushCapability } =
 	await import('./publish-external-push.ts')
 const { getGitRemoteCapability } = await import('./get-git-remote.ts')
-const { setWebhookEnabledForUser } = await import('#worker/webhooks/service.ts')
 const { storageQueryCapability } =
 	await import('#mcp/capabilities/storage/storage-query.ts')
 const { deletePackageCapability } = await import('./delete-package.ts')
@@ -354,54 +340,6 @@ test('packageUpdate denies a read-only profile and allows write', async () => {
 		),
 	).resolves.toMatchObject({ ok: true, package: { package_id: 'pkg-1' } })
 	expect(mocks.updateSavedPackage).toHaveBeenCalled()
-})
-
-test('webhookEnable denies a read-only profile and allows write', async () => {
-	reset()
-	grants(['read'])
-	const request = callerContext().request
-	await denial(() =>
-		setWebhookEnabledForUser({
-			env: { APP_DB: {} } as Env,
-			request: request!,
-			userId: ownerIdFromStored('user-1'),
-			packageId: 'pkg-1',
-			webhookName: 'hook',
-			enabled: true,
-		}),
-	)
-	expect(mocks.setWebhookEndpointEnabled).not.toHaveBeenCalled()
-
-	reset()
-	grants(['write'])
-	mocks.getWebhookEndpointByKey.mockResolvedValue({
-		id: 'ep-hook',
-		packageId: 'pkg-1',
-		webhookName: 'hook',
-		enabled: true,
-	})
-	mocks.setWebhookEndpointEnabled.mockResolvedValue({
-		id: 'ep-hook',
-		packageId: 'pkg-1',
-		webhookName: 'hook',
-		enabled: true,
-	})
-	await expect(
-		setWebhookEnabledForUser({
-			env: { APP_DB: {} } as Env,
-			request: callerContext().request!,
-			userId: ownerIdFromStored('user-1'),
-			packageId: 'pkg-1',
-			webhookName: 'hook',
-			enabled: true,
-		}),
-	).resolves.toMatchObject({ enabled: true })
-	expect(mocks.setWebhookEndpointEnabled).toHaveBeenCalledWith(
-		expect.objectContaining({
-			endpointId: 'ep-hook',
-			enabled: true,
-		}),
-	)
 })
 
 test('repo session package writes deny a read-only profile and allow write', async () => {

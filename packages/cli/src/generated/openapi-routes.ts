@@ -1081,18 +1081,6 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['webhookName'],
 	},
 	{
-		operationId: 'webhookDisable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/disable',
-		pathParamNames: ['webhookName'],
-	},
-	{
-		operationId: 'webhookEnable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/enable',
-		pathParamNames: ['webhookName'],
-	},
-	{
 		operationId: 'webhookList',
 		method: 'GET',
 		pathTemplate: '/v1/webhooks',

@@ -193,7 +193,8 @@ turns anything on.
   link and only returns a webhook enablement that already exists. A webhook URL
   has at most one live enablement, so a second person's Approve is refused.
 - `enablementList` shows yours (`scope: "mine"`); Owners can list the whole org
-  (`scope: "org"`). `enablementDisable` turns one off.
+  (`scope: "org"`). `enablementDisable` turns one off. A webhook turned off this
+  way answers 404; turn it back on by Approving the same URL again.
 - If you lose access to the package, the org, or a credential the run uses, the
   enablement pauses and events are dropped. It resumes by itself on the next
   event once access is back.

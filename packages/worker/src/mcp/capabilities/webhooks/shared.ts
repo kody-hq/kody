@@ -64,7 +64,7 @@ export const listedWebhookSchema = z.object({
 		.string()
 		.nullable()
 		.describe(
-			'Webhook endpoint id when minted. Pass to rotate/enable/disable when several URLs share the name. Null when not minted.',
+			'Webhook endpoint id when minted. Pass to rotate when several URLs share the name. Turn it off with enablementDisable. Null when not minted.',
 		),
 	instance_label: z
 		.string()
@@ -82,10 +82,6 @@ export const listedWebhookSchema = z.object({
 		.string()
 		.nullable()
 		.describe('Public hostname of the ingress origin. Null when not minted.'),
-	enabled: z
-		.boolean()
-		.nullable()
-		.describe('Null when not minted; otherwise the mint enabled flag.'),
 	created_at: z.string().nullable(),
 	rotated_at: z.string().nullable(),
 	previous_url_active_until: z
@@ -117,7 +113,6 @@ export const mintedWebhookHandleSchema = z.object({
 	url_host: z
 		.string()
 		.describe('Public hostname of the ingress origin (no path or secret).'),
-	enabled: z.boolean(),
 	created_at: z.string(),
 	rotated_at: z.string(),
 	previous_url_active_until: z
@@ -130,7 +125,7 @@ export const mintedWebhookHandleSchema = z.object({
 		.string()
 		.nullable()
 		.describe(
-			'Send this to the person: deliveries run only after they open it and click Approve. Null once the webhook is on (or paused) for someone.',
+			'Send this to the person: deliveries run only after they open it and click Approve. Approve turns the webhook on. Null once the webhook is on (or paused) for someone.',
 		),
 })
 
@@ -180,7 +175,6 @@ export function toListedWebhookCapability(webhook: {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	createdAt: string | null
 	rotatedAt: string | null
 	previousUrlActiveUntil: string | null
@@ -203,7 +197,6 @@ export function toListedWebhookCapability(webhook: {
 		instance_label: webhook.instanceLabel,
 		handle: webhook.handle,
 		url_host: webhook.urlHost,
-		enabled: webhook.enabled,
 		created_at: webhook.createdAt,
 		rotated_at: webhook.rotatedAt,
 		previous_url_active_until: webhook.previousUrlActiveUntil,
@@ -218,7 +211,6 @@ export function toMintedWebhookCapability(minted: {
 	instanceLabel: string | null
 	handle: string
 	urlHost: string
-	enabled: boolean
 	createdAt: string
 	rotatedAt: string
 	previousUrlActiveUntil: string | null
@@ -232,7 +224,6 @@ export function toMintedWebhookCapability(minted: {
 		instance_label: minted.instanceLabel,
 		handle: minted.handle,
 		url_host: minted.urlHost,
-		enabled: minted.enabled,
 		created_at: minted.createdAt,
 		rotated_at: minted.rotatedAt,
 		previous_url_active_until: minted.previousUrlActiveUntil,

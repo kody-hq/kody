@@ -6,6 +6,7 @@ import {
 	type RunRecordFilter,
 } from '#worker/run-records/types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { webhookEndpointNotOffSql } from './repo.ts'
 
 /**
  * Webhook delivery outcomes live in each owner's RunLog Durable Object, so
@@ -25,9 +26,9 @@ export type WebhookOwner = {
 }
 
 /**
- * Every owner with a webhook URL. `live` keeps only enabled, undeleted
+ * Every owner with a webhook URL. `live` keeps only not-off, undeleted
  * endpoints (what can still receive deliveries); `all` also includes owners
- * whose endpoints were disabled or deleted, whose RunLog history remains.
+ * whose endpoints were turned off or deleted, whose RunLog history remains.
  */
 export async function listWebhookOwners(input: {
 	db: D1Database
@@ -35,7 +36,7 @@ export async function listWebhookOwners(input: {
 }): Promise<Array<WebhookOwner>> {
 	const scopeSql =
 		input.scope === 'live'
-			? `${andLiveDeletedAtSql('e')} AND e.enabled = 1`
+			? `${andLiveDeletedAtSql('e')} AND ${webhookEndpointNotOffSql('e')}`
 			: ''
 	const owners: Array<WebhookOwner> = []
 	let after = ''

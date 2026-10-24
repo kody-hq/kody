@@ -25,7 +25,6 @@ import {
 	mintWebhookUrlForUser,
 	revealWebhookUrlForWebsite,
 	rotateWebhookUrlForUser,
-	setWebhookEnabledForUser,
 } from './service.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -218,12 +217,10 @@ test('minting never turns a webhook on: it links to Approve until someone has, a
 		`https://heykody.dev/@approver/sentry-bridge/approve-credentials?enable=webhook%3Asentry%3A${minted.endpointId}`,
 	)
 	expect(await webhookEnablements()).toEqual([])
-	// The list carries the same Approve link and no approval yet, even though
-	// the endpoint itself is enabled.
+	// The list carries the same Approve link and no approval yet.
 	expect(await listNow()).toMatchObject([
 		{
 			minted: true,
-			enabled: true,
 			approved: false,
 			approvalUrl: minted.approvalUrl,
 		},
@@ -272,7 +269,7 @@ test('minting never turns a webhook on: it links to Approve until someone has, a
 	])
 })
 
-test('mint/list/rotate/enable/disable webhooks are package-centered and user-scoped', async () => {
+test('mint/list/rotate webhooks are package-centered and user-scoped', async () => {
 	const owner = await setupOwner('owner@example.com', 'owner')
 	const { env, userId } = owner
 	const otherUserId = testStableUserIdFromEmail('other@example.com')
@@ -330,7 +327,6 @@ test('mint/list/rotate/enable/disable webhooks are package-centered and user-sco
 	const listed = await owner.list()
 	expect(listed[0]).toMatchObject({
 		minted: true,
-		enabled: true,
 		handle: minted.handle,
 		urlHost: 'heykody.dev',
 		urlRecoverable: true,
@@ -383,20 +379,8 @@ test('mint/list/rotate/enable/disable webhooks are package-centered and user-sco
 	expect(overlapUntil).toBeGreaterThan(overlapExpected - 10_000)
 	expect(overlapUntil).toBeLessThan(overlapExpected + 10_000)
 
-	const disabled = await setWebhookEnabledForUser({
-		env,
-		request: sessionRequestContext(userId),
-		userId: ownerIdFromStored(userId),
-		...sentryHook,
-		enabled: false,
-	})
-	expect(disabled.enabled).toBe(false)
-	const rotatedWhileDisabled = await owner.rotate()
-	expect(rotatedWhileDisabled.enabled).toBe(false)
-
 	const reminted = await owner.mint()
-	expect(reminted.enabled).toBe(true)
-	expect(reminted.handle).toBe(rotatedWhileDisabled.handle)
+	expect(reminted.handle).toBe(rotated.handle)
 	expect(reminted).not.toHaveProperty('urlSecret')
 })
 
@@ -457,8 +441,8 @@ test('first mint that loses the id race retries with the persisted endpoint id',
 		.prepare(
 			`INSERT INTO webhook_endpoints (
 				id, user_id, package_id, webhook_name, url_secret_hash,
-				url_secret_encrypted, enabled, created_at, rotated_at
-			) VALUES (?, ?, 'pkg-1', 'sentry', 'stale-hash', 'stale-ciphertext', 1, ?, ?)`,
+				url_secret_encrypted, created_at, rotated_at
+			) VALUES (?, ?, 'pkg-1', 'sentry', 'stale-hash', 'stale-ciphertext', ?, ?)`,
 		)
 		.bind(
 			winnerId,
@@ -656,21 +640,4 @@ test('createInstance mints a second URL under the same declared webhook name', a
 		`enable=webhook%3Asentry%3A${second.endpointId}`,
 	)
 	expect(stagingRow?.approvalUrl).not.toContain(first.endpointId)
-	await setWebhookEnabledForUser({
-		env,
-		request,
-		userId: ownerIdFromStored(userId),
-		...sentryHook,
-		endpointId: second.endpointId,
-		enabled: false,
-	})
-	const afterDisable = await listNow()
-	const staging = afterDisable.find(
-		(row) => row.name === 'sentry' && row.instanceLabel === 'staging',
-	)
-	const primary = afterDisable.find(
-		(row) => row.name === 'sentry' && row.instanceLabel === null,
-	)
-	expect(staging?.enabled).toBe(false)
-	expect(primary?.enabled).toBe(true)
 })

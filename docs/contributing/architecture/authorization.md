@@ -194,9 +194,10 @@ Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
   can see the resource the event is about (`enablerCanSee`). Run errors with no
   package or job reach Owners only.
 
-People turn jobs and subscriptions on for themselves with `enablementEnable` (a
-webhook's first turn-on is Approve only) and off with `enablementDisable` (the
-enabler or an Owner); `enablementList` lists them. Publishing never turns
+People turn jobs and subscriptions on for themselves with `enablementEnable`;
+webhooks turn on only through Approve, including after an off enablement is
+disabled. `enablementDisable` turns an enablement off (the enabler or an Owner);
+`enablementList` lists them. An off webhook answers 404. Publishing never turns
 anything on, and neither does minting a webhook URL: the mint returns an
 approval link, and Approve on that page creates the enablement. Enablements
 created before minting stopped enabling keep running. A webhook verifies a

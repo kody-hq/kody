@@ -113,14 +113,13 @@ Use the MCP `webhooks` domain:
    (`/@<username>/<packageKodyId>/settings#webhooks`) when that is simpler.
 
 Other capabilities: `webhookList` (declarations — including `verification`,
-`replay`, and `challenge` — joined with minted handle / enabled state),
-`webhookUrlRotate`, `webhookEnable`, `webhookDisable`, `webhookDeliveryList`
-(metadata only; bodies are never stored), and `webhookSyntheticDispatch`
-(interactive-MCP smoke test for a minted webhook — see
-[Synthetic smoke test](#synthetic-smoke-test)). The same delivery history also
-appears under [Activity](./activity.md) (`/@<slug>/-/activity` and the `runs`
-capabilities). List, mint, rotate, apply, and synthetic dispatch never return
-the credential URL.
+`replay`, and `challenge` — joined with minted handle / approval state),
+`webhookUrlRotate`, `webhookDeliveryList` (metadata only; bodies are never
+stored), and `webhookSyntheticDispatch` (interactive-MCP smoke test for a minted
+webhook — see [Synthetic smoke test](#synthetic-smoke-test)). The same delivery
+history also appears under [Activity](./activity.md) (`/@<slug>/-/activity` and
+the `runs` capabilities). List, mint, rotate, apply, and synthetic dispatch
+never return the credential URL.
 
 ## Manage webhook URLs in package settings
 
@@ -138,8 +137,13 @@ package declares, joined with its minted state, one card per webhook:
   hours**, or until the first accepted delivery arrives on the new URL. Rerun
   `webhookUrlApply` (same handle) or paste the new URL into the provider. The
   card shows “Previous URL active until …” during that overlap.
-- **Disable** / **Enable** toggle ingress without deleting the mint. Disabled
-  webhooks answer 404.
+- **Turn off** is available from the package's Credentials page. The URL remains
+  minted but answers 404. Turn it back on by Approving the same URL again; the
+  HMAC secret stays the same.
+
+Rotate changes the URL secret, not whether the webhook is on. A webhook with no
+enablement has not been approved yet and answers 409 with its approval link; one
+with only off enablements answers 404.
 
 The URL is the human path. Agents get the handle and `url_host` through MCP and
 either apply the handle (`type: "http"`) or ask the owner to copy the URL from
@@ -760,16 +764,18 @@ webhook declaration per export.
 ## Lifecycle
 
 Republishing a package that removes or renames a webhook deactivates that
-ingress (unknown name → 404). Disable with `webhookDisable` without deleting the
-mint; re-enable with `webhookEnable`. Rotate the URL secret with
-`webhookUrlRotate` when a credential may have leaked, then call
-`webhookUrlApply` again with the same handle so providers get the new URL. The
+ingress (unknown name → 404). Turn a webhook off with `enablementDisable`
+without deleting the mint; the URL answers 404 before rate limiting and without
+recording a delivery. Turn it back on by Approving that same URL again; the HMAC
+secret is unchanged. Rotate the URL secret with `webhookUrlRotate` when a
+credential may have leaked, then call `webhookUrlApply` again with the same
+handle so providers get the new URL. The
 [settings card](#manage-webhook-urls-in-package-settings) describes the 24-hour
 / first-accepted-delivery overlap. Changing `verification.secretName` or
 rotating the secret value it names keeps the previous signing key valid for the
 same 24-hour window (a delivery that verifies under the new key retires it
 early). A webhook that declares HMAC still never falls back to the URL secret.
-The same disable, enable, and rotate actions are in that Webhooks section.
+Rotate does not change whether the webhook is on.
 
 ## Related
 

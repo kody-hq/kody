@@ -11,7 +11,6 @@ const mockModule = vi.hoisted(() => ({
 	mintWebhookUrlForUser: vi.fn(),
 	rotateWebhookUrlForUser: vi.fn(),
 	applyWebhookUrlForUser: vi.fn(),
-	setWebhookEnabledForUser: vi.fn(),
 	resolveSavedPackage: vi.fn(),
 	getWebhookEndpointByKey: vi.fn(),
 	listRunRecords: vi.fn(),
@@ -26,8 +25,6 @@ vi.mock('#worker/webhooks/service.ts', () => ({
 		mockModule.rotateWebhookUrlForUser(...args),
 	applyWebhookUrlForUser: (...args: Array<unknown>) =>
 		mockModule.applyWebhookUrlForUser(...args),
-	setWebhookEnabledForUser: (...args: Array<unknown>) =>
-		mockModule.setWebhookEnabledForUser(...args),
 }))
 
 vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
@@ -57,8 +54,6 @@ vi.mock('#worker/webhooks/apply-destination-approval.ts', () => ({
 const { webhookListCapability } = await import('./webhook-list.ts')
 const { webhookUrlMintCapability } = await import('./webhook-url-mint.ts')
 const { webhookUrlRotateCapability } = await import('./webhook-url-rotate.ts')
-const { webhookEnableCapability } = await import('./webhook-enable.ts')
-const { webhookDisableCapability } = await import('./webhook-disable.ts')
 const { webhookUrlApplyCapability, webhookUrlApplyDestinationSchema } =
 	await import('./webhook-url-apply.ts')
 const { webhookDeliveryListCapability } =
@@ -105,7 +100,6 @@ function endpoint(overrides: Record<string, unknown> = {}) {
 		packageId: 'pkg-1',
 		webhookName: 'sentry',
 		urlSecretHash: 'hash',
-		enabled: true,
 		createdAt: '2026-07-24T00:00:00.000Z',
 		rotatedAt: '2026-07-24T00:00:00.000Z',
 		...overrides,
@@ -121,7 +115,6 @@ function mintedUrl(overrides: Record<string, unknown> = {}) {
 		instanceLabel: null,
 		handle: 'whh_ep-1',
 		urlHost: 'heykody.dev',
-		enabled: true,
 		createdAt: '2026-07-24T00:00:00.000Z',
 		rotatedAt: '2026-07-24T00:00:00.000Z',
 		previousUrlActiveUntil: null,
@@ -214,7 +207,6 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 			instanceLabel: null,
 			handle: null,
 			urlHost: null,
-			enabled: null,
 			createdAt: null,
 			rotatedAt: null,
 			previousUrlActiveUntil: null,
@@ -226,9 +218,6 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 			rotatedAt: '2026-07-24T01:00:00.000Z',
 			previousUrlActiveUntil: '2026-07-25T01:00:00.000Z',
 		}),
-	)
-	mockModule.setWebhookEnabledForUser.mockImplementation(
-		async (input: { enabled: boolean }) => endpoint({ enabled: input.enabled }),
 	)
 	mockSavedWebhook()
 	mockModule.listRunRecords.mockResolvedValue({
@@ -367,13 +356,6 @@ test('webhook capabilities expose mint once and never leak secrets on list', asy
 				}).success !== valid,
 		),
 	).toEqual([])
-
-	await expect(
-		webhookDisableCapability.handler(sentry, ctx),
-	).resolves.toMatchObject({ enabled: false })
-	await expect(
-		webhookEnableCapability.handler(sentry, ctx),
-	).resolves.toMatchObject({ enabled: true })
 
 	const deliveries = await webhookDeliveryListCapability.handler(sentry, ctx)
 	expect(deliveries.deliveries).toMatchObject([

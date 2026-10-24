@@ -12,7 +12,7 @@ export const enablementDisableCapability = defineDomainCapability(
 		name: 'enablementDisable',
 		orgPermission: 'org:read',
 		description:
-			'Turn one enablement off for good; it stops on the next event. Its enabler or an org Owner may turn it off. Turning it on again creates a new enablement with enablementEnable.',
+			'Turn one enablement off for good; it stops on the next event. Its enabler or an org Owner may turn it off. A webhook turned off this way answers 404; turning it back on requires a person to Approve its URL again.',
 		keywords: ['disable', 'enablement', 'turn off', 'stop', 'trigger'],
 		readOnly: false,
 		idempotent: true,
