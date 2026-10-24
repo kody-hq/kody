@@ -496,11 +496,18 @@ async function listLivePublishedCommitsBySourceIds(
 			}
 		}
 	} catch (error) {
-		// Empty map + failure matches getLivePublishedCommit's missing
-		// entity_sources fixture path (last-write-wins). A later chunk failing
-		// after earlier rows landed must not treat unread sources as null live
-		// commits — that would plan unguarded writes over a newer identity.
-		if (found.size === 0) return found
+		// Fixture / local DBs without entity_sources: same last-write-wins as
+		// getLivePublishedCommit. Any other read failure (including an empty
+		// first chunk then a later chunk timeout) must not look like "no live
+		// commit" or the planner plans unguarded writes.
+		if (
+			found.size === 0 &&
+			errorCauseChainIncludes(error, (message) =>
+				/no such table:\s*entity_sources/i.test(message),
+			)
+		) {
+			return found
+		}
 		throw error
 	}
 	return found

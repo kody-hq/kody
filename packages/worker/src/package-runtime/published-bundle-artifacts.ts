@@ -315,35 +315,37 @@ export async function persistPublishedBundleArtifacts(
 		if (rejected && rejected.status === 'rejected') {
 			throw rejected.reason
 		}
-		await upsertPreparedPublishedBundleArtifactRows(written)
-	} catch (error) {
-		await rollbackUncommittedPublishedBundleArtifactKvs(written)
-		throw error
-	}
-	const kvByIdentity = new Map(
-		written.map((entry) => [
-			publishedBundleArtifactIdentityKey({
-				sourceId: entry.rowInput.sourceId,
-				artifactKind: entry.rowInput.artifactKind,
-				artifactName: entry.rowInput.artifactName,
-				entryPoint: entry.rowInput.entryPoint,
-			}),
-			entry.kvKey,
-		]),
-	)
-	return preparedByIndex.map((entry) => {
-		if (!entry) return null
-		return (
-			kvByIdentity.get(
+		const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+		const kvByIdentity = new Map<string, string>()
+		for (const [index, entry] of written.entries()) {
+			if (rowIds[index] == null) continue
+			kvByIdentity.set(
 				publishedBundleArtifactIdentityKey({
 					sourceId: entry.rowInput.sourceId,
 					artifactKind: entry.rowInput.artifactKind,
 					artifactName: entry.rowInput.artifactName,
 					entryPoint: entry.rowInput.entryPoint,
 				}),
-			) ?? null
-		)
-	})
+				entry.kvKey,
+			)
+		}
+		return preparedByIndex.map((entry) => {
+			if (!entry) return null
+			return (
+				kvByIdentity.get(
+					publishedBundleArtifactIdentityKey({
+						sourceId: entry.rowInput.sourceId,
+						artifactKind: entry.rowInput.artifactKind,
+						artifactName: entry.rowInput.artifactName,
+						entryPoint: entry.rowInput.entryPoint,
+					}),
+				) ?? null
+			)
+		})
+	} catch (error) {
+		await rollbackUncommittedPublishedBundleArtifactKvs(written)
+		throw error
+	}
 }
 
 async function writePreparedPublishedBundleArtifact(
@@ -358,8 +360,8 @@ async function writePreparedPublishedBundleArtifact(
 
 async function upsertPreparedPublishedBundleArtifactRows(
 	prepared: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
-) {
-	if (prepared.length === 0) return
+): Promise<Array<string | null>> {
+	if (prepared.length === 0) return []
 	const unique = new Map<string, WrittenPublishedBundleArtifactPersist>()
 	for (const entry of prepared) {
 		unique.set(
@@ -375,11 +377,24 @@ async function upsertPreparedPublishedBundleArtifactRows(
 	const entries = [...unique.values()]
 	const db = entries[0]!.env.APP_DB
 	const rowInputs = entries.map((entry) => entry.rowInput)
-	if (rowInputs.length === 1) {
-		await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)
-		return
+	const rowIds =
+		rowInputs.length === 1
+			? [await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)]
+			: await upsertPublishedBundleArtifactRows(db, rowInputs)
+	const refused = entries.filter((_, index) => rowIds[index] == null)
+	if (refused.length > 0) {
+		await Promise.all(
+			refused.map(async (entry) => {
+				await deletePublishedBundleArtifact({
+					env: entry.env,
+					kvKey: entry.kvKey,
+				}).catch(() => {
+					// Best effort; stale gated writes leave no identity row.
+				})
+			}),
+		)
 	}
-	await upsertPublishedBundleArtifactRows(db, rowInputs)
+	return rowIds
 }
 
 export async function persistPublishedBundleArtifact(
@@ -1041,10 +1056,20 @@ export async function persistPublishedPackageArtifactTargets(
 	}
 	if (written.length > 0) {
 		try {
-			await upsertPreparedPublishedBundleArtifactRows(written)
-			for (const entry of written) {
+			const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const [persistOffset, entry] of written.entries()) {
 				const target = input.targets[entry.index]
 				if (!target) continue
+				if (rowIds[persistOffset] == null) {
+					results[entry.index] = {
+						ok: false,
+						target,
+						error: new Error(
+							'Published bundle artifact identity write was refused (stale live commit).',
+						),
+					}
+					continue
+				}
 				results[entry.index] = {
 					ok: true,
 					target,

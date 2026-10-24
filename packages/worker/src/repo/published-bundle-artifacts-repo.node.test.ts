@@ -751,6 +751,41 @@ test('upsertPublishedBundleArtifactRows recovers UNIQUE identity conflicts via s
 	)
 })
 
+test('upsertPublishedBundleArtifactRows rethrows non-fixture live-commit read failures even when no rows matched yet', async () => {
+	const db = {
+		prepare(query: string) {
+			return {
+				bind() {
+					return {
+						async all() {
+							if (query.includes('FROM entity_sources')) {
+								throw new Error('D1_ERROR: network timeout')
+							}
+							return { results: [] }
+						},
+						async first() {
+							return null
+						},
+						async run() {
+							return { meta: { changes: 0 } }
+						},
+					}
+				},
+			}
+		},
+		async batch() {
+			return []
+		},
+	} as unknown as D1Database
+
+	await expect(
+		upsertPublishedBundleArtifactRows(db, [
+			artifactRow('module', 'commit-1'),
+			artifactRow('importable-module', 'commit-1'),
+		]),
+	).rejects.toThrow('D1_ERROR: network timeout')
+})
+
 test('upsertPublishedBundleArtifactRows does not treat a mid-batch live-commit read failure as null live commits', async () => {
 	const db = createPublishedBundleArtifactsDb()
 	const userId = ownerIdFromStored('user-1')
