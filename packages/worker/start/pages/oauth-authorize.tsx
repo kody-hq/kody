@@ -29,12 +29,23 @@ import {
 	webauthnAuthenticationOptions as webauthnAuthenticationOptionsFn,
 	webauthnAuthenticationVerify as webauthnAuthenticationVerifyFn,
 } from '#start/server/auth-mutations'
-import { buildMcpAuthorizeErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
+import {
+	buildMcpAuthorizeClientFailureAgentPrompt,
+	buildMcpAuthorizeErrorAgentPrompt,
+} from '#universal/error-agent-prompt-presets.ts'
+import {
+	codexDcrLoginCommand,
+	oauthAuthorizeClientDisplayName,
+	oauthAuthorizeFetchStatusLabel,
+	type OAuthAuthorizeClientFailure,
+} from '#universal/oauth-authorize-client-failure.ts'
 import { type OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
 	cardCss,
 	descriptionCss,
+	detailItemCss,
+	detailLabelCss,
 	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
@@ -43,6 +54,7 @@ import {
 	getSecondaryButtonCss,
 	inputCss,
 	insetCardCss,
+	listCss,
 	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
@@ -53,9 +65,15 @@ import {
 	stackedPageCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import {
+	colors,
+	radius,
+	spacing,
+	typography,
+} from '#universal/styles/tokens.ts'
 import { startAuthentication } from '@simplewebauthn/browser'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
@@ -92,6 +110,119 @@ function oauthAuthorizeAccessLead(
 			return exhaustive
 		}
 	}
+}
+
+/**
+ * The OAuth client did not resolve. Two different stories: the app's
+ * metadata host failed (on the app's side; retry, or for the Codex CLI use
+ * dynamic registration), or Kody has no registration for the client (the app
+ * must sign in again so it registers anew). Never shows the raw client id.
+ */
+function OAuthAuthorizeClientFailureCard(props: {
+	failure: OAuthAuthorizeClientFailure
+	retryHref: string
+}) {
+	const { failure } = props
+	const prompt = buildMcpAuthorizeClientFailureAgentPrompt({ failure })
+	if (failure.kind === 'missing_registration') {
+		return (
+			<section
+				css={cardCss}
+				data-testid="oauth-authorize-client-failure"
+				data-failure-kind="missing_registration"
+			>
+				<h2 css={sectionTitleCss}>This connection is not registered</h2>
+				<p role="alert" css={descriptionCss}>
+					Kody has no registration for the app that sent you here. The app is
+					reusing a saved sign-in that Kody no longer has, so trying again from
+					this page will not help.
+				</p>
+				<ol css={listCss}>
+					<li>
+						In your app, log out of Kody and sign in again so it registers a new
+						connection.
+					</li>
+					<li>
+						If the app has no log out option, remove Kody from the app and add
+						it again.
+					</li>
+				</ol>
+				<p css={descriptionCss}>
+					Using Codex? Run{' '}
+					<code css={codeCss}>codex mcp logout {'<server>'}</code> then{' '}
+					<code css={codeCss}>codex mcp login {'<server>'}</code>.
+				</p>
+				<ErrorAgentPromptButton prompt={prompt} />
+			</section>
+		)
+	}
+	const appName = oauthAuthorizeClientDisplayName(failure)
+	const statusLabel = oauthAuthorizeFetchStatusLabel(failure)
+	return (
+		<section
+			css={cardCss}
+			data-testid="oauth-authorize-client-failure"
+			data-failure-kind="metadata_fetch"
+		>
+			<h2 css={sectionTitleCss}>
+				{appName === 'this app'
+					? "Kody couldn't load this app's details"
+					: `Kody couldn't load ${appName}'s details`}
+			</h2>
+			<p role="alert" css={descriptionCss}>
+				Before you can approve, Kody downloads a short description of the app
+				from the app's own website. That download failed. This is a problem on
+				the app's side, not with your Kody account, and it is often temporary.
+			</p>
+			<dl css={failureDetailsCss}>
+				<div css={detailItemCss}>
+					<dt css={detailLabelCss}>Host</dt>
+					<dd css={failureValueCss}>{failure.host}</dd>
+				</div>
+				<div css={detailItemCss}>
+					<dt css={detailLabelCss}>Response</dt>
+					<dd css={failureValueCss}>{statusLabel}</dd>
+				</div>
+			</dl>
+			<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+				<a
+					href={props.retryHref}
+					data-testid="oauth-authorize-retry"
+					css={retryLinkCss}
+				>
+					Retry
+				</a>
+			</div>
+			{failure.client === 'codex' ? (
+				<div css={{ display: 'grid', gap: spacing.sm }}>
+					<p css={descriptionCss}>
+						Using the Codex CLI? Sign in with dynamic registration instead.
+						Replace <code css={codeCss}>{'<server>'}</code> with the name from{' '}
+						<code css={codeCss}>codex mcp list</code>:
+					</p>
+					<pre css={commandCss}>
+						<code>{codexDcrLoginCommand}</code>
+					</pre>
+					<div css={{ justifySelf: 'start' }}>
+						<CopyTextButton
+							value={codexDcrLoginCommand}
+							idleLabel="Copy command"
+							variant="ghost"
+							size="sm"
+						/>
+					</div>
+					<p css={descriptionCss}>
+						The Codex app has no such switch. Try again in a few minutes.
+					</p>
+				</div>
+			) : failure.client === 'chatgpt' ? (
+				<p css={descriptionCss}>
+					ChatGPT has no way to sign in differently. Try again in a few minutes.
+				</p>
+			) : null}
+			<ErrorAgentPromptButton prompt={prompt} />
+		</section>
+	)
 }
 
 function renderOauthAuthorizeGrant(input: {
@@ -178,6 +309,10 @@ export function OAuthAuthorizeRoute({
 	const info = data.ok ? data : null
 	const status: OAuthAuthorizeStatus = data.ok ? 'ready' : 'error'
 	const allowClientReset = !data.ok && data.allowClientReset
+	const [decisionClientFailure, setDecisionClientFailure] =
+		useState<OAuthAuthorizeClientFailure | null>(null)
+	const clientFailure =
+		decisionClientFailure ?? (!data.ok ? (data.clientFailure ?? null) : null)
 	const [submittingDecision, setSubmittingDecision] =
 		useState<OAuthAuthorizeDecision | null>(null)
 	const submitting = useRef(false)
@@ -393,6 +528,7 @@ export function OAuthAuthorizeRoute({
 						? payload.error
 						: 'Unable to complete authorization.'
 				setMessage({ type: 'error', text: errorText })
+				setDecisionClientFailure(payload?.clientFailure ?? null)
 				if (payload?.code === 'email_verification_required') {
 					await refreshSession()
 				}
@@ -446,7 +582,10 @@ export function OAuthAuthorizeRoute({
 	const needsEmailVerification = isLoggedIn && !emailVerified
 	const showResetClientCard = allowClientReset && !resetCompleted
 	const showAuthorizeForm =
-		!resetCompleted && !needsEmailVerification && status !== 'error'
+		!resetCompleted &&
+		!needsEmailVerification &&
+		status !== 'error' &&
+		!clientFailure
 	const hydrated = consentInteractive
 	const consentForm = oauthAuthorizeConsentFormAttrs(currentHref)
 	const orgField = oauthAuthorizeOrgField({
@@ -550,7 +689,13 @@ export function OAuthAuthorizeRoute({
 					</button>
 				</div>
 			) : null}
-			{message ? (
+			{clientFailure ? (
+				<OAuthAuthorizeClientFailureCard
+					failure={clientFailure}
+					retryHref={currentHref}
+				/>
+			) : null}
+			{message && !clientFailure ? (
 				<p
 					role={message.type === 'error' ? 'alert' : undefined}
 					css={getAlertCardCss(message.type)}
@@ -558,7 +703,7 @@ export function OAuthAuthorizeRoute({
 					{message.text}
 				</p>
 			) : null}
-			{message?.type === 'error' ? (
+			{message?.type === 'error' && !clientFailure ? (
 				<ErrorAgentPromptButton
 					prompt={buildMcpAuthorizeErrorAgentPrompt({
 						errorMessage: message.text,
@@ -742,6 +887,35 @@ const pageCss = {
 }
 
 const headerCss = pageHeaderCss
+const codeCss = {
+	fontFamily: typography.fontFamilyMono,
+	fontSize: typography.fontSize.sm,
+	overflowWrap: 'anywhere' as const,
+}
+const commandCss = {
+	margin: 0,
+	padding: spacing.sm,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.border}`,
+	backgroundColor: colors.surface,
+	color: colors.text,
+	fontFamily: typography.fontFamilyMono,
+	fontSize: typography.fontSize.sm,
+	whiteSpace: 'pre-wrap' as const,
+	overflowWrap: 'anywhere' as const,
+}
+const failureValueCss = {
+	margin: 0,
+	minWidth: 0,
+	color: colors.text,
+	overflowWrap: 'anywhere' as const,
+}
+const failureDetailsCss = {
+	margin: 0,
+	display: 'grid',
+	gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+	gap: spacing.md,
+}
 const eyebrowCss = pageEyebrowCss
 const primaryButtonCss = getPrimaryButtonCss({
 	size: 'lg',
@@ -751,6 +925,11 @@ const secondaryButtonCss = getSecondaryButtonCss({
 	size: 'lg',
 	weight: 'semibold',
 })
+const retryLinkCss = {
+	...primaryButtonCss,
+	textDecoration: 'none',
+	'&:hover': { textDecoration: 'none' },
+}
 const dangerButtonCss = getDangerButtonCss({
 	size: 'lg',
 	weight: 'semibold',

@@ -4,6 +4,7 @@ import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import {
 	oauthProviderErrorAuditReason,
 	reportOAuthProviderError,
+	runWithTokenRequestClientId,
 	safeClientIdFromBasicAuthorization,
 	shouldReportOAuthProviderError,
 } from '#worker/oauth-provider-error-log.ts'
@@ -209,6 +210,9 @@ test('reportOAuthProviderError names the CIMD client and reason for a failed ref
 			reason: 'metadata_resolution_failed',
 			clientId,
 			path: '/oauth/token',
+			cimdHost: 'vscode.dev',
+			cimdPath: '/oauth/client-metadata.json',
+			cimdError: 'timeout',
 			cimdFailure: 'Client metadata fetch timed out after 10000ms',
 		},
 	])
@@ -217,8 +221,31 @@ test('reportOAuthProviderError names the CIMD client and reason for a failed ref
 		expect.objectContaining({
 			action: 'token_error',
 			clientId,
-			reason:
-				'invalid_client:client-id-metadata-document:metadata_resolution_failed',
+			reason: 'invalid_client:cimd:timeout',
+		}),
+	)
+})
+
+test('reportOAuthProviderError takes the token request client id when the provider omits the request', async () => {
+	consoleInfo.mockClear()
+	logAuditEventSpy.mockClear()
+	await runWithTokenRequestClientId('dcr-client-123', () =>
+		reportOAuthProviderError({
+			code: 'invalid_grant',
+			description: 'Invalid refresh token',
+			status: 400,
+			headers: {},
+			internal: {
+				category: 'refresh-token-grant',
+				reason: 'grant_not_found',
+			},
+		}),
+	)
+	expect(logAuditEventSpy).toHaveBeenCalledWith(
+		expect.objectContaining({
+			action: 'token_error',
+			clientId: 'dcr-client-123',
+			reason: 'invalid_grant:refresh-token-grant:grant_not_found',
 		}),
 	)
 })

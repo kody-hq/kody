@@ -766,33 +766,47 @@ routed from `packages/worker/src/index.ts`.
   `user_id`. The plaintext secret is shown once and never written to D1. MCP
   `2026-07-28` deprecates RFC 7591 dynamic registration in favor of CIMD, so
   both stay enabled: clients without a pre-registered credential that do not use
-  CIMD register via `/oauth/register`. Failed CIMD fetches throw
-  `CimdFetchError`: authorize maps that to an unknown-client page, and the token
-  endpoint still returns generic `invalid_client`. Any DCR retry after that is
-  the client's own recovery, not a server-side fallback. Refresh-token grants
-  are the exception (`packages/worker/src/oauth-cimd-refresh-cache.ts`): the
-  provider resolves the CIMD client on every token request and caches it only as
-  long as the origin's `Cache-Control` allows, so a `no-store` document (VS
-  Code's `https://vscode.dev/oauth/client-metadata.json`) is fetched live on
-  every refresh, and one blip from that host used to drop the host's session.
-  Before a refresh reaches the provider, Kody fetches the document and seeds the
-  provider's CIMD Cache API entry for at least five minutes. When the provider
-  accepts the refresh, that document becomes the last known good copy in
-  `BUNDLE_ARTIFACTS_KV` (seven days, the provider's own CIMD cache cap), so
-  rejected token requests never write KV. When the live fetch times out, errors,
-  or returns 5xx/429, the last known good copy is seeded for that refresh only
-  and deleted once the provider answers; a 4xx or invalid document never falls
-  back. The provider still validates every cached document. Authorize and code
-  exchange never use a last known good copy beyond the refresh that seeded it,
-  though they may reuse a document fetched live in the last five minutes.
-  Token-endpoint CIMD failures are reported through `onError` with the client
-  URL and the fetch reason. CIMD metadata fetches rely on the
-  `global_fetch_strictly_public` compatibility flag in
-  `packages/worker/wrangler.jsonc` for SSRF safety; the provider only advertises
-  `client_id_metadata_document_supported` when both are set. ChatGPT CIMD
-  documents prefer `private_key_jwt` while also offering `none`; the provider
-  negotiates the mutually supported public method `none` and requires PKCE.
-  `onError.internal` category `client-id-metadata-document` is reported to
+  CIMD register via `/oauth/register`. Kody patches the provider
+  (`patches/@cloudflare+workers-oauth-provider+1.2.1.patch`, modelled on
+  cloudflare/workers-oauth-provider#333) with three options wired in
+  `oauth-provider-options.ts`. `clientIdMetadataDocuments` pins Codex's
+  documents (`https://chatgpt.com/oauth/codex/client.json` and the
+  `.../oauth/codex/<callback_id>/client.json` template,
+  `packages/worker/src/oauth-known-cimd-clients.ts`): they are never fetched,
+  because chatgpt.com answers Worker fetches with 404 or 403 while serving 200
+  elsewhere. `onClientIdMetadataDocumentResolved` stashes every document that
+  validated live, in isolate memory only; after a successful token response or
+  an approved authorization the stashed document becomes the last known good
+  copy in `BUNDLE_ARTIFACTS_KV` (14 days, rewritten at most daily), so anonymous
+  lookups never write KV. `clientIdMetadataDocumentFallback`
+  (`packages/worker/src/oauth-cimd-last-known-good.ts`) runs when a live fetch
+  fails, for every lookup (authorize page, approve, code exchange, refresh):
+  timeouts, network errors, 5xx and 429 use the last known good copy for any
+  host; 401, 403 and 404 do so only for hosts known to refuse Worker fetches
+  (today chatgpt.com), because elsewhere a 4xx means the publisher withdrew the
+  document; 410 and invalid documents never fall back. ChatGPT's
+  `https://chatgpt.com/oauth/client.json` also has a built-in fallback document
+  used when no last known good copy exists. The provider validates pinned,
+  stored, and built-in documents exactly like fetched ones, and a fallback copy
+  is never re-stored, so its age only grows. When nothing resolves, the provider
+  throws `CimdFetchError`: authorize shows a "could not load this app's details"
+  card with the host, status, a Retry link, and for Codex the
+  `codex mcp login <server> --oauth-client-registration dcr` override; a DCR
+  client_id with no stored registration (`Invalid client_id` from
+  `parseAuthRequest`) shows a separate "not registered" card that tells the user
+  to log out and back in, or remove and re-add Kody. Both log
+  `oauth-authorize-unknown-client` (kind `cimd` or `dcr`, host, normalized path,
+  error type, `page_load` or `decision`) and an `authorize` failure audit row
+  with reason `unknown_client:<kind>[:<error>]:<surface>`. The token endpoint
+  still returns generic `invalid_client`, and token errors are reported through
+  `onError` with the client id (read before the provider consumes the body) and,
+  for CIMD, reason `invalid_client:cimd:<error>` plus the host and fetch reason.
+  CIMD metadata fetches rely on the `global_fetch_strictly_public` compatibility
+  flag in `packages/worker/wrangler.jsonc` for SSRF safety; the provider only
+  advertises `client_id_metadata_document_supported` when both are set. ChatGPT
+  CIMD documents prefer `private_key_jwt` while also offering `none`; the
+  provider negotiates the mutually supported public method `none` and requires
+  PKCE. `onError.internal` category `client-id-metadata-document` is reported to
   Sentry. Authorization-server metadata advertises `S256` PKCE only.
 - Kody-as-client (user-added remote MCP servers) hosts its own CIMD at
   `/oauth/client-metadata.json`. The document is origin-exact: `client_id`

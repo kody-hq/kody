@@ -1,3 +1,4 @@
+import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import {
 	type OnboardingFeaturedListing,
 	type ProfileVisibility,
@@ -2893,6 +2894,8 @@ export type OAuthAuthorizeLoaderData =
 			error: string
 			allowClientReset: boolean
 			code?: 'email_verification_required'
+			/** Set when the OAuth client itself did not resolve. */
+			clientFailure?: OAuthAuthorizeClientFailure
 	  }
 
 /** Hosted package-app OAuth consent on `/oauth/package-app/authorize`. */
