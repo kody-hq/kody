@@ -5,6 +5,7 @@
  * credential ids only. A mapping grants nothing: resolution keeps only refs
  * the actor can Use right now.
  */
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import { type UsableCredential } from './credential-candidates.ts'
 
 export type CredentialMappingRowTarget =
@@ -229,13 +230,19 @@ async function flushCredentialMappingBatch(db: D1Database) {
 						needKeys.filter((key): key is string => key !== undefined),
 					),
 				]
+				// orgId + packageId + optional personId + enablementIds + need keys.
+				const fixedBinds =
+					2 + (first.personId ? 1 : 0) + first.enablementIds.length
+				const needKeyBindsFit =
+					uniqueNeedKeys.length > 0 &&
+					fixedBinds + uniqueNeedKeys.length <= maxD1BoundParameters
 				const rows = await queryCredentialMappings({
 					db,
 					orgId: first.orgId,
 					packageId: first.packageId,
 					personId: first.personId,
 					enablementIds: first.enablementIds,
-					...(wantsAll
+					...(wantsAll || !needKeyBindsFit
 						? {}
 						: uniqueNeedKeys.length === 1
 							? { needKey: uniqueNeedKeys[0] }

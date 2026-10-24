@@ -1,6 +1,7 @@
 /**
  * Concurrent per-need-key mapping loads coalesce into one D1 read (KODY-AZ).
  */
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -187,6 +188,52 @@ test('batched loadCredentialMappings keeps org-before-mine precedence per need k
 	expect(chat.map((row) => [row.target.target, row.credentialIds])).toEqual([
 		['org', ['org-chat']],
 	])
+})
+
+test('batched loadCredentialMappings falls back to an unfiltered read when need keys would exceed D1 binds', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const db = createD1FromSqlite(sqlite, {
+		queries,
+		maxBindings: maxD1BoundParameters,
+	})
+	// orgId + packageId + personId leave 97 slots; more need keys than that
+	// must not use need_key IN (…).
+	const keys = Array.from(
+		{ length: maxD1BoundParameters },
+		(_, index) => `need-${index}`,
+	)
+	for (const needKey of keys.slice(0, 3)) {
+		await writeMapping({
+			db,
+			needKey,
+			target: { target: 'org' },
+			credentialIds: [`cred-${needKey}`],
+		})
+	}
+	queries.length = 0
+
+	const results = await Promise.all(
+		keys.map((needKey) =>
+			loadCredentialMappings({
+				db,
+				orgId,
+				packageId,
+				personId,
+				needKey,
+			}),
+		),
+	)
+	expect(results[0]![0]?.credentialIds).toEqual(['cred-need-0'])
+	expect(results[1]![0]?.credentialIds).toEqual(['cred-need-1'])
+	expect(results[2]![0]?.credentialIds).toEqual(['cred-need-2'])
+	expect(results[3]).toEqual([])
+	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(1)
+	expect(queries.filter(isMultiNeedKeyLookup)).toHaveLength(0)
+	expect(queries.filter(isSingleNeedKeyLookup)).toHaveLength(0)
+	const [lookup] = queries.filter(isCredentialMappingLookup)
+	expect(lookup?.toLowerCase()).not.toMatch(/need_key\s*(=|in\s*\()/)
 })
 
 test('batched loadCredentialMappings isolates scopes so different packages do not share a read', async () => {

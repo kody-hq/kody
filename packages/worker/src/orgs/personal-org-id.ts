@@ -79,6 +79,17 @@ export async function loadPersonalOrgIdForPerson(
 	return pending
 }
 
+/**
+ * Drop a memoized personal-org id after `users.personal_org_id` changes
+ * (ownership conversion). Call only after the write batch commits.
+ */
+export function forgetPersonalOrgIdForPerson(
+	db: D1Database,
+	personId: PersonId,
+) {
+	personalOrgIdsByDb.get(db)?.delete(personId)
+}
+
 async function readPersonalOrgIdForPerson(
 	db: D1Database,
 	personId: PersonId,

@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
+	forgetPersonalOrgIdForPerson,
 	loadPersonalOrgIdForPerson,
 	personalOrgIdForPerson,
 	personalOrgIdFromUserRow,
@@ -99,6 +100,20 @@ test('loadPersonalOrgIdForPerson shares one users read per person (KODY-AZ)', as
 
 	await expect(loadPersonalOrgIdForPerson(db, distinctPerson)).resolves.toBe(
 		distinctOrgId,
+	)
+	expect(
+		queries.filter((query) => query.toLowerCase().includes('from users')),
+	).toHaveLength(1)
+
+	const convertedOrgId = 'e'.repeat(64)
+	await db
+		.prepare(`UPDATE users SET personal_org_id = ? WHERE stable_user_id = ?`)
+		.bind(convertedOrgId, distinctPerson)
+		.run()
+	forgetPersonalOrgIdForPerson(db, distinctPerson)
+	queries.length = 0
+	await expect(loadPersonalOrgIdForPerson(db, distinctPerson)).resolves.toBe(
+		convertedOrgId,
 	)
 	expect(
 		queries.filter((query) => query.toLowerCase().includes('from users')),

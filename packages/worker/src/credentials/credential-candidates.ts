@@ -354,12 +354,15 @@ const inflightUsableCredentials = new WeakMap<
 function usableCredentialsCacheKey(input: {
 	orgId: string
 	actorUserId: string | null | undefined
+	membershipRole: string | null | undefined
 	packageId: string | null | undefined
 	scopes: ReadonlyArray<string> | null
+	/** Set only when the caller passed an explicit `now` (expiry boundary). */
+	explicitNow: string | null
 }) {
 	const scopesKey =
 		input.scopes === null ? '*' : [...input.scopes].sort().join(',')
-	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.packageId ?? ''}\0${scopesKey}`
+	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}`
 }
 
 /**
@@ -380,13 +383,16 @@ export async function listUsableCredentials(input: {
 	packageId?: string | null
 }): Promise<Array<UsableCredential>> {
 	const orgId = input.request.org.id
-	const now = (input.now ?? new Date()).toISOString()
+	const explicitNow = input.now ? input.now.toISOString() : null
+	const now = explicitNow ?? new Date().toISOString()
 	const db = input.env.APP_DB
 	const cacheKey = usableCredentialsCacheKey({
 		orgId,
 		actorUserId: input.request.actor?.userId,
+		membershipRole: input.request.membership?.role,
 		packageId: input.packageId,
 		scopes: input.request.credential.scopes,
+		explicitNow,
 	})
 	let inflight = inflightUsableCredentials.get(db)
 	if (!inflight) {
