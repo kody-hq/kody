@@ -43,9 +43,10 @@ const entityExplainerDefinitions = [
 		id: 'repositories',
 		question: 'What is a repository?',
 		paragraphs: [
-			'A repository stores code and files in this workspace. Repositories with a kody.json manifest can publish reusable packages for agents.',
+			'A repository is the git home for code in this workspace. This page lists plain repositories and packages. A package is a repository with a Kody package manifest; the API and CLI still call that entity package (for example packageList and packageSave).',
 		],
 		learnMore: [
+			{ href: docHref('package-authoring'), label: 'Package authoring' },
 			{ href: docHref('package-lifecycle'), label: 'Package lifecycle' },
 		],
 	},

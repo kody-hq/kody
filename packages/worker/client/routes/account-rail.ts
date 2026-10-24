@@ -348,7 +348,8 @@ function repositoriesRailItem(
 		id: 'repositories',
 		label: 'Repositories',
 		icon: 'box',
-		description: 'Every repository in this workspace, private ones included.',
+		description:
+			'Repositories and packages in this workspace, private ones included.',
 	}
 }
 

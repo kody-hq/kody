@@ -16,6 +16,15 @@ category: platform
 Use this guide when creating a new Kody package or materially changing an
 existing one.
 
+## Repository vs package
+
+A **repository** is the git home of your code in a workspace. The workspace
+**Repositories** page (`/@slug/-/repositories`) lists plain repositories and
+packages together. A **package** is a repository with a Kody package manifest
+(activated saved-package surfaces). The API, CLI, and ids still say `package`
+(`packageList`, `packageSave`, `guide:package_authoring`, and so on). Looking
+for Packages in the UI? Open **Repositories**.
+
 A package is not done until root `README.md` and `AGENTS.md` are both present
 and non-empty, README `## Intent` is current, every public export has JSDoc as
 specified in [Export JSDoc](#export-jsdoc), and the smoke tests in
