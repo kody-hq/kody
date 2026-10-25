@@ -233,6 +233,7 @@ async function loadConsentPackageMeta(input: {
 async function parseAndValidateAuthorizeRequest(input: {
 	env: Env
 	query: AuthorizeQuery
+	requestUrl: string | URL
 }) {
 	const parsed = parsePackageAppOauthClientId(input.query.clientIdRaw)
 	if (!parsed) {
@@ -281,6 +282,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 		env: input.env,
 		client,
 		redirectUri: input.query.redirectUri,
+		requestUrl: input.requestUrl,
 	})
 	if (!allowed) {
 		return {
@@ -374,7 +376,8 @@ async function parseAndValidateAuthorizeRequest(input: {
 }
 
 function isSameOriginAuthorizePost(request: Request, env: Env) {
-	const appOrigin = new URL(getAppBaseUrl({ env })).origin
+	const appOrigin = new URL(getAppBaseUrl({ env, requestUrl: request.url }))
+		.origin
 	const origin = request.headers.get('Origin')
 	if (origin) return origin === appOrigin
 	const site = request.headers.get('Sec-Fetch-Site')
@@ -426,6 +429,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 	const validated = await parseAndValidateAuthorizeRequest({
 		env,
 		query,
+		requestUrl: request.url,
 	})
 	if (!validated.ok) return validated.response
 

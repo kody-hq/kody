@@ -308,7 +308,7 @@ async function handleLogin(input: { request: Request; env: Env; url: URL }) {
 	const challenge = await createS256CodeChallenge(verifier)
 	const authorize = new URL(
 		packageAppOauthPaths.authorize,
-		getAppBaseUrl({ env: input.env }),
+		getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
 	)
 	authorize.searchParams.set('response_type', 'code')
 	authorize.searchParams.set('client_id', clientId)
@@ -555,7 +555,10 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 		avatarKey,
 	})
 	const avatarUrl = relativeAvatar
-		? new URL(relativeAvatar, getAppBaseUrl({ env: input.env })).toString()
+		? new URL(
+				relativeAvatar,
+				getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
+			).toString()
 		: undefined
 
 	let emailClaim: string | undefined

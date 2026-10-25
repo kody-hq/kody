@@ -369,3 +369,65 @@ test('package-app OAuth login on a real owner subdomain redirects to authorize w
 	expect(authorize.pathname).toBe('/oauth/package-app/authorize')
 	expect(authorize.searchParams.get('client_id')).toBe(`${ownerUsername}/demo`)
 })
+
+test('local inline package-app OAuth keeps its request origin through consent', async () => {
+	configureOrigins()
+	const sessionCookie = await seedOwnerSessionCookie()
+	const mutableEnv = env as unknown as Record<string, string | undefined>
+	const previousLocalDev = mutableEnv.WRANGLER_IS_LOCAL_DEV
+	mutableEnv.WRANGLER_IS_LOCAL_DEV = 'true'
+
+	try {
+		const localOrigin = 'http://localhost:8788'
+		const loginUrl = new URL(packageAppOauthPaths.login, localOrigin)
+		loginUrl.searchParams.set('org', ownerUsername)
+		loginUrl.searchParams.set('app', 'demo')
+		loginUrl.searchParams.set('scope', 'email')
+		loginUrl.searchParams.set('return_to', '/packages/demo')
+
+		const login = await workerFetch(loginUrl)
+		if (!(login instanceof Response))
+			throw new Error('Expected OAuth login redirect')
+		expect(login.status).toBe(302)
+		const location = login.headers.get('Location')
+		expect(location).toBeTruthy()
+		const authorizeUrl = new URL(location!)
+		expect(authorizeUrl.origin).toBe(localOrigin)
+		expect(authorizeUrl.pathname).toBe(packageAppOauthPaths.authorize)
+
+		const consent = await workerFetch(authorizeUrl, {
+			headers: { Cookie: sessionCookie },
+		})
+		if (consent instanceof Response)
+			throw new Error('Expected authenticated consent data')
+		expect(consent.consent).toMatchObject({
+			ok: true,
+			clientId: `${ownerUsername}/demo`,
+			redirectUri: `${localOrigin}${packageAppOauthPaths.callback}`,
+		})
+		expect(consent.consent.hiddenFields.scope).toBe('profile email')
+
+		const denied = await workerFetch(authorizeUrl, {
+			method: 'POST',
+			headers: {
+				Cookie: sessionCookie,
+				Origin: localOrigin,
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({
+				...consent.consent.hiddenFields,
+				selected_scopes: 'profile',
+				decision: 'deny',
+			}),
+		})
+		if (!(denied instanceof Response))
+			throw new Error('Expected consent decision redirect')
+		expect(denied.status).toBe(302)
+		const callback = new URL(denied.headers.get('Location')!)
+		expect(callback.origin).toBe(localOrigin)
+		expect(callback.pathname).toBe(packageAppOauthPaths.callback)
+		expect(callback.searchParams.get('error')).toBe('access_denied')
+	} finally {
+		mutableEnv.WRANGLER_IS_LOCAL_DEV = previousLocalDev
+	}
+})
