@@ -22,7 +22,6 @@ import { type OrgBudgetGateContext } from '#worker/entitlements/budget-gate.ts'
 import {
 	consumeExecuteUniqueWorkerDay,
 	resolveLiveEntitlementForResource,
-	type ExecuteUniqueWorkerDayUsage,
 	type ExecuteUniqueWorkerUsage,
 } from '#worker/entitlements/service.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
@@ -266,7 +265,7 @@ export function executeDailyWarningCrossing(
 }
 
 export type ClaimedExecuteUsage = {
-	usage: ExecuteUniqueWorkerDayUsage
+	usage: ExecuteUniqueWorkerUsage
 	claimedAt: Date
 }
 
