@@ -416,7 +416,10 @@ export async function handlePackageAppOauthAuthorizeRequest(
 							form.get('code_challenge_method') ?? 'S256',
 						),
 						scopeRaw: String(form.get('scope') ?? ''),
-						selectedScopesRaw: String(form.get('selected_scopes') ?? ''),
+						selectedScopesRaw: form
+							.getAll('selected_scopes')
+							.map(String)
+							.join(' '),
 						responseType: String(form.get('response_type') ?? 'code'),
 						decision: String(form.get('decision') ?? ''),
 					}
@@ -548,6 +551,11 @@ export async function handlePackageAppOauthAuthorizeRequest(
 	})
 	const alreadyAllowed = new Set(grant?.scopes ?? [])
 	const requiredScopes: Array<PackageAppOauthScope> = ['profile']
+	const alreadyAllowedScopes = [...alreadyAllowed].filter(
+		(scope) =>
+			validated.scopes.includes(scope) && !requiredScopes.includes(scope),
+	)
+	const requiredLabels = packageAppOauthClaimLabels(requiredScopes)
 	const optionalScopes = validated.scopes
 		.filter(
 			(scope) => !requiredScopes.includes(scope) && !alreadyAllowed.has(scope),
@@ -575,19 +583,17 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			redirectUri: validated.redirectUri,
 			scopes: [...validated.scopes],
 			requiredScopes,
-			alreadyAllowedScopes: [...alreadyAllowed].filter((scope) =>
-				validated.scopes.includes(scope),
-			),
-			requiredLabels: packageAppOauthClaimLabels(requiredScopes),
+			alreadyAllowedScopes,
+			requiredLabels,
 			claimLabels: packageAppOauthClaimLabels(
 				validated.scopes,
 				validated.visitorNeedDescriptions,
 			),
 			optionalScopes,
 			alreadyAllowedLabels: packageAppOauthClaimLabels(
-				validated.scopes.filter((scope) => alreadyAllowed.has(scope)),
+				alreadyAllowedScopes,
 				validated.visitorNeedDescriptions,
-			),
+			).filter((label) => !requiredLabels.includes(label)),
 			hiddenFields,
 		},
 	}

@@ -143,6 +143,8 @@ export function PackageAppOauthConsentPage({
 							<label key={scope} css={{ display: 'flex', gap: spacing.sm }}>
 								<input
 									type="checkbox"
+									name="selected_scopes"
+									value={scope}
 									checked={selectedScopes.has(scope)}
 									onChange={(event) =>
 										setSelectedScopes((current) => {
@@ -188,6 +190,16 @@ export function PackageAppOauthConsentPage({
 				>
 					{Object.entries(data.hiddenFields).map(([name, value]) => (
 						<input key={name} type="hidden" name={name} value={value} />
+					))}
+					{[
+						...new Set([...data.requiredScopes, ...data.alreadyAllowedScopes]),
+					].map((scope) => (
+						<input
+							key={`selected:${scope}`}
+							type="hidden"
+							name="selected_scopes"
+							value={scope}
+						/>
 					))}
 					<button
 						disabled={busy}

@@ -203,6 +203,47 @@ test('package-app OAuth authorize returns authenticated consent claims without i
 	])
 })
 
+test('package-app consent does not repeat required scopes in already allowed claims', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO package_app_oauth_grants (
+			id, person_id, org_username, kody_id, scopes, created_at, revoked_at, last_used_at
+		) VALUES (?, ?, ?, ?, 'profile', ?, NULL, NULL)`,
+	)
+		.bind(
+			'profile-only-grant',
+			testStableUserIdFromEmail(ownerEmail),
+			ownerUsername,
+			'demo',
+			'2026-10-16T00:00:00.000Z',
+		)
+		.run()
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const url = new URL(packageAppOauthPaths.authorize, appOrigin)
+	url.searchParams.set('response_type', 'code')
+	url.searchParams.set('client_id', `${ownerUsername}/demo`)
+	url.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	url.searchParams.set('code_challenge', challenge)
+	url.searchParams.set('code_challenge_method', 'S256')
+	url.searchParams.set('scope', 'email')
+
+	const response = await workerFetch(url, {
+		headers: { Cookie: cookie },
+	})
+	if (response instanceof Response) throw new Error('Expected consent data')
+	expect(response.consent.alreadyAllowedScopes).toEqual([])
+	expect(response.consent.alreadyAllowedLabels).toEqual([])
+	await env.APP_DB.prepare('DELETE FROM package_app_oauth_grants WHERE id = ?')
+		.bind('profile-only-grant')
+		.run()
+})
+
 test('package-app consent rejects chosen scopes that were not requested', async () => {
 	configureOrigins()
 	const cookie = await seedOwnerSessionCookie()
@@ -241,6 +282,67 @@ test('package-app consent rejects chosen scopes that were not requested', async 
 	if (!(response instanceof Response))
 		throw new Error('Expected rejected scope')
 	expect(response.status).toBe(403)
+})
+
+test('package-app consent form submits rendered fields and redirects with a code', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const authorizeUrl = new URL(packageAppOauthPaths.authorize, appOrigin)
+	authorizeUrl.searchParams.set('response_type', 'code')
+	authorizeUrl.searchParams.set('client_id', `${ownerUsername}/demo`)
+	authorizeUrl.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	authorizeUrl.searchParams.set('state', 'rendered-form-state')
+	authorizeUrl.searchParams.set('code_challenge', challenge)
+	authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+	authorizeUrl.searchParams.set('scope', 'email')
+
+	const consent = await workerFetch(authorizeUrl, {
+		headers: { Cookie: cookie },
+	})
+	if (consent instanceof Response) throw new Error('Expected consent data')
+	const form = new URLSearchParams({
+		...consent.consent.hiddenFields,
+		selected_scopes: [
+			...consent.consent.requiredScopes,
+			...consent.consent.alreadyAllowedScopes,
+			...consent.consent.optionalScopes.map(({ scope }) => scope),
+		].join(' '),
+		decision: 'approve',
+	})
+	expect(form.get('scope')).toBe('profile email')
+	expect(form.get('selected_scopes')).toBe('profile email')
+	const response = await workerFetch(authorizeUrl, {
+		method: 'POST',
+		headers: {
+			Cookie: cookie,
+			Origin: appOrigin,
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: form,
+	})
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected app callback redirect')
+	expect(response.status).toBe(302)
+	const location = new URL(response.headers.get('Location') ?? '')
+	expect(location.origin).toBe(
+		`https://${ownerUsername}.packages.isolated.test`,
+	)
+	expect(location.pathname).toBe(packageAppOauthPaths.callback)
+	expect(location.searchParams.get('code')).toBeTruthy()
+	expect(location.searchParams.get('state')).toBe('rendered-form-state')
+	await env.APP_DB.prepare(
+		`DELETE FROM package_app_oauth_grants
+		 WHERE person_id = ? AND org_username = ? AND kody_id = ?`,
+	)
+		.bind(testStableUserIdFromEmail(ownerEmail), ownerUsername, 'demo')
+		.run()
 })
 
 test('package-app consent skips for an app executor when only profile is requested', async () => {
