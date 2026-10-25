@@ -13,19 +13,24 @@ const payload: AccountConnectedAppsLoaderData = {
 			publisherName: 'Acme',
 			iconUrl: null,
 			allows: [
-				'See your name, username, and avatar',
-				'See your access level for this app',
-				'See your email address',
-				'Read your calendar to find an open time.',
-			],
-			revocableScopes: [
-				{ scope: 'profile', label: 'See your name, username, and avatar' },
-				{ scope: 'email', label: 'See your email address' },
 				{
-					scope: 'need:calendar',
-					label: 'Read your calendar to find an open time.',
+					label: 'See your name, username, and avatar',
+					scope: null,
 				},
-				{ scope: 'unknown', label: 'Unknown access' },
+				{
+					label: 'See your access level for this app',
+					scope: null,
+				},
+				{ label: 'See your email address', scope: 'email' },
+				{
+					label: 'Read your calendar to find an open time.',
+					scope: 'need:calendar',
+				},
+				{
+					label: 'Read your calendar to find an open time.',
+					scope: 'need:events',
+				},
+				{ label: 'Unknown access', scope: null },
 			],
 			connectedAt: '2026-10-16T00:00:00.000Z',
 			lastUsedAt: null,
@@ -55,9 +60,14 @@ test('connected apps only render styled revoke controls for optional scopes', as
 	expect(html).toContain(
 		'aria-label="Revoke Read your calendar to find an open time."',
 	)
+	expect(
+		html.match(
+			/aria-label="Revoke Read your calendar to find an open time\."/g,
+		),
+	).toHaveLength(2)
 	expect(html).not.toContain('aria-label="Revoke See your name')
 	expect(html).not.toContain('aria-label="Revoke Unknown access"')
-	expect(html.match(/>Revoke<\/button>/g)).toHaveLength(2)
+	expect(html.match(/>Revoke<\/button>/g)).toHaveLength(3)
 	const profileLabelIndex = html.indexOf('See your name, username, and avatar')
 	const profileListItemEnd = html.indexOf('</li>', profileLabelIndex)
 	expect(

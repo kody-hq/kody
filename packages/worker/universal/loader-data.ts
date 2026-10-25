@@ -3357,8 +3357,7 @@ export type AccountConnectedAppView = {
 	publisherName: string
 	iconUrl: string | null
 	/** What the app may see or use, in plain words. */
-	allows: Array<string>
-	revocableScopes: Array<{ scope: string; label: string }>
+	allows: Array<{ label: string; scope: string | null }>
 	connectedAt: string
 	lastUsedAt: string | null
 }

@@ -172,25 +172,22 @@ export function AccountConnectedAppsPage({
 										<span css={rowTitleCss}>{app.appName}</span>
 										<span css={mutedCss}>By {app.publisherName}</span>
 										<ul css={allowsCss} aria-label={`${app.appName} can`}>
-											{app.allows.map((allow) => {
-												const revocableScope = app.revocableScopes.find(
-													({ scope, label }) =>
-														isOptionalScope(scope) && label === allow,
-												)
+											{app.allows.map((allow, index) => {
+												const scope = allow.scope
 												return (
 													<li
-														key={allow}
-														css={revocableScope ? scopeRowCss : undefined}
+														key={scope ?? `${allow.label}:${index}`}
+														css={scope ? scopeRowCss : undefined}
 													>
-														<span>{allow}</span>
-														{revocableScope ? (
+														<span>{allow.label}</span>
+														{scope ? (
 															<button
 																type="button"
-																aria-label={`Revoke ${allow}`}
+																aria-label={`Revoke ${allow.label}`}
 																css={dangerButtonCss}
 																onClick={() => {
-																	if (window.confirm(`Revoke ${allow}?`))
-																		revokeAppScope(app, revocableScope.scope)
+																	if (window.confirm(`Revoke ${allow.label}?`))
+																		revokeAppScope(app, scope)
 																}}
 															>
 																Revoke
@@ -338,10 +335,6 @@ function AppMark({ iconUrl }: { iconUrl: string | null }) {
 			)}
 		</span>
 	)
-}
-
-function isOptionalScope(scope: string) {
-	return scope === 'email' || (scope.startsWith('need:') && scope.length > 5)
 }
 
 function AgentMark({ icon }: { icon: string | null }) {

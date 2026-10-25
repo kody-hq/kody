@@ -1,9 +1,6 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
-import {
-	packageAppOauthClaimLabel,
-	packageAppOauthClaimLabels,
-} from '#app/package-app-oauth-consent-copy.ts'
+import { packageAppOauthClaimLabels } from '#app/package-app-oauth-consent-copy.ts'
 import {
 	listLivePackageAppOauthGrantsForPerson,
 	revokePackageAppOauthGrantScope,
@@ -167,18 +164,19 @@ async function describeAppGrant(
 	} catch {
 		// The grant still lists (and can be revoked) when the app is gone.
 	}
+	const orderedScopes = [...grant.scopes].sort()
+	const optionalScopes = orderedScopes.filter(isOptionalPackageAppScope)
 	return {
 		appKey: `${grant.orgUsername}/${grant.kodyId}`,
 		appName,
 		publisherName,
 		iconUrl,
-		allows: packageAppOauthClaimLabels(grant.scopes, needDescriptions),
-		revocableScopes: grant.scopes
-			.filter(isOptionalPackageAppScope)
-			.map((scope) => ({
-				scope,
-				label: packageAppOauthClaimLabel(scope, needDescriptions),
-			})),
+		allows: packageAppOauthClaimLabels(orderedScopes, needDescriptions).map(
+			(label, index) => ({
+				label,
+				scope: index < 2 ? null : (optionalScopes[index - 2] ?? null),
+			}),
+		),
 		connectedAt: grant.createdAt,
 		lastUsedAt: grant.lastUsedAt,
 	}
