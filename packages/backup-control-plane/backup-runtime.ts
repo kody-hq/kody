@@ -346,7 +346,7 @@ export function acceptUploadStepResult(
 		typeof record.objectKey === 'string' &&
 		typeof record.bookmark === 'string'
 	) {
-		return { kind: 'stored', stored: record as StoredUploadResult }
+		return { kind: 'stored', stored: record as unknown as StoredUploadResult }
 	}
 	return { kind: 'unexpected' }
 }

@@ -549,15 +549,22 @@ test('replayed pre-change flat upload result is accepted without recover export'
 		alreadyExisted: true,
 	}
 	const step: RuntimeStep = {
-		async do(name, configOrCallback, callback?) {
+		async do<T>(
+			name: string,
+			configOrCallback: unknown,
+			callback?: () => Promise<T>,
+		): Promise<T> {
 			if (name === 'stream-export-to-immutable-r2') {
-				return flatLegacyUpload as never
+				return flatLegacyUpload as T
 			}
 			const execute =
 				typeof configOrCallback === 'function'
-					? (configOrCallback as () => Promise<unknown>)
-					: callback!
-			return (await execute()) as never
+					? (configOrCallback as () => Promise<T>)
+					: callback
+			if (!execute) {
+				throw new Error('Workflow step callback is required.')
+			}
+			return await execute()
 		},
 		sleep: async () => undefined,
 	}
