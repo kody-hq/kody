@@ -59,6 +59,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	community_forks: move(
 		'forker_user_id re-pointed for forks that produced a moved package.',
 	),
+	follow_recent_updates: keep(
+		'Recent updates belong to the follower org and its follow rows, which stay with that org.',
+	),
 	follows: keep(
 		'Follow rows stay with the follower org (follower_org_id is not re-pointed). The transfer batch rewrites denormalized target_owner_id and target_name so followers keep watching the same target ids under the destination owner.',
 	),
