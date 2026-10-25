@@ -323,12 +323,13 @@ secrets on the control plane remain one-time / out-of-band.
 The production Worker also stages non-D1 canonical stores into the same bucket
 when `DR_EXPORT_ENABLED=true` (StorageRunner dumps, `EMAIL_BLOBS` /
 `COMMUNITY_ASSETS` blobs, published `BUNDLE_ARTIFACTS_KV` source snapshots).
-When `DR_D1_PACED_BACKUP_ENABLED=true`, the same worker walks APP_DB and JOBS_DB
-into `d1-paced/` prefixes; REST D1 export on the control plane stays the UI
-drill and production-restore path. `REPO_SESSION_BLOBS` is ephemeral RepoSession
-Workspace scratch and is not exported. The control plane seals complete days and
-hosts the Access-protected Admin UI for drills and graduated production restore.
-See [Disaster recovery](./disaster-recovery.md) and
+When `DR_D1_PACED_BACKUP_ENABLED=true` and the DR S3 credentials are set, the
+same worker walks APP_DB and JOBS_DB into `d1-paced/` prefixes; REST D1 export
+on the control plane stays the UI drill and production-restore path.
+`REPO_SESSION_BLOBS` is ephemeral RepoSession Workspace scratch and is not
+exported. The control plane seals complete days and hosts the Access-protected
+Admin UI for drills and graduated production restore. See
+[Disaster recovery](./disaster-recovery.md) and
 [environment variables](./environment-variables.md).
 
 Use a separate provisioner token (never a Worker secret) to create the bucket

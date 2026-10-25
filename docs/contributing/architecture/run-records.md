@@ -18,8 +18,10 @@ A run record is one execution attempt on a named **surface**: status (`running`
 finish timestamps, duration, truncated error fields, optional soft error triage
 (`error_triage`: `ignored` / `resolved`, plus note / who / when — separate from
 execution status), who started the run (`started_by`: person id / handle +
-client such as MCP, CLI, API token, schedule, or webhook; `null` when begin had
-no request context), JSON metadata, and up to 200 captured log lines.
+client such as MCP, CLI, API token, schedule, or webhook — the interactive
+caller or the enablement owner; `null` only when neither an explicit
+`context.startedBy` nor request-derived attribution exists), JSON metadata, and
+up to 200 captured log lines.
 
 Package ownership is optional. Ad-hoc MCP `execute` and inline workflows have no
 `package_id`; the record still lands under the signed-in user. That optionality

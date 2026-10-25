@@ -165,10 +165,10 @@ Contract: `packages/shared/src/backup-staging.ts`.
 
 1. **D1 (control plane)** — Dedicated Worker/Workflow in
    `packages/backup-control-plane/` calls the production-account D1 export API
-   with `CLOUDFLARE_API_TOKEN` (Account D1 Edit) for every entry in
-   `SOURCE_DATABASES`: APP_DB (`kody`, `SOURCE_DATABASE_ID`) and JOBS_DB
-   (`kody-jobs`). Each database gets its own Workflow instance
-   (`d1-backup-<databaseId>-<day>`) and objects under
+   with `CLOUDFLARE_API_TOKEN` (Account D1 Edit) for every `SOURCE_DATABASES`
+   entry whose `restExport` is omitted or `true`: APP_DB (`kody`,
+   `SOURCE_DATABASE_ID`) and JOBS_DB (`kody-jobs`). Each database gets its own
+   Workflow instance (`d1-backup-<databaseId>-<day>`) and objects under
    `<tier>/d1/<database-uuid>/<day>/`. The signed schema-v2 manifest records
    that database's id, name, SQL byte count, and sha256. Restore drills sample
    table counts after import; the manifest itself does not store row counts.
@@ -732,7 +732,7 @@ the correctness spec and incident-only fallback:
 | 06:15                           | Production worker | Staging watchdog: missing today's summary with no older stranded days, today complete while earlier days are stranded, catch-up with no advance for 2h, or the oldest stranded day 2+ UTC days behind, fails → Sentry. A one-day backlog that is still advancing does not page |
 | 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                        |
 | 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
-| Hourly `:45`                    | Control plane     | D1 freshness for every configured source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                                 |
+| Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                               |
 | `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                                |
 | Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |
 | 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                             |
