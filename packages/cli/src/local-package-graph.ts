@@ -144,20 +144,29 @@ export function packageRuntimeFacadeImportSpecifier(packageId: string): string {
 }
 
 /**
- * Prefer the exact package-runtime module name from the graph (may be nested
- * under a published-bundle prefix). Fall back to the root virtual path.
+ * Prefer the root virtual package-runtime facade
+ * (`.__kody_virtual__/package-runtime/<hex>.js`). Nested copies under a
+ * published-bundle prefix import a sibling `../runtime.js` re-export; when
+ * binding probes keep only the primary shim, those nested facades would miss
+ * their runtime. Shortest matching path wins (root before nested).
  */
 export function resolvePackageRuntimeFacadeImportSpecifier(
 	graph: LocalPackageGraph,
 	packageId: string,
 ): string | null {
+	let best: string | null = null
 	for (const module of graph.modules) {
 		if (parsePackageRuntimeModulePathPackageId(module.name) !== packageId) {
 			continue
 		}
-		return module.name.startsWith('/') ? module.name : `/${module.name}`
+		const specifier = module.name.startsWith('/')
+			? module.name
+			: `/${module.name}`
+		if (best === null || specifier.length < best.length) {
+			best = specifier
+		}
 	}
-	return null
+	return best
 }
 
 /**
@@ -719,7 +728,9 @@ export function mergePackageGraphBindings(
 	for (const module of probed.modules) {
 		if (module.name.startsWith('kody:@')) continue
 		if (isLocalExecuteGatewayFetchShimModuleName(module.name)) continue
-		if (parsePackageRuntimeModulePathPackageId(module.name) != null) {
+		// Only root facades: they import `../runtime.js` → primary shim we keep.
+		// Nested facades need a sibling nested runtime we deliberately skip.
+		if (isRootPackageRuntimeFacadeModuleName(module.name)) {
 			byName.set(module.name, module)
 		}
 	}
@@ -743,6 +754,19 @@ function isLocalExecuteGatewayFetchShimModuleName(moduleName: string): boolean {
 		moduleName.endsWith(`/${localExecuteGatewayFetchShimModuleName}`) ||
 		moduleName.includes(`/${localExecuteGatewayFetchShimModuleName}/`)
 	)
+}
+
+/** True for `.__kody_virtual__/package-runtime/<hex>.js` (not nested under a bundle). */
+export function isRootPackageRuntimeFacadeModuleName(
+	moduleName: string,
+): boolean {
+	const normalized = moduleName.replace(/\\/g, '/').replace(/^\/+/, '')
+	const prefix = `${packageRuntimeModulePrefix}/`
+	if (!normalized.startsWith(prefix) || !normalized.endsWith('.js')) {
+		return false
+	}
+	const rest = normalized.slice(prefix.length, -'.js'.length)
+	return rest.length > 0 && !rest.includes('/')
 }
 
 /**

@@ -20,6 +20,7 @@ import {
 	packageRuntimeFacadeImportSpecifier,
 	packageRuntimeModulePrefix,
 	resolveLocalPackageGraph,
+	resolvePackageRuntimeFacadeImportSpecifier,
 	rewriteLocalModulesToPackageFacades,
 	synthesizePackageGraphEntry,
 } from '../src/local-package-graph.js'
@@ -825,4 +826,51 @@ test('resolveLocalPackageGraph falls back to local-only when depResolve binding 
 	} finally {
 		rmSync(root, { recursive: true, force: true })
 	}
+})
+
+test('mergePackageGraphBindings skips nested facades and prefers the root facade path', () => {
+	const packageId = 'pkg-uuid'
+	const rootFacade = `${packageRuntimeModulePrefix}/${encodePathKey(packageId)}.js`
+	const nestedFacade = `.__published_bundle__/x/${rootFacade}`
+	const merged = mergePackageGraphBindings(
+		{
+			modules: [
+				{
+					name: localExecuteGatewayFetchShimModuleName,
+					esModule: 'const __kodyPackageBindings = {\n\t__proto__: null,\n};\n',
+				},
+			],
+			imports: [],
+			packageBindings: {},
+			packageIdsByImport: {},
+		},
+		{
+			modules: [
+				{
+					name: nestedFacade,
+					esModule: 'export async function createAuthenticatedFetch() {}\n',
+				},
+				{
+					name: rootFacade,
+					esModule: 'export async function createAuthenticatedFetch() {}\n',
+				},
+				{
+					name: `.__published_bundle__/x/${localExecuteGatewayFetchShimModuleName}`,
+					esModule: 'export {}\n',
+				},
+			],
+			imports: ['kody:@someone/pkg/export'],
+			packageBindings: { [packageId]: 'kpb1.pkg.sig' },
+			packageIdsByImport: { 'kody:@someone/pkg/export': packageId },
+		},
+	)
+	assert.ok(merged.modules.some((module) => module.name === rootFacade))
+	assert.equal(
+		merged.modules.some((module) => module.name === nestedFacade),
+		false,
+	)
+	assert.equal(
+		resolvePackageRuntimeFacadeImportSpecifier(merged, packageId),
+		`/${rootFacade}`,
+	)
 })
