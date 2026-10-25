@@ -44,6 +44,13 @@ test('connected apps only render styled revoke controls for optional scopes', as
 		'/account/connected-apps',
 	)
 	expect(html).toContain('See your access level for this app')
+	const emailLabelIndex = html.indexOf('See your email address')
+	const emailListItemEnd = html.indexOf('</li>', emailLabelIndex)
+	const emailRevokeIndex = html.indexOf(
+		'aria-label="Revoke See your email address"',
+	)
+	expect(emailRevokeIndex).toBeGreaterThan(emailLabelIndex)
+	expect(emailRevokeIndex).toBeLessThan(emailListItemEnd)
 	expect(html).toContain('aria-label="Revoke See your email address"')
 	expect(html).toContain(
 		'aria-label="Revoke Read your calendar to find an open time."',
@@ -51,4 +58,12 @@ test('connected apps only render styled revoke controls for optional scopes', as
 	expect(html).not.toContain('aria-label="Revoke See your name')
 	expect(html).not.toContain('aria-label="Revoke Unknown access"')
 	expect(html.match(/>Revoke<\/button>/g)).toHaveLength(2)
+	const profileLabelIndex = html.indexOf('See your name, username, and avatar')
+	const profileListItemEnd = html.indexOf('</li>', profileLabelIndex)
+	expect(
+		html.indexOf('aria-label="Revoke See your name, username, and avatar"'),
+	).toBe(-1)
+	expect(html.slice(profileLabelIndex, profileListItemEnd)).not.toContain(
+		'aria-label="Revoke',
+	)
 })

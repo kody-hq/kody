@@ -29,6 +29,15 @@ export function packageAppOauthClaimLabels(
 	return claims
 }
 
+export function packageAppOauthClaimLabel(
+	scope: PackageAppOauthScope | string,
+	visitorNeedDescriptions: Readonly<Record<string, string>> = {},
+) {
+	return (
+		packageAppOauthClaimLabels([scope], visitorNeedDescriptions).at(-1) ?? scope
+	)
+}
+
 export function packageAppOauthAppDomain(redirectUri: string) {
 	try {
 		return new URL(redirectUri).hostname

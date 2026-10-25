@@ -172,34 +172,34 @@ export function AccountConnectedAppsPage({
 										<span css={rowTitleCss}>{app.appName}</span>
 										<span css={mutedCss}>By {app.publisherName}</span>
 										<ul css={allowsCss} aria-label={`${app.appName} can`}>
-											{app.allows.map((allow) => (
-												<li key={allow}>{allow}</li>
-											))}
-										</ul>
-										{app.revocableScopes.filter(({ scope }) =>
-											isOptionalScope(scope),
-										).length > 0 ? (
-											<ul css={scopeListCss}>
-												{app.revocableScopes
-													.filter(({ scope }) => isOptionalScope(scope))
-													.map(({ scope, label }) => (
-														<li key={scope} css={scopeRowCss}>
-															<span>{label}</span>
+											{app.allows.map((allow) => {
+												const revocableScope = app.revocableScopes.find(
+													({ scope, label }) =>
+														isOptionalScope(scope) && label === allow,
+												)
+												return (
+													<li
+														key={allow}
+														css={revocableScope ? scopeRowCss : undefined}
+													>
+														<span>{allow}</span>
+														{revocableScope ? (
 															<button
 																type="button"
-																aria-label={`Revoke ${label}`}
+																aria-label={`Revoke ${allow}`}
 																css={dangerButtonCss}
 																onClick={() => {
-																	if (window.confirm(`Revoke ${label}?`))
-																		revokeAppScope(app, scope)
+																	if (window.confirm(`Revoke ${allow}?`))
+																		revokeAppScope(app, revocableScope.scope)
 																}}
 															>
 																Revoke
 															</button>
-														</li>
-													))}
-											</ul>
-										) : null}
+														) : null}
+													</li>
+												)
+											})}
+										</ul>
 										<span css={mutedCss}>
 											Last used{' '}
 											<TimestampValue value={app.lastUsedAt} fallback="never" />
@@ -404,15 +404,6 @@ const allowsCss: CSSObject = {
 	fontSize: typography.fontSize.sm,
 	display: 'grid',
 	gap: '0.15rem',
-}
-
-const scopeListCss: CSSObject = {
-	display: 'grid',
-	gap: spacing.xs,
-	listStyle: 'none',
-	margin: 0,
-	padding: 0,
-	fontSize: typography.fontSize.sm,
 }
 
 const scopeRowCss: CSSObject = {

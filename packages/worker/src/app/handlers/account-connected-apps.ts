@@ -1,6 +1,9 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
-import { packageAppOauthClaimLabels } from '#app/package-app-oauth-consent-copy.ts'
+import {
+	packageAppOauthClaimLabel,
+	packageAppOauthClaimLabels,
+} from '#app/package-app-oauth-consent-copy.ts'
 import {
 	listLivePackageAppOauthGrantsForPerson,
 	revokePackageAppOauthGrantScope,
@@ -174,8 +177,7 @@ async function describeAppGrant(
 			.filter(isOptionalPackageAppScope)
 			.map((scope) => ({
 				scope,
-				label:
-					packageAppOauthClaimLabels([scope], needDescriptions)[0] ?? scope,
+				label: packageAppOauthClaimLabel(scope, needDescriptions),
 			})),
 		connectedAt: grant.createdAt,
 		lastUsedAt: grant.lastUsedAt,
