@@ -8,9 +8,9 @@ import { isExecutedDirectly } from '../node-runtime.ts'
  * Runs `npm audit --omit=dev --json` and decides whether moderate, high, or
  * critical findings fail:
  * - `enforce`: findings fail (exit 1). Used when the change touches a
- *   dependency manifest (any `package.json`, `package-lock.json`, or
- *   `npm-shrinkwrap.json`), so a dependency PR cannot add or keep a known
- *   advisory.
+ *   dependency manifest (`package.json`, `package-lock.json`, or
+ *   `npm-shrinkwrap.json` outside test/fixture trees), so a dependency PR
+ *   cannot add or keep a known advisory.
  * - `report`: findings print as GitHub `::warning` annotations and exit 0.
  *   Used on `main` pushes and on changes that leave dependencies alone, so a
  *   newly published advisory does not fail unrelated work. The scheduled
@@ -47,8 +47,13 @@ const dependencyManifestNames = new Set([
 ])
 
 export function isDependencyManifestPath(filePath: string) {
-	const name = filePath.trim().split('/').at(-1) ?? ''
-	return dependencyManifestNames.has(name)
+	const normalized = filePath.trim().replaceAll('\\', '/')
+	const name = normalized.split('/').at(-1) ?? ''
+	if (!dependencyManifestNames.has(name)) return false
+	// Test / fixture package.json files are authored samples, not the
+	// production dependency graph that audit:prod guards.
+	if (/(^|\/)(tests?|fixtures)\//.test(normalized)) return false
+	return true
 }
 
 export function resolveAuditMode({
