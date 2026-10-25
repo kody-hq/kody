@@ -517,7 +517,7 @@ type KodyEventsRuntime = {
 declare module "kody:runtime" {
   export const kody: Record<string, KodyCapability> & {
     readonly mcp: Record<string, KodyMcpServerTools>;
-    appRateLimit: KodyCapability & ((input: {
+    appRateLimit: (input: {
       key: string;
       limit: number;
       windowSeconds: number;
@@ -526,8 +526,8 @@ declare module "kody:runtime" {
       remaining: number;
       resetAt: string;
       retryAfterSeconds: number | null;
-    }>);
-    appSpendGet: KodyCapability & ((input?: Record<string, never>) => Promise<{
+    }>;
+    appSpendGet: (input?: Record<string, never>) => Promise<{
       month: string;
       creditsMicroUsd: number;
       days: Array<{
@@ -539,7 +539,7 @@ declare module "kody:runtime" {
           creditsMicroUsd: number;
         }>;
       }>;
-    }>);
+    }>;
   };
   export function hasScope(request: Request, scope: string): boolean;
   export function hasVisitorCredential(request: Request, key: string): boolean;

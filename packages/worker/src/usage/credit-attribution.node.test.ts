@@ -16,8 +16,11 @@ vi.mock('./aggregate-rollups.ts', async (importOriginal) => {
 	}
 })
 
-const { aggregateCreditAttributionDaily } =
-	await import('./credit-attribution.ts')
+const {
+	aggregateCreditAttributionDaily,
+	loadPackageAppVisitorAttribution,
+	selectPackageAppVisitorIds,
+} = await import('./credit-attribution.ts')
 const { normalizeCreditAttributionAutomationSource } =
 	await import('#universal/credit-attribution.ts')
 
@@ -29,6 +32,77 @@ function createMigratedDb() {
 	applyAllMigrations(sqlite, migrationsDirectory)
 	return { sqlite, db: createD1FromSqlite(sqlite) }
 }
+
+test('package app visitor limits rank credits and break ties by visitor id', () => {
+	expect(
+		selectPackageAppVisitorIds(
+			[
+				{ visitorId: 'visitor-b', creditsMicroUsd: 10 },
+				{ visitorId: 'visitor-a', creditsMicroUsd: 10 },
+				{ visitorId: 'visitor-c', creditsMicroUsd: 2 },
+			],
+			2,
+		),
+	).toEqual(['visitor-a', 'visitor-b'])
+})
+
+test('package app visitor name lookups only cover retained rows with bounded concurrency', async () => {
+	const attributionRows = Array.from({ length: 501 }, (_, index) => ({
+		day: '2026-10-01',
+		package_id: 'pkg-1',
+		visitor_user_id: `visitor-${String(index).padStart(3, '0')}`,
+		meter: 'unique_worker_days',
+		units: 1,
+	}))
+	const nameIds: Array<string> = []
+	let activeLookups = 0
+	let maxActiveLookups = 0
+	const db = {
+		prepare(sql: string) {
+			return {
+				bind(...args: Array<unknown>) {
+					return {
+						async all() {
+							if (sql.includes('FROM package_app_visitor_attribution_daily')) {
+								return { results: attributionRows }
+							}
+							nameIds.push(...(args as Array<string>))
+							activeLookups += 1
+							maxActiveLookups = Math.max(maxActiveLookups, activeLookups)
+							await new Promise((resolve) => setTimeout(resolve, 0))
+							activeLookups -= 1
+							return { results: [] }
+						},
+					}
+				},
+			}
+		},
+	} as unknown as D1Database
+
+	const result = await loadPackageAppVisitorAttribution({
+		db,
+		stableUserId: 'owner-1',
+		month: '2026-10',
+		dailyUnits: [
+			{
+				packageId: 'pkg-1',
+				day: '2026-10-01',
+				meter: 'unique_worker_days',
+				units: 501,
+			},
+		],
+		includes: [{ meter: 'unique_worker_days', include: 0 }],
+	})
+
+	expect(result.get('pkg-1')).toMatchObject({
+		total: 501,
+		truncated: true,
+	})
+	expect(result.get('pkg-1')?.rows).toHaveLength(500)
+	expect(nameIds).toHaveLength(500)
+	expect(nameIds).not.toContain('visitor-500')
+	expect(maxActiveLookups).toBeLessThanOrEqual(4)
+})
 
 test('normalizeCreditAttributionAutomationSource maps empty and invalid to NULL', () => {
 	expect(normalizeCreditAttributionAutomationSource('')).toBeNull()

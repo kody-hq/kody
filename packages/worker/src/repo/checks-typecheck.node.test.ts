@@ -289,6 +289,28 @@ test('publish and invocation agree on exports with a narrowly typed required par
 	).toEqual({ ok: true })
 }, 60_000)
 
+test('package app rate-limit and spend helpers retain their specific result types', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': createManifest({}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { kody } from 'kody:runtime'
+
+export async function readUsage() {
+  const rateLimit = await kody.appRateLimit({
+    key: 'send-message',
+    limit: 5,
+    windowSeconds: 60,
+  })
+  const allowed: boolean = rateLimit.allowed
+  const spend = await kody.appSpendGet()
+  const creditsMicroUsd: number = spend.creditsMicroUsd
+  return { allowed, creditsMicroUsd }
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+}, 60_000)
+
 test('multi-callable typecheck keeps per-entrypoint diagnostics from one harness program', async () => {
 	const typecheck = await runTypecheck({
 		'package.json': createManifest({

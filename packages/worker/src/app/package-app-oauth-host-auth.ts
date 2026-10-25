@@ -226,7 +226,11 @@ async function resolveHostApp(input: {
 	request: Request
 	env: Env
 	url: URL
-}): Promise<{ orgUsername: string; kodyId: string } | null> {
+}): Promise<{
+	orgUsername: string
+	kodyId: string
+	useConfiguredAppOrigin: boolean
+} | null> {
 	const requestHost = parsePackageAppRequestHost({
 		env: input.env,
 		url: input.url,
@@ -234,11 +238,12 @@ async function resolveHostApp(input: {
 	if (requestHost?.kind === 'user-subdomain') {
 		const app = readAppSlugParam(input.url)
 		if (!app) return null
-		return await resolveVerifiedHostApp({
+		const resolved = await resolveVerifiedHostApp({
 			env: input.env,
 			orgUsername: requestHost.username,
 			kodyId: app,
 		})
+		return resolved ? { ...resolved, useConfiguredAppOrigin: false } : null
 	}
 
 	const hostname = normalizeCustomHostname(input.url.hostname)
@@ -249,20 +254,22 @@ async function resolveHostApp(input: {
 		})
 		if (mapping) {
 			if (isVerifiedAppCustomHostname(mapping)) {
-				return await resolveVerifiedHostApp({
+				const resolved = await resolveVerifiedHostApp({
 					env: input.env,
 					orgUsername: mapping.username,
 					kodyId: mapping.kodyId.toLowerCase(),
 				})
+				return resolved ? { ...resolved, useConfiguredAppOrigin: true } : null
 			}
 			if (isVerifiedOrgCustomHostname(mapping)) {
 				const app = readAppSlugParam(input.url)
 				if (!app) return null
-				return await resolveVerifiedHostApp({
+				const resolved = await resolveVerifiedHostApp({
 					env: input.env,
 					orgUsername: mapping.username,
 					kodyId: app,
 				})
+				return resolved ? { ...resolved, useConfiguredAppOrigin: true } : null
 			}
 		}
 	}
@@ -272,11 +279,12 @@ async function resolveHostApp(input: {
 	if (!getPackageAppBaseUrl({ env: input.env })) {
 		const inline = resolvePackageAppOauthInlineIdentity(input.url)
 		if (!inline) return null
-		return await resolveVerifiedHostApp({
+		const resolved = await resolveVerifiedHostApp({
 			env: input.env,
 			orgUsername: inline.orgUsername,
 			kodyId: inline.kodyId,
 		})
+		return resolved ? { ...resolved, useConfiguredAppOrigin: false } : null
 	}
 	return null
 }
@@ -308,7 +316,10 @@ async function handleLogin(input: { request: Request; env: Env; url: URL }) {
 	const challenge = await createS256CodeChallenge(verifier)
 	const authorize = new URL(
 		packageAppOauthPaths.authorize,
-		getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
+		getAppBaseUrl({
+			env: input.env,
+			requestUrl: app.useConfiguredAppOrigin ? undefined : input.request.url,
+		}),
 	)
 	authorize.searchParams.set('response_type', 'code')
 	authorize.searchParams.set('client_id', clientId)
@@ -557,7 +568,12 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 	const avatarUrl = relativeAvatar
 		? new URL(
 				relativeAvatar,
-				getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
+				getAppBaseUrl({
+					env: input.env,
+					requestUrl: app?.useConfiguredAppOrigin
+						? undefined
+						: input.request.url,
+				}),
 			).toString()
 		: undefined
 

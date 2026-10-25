@@ -1287,11 +1287,12 @@ share an origin, so client JavaScript can read cookies from sibling apps with
 appropriate `SameSite` value.
 
 You can run your own login and OAuth flow, store your own tokens, and choose how
-to authenticate in app code: use `kody.hasScope(request, 'need:<key>')` then
-`credential.visitor('<key>')` when the visitor granted that need, otherwise use
-your own stored token or prompt the visitor to connect. Email consent grants
-visibility only, not permission to send mail. Kody never forwards
-`Authorization`, `Proxy-Authorization`, or `X-Kody-*` headers to package code.
+to authenticate in app code: import `hasScope` from `kody:runtime`, then use
+`hasScope(request, 'need:<key>')` before calling `credential.visitor('<key>')`
+when the visitor granted that need. Otherwise use your own stored token or
+prompt the visitor to connect. Email consent grants visibility only, not
+permission to send mail. Kody never forwards `Authorization`,
+`Proxy-Authorization`, or `X-Kody-*` headers to package code.
 
 None of `appBasePath`, `assetBasePath`, `hostedUrl`, or `clientModuleUrl` ends
 with a slash, so `${assetBasePath}/styles.css` is always a single-slash join.

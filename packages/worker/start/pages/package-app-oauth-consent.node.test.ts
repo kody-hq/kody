@@ -58,6 +58,8 @@ test('package-app OAuth consent renders Kody shell fields', async () => {
 	expect(html).toContain('See your email address')
 	expect(html).toContain('type="checkbox"')
 	expect(html).toMatch(/name="selected_scopes"[^>]*value="email"/)
+	expect(html).toContain('form="package-app-oauth-consent-form"')
+	expect(html).toContain('id="package-app-oauth-consent-form"')
 	expect(html).toMatch(/type="checkbox"[^>]*checked/)
 	expect(html).toContain('name="selected_scopes" value="profile"')
 	expect(html).toContain(

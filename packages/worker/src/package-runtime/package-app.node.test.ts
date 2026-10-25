@@ -868,6 +868,7 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 	expect(packageAppHostSource).toContain(
 		'package-app-set-cookie-domain-stripped',
 	)
+	expect(packageAppHostSource).toContain('package-app-set-cookie-name-dropped')
 	expect(packageAppHostSource).not.toContain('getSecretAuthority')
 	expect(packageAppHostSource).not.toMatch(
 		/headers\.set\([^)]*x-kody-secret-authority/,

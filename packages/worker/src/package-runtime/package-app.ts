@@ -1263,6 +1263,16 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 							hostname: requestUrl.hostname,
 							pathname: requestUrl.pathname,
 							stripped: scrubbedCookies.stripped,
+					}),
+				);
+			}
+			if (scrubbedCookies.dropped.length > 0) {
+				console.warn(
+					'package-app-set-cookie-name-dropped ' +
+						JSON.stringify({
+							hostname: requestUrl.hostname,
+							pathname: requestUrl.pathname,
+							dropped: scrubbedCookies.dropped,
 						}),
 				);
 			}
@@ -3799,6 +3809,9 @@ export async function buildPackageAppWorker(input: {
 						personId: visitor.userId,
 						orgUsername: orgSlug.toLowerCase(),
 						kodyId: input.savedPackage.kodyId,
+					}).catch((error: unknown) => {
+						console.warn('package-app-visitor-grant-lookup-failed', error)
+						return null
 					})
 				: null
 		const requestVisit = await createPackageAppRequestVisit({

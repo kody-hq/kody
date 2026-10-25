@@ -498,12 +498,31 @@ export async function loadCreditAttributionBreakdown(input: {
 
 const maxPackageAppVisitorRows = 500
 const visitorUsernameChunkSize = 80
+const visitorUsernameLookupConcurrency = 4
 const visitorMeterLabels = {
 	unique_worker_days: 'Worker compute',
 	durable_object_rows_read: 'Rows read',
 } as const
 
-async function loadPackageAppVisitorAttribution(input: {
+export function selectPackageAppVisitorIds(
+	visitors: ReadonlyArray<{ visitorId: string; creditsMicroUsd: number }>,
+	limit = maxPackageAppVisitorRows,
+) {
+	return [...visitors]
+		.sort(
+			(left, right) =>
+				right.creditsMicroUsd - left.creditsMicroUsd ||
+				(left.visitorId < right.visitorId
+					? -1
+					: left.visitorId > right.visitorId
+						? 1
+						: 0),
+		)
+		.slice(0, limit)
+		.map(({ visitorId }) => visitorId)
+}
+
+export async function loadPackageAppVisitorAttribution(input: {
 	db: D1Database
 	stableUserId: string
 	month: string
@@ -540,28 +559,6 @@ async function loadPackageAppVisitorAttribution(input: {
 			Number.isFinite(Number(row.units)) &&
 			Number(row.units) > 0,
 	)
-	const ids = [
-		...new Set(rows.map((row) => row.visitor_user_id).filter(Boolean)),
-	]
-	const usernames = new Map<string, string>()
-	for (let index = 0; index < ids.length; index += visitorUsernameChunkSize) {
-		const chunk = ids.slice(index, index + visitorUsernameChunkSize)
-		const placeholders = chunk.map(() => '?').join(', ')
-		const users = await input.db
-			.prepare(
-				`SELECT stable_user_id, username
-				 FROM users
-				 WHERE stable_user_id IN (${placeholders})
-					AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-			)
-			.bind(...chunk)
-			.all<{ stable_user_id: string; username: string }>()
-		for (const user of users.results ?? []) {
-			const username = user.username?.trim()
-			if (username) usernames.set(user.stable_user_id, username)
-		}
-	}
-
 	const dailyPackageUnits = new Map<string, number>()
 	for (const row of input.dailyUnits) {
 		const key = `${row.packageId}\0${row.day}\0${row.meter}`
@@ -641,6 +638,71 @@ async function loadPackageAppVisitorAttribution(input: {
 		visitorsByPackage.set(row.package_id, byVisitor)
 	}
 
+	const rankedByPackage = new Map<
+		string,
+		Array<{
+			visitorId: string
+			visitor: {
+				lastDay: string
+				units: Map<CreditAttributionMeter, number>
+				credits: Map<CreditAttributionMeter, number>
+			}
+			creditsMicroUsd: number
+		}>
+	>()
+	const retainedIds = new Set<string>()
+	for (const [packageId, visitors] of visitorsByPackage) {
+		const ranked = [...visitors.entries()].map(([visitorId, visitor]) => ({
+			visitorId,
+			visitor,
+			creditsMicroUsd: [...visitor.credits.values()].reduce(
+				(sum, credits) => sum + credits,
+				0,
+			),
+		}))
+		const retained = new Set(
+			selectPackageAppVisitorIds(ranked, maxPackageAppVisitorRows),
+		)
+		const selected = ranked.filter(({ visitorId }) => retained.has(visitorId))
+		for (const { visitorId } of selected) {
+			if (visitorId) retainedIds.add(visitorId)
+		}
+		rankedByPackage.set(packageId, selected)
+	}
+
+	const ids = [...retainedIds]
+	const usernames = new Map<string, string>()
+	const chunks: Array<Array<string>> = []
+	for (let index = 0; index < ids.length; index += visitorUsernameChunkSize) {
+		chunks.push(ids.slice(index, index + visitorUsernameChunkSize))
+	}
+	let nextChunk = 0
+	await Promise.all(
+		Array.from(
+			{ length: Math.min(visitorUsernameLookupConcurrency, chunks.length) },
+			async () => {
+				while (nextChunk < chunks.length) {
+					const chunk = chunks[nextChunk++]
+					if (!chunk) continue
+					const placeholders = chunk.map(() => '?').join(', ')
+					const users = await input.db
+						.prepare(
+							`SELECT stable_user_id, username
+							 FROM users
+							 WHERE stable_user_id IN (${placeholders})
+								AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
+						)
+						.bind(...chunk)
+						.all<{ stable_user_id: string; username: string }>()
+					for (const user of users.results ?? []) {
+						const username = user.username?.trim()
+						if (username) usernames.set(user.stable_user_id, username)
+					}
+				}
+			},
+		),
+	)
+
 	const byPackage = new Map<
 		string,
 		{
@@ -649,8 +711,9 @@ async function loadPackageAppVisitorAttribution(input: {
 			truncated: boolean
 		}
 	>()
-	for (const [packageId, visitors] of visitorsByPackage) {
-		const displayRows = [...visitors.entries()].map(([visitorId, visitor]) => {
+	for (const [packageId, selected] of rankedByPackage) {
+		const visitors = visitorsByPackage.get(packageId) ?? new Map()
+		const displayRows = selected.map(({ visitorId, visitor }) => {
 			const meters = creditAttributionMeters
 				.map((meter) => ({
 					meter,
@@ -660,26 +723,33 @@ async function loadPackageAppVisitorAttribution(input: {
 				}))
 				.filter((meter) => meter.units > 0)
 			return {
-				displayName: visitorId
-					? (usernames.get(visitorId) ?? 'Deleted account')
-					: 'Anonymous visitor',
-				creditsMicroUsd: meters.reduce(
-					(sum, meter) => sum + meter.creditsMicroUsd,
-					0,
-				),
-				lastDay: visitor.lastDay,
-				meters,
+				visitorId,
+				row: {
+					displayName: visitorId
+						? (usernames.get(visitorId) ?? 'Deleted account')
+						: 'Anonymous visitor',
+					creditsMicroUsd: meters.reduce(
+						(sum, meter) => sum + meter.creditsMicroUsd,
+						0,
+					),
+					lastDay: visitor.lastDay,
+					meters,
+				},
 			}
 		})
 		displayRows.sort(
 			(left, right) =>
-				right.creditsMicroUsd - left.creditsMicroUsd ||
-				left.displayName.localeCompare(right.displayName),
+				left.row.displayName.localeCompare(right.row.displayName) ||
+				(left.visitorId < right.visitorId
+					? -1
+					: left.visitorId > right.visitorId
+						? 1
+						: 0),
 		)
 		byPackage.set(packageId, {
-			total: displayRows.length,
-			truncated: displayRows.length > maxPackageAppVisitorRows,
-			rows: displayRows.slice(0, maxPackageAppVisitorRows),
+			total: visitors.size,
+			truncated: visitors.size > maxPackageAppVisitorRows,
+			rows: displayRows.map(({ row }) => row),
 		})
 	}
 	return byPackage

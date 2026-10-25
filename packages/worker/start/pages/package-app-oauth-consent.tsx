@@ -145,6 +145,7 @@ export function PackageAppOauthConsentPage({
 									type="checkbox"
 									name="selected_scopes"
 									value={scope}
+									form="package-app-oauth-consent-form"
 									checked={selectedScopes.has(scope)}
 									onChange={(event) =>
 										setSelectedScopes((current) => {
@@ -176,6 +177,7 @@ export function PackageAppOauthConsentPage({
 				</details>
 
 				<form
+					id="package-app-oauth-consent-form"
 					method="post"
 					action={packageAppOauthPaths.authorize}
 					onSubmit={(event) => {

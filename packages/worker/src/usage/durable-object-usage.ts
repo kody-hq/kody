@@ -209,7 +209,10 @@ function queueDurableObjectUsage(input: {
 	const month = timestamp.slice(0, 'YYYY-MM'.length)
 	const packageId = input.packageId?.trim() || ''
 	const packageAppVisitorUserId = input.packageAppVisitorUserId
-	const visitorKey = packageAppVisitorUserId ?? ''
+	const visitorKey =
+		packageAppVisitorUserId === undefined
+			? ''
+			: `visitor:${packageAppVisitorUserId}`
 	const key = `${input.eventType}\0${input.userId}\0${input.doClass}\0${input.outcome}\0${month}\0${packageId}\0${visitorKey}`
 	const existing = pendingByKey.get(key)
 	if (existing) {
