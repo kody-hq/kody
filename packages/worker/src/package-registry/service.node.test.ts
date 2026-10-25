@@ -29,6 +29,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		deleteJobRow: vi.fn(),
 		deleteEntitySource: vi.fn(),
 		deleteSavedPackage: vi.fn(),
+		deletePackageAppRateLimits: vi.fn(),
 		deleteSavedPackageVector: vi.fn(),
 		getSavedPackageById: vi.fn(),
 		insertSavedPackage: vi.fn(),
@@ -794,6 +795,20 @@ test('deleteSavedPackageProjection resyncs the job manager after removing packag
 	expect(mockModule.unpublishCommunityListing).not.toHaveBeenCalled()
 })
 
+test('deleteSavedPackageProjection removes app rate-limit counters after deleting a package', async () => {
+	setupDefaultMocks()
+	const env = createEnv()
+	mockPackageRow()
+	mockModule.deleteSavedPackage.mockResolvedValue(true)
+
+	await deletePackage(env)
+
+	expect(mockModule.deletePackageAppRateLimits).toHaveBeenCalledWith(
+		'package-1:',
+		'package-1;',
+	)
+})
+
 test('deleteSavedPackageProjection unpublishes an active listing before removing the package', async () => {
 	setupDefaultMocks()
 	const env = createEnv()
@@ -1134,6 +1149,10 @@ function createEntitlementsDatabase(input: {
 								query.includes('DELETE FROM package_kody_id_redirects') ||
 								query.includes('DELETE FROM credential_mappings')
 							) {
+								return { meta: { changes: 0 } }
+							}
+							if (query.includes('DELETE FROM package_app_rate_limits')) {
+								mockModule.deletePackageAppRateLimits(...params)
 								return { meta: { changes: 0 } }
 							}
 							throw new Error(`Unsupported run query: ${query}`)

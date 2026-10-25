@@ -56,6 +56,7 @@ test('email, usage, and meter data stay with the source org', () => {
 		'usage_rollups',
 		'credit_ledger_entries',
 		'org_memberships',
+		'package_app_rate_limits',
 	]) {
 		expect(orgTransferTables[table]?.disposition).toBe('keep')
 	}

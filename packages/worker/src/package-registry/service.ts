@@ -825,6 +825,13 @@ export async function deleteSavedPackageProjection(input: {
 					packageId: input.packageId,
 				})
 				if (deleted && savedPackage) {
+					const prefix = `${input.packageId}:`
+					await input.env.APP_DB.prepare(
+						`DELETE FROM package_app_rate_limits
+						 WHERE bucket_key >= ? AND bucket_key < ?`,
+					)
+						.bind(prefix, `${input.packageId};`)
+						.run()
 					removed.package = { name: savedPackage.name }
 				}
 				await deleteCredentialMappingsForPackage({

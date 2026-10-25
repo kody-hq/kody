@@ -37,6 +37,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_app_custom_hostnames: keep(
 		'App-level rows bind by package_id (unchanged on transfer), so the hostname follows the moved package. Org-level rows bind by org_id and stay with the source org. created_by_user_id is attribution only.',
 	),
+	package_app_rate_limits: keep(
+		'Rate-limit buckets bind to package ids, which do not change on org transfer.',
+	),
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
 	),

@@ -671,6 +671,10 @@
 		{
 			"filename": "0182-follow-recent-updates.sql",
 			"sha256": "b10290377c7c50356c0555050ff3ed253991c8098f2991c6812cd787512232e9"
+		},
+		{
+			"filename": "0183-package-app-rate-limits.sql",
+			"sha256": "a422b61e272cb5852e5e5bb2a41aa68cf5ff4800f26a705ce5b93ab5bd199a3b"
 		}
 	]
 }
