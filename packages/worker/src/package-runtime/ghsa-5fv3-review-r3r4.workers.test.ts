@@ -73,6 +73,17 @@ async function ensureSecretAuthorityTestSchema() {
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
+	)`)
 	try {
 		await runSql(
 			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
