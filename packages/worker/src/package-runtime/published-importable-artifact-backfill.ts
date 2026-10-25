@@ -15,7 +15,9 @@ import {
 	isPublishedPackageArtifactBuiltForCommit,
 	loadPublishedBundleArtifactsForPackageTargets,
 	publishedBundleArtifactForPackageTarget,
+	type LoadedPublishedBundleArtifact,
 } from './published-bundle-artifacts.ts'
+import { hasPublishedRuntimeArtifacts } from './published-runtime-artifacts.ts'
 
 /** Keyset page size when walking `saved_packages` for gap detection. */
 export const publishedImportableArtifactBackfillScanPageSize = 50
@@ -103,12 +105,17 @@ async function findMissingImportableTargets(input: {
 	const candidates = importableTargets(input.targets)
 	const missing: Array<PublishedPackageArtifactBuildTarget> = []
 	if (candidates.length === 0) return missing
-	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.sourceId,
-		targets: candidates,
-	})
+	// Without BUNDLE_ARTIFACTS_KV, identity preload hydrates D1 rows via KV and
+	// throws. Match the built-for-commit guard: treat every candidate as missing
+	// so the scan completes without marking the package failed.
+	const loadedByIdentity = hasPublishedRuntimeArtifacts(input.env)
+		? await loadPublishedBundleArtifactsForPackageTargets({
+				env: input.env,
+				userId: input.userId,
+				sourceId: input.sourceId,
+				targets: candidates,
+			})
+		: new Map<string, LoadedPublishedBundleArtifact | null>()
 	for (const target of candidates) {
 		const built = await isPublishedPackageArtifactBuiltForCommit({
 			env: input.env,

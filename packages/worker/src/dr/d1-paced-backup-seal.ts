@@ -101,17 +101,15 @@ async function putImmutable(
 	}
 }
 
-async function copyStagingBytes(input: {
+async function readStagingBytes(input: {
 	s3: DrBackupS3Client
 	stagingKey: string
-	sealedKey: string
-	contentType: string
 }): Promise<Uint8Array> {
 	const bytes = await input.s3.getBytes(input.stagingKey)
 	if (!bytes) {
 		throw new Error(`paced D1 missing staging object: ${input.stagingKey}`)
 	}
-	return putImmutable(input.s3, input.sealedKey, bytes, input.contentType)
+	return bytes
 }
 
 async function verifyMonolithicSha(
@@ -125,6 +123,27 @@ async function verifyMonolithicSha(
 			`paced D1 seal verify failed for ${label}: sha256 ${actual} vs ${expected}`,
 		)
 	}
+}
+
+/**
+ * Verify staging digests before writing immutable sealed keys. Writing first
+ * and verifying after leaves a poisoned sealed object that blocks every reseal
+ * until an operator deletes it by hand.
+ */
+async function sealVerifiedStagingBytes(input: {
+	s3: DrBackupS3Client
+	stagingKey: string
+	sealedKey: string
+	contentType: string
+	expectedSha: string
+	label: string
+}): Promise<Uint8Array> {
+	const bytes = await readStagingBytes({
+		s3: input.s3,
+		stagingKey: input.stagingKey,
+	})
+	await verifyMonolithicSha(bytes, input.expectedSha, input.label)
+	return putImmutable(input.s3, input.sealedKey, bytes, input.contentType)
 }
 
 async function sealTableArtifacts(input: {
@@ -193,8 +212,15 @@ async function sealTableArtifacts(input: {
 		const dataPartDigests: Array<string> = []
 		const indexPartDigests: Array<string> = []
 		for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
+			const dataExpected = dataPointer.dataPartDigests[partIndex]
+			const indexExpected = dataPointer.indexPartDigests[partIndex]
+			if (!dataExpected || !indexExpected) {
+				throw new Error(
+					`paced D1 parts pointer missing digest for ${input.source.name}.${input.table} part ${partIndex}`,
+				)
+			}
 			const [dataPart, indexPart] = await Promise.all([
-				copyStagingBytes({
+				sealVerifiedStagingBytes({
 					s3: input.s3,
 					stagingKey: pacedD1StagingDataPartKey(
 						input.day,
@@ -210,8 +236,10 @@ async function sealTableArtifacts(input: {
 						partIndex,
 					),
 					contentType: 'text/tab-separated-values',
+					expectedSha: dataExpected,
+					label: `${input.source.name}.${input.table} data part ${partIndex}`,
 				}),
-				copyStagingBytes({
+				sealVerifiedStagingBytes({
 					s3: input.s3,
 					stagingKey: pacedD1StagingIndexPartKey(
 						input.day,
@@ -227,24 +255,12 @@ async function sealTableArtifacts(input: {
 						partIndex,
 					),
 					contentType: 'text/tab-separated-values',
+					expectedSha: indexExpected,
+					label: `${input.source.name}.${input.table} index part ${partIndex}`,
 				}),
 			])
 			dataPartDigests.push(await sha256HexOfBytes(dataPart))
 			indexPartDigests.push(await sha256HexOfBytes(indexPart))
-			if (
-				dataPartDigests[partIndex] !== dataPointer.dataPartDigests[partIndex]
-			) {
-				throw new Error(
-					`paced D1 sealed data part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
-				)
-			}
-			if (
-				indexPartDigests[partIndex] !== dataPointer.indexPartDigests[partIndex]
-			) {
-				throw new Error(
-					`paced D1 sealed index part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
-				)
-			}
 		}
 
 		const dataSha256 = await sha256HexOfText(`${dataPartDigests.join('\n')}\n`)
@@ -274,30 +290,24 @@ async function sealTableArtifacts(input: {
 		return
 	}
 
-	const [dataBytes, indexBytes] = await Promise.all([
-		copyStagingBytes({
+	await Promise.all([
+		sealVerifiedStagingBytes({
 			s3: input.s3,
 			stagingKey: stagingDataKey,
 			sealedKey: sealedDataKey,
 			contentType: 'text/tab-separated-values',
+			expectedSha: input.dataSha256,
+			label: `${input.source.name}.${input.table} data`,
 		}),
-		copyStagingBytes({
+		sealVerifiedStagingBytes({
 			s3: input.s3,
 			stagingKey: stagingIndexKey,
 			sealedKey: sealedIndexKey,
 			contentType: 'text/tab-separated-values',
+			expectedSha: input.indexSha256,
+			label: `${input.source.name}.${input.table} index`,
 		}),
 	])
-	await verifyMonolithicSha(
-		dataBytes,
-		input.dataSha256,
-		`${input.source.name}.${input.table} data`,
-	)
-	await verifyMonolithicSha(
-		indexBytes,
-		input.indexSha256,
-		`${input.source.name}.${input.table} index`,
-	)
 }
 
 export type SealPacedD1SourceNightResult = {

@@ -363,6 +363,33 @@ export type LoadedPublishedBundleArtifact = {
 	artifact: PublishedBundleArtifact | null
 }
 
+/**
+ * Cap concurrent rebuilds and KV hydrations so a many-export package cannot
+ * stack isolate heap. Two at a time cuts typical 4-target publishes roughly in
+ * half without reopening the session-DO memory failure in kody-hq/kody#987.
+ */
+const publishedPackageArtifactRebuildConcurrency = 2
+
+async function mapWithConcurrency<T>(
+	items: ReadonlyArray<T>,
+	concurrency: number,
+	mapper: (item: T) => Promise<void>,
+) {
+	if (items.length === 0) return
+	const limit = Math.max(1, Math.min(concurrency, items.length))
+	let nextIndex = 0
+	async function worker() {
+		while (nextIndex < items.length) {
+			const index = nextIndex
+			nextIndex += 1
+			const item = items[index]
+			if (item === undefined) return
+			await mapper(item)
+		}
+	}
+	await Promise.all(Array.from({ length: limit }, () => worker()))
+}
+
 export function publishedBundleLoadIdentityKey(input: {
 	sourceId: string
 	kind: BundleArtifactKind
@@ -499,8 +526,10 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 			identities: [...normalized.values()].map((entry) => entry.identity),
 		},
 	)
-	await Promise.all(
-		[...normalized.entries()].map(async ([key, entry]) => {
+	await mapWithConcurrency(
+		[...normalized.entries()],
+		publishedPackageArtifactRebuildConcurrency,
+		async ([key, entry]) => {
 			const row = rowsByKey.get(key) ?? null
 			if (!row) {
 				loaded.set(key, null)
@@ -516,7 +545,7 @@ export async function loadPublishedBundleArtifactsByIdentities(input: {
 					entryPoint: entry.entryPoint,
 				}),
 			)
-		}),
+		},
 	)
 	return loaded
 }
@@ -1125,34 +1154,6 @@ export async function persistPublishedPackageArtifactTargets(
 			error: new Error('Published package artifact target was not built.'),
 		}
 	})
-}
-
-/**
- * Cap concurrent esbuild-wasm rebuilds so a many-export package cannot stack
- * isolate heap the way fully sequential rebuilds used to stretch wall time.
- * Two at a time cuts typical 4-target publishes roughly in half without
- * reopening the session-DO memory failure in kody-hq/kody#987.
- */
-const publishedPackageArtifactRebuildConcurrency = 2
-
-async function mapWithConcurrency<T>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<void>,
-) {
-	if (items.length === 0) return
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	let nextIndex = 0
-	async function worker() {
-		while (nextIndex < items.length) {
-			const index = nextIndex
-			nextIndex += 1
-			const item = items[index]
-			if (item === undefined) return
-			await mapper(item)
-		}
-	}
-	await Promise.all(Array.from({ length: limit }, () => worker()))
 }
 
 export async function rebuildPublishedPackageArtifacts(

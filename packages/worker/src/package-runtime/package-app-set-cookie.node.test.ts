@@ -201,6 +201,33 @@ test('createPackageAppSetCookieScrubHostSource embeds apexes and the scrub helpe
 	expect(source).toContain('__kodyShouldStripPackageAppSetCookieDomain')
 })
 
+test('generated package-app scrubber strips unsafe cookie domains', () => {
+	const source = createPackageAppSetCookieScrubHostSource({
+		packageAppApexHostnames: ['kody.run', 'legacy.example'],
+	})
+	const scrub = new Function(
+		`${source}; return __kodyScrubPackageAppSetCookieDomains;`,
+	)() as (
+		response: Response,
+		responseHostname: string,
+	) => {
+		response: Response
+		stripped: Array<{ cookieName: string; domain: string }>
+	}
+
+	const result = scrub(
+		new Response(null, {
+			headers: {
+				'Set-Cookie': 'toss=1; Domain=kody.run; Path=/',
+			},
+		}),
+		'alice.kody.run',
+	)
+
+	expect(result.stripped).toEqual([{ cookieName: 'toss', domain: 'kody.run' }])
+	expect(result.response.headers.getSetCookie()).toEqual(['toss=1; Path=/'])
+})
+
 test('legacy package-app apex list also strips Domain under that apex', () => {
 	const scrubbed = scrubPackageAppSetCookieDomains(
 		new Response(null, {

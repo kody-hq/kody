@@ -168,6 +168,11 @@ test('dry-run reports missing importable-module artifacts without rebuilding', a
 	expect(
 		mocks.rebuildPublishedPackageArtifactsViaRepoSession,
 	).not.toHaveBeenCalled()
+	// No BUNDLE_ARTIFACTS_KV on `env`: skip identity preload so hydration cannot
+	// throw and fail the package scan (post-merge #4301).
+	expect(
+		mocks.loadPublishedBundleArtifactsForPackageTargets,
+	).not.toHaveBeenCalled()
 })
 
 test('unpublished drafts are skipped even when the published manifest loader would throw', async () => {

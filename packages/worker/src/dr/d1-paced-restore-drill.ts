@@ -10,6 +10,7 @@ import {
 	buildPacedD1RestoreSql,
 	createEmptyPacedD1RestoreState,
 } from '@kody-internal/shared/backup-d1-paced-restore.ts'
+import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { quoteSqlIdentifier } from '@kody-internal/shared/sql-literals.ts'
 import {
 	createDrBackupS3Client,
@@ -268,9 +269,16 @@ async function drillOneSource(input: {
 		})
 		// Parts-chain digests are verified in loadPacedD1TableDataBody; the
 		// assembled TSV sha will not match manifest.dataSha256, so skip the
-		// artifact-body sha check while still verifying row hashes when possible.
+		// artifact-body sha / per-row hash checks. Still verify the chain link
+		// explicitly so a parts night cannot skip prevManifestSha256.
 		// First night in the chain may still cite an older prevManifestSha256;
 		// omit prevManifestRaw so apply does not require that older night.
+		if (anyParts && prevRaw !== undefined) {
+			const expectedPrev = await sha256Hex(prevRaw)
+			if (night.manifest.prevManifestSha256 !== expectedPrev) {
+				throw new Error('CHAIN BROKEN: prevManifestSha256 mismatch')
+			}
+		}
 		await applyPacedD1NightToState({
 			state,
 			night: {
