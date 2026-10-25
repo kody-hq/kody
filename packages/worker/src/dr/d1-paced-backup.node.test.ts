@@ -116,6 +116,7 @@ function sourcesJson(
 function createEnv(overrides: Record<string, unknown> = {}) {
 	return {
 		DR_D1_PACED_BACKUP_ENABLED: 'true',
+		DR_D1_PACED_RESTORE_DRILL_ENABLED: 'true',
 		DR_BACKUP_ACCOUNT_ID: 'acct',
 		DR_BACKUP_BUCKET_NAME: 'bucket',
 		DR_BACKUP_ACCESS_KEY_ID: 'key',
@@ -587,6 +588,29 @@ test('restore drill verifies sealed night against live counts', async () => {
 		restoredCount: 3,
 		liveCount: 3,
 		ok: true,
+	})
+})
+
+test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv({ DR_D1_PACED_RESTORE_DRILL_ENABLED: 'false' })
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const drill = await runD1PacedRestoreDrillTick({
+		env,
+		now: new Date('2026-10-25T07:05:00.000Z'),
+		s3: client,
+		day,
+	})
+	expect(drill).toMatchObject({
+		skipped: true,
+		reason: 'not-configured',
+		sourcesChecked: 0,
+		sourcesOk: 0,
 	})
 })
 

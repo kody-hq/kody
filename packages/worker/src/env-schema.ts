@@ -400,6 +400,9 @@ export const EnvSchema = object({
 	// Shadow paced D1 backup lane (alongside REST export). Literal "true"
 	// plus DR S3 credentials; sources are DR_D1_PACED_SOURCES JSON.
 	DR_D1_PACED_BACKUP_ENABLED: optionalNonEmptyStringSchema,
+	// Weekly paced restore drill. Separate from the backup lane so OOMing
+	// drills can be paused without stopping shadow seals. Literal "true".
+	DR_D1_PACED_RESTORE_DRILL_ENABLED: optionalNonEmptyStringSchema,
 	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
 	// Production ships APP_DB + JOBS_DB; AUDIT_DB waits on the committed UUID.
 	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,

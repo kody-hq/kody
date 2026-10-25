@@ -70,3 +70,18 @@ export function isD1PacedBackupConfigured(
 		readDrBackupS3Config(env) !== null
 	)
 }
+
+/**
+ * Weekly restore drill is separately gated so it can be paused without
+ * disabling the paced backup lane. Jobs still dispatch the lane on Sunday
+ * cadence; the tick exits cheaply when this is not literal `"true"`.
+ */
+export function isD1PacedRestoreDrillConfigured(
+	env: Pick<Env, 'DR_D1_PACED_RESTORE_DRILL_ENABLED'> &
+		Parameters<typeof isD1PacedBackupConfigured>[0],
+) {
+	return (
+		env.DR_D1_PACED_RESTORE_DRILL_ENABLED?.trim() === 'true' &&
+		isD1PacedBackupConfigured(env)
+	)
+}

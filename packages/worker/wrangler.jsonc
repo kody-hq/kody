@@ -647,6 +647,9 @@
 				// JOBS_DB only until Kent adds the kody-audit UUID (not
 				// committed; see docs/contributing/operator-accounts.md).
 				"DR_D1_PACED_BACKUP_ENABLED": "true",
+				// Paused: Sunday drill OOMs the isolate (KODY-AQ) and kills
+				// co-located lanes. Re-enable after streaming drill lands.
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "false",
 				"DR_D1_PACED_SOURCES": "[{\"binding\":\"APP_DB\",\"name\":\"kody\",\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\"},{\"binding\":\"JOBS_DB\",\"name\":\"kody-jobs\",\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\"}]",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "a41d50ecaf0ae0f86dd1824ef6729cb2",
@@ -1058,6 +1061,7 @@
 				"YOUTUBE_ALLOWED_PLAYLIST_IDS": "PLV5CVI1eNcJhP4nrJt85L7PxHjebFpDfY",
 				"DR_EXPORT_ENABLED": "",
 				"DR_D1_PACED_BACKUP_ENABLED": "",
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "",
 				"DR_D1_PACED_SOURCES": "",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "",
@@ -1355,6 +1359,7 @@
 				"STRIPE_API_BASE_URL": "https://stripe.mock",
 				"DR_EXPORT_ENABLED": "",
 				"DR_D1_PACED_BACKUP_ENABLED": "",
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "",
 				"DR_D1_PACED_SOURCES": "",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "",

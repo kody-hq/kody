@@ -16,7 +16,7 @@ import {
 	readDrBackupS3Config,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
-import { isD1PacedBackupConfigured } from '#worker/dr/d1-paced-backup-schedule.ts'
+import { isD1PacedRestoreDrillConfigured } from '#worker/dr/d1-paced-backup-schedule.ts'
 import {
 	parseD1PacedSources,
 	resolvePacedD1Binding,
@@ -374,7 +374,7 @@ export async function runD1PacedRestoreDrillTick(input: {
 		sources: [],
 	})
 
-	if (!isD1PacedBackupConfigured(input.env)) {
+	if (!isD1PacedRestoreDrillConfigured(input.env)) {
 		return empty('not-configured')
 	}
 	const config = readDrBackupS3Config(input.env)
