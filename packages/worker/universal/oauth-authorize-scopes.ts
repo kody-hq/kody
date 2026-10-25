@@ -8,10 +8,15 @@ import { uniqueOauthScopes } from '#universal/oauth-scopes.ts'
  * Hosts omitted here keep today's "omit scope when empty" behavior (GitHub,
  * Notion, and other providers that accept a scopeless authorize request).
  */
+const googleOpenIdDefaults = ['openid', 'email', 'profile'] as const
+
 const authorizeHostsRequiringScopes: Readonly<
 	Record<string, ReadonlyArray<string>>
 > = {
-	'accounts.google.com': ['openid', 'email', 'profile'],
+	'accounts.google.com': googleOpenIdDefaults,
+	// Device / token hosts for Google OIDC when authorizeUrl is absent.
+	'oauth2.googleapis.com': googleOpenIdDefaults,
+	'openidconnect.googleapis.com': googleOpenIdDefaults,
 	'www.linkedin.com': ['openid', 'profile', 'email'],
 	'linkedin.com': ['openid', 'profile', 'email'],
 	'login.microsoftonline.com': ['openid', 'profile', 'email', 'offline_access'],

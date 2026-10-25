@@ -88,8 +88,23 @@ test('pickAuthorizeScopeHost prefers a host that requires scopes', () => {
 			'accounts.google.com',
 			'www.googleapis.com',
 		]),
-	).toBe('accounts.google.com')
+	).toBe('oauth2.googleapis.com')
 	expect(pickAuthorizeScopeHost(['github.com', 'api.github.com'])).toBe(
 		'github.com',
 	)
+})
+
+test('Google device and token hosts require scopes with the same defaults', () => {
+	for (const host of [
+		'accounts.google.com',
+		'oauth2.googleapis.com',
+		'openidconnect.googleapis.com',
+	]) {
+		expect(authorizeHostRequiresScopes(host)).toBe(true)
+		expect(defaultScopesForAuthorizeHost(host)).toEqual([
+			'openid',
+			'email',
+			'profile',
+		])
+	}
 })

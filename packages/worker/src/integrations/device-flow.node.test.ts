@@ -571,7 +571,50 @@ test('startDeviceAuthorization fills Google defaults when scopes are empty', asy
 		fetchImpl,
 	})
 	expect(started.ok).toBe(true)
+	if (!started.ok) return
 	expect(fetchImpl).toHaveBeenCalledOnce()
+	const stored = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(stored?.scopes).toEqual(['openid', 'email', 'profile'])
+})
+
+test('startDeviceAuthorization fills Google defaults from the device host alone', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(
+		async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = String(init?.body ?? '')
+			expect(body).toContain('scope=openid+email+profile')
+			return jsonResponse({
+				device_code: 'secret-device-code',
+				user_code: 'WXYZ-1234',
+				verification_uri: 'https://accounts.google.com/device',
+				expires_in: 600,
+				interval: 5,
+			})
+		},
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'https://oauth2.googleapis.com/device/code',
+		tokenUrl: 'https://oauth2.googleapis.com/token',
+		authorizeUrl: null,
+		scopes: [],
+		allowedHosts: ['oauth2.googleapis.com', 'api.example.com'],
+		provider: 'google-personal',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	if (!started.ok) return
+	const stored = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(stored?.scopes).toEqual(['openid', 'email', 'profile'])
 })
 
 test('startDeviceAuthorization refuses empty scopes for Slack without defaults', async () => {

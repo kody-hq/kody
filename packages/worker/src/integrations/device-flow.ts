@@ -554,7 +554,9 @@ export async function startDeviceAuthorization(input: {
 		clientId: input.clientId,
 		tokenExchangeStyle: input.tokenExchangeStyle,
 		allowedHosts,
-		scopes: input.scopes,
+		// Persist the scopes actually sent to the provider (including host
+		// defaults filled above), not the possibly-empty caller list.
+		scopes: resolvedScopes.scopes,
 		scopeSeparator: input.scopeSeparator,
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,
