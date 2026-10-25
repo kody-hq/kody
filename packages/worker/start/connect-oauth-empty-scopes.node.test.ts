@@ -2,11 +2,11 @@ import { expect, test } from 'vitest'
 import {
 	mergeConnectOauthConfig,
 	type StoredIntegrationConfig,
-} from './connect-oauth-config.ts'
+} from '../client/routes/connect-oauth-config.ts'
 import {
 	buildConnectOauthAuthorizeUrl,
 	readConnectOauthQueryConfig,
-} from '../../start/pages/connect-oauth-shared.ts'
+} from './pages/connect-oauth-shared.ts'
 
 /**
  * Reproduces hosted connect with only ?provider=… against a user-lane Google
