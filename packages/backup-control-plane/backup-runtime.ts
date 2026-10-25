@@ -35,6 +35,7 @@ import {
 	type BackupPayload,
 	type LegacyScheduledBackupPayload,
 	type SqlStatementStats,
+	type StoredBackup,
 } from './backup-types.ts'
 import { signBackupManifest } from './manifest-signing.ts'
 
@@ -338,14 +339,12 @@ export async function runBackupRuntime(
 		// upload refresh. Catch-up `restart()` replays the successful export
 		// steps, so recovery must use new durable step names in-workflow.
 		const maxExportUploadAttempts = 3
-		let stored: {
-			objectKey: string
-			bookmark: string
-			bytes: number
-			sha256: string
-			r2Etag: string
-			sqlStatementStats: SqlStatementStats | undefined
-		} | null = null
+		let stored:
+			| (StoredBackup & {
+					objectKey: string
+					bookmark: string
+			  })
+			| null = null
 		for (let attempt = 1; attempt <= maxExportUploadAttempts; attempt += 1) {
 			const stepNamePrefix = attempt === 1 ? '' : `recover-${String(attempt)}-`
 			try {
