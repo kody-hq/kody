@@ -25,6 +25,14 @@ type GrantRow = {
 }
 
 const grantColumns = `id, person_id, org_username, kody_id, scopes, created_at, last_used_at`
+const maxPackageAppOauthGrantUpdateAttempts = 5
+
+type LiveGrantLookupInput = {
+	db: D1Database
+	personId: string
+	orgUsername: string
+	kodyId: string
+}
 
 function parseScopes(raw: string): Array<PackageAppOauthScope> {
 	return raw.split(/\s+/).flatMap((part) => {
@@ -45,13 +53,10 @@ function toGrant(row: GrantRow): PackageAppOauthGrant {
 	}
 }
 
-export async function findLivePackageAppOauthGrant(input: {
-	db: D1Database
-	personId: string
-	orgUsername: string
-	kodyId: string
-}): Promise<PackageAppOauthGrant | null> {
-	const row = await input.db
+async function findLivePackageAppOauthGrantRow(
+	input: LiveGrantLookupInput,
+): Promise<GrantRow | null> {
+	return input.db
 		.prepare(
 			`SELECT ${grantColumns}
 			 FROM package_app_oauth_grants
@@ -61,6 +66,12 @@ export async function findLivePackageAppOauthGrant(input: {
 		)
 		.bind(input.personId, input.orgUsername, input.kodyId)
 		.first<GrantRow>()
+}
+
+export async function findLivePackageAppOauthGrant(
+	input: LiveGrantLookupInput,
+): Promise<PackageAppOauthGrant | null> {
+	const row = await findLivePackageAppOauthGrantRow(input)
 	return row ? toGrant(row) : null
 }
 
@@ -104,33 +115,46 @@ export async function upsertPackageAppOauthGrant(input: {
 }) {
 	const now = (input.now ?? new Date()).toISOString()
 	const scopes = serializePackageAppOauthScopes(input.scopes)
-	const existing = await findLivePackageAppOauthGrant({
-		db: input.db,
-		personId: input.personId,
-		orgUsername: input.orgUsername,
-		kodyId: input.kodyId,
-	})
-	if (existing) {
-		const merged = serializePackageAppOauthScopes([
-			...existing.scopes,
-			...input.scopes,
-		])
-		await input.db
-			.prepare(`UPDATE package_app_oauth_grants SET scopes = ? WHERE id = ?`)
-			.bind(merged, existing.id)
-			.run()
-		return existing.id
+	for (
+		let attempt = 0;
+		attempt < maxPackageAppOauthGrantUpdateAttempts;
+		attempt++
+	) {
+		const existing = await findLivePackageAppOauthGrantRow(input)
+		if (existing) {
+			const merged = serializePackageAppOauthScopes([
+				...toGrant(existing).scopes,
+				...input.scopes,
+			])
+			const updated = await input.db
+				.prepare(
+					`UPDATE package_app_oauth_grants
+					 SET scopes = ?
+					 WHERE id = ? AND scopes = ? AND revoked_at IS NULL
+					 RETURNING id`,
+				)
+				.bind(merged, existing.id, existing.scopes)
+				.first<{ id: string }>()
+			if (updated) return updated.id
+			continue
+		}
+
+		const id = crypto.randomUUID()
+		const inserted = await input.db
+			.prepare(
+				`INSERT INTO package_app_oauth_grants
+				 (id, person_id, org_username, kody_id, scopes, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?)
+				 ON CONFLICT DO NOTHING
+				 RETURNING id`,
+			)
+			.bind(id, input.personId, input.orgUsername, input.kodyId, scopes, now)
+			.first<{ id: string }>()
+		if (inserted) return inserted.id
 	}
-	const id = crypto.randomUUID()
-	await input.db
-		.prepare(
-			`INSERT INTO package_app_oauth_grants
-			 (id, person_id, org_username, kody_id, scopes, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-		)
-		.bind(id, input.personId, input.orgUsername, input.kodyId, scopes, now)
-		.run()
-	return id
+	throw new Error(
+		'Package app OAuth grant changed repeatedly while updating scopes',
+	)
 }
 
 export async function revokePackageAppOauthGrantsForPersonApp(input: {
@@ -162,21 +186,33 @@ export async function revokePackageAppOauthGrantScope(input: {
 }) {
 	const scope = readPackageAppOauthScope(input.scope)
 	if (!scope || scope === 'profile') return false
-	const grant = await findLivePackageAppOauthGrant(input)
-	if (!grant?.scopes.includes(scope)) return false
-	const scopes = serializePackageAppOauthScopes([
-		'profile',
-		...grant.scopes.filter((existing) => existing !== scope),
-	])
-	await input.db
-		.prepare(
-			`UPDATE package_app_oauth_grants
-			 SET scopes = ?
-			 WHERE id = ? AND revoked_at IS NULL`,
-		)
-		.bind(scopes, grant.id)
-		.run()
-	return true
+	for (
+		let attempt = 0;
+		attempt < maxPackageAppOauthGrantUpdateAttempts;
+		attempt++
+	) {
+		const grant = await findLivePackageAppOauthGrantRow(input)
+		if (!grant) return false
+		const currentScopes = toGrant(grant).scopes
+		if (!currentScopes.includes(scope)) return false
+		const scopes = serializePackageAppOauthScopes([
+			'profile',
+			...currentScopes.filter((existing) => existing !== scope),
+		])
+		const updated = await input.db
+			.prepare(
+				`UPDATE package_app_oauth_grants
+				 SET scopes = ?
+				 WHERE id = ? AND scopes = ? AND revoked_at IS NULL
+				 RETURNING id`,
+			)
+			.bind(scopes, grant.id, grant.scopes)
+			.first<{ id: string }>()
+		if (updated) return true
+	}
+	throw new Error(
+		'Package app OAuth grant changed repeatedly while updating scopes',
+	)
 }
 
 /** Last-use timestamps move at most once a minute per grant. */
