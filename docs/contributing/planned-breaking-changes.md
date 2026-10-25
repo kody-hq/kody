@@ -40,10 +40,10 @@ release/delete. Dropping the columns and the legacy table is
 
 **Ready when:** Analytics Engine `kody_mcp_protocol_events` blob8
 (`package_identity_param`) for `tools/call` stays under about **10** `kody_id` +
-`both` requests per week for **two consecutive weeks** (counts only; see #3676
-for the weekly query). Sentry KODY-7M and similar scoped-name-as-`kody_id`
-collisions stay quiet. Then a dedicated removal PR can drop the param and
-columns without a fleet codemod.
+`both` requests per week for **two consecutive completed calendar weeks**
+(counts only; see #3676 for the weekly query). Sentry KODY-7M and similar
+scoped-name-as-`kody_id` collisions stay quiet. Then a dedicated removal PR can
+drop the param and columns without a fleet codemod.
 
 **Introduced as leftover by:** the change that documents identity as scoped
 `name` or `package_id` while leaving the leftover param in the runtime contract.

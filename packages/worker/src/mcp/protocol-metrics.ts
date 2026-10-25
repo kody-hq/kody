@@ -39,14 +39,16 @@
  * ```
  *
  * Weekly leftover gate for #3676 (removal waits until `kody_id` + `both` stay
- * under about 10 requests/week for two consecutive weeks; counts only):
+ * under about 10 requests/week for two consecutive completed calendar weeks;
+ * counts only):
  *
  * ```sql
  * SELECT
  *   toStartOfWeek(timestamp) AS week_start,
  *   SUM(_sample_interval) AS kody_id_calls
  * FROM kody_mcp_protocol_events
- * WHERE timestamp > NOW() - INTERVAL '28' DAY
+ * WHERE timestamp >= toStartOfWeek(NOW() - INTERVAL '28' DAY)
+ *   AND timestamp < toStartOfWeek(NOW())
  *   AND blob2 = 'tools/call'
  *   AND blob8 IN ('kody_id', 'both')
  * GROUP BY week_start
