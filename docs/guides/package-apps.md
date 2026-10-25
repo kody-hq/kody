@@ -145,6 +145,26 @@ export async function loader({ request }: { request: Request }) {
 }
 ```
 
+For a private app that requires the visitor to sign in, set `mode: 'required'`
+and publish the package with private visibility:
+
+```ts
+const auth = createPackageAppAuth({
+	mode: 'required',
+	hostedUrl: packageContext?.hostedUrl,
+})
+```
+
+`mode: 'required'` is the sign-in gate, not the private-app permission check.
+The owner and people with `app:execute` in the owning org can open the private
+app; an Owner can grant a specific person Use on that app (`inviteCreate` with
+`kind: "grant"` and `resource_type: "app"`). Anonymous visitors who open the
+package-app host directly see a session-required page that links back to Kody,
+where they can sign in and open the app. This handoff avoids redirect loops
+because the app's host-only session cookie is not shared with Kody. Signed-in
+visitors without access see the no-access page. The same gate applies to app
+pages, `/_assets`, and realtime.
+
 Platform routes on every package-app host (host root, not under `/{leaf}`):
 
 | Path                                       | Role                               |
@@ -203,9 +223,10 @@ export default {
   internet-visible app) gets `user_id` and `username` too, while their Sign in
   with Kody grant for the app is live. Identity is all they get: the request is
   otherwise served exactly like an anonymous visitor, so storage, credentials,
-  and capabilities that need permission fail closed, and usage is metered as
-  anonymous. To give a specific person real access, grant them Use on the app
-  (`inviteCreate` with `kind: "grant"`, `resource_type: "app"`).
+  and capabilities that need permission fail closed. Visitor usage is still
+  attributed to their stable user id, without granting them app access. To give
+  a specific person real access, grant them Use on the app (`inviteCreate` with
+  `kind: "grant"`, `resource_type: "app"`).
 - A visitor who is not signed in has no identity, so the call throws
   "Authenticated MCP user is required". Treat that as signed out.
 
