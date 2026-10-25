@@ -12,7 +12,7 @@ import {
 } from '#universal/credentials-list.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
-	listUsableCredentials,
+	listUsableCredentialsByPackage,
 	resolveNeedCandidates,
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
@@ -76,31 +76,38 @@ async function listUsage(input: {
 	credentialId: string
 	packages: ReadonlyArray<SavedPackageRecord>
 }) {
-	// Load closures and per-package usable lists in parallel so a 40-package
-	// detail view does not re-walk credentials serially.
-	const packageViews = await Promise.all(
-		input.packages.map(async (pkg) => {
-			const [needs, usable] = await Promise.all([
-				loadPublishedCredentialNeeds({
-					env: input.env,
-					userId: input.orgId,
-					sourceId: pkg.sourceId,
-				}).catch((error: unknown) => {
+	// Shared org/personal/MCP rows load once; package-bound Keys are batched
+	// (KODY-BD). Closures still run per package in parallel.
+	const [usableByPackage, needResults] = await Promise.all([
+		listUsableCredentialsByPackage({
+			env: input.env,
+			request: input.request,
+			packageIds: input.packages.map((pkg) => pkg.id),
+		}),
+		Promise.all(
+			input.packages.map(async (pkg) => {
+				try {
+					const needs = await loadPublishedCredentialNeeds({
+						env: input.env,
+						userId: input.orgId,
+						sourceId: pkg.sourceId,
+					})
+					return { pkg, needs }
+				} catch (error) {
 					Sentry.captureException(error, {
 						tags: { scope: 'credentials.detail.usage' },
 						extra: { packageId: pkg.id },
 					})
-					return null
-				}),
-				listUsableCredentials({
-					env: input.env,
-					request: input.request,
-					packageId: pkg.id,
-				}),
-			])
-			return { pkg, needs, usable }
-		}),
-	)
+					return { pkg, needs: null }
+				}
+			}),
+		),
+	])
+	const packageViews = needResults.map(({ pkg, needs }) => ({
+		pkg,
+		needs,
+		usable: usableByPackage.get(pkg.id) ?? [],
+	}))
 	const usage: AccountCredentialDetail['usage'] = []
 	let unreadable = 0
 	for (const { pkg, needs, usable } of packageViews) {
