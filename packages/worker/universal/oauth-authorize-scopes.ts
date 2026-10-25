@@ -20,16 +20,11 @@ const authorizeHostsRequiringScopes: Readonly<
 	'www.linkedin.com': ['openid', 'profile', 'email'],
 	'linkedin.com': ['openid', 'profile', 'email'],
 	'login.microsoftonline.com': ['openid', 'profile', 'email', 'offline_access'],
-	'accounts.spotify.com': ['user-read-email'],
+	// Spotify and Dropbox accept scopeless authorize (app permissions / public
+	// data). Do not invent defaults that can widen beyond the user's app.
 	'x.com': ['tweet.read', 'users.read', 'offline.access'],
 	'twitter.com': ['tweet.read', 'users.read', 'offline.access'],
 	'discord.com': ['identify', 'email'],
-	'www.dropbox.com': [
-		'account_info.read',
-		'files.metadata.read',
-		'files.content.read',
-		'files.content.write',
-	],
 	'slack.com': [],
 }
 

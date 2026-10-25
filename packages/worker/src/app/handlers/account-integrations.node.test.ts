@@ -505,7 +505,7 @@ test('integrations API resolves named connections for connect OAuth, including m
 			flow: 'pkce',
 			authorization: {
 				authorizeUrl: 'https://accounts.spotify.com/authorize',
-				scopes: ['user-read-email'],
+				scopes: [],
 			},
 		},
 	})
