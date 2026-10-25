@@ -55,7 +55,10 @@ import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credent
 import { deleteIntegration } from '#worker/integrations/service.ts'
 import { deleteMcpServer } from '#worker/mcp-client/settings-service.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
-import { disconnectSelectedCredentials as deleteSelectedCredentials } from '#app/package-app-credential-disconnect.ts'
+import {
+	disconnectCredentialAfterRevoke,
+	disconnectSelectedCredentials as deleteSelectedCredentials,
+} from '#app/package-app-credential-disconnect.ts'
 
 type ConnectedAppsUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
@@ -396,13 +399,15 @@ export async function revokeAccountConnectedApp({
 		kodyId: parsed.kodyId,
 	})
 	if (disconnectCredentialIds.length > 0 && grant) {
-		await disconnectSelectedCredentials({
-			env,
-			user,
-			appKey: parsed,
-			grantId: grant.id,
-			credentialIds: disconnectCredentialIds.filter((id) => mappings.has(id)),
-		})
+		await disconnectCredentialAfterRevoke(() =>
+			disconnectSelectedCredentials({
+				env,
+				user,
+				appKey: parsed,
+				grantId: grant.id,
+				credentialIds: disconnectCredentialIds.filter((id) => mappings.has(id)),
+			}),
+		)
 	}
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
@@ -471,16 +476,18 @@ export async function revokeAccountConnectedAppScope({
 	}
 	if (scope.startsWith('need:') && disconnectCredentialIds.length > 0) {
 		if (grant) {
-			await disconnectSelectedCredentials({
-				env,
-				user,
-				appKey: parsed,
-				grantId: grant.id,
-				needKey: scope.slice('need:'.length),
-				credentialIds: disconnectCredentialIds.filter((id) =>
-					mappedIds.has(id),
-				),
-			})
+			await disconnectCredentialAfterRevoke(() =>
+				disconnectSelectedCredentials({
+					env,
+					user,
+					appKey: parsed,
+					grantId: grant.id,
+					needKey: scope.slice('need:'.length),
+					credentialIds: disconnectCredentialIds.filter((id) =>
+						mappedIds.has(id),
+					),
+				}),
+			)
 		}
 	}
 	void logAuditEvent({

@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest'
-import { disconnectSelectedCredentials } from './package-app-credential-disconnect.ts'
+import {
+	disconnectCredentialAfterRevoke,
+	disconnectSelectedCredentials,
+} from './package-app-credential-disconnect.ts'
 
 test('unchecked disconnect options do not delete credentials', async () => {
 	const deleteCredential = vi.fn(async () => true)
@@ -30,4 +33,22 @@ test('checked disconnect options delete only unreferenced mapped credentials', a
 
 	expect(deleteCredential).toHaveBeenCalledTimes(1)
 	expect(deleteCredential).toHaveBeenCalledWith('credential-a')
+})
+
+test('disconnect failure after revoke is logged and does not reject', async () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+	try {
+		await expect(
+			disconnectCredentialAfterRevoke(async () => {
+				throw new Error('credential store unavailable')
+			}),
+		).resolves.toBeUndefined()
+		expect(warn).toHaveBeenCalledWith(
+			'package-app-credential-disconnect-failed',
+			'Error',
+		)
+	} finally {
+		warn.mockRestore()
+	}
 })

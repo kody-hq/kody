@@ -14,3 +14,16 @@ export async function disconnectSelectedCredentials(input: {
 		await input.deleteCredential(credentialId)
 	}
 }
+
+export async function disconnectCredentialAfterRevoke(
+	disconnect: () => Promise<unknown>,
+) {
+	try {
+		await disconnect()
+	} catch (error) {
+		console.warn(
+			'package-app-credential-disconnect-failed',
+			error instanceof Error ? error.name : 'unknown',
+		)
+	}
+}
