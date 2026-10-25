@@ -301,7 +301,9 @@ test('listUsableCredentialsByPackage keeps mcp/user-scope loads constant across 
 	}
 
 	// Matches per-package listUsableCredentials for ADR 0068 semantics.
-	const [firstPackage] = large.packages
+	const firstPackage = large.packages[0]
+	expect(firstPackage).toBeDefined()
+	if (!firstPackage) throw new Error('expected at least one package')
 	const solo = await listUsableCredentials({
 		env: large.env,
 		request: large.request,
