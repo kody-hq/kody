@@ -105,11 +105,74 @@ export function createEmptyPacedD1RestoreState(): PacedD1RestoreChainState {
  * Apply a sealed night onto an in-memory row map. When `prevManifestRaw` is
  * passed, the chain link (`prevManifestSha256`) is checked against it.
  */
+/**
+ * Apply one table's TSV body onto restore state. When `retainRowBodies` is
+ * false (drill path), only rowid→hash is kept so large tables do not retain
+ * full payloads in memory after each line is parsed.
+ */
+export async function applyPacedD1TableDataTextToState(input: {
+	state: PacedD1RestoreChainState
+	table: string
+	tableManifest: PacedD1TableManifest
+	data: string
+	verify?: boolean
+	/** Default true. Drill sets false to bound memory to hashes only. */
+	retainRowBodies?: boolean
+}): Promise<void> {
+	const verify = input.verify ?? true
+	const retainRowBodies = input.retainRowBodies ?? true
+	const { state, table, tableManifest, data } = input
+
+	if (verify) {
+		const dataSha = await sha256Hex(data)
+		if (dataSha !== tableManifest.dataSha256) {
+			throw new Error(
+				`CORRUPT artifact ${table}: sha256 mismatch, refusing to restore`,
+			)
+		}
+	}
+	if (tableManifest.mode === 'full' || !state.tables.has(table)) {
+		state.tables.set(table, new Map())
+	}
+	const rows = state.tables.get(table)!
+	const lines = data.length === 0 ? [] : data.replace(/\n$/, '').split('\n')
+	for (const rawLine of lines) {
+		if (rawLine.length === 0) continue
+		const parsed = parsePacedD1DataLine(rawLine)
+		if (parsed.kind === 'D') {
+			rows.delete(Number(parsed.k[0]))
+			continue
+		}
+		if (verify && parsed.h !== '-') {
+			const expected = await hashPacedD1RowLine(parsed.row)
+			if (expected !== parsed.h) {
+				throw new Error(`CORRUPT row in ${table}`)
+			}
+		}
+		rows.set(Number(parsed.k[0]), {
+			h: parsed.h,
+			row: retainRowBodies ? parsed.row : '',
+		})
+	}
+	state.schema.set(table, tableManifest)
+}
+
+export function pacedD1RestoreTableChecksum(
+	rows: PacedD1RestoreTableState,
+): string {
+	let sum = 0n
+	for (const { h } of rows.values()) {
+		sum = (sum + BigInt(`0x${h.slice(0, 16)}`)) & 0xffffffffffffffffn
+	}
+	return sum.toString(16).padStart(16, '0')
+}
+
 export async function applyPacedD1NightToState(input: {
 	state: PacedD1RestoreChainState
 	night: PacedD1NightArtifacts
 	prevManifestRaw?: string | null
 	verify?: boolean
+	retainRowBodies?: boolean
 }): Promise<void> {
 	const verify = input.verify ?? true
 	const { state, night } = input
@@ -134,34 +197,14 @@ export async function applyPacedD1NightToState(input: {
 		if (data === undefined) {
 			throw new Error(`paced restore missing data artifact for ${table}`)
 		}
-		if (verify) {
-			const dataSha = await sha256Hex(data)
-			if (dataSha !== tableManifest.dataSha256) {
-				throw new Error(
-					`CORRUPT artifact ${table}: sha256 mismatch, refusing to restore`,
-				)
-			}
-		}
-		if (tableManifest.mode === 'full' || !state.tables.has(table)) {
-			state.tables.set(table, new Map())
-		}
-		const rows = state.tables.get(table)!
-		const lines = data.length === 0 ? [] : data.replace(/\n$/, '').split('\n')
-		for (const rawLine of lines) {
-			const parsed = parsePacedD1DataLine(rawLine)
-			if (parsed.kind === 'D') {
-				rows.delete(Number(parsed.k[0]))
-				continue
-			}
-			if (verify && parsed.h !== '-') {
-				const expected = await hashPacedD1RowLine(parsed.row)
-				if (expected !== parsed.h) {
-					throw new Error(`CORRUPT row in ${table}`)
-				}
-			}
-			rows.set(Number(parsed.k[0]), { h: parsed.h, row: parsed.row })
-		}
-		state.schema.set(table, tableManifest)
+		await applyPacedD1TableDataTextToState({
+			state,
+			table,
+			tableManifest,
+			data,
+			verify,
+			retainRowBodies: input.retainRowBodies,
+		})
 	}
 
 	for (const table of state.tables.keys()) {
@@ -176,11 +219,7 @@ export async function applyPacedD1NightToState(input: {
 			night.manifest.tables,
 		)) {
 			const rows = state.tables.get(table) ?? new Map()
-			let sum = 0n
-			for (const { h } of rows.values()) {
-				sum = (sum + BigInt(`0x${h.slice(0, 16)}`)) & 0xffffffffffffffffn
-			}
-			const checksum = sum.toString(16).padStart(16, '0')
+			const checksum = pacedD1RestoreTableChecksum(rows)
 			if (
 				rows.size !== tableManifest.count ||
 				checksum !== tableManifest.checksum

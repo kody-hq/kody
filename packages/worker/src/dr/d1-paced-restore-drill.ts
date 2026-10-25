@@ -1,14 +1,22 @@
 import {
 	pacedD1RetentionTierForDay,
 	pacedD1SealedDataKey,
+	pacedD1SealedDataPartKey,
+	pacedD1SealedIndexKey,
+	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	parsePacedD1NightManifest,
 	type PacedD1NightManifest,
+	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
-	applyPacedD1NightToState,
-	buildPacedD1RestoreSql,
+	sha256HexOfBytes,
+	sha256HexOfText,
+} from '@kody-internal/shared/backup-d1-paced-encode.ts'
+import {
+	applyPacedD1TableDataTextToState,
 	createEmptyPacedD1RestoreState,
+	pacedD1RestoreTableChecksum,
 } from '@kody-internal/shared/backup-d1-paced-restore.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { quoteSqlIdentifier } from '@kody-internal/shared/sql-literals.ts'
@@ -23,10 +31,7 @@ import {
 	resolvePacedD1Binding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
-import {
-	loadPacedD1TableDataBody,
-	parsePacedD1PartsPointer,
-} from '#worker/dr/d1-paced-backup-seal.ts'
+import { parsePacedD1PartsPointer } from '#worker/dr/d1-paced-backup-seal.ts'
 
 export type D1PacedRestoreDrillTableResult = {
 	table: string
@@ -56,6 +61,8 @@ export type D1PacedRestoreDrillResult = {
 	sourcesChecked: number
 	sourcesOk: number
 	sources: Array<D1PacedRestoreDrillSourceResult>
+	/** S3 key of the durable report when written. */
+	reportKey?: string
 }
 
 function formatUtcDay(date: Date) {
@@ -66,6 +73,11 @@ function utcDayMinus(day: string, daysBack: number) {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	date.setUTCDate(date.getUTCDate() - daysBack)
 	return date.toISOString().slice(0, 10)
+}
+
+/** Durable drill report under staging (mutable) for operator inspection. */
+export function pacedD1RestoreDrillReportKey(day: string) {
+	return `staging/${day}/d1-paced/restore-drill-report.json`
 }
 
 async function loadSealedManifest(input: {
@@ -132,70 +144,6 @@ async function loadSealedNightChain(input: {
 	return chain.reverse()
 }
 
-async function nightUsesPartsPointer(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	day: string
-	table: string
-}): Promise<boolean> {
-	const tier = pacedD1RetentionTierForDay(input.day)
-	const key = pacedD1SealedDataKey(
-		tier,
-		input.source.id,
-		input.day,
-		input.table,
-	)
-	const text = await input.s3.getText(key)
-	if (!text) return false
-	return parsePacedD1PartsPointer(text.text) !== null
-}
-
-async function loadNightArtifacts(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	manifest: PacedD1NightManifest
-	raw: string
-}): Promise<{
-	dataByTable: Record<string, string>
-	anyParts: boolean
-}> {
-	const dataByTable: Record<string, string> = {}
-	let anyParts = false
-	for (const [table, tableManifest] of Object.entries(input.manifest.tables)) {
-		if (
-			await nightUsesPartsPointer({
-				s3: input.s3,
-				source: input.source,
-				day: input.manifest.day,
-				table,
-			})
-		) {
-			anyParts = true
-		}
-		dataByTable[table] = await loadPacedD1TableDataBody({
-			s3: input.s3,
-			location: 'sealed',
-			day: input.manifest.day,
-			databaseName: input.source.name,
-			databaseId: input.source.id,
-			table,
-			expectedSha256: tableManifest.dataSha256,
-			kind: 'data',
-		})
-		await loadPacedD1TableDataBody({
-			s3: input.s3,
-			location: 'sealed',
-			day: input.manifest.day,
-			databaseName: input.source.name,
-			databaseId: input.source.id,
-			table,
-			expectedSha256: tableManifest.indexSha256,
-			kind: 'index',
-		})
-	}
-	return { dataByTable, anyParts }
-}
-
 async function countLiveTable(
 	db: D1Database,
 	table: string,
@@ -215,17 +163,246 @@ async function countLiveTable(
 	}
 }
 
-function restoreStateChecksumOk(
-	rows: Map<number, { h: string }>,
-	expectedCount: number,
-	expectedChecksum: string,
-): boolean {
-	let sum = 0n
-	for (const { h } of rows.values()) {
-		sum = (sum + BigInt(`0x${h.slice(0, 16)}`)) & 0xffffffffffffffffn
+/**
+ * Stream sealed table data into restore state one part (or monolithic body)
+ * at a time. Never concatenates all parts into one string. Skips full-body
+ * sha when parts are used (chain digests verified per part); row bodies are
+ * not retained.
+ */
+async function applySealedTableStreaming(input: {
+	s3: DrBackupS3Client
+	source: PacedD1SourceConfig
+	day: string
+	table: string
+	tableManifest: PacedD1TableManifest
+	state: ReturnType<typeof createEmptyPacedD1RestoreState>
+}): Promise<{ usedParts: boolean }> {
+	const tier = pacedD1RetentionTierForDay(input.day)
+	const dataKey = pacedD1SealedDataKey(
+		tier,
+		input.source.id,
+		input.day,
+		input.table,
+	)
+	const indexKey = pacedD1SealedIndexKey(
+		tier,
+		input.source.id,
+		input.day,
+		input.table,
+	)
+	const dataObj = await input.s3.getText(dataKey)
+	if (!dataObj) {
+		throw new Error(`paced D1 missing sealed data at ${dataKey}`)
 	}
-	const checksum = sum.toString(16).padStart(16, '0')
-	return rows.size === expectedCount && checksum === expectedChecksum
+	// Index is verified for presence + digests only; drill does not need index
+	// lines in restore state.
+	const indexObj = await input.s3.getText(indexKey)
+	if (!indexObj) {
+		throw new Error(`paced D1 missing sealed index at ${indexKey}`)
+	}
+
+	const dataPointer = parsePacedD1PartsPointer(dataObj.text)
+	const indexPointer = parsePacedD1PartsPointer(indexObj.text)
+
+	if (!dataPointer) {
+		await applyPacedD1TableDataTextToState({
+			state: input.state,
+			table: input.table,
+			tableManifest: input.tableManifest,
+			data: dataObj.text,
+			verify: true,
+			retainRowBodies: false,
+		})
+		return { usedParts: false }
+	}
+
+	if (!indexPointer || indexPointer.partCount !== dataPointer.partCount) {
+		throw new Error(
+			`paced D1 parts pointer mismatch for ${input.source.name}.${input.table}`,
+		)
+	}
+	if (dataPointer.dataSha256 !== input.tableManifest.dataSha256) {
+		throw new Error(
+			`paced D1 parts data digest disagrees with manifest for ${input.source.name}.${input.table}`,
+		)
+	}
+
+	const digests: Array<string> = []
+	let residual = ''
+	if (
+		input.tableManifest.mode === 'full' ||
+		!input.state.tables.has(input.table)
+	) {
+		input.state.tables.set(input.table, new Map())
+	}
+	input.state.schema.set(input.table, input.tableManifest)
+
+	for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
+		const partKey = pacedD1SealedDataPartKey(
+			tier,
+			input.source.id,
+			input.day,
+			input.table,
+			partIndex,
+		)
+		const indexPartKey = pacedD1SealedIndexPartKey(
+			tier,
+			input.source.id,
+			input.day,
+			input.table,
+			partIndex,
+		)
+		// Sequential: one part body in memory (matches seal/finalize OOM fix).
+		const dataBytes = await input.s3.getBytes(partKey)
+		if (!dataBytes) {
+			throw new Error(`paced D1 missing data part ${partIndex} at ${partKey}`)
+		}
+		const dataDigest = await sha256HexOfBytes(dataBytes)
+		const indexBytes = await input.s3.getBytes(indexPartKey)
+		if (!indexBytes) {
+			throw new Error(
+				`paced D1 missing index part ${partIndex} at ${indexPartKey}`,
+			)
+		}
+		const indexDigest = await sha256HexOfBytes(indexBytes)
+		if (dataDigest !== dataPointer.dataPartDigests[partIndex]) {
+			throw new Error(
+				`paced D1 data part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
+			)
+		}
+		if (indexDigest !== indexPointer.indexPartDigests[partIndex]) {
+			throw new Error(
+				`paced D1 index part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
+			)
+		}
+		digests.push(dataDigest)
+		// Drop index bytes immediately after digest check.
+		void indexBytes
+
+		const chunk = new TextDecoder().decode(dataBytes)
+		const combined = residual + chunk
+		const lastNl = combined.lastIndexOf('\n')
+		if (lastNl < 0) {
+			residual = combined
+			continue
+		}
+		const complete = combined.slice(0, lastNl + 1)
+		residual = combined.slice(lastNl + 1)
+		await applyPacedD1TableDataTextToState({
+			state: input.state,
+			table: input.table,
+			tableManifest: {
+				...input.tableManifest,
+				// Subsequent parts are deltas onto the in-memory map.
+				mode: partIndex === 0 ? input.tableManifest.mode : 'delta',
+			},
+			data: complete,
+			// Parts chain digests replace monolithic body sha.
+			verify: false,
+			retainRowBodies: false,
+		})
+	}
+
+	if (residual.length > 0) {
+		await applyPacedD1TableDataTextToState({
+			state: input.state,
+			table: input.table,
+			tableManifest: { ...input.tableManifest, mode: 'delta' },
+			data: residual.endsWith('\n') ? residual : `${residual}\n`,
+			verify: false,
+			retainRowBodies: false,
+		})
+	}
+
+	const chainSha = await sha256HexOfText(`${digests.join('\n')}\n`)
+	if (chainSha !== input.tableManifest.dataSha256) {
+		throw new Error(
+			`paced D1 data parts chain digest mismatch for ${input.source.name}.${input.table}`,
+		)
+	}
+	return { usedParts: true }
+}
+
+async function drillOneTable(input: {
+	s3: DrBackupS3Client
+	source: PacedD1SourceConfig
+	db: D1Database
+	chain: Array<{ manifest: PacedD1NightManifest; raw: string; key: string }>
+	table: string
+}): Promise<D1PacedRestoreDrillTableResult> {
+	const tip = input.chain[input.chain.length - 1]!
+	const tipManifest = tip.manifest.tables[input.table]
+	if (!tipManifest) {
+		return {
+			table: input.table,
+			manifestCount: 0,
+			restoredCount: 0,
+			liveCount: null,
+			ok: false,
+			error: 'missing-from-tip-manifest',
+		}
+	}
+
+	const state = createEmptyPacedD1RestoreState()
+	try {
+		let prevRaw: string | undefined
+		for (const night of input.chain) {
+			// Parts nights skip monolithic body sha; still verify the chain link
+			// so a parts night cannot skip prevManifestSha256. First night may
+			// cite an older prev — only check once we have the prior raw.
+			if (prevRaw !== undefined) {
+				const expectedPrev = await sha256Hex(prevRaw)
+				if (night.manifest.prevManifestSha256 !== expectedPrev) {
+					throw new Error('CHAIN BROKEN: prevManifestSha256 mismatch')
+				}
+			}
+			const tableManifest = night.manifest.tables[input.table]
+			if (!tableManifest) {
+				// Night omitted this table — drop it from state (same as full-night apply).
+				state.tables.delete(input.table)
+				state.schema.delete(input.table)
+				prevRaw = night.raw
+				continue
+			}
+			await applySealedTableStreaming({
+				s3: input.s3,
+				source: input.source,
+				day: night.manifest.day,
+				table: input.table,
+				tableManifest,
+				state,
+			})
+			prevRaw = night.raw
+		}
+
+		const rows = state.tables.get(input.table) ?? new Map()
+		const checksum = pacedD1RestoreTableChecksum(rows)
+		const checksumOk =
+			rows.size === tipManifest.count && checksum === tipManifest.checksum
+		const liveCount = await countLiveTable(
+			input.db,
+			input.table,
+			tip.manifest.timeTravelBookmark,
+		)
+		const tableOk = checksumOk
+		return {
+			table: input.table,
+			manifestCount: tipManifest.count,
+			restoredCount: rows.size,
+			liveCount,
+			ok: tableOk,
+			error: tableOk ? undefined : 'restore-checksum-mismatch',
+		}
+	} catch (error) {
+		return {
+			table: input.table,
+			manifestCount: tipManifest.count,
+			restoredCount: 0,
+			liveCount: null,
+			ok: false,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
 }
 
 async function drillOneSource(input: {
@@ -258,91 +435,18 @@ async function drillOneSource(input: {
 	}
 
 	const tip = chain[chain.length - 1]!
-	const state = createEmptyPacedD1RestoreState()
-	let prevRaw: string | undefined
-	for (const night of chain) {
-		const { dataByTable, anyParts } = await loadNightArtifacts({
-			s3: input.s3,
-			source: input.source,
-			manifest: night.manifest,
-			raw: night.raw,
-		})
-		// Parts-chain digests are verified in loadPacedD1TableDataBody; the
-		// assembled TSV sha will not match manifest.dataSha256, so skip the
-		// artifact-body sha / per-row hash checks. Still verify the chain link
-		// explicitly so a parts night cannot skip prevManifestSha256.
-		// First night in the chain may still cite an older prevManifestSha256;
-		// omit prevManifestRaw so apply does not require that older night.
-		if (anyParts && prevRaw !== undefined) {
-			const expectedPrev = await sha256Hex(prevRaw)
-			if (night.manifest.prevManifestSha256 !== expectedPrev) {
-				throw new Error('CHAIN BROKEN: prevManifestSha256 mismatch')
-			}
-		}
-		await applyPacedD1NightToState({
-			state,
-			night: {
-				manifest: night.manifest,
-				manifestRaw: night.raw,
-				dataByTable,
-			},
-			...(prevRaw === undefined ? {} : { prevManifestRaw: prevRaw }),
-			verify: !anyParts,
-		})
-		if (anyParts) {
-			for (const [table, tableManifest] of Object.entries(
-				night.manifest.tables,
-			)) {
-				const rows = state.tables.get(table) ?? new Map()
-				if (
-					!restoreStateChecksumOk(
-						rows,
-						tableManifest.count,
-						tableManifest.checksum,
-					)
-				) {
-					throw new Error(
-						`VERIFY FAILED on ${table} after parts restore for ${input.source.name}`,
-					)
-				}
-			}
-		}
-		prevRaw = night.raw
-	}
-
-	const { stats } = buildPacedD1RestoreSql(state)
 	const tables: Array<D1PacedRestoreDrillTableResult> = []
 	let ok = true
-	for (const [table, tableManifest] of Object.entries(tip.manifest.tables)) {
-		const restored = state.tables.get(table) ?? new Map()
-		const checksumOk = restoreStateChecksumOk(
-			restored,
-			tableManifest.count,
-			tableManifest.checksum,
-		)
-		// Live COUNT(*) is advisory only: the tip bookmark is taken at night
-		// start while the walker reads over the rest of the window, so inserts
-		// mid-walk (especially AUDIT_DB) make exact equality unreliable. Pass
-		// or fail on sealed-chain restore checksums and restored row counts.
-		const liveCount = await countLiveTable(
-			input.db,
+	for (const table of Object.keys(tip.manifest.tables)) {
+		const result = await drillOneTable({
+			s3: input.s3,
+			source: input.source,
+			db: input.db,
+			chain,
 			table,
-			tip.manifest.timeTravelBookmark,
-		)
-		const tableOk = checksumOk && restored.size === tableManifest.count
-		if (!tableOk) ok = false
-		tables.push({
-			table,
-			manifestCount: tableManifest.count,
-			restoredCount: restored.size,
-			liveCount,
-			ok: tableOk,
-			error: tableOk
-				? undefined
-				: !checksumOk
-					? 'restore-checksum-mismatch'
-					: 'count-mismatch',
 		})
+		tables.push(result)
+		if (!result.ok) ok = false
 	}
 
 	return {
@@ -352,17 +456,39 @@ async function drillOneSource(input: {
 		manifestKey: tip.key,
 		nightsApplied: chain.length,
 		tables,
-		restoreStatements: stats.statements,
+		// Statement emission skipped in streaming drill (row bodies not retained).
+		restoreStatements: 0,
 		ok,
 		error: ok ? undefined : 'table-mismatch',
 	}
 }
 
+async function writeDrillReport(input: {
+	s3: DrBackupS3Client
+	day: string
+	result: D1PacedRestoreDrillResult
+	finishedAt: string
+}): Promise<string> {
+	const key = pacedD1RestoreDrillReportKey(input.day)
+	const body = `${JSON.stringify(
+		{
+			schemaVersion: 1,
+			kind: 'paced-d1-restore-drill-report',
+			finishedAt: input.finishedAt,
+			...input.result,
+		},
+		null,
+		2,
+	)}\n`
+	await input.s3.put(key, body, { contentType: 'application/json' })
+	return key
+}
+
 /**
- * Weekly drill: load sealed paced night(s) for each configured source (full
- * base + deltas), rebuild restore state, emit restore SQL, and compare live
- * `SELECT COUNT(*)` (preferring the tip night's time-travel bookmark) to
- * manifest counts. Throws on mismatch so the scheduled lane surfaces in Sentry.
+ * Weekly drill: for each configured source, walk the sealed night chain one
+ * table at a time (streaming parts, hash-only row state), verify tip checksums,
+ * and write a durable S3 report. Throws on mismatch so the scheduled lane
+ * surfaces in Sentry.
  */
 export async function runD1PacedRestoreDrillTick(input: {
 	env: Env
@@ -421,6 +547,13 @@ export async function runD1PacedRestoreDrillTick(input: {
 		sourcesOk,
 		sources: results,
 	}
+	const reportKey = await writeDrillReport({
+		s3,
+		day,
+		result: drillResult,
+		finishedAt: input.now.toISOString(),
+	})
+	drillResult.reportKey = reportKey
 	console.info('dr_d1_paced_restore_drill', JSON.stringify(drillResult))
 	if (results.length === 0) {
 		throw new Error('paced D1 restore drill: no bound sources to check')

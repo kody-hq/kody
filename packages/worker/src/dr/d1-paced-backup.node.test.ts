@@ -582,6 +582,9 @@ test('restore drill verifies sealed night against live counts', async () => {
 		sourcesChecked: 1,
 		sourcesOk: 1,
 	})
+	expect(drill.reportKey).toBe(
+		`staging/${day}/d1-paced/restore-drill-report.json`,
+	)
 	expect(drill.sources[0]?.tables[0]).toMatchObject({
 		table: 'items',
 		manifestCount: 3,
@@ -589,6 +592,9 @@ test('restore drill verifies sealed night against live counts', async () => {
 		liveCount: 3,
 		ok: true,
 	})
+	const report = await client.getText(drill.reportKey!)
+	expect(report?.text).toContain('"kind": "paced-d1-restore-drill-report"')
+	expect(report?.text).toContain('"sourcesOk": 1')
 })
 
 test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off', async () => {
