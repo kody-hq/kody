@@ -5,6 +5,7 @@ import {
 	isCloudflareEmailAuthservId,
 	resolveInboundEmailAuthVerdict,
 	selectTrustedCloudflareAuthResults,
+	splitCombinedAuthResultsHeader,
 } from './auth-verdict.ts'
 
 test('isCloudflareEmailAuthservId accepts Cloudflare ids and rejects lookalikes', () => {
@@ -68,6 +69,25 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 	)
 	expect(selectTrustedCloudflareAuthResults(cloudflareArc)).toBe(
 		'i=1; mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
+	)
+
+	// Headers joins duplicates with ", "; ARC instance prefixes must still split.
+	expect(
+		splitCombinedAuthResultsHeader(
+			'i=1; mx.google.com; arc=none, i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+		),
+	).toEqual([
+		'i=1; mx.google.com; arc=none',
+		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	])
+	const joinedArc = new Headers()
+	joinedArc.append('ARC-Authentication-Results', 'i=1; mx.google.com; arc=none')
+	joinedArc.append(
+		'ARC-Authentication-Results',
+		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	)
+	expect(selectTrustedCloudflareAuthResults(joinedArc)).toBe(
+		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	)
 })
 

@@ -108,8 +108,10 @@ export function isCloudflareEmailAuthservId(authservId: string): boolean {
  * authserv-id-looking segment.
  */
 export function splitCombinedAuthResultsHeader(value: string): Array<string> {
+	// ARC stamps may start with `i=<n>;` before the authserv-id. Allow that
+	// optional prefix so comma-joined ARC values still split.
 	return value
-		.split(/,(?=\s*[^,;=/\s]+;)/)
+		.split(/,(?=\s*(?:i=\d+;\s*)?[^,;=/\s]+;)/i)
 		.map((part) => part.trim())
 		.filter(Boolean)
 }
