@@ -67,7 +67,16 @@ import {
 	createRawFetchHostSink,
 	type RawFetchHostNudgeState,
 } from '#mcp/raw-fetch-host-nudge.ts'
+import {
+	applyPreferLocalExecuteNudge,
+	dailyFreshWorkersFromClaim,
+	isKnownWebOnlyMcpClient,
+	monthlyIncludeForPreferLocalNudge,
+	preferLocalNudgeMonthKey,
+	shouldTipPreferLocalExecuteNudge,
+} from '#mcp/prefer-local-execute-nudge.ts'
 import { isPreRunUsageDenial } from '#worker/entitlements/errors.ts'
+import { readMonthlyComputeUsage } from '#worker/billing/compute-overage-usage.ts'
 import {
 	getCachedUserEntitlement,
 	readExecuteUniqueWorkerUsage,
@@ -973,6 +982,13 @@ export async function runExecuteToolCall(input: {
 					resolvedModule.code,
 				),
 			})),
+			...(await resolvePreferLocalExecuteNudges({
+				agent: input.mcpAgent ?? agentlessNudgeState(),
+				env,
+				callerContext,
+				conversationId: resolvedConversationId,
+				claimed: claimedExecuteUsage,
+			})),
 		]
 		const runId =
 			typeof result.runId === 'string'
@@ -1407,6 +1423,86 @@ async function resolveRawFetchHostNudges(input: {
 		statefulAgent.setState({
 			...statefulAgent.state,
 			rawFetchHostNudges: applied.state,
+		})
+	}
+	return applied.nudges
+}
+
+async function resolvePreferLocalExecuteNudges(input: {
+	agent: McpRegistrationAgent
+	env: Env
+	callerContext: ReturnType<McpRegistrationAgent['getCallerContext']>
+	conversationId: string
+	claimed: ClaimedExecuteUsage | null
+}): Promise<Array<string>> {
+	if (isKnownWebOnlyMcpClient(input.callerContext.oauthClientId)) {
+		return []
+	}
+	const dailyFreshWorkers = dailyFreshWorkersFromClaim(input.claimed?.usage)
+	if (dailyFreshWorkers === null) return []
+
+	const statefulAgent = input.agent as McpRegistrationAgent & {
+		state?: {
+			preferLocalExecuteNudgeConversationIds?: Array<string>
+		}
+		setState?: (state: {
+			preferLocalExecuteNudgeConversationIds?: Array<string>
+			[key: string]: unknown
+		}) => void
+	}
+	const priorIds = statefulAgent.state?.preferLocalExecuteNudgeConversationIds
+	if (
+		Array.isArray(priorIds) &&
+		priorIds.includes(input.conversationId.trim())
+	) {
+		return []
+	}
+
+	let monthlyUniqueWorkerDays: number | null = null
+	let monthlyInclude: number | null = null
+	const ownerId = ownerIdFromCaller(input.callerContext)
+	if (
+		ownerId &&
+		!shouldTipPreferLocalExecuteNudge({
+			dailyFreshWorkers,
+			monthlyUniqueWorkerDays: null,
+			monthlyInclude: null,
+		})
+	) {
+		try {
+			const now = input.claimed?.claimedAt ?? new Date()
+			const entitlement = await getCachedUserEntitlement(input.env.APP_DB, {
+				userId: ownerId,
+				email: entitlementEmailForOwner(input.callerContext, ownerId),
+			})
+			const usage = await readMonthlyComputeUsage({
+				db: input.env.APP_DB,
+				stableUserId: ownerId,
+				month: preferLocalNudgeMonthKey(now),
+			})
+			monthlyUniqueWorkerDays = usage.uniqueWorkerDays
+			monthlyInclude = monthlyIncludeForPreferLocalNudge(entitlement, now)
+		} catch (error: unknown) {
+			console.warn('prefer-local-execute-nudge-monthly-read-failed', error)
+		}
+	}
+
+	const shouldTip = shouldTipPreferLocalExecuteNudge({
+		dailyFreshWorkers,
+		monthlyUniqueWorkerDays,
+		monthlyInclude,
+	})
+	const applied = applyPreferLocalExecuteNudge({
+		state: {
+			conversationIds: Array.isArray(priorIds) ? priorIds : [],
+		},
+		conversationId: input.conversationId,
+		shouldTip,
+	})
+	if (typeof statefulAgent.setState === 'function' && shouldTip) {
+		statefulAgent.setState({
+			...statefulAgent.state,
+			preferLocalExecuteNudgeConversationIds: applied.state.conversationIds,
 		})
 	}
 	return applied.nudges
