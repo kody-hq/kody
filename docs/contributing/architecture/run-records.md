@@ -17,7 +17,9 @@ A run record is one execution attempt on a named **surface**: status (`running`
 / `success` / `error`), optional package/job/workflow identifiers, start and
 finish timestamps, duration, truncated error fields, optional soft error triage
 (`error_triage`: `ignored` / `resolved`, plus note / who / when — separate from
-execution status), JSON metadata, and up to 200 captured log lines.
+execution status), who started the run (`started_by`: person id / handle +
+client such as MCP, CLI, API token, schedule, or webhook; `null` when begin had
+no request context), JSON metadata, and up to 200 captured log lines.
 
 Package ownership is optional. Ad-hoc MCP `execute` and inline workflows have no
 `package_id`; the record still lands under the signed-in user. That optionality
@@ -89,7 +91,10 @@ const handle = beginRunRecord({
 		name: job.name,
 		jobId: job.id,
 		// packageId / kodyId optional
+		// startedBy optional; begin stamps it from `request` when omitted
 	},
+	request, // optional live RequestContext
+	startedByLabel, // optional display label (API token name); never a secret
 	waitUntil, // optional; preferred when ExecutionContext is available
 })
 
@@ -119,11 +124,14 @@ Rules:
   fire-and-forgets `startRun` (optionally via `waitUntil`). It returns a handle
   that already carries a minted run id, `startedAt`, persistence mode, and the
   full context — or `null` when there is no user / no `RUN_LOG` binding /
-  missing context. Callers that reach begin through a WorkerEntrypoint RPC
-  (package-app isolates: `packageRuntimeRunStart`) must not await that RPC on
-  the HTTP/realtime response path — kick it off, run user code, and `waitUntil`
-  begin-then-finish. A dropped `running` insert is still harmless because finish
-  upserts the terminal row.
+  missing context. Pass the live `request` (and optional `startedByLabel`) so
+  begin can stamp `started_by` when `context.startedBy` is omitted; without a
+  request or explicit stamp, Activity shows the run as unknown. Callers that
+  reach begin through a WorkerEntrypoint RPC (package-app isolates:
+  `packageRuntimeRunStart`) must not await that RPC on the HTTP/realtime
+  response path — kick it off, run user code, and `waitUntil` begin-then-finish.
+  A dropped `running` insert is still harmless because finish upserts the
+  terminal row.
 - **`finishRunRecord` awaits the complete-row upsert in one RPC** (`finishRun`),
   then replaces logs and enforces retention. A supplied `waitUntil` applies only
   to post-terminal observers such as `run.error.recorded`, never to the terminal
@@ -321,6 +329,7 @@ Modelled on the
    		packageId, // optional
    		metadata: {/* small, non-secret */},
    	},
+   	request, // stamps started_by when context omits it
    	waitUntil: ctx.waitUntil.bind(ctx),
    })
 
@@ -421,16 +430,16 @@ triage). Filters must contain at least one identity/error field; filtered reopen
 requires an explicit ignored/resolved source state. `dry_run` previews ids, and
 `has_more` tells operators to repeat the same bounded call. Like single-run
 triage, it never deletes a row or changes execution status, errors, or logs.
-Schema version 10 on the RunLog DO.
 
 ## Reading the data
 
 - UI: `/@<slug>/-/activity` (open failures first by default; Recent runs lists
   the last 7 days of successes and errors; status / triage / surface filters,
-  7-day summary with ignored/resolved counts, log viewer, cursor pagination).
-  `/@<slug>/-/jobs` recent runs link into it.
+  who started each run, 7-day summary with ignored/resolved counts, log viewer,
+  cursor pagination). `/@<slug>/-/jobs` recent runs link into it.
 - MCP domain `runs`: `runList`, `runGet`, `runSummary`, `runUpdate`,
-  `runUpdateBulk`.
+  `runUpdateBulk`. `runList` / `runGet` include `started_by` when recorded;
+  `runList` can filter by `started_by` person id.
 - Account export: section `run_records` pages through the user’s `RunLog`.
 - Account deletion: `clearAll` on the user’s `RunLog` stub (deletes every DO
   table — runs, ledger, and dedicated state — then reinitializes schema).

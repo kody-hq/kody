@@ -157,7 +157,7 @@ cause), or `off`. One person may hold several enablements of the same trigger.
 
 Every org runs its triggers through enablements. A person turning a trigger on
 writes `origin = 'enabled'`. A unique index allows one `origin = 'migrated'` row
-per trigger instance. Migration `0115` drops `enablement_org_migrations`.
+per trigger instance. There is no `enablement_org_migrations` table.
 
 `planEnablementRuns` (`enablements/run-gate.ts`) is the one gate every trigger
 passes:

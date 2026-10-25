@@ -594,9 +594,9 @@ apps that would lean on that fallback:
 - `kody.mcp`: an MCP server tool call from the app.
 - `visitor credential`: the app uses credentials, declares no
   `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,
-  so signed-in visitors now get the publisher's credentials.
-- `identity email`: the app reads `email` from `metaGetCurrentUser`, which now
-  needs the visitor's `email` consent.
+  so signed-in visitors get the publisher's credentials.
+- `identity email`: the app reads `email` from `metaGetCurrentUser`, which needs
+  the visitor's `email` consent.
 
 Findings carry fixed messages only. Count flagged apps with
 `adminPackageCodemodScan` (`codemodId`

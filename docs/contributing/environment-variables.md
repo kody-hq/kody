@@ -531,12 +531,18 @@ Optional Worker secrets/vars (see `packages/worker/src/env-schema.ts` and
 
 ## Disaster recovery (production Worker)
 
-Optional production-only vars/secrets for the nightly non-D1 staging exporter
-and chunked restore endpoint (`packages/worker/src/dr/`). All are inert until
-`DR_EXPORT_ENABLED` is the literal string `"true"` and S3 credentials are set.
-See [Disaster recovery](./disaster-recovery.md).
+Optional production-only vars/secrets for the nightly staging exporter, paced D1
+walk, and chunked restore endpoint (`packages/worker/src/dr/`). Non-D1 staging
+is inert until `DR_EXPORT_ENABLED` is the literal string `"true"` and S3
+credentials are set. The paced D1 walk uses the same credentials and
+`DR_D1_PACED_BACKUP_ENABLED`. See [Disaster recovery](./disaster-recovery.md).
 
 - `DR_EXPORT_ENABLED` — Worker var; enable staging only when `"true"`.
+- `DR_D1_PACED_BACKUP_ENABLED` — Worker var; paced D1 walk (APP_DB + JOBS_DB)
+  runs when `"true"` plus the same DR S3 credentials. Production wrangler sets
+  this to `"true"`. Ticks no-op when unset or any other value.
+- `DR_D1_PACED_SOURCES` — Worker var; JSON array of `{ binding, name, id }`
+  (`APP_DB` / `JOBS_DB` in production; `AUDIT_DB` waits on a committed UUID).
 - `DR_BACKUP_ACCOUNT_ID` / `DR_BACKUP_BUCKET_NAME` — DR account id and backup
   bucket name (S3 API endpoint host uses the account id).
 - `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY` — Worker secrets; R2
@@ -546,9 +552,10 @@ See [Disaster recovery](./disaster-recovery.md).
   material shared with the DR control plane. The Mailbox importer fails closed
   when either differs from the signed full manifest.
 - `DR_RESTORE_SECRET` — Worker secret; bearer token for
-  `POST /__maintenance/dr-restore`, `POST /__maintenance/dr-mailbox-import`, and
-  the operator-only `POST /__maintenance/do-pitr`. Must match the control-plane
-  secret of the same name. Fail-closed when unset.
+  `POST /__maintenance/dr-restore`, `POST /__maintenance/dr-mailbox-import`,
+  `GET`/`POST /__maintenance/dr-paced-status`, and the operator-only
+  `POST /__maintenance/do-pitr`. Must match the control-plane secret of the same
+  name. Fail-closed when unset.
 
 ## Backup control plane (DR account Worker)
 
@@ -570,8 +577,9 @@ Non-secret vars:
 - `ENABLE_PRODUCTION_D1_BACKUPS` / `BACKUP_BENCHMARK_APPROVED` — both must be
   exactly `"true"` or schedules stay inert.
 - `SOURCE_ACCOUNT_ID` / `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` plus
-  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects; the nightly path
-  exports every entry) and `ALLOWED_SOURCE_ACCOUNT_IDS` /
+  `SOURCE_DATABASES` (JSON array of `{ id, name }` or `{ id, name, restExport }`
+  objects; the nightly REST path exports every entry whose `restExport` is
+  omitted or `true`) and `ALLOWED_SOURCE_ACCOUNT_IDS` /
   `ALLOWED_SOURCE_DATABASE_IDS`. `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME`
   are the primary APP_DB (`kody`) identity and the single-database fallback when
   `SOURCE_DATABASES` is unset. Every listed id must appear in

@@ -445,11 +445,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   tables; D1 has no corresponding projection tables (see
   [Run records](./run-records.md)).
 - There is no `jobs` table in `APP_DB` — it lives in the jobs worker's `JOBS_DB`
-  (see [D1 (`JOBS_DB`)](#d1-jobs_db)). `archived_job_artifacts` was dropped from
-  `JOBS_DB`.
-- There is no `repo_sessions` table in `APP_DB` (dropped in migration `0013`).
-  The catalog lives in the per-user `RepoSessionIndex` Durable Object. D1 keeps
-  only the thin `repo_session_due_owners` hint and the platform-owned
+  (see [D1 (`JOBS_DB`)](#d1-jobs_db)). `JOBS_DB` has no `archived_job_artifacts`
+  table.
+- There is no `repo_sessions` table in `APP_DB`. The catalog lives in the
+  per-user `RepoSessionIndex` Durable Object. D1 keeps only the thin
+  `repo_session_due_owners` hint and the platform-owned
   `repo_session_storage_bucket_cursor`.
 - `entity_sources`: durable mapping from user-facing entities (`package` or
   `repo`) to Artifacts repos and their latest published commit (packages only;
@@ -1463,19 +1463,19 @@ on write unless a migration backfills existing rows.
   `0072-webhook-hmac-secret-encrypted.sql`,
   `0127-webhook-hmac-rotation-grace.sql`) stores per-user minted URL state for
   `package.json#kody.webhooks`, keyed by `(user_id, package_id, webhook_name)`.
-  Its legacy `enabled` column is unused and will be dropped in a later
-  migration. Webhook on/off state lives only in `enablements`. URL secrets are
-  SHA-256 hashed for ingress and AES-GCM encrypted (`url_secret_encrypted`) for
-  server-side apply. Package-owned HMAC signing material lives on the same row
-  (`hmac_secret_encrypted`) when verification omits `secretName`;
-  provider-issued secrets use the secrets primitive via optional
-  `verification.secretName`. Last-seen signing identity (`hmac_secret_name`) and
-  a verification snapshot (`hmac_verification_secret_encrypted`) track
-  declared-secret rotation; `previous_hmac_secret_*` holds the outgoing key for
-  a 24h grace window (same duration as URL rotate overlap). MCP capabilities
-  never return the plaintext URL or HMAC. Delivery history is recorded as
-  `webhook` surface run records (see [Run records](./run-records.md) and
-  [Inbound webhooks](./webhooks.md)), not as D1 rows.
+  Its unused `enabled` column is leftover. Webhook on/off state lives only in
+  `enablements`. URL secrets are SHA-256 hashed for ingress and AES-GCM
+  encrypted (`url_secret_encrypted`) for server-side apply. Package-owned HMAC
+  signing material lives on the same row (`hmac_secret_encrypted`) when
+  verification omits `secretName`; provider-issued secrets use the secrets
+  primitive via optional `verification.secretName`. Last-seen signing identity
+  (`hmac_secret_name`) and a verification snapshot
+  (`hmac_verification_secret_encrypted`) track declared-secret rotation;
+  `previous_hmac_secret_*` holds the outgoing key for a 24h grace window (same
+  duration as URL rotate overlap). MCP capabilities never return the plaintext
+  URL or HMAC. Delivery history is recorded as `webhook` surface run records
+  (see [Run records](./run-records.md) and [Inbound webhooks](./webhooks.md)),
+  not as D1 rows.
 - `system_email_daily_counters` (`0001-squashed-init.sql`) stores fixed
   per-local daily receive counters for operator-owned system inboxes. These
   counters are not user entitlements and are pruned by the system-email

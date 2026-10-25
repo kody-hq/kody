@@ -127,7 +127,8 @@ Playwright gate locally. `wrangler-env.ts` defaults `X_LOCAL_EXPLORER=false` on
 these VMs, retriggers esbuild, and leaves ProxyWorker in a pause/reload loop
 after Ready. Opt in with `X_LOCAL_EXPLORER=true`. Wrangler 4.131+ keeps
 `Error inside ProxyWorker` request-scoped (workers-sdk#15252), so a transient
-ProxyWorker failure no longer exits the Playwright webServer.
+ProxyWorker failure stays request-scoped and the Playwright webServer keeps
+running.
 
 Cloud Agent environment `start` should run `npm run hooks:ensure` so a snapshot
 boot that skips `npm ci` still composes hooks after Cursor installs the
