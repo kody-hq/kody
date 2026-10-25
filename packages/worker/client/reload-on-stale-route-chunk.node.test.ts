@@ -64,12 +64,35 @@ const firefox =
 	'error loading dynamically imported module: https://kody.codes/assets/pricing-CgSDztSN.js'
 const webkit = 'Importing a module script failed.'
 
+/**
+ * TanStack split export names emitted by `@tanstack/router-plugin`
+ * (`lazyRouteComponent` / `lazyFn`). Keep in sync with
+ * `tanstackSplitExportName` in reload-on-stale-route-chunk.ts.
+ */
+const tanstackSplitExportNames = [
+	'default',
+	'component',
+	'pendingComponent',
+	'errorComponent',
+	'notFoundComponent',
+	'loader',
+] as const
+
+function safariUndefinedModule(exportName: string) {
+	return `undefined is not an object (evaluating 'e[i??\`${exportName}\`]')`
+}
+
+function chromiumUndefinedModule(exportName: string) {
+	return `Cannot read properties of undefined (reading '${exportName}')`
+}
+
+function firefoxUndefinedModule(exportName: string) {
+	return `can't access property "${exportName}" of undefined`
+}
+
 /** Safari (KODY-A1): TanStack minified `e[i??\`default\`]` on undefined module. */
-const safariUndefinedModule =
-	"undefined is not an object (evaluating 'e[i??`default`]')"
-const chromiumUndefinedModule =
-	"Cannot read properties of undefined (reading 'default')"
-const firefoxUndefinedModule = `can't access property "default" of undefined`
+const safariUndefinedModuleDefault = safariUndefinedModule('default')
+const chromiumUndefinedModuleDefault = chromiumUndefinedModule('default')
 
 test('isStaleRouteChunkLoadError matches Chromium, Firefox, and WebKit dynamic import failures', () => {
 	expect(isStaleRouteChunkLoadError(new TypeError(chromium))).toBe(true)
@@ -250,27 +273,31 @@ test('onVitePreloadError prevents the default only when a reload is triggered', 
 })
 
 test('isStaleRouteChunkUndefinedModuleError matches Safari, Chromium, and Firefox follow-ons', () => {
-	expect(
-		isStaleRouteChunkUndefinedModuleError(new TypeError(safariUndefinedModule)),
-	).toBe(true)
+	for (const exportName of tanstackSplitExportNames) {
+		expect(
+			isStaleRouteChunkUndefinedModuleError(
+				new TypeError(safariUndefinedModule(exportName)),
+			),
+		).toBe(true)
+		expect(
+			isStaleRouteChunkUndefinedModuleError(
+				new TypeError(chromiumUndefinedModule(exportName)),
+			),
+		).toBe(true)
+		expect(
+			isStaleRouteChunkUndefinedModuleError(
+				new TypeError(firefoxUndefinedModule(exportName)),
+			),
+		).toBe(true)
+	}
 	expect(
 		isStaleRouteChunkUndefinedModuleError(
-			new TypeError(chromiumUndefinedModule),
-		),
-	).toBe(true)
-	expect(
-		isStaleRouteChunkUndefinedModuleError(
-			new TypeError(firefoxUndefinedModule),
-		),
-	).toBe(true)
-	expect(
-		isStaleRouteChunkUndefinedModuleError(
-			`TypeError: ${safariUndefinedModule}`,
+			`TypeError: ${safariUndefinedModuleDefault}`,
 		),
 	).toBe(true)
 })
 
-test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-default TypeErrors', () => {
+test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-property TypeErrors', () => {
 	const nearMisses = [
 		new TypeError(
 			"undefined is not an object (evaluating 'window.webkit.messageHandlers')",
@@ -279,8 +306,11 @@ test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-default 
 			"undefined is not an object (evaluating 'e[i??`something`]')",
 		),
 		new TypeError("Cannot read properties of undefined (reading 'name')"),
+		new TypeError("Cannot read properties of undefined (reading 'foo')"),
 		new TypeError("Cannot read properties of null (reading 'default')"),
 		new TypeError(`can't access property "name" of undefined`),
+		new TypeError(safariUndefinedModule('foo')),
+		new TypeError(firefoxUndefinedModule('foo')),
 		new TypeError(chromium),
 		new TypeError('x'),
 		'undefined is not an object',
@@ -291,7 +321,7 @@ test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-default 
 })
 
 test('shouldSuppressStaleRouteChunkFollowOnError only after a reload was triggered', () => {
-	const followOn = new TypeError(safariUndefinedModule)
+	const followOn = new TypeError(safariUndefinedModuleDefault)
 	expect(shouldSuppressStaleRouteChunkFollowOnError(followOn)).toBe(false)
 
 	const store = new Map<string, string>()
@@ -305,9 +335,32 @@ test('shouldSuppressStaleRouteChunkFollowOnError only after a reload was trigger
 	expect(shouldSuppressStaleRouteChunkFollowOnError(followOn)).toBe(true)
 	expect(
 		shouldSuppressStaleRouteChunkFollowOnError(
-			new TypeError(chromiumUndefinedModule),
+			new TypeError(chromiumUndefinedModuleDefault),
 		),
 	).toBe(true)
+	for (const exportName of tanstackSplitExportNames) {
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(safariUndefinedModule(exportName)),
+			),
+		).toBe(true)
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(chromiumUndefinedModule(exportName)),
+			),
+		).toBe(true)
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(firefoxUndefinedModule(exportName)),
+			),
+		).toBe(true)
+	}
+	// Unrelated property name is never suppressed, even while reload pending.
+	expect(
+		shouldSuppressStaleRouteChunkFollowOnError(
+			new TypeError(chromiumUndefinedModule('foo')),
+		),
+	).toBe(false)
 	// Unrelated TypeError still reports even while reload is pending.
 	expect(
 		shouldSuppressStaleRouteChunkFollowOnError(
@@ -326,11 +379,23 @@ test('follow-on undefined-module TypeError is not suppressed when reload did not
 	store.set(staleRouteChunkReloadFlag, '1')
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
 	expect(wasStaleRouteChunkReloadTriggered()).toBe(false)
-	expect(
-		shouldSuppressStaleRouteChunkFollowOnError(
-			new TypeError(safariUndefinedModule),
-		),
-	).toBe(false)
+	for (const exportName of tanstackSplitExportNames) {
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(safariUndefinedModule(exportName)),
+			),
+		).toBe(false)
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(chromiumUndefinedModule(exportName)),
+			),
+		).toBe(false)
+		expect(
+			shouldSuppressStaleRouteChunkFollowOnError(
+				new TypeError(firefoxUndefinedModule(exportName)),
+			),
+		).toBe(false)
+	}
 })
 
 test('reloadOnStaleRouteChunk clears suppress state when location.reload throws', () => {
@@ -346,7 +411,7 @@ test('reloadOnStaleRouteChunk clears suppress state when location.reload throws'
 	expect(store.has(staleRouteChunkReloadFlag)).toBe(false)
 	expect(
 		shouldSuppressStaleRouteChunkFollowOnError(
-			new TypeError(safariUndefinedModule),
+			new TypeError(safariUndefinedModuleDefault),
 		),
 	).toBe(false)
 
