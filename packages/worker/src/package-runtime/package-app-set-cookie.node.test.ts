@@ -98,7 +98,7 @@ test('rewritePackageAppSetCookieHeader drops Domain and keeps host-only cookies'
 	expect(exactHost.header).toContain('Domain=alice.kody.run')
 })
 
-test('scrubPackageAppSetCookieDomains preserves multi Set-Cookie and skips 101', async () => {
+test('scrubPackageAppSetCookieDomains preserves multi Set-Cookie and scrubs websocket handshakes', async () => {
 	const response = new Response('ok', {
 		headers: [
 			['Set-Cookie', 'toss=1; Domain=.kody.run; Path=/'],
@@ -124,18 +124,44 @@ test('scrubPackageAppSetCookieDomains preserves multi Set-Cookie and skips 101',
 	await expect(scrubbed.response.text()).resolves.toBe('ok')
 
 	// Node's Response rejects status 101; Workers still pair via `webSocket`.
+	const client = { kind: 'client-socket' } as unknown as WebSocket
 	const upgrade = new Response(null, {
 		headers: { 'Set-Cookie': 'toss=1; Domain=kody.run; Path=/' },
 	})
-	Object.defineProperty(upgrade, 'webSocket', { value: {} })
-	const skipped = scrubPackageAppSetCookieDomains(upgrade, {
+	Object.defineProperty(upgrade, 'webSocket', {
+		value: client,
+		configurable: true,
+	})
+	const scrubbedUpgrade = scrubPackageAppSetCookieDomains(upgrade, {
 		responseHostname: 'alice.kody.run',
 		packageAppApexHostnames: apexes,
 	})
-	expect(skipped.stripped).toEqual([])
-	expect(skipped.response.headers.getSetCookie()).toEqual([
-		'toss=1; Domain=kody.run; Path=/',
+	expect(scrubbedUpgrade.stripped).toEqual([
+		{ cookieName: 'toss', domain: 'kody.run' },
 	])
+	expect(scrubbedUpgrade.response.headers.getSetCookie()).toEqual([
+		'toss=1; Path=/',
+	])
+	expect(scrubbedUpgrade.response.webSocket).toBe(client)
+})
+
+test('rewrite does not treat a cookie named domain as a Domain attribute', () => {
+	const result = rewritePackageAppSetCookieHeader(
+		'domain=kody.run; Path=/; HttpOnly',
+		{ responseHostname: 'alice.kody.run', packageAppApexHostnames: apexes },
+	)
+	expect(result.strippedDomain).toBeNull()
+	expect(result.header).toBe('domain=kody.run; Path=/; HttpOnly')
+})
+
+test('parent of a nested package-app apex is stripped', () => {
+	expect(
+		shouldStripPackageAppSetCookieDomain({
+			cookieDomain: 'example.dev',
+			responseHostname: 'alice.apps.example.dev',
+			packageAppApexHostnames: ['apps.example.dev'],
+		}),
+	).toBe(true)
 })
 
 test('logPackageAppSetCookieDomainStripped warns only when cookies were stripped', () => {

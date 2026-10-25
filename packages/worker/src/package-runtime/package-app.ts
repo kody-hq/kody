@@ -1220,11 +1220,15 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			);
 			outgoing = scrubbedCookies.response;
 			if (scrubbedCookies.stripped.length > 0) {
-				console.warn('package-app-set-cookie-domain-stripped', {
-					hostname: requestUrl.hostname,
-					pathname: requestUrl.pathname,
-					stripped: scrubbedCookies.stripped,
-				});
+				// Activity capture stringifies args; keep details as one JSON string.
+				console.warn(
+					'package-app-set-cookie-domain-stripped ' +
+						JSON.stringify({
+							hostname: requestUrl.hostname,
+							pathname: requestUrl.pathname,
+							stripped: scrubbedCookies.stripped,
+						}),
+				);
 			}
 			if (outgoing && outgoing.status >= 500) {
 				const runtimeRunId = await readRuntimeRunId(runtimeRun);

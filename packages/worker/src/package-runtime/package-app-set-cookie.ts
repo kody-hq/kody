@@ -51,6 +51,14 @@ export function shouldStripPackageAppSetCookieDomain(input: {
 		if (domain === apex) return true
 		// Sibling or other label under the same apex (not this host).
 		if (domain.endsWith(`.${apex}`) && domain !== host) return true
+		// A parent of the apex also covers the apex and its tenants (for a
+		// nested package-app base such as apps.example.dev under example.dev).
+		if (
+			apex.endsWith(`.${domain}`) &&
+			(host === apex || host.endsWith(`.${apex}`))
+		) {
+			return true
+		}
 	}
 	return false
 }
@@ -76,9 +84,11 @@ export function rewritePackageAppSetCookieHeader(
 	if (parts.length === 0) return { header, strippedDomain: null }
 	const kept: Array<string> = []
 	let strippedDomain: string | null = null
-	for (const part of parts) {
+	for (const [index, part] of parts.entries()) {
 		const trimmed = part.trim()
-		const match = /^domain\s*=\s*(.*)$/i.exec(trimmed)
+		// Segment 0 is name=value, never a Domain attribute (a cookie named
+		// "domain" must not be treated as Domain=).
+		const match = index === 0 ? null : /^domain\s*=\s*(.*)$/i.exec(trimmed)
 		if (!match) {
 			kept.push(part)
 			continue
@@ -109,8 +119,12 @@ export function rewritePackageAppSetCookieHeader(
 }
 
 /**
- * Scrub unsafe Domain attributes on every Set-Cookie of a response. WebSocket
- * upgrades (101) are returned untouched because their headers are immutable.
+ * Scrub unsafe Domain attributes on every Set-Cookie of a response.
+ *
+ * Status-101 responses without a paired `webSocket` are left untouched (cannot
+ * be rebuilt). Handshake responses that carry `webSocket` are rebuilt with
+ * status 200 plus the same socket (Workers converts that back to 101) so
+ * Domain can still be stripped.
  */
 export function scrubPackageAppSetCookieDomains(
 	response: Response,
@@ -119,7 +133,7 @@ export function scrubPackageAppSetCookieDomains(
 		packageAppApexHostnames: ReadonlyArray<string>
 	},
 ): PackageAppSetCookieScrubResult {
-	if (response.webSocket || response.status === 101) {
+	if (response.status === 101 && !response.webSocket) {
 		return { response, stripped: [] }
 	}
 	if (input.packageAppApexHostnames.length === 0) {
@@ -159,13 +173,30 @@ export function scrubPackageAppSetCookieDomains(
 		response.status === 204 ||
 		response.status === 205 ||
 		response.status === 304
+	// Workers reject `new Response(..., { status: 101 })`; status 200 with the
+	// paired webSocket is converted back to a handshake response. Node's
+	// Response ignores `webSocket` in init, so reattach when missing.
+	const init: ResponseInit & { webSocket?: WebSocket } = {
+		status: response.webSocket ? 200 : response.status,
+		statusText: response.statusText,
+		headers,
+	}
+	if (response.webSocket) {
+		init.webSocket = response.webSocket
+	}
+	const rebuilt = new Response(
+		nullBody || response.webSocket ? null : response.body,
+		init,
+	)
+	if (response.webSocket && rebuilt.webSocket !== response.webSocket) {
+		Object.defineProperty(rebuilt, 'webSocket', {
+			value: response.webSocket,
+			configurable: true,
+		})
+	}
 	return {
 		stripped,
-		response: new Response(nullBody ? null : response.body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		}),
+		response: rebuilt,
 	}
 }
 
@@ -214,6 +245,12 @@ function __kodyShouldStripPackageAppSetCookieDomain(cookieDomain, responseHostna
 		if (!apex) continue;
 		if (domain === apex) return true;
 		if (domain.endsWith('.' + apex) && domain !== host) return true;
+		if (
+			apex.endsWith('.' + domain) &&
+			(host === apex || host.endsWith('.' + apex))
+		) {
+			return true;
+		}
 	}
 	return false;
 }
@@ -222,9 +259,11 @@ function __kodyRewritePackageAppSetCookie(header, responseHostname) {
 	const parts = String(header ?? '').split(';');
 	const kept = [];
 	let strippedDomain = null;
-	for (const part of parts) {
+	for (let index = 0; index < parts.length; index += 1) {
+		const part = parts[index];
 		const trimmed = part.trim();
-		const match = /^domain\\s*=\\s*(.*)$/i.exec(trimmed);
+		const match =
+			index === 0 ? null : /^domain\\s*=\\s*(.*)$/i.exec(trimmed);
 		if (!match) {
 			kept.push(part);
 			continue;
@@ -249,7 +288,8 @@ function __kodyRewritePackageAppSetCookie(header, responseHostname) {
 }
 
 function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
-	if (!response || response.webSocket || response.status === 101) {
+	if (!response) return { response, stripped: [] };
+	if (response.status === 101 && !response.webSocket) {
 		return { response, stripped: [] };
 	}
 	if (!__kodyPackageAppCookieApexes.length) {
@@ -282,13 +322,25 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 		response.status === 204 ||
 		response.status === 205 ||
 		response.status === 304;
+	const init = {
+		status: response.webSocket ? 200 : response.status,
+		statusText: response.statusText,
+		headers,
+	};
+	if (response.webSocket) init.webSocket = response.webSocket;
+	const rebuilt = new Response(
+		nullBody || response.webSocket ? null : response.body,
+		init,
+	);
+	if (response.webSocket && rebuilt.webSocket !== response.webSocket) {
+		Object.defineProperty(rebuilt, 'webSocket', {
+			value: response.webSocket,
+			configurable: true,
+		});
+	}
 	return {
 		stripped,
-		response: new Response(nullBody ? null : response.body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		}),
+		response: rebuilt,
 	};
 }
 `
