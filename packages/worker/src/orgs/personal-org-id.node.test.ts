@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -119,4 +120,39 @@ test('loadPersonalOrgIdForPerson shares one users read per person (KODY-AZ)', as
 	expect(
 		queries.filter((query) => query.toLowerCase().includes('from users')),
 	).toHaveLength(1)
+})
+
+test('loadPersonalOrgIdForPerson with request keeps one users read across sequential awaits (KODY-BF)', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const db = createD1FromSqlite(sqlite, { queries })
+	const distinctPerson = personIdFromStored(personId)
+	const request = {} as RequestContext
+	await db
+		.prepare(
+			`INSERT INTO users (id, username, email, password_hash, stable_user_id, personal_org_id)
+			 VALUES (1, 'distinct', 'distinct@example.com', 'x', ?, ?)`,
+		)
+		.bind(distinctPerson, distinctOrgId)
+		.run()
+	queries.length = 0
+
+	await expect(
+		loadPersonalOrgIdForPerson(db, distinctPerson, request),
+	).resolves.toBe(distinctOrgId)
+	await expect(
+		loadPersonalOrgIdForPerson(db, distinctPerson, request),
+	).resolves.toBe(distinctOrgId)
+	expect(
+		queries.filter((query) => query.toLowerCase().includes('from users')),
+	).toHaveLength(1)
+
+	const otherRequest = {} as RequestContext
+	await expect(
+		loadPersonalOrgIdForPerson(db, distinctPerson, otherRequest),
+	).resolves.toBe(distinctOrgId)
+	expect(
+		queries.filter((query) => query.toLowerCase().includes('from users')),
+	).toHaveLength(2)
 })

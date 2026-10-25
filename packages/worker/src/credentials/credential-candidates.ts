@@ -39,8 +39,14 @@ import {
 	isFetchCapableCredentialKind,
 	type PackageCredentialKind,
 } from '#worker/package-registry/types.ts'
+import {
+	bumpUsableCredentialsGeneration,
+	usableCredentialsGenerationOf,
+} from './credential-read-generation.ts'
 import { type CredentialNeed } from './credential-needs.ts'
 import { listPersonalCredentialCandidates } from './personal-credentials.ts'
+
+export { bumpUsableCredentialsGeneration }
 
 export type UsableCredential = {
 	id: string
@@ -338,16 +344,18 @@ export async function listOrgReachableCredentials(input: {
 }
 
 /**
- * Concurrent identical usable-credential lists share one D1 load of org
- * rows, personal grants, and MCP server settings (KODY-AZ). Cleared when the
- * promise settles so a later `storeKey` / grant in the same isolate still
- * re-reads. Package execute's `Promise.all` of `credential(key)` opens hit
- * this after a sync `ownerCredentialOpen` miss, so the in-flight memo
- * coalesces them; it must not outlive the load (tests and runs add
- * credentials between opens on the same request).
+ * Usable-credential lists for one `RequestContext` share one D1 load of org
+ * rows, personal grants, and MCP server settings (KODY-AZ concurrent opens;
+ * KODY-BF sequential opens on the same queue/package execution). Kept for
+ * the request so sequential `await credential(key)` reuses the snapshot;
+ * keyed by request so another user's or later request never sees this list.
+ *
+ * A write that can change the usable set bumps
+ * `bumpUsableCredentialsGeneration` so the next open on this request
+ * re-reads (create-then-open in tests and mid-run storeKey).
  */
-const inflightUsableCredentials = new WeakMap<
-	D1Database,
+const usableCredentialsByRequest = new WeakMap<
+	RequestContext,
 	Map<string, Promise<Array<UsableCredential>>>
 >()
 
@@ -359,10 +367,11 @@ function usableCredentialsCacheKey(input: {
 	scopes: ReadonlyArray<string> | null
 	/** Set only when the caller passed an explicit `now` (expiry boundary). */
 	explicitNow: string | null
+	generation: number
 }) {
 	const scopesKey =
 		input.scopes === null ? '*' : [...input.scopes].sort().join(',')
-	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}`
+	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}\0${input.generation}`
 }
 
 /**
@@ -385,7 +394,6 @@ export async function listUsableCredentials(input: {
 	const orgId = input.request.org.id
 	const explicitNow = input.now ? input.now.toISOString() : null
 	const now = explicitNow ?? new Date().toISOString()
-	const db = input.env.APP_DB
 	const cacheKey = usableCredentialsCacheKey({
 		orgId,
 		actorUserId: input.request.actor?.userId,
@@ -393,18 +401,20 @@ export async function listUsableCredentials(input: {
 		packageId: input.packageId,
 		scopes: input.request.credential.scopes,
 		explicitNow,
+		generation: usableCredentialsGenerationOf(input.env.APP_DB),
 	})
-	let inflight = inflightUsableCredentials.get(db)
-	if (!inflight) {
-		inflight = new Map()
-		inflightUsableCredentials.set(db, inflight)
+	let byKey = usableCredentialsByRequest.get(input.request)
+	if (!byKey) {
+		byKey = new Map()
+		usableCredentialsByRequest.set(input.request, byKey)
 	}
-	const existing = inflight.get(cacheKey)
+	const existing = byKey.get(cacheKey)
 	if (existing) return existing
-	const pending = loadUsableCredentials({ ...input, now }).finally(() => {
-		if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
+	const pending = loadUsableCredentials({ ...input, now })
+	byKey.set(cacheKey, pending)
+	pending.catch(() => {
+		if (byKey.get(cacheKey) === pending) byKey.delete(cacheKey)
 	})
-	inflight.set(cacheKey, pending)
 	return pending
 }
 
@@ -422,9 +432,9 @@ async function loadUsableCredentials(input: {
 		packageId: input.packageId ?? null,
 	}
 	// Start the personal-org read in the same turn as listPersonalCredentialCandidates
-	// so both share one in-flight users SELECT.
+	// so both share one users SELECT (in-flight + request-scoped).
 	const personalOrgPromise = actor
-		? loadPersonalOrgIdForPerson(input.env.APP_DB, actor)
+		? loadPersonalOrgIdForPerson(input.env.APP_DB, actor, input.request)
 		: Promise.resolve(null)
 	const [
 		secretScopeAuth,

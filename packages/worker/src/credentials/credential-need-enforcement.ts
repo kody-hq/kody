@@ -191,6 +191,7 @@ async function isAuthorsOwnPackage(input: {
 	const personalOrgId = await loadPersonalOrgIdForPerson(
 		input.env.APP_DB,
 		person.userId,
+		input.request,
 	)
 	if (input.saved.userId !== personalOrgId) return false
 	const unadoptedFork = await input.env.APP_DB.prepare(

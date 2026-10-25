@@ -6,6 +6,7 @@ import {
 	nextSecretExpiresAt,
 	secretTtlMs,
 } from '@kody-internal/shared/secret-expires-at.ts'
+import { bumpUsableCredentialsGeneration } from '#worker/credentials/credential-read-generation.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	type CredentialFillPlacement,
@@ -590,6 +591,7 @@ export async function saveSecret(
 			input.env,
 		)
 	}
+	bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return toSecretMetadata({
 		name,
 		scope: input.scope,
@@ -1603,6 +1605,7 @@ export async function deleteSecret(input: DeleteSecretInput) {
 			details: { fields: [] },
 		})
 	}
+	if (deleted) bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return deleted
 }
 
@@ -1643,6 +1646,7 @@ export async function disconnectSecret(input: DeleteSecretInput) {
 			details: { fields: ['connected'] },
 		})
 	}
+	if (cleared) bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return cleared
 }
 
@@ -1737,6 +1741,7 @@ export async function renameSecret(input: {
 			details: { previousName: fromName, fields: ['name'] },
 		})
 	}
+	bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return toSecretMetadata({
 		name: updated.name,
 		scope: input.scope,
@@ -1906,6 +1911,7 @@ export async function updateSecret(
 	}
 	// After HMAC rotation, so an audit failure cannot skip it.
 	if (updateAudit) await recordCredentialAudit(input.audit, updateAudit)
+	bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return toSecretMetadata({
 		name,
 		scope: input.scope,

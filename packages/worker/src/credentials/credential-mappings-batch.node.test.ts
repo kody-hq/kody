@@ -1,8 +1,11 @@
 /**
  * Concurrent per-need-key mapping loads coalesce into one D1 read (KODY-AZ).
+ * Sequential loads with a RequestContext share one unfiltered scope read
+ * (KODY-BF).
  */
 import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import { DatabaseSync } from 'node:sqlite'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -280,4 +283,76 @@ test('batched loadCredentialMappings isolates scopes so different packages do no
 	expect(left[0]?.credentialIds).toEqual(['cred-a'])
 	expect(right[0]?.credentialIds).toEqual(['cred-b'])
 	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(2)
+})
+
+test('sequential loadCredentialMappings with request shares one unfiltered scope read (KODY-BF)', async () => {
+	const queries: Array<string> = []
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, migrationsDirectory)
+	const db = createD1FromSqlite(sqlite, { queries })
+	const request = {} as RequestContext
+	await writeMapping({
+		db,
+		needKey: 'mail',
+		target: { target: 'org' },
+		credentialIds: ['cred-mail'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'chat',
+		target: { target: 'mine', personId },
+		credentialIds: ['cred-chat'],
+	})
+	await writeMapping({
+		db,
+		needKey: 'docs',
+		target: { target: 'org' },
+		credentialIds: ['cred-docs'],
+	})
+	queries.length = 0
+
+	const results: Array<Awaited<ReturnType<typeof loadCredentialMappings>>> = []
+	for (const needKey of ['mail', 'chat', 'docs'] as const) {
+		results.push(
+			await loadCredentialMappings({
+				db,
+				orgId,
+				packageId,
+				personId,
+				needKey,
+				request,
+			}),
+		)
+	}
+
+	expect(results.map((rows) => rows.map((row) => row.needKey))).toEqual([
+		['mail'],
+		['chat'],
+		['docs'],
+	])
+	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(1)
+	expect(queries.filter(isSingleNeedKeyLookup)).toHaveLength(0)
+	expect(queries.filter(isMultiNeedKeyLookup)).toHaveLength(0)
+	const [lookup] = queries.filter(isCredentialMappingLookup)
+	expect(lookup?.toLowerCase()).not.toMatch(/need_key\s*(=|in\s*\()/)
+
+	// A different request must not reuse the prior request's snapshot.
+	queries.length = 0
+	const otherRequest = {} as RequestContext
+	await expect(
+		loadCredentialMappings({
+			db,
+			orgId,
+			packageId,
+			personId,
+			needKey: 'mail',
+			request: otherRequest,
+		}),
+	).resolves.toEqual([
+		expect.objectContaining({
+			needKey: 'mail',
+			credentialIds: ['cred-mail'],
+		}),
+	])
+	expect(queries.filter(isCredentialMappingLookup)).toHaveLength(1)
 })

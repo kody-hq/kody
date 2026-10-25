@@ -6,6 +6,7 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /**
@@ -46,9 +47,18 @@ export function personalOrgIdForPerson(user: {
  * one users-row read (KODY-AZ). Cleared when the promise settles so a later
  * ownership conversion (or any write) in this or another isolate still
  * re-reads — module state cannot invalidate other isolates.
+ *
+ * When a `request` is passed, the settled id is also kept for that request
+ * (KODY-BF): sequential `credential(key)` opens on a queue consumer re-use
+ * one users SELECT without caching across requests or other users.
  */
 const inflightPersonalOrgIds = new WeakMap<
 	D1Database,
+	Map<string, Promise<OwnerId>>
+>()
+
+const personalOrgIdByRequest = new WeakMap<
+	RequestContext,
 	Map<string, Promise<OwnerId>>
 >()
 
@@ -56,8 +66,34 @@ const inflightPersonalOrgIds = new WeakMap<
  * Resolve personal org id when only a person id and DB are available (no
  * stamped `personalOrgId` on the caller). Prefer this over branding the
  * person id for org-keyed storage lookups.
+ *
+ * Pass `request` on credential open / package execute paths so sequential
+ * need-key resolution within one execution shares one users read.
  */
 export async function loadPersonalOrgIdForPerson(
+	db: D1Database,
+	personId: PersonId,
+	request?: RequestContext | null,
+): Promise<OwnerId> {
+	if (request) {
+		let byPerson = personalOrgIdByRequest.get(request)
+		if (!byPerson) {
+			byPerson = new Map()
+			personalOrgIdByRequest.set(request, byPerson)
+		}
+		const cached = byPerson.get(personId)
+		if (cached) return cached
+		const pending = loadPersonalOrgIdForPersonInflight(db, personId)
+		byPerson.set(personId, pending)
+		pending.catch(() => {
+			if (byPerson.get(personId) === pending) byPerson.delete(personId)
+		})
+		return pending
+	}
+	return loadPersonalOrgIdForPersonInflight(db, personId)
+}
+
+async function loadPersonalOrgIdForPersonInflight(
 	db: D1Database,
 	personId: PersonId,
 ): Promise<OwnerId> {
@@ -78,7 +114,7 @@ export async function loadPersonalOrgIdForPerson(
 /**
  * Drop an in-flight personal-org id after `users.personal_org_id` changes
  * (ownership conversion). Safe no-op when nothing is in flight; call after
- * the write batch commits.
+ * the write batch commits. Request-scoped entries die with the request.
  */
 export function forgetPersonalOrgIdForPerson(
 	db: D1Database,

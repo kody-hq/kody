@@ -1,7 +1,9 @@
 /**
  * Opening credential() for several package need keys must not re-query
  * credential_mappings, users.personal_org_id, or mcp_server_settings once per
- * need (Sentry KODY-AZ / issue 7809422290).
+ * need — whether opens run concurrently (Sentry KODY-AZ / issue 7809422290)
+ * or sequentially as queue package code typically does (Sentry KODY-BF /
+ * issue 7810721971).
  */
 import { DatabaseSync } from 'node:sqlite'
 import {
@@ -278,6 +280,73 @@ test('openCredentialClient query counts stay flat when need key count grows (KOD
 	await Promise.all(
 		large.needKeys.map((key) => openCredentialClient(large.context, { key })),
 	)
+	const largeCounts = {
+		mapping: large.queries.filter(isCredentialMappingLookup).length,
+		mcp: large.queries.filter(isMcpServerSettingsListLookup).length,
+		personalOrg: large.queries.filter(isPersonalOrgUserLookup).length,
+	}
+
+	expect(largeCounts.mapping).toBe(smallCounts.mapping)
+	expect(largeCounts.mcp).toBe(smallCounts.mcp)
+	expect(largeCounts.personalOrg).toBe(smallCounts.personalOrg)
+	expect(largeCounts.mapping).toBe(1)
+	expect(largeCounts.mcp).toBe(1)
+	expect(largeCounts.personalOrg).toBeLessThanOrEqual(2)
+})
+
+test('sequential openCredentialClient for N need keys does not scale mapping/user/mcp queries with N (KODY-BF)', async () => {
+	const needKeys = ['mail', 'chat', 'docs'] as const
+	const t = await setup(needKeys)
+	t.queries.length = 0
+
+	const opened: Array<Awaited<ReturnType<typeof openCredentialClient>>> = []
+	for (const key of needKeys) {
+		opened.push(await openCredentialClient(t.context, { key }))
+	}
+
+	expect(opened.map((client) => client.key)).toEqual([...needKeys])
+	expect(opened.map((client) => client.name)).toEqual([
+		'mail-prod',
+		'chat-prod',
+		'docs-prod',
+	])
+
+	const mappingLookups = t.queries.filter(isCredentialMappingLookup)
+	const personalOrgLookups = t.queries.filter(isPersonalOrgUserLookup)
+	const mcpLookups = t.queries.filter(isMcpServerSettingsListLookup)
+
+	expect(mappingLookups.length).toBeLessThan(needKeys.length)
+	expect(mappingLookups).toHaveLength(1)
+	expect(personalOrgLookups.length).toBeLessThan(needKeys.length)
+	expect(personalOrgLookups.length).toBeLessThanOrEqual(2)
+	expect(mcpLookups.length).toBeLessThan(needKeys.length)
+	expect(mcpLookups).toHaveLength(1)
+	// Request-scoped scope read is unfiltered (no need_key = ? per open).
+	expect(
+		mappingLookups.every((query) => {
+			const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+			return !normalized.includes('need_key = ?')
+		}),
+	).toBe(true)
+})
+
+test('sequential openCredentialClient query counts stay flat when need key count grows (KODY-BF)', async () => {
+	const small = await setup(['a', 'b'])
+	small.queries.length = 0
+	for (const key of small.needKeys) {
+		await openCredentialClient(small.context, { key })
+	}
+	const smallCounts = {
+		mapping: small.queries.filter(isCredentialMappingLookup).length,
+		mcp: small.queries.filter(isMcpServerSettingsListLookup).length,
+		personalOrg: small.queries.filter(isPersonalOrgUserLookup).length,
+	}
+
+	const large = await setup(['a', 'b', 'c', 'd', 'e', 'f'])
+	large.queries.length = 0
+	for (const key of large.needKeys) {
+		await openCredentialClient(large.context, { key })
+	}
 	const largeCounts = {
 		mapping: large.queries.filter(isCredentialMappingLookup).length,
 		mcp: large.queries.filter(isMcpServerSettingsListLookup).length,

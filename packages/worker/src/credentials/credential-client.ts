@@ -480,8 +480,9 @@ function pickOne(input: {
  * default, then the org default), or null to auto-resolve. Interactive runs
  * have no trigger override; a trigger run acts as its enabler.
  *
- * Concurrent opens for several need keys share one mappings read via the
- * microtask batcher in `loadCredentialMappings` (KODY-AZ).
+ * Concurrent opens share one mappings read via the microtask batcher
+ * (KODY-AZ). Sequential opens on the same request reuse a request-scoped
+ * unfiltered scope load (KODY-BF / queue consumers).
  */
 async function resolveMappedNeed(
 	ctx: CredentialClientContext,
@@ -502,6 +503,7 @@ async function resolveMappedNeed(
 		personId: input.request.actor!.userId,
 		enablementIds: enablementId ? [enablementId] : [],
 		needKey: input.key,
+		request: input.request,
 	})
 	const layer = (target: CredentialMappingRowTarget['target']) =>
 		rows.find((row) => row.target.target === target)?.credentialIds ?? null

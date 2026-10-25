@@ -6,7 +6,14 @@
  * the actor can Use right now.
  */
 import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	bumpCredentialMappingGeneration,
+	credentialMappingGenerationOf,
+} from './credential-read-generation.ts'
 import { type UsableCredential } from './credential-candidates.ts'
+
+export { bumpCredentialMappingGeneration }
 
 export type CredentialMappingRowTarget =
 	| { target: 'org' }
@@ -103,10 +110,20 @@ type PendingCredentialMappingRequest = {
  * `Promise.all`, and each open previously issued its own
  * `need_key = ?` mapping SELECT; D1 still ran those as sequential spans. A
  * lone lookup still uses the single-key (or unfiltered) query.
+ *
+ * When a `request` is passed, the first load for a scope reads every mapping
+ * row for that scope and keeps it for the request (KODY-BF). Sequential
+ * `await credential(key)` on a queue consumer then filters in memory instead
+ * of issuing another `need_key = ?` SELECT.
  */
 const pendingCredentialMappingBatches = new WeakMap<
 	D1Database,
 	Array<PendingCredentialMappingRequest>
+>()
+
+const credentialMappingsByRequest = new WeakMap<
+	RequestContext,
+	Map<string, Promise<Array<CredentialMappingRow>>>
 >()
 
 function mappingScopeKey(input: {
@@ -114,8 +131,9 @@ function mappingScopeKey(input: {
 	packageId: string
 	personId: string | null
 	enablementIds: ReadonlyArray<string>
+	generation: number
 }) {
-	return `${input.orgId}\0${input.packageId}\0${input.personId ?? ''}\0${[...input.enablementIds].join('\0')}`
+	return `${input.orgId}\0${input.packageId}\0${input.personId ?? ''}\0${[...input.enablementIds].join('\0')}\0${input.generation}`
 }
 
 function rowsForNeedKey(
@@ -212,7 +230,10 @@ async function flushCredentialMappingBatch(db: D1Database) {
 
 	const byScope = new Map<string, Array<PendingCredentialMappingRequest>>()
 	for (const request of pending) {
-		const key = mappingScopeKey(request)
+		const key = mappingScopeKey({
+			...request,
+			generation: credentialMappingGenerationOf(db),
+		})
 		const group = byScope.get(key)
 		if (group) group.push(request)
 		else byScope.set(key, [request])
@@ -263,6 +284,9 @@ async function flushCredentialMappingBatch(db: D1Database) {
 /**
  * The package's mappings a viewer can see: the org layer, the viewer's own
  * `mine` layer, and overrides on the given enablements.
+ *
+ * Pass `request` on credential open / package execute so sequential need-key
+ * lookups share one unfiltered scope read for the execution.
  */
 export async function loadCredentialMappings(input: {
 	db: D1Database
@@ -271,8 +295,38 @@ export async function loadCredentialMappings(input: {
 	personId: string | null
 	enablementIds?: ReadonlyArray<string>
 	needKey?: string
+	request?: RequestContext | null
 }): Promise<Array<CredentialMappingRow>> {
 	const enablementIds = input.enablementIds ?? []
+	const scope = {
+		orgId: input.orgId,
+		packageId: input.packageId,
+		personId: input.personId,
+		enablementIds,
+	}
+	if (input.request) {
+		const scopeKey = mappingScopeKey({
+			...scope,
+			generation: credentialMappingGenerationOf(input.db),
+		})
+		let byScope = credentialMappingsByRequest.get(input.request)
+		if (!byScope) {
+			byScope = new Map()
+			credentialMappingsByRequest.set(input.request, byScope)
+		}
+		let allRows = byScope.get(scopeKey)
+		if (!allRows) {
+			allRows = queryCredentialMappings({
+				db: input.db,
+				...scope,
+			})
+			byScope.set(scopeKey, allRows)
+			allRows.catch(() => {
+				if (byScope.get(scopeKey) === allRows) byScope.delete(scopeKey)
+			})
+		}
+		return rowsForNeedKey(await allRows, input.needKey)
+	}
 	const db = input.db
 	return await new Promise<Array<CredentialMappingRow>>((resolve, reject) => {
 		const pending = pendingCredentialMappingBatches.get(db)
@@ -343,6 +397,9 @@ export function buildWriteCredentialMappingStatement(input: {
 	updatedByUserId: string
 	now: string
 }): D1PreparedStatement {
+	// Bump before the statement runs so a later open on the same request
+	// cannot keep a pre-write request-scoped snapshot (KODY-BF).
+	bumpCredentialMappingGeneration(input.db)
 	const { personUserId, enablementId } = targetColumns(input.target)
 	if (input.credentialIds === null) {
 		return input.db
@@ -436,6 +493,7 @@ export async function deleteCredentialMappingsForPackage(input: {
 		)
 		.bind(input.orgId, input.packageId)
 		.run()
+	bumpCredentialMappingGeneration(input.db)
 	return result.meta?.changes ?? 0
 }
 
@@ -451,6 +509,7 @@ export async function deleteCredentialMappingsForMember(input: {
 		)
 		.bind(input.orgId, input.personId)
 		.run()
+	bumpCredentialMappingGeneration(input.db)
 	return result.meta?.changes ?? 0
 }
 
