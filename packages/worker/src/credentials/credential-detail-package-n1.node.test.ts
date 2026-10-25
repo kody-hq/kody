@@ -391,7 +391,9 @@ test('package-bound Key batch chunks under maxD1BoundParameters (KODY-BD)', asyn
 	expect(t.queries.filter(isPackageBoundSecretListLookup).length).toBeLessThan(
 		packageIds.length,
 	)
-	const [firstId] = packageIds
+	const firstId = packageIds[0]
+	expect(firstId).toBeDefined()
+	if (!firstId) throw new Error('expected at least one package id')
 	expect(
 		(byPackage.get(firstId) ?? [])
 			.filter((credential) => credential.packageId != null)
