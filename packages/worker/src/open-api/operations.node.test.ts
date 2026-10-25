@@ -386,21 +386,25 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 			operationId: 'secretLock',
 			path: '/v1/secrets/lock',
 			pathParams: [],
+			permission: 'secret:use',
 		},
 		{
 			operationId: 'secretProviderLock',
 			path: '/v1/secret-providers/{provider}/lock',
 			pathParams: ['provider'],
+			permission: 'secret:use',
 		},
 		{
 			operationId: 'integrationLock',
 			path: '/v1/integrations/{name}/lock',
 			pathParams: ['name'],
+			permission: 'integration:use',
 		},
 		{
 			operationId: 'mcpServerLock',
 			path: '/v1/mcp-servers/{server}/lock',
 			pathParams: ['server'],
+			permission: 'integration:use',
 		},
 	]
 	for (const deprecatedRoute of deprecatedLockRoutes) {
@@ -409,6 +413,7 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 			operationId: deprecatedRoute.operationId,
 			deprecated: true,
 		})
+		expect(operation?.['x-kody-permission']).toBe(deprecatedRoute.permission)
 		expect(operation?.description).toContain('resourceLock')
 		const bodySchema =
 			operation?.requestBody?.content['application/json']?.schema

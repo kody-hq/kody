@@ -231,12 +231,7 @@ function narrowForwardSchema(
 			`Open API operation "${operationId}" expected one matching schema variant, found ${matches.length}.`,
 		)
 	}
-	const variant = matches[0]
-	if (!variant) {
-		throw new Error(
-			`Open API operation "${operationId}" has no schema variant.`,
-		)
-	}
+	const variant = matches[0]!
 	const { anyOf: _anyOf, oneOf: _oneOf, ...schemaMetadata } = schema
 	return {
 		...schemaMetadata,
@@ -327,7 +322,7 @@ export function resolveApiOperation(
 							operation.operationId,
 						)
 					: outputSchema,
-				permission: capability.orgPermission,
+				permission: forward?.permission ?? capability.orgPermission,
 				readOnly: capability.readOnly,
 				featureFlag: capability.featureFlag ?? null,
 			}

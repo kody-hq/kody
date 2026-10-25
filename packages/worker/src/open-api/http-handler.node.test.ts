@@ -178,6 +178,27 @@ test('forwards deprecated integration locks with the legacy body and deprecation
 	)
 })
 
+test('rejects deprecated integration locks without integration:use before dispatch', async () => {
+	const api = await createApi()
+	const lockIntegrationToPackage = vi
+		.spyOn(integrationService, 'lockIntegrationToPackage')
+		.mockResolvedValue({
+			name: 'google',
+			allowedPackageIds: ['pkg-123'],
+		} as never)
+	const response = await api.call('POST', '/v1/integrations/google/lock', {
+		token: await api.mint(['secret:use']),
+		body: { package_id: 'pkg-123' },
+	})
+
+	expect(response.status).toBe(403)
+	expect(response.body['error']).toMatchObject({
+		code: 'insufficient_scope',
+		details: { required_permission: 'integration:use' },
+	})
+	expect(lockIntegrationToPackage).not.toHaveBeenCalled()
+})
+
 test('token minting enforces parent scopes for local-execute', async () => {
 	const api = await createApi()
 	const parent = await api.mint(['token:delete', 'token:read', 'package:read'])

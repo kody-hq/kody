@@ -67,6 +67,7 @@ export type CapabilityApiOperation = ApiOperationBase & {
 	deprecatedForward?: {
 		capability: string
 		fixedInputs: Readonly<Record<string, string>>
+		permission?: SurfacePermission
 		/** YYYY-MM-DD (UTC) */
 		deprecatedAt: string
 		/** YYYY-MM-DD (UTC) */
@@ -131,10 +132,14 @@ function capabilityRoutes(
 
 function resourceLockForward(
 	kind: 'secret' | 'secret_provider' | 'integration' | 'mcp_server',
-) {
+): NonNullable<CapabilityApiOperation['deprecatedForward']> {
 	return {
 		capability: 'resourceLock',
 		fixedInputs: { kind },
+		permission:
+			kind === 'secret' || kind === 'secret_provider'
+				? 'secret:use'
+				: 'integration:use',
 		deprecatedAt: '2026-10-24',
 		sunset: '2027-01-22',
 	}
