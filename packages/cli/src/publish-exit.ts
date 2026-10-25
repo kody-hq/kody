@@ -14,7 +14,7 @@ export const publishCliSuccessStatuses = [
 
 /**
  * Async handoff is not a refusal — the durable run is accepted. Poll
- * workflowRunList for the terminal publish status.
+ * workflowRunList({ workflow_id }) for the terminal publish status.
  */
 export const publishCliAcceptedStatuses = ['dispatched'] as const
 

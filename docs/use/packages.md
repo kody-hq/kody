@@ -1278,19 +1278,22 @@ publish checks run.
    `runList` or Cloudflare Log Explorer. When an interactive publish exceeds the
    inline budget (~35s), the tool returns `status: "dispatched"` with a
    `workflow_id` instead of hanging until the host times out. `dispatched`
-   includes `phase_timings.total_ms` as time-to-dispatch. Poll `workflowRunList`
-   with that `workflow_id` until the run finishes; do not retry the same publish
-   while the run is active.
+   includes `phase_timings.total_ms` as time-to-dispatch. Poll with
+   `workflowRunList({ workflow_id })` (CLI:
+   `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
+   is terminal; do not retry the same publish while the run is active.
 
    If the CLI or client loses the HTTP response (for example
    `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal
-   status, the outcome is unknown until you check. Prefer `workflowRunList`
-   (CLI: `kody api workflowRunList`) for recent `packagePublishExternalPush`
-   runs. Re-calling publish for the **same** commit is safe: an active durable
-   run for that commit is deduped and returns the existing `dispatched` handle;
-   a completed publish returns `already_published` without re-running checks.
-   Connect-phase failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
-   `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
+   status, the outcome is unknown until you check. Prefer
+   `workflowRunList({ workflow_id })` when you still have the id; otherwise list
+   recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
+   optionally filtering with `package_id`, `status`, or `since`. Re-calling
+   publish for the **same** commit is safe: an active durable run for that
+   commit is deduped and returns the existing `dispatched` handle; a completed
+   publish returns `already_published` without re-running checks. Connect-phase
+   failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`,
+   `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
    `did not connect within …ms` timeout) never reached the server — republish is
    the right next step. The CLI surfaces that distinction as `sent: false` vs
    `sent: "unknown"` on `--json` errors.

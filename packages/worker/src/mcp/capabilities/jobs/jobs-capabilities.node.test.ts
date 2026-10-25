@@ -605,7 +605,16 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			ctx,
 		)
 		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
-			expect.objectContaining({ userId: ownerIdFromStored('user-123') }),
+			expect.objectContaining({
+				userId: ownerIdFromStored('user-123'),
+				limit: 5,
+				filter: {
+					workflowId: null,
+					status: null,
+					packageId: null,
+					since: null,
+				},
+			}),
 		)
 		expect(workflowListResult.workflows[0]?.status).toBe('complete')
 		expect(workflowListResult.workflows[0]).toMatchObject({
@@ -616,6 +625,54 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			enqueued_commit: 'commit-a',
 			source_revision: 'pinned',
 		})
+
+		mockModule.listWorkflowRunsForUser.mockClear()
+		mockModule.listWorkflowRunsForUser.mockResolvedValue([
+			{
+				id: 'dynwf-123',
+				userId: ownerIdFromStored('user-123'),
+				sourceType: 'inline',
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				workflowName: 'inline-code',
+				exportName: null,
+				idempotencyKey: 'execute-smoke',
+				runAt: '2026-05-03T12:00:00.000Z',
+				planDate: null,
+				status: 'complete',
+				createdAt: '2026-05-03T11:59:00.000Z',
+				updatedAt: '2026-05-03T12:00:01.000Z',
+				completedAt: '2026-05-03T12:00:01.000Z',
+				lastError: null,
+				enqueuedCommit: null,
+				sourceRevision: null,
+			},
+		])
+		const filtered = await workflowListCapability.handler(
+			{
+				workflow_id: 'dynwf-123',
+				status: 'complete',
+				package_id: 'pkg-1',
+				since: '2026-05-01T00:00:00.000Z',
+				limit: 3,
+			},
+			ctx,
+		)
+		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: ownerIdFromStored('user-123'),
+				limit: 3,
+				filter: {
+					workflowId: 'dynwf-123',
+					status: 'complete',
+					packageId: 'pkg-1',
+					since: '2026-05-01T00:00:00.000Z',
+				},
+			}),
+		)
+		expect(filtered.workflows).toHaveLength(1)
+		expect(filtered.workflows[0]?.id).toBe('dynwf-123')
 	} finally {
 		vi.useRealTimers()
 	}

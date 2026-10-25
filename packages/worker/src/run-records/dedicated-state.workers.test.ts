@@ -362,6 +362,75 @@ test('workflow projections track binding name, idempotency, and active counts', 
 	).toBe('OTHER_WORKFLOWS')
 })
 
+test('listWorkflowProjections filters by id, packageId, and since', async () => {
+	const userId = uniqueUserId('wf-list-filters')
+	await upsertWorkflow(userId, 'wf-old', {
+		sourceType: 'package',
+		packageId: 'pkg-a',
+		workflowName: 'old',
+		createdAt: '2026-07-01T00:00:00.000Z',
+		updatedAt: '2026-07-01T00:00:00.000Z',
+		status: 'complete',
+		completedAt: '2026-07-01T00:01:00.000Z',
+	})
+	await upsertWorkflow(userId, 'wf-new-a', {
+		sourceType: 'package',
+		packageId: 'pkg-a',
+		workflowName: 'new-a',
+		createdAt: '2026-07-31T12:00:00.000Z',
+		updatedAt: '2026-07-31T12:00:00.000Z',
+		status: 'running',
+	})
+	await upsertWorkflow(userId, 'wf-new-b', {
+		sourceType: 'package',
+		packageId: 'pkg-b',
+		workflowName: 'new-b',
+		createdAt: '2026-07-31T13:00:00.000Z',
+		updatedAt: '2026-07-31T13:00:00.000Z',
+		status: 'queued',
+	})
+
+	const byId = await listWorkflowProjections({
+		env,
+		userId,
+		id: 'wf-new-a',
+		limit: 10,
+	})
+	expect(byId.projections.map((row) => row.id)).toEqual(['wf-new-a'])
+
+	const byPackage = await listWorkflowProjections({
+		env,
+		userId,
+		packageId: 'pkg-a',
+		limit: 10,
+	})
+	expect(byPackage.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-old',
+	])
+
+	const bySince = await listWorkflowProjections({
+		env,
+		userId,
+		since: '2026-07-31T00:00:00.000Z',
+		limit: 10,
+	})
+	expect(bySince.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-new-b',
+	])
+
+	const combined = await listWorkflowProjections({
+		env,
+		userId,
+		packageId: 'pkg-a',
+		since: '2026-07-31T00:00:00.000Z',
+		status: 'running',
+		limit: 10,
+	})
+	expect(combined.projections.map((row) => row.id)).toEqual(['wf-new-a'])
+})
+
 test('reserveWorkflowProjectionSlot serializes concurrent creating, prunes stale, and never overwrites terminal', async () => {
 	const userId = uniqueUserId('wf-reserve')
 	const reserve = (

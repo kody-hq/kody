@@ -419,6 +419,11 @@ type WorkflowProjectionListInput = {
 	cursor?: string | null
 	status?: string | null
 	bindingName?: string | null
+	/** Exact workflow projection id (dynwf-… / pkgwf-…). */
+	id?: string | null
+	packageId?: string | null
+	/** Inclusive lower bound on created_at (canonical ISO). */
+	since?: string | null
 }
 
 function truncateUtf8(value: string, maxBytes: number) {
@@ -3327,6 +3332,11 @@ class RunLogBase extends DurableObject<Env> {
 		const limit = normalizePageSize(input.limit, runRecordDefaultPageSize)
 		const clauses: Array<string> = ['1 = 1']
 		const params: Array<SqlStorageValue> = []
+		const id = input.id?.trim() || null
+		if (id) {
+			clauses.push('id = ?')
+			params.push(id)
+		}
 		if (input.status) {
 			clauses.push('status = ?')
 			params.push(input.status)
@@ -3335,6 +3345,16 @@ class RunLogBase extends DurableObject<Env> {
 		if (bindingName) {
 			clauses.push('binding_name = ?')
 			params.push(bindingName)
+		}
+		const packageId = input.packageId?.trim() || null
+		if (packageId) {
+			clauses.push('package_id = ?')
+			params.push(packageId)
+		}
+		const since = input.since?.trim() || null
+		if (since) {
+			clauses.push('created_at >= ?')
+			params.push(since)
 		}
 		if (input.cursor) {
 			const cursor = decodeCursor(input.cursor)

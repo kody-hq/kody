@@ -95,6 +95,9 @@ vi.mock('#worker/run-records/service.ts', () => ({
 					cursor?: string | null
 					status?: string | null
 					bindingName?: string | null
+					id?: string | null
+					packageId?: string | null
+					since?: string | null
 				},
 			]),
 		),
@@ -502,6 +505,23 @@ test('RunLog-only list, cancel, idempotency, and concurrency stay D1-free', asyn
 	})
 	expect(listed.map((row) => row.id).sort()).toEqual(
 		[...activeIds, 'dynwf-done', 'dynwf-idem'].sort(),
+	)
+
+	const byId = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { workflowId: 'dynwf-done' },
+	})
+	expect(byId.map((row) => row.id)).toEqual(['dynwf-done'])
+
+	const byStatus = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		limit: 100,
+		filter: { status: 'complete' },
+	})
+	expect(byStatus.map((row) => row.id).sort()).toEqual(
+		['dynwf-done', 'dynwf-idem'].sort(),
 	)
 
 	const runAt = '2026-05-08T19:30:00.000Z'

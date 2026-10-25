@@ -1550,18 +1550,33 @@ export async function cancelActiveWorkflowRunsForUser(input: {
 	return cancelled
 }
 
+export type ListWorkflowRunsForUserFilter = {
+	/** Exact workflow run id (dynwf-… or pkgwf-…). */
+	workflowId?: string | null
+	status?: string | null
+	packageId?: string | null
+	/** Inclusive ISO lower bound on created_at. */
+	since?: string | null
+}
+
 export async function listWorkflowRunsForUser(input: {
 	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
 	userId: OwnerId
 	limit?: number
+	filter?: ListWorkflowRunsForUserFilter | null
 }): Promise<Array<WorkflowRunInspection>> {
 	const env = input.env as Env
 	const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
+	const filter = input.filter ?? null
 	const listed = await listWorkflowProjections({
 		env,
 		userId: input.userId,
 		limit,
 		bindingName: dynamicCallableWorkflowsBindingName,
+		id: filter?.workflowId ?? null,
+		status: filter?.status ?? null,
+		packageId: filter?.packageId ?? null,
+		since: filter?.since ?? null,
 	})
 	const rows = listed.projections.map((projection) =>
 		mapWorkflowProjectionToInspection(projection, input.userId),

@@ -208,15 +208,21 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				cursor?: string | null
 				status?: string | null
 				bindingName?: string | null
+				id?: string | null
+				packageId?: string | null
+				since?: string | null
 			}) => {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
 				const rows = [...userStore(input.userId).values()]
 					.filter(
 						(row) =>
+							(input.id ? row.id === input.id : true) &&
 							(input.status ? row.status === input.status : true) &&
 							(input.bindingName
 								? row.bindingName === input.bindingName
-								: true),
+								: true) &&
+							(input.packageId ? row.packageId === input.packageId : true) &&
+							(input.since ? row.createdAt >= input.since : true),
 					)
 					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return {
