@@ -116,37 +116,40 @@ export function splitCombinedAuthResultsHeader(value: string): Array<string> {
 		.filter(Boolean)
 }
 
-function listHeaderValues(headers: Headers, name: string): Array<string> {
-	const needle = name.toLowerCase()
-	const values: Array<string> = []
-	for (const [key, value] of headers) {
-		if (key.toLowerCase() !== needle) continue
-		for (const part of splitCombinedAuthResultsHeader(value)) {
-			values.push(part)
-		}
-	}
-	return values
+/**
+ * Leftmost stamp only. `Headers` joins duplicates with `", "`; later stamps are
+ * attacker-controllable and must never be scanned for a forged Cloudflare
+ * authserv-id. Cloudflare prepends its stamp, so the leftmost is the edge MTA.
+ */
+export function leftmostAuthResultsStamp(value: string): string | null {
+	return splitCombinedAuthResultsHeader(value)[0] ?? null
+}
+
+function trustedLeftmostStamp(headers: Headers, name: string): string | null {
+	const raw = headers.get(name)?.trim()
+	if (!raw) return null
+	const leftmost = leftmostAuthResultsStamp(raw)
+	if (!leftmost) return null
+	const authservId = extractAuthservId(leftmost)
+	if (!authservId || !isCloudflareEmailAuthservId(authservId)) return null
+	return leftmost
 }
 
 /**
  * Prefer Cloudflare-stamped Authentication-Results on the Worker message
- * headers. Never trust sender-forged AR/ARC rows (wrong authserv-id), and do
- * not fall back to third-party ARC seals when Cloudflare did not stamp.
+ * headers. Never trust sender-forged AR/ARC rows (wrong authserv-id), never
+ * scan later comma-joined stamps for a Cloudflare id, and do not fall back to
+ * third-party ARC seals when Cloudflare did not stamp first.
  *
  * Reads `message.headers` only (Email Worker), not postal-mime body headers.
  */
 export function selectTrustedCloudflareAuthResults(
 	headers: Headers,
 ): string | null {
-	for (const value of listHeaderValues(headers, 'Authentication-Results')) {
-		const authservId = extractAuthservId(value)
-		if (authservId && isCloudflareEmailAuthservId(authservId)) return value
-	}
-	for (const value of listHeaderValues(headers, 'ARC-Authentication-Results')) {
-		const authservId = extractAuthservId(value)
-		if (authservId && isCloudflareEmailAuthservId(authservId)) return value
-	}
-	return null
+	return (
+		trustedLeftmostStamp(headers, 'Authentication-Results') ??
+		trustedLeftmostStamp(headers, 'ARC-Authentication-Results')
+	)
 }
 
 /**
@@ -166,7 +169,11 @@ export function selectTrustedCloudflareAuthResults(
 export function resolveInboundEmailAuthVerdict(
 	authResults: string | null,
 ): EmailAuthVerdict {
-	const { spf, dkim, dmarc } = parseAuthMethodResults(authResults)
+	// Defense in depth: never merge method results across a second stamp.
+	const singleStamp = authResults
+		? (leftmostAuthResultsStamp(authResults) ?? authResults)
+		: null
+	const { spf, dkim, dmarc } = parseAuthMethodResults(singleStamp)
 
 	if (spf === 'unknown' && dkim === 'unknown' && dmarc === 'unknown') {
 		return {

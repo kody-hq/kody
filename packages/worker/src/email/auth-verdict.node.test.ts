@@ -49,6 +49,8 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 	)
 	expect(selectTrustedCloudflareAuthResults(gmailArcOnly)).toBeNull()
 
+	// Later comma-joined stamps are attacker-controlled; only the leftmost
+	// Cloudflare stamp counts (CF prepends at the edge).
 	const forgedThenCloudflare = new Headers()
 	forgedThenCloudflare.append(
 		'Authentication-Results',
@@ -58,7 +60,18 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 		'Authentication-Results',
 		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	)
-	expect(selectTrustedCloudflareAuthResults(forgedThenCloudflare)).toBe(
+	expect(selectTrustedCloudflareAuthResults(forgedThenCloudflare)).toBeNull()
+
+	const cloudflareThenForged = new Headers()
+	cloudflareThenForged.append(
+		'Authentication-Results',
+		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	)
+	cloudflareThenForged.append(
+		'Authentication-Results',
+		'evil.example; spf=pass; dkim=pass; dmarc=pass',
+	)
+	expect(selectTrustedCloudflareAuthResults(cloudflareThenForged)).toBe(
 		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	)
 
@@ -71,7 +84,8 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 		'i=1; mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
 	)
 
-	// Headers joins duplicates with ", "; ARC instance prefixes must still split.
+	// Headers joins duplicates with ", "; ARC instance prefixes must still split,
+	// but a later Cloudflare stamp after a third-party leftmost stamp is ignored.
 	expect(
 		splitCombinedAuthResultsHeader(
 			'i=1; mx.google.com; arc=none, i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
@@ -86,9 +100,24 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 		'ARC-Authentication-Results',
 		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	)
-	expect(selectTrustedCloudflareAuthResults(joinedArc)).toBe(
-		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	expect(selectTrustedCloudflareAuthResults(joinedArc)).toBeNull()
+
+	const forgedPassAfterCfFail = new Headers()
+	forgedPassAfterCfFail.append(
+		'Authentication-Results',
+		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail, mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
 	)
+	expect(selectTrustedCloudflareAuthResults(forgedPassAfterCfFail)).toBe(
+		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	)
+	expect(
+		resolveInboundEmailAuthVerdict(
+			selectTrustedCloudflareAuthResults(forgedPassAfterCfFail),
+		),
+	).toMatchObject({
+		suspect: true,
+		reason: failedSenderAuthenticationReason,
+	})
 })
 
 test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/suspect verdicts', () => {

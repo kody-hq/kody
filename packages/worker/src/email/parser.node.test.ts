@@ -148,7 +148,8 @@ test('parseForwardableEmailMessage keeps only Cloudflare Authentication-Results'
 		parseForwardableEmailMessage(createMessage(forgedOnly)),
 	).resolves.toMatchObject({ authResults: null })
 
-	const cloudflareWins = [
+	// Leftmost stamp wins; a later Cloudflare-looking stamp is not trusted.
+	const forgedFirst = [
 		'From: Sender <sender@example.com>',
 		'To: Support <support@example.com>',
 		'Subject: Mixed',
@@ -159,7 +160,21 @@ test('parseForwardableEmailMessage keeps only Cloudflare Authentication-Results'
 		'Body',
 	].join('\r\n')
 	await expect(
-		parseForwardableEmailMessage(createMessage(cloudflareWins)),
+		parseForwardableEmailMessage(createMessage(forgedFirst)),
+	).resolves.toMatchObject({ authResults: null })
+
+	const cloudflareFirst = [
+		'From: Sender <sender@example.com>',
+		'To: Support <support@example.com>',
+		'Subject: Edge first',
+		'Authentication-Results: mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+		'Authentication-Results: evil.example; dmarc=pass',
+		'Message-ID: <edge@example.com>',
+		'',
+		'Body',
+	].join('\r\n')
+	await expect(
+		parseForwardableEmailMessage(createMessage(cloudflareFirst)),
 	).resolves.toMatchObject({
 		authResults: 'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
 	})
