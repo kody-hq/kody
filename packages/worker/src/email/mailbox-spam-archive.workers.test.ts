@@ -2,7 +2,10 @@ import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { type Mailbox } from './mailbox-do.ts'
-import { initializeMailboxSchema } from './mailbox-schema.ts'
+import {
+	initializeMailboxSchema,
+	mailboxV6RebuildBatchSize,
+} from './mailbox-schema.ts'
 import {
 	assertMailboxThrows,
 	baseMessage,
@@ -156,6 +159,40 @@ test('Mailbox spam and archive are orthogonal, non-destructive, and drive list v
 			updatedAt: at('15:00:00'),
 		}),
 	).toEqual({ status: 'missing' })
+
+	const outbound = baseMessage(ownerId, {
+		id: 'outbound-sent',
+		direction: 'outbound',
+		processingStatus: 'sent',
+		providerMessageId: 'provider-outbound-1',
+		createdAt: at('12:00:05'),
+		updatedAt: at('12:00:05'),
+	})
+	await mailbox.upsertMessageGraph({ ownerId, message: outbound })
+	expect(
+		await mailbox.setMessageClassification({
+			ownerId,
+			messageId: 'outbound-sent',
+			classification: 'spam',
+			classificationReason: 'Marked as spam.',
+			updatedAt: at('15:00:00'),
+		}),
+	).toEqual({ status: 'missing' })
+	expect(
+		await mailbox.setMessageClassification({
+			ownerId,
+			messageId: 'outbound-sent',
+			archivedAt: at('15:00:00'),
+			updatedAt: at('15:00:00'),
+		}),
+	).toEqual({ status: 'missing' })
+	expect(
+		await mailbox.getMessage({ messageId: 'outbound-sent' }),
+	).toMatchObject({
+		classification: 'accepted',
+		archivedAt: null,
+	})
+
 	await runInDurableObject(stubFor(ownerId), async (instance: Mailbox) => {
 		await assertMailboxThrows(/requires classification or archivedAt/, () =>
 			instance.setMessageClassification({
@@ -173,7 +210,7 @@ test('Mailbox spam and archive are orthogonal, non-destructive, and drive list v
 			}),
 		)
 	})
-	expect(await mailbox.countMessages({})).toEqual({ total: 4 })
+	expect(await mailbox.countMessages({})).toEqual({ total: 5 })
 })
 
 const preV6EmailMessagesSql = `
@@ -238,8 +275,22 @@ test('Mailbox warm-migrates a v5 email_messages table to v6 without losing rows'
 		processingStatus: 'sent',
 		providerMessageId: 'provider-warm-1',
 	})
+	// More than one rebuild batch so the warm path exercises multi-batch copy.
+	const extras = Array.from(
+		{ length: mailboxV6RebuildBatchSize + 1 },
+		(_, index) =>
+			baseMessage(ownerId, {
+				id: `warm-extra-${String(index).padStart(2, '0')}`,
+				subject: `Warm extra ${index}`,
+				createdAt: at(`12:${String(index % 60).padStart(2, '0')}:00`),
+				updatedAt: at(`12:${String(index % 60).padStart(2, '0')}:00`),
+			}),
+	)
 	await mailbox.upsertMessageGraph({ ownerId, message: quarantined })
 	await mailbox.upsertMessageGraph({ ownerId, message: outbound })
+	for (const message of extras) {
+		await mailbox.upsertMessageGraph({ ownerId, message })
+	}
 	const before = await mailbox.getMessage({ messageId: quarantined.id })
 
 	await runInDurableObject(stubFor(ownerId), async (_instance, state) => {
@@ -347,7 +398,9 @@ test('Mailbox warm-migrates a v5 email_messages table to v6 without losing rows'
 		...before,
 		archivedAt: null,
 	})
-	expect(await mailbox.countMessages({})).toEqual({ total: 2 })
+	expect(await mailbox.countMessages({})).toEqual({
+		total: 2 + extras.length,
+	})
 	expect(
 		await mailbox.setMessageClassification({
 			ownerId,
@@ -361,4 +414,13 @@ test('Mailbox warm-migrates a v5 email_messages table to v6 without losing rows'
 	expect(await mailbox.getMessage({ messageId: quarantined.id })).toMatchObject(
 		{ classification: 'spam', archivedAt: at('21:00:00') },
 	)
+	expect(
+		await mailbox.setMessageClassification({
+			ownerId,
+			messageId: outbound.id,
+			classification: 'spam',
+			classificationReason: 'Marked as spam.',
+			updatedAt: at('21:00:00'),
+		}),
+	).toEqual({ status: 'missing' })
 })

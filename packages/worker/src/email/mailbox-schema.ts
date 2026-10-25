@@ -402,33 +402,85 @@ function emailMessagesHasArchivedAt(sql: SqlStorage): boolean {
 }
 
 /**
+ * Rows copied per `transactionSync` during the v6 rebuild. Bodies travel with
+ * each row, so keep batches small enough for DO CPU/transaction limits; a
+ * failed mid-migration resumes on the next `initializeMailboxSchema` call.
+ */
+export const mailboxV6RebuildBatchSize = 25
+
+function tableExists(sql: SqlStorage, name: string): boolean {
+	return (
+		sql
+			.exec<{ name: string }>(
+				`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`,
+				name,
+			)
+			.toArray()[0] != null
+	)
+}
+
+/**
  * v6 rebuild. `email_message_retention_retries` cascades from
  * `email_messages`, so its rows are parked in a scratch table while the
  * parent is swapped; dropping the parent with live children would delete
- * them.
+ * them. Message copy runs in bounded batches (not one all-row transaction)
+ * so large mailboxes do not blow DO limits; schema version is only stamped
+ * after the swap completes via the caller.
  */
 function rebuildEmailMessagesForSpamAndArchive(storage: DurableObjectStorage) {
+	const sql = storage.sql
+	const retriesCopy = 'email_message_retention_retries_v6_copy'
+	const messagesV6 = 'email_messages_v6'
+
 	storage.transactionSync(() => {
-		const sql = storage.sql
-		sql.exec(`DROP TABLE IF EXISTS email_message_retention_retries_v6_copy`)
-		sql.exec(`DROP TABLE IF EXISTS email_messages_v6`)
-		sql.exec(
-			`CREATE TABLE email_message_retention_retries_v6_copy AS
-			SELECT * FROM email_message_retention_retries`,
+		if (!tableExists(sql, messagesV6)) {
+			sql.exec(emailMessagesTableSql(messagesV6, { ifNotExists: false }))
+		}
+		if (!tableExists(sql, retriesCopy)) {
+			sql.exec(
+				`CREATE TABLE ${retriesCopy} AS
+				SELECT * FROM email_message_retention_retries`,
+			)
+			sql.exec(`DELETE FROM email_message_retention_retries`)
+		}
+	})
+
+	for (;;) {
+		const copied = storage.transactionSync(() => {
+			sql.exec(
+				`INSERT INTO ${messagesV6} (${preV6EmailMessageColumns}, archived_at)
+				SELECT ${preV6EmailMessageColumns}, NULL
+				FROM email_messages
+				WHERE id NOT IN (SELECT id FROM ${messagesV6})
+				ORDER BY id
+				LIMIT ${mailboxV6RebuildBatchSize}`,
+			)
+			return Number(sql.exec<{ n: number }>(`SELECT changes() AS n`).one().n)
+		})
+		if (copied === 0) break
+	}
+
+	storage.transactionSync(() => {
+		const sourceCount = Number(
+			sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM email_messages`).one()
+				.n,
 		)
-		sql.exec(`DELETE FROM email_message_retention_retries`)
-		sql.exec(emailMessagesTableSql('email_messages_v6', { ifNotExists: false }))
-		sql.exec(
-			`INSERT INTO email_messages_v6 (${preV6EmailMessageColumns}, archived_at)
-			SELECT ${preV6EmailMessageColumns}, NULL FROM email_messages`,
+		const targetCount = Number(
+			sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${messagesV6}`).one()
+				.n,
 		)
+		if (sourceCount !== targetCount) {
+			throw new Error(
+				`Mailbox v6 rebuild count mismatch: source=${sourceCount} target=${targetCount}`,
+			)
+		}
 		sql.exec(`DROP TABLE email_messages`)
-		sql.exec(`ALTER TABLE email_messages_v6 RENAME TO email_messages`)
+		sql.exec(`ALTER TABLE ${messagesV6} RENAME TO email_messages`)
 		sql.exec(
 			`INSERT INTO email_message_retention_retries
-			SELECT * FROM email_message_retention_retries_v6_copy`,
+			SELECT * FROM ${retriesCopy}`,
 		)
-		sql.exec(`DROP TABLE email_message_retention_retries_v6_copy`)
+		sql.exec(`DROP TABLE ${retriesCopy}`)
 	})
 }
 

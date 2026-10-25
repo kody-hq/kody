@@ -134,9 +134,13 @@ export function setMailboxMessageClassification(
 			'Mailbox message triage update requires classification or archivedAt.',
 		)
 	}
+	// Inbound only: triage must not hide outbound/sent mail from the default
+	// inbox view. Outbound and missing ids both report missing.
 	const existing = sql
 		.exec<{ updated_at: string }>(
-			`SELECT updated_at FROM email_messages WHERE id = ? LIMIT 1`,
+			`SELECT updated_at FROM email_messages
+			WHERE id = ? AND direction = 'inbound'
+			LIMIT 1`,
 			messageId,
 		)
 		.toArray()[0]
@@ -148,6 +152,7 @@ export function setMailboxMessageClassification(
 		SET ${assignments.join(', ')},
 			updated_at = ?
 		WHERE id = ?
+			AND direction = 'inbound'
 			AND updated_at <= ?`,
 		...values,
 		updatedAt,
