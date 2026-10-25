@@ -14,16 +14,51 @@ function hasNonEmptyString(value: unknown, key: string): boolean {
 	return typeof field === 'string' && field.trim().length > 0
 }
 
+function leftoverLeafFromArgs(args: unknown): string | undefined {
+	if (!isRecord(args)) return undefined
+	for (const key of ['kodyId', 'kody_id'] as const) {
+		if (hasNonEmptyString(args, key)) {
+			return String(args[key]).trim()
+		}
+	}
+	if (isRecord(args['target'])) {
+		const target = args['target']
+		for (const key of ['kodyId', 'kody_id'] as const) {
+			if (hasNonEmptyString(target, key)) {
+				return String(target[key]).trim()
+			}
+		}
+	}
+	return undefined
+}
+
 function leftoverIdentityStyle(args: unknown): 'snake' | 'camel' | null {
 	if (!isRecord(args)) return null
 	if (hasNonEmptyString(args, 'kodyId')) return 'camel'
 	if (hasNonEmptyString(args, 'kody_id')) return 'snake'
 	if (isRecord(args['target'])) {
 		const target = args['target']
-		if (hasNonEmptyString(target, 'kodyId')) return 'camel'
-		if (hasNonEmptyString(target, 'kody_id')) return 'snake'
+		// Repo target preprocess rewrites camelCase aliases to snake_case before
+		// handlers run, so `kodyId` is already `kody_id` here. Treat package
+		// targets as their own hint shape (prefer target.package_id).
+		if (
+			hasNonEmptyString(target, 'kodyId') ||
+			hasNonEmptyString(target, 'kody_id')
+		) {
+			return 'snake'
+		}
 	}
 	return null
+}
+
+function isRepoPackageTargetArgs(args: unknown): boolean {
+	return (
+		isRecord(args) &&
+		isRecord(args['target']) &&
+		args['target']['kind'] === 'package' &&
+		(hasNonEmptyString(args['target'], 'kody_id') ||
+			hasNonEmptyString(args['target'], 'kodyId'))
+	)
 }
 
 /**
@@ -76,7 +111,70 @@ function identityFromRecord(record: Record<string, unknown>): {
 	return {}
 }
 
-function collectIdentityCandidates(
+function leafOfPackageName(value: string): string {
+	const trimmed = value.trim()
+	const slash = trimmed.lastIndexOf('/')
+	return slash === -1 ? trimmed : trimmed.slice(slash + 1)
+}
+
+/**
+ * Webhook list rows can span multiple packages that share a leftover leaf.
+ * Only advertise an identity when every matching row agrees, or when a single
+ * row's package_kody_id / package leaf matches the caller's leftover leaf.
+ */
+function identityFromWebhookList(
+	webhooks: ReadonlyArray<unknown>,
+	leftoverLeaf: string | undefined,
+): { name?: string; packageId?: string } {
+	const rows = webhooks.filter(isRecord)
+	if (rows.length === 0) return {}
+
+	const matched =
+		leftoverLeaf === undefined
+			? rows
+			: rows.filter((row) => {
+					const packageKodyId = readTrimmedString(row, [
+						'package_kody_id',
+						'packageKodyId',
+					])
+					const packageName = readTrimmedString(row, [
+						'package_name',
+						'packageName',
+					])
+					if (packageKodyId === leftoverLeaf) return true
+					if (
+						packageName !== undefined &&
+						leafOfPackageName(packageName) === leftoverLeaf
+					) {
+						return true
+					}
+					return false
+				})
+
+	const pool = leftoverLeaf !== undefined && matched.length > 0 ? matched : rows
+	const identities = pool.map(identityFromRecord)
+	const packageIds = new Set(
+		identities
+			.map((identity) => identity.packageId)
+			.filter((value): value is string => value !== undefined),
+	)
+	const names = new Set(
+		identities
+			.map((identity) => identity.name)
+			.filter((value): value is string => value !== undefined),
+	)
+	if (packageIds.size > 1 || names.size > 1) {
+		// Ambiguous leftover leaf across packages: teach the switch without a
+		// concrete (possibly wrong) package value.
+		return {}
+	}
+	return {
+		name: names.size === 1 ? [...names][0] : undefined,
+		packageId: packageIds.size === 1 ? [...packageIds][0] : undefined,
+	}
+}
+
+function collectNonWebhookCandidates(
 	result: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
 	const candidates: Array<Record<string, unknown>> = [result]
@@ -89,12 +187,6 @@ function collectIdentityCandidates(
 		const nested = result[key]
 		if (isRecord(nested)) candidates.push(nested)
 	}
-	const webhooks = result['webhooks']
-	if (Array.isArray(webhooks)) {
-		for (const entry of webhooks) {
-			if (isRecord(entry)) candidates.push(entry)
-		}
-	}
 	return candidates
 }
 
@@ -102,18 +194,32 @@ function collectIdentityCandidates(
  * Prefer scoped `name` and `package_id` from the resolved result so the next
  * call can drop `kody_id` without another lookup.
  */
-export function resolvePreferredPackageIdentity(result: unknown): {
+export function resolvePreferredPackageIdentity(
+	result: unknown,
+	args?: unknown,
+): {
 	name?: string
 	packageId?: string
 } {
 	if (!isRecord(result)) return {}
 	let name: string | undefined
 	let packageId: string | undefined
-	for (const candidate of collectIdentityCandidates(result)) {
+	for (const candidate of collectNonWebhookCandidates(result)) {
 		const nested = identityFromRecord(candidate)
 		name = name ?? nested.name
 		packageId = packageId ?? nested.packageId
 		if (name !== undefined && packageId !== undefined) break
+	}
+	if (
+		(name === undefined || packageId === undefined) &&
+		Array.isArray(result['webhooks'])
+	) {
+		const fromWebhooks = identityFromWebhookList(
+			result['webhooks'],
+			leftoverLeafFromArgs(args),
+		)
+		name = name ?? fromWebhooks.name
+		packageId = packageId ?? fromWebhooks.packageId
 	}
 	return { name, packageId }
 }
@@ -126,8 +232,7 @@ export function buildKodyIdDeprecationHint(
 	result: unknown,
 	args?: unknown,
 ): string {
-	const style = leftoverIdentityStyle(args) ?? 'snake'
-	const { name, packageId } = resolvePreferredPackageIdentity(result)
+	const { name, packageId } = resolvePreferredPackageIdentity(result, args)
 
 	// communityFork uses leftover `kody_id` as an optional destination leaf,
 	// not as package lookup. It does not accept `name` / `package_id`.
@@ -149,6 +254,28 @@ export function buildKodyIdDeprecationHint(
 		return parts.join(' ')
 	}
 
+	// Repo package targets normalize camelCase aliases to snake_case before
+	// handlers run. Prefer target.package_id; do not suggest bare `name`
+	// (that field means a plain repo on other target kinds).
+	if (isRepoPackageTargetArgs(args)) {
+		const parts = [
+			'Deprecated: `target.kody_id` / `target.kodyId` is leftover package identity.',
+			'Prefer `target: { kind: "package", package_id }` (the saved-package UUID).',
+		]
+		if (packageId !== undefined) {
+			parts.push(
+				`For this package use package_id: ${JSON.stringify(packageId)}.`,
+			)
+		} else if (name !== undefined) {
+			parts.push(
+				`Resolved package name was ${JSON.stringify(name)}; look up its package_id for the next call.`,
+			)
+		}
+		parts.push('Stop sending target.kody_id / target.kodyId on your next call.')
+		return parts.join(' ')
+	}
+
+	const style = leftoverIdentityStyle(args) ?? 'snake'
 	const parts: Array<string> = [
 		'Deprecated: the `kody_id` / `kodyId` input is leftover package identity.',
 	]

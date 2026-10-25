@@ -80,6 +80,49 @@ test('communityFork leftover kody_id hints to omit rather than name/package_id',
 	expect(hint).toContain('@owner/leaf')
 })
 
+test('repo package targets prefer target.package_id after alias normalization', () => {
+	const hint = buildKodyIdDeprecationHint(
+		{
+			session_id: 'session-1',
+			resolved_target: {
+				kind: 'package',
+				package_id: 'pkg-1',
+				name: '@owner/demo',
+				kody_id: 'demo',
+			},
+		},
+		// Post-preprocess shape: camelCase kodyId already became kody_id.
+		{ target: { kind: 'package', kody_id: 'demo' } },
+	)
+	expect(hint).toContain('target: { kind: "package", package_id }')
+	expect(hint).toContain('package_id: "pkg-1"')
+	expect(hint).not.toContain('Prefer `name`')
+})
+
+test('ambiguous webhook leaves omit concrete package values', () => {
+	expect(
+		resolvePreferredPackageIdentity(
+			{
+				webhooks: [
+					{
+						name: 'a',
+						package_name: '@owner/one',
+						package_id: 'pkg-1',
+						package_kody_id: 'shared',
+					},
+					{
+						name: 'b',
+						package_name: '@other/two',
+						package_id: 'pkg-2',
+						package_kody_id: 'shared',
+					},
+				],
+			},
+			{ kodyId: 'shared' },
+		),
+	).toEqual({ name: undefined, packageId: undefined })
+})
+
 test('resolvePreferredPackageIdentity reads nested package summaries', () => {
 	expect(
 		resolvePreferredPackageIdentity({
