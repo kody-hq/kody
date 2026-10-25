@@ -1568,31 +1568,58 @@ export async function listWorkflowRunsForUser(input: {
 	const env = input.env as Env
 	const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
 	const filter = input.filter ?? null
+	const statusFilter = filter?.status?.trim() || null
+	// Status can change under us via the workflow engine. Apply status only after
+	// refreshing candidates so a stale "running" projection that is already
+	// complete is not missed (or returned under the wrong status).
 	const listed = await listWorkflowProjections({
 		env,
 		userId: input.userId,
-		limit,
+		limit: statusFilter ? runRecordMaxPageSize : limit,
 		bindingName: dynamicCallableWorkflowsBindingName,
 		id: filter?.workflowId ?? null,
-		status: filter?.status ?? null,
+		status: null,
 		packageId: filter?.packageId ?? null,
 		since: filter?.since ?? null,
 	})
 	const rows = listed.projections.map((projection) =>
 		mapWorkflowProjectionToInspection(projection, input.userId),
 	)
+	await refreshListedWorkflowRunStatuses({
+		env,
+		userId: input.userId,
+		rows,
+		forceRefresh: statusFilter != null,
+	})
+	const matched = statusFilter
+		? rows.filter((row) => row.status === statusFilter)
+		: rows
+	return matched.slice(0, limit)
+}
+
+async function refreshListedWorkflowRunStatuses(input: {
+	env: Env
+	userId: OwnerId
+	rows: Array<WorkflowRunInspection>
+	forceRefresh: boolean
+}) {
 	const now = new Date()
 	await Promise.all(
-		rows.map(async (row) => {
+		input.rows.map(async (row) => {
 			if (!row.status || !activeWorkflowStatuses.has(row.status)) return
-			const updatedAtMs = new Date(row.updatedAt).getTime()
-			if (
-				Number.isFinite(updatedAtMs) &&
-				now.getTime() - updatedAtMs < workflowStatusRefreshTtlMs
-			) {
-				return
+			if (!input.forceRefresh) {
+				const updatedAtMs = new Date(row.updatedAt).getTime()
+				if (
+					Number.isFinite(updatedAtMs) &&
+					now.getTime() - updatedAtMs < workflowStatusRefreshTtlMs
+				) {
+					return
+				}
 			}
-			const workflowBinding = resolveWorkflowEngineBinding(env, row.bindingName)
+			const workflowBinding = resolveWorkflowEngineBinding(
+				input.env,
+				row.bindingName,
+			)
 			let instance: WorkflowInstance
 			try {
 				instance = await workflowBinding.get(row.id)
@@ -1610,7 +1637,7 @@ export async function listWorkflowRunsForUser(input: {
 			}
 			const payload = payloadFromWorkflowInspection(row)
 			await projectWorkflowRun({
-				env,
+				env: input.env,
 				userId: input.userId,
 				id: row.id,
 				payload,
@@ -1621,7 +1648,6 @@ export async function listWorkflowRunsForUser(input: {
 			})
 		}),
 	)
-	return rows
 }
 
 export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<

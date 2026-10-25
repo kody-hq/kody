@@ -547,6 +547,44 @@ test('RunLog-only list, cancel, idempotency, and concurrency stay D1-free', asyn
 	expect(findRun(activeIds[0]!)).toMatchObject({ status: 'cancelled' })
 })
 
+test('listWorkflowRunsForUser refreshes before applying status filter', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createWorkflowBinding({
+		existing: { id: 'dynwf-stale', status: 'complete' },
+	})
+	const env = createWorkflowEnv(binding)
+	await runRecordMocks.upsertWorkflowProjection({
+		env,
+		userId: 'user-1',
+		projection: {
+			id: 'dynwf-stale',
+			bindingName: dynamicCallableWorkflowsBindingName,
+			sourceType: 'inline',
+			workflowName: 'stale-status',
+			idempotencyKey: 'stale-status-key',
+			runAt: '2026-05-08T19:30:00.000Z',
+			status: 'running',
+			createdAt: '2026-05-08T19:30:00.000Z',
+			updatedAt: '2026-05-08T19:30:00.000Z',
+		},
+	})
+
+	const complete = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { status: 'complete' },
+	})
+	expect(complete.map((row) => row.id)).toEqual(['dynwf-stale'])
+	expect(complete[0]?.status).toBe('complete')
+
+	const stillRunning = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { status: 'running' },
+	})
+	expect(stillRunning).toEqual([])
+})
+
 test('RunLog terminal stickiness blocks later active regression after cancel', async () => {
 	runRecordMocks.resetProjections()
 	const env = createWorkflowEnv()
