@@ -375,7 +375,7 @@ export class RetryAfterCommitStep implements BackupRuntimeStep {
 			typeof configOrCallback === 'function'
 				? (configOrCallback as () => Promise<T>)
 				: callback!
-		if (name === 'stream-export-to-immutable-r2') {
+		if (name.endsWith('stream-export-to-immutable-r2')) {
 			try {
 				const discarded = await execute()
 				this.uploadResults.push(
@@ -437,7 +437,7 @@ export class CachedUploadStep implements BackupRuntimeStep {
 				: callback!
 		const value = await execute()
 		this.cache.set(name, value)
-		if (name === 'stream-export-to-immutable-r2') await this.afterUpload()
+		if (name.endsWith('stream-export-to-immutable-r2')) await this.afterUpload()
 		if (
 			name === 'verify-stored-object-and-write-immutable-manifest' &&
 			this.afterFinalization
@@ -471,7 +471,7 @@ export class PreStatsUploadStep implements BackupRuntimeStep {
 				: callback!
 		const value = await execute()
 		const persisted =
-			name === 'stream-export-to-immutable-r2' &&
+			name.endsWith('stream-export-to-immutable-r2') &&
 			value !== null &&
 			typeof value === 'object'
 				? Object.fromEntries(
@@ -507,7 +507,7 @@ export class RetryUploadStep implements BackupRuntimeStep {
 			typeof configOrCallback === 'function'
 				? (configOrCallback as () => Promise<T>)
 				: callback!
-		if (name === 'stream-export-to-immutable-r2') {
+		if (name.endsWith('stream-export-to-immutable-r2')) {
 			for (let attempt = 1; attempt <= 2; attempt += 1) {
 				this.uploadAttempts.push(attempt)
 				try {

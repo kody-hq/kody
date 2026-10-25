@@ -333,42 +333,87 @@ export async function runBackupRuntime(
 			{ retries: { limit: 0, delay: '1 second' }, timeout: '1 minute' },
 			async () => verifySourceDatabaseIdentity(sourceEnv, options.api),
 		)
-		const exported = await runDurableExport(sourceEnv, step, {
-			api: options.api,
-		})
-		const stored = await step.do(
-			'stream-export-to-immutable-r2',
-			{
-				retries: { limit: 4, delay: '30 seconds', backoff: 'exponential' },
-				timeout: '15 minutes',
-			},
-			async () => {
-				// Refresh only re-polls the durable export bookmark for a fresh
-				// signed URL. It never starts a new export: an expired poll result
-				// fails the instance (export-result-expired) so the instance retry
-				// runs one new export instead of a second blocking export here.
-				const refreshed = await refreshCompletedD1Export(
-					sourceEnv,
-					exported.bookmark,
-					options.api,
+		// Export + upload can fail with export-result-expired when D1's short
+		// signed URL window elapses between durable poll completion and the
+		// upload refresh. Catch-up `restart()` replays the successful export
+		// steps, so recovery must use new durable step names in-workflow.
+		const maxExportUploadAttempts = 3
+		let stored: {
+			objectKey: string
+			bookmark: string
+			bytes: number
+			sha256: string
+			r2Etag: string
+			sqlStatementStats: SqlStatementStats | undefined
+		} | null = null
+		for (let attempt = 1; attempt <= maxExportUploadAttempts; attempt += 1) {
+			const stepNamePrefix = attempt === 1 ? '' : `recover-${String(attempt)}-`
+			try {
+				const exported = await runDurableExport(sourceEnv, step, {
+					api: options.api,
+					stepNamePrefix,
+				})
+				stored = await step.do(
+					`${stepNamePrefix}stream-export-to-immutable-r2`,
+					{
+						retries: { limit: 4, delay: '30 seconds', backoff: 'exponential' },
+						timeout: '15 minutes',
+					},
+					async () => {
+						// Refresh only re-polls the durable export bookmark for a
+						// fresh signed URL. It never starts a new export here.
+						const refreshed = await refreshCompletedD1Export(
+							sourceEnv,
+							exported.bookmark,
+							options.api,
+						)
+						const refreshedObjectKey = objectKeyForPayload(
+							checkedPayload,
+							refreshed.bookmark,
+						)
+						const uploaded = await storeSignedDownload(
+							env.BACKUP_BUCKET,
+							refreshedObjectKey,
+							refreshed.signedUrl,
+							options.downloadFetcher,
+						)
+						return {
+							...uploaded,
+							objectKey: refreshedObjectKey,
+							bookmark: refreshed.bookmark,
+						}
+					},
 				)
-				const refreshedObjectKey = objectKeyForPayload(
-					checkedPayload,
-					refreshed.bookmark,
-				)
-				const uploaded = await storeSignedDownload(
-					env.BACKUP_BUCKET,
-					refreshedObjectKey,
-					refreshed.signedUrl,
-					options.downloadFetcher,
-				)
-				return {
-					...uploaded,
-					objectKey: refreshedObjectKey,
-					bookmark: refreshed.bookmark,
+				break
+			} catch (error) {
+				// Step boundary wraps non-retryable BackupError as
+				// NonRetryableError; match via errorCode() message parse.
+				const code = errorCode(error)
+				if (
+					code !== 'export-result-expired' ||
+					attempt >= maxExportUploadAttempts
+				) {
+					throw error
 				}
-			},
-		)
+				safeLog({
+					event: 'backup-export-result-expired-recover',
+					status: 'stale-success',
+					day: checkedPayload.day,
+					instanceId: event.instanceId,
+					databaseId: source.id,
+					databaseName: source.name,
+					attempt,
+					maxAttempts: maxExportUploadAttempts,
+					errorCode: code,
+				})
+			}
+		}
+		if (!stored) {
+			throw new BackupError(
+				'export-result-expired',
+				'D1 export result expired before upload; recovery attempts exhausted',
+			)
+		}
 		objectKey = stored.objectKey
 		const completedAt = await step.do('record-completion-time', async () =>
 			new Date().toISOString(),

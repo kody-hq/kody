@@ -395,23 +395,86 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 	)
 })
 
-test('an expired export result fails the upload step without starting a second export', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
+test('an expired export result recovers with a fresh export under new step names', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
 	const bucket = new MemoryBucket()
 	const env = environment(bucket)
 	const payload = julyPayload(env)
 	const exportBodies: unknown[] = []
 	const downloadUrls: string[] = []
+	let exportCalls = 0
+	const result = await runDay(
+		env,
+		payload,
+		new CachedUploadStep(() => undefined),
+		{
+			api: completeApi((init) => {
+				exportCalls += 1
+				exportBodies.push(JSON.parse(String(init?.body)))
+				// Attempt 1: start completes, upload refresh finds expired.
+				// Attempt 2 (recover-2-* steps): start + refresh succeed.
+				if (exportCalls === 1) {
+					return exportEnvelope(
+						'complete',
+						'bookmark-1',
+						'https://download.example/stale',
+					)
+				}
+				if (exportCalls === 2) return exportEnvelope('lost')
+				return exportEnvelope(
+					'complete',
+					'bookmark-2',
+					'https://download.example/recovered',
+				)
+			}),
+			downloadFetcher: async (input) => {
+				downloadUrls.push(String(input))
+				return okDownload()
+			},
+		},
+	)
+	assert.equal(result.payload.export.bookmark, 'bookmark-2')
+	assert.deepEqual(exportBodies, [
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-2' },
+	])
+	assert.deepEqual(downloadUrls, ['https://download.example/recovered'])
+	assert.deepEqual(
+		consoleEvents(consoleLog).filter((event) =>
+			['backup-export-result-expired-recover', 'backup-success'].includes(
+				event,
+			),
+		),
+		['backup-export-result-expired-recover', 'backup-success'],
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
+test('exhausted export-result-expired recovery fails without a manifest', async () => {
+	const consoleError = vi.spyOn(console, 'error')
+	consoleError.mockImplementation(() => undefined)
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const downloadUrls: string[] = []
+	let exportCalls = 0
 	await assert.rejects(
 		runDay(env, payload, new CachedUploadStep(() => undefined), {
-			api: completeApi((init) => {
-				exportBodies.push(JSON.parse(String(init?.body)))
-				// The durable export completes; the upload-step refresh then
-				// finds the short-lived poll result already expired.
-				return exportBodies.length === 1
-					? exportEnvelope('complete', 'bookmark-1')
-					: exportEnvelope('lost')
+			api: completeApi(() => {
+				exportCalls += 1
+				// Each attempt: start completes with a unique bookmark, refresh lost.
+				if (exportCalls % 2 === 1) {
+					return exportEnvelope('complete', `bookmark-${String(exportCalls)}`)
+				}
+				return exportEnvelope('lost')
 			}),
 			downloadFetcher: async (input) => {
 				downloadUrls.push(String(input))
@@ -420,14 +483,19 @@ test('an expired export result fails the upload step without starting a second e
 		}),
 		backupError('export-result-expired', false),
 	)
-	// Exactly one export start; the refresh only polls the original bookmark.
-	assert.deepEqual(exportBodies, [
-		{ output_format: 'polling' },
-		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
-	])
+	// Three start+refresh pairs (attempts 1..3).
+	assert.equal(exportCalls, 6)
 	assert.deepEqual(downloadUrls, [])
-	assert.equal(bucket.puts.length, 0)
 	assert.equal(await bucket.head(payload.manifestKey), null)
+	assert.deepEqual(
+		consoleEvents(consoleLog).filter(
+			(event) => event === 'backup-export-result-expired-recover',
+		),
+		[
+			'backup-export-result-expired-recover',
+			'backup-export-result-expired-recover',
+		],
+	)
 	assert.deepEqual(consoleEvents(consoleError), ['backup-failure'])
 })
 
