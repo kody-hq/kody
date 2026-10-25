@@ -1,33 +1,18 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	buildPendingCommunityForkLookupMessage,
 	findPendingCommunityForkForLookup,
 } from '#worker/community/pending-fork-lookup.ts'
-import { normalizePackageNameInput } from '#worker/package-registry/package-name.ts'
-import {
-	getSavedPackageById,
-	resolveSavedPackageRef,
-} from '#worker/package-registry/repo.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
+import {
+	findOwnedSavedPackage,
+	requireExactlyOnePackageIdentity,
+	type PackageIdentity,
+} from './owned-package-lookup.ts'
 
-export type PackageSourceIdentity = {
-	package_id?: string
-	kody_id?: string
-}
-
-function requireExactlyOnePackageSourceIdentity(input: PackageSourceIdentity) {
-	const count =
-		(input.package_id !== undefined ? 1 : 0) +
-		(input.kody_id !== undefined ? 1 : 0)
-	if (count !== 1) {
-		throw new McpCallerError(
-			'Provide exactly one of `package_id` or the package name leaf.',
-		)
-	}
-}
+export type PackageSourceIdentity = PackageIdentity
 
 /**
  * Resolve a saved package and its repo source in the org that owns the
@@ -47,30 +32,13 @@ export async function resolveOwnedPackageSource(input: {
 	hasApp: boolean
 	source: EntitySourceRow
 }> {
-	requireExactlyOnePackageSourceIdentity(input.args)
-	let requestedKodyId: string | undefined
-	if (input.args.kody_id !== undefined) {
-		try {
-			requestedKodyId = normalizePackageNameInput({
-				value: input.args.kody_id,
-				ownerScope: input.ownerScope,
-				action: 'resolve',
-			})
-		} catch (error) {
-			throw new McpCallerError(getErrorMessage(error), { cause: error })
-		}
-	}
-	const savedPackage =
-		input.args.package_id !== undefined
-			? await getSavedPackageById(input.db, {
-					userId: input.userId,
-					packageId: input.args.package_id,
-				})
-			: await resolveSavedPackageRef(input.db, {
-					userId: input.userId,
-					ref: requestedKodyId ?? '',
-					match: 'slug',
-				})
+	requireExactlyOnePackageIdentity(input.args)
+	const { savedPackage, requestedKodyId } = await findOwnedSavedPackage({
+		db: input.db,
+		userId: input.userId,
+		ownerScope: input.ownerScope,
+		args: input.args,
+	})
 	if (!savedPackage) {
 		const missingId = input.args.package_id ?? input.args.kody_id
 		const pendingFork = await findPendingCommunityForkForLookup(input.db, {
