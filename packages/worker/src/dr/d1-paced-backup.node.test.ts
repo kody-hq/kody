@@ -232,7 +232,16 @@ test('one full night writes a shadow staging manifest and seals it', async () =>
 	expect(Object.keys(manifest.tables)).toEqual(['items'])
 	expect(manifest.tables.items?.mode).toBe('full')
 	expect(manifest.tables.items?.count).toBe(3)
-	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(true)
+	// Finalize always leaves a parts pointer (never a monolithic TSV body).
+	const stagingData = await client.getText(
+		pacedD1StagingDataKey(day, 'kody', 'items'),
+	)
+	expect(stagingData).not.toBeNull()
+	expect(JSON.parse(stagingData!.text)).toMatchObject({
+		partCount: expect.any(Number),
+		dataSha256: manifest.tables.items?.dataSha256,
+	})
+	expect(JSON.parse(stagingData!.text).partCount).toBeGreaterThan(0)
 	const sealedKey = pacedD1SealedManifestKey(
 		pacedD1RetentionTierForDay(day),
 		appId,
@@ -403,7 +412,44 @@ test('resume mid-table continues from lastRowid across ticks', async () => {
 	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
 	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
 	expect(manifest.tables.items?.count).toBe(6)
-	expect(objects.has(pacedD1StagingDataKey(day, 'kody', 'items'))).toBe(true)
+	const finalized = await client.getText(
+		pacedD1StagingDataKey(day, 'kody', 'items'),
+	)
+	expect(finalized).not.toBeNull()
+	expect(JSON.parse(finalized!.text).partCount).toBeGreaterThan(0)
+})
+
+test('seal time budget can leave a night unsealed across ticks', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv()
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const sealedKey = pacedD1SealedManifestKey('daily', appId, day)
+	expect(objects.has(sealedKey)).toBe(true)
+	objects.delete(sealedKey)
+	// Exhaust the budget before any table copy so seal returns incomplete.
+	const stalled = await runD1PacedBackupTick({
+		env,
+		now: at('12:00'),
+		s3: client,
+		timeBudgetMs: 0,
+		walkerOpts: fastWalker,
+	})
+	expect(stalled.skipped).toBe(false)
+	expect(stalled.nightsSealed).toBe(0)
+	expect(objects.has(sealedKey)).toBe(false)
+	const finished = await runD1PacedBackupTick({
+		env,
+		now: at('12:05'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	expect(finished.nightsSealed).toBeGreaterThanOrEqual(1)
+	expect(objects.has(sealedKey)).toBe(true)
 })
 
 test('catch-up seeds today after finishing a stranded older night', async () => {

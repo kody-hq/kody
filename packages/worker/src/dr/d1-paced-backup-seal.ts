@@ -219,47 +219,48 @@ async function sealTableArtifacts(input: {
 					`paced D1 parts pointer missing digest for ${input.source.name}.${input.table} part ${partIndex}`,
 				)
 			}
-			const [dataPart, indexPart] = await Promise.all([
-				sealVerifiedStagingBytes({
-					s3: input.s3,
-					stagingKey: pacedD1StagingDataPartKey(
-						input.day,
-						input.source.name,
-						input.table,
-						partIndex,
-					),
-					sealedKey: pacedD1SealedDataPartKey(
-						input.tier,
-						input.source.id,
-						input.day,
-						input.table,
-						partIndex,
-					),
-					contentType: 'text/tab-separated-values',
-					expectedSha: dataExpected,
-					label: `${input.source.name}.${input.table} data part ${partIndex}`,
-				}),
-				sealVerifiedStagingBytes({
-					s3: input.s3,
-					stagingKey: pacedD1StagingIndexPartKey(
-						input.day,
-						input.source.name,
-						input.table,
-						partIndex,
-					),
-					sealedKey: pacedD1SealedIndexPartKey(
-						input.tier,
-						input.source.id,
-						input.day,
-						input.table,
-						partIndex,
-					),
-					contentType: 'text/tab-separated-values',
-					expectedSha: indexExpected,
-					label: `${input.source.name}.${input.table} index part ${partIndex}`,
-				}),
-			])
+			// Sequential: verify-before-write one part body at a time (large
+			// APP/AUDIT parts previously spiked when data+index loaded together).
+			const dataPart = await sealVerifiedStagingBytes({
+				s3: input.s3,
+				stagingKey: pacedD1StagingDataPartKey(
+					input.day,
+					input.source.name,
+					input.table,
+					partIndex,
+				),
+				sealedKey: pacedD1SealedDataPartKey(
+					input.tier,
+					input.source.id,
+					input.day,
+					input.table,
+					partIndex,
+				),
+				contentType: 'text/tab-separated-values',
+				expectedSha: dataExpected,
+				label: `${input.source.name}.${input.table} data part ${partIndex}`,
+			})
 			dataPartDigests.push(await sha256HexOfBytes(dataPart))
+
+			const indexPart = await sealVerifiedStagingBytes({
+				s3: input.s3,
+				stagingKey: pacedD1StagingIndexPartKey(
+					input.day,
+					input.source.name,
+					input.table,
+					partIndex,
+				),
+				sealedKey: pacedD1SealedIndexPartKey(
+					input.tier,
+					input.source.id,
+					input.day,
+					input.table,
+					partIndex,
+				),
+				contentType: 'text/tab-separated-values',
+				expectedSha: indexExpected,
+				label: `${input.source.name}.${input.table} index part ${partIndex}`,
+			})
 			indexPartDigests.push(await sha256HexOfBytes(indexPart))
 		}
 
@@ -290,24 +291,24 @@ async function sealTableArtifacts(input: {
 		return
 	}
 
-	await Promise.all([
-		sealVerifiedStagingBytes({
-			s3: input.s3,
-			stagingKey: stagingDataKey,
-			sealedKey: sealedDataKey,
-			contentType: 'text/tab-separated-values',
-			expectedSha: input.dataSha256,
-			label: `${input.source.name}.${input.table} data`,
-		}),
-		sealVerifiedStagingBytes({
-			s3: input.s3,
-			stagingKey: stagingIndexKey,
-			sealedKey: sealedIndexKey,
-			contentType: 'text/tab-separated-values',
-			expectedSha: input.indexSha256,
-			label: `${input.source.name}.${input.table} index`,
-		}),
-	])
+	// Legacy monolithic staging bodies (pre-parts-pointer nights). Sequential
+	// verify-before-write so reseal never holds data+index together.
+	await sealVerifiedStagingBytes({
+		s3: input.s3,
+		stagingKey: stagingDataKey,
+		sealedKey: sealedDataKey,
+		contentType: 'text/tab-separated-values',
+		expectedSha: input.dataSha256,
+		label: `${input.source.name}.${input.table} data`,
+	})
+	await sealVerifiedStagingBytes({
+		s3: input.s3,
+		stagingKey: stagingIndexKey,
+		sealedKey: sealedIndexKey,
+		contentType: 'text/tab-separated-values',
+		expectedSha: input.indexSha256,
+		label: `${input.source.name}.${input.table} index`,
+	})
 }
 
 export type SealPacedD1SourceNightResult = {
@@ -318,17 +319,24 @@ export type SealPacedD1SourceNightResult = {
 	manifestKey: string
 	alreadySealed: boolean
 	tablesSealed: number
+	/** False when a time budget stopped the seal before the sealed manifest. */
+	complete: boolean
 }
 
 /**
  * Copy a finished staging night to the immutable sealed prefix. Idempotent:
- * existing sealed objects must byte-match (If-None-Match: *).
+ * existing sealed objects must byte-match (If-None-Match: *). Table copies
+ * can span ticks — pass `timeBudgetMs` so catch-up does not OOM/timeout while
+ * sealing a large APP night; the sealed manifest is written only when every
+ * table has been copied.
  */
 export async function sealPacedD1SourceNight(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
 	day: string
 	manifest?: PacedD1NightManifest
+	startedAtMs?: number
+	timeBudgetMs?: number
 }): Promise<SealPacedD1SourceNightResult> {
 	const tier = pacedD1RetentionTierForDay(input.day)
 	const sealedManifestKey = pacedD1SealedManifestKey(
@@ -337,6 +345,8 @@ export async function sealPacedD1SourceNight(input: {
 		input.day,
 	)
 	const existingSealed = await input.s3.head(sealedManifestKey)
+	const startedAtMs = input.startedAtMs ?? Date.now()
+	const timeBudgetMs = input.timeBudgetMs
 
 	let manifest = input.manifest
 	let manifestBody: string
@@ -367,7 +377,23 @@ export async function sealPacedD1SourceNight(input: {
 		)
 	}
 
+	let tablesSealed = 0
 	for (const [table, tableManifest] of Object.entries(manifest.tables)) {
+		if (
+			timeBudgetMs !== undefined &&
+			Date.now() - startedAtMs >= timeBudgetMs
+		) {
+			return {
+				day: input.day,
+				databaseName: input.source.name,
+				databaseId: input.source.id,
+				tier,
+				manifestKey: sealedManifestKey,
+				alreadySealed: existingSealed.exists,
+				tablesSealed,
+				complete: false,
+			}
+		}
 		await sealTableArtifacts({
 			s3: input.s3,
 			source: input.source,
@@ -377,6 +403,7 @@ export async function sealPacedD1SourceNight(input: {
 			dataSha256: tableManifest.dataSha256,
 			indexSha256: tableManifest.indexSha256,
 		})
+		tablesSealed += 1
 	}
 
 	await putImmutable(
@@ -393,7 +420,8 @@ export async function sealPacedD1SourceNight(input: {
 		tier,
 		manifestKey: sealedManifestKey,
 		alreadySealed: existingSealed.exists,
-		tablesSealed: Object.keys(manifest.tables).length,
+		tablesSealed,
+		complete: true,
 	}
 }
 

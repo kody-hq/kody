@@ -287,12 +287,10 @@ async function flushTablePart(input: {
 }
 
 /**
- * Hash (and, when small enough, assemble) part files into the canonical
- * staging data/index keys. Large tables keep parts only — the seal/restore
- * path reads parts in order so the worker never holds the full TSV.
+ * Hash part files into a staging parts-pointer. Always keeps parts only —
+ * never assembles a monolithic TSV (that doubled peak memory and OOMed
+ * catch-up/seal ticks on large APP/AUDIT tables).
  */
-const pacedD1AssembleMaxBytes = 8 * 1024 * 1024
-
 async function finalizeTableParts(input: {
 	s3: DrBackupS3Client
 	day: string
@@ -317,76 +315,42 @@ async function finalizeTableParts(input: {
 		return { dataSha256: empty, indexSha256: empty }
 	}
 
-	let totalBytes = 0
-	const dataChunks: Array<Uint8Array> = []
-	const indexChunks: Array<Uint8Array> = []
 	const dataPartDigests: Array<string> = []
 	const indexPartDigests: Array<string> = []
-	let assemble = true
 
 	for (let partIndex = 0; partIndex < input.partCount; partIndex += 1) {
-		const [dataBytes, indexBytes] = await Promise.all([
-			input.s3.getBytes(
-				pacedD1StagingDataPartKey(
-					input.day,
-					input.databaseName,
-					input.table,
-					partIndex,
-				),
+		// Sequential fetches: one part body in memory at a time.
+		const dataBytes = await input.s3.getBytes(
+			pacedD1StagingDataPartKey(
+				input.day,
+				input.databaseName,
+				input.table,
+				partIndex,
 			),
-			input.s3.getBytes(
-				pacedD1StagingIndexPartKey(
-					input.day,
-					input.databaseName,
-					input.table,
-					partIndex,
-				),
-			),
-		])
-		if (!dataBytes || !indexBytes) {
+		)
+		if (!dataBytes) {
 			throw new Error(
-				`paced D1 missing staging part ${partIndex} for ${input.databaseName}.${input.table}`,
+				`paced D1 missing staging data part ${partIndex} for ${input.databaseName}.${input.table}`,
 			)
 		}
-		const data = dataBytes
-		const index = indexBytes
-		dataPartDigests.push(await sha256HexOfBytes(data))
-		indexPartDigests.push(await sha256HexOfBytes(index))
-		totalBytes += data.byteLength + index.byteLength
-		if (assemble && totalBytes <= pacedD1AssembleMaxBytes) {
-			dataChunks.push(data)
-			indexChunks.push(index)
-		} else {
-			assemble = false
-			dataChunks.length = 0
-			indexChunks.length = 0
+		dataPartDigests.push(await sha256HexOfBytes(dataBytes))
+
+		const indexBytes = await input.s3.getBytes(
+			pacedD1StagingIndexPartKey(
+				input.day,
+				input.databaseName,
+				input.table,
+				partIndex,
+			),
+		)
+		if (!indexBytes) {
+			throw new Error(
+				`paced D1 missing staging index part ${partIndex} for ${input.databaseName}.${input.table}`,
+			)
 		}
+		indexPartDigests.push(await sha256HexOfBytes(indexBytes))
 	}
 
-	if (assemble) {
-		const dataBody = concatUtf8Chunks(dataChunks)
-		const indexBody = concatUtf8Chunks(indexChunks)
-		const [dataSha256, indexSha256] = await Promise.all([
-			sha256HexOfBytes(dataBody),
-			sha256HexOfBytes(indexBody),
-		])
-		await Promise.all([
-			input.s3.put(
-				pacedD1StagingDataKey(input.day, input.databaseName, input.table),
-				dataBody,
-				{ contentType: 'text/tab-separated-values' },
-			),
-			input.s3.put(
-				pacedD1StagingIndexKey(input.day, input.databaseName, input.table),
-				indexBody,
-				{ contentType: 'text/tab-separated-values' },
-			),
-		])
-		return { dataSha256, indexSha256 }
-	}
-
-	// Parts remain the durable body. Manifest digests are the sha256 of the
-	// newline-joined per-part digests (one part in memory at a time).
 	const dataSha256 = await sha256HexOfText(`${dataPartDigests.join('\n')}\n`)
 	const indexSha256 = await sha256HexOfText(`${indexPartDigests.join('\n')}\n`)
 	const pointer = `${JSON.stringify({
@@ -411,18 +375,6 @@ async function finalizeTableParts(input: {
 		),
 	])
 	return { dataSha256, indexSha256 }
-}
-
-function concatUtf8Chunks(chunks: Array<Uint8Array>): Uint8Array {
-	let total = 0
-	for (const chunk of chunks) total += chunk.byteLength
-	const out = new Uint8Array(total)
-	let offset = 0
-	for (const chunk of chunks) {
-		out.set(chunk, offset)
-		offset += chunk.byteLength
-	}
-	return out
 }
 
 async function loadPreviousNight(input: {
@@ -812,6 +764,8 @@ async function finalizeSourceNight(input: {
 	schema: PacedD1SchemaSnapshot
 	meta: NightMeta
 	progress: PacedD1ProgressCursor
+	startedAtMs?: number
+	timeBudgetMs?: number
 }): Promise<{ sealed: boolean }> {
 	const tables: Record<string, PacedD1TableManifest> = {}
 	for (const tableName of input.progress.completedTables) {
@@ -857,13 +811,15 @@ async function finalizeSourceNight(input: {
 		{ contentType: 'application/json' },
 	)
 	await clearProgress(input.s3, input.day, input.source.name)
-	await sealPacedD1SourceNight({
+	const sealed = await sealPacedD1SourceNight({
 		s3: input.s3,
 		source: input.source,
 		day: input.day,
 		manifest,
+		startedAtMs: input.startedAtMs ?? input.meta.wallStartedAtMs,
+		timeBudgetMs: input.timeBudgetMs,
 	})
-	return { sealed: true }
+	return { sealed: sealed.complete }
 }
 
 async function sourceHasSealedManifest(
@@ -880,6 +836,8 @@ async function ensureSourceSealed(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
 	day: string
+	startedAtMs?: number
+	timeBudgetMs?: number
 }): Promise<boolean> {
 	if (await sourceHasSealedManifest(input.s3, input.source, input.day)) {
 		return false
@@ -887,12 +845,14 @@ async function ensureSourceSealed(input: {
 	if (!(await sourceHasManifest(input.s3, input.day, input.source.name))) {
 		return false
 	}
-	await sealPacedD1SourceNight({
+	const sealed = await sealPacedD1SourceNight({
 		s3: input.s3,
 		source: input.source,
 		day: input.day,
+		startedAtMs: input.startedAtMs,
+		timeBudgetMs: input.timeBudgetMs,
 	})
-	return true
+	return sealed.complete
 }
 
 async function workSourceTick(input: {
@@ -921,9 +881,11 @@ async function workSourceTick(input: {
 			s3: input.s3,
 			source: input.source,
 			day: input.day,
+			startedAtMs: input.startedAtMs,
+			timeBudgetMs: input.timeBudgetMs,
 		})
 		return {
-			timeBudgetExhausted: false,
+			timeBudgetExhausted: !nightSealed,
 			tablesCompleted,
 			manifestWritten,
 			nightSealed,
@@ -984,18 +946,20 @@ async function workSourceTick(input: {
 
 		const table = pickNext()
 		if (!table) {
-			await finalizeSourceNight({
+			const finalized = await finalizeSourceNight({
 				s3: input.s3,
 				source: input.source,
 				day: input.day,
 				schema,
 				meta,
 				progress,
+				startedAtMs: input.startedAtMs,
+				timeBudgetMs: input.timeBudgetMs,
 			})
 			manifestWritten = true
-			nightSealed = true
+			nightSealed = finalized.sealed
 			return {
-				timeBudgetExhausted: false,
+				timeBudgetExhausted: !finalized.sealed,
 				tablesCompleted,
 				manifestWritten,
 				nightSealed,
@@ -1372,7 +1336,11 @@ export async function runD1PacedBackupTick(input: {
 		}
 	}
 
+	const timeBudgetMs = input.timeBudgetMs ?? d1PacedBackupRunTimeBudgetMs
+	const startedAtMs = Date.now()
+
 	// Cheap exit when every bound source already finished and sealed tonight.
+	// Seal may span ticks under the time budget (large APP/AUDIT nights).
 	let allDone = true
 	let bindingsMissing = 0
 	let nightsSealed = 0
@@ -1385,7 +1353,19 @@ export async function runD1PacedBackupTick(input: {
 			allDone = false
 			continue
 		}
-		if (await ensureSourceSealed({ s3, source, day })) {
+		if (await sourceHasSealedManifest(s3, source, day)) {
+			continue
+		}
+		allDone = false
+		if (
+			await ensureSourceSealed({
+				s3,
+				source,
+				day,
+				startedAtMs,
+				timeBudgetMs,
+			})
+		) {
 			nightsSealed += 1
 		}
 	}
@@ -1404,8 +1384,6 @@ export async function runD1PacedBackupTick(input: {
 		}
 	}
 
-	const timeBudgetMs = input.timeBudgetMs ?? d1PacedBackupRunTimeBudgetMs
-	const startedAtMs = Date.now()
 	const lane = await loadLaneProgress(s3, day)
 	let sourcesWorked = 0
 	let tablesCompleted = 0
