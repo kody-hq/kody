@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 
 import { afterEach, test, vi } from 'vitest'
 
+import { NonRetryableError } from 'cloudflare:workflows'
 import { runBackupRuntime } from './backup-runtime.ts'
 import { DEFAULT_BACKUP_MAX_SOURCE_BYTES } from './d1-export-api.ts'
 import { readManifest } from './immutable-storage.ts'
 import {
 	backupPayload,
+	errorCode,
 	objectKeyForBookmark,
 	workflowInstanceId,
 } from './backup-policy.ts'
@@ -24,6 +26,7 @@ import {
 	identityEnvelope,
 	backupError,
 } from './backup-control-plane-test-support.ts'
+import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 
 afterEach(() => {
 	vi.restoreAllMocks()
@@ -69,6 +72,38 @@ function runDay(
 		step,
 		options,
 	)
+}
+
+/**
+ * Match production `ProductionD1BackupWorkflow`: convert non-retryable
+ * BackupError to NonRetryableError inside the step, then reconstitute the
+ * rejection the way Workflows RPC often does (`Error` + `NonRetryableError:`
+ * message prefix) so recovery must parse that form via `errorCode()`.
+ */
+function productionLikeStep(inner: RuntimeStep): RuntimeStep {
+	const bounded = withNonRetryableBackupErrors(inner)
+	return {
+		async do<T>(
+			name: string,
+			configOrCallback: unknown,
+			callback?: () => Promise<T>,
+		): Promise<T> {
+			try {
+				if (typeof configOrCallback === 'function') {
+					return await bounded.do(name, configOrCallback as () => Promise<T>)
+				}
+				return await bounded.do(name, configOrCallback, callback!)
+			} catch (error) {
+				if (error instanceof NonRetryableError) {
+					throw new Error(`NonRetryableError: ${error.message}`)
+				}
+				throw error
+			}
+		},
+		sleep(name, duration) {
+			return bounded.sleep(name, duration)
+		},
+	}
 }
 
 const julyPayload = (env: BackupEnvironment, day = '2026-07-22') =>
@@ -407,7 +442,7 @@ test('an expired export result recovers with a fresh export under new step names
 	const result = await runDay(
 		env,
 		payload,
-		new CachedUploadStep(() => undefined),
+		productionLikeStep(new CachedUploadStep(() => undefined)),
 		{
 			api: completeApi((init) => {
 				exportCalls += 1
@@ -467,21 +502,27 @@ test('exhausted export-result-expired recovery fails without a manifest', async 
 	const downloadUrls: string[] = []
 	let exportCalls = 0
 	await assert.rejects(
-		runDay(env, payload, new CachedUploadStep(() => undefined), {
-			api: completeApi(() => {
-				exportCalls += 1
-				// Each attempt: start completes with a unique bookmark, refresh lost.
-				if (exportCalls % 2 === 1) {
-					return exportEnvelope('complete', `bookmark-${String(exportCalls)}`)
-				}
-				return exportEnvelope('lost')
-			}),
-			downloadFetcher: async (input) => {
-				downloadUrls.push(String(input))
-				return okDownload()
+		runDay(
+			env,
+			payload,
+			productionLikeStep(new CachedUploadStep(() => undefined)),
+			{
+				api: completeApi(() => {
+					exportCalls += 1
+					// Each attempt: start completes with a unique bookmark, refresh lost.
+					if (exportCalls % 2 === 1) {
+						return exportEnvelope('complete', `bookmark-${String(exportCalls)}`)
+					}
+					return exportEnvelope('lost')
+				}),
+				downloadFetcher: async (input) => {
+					downloadUrls.push(String(input))
+					return okDownload()
+				},
 			},
-		}),
-		backupError('export-result-expired', false),
+		),
+		(error: unknown) =>
+			error instanceof Error && errorCode(error) === 'export-result-expired',
 	)
 	// Three start+refresh pairs (attempts 1..3).
 	assert.equal(exportCalls, 6)

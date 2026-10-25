@@ -458,10 +458,19 @@ export function safeLog(
 	else logger.log(output)
 }
 
+/**
+ * Prefer `BackupError.code`. Across Workflows step RPC the engine often
+ * reconstitutes a terminal failure as a plain `Error` whose message is
+ * `NonRetryableError: [code] …` (see `engineTreatsAsTerminal`); keep parsing
+ * that form so in-workflow recovery (e.g. export-result-expired) can match.
+ */
 export function errorCode(error: unknown): string {
 	if (error instanceof BackupError) return error.code
 	if (error instanceof Error) {
-		const match = /^\[(?<code>[a-z0-9]+(?:-[a-z0-9]+)*)\] /u.exec(error.message)
+		const match =
+			/^(?:NonRetryableError:\s*)?\[(?<code>[a-z0-9]+(?:-[a-z0-9]+)*)\] /u.exec(
+				error.message,
+			)
 		if (match?.groups?.code) return match.groups.code
 	}
 	return 'unexpected-error'

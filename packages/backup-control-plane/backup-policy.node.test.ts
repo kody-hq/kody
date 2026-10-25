@@ -5,9 +5,11 @@ import { test } from 'vitest'
 import {
 	assertConfiguredIdentity,
 	assertRemoteDatabaseIdentity,
+	BackupError,
 	backupPayload,
 	configuredSourceDatabases,
 	declaredSourceDatabases,
+	errorCode,
 	isBackupEnabled,
 	objectKeyForBookmark,
 	primarySourceDatabase,
@@ -16,6 +18,7 @@ import {
 	restExportSourceDatabases,
 	sourceDatabaseFromObjectPrefix,
 	sourceRestExportEnabled,
+	workflowBackupErrorMessage,
 	workflowInstanceId,
 } from './backup-policy.ts'
 import {
@@ -241,4 +244,25 @@ test('declaredSourceDatabases uses the sealed day list and notes absent configur
 			]),
 		backupError('restore-d1-source-not-configured'),
 	)
+})
+
+test('errorCode reads BackupError and Workflows RPC NonRetryableError messages', () => {
+	const expired = new BackupError(
+		'export-result-expired',
+		'D1 export result expired before upload; runtime will start a new export under new durable step names',
+	)
+	assert.equal(errorCode(expired), 'export-result-expired')
+	assert.equal(
+		errorCode(new Error(workflowBackupErrorMessage(expired))),
+		'export-result-expired',
+	)
+	// Production reconstitutes terminal step failures across the RPC boundary
+	// as a plain Error whose message is prefixed with NonRetryableError:.
+	assert.equal(
+		errorCode(
+			new Error(`NonRetryableError: ${workflowBackupErrorMessage(expired)}`),
+		),
+		'export-result-expired',
+	)
+	assert.equal(errorCode(new Error('nope')), 'unexpected-error')
 })
