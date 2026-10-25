@@ -910,6 +910,8 @@ export const kody =
 		? __kodyCreateRuntimeObjectProxy('kody')
 		: undefined;
 export const createAuthenticatedFetch = __kodyOptionalRuntimeFunctionExport('createAuthenticatedFetch');
+export const hasScope = __kodyOptionalRuntimeFunctionExport('hasScope');
+export const hasVisitorCredential = __kodyOptionalRuntimeFunctionExport('hasVisitorCredential');
 export const secretHeaders = __kodyOptionalRuntimeObjectExport('secretHeaders', undefined);
 export const oauthClientCredentials = __kodyOptionalRuntimeFunctionExport('oauthClientCredentials');
 // \`credential\` carries \`credential.named\`, so it forwards the property too.
@@ -1009,6 +1011,8 @@ export const events = __kodyOptionalRuntimeObjectExport('events', null);
 
 const __kodyRuntimeNamedExports = {
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,
@@ -1165,6 +1169,8 @@ export function parsePackageRuntimeModulePathPackageId(modulePath: string) {
 export const kodyRuntimeSharedExportNames = [
 	'kody',
 	'createAuthenticatedFetch',
+	'hasScope',
+	'hasVisitorCredential',
 	'secretHeaders',
 	'oauthClientCredentials',
 	'credential',

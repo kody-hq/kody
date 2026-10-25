@@ -108,6 +108,21 @@ test('a visit ticket names only its visitor and refuses another visitor, app, co
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 })
 
+test('a package app visit ticket binds the live consent grant scopes', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const minted = await mintFor(visitorA, {
+		grantId: 'grant-live',
+		scopes: ['profile', 'email', 'need:calendar'],
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: minted.ticket,
+		audience,
+	})
+	expect(claims.grantId).toBe('grant-live')
+	expect(claims.scopes).toEqual(['profile', 'email', 'need:calendar'])
+})
+
 test('a replayed, expired, or forged visit ticket is refused', async () => {
 	resetPackageAppVisitNoncesForTests()
 	const now = 1_700_000_000_000

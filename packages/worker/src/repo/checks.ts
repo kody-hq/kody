@@ -517,7 +517,32 @@ type KodyEventsRuntime = {
 declare module "kody:runtime" {
   export const kody: Record<string, KodyCapability> & {
     readonly mcp: Record<string, KodyMcpServerTools>;
+    appRateLimit: KodyCapability & ((input: {
+      key: string;
+      limit: number;
+      windowSeconds: number;
+    }) => Promise<{
+      allowed: boolean;
+      remaining: number;
+      resetAt: string;
+      retryAfterSeconds: number | null;
+    }>);
+    appSpendGet: KodyCapability & ((input?: Record<string, never>) => Promise<{
+      month: string;
+      creditsMicroUsd: number;
+      days: Array<{
+        day: string;
+        creditsMicroUsd: number;
+        meters: Array<{
+          meter: "unique_worker_days" | "durable_object_rows_read";
+          units: number;
+          creditsMicroUsd: number;
+        }>;
+      }>;
+    }>);
   };
+  export function hasScope(request: Request, scope: string): boolean;
+  export function hasVisitorCredential(request: Request, key: string): boolean;
   export function createAuthenticatedFetch(
     providerName: string,
   ): Promise<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>;
@@ -530,6 +555,7 @@ declare module "kody:runtime" {
     kodyId: string;
     appBasePath?: string;
     hostedUrl?: string;
+    cookiePrefix?: string;
     assetBasePath?: string;
     clientModuleUrl?: string | null;
   } | null;

@@ -152,6 +152,33 @@ export async function revokePackageAppOauthGrantsForPersonApp(input: {
 		.run()
 }
 
+export async function revokePackageAppOauthGrantScope(input: {
+	db: D1Database
+	personId: string
+	orgUsername: string
+	kodyId: string
+	scope: string
+	now?: Date
+}) {
+	const scope = readPackageAppOauthScope(input.scope)
+	if (!scope || scope === 'profile') return false
+	const grant = await findLivePackageAppOauthGrant(input)
+	if (!grant?.scopes.includes(scope)) return false
+	const scopes = serializePackageAppOauthScopes([
+		'profile',
+		...grant.scopes.filter((existing) => existing !== scope),
+	])
+	await input.db
+		.prepare(
+			`UPDATE package_app_oauth_grants
+			 SET scopes = ?
+			 WHERE id = ? AND revoked_at IS NULL`,
+		)
+		.bind(scopes, grant.id)
+		.run()
+	return true
+}
+
 /** Last-use timestamps move at most once a minute per grant. */
 export const packageAppOauthGrantLastUsedResolutionMs = 60_000
 

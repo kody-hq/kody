@@ -3,6 +3,7 @@ import { operationResult } from '#app/operation-result.ts'
 import { packageAppOauthClaimLabels } from '#app/package-app-oauth-consent-copy.ts'
 import {
 	listLivePackageAppOauthGrantsForPerson,
+	revokePackageAppOauthGrantScope,
 	revokePackageAppOauthGrantsForPersonApp,
 	type PackageAppOauthGrant,
 } from '#app/package-app-oauth-grants.ts'
@@ -161,6 +162,13 @@ async function describeAppGrant(
 		publisherName,
 		iconUrl,
 		allows: packageAppOauthClaimLabels(grant.scopes, needDescriptions),
+		revocableScopes: grant.scopes
+			.filter((scope) => scope !== 'profile')
+			.map((scope) => ({
+				scope,
+				label:
+					packageAppOauthClaimLabels([scope], needDescriptions)[0] ?? scope,
+			})),
 		connectedAt: grant.createdAt,
 		lastUsedAt: grant.lastUsedAt,
 	}
@@ -196,6 +204,46 @@ export async function revokeAccountConnectedApp({
 		db: auditDatabaseFromEnv(env),
 		category: 'oauth',
 		action: 'package_app_grant_revoke',
+		result: 'success',
+		email: user.email,
+		ip: getRequestIp(request) ?? undefined,
+		path: new URL(request.url).pathname,
+		clientId: appKey,
+	})
+	return operationResult({ ok: true as const })
+}
+
+export async function revokeAccountConnectedAppScope({
+	request,
+	env,
+	user,
+	appKey,
+	scope,
+}: MutationContext & { appKey: string; scope: string }) {
+	const parsed = parseAppKey(appKey)
+	if (!parsed || scope === 'profile') {
+		return operationResult(
+			{ ok: false, error: 'Connected app scope not found.' },
+			404,
+		)
+	}
+	const revoked = await revokePackageAppOauthGrantScope({
+		db: env.APP_DB,
+		personId: user.mcpUser.userId,
+		orgUsername: parsed.orgUsername,
+		kodyId: parsed.kodyId,
+		scope,
+	})
+	if (!revoked) {
+		return operationResult(
+			{ ok: false, error: 'Connected app scope not found.' },
+			404,
+		)
+	}
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'oauth',
+		action: 'package_app_grant_scope_revoke',
 		result: 'success',
 		email: user.email,
 		ip: getRequestIp(request) ?? undefined,

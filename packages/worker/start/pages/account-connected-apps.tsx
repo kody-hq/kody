@@ -6,6 +6,7 @@ import { toast } from '#client/toast.ts'
 import {
 	revokeConnectedApp,
 	revokeConnectedAppAgent,
+	revokeConnectedAppScope,
 } from '#start/server/account-mutations'
 import { groupConnectedAgents } from '#universal/connected-mcp-agents.ts'
 import {
@@ -68,6 +69,13 @@ export function AccountConnectedAppsPage({
 		onMutate: () => invalidate,
 		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
 	})
+	const scopeMutation = useMutation({
+		gcTime: 0,
+		mutationFn: (input: { appKey: string; scope: string }) =>
+			revokeConnectedAppScope({ data: input }),
+		onMutate: () => invalidate,
+		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
+	})
 	const apps = payload.apps.filter((app) => !removedApps.has(app.appKey))
 	const agentGroups = groupConnectedAgents(
 		payload.agents.filter((agent) => !removedAgents.has(agent.clientId)),
@@ -126,6 +134,21 @@ export function AccountConnectedAppsPage({
 		)
 	}
 
+	function revokeAppScope(app: AccountConnectedAppView, scope: string) {
+		const isCurrent = capture()
+		void scopeMutation.mutateAsync({ appKey: app.appKey, scope }).then(
+			() => {
+				if (isCurrent()) toast.success('That access has been revoked.')
+			},
+			(error: unknown) => {
+				if (isCurrent())
+					toast.error(
+						error instanceof Error ? error.message : 'Unable to revoke.',
+					)
+			},
+		)
+	}
+
 	return (
 		<AccountManagementShell layout="form" currentHref={currentHref}>
 			<AccountPageHeader
@@ -153,6 +176,18 @@ export function AccountConnectedAppsPage({
 												<li key={allow}>{allow}</li>
 											))}
 										</ul>
+										{app.revocableScopes.map(({ scope, label }) => (
+											<button
+												key={scope}
+												type="button"
+												onClick={() => {
+													if (window.confirm(`Revoke ${label}?`))
+														revokeAppScope(app, scope)
+												}}
+											>
+												Revoke {label}
+											</button>
+										))}
 										<span css={mutedCss}>
 											Last used{' '}
 											<TimestampValue value={app.lastUsedAt} fallback="never" />

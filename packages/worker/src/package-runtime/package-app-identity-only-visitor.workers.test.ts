@@ -76,6 +76,17 @@ async function ensureSchema() {
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
+	)`)
 	await runSql(`CREATE TABLE IF NOT EXISTS published_bundle_artifacts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -93,11 +104,16 @@ async function ensureSchema() {
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 
-const appSource = `import { kody } from 'kody:runtime'
+const appSource = `import { hasScope, hasVisitorCredential, kody } from 'kody:runtime'
 export default {
 	async fetch(request) {
 		const msg = (e) => String(e?.message ?? e).slice(0, 200)
 		const out = { header: request.headers.get('X-Kody-Visitor') }
+		out.scopes = {
+			profile: hasScope(request, 'profile'),
+			email: hasScope(request, 'email'),
+			calendar: hasVisitorCredential(request, 'calendar'),
+		}
 		try { out.me = await kody.metaGetCurrentUser({}) } catch (e) { out.meError = msg(e) }
 		try { out.secrets = await kody.secretList({}) } catch (e) { out.secretsError = msg(e) }
 		try { out.packages = await kody.packageList({}) } catch (e) { out.packagesError = msg(e) }
@@ -241,7 +257,7 @@ async function setup(input: { capabilities?: Array<string> } = {}) {
 			.getEntrypoint(appWorker.entrypointName)
 			.fetch(request)
 		const text = await response.text()
-		expect(response.status, text.slice(0, 600)).toBe(200)
+		expect(response.status).toBe(200)
 		return JSON.parse(text) as Record<string, unknown>
 	}
 
@@ -264,12 +280,19 @@ test(
 			email: '',
 			display_name: 'outside-visitor',
 			org: { slug: t.username },
+			scopes: ['profile'],
+		})
+		expect(body.scopes).toEqual({
+			profile: true,
+			email: false,
+			calendar: false,
 		})
 		expect(body.meError).toBeUndefined()
 		expect(JSON.parse(String(body.header))).toEqual({
 			userId: outsiderId,
 			username: 'outside-visitor',
 			role: null,
+			scopes: ['profile'],
 		})
 		// No new access: undeclared calls never run as the publisher, and the
 		// visitor's own identity grants nothing.
@@ -327,6 +350,7 @@ test(
 			userId: t.ownerId,
 			username: t.username,
 			role: 'owner',
+			scopes: ['profile'],
 		})
 	},
 )

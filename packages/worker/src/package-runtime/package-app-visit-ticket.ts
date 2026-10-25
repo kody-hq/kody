@@ -12,8 +12,8 @@
  * without a live nonce, on another app, commit, or host, or with a forged
  * signature is refused.
  *
- * PR 1 keeps today's authority: a ticket with a visitor means the app still
- * acts as that visitor. Grant id and scope set are reserved for later PRs.
+ * A ticket records the live grant and scopes observed at serve time. Visitor
+ * credential access checks the grant again before each use.
  */
 import {
 	base64UrlToBytes,
@@ -66,9 +66,9 @@ export type PackageAppVisitClaims = {
 	audience: PackageAppVisitAudience
 	nonce: string
 	credentialClientBinding: string
-	/** Reserved for later consent-grant checks. Unused in this PR. */
+	/** The live Sign in with Kody grant used to mint this request. */
 	grantId: string | null
-	/** Reserved for later consent-grant checks. Unused in this PR. */
+	/** Scopes the visitor granted when this request began. */
 	scopes: ReadonlyArray<string>
 	exp: number
 }
@@ -492,6 +492,8 @@ export async function createPackageAppRequestVisit(input: {
 	owner: PackageAppVisitClaims['owner']
 	audience: PackageAppVisitAudience
 	request: RequestContext | null
+	grantId?: string | null
+	scopes?: ReadonlyArray<string>
 	now?: number
 }): Promise<PackageAppRequestVisit> {
 	const credentialClientBinding = newRunCredentialClientBinding()
@@ -513,6 +515,8 @@ export async function createPackageAppRequestVisit(input: {
 		owner: input.owner,
 		audience: input.audience,
 		credentialClientBinding,
+		grantId: input.grantId,
+		scopes: input.scopes,
 		now: input.now,
 	})
 	const claims: PackageAppVisitClaims = {
@@ -521,8 +525,8 @@ export async function createPackageAppRequestVisit(input: {
 		audience: input.audience,
 		nonce: minted.nonce,
 		credentialClientBinding,
-		grantId: null,
-		scopes: [],
+		grantId: input.grantId ?? null,
+		scopes: [...(input.scopes ?? [])],
 		exp: minted.exp,
 	}
 	return {

@@ -31,12 +31,23 @@ export function PackageAppOauthConsentPage({
 	const send = useServerFn(decidePackageAppOauthConsent)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [selectedScopes, setSelectedScopes] = useState(
+		() => new Set(data.optionalScopes.map(({ scope }) => scope)),
+	)
 	async function submit(decision: 'approve' | 'deny') {
 		if (busy) return
 		setBusy(true)
 		setError(null)
 		try {
-			await send({ data: { fields: data.hiddenFields, decision } })
+			const fields = {
+				...data.hiddenFields,
+				scope: [
+					...data.requiredScopes,
+					...data.alreadyAllowedScopes,
+					...selectedScopes,
+				].join(' '),
+			}
+			await send({ data: { fields, decision } })
 		} catch (failure) {
 			setError(
 				failure instanceof Error
@@ -121,11 +132,37 @@ export function PackageAppOauthConsentPage({
 
 				<section css={{ display: 'grid', gap: spacing.sm }}>
 					<h2 css={sectionHeadingCss}>This app will be able to</h2>
-					<ul css={claimListCss}>
-						{data.claimLabels.map((claim) => (
-							<li key={claim}>{claim}</li>
+					<p css={mutedCss}>Required: {data.requiredLabels.join('; ')}</p>
+					{data.alreadyAllowedLabels.length > 0 ? (
+						<p css={mutedCss}>
+							Already allowed: {data.alreadyAllowedLabels.join('; ')}
+						</p>
+					) : null}
+					<div css={{ display: 'grid', gap: spacing.sm }}>
+						{data.optionalScopes.map(({ scope, label }) => (
+							<label key={scope} css={{ display: 'flex', gap: spacing.sm }}>
+								<input
+									type="checkbox"
+									checked={selectedScopes.has(scope)}
+									onChange={(event) =>
+										setSelectedScopes((current) => {
+											const next = new Set(current)
+											if (event.currentTarget.checked) next.add(scope)
+											else next.delete(scope)
+											return next
+										})
+									}
+								/>
+								<span>{label}</span>
+							</label>
 						))}
-					</ul>
+					</div>
+					{data.optionalScopes.some(({ scope }) => scope === 'email') ? (
+						<p css={mutedCss}>
+							Email visibility does not grant permission to send email. If you
+							revoke email access later, this app must stop using your address.
+						</p>
+					) : null}
 				</section>
 
 				<details
@@ -225,13 +262,5 @@ const sectionHeadingCss = {
 	margin: 0,
 	fontSize: typography.fontSize.base,
 	fontWeight: typography.fontWeight.semibold,
-	color: colors.text,
-}
-
-const claimListCss = {
-	margin: 0,
-	paddingLeft: '1.15rem',
-	display: 'grid',
-	gap: spacing.xs,
 	color: colors.text,
 }

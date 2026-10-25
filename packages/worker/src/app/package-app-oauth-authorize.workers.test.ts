@@ -187,8 +187,52 @@ test('package-app OAuth authorize returns authenticated consent claims without i
 			code_challenge: challenge,
 			code_challenge_method: 'S256',
 			redirect_uri: redirectUri,
+			requested_scopes: 'profile email',
 		},
 	})
+	expect(response.consent.optionalScopes).toEqual([
+		{ scope: 'email', label: 'See your email address' },
+	])
+})
+
+test('package-app consent rejects scopes added after the signed request', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const authorizeUrl = new URL(packageAppOauthPaths.authorize, appOrigin)
+	authorizeUrl.searchParams.set('response_type', 'code')
+	authorizeUrl.searchParams.set('client_id', `${ownerUsername}/demo`)
+	authorizeUrl.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	authorizeUrl.searchParams.set('code_challenge', challenge)
+	authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+	authorizeUrl.searchParams.set('scope', 'profile')
+	const consent = await workerFetch(authorizeUrl, {
+		headers: { Cookie: cookie },
+	})
+	if (consent instanceof Response) throw new Error('Expected consent data')
+	const form = new URLSearchParams({
+		...consent.consent.hiddenFields,
+		scope: 'profile email',
+		decision: 'approve',
+	})
+	const response = await workerFetch(authorizeUrl, {
+		method: 'POST',
+		headers: {
+			Cookie: cookie,
+			Origin: appOrigin,
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: form,
+	})
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected rejected scope')
+	expect(response.status).toBe(403)
 })
 
 test('authenticated consent decisions reject a foreign origin before creating a grant', async () => {
