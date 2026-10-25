@@ -246,10 +246,14 @@ A mapped credential is rechecked for live Use access on every call.
 
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not
-serve until the visitor has connected a usable credential. `required` is valid
-only for executor-supplied needs. The older `ownerCredentialForVisitors: true`
-setting keeps its publisher-supplied meaning as an alias. A need with no
-supplier keeps the existing package behavior.
+serve until the visitor has connected a usable credential. A direct run that
+cannot resolve a required executor need fails before execution with
+`credential_required`, naming the need. Inside an app, an executor need without
+its grant mapping fails with `credential_unbound`; it never falls back to the
+publisher's credential. `required` is valid only for executor-supplied needs.
+The older `ownerCredentialForVisitors: true` setting keeps its publisher-
+supplied meaning as an alias. A need with no supplier keeps the existing package
+behavior.
 
 ### Let app visitors use your credential
 

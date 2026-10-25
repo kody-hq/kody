@@ -55,7 +55,7 @@ test('credential needs show publisher and executor supplier labels', async () =>
 	)
 
 	expect(html).toContain('Set by the publisher')
-	expect(html).toContain('Publisher credentials: Not set')
+	expect(html).toContain('Publisher credentials:<!-- --> <!-- -->Not set')
 	expect(html).toContain('Required')
 	expect(html).toContain('Optional')
 })

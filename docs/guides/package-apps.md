@@ -309,6 +309,25 @@ stays host-side. See
 [Credentials](./credentials.md#choose-who-supplies-a-package-credential) for
 supplier and mapping rules.
 
+Supplier-aware credentials are rolling out. In app code, check the grant before
+opening a visitor credential, and handle the unbound case without trying the
+publisher's credential:
+
+```ts
+import { hasScope } from 'kody:runtime'
+
+if (hasScope(request, 'need:calendar')) {
+	const calendar = await credential.visitor('calendar')
+	// Use the visitor's credential for this request.
+}
+```
+
+`credential.visitor(key)` resolves only the credential selected for that need in
+the visitor's live grant. It does not fall back to publisher credentials,
+visitor defaults, org mappings, or automatic matching. A missing mapping is
+reported as `credential_unbound`. Keep publisher-supplied needs on
+`credential(key)`.
+
 While apps move over, a call that would fail as the runs-as person (a capability
 missing from `kody.app.capabilities`, for example) still runs as the visitor, as
 it did before, and logs a `package_app_authority_fallback` event with the app,
