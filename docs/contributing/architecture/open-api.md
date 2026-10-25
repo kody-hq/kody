@@ -87,6 +87,11 @@ document stays unique; HTTP still dispatches both paths to the capability. Put
 the preferred client path on `path` (for example `repoGetGitRemote`'s body-only
 `/v1/repos/git-remote`, with `/v1/repos/{repo_id}/git-remote` as an alias).
 
+`deprecatedForward` keeps a time-bounded legacy route dispatching to a
+replacement capability with fixed inputs, while hiding those inputs from the
+legacy schemas and adding deprecation headers. Mark its sunset in OpenAPI and
+track it in the formal deprecation list with a cleanup issue.
+
 `POST /v1/execute` runs a module in Kody's cloud sandbox and returns the MCP
 execute envelope (`content`, `structuredContent`, `isError`) with HTTP 200 when
 the module fails. It accepts `kody_at_…` with `org:execute` only.

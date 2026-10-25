@@ -18,6 +18,9 @@ grant removal remain website-only.
 ## Consequences
 
 The handler checks permission per kind while the surface declares
-`orgPermission: 'none'`. REST lock paths collapse to `POST /v1/resource-locks`.
-Revisit if a kind needs a materially different lifecycle, such as agent-side
-unlock.
+`orgPermission: 'none'`. The canonical REST path is `POST /v1/resource-locks`.
+The four old `/v1` lock routes remain deprecated forwarders to `resourceLock`
+with `Deprecation` and `Sunset` headers until 2027-01-22, tracked in
+[#4322](https://github.com/kody-hq/kody/issues/4322). The former MCP names have
+no aliases; `resourceLock` is the only MCP capability. Revisit if a kind needs a
+materially different lifecycle, such as agent-side unlock.

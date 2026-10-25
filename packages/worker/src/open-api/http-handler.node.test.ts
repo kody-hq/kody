@@ -1,4 +1,6 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
+import * as integrationAuthorization from '#mcp/capabilities/integrations/authorize-integration.ts'
+import * as integrationService from '#worker/integrations/service.ts'
 import {
 	mintApiToken,
 	apiTokenLifetimeAliases,
@@ -7,6 +9,10 @@ import {
 	createOpenApiTestHarness as createApi,
 	openApiTestAppOrigin as appOrigin,
 } from '#worker/test-support/open-api-http.ts'
+
+afterEach(() => {
+	vi.restoreAllMocks()
+})
 
 test('revalidates the OpenAPI document by content hash with If-None-Match', async () => {
 	const api = await createApi()
@@ -127,6 +133,49 @@ test('writes secrets through path params and never returns the value', async () 
 		contentType: 'text/plain',
 	})
 	expect(wrongType.status).toBe(415)
+})
+
+test('forwards deprecated integration locks with the legacy body and deprecation headers', async () => {
+	const api = await createApi()
+	const token = await api.mint(['integration:use'])
+	const authorizeIntegration = vi
+		.spyOn(integrationAuthorization, 'authorizeIntegration')
+		.mockResolvedValue(undefined)
+	const lockIntegrationToPackage = vi
+		.spyOn(integrationService, 'lockIntegrationToPackage')
+		.mockResolvedValue({
+			name: 'google',
+			allowedPackageIds: ['pkg-123'],
+		} as never)
+	const response = await api.call('POST', '/v1/integrations/google/lock', {
+		token,
+		body: { kind: 'secret', package_id: 'pkg-123' },
+	})
+
+	expect(response.status).toBe(200)
+	expect(authorizeIntegration).toHaveBeenCalledWith(
+		expect.anything(),
+		'integration:use',
+		'google',
+	)
+	expect(lockIntegrationToPackage).toHaveBeenCalledWith(
+		expect.objectContaining({ name: 'google', packageId: 'pkg-123' }),
+	)
+	expect(response.body).toMatchObject({
+		name: 'google',
+		usage_mode: 'packages',
+		allowed_package_ids: ['pkg-123'],
+		usage_url: expect.any(String),
+	})
+	expect(Object.keys(response.body).sort()).toEqual(
+		['name', 'usage_mode', 'allowed_package_ids', 'usage_url'].sort(),
+	)
+	expect(response.body).not.toHaveProperty('kind')
+	expect(response.headers.get('Deprecation')).toBe('@1792800000')
+	expect(response.headers.get('Sunset')).toBe('Fri, 22 Jan 2027 00:00:00 GMT')
+	expect(response.headers.get('Link')).toBe(
+		'<https://kody.codes/docs/api-versioning.md>; rel="deprecation"',
+	)
 })
 
 test('token minting enforces parent scopes for local-execute', async () => {
