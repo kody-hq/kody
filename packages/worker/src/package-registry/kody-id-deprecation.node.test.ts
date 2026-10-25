@@ -27,19 +27,43 @@ test('argsUsedKodyIdPackageIdentity detects top-level and target leftovers', () 
 
 test('buildKodyIdDeprecationHint includes resolved name and package_id', () => {
 	expect(
-		buildKodyIdDeprecationHint({
-			name: '@owner/demo',
-			package_id: 'pkg-uuid',
-		}),
+		buildKodyIdDeprecationHint(
+			{
+				name: '@owner/demo',
+				package_id: 'pkg-uuid',
+			},
+			{ kody_id: 'demo' },
+		),
 	).toContain('name: "@owner/demo"')
 	expect(
-		buildKodyIdDeprecationHint({
-			name: '@owner/demo',
-			package_id: 'pkg-uuid',
-		}),
+		buildKodyIdDeprecationHint(
+			{
+				name: '@owner/demo',
+				package_id: 'pkg-uuid',
+			},
+			{ kody_id: 'demo' },
+		),
 	).toContain('package_id: "pkg-uuid"')
-	expect(buildKodyIdDeprecationHint({})).toContain('Prefer `name`')
-	expect(buildKodyIdDeprecationHint({})).toContain('Stop sending `kody_id`')
+	expect(buildKodyIdDeprecationHint({}, { kody_id: 'demo' })).toContain(
+		'Prefer `name`',
+	)
+	expect(buildKodyIdDeprecationHint({}, { kody_id: 'demo' })).toContain(
+		'Stop sending `kody_id`',
+	)
+})
+
+test('camelCase leftover callers are steered to packageId', () => {
+	const hint = buildKodyIdDeprecationHint(
+		{
+			webhooks: [
+				{ name: 'sentry', package_name: '@owner/hook', package_id: 'hook-id' },
+			],
+		},
+		{ kodyId: 'hook' },
+	)
+	expect(hint).toContain('packageId: "hook-id"')
+	expect(hint).toContain('Stop sending `kodyId`')
+	expect(hint).not.toContain('name: "sentry"')
 })
 
 test('resolvePreferredPackageIdentity reads nested package summaries', () => {
@@ -64,6 +88,32 @@ test('resolvePreferredPackageIdentity reads nested package summaries', () => {
 			enablement: { package_id: 'en-id' },
 		}),
 	).toEqual({ name: undefined, packageId: 'en-id' })
+})
+
+test('resolvePreferredPackageIdentity ignores session id and webhook name', () => {
+	expect(
+		resolvePreferredPackageIdentity({
+			id: 'session-uuid',
+			session_id: 'session-uuid',
+			resolved_target: {
+				kind: 'package',
+				package_id: 'pkg-1',
+				name: '@owner/demo',
+				kody_id: 'demo',
+			},
+		}),
+	).toEqual({ name: '@owner/demo', packageId: 'pkg-1' })
+	expect(
+		resolvePreferredPackageIdentity({
+			webhooks: [
+				{
+					name: 'inbound-hook',
+					package_name: '@owner/bridge',
+					package_id: 'bridge-id',
+				},
+			],
+		}),
+	).toEqual({ name: '@owner/bridge', packageId: 'bridge-id' })
 })
 
 test('attachKodyIdDeprecationHint only when leftover kody_id was used', () => {

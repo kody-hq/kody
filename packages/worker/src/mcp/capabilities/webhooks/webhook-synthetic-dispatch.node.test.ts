@@ -77,7 +77,7 @@ test('webhookSyntheticDispatch returns synthetic run metadata and rejects runtim
 		run_id: 'run-1',
 		idempotency_key: 'synthetic:00000000-0000-4000-8000-000000000001',
 		result: { ok: true },
-		kody_id_deprecation: expect.stringContaining('package_id: "pkg-1"'),
+		kody_id_deprecation: expect.stringContaining('packageId: "pkg-1"'),
 	})
 	expect(requestResult).not.toHaveProperty('url')
 	expect(requestResult).not.toHaveProperty('url_secret')
