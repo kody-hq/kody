@@ -22,7 +22,9 @@ setup pages.
   `tools/ci/reindex-capabilities.ts --phases capabilities --force` with a
   per-deploy random `CAPABILITY_REINDEX_SECRET` so builtin capability search
   works on the fresh index (`--force` because APP_DB embed fingerprints can
-  outlive the index they described). A per-preview index (instead of a namespace
+  outlive the index they described). `--auth-retry-seconds` also waits out a
+  first-sweep workers.dev 1042 (`workers_dev_script_not_found`) while the
+  preview hostname is still binding. A per-preview index (instead of a namespace
   prefix inside a shared index) avoids sharing production's index namespace and
   lets cleanup delete every preview vector in one call; Cloudflare allows 50,000
   indexes per account.
