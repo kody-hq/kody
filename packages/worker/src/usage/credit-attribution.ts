@@ -739,6 +739,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 		})
 		displayRows.sort(
 			(left, right) =>
+				right.row.creditsMicroUsd - left.row.creditsMicroUsd ||
 				left.row.displayName.localeCompare(right.row.displayName) ||
 				(left.visitorId < right.visitorId
 					? -1
