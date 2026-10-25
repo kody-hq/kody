@@ -310,7 +310,7 @@ type StoredUploadResult = StoredBackup & {
 }
 
 /** True for BackupError / Workflows-wrapped messages naming export-result-expired. */
-export function isExportResultExpiredError(error: unknown): boolean {
+function isExportResultExpiredError(error: unknown): boolean {
 	return errorCode(error) === 'export-result-expired'
 }
 
