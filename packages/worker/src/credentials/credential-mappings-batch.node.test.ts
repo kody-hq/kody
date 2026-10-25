@@ -12,6 +12,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	buildWriteCredentialMappingStatement,
 	loadCredentialMappings,
+	runCredentialMappingWrite,
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
 
@@ -54,16 +55,19 @@ async function writeMapping(input: {
 	target: CredentialMappingRowTarget
 	credentialIds: ReadonlyArray<string>
 }) {
-	await buildWriteCredentialMappingStatement({
-		db: input.db,
-		orgId,
-		packageId,
-		needKey: input.needKey,
-		target: input.target,
-		credentialIds: input.credentialIds,
-		updatedByUserId: personId,
-		now,
-	}).run()
+	await runCredentialMappingWrite(
+		input.db,
+		buildWriteCredentialMappingStatement({
+			db: input.db,
+			orgId,
+			packageId,
+			needKey: input.needKey,
+			target: input.target,
+			credentialIds: input.credentialIds,
+			updatedByUserId: personId,
+			now,
+		}),
+	)
 }
 
 test('loadCredentialMappings batches concurrent need keys into one IN read (KODY-AZ)', async () => {
@@ -251,16 +255,19 @@ test('batched loadCredentialMappings isolates scopes so different packages do no
 		target: { target: 'org' },
 		credentialIds: ['cred-a'],
 	})
-	await buildWriteCredentialMappingStatement({
+	await runCredentialMappingWrite(
 		db,
-		orgId,
-		packageId: otherPackageId,
-		needKey: 'mail',
-		target: { target: 'org' },
-		credentialIds: ['cred-b'],
-		updatedByUserId: personId,
-		now,
-	}).run()
+		buildWriteCredentialMappingStatement({
+			db,
+			orgId,
+			packageId: otherPackageId,
+			needKey: 'mail',
+			target: { target: 'org' },
+			credentialIds: ['cred-b'],
+			updatedByUserId: personId,
+			now,
+		}),
+	)
 	queries.length = 0
 
 	const [left, right] = await Promise.all([

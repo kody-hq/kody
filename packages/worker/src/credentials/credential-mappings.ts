@@ -397,9 +397,6 @@ export function buildWriteCredentialMappingStatement(input: {
 	updatedByUserId: string
 	now: string
 }): D1PreparedStatement {
-	// Bump before the statement runs so a later open on the same request
-	// cannot keep a pre-write request-scoped snapshot (KODY-BF).
-	bumpCredentialMappingGeneration(input.db)
 	const { personUserId, enablementId } = targetColumns(input.target)
 	if (input.credentialIds === null) {
 		return input.db
@@ -442,6 +439,26 @@ export function buildWriteCredentialMappingStatement(input: {
 			input.now,
 			input.now,
 		)
+}
+
+/**
+ * Run a mapping write and invalidate request-scoped mapping caches after the
+ * statement commits (KODY-BF). Prefer this over `statement.run()` so a
+ * same-request open cannot keep a pre-write snapshot under a premature
+ * generation bump.
+ */
+export async function runCredentialMappingWrite(
+	db: D1Database,
+	statement: D1PreparedStatement,
+) {
+	const result = await statement.run()
+	bumpCredentialMappingGeneration(db)
+	return result
+}
+
+/** Invalidate mapping caches after a batch that included mapping writes. */
+export function noteCredentialMappingWritesCommitted(db: D1Database) {
+	bumpCredentialMappingGeneration(db)
 }
 
 /** The invalid JSON a failed unchanged-guard evaluates. */

@@ -16,7 +16,10 @@ import {
 	approveCredentialProposal,
 	resolveCredentialApproval,
 } from './credential-approval.ts'
-import { buildWriteCredentialMappingStatement } from './credential-mappings.ts'
+import {
+	buildWriteCredentialMappingStatement,
+	runCredentialMappingWrite,
+} from './credential-mappings.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 vi.mock(
@@ -275,16 +278,19 @@ test('a stored mapping of unusable credentials shows their ids and changes the f
 		.bind(new Date().toISOString(), gone1, gone2)
 		.run()
 	const storeMine = (id: string) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId: t.savedPackage.id,
-			needKey: 'mail',
-			target: { target: 'mine', personId: t.people.bea.personId },
-			credentialIds: [id],
-			updatedByUserId: t.people.bea.personId,
-			now: new Date().toISOString(),
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId: t.savedPackage.id,
+				needKey: 'mail',
+				target: { target: 'mine', personId: t.people.bea.personId },
+				credentialIds: [id],
+				updatedByUserId: t.people.bea.personId,
+				now: new Date().toISOString(),
+			}),
+		)
 	const proposal = proposalOf([
 		{ target: mine, needKey: 'mail', credentials: [{ name: 'resend-prod' }] },
 	])
@@ -723,16 +729,19 @@ test('approving a sender mapping writes that sender enablement, not an older one
 		'2026-10-13T00:01:00.000Z',
 	)
 	const writeMapping = (enablementId: string, credentialId: string) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId: t.savedPackage.id,
-			needKey: 'mail',
-			target: { target: 'enablement', enablementId, personId: enabler },
-			credentialIds: [credentialId],
-			updatedByUserId: enabler,
-			now: '2026-10-13T00:00:00.000Z',
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId: t.savedPackage.id,
+				needKey: 'mail',
+				target: { target: 'enablement', enablementId, personId: enabler },
+				credentialIds: [credentialId],
+				updatedByUserId: enabler,
+				now: '2026-10-13T00:00:00.000Z',
+			}),
+		)
 	await writeMapping(senderA.id, credA)
 	await writeMapping(senderB.id, credB)
 	const proposal = parseCredentialApprovalQuery(

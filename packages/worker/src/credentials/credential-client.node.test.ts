@@ -48,6 +48,7 @@ import {
 	type CredentialMappingRowTarget,
 	deleteCredentialMappingsForMember,
 	deleteCredentialMappingsForPackage,
+	runCredentialMappingWrite,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
 import { type CredentialNeed } from './credential-needs.ts'
@@ -769,16 +770,19 @@ test('stored mappings pick the credential: trigger override, then your default, 
 		target: CredentialMappingRowTarget,
 		credentialIds: Array<string> | null,
 	) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId,
-			needKey: 'resend',
-			target,
-			credentialIds,
-			updatedByUserId: t.people.bea.personId,
-			now,
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId,
+				needKey: 'resend',
+				target,
+				credentialIds,
+				updatedByUserId: t.people.bea.personId,
+				now,
+			}),
+		)
 	const open = (request: ReturnType<typeof t.requestAs>) =>
 		openCredentialClient(t.contextFor({ request, packageId }), {
 			key: 'resend',
@@ -933,16 +937,19 @@ test('a stored mapping stops applying when the need changes or is removed, and a
 		name: '@acme-clients/digest',
 	})
 	const mapOrg = (credentialIds: Array<string>) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId,
-			needKey: 'resend',
-			target: { target: 'org' },
-			credentialIds,
-			updatedByUserId: t.people.bea.personId,
-			now,
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId,
+				needKey: 'resend',
+				target: { target: 'org' },
+				credentialIds,
+				updatedByUserId: t.people.bea.personId,
+				now,
+			}),
+		)
 	const open = () =>
 		openCredentialClient(
 			t.contextFor({ request: t.requestAs('bea', 'owner'), packageId }),
@@ -1002,16 +1009,19 @@ test('a call map pick wins over a stored mapping, and credentials() opens every 
 		name: '@acme-clients/digest',
 	})
 	mockNeeds([{ key: 'resend' }])
-	await buildWriteCredentialMappingStatement({
-		db: t.db,
-		orgId: t.acmeId,
-		packageId,
-		needKey: 'resend',
-		target: { target: 'org' },
-		credentialIds: [keyA, keyB],
-		updatedByUserId: t.people.bea.personId,
-		now,
-	}).run()
+	await runCredentialMappingWrite(
+		t.db,
+		buildWriteCredentialMappingStatement({
+			db: t.db,
+			orgId: t.acmeId,
+			packageId,
+			needKey: 'resend',
+			target: { target: 'org' },
+			credentialIds: [keyA, keyB],
+			updatedByUserId: t.people.bea.personId,
+			now,
+		}),
+	)
 	const request = t.requestAs('bea', 'owner')
 	await expect(
 		openCredentialClient(t.contextFor({ request, packageId }), {

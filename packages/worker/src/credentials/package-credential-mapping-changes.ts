@@ -42,6 +42,7 @@ import { type UsableCredential } from './credential-candidates.ts'
 import {
 	buildCredentialMappingUnchangedStatement,
 	buildWriteCredentialMappingStatement,
+	noteCredentialMappingWritesCommitted,
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
 import { type CredentialNeed } from './credential-needs.ts'
@@ -725,6 +726,7 @@ export async function writeMappingChanges(
 			}
 			throw error
 		}
+		if (statements.length > 0) noteCredentialMappingWritesCommitted(db)
 		for (const plan of auditPlans) {
 			await commitOrgAuditOutbox({ ...audit, appDb: db }, plan)
 		}

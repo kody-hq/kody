@@ -962,6 +962,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		}),
 	)
 
+	bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return prepared.map((entry) =>
 		toSecretMetadata({
 			name: entry.name,
@@ -1283,6 +1284,7 @@ async function saveSecretsAtomically(input: {
 		)
 	}
 
+	bumpUsableCredentialsGeneration(input.env.APP_DB)
 	return prepared.map((entry) =>
 		toSecretMetadata({
 			name: entry.name,

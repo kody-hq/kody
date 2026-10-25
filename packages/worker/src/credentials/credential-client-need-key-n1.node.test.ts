@@ -30,7 +30,10 @@ import {
 	openCredentialClient,
 	type CredentialClientContext,
 } from './credential-client.ts'
-import { buildWriteCredentialMappingStatement } from './credential-mappings.ts'
+import {
+	buildWriteCredentialMappingStatement,
+	runCredentialMappingWrite,
+} from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
 
 vi.mock(
@@ -147,16 +150,19 @@ async function setup(needKeys: ReadonlyArray<string>) {
 			)
 			.bind(key, JSON.stringify(['api.example.com']), `${key}-prod`, acmeId)
 			.first<{ id: string }>()
-		await buildWriteCredentialMappingStatement({
+		await runCredentialMappingWrite(
 			db,
-			orgId: acmeId,
-			packageId,
-			needKey: key,
-			target: { target: 'org' },
-			credentialIds: [row!.id],
-			updatedByUserId: stableUserId,
-			now,
-		}).run()
+			buildWriteCredentialMappingStatement({
+				db,
+				orgId: acmeId,
+				packageId,
+				needKey: key,
+				target: { target: 'org' },
+				credentialIds: [row!.id],
+				updatedByUserId: stableUserId,
+				now,
+			}),
+		)
 	}
 	await db
 		.prepare(
