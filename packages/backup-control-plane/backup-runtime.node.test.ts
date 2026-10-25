@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 
 import { afterEach, test, vi } from 'vitest'
 
 import { NonRetryableError } from 'cloudflare:workflows'
-import { runBackupRuntime } from './backup-runtime.ts'
+import { acceptUploadStepResult, runBackupRuntime } from './backup-runtime.ts'
 import { DEFAULT_BACKUP_MAX_SOURCE_BYTES } from './d1-export-api.ts'
 import { readManifest } from './immutable-storage.ts'
 import {
@@ -487,6 +488,97 @@ test('an expired export result recovers via durable step result (not NonRetryabl
 			),
 		),
 		['backup-export-result-expired-recover', 'backup-success'],
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
+test('acceptUploadStepResult keeps legacy flat StoredBackup and tagged results', () => {
+	assert.deepEqual(acceptUploadStepResult({ kind: 'export-result-expired' }), {
+		kind: 'export-result-expired',
+	})
+	assert.equal(
+		acceptUploadStepResult({
+			kind: 'stored',
+			stored: {
+				objectKey: 'daily/d1/x/2026-07-22/backup-b.sql',
+				bookmark: 'bookmark-1',
+				bytes: 5,
+				sha256: 'abc',
+				r2Etag: 'etag',
+				alreadyExisted: false,
+			},
+		}).kind,
+		'stored',
+	)
+	const legacy = acceptUploadStepResult({
+		objectKey: 'daily/d1/x/2026-07-22/backup-b.sql',
+		bookmark: 'bookmark-1',
+		bytes: 5,
+		sha256: 'abc',
+		r2Etag: 'etag',
+		alreadyExisted: true,
+	})
+	assert.equal(legacy.kind, 'stored')
+	if (legacy.kind === 'stored') {
+		assert.equal(legacy.stored.bookmark, 'bookmark-1')
+		assert.equal(legacy.stored.alreadyExisted, true)
+	}
+	assert.equal(acceptUploadStepResult({ kind: 'stored' }).kind, 'unexpected')
+	assert.equal(acceptUploadStepResult({ hello: 'world' }).kind, 'unexpected')
+})
+
+test('replayed pre-change flat upload result is accepted without recover export', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const objectKey = objectKeyForBookmark(payload.objectPrefix, 'bookmark-1')
+	const sqlBody = 'valid'
+	await bucket.put(objectKey, sqlBody)
+	const exportBodies: unknown[] = []
+	const flatLegacyUpload = {
+		objectKey,
+		bookmark: 'bookmark-1',
+		bytes: sqlBody.length,
+		sha256: createHash('sha256').update(sqlBody).digest('hex'),
+		r2Etag: createHash('md5').update(sqlBody).digest('hex'),
+		alreadyExisted: true,
+	}
+	const step: RuntimeStep = {
+		async do(name, configOrCallback, callback?) {
+			if (name === 'stream-export-to-immutable-r2') {
+				return flatLegacyUpload as never
+			}
+			const execute =
+				typeof configOrCallback === 'function'
+					? (configOrCallback as () => Promise<unknown>)
+					: callback!
+			return (await execute()) as never
+		},
+		sleep: async () => undefined,
+	}
+	const result = await runDay(env, payload, step, {
+		api: completeApi((init) => {
+			exportBodies.push(JSON.parse(String(init?.body)))
+			return exportEnvelope(
+				'complete',
+				'bookmark-1',
+				'https://download.example/unused',
+			)
+		}),
+		downloadFetcher: async () => {
+			throw new Error('legacy replay must not re-download')
+		},
+	})
+	assert.equal(result.payload.export.bookmark, 'bookmark-1')
+	assert.equal(exportBodies.length, 1)
+	assert.equal(
+		consoleEvents(consoleLog).includes('backup-export-result-expired-recover'),
+		false,
 	)
 	assert.deepEqual(
 		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),

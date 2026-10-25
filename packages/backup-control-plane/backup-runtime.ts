@@ -304,6 +304,53 @@ function validatePayload(
 	return expected
 }
 
+type StoredUploadResult = StoredBackup & {
+	objectKey: string
+	bookmark: string
+}
+
+/**
+ * Normalize the durable upload-step result. Current code returns
+ * `{ kind: 'stored' | 'export-result-expired', … }`. Instances that completed
+ * the upload step before that change still replay a flat StoredBackup; treat
+ * that as stored so catch-up does not abandon an object already in R2.
+ */
+export function acceptUploadStepResult(
+	uploadResult: unknown,
+):
+	| { kind: 'stored'; stored: StoredUploadResult }
+	| { kind: 'export-result-expired' }
+	| { kind: 'unexpected' } {
+	if (uploadResult === null || typeof uploadResult !== 'object') {
+		return { kind: 'unexpected' }
+	}
+	const record = uploadResult as Record<string, unknown>
+	if (record.kind === 'export-result-expired') {
+		return { kind: 'export-result-expired' }
+	}
+	if (record.kind === 'stored') {
+		const nested = record.stored
+		if (
+			nested !== null &&
+			typeof nested === 'object' &&
+			typeof (nested as StoredUploadResult).objectKey === 'string' &&
+			typeof (nested as StoredUploadResult).bookmark === 'string'
+		) {
+			return { kind: 'stored', stored: nested as StoredUploadResult }
+		}
+		return { kind: 'unexpected' }
+	}
+	// Pre-change durable replay: flat StoredBackup with objectKey + bookmark.
+	if (
+		!Object.hasOwn(record, 'kind') &&
+		typeof record.objectKey === 'string' &&
+		typeof record.bookmark === 'string'
+	) {
+		return { kind: 'stored', stored: record as StoredUploadResult }
+	}
+	return { kind: 'unexpected' }
+}
+
 export async function runBackupRuntime(
 	env: BackupEnvironment,
 	event: BackupRuntimeEvent,
@@ -345,14 +392,10 @@ export async function runBackupRuntime(
 		// `recover-*` steps. Return a durable step result instead; the step
 		// succeeds, and the next attempt runs under a fresh prefix.
 		const maxExportUploadAttempts = 3
-		type StoredUpload = StoredBackup & {
-			objectKey: string
-			bookmark: string
-		}
 		type UploadStepResult =
-			| { kind: 'stored'; stored: StoredUpload }
+			| { kind: 'stored'; stored: StoredUploadResult }
 			| { kind: 'export-result-expired' }
-		let stored: StoredUpload | null = null
+		let stored: StoredUploadResult | null = null
 		for (let attempt = 1; attempt <= maxExportUploadAttempts; attempt += 1) {
 			const stepNamePrefix = attempt === 1 ? '' : `recover-${String(attempt)}-`
 			const exported = await runDurableExport(sourceEnv, step, {
@@ -402,9 +445,16 @@ export async function runBackupRuntime(
 					}
 				},
 			)
-			if (uploadResult.kind === 'stored') {
-				stored = uploadResult.stored
+			const accepted = acceptUploadStepResult(uploadResult)
+			if (accepted.kind === 'stored') {
+				stored = accepted.stored
 				break
+			}
+			if (accepted.kind === 'unexpected') {
+				throw new BackupError(
+					'unexpected-upload-step-result',
+					'D1 upload step returned an unrecognized durable result',
+				)
 			}
 			if (attempt >= maxExportUploadAttempts) {
 				break
