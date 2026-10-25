@@ -20,6 +20,7 @@ import {
 	buildWriteCredentialMappingStatement,
 	runCredentialMappingWrite,
 } from './credential-mappings.ts'
+import * as needsClosure from './credential-needs-closure.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 vi.mock(
@@ -360,6 +361,42 @@ test('a member cannot approve org defaults but can approve their own', async () 
 		)
 	).view
 	expect(mineView.canApprove).toBe(true)
+})
+
+test('publisher-supplied needs reject personal and trigger mapping proposals', async () => {
+	const t = await setup()
+	const credentialId = await t.storeKey('publisher-key', 'resend')
+	const needs = vi
+		.spyOn(needsClosure, 'loadPublishedCredentialNeeds')
+		.mockResolvedValue([
+			{
+				key: 'mail',
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Publisher email.',
+				multiple: false,
+				supplier: 'publisher',
+			},
+		])
+	const scope = await t.scopeFor('bea', 'owner')
+	for (const target of [mine, daily]) {
+		const { view } = await resolveCredentialApproval(
+			scope,
+			proposalOf([
+				{
+					target,
+					needKey: 'mail',
+					credentials: [{ id: credentialId }],
+				},
+			]),
+		)
+		expect(view.changes[0]?.error).toMatchObject({
+			code: 'not_allowed',
+			message:
+				'Credential need "mail" is supplied by the publisher. Only the org-level mapping can set it.',
+		})
+	}
+	needs.mockRestore()
 })
 
 test('an enable-only proposal turns a minted webhook on at Approve, once', async () => {

@@ -1361,6 +1361,7 @@ export async function runBundledModuleWithRegistry(
 								env,
 								orgId: request.org.id,
 								packageIds: credentialEntryPackageIds,
+								request,
 							})
 							return runNeeds
 						},

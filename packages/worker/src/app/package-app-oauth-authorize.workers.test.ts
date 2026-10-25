@@ -69,6 +69,16 @@ async function ensureOauthGrantSchema() {
 			created_at TEXT NOT NULL
 		)`,
 	).run()
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS package_app_grant_credential_mappings (
+			grant_id TEXT NOT NULL,
+			need_key TEXT NOT NULL,
+			credential_ids_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (grant_id, need_key)
+		)`,
+	).run()
 }
 
 async function seedOwnerPackageApp(slug = 'demo') {
@@ -306,17 +316,16 @@ test('package-app consent form submits rendered fields and redirects with a code
 		headers: { Cookie: cookie },
 	})
 	if (consent instanceof Response) throw new Error('Expected consent data')
-	const form = new URLSearchParams({
-		...consent.consent.hiddenFields,
-		selected_scopes: [
-			...consent.consent.requiredScopes,
-			...consent.consent.alreadyAllowedScopes,
-			...consent.consent.optionalScopes.map(({ scope }) => scope),
-		].join(' '),
-		decision: 'approve',
-	})
+	const form = new URLSearchParams()
+	for (const [name, value] of Object.entries(consent.consent.hiddenFields))
+		form.append(name, value)
+	for (const { scope } of consent.consent.optionalScopes)
+		form.append('selected_scopes', scope)
+	for (const scope of consent.consent.requiredScopes)
+		form.append('selected_scopes', scope)
+	form.append('decision', 'approve')
 	expect(form.get('scope')).toBe('profile email')
-	expect(form.get('selected_scopes')).toBe('profile email')
+	expect(form.getAll('selected_scopes')).toEqual(['email', 'profile'])
 	const response = await workerFetch(authorizeUrl, {
 		method: 'POST',
 		headers: {

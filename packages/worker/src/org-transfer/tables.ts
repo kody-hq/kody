@@ -40,6 +40,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_app_rate_limits: keep(
 		'Rate-limit buckets bind to package ids, which do not change on org transfer.',
 	),
+	package_app_grant_credential_mappings: keep(
+		'Visitor credential mappings follow the person and their app grant, not the package owner.',
+	),
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
 	),

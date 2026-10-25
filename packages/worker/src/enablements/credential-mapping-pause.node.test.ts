@@ -87,6 +87,59 @@ test('a trigger mapping naming a credential the enabler cannot use pauses before
 	})
 })
 
+test('a required executor need without a trigger mapping pauses before the run', async () => {
+	const t = await setup()
+	await t.apply('bea', 'owner', [
+		{ target: daily, needKey: 'chat', credentials: [] },
+	])
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		...mappingFixtureNeeds,
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+
+	expect((await t.plan()).runs).toEqual([])
+	expect(await t.readEnablement()).toMatchObject({
+		state: 'paused',
+		paused_reason: 'credential_access',
+		paused_resource_type: 'credential-mapping',
+		paused_resource_id: 'calendar',
+		paused_credential_id: null,
+	})
+})
+
+test('an optional executor need without a trigger mapping does not pause the run', async () => {
+	const t = await setup()
+	await t.apply('bea', 'owner', [
+		{ target: daily, needKey: 'chat', credentials: [] },
+	])
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		...mappingFixtureNeeds,
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: false,
+			multiple: false,
+		},
+	])
+
+	expect((await t.plan()).runs).toHaveLength(1)
+	expect(await t.readEnablement()).toMatchObject({
+		state: 'on',
+		paused_reason: null,
+	})
+})
+
 test('remapping the need resumes a paused enablement on the next event', async () => {
 	const t = await setup()
 	const slack = await t.storeKey('team-slack', 'slack')

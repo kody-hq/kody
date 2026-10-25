@@ -169,6 +169,55 @@ test('a need opts in to owner credentials for visitors only with true', () => {
 	).toMatch(/Unrecognized key: "ownerCredentialsForVisitors"/)
 })
 
+test('supplier and required fields validate and reject conflicting aliases', () => {
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({
+				publisher: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+				executor: {
+					description: 'Visitor access.',
+					supplier: 'executor',
+				},
+				optional: {
+					description: 'Optional visitor access.',
+					supplier: 'executor',
+					required: false,
+				},
+			}),
+		}).kody.credentials,
+	).toMatchObject({
+		publisher: { supplier: 'publisher' },
+		executor: { supplier: 'executor' },
+		optional: { supplier: 'executor', required: false },
+	})
+	expect(
+		publishError({
+			executor: {
+				description: 'Visitor access.',
+				supplier: 'executor',
+				ownerCredentialForVisitors: true,
+			},
+		}),
+	).toMatch(/kody\.credentials\.executor/)
+	expect(
+		publishError({
+			publisher: {
+				description: 'Publisher access.',
+				supplier: 'publisher',
+				required: true,
+			},
+		}),
+	).toMatch(/kody\.credentials\.publisher\.required/)
+	expect(
+		publishError({
+			legacy: { description: 'Legacy access.', required: false },
+		}),
+	).toMatch(/kody\.credentials\.legacy\.required/)
+})
+
 test('published snapshots load when an old kody.credentials key predates the schema', () => {
 	const content = manifestWithCredentials({ GOOGLE: 'my google account' })
 	expect(

@@ -5,6 +5,7 @@ import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/pac
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import type * as ManagerClient from '#worker/jobs/manager-client.ts'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
+import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import {
 	dailyTarget as daily,
@@ -108,6 +109,46 @@ test('the view shows needs, options, triggers, and what is incomplete', async ()
 		{ needKey: 'mail', where: { type: 'default' }, status: 'ambiguous' },
 		{ needKey: 'chat', where: { type: 'default' }, status: 'unbound' },
 	])
+})
+
+test('publisher needs offer and auto-resolve only org credentials', async () => {
+	const t = await setup()
+	await t.storeKey('org-mail', 'resend')
+	const beaPersonalOrgId = await loadPersonalOrgIdForPerson(
+		t.db,
+		t.people.bea.personId,
+	)
+	await saveSecret({
+		env: t.env,
+		userId: beaPersonalOrgId,
+		scope: 'user',
+		name: 'personal-mail',
+		value: 'v',
+		audit: null,
+	})
+	await t.db
+		.prepare(
+			`UPDATE secret_entries SET provider = 'resend'
+			 WHERE name = 'personal-mail' AND bucket_id IN (
+			   SELECT id FROM secret_buckets WHERE user_id = ? AND scope = 'user'
+			 )`,
+		)
+		.bind(beaPersonalOrgId)
+		.run()
+	const scope = await t.scopeFor('bea', 'owner')
+	scope.needs = scope.needs.map((need) =>
+		need.key === 'mail' ? { ...need, supplier: 'publisher' } : need,
+	)
+	const view = await buildPackageCredentialsView(scope)
+	const mail = view.needs.find((need) => need.key === 'mail')
+	expect(mail?.options.map((credential) => credential.name)).toEqual([
+		'org-mail',
+	])
+	expect(mail?.effective).toMatchObject({
+		source: 'auto',
+		status: 'ready',
+		credentials: [{ name: 'org-mail', scope: 'org' }],
+	})
 })
 
 test('one write sets defaults and a trigger mapping, turning the trigger on', async () => {

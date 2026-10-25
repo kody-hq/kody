@@ -139,6 +139,10 @@ export async function verifyCredentialClientHandle(input: {
 	runsAsRequest?: () => Promise<RequestContext | null>
 	/** Package apps: the visitor, while their consent covers this need. */
 	visitorNeedRequest?: (needKey: string) => Promise<RequestContext | null>
+	/** Package apps: the visitor grant authorizing this need. */
+	visitorNeedGrant?: (
+		needKey: string,
+	) => Promise<{ request: RequestContext; grantId: string } | null>
 	now?: number
 }): Promise<CredentialClientHandle> {
 	const fail = () => new CredentialClientHandleError()
@@ -179,7 +183,9 @@ export async function verifyCredentialClientHandle(input: {
 		: handle.data.runsAs
 			? ((await input.runsAsRequest?.()) ?? null)
 			: handle.data.visitorNeed
-				? ((await input.visitorNeedRequest?.(handle.data.visitorNeed)) ?? null)
+				? ((await input.visitorNeedGrant?.(handle.data.visitorNeed))?.request ??
+					(await input.visitorNeedRequest?.(handle.data.visitorNeed)) ??
+					null)
 				: input.request
 	if (
 		!request?.actor ||

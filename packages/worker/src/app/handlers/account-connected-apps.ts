@@ -1,6 +1,9 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
-import { packageAppOauthClaimLabels } from '#app/package-app-oauth-consent-copy.ts'
+import {
+	packageAppOauthClaimLabel,
+	packageAppOauthClaimLabels,
+} from '#app/package-app-oauth-consent-copy.ts'
 import {
 	listLivePackageAppOauthGrantsForPerson,
 	revokePackageAppOauthGrantScope,
@@ -166,17 +169,22 @@ async function describeAppGrant(
 	}
 	const orderedScopes = [...grant.scopes].sort()
 	const optionalScopes = orderedScopes.filter(isOptionalPackageAppScope)
+	const baseAllows = packageAppOauthClaimLabels(['profile']).map((label) => ({
+		label,
+		scope: null,
+	}))
 	return {
 		appKey: `${grant.orgUsername}/${grant.kodyId}`,
 		appName,
 		publisherName,
 		iconUrl,
-		allows: packageAppOauthClaimLabels(orderedScopes, needDescriptions).map(
-			(label, index) => ({
-				label,
-				scope: index < 2 ? null : (optionalScopes[index - 2] ?? null),
-			}),
-		),
+		allows: [
+			...baseAllows,
+			...optionalScopes.map((scope) => ({
+				label: packageAppOauthClaimLabel(scope, needDescriptions),
+				scope,
+			})),
+		],
 		connectedAt: grant.createdAt,
 		lastUsedAt: grant.lastUsedAt,
 	}

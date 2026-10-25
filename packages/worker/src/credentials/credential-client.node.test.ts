@@ -1206,6 +1206,40 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 	).resolves.toMatchObject({ body: { code: 'credential_denied' } })
 })
 
+test('call maps cannot select publisher-supplied credentials', async () => {
+	const t = await setup()
+	const request = t.requestAs('bea', 'owner')
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/publisher-credentials',
+	})
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'mail',
+			kind: 'secret',
+			provider: 'resend',
+			description: 'Publisher email.',
+			multiple: false,
+			supplier: 'publisher',
+		},
+	])
+	const result = await rejection(
+		validateCredentialCallMap({
+			env: t.env,
+			request,
+			map: normalizeCredentialCallMap({ mail: 'mailer' })!,
+			packageIds: [packageId],
+			strict: true,
+			baseUrl: 'https://example.com',
+		}),
+	)
+	expect(result.body).toMatchObject({
+		code: 'invalid_request',
+		message:
+			'Credential need "mail" is supplied by the publisher. Only the org-level mapping can set it.',
+	})
+})
+
 test('call map validation keeps the entry package pinned needs over a dependency later publish', async () => {
 	const t = await setup()
 	await t.storeKey({ name: 'resend-prod' })

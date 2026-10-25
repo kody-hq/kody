@@ -9,6 +9,7 @@ import {
 	consoleWarn,
 } from '#worker/test-support/console-spies.ts'
 import { ComputeOverageLimitError } from '#worker/entitlements/errors.ts'
+import { CredentialClientError } from '#worker/credentials/credential-client.ts'
 import {
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -106,6 +107,12 @@ const mockModule = vi.hoisted(() => ({
 	packageRealtimeConnect: vi.fn(),
 	beginRunRecord: vi.fn((..._args: Array<unknown>): unknown => undefined),
 	finishRunRecord: vi.fn(async (..._args: Array<unknown>) => true),
+	loadPublishedCredentialNeeds: vi.fn(
+		async (..._args: Array<unknown>) => [] as Array<unknown>,
+	),
+	openCredentialClient: vi.fn(async (..._args: Array<unknown>) => ({
+		token: 'credential-handle',
+	})),
 }))
 
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
@@ -133,6 +140,23 @@ vi.mock('#worker/package-runtime/realtime-session.ts', () => ({
 			mockModule.packageRealtimeConnect(...args),
 	}),
 }))
+
+vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
+	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
+		mockModule.loadPublishedCredentialNeeds(...args),
+}))
+
+vi.mock('#worker/credentials/credential-client.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import('#worker/credentials/credential-client.ts')
+		>()
+	return {
+		...actual,
+		openCredentialClient: (...args: Array<unknown>) =>
+			mockModule.openCredentialClient(...args),
+	}
+})
 
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	const actual = await vi.importActual<Record<string, unknown>>(
@@ -193,7 +217,7 @@ function createFixture(options: FixtureOptions = {}) {
 	const savedPackage = {
 		id: `pkg-${kodyId}`,
 		userId: ownerIdFromStored('user-1'),
-		name: `@kentcdodds/${kodyId}`,
+		name: `@demo-user/${kodyId}`,
 		kodyId,
 		description: 'Minimal hello-world app',
 		tags: [],
@@ -222,7 +246,7 @@ function createFixture(options: FixtureOptions = {}) {
 		updated_at: '2026-08-12T00:00:00.000Z',
 	}
 	const manifestContent = JSON.stringify({
-		name: `@kentcdodds/${kodyId}`,
+		name: `@demo-user/${kodyId}`,
 		private: true,
 		exports: { '.': './src/index.ts' },
 		kody: {
@@ -236,6 +260,10 @@ function createFixture(options: FixtureOptions = {}) {
 
 function seedFixture(options?: FixtureOptions) {
 	const fixture = createFixture(options)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
+	mockModule.openCredentialClient.mockResolvedValue({
+		token: 'credential-handle',
+	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.resolveSavedPackageRef.mockImplementation(
 		async (_db: unknown, input: { userId: string; ref: string }) =>
@@ -280,7 +308,7 @@ async function serveHelloWorld(input?: {
 	const restPath = input?.restPath ?? '/'
 	return await servePackageAppRequest({
 		request: new Request(
-			`https://example.com/@kentcdodds/packages/${kodyId}${restPath === '/' ? '' : restPath}`,
+			`https://example.com/@demo-user/packages/${kodyId}${restPath === '/' ? '' : restPath}`,
 			input?.init,
 		),
 		env: {
@@ -289,17 +317,17 @@ async function serveHelloWorld(input?: {
 		} as Env,
 		owner: {
 			userId: ownerIdFromStored('user-1'),
-			username: 'kentcdodds',
-			email: 'kent@example.com',
-			displayName: 'Kent',
+			username: 'demo-user',
+			email: 'demo-user@example.com',
+			displayName: 'Demo User',
 		},
 		visitor: {
 			userId: personIdFromStored('user-1'),
-			username: 'kentcdodds',
+			username: 'demo-user',
 			role: 'owner',
 		},
 		packagePath: {
-			username: 'kentcdodds',
+			username: 'demo-user',
 			kodyId,
 			restPath,
 			mount: 'username-path',
@@ -307,6 +335,40 @@ async function serveHelloWorld(input?: {
 		dispatch: input?.dispatch,
 	})
 }
+
+test('required executor credentials redirect visitors to consent before serving app content', async () => {
+	seedFixture()
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+
+	const response = await serveHelloWorld()
+	const location = response.headers.get('location')
+	expect(response.status).toBe(302)
+	expect(location).not.toBeNull()
+	const loginUrl = new URL(location!)
+	expect(loginUrl.pathname).toBe('/-/auth/login')
+	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(loginUrl.searchParams.get('return_to')).toBe(
+		'/@demo-user/packages/perf-app',
+	)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+})
 
 const clientModuleName = 'client.0123456789abcdef.js'
 
@@ -532,7 +594,7 @@ test('package-app host permanent-308s a retired slug to the current leaf', async
 	})
 	expect(redirected.status).toBe(308)
 	expect(redirected.headers.get('Location')).toBe(
-		'/@kentcdodds/packages/new-app/dashboard',
+		'/@demo-user/packages/new-app/dashboard',
 	)
 	expect(redirected.headers.get('Cache-Control')).toBe('no-store')
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
@@ -560,7 +622,7 @@ test('package-app host permanent-308s a retired slug to the current leaf', async
 
 test('package-app 308 Location uses the name leaf when kodyId diverges', async () => {
 	const fixture = createFixture({ kodyId: 'stale-kody-id' })
-	fixture.savedPackage.name = '@kentcdodds/canonical-leaf'
+	fixture.savedPackage.name = '@demo-user/canonical-leaf'
 	mockModule.resolveSavedPackageRef.mockImplementation(
 		async (
 			_db: unknown,
@@ -581,7 +643,7 @@ test('package-app 308 Location uses the name leaf when kodyId diverges', async (
 	const redirected = await serveHelloWorld({ kodyId: 'diverged-old-app' })
 	expect(redirected.status).toBe(308)
 	expect(redirected.headers.get('Location')).toBe(
-		'/@kentcdodds/packages/canonical-leaf',
+		'/@demo-user/packages/canonical-leaf',
 	)
 	expect(redirected.headers.get('Cache-Control')).toBe('no-store')
 })
@@ -621,7 +683,7 @@ test('/_assets/ serves the fingerprinted client module with immutable caching an
 	// A service worker script in the assets directory may claim the whole app
 	// mount as its scope; non-script assets do not carry the header.
 	expect(lookalike.headers.get('Service-Worker-Allowed')).toBe(
-		'/@kentcdodds/packages/client-app/',
+		'/@demo-user/packages/client-app/',
 	)
 	expect(response.headers.get('Service-Worker-Allowed')).toBeNull()
 	const css = await asset('styles.css')
@@ -641,8 +703,8 @@ test('/_assets/__version.json exposes the current client module URL for service 
 		`"${fixture.source.published_commit}:${clientModuleName}"`,
 	)
 	expect(await version.json()).toEqual({
-		clientModuleUrl: `https://example.com/@kentcdodds/packages/${clientAppKodyId}/_assets/${clientModuleName}`,
-		assetBasePath: `/@kentcdodds/packages/${clientAppKodyId}/_assets`,
+		clientModuleUrl: `https://example.com/@demo-user/packages/${clientAppKodyId}/_assets/${clientModuleName}`,
+		assetBasePath: `/@demo-user/packages/${clientAppKodyId}/_assets`,
 		publishedCommit: fixture.source.published_commit,
 	})
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
@@ -654,7 +716,7 @@ test('/_assets/__version.json exposes the current client module URL for service 
 	expect(workerOnly.status).toBe(200)
 	expect(await workerOnly.json()).toMatchObject({
 		clientModuleUrl: null,
-		assetBasePath: '/@kentcdodds/packages/perf-app/_assets',
+		assetBasePath: '/@demo-user/packages/perf-app/_assets',
 	})
 })
 
@@ -1035,10 +1097,10 @@ test('synthetic host-setup failures return JSON with the underlying cause', asyn
 		next_step:
 			'This has been reported to Kody. Try again shortly, or ask the package owner to republish the package if it keeps happening.',
 		package: {
-			name: '@kentcdodds/prep-fail-app',
+			name: '@demo-user/prep-fail-app',
 			kody_id: 'prep-fail-app',
 		},
-		request_path: '/@kentcdodds/packages/prep-fail-app',
+		request_path: '/@demo-user/packages/prep-fail-app',
 		cause: 'kody.app.runtime was removed; every package app is a fetch handler',
 	})
 })
@@ -1102,7 +1164,7 @@ test('missing published runtime bundle returns 503 without reporting a host-setu
 		expect.objectContaining({
 			status: 503,
 			phase: 'runtime-bundle-pending',
-			pathname: '/@kentcdodds/packages/runtime-bundle-pending-app',
+			pathname: '/@demo-user/packages/runtime-bundle-pending-app',
 		}),
 	)
 	expect(consoleError).not.toHaveBeenCalledWith(
@@ -1164,13 +1226,13 @@ test('VCS probe paths 404 before building the package-app worker', async () => {
 		} as Env,
 		owner: {
 			userId: ownerIdFromStored('user-1'),
-			username: 'kentcdodds',
-			email: 'kent@example.com',
-			displayName: 'Kent',
+			username: 'demo-user',
+			email: 'demo-user@example.com',
+			displayName: 'Demo User',
 		},
 		visitor: null,
 		packagePath: {
-			username: 'kentcdodds',
+			username: 'demo-user',
 			kodyId: 'probe-app',
 			restPath: '/.git/config',
 			mount: 'custom-hostname',

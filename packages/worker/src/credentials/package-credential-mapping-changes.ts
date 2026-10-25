@@ -337,6 +337,20 @@ export async function resolveMappingChanges(
 					`Package "${scope.savedPackage.kodyId}" has no credential need "${change.needKey}".`,
 				)
 			}
+			const orgLevel =
+				change.target.type === 'default' && change.target.layer === 'org'
+			if (need.supplier === 'publisher' && !orgLevel) {
+				refuse(
+					'not_allowed',
+					`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+				)
+			}
+			if (need.supplier === 'executor' && orgLevel) {
+				refuse(
+					'not_allowed',
+					`Credential need "${need.key}" is supplied by the executor. Org-level mappings cannot set it.`,
+				)
+			}
 			const target = resolveTarget(scope, change, sender)
 			const stored = target.rowTarget
 				? findStoredRow(scope, need.key, target.rowTarget)
@@ -507,10 +521,9 @@ export class MappingWriteRefused extends Error {
  * Planning a turn-on never asks for webhook approval; only `enablementEnable`
  * does. An inbound-email subscription without a sender is a write refusal.
  */
-export type MappingWriteRefusalCode = Exclude<
-	TriggerEnablementError['code'],
-	'webhook_approval_required'
->
+export type MappingWriteRefusalCode =
+	| Exclude<TriggerEnablementError['code'], 'webhook_approval_required'>
+	| 'not_allowed'
 type MappingWriteRefusal = TriggerEnablementError & {
 	code: MappingWriteRefusalCode
 }
@@ -585,6 +598,27 @@ export async function writeMappingChanges(
 			resolved.map((change) => [changeTargetKey(change), change]),
 		).values(),
 	]
+	for (const change of finalChanges) {
+		const need = scope.needs.find(
+			(candidate) => candidate.key === change.needKey,
+		)
+		const orgLevel =
+			change.target.type === 'default' && change.target.layer === 'org'
+		if (need?.supplier === 'publisher' && !orgLevel) {
+			throw new MappingWriteRefused(
+				change,
+				'not_allowed',
+				`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+			)
+		}
+		if (need?.supplier === 'executor' && orgLevel) {
+			throw new MappingWriteRefused(
+				change,
+				'not_allowed',
+				`Credential need "${need.key}" is supplied by the executor. Org-level mappings cannot set it.`,
+			)
+		}
+	}
 	const db = scope.env.APP_DB
 	const audit = orgAuditWriterFromRequest(scope.env, scope.request)
 	const commitMappingWrite = async () => {

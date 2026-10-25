@@ -16,6 +16,11 @@ const mocks = vi.hoisted(() => ({
 	>(),
 	manifests: new Map<string, unknown>(),
 	snapshots: new Map<string, Record<string, string>>(),
+	supplierFlag: vi.fn(async () => false),
+}))
+
+vi.mock('./credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: mocks.supplierFlag,
 }))
 
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
@@ -118,6 +123,8 @@ beforeEach(() => {
 	mocks.sources.clear()
 	mocks.manifests.clear()
 	mocks.snapshots.clear()
+	mocks.supplierFlag.mockReset()
+	mocks.supplierFlag.mockResolvedValue(false)
 })
 
 test('publish stores own needs plus each imported package closure, and reads it back', async () => {
@@ -219,6 +226,126 @@ test('publish stores own needs plus each imported package closure, and reads it 
 			sourceId: 'src-app',
 		}),
 	).toEqual([])
+})
+
+test('pinned closures preserve supplier and required status on readback', async () => {
+	mocks.supplierFlag.mockResolvedValue(true)
+	addPackage({
+		name: '@fixture/dependency',
+		sourceId: 'src-dependency',
+		commit: 'c1',
+		storedNeeds: [
+			{
+				key: 'calendar',
+				provider: 'calendar',
+				description: 'Visitor calendar.',
+				multiple: false,
+				supplier: 'executor',
+				required: false,
+			},
+		],
+	})
+	addPackage({
+		name: '@fixture/root',
+		sourceId: 'src-root',
+		commit: 'c2',
+	})
+	await storePublishedCredentialNeeds({
+		env,
+		source: {
+			id: 'src-root',
+			user_id: 'org-1',
+			entity_kind: 'package',
+			manifest_path: 'package.json',
+			source_root: '/',
+		} as never,
+		publishedCommit: 'c2',
+		files: {
+			'package.json': JSON.stringify({
+				name: '@fixture/root',
+				exports: { '.': './index.ts' },
+				kody: { description: 'Root.' },
+			}),
+			'index.ts': "import dependency from 'kody:@fixture/dependency'",
+		},
+	})
+	expect(mocks.kv.get('src-root:c2')).toEqual([
+		expect.objectContaining({
+			key: 'calendar',
+			supplier: 'executor',
+			required: false,
+			from: '@fixture/dependency',
+		}),
+	])
+	await expect(
+		loadPublishedCredentialNeeds({
+			env,
+			userId: 'org-1',
+			sourceId: 'src-root',
+		}),
+	).resolves.toEqual([
+		expect.objectContaining({
+			key: 'calendar',
+			supplier: 'executor',
+			required: false,
+			from: '@fixture/dependency',
+		}),
+	])
+	mocks.supplierFlag.mockResolvedValue(false)
+	await expect(
+		loadPublishedCredentialNeeds({
+			env,
+			userId: 'org-1',
+			sourceId: 'src-root',
+		}),
+	).resolves.toEqual([
+		{
+			key: 'calendar',
+			provider: 'calendar',
+			description: 'Visitor calendar.',
+			multiple: false,
+			from: '@fixture/dependency',
+		},
+	])
+})
+
+test('published visitor needs cannot reference publisher-supplied credentials', async () => {
+	mocks.supplierFlag.mockResolvedValue(true)
+	const packageManifest = {
+		...manifest('@fixture/app', {
+			database: {
+				description: 'Publisher database.',
+				supplier: 'publisher',
+			},
+		}),
+		kody: {
+			...manifest('@fixture/app', undefined).kody,
+			credentials: {
+				database: {
+					description: 'Publisher database.',
+					supplier: 'publisher',
+				},
+			},
+			app: {
+				entry: './server.ts',
+				visitorNeeds: {
+					database: {
+						description: 'Read your database.',
+						credential: 'database',
+					},
+				},
+			},
+		},
+	} as unknown as AuthoredPackageJson
+	const closure = await computeCredentialNeedsClosure({
+		env,
+		userId: 'org-1',
+		manifest: packageManifest,
+		files: { 'index.ts': 'export default {}' },
+	})
+	expect(closure.conflicts).toContain(
+		'kody.app.visitorNeeds.database cannot reference publisher-supplied credential need "database".',
+	)
 })
 
 test('a dependency that declares the same key with another kind is a conflict', async () => {

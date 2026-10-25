@@ -84,6 +84,7 @@ import {
 } from './credential-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
 import { type SigningOperation } from './signing-resolver.ts'
+import { findPackageAppGrantCredentialMapping } from '#app/package-app-oauth-grants.ts'
 
 export type CredentialClientErrorCode =
 	| 'credential_unbound'
@@ -231,6 +232,9 @@ export type PackageAppCredentialAuthority = {
 	runsAsRequest: () => Promise<RequestContext | null>
 	/** The visitor, or null unless their live consent covers `needKey`. */
 	visitorNeedRequest: (needKey: string) => Promise<RequestContext | null>
+	visitorNeedGrant: (
+		needKey: string,
+	) => Promise<{ request: RequestContext; grantId: string } | null>
 }
 
 export type OpenedCredentialClient = {
@@ -244,7 +248,11 @@ export type OpenedCredentialClient = {
 	hint?: string
 }
 
-type Picked = { credential: UsableCredential; hint: string | null }
+type Picked = {
+	credential: UsableCredential
+	hint: string | null
+	packageAppIssue?: PackageAppCredentialAuthority['issue']
+}
 
 const maxKeyLength = 100
 
@@ -307,6 +315,7 @@ async function loadNeed(ctx: CredentialClientContext, key: string) {
 		env: ctx.env,
 		orgId: requireActorRequest(ctx).org.id,
 		packageId: ctx.packageId,
+		request: requireActorRequest(ctx),
 	})
 	return needs.find((need) => need.key === key) ?? null
 }
@@ -492,6 +501,7 @@ async function resolveMappedNeed(
 		target: NeedTarget
 		usable: ReadonlyArray<UsableCredential>
 		createUrl: () => Promise<string>
+		supplier?: CredentialNeed['supplier']
 	},
 ): Promise<Array<UsableCredential> | null> {
 	if (!ctx.packageId) return null
@@ -510,7 +520,7 @@ async function resolveMappedNeed(
 	const resolved = resolveStoredMapping({
 		trigger: layer('enablement'),
 		mine: layer('mine'),
-		org: layer('org'),
+		org: input.supplier === 'executor' ? null : layer('org'),
 		usable: input.usable,
 		accepts: (credential) => mappedCredentialFits(credential, input.target),
 	})
@@ -652,6 +662,63 @@ async function resolveKey(
 			})
 		: null
 	const need = runNeed ?? declared?.get(key) ?? null
+	const isVisitorNeedAuthority = Boolean(
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue,
+	)
+	const withPackageAppIssue = (picked: Array<Picked>) =>
+		isVisitorNeedAuthority
+			? picked.map((item) => ({
+					...item,
+					packageAppIssue:
+						need?.supplier === 'executor'
+							? ({ visitorNeed: key } as const)
+							: null,
+				}))
+			: picked
+	if (
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue &&
+		need?.supplier === 'publisher'
+	) {
+		throw refusal(
+			'credential_denied',
+			`Credential need "${key}" is supplied by the publisher; use credential("${key}")`,
+		)
+	}
+	if (
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue &&
+		need?.supplier === 'executor'
+	) {
+		const grant = await ctx.packageAppAuthority.visitorNeedGrant(key)
+		const credentialIds = grant
+			? await findPackageAppGrantCredentialMapping({
+					db: ctx.env.APP_DB,
+					grantId: grant.grantId,
+					needKey: key,
+				})
+			: []
+		const mapped = credentialIds
+			.map((id) => usable.find((credential) => credential.id === id))
+			.filter(
+				(credential): credential is UsableCredential =>
+					credential !== undefined &&
+					mappedCredentialFits(credential, needTarget(key, need)),
+			)
+		if (mapped.length === 0) {
+			throw refusal(
+				'credential_unbound',
+				`Credential need "${key}" is not connected. Sign in with Kody and allow need:${key} to choose credentials.`,
+			)
+		}
+		return withPackageAppIssue(
+			(mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
+				credential,
+				hint: null,
+			})),
+		)
+	}
 	const target = needTarget(key, need)
 	const picks = ctx.callMap?.get(key)
 	if (!picks) {
@@ -664,15 +731,24 @@ async function resolveKey(
 					usable,
 					createUrl: () =>
 						createUrlForNeed(ctx, { key, provider: target.provider, need }),
+					supplier: need?.supplier,
 				})
 			: null
 		if (mapped) {
-			return (mode === 'one' ? mapped.slice(0, 1) : mapped).map(
-				(credential) => ({ credential, hint: null }),
+			return withPackageAppIssue(
+				(mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
+					credential,
+					hint: null,
+				})),
 			)
 		}
 		const resolution = need
-			? resolveNeedCandidates(need, usable)
+			? resolveNeedCandidates(
+					need,
+					need.supplier === 'publisher'
+						? usable.filter((credential) => credential.scope === 'org')
+						: usable,
+				)
 			: {
 					autoPick: null as UsableCredential | null,
 					candidates: usable.filter(
@@ -681,7 +757,9 @@ async function resolveKey(
 					possibleMatches: [] as Array<UsableCredential>,
 				}
 		if (resolution.autoPick) {
-			return [{ credential: resolution.autoPick, hint: null }]
+			return withPackageAppIssue([
+				{ credential: resolution.autoPick, hint: null },
+			])
 		}
 		const createUrl = await createUrlForNeed(ctx, {
 			key,
@@ -695,7 +773,7 @@ async function resolveKey(
 			describe: target.describe,
 			createUrl,
 		})
-		return [{ credential, hint: null }]
+		return withPackageAppIssue([{ credential, hint: null }])
 	}
 	if (mode === 'one' && picks.length === 0) {
 		throw refusal(
@@ -733,14 +811,17 @@ async function resolveKey(
 			},
 		)
 	}
-	return [...picked.values()]
+	return withPackageAppIssue([...picked.values()])
 }
 
 async function issueClient(
 	ctx: CredentialClientContext,
 	key: string | null,
 	{ credential: picked, hint }: Picked,
-	options: { ownerCredentialForVisitors?: boolean } = {},
+	options: {
+		ownerCredentialForVisitors?: boolean
+		packageAppIssue?: PackageAppCredentialAuthority['issue']
+	} = {},
 ): Promise<OpenedCredentialClient> {
 	const request = requireActorRequest(ctx)
 	if (picked.kind === 'mcp' && picked.scope === 'personal') {
@@ -764,7 +845,9 @@ async function issueClient(
 						ownerCredentialForVisitors: true as const,
 						needKey: key,
 					}
-				: (ctx.packageAppAuthority?.issue ?? {})),
+				: 'packageAppIssue' in options
+					? (options.packageAppIssue ?? {})
+					: (ctx.packageAppAuthority?.issue ?? {})),
 		},
 	})
 	return {
@@ -818,6 +901,9 @@ export async function openCredentialClient(
 	if (owner) assertApprovedForVisitors(key, owner, picked)
 	return await issueClient(opener, key, picked[0]!, {
 		ownerCredentialForVisitors: owner !== null,
+		...('packageAppIssue' in picked[0]!
+			? { packageAppIssue: picked[0]!.packageAppIssue }
+			: {}),
 	})
 }
 
@@ -845,6 +931,9 @@ export async function openCredentialClients(
 		picked.map((one) =>
 			issueClient(opener, key, one, {
 				ownerCredentialForVisitors: owner !== null,
+				...('packageAppIssue' in one
+					? { packageAppIssue: one.packageAppIssue }
+					: {}),
 			}),
 		),
 	)
@@ -861,10 +950,16 @@ export async function loadRunCredentialNeeds(input: {
 	/** The run's org; needs load without an acting person. */
 	orgId: string
 	packageIds: ReadonlyArray<string>
+	request?: RequestContext | null
 }): Promise<ReadonlyMap<string, CredentialNeed>> {
 	const needLists = await Promise.all(
 		input.packageIds.map((packageId) =>
-			loadPackageNeeds({ env: input.env, orgId: input.orgId, packageId }),
+			loadPackageNeeds({
+				env: input.env,
+				orgId: input.orgId,
+				packageId,
+				request: input.request,
+			}),
 		),
 	)
 	const needs = new Map<string, CredentialNeed>()
@@ -910,6 +1005,7 @@ export async function validateCredentialCallMap(input: {
 						env: input.env,
 						orgId: request.org.id,
 						packageId,
+						request,
 					}),
 				})),
 			),
@@ -942,6 +1038,12 @@ export async function validateCredentialCallMap(input: {
 		const warnings: Array<string> = []
 		for (const [key, picks] of input.map) {
 			const need = needs.get(key) ?? null
+			if (need?.supplier === 'publisher') {
+				throw refusal(
+					'invalid_request',
+					`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+				)
+			}
 			if (!need) {
 				const declared = [...needs.keys()]
 				const message = `credentials.${key} is not a need ${
@@ -1054,12 +1156,32 @@ async function readHandle(
 			appRequest = request
 			return request
 		},
+		visitorNeedGrant: async (needKey) =>
+			(await ctx.packageAppAuthority?.visitorNeedGrant(needKey)) ?? null,
 	})
 	if (!kinds.includes(handle.kind)) {
 		throw refusal(
 			'invalid_request',
 			`A ${handle.kind} credential has no ${operation}.`,
 		)
+	}
+	if (handle.visitorNeed) {
+		const grant =
+			(await ctx.packageAppAuthority?.visitorNeedGrant(handle.visitorNeed)) ??
+			null
+		const credentialIds = grant
+			? await findPackageAppGrantCredentialMapping({
+					db: ctx.env.APP_DB,
+					grantId: grant.grantId,
+					needKey: handle.visitorNeed,
+				})
+			: []
+		if (!credentialIds.includes(handle.id)) {
+			throw refusal(
+				'credential_unbound',
+				`Credential need "${handle.visitorNeed}" is not connected. Sign in with Kody and allow need:${handle.visitorNeed} to choose credentials.`,
+			)
+		}
 	}
 	if ((handle.runsAs || handle.visitorNeed) && appRequest) {
 		return { handle, request: appRequest }

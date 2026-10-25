@@ -295,7 +295,7 @@ test('consent scope: a visitor need resolves only while a live grant covers that
 
 test('revoked grant: the next visitor-need call fails, and credential handles stop resolving', async () => {
 	const t = await setup()
-	await upsertPackageAppOauthGrant({
+	const grantId = await upsertPackageAppOauthGrant({
 		db: t.db,
 		personId: t.outsider,
 		orgUsername: 'acme',
@@ -315,6 +315,10 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 		issue: { visitorNeed: 'github' },
 	})
 	expect(await authority.visitorNeedRequest('github')).toBe(visitorRequest)
+	expect(await authority.visitorNeedGrant('github')).toMatchObject({
+		request: visitorRequest,
+		grantId,
+	})
 	expect(await authority.visitorNeedRequest('calendar')).toBeNull()
 
 	await revokePackageAppOauthGrantsForPersonApp({
@@ -324,6 +328,7 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 		kodyId: 'board',
 	})
 	expect(await authority.visitorNeedRequest('github')).toBeNull()
+	expect(await authority.visitorNeedGrant('github')).toBeNull()
 	expect(
 		await packageAppVisitorConsents({
 			db: t.db,

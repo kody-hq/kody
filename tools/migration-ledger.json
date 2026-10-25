@@ -679,6 +679,10 @@
 		{
 			"filename": "0184-package-app-visitor-attribution.sql",
 			"sha256": "1dc06bbd7ea0c17e490f3b7c4830d2ceef00276a48ff48efa2693a84fb0e8e77"
+		},
+		{
+			"filename": "0185-package-app-grant-credential-mappings.sql",
+			"sha256": "329a5f8c01ad0aff394ebd9089e3a08d7ef424d14802a8e9074262bf79775788"
 		}
 	]
 }

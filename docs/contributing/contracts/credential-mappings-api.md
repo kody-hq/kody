@@ -27,12 +27,16 @@ payloads for UI fixtures.
   name and do not use mappings.
 - Hosted and `--local` runs resolve mappings the same way (the host resolves;
   values never reach the local machine).
+- With supplier-aware credentials enabled, `publisher` needs accept org-level
+  mappings only. `executor` needs accept visitor grant mappings only in a
+  package-app consent flow. Executor needs never use org mappings or automatic
+  fallback for a visitor.
 
 ## Vocabulary
 
 | Term              | Meaning                                                                                                                                                            |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Need              | One key of a package's `kody.credentials` closure (`key`, optional `kind`, `provider`, `description`, `multiple`).                                                 |
+| Need              | One key of a package's `kody.credentials` closure (`key`, optional `kind`, `provider`, `description`, `multiple`, `supplier`, `required`).                         |
 | Credential ref    | `{ id, name, scope, kind }`. `scope` is `org` (owned by the org) or `personal` (the viewer's own credential granted to this org).                                  |
 | Mapping           | The ordered credential refs chosen for one need. `[]` means "none on purpose". At most one ref unless the need is `multiple` (then at most 16).                    |
 | Default mapping   | A package's ad hoc default for one need. Two layers: `org` (set by a package manager, org credentials only) and `mine` (the viewer's own override).                |
@@ -50,6 +54,14 @@ wins:
 2. **Trigger mapping** of the enablement the run acts as (trigger runs only).
 3. **Default mapping**, `mine` layer, then `org` layer.
 4. **Auto-resolve**: exactly one candidate (ADR 0068 resolution rule 3).
+
+These steps apply to legacy needs and executor needs in direct or trigger runs.
+An executor need in a package-app visitor run instead reads only the mapping for
+that need on the visitor's live grant, then rechecks live Use access for each
+call. A publisher need in a visitor run is refused; publisher credentials are
+available to the app through `credential(key)` only. When supplier-aware
+credentials are disabled, the supplier and required fields do not change the
+existing resolution behavior.
 
 Unusable refs:
 

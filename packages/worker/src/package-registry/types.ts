@@ -225,6 +225,10 @@ export const packageCredentialSlotSchema = z.strictObject({
 	ownerCredentialForVisitors: z
 		.literal(true, { error: ownerCredentialForVisitorsValueMessage })
 		.optional(),
+	/** Credential authority when the supplier feature is enabled. */
+	supplier: z.enum(['publisher', 'executor']).optional(),
+	/** Executor needs default to required when omitted. */
+	required: z.boolean().optional(),
 	/**
 	 * Optional fill placement for package-scope secrets this need names.
 	 * Applied on Connect / secretSet insert when no row exists yet, instead of
@@ -240,14 +244,32 @@ export type PackageCredentialSlot = z.infer<typeof packageCredentialSlotSchema>
 export const packageCredentialsSchema = z
 	.record(z.string(), packageCredentialSlotSchema)
 	.superRefine((slots, ctx) => {
-		for (const name of Object.keys(slots)) {
-			if (packageCredentialSlotNamePattern.test(name)) continue
-			ctx.addIssue({
-				code: 'custom',
-				path: [name],
-				message:
-					'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
-			})
+		for (const [name, slot] of Object.entries(slots)) {
+			if (!packageCredentialSlotNamePattern.test(name)) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name],
+					message:
+						'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
+				})
+			}
+			if (slot.required !== undefined && slot.supplier !== 'executor') {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'required'],
+					message: `kody.credentials.${name}.required is only valid with supplier: "executor".`,
+				})
+			}
+			if (
+				slot.ownerCredentialForVisitors === true &&
+				slot.supplier === 'executor'
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'supplier'],
+					message: `kody.credentials.${name} cannot combine ownerCredentialForVisitors with supplier: "executor".`,
+				})
+			}
 		}
 	})
 

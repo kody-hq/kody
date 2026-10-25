@@ -230,6 +230,27 @@ Declare `kind` only when the package needs a specific shape:
   is a new insert. Package runtimes still cannot set placement themselves; the
   owner can edit it on the credential detail page.
 
+### Choose who supplies a package credential
+
+When supplier-aware package credentials are enabled, a need can declare
+`supplier: "publisher"` or `supplier: "executor"`. A publisher need is set by
+the package publisher with an org-level mapping. It cannot be set by a
+per-person or per-trigger mapping, and a visitor cannot resolve it from their
+own credentials. An app uses it with `credential("key")`.
+
+An executor need is chosen by each person who uses the app. Its consent scope is
+`need:<key>`. The app resolves only the credential IDs selected for that need in
+that person's live Sign in with Kody grant. It does not fall back to the
+publisher's credentials, the visitor's personal defaults, or automatic matching.
+A mapped credential is rechecked for live Use access on every call.
+
+Executor needs default to required. Set `required: false` to make a need
+optional. Required needs cannot be skipped in consent, and the app does not
+serve until the visitor has connected a usable credential. `required` is valid
+only for executor-supplied needs. The older `ownerCredentialForVisitors: true`
+setting keeps its publisher-supplied meaning as an alias. A need with no
+supplier keeps the existing package behavior.
+
 ### Let app visitors use your credential
 
 People who open an internet-visible app run it as themselves, or as no one when

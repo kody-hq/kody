@@ -85,6 +85,7 @@ import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { loadRunCredentialNeeds } from '#worker/credentials/credential-client.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
@@ -2158,6 +2159,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				`"${key}" is not a visitor need this app declares in kody.app.visitorNeeds.`,
 			)
 		}
+		if (need.credential) {
+			await this.assertVisitorCredentialIsExecutorSupplied(
+				need.credential,
+				visitTicket,
+			)
+		}
 		if (!need.capability) {
 			throw new PackageAppVisitorConsentError(
 				`Visitor need "${key}" is a credential need. Open it with credential.visitor("${key}").`,
@@ -2852,6 +2859,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							env: this.env,
 							orgId: this.ctx.props.userId,
 							packageIds: [this.ctx.props.packageId],
+							request: callerContext.request,
 						})
 						return runNeeds
 					},
@@ -2987,6 +2995,21 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	) {
 		const key =
 			typeof args.visitorNeed === 'string' ? args.visitorNeed.trim() : ''
+		const directSupplier = await this.assertVisitorCredentialIsExecutorSupplied(
+			key,
+			visitTicket,
+		)
+		if (directSupplier === 'executor') {
+			await this.visitorConsentCallerContext(key, visitTicket)
+			return await callTool(
+				await this.getCredentialClientTools(
+					boundPackageId,
+					{ mode: 'visitor-need', needKey: key },
+					visitTicket,
+				),
+				{ key },
+			)
+		}
 		const need = Object.hasOwn(this.ctx.props.visitorNeeds, key)
 			? this.ctx.props.visitorNeeds[key]
 			: undefined
@@ -2995,14 +3018,38 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				`"${key}" is not a credential need this app declares in kody.app.visitorNeeds.`,
 			)
 		}
-		await this.visitorConsentCallerContext(key, visitTicket)
+		const supplier = await this.assertVisitorCredentialIsExecutorSupplied(
+			need.credential,
+			visitTicket,
+		)
+		const scopeNeed = supplier === 'executor' ? need.credential : key
+		await this.visitorConsentCallerContext(scopeNeed, visitTicket)
 		return await callTool(
 			await this.getCredentialClientTools(
 				boundPackageId,
-				{ mode: 'visitor-need', needKey: key },
+				{ mode: 'visitor-need', needKey: scopeNeed },
 				visitTicket,
 			),
 			{ key: need.credential },
+		)
+	}
+
+	private async assertVisitorCredentialIsExecutorSupplied(
+		credentialKey: string,
+		visitTicket: string | null | undefined,
+	): Promise<'publisher' | 'executor' | null> {
+		const callerContext = await this.createCallerContext(null, visitTicket)
+		const needs = await loadPublishedCredentialNeeds({
+			env: this.env,
+			userId: this.ctx.props.userId,
+			sourceId: this.ctx.props.sourceId,
+			request: callerContext.request,
+		})
+		const supplier =
+			needs.find((need) => need.key === credentialKey)?.supplier ?? null
+		if (supplier !== 'publisher') return supplier
+		throw new PackageAppVisitorConsentError(
+			`Credential need "${credentialKey}" is supplied by the publisher; use credential("${credentialKey}")`,
 		)
 	}
 }

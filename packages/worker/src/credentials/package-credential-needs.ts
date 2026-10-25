@@ -63,7 +63,12 @@ function resolveNeedForCaller(
 			source: stored.source === 'mine' ? 'mine' : 'org',
 		}
 	}
-	const resolution = resolveNeedCandidates(need, usable)
+	const resolution = resolveNeedCandidates(
+		need,
+		need.supplier === 'publisher'
+			? usable.filter((credential) => credential.scope === 'org')
+			: usable,
+	)
 	return {
 		status: resolution.status,
 		autoPick: resolution.autoPick?.name ?? null,
@@ -84,6 +89,7 @@ export async function describePackageCredentialNeeds(input: {
 			env: input.env,
 			userId: input.ownerUserId,
 			sourceId: input.sourceId,
+			request: input.request,
 		})
 		if (needs.length === 0) return []
 		const [usable, rows] = await Promise.all([
@@ -105,14 +111,18 @@ export async function describePackageCredentialNeeds(input: {
 			return {
 				...need,
 				...resolveNeedForCaller(need, usable, rows),
-				yourOptions: resolution.options.map((option) => ({
-					name: option.name,
-					scope: option.scope,
-					...(option.scope === 'org' && input.request.org.slug
-						? { org: input.request.org.slug }
-						: {}),
-					hosts: option.hosts,
-				})),
+				yourOptions: resolution.options
+					.filter(
+						(option) => need.supplier !== 'publisher' || option.scope === 'org',
+					)
+					.map((option) => ({
+						name: option.name,
+						scope: option.scope,
+						...(option.scope === 'org' && input.request.org.slug
+							? { org: input.request.org.slug }
+							: {}),
+						hosts: option.hosts,
+					})),
 			}
 		})
 	} catch (error) {

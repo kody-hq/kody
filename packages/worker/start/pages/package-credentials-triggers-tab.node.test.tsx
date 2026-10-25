@@ -1,9 +1,11 @@
 import { expect, test } from 'vitest'
 import {
+	type PackageCredentialNeedView,
 	type PackageCredentialsView,
 	type PackageTriggerView,
 } from '#universal/credential-contracts.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
+import { type MappingCellInput } from './package-credentials-tabs.tsx'
 import { renderTriggersTab } from './package-credentials-triggers-tab.tsx'
 
 function trigger(
@@ -25,11 +27,14 @@ function trigger(
 		canAddInstance: kind === 'cron',
 	}
 }
-async function render(triggers: Array<PackageTriggerView>) {
+async function render(
+	triggers: Array<PackageTriggerView>,
+	needs: Array<PackageCredentialNeedView> = [],
+) {
 	const view: PackageCredentialsView = {
 		ok: true,
 		package: { id: 'package-a', kodyId: 'repo', canManage: true },
-		needs: [],
+		needs,
 		locked: [],
 		incomplete: [],
 		triggers,
@@ -40,10 +45,47 @@ async function render(triggers: Array<PackageTriggerView>) {
 			username: 'team',
 			kodyId: 'repo',
 			view,
+			renderMappingCell: (input: MappingCellInput) => (
+				<span data-mapping-editable={String(input.editable)}>
+					{input.editable ? 'Change' : 'Read only'}
+				</span>
+			),
 			setTriggerEnablement() {},
 		}),
 	)
 }
+
+test('publisher-supplied needs are labeled and cannot be edited on a trigger', async () => {
+	const need: PackageCredentialNeedView = {
+		key: 'calendar',
+		kind: 'oauth',
+		provider: 'calendar',
+		description: 'Read a calendar',
+		multiple: false,
+		supplier: 'publisher',
+		defaults: { org: null, mine: null },
+		effective: {
+			source: 'none',
+			status: 'unbound',
+			credentials: [],
+			candidates: [],
+			createUrl: null,
+		},
+		options: [],
+		createUrl: '/credentials/new',
+	}
+	const rowTrigger = trigger('cron', 'daily')
+	rowTrigger.mappings = [
+		{
+			needKey: need.key,
+			override: null,
+			effective: need.effective,
+		},
+	]
+	const html = await render([rowTrigger], [need])
+	expect(html).toContain('Read only')
+	expect(html).not.toContain('>Change</span>')
+})
 
 test('native trigger cards expose owned instance switches and additive instance controls', async () => {
 	const html = await render([trigger('cron', 'daily')])

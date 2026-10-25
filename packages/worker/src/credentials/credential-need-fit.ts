@@ -30,6 +30,7 @@ export async function loadPackageNeeds(input: {
 	/** The org that owns the package. */
 	orgId: string
 	packageId: string
+	request?: object | null
 }) {
 	const saved = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.orgId,
@@ -40,6 +41,7 @@ export async function loadPackageNeeds(input: {
 		env: input.env,
 		userId: saved.userId,
 		sourceId: saved.sourceId,
+		request: input.request,
 	})
 }
 

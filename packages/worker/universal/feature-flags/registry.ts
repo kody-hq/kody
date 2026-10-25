@@ -168,6 +168,14 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
+		key: 'package-credential-suppliers',
+		defaultEnabled: false,
+		description:
+			'Gate publisher- and executor-supplied package credentials, including visitor grant mappings. Off by default. Delete this flag after the follow-up removes supplier aliases and legacy paths.',
+		// Intentionally no successMetric: a credential authority boundary, not
+		// a product experiment.
+	},
+	{
 		key: 'repo-push-queue',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -204,6 +212,9 @@ export const mcpEventsExtensionFlagKey =
 
 export const packageAppCustomDomainsFlagKey =
 	'package-app-custom-domains' satisfies FeatureFlagKey
+
+export const packageCredentialSuppliersFlagKey =
+	'package-credential-suppliers' satisfies FeatureFlagKey
 
 export const repoPushQueueFlagKey = 'repo-push-queue' satisfies FeatureFlagKey
 

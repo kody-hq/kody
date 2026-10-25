@@ -238,6 +238,7 @@ async function loadEnforcedPackage(input: {
 				userId: saved.userId,
 				sourceId: saved.sourceId,
 				fresh,
+				request: input.request,
 			}),
 		)
 	return {

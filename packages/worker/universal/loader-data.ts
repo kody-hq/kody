@@ -2941,6 +2941,15 @@ export type PackageAppOauthConsentLoaderData = {
 	requiredLabels: Array<string>
 	claimLabels: Array<string>
 	optionalScopes: Array<{ scope: string; label: string }>
+	executorNeeds: Array<{
+		key: string
+		description: string
+		required: boolean
+		scope: string
+		credentials: Array<{ id: string; name: string; usedByApps: number }>
+		recommendedCredentialId: string | null
+		createUrl: string
+	}>
 	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
 }

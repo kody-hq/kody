@@ -14,6 +14,7 @@ import {
 	findLivePackageAppOauthGrant,
 	grantCoversScopes,
 	upsertPackageAppOauthGrant,
+	upsertPackageAppOauthGrantWithCredentialMappings,
 } from '#app/package-app-oauth-grants.ts'
 import { isAllowedPackageAppOauthRedirectUri } from '#app/package-app-oauth-redirect-uris.ts'
 import {
@@ -36,6 +37,14 @@ import {
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { getPkceValidationError } from '#worker/oauth-pkce.ts'
+import {
+	liveUsableCredentials,
+	listUsableCredentials,
+	resolveNeedCandidates,
+} from '#worker/credentials/credential-candidates.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { buildNeedCreateUrl } from '#worker/credentials/need-create-url.ts'
+import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 
 /**
  * App-origin authorize + consent for hosted package apps.
@@ -83,6 +92,7 @@ type AuthorizeQuery = {
 	scopeRaw: string | null
 	responseType: string | null
 	selectedScopesRaw?: string
+	credentialSelections?: Record<string, string>
 }
 
 function readAuthorizeQuery(url: URL): AuthorizeQuery {
@@ -234,6 +244,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 	env: Env
 	query: AuthorizeQuery
 	requestUrl: string | URL
+	request: Request
 }) {
 	const parsed = parsePackageAppOauthClientId(input.query.clientIdRaw)
 	if (!parsed) {
@@ -339,16 +350,42 @@ async function parseAndValidateAuthorizeRequest(input: {
 	}
 	const needKeys = visitorNeedKeysOfScopes(scopes)
 	const visitorNeedDescriptions: Record<string, string> = {}
+	let credentialNeeds: Array<CredentialNeed> = []
 	if (needKeys.length > 0) {
 		const { manifest } = await loadInvokeManifestBySourceId({
 			env: input.env,
 			userId: resolved.org.userId,
 			sourceId: resolved.savedPackage.sourceId,
 		})
+		credentialNeeds = await loadPublishedCredentialNeeds({
+			env: input.env,
+			userId: resolved.org.userId,
+			sourceId: resolved.savedPackage.sourceId,
+			request: input.request,
+		})
 		const declared = manifest.kody.app?.visitorNeeds ?? {}
 		for (const key of needKeys) {
-			const need = Object.hasOwn(declared, key) ? declared[key] : undefined
-			if (!need) {
+			const executorNeed = credentialNeeds.find(
+				(need) => need.key === key && need.supplier === 'executor',
+			)
+			const visitorNeed = Object.hasOwn(declared, key)
+				? declared[key]
+				: undefined
+			const visitorCredentialNeed = visitorNeed?.credential
+				? credentialNeeds.find((need) => need.key === visitorNeed.credential)
+				: undefined
+			if (visitorCredentialNeed?.supplier === 'publisher') {
+				return {
+					ok: false as const,
+					response: redirectWithError({
+						redirectUri: safeRedirectUri,
+						state: input.query.state,
+						error: 'invalid_scope',
+						description: `kody.app.visitorNeeds.${key} cannot reference publisher-supplied credential need "${visitorCredentialNeed.key}".`,
+					}),
+				}
+			}
+			if (!executorNeed && !visitorNeed) {
 				return {
 					ok: false as const,
 					response: redirectWithError({
@@ -359,7 +396,8 @@ async function parseAndValidateAuthorizeRequest(input: {
 					}),
 				}
 			}
-			visitorNeedDescriptions[key] = need.description
+			visitorNeedDescriptions[key] =
+				executorNeed?.description ?? visitorNeed!.description
 		}
 	}
 	return {
@@ -372,6 +410,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 		codeChallenge: input.query.codeChallenge,
 		scopes,
 		visitorNeedDescriptions,
+		credentialNeeds,
 	}
 }
 
@@ -391,6 +430,105 @@ function isSameOriginAuthorizePost(request: Request, env: Env) {
 	} catch {
 		return false
 	}
+}
+
+async function loadExecutorNeedConsentData(input: {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	needs: ReadonlyArray<CredentialNeed>
+	scopes: ReadonlyArray<PackageAppOauthScope>
+	kodyId: string
+}) {
+	const needs = input.scopes.flatMap((scope) => {
+		if (!scope.startsWith('need:')) return []
+		const key = scope.slice('need:'.length)
+		const need = input.needs.find(
+			(candidate) => candidate.key === key && candidate.supplier === 'executor',
+		)
+		return need ? [{ need, scope }] : []
+	})
+	if (needs.length === 0) return []
+	const usable = liveUsableCredentials(
+		await listUsableCredentials({
+			env: input.env,
+			request: input.user.request,
+		}),
+	)
+	const candidateIds = new Set(
+		needs.flatMap(({ need }) =>
+			resolveNeedCandidates(need, usable).options.map(({ id }) => id),
+		),
+	)
+	const usage = new Map<string, { usedByApps: number; recent: string | null }>()
+	if (candidateIds.size > 0) {
+		const result = await input.env.APP_DB.prepare(
+			`SELECT credential.value AS credential_id,
+			        COUNT(DISTINCT app_grant.id) AS used_by_apps,
+			        MAX(COALESCE(app_grant.last_used_at, app_grant.created_at)) AS recent
+			 FROM package_app_grant_credential_mappings AS mapping
+			 JOIN package_app_oauth_grants AS app_grant
+			   ON app_grant.id = mapping.grant_id AND app_grant.revoked_at IS NULL
+			 JOIN json_each(mapping.credential_ids_json) AS credential
+			 WHERE app_grant.person_id = ?
+			 GROUP BY credential.value`,
+		)
+			.bind(input.user.mcpUser.userId)
+			.all<{
+				credential_id: string
+				used_by_apps: number
+				recent: string | null
+			}>()
+		for (const row of result.results ?? []) {
+			if (candidateIds.has(row.credential_id)) {
+				usage.set(row.credential_id, {
+					usedByApps: row.used_by_apps,
+					recent: row.recent,
+				})
+			}
+		}
+	}
+	const baseUrl = getAppBaseUrl({
+		env: input.env,
+		requestUrl: input.request.url,
+	})
+	return await Promise.all(
+		needs.map(async ({ need, scope }) => {
+			const credentials = resolveNeedCandidates(need, usable).options
+			const ranked = [...credentials].sort((left, right) => {
+				const leftUsage = usage.get(left.id)
+				const rightUsage = usage.get(right.id)
+				return (
+					(rightUsage?.usedByApps ?? 0) - (leftUsage?.usedByApps ?? 0) ||
+					(rightUsage?.recent ?? '').localeCompare(leftUsage?.recent ?? '') ||
+					left.name.localeCompare(right.name)
+				)
+			})
+			const [recommended] = ranked
+			const createUrl = await buildNeedCreateUrl({
+				db: input.env.APP_DB,
+				baseUrl,
+				orgSlug: input.user.request.org.slug,
+				key: need.key,
+				provider: need.provider,
+				need,
+				packageKodyId: input.kodyId,
+			})
+			return {
+				key: need.key,
+				description: need.description,
+				required: need.required === true,
+				scope,
+				credentials: ranked.map((credential) => ({
+					id: credential.id,
+					name: credential.name,
+					usedByApps: usage.get(credential.id)?.usedByApps ?? 0,
+				})),
+				recommendedCredentialId: recommended?.id ?? null,
+				createUrl,
+			}
+		}),
+	)
 }
 
 export async function handlePackageAppOauthAuthorizeRequest(
@@ -420,6 +558,14 @@ export async function handlePackageAppOauthAuthorizeRequest(
 							.getAll('selected_scopes')
 							.map(String)
 							.join(' '),
+						credentialSelections: Object.fromEntries(
+							[...form.entries()]
+								.filter(([name]) => name.startsWith('credential_need:'))
+								.map(([name, value]) => [
+									name.slice('credential_need:'.length),
+									String(value),
+								]),
+						),
 						responseType: String(form.get('response_type') ?? 'code'),
 						decision: String(form.get('decision') ?? ''),
 					}
@@ -433,6 +579,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		env,
 		query,
 		requestUrl: request.url,
+		request,
 	})
 	if (!validated.ok) return validated.response
 
@@ -475,6 +622,53 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				description: 'Unknown consent decision.',
 			})
 		}
+		const executorNeeds = await loadExecutorNeedConsentData({
+			env,
+			request,
+			user,
+			needs: validated.credentialNeeds,
+			scopes: validated.scopes,
+			kodyId: validated.client.kodyId,
+		})
+		const selectedScopes = new Set<PackageAppOauthScope>([
+			'profile',
+			...chosen.scopes,
+		])
+		for (const need of executorNeeds) {
+			if (need.required) selectedScopes.add(need.scope as PackageAppOauthScope)
+		}
+		const mappings: Array<{ needKey: string; credentialIds: Array<string> }> =
+			[]
+		for (const need of executorNeeds) {
+			const selectedId =
+				query.credentialSelections?.[encodeURIComponent(need.key)] ??
+				query.credentialSelections?.[need.key]
+			if (!selectedScopes.has(need.scope as PackageAppOauthScope)) {
+				mappings.push({ needKey: need.key, credentialIds: [] })
+				continue
+			}
+			if (!selectedId) {
+				return new Response(
+					`Choose a credential for the ${need.key} need or turn off its optional scope.`,
+					{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+				)
+			}
+			if (!need.credentials.some(({ id }) => id === selectedId)) {
+				return new Response(
+					`The selected credential for ${need.key} is no longer available. Choose another credential.`,
+					{ status: 400, headers: { 'Cache-Control': 'no-store' } },
+				)
+			}
+			mappings.push({ needKey: need.key, credentialIds: [selectedId] })
+		}
+		await upsertPackageAppOauthGrantWithCredentialMappings({
+			db: env.APP_DB,
+			personId: user.mcpUser.userId,
+			orgUsername: validated.client.username,
+			kodyId: validated.client.kodyId,
+			scopes: [...selectedScopes],
+			mappings,
+		})
 		return await issueCodeAndRedirect({
 			env,
 			request,
@@ -484,9 +678,9 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			kodyId: validated.client.kodyId,
 			redirectUri: validated.redirectUri,
 			codeChallenge: validated.codeChallenge,
-			scopes: chosen.scopes,
+			scopes: [...selectedScopes],
 			state: validated.state,
-			recordGrant: true,
+			recordGrant: false,
 		})
 	}
 
@@ -550,7 +744,17 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		kodyId: validated.client.kodyId,
 	})
 	const alreadyAllowed = new Set(grant?.scopes ?? [])
-	const requiredScopes: Array<PackageAppOauthScope> = ['profile']
+	const requiredScopes: Array<PackageAppOauthScope> = [
+		'profile',
+		...validated.credentialNeeds
+			.filter(
+				(need) =>
+					need.supplier === 'executor' &&
+					need.required === true &&
+					validated.scopes.includes(`need:${need.key}`),
+			)
+			.map((need) => `need:${need.key}` as PackageAppOauthScope),
+	]
 	const alreadyAllowedScopes = [...alreadyAllowed].filter(
 		(scope) =>
 			validated.scopes.includes(scope) && !requiredScopes.includes(scope),
@@ -568,6 +772,14 @@ export async function handlePackageAppOauthAuthorizeRequest(
 					validated.visitorNeedDescriptions,
 				).at(-1) ?? scope,
 		}))
+	const executorNeeds = await loadExecutorNeedConsentData({
+		env,
+		request,
+		user,
+		needs: validated.credentialNeeds,
+		scopes: validated.scopes,
+		kodyId: validated.client.kodyId,
+	})
 
 	return {
 		consent: {
@@ -590,6 +802,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				validated.visitorNeedDescriptions,
 			),
 			optionalScopes,
+			executorNeeds,
 			alreadyAllowedLabels: packageAppOauthClaimLabels(
 				alreadyAllowedScopes,
 				validated.visitorNeedDescriptions,

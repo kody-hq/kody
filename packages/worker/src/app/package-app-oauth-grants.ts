@@ -75,6 +75,62 @@ export async function findLivePackageAppOauthGrant(
 	return row ? toGrant(row) : null
 }
 
+export async function findPackageAppGrantCredentialMapping(input: {
+	db: D1Database
+	grantId: string
+	needKey: string
+}): Promise<Array<string>> {
+	const row = await input.db
+		.prepare(
+			`SELECT credential_ids_json
+			 FROM package_app_grant_credential_mappings
+			 WHERE grant_id = ? AND need_key = ?`,
+		)
+		.bind(input.grantId, input.needKey)
+		.first<{ credential_ids_json: string }>()
+	if (!row) return []
+	try {
+		const parsed: unknown = JSON.parse(row.credential_ids_json)
+		if (!Array.isArray(parsed)) return []
+		return [
+			...new Set(
+				parsed.filter(
+					(id): id is string => typeof id === 'string' && id.length > 0,
+				),
+			),
+		]
+	} catch {
+		return []
+	}
+}
+
+export async function upsertPackageAppGrantCredentialMapping(input: {
+	db: D1Database
+	grantId: string
+	needKey: string
+	credentialIds: ReadonlyArray<string>
+	now?: Date
+}) {
+	const now = (input.now ?? new Date()).toISOString()
+	await input.db
+		.prepare(
+			`INSERT INTO package_app_grant_credential_mappings
+			 (grant_id, need_key, credential_ids_json, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(grant_id, need_key) DO UPDATE SET
+			   credential_ids_json = excluded.credential_ids_json,
+			   updated_at = excluded.updated_at`,
+		)
+		.bind(
+			input.grantId,
+			input.needKey,
+			JSON.stringify([...new Set(input.credentialIds)]),
+			now,
+			now,
+		)
+		.run()
+}
+
 /** Every live app grant a person gave, newest first (Connected apps page). */
 export async function listLivePackageAppOauthGrantsForPerson(input: {
 	db: D1Database
@@ -157,6 +213,110 @@ export async function upsertPackageAppOauthGrant(input: {
 	)
 }
 
+export async function upsertPackageAppOauthGrantWithCredentialMappings(input: {
+	db: D1Database
+	personId: string
+	orgUsername: string
+	kodyId: string
+	scopes: ReadonlyArray<PackageAppOauthScope>
+	mappings: ReadonlyArray<{
+		needKey: string
+		credentialIds: ReadonlyArray<string>
+	}>
+	now?: Date
+}) {
+	const now = (input.now ?? new Date()).toISOString()
+	for (
+		let attempt = 0;
+		attempt < maxPackageAppOauthGrantUpdateAttempts;
+		attempt++
+	) {
+		const existing = await findLivePackageAppOauthGrantRow(input)
+		const scopes = serializePackageAppOauthScopes([
+			...(existing ? toGrant(existing).scopes : []),
+			...input.scopes,
+		])
+		const statements = [
+			existing
+				? input.db
+						.prepare(
+							`UPDATE package_app_oauth_grants
+							 SET scopes = ?
+							 WHERE id = ? AND scopes = ? AND revoked_at IS NULL`,
+						)
+						.bind(scopes, existing.id, existing.scopes)
+				: input.db
+						.prepare(
+							`INSERT INTO package_app_oauth_grants
+							 (id, person_id, org_username, kody_id, scopes, created_at)
+							 VALUES (?, ?, ?, ?, ?, ?)
+							 ON CONFLICT DO NOTHING`,
+						)
+						.bind(
+							crypto.randomUUID(),
+							input.personId,
+							input.orgUsername,
+							input.kodyId,
+							scopes,
+							now,
+						),
+		]
+		for (const mapping of input.mappings) {
+			if (mapping.credentialIds.length === 0) {
+				statements.push(
+					input.db
+						.prepare(
+							`DELETE FROM package_app_grant_credential_mappings
+							 WHERE need_key = ?
+							   AND grant_id IN (
+							     SELECT id FROM package_app_oauth_grants
+							     WHERE person_id = ? AND org_username = ? AND kody_id = ?
+							       AND scopes = ? AND revoked_at IS NULL
+							   )`,
+						)
+						.bind(
+							mapping.needKey,
+							input.personId,
+							input.orgUsername,
+							input.kodyId,
+							scopes,
+						),
+				)
+				continue
+			}
+			statements.push(
+				input.db
+					.prepare(
+						`INSERT INTO package_app_grant_credential_mappings
+						 (grant_id, need_key, credential_ids_json, created_at, updated_at)
+						 SELECT id, ?, ?, ?, ? FROM package_app_oauth_grants
+						 WHERE person_id = ? AND org_username = ? AND kody_id = ?
+						   AND scopes = ? AND revoked_at IS NULL
+						 ON CONFLICT(grant_id, need_key) DO UPDATE SET
+						   credential_ids_json = excluded.credential_ids_json,
+						   updated_at = excluded.updated_at`,
+					)
+					.bind(
+						mapping.needKey,
+						JSON.stringify([...new Set(mapping.credentialIds)]),
+						now,
+						now,
+						input.personId,
+						input.orgUsername,
+						input.kodyId,
+						scopes,
+					),
+			)
+		}
+		await input.db.batch(statements)
+		const current = await findLivePackageAppOauthGrantRow(input)
+		if (current?.scopes === scopes) return
+	}
+	throw new Error(
+		'Package app OAuth grant changed repeatedly while updating credential mappings',
+	)
+}
+
 export async function revokePackageAppOauthGrantsForPersonApp(input: {
 	db: D1Database
 	personId: string
@@ -173,6 +333,17 @@ export async function revokePackageAppOauthGrantsForPersonApp(input: {
 			   AND revoked_at IS NULL`,
 		)
 		.bind(now, input.personId, input.orgUsername, input.kodyId)
+		.run()
+	await input.db
+		.prepare(
+			`DELETE FROM package_app_grant_credential_mappings
+			 WHERE grant_id IN (
+			   SELECT id FROM package_app_oauth_grants
+			   WHERE person_id = ? AND org_username = ? AND kody_id = ?
+			     AND revoked_at IS NOT NULL
+			 )`,
+		)
+		.bind(input.personId, input.orgUsername, input.kodyId)
 		.run()
 }
 
@@ -208,7 +379,19 @@ export async function revokePackageAppOauthGrantScope(input: {
 			)
 			.bind(scopes, grant.id, grant.scopes)
 			.first<{ id: string }>()
-		if (updated) return true
+		if (updated) {
+			const needKey = scope.startsWith('need:') ? scope.slice(5) : null
+			if (needKey) {
+				await input.db
+					.prepare(
+						`DELETE FROM package_app_grant_credential_mappings
+						 WHERE grant_id = ? AND need_key = ?`,
+					)
+					.bind(grant.id, needKey)
+					.run()
+			}
+			return true
+		}
 	}
 	throw new Error(
 		'Package app OAuth grant changed repeatedly while updating scopes',

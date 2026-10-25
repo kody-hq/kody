@@ -216,6 +216,9 @@ function needSummary(need: PackageCredentialNeedView) {
 	const parts = [kind, need.provider]
 	if (need.multiple) parts.push('several allowed')
 	if (need.from) parts.push(`from ${need.from}`)
+	if (need.supplier === 'publisher') parts.unshift('Set by the publisher')
+	else if (need.supplier === 'executor')
+		parts.unshift(need.required ? 'Required' : 'Optional')
 	return parts.join(' · ')
 }
 export const tabBodyCss = { display: 'grid', gap: spacing.md }
@@ -315,6 +318,12 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 										<td>
 											<strong>{need.key}</strong>
 											<div css={mutedCss}>{needSummary(need)}</div>
+											{need.supplier === 'publisher' ? (
+												<div css={mutedCss}>
+													Publisher credentials:{' '}
+													{need.defaults.org ? 'Set' : 'Not set'}
+												</div>
+											) : null}
 											{need.description ? (
 												<div css={mutedCss}>{need.description}</div>
 											) : null}
@@ -441,7 +450,7 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 									need,
 									stored: need.defaults.mine,
 									inheritLabel: 'Not set (uses the org default)',
-									editable: true,
+									editable: need.supplier !== 'publisher',
 									trigger: null,
 								})}
 							</dd>

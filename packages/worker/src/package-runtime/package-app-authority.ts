@@ -414,16 +414,38 @@ export function createPackageAppCredentialAuthority(input: {
 			return runsAs.status === 'ready' ? runsAs.request : null
 		},
 		visitorNeedRequest: async (needKey) => {
-			const visitor = input.visitorRequest
-			if (!visitor?.actor) return null
-			const consents = await packageAppVisitorConsents({
-				db: input.env.APP_DB,
-				visitorPersonId: visitor.actor.userId,
-				grantScope: input.grantScope,
-				needKey,
-				waitUntil: input.waitUntil,
-			})
-			return consents ? visitor : null
+			const grant = await visitorNeedGrant(needKey)
+			return grant?.request ?? null
 		},
+		visitorNeedGrant: async (needKey) => await visitorNeedGrant(needKey),
+	}
+
+	async function visitorNeedGrant(needKey: string) {
+		const visitor = input.visitorRequest
+		if (
+			!visitor?.actor ||
+			!input.grantScope?.orgSlug ||
+			!input.grantScope.kodyId
+		) {
+			return null
+		}
+		const grant = await findLivePackageAppOauthGrant({
+			db: input.env.APP_DB,
+			personId: visitor.actor.userId,
+			orgUsername: input.grantScope.orgSlug.toLowerCase(),
+			kodyId: input.grantScope.kodyId,
+		})
+		if (!grant?.scopes.includes(packageAppVisitorNeedScope(needKey))) {
+			return null
+		}
+		const touched = touchPackageAppOauthGrantLastUsed({
+			db: input.env.APP_DB,
+			grantId: grant.id,
+		}).catch((error: unknown) => {
+			console.warn('package-app-grant-last-used-failed', error)
+		})
+		if (input.waitUntil) input.waitUntil(touched)
+		else await touched
+		return { request: visitor, grantId: grant.id }
 	}
 }
