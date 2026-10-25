@@ -5,6 +5,8 @@ import { requestHasSessionCookie } from '#app/anonymous-html-cache.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { readPackageAppSession } from '#app/package-app-session.ts'
+import { authorizePackageAppVisitorForOrg } from '#app/package-app-origin.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
@@ -118,6 +120,44 @@ async function handleTaggedPackageAppRequest(
 						'anonymous',
 					)
 			: null
+	const packageAppSession = await readPackageAppSession({
+		request,
+		env,
+		slug: packagePath.kodyId,
+	})
+	if (packageAppSession) {
+		const authorized = await authorizePackageAppVisitorForOrg({
+			env,
+			stableUserId: packageAppSession.session.stableUserId,
+			issuedAt: packageAppSession.issuedAt,
+			handle: packagePath.username,
+			kodyId: packagePath.kodyId,
+		})
+		if (authorized.kind === 'ok') {
+			const response = await servePackageAppRequest({
+				request,
+				env,
+				packagePath,
+				owner: authorized.owner,
+				visitor: authorized.visitor,
+			})
+			return applyPackageAppCacheHeaders(response, 'signed-in')
+		}
+		if (serveAnonymously) return await serveAnonymously()
+		if (authorized.kind === 'forbidden') {
+			return new Response(null, {
+				status: 302,
+				headers: {
+					Location: buildPackagePagePath({
+						username: packagePath.username,
+						kodyId: packagePath.kodyId,
+					}),
+					'Cache-Control': 'no-store',
+				},
+			})
+		}
+		return redirectToLoginWhenUnauthenticated(request, env)
+	}
 	const user = await readAuthenticatedAppUser(request, env)
 	if (!user) {
 		if (serveAnonymously) return await serveAnonymously()

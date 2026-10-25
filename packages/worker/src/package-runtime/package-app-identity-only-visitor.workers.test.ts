@@ -1,4 +1,5 @@
 import {
+	mintPersonId,
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
@@ -15,6 +16,12 @@ import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
+import {
+	createPackageAppSessionCookie,
+	readPackageAppSession,
+} from '#app/package-app-session.ts'
+import { handlePackageAppRequest } from '#app/handlers/package-app.ts'
+import { authorizePackageAppVisitorForOrg } from '#app/package-app-origin.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -102,6 +109,18 @@ async function ensureSchema() {
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_capability_approvals (
+		id TEXT PRIMARY KEY NOT NULL,
+		package_id TEXT NOT NULL,
+		owner_user_id TEXT NOT NULL,
+		published_commit TEXT NOT NULL,
+		fingerprint TEXT NOT NULL,
+		capability_set_json TEXT NOT NULL,
+		dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
+		approved_by_user_id TEXT NOT NULL,
+		approved_at TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	)`)
 	await ensureSecretBucketsTestSchema(env.APP_DB)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
@@ -110,7 +129,10 @@ const appSource = `import { hasScope, hasVisitorCredential, kody } from 'kody:ru
 export default {
 	async fetch(request) {
 		const msg = (e) => String(e?.message ?? e).slice(0, 200)
-		const out = { header: request.headers.get('X-Kody-Visitor') }
+		const out = {
+			header: request.headers.get('X-Kody-Visitor'),
+			cookie: request.headers.get('Cookie'),
+		}
 		out.scopes = {
 			profile: hasScope(request, 'profile'),
 			email: hasScope(request, 'email'),
@@ -128,7 +150,7 @@ const notDeclared = /not listed in kody\.app\.capabilities/
 async function setup(input: { capabilities?: Array<string> } = {}) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSchema()
-	const ownerId = `user-${crypto.randomUUID()}`
+	const ownerId = mintPersonId() as string
 	const username = `wt-${ownerId.slice(-12)}`
 	await ensureUsersTestSchema({ db: env.APP_DB })
 	await ensureCommunityFlowSchema(env.APP_DB)
@@ -265,6 +287,57 @@ async function setup(input: { capabilities?: Array<string> } = {}) {
 
 	return { ownerId, username, serve }
 }
+
+test(
+	'a package-app session becomes a verified visitor header without exposing its cookie',
+	{ timeout: 120_000 },
+	async () => {
+		const t = await setup()
+		const [setCookie] = await createPackageAppSessionCookie({
+			env,
+			session: { stableUserId: t.ownerId, username: t.username },
+			slug: 'visitor-app',
+			secure: true,
+			expiresAt: Date.now() + 60_000,
+		})
+		const request = new Request(
+			`https://kody.dev/@${t.username}/packages/visitor-app`,
+			{ headers: { Cookie: setCookie?.split(';')[0] ?? '' } },
+		)
+		const parsedSession = await readPackageAppSession({
+			request,
+			env,
+			slug: 'visitor-app',
+		})
+		expect(parsedSession?.session.stableUserId).toBe(t.ownerId)
+		const authorized = parsedSession
+			? await authorizePackageAppVisitorForOrg({
+					env,
+					stableUserId: parsedSession.session.stableUserId,
+					issuedAt: parsedSession.issuedAt,
+					handle: t.username,
+					kodyId: 'visitor-app',
+				})
+			: null
+		expect(authorized?.kind).toBe('ok')
+		const response = await handlePackageAppRequest(request, env)
+		expect(
+			response.status,
+			response.headers.get('Location') ?? 'no redirect location',
+		).toBe(200)
+		const body = (await response.json()) as {
+			header: string
+			cookie: string | null
+		}
+		expect(JSON.parse(body.header)).toEqual({
+			userId: t.ownerId,
+			username: t.username,
+			role: 'owner',
+			scopes: ['profile'],
+		})
+		expect(body.cookie).toBeNull()
+	},
+)
 
 test(
 	'a signed-in outsider gets their identity from metaGetCurrentUser and nothing else',

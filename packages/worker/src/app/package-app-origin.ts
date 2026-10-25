@@ -381,7 +381,7 @@ function redirectToPackagePage(input: {
 	})
 }
 
-type AuthorizedPackageAppServe =
+export type AuthorizedPackageAppServe =
 	| {
 			kind: 'ok'
 			owner: PackageAppServeOwner
@@ -409,7 +409,7 @@ type AuthorizedPackageAppServe =
  * computed concurrently with an access write is stored under the epoch it
  * may already be stale for, never under the new one.
  */
-async function authorizePackageAppVisitorForOrg(input: {
+export async function authorizePackageAppVisitorForOrg(input: {
 	env: Env
 	stableUserId: string
 	issuedAt: number
