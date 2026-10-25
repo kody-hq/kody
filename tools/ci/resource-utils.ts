@@ -278,6 +278,10 @@ function isArtifactsNamespaceDeletionInProgressMessage(message: string) {
 	return /deletion is already in progress/i.test(message)
 }
 
+function isArtifactsNamespaceActivationInProgressMessage(message: string) {
+	return /activation is already in progress/i.test(message)
+}
+
 async function waitForArtifactsNamespaceActivation(input: {
 	accountId: string
 	apiToken: string
@@ -388,7 +392,7 @@ export async function ensureArtifactsNamespace(input: {
 		return { namespace: name }
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
-		if (/activation is already in progress/i.test(message)) {
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
 			return waitForArtifactsNamespaceActivation(input)
 		}
 		if (isArtifactsNamespaceAlreadyExistsMessage(message)) {
@@ -473,6 +477,12 @@ export async function deleteArtifactsNamespace(input: {
 			)
 			return
 		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
+			)
+			return
+		}
 		throw new CloudflareResourceError(
 			'artifacts',
 			input.namespace,
@@ -522,6 +532,12 @@ export async function deleteArtifactsNamespace(input: {
 		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
 			console.error(
 				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
 			)
 			return
 		}

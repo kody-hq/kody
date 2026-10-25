@@ -237,3 +237,29 @@ test('deleteArtifactsNamespace treats deletion-in-progress on namespace DELETE a
 	).resolves.toBeUndefined()
 	expect(fetcher).toHaveBeenCalledTimes(2)
 })
+
+test('deleteArtifactsNamespace skips delete while activation is in progress', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(activationInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test('deleteArtifactsNamespace skips namespace DELETE while activation is in progress', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(ok([]), activationInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(2)
+})
