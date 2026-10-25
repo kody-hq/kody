@@ -25,6 +25,9 @@ const payload: AccountConnectedAppsLoaderData = {
 				{
 					label: 'Read your calendar to find an open time.',
 					scope: 'need:calendar',
+					disconnectableCredentials: [
+						{ id: 'credential-calendar', name: 'Calendar' },
+					],
 				},
 				{
 					label: 'Read your calendar to find an open time.',
@@ -34,6 +37,9 @@ const payload: AccountConnectedAppsLoaderData = {
 			],
 			connectedAt: '2026-10-16T00:00:00.000Z',
 			lastUsedAt: null,
+			disconnectableCredentials: [
+				{ id: 'credential-calendar', name: 'Calendar' },
+			],
 		},
 	],
 	agents: [],
@@ -76,4 +82,26 @@ test('connected apps only render styled revoke controls for optional scopes', as
 	expect(html.slice(profileLabelIndex, profileListItemEnd)).not.toContain(
 		'aria-label="Revoke',
 	)
+})
+
+test('connected apps hide disconnect options when there are no unused credentials', async () => {
+	const noDisconnectOptions: AccountConnectedAppsLoaderData = {
+		...payload,
+		apps: payload.apps.map((app) => ({
+			...app,
+			disconnectableCredentials: [],
+			allows: app.allows.map((allow) => ({
+				...allow,
+				disconnectableCredentials: [],
+			})),
+		})),
+	}
+	const html = await renderStartPage(
+		createElement(AccountConnectedAppsPage, {
+			payload: noDisconnectOptions,
+			currentHref: '/account/connected-apps',
+		}),
+		'/account/connected-apps',
+	)
+	expect(html).not.toContain('Also disconnect')
 })

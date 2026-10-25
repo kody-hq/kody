@@ -34,6 +34,7 @@ import {
 	AccountPageHeader,
 	TimestampValue,
 } from './account-management-components.tsx'
+import { AccountConnectedAppDisconnectOptions } from './account-connected-apps-disconnect-options.tsx'
 
 /**
  * `/account/connected-apps`: what can act with this person's Kody identity.
@@ -58,7 +59,10 @@ export function AccountConnectedAppsPage({
 	const [armed, setArmed] = useState<string | null>(null)
 	const appMutation = useMutation({
 		gcTime: 0,
-		mutationFn: (appKey: string) => revokeConnectedApp({ data: { appKey } }),
+		mutationFn: (input: {
+			appKey: string
+			disconnectCredentialIds: Array<string>
+		}) => revokeConnectedApp({ data: input }),
 		onMutate: () => invalidate,
 		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
 	})
@@ -71,8 +75,11 @@ export function AccountConnectedAppsPage({
 	})
 	const scopeMutation = useMutation({
 		gcTime: 0,
-		mutationFn: (input: { appKey: string; scope: string }) =>
-			revokeConnectedAppScope({ data: input }),
+		mutationFn: (input: {
+			appKey: string
+			scope: string
+			disconnectCredentialIds: Array<string>
+		}) => revokeConnectedAppScope({ data: input }),
 		onMutate: () => invalidate,
 		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
 	})
@@ -81,28 +88,33 @@ export function AccountConnectedAppsPage({
 		payload.agents.filter((agent) => !removedAgents.has(agent.clientId)),
 	)
 
-	function revokeApp(app: AccountConnectedAppView) {
+	function revokeApp(
+		app: AccountConnectedAppView,
+		disconnectCredentialIds: Array<string> = [],
+	) {
 		setArmed(null)
 		const isCurrent = capture()
 		setRemovedApps((current) => new Set(current).add(app.appKey))
-		void appMutation.mutateAsync(app.appKey).then(
-			() => {
-				if (isCurrent())
-					toast.success(`${app.appName} can no longer use your Kody account.`)
-			},
-			(error: unknown) => {
-				setRemovedApps((current) => {
-					const next = new Set(current)
-					next.delete(app.appKey)
-					return next
-				})
-				if (isCurrent()) {
-					toast.error(
-						error instanceof Error ? error.message : 'Unable to revoke.',
-					)
-				}
-			},
-		)
+		void appMutation
+			.mutateAsync({ appKey: app.appKey, disconnectCredentialIds })
+			.then(
+				() => {
+					if (isCurrent())
+						toast.success(`${app.appName} can no longer use your Kody account.`)
+				},
+				(error: unknown) => {
+					setRemovedApps((current) => {
+						const next = new Set(current)
+						next.delete(app.appKey)
+						return next
+					})
+					if (isCurrent()) {
+						toast.error(
+							error instanceof Error ? error.message : 'Unable to revoke.',
+						)
+					}
+				},
+			)
 	}
 
 	function revokeAgent(clientIds: ReadonlyArray<string>, label: string) {
@@ -134,19 +146,25 @@ export function AccountConnectedAppsPage({
 		)
 	}
 
-	function revokeAppScope(app: AccountConnectedAppView, scope: string) {
+	function revokeAppScope(
+		app: AccountConnectedAppView,
+		scope: string,
+		disconnectCredentialIds: Array<string>,
+	) {
 		const isCurrent = capture()
-		void scopeMutation.mutateAsync({ appKey: app.appKey, scope }).then(
-			() => {
-				if (isCurrent()) toast.success('That access has been revoked.')
-			},
-			(error: unknown) => {
-				if (isCurrent())
-					toast.error(
-						error instanceof Error ? error.message : 'Unable to revoke.',
-					)
-			},
-		)
+		void scopeMutation
+			.mutateAsync({ appKey: app.appKey, scope, disconnectCredentialIds })
+			.then(
+				() => {
+					if (isCurrent()) toast.success('That access has been revoked.')
+				},
+				(error: unknown) => {
+					if (isCurrent())
+						toast.error(
+							error instanceof Error ? error.message : 'Unable to revoke.',
+						)
+				},
+			)
 	}
 
 	return (
@@ -174,6 +192,7 @@ export function AccountConnectedAppsPage({
 										<ul css={allowsCss} aria-label={`${app.appName} can`}>
 											{app.allows.map((allow, index) => {
 												const scope = allow.scope
+												const scopeArmKey = `scope:${app.appKey}:${scope}`
 												return (
 													<li
 														key={scope ?? `${allow.label}:${index}`}
@@ -181,17 +200,18 @@ export function AccountConnectedAppsPage({
 													>
 														<span>{allow.label}</span>
 														{scope ? (
-															<button
-																type="button"
-																aria-label={`Revoke ${allow.label}`}
-																css={dangerButtonCss}
-																onClick={() => {
-																	if (window.confirm(`Revoke ${allow.label}?`))
-																		revokeAppScope(app, scope)
-																}}
-															>
-																Revoke
-															</button>
+															<ScopeRevokeButton
+																label={allow.label}
+																armed={armed === scopeArmKey}
+																disconnectableCredentials={
+																	allow.disconnectableCredentials ?? []
+																}
+																onArm={() => setArmed(scopeArmKey)}
+																onDisarm={() => setArmed(null)}
+																onConfirm={(ids) =>
+																	revokeAppScope(app, scope, ids)
+																}
+															/>
 														) : null}
 													</li>
 												)
@@ -207,9 +227,10 @@ export function AccountConnectedAppsPage({
 									<RevokeButton
 										name={app.appName}
 										armed={armed === armKey}
+										disconnectableCredentials={app.disconnectableCredentials}
 										onArm={() => setArmed(armKey)}
 										onDisarm={() => setArmed(null)}
-										onConfirm={() => revokeApp(app)}
+										onConfirm={(ids) => revokeApp(app, ids)}
 									/>
 								</li>
 							)
@@ -263,6 +284,7 @@ export function AccountConnectedAppsPage({
 									<RevokeButton
 										name={group.label}
 										armed={armed === armKey}
+										disconnectableCredentials={[]}
 										onArm={() => setArmed(armKey)}
 										onDisarm={() => setArmed(null)}
 										onConfirm={() =>
@@ -287,37 +309,106 @@ export function AccountConnectedAppsPage({
 function RevokeButton(props: {
 	name: string
 	armed: boolean
+	disconnectableCredentials: Array<{ id: string; name: string }>
 	onArm: () => void
 	onDisarm: () => void
-	onConfirm: () => void
+	onConfirm: (ids: Array<string>) => void
 }) {
+	const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	)
 	return (
-		<button
-			type="button"
-			aria-label={
-				props.armed ? `Confirm revoke ${props.name}` : `Revoke ${props.name}`
-			}
-			css={dangerButtonCss}
-			onBlur={props.onDisarm}
-			onClick={() => {
-				if (props.armed) props.onConfirm()
-				else props.onArm()
-			}}
-		>
-			<span
-				data-swap-label
-				data-active={props.armed ? undefined : true}
-				aria-hidden={props.armed ? 'true' : undefined}
+		<div css={revokeActionsCss}>
+			<button
+				type="button"
+				aria-label={
+					props.armed ? `Confirm revoke ${props.name}` : `Revoke ${props.name}`
+				}
+				css={dangerButtonCss}
+				onClick={() => {
+					if (props.armed) props.onConfirm([...selectedIds])
+					else {
+						setSelectedIds(new Set())
+						props.onArm()
+					}
+				}}
 			>
-				Revoke
-			</span>
-			<span
-				data-swap-label
-				data-active={props.armed ? true : undefined}
-				aria-hidden={props.armed ? undefined : 'true'}
+				<span
+					data-swap-label
+					data-active={props.armed ? undefined : true}
+					aria-hidden={props.armed ? 'true' : undefined}
+				>
+					Revoke
+				</span>
+				<span
+					data-swap-label
+					data-active={props.armed ? true : undefined}
+					aria-hidden={props.armed ? undefined : 'true'}
+				>
+					Confirm revoke
+				</span>
+			</button>
+			{props.armed ? (
+				<>
+					<AccountConnectedAppDisconnectOptions
+						credentials={props.disconnectableCredentials}
+						selectedIds={selectedIds}
+						onChange={(ids) => setSelectedIds(ids)}
+					/>
+					<button
+						type="button"
+						css={secondaryButtonCss}
+						onClick={props.onDisarm}
+					>
+						Cancel
+					</button>
+				</>
+			) : null}
+		</div>
+	)
+}
+
+function ScopeRevokeButton(props: {
+	label: string
+	armed: boolean
+	disconnectableCredentials: Array<{ id: string; name: string }>
+	onArm: () => void
+	onDisarm: () => void
+	onConfirm: (ids: Array<string>) => void
+}) {
+	const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+		() => new Set(),
+	)
+	return props.armed ? (
+		<div css={scopeRevokeActionsCss}>
+			<AccountConnectedAppDisconnectOptions
+				credentials={props.disconnectableCredentials}
+				selectedIds={selectedIds}
+				onChange={(ids) => setSelectedIds(ids)}
+			/>
+			<button
+				type="button"
+				aria-label={`Confirm revoke ${props.label}`}
+				css={dangerButtonCss}
+				onClick={() => props.onConfirm([...selectedIds])}
 			>
 				Confirm revoke
-			</span>
+			</button>
+			<button type="button" css={secondaryButtonCss} onClick={props.onDisarm}>
+				Cancel
+			</button>
+		</div>
+	) : (
+		<button
+			type="button"
+			aria-label={`Revoke ${props.label}`}
+			css={dangerButtonCss}
+			onClick={() => {
+				setSelectedIds(new Set())
+				props.onArm()
+			}}
+		>
+			Revoke
 		</button>
 	)
 }
@@ -404,6 +495,28 @@ const scopeRowCss: CSSObject = {
 	alignItems: 'center',
 	justifyContent: 'space-between',
 	gap: spacing.sm,
+}
+
+const revokeActionsCss: CSSObject = {
+	display: 'grid',
+	justifyItems: 'end',
+	gap: spacing.xs,
+}
+
+const scopeRevokeActionsCss: CSSObject = {
+	display: 'grid',
+	justifyItems: 'end',
+	gap: spacing.xs,
+}
+
+const secondaryButtonCss: CSSObject = {
+	border: `1px solid ${colors.border}`,
+	borderRadius: radius.sm,
+	padding: `${spacing.xs} ${spacing.sm}`,
+	background: colors.surface,
+	color: colors.text,
+	font: 'inherit',
+	cursor: 'pointer',
 }
 
 const emptyCss: CSSObject = { color: colors.textMuted, margin: 0 }

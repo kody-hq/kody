@@ -1495,7 +1495,15 @@ export const updateExperiments = createServerFn({ method: 'POST' })
 	})
 
 export const revokeConnectedApp = createServerFn({ method: 'POST' })
-	.validator(z.object({ appKey: z.string().trim().min(1).max(300) }))
+	.validator(
+		z.object({
+			appKey: z.string().trim().min(1).max(300),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
+		}),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ withWebsiteMutation },
@@ -1508,7 +1516,7 @@ export const revokeConnectedApp = createServerFn({ method: 'POST' })
 		])
 		return withWebsiteMutation({}, async (context) =>
 			requireOperationResult(
-				await revokeAccountConnectedApp({ ...context, appKey: data.appKey }),
+				await revokeAccountConnectedApp({ ...context, ...data }),
 			),
 		)
 	})
@@ -1518,6 +1526,10 @@ export const revokeConnectedAppScope = createServerFn({ method: 'POST' })
 		z.object({
 			appKey: z.string().trim().min(1).max(300),
 			scope: z.string().trim().min(1).max(260),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
 		}),
 	)
 	.handler(async ({ data }) => {

@@ -3366,7 +3366,12 @@ export type AccountConnectedAppView = {
 	publisherName: string
 	iconUrl: string | null
 	/** What the app may see or use, in plain words. */
-	allows: Array<{ label: string; scope: string | null }>
+	allows: Array<{
+		label: string
+		scope: string | null
+		disconnectableCredentials?: Array<{ id: string; name: string }>
+	}>
+	disconnectableCredentials: Array<{ id: string; name: string }>
 	connectedAt: string
 	lastUsedAt: string | null
 }

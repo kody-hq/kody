@@ -104,6 +104,55 @@ export async function findPackageAppGrantCredentialMapping(input: {
 	}
 }
 
+export async function hasCredentialMappingOutsidePackageAppRevoke(input: {
+	db: D1Database
+	credentialId: string
+	grantId: string
+	personId: string
+	personOrgId: string
+	needKey?: string | null
+}): Promise<boolean> {
+	const otherGrantMapping = await input.db
+		.prepare(
+			`SELECT 1 AS found
+			 FROM package_app_grant_credential_mappings AS mapping
+			 JOIN package_app_oauth_grants AS owner_grant
+			   ON owner_grant.id = mapping.grant_id,
+			      json_each(mapping.credential_ids_json) AS credential
+			 WHERE owner_grant.person_id = ?
+			   AND credential.value = ?
+			   AND NOT (
+			     mapping.grant_id = ?
+			     AND (? IS NULL OR mapping.need_key = ?)
+			   )
+			 LIMIT 1`,
+		)
+		.bind(
+			input.personId,
+			input.credentialId,
+			input.grantId,
+			input.needKey ?? null,
+			input.needKey ?? null,
+		)
+		.first<{ found: number }>()
+	if (otherGrantMapping) return true
+	const otherCredentialMapping = await input.db
+		.prepare(
+			`SELECT 1 AS found
+			 FROM credential_mappings AS mapping,
+			      json_each(mapping.credential_ids_json) AS credential
+			 WHERE credential.value = ?
+			   AND (
+			     mapping.org_id = ?
+			     OR mapping.person_user_id = ?
+			   )
+			 LIMIT 1`,
+		)
+		.bind(input.credentialId, input.personOrgId, input.personId)
+		.first<{ found: number }>()
+	return Boolean(otherCredentialMapping)
+}
+
 export async function upsertPackageAppGrantCredentialMapping(input: {
 	db: D1Database
 	grantId: string

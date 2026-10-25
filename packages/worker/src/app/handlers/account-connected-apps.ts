@@ -6,6 +6,8 @@ import {
 } from '#app/package-app-oauth-consent-copy.ts'
 import {
 	listLivePackageAppOauthGrantsForPerson,
+	findPackageAppGrantCredentialMapping,
+	hasCredentialMappingOutsidePackageAppRevoke,
 	revokePackageAppOauthGrantScope,
 	revokePackageAppOauthGrantsForPersonApp,
 	type PackageAppOauthGrant,
@@ -16,6 +18,8 @@ import {
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { deleteMcpEventSubscriptionsForOauthClient } from '#mcp/events/subscriptions-repo.ts'
+import { getSecretContextForAccountSecret } from '#app/account-secrets-data.ts'
+import { deleteSecret } from '#mcp/secrets/service.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import {
 	type AccountConnectedAppsLoaderData,
@@ -43,7 +47,15 @@ import {
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { mapWithConcurrency } from '#worker/webhooks/delivery-outcomes.ts'
-import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	personalOrgId,
+	type PersonId,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
+import { deleteIntegration } from '#worker/integrations/service.ts'
+import { deleteMcpServer } from '#worker/mcp-client/settings-service.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
+import { disconnectSelectedCredentials as deleteSelectedCredentials } from '#app/package-app-credential-disconnect.ts'
 
 type ConnectedAppsUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
@@ -94,7 +106,14 @@ export async function loadAccountConnectedAppsData(input: {
 	const apps = await mapWithConcurrency(
 		grants,
 		connectedAppLookupConcurrency,
-		(grant) => describeAppGrant(input.env, grant, resolveOrg),
+		(grant) =>
+			describeAppGrant(
+				input.env,
+				input.user.request,
+				personId,
+				grant,
+				resolveOrg,
+			),
 	)
 	return {
 		ok: true,
@@ -119,6 +138,8 @@ function isOptionalPackageAppScope(scope: string) {
 
 async function describeAppGrant(
 	env: Env,
+	request: ConnectedAppsUser['request'],
+	personId: PersonId,
 	grant: PackageAppOauthGrant,
 	resolveOrg: (
 		handle: string,
@@ -128,10 +149,17 @@ async function describeAppGrant(
 	let publisherName = grant.orgUsername
 	let iconUrl: string | null = null
 	const needDescriptions: Record<string, string> = {}
+	let disconnectableCredentials: Array<DisconnectableCredential> = []
+	let suppliersEnabled = false
 	try {
 		const org = await resolveOrg(grant.orgUsername)
 		if (org) {
 			publisherName = org.displayName || grant.orgUsername
+			suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+				db: env.APP_DB,
+				orgId: org.userId,
+				request,
+			})
 			const lookup = await resolveSavedPackageForPackageAppSlug({
 				db: env.APP_DB,
 				userId: org.userId,
@@ -169,6 +197,13 @@ async function describeAppGrant(
 	}
 	const orderedScopes = [...grant.scopes].sort()
 	const optionalScopes = orderedScopes.filter(isOptionalPackageAppScope)
+	if (suppliersEnabled) {
+		disconnectableCredentials = await loadDisconnectableCredentials({
+			env,
+			personId,
+			grantId: grant.id,
+		})
+	}
 	const baseAllows = packageAppOauthClaimLabels(['profile']).map((label) => ({
 		label,
 		scope: null,
@@ -180,14 +215,162 @@ async function describeAppGrant(
 		iconUrl,
 		allows: [
 			...baseAllows,
-			...optionalScopes.map((scope) => ({
-				label: packageAppOauthClaimLabel(scope, needDescriptions),
-				scope,
-			})),
+			...(await Promise.all(
+				optionalScopes.map(async (scope) => ({
+					label: packageAppOauthClaimLabel(scope, needDescriptions),
+					scope,
+					disconnectableCredentials:
+						suppliersEnabled && scope.startsWith('need:')
+							? await loadDisconnectableCredentials({
+									env,
+									personId,
+									grantId: grant.id,
+									needKey: scope.slice('need:'.length),
+								})
+							: [],
+				})),
+			)),
 		],
+		disconnectableCredentials,
 		connectedAt: grant.createdAt,
 		lastUsedAt: grant.lastUsedAt,
 	}
+}
+
+type DisconnectableCredential = { id: string; name: string }
+
+async function loadDisconnectableCredentials(input: {
+	env: Env
+	personId: PersonId
+	grantId: string
+	needKey?: string
+}): Promise<Array<DisconnectableCredential>> {
+	const credentialIds =
+		input.needKey === undefined
+			? await input.env.APP_DB.prepare(
+					`SELECT credential_ids_json
+					 FROM package_app_grant_credential_mappings
+					 WHERE grant_id = ?`,
+				)
+					.bind(input.grantId)
+					.all<{ credential_ids_json: string }>()
+					.then((result) =>
+						(result.results ?? []).flatMap((row) => {
+							try {
+								const parsed: unknown = JSON.parse(row.credential_ids_json)
+								return Array.isArray(parsed)
+									? parsed.filter(
+											(id): id is string =>
+												typeof id === 'string' && id.length > 0,
+										)
+									: []
+							} catch {
+								return []
+							}
+						}),
+					)
+			: await findPackageAppGrantCredentialMapping({
+					db: input.env.APP_DB,
+					grantId: input.grantId,
+					needKey: input.needKey,
+				})
+	const ownerId = personalOrgId(input.personId)
+	const candidates: Array<DisconnectableCredential> = []
+	for (const id of new Set(credentialIds)) {
+		if (
+			await hasCredentialMappingOutsidePackageAppRevoke({
+				db: input.env.APP_DB,
+				credentialId: id,
+				grantId: input.grantId,
+				personId: input.personId,
+				personOrgId: ownerId,
+				needKey: input.needKey,
+			})
+		) {
+			continue
+		}
+		const credential = await findPersonCredential({
+			env: input.env,
+			ownerId,
+			id,
+		})
+		if (credential) candidates.push({ id, name: credential.name })
+	}
+	return candidates.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+type PersonCredential = { id: string; name: string; family: string }
+
+async function findPersonCredential(input: {
+	env: Env
+	ownerId: string
+	id: string
+}): Promise<PersonCredential | null> {
+	return input.env.APP_DB.prepare(
+		`SELECT id, name, family
+		 FROM (
+		   SELECT entry.id, entry.name, 'secret' AS family
+		   FROM secret_entries AS entry
+		   JOIN secret_buckets AS bucket ON bucket.id = entry.bucket_id
+		   WHERE bucket.user_id = ? AND bucket.scope = 'user'
+		     AND bucket.binding_key = '' AND bucket.deleted_at IS NULL
+		     AND entry.deleted_at IS NULL
+		   UNION ALL
+		   SELECT id, name, 'integration' AS family
+		   FROM user_integrations
+		   WHERE user_id = ? AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT id, name, 'mcp' AS family
+		   FROM mcp_server_settings
+		   WHERE user_id = ? AND deleted_at IS NULL
+		 )
+		 WHERE id = ?
+		 LIMIT 1`,
+	)
+		.bind(input.ownerId, input.ownerId, input.ownerId, input.id)
+		.first<PersonCredential>()
+}
+
+async function deletePersonCredential(input: {
+	env: Env
+	user: ConnectedAppsUser
+	credentialId: string
+}) {
+	const ownerId = personalOrgId(input.user.mcpUser.userId)
+	const credential = await findPersonCredential({
+		env: input.env,
+		ownerId,
+		id: input.credentialId,
+	})
+	if (!credential) return false
+	const audit = orgAuditWriterFromRequest(input.env, input.user.request)
+	if (credential.family === 'secret') {
+		return deleteSecret({
+			env: input.env,
+			userId: ownerId,
+			scope: 'user',
+			name: credential.name,
+			storageContext: getSecretContextForAccountSecret({
+				scope: 'user',
+				packageId: null,
+			}),
+			audit,
+		})
+	}
+	if (credential.family === 'integration') {
+		return deleteIntegration({
+			env: input.env,
+			userId: ownerId,
+			name: credential.name,
+			audit,
+		})
+	}
+	return deleteMcpServer({
+		env: input.env,
+		userId: ownerId,
+		id: credential.id,
+		audit,
+	})
 }
 
 function parseAppKey(appKey: string) {
@@ -202,7 +385,11 @@ export async function revokeAccountConnectedApp({
 	env,
 	user,
 	appKey,
-}: MutationContext & { appKey: string }) {
+	disconnectCredentialIds = [],
+}: MutationContext & {
+	appKey: string
+	disconnectCredentialIds?: Array<string>
+}) {
 	const parsed = parseAppKey(appKey)
 	if (!parsed) {
 		return operationResult(
@@ -210,12 +397,34 @@ export async function revokeAccountConnectedApp({
 			404,
 		)
 	}
+	const grant = await listLivePackageAppOauthGrantsForPerson({
+		db: env.APP_DB,
+		personId: user.mcpUser.userId,
+	}).then((grants) =>
+		grants.find(
+			(item) =>
+				item.orgUsername === parsed.orgUsername &&
+				item.kodyId === parsed.kodyId,
+		),
+	)
+	const mappings = new Set(
+		grant ? await loadDisconnectableMappingIds(env.APP_DB, grant.id) : [],
+	)
 	await revokePackageAppOauthGrantsForPersonApp({
 		db: env.APP_DB,
 		personId: user.mcpUser.userId,
 		orgUsername: parsed.orgUsername,
 		kodyId: parsed.kodyId,
 	})
+	if (disconnectCredentialIds.length > 0 && grant) {
+		await disconnectSelectedCredentials({
+			env,
+			user,
+			appKey: parsed,
+			grantId: grant.id,
+			credentialIds: disconnectCredentialIds.filter((id) => mappings.has(id)),
+		})
+	}
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'oauth',
@@ -235,7 +444,12 @@ export async function revokeAccountConnectedAppScope({
 	user,
 	appKey,
 	scope,
-}: MutationContext & { appKey: string; scope: string }) {
+	disconnectCredentialIds = [],
+}: MutationContext & {
+	appKey: string
+	scope: string
+	disconnectCredentialIds?: Array<string>
+}) {
 	const parsed = parseAppKey(appKey)
 	if (!parsed || !isOptionalPackageAppScope(scope)) {
 		return operationResult(
@@ -243,6 +457,26 @@ export async function revokeAccountConnectedAppScope({
 			404,
 		)
 	}
+	const grant = await listLivePackageAppOauthGrantsForPerson({
+		db: env.APP_DB,
+		personId: user.mcpUser.userId,
+	}).then((grants) =>
+		grants.find(
+			(item) =>
+				item.orgUsername === parsed.orgUsername &&
+				item.kodyId === parsed.kodyId,
+		),
+	)
+	const mappedIds =
+		grant && scope.startsWith('need:')
+			? new Set(
+					await findPackageAppGrantCredentialMapping({
+						db: env.APP_DB,
+						grantId: grant.id,
+						needKey: scope.slice('need:'.length),
+					}),
+				)
+			: new Set<string>()
 	const revoked = await revokePackageAppOauthGrantScope({
 		db: env.APP_DB,
 		personId: user.mcpUser.userId,
@@ -256,6 +490,19 @@ export async function revokeAccountConnectedAppScope({
 			404,
 		)
 	}
+	if (scope.startsWith('need:') && disconnectCredentialIds.length > 0) {
+		if (grant) {
+			await disconnectSelectedCredentials({
+				env,
+				user,
+				appKey: parsed,
+				grantId: grant.id,
+				credentialIds: disconnectCredentialIds.filter((id) =>
+					mappedIds.has(id),
+				),
+			})
+		}
+	}
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'oauth',
@@ -267,6 +514,70 @@ export async function revokeAccountConnectedAppScope({
 		clientId: appKey,
 	})
 	return operationResult({ ok: true as const })
+}
+
+async function loadDisconnectableMappingIds(db: D1Database, grantId: string) {
+	const result = await db
+		.prepare(
+			`SELECT credential_ids_json
+			 FROM package_app_grant_credential_mappings
+			 WHERE grant_id = ?`,
+		)
+		.bind(grantId)
+		.all<{ credential_ids_json: string }>()
+	return (result.results ?? []).flatMap((row) => {
+		try {
+			const parsed: unknown = JSON.parse(row.credential_ids_json)
+			return Array.isArray(parsed)
+				? parsed.filter(
+						(id): id is string => typeof id === 'string' && id.length > 0,
+					)
+				: []
+		} catch {
+			return []
+		}
+	})
+}
+
+async function disconnectSelectedCredentials(input: {
+	env: Env
+	user: ConnectedAppsUser
+	appKey: { orgUsername: string; kodyId: string }
+	grantId: string
+	credentialIds: ReadonlyArray<string>
+}) {
+	const owner = await resolvePackageAppOrgOwnerByHandle({
+		env: input.env,
+		handle: input.appKey.orgUsername,
+	})
+	if (
+		!owner ||
+		!(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: owner.userId,
+			request: input.user.request,
+		}))
+	) {
+		return
+	}
+	await deleteSelectedCredentials({
+		selectedCredentialIds: input.credentialIds,
+		mappedCredentialIds: new Set(input.credentialIds),
+		isReferenced: (credentialId) =>
+			hasCredentialMappingOutsidePackageAppRevoke({
+				db: input.env.APP_DB,
+				credentialId,
+				grantId: input.grantId,
+				personId: input.user.mcpUser.userId,
+				personOrgId: personalOrgId(input.user.mcpUser.userId),
+			}),
+		deleteCredential: (credentialId) =>
+			deletePersonCredential({
+				env: input.env,
+				user: input.user,
+				credentialId,
+			}),
+	})
 }
 
 /** Disconnect an agent from every org the person approved it for. */

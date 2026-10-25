@@ -4,6 +4,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	findPackageAppGrantCredentialMapping,
 	findLivePackageAppOauthGrant,
+	hasCredentialMappingOutsidePackageAppRevoke,
 	revokePackageAppOauthGrantsForPersonApp,
 	revokePackageAppOauthGrantScope,
 	upsertPackageAppOauthGrant,
@@ -34,6 +35,12 @@ function createGrantDatabase() {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (grant_id, need_key)
+		);
+		CREATE TABLE credential_mappings (
+			id TEXT PRIMARY KEY NOT NULL,
+			org_id TEXT NOT NULL,
+			person_user_id TEXT NOT NULL,
+			credential_ids_json TEXT NOT NULL
 		)`,
 	)
 	return { sqlite, db: createD1FromSqlite(sqlite) }
@@ -238,6 +245,143 @@ test('revoking a need scope or whole app grant deletes its credential mapping', 
 			needKey: 'calendar',
 		}),
 	).resolves.toEqual([])
+	sqlite.close()
+})
+
+test('disconnect candidates exclude credentials mapped elsewhere', async () => {
+	const { sqlite, db } = createGrantDatabase()
+	const firstGrantId = await upsertPackageAppOauthGrant({
+		db,
+		personId: 'person-a',
+		orgUsername: 'publisher',
+		kodyId: 'app-one',
+		scopes: ['profile', 'need:calendar'],
+	})
+	await upsertPackageAppGrantCredentialMapping({
+		db,
+		grantId: firstGrantId,
+		needKey: 'calendar',
+		credentialIds: [
+			'unused-credential',
+			'shared-credential',
+			'same-grant-other-need',
+		],
+	})
+	await upsertPackageAppGrantCredentialMapping({
+		db,
+		grantId: firstGrantId,
+		needKey: 'events',
+		credentialIds: ['same-grant-other-need'],
+	})
+	const otherGrantId = await upsertPackageAppOauthGrant({
+		db,
+		personId: 'person-a',
+		orgUsername: 'publisher',
+		kodyId: 'app-two',
+		scopes: ['profile', 'need:calendar'],
+	})
+	await upsertPackageAppGrantCredentialMapping({
+		db,
+		grantId: otherGrantId,
+		needKey: 'calendar',
+		credentialIds: ['shared-credential'],
+	})
+	const otherPersonGrantId = await upsertPackageAppOauthGrant({
+		db,
+		personId: 'person-b',
+		orgUsername: 'publisher',
+		kodyId: 'app-three',
+		scopes: ['profile', 'need:calendar'],
+	})
+	await upsertPackageAppGrantCredentialMapping({
+		db,
+		grantId: otherPersonGrantId,
+		needKey: 'calendar',
+		credentialIds: ['other-person-credential'],
+	})
+	const insertCredentialMapping = sqlite.prepare(
+		`INSERT INTO credential_mappings
+		 (id, org_id, person_user_id, credential_ids_json)
+		 VALUES (?, ?, ?, ?)`,
+	)
+	insertCredentialMapping.run(
+		'mapping-a',
+		'personal-org-a',
+		'person-a',
+		JSON.stringify(['org-mapped-credential']),
+	)
+	insertCredentialMapping.run(
+		'mapping-b',
+		'personal-org-b',
+		'person-b',
+		JSON.stringify(['other-person-mapped-credential']),
+	)
+
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'unused-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+		}),
+	).resolves.toBe(false)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'shared-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+		}),
+	).resolves.toBe(true)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'same-grant-other-need',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+			needKey: 'calendar',
+		}),
+	).resolves.toBe(true)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'unused-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+			needKey: 'calendar',
+		}),
+	).resolves.toBe(false)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'org-mapped-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+		}),
+	).resolves.toBe(true)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'other-person-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+		}),
+	).resolves.toBe(false)
+	await expect(
+		hasCredentialMappingOutsidePackageAppRevoke({
+			db,
+			credentialId: 'other-person-mapped-credential',
+			grantId: firstGrantId,
+			personId: 'person-a',
+			personOrgId: 'personal-org-a',
+		}),
+	).resolves.toBe(false)
 	sqlite.close()
 })
 
