@@ -58,6 +58,7 @@ import {
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import {
 	CredentialClientError,
 	openCredentialClient,
@@ -1091,12 +1092,19 @@ export async function servePackageAppRequest(input: {
 			publishedCommit: packageManifest.source.published_commit,
 		})
 		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
-		const visitorNeeds = await loadPublishedCredentialNeeds({
-			env,
-			userId: owner.userId,
-			sourceId: savedPackage.sourceId,
-			request: callerContext.request,
+		const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+			db: env.APP_DB,
+			orgId: owner.userId,
+			request,
 		})
+		const visitorNeeds = suppliersEnabled
+			? await loadPublishedCredentialNeeds({
+					env,
+					userId: owner.userId,
+					sourceId: savedPackage.sourceId,
+					request: callerContext.request,
+				})
+			: []
 		const requiredExecutorNeeds = visitorNeeds.filter(
 			(need) => need.supplier === 'executor' && need.required !== false,
 		)

@@ -36,6 +36,10 @@ vi.mock('#worker/repo/published-source.ts', () => ({
 	}),
 }))
 
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: async () => false,
+}))
+
 const { computeCredentialNeedsClosure } =
 	await import('./credential-needs-closure.ts')
 

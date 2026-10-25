@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as PackageSourceModule from '#worker/package-registry/source.ts'
+import type * as CredentialSuppliersFlag from '#worker/credentials/credential-suppliers-flag.ts'
 import {
 	consoleError,
 	consoleWarn,
@@ -110,6 +111,13 @@ const mockModule = vi.hoisted(() => ({
 	loadPublishedCredentialNeeds: vi.fn(
 		async (..._args: Array<unknown>) => [] as Array<unknown>,
 	),
+	isPackageCredentialSuppliersEnabled: vi.fn(
+		async (
+			_input: Parameters<
+				typeof CredentialSuppliersFlag.isPackageCredentialSuppliersEnabled
+			>[0],
+		) => false,
+	),
 	openCredentialClient: vi.fn(async (..._args: Array<unknown>) => ({
 		token: 'credential-handle',
 	})),
@@ -144,6 +152,14 @@ vi.mock('#worker/package-runtime/realtime-session.ts', () => ({
 vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
 	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
 		mockModule.loadPublishedCredentialNeeds(...args),
+}))
+
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: (
+		...args: Parameters<
+			typeof CredentialSuppliersFlag.isPackageCredentialSuppliersEnabled
+		>
+	) => mockModule.isPackageCredentialSuppliersEnabled(...args),
 }))
 
 vi.mock('#worker/credentials/credential-client.ts', async (importOriginal) => {
@@ -260,6 +276,7 @@ function createFixture(options: FixtureOptions = {}) {
 
 function seedFixture(options?: FixtureOptions) {
 	const fixture = createFixture(options)
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(false)
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
 	mockModule.openCredentialClient.mockResolvedValue({
 		token: 'credential-handle',
@@ -338,6 +355,7 @@ async function serveHelloWorld(input?: {
 
 test('required executor credentials redirect visitors to consent before serving app content', async () => {
 	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
 		{
 			key: 'calendar',

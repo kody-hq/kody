@@ -57,7 +57,13 @@ export type UserScopedDataTarget =
 			surface?: string
 			reason?: string
 	  }
-	| { kind: 'bucket_parent'; table: string; parentTable: string }
+	| {
+			kind: 'bucket_parent'
+			table: string
+			parentTable: string
+			childParentColumn?: string
+			parentUserColumn?: string
+	  }
 	| {
 			kind: 'community_listing_child'
 			table: string
@@ -219,6 +225,8 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		kind: 'bucket_parent',
 		table: 'package_app_grant_credential_mappings',
 		parentTable: 'package_app_oauth_grants',
+		childParentColumn: 'grant_id',
+		parentUserColumn: 'person_id',
 	},
 	{
 		kind: 'user_id',
@@ -1049,8 +1057,11 @@ export function buildUserScopedTargetMatch(input: {
 			}
 		}
 		case 'bucket_parent': {
-			const parentMatch = columnInIdsSql('user_id', ids)
-			const whereSql = `bucket_id IN (
+			const parentMatch = columnInIdsSql(
+				target.parentUserColumn ?? 'user_id',
+				ids,
+			)
+			const whereSql = `${target.childParentColumn ?? 'bucket_id'} IN (
 						SELECT id FROM ${target.parentTable} WHERE ${parentMatch.sql}
 					)`
 			return {

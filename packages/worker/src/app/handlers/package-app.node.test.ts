@@ -131,6 +131,8 @@ vi.mock('@sentry/cloudflare', () => ({
 		_getOptions: unknown,
 		durableObjectClass: unknown,
 	) => durableObjectClass,
+	instrumentWorkflowWithSentry: (_getOptions: unknown, workflow: unknown) =>
+		workflow,
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -201,6 +203,10 @@ vi.mock('#worker/package-runtime/package-app.ts', () => ({
 		mockModule.createPackageAppCallerContext(...args),
 	buildPackageAppWorker: (...args: Array<unknown>) =>
 		mockModule.buildPackageAppWorker(...args),
+}))
+
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: async () => false,
 }))
 
 vi.mock('#worker/package-runtime/realtime-session.ts', () => ({

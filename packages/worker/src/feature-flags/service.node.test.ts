@@ -311,6 +311,7 @@ const registryKeys = [
 	'mcp-skills-extension',
 	'mcp-events-extension',
 	'package-app-custom-domains',
+	'package-credential-suppliers',
 	'repo-push-queue',
 	'credential-need-enforcement',
 ] as const
