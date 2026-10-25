@@ -82,6 +82,20 @@ function readTrimmedString(
 	return undefined
 }
 
+function looksLikeWebhookRecord(record: Record<string, unknown>): boolean {
+	return (
+		readTrimmedString(record, [
+			'package_kody_id',
+			'packageKodyId',
+			'export_name',
+			'exportName',
+			'endpoint_id',
+			'endpointId',
+			'handle',
+		]) !== undefined
+	)
+}
+
 /**
  * Package identity only. Never treat bare `id` (session ids) or bare `name`
  * on webhook rows (webhook names) as the package.
@@ -101,14 +115,14 @@ function identityFromRecord(record: Record<string, unknown>): {
 	}
 	// Bare `name` is safe on package-shaped records that already carry a
 	// package_id / packageId (package summaries, get-git-remote, resolved
-	// package targets). Skip it otherwise so webhook `name` is not mistaken.
-	if (packageId !== undefined) {
+	// package targets). Skip webhook rows: their `name` is the webhook name.
+	if (packageId !== undefined && !looksLikeWebhookRecord(record)) {
 		return {
 			name: readTrimmedString(record, ['name']),
 			packageId,
 		}
 	}
-	return {}
+	return { packageId }
 }
 
 function leafOfPackageName(value: string): string {
@@ -178,12 +192,7 @@ function collectNonWebhookCandidates(
 	result: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
 	const candidates: Array<Record<string, unknown>> = [result]
-	for (const key of [
-		'package',
-		'enablement',
-		'resolved_target',
-		'webhook',
-	] as const) {
+	for (const key of ['package', 'enablement', 'resolved_target'] as const) {
 		const nested = result[key]
 		if (isRecord(nested)) candidates.push(nested)
 	}
@@ -210,16 +219,22 @@ export function resolvePreferredPackageIdentity(
 		packageId = packageId ?? nested.packageId
 		if (name !== undefined && packageId !== undefined) break
 	}
-	if (
-		(name === undefined || packageId === undefined) &&
-		Array.isArray(result['webhooks'])
-	) {
-		const fromWebhooks = identityFromWebhookList(
-			result['webhooks'],
-			leftoverLeafFromArgs(args),
-		)
-		name = name ?? fromWebhooks.name
-		packageId = packageId ?? fromWebhooks.packageId
+	if (name === undefined || packageId === undefined) {
+		const webhookRows: Array<unknown> = []
+		if (Array.isArray(result['webhooks'])) {
+			webhookRows.push(...result['webhooks'])
+		}
+		if (isRecord(result['webhook'])) {
+			webhookRows.push(result['webhook'])
+		}
+		if (webhookRows.length > 0) {
+			const fromWebhooks = identityFromWebhookList(
+				webhookRows,
+				leftoverLeafFromArgs(args),
+			)
+			name = name ?? fromWebhooks.name
+			packageId = packageId ?? fromWebhooks.packageId
+		}
 	}
 	return { name, packageId }
 }

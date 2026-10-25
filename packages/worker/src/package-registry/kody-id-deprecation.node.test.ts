@@ -123,6 +123,37 @@ test('ambiguous webhook leaves omit concrete package values', () => {
 	).toEqual({ name: undefined, packageId: undefined })
 })
 
+test('singular minted webhook does not treat webhook name as package name', () => {
+	expect(
+		resolvePreferredPackageIdentity(
+			{
+				webhook: {
+					package_id: 'pkg-1',
+					package_kody_id: 'demo',
+					name: 'sentry',
+					endpoint_id: 'ep-1',
+					handle: 'handle-1',
+				},
+			},
+			{ kodyId: 'demo' },
+		),
+	).toEqual({ name: undefined, packageId: 'pkg-1' })
+	const hint = buildKodyIdDeprecationHint(
+		{
+			webhook: {
+				package_id: 'pkg-1',
+				package_kody_id: 'demo',
+				name: 'sentry',
+				endpoint_id: 'ep-1',
+				handle: 'handle-1',
+			},
+		},
+		{ kodyId: 'demo' },
+	)
+	expect(hint).toContain('packageId: "pkg-1"')
+	expect(hint).not.toContain('name: "sentry"')
+})
+
 test('resolvePreferredPackageIdentity reads nested package summaries', () => {
 	expect(
 		resolvePreferredPackageIdentity({
