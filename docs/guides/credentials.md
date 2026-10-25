@@ -251,8 +251,8 @@ cannot resolve a required executor need fails before execution with
 `credential_required`, naming the need. Inside an app, an executor need without
 its grant mapping fails with `credential_unbound`; it never falls back to the
 publisher's credential. `required` is valid only for executor-supplied needs.
-The older `ownerCredentialForVisitors: true` setting keeps its publisher-
-supplied meaning as an alias. A need with no supplier keeps the existing package
+The older `ownerCredentialForVisitors: true` setting keeps its meaning as a
+publisher-supplied alias. A need with no supplier keeps the existing package
 behavior.
 
 ### Let app visitors use your credential

@@ -309,12 +309,13 @@ stays host-side. See
 [Credentials](./credentials.md#choose-who-supplies-a-package-credential) for
 supplier and mapping rules.
 
-Supplier-aware credentials are rolling out. In app code, check the grant before
-opening a visitor credential, and handle the unbound case without trying the
-publisher's credential:
+Supplier-aware credentials are rolling out. Closures published while the flag is
+off do not store supplier metadata, so republish them after enabling the flag.
+In app code, check the grant before opening a visitor credential, and handle the
+unbound case without trying the publisher's credential:
 
 ```ts
-import { hasScope } from 'kody:runtime'
+import { credential, hasScope } from 'kody:runtime'
 
 if (hasScope(request, 'need:calendar')) {
 	const calendar = await credential.visitor('calendar')
