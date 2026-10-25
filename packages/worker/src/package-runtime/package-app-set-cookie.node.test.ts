@@ -285,6 +285,20 @@ test('generated package-app scrubber strips unsafe cookie domains', () => {
 	expect(result.response.headers.getSetCookie()).toEqual(['toss=1; Path=/'])
 })
 
+test('generated package-app scrubber returns dropped names for untouched responses', () => {
+	const source = createPackageAppSetCookieScrubHostSource({
+		packageAppApexHostnames: [],
+	})
+	const scrub = new Function(
+		`${source}; return __kodyScrubPackageAppSetCookieDomains;`,
+	)() as (
+		response: Response,
+		responseHostname: string,
+	) => { response: Response; dropped: Array<string> }
+
+	expect(scrub(new Response('ok'), 'alice.kody.run').dropped).toEqual([])
+})
+
 test('legacy package-app apex list also strips Domain under that apex', () => {
 	const scrubbed = scrubPackageAppSetCookieDomains(
 		new Response(null, {

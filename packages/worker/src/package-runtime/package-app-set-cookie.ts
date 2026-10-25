@@ -377,19 +377,19 @@ function __kodyRewritePackageAppSetCookie(header, responseHostname) {
 }
 
 function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
-	if (!response) return { response, stripped: [] };
+	if (!response) return { response, stripped: [], dropped: [] };
 	if (response.status === 101 && !response.webSocket) {
-		return { response, stripped: [] };
+		return { response, stripped: [], dropped: [] };
 	}
 	if (
 		!__kodyPackageAppCookieApexes.length &&
 		!__kodyPackageAppCookiePrefix
 	) {
-		return { response, stripped: [] };
+		return { response, stripped: [], dropped: [] };
 	}
 	const getSetCookie = response.headers?.getSetCookie;
 	const setCookies = typeof getSetCookie === 'function' ? getSetCookie.call(response.headers) : [];
-	if (!setCookies.length) return { response, stripped: [] };
+	if (!setCookies.length) return { response, stripped: [], dropped: [] };
 	const stripped = [];
 	const rewritten = [];
 	const dropped = [];
@@ -409,7 +409,7 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 			stripped.push({ cookieName, domain: result.strippedDomain });
 		}
 	}
-	if (!changed) return { response, stripped: [] };
+	if (!changed) return { response, stripped: [], dropped: [] };
 	const headers = new Headers(response.headers);
 	headers.delete('Set-Cookie');
 	for (const cookie of rewritten) {
