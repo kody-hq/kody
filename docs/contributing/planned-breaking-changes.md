@@ -18,12 +18,12 @@ known, or for a stable ref. The leaf after `/` is the URL slug.
 
 `kody_id` (MCP / DB / URLs) and authored `package.json#kody.id` still work.
 Create and resolve accept a leaf or a matching `@scope/leaf`. They are leftover
-identity names. Input schemas mark `kody_id` / `kodyId` as deprecated, and every
-successful MCP / OpenAPI / CLI response for a call that still passed leftover
-`kody_id` includes a `kody_id_deprecation` hint with the preferred `name` and/or
-`package_id` for that package. A future breaking change will remove the authored
-field, the public MCP param, and (separately) rename the
-`saved_packages.kody_id` column.
+identity names. Input schemas mark `kody_id` / `kodyId` as deprecated, and
+successful MCP / OpenAPI / CLI **object** responses for a call that still passed
+leftover `kody_id` include a `kody_id_deprecation` hint (with the preferred
+`name` and/or `package_id` when the result can resolve them). Non-object results
+are unchanged. A future breaking change will remove the authored field, the
+public MCP param, and (separately) rename the `saved_packages.kody_id` column.
 
 Prefer the scoped `name` in docs, capability blurbs, and new callers. Mention
 `package_id` only as the fallback. Do not teach `kody_id` / `kody.id` as
