@@ -264,8 +264,9 @@ The upper bound `<2.0.0` keeps the override within the same major version.
 
 ### `undici` (under `wrangler` / `miniflare` / `@cloudflare/vite-plugin`) → `>=7.30.1 <8.0.0`
 
-Floors only the Cloudflare 7.x undici copies. The root `undici@6.28.1` is
-already on the 6.x patched line and must stay there.
+Floors only the Cloudflare 7.x undici copies. The root `undici@6.28.1` is a
+dev-only transitive dependency and is below the 6.x fix for GHSA-4qv8-2p9j-2685
+(`6.29.1`).
 
 The floor is `7.30.1` for:
 
