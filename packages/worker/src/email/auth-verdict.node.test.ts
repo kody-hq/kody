@@ -1,5 +1,75 @@
 import { expect, test } from 'vitest'
-import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
+import {
+	extractAuthservId,
+	failedSenderAuthenticationReason,
+	isCloudflareEmailAuthservId,
+	resolveInboundEmailAuthVerdict,
+	selectTrustedCloudflareAuthResults,
+} from './auth-verdict.ts'
+
+test('isCloudflareEmailAuthservId accepts Cloudflare ids and rejects lookalikes', () => {
+	expect(isCloudflareEmailAuthservId('mx.cloudflare.net')).toBe(true)
+	expect(isCloudflareEmailAuthservId('email.cloudflare.net')).toBe(true)
+	expect(isCloudflareEmailAuthservId('cloudflare.net')).toBe(true)
+	expect(isCloudflareEmailAuthservId('mx.example.com')).toBe(false)
+	expect(isCloudflareEmailAuthservId('notcloudflare.net')).toBe(false)
+	expect(isCloudflareEmailAuthservId('mx.cloudflare.net.evil.example')).toBe(
+		false,
+	)
+	expect(isCloudflareEmailAuthservId('cloudflare.net.evil.example')).toBe(false)
+})
+
+test('extractAuthservId reads AR and ARC authserv-ids', () => {
+	expect(
+		extractAuthservId('mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass'),
+	).toBe('mx.cloudflare.net')
+	expect(
+		extractAuthservId(
+			'i=1; mx.cloudflare.net; spf=pass (sender); dkim=pass; dmarc=pass',
+		),
+	).toBe('mx.cloudflare.net')
+	expect(extractAuthservId('i=1; mx.google.com; arc=none')).toBe(
+		'mx.google.com',
+	)
+})
+
+test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps', () => {
+	const forgedOnly = new Headers()
+	forgedOnly.append(
+		'Authentication-Results',
+		'evil.example; spf=pass; dkim=pass; dmarc=pass',
+	)
+	expect(selectTrustedCloudflareAuthResults(forgedOnly)).toBeNull()
+
+	const gmailArcOnly = new Headers()
+	gmailArcOnly.append(
+		'ARC-Authentication-Results',
+		'i=1; mx.google.com; arc=none',
+	)
+	expect(selectTrustedCloudflareAuthResults(gmailArcOnly)).toBeNull()
+
+	const forgedThenCloudflare = new Headers()
+	forgedThenCloudflare.append(
+		'Authentication-Results',
+		'evil.example; dmarc=pass',
+	)
+	forgedThenCloudflare.append(
+		'Authentication-Results',
+		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	)
+	expect(selectTrustedCloudflareAuthResults(forgedThenCloudflare)).toBe(
+		'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
+	)
+
+	const cloudflareArc = new Headers()
+	cloudflareArc.append(
+		'ARC-Authentication-Results',
+		'i=1; mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
+	)
+	expect(selectTrustedCloudflareAuthResults(cloudflareArc)).toBe(
+		'i=1; mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
+	)
+})
 
 test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/suspect verdicts', () => {
 	expect(
@@ -47,10 +117,49 @@ test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/sus
 		dmarc: 'fail',
 		authenticated: false,
 		suspect: true,
-		reason: 'Sender failed DMARC authentication.',
+		reason: failedSenderAuthenticationReason,
 	})
 
-	// SPF fail with DKIM pass is authenticated; without DKIM it is suspect.
+	// Both SPF and DKIM failed with no DMARC policy → suspect.
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; spf=fail smtp.mailfrom=example.com; dkim=fail header.d=example.com; dmarc=none header.from=example.com',
+		),
+	).toMatchObject({
+		authenticated: false,
+		suspect: true,
+		reason: failedSenderAuthenticationReason,
+	})
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; spf=softfail smtp.mailfrom=example.com; dkim=fail; dmarc=none',
+		),
+	).toMatchObject({
+		suspect: true,
+		reason: failedSenderAuthenticationReason,
+	})
+
+	// SPF fail alone (DKIM none/unknown) with no DMARC policy is not suspect.
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; spf=fail smtp.mailfrom=example.com; dkim=none header.d=example.com; dmarc=none header.from=example.com',
+		),
+	).toMatchObject({
+		authenticated: false,
+		suspect: false,
+		reason: null,
+	})
+	expect(
+		resolveInboundEmailAuthVerdict(
+			'mx.cloudflare.net; spf=softfail smtp.mailfrom=example.com; dmarc=none header.from=example.com',
+		),
+	).toMatchObject({
+		spf: 'softfail',
+		dkim: 'unknown',
+		suspect: false,
+	})
+
+	// SPF fail with DKIM pass stays authenticated when DMARC is not fail.
 	expect(
 		resolveInboundEmailAuthVerdict(
 			'mx.cloudflare.net; spf=fail smtp.mailfrom=example.com; dkim=pass header.d=example.com; dmarc=none header.from=example.com',
@@ -60,25 +169,6 @@ test('resolveInboundEmailAuthVerdict parses Authentication-Results into auth/sus
 		dkim: 'pass',
 		authenticated: true,
 		suspect: false,
-	})
-	expect(
-		resolveInboundEmailAuthVerdict(
-			'mx.cloudflare.net; spf=fail smtp.mailfrom=example.com; dkim=none header.d=example.com; dmarc=none header.from=example.com',
-		),
-	).toMatchObject({
-		authenticated: false,
-		suspect: true,
-		reason: 'Sender failed SPF and the message has no valid DKIM signature.',
-	})
-	expect(
-		resolveInboundEmailAuthVerdict(
-			'mx.cloudflare.net; spf=softfail smtp.mailfrom=example.com; dmarc=none header.from=example.com',
-		),
-	).toMatchObject({
-		spf: 'softfail',
-		dkim: 'unknown',
-		authenticated: false,
-		suspect: true,
 	})
 
 	// Missing / unparseable headers fail open (not authenticated, not suspect).

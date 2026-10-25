@@ -252,7 +252,7 @@ test('USER inbound attachment, package event, reply, and provider index stay Mai
 			`To: ${address}`,
 			'Subject: Integrated Mailbox flow',
 			`Message-ID: <flow-${crypto.randomUUID()}@example.net>`,
-			'Authentication-Results: mx.example.net; spf=pass; dkim=pass; dmarc=pass',
+			'Authentication-Results: mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
 			'Content-Type: multipart/mixed; boundary="mailbox-flow-boundary"',
 			'',
 			'--mailbox-flow-boundary',

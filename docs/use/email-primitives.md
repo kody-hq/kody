@@ -248,21 +248,28 @@ Inbound mail is classified at receive time. Each stored message carries
 `classification` (`accepted` or `quarantined`) and an optional human-readable
 `classification_reason`. Decision order:
 
-1. **Authentication-Results verdict** — Kody parses the stored SPF/DKIM/DMARC
-   results first. DMARC `fail`, or SPF `fail`/`softfail` without a DKIM `pass`,
-   marks the message suspect. A missing Authentication-Results header fails open
-   (not authenticated, not suspect).
+1. **Authentication-Results verdict** — Kody reads SPF/DKIM/DMARC only from
+   Cloudflare-stamped `Authentication-Results` (or Cloudflare
+   `ARC-Authentication-Results`) on the Email Worker `message.headers`
+   (authserv-id `*.cloudflare.net`). Sender-forged AR/ARC rows and third-party
+   ARC seals are ignored. DMARC `fail`, or both SPF and DKIM `fail`/`softfail`
+   with no DMARC policy (`none` / missing dmarc clause), marks the message
+   suspect and stores it as quarantined with reason
+   `Failed sender authentication.` A missing or untrusted header fails open
+   (accepted, not suspect). This applies to every inbox, including operator
+   system inboxes.
 2. **Per-org sender rules** — at classification time, rules match the RFC5322
    From address (exact address or domain, including subdomains; address beats
    domain). Early SMTP `block` still uses the envelope sender. Effects:
    - `block` rejects at SMTP before any receive quota is charged (envelope
      match), and quarantines at classification when From matches.
    - `quarantine` stores the message as quarantined.
-   - `allow` stores the message as accepted only when From authenticates (DMARC
-     `pass`, or SPF `pass` with the envelope on the From domain). Spoofed or
-     unaligned From is never accepted because of an allow rule.
+   - `allow` stores the message as accepted and overrides auto-quarantine for
+     failed sender authentication.
 3. **Default** — when no sender rule decides the outcome, suspect mail is
-   quarantined and everything else is accepted.
+   quarantined and everything else is accepted. Owners release quarantined mail
+   with `emailMessageClassify` (`classification: "accepted"`) or Not spam in the
+   inbox UI.
 
 Each org may store at most 200 sender rules. Manage them with
 `emailSenderRuleList`, `emailSenderRuleSet` (kind / value / effect / note), and
@@ -311,13 +318,15 @@ does not authenticate From.
   for enablements whose sender rule matches: an exact address, a From domain, or
   `any_authenticated`. Unmatched mail stays in the admin inbox and runs nothing.
 - **Unverified or spoofed.** Mail that failed authentication (DMARC `fail`, or
-  SPF `fail`/`softfail` without DKIM `pass`), mail with no From address, mail
-  whose From did not authenticate (including DKIM-only), and mail that claims a
-  member address without authenticating it (or from a member whose account email
-  is unverified or whose account is suspended) runs nothing. An `allow` rule
-  never accepts auth-failed mail; other stored messages (including fail-open
-  missing Authentication-Results) still stay visible on `/@<slug>/-/email`, and
-  the worker logs `inbound-email-sender-unverified` with the reason.
+  both SPF and DKIM `fail`/`softfail` with no DMARC policy), mail with no From
+  address, mail whose From did not authenticate (including DKIM-only), and mail
+  that claims a member address without authenticating it (or from a member whose
+  account email is unverified or whose account is suspended) runs nothing.
+  Classification `allow` rules can still store auth-failed mail as accepted
+  (they override auto-quarantine), but package enablements never run for
+  unverified senders. Fail-open missing Authentication-Results stays visible on
+  `/@<slug>/-/email`, and the worker logs `inbound-email-sender-unverified` with
+  the reason.
 
 A personal org may have an `any_authenticated` catch-all on a live email
 subscription so any authenticated sender runs that package. Narrow that row for

@@ -598,15 +598,18 @@ guarded by a bearer secret comparison.
 ## Inbound email spam controls
 
 Inbound mail is classified at receive time (`accepted` or `quarantined`) before
-package subscription dispatch. Authentication-Results are decided first (DMARC
-fail, or SPF fail/softfail without DKIM pass → suspect; missing header fails
-open). Per-user sender rules then apply against the RFC5322 From (exact address
-or domain with subdomain matching; address rules beat domain rules; SMTP `block`
-still matches the envelope): `block` rejects at SMTP before quota is charged,
-`quarantine` stores as flagged, `allow` accepts only when From authenticates
-(DMARC pass or aligned SPF) — spoofed or unaligned From is never accepted
-because of an allow rule. When no rule matches, suspect mail is quarantined and
-other mail is accepted. Accepted user mail dispatches `email.message.received`;
+package subscription dispatch. Trusted Cloudflare Authentication-Results are
+decided first (authserv-id `*.cloudflare.net` on Email Worker `message.headers`
+only; sender-forged AR/ARC and third-party ARC seals are ignored). DMARC fail,
+or both SPF and DKIM fail/softfail with no DMARC policy → suspect and
+quarantined with reason `Failed sender authentication.`; missing or untrusted
+header fails open. Per-user sender rules then apply against the RFC5322 From
+(exact address or domain with subdomain matching; address rules beat domain
+rules; SMTP `block` still matches the envelope): `block` rejects at SMTP before
+quota is charged, `quarantine` stores as flagged, `allow` overrides
+auto-quarantine for failed sender authentication. When no rule matches, suspect
+mail is quarantined and other mail is accepted. The same path covers operator
+system inboxes. Accepted user mail dispatches `email.message.received`;
 quarantined user mail dispatches `email.message.quarantined` instead.
 `emailReply` refuses a quarantined inbound message (`quarantined_inbound_reply`)
 before any send or daily send quota is used, so a reply cannot backscatter to a

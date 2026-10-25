@@ -87,7 +87,7 @@ async function readUserDailyReceiveCount(userId: string) {
 }
 
 function dmarcFailAuthResults() {
-	return 'mx.example.com; dmarc=fail (p=reject) header.from=example.net; spf=fail smtp.mailfrom=example.net; dkim=fail header.d=example.net'
+	return 'mx.cloudflare.net; dmarc=fail (p=reject) header.from=example.net; spf=fail smtp.mailfrom=example.net; dkim=fail header.d=example.net'
 }
 
 function createWaitUntilContext() {
@@ -193,7 +193,7 @@ test('user sender rules block before quota, quarantine/allow, and fall back to a
 	const spoofedAllow = mail(
 		'friend@example.net',
 		address,
-		'Spoofed allow does not bypass auth',
+		'Allow overrides failed auth',
 		[`Authentication-Results: ${dmarcFailAuthResults()}`],
 	)
 	await handleInboundEmail(spoofedAllow, createInboundEnv())
@@ -203,7 +203,9 @@ test('user sender rules block before quota, quarantine/allow, and fall back to a
 		'friend@example.net',
 		address,
 		'Allowed when authenticated',
-		['Authentication-Results: mx.example.com; spf=pass; dkim=pass; dmarc=pass'],
+		[
+			'Authentication-Results: mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
+		],
 	)
 	await handleInboundEmail(allowedAuthenticated, createInboundEnv())
 	expect(allowedAuthenticated.rejectedReason).toBeNull()
@@ -229,9 +231,9 @@ test('user sender rules block before quota, quarantine/allow, and fall back to a
 		classification: 'quarantined',
 		classificationReason: 'Sender matched quarantine rule suspect.example.',
 	})
-	expect(bySubject['Spoofed allow does not bypass auth']).toMatchObject({
-		classification: 'quarantined',
-		classificationReason: 'Sender failed DMARC authentication.',
+	expect(bySubject['Allow overrides failed auth']).toMatchObject({
+		classification: 'accepted',
+		classificationReason: null,
 	})
 	expect(bySubject['Allowed when authenticated']).toMatchObject({
 		classification: 'accepted',
@@ -239,7 +241,7 @@ test('user sender rules block before quota, quarantine/allow, and fall back to a
 	})
 	expect(bySubject['Suspect auth']).toMatchObject({
 		classification: 'quarantined',
-		classificationReason: 'Sender failed DMARC authentication.',
+		classificationReason: 'Failed sender authentication.',
 	})
 	expect(bySubject['No auth header']).toMatchObject({
 		classification: 'accepted',
