@@ -85,7 +85,9 @@ routes may declare `aliasPaths`: extra HTTP paths for the same capability. They
 are listed in `/openapi.json` with a distinct operationId (`${id}ByPath`) so the
 document stays unique; HTTP still dispatches both paths to the capability. Put
 the preferred client path on `path` (for example `repoGetGitRemote`'s body-only
-`/v1/repos/git-remote`, with `/v1/repos/{repo_id}/git-remote` as an alias).
+`/v1/repos/git-remote`, with `/v1/repos/{repo_id}/git-remote` as an alias; same
+for `packageGetGitRemote` at `/v1/packages/git-remote` so CLI/OpenAPI can pass
+`kody_id` / `create: true` without a path `package_id`).
 
 `deprecatedForward` keeps a time-bounded legacy route dispatching to a
 replacement capability with fixed inputs, while hiding those inputs from the

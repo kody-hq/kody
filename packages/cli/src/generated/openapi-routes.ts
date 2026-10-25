@@ -657,6 +657,12 @@ export const bakedOpenApiRoutes = [
 	{
 		operationId: 'packageGetGitRemote',
 		method: 'POST',
+		pathTemplate: '/v1/packages/git-remote',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packageGetGitRemoteByPath',
+		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/git-remote',
 		pathParamNames: ['package_id'],
 	},
@@ -668,6 +674,12 @@ export const bakedOpenApiRoutes = [
 	},
 	{
 		operationId: 'packagePublishExternalPush',
+		method: 'POST',
+		pathTemplate: '/v1/packages/external-push',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishExternalPushByPath',
 		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/external-push',
 		pathParamNames: ['package_id'],

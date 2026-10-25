@@ -9,7 +9,10 @@
   `local-execute` parity: integration, secret, email, job, app, memory use-level
   permissions — migration 0092); 2026-10-12 (default scopes also include
   `package:write` and `token:delete` so new CLI bootstrap tokens can push plain
-  repos and self-revoke without a second mint; existing tokens unchanged)
+  repos and self-revoke without a second mint; existing tokens unchanged);
+  2026-10-25 (default scopes also include `package:create` so
+  `packageGetGitRemote` with `create: true` works from CLI bootstrap tokens;
+  existing tokens unchanged)
 - **Amends:** [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md),
   [0055](./0055-cli-mcp-oauth-local-execute-http.md)
 
@@ -127,13 +130,15 @@ a flagless / default-lifetime mint path.
   local execute; single-task agents use `short`.
 - Ordinary and bootstrap tokens share the same idle/max ceilings (14 days / 3
   months). Cap reclaim is generic in `mintApiToken`.
-- **As of Teams P4 + 0092:** default eventual scopes are the pre-P4
-  `local-execute` + `account:read` parity set under org permissions:
+- **As of Teams P4 + 0092 + later amendments:** default eventual scopes are the
+  pre-P4 `local-execute` + `account:read` parity set under org permissions:
   `org:execute`, `org:read`, and the use-level scopes saved packages need
   (`package:execute` / `package:read`, `integration:read` / `integration:use`,
   `secret:use`, `email:read` / `email:send`, `job:read` / `job:execute`,
-  `app:read` / `app:execute`, `memory:read`). `createAuthenticatedFetch` calls
+  `app:read` / `app:execute`, `memory:read`), plus `package:write` (plain-repo /
+  package pushes), `package:create` (`packageGetGitRemote` create stubs), and
+  `token:delete` (self-revoke). `createAuthenticatedFetch` calls
   `integrationGet` (`integration:read`); without it, every integration package
-  fails closed on CapabilityProxy. Do not mint `search:read`, write scopes, the
-  original `local-execute` / `account:read` names, or `tokens:write`. Parent
-  tokens still cannot escalate scopes or outlive their own `max_expires_at`.
+  fails closed on CapabilityProxy. Do not mint `search:read`, the original
+  `local-execute` / `account:read` names, or `tokens:write`. Parent tokens still
+  cannot escalate scopes or outlive their own `max_expires_at`.

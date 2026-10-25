@@ -312,7 +312,19 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
 		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],
-		['POST', '/v1/packages/{package_id}/git-remote', 'packageGetGitRemote'],
+		[
+			'POST',
+			'/v1/packages/git-remote',
+			'packageGetGitRemote',
+			{
+				// Preferred body-only path so CLI/OpenAPI can pass `kody_id` or
+				// `package_id` (and `create: true`) without a path param. Legacy
+				// path stays as an HTTP alias (and a distinct OpenAPI
+				// operationId) so existing `/v1/packages/{package_id}/git-remote`
+				// callers keep working. Same pattern as repoGetGitRemote.
+				aliasPaths: ['/v1/packages/{package_id}/git-remote'],
+			},
+		],
 		[
 			'POST',
 			'/v1/packages/{package_id}/security-audits',
@@ -320,8 +332,13 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		],
 		[
 			'POST',
-			'/v1/packages/{package_id}/external-push',
+			'/v1/packages/external-push',
 			'packagePublishExternalPush',
+			{
+				// Preferred body-only path so CLI/OpenAPI can pass `kody_id`
+				// without a path param. Legacy path stays as an HTTP alias.
+				aliasPaths: ['/v1/packages/{package_id}/external-push'],
+			},
 		],
 		['GET', '/v1/package-subscriptions', 'packageSubscriptionsList'],
 		['GET', '/v1/enablements', 'enablementList'],
