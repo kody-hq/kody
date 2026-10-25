@@ -317,7 +317,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'/v1/packages/git-remote',
 			'packageGetGitRemote',
 			{
-				// Preferred body-only path so CLI/OpenAPI can pass `kody_id` or
+				// Preferred body-only path so CLI/OpenAPI can pass `name` or
 				// `package_id` (and `create: true`) without a path param. Legacy
 				// path stays as an HTTP alias (and a distinct OpenAPI
 				// operationId) so existing `/v1/packages/{package_id}/git-remote`
@@ -335,8 +335,9 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'/v1/packages/external-push',
 			'packagePublishExternalPush',
 			{
-				// Preferred body-only path so CLI/OpenAPI can pass `kody_id`
-				// without a path param. Legacy path stays as an HTTP alias.
+				// Preferred body-only path so CLI/OpenAPI can pass `name` or
+				// `package_id` without a path param. Legacy path stays as an
+				// HTTP alias.
 				aliasPaths: ['/v1/packages/{package_id}/external-push'],
 			},
 		],

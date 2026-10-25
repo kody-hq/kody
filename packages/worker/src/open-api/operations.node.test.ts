@@ -336,9 +336,18 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 		bodyOnlyPackageGitRemote?.requestBody?.content['application/json']?.schema,
 	).toMatchObject({
 		properties: expect.objectContaining({
-			kody_id: expect.anything(),
+			name: expect.anything(),
 			package_id: expect.anything(),
 			create: expect.anything(),
+		}),
+	})
+	expect(
+		document.paths['/v1/packages/external-push']?.['post']?.requestBody
+			?.content['application/json']?.schema,
+	).toMatchObject({
+		properties: expect.objectContaining({
+			name: expect.anything(),
+			package_id: expect.anything(),
 		}),
 	})
 	expect(

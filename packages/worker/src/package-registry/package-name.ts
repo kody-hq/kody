@@ -13,6 +13,13 @@ export const packageNameLookupDescription =
 export const packageIdLookupDescription =
 	'Saved-package UUID. Use when the scoped name is not known, or for a stable ref.'
 
+/**
+ * Leftover MCP/OpenAPI input alias for the package name. Prefer `name`.
+ * Tracked in docs/contributing/planned-breaking-changes.md (#3676).
+ */
+export const packageKodyIdLeftoverDescription =
+	'Leftover alias for the package name (`@owner/leaf` or the name leaf). Prefer `name`.'
+
 const scopedPackageNamePattern =
 	/^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i
 
