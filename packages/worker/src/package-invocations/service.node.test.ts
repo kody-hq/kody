@@ -278,7 +278,9 @@ beforeEach(() => {
 	loadRunNeedsSpy
 		.mockReset()
 		.mockImplementation(async () => supplierPreflightMocks.needs)
-	openCredentialClientSpy.mockReset().mockImplementation(async () => undefined)
+	openCredentialClientSpy.mockReset().mockImplementation(async () => {
+		throw new Error('Unexpected credential preflight')
+	})
 })
 
 test('invokePackageExport executes a scoped package export successfully', async () => {
