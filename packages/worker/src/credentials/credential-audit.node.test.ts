@@ -12,7 +12,10 @@ import {
 	disconnectSecret,
 	renameSecret,
 	saveSecret,
+	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
 import {
 	deleteIntegration,
@@ -156,6 +159,95 @@ test('a user credential lifecycle audits each change once, without values', asyn
 	)
 	expect(raw).not.toContain(secretValue)
 	expect(raw).not.toContain(replacedValue)
+})
+
+test('bulk host and package approvals audit one row per changed secret', async () => {
+	const { env, audit, rows, auditDb } = createEnv()
+	const base = { env, userId, scope: 'user' as const, audit }
+	for (const name of ['tokenA', 'tokenB']) {
+		await saveSecret({ ...base, name, value: `${name}-value` })
+	}
+
+	await setSecretsAllowedPackages({
+		...base,
+		updates: [
+			{ name: 'tokenA', allowedPackages: ['pkg-a'] },
+			{ name: 'tokenB', allowedPackages: ['pkg-a', 'pkg-b'] },
+		],
+	})
+	await setSecretsAllowedHosts({
+		...base,
+		updates: [
+			{ name: 'tokenA', allowedHosts: ['api.example.com'] },
+			{ name: 'tokenB', allowedHosts: ['hooks.slack.com'] },
+		],
+	})
+	// Unchanged bulk lists add no audit rows.
+	await setSecretsAllowedPackages({
+		...base,
+		updates: [
+			{ name: 'tokenA', allowedPackages: ['pkg-a'] },
+			{ name: 'tokenB', allowedPackages: ['pkg-a', 'pkg-b'] },
+		],
+	})
+	await setSecretsAllowedHosts({
+		...base,
+		updates: [
+			{ name: 'tokenA', allowedHosts: ['api.example.com'] },
+			{ name: 'tokenB', allowedHosts: ['hooks.slack.com'] },
+		],
+	})
+
+	const audited = await rows()
+	expect(
+		audited.filter((row) => row.action === 'credential.created'),
+	).toHaveLength(2)
+	expect(
+		audited.filter(
+			(row) => row.action === 'credential.allowed_packages_updated',
+		),
+	).toHaveLength(2)
+	expect(
+		audited.filter((row) => row.action === 'credential.hosts_updated'),
+	).toHaveLength(2)
+	expect(
+		audited
+			.filter((row) => row.action === 'credential.allowed_packages_updated')
+			.map((row) => row.details.name)
+			.sort(),
+	).toEqual(['tokenA', 'tokenB'])
+	expect(
+		audited
+			.filter((row) => row.action === 'credential.hosts_updated')
+			.map((row) => row.details.name)
+			.sort(),
+	).toEqual(['tokenA', 'tokenB'])
+
+	await setSecretAllowedPackages({
+		...base,
+		name: 'tokenA',
+		allowedPackages: ['pkg-a', 'pkg-c'],
+	})
+	await setSecretAllowedHosts({
+		...base,
+		name: 'tokenB',
+		allowedHosts: ['hooks.slack.com', 'api.openai.com'],
+	})
+	const afterSingles = await rows()
+	expect(
+		afterSingles.filter(
+			(row) => row.action === 'credential.allowed_packages_updated',
+		),
+	).toHaveLength(3)
+	expect(
+		afterSingles.filter((row) => row.action === 'credential.hosts_updated'),
+	).toHaveLength(3)
+
+	const raw = JSON.stringify(
+		(await auditDb.prepare(`SELECT * FROM org_audit_events`).all()).results,
+	)
+	expect(raw).not.toContain('tokenA-value')
+	expect(raw).not.toContain('tokenB-value')
 })
 
 test('package and session values are not org credentials and write no row', async () => {

@@ -66,6 +66,23 @@ const mockModule = vi.hoisted(() => ({
 			ttlMs: null,
 		}),
 	),
+	setSecretsAllowedHosts: vi.fn<typeof secretsService.setSecretsAllowedHosts>(
+		async (input) =>
+			input.updates.map((update) => ({
+				name: update.name,
+				scope: input.scope,
+				description: '',
+				packageId: null,
+				allowedHosts: update.allowedHosts,
+				allowedPackages: [],
+				placement: null,
+				disconnected: false,
+				createdAt: new Date(0).toISOString(),
+				updatedAt: new Date(0).toISOString(),
+				expiresAt: null,
+				ttlMs: null,
+			})),
+	),
 	buildSecretHostApprovalUrl: vi.fn<
 		typeof HostApproval.buildSecretHostApprovalUrl
 	>(
@@ -133,6 +150,24 @@ const mockModule = vi.hoisted(() => ({
 		expiresAt: null,
 		ttlMs: null,
 	})),
+	setSecretsAllowedPackages: vi.fn<
+		typeof secretsService.setSecretsAllowedPackages
+	>(async (input) =>
+		input.updates.map((update) => ({
+			name: update.name,
+			scope: input.scope,
+			description: '',
+			packageId: null,
+			allowedHosts: [],
+			allowedPackages: update.allowedPackages,
+			placement: null,
+			disconnected: false,
+			createdAt: new Date(0).toISOString(),
+			updatedAt: new Date(0).toISOString(),
+			expiresAt: null,
+			ttlMs: null,
+		})),
+	),
 	upsertIntegration: vi.fn<typeof IntegrationsService.upsertIntegration>(
 		async (input) => ({
 			...input.config,
@@ -279,6 +314,9 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 	setSecretAllowedHosts: (
 		...args: Parameters<typeof secretsService.setSecretAllowedHosts>
 	) => mockModule.setSecretAllowedHosts(...args),
+	setSecretsAllowedHosts: (
+		...args: Parameters<typeof secretsService.setSecretsAllowedHosts>
+	) => mockModule.setSecretsAllowedHosts(...args),
 	listSecrets: (...args: Parameters<typeof secretsService.listSecrets>) =>
 		mockModule.listSecrets(...args),
 	listPackageSecretsByPackageIds: (
@@ -295,6 +333,9 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 	setSecretAllowedPackages: (
 		...args: Parameters<typeof secretsService.setSecretAllowedPackages>
 	) => mockModule.setSecretAllowedPackages(...args),
+	setSecretsAllowedPackages: (
+		...args: Parameters<typeof secretsService.setSecretsAllowedPackages>
+	) => mockModule.setSecretsAllowedPackages(...args),
 }))
 
 vi.mock('#worker/credentials/credential-fields.ts', async (importOriginal) => {
@@ -791,18 +832,19 @@ test('host approval view and approve persist normalized hosts for the selected s
 test('host bulk approval adds every requested host to each listed secret', async () => {
 	mockSecretsListing([
 		makeSecret('cloudflareToken', { allowedHosts: ['api.github.com'] }),
+		makeSecret('openaiApiKey'),
 	])
 
 	const call = createHandler()
 	const bulk =
-		'?names=cloudflareToken&hosts=api.cloudflare.com,dash.cloudflare.com'
+		'?names=cloudflareToken,openaiApiKey&hosts=api.cloudflare.com,dash.cloudflare.com'
 	const viewResponse = await call(getRequest(bulk))
 	expect(viewResponse.status).toBe(200)
 	expect(viewResponse.data).toMatchObject({
 		ok: true,
 		approval: {
 			name: 'cloudflareToken',
-			names: ['cloudflareToken'],
+			names: ['cloudflareToken', 'openaiApiKey'],
 			requestedHost: 'api.cloudflare.com',
 			requestedHosts: ['api.cloudflare.com', 'dash.cloudflare.com'],
 			requestedPackageId: null,
@@ -812,14 +854,24 @@ test('host bulk approval adds every requested host to each listed secret', async
 	const approveResponse = await call(approve(bulk))
 	expect(approveResponse.status).toBe(200)
 	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretAllowedHosts).toHaveBeenCalledWith(
+	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledTimes(1)
+	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledWith(
 		expect.objectContaining({
-			name: 'cloudflareToken',
 			scope: 'user',
-			allowedHosts: [
-				'api.cloudflare.com',
-				'api.github.com',
-				'dash.cloudflare.com',
+			updates: [
+				{
+					name: 'cloudflareToken',
+					allowedHosts: [
+						'api.cloudflare.com',
+						'api.github.com',
+						'dash.cloudflare.com',
+					],
+				},
+				{
+					name: 'openaiApiKey',
+					allowedHosts: ['api.cloudflare.com', 'dash.cloudflare.com'],
+				},
 			],
 		}),
 	)
@@ -850,14 +902,14 @@ test('host approval rejects truncated and malformed hosts instead of writing the
 		action: 'approve',
 		approvalKind: 'host_bulk',
 	})
-	expect(mockModule.setSecretAllowedHosts).toHaveBeenCalledWith(
+	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledWith(
 		expect.objectContaining({
-			name: 'openaiApiKey',
-			allowedHosts: ['hooks.slack.com'],
+			scope: 'user',
+			updates: [{ name: 'openaiApiKey', allowedHosts: ['hooks.slack.com'] }],
 		}),
 	)
 
-	mockModule.setSecretAllowedHosts.mockClear()
+	mockModule.setSecretsAllowedHosts.mockClear()
 	const invalidOnlyView = await call(
 		getRequest('?names=openaiApiKey&hosts=api.openai.com/v1,%20%20,api.ope'),
 	)
@@ -882,7 +934,7 @@ test('host approval rejects truncated and malformed hosts instead of writing the
 		error:
 			'None of the requested hosts are valid. The approval link may have been truncated — copy it again.',
 	})
-	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
 })
 
 test('approval requests reject invalid targets and ignore stale capability query params', async () => {
@@ -906,7 +958,9 @@ test('approval requests reject invalid targets and ignore stale capability query
 		expect(response.data).toMatchObject({ ok: false, error })
 	}
 	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
 	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedPackages).not.toHaveBeenCalled()
 
 	mockModule.listSecrets.mockResolvedValueOnce([])
 	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce([])
@@ -1004,7 +1058,9 @@ test('package approval reject and approve handle missing secrets and deduplicate
 	})
 	expect(mockModule.listSecrets).not.toHaveBeenCalled()
 	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
 	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedPackages).not.toHaveBeenCalled()
 
 	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce(
 		savedPackages as never,
@@ -1069,12 +1125,17 @@ test('bulk package approval view and approve grant the package on every listed s
 
 	expect(approveResponse.status).toBe(200)
 	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretAllowedPackages).toHaveBeenCalledTimes(2)
-	for (const name of ['discordBotToken', 'xAccessToken']) {
-		expect(mockModule.setSecretAllowedPackages).toHaveBeenCalledWith(
-			expect.objectContaining({ name, allowedPackages: ['pkg-release'] }),
-		)
-	}
+	expect(mockModule.setSecretsAllowedPackages).toHaveBeenCalledTimes(1)
+	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
+	expect(mockModule.setSecretsAllowedPackages).toHaveBeenCalledWith(
+		expect.objectContaining({
+			scope: 'user',
+			updates: [
+				{ name: 'discordBotToken', allowedPackages: ['pkg-release'] },
+				{ name: 'xAccessToken', allowedPackages: ['pkg-release'] },
+			],
+		}),
+	)
 })
 
 test('account secrets API loads selected secret values and deletes the selected user secret', async () => {

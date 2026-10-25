@@ -2130,20 +2130,32 @@ function toSecretMetadata(input: {
 	}
 }
 
-export async function setSecretAllowedHosts(input: {
+/**
+ * Set allowed hosts for one or more secrets in a shared scope. One bucket
+ * lookup, one batched entry read, one D1 upsert batch, then per-secret audit
+ * rows for hosts that actually changed (bulk host approvals used to await
+ * setSecretAllowedHosts once per name).
+ */
+export async function setSecretsAllowedHosts(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
-	name: string
 	scope: SecretScope
-	allowedHosts: Array<string>
+	updates: Array<{ name: string; allowedHosts: Array<string> }>
 	storageContext?: StorageContext | null
 	audit: OrgAuditWriter | null
-}) {
-	const name = input.name.trim()
-	if (!name) {
-		throw new Error('Secret name is required.')
+}): Promise<Array<SecretMetadata>> {
+	if (input.updates.length === 0) return []
+
+	const namedUpdates: Array<{ name: string; allowedHosts: Array<string> }> = []
+	for (const update of input.updates) {
+		const name = update.name.trim()
+		if (!name) {
+			throw new Error('Secret name is required.')
+		}
+		assertSecretNameAllowed(name)
+		namedUpdates.push({ name, allowedHosts: update.allowedHosts })
 	}
-	assertSecretNameAllowed(name)
+
 	const bucket = await getExistingBucketForScope({
 		db: input.env.APP_DB,
 		userId: input.userId,
@@ -2153,54 +2165,228 @@ export async function setSecretAllowedHosts(input: {
 	if (!bucket) {
 		throw new Error('Secret not found for this scope.')
 	}
-	const existingEntry = await getSecretEntry({
-		db: input.env.APP_DB,
-		bucketId: bucket.id,
-		name,
+
+	const entries = await Promise.all(
+		namedUpdates.map((update) =>
+			getSecretEntry({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name: update.name,
+			}),
+		),
+	)
+	const prepared = namedUpdates.map((update, index) => {
+		const existingEntry = entries[index]
+		if (!existingEntry) {
+			throw new Error('Secret not found for this scope.')
+		}
+		return { ...update, existingEntry }
 	})
-	if (!existingEntry) {
+
+	const now = new Date().toISOString()
+	await upsertSecretEntriesAtomically({
+		db: input.env.APP_DB,
+		rows: prepared.map((entry) => ({
+			...entry.existingEntry,
+			allowed_hosts: stringifyAllowedHosts(entry.allowedHosts),
+			updated_at: now,
+		})),
+	})
+
+	const auditChanges: Array<CredentialAuditChange> = []
+	if (input.scope === 'user') {
+		for (const entry of prepared) {
+			const hostsBefore = parseAllowedHosts(entry.existingEntry.allowed_hosts)
+			const hostsAfter = parseAllowedHosts(
+				stringifyAllowedHosts(entry.allowedHosts),
+			)
+			if (sameStringSet(hostsBefore, hostsAfter)) continue
+			auditChanges.push({
+				orgId: input.userId,
+				credential: {
+					id: entry.existingEntry.id,
+					kind: 'secret',
+					name: entry.name,
+				},
+				action: credentialAuditActions.hostsUpdated,
+				details: {
+					hosts: { before: hostsBefore, after: hostsAfter },
+					fields: ['hosts'],
+				},
+			})
+		}
+	}
+	if (auditChanges.length > 0) {
+		await recordCredentialAudit(input.audit, auditChanges)
+	}
+
+	return prepared.map((entry) =>
+		toSecretMetadata({
+			name: entry.name,
+			scope: input.scope,
+			description: entry.existingEntry.description,
+			packageId: input.scope === 'package' ? bucket.binding_key : null,
+			allowedHosts: entry.allowedHosts,
+			allowedPackages: parseAllowedPackages(
+				entry.existingEntry.allowed_packages,
+			),
+			createdAt: entry.existingEntry.created_at,
+			updatedAt: now,
+			expiresAt: earliestSecretExpiresAt(
+				entry.existingEntry.expires_at,
+				bucket.expires_at,
+			),
+			placement: readCredentialFillPlacement(
+				entry.existingEntry.placement_json,
+			),
+			placementOrigin: entry.existingEntry.placement_origin ?? null,
+		}),
+	)
+}
+
+export async function setSecretAllowedHosts(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	name: string
+	scope: SecretScope
+	allowedHosts: Array<string>
+	storageContext?: StorageContext | null
+	audit: OrgAuditWriter | null
+}) {
+	const [updated] = await setSecretsAllowedHosts({
+		env: input.env,
+		userId: input.userId,
+		scope: input.scope,
+		updates: [{ name: input.name, allowedHosts: input.allowedHosts }],
+		storageContext: input.storageContext,
+		audit: input.audit,
+	})
+	if (!updated) {
 		throw new Error('Secret not found for this scope.')
 	}
-	const now = new Date().toISOString()
-	await upsertSecretEntry({
-		db: input.env.APP_DB,
-		row: {
-			...existingEntry,
-			allowed_hosts: stringifyAllowedHosts(input.allowedHosts),
-			updated_at: now,
-		},
-	})
-	const hostsBefore = parseAllowedHosts(existingEntry.allowed_hosts)
-	const hostsAfter = parseAllowedHosts(
-		stringifyAllowedHosts(input.allowedHosts),
-	)
-	if (input.scope === 'user' && !sameStringSet(hostsBefore, hostsAfter)) {
-		await recordCredentialAudit(input.audit, {
-			orgId: input.userId,
-			credential: { id: existingEntry.id, kind: 'secret', name },
-			action: credentialAuditActions.hostsUpdated,
-			details: {
-				hosts: { before: hostsBefore, after: hostsAfter },
-				fields: ['hosts'],
-			},
-		})
+	return updated
+}
+
+/**
+ * Set allowed packages for one or more user secrets. One bucket lookup, one
+ * batched entry read, one D1 upsert batch, then per-secret audit rows for
+ * packages that actually changed (bulk package approvals used to await
+ * setSecretAllowedPackages once per name).
+ */
+export async function setSecretsAllowedPackages(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	scope: SecretScope
+	updates: Array<{ name: string; allowedPackages: Array<string> }>
+	storageContext?: StorageContext | null
+	audit: OrgAuditWriter | null
+}): Promise<Array<SecretMetadata>> {
+	if (input.updates.length === 0) return []
+	if (input.scope !== 'user') {
+		if (input.updates.some((update) => update.allowedPackages.length > 0)) {
+			throw new Error('Package approvals are only supported for user secrets.')
+		}
 	}
-	return toSecretMetadata({
-		name,
+
+	const namedUpdates: Array<{
+		name: string
+		allowedPackages: Array<string>
+	}> = []
+	for (const update of input.updates) {
+		const name = update.name.trim()
+		if (!name) {
+			throw new Error('Secret name is required.')
+		}
+		assertSecretNameAllowed(name)
+		namedUpdates.push({ name, allowedPackages: update.allowedPackages })
+	}
+
+	const bucket = await getExistingBucketForScope({
+		db: input.env.APP_DB,
+		userId: input.userId,
 		scope: input.scope,
-		description: existingEntry.description,
-		packageId: input.scope === 'package' ? bucket.binding_key : null,
-		allowedHosts: input.allowedHosts,
-		allowedPackages: parseAllowedPackages(existingEntry.allowed_packages),
-		createdAt: existingEntry.created_at,
-		updatedAt: now,
-		expiresAt: earliestSecretExpiresAt(
-			existingEntry.expires_at,
-			bucket.expires_at,
-		),
-		placement: readCredentialFillPlacement(existingEntry.placement_json),
-		placementOrigin: existingEntry.placement_origin ?? null,
+		storageContext: input.storageContext ?? null,
 	})
+	if (!bucket) {
+		throw new Error('Secret not found for this scope.')
+	}
+
+	const entries = await Promise.all(
+		namedUpdates.map((update) =>
+			getSecretEntry({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name: update.name,
+			}),
+		),
+	)
+	const prepared = namedUpdates.map((update, index) => {
+		const existingEntry = entries[index]
+		if (!existingEntry) {
+			throw new Error('Secret not found for this scope.')
+		}
+		return { ...update, existingEntry }
+	})
+
+	const now = new Date().toISOString()
+	await upsertSecretEntriesAtomically({
+		db: input.env.APP_DB,
+		rows: prepared.map((entry) => ({
+			...entry.existingEntry,
+			allowed_packages: stringifyAllowedPackages(entry.allowedPackages),
+			updated_at: now,
+		})),
+	})
+
+	const auditChanges: Array<CredentialAuditChange> = []
+	if (input.scope === 'user') {
+		for (const entry of prepared) {
+			const packagesBefore = parseAllowedPackages(
+				entry.existingEntry.allowed_packages,
+			)
+			const packagesAfter = parseAllowedPackages(
+				stringifyAllowedPackages(entry.allowedPackages),
+			)
+			if (sameStringSet(packagesBefore, packagesAfter)) continue
+			auditChanges.push({
+				orgId: input.userId,
+				credential: {
+					id: entry.existingEntry.id,
+					kind: 'secret',
+					name: entry.name,
+				},
+				action: credentialAuditActions.allowedPackagesUpdated,
+				details: {
+					packages: listDelta(packagesBefore, packagesAfter),
+					fields: ['allowed_packages'],
+				},
+			})
+		}
+	}
+	if (auditChanges.length > 0) {
+		await recordCredentialAudit(input.audit, auditChanges)
+	}
+
+	return prepared.map((entry) =>
+		toSecretMetadata({
+			name: entry.name,
+			scope: input.scope,
+			description: entry.existingEntry.description,
+			packageId: input.scope === 'package' ? bucket.binding_key : null,
+			allowedHosts: parseAllowedHosts(entry.existingEntry.allowed_hosts),
+			allowedPackages: entry.allowedPackages,
+			createdAt: entry.existingEntry.created_at,
+			updatedAt: now,
+			expiresAt: earliestSecretExpiresAt(
+				entry.existingEntry.expires_at,
+				bucket.expires_at,
+			),
+			placement: readCredentialFillPlacement(
+				entry.existingEntry.placement_json,
+			),
+			placementOrigin: entry.existingEntry.placement_origin ?? null,
+		}),
+	)
 }
 
 export async function setSecretAllowedPackages(input: {
@@ -2212,71 +2398,18 @@ export async function setSecretAllowedPackages(input: {
 	storageContext?: StorageContext | null
 	audit: OrgAuditWriter | null
 }) {
-	if (input.scope !== 'user' && input.allowedPackages.length > 0) {
-		throw new Error('Package approvals are only supported for user secrets.')
-	}
-	const name = input.name.trim()
-	if (!name) {
-		throw new Error('Secret name is required.')
-	}
-	assertSecretNameAllowed(name)
-	const bucket = await getExistingBucketForScope({
-		db: input.env.APP_DB,
+	const [updated] = await setSecretsAllowedPackages({
+		env: input.env,
 		userId: input.userId,
 		scope: input.scope,
-		storageContext: input.storageContext ?? null,
+		updates: [{ name: input.name, allowedPackages: input.allowedPackages }],
+		storageContext: input.storageContext,
+		audit: input.audit,
 	})
-	if (!bucket) {
+	if (!updated) {
 		throw new Error('Secret not found for this scope.')
 	}
-	const existingEntry = await getSecretEntry({
-		db: input.env.APP_DB,
-		bucketId: bucket.id,
-		name,
-	})
-	if (!existingEntry) {
-		throw new Error('Secret not found for this scope.')
-	}
-	const now = new Date().toISOString()
-	await upsertSecretEntry({
-		db: input.env.APP_DB,
-		row: {
-			...existingEntry,
-			allowed_packages: stringifyAllowedPackages(input.allowedPackages),
-			updated_at: now,
-		},
-	})
-	const packagesBefore = parseAllowedPackages(existingEntry.allowed_packages)
-	const packagesAfter = parseAllowedPackages(
-		stringifyAllowedPackages(input.allowedPackages),
-	)
-	if (input.scope === 'user' && !sameStringSet(packagesBefore, packagesAfter)) {
-		await recordCredentialAudit(input.audit, {
-			orgId: input.userId,
-			credential: { id: existingEntry.id, kind: 'secret', name },
-			action: credentialAuditActions.allowedPackagesUpdated,
-			details: {
-				packages: listDelta(packagesBefore, packagesAfter),
-				fields: ['allowed_packages'],
-			},
-		})
-	}
-	return toSecretMetadata({
-		name,
-		scope: input.scope,
-		description: existingEntry.description,
-		packageId: input.scope === 'package' ? bucket.binding_key : null,
-		allowedHosts: parseAllowedHosts(existingEntry.allowed_hosts),
-		allowedPackages: input.allowedPackages,
-		createdAt: existingEntry.created_at,
-		updatedAt: now,
-		expiresAt: earliestSecretExpiresAt(
-			existingEntry.expires_at,
-			bucket.expires_at,
-		),
-		placement: readCredentialFillPlacement(existingEntry.placement_json),
-		placementOrigin: existingEntry.placement_origin ?? null,
-	})
+	return updated
 }
 
 type UserSecretPackageGrantState = {

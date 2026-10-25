@@ -40,6 +40,8 @@ import {
 	type SaveSecretCredential,
 	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
 import { type SecretScope } from '#mcp/secrets/types.ts'
 import {
@@ -1033,6 +1035,10 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedPackages: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
@@ -1040,19 +1046,11 @@ async function handleApprovalAction(input: {
 						continue
 					}
 					if (secret.allowedPackages.includes(approval.packageId)) continue
-					await setSecretAllowedPackages({
-						env: input.env,
-						audit: orgAuditWriterFromRequest(input.env, input.user.request),
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: 'user',
 						allowedPackages: Array.from(
 							new Set([...secret.allowedPackages, approval.packageId]),
 						),
-						storageContext: null,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1060,6 +1058,19 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				if (updates.length > 0) {
+					await setSecretsAllowedPackages({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: 'user',
+						updates,
+						storageContext: null,
+					})
 				}
 			}
 			return operationResult({
@@ -1205,26 +1216,22 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedHosts: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
 						missingNames.push(name)
 						continue
 					}
-					await setSecretAllowedHosts({
-						env: input.env,
-						audit: orgAuditWriterFromRequest(input.env, input.user.request),
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: approval.scope,
 						allowedHosts: normalizeAllowedHosts([
 							...secret.allowedHosts,
 							...hostsToGrant,
 						]),
-						storageContext: approval.storageContext,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1232,6 +1239,19 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				if (updates.length > 0) {
+					await setSecretsAllowedHosts({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: approval.scope,
+						updates,
+						storageContext: approval.storageContext,
+					})
 				}
 			}
 			return operationResult({

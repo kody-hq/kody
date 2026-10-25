@@ -19,7 +19,10 @@ import {
 	listUserSecretsForSearch,
 	resolveSecret,
 	saveSecret,
+	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 	setSecretsAtomically,
 	updateSecret,
 	updateUserSecretForPackage,
@@ -824,4 +827,138 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 	})
 
 	readSpy.mockRestore()
+})
+
+test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and skip missing-name loops', async () => {
+	const { env } = await createSecretEnv()
+	for (const name of ['alphaToken', 'bravoToken', 'charlieToken']) {
+		await saveSecret({
+			env,
+			userId,
+			scope: 'user',
+			name,
+			value: `${name}-value`,
+			audit: null,
+		})
+	}
+
+	const originalBatch = env.APP_DB.batch.bind(env.APP_DB)
+	let batchCalls = 0
+	env.APP_DB.batch = (async (...args: Parameters<D1Database['batch']>) => {
+		batchCalls += 1
+		return originalBatch(...args)
+	}) as D1Database['batch']
+
+	await expect(
+		setSecretsAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			updates: [
+				{ name: 'alphaToken', allowedPackages: ['pkg-a'] },
+				{ name: 'bravoToken', allowedPackages: ['pkg-a', 'pkg-b'] },
+				{ name: 'charlieToken', allowedPackages: ['pkg-a'] },
+			],
+			audit: null,
+		}),
+	).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedPackages: ['pkg-a'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedPackages: ['pkg-a', 'pkg-b'],
+			}),
+			expect.objectContaining({
+				name: 'charlieToken',
+				allowedPackages: ['pkg-a'],
+			}),
+		]),
+	)
+	expect(batchCalls).toBe(1)
+
+	batchCalls = 0
+	await expect(
+		setSecretsAllowedHosts({
+			env,
+			userId,
+			scope: 'user',
+			updates: [
+				{ name: 'alphaToken', allowedHosts: ['api.example.com'] },
+				{ name: 'bravoToken', allowedHosts: ['hooks.slack.com'] },
+			],
+			audit: null,
+		}),
+	).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedHosts: ['api.example.com'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedHosts: ['hooks.slack.com'],
+			}),
+		]),
+	)
+	expect(batchCalls).toBe(1)
+
+	await expect(listSecrets({ env, userId, scope: 'user' })).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedPackages: ['pkg-a'],
+				allowedHosts: ['api.example.com'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedPackages: ['pkg-a', 'pkg-b'],
+				allowedHosts: ['hooks.slack.com'],
+			}),
+			expect.objectContaining({
+				name: 'charlieToken',
+				allowedPackages: ['pkg-a'],
+				allowedHosts: [],
+			}),
+		]),
+	)
+
+	await expect(
+		setSecretsAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			updates: [{ name: 'missingToken', allowedPackages: ['pkg-a'] }],
+			audit: null,
+		}),
+	).rejects.toThrow('Secret not found for this scope.')
+
+	await expect(
+		setSecretAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			name: 'alphaToken',
+			allowedPackages: ['pkg-a', 'pkg-c'],
+			audit: null,
+		}),
+	).resolves.toMatchObject({
+		name: 'alphaToken',
+		allowedPackages: ['pkg-a', 'pkg-c'],
+	})
+	await expect(
+		setSecretAllowedHosts({
+			env,
+			userId,
+			scope: 'user',
+			name: 'charlieToken',
+			allowedHosts: ['api.openai.com'],
+			audit: null,
+		}),
+	).resolves.toMatchObject({
+		name: 'charlieToken',
+		allowedHosts: ['api.openai.com'],
+	})
 })
