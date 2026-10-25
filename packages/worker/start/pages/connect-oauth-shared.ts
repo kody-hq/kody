@@ -14,6 +14,10 @@ import {
 	normalizeProviderKey,
 	safeParseHost,
 } from '@kody-internal/shared/url-hosts.ts'
+import {
+	pickAuthorizeScopeHost,
+	resolveAuthorizeRequestScopes,
+} from '#universal/oauth-authorize-scopes.ts'
 import { type ConnectOauthLoaderData } from '#universal/loader-data.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
@@ -433,10 +437,25 @@ export async function buildConnectOauthAuthorizeUrl(input: {
 	}
 	url.searchParams.set('client_id', clientId)
 	url.searchParams.set('redirect_uri', input.redirectUri)
-	if (input.config.scopes.length > 0) {
+	const authorizeHost = pickAuthorizeScopeHost([
+		input.config.authorizeHost,
+		safeParseHost(input.config.authorizeUrl ?? ''),
+		safeParseHost(input.config.deviceAuthorizationUrl ?? ''),
+	])
+	const resolvedScopes = resolveAuthorizeRequestScopes({
+		scopes: input.config.scopes,
+		authorizeHost,
+		// Last-chance fill for BYO; platform empty selections stay empty and
+		// error when the host requires scopes instead of redirecting.
+		fillDefaults: !input.config.platformAppSlug,
+	})
+	if (!resolvedScopes.ok) {
+		throw new Error(resolvedScopes.error)
+	}
+	if (resolvedScopes.scopes.length > 0) {
 		url.searchParams.set(
 			'scope',
-			input.config.scopes.join(input.config.scopeSeparator),
+			resolvedScopes.scopes.join(input.config.scopeSeparator),
 		)
 	}
 	const state = createConnectOauthState(

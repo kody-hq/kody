@@ -6,7 +6,11 @@ import {
 } from '#universal/loader-data.ts'
 import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import { loadPlatformIntegrationCatalog } from '#app/platform-integration-catalog.ts'
-import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
+import {
+	normalizeProviderKey,
+	safeParseHost,
+} from '@kody-internal/shared/url-hosts.ts'
+import { defaultScopesForAuthorizeHost } from '#universal/oauth-authorize-scopes.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { toOauthAppPublic } from '#mcp/capabilities/integrations/oauth-app-shared.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
@@ -197,7 +201,13 @@ function toAppOnlyIntegrationRecord(
 		authorization: prefill.authorizeUrl
 			? {
 					authorizeUrl: prefill.authorizeUrl,
-					scopes: [],
+					// User-lane apps do not store scopes; connection scopes are
+					// empty until the first successful connect. Prefill known
+					// host defaults so /connect/oauth does not authorize without
+					// a scope parameter for providers that require one.
+					scopes: defaultScopesForAuthorizeHost(
+						safeParseHost(prefill.authorizeUrl),
+					),
 					scopeSeparator: prefill.scopeSeparator,
 					extraAuthorizeParams: prefill.extraAuthorizeParams ?? {},
 				}

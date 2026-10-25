@@ -539,3 +539,58 @@ test('pollDeviceAuthorization increases interval after connection timeout', asyn
 	expect(gated.ok && gated.status === 'authorization_pending').toBe(true)
 	expect(fetchImpl).toHaveBeenCalledTimes(2)
 })
+
+test('startDeviceAuthorization fills Google defaults when scopes are empty', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(
+		async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = String(init?.body ?? '')
+			expect(body).toContain('scope=openid+email+profile')
+			return jsonResponse({
+				device_code: 'secret-device-code',
+				user_code: 'ABCD-EFGH',
+				verification_uri: 'https://accounts.google.com/device',
+				expires_in: 600,
+				interval: 5,
+			})
+		},
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'https://oauth2.googleapis.com/device/code',
+		tokenUrl: 'https://oauth2.googleapis.com/token',
+		authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+		scopes: [],
+		allowedHosts: [
+			'oauth2.googleapis.com',
+			'accounts.google.com',
+			'api.example.com',
+		],
+		provider: 'google-personal',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	expect(fetchImpl).toHaveBeenCalledOnce()
+})
+
+test('startDeviceAuthorization refuses empty scopes for Slack without defaults', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn()
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		deviceAuthorizationUrl: 'https://slack.com/api/oauth.v2.device',
+		tokenUrl: 'https://slack.com/api/oauth.v2.access',
+		authorizeUrl: null,
+		scopes: [],
+		allowedHosts: ['slack.com', 'api.example.com'],
+		provider: 'slack',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(false)
+	if (started.ok) return
+	expect(started.status).toBe(400)
+	expect(started.error).toContain('requires OAuth scopes')
+	expect(fetchImpl).not.toHaveBeenCalled()
+})
