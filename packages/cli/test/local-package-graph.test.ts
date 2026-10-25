@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+	createPackageBindingsLiteral,
+	embedMergedBindingsInPrimaryShim,
 	encodePathKey,
 	fetchLocalPackageGraph,
 	hasLiteralDynamicSavedPackageImports,
@@ -13,6 +15,7 @@ import {
 	localExecuteGatewayFetchShimModuleName,
 	localPackageGraphPath,
 	localPackageGraphPlatformIssueUrl,
+	mergePackageGraphBindings,
 	packageGraphInlineCodePreferImportsChars,
 	packageRuntimeFacadeImportSpecifier,
 	packageRuntimeModulePrefix,
@@ -719,4 +722,69 @@ test('resolveLocalPackageGraph probes local package names for bindings without c
 	} finally {
 		rmSync(root, { recursive: true, force: true })
 	}
+})
+
+test('mergePackageGraphBindings keeps the primary shim and merges facade bindings', () => {
+	const baseShim =
+		'const __kodyPackageBindings = {\n\t__proto__: null,\n\t"dep-uuid": "kpb1.dep.sig",\n};\nexport {}\n'
+	const probeShim =
+		'const __kodyPackageBindings = {\n\t__proto__: null,\n\t"pkg-uuid": "kpb1.pkg.sig",\n};\nexport {}\n'
+	const facadePath = `${packageRuntimeModulePrefix}/${encodePathKey('pkg-uuid')}.js`
+	const merged = mergePackageGraphBindings(
+		{
+			modules: [
+				{
+					name: localExecuteGatewayFetchShimModuleName,
+					esModule: baseShim,
+				},
+				{
+					name: 'kody:@someone/dep/util',
+					esModule: 'export const suffix = "!pub"\n',
+				},
+			],
+			imports: ['kody:@someone/dep/util'],
+			packageBindings: { 'dep-uuid': 'kpb1.dep.sig' },
+			packageIdsByImport: { 'kody:@someone/dep/util': 'dep-uuid' },
+		},
+		{
+			modules: [
+				{
+					name: localExecuteGatewayFetchShimModuleName,
+					esModule: probeShim,
+				},
+				{
+					name: facadePath,
+					esModule: 'export async function createAuthenticatedFetch() {}\n',
+				},
+			],
+			imports: ['kody:@someone/pkg/export'],
+			packageBindings: { 'pkg-uuid': 'kpb1.pkg.sig' },
+			packageIdsByImport: { 'kody:@someone/pkg/export': 'pkg-uuid' },
+		},
+	)
+	assert.equal(
+		merged.modules.find(
+			(module) => module.name === localExecuteGatewayFetchShimModuleName,
+		)?.esModule,
+		baseShim,
+	)
+	assert.ok(merged.modules.some((module) => module.name === facadePath))
+	assert.deepEqual(merged.packageBindings, {
+		'dep-uuid': 'kpb1.dep.sig',
+		'pkg-uuid': 'kpb1.pkg.sig',
+	})
+	const embedded = embedMergedBindingsInPrimaryShim(merged)
+	const shim = embedded.modules.find(
+		(module) => module.name === localExecuteGatewayFetchShimModuleName,
+	)
+	assert.ok(shim)
+	assert.match(shim.esModule, /"dep-uuid": "kpb1\.dep\.sig"/)
+	assert.match(shim.esModule, /"pkg-uuid": "kpb1\.pkg\.sig"/)
+	assert.equal(
+		createPackageBindingsLiteral({
+			'pkg-uuid': 'kpb1.pkg.sig',
+			'dep-uuid': 'kpb1.dep.sig',
+		}).includes('__proto__: null'),
+		true,
+	)
 })

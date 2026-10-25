@@ -632,10 +632,10 @@ export async function resolveLocalPackageGraph(input: {
 /**
  * When working-tree modules cover some/all `kody:@` imports, the unresolved
  * package-graph request never names those local packages — so it cannot mint
- * their signed bindings or package-runtime facades. Probe each local
- * `kody:@` name that is still missing from `packageIdsByImport`. Published
- * packages return facades + `kpb1` bindings (local sources still win on
- * merge). Unpublished working-tree-only exports fail closed with no binding.
+ * their signed bindings or package-runtime facades. Probe each missing local
+ * `kody:@` name on its own (so one unpublished export does not block the
+ * rest). Published packages return facades + `kpb1` bindings (local sources
+ * still win on merge).
  */
 async function probeLocalPackageBindings(
 	input: CapabilityProxyClientInput & {
@@ -656,31 +656,37 @@ async function probeLocalPackageBindings(
 	]
 	if (probeImports.length === 0) return input.published
 
-	try {
-		const probed = await fetchLocalPackageGraph({
-			apiUrl: input.apiUrl,
-			token: input.token,
-			code: synthesizePackageGraphEntry(probeImports),
-			requiredImports: probeImports,
-			...(input.org ? { org: input.org } : {}),
-			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
-			...(input.conversationId !== undefined
-				? { conversationId: input.conversationId }
-				: {}),
-			...(input.signal ? { signal: input.signal } : {}),
-		})
-		return mergePackageGraphBindings(input.published, probed)
-	} catch (error) {
-		if (!isPackageGraphResolutionError(error)) throw error
-		return input.published
+	let merged = input.published
+	for (const specifier of probeImports) {
+		try {
+			const probed = await fetchLocalPackageGraph({
+				apiUrl: input.apiUrl,
+				token: input.token,
+				code: synthesizePackageGraphEntry([specifier]),
+				requiredImports: [specifier],
+				...(input.org ? { org: input.org } : {}),
+				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+				...(input.conversationId !== undefined
+					? { conversationId: input.conversationId }
+					: {}),
+				...(input.signal ? { signal: input.signal } : {}),
+			})
+			merged = mergePackageGraphBindings(merged, probed)
+		} catch (error) {
+			if (!isPackageGraphResolutionError(error)) throw error
+			// Unpublished / unresolved local export: skip this specifier only.
+		}
 	}
+	return embedMergedBindingsInPrimaryShim(merged)
 }
 
 /**
- * Keep published module sources for unresolved deps; overlay binding metadata
- * and package-runtime facade modules from a local-package binding probe.
+ * Overlay binding metadata and package-runtime facade modules from a probe.
+ * Never replace the primary gateway-fetch shim — facades look up `kpb1`
+ * stamps inside that shim, and a probe-only copy would wipe bindings already
+ * minted for published deps.
  */
-function mergePackageGraphBindings(
+export function mergePackageGraphBindings(
 	base: LocalPackageGraph,
 	probed: LocalPackageGraph,
 ): LocalPackageGraph {
@@ -688,11 +694,8 @@ function mergePackageGraphBindings(
 	for (const module of base.modules) byName.set(module.name, module)
 	for (const module of probed.modules) {
 		if (module.name.startsWith('kody:@')) continue
-		if (
-			parsePackageRuntimeModulePathPackageId(module.name) != null ||
-			module.name === localExecuteGatewayFetchShimModuleName ||
-			module.name.includes(`/${localExecuteGatewayFetchShimModuleName}`)
-		) {
+		if (isLocalExecuteGatewayFetchShimModuleName(module.name)) continue
+		if (parsePackageRuntimeModulePathPackageId(module.name) != null) {
 			byName.set(module.name, module)
 		}
 	}
@@ -708,6 +711,71 @@ function mergePackageGraphBindings(
 			...probed.packageIdsByImport,
 		},
 	}
+}
+
+function isLocalExecuteGatewayFetchShimModuleName(moduleName: string): boolean {
+	if (moduleName === localExecuteGatewayFetchShimModuleName) return true
+	return (
+		moduleName.endsWith(`/${localExecuteGatewayFetchShimModuleName}`) ||
+		moduleName.includes(`/${localExecuteGatewayFetchShimModuleName}/`)
+	)
+}
+
+/**
+ * Package-runtime facades close over `__kodyPackageBinding` from the primary
+ * shim. After probing extra local packages, rewrite that shim's binding table
+ * so it includes every merged `kpb1` stamp (not only the unresolved-deps set).
+ */
+export function embedMergedBindingsInPrimaryShim(
+	graph: LocalPackageGraph,
+): LocalPackageGraph {
+	const packageBindings = graph.packageBindings ?? {}
+	if (Object.keys(packageBindings).length === 0) return graph
+	const modules = graph.modules.map((module) => {
+		if (!isLocalExecuteGatewayFetchShimModuleName(module.name)) return module
+		const rewritten = rewritePackageBindingsLiteral(
+			module.esModule,
+			packageBindings,
+		)
+		return rewritten === module.esModule
+			? module
+			: { name: module.name, esModule: rewritten }
+	})
+	return { ...graph, modules }
+}
+
+/** Origin shim shape: `const __kodyPackageBindings = { … };` */
+const packageBindingsLiteralPattern =
+	/const __kodyPackageBindings = \{[\s\S]*?\n\};/
+
+export function createPackageBindingsLiteral(
+	bindings: Record<string, string>,
+): string {
+	const entries = Object.entries(bindings)
+		.filter(
+			([packageId, binding]) =>
+				packageId &&
+				packageId !== '__proto__' &&
+				typeof binding === 'string' &&
+				binding,
+		)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(
+			([packageId, binding]) =>
+				`\t${JSON.stringify(packageId)}: ${JSON.stringify(binding)},`,
+		)
+	return `{\n\t__proto__: null,\n${entries.join('\n')}${entries.length ? '\n' : ''}}`
+}
+
+function rewritePackageBindingsLiteral(
+	esModule: string,
+	bindings: Record<string, string>,
+): string {
+	if (!packageBindingsLiteralPattern.test(esModule)) return esModule
+	return esModule.replace(
+		packageBindingsLiteralPattern,
+		`const __kodyPackageBindings = ${createPackageBindingsLiteral(bindings)};`,
+	)
 }
 
 function isPackageGraphResolutionError(error: unknown): boolean {
