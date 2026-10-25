@@ -194,8 +194,8 @@ async function applySealedTableStreaming(input: {
 	if (!dataObj) {
 		throw new Error(`paced D1 missing sealed data at ${dataKey}`)
 	}
-	// Index is verified for presence + digests only; drill does not need index
-	// lines in restore state.
+	// Index is verified for presence + digests against the tip manifest; drill
+	// does not need index lines in restore state.
 	const indexObj = await input.s3.getText(indexKey)
 	if (!indexObj) {
 		throw new Error(`paced D1 missing sealed index at ${indexKey}`)
@@ -205,6 +205,13 @@ async function applySealedTableStreaming(input: {
 	const indexPointer = parsePacedD1PartsPointer(indexObj.text)
 
 	if (!dataPointer) {
+		if (
+			(await sha256HexOfText(indexObj.text)) !== input.tableManifest.indexSha256
+		) {
+			throw new Error(
+				`paced D1 index digest mismatch for ${input.source.name}.${input.table}`,
+			)
+		}
 		await applyPacedD1TableDataTextToState({
 			state: input.state,
 			table: input.table,
@@ -226,8 +233,14 @@ async function applySealedTableStreaming(input: {
 			`paced D1 parts data digest disagrees with manifest for ${input.source.name}.${input.table}`,
 		)
 	}
+	if (indexPointer.indexSha256 !== input.tableManifest.indexSha256) {
+		throw new Error(
+			`paced D1 parts index digest disagrees with manifest for ${input.source.name}.${input.table}`,
+		)
+	}
 
 	const digests: Array<string> = []
+	const indexDigests: Array<string> = []
 	let residual = ''
 	if (
 		input.tableManifest.mode === 'full' ||
@@ -276,6 +289,7 @@ async function applySealedTableStreaming(input: {
 			)
 		}
 		digests.push(dataDigest)
+		indexDigests.push(indexDigest)
 		// Drop index bytes immediately after digest check.
 		void indexBytes
 
@@ -318,6 +332,12 @@ async function applySealedTableStreaming(input: {
 	if (chainSha !== input.tableManifest.dataSha256) {
 		throw new Error(
 			`paced D1 data parts chain digest mismatch for ${input.source.name}.${input.table}`,
+		)
+	}
+	const indexChainSha = await sha256HexOfText(`${indexDigests.join('\n')}\n`)
+	if (indexChainSha !== input.tableManifest.indexSha256) {
+		throw new Error(
+			`paced D1 index parts chain digest mismatch for ${input.source.name}.${input.table}`,
 		)
 	}
 	return { usedParts: true }
@@ -547,13 +567,16 @@ export async function runD1PacedRestoreDrillTick(input: {
 		sourcesOk,
 		sources: results,
 	}
-	const reportKey = await writeDrillReport({
-		s3,
-		day,
-		result: drillResult,
-		finishedAt: input.now.toISOString(),
-	})
-	drillResult.reportKey = reportKey
+	try {
+		drillResult.reportKey = await writeDrillReport({
+			s3,
+			day,
+			result: drillResult,
+			finishedAt: input.now.toISOString(),
+		})
+	} catch (error) {
+		console.error('dr_d1_paced_restore_drill_report_failed', error)
+	}
 	console.info('dr_d1_paced_restore_drill', JSON.stringify(drillResult))
 	if (results.length === 0) {
 		throw new Error('paced D1 restore drill: no bound sources to check')
