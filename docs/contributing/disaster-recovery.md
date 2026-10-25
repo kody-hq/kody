@@ -197,8 +197,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
    production restore — those stay on the REST SQL objects.
    `GET`/`POST /__maintenance/dr-paced-status` (bearer `DR_RESTORE_SECRET`,
    optional `?day=YYYY-MM-DD`) reports staging/sealed presence per source.
-   `AUDIT_DB` is not in `DR_D1_PACED_SOURCES` (UUID not committed; see
-   [operator accounts](./operator-accounts.md)).
+   `DR_D1_PACED_SOURCES` commits APP_DB + AUDIT_DB + JOBS_DB (deploy still
+   expands live D1 UUIDs from resource bindings).
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:

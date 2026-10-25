@@ -643,14 +643,14 @@
 				// (DR) account. The companion S3 credentials are Worker
 				// secrets set out-of-band via the Cloudflare API.
 				"DR_EXPORT_ENABLED": "true",
-				// Shadow paced D1 backup (alongside REST export). APP_DB +
-				// JOBS_DB only until Kent adds the kody-audit UUID (not
-				// committed; see docs/contributing/operator-accounts.md).
+				// Shadow paced D1 backup (alongside REST export). Match live
+				// production: APP + AUDIT + JOBS (deploy still expands UUIDs
+				// from resource bindings; committed list must not omit AUDIT).
 				"DR_D1_PACED_BACKUP_ENABLED": "true",
 				// Streaming one-table drill + durable S3 report (re-enabled
 				// after KODY-AQ pause). Keep false only for emergency stop.
 				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "true",
-				"DR_D1_PACED_SOURCES": "[{\"binding\":\"APP_DB\",\"name\":\"kody\",\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\"},{\"binding\":\"JOBS_DB\",\"name\":\"kody-jobs\",\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\"}]",
+				"DR_D1_PACED_SOURCES": "[{\"binding\":\"APP_DB\",\"name\":\"kody\",\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\"},{\"binding\":\"AUDIT_DB\",\"name\":\"kody-audit\",\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\"},{\"binding\":\"JOBS_DB\",\"name\":\"kody-jobs\",\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\"}]",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "a41d50ecaf0ae0f86dd1824ef6729cb2",
 				"DR_BACKUP_BUCKET_NAME": "kody-production-backups",

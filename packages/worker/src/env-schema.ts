@@ -404,7 +404,7 @@ export const EnvSchema = object({
 	// drills can be paused without stopping shadow seals. Literal "true".
 	DR_D1_PACED_RESTORE_DRILL_ENABLED: optionalNonEmptyStringSchema,
 	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
-	// Production ships APP_DB + JOBS_DB; AUDIT_DB waits on the committed UUID.
+	// Production commits APP + AUDIT + JOBS (deploy may still expand UUIDs).
 	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,
 	// Soft-delete purge lane (Teams P7). Default false: first production
 	// enable is dry-run via adminSoftDeletePurgeRun, then flip to "true".

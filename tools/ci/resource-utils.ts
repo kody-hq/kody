@@ -3239,9 +3239,8 @@ export async function writeGeneratedWranglerConfig({
 		}
 	}
 	// Paced D1 shadow backup: expand DR_D1_PACED_SOURCES with live D1 UUIDs at
-	// deploy time so AUDIT_DB is included without committing its id (operator
-	// accounts leave kody-audit UUID uncommitted). APP + JOBS stay listed in
-	// the committed wrangler vars as the reviewed baseline.
+	// deploy time (APP + AUDIT + JOBS). Committed wrangler vars already list
+	// all three; expansion keeps UUIDs aligned with resource bindings.
 	if (resolvedVars.DR_D1_PACED_BACKUP_ENABLED === 'true') {
 		const pacedSources: Array<{
 			binding: string
