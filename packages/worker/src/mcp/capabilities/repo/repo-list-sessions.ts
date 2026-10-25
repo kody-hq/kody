@@ -1,4 +1,3 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -12,8 +11,9 @@ import {
 	packageResource,
 } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
+import { listSavedPackagesByIds } from '#worker/package-registry/repo.ts'
+import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import { listEntitySourcesByIdsForUser } from '#worker/repo/entity-sources.ts'
 import {
 	listRepoSessionsBySource,
 	listRepoSessionsByUser,
@@ -38,16 +38,12 @@ function toResolvedSourceTarget(source: EntitySourceRow): RepoResolvedTarget {
 	}
 }
 
-async function resolveListSessionTarget(input: {
-	db: D1Database
-	userId: OwnerId
+function resolveListSessionTarget(input: {
 	source: EntitySourceRow
-}): Promise<RepoResolvedTarget> {
+	savedPackageById: ReadonlyMap<string, SavedPackageRecord>
+}): RepoResolvedTarget {
 	if (input.source.entity_kind === 'package') {
-		const savedPackage = await getSavedPackageById(input.db, {
-			userId: input.userId,
-			packageId: input.source.entity_id,
-		})
+		const savedPackage = input.savedPackageById.get(input.source.entity_id)
 		if (savedPackage) {
 			return {
 				kind: 'package',
@@ -96,18 +92,38 @@ export const repoListSessionsCapability = defineDomainCapability(
 						sourceId: args.source_id,
 					})
 				: await listRepoSessionsByUser(ctx.env, ownerId)
+			const candidates = rows.filter(
+				(row) =>
+					row.user_id === ownerId &&
+					(args.status === 'all' || row.status === args.status),
+			)
+			const sourceIds = [...new Set(candidates.map((row) => row.source_id))]
+			const sources = await listEntitySourcesByIdsForUser(ctx.env.APP_DB, {
+				userId: ownerId,
+				ids: sourceIds,
+			})
+			const sourceById = new Map(
+				sources.map((source) => [source.id, source] as const),
+			)
+			const packageIds = [
+				...new Set(
+					sources
+						.filter((source) => source.entity_kind === 'package')
+						.map((source) => source.entity_id),
+				),
+			]
+			const savedPackages = await listSavedPackagesByIds(ctx.env.APP_DB, {
+				userId: ownerId,
+				packageIds,
+			})
+			const savedPackageById = new Map(
+				savedPackages.map(
+					(savedPackage) => [savedPackage.id, savedPackage] as const,
+				),
+			)
 			const sessions: RepoListSessionsOutput['sessions'] = []
-			for (const row of rows) {
-				if (
-					row.user_id !== ownerId ||
-					(args.status !== 'all' && row.status !== args.status)
-				) {
-					continue
-				}
-				const source = await getEntitySourceByIdForUser(ctx.env.APP_DB, {
-					id: row.source_id,
-					userId: ownerId,
-				})
+			for (const row of candidates) {
+				const source = sourceById.get(row.source_id)
 				if (
 					!source ||
 					(source.entity_kind === 'package' &&
@@ -125,10 +141,9 @@ export const repoListSessionsCapability = defineDomainCapability(
 				sessions.push({
 					...toRepoSessionInfoResult(row, source),
 					status: row.status,
-					resolved_target: await resolveListSessionTarget({
-						db: ctx.env.APP_DB,
-						userId: ownerId,
+					resolved_target: resolveListSessionTarget({
 						source,
+						savedPackageById,
 					}),
 				})
 				if (sessions.length >= args.limit) break
