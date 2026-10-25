@@ -823,6 +823,12 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 	expect(packageAppHostSource).toContain(
 		'__kodyRunWithPackageBindingsFn = runtimeModule.__kodyRunWithPackageBindings',
 	)
+	expect(packageAppHostSource).toContain(
+		'__kodyScrubPackageAppSetCookieDomains',
+	)
+	expect(packageAppHostSource).toContain(
+		'package-app-set-cookie-domain-stripped',
+	)
 	expect(packageAppHostSource).not.toContain('getSecretAuthority')
 	expect(packageAppHostSource).not.toMatch(
 		/headers\.set\([^)]*x-kody-secret-authority/,

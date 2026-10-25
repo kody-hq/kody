@@ -45,8 +45,13 @@ import {
 	getPackageAppOriginConfigurationError,
 	isKodyReservedCustomHostname,
 	joinAppUrl,
+	listPackageAppOrigins,
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
+import {
+	logPackageAppSetCookieDomainStripped,
+	scrubPackageAppSetCookieDomains,
+} from '#worker/package-runtime/package-app-set-cookie.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -1543,7 +1548,24 @@ export async function handlePackageAppOriginRequest(
 	if (!response) return null
 	// servePackageAppRequest logs x-kody-runtime-run-id, then this boundary
 	// strips it so a browser on the package-app origin never sees the header.
-	return stripPackageAppRuntimeRunId(response).response
+	const withoutRuntimeRunId = stripPackageAppRuntimeRunId(response).response
+	// Defense in depth for every package-app host response (author apps, /-/
+	// system routes, apex redirects): never let Set-Cookie Domain cover the
+	// shared apex or another tenant host.
+	const url = new URL(request.url)
+	const scrubbed = scrubPackageAppSetCookieDomains(withoutRuntimeRunId, {
+		responseHostname: url.hostname,
+		packageAppApexHostnames: listPackageAppOrigins({ env }).map(
+			(origin) => origin.hostname,
+		),
+	})
+	logPackageAppSetCookieDomainStripped({
+		hostname: url.hostname,
+		pathname: url.pathname,
+		stripped: scrubbed.stripped,
+		surface: 'package-app-origin',
+	})
+	return scrubbed.response
 }
 
 async function dispatchPackageAppOriginRequest(request: Request, env: Env) {

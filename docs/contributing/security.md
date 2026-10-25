@@ -312,6 +312,23 @@ username, the subdomain label, and the path's owner username to all match
 `packages/worker/src/package-runtime/package-app-serve.ts`), so a handoff minted
 for one account cannot authorize another user's subdomain.
 
+**Set-Cookie Domain scrub (HTTP).** Until `kody.run` is on the Public Suffix
+List, a response from `{username}.kody.run` (or the apex) could otherwise set
+`Domain=kody.run` / `.kody.run` and have browsers send that cookie to every
+other tenant subdomain and to apex routes. Every response leaving a package-app
+host (author apps, proxied upstreams, and platform `/-/` routes) therefore runs
+through `scrubPackageAppSetCookieDomains`
+(`packages/worker/src/package-runtime/package-app-set-cookie.ts`): Domain
+attributes that cover a configured package-app apex or another host under that
+apex are removed so the cookie becomes host-only; exact-host Domain values and
+cookies with no Domain stay. Strips are logged as
+`package-app-set-cookie-domain-stripped` (Worker logs at the origin boundary;
+author-app strips also `console.warn` inside the isolate so they appear on the
+package Activity run). This does **not** stop
+`document.cookie = "...; Domain=kody.run"` from page JavaScript; browsers only
+refuse that once the apex is on the PSL (operational follow-up in decision
+0017).
+
 Sibling subdomains also stay **same-site** with each other until the domain is
 on the Public Suffix List, so a `SameSite=Lax` cookie still attaches to their
 cross-origin requests. In a browser holding sessions for two accounts (a shared

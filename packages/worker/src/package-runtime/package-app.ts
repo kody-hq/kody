@@ -120,7 +120,11 @@ import {
 	resolveHostedPackageAppUrl,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
-import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import {
+	getPackageAppBaseUrl,
+	listPackageAppOrigins,
+} from '#worker/app-base-url.ts'
+import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtime/package-app-set-cookie.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
@@ -195,6 +199,11 @@ function createPackageAppWorkerSource(input: {
 	 * A ticket means the visitor acts as themselves and the bridge answers.
 	 */
 	identityOnlyOrgSlug: string | null
+	/**
+	 * Package-app apex hostnames (canonical + legacy). Used to strip Set-Cookie
+	 * Domain attributes that would cover the shared apex or another tenant.
+	 */
+	packageAppApexHostnames: Array<string>
 }) {
 	const mcpServerNamesExpr = input.preloadMcpServerNames
 		? 'await runtimeBridge.listMcpServerNames().catch(() => [])'
@@ -990,6 +999,9 @@ function serializeRuntimeError(error) {
 ${createNullPackagesInvokeRewriteHostSource({
 	enabled: input.rewriteNullPackagesInvoke,
 })}
+${createPackageAppSetCookieScrubHostSource({
+	packageAppApexHostnames: input.packageAppApexHostnames,
+})}
 
 function createConsoleLogCapture() {
 	const logs = [];
@@ -1200,6 +1212,20 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			// Authors (or proxied upstreams) must not set the internal throw
 			// marker; only the catch path below may attach it.
 			let outgoing = withoutAuthorRuntimeErrorHeader(response);
+			// Strip Set-Cookie Domain that would cover the package-app apex or
+			// another tenant. Warn into consoleCapture so Activity shows it.
+			const scrubbedCookies = __kodyScrubPackageAppSetCookieDomains(
+				outgoing,
+				requestUrl.hostname,
+			);
+			outgoing = scrubbedCookies.response;
+			if (scrubbedCookies.stripped.length > 0) {
+				console.warn('package-app-set-cookie-domain-stripped', {
+					hostname: requestUrl.hostname,
+					pathname: requestUrl.pathname,
+					stripped: scrubbedCookies.stripped,
+				});
+			}
 			if (outgoing && outgoing.status >= 500) {
 				const runtimeRunId = await readRuntimeRunId(runtimeRun);
 				console.error('package-app-runtime-http-error', {
@@ -3480,6 +3506,9 @@ async function buildPackageAppWorkerOptionsUncached(
 				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
 			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
+			packageAppApexHostnames: listPackageAppOrigins({
+				env: input.env,
+			}).map((origin) => origin.hostname),
 		}),
 	}
 	// The cached template is identity-free: no visitor, request context, or

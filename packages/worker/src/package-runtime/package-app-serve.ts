@@ -28,8 +28,13 @@ import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import {
 	getAppBaseUrl,
 	getCanonicalAppBaseUrl,
+	listPackageAppOrigins,
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
+import {
+	logPackageAppSetCookieDomainStripped,
+	scrubPackageAppSetCookieDomains,
+} from '#worker/package-runtime/package-app-set-cookie.ts'
 import {
 	isPackageAppRuntimeThrownResponse,
 	logPackageAppHttpError,
@@ -1207,8 +1212,21 @@ export async function servePackageAppRequest(input: {
 			phase: 'entrypoint-response',
 			runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
 		})
+		const requestUrl = new URL(request.url)
+		const scrubbed = scrubPackageAppSetCookieDomains(fetched, {
+			responseHostname: requestUrl.hostname,
+			packageAppApexHostnames: listPackageAppOrigins({ env }).map(
+				(origin) => origin.hostname,
+			),
+		})
+		logPackageAppSetCookieDomainStripped({
+			hostname: requestUrl.hostname,
+			pathname: requestUrl.pathname,
+			stripped: scrubbed.stripped,
+			surface: 'package-app-serve',
+		})
 		return endPackageAppVisitWithResponse(
-			attachPackageAppServerTiming(fetched, serverTiming),
+			attachPackageAppServerTiming(scrubbed.response, serverTiming),
 			visitNonce,
 		)
 	} catch (error) {
