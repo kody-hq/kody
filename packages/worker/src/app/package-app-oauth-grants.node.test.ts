@@ -11,6 +11,7 @@ import {
 	upsertPackageAppOauthGrantWithCredentialMappings,
 	upsertPackageAppGrantCredentialMapping,
 } from './package-app-oauth-grants.ts'
+import { disconnectSelectedCredentials } from './package-app-credential-disconnect.ts'
 
 function createGrantDatabase() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -248,7 +249,7 @@ test('revoking a need scope or whole app grant deletes its credential mapping', 
 	sqlite.close()
 })
 
-test('disconnect candidates exclude credentials mapped elsewhere', async () => {
+test('disconnect candidates exclude credentials mapped elsewhere, including another need in the same grant', async () => {
 	const { sqlite, db } = createGrantDatabase()
 	const firstGrantId = await upsertPackageAppOauthGrant({
 		db,
@@ -382,6 +383,25 @@ test('disconnect candidates exclude credentials mapped elsewhere', async () => {
 			personOrgId: 'personal-org-a',
 		}),
 	).resolves.toBe(false)
+	const deleted: Array<string> = []
+	await disconnectSelectedCredentials({
+		selectedCredentialIds: ['same-grant-other-need'],
+		mappedCredentialIds: new Set(['same-grant-other-need']),
+		isReferenced: (credentialId) =>
+			hasCredentialMappingOutsidePackageAppRevoke({
+				db,
+				credentialId,
+				grantId: firstGrantId,
+				personId: 'person-a',
+				personOrgId: 'personal-org-a',
+				needKey: 'calendar',
+			}),
+		deleteCredential: async (credentialId) => {
+			deleted.push(credentialId)
+			return true
+		},
+	})
+	expect(deleted).toEqual([])
 	sqlite.close()
 })
 

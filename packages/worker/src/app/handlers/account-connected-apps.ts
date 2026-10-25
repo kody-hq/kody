@@ -247,28 +247,7 @@ async function loadDisconnectableCredentials(input: {
 }): Promise<Array<DisconnectableCredential>> {
 	const credentialIds =
 		input.needKey === undefined
-			? await input.env.APP_DB.prepare(
-					`SELECT credential_ids_json
-					 FROM package_app_grant_credential_mappings
-					 WHERE grant_id = ?`,
-				)
-					.bind(input.grantId)
-					.all<{ credential_ids_json: string }>()
-					.then((result) =>
-						(result.results ?? []).flatMap((row) => {
-							try {
-								const parsed: unknown = JSON.parse(row.credential_ids_json)
-								return Array.isArray(parsed)
-									? parsed.filter(
-											(id): id is string =>
-												typeof id === 'string' && id.length > 0,
-										)
-									: []
-							} catch {
-								return []
-							}
-						}),
-					)
+			? await loadDisconnectableMappingIds(input.env.APP_DB, input.grantId)
 			: await findPackageAppGrantCredentialMapping({
 					db: input.env.APP_DB,
 					grantId: input.grantId,
@@ -497,6 +476,7 @@ export async function revokeAccountConnectedAppScope({
 				user,
 				appKey: parsed,
 				grantId: grant.id,
+				needKey: scope.slice('need:'.length),
 				credentialIds: disconnectCredentialIds.filter((id) =>
 					mappedIds.has(id),
 				),
@@ -545,6 +525,7 @@ async function disconnectSelectedCredentials(input: {
 	appKey: { orgUsername: string; kodyId: string }
 	grantId: string
 	credentialIds: ReadonlyArray<string>
+	needKey?: string
 }) {
 	const owner = await resolvePackageAppOrgOwnerByHandle({
 		env: input.env,
@@ -570,6 +551,7 @@ async function disconnectSelectedCredentials(input: {
 				grantId: input.grantId,
 				personId: input.user.mcpUser.userId,
 				personOrgId: personalOrgId(input.user.mcpUser.userId),
+				needKey: input.needKey,
 			}),
 		deleteCredential: (credentialId) =>
 			deletePersonCredential({
