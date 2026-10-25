@@ -146,6 +146,38 @@ async function sealVerifiedStagingBytes(input: {
 	return putImmutable(input.s3, input.sealedKey, bytes, input.contentType)
 }
 
+/**
+ * Tip keys land only after every part (or monolithic body) is verified and
+ * written. A partial seal without both tips must re-enter sealTableArtifacts.
+ */
+async function isTableAlreadySealed(input: {
+	s3: DrBackupS3Client
+	tier: PacedD1RetentionTier
+	databaseId: string
+	day: string
+	table: string
+}): Promise<boolean> {
+	const [data, index] = await Promise.all([
+		input.s3.head(
+			pacedD1SealedDataKey(
+				input.tier,
+				input.databaseId,
+				input.day,
+				input.table,
+			),
+		),
+		input.s3.head(
+			pacedD1SealedIndexKey(
+				input.tier,
+				input.databaseId,
+				input.day,
+				input.table,
+			),
+		),
+	])
+	return data.exists && index.exists
+}
+
 async function sealTableArtifacts(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
@@ -325,10 +357,11 @@ export type SealPacedD1SourceNightResult = {
 
 /**
  * Copy a finished staging night to the immutable sealed prefix. Idempotent:
- * existing sealed objects must byte-match (If-None-Match: *). Table copies
- * can span ticks — pass `timeBudgetMs` so catch-up does not OOM/timeout while
- * sealing a large APP night; the sealed manifest is written only when every
- * table has been copied.
+ * existing sealed objects must byte-match (If-None-Match: *). Tables whose
+ * sealed data+index tip keys already exist are skipped so a budgeted resume
+ * does not re-verify prior work. Table copies can span ticks — pass
+ * `timeBudgetMs` so catch-up does not OOM/timeout while sealing a large APP
+ * night; the sealed manifest is written only when every table has been copied.
  */
 export async function sealPacedD1SourceNight(input: {
 	s3: DrBackupS3Client
@@ -379,6 +412,20 @@ export async function sealPacedD1SourceNight(input: {
 
 	let tablesSealed = 0
 	for (const [table, tableManifest] of Object.entries(manifest.tables)) {
+		// Skip tip-complete tables before the budget check so a mid-night
+		// resume does not burn the tick re-verifying already-sealed work.
+		if (
+			await isTableAlreadySealed({
+				s3: input.s3,
+				tier,
+				databaseId: input.source.id,
+				day: input.day,
+				table,
+			})
+		) {
+			tablesSealed += 1
+			continue
+		}
 		if (
 			timeBudgetMs !== undefined &&
 			Date.now() - startedAtMs >= timeBudgetMs

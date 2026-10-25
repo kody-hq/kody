@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 import {
 	pacedD1RetentionTierForDay,
 	pacedD1SealedDataKey,
+	pacedD1SealedIndexKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
 	pacedD1StagingDataPartKey,
@@ -28,6 +29,7 @@ import {
 	shouldRunD1PacedFreshnessCron,
 	shouldRunD1PacedRestoreDrillCron,
 } from '#worker/dr/d1-paced-backup.ts'
+import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
 import { runD1PacedRestoreDrillTick } from '#worker/dr/d1-paced-restore-drill.ts'
 import { collectD1PacedStatus } from '#worker/dr/d1-paced-status.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -428,9 +430,16 @@ test('seal time budget can leave a night unsealed across ticks', async () => {
 		s3: client,
 		walkerOpts: fastWalker,
 	})
-	const sealedKey = pacedD1SealedManifestKey('daily', appId, day)
+	const tier = pacedD1RetentionTierForDay(day)
+	const sealedKey = pacedD1SealedManifestKey(tier, appId, day)
+	const itemsDataKey = pacedD1SealedDataKey(tier, appId, day, 'items')
+	const itemsIndexKey = pacedD1SealedIndexKey(tier, appId, day, 'items')
 	expect(objects.has(sealedKey)).toBe(true)
+	// Drop tip keys too — otherwise resume skips the table and writes the
+	// sealed manifest even under a zero budget.
 	objects.delete(sealedKey)
+	objects.delete(itemsDataKey)
+	objects.delete(itemsIndexKey)
 	// Exhaust the budget before any table copy so seal returns incomplete.
 	const stalled = await runD1PacedBackupTick({
 		env,
@@ -450,6 +459,98 @@ test('seal time budget can leave a night unsealed across ticks', async () => {
 	})
 	expect(finished.nightsSealed).toBeGreaterThanOrEqual(1)
 	expect(objects.has(sealedKey)).toBe(true)
+})
+
+test('seal resume skips already-sealed tables instead of re-verifying them', async () => {
+	const { client, objects } = createMemoryS3()
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE items (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+		CREATE TABLE notes (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+		CREATE TABLE _rate_limits (
+			key TEXT PRIMARY KEY NOT NULL,
+			count INTEGER NOT NULL
+		);
+	`)
+	sqlite.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`).run('i1', 'a')
+	sqlite.prepare(`INSERT INTO notes (id, body) VALUES (?, ?)`).run('n1', 'b')
+	sqlite
+		.prepare(`INSERT INTO _rate_limits (key, count) VALUES (?, ?)`)
+		.run('x', 1)
+	const env = createEnv({
+		APP_DB: createD1FromSqlite(sqlite),
+	})
+	await runD1PacedBackupTick({
+		env,
+		now: at('01:00'),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const tier = pacedD1RetentionTierForDay(day)
+	const sealedManifestKey = pacedD1SealedManifestKey(tier, appId, day)
+	const itemsDataKey = pacedD1SealedDataKey(tier, appId, day, 'items')
+	const itemsIndexKey = pacedD1SealedIndexKey(tier, appId, day, 'items')
+	const notesDataKey = pacedD1SealedDataKey(tier, appId, day, 'notes')
+	const notesIndexKey = pacedD1SealedIndexKey(tier, appId, day, 'notes')
+	expect(objects.has(sealedManifestKey)).toBe(true)
+	expect(objects.has(itemsDataKey)).toBe(true)
+	expect(objects.has(notesDataKey)).toBe(true)
+
+	// Simulate a mid-night seal: tip keys for items remain; notes + night
+	// manifest still need work on the next tick.
+	objects.delete(sealedManifestKey)
+	objects.delete(notesDataKey)
+	objects.delete(notesIndexKey)
+
+	const putKeys: Array<string> = []
+	const originalPut = client.put.bind(client)
+	client.put = async (key, body, options) => {
+		putKeys.push(key)
+		return originalPut(key, body, options)
+	}
+
+	const source = {
+		binding: 'APP_DB' as const,
+		name: 'kody',
+		id: appId,
+	}
+	const stalled = await sealPacedD1SourceNight({
+		s3: client,
+		source,
+		day,
+		timeBudgetMs: 0,
+	})
+	expect(stalled).toMatchObject({
+		complete: false,
+		tablesSealed: 1,
+	})
+	expect(objects.has(sealedManifestKey)).toBe(false)
+	expect(putKeys).toEqual([])
+
+	putKeys.length = 0
+	const finished = await sealPacedD1SourceNight({
+		s3: client,
+		source,
+		day,
+	})
+	expect(finished).toMatchObject({
+		complete: true,
+		tablesSealed: 2,
+	})
+	expect(objects.has(notesDataKey)).toBe(true)
+	expect(objects.has(notesIndexKey)).toBe(true)
+	expect(objects.has(sealedManifestKey)).toBe(true)
+	// Already-sealed items tips must not be re-put (412 + full compare).
+	expect(putKeys).not.toContain(itemsDataKey)
+	expect(putKeys).not.toContain(itemsIndexKey)
+	expect(putKeys).toContain(notesDataKey)
+	expect(putKeys).toContain(sealedManifestKey)
 })
 
 test('catch-up seeds today after finishing a stranded older night', async () => {
