@@ -176,18 +176,30 @@ export function AccountConnectedAppsPage({
 												<li key={allow}>{allow}</li>
 											))}
 										</ul>
-										{app.revocableScopes.map(({ scope, label }) => (
-											<button
-												key={scope}
-												type="button"
-												onClick={() => {
-													if (window.confirm(`Revoke ${label}?`))
-														revokeAppScope(app, scope)
-												}}
-											>
-												Revoke {label}
-											</button>
-										))}
+										{app.revocableScopes.filter(({ scope }) =>
+											isOptionalScope(scope),
+										).length > 0 ? (
+											<ul css={scopeListCss}>
+												{app.revocableScopes
+													.filter(({ scope }) => isOptionalScope(scope))
+													.map(({ scope, label }) => (
+														<li key={scope} css={scopeRowCss}>
+															<span>{label}</span>
+															<button
+																type="button"
+																aria-label={`Revoke ${label}`}
+																css={dangerButtonCss}
+																onClick={() => {
+																	if (window.confirm(`Revoke ${label}?`))
+																		revokeAppScope(app, scope)
+																}}
+															>
+																Revoke
+															</button>
+														</li>
+													))}
+											</ul>
+										) : null}
 										<span css={mutedCss}>
 											Last used{' '}
 											<TimestampValue value={app.lastUsedAt} fallback="never" />
@@ -328,6 +340,10 @@ function AppMark({ iconUrl }: { iconUrl: string | null }) {
 	)
 }
 
+function isOptionalScope(scope: string) {
+	return scope === 'email' || (scope.startsWith('need:') && scope.length > 5)
+}
+
 function AgentMark({ icon }: { icon: string | null }) {
 	return (
 		<span
@@ -388,6 +404,22 @@ const allowsCss: CSSObject = {
 	fontSize: typography.fontSize.sm,
 	display: 'grid',
 	gap: '0.15rem',
+}
+
+const scopeListCss: CSSObject = {
+	display: 'grid',
+	gap: spacing.xs,
+	listStyle: 'none',
+	margin: 0,
+	padding: 0,
+	fontSize: typography.fontSize.sm,
+}
+
+const scopeRowCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'space-between',
+	gap: spacing.sm,
 }
 
 const emptyCss: CSSObject = { color: colors.textMuted, margin: 0 }

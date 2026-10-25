@@ -4,7 +4,11 @@ import { SiteLink } from '../components/site-link.tsx'
 import { useState } from 'react'
 import { AreaChart } from '../charts/area-chart.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
-import { AccountManagementPanel } from './account-management-components.tsx'
+import {
+	AccountManagementPanel,
+	accountInputCss,
+} from './account-management-components.tsx'
+import { RecordTable } from './record-table.tsx'
 import {
 	creditAttributionDefaultVisiblePackages,
 	filterAndSortCreditAttributionVisitors,
@@ -21,6 +25,8 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
+	getGhostButtonCss,
+	getPillButtonCss,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 
@@ -209,7 +215,7 @@ function PackageVisitorsTable({
 	return (
 		<section data-package-visitors>
 			<h3 css={{ margin: 0, fontSize: typography.fontSize.lg }}>Visitors</h3>
-			<label css={descriptionCss}>
+			<label css={{ display: 'grid', gap: spacing.xs }}>
 				Search visitors
 				<input
 					type="search"
@@ -219,7 +225,9 @@ function PackageVisitorsTable({
 						setPage(0)
 					}}
 					placeholder="Search usernames"
+					data-field-ring
 					data-visitors-search
+					css={accountInputCss}
 				/>
 			</label>
 			<div css={{ display: 'flex', gap: spacing.sm }}>
@@ -228,6 +236,11 @@ function PackageVisitorsTable({
 					aria-pressed={sort === 'credits'}
 					onClick={() => setSort('credits')}
 					data-visitors-sort="credits"
+					css={
+						sort === 'credits'
+							? getPillButtonCss({ size: 'sm' })
+							: getGhostButtonCss({ size: 'sm' })
+					}
 				>
 					Sort by credits
 				</button>
@@ -236,6 +249,11 @@ function PackageVisitorsTable({
 					aria-pressed={sort === 'username'}
 					onClick={() => setSort('username')}
 					data-visitors-sort="username"
+					css={
+						sort === 'username'
+							? getPillButtonCss({ size: 'sm' })
+							: getGhostButtonCss({ size: 'sm' })
+					}
 				>
 					Sort by username
 				</button>
@@ -247,44 +265,39 @@ function PackageVisitorsTable({
 					? ` (top ${formatIntegerNumber(rows.length)} of ${formatIntegerNumber(total)})`
 					: ''}
 			</p>
-			<table css={{ width: '100%', borderCollapse: 'collapse' }}>
-				<thead>
-					<tr>
-						<th scope="col">Visitor</th>
-						<th scope="col">Credits</th>
-						<th scope="col">Meters</th>
-						<th scope="col">Last day</th>
-					</tr>
-				</thead>
-				<tbody>
-					{visible.map((row, index) => (
-						<tr key={`${row.displayName}-${row.lastDay}-${index}`}>
-							<td>{row.displayName}</td>
-							<td>{formatOnCreditsMicroUsd(row.creditsMicroUsd)}</td>
-							<td>
-								{row.meters
-									.map(
-										(meter) =>
-											`${meter.label}: ${formatIntegerNumber(meter.units)}`,
-									)
-									.join(' · ')}
-							</td>
-							<td>{row.lastDay}</td>
-						</tr>
-					))}
-					{visible.length === 0 ? (
-						<tr>
-							<td colSpan={4}>No visitors match your search.</td>
-						</tr>
-					) : null}
-				</tbody>
-			</table>
+			<RecordTable
+				mode="none"
+				ariaLabel="Visitors"
+				scrollHeight="none"
+				emptyLabel="No visitors match your search."
+				columns={[
+					{ key: 'visitor', label: 'Visitor', primary: true },
+					{ key: 'credits', label: 'Credits', align: 'end' },
+					{ key: 'meters', label: 'Meters' },
+					{ key: 'lastDay', label: 'Last day' },
+				]}
+				rows={visible.map((row, index) => ({
+					id: `${row.displayName}-${row.lastDay}-${index}`,
+					cells: {
+						visitor: row.displayName,
+						credits: formatOnCreditsMicroUsd(row.creditsMicroUsd),
+						meters: row.meters
+							.map(
+								(meter) =>
+									`${meter.label}: ${formatIntegerNumber(meter.units)}`,
+							)
+							.join(' · '),
+						lastDay: row.lastDay,
+					},
+				}))}
+			/>
 			{pageCount > 1 ? (
 				<div css={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
 					<button
 						type="button"
 						disabled={currentPage === 0}
 						onClick={() => setPage(currentPage - 1)}
+						css={getGhostButtonCss({ size: 'sm' })}
 					>
 						Previous
 					</button>
@@ -295,6 +308,7 @@ function PackageVisitorsTable({
 						type="button"
 						disabled={currentPage + 1 >= pageCount}
 						onClick={() => setPage(currentPage + 1)}
+						css={getGhostButtonCss({ size: 'sm' })}
 					>
 						Next
 					</button>

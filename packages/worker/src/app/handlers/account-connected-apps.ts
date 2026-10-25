@@ -7,7 +7,10 @@ import {
 	revokePackageAppOauthGrantsForPersonApp,
 	type PackageAppOauthGrant,
 } from '#app/package-app-oauth-grants.ts'
-import { visitorNeedKeysOfScopes } from '#app/package-app-oauth-scopes.ts'
+import {
+	readPackageAppOauthScope,
+	visitorNeedKeysOfScopes,
+} from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { deleteMcpEventSubscriptionsForOauthClient } from '#mcp/events/subscriptions-repo.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
@@ -106,6 +109,11 @@ export async function loadAccountConnectedAppsData(input: {
 
 const connectedAppLookupConcurrency = 8
 
+function isOptionalPackageAppScope(scope: string) {
+	const parsed = readPackageAppOauthScope(scope)
+	return parsed !== null && parsed !== 'profile'
+}
+
 async function describeAppGrant(
 	env: Env,
 	grant: PackageAppOauthGrant,
@@ -163,7 +171,7 @@ async function describeAppGrant(
 		iconUrl,
 		allows: packageAppOauthClaimLabels(grant.scopes, needDescriptions),
 		revocableScopes: grant.scopes
-			.filter((scope) => scope !== 'profile')
+			.filter(isOptionalPackageAppScope)
 			.map((scope) => ({
 				scope,
 				label:
@@ -221,7 +229,7 @@ export async function revokeAccountConnectedAppScope({
 	scope,
 }: MutationContext & { appKey: string; scope: string }) {
 	const parsed = parseAppKey(appKey)
-	if (!parsed || scope === 'profile') {
+	if (!parsed || !isOptionalPackageAppScope(scope)) {
 		return operationResult(
 			{ ok: false, error: 'Connected app scope not found.' },
 			404,
