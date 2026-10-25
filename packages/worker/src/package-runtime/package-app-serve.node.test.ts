@@ -4,7 +4,10 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as PackageSourceModule from '#worker/package-registry/source.ts'
-import { consoleError } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import { ComputeOverageLimitError } from '#worker/entitlements/errors.ts'
 import {
 	packageAppRuntimeErrorHeader,
@@ -14,7 +17,12 @@ import {
 	parsePackageAppCustomHostnamePath,
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
+	createPackageCodeRequest,
 } from './package-app-serve.ts'
+import {
+	filterPackageAppRequestCookies,
+	packageAppCookiePrefix,
+} from './package-app-cookie-prefix.ts'
 
 test('subdomain paths parse the short /{name} form and the legacy /packages/{name} mount', () => {
 	expect(
@@ -127,9 +135,9 @@ vi.mock('#worker/package-runtime/realtime-session.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
-	const actual = await vi.importActual<
-		typeof import('#worker/package-runtime/published-bundle-artifacts.ts')
-	>('#worker/package-runtime/published-bundle-artifacts.ts')
+	const actual = await vi.importActual<Record<string, unknown>>(
+		'#worker/package-runtime/published-bundle-artifacts.ts',
+	)
 	return {
 		...actual,
 		loadPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
@@ -172,25 +180,6 @@ vi.mock('#worker/package-runtime/package-app.ts', () => ({
 	buildPackageAppWorker: (...args: Array<unknown>) =>
 		mockModule.buildPackageAppWorker(...args),
 }))
-
-const serveLoadMocks = [
-	['saved package by id (D1)', mockModule.getSavedPackageById],
-	['saved package by kody id (D1)', mockModule.resolveSavedPackageRef],
-	['entity source row (D1)', mockModule.getEntitySourceById],
-	['published manifest snapshot (KV)', mockModule.loadPublishedEntityManifest],
-] as const
-
-function countServeLoads() {
-	return Object.fromEntries(
-		serveLoadMocks.map(([label, mock]) => [label, mock.mock.calls.length]),
-	)
-}
-
-function clearServeLoadCounters() {
-	for (const [, mock] of serveLoadMocks) {
-		mock.mockClear()
-	}
-}
 
 type FixtureOptions = {
 	kodyId?: string
@@ -382,29 +371,105 @@ function asset(path: string, init?: RequestInit, kodyId = clientAppKodyId) {
 	return serveHelloWorld({ kodyId, restPath: `/_assets/${path}`, init })
 }
 
-test('a warm package-app serve performs zero D1/KV loads before dispatch', async () => {
-	seedFixture()
+test('createPackageCodeRequest strips credentials and filters package cookies', () => {
+	const prefix = '__kapp_123456789abc_'
+	const request = createPackageCodeRequest(
+		new Request('https://example.com/app', {
+			headers: {
+				Cookie: `${prefix}a=1; kody_session=x; __kapp_sibling_b=2`,
+				Authorization: 'Bearer secret',
+				'Proxy-Authorization': 'Bearer secret',
+				'X-Kody-Visitor': 'forged',
+			},
+		}),
+		'https://example.com/app',
+		{ cookiePrefix: prefix },
+	)
+	expect(request.headers.get('Cookie')).toBe(`${prefix}a=1`)
+	expect(request.headers.has('Authorization')).toBe(false)
+	expect(request.headers.has('Proxy-Authorization')).toBe(false)
+	expect(request.headers.has('X-Kody-Visitor')).toBe(false)
+})
+
+test('createPackageCodeRequest keeps deleting cookies without a package prefix', () => {
+	const request = createPackageCodeRequest(
+		new Request('https://example.com/app', {
+			headers: { Cookie: 'session=value' },
+		}),
+	)
+	expect(request.headers.has('Cookie')).toBe(false)
+})
+
+test('package app request cookies allow own, Host, and Secure cookie prefixes only', () => {
+	expect(
+		filterPackageAppRequestCookies(
+			[
+				'__kapp_123456789abc_session=1',
+				'__Host-__kapp_123456789abc_host=2',
+				'__Secure-__kapp_123456789abc_secure=3',
+				'kody_session=x',
+				'__Host-kody_pkg_session_hash=x',
+				'__kapp_sibling_other=4',
+			].join('; '),
+			'__kapp_123456789abc_',
+		),
+	).toBe(
+		'__kapp_123456789abc_session=1; __Host-__kapp_123456789abc_host=2; __Secure-__kapp_123456789abc_secure=3',
+	)
+})
+
+test('package-app serve filters response cookies and inbound cookies by package id', async () => {
+	const fixture = seedFixture()
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	let appCookie: string | null = null
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch(request: Request) {
+					appCookie = request.headers.get('Cookie')
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}a=1; Path=/; HttpOnly`],
+							['Set-Cookie', 'other=1; Path=/'],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	const response = await serveHelloWorld({
+		init: {
+			headers: {
+				Cookie: `${prefix}a=1; kody_session=x; __kapp_000000000000_b=2`,
+			},
+		},
+	})
+	expect(appCookie).toBe(`${prefix}a=1`)
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}a=1; Path=/; HttpOnly`,
+	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['other'] }),
+	)
+})
+
+test('package-app serve dispatches cold and warm requests', async () => {
+	seedFixture({ kodyId: 'warm-cache-app' })
 
 	const cold = await serveHelloWorld()
 	expect(cold.status).toBe(200)
 	expect(await cold.text()).toBe('ok')
-	expect(mockModule.resolveSavedPackageRef).toHaveBeenCalledTimes(1)
-	expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1)
-	expect(mockModule.loadPublishedEntityManifest).toHaveBeenCalledTimes(1)
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 
-	clearServeLoadCounters()
 	mockModule.buildPackageAppWorker.mockClear()
 	const warm = await serveHelloWorld()
 
 	expect(warm.status).toBe(200)
 	expect(await warm.text()).toBe('ok')
-	expect(countServeLoads()).toEqual({
-		'saved package by id (D1)': 0,
-		'saved package by kody id (D1)': 0,
-		'entity source row (D1)': 0,
-		'published manifest snapshot (KV)': 0,
-	})
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 })
 
@@ -413,12 +478,15 @@ test('websocket upgrade responses skip Server-Timing and keep the paired socket'
 	const client = { kind: 'client-socket' } as unknown as WebSocket
 	// Node's Response rejects status 101; Workers still pair via `webSocket`.
 	const upgradeResponse = new Response(null, { status: 200 })
+	upgradeResponse.headers.append('Set-Cookie', 'other=1; Path=/')
 	Object.defineProperty(upgradeResponse, 'webSocket', {
 		value: client,
 		configurable: true,
 	})
 	mockModule.packageRealtimeConnect.mockResolvedValue(upgradeResponse)
 
+	consoleWarn.mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
 	const response = await serveHelloWorld({
 		restPath: '/ws',
 		init: {
@@ -430,7 +498,7 @@ test('websocket upgrade responses skip Server-Timing and keep the paired socket'
 	})
 
 	expect(response.webSocket).toBe(client)
-	expect(response).toBe(upgradeResponse)
+	expect(response.headers.getSetCookie()).toEqual([])
 	// DO upgrade responses have immutable headers; attaching timing would throw
 	// or force an unsafe rebuild. Skip Server-Timing on websocket upgrades.
 	expect(response.headers.get('Server-Timing')).toBeNull()

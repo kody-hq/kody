@@ -30,6 +30,7 @@ export type PackageLocalContext = {
 	hostedUrl: string
 	assetBasePath: string
 	clientModuleUrl: string | null
+	cookiePrefix: string
 }
 
 export {

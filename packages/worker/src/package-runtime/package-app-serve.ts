@@ -32,9 +32,15 @@ import {
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
 import {
+	filterPackageAppSetCookies,
+	logPackageAppSetCookieNamesDropped,
 	logPackageAppSetCookieDomainStripped,
 	scrubPackageAppSetCookieDomains,
 } from '#worker/package-runtime/package-app-set-cookie.ts'
+import {
+	filterPackageAppRequestCookies,
+	packageAppCookiePrefix,
+} from '#worker/package-runtime/package-app-cookie-prefix.ts'
 import {
 	isPackageAppRuntimeThrownResponse,
 	logPackageAppHttpError,
@@ -271,10 +277,18 @@ const strippedPackageRequestHeaders = [
 export function createPackageCodeRequest(
 	request: Request,
 	url: string | URL = request.url,
+	options: { cookiePrefix?: string | null } = {},
 ) {
 	const packageCodeRequest = new Request(url.toString(), request)
 	for (const headerName of strippedPackageRequestHeaders) {
 		packageCodeRequest.headers.delete(headerName)
+	}
+	if (options.cookiePrefix) {
+		const cookie = filterPackageAppRequestCookies(
+			request.headers.get('Cookie'),
+			options.cookiePrefix,
+		)
+		if (cookie) packageCodeRequest.headers.set('Cookie', cookie)
 	}
 	// Snapshot names so deletes during this loop do not skip headers.
 	// oxlint-disable-next-line unicorn/no-useless-spread
@@ -876,6 +890,7 @@ export async function servePackageAppRequest(input: {
 			? getCanonicalAppBaseUrl({ env })
 			: getAppBaseUrl({ env, requestUrl: request.url })
 	const packageRealtimePath = parsePackageRealtimePath(packageRealtimeRestPath)
+	const cookiePrefix = await packageAppCookiePrefix(savedPackage.id)
 	// Realtime hooks run with the owner's caller context, so an anonymous
 	// visitor never reaches them.
 	if (packageRealtimePath && !visitor) {
@@ -893,14 +908,26 @@ export async function servePackageAppRequest(input: {
 				kodyId: savedPackage.kodyId,
 				sourceId: savedPackage.sourceId,
 				baseUrl,
-			}).connect(createPackageCodeRequest(request), packageRealtimePath.facet)
+			}).connect(
+				createPackageCodeRequest(request, request.url, { cookiePrefix }),
+				packageRealtimePath.facet,
+			)
+			const filtered = filterPackageAppSetCookies(connected, cookiePrefix)
+			logPackageAppSetCookieNamesDropped({
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
+				dropped: filtered.dropped,
+				surface: 'package-app-realtime',
+			})
 			logPackageAppHttpError({
 				request,
-				status: connected.status,
+				status: filtered.response.status,
 				phase: 'realtime-response',
-				runtimeRunId: connected.headers.get(packageAppRuntimeRunIdHeader),
+				runtimeRunId: filtered.response.headers.get(
+					packageAppRuntimeRunIdHeader,
+				),
 			})
-			return attachPackageAppServerTiming(connected, serverTiming)
+			return attachPackageAppServerTiming(filtered.response, serverTiming)
 		} catch (error) {
 			console.error('Package realtime handler failed:', error)
 			reportPackageAppFailure({
@@ -1090,8 +1117,12 @@ export async function servePackageAppRequest(input: {
 		forwardedRequest = applyTrustedPackageAppDispatch(
 			withPackageAppVisitTicket(
 				withPackageAppVisitorHeader(
-					createPackageCodeRequest(request, forwardedUrl),
-					{ visitor, identity },
+					createPackageCodeRequest(request, forwardedUrl, { cookiePrefix }),
+					{
+						visitor,
+						identity,
+						scopes: appWorker.visit.claims?.scopes ?? ['profile'],
+					},
 				),
 				appWorker.visit.ticket,
 			),
@@ -1219,6 +1250,13 @@ export async function servePackageAppRequest(input: {
 				(origin) => origin.hostname,
 			),
 		})
+		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
+		logPackageAppSetCookieNamesDropped({
+			hostname: requestUrl.hostname,
+			pathname: requestUrl.pathname,
+			dropped: filtered.dropped,
+			surface: 'package-app-serve',
+		})
 		logPackageAppSetCookieDomainStripped({
 			hostname: requestUrl.hostname,
 			pathname: requestUrl.pathname,
@@ -1226,7 +1264,7 @@ export async function servePackageAppRequest(input: {
 			surface: 'package-app-serve',
 		})
 		return endPackageAppVisitWithResponse(
-			attachPackageAppServerTiming(scrubbed.response, serverTiming),
+			attachPackageAppServerTiming(filtered.response, serverTiming),
 			visitNonce,
 		)
 	} catch (error) {

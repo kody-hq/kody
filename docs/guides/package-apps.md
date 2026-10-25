@@ -159,10 +159,13 @@ Legacy `/_kody/auth/*` paths remain accepted on the same hosts.
 #### Who is visiting, from server code
 
 The platform checks the visitor's session before your app code runs, then
-removes `Cookie` and `Authorization` from the request it forwards. App server
-code never sees the session cookie, so a server-side `fetch` to `/-/auth/me`
-from app code always returns 401. `/-/auth/me` is for the browser, which sends
-the cookie itself.
+removes Kody's session and ticket cookies from the request it forwards. `Cookie`
+contains only cookies whose names start with the app's
+`packageContext.cookiePrefix` (including the `__Host-` and `__Secure-`
+variants). `Authorization`, `Proxy-Authorization`, and `X-Kody-*` headers are
+always removed. App server code never sees the Kody session cookie, so a
+server-side `fetch` to `/-/auth/me` from app code always returns 401.
+`/-/auth/me` is for the browser, which sends the cookie itself.
 
 On the server, ask the platform instead. `kody.metaGetCurrentUser({})` from
 `kody:runtime` answers for the visitor of the current request:
@@ -1239,16 +1242,80 @@ scaffolders can depend on them.
 - `packageContext.assetBasePath` — origin-relative `<appBasePath>/_assets`,
   mount-aware like `appBasePath`. Join `assets` files onto it
   (`${assetBasePath}/styles.css`).
+- `packageContext.cookiePrefix` — the prefix reserved for this saved package's
+  cookies. It is derived from the saved package id, so it survives renames and
+  is different for a new package even if it reuses the old name. Local
+  `kody dev` derives it from a placeholder local package id, so local cookies
+  are separate from the saved package's cookies.
 
 `/_assets/*` is reserved: the platform answers it before the fetch handler runs,
 and the handler never sees those paths. A client hash from an older publish
 returns 404 rather than a stale module, so always render the URL from
 `packageContext`.
 
+### Cookies and bringing your own login
+
+Every saved package receives a stable `packageContext.cookiePrefix`, derived
+from its saved package id rather than its name or slug. Use this prefix for
+every cookie your app sets, including `__Host-${cookiePrefix}session` or
+`__Secure-${cookiePrefix}session` names. Kody forwards only those cookies to
+your app and drops every `Set-Cookie` whose name is not app-prefixed; it does
+not forward arbitrary non-Kody cookies. Apps on a shared package-app host still
+share an origin, so client JavaScript can read cookies from sibling apps with
+`document.cookie`; mark session cookies `HttpOnly` and use `Secure` and an
+appropriate `SameSite` value.
+
+You can run your own login and OAuth flow, store your own tokens, and choose how
+to authenticate in app code: use `kody.hasScope(request, 'need:<key>')` then
+`credential.visitor('<key>')` when the visitor granted that need, otherwise use
+your own stored token or prompt the visitor to connect. Email consent grants
+visibility only, not permission to send mail. Kody never forwards
+`Authorization`, `Proxy-Authorization`, or `X-Kody-*` headers to package code.
+
 None of `appBasePath`, `assetBasePath`, `hostedUrl`, or `clientModuleUrl` ends
 with a slash, so `${assetBasePath}/styles.css` is always a single-slash join.
 When you resolve relative to a URL that does end with a slash (a service worker
 scope, `new URL('x', base)`), pass the relative path without a leading slash.
+
+### App-owned limits and spend
+
+`kody.appRateLimit({ key, limit, windowSeconds })` is an atomic fixed-window
+limit scoped to this saved package. Bounds are 1–1,000,000 requests, 1–86,400
+seconds, and a key of at most 256 characters. Kody stores a hash of the key, not
+the input value. The limit is app-owned and does not consume or change a
+platform per-visitor limit.
+
+```ts
+const result = await kody.appRateLimit({
+	key: 'daily-export',
+	limit: 40,
+	windowSeconds: 60,
+})
+if (!result.allowed) {
+	return new Response('Try again later', {
+		status: 429,
+		headers: { 'Retry-After': String(result.retryAfterSeconds) },
+	})
+}
+```
+
+The result also includes `remaining` requests in the current window and an
+ISO-8601 `resetAt` timestamp.
+
+`kody.appSpendGet({})` reads only this package's current UTC-month attribution
+from its owning org. It returns the total and daily credit breakdown, split by
+meter; it does not return visitor or IP data. Production attribution is
+recomputed hourly, so recent usage can lag by up to an hour.
+
+```ts
+const monthlyCutoffMicroUsd = 2_000_000
+const spend = await kody.appSpendGet({})
+if (spend.creditsMicroUsd >= monthlyCutoffMicroUsd) {
+	return new Response('This app reached its monthly spend cutoff', {
+		status: 429,
+	})
+}
+```
 
 #### Detecting support
 

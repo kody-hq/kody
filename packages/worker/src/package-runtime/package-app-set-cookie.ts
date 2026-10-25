@@ -1,3 +1,5 @@
+import { isPackageAppOwnCookieName } from './package-app-cookie-prefix.ts'
+
 /**
  * Strip Set-Cookie Domain attributes that would scope a cookie beyond the
  * response host on package-app zones (cookie tossing / session fixation across
@@ -22,6 +24,90 @@ export type StrippedPackageAppSetCookie = {
 export type PackageAppSetCookieScrubResult = {
 	response: Response
 	stripped: Array<StrippedPackageAppSetCookie>
+}
+
+export type DroppedPackageAppSetCookieResult = {
+	response: Response
+	dropped: Array<string>
+}
+
+export function packageAppCookieNameFromSetCookie(header: string): string {
+	const pair = header.split(';', 1)[0] ?? ''
+	const name = pair.split('=', 1)[0]?.trim() ?? ''
+	return name.length > 0 ? name : '(unknown)'
+}
+
+function responseWithSetCookies(
+	response: Response,
+	setCookies: ReadonlyArray<string>,
+) {
+	const headers = new Headers(response.headers)
+	headers.delete('Set-Cookie')
+	for (const cookie of setCookies) {
+		if (cookie.length > 0) headers.append('Set-Cookie', cookie)
+	}
+	const nullBody =
+		response.status === 204 ||
+		response.status === 205 ||
+		response.status === 304
+	const init: ResponseInit & { webSocket?: WebSocket } = {
+		status: response.webSocket ? 200 : response.status,
+		statusText: response.statusText,
+		headers,
+	}
+	if (response.webSocket) init.webSocket = response.webSocket
+	const rebuilt = new Response(
+		nullBody || response.webSocket ? null : response.body,
+		init,
+	)
+	if (response.webSocket && rebuilt.webSocket !== response.webSocket) {
+		Object.defineProperty(rebuilt, 'webSocket', {
+			value: response.webSocket,
+			configurable: true,
+		})
+	}
+	return rebuilt
+}
+
+export function filterPackageAppSetCookies(
+	response: Response,
+	prefix: string,
+): DroppedPackageAppSetCookieResult {
+	if (response.status === 101 && !response.webSocket) {
+		return { response, dropped: [] }
+	}
+	const setCookies =
+		typeof response.headers.getSetCookie === 'function'
+			? response.headers.getSetCookie()
+			: []
+	if (setCookies.length === 0) return { response, dropped: [] }
+	const dropped: Array<string> = []
+	const kept: Array<string> = []
+	for (const cookie of setCookies) {
+		const cookieName = packageAppCookieNameFromSetCookie(cookie)
+		if (isPackageAppOwnCookieName(cookieName, prefix)) {
+			kept.push(cookie)
+		} else {
+			dropped.push(cookieName)
+		}
+	}
+	if (dropped.length === 0) return { response, dropped }
+	return { response: responseWithSetCookies(response, kept), dropped }
+}
+
+export function logPackageAppSetCookieNamesDropped(input: {
+	hostname: string
+	pathname?: string
+	dropped: ReadonlyArray<string>
+	surface?: string
+}) {
+	if (input.dropped.length === 0) return
+	console.warn('package-app-set-cookie-name-dropped', {
+		hostname: input.hostname,
+		pathname: input.pathname,
+		surface: input.surface ?? 'host',
+		dropped: [...input.dropped],
+	})
 }
 
 export function normalizeSetCookieDomain(raw: string): string {
@@ -61,12 +147,6 @@ export function shouldStripPackageAppSetCookieDomain(input: {
 		}
 	}
 	return false
-}
-
-function cookieNameFromSetCookie(header: string): string {
-	const pair = header.split(';', 1)[0] ?? ''
-	const name = pair.split('=', 1)[0]?.trim() ?? ''
-	return name.length > 0 ? name : '(unknown)'
 }
 
 /**
@@ -154,7 +234,7 @@ export function scrubPackageAppSetCookieDomains(
 		if (result.strippedDomain) {
 			changed = true
 			stripped.push({
-				cookieName: cookieNameFromSetCookie(cookie),
+				cookieName: packageAppCookieNameFromSetCookie(cookie),
 				domain: result.strippedDomain,
 			})
 		}
@@ -224,14 +304,23 @@ export function logPackageAppSetCookieDomainStripped(input: {
  */
 export function createPackageAppSetCookieScrubHostSource(input: {
 	packageAppApexHostnames: ReadonlyArray<string>
+	cookiePrefix?: string
 }): string {
 	const apexJson = JSON.stringify(
 		input.packageAppApexHostnames.map((hostname) =>
 			normalizeResponseHostname(hostname),
 		),
 	)
+	const cookiePrefixJson = JSON.stringify(input.cookiePrefix ?? '')
 	return `
 const __kodyPackageAppCookieApexes = ${apexJson};
+const __kodyPackageAppCookiePrefix = ${cookiePrefixJson};
+
+function __kodyIsPackageAppOwnCookieName(name) {
+	return name.startsWith(__kodyPackageAppCookiePrefix) ||
+		name.startsWith('__Host-' + __kodyPackageAppCookiePrefix) ||
+		name.startsWith('__Secure-' + __kodyPackageAppCookiePrefix);
+}
 
 function __kodyNormalizeSetCookieDomain(raw) {
 	return String(raw ?? '').trim().toLowerCase().replace(/^\\./, '').replace(/\\.+$/, '');
@@ -292,7 +381,10 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 	if (response.status === 101 && !response.webSocket) {
 		return { response, stripped: [] };
 	}
-	if (!__kodyPackageAppCookieApexes.length) {
+	if (
+		!__kodyPackageAppCookieApexes.length &&
+		!__kodyPackageAppCookiePrefix
+	) {
 		return { response, stripped: [] };
 	}
 	const getSetCookie = response.headers?.getSetCookie;
@@ -300,14 +392,20 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 	if (!setCookies.length) return { response, stripped: [] };
 	const stripped = [];
 	const rewritten = [];
+	const dropped = [];
 	let changed = false;
 	for (const cookie of setCookies) {
+		const pair = String(cookie).split(';', 1)[0] ?? '';
+		const cookieName = (pair.split('=', 1)[0] ?? '').trim() || '(unknown)';
+		if (!__kodyIsPackageAppOwnCookieName(cookieName)) {
+			changed = true;
+			dropped.push(cookieName);
+			continue;
+		}
 		const result = __kodyRewritePackageAppSetCookie(cookie, responseHostname);
 		rewritten.push(result.header);
 		if (result.strippedDomain) {
 			changed = true;
-			const pair = String(cookie).split(';', 1)[0] ?? '';
-			const cookieName = (pair.split('=', 1)[0] ?? '').trim() || '(unknown)';
 			stripped.push({ cookieName, domain: result.strippedDomain });
 		}
 	}
@@ -340,6 +438,7 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 	}
 	return {
 		stripped,
+		dropped,
 		response: rebuilt,
 	};
 }

@@ -15,6 +15,7 @@ const samplePackageContext = {
 	hostedUrl: 'http://127.0.0.1:0',
 	assetBasePath: '/_assets',
 	clientModuleUrl: null,
+	cookiePrefix: '__kapp_0123456789ab_',
 }
 
 test('the kody dev app entry is valid ESM', async () => {

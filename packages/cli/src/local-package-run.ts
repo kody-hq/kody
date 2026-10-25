@@ -4,7 +4,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
@@ -370,6 +370,7 @@ export function buildLocalPackageContext(input: {
 		hostedUrl: input.hostedUrl.replace(/\/+$/, ''),
 		assetBasePath: appBasePath ? `${appBasePath}/_assets` : '/_assets',
 		clientModuleUrl: input.clientModuleUrl ?? null,
+		cookiePrefix: `__kapp_${createHash('sha256').update(packageId).digest('hex').slice(0, 12)}_`,
 	}
 }
 

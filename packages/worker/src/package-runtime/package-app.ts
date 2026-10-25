@@ -125,6 +125,9 @@ import {
 	listPackageAppOrigins,
 } from '#worker/app-base-url.ts'
 import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtime/package-app-set-cookie.ts'
+import { packageAppCookiePrefix } from '#worker/package-runtime/package-app-cookie-prefix.ts'
+import { checkPackageAppRateLimit } from '#worker/package-runtime/package-app-rate-limit.ts'
+import { packageAppSpendGet } from '#worker/package-runtime/package-app-spend.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
@@ -204,6 +207,7 @@ function createPackageAppWorkerSource(input: {
 	 * Domain attributes that would cover the shared apex or another tenant.
 	 */
 	packageAppApexHostnames: Array<string>
+	packageAppCookiePrefix: string
 }) {
 	const mcpServerNamesExpr = input.preloadMcpServerNames
 		? 'await runtimeBridge.listMcpServerNames().catch(() => [])'
@@ -308,9 +312,30 @@ function __kodyReadIdentityOnlyVisitor(request) {
 			email: '',
 			display_name: parsed.username,
 			org: __kodyObjectFreezeCaptured({ slug: __kodyIdentityOnlyOrgSlug }),
+			scopes: Array.isArray(parsed.scopes)
+				? parsed.scopes.filter((scope) => typeof scope === 'string')
+				: [],
 		});
 	} catch {
 		return null;
+	}
+}
+function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get(
+			${JSON.stringify(packageAppVisitorHeaderName)},
+		);
+		if (!raw) return false;
+		const visitor = __kodyJsonParseCaptured(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
 	}
 }
 function __kodyIdentityOnlyAnswer(identity, name) {
@@ -321,6 +346,7 @@ function __kodyIdentityOnlyAnswer(identity, name) {
 		email: identity.email,
 		display_name: identity.display_name,
 		org: { slug: identity.org.slug },
+		scopes: identity.scopes,
 	};
 }
 let __kodyCapturedRuntimeBridge = null;
@@ -594,6 +620,12 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null)
 				throw new Error(
 					\`MCP server tool "\${property}" is not available as a flat kody function. Use kody.mcp[serverName].toolName(input) instead.\`,
 				);
+			}
+			if (property === 'appRateLimit') {
+				return async (args = {}) => await runtimeBridge.appRateLimit(args);
+			}
+			if (property === 'appSpendGet') {
+				return async () => await runtimeBridge.appSpendGet();
 			}
 			return async (args = {}) => {
 				const visitTicket = __kodyCurrentVisitTicket();
@@ -927,6 +959,9 @@ function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, id
 	const credentialRuntime = createCredentialRuntime(runtimeBridge);
 	return {
 		kody: createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity),
+		hasScope,
+		hasVisitorCredential: (request, key) =>
+			typeof key === 'string' && hasScope(request, \`need:\${key}\`),
 		storage: undefined,
 		__kodyPackageSecrets: (secretsPackageId) =>
 			createPackageSecretsProxy(runtimeBridge, secretsPackageId),
@@ -1001,6 +1036,7 @@ ${createNullPackagesInvokeRewriteHostSource({
 })}
 ${createPackageAppSetCookieScrubHostSource({
 	packageAppApexHostnames: input.packageAppApexHostnames,
+	cookiePrefix: input.packageAppCookiePrefix,
 })}
 
 function createConsoleLogCapture() {
@@ -2266,6 +2302,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.getStorageRunner(storageId).clearStorage()
 	}
 
+	async appRateLimit(input: {
+		key?: unknown
+		limit?: unknown
+		windowSeconds?: unknown
+	}) {
+		return await checkPackageAppRateLimit({
+			db: this.env.APP_DB,
+			packageId: this.ctx.props.packageId,
+			key: input?.key,
+			limit: input?.limit,
+			windowSeconds: input?.windowSeconds,
+		})
+	}
+
+	async appSpendGet() {
+		return await packageAppSpendGet({
+			db: this.env.APP_DB,
+			orgId: this.ctx.props.userId,
+			packageId: this.ctx.props.packageId,
+		})
+	}
+
 	async packageStorageGet(input: { packageId: string; key: string }) {
 		return await this.packageStorageGetAs(null, input)
 	}
@@ -3131,7 +3189,7 @@ function packageAppPublicBasePath(input: {
 async function buildPackageAppPublicContext(input: {
 	env: Env
 	baseUrl: string
-	savedPackage: { kodyId: string; name: string }
+	savedPackage: { id: string; kodyId: string; name: string }
 	runtime: {
 		servingUsername?: string
 		hostedOrigin?: string
@@ -3141,6 +3199,7 @@ async function buildPackageAppPublicContext(input: {
 	const username =
 		input.runtime.servingUsername ??
 		getUsernameFromPackageName(input.savedPackage.name)
+	const cookiePrefix = await packageAppCookiePrefix(input.savedPackage.id)
 	// Public URLs use the name leaf (Kent: slug = leaf). Keep kodyId on the
 	// package context as identity; only the path segment switches to the leaf.
 	const urlSlug = getPackageNameLeaf(input.savedPackage.name)
@@ -3157,6 +3216,7 @@ async function buildPackageAppPublicContext(input: {
 		return {
 			appBasePath,
 			hostedUrl: `${input.runtime.hostedOrigin.replace(/\/+$/, '')}${appBasePath}`,
+			cookiePrefix,
 		}
 	}
 	// Background/synthetic callers get the canonical hosted URL: a verified
@@ -3167,7 +3227,7 @@ async function buildPackageAppPublicContext(input: {
 		username,
 		kodyId: urlSlug,
 	})
-	if (canonical) return canonical
+	if (canonical) return { ...canonical, cookiePrefix }
 	const hostedUrl = resolveHostedPackageAppUrl({
 		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
 		appBaseUrl: input.baseUrl,
@@ -3177,6 +3237,7 @@ async function buildPackageAppPublicContext(input: {
 	return {
 		appBasePath: new URL(hostedUrl).pathname,
 		hostedUrl,
+		cookiePrefix,
 	}
 }
 
@@ -3513,6 +3574,7 @@ async function buildPackageAppWorkerOptionsUncached(
 			packageAppApexHostnames: listPackageAppOrigins({
 				env: input.env,
 			}).map((origin) => origin.hostname),
+			packageAppCookiePrefix: publicContext.cookiePrefix,
 		}),
 	}
 	// The cached template is identity-free: no visitor, request context, or
@@ -3701,6 +3763,15 @@ export async function buildPackageAppWorker(input: {
 			input.runtime.callerContext,
 			input.runtime.servingUsername,
 		)
+		const visitorGrant =
+			visitor && orgSlug
+				? await findLivePackageAppOauthGrant({
+						db: input.env.APP_DB,
+						personId: visitor.userId,
+						orgUsername: orgSlug.toLowerCase(),
+						kodyId: input.savedPackage.kodyId,
+					})
+				: null
 		const requestVisit = await createPackageAppRequestVisit({
 			env: input.env,
 			visitor,
@@ -3720,6 +3791,8 @@ export async function buildPackageAppWorker(input: {
 				publishedCommit: input.savedPackage.publishedCommit,
 			},
 			request: input.runtime.callerContext.request ?? null,
+			grantId: visitorGrant?.id ?? null,
+			scopes: visitorGrant?.scopes ?? ['profile'],
 		})
 		const cacheKey = createPackageAppWorkerCacheKey({
 			userId: input.userId,

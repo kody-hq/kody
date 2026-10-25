@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
+	filterPackageAppSetCookies,
+	logPackageAppSetCookieNamesDropped,
 	createPackageAppSetCookieScrubHostSource,
 	logPackageAppSetCookieDomainStripped,
 	normalizeSetCookieDomain,
@@ -8,6 +10,7 @@ import {
 	scrubPackageAppSetCookieDomains,
 	shouldStripPackageAppSetCookieDomain,
 } from './package-app-set-cookie.ts'
+import { packageAppCookiePrefix } from './package-app-cookie-prefix.ts'
 
 const apexes = ['kody.run']
 
@@ -194,11 +197,65 @@ test('logPackageAppSetCookieDomainStripped warns only when cookies were stripped
 test('createPackageAppSetCookieScrubHostSource embeds apexes and the scrub helpers', () => {
 	const source = createPackageAppSetCookieScrubHostSource({
 		packageAppApexHostnames: ['kody.run', 'legacy.example'],
+		cookiePrefix: '__kapp_123456789abc_',
 	})
 	expect(source).toContain('"kody.run"')
 	expect(source).toContain('"legacy.example"')
 	expect(source).toContain('__kodyScrubPackageAppSetCookieDomains')
 	expect(source).toContain('__kodyShouldStripPackageAppSetCookieDomain')
+	expect(source).toContain('__kodyPackageAppCookiePrefix')
+	expect(source).toContain('__kodyIsPackageAppOwnCookieName')
+})
+
+test('package app cookie prefixes follow the saved package id', async () => {
+	const original = await packageAppCookiePrefix('package-one')
+	expect(await packageAppCookiePrefix('package-one')).toBe(original)
+	expect(await packageAppCookiePrefix('package-two')).not.toBe(original)
+	// A rename keeps the package id; name reuse is a different saved id.
+	expect(await packageAppCookiePrefix('package-one')).toBe(original)
+	expect(await packageAppCookiePrefix('package-two')).not.toBe(original)
+})
+
+test('filterPackageAppSetCookies keeps only package-prefixed cookies', () => {
+	const response = new Response('body', {
+		headers: [
+			['Set-Cookie', '__kapp_123456789abc_a=1; Path=/'],
+			['Set-Cookie', 'other=1; Path=/'],
+		],
+	})
+	const filtered = filterPackageAppSetCookies(response, '__kapp_123456789abc_')
+	expect(filtered.dropped).toEqual(['other'])
+	expect(filtered.response.headers.getSetCookie()).toEqual([
+		'__kapp_123456789abc_a=1; Path=/',
+	])
+})
+
+test('filterPackageAppSetCookies preserves websocket responses', () => {
+	const client = { kind: 'client-socket' } as unknown as WebSocket
+	const response = new Response(null, {
+		headers: { 'Set-Cookie': 'other=1; Path=/' },
+	})
+	Object.defineProperty(response, 'webSocket', {
+		value: client,
+		configurable: true,
+	})
+	const filtered = filterPackageAppSetCookies(response, '__kapp_123456789abc_')
+	expect(filtered.dropped).toEqual(['other'])
+	expect(filtered.response.webSocket).toBe(client)
+})
+
+test('logPackageAppSetCookieNamesDropped logs names without values', () => {
+	consoleWarn.mockImplementation(() => {})
+	logPackageAppSetCookieNamesDropped({
+		hostname: 'alice.kody.run',
+		dropped: ['other'],
+	})
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['other'] }),
+	)
+	expect(JSON.stringify(consoleWarn.mock.calls[0]?.[1])).not.toContain('=1')
+	consoleWarn.mockReset()
 })
 
 test('generated package-app scrubber strips unsafe cookie domains', () => {
