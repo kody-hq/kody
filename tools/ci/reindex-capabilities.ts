@@ -38,7 +38,9 @@ export function isRetryableFirstSweepReindexFailure(
 	if (status === 401 || status === 502 || status === 503 || status === 530) {
 		return true
 	}
-	return workersDevScriptNotFound.test(body)
+	// Only scan failed bodies. A 2xx sweep can include a cursor like
+	// `cap-1042` and must not look like Cloudflare error 1042.
+	return status >= 400 && workersDevScriptNotFound.test(body)
 }
 
 /** The bearer secret must never cross the network in cleartext. */

@@ -219,6 +219,34 @@ test('isRetryableFirstSweepReindexFailure covers secret and workers.dev races', 
 	).toBe(true)
 	expect(isRetryableFirstSweepReindexFailure(404, 'not found')).toBe(false)
 	expect(isRetryableFirstSweepReindexFailure(500, 'internal')).toBe(false)
+	expect(
+		isRetryableFirstSweepReindexFailure(
+			200,
+			JSON.stringify({
+				complete: false,
+				cursor: { phase: 'capabilities', afterId: 'cap-1042' },
+			}),
+		),
+	).toBe(false)
+})
+
+test('runCapabilityReindex does not retry a successful first sweep whose cursor contains 1042', async () => {
+	const cursor = { phase: 'capabilities', afterId: 'cap-1042' }
+	const endpoint = fakeMaintenanceEndpoint([
+		{ body: { complete: false, cursor } },
+		{ body: { complete: true } },
+	])
+	await expect(
+		runCapabilityReindex({
+			baseUrl: 'https://kody-pr-3.example.workers.dev',
+			secret: 's',
+			authRetrySeconds: 90,
+			fetcher: endpoint.fetcher,
+			log: () => {},
+		}),
+	).resolves.toEqual({ sweeps: 2 })
+	expect(endpoint.calls).toHaveLength(2)
+	expect(endpoint.calls[1]?.body).toEqual({ cursor })
 })
 
 test('parseReindexArgs accepts known phases and omits phases for a full sweep', () => {
