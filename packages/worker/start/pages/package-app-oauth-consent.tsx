@@ -47,6 +47,22 @@ export function PackageAppOauthConsentPage({
 	const [choosingAnother, setChoosingAnother] = useState<Set<string>>(
 		() => new Set(),
 	)
+	const missingRequiredCredential = data.executorNeeds.some(
+		(need) =>
+			need.required &&
+			!need.credentials.some(
+				(credential) => credential.id === selectedCredentialIds[need.key],
+			),
+	)
+	const missingSelectedCredential = data.executorNeeds.some((need) => {
+		const isSelected = need.required || selectedScopes.has(need.scope)
+		return (
+			isSelected &&
+			!need.credentials.some(
+				(credential) => credential.id === selectedCredentialIds[need.key],
+			)
+		)
+	})
 	async function submit(decision: 'approve' | 'deny') {
 		if (busy) return
 		setBusy(true)
@@ -328,7 +344,7 @@ export function PackageAppOauthConsentPage({
 						/>
 					))}
 					<button
-						disabled={busy}
+						disabled={busy || missingSelectedCredential}
 						type="submit"
 						name="decision"
 						value="approve"
@@ -348,6 +364,13 @@ export function PackageAppOauthConsentPage({
 						Cancel
 					</button>
 				</form>
+				{missingSelectedCredential ? (
+					<p role="status" css={mutedCss}>
+						{missingRequiredCredential
+							? 'Create a matching credential before allowing this app.'
+							: 'Choose a credential or turn off the optional scope to continue.'}
+					</p>
+				) : null}
 				{error ? (
 					<p role="alert" css={mutedCss}>
 						{error}

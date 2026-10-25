@@ -283,4 +283,11 @@ test('package-app consent offers Create new credentials when no candidate matche
 	expect(html).toContain('No matching credentials are available yet.')
 	expect(html).toContain('Create new credentials')
 	expect(html).not.toContain('type="radio"')
+	const approveButton = html.match(
+		/<button\b[^>]*data-testid="package-app-oauth-approve"[^>]*>/,
+	)?.[0]
+	expect(approveButton).toContain('disabled=""')
+	expect(html).toContain(
+		'Create a matching credential before allowing this app.',
+	)
 })

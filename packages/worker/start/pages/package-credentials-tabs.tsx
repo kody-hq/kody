@@ -117,9 +117,20 @@ function toneColor(tone: MappingStatusTone) {
 }
 export function renderStatus(mapping: EffectiveCredentialMapping) {
 	const { label, tone } = mappingStatusLabel(mapping.status)
+	return renderStatusBadge(label, tone, { mappingStatus: mapping.status })
+}
+function renderExecutorStatus() {
+	return renderStatusBadge('Executor', 'muted', { supplier: 'executor' })
+}
+function renderStatusBadge(
+	label: string,
+	tone: MappingStatusTone,
+	data: { mappingStatus?: string; supplier?: string },
+) {
 	return (
 		<span
-			data-mapping-status={mapping.status}
+			data-mapping-status={data.mappingStatus}
+			data-credential-supplier={data.supplier}
 			css={{
 				display: 'inline-flex',
 				padding: `0 ${spacing.sm}`,
@@ -228,14 +239,17 @@ export function renderIncomplete(
 	currentTab: PackageCredentialsTab,
 ) {
 	const { view } = context
+	const needs = new Map(view.needs.map((need) => [need.key, need]))
 	const items =
 		currentTab === 'credentials'
 			? view.incomplete
 			: view.incomplete.filter(
 					(item) => incompleteMappingTab(item) === currentTab,
 				)
-	if (items.length === 0) return null
-	const needs = new Map(view.needs.map((need) => [need.key, need]))
+	const actionableItems = items.filter(
+		(item) => needs.get(item.needKey)?.supplier !== 'executor',
+	)
+	if (actionableItems.length === 0) return null
 	return (
 		<section
 			aria-labelledby="package-credentials-incomplete"
@@ -247,12 +261,12 @@ export function renderIncomplete(
 			}}
 		>
 			<h2 id="package-credentials-incomplete" css={cardTitleCss}>
-				{items.length === 1
+				{actionableItems.length === 1
 					? '1 mapping needs attention'
-					: `${items.length} mappings need attention`}
+					: `${actionableItems.length} mappings need attention`}
 			</h2>
 			<ul css={listCss}>
-				{items.map((item) => {
+				{actionableItems.map((item) => {
 					const tab = incompleteMappingTab(item)
 					const createUrl = needs.get(item.needKey)?.createUrl
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
@@ -328,9 +342,21 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 												<div css={mutedCss}>{need.description}</div>
 											) : null}
 										</td>
-										<td>{renderEffective(orgSlug, need.effective)}</td>
+										<td>
+											{need.supplier === 'executor' ? (
+												<span css={mutedCss}>
+													Each person who runs it supplies their own
+												</span>
+											) : (
+												renderEffective(orgSlug, need.effective)
+											)}
+										</td>
 										<td>{mappingSourceLabel(need.effective.source)}</td>
-										<td>{renderStatus(need.effective)}</td>
+										<td>
+											{need.supplier === 'executor'
+												? renderExecutorStatus()
+												: renderStatus(need.effective)}
+										</td>
 									</tr>
 								))}
 							</tbody>
