@@ -103,3 +103,38 @@ test('email HTML preview sandbox allows only popups that escape the sandbox', ()
 		'allow-popups-to-escape-sandbox',
 	])
 })
+
+test('email HTML preview normalizes links that comments try to hide', () => {
+	// CodeRabbit medium finding: a comment opens a fake quoted attribute so a
+	// naive scanner swallows the real anchor and leaves rel=opener in place.
+	const commentBoundary =
+		`<!-- <a title=' --> <a href="https://attacker.example" rel="opener" target="_blank">open</a> <!-- '> -->`
+	const doc = buildAdminEmailHtmlPreviewDocument(commentBoundary)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).toContain(
+		`<!-- <a title=' --> <a href="https://attacker.example">open</a> <!-- '> -->`,
+	)
+	expect(body).not.toMatch(/\srel\s*=/i)
+	expect(body).not.toMatch(/\starget\s*=/i)
+
+	const doubleQuoted =
+		`<!-- <a title=" --> <a href="https://attacker.example" rel='opener' target='_blank'>x</a> <!-- "> -->`
+	const doubleDoc = buildAdminEmailHtmlPreviewDocument(doubleQuoted)
+	expect(doubleDoc).toContain('<a href="https://attacker.example">x</a>')
+	expect(doubleDoc).not.toMatch(/rel=['"]opener['"]/i)
+
+	const areaBoundary =
+		`<!-- <area href="/" title=' --> <area href="https://attacker.example" rel="opener" target="_blank"> <!-- '> -->`
+	const areaDoc = buildAdminEmailHtmlPreviewDocument(areaBoundary)
+	expect(areaDoc).toContain('<area href="https://attacker.example">')
+	expect(areaDoc).not.toMatch(/\srel\s*=/i)
+
+	// Link-like text inside another tag's attribute must not be rewritten.
+	const inAttribute =
+		`<div title='<a href="https://x.example" rel="opener" target="_blank">'>keep</div><a href="https://y.example" rel="opener">y</a>`
+	const attrDoc = buildAdminEmailHtmlPreviewDocument(inAttribute)
+	expect(attrDoc).toContain(
+		`<div title='<a href="https://x.example" rel="opener" target="_blank">'>keep</div>`,
+	)
+	expect(attrDoc).toContain('<a href="https://y.example">y</a>')
+})

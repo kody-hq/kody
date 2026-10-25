@@ -25,12 +25,12 @@ export function stripDangerousEmailHtml(html: string) {
 	)
 }
 
-const linkTagStartPattern = /<(?:a|area)(?=[\s/>])/gi
 const droppedLinkAttributes = new Set(['target', 'rel'])
 const whitespaceOrSlashPattern = /[\s/]/
 const whitespacePattern = /\s/
 const attributeNameEndPattern = /[\s/>=]/
 const unquotedValueEndPattern = /[\s>]/
+const tagNameCharPattern = /[A-Za-z0-9:-]/
 
 function skipWhile(html: string, index: number, pattern: RegExp) {
 	let i = index
@@ -45,11 +45,15 @@ function skipUntil(html: string, index: number, pattern: RegExp) {
 }
 
 /**
- * Read one start tag's attributes the way the HTML tokenizer does (quoted
- * values may contain `>`), dropping `target` and `rel`. Returns the kept tag
- * text after the tag name and the index just past the tag.
+ * Advance past one start tag's attributes the way the HTML tokenizer does
+ * (quoted values may contain `>`). When `dropAttributes` is set, rebuild the
+ * attribute text without those names; otherwise copy the tag unchanged.
  */
-function readLinkTagRest(html: string, from: number) {
+function readStartTagRest(
+	html: string,
+	from: number,
+	dropAttributes: Set<string> | null,
+) {
 	let kept = ''
 	let dropped = false
 	let i = from
@@ -58,6 +62,9 @@ function readLinkTagRest(html: string, from: number) {
 		i = skipWhile(html, i, whitespaceOrSlashPattern)
 		if (i >= html.length || html.charAt(i) === '>') {
 			const tagEnd = Math.min(i + 1, html.length)
+			if (dropAttributes === null) {
+				return { kept: html.slice(from, tagEnd), end: tagEnd }
+			}
 			return { kept: kept + html.slice(segmentStart, tagEnd), end: tagEnd }
 		}
 		const nameStart = i
@@ -74,7 +81,8 @@ function readLinkTagRest(html: string, from: number) {
 				i = skipUntil(html, valueStart, unquotedValueEndPattern)
 			}
 		}
-		if (droppedLinkAttributes.has(name)) {
+		if (dropAttributes === null) continue
+		if (dropAttributes.has(name)) {
 			dropped = true
 			continue
 		}
@@ -82,25 +90,69 @@ function readLinkTagRest(html: string, from: number) {
 		kept += dropped && nameStart === segmentStart ? ` ${segment}` : segment
 		dropped = false
 	}
+	if (dropAttributes === null) {
+		return { kept: html.slice(from), end: html.length }
+	}
 	return { kept, end: html.length }
 }
 
 /**
- * Drop `target` and `rel` from links so the injected `<base target="_blank">`
- * applies to every link (no in-frame or named-window navigation) and no `rel`
- * can hand the new tab a reference back to the preview.
+ * Drop `target` and `rel` from real `<a>` / `<area>` start tags so the injected
+ * `<base target="_blank">` applies and no `rel` can hand the new tab a
+ * reference back to the preview. Walks markup like a tokenizer: HTML comments,
+ * declarations, and other tags' attribute text are skipped so a comment or
+ * quoted attribute cannot hide a real link from normalization.
  */
 function normalizeEmailLinks(html: string) {
 	let out = ''
-	let last = 0
-	for (const match of html.matchAll(linkTagStartPattern)) {
-		if (match.index < last) continue
-		const nameEnd = match.index + match[0].length
-		const { kept, end } = readLinkTagRest(html, nameEnd)
-		out += html.slice(last, nameEnd) + kept
-		last = end
+	let i = 0
+	while (i < html.length) {
+		const lt = html.indexOf('<', i)
+		if (lt < 0) {
+			out += html.slice(i)
+			break
+		}
+		out += html.slice(i, lt)
+
+		if (html.startsWith('<!--', lt)) {
+			const end = html.indexOf('-->', lt + 4)
+			const to = end < 0 ? html.length : end + 3
+			out += html.slice(lt, to)
+			i = to
+			continue
+		}
+
+		if (html.startsWith('<!', lt) || html.startsWith('<?', lt)) {
+			const end = html.indexOf('>', lt + 2)
+			const to = end < 0 ? html.length : end + 1
+			out += html.slice(lt, to)
+			i = to
+			continue
+		}
+
+		if (html.startsWith('</', lt)) {
+			const end = html.indexOf('>', lt + 2)
+			const to = end < 0 ? html.length : end + 1
+			out += html.slice(lt, to)
+			i = to
+			continue
+		}
+
+		if (!/[A-Za-z]/.test(html.charAt(lt + 1))) {
+			out += '<'
+			i = lt + 1
+			continue
+		}
+
+		const nameEnd = skipWhile(html, lt + 1, tagNameCharPattern)
+		const name = html.slice(lt + 1, nameEnd).toLowerCase()
+		const drop =
+			name === 'a' || name === 'area' ? droppedLinkAttributes : null
+		const { kept, end } = readStartTagRest(html, nameEnd, drop)
+		out += html.slice(lt, nameEnd) + kept
+		i = end
 	}
-	return out + html.slice(last)
+	return out
 }
 
 function isFullHtmlDocument(html: string) {
