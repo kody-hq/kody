@@ -429,6 +429,17 @@ test('listWorkflowProjections filters by id, packageId, and since', async () => 
 		limit: 10,
 	})
 	expect(combined.projections.map((row) => row.id)).toEqual(['wf-new-a'])
+
+	const byStatuses = await listWorkflowProjections({
+		env,
+		userId,
+		statuses: ['queued', 'running'],
+		limit: 10,
+	})
+	expect(byStatuses.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-new-b',
+	])
 })
 
 test('reserveWorkflowProjectionSlot serializes concurrent creating, prunes stale, and never overwrites terminal', async () => {

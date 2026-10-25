@@ -49,6 +49,7 @@ export function createFakeRunLogNamespace() {
 					limit?: number | null
 					cursor?: string | null
 					status?: string | null
+					statuses?: ReadonlyArray<string> | null
 					bindingName?: string | null
 					id?: string | null
 					packageId?: string | null
@@ -143,17 +144,26 @@ export function createFakeRunLogNamespace() {
 				limit?: number | null
 				cursor?: string | null
 				status?: string | null
+				statuses?: ReadonlyArray<string> | null
 				bindingName?: string | null
 				id?: string | null
 				packageId?: string | null
 				since?: string | null
 			}) {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
+				const statusSet =
+					!input.status && input.statuses && input.statuses.length > 0
+						? new Set(input.statuses)
+						: null
 				const rows = [...projections.values()]
 					.filter(
 						(row) =>
 							(input.id ? row.id === input.id : true) &&
-							(input.status ? row.status === input.status : true) &&
+							(input.status
+								? row.status === input.status
+								: statusSet
+									? row.status != null && statusSet.has(row.status)
+									: true) &&
 							(input.bindingName
 								? row.bindingName === input.bindingName
 								: true) &&

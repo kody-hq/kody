@@ -1313,6 +1313,7 @@ export async function listWorkflowProjections(input: {
 	limit?: number | null
 	cursor?: string | null
 	status?: string | null
+	statuses?: ReadonlyArray<string> | null
 	bindingName?: string | null
 	id?: string | null
 	packageId?: string | null
@@ -1325,6 +1326,10 @@ export async function listWorkflowProjections(input: {
 		Math.max(input.limit ?? runRecordDefaultPageSize, 1),
 		runRecordMaxPageSize,
 	)
+	const statuses =
+		input.statuses
+			?.map((value) => normalizeOptionalString(value))
+			.filter((value): value is string => value != null) ?? null
 	return await runLogRpc({
 		env: input.env,
 		userId: input.userId,
@@ -1332,6 +1337,7 @@ export async function listWorkflowProjections(input: {
 		limit,
 		cursor: input.cursor ?? null,
 		status: input.status ?? null,
+		statuses,
 		bindingName: input.bindingName ?? null,
 		id: normalizeOptionalString(input.id),
 		packageId: normalizeOptionalString(input.packageId),

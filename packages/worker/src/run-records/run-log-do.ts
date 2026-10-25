@@ -418,6 +418,8 @@ type WorkflowProjectionListInput = {
 	limit: number
 	cursor?: string | null
 	status?: string | null
+	/** When set, matches `status IN (...)`. Ignored when `status` is set. */
+	statuses?: ReadonlyArray<string> | null
 	bindingName?: string | null
 	/** Exact workflow projection id (dynwf-… / pkgwf-…). */
 	id?: string | null
@@ -3340,6 +3342,14 @@ class RunLogBase extends DurableObject<Env> {
 		if (input.status) {
 			clauses.push('status = ?')
 			params.push(input.status)
+		} else {
+			const statuses = (input.statuses ?? [])
+				.map((value) => value.trim())
+				.filter(Boolean)
+			if (statuses.length > 0) {
+				clauses.push(`status IN (${statuses.map(() => '?').join(', ')})`)
+				params.push(...statuses)
+			}
 		}
 		const bindingName = input.bindingName?.trim() || null
 		if (bindingName) {

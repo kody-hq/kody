@@ -1569,32 +1569,72 @@ export async function listWorkflowRunsForUser(input: {
 	const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
 	const filter = input.filter ?? null
 	const statusFilter = filter?.status?.trim() || null
-	// Status can change under us via the workflow engine. Apply status only after
-	// refreshing candidates so a stale "running" projection that is already
-	// complete is not missed (or returned under the wrong status).
-	const listed = await listWorkflowProjections({
+	const shared = {
 		env,
 		userId: input.userId,
-		limit: statusFilter ? runRecordMaxPageSize : limit,
 		bindingName: dynamicCallableWorkflowsBindingName,
 		id: filter?.workflowId ?? null,
-		status: null,
 		packageId: filter?.packageId ?? null,
 		since: filter?.since ?? null,
-	})
-	const rows = listed.projections.map((projection) =>
-		mapWorkflowProjectionToInspection(projection, input.userId),
-	)
+	} as const
+
+	if (!statusFilter) {
+		const listed = await listWorkflowProjections({
+			...shared,
+			limit,
+		})
+		const rows = listed.projections.map((projection) =>
+			mapWorkflowProjectionToInspection(projection, input.userId),
+		)
+		await refreshListedWorkflowRunStatuses({
+			env,
+			userId: input.userId,
+			rows,
+			forceRefresh: false,
+		})
+		return rows
+	}
+
+	// Exact SQL matches plus every active projection (active count is
+	// entitlement-capped). Refresh actives, then keep only the requested
+	// status so stale "running" rows that already finished are not missed and
+	// older terminal rows are not dropped behind a newest-page window of
+	// actives.
+	const [exact, actives] = await Promise.all([
+		listWorkflowProjections({
+			...shared,
+			status: statusFilter,
+			limit,
+		}),
+		listWorkflowProjections({
+			...shared,
+			statuses: activeWorkflowStatusValues,
+			limit: runRecordMaxPageSize,
+		}),
+	])
+	const byId = new Map<string, WorkflowRunInspection>()
+	for (const projection of [...exact.projections, ...actives.projections]) {
+		if (byId.has(projection.id)) continue
+		byId.set(
+			projection.id,
+			mapWorkflowProjectionToInspection(projection, input.userId),
+		)
+	}
+	const rows = [...byId.values()]
 	await refreshListedWorkflowRunStatuses({
 		env,
 		userId: input.userId,
 		rows,
-		forceRefresh: statusFilter != null,
+		forceRefresh: true,
 	})
-	const matched = statusFilter
-		? rows.filter((row) => row.status === statusFilter)
-		: rows
-	return matched.slice(0, limit)
+	return rows
+		.filter((row) => row.status === statusFilter)
+		.sort((left, right) => {
+			const byCreated = right.createdAt.localeCompare(left.createdAt)
+			if (byCreated !== 0) return byCreated
+			return right.id.localeCompare(left.id)
+		})
+		.slice(0, limit)
 }
 
 async function refreshListedWorkflowRunStatuses(input: {
