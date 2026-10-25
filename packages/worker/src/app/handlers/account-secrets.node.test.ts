@@ -462,8 +462,6 @@ function postRequest(body: Record<string, unknown>, search = '') {
 	})
 }
 
-const approve = (search: string) => postRequest({ action: 'approve' }, search)
-
 function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 	return {
 		credentialId: `cred-${name}`,
