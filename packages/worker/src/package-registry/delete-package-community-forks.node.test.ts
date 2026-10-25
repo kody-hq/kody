@@ -120,6 +120,11 @@ function createDeleteForkDb() {
 			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 			updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 		);
+		CREATE TABLE package_app_rate_limits (
+			bucket_key TEXT PRIMARY KEY,
+			window_start INTEGER NOT NULL,
+			count INTEGER NOT NULL
+		);
 		CREATE TABLE entity_sources (
 			id TEXT PRIMARY KEY NOT NULL,
 			user_id TEXT NOT NULL,
