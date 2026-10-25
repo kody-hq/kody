@@ -7,7 +7,6 @@ import { labelInboundMcpClient } from '#universal/connected-mcp-agents.ts'
 import { mcpClientById } from '#universal/onboarding-mcp-clients.ts'
 import { type UserEntitlement } from '#universal/plans.ts'
 import { preferLocalExecuteNudgeWarning } from '#universal/prefer-local-cli-execute.ts'
-import { type ExecuteUniqueWorkerDayUsage } from '#worker/entitlements/service.ts'
 import { userEntitlementApproachingThreshold } from '#worker/entitlements/user-entitlement-warning-emails.ts'
 
 /** Fresh unique execute workers today (UTC) before the prefer-local nudge. */
@@ -114,14 +113,14 @@ export function normalizePreferLocalExecuteNudgeState(
 	return { conversationIds: [...conversationIds] }
 }
 
-/** Daily unique-worker count from a hosted execute claim. */
+/**
+ * Daily unique-worker count from a hosted execute claim. Claims always carry
+ * `created` at runtime; the response usage type omits it, so accept either.
+ */
 export function dailyFreshWorkersFromClaim(
-	usage:
-		| Pick<ExecuteUniqueWorkerDayUsage, 'created' | 'used'>
-		| null
-		| undefined,
+	usage: { created?: boolean; used: number } | null | undefined,
 ): number | null {
-	if (!usage?.created) return null
+	if (!usage || usage.created !== true) return null
 	return usage.used
 }
 
