@@ -31,6 +31,7 @@ import {
 	assertLivePerson,
 	authorizeSurface,
 } from '#worker/authorization/authorize.ts'
+import { attachKodyIdDeprecationHint } from '#worker/package-registry/kody-id-deprecation.ts'
 
 // Normalize capability authoring input into the JSON-Schema-based shape
 // consumed by the registry and sandbox search surface.
@@ -222,7 +223,13 @@ export function defineCapability<
 						durationMs: Math.round(performance.now() - startedAt),
 						...mcpCallerFields,
 					})
-					return finalized
+					// After output parse so leftover-param hints are not stripped by
+					// the capability output schema. Behavior for name/package_id
+					// callers is unchanged.
+					return attachKodyIdDeprecationHint(
+						parsedArgs,
+						finalized,
+					) as CapabilityOutput<TOutputSchema>
 				} catch (error) {
 					const validationError = createCapabilityValidationError(
 						error,

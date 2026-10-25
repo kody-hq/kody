@@ -3,7 +3,7 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	normalizePackageNameInput,
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalInput,
 } from '#worker/package-registry/package-name.ts'
 import {
 	getSavedPackageById,
@@ -14,7 +14,7 @@ import { z } from 'zod'
 
 export const packageIdentityInputShape = {
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
-	kody_id: z.string().min(1).optional().describe(packageNameLookupDescription),
+	kody_id: packageKodyIdOptionalInput(),
 }
 
 export type PackageIdentity = {

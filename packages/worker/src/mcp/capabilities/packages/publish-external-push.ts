@@ -23,7 +23,7 @@ import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getPackageNameLeaf,
 	packageIdLookupDescription,
-	packageKodyIdLeftoverDescription,
+	packageKodyIdOptionalInput,
 	packageNameLookupDescription,
 } from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
@@ -98,11 +98,7 @@ import { buildUpdatePublicListingHref } from '#universal/update-public-listing.t
 const inputSchema = z.object({
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
 	name: z.string().min(1).optional().describe(packageNameLookupDescription),
-	kody_id: z
-		.string()
-		.min(1)
-		.optional()
-		.describe(packageKodyIdLeftoverDescription),
+	kody_id: packageKodyIdOptionalInput(),
 	allow_force: z.boolean().optional().default(false),
 	confirm_destructive_overwrite: z
 		.boolean()

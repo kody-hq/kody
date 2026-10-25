@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { credentialNeedChangeSchema } from '#mcp/capabilities/packages/shared.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdRequiredInput,
 } from '#worker/package-registry/package-name.ts'
 import {
 	entityKindValues,
@@ -19,7 +19,7 @@ const repoTargetShapeSchema = z.union([
 	}),
 	z.object({
 		kind: z.literal('package'),
-		kody_id: z.string().min(1).describe(packageNameLookupDescription),
+		kody_id: packageKodyIdRequiredInput(),
 	}),
 	z.object({
 		kind: z.literal('repo'),

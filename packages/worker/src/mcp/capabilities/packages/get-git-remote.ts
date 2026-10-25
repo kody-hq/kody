@@ -25,7 +25,7 @@ import {
 import {
 	normalizePackageNameInput,
 	packageIdLookupDescription,
-	packageKodyIdLeftoverDescription,
+	packageKodyIdOptionalInput,
 	packageNameLookupDescription,
 } from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
@@ -54,11 +54,7 @@ import { resolveOwnedPackageSource } from './resolve-package-source.ts'
 const getGitRemoteInputSchema = z.object({
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
 	name: z.string().min(1).optional().describe(packageNameLookupDescription),
-	kody_id: z
-		.string()
-		.min(1)
-		.optional()
-		.describe(packageKodyIdLeftoverDescription),
+	kody_id: packageKodyIdOptionalInput(),
 	create: z
 		.boolean()
 		.optional()

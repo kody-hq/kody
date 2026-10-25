@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
 import {
 	packageWebhookChallengeSchema,
@@ -10,7 +10,7 @@ import {
 
 export const webhookPackageRefSchema = {
 	packageId: z.string().min(1).optional().describe(packageIdLookupDescription),
-	kodyId: z.string().min(1).optional().describe(packageNameLookupDescription),
+	kodyId: packageKodyIdOptionalCamelInput(),
 }
 
 export const webhookVerificationPublicSchema = z

@@ -7,6 +7,10 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { listWebhooksForUser } from '#worker/webhooks/service.ts'
+import {
+	packageIdLookupDescription,
+	packageKodyIdOptionalCamelInput,
+} from '#worker/package-registry/package-name.ts'
 import { listedWebhookSchema, toListedWebhookCapability } from './shared.ts'
 
 export const webhookListCapability = defineDomainCapability(
@@ -27,8 +31,12 @@ export const webhookListCapability = defineDomainCapability(
 		idempotent: true,
 		destructive: false,
 		inputSchema: z.object({
-			packageId: z.string().min(1).optional(),
-			kodyId: z.string().min(1).optional(),
+			packageId: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(packageIdLookupDescription),
+			kodyId: packageKodyIdOptionalCamelInput(),
 		}),
 		outputSchema: z.object({
 			webhooks: z.array(listedWebhookSchema),

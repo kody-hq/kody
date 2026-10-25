@@ -514,4 +514,28 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 	expect(document.paths['/v1/search']?.['get']?.['x-kody-permission']).toBe(
 		'search:read',
 	)
+
+	const gitRemoteBody =
+		document.paths['/v1/packages/git-remote']?.['post']?.requestBody?.content[
+			'application/json'
+		]?.schema
+	const gitRemoteProps = isRecord(gitRemoteBody?.['properties'])
+		? gitRemoteBody['properties']
+		: {}
+	expect(isRecord(gitRemoteProps['kody_id'])).toBe(true)
+	expect(
+		(gitRemoteProps['kody_id'] as Record<string, unknown>)['deprecated'],
+	).toBe(true)
+
+	const enablementBody =
+		document.paths['/v1/enablements']?.['post']?.requestBody?.content[
+			'application/json'
+		]?.schema
+	const enablementProps = isRecord(enablementBody?.['properties'])
+		? enablementBody['properties']
+		: {}
+	expect(isRecord(enablementProps['kodyId'])).toBe(true)
+	expect(
+		(enablementProps['kodyId'] as Record<string, unknown>)['deprecated'],
+	).toBe(true)
 })

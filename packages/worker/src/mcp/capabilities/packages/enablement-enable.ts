@@ -6,7 +6,7 @@ import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import { enableTriggerWithJobForCaller } from '#worker/enablements/service.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
 import {
 	enablementSchema,
@@ -59,11 +59,7 @@ export const enablementEnableCapability = defineDomainCapability(
 					.min(1)
 					.optional()
 					.describe(packageIdLookupDescription),
-				kodyId: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				kodyId: packageKodyIdOptionalCamelInput(),
 				triggerKind: enablementTriggerKindSchema,
 				triggerName: z
 					.string()
@@ -71,7 +67,7 @@ export const enablementEnableCapability = defineDomainCapability(
 					.describe('Job name, subscription topic, or webhook name.'),
 			})
 			.refine((input) => Boolean(input.packageId ?? input.kodyId), {
-				message: 'Provide packageId or kodyId.',
+				message: 'Provide packageId or leftover kodyId. Prefer packageId.',
 				path: ['packageId'],
 			}),
 		outputSchema: z.object({

@@ -33,8 +33,9 @@ export const communityForkCapability = defineDomainCapability(
 				.string()
 				.min(1)
 				.optional()
+				.meta({ deprecated: true })
 				.describe(
-					'Optional package name leaf (or `@owner/leaf`). Omit to use the listing leaf, or the next free alternate when that leaf is already taken by an unrelated package.',
+					'Deprecated leftover alias for an optional package name leaf (or `@owner/leaf`). Prefer omitting this and using the listing leaf, or pass a leaf via future `name` once available. Omit to use the listing leaf, or the next free alternate when that leaf is already taken by an unrelated package.',
 				),
 		}),
 		outputSchema: z.object({
