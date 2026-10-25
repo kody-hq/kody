@@ -111,7 +111,6 @@ async function seedOwnerSessionCookie() {
 	await ensureOauthGrantSchema()
 	await ensureUsersTestSchema({
 		db: env.APP_DB,
-		columns: ['experiments_opt_in'],
 	})
 	for (const statement of [
 		`CREATE TABLE IF NOT EXISTS permissions (

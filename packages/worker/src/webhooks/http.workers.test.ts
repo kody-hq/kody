@@ -37,6 +37,7 @@ import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registr
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const mocks = vi.hoisted(() => ({
@@ -135,21 +136,7 @@ function createHashedIdempotencyExportMock() {
 }
 
 async function ensureSchema(db: D1Database) {
-	await db
-		.prepare(
-			`CREATE TABLE IF NOT EXISTS users (
-				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-				username TEXT NOT NULL UNIQUE,
-				email TEXT NOT NULL UNIQUE,
-				password_hash TEXT NOT NULL,
-				stable_user_id TEXT NOT NULL,
-			personal_org_id TEXT,
-				deleting_at TEXT,
-				deleted_at TEXT,
-				suspended_at TEXT
-			)`,
-		)
-		.run()
+	await ensureUsersTestSchema({ db })
 	await db
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS saved_packages (

@@ -23,6 +23,7 @@ import {
 	loadPackageNeeds,
 	mappedCredentialFitsNeed,
 } from '#worker/credentials/credential-need-fit.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { enablementMappingPauseResourceType } from '#universal/credential-contracts.ts'
 import { type EnablementPauseInput } from './repo.ts'
 import { type EnablementPause, type EnablementRecord } from './types.ts'
@@ -73,6 +74,14 @@ export async function checkEnablementMappedCredentials(input: {
 }): Promise<EnablementPauseInput | null> {
 	const { packageId } = input.enablement
 	const picks = await loadTriggerPicks(input.env.APP_DB, input.enablement)
+	const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+		db: input.env.APP_DB,
+		orgId: input.request.org.id,
+		request: input.request,
+	})
+	if (!suppliersEnabled && !picks.some((pick) => pick.ids.length > 0)) {
+		return null
+	}
 	const needs = new Map(
 		(
 			await loadPackageNeeds({
@@ -83,9 +92,11 @@ export async function checkEnablementMappedCredentials(input: {
 			})
 		).map((need) => [need.key, need]),
 	)
-	const requiredExecutorNeeds = [...needs.values()].filter(
-		(need) => need.supplier === 'executor' && need.required !== false,
-	)
+	const requiredExecutorNeeds = suppliersEnabled
+		? [...needs.values()].filter(
+				(need) => need.supplier === 'executor' && need.required !== false,
+			)
+		: []
 	const picksByNeed = new Map(picks.map((pick) => [pick.needKey, pick]))
 	const declared = picks.filter(
 		(pick) => pick.ids.length > 0 && needs.has(pick.needKey),
