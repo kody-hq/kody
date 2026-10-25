@@ -407,7 +407,6 @@ export async function resolveLocalPackageBinding(input: {
 		if (
 			!packageIdMatchesLocalPackage({
 				specifier,
-				packageId,
 				kodyId: input.kodyId,
 				packageName,
 			})
@@ -437,9 +436,14 @@ export async function resolveLocalPackageBinding(input: {
 	return null
 }
 
-function packageIdMatchesLocalPackage(input: {
+/**
+ * True when a package-graph import specifier belongs to this local package.
+ * Prefer the manifest `packageName` (exact). Never match on an unscoped leaf
+ * alone: `@other/pkg` must not stamp as `@someone/pkg` just because both end
+ * in `pkg`.
+ */
+export function packageIdMatchesLocalPackage(input: {
 	specifier: string
-	packageId: string
 	kodyId: string
 	packageName?: string
 }): boolean {
@@ -454,14 +458,10 @@ function packageIdMatchesLocalPackage(input: {
 		}
 		return false
 	}
-	if (input.packageName && parsed.packageName === input.packageName) {
-		return true
+	if (input.packageName) {
+		return parsed.packageName === input.packageName
 	}
-	if (parsed.packageName === input.kodyId) return true
-	const leaf = parsed.packageName.includes('/')
-		? parsed.packageName.slice(parsed.packageName.lastIndexOf('/') + 1)
-		: parsed.packageName
-	return leaf === input.kodyId
+	return parsed.packageName === input.kodyId
 }
 
 async function resolvePackageIdViaPackageList(input: {
@@ -486,15 +486,16 @@ async function resolvePackageIdViaPackageList(input: {
 			packages?: Array<{ package_id: string; kody_id: string; name: string }>
 		}
 		const packages = listed.packages ?? []
+		// Exact scoped name first. Do not fall through to a leaf/`endsWith`
+		// match: that would pick a different package that shares the unscoped
+		// segment (same spoof Bugbot flagged on packageIdMatchesLocalPackage).
 		if (input.packageName) {
 			const byName = packages.filter((pkg) => pkg.name === input.packageName)
 			if (byName.length === 1) return byName[0]!.package_id
+			return null
 		}
 		const byKodyId = packages.filter(
-			(pkg) =>
-				pkg.kody_id === input.kodyId ||
-				pkg.name === input.kodyId ||
-				pkg.name.endsWith(`/${input.kodyId}`),
+			(pkg) => pkg.kody_id === input.kodyId || pkg.name === input.kodyId,
 		)
 		if (byKodyId.length === 1) return byKodyId[0]!.package_id
 	} catch {
