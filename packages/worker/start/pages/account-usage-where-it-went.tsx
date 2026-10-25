@@ -208,7 +208,7 @@ function PackageVisitorsTable({
 	)
 	return (
 		<section data-package-visitors>
-			<h3 css={{ margin: 0, fontSize: typography.fontSize.md }}>Visitors</h3>
+			<h3 css={{ margin: 0, fontSize: typography.fontSize.lg }}>Visitors</h3>
 			<label css={descriptionCss}>
 				Search visitors
 				<input
