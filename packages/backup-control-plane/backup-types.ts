@@ -102,6 +102,7 @@ export interface LogRecord {
 		| 'backup-overlap'
 		| 'backup-restarted'
 		| 'backup-export-result-expired-recover'
+		| 'backup-export-signed-url-fallback'
 		| 'backup-success'
 		| 'backup-failure'
 		| 'backup-sql-stats'

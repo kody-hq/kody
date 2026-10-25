@@ -22,23 +22,25 @@ constructing the absent canonical manifest. The original one-hour signed URL
 returned by the durable export step is never used for transfer. On every
 execution of the retryable upload callback, the runtime polls D1 with the cached
 bookmark and requires a complete response for that same bookmark, obtaining a
-fresh signed URL. If that poll result has expired, the upload step returns a
-durable `{ kind: 'export-result-expired' }` result instead of throwing
-`NonRetryableError` (which would fail the whole instance) or starting a second
-export inside the same step. The runtime then starts a fresh export under new
-`recover-N-*` durable step names (up to three attempts). Throwing from the step
-cannot drive that recovery: Workflows treats `NonRetryableError` as
-instance-terminal before the next attempt can run. The upload stream-verifies
-exact byte count and SHA-256 against R2 while writing. Finalization deliberately
-does **not** poll D1 again: expired poll results can only be refreshed by
-starting a new export of a _newer_ database state, whose bytes legitimately
-differ from the stored object whenever production wrote anything in between
-(this exact mismatch made roughly every other nightly backup fail terminally
-with `existing-object-source-mismatch` before 2026-07-27). Instead, finalization
-re-reads the stored object and requires its size, R2 ETag, and full SHA-256 to
-match the durable upload-step result (`stored-object-mismatch` /
-`stored-object-missing` fail closed), then signs and writes the manifest in the
-same Workflow step. An existing manifest must match that object exactly.
+fresh signed URL. If that refresh finds the export session gone (common for
+fast-completing DBs across a Workflow step boundary), the upload step falls back
+to the signed URL already returned by the durable poll step — that URL remains
+valid for about an hour even after D1 drops the session. Only when that fallback
+download also fails does the step return a durable
+`{ kind: 'export-result-expired' }` result (never `NonRetryableError`, which
+would fail the whole instance) so the runtime can start a fresh export under new
+`recover-N-*` durable step names (up to three attempts). The upload
+stream-verifies exact byte count and SHA-256 against R2 while writing.
+Finalization deliberately does **not** poll D1 again: expired poll results can
+only be refreshed by starting a new export of a _newer_ database state, whose
+bytes legitimately differ from the stored object whenever production wrote
+anything in between (this exact mismatch made roughly every other nightly backup
+fail terminally with `existing-object-source-mismatch` before 2026-07-27).
+Instead, finalization re-reads the stored object and requires its size, R2 ETag,
+and full SHA-256 to match the durable upload-step result
+(`stored-object-mismatch` / `stored-object-missing` fail closed), then signs and
+writes the manifest in the same Workflow step. An existing manifest must match
+that object exactly.
 
 While streaming the upload, the runtime also measures SQL statement lengths
 (quote-aware semicolon splitting). D1's import path rejects statements above its

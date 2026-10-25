@@ -431,6 +431,57 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 	)
 })
 
+test('upload falls back to the poll-step signed URL when refresh finds the export lost', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const exportBodies: unknown[] = []
+	const downloadUrls: string[] = []
+	let exportCalls = 0
+	const result = await runDay(
+		env,
+		payload,
+		new CachedUploadStep(() => undefined),
+		{
+			api: completeApi((init) => {
+				exportCalls += 1
+				exportBodies.push(JSON.parse(String(init?.body)))
+				if (exportCalls === 1) {
+					return exportEnvelope(
+						'complete',
+						'bookmark-1',
+						'https://download.example/from-poll-step',
+					)
+				}
+				return exportEnvelope('lost')
+			}),
+			downloadFetcher: async (input) => {
+				downloadUrls.push(String(input))
+				return okDownload()
+			},
+		},
+	)
+	assert.equal(result.payload.export.bookmark, 'bookmark-1')
+	assert.deepEqual(exportBodies, [
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
+	])
+	assert.deepEqual(downloadUrls, ['https://download.example/from-poll-step'])
+	assert.ok(
+		consoleEvents(consoleLog).includes('backup-export-signed-url-fallback'),
+	)
+	assert.equal(
+		consoleEvents(consoleLog).includes('backup-export-result-expired-recover'),
+		false,
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
 test('an expired export result recovers via durable step result (not NonRetryableError)', async () => {
 	// Workflows treats NonRetryableError as instance-terminal. Recovery must
 	// complete the upload step with `{ kind: 'export-result-expired' }` so the
@@ -451,7 +502,8 @@ test('an expired export result recovers via durable step result (not NonRetryabl
 			api: completeApi((init) => {
 				exportCalls += 1
 				exportBodies.push(JSON.parse(String(init?.body)))
-				// Attempt 1: start completes, upload refresh finds expired.
+				// Attempt 1: start completes, upload refresh finds expired, and
+				// the poll-step signed URL is also dead (403) → recover-2.
 				// Attempt 2 (recover-2-* steps): start + refresh succeed.
 				if (exportCalls === 1) {
 					return exportEnvelope(
@@ -468,7 +520,11 @@ test('an expired export result recovers via durable step result (not NonRetryabl
 				)
 			}),
 			downloadFetcher: async (input) => {
-				downloadUrls.push(String(input))
+				const url = String(input)
+				downloadUrls.push(url)
+				if (url === 'https://download.example/stale') {
+					return new Response('', { status: 403 })
+				}
 				return okDownload()
 			},
 		},
@@ -480,14 +536,23 @@ test('an expired export result recovers via durable step result (not NonRetryabl
 		{ output_format: 'polling' },
 		{ output_format: 'polling', current_bookmark: 'bookmark-2' },
 	])
-	assert.deepEqual(downloadUrls, ['https://download.example/recovered'])
+	assert.deepEqual(downloadUrls, [
+		'https://download.example/stale',
+		'https://download.example/recovered',
+	])
 	assert.deepEqual(
 		consoleEvents(consoleLog).filter((event) =>
-			['backup-export-result-expired-recover', 'backup-success'].includes(
-				event,
-			),
+			[
+				'backup-export-signed-url-fallback',
+				'backup-export-result-expired-recover',
+				'backup-success',
+			].includes(event),
 		),
-		['backup-export-result-expired-recover', 'backup-success'],
+		[
+			'backup-export-signed-url-fallback',
+			'backup-export-result-expired-recover',
+			'backup-success',
+		],
 	)
 	assert.deepEqual(
 		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
@@ -618,8 +683,10 @@ test('exhausted export-result-expired recovery fails without a manifest', async 
 					return exportEnvelope('lost')
 				}),
 				downloadFetcher: async (input) => {
+					// Poll-step signed URLs are also dead, so fallback cannot save
+					// the attempt and recover-N must run (then also fail).
 					downloadUrls.push(String(input))
-					return okDownload()
+					return new Response('', { status: 403 })
 				},
 			},
 		),
@@ -628,7 +695,7 @@ test('exhausted export-result-expired recovery fails without a manifest', async 
 	)
 	// Three start+refresh pairs (attempts 1..3).
 	assert.equal(exportCalls, 6)
-	assert.deepEqual(downloadUrls, [])
+	assert.equal(downloadUrls.length, 3)
 	assert.equal(await bucket.head(payload.manifestKey), null)
 	assert.deepEqual(
 		consoleEvents(consoleLog).filter(

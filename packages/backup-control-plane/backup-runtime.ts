@@ -309,6 +309,11 @@ type StoredUploadResult = StoredBackup & {
 	bookmark: string
 }
 
+/** True for BackupError / Workflows-wrapped messages naming export-result-expired. */
+export function isExportResultExpiredError(error: unknown): boolean {
+	return errorCode(error) === 'export-result-expired'
+}
+
 /**
  * Normalize the durable upload-step result. Current code returns
  * `{ kind: 'stored' | 'export-result-expired', … }`. Instances that completed
@@ -410,35 +415,70 @@ export async function runBackupRuntime(
 				},
 				async (): Promise<UploadStepResult> => {
 					try {
-						// Refresh only re-polls the durable export bookmark for a
-						// fresh signed URL. It never starts a new export here.
-						const refreshed = await refreshCompletedD1Export(
-							sourceEnv,
-							exported.bookmark,
-							options.api,
-						)
+						// Prefer a refreshed signed URL when the export session is
+						// still alive. Fast-completing DBs often drop that session
+						// across the Workflow step boundary before this callback
+						// runs; the poll-step signed URL remains valid (~1h), so
+						// fall back to it instead of treating the night as expired.
+						let bookmark = exported.bookmark
+						let signedUrl = exported.signedUrl
+						let usedPollStepSignedUrl = false
+						try {
+							const refreshed = await refreshCompletedD1Export(
+								sourceEnv,
+								exported.bookmark,
+								options.api,
+							)
+							bookmark = refreshed.bookmark
+							signedUrl = refreshed.signedUrl
+						} catch (error) {
+							if (!isExportResultExpiredError(error)) throw error
+							usedPollStepSignedUrl = true
+							safeLog({
+								event: 'backup-export-signed-url-fallback',
+								status: 'stale-success',
+								day: checkedPayload.day,
+								instanceId: event.instanceId,
+								databaseId: source.id,
+								databaseName: source.name,
+								attempt,
+								errorCode: 'export-result-expired',
+							})
+						}
 						const refreshedObjectKey = objectKeyForPayload(
 							checkedPayload,
-							refreshed.bookmark,
+							bookmark,
 						)
-						const uploaded = await storeSignedDownload(
-							env.BACKUP_BUCKET,
-							refreshedObjectKey,
-							refreshed.signedUrl,
-							options.downloadFetcher,
-						)
-						return {
-							kind: 'stored',
-							stored: {
-								...uploaded,
-								objectKey: refreshedObjectKey,
-								bookmark: refreshed.bookmark,
-							},
+						try {
+							const uploaded = await storeSignedDownload(
+								env.BACKUP_BUCKET,
+								refreshedObjectKey,
+								signedUrl,
+								options.downloadFetcher,
+							)
+							return {
+								kind: 'stored',
+								stored: {
+									...uploaded,
+									objectKey: refreshedObjectKey,
+									bookmark,
+								},
+							}
+						} catch (error) {
+							// Poll-step URL was already stale (403); force a fresh
+							// export under recover-N-* step names.
+							if (
+								usedPollStepSignedUrl &&
+								errorCode(error) === 'download-http-error'
+							) {
+								return { kind: 'export-result-expired' }
+							}
+							throw error
 						}
 					} catch (error) {
-						// Catch BackupError before the step boundary wraps it as
-						// NonRetryableError (which would fail the instance).
-						if (errorCode(error) === 'export-result-expired') {
+						// Catch before the step boundary wraps BackupError as
+						// NonRetryableError (which fails the instance).
+						if (isExportResultExpiredError(error)) {
 							return { kind: 'export-result-expired' }
 						}
 						throw error
