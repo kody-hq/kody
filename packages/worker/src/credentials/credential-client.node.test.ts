@@ -1645,7 +1645,7 @@ test('ownerCredentialForVisitors has the same publisher visitor refusal as suppl
 
 	expect(canonicalError.body).toMatchObject({ code: 'credential_denied' })
 	expect(aliasError).toMatchObject({
-		body: { code: canonicalError.body?.code },
+		body: { code: 'credential_denied' },
 		message: canonicalError.message,
 	})
 })
