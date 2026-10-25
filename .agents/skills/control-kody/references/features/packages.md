@@ -27,6 +27,9 @@ limitations.
 - JSON list: `/account/packages.json`
 - Package header: one primary `Open app` (`data-testid="open-package-app"`).
   Viewers who may run the app get the handoff Open app href under
-  packages/`…`/`open` (self-describing; not a Start route). There is no
-  host-labeled secondary open button (`package-app-origin-link` is not in the
-  title action group).
+  packages/`…`/`open` (self-describing; not a Start route); that handoff prefers
+  a verified app custom hostname over `{username}.kody.run/{name}`. Public
+  readers of an internet-visible app get that same hosted URL directly (custom
+  hostname when verified, else the kody.run subdomain). There is no host-labeled
+  secondary open button (`package-app-origin-link` is not in the title action
+  group).

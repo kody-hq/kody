@@ -51,6 +51,31 @@ export function isPackageAppCustomHostnameVerified(row: {
 	return row.hostnameStatus === 'active' && row.sslStatus === 'active'
 }
 
+export type PackageAppCustomHostnameCandidate = {
+	hostname: string
+	hostnameStatus: string
+	sslStatus: string
+}
+
+/**
+ * Primary custom hostname for Open app / public hosted URLs.
+ *
+ * Only fully verified rows (hostname and certificate both `active`). Pending
+ * and needs-attention hostnames never win. When more than one verified
+ * hostname exists, pick the lexicographically smallest hostname so the choice
+ * is stable across syncs.
+ */
+export function pickPrimaryVerifiedAppCustomHostname(
+	candidates: ReadonlyArray<PackageAppCustomHostnameCandidate>,
+): string | null {
+	const verified = candidates
+		.filter((row) => isPackageAppCustomHostnameVerified(row))
+		.map((row) => row.hostname.trim().toLowerCase())
+		.filter(Boolean)
+		.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+	return verified[0] ?? null
+}
+
 export function isVerifiedAppCustomHostname(
 	row: PackageAppCustomHostnameLookup,
 ): row is VerifiedAppCustomHostname {
@@ -218,12 +243,14 @@ WHERE ch.binding_kind = 'app'
 	AND ch.hostname_status = 'active'
 	AND ch.ssl_status = 'active'
 	AND lower(substr(sp.name, instr(sp.name, '/') + 1)) = ?
-ORDER BY ch.updated_at DESC
+ORDER BY ch.hostname ASC
 LIMIT 1`
 
 /**
  * Verified app-level custom hostname for the package an app-origin URL names
- * (`/@username/packages/{kodyId}`). Org-level rows are ignored.
+ * (`/@username/packages/{kodyId}`). Org-level rows are ignored. When several
+ * verified app hostnames exist, the lexicographically smallest hostname wins
+ * ({@link pickPrimaryVerifiedAppCustomHostname}).
  */
 export async function lookupVerifiedAppCustomHostnameForPackage(input: {
 	db: D1Database
@@ -266,7 +293,7 @@ INNER JOIN saved_packages sp
 WHERE ch.binding_kind = 'org'
 	AND ch.hostname_status = 'active'
 	AND ch.ssl_status = 'active'
-ORDER BY ch.updated_at DESC
+ORDER BY ch.hostname ASC
 LIMIT 1`
 
 /**
