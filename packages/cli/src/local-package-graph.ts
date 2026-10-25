@@ -605,38 +605,109 @@ export async function resolveLocalPackageGraph(input: {
 			`Resolving ${unresolved.length} kody:@ dependenc${unresolved.length === 1 ? 'y' : 'ies'} from published package-graph (mock keeps storage/credentials local)…`,
 		)
 	}
-	// When local modules cover some/all imports, still ask origin for the full
-	// import list so the response includes package-runtime facades + signed
-	// bindings for those packages (local modules win on merge for exports).
-	// Unpublished local-only packages fall back to an empty required list so
-	// the gateway-fetch shim still loads (no bindings available until publish).
-	let published: LocalPackageGraph
-	try {
-		published = await fetchLocalPackageGraph({
-			...client,
-			code: input.code,
-			conversationId: input.conversationId,
-			...(localModules.length > 0 ? { requiredImports: imports } : {}),
-		})
-	} catch (error) {
-		if (
-			localModules.length === 0 ||
-			unresolved.length > 0 ||
-			!isPackageGraphResolutionError(error)
-		) {
-			throw error
-		}
-		published = await fetchLocalPackageGraph({
-			...client,
-			code: input.code,
-			conversationId: input.conversationId,
-			requiredImports: [],
-		})
-	}
+	// Keep requiredImports as unresolved only (kody#4067): origin builds root
+	// aliases from the posted list, so asking for local self-package exports
+	// would pull stale published sources / miss nested published deps. A
+	// separate binding probe (below) asks origin for those local `kody:@`
+	// names just to mint package-runtime facades + signed bindings; local
+	// module sources still win on merge.
+	const published = await fetchLocalPackageGraph({
+		...client,
+		code: input.code,
+		conversationId: input.conversationId,
+		...(localModules.length > 0 ? { requiredImports: unresolved } : {}),
+	})
 	if (localModules.length === 0) return published
+	const withLocalBindings = await probeLocalPackageBindings({
+		...client,
+		conversationId: input.conversationId,
+		localModules,
+		published,
+	})
 	return rewriteLocalModulesToPackageFacades(
-		mergePackageGraphs(localModules, published),
+		mergePackageGraphs(localModules, withLocalBindings),
 	)
+}
+
+/**
+ * When working-tree modules cover some/all `kody:@` imports, the unresolved
+ * package-graph request never names those local packages — so it cannot mint
+ * their signed bindings or package-runtime facades. Probe each local
+ * `kody:@` name that is still missing from `packageIdsByImport`. Published
+ * packages return facades + `kpb1` bindings (local sources still win on
+ * merge). Unpublished working-tree-only exports fail closed with no binding.
+ */
+async function probeLocalPackageBindings(
+	input: CapabilityProxyClientInput & {
+		conversationId?: string
+		localModules: ReadonlyArray<LocalPackageModule>
+		published: LocalPackageGraph
+	},
+): Promise<LocalPackageGraph> {
+	const knownIds = input.published.packageIdsByImport ?? {}
+	const probeImports = [
+		...new Set(
+			input.localModules
+				.map((module) => module.name)
+				.filter(
+					(name) => name.startsWith('kody:@') && knownIds[name] === undefined,
+				),
+		),
+	]
+	if (probeImports.length === 0) return input.published
+
+	try {
+		const probed = await fetchLocalPackageGraph({
+			apiUrl: input.apiUrl,
+			token: input.token,
+			code: synthesizePackageGraphEntry(probeImports),
+			requiredImports: probeImports,
+			...(input.org ? { org: input.org } : {}),
+			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			...(input.conversationId !== undefined
+				? { conversationId: input.conversationId }
+				: {}),
+			...(input.signal ? { signal: input.signal } : {}),
+		})
+		return mergePackageGraphBindings(input.published, probed)
+	} catch (error) {
+		if (!isPackageGraphResolutionError(error)) throw error
+		return input.published
+	}
+}
+
+/**
+ * Keep published module sources for unresolved deps; overlay binding metadata
+ * and package-runtime facade modules from a local-package binding probe.
+ */
+function mergePackageGraphBindings(
+	base: LocalPackageGraph,
+	probed: LocalPackageGraph,
+): LocalPackageGraph {
+	const byName = new Map<string, LocalPackageModule>()
+	for (const module of base.modules) byName.set(module.name, module)
+	for (const module of probed.modules) {
+		if (module.name.startsWith('kody:@')) continue
+		if (
+			parsePackageRuntimeModulePathPackageId(module.name) != null ||
+			module.name === localExecuteGatewayFetchShimModuleName ||
+			module.name.includes(`/${localExecuteGatewayFetchShimModuleName}`)
+		) {
+			byName.set(module.name, module)
+		}
+	}
+	return {
+		modules: [...byName.values()],
+		imports: base.imports,
+		packageBindings: {
+			...base.packageBindings,
+			...probed.packageBindings,
+		},
+		packageIdsByImport: {
+			...base.packageIdsByImport,
+			...probed.packageIdsByImport,
+		},
+	}
 }
 
 function isPackageGraphResolutionError(error: unknown): boolean {

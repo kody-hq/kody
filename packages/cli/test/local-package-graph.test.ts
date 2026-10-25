@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
 	encodePathKey,
@@ -603,4 +606,117 @@ test('rewriteLocalModulesToPackageFacades points flat runtime alias at the bound
 		),
 	)
 	assert.doesNotMatch(local.esModule, new RegExp(flat.replace(/\./g, '\\.')))
+})
+
+test('resolveLocalPackageGraph probes local package names for bindings without changing module resolution', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'kody-binding-probe-'))
+	try {
+		mkdirSync(join(root, 'src'), { recursive: true })
+		writeFileSync(
+			join(root, 'package.json'),
+			JSON.stringify({
+				name: '@someone/pkg',
+				type: 'module',
+				exports: { './export': './src/export.ts' },
+				kody: { id: 'pkg' },
+			}),
+		)
+		writeFileSync(
+			join(root, 'src/export.ts'),
+			`import { suffix } from 'kody:@someone/dep/util'\nexport const value = 'local' + suffix\n`,
+		)
+		const requests: Array<Array<string>> = []
+		const packageId = 'pkg-uuid'
+		const facadePath = `${packageRuntimeModulePrefix}/${encodePathKey(packageId)}.js`
+		const graph = await resolveLocalPackageGraph({
+			apiUrl: 'https://api.kody.codes',
+			token: goodToken,
+			packageRoot: root,
+			code: `import { value } from 'kody:@someone/pkg/export'\nexport default async () => value\n`,
+			fetchFn: async (_input, init) => {
+				const body = init?.body ? JSON.parse(String(init.body)) : {}
+				const posted = Array.isArray(body.imports) ? body.imports : []
+				requests.push(posted)
+				if (posted.length === 1 && posted[0] === 'kody:@someone/dep/util') {
+					return new Response(
+						JSON.stringify({
+							imports: posted,
+							modules: [
+								{
+									name: localExecuteGatewayFetchShimModuleName,
+									esModule: 'export {}\n',
+								},
+								{
+									name: 'kody:@someone/dep/util',
+									esModule: "export const suffix = '!pub'\n",
+								},
+							],
+							packageBindings: { 'dep-uuid': 'kpb1.dep.sig' },
+							packageIdsByImport: {
+								'kody:@someone/dep/util': 'dep-uuid',
+							},
+						}),
+						{ status: 200, headers: { 'content-type': 'application/json' } },
+					)
+				}
+				if (posted.includes('kody:@someone/pkg/export')) {
+					return new Response(
+						JSON.stringify({
+							imports: posted,
+							modules: [
+								{
+									name: localExecuteGatewayFetchShimModuleName,
+									esModule: 'export {}\n',
+								},
+								{
+									name: 'kody:@someone/pkg/export',
+									esModule: 'export const value = "published-stale"\n',
+								},
+								{
+									name: facadePath,
+									esModule:
+										'export async function createAuthenticatedFetch() {}\n',
+								},
+							],
+							packageBindings: { [packageId]: 'kpb1.pkg.sig' },
+							packageIdsByImport: {
+								'kody:@someone/pkg/export': packageId,
+							},
+						}),
+						{ status: 200, headers: { 'content-type': 'application/json' } },
+					)
+				}
+				return new Response(
+					JSON.stringify({
+						error: {
+							code: 'package_import_unpublished',
+							message: `unexpected imports ${JSON.stringify(posted)}`,
+						},
+					}),
+					{ status: 400, headers: { 'content-type': 'application/json' } },
+				)
+			},
+		})
+		assert.deepEqual(requests[0], ['kody:@someone/dep/util'])
+		assert.ok(
+			requests.some((posted) => posted.includes('kody:@someone/pkg/export')),
+		)
+		assert.equal(
+			graph.modules
+				.find((module) => module.name === 'kody:@someone/pkg/export')
+				?.esModule.includes('local'),
+			true,
+		)
+		assert.deepEqual(graph.packageBindings, {
+			'dep-uuid': 'kpb1.dep.sig',
+			[packageId]: 'kpb1.pkg.sig',
+		})
+		assert.equal(
+			graph.packageIdsByImport?.['kody:@someone/pkg/export'],
+			packageId,
+		)
+		assert.ok(graph.modules.some((module) => module.name === facadePath))
+	} finally {
+		rmSync(root, { recursive: true, force: true })
+	}
 })

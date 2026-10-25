@@ -170,15 +170,19 @@ async function run(args: Array<string>) {
 	return { code, stdout, stderr }
 }
 
-function assertGraphRequestedOnly(expected: Array<string>) {
+function postedImports(request: GraphRequest): Array<string> {
+	return staticKodyImports(request.code ?? synthesize(request.imports ?? []))
+}
+
+/**
+ * First package-graph call resolves unpublished deps (kody#4067). Later calls
+ * may probe local `kody:@` names for signed bindings / package-runtime facades.
+ */
+function assertModuleResolutionRequested(expected: Array<string>) {
 	assert.ok(graphRequests.length >= 1, 'package-graph was called')
-	for (const request of graphRequests) {
-		const posted = staticKodyImports(
-			request.code ?? synthesize(request.imports ?? []),
-		)
-		assert.deepEqual(posted.sort(), [...expected].sort())
-		assert.deepEqual([...(request.imports ?? [])].sort(), [...expected].sort())
-	}
+	const first = graphRequests[0]!
+	assert.deepEqual(postedImports(first).sort(), [...expected].sort())
+	assert.deepEqual([...(first.imports ?? [])].sort(), [...expected].sort())
 }
 
 test(
@@ -196,7 +200,13 @@ test(
 		const body = JSON.parse(result.stdout)
 		assert.equal(body.isError, false)
 		assert.deepEqual(body.structuredContent.result, { value: 'local:x!pub' })
-		assertGraphRequestedOnly(['kody:@pub/lib/util'])
+		assertModuleResolutionRequested(['kody:@pub/lib/util'])
+		assert.ok(
+			graphRequests.some((request) =>
+				postedImports(request).includes('kody:@local/demo/helper'),
+			),
+			'binding probe should ask origin for the local package export',
+		)
 	},
 )
 
@@ -209,7 +219,7 @@ test(
 		const body = JSON.parse(result.stdout)
 		assert.equal(body.isError, false)
 		assert.deepEqual(body.structuredContent.result, { value: 'local:x!pub' })
-		assertGraphRequestedOnly(['kody:@pub/lib/util'])
+		assertModuleResolutionRequested(['kody:@pub/lib/util'])
 	},
 )
 
@@ -228,8 +238,9 @@ test(
 		const body = JSON.parse(result.stdout)
 		assert.equal(body.isError, false)
 		assert.deepEqual(body.structuredContent.result, { fresh: 'working-tree' })
-		// Only the gateway-fetch shim is needed: no kody:@ roots posted.
-		assertGraphRequestedOnly([])
+		// Module resolution needs only the gateway-fetch shim (empty roots).
+		// A later binding probe may ask for the unpublished local export and 400.
+		assertModuleResolutionRequested([])
 	},
 )
 
