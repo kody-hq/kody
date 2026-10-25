@@ -31,6 +31,18 @@ const whitespacePattern = /\s/
 const attributeNameEndPattern = /[\s/>=]/
 const unquotedValueEndPattern = /[\s>]/
 const tagNameCharPattern = /[A-Za-z0-9:-]/
+/** HTML comment end: `-->` or `--!>` (comment end bang). */
+const commentEndPattern = /--!?>/g
+/** Elements whose contents are RAWTEXT (not tokenized as markup). */
+const rawTextElements = new Set([
+	'style',
+	'textarea',
+	'title',
+	'xmp',
+	'iframe',
+	'noembed',
+	'noframes',
+])
 
 function skipWhile(html: string, index: number, pattern: RegExp) {
 	let i = index
@@ -115,8 +127,17 @@ function normalizeEmailLinks(html: string) {
 		out += html.slice(i, lt)
 
 		if (html.startsWith('<!--', lt)) {
-			const end = html.indexOf('-->', lt + 4)
-			const to = end < 0 ? html.length : end + 3
+			// Abrupt empty comment `<!-->` / `<!---…>` plus normal `-->` / `--!>`.
+			let to: number
+			if (html.startsWith('>', lt + 4)) {
+				to = lt + 5
+			} else if (html.startsWith('->', lt + 4)) {
+				to = lt + 6
+			} else {
+				commentEndPattern.lastIndex = lt + 4
+				const match = commentEndPattern.exec(html)
+				to = match ? match.index + match[0].length : html.length
+			}
 			out += html.slice(lt, to)
 			i = to
 			continue
@@ -146,11 +167,24 @@ function normalizeEmailLinks(html: string) {
 
 		const nameEnd = skipWhile(html, lt + 1, tagNameCharPattern)
 		const name = html.slice(lt + 1, nameEnd).toLowerCase()
-		const drop =
-			name === 'a' || name === 'area' ? droppedLinkAttributes : null
+		const drop = name === 'a' || name === 'area' ? droppedLinkAttributes : null
 		const { kept, end } = readStartTagRest(html, nameEnd, drop)
 		out += html.slice(lt, nameEnd) + kept
 		i = end
+		// RAWTEXT / plaintext: do not tokenize contents as tags (a fake `<a`
+		// with an open quote would otherwise swallow a later real link).
+		if (name === 'plaintext') {
+			out += html.slice(i)
+			break
+		}
+		if (rawTextElements.has(name)) {
+			const close = new RegExp(`</${name}(?=[\\s/>])`, 'gi')
+			close.lastIndex = i
+			const match = close.exec(html)
+			const to = match ? match.index : html.length
+			out += html.slice(i, to)
+			i = to
+		}
 	}
 	return out
 }
