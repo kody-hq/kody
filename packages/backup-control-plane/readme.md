@@ -19,14 +19,13 @@ source's id, name, SQL key, byte count, and sha256. If a process crashes after
 writing SQL but before its manifest, a later Workflow-step retry reuses the
 cached export bookmark and therefore inspects the same object before
 constructing the absent canonical manifest. The original one-hour signed URL
-returned by the durable export step is never used for transfer. On every
-execution of the retryable upload callback, the runtime polls D1 with the cached
-bookmark and requires a complete response for that same bookmark, obtaining a
-fresh signed URL. If that refresh finds the export session gone (common for
-fast-completing DBs across a Workflow step boundary), the upload step falls back
-to the signed URL already returned by the durable poll step — that URL remains
-valid for about an hour even after D1 drops the session. Only when that fallback
-download also fails does the step return a durable
+returned by the durable export step is used for transfer only as a fallback when
+a refresh finds the export session gone. On every execution of the retryable
+upload callback, the runtime first polls D1 with the cached bookmark for a fresh
+signed URL. If that refresh finds the session gone (common for fast-completing
+DBs across a Workflow step boundary), the upload step falls back to the
+poll-step signed URL — still valid for about an hour after D1 drops the session.
+Only when that fallback download also fails does the step return a durable
 `{ kind: 'export-result-expired' }` result (never `NonRetryableError`, which
 would fail the whole instance) so the runtime can start a fresh export under new
 `recover-N-*` durable step names (up to three attempts). The upload
