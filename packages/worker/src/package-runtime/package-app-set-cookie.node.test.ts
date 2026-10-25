@@ -206,3 +206,24 @@ test('no apex configuration leaves Set-Cookie untouched', () => {
 		'x=1; Domain=kody.run; Path=/',
 	])
 })
+
+test('null-body statuses keep status and strip Domain without throwing', async () => {
+	for (const status of [204, 205, 304] as const) {
+		const scrubbed = scrubPackageAppSetCookieDomains(
+			new Response(null, {
+				status,
+				headers: { 'Set-Cookie': 'toss=1; Domain=kody.run; Path=/' },
+			}),
+			{
+				responseHostname: 'alice.kody.run',
+				packageAppApexHostnames: apexes,
+			},
+		)
+		expect(scrubbed.stripped).toEqual([
+			{ cookieName: 'toss', domain: 'kody.run' },
+		])
+		expect(scrubbed.response.status).toBe(status)
+		expect(scrubbed.response.headers.getSetCookie()).toEqual(['toss=1; Path=/'])
+		await expect(scrubbed.response.text()).resolves.toBe('')
+	}
+})

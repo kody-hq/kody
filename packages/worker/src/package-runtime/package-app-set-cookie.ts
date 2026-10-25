@@ -153,9 +153,15 @@ export function scrubPackageAppSetCookieDomains(
 		if (cookie.length === 0) continue
 		headers.append('Set-Cookie', cookie)
 	}
+	// 204, 205, and 304 cannot carry a body. Drop it before rewrapping so a
+	// Domain strip on a no-content or not-modified reply cannot throw.
+	const nullBody =
+		response.status === 204 ||
+		response.status === 205 ||
+		response.status === 304
 	return {
 		stripped,
-		response: new Response(response.body, {
+		response: new Response(nullBody ? null : response.body, {
 			status: response.status,
 			statusText: response.statusText,
 			headers,
@@ -272,9 +278,13 @@ function __kodyScrubPackageAppSetCookieDomains(response, responseHostname) {
 		if (!cookie) continue;
 		headers.append('Set-Cookie', cookie);
 	}
+	const nullBody =
+		response.status === 204 ||
+		response.status === 205 ||
+		response.status === 304;
 	return {
 		stripped,
-		response: new Response(response.body, {
+		response: new Response(nullBody ? null : response.body, {
 			status: response.status,
 			statusText: response.statusText,
 			headers,
