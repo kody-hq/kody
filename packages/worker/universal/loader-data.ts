@@ -1105,11 +1105,6 @@ export type AdminInsightsLoaderData = {
 	packageErrorRate: AdminInsightsPackageErrorRate
 }
 
-export type EmailMessageClassificationName = EmailClassification
-
-/** `inbox` hides spam and archived mail. */
-export type EmailMessageViewName = EmailMessageView
-
 type AdminSystemEmailListItem = {
 	id: string
 	inbox_local_part: string
@@ -1121,7 +1116,7 @@ type AdminSystemEmailListItem = {
 	received_at: string | null
 	created_at: string
 	to_addresses: Array<string>
-	classification: EmailMessageClassificationName
+	classification: EmailClassification
 	classification_reason: string | null
 	archived_at: string | null
 }
@@ -1161,7 +1156,7 @@ export type AdminSystemEmailLoaderData = {
 	page: number
 	pageSize: number
 	total: number
-	view: EmailMessageViewName
+	view: EmailMessageView
 }
 
 export type AdminPlatformFeedbackListItem = {
@@ -2819,7 +2814,7 @@ export type AccountEmailMessageListItem = {
 	subject: string | null
 	message_id_header: string | null
 	processing_status: string
-	classification: EmailMessageClassificationName
+	classification: EmailClassification
 	classification_reason: string | null
 	archived_at: string | null
 	sender_classification: AccountEmailSenderClassification | null
@@ -2892,7 +2887,7 @@ export type AccountEmailLoaderData = {
 	pageSize: number
 	total: number
 	query: string
-	view: EmailMessageViewName
+	view: EmailMessageView
 }
 
 export type AuthProvidersLoaderData = {
