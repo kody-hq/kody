@@ -788,3 +788,41 @@ test('mergePackageGraphBindings keeps the primary shim and merges facade binding
 		true,
 	)
 })
+
+test('resolveLocalPackageGraph falls back to local-only when depResolve binding fetch fails', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'kody-local-only-fallback-'))
+	try {
+		mkdirSync(join(root, 'src'), { recursive: true })
+		writeFileSync(
+			join(root, 'package.json'),
+			JSON.stringify({
+				name: '@someone/pkg',
+				type: 'module',
+				exports: { './export': './src/export.ts' },
+				kody: { id: 'pkg' },
+			}),
+		)
+		writeFileSync(
+			join(root, 'src/export.ts'),
+			`export const value = 'local-only'\n`,
+		)
+		const graph = await resolveLocalPackageGraph({
+			apiUrl: 'https://mock.kody.codes',
+			token: 'kody_mock_token',
+			packageRoot: root,
+			code: `import { value } from 'kody:@someone/pkg/export'\nexport default async () => value\n`,
+			depResolve: {
+				apiUrl: 'https://api.kody.codes',
+				token: goodToken,
+				fetchFn: async () => {
+					throw new Error('network down')
+				},
+			},
+		})
+		assert.equal(graph.modules.length, 1)
+		assert.equal(graph.modules[0]?.name, 'kody:@someone/pkg/export')
+		assert.deepEqual(graph.packageBindings, {})
+	} finally {
+		rmSync(root, { recursive: true, force: true })
+	}
+})

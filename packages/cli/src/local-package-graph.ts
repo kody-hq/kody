@@ -611,12 +611,36 @@ export async function resolveLocalPackageGraph(input: {
 	// separate binding probe (below) asks origin for those local `kody:@`
 	// names just to mint package-runtime facades + signed bindings; local
 	// module sources still win on merge.
-	const published = await fetchLocalPackageGraph({
-		...client,
-		code: input.code,
-		conversationId: input.conversationId,
-		...(localModules.length > 0 ? { requiredImports: unresolved } : {}),
-	})
+	const localOnlyFallback =
+		localModules.length > 0 &&
+		unresolved.length === 0 &&
+		input.depResolve !== undefined
+			? {
+					modules: localModules,
+					imports,
+					packageBindings: {},
+					packageIdsByImport: {},
+				}
+			: null
+	let published: LocalPackageGraph
+	try {
+		published = await fetchLocalPackageGraph({
+			...client,
+			code: input.code,
+			conversationId: input.conversationId,
+			...(localModules.length > 0 ? { requiredImports: unresolved } : {}),
+		})
+	} catch (error) {
+		// Mock + depResolve with a fully local graph: bindings are optional.
+		// Do not abort the run when the prod package-graph hop fails.
+		if (localOnlyFallback) {
+			input.onStatus?.(
+				'Package bindings unavailable; continuing with local modules unbound.',
+			)
+			return localOnlyFallback
+		}
+		throw error
+	}
 	if (localModules.length === 0) return published
 	const withLocalBindings = await probeLocalPackageBindings({
 		...client,
