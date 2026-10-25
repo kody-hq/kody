@@ -40,6 +40,17 @@ export type LocalExecutePackageGraph = {
 	modules: Array<LocalExecutePackageModule>
 	imports: Array<string>
 	warnings: Array<string>
+	/**
+	 * Package id → signed local-execute binding (`kpb1.…`). Empty when the
+	 * graph has no packages. CLI uses these to stamp CapabilityProxy calls
+	 * without parsing shim source.
+	 */
+	packageBindings: Record<string, string>
+	/**
+	 * `kody:@…` specifier → package id for that export's package. Lets the CLI
+	 * pick the binding for a local package run / facade rewrite.
+	 */
+	packageIdsByImport: Record<string, string>
 }
 
 export class LocalExecutePackageGraphError extends Error {
@@ -124,6 +135,8 @@ export async function buildLocalExecutePackageGraph(input: {
 			],
 			imports: [],
 			warnings: [],
+			packageBindings: {},
+			packageIdsByImport: {},
 		}
 	}
 
@@ -178,6 +191,7 @@ export async function buildLocalExecutePackageGraph(input: {
 		modulesByName.keys(),
 	)
 	const packageIdByModulePath = new Map<string, string>()
+	const packageIdsByImport = new Map<string, string>()
 
 	for (const specifier of staticImports) {
 		const proxyPath = joinPath(
@@ -209,6 +223,7 @@ export async function buildLocalExecutePackageGraph(input: {
 			const prefix = packagePrefixForPublishedModule(targetPath)
 			if (prefix) packageIdsByPrefix.set(prefix, meteredPackageId)
 			packageIdByModulePath.set(targetPath, meteredPackageId)
+			packageIdsByImport.set(specifier, meteredPackageId)
 		}
 		// Alias the exact `kody:@…` specifier the CLI embeds next to user code.
 		// Use an unmetered re-export so local workerd does not need cloud
@@ -242,6 +257,20 @@ export async function buildLocalExecutePackageGraph(input: {
 				if (prefix) packageIdsByPrefix.set(prefix, rewritten.packageId)
 			}
 		}
+	}
+
+	// Fill packageIdsByImport from rewritten / prefix package ids when the
+	// import proxy did not expose a metered package id.
+	for (const specifier of staticImports) {
+		if (packageIdsByImport.has(specifier)) continue
+		const aliasSource = modulesByName.get(specifier)
+		if (typeof aliasSource !== 'string') continue
+		const targetPath = readProxyTargetAbsolutePath(specifier, aliasSource)
+		if (!targetPath) continue
+		const packageId =
+			packageIdByModulePath.get(targetPath) ??
+			packageIdForModulePath(targetPath, packageIdsByPrefix)
+		if (packageId) packageIdsByImport.set(specifier, packageId)
 	}
 
 	// Secret-bearing ambient fetch: cloud expands placeholders at the fetch
@@ -309,6 +338,12 @@ export async function buildLocalExecutePackageGraph(input: {
 		modules,
 		imports: staticImports,
 		warnings: [],
+		packageBindings: Object.fromEntries(packageBindings),
+		packageIdsByImport: Object.fromEntries(
+			[...packageIdsByImport.entries()].sort(([left], [right]) =>
+				left.localeCompare(right),
+			),
+		),
 	}
 }
 

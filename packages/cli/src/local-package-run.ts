@@ -23,7 +23,13 @@ import {
 	localExecuteGatewayFetchShimModuleName,
 	resolveLocalPackageGraph,
 	writePackageModuleFiles,
+	type LocalPackageGraph,
 } from './local-package-graph.js'
+import {
+	parseKodyPackageSpecifier,
+	tryLoadSelfManifest,
+} from './mock-local-deps.js'
+import { callOpenApiOperation } from './open-api-client.js'
 import {
 	startLocalRuntimeBridge,
 	type LocalRuntimeBridge,
@@ -179,6 +185,37 @@ export async function runLocalPackageModule(
 			...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
 			onStatus: input.onStatus,
 		})
+		const boundPackage = await resolveLocalPackageBinding({
+			graph: packageGraph,
+			kodyId: input.packageContext.kodyId,
+			packageRoot: input.packageRoot,
+			apiUrl: input.apiUrl,
+			token: input.token,
+			...(input.org ? { org: input.org } : {}),
+			...(input.depResolve
+				? {
+						listClient: {
+							apiUrl: input.depResolve.apiUrl,
+							token: input.depResolve.token,
+							...(input.depResolve.org ? { org: input.depResolve.org } : {}),
+							fetchFn: input.depResolve.fetchFn ?? input.fetchFn,
+						},
+					}
+				: {
+						listClient: {
+							apiUrl: input.apiUrl,
+							token: input.token,
+							...(input.org ? { org: input.org } : {}),
+							fetchFn: input.fetchFn,
+						},
+					}),
+		})
+		const packageContext: PackageLocalContext = boundPackage
+			? {
+					...input.packageContext,
+					packageId: boundPackage.packageId,
+				}
+			: input.packageContext
 		bridge = await startLocalRuntimeBridge({
 			runSecret,
 			forwardCall: async (call, signal) => {
@@ -234,8 +271,11 @@ export async function runLocalPackageModule(
 		await writeFile(
 			join(workDir, files.runtime),
 			createPackageLocalRuntimeModuleSource({
-				packageContext: input.packageContext,
+				packageContext,
 				mockStorage: input.target === 'mock',
+				...(boundPackage?.packageBinding
+					? { packageBinding: boundPackage.packageBinding }
+					: {}),
 			}),
 		)
 		await writeFile(
@@ -306,14 +346,23 @@ export async function runLocalPackageModule(
 /** Build the packageContext used for local unpublished package runs. */
 export function buildLocalPackageContext(input: {
 	kodyId: string
+	/**
+	 * Real package UUID when known from package-graph / packageList. Falls back
+	 * to `local:${kodyId}` for unpublished checkouts. Never used as a
+	 * CapabilityProxy package stamp — only signed `kpb1.` bindings are.
+	 */
 	packageId?: string
 	hostedUrl: string
 	appBasePath?: string
 	clientModuleUrl?: string | null
 }): PackageLocalContext {
 	const appBasePath = input.appBasePath ?? ''
+	const packageId =
+		typeof input.packageId === 'string' && input.packageId.trim()
+			? input.packageId.trim()
+			: `local:${input.kodyId}`
 	return {
-		packageId: input.packageId ?? `local:${input.kodyId}`,
+		packageId,
 		kodyId: input.kodyId,
 		sourceId: `local:${input.kodyId}`,
 		publishedCommit: null,
@@ -322,6 +371,136 @@ export function buildLocalPackageContext(input: {
 		assetBasePath: appBasePath ? `${appBasePath}/_assets` : '/_assets',
 		clientModuleUrl: input.clientModuleUrl ?? null,
 	}
+}
+
+/**
+ * Pick the signed package binding for this local package run from the
+ * package-graph response. Prefers `packageIdsByImport` for `kody:@…` keys that
+ * belong to this package; falls back to `packageList` when bindings exist but
+ * the import map did not name this package.
+ */
+export async function resolveLocalPackageBinding(input: {
+	graph: LocalPackageGraph
+	kodyId: string
+	packageRoot?: string
+	apiUrl: string
+	token: string
+	org?: string
+	listClient?: {
+		apiUrl: string
+		token: string
+		org?: string
+		fetchFn?: typeof fetch
+	}
+}): Promise<{ packageId: string; packageBinding: string } | null> {
+	const packageBindings = input.graph.packageBindings ?? {}
+	const packageIdsByImport = input.graph.packageIdsByImport ?? {}
+	if (Object.keys(packageBindings).length === 0) return null
+
+	let packageName: string | undefined
+	if (input.packageRoot) {
+		const manifest = await tryLoadSelfManifest(input.packageRoot)
+		packageName = manifest?.name
+	}
+
+	for (const [specifier, packageId] of Object.entries(packageIdsByImport)) {
+		if (
+			!packageIdMatchesLocalPackage({
+				specifier,
+				packageId,
+				kodyId: input.kodyId,
+				packageName,
+			})
+		) {
+			continue
+		}
+		const binding = packageBindings[packageId]
+		if (typeof binding === 'string' && binding.startsWith('kpb1.')) {
+			return { packageId, packageBinding: binding }
+		}
+	}
+
+	const listedId = await resolvePackageIdViaPackageList({
+		kodyId: input.kodyId,
+		packageName,
+		client: input.listClient ?? {
+			apiUrl: input.apiUrl,
+			token: input.token,
+			...(input.org ? { org: input.org } : {}),
+		},
+	})
+	if (!listedId) return null
+	const binding = packageBindings[listedId]
+	if (typeof binding === 'string' && binding.startsWith('kpb1.')) {
+		return { packageId: listedId, packageBinding: binding }
+	}
+	return null
+}
+
+function packageIdMatchesLocalPackage(input: {
+	specifier: string
+	packageId: string
+	kodyId: string
+	packageName?: string
+}): boolean {
+	const parsed = parseKodyPackageSpecifier(input.specifier)
+	if (!parsed) {
+		// Also accept a bare `kody:${kodyId}/…` form if origin ever emits it.
+		if (
+			input.specifier === `kody:${input.kodyId}` ||
+			input.specifier.startsWith(`kody:${input.kodyId}/`)
+		) {
+			return true
+		}
+		return false
+	}
+	if (input.packageName && parsed.packageName === input.packageName) {
+		return true
+	}
+	if (parsed.packageName === input.kodyId) return true
+	const leaf = parsed.packageName.includes('/')
+		? parsed.packageName.slice(parsed.packageName.lastIndexOf('/') + 1)
+		: parsed.packageName
+	return leaf === input.kodyId
+}
+
+async function resolvePackageIdViaPackageList(input: {
+	kodyId: string
+	packageName?: string
+	client: {
+		apiUrl: string
+		token: string
+		org?: string
+		fetchFn?: typeof fetch
+	}
+}): Promise<string | null> {
+	try {
+		const listed = (await callOpenApiOperation({
+			apiUrl: input.client.apiUrl,
+			token: input.client.token,
+			operationId: 'packageList',
+			params: {},
+			...(input.client.org ? { org: input.client.org } : {}),
+			...(input.client.fetchFn ? { fetchFn: input.client.fetchFn } : {}),
+		})) as {
+			packages?: Array<{ package_id: string; kody_id: string; name: string }>
+		}
+		const packages = listed.packages ?? []
+		if (input.packageName) {
+			const byName = packages.filter((pkg) => pkg.name === input.packageName)
+			if (byName.length === 1) return byName[0]!.package_id
+		}
+		const byKodyId = packages.filter(
+			(pkg) =>
+				pkg.kody_id === input.kodyId ||
+				pkg.name === input.kodyId ||
+				pkg.name.endsWith(`/${input.kodyId}`),
+		)
+		if (byKodyId.length === 1) return byKodyId[0]!.package_id
+	} catch {
+		return null
+	}
+	return null
 }
 
 function cleanupOnSignal(cleanup: () => void): () => void {

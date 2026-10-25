@@ -247,6 +247,8 @@ export function mergePackageGraphs(
 		imports: [
 			...new Set([...published.imports, ...local.map((module) => module.name)]),
 		],
+		packageBindings: { ...published.packageBindings },
+		packageIdsByImport: { ...published.packageIdsByImport },
 	}
 }
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+	encodePathKey,
 	fetchLocalPackageGraph,
 	hasLiteralDynamicSavedPackageImports,
 	hasSavedPackageImports,
@@ -10,9 +11,14 @@ import {
 	localPackageGraphPath,
 	localPackageGraphPlatformIssueUrl,
 	packageGraphInlineCodePreferImportsChars,
+	packageRuntimeFacadeImportSpecifier,
+	packageRuntimeModulePrefix,
 	resolveLocalPackageGraph,
+	rewriteLocalModulesToPackageFacades,
 	synthesizePackageGraphEntry,
 } from '../src/local-package-graph.js'
+import { mergePackageGraphs } from '../src/mock-local-deps.js'
+import { localWorkerModuleNames } from '../src/local-runtime-source.js'
 
 const goodToken = 'kody_tok_pkg'
 
@@ -143,6 +149,8 @@ test('fetchLocalPackageGraph posts even when there are no kody:@ imports to load
 				esModule: 'export {}\n',
 			},
 		],
+		packageBindings: {},
+		packageIdsByImport: {},
 	})
 })
 
@@ -202,6 +210,8 @@ export default async function main(params) { return greet(params.name) }`
 				esModule: 'export function greet(name) { return "hi " + name }\n',
 			},
 		],
+		packageBindings: {},
+		packageIdsByImport: {},
 	})
 })
 
@@ -490,4 +500,107 @@ test('resolveLocalPackageGraph still hits prod package-graph with zero imports (
 	})
 	assert.equal(called, true)
 	assert.equal(result.modules[0]?.name, localExecuteGatewayFetchShimModuleName)
+})
+
+test('parsePackageGraphBody keeps packageBindings and packageIdsByImport', async () => {
+	const graph = await fetchLocalPackageGraph({
+		apiUrl: 'https://api.kody.codes',
+		token: goodToken,
+		code: `import x from 'kody:@someone/pkg/export'\nexport default async () => x`,
+		fetchFn: async () =>
+			new Response(
+				JSON.stringify({
+					imports: ['kody:@someone/pkg/export'],
+					modules: [
+						{
+							name: 'kody:@someone/pkg/export',
+							esModule: 'export default 1\n',
+						},
+					],
+					packageBindings: { 'pkg-uuid': 'kpb1.binding.sig' },
+					packageIdsByImport: {
+						'kody:@someone/pkg/export': 'pkg-uuid',
+					},
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			),
+	})
+	assert.deepEqual(graph.packageBindings, { 'pkg-uuid': 'kpb1.binding.sig' })
+	assert.deepEqual(graph.packageIdsByImport, {
+		'kody:@someone/pkg/export': 'pkg-uuid',
+	})
+})
+
+test('mergePackageGraphs preserves published packageBindings and packageIdsByImport', () => {
+	const merged = mergePackageGraphs(
+		[
+			{
+				name: 'kody:@someone/pkg/export',
+				esModule: 'export default "local"\n',
+			},
+		],
+		{
+			modules: [
+				{
+					name: 'kody:@someone/pkg/export',
+					esModule: 'export default "published"\n',
+				},
+				{
+					name: `${packageRuntimeModulePrefix}/${encodePathKey('pkg-uuid')}.js`,
+					esModule: 'export const createAuthenticatedFetch = null\n',
+				},
+			],
+			imports: ['kody:@someone/pkg/export'],
+			packageBindings: { 'pkg-uuid': 'kpb1.binding.sig' },
+			packageIdsByImport: {
+				'kody:@someone/pkg/export': 'pkg-uuid',
+			},
+		},
+	)
+	assert.equal(
+		merged.modules.find((module) => module.name === 'kody:@someone/pkg/export')
+			?.esModule,
+		'export default "local"\n',
+	)
+	assert.deepEqual(merged.packageBindings, { 'pkg-uuid': 'kpb1.binding.sig' })
+	assert.deepEqual(merged.packageIdsByImport, {
+		'kody:@someone/pkg/export': 'pkg-uuid',
+	})
+})
+
+test('rewriteLocalModulesToPackageFacades points flat runtime alias at the bound facade', async () => {
+	const packageId = 'pkg-uuid'
+	const facadePath = `${packageRuntimeModulePrefix}/${encodePathKey(packageId)}.js`
+	const flat = localWorkerModuleNames.runtimeFlatAlias
+	const graph = await rewriteLocalModulesToPackageFacades({
+		modules: [
+			{
+				name: 'kody:@someone/pkg/export',
+				esModule: `import { createAuthenticatedFetch } from '/${flat}'\nexport default createAuthenticatedFetch\n`,
+			},
+			{
+				name: facadePath,
+				esModule: 'export async function createAuthenticatedFetch() {}\n',
+			},
+		],
+		imports: ['kody:@someone/pkg/export'],
+		packageBindings: { [packageId]: 'kpb1.binding.sig' },
+		packageIdsByImport: {
+			'kody:@someone/pkg/export': packageId,
+		},
+	})
+	const local = graph.modules.find(
+		(module) => module.name === 'kody:@someone/pkg/export',
+	)
+	assert.ok(local)
+	assert.match(
+		local.esModule,
+		new RegExp(
+			packageRuntimeFacadeImportSpecifier(packageId).replace(
+				/[.*+?^${}()|[\]\\]/g,
+				'\\$&',
+			),
+		),
+	)
+	assert.doesNotMatch(local.esModule, new RegExp(flat.replace(/\./g, '\\.')))
 })

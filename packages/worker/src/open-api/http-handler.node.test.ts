@@ -640,6 +640,8 @@ test('local-execute package-graph requires scope and meters as api_call prep', a
 	expect(empty.body).toMatchObject({
 		imports: [],
 		warnings: [],
+		packageBindings: {},
+		packageIdsByImport: {},
 		modules: [
 			{
 				name: '.__kody_virtual__/runtime.js',
