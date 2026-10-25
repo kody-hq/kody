@@ -25,6 +25,7 @@ import {
 } from '#app/package-app-oauth-grants.ts'
 import { packageAppVisitorNeedScope } from '#app/package-app-oauth-scopes.ts'
 import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 import {
 	loadOrgBindingForOrg,
@@ -465,5 +466,23 @@ export async function createPackageAppVisitorPersonalRequest(input: {
 		user: { userId: visitor.userId, username: visitor.username },
 		source: { kind: 'package-app' },
 		orgBinding,
+	})
+}
+
+export async function createPackageAppVisitorCredentialRequest(input: {
+	db: D1Database
+	orgId: OwnerId
+	callerRequest: RequestContext | null
+	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+}) {
+	const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+		db: input.db,
+		orgId: input.orgId,
+		request: input.callerRequest,
+	})
+	if (!suppliersEnabled) return input.callerRequest
+	return await createPackageAppVisitorPersonalRequest({
+		db: input.db,
+		visitor: input.visitor,
 	})
 }

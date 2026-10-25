@@ -10,9 +10,11 @@ import {
 	upsertPackageAppOauthGrant,
 } from '#app/package-app-oauth-grants.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
+	createPackageAppVisitorCredentialRequest,
 	createPackageAppVisitorPersonalRequest,
 	createPackageAppCredentialAuthority,
 	forgetPackageAppRunsAs,
@@ -362,6 +364,34 @@ test('visitor credential requests use the visitor personal binding', async () =>
 		credential: { kind: 'package-app' },
 	})
 	expect(request?.org.id).not.toBe(t.orgId)
+})
+
+test('flag-off visitor credential requests reuse the caller request', async () => {
+	const t = await setup()
+	const callerRequest = deriveRequestContext({
+		user: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+		source: { kind: 'package-app' },
+		orgBinding: {
+			org: { id: t.orgId, slug: 'acme' },
+			role: 'member',
+		},
+	})
+
+	const request = await createPackageAppVisitorCredentialRequest({
+		db: t.db,
+		orgId: t.orgId,
+		callerRequest,
+		visitor: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+	})
+
+	expect(request).toBe(callerRequest)
+	expect(request?.org.id).toBe(t.orgId)
 })
 
 test('runs-as credential handles resolve as the live runs-as person, and stop when that person leaves', async () => {

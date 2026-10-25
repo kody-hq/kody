@@ -147,7 +147,7 @@ import {
 } from './package-app-visit-ticket.ts'
 import {
 	createPackageAppCredentialAuthority,
-	createPackageAppVisitorPersonalRequest,
+	createPackageAppVisitorCredentialRequest,
 	loadPackageAppRunsAs,
 	packageAppRunsAsUnavailableMessages,
 	packageAppIdentityCapabilityName,
@@ -2844,15 +2844,17 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (cached) return await cached
 		const tools = (async () => {
 			const visitorContext = await this.createCallerContext(null, visitTicket)
+			const callerContext =
+				opener.mode === 'runs-as' ? opener.callerContext : visitorContext
 			const visitorCredentialRequest =
 				opener.mode === 'visitor-need' && opener.executorNeed
-					? await createPackageAppVisitorPersonalRequest({
+					? await createPackageAppVisitorCredentialRequest({
 							db: this.env.APP_DB,
+							orgId: this.ctx.props.userId,
+							callerRequest: callerContext.request,
 							visitor: visit?.visitor ?? null,
 						})
 					: visitorContext.request
-			const callerContext =
-				opener.mode === 'runs-as' ? opener.callerContext : visitorContext
 			let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
 			return createCredentialClientKodyTools({
 				env: this.env,
