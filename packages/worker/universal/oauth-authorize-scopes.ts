@@ -64,7 +64,7 @@ export function defaultScopesForAuthorizeHost(
 	return defaults ? uniqueOauthScopes(defaults) : []
 }
 
-export function buildMissingAuthorizeScopesError(
+function buildMissingAuthorizeScopesError(
 	host: string | null | undefined,
 ): string {
 	const normalized = normalizeAuthorizeHost(host) || 'this provider'
