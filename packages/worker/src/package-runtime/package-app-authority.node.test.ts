@@ -1,5 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personalOrgId,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import {
 	revokePackageAppOauthGrantsForPersonApp,
@@ -9,6 +13,7 @@ import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
+	createPackageAppVisitorPersonalRequest,
 	createPackageAppCredentialAuthority,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
@@ -337,6 +342,26 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 			needKey: 'github',
 		}),
 	).toBe(false)
+})
+
+test('visitor credential requests use the visitor personal binding', async () => {
+	const t = await setup()
+	const visitorOrgId = personalOrgId(personIdFromStored(t.member))
+	const request = await createPackageAppVisitorPersonalRequest({
+		db: t.db,
+		visitor: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+	})
+
+	expect(request).toMatchObject({
+		org: { id: visitorOrgId, slug: 'member' },
+		actor: { userId: t.member },
+		membership: { role: 'owner' },
+		credential: { kind: 'package-app' },
+	})
+	expect(request?.org.id).not.toBe(t.orgId)
 })
 
 test('runs-as credential handles resolve as the live runs-as person, and stop when that person leaves', async () => {

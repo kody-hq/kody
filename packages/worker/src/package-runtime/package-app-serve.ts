@@ -63,7 +63,10 @@ import {
 	CredentialClientError,
 	openCredentialClient,
 } from '#worker/credentials/credential-client.ts'
-import { createPackageAppCredentialAuthority } from '#worker/package-runtime/package-app-authority.ts'
+import {
+	createPackageAppCredentialAuthority,
+	createPackageAppVisitorPersonalRequest,
+} from '#worker/package-runtime/package-app-authority.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -1128,7 +1131,10 @@ export async function servePackageAppRequest(input: {
 								orgSlug: packagePath.username,
 								kodyId: savedPackage.kodyId,
 							},
-							visitorRequest: callerContext.request,
+							visitorRequest: await createPackageAppVisitorPersonalRequest({
+								db: env.APP_DB,
+								visitor,
+							}),
 							issue: { visitorNeed: need.key },
 							waitUntil: scheduleWorkerWaitUntil,
 						}),
@@ -1137,6 +1143,9 @@ export async function servePackageAppRequest(input: {
 				)
 			} catch (error) {
 				if (!(error instanceof CredentialClientError)) throw error
+				if (request.method !== 'GET' && request.method !== 'HEAD') {
+					throw error
+				}
 				const loginUrl = new URL(packageAppOauthPaths.login, request.url)
 				loginUrl.searchParams.set(
 					'scope',
@@ -1145,6 +1154,7 @@ export async function servePackageAppRequest(input: {
 						...requiredExecutorNeeds.map((item) => `need:${item.key}`),
 					].join(' '),
 				)
+				loginUrl.searchParams.set('prompt', 'consent')
 				loginUrl.searchParams.set(
 					'return_to',
 					`${requestUrl.pathname}${requestUrl.search}`,

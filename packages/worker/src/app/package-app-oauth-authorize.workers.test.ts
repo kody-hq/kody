@@ -484,7 +484,7 @@ test('package-app consent form submits rendered fields and redirects with a code
 		.run()
 })
 
-test('package-app consent skips for an app executor when only profile is requested', async () => {
+test('package-app consent skip can be forced with prompt=consent', async () => {
 	configureOrigins()
 	const cookie = await seedOwnerSessionCookie()
 	const challenge = await createS256CodeChallenge(
@@ -509,6 +509,15 @@ test('package-app consent skips for an app executor when only profile is request
 		throw new Error('Expected executor consent skip redirect')
 	expect(response.status).toBe(302)
 	expect(response.headers.get('Location')).toContain('code=')
+
+	authorizeUrl.searchParams.set('prompt', 'consent')
+	const result = await handlePackageAppOauthAuthorizeRequest(
+		new Request(authorizeUrl, { headers: { Cookie: cookie } }),
+		env,
+	)
+
+	expect(result).not.toBeInstanceOf(Response)
+	expect(result).toHaveProperty('consent')
 })
 
 test('authenticated consent decisions reject a foreign origin before creating a grant', async () => {
@@ -599,6 +608,8 @@ test('package-app OAuth login on a real owner subdomain redirects to authorize w
 		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}`,
 	)
 	loginUrl.searchParams.set('app', 'demo')
+	loginUrl.searchParams.set('scope', 'profile need:calendar')
+	loginUrl.searchParams.set('prompt', 'consent')
 	const response = await workerFetch(loginUrl)
 	if (!(response instanceof Response))
 		throw new Error('Expected OAuth protocol response')
@@ -609,6 +620,7 @@ test('package-app OAuth login on a real owner subdomain redirects to authorize w
 	expect(authorize.origin).toBe(appOrigin)
 	expect(authorize.pathname).toBe('/oauth/package-app/authorize')
 	expect(authorize.searchParams.get('client_id')).toBe(`${ownerUsername}/demo`)
+	expect(authorize.searchParams.get('prompt')).toBe('consent')
 })
 
 test('local inline package-app OAuth keeps its request origin through consent', async () => {

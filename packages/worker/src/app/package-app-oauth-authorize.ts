@@ -701,7 +701,11 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		},
 		scopes: validated.scopes,
 	})
-	if (skip && options.allowConsentSkip !== false) {
+	if (
+		skip &&
+		options.allowConsentSkip !== false &&
+		url.searchParams.get('prompt') !== 'consent'
+	) {
 		return await issueCodeAndRedirect({
 			env,
 			request,

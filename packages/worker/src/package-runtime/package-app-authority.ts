@@ -18,6 +18,7 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	findLivePackageAppOauthGrant,
 	touchPackageAppOauthGrantLastUsed,
@@ -25,7 +26,10 @@ import {
 import { packageAppVisitorNeedScope } from '#app/package-app-oauth-scopes.ts'
 import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import {
+	loadOrgBindingForOrg,
+	loadOrgBindingForPerson,
+} from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -448,4 +452,18 @@ export function createPackageAppCredentialAuthority(input: {
 		else await touched
 		return { request: visitor, grantId: grant.id }
 	}
+}
+
+export async function createPackageAppVisitorPersonalRequest(input: {
+	db: D1Database
+	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+}) {
+	const visitor = input.visitor
+	if (!visitor) return null
+	const orgBinding = await loadOrgBindingForPerson(input.db, visitor.userId)
+	return deriveRequestContext({
+		user: { userId: visitor.userId, username: visitor.username },
+		source: { kind: 'package-app' },
+		orgBinding,
+	})
 }

@@ -18,11 +18,11 @@ import * as needsClosure from './credential-needs-closure.ts'
 import { ownCredentialNeeds, type CredentialNeed } from './credential-needs.ts'
 import { normalizeCredentialCallMap } from './credential-call-map.ts'
 import {
+	applyCredentialClient,
 	openCredentialClient,
 	validateCredentialCallMap,
 	type CredentialClientContext,
 } from './credential-client.ts'
-import { grantPersonalCredentialToOrg } from './personal-credentials.ts'
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
@@ -356,12 +356,6 @@ test('executor visitor credentials are isolated by grant and filtered against th
 		.first<{ id: string }>()
 	expect(visitorCredential).toBeTruthy()
 	const visitorCredentialIdResolved = visitorCredential!.id
-	await grantPersonalCredentialToOrg({
-		db: t.db,
-		ownerPersonId: t.people.ann.personId,
-		credentialId: visitorCredentialIdResolved,
-		orgId: t.acmeId,
-	})
 	const appX = t.savedPackage.id
 	const appY = await savePackage(t, t.acmeId, '@fixture/app-y')
 	const otherOrgApp = await savePackage(
@@ -379,6 +373,14 @@ test('executor visitor credentials are isolated by grant and filtered against th
 		required: true,
 	}
 	mockNeeds([need])
+	const visitorRequest = deriveRequestContext({
+		user: { userId: t.people.ann.personId, username: 'ann' },
+		source: { kind: 'session' },
+		orgBinding: {
+			org: { id: personalOrgIdForAnn, slug: 'ann' },
+			role: 'owner',
+		},
+	})
 	const triggerRequest = deriveRequestContext({
 		user: { userId: t.people.ann.personId },
 		source: {
@@ -431,6 +433,7 @@ test('executor visitor credentials are isolated by grant and filtered against th
 			now,
 		)
 		.run()
+	let grantActive = true
 	const makeContext = (
 		request: ReturnType<Fixture['requestAs']>,
 		packageId: string,
@@ -441,31 +444,36 @@ test('executor visitor credentials are isolated by grant and filtered against th
 		packageAppAuthority: {
 			issue: { visitorNeed: need.key },
 			runsAsRequest: async () => null,
-			visitorNeedRequest: async () => request,
-			visitorNeedGrant: async () => ({ request, grantId }),
+			visitorNeedRequest: async () => (grantActive ? visitorRequest : null),
+			visitorNeedGrant: async () =>
+				grantActive ? { request: visitorRequest, grantId } : null,
 		},
 	})
-	await expect(
-		openCredentialClient(makeContext(triggerRequest, appX, 'grant-app-x'), {
-			key: need.key,
-		}),
-	).resolves.toMatchObject({ name: 'visitor-db' })
+	const appXContext = makeContext(triggerRequest, appX, 'grant-app-x')
+	const opened = await openCredentialClient(appXContext, { key: need.key })
+	expect(opened).toMatchObject({ name: 'visitor-db' })
+	const applyOpened = () =>
+		applyCredentialClient({
+			env: t.env,
+			request: triggerRequest,
+			baseUrl: 'https://example.com',
+			packageId: appX,
+			binding: 'run:test',
+			packageAppAuthority: appXContext.packageAppAuthority,
+			token: opened.handle,
+			requestUrl: new URL('https://api.example.com/v1'),
+		})
+	await expect(applyOpened()).resolves.toMatchObject({
+		placement: { kind: 'header', value: 'Bearer fixture-value' },
+	})
 	await expect(
 		openCredentialClient(makeContext(triggerRequest, appY, 'grant-app-y'), {
 			key: need.key,
 		}),
 	).rejects.toMatchObject({ body: { code: 'credential_unbound' } })
-	const otherOrgRequest = deriveRequestContext({
-		user: { userId: t.people.ann.personId, username: 'ann' },
-		source: { kind: 'session' },
-		orgBinding: {
-			org: { id: personalOrgIdForAnn, slug: 'ann' },
-			role: 'owner',
-		},
-	})
 	await expect(
 		openCredentialClient(
-			makeContext(otherOrgRequest, otherOrgApp, 'grant-other-org'),
+			makeContext(visitorRequest, otherOrgApp, 'grant-other-org'),
 			{ key: need.key },
 		),
 	).rejects.toMatchObject({ body: { code: 'credential_unbound' } })
@@ -477,10 +485,28 @@ test('executor visitor credentials are isolated by grant and filtered against th
 		.bind(JSON.stringify([publisherCredentialId]))
 		.run()
 	await expect(
-		openCredentialClient(makeContext(triggerRequest, appX, 'grant-app-x'), {
-			key: need.key,
-		}),
+		openCredentialClient(appXContext, { key: need.key }),
 	).rejects.toMatchObject({ body: { code: 'credential_unbound' } })
+	await t.db
+		.prepare(
+			`UPDATE package_app_grant_credential_mappings
+			 SET credential_ids_json = '[]' WHERE grant_id = 'grant-app-x'`,
+		)
+		.run()
+	await expect(applyOpened()).rejects.toMatchObject({
+		body: { code: 'credential_unbound' },
+	})
+	await t.db
+		.prepare(
+			`UPDATE package_app_grant_credential_mappings
+			 SET credential_ids_json = ? WHERE grant_id = 'grant-app-x'`,
+		)
+		.bind(JSON.stringify([visitorCredentialIdResolved]))
+		.run()
+	grantActive = false
+	await expect(applyOpened()).rejects.toMatchObject({
+		body: { code: 'invalid_request' },
+	})
 	await expect(
 		openCredentialClient(
 			{
@@ -490,4 +516,58 @@ test('executor visitor credentials are isolated by grant and filtered against th
 			{ key: need.key },
 		),
 	).resolves.toMatchObject({ name: 'publisher-db' })
+})
+
+test('flag-off legacy visitor handles still require live consent after grant revoke', async () => {
+	const t = await setup()
+	const credentialId = await t.storeKey('publisher-db', 'database')
+	await mapCredential(t, {
+		packageId: t.savedPackage.id,
+		needKey: 'database',
+		target: { target: 'org' },
+		credentialId,
+	})
+	const need: CredentialNeed = {
+		key: 'database',
+		kind: 'secret',
+		provider: 'database',
+		description: 'Database access.',
+		multiple: false,
+	}
+	mockNeeds([need])
+	let grantActive = true
+	const request = t.requestAs('bea', 'owner')
+	const packageAppAuthority: NonNullable<
+		CredentialClientContext['packageAppAuthority']
+	> = {
+		issue: { visitorNeed: need.key },
+		runsAsRequest: async () => null,
+		visitorNeedRequest: async () => (grantActive ? request : null),
+		visitorNeedGrant: async () =>
+			grantActive ? { request, grantId: 'legacy-grant' } : null,
+	}
+	const context: CredentialClientContext = {
+		...contextFor(t, request, t.savedPackage.id),
+		runNeeds: async () => new Map([[need.key, need]]),
+		packageAppAuthority,
+	}
+	const opened = await openCredentialClient(context, { key: need.key })
+	const applyOpened = () =>
+		applyCredentialClient({
+			env: t.env,
+			request,
+			baseUrl: 'https://example.com',
+			packageId: t.savedPackage.id,
+			binding: 'run:test',
+			packageAppAuthority,
+			token: opened.handle,
+			requestUrl: new URL('https://api.example.com/v1'),
+		})
+	await expect(applyOpened()).resolves.toMatchObject({
+		placement: { kind: 'header' },
+	})
+	grantActive = false
+	await expect(applyOpened()).rejects.toMatchObject({
+		body: { code: 'invalid_request' },
+	})
 })

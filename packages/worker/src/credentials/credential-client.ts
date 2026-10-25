@@ -225,6 +225,11 @@ export type CredentialClientContext = {
 	waitUntil?: (promise: Promise<unknown>) => void
 }
 
+type PackageAppCredentialHandleIssue =
+	| { runsAs: true }
+	| { visitorNeed: string }
+	| { executorNeed: string }
+
 export type PackageAppCredentialAuthority = {
 	/** Opened as the app's runs-as person, or on a visitor's own need. */
 	issue: { runsAs: true } | { visitorNeed: string } | null
@@ -251,7 +256,8 @@ export type OpenedCredentialClient = {
 type Picked = {
 	credential: UsableCredential
 	hint: string | null
-	packageAppIssue?: PackageAppCredentialAuthority['issue']
+	packageAppIssue?: PackageAppCredentialHandleIssue | null
+	packageAppRequest?: RequestContext
 }
 
 const maxKeyLength = 100
@@ -672,8 +678,8 @@ async function resolveKey(
 					...item,
 					packageAppIssue:
 						need?.supplier === 'executor'
-							? ({ visitorNeed: key } as const)
-							: null,
+							? ({ executorNeed: key } as const)
+							: ({ visitorNeed: key } as const),
 				}))
 			: picked
 	if (
@@ -692,6 +698,15 @@ async function resolveKey(
 		need?.supplier === 'executor'
 	) {
 		const grant = await ctx.packageAppAuthority.visitorNeedGrant(key)
+		const visitorUsable = grant
+			? liveUsableCredentials(
+					await listUsableCredentials({
+						env: ctx.env,
+						request: grant.request,
+						packageId: ctx.packageId,
+					}),
+				)
+			: []
 		const credentialIds = grant
 			? await findPackageAppGrantCredentialMapping({
 					db: ctx.env.APP_DB,
@@ -700,7 +715,7 @@ async function resolveKey(
 				})
 			: []
 		const mapped = credentialIds
-			.map((id) => usable.find((credential) => credential.id === id))
+			.map((id) => visitorUsable.find((credential) => credential.id === id))
 			.filter(
 				(credential): credential is UsableCredential =>
 					credential !== undefined &&
@@ -716,6 +731,7 @@ async function resolveKey(
 			(mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
 				credential,
 				hint: null,
+				packageAppRequest: grant!.request,
 			})),
 		)
 	}
@@ -817,13 +833,13 @@ async function resolveKey(
 async function issueClient(
 	ctx: CredentialClientContext,
 	key: string | null,
-	{ credential: picked, hint }: Picked,
+	{ credential: picked, hint, packageAppRequest }: Picked,
 	options: {
 		ownerCredentialForVisitors?: boolean
-		packageAppIssue?: PackageAppCredentialAuthority['issue']
+		packageAppIssue?: PackageAppCredentialHandleIssue | null
 	} = {},
 ): Promise<OpenedCredentialClient> {
-	const request = requireActorRequest(ctx)
+	const request = packageAppRequest ?? requireActorRequest(ctx)
 	if (picked.kind === 'mcp' && picked.scope === 'personal') {
 		throw refusal(
 			'credential_denied',
@@ -1115,8 +1131,8 @@ type HandleUse = {
 /**
  * A visitor handle resolves as the authority. When the viewer is someone
  * else (or no one), the use is rate-limited and its audit row names them.
- * Each use re-checks that the approval still lists this credential for the
- * handle's need, so a remapped or revoked visitor credential fails closed.
+ * Each use re-checks live consent, and executor handles also re-check the
+ * credential mapping on that grant.
  */
 async function readHandle(
 	ctx: HandleContext,
@@ -1156,8 +1172,12 @@ async function readHandle(
 			appRequest = request
 			return request
 		},
-		visitorNeedGrant: async (needKey) =>
-			(await ctx.packageAppAuthority?.visitorNeedGrant(needKey)) ?? null,
+		visitorNeedGrant: async (needKey) => {
+			const grant =
+				(await ctx.packageAppAuthority?.visitorNeedGrant(needKey)) ?? null
+			appRequest = grant?.request ?? null
+			return grant
+		},
 	})
 	if (!kinds.includes(handle.kind)) {
 		throw refusal(
@@ -1165,25 +1185,28 @@ async function readHandle(
 			`A ${handle.kind} credential has no ${operation}.`,
 		)
 	}
-	if (handle.visitorNeed) {
+	if (handle.executorNeed) {
 		const grant =
-			(await ctx.packageAppAuthority?.visitorNeedGrant(handle.visitorNeed)) ??
+			(await ctx.packageAppAuthority?.visitorNeedGrant(handle.executorNeed)) ??
 			null
 		const credentialIds = grant
 			? await findPackageAppGrantCredentialMapping({
 					db: ctx.env.APP_DB,
 					grantId: grant.grantId,
-					needKey: handle.visitorNeed,
+					needKey: handle.executorNeed,
 				})
 			: []
 		if (!credentialIds.includes(handle.id)) {
 			throw refusal(
 				'credential_unbound',
-				`Credential need "${handle.visitorNeed}" is not connected. Sign in with Kody and allow need:${handle.visitorNeed} to choose credentials.`,
+				`Credential need "${handle.executorNeed}" is not connected. Sign in with Kody and allow need:${handle.executorNeed} to choose credentials.`,
 			)
 		}
 	}
-	if ((handle.runsAs || handle.visitorNeed) && appRequest) {
+	if (
+		(handle.runsAs || handle.visitorNeed || handle.executorNeed) &&
+		appRequest
+	) {
 		return { handle, request: appRequest }
 	}
 	const viewer = ctx.callerContext.request ?? null

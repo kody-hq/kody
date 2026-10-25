@@ -174,6 +174,20 @@ vi.mock('#worker/credentials/credential-client.ts', async (importOriginal) => {
 	}
 })
 
+vi.mock(
+	'#worker/package-runtime/package-app-authority.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-runtime/package-app-authority.ts')
+			>()
+		return {
+			...actual,
+			createPackageAppVisitorPersonalRequest: vi.fn(async () => null),
+		}
+	},
+)
+
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	const actual = await vi.importActual<Record<string, unknown>>(
 		'#worker/package-runtime/published-bundle-artifacts.ts',
@@ -382,10 +396,50 @@ test('required executor credentials redirect visitors to consent before serving 
 	const loginUrl = new URL(location!)
 	expect(loginUrl.pathname).toBe('/-/auth/login')
 	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(loginUrl.searchParams.get('prompt')).toBe('consent')
 	expect(loginUrl.searchParams.get('return_to')).toBe(
 		'/@demo-user/packages/perf-app',
 	)
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+})
+
+test('required executor credential failures do not redirect non-GET requests', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+	consoleError.mockImplementation(() => {})
+
+	const response = await serveHelloWorld({
+		init: { method: 'POST', body: 'request-body' },
+	})
+
+	expect(response.status).not.toBe(302)
+	expect(response.headers.get('location')).toBeNull()
+	expect(await response.text()).toContain('Package app could not be prepared')
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+	expect(consoleError).toHaveBeenCalledWith(
+		'Package app handler failed:',
+		expect.objectContaining({
+			body: expect.objectContaining({ code: 'credential_unbound' }),
+		}),
+	)
 })
 
 const clientModuleName = 'client.0123456789abcdef.js'

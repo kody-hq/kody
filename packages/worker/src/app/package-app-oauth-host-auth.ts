@@ -328,6 +328,9 @@ async function handleLogin(input: { request: Request; env: Env; url: URL }) {
 	authorize.searchParams.set('code_challenge', challenge)
 	authorize.searchParams.set('code_challenge_method', 'S256')
 	authorize.searchParams.set('scope', scopes.join(' '))
+	if (input.url.searchParams.get('prompt') === 'consent') {
+		authorize.searchParams.set('prompt', 'consent')
+	}
 
 	const pkceCookie = await createPackageAppOauthPkceCookie({
 		env: input.env,

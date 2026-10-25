@@ -147,6 +147,7 @@ import {
 } from './package-app-visit-ticket.ts'
 import {
 	createPackageAppCredentialAuthority,
+	createPackageAppVisitorPersonalRequest,
 	loadPackageAppRunsAs,
 	packageAppRunsAsUnavailableMessages,
 	packageAppIdentityCapabilityName,
@@ -2819,7 +2820,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		opener:
 			| { mode: 'legacy' }
 			| { mode: 'runs-as'; callerContext: McpCallerContext }
-			| { mode: 'visitor-need'; needKey: string },
+			| {
+					mode: 'visitor-need'
+					needKey: string
+					executorNeed: boolean
+			  },
 		visitTicket: string | null | undefined,
 	) {
 		const visit = await this.requireVisit(visitTicket)
@@ -2830,7 +2835,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			binding,
 			opener.mode,
 			opener.mode === 'visitor-need'
-				? opener.needKey
+				? [opener.needKey, opener.executorNeed]
 				: opener.mode === 'runs-as'
 					? (opener.callerContext.user?.userId ?? null)
 					: null,
@@ -2839,6 +2844,13 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (cached) return await cached
 		const tools = (async () => {
 			const visitorContext = await this.createCallerContext(null, visitTicket)
+			const visitorCredentialRequest =
+				opener.mode === 'visitor-need' && opener.executorNeed
+					? await createPackageAppVisitorPersonalRequest({
+							db: this.env.APP_DB,
+							visitor: visit?.visitor ?? null,
+						})
+					: visitorContext.request
 			const callerContext =
 				opener.mode === 'runs-as' ? opener.callerContext : visitorContext
 			let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
@@ -2873,7 +2885,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 						env: this.env,
 						scope: this.authorityScope(),
 						grantScope: this.grantScope(),
-						visitorRequest: visitorContext.request ?? null,
+						visitorRequest: visitorCredentialRequest ?? null,
 						issue:
 							opener.mode === 'runs-as'
 								? { runsAs: true }
@@ -3004,7 +3016,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			return await callTool(
 				await this.getCredentialClientTools(
 					boundPackageId,
-					{ mode: 'visitor-need', needKey: key },
+					{
+						mode: 'visitor-need',
+						needKey: key,
+						executorNeed: true,
+					},
 					visitTicket,
 				),
 				{ key },
@@ -3027,7 +3043,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await callTool(
 			await this.getCredentialClientTools(
 				boundPackageId,
-				{ mode: 'visitor-need', needKey: scopeNeed },
+				{
+					mode: 'visitor-need',
+					needKey: scopeNeed,
+					executorNeed: supplier === 'executor',
+				},
 				visitTicket,
 			),
 			{ key: need.credential },
