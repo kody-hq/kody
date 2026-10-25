@@ -339,7 +339,11 @@ export async function resolveMappingChanges(
 			}
 			const orgLevel =
 				change.target.type === 'default' && change.target.layer === 'org'
-			if (need.supplier === 'publisher' && !orgLevel) {
+			if (
+				need.supplier === 'publisher' &&
+				!orgLevel &&
+				change.credentials !== null
+			) {
 				refuse(
 					'not_allowed',
 					`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
@@ -604,7 +608,11 @@ export async function writeMappingChanges(
 		)
 		const orgLevel =
 			change.target.type === 'default' && change.target.layer === 'org'
-		if (need?.supplier === 'publisher' && !orgLevel) {
+		if (
+			need?.supplier === 'publisher' &&
+			!orgLevel &&
+			change.credentialIds !== null
+		) {
 			throw new MappingWriteRefused(
 				change,
 				'not_allowed',

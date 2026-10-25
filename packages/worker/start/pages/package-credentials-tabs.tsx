@@ -45,6 +45,7 @@ export type MappingCellInput = {
 	stored: StoredCredentialMapping | null
 	inheritLabel: string
 	editable: boolean
+	clearable?: boolean
 	trigger: PackageTriggerView | null
 }
 type TriggerEnablementActionInput = PackageCredentialsEnablementAction
@@ -477,6 +478,10 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 									stored: need.defaults.mine,
 									inheritLabel: 'Not set (uses the org default)',
 									editable: need.supplier !== 'publisher',
+									clearable:
+										need.supplier === 'publisher' &&
+										((need.defaults.mine?.credentials.length ?? 0) > 0 ||
+											(need.defaults.mine?.unusableIds.length ?? 0) > 0),
 									trigger: null,
 								})}
 							</dd>

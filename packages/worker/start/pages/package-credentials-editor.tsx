@@ -115,11 +115,11 @@ export function usePackageMappingEditor(
 	}
 	async function save(input: MappingCellInput) {
 		if (!open || open.saving) return
-		const unchanged = triggerDraftProblem(
-			input.trigger,
-			open.draft,
-			input.target,
-		)
+		const clearingPublisherNeed =
+			input.need.supplier === 'publisher' && open.draft.mode === 'inherit'
+		const unchanged = clearingPublisherNeed
+			? null
+			: triggerDraftProblem(input.trigger, open.draft, input.target)
 		if (unchanged) {
 			update({ messages: [{ text: unchanged }] })
 			return
@@ -331,6 +331,41 @@ export function usePackageMappingEditor(
 	}
 	function renderCell(input: MappingCellInput): ReactNode {
 		const key = mappingEditorKey(input.target, input.need.key)
+		if (open?.key === key && input.clearable) {
+			return (
+				<form
+					data-testid="package-mapping-clear-form"
+					css={{ display: 'grid', gap: spacing.sm, justifyItems: 'start' }}
+					onSubmit={(event) => {
+						event.preventDefault()
+						void save(input)
+					}}
+				>
+					<p css={{ margin: 0, color: colors.textMuted }}>
+						Clear this saved mapping so the default can be used.
+					</p>
+					{renderMessages(input, open)}
+					<div css={{ display: 'flex', gap: spacing.sm }}>
+						<button
+							type="submit"
+							disabled={open.saving}
+							data-testid="package-mapping-clear"
+							css={primaryButtonCss}
+						>
+							{open.saving ? 'Clearing…' : 'Clear mapping'}
+						</button>
+						<button
+							type="button"
+							disabled={open.saving}
+							css={secondaryButtonCss}
+							onClick={() => openEditor(null)}
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
+			)
+		}
 		if (open?.key === key && input.editable) return renderForm(input, open)
 		const page = options.readPage()
 		return (
@@ -343,10 +378,10 @@ export function usePackageMappingEditor(
 				}}
 			>
 				{renderStored(page.orgSlug, input.stored, input.inheritLabel)}
-				{input.editable ? (
+				{input.editable || input.clearable ? (
 					<button
 						type="button"
-						aria-label={`Change ${describeMappingTarget(input.target)} for ${input.need.key}`}
+						aria-label={`${input.clearable ? 'Clear' : 'Change'} ${describeMappingTarget(input.target)} for ${input.need.key}`}
 						disabled={open?.saving === true}
 						css={linkButtonCss}
 						onClick={() => {
@@ -354,17 +389,19 @@ export function usePackageMappingEditor(
 								key,
 								target: input.target,
 								needKey: input.need.key,
-								draft: draftForMappingEditor(
-									input.need,
-									input.target,
-									input.stored,
-								),
+								draft: input.clearable
+									? { mode: 'inherit' }
+									: draftForMappingEditor(
+											input.need,
+											input.target,
+											input.stored,
+										),
 								saving: false,
 								messages: [],
 							})
 						}}
 					>
-						Change
+						{input.clearable ? 'Clear' : 'Change'}
 					</button>
 				) : null}
 			</span>

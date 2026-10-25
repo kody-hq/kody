@@ -1,10 +1,21 @@
-import { expect, test } from 'vitest'
+import { createElement } from 'react'
+import { expect, test, vi } from 'vitest'
 import {
 	type PackageCredentialNeedView,
 	type PackageCredentialsView,
 } from '#universal/credential-contracts.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
-import { renderCredentialsTab } from './package-credentials-tabs.tsx'
+import { usePackageMappingEditor } from './package-credentials-editor.tsx'
+import {
+	renderCredentialsTab,
+	renderMappingsTab,
+} from './package-credentials-tabs.tsx'
+
+const editorMocks = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+
+vi.mock('../credential-mutation.ts', () => ({
+	useCredentialMutation: () => ({ mutateAsync: editorMocks.mutateAsync }),
+}))
 
 function need(
 	key: string,
@@ -114,4 +125,58 @@ test('flag-off needs keep missing mapping attention and status', async () => {
 	expect(html).toContain('No credential')
 	expect(html).not.toContain('Each person who runs it supplies their own')
 	expect(html).not.toContain('data-credential-supplier="executor"')
+})
+
+test('grandfathered publisher personal defaults offer only a clear action when mapped', async () => {
+	const mappedNeed = {
+		...need('publisher-calendar', 'publisher'),
+		defaults: {
+			org: null,
+			mine: {
+				credentials: [
+					{
+						id: 'credential-a',
+						name: 'calendar-default',
+						kind: 'oauth' as const,
+						scope: 'personal' as const,
+					},
+				],
+				unusableIds: [],
+				updatedBy: null,
+			},
+		},
+	}
+	const emptyNeed = need('publisher-empty', 'publisher')
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: false },
+		needs: [mappedNeed, emptyNeed],
+		triggers: [],
+		locked: [],
+		incomplete: [],
+	}
+	function MappingEditor() {
+		const editor = usePackageMappingEditor('team', {
+			readPage: () => ({ username: 'team', kodyId: 'repo', orgSlug: 'team' }),
+			onSaved: () => {},
+		})
+		return renderMappingsTab({
+			orgSlug: 'team',
+			username: 'team',
+			kodyId: 'repo',
+			view,
+			renderMappingCell: editor.renderCell,
+		})
+	}
+	const html = await renderStartPage(createElement(MappingEditor))
+
+	expect(html).toContain(
+		'aria-label="Clear your default for publisher-calendar"',
+	)
+	expect(html).not.toContain(
+		'aria-label="Change your default for publisher-calendar"',
+	)
+	expect(html).not.toContain(
+		'aria-label="Clear your default for publisher-empty"',
+	)
 })

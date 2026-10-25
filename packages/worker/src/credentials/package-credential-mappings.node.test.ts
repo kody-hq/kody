@@ -15,7 +15,10 @@ import {
 	orgDefaultTarget as orgDefault,
 	setupPackageCredentialMappingFixture,
 } from '#worker/test-support/package-credential-mapping-fixture.ts'
-import { writeMappingChanges } from './package-credential-mapping-changes.ts'
+import {
+	resolveMappingChanges,
+	writeMappingChanges,
+} from './package-credential-mapping-changes.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 vi.mock(
@@ -171,6 +174,59 @@ test('publisher needs offer and auto-resolve only org credentials', async () => 
 		status: 'ready',
 		credentials: [{ name: 'org-mail', scope: 'org' }],
 	})
+})
+
+test('publisher needs allow clearing grandfathered personal and trigger mappings but refuse sets', async () => {
+	const t = await setup()
+	const credentialId = await t.storeKey('resend-prod', 'resend')
+	await t.apply('bea', 'owner', [
+		{ target: mine, needKey: 'mail', credentials: [{ id: credentialId }] },
+		{ target: daily, needKey: 'mail', credentials: [{ id: credentialId }] },
+	])
+	const scope = await t.scopeFor('bea', 'owner')
+	scope.needs = scope.needs.map((need) =>
+		need.key === 'mail' ? { ...need, supplier: 'publisher' } : need,
+	)
+
+	const setChanges = await resolveMappingChanges(scope, [
+		{ target: mine, needKey: 'mail', credentials: [{ id: credentialId }] },
+		{ target: daily, needKey: 'mail', credentials: [{ id: credentialId }] },
+	])
+	expect(setChanges.map((change) => change.error?.code ?? null)).toEqual([
+		'not_allowed',
+		'not_allowed',
+	])
+
+	const clearChanges = await resolveMappingChanges(scope, [
+		{ target: mine, needKey: 'mail', credentials: null },
+		{ target: daily, needKey: 'mail', credentials: null },
+	])
+	expect(clearChanges.map((change) => change.error)).toEqual([null, null])
+	await expect(
+		writeMappingChanges(
+			scope,
+			clearChanges.map((change) => ({
+				...change,
+				credentialIds: [credentialId],
+			})),
+		),
+	).rejects.toThrow(/Only the org-level mapping can set it/)
+
+	await expect(
+		writeMappingChanges(scope, clearChanges, { now }),
+	).resolves.toBeUndefined()
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	expect(
+		view.needs.find((need) => need.key === 'mail')?.defaults.mine,
+	).toBeNull()
+	expect(
+		view.triggers
+			.find((trigger) => trigger.trigger.name === 'daily')
+			?.instances[0]?.mappings.find((mapping) => mapping.needKey === 'mail')
+			?.override,
+	).toBeNull()
 })
 
 test('one write sets defaults and a trigger mapping, turning the trigger on', async () => {
