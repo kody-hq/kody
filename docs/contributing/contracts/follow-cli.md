@@ -70,8 +70,20 @@ null.
 
 ### `followList`
 
-No inputs. Returns `{ "follows": [ ...same object as followAdd... ] }` for the
-bound org, newest first.
+No inputs. Returns
+`{ "follows": [ ...same object as followAdd... ], "recent_updates": [ ... ] }`
+for the bound org, newest first. `recent_updates` holds up to 20 events no
+enabled package subscription handled (see [Recent updates](#recent-updates)):
+
+```json
+{
+	"name": "@ada/notes",
+	"kind": "package",
+	"event": "pushed",
+	"occurred_at": "2026-10-15T00:05:00.000Z",
+	"summary": "3 commits pushed to main: Fix typo"
+}
+```
 
 ### `followRemove`
 
@@ -133,6 +145,20 @@ credits and, when the subscriber package has an enablement, that enabler's run
 limits. At zero credits the invocation returns 429 before the handler runs.
 Origin records `last_delivery_skip_reason: "zero_credits"` on the follow, does
 not throw, and does not queue a retry or send a notice.
+
+### Recent updates
+
+When the follower org has no subscription with an `on` enablement for the topic
+(no subscriber, or only subscribers without a live enablement), delivery stores
+a row in `follow_recent_updates` instead, after the target and access recheck.
+One row per published commit, and one per coalesced push window (`dedupe_key`
+makes a retried flush a no-op). Rows are scoped by `follower_org_id` and
+`follow_id`; inserts only land when that follow belongs to that org. Each follow
+keeps its newest 20; follow maintenance deletes rows older than 30 days and rows
+whose follow is gone, and removing a follow deletes its rows. Handled events,
+zero-credit (429) skips, failed handlers, paused follows, and skipped pushes are
+never recorded, and recording charges no credits. Org hard purge deletes the
+table by `follower_org_id`; it is not exported.
 
 ## Topics
 

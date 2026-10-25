@@ -1,8 +1,13 @@
-import { isFollowPauseReason } from '#universal/follows.ts'
+import {
+	followRecentUpdatesPerFollow,
+	isFollowPauseReason,
+	type FollowRecentUpdateDetail,
+} from '#universal/follows.ts'
 import {
 	type FollowPauseReason,
 	type FollowPushCommit,
 	type FollowPushPending,
+	type FollowRecentUpdateRecord,
 	type FollowRecord,
 	type FollowStatus,
 	type FollowTargetKind,
@@ -288,7 +293,143 @@ export async function deleteFollowForOrg(
 		.prepare(`DELETE FROM follows WHERE follower_org_id = ? AND id = ?`)
 		.bind(input.followerOrgId, input.id)
 		.run()
+	await db
+		.prepare(
+			`DELETE FROM follow_recent_updates WHERE follower_org_id = ? AND follow_id = ?`,
+		)
+		.bind(input.followerOrgId, input.id)
+		.run()
 	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Store one unhandled follow event for the follow's own org. A retried
+ * delivery with the same dedupe key is a no-op, a follow that is gone or
+ * belongs to another org stores nothing, and only the newest
+ * {@link followRecentUpdatesPerFollow} rows per follow are kept.
+ */
+export async function insertFollowRecentUpdate(
+	db: D1Database,
+	input: {
+		id: string
+		followerOrgId: string
+		followId: string
+		dedupeKey: string
+		detail: FollowRecentUpdateDetail
+		occurredAt: string
+		createdAt: string
+	},
+): Promise<boolean> {
+	const inserted = await db
+		.prepare(
+			`INSERT OR IGNORE INTO follow_recent_updates (
+				id, follower_org_id, follow_id, event, dedupe_key, detail_json,
+				occurred_at, created_at
+			)
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?
+			WHERE EXISTS (
+				SELECT 1 FROM follows WHERE id = ? AND follower_org_id = ?
+			)`,
+		)
+		.bind(
+			input.id,
+			input.followerOrgId,
+			input.followId,
+			input.detail.event,
+			input.dedupeKey,
+			JSON.stringify(input.detail),
+			input.occurredAt,
+			input.createdAt,
+			input.followId,
+			input.followerOrgId,
+		)
+		.run()
+	await db
+		.prepare(
+			`DELETE FROM follow_recent_updates
+			WHERE follow_id = ? AND id NOT IN (
+				SELECT id FROM follow_recent_updates
+				WHERE follow_id = ?
+				ORDER BY occurred_at DESC, created_at DESC, id DESC
+				LIMIT ?
+			)`,
+		)
+		.bind(input.followId, input.followId, followRecentUpdatesPerFollow)
+		.run()
+	return (inserted.meta.changes ?? 0) > 0
+}
+
+/** Newest first. Only rows whose follow still belongs to the same org. */
+export async function listFollowRecentUpdates(
+	db: D1Database,
+	input: { followerOrgId: string; followId?: string; limit: number },
+): Promise<Array<FollowRecentUpdateRecord>> {
+	const byFollow = input.followId !== undefined
+	const result = await db
+		.prepare(
+			`SELECT u.id, u.follow_id, u.detail_json, u.occurred_at,
+				f.target_name, f.target_kind
+			FROM follow_recent_updates u
+			JOIN follows f
+				ON f.id = u.follow_id AND f.follower_org_id = u.follower_org_id
+			WHERE u.follower_org_id = ?${byFollow ? ' AND u.follow_id = ?' : ''}
+			ORDER BY u.occurred_at DESC, u.created_at DESC, u.id DESC
+			LIMIT ?`,
+		)
+		.bind(
+			input.followerOrgId,
+			...(byFollow ? [input.followId] : []),
+			input.limit,
+		)
+		.all<Record<string, unknown>>()
+	const records: Array<FollowRecentUpdateRecord> = []
+	for (const row of result.results ?? []) {
+		const kind = String(row['target_kind'])
+		const detail = parseRecentUpdateDetail(row['detail_json'])
+		if (!isFollowTargetKind(kind) || !detail) continue
+		records.push({
+			id: String(row['id']),
+			followId: String(row['follow_id']),
+			targetName: String(row['target_name']),
+			targetKind: kind,
+			detail,
+			occurredAt: String(row['occurred_at']),
+		})
+	}
+	return records
+}
+
+function parseRecentUpdateDetail(
+	value: unknown,
+): FollowRecentUpdateDetail | null {
+	try {
+		const parsed = JSON.parse(String(value)) as FollowRecentUpdateDetail
+		return parsed.event === 'published' || parsed.event === 'pushed'
+			? parsed
+			: null
+	} catch {
+		return null
+	}
+}
+
+/** Drop rows stored before the cutoff and rows whose follow is gone. */
+export async function deleteStaleFollowRecentUpdates(
+	db: D1Database,
+	cutoffIso: string,
+): Promise<number> {
+	const result = await db
+		.prepare(
+			`DELETE FROM follow_recent_updates
+			WHERE created_at <= ?
+				OR NOT EXISTS (
+					SELECT 1 FROM follows f
+					WHERE f.id = follow_recent_updates.follow_id
+						AND f.follower_org_id = follow_recent_updates.follower_org_id
+				)`,
+		)
+		.bind(cutoffIso)
+		.run()
+	return result.meta.changes ?? 0
 }
 
 export async function markFollowDeliverySkip(
@@ -512,6 +653,23 @@ export async function ensureFollowTables(db: D1Database) {
 			generation TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (target_kind, target_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS follow_recent_updates (
+			id TEXT PRIMARY KEY NOT NULL,
+			follower_org_id TEXT NOT NULL,
+			follow_id TEXT NOT NULL,
+			event TEXT NOT NULL CHECK (event IN ('published', 'pushed')),
+			dedupe_key TEXT NOT NULL,
+			detail_json TEXT NOT NULL,
+			occurred_at TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			UNIQUE (follow_id, dedupe_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS follow_recent_updates_org_idx
+			ON follow_recent_updates (follower_org_id, occurred_at)`,
+		`CREATE INDEX IF NOT EXISTS follow_recent_updates_follow_idx
+			ON follow_recent_updates (follow_id, occurred_at)`,
+		`CREATE INDEX IF NOT EXISTS follow_recent_updates_created_idx
+			ON follow_recent_updates (created_at)`,
 	]
 	for (const statement of statements) {
 		await db.prepare(statement).run()

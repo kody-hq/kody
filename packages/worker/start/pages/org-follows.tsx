@@ -15,6 +15,10 @@ import {
 import {
 	followEventCopy,
 	followSkipReasonCopy,
+	followRecentUpdatesPerFollow,
+	followRecentUpdatesRetentionDays,
+	followUnhandledEvents,
+	normalizeFollowEvents,
 	type OrgFollowRow,
 	type OrgFollowsLoaderData,
 } from '#universal/follows.ts'
@@ -36,6 +40,10 @@ import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import {
+	FollowRecentUpdatesList,
+	FollowUnhandledNotice,
+} from '../components/follow-recent-updates.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -87,6 +95,11 @@ export function OrgFollowsPage({
 		},
 	}
 	const busy = useIsMutating(mutationFilter) > 0
+	const unhandledEvents = normalizeFollowEvents(
+		data.follows.flatMap((follow) =>
+			followUnhandledEvents(follow, data.unhandledEvents),
+		),
+	)
 	function mutate(follow: OrgFollowRow, intent: 'unfollow' | 'resume') {
 		if (client.isMutating(mutationFilter)) return
 		const isCurrent = captureSubmitter()
@@ -138,7 +151,7 @@ export function OrgFollowsPage({
 			<AccountPageHeader
 				entity="follows"
 				title="Follows"
-				description="Packages and repositories this workspace follows. Their new versions and pushes arrive here as events."
+				description="Packages and repositories this workspace follows. Their new versions and pushes go to this workspace's package subscriptions, or to Recent updates when nothing handles them."
 				currentHref={currentHref}
 			/>
 			{message ? (
@@ -147,6 +160,7 @@ export function OrgFollowsPage({
 				</AccountManagementMessage>
 			) : null}
 			<AccountManagementPanel title="Following" ariaLabel="Follows">
+				<FollowUnhandledNotice events={unhandledEvents} where="below" />
 				{data.follows.length === 0 ? (
 					<p css={mutedCopyCss} data-testid="org-follows-empty">
 						Not following anything yet. Open a package or repository and choose
@@ -170,6 +184,17 @@ export function OrgFollowsPage({
 				<p css={noteCss}>
 					{followDeliveryNote} {followPausedRetentionNote}
 				</p>
+			</AccountManagementPanel>
+			<AccountManagementPanel
+				title="Recent updates"
+				ariaLabel="Recent updates"
+				description={`New versions and pushes no package handled. Each follow keeps its latest ${followRecentUpdatesPerFollow} for ${followRecentUpdatesRetentionDays} days.`}
+			>
+				<FollowRecentUpdatesList
+					updates={data.recentUpdates}
+					showName
+					emptyCopy="Nothing yet. Unhandled new versions and pushes from the things you follow show up here."
+				/>
 			</AccountManagementPanel>
 		</AccountManagementShell>
 	)

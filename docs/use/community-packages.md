@@ -211,8 +211,14 @@ account can react through the `community.fork.upstream_updated` subscription
 topic. Forking also follows the upstream package. You can follow a public
 package without forking it (`follow.published` / `follow.pushed`): choose
 **Follow** on its page, pick the workspace and events, and manage every follow
-on your workspace's **Follows** page. Use the fork topic to auto-rebase, or to
-ping you on Discord. See
+on your workspace's **Follows** page. When no enabled package subscription in
+the workspace handles a follow's events, Kody keeps them as **Recent updates**
+on the Follows page (and the latest few on the package's Follow panel): the
+source, a new version or the pushed commits, the time, and a link. Each follow
+keeps its latest 20 for 30 days, and nothing is charged. Add a package
+subscription for `follow.published` / `follow.pushed` to get them by email,
+Discord, or anything else instead. Use the fork topic to auto-rebase, or to ping
+you on Discord. See
 [Package subscriptions](../guides/package-subscriptions.md#communityforkupstream_updated).
 
 ## One-click install

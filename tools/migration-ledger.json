@@ -667,6 +667,10 @@
 		{
 			"filename": "0181-email-spam-archive.sql",
 			"sha256": "bc29602a884b87d31884621109b6815f34d5f2678578a58652bd84b4fb6ed561"
+		},
+		{
+			"filename": "0182-follow-recent-updates.sql",
+			"sha256": "b10290377c7c50356c0555050ff3ed253991c8098f2991c6812cd787512232e9"
 		}
 	]
 }

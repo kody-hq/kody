@@ -10,6 +10,10 @@ import { followTarget, unfollowTarget } from '#start/server/follows'
 import { packageFollowQuery, followMutationOptions } from '../follows-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { SiteLink } from './site-link.tsx'
+import {
+	FollowRecentUpdatesList,
+	FollowUnhandledNotice,
+} from './follow-recent-updates.tsx'
 import { PackageFollowContext } from './package-follow-context.ts'
 import {
 	describeFollowEvents,
@@ -21,6 +25,7 @@ import {
 } from '#client/routes/follows-shared.ts'
 import {
 	followSkipReasonCopy,
+	followUnhandledEvents,
 	normalizeFollowEvents,
 	type FollowEvent,
 	type PackageFollowStatePayload,
@@ -311,6 +316,22 @@ function FollowProvider({
 						: 'Not following in this workspace.'}
 				</p>
 				{skipped ? <p css={statusCss}>{skipped}</p> : null}
+				{follow ? (
+					<FollowUnhandledNotice
+						events={followUnhandledEvents(follow, workspace.unhandledEvents)}
+						where="on the Follows page"
+					/>
+				) : null}
+				{follow && workspace.recentUpdates.length > 0 ? (
+					<div css={recentUpdatesCss} data-testid="package-follow-recent">
+						<span css={labelCss}>Recent updates</span>
+						<FollowRecentUpdatesList
+							updates={workspace.recentUpdates}
+							showName={false}
+							emptyCopy=""
+						/>
+					</div>
+				) : null}
 				<fieldset css={fieldsetCss}>
 					<legend css={labelCss}>Send events for</legend>
 					{eventOptions.map((option) => {
@@ -481,6 +502,8 @@ const mutedSmallCss = {
 }
 
 const statusCss = { margin: 0, color: colors.text, lineHeight: 1.5 }
+
+const recentUpdatesCss = { display: 'grid', gap: spacing.xs }
 
 const errorCss = { margin: 0, color: colors.error, lineHeight: 1.5 }
 

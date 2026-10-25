@@ -595,6 +595,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 			'Org hard purge deletes follows owned by the org. Account export uses creator_user_id so the creating person receives the row. Deleting a member anonymizes creator_user_id and leaves the org follow in place.',
 	},
 	{
+		kind: 'user_columns',
+		table: 'follow_recent_updates',
+		columns: ['follower_org_id'],
+		includeInExport: false,
+		surface: 'follow_recent_updates_owned_by_org',
+		reason:
+			'Org hard purge deletes the Recent updates of follows owned by the org. Rows only describe public or readable follow targets and carry no person id, so they stay out of account export.',
+	},
+	{
 		kind: 'community_listing_child',
 		table: 'community_reports',
 		listingColumn: 'listing_id',

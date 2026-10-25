@@ -221,6 +221,9 @@ Open these before proposing a new primitive, surface, or storage home.
   — per-kind permission is checked in the handler (`orgPermission: 'none'`);
   lock REST paths collapse to `POST /v1/resource-locks`; unlock stays
   website-only
+- [0081 — Follow Recent updates are the default delivery](./0081-follow-recent-updates-default-delivery.md)
+  — events no enabled subscription handles land in a bounded per-follow Recent
+  updates list (20 per follow, 30 days, zero credits); builds on 0073
 
 ## Historical / UI / implementation
 
