@@ -462,7 +462,9 @@ export function safeLog(
  * Prefer `BackupError.code`. Across Workflows step RPC the engine often
  * reconstitutes a terminal failure as a plain `Error` whose message is
  * `NonRetryableError: [code] …` (see `engineTreatsAsTerminal`); keep parsing
- * that form so in-workflow recovery (e.g. export-result-expired) can match.
+ * that form for status pages and callers that see the RPC-wrapped message.
+ * Recoverable `export-result-expired` must not rely on catching that throw:
+ * return a durable upload-step result instead (see `runBackupRuntime`).
  */
 export function errorCode(error: unknown): string {
 	if (error instanceof BackupError) return error.code

@@ -430,7 +430,10 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 	)
 })
 
-test('an expired export result recovers with a fresh export under new step names', async () => {
+test('an expired export result recovers via durable step result (not NonRetryableError)', async () => {
+	// Workflows treats NonRetryableError as instance-terminal. Recovery must
+	// complete the upload step with `{ kind: 'export-result-expired' }` so the
+	// runtime can start `recover-N-*` steps in the same instance.
 	const consoleLog = vi.spyOn(console, 'log')
 	consoleLog.mockImplementation(() => undefined)
 	const bucket = new MemoryBucket()

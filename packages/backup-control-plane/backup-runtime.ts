@@ -338,27 +338,35 @@ export async function runBackupRuntime(
 		// signed URL window elapses between durable poll completion and the
 		// upload refresh. Catch-up `restart()` replays the successful export
 		// steps, so recovery must use new durable step names in-workflow.
+		//
+		// Critical: do not throw NonRetryableError for the recoverable expired
+		// case. Workflows treats NonRetryableError as instance-terminal, so a
+		// throw from inside `step.do` aborts before this loop can start
+		// `recover-*` steps. Return a durable step result instead; the step
+		// succeeds, and the next attempt runs under a fresh prefix.
 		const maxExportUploadAttempts = 3
-		let stored:
-			| (StoredBackup & {
-					objectKey: string
-					bookmark: string
-			  })
-			| null = null
+		type StoredUpload = StoredBackup & {
+			objectKey: string
+			bookmark: string
+		}
+		type UploadStepResult =
+			| { kind: 'stored'; stored: StoredUpload }
+			| { kind: 'export-result-expired' }
+		let stored: StoredUpload | null = null
 		for (let attempt = 1; attempt <= maxExportUploadAttempts; attempt += 1) {
 			const stepNamePrefix = attempt === 1 ? '' : `recover-${String(attempt)}-`
-			try {
-				const exported = await runDurableExport(sourceEnv, step, {
-					api: options.api,
-					stepNamePrefix,
-				})
-				stored = await step.do(
-					`${stepNamePrefix}stream-export-to-immutable-r2`,
-					{
-						retries: { limit: 4, delay: '30 seconds', backoff: 'exponential' },
-						timeout: '15 minutes',
-					},
-					async () => {
+			const exported = await runDurableExport(sourceEnv, step, {
+				api: options.api,
+				stepNamePrefix,
+			})
+			const uploadResult = await step.do(
+				`${stepNamePrefix}stream-export-to-immutable-r2`,
+				{
+					retries: { limit: 4, delay: '30 seconds', backoff: 'exponential' },
+					timeout: '15 minutes',
+				},
+				async (): Promise<UploadStepResult> => {
+					try {
 						// Refresh only re-polls the durable export bookmark for a
 						// fresh signed URL. It never starts a new export here.
 						const refreshed = await refreshCompletedD1Export(
@@ -377,35 +385,41 @@ export async function runBackupRuntime(
 							options.downloadFetcher,
 						)
 						return {
-							...uploaded,
-							objectKey: refreshedObjectKey,
-							bookmark: refreshed.bookmark,
+							kind: 'stored',
+							stored: {
+								...uploaded,
+								objectKey: refreshedObjectKey,
+								bookmark: refreshed.bookmark,
+							},
 						}
-					},
-				)
+					} catch (error) {
+						// Catch BackupError before the step boundary wraps it as
+						// NonRetryableError (which would fail the instance).
+						if (errorCode(error) === 'export-result-expired') {
+							return { kind: 'export-result-expired' }
+						}
+						throw error
+					}
+				},
+			)
+			if (uploadResult.kind === 'stored') {
+				stored = uploadResult.stored
 				break
-			} catch (error) {
-				// Step boundary wraps non-retryable BackupError as
-				// NonRetryableError; match via errorCode() message parse.
-				const code = errorCode(error)
-				if (
-					code !== 'export-result-expired' ||
-					attempt >= maxExportUploadAttempts
-				) {
-					throw error
-				}
-				safeLog({
-					event: 'backup-export-result-expired-recover',
-					status: 'stale-success',
-					day: checkedPayload.day,
-					instanceId: event.instanceId,
-					databaseId: source.id,
-					databaseName: source.name,
-					attempt,
-					maxAttempts: maxExportUploadAttempts,
-					errorCode: code,
-				})
 			}
+			if (attempt >= maxExportUploadAttempts) {
+				break
+			}
+			safeLog({
+				event: 'backup-export-result-expired-recover',
+				status: 'stale-success',
+				day: checkedPayload.day,
+				instanceId: event.instanceId,
+				databaseId: source.id,
+				databaseName: source.name,
+				attempt,
+				maxAttempts: maxExportUploadAttempts,
+				errorCode: 'export-result-expired',
+			})
 		}
 		if (!stored) {
 			throw new BackupError(
