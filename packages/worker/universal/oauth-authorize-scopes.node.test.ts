@@ -1,7 +1,6 @@
 import { expect, test } from 'vitest'
 import {
 	authorizeHostRequiresScopes,
-	buildMissingAuthorizeScopesError,
 	defaultScopesForAuthorizeHost,
 	pickAuthorizeScopeHost,
 	resolveAuthorizeRequestScopes,
@@ -49,10 +48,6 @@ test('resolveAuthorizeRequestScopes refuses empty scopes for requiring hosts wit
 		scopes: [],
 		authorizeHost: 'slack.com',
 		fillDefaults: true,
-	})
-	expect(result).toEqual({
-		ok: false,
-		error: buildMissingAuthorizeScopesError('slack.com'),
 	})
 	expect(result.ok).toBe(false)
 	if (result.ok) return

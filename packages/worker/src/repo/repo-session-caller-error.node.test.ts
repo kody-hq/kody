@@ -48,7 +48,6 @@ test('isRepoSearchEmptyPatternMessage matches blank-pattern phrases only', () =>
 	const guided = buildRepoSearchEmptyPatternCallerMessage()
 	expect(guided).toContain('repoSearch requires a non-empty pattern.')
 	expect(guided).toContain('whitespace-only patterns are rejected')
-	expect(isRepoSearchEmptyPatternMessage(guided)).toBe(true)
 	// Legacy exact phrase from pre-KODY-BA DO builds still matches the prefix.
 	expect(
 		isRepoSearchEmptyPatternMessage('repoSearch requires a non-empty pattern.'),

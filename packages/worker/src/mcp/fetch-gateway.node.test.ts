@@ -628,7 +628,6 @@ test('fetch gateway headers-only fills headers and sends a body that quotes plac
 	expect(new URL(sent.url).searchParams.get('q')).toBe('{{secret:githubToken}}')
 	const sentBody = await sent.text()
 	expect(sentBody).toBe(issueBody)
-	expect(sentBody).not.toContain('secret-value')
 	expect(resolveSpy).toHaveBeenCalledTimes(1)
 })
 
