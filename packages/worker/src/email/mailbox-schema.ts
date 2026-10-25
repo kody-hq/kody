@@ -36,8 +36,11 @@ export function setMailboxMeta(
  * - v3: permanent message deletion tombstones fence delayed-writer resurrection.
  * - v4: durable per-message retention retry eligibility and diagnostics.
  * - v5: durable outbound provider-index repair ledger.
+ * - v6: `email_messages` gains `archived_at` and a `spam` classification.
+ *   SQLite cannot widen a CHECK in place, so warm objects rebuild the table
+ *   once (rows copied verbatim, `archived_at` NULL).
  * Warm objects re-run CREATE IF NOT EXISTS then apply any version-gated
- * index additions; never destructive.
+ * additions; never destructive.
  */
 export function initializeMailboxSchema(storage: DurableObjectStorage) {
 	const sql = storage.sql
@@ -95,94 +98,7 @@ export function initializeMailboxSchema(storage: DurableObjectStorage) {
 		ON email_threads(created_at ASC, id ASC)`,
 	)
 
-	sql.exec(`
-		CREATE TABLE IF NOT EXISTS email_messages (
-			id TEXT PRIMARY KEY NOT NULL,
-			direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
-			inbox_id TEXT,
-			thread_id TEXT,
-			sender_identity_id TEXT,
-			from_address TEXT NOT NULL DEFAULT '',
-			envelope_from TEXT,
-			to_addresses_json TEXT NOT NULL DEFAULT '[]',
-			cc_addresses_json TEXT NOT NULL DEFAULT '[]',
-			bcc_addresses_json TEXT NOT NULL DEFAULT '[]',
-			reply_to_addresses_json TEXT NOT NULL DEFAULT '[]',
-			subject TEXT NOT NULL DEFAULT '',
-			message_id_header TEXT,
-			in_reply_to_header TEXT,
-			references_json TEXT NOT NULL DEFAULT '[]',
-			headers_json TEXT NOT NULL DEFAULT '{}',
-			auth_results TEXT,
-			text_body TEXT,
-			html_body TEXT,
-			raw_mime_key TEXT,
-			raw_size INTEGER NOT NULL DEFAULT 0,
-			processing_status TEXT NOT NULL CHECK (
-				processing_status IN ('stored', 'sent', 'failed')
-			),
-			classification TEXT NOT NULL DEFAULT 'accepted' CHECK (
-				classification IN ('accepted', 'quarantined')
-			),
-			classification_reason TEXT,
-			provider_message_id TEXT,
-			delivery_status TEXT CHECK (
-				delivery_status IS NULL OR delivery_status IN (
-					'delivered', 'deferred', 'bounced', 'failed',
-					'rejected', 'complained'
-				)
-			),
-			delivery_status_at TEXT,
-			error TEXT,
-			received_at TEXT,
-			sent_at TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)
-	`)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_created_at
-		ON email_messages(created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_created_at_asc
-		ON email_messages(created_at ASC, id ASC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_inbox_created_at
-		ON email_messages(inbox_id, created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_thread_created_at
-		ON email_messages(thread_id, created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_message_id_header
-		ON email_messages(message_id_header)
-		WHERE message_id_header IS NOT NULL`,
-	)
-	sql.exec(
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_email_messages_provider_message_id
-		ON email_messages(provider_message_id)
-		WHERE direction = 'outbound' AND provider_message_id IS NOT NULL`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_direction_created_at
-		ON email_messages(direction, created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_delivery_status_created_at
-		ON email_messages(delivery_status, created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_classification_created_at
-		ON email_messages(classification, created_at DESC, id DESC)`,
-	)
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS idx_email_messages_raw_mime_key
-		ON email_messages(id ASC)
-		WHERE raw_mime_key IS NOT NULL`,
-	)
+	sql.exec(emailMessagesTableSql('email_messages', { ifNotExists: true }))
 	sql.exec(`
 		CREATE TABLE IF NOT EXISTS email_outbound_provider_index_repairs (
 			provider TEXT NOT NULL,
@@ -215,6 +131,11 @@ export function initializeMailboxSchema(storage: DurableObjectStorage) {
 		`CREATE INDEX IF NOT EXISTS idx_email_message_retention_retries_retry_at
 		ON email_message_retention_retries(retry_at ASC, message_id ASC)`,
 	)
+	// After every table that references email_messages exists.
+	if (!emailMessagesHasArchivedAt(sql)) {
+		rebuildEmailMessagesForSpamAndArchive(storage)
+	}
+	createEmailMessageIndexes(sql)
 
 	sql.exec(`
 		CREATE TABLE IF NOT EXISTS email_attachments (
@@ -383,4 +304,181 @@ export function initializeMailboxSchema(storage: DurableObjectStorage) {
 	}
 
 	setMailboxMeta(storage, mailboxMetaSchemaVersionKey, mailboxSchemaVersion)
+}
+
+function emailMessagesTableSql(
+	name: string,
+	options: { ifNotExists: boolean },
+): string {
+	return `
+		CREATE TABLE ${options.ifNotExists ? 'IF NOT EXISTS ' : ''}${name} (
+			id TEXT PRIMARY KEY NOT NULL,
+			direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+			inbox_id TEXT,
+			thread_id TEXT,
+			sender_identity_id TEXT,
+			from_address TEXT NOT NULL DEFAULT '',
+			envelope_from TEXT,
+			to_addresses_json TEXT NOT NULL DEFAULT '[]',
+			cc_addresses_json TEXT NOT NULL DEFAULT '[]',
+			bcc_addresses_json TEXT NOT NULL DEFAULT '[]',
+			reply_to_addresses_json TEXT NOT NULL DEFAULT '[]',
+			subject TEXT NOT NULL DEFAULT '',
+			message_id_header TEXT,
+			in_reply_to_header TEXT,
+			references_json TEXT NOT NULL DEFAULT '[]',
+			headers_json TEXT NOT NULL DEFAULT '{}',
+			auth_results TEXT,
+			text_body TEXT,
+			html_body TEXT,
+			raw_mime_key TEXT,
+			raw_size INTEGER NOT NULL DEFAULT 0,
+			processing_status TEXT NOT NULL CHECK (
+				processing_status IN ('stored', 'sent', 'failed')
+			),
+			classification TEXT NOT NULL DEFAULT 'accepted' CHECK (
+				classification IN ('accepted', 'quarantined', 'spam')
+			),
+			classification_reason TEXT,
+			provider_message_id TEXT,
+			delivery_status TEXT CHECK (
+				delivery_status IS NULL OR delivery_status IN (
+					'delivered', 'deferred', 'bounced', 'failed',
+					'rejected', 'complained'
+				)
+			),
+			delivery_status_at TEXT,
+			error TEXT,
+			received_at TEXT,
+			sent_at TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			archived_at TEXT
+		)
+	`
+}
+
+/** Pre-v6 columns, in table order; the v6 rebuild copies exactly these. */
+const preV6EmailMessageColumns = [
+	'id',
+	'direction',
+	'inbox_id',
+	'thread_id',
+	'sender_identity_id',
+	'from_address',
+	'envelope_from',
+	'to_addresses_json',
+	'cc_addresses_json',
+	'bcc_addresses_json',
+	'reply_to_addresses_json',
+	'subject',
+	'message_id_header',
+	'in_reply_to_header',
+	'references_json',
+	'headers_json',
+	'auth_results',
+	'text_body',
+	'html_body',
+	'raw_mime_key',
+	'raw_size',
+	'processing_status',
+	'classification',
+	'classification_reason',
+	'provider_message_id',
+	'delivery_status',
+	'delivery_status_at',
+	'error',
+	'received_at',
+	'sent_at',
+	'created_at',
+	'updated_at',
+].join(', ')
+
+function emailMessagesHasArchivedAt(sql: SqlStorage): boolean {
+	return sql
+		.exec<{ name: string }>(`PRAGMA table_info('email_messages')`)
+		.toArray()
+		.some((column) => column.name === 'archived_at')
+}
+
+/**
+ * v6 rebuild. `email_message_retention_retries` cascades from
+ * `email_messages`, so its rows are parked in a scratch table while the
+ * parent is swapped; dropping the parent with live children would delete
+ * them.
+ */
+function rebuildEmailMessagesForSpamAndArchive(storage: DurableObjectStorage) {
+	storage.transactionSync(() => {
+		const sql = storage.sql
+		sql.exec(`DROP TABLE IF EXISTS email_message_retention_retries_v6_copy`)
+		sql.exec(`DROP TABLE IF EXISTS email_messages_v6`)
+		sql.exec(
+			`CREATE TABLE email_message_retention_retries_v6_copy AS
+			SELECT * FROM email_message_retention_retries`,
+		)
+		sql.exec(`DELETE FROM email_message_retention_retries`)
+		sql.exec(emailMessagesTableSql('email_messages_v6', { ifNotExists: false }))
+		sql.exec(
+			`INSERT INTO email_messages_v6 (${preV6EmailMessageColumns}, archived_at)
+			SELECT ${preV6EmailMessageColumns}, NULL FROM email_messages`,
+		)
+		sql.exec(`DROP TABLE email_messages`)
+		sql.exec(`ALTER TABLE email_messages_v6 RENAME TO email_messages`)
+		sql.exec(
+			`INSERT INTO email_message_retention_retries
+			SELECT * FROM email_message_retention_retries_v6_copy`,
+		)
+		sql.exec(`DROP TABLE email_message_retention_retries_v6_copy`)
+	})
+}
+
+function createEmailMessageIndexes(sql: SqlStorage) {
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_created_at
+		ON email_messages(created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_created_at_asc
+		ON email_messages(created_at ASC, id ASC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_inbox_created_at
+		ON email_messages(inbox_id, created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_thread_created_at
+		ON email_messages(thread_id, created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_message_id_header
+		ON email_messages(message_id_header)
+		WHERE message_id_header IS NOT NULL`,
+	)
+	sql.exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_email_messages_provider_message_id
+		ON email_messages(provider_message_id)
+		WHERE direction = 'outbound' AND provider_message_id IS NOT NULL`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_direction_created_at
+		ON email_messages(direction, created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_delivery_status_created_at
+		ON email_messages(delivery_status, created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_classification_created_at
+		ON email_messages(classification, created_at DESC, id DESC)`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_archived_created_at
+		ON email_messages(created_at DESC, id DESC)
+		WHERE archived_at IS NOT NULL`,
+	)
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS idx_email_messages_raw_mime_key
+		ON email_messages(id ASC)
+		WHERE raw_mime_key IS NOT NULL`,
+	)
 }

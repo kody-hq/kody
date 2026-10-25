@@ -134,9 +134,10 @@ ON email_sender_rules(user_id, kind, value);`,
 	),
 	delivery_status_at TEXT,
 	classification TEXT NOT NULL DEFAULT 'accepted' CHECK (
-		classification IN ('accepted', 'quarantined')
+		classification IN ('accepted', 'quarantined', 'spam')
 	),
 	classification_reason TEXT,
+	archived_at TEXT,
 	FOREIGN KEY (inbox_id) REFERENCES email_inboxes(id) ON DELETE SET NULL,
 	FOREIGN KEY (thread_id) REFERENCES system_email_threads(id) ON DELETE SET NULL,
 	FOREIGN KEY (sender_identity_id) REFERENCES email_sender_identities(id)

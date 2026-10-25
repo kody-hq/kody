@@ -107,11 +107,33 @@ export function setMailboxMessageClassification(
 	input: Omit<MailboxSetMessageClassificationInput, 'ownerId'>,
 ): MailboxPartialMutationResult {
 	const messageId = assertMailboxNonEmptyString(input.messageId, 'messageId')
-	const classification = assertMailboxClassification(input.classification)
 	const updatedAt = assertMailboxCanonicalIsoTimestamp(
 		input.updatedAt,
 		'updatedAt',
 	)
+	const assignments: Array<string> = []
+	const values: Array<SqlStorageValue> = []
+	if (input.classification !== undefined) {
+		assignments.push('classification = ?', 'classification_reason = ?')
+		values.push(
+			assertMailboxClassification(input.classification),
+			input.classificationReason ?? null,
+		)
+	}
+	if (input.archivedAt !== undefined) {
+		assignments.push('archived_at = ?')
+		values.push(
+			assertOptionalMailboxCanonicalIsoTimestamp(
+				input.archivedAt,
+				'archivedAt',
+			),
+		)
+	}
+	if (assignments.length === 0) {
+		throw new Error(
+			'Mailbox message triage update requires classification or archivedAt.',
+		)
+	}
 	const existing = sql
 		.exec<{ updated_at: string }>(
 			`SELECT updated_at FROM email_messages WHERE id = ? LIMIT 1`,
@@ -123,13 +145,11 @@ export function setMailboxMessageClassification(
 
 	sql.exec(
 		`UPDATE email_messages
-		SET classification = ?,
-			classification_reason = ?,
+		SET ${assignments.join(', ')},
 			updated_at = ?
 		WHERE id = ?
 			AND updated_at <= ?`,
-		classification,
-		input.classificationReason,
+		...values,
 		updatedAt,
 		messageId,
 		updatedAt,

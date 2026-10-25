@@ -1,7 +1,7 @@
 import { normalizeEmailAddress } from './address.ts'
 import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
 import { evaluateEmailSenderRules } from './sender-rules.ts'
-import { type EmailClassification } from './types.ts'
+import { type EmailReceiveClassification } from './types.ts'
 
 export async function resolveInboundEmailClassification(input: {
 	db: D1Database
@@ -11,7 +11,7 @@ export async function resolveInboundEmailClassification(input: {
 	envelopeFrom: string
 	authResults: string | null
 }): Promise<{
-	classification: EmailClassification
+	classification: EmailReceiveClassification
 	classificationReason: string | null
 }> {
 	const verdict = resolveInboundEmailAuthVerdict(input.authResults)

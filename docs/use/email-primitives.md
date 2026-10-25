@@ -97,31 +97,36 @@ Use the MCP `email` domain:
   `{ filename, content_type, content_base64 }`) are sent with the reply and
   stored as `external` attachments readable later via `emailAttachmentGet`. With
   attachments, the whole message (bodies plus decoded attachment bytes) must fit
-  the plan's `email_message_bytes` per-message cap. A quarantined original is
-  refused before any send or daily send quota is used
-  (`quarantined_inbound_reply`): replies to quarantined mail usually reach
-  spoofed senders. Release it first with `emailMessageClassify`
+  the plan's `email_message_bytes` per-message cap. A quarantined or spam
+  original is refused before any send or daily send quota is used
+  (`quarantined_inbound_reply`): replies to that mail usually reach spoofed
+  senders. Release it first with `emailMessageClassify`
   (`classification: "accepted"`) or Not spam on `/@<slug>/-/email`, then reply.
   The same refusal applies to package runtime `email.reply`, which calls
   `emailReply`.
 - `emailAttachmentGet` returns stored attachment bytes by attachment id.
 - `emailMessageList` lists stored inbound and outbound messages. Rows include
-  `classification` and `classification_reason` and omit parsed bodies; pass an
-  optional `classification` filter (`accepted` or `quarantined`) to narrow the
-  list. Call `emailMessageGet` when a handler needs body text.
+  `classification`, `classification_reason`, and `archived_at` and omit parsed
+  bodies. The default `view` is `inbox`, which hides spam and archived mail;
+  pass `view` (`inbox`, `accepted`, `quarantined`, `spam`, `archived`, or `all`)
+  to see the rest. See [Spam and archive](#spam-and-archive). Call
+  `emailMessageGet` when a handler needs body text.
 - `emailMessageSearch` searches stored messages by case-insensitive substring
   match against the subject, header `From`, and envelope sender. It accepts the
-  same `inbox_id` / `direction` / `processing_status` / `delivery_status`
-  filters and limit caps as `emailMessageList`. Search rows also omit bodies.
+  same `inbox_id` / `direction` / `processing_status` / `delivery_status` /
+  `view` filters and limit caps as `emailMessageList`. Search rows also omit
+  bodies.
 - `emailMessageGet` returns parsed bodies, headers, thread metadata, and
   attachment metadata.
 - `emailMessageDelete` deletes one stored inbound or outbound message for the
   current org. Missing and foreign ids fail. Deleting frees a
   `stored_email_messages` slot so new inbound mail can be accepted again. The
   same delete is available on `/@<slug>/-/email`.
-- `emailMessageClassify` reclassifies a stored inbound message as `accepted` or
-  `quarantined`. Reclassification never retroactively dispatches package
-  subscription events.
+- `emailMessageClassify` marks a stored inbound message as spam, not spam
+  (`accepted`), or `quarantined`, and/or archives or unarchives it. Nothing is
+  deleted. Reclassification never retroactively dispatches package subscription
+  events. System inbox mail is refused here; admins use
+  `adminSystemEmailClassify`.
 - `emailSenderRuleList` lists sender allow/block/quarantine rules.
 - `emailSenderRuleSet` creates or updates a sender rule by address or domain
   (`kind` / `value` / `effect` / optional `note`).
@@ -245,8 +250,10 @@ Inbound storage is quota-gated per user:
 ## Spam controls
 
 Inbound mail is classified at receive time. Each stored message carries
-`classification` (`accepted` or `quarantined`) and an optional human-readable
-`classification_reason`. Decision order:
+`classification` and an optional human-readable `classification_reason`.
+Receive-time classification is always `accepted` or `quarantined`; `spam` is
+only ever set by a person or an admin (see
+[Spam and archive](#spam-and-archive)). Decision order:
 
 1. **Authentication-Results verdict** — Kody reads SPF/DKIM/DMARC only from
    Cloudflare-stamped `Authentication-Results` (or Cloudflare
@@ -274,17 +281,57 @@ Inbound mail is classified at receive time. Each stored message carries
 Each org may store at most 200 sender rules. Manage them with
 `emailSenderRuleList`, `emailSenderRuleSet` (kind / value / effect / note), and
 `emailSenderRuleDelete`. Reclassify a stored inbound message with
-`emailMessageClassify`, or filter `emailMessageList` by `classification`.
+`emailMessageClassify`, or filter `emailMessageList` by `view`.
 
-On `/@<slug>/-/email`, quarantined messages show a Quarantined badge (with the
-reason as tooltip/secondary text), the list can filter to Quarantined only, and
-inbound messages offer Mark as spam / Not spam actions that call the same
+On `/@<slug>/-/email`, quarantined and spam messages show a badge (with the
+reason as tooltip/secondary text), the list filters by view, and inbound
+messages offer Mark as spam / Not spam actions that call the same
 reclassification path.
 
 Subscription dispatch uses the receive-time classification exactly once:
 accepted mail fires `email.message.received`; quarantined mail fires
 `email.message.quarantined` instead. Later reclassification never retroactively
 dispatches either topic.
+
+### Spam and archive
+
+Spam and archive are non-destructive triage. Neither deletes mail, attachments,
+or delivery history, and neither frees a `stored_email_messages` slot (delete
+does).
+
+- **Mark as spam** sets `classification: "spam"` with reason `Marked as spam.`
+- **Not spam** sets `classification: "accepted"` and clears the reason. It also
+  releases quarantined mail.
+- **Archive / Unarchive** sets or clears `archived_at`. Archive is independent
+  of classification, so unarchiving spam keeps it spam.
+
+List views partition every message into `inbox`, `archived`, and `spam`:
+
+| `view`        | Shows                                          |
+| ------------- | ---------------------------------------------- |
+| `inbox`       | Not spam and not archived (default).           |
+| `accepted`    | Accepted, not archived.                        |
+| `quarantined` | Quarantined, not archived. Visible in `inbox`. |
+| `spam`        | Spam, archived or not.                         |
+| `archived`    | Archived, not spam.                            |
+| `all`         | Everything.                                    |
+
+Reply blocking treats spam like quarantined (`quarantined_inbound_reply`).
+Marking spam never adds a sender rule. After Mark as spam, the web inbox offers
+a one-click **Block sender**, which creates an `address` / `block` sender rule
+for the stored From address only when you click it.
+
+```ts
+// Mark spam, then archive separately (or pass both at once).
+await emailMessageClassify({ message_id, classification: 'spam' })
+await emailMessageClassify({ message_id, archived: true })
+// Not spam / restore.
+await emailMessageClassify({ message_id, classification: 'accepted' })
+// See what the default inbox hides.
+await emailMessageList({ view: 'spam' })
+```
+
+Each triage change is audit logged (`emailMessageClassify`, category `account`).
 
 ## Who an inbound email runs as
 
@@ -479,6 +526,16 @@ Operators manage system sender rules with `adminSystemEmailSenderRuleList`,
 `adminSystemEmailSenderRuleSet`, and `adminSystemEmailSenderRuleDelete` (same
 address/domain matching and effects as user sender rules, scoped to the
 `system:email` owner).
+
+System inbox mail uses the same [spam and archive](#spam-and-archive) model.
+`adminSystemEmailClassify({ message_id, classification?, archived? })` marks
+spam, not spam, or quarantined, and/or archives; it is admin-only and audit
+logged like `adminSystemEmailDelete`. `adminSystemEmailList` defaults to the
+`inbox` view and accepts the same `view` values; list and get rows include
+`classification`, `classification_reason`, and `archived_at`. The
+`/admin/system-email` page offers the same actions, a view filter, and the
+optional Block sender follow-up (an `adminSystemEmailSenderRuleSet`-equivalent
+rule for the stored From address).
 
 The payload is the same metadata-first envelope as `email.message.received`
 (with `event: 'email.system-message.received'`), plus one extra field:

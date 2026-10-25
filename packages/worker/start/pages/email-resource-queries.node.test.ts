@@ -85,7 +85,7 @@ it('starts independent reads together and reuses list and destinations when sele
 		pageSize: 25,
 		total: 0,
 		query: 'hello',
-		classification: null,
+		view: 'inbox',
 	})
 	resolveDetail(null)
 	resolveDestinations({

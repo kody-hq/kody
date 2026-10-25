@@ -1,9 +1,13 @@
 import { z } from 'zod'
 import { maxOutboundEmailAttachments } from '#worker/email/outbound.ts'
 import {
+	defaultEmailMessageView,
 	emailClassificationValues,
 	emailDeliveryStatusValues,
+	emailMessageViewValues,
+	type EmailClassification,
 	type EmailMessageRecord,
+	type EmailMessageView,
 	type EmailSenderRuleRecord,
 	emailDirectionValues,
 	emailProcessingStatusValues,
@@ -45,6 +49,7 @@ export const emailMessageSummarySchema = z.object({
 	processing_status: z.enum(emailProcessingStatusValues),
 	classification: z.enum(emailClassificationValues),
 	classification_reason: z.string().nullable(),
+	archived_at: z.string().nullable(),
 	provider_message_id: z.string().nullable(),
 	delivery_status: z.enum(emailDeliveryStatusValues).nullable(),
 	delivery_status_at: z.string().nullable(),
@@ -54,6 +59,22 @@ export const emailMessageSummarySchema = z.object({
 	created_at: z.string(),
 	updated_at: z.string(),
 })
+
+export const emailMessageViewInputSchema = z
+	.enum(emailMessageViewValues)
+	.optional()
+	.describe(
+		'"inbox" (default) hides spam and archived mail; "accepted" / "quarantined" narrow the inbox; "spam" and "archived" show those folders; "all" returns everything. When classification is set and view is omitted, view defaults to "all".',
+	)
+
+/** `view` wins; an explicit classification filter alone searches everything. */
+export function resolveEmailMessageView(input: {
+	view?: EmailMessageView
+	classification?: EmailClassification
+}): EmailMessageView {
+	if (input.view) return input.view
+	return input.classification ? 'all' : defaultEmailMessageView
+}
 
 export const emailSenderRuleSchema = z.object({
 	id: z.string(),
@@ -131,6 +152,7 @@ export function toMessageSummary(message: EmailMessageRecord) {
 		processing_status: message.processingStatus,
 		classification: message.classification,
 		classification_reason: message.classificationReason,
+		archived_at: message.archivedAt,
 		provider_message_id: message.providerMessageId,
 		delivery_status: message.deliveryStatus ?? null,
 		delivery_status_at: message.deliveryStatusAt ?? null,

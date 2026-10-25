@@ -9,7 +9,7 @@ import {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/email')({
 	staticData: {
-		filterSearchKeys: ['q', 'classification', 'page', 'pageSize'],
+		filterSearchKeys: ['q', 'view', 'classification', 'page', 'pageSize'],
 		workspaceSwitch: { section: 'email' },
 		navigation: { rail: 'workspace', item: 'email' },
 		orgScope: { section: 'email' },

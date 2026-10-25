@@ -24,13 +24,14 @@ import {
 	getDangerPillCss,
 	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
+import { type EmailClassification } from '#universal/email-message-view.ts'
 import { type AccountEmailMessageDetail } from '#universal/loader-data.ts'
+import { EmailTriageBadges } from './email-triage-controls.tsx'
 import {
 	type ClassifyState,
 	type DeleteState,
 	directionLabel,
 	messageDate,
-	quarantinedBadgeCss,
 	senderBadgeCss,
 	senderClassificationLabel,
 } from './account-email-shared.ts'
@@ -62,7 +63,15 @@ export type AccountEmailDetailProps = {
 	deleteArmed: boolean
 	onDeleteArm: () => void
 	onDeleteReset: () => void
-	onClassify: (classification: 'accepted' | 'quarantined') => void
+	onTriage: (input: {
+		classification?: EmailClassification
+		archived?: boolean
+	}) => void
+	/** Shown only after this person marks the message as spam. */
+	blockOffer: boolean
+	blockState: 'idle' | 'blocking'
+	onBlockSender: () => void
+	onDismissBlockOffer: () => void
 	onNavigate: (href: string) => void
 	onDelete: () => void
 }
@@ -75,12 +84,18 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 		deleteArmed,
 		onDeleteArm,
 		onDeleteReset,
-		onClassify,
+		onTriage,
+		blockOffer,
+		blockState,
+		onBlockSender,
+		onDismissBlockOffer,
 		onDelete,
 	} = props
 	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
-	const isMutating = classifyState !== 'idle' || deleteState !== 'idle'
+	const isMutating =
+		classifyState !== 'idle' || deleteState !== 'idle' || blockState !== 'idle'
+	const classification = selectedMessage.classification
 
 	return (
 		<div css={recordBodyCss}>
@@ -104,14 +119,11 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 					>
 						{selectedMessage.subject || '(no subject)'}
 					</h2>
-					{selectedMessage.classification === 'quarantined' ? (
-						<span
-							title={selectedMessage.classification_reason ?? 'Quarantined'}
-							css={quarantinedBadgeCss}
-						>
-							Quarantined
-						</span>
-					) : null}
+					<EmailTriageBadges
+						classification={classification}
+						classificationReason={selectedMessage.classification_reason}
+						archivedAt={selectedMessage.archived_at}
+					/>
 					{senderClassificationLabel(selectedMessage.sender_classification) ? (
 						<span
 							title={selectedMessage.sender_classification_reason ?? undefined}
@@ -124,7 +136,7 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 				<p css={{ margin: 0, color: colors.textMuted }}>
 					{directionLabel(selectedMessage.direction)} message
 				</p>
-				{selectedMessage.classification === 'quarantined' &&
+				{classification !== 'accepted' &&
 				selectedMessage.classification_reason ? (
 					<p
 						css={{
@@ -144,31 +156,42 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 					gap: spacing.sm,
 				}}
 			>
-				{selectedMessage.direction === 'inbound' ? (
-					selectedMessage.classification === 'quarantined' ? (
-						<button
-							type="button"
-							disabled={isMutating}
-							onClick={() => {
-								onClassify('accepted')
-							}}
-							css={secondaryButtonCss}
-						>
-							{classifyState === 'saving' ? 'Updating…' : 'Not spam'}
-						</button>
-					) : (
-						<button
-							type="button"
-							disabled={isMutating}
-							onClick={() => {
-								onClassify('quarantined')
-							}}
-							css={dangerButtonCss}
-						>
-							{classifyState === 'saving' ? 'Updating…' : 'Mark as spam'}
-						</button>
-					)
+				{selectedMessage.direction === 'inbound' &&
+				classification !== 'accepted' ? (
+					<button
+						type="button"
+						disabled={isMutating}
+						onClick={() => {
+							onTriage({ classification: 'accepted' })
+						}}
+						css={secondaryButtonCss}
+					>
+						{classifyState === 'saving' ? 'Updating…' : 'Not spam'}
+					</button>
 				) : null}
+				{selectedMessage.direction === 'inbound' &&
+				classification !== 'spam' ? (
+					<button
+						type="button"
+						disabled={isMutating}
+						onClick={() => {
+							onTriage({ classification: 'spam' })
+						}}
+						css={dangerButtonCss}
+					>
+						{classifyState === 'saving' ? 'Updating…' : 'Mark as spam'}
+					</button>
+				) : null}
+				<button
+					type="button"
+					disabled={isMutating}
+					onClick={() => {
+						onTriage({ archived: !selectedMessage.archived_at })
+					}}
+					css={secondaryButtonCss}
+				>
+					{selectedMessage.archived_at ? 'Unarchive' : 'Archive'}
+				</button>
 				<button
 					type="button"
 					disabled={isMutating}
@@ -196,6 +219,47 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 							: 'Delete'}
 				</button>
 			</div>
+			{blockOffer &&
+			classification === 'spam' &&
+			selectedMessage.from_address ? (
+				<div
+					role="status"
+					css={{
+						display: 'flex',
+						flexWrap: 'wrap',
+						gap: spacing.sm,
+						alignItems: 'center',
+						padding: spacing.sm,
+						border: `1px solid ${colors.border}`,
+						borderRadius: radius.md,
+						background: colors.primarySoftest,
+					}}
+				>
+					<span>
+						Also block future mail from{' '}
+						<code css={{ overflowWrap: 'anywhere' }}>
+							{selectedMessage.from_address}
+						</code>
+						?
+					</span>
+					<button
+						type="button"
+						disabled={isMutating}
+						onClick={onBlockSender}
+						css={secondaryButtonCss}
+					>
+						{blockState === 'blocking' ? 'Blocking…' : 'Block sender'}
+					</button>
+					<button
+						type="button"
+						disabled={isMutating}
+						onClick={onDismissBlockOffer}
+						css={secondaryButtonCss}
+					>
+						No thanks
+					</button>
+				</div>
+			) : null}
 			{selectedMessage.enable_sender ? (
 				<form
 					onSubmit={(event) => {
@@ -312,6 +376,17 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 					{
 						label: 'Classification',
 						value: selectedMessage.classification,
+					},
+					{
+						label: 'Archived',
+						value: selectedMessage.archived_at ? (
+							<TimestampValue
+								value={selectedMessage.archived_at}
+								fallback="No"
+							/>
+						) : (
+							'No'
+						),
 					},
 					{
 						label: 'CC',

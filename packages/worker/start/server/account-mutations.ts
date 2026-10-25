@@ -14,6 +14,7 @@ import {
 	approvePackageSchema,
 } from '#universal/integration-mutations.ts'
 import { connectSecretsSchema } from '../connect-input.ts'
+import { emailClassificationValues } from '#universal/email-message-view.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
@@ -1074,10 +1075,18 @@ export const deleteEmailMessage = createServerFn({ method: 'POST' })
 
 export const classifyEmailMessage = createServerFn({ method: 'POST' })
 	.validator(
-		resourceInput.omit({ search: true }).extend({
-			messageId: z.string().trim().min(1),
-			classification: z.enum(['accepted', 'quarantined']),
-		}),
+		resourceInput
+			.omit({ search: true })
+			.extend({
+				messageId: z.string().trim().min(1),
+				classification: z.enum(emailClassificationValues).optional(),
+				archived: z.boolean().optional(),
+			})
+			.refine(
+				(value) =>
+					value.classification !== undefined || value.archived !== undefined,
+				'Provide classification, archived, or both.',
+			),
 	)
 	.handler(async ({ data }) => {
 		const [
@@ -1099,10 +1108,41 @@ export const classifyEmailMessage = createServerFn({ method: 'POST' })
 						...context,
 						messageId: data.messageId,
 						classification: data.classification,
+						archived: data.archived,
 					}),
 				)
 				return result
 			},
+		)
+	})
+
+export const blockEmailMessageSender = createServerFn({ method: 'POST' })
+	.validator(
+		resourceInput.omit({ search: true }).extend({
+			messageId: z.string().trim().min(1),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ blockAccountEmailSender },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-email.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation(
+			{
+				scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined,
+			},
+			async (context) =>
+				requireOperationResult(
+					await blockAccountEmailSender({
+						...context,
+						messageId: data.messageId,
+					}),
+				),
 		)
 	})
 

@@ -29,13 +29,14 @@ import {
 	listEmailInboxesForUser,
 } from '#worker/email/repo.ts'
 import {
-	emailClassificationValues,
 	type EmailClassification,
 	type EmailDeliveryStatus,
 	type EmailDirection,
 	type EmailMessageRecord,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 } from '#worker/email/types.ts'
+import { readEmailMessageViewParam } from '#universal/email-message-view.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { resolveEntitlementLimit, type PlanName } from '#universal/plans.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -114,6 +115,7 @@ export type AccountEmailMessageListItem = {
 	processing_status: EmailProcessingStatus
 	classification: EmailClassification
 	classification_reason: string | null
+	archived_at: string | null
 	/** Null for outbound mail, which has no inbound sender to classify. */
 	sender_classification: AccountEmailSenderClassification | null
 	sender_classification_reason: string | null
@@ -187,8 +189,7 @@ export type AccountEmailLoaderData = {
 	pageSize: number
 	total: number
 	query: string
-	/** `null` means no classification filter (all messages). */
-	classification: EmailClassification | null
+	view: EmailMessageView
 }
 
 export function readAccountEmailSelectedMessageId(
@@ -212,14 +213,10 @@ export function readAccountEmailSelectedMessageId(
 	return url.searchParams.get('selected')?.trim() || null
 }
 
-export function readAccountEmailClassificationFilter(
-	requestUrl: string,
-): EmailClassification | null {
-	const url = new URL(requestUrl, 'http://localhost')
-	const raw = url.searchParams.get('classification')?.trim() ?? ''
-	return (emailClassificationValues as ReadonlyArray<string>).includes(raw)
-		? (raw as EmailClassification)
-		: null
+export function readAccountEmailView(requestUrl: string): EmailMessageView {
+	return readEmailMessageViewParam(
+		new URL(requestUrl, 'http://localhost').searchParams,
+	)
 }
 
 function asStringAddresses(value: Array<unknown>): Array<string> {
@@ -242,6 +239,7 @@ function messageToListItem(
 		processing_status: message.processingStatus,
 		classification: message.classification,
 		classification_reason: message.classificationReason,
+		archived_at: message.archivedAt,
 		sender_classification: null,
 		sender_classification_reason: null,
 		provider_message_id: message.providerMessageId,
@@ -469,7 +467,7 @@ async function loadSelectedMessage(input: {
 			? 'email.message.quarantined'
 			: 'email.message.received'
 	const enable_sender =
-		sender.enableSender && input.orgSlug
+		sender.enableSender && input.orgSlug && message.classification !== 'spam'
 			? {
 					sender: sender.enableSender,
 					topic,
@@ -526,7 +524,7 @@ function emptyVerifiedShell(input: {
 	page: number
 	pageSize: number
 	query: string
-	classification: EmailClassification | null
+	view: EmailMessageView
 	emailVerified: boolean
 }): AccountEmailLoaderData {
 	return {
@@ -550,7 +548,7 @@ function emptyVerifiedShell(input: {
 		pageSize: input.pageSize,
 		total: 0,
 		query: input.query,
-		classification: input.classification,
+		view: input.view,
 	}
 }
 
@@ -598,7 +596,7 @@ export async function loadAccountEmailData(input: {
 		page,
 		pageSize,
 		query: url.searchParams.get('q')?.trim() ?? '',
-		classification: readAccountEmailClassificationFilter(input.request.url),
+		view: readAccountEmailView(input.request.url),
 		selectedMessageId: readAccountEmailSelectedMessageId(
 			input.request.url,
 			input.pathMessageId,
@@ -613,7 +611,7 @@ export async function readAccountEmailData(input: {
 	page: number
 	pageSize: number
 	query: string
-	classification: AccountEmailLoaderData['classification']
+	view: AccountEmailLoaderData['view']
 	selectedMessageId?: string | null
 }): Promise<AccountEmailLoaderData> {
 	await authorize({ env: input.env, request: input.user.request }, 'email:read')
@@ -624,7 +622,7 @@ export async function readAccountEmailData(input: {
 	)
 	const offset = (page - 1) * pageSize
 	const query = input.query.trim()
-	const classification = input.classification
+	const view = input.view
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
@@ -647,7 +645,7 @@ export async function readAccountEmailData(input: {
 			page,
 			pageSize,
 			query,
-			classification,
+			view,
 			emailVerified: false,
 		})
 	}
@@ -660,7 +658,7 @@ export async function readAccountEmailData(input: {
 				env: input.env,
 				ownerId: userId,
 				query,
-				classification,
+				view,
 				pageSize,
 				offset,
 			}),
@@ -718,6 +716,6 @@ export async function readAccountEmailData(input: {
 		pageSize,
 		total: listResult.total,
 		query,
-		classification,
+		view,
 	}
 }

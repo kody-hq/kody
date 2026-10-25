@@ -9,8 +9,6 @@ import {
 import { type AccountEmailMessageListItem } from '#universal/loader-data.ts'
 export type ClassifyState = 'idle' | 'saving'
 export type DeleteState = 'idle' | 'deleting'
-export type ClassificationFilter = 'all' | 'quarantined'
-
 export const emailRoute = createListDetailLinks('/account/email')
 
 export function senderClassificationLabel(

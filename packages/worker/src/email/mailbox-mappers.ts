@@ -161,6 +161,7 @@ export function mapMailboxMessageRow(
 			row['classification_reason'] == null
 				? null
 				: String(row['classification_reason']),
+		archivedAt: row['archived_at'] == null ? null : String(row['archived_at']),
 		providerMessageId:
 			row['provider_message_id'] == null
 				? null

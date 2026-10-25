@@ -579,7 +579,8 @@ export async function sendOutboundEmail(
 			// provider. Quarantined mail is often spoofed; a reply backscatters.
 			switch (replyOriginal.classification) {
 				case 'quarantined':
-					throw new QuarantinedInboundReplyError()
+				case 'spam':
+					throw new QuarantinedInboundReplyError(replyOriginal.classification)
 				case 'accepted':
 					break
 				default: {
@@ -738,6 +739,7 @@ export async function sendOutboundEmail(
 				processingStatus: 'stored',
 				classification: 'accepted',
 				classificationReason: null,
+				archivedAt: null,
 				providerMessageId: null,
 				deliveryStatus: null,
 				deliveryStatusAt: null,
