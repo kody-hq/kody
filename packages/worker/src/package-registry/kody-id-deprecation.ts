@@ -118,12 +118,37 @@ export function resolvePreferredPackageIdentity(result: unknown): {
 	return { name, packageId }
 }
 
+function isCommunityForkResult(result: unknown): boolean {
+	return isRecord(result) && typeof result['fork_id'] === 'string'
+}
+
 export function buildKodyIdDeprecationHint(
 	result: unknown,
 	args?: unknown,
 ): string {
 	const style = leftoverIdentityStyle(args) ?? 'snake'
 	const { name, packageId } = resolvePreferredPackageIdentity(result)
+
+	// communityFork uses leftover `kody_id` as an optional destination leaf,
+	// not as package lookup. It does not accept `name` / `package_id`.
+	if (isCommunityForkResult(result)) {
+		const parts = [
+			'Deprecated: the `kody_id` input on communityFork is a leftover destination-leaf alias.',
+			'Omit `kody_id` when the listing leaf (or next free alternate) is fine.',
+		]
+		if (name !== undefined) {
+			parts.push(
+				`This fork landed as ${JSON.stringify(name)}${packageId !== undefined ? ` (package_id ${JSON.stringify(packageId)} for later lookup)` : ''}.`,
+			)
+		} else if (packageId !== undefined) {
+			parts.push(
+				`This fork package_id is ${JSON.stringify(packageId)} for later lookup.`,
+			)
+		}
+		parts.push('Stop sending `kody_id` on your next communityFork call.')
+		return parts.join(' ')
+	}
+
 	const parts: Array<string> = [
 		'Deprecated: the `kody_id` / `kodyId` input is leftover package identity.',
 	]

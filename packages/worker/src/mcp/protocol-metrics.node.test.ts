@@ -190,6 +190,60 @@ test('classifyMcpProtocolRequest covers legacy, modern, and failure paths', asyn
 		),
 	).toMatchObject({ packageIdentityParam: 'kody_id' })
 
+	expect(
+		await classifyMcpProtocolRequest(
+			jsonRequest(
+				{
+					jsonrpc: '2.0',
+					id: 8.1,
+					method: 'tools/call',
+					params: {
+						name: 'webhookList',
+						arguments: { kodyId: 'notes' },
+					},
+				},
+				{ 'mcp-protocol-version': '2025-03-26' },
+			),
+		),
+	).toMatchObject({ packageIdentityParam: 'kody_id' })
+
+	expect(
+		await classifyMcpProtocolRequest(
+			jsonRequest(
+				{
+					jsonrpc: '2.0',
+					id: 8.2,
+					method: 'tools/call',
+					params: {
+						name: 'enablementEnable',
+						arguments: { packageId: 'pkg-1', kodyId: 'notes' },
+					},
+				},
+				{ 'mcp-protocol-version': '2025-03-26' },
+			),
+		),
+	).toMatchObject({ packageIdentityParam: 'both' })
+
+	expect(
+		await classifyMcpProtocolRequest(
+			jsonRequest(
+				{
+					jsonrpc: '2.0',
+					id: 8.3,
+					method: 'tools/call',
+					params: {
+						name: 'api',
+						arguments: {
+							operationId: 'webhookList',
+							params: { kodyId: 'notes' },
+						},
+					},
+				},
+				{ 'mcp-protocol-version': '2025-03-26' },
+			),
+		),
+	).toMatchObject({ packageIdentityParam: 'kody_id' })
+
 	// execute also has a params bag, but those are user-code inputs — not
 	// package-identity aliases for the alias-retirement soak.
 	expect(

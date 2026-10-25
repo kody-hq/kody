@@ -66,6 +66,20 @@ test('camelCase leftover callers are steered to packageId', () => {
 	expect(hint).not.toContain('name: "sentry"')
 })
 
+test('communityFork leftover kody_id hints to omit rather than name/package_id', () => {
+	const hint = buildKodyIdDeprecationHint(
+		{
+			fork_id: 'fork-1',
+			package_id: 'pkg-1',
+			target_name: '@owner/leaf',
+		},
+		{ listing_id: 'listing-1', kody_id: 'leaf' },
+	)
+	expect(hint).toContain('Omit `kody_id`')
+	expect(hint).not.toContain('Prefer `name`')
+	expect(hint).toContain('@owner/leaf')
+})
+
 test('resolvePreferredPackageIdentity reads nested package summaries', () => {
 	expect(
 		resolvePreferredPackageIdentity({

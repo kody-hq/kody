@@ -132,8 +132,18 @@ export function classifyMcpPackageIdentityParam(
 	let hasPackageId = false
 	let hasScopedName = false
 	for (const bag of bags) {
-		if (hasNonEmptyString(bag, 'kody_id')) hasKodyId = true
-		if (hasNonEmptyString(bag, 'package_id')) hasPackageId = true
+		// Count both snake_case and camelCase spellings. MCP / OpenAPI leftover
+		// callers still send `kodyId` / `packageId` (webhookList, enablements,
+		// credentials); omitting them under-counts the #3676 weekly gate.
+		if (hasNonEmptyString(bag, 'kody_id') || hasNonEmptyString(bag, 'kodyId')) {
+			hasKodyId = true
+		}
+		if (
+			hasNonEmptyString(bag, 'package_id') ||
+			hasNonEmptyString(bag, 'packageId')
+		) {
+			hasPackageId = true
+		}
 		if (hasNonEmptyString(bag, 'name')) {
 			const name = isRecord(bag) ? readString(bag['name']).trim() : ''
 			if (name.startsWith('@') && name.includes('/')) hasScopedName = true
