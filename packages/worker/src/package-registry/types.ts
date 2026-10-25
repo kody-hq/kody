@@ -1,3 +1,7 @@
+import {
+	parsePackageJobSchedule,
+	type PackageJobSchedule as SharedPackageJobSchedule,
+} from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { communityPackageCategories } from '#universal/community-categories.ts'
@@ -6,53 +10,26 @@ import { credentialFillPlacementViewSchema } from '#universal/credential-fill-pl
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-const recurringPackageJobScheduleSchema = z.discriminatedUnion('type', [
-	z.object({
-		type: z.literal('cron'),
-		expression: z.string().min(1),
-	}),
-	z.object({
-		type: z.literal('interval'),
-		every: z.string().min(1),
-	}),
-])
-
-const removedOnceJobScheduleMessage =
-	"Job schedule type \"once\" was removed: jobs are recurring (cron or interval). For a one-shot run at a set time, delete this job and start a workflow instead: import { workflows } from 'kody:runtime'; await workflows.create({ exportName: './my-export', runAt: '2027-01-01T16:00:00Z', idempotencyKey: 'my-export:2027-01-01', params: {} }). See https://kody.codes/docs/triggers."
-
+/**
+ * Zod wrapper around the shared package-job schedule parser so publish and
+ * `kody dev check` stay on one accept/reject set.
+ */
 export const packageJobScheduleSchema = z
 	.unknown()
 	.transform((schedule, ctx) => {
-		if (
-			schedule != null &&
-			typeof schedule === 'object' &&
-			!Array.isArray(schedule) &&
-			'type' in schedule &&
-			schedule.type === 'once'
-		) {
+		const parsed = parsePackageJobSchedule(schedule)
+		if (!parsed.ok) {
 			ctx.addIssue({
 				code: 'custom',
-				message: removedOnceJobScheduleMessage,
-				fatal: true,
+				message: parsed.message,
+				fatal: parsed.code === 'once_removed',
 			})
 			return z.NEVER
 		}
-
-		const parsed = recurringPackageJobScheduleSchema.safeParse(schedule)
-		if (!parsed.success) {
-			for (const issue of parsed.error.issues) {
-				ctx.addIssue({
-					code: 'custom',
-					message: issue.message,
-					path: issue.path,
-				})
-			}
-			return z.NEVER
-		}
-		return parsed.data
+		return parsed.schedule
 	})
 
-export type PackageJobSchedule = z.infer<typeof packageJobScheduleSchema>
+export type PackageJobSchedule = SharedPackageJobSchedule
 
 export const packageJobDefinitionSchema = z.object({
 	entry: z.string().min(1),

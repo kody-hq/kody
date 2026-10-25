@@ -4,7 +4,22 @@
 
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import {
+	formatPackageJobScheduleSummary,
+	parsePackageJobSchedule,
+} from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { StructuredCliError } from './structured-error.js'
+
+/** Mirrors `@kody-internal/shared/jobs/package-job-schedule` (kept local so published CLI `.d.ts` does not reference the private package). */
+export type PackageJobSchedule =
+	| {
+			type: 'cron'
+			expression: string
+	  }
+	| {
+			type: 'interval'
+			every: string
+	  }
 
 export type PackageAppManifest = {
 	entry: string
@@ -23,24 +38,11 @@ export type PackageDevManifest = {
 	ignore: Array<string>
 }
 
-/**
- * Job schedule as authored in package.json. Prod accepts a cron string or the
- * object form `{ type: 'cron', expression }` (and optional timezone on the job).
- * Local testing only needs the entrypoint; we keep a normalized display string.
- */
-export type PackageJobSchedule =
-	| string
-	| {
-			type: string
-			expression: string
-			[key: string]: unknown
-	  }
-
 export type PackageJobManifest = {
 	entry: string
-	/** Normalized for display / check output (cron expression or original string). */
+	/** Normalized for display / check output. */
 	schedule: string
-	/** Original authored schedule (string or object) when callers need full shape. */
+	/** Canonical schedule shape (same as production publish). */
 	scheduleRaw: PackageJobSchedule
 	timezone?: string
 	enabled?: boolean
@@ -303,7 +305,7 @@ function parseJobs(
 				code: 'package_manifest_invalid',
 				message: `kody.jobs.${name} requires a non-empty entry string.`,
 				where,
-				fix: 'Set `"entry": "./jobs/hourly.ts"` (and a schedule string or `{ "type": "cron", "expression": "…" }`).',
+				fix: 'Set `"entry": "./jobs/hourly.ts"` and a schedule `{ "type": "cron", "expression": "…" }` or `{ "type": "interval", "every": "15m" }`.',
 			})
 		}
 		const schedule = parseJobSchedule(job.schedule, name, where)
@@ -319,41 +321,26 @@ function parseJobs(
 }
 
 /**
- * Prod accepts either a cron/preset string or `{ type: 'cron', expression }`.
- * Keep local parsing aligned so unpublished packages with object schedules load.
+ * Same accept/reject set as production publish (`packageJobScheduleSchema`).
  */
 function parseJobSchedule(
 	raw: unknown,
 	jobName: string,
 	where: string,
 ): { normalized: string; raw: PackageJobSchedule } {
-	if (typeof raw === 'string' && raw.trim()) {
-		return { normalized: raw.trim(), raw: raw.trim() }
+	const parsed = parsePackageJobSchedule(raw)
+	if (!parsed.ok) {
+		throw new StructuredCliError({
+			code: 'package_manifest_invalid',
+			message: `kody.jobs.${jobName}: ${parsed.message}`,
+			where,
+			fix: 'Use `"schedule": { "type": "cron", "expression": "0 * * * *" }` or `"schedule": { "type": "interval", "every": "15m" }` (same as production).',
+		})
 	}
-	const record = asRecord(raw)
-	if (
-		record &&
-		typeof record.type === 'string' &&
-		record.type.trim() &&
-		typeof record.expression === 'string' &&
-		record.expression.trim()
-	) {
-		const expression = record.expression.trim()
-		return {
-			normalized: expression,
-			raw: {
-				...record,
-				type: record.type.trim(),
-				expression,
-			},
-		}
+	return {
+		normalized: formatPackageJobScheduleSummary(parsed.schedule),
+		raw: parsed.schedule,
 	}
-	throw new StructuredCliError({
-		code: 'package_manifest_invalid',
-		message: `kody.jobs.${jobName} requires a schedule string or { type, expression } object.`,
-		where,
-		fix: 'Use `"schedule": "0 * * * *"` or `"schedule": { "type": "cron", "expression": "0 * * * *" }` (prod accepts both).',
-	})
 }
 
 function parseWebhooks(

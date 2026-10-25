@@ -55,6 +55,7 @@
     "ps-list": "^9.0.0"
   },
   "devDependencies": {
+    "@kody-internal/shared": "file:../shared",
     "@inquirer/checkbox": "^5.2.2",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/node": "^24.5.2",
