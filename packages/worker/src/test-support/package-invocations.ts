@@ -609,14 +609,29 @@ export function createToken(
 	} as const
 }
 
-export function seedPackageResolution() {
+export function seedPackageResolution(
+	input: {
+		packageId?: string
+		name?: string
+		kodyId?: string
+		description?: string
+		exportName?: string
+		entryPoint?: string
+	} = {},
+) {
+	const packageId = input.packageId ?? 'pkg-1'
+	const name = input.name ?? '@kentcdodds/discord-gateway'
+	const kodyId = input.kodyId ?? 'discord-gateway'
+	const description = input.description ?? 'Discord gateway helpers'
+	const exportName = input.exportName ?? './dispatch-message-created'
+	const entryPoint = input.entryPoint ?? 'src/dispatch-message-created.ts'
 	packageInvocationsRepoMockModule.getSavedPackageById.mockResolvedValue(null)
 	packageInvocationsRepoMockModule.resolveSavedPackageRef.mockResolvedValue({
-		id: 'pkg-1',
+		id: packageId,
 		userId: 'user-123',
-		name: '@kentcdodds/discord-gateway',
-		kodyId: 'discord-gateway',
-		description: 'Discord gateway helpers',
+		name,
+		kodyId,
+		description,
 		tags: [],
 		searchText: null,
 		sourceId: 'source-1',
@@ -633,7 +648,7 @@ export function seedPackageResolution() {
 				id: 'source-1',
 				user_id: 'user-123',
 				entity_kind: 'package',
-				entity_id: 'pkg-1',
+				entity_id: packageId,
 				repo_id: 'repo-1',
 				published_commit: 'commit-1',
 				indexed_commit: null,
@@ -643,13 +658,13 @@ export function seedPackageResolution() {
 				updated_at: '2026-04-27T00:00:00.000Z',
 			},
 			manifest: {
-				name: '@kentcdodds/discord-gateway',
+				name,
 				exports: {
-					'./dispatch-message-created': './src/dispatch-message-created.ts',
+					[exportName]: `./${entryPoint}`,
 				},
 				kody: {
-					id: 'discord-gateway',
-					description: 'Discord gateway helpers',
+					id: kodyId,
+					description,
 					app: {
 						entry: './src/app.ts',
 					},
@@ -663,7 +678,7 @@ export function seedPackageResolution() {
 				id: 'source-1',
 				user_id: 'user-123',
 				entity_kind: 'package',
-				entity_id: 'pkg-1',
+				entity_id: packageId,
 				repo_id: 'repo-1',
 				published_commit: 'commit-1',
 				indexed_commit: null,
@@ -673,13 +688,13 @@ export function seedPackageResolution() {
 				updated_at: '2026-04-27T00:00:00.000Z',
 			},
 			manifest: {
-				name: '@kentcdodds/discord-gateway',
+				name,
 				exports: {
-					'./dispatch-message-created': './src/dispatch-message-created.ts',
+					[exportName]: `./${entryPoint}`,
 				},
 				kody: {
-					id: 'discord-gateway',
-					description: 'Discord gateway helpers',
+					id: kodyId,
+					description,
 					app: {
 						entry: './src/app.ts',
 					},
@@ -687,19 +702,19 @@ export function seedPackageResolution() {
 			},
 			files: {
 				'package.json': JSON.stringify({
-					name: '@kentcdodds/discord-gateway',
+					name,
 					exports: {
-						'./dispatch-message-created': './src/dispatch-message-created.ts',
+						[exportName]: `./${entryPoint}`,
 					},
 					kody: {
-						id: 'discord-gateway',
-						description: 'Discord gateway helpers',
+						id: kodyId,
+						description,
 						app: {
 							entry: './src/app.ts',
 						},
 					},
 				}),
-				'src/dispatch-message-created.ts':
+				[entryPoint]:
 					'export default async function run(){ return { ok: true } }',
 			},
 		},
@@ -708,7 +723,7 @@ export function seedPackageResolution() {
 		id: 'source-1',
 		user_id: 'user-123',
 		entity_kind: 'package',
-		entity_id: 'pkg-1',
+		entity_id: packageId,
 		repo_id: 'repo-1',
 		published_commit: 'commit-1',
 		indexed_commit: null,
@@ -726,10 +741,10 @@ export function seedPackageResolution() {
 			artifact: {
 				version: 1,
 				kind: 'module',
-				artifactName: './dispatch-message-created',
+				artifactName: exportName,
 				sourceId: 'source-1',
 				publishedCommit: 'commit-1',
-				entryPoint: 'src/dispatch-message-created.ts',
+				entryPoint,
 				mainModule: 'dist/index.js',
 				modules: {
 					'dist/index.js':
@@ -737,8 +752,8 @@ export function seedPackageResolution() {
 				},
 				dependencies: [],
 				packageContext: {
-					packageId: 'pkg-1',
-					kodyId: 'discord-gateway',
+					packageId,
+					kodyId,
 					sourceId: 'source-1',
 				},
 				createdAt: '2026-04-27T00:00:00.000Z',

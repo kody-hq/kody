@@ -16,6 +16,13 @@ import {
 import { getInternalEmailMessageById } from '#worker/email/mailbox-internal-read.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
+import {
+	CredentialClientError,
+	loadRunCredentialNeeds,
+	openCredentialClient,
+} from '#worker/credentials/credential-client.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { consumeDailyEntitlement } from '#worker/entitlements/service.ts'
 import {
 	budgetLimitErrorCode,
@@ -27,7 +34,10 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
-import { backgroundRunBilledActor } from '#worker/request-context/request-context.ts'
+import {
+	backgroundRunBilledActor,
+	enablementIdOf,
+} from '#worker/request-context/request-context.ts'
 import {
 	automationInvocationsPerDayResource,
 	shouldConsumeAutomationInvocationEntitlement,
@@ -70,9 +80,10 @@ import {
  *   any sandbox work started. Nothing executed, so keyed callers release
  *   their claim and key-less callers can simply retry.
  * - `pre-execution-denied`: a gate before sandbox work rejected the invoke
- *   (daily automation quota, or a pinned source revision that moved). Same release semantics as
+ *   (daily automation quota, a pinned source revision that moved, or a
+ *   missing required executor credential). Same release semantics as
  *   `artifact-unavailable` so a keyed retry can succeed after the UTC day
- *   rolls or the limit rises; do not terminal-store the 429 under the key.
+ *   rolls, the limit rises, or a credential is connected.
  *
  * `logs` / `result` / `error` carry what the registry would otherwise feed
  * its own run-record finish, for keyed callers that own the run record via
@@ -147,6 +158,59 @@ export type SavedPackageModuleRunInput = {
 	externalRunRecordHandle?: RunRecordHandle | null
 	/** Report, and optionally pin, the commit this run resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
+}
+
+async function requiredExecutorCredentialError(input: {
+	env: Env
+	callerContext: ReturnType<typeof createMcpCallerContext>
+	packageId: string
+	idempotencyKey: string | null
+}): Promise<PackageInvocationResponse | null> {
+	const request = input.callerContext.request
+	if (!request?.actor) return null
+	if (
+		enablementIdOf(request) ||
+		request.credential.kind === 'package-app' ||
+		!(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: request.org.id,
+			request,
+		}))
+	) {
+		return null
+	}
+	const runNeeds = await loadRunCredentialNeeds({
+		env: input.env,
+		orgId: request.org.id,
+		packageIds: [input.packageId],
+		request,
+	})
+	const requiredNeeds = [...runNeeds.values()].filter(
+		(need) => need.supplier === 'executor' && need.required !== false,
+	)
+	if (requiredNeeds.length === 0) return null
+
+	const credentialContext = {
+		env: input.env,
+		callerContext: input.callerContext,
+		binding: newRunCredentialClientBinding(),
+		packageId: input.packageId,
+		runNeeds: async () => runNeeds,
+	}
+	for (const need of requiredNeeds) {
+		try {
+			await openCredentialClient(credentialContext, { key: need.key })
+		} catch (error) {
+			if (!(error instanceof CredentialClientError)) throw error
+			return buildJsonErrorResponse({
+				status: 409,
+				code: 'credential_required',
+				message: `Required credential need "${need.key}" is not connected. Connect need:${need.key} before running this package.`,
+				idempotencyKey: input.idempotencyKey ?? undefined,
+			})
+		}
+	}
+	return null
 }
 
 export async function runSavedPackageModuleOnce(
@@ -284,6 +348,15 @@ export async function runSavedPackageModuleOnce(
 			packageId: input.savedPackage.id,
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
+		}
+		const missingCredential = await requiredExecutorCredentialError({
+			env: input.env,
+			callerContext,
+			packageId: packageContext.packageId,
+			idempotencyKey: input.idempotencyKey,
+		})
+		if (missingCredential) {
+			return { kind: 'pre-execution-denied', response: missingCredential }
 		}
 		const externalHandle = input.externalRunRecordHandle ?? null
 		if (externalHandle) {
