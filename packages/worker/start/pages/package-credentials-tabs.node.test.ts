@@ -142,6 +142,7 @@ test('grandfathered publisher personal defaults offer only a clear action when m
 					},
 				],
 				unusableIds: [],
+				updatedAt: '2026-01-01T00:00:00.000Z',
 				updatedBy: null,
 			},
 		},
