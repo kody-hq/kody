@@ -75,6 +75,7 @@ import { adminCredentialInventoryScanCapability } from './admin-credential-inven
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
+import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
@@ -195,6 +196,7 @@ export const adminDomain = defineDomain({
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminPackageAppAuthorityFallbackReportCapability,
+		adminPackageCredentialSupplierReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,
