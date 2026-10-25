@@ -1595,25 +1595,21 @@ export async function listWorkflowRunsForUser(input: {
 		return rows
 	}
 
-	// Exact SQL matches plus every active projection (active count is
-	// entitlement-capped). Refresh actives, then keep only the requested
-	// status so stale "running" rows that already finished are not missed and
-	// older terminal rows are not dropped behind a newest-page window of
-	// actives.
-	const [exact, actives] = await Promise.all([
+	// Exact SQL matches plus every active projection (page through; max plan
+	// allows more concurrent workflows than one list page). Refresh actives,
+	// then keep only the requested status so stale "running" rows that already
+	// finished are not missed and older terminal rows are not dropped behind a
+	// newest-page window of actives.
+	const [exact, activeProjections] = await Promise.all([
 		listWorkflowProjections({
 			...shared,
 			status: statusFilter,
 			limit,
 		}),
-		listWorkflowProjections({
-			...shared,
-			statuses: activeWorkflowStatusValues,
-			limit: runRecordMaxPageSize,
-		}),
+		listAllActiveWorkflowProjections(shared),
 	])
 	const byId = new Map<string, WorkflowRunInspection>()
-	for (const projection of [...exact.projections, ...actives.projections]) {
+	for (const projection of [...exact.projections, ...activeProjections]) {
 		if (byId.has(projection.id)) continue
 		byId.set(
 			projection.id,
@@ -1635,6 +1631,31 @@ export async function listWorkflowRunsForUser(input: {
 			return right.id.localeCompare(left.id)
 		})
 		.slice(0, limit)
+}
+
+async function listAllActiveWorkflowProjections(shared: {
+	env: Env
+	userId: OwnerId
+	bindingName: string
+	id?: string | null
+	packageId?: string | null
+	since?: string | null
+}) {
+	const projections: Array<
+		Awaited<ReturnType<typeof listWorkflowProjections>>['projections'][number]
+	> = []
+	let cursor: string | null = null
+	do {
+		const page = await listWorkflowProjections({
+			...shared,
+			statuses: activeWorkflowStatusValues,
+			limit: runRecordMaxPageSize,
+			cursor,
+		})
+		projections.push(...page.projections)
+		cursor = page.nextCursor
+	} while (cursor)
+	return projections
 }
 
 async function refreshListedWorkflowRunStatuses(input: {
