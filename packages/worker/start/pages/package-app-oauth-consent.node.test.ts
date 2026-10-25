@@ -39,8 +39,6 @@ const loaderData: PackageAppOauthConsentLoaderData = {
 		code_challenge_method: 'S256',
 		scope: 'profile email',
 		state: 's1',
-		requested_scopes: 'profile email',
-		scope_signature: 'signature',
 	},
 }
 

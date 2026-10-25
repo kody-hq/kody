@@ -22,6 +22,7 @@ import {
 	type PackageAppOauthScope,
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
@@ -81,6 +82,7 @@ type AuthorizeQuery = {
 	codeChallengeMethod: string | null
 	scopeRaw: string | null
 	responseType: string | null
+	selectedScopesRaw?: string
 }
 
 function readAuthorizeQuery(url: URL): AuthorizeQuery {
@@ -100,6 +102,9 @@ async function shouldSkipConsent(input: {
 	personId: string
 	orgUsername: string
 	kodyId: string
+	ownerId: string
+	appId: string
+	viewer: Parameters<typeof viewerCanExecutePackageApp>[0]['viewer']
 	scopes: ReadonlyArray<PackageAppOauthScope>
 }): Promise<boolean> {
 	const grant = await findLivePackageAppOauthGrant({
@@ -109,7 +114,18 @@ async function shouldSkipConsent(input: {
 		kodyId: input.kodyId,
 	})
 	if (grant && grantCoversScopes(grant, input.scopes)) return true
-	return false
+	if (
+		input.scopes.includes('email') ||
+		visitorNeedKeysOfScopes(input.scopes).length > 0
+	) {
+		return false
+	}
+	return await viewerCanExecutePackageApp({
+		env: input.env,
+		viewer: input.viewer,
+		ownerId: input.ownerId,
+		appId: input.appId,
+	})
 }
 
 async function issueCodeAndRedirect(input: {
@@ -347,6 +363,8 @@ async function parseAndValidateAuthorizeRequest(input: {
 	return {
 		ok: true as const,
 		client,
+		org: resolved.org,
+		savedPackage: resolved.savedPackage,
 		redirectUri: safeRedirectUri,
 		state: input.query.state,
 		codeChallenge: input.query.codeChallenge,
@@ -372,28 +390,6 @@ function isSameOriginAuthorizePost(request: Request, env: Env) {
 	}
 }
 
-async function signConsentScopes(env: Env, input: Record<string, string>) {
-	const secret =
-		env.SECRET_STORE_KEY || 'local-package-app-oauth-consent-signing-key'
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign'],
-	)
-	const bytes = new Uint8Array(
-		await crypto.subtle.sign(
-			'HMAC',
-			key,
-			new TextEncoder().encode(JSON.stringify(input)),
-		),
-	)
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
-		'',
-	)
-}
-
 export async function handlePackageAppOauthAuthorizeRequest(
 	request: Request,
 	env: Env,
@@ -417,8 +413,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 							form.get('code_challenge_method') ?? 'S256',
 						),
 						scopeRaw: String(form.get('scope') ?? ''),
-						requestedScopesRaw: String(form.get('requested_scopes') ?? ''),
-						scopeSignature: String(form.get('scope_signature') ?? ''),
+						selectedScopesRaw: String(form.get('selected_scopes') ?? ''),
 						responseType: String(form.get('response_type') ?? 'code'),
 						decision: String(form.get('decision') ?? ''),
 					}
@@ -426,8 +421,6 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			: {
 					...readAuthorizeQuery(url),
 					decision: '',
-					requestedScopesRaw: '',
-					scopeSignature: '',
 				}
 
 	const validated = await parseAndValidateAuthorizeRequest({
@@ -448,19 +441,10 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				headers: { 'Cache-Control': 'no-store' },
 			})
 		}
-		const signedFields = {
-			clientIdRaw: query.clientIdRaw ?? '',
-			redirectUri: query.redirectUri ?? '',
-			state: query.state ?? '',
-			codeChallenge: query.codeChallenge ?? '',
-			requestedScopesRaw: query.requestedScopesRaw,
-		}
-		const signature = await signConsentScopes(env, signedFields)
-		const requested = parsePackageAppOauthScopes(query.requestedScopesRaw)
+		const chosen = parsePackageAppOauthScopes(query.selectedScopesRaw)
 		if (
-			signature !== query.scopeSignature ||
-			requested.error ||
-			!validated.scopes.every((scope) => requested.scopes.includes(scope))
+			chosen.error ||
+			!chosen.scopes.every((scope) => validated.scopes.includes(scope))
 		) {
 			return new Response('Consent request state is invalid.', {
 				status: 403,
@@ -493,7 +477,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			kodyId: validated.client.kodyId,
 			redirectUri: validated.redirectUri,
 			codeChallenge: validated.codeChallenge,
-			scopes: validated.scopes,
+			scopes: chosen.scopes,
 			state: validated.state,
 			recordGrant: true,
 		})
@@ -508,6 +492,12 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		personId: user.mcpUser.userId,
 		orgUsername: validated.client.username,
 		kodyId: validated.client.kodyId,
+		ownerId: validated.org.userId,
+		appId: validated.savedPackage.id,
+		viewer: {
+			userId: user.mcpUser.userId,
+			username: user.username,
+		},
 		scopes: validated.scopes,
 	})
 	if (skip && options.allowConsentSkip !== false) {
@@ -544,16 +534,8 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		code_challenge: validated.codeChallenge,
 		code_challenge_method: 'S256',
 		scope: validated.scopes.join(' '),
-		requested_scopes: validated.scopes.join(' '),
 	}
 	if (validated.state) hiddenFields.state = validated.state
-	hiddenFields.scope_signature = await signConsentScopes(env, {
-		clientIdRaw: validated.client.clientId,
-		redirectUri: validated.redirectUri,
-		state: validated.state ?? '',
-		codeChallenge: validated.codeChallenge,
-		requestedScopesRaw: validated.scopes.join(' '),
-	})
 	const grant = await findLivePackageAppOauthGrant({
 		db: env.APP_DB,
 		personId: user.mcpUser.userId,

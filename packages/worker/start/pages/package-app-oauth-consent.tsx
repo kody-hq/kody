@@ -41,7 +41,7 @@ export function PackageAppOauthConsentPage({
 		try {
 			const fields = {
 				...data.hiddenFields,
-				scope: [
+				selected_scopes: [
 					...data.requiredScopes,
 					...data.alreadyAllowedScopes,
 					...selectedScopes,

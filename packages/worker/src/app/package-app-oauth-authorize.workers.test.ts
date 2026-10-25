@@ -61,6 +61,14 @@ async function ensureOauthGrantSchema() {
 			last_used_at TEXT
 		)`,
 	).run()
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS package_app_oauth_codes (
+			code_hash TEXT PRIMARY KEY NOT NULL,
+			payload TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`,
+	).run()
 }
 
 async function seedOwnerPackageApp(slug = 'demo') {
@@ -187,7 +195,7 @@ test('package-app OAuth authorize returns authenticated consent claims without i
 			code_challenge: challenge,
 			code_challenge_method: 'S256',
 			redirect_uri: redirectUri,
-			requested_scopes: 'profile email',
+			scope: 'profile email',
 		},
 	})
 	expect(response.consent.optionalScopes).toEqual([
@@ -195,7 +203,7 @@ test('package-app OAuth authorize returns authenticated consent claims without i
 	])
 })
 
-test('package-app consent rejects scopes added after the signed request', async () => {
+test('package-app consent rejects chosen scopes that were not requested', async () => {
 	configureOrigins()
 	const cookie = await seedOwnerSessionCookie()
 	const challenge = await createS256CodeChallenge(
@@ -217,7 +225,7 @@ test('package-app consent rejects scopes added after the signed request', async 
 	if (consent instanceof Response) throw new Error('Expected consent data')
 	const form = new URLSearchParams({
 		...consent.consent.hiddenFields,
-		scope: 'profile email',
+		selected_scopes: 'profile email',
 		decision: 'approve',
 	})
 	const response = await workerFetch(authorizeUrl, {
@@ -233,6 +241,33 @@ test('package-app consent rejects scopes added after the signed request', async 
 	if (!(response instanceof Response))
 		throw new Error('Expected rejected scope')
 	expect(response.status).toBe(403)
+})
+
+test('package-app consent skips for an app executor when only profile is requested', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const authorizeUrl = new URL(packageAppOauthPaths.authorize, appOrigin)
+	authorizeUrl.searchParams.set('response_type', 'code')
+	authorizeUrl.searchParams.set('client_id', `${ownerUsername}/demo`)
+	authorizeUrl.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	authorizeUrl.searchParams.set('code_challenge', challenge)
+	authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+	authorizeUrl.searchParams.set('scope', 'profile')
+	const response = await handlePackageAppOauthAuthorizeRequest(
+		new Request(authorizeUrl, { headers: { Cookie: cookie } }),
+		env,
+	)
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected executor consent skip redirect')
+	expect(response.status).toBe(302)
+	expect(response.headers.get('Location')).toContain('code=')
 })
 
 test('authenticated consent decisions reject a foreign origin before creating a grant', async () => {
