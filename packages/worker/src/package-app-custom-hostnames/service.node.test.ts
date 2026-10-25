@@ -389,6 +389,96 @@ test('abuse cap still counts app hostnames after the package is soft-deleted', a
 	expect(fetcher.fetch).not.toHaveBeenCalled()
 })
 
+test('add stores app binding against the migrated schema with check_window_started_at', async () => {
+	const db = createDb()
+	await db
+		.prepare(
+			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO saved_packages (
+				id, user_id, name, kody_id, is_internet_visible, deleted_at
+			) VALUES ('pkg-1', 'org-1', '@acme/demo', 'demo', 1, NULL)`,
+		)
+		.run()
+	vi.spyOn(packageRepo, 'getSavedPackageById').mockResolvedValue({
+		id: 'pkg-1',
+		userId: 'org-1',
+		name: '@acme/demo',
+		isInternetVisible: true,
+	} as Awaited<ReturnType<typeof packageRepo.getSavedPackageById>>)
+
+	const fetcher = {
+		fetch: vi.fn(async (_url: string, init?: RequestInit) => {
+			if (init?.method === 'DELETE') {
+				return cfHostnameResponse({
+					id: 'cf-app',
+					hostname: 'app.example.com',
+					status: 'deleted',
+				})
+			}
+			return cfHostnameResponse({
+				id: 'cf-app',
+				hostname: 'app.example.com',
+			})
+		}),
+	} as unknown as Fetcher
+
+	const added = await addPackageAppCustomHostname({
+		env: { ...createEnv(db), fetcher } as unknown as Env,
+		orgId: 'org-1',
+		actingUserId: 1,
+		createdByUserId: 'person-1',
+		bindingKind: 'app',
+		hostname: 'app.example.com',
+		packageId: 'pkg-1',
+		sslMethod: 'txt',
+	})
+	expect(added.hostname.hostname).toBe('app.example.com')
+	expect(added.hostname.binding_kind).toBe('app')
+	expect(added.hostname.package_id).toBe('pkg-1')
+	expect(added.hostname.org_id).toBeNull()
+	expect(added.verification.ownership_verification?.value).toBe(
+		'ownership-token',
+	)
+
+	const stored = await db
+		.prepare(
+			`SELECT binding_kind, package_id, org_id, cloudflare_hostname_id,
+				check_window_started_at, needs_attention_at,
+				verification_errors_json, created_at
+			 FROM package_app_custom_hostnames WHERE hostname = ?`,
+		)
+		.bind('app.example.com')
+		.first<{
+			binding_kind: string
+			package_id: string | null
+			org_id: string | null
+			cloudflare_hostname_id: string | null
+			check_window_started_at: string | null
+			needs_attention_at: string | null
+			verification_errors_json: string | null
+			created_at: string
+		}>()
+	expect(stored).toMatchObject({
+		binding_kind: 'app',
+		package_id: 'pkg-1',
+		org_id: null,
+		cloudflare_hostname_id: 'cf-app',
+		needs_attention_at: null,
+		verification_errors_json: null,
+	})
+	expect(stored?.check_window_started_at).toBe(stored?.created_at)
+	expect(fetcher.fetch).toHaveBeenCalledTimes(1)
+})
+
 test('add stores org binding with verification records and list returns it', async () => {
 	const db = createDb()
 	await db
@@ -479,6 +569,18 @@ test('add stores org binding with verification records and list returns it', asy
 	expect(
 		listed.hostnames[0]?.verification.ssl_validation_records[0]?.value,
 	).toBe('ssl-token')
+
+	const stored = await db
+		.prepare(
+			`SELECT check_window_started_at, created_at
+			 FROM package_app_custom_hostnames WHERE hostname = ?`,
+		)
+		.bind('team.example.com')
+		.first<{
+			check_window_started_at: string | null
+			created_at: string
+		}>()
+	expect(stored?.check_window_started_at).toBe(stored?.created_at)
 
 	await deletePackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
