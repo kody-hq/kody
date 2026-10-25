@@ -694,8 +694,9 @@ as a **Recent update** on that follow (one entry per published version or per
 coalesced push window, latest 20 per follow, kept 30 days, zero credits). The
 Follows page and the package Follow panel say which selected events nothing
 handles and list those entries; `followList` returns them as `recent_updates`.
-Handled events, zero-credit skips, failed handlers, paused follows, and pushes
-the follower cannot read are not recorded. See
+Handled events, events a subscription's filters drop, zero-credit skips, failed
+handlers or incomplete subscription discovery, paused follows, and pushes the
+follower cannot read are not recorded. See
 [decision 0081](../contributing/decisions/0081-follow-recent-updates-default-delivery.md).
 See the [follow CLI contract](../contributing/contracts/follow-cli.md).
 

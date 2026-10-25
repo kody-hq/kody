@@ -29,7 +29,8 @@ org has an `on` enablement for the topic, store the event as a Recent update in
   per-follow `dedupe_key`.
 - Bound it: the newest 20 per follow, 30 days, cleaned by follow maintenance.
 - Charge nothing. Handled events keep today's behavior and are not recorded;
-  zero-credit skips and failed handlers are not recorded either.
+  events a subscription's filters drop, zero-credit skips, failed handlers, and
+  incomplete subscription discovery are not recorded either.
 - The Follows page and the package Follow panel say which selected events no
   package handles, link to package subscriptions, and render the list.
   `followList` returns `recent_updates`; no new MCP capability.

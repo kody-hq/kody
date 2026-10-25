@@ -53,7 +53,13 @@ export type FollowDeliveryHooks = {
 		userId: string
 		topic: string
 		payload: Record<string, unknown>
-	}) => Promise<Array<LoadedPackageSubscription>>
+	}) => Promise<
+		| Array<LoadedPackageSubscription>
+		| {
+				subscriptions: Array<LoadedPackageSubscription>
+				discoveryErrors: Array<unknown>
+		  }
+	>
 	invoke?: typeof invokePackageSubscription
 }
 
@@ -316,33 +322,46 @@ async function invokeFollowTopic(input: {
 	payload: object
 	hooks?: FollowDeliveryHooks
 	idempotencyKey: (packageId: string) => string
-}): Promise<'delivered' | 'zero_credits' | 'unhandled' | 'failed'> {
+}): Promise<
+	'delivered' | 'zero_credits' | 'filtered' | 'unhandled' | 'failed'
+> {
 	const baseUrl = getAppBaseUrl({ env: input.env })
 	const payload = input.payload as Record<string, unknown>
 	const invoke = input.hooks?.invoke ?? invokePackageSubscription
 	let subscriptions: Array<LoadedPackageSubscription> = []
+	let filteredOut = false
+	let discoveryIncomplete = false
 	try {
-		if (input.hooks?.loadSubscriptions) {
-			subscriptions = await input.hooks.loadSubscriptions({
-				env: input.env,
-				userId: input.follow.followerOrgId,
-				topic: input.topic,
-				payload,
-			})
-		} else {
-			const loaded = await loadMatchingPackageSubscriptions({
-				env: input.env,
-				baseUrl,
-				userId: input.follow.followerOrgId,
-				topic: input.topic,
-			})
-			subscriptions = loaded.subscriptions.filter((entry) =>
-				packageEventFiltersMatchPayload({
-					filters: entry.subscription.filters,
+		const loaded = input.hooks?.loadSubscriptions
+			? await input.hooks.loadSubscriptions({
+					env: input.env,
+					userId: input.follow.followerOrgId,
+					topic: input.topic,
 					payload,
-				}),
-			)
+				})
+			: await loadMatchingPackageSubscriptions({
+					env: input.env,
+					baseUrl,
+					userId: input.follow.followerOrgId,
+					topic: input.topic,
+				})
+		const declared = Array.isArray(loaded) ? loaded : loaded.subscriptions
+		const discoveryErrors = Array.isArray(loaded) ? [] : loaded.discoveryErrors
+		if (discoveryErrors.length > 0) {
+			discoveryIncomplete = true
+			console.error('follow-subscription-discovery-incomplete', {
+				followId: input.follow.id,
+				topic: input.topic,
+				errors: discoveryErrors.length,
+			})
 		}
+		subscriptions = declared.filter((entry) =>
+			packageEventFiltersMatchPayload({
+				filters: entry.subscription.filters,
+				payload,
+			}),
+		)
+		filteredOut = subscriptions.length < declared.length
 	} catch (error) {
 		console.error('follow-subscription-discovery-failed', {
 			followId: input.follow.id,
@@ -392,5 +411,6 @@ async function invokeFollowTopic(input: {
 		return 'zero_credits'
 	}
 	if (delivered) return 'delivered'
-	return invokeFailed ? 'failed' : 'unhandled'
+	if (invokeFailed || discoveryIncomplete) return 'failed'
+	return filteredOut ? 'filtered' : 'unhandled'
 }

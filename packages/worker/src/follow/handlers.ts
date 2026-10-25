@@ -15,7 +15,8 @@ import { type FollowRecentUpdateRecord } from './types.ts'
  * Follow events no package subscription in the org handles with an `on`
  * enablement, so delivery stores them as Recent updates instead. Filters are
  * not evaluated, so a filtered handler still counts as handling the topic.
- * A discovery failure reports nothing as unhandled rather than guessing.
+ * A failed or incomplete discovery reports nothing as unhandled rather than
+ * guessing.
  */
 export async function loadUnhandledFollowEvents(input: {
 	env: Env
@@ -26,12 +27,14 @@ export async function loadUnhandledFollowEvents(input: {
 		const unhandled: Array<FollowEvent> = []
 		for (const event of followEvents) {
 			const topic = followEventCopy[event].topic
-			const { subscriptions } = await loadMatchingPackageSubscriptions({
-				env: input.env,
-				baseUrl,
-				userId: input.orgId,
-				topic,
-			})
+			const { subscriptions, discoveryErrors } =
+				await loadMatchingPackageSubscriptions({
+					env: input.env,
+					baseUrl,
+					userId: input.orgId,
+					topic,
+				})
+			if (discoveryErrors.length > 0) return []
 			let handled = false
 			for (const { savedPackage } of subscriptions) {
 				const enablements = await listEnablementsForInstance({

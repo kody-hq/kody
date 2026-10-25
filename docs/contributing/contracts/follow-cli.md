@@ -156,9 +156,10 @@ makes a retried flush a no-op). Rows are scoped by `follower_org_id` and
 `follow_id`; inserts only land when that follow belongs to that org. Each follow
 keeps its newest 20; follow maintenance deletes rows older than 30 days and rows
 whose follow is gone, and removing a follow deletes its rows. Handled events,
-zero-credit (429) skips, failed handlers, paused follows, and skipped pushes are
-never recorded, and recording charges no credits. Org hard purge deletes the
-table by `follower_org_id`; it is not exported.
+events a subscription's filters drop, zero-credit (429) skips, failed handlers,
+incomplete subscription discovery, paused follows, and skipped pushes are never
+recorded, and recording charges no credits. Org hard purge deletes the table by
+`follower_org_id`; it is not exported.
 
 ## Topics
 

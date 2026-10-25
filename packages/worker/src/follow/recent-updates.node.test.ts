@@ -202,6 +202,34 @@ test('zero credits and failed handlers store no recent update', async () => {
 	expect(row?.lastDeliverySkipReason).toBe('zero_credits')
 })
 
+test('incomplete discovery and filtered-out handlers store no recent update', async () => {
+	silenceExpectedConsoleErrors(['follow-subscription-discovery-incomplete'])
+	const db = await seed()
+	const incomplete = hooks({
+		loadSubscriptions: async () => ({
+			subscriptions: [],
+			discoveryErrors: [new Error('manifest unavailable')],
+		}),
+	})
+	await deliverPublished(db, incomplete)
+	const filtered = hooks({
+		loadSubscriptions: async () => [
+			{
+				...subscriber,
+				subscription: {
+					...subscriber.subscription,
+					filters: { name: '@someone/else' },
+				},
+			},
+		],
+	})
+	await deliverPublished(db, filtered)
+	expect(filtered.invoke).not.toHaveBeenCalled()
+	expect(
+		await listFollowRecentUpdates(db, { followerOrgId: orgA, limit: 10 }),
+	).toEqual([])
+})
+
 test('lost access pauses the follow and records nothing', async () => {
 	const db = await seed()
 	const loadSubscriptions = vi.fn(async () => [])
