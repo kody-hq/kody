@@ -483,6 +483,44 @@ export const localExecuteGatewayFetchShimModuleName =
  * Write package-graph modules into a workerd temp dir and return capnp entries.
  * Shared by execute --local, local package runs, and kody dev app bundling.
  */
+/**
+ * Origin package-graph shims older than the hasScope shared-export floor omit
+ * those bindings while facades still re-export them. Backfill so local workerd
+ * can link until production serves the fixed shim.
+ */
+export function backfillLocalExecuteRuntimeShimSharedExports(
+	esModule: string,
+): string {
+	if (
+		/\bexport\s+function\s+hasScope\b/.test(esModule) ||
+		/\bexport\s+\{[^}]*\bhasScope\b/.test(esModule)
+	) {
+		return esModule
+	}
+	const sharedHelpers = `
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+`
+	return `${esModule.trimEnd()}\n${sharedHelpers}`
+}
+
 export async function writePackageModuleFiles(
 	workDir: string,
 	graph: LocalPackageGraph,
@@ -492,7 +530,11 @@ export async function writePackageModuleFiles(
 	const written: Array<{ name: string; file: string }> = []
 	for (const [index, module] of graph.modules.entries()) {
 		const file = `pkg-${index}.js`
-		await writeFile(joinPath(workDir, file), module.esModule)
+		const source =
+			module.name === localExecuteGatewayFetchShimModuleName
+				? backfillLocalExecuteRuntimeShimSharedExports(module.esModule)
+				: module.esModule
+		await writeFile(joinPath(workDir, file), source)
 		written.push({ name: module.name, file })
 	}
 	return written

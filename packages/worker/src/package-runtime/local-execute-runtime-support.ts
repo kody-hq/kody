@@ -102,6 +102,29 @@ export {
 	events,
 };
 
+// Shared visitor-consent helpers (same header as package apps). Facades
+// re-export these from sharedRuntimeExportReasons; without them here,
+// local package-graph linking fails on \`export { hasScope } from …\`.
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+
 // Package identity for CapabilityProxy calls (GHSA-5fv3-qv7j-rqf5). Origin
 // accepts only a binding the package graph signed for this org and actor,
 // never a bare package id, so code cannot claim a package by naming it. The
@@ -1198,6 +1221,8 @@ const __kodyLocalRuntimeDefault = Object.freeze({
 		? __kodyHostRuntimeDefault
 		: {}),
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,

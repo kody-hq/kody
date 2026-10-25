@@ -86,6 +86,17 @@ test('the hosted runtime and the local shim export every facade creator', () => 
 	}
 })
 
+test('the local execute shim exports every shared facade re-export', () => {
+	const local = createLocalExecuteRuntimeShimSource()
+	for (const name of Object.keys(sharedRuntimeExportReasons)) {
+		expect(local).toMatch(
+			new RegExp(
+				`(?:export function ${name}\\b|export \\{[\\s\\S]*\\b${name}\\b)`,
+			),
+		)
+	}
+})
+
 async function loadHostedPackageRuntime(
 	packageId: string,
 	runtime: Record<string, unknown>,

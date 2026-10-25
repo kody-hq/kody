@@ -391,8 +391,30 @@ const __kodyRuntimeStorage =
 	__globalAny[__kodyRuntimeStorageSymbol] ??
 	(__globalAny[__kodyRuntimeStorageSymbol] = new AsyncLocalStorage());
 
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+
 const __kodyRuntimeDefault = Object.freeze({
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,
