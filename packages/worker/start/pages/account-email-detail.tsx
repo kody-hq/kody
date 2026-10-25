@@ -182,16 +182,18 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 						{classifyState === 'saving' ? 'Updating…' : 'Mark as spam'}
 					</button>
 				) : null}
-				<button
-					type="button"
-					disabled={isMutating}
-					onClick={() => {
-						onTriage({ archived: !selectedMessage.archived_at })
-					}}
-					css={secondaryButtonCss}
-				>
-					{selectedMessage.archived_at ? 'Unarchive' : 'Archive'}
-				</button>
+				{selectedMessage.direction === 'inbound' ? (
+					<button
+						type="button"
+						disabled={isMutating}
+						onClick={() => {
+							onTriage({ archived: !selectedMessage.archived_at })
+						}}
+						css={secondaryButtonCss}
+					>
+						{selectedMessage.archived_at ? 'Unarchive' : 'Archive'}
+					</button>
+				) : null}
 				<button
 					type="button"
 					disabled={isMutating}

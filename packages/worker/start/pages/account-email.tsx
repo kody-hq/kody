@@ -343,8 +343,7 @@ export function AccountEmailPage({
 		const selected = data.selectedMessage
 		if (
 			!selected ||
-			(input.classification !== undefined &&
-				selected.direction !== 'inbound') ||
+			selected.direction !== 'inbound' ||
 			queryClient.isMutating({
 				mutationKey,
 				predicate: (mutation) =>

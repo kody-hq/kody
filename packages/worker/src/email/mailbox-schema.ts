@@ -445,17 +445,30 @@ function rebuildEmailMessagesForSpamAndArchive(storage: DurableObjectStorage) {
 		}
 	})
 
+	// Keyset pagination: each batch seeks past the last copied id so warm
+	// rebuilds do not rescan the source index from the start every time.
+	let cursor =
+		sql
+			.exec<{ id: string | null }>(`SELECT MAX(id) AS id FROM ${messagesV6}`)
+			.one().id ?? ''
 	for (;;) {
 		const copied = storage.transactionSync(() => {
 			sql.exec(
 				`INSERT INTO ${messagesV6} (${preV6EmailMessageColumns}, archived_at)
 				SELECT ${preV6EmailMessageColumns}, NULL
 				FROM email_messages
-				WHERE id NOT IN (SELECT id FROM ${messagesV6})
+				WHERE id > ?
 				ORDER BY id
 				LIMIT ${mailboxV6RebuildBatchSize}`,
+				cursor,
 			)
-			return Number(sql.exec<{ n: number }>(`SELECT changes() AS n`).one().n)
+			const n = Number(sql.exec<{ n: number }>(`SELECT changes() AS n`).one().n)
+			if (n > 0) {
+				cursor = sql
+					.exec<{ id: string }>(`SELECT MAX(id) AS id FROM ${messagesV6}`)
+					.one().id
+			}
+			return n
 		})
 		if (copied === 0) break
 	}
