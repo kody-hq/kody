@@ -284,22 +284,58 @@ export function repairPreBindingPublishedArtifact<
 }
 
 /**
- * True for a bundle built before package `fetch` became lexical that inlines
- * other packages, so the read-time repair cannot bind it in place.
+ * True when any isolate-loaded module already names a lexical package-binding
+ * creator. Bundles built after GHSA-5fv3 but before the rewrite marker use
+ * these names; treat them as current even without `packageBindingRewrite`.
+ */
+function artifactMentionsLexicalPackageBinding(artifact: RepairableArtifact) {
+	for (const [modulePath, module] of Object.entries(artifact.modules)) {
+		if (isPlatformRuntimeModulePath(modulePath)) continue
+		const source = moduleSource(module)
+		if (source == null) continue
+		if (lexicalBindingNames.some((name) => source.includes(name))) {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * True for a stored bundle that inlines other packages and cannot be bound in
+ * place, so every load site (module/export invoke, scheduled jobs, package
+ * workflows via that same export path, static/dynamic imports, package apps)
+ * must rebuild it from source or keep serving with a republish warning.
+ *
+ * Covers two shapes:
+ * - Classic pre-binding: free `fetch` / shared `kody` with no lexical creators
+ *   ({@link isPreBindingPublishedArtifact}).
+ * - Missing binding marker without free `fetch`: inlined callees that only use
+ *   `packageStorage()` / secrets still run as the caller until rebuilt. The
+ *   free-fetch heuristic alone missed those, so same-commit publish and
+ *   workflow export steps kept reusing the stale multi-package bundle.
  */
 export function isUnrepairablePreBindingArtifact(artifact: RepairableArtifact) {
 	if (!artifact.packageContext?.packageId) return false
-	return (
-		isPreBindingPublishedArtifact(artifact) &&
-		publishedArtifactInlinesOtherPackages(artifact)
-	)
+	if (!isRepairableArtifactKind(artifact.kind)) return false
+	if (!publishedArtifactInlinesOtherPackages(artifact)) return false
+	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
+		return false
+	}
+	// Post-fix, pre-marker builds already inlined lexical creators.
+	if (
+		!isPreBindingPublishedArtifact(artifact) &&
+		artifactMentionsLexicalPackageBinding(artifact)
+	) {
+		return false
+	}
+	return true
 }
 
 /**
  * True when a load site holding the package's published source should
  * rebuild this bundle instead of serving it: it predates lexical package
- * `fetch` and inlines other packages (so it cannot be repaired in place), and the
- * source can rebuild without installing npm dependencies. Bundles that
+ * identity and inlines other packages (so it cannot be repaired in place), and
+ * the source can rebuild without installing npm dependencies. Bundles that
  * cannot rebuild keep serving and log `pre_binding_bundle_needs_republish`.
  */
 export function publishedArtifactNeedsPackageBindingRebuild(input: {

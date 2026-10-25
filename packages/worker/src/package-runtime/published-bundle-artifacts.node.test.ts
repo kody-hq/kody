@@ -644,6 +644,9 @@ function priorModuleArtifact(input: {
 					kodyId: 'multi-export',
 					sourceId: 'source-1',
 				},
+				// Current-builder prior commits carry the marker so reuse tests
+				// are not treated as pre-binding multi-package leftovers.
+				packageBindingRewrite: 1,
 			}),
 			dependencies: [] as Array<Record<string, unknown>>,
 		},
@@ -1192,6 +1195,20 @@ test('isPublishedPackageArtifactBuiltForCommit treats a bundle the load sites re
 		}),
 	)
 	expect(await isBuilt()).toBe(true)
+
+	// Missing marker with no free fetch still counts as refused: same-commit
+	// publish must rebuild so packageStorage-only inlined callees get bindings.
+	stub(
+		preBindingCrossPackageArtifact({
+			overrides: {
+				modules: {
+					'dist/a.js':
+						'export default async function a() { return packageStorage().get("x") }',
+				},
+			},
+		}),
+	)
+	expect(await isBuilt()).toBe(false)
 
 	// Single-package pre-binding bundles are bound in place on read.
 	stub(preBindingCrossPackageArtifact({ overrides: { dependencies: [] } }))

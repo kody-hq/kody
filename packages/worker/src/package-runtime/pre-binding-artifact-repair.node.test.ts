@@ -100,6 +100,44 @@ test('multi-package pre-fix bundles rebuild only when source needs no npm instal
 	).toBe(false)
 })
 
+test('multi-package unmarked packageStorage-only bundles need a binding rebuild', () => {
+	// No free fetch and no shared kody import: the old free-fetch heuristic
+	// treated this as current, so workflow/export load sites and same-commit
+	// publish kept the stale bundle. The inlined callee's packageStorage()
+	// then fails owner-only checks while execute (fresh build) works.
+	const storageOnly = [
+		'export default async function run() {',
+		'  const storage = packageStorage();',
+		'  return await storage.get("skill");',
+		'}',
+	].join('\n')
+	const mixed = artifact(storageOnly, {
+		dependencies: [{ packageId: 'pkg-skills' }],
+	})
+	expect(isPreBindingPublishedArtifact(mixed)).toBe(false)
+	expect(isUnrepairablePreBindingArtifact(mixed)).toBe(true)
+	expect(
+		publishedArtifactNeedsPackageBindingRebuild({
+			artifact: mixed,
+			sourceFiles: { 'src/index.ts': storageOnly },
+		}),
+	).toBe(true)
+	expect(
+		isUnrepairablePreBindingArtifact({
+			...mixed,
+			packageBindingRewrite: packageBindingRewriteVersion,
+		}),
+	).toBe(false)
+	expect(
+		isUnrepairablePreBindingArtifact(
+			artifact(
+				'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own");\nexport default async () => packageStorage()',
+				{ dependencies: [{ packageId: 'pkg-skills' }] },
+			),
+		),
+	).toBe(false)
+})
+
 test('reports a module the repair cannot bind instead of skipping it silently', () => {
 	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 	try {
