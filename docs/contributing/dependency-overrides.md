@@ -183,18 +183,46 @@ allows `10.5.0`, so this override cannot be removed yet.
 
 The upper bound `<11.0.0` keeps the override within the same major version.
 
-### `fast-uri` → `>=3.1.8 <4.0.0`
+### `fast-uri` → `>=3.1.9 <4.0.0`
 
 Keeps the transitive `fast-uri` copy (via `ajv` from
 `@modelcontextprotocol/sdk`) at or above the current advisory floor. Upstream
-still declares `fast-uri@^3.0.1`, which allows `3.1.7`, so this override cannot
+still declares `fast-uri@^3.0.1`, which allows `3.1.8`, so this override cannot
 be removed yet.
+
+The floor is `3.1.9` for:
+
+- [GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg) — URI
+  scheme spoofing via percent-encoded scheme decoding (`>=3.0.0, <3.1.9`)
+- [GHSA-xhq7-xmqj-769h](https://github.com/advisories/GHSA-xhq7-xmqj-769h) —
+  improper path equivalence in relative reference normalization
+  (`>=3.0.0, <3.1.9`)
+- [GHSA-wjr9-j795-jxcr](https://github.com/advisories/GHSA-wjr9-j795-jxcr) —
+  host confusion via unchecked WHATWG host canonicalization (`>=3.1.3, <3.1.9`)
+- [GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp) —
+  scheme injection via an unescaped first-segment colon in suffix references
+  (`>=3.0.0, <3.1.9`)
+
+That range also covers the earlier `3.1.8` floor:
 
 - [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) —
   inconsistent host case normalization via percent-encoded octets
   (`>=3.0.0, <=3.1.7`)
 
 The upper bound `<4.0.0` keeps the override within the same major version.
+
+### `body-parser` → `>=2.4.0 <3.0.0`
+
+Keeps the transitive `body-parser` copy (via `express` from
+`@modelcontextprotocol/sdk`) at or above the current advisory floor. Upstream
+`express@5.2.1` still declares `body-parser@^2.2.1`, which allows `2.3.0`, so
+this override cannot be removed yet.
+
+- [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828) —
+  denial of service via trailing bytes after a compressed request body
+  (`>=2.0.0, <2.4.0`)
+
+The upper bound `<3.0.0` keeps the override within the same major version.
 
 ### `proxy-addr` → `>=2.0.8 <3.0.0`
 
@@ -234,10 +262,24 @@ be removed yet.
 
 The upper bound `<2.0.0` keeps the override within the same major version.
 
-### `undici` (under `wrangler` / `miniflare` / `@cloudflare/vite-plugin`) → `>=7.29.1 <8.0.0`
+### `undici` (under `wrangler` / `miniflare` / `@cloudflare/vite-plugin`) → `>=7.30.1 <8.0.0`
 
 Floors only the Cloudflare 7.x undici copies. The root `undici@6.28.1` is
 already on the 6.x patched line and must stay there.
+
+The floor is `7.30.1` for:
+
+- [GHSA-4qv8-2p9j-2685](https://github.com/advisories/GHSA-4qv8-2p9j-2685) —
+  denial of service via unbounded memory in the EventSource parser
+  (`>=7.0.0, <7.30.1`)
+- [GHSA-f72v-6w45-q472](https://github.com/advisories/GHSA-f72v-6w45-q472) —
+  Subresource Integrity bypass via non-lowercase algorithm tokens
+  (`>=7.15.0, <7.30.1`)
+- [GHSA-xjj6-f33q-929c](https://github.com/advisories/GHSA-xjj6-f33q-929c) —
+  denial of service via unhandled error on excessive content-encodings
+  (`>=7.18.0, <7.30.1`)
+
+That range also covers the earlier `7.29.1` floor:
 
 - [GHSA-3wwx-pv8p-q78v](https://github.com/advisories/GHSA-3wwx-pv8p-q78v) —
   WebSocket permessage-deflate decompression can crash the process
@@ -253,15 +295,19 @@ the `@cloudflare/shell` workspace filesystem does not set, so repo sessions fail
 to initialize. Remove the cap once a newer release (or `@cloudflare/shell`)
 handles those errors and repo-session tests pass against it.
 
-### `zod` → `4.6.5`
+### `zod` → `4.6.6`
 
 Pins a single Zod copy across the workspace. Without this override,
 `@cloudflare/vitest-pool-workers@0.22.0` (exact `zod@4.4.3`) and `@kody/worker`
-(`zod@^4.6.5`) resolve two trees, and the Worker-local copy misses
-`patches/zod+4.6.5.patch`, which trims `zod/v4/locales` to English-only and
+(`zod@^4.6.6`) resolve two trees, and the Worker-local copy misses
+`patches/zod+4.6.6.patch`, which trims `zod/v4/locales` to English-only and
 strips unused `compile` / `fromJSONSchema` / `deepPartial` barrel exports for
 the startup budget. Keep this pin aligned with the Worker Zod range and refresh
 the patch when bumping.
+
+- [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) —
+  memory exhaustion while validating oversized constrained collections
+  (`<4.6.6`)
 
 ### `sharp` → `>=0.35.5 <1.0.0`
 

@@ -367,7 +367,7 @@ raised again.
 - Startup byte overages no longer fail Static / block Deploy: the checker warns
   and upserts a deduped GitHub tracking issue on main CI pushes instead.
 - Drop unused Zod v4 locale barrels from Worker bundles
-  (`patches/zod+4.6.5.patch`): `zod/v4/classic/external.js` re-exports
+  (`patches/zod+4.6.6.patch`): `zod/v4/classic/external.js` re-exports
   `../locales/index.js`, which previously pulled ~50 locale modules into every
   Worker that imports `zod`. Kody only applies English via that classic entry.
   Local dry-run runtime 3_720_975 against the previous 3_914_000 budget (closes
