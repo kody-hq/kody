@@ -604,7 +604,7 @@ function buildDocumentBody(registry: BuiltCapabilityRegistry) {
 				'',
 				'Errors use `{ "error": { "code", "message", "details"? } }` (see components.schemas.Error). Documented 4xx/5xx responses reference that schema. Requests are rate limited per IP (600/min) and per token (300/min); HTTP 429 includes `Retry-After`. Edge-generated 429 responses also include a `RateLimit-Policy` advertisement; entitlement 429s send `Retry-After` only.',
 				'',
-				'`operationId` values match Kody capability names, so the same ids work with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
+				'`operationId` values match Kody capability names, except deprecated forwarders, which keep their old ids and forward to the capability their description names. Every id, deprecated ones included, works with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
 				'',
 				`Interactive docs: ${kodyApiDocsUrl}`,
 				'',
