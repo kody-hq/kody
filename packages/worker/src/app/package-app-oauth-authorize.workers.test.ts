@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import {
 	handlePackageAppOauthHostAuth,
@@ -17,6 +17,60 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
+
+vi.mock(
+	'#worker/package-invocations/module-artifacts.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-invocations/module-artifacts.ts')
+			>()
+		return {
+			...actual,
+			loadInvokeManifestBySourceId: async () => ({
+				manifest: { kody: { app: { visitorNeeds: {} } } },
+			}),
+		}
+	},
+)
+
+vi.mock(
+	'#worker/credentials/credential-needs-closure.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/credentials/credential-needs-closure.ts')
+			>()
+		return {
+			...actual,
+			loadPublishedCredentialNeeds: async () => [
+				{
+					key: 'calendar',
+					kind: 'secret',
+					provider: 'calendar',
+					description: 'Calendar access.',
+					multiple: false,
+					supplier: 'executor',
+					required: true,
+				},
+			],
+		}
+	},
+)
+
+vi.mock(
+	'#worker/credentials/credential-candidates.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/credentials/credential-candidates.ts')
+			>()
+		return {
+			...actual,
+			listUsableCredentials: async () => [],
+		}
+	},
+)
 
 const appOrigin = 'https://app.kody.test:8788'
 const packageAppOrigin = 'https://packages.isolated.test'
@@ -143,6 +197,29 @@ async function seedOwnerSessionCookie() {
 		true,
 	)
 	return setCookie.split(';')[0] ?? ''
+}
+
+async function loadRequiredExecutorConsent(slug: string) {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	await seedOwnerPackageApp(slug)
+	const challenge = await createS256CodeChallenge(
+		'oauth-workers-test-verifier-32chars!!',
+	)
+	const url = new URL(packageAppOauthPaths.authorize, appOrigin)
+	url.searchParams.set('response_type', 'code')
+	url.searchParams.set('client_id', `${ownerUsername}/${slug}`)
+	url.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	url.searchParams.set('code_challenge', challenge)
+	url.searchParams.set('code_challenge_method', 'S256')
+	url.searchParams.set('scope', 'need:calendar')
+	const result = await workerFetch(url, { headers: { Cookie: cookie } })
+	if (result instanceof Response)
+		throw new Error('Expected executor consent data')
+	return { consent: result.consent, cookie, url }
 }
 
 test('package-app OAuth authorize refuses unallowlisted redirect_uri', async () => {
@@ -291,6 +368,60 @@ test('package-app consent rejects chosen scopes that were not requested', async 
 	if (!(response instanceof Response))
 		throw new Error('Expected rejected scope')
 	expect(response.status).toBe(403)
+})
+
+test('package-app consent rejects a forged credential id on approval', async () => {
+	const scenario = await loadRequiredExecutorConsent('forged-credential')
+	const form = new URLSearchParams()
+	for (const [name, value] of Object.entries(scenario.consent.hiddenFields))
+		form.append(name, value)
+	form.append('selected_scopes', 'profile')
+	form.append('selected_scopes', 'need:calendar')
+	form.set('credential_need:calendar', 'forged-credential-id')
+	form.set('decision', 'approve')
+	const response = await workerFetch(scenario.url, {
+		method: 'POST',
+		headers: {
+			Cookie: scenario.cookie,
+			Origin: appOrigin,
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: form,
+	})
+
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected forged credential refusal')
+	expect(response.status).toBe(400)
+	await expect(response.text()).resolves.toContain(
+		'The selected credential for calendar is no longer available',
+	)
+})
+
+test('package-app consent keeps a required executor scope selected on approval', async () => {
+	const scenario = await loadRequiredExecutorConsent('required-credential')
+	const form = new URLSearchParams()
+	for (const [name, value] of Object.entries(scenario.consent.hiddenFields))
+		form.append(name, value)
+	form.append('selected_scopes', 'profile')
+	form.set('decision', 'approve')
+	const response = await workerFetch(scenario.url, {
+		method: 'POST',
+		headers: {
+			Cookie: scenario.cookie,
+			Origin: appOrigin,
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: form,
+	})
+
+	expect(response).toBeInstanceOf(Response)
+	if (!(response instanceof Response))
+		throw new Error('Expected required credential selection response')
+	expect(response.status).toBe(400)
+	await expect(response.text()).resolves.toContain(
+		'Choose a credential for the calendar need',
+	)
 })
 
 test('package-app consent form submits rendered fields and redirects with a code', async () => {

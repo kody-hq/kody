@@ -321,6 +321,45 @@ test('supplier aliases normalize and executor required defaults to true when ena
 	])
 })
 
+test('the flag-off closure merge ignores supplier metadata', () => {
+	const merged = mergeCredentialNeeds({
+		own: ownCredentialNeeds(
+			{
+				service: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+			},
+			{ supplierSemanticsEnabled: false },
+		),
+		dependencies: [
+			{
+				packageName: '@fixture/dependency',
+				needs: [
+					{
+						key: 'service',
+						provider: 'service',
+						description: 'Dependency access.',
+						multiple: false,
+						supplier: 'executor',
+					},
+				],
+			},
+		],
+		supplierSemanticsEnabled: false,
+	})
+
+	expect(merged.conflicts).toEqual([])
+	expect(merged.needs).toEqual([
+		{
+			key: 'service',
+			provider: 'service',
+			description: 'Publisher access.',
+			multiple: false,
+		},
+	])
+})
+
 test('supplier closure permits publisher tightening and required tightening only', () => {
 	const dependency = {
 		key: 'service',

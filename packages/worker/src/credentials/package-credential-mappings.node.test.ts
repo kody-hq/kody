@@ -51,6 +51,28 @@ const setup = () =>
 		loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
 	})
 
+test('flag-off mapping writes keep accepting legacy needs', async () => {
+	const t = await setup()
+	const prod = await t.storeKey('resend-prod', 'resend')
+	const scope = await t.scopeFor('bea', 'owner')
+	expect(
+		scope.needs.find((need) => need.key === 'mail')?.supplier,
+	).toBeUndefined()
+	const changes = await t.apply('bea', 'owner', [
+		{ target: orgDefault, needKey: 'mail', credentials: [{ id: prod }] },
+	])
+
+	await expect(writeMappingChanges(scope, changes)).resolves.toBeUndefined()
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	expect(
+		view.needs.find((need) => need.key === 'mail')?.defaults.org,
+	).toMatchObject({
+		credentials: [{ id: prod }],
+	})
+})
+
 test('the view shows needs, options, triggers, and what is incomplete', async () => {
 	const t = await setup()
 	await t.storeKey('resend-prod', 'resend')

@@ -1,9 +1,29 @@
 import { createElement } from 'react'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { PackageAppOauthConsentPage } from './package-app-oauth-consent.tsx'
 import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+
+const advancedView = vi.hoisted(() => ({ enabled: false }))
+
+vi.mock('react', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('react')>()
+	return {
+		...actual,
+		useState(initial: unknown) {
+			if (advancedView.enabled) {
+				const initialValue =
+					typeof initial === 'function' ? (initial as () => unknown)() : initial
+				if (initialValue instanceof Set && initialValue.size === 0) {
+					return actual.useState(() => new Set(['calendar']))
+				}
+			}
+			return actual.useState(initial as never)
+		},
+	}
+})
+
 const href = `${packageAppOauthPaths.authorize}?client_id=acme%2Fdemo&redirect_uri=https%3A%2F%2Facme.kody.run%2F_kody%2Fauth%2Fcallback&response_type=code&code_challenge=abc&code_challenge_method=S256&scope=email&state=s1`
 
 const loaderData: PackageAppOauthConsentLoaderData = {
@@ -103,6 +123,20 @@ test('package-app OAuth consent renders Kody shell fields', async () => {
 	expect(renderedForm.getAll('selected_scopes')).toEqual(['email', 'profile'])
 })
 
+test('flag-off consent keeps standard scopes without executor credentials', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: { ...loaderData, executorNeeds: [] },
+		}),
+		href,
+	)
+
+	expect(html).toContain('See your email address')
+	expect(html).toMatch(/name="selected_scopes"[^>]*value="email"/)
+	expect(html).not.toContain('Required credentials')
+	expect(html).not.toContain('Create new credentials')
+})
+
 test('package-app OAuth consent hides an empty already allowed section', async () => {
 	const html = await renderStartPage(
 		createElement(PackageAppOauthConsentPage, {
@@ -123,6 +157,12 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 		createElement(PackageAppOauthConsentPage, {
 			data: {
 				...loaderData,
+				scopes: ['profile', 'email', 'need:calendar'],
+				requiredScopes: ['profile', 'need:calendar'],
+				hiddenFields: {
+					...loaderData.hiddenFields,
+					scope: 'profile email need:calendar',
+				},
 				executorNeeds: [
 					{
 						key: 'calendar',
@@ -158,4 +198,89 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 	expect(html).toContain('Choose another credential')
 	expect(html).not.toContain('Other calendar credentials')
 	expect(html).toContain('Create new credentials')
+	expect(html).toMatch(
+		/<input[^>]*name="credential_need:calendar"[^>]*checked=""[^>]*value="credential-one"/,
+	)
+	expect(html).toContain('name="selected_scopes" value="need:calendar"')
+	expect(html).not.toMatch(
+		/<input[^>]*type="checkbox"[^>]*value="need:calendar"/,
+	)
+	expect(html.replace(/<input\b[^>]*>/g, '')).not.toContain('credential-one')
+	expect(html.replace(/<input\b[^>]*>/g, '')).not.toContain('credential-two')
+})
+
+test('package-app consent advanced credential view lists every matching credential', async () => {
+	advancedView.enabled = true
+	try {
+		const html = await renderStartPage(
+			createElement(PackageAppOauthConsentPage, {
+				data: {
+					...loaderData,
+					executorNeeds: [
+						{
+							key: 'calendar',
+							description: 'Calendar access for this app',
+							required: true,
+							scope: 'need:calendar',
+							credentials: [
+								{
+									id: 'credential-one',
+									name: 'Calendar credentials',
+									usedByApps: 3,
+								},
+								{
+									id: 'credential-two',
+									name: 'Work calendar credentials',
+									usedByApps: 1,
+								},
+								{
+									id: 'credential-three',
+									name: 'Personal calendar credentials',
+									usedByApps: 0,
+								},
+							],
+							recommendedCredentialId: 'credential-one',
+							createUrl: '/@viewer/-/credentials/new?name=calendar',
+						},
+					],
+				},
+			}),
+			href,
+		)
+		expect(html).toContain('Calendar credentials')
+		expect(html).toContain('Work calendar credentials')
+		expect(html).toContain('Personal calendar credentials')
+		const text = html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '')
+		expect(text).toContain('Used by 3 apps')
+		expect(text).toContain('Used by 1 apps')
+		expect(text).toContain('Used by 0 apps')
+	} finally {
+		advancedView.enabled = false
+	}
+})
+
+test('package-app consent offers Create new credentials when no candidate matches', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				executorNeeds: [
+					{
+						key: 'calendar',
+						description: 'Calendar access for this app',
+						required: true,
+						scope: 'need:calendar',
+						credentials: [],
+						recommendedCredentialId: null,
+						createUrl: '/@viewer/-/credentials/new?name=calendar',
+					},
+				],
+			},
+		}),
+		href,
+	)
+
+	expect(html).toContain('No matching credentials are available yet.')
+	expect(html).toContain('Create new credentials')
+	expect(html).not.toContain('type="radio"')
 })
