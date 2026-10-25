@@ -39,9 +39,10 @@ reference detail those docs link into.
   [Custom secret providers](../guides/secret-providers.md), and
   [Jobs, workflows, and webhooks](../guides/triggers.md) — concept docs for the
   primitives every connected agent shares
-- [Local CLI execute](../guides/local-execute.md) — agents:
-  `cliCredentialBootstrap`; humans: `kody login`; then
-  `@kodycodes/cli execute --local` when Node ≥22
+- [Local CLI execute](../guides/local-execute.md) — shell agents: install with
+  `npx -y @kodycodes/cli@latest`, bootstrap via MCP `api`
+  `cliCredentialBootstrap`, then `execute --local` (Node ≥22); humans:
+  `kody login`
 - [Open API](../guides/open-api.md) — HTTPS api.kody.codes and MCP `api`
   (including scoped tokens for CI / headless)
 - [Git credential helper](../guides/auth-setup-git.md) — `kody auth setup-git`

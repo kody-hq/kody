@@ -98,13 +98,74 @@ land on kody.codes and need to add the MCP server.
    \`https://kody.codes/mcp\`).
 3. Complete the host's OAuth flow. The person signs in to Kody if needed, then
    approves access. Their email must be verified before authorize can finish.
-4. After the connection works, call \`search\` before \`execute\`. Start with
+4. After the connection works, call \`search\` first. If you can run shell
+   commands, prefer local execute:
+   \`npx -y @kodycodes/cli@latest execute --local\` (Node 22+). If the CLI is
+   not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its
+   \`cli_command\`. Without a shell, use \`execute\`. Start with
    \`search({ query: "what can you do" })\` or fetch \`/docs.md\` for the
-   introduction plus an index of every doc.
+   introduction plus an index of every doc. Full CLI workflow:
+   \`/.well-known/agent-skills/kody-cli/SKILL.md\`.
 
 Client-specific setup lives on \`/onboarding\` and in
 \`/docs/connect-your-agent.md\`. Do not ask anyone to paste credentials, tokens,
 or passwords into chat.
+`
+
+const kodyCliSkillBody = `# Kody CLI
+
+Prefer \`npx -y @kodycodes/cli@latest execute --local\` (Node 22+) for one-off
+modules, smoke tests, and composition. Local execute uses zero Worker compute
+days. Use MCP \`search\` and \`api\` from any host; use hosted \`execute\` only
+when you cannot run shell commands.
+
+## When to use
+
+Use this skill when the person says to use Kody, when you need to install or
+sign in the Kody CLI, or when choosing local CLI execute versus hosted execute.
+
+## Install and bootstrap
+
+\`\`\`bash
+npx -y @kodycodes/cli@latest --help
+npx -y @kodycodes/cli@latest skill install
+\`\`\`
+
+Agents already on MCP (do this yourself; never ask a human for a token): call
+\`api\` with \`cliCredentialBootstrap\` and a required lifetime (single-task
+agents use \`short\`). It returns a one-shot bootstrap code and a
+\`cli_command\` that already includes lifetime flags. Run that command, then
+\`execute --local\`:
+
+\`\`\`json
+{
+  "operationId": "cliCredentialBootstrap",
+  "params": { "lifetime": "short" }
+}
+\`\`\`
+
+\`\`\`bash
+npx -y @kodycodes/cli@latest auth bootstrap --code 'kody_bc_…' --lifetime short
+npx -y @kodycodes/cli@latest execute --local --code 'import { kody } from "kody:runtime"; export default async function main() { return await kody.metaGetCurrentUser({}) }'
+\`\`\`
+
+Interactive humans: \`npx -y @kodycodes/cli@latest login\` once. CI / headless
+without an MCP session: set \`KODY_API_TOKEN\` in the environment (never paste
+credentials into chat).
+
+Default bootstrap scopes include local-execute use scopes plus
+\`package:write\`, \`package:create\`, and \`token:delete\`. They do not include
+\`search:read\`. Prefer MCP \`search\` for discovery.
+
+## Stay current
+
+\`kody skill install\` writes this skill into Claude Code, Cursor, Codex, and
+\`.agents\` folders. Later CLI runs refresh local copies when the hosted digest
+changes. Always-current source:
+\`https://kody.codes/.well-known/agent-skills/kody-cli/SKILL.md\`.
+
+Details: \`https://kody.codes/docs/local-execute\`
+(\`search({ entity: "guide:local_execute" })\`).
 `
 
 const whatIsKodySkillBody = `# What is Kody
@@ -143,6 +204,12 @@ export const agentSkills: ReadonlyArray<AgentSkillDefinition> = [
 		description:
 			'Decide whether Kody fits before connecting. Use for a no-account capability tour and discovery interview.',
 		body: whatIsKodySkillBody,
+	},
+	{
+		name: 'kody-cli',
+		description:
+			'Install and bootstrap the Kody CLI, then prefer execute --local. Use when the person says to use Kody or when choosing local versus hosted execute.',
+		body: kodyCliSkillBody,
 	},
 ]
 

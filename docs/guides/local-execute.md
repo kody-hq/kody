@@ -26,13 +26,13 @@ and package-graph routes.
 
 **Agents already on MCP (do this yourself; never ask a human for a token):**
 call `cliCredentialBootstrap` with a required lifetime (single-task agents use
-`short`). Prefer MCP `execute` with
-`kody.cliCredentialBootstrap({ lifetime: "short" })`, or MCP `api` with
-`operationId: "cliCredentialBootstrap"`. It returns a one-shot `kody_bc_…` code
-and a `cli_command` that already includes lifetime flags (**not** a
-`kody_at_…`). Bootstrap tokens are person-owned (`org_binding: user`); pass
-`?org=<slug>` on API calls to act in a team org (default: personal). Run the
-returned `cli_command` (no second OAuth, no `tokenCreate`):
+`short`). Prefer MCP `api` with `operationId: "cliCredentialBootstrap"` (or the
+capability via search when you need the schema). It returns a one-shot
+`kody_bc_…` code and a `cli_command` that already includes lifetime flags
+(**not** a `kody_at_…`). Bootstrap tokens are person-owned
+(`org_binding: user`); pass `?org=<slug>` on API calls to act in a team org
+(default: personal). Run the returned `cli_command` (no second OAuth, no
+`tokenCreate`):
 
 ```json
 {
@@ -52,10 +52,10 @@ required; missing it fails with the exact flag syntax.
 
 **Default scopes:** bootstrap tokens include local-execute use scopes
 (`org:execute`, `org:read`, and package/integration/secret/email/job/app/memory
-use scopes), plus `package:write` (plain-repo / package pushes) and
-`token:delete` (self-revoke). They do not include `search:read`. When a task
-needs a different set, pass `scopes` when minting. The list replaces the
-defaults, so include every scope you need:
+use scopes), plus `package:write` (plain-repo / package pushes),
+`package:create`, and `token:delete` (self-revoke). They do not include
+`search:read`. When a task needs a different set, pass `scopes` when minting.
+The list replaces the defaults, so include every scope you need:
 
 ```bash
 # Agents on MCP: cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })

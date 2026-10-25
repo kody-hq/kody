@@ -23,7 +23,7 @@
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "KODY_SKIP_SKILL_REFRESH=1 KODY_SKIP_GIT_HELPER_REFRESH=1 tsx --test test/*.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {
