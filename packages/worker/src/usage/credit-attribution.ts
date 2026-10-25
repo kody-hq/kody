@@ -4,16 +4,18 @@
  * each billable `recordUsage` write instead.
  */
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
+import { creditDebitCostMicroUsd } from '#universal/credits.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	buildCreditAttributionBreakdown,
-	creditAttributionMeterFromComputeResource,
 	creditAttributionMeters,
+	creditAttributionMeterFromComputeResource,
 	creditAttributionUsageEventTypes,
 	normalizeCreditAttributionAutomationSource,
 	type CreditAttributionBreakdown,
 	type CreditAttributionDailyUnit,
 	type CreditAttributionMeter,
+	type CreditAttributionVisitorRow,
 } from '#universal/credit-attribution.ts'
 import { type AccountUsageComputeOverage } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
@@ -35,6 +37,15 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 	updated_at = excluded.updated_at,
 	actor_user_id = excluded.actor_user_id,
 	automation_source = excluded.automation_source
+`.trim()
+
+const visitorAttributionUpsertStatement = `
+INSERT INTO package_app_visitor_attribution_daily (
+	user_id, day, package_id, visitor_user_id, meter, units, updated_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+ON CONFLICT (user_id, day, package_id, visitor_user_id, meter) DO UPDATE SET
+	units = excluded.units,
+	updated_at = excluded.updated_at
 `.trim()
 
 /**
@@ -70,6 +81,34 @@ FORMAT JSON
 `.trim()
 }
 
+export function buildPackageAppVisitorAttributionDailyQuery(
+	dataset: string,
+	bounds: { monthStart: string; nextMonthStart: string },
+) {
+	const billable = creditAttributionUsageEventTypes
+		.map((eventType) => `'${eventType}'`)
+		.join(', ')
+	return `
+SELECT
+	blob1 AS user_id,
+	toDate(timestamp) AS day,
+	blob9 AS package_id,
+	blob14 AS visitor_user_id,
+	blob2 AS event_type,
+	sum(
+		if(blob2 = 'durable_object_rows_read' AND double3 > 0, double3, 1.0) * _sample_interval
+	) AS units
+FROM ${dataset}
+WHERE timestamp >= toDateTime('${bounds.monthStart}')
+	AND timestamp < toDateTime('${bounds.nextMonthStart}')
+	AND blob15 = 'package-app'
+	AND blob2 IN (${billable})
+	AND blob9 != ''
+GROUP BY user_id, day, package_id, visitor_user_id, event_type
+FORMAT JSON
+`.trim()
+}
+
 function utcMonthBounds(now: Date) {
 	const toDateTimeArgument = (date: Date) =>
 		`${date.toISOString().slice(0, 'YYYY-MM-DD'.length)} 00:00:00`
@@ -91,6 +130,10 @@ type AttributionAnalyticsRow = {
 	actor_user_id?: string | null
 	automation_source?: string | null
 	units: number | string
+}
+
+type VisitorAttributionAnalyticsRow = AttributionAnalyticsRow & {
+	visitor_user_id?: string | null
 }
 
 function meterFromEventType(eventType: string): CreditAttributionMeter | null {
@@ -134,6 +177,16 @@ export async function aggregateCreditAttributionDaily(
 		baseUrl,
 		query: buildCreditAttributionDailyQuery(dataset, utcMonthBounds(now)),
 	})
+	const visitorAnalyticsRows =
+		await queryAnalyticsEngineSql<VisitorAttributionAnalyticsRow>({
+			accountId,
+			apiToken,
+			baseUrl,
+			query: buildPackageAppVisitorAttributionDailyQuery(
+				dataset,
+				utcMonthBounds(now),
+			),
+		})
 	// Same live-owner guard as usage_rollups: AE retains points after account
 	// deletion; never reinsert those into D1 attribution rows. Team org ids
 	// stay when the org row is live.
@@ -173,6 +226,39 @@ export async function aggregateCreditAttributionDaily(
 			),
 		)
 	}
+	const liveVisitorRows = await filterLiveUsageRows(
+		env.APP_DB,
+		visitorAnalyticsRows,
+	)
+	const presentVisitorKeys = new Set<string>()
+	const visitorUpsertStatements: Array<D1PreparedStatement> = []
+	for (const row of liveVisitorRows) {
+		const meter = meterFromEventType(row.event_type)
+		if (!meter) continue
+		const day =
+			typeof row.day === 'string'
+				? row.day.slice(0, 'YYYY-MM-DD'.length)
+				: String(row.day).slice(0, 'YYYY-MM-DD'.length)
+		if (!day.startsWith(month)) continue
+		const packageId = (row.package_id ?? '').trim()
+		const visitorUserId = row.visitor_user_id ?? ''
+		const units = Number(row.units)
+		if (!packageId || !Number.isFinite(units) || units <= 0) continue
+		presentVisitorKeys.add(
+			`${row.user_id}\0${day}\0${packageId}\0${visitorUserId}\0${meter}`,
+		)
+		visitorUpsertStatements.push(
+			env.APP_DB.prepare(visitorAttributionUpsertStatement).bind(
+				row.user_id,
+				day,
+				packageId,
+				visitorUserId,
+				meter,
+				units,
+				updatedAt,
+			),
+		)
+	}
 	for (
 		let index = 0;
 		index < upsertStatements.length;
@@ -184,51 +270,121 @@ export async function aggregateCreditAttributionDaily(
 			),
 		)
 	}
+	for (
+		let index = 0;
+		index < visitorUpsertStatements.length;
+		index += attributionUpsertBatchSize
+	) {
+		await runD1WithRetry(() =>
+			env.APP_DB.batch(
+				visitorUpsertStatements.slice(
+					index,
+					index + attributionUpsertBatchSize,
+				),
+			),
+		)
+	}
 	// Empty AE result is more likely ingestion lag than a truly empty month;
 	// skip stale cleanup rather than wiping real attribution (same as rollups).
 	// A non-empty AE result that yields no live rows still runs cleanup so
 	// deleted-account rows do not linger.
-	if (analyticsRows.length === 0) {
+	if (analyticsRows.length === 0 && visitorAnalyticsRows.length === 0) {
 		return { skipped: false, upserted: 0 }
 	}
-	const existing = await env.APP_DB.prepare(
-		`SELECT user_id, day, package_id, meter
-		 FROM usage_attribution_daily
-		 WHERE day >= ? AND day < ?`,
-	)
-		.bind(
-			`${month}-01`,
-			utcMonthBounds(now).nextMonthStart.slice(0, 'YYYY-MM-DD'.length),
+	if (analyticsRows.length > 0) {
+		const existing = await env.APP_DB.prepare(
+			`SELECT user_id, day, package_id, meter
+			 FROM usage_attribution_daily
+			 WHERE day >= ? AND day < ?`,
 		)
-		.all<{
-			user_id: string
-			day: string
-			package_id: string
-			meter: string
-		}>()
-	const deleteStatements: Array<D1PreparedStatement> = []
-	for (const row of existing.results ?? []) {
-		const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.meter}`
-		if (presentKeys.has(key)) continue
-		deleteStatements.push(
-			env.APP_DB.prepare(
-				`DELETE FROM usage_attribution_daily
-				 WHERE user_id = ? AND day = ? AND package_id = ? AND meter = ?`,
-			).bind(row.user_id, row.day, row.package_id, row.meter),
-		)
+			.bind(
+				`${month}-01`,
+				utcMonthBounds(now).nextMonthStart.slice(0, 'YYYY-MM-DD'.length),
+			)
+			.all<{
+				user_id: string
+				day: string
+				package_id: string
+				meter: string
+			}>()
+		const deleteStatements: Array<D1PreparedStatement> = []
+		for (const row of existing.results ?? []) {
+			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.meter}`
+			if (presentKeys.has(key)) continue
+			deleteStatements.push(
+				env.APP_DB.prepare(
+					`DELETE FROM usage_attribution_daily
+					 WHERE user_id = ? AND day = ? AND package_id = ? AND meter = ?`,
+				).bind(row.user_id, row.day, row.package_id, row.meter),
+			)
+		}
+		for (
+			let index = 0;
+			index < deleteStatements.length;
+			index += attributionDeleteBatchSize
+		) {
+			await runD1WithRetry(() =>
+				env.APP_DB.batch(
+					deleteStatements.slice(index, index + attributionDeleteBatchSize),
+				),
+			)
+		}
 	}
-	for (
-		let index = 0;
-		index < deleteStatements.length;
-		index += attributionDeleteBatchSize
-	) {
-		await runD1WithRetry(() =>
-			env.APP_DB.batch(
-				deleteStatements.slice(index, index + attributionDeleteBatchSize),
-			),
+	let visitorDeleteStatements: Array<D1PreparedStatement> = []
+	if (visitorAnalyticsRows.length > 0) {
+		const existingVisitorRows = await env.APP_DB.prepare(
+			`SELECT user_id, day, package_id, visitor_user_id, meter
+			 FROM package_app_visitor_attribution_daily
+			 WHERE day >= ? AND day < ?`,
 		)
+			.bind(
+				`${month}-01`,
+				utcMonthBounds(now).nextMonthStart.slice(0, 'YYYY-MM-DD'.length),
+			)
+			.all<{
+				user_id: string
+				day: string
+				package_id: string
+				visitor_user_id: string
+				meter: string
+			}>()
+		visitorDeleteStatements = []
+		for (const row of existingVisitorRows.results ?? []) {
+			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.visitor_user_id}\0${row.meter}`
+			if (presentVisitorKeys.has(key)) continue
+			visitorDeleteStatements.push(
+				env.APP_DB.prepare(
+					`DELETE FROM package_app_visitor_attribution_daily
+					 WHERE user_id = ? AND day = ? AND package_id = ?
+						AND visitor_user_id = ? AND meter = ?`,
+				).bind(
+					row.user_id,
+					row.day,
+					row.package_id,
+					row.visitor_user_id,
+					row.meter,
+				),
+			)
+		}
+		for (
+			let index = 0;
+			index < visitorDeleteStatements.length;
+			index += attributionDeleteBatchSize
+		) {
+			await runD1WithRetry(() =>
+				env.APP_DB.batch(
+					visitorDeleteStatements.slice(
+						index,
+						index + attributionDeleteBatchSize,
+					),
+				),
+			)
+		}
 	}
-	return { skipped: false, upserted: upsertStatements.length }
+	return {
+		skipped: false,
+		upserted: upsertStatements.length + visitorUpsertStatements.length,
+	}
 }
 
 export async function readCreditAttributionDailyUnits(input: {
@@ -315,13 +471,218 @@ export async function loadCreditAttributionBreakdown(input: {
 			meter: creditAttributionMeterFromComputeResource(meter.resource),
 			include: meter.include,
 		})) ?? creditAttributionMeters.map((meter) => ({ meter, include: 0 }))
-	return buildCreditAttributionBreakdown({
+	const breakdown = buildCreditAttributionBreakdown({
 		month,
 		dailyUnits,
 		includes,
 		packageNames: names,
 		packageHrefs: hrefs,
 	})
+	const visitors = await loadPackageAppVisitorAttribution({
+		db: input.db,
+		stableUserId: input.stableUserId,
+		month,
+		dailyUnits,
+		includes,
+	})
+	for (const row of breakdown.rows) {
+		if (row.isAdHoc) continue
+		const visitorData = visitors.get(row.packageId)
+		if (!visitorData) continue
+		row.visitors = visitorData.rows
+		row.visitorCount = visitorData.total
+		row.visitorsTruncated = visitorData.truncated
+	}
+	return breakdown
+}
+
+const maxPackageAppVisitorRows = 500
+const visitorUsernameChunkSize = 80
+const visitorMeterLabels = {
+	unique_worker_days: 'Worker compute',
+	durable_object_rows_read: 'Rows read',
+} as const
+
+async function loadPackageAppVisitorAttribution(input: {
+	db: D1Database
+	stableUserId: string
+	month: string
+	dailyUnits: ReadonlyArray<CreditAttributionDailyUnit>
+	includes: ReadonlyArray<{ meter: CreditAttributionMeter; include: number }>
+}): Promise<
+	Map<
+		string,
+		{
+			rows: Array<CreditAttributionVisitorRow>
+			total: number
+			truncated: boolean
+		}
+	>
+> {
+	const nextMonth = nextUtcMonthKey(input.month)
+	const result = await input.db
+		.prepare(
+			`SELECT day, package_id, visitor_user_id, meter, units
+			 FROM package_app_visitor_attribution_daily
+			 WHERE user_id = ? AND day >= ? AND day < ?`,
+		)
+		.bind(input.stableUserId, `${input.month}-01`, `${nextMonth}-01`)
+		.all<{
+			day: string
+			package_id: string
+			visitor_user_id: string
+			meter: string
+			units: number
+		}>()
+	const rows = (result.results ?? []).filter(
+		(row) =>
+			(creditAttributionMeters as ReadonlyArray<string>).includes(row.meter) &&
+			Number.isFinite(Number(row.units)) &&
+			Number(row.units) > 0,
+	)
+	const ids = [
+		...new Set(rows.map((row) => row.visitor_user_id).filter(Boolean)),
+	]
+	const usernames = new Map<string, string>()
+	for (let index = 0; index < ids.length; index += visitorUsernameChunkSize) {
+		const chunk = ids.slice(index, index + visitorUsernameChunkSize)
+		const placeholders = chunk.map(() => '?').join(', ')
+		const users = await input.db
+			.prepare(
+				`SELECT stable_user_id, username
+				 FROM users
+				 WHERE stable_user_id IN (${placeholders})
+					AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
+			)
+			.bind(...chunk)
+			.all<{ stable_user_id: string; username: string }>()
+		for (const user of users.results ?? []) {
+			const username = user.username?.trim()
+			if (username) usernames.set(user.stable_user_id, username)
+		}
+	}
+
+	const dailyPackageUnits = new Map<string, number>()
+	for (const row of input.dailyUnits) {
+		const key = `${row.packageId}\0${row.day}\0${row.meter}`
+		dailyPackageUnits.set(
+			key,
+			(dailyPackageUnits.get(key) ?? 0) + Math.max(0, row.units),
+		)
+	}
+	const packageDayCredits = new Map<string, number>()
+	const remaining = new Map<CreditAttributionMeter, number>(
+		input.includes.map((entry) => [
+			entry.meter,
+			Number.isFinite(entry.include) ? Math.max(0, entry.include) : 0,
+		]),
+	)
+	for (const meter of creditAttributionMeters) {
+		if (!remaining.has(meter)) remaining.set(meter, 0)
+	}
+	const days = [...new Set(input.dailyUnits.map((row) => row.day))].sort()
+	for (const day of days) {
+		for (const meter of creditAttributionMeters) {
+			const dayRows = input.dailyUnits.filter(
+				(row) => row.day === day && row.meter === meter && row.units > 0,
+			)
+			const totalUnits = dayRows.reduce((sum, row) => sum + row.units, 0)
+			if (totalUnits <= 0) continue
+			const available = remaining.get(meter) ?? 0
+			const covered = Math.min(available, totalUnits)
+			remaining.set(meter, available - covered)
+			const dayCredits = creditDebitCostMicroUsd(meter, totalUnits - covered)
+			let attributed = 0
+			dayRows.forEach((row, index) => {
+				const credits =
+					index === dayRows.length - 1
+						? dayCredits - attributed
+						: Math.floor((dayCredits * row.units) / totalUnits)
+				attributed += credits
+				packageDayCredits.set(`${row.packageId}\0${day}\0${meter}`, credits)
+			})
+		}
+	}
+
+	const visitorsByPackage = new Map<
+		string,
+		Map<
+			string,
+			{
+				lastDay: string
+				units: Map<CreditAttributionMeter, number>
+				credits: Map<CreditAttributionMeter, number>
+			}
+		>
+	>()
+	for (const row of rows) {
+		const meter = row.meter as CreditAttributionMeter
+		const visitorId = row.visitor_user_id
+		const byVisitor = visitorsByPackage.get(row.package_id) ?? new Map()
+		const visitor = byVisitor.get(visitorId) ?? {
+			lastDay: row.day,
+			units: new Map<CreditAttributionMeter, number>(),
+			credits: new Map<CreditAttributionMeter, number>(),
+		}
+		if (row.day > visitor.lastDay) visitor.lastDay = row.day
+		const units = Number(row.units)
+		visitor.units.set(meter, (visitor.units.get(meter) ?? 0) + units)
+		const packageUnits =
+			dailyPackageUnits.get(`${row.package_id}\0${row.day}\0${meter}`) ?? 0
+		const packageCredits =
+			packageDayCredits.get(`${row.package_id}\0${row.day}\0${meter}`) ?? 0
+		const visitorCredits =
+			packageUnits > 0 ? Math.floor((packageCredits * units) / packageUnits) : 0
+		visitor.credits.set(
+			meter,
+			(visitor.credits.get(meter) ?? 0) + visitorCredits,
+		)
+		byVisitor.set(visitorId, visitor)
+		visitorsByPackage.set(row.package_id, byVisitor)
+	}
+
+	const byPackage = new Map<
+		string,
+		{
+			rows: Array<CreditAttributionVisitorRow>
+			total: number
+			truncated: boolean
+		}
+	>()
+	for (const [packageId, visitors] of visitorsByPackage) {
+		const displayRows = [...visitors.entries()].map(([visitorId, visitor]) => {
+			const meters = creditAttributionMeters
+				.map((meter) => ({
+					meter,
+					label: visitorMeterLabels[meter],
+					units: visitor.units.get(meter) ?? 0,
+					creditsMicroUsd: visitor.credits.get(meter) ?? 0,
+				}))
+				.filter((meter) => meter.units > 0)
+			return {
+				displayName: visitorId
+					? (usernames.get(visitorId) ?? 'Deleted account')
+					: 'Anonymous visitor',
+				creditsMicroUsd: meters.reduce(
+					(sum, meter) => sum + meter.creditsMicroUsd,
+					0,
+				),
+				lastDay: visitor.lastDay,
+				meters,
+			}
+		})
+		displayRows.sort(
+			(left, right) =>
+				right.creditsMicroUsd - left.creditsMicroUsd ||
+				left.displayName.localeCompare(right.displayName),
+		)
+		byPackage.set(packageId, {
+			total: displayRows.length,
+			truncated: displayRows.length > maxPackageAppVisitorRows,
+			rows: displayRows.slice(0, maxPackageAppVisitorRows),
+		})
+	}
+	return byPackage
 }
 
 export async function loadPackageAttributionLabels(input: {

@@ -19,6 +19,8 @@ export function recordDurableObjectRowsRead(input: {
 	outcome?: 'success' | 'error'
 	/** Saved package id when the StorageRunner bucket is package-owned. */
 	packageId?: string | null
+	/** Present for package-app visitor reads; empty string means anonymous. */
+	packageAppVisitorUserId?: string
 }): void {
 	queueDurableObjectRowsRead({
 		...input,

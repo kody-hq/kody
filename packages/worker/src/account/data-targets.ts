@@ -216,6 +216,19 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	{ kind: 'user_id', table: 'usage_attribution_daily' },
 	{
+		kind: 'user_id',
+		table: 'package_app_visitor_attribution_daily',
+	},
+	{
+		kind: 'user_columns',
+		table: 'package_app_visitor_attribution_daily',
+		columns: ['visitor_user_id'],
+		includeInExport: false,
+		surface: 'package_app_visitor_attribution_daily_visitor_ids',
+		reason:
+			'Purge derived visitor usage rows that reference a deleted person and exclude cross-account visitor ids from export.',
+	},
+	{
 		kind: 'user_columns',
 		table: 'usage_attribution_daily',
 		columns: ['actor_user_id'],
@@ -1193,6 +1206,7 @@ export const accountExportForeignUserIdColumnsByTable: Readonly<
 	community_activity_events: ['actor_user_id'],
 	durable_object_duration_daily: ['actor_user_id'],
 	usage_attribution_daily: ['actor_user_id'],
+	package_app_visitor_attribution_daily: ['visitor_user_id'],
 	usage_connection_daily: ['holder_user_id'],
 	usage_rollups: ['actor_user_id'],
 	community_reports: ['listing_owner_user_id', 'resolved_by_user_id'],

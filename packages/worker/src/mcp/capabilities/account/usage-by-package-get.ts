@@ -35,6 +35,20 @@ const creditAttributionCumulativePointSchema = z.object({
 	creditsMicroUsd: z.number().int().nonnegative(),
 })
 
+const creditAttributionVisitorSchema = z.object({
+	displayName: z.string(),
+	creditsMicroUsd: z.number().int().nonnegative(),
+	lastDay: z.string(),
+	meters: z.array(
+		z.object({
+			meter: creditAttributionMeterSchema,
+			label: z.string(),
+			units: z.number().nonnegative(),
+			creditsMicroUsd: z.number().int().nonnegative(),
+		}),
+	),
+})
+
 const creditAttributionRowSchema = z.object({
 	packageId: z.string(),
 	/** Display name (package name/kodyId, or Ad hoc). */
@@ -48,6 +62,9 @@ const creditAttributionRowSchema = z.object({
 	/** Running total of this row's credits across the period (oldest first). */
 	cumulative: z.array(creditAttributionCumulativePointSchema),
 	isAdHoc: z.boolean(),
+	visitors: z.array(creditAttributionVisitorSchema).optional(),
+	visitorCount: z.number().int().nonnegative().optional(),
+	visitorsTruncated: z.boolean().optional(),
 })
 
 /**

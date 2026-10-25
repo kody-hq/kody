@@ -12,6 +12,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
@@ -45,6 +46,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,

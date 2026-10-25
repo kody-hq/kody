@@ -197,6 +197,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	teams: keep(orgMembershipShape),
 	transactional_email_delivery_index: keep(emailStays),
 	usage_attribution_daily: keep(usageHistory),
+	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
 	usage_rollups: keep(usageHistory),
 	user_email_claims: keep(personOwned),

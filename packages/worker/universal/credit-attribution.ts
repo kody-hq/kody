@@ -97,6 +97,37 @@ type CreditAttributionMeterSplit = {
 	creditsMicroUsd: number
 }
 
+export type CreditAttributionVisitorRow = {
+	displayName: string
+	creditsMicroUsd: number
+	lastDay: string
+	meters: Array<{
+		meter: CreditAttributionMeter
+		label: string
+		units: number
+		creditsMicroUsd: number
+	}>
+}
+
+export function filterAndSortCreditAttributionVisitors(
+	rows: ReadonlyArray<CreditAttributionVisitorRow>,
+	search: string,
+	sort: 'credits' | 'username',
+): Array<CreditAttributionVisitorRow> {
+	const normalizedSearch = search.trim().toLocaleLowerCase()
+	return rows
+		.filter((row) =>
+			row.displayName.toLocaleLowerCase().includes(normalizedSearch),
+		)
+		.slice()
+		.sort((left, right) =>
+			sort === 'credits'
+				? right.creditsMicroUsd - left.creditsMicroUsd ||
+					left.displayName.localeCompare(right.displayName)
+				: left.displayName.localeCompare(right.displayName),
+		)
+}
+
 type CreditAttributionCumulativePoint = {
 	day: string
 	creditsMicroUsd: number
@@ -112,6 +143,9 @@ export type CreditAttributionRow = {
 	/** 0–1 share of the period credit total. */
 	share: number
 	meters: Array<CreditAttributionMeterSplit>
+	visitors?: Array<CreditAttributionVisitorRow>
+	visitorCount?: number
+	visitorsTruncated?: boolean
 	/** Running total of this row's credits across the period (oldest first). */
 	cumulative: Array<CreditAttributionCumulativePoint>
 	isAdHoc: boolean

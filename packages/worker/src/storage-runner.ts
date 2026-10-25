@@ -937,6 +937,7 @@ export function storageRunnerRpc(input: {
 	env: Env
 	userId: OwnerId
 	storageId: string
+	packageAppVisitorUserId?: string
 }) {
 	const runner = createMeteredDurableObjectStub({
 		env: input.env,
@@ -1030,6 +1031,9 @@ export function storageRunnerRpc(input: {
 			doClass: 'StorageRunner',
 			rowsRead,
 			outcome,
+			...(input.packageAppVisitorUserId !== undefined
+				? { packageAppVisitorUserId: input.packageAppVisitorUserId }
+				: {}),
 			...(attributedPackageId ? { packageId: attributedPackageId } : {}),
 		})
 	}

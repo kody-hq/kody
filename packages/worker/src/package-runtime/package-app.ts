@@ -1681,11 +1681,17 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return visit?.credentialClientBinding ?? ''
 	}
 
-	private getStorageRunner(storageId: string) {
+	private getStorageRunner(
+		storageId: string,
+		packageAppVisitorUserId?: string,
+	) {
 		return storageRunnerRpc({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			storageId,
+			...(packageAppVisitorUserId !== undefined
+				? { packageAppVisitorUserId }
+				: {}),
 		})
 	}
 
@@ -1936,6 +1942,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					packageId,
 					String(input.name ?? ''),
 					input.args,
+					visitTicket,
 				)
 			case 'credentialClient':
 				return await this.credentialClientCallAs(
@@ -2217,6 +2224,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		query: string
 		params?: Array<unknown>
 		writable: boolean
+		packageAppVisitorUserId?: string
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
 		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
@@ -2229,7 +2237,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				}),
 			})
 		}
-		return await this.getStorageRunner(input.storageId).sqlQuery({
+		return await this.getStorageRunner(
+			input.storageId,
+			input.packageAppVisitorUserId,
+		).sqlQuery({
 			query: input.query,
 			params: input.params,
 			writable: input.writable,
@@ -2240,10 +2251,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		storageId: string
 		key: string
 		value: unknown
+		packageAppVisitorUserId?: string
 	}) {
-		const existing = await this.getStorageRunner(input.storageId).getValue({
-			key: input.key,
-		})
+		const existing = await this.getStorageRunner(
+			input.storageId,
+			input.packageAppVisitorUserId,
+		).getValue({ key: input.key })
 		await this.assertStorageWriteAllowed({
 			storageId: input.storageId,
 			requested: estimateEntitlementStorageEntryByteDelta({
@@ -2371,7 +2384,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		boundPackageId: string,
 		method: string,
 		args: unknown,
+		visitTicket?: string | null,
 	) {
+		const packageAppVisitorUserId =
+			(await this.visitorFor(visitTicket))?.userId ?? ''
 		const payload = (
 			args !== null && typeof args === 'object' && !Array.isArray(args)
 				? args
@@ -2391,7 +2407,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			prefix?: string | null
 			pageSize?: number
 			startAfter?: string | null
+			packageAppVisitorUserId?: string
 		}
+		input.packageAppVisitorUserId = packageAppVisitorUserId
 		switch (method) {
 			case 'packageStorageGet':
 				return await this.packageStorageGetAs(boundPackageId, input)
@@ -2412,7 +2430,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	private async packageStorageGetAs(
 		boundPackageId: string | null,
-		input: { packageId: string; key: string },
+		input: {
+			packageId: string
+			key: string
+			packageAppVisitorUserId?: string
+		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
 			input.packageId,
@@ -2422,6 +2444,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		// namespace lock on raw storage* (assertAppOwnedStorageId).
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
+			input.packageAppVisitorUserId,
 		).getValue({
 			key: input.key,
 		})
@@ -2434,6 +2457,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			prefix?: string | null
 			pageSize?: number
 			startAfter?: string | null
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2442,6 +2466,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		)
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
+			input.packageAppVisitorUserId,
 		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
@@ -2456,6 +2481,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			query: string
 			params?: Array<unknown>
 			writable?: boolean
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2467,6 +2493,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			query: input.query,
 			params: input.params,
 			writable: input.writable ?? false,
+			packageAppVisitorUserId: input.packageAppVisitorUserId,
 		})
 	}
 
@@ -2476,6 +2503,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			packageId: string
 			key: string
 			value: unknown
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2486,6 +2514,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: buildPackageStorageId(packageId),
 			key: input.key,
 			value: input.value,
+			packageAppVisitorUserId: input.packageAppVisitorUserId,
 		})
 	}
 
@@ -3852,6 +3881,8 @@ export async function buildPackageAppWorker(input: {
 				workerId: build.workerId,
 				surface,
 				packageId: input.savedPackage.id,
+				packageAppVisitorUserId:
+					visitor?.userId ?? input.runtime.callerContext.user?.userId ?? '',
 				connectionKey: usageConnectionKey(input.runtime.callerContext.request),
 				waitUntil: input.waitUntil,
 			})
@@ -3873,6 +3904,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 	workerId: string
 	surface: 'app_fetch' | 'app_realtime'
 	packageId: string
+	packageAppVisitorUserId: string
 	connectionKey: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
@@ -3882,6 +3914,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 		workerId: input.workerId,
 		surface: input.surface,
 		packageId: input.packageId,
+		packageAppVisitorUserId: input.packageAppVisitorUserId,
 		connectionKey: input.connectionKey,
 	}).catch((error: unknown) => {
 		console.warn('package-app-dynamic-worker-day-record-failed', error)

@@ -14,6 +14,7 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -45,6 +46,7 @@ async function ensureSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
 	await ensureCreditWalletTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,

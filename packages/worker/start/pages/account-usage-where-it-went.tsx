@@ -7,8 +7,10 @@ import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import {
 	creditAttributionDefaultVisiblePackages,
+	filterAndSortCreditAttributionVisitors,
 	type CreditAttributionBreakdown,
 	type CreditAttributionRow,
+	type CreditAttributionVisitorRow,
 } from '#universal/credit-attribution.ts'
 import { formatOnCreditsMicroUsd } from '#universal/usage-presentation.ts'
 import {
@@ -148,6 +150,13 @@ export function WhereItWentPanel({
 									) : (
 										<>
 											{renderMeterSplit(row)}
+											{row.visitors ? (
+												<PackageVisitorsTable
+													rows={row.visitors}
+													total={row.visitorCount ?? row.visitors.length}
+													truncated={row.visitorsTruncated ?? false}
+												/>
+											) : null}
 											{row.href ? (
 												<p css={{ margin: 0 }}>
 													<SiteLink href={row.href} css={primaryLinkCss}>
@@ -177,6 +186,124 @@ export function WhereItWentPanel({
 	)
 }
 
+function PackageVisitorsTable({
+	rows,
+	total,
+	truncated,
+}: {
+	rows: Array<CreditAttributionVisitorRow>
+	total: number
+	truncated: boolean
+}) {
+	const [search, setSearch] = useState('')
+	const [sort, setSort] = useState<'credits' | 'username'>('credits')
+	const [page, setPage] = useState(0)
+	const pageSize = 20
+	const filtered = filterAndSortCreditAttributionVisitors(rows, search, sort)
+	const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+	const currentPage = Math.min(page, pageCount - 1)
+	const visible = filtered.slice(
+		currentPage * pageSize,
+		(currentPage + 1) * pageSize,
+	)
+	return (
+		<section data-package-visitors>
+			<h3 css={{ margin: 0, fontSize: typography.fontSize.md }}>Visitors</h3>
+			<label css={descriptionCss}>
+				Search visitors
+				<input
+					type="search"
+					value={search}
+					onChange={(event) => {
+						setSearch(event.currentTarget.value)
+						setPage(0)
+					}}
+					placeholder="Search usernames"
+					data-visitors-search
+				/>
+			</label>
+			<div css={{ display: 'flex', gap: spacing.sm }}>
+				<button
+					type="button"
+					aria-pressed={sort === 'credits'}
+					onClick={() => setSort('credits')}
+					data-visitors-sort="credits"
+				>
+					Sort by credits
+				</button>
+				<button
+					type="button"
+					aria-pressed={sort === 'username'}
+					onClick={() => setSort('username')}
+					data-visitors-sort="username"
+				>
+					Sort by username
+				</button>
+			</div>
+			<p css={descriptionCss} data-visitors-count>
+				Showing {formatIntegerNumber(visible.length)} of{' '}
+				{formatIntegerNumber(filtered.length)} visitors
+				{truncated
+					? ` (top ${formatIntegerNumber(rows.length)} of ${formatIntegerNumber(total)})`
+					: ''}
+			</p>
+			<table css={{ width: '100%', borderCollapse: 'collapse' }}>
+				<thead>
+					<tr>
+						<th scope="col">Visitor</th>
+						<th scope="col">Credits</th>
+						<th scope="col">Meters</th>
+						<th scope="col">Last day</th>
+					</tr>
+				</thead>
+				<tbody>
+					{visible.map((row, index) => (
+						<tr key={`${row.displayName}-${row.lastDay}-${index}`}>
+							<td>{row.displayName}</td>
+							<td>{formatOnCreditsMicroUsd(row.creditsMicroUsd)}</td>
+							<td>
+								{row.meters
+									.map(
+										(meter) =>
+											`${meter.label}: ${formatIntegerNumber(meter.units)}`,
+									)
+									.join(' · ')}
+							</td>
+							<td>{row.lastDay}</td>
+						</tr>
+					))}
+					{visible.length === 0 ? (
+						<tr>
+							<td colSpan={4}>No visitors match your search.</td>
+						</tr>
+					) : null}
+				</tbody>
+			</table>
+			{pageCount > 1 ? (
+				<div css={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
+					<button
+						type="button"
+						disabled={currentPage === 0}
+						onClick={() => setPage(currentPage - 1)}
+					>
+						Previous
+					</button>
+					<span>
+						Page {currentPage + 1} of {pageCount}
+					</span>
+					<button
+						type="button"
+						disabled={currentPage + 1 >= pageCount}
+						onClick={() => setPage(currentPage + 1)}
+					>
+						Next
+					</button>
+				</div>
+			) : null}
+		</section>
+	)
+}
+
 /** Package page: period credit total, meter split, cumulative graph. */
 export function PackageCreditAttributionPanel({
 	row,
@@ -201,6 +328,13 @@ export function PackageCreditAttributionPanel({
 				{formatOnCreditsMicroUsd(row.creditsMicroUsd)}
 			</p>
 			{renderMeterSplit(row)}
+			{row.visitors ? (
+				<PackageVisitorsTable
+					rows={row.visitors}
+					total={row.visitorCount ?? row.visitors.length}
+					truncated={row.visitorsTruncated ?? false}
+				/>
+			) : null}
 			{renderCumulativeGraph({
 				id: `package-credits-${row.packageId}`,
 				row,

@@ -1598,6 +1598,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ value: 'granted-value' })
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		buildPackageStorageId('package-1'),
+		undefined,
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
