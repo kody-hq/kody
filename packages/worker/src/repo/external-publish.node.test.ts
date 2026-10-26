@@ -126,8 +126,8 @@ vi.mock(
 		const actual = await importOriginal<object>()
 		return {
 			...actual,
-			storePublishedCredentialNeeds: (...args: Array<unknown>) =>
-				mockModule.storePublishedCredentialNeeds(...args),
+			storePublishedCredentialNeeds: (input: unknown) =>
+				mockModule.storePublishedCredentialNeeds(input),
 		}
 	},
 )
@@ -138,8 +138,8 @@ vi.mock(
 		const actual = await importOriginal<object>()
 		return {
 			...actual,
-			storePublishedCredentialStamp: (...args: Array<unknown>) =>
-				mockModule.storePublishedCredentialStamp(...args),
+			storePublishedCredentialStamp: (input: unknown) =>
+				mockModule.storePublishedCredentialStamp(input),
 		}
 	},
 )
@@ -359,6 +359,10 @@ test('same-commit republish re-runs checks when stored checker version is stale'
 	setupPublish()
 	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
 	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
 	mockModule.runRepoChecks.mockResolvedValue({
 		...passingChecks,
 		sourceFiles: { 'package.json': JSON.stringify(manifest) },

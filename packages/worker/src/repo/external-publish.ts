@@ -185,17 +185,21 @@ export async function finalizePublishedEntitySource(
 			publishedCommit: input.publishedCommit,
 			files: input.files,
 		})
-		await storePublishedCredentialStamp({
+		const stamp = await storePublishedCredentialStamp({
 			env: input.env,
 			source: input.source,
 			publishedCommit: input.publishedCommit,
 			files: input.files,
 		})
-		await writePublishedPublishChecksVersion({
-			env: input.env,
-			sourceId: input.source.id,
-			publishedCommit: input.publishedCommit,
-		})
+		// Only seal the checker version after a successful stamp write so a
+		// failed store cannot leave a "current" version over a missing stamp.
+		if (stamp) {
+			await writePublishedPublishChecksVersion({
+				env: input.env,
+				sourceId: input.source.id,
+				publishedCommit: input.publishedCommit,
+			})
+		}
 	}
 	try {
 		await refreshSavedPackageProjection({
@@ -502,17 +506,19 @@ export async function publishFromExternalRef(input: {
 				publishedCommit: input.newCommit,
 				files,
 			})
-			await storePublishedCredentialStamp({
+			const stamp = await storePublishedCredentialStamp({
 				env: input.env,
 				source,
 				publishedCommit: input.newCommit,
 				files,
 			})
-			await writePublishedPublishChecksVersion({
-				env: input.env,
-				sourceId: source.id,
-				publishedCommit: input.newCommit,
-			})
+			if (stamp) {
+				await writePublishedPublishChecksVersion({
+					env: input.env,
+					sourceId: source.id,
+					publishedCommit: input.newCommit,
+				})
+			}
 		}
 		return {
 			status: 'already_published',

@@ -930,6 +930,23 @@ test('concrete vault refs in status/help display fields do not fail the stamp ga
 	expect(statusExamples.failures).toEqual([])
 	expect(statusExamples.keys).toEqual([])
 
+	const shapedExamples = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			'\treturn {',
+			"\t\texample: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',",
+			'\t\thelp: {',
+			'\t\t\theaders: {',
+			"\t\t\t\tAuthorization: 'Bearer {{secret/bitwarden:i/00000000-0000-4000-8000-000000000000/value}}',",
+			'\t\t\t},',
+			'\t\t},',
+			'\t}',
+			'}',
+		].join('\n'),
+	})
+	expect(shapedExamples.failures).toEqual([])
+
 	const liveVaultStillFails = scanCredentialStamp({
 		'package.json': manifest(),
 		'src/index.ts': [

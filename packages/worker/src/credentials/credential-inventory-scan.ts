@@ -856,6 +856,64 @@ type ClassifyContext = {
 	binding: (declarator: AstNode) => 'read' | 'reassigned' | 'unused'
 }
 
+/**
+ * Object keys that hold documentation / help copy rather than outbound
+ * request data. A vault token nested under one of these (including a nested
+ * `headers` object or an `https://…` example URL) is display text, not a
+ * credential use — unless a fetch/Request/Headers call sits between the
+ * placeholder and that key.
+ */
+const displayDocumentationPropertyKeys = new Set([
+	'example',
+	'examples',
+	'description',
+	'help',
+	'usage',
+	'docs',
+	'documentation',
+	'hint',
+	'hints',
+	'sample',
+	'samples',
+])
+
+/**
+ * True when the placeholder sits in returned/help data rather than an
+ * outbound request builder. Stops string-shape classification (URL / nested
+ * headers) from treating status() documentation examples as live uses.
+ */
+function displayOnlyPlacement(
+	ancestors: ReadonlyArray<AstNode>,
+	node: AstNode,
+): CredentialPlacement | null {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (
+			ancestor.type === 'CallExpression' ||
+			ancestor.type === 'OptionalCallExpression' ||
+			ancestor.type === 'NewExpression'
+		) {
+			return null
+		}
+		if (ancestor.type === 'ObjectProperty') {
+			const key = safeIdentifier(propertyKey(ancestor))
+			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
+				return otherPlacement('object', key)
+			}
+		}
+		if (ancestor.type === 'ReturnStatement') {
+			return otherPlacement('return')
+		}
+		if (
+			ancestor.type === 'ArrowFunctionExpression' &&
+			ancestor.body === (ancestors[index + 1] ?? node)
+		) {
+			return otherPlacement('return')
+		}
+	}
+	return null
+}
+
 function classifyPlacement(
 	text: string,
 	match: PlaceholderMatch,
@@ -864,6 +922,8 @@ function classifyPlacement(
 	context: ClassifyContext,
 ): CredentialPlacement {
 	if (match.kind === 'secret-basic') return { type: 'basic' }
+	const displayOnly = displayOnlyPlacement(ancestors, node)
+	if (displayOnly) return displayOnly
 	const parent = parentOf(ancestors)
 	if (
 		parent?.node.type === 'VariableDeclarator' &&

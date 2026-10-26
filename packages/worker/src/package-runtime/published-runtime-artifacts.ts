@@ -350,15 +350,23 @@ export async function writePublishedPublishChecksVersion(input: {
 	version?: typeof publishChecksVersion
 }) {
 	// Best-effort: unit stubs may set a truthy BUNDLE_ARTIFACTS_KV without
-	// get/put. Skip rather than throwing after a successful tip advance.
+	// get/put, and a KV put must never unwind finalize after tip advance.
 	if (!bundleArtifactsKvSupportsGetPut(input.env)) return
 	const record: StoredPublishChecksRecord = {
 		version: input.version ?? publishChecksVersion,
 	}
-	await getBundleArtifactsKv(input.env).put(
-		buildPublishedPublishChecksKvKey(input),
-		JSON.stringify(record),
-	)
+	try {
+		await getBundleArtifactsKv(input.env).put(
+			buildPublishedPublishChecksKvKey(input),
+			JSON.stringify(record),
+		)
+	} catch (error) {
+		console.warn('publish-checks-version write failed', {
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			error,
+		})
+	}
 }
 
 /**

@@ -55,6 +55,29 @@ test('concrete vault refs in status display fields are not credential-use placem
 	).toBe(true)
 })
 
+test('URL-shaped and nested-header vault examples under status() stay display-only', () => {
+	const result = scan(`
+		export function status() {
+			return {
+				example: 'https://api.example.com/v1?token={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
+				help: {
+					headers: {
+						Authorization: 'Bearer {{secret/bitwarden:i/00000000-0000-4000-8000-000000000000/value}}',
+					},
+				},
+			}
+		}
+	`)
+	expect(result.placeholders.vault).toBe(2)
+	expect(result.vaultPlacements).toEqual([
+		other('object', 'example'),
+		other('object', 'help'),
+	])
+	expect(
+		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
+	).toBe(true)
+})
+
 test('isVaultCredentialUsePlacement matches request and credential-mapped sites only', () => {
 	const uses: Array<CredentialPlacement> = [
 		{ type: 'header', name: 'authorization', format: 'Bearer {value}' },
