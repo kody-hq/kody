@@ -892,13 +892,15 @@ function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
 			// `const status = () => …` / `status: () => …` — the name sits on
 			// the enclosing declarator or object property, not the function.
 			const holder = ancestors[index - 1]
-			if (holder?.type === 'VariableDeclarator') {
+			if (holder?.type === 'VariableDeclarator' && holder.init === ancestor) {
 				return getNodeName(holder.id)
 			}
-			if (holder?.type === 'ObjectProperty') {
+			if (holder?.type === 'ObjectProperty' && holder.value === ancestor) {
 				return getNodeName(holder.key) ?? propertyKey(holder)
 			}
-			continue
+			// Unnamed nested function (default param, callback, etc.): do not
+			// inherit an outer status/help name.
+			return null
 		}
 		if (
 			ancestor.type === 'ObjectMethod' ||

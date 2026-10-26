@@ -90,6 +90,19 @@ test('assigned status arrow returns stay display-only for vault examples', () =>
 	).toBe(true)
 })
 
+test('unnamed nested functions inside status do not inherit display-only returns', () => {
+	const result = scan(`
+		export function status(build = () => ({
+			headers: {
+				Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
+			},
+		})) {
+			return { example: 'docs only' }
+		}
+	`)
+	expect(result.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(true)
+})
+
 test('docs-named body fields and header helpers under fetch stay credential uses', () => {
 	const bodyField = scan(`
 		await fetch('https://api.example.com/v1', {
