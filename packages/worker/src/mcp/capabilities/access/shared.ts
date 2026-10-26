@@ -528,6 +528,14 @@ export function inviteAcceptPrompt(input: { orgSlug: string; token: string }) {
 	return `You are invited to the ${input.orgSlug} organization. Call inviteAccept with this token: ${input.token}. The token is shown once and cannot be looked up later.`
 }
 
+export function inviteLinkAcceptPrompt(input: {
+	orgSlug: string
+	token: string
+	url?: string
+}) {
+	return `Shareable invite link for the ${input.orgSlug} organization. Recipients open ${input.url ?? `/join/${input.token}`} or call inviteLinkAccept with this token: ${input.token}. The credential is shown once; Kody stores only a hash.`
+}
+
 export function optionalInviteeEmail(value: string | undefined) {
 	if (!value) return null
 	const email = normalizeEmailAddress(value)
