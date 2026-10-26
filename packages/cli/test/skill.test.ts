@@ -176,7 +176,7 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 	const calls: Array<{
 		command: string
 		args: Array<string>
-		options: { detached?: boolean; stdio?: string }
+		options: { detached?: boolean; stdio?: string; windowsHide?: boolean }
 	}> = []
 	let unrefCalls = 0
 	scheduleDetachedSkillRefresh({
@@ -188,6 +188,7 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 				options: {
 					detached: options.detached === true,
 					stdio: typeof options.stdio === 'string' ? options.stdio : undefined,
+					windowsHide: options.windowsHide === true,
 				},
 			})
 			return {
@@ -206,5 +207,6 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 	])
 	assert.equal(calls[0]!.options.detached, true)
 	assert.equal(calls[0]!.options.stdio, 'ignore')
+	assert.equal(calls[0]!.options.windowsHide, true)
 	assert.equal(unrefCalls, 1)
 })

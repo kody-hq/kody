@@ -251,6 +251,7 @@ export function scheduleDetachedSkillRefresh(
 		const child = spawnFn(process.execPath, args, {
 			detached: true,
 			stdio: 'ignore',
+			windowsHide: true,
 			env: {
 				...process.env,
 				KODY_SKIP_SKILL_REFRESH: '1',
