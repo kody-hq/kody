@@ -409,6 +409,30 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'inviteLinkAccept',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links/accept',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkCreate',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkList',
+		method: 'GET',
+		pathTemplate: '/v1/access/invite-links',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkRevoke',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links/{invite_link_id}/revoke',
+		pathParamNames: ['invite_link_id'],
+	},
+	{
 		operationId: 'inviteRevoke',
 		method: 'POST',
 		pathTemplate: '/v1/access/invites/{invite_id}/revoke',

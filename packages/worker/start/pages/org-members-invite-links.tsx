@@ -3,7 +3,10 @@ import {
 	createOrganizationInviteLink,
 	revokeOrganizationInviteLink,
 } from '#start/server/org-mutations'
-import { type OrgInviteLinkView } from '#universal/loader-data.ts'
+import {
+	type OrgInviteLinkView,
+	type OrgMembersTeamOption,
+} from '#universal/loader-data.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
 import {
 	getDangerPillCss,
@@ -42,6 +45,7 @@ async function copyText(text: string) {
 }
 export function OrgMembersInviteLinks({
 	links,
+	teams,
 	slug,
 	queryKey,
 	onMessage,
@@ -49,11 +53,14 @@ export function OrgMembersInviteLinks({
 }: {
 	clearRevision: number
 	links: ReadonlyArray<OrgInviteLinkView>
+	teams: ReadonlyArray<OrgMembersTeamOption>
 	slug: string
 	queryKey: QueryKey
 	onMessage: (message: string, tone: 'info' | 'error') => void
 }) {
 	const [role, setRole] = useState<'member' | 'billing'>('member'),
+		[label, setLabel] = useState(''),
+		[selectedTeamIds, setSelectedTeamIds] = useState<Array<string>>([]),
 		[domains, setDomains] = useState(''),
 		[maxUses, setMaxUses] = useState(''),
 		[days, setDays] = useState('7')
@@ -75,6 +82,13 @@ export function OrgMembersInviteLinks({
 	const capture = useSubmitterScope()
 	const creating = createMutation.isPending
 	const pending = creating || revokeMutation.isPending
+	function toggleTeam(teamId: string) {
+		setSelectedTeamIds((current) =>
+			current.includes(teamId)
+				? current.filter((id) => id !== teamId)
+				: [...current, teamId],
+		)
+	}
 	async function createLink() {
 		const active = capture()
 		onMessage('', 'info')
@@ -82,6 +96,8 @@ export function OrgMembersInviteLinks({
 			const result = await createMutation.mutateAsync({
 				orgSlug: slug,
 				role,
+				label: label.trim() || undefined,
+				teamIds: selectedTeamIds,
 				allowedEmailDomains: domains,
 				maxUses: maxUses.trim() || null,
 				expiresInDays: days.trim() || '7',
@@ -91,10 +107,15 @@ export function OrgMembersInviteLinks({
 			const copied = await copyText(url)
 			if (!active()) return
 			setCopiedLink({ id: result.inviteLink.id, url, revision: clearRevision })
+			setLabel('')
+			setSelectedTeamIds([])
+			setDomains('')
+			setMaxUses('')
+			setDays('7')
 			onMessage(
 				copied
-					? 'Invite link copied to clipboard.'
-					: 'Invite link created. Copy it below.',
+					? 'Invite link credential copied to clipboard.'
+					: 'Invite link created. Copy the credential below; it is shown only once.',
 				'info',
 			)
 		} catch (error) {
@@ -160,6 +181,45 @@ export function OrgMembersInviteLinks({
 						</p>
 					</label>
 					<label css={accountFieldCss}>
+						<span css={accountFieldLabelCss}>Label (optional)</span>
+						<input
+							value={label}
+							data-field-ring
+							autoComplete="off"
+							placeholder="Engineering onboarding"
+							css={accountInputCss}
+							onChange={(event) => setLabel(event.currentTarget.value)}
+						/>
+						<p css={accountFieldNoteCss}>
+							A short name for your team. Shown in the active list only.
+						</p>
+					</label>
+					{teams.length > 0 ? (
+						<fieldset css={teamFieldsetCss}>
+							<span css={accountFieldLabelCss}>Default teams (optional)</span>
+							<p css={accountFieldNoteCss}>
+								People who join with this link are also added to these teams.
+							</p>
+							<ul css={teamListCss}>
+								{teams.map((team) => {
+									const checked = selectedTeamIds.includes(team.id)
+									return (
+										<li key={team.id}>
+											<label css={teamOptionCss}>
+												<input
+													type="checkbox"
+													checked={checked}
+													onChange={() => toggleTeam(team.id)}
+												/>
+												<span>{team.name}</span>
+											</label>
+										</li>
+									)
+								})}
+							</ul>
+						</fieldset>
+					) : null}
+					<label css={accountFieldCss}>
 						<span css={accountFieldLabelCss}>
 							Allowed email domains (optional)
 						</span>
@@ -198,7 +258,15 @@ export function OrgMembersInviteLinks({
 							css={accountInputCss}
 							onChange={(event) => setDays(event.currentTarget.value)}
 						/>
+						<p css={accountFieldNoteCss}>
+							Defaults to 7 days. Maximum 365. Every link expires; there is no
+							never option.
+						</p>
 					</label>
+					<p css={accountFieldNoteCss}>
+						The link is a credential: it is shown once and Kody stores only a
+						hash. Copy it now, or use Copy again while this page still shows it.
+					</p>
 					<div css={accountActionsCss}>
 						<button
 							type="submit"
@@ -223,7 +291,7 @@ export function OrgMembersInviteLinks({
 								if (active())
 									onMessage(
 										copied
-											? 'Invite link copied to clipboard.'
+											? 'Invite link credential copied to clipboard.'
 											: 'Could not copy the link. Select it manually.',
 										copied ? 'info' : 'error',
 									)
@@ -249,11 +317,22 @@ export function OrgMembersInviteLinks({
 										{renderIcon('link', { size: '1.25rem' })}
 									</span>
 									<span css={rowTextCss}>
-										<span css={rowNameCss}>{link.roleLabel} link</span>
+										<span css={rowNameCss}>
+											{link.label?.trim() || `${link.roleLabel} link`}
+										</span>
 										<span css={rowDetailCss}>
+											{link.roleLabel}
+											{link.teamNames.length > 0
+												? ` · Teams ${link.teamNames.join(', ')}`
+												: ''}
+											{' · '}
 											{link.useCount}
-											{link.maxUses != null ? ` / ${link.maxUses}` : ''} uses ·
-											Expires {formatTimestampDate(link.expiresAt)} · Created by{' '}
+											{link.maxUses != null ? ` / ${link.maxUses}` : ''} uses
+											{link.lastUsedAt
+												? ` · Last used ${formatTimestampDate(link.lastUsedAt)}`
+												: ''}
+											{' · '}Expires {formatTimestampDate(link.expiresAt)} ·
+											Created by{' '}
 											{link.createdByDisplayName?.trim() ||
 												(link.createdByUsername
 													? `@${link.createdByUsername}`
@@ -288,6 +367,29 @@ export function OrgMembersInviteLinks({
 const formCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.lg,
+}
+
+const teamFieldsetCss: CSSObject = {
+	...accountFieldCss,
+	border: 0,
+	margin: 0,
+	padding: 0,
+	minWidth: 0,
+}
+
+const teamListCss: CSSObject = {
+	listStyle: 'none',
+	margin: `${spacing.sm} 0 0`,
+	padding: 0,
+	display: 'grid',
+	gap: spacing.xs,
+}
+
+const teamOptionCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: spacing.sm,
+	fontSize: typography.size.sm,
 }
 
 const selectCss: CSSObject = {

@@ -1353,13 +1353,23 @@ export type OrgInviteLinkView = {
 	id: string
 	role: 'member' | 'billing'
 	roleLabel: string
+	label: string | null
+	teamIds: Array<string>
+	teamNames: Array<string>
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	expiresAt: string
 	createdAt: string
 	createdByUsername: string | null
 	createdByDisplayName: string | null
+}
+
+export type OrgMembersTeamOption = {
+	id: string
+	slug: string
+	name: string
 }
 
 export type OrgMembersLoaderData = {
@@ -1368,6 +1378,7 @@ export type OrgMembersLoaderData = {
 	members: Array<OrgMemberView>
 	invites: Array<OrgInviteView>
 	inviteLinks: Array<OrgInviteLinkView>
+	teams: Array<OrgMembersTeamOption>
 	canManage: boolean
 }
 

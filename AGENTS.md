@@ -14,6 +14,10 @@ Open the page that owns the task:
   [docs/contributing/index.md](./docs/contributing/index.md)
 - Engineering principles: [docs/principles/](./docs/principles/index.md)
 - Task skills: [`.agents/skills/`](./.agents/skills/)
+- Invite a whole team (shareable Members invite links vs per-person invites):
+  [docs/guides/organizations.md](./docs/guides/organizations.md)
+  (`guide:organizations`; capabilities `inviteLinkCreate` / `inviteLinkList` /
+  `inviteLinkRevoke` / `inviteLinkAccept`)
 - Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):
   [docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
 - Dependency bump or audit fix: reuse an open PR, never open a duplicate

@@ -245,6 +245,7 @@ function OrgMembersContent({
 					<OrgMembersInviteLinks
 						clearRevision={inviteRevision}
 						links={data.inviteLinks}
+						teams={data.teams}
 						slug={data.org.slug}
 						queryKey={queryKey}
 						onMessage={(text, tone) => setMessage({ text, tone })}

@@ -368,3 +368,125 @@ test('expired and revoked links cannot be redeemed', async () => {
 		}),
 	).toMatchObject({ ok: false, reason: 'revoked' })
 })
+
+test('label and last used show on list after a join', async () => {
+	const token = generateInviteLinkToken()
+	const tokenHash = await hashInviteLinkToken(token)
+	const created = await createOrgInviteLink({
+		db,
+		orgId,
+		target: { kind: 'membership', role: 'member' },
+		createdByUserId: owner.personId,
+		tokenHash,
+		label: 'Engineering onboarding',
+		audit: createTestOrgAuditWriter({
+			db: auditDb,
+			actorUserId: owner.personId,
+		}),
+	})
+	expect(created.label).toBe('Engineering onboarding')
+	const before = await listActiveOrgInviteLinks(db, orgId)
+	expect(before[0]).toMatchObject({
+		id: created.id,
+		label: 'Engineering onboarding',
+		lastUsedAt: null,
+		useCount: 0,
+	})
+	const link = (await getInviteLinkByTokenHash(db, tokenHash))!
+	expect(
+		await redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: createTestOrgAuditWriter({
+				db: auditDb,
+				appDb: db,
+				actorUserId: joiner.personId,
+			}),
+		}),
+	).toMatchObject({ ok: true, alreadyMember: false })
+	const after = await listActiveOrgInviteLinks(db, orgId)
+	expect(after[0]).toMatchObject({
+		id: created.id,
+		label: 'Engineering onboarding',
+		useCount: 1,
+	})
+	expect(after[0]?.lastUsedAt).toEqual(expect.any(String))
+})
+
+test('existing members rejoin without burning uses, and removed members can rejoin', async () => {
+	const { tokenHash } = await createLink({ maxUses: 2 })
+	const link = (await getInviteLinkByTokenHash(db, tokenHash))!
+	const audit = () =>
+		createTestOrgAuditWriter({
+			db: auditDb,
+			appDb: db,
+			actorUserId: joiner.personId,
+		})
+	expect(
+		await redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: audit(),
+		}),
+	).toMatchObject({ ok: true, alreadyMember: false })
+	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+
+	expect(
+		await redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link: (await getInviteLinkByTokenHash(db, tokenHash))!,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: audit(),
+		}),
+	).toMatchObject({ ok: true, alreadyMember: true })
+	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+
+	sqlite
+		.prepare(
+			`UPDATE org_memberships
+			 SET deleted_at = ?
+			 WHERE org_id = ? AND user_id = ?`,
+		)
+		.run('2026-02-02T00:00:00.000Z', orgId, joiner.personId)
+
+	expect(
+		await redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link: (await getInviteLinkByTokenHash(db, tokenHash))!,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: audit(),
+		}),
+	).toMatchObject({ ok: true, alreadyMember: false })
+	const membership = await db
+		.prepare(
+			`SELECT role FROM org_memberships
+			 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(orgId, joiner.personId)
+		.first<{ role: string }>()
+	expect(membership?.role).toBe('member')
+	// Prior redemption is reused; removing someone does not spend another use.
+	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+})
