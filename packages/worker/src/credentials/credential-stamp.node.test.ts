@@ -914,6 +914,43 @@ test('example vault references with angle-bracket or metavariable forms do not f
 	)
 })
 
+test('concrete vault refs in status/help display fields do not fail the stamp gate', () => {
+	const statusExamples = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			'\treturn {',
+			"\t\texample: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',",
+			"\t\thelp: 'Use {{secret/bitwarden:i/00000000-0000-4000-8000-000000000000/value}}',",
+			"\t\tdescription: 'Item field ref shape for callers',",
+			'\t}',
+			'}',
+		].join('\n'),
+	})
+	expect(statusExamples.failures).toEqual([])
+	expect(statusExamples.keys).toEqual([])
+
+	const liveVaultStillFails = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			"\treturn { example: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }",
+			'}',
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' },",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		liveVaultStillFails.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+	expect(liveVaultStillFails.failures[0]?.message).toMatch(
+		/request or credential-mapped site/,
+	)
+})
+
 test('isStoredCredentialStamp rejects a dependency pin that is not an object', () => {
 	const stamp = {
 		version: 1,

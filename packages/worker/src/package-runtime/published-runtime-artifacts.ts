@@ -17,6 +17,14 @@ const credentialNeedsVersion = 1
 const credentialNeedsPrefix = 'credential-needs'
 const credentialStampVersion = 1
 const credentialStampPrefix = 'credential-stamp'
+/**
+ * Authoring publish check / stamp-scanner semantics version. Bump when a
+ * same-commit republish must re-run checks (for example a stamp false-positive
+ * fix). Missing or mismatched stored versions force a re-check instead of a
+ * pure `already_published` short-circuit.
+ */
+export const publishChecksVersion = 1 as const
+const publishChecksPrefix = 'publish-checks'
 
 /**
  * `app` is the Worker fetch bundle loaded into the package-app isolate;
@@ -313,6 +321,69 @@ export async function readPublishedCredentialStamp(input: {
 		buildPublishedCredentialStampKvKey(input),
 		'json',
 	)
+}
+
+export function buildPublishedPublishChecksKvKey(input: {
+	sourceId: string
+	publishedCommit: string
+}) {
+	return `${publishChecksPrefix}:v1:${input.sourceId}:${input.publishedCommit}`
+}
+
+export type StoredPublishChecksRecord = {
+	version: number
+}
+
+export async function writePublishedPublishChecksVersion(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+	version?: typeof publishChecksVersion
+}) {
+	const record: StoredPublishChecksRecord = {
+		version: input.version ?? publishChecksVersion,
+	}
+	await getBundleArtifactsKv(input.env).put(
+		buildPublishedPublishChecksKvKey(input),
+		JSON.stringify(record),
+	)
+}
+
+/**
+ * Stored authoring-check version for this tip, or null when never recorded
+ * (pre-version publishes and failed attempts).
+ */
+export async function readPublishedPublishChecksVersion(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+}): Promise<number | null> {
+	const raw = await getBundleArtifactsKv(input.env).get(
+		buildPublishedPublishChecksKvKey(input),
+		'json',
+	)
+	if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+		return null
+	}
+	const version = (raw as Record<string, unknown>).version
+	return typeof version === 'number' && Number.isFinite(version)
+		? version
+		: null
+}
+
+/** True when this tip was sealed under the current publish-checks semantics. */
+export async function publishedPublishChecksAreCurrent(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+}): Promise<boolean> {
+	if (!hasPublishedRuntimeArtifacts(input.env)) {
+		// Local / test envs without KV cannot store a version; treat matching
+		// tip as current so unit tests keep a true no-op short-circuit.
+		return true
+	}
+	const stored = await readPublishedPublishChecksVersion(input)
+	return stored === publishChecksVersion
 }
 
 export function buildPublishedBundleArtifactKvKey(input: {

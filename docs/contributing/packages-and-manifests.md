@@ -658,9 +658,13 @@ esbuild for targets whose reachable inputs and bundler root config are unchanged
 versus the previous published snapshot, and copies those artifacts onto the new
 commit key so the identity row never points at a hole. Shared modules, stale
 captured `kody:@` dependency commits, missing prior artifacts, first publish,
-force, and mismatched `already_published` snapshot rewrites still rebuild. Check
-failures before promotion return the failed checks and do not mutate D1, KV
-snapshots, published bundle artifacts, package projections, or vectors. A
+force, and mismatched `already_published` snapshot rewrites still rebuild. Same
+tip + current `publishChecksVersion` is a true no-op (skips checks). Same tip
+with a missing or older stored checker version re-runs authoring checks,
+refreshes the credential stamp, writes the current checks version, and returns
+`already_published` with `checks_rerun: true` (no tip move, no follower notify).
+Check failures before promotion return the failed checks and do not mutate D1,
+KV snapshots, published bundle artifacts, package projections, or vectors. A
 rebuild failure after promotion returns `checks_failed` with a bundle check;
 re-run the publish capability to repair artifacts. Non-fast-forward external
 heads are refused unless the caller passes `allow_force: true`. When

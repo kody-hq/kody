@@ -16,6 +16,8 @@ import { refreshSavedPackageProjection } from '#worker/package-registry/service.
 import {
 	deletePublishedSourceSnapshot,
 	hasPublishedRuntimeArtifacts,
+	publishedPublishChecksAreCurrent,
+	writePublishedPublishChecksVersion,
 	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
@@ -188,6 +190,11 @@ export async function finalizePublishedEntitySource(
 			source: input.source,
 			publishedCommit: input.publishedCommit,
 			files: input.files,
+		})
+		await writePublishedPublishChecksVersion({
+			env: input.env,
+			sourceId: input.source.id,
+			publishedCommit: input.publishedCommit,
 		})
 	}
 	try {
@@ -365,14 +372,25 @@ export async function publishFromExternalRef(input: {
 			'Plain repos are live-at-HEAD and do not use external publish reconciliation.',
 		)
 	}
-	if (source.published_commit === input.newCommit) {
-		await input.releaseCloneGitObjects?.()
-		return {
-			status: 'already_published',
-			published_commit: source.published_commit,
+	const sameCommitRepublish = source.published_commit === input.newCommit
+	if (sameCommitRepublish) {
+		const checksCurrent = await publishedPublishChecksAreCurrent({
+			env: input.env,
+			sourceId: source.id,
+			publishedCommit: input.newCommit,
+		})
+		if (checksCurrent) {
+			await input.releaseCloneGitObjects?.()
+			return {
+				status: 'already_published',
+				published_commit: source.published_commit,
+			}
 		}
+		// Tip matches HEAD but the stored check/stamp was sealed under an older
+		// checker (or never recorded after a failed attempt). Re-run checks and
+		// refresh the stamp without treating this as a tip-moving publish.
 	}
-	if (source.published_commit) {
+	if (source.published_commit && !sameCommitRepublish) {
 		const isFastForward = await input.isFastForward({
 			previousCommit: source.published_commit,
 		})
@@ -467,6 +485,43 @@ export async function publishFromExternalRef(input: {
 		...(allowedPackagesPublishNotice
 			? { allowed_packages_publish_notice: allowedPackagesPublishNotice }
 			: {}),
+	}
+	if (sameCommitRepublish) {
+		// Same tip: refresh stamp / check version only. Skip lock / approval
+		// (tip is already live). Do not re-run follower notify, listing
+		// promote, or a full finalize (artifacts rebuild stays on the
+		// capability path when leftovers need repair).
+		if (
+			source.entity_kind === 'package' &&
+			hasPublishedRuntimeArtifacts(input.env)
+		) {
+			const files = input.files ?? checks.sourceFiles
+			await storePublishedCredentialNeeds({
+				env: input.env,
+				source,
+				publishedCommit: input.newCommit,
+				files,
+			})
+			await storePublishedCredentialStamp({
+				env: input.env,
+				source,
+				publishedCommit: input.newCommit,
+				files,
+			})
+			await writePublishedPublishChecksVersion({
+				env: input.env,
+				sourceId: source.id,
+				publishedCommit: input.newCommit,
+			})
+		}
+		return {
+			status: 'already_published',
+			published_commit: source.published_commit,
+			checks_rerun: true,
+			message:
+				'HEAD was already the published commit; publish checks were re-run because the stored check/stamp used an older checker (or a prior attempt never sealed a success). Checks passed and the stamp was refreshed.',
+			...publishNotices,
+		}
 	}
 	if (lockedPackage) {
 		const error = createPackagePublishLockedError({

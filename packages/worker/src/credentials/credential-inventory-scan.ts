@@ -93,6 +93,59 @@ export type CredentialPlacement =
 
 export type CredentialPlacementType = CredentialPlacement['type']
 
+/**
+ * True when a vault placeholder sits where the fetch gateway or a
+ * credential-mapped call can resolve it. Display-only sites (status /
+ * help / example object fields, bare returns, unused bindings) are false:
+ * those strings are documentation, not credential uses, so the stamp gate
+ * ignores them even when the token has a concrete provider id and ref.
+ */
+export function isVaultCredentialUsePlacement(
+	placement: CredentialPlacement,
+): boolean {
+	switch (placement.type) {
+		case 'header':
+		case 'header-custom':
+		case 'query':
+		case 'basic':
+		case 'path':
+		case 'url':
+		case 'body':
+		case 'signing':
+			return true
+		case 'binding':
+			// Reads of the binding are recorded as their own placements.
+			return false
+		case 'other':
+			switch (placement.context) {
+				case 'sdk-option':
+				case 'argument':
+				case 'url-host':
+				case 'unparsed':
+					return true
+				case 'object':
+				case 'return':
+				case 'assignment':
+				case 'array':
+				case 'default-param':
+				case 'comparison':
+				case 'unused-binding':
+				case 'reassigned-binding':
+				case 'template-computed':
+				case 'other':
+					return false
+				default: {
+					const exhaustive: never = placement.context
+					return exhaustive
+				}
+			}
+		default: {
+			const exhaustive: never = placement
+			return exhaustive
+		}
+	}
+}
+
 export const credentialPlacementTypes = [
 	'header',
 	'query',

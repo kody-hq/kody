@@ -191,8 +191,10 @@ External providers use **`{{secret/<provider>:<ref>}}`** (first `:` after
 canonicalize to the same grant/cache key. Angle-bracket markers in a token
 (`<provider>`, `<item-id>`, `<field>`, and so on) and the grammar metavariable
 form `{{secret/provider:ref}}` mark documentation examples: the gateway does not
-fill them. The item's websites are the host allowlist; empty websites refuse the
-fetch. Ad hoc execute does not need a package grant; saved packages do
+fill them. Concrete example refs in package `status()` / help display fields are
+not credential uses for the publish stamp (only request and credential-mapped
+sites count). The item's websites are the host allowlist; empty websites refuse
+the fetch. Ad hoc execute does not need a package grant; saved packages do
 (`resourceLock` with kind `secret_provider` returns the Allow URL). Bind and
 revoke on `/@<slug>/-/secret-providers`. Shared packages use the owner's
 provider binding. Search does not crawl vaults. See

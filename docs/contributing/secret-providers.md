@@ -10,8 +10,11 @@ provider-agnostic.
 `{{secret/<provider>:<ref>}}` splits on the **first** `:` after `secret/`. The
 `ref` is opaque to core. Angle-bracket markers such as `<provider>`,
 `<item-id>`, or `<field>`, and the grammar metavariable form
-`{{secret/provider:ref}}`, make a token inert documentation (never filled, never
-stamped as a credential use, including in ordinary message bodies).
+`{{secret/provider:ref}}`, make a token inert documentation (never filled,
+including in ordinary message bodies). The publish stamp also ignores vault
+tokens that appear only in display/help text (for example `status()` example
+fields), even with a concrete provider id and ref; tokens in fetch/request or
+credential-mapped sites still cannot be stamped.
 
 - `{{secret/1password:i/<item-id>/password}}` — canonical form (`<item-id>` is a
   UUID or a 1Password Connect 26-char id `^[a-z0-9]{26}$`)

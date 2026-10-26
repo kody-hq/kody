@@ -1298,12 +1298,16 @@ publish checks run.
    optionally filtering with `package_id`, `status`, or `since`. Re-calling
    publish for the **same** commit is safe: an active durable run for that
    commit is deduped and returns the existing `dispatched` handle; a completed
-   publish returns `already_published` without re-running checks. Connect-phase
-   failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`,
-   `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
-   `did not connect within …ms` timeout) never reached the server — republish is
-   the right next step. The CLI surfaces that distinction as `sent: false` vs
-   `sent: "unknown"` on `--json` errors.
+   publish returns `already_published`. When the stored check/stamp was sealed
+   under an older checker (or a prior attempt never sealed success), that
+   same-commit publish re-runs checks, refreshes the stamp, and sets
+   `checks_rerun: true` with a status message — a true no-op (same commit,
+   current checker, prior success) skips checks. Connect-phase failures
+   (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`,
+   `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's `did not connect within …ms`
+   timeout) never reached the server — republish is the right next step. The CLI
+   surfaces that distinction as `sent: false` vs `sent: "unknown"` on `--json`
+   errors.
 
 Computed `import(specifier)` (and other runtime package loads) resolve the
 current published package at call time instead of embedding a source snapshot in
