@@ -1,6 +1,6 @@
 import { spawn, type SpawnOptions } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -210,16 +210,16 @@ export async function refreshInstalledSkills(
 	const refreshed: Array<SkillTarget> = []
 	const candidates = userSkillTargets(input.home)
 	for (const target of candidates) {
-		let current: string | null = null
 		try {
-			current = await readFile(target.path, 'utf8')
+			const current = await readFile(target.path, 'utf8')
+			const currentDigest = sha256Digest(extractSkillBodyForDigest(current))
+			if (currentDigest === hosted.digest) continue
+			await writeFileAtomic(target.path, nextBody)
+			refreshed.push(target)
 		} catch {
+			// One locked or missing host copy must not abort the others.
 			continue
 		}
-		const currentDigest = sha256Digest(extractSkillBodyForDigest(current))
-		if (currentDigest === hosted.digest) continue
-		await writeFileAtomic(target.path, nextBody)
-		refreshed.push(target)
 	}
 	return refreshed
 }
@@ -235,7 +235,16 @@ export async function writeFileAtomic(
 		`.${basename(path)}.${randomBytes(6).toString('hex')}.tmp`,
 	)
 	await writeFile(temp, body, 'utf8')
-	await rename(temp, path)
+	try {
+		await rename(temp, path)
+	} catch (error) {
+		try {
+			await unlink(temp)
+		} catch {
+			// Best-effort temp cleanup after a failed rename.
+		}
+		throw error
+	}
 }
 
 export function skillRefreshEntryPath(): string {
