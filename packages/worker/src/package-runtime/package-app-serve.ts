@@ -262,6 +262,15 @@ function packageAppLocationPath(input: {
 	}
 }
 
+function buildPackageAppLoginUrl(input: {
+	requestUrl: string
+	appLeaf: string
+}) {
+	const loginUrl = new URL(packageAppOauthPaths.login, input.requestUrl)
+	loginUrl.searchParams.set('app', input.appLeaf)
+	return loginUrl
+}
+
 export function isPackageAppRequestPath(pathname: string) {
 	return parsePackageAppPath(pathname) !== null
 }
@@ -1146,7 +1155,10 @@ export async function servePackageAppRequest(input: {
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
 					throw error
 				}
-				const loginUrl = new URL(packageAppOauthPaths.login, request.url)
+				const loginUrl = buildPackageAppLoginUrl({
+					requestUrl: request.url,
+					appLeaf: getPackageNameLeaf(savedPackage.name),
+				})
 				loginUrl.searchParams.set(
 					'scope',
 					[

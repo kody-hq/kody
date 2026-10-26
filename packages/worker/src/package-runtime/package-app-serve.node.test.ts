@@ -334,14 +334,21 @@ async function serveHelloWorld(input?: {
 	restPath?: string
 	init?: RequestInit
 	dispatch?: { synthetic: true }
+	mount?: 'username-path' | 'user-subdomain'
 }) {
 	const kodyId = input?.kodyId ?? 'perf-app'
 	const restPath = input?.restPath ?? '/'
+	const mount = input?.mount ?? 'username-path'
+	const requestPath =
+		mount === 'user-subdomain'
+			? `/${kodyId}${restPath === '/' ? '' : restPath}`
+			: `/@demo-user/packages/${kodyId}${restPath === '/' ? '' : restPath}`
+	const requestOrigin =
+		mount === 'user-subdomain'
+			? 'https://demo-user.kody.run'
+			: 'https://example.com'
 	return await servePackageAppRequest({
-		request: new Request(
-			`https://example.com/@demo-user/packages/${kodyId}${restPath === '/' ? '' : restPath}`,
-			input?.init,
-		),
+		request: new Request(`${requestOrigin}${requestPath}`, input?.init),
 		env: {
 			APP_DB: {},
 			BUNDLE_ARTIFACTS_KV: {},
@@ -361,7 +368,7 @@ async function serveHelloWorld(input?: {
 			username: 'demo-user',
 			kodyId,
 			restPath,
-			mount: 'username-path',
+			mount,
 		},
 		dispatch: input?.dispatch,
 	})
@@ -397,10 +404,42 @@ test('required executor credentials redirect visitors to consent before serving 
 	expect(loginUrl.pathname).toBe('/-/auth/login')
 	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
 	expect(loginUrl.searchParams.get('prompt')).toBe('consent')
+	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
 	expect(loginUrl.searchParams.get('return_to')).toBe(
 		'/@demo-user/packages/perf-app',
 	)
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+})
+
+test('required executor consent redirect identifies the app on a user-subdomain mount', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+
+	const response = await serveHelloWorld({ mount: 'user-subdomain' })
+	const location = response.headers.get('location')
+	expect(response.status).toBe(302)
+	expect(location).not.toBeNull()
+	const loginUrl = new URL(location!)
+	expect(loginUrl.hostname).toBe('demo-user.kody.run')
+	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
 })
 
 test('required executor credential failures do not redirect non-GET requests', async () => {
