@@ -39,16 +39,16 @@ local filesystem and git access:
   the name leaf as `name`) to register a stub saved package and mint a
   short-lived authenticated remote in one call (for existing packages, omit
   `create` and pass the scoped name, or `package_id` when the name is not
-  known). Leftover `kody_id` still accepts the same values. Run the returned
-  `setup_commands` to clone into a temporary directory — they set local
-  `git config user.email` / `user.name` from `git_author` (the signed-in Kody
-  account). Do not invent or guess a git identity. Edit normally — binary
-  assets, multi-file refactors, and local build/test loops all work — commit,
-  push, then publish with `packagePublishExternalPush`. If that tool returns
-  `locked`, open the returned `approval_url` so the owner can promote the named
-  commit. Do not treat HEAD as live until `published_commit` moves. When the
-  OAuth token is coarser than the export (Gmail drafts without send), lock after
-  the first publish — see [locked-gmail-drafts.md](./locked-gmail-drafts.md).
+  known). Run the returned `setup_commands` to clone into a temporary directory
+  — they set local `git config user.email` / `user.name` from `git_author` (the
+  signed-in Kody account). Do not invent or guess a git identity. Edit normally
+  — binary assets, multi-file refactors, and local build/test loops all work —
+  commit, push, then publish with `packagePublishExternalPush`. If that tool
+  returns `locked`, open the returned `approval_url` so the owner can promote
+  the named commit. Do not treat HEAD as live until `published_commit` moves.
+  When the OAuth token is coarser than the export (Gmail drafts without send),
+  lock after the first publish — see
+  [locked-gmail-drafts.md](./locked-gmail-drafts.md).
 - **Tool-only lane.** Without local filesystem/git access (MCP-only agents such
   as ChatGPT / Claude / Grok mobile apps), create with `packageSave` (complete
   UTF-8 text file set; no binary files) and edit through repo sessions
