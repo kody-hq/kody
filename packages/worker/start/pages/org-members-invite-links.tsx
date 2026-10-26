@@ -389,7 +389,7 @@ const teamOptionCss: CSSObject = {
 	display: 'flex',
 	alignItems: 'center',
 	gap: spacing.sm,
-	fontSize: typography.size.sm,
+	fontSize: typography.fontSize.sm,
 }
 
 const selectCss: CSSObject = {
