@@ -84,7 +84,8 @@ function packageSourceForSentry(
 
 test('filterSentryEvent drops expected platform and caller noise and keeps real errors', () => {
 	// Isolate resource-limit resets are the only DO resets that isolated
-	// artifact rebuild / check phases treat as retryable.
+	// artifact rebuild / check phases remap to actionable "package too large"
+	// outcomes (they must not be retried as if they were deploy blips).
 	expect(
 		isDurableObjectIsolateResourceLimitResetMessage(
 			noPeriod(durableObjectSqliteOutOfMemoryMessage),

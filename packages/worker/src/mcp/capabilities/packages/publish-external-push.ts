@@ -13,12 +13,14 @@ import {
 	defaultDurableEscalationBudgetMs,
 	runWithDurableEscalation,
 } from '#mcp/capabilities/durable-escalation.ts'
-import {
-	errorCauseChainIncludes,
-	getErrorMessage,
-} from '@kody-internal/shared/error-message.ts'
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import * as Sentry from '@sentry/cloudflare'
-import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
+import {
+	isDurableObjectIsolateResourceLimitResetError,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
+import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
+import { externalPublishResourceLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getPackageNameLeaf,
@@ -122,11 +124,16 @@ export default async function main(params = {}) {
 	return await kody.packagePublishExternalPush(params)
 }`
 
-function isTransientDurableObjectResetError(error: unknown) {
-	// Exact platform reset strings (including deploy "code was updated").
-	// Substring matching on "Durable Object was reset" misses that form —
-	// Cloudflare says "Durable Object reset because…" with no "was".
-	return errorCauseChainIncludes(error, isDurableObjectIsolateResetMessage)
+function throwIfExternalPublishResourceLimit(error: unknown): never | void {
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		throw new McpCallerError(externalPublishResourceLimitMessage(), {
+			cause: error,
+		})
+	}
+	const message = getErrorMessage(error)
+	if (isExternalPublishSnapshotTooLargeMessage(message)) {
+		throw new McpCallerError(message, { cause: error })
+	}
 }
 
 function bundleCheckFailedFromRebuildError(error: unknown) {
@@ -968,6 +975,7 @@ async function runExternalPublishAttempt(input: {
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
+								throwIfExternalPublishResourceLimit(error)
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
@@ -1189,6 +1197,7 @@ async function runExternalPublishAttempt(input: {
 							})
 							return { ok: true as const }
 						} catch (error) {
+							throwIfExternalPublishResourceLimit(error)
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}
@@ -1309,6 +1318,7 @@ async function runExternalPublishAttempt(input: {
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
+			throwIfExternalPublishResourceLimit(error)
 			if (!isTransientDurableObjectResetError(error)) {
 				throw error
 			}

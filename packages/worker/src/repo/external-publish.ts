@@ -334,6 +334,11 @@ export async function publishFromExternalRef(input: {
 	userId: OwnerId
 	newCommit: string
 	isFastForward(input: { previousCommit: string }): Promise<boolean>
+	/**
+	 * Drop ephemeral clone `.git` objects after ancestry is settled and before
+	 * checks, so pack + inflated objects do not stack on the check/staging heap.
+	 */
+	releaseCloneGitObjects?: () => void | Promise<void>
 	allowForce?: boolean
 	destructiveOverwriteConfirmed?: boolean
 	workspace: RepoPublishWorkspace
@@ -361,6 +366,7 @@ export async function publishFromExternalRef(input: {
 		)
 	}
 	if (source.published_commit === input.newCommit) {
+		await input.releaseCloneGitObjects?.()
 		return {
 			status: 'already_published',
 			published_commit: source.published_commit,
@@ -371,6 +377,7 @@ export async function publishFromExternalRef(input: {
 			previousCommit: source.published_commit,
 		})
 		if (!isFastForward && !input.allowForce) {
+			await input.releaseCloneGitObjects?.()
 			return {
 				status: 'not_fast_forward',
 				previous_commit: source.published_commit,
@@ -389,6 +396,7 @@ export async function publishFromExternalRef(input: {
 			})
 		}
 	}
+	await input.releaseCloneGitObjects?.()
 	const lockedPackage =
 		source.entity_kind === 'package' && input.allowLockedPublish !== true
 			? await loadLockedSavedPackage({

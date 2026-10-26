@@ -158,6 +158,48 @@ export async function writeAndPushPublishGitNote(input: {
 	const remoteName = input.remoteName ?? 'source'
 	const onAuth = () => buildArtifactsGitAuth({ token: input.token })
 	const { git, http } = await loadIsomorphicGit()
+	// External publish may release the ephemeral clone's `.git` before checks
+	// to free pack memory. Notes then run on a fresh workspace and must init
+	// plus fetch the published commit before addNote can resolve the oid.
+	const gitDirExists = await input.filesystem
+		.stat(`${input.dir}/.git`)
+		.then(() => true)
+		.catch(() => false)
+	if (!gitDirExists) {
+		await git.init({
+			fs,
+			dir: input.dir,
+		})
+		await git.addRemote({
+			fs,
+			dir: input.dir,
+			remote: remoteName,
+			url: input.remote,
+		})
+	}
+	let hasCommit = true
+	try {
+		await git.readCommit({
+			fs,
+			dir: input.dir,
+			oid: input.commitOid,
+		})
+	} catch {
+		hasCommit = false
+	}
+	if (!hasCommit) {
+		await git.fetch({
+			fs,
+			http,
+			dir: input.dir,
+			remote: remoteName,
+			url: input.remote,
+			ref: input.commitOid,
+			depth: 1,
+			singleBranch: true,
+			onAuth,
+		})
+	}
 	try {
 		await git.fetch({
 			fs,

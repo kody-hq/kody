@@ -75,7 +75,11 @@ beforeEach(() => {
 		(input: {
 			loadedByIdentity: Map<string, null>
 			sourceId: string
-			target: { kind: string; artifactName?: string | null; entryPoint: string }
+			target: {
+				kind: string
+				artifactName?: string | null
+				entryPoint: string
+			}
 		}) =>
 			input.loadedByIdentity.get(
 				`${input.sourceId}:${input.target.kind}:${input.target.artifactName ?? ''}:${input.target.entryPoint}`,
@@ -104,7 +108,11 @@ function setup({
 		(input: {
 			loadedByIdentity: Map<string, null>
 			sourceId: string
-			target: { kind: string; artifactName?: string | null; entryPoint: string }
+			target: {
+				kind: string
+				artifactName?: string | null
+				entryPoint: string
+			}
 		}) =>
 			input.loadedByIdentity.get(
 				`${input.sourceId}:${input.target.kind}:${input.target.artifactName ?? ''}:${input.target.entryPoint}`,
@@ -491,6 +499,21 @@ test('does not retry non-transient rebuild failures', async () => {
 	expect(mockModule.stagePublishedPackageArtifactRebuild).toHaveBeenCalledTimes(
 		1,
 	)
+
+	// Memory/CPU isolate resets are deterministic for the same targets — do
+	// not burn the transient platform-error retry budget on them (including
+	// the D1-backed DO reset matcher that otherwise treats them as retryable).
+	setup({ targets: [sampleTargets[0]!], stageKey: null })
+	mockModule.stagePublishedPackageArtifactRebuild.mockRejectedValue(
+		new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset.",
+		),
+	)
+	await expect(rebuild()).rejects.toThrow(/bundle artifact rebuild failed/i)
+	expect(mockModule.stagePublishedPackageArtifactRebuild).toHaveBeenCalledTimes(
+		1,
+	)
+	expect(consoleWarn).not.toHaveBeenCalled()
 
 	const run = vi.fn().mockResolvedValue({
 		ok: false,
