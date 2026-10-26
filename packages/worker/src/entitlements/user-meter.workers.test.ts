@@ -597,24 +597,6 @@ test('UserMeter readDailyTrend returns counters and unique worker days for the r
 	for (const nowMs of [yesterday.getTime(), now.getTime(), now.getTime()]) {
 		await user.meter.admitExecuteCall({ nowMs, limitPerMinute: 300 })
 	}
-	// Pre-deploy call counts under the retired per-call counter still show.
-	await runInDurableObject(
-		meterStub(user.userId),
-		async (_instance: UserMeter, state) => {
-			for (const [day, count] of [
-				[utcDayKey(yesterday), 40],
-				[utcDayKey(now), 5],
-			] as const) {
-				state.storage.sql.exec(
-					`INSERT INTO daily_counters (resource, day, count, revision, updated_at)
-					 VALUES ('execute_calls_per_day', ?, ?, 1, ?)`,
-					day,
-					count,
-					now.toISOString(),
-				)
-			}
-		},
-	)
 
 	const trend = await user.meter.readDailyTrend({ now: now.toISOString() })
 	expect(trend.retentionDays).toBeGreaterThan(0)
@@ -638,8 +620,8 @@ test('UserMeter readDailyTrend returns counters and unique worker days for the r
 		{ day: utcDayKey(now), count: 1 },
 	])
 	expect(trend.executeCalls).toEqual([
-		{ day: utcDayKey(yesterday), count: 41 },
-		{ day: utcDayKey(now), count: 7 },
+		{ day: utcDayKey(yesterday), count: 1 },
+		{ day: utcDayKey(now), count: 2 },
 	])
 }, 30_000)
 

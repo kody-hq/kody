@@ -1306,18 +1306,10 @@ class UserMeterBase extends DurableObject<Env> {
 				count: Math.max(0, Number(row.count ?? 0)),
 			}))
 
-		// Calls were counted under the retired `execute_calls_per_day` counter
-		// before execute_call_days existed. Those rows stop growing at deploy and
-		// age out with retention, so summing both keeps the 14-day history whole.
 		const executeCalls = this.ctx.storage.sql
 			.exec<{ day: string; count: number }>(
 				`SELECT day, SUM(count) AS count
-				FROM (
-					SELECT day, count FROM execute_call_days
-					UNION ALL
-					SELECT day, count FROM daily_counters
-					WHERE resource = 'execute_calls_per_day'
-				)
+				FROM execute_call_days
 				WHERE day >= ? AND day <= ?
 				GROUP BY day
 				ORDER BY day ASC`,
