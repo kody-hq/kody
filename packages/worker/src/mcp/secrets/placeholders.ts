@@ -10,15 +10,53 @@ const integrationTokenPlaceholderRegex =
 	/\{\{integration-token:([a-zA-Z0-9._-]+)\}\}/g
 
 /**
- * Documentation / example placeholders use angle-bracket markers such as
- * `{{secret/<provider>:<ref>}}` or `{{secret/bwvault:i/<item-uuid>/<field>}}`.
- * Those tokens are display text: the fetch gateway never fills them, and
- * stamp / inventory scans do not count them as credential uses.
+ * Documentation / example placeholders are display text: the fetch gateway
+ * never fills them, and stamp / inventory scans do not count them as
+ * credential uses. Two inert forms:
+ * - Angle-bracket markers: `{{secret/<provider>:<ref>}}`,
+ *   `{{secret/bwvault:i/<item-uuid>/<field>}}`
+ * - Grammar metavariables only: provider id is the literal `provider` and
+ *   every ref path segment is a docs metavariable (`ref`, `field`, …), as in
+ *   the platform copy `{{secret/provider:ref}}`
  */
 const examplePlaceholderMarkerPattern = /<[^>]+>/
+/** Structural item-form prefix; not a concrete id by itself. */
+const vaultItemFormPrefix = 'i'
+const vaultGrammarMetavariables = new Set([
+	'provider',
+	'ref',
+	'field',
+	'item',
+	'item-id',
+	'item-uuid',
+	'name',
+	'vault',
+])
 
 export function placeholderHoldsExampleMarkers(token: string) {
 	return examplePlaceholderMarkerPattern.test(token)
+}
+
+/**
+ * True when a matched `{{secret/…}}` token is documentation, not a live vault
+ * reference. Prefer this over {@link placeholderHoldsExampleMarkers} alone.
+ */
+export function isInertExamplePlaceholder(token: string) {
+	if (placeholderHoldsExampleMarkers(token)) return true
+	const vault = /^\{\{secret\/([a-zA-Z0-9._-]+):([^}]+)\}\}$/.exec(token.trim())
+	if (!vault) return false
+	const provider = vault[1]!.trim().toLowerCase()
+	if (provider !== 'provider') return false
+	const segments = vault[2]!
+		.trim()
+		.toLowerCase()
+		.split('/')
+		.filter((segment) => segment.length > 0)
+	if (segments.length === 0) return false
+	return segments.every(
+		(segment) =>
+			segment === vaultItemFormPrefix || vaultGrammarMetavariables.has(segment),
+	)
 }
 
 export type ReferencedSecret = {
@@ -104,7 +142,7 @@ export function parseBasicAuthSecretPlaceholders(value: string) {
 export function parseProviderSecretPlaceholders(value: string) {
 	const secrets: Array<ReferencedProviderSecret> = []
 	for (const match of value.matchAll(providerSecretPlaceholderRegex)) {
-		if (placeholderHoldsExampleMarkers(match[0]!)) continue
+		if (isInertExamplePlaceholder(match[0]!)) continue
 		const provider = match[1]?.trim()
 		const ref = match[2]?.trim()
 		if (!provider || !ref) continue

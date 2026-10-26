@@ -1906,6 +1906,24 @@ test('fetch gateway leaves angle-bracket example vault placeholders untouched in
 	expect(resolveSpy).not.toHaveBeenCalled()
 })
 
+test('fetch gateway leaves metavariable {{secret/provider:ref}} untouched in an execute-style message param body', async () => {
+	const resolveSpy = vi.spyOn(providerService, 'resolveProviderSecret')
+	// Same shape as invoking a post-message export with content that documents
+	// the vault grammar (no angle brackets): must not become a credential need.
+	const params = {
+		content: 'Example vault reference: {{secret/provider:ref}}',
+	}
+	const sent = await expand(
+		new Request('https://discord.com/api/v10/channels/1/messages', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(params),
+		}),
+	)
+	expect(JSON.parse(await sent.text())).toEqual(params)
+	expect(resolveSpy).not.toHaveBeenCalled()
+})
+
 test('fetch gateway still fills a live vault placeholder in a header', async () => {
 	const providerRef = 'i/dddddddd-dddd-4ddd-8ddd-dddddddddddd/password'
 	const canonical = `{{secret/1password:${providerRef}}}`

@@ -74,12 +74,18 @@ test('angle-bracket example markers make provider placeholders inert', () => {
 				'{{secret/bwvault:i/11111111-1111-4111-8111-111111111111/password}}',
 		},
 	])
-	// Bare meta text without angle brackets is still a live placeholder shape.
-	expect(parseProviderSecretPlaceholders('{{secret/provider:ref}}')).toEqual([
+	// Grammar metavariables only (platform docs / error-copy form) are inert.
+	expect(parseProviderSecretPlaceholders('{{secret/provider:ref}}')).toEqual([])
+	expect(containsSecretPlaceholder('{{secret/provider:ref}}')).toBe(false)
+	expect(
+		parseProviderSecretPlaceholders('{{secret/provider:i/item-id/field}}'),
+	).toEqual([])
+	// A concrete provider id with a metavariable-looking ref stays live.
+	expect(parseProviderSecretPlaceholders('{{secret/bwvault:ref}}')).toEqual([
 		{
-			provider: 'provider',
+			provider: 'bwvault',
 			ref: 'ref',
-			placeholder: '{{secret/provider:ref}}',
+			placeholder: '{{secret/bwvault:ref}}',
 		},
 	])
 })

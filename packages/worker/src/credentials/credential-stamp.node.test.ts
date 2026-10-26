@@ -883,14 +883,14 @@ test('computed |scope= fails the stamp gate and manifest-only secretMounts do no
 	expect(mounts.failures).toEqual([])
 })
 
-test('example vault references with angle-bracket markers do not fail the stamp gate', () => {
+test('example vault references with angle-bracket or metavariable forms do not fail the stamp gate', () => {
 	const displayOnly = scanCredentialStamp({
 		'package.json': manifest(),
 		'src/index.ts': [
 			'export function status() {',
 			"\treturn { example: '{{secret/bwvault:i/<item-uuid>/<field>}}' }",
 			'}',
-			"export const docs = 'Write {{secret/<provider>:<ref>}} in a fetch header.'",
+			"export const docs = 'Write {{secret/<provider>:<ref>}} or {{secret/provider:ref}}.'",
 		].join('\n'),
 	})
 	expect(displayOnly.failures).toEqual([])

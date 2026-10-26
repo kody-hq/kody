@@ -44,13 +44,14 @@ Item ids are a UUID (Service Account / web) or a 1Password Connect item id
 canonicalizes to the same grant key when the item segment is one of those ids.
 Name-based vault paths are not interpreted in Kody core.
 
-Documentation and status text that _shows_ the syntax should keep the
+Documentation and status text that _shows_ the syntax should use an inert form:
 angle-bracket markers (`{{secret/<provider>:<ref>}}`,
-`{{secret/bwvault:i/<item-uuid>/<field>}}`). Any `<...>` segment makes the token
-inert: the fetch gateway leaves it alone, and the credential stamp does not
-treat it as a credential use. A complete token without those markers is a live
-placeholder everywhere it appears in a secret-aware fetch (URL, header, or
-body), including message content a package posts for someone else.
+`{{secret/bwvault:i/<item-uuid>/<field>}}`) or the grammar metavariable token
+`{{secret/provider:ref}}`. Those are display text only: the fetch gateway leaves
+them alone (including in message bodies / execute params), and the credential
+stamp does not treat them as a credential use. A complete token with a concrete
+provider id and ref is a live placeholder everywhere it appears in a
+secret-aware fetch (URL, header, or body).
 
 The item's websites are the host allowlist. Empty websites refuse the fetch. The
 request URL must be `https:`.
