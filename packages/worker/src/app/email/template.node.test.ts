@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
+import { emailFooterMark, emailHeaderLogo } from './brand-images.ts'
 import {
 	buildAdvocateReferralEmail,
 	buildBillingSuccessEmail,
@@ -297,4 +300,27 @@ test('transactional emails escape untrusted content and put action URLs in both 
 	expect(dismissedWithNote.text).toContain(
 		'https://github.com/example/repo/pull/42',
 	)
+})
+
+test('every email shows the full logo on top and the Kody mark at the bottom as hosted 2x PNG plates', () => {
+	const email = buildVerificationEmail({
+		appBaseUrl: 'https://kody.codes',
+		verificationUrl: 'https://kody.codes/verify-email?token=abc123',
+	})
+
+	for (const image of [emailHeaderLogo, emailFooterMark]) {
+		expect(email.html).toContain(
+			`<img src="https://kody.codes${image.src}" alt="Kody" width="${image.width}" height="${image.height}"`,
+		)
+		const png = readFileSync(
+			fileURLToPath(new URL(`../../../public${image.src}`, import.meta.url)),
+		)
+		expect(png.readUInt32BE(16)).toBe(image.width * 2)
+		expect(png.readUInt32BE(20)).toBe(image.height * 2)
+	}
+	expect(email.html.indexOf(emailHeaderLogo.src)).toBeLessThan(
+		email.html.indexOf(emailFooterMark.src),
+	)
+	expect(email.html).not.toContain('kody-lantern')
+	expect(email.html).not.toContain('.svg')
 })
