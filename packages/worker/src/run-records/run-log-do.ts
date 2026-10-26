@@ -1893,12 +1893,15 @@ class RunLogBase extends DurableObject<Env> {
 		const backgroundCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsForSurface('webhook'),
 		).toISOString()
-		// Job-surface candidate window uses the scheduled-tick lease TTL so
-		// stranded `scheduled-job:…` rows enter the batch after 10 minutes.
-		// {@link isStaleRunning} still applies the longer job TTL to
-		// non-scheduled job rows inside the loop.
-		const jobCutoff = new Date(
+		// Apply each job-key class cutoff in SQL before LIMIT so mid-age
+		// non-scheduled job rows cannot fill the page ahead of lease-stale
+		// `scheduled-job:…` rows. {@link isStaleRunning} remains the source of
+		// truth inside the loop.
+		const scheduledJobCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsScheduledJob,
+		).toISOString()
+		const jobCutoff = new Date(
+			nowMs - runRecordStaleRunningTtlMsForSurface('job'),
 		).toISOString()
 		const longLivedCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsForSurface('workflow'),
@@ -1915,13 +1918,22 @@ class RunLogBase extends DurableObject<Env> {
 				(surface IN ('execute', 'export', 'subscription', 'app_fetch', 'app_realtime')
 					AND started_at < ?)
 				OR (surface = 'webhook' AND started_at < ?)
-				OR (surface = 'job' AND started_at < ?)
+				OR (
+					surface = 'job' AND (
+						(idempotency_key LIKE 'scheduled-job:%' AND started_at < ?)
+						OR (
+							(idempotency_key IS NULL OR idempotency_key NOT LIKE 'scheduled-job:%')
+							AND started_at < ?
+						)
+					)
+				)
 				OR (surface = 'workflow' AND started_at < ?)
 			)
 			ORDER BY started_at ASC
 			LIMIT ?`,
 			shortLivedCutoff,
 			backgroundCutoff,
+			scheduledJobCutoff,
 			jobCutoff,
 			longLivedCutoff,
 			maxStaleRunningReconcilesPerPass,
@@ -2132,6 +2144,24 @@ class RunLogBase extends DurableObject<Env> {
 			consider(
 				Date.parse(row.started_at) +
 					runRecordStaleRunningTtlMsForSurface(surface),
+			)
+		}
+
+		// Scheduled ticks heal on the execution-lease TTL, not the job-surface
+		// TTL. Arm the RunLog alarm at that deadline so a hung tick is
+		// interrupted and re-claimable without waiting six hours.
+		const oldestScheduledJobRunning = this.ctx.storage.sql
+			.exec<{ started_at: string }>(
+				`SELECT MIN(started_at) AS started_at FROM runs
+				WHERE status = 'running'
+					AND surface = 'job'
+					AND idempotency_key LIKE 'scheduled-job:%'`,
+			)
+			.toArray()[0]
+		if (oldestScheduledJobRunning?.started_at) {
+			consider(
+				Date.parse(oldestScheduledJobRunning.started_at) +
+					runRecordStaleRunningTtlMsScheduledJob,
 			)
 		}
 

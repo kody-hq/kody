@@ -993,6 +993,81 @@ test('cap and stale retention journey', async () => {
 		}
 	}
 
+	// --- RunLog alarm arms at the scheduled-tick lease, not the job-surface TTL ---
+	{
+		const userId = uniqueUserId('scheduled-job-alarm-lease')
+		const startedAtMs = Date.now() - 60_000
+		await seedRuns(userId, [
+			{
+				id: 'live-scheduled-tick',
+				status: 'running',
+				startedAt: iso(startedAtMs),
+				surface: 'job',
+				jobId: 'job-alarm',
+				idempotencyKey: 'scheduled-job:job-alarm:2026-08-21T10:00:00.000Z',
+			},
+		])
+		await armRetentionOnNextFinish(userId, 1)
+		const beforeArm = Date.now()
+		await finishOk(userId, 'alarm-arm-trigger', { name: 'alarm-arm-trigger' })
+		const alarmAt = await getAlarm(userId)
+		expect(alarmAt).toBeTypeOf('number')
+		const dueAt = startedAtMs + runRecordStaleRunningTtlMsScheduledJob
+		expect(alarmAt).toBeGreaterThanOrEqual(
+			Math.min(dueAt, beforeArm + 1_000) - 100,
+		)
+		expect(alarmAt).toBeLessThan(
+			beforeArm + runRecordStaleRunningTtlMsScheduledJob + 5_000,
+		)
+		expect(alarmAt).toBeLessThan(beforeArm + runRecordStaleRunningTtlMsJob / 2)
+	}
+
+	// --- mid-age non-scheduled job rows must not starve scheduled-tick reconcile ---
+	{
+		const userId = uniqueUserId('scheduled-job-reconcile-page')
+		const midAgeStartedAt = iso(
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 120_000,
+		)
+		const scheduledStartedAt = iso(
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 60_000,
+		)
+		// Matches maxStaleRunningReconcilesPerPass in run-log-do.ts.
+		const midAgeJobCount = 100
+		await seedRuns(userId, [
+			...Array.from({ length: midAgeJobCount }, (_, index) => ({
+				id: `mid-age-job-${index}`,
+				status: 'running' as const,
+				startedAt: midAgeStartedAt,
+				surface: 'job' as const,
+				jobId: `mid-age-${index}`,
+				idempotencyKey: `manual-job:${index}`,
+			})),
+			{
+				id: 'stale-scheduled-behind-page',
+				status: 'running',
+				startedAt: scheduledStartedAt,
+				surface: 'job',
+				jobId: 'job-behind',
+				idempotencyKey: 'scheduled-job:job-behind:2026-08-21T10:00:00.000Z',
+			},
+		])
+		await armRetentionOnNextFinish(userId, midAgeJobCount + 1)
+		await finishOk(userId, 'reconcile-page-trigger', {
+			name: 'reconcile-page-trigger',
+		})
+		expect(
+			(await getRun(userId, 'stale-scheduled-behind-page'))?.run,
+		).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			errorTriage: null,
+			idempotencyKey: null,
+		})
+		expect((await getRun(userId, 'mid-age-job-0'))?.run).toMatchObject({
+			status: 'running',
+		})
+	}
+
 	// --- a real late finish replaces reconciled platform interrupt ---
 	{
 		const userId = uniqueUserId('late-finish-after-interrupted')
