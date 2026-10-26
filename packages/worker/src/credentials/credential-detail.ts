@@ -17,6 +17,7 @@ import {
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 import { readFillPlacementObservation } from './fill-placement-observations.ts'
 
 /** Each package costs a closure read, so usage checks the most recent ones. */
@@ -77,7 +78,14 @@ async function listUsage(input: {
 	packages: ReadonlyArray<SavedPackageRecord>
 }) {
 	// Shared org/personal/MCP rows load once; package-bound Keys are batched
-	// (KODY-BD). Closures still run per package in parallel.
+	// (KODY-BD). Closures still run per package in parallel, but the suppliers
+	// flag is evaluated once for the org and threaded with `request` so nested
+	// dependency walks share the same memo (Sentry KODY-BW).
+	const supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
+		db: input.env.APP_DB,
+		orgId: input.orgId,
+		request: input.request,
+	})
 	const [usableByPackage, needResults] = await Promise.all([
 		listUsableCredentialsByPackage({
 			env: input.env,
@@ -91,6 +99,8 @@ async function listUsage(input: {
 						env: input.env,
 						userId: input.orgId,
 						sourceId: pkg.sourceId,
+						supplierSemanticsEnabled,
+						request: input.request,
 					})
 					return { pkg, needs }
 				} catch (error) {
