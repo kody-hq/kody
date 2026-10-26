@@ -34,6 +34,13 @@ async function evaluateForOrg(input: {
 	}
 }
 
+/**
+ * Memoizes per `orgId` on the caller's `request` object only. There is no
+ * process-wide cache for the no-request path: a shared Map keyed by orgId
+ * would leak enabled/disabled results across users and requests. Callers that
+ * load many packages for one org should pass `request` and/or a precomputed
+ * `supplierSemanticsEnabled` (see credential-detail listUsage / KODY-BV).
+ */
 export async function isPackageCredentialSuppliersEnabled(input: {
 	db: D1Database
 	orgId: string

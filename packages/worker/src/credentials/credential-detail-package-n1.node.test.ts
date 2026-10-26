@@ -32,6 +32,7 @@ import {
 } from './credential-candidates.ts'
 import { loadCredentialDetail } from './credential-detail.ts'
 import * as needsClosure from './credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 
 vi.mock(
 	'#worker/test-support/apply-all-migrations.ts',
@@ -69,6 +70,15 @@ function isPackageBoundSecretListLookup(query: string) {
 		normalized.includes('from secret_entries') &&
 		normalized.includes("b.scope = 'package'") &&
 		normalized.includes('b.binding_key in (')
+	)
+}
+
+function isOrgOwnerLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return (
+		normalized.includes('from org_memberships') &&
+		normalized.includes("m.role = 'owner'") &&
+		normalized.includes('limit 1')
 	)
 }
 
@@ -221,15 +231,27 @@ async function setup(packageCount: number) {
 	}
 
 	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockImplementation(
-		async () => [
-			{
-				key: 'openai',
-				kind: 'secret' as const,
-				provider: 'openai',
-				description: '',
-				multiple: false,
-			},
-		],
+		async (input) => {
+			// Mirror the real closure: resolve the supplier flag when callers
+			// omit a precomputed value (the KODY-BV N+1 path).
+			const supplierSemanticsEnabled =
+				input.supplierSemanticsEnabled ??
+				(await isPackageCredentialSuppliersEnabled({
+					db: input.env.APP_DB,
+					orgId: input.userId,
+					request: input.request,
+				}))
+			void supplierSemanticsEnabled
+			return [
+				{
+					key: 'openai',
+					kind: 'secret' as const,
+					provider: 'openai',
+					description: '',
+					multiple: false,
+				},
+			]
+		},
 	)
 
 	const request = deriveRequestContext({
@@ -348,6 +370,45 @@ test('loadCredentialDetail usage across packages does not scale mcp lookups with
 	expect(detail.usage.every((row) => row.fit === 'auto')).toBe(true)
 	expect(t.queries.filter(isMcpServerSettingsListLookup)).toHaveLength(1)
 	expect(t.queries.filter(isPackageBoundSecretListLookup)).toHaveLength(1)
+})
+
+test('loadCredentialDetail usage issues at most one org-owner lookup (KODY-BV)', async () => {
+	const small = await setup(3)
+	small.queries.length = 0
+	await loadCredentialDetail({
+		env: small.env,
+		request: small.request,
+		orgId: small.acmeId,
+		ownedByViewer: true,
+		credential: credentialItem({
+			id: small.orgKeyId,
+			name: 'OPENAI',
+			provider: 'openai',
+		}),
+		packages: small.packages,
+	})
+	const smallOwners = small.queries.filter(isOrgOwnerLookup).length
+
+	const large = await setup(6)
+	large.queries.length = 0
+	const detail = await loadCredentialDetail({
+		env: large.env,
+		request: large.request,
+		orgId: large.acmeId,
+		ownedByViewer: true,
+		credential: credentialItem({
+			id: large.orgKeyId,
+			name: 'OPENAI',
+			provider: 'openai',
+		}),
+		packages: large.packages,
+	})
+	const largeOwners = large.queries.filter(isOrgOwnerLookup).length
+
+	expect(detail.usage).toHaveLength(6)
+	expect(smallOwners).toBe(1)
+	expect(largeOwners).toBe(1)
+	expect(largeOwners).toBe(smallOwners)
 })
 
 test('package-bound Key batch chunks under maxD1BoundParameters (KODY-BD)', async () => {
