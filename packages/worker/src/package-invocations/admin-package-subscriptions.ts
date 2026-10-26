@@ -1,4 +1,3 @@
-import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { runQueueableDynamicWorkerWork } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { listAdminStableUserIds } from '#worker/identity/permissions-db.ts'
 import { listPackageSubscriptions } from '#worker/package-registry/manifest.ts'
@@ -6,19 +5,16 @@ import {
 	listSavedPackagesByIds,
 	listSavedPackagesByUserId,
 } from '#worker/package-registry/repo.ts'
-import {
-	loadPackageManifestForSource,
-	loadPackageSourceRowsForUser,
-} from '#worker/package-registry/source.ts'
-import {
-	type AuthoredPackageJson,
-	type SavedPackageRecord,
-} from '#worker/package-registry/types.ts'
-import { type EntitySourceRow } from '#worker/repo/types.ts'
+import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	readPreExecutionPackageInvocationInfrastructureCode,
 	readRetryablePackageInvocationInfrastructureCode,
 } from './infrastructure-codes.ts'
+import {
+	type LoadedManifestForSavedPackage,
+	loadManifestsForSavedPackages,
+	mapSettledInChunks,
+} from './saved-package-manifest-discovery.ts'
 import { invokePackageSubscription } from './service.ts'
 import {
 	fillPackageSubscriptionTopicMapFromWakeScan,
@@ -29,6 +25,7 @@ import {
 export {
 	readPreExecutionPackageInvocationInfrastructureCode,
 	readRetryablePackageInvocationInfrastructureCode,
+	mapSettledInChunks,
 }
 
 export type LoadedPackageSubscription = {
@@ -36,82 +33,11 @@ export type LoadedPackageSubscription = {
 	subscription: ReturnType<typeof listPackageSubscriptions>[number]
 }
 
-const adminPackageSubscriptionConcurrency = 5
-
-export async function mapSettledInChunks<T, TResult>(
-	items: ReadonlyArray<T>,
-	mapper: (item: T) => Promise<TResult>,
-) {
-	const results: Array<PromiseSettledResult<TResult>> = []
-	for (const itemChunk of chunkArray(
-		items,
-		adminPackageSubscriptionConcurrency,
-	)) {
-		results.push(...(await Promise.allSettled(itemChunk.map(mapper))))
-	}
-	return results
-}
-
 function isMissingSavedPackagesTableError(error: unknown) {
 	return (
 		error instanceof Error &&
 		error.message.toLowerCase().includes('no such table: saved_packages')
 	)
-}
-
-type LoadedManifestForSavedPackage = {
-	savedPackage: SavedPackageRecord
-	manifest: AuthoredPackageJson
-}
-
-/**
- * Prefetch every saved package source row in one `IN (…)` (KODY-BC), then
- * load manifests with the existing chunk concurrency of 5. A missing or
- * foreign-owned source becomes a per-package rejection with the same
- * "was not found" message as `loadPackageSourceRowForUser`. A prefetch
- * query failure rejects every package so callers collect discovery errors
- * and skip the KV topic map fill.
- */
-async function loadManifestsForSavedPackages(input: {
-	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
-	userId: string
-	savedPackages: ReadonlyArray<SavedPackageRecord>
-}): Promise<Array<PromiseSettledResult<LoadedManifestForSavedPackage>>> {
-	if (input.savedPackages.length === 0) return []
-
-	let sourcesById: Map<string, EntitySourceRow>
-	try {
-		sourcesById = await loadPackageSourceRowsForUser({
-			env: input.env,
-			userId: input.userId,
-			sourceIds: input.savedPackages.map(
-				(savedPackage) => savedPackage.sourceId,
-			),
-		})
-	} catch (error) {
-		return input.savedPackages.map(() => ({
-			status: 'rejected',
-			reason: error,
-		}))
-	}
-
-	return await mapSettledInChunks(input.savedPackages, async (savedPackage) => {
-		const source = sourcesById.get(savedPackage.sourceId)
-		if (!source) {
-			throw new Error(
-				`Saved package source "${savedPackage.sourceId}" was not found.`,
-			)
-		}
-		const loaded = await loadPackageManifestForSource({
-			env: input.env as Env,
-			userId: input.userId,
-			source,
-		})
-		return {
-			savedPackage,
-			manifest: loaded.manifest,
-		} satisfies LoadedManifestForSavedPackage
-	})
 }
 
 function collectLoadedPackageSubscriptions(input: {

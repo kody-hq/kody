@@ -116,7 +116,8 @@ const pendingPackageSourceRowBatches = new WeakMap<
 /**
  * Fresh D1 read of the entity-source rows for `sourceIds`, omitting ids that
  * are missing or owned by a different user. Queue subscription discovery
- * (`loadMatchingPackageSubscriptions`) prefetches every saved package's
+ * (`loadMatchingPackageSubscriptions`) and the publish/refresh topic-map
+ * scan (`scanPackageSubscriptionTopicMap`) prefetch every saved package's
  * source with this helper before chunked manifest loads, so one `IN (…)`
  * (chunked by `maxD1BoundParameters`) replaces ceil(N/5) sequential
  * batched lookups from the per-call microtask batcher alone.
