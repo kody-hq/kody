@@ -310,103 +310,152 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
+            const path = require('node:path')
+            const fs = require('node:fs/promises')
+            const {
+              githubApiErrorStatus,
+              isRetryableGithubApiError,
+              withGithubApiRetry,
+            } = require(
+              path.join(
+                process.env.GITHUB_WORKSPACE,
+                'tools/ci/github-api-retry.cjs',
+              ),
+            )
             const owner = context.repo.owner
             const repo = context.repo.repo
-            // Prefer recently merged PRs over recently updated ones: comment
-            // activity on older merged PRs must not crowd out a new signer.
-            // GitHub cannot list by merged_at, so scan by updated_at (always
-            // >= merged_at) until the page reaches PRs updated before the 50th
-            // newest merge: nothing older can merge later than that cutoff.
-            const byMergedDesc = (left, right) =>
-              Date.parse(right.merged_at) - Date.parse(left.merged_at)
-            const mergedByNumber = new Map()
-            for (let page = 1; page <= 200; page += 1) {
-              const response = await github.rest.pulls.list({
-                owner,
-                repo,
-                state: 'closed',
-                base: 'main',
-                sort: 'updated',
-                direction: 'desc',
-                per_page: 100,
-                page,
-              })
-              if (response.data.length === 0) break
-              for (const pull of response.data) {
-                if (pull.merged_at) mergedByNumber.set(pull.number, pull)
-              }
-              if (response.data.length < 100) break
-              if (mergedByNumber.size >= 50) {
-                const cutoff = Date.parse(
-                  [...mergedByNumber.values()].sort(byMergedDesc)[49].merged_at,
-                )
-                const oldestUpdated = Date.parse(response.data.at(-1).updated_at)
-                if (oldestUpdated < cutoff) break
-              }
-            }
-            const mergedPulls = [...mergedByNumber.values()]
-              .sort(byMergedDesc)
-              .slice(0, 50)
 
-            const candidates = new Map(
-              mergedPulls.map((pull) => [pull.number, pull]),
-            )
-            const eventPull = context.payload.pull_request
-            if (eventPull) candidates.set(eventPull.number, eventPull)
-
-            const signingComments = []
-            for (const pull of candidates.values()) {
-              const eligibleLogins = new Set()
-              const authorLogin = pull.user?.login
-              if (authorLogin) eligibleLogins.add(authorLogin.toLowerCase())
-
-              const commits = await github.paginate(
-                github.rest.pulls.listCommits,
-                {
+            async function collectSigningComments() {
+              // Prefer recently merged PRs over recently updated ones: comment
+              // activity on older merged PRs must not crowd out a new signer.
+              // GitHub cannot list by merged_at, so scan by updated_at (always
+              // >= merged_at) until the page reaches PRs updated before the 50th
+              // newest merge: nothing older can merge later than that cutoff.
+              const byMergedDesc = (left, right) =>
+                Date.parse(right.merged_at) - Date.parse(left.merged_at)
+              const mergedByNumber = new Map()
+              for (let page = 1; page <= 200; page += 1) {
+                const response = await github.rest.pulls.list({
                   owner,
                   repo,
-                  pull_number: pull.number,
+                  state: 'closed',
+                  base: 'main',
+                  sort: 'updated',
+                  direction: 'desc',
                   per_page: 100,
-                },
-              )
-              for (const commit of commits) {
-                const login = commit.author?.login
-                if (login) eligibleLogins.add(login.toLowerCase())
-              }
-
-              const comments = await github.paginate(
-                github.rest.issues.listComments,
-                {
-                  owner,
-                  repo,
-                  issue_number: pull.number,
-                  per_page: 100,
-                },
-              )
-              for (const comment of comments) {
-                const login = comment.user?.login
-                if (
-                  comment.user?.type !== 'User' ||
-                  !login ||
-                  !eligibleLogins.has(login.toLowerCase())
-                ) {
-                  continue
-                }
-                signingComments.push({
-                  login,
-                  createdAt: comment.created_at,
-                  body: comment.body ?? '',
+                  page,
                 })
+                if (response.data.length === 0) break
+                for (const pull of response.data) {
+                  if (pull.merged_at) mergedByNumber.set(pull.number, pull)
+                }
+                if (response.data.length < 100) break
+                if (mergedByNumber.size >= 50) {
+                  const cutoff = Date.parse(
+                    [...mergedByNumber.values()].sort(byMergedDesc)[49]
+                      .merged_at,
+                  )
+                  const oldestUpdated = Date.parse(
+                    response.data.at(-1).updated_at,
+                  )
+                  if (oldestUpdated < cutoff) break
+                }
               }
+              const mergedPulls = [...mergedByNumber.values()]
+                .sort(byMergedDesc)
+                .slice(0, 50)
+
+              const candidates = new Map(
+                mergedPulls.map((pull) => [pull.number, pull]),
+              )
+              const eventPull = context.payload.pull_request
+              if (eventPull) candidates.set(eventPull.number, eventPull)
+
+              const signingComments = []
+              for (const pull of candidates.values()) {
+                const eligibleLogins = new Set()
+                const authorLogin = pull.user?.login
+                if (authorLogin) eligibleLogins.add(authorLogin.toLowerCase())
+
+                const commits = await github.paginate(
+                  github.rest.pulls.listCommits,
+                  {
+                    owner,
+                    repo,
+                    pull_number: pull.number,
+                    per_page: 100,
+                  },
+                )
+                for (const commit of commits) {
+                  const login = commit.author?.login
+                  if (login) eligibleLogins.add(login.toLowerCase())
+                }
+
+                const comments = await github.paginate(
+                  github.rest.issues.listComments,
+                  {
+                    owner,
+                    repo,
+                    issue_number: pull.number,
+                    per_page: 100,
+                  },
+                )
+                for (const comment of comments) {
+                  const login = comment.user?.login
+                  if (
+                    comment.user?.type !== 'User' ||
+                    !login ||
+                    !eligibleLogins.has(login.toLowerCase())
+                  ) {
+                    continue
+                  }
+                  signingComments.push({
+                    login,
+                    createdAt: comment.created_at,
+                    body: comment.body ?? '',
+                  })
+                }
+              }
+              signingComments.sort((left, right) =>
+                left.createdAt.localeCompare(right.createdAt),
+              )
+              return signingComments
             }
-            signingComments.sort((left, right) =>
-              left.createdAt.localeCompare(right.createdAt),
-            )
-            const fs = await import('node:fs/promises')
-            await fs.writeFile(
-              'cla-signing-comments.json',
-              `${JSON.stringify(signingComments, null, '\t')}\n`,
-            )
+
+            try {
+              // Five attempts; delays 8s + 16s + 32s + 64s (~2 minutes).
+              const signingComments = await withGithubApiRetry(
+                collectSigningComments,
+                {
+                  maxAttempts: 5,
+                  baseDelayMs: 8_000,
+                  onRetry: ({ attempt, maxAttempts, delayMs, error }) => {
+                    const status = githubApiErrorStatus(error) ?? 'network'
+                    const detail =
+                      error instanceof Error ? error.message : String(error)
+                    core.info(
+                      `Transient GitHub error (${status}) on CLA collect attempt ${attempt}/${maxAttempts}: ${detail}. Retrying in ${delayMs}ms.`,
+                    )
+                  },
+                },
+              )
+              await fs.writeFile(
+                'cla-signing-comments.json',
+                `${JSON.stringify(signingComments, null, '\t')}\n`,
+              )
+            } catch (error) {
+              if (isRetryableGithubApiError(error)) {
+                const status = githubApiErrorStatus(error) ?? 'network'
+                const detail =
+                  error instanceof Error ? error.message : String(error)
+                core.warning(
+                  `CLA collect failed after retries due to transient GitHub error (${status}): ${detail}. Skipping this run; the next merge rescans the last 50 merges and records any missed signers.`,
+                )
+                await fs.writeFile('cla-signing-comments.json', '[]\n')
+                return
+              }
+              throw error
+            }
 
       - name: 📝 Apply signer comments
         id: record
