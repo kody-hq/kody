@@ -5,7 +5,7 @@ import { type RunRecordHandle } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
 	dispatchRunErrorSubscriptionEvents: vi.fn(async () => []),
-	finishRun: vi.fn(async () => ({ ok: true })),
+	finishRun: vi.fn(async () => ({ ok: true, wrote: true })),
 	startRun: vi.fn(async () => ({ ok: true })),
 	listRuns: vi.fn(async () => ({ runs: [], nextCursor: null })),
 	listPackageRunSuccesses: vi.fn(async () => []),
@@ -170,6 +170,28 @@ test('finishRunRecord dispatches run.error.recorded only for persisted non-subsc
 	)
 
 	mocks.dispatchRunErrorSubscriptionEvents.mockClear()
+	mocks.finishRun.mockResolvedValueOnce({ ok: true, wrote: false })
+	const fencedHandle = beginRunRecord({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		context: {
+			surface: 'job',
+			name: 'scheduled',
+			jobId: 'job-1',
+			idempotencyKey: 'scheduled-job:job-1:2026-08-21T10:00:00.000Z',
+		},
+	})
+	await expect(
+		finishRunRecord({
+			env,
+			handle: fencedHandle,
+			status: 'error',
+			error: new Error('late stranded error'),
+		}),
+	).resolves.toBe(false)
+	expect(mocks.dispatchRunErrorSubscriptionEvents).not.toHaveBeenCalled()
+
+	mocks.dispatchRunErrorSubscriptionEvents.mockClear()
 	mocks.finishRun.mockRejectedValueOnce(new Error('do unavailable'))
 	const rpcFailHandle = beginRunRecord({
 		env,
@@ -262,7 +284,7 @@ test('finishRunRecord awaits the terminal Durable Object write before scheduling
 	})
 	const finishRun = vi.fn(async () => {
 		await finishGate
-		return { ok: true }
+		return { ok: true, wrote: true }
 	})
 	const env = createEnv({
 		RUN_LOG: {

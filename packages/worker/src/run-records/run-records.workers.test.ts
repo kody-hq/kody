@@ -1138,12 +1138,14 @@ test('cap and stale retention journey', async () => {
 			idempotencyKey: null,
 		})
 
-		await finishRunRecord({
-			env,
-			handle,
-			status: 'success',
-			result: { completed: true },
-		})
+		expect(
+			await finishRunRecord({
+				env,
+				handle,
+				status: 'success',
+				result: { completed: true },
+			}),
+		).toBe(false)
 		expect((await getRun(userId, handle.id))?.run).toMatchObject({
 			status: 'error',
 			errorName: runRecordPlatformInterruptedErrorName,

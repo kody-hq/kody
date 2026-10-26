@@ -2795,7 +2795,7 @@ class RunLogBase extends DurableObject<Env> {
 	async finishRun(input: {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
-	}): Promise<{ ok: true }> {
+	}): Promise<{ ok: true; wrote: boolean }> {
 		const previousStatus = this.getRunStatus(input.run.id)
 		const existed = previousStatus != null
 		// Scheduled ticks release their idempotency key on platform interrupt so
@@ -2807,7 +2807,7 @@ class RunLogBase extends DurableObject<Env> {
 			previousStatus != null &&
 			previousStatus !== 'running'
 		) {
-			return { ok: true }
+			return { ok: true, wrote: false }
 		}
 		// One transaction for run upsert + logs + job observability + activation
 		// so a mid-unit SQL failure cannot leave a terminal run that suppresses
@@ -2836,7 +2836,7 @@ class RunLogBase extends DurableObject<Env> {
 		this.resetRetentionEmptyBackoff()
 		this.maybeEnforceRetention()
 		await this.ensureRetentionAlarm()
-		return { ok: true }
+		return { ok: true, wrote: true }
 	}
 
 	private findInvocationLedgerRow(
@@ -4837,7 +4837,7 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	finishRun: (input: {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
-	}) => Promise<{ ok: true }>
+	}) => Promise<{ ok: true; wrote: boolean }>
 	listRuns: (input: ListRunsInput) => Promise<RunRecordPage>
 	updateRunErrorTriage: (
 		input: UpdateRunErrorTriageInput,
