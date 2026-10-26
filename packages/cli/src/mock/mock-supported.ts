@@ -65,11 +65,3 @@ export function isMockCapabilityPath(
 ): pathKey is MockCapabilityPath {
 	return (mockCapabilityPaths as ReadonlyArray<string>).includes(pathKey)
 }
-
-/** CapabilityProxy routes always present on every target. */
-export const mockCapabilityProxyRoutes = [
-	'GET /v1/capability-proxy/session',
-	'POST /v1/capability-proxy/call',
-	'POST /v1/capability-proxy/gateway-fetch',
-	'POST /v1/local-execute/package-graph',
-] as const

@@ -9,7 +9,7 @@
  */
 
 import { access, readFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { bundleLocalUserModule } from './local-bundle.js'
 import {
 	type LocalPackageGraph,
@@ -261,9 +261,4 @@ export async function tryLoadSelfManifest(
 	} catch {
 		return undefined
 	}
-}
-
-/** Re-export dirname helper for tests. */
-export function packageRootOf(manifestPath: string): string {
-	return dirname(manifestPath)
 }
