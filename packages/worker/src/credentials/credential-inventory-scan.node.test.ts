@@ -78,6 +78,34 @@ test('URL-shaped and nested-header vault examples under status() stay display-on
 	).toBe(true)
 })
 
+test('docs-named body fields and header helpers under fetch stay credential uses', () => {
+	const bodyField = scan(`
+		await fetch('https://api.example.com/v1', {
+			method: 'POST',
+			body: JSON.stringify({
+				description: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
+			}),
+		})
+	`)
+	expect(bodyField.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(
+		true,
+	)
+
+	const headerHelper = scan(`
+		function authHeaders() {
+			return {
+				headers: {
+					Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
+				},
+			}
+		}
+		export default authHeaders
+	`)
+	expect(headerHelper.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(
+		true,
+	)
+})
+
 test('isVaultCredentialUsePlacement matches request and credential-mapped sites only', () => {
 	const uses: Array<CredentialPlacement> = [
 		{ type: 'header', name: 'authorization', format: 'Bearer {value}' },

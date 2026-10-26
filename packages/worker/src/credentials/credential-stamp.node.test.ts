@@ -966,6 +966,36 @@ test('concrete vault refs in status/help display fields do not fail the stamp ga
 	expect(liveVaultStillFails.failures[0]?.message).toMatch(
 		/request or credential-mapped site/,
 	)
+
+	const docsNamedFetchBody = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\tmethod: 'POST',",
+			"\t\tbody: JSON.stringify({ description: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }),",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		docsNamedFetchBody.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+
+	const headerHelper = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'function authHeaders() {',
+			'\treturn {',
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' },",
+			'\t}',
+			'}',
+			'export default authHeaders',
+		].join('\n'),
+	})
+	expect(
+		headerHelper.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
 })
 
 test('isStoredCredentialStamp rejects a dependency pin that is not an object', () => {

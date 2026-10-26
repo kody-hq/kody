@@ -858,10 +858,9 @@ type ClassifyContext = {
 
 /**
  * Object keys that hold documentation / help copy rather than outbound
- * request data. A vault token nested under one of these (including a nested
- * `headers` object or an `https://…` example URL) is display text, not a
- * credential use — unless a fetch/Request/Headers call sits between the
- * placeholder and that key.
+ * request data. Nested headers or `https://…` examples under these keys are
+ * display text — but only when no call/new expression encloses the
+ * placeholder (a fetch body field named `description` stays live).
  */
 const displayDocumentationPropertyKeys = new Set([
 	'example',
@@ -877,17 +876,40 @@ const displayDocumentationPropertyKeys = new Set([
 	'samples',
 ])
 
+/** Function / method names whose returns are package help, not request builders. */
+const displayReturnFunctionNames = new Set(['status', 'help', 'docs', 'usage'])
+
+function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (
+			ancestor.type === 'FunctionDeclaration' ||
+			ancestor.type === 'FunctionExpression' ||
+			ancestor.type === 'ArrowFunctionExpression'
+		) {
+			return getNodeName(ancestor.id) ?? getNodeName(ancestor.key) ?? null
+		}
+		if (
+			ancestor.type === 'ObjectMethod' ||
+			ancestor.type === 'ClassMethod' ||
+			ancestor.type === 'ClassPrivateMethod'
+		) {
+			return getNodeName(ancestor.key) ?? getNodeName(ancestor.id) ?? null
+		}
+	}
+	return null
+}
+
 /**
- * True when the placeholder sits in returned/help data rather than an
- * outbound request builder. Stops string-shape classification (URL / nested
- * headers) from treating status() documentation examples as live uses.
+ * Display/help sites for vault tokens: documentation property keys, or a
+ * return from status/help/docs/usage — and never when a call or `new` encloses
+ * the placeholder (so fetch bodies and request helpers stay stamp-gated).
  */
 function displayOnlyPlacement(
 	ancestors: ReadonlyArray<AstNode>,
 	node: AstNode,
 ): CredentialPlacement | null {
-	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
-		const ancestor = ancestors[index]!
+	for (const ancestor of ancestors) {
 		if (
 			ancestor.type === 'CallExpression' ||
 			ancestor.type === 'OptionalCallExpression' ||
@@ -895,21 +917,27 @@ function displayOnlyPlacement(
 		) {
 			return null
 		}
+	}
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
 		if (ancestor.type === 'ObjectProperty') {
 			const key = safeIdentifier(propertyKey(ancestor))
 			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
 				return otherPlacement('object', key)
 			}
 		}
-		if (ancestor.type === 'ReturnStatement') {
-			return otherPlacement('return')
-		}
-		if (
-			ancestor.type === 'ArrowFunctionExpression' &&
-			ancestor.body === (ancestors[index + 1] ?? node)
-		) {
-			return otherPlacement('return')
-		}
+	}
+	const inReturn =
+		ancestors.some((ancestor) => ancestor.type === 'ReturnStatement') ||
+		ancestors.some(
+			(ancestor, index) =>
+				ancestor.type === 'ArrowFunctionExpression' &&
+				ancestor.body === (ancestors[index + 1] ?? node),
+		)
+	if (!inReturn) return null
+	const functionName = enclosingFunctionName(ancestors)?.toLowerCase() ?? null
+	if (functionName && displayReturnFunctionNames.has(functionName)) {
+		return otherPlacement('return')
 	}
 	return null
 }
