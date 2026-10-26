@@ -4,6 +4,7 @@ import { defineDomainCapability } from '#mcp/capabilities/define-domain-capabili
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { assertPackageCanAccessResolvedSecret } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
@@ -79,6 +80,10 @@ export const secretDisconnectCapability = defineDomainCapability(
 			return {
 				disconnected: await disconnectSecret({
 					env: ctx.env,
+					audit:
+						args.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					name: args.name,
 					scope: args.scope,

@@ -37,6 +37,7 @@ import { adminFleetErrorRateCapability } from './admin-fleet-error-rate.ts'
 import { adminOrgUsageCapability } from './admin-org-usage.ts'
 import { adminUserOauthGrantsCapability } from './admin-user-oauth-grants.ts'
 import { adminOauthGrantsLackingOrgIdRevokeCapability } from './admin-oauth-grants-lacking-org-id-revoke.ts'
+import { adminSystemEmailClassifyCapability } from './admin-system-email-classify.ts'
 import { adminSystemEmailDeleteCapability } from './admin-system-email-delete.ts'
 import { adminSystemEmailGetCapability } from './admin-system-email-get.ts'
 import { adminSystemEmailListCapability } from './admin-system-email-list.ts'
@@ -73,6 +74,8 @@ import { adminPublishedCommitRefRepairCapability } from './admin-published-commi
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
+import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
+import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
@@ -192,6 +195,8 @@ export const adminDomain = defineDomain({
 		adminCredentialInventoryScanCapability,
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
+		adminPackageAppAuthorityFallbackReportCapability,
+		adminPackageCredentialSupplierReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,
@@ -220,6 +225,7 @@ export const adminDomain = defineDomain({
 		adminReservedUsernameRemoveCapability,
 		adminSystemEmailListCapability,
 		adminSystemEmailGetCapability,
+		adminSystemEmailClassifyCapability,
 		adminSystemEmailDeleteCapability,
 		adminSystemEmailSendCapability,
 		adminSystemEmailSenderRuleListCapability,

@@ -11,7 +11,7 @@ import {
 } from './kody-logo.ts'
 import {
 	kodyBrandAssets,
-	kodyMarkOuterPathD,
+	kodyMarkOutlinedRingPathD,
 	kodyMarkPathD,
 } from './kody-mark-path.ts'
 
@@ -33,10 +33,11 @@ test('logo markup pairs the mark with the outlined wordmark', () => {
 	expect(solid.match(/fill="#ffffff"/g)).toHaveLength(2)
 
 	const outlined = kodyLogoOutlinedSvgMarkup('#000000')
-	expect(outlined).toContain('clipPath')
-	expect(outlined).toContain(kodyMarkOuterPathD)
+	expect(outlined).not.toContain('clipPath')
+	expect(outlined).toContain(kodyMarkOutlinedRingPathD)
 	expect(outlined).toContain(kodyWordmarkPathD)
-	expect(outlined).not.toContain('fill-rule="evenodd"')
+	expect(outlined).toContain('fill-rule="evenodd"')
+	expect(outlined).not.toContain('stroke=')
 })
 
 test('published logo SVGs match the markup helpers', () => {

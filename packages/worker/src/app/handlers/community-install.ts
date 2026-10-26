@@ -30,6 +30,15 @@ const communityInstallPostSchema = z.object({
 const thirdPartyInstallConfirmError =
 	'This listing is from another account. Confirm to install it.'
 
+function alreadyInstalledFields(result: {
+	alreadyInstalled?: boolean
+	message?: string
+}) {
+	return result.alreadyInstalled
+		? { alreadyInstalled: true, message: result.message ?? null }
+		: {}
+}
+
 function installResult<T>(data: T, status = 200) {
 	return { data, status }
 }
@@ -99,9 +108,8 @@ export async function installWebsiteCommunityPackage(input: {
 			// Bind the install to origin HEAD (the commit the fork copies)
 			// so a concurrent push cannot activate content the user never saw.
 			expectedPinnedCommit,
-			// Projection already supports deferred search-index upsert and
-			// retriever-cache refresh; without waitUntil those await on the
-			// install response and stretch one-click / onboarding latency.
+			// Search-index upsert can run after the install response; without
+			// waitUntil it stretches one-click / onboarding latency.
 			waitUntil,
 		})
 		if (result.status === 'adaptation_required') {
@@ -111,6 +119,7 @@ export async function installWebsiteCommunityPackage(input: {
 				packageId: result.packageId,
 				sourceId: result.sourceId,
 				targetName: result.targetName,
+				...alreadyInstalledFields(result),
 				failedChecks: result.failedChecks.map((check) => ({
 					kind: check.kind,
 					message: check.message,
@@ -127,6 +136,7 @@ export async function installWebsiteCommunityPackage(input: {
 			packageId: result.packageId,
 			sourceId: result.sourceId,
 			targetName: result.targetName,
+			...alreadyInstalledFields(result),
 			agentPrompt: buildInstallSuccessPrompt({
 				targetName: result.targetName,
 			}),

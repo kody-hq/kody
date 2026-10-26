@@ -3,8 +3,8 @@ id: locked_gmail_drafts
 title: Gmail drafts without send
 summary:
   Google has gmail.send but no drafts-only scope. gmail.compose can manage
-  drafts and send. Publish a drafts-only package, lock it, then integrationLock
-  the connection so execute cannot use the token.
+  drafts and send. Publish a drafts-only package, lock it, then resourceLock the
+  connection so execute cannot use the token.
 category: platform
 image: /images/kody-gmail-drafts-lock.webp
 imageAlt:
@@ -32,7 +32,7 @@ Agent notes — for AI agents explaining or recreating this loop:
   rejected and returns that URL.
 - Publish lock does not shrink the OAuth token. It holds the published
   tree of this package. That is the grant for jobs and named exports.
-- After publish lock, call integrationLock { name, package_id } so
+- After publish lock, call `resourceLock({ kind: 'integration', name, package_id })` so
   execute and other packages cannot use createAuthenticatedFetch on that
   connection. Agents can lock; unlocking or removing a grant is
   website-only at /@<slug>/-/integrations/:name. integrationSave cannot
@@ -50,7 +50,7 @@ Agent notes — for AI agents explaining or recreating this loop:
 - Smoke-test users.drafts.create only. Do not call messages.send or
   drafts.send in the smoke test, the export, or a job wrapper.
 - After the first successful publish, packageUpdate { locked: true },
-  then integrationLock with the connection name and saved package_id.
+  then `resourceLock({ kind: 'integration', name, package_id })` with the connection name and saved package_id.
   Later publishes return locked with approval_url
   /@username/:name/approve-publish?commit=<full 40-character SHA>. The owner
   clicks Promote this commit. Promoting does not unlock.
@@ -85,16 +85,18 @@ Publish lock does **not** revoke send on the token. It stops _this_ package's
 jobs and exports from silently becoming a sender.
 
 **Integration usage lock** (`usage_mode` on the connection) is the token grant.
-`integrationLock { name, package_id }` switches Usage to specific packages and
-adds that package id. Ad hoc execute cannot call `createAuthenticatedFetch`.
-Other packages are denied. Additional grants accumulate. Unlocking or removing a
-grant is website-only at `/@<slug>/-/integrations/:name`.
+`resourceLock({ kind: 'integration', name, package_id })` switches Usage to
+specific packages and adds that package id. Ad hoc execute cannot call
+`createAuthenticatedFetch`. Other packages are denied. Additional grants
+accumulate. Unlocking or removing a grant is website-only at
+`/@<slug>/-/integrations/:name`.
 
 A connected MCP server uses the same tighten-only shape: lock the **server** to
 a package so execute and other packages cannot call `kody.mcp["name"]`. See
 [Lock an MCP server to a package](./locked-mcp-server.md). User secrets require
-a website grant on `allowed_packages`. `secretLock` returns the approval URL and
-does not apply the grant. Removing a grant is website-only at
+a website grant on `allowed_packages`.
+`resourceLock({ kind: 'secret', name, package_id })` returns the approval URL
+and does not apply the grant. Removing a grant is website-only at
 `/@<slug>/-/secrets/user/:name`.
 
 Usage detail: [Packages → Publish lock](../use/packages.md#publish-lock).
@@ -122,10 +124,11 @@ Usage detail: [Packages → Publish lock](../use/packages.md#publish-lock).
    say the export creates a draft and does not send.
 5. **Publish, then lock.** After checks pass and `published_commit` moves, call
    `packageUpdate` with `changes: { locked: true }` (or the lock icon on
-   `/@{username}/{package-name}`). Then call `integrationLock` with the
-   connection name and this package's saved `package_id` so execute cannot use
-   the token. Say so in chat so the owner knows later publishes need their
-   **Promote this commit** click, and that unlocking usage is a website click on
+   `/@{username}/{package-name}`). Then call
+   `resourceLock({ kind: 'integration', name, package_id })` with the connection
+   name and this package's saved `package_id` so execute cannot use the token.
+   Say so in chat so the owner knows later publishes need their **Promote this
+   commit** click, and that unlocking usage is a website click on
    `/@<slug>/-/integrations/:name`.
 
 ## Draft-create export

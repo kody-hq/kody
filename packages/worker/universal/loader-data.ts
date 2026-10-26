@@ -1,3 +1,4 @@
+import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import {
 	type OnboardingFeaturedListing,
 	type ProfileVisibility,
@@ -27,6 +28,10 @@ import { type PackageCredentialApprovalLoaderData } from '#universal/package-cre
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import {
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
 import {
 	type PackageAppCustomDomainRecordView,
@@ -1111,6 +1116,9 @@ type AdminSystemEmailListItem = {
 	received_at: string | null
 	created_at: string
 	to_addresses: Array<string>
+	classification: EmailClassification
+	classification_reason: string | null
+	archived_at: string | null
 }
 
 type AdminSystemEmailDetail = AdminSystemEmailListItem & {
@@ -1148,6 +1156,7 @@ export type AdminSystemEmailLoaderData = {
 	page: number
 	pageSize: number
 	total: number
+	view: EmailMessageView
 }
 
 export type AdminPlatformFeedbackListItem = {
@@ -1765,7 +1774,6 @@ export type PackageWebhookListItem = {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	/** True once a person approved it (a live enablement exists). */
 	approved: boolean
 	/** Where to approve a minted webhook; null when unminted or approved. */
@@ -2499,7 +2507,6 @@ type AccountLoaderJsonValue =
 	| { [key: string]: AccountLoaderJsonValue }
 
 type AccountJobSchedule =
-	| { type: 'once'; runAt: string }
 	| { type: 'interval'; every: string }
 	| { type: 'cron'; expression: string }
 
@@ -2630,6 +2637,25 @@ export type AccountActivityRunListItem = {
 	entry: 'invoke' | 'code' | null
 	/** Stable LOADER worker id (UWD graph identity) from run metadata. */
 	workerId: string | null
+	/**
+	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
+	 * begin had no request context.
+	 */
+	startedBy: {
+		userId: string | null
+		username: string | null
+		client:
+			| 'session'
+			| 'mcp'
+			| 'cli'
+			| 'api-token'
+			| 'package-app'
+			| 'schedule'
+			| 'webhook'
+			| 'inbound-email'
+			| 'platform-event'
+		label: string | null
+	} | null
 }
 
 type AccountActivityRunLog = {
@@ -2788,8 +2814,9 @@ export type AccountEmailMessageListItem = {
 	subject: string | null
 	message_id_header: string | null
 	processing_status: string
-	classification: 'accepted' | 'quarantined'
+	classification: EmailClassification
 	classification_reason: string | null
+	archived_at: string | null
 	sender_classification: AccountEmailSenderClassification | null
 	sender_classification_reason: string | null
 	provider_message_id: string | null
@@ -2860,8 +2887,7 @@ export type AccountEmailLoaderData = {
 	pageSize: number
 	total: number
 	query: string
-	/** `null` means no classification filter (all messages). */
-	classification: 'accepted' | 'quarantined' | null
+	view: EmailMessageView
 }
 
 export type AuthProvidersLoaderData = {
@@ -2893,6 +2919,8 @@ export type OAuthAuthorizeLoaderData =
 			error: string
 			allowClientReset: boolean
 			code?: 'email_verification_required'
+			/** Set when the OAuth client itself did not resolve. */
+			clientFailure?: OAuthAuthorizeClientFailure
 	  }
 
 /** Hosted package-app OAuth consent on `/oauth/package-app/authorize`. */
@@ -2908,7 +2936,21 @@ export type PackageAppOauthConsentLoaderData = {
 	kodyId: string
 	redirectUri: string
 	scopes: Array<string>
+	requiredScopes: Array<string>
+	alreadyAllowedScopes: Array<string>
+	requiredLabels: Array<string>
 	claimLabels: Array<string>
+	optionalScopes: Array<{ scope: string; label: string }>
+	executorNeeds: Array<{
+		key: string
+		description: string
+		required: boolean
+		scope: string
+		credentials: Array<{ id: string; name: string; usedByApps: number }>
+		recommendedCredentialId: string | null
+		createUrl: string
+	}>
+	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
 }
 
@@ -2998,6 +3040,7 @@ export type AppLoaderData = {
 	accountWaiting?: AccountWaitingLoaderData
 	orgFollows?: OrgFollowsLoaderData
 	accountExperiments?: AccountExperimentsLoaderData
+	accountConnectedApps?: AccountConnectedAppsLoaderData
 	discord?: DiscordPageLoaderData
 	walkthroughHosts?: WalkthroughHostPick
 	/** Homepage agent marquee: one SSR shuffle of `withAgents` slugs. */
@@ -3313,4 +3356,30 @@ export type AccountWaitingLoaderData = {
 export type AccountExperimentsLoaderData = {
 	ok: true
 	experimentsOptIn: boolean
+}
+
+/** One package app the person signed in to with Kody. */
+export type AccountConnectedAppView = {
+	/** Opaque to the page; names the grant to revoke. Never shown. */
+	appKey: string
+	appName: string
+	publisherName: string
+	iconUrl: string | null
+	/** What the app may see or use, in plain words. */
+	allows: Array<{
+		label: string
+		scope: string | null
+		disconnectableCredentials?: Array<{ id: string; name: string }>
+	}>
+	disconnectableCredentials: Array<{ id: string; name: string }>
+	connectedAt: string
+	lastUsedAt: string | null
+}
+
+export type AccountConnectedAppsLoaderData = {
+	ok: true
+	apps: Array<AccountConnectedAppView>
+	agents: Array<ConnectedMcpAgent>
+	/** True when the agent list could not load; apps still show. */
+	agentsUnavailable: boolean
 }

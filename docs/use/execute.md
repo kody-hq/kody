@@ -345,9 +345,9 @@ For dedicated inspection, use:
   The read is allowed and metered until 1,000,000,000 rows, then it stops.
 
 Both are scoped to the caller. Code running as a saved package (invocations,
-jobs, package apps, retrievers) may name only buckets that package owns — its
-own bucket, its app facet buckets, and its package job buckets. Another
-package's bucket is reachable only through `packageStorage()`, which is gated by
+jobs, and package apps) may name only buckets that package owns — its own
+bucket, its app facet buckets, and its package job buckets. Another package's
+bucket is reachable only through `packageStorage()`, which is gated by
 bundler-recorded provenance grants.
 
 ## Long-term memory

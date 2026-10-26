@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	ownerIdFromStored,
@@ -276,6 +277,8 @@ export async function approveCredentialNeedsRequest(input: {
 				allowLockedPublish: true,
 				credentialNeedsApproved: true,
 				expectedHeadCommit: approval.pendingCommit,
+				// The app runs as whoever pushed, not as the approver.
+				requestedByUserId: approval.requestedByUserId ?? null,
 				rebuildPackageArtifacts: true,
 			})
 		} catch (error) {
@@ -316,6 +319,8 @@ export async function approveCredentialNeedsRequest(input: {
 			...readPausedExternalPublish(approval.details),
 			allowLockedPublish: true,
 			credentialNeedsApproved: true,
+			// The app runs as whoever pushed, not as the approver.
+			requestedByUserId: approval.requestedByUserId,
 			baseUrl: getAppBaseUrl({
 				env: input.env,
 				requestUrl: input.request.url,
@@ -498,6 +503,7 @@ export async function approveWentPublicRequest(input: {
 		packageId: input.savedPackage.id,
 		isInternetVisible: true,
 		expectedUpdatedAt: livePackage.updatedAt,
+		audit: optionalOrgAuditWriter(input.env, { userId: input.actorUserId }),
 	})
 	if (!changed) {
 		// Clear (or another writer) won the race after we claimed the request.

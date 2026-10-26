@@ -147,11 +147,12 @@ test('packageAppFetch dispatches synthetic in-process app requests against hoste
 		},
 	})
 
-	expect(result).toEqual({
+	expect(result).toMatchObject({
 		status: 200,
 		headers: { 'content-type': 'application/json' },
 		body: '{"ok":true}',
 		truncated: false,
+		kody_id_deprecation: expect.stringContaining('Deprecated:'),
 	})
 	expect(mockModule.servePackageAppRequest).toHaveBeenCalledWith(
 		expect.objectContaining({

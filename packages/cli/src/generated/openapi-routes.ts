@@ -607,6 +607,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'packageAppRunsAsGet',
+		method: 'GET',
+		pathTemplate: '/v1/packages/{package_id}/runs-as',
+		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'packageAppRunsAsSet',
+		method: 'PUT',
+		pathTemplate: '/v1/packages/{package_id}/runs-as',
+		pathParamNames: ['package_id'],
+	},
+	{
 		operationId: 'packageCheck',
 		method: 'POST',
 		pathTemplate: '/v1/packages/check',
@@ -645,6 +657,12 @@ export const bakedOpenApiRoutes = [
 	{
 		operationId: 'packageGetGitRemote',
 		method: 'POST',
+		pathTemplate: '/v1/packages/git-remote',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packageGetGitRemoteByPath',
+		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/git-remote',
 		pathParamNames: ['package_id'],
 	},
@@ -656,6 +674,12 @@ export const bakedOpenApiRoutes = [
 	},
 	{
 		operationId: 'packagePublishExternalPush',
+		method: 'POST',
+		pathTemplate: '/v1/packages/external-push',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishExternalPushByPath',
 		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/external-push',
 		pathParamNames: ['package_id'],
@@ -845,6 +869,12 @@ export const bakedOpenApiRoutes = [
 		method: 'PATCH',
 		pathTemplate: '/v1/repos/{repo_id}',
 		pathParamNames: ['repo_id'],
+	},
+	{
+		operationId: 'resourceLock',
+		method: 'POST',
+		pathTemplate: '/v1/resource-locks',
+		pathParamNames: [],
 	},
 	{
 		operationId: 'runGet',
@@ -1066,18 +1096,6 @@ export const bakedOpenApiRoutes = [
 		operationId: 'webhookDeliveryList',
 		method: 'GET',
 		pathTemplate: '/v1/webhooks/{webhookName}/deliveries',
-		pathParamNames: ['webhookName'],
-	},
-	{
-		operationId: 'webhookDisable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/disable',
-		pathParamNames: ['webhookName'],
-	},
-	{
-		operationId: 'webhookEnable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/enable',
 		pathParamNames: ['webhookName'],
 	},
 	{

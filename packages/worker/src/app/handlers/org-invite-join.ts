@@ -40,7 +40,7 @@ import {
 	type OrgInviteJoinLoaderData,
 	type OrgInviteJoinOffer,
 } from '#universal/loader-data.ts'
-import { orgRoleLabel } from '#universal/org-pages.ts'
+import { orgOverviewPath, orgRoleLabel } from '#universal/org-pages.ts'
 import {
 	packageCollaboratorPresetDescription,
 	packageCollaboratorPresetLabel,
@@ -264,7 +264,7 @@ async function redirectAfterAccept(
 	if (!slug) return { orgSlug: null, redirectTo: '/' }
 	switch (target.kind) {
 		case 'membership':
-			return { orgSlug: slug, redirectTo: `/@${slug}` }
+			return { orgSlug: slug, redirectTo: orgOverviewPath(slug) }
 		case 'team':
 			return {
 				orgSlug: slug,

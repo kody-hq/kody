@@ -100,8 +100,8 @@ implementation needs a library that does not fit a Worker isolate, keep this
 package as the orchestrator and offload the heavy process — see
 [Offload work that does not fit a Worker isolate](./heavy-work-offload.md). The
 repo rooted at `package.json` is the durable source of truth. Package exports
-form the callable surface, while jobs, subscriptions, retrievers, and apps
-remain package-owned behavior.
+form the callable surface, while jobs, subscriptions, and apps remain
+package-owned behavior.
 
 Recurring schedules belong on a saved package under `package.json#kody.jobs`.
 Deferred one-shot work uses `workflows.create({ runAt })` from `execute` or
@@ -152,10 +152,11 @@ When a normal filesystem and git client are available:
 
 1. Call `packageGetGitRemote`. Scope defaults to write when you have write
    access, otherwise read; pass `scope` explicitly to force either. For a new
-   package, pass `create: true`, `kody_id` set to the `@owner/leaf` name (or the
+   package, pass `create: true`, `name` set to the `@owner/leaf` name (or the
    name leaf), and `description` (at most 200 characters; a short public
-   tagline); for an existing package, omit `create` and pass `kody_id` or
-   `package_id` when the name is not known.
+   tagline); for an existing package, omit `create` and pass `name` or
+   `package_id` when the name is not known. Leftover `kody_id` still accepts the
+   same values.
 2. Run the returned setup commands and clone into a temporary directory. Those
    commands set local git `user.email` and `user.name` from `git_author` (the
    signed-in Kody account). Do not invent a git identity.

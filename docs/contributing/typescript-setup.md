@@ -93,7 +93,7 @@ them:
 - `packages/worker/tsconfig-worker-test.json` extends the worker typecheck
   config and adds every worker `src/**` and `universal/**` test,
   `test-support/**`, and `packages/shared/src/**` tests, with `node` and
-  `@cloudflare/vitest-pool-workers` types.
+  `@cloudflare/vitest-plugin` types.
 - `packages/worker/tsconfig-client-test.json` extends the client config and adds
   `packages/worker/client/**` tests, with `node` types.
 - `tsconfig-tools-typecheck.json` extends `tsconfig-tools.json` and covers root

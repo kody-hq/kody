@@ -3,6 +3,8 @@ import {
 	isPackageAppHostReservedFirstSegment,
 	isPackageAppHostReservedPackageLeaf,
 	isPackageAppHostNonLeafFirstSegment,
+	isPackageAppHostProbeFirstSegment,
+	isPackageAppHostProbePath,
 	isPackageAppHostRobotsTxtPath,
 	isPackageAppHostSystemPath,
 	isPackageAppHostWellKnownPath,
@@ -27,7 +29,21 @@ test('reserved first segments and package leaves cover platform-owned paths', ()
 	expect(isPackageAppHostReservedPackageLeaf('packages')).toBe(true)
 	expect(isPackageAppHostReservedPackageLeaf('PACKAGES')).toBe(true)
 	expect(isPackageAppHostReservedPackageLeaf('robots.txt')).toBe(true)
+	expect(isPackageAppHostReservedPackageLeaf('.git')).toBe(true)
 	expect(isPackageAppHostReservedPackageLeaf('demo')).toBe(false)
+})
+
+test('VCS probe paths never look like a package leaf or app route', () => {
+	for (const segment of ['.git', '.svn', '.hg', '.bzr', '.GIT']) {
+		expect(isPackageAppHostProbeFirstSegment(segment)).toBe(true)
+		expect(isPackageAppHostNonLeafFirstSegment(segment)).toBe(true)
+	}
+	expect(isPackageAppHostProbeFirstSegment('demo')).toBe(false)
+	expect(isPackageAppHostProbePath('/.git/config')).toBe(true)
+	expect(isPackageAppHostProbePath('/.svn/wc.db')).toBe(true)
+	expect(isPackageAppHostProbePath('/.hg/requires')).toBe(true)
+	expect(isPackageAppHostProbePath('/report/today')).toBe(false)
+	expect(isPackageAppHostProbePath('/')).toBe(false)
 })
 
 test('root path helpers match robots.txt and .well-known only', () => {

@@ -4,6 +4,7 @@ import { type InboundEmailSender } from '#worker/request-context/request-context
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { normalizeEmailAddress } from './address.ts'
 import {
+	failedSenderAuthenticationReason,
 	resolveInboundEmailAuthVerdict,
 	type EmailAuthVerdict,
 } from './auth-verdict.ts'
@@ -92,7 +93,7 @@ export async function classifyInboundEmailSender(input: {
 	if (verdict.suspect) {
 		return {
 			kind: 'unverified',
-			reason: verdict.reason ?? 'Sender failed authentication.',
+			reason: verdict.reason ?? failedSenderAuthenticationReason,
 		}
 	}
 	const fromAddress = input.message.fromAddress

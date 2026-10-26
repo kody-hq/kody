@@ -68,8 +68,8 @@ or search notices the park first.
 
 By default every enabled server is callable from execute and every package. Set
 **Usage** on `/@<slug>/-/mcp-servers/:serverId` to **Specific packages only**,
-or ask an agent to call `mcpServerLock` with the server and a saved
-`package_id`.
+or ask an agent to call
+`resourceLock({ kind: 'mcp_server', server, package_id })`.
 
 After that lock:
 

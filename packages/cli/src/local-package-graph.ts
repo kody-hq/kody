@@ -78,6 +78,182 @@ export type LocalPackageModule = {
 export type LocalPackageGraph = {
 	modules: Array<LocalPackageModule>
 	imports: Array<string>
+	/**
+	 * Package id → signed `kpb1.…` binding from origin. Absent/empty on older
+	 * origins; CLI treats missing as `{}`.
+	 */
+	packageBindings?: Record<string, string>
+	/**
+	 * `kody:@…` specifier → package id. Absent/empty on older origins.
+	 */
+	packageIdsByImport?: Record<string, string>
+}
+
+/** Prefix for per-package runtime facade modules in a package-graph response. */
+export const packageRuntimeModulePrefix = '.__kody_virtual__/package-runtime'
+
+/**
+ * Hex-decode a path key from a package-runtime module file name (worker
+ * `decodePathKey` port). Returns null when the value is not valid hex.
+ */
+export function decodePathKey(value: string): string | null {
+	const bytes = value.match(/[0-9a-f]{2}/gi)
+	if (!bytes || bytes.join('') !== value) return null
+	try {
+		return new TextDecoder().decode(
+			new Uint8Array(bytes.map((byte) => Number.parseInt(byte, 16))),
+		)
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Hex-encode a package id for a package-runtime module path segment (worker
+ * `encodePathKey` port).
+ */
+export function encodePathKey(value: string): string {
+	return Array.from(new TextEncoder().encode(value), (byte) =>
+		byte.toString(16).padStart(2, '0'),
+	).join('')
+}
+
+/**
+ * Read the package id out of a package-runtime module path
+ * (`.__kody_virtual__/package-runtime/<hex>.js`, optionally nested).
+ */
+export function parsePackageRuntimeModulePathPackageId(
+	modulePath: string,
+): string | null {
+	const normalized = modulePath.replace(/\\/g, '/').replace(/^\/+/, '')
+	const prefix = `${packageRuntimeModulePrefix}/`
+	const isPackageRuntimePath =
+		normalized.startsWith(prefix) || normalized.includes(`/${prefix}`)
+	if (!isPackageRuntimePath) return null
+	const fileName = normalized.slice(normalized.lastIndexOf('/') + 1)
+	if (!fileName.endsWith('.js')) return null
+	return decodePathKey(fileName.slice(0, -'.js'.length))
+}
+
+/**
+ * Absolute workerd import specifier for a package-runtime facade so path-like
+ * `kody:@…` modules do not path-join the facade under themselves.
+ */
+export function packageRuntimeFacadeImportSpecifier(packageId: string): string {
+	return `/${packageRuntimeModulePrefix}/${encodePathKey(packageId)}.js`
+}
+
+/**
+ * Prefer the root virtual package-runtime facade
+ * (`.__kody_virtual__/package-runtime/<hex>.js`). Nested copies under a
+ * published-bundle prefix import a sibling `../runtime.js` re-export; when
+ * binding probes keep only the primary shim, those nested facades would miss
+ * their runtime. Shortest matching path wins (root before nested).
+ */
+export function resolvePackageRuntimeFacadeImportSpecifier(
+	graph: LocalPackageGraph,
+	packageId: string,
+): string | null {
+	let best: string | null = null
+	for (const module of graph.modules) {
+		if (parsePackageRuntimeModulePathPackageId(module.name) !== packageId) {
+			continue
+		}
+		const specifier = module.name.startsWith('/')
+			? module.name
+			: `/${module.name}`
+		if (best === null || specifier.length < best.length) {
+			best = specifier
+		}
+	}
+	return best
+}
+
+/**
+ * Rewrite local `kody:@` modules that import the unbound flat runtime alias
+ * onto the origin-supplied package-runtime facade for that package (bound CAF).
+ */
+export async function rewriteLocalModulesToPackageFacades(
+	graph: LocalPackageGraph,
+): Promise<LocalPackageGraph> {
+	const packageIdsByImport = graph.packageIdsByImport ?? {}
+	if (Object.keys(packageIdsByImport).length === 0) {
+		return graph
+	}
+
+	const flatAlias = localWorkerModuleNames.runtimeFlatAlias
+	const flatAliasAbsolute = `/${flatAlias}`
+	const modules: Array<LocalPackageModule> = []
+	for (const module of graph.modules) {
+		if (!module.name.startsWith('kody:@')) {
+			modules.push(module)
+			continue
+		}
+		const packageId = packageIdsByImport[module.name]
+		if (!packageId) {
+			modules.push(module)
+			continue
+		}
+		const facadeSpecifier = resolvePackageRuntimeFacadeImportSpecifier(
+			graph,
+			packageId,
+		)
+		if (!facadeSpecifier) {
+			modules.push(module)
+			continue
+		}
+		const rewritten = await rewriteRuntimeAliasImports(
+			module.esModule,
+			flatAlias,
+			flatAliasAbsolute,
+			facadeSpecifier,
+		)
+		modules.push(
+			rewritten === module.esModule
+				? module
+				: { name: module.name, esModule: rewritten },
+		)
+	}
+	return { ...graph, modules }
+}
+
+async function rewriteRuntimeAliasImports(
+	esModule: string,
+	flatAlias: string,
+	flatAliasAbsolute: string,
+	facadeSpecifier: string,
+): Promise<string> {
+	await esModuleLexerReady
+	const edits = parseModuleImports(esModule)
+		.filter((im) => typeof im.specifier === 'string')
+		.map((im) => {
+			const specifier = im.specifier as string
+			if (specifier !== flatAlias && specifier !== flatAliasAbsolute) {
+				return null
+			}
+			return { start: im.start, end: im.end, facadeSpecifier }
+		})
+		.filter(
+			(
+				edit,
+			): edit is {
+				start: number
+				end: number
+				facadeSpecifier: string
+			} => edit !== null,
+		)
+		.sort((a, b) => b.start - a.start)
+	if (edits.length === 0) return esModule
+	let out = esModule
+	for (const edit of edits) {
+		const raw = esModule.slice(edit.start, edit.end)
+		const quote = raw.startsWith("'") || raw.startsWith('"') ? raw[0]! : null
+		const replacement = quote
+			? `${quote}${edit.facadeSpecifier}${quote}`
+			: edit.facadeSpecifier
+		out = `${out.slice(0, edit.start)}${replacement}${out.slice(edit.end)}`
+	}
+	return out
 }
 
 /**
@@ -307,6 +483,44 @@ export const localExecuteGatewayFetchShimModuleName =
  * Write package-graph modules into a workerd temp dir and return capnp entries.
  * Shared by execute --local, local package runs, and kody dev app bundling.
  */
+/**
+ * Origin package-graph shims older than the hasScope shared-export floor omit
+ * those bindings while facades still re-export them. Backfill so local workerd
+ * can link until production serves the fixed shim.
+ */
+export function backfillLocalExecuteRuntimeShimSharedExports(
+	esModule: string,
+): string {
+	if (
+		/\bexport\s+function\s+hasScope\b/.test(esModule) ||
+		/\bexport\s+\{[^}]*\bhasScope\b/.test(esModule)
+	) {
+		return esModule
+	}
+	const sharedHelpers = `
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+`
+	return `${esModule.trimEnd()}\n${sharedHelpers}`
+}
+
 export async function writePackageModuleFiles(
 	workDir: string,
 	graph: LocalPackageGraph,
@@ -316,7 +530,11 @@ export async function writePackageModuleFiles(
 	const written: Array<{ name: string; file: string }> = []
 	for (const [index, module] of graph.modules.entries()) {
 		const file = `pkg-${index}.js`
-		await writeFile(joinPath(workDir, file), module.esModule)
+		const source =
+			module.name === localExecuteGatewayFetchShimModuleName
+				? backfillLocalExecuteRuntimeShimSharedExports(module.esModule)
+				: module.esModule
+		await writeFile(joinPath(workDir, file), source)
 		written.push({ name: module.name, file })
 	}
 	return written
@@ -364,7 +582,12 @@ export async function resolveLocalPackageGraph(input: {
 		imports.length === 0 &&
 		!(await hasLiteralDynamicSavedPackageImports(input.code))
 	) {
-		return { modules: [], imports: [] }
+		return {
+			modules: [],
+			imports: [],
+			packageBindings: {},
+			packageIdsByImport: {},
+		}
 	}
 
 	let localModules: Array<LocalPackageModule> = []
@@ -384,14 +607,21 @@ export async function resolveLocalPackageGraph(input: {
 		})
 		localModules = local.modules
 		unresolved = local.unresolved
-		// Mock: local-only graphs need no published package-graph (and no login).
-		// Prod: still fetch package-graph for the origin gateway-fetch shim even
-		// when every kody:@ import resolved from the working tree (Bugbot).
+		// Pure mock without depResolve: local-only graphs need no published
+		// package-graph (and no login). When depResolve (or prod) is available,
+		// still fetch so origin can return package-runtime facades + signed
+		// bindings even when every kody:@ import resolved locally.
 		if (
 			unresolved.length === 0 &&
-			(input.depResolve !== undefined || isLikelyMockBearer(input.token))
+			input.depResolve === undefined &&
+			isLikelyMockBearer(input.token)
 		) {
-			return { modules: localModules, imports }
+			return {
+				modules: localModules,
+				imports,
+				packageBindings: {},
+				packageIdsByImport: {},
+			}
 		}
 	}
 
@@ -426,14 +656,229 @@ export async function resolveLocalPackageGraph(input: {
 			`Resolving ${unresolved.length} kody:@ dependenc${unresolved.length === 1 ? 'y' : 'ies'} from published package-graph (mock keeps storage/credentials local)…`,
 		)
 	}
-	const published = await fetchLocalPackageGraph({
-		...client,
-		code: input.code,
-		conversationId: input.conversationId,
-		...(localModules.length > 0 ? { requiredImports: unresolved } : {}),
-	})
+	// Keep requiredImports as unresolved only (kody#4067): origin builds root
+	// aliases from the posted list, so asking for local self-package exports
+	// would pull stale published sources / miss nested published deps. A
+	// separate binding probe (below) asks origin for those local `kody:@`
+	// names just to mint package-runtime facades + signed bindings; local
+	// module sources still win on merge.
+	const localOnlyFallback =
+		localModules.length > 0 &&
+		unresolved.length === 0 &&
+		input.depResolve !== undefined
+			? {
+					modules: localModules,
+					imports,
+					packageBindings: {},
+					packageIdsByImport: {},
+				}
+			: null
+	let published: LocalPackageGraph
+	try {
+		published = await fetchLocalPackageGraph({
+			...client,
+			code: input.code,
+			conversationId: input.conversationId,
+			...(localModules.length > 0 ? { requiredImports: unresolved } : {}),
+		})
+	} catch (error) {
+		// Mock + depResolve with a fully local graph: bindings are optional.
+		// Do not abort the run when the prod package-graph hop fails.
+		if (localOnlyFallback) {
+			input.onStatus?.(
+				'Package bindings unavailable; continuing with local modules unbound.',
+			)
+			return localOnlyFallback
+		}
+		throw error
+	}
 	if (localModules.length === 0) return published
-	return mergePackageGraphs(localModules, published)
+	const withLocalBindings = await probeLocalPackageBindings({
+		...client,
+		conversationId: input.conversationId,
+		localModules,
+		published,
+	})
+	return rewriteLocalModulesToPackageFacades(
+		mergePackageGraphs(localModules, withLocalBindings),
+	)
+}
+
+/**
+ * When working-tree modules cover some/all `kody:@` imports, the unresolved
+ * package-graph request never names those local packages — so it cannot mint
+ * their signed bindings or package-runtime facades. Probe each missing local
+ * `kody:@` name on its own (so one unpublished export does not block the
+ * rest). Published packages return facades + `kpb1` bindings (local sources
+ * still win on merge).
+ */
+async function probeLocalPackageBindings(
+	input: CapabilityProxyClientInput & {
+		conversationId?: string
+		localModules: ReadonlyArray<LocalPackageModule>
+		published: LocalPackageGraph
+	},
+): Promise<LocalPackageGraph> {
+	const knownIds = input.published.packageIdsByImport ?? {}
+	const probeImports = [
+		...new Set(
+			input.localModules
+				.map((module) => module.name)
+				.filter(
+					(name) => name.startsWith('kody:@') && knownIds[name] === undefined,
+				),
+		),
+	]
+	if (probeImports.length === 0) return input.published
+
+	let merged = input.published
+	for (const specifier of probeImports) {
+		try {
+			const probed = await fetchLocalPackageGraph({
+				apiUrl: input.apiUrl,
+				token: input.token,
+				code: synthesizePackageGraphEntry([specifier]),
+				requiredImports: [specifier],
+				...(input.org ? { org: input.org } : {}),
+				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+				...(input.conversationId !== undefined
+					? { conversationId: input.conversationId }
+					: {}),
+				...(input.signal ? { signal: input.signal } : {}),
+			})
+			merged = mergePackageGraphBindings(merged, probed)
+		} catch (error) {
+			if (!isPackageGraphResolutionError(error)) throw error
+			// Unpublished / unresolved local export: skip this specifier only.
+		}
+	}
+	return embedMergedBindingsInPrimaryShim(merged)
+}
+
+/**
+ * Overlay binding metadata and package-runtime facade modules from a probe.
+ * Never replace the primary gateway-fetch shim — facades look up `kpb1`
+ * stamps inside that shim, and a probe-only copy would wipe bindings already
+ * minted for published deps.
+ */
+export function mergePackageGraphBindings(
+	base: LocalPackageGraph,
+	probed: LocalPackageGraph,
+): LocalPackageGraph {
+	const byName = new Map<string, LocalPackageModule>()
+	for (const module of base.modules) byName.set(module.name, module)
+	for (const module of probed.modules) {
+		if (module.name.startsWith('kody:@')) continue
+		if (isLocalExecuteGatewayFetchShimModuleName(module.name)) continue
+		// Only root facades: they import `../runtime.js` → primary shim we keep.
+		// Nested facades need a sibling nested runtime we deliberately skip.
+		if (isRootPackageRuntimeFacadeModuleName(module.name)) {
+			byName.set(module.name, module)
+		}
+	}
+	return {
+		modules: [...byName.values()],
+		imports: base.imports,
+		packageBindings: {
+			...base.packageBindings,
+			...probed.packageBindings,
+		},
+		packageIdsByImport: {
+			...base.packageIdsByImport,
+			...probed.packageIdsByImport,
+		},
+	}
+}
+
+function isLocalExecuteGatewayFetchShimModuleName(moduleName: string): boolean {
+	if (moduleName === localExecuteGatewayFetchShimModuleName) return true
+	return (
+		moduleName.endsWith(`/${localExecuteGatewayFetchShimModuleName}`) ||
+		moduleName.includes(`/${localExecuteGatewayFetchShimModuleName}/`)
+	)
+}
+
+/** True for `.__kody_virtual__/package-runtime/<hex>.js` (not nested under a bundle). */
+export function isRootPackageRuntimeFacadeModuleName(
+	moduleName: string,
+): boolean {
+	const normalized = moduleName.replace(/\\/g, '/').replace(/^\/+/, '')
+	const prefix = `${packageRuntimeModulePrefix}/`
+	if (!normalized.startsWith(prefix) || !normalized.endsWith('.js')) {
+		return false
+	}
+	const rest = normalized.slice(prefix.length, -'.js'.length)
+	return rest.length > 0 && !rest.includes('/')
+}
+
+/**
+ * Package-runtime facades close over `__kodyPackageBinding` from the primary
+ * shim. After probing extra local packages, rewrite that shim's binding table
+ * so it includes every merged `kpb1` stamp (not only the unresolved-deps set).
+ */
+export function embedMergedBindingsInPrimaryShim(
+	graph: LocalPackageGraph,
+): LocalPackageGraph {
+	const packageBindings = graph.packageBindings ?? {}
+	if (Object.keys(packageBindings).length === 0) return graph
+	const modules = graph.modules.map((module) => {
+		if (!isLocalExecuteGatewayFetchShimModuleName(module.name)) return module
+		const rewritten = rewritePackageBindingsLiteral(
+			module.esModule,
+			packageBindings,
+		)
+		return rewritten === module.esModule
+			? module
+			: { name: module.name, esModule: rewritten }
+	})
+	return { ...graph, modules }
+}
+
+/** Origin shim shape: `const __kodyPackageBindings = { … };` */
+const packageBindingsLiteralPattern =
+	/const __kodyPackageBindings = \{[\s\S]*?\n\};/
+
+export function createPackageBindingsLiteral(
+	bindings: Record<string, string>,
+): string {
+	const entries = Object.entries(bindings)
+		.filter(
+			([packageId, binding]) =>
+				packageId &&
+				packageId !== '__proto__' &&
+				typeof binding === 'string' &&
+				binding,
+		)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(
+			([packageId, binding]) =>
+				`\t${JSON.stringify(packageId)}: ${JSON.stringify(binding)},`,
+		)
+	return `{\n\t__proto__: null,\n${entries.join('\n')}${entries.length ? '\n' : ''}}`
+}
+
+function rewritePackageBindingsLiteral(
+	esModule: string,
+	bindings: Record<string, string>,
+): string {
+	if (!packageBindingsLiteralPattern.test(esModule)) return esModule
+	return esModule.replace(
+		packageBindingsLiteralPattern,
+		`const __kodyPackageBindings = ${createPackageBindingsLiteral(bindings)};`,
+	)
+}
+
+function isPackageGraphResolutionError(error: unknown): boolean {
+	if (!(error instanceof LocalPackageGraphError)) return false
+	return (
+		error.code === 'package_import_unresolved' ||
+		error.code === 'package_import_unpublished' ||
+		error.code === 'incomplete_package_graph' ||
+		error.code === 'not_found' ||
+		error.status === 400 ||
+		error.status === 404 ||
+		error.status === 422
+	)
 }
 
 function isLikelyMockBearer(token: string): boolean {
@@ -568,7 +1013,24 @@ function parsePackageGraphBody(
 	const reportedImports = Array.isArray(body.imports)
 		? body.imports.filter((value): value is string => typeof value === 'string')
 		: imports
-	return { modules, imports: reportedImports }
+	const packageBindings = parseStringRecord(body.packageBindings)
+	const packageIdsByImport = parseStringRecord(body.packageIdsByImport)
+	return {
+		modules,
+		imports: reportedImports,
+		packageBindings,
+		packageIdsByImport,
+	}
+}
+
+function parseStringRecord(value: unknown): Record<string, string> {
+	if (!isRecord(value)) return {}
+	const out: Record<string, string> = {}
+	for (const [key, entry] of Object.entries(value)) {
+		if (!key || key === '__proto__') continue
+		if (typeof entry === 'string' && entry) out[key] = entry
+	}
+	return out
 }
 
 function describePackageGraphFailure(

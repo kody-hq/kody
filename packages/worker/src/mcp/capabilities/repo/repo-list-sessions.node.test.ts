@@ -4,22 +4,35 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import { type EntitySourceRow } from '#worker/repo/types.ts'
 
 const mockModule = vi.hoisted(() => ({
-	getEntitySourceByIdForUser: vi.fn(),
-	getSavedPackageById: vi.fn(),
+	checkPermission: vi.fn(),
+	listEntitySourcesByIdsForUser: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
 	listRepoSessionsBySource: vi.fn(),
 	listRepoSessionsByUser: vi.fn(),
 }))
 
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/authorization/authorize.ts')>()
+	return {
+		...actual,
+		checkPermission: (...args: Parameters<typeof actual.checkPermission>) =>
+			mockModule.checkPermission(...args),
+	}
+})
+
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
-		mockModule.getEntitySourceByIdForUser(...args),
+	listEntitySourcesByIdsForUser: (...args: Array<unknown>) =>
+		mockModule.listEntitySourcesByIdsForUser(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: (...args: Array<unknown>) =>
-		mockModule.getSavedPackageById(...args),
+	listSavedPackagesByIds: (...args: Array<unknown>) =>
+		mockModule.listSavedPackagesByIds(...args),
 }))
 
 vi.mock('#worker/repo/repo-sessions.ts', () => ({
@@ -78,29 +91,36 @@ function createSession(
 	}
 }
 
-function stubSources({ missingSourceId }: { missingSourceId?: string } = {}) {
-	for (const fn of Object.values(mockModule)) fn.mockReset()
-	mockModule.getEntitySourceByIdForUser.mockImplementation(
-		async (_db: D1Database, input: { id: string; userId: string }) =>
-			input.id === missingSourceId || input.userId !== 'user-1'
-				? null
-				: {
-						id: input.id,
-						user_id: ownerIdFromStored('user-1'),
-						entity_kind: 'package' as const,
-						entity_id: 'package-1',
-						repo_id: `repo-${input.id}`,
-						published_commit: 'commit-published',
-						indexed_commit: 'commit-indexed',
-						manifest_path: 'package.json',
-						source_root: '/',
-						last_external_check_at: null,
-						external_check_until: null,
-						created_at: '2026-04-28T00:00:00.000Z',
-						updated_at: '2026-04-28T00:00:00.000Z',
-					},
-	)
-	mockModule.getSavedPackageById.mockResolvedValue({
+function packageSource(id: string, entityId = 'package-1'): EntitySourceRow {
+	return {
+		id,
+		user_id: ownerIdFromStored('user-1'),
+		entity_kind: 'package',
+		entity_id: entityId,
+		repo_id: `repo-${id}`,
+		published_commit: 'commit-published',
+		indexed_commit: 'commit-indexed',
+		manifest_path: 'package.json',
+		source_root: '/',
+		last_external_check_at: null,
+		external_check_until: null,
+		created_at: '2026-04-28T00:00:00.000Z',
+		updated_at: '2026-04-28T00:00:00.000Z',
+	}
+}
+
+function repoSource(id: string): EntitySourceRow {
+	return {
+		...packageSource(id, 'repo-entity-1'),
+		entity_kind: 'repo',
+		entity_id: 'repo-entity-1',
+	}
+}
+
+function savedPackage(
+	overrides: Partial<SavedPackageRecord> = {},
+): SavedPackageRecord {
+	return {
 		id: 'package-1',
 		userId: ownerIdFromStored('user-1'),
 		name: '@user/demo',
@@ -110,12 +130,55 @@ function stubSources({ missingSourceId }: { missingSourceId?: string } = {}) {
 		searchText: null,
 		sourceId: 'source-1',
 		hasApp: false,
+		hasSkills: false,
 		hidden: false,
 		isPrivate: false,
 		isInternetVisible: false,
+		lockedAt: null,
 		createdAt: '2026-04-28T00:00:00.000Z',
 		updatedAt: '2026-04-28T00:00:00.000Z',
-	})
+		...overrides,
+	}
+}
+
+function stubSources({
+	sources,
+	packages,
+	deniedPackageIds = [],
+}: {
+	sources?: Array<EntitySourceRow>
+	packages?: Array<SavedPackageRecord>
+	deniedPackageIds?: ReadonlyArray<string>
+} = {}) {
+	for (const fn of Object.values(mockModule)) fn.mockReset()
+	const resolvedSources = sources ?? [packageSource('source-1')]
+	mockModule.listEntitySourcesByIdsForUser.mockImplementation(
+		async (
+			_db: D1Database,
+			input: { userId: string; ids: ReadonlyArray<string> },
+		) =>
+			input.userId !== 'user-1'
+				? []
+				: resolvedSources.filter((source) => input.ids.includes(source.id)),
+	)
+	mockModule.listSavedPackagesByIds.mockImplementation(
+		async (
+			_db: D1Database,
+			input: { userId: string; packageIds: Array<string> },
+		) =>
+			(packages ?? [savedPackage()]).filter((row) =>
+				input.packageIds.includes(row.id),
+			),
+	)
+	mockModule.checkPermission.mockImplementation(
+		(
+			_access: unknown,
+			_permission: unknown,
+			resource: { id?: string } | undefined,
+		) => ({
+			allowed: !resource?.id || !deniedPackageIds.includes(resource.id),
+		}),
+	)
 }
 
 const ids = (result: { sessions: Array<{ id: string }> }) =>
@@ -179,11 +242,14 @@ test('repoListSessions does not return rows for another user even if storage is 
 	])
 
 	expect((await listSessions()).sessions).toEqual([])
-	expect(mockModule.getEntitySourceByIdForUser).not.toHaveBeenCalled()
+	expect(mockModule.listEntitySourcesByIdsForUser).toHaveBeenCalledWith(
+		expect.anything(),
+		{ userId: ownerIdFromStored('user-1'), ids: [] },
+	)
 })
 
 test('repoListSessions supports source_id narrowing and applies limit after dropping missing sources', async () => {
-	stubSources()
+	stubSources({ sources: [packageSource('source-2')] })
 	mockModule.listRepoSessionsBySource.mockResolvedValue([
 		createSession('session-source-new', {
 			source_id: 'source-2',
@@ -204,7 +270,7 @@ test('repoListSessions supports source_id narrowing and applies limit after drop
 	)
 	expect(mockModule.listRepoSessionsByUser).not.toHaveBeenCalled()
 
-	stubSources({ missingSourceId: 'source-missing' })
+	stubSources({ sources: [packageSource('source-1')] })
 	mockModule.listRepoSessionsByUser.mockResolvedValue([
 		createSession('session-missing-source', {
 			source_id: 'source-missing',
@@ -217,5 +283,124 @@ test('repoListSessions supports source_id narrowing and applies limit after drop
 	])
 
 	expect(ids(await listSessions({ limit: 1 }))).toEqual(['session-valid'])
-	expect(mockModule.getEntitySourceByIdForUser).toHaveBeenCalledTimes(2)
+	expect(mockModule.listEntitySourcesByIdsForUser).toHaveBeenCalledTimes(1)
+	expect(mockModule.listEntitySourcesByIdsForUser).toHaveBeenCalledWith(
+		expect.anything(),
+		{
+			userId: ownerIdFromStored('user-1'),
+			ids: ['source-missing', 'source-1'],
+		},
+	)
+})
+
+test('repoListSessions batch-loads sources and packages once for many sessions', async () => {
+	const sources = Array.from({ length: 53 }, (_, index) =>
+		packageSource(`source-${index}`, `package-${index}`),
+	)
+	const packages = sources.map((source) =>
+		savedPackage({
+			id: source.entity_id,
+			sourceId: source.id,
+			name: `@user/${source.entity_id}`,
+			kodyId: source.entity_id,
+		}),
+	)
+	stubSources({ sources, packages })
+	mockModule.listRepoSessionsByUser.mockResolvedValue(
+		sources.map((source, index) =>
+			createSession(`session-${index}`, {
+				source_id: source.id,
+				updated_at: `2026-04-28T00:${String(index).padStart(2, '0')}:00.000Z`,
+			}),
+		),
+	)
+
+	const result = await listSessions({ status: 'all', limit: 100 })
+
+	expect(result.sessions).toHaveLength(53)
+	expect(mockModule.listEntitySourcesByIdsForUser).toHaveBeenCalledTimes(1)
+	expect(mockModule.listSavedPackagesByIds).toHaveBeenCalledTimes(1)
+	expect(mockModule.listSavedPackagesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		{
+			userId: ownerIdFromStored('user-1'),
+			packageIds: sources.map((source) => source.entity_id),
+		},
+	)
+})
+
+test('repoListSessions skips packages the caller cannot read and fills the limit from later rows', async () => {
+	stubSources({
+		sources: [
+			packageSource('source-denied', 'package-denied'),
+			packageSource('source-allowed', 'package-allowed'),
+		],
+		packages: [
+			savedPackage({
+				id: 'package-denied',
+				sourceId: 'source-denied',
+				name: '@user/denied',
+				kodyId: 'denied',
+			}),
+			savedPackage({
+				id: 'package-allowed',
+				sourceId: 'source-allowed',
+				name: '@user/allowed',
+				kodyId: 'allowed',
+			}),
+		],
+		deniedPackageIds: ['package-denied'],
+	})
+	mockModule.listRepoSessionsByUser.mockResolvedValue([
+		createSession('session-denied', {
+			source_id: 'source-denied',
+			updated_at: '2026-04-28T00:02:00.000Z',
+		}),
+		createSession('session-allowed', {
+			source_id: 'source-allowed',
+			updated_at: '2026-04-28T00:01:00.000Z',
+		}),
+	])
+
+	expect(ids(await listSessions({ limit: 1 }))).toEqual(['session-allowed'])
+	expect(mockModule.checkPermission).toHaveBeenCalled()
+})
+
+test('repoListSessions falls back to source resolved_target when the saved package row is missing', async () => {
+	stubSources({
+		sources: [packageSource('source-1', 'package-missing')],
+		packages: [],
+	})
+	mockModule.listRepoSessionsByUser.mockResolvedValue([
+		createSession('session-1'),
+	])
+
+	const result = await listSessions()
+
+	expect(result.sessions[0]?.resolved_target).toEqual({
+		kind: 'source',
+		source_id: 'source-1',
+		entity_kind: 'package',
+		entity_id: 'package-missing',
+	})
+})
+
+test('repoListSessions uses source resolved_target for non-package entity kinds', async () => {
+	stubSources({ sources: [repoSource('source-repo')], packages: [] })
+	mockModule.listRepoSessionsByUser.mockResolvedValue([
+		createSession('session-repo', { source_id: 'source-repo' }),
+	])
+
+	const result = await listSessions()
+
+	expect(mockModule.listSavedPackagesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		{ userId: ownerIdFromStored('user-1'), packageIds: [] },
+	)
+	expect(result.sessions[0]?.resolved_target).toEqual({
+		kind: 'source',
+		source_id: 'source-repo',
+		entity_kind: 'repo',
+		entity_id: 'repo-entity-1',
+	})
 })

@@ -200,7 +200,7 @@ async function loadBackgroundMcpUser(
  * storage owner id.
  *
  * This is the suspension choke point for background lanes (jobs, package
- * invocations and subscriptions, workflows, retrievers, realtime hooks):
+ * invocations and subscriptions, workflows, realtime hooks):
  * a suspended person or team org throws `AccountSuspendedError` instead of
  * resolving.
  *

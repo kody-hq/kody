@@ -65,6 +65,7 @@ function run(
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+		startedBy: null,
 		metadata: {
 			endpointId: 'ep-wake',
 			httpStatus: delivered ? 202 : outcome.status,

@@ -35,3 +35,15 @@ export const followViewSchema = z.object({
 			'Set when a delivery was skipped before the handler ran, for example zero_credits.',
 		),
 })
+
+export const followRecentUpdateSchema = z.object({
+	name: z.string().describe('Target @handle/name.'),
+	kind: z.enum(followTargetKinds),
+	event: z.enum(followEvents),
+	occurred_at: z.string(),
+	summary: z
+		.string()
+		.describe(
+			'For example "Published version abc1234" or "3 commits pushed to main: Fix typo".',
+		),
+})

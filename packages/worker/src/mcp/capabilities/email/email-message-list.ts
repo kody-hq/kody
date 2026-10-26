@@ -10,7 +10,12 @@ import {
 	emailOwnerOrgId,
 	requireVerifiedEmailAccountUser,
 } from './require-verified-user.ts'
-import { emailMessageSummarySchema, toMessageSummary } from './shared.ts'
+import {
+	emailMessageSummarySchema,
+	emailMessageViewInputSchema,
+	resolveEmailMessageView,
+	toMessageSummary,
+} from './shared.ts'
 
 export const emailMessageListCapability = defineDomainCapability(
 	capabilityDomainNames.email,
@@ -18,8 +23,16 @@ export const emailMessageListCapability = defineDomainCapability(
 		name: 'emailMessageList',
 		orgPermission: 'email:read',
 		description:
-			'List stored inbound and outbound email messages for the current org.',
-		keywords: ['email', 'message', 'inbox', 'list', 'quarantine'],
+			'List stored inbound and outbound email messages for the current org. The default "inbox" view hides messages marked as spam and archived messages; pass view "spam", "archived", or "all" to see them.',
+		keywords: [
+			'email',
+			'message',
+			'inbox',
+			'list',
+			'quarantine',
+			'spam',
+			'archive',
+		],
 		readOnly: true,
 		idempotent: true,
 		destructive: false,
@@ -29,6 +42,7 @@ export const emailMessageListCapability = defineDomainCapability(
 			processing_status: z.enum(['stored', 'sent', 'failed']).optional(),
 			delivery_status: z.enum(emailDeliveryStatusValues).optional(),
 			classification: z.enum(emailClassificationValues).optional(),
+			view: emailMessageViewInputSchema,
 			limit: z.number().int().positive().max(100).default(25),
 		}),
 		outputSchema: z.object({
@@ -44,6 +58,7 @@ export const emailMessageListCapability = defineDomainCapability(
 				processingStatus: args.processing_status ?? null,
 				deliveryStatus: args.delivery_status ?? null,
 				classification: args.classification ?? null,
+				view: resolveEmailMessageView(args),
 				limit: args.limit,
 			})
 			return { messages: messages.map(toMessageSummary) }

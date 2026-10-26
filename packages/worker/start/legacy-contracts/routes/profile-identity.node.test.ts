@@ -27,7 +27,9 @@ test('profile identity renders the person in HTML and keeps guest CTAs honest', 
 	expect(ownHtml.replace(/<!-- -->/g, '')).toContain('Joined March 1, 2026')
 	expect(ownHtml).toContain('Workspace')
 	expect(ownHtml).toContain('data-testid="profile-workspace"')
-	expect(ownHtml).toContain('href="/@jane/-/repositories"')
+	// Workspace opens the workspace Overview, not a single section.
+	expect(ownHtml).toContain('href="/@jane/-/overview"')
+	expect(ownHtml).not.toContain('href="/@jane/-/repositories"')
 	expect(ownHtml).toContain('Account settings')
 	expect(ownHtml).toContain(`href="${routes.account.href()}"`)
 	expect(ownHtml).not.toContain('data-testid="profile-guest-cta"')
@@ -42,8 +44,8 @@ test('profile identity renders the person in HTML and keeps guest CTAs honest', 
 		),
 	)
 	expect(renamedHtml).toContain('@jane-new')
-	expect(renamedHtml).toContain('href="/@jane/-/repositories"')
-	expect(renamedHtml).not.toContain('href="/@jane-new/-/repositories"')
+	expect(renamedHtml).toContain('href="/@jane/-/overview"')
+	expect(renamedHtml).not.toContain('href="/@jane-new/-/overview"')
 
 	const privateHtml = await renderToString(
 		renderProfileIdentity({

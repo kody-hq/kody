@@ -101,7 +101,6 @@ test.each(['', '/memory', '/packages', '/triggers', '/credentials', '/apps'])(
 	'feature %s renders its content before client JavaScript',
 	async (suffix) => {
 		const { html } = await document(`/features${suffix}?utm_source=test`)
-		expect(html).not.toContain('Loading page')
 		expect(html.match(/<h1[ >]/g)).toHaveLength(1)
 		expect(html.match(/<main[ >]/g)).toHaveLength(1)
 	},

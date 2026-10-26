@@ -34,7 +34,10 @@
   [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement));
   2026-10-20 (Cole: package needs may declare fill placement applied on
   package-scope insert; runtimes still cannot widen placement — see
-  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement))
+  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement));
+  2026-10-24 (Kent: package apps run as their publisher; visitors bring only
+  identity; see
+  [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -863,3 +866,28 @@ auto-narrowing or enforcement.
 - **Step 4 note.** When auto-narrowing ships, it must also consider
   package-scope rows that received headers-only before a body (or other)
   declaration existed, not only null (anywhere) rows.
+
+## Amendment 2026-10-24: package apps run as their publisher
+
+Kent approved this on 2026-10-24. It replaces the viewer rule of the
+[2026-10-16 amendment](#amendment-2026-10-16-owner-credentials-for-app-visitors)
+for package apps. An app runs as one person, who pays for it and whose
+credentials fill its needs. Visitors bring only verified identity.
+
+- **Who.** An explicit runs-as person an Owner picks, else the person who last
+  published the app, else the owner of a personal org. A publish with no known
+  person clears the recorded publisher. The person is checked live (member of
+  the owning org, account usable) on every call and fails clearly when not.
+- **Cap.** Only Kody capabilities the app lists in `kody.app.capabilities` run
+  as that person, within the role they hold now. Credential needs stay capped by
+  credential-need enforcement.
+- **Visitors.** Identity is id, username, and role for members; email only under
+  the `email` scope. `kody.app.visitorNeeds` gives one Sign in with Kody consent
+  scope per need (`need:<key>`) for work on the visitor's own data, checked live
+  on every call and never falling back to the runs-as person. Usage stays
+  attributed to the visitor.
+- **Fallback.** A call that would fail as the runs-as person but worked as the
+  visitor still runs as the visitor and records a would-break row (app, call
+  name, kind, hashed visitor), counted with
+  `adminPackageAppAuthorityFallbackReport`. The visitor path and
+  `ownerCredentialForVisitors` are removed only after those stay at zero.

@@ -67,10 +67,11 @@ When policy + risk allow: squash-merge via `kody:@kentcdodds/github/pr/merge`
 
 ## Done → Discord
 
-Always summarize (merged or not) with agent / PR / CI / publish links. Name the
-agent truthfully: a Cursor agent link only from a real `bc-` id; Codex, Claude,
-Devin, or other agents name themselves and link only a real session URL. Never
-fabricate a Cursor id or model.
+Always summarize (merged or not) with agent / PR / CI links. Include a publish
+link only when this run published; otherwise say publishing is pending or not
+applicable. Name the agent truthfully: a Cursor agent link only from a real
+`bc-` id; Codex, Claude, Devin, or other agents name themselves and link only a
+real HTTPS session URL. Never fabricate a Cursor id or model.
 
 ```javascript
 import postMessage from 'kody:@kentcdodds/discord/post-message'

@@ -21,6 +21,7 @@ import {
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
@@ -90,9 +91,9 @@ vi.mock('cloudflare:workers', async (importOriginal) => ({
 	},
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#worker/email/mailbox-internal-read.ts', () => ({
 	listInternalEmailAttachmentsForMessage: async () => [],
@@ -272,6 +273,7 @@ async function setup() {
 		scope: 'user',
 		name: 'teamToken',
 		value: teamSecretValue,
+		audit: null,
 	})
 	// Only Cy holds Use on the team secret.
 	await grant(cyId, 'secret', 'teamToken')
@@ -702,6 +704,7 @@ test('a pause keeps the credential name people read and its id, and a pause on a
 		scope: 'user',
 		name: 'futureToken',
 		value: 'future-secret-value',
+		audit: null,
 	})
 	await t.sendEmail('cy@acme.example')
 	expect(t.runs).toEqual([])
@@ -757,6 +760,7 @@ test('a run that references a vault with no binding pauses the enablement on Use
 		scope: 'user',
 		name: '1password',
 		value: 'not-the-vault',
+		audit: null,
 	})
 	await t.grant(t.people.cy.userId, 'secret', '1password')
 	t.runs.splice(0)
@@ -813,6 +817,7 @@ test('a grant on a credential deleted since the pause does not resume the enable
 		userId: t.orgId,
 		scope: 'user',
 		name: 'teamToken',
+		audit: null,
 	})
 	t.runs.splice(0)
 	await t.sendEmail('bea@acme.example')
@@ -1289,14 +1294,14 @@ test('turning a trigger on again keeps one enablement per person', async () => {
 	)
 })
 
-test('an approved webhook URL that has no signing secret gets one when it is turned on again', async () => {
+test('webhook approval initializes its signing secret', async () => {
 	const t = await setup()
 	await t.db
 		.prepare(
 			`INSERT INTO webhook_endpoints (
 				id, user_id, package_id, webhook_name, url_secret_hash,
-				url_secret_encrypted, enabled, created_at, rotated_at
-			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', 0, ?, ?)`,
+				url_secret_encrypted, created_at, rotated_at
+			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', ?, ?)`,
 		)
 		.bind(t.orgId, now, now)
 		.run()

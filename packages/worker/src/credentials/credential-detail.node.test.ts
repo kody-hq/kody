@@ -32,6 +32,15 @@ vi.mock('./credential-needs-closure.ts', () => ({
 vi.mock('./credential-candidates.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof CredentialCandidates>()),
 	listUsableCredentials: async () => mocks.usable,
+	listUsableCredentialsByPackage: async (input: {
+		packageIds: ReadonlyArray<string>
+	}) => {
+		const byPackage = new Map<string, typeof mocks.usable>()
+		for (const packageId of input.packageIds) {
+			byPackage.set(packageId, mocks.usable)
+		}
+		return byPackage
+	},
 }))
 
 const { loadCredentialDetail, maxUsagePackages } =

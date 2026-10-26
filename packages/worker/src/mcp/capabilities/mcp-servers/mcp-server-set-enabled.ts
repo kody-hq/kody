@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -46,6 +47,7 @@ export const mcpServerSetEnabledCapability = defineDomainCapability(
 				userId: ownerIdFromCaller(ctx.callerContext),
 				id: setting.id,
 				enabled: args.enabled,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			return {
 				id: updated.id,

@@ -58,12 +58,15 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 	readOnly: false,
 	async handler(params, ctx) {
 		const args = parseNativeInput(executeHttpInputSchema, params)
+		const startedByLabel =
+			ctx.principal.kind === 'token' ? ctx.principal.token.name : null
 		return runExecuteToolCall({
 			env: ctx.env,
 			callerContext: ctx.callerContext,
 			loopbackExports: ctx.loopbackExports ?? ({} as Cloudflare.Exports),
 			waitUntil: ctx.waitUntil,
 			args,
+			startedByLabel,
 		})
 	},
 }

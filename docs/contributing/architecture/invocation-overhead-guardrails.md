@@ -113,12 +113,12 @@ that caused it, not a follow-up.
 ## New awaited D1 writes need a budget justification
 
 Any change that adds an **awaited D1 write** to a hot invocation path (ad hoc
-execute, keyless package export runs, subscription dispatch, retriever calls)
-must include an explicit budget justification in its PR description: what the
-write costs at p95, why it cannot be deferred with `waitUntil`, batched, or
-moved to the keyed/durable mode, and which surface percentile it is expected to
-move. Reviewers should treat an unexplained new awaited write on these paths as
-a defect.
+execute, keyless package export runs, subscription dispatch) must include an
+explicit budget justification in its PR description: what the write costs at
+p95, why it cannot be deferred with `waitUntil`, batched, or moved to the
+keyed/durable mode, and which surface percentile it is expected to move.
+Reviewers should treat an unexplained new awaited write on these paths as a
+defect.
 
 Failure-path writes (error run records) and keyed-mode writes (ledger claim,
 eager run records) are already part of their respective budgets and do not need

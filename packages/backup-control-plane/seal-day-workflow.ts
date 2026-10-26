@@ -3,20 +3,16 @@ import {
 	type WorkflowEvent,
 	type WorkflowStep,
 } from 'cloudflare:workers'
-import { NonRetryableError } from 'cloudflare:workflows'
 
 import { type BackupRuntimeStep } from './backup-runtime.ts'
-import { BackupError, workflowBackupErrorMessage } from './backup-policy.ts'
+import { BackupError } from './backup-policy.ts'
 import { type BackupEnvironment } from './backup-types.ts'
 import { runSealDay } from './seal-day-run.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
+import { nonRetryableBackupError } from './workflow-terminal-error.ts'
 
 type SealDayWorkflowPayload = {
 	day: string
-}
-
-function nonRetryableBackupError(error: BackupError): NonRetryableError {
-	return new NonRetryableError(workflowBackupErrorMessage(error), error.code)
 }
 
 export class ProductionSealDayWorkflow extends WorkflowEntrypoint<
@@ -30,7 +26,6 @@ export class ProductionSealDayWorkflow extends WorkflowEntrypoint<
 		try {
 			const runtimeStep = withNonRetryableBackupErrors(
 				step as unknown as BackupRuntimeStep,
-				nonRetryableBackupError,
 			)
 			return await runSealDay(this.env, event.payload.day, runtimeStep)
 		} catch (error) {

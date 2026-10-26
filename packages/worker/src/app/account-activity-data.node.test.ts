@@ -69,6 +69,7 @@ function makeRun(overrides: Partial<RunRecord> = {}): RunRecord {
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+		startedBy: null,
 		metadata: {},
 		logCount: 2,
 		...overrides,

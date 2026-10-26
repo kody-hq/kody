@@ -1,3 +1,4 @@
+import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
 /**
  * Enablement writes from people (credentials plan v4, section 3.3). Each
  * person turns triggers on for themselves; nobody enables a trigger for
@@ -750,6 +751,8 @@ export async function enableTriggerWithJobForCaller(input: {
 	packageIdOrKodyId: string
 	kind: EnablementTriggerKind
 	name: string
+	/** Set when a package run turns the trigger on. */
+	cause?: OrgAuditCause | null
 }): Promise<{
 	enablement: EnablementRecord
 	job: EnablementJobOutcome | null
@@ -794,6 +797,7 @@ export async function enableTriggerWithJobForCaller(input: {
 			env: input.env,
 			request: input.request,
 			enablement: plan.enablement,
+			cause: input.cause ?? null,
 		})
 		return { enablement: plan.enablement, job }
 	}
@@ -825,6 +829,7 @@ export async function enableTriggerWithJobForCaller(input: {
 		},
 		from: 'off',
 		to: 'on',
+		cause: input.cause ?? null,
 	})
 	await runNewEnablementPlans({
 		db: input.env.APP_DB,
@@ -842,6 +847,7 @@ export async function enableTriggerWithJobForCaller(input: {
 		env: input.env,
 		request: input.request,
 		enablement: created,
+		cause: input.cause ?? null,
 	})
 	return { enablement: created, job }
 }
@@ -850,6 +856,7 @@ async function armCronJobWithOutcome(input: {
 	env: Env
 	request: RequestContext
 	enablement: EnablementRecord
+	cause?: OrgAuditCause | null
 }): Promise<EnablementJobOutcome | null> {
 	const result = await armCronJobForCallerEnablement(input)
 	if (result === 'not_applicable') return null
@@ -886,6 +893,8 @@ export async function armCronJobForCallerEnablement(input: {
 	env: Env
 	request: RequestContext
 	enablement: EnablementRecord
+	/** Set when a package run turned the enablement on. */
+	cause?: OrgAuditCause | null
 }): Promise<ArmJobForEnablementResult | 'not_permitted' | 'not_applicable'> {
 	const { enablement } = input
 	if (enablement.triggerKind !== 'cron' || enablement.state !== 'on') {
@@ -902,6 +911,7 @@ export async function armCronJobForCallerEnablement(input: {
 		jobId: enablement.instanceId,
 		actor: toggleActorFromRequest(input.request),
 		enablementId: enablement.id,
+		cause: input.cause ?? null,
 	})
 }
 
@@ -941,6 +951,8 @@ export async function disableEnablementForCaller(input: {
 	enablementId: string
 	/** Why it was turned off, recorded in the org audit log. */
 	reason?: string | null
+	/** Set when a package run turns the trigger off. */
+	cause?: OrgAuditCause | null
 }): Promise<EnablementRecord> {
 	const actor = requireActor(input.request)
 	const db = input.env.APP_DB
@@ -969,6 +981,7 @@ export async function disableEnablementForCaller(input: {
 		from: enablement.state,
 		to: 'off',
 		reason: input.reason,
+		cause: input.cause ?? null,
 	})
 	// The audit row commits with the turn-off and only when it changed a row.
 	await db.batch([

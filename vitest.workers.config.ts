@@ -1,9 +1,6 @@
 import { resolve } from 'node:path'
 import { availableParallelism } from 'node:os'
-import {
-	cloudflareTest,
-	readD1Migrations,
-} from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin'
 import { defineProject, mergeConfig } from 'vitest/config'
 import {
 	rootDir,

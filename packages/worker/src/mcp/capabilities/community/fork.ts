@@ -22,10 +22,10 @@ export const communityForkCapability = defineDomainCapability(
 		name: 'communityFork',
 		orgPermission: 'package:create',
 		description:
-			'Fork a public package into an inert package source in your scope. The fork cannot run until you review the code and publish through a repo session. When the listing leaf is already taken by an unrelated package and you omit `kody_id`, Kody picks the next free leaf (for example `leaf-2`). Pass an explicit package name leaf (or `@owner/leaf`) to choose the name yourself.',
+			'Fork a public package into an inert package source in your scope. The fork cannot run until you review the code and publish through a repo session. Idempotent per listing and account: when this account already forked the listing (or a fork of it is still in progress), you get that fork back with `already_forked: true` instead of a duplicate. When the listing leaf is already taken by an unrelated package and you omit `kody_id`, Kody picks the next free leaf (for example `leaf-2`). Pass an explicit package name leaf (or `@owner/leaf`) to choose the name yourself, or to deliberately fork the listing again under a new name.',
 		keywords: ['community', 'fork', 'copy', 'listing', 'package', 'import'],
 		readOnly: false,
-		idempotent: false,
+		idempotent: true,
 		destructive: false,
 		inputSchema: z.object({
 			listing_id: z.string().min(1).describe('Catalog entry id to fork.'),
@@ -33,8 +33,9 @@ export const communityForkCapability = defineDomainCapability(
 				.string()
 				.min(1)
 				.optional()
+				.meta({ deprecated: true })
 				.describe(
-					'Optional package name leaf (or `@owner/leaf`). Omit to use the listing leaf, or the next free alternate when that leaf is already taken by an unrelated package.',
+					'Deprecated leftover alias for an optional package name leaf (or `@owner/leaf`). Prefer omitting this and using the listing leaf, or pass a leaf via future `name` once available. Omit to use the listing leaf, or the next free alternate when that leaf is already taken by an unrelated package.',
 				),
 		}),
 		outputSchema: z.object({
@@ -44,7 +45,21 @@ export const communityForkCapability = defineDomainCapability(
 			target_kody_id: z.string(),
 			target_name: z.string(),
 			origin_commit: z.string(),
-			files_count: z.number().int().nonnegative(),
+			files_count: z
+				.number()
+				.int()
+				.nonnegative()
+				.optional()
+				.describe('Files copied. Omitted when `already_forked` is true.'),
+			already_forked: z
+				.boolean()
+				.describe(
+					'True when this returned an existing fork of the listing in this account instead of creating a new one.',
+				),
+			message: z
+				.string()
+				.optional()
+				.describe('Explains what happened when `already_forked` is true.'),
 			cross_scope_references: z.array(crossScopeReferenceSchema),
 			next_steps: z.string(),
 			content_warning: z.string(),
@@ -100,6 +115,13 @@ export const communityForkCapability = defineDomainCapability(
 				listingId: args.listing_id,
 				kodyId,
 				actor: 'agent',
+				onWaiting: () =>
+					reportCapabilityProgress(ctx.reportProgress, {
+						progress: 1,
+						total: 2,
+						message:
+							'A fork of this listing is already in progress for this account; waiting for it instead of starting another.',
+					}),
 			})
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 2,
@@ -114,7 +136,9 @@ export const communityForkCapability = defineDomainCapability(
 				target_kody_id: result.targetKodyId,
 				target_name: result.targetName,
 				origin_commit: result.originCommit,
-				files_count: result.filesCount,
+				...(result.alreadyForked ? {} : { files_count: result.filesCount }),
+				already_forked: result.alreadyForked === true,
+				...(result.message ? { message: result.message } : {}),
 				cross_scope_references: result.crossScopeReferences,
 				next_steps: communityForkNextSteps,
 				content_warning: communityContentWarning,

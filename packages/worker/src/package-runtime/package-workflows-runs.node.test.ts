@@ -94,7 +94,11 @@ vi.mock('#worker/run-records/service.ts', () => ({
 					limit?: number | null
 					cursor?: string | null
 					status?: string | null
+					statuses?: ReadonlyArray<string> | null
 					bindingName?: string | null
+					id?: string | null
+					packageId?: string | null
+					since?: string | null
 				},
 			]),
 		),
@@ -504,6 +508,23 @@ test('RunLog-only list, cancel, idempotency, and concurrency stay D1-free', asyn
 		[...activeIds, 'dynwf-done', 'dynwf-idem'].sort(),
 	)
 
+	const byId = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { workflowId: 'dynwf-done' },
+	})
+	expect(byId.map((row) => row.id)).toEqual(['dynwf-done'])
+
+	const byStatus = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		limit: 100,
+		filter: { status: 'complete' },
+	})
+	expect(byStatus.map((row) => row.id).sort()).toEqual(
+		['dynwf-done', 'dynwf-idem'].sort(),
+	)
+
 	const runAt = '2026-05-08T19:30:00.000Z'
 	const replay = await createInline(env, { idempotencyKey: 'idem-key', runAt })
 	expect(replay.id).toBe('dynwf-idem')
@@ -525,6 +546,90 @@ test('RunLog-only list, cancel, idempotency, and concurrency stay D1-free', asyn
 		run: { id: activeIds[0], status: 'cancelled' },
 	})
 	expect(findRun(activeIds[0]!)).toMatchObject({ status: 'cancelled' })
+})
+
+test('listWorkflowRunsForUser refreshes before applying status filter', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createWorkflowBinding({
+		existing: { id: 'dynwf-stale', status: 'complete' },
+	})
+	const env = createWorkflowEnv(binding)
+	await runRecordMocks.upsertWorkflowProjection({
+		env,
+		userId: 'user-1',
+		projection: {
+			id: 'dynwf-stale',
+			bindingName: dynamicCallableWorkflowsBindingName,
+			sourceType: 'inline',
+			workflowName: 'stale-status',
+			idempotencyKey: 'stale-status-key',
+			runAt: '2026-05-08T19:30:00.000Z',
+			status: 'running',
+			createdAt: '2026-05-08T19:30:00.000Z',
+			updatedAt: '2026-05-08T19:30:00.000Z',
+		},
+	})
+
+	const complete = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { status: 'complete' },
+	})
+	expect(complete.map((row) => row.id)).toEqual(['dynwf-stale'])
+	expect(complete[0]?.status).toBe('complete')
+
+	const stillRunning = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		filter: { status: 'running' },
+	})
+	expect(stillRunning).toEqual([])
+})
+
+test('listWorkflowRunsForUser status filter keeps older exact matches beyond the active window', async () => {
+	runRecordMocks.resetProjections()
+	const env = createWorkflowEnv()
+	for (let index = 0; index < 5; index += 1) {
+		await runRecordMocks.upsertWorkflowProjection({
+			env,
+			userId: 'user-1',
+			projection: {
+				id: `dynwf-active-${index}`,
+				bindingName: dynamicCallableWorkflowsBindingName,
+				sourceType: 'inline',
+				workflowName: `active-${index}`,
+				idempotencyKey: `active-key-${index}`,
+				runAt: '2026-05-08T20:00:00.000Z',
+				status: 'running',
+				createdAt: `2026-05-08T20:00:0${index}.000Z`,
+				updatedAt: `2026-05-08T20:00:0${index}.000Z`,
+			},
+		})
+	}
+	await runRecordMocks.upsertWorkflowProjection({
+		env,
+		userId: 'user-1',
+		projection: {
+			id: 'dynwf-old-complete',
+			bindingName: dynamicCallableWorkflowsBindingName,
+			sourceType: 'inline',
+			workflowName: 'old-complete',
+			idempotencyKey: 'old-complete-key',
+			runAt: '2026-05-01T00:00:00.000Z',
+			status: 'complete',
+			createdAt: '2026-05-01T00:00:00.000Z',
+			updatedAt: '2026-05-01T00:00:00.000Z',
+			completedAt: '2026-05-01T00:01:00.000Z',
+		},
+	})
+
+	const complete = await listWorkflowRunsForUser({
+		env,
+		userId: ownerIdFromStored('user-1'),
+		limit: 3,
+		filter: { status: 'complete' },
+	})
+	expect(complete.map((row) => row.id)).toEqual(['dynwf-old-complete'])
 })
 
 test('RunLog terminal stickiness blocks later active regression after cancel', async () => {

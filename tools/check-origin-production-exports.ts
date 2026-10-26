@@ -187,7 +187,7 @@ function classNamesOf(bindings: ReadonlyArray<ClassBinding>) {
  *   more, no less. Its `main` override is deploy-generated only and is never
  *   required or checked here.
  * - The dev/test entry must export every class `env.test` binds locally
- *   (local dev, vitest-pool-workers, and Playwright own every class on one
+ *   (local dev, vitest-plugin, and Playwright own every class on one
  *   script). Any environment that binds a class without `script_name` is
  *   also covered, so a locally-owned binding in `env.preview` fails twice:
  *   once for the missing `script_name`, once if the dev entry lacks the

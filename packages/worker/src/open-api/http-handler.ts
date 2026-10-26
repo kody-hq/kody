@@ -38,6 +38,7 @@ import {
 	apiOperationUsesQueryInputs,
 	isCapabilityProxyGatewayFetchOperation,
 	matchApiRoute,
+	type ApiOperation,
 } from './operations.ts'
 import {
 	maxApiRequestBodyBytes,
@@ -120,6 +121,23 @@ function json(body: unknown, init: ResponseInit = {}) {
 		...init,
 		headers: { 'Cache-Control': 'no-store', ...init.headers },
 	})
+}
+
+function deprecatedForwardHeaders(
+	operation: ApiOperation,
+): Record<string, string> | undefined {
+	if (operation.kind !== 'capability' || !operation.deprecatedForward) {
+		return undefined
+	}
+	const { deprecatedAt, sunset } = operation.deprecatedForward
+	const deprecatedUnixSeconds = Math.floor(
+		new Date(`${deprecatedAt}T00:00:00.000Z`).getTime() / 1000,
+	)
+	return {
+		Deprecation: `@${deprecatedUnixSeconds}`,
+		Sunset: new Date(`${sunset}T00:00:00.000Z`).toUTCString(),
+		Link: '<https://kody.codes/docs/api-versioning.md>; rel="deprecation"',
+	}
 }
 
 async function readOperationParams(input: {
@@ -330,20 +348,21 @@ async function handleOperation(input: {
 			params,
 			ctx,
 		})
+	const deprecationHeaders = deprecatedForwardHeaders(matchedOperation)
+	const responseInit = deprecationHeaders ? { headers: deprecationHeaders } : {}
 	const writes = operationNeedsAccountWriteLease(resolved)
 	if (!writes) {
 		await assertAccountWritableDb(input.env.APP_DB, userId)
-		return json(await run())
+		return json(await run(), responseInit)
 	}
-	return json(
-		await withAccountWriteLease({
-			db: input.env.APP_DB,
-			stableUserId: userId,
-			holder: `api:${matchedOperation.operationId}`,
-			env: input.env,
-			write: run,
-		}),
-	)
+	const result = await withAccountWriteLease({
+		db: input.env.APP_DB,
+		stableUserId: userId,
+		holder: `api:${matchedOperation.operationId}`,
+		env: input.env,
+		write: run,
+	})
+	return json(result, responseInit)
 }
 
 async function handleCapabilityProxyGatewayFetchStream(input: {

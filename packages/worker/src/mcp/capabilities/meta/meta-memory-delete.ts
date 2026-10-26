@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -88,6 +92,11 @@ export const metaMemoryDeleteCapability = defineDomainCapability(
 				userId: auth.userId,
 				memoryId: args.memory_id,
 				force: args.force ?? false,
+				audit: optionalOrgAuditWriter(
+					ctx.env,
+					ctx.callerContext.request ?? null,
+					orgAuditCauseFromCaller(ctx.callerContext),
+				),
 			})
 			return {
 				ok: true,

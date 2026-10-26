@@ -20,7 +20,6 @@ const manifestFieldSchema = z.enum([
 	'subscriptions',
 	'emits',
 	'jobs',
-	'retrievers',
 	'webhooks',
 ])
 

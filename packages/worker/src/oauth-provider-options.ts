@@ -4,6 +4,11 @@
 import { waitUntil } from 'cloudflare:workers'
 import type * as WorkersOAuthProvider from '@cloudflare/workers-oauth-provider'
 import { oauthPaths } from '#universal/oauth-paths.ts'
+import {
+	noteResolvedCimdDocument,
+	recallCimdLastKnownGood,
+} from '#worker/oauth-cimd-last-known-good.ts'
+import { pinnedCimdDocument } from '#worker/oauth-known-cimd-clients.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
 import { stampOrgIdOnTokenExchange } from '#worker/orgs/oauth-grant.ts'
 import { reportOAuthProviderError } from '#worker/oauth-provider-error-log.ts'
@@ -55,14 +60,25 @@ export function createSharedOAuthProviderOptions(
 		// 2026-07-28 revision deprecates RFC 7591 DCR in favor of CIMD, so both
 		// stay enabled: CIMD clients present their URL client_id with no
 		// registration step, and clients that do not use CIMD register via
-		// /oauth/register. A failed CIMD metadata fetch throws CimdFetchError;
-		// authorize maps that to an unknown-client page, and the token endpoint
-		// still returns generic invalid_client. Whether a client then registers
+		// /oauth/register. A CIMD metadata fetch that fails with no usable
+		// fallback throws CimdFetchError; authorize maps that to a "could not
+		// load this app's details" page, and the token endpoint still returns
+		// generic invalid_client. Whether a client then registers
 		// via DCR is the client's own recovery.
 		// Requires the global_fetch_strictly_public compatibility flag (set in
 		// wrangler.jsonc) so metadata fetches are SSRF-safe; the provider only
 		// advertises CIMD support when both are on.
 		clientIdMetadataDocumentEnabled: true,
+		// Kody patch of the provider (patches/@cloudflare+workers-oauth-provider+*).
+		// Codex's documents are pinned (never fetched) because chatgpt.com
+		// refuses Worker fetches; every other CIMD client resolves live, with a
+		// last known good or built-in copy when the live fetch fails. See
+		// oauth-known-cimd-clients.ts and oauth-cimd-last-known-good.ts.
+		clientIdMetadataDocuments: pinnedCimdDocument,
+		clientIdMetadataDocumentFallback: ({ env, metadataUrl, error }) =>
+			recallCimdLastKnownGood({ env: env as Env, metadataUrl, error }),
+		onClientIdMetadataDocumentResolved: ({ metadataUrl, document }) =>
+			noteResolvedCimdDocument({ metadataUrl, document }),
 		// Provider defaults are 30-day refresh tokens and 90-day DCR clients.
 		// Explicit `undefined` disables those expiries (omitting the option keeps
 		// the defaults). Access tokens stay at the 1-hour default.
@@ -84,7 +100,9 @@ export function createSharedOAuthProviderOptions(
 		// Report token/refresh failures (code + internal category/reason + client id
 		// when available) without secrets; leave the wire response unchanged.
 		// CIMD lookup failures stay generic on the wire and keep the provider's own
-		// CIMD console.warn. Unexpected throws still reach fetch catch + Sentry.
+		// CIMD console.warn; at the token endpoint they are also reported with the
+		// client URL and fetch reason. Unexpected throws still reach fetch catch +
+		// Sentry.
 		onError: (error) => {
 			// Provider does not await onError; pin reporting to the request so
 			// client-id lookup + audit are not dropped when the OAuth response

@@ -350,12 +350,11 @@ model; see [Platform efficiency](../../guides/platform-efficiency.md).
 
 Every `dynamic_worker_day` event carries a closed `surface` tag (Analytics
 Engine blob6): `execute`, `job`, `package_export`, `workflow`, `subscription`,
-`app_fetch`, `app_realtime`, `retriever`, `webhook`, or `unknown`.
-`package_export` is the usage name for run-record surface `export`. Call sites
-pass the mapped surface; `unknown` is only for a missing mapping. When the
-registry does not own the run record (keyed package invocations, inline
-workflows), callers pass `runSurface` so UWD is not inferred as
-`package_export`.
+`app_fetch`, `app_realtime`, `webhook`, or `unknown`. `package_export` is the
+usage name for run-record surface `export`. Call sites pass the mapped surface;
+`unknown` is only for a missing mapping. When the registry does not own the run
+record (keyed package invocations, inline workflows), callers pass `runSurface`
+so UWD is not inferred as `package_export`.
 
 D1 `usage_rollups` stay keyed by `(user_id, metric, month)` for the monthly
 total. Surface share is an Analytics Engine query. Hourly aggregation does not
@@ -769,8 +768,8 @@ ORDER BY executes DESC
 Measurement-only Analytics Engine dataset for MCP `search` wall clock and the
 exclusive tiles that should sum to it. This is **not** a `recordUsage()` event,
 does not enter `usage_rollups`, and is not a UWD surface. Search-scope and
-memory retrievers already mint `dynamic_worker_day` with surface `retriever`.
-The write path lives in `packages/worker/src/mcp/tools/search-observability.ts`.
+memory enrichment does not mint `dynamic_worker_day` events. The write path
+lives in `packages/worker/src/mcp/tools/search-observability.ts`.
 
 Production dataset `kody_mcp_search_events` (preview:
 `kody_mcp_search_events_preview`). Binding `MCP_SEARCH_EVENTS` on origin and
@@ -790,7 +789,7 @@ platform (where MCP search runs). Schema:
 | `double4` | `waitingItemsMs`                          |
 | `double5` | `memoryEnrichmentMs`                      |
 | `double6` | `rowAndRegistryLoadMs`                    |
-| `double7` | `retrieversMs`                            |
+| `double7` | reserved (always -1)                      |
 | `double8` | intent confidence (`-1` when unknown)     |
 | `double9` | `trimmedMatchCount`                       |
 

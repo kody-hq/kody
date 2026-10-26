@@ -27,12 +27,19 @@ payloads for UI fixtures.
   name and do not use mappings.
 - Hosted and `--local` runs resolve mappings the same way (the host resolves;
   values never reach the local machine).
+- With supplier-aware credentials enabled, `publisher` needs accept org-level
+  mappings only. `executor` needs accept visitor grant mappings only in a
+  package-app consent flow. Executor needs never use org mappings or automatic
+  fallback for a visitor.
+- The manifest need fields are `supplier: "publisher" | "executor"` and
+  `required: boolean`. `required` is valid only for executor needs and defaults
+  to `true`. Legacy needs keep their existing behavior.
 
 ## Vocabulary
 
 | Term              | Meaning                                                                                                                                                            |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Need              | One key of a package's `kody.credentials` closure (`key`, optional `kind`, `provider`, `description`, `multiple`).                                                 |
+| Need              | One key of a package's `kody.credentials` closure (`key`, optional `kind`, `provider`, `description`, `multiple`, `supplier`, `required`).                         |
 | Credential ref    | `{ id, name, scope, kind }`. `scope` is `org` (owned by the org) or `personal` (the viewer's own credential granted to this org).                                  |
 | Mapping           | The ordered credential refs chosen for one need. `[]` means "none on purpose". At most one ref unless the need is `multiple` (then at most 16).                    |
 | Default mapping   | A package's ad hoc default for one need. Two layers: `org` (set by a package manager, org credentials only) and `mine` (the viewer's own override).                |
@@ -50,6 +57,56 @@ wins:
 2. **Trigger mapping** of the enablement the run acts as (trigger runs only).
 3. **Default mapping**, `mine` layer, then `org` layer.
 4. **Auto-resolve**: exactly one candidate (ADR 0068 resolution rule 3).
+
+These steps apply to legacy needs and executor needs in direct or trigger runs.
+An executor need in a package-app visitor run instead reads only the mapping for
+that need on the visitor's live grant, then rechecks live Use access for each
+call. A publisher need in a visitor run is refused; publisher credentials are
+available to the app through `credential(key)` only. When supplier-aware
+credentials are disabled, the supplier and required fields do not change the
+existing resolution behavior.
+
+The supplier-specific outcomes are:
+
+| Supplier and run                                           | Resolution                                                                                                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `publisher`, package-owned run                             | Org mapping, then existing publisher resolution rules.                                                                                                  |
+| `publisher`, visitor run through `credential.visitor(key)` | Refused with `credential_denied` and `Credential need "<key>" is supplied by the publisher; use credential("<key>")`.                                   |
+| `executor`, direct or trigger run                          | Existing call, trigger, default, and auto-resolution order.                                                                                             |
+| `executor`, package-app visitor run                        | Only the credential IDs in the visitor's live grant mapping for that need. There is no publisher, personal-default, org-mapping, or automatic fallback. |
+
+With supplier-aware semantics enabled, mapping writes that violate the supplier
+are refused:
+
+- A publisher need written outside the `default` / `org` target returns
+  `not_allowed` with message
+  `Credential need "<key>" is supplied by the publisher. Only the org-level mapping can set it.`
+- An executor need written to the `default` / `org` target returns `not_allowed`
+  with message
+  `Credential need "<key>" is supplied by the executor. Org-level mappings cannot set it.`
+- An `execute` call map that names a publisher need returns `invalid_request`
+  with message
+  `Credential need "<key>" is supplied by the publisher. Only the org-level mapping can set it.`
+
+Package-app consent stores executor selections as
+`package_app_grant_credential_mappings` rows keyed by grant and need. Each row
+contains credential IDs only. Revoking a `need:<key>` scope removes that need's
+row; revoking the whole app removes all mapping rows for the app grant. Runtime
+resolution checks the live grant and the visitor's current Use access before
+returning a credential.
+
+Required executor needs are checked before direct execution and app serving.
+When no usable credential is connected, the direct-run response is HTTP 409 with
+code `credential_required` and message
+`Required credential need "<key>" is not connected. Connect need:<key> before running this package.`
+The app-serve gate sends the visitor through Sign in with Kody and consent for
+the required `need:<key>` scopes.
+
+Inside a visitor app, an executor need without a live grant mapping fails with
+`credential_unbound` and message
+`Credential need "<key>" is not connected. Sign in with Kody and allow need:<key> to choose credentials.`
+An attempt to read a publisher need through the visitor credential API fails
+with `credential_denied` and directs the app to use `credential("<key>")`.
 
 Unusable refs:
 
@@ -258,6 +315,10 @@ export type PackageCredentialNeedView = {
 	provider: string
 	description: string
 	multiple: boolean
+	/** Who supplies the need when `package-credential-suppliers` is on. */
+	supplier?: 'publisher' | 'executor'
+	/** Executor needs only. Defaults to required. */
+	required?: boolean
 	/** The dependency that declared an inherited need. */
 	from?: string
 	defaults: {

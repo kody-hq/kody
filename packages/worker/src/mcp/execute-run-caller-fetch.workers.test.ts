@@ -122,13 +122,21 @@ async function savePersonalSecret(
 ) {
 	const owner = personalOrgId(person.personId)
 	const name = 'probeToken'
-	await saveSecret({ env, userId: owner, scope: 'user', name, value })
+	await saveSecret({
+		env,
+		userId: owner,
+		scope: 'user',
+		name,
+		value,
+		audit: null,
+	})
 	await setSecretAllowedHosts({
 		env,
 		userId: owner,
 		scope: 'user',
 		name,
 		allowedHosts: ['upstream.example.com'],
+		audit: null,
 	})
 	if (!grantToOrg) return
 	const [credentialId] = await findCredentialIdsByLegacyName(

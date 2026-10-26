@@ -98,7 +98,7 @@ afterEach(() => {
 	resetJobServiceMocks()
 })
 
-const onceSchedule = { type: 'once', runAt: '2026-04-17T15:00:00Z' } as const
+const recurringSchedule = { type: 'interval', every: '1h' } as const
 
 function createExecuteEnv(
 	initialRows: Parameters<typeof createDatabase>[0] = {},
@@ -125,7 +125,7 @@ function createJob(
 		userId: ownerIdFromStored('user-123'),
 		publishedCommit: null,
 		storageId: `job:${input.id}`,
-		schedule: onceSchedule,
+		schedule: recurringSchedule,
 		timezone: 'UTC',
 		enabled: true,
 		killSwitchEnabled: false,
@@ -157,7 +157,7 @@ async function publishInsertedPackageJob(input: {
 			name: input.name,
 			code: input.code,
 			params: input.params,
-			schedule: input.schedule ?? onceSchedule,
+			schedule: input.schedule ?? recurringSchedule,
 		},
 	})
 	const row = await getJobRowById(
@@ -901,7 +901,7 @@ test('runJobNow refuses a run that has no person', async () => {
 	const jobView = await insertPackageJob({
 		env,
 		callerContext,
-		body: { name: 'runs-as-nobody', schedule: onceSchedule },
+		body: { name: 'runs-as-nobody', schedule: recurringSchedule },
 	})
 	const executeSpy = vi.spyOn(registry, 'runBundledModuleWithRegistry')
 	const actorless = {
@@ -1003,62 +1003,6 @@ test('runJobNow keeps the job row package storage context so later scheduled run
 	expect(scheduled.execution.ok).toBe(true)
 	expect(executeSpy.mock.lastCall?.[1].storageContext?.packageId).toBe(
 		packageId,
-	)
-})
-
-test('runJobNow keeps once jobs instead of deleting them', async () => {
-	silenceIncidentalRuntimeWarnings()
-	const { db, env: baseEnv } = createExecuteEnv()
-	const deleteByIds = vi.fn(async () => {})
-	const env = {
-		...baseEnv,
-		CAPABILITY_VECTOR_INDEX: { deleteByIds } as unknown as VectorizeIndex,
-	}
-	mockRepoPersistence()
-	const callerContext = createBaseCallerContext()
-	const jobView = await insertPackageJob({
-		env,
-		callerContext,
-		body: { name: 'run-once-and-retain', schedule: onceSchedule },
-	})
-	const executeSpy = vi
-		.spyOn(registry, 'runBundledModuleWithRegistry')
-		.mockResolvedValue({
-			result: { ok: true },
-			logs: [],
-		})
-
-	const result = await runJobNow({
-		env,
-		userId: personalOrgId(callerContext.user.userId),
-		jobId: jobView.id,
-		callerContext,
-	})
-
-	expect(result.execution).toEqual({
-		ok: true,
-		result: { ok: true },
-		logs: [],
-	})
-	expect(result.deletedAfterRun).toBe(false)
-	const runRequest = executeSpy.mock.lastCall?.[1].request
-	expect(runRequest?.attribution).toEqual(callerContext.request?.attribution)
-	expect(runRequest?.credential).toEqual(callerContext.request?.credential)
-	expect(deleteByIds).not.toHaveBeenCalled()
-	const row = await getJobRowById(db, callerContext.user.userId, jobView.id)
-	expect(row?.record).toEqual(
-		expect.objectContaining({
-			id: jobView.id,
-			enabled: false,
-			lastRunStatus: 'success',
-			lastRunAt: expect.any(String),
-			// RunLog-owned counters/error/duration stay at insert defaults.
-			runCount: 0,
-			successCount: 0,
-			errorCount: 0,
-			lastRunError: undefined,
-			lastDurationMs: undefined,
-		}),
 	)
 })
 

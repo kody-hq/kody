@@ -583,6 +583,7 @@ function pageRail(input: {
 			orgSlug,
 			personal,
 			role,
+			profileUsername: session?.username,
 		}),
 	}
 }

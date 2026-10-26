@@ -25,8 +25,9 @@ segment is already a UUID or Connect item id. Name-based
 package's sealed `./secretProvider` export can canonicalize that synonym
 (`action: "canonicalize"`) and return `{ canonicalRef }` without a secret value.
 
-Grant approval (`secretProviderLock`) requires a locally canonicalizable ref so
-lock/search never call the vault.
+Grant approval through
+`resourceLock({ kind: 'secret_provider', provider, ref, package_id })` requires
+a locally canonicalizable ref so lock/search never call the vault.
 
 ## Binding
 
@@ -66,9 +67,9 @@ websites fail closed.
 - Ad hoc execute may use provider placeholders without a package grant (same
   spirit as unlocked user secrets).
 - Saved packages need an explicit `(provider, canonicalRef) → package` grant.
-  `secretProviderLock` returns the approval URL; only the owner can grant or
-  revoke on `/@<slug>/-/secret-providers`. Unbind, and rebind to a different
-  provider package, drop every grant for that provider.
+  `resourceLock` returns the approval URL; only the owner can grant or revoke on
+  `/@<slug>/-/secret-providers`. Unbind, and rebind to a different provider
+  package, drop every grant for that provider.
 - A package runs in the org that owns it, so a collaborator holding a grant uses
   that org's binding and grants, not their own.
 

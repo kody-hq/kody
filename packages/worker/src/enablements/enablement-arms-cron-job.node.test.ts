@@ -12,6 +12,7 @@ import {
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import { type JobRecord } from '#worker/jobs/types.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
@@ -38,9 +39,9 @@ const mocks = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const now = '2026-10-11T00:00:00.000Z'
 const jobName = 'daily'

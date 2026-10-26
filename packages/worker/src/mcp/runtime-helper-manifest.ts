@@ -27,6 +27,7 @@ import { takeSecretAuthorityFromCapabilityArgs } from '#mcp/secrets/secret-autho
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import { createCredentialClientKodyTools } from './credential-client-tools.ts'
 import { createCredentialClientRuntimeSource } from './execute-modules/credential-client-source.ts'
@@ -49,12 +50,6 @@ export type PackageStorageToolOptions = {
 	 * reach only this package's bucket (GHSA-5fv3).
 	 */
 	runPackageId?: string | null
-	/**
-	 * Defaults to writable. Retriever runs set this to false so the sandbox
-	 * can read granted buckets but cannot set, delete, clear, or run mutating
-	 * SQL.
-	 */
-	writable?: boolean
 }
 
 export type PackageSecretToolOptions = {
@@ -87,6 +82,8 @@ export type CredentialClientToolOptions = {
 	runNeeds?: () => Promise<ReadonlyMap<string, CredentialNeed>>
 	/** Package-app runs only; see `CredentialClientContext.ownerCredentialScope`. */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/** Package-app runs only; see `CredentialClientContext.packageAppAuthority`. */
+	packageAppAuthority?: PackageAppCredentialAuthority | null
 	waitUntil?: (promise: Promise<unknown>) => void
 }
 
@@ -539,10 +536,7 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		],
 		unboundNames: [],
 		isBound: (context) => Boolean(context.packageStorageTools),
-		createPrelude: (context) =>
-			createPackageStorageHelperPrelude({
-				writable: context.packageStorageTools?.writable !== false,
-			}),
+		createPrelude: () => createPackageStorageHelperPrelude(),
 		createKodyTools: (context) => {
 			const packageStorageTools = context.packageStorageTools
 			const ownerId = ownerIdFromCaller(context.callerContext)
@@ -552,7 +546,6 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 				userId: ownerId,
 				email: entitlementEmailForOwner(context.callerContext, ownerId),
 				grantedPackageIds: packageStorageTools.grantedPackageIds,
-				writable: packageStorageTools.writable,
 				runPackageId: packageStorageTools.runPackageId ?? null,
 			})
 		},

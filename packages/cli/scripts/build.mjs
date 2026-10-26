@@ -20,7 +20,7 @@ const pkg = createRequire(import.meta.url)('../package.json')
 rmSync('dist', { recursive: true, force: true })
 
 await build({
-	entryPoints: ['src/bin.ts', 'src/cli.ts'],
+	entryPoints: ['src/bin.ts', 'src/cli.ts', 'src/skill-refresh.ts'],
 	outdir: 'dist',
 	bundle: true,
 	splitting: true,

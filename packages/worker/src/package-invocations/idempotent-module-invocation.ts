@@ -21,6 +21,7 @@ import {
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import {
 	buildPackageInvocationStorageId,
 	resolveInvocationRuntimeName,
@@ -45,6 +46,7 @@ import {
 	terminalResponseJsonFromExecutionFence,
 	type PackageInvocationStoredResponse,
 } from './repo.ts'
+import { summarizeInvocationError } from './invocation-error-summary.ts'
 
 export const packageInvocationStaleAfterMs = 15 * 60 * 1000
 /**
@@ -104,6 +106,14 @@ function readInvocationErrorCode(body: unknown): string | null {
 	if (!error || typeof error !== 'object' || Array.isArray(error)) return null
 	const code = (error as Record<string, unknown>)['code']
 	return typeof code === 'string' ? code : null
+}
+
+function readInvocationErrorMessage(body: unknown): string | null {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+	const error = (body as Record<string, unknown>)['error']
+	if (!error || typeof error !== 'object' || Array.isArray(error)) return null
+	const message = (error as Record<string, unknown>)['message']
+	return typeof message === 'string' ? message : null
 }
 
 function toResolvableLedgerRecord(
@@ -179,22 +189,31 @@ export async function invokeSavedPackageModule(input: {
 	// Before the ledger: a suspended owner must neither replay a stored
 	// response nor leave a terminal denial that outlives the suspension.
 	// Other identity failures fall through to module execution, which
-	// reports them as before.
-	const suspension = await resolveBackgroundMcpUser(
+	// reports them as before. Keep a successful identity for started_by.
+	const backgroundIdentity = await resolveBackgroundMcpUser(
 		input.env.APP_DB,
 		input.actor.orgId,
 	).then(
-		() => null,
-		(error: unknown) => (isAccountSuspendedError(error) ? error : null),
+		(user) => ({ ok: true as const, user }),
+		(error: unknown) =>
+			isAccountSuspendedError(error)
+				? { ok: false as const, suspension: error }
+				: { ok: false as const, suspension: null },
 	)
-	if (suspension) {
+	if (!backgroundIdentity.ok && backgroundIdentity.suspension) {
 		return buildJsonErrorResponse({
 			status: 403,
-			code: suspension.code,
-			message: suspension.message,
+			code: backgroundIdentity.suspension.code,
+			message: backgroundIdentity.suspension.message,
 			idempotencyKey: input.idempotencyKey,
 		})
 	}
+	const claimRequest = backgroundIdentity.ok
+		? deriveRequestContext({
+				user: backgroundIdentity.user,
+				source: input.actor.request,
+			})
+		: null
 	const requestHash = await createRequestHash({
 		packageId: input.savedPackage.id,
 		exportName: input.invocationName,
@@ -278,6 +297,7 @@ export async function invokeSavedPackageModule(input: {
 			env: input.env,
 			userId: input.actor.orgId,
 			context: buildRunRecordContext(),
+			request: claimRequest,
 			invocation: {
 				id: crypto.randomUUID(),
 				...ledgerKey,
@@ -529,10 +549,21 @@ export async function invokeSavedPackageModule(input: {
 			// Finish the claimed run as an error with logs (do not delete it)
 			// so Activity keeps pre-execution evidence instead of a vanished
 			// zero-log attempt.
-			const releaseReason =
+			const releaseSummary =
 				outcome.kind === 'artifact-unavailable'
 					? 'Package artifact preparation failed before execution.'
 					: 'Package invocation denied before execution.'
+			// Keep the real cause (sanitized) on the run record so Activity
+			// and any webhook run that wraps this export show why it failed.
+			const releaseDetail =
+				outcome.kind === 'artifact-unavailable'
+					? summarizeInvocationError(outcome.error)
+					: summarizeInvocationError(
+							readInvocationErrorMessage(outcome.response.body),
+						)
+			const releaseReason = releaseDetail
+				? `${releaseSummary} ${releaseDetail}`
+				: releaseSummary
 			const releaseErrorCode = readInvocationErrorCode(outcome.response.body)
 			const release = await releasePackageInvocationRecord({
 				env: input.env,

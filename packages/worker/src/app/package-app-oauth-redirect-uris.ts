@@ -55,6 +55,7 @@ function pushCallbackUrls(allowed: Array<string>, origin: string) {
 export async function listAllowedPackageAppOauthRedirectUris(input: {
 	env: Env
 	client: PackageAppOauthClientId
+	requestUrl?: string | URL | null
 }): Promise<Array<string>> {
 	const allowed: Array<string> = []
 	const packageAppOrigin = getPackageAppBaseUrl({ env: input.env })
@@ -76,7 +77,12 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 		// unset and serve package apps inline on the app origin. Consent still
 		// needs an allowlisted callback on that same origin.
 		try {
-			const appOrigin = new URL(getAppBaseUrl({ env: input.env })).origin
+			const appOrigin = new URL(
+				getAppBaseUrl({
+					env: input.env,
+					requestUrl: input.requestUrl,
+				}),
+			).origin
 			pushCallbackUrls(allowed, appOrigin)
 		} catch {
 			// Ignore unparsable app origin.
@@ -112,12 +118,14 @@ export async function isAllowedPackageAppOauthRedirectUri(input: {
 	env: Env
 	client: PackageAppOauthClientId
 	redirectUri: string
+	requestUrl?: string | URL | null
 }): Promise<boolean> {
 	const normalized = normalizeCallbackUrl(input.redirectUri)
 	if (!normalized) return false
 	const allowed = await listAllowedPackageAppOauthRedirectUris({
 		env: input.env,
 		client: input.client,
+		requestUrl: input.requestUrl,
 	})
 	const candidate = normalized.toString().replace(/\/$/, '')
 	return allowed.some((entry) => entry.replace(/\/$/, '') === candidate)

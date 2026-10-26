@@ -254,6 +254,7 @@ const routeDocumentHeads = {
 	orgCredits: titleOnly('Credits'),
 	accountUsage: titleOnly('Usage'),
 	accountExperiments: titleOnly('Experiments'),
+	accountConnectedApps: titleOnly('Connected apps'),
 	communityPackageApproveCredentials: titleOnly('Approve credential mappings'),
 	orgApprovalBundle: titleOnly('Review approvals'),
 	communityPackageApprovePublish: titleOnly('Approve package publish'),

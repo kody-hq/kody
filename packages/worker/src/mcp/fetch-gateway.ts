@@ -96,6 +96,15 @@ import { IntegrationHostNotAllowedError } from './execute-modules/integration-ho
 import { type StorageContext } from '#mcp/storage.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
+	loadPackageAppRunsAs,
+	type PackageAppAuthorityScope,
+	type PackageAppVisitorGrantScope,
+} from '#worker/package-runtime/package-app-authority.ts'
+import {
+	packageAppAuthorityFallbackKindOf,
+	schedulePackageAppAuthorityFallback,
+} from '#worker/package-runtime/package-app-authority-fallback.ts'
+import {
 	consumeDailyEntitlement,
 	findCachedUserAccountByStableUserId,
 } from '#worker/entitlements/service.ts'
@@ -104,6 +113,11 @@ import {
 	usageAttributionFieldsFromRequest,
 	type UsageEnv,
 } from '#worker/usage/record-usage.ts'
+import {
+	packageAppVisitTicketHeaderName,
+	requestContextFromVisitClaims,
+	verifyPackageAppVisitTicket,
+} from '#worker/package-runtime/package-app-visit-ticket.ts'
 
 type FetchGatewayProps = {
 	baseUrl: string
@@ -142,11 +156,6 @@ type FetchGatewayProps = {
 	 */
 	boundPackageId?: string | null
 	/**
-	 * When false, every sandbox `fetch` is rejected. Retriever runs use
-	 * this to stay closed-world. Defaults to true.
-	 */
-	allowOutboundFetch?: boolean
-	/**
 	 * The run (or CapabilityProxy credential) `credential()` client handles
 	 * must be bound to. Without it, a client fetch is refused.
 	 */
@@ -157,10 +166,30 @@ type FetchGatewayProps = {
 	 */
 	ownerCredentialScope?: OwnerCredentialScope | null
 	/**
+	 * Package-app runs only (ADR 0068 amendment 2026-10-24): placeholders
+	 * resolve as the app's runs-as person, and `credential()` handles carry
+	 * who they act as. `request` stays the visitor for usage attribution.
+	 */
+	packageAppAuthority?: {
+		scope: PackageAppAuthorityScope
+		grantScope: PackageAppVisitorGrantScope | null
+	} | null
+	/**
 	 * Per-run HMAC key for package-scoped `packageSecrets.get` placeholders
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
 	 */
 	packageSecretRefKey?: string | null
+	/**
+	 * Package-app runs only: audience used to verify a per-request visit
+	 * ticket. Omitted outside package-app serving.
+	 */
+	visitAudience?: {
+		host: string
+		packageId: string
+		kodyId: string
+		sourceId: string
+		publishedCommit: string | null
+	} | null
 }
 export type { FetchGatewayProps }
 
@@ -198,8 +227,52 @@ export const secretResolutionHeaderName = 'x-kody-secret-resolution'
  */
 export const outboundFetchTimeoutMs = 5 * 60_000
 
-export const retrieverOutboundFetchDeniedMessage =
-	'Outbound fetch is not available in retriever runs.'
+async function applyPackageAppVisitTicketToGateway(input: {
+	env: FetchGatewayEnv
+	props: FetchGatewayProps
+	request: Request
+	globalFetch?: typeof fetch
+	waitUntil?: (promise: Promise<unknown>) => void
+	timeoutMs?: number
+	idleTimeoutMs?: number
+}) {
+	const ticket = input.request.headers.get(packageAppVisitTicketHeaderName)
+	if (!ticket) {
+		if (!input.props.visitAudience) return input
+		// A warm Dynamic Worker may keep the first visitor's gateway props.
+		// Ticketless package-app fetch is anonymous and must not inherit that
+		// request or credential binding.
+		return {
+			...input,
+			props: {
+				...input.props,
+				request: null,
+				credentialClientBinding: null,
+			},
+		}
+	}
+	const audience = input.props.visitAudience
+	if (!audience) {
+		throw new Error('Package app visit ticket is not valid.')
+	}
+	const claims = await verifyPackageAppVisitTicket({
+		env: input.env,
+		ticket,
+		audience,
+	})
+	const headers = new Headers(input.request.headers)
+	headers.delete(packageAppVisitTicketHeaderName)
+	return {
+		...input,
+		request: new Request(input.request, { headers }),
+		props: {
+			...input.props,
+			email: claims.owner.email,
+			request: requestContextFromVisitClaims(claims),
+			credentialClientBinding: claims.credentialClientBinding,
+		},
+	}
+}
 
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 	async fetch(request: Request) {
@@ -223,16 +296,15 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
-	const globalFetch = input.globalFetch ?? fetch
+	const resolved = await applyPackageAppVisitTicketToGateway(input)
+	const globalFetch = resolved.globalFetch ?? fetch
 	const startedAtMs = Date.now()
 	let response: Response | undefined
 	let deadline: OutboundFetchDeadline | undefined
-	let meteredEntityId = readMeteredRequestHostname(input.request.url, null)
+	let meteredEntityId = readMeteredRequestHostname(resolved.request.url, null)
+	input = resolved
 
 	try {
-		if (input.props.allowOutboundFetch === false) {
-			throw new Error(retrieverOutboundFetchDeniedMessage)
-		}
 		// Daily outbound-fetch quota: every sandbox fetch leaves through
 		// this gateway, so the atomic counter here bounds cost abuse and
 		// third-party hammering from user code. Consumed before secret
@@ -276,10 +348,11 @@ export async function executeGatewayFetch(input: {
 		const codeRequest = credentialClient
 			? withoutCodePlacement(input.request, credentialClient.placement)
 			: input.request
-		const expanded = await expandSecretPlaceholders({
+		const expanded = await expandAsPackageAppAuthority({
 			request: codeRequest,
 			props: input.props,
 			env: input.env,
+			waitUntil: input.waitUntil,
 		})
 		const { bodyFillDone, deferRedirectFollow } = expanded
 		let transformed = expanded.request
@@ -350,7 +423,7 @@ export async function executeGatewayFetch(input: {
 		throw asCallerFacingBodyFillError(error)
 	} finally {
 		const { userId } = input.props
-		if (input.props.allowOutboundFetch !== false && userId) {
+		if (userId) {
 			const meteredResponse = response
 			// Outcome is settled at headers; duration waits for the body so a
 			// streamed response reports how long it stayed open.
@@ -411,6 +484,99 @@ function readResponseContentLengthBytes(
 	return { bytes }
 }
 
+/**
+ * Package apps fill placeholders as their runs-as person. When that fails,
+ * the visitor's fill (today's behavior) is tried before giving up, and a
+ * success there leaves a would-break row. Body placeholders fill while the
+ * upload streams, so they fall back one batch at a time.
+ */
+async function expandAsPackageAppAuthority(input: {
+	request: Request
+	props: FetchGatewayProps
+	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	waitUntil?: (promise: Promise<unknown>) => void
+}) {
+	const authority = input.props.packageAppAuthority
+	if (!authority) return await expandSecretPlaceholders(input)
+	const runsAs = await loadPackageAppRunsAs({
+		env: input.env,
+		scope: authority.scope,
+	})
+	const noteFallback = (error: unknown) =>
+		schedulePackageAppAuthorityFallback({
+			env: input.env,
+			event: {
+				ownerId: authority.scope.orgId,
+				packageId: authority.scope.packageId,
+				callName: 'fetch',
+				kind:
+					runsAs.status === 'ready'
+						? (packageAppAuthorityFallbackKindOf(error) ??
+							'credential_unavailable')
+						: 'runs_as_unavailable',
+				visitorId: input.props.request?.actor?.userId ?? null,
+			},
+			waitUntil: input.waitUntil,
+		})
+	if (runsAs.status !== 'ready') {
+		const expanded = await expandSecretPlaceholders(input)
+		if (expanded.substitutedValues.length > 0) {
+			noteFallback(null)
+		} else {
+			// Body placeholders fill while the upload streams.
+			void expanded.bodyFillDone
+				.then(() => {
+					if (expanded.substitutedValues.length > 0) noteFallback(null)
+				})
+				.catch(() => {})
+		}
+		return expanded
+	}
+	const retry = input.request.clone() as Request
+	try {
+		const expanded = await expandSecretPlaceholders({
+			...input,
+			props: { ...input.props, request: runsAs.request },
+			bodyFallback: { props: input.props, onFallback: noteFallback },
+		})
+		discardUnreadBody(retry.body)
+		return expanded
+	} catch (error) {
+		if (!isPlaceholderAuthorityFailure(error)) {
+			discardUnreadBody(retry.body)
+			throw error
+		}
+		discardUnreadBody(input.request.body)
+		try {
+			const expanded = await expandSecretPlaceholders({
+				...input,
+				request: retry,
+			})
+			noteFallback(error)
+			return expanded
+		} catch {
+			throw error
+		}
+	}
+}
+
+/** A locked branch is still being read by a failed fill; cancelling it would throw. */
+function discardUnreadBody(body: ReadableStream | null) {
+	if (body && !body.locked) void body.cancel().catch(() => {})
+}
+
+/** A credential the filling person cannot resolve, as opposed to a bad request or an outage. */
+export class GatewayCredentialUnavailableError extends Error {}
+
+export function isPlaceholderAuthorityFailure(error: unknown) {
+	return (
+		packageAppAuthorityFallbackKindOf(error) !== null ||
+		error instanceof GatewayCredentialUnavailableError ||
+		error instanceof SecretPlacementError ||
+		error instanceof McpCallerError
+	)
+}
+
 type PlacedPlaceholderSource = {
 	text: string
 	/** Audit placement (`url` still covers path + query). */
@@ -432,6 +598,15 @@ export async function expandSecretPlaceholders(input: {
 	request: Request
 	props: FetchGatewayProps
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+	/**
+	 * Body placeholders fill while the upload streams, so a whole-request
+	 * retry is impossible once a chunk is sent; a batch these props cannot
+	 * fill is retried with `props` here instead.
+	 */
+	bodyFallback?: {
+		props: FetchGatewayProps
+		onFallback: (error: unknown) => void
+	}
 }): Promise<{
 	request: Request
 	substitutedValues: Array<string>
@@ -600,6 +775,7 @@ export async function expandSecretPlaceholders(input: {
 
 	const resolvePlaceholderBatch = async (
 		sources: ReadonlyArray<PlacedPlaceholderSource>,
+		batchProps: FetchGatewayProps = input.props,
 	): Promise<void> => {
 		const texts = sources.map((source) => source.text)
 		const placementsByPlaceholder = new Map<
@@ -679,7 +855,7 @@ export async function expandSecretPlaceholders(input: {
 						name: referenced.name,
 						scope: referenced.scope,
 						storageContext,
-						orgSlug: secretPageOrgSlugFromCaller(input.props),
+						orgSlug: secretPageOrgSlugFromCaller(batchProps),
 						requestHost,
 						placements,
 						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
@@ -749,18 +925,18 @@ export async function expandSecretPlaceholders(input: {
 		}
 		referencedAnyCredential = true
 		assertSecretPlacement({ url: requestUrl, values: texts })
-		const callerUserId = requireFetchUserId(input.props)
+		const callerUserId = requireFetchUserId(batchProps)
 		const resolveInput = {
 			env: input.env as Env,
 			orgId: callerUserId,
-			actor: input.props.request,
+			actor: batchProps.request,
 			packageStamp,
-			baseUrl: input.props.baseUrl,
+			baseUrl: batchProps.baseUrl,
 			// Run package id for the nested personal-secret rule (GHSA-5fv3).
 			runContextPackageId:
 				packageStamp?.kind === 'claimed'
 					? undefined
-					: (input.props.storageContext?.packageId ?? null),
+					: (batchProps.storageContext?.packageId ?? null),
 		}
 		const entriesToResolve = <
 			T extends {
@@ -794,7 +970,7 @@ export async function expandSecretPlaceholders(input: {
 		const providerSecretsToResolve = entriesToResolve(referencedProviderSecrets)
 		await assertCredentialUsesDeclared({
 			env: input.env as Env,
-			request: input.props.request,
+			request: batchProps.request,
 			orgId: callerUserId,
 			packageId: packageStamp?.packageId ?? null,
 			references: [
@@ -821,13 +997,13 @@ export async function expandSecretPlaceholders(input: {
 				if (
 					referenced.scope === 'package' &&
 					referenced.ref &&
-					input.props.packageSecretRefKey
+					batchProps.packageSecretRefKey
 				) {
 					const authorityId = packageStamp?.packageId ?? null
 					const ok =
 						authorityId != null &&
 						(await verifyPackageSecretRef({
-							refKey: input.props.packageSecretRefKey,
+							refKey: batchProps.packageSecretRefKey,
 							packageId: authorityId,
 							alias: referenced.name,
 							ref: referenced.ref,
@@ -840,7 +1016,7 @@ export async function expandSecretPlaceholders(input: {
 				} else if (
 					referenced.scope === 'package' &&
 					referenced.ref &&
-					!input.props.packageSecretRefKey
+					!batchProps.packageSecretRefKey
 				) {
 					throw new McpCallerError(
 						`Package-scoped secret "${referenced.name}" requires a package runtime that issues secret refs.`,
@@ -858,7 +1034,7 @@ export async function expandSecretPlaceholders(input: {
 							name: referenced.name,
 							scope: referenced.scope,
 							storageContext,
-							baseUrl: input.props.baseUrl,
+							baseUrl: batchProps.baseUrl,
 						}),
 					)
 				}
@@ -867,7 +1043,7 @@ export async function expandSecretPlaceholders(input: {
 		)
 		const resolvedSecretResults = readSettledSecretResults({
 			settled: settledSecretResults,
-			props: input.props,
+			props: batchProps,
 			storageContext,
 			requestedHost: requestUrl.hostname,
 		})
@@ -882,16 +1058,20 @@ export async function expandSecretPlaceholders(input: {
 						: error
 				})
 				if (!value) {
-					throw new Error(createMissingIntegrationAccessTokenMessage(name))
+					throw new GatewayCredentialUnavailableError(
+						createMissingIntegrationAccessTokenMessage(name),
+					)
 				}
 				return { name, value }
 			}),
 		)
 		const resolvedProviderSecrets = await Promise.all(
 			providerSecretsToResolve.map(async ({ referenced, credential }) => {
-				const request = input.props.request
+				const request = batchProps.request
 				if (!request) {
-					throw new Error(fetchSecretAuthRequiredMessage)
+					throw new GatewayCredentialUnavailableError(
+						fetchSecretAuthRequiredMessage,
+					)
 				}
 				const resolved = await resolveCredential({
 					...resolveInput,
@@ -996,7 +1176,22 @@ export async function expandSecretPlaceholders(input: {
 					})),
 				]
 				const before = substitutedValues.length
-				await resolvePlaceholderBatch(sources)
+				const auditedBefore = new Set(auditedPlacementKeys)
+				try {
+					await resolvePlaceholderBatch(sources)
+				} catch (error) {
+					const fallback = input.bodyFallback
+					if (!fallback || !isPlaceholderAuthorityFailure(error)) throw error
+					for (const key of auditedPlacementKeys) {
+						if (!auditedBefore.has(key)) auditedPlacementKeys.delete(key)
+					}
+					try {
+						await resolvePlaceholderBatch(sources, fallback.props)
+					} catch {
+						throw error
+					}
+					fallback.onFallback(error)
+				}
 				return substitutedValues.slice(before)
 			},
 		})
@@ -1398,7 +1593,7 @@ function readBulkHostApprovalScope(input: {
 
 function requireFetchUserId(props: FetchGatewayProps): OwnerId {
 	if (!props.userId) {
-		throw new Error(fetchSecretAuthRequiredMessage)
+		throw new GatewayCredentialUnavailableError(fetchSecretAuthRequiredMessage)
 	}
 	return props.userId
 }
@@ -1516,7 +1711,9 @@ function readResolvedSecretValue(
 	const placeholder = buildSecretPlaceholder(referenced)
 	const value = resolvedValues.get(placeholder)
 	if (value == null) {
-		throw new Error(createMissingSecretMessage(referenced.name))
+		throw new GatewayCredentialUnavailableError(
+			createMissingSecretMessage(referenced.name),
+		)
 	}
 	return value
 }

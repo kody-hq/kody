@@ -125,6 +125,35 @@ export async function getEntitySourceByIdForUser(
 	return result ? mapEntitySourceRow(result) : null
 }
 
+/**
+ * Batch form of {@link getEntitySourceByIdForUser}: same user_id and
+ * deleted_at filters, chunked IN lists for D1 bound-parameter limits.
+ */
+export async function listEntitySourcesByIdsForUser(
+	db: D1Database,
+	input: {
+		userId: OwnerId
+		ids: ReadonlyArray<string>
+	},
+): Promise<Array<EntitySourceRow>> {
+	if (input.ids.length === 0) return []
+	const uniqueIds = [...new Set(input.ids)]
+	const sources: Array<EntitySourceRow> = []
+	for (const idChunk of chunkArray(uniqueIds, maxD1BoundParameters - 1)) {
+		const placeholders = idChunk.map(() => '?').join(', ')
+		const { results } = await db
+			.prepare(
+				`SELECT * FROM entity_sources WHERE user_id = ? AND id IN (${placeholders})${andLiveDeletedAtSql()}`,
+			)
+			.bind(input.userId, ...idChunk)
+			.all<Record<string, unknown>>()
+		for (const row of results ?? []) {
+			sources.push(mapEntitySourceRow(row))
+		}
+	}
+	return sources
+}
+
 export async function getEntitySourceByEntity(
 	db: D1Database,
 	input: {

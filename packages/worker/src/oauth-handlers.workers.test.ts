@@ -9,7 +9,11 @@ import {
 } from '@cloudflare/workers-oauth-provider'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
+import { cimdLastKnownGoodKey } from '#worker/oauth-cimd-last-known-good.ts'
+
+/** Cache API name the provider reads CIMD documents from (provider v1.2). */
+const providerCimdCacheName = 'workers-oauth-provider:cimd:v1'
 import {
 	createAuthCookie,
 	readAuthSessionResult,
@@ -501,11 +505,11 @@ async function heykodyAuthorizeUrl(
 	return url
 }
 
-async function workerApprove(authorizeUrl: URL, email: string) {
+async function workerApprove(authorizeUrl: URL, email: string, ip?: string) {
 	const response = await workerFetch(
 		formRequest(
 			{ decision: 'approve', email, password: 'password123' },
-			jsonAccept,
+			ip ? { ...jsonAccept, 'CF-Connecting-IP': ip } : jsonAccept,
 			authorizeUrl,
 		),
 	)
@@ -1146,17 +1150,160 @@ test('two authorizations of the same CIMD client keep both refresh grants valid'
 	})
 })
 
-test('worker entrypoint treats a failed ChatGPT CIMD fetch as an unknown client', async () => {
-	const clientId = 'https://chatgpt.com/oauth/vG3-MLZWUV83/client.json'
+test('VS Code-shaped no-store CIMD refresh survives a metadata host outage', async () => {
+	const email = `vscode-oauth-${crypto.randomUUID()}@example.com`
+	await seedWorkerUser(email)
+	// VS Code's real document is served `cache-control: no-store`, so the
+	// provider resolves it live on every token request.
+	const clientId = `https://vscode.example/${crypto.randomUUID()}/client-metadata.json`
+	const redirectUri = 'https://vscode.example/redirect'
+	const metadata = {
+		client_id: clientId,
+		client_name: 'Visual Studio Code',
+		redirect_uris: [redirectUri, 'http://127.0.0.1:33418/'],
+		token_endpoint_auth_method: 'none',
+		grant_types: [
+			'authorization_code',
+			'refresh_token',
+			'urn:ietf:params:oauth:grant-type:device_code',
+		],
+		response_types: ['code'],
+	}
+	let metadataHost: 'up' | 'network-error' | 'unavailable' | 'gone' = 'up'
+	let metadataFetches = 0
+	using _fetch = stubClientMetadataFetch(clientId, () => {
+		metadataFetches += 1
+		if (metadataHost === 'network-error') throw new TypeError('fetch failed')
+		if (metadataHost === 'unavailable')
+			return new Response('upstream unavailable', { status: 503 })
+		if (metadataHost === 'gone') return new Response('gone', { status: 404 })
+		return new Response(JSON.stringify(metadata), {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/json',
+				'Cache-Control': 'no-store,no-cache,max-age=0',
+			},
+		})
+	})
+	consoleWarn.mockImplementation(() => {})
+	const providerCache = await caches.open(providerCimdCacheName)
+
+	const verifier = 'vscode-verifier-0123456789'
+	const authorizeUrl = await heykodyAuthorizeUrl(
+		{
+			client_id: clientId,
+			redirect_uri: redirectUri,
+			scope: 'openid profile email',
+			state: 'vscode-state',
+		},
+		verifier,
+	)
+	const { code } = await workerApprove(authorizeUrl, email)
+	const exchanged = await exchangeCode({
+		client_id: clientId,
+		code,
+		redirect_uri: redirectUri,
+		code_verifier: verifier,
+	})
+	expect(exchanged.status).toBe(200)
+	let { refresh_token: refreshToken } = (await exchanged.json()) as {
+		refresh_token: string
+	}
+	expect(refreshToken).toBeTruthy()
+	// No-store: the provider kept nothing to fall back on.
+	expect(await providerCache.match(clientId)).toBeUndefined()
+
+	async function refresh() {
+		const response = await workerFetch(
+			formRequest(
+				{
+					client_id: clientId,
+					grant_type: 'refresh_token',
+					refresh_token: refreshToken,
+					resource: mcpResource,
+				},
+				{},
+				'https://heykody.dev/oauth/token',
+			),
+		)
+		const body = (await response.json()) as {
+			refresh_token?: string
+			error?: string
+		}
+		if (response.ok && body.refresh_token) refreshToken = body.refresh_token
+		return { status: response.status, body }
+	}
+
+	// A healthy refresh resolves live and keeps a last known good copy.
+	metadataFetches = 0
+	await expect(refresh()).resolves.toMatchObject({ status: 200 })
+	expect(metadataFetches).toBe(1)
+	await expect(
+		env.BUNDLE_ARTIFACTS_KV.get(await cimdLastKnownGoodKey(clientId)),
+	).resolves.toContain('Visual Studio Code')
+
+	// The host is down. The last known good copy keeps the refresh working
+	// and never lands in the provider's cache.
+	for (const outage of ['network-error', 'unavailable'] as const) {
+		metadataHost = outage
+		await expect(refresh()).resolves.toMatchObject({ status: 200 })
+		expect(await providerCache.match(clientId)).toBeUndefined()
+	}
+	expect(consoleWarn.mock.calls.flat().join(' ')).toContain(
+		'oauth-cimd-fallback',
+	)
+
+	// A removed document never falls back to the old copy (vscode.example is
+	// not a host known to refuse Worker fetches).
+	metadataHost = 'gone'
+	consoleInfo.mockClear()
+	await expect(refresh()).resolves.toMatchObject({
+		status: 401,
+		body: { error: 'invalid_client' },
+	})
+	const reported = consoleInfo.mock.calls
+		.filter((call) => call[0] === 'oauth-provider-error')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(reported).toContainEqual(
+		expect.objectContaining({
+			category: 'client-id-metadata-document',
+			clientId,
+			path: '/oauth/token',
+			cimdHost: 'vscode.example',
+			cimdError: 'http_404',
+			cimdFailure: 'Failed to fetch client metadata: HTTP 404',
+		}),
+	)
+
+	// With no last known good copy an outage still fails, as before.
+	await env.BUNDLE_ARTIFACTS_KV.delete(await cimdLastKnownGoodKey(clientId))
+	metadataHost = 'unavailable'
+	await expect(refresh()).resolves.toMatchObject({
+		status: 401,
+		body: { error: 'invalid_client' },
+	})
+
+	// A refresh the provider rejects never records a last known good copy.
+	metadataHost = 'up'
+	refreshToken = 'not-a-user:not-a-grant:not-a-secret'
+	await expect(refresh()).resolves.toMatchObject({ status: 400 })
+	await expect(
+		env.BUNDLE_ARTIFACTS_KV.get(await cimdLastKnownGoodKey(clientId)),
+	).resolves.toBeNull()
+})
+
+test('authorize explains a chatgpt.com CIMD fetch failure with no fallback copy', async () => {
+	const callbackId = crypto.randomUUID().slice(0, 12)
+	const clientId = `https://chatgpt.com/oauth/${callbackId}/client.json`
 	consoleWarn.mockImplementation(() => {})
 	using _fetch = stubClientMetadataFetch(
 		clientId,
-		() => new Response('upstream unavailable', { status: 503 }),
+		() => new Response('not found', { status: 404 }),
 	)
 	const authorizeUrl = await heykodyAuthorizeUrl(
 		{
 			client_id: clientId,
-			redirect_uri: 'https://chatgpt.com/connector/oauth/vG3-MLZWUV83',
+			redirect_uri: `https://chatgpt.com/connector/oauth/${callbackId}`,
 		},
 		'chatgpt-verifier-0123456789',
 	)
@@ -1165,16 +1312,300 @@ test('worker entrypoint treats a failed ChatGPT CIMD fetch as an unknown client'
 	const captureException = vi
 		.spyOn(Sentry, 'captureException')
 		.mockImplementation(() => '')
+	consoleInfo.mockClear()
 
 	const response = await workerFetch(new Request(authorizeInfoUrl))
 	expect(response.status).toBe(400)
-	await expect(response.json()).resolves.toMatchObject({
+	const body = (await response.json()) as Record<string, unknown>
+	expect(body).toMatchObject({
 		ok: false,
-		error: 'Unknown OAuth client.',
+		error:
+			"Kody could not load this app's client details from chatgpt.com (HTTP 404). This is a problem on the app's side, not with your Kody account.",
+		clientFailure: {
+			kind: 'metadata_fetch',
+			host: 'chatgpt.com',
+			status: 404,
+			errorType: 'http_404',
+			client: 'other',
+			kodyOrigin: 'https://heykody.dev',
+		},
 	})
+	// The raw client id (with its per-install path segment) stays out of the UI.
+	expect(JSON.stringify(body)).not.toContain(callbackId)
 	expect(consoleWarn.mock.calls.flat().join(' ')).toContain('CIMD fetch failed')
+	const unknownClientLogs = consoleInfo.mock.calls
+		.filter((call) => call[0] === 'oauth-authorize-unknown-client')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(unknownClientLogs).toEqual([
+		{
+			kind: 'cimd',
+			surface: 'page_load',
+			cimdHost: 'chatgpt.com',
+			cimdPath: '/oauth/<id>/client.json',
+			cimdError: 'http_404',
+		},
+	])
 	expect(captureException).not.toHaveBeenCalled()
 	captureException.mockRestore()
+})
+
+test('Codex CIMD clients connect and refresh with zero metadata fetches while chatgpt.com returns 404', async () => {
+	const email = `codex-oauth-${crypto.randomUUID()}@example.com`
+	await seedWorkerUser(email)
+	const callbackId = crypto.randomUUID().replaceAll('-', '').slice(0, 12)
+	const clients = [
+		{
+			clientId: 'https://chatgpt.com/oauth/codex/client.json',
+			redirectUri: 'http://127.0.0.1/callback',
+		},
+		{
+			clientId: `https://chatgpt.com/oauth/codex/${callbackId}/client.json`,
+			redirectUri: `http://localhost/callback/${callbackId}`,
+		},
+	]
+	let metadataFetches = 0
+	const originalFetch = globalThis.fetch
+	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = input instanceof Request ? input.url : String(input)
+		if (url.startsWith('https://chatgpt.com/')) {
+			metadataFetches += 1
+			return new Response('not found', { status: 404 })
+		}
+		return originalFetch(input, init)
+	}) as typeof fetch
+	try {
+		for (const { clientId, redirectUri } of clients) {
+			const verifier = `codex-verifier-${crypto.randomUUID()}`
+			const authorizeUrl = await heykodyAuthorizeUrl(
+				{
+					client_id: clientId,
+					redirect_uri: redirectUri,
+					scope: 'openid profile email',
+					state: 'codex-state',
+				},
+				verifier,
+			)
+			const infoUrl = new URL(authorizeUrl)
+			infoUrl.pathname = '/oauth/authorize-info'
+			const info = await workerFetch(new Request(infoUrl))
+			expect(info.status).toBe(200)
+			await expect(info.json()).resolves.toMatchObject({
+				ok: true,
+				client: { name: 'Codex' },
+			})
+			const { code } = await workerApprove(authorizeUrl, email, '203.0.113.71')
+			const exchanged = await exchangeCode({
+				client_id: clientId,
+				code,
+				redirect_uri: redirectUri,
+				code_verifier: verifier,
+			})
+			expect(exchanged.status).toBe(200)
+			const { refresh_token: refreshToken } = (await exchanged.json()) as {
+				refresh_token: string
+			}
+			const refreshed = await workerFetch(
+				formRequest(
+					{
+						client_id: clientId,
+						grant_type: 'refresh_token',
+						refresh_token: refreshToken,
+						resource: mcpResource,
+					},
+					{},
+					'https://heykody.dev/oauth/token',
+				),
+			)
+			expect(refreshed.status).toBe(200)
+		}
+		// A redirect outside the pinned document is still rejected.
+		const foreign = await heykodyAuthorizeUrl(
+			{
+				client_id: clients[0]!.clientId,
+				redirect_uri: 'https://attacker.example/callback',
+			},
+			'codex-verifier-foreign-0123456789',
+		)
+		const foreignInfo = new URL(foreign)
+		foreignInfo.pathname = '/oauth/authorize-info'
+		const rejected = await workerFetch(new Request(foreignInfo))
+		expect(rejected.status).toBe(400)
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+	expect(metadataFetches).toBe(0)
+})
+
+test('authorize and refresh use the last known good CIMD copy for up to 14 days when chatgpt.com returns 404', async () => {
+	const email = `chatgpt-lkg-${crypto.randomUUID()}@example.com`
+	await seedWorkerUser(email)
+	const connectorId = crypto.randomUUID().slice(0, 12)
+	const clientId = `https://chatgpt.com/oauth/${connectorId}/client.json`
+	const redirectUri = `https://chatgpt.com/connector/oauth/${connectorId}`
+	let hostUp = true
+	using _fetch = stubClientMetadataFetch(clientId, () =>
+		hostUp
+			? new Response(
+					JSON.stringify({
+						client_id: clientId,
+						redirect_uris: [redirectUri],
+						token_endpoint_auth_method: 'none',
+						grant_types: ['authorization_code', 'refresh_token'],
+						response_types: ['code'],
+						client_name: 'ChatGPT',
+					}),
+					{
+						status: 200,
+						headers: {
+							'Content-Type': 'application/json',
+							'Cache-Control': 'no-store',
+						},
+					},
+				)
+			: new Response('not found', { status: 404 }),
+	)
+	consoleWarn.mockImplementation(() => {})
+	const verifier = 'chatgpt-lkg-verifier-0123456789'
+	const authorizeUrl = await heykodyAuthorizeUrl(
+		{ client_id: clientId, redirect_uri: redirectUri, state: 'lkg' },
+		verifier,
+	)
+	const infoUrl = new URL(authorizeUrl)
+	infoUrl.pathname = '/oauth/authorize-info'
+	const { code } = await workerApprove(authorizeUrl, email, '203.0.113.72')
+	const lkgKey = await cimdLastKnownGoodKey(clientId)
+	await expect(env.BUNDLE_ARTIFACTS_KV.get(lkgKey)).resolves.toContain(
+		'ChatGPT',
+	)
+	const exchanged = await exchangeCode({
+		client_id: clientId,
+		code,
+		redirect_uri: redirectUri,
+		code_verifier: verifier,
+	})
+	expect(exchanged.status).toBe(200)
+	const { refresh_token: refreshToken } = (await exchanged.json()) as {
+		refresh_token: string
+	}
+
+	hostUp = false
+	const info = await workerFetch(new Request(infoUrl))
+	expect(info.status).toBe(200)
+	await expect(info.json()).resolves.toMatchObject({
+		ok: true,
+		client: { name: 'ChatGPT' },
+	})
+	const refreshed = await workerFetch(
+		formRequest(
+			{
+				client_id: clientId,
+				grant_type: 'refresh_token',
+				refresh_token: refreshToken,
+				resource: mcpResource,
+			},
+			{},
+			'https://heykody.dev/oauth/token',
+		),
+	)
+	expect(refreshed.status).toBe(200)
+	const fallbacks = consoleWarn.mock.calls
+		.filter((call) => call[0] === 'oauth-cimd-fallback')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(fallbacks.length).toBeGreaterThan(0)
+	expect(fallbacks.at(-1)).toMatchObject({
+		cimdHost: 'chatgpt.com',
+		cimdError: 'http_404',
+		policy: 'worker_blocked_host',
+		source: 'last_known_good',
+	})
+	// A fallback never refreshes the stored copy's age.
+	const stored = JSON.parse((await env.BUNDLE_ARTIFACTS_KV.get(lkgKey)) ?? '{}')
+	await env.BUNDLE_ARTIFACTS_KV.put(
+		lkgKey,
+		JSON.stringify({
+			...stored,
+			storedAt: Date.now() - 15 * 24 * 60 * 60 * 1000,
+		}),
+	)
+	const expired = await workerFetch(new Request(infoUrl))
+	expect(expired.status).toBe(400)
+	await expect(expired.json()).resolves.toMatchObject({
+		ok: false,
+		clientFailure: { kind: 'metadata_fetch', status: 404 },
+	})
+})
+
+test('authorize tells a missing DCR registration apart from a metadata failure', async () => {
+	const authorizeUrl = await heykodyAuthorizeUrl(
+		{
+			client_id: `missing-${crypto.randomUUID()}`,
+			redirect_uri: 'http://127.0.0.1:33418/callback',
+		},
+		'missing-dcr-verifier-0123456789',
+	)
+	const infoUrl = new URL(authorizeUrl)
+	infoUrl.pathname = '/oauth/authorize-info'
+	consoleInfo.mockClear()
+	const response = await workerFetch(new Request(infoUrl))
+	expect(response.status).toBe(400)
+	await expect(response.json()).resolves.toMatchObject({
+		ok: false,
+		error:
+			"Kody has no registration for this app's connection. Log out of Kody in your app and sign in again, or remove Kody from the app and add it again.",
+		clientFailure: { kind: 'missing_registration' },
+	})
+	const logs = consoleInfo.mock.calls
+		.filter((call) => call[0] === 'oauth-authorize-unknown-client')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(logs).toEqual([{ kind: 'dcr', surface: 'page_load' }])
+
+	// Approve on the same request reports the decision surface.
+	consoleInfo.mockClear()
+	const decided = await workerFetch(
+		formRequest(
+			{ decision: 'approve', email: 'nobody@example.com', password: 'x' },
+			{ ...jsonAccept, 'CF-Connecting-IP': '203.0.113.73' },
+			authorizeUrl,
+		),
+	)
+	expect(decided.status).toBe(400)
+	await expect(decided.json()).resolves.toMatchObject({
+		clientFailure: { kind: 'missing_registration' },
+	})
+	expect(
+		consoleInfo.mock.calls
+			.filter((call) => call[0] === 'oauth-authorize-unknown-client')
+			.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>),
+	).toEqual([{ kind: 'dcr', surface: 'decision' }])
+})
+
+test('token endpoint errors carry the form-body client id', async () => {
+	const clientId = await registerClient({
+		client_name: 'Token Error Client',
+		redirect_uris: ['http://127.0.0.1:33418/callback'],
+		token_endpoint_auth_method: 'none',
+		grant_types: ['authorization_code', 'refresh_token'],
+	})
+	consoleInfo.mockClear()
+	const response = await workerFetch(
+		formRequest(
+			{
+				client_id: clientId,
+				grant_type: 'refresh_token',
+				refresh_token: 'not-a-user:not-a-grant:not-a-secret',
+				resource: mcpResource,
+			},
+			{},
+			'https://heykody.dev/oauth/token',
+		),
+	)
+	expect(response.status).toBe(400)
+	const reported = consoleInfo.mock.calls
+		.filter((call) => call[0] === 'oauth-provider-error')
+		.map((call) => JSON.parse(String(call[1])) as Record<string, unknown>)
+	expect(reported).toEqual([
+		expect.objectContaining({ code: 'invalid_grant', clientId }),
+	])
 })
 
 test('worker entrypoint returns OAuth errors for provider-owned route exceptions and JSON-RPC for /mcp', async () => {

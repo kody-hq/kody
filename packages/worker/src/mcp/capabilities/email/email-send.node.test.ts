@@ -56,6 +56,7 @@ function sentMessage(id = 'outbound-1') {
 		processingStatus: 'sent',
 		classification: 'accepted',
 		classificationReason: null,
+		archivedAt: null,
 		providerMessageId: 'provider-1',
 		deliveryStatus: null,
 		deliveryStatusAt: null,

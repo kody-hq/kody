@@ -69,13 +69,19 @@ function createHarness(userId: string) {
 		name = 'google',
 		tokens = { accessToken: 'access-live', refreshToken: 'refresh-live' },
 	) => {
-		await upsertIntegration({ env, userId, config: { ...googleConfig, name } })
+		await upsertIntegration({
+			env,
+			userId,
+			config: { ...googleConfig, name },
+			audit: null,
+		})
 		await persistIntegrationTokens({
 			env,
 			userId: ownerIdFromStored(userId),
 			name,
 			refreshPolicy: 'required',
 			...tokens,
+			audit: null,
 		})
 	}
 	const persistClientSecret = () =>
@@ -109,7 +115,13 @@ function createHarness(userId: string) {
 			...pkg,
 		})
 	const grant = (packageId: string) =>
-		grantIntegrationPackage({ env, userId, name: 'google', packageId })
+		grantIntegrationPackage({
+			env,
+			userId,
+			name: 'google',
+			packageId,
+			audit: null,
+		})
 	return {
 		sqlite,
 		env,
@@ -130,6 +142,7 @@ test('persistIntegrationTokens stamps connected_at on first write and keeps it a
 		env: harness.env,
 		userId,
 		config: googleConfig,
+		audit: null,
 	})
 	const connectedAt = () =>
 		(
@@ -147,6 +160,7 @@ test('persistIntegrationTokens stamps connected_at on first write and keeps it a
 		accessToken: 'access-1',
 		refreshToken: 'refresh-1',
 		refreshPolicy: 'required',
+		audit: null,
 	})
 	const firstConnectedAt = connectedAt()
 	expect(firstConnectedAt).toEqual(expect.any(String))
@@ -157,6 +171,7 @@ test('persistIntegrationTokens stamps connected_at on first write and keeps it a
 		accessToken: 'access-2',
 		refreshToken: 'refresh-2',
 		refreshPolicy: 'required',
+		audit: null,
 	})
 	expect(connectedAt()).toBe(firstConnectedAt)
 })
@@ -232,6 +247,7 @@ test('integration-owned credentials persist as ciphertext, stay off secret lists
 		name: 'google',
 		usageMode: 'packages',
 		allowedPackageIds: ['pkg-mail'],
+		audit: null,
 	})
 	await expect(canUse()).rejects.toBeInstanceOf(
 		IntegrationPackageAccessDeniedError,
@@ -258,12 +274,17 @@ test('integration-owned credentials persist as ciphertext, stay off secret lists
 		accessToken: 'work-access',
 		refreshToken: 'work-refresh',
 	})
-	expect(await deleteIntegration({ env, userId, name: 'google-work' })).toBe(
-		true,
-	)
+	expect(
+		await deleteIntegration({ env, userId, name: 'google-work', audit: null }),
+	).toBe(true)
 	expect(await clientSecret()).toBe('client-secret-live')
 	expect(
-		await deleteOauthAppWithConnections({ env, userId, slug: 'google' }),
+		await deleteOauthAppWithConnections({
+			env,
+			userId,
+			slug: 'google',
+			audit: null,
+		}),
 	).toEqual({ deleted: true, connectionNames: ['google'] })
 	expect(await clientSecret()).toBeNull()
 })
@@ -274,7 +295,9 @@ test('disconnecting the last user-lane connection deletes the leftover client se
 		createHarness(userId)
 	await connect()
 	await persistClientSecret()
-	expect(await deleteIntegration({ env, userId, name: 'google' })).toBe(true)
+	expect(
+		await deleteIntegration({ env, userId, name: 'google', audit: null }),
+	).toBe(true)
 	expect(await accessToken()).toBeNull()
 	expect(await clientSecret()).toBeNull()
 	expect(await listSecrets({ env, userId, scope: 'user' })).toEqual([])
@@ -284,13 +307,19 @@ test('lockIntegrationToPackage switches any-context usage to packages and reject
 	const userId = ownerIdFromStored('user-lock-usage')
 	const { env, seedPackage, canUse, grant } = createHarness(userId)
 	seedPackage('pkg-drafts', 'gmail-drafts')
-	await upsertIntegration({ env, userId, config: googleConfig })
+	await upsertIntegration({ env, userId, config: googleConfig, audit: null })
 	expect(await grant('pkg-drafts')).toMatchObject({
 		usageMode: 'any',
 		allowedPackageIds: [],
 	})
 	const lock = (packageId: string) =>
-		lockIntegrationToPackage({ env, userId, name: 'google', packageId })
+		lockIntegrationToPackage({
+			env,
+			userId,
+			name: 'google',
+			packageId,
+			audit: null,
+		})
 	expect(await lock('pkg-drafts')).toMatchObject({
 		usageMode: 'packages',
 		allowedPackageIds: ['pkg-drafts'],

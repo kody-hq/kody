@@ -1,4 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
+import {
+	d1LockRetryBaseDelayMs,
+	d1LockRetryMaxAttempts,
+	transientDatabaseUnavailableMessage,
+} from '@kody-internal/shared/d1-retry.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -284,4 +289,71 @@ test('ownerPackageForClient strips plain-repo sourceId for guests', async () => 
 			viewerIsOwner: false,
 		})?.sourceId,
 	).toBe('src-secret')
+})
+
+test('loadPackagePage retries transient D1 export locks then remaps exhaustion (KODY-B7)', async () => {
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+	)
+	setProfileVisibility('public')
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
+	mockModule.loadCommunityDetailData.mockResolvedValue(listingDetail)
+
+	mockModule.resolvePackagePageUrl
+		.mockRejectedValueOnce(d1Export)
+		.mockResolvedValueOnce({
+			kind: 'package',
+			username: 'owner',
+			kodyId: 'notes',
+			userId: ownerIdFromStored('owner-1'),
+			listingId: 'listing-1',
+			savedPackage: { id: 'pkg-1', hidden: false, isPrivate: false },
+		})
+
+	vi.useFakeTimers()
+	try {
+		const retrying = loadPackagePage({
+			env,
+			request: new Request('https://example.com/@owner/notes?retry=1'),
+			username: 'owner',
+			kodyId: 'notes',
+		})
+		await vi.advanceTimersByTimeAsync(d1LockRetryBaseDelayMs)
+		await expect(retrying).resolves.toMatchObject({
+			kind: 'page',
+			listing: { listing: { id: 'listing-1' } },
+		})
+		expect(mockModule.resolvePackagePageUrl).toHaveBeenCalledTimes(2)
+	} finally {
+		vi.useRealTimers()
+	}
+
+	mockModule.resolvePackagePageUrl.mockReset()
+	mockModule.resolvePackagePageUrl.mockRejectedValue(d1Export)
+	vi.useFakeTimers()
+	try {
+		const exhausted = loadPackagePage({
+			env,
+			request: new Request('https://example.com/@owner/notes?retry=2'),
+			username: 'owner',
+			kodyId: 'notes',
+		})
+		const expectRejected = expect(exhausted).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof Error &&
+				error.message === transientDatabaseUnavailableMessage &&
+				error.cause === d1Export,
+		)
+		for (let attempt = 1; attempt < d1LockRetryMaxAttempts; attempt++) {
+			await vi.advanceTimersByTimeAsync(
+				d1LockRetryBaseDelayMs * 2 ** (attempt - 1),
+			)
+		}
+		await expectRejected
+		expect(mockModule.resolvePackagePageUrl).toHaveBeenCalledTimes(
+			d1LockRetryMaxAttempts,
+		)
+	} finally {
+		vi.useRealTimers()
+	}
 })

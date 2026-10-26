@@ -12,6 +12,12 @@ on:
     types:
       - created
       - edited
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - closed
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,8 +45,11 @@ jobs:
 
       - name: 🧾 Collect identities
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           script: |
+            const pullNumber = Number(process.env.PR_NUMBER)
             const identities = [
               {
                 githubLogin: context.payload.pull_request.user.login,
@@ -53,7 +62,7 @@ jobs:
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: context.payload.pull_request.number,
+                pull_number: pullNumber,
                 per_page: 100,
               },
             )
@@ -64,10 +73,30 @@ jobs:
                 email: commit.commit.author?.email ?? null,
               })
             }
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pullNumber,
+                per_page: 100,
+              },
+            )
+            const signingComments = comments
+              .filter((comment) => comment.user?.type === 'User')
+              .map((comment) => ({
+                login: comment.user.login,
+                createdAt: comment.created_at,
+                body: comment.body ?? '',
+              }))
             const fs = await import('node:fs/promises')
             await fs.writeFile(
               'cla-identities.json',
               `${JSON.stringify(identities, null, '\t')}\n`,
+            )
+            await fs.writeFile(
+              'cla-signing-comments.json',
+              `${JSON.stringify(signingComments, null, '\t')}\n`,
             )
 
       - name: ✍️ Check CLA
@@ -77,10 +106,15 @@ jobs:
             echo "CLA checker is not on the base branch yet."
             exit 0
           fi
-          set +e
-          node tools/ci/check-cla.ts \
-            --signers .github/cla-signers.json \
+          check_args=(
+            --signers .github/cla-signers.json
             --identities-json cla-identities.json
+          )
+          if grep -q -- '--signing-comments-json' tools/ci/check-cla.ts; then
+            check_args+=(--signing-comments-json cla-signing-comments.json)
+          fi
+          set +e
+          node tools/ci/check-cla.ts "${check_args[@]}"
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
@@ -98,7 +132,7 @@ jobs:
 
             1. Read the [Individual CLA](https://github.com/${{ github.repository }}/blob/main/docs/legal/individual-cla.md) (or the [Entity CLA](https://github.com/${{ github.repository }}/blob/main/docs/legal/entity-cla.md) if an organization owns the work).
             2. Comment exactly: \`I have read the CLA and I hereby sign the CLA\`
-            3. The CLA workflow records your GitHub username on \`main\` and re-runs this check. See [Inbound contributions](https://github.com/${{ github.repository }}/blob/main/docs/contributing/inbound-contributions.md).
+            3. That signing comment satisfies this check. The signer is recorded in \`.github/cla-signers.json\` on \`main\` after this pull request merges. See [Inbound contributions](https://github.com/${{ github.repository }}/blob/main/docs/contributing/inbound-contributions.md).
 
             Adding your own username on this branch does not pass the check.`
             const comments = await github.paginate(
@@ -137,78 +171,33 @@ jobs:
     if: >
       github.event_name == 'issue_comment' && github.event.issue.pull_request &&
       github.event.comment.user.type == 'User' &&
-      contains(github.event.comment.body, 'I hereby sign the CLA')
+      (contains(github.event.comment.body, 'I hereby sign the CLA') ||
+      (github.event.action == 'edited' &&
+      contains(github.event.changes.body.from, 'I hereby sign the CLA')))
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📝 Record CLA
     timeout-minutes: 5
-    concurrency:
-      group: cla-signers-main
-      cancel-in-progress: false
     permissions:
-      contents: write
       pull-requests: write
       actions: write
     steps:
-      - name: 📦 Checkout main
-        uses: actions/checkout@v6.0.2
-        with:
-          ref: main
-
-      - name: 🟢 Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 26
-
-      - name: 📝 Record signer
-        id: record
-        env:
-          CLA_COMMENT: ${{ github.event.comment.body }}
-          CLA_LOGIN: ${{ github.event.comment.user.login }}
-          CLA_SIGNED_AT: ${{ github.event.comment.created_at }}
-        run: |
-          if [ ! -f tools/ci/check-cla.ts ] || [ ! -f .github/cla-signers.json ]; then
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            echo "added=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          printf '%s' "$CLA_COMMENT" > cla-comment.txt
-          node tools/ci/check-cla.ts \
-            --signers .github/cla-signers.json \
-            --record-signer "$CLA_LOGIN" \
-            --signed-at "${CLA_SIGNED_AT%%T*}" \
-            --comment-file cla-comment.txt > cla-record-output.txt
-          cat cla-record-output.txt
-          grep -E '^(skipped|added|github)=' cla-record-output.txt >> "$GITHUB_OUTPUT"
-
-      - name: 💾 Commit signer on main
-        if: steps.record.outputs.added == 'true'
-        env:
-          CLA_GITHUB: ${{ steps.record.outputs.github }}
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/cla-signers.json
-          git commit -m "Record @${CLA_GITHUB} as an individual CLA signer"
-          git pull --rebase origin main
-          git push origin HEAD:main
-
       - name: 💬 Comment and re-run CLA
-        if: steps.record.outputs.skipped == 'false'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          CLA_ADDED: ${{ steps.record.outputs.added }}
-          CLA_GITHUB: ${{ steps.record.outputs.github }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          CLA_LOGIN: ${{ github.event.comment.user.login }}
         with:
           script: |
-            const login = process.env.CLA_GITHUB
-            const added = process.env.CLA_ADDED === 'true'
-            const marker = '<!-- kody-cla-recorded -->'
+            const login = process.env.CLA_LOGIN
+            const commentBody = context.payload.comment.body ?? ''
+            const isSigning = commentBody.trim() === 'I have read the CLA and I hereby sign the CLA'
+            const pullNumber = Number(process.env.PR_NUMBER)
             const owner = context.repo.owner
             const repo = context.repo.repo
             const pull = await github.rest.pulls.get({
               owner,
               repo,
-              pull_number: context.payload.issue.number,
+              pull_number: pullNumber,
             })
             const headSha = pull.data.head.sha
 
@@ -247,38 +236,303 @@ jobs:
               }
             }
 
-            const followUp = reran
-              ? 'The CLA check will re-run.'
-              : 'The next CLA check will read the updated signers file.'
-            const body = added
-              ? `${marker}
-            Recorded @${login} as an individual CLA signer on \`main\`. ${followUp}`
-              : `${marker}
-            @${login} is already recorded as an individual CLA signer. ${followUp}`
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              {
-                owner,
-                repo,
-                issue_number: context.payload.issue.number,
-                per_page: 100,
-              },
-            )
-            const existing = comments.find((comment) =>
-              comment.body?.includes(marker),
-            )
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              })
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: context.payload.issue.number,
-                body,
-              })
+            if (isSigning) {
+              const marker = '<!-- kody-cla-recorded -->'
+              const followUp = reran
+                ? 'The CLA check will re-run.'
+                : 'The CLA check will include this signing comment on its next run.'
+              const body = `${marker}
+            Thanks @${login} — your signature on this PR satisfies the CLA check, and you'll be recorded in \`.github/cla-signers.json\` on \`main\` after this PR merges. ${followUp}`
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner,
+                  repo,
+                  issue_number: pullNumber,
+                  per_page: 100,
+                },
+              )
+              const existing = comments.find((comment) =>
+                comment.body?.includes(marker),
+              )
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                })
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pullNumber,
+                  body,
+                })
+              }
             }
+
+  record-on-merge:
+    if: >
+      (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.merged == true) || github.event_name ==
+      'workflow_dispatch'
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    name: 📝 Record CLA after merge
+    timeout-minutes: 60
+    concurrency:
+      group: cla-signers-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      checks: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 📦 Checkout main
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: 🌿 Checkout signer branch from main
+        run: |
+          git fetch origin main && git checkout -B cla/record-signers origin/main
+
+      - name: 🧾 Collect signing comments
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            // Prefer recently merged PRs over recently updated ones: comment
+            // activity on older merged PRs must not crowd out a new signer.
+            // GitHub cannot list by merged_at, so scan by updated_at (always
+            // >= merged_at) until the page reaches PRs updated before the 50th
+            // newest merge: nothing older can merge later than that cutoff.
+            const byMergedDesc = (left, right) =>
+              Date.parse(right.merged_at) - Date.parse(left.merged_at)
+            const mergedByNumber = new Map()
+            for (let page = 1; page <= 200; page += 1) {
+              const response = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'closed',
+                base: 'main',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100,
+                page,
+              })
+              if (response.data.length === 0) break
+              for (const pull of response.data) {
+                if (pull.merged_at) mergedByNumber.set(pull.number, pull)
+              }
+              if (response.data.length < 100) break
+              if (mergedByNumber.size >= 50) {
+                const cutoff = Date.parse(
+                  [...mergedByNumber.values()].sort(byMergedDesc)[49].merged_at,
+                )
+                const oldestUpdated = Date.parse(response.data.at(-1).updated_at)
+                if (oldestUpdated < cutoff) break
+              }
+            }
+            const mergedPulls = [...mergedByNumber.values()]
+              .sort(byMergedDesc)
+              .slice(0, 50)
+
+            const candidates = new Map(
+              mergedPulls.map((pull) => [pull.number, pull]),
+            )
+            const eventPull = context.payload.pull_request
+            if (eventPull) candidates.set(eventPull.number, eventPull)
+
+            const signingComments = []
+            for (const pull of candidates.values()) {
+              const eligibleLogins = new Set()
+              const authorLogin = pull.user?.login
+              if (authorLogin) eligibleLogins.add(authorLogin.toLowerCase())
+
+              const commits = await github.paginate(
+                github.rest.pulls.listCommits,
+                {
+                  owner,
+                  repo,
+                  pull_number: pull.number,
+                  per_page: 100,
+                },
+              )
+              for (const commit of commits) {
+                const login = commit.author?.login
+                if (login) eligibleLogins.add(login.toLowerCase())
+              }
+
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner,
+                  repo,
+                  issue_number: pull.number,
+                  per_page: 100,
+                },
+              )
+              for (const comment of comments) {
+                const login = comment.user?.login
+                if (
+                  comment.user?.type !== 'User' ||
+                  !login ||
+                  !eligibleLogins.has(login.toLowerCase())
+                ) {
+                  continue
+                }
+                signingComments.push({
+                  login,
+                  createdAt: comment.created_at,
+                  body: comment.body ?? '',
+                })
+              }
+            }
+            signingComments.sort((left, right) =>
+              left.createdAt.localeCompare(right.createdAt),
+            )
+            const fs = await import('node:fs/promises')
+            await fs.writeFile(
+              'cla-signing-comments.json',
+              `${JSON.stringify(signingComments, null, '\t')}\n`,
+            )
+
+      - name: 📝 Apply signer comments
+        id: record
+        run: |
+          if [ ! -f tools/ci/check-cla.ts ] || [ ! -f .github/cla-signers.json ]; then
+            echo "CLA signer recorder is not on main yet."
+            echo "added=false" >> "$GITHUB_OUTPUT"
+            echo "github=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node tools/ci/check-cla.ts \
+            --signers .github/cla-signers.json \
+            --record-comments-json cla-signing-comments.json > cla-record-output.txt
+          cat cla-record-output.txt
+          grep -E '^(added|github)=' cla-record-output.txt >> "$GITHUB_OUTPUT"
+
+      - name: 🌱 Commit and push signer changes
+        id: pr
+        if: steps.record.outputs.added == 'true'
+        env:
+          CLA_LOGINS: ${{ steps.record.outputs.github }}
+        run: |
+          set -euo pipefail
+          git add .github/cla-signers.json
+          if git diff --cached --quiet; then
+            echo "added=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          title="Record CLA signers: @${CLA_LOGINS//,/, @}"
+          git commit -m "$title"
+          git push -f origin HEAD:refs/heads/cla/record-signers
+          IFS=',' read -r -a signer_logins <<< "$CLA_LOGINS"
+          {
+            echo "This bot PR records individual CLA signatures from recent merged pull requests."
+            echo
+            echo "Signers:"
+            for login in "${signer_logins[@]}"; do
+              echo "- @${login}"
+            done
+            echo
+            echo "Recording covers the last 50 merged pull requests and is self-healing."
+            echo "This PR merges only after ✅ Validate succeeds on the exact validated head."
+          } > cla-signers-pr-body.md
+          pull_query="repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&head=${GITHUB_REPOSITORY_OWNER}:cla/record-signers"
+          existing_pr="$(gh api "$pull_query" --jq '.[0].number // empty')"
+          if [ -n "$existing_pr" ]; then
+            gh pr edit "$existing_pr" --title "$title" --body-file cla-signers-pr-body.md
+          else
+            gh pr create \
+              --base main \
+              --head cla/record-signers \
+              --title "$title" \
+              --body-file cla-signers-pr-body.md
+          fi
+          pr_number="$(gh api "$pull_query" --jq '.[0].number // empty')"
+          if [ -z "$pr_number" ]; then
+            echo "Could not find the CLA signer pull request after creating it." >&2
+            exit 1
+          fi
+          echo "added=true" >> "$GITHUB_OUTPUT"
+          echo "branch=cla/record-signers" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "pr_url=https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
+
+      - name: ✅ Dispatch and wait for Validate
+        id: validate
+        if: steps.pr.outputs.added == 'true'
+        env:
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+        run: |
+          set -euo pipefail
+          dispatch_started_at="$(date +%s%3N)"
+          if ! gh workflow run validate.yml --ref "$BRANCH" -f no_cache=false; then
+            echo "::warning title=CLA signer PR::Could not dispatch Validate for PR #${PR_NUMBER}: ${PR_URL}"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          deadline=$(( $(date +%s) + 3000 ))
+          check_runs_url="repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=%E2%9C%85%20Validate&per_page=100"
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            if ! check_runs="$(gh api "$check_runs_url")"; then
+              echo "::warning title=CLA signer PR::Could not read Validate status for PR #${PR_NUMBER}: ${PR_URL}"
+              echo "passed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            check_run="$(printf '%s' "$check_runs" | jq -r '
+              [.check_runs[] | select(.name == "✅ Validate")]
+              | if length == 0 then "" else
+                  (sort_by(.created_at) | last
+                    | [.status // "", .conclusion // "", .created_at // ""]
+                    | @tsv)
+                end
+            ')"
+            if [ -n "$check_run" ]; then
+              IFS=$'\t' read -r status conclusion created_at <<< "$check_run"
+              created_at_ms="$(date -d "$created_at" +%s%3N)"
+              if [ "$created_at_ms" -ge "$dispatch_started_at" ]; then
+                if [ "$status" = completed ]; then
+                  if [ "$conclusion" = success ]; then
+                    echo "passed=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+                  echo "::warning title=CLA signer PR::Validate concluded ${conclusion:-without a conclusion} for PR #${PR_NUMBER}: ${PR_URL}"
+                  echo "passed=false" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+              fi
+            fi
+            sleep 30
+          done
+          echo "::warning title=CLA signer PR::Validate did not finish within 50 minutes for PR #${PR_NUMBER}: ${PR_URL}"
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+
+      - name: 🔀 Merge validated signer PR
+        if: steps.validate.outputs.passed == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+            echo "::warning title=CLA signer PR::Validate passed, but automatic merge failed for PR #${PR_NUMBER}: ${PR_URL}"
+          fi

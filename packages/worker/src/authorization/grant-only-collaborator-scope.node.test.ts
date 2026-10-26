@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { type OrgGrantResourceType } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
@@ -195,7 +196,7 @@ async function setup() {
 		resourceId: credentialIdOf(grantedSecret),
 		permissions: ['secret:use', 'secret:write', 'secret:delete'],
 	})
-	const env = { APP_DB: db } as unknown as Env
+	const env = { APP_DB: db, AUDIT_DB: createAuditTestDb() } as unknown as Env
 	function contextFor(input: { userId: string; role: 'owner' | null }) {
 		return {
 			env,

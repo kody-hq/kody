@@ -141,6 +141,7 @@ export async function loadPackageMappingScope(input: {
 			env: input.env,
 			userId: savedPackage.userId,
 			sourceId: savedPackage.sourceId,
+			request: input.request,
 		}),
 		listUsableCredentials({
 			env: input.env,
@@ -328,7 +329,12 @@ function effectiveMapping(
 			}
 		}
 	}
-	const resolution = resolveNeedCandidates(need, scope.usable)
+	const resolution = resolveNeedCandidates(
+		need,
+		need.supplier === 'publisher'
+			? scope.usable.filter((credential) => credential.scope === 'org')
+			: scope.usable,
+	)
 	if (resolution.autoPick) {
 		return {
 			source: 'auto',
@@ -424,6 +430,10 @@ export async function buildPackageCredentialsView(
 			provider: need.provider,
 			description: need.description,
 			multiple: need.multiple,
+			...(need.supplier ? { supplier: need.supplier } : {}),
+			...(need.supplier === 'executor'
+				? { required: need.required ?? true }
+				: {}),
 			...(need.from ? { from: need.from } : {}),
 			defaults: {
 				org: storedView(
@@ -442,6 +452,7 @@ export async function buildPackageCredentialsView(
 			options: scope.usable
 				.filter(
 					(credential) =>
+						(need.supplier !== 'publisher' || credential.scope === 'org') &&
 						needAcceptsKind(need.kind, credential.kind) &&
 						needAcceptsProvider(need.provider, credential.provider),
 				)

@@ -237,6 +237,47 @@ test('listOrgsForPerson unions memberships and live grant orgs', async () => {
 	])
 })
 
+test('listOrganizationsForPerson marks a minted personal org id as personal', async () => {
+	const db = await createDb()
+	const stableUserId = testStableUserIdFromEmail('nova@example.com')
+	const personalOrgId = 'd'.repeat(64)
+	await insertPerson(db, {
+		stableUserId,
+		username: 'nova',
+		email: 'nova@example.com',
+		personalOrgId,
+	})
+	await provisionPersonalOrg(db, {
+		stableUserId,
+		orgId: personalOrgId,
+		username: 'nova',
+		createdAt: '2026-01-02T00:00:00.000Z',
+	})
+	const teamOrgId = 'e'.repeat(64)
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, created_at, updated_at)
+			 VALUES (?, 'alpha', 'Alpha', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z')`,
+		)
+		.bind(teamOrgId)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'owner', '2026-01-02T00:00:00.000Z')`,
+		)
+		.bind(teamOrgId, stableUserId)
+		.run()
+
+	const listed = await listOrganizationsForPerson(db, stableUserId)
+	expect(
+		listed.map((org) => ({ slug: org.slug, personal: org.personal })),
+	).toEqual([
+		{ slug: 'nova', personal: true },
+		{ slug: 'alpha', personal: false },
+	])
+})
+
 test('listOrganizationsForPerson puts the signup organization first and includes grant-only orgs', async () => {
 	const db = await createDb()
 	const stableUserId = testStableUserIdFromEmail('ada@example.com')

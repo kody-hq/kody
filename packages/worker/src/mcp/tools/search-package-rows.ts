@@ -30,7 +30,6 @@ function buildLeanPackageSearchProjection(
 		exports: [],
 		jobs: [],
 		subscriptions: [],
-		retrievers: [],
 		webhooks: [],
 	}
 }

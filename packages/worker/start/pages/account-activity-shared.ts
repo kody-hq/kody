@@ -68,7 +68,6 @@ export const surfaceFilterOptions: Array<{
 	{ value: 'app_realtime', label: 'App realtime' },
 	{ value: 'job', label: 'Job' },
 	{ value: 'workflow', label: 'Workflow' },
-	{ value: 'retriever', label: 'Retriever' },
 	{ value: 'webhook', label: 'Webhook' },
 ]
 
@@ -137,10 +136,57 @@ export function runDisplayName(run: AccountActivityRunListItem) {
 	return run.name?.trim() || surfaceLabel(run.surface)
 }
 
-export function runAttributionSubtitle(
-	run: Pick<AccountActivityRunListItem, 'entry' | 'workerId'>,
+export function startedByHandleLabel(
+	startedBy: AccountActivityRunListItem['startedBy'],
 ) {
-	const parts: Array<string> = []
+	if (!startedBy) return 'Unknown'
+	if (startedBy.username?.trim()) return `@${startedBy.username.trim()}`
+	if (startedBy.userId?.trim()) return startedBy.userId.trim()
+	return 'Unknown'
+}
+
+export function startedByClientLabel(
+	startedBy: AccountActivityRunListItem['startedBy'],
+) {
+	if (!startedBy) return null
+	switch (startedBy.client) {
+		case 'session':
+			return 'session'
+		case 'mcp':
+			return 'MCP'
+		case 'cli':
+			return 'CLI'
+		case 'api-token':
+			return startedBy.label?.trim()
+				? `API token (${startedBy.label.trim()})`
+				: 'API token'
+		case 'package-app':
+			return 'package app'
+		case 'schedule':
+			return 'schedule'
+		case 'webhook':
+			return 'webhook'
+		case 'inbound-email':
+			return 'inbound email'
+		case 'platform-event':
+			return 'event'
+		default: {
+			const exhaustive: never = startedBy.client
+			return exhaustive
+		}
+	}
+}
+
+function startedBySubtitle(startedBy: AccountActivityRunListItem['startedBy']) {
+	const who = startedByHandleLabel(startedBy)
+	const client = startedByClientLabel(startedBy)
+	return client ? `${who} · ${client}` : who
+}
+
+export function runAttributionSubtitle(
+	run: Pick<AccountActivityRunListItem, 'entry' | 'workerId' | 'startedBy'>,
+) {
+	const parts: Array<string> = [startedBySubtitle(run.startedBy)]
 	if (run.entry === 'invoke') parts.push('invoke')
 	else if (run.entry === 'code') parts.push('code')
 	if (run.workerId) {
@@ -148,7 +194,7 @@ export function runAttributionSubtitle(
 			run.workerId.length > 16 ? `${run.workerId.slice(0, 12)}…` : run.workerId
 		parts.push(shortId)
 	}
-	return parts.length > 0 ? parts.join(' · ') : null
+	return parts.join(' · ')
 }
 
 export function triageLabel(

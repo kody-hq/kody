@@ -47,9 +47,6 @@ export type UserOwnedKvKeyScheme = {
 		| 'identity_icon_derived_cache'
 		| 'usage_rollup_derived_cache'
 		| 'artifact_head_derived_cache'
-		| 'package_retriever_manifest'
-		| 'package_retriever_index_entry'
-		| 'package_retriever_index_prefix'
 		| 'package_skills_index'
 		| 'webhook_dispatch_payload'
 		| 'package_codemod_revert'
@@ -258,19 +255,6 @@ export const accountUserOwnedKvKeySchemes: ReadonlyArray<UserOwnedKvKeyScheme> =
 				'Expires through the KV expirationTtl written by the cachified adapter; retention is at most 65 minutes (5 minute TTL plus 1 hour stale-while-revalidate).',
 			notes:
 				'Default-branch HEAD of an Artifacts repo for package pages (buildArtifactSourceHeadCacheKey). Holds a branch name and commit hash only. Immediate account-deletion cleanup is optional because KV enforces the TTL and the repo id stops resolving once entity_sources is gone.',
-		},
-		{
-			id: 'package_retriever_manifest',
-			binding: 'BUNDLE_ARTIFACTS_KV',
-			prefixTemplate: 'package-retriever-manifest:v1:{userId}:{packageId}:',
-			notes: 'Deleted by deleteAllPackageRetrieverCacheEntriesForUser.',
-		},
-		{
-			id: 'package_retriever_index_entry',
-			binding: 'BUNDLE_ARTIFACTS_KV',
-			prefixTemplate:
-				'package-retriever-index-entry:v1:{userId}:{scope}:{packageId}:',
-			notes: 'Deleted by deleteAllPackageRetrieverCacheEntriesForUser.',
 		},
 		{
 			id: 'package_skills_index',

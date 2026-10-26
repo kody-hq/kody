@@ -117,6 +117,8 @@ you only have the MCP URL.
   `~/.codex/config.toml` `[mcp_servers.kody]` `url` entry. If Codex asks you to
   log in again after about an hour, see
   [Codex keeps asking for `codex mcp login kody`](./troubleshooting.md#codex-keeps-asking-for-codex-mcp-login-kody).
+  If authorize says Kody could not load Codex's details, see
+  [Authorize says Kody couldn't load the app's details](./troubleshooting.md#authorize-says-kody-couldnt-load-the-apps-details).
 
   </details>
 
@@ -140,7 +142,9 @@ you only have the MCP URL.
   personal token under the human user, so those sessions report "requires OAuth
   authorization" even when Kody issued a valid token. Set the Kody MCP server in
   Devin to Organization access (Customize, then MCPs) and connect it once, or
-  create sessions as the user with Devin's `create_as_user_id`.
+  create sessions on behalf of the user with Devin's `create_as_user_id`. The
+  service user must have `ImpersonateOrgSessions`; that attribution alone does
+  not establish Personal OAuth MCP eligibility.
 - **Gemini** — In the Gemini app or Jules, add a custom MCP connector and paste
   the MCP URL. Complete OAuth when Google prompts you.
 - **OpenClaw** — Run

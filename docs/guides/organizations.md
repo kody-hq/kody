@@ -24,12 +24,12 @@ catalog search (`search:read`) plus their grants. See
 
 ## Personal vs team
 
-|                    | Personal                                             | Team                                                                                                                                                                    |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                      |
-| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                     |
-| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                          |
-| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; Repositories lists the org's packages you can see plus every plain repo the org owns |
+|                    | Personal                                             | Team                                                                                                                                                                                            |
+| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                                              |
+| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                                             |
+| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                                                  |
+| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`) |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
@@ -93,10 +93,14 @@ link's kind, team or package, and preset in the details.
 A scheduled job, subscription, or webhook runs only after a person turns it on
 for themselves, by approving it on the package's approval page (or, for a job or
 subscription, with `enablementEnable`). Turning a cron enablement on also turns
-that job's `enabled` flag on and schedules the next tick. Minting a webhook URL
-does not turn it on: the mint returns the approval link, and deliveries fail
-with that link until someone approves. A webhook URL runs as one enabler. That
-person is the **enabler**, and every run acts as them:
+that job's `enabled` flag on and schedules the next tick when the enabler holds
+`job:write`. Without `job:write` the enablement still turns on but leaves the
+job unchanged: a job that was off stays off, and the enablement result's `job`
+field says so (`state: "left_off"`, `missing_permission: "job:write"`); a job
+that was already on stays on (`state: "already_on"`). Minting a webhook URL does
+not turn it on: the mint returns the approval link, and deliveries fail with
+that link until someone approves. A webhook URL runs as one enabler. That person
+is the **enabler**, and every run acts as them:
 
 - The run has the enabler's live access in the org, checked on every run. It can
   do only what the enabler could do by hand at that moment, never more.
@@ -138,9 +142,8 @@ did it (a person, an automation run, or a site admin), when, the old and new
 state, where it came from (web app, MCP, API, CLI, the scheduler, and so on),
 and the reason when one was given (`jobUpdate` and `enablementDisable` take an
 optional `reason`). Owners see the last 7 days under **On/off changes** on the
-Activity page. A job that reaches its own expiry time or a one-time job that
-finishes its run turns off without a row, and pause and resume are a separate
-state with their own reason.
+Activity page. A job that reaches its own expiry time turns off without a row,
+and pause and resume are a separate state with their own reason.
 
 Example: Bea is a Member of `@acme` with Use on `@acme/digest`. She turns on its
 nightly job. Each night it runs as Bea, with Bea's grants. It cannot read a

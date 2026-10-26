@@ -1,3 +1,4 @@
+import { orgAuditCauseFromCaller } from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -11,7 +12,7 @@ export const enablementDisableCapability = defineDomainCapability(
 		name: 'enablementDisable',
 		orgPermission: 'org:read',
 		description:
-			'Turn one enablement off for good; it stops on the next event. Its enabler or an org Owner may turn it off. Turning it on again creates a new enablement with enablementEnable.',
+			'Turn one enablement off for good; it stops on the next event. Its enabler or an org Owner may turn it off. A webhook turned off this way answers 404; turning it back on requires a person to Approve its URL again.',
 		keywords: ['disable', 'enablement', 'turn off', 'stop', 'trigger'],
 		readOnly: false,
 		idempotent: true,
@@ -34,6 +35,7 @@ export const enablementDisableCapability = defineDomainCapability(
 				request: requireMcpRequest(ctx.callerContext),
 				enablementId: args.enablementId,
 				reason: args.reason,
+				cause: orgAuditCauseFromCaller(ctx.callerContext),
 			})
 			return { enablement: toEnablementOutput(enablement) }
 		},

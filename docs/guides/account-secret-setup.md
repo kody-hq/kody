@@ -74,11 +74,12 @@ read and use the user's secrets without an `allowed_packages` grant; updating or
 deleting a user secret from package code still requires that grant. Only the
 account owner can add a package to that grant on the secret editor or
 `/@<slug>/-/secrets/approve` - a focused Allow page like `/connect/secrets`.
-`secretLock` returns that approval URL. Send the link and wait until they
-confirm. The grant is written on that page. Removing a grant is also
-website-only. When an **unadopted community-forked** package needs access to one
-or more **existing** user secrets, either adopt it after reviewing the source or
-send the approval link so they keep the secrets they already saved.
+`resourceLock({ kind: 'secret', name, package_id })` returns that approval URL.
+Send the link and wait until they confirm. The grant is written on that page.
+Removing a grant is also website-only. When an **unadopted community-forked**
+package needs access to one or more **existing** user secrets, either adopt it
+after reviewing the source or send the approval link so they keep the secrets
+they already saved.
 
 - Single secret:
   `/@<slug>/-/secrets/user/{secretName}?package_id={savedPackageId}&package={kodyId}`

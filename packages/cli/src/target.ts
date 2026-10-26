@@ -57,15 +57,3 @@ export function parseTargetFlag(value: string): KodyTarget {
 		`\`--target\` must be \`prod\` or \`mock\` (got ${JSON.stringify(value)}). Example: \`kody execute --target mock --local --code '…'\`.`,
 	)
 }
-
-/** True when this command accepts `--target` / `KODY_TARGET`. */
-export function commandAcceptsTarget(
-	command: string,
-): command is TargetAwareCommand {
-	return (
-		command === 'dev' ||
-		command === 'execute' ||
-		command === 'search' ||
-		command === 'whoami'
-	)
-}

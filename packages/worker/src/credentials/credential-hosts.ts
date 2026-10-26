@@ -12,6 +12,7 @@ import {
 	type OrgAuditWriter,
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
+import { bumpUsableCredentialsGeneration } from './credential-read-generation.ts'
 import { getOrgCredential, type OrgCredential } from './credential-ids.ts'
 
 export const credentialHostsMax = 20
@@ -323,5 +324,6 @@ export async function updateCredentialHosts(input: {
 	if (!changed) {
 		throw new McpCallerError('No credential with that id in this org.')
 	}
+	bumpUsableCredentialsGeneration(input.db)
 	return { ...settings, changed: true }
 }

@@ -57,7 +57,13 @@ export type UserScopedDataTarget =
 			surface?: string
 			reason?: string
 	  }
-	| { kind: 'bucket_parent'; table: string; parentTable: string }
+	| {
+			kind: 'bucket_parent'
+			table: string
+			parentTable: string
+			childParentColumn?: string
+			parentUserColumn?: string
+	  }
 	| {
 			kind: 'community_listing_child'
 			table: string
@@ -215,6 +221,26 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['actor_user_id'],
 	},
 	{ kind: 'user_id', table: 'usage_attribution_daily' },
+	{
+		kind: 'bucket_parent',
+		table: 'package_app_grant_credential_mappings',
+		parentTable: 'package_app_oauth_grants',
+		childParentColumn: 'grant_id',
+		parentUserColumn: 'person_id',
+	},
+	{
+		kind: 'user_id',
+		table: 'package_app_visitor_attribution_daily',
+	},
+	{
+		kind: 'user_columns',
+		table: 'package_app_visitor_attribution_daily',
+		columns: ['visitor_user_id'],
+		includeInExport: false,
+		surface: 'package_app_visitor_attribution_daily_visitor_ids',
+		reason:
+			'Purge derived visitor usage rows that reference a deleted person and exclude cross-account visitor ids from export.',
+	},
 	{
 		kind: 'user_columns',
 		table: 'usage_attribution_daily',
@@ -593,6 +619,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		surface: 'follows_owned_by_org',
 		reason:
 			'Org hard purge deletes follows owned by the org. Account export uses creator_user_id so the creating person receives the row. Deleting a member anonymizes creator_user_id and leaves the org follow in place.',
+	},
+	{
+		kind: 'user_columns',
+		table: 'follow_recent_updates',
+		columns: ['follower_org_id'],
+		includeInExport: false,
+		surface: 'follow_recent_updates_owned_by_org',
+		reason:
+			'Org hard purge deletes the Recent updates of follows owned by the org. Rows only describe public or readable follow targets and carry no person id, so they stay out of account export.',
 	},
 	{
 		kind: 'community_listing_child',
@@ -1022,8 +1057,11 @@ export function buildUserScopedTargetMatch(input: {
 			}
 		}
 		case 'bucket_parent': {
-			const parentMatch = columnInIdsSql('user_id', ids)
-			const whereSql = `bucket_id IN (
+			const parentMatch = columnInIdsSql(
+				target.parentUserColumn ?? 'user_id',
+				ids,
+			)
+			const whereSql = `${target.childParentColumn ?? 'bucket_id'} IN (
 						SELECT id FROM ${target.parentTable} WHERE ${parentMatch.sql}
 					)`
 			return {
@@ -1184,6 +1222,7 @@ export const accountExportForeignUserIdColumnsByTable: Readonly<
 	community_activity_events: ['actor_user_id'],
 	durable_object_duration_daily: ['actor_user_id'],
 	usage_attribution_daily: ['actor_user_id'],
+	package_app_visitor_attribution_daily: ['visitor_user_id'],
 	usage_connection_daily: ['holder_user_id'],
 	usage_rollups: ['actor_user_id'],
 	community_reports: ['listing_owner_user_id', 'resolved_by_user_id'],

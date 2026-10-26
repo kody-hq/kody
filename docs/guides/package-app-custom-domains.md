@@ -11,15 +11,19 @@ category: platform
 # Custom domains
 
 A package app normally lives on `*.kody.run`. A paid organization can also serve
-its apps on a hostname it owns, such as `apps.example.com`. Kody uses Cloudflare
-for SaaS to route the hostname and issue its certificate.
+its apps on a hostname it owns, such as `apps.example.com`. Managing hostnames
+requires the `package-app-custom-domains` feature (off by default; experiments
+opt-in). Serving a verified hostname requires that feature's global switch to be
+on. Kody uses Cloudflare for SaaS to route the hostname and issue its
+certificate.
 
 There are two kinds of binding:
 
 - **App** (`binding_kind: "app"`): one internet-visible (public) app, served at
   the root of the hostname, for example `https://apps.example.com/`.
 - **Org** (`binding_kind: "org"`): the organization's private apps, served at
-  `https://apps.example.com/packages/{kodyId}`.
+  `https://apps.example.com/{package-name}` (legacy `/packages/{package-name}`
+  still works).
 
 ## Which hostnames are allowed
 
@@ -95,7 +99,7 @@ Settings page) show a single `status` for each hostname:
   failures need the hostname removed and added again; the reason says when.
 
 The raw Cloudflare fields (`hostname_status`, `ssl_status`) are still there for
-debugging. A previously active hostname whose CNAME disappears gets a grace
-period before Kody removes it.
+debugging. When an active hostname's CNAME disappears, Kody keeps the hostname
+for a grace period before removing it.
 
 Remove a hostname with `packageAppCustomHostnameDelete`.

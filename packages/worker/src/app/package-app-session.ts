@@ -290,6 +290,13 @@ function parseStoredPackageAppSession(
 	}
 }
 
+function cookieHeaderHasName(cookieHeader: string, name: string) {
+	return cookieHeader.split(';').some((cookie) => {
+		const separator = cookie.indexOf('=')
+		return separator >= 0 && cookie.slice(0, separator).trim() === name
+	})
+}
+
 export async function readPackageAppSession(input: {
 	request: Request
 	env: Env
@@ -300,8 +307,21 @@ export async function readPackageAppSession(input: {
 	const cookieHeader = input.request.headers.get('Cookie')
 	if (!cookieHeader) return null
 
-	const now = input.now ?? Date.now()
 	const slug = input.slug.trim().toLowerCase()
+	const appCookieNames = await Promise.all([
+		packageAppSessionCookieName(slug, true),
+		packageAppSessionCookieName(slug, false),
+	])
+	const cookieNames = [
+		...appCookieNames,
+		legacySecurePackageAppSessionCookieName,
+		legacyInsecurePackageAppSessionCookieName,
+	]
+	if (!cookieNames.some((name) => cookieHeaderHasName(cookieHeader, name))) {
+		return null
+	}
+
+	const now = input.now ?? Date.now()
 	const secureCookie = await getPackageAppSessionCookie(input.env, slug, true)
 	const insecureCookie = await getPackageAppSessionCookie(
 		input.env,

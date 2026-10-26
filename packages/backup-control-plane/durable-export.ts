@@ -34,6 +34,13 @@ export interface DurableExportOptions {
 	earlyPollCount?: number
 	earlyPollIntervalSeconds?: number
 	maxExportRestarts?: number
+	/**
+	 * Prefix durable step names so a later recovery attempt (after
+	 * `export-result-expired`) can start a real new export. Cloudflare
+	 * Workflow instance restart replays successful steps with the same name,
+	 * so catch-up `restart()` alone cannot clear an expired bookmark.
+	 */
+	stepNamePrefix?: string
 	api?: ApiOptions
 }
 
@@ -102,8 +109,9 @@ export async function runDurableExport(
 		)
 	}
 
+	const stepNamePrefix = options.stepNamePrefix ?? ''
 	let state: ExportState = await step.do(
-		'start-d1-export',
+		`${stepNamePrefix}start-d1-export`,
 		API_STEP_CONFIG,
 		async () => startD1Export(env, options.api),
 	)
@@ -123,7 +131,7 @@ export async function runDurableExport(
 				}
 				restarts += 1
 				state = await step.do(
-					`restart-d1-export-${restarts}`,
+					`${stepNamePrefix}restart-d1-export-${restarts}`,
 					API_STEP_CONFIG,
 					async () => startD1Export(env, options.api),
 				)
@@ -141,7 +149,7 @@ export async function runDurableExport(
 				const bookmark = state.bookmark
 				// Poll immediately after start/restart and after each wait.
 				state = await step.do(
-					`poll-d1-export-${polls}`,
+					`${stepNamePrefix}poll-d1-export-${polls}`,
 					API_STEP_CONFIG,
 					async () => pollD1Export(env, bookmark, options.api),
 				)
@@ -149,7 +157,7 @@ export async function runDurableExport(
 				if (state.kind === 'lost') continue
 				if (polls < maxPolls) {
 					await step.sleep(
-						`wait-d1-export-${polls}`,
+						`${stepNamePrefix}wait-d1-export-${polls}`,
 						waitDuration(polls, earlyCount, earlyInterval, laterInterval),
 					)
 				}

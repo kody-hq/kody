@@ -353,6 +353,14 @@ test('queue retries pre-execution conflict codes and records failed invokes with
 			httpStatus: 502,
 			error: 'invocation_status_500',
 			invocationErrorCode: 'invocation_failed',
+			// The export's own error rides along so the webhook run can show it.
+			invocationBody: {
+				ok: false,
+				error: {
+					code: 'invocation_failed',
+					message: 'Sandbox blew up before user code.',
+				},
+			},
 			receivedAt: '2026-08-08T12:00:00.000Z',
 			logs: expect.arrayContaining([
 				expect.objectContaining({

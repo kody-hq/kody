@@ -12,6 +12,7 @@ import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-ses
 import { createInMemoryRunLogUsageEnv } from '#worker/test-support/run-log-usage.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { filterAndSortCreditAttributionVisitors } from '#universal/credit-attribution.ts'
 import { usageByPackageGetCapability } from './usage-by-package-get.ts'
 
 const email = 'usage-by-package-get@example.com'
@@ -101,6 +102,30 @@ function seedAttributionUnits(input: {
 		)
 }
 
+function seedVisitorAttribution(input: {
+	sqlite: DatabaseSync
+	stableUserId: string
+	visitorUserId: string
+	meter: 'unique_worker_days' | 'durable_object_rows_read'
+	units: number
+	day: string
+}) {
+	input.sqlite
+		.prepare(
+			`INSERT INTO package_app_visitor_attribution_daily (
+				user_id, day, package_id, visitor_user_id, meter, units, updated_at
+			) VALUES (?, ?, 'pkg-alpha', ?, ?, ?, ?)`,
+		)
+		.run(
+			input.stableUserId,
+			input.day,
+			input.visitorUserId,
+			input.meter,
+			input.units,
+			new Date().toISOString(),
+		)
+}
+
 test('usageByPackageGet attributes past-include Worker compute credits by package', async () => {
 	const now = new Date()
 	const month = utcMonthKey(now)
@@ -153,6 +178,109 @@ test('usageByPackageGet attributes past-include Worker compute credits by packag
 				meter.label === 'Worker compute',
 		),
 	).toBe(true)
+})
+
+test('usageByPackageGet includes combined anonymous and named visitor spend', async () => {
+	const now = new Date()
+	const day = utcDayKey(now)
+	const { env, stableUserId, sqlite } = createAttributionEnv()
+	const visitorOne = testStableUserIdFromEmail('visitor-one@example.com')
+	const visitorTwo = testStableUserIdFromEmail('visitor-two@example.com')
+	for (const [visitorId, visitorName] of [
+		[visitorOne, 'visitor-one'],
+		[visitorTwo, 'visitor-two'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO users (username, email, password_hash, stable_user_id)
+				 VALUES (?, ?, 'hash', ?)`,
+			)
+			.run(visitorName, `${visitorName}@example.com`, visitorId)
+	}
+	seedAttributionUnits({
+		sqlite,
+		stableUserId,
+		day,
+		packageId: 'pkg-alpha',
+		meter: 'unique_worker_days',
+		units: 55,
+	})
+	seedVisitorAttribution({
+		sqlite,
+		stableUserId,
+		visitorUserId: visitorOne,
+		meter: 'unique_worker_days',
+		units: 30,
+		day,
+	})
+	seedVisitorAttribution({
+		sqlite,
+		stableUserId,
+		visitorUserId: visitorTwo,
+		meter: 'unique_worker_days',
+		units: 20,
+		day,
+	})
+	seedVisitorAttribution({
+		sqlite,
+		stableUserId,
+		visitorUserId: '',
+		meter: 'unique_worker_days',
+		units: 5,
+		day,
+	})
+	seedVisitorAttribution({
+		sqlite,
+		stableUserId,
+		visitorUserId: '',
+		meter: 'durable_object_rows_read',
+		units: 100,
+		day: `${utcMonthKey(now)}-02`,
+	})
+	const result = await usageByPackageGetCapability.handler(
+		{ packageId: 'pkg-alpha' },
+		{ env, callerContext: callerContext(stableUserId) },
+	)
+	const alpha = result.rows[0]
+	expect(alpha?.visitors?.map((visitor) => visitor.displayName)).toEqual([
+		'visitor-one',
+		'visitor-two',
+		'Anonymous visitor',
+	])
+	expect(alpha?.visitorCount).toBe(3)
+	expect(
+		alpha?.visitors?.find(
+			(visitor) => visitor.displayName === 'Anonymous visitor',
+		)?.meters,
+	).toHaveLength(2)
+	expect(
+		alpha?.visitors?.every((visitor) => visitor.creditsMicroUsd >= 0),
+	).toBe(true)
+})
+
+test('visitor spend filtering is case-insensitive and supports username sorting', () => {
+	const rows = [
+		{
+			displayName: 'zeta',
+			creditsMicroUsd: 50,
+			lastDay: '2026-07-01',
+			meters: [],
+		},
+		{
+			displayName: 'Alpha',
+			creditsMicroUsd: 25,
+			lastDay: '2026-07-01',
+			meters: [],
+		},
+	]
+	expect(
+		filterAndSortCreditAttributionVisitors(rows, 'ALP', 'credits'),
+	).toHaveLength(1)
+	expect(
+		filterAndSortCreditAttributionVisitors(rows, '', 'username').map(
+			(row) => row.displayName,
+		),
+	).toEqual(['Alpha', 'zeta'])
 })
 
 test('usageByPackageGet packageId returns that package slice of the period', async () => {

@@ -3,6 +3,7 @@ import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { listPackageWebhooks } from '#worker/package-registry/manifest.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { webhookEndpointNotOffSql } from './repo.ts'
 import {
 	mapWithConcurrency,
 	readWebhookDeliveries,
@@ -68,7 +69,9 @@ type EndpointRow = {
 }
 
 async function listWebhookEndpoints(db: D1Database, includeDisabled: boolean) {
-	const enabledSql = includeDisabled ? '' : ' AND e.enabled = 1'
+	const enabledSql = includeDisabled
+		? ''
+		: ` AND ${webhookEndpointNotOffSql('e')}`
 	const rows: Array<EndpointRow> = []
 	let after = ''
 	for (;;) {
@@ -76,7 +79,8 @@ async function listWebhookEndpoints(db: D1Database, includeDisabled: boolean) {
 			(
 				await db
 					.prepare(
-						`SELECT e.id, e.enabled, e.user_id, e.package_id, e.webhook_name,
+						`SELECT e.id, ${webhookEndpointNotOffSql('e')} AS enabled,
+							e.user_id, e.package_id, e.webhook_name,
 							o.slug AS owner_slug, p.kody_id, p.source_id
 						 FROM webhook_endpoints e
 						 LEFT JOIN orgs o ON o.id = e.user_id

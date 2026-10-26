@@ -115,9 +115,12 @@ const pendingPackageSourceRowBatches = new WeakMap<
 
 /**
  * Fresh D1 read of the entity-source rows for `sourceIds`, omitting ids that
- * are missing or owned by a different user. Used by queue subscription
- * discovery after `listSavedPackagesByUserId` so one `IN (…)` replaces an
- * N+1 of `SELECT * FROM entity_sources WHERE id = ?`.
+ * are missing or owned by a different user. Queue subscription discovery
+ * (`loadMatchingPackageSubscriptions`) and the publish/refresh topic-map
+ * scan (`scanPackageSubscriptionTopicMap`) prefetch every saved package's
+ * source with this helper before chunked manifest loads, so one `IN (…)`
+ * (chunked by `maxD1BoundParameters`) replaces ceil(N/5) sequential
+ * batched lookups from the per-call microtask batcher alone.
  */
 export async function loadPackageSourceRowsForUser(input: {
 	env: Pick<Env, 'APP_DB'>

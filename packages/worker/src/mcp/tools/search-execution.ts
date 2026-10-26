@@ -6,11 +6,9 @@ import {
 	resolveCallerFeatureFlagEvaluations,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
-import { runWithDynamicWorkerEvaluationBudget } from '#mcp/executor.ts'
 import { buildMemoryRetrievalQuery } from '#mcp/tools/memory-tool-context.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
-import { runPackageRetrievers } from '#worker/package-retrievers/service.ts'
 import {
 	createTextEmbeddingCache,
 	isCapabilitySearchOffline,
@@ -29,7 +27,6 @@ import { searchQueryUsesRankingEmbedding } from './search-domain-overview.ts'
 import { loadSearchRowsAndRegistry } from './search-loaders.ts'
 import {
 	launchSearchMemoryEnrichment,
-	resolveSearchMemoryContext,
 	settleSearchMemoryEnrichment,
 } from './search-memory.ts'
 import { elapsedMs } from './search-timing.ts'
@@ -73,18 +70,6 @@ type ExecuteSearchListInput = {
 }
 
 export async function executeSearchList(
-	input: ExecuteSearchListInput,
-): Promise<SearchListExecutionResult> {
-	// Memory enrichment (context-scope retrievers) and search-scope retrievers
-	// each open their own Worker Loader evaluations. Cloudflare caps those at
-	// four per incoming request; a shared budget lets the later wave queue
-	// instead of failing at sandboxMs 0.
-	return await runWithDynamicWorkerEvaluationBudget(
-		async () => await executeSearchListWithinBudget(input),
-	)
-}
-
-async function executeSearchListWithinBudget(
 	input: ExecuteSearchListInput,
 ): Promise<SearchListExecutionResult> {
 	const phaseTimings: Partial<SearchPhaseTimings> = input.phaseTimings ?? {}
@@ -243,42 +228,9 @@ async function executeSearchListWithinBudget(
 		phaseTimings.rowAndRegistryLoadMs = elapsedMs(rowAndRegistryLoadStart)
 		return rows
 	})
-	const retrieversStart = performance.now()
-	const retrieverRunStarted =
-		input.userId && input.query && !domainFilter
-			? runPackageRetrievers({
-					env: input.env,
-					baseUrl: input.callerContext.baseUrl,
-					userId: input.userId,
-					request: input.callerContext.request,
-					scope: 'search',
-					query: input.query,
-					includeHiddenPackages: input.includeHiddenPackages,
-					memoryContext: resolveSearchMemoryContext({
-						query: input.query,
-						memoryContext: input.memoryContext,
-					}),
-					conversationId: input.conversationId,
-				})
-			: Promise.resolve({ results: [], warnings: [] })
-	// Rows and flags still have to finish before ranking. Observe a retriever
-	// rejection now so that gap cannot surface as an unhandled rejection.
-	// Awaiting `retrieverRunPromise` later still throws.
-	void retrieverRunStarted.catch(() => {})
-	const retrieverRunPromise = retrieverRunStarted.then(
-		(settled) => {
-			phaseTimings.retrieversMs = elapsedMs(retrieversStart)
-			return settled
-		},
-		(error: unknown) => {
-			phaseTimings.retrieversMs = elapsedMs(retrieversStart)
-			throw error
-		},
-	)
-	void retrieverRunPromise.catch(() => {})
 	const featureFlagsStart = performance.now()
-	// Flag reads overlap row load and retrievers. Recall width needs the
-	// evaluation before candidate generation; retriever hits are merged later.
+	// Flag reads overlap row load. Recall width needs the evaluation before
+	// candidate generation.
 	const evaluationsPromise = (async () => {
 		await resolveCallerFeatureFlags(input.env, input.callerContext)
 		return await resolveCallerFeatureFlagEvaluations(
@@ -307,7 +259,6 @@ async function executeSearchListWithinBudget(
 		userId: input.userId ?? undefined,
 		registry: searchRows.registry,
 		optionalRows: searchRows,
-		retrieverResults: retrieverRunPromise.then((run) => run.results),
 		embedText: embeddingCache.embedText,
 		...(domainFilter ? { domain: domainFilter } : {}),
 		...(callerHasRole(input.callerContext, 'admin')
@@ -317,12 +268,7 @@ async function executeSearchListWithinBudget(
 		...(jevRerankPlanEligible ? { jevRerankPlanEligible: true } : {}),
 		...(input.signal ? { signal: input.signal } : {}),
 	})
-	const [ranked, retrieverRun] = await Promise.all([
-		rankedPromise,
-		retrieverRunPromise,
-	])
-	result = ranked
-	warnings.push(...retrieverRun.warnings)
+	result = await rankedPromise
 	input.signal?.throwIfAborted()
 	phaseTimings.searchUnifiedMs = elapsedMs(searchUnifiedStart)
 	// Only ranked-path results include jevRerank telemetry. Domain index /

@@ -46,3 +46,11 @@ went with them: the enablement backfill branch for non-package jobs, the
 sweeper and `preserved` flag, and the `/account/jobs` delete, retention, and
 enable toggles. The jobs D1 now asserts every row id is a `package-job:` id, and
 the runner throws on any job that is not a package job.
+
+## Amendment: once schedules retired
+
+Package `once` jobs overlapped durable workflows and have been removed from the
+schedule schema, runner, MCP capabilities, and jobs UI. Publishing now rejects
+them with guidance to use `workflows.create` for deferred one-shot work.
+Migration 0008 deletes stored once-schedule job rows that are disabled, already
+ran, or deleted, and asserts that no enabled, never-run once jobs remain.

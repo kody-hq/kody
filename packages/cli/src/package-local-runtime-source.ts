@@ -30,6 +30,7 @@ export type PackageLocalContext = {
 	hostedUrl: string
 	assetBasePath: string
 	clientModuleUrl: string | null
+	cookiePrefix: string
 }
 
 export {
@@ -44,13 +45,28 @@ export {
  * Runtime module for package-local workerd. `packageStorage()` hops through the
  * bridge to mock `__mockPackageStorage*` (or refuses clearly on prod until the
  * package is published).
+ *
+ * `packageBinding` must be a signed `kpb1.…` token from package-graph. Bare
+ * package UUIDs are never accepted here — CapabilityProxy only trusts bindings
+ * verified by `authorizeLocalExecutePackageBinding`.
  */
 export function createPackageLocalRuntimeModuleSource(input: {
 	packageContext: PackageLocalContext
 	/** When true, packageStorage uses mock capability hops. */
 	mockStorage: boolean
+	/**
+	 * Signed local-execute package binding (`kpb1.…`). When set, CAF and
+	 * oauthClientCredentials send it as `packageId` on CapabilityProxy hops.
+	 */
+	packageBinding?: string
 }): string {
 	const ctxLiteral = JSON.stringify(input.packageContext)
+	const packageBinding =
+		typeof input.packageBinding === 'string' &&
+		input.packageBinding.startsWith('kpb1.')
+			? input.packageBinding
+			: null
+	const packageBindingLiteral = JSON.stringify(packageBinding)
 	const storageBlock = input.mockStorage
 		? `
 export function packageStorage() {
@@ -120,6 +136,10 @@ export const packageSecrets = {
 export const packageContext = Object.freeze(${ctxLiteral});
 export const email = null;
 export const events = null;
+
+// Signed binding from package-graph only (never a bare package UUID). Origin
+// verifies via authorizeLocalExecutePackageBinding.
+const __kodyPackageBinding = ${packageBindingLiteral};
 
 const __kodyNullBodyStatuses = new Set([204, 205, 304]);
 
@@ -199,6 +219,7 @@ export async function createAuthenticatedFetch(providerName) {
 		}
 		const result = await __kodyCall(['kody', 'authenticatedFetch'], [{
 			providerName: name,
+			...(__kodyPackageBinding ? { packageId: __kodyPackageBinding } : {}),
 			request: {
 				url,
 				method,
@@ -251,7 +272,11 @@ export const secretHeaders = {
 };
 
 export async function oauthClientCredentials(input) {
-	return await __kodyCall(['kody', 'oauthClientCredentials'], [input ?? {}]);
+	const { packageId: _ignored, ...rest } = input ?? {};
+	return await __kodyCall(['kody', 'oauthClientCredentials'], [{
+		...rest,
+		...(__kodyPackageBinding ? { packageId: __kodyPackageBinding } : {}),
+	}]);
 }
 
 ${credentialClientRuntimeSource}
@@ -267,8 +292,30 @@ const __kodyRuntimeStorage =
 	__globalAny[__kodyRuntimeStorageSymbol] ??
 	(__globalAny[__kodyRuntimeStorageSymbol] = new AsyncLocalStorage());
 
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+
 const __kodyRuntimeDefault = Object.freeze({
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,

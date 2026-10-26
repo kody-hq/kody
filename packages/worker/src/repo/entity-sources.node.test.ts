@@ -9,6 +9,7 @@ import {
 	deleteEntitySource,
 	externalReconcileGraceMs,
 	listEntitySourcesByIds,
+	listEntitySourcesByIdsForUser,
 	listEntitySourcesForExternalReconcile,
 	markEntitySourcePendingExternalReconcile,
 } from './entity-sources.ts'
@@ -249,5 +250,55 @@ test('listEntitySourcesByIds batches ids into IN queries and skips missing rows'
 	await listEntitySourcesByIds(db, manyIds)
 	expect(
 		queries.filter((query) => query.includes('WHERE id IN (')).length,
+	).toBe(3)
+})
+
+test('listEntitySourcesByIdsForUser scopes by user_id and skips other users', async () => {
+	const sqlite = entitySourcesSqlite()
+	sqlite
+		.prepare(
+			`INSERT INTO entity_sources VALUES
+				('source-mine', 'user-1', 'package', 'package-mine', 'repo-mine',
+				'commit-1', NULL, 'package.json', '/', NULL, NULL, NULL,
+				'2026-09-10T00:00:00.000Z', '2026-09-10T00:00:00.000Z')`,
+		)
+		.run()
+	sqlite
+		.prepare(
+			`INSERT INTO entity_sources VALUES
+				('source-theirs', 'user-2', 'package', 'package-theirs', 'repo-theirs',
+				'commit-1', NULL, 'package.json', '/', NULL, NULL, NULL,
+				'2026-09-10T00:00:00.000Z', '2026-09-10T00:00:00.000Z')`,
+		)
+		.run()
+
+	const queries: Array<string> = []
+	const db = createD1FromSqlite(sqlite, { queries, maxBindings: 100 })
+
+	expect(
+		await listEntitySourcesByIdsForUser(db, {
+			userId: ownerIdFromStored('user-1'),
+			ids: [],
+		}),
+	).toEqual([])
+	expect(queries).toEqual([])
+
+	const loaded = await listEntitySourcesByIdsForUser(db, {
+		userId: ownerIdFromStored('user-1'),
+		ids: ['source-mine', 'source-theirs', 'source-missing', 'source-mine'],
+	})
+	expect(loaded.map((row) => row.id)).toEqual(['source-mine'])
+	expect(queries).toEqual([
+		'SELECT * FROM entity_sources WHERE user_id = ? AND id IN (?, ?, ?) AND deleted_at IS NULL',
+	])
+
+	const manyIds = Array.from({ length: 100 }, (_, index) => `missing-${index}`)
+	await listEntitySourcesByIdsForUser(db, {
+		userId: ownerIdFromStored('user-1'),
+		ids: manyIds,
+	})
+	expect(
+		queries.filter((query) => query.includes('WHERE user_id = ? AND id IN ('))
+			.length,
 	).toBe(3)
 })

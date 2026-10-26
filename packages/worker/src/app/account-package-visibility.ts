@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
 import {
 	packageMutationResult,
@@ -105,6 +106,7 @@ export async function setAccountPackageVisibility(input: {
 					userId: ownerUserId,
 					packageId,
 					isPrivate: true,
+					audit: optionalOrgAuditWriter(input.env, input.user.request),
 				})
 				if (!changed) {
 					return packageMutationResult(

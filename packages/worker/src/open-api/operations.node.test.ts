@@ -10,6 +10,7 @@ import { buildOpenApiDocument, resolveApiOperation } from './document.ts'
 import {
 	apiOperationUsesQueryInputs,
 	apiOperations,
+	capabilityNameForOperation,
 	getApiOperationPathParams,
 	listApiOperationPaths,
 	matchApiRoute,
@@ -85,7 +86,8 @@ test('every capability operation is a public, non-admin capability with matching
 	for (const operation of apiOperations) {
 		const resolved = resolveApiOperation(operation, registry)
 		if (operation.kind === 'capability') {
-			const capability = registry.capabilityMap[operation.operationId]!
+			const capability =
+				registry.capabilityMap[capabilityNameForOperation(operation)]!
 			if (excludedDomains.has(capability.domain)) {
 				problems.push(`${operation.operationId}: excluded domain`)
 			}
@@ -204,6 +206,49 @@ test('every operation routes to itself, and static segments beat params', () => 
 	expect(
 		gitRemoteByBody.kind === 'match' && gitRemoteByBody.pathParams,
 	).toEqual({})
+
+	const packageGitRemoteById = matchApiRoute(
+		'POST',
+		'/v1/packages/11111111-1111-4111-8111-111111111111/git-remote',
+	)
+	expect(packageGitRemoteById).toMatchObject({
+		kind: 'match',
+		pathParams: { package_id: '11111111-1111-4111-8111-111111111111' },
+	})
+	expect(
+		packageGitRemoteById.kind === 'match' &&
+			packageGitRemoteById.operation.operationId,
+	).toBe('packageGetGitRemote')
+
+	const packageGitRemoteByBody = matchApiRoute(
+		'POST',
+		'/v1/packages/git-remote',
+	)
+	expect(packageGitRemoteByBody).toMatchObject({
+		kind: 'match',
+		pathParams: {},
+	})
+	expect(
+		packageGitRemoteByBody.kind === 'match' &&
+			packageGitRemoteByBody.operation.operationId,
+	).toBe('packageGetGitRemote')
+	expect(
+		packageGitRemoteByBody.kind === 'match' &&
+			packageGitRemoteByBody.pathParams,
+	).toEqual({})
+
+	const packageExternalPushByBody = matchApiRoute(
+		'POST',
+		'/v1/packages/external-push',
+	)
+	expect(packageExternalPushByBody).toMatchObject({
+		kind: 'match',
+		pathParams: {},
+	})
+	expect(
+		packageExternalPushByBody.kind === 'match' &&
+			packageExternalPushByBody.operation.operationId,
+	).toBe('packagePublishExternalPush')
 })
 
 test('the OpenAPI document covers every operation with resolvable refs', async () => {
@@ -271,6 +316,47 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 			repo_id: expect.anything(),
 		}),
 	})
+
+	expect(document.paths['/v1/packages/git-remote']?.['post']?.operationId).toBe(
+		'packageGetGitRemote',
+	)
+	expect(
+		document.paths['/v1/packages/{package_id}/git-remote']?.['post']
+			?.operationId,
+	).toBe('packageGetGitRemoteByPath')
+	const bodyOnlyPackageGitRemote =
+		document.paths['/v1/packages/git-remote']?.['post']
+	expect(bodyOnlyPackageGitRemote).toBeDefined()
+	expect(
+		(bodyOnlyPackageGitRemote?.parameters ?? []).filter(
+			(parameter: { in: string }) => parameter.in === 'path',
+		),
+	).toEqual([])
+	expect(
+		bodyOnlyPackageGitRemote?.requestBody?.content['application/json']?.schema,
+	).toMatchObject({
+		properties: expect.objectContaining({
+			name: expect.anything(),
+			package_id: expect.anything(),
+			create: expect.anything(),
+		}),
+	})
+	expect(
+		document.paths['/v1/packages/external-push']?.['post']?.requestBody
+			?.content['application/json']?.schema,
+	).toMatchObject({
+		properties: expect.objectContaining({
+			name: expect.anything(),
+			package_id: expect.anything(),
+		}),
+	})
+	expect(
+		document.paths['/v1/packages/external-push']?.['post']?.operationId,
+	).toBe('packagePublishExternalPush')
+	expect(
+		document.paths['/v1/packages/{package_id}/external-push']?.['post']
+			?.operationId,
+	).toBe('packagePublishExternalPushByPath')
 
 	const serialized = JSON.stringify(document)
 	expect(serialized).not.toContain('"$schema"')
@@ -370,10 +456,86 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 	expect(
 		Object.keys((secretBody?.['properties'] as object) ?? {}),
 	).not.toContain('name')
+	const resourceLock = document.paths['/v1/resource-locks']?.['post']
+	expect(resourceLock?.['x-kody-permission']).toBe('none')
+	const resourceLockSchema =
+		resourceLock?.requestBody?.content['application/json']?.schema
 	expect(
-		document.paths['/v1/secrets/lock']?.['post']?.['x-kody-permission'],
-	).toBe('secret:use')
+		Array.isArray(resourceLockSchema?.['oneOf']) ||
+			Array.isArray(resourceLockSchema?.['anyOf']),
+	).toBe(true)
+	expect(resourceLock?.deprecated).toBeUndefined()
+	const deprecatedLockRoutes = [
+		{
+			operationId: 'secretLock',
+			path: '/v1/secrets/lock',
+			pathParams: [],
+			permission: 'secret:use',
+		},
+		{
+			operationId: 'secretProviderLock',
+			path: '/v1/secret-providers/{provider}/lock',
+			pathParams: ['provider'],
+			permission: 'secret:use',
+		},
+		{
+			operationId: 'integrationLock',
+			path: '/v1/integrations/{name}/lock',
+			pathParams: ['name'],
+			permission: 'integration:use',
+		},
+		{
+			operationId: 'mcpServerLock',
+			path: '/v1/mcp-servers/{server}/lock',
+			pathParams: ['server'],
+			permission: 'integration:use',
+		},
+	]
+	for (const deprecatedRoute of deprecatedLockRoutes) {
+		const operation = document.paths[deprecatedRoute.path]?.['post']
+		expect(operation).toMatchObject({
+			operationId: deprecatedRoute.operationId,
+			deprecated: true,
+		})
+		expect(operation?.['x-kody-permission']).toBe(deprecatedRoute.permission)
+		expect(operation?.description).toContain('resourceLock')
+		const bodySchema =
+			operation?.requestBody?.content['application/json']?.schema
+		const bodyProperties = isRecord(bodySchema?.['properties'])
+			? bodySchema['properties']
+			: {}
+		expect(bodyProperties).not.toHaveProperty('kind')
+		expect(
+			(operation?.parameters ?? [])
+				.filter((parameter) => parameter.in === 'path')
+				.map((parameter) => parameter.name),
+		).toEqual(deprecatedRoute.pathParams)
+	}
 	expect(document.paths['/v1/search']?.['get']?.['x-kody-permission']).toBe(
 		'search:read',
 	)
+
+	const gitRemoteBody =
+		document.paths['/v1/packages/git-remote']?.['post']?.requestBody?.content[
+			'application/json'
+		]?.schema
+	const gitRemoteProps = isRecord(gitRemoteBody?.['properties'])
+		? gitRemoteBody['properties']
+		: {}
+	expect(isRecord(gitRemoteProps['kody_id'])).toBe(true)
+	expect(
+		(gitRemoteProps['kody_id'] as Record<string, unknown>)['deprecated'],
+	).toBe(true)
+
+	const enablementBody =
+		document.paths['/v1/enablements']?.['post']?.requestBody?.content[
+			'application/json'
+		]?.schema
+	const enablementProps = isRecord(enablementBody?.['properties'])
+		? enablementBody['properties']
+		: {}
+	expect(isRecord(enablementProps['kodyId'])).toBe(true)
+	expect(
+		(enablementProps['kodyId'] as Record<string, unknown>)['deprecated'],
+	).toBe(true)
 })

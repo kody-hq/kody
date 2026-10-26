@@ -140,8 +140,9 @@ type PackageAppLinkFlags = {
  * Someone who may run the app (`app:execute`) gets the self-describing
  * handoff path `/@{user}/packages/{name}/open`, which mints a session token
  * and redirects to the hosted origin from
- * {@link resolvePublicPackageAppLocation}. Readers who cannot execute get
- * that hosted URL only when the app is approved for anonymous serving.
+ * {@link resolvePublicPackageAppLocation} (verified app custom hostname when
+ * one exists, else `{username}.kody.run/{name}`). Readers who cannot execute
+ * get that hosted URL only when the app is approved for anonymous serving.
  * Inline deployments (no `PACKAGE_APP_BASE_URL`) keep the path mount. There
  * is no second host button: `packageAppOriginHref` stays null.
  */

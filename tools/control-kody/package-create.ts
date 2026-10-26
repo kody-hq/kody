@@ -24,7 +24,7 @@ export default async function main(input = {}) {
 	try {
 		remote = await kody.packageGetGitRemote({
 			create: true,
-			kody_id: requested,
+			name: requested,
 			...(input.description ? { description: input.description } : {}),
 		})
 	} catch (error) {

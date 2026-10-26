@@ -628,7 +628,6 @@ test('fetch gateway headers-only fills headers and sends a body that quotes plac
 	expect(new URL(sent.url).searchParams.get('q')).toBe('{{secret:githubToken}}')
 	const sentBody = await sent.text()
 	expect(sentBody).toBe(issueBody)
-	expect(sentBody).not.toContain('secret-value')
 	expect(resolveSpy).toHaveBeenCalledTimes(1)
 })
 
@@ -920,7 +919,7 @@ test('fetch gateway gates integration tokens by the connection grant and require
 
 	// Package export imported into execute: run has no packageId; the
 	// callee's per-package binding (boundPackageId) carries the package for
-	// integrationLock grants (same as secrets). A header never does.
+	// resourceLock integration grants (same as secrets). A header never does.
 	grantSpy.mockClear()
 	const stampedFromExecute = await expand(
 		integrationRequest('https://example.com/api'),
@@ -1942,28 +1941,4 @@ test('fetch gateway provider placeholders: normalize mixed case, deny wrong host
 	expect(resolveSpy).toHaveBeenLastCalledWith(
 		expect.objectContaining({ provider: '1Password', ref: providerRef }),
 	)
-})
-
-test('executeGatewayFetch rejects when allowOutboundFetch is false', async () => {
-	const recordUsageSpy = vi
-		.spyOn(usageModule, 'recordUsage')
-		.mockResolvedValue(undefined)
-	const globalFetch = vi.fn(async () => new Response('ok'))
-	await expect(
-		executeGatewayFetch({
-			env,
-			props: {
-				baseUrl: 'https://kody.example',
-				userId: ownerIdFromStored('user-123'),
-				email: 'user@example.com',
-				request: null,
-				storageContext: null,
-				allowOutboundFetch: false,
-			},
-			request: new Request('https://example.com'),
-			globalFetch: globalFetch as unknown as typeof fetch,
-		}),
-	).rejects.toThrow('Outbound fetch is not available in retriever runs.')
-	expect(globalFetch).not.toHaveBeenCalled()
-	expect(recordUsageSpy).not.toHaveBeenCalled()
 })

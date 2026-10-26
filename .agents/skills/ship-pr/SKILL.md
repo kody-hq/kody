@@ -75,10 +75,11 @@ npx @kodycodes/cli execute --local \
   `bc-` id from the Cursor agent socket or your launch URL). Anywhere else
   (Codex, Claude, Devin, other), omit `agentId` and pass
   `agent: { kind: 'codex' | 'claude' | 'devin' | 'other', id?, url?, name? }`,
-  with `id` and `url` only when your runtime really exposes them (`other` needs
-  `name`). Never fabricate a Cursor id. Take `model` only from deterministic
-  runtime metadata and omit it when there is none. Do not invent URLs. When UI
-  routes deployed, put verified page links in Discord `extras`.
+  with `id` only when your runtime exposes it, and `url` only when it exposes an
+  HTTPS URL (`other` needs `name`). Omit `url` otherwise. Never fabricate a
+  Cursor id. Take `model` only from deterministic runtime metadata and omit it
+  when there is none. Do not invent URLs. When UI routes deployed, put verified
+  page links in Discord `extras`.
 - This repo, medium or high: verify locally with
   [control-kody](../control-kody/SKILL.md) (`dev`/`login`/`request`/`browse`/
   `execute`). Use a PR preview only when local cannot exercise the change

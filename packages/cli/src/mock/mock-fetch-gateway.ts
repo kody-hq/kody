@@ -13,7 +13,7 @@
 
 import { StructuredCliError } from '../structured-error.js'
 import { type KodyTarget } from '../target.js'
-import { type EnsureMswInput, importMsw, mswPackageSpec } from './ensure-msw.js'
+import { type EnsureMswInput, importMsw } from './ensure-msw.js'
 import { loadPackageMocks } from './load-package-mocks.js'
 
 export type MockGatewayFetchRequest = {
@@ -477,6 +477,3 @@ export async function resolveMockFetchGateway(input: {
 		passthroughAll: true,
 	})
 }
-
-/** Exported for tests / docs that mention the on-demand pin. */
-export { mswPackageSpec }

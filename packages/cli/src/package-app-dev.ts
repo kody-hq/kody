@@ -95,7 +95,10 @@ import {
 	createWorkerdConfig,
 	localWorkerModuleNames,
 } from './local-runtime-source.js'
-import { buildLocalPackageContext } from './local-package-run.js'
+import {
+	buildLocalPackageContext,
+	resolveLocalPackageBinding,
+} from './local-package-run.js'
 import { installMockFetchShimModules } from './mock/install-mock-fetch-shim.js'
 import {
 	resolveMockFetchGateway,
@@ -1186,6 +1189,34 @@ async function writeWorkerFiles(input: {
 		...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
 		onStatus: input.onStatus,
 	})
+	const boundPackage = await resolveLocalPackageBinding({
+		graph: packageGraph,
+		kodyId: input.packageContext.kodyId,
+		packageRoot: input.packageRoot,
+		apiUrl: input.apiUrl,
+		token: input.token,
+		...(input.org ? { org: input.org } : {}),
+		...(input.depResolve
+			? {
+					listClient: {
+						apiUrl: input.depResolve.apiUrl,
+						token: input.depResolve.token,
+						...(input.depResolve.org ? { org: input.depResolve.org } : {}),
+						fetchFn: input.depResolve.fetchFn ?? input.fetchFn,
+					},
+				}
+			: {
+					listClient: {
+						apiUrl: input.apiUrl,
+						token: input.token,
+						...(input.org ? { org: input.org } : {}),
+						fetchFn: input.fetchFn,
+					},
+				}),
+	})
+	const packageContext = boundPackage
+		? { ...input.packageContext, packageId: boundPackage.packageId }
+		: input.packageContext
 	const files = { entry: 'entry.js', user: 'main.js', runtime: 'runtime.js' }
 	let packageModules = await writePackageModuleFiles(
 		input.workDir,
@@ -1212,8 +1243,11 @@ async function writeWorkerFiles(input: {
 	await writeFile(
 		join(input.workDir, files.runtime),
 		createPackageLocalRuntimeModuleSource({
-			packageContext: input.packageContext,
+			packageContext,
 			mockStorage: input.mockStorage,
+			...(boundPackage?.packageBinding
+				? { packageBinding: boundPackage.packageBinding }
+				: {}),
 		}),
 	)
 	await writeFile(

@@ -61,6 +61,13 @@ plugin, and the matching helpers are exported so
 without spawning the linter. See [import boundaries](./import-boundaries.md) for
 the layering it enforces.
 
+`kody-custom/no-nonretryable-error-name` rejects
+`new NonRetryableError(message, name)`. The Workflows engine skips retries only
+when the error name is `NonRetryableError`, so a custom name quietly makes a
+terminal step failure retry. Keep error codes in the message.
+`tools/oxlint/no-nonretryable-error-name.node.test.ts` runs the linter on a
+fixture.
+
 `kody-custom/no-tautological-absence` is the haystack pattern: helpers in
 `tautological-absence.js` walk the repo once per lint process, then the visitor
 reports on the current test file.

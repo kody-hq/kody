@@ -20,6 +20,9 @@ async function createDb() {
 	return { db, userId: Number(inserted.meta.last_row_id) }
 }
 
+const stubMxFetch = (async () =>
+	Response.json({ Status: 0, Answer: [] })) as typeof fetch
+
 function providerEvent(input: {
 	providerMessageId: string
 	providerEventId: string
@@ -68,6 +71,7 @@ test('a password reset hard bounce records suppression and a delivery clears it'
 	})
 	const bounced = await processCloudflareEmailDeliveryEvent({
 		env: { APP_DB: db },
+		fetchImpl: stubMxFetch,
 		body: providerEvent({
 			providerMessageId: 'cf-reset-1',
 			providerEventId: 'event-bounce',
@@ -92,6 +96,7 @@ test('a password reset hard bounce records suppression and a delivery clears it'
 	})
 	const delivered = await processCloudflareEmailDeliveryEvent({
 		env: { APP_DB: db },
+		fetchImpl: stubMxFetch,
 		body: providerEvent({
 			providerMessageId: 'cf-reset-2',
 			providerEventId: 'event-delivered',
@@ -117,6 +122,7 @@ test('a late password reset bounce after delivery does not re-suppress', async (
 	})
 	const delivered = await processCloudflareEmailDeliveryEvent({
 		env: { APP_DB: db },
+		fetchImpl: stubMxFetch,
 		body: {
 			...providerEvent({
 				providerMessageId: 'cf-reset-late',
@@ -135,6 +141,7 @@ test('a late password reset bounce after delivery does not re-suppress', async (
 	expect(delivered.outcome).toBe('recorded_transactional')
 	const bounced = await processCloudflareEmailDeliveryEvent({
 		env: { APP_DB: db },
+		fetchImpl: stubMxFetch,
 		body: {
 			...providerEvent({
 				providerMessageId: 'cf-reset-late',
@@ -162,6 +169,7 @@ test('a mailbox bounce does not record verification suppression', async () => {
 	const { db } = await createDb()
 	const result = await processCloudflareEmailDeliveryEvent({
 		env: { APP_DB: db },
+		fetchImpl: stubMxFetch,
 		body: providerEvent({
 			providerMessageId: 'cf-mailbox-1',
 			providerEventId: 'event-mailbox',

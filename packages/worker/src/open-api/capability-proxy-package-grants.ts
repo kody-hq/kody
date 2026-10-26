@@ -171,7 +171,6 @@ export async function createCapabilityProxyPackageHostTools(input: {
 					userId: authorized.userId,
 					email: input.callerContext.user?.email ?? null,
 					grantedPackageIds: authorized.grantedPackageIds,
-					writable: true,
 					// The verified binding is the calling package, so its bucket
 					// passes the owner-only check (same as a hosted bound call).
 					runPackageId: authorized.packageId,

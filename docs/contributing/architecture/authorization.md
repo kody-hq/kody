@@ -157,7 +157,7 @@ cause), or `off`. One person may hold several enablements of the same trigger.
 
 Every org runs its triggers through enablements. A person turning a trigger on
 writes `origin = 'enabled'`. A unique index allows one `origin = 'migrated'` row
-per trigger instance. Migration `0115` drops `enablement_org_migrations`.
+per trigger instance. There is no `enablement_org_migrations` table.
 
 `planEnablementRuns` (`enablements/run-gate.ts`) is the one gate every trigger
 passes:
@@ -181,7 +181,9 @@ passes:
 - The next event checks again and resumes a paused enablement once access is
   back. There is never a fallback to another person, credential, or Owner.
 - No `on` enablement means nothing runs: a scheduled tick is skipped, a webhook
-  answers 409 `enablement_not_on`, and a subscription event is dropped.
+  with only `off` enablements answers 404 before rate limiting, and one with no
+  enablement or a paused enablement answers 409 `enablement_not_on` with its
+  approval link; a subscription event is dropped.
 
 Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
 
@@ -194,15 +196,16 @@ Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
   can see the resource the event is about (`enablerCanSee`). Run errors with no
   package or job reach Owners only.
 
-People turn jobs and subscriptions on for themselves with `enablementEnable` (a
-webhook's first turn-on is Approve only) and off with `enablementDisable` (the
-enabler or an Owner); `enablementList` lists them. Publishing never turns
-anything on, and neither does minting a webhook URL: the mint returns an
-approval link, and Approve on that page creates the enablement. Enablements
-created before minting stopped enabling keep running. A webhook verifies a
-signature only when its manifest declares `verification`; otherwise its URL
-secret is the credential. The generated signing secret on unsigned endpoints is
-stored but not checked.
+People turn jobs and subscriptions on for themselves with `enablementEnable`;
+webhooks turn on only through Approve, including after being turned off.
+`enablementDisable` turns an enablement off (the enabler or an Owner);
+`enablementList` lists them. An off webhook answers 404 before rate limiting.
+Publishing never turns anything on, and neither does minting a webhook URL: the
+mint returns an approval link, and Approve on that page creates the enablement.
+Enablements created before minting stopped enabling keep running. A webhook
+verifies a signature only when its manifest declares `verification`; otherwise
+its URL secret is the credential. The generated signing secret on unsigned
+endpoints is stored but not checked.
 
 ### Checking many resources
 
@@ -617,8 +620,8 @@ owner and carries that owner's current roles and permissions.
 (`packages/worker/src/identity/background-mcp-user.ts`) loads them from D1 with
 `getUserRolesAndPermissions` for every `executionOrigin: 'background'` caller it
 builds: package jobs, inbound webhook handlers, package subscription handlers,
-package exports invoked from other package code, package workflows, and
-retrievers. The per-binding identity cache holds a resolved user for up to 60
+package exports invoked from other package code, package workflows, and realtime
+hooks. The per-binding identity cache holds a resolved user for up to 60
 seconds, so a revoked role can still pass background checks until that entry
 expires and the owner is resolved again. Interactive MCP and browser requests
 reload roles on every request.

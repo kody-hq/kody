@@ -108,4 +108,33 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 			)`,
 		)
 		.run()
+	// Package app bridge calls resolve the runs-as person (migration 0178).
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS package_app_authority (
+				package_id TEXT PRIMARY KEY NOT NULL,
+				owner_id TEXT NOT NULL,
+				runs_as_person_id TEXT,
+				published_by_person_id TEXT,
+				publisher_unknown INTEGER NOT NULL DEFAULT 0,
+				updated_at TEXT NOT NULL
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS package_app_authority_fallbacks (
+				day TEXT NOT NULL,
+				owner_id TEXT NOT NULL,
+				package_id TEXT NOT NULL,
+				call_name TEXT NOT NULL,
+				difference_kind TEXT NOT NULL,
+				visitor_hash TEXT NOT NULL,
+				first_seen_at TEXT NOT NULL,
+				last_seen_at TEXT NOT NULL,
+				observations INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (day, package_id, call_name, difference_kind, visitor_hash)
+			)`,
+		)
+		.run()
 }

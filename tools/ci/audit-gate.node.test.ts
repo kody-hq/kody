@@ -12,6 +12,14 @@ test('dependency manifests anywhere in the workspace switch the audit to enforce
 	expect(isDependencyManifestPath('packages/worker/package.json')).toBe(true)
 	expect(isDependencyManifestPath('docs/package.json.md')).toBe(false)
 	expect(isDependencyManifestPath('tools/ci/audit-gate.ts')).toBe(false)
+	expect(
+		isDependencyManifestPath(
+			'packages/cli/test/fixtures/sample-package/package.json',
+		),
+	).toBe(false)
+	expect(
+		isDependencyManifestPath('packages/worker/src/foo/test/package.json'),
+	).toBe(false)
 
 	expect(
 		resolveAuditMode({
@@ -19,6 +27,15 @@ test('dependency manifests anywhere in the workspace switch the audit to enforce
 			changedPaths: ['packages/cli/package.json', 'README.md'],
 		}),
 	).toBe('enforce')
+	expect(
+		resolveAuditMode({
+			requested: undefined,
+			changedPaths: [
+				'packages/cli/test/fixtures/sample-package/package.json',
+				'README.md',
+			],
+		}),
+	).toBe('report')
 	expect(
 		resolveAuditMode({ requested: 'auto', changedPaths: ['README.md'] }),
 	).toBe('report')

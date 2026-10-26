@@ -74,6 +74,7 @@ async function setup() {
 		scope: 'user',
 		name: 'RESEND',
 		value: keyValue,
+		audit: null,
 	})
 	await db
 		.prepare(

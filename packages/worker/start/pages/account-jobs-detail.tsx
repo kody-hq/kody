@@ -361,24 +361,12 @@ export function renderAccountJobDetail(input: {
 						runJobAction({
 							id: detail.id,
 							successMessage: (payload) => {
-								if (payload.runNow?.deletedAfterRun) {
-									return payload.runNow.ok
-										? 'Ran one-off job and deleted it.'
-										: `Ran one-off job (failed) and deleted it${
-												payload.runNow.error ? `: ${payload.runNow.error}` : '.'
-											}`
-								}
 								if (payload.runNow && !payload.runNow.ok) {
 									return `Run finished with an error${payload.runNow.error ? `: ${payload.runNow.error}` : '.'}`
 								}
 								return 'Job run requested.'
 							},
 							failureMessage: 'Unable to run job now.',
-							afterSuccess: (payload) => {
-								if (payload.runNow?.deletedAfterRun) {
-									navigateToList()
-								}
-							},
 						})
 					}
 					css={primaryButtonCss}

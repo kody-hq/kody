@@ -5,7 +5,9 @@ Prerequisites, install, and `npm run dev` notes. See the
 
 ## Prerequisites
 
-- Node 26 and npm (used for installs and scripts).
+- Node 26 and npm 11.11.1 or newer (used for installs and scripts). Root
+  `package.json` enforces both through `devEngines` with `onFail: "error"`, so
+  older versions stop with `EBADDEVENGINES`. `.nvmrc` pins `26` for `nvm use`.
 
 ## Install
 

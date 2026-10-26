@@ -357,7 +357,6 @@ test('jobs API kill switch and run now are user-scoped', async () => {
 	mockModule.runJobNowViaManager.mockResolvedValue({
 		job: packageJob,
 		execution: { ok: true, logs: [] },
-		deletedAfterRun: false,
 	})
 
 	mockModule.updateJob.mockResolvedValue({
@@ -398,7 +397,7 @@ test('jobs API kill switch and run now are user-scoped', async () => {
 	)
 	expect(runNowResponse.data).toMatchObject({
 		ok: true,
-		runNow: { ok: true, deletedAfterRun: false },
+		runNow: { ok: true },
 	})
 })
 
@@ -426,7 +425,6 @@ test('accepted job changes do not depend on a jobs page read', async () => {
 	mockModule.runJobNowViaManager.mockResolvedValue({
 		job: packageJob,
 		execution: { ok: true, logs: [] },
-		deletedAfterRun: true,
 	})
 	try {
 		const switched = await post({
@@ -445,7 +443,7 @@ test('accepted job changes do not depend on a jobs page read', async () => {
 		expect(ran.data).toEqual({
 			ok: true,
 			jobId: packageJob.id,
-			runNow: { ok: true, error: null, deletedAfterRun: true },
+			runNow: { ok: true, error: null },
 		})
 		expect(mockModule.inspectJobsForUser).not.toHaveBeenCalled()
 	} finally {

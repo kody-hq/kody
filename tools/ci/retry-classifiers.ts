@@ -132,6 +132,46 @@ export function isRetryableE2eFailure(logText: string) {
 	return e2eWebServerStartFailurePattern.test(text)
 }
 
+/**
+ * Transient npm registry / transport failures during `npm ci`. Lockfile,
+ * engine, and integrity errors stay terminal so a bad checkout cannot burn
+ * the Validate attempt budget. Seen on Validate #40035153787 (`ECONNRESET`
+ * / `network aborted`) when setup-node restored an empty ~/.npm cache.
+ */
+const permanentNpmInstallFailurePatterns = [
+	/package\.json and package-lock\.json are in sync/i,
+	/EBADDEVENGINES/i,
+	/EBADENGINE/i,
+	/EINTEGRITY/i,
+	/EUSAGE/i,
+	/npm error code E404/i,
+	/npm error code ERESOLVE/i,
+] as const
+
+const retryableNpmInstallFailurePatterns = [
+	/npm error code ECONNRESET/i,
+	/npm error code ETIMEDOUT/i,
+	/npm error code ESOCKETTIMEDOUT/i,
+	/npm error code EAI_AGAIN/i,
+	/npm error code ENOTFOUND/i,
+	/npm error code ECONNREFUSED/i,
+	/npm error code EPIPE/i,
+	/npm error network/i,
+	/socket hang up/i,
+] as const
+
+export function isRetryableNpmInstallFailure(logText: string) {
+	const text = stripLogAnsi(logText)
+	if (
+		permanentNpmInstallFailurePatterns.some((pattern) => pattern.test(text))
+	) {
+		return false
+	}
+	return retryableNpmInstallFailurePatterns.some((pattern) =>
+		pattern.test(text),
+	)
+}
+
 const wranglerDeployRetryMaxAttempts = 4
 const wranglerDeployRetryBaseDelayMs = 1_000
 export const wranglerD1MigrationsRetryMaxAttempts = 3
@@ -143,6 +183,21 @@ export function isRetryableWorkersDevSubdomainRace(output: string) {
 		/\b10007\b/.test(output) &&
 		/this worker does not exist on your account/i.test(output)
 	return uploaded && missingAfterUpload
+}
+
+/**
+ * Fresh per-PR mock Workers often exist (secrets sync created them) with
+ * no Durable Object migration tag yet. Wrangler then fails deploy with
+ * "got tag '' when expected tag is 'v2' [code: 10079]". A bounded retry
+ * usually succeeds after the first create; a non-empty mismatched tag is
+ * a real migration bug and stays terminal.
+ */
+export function isRetryableEmptyMigrationTagPrecondition(output: string) {
+	return (
+		/actor migration tag precondition failed/i.test(output) &&
+		/got tag ''/i.test(output) &&
+		/\[code:\s*10079\]/i.test(output)
+	)
 }
 
 const workersDevSubdomainRaceMinDelayMs = 10_000
@@ -158,6 +213,7 @@ function isWranglerCrashAfterSubdomainRace(output: string) {
 export function isRetryableWranglerDeployFailure(output: string) {
 	return (
 		isRetryableWorkersDevSubdomainRace(output) ||
+		isRetryableEmptyMigrationTagPrecondition(output) ||
 		isRetryableCloudflareFailure(output)
 	)
 }

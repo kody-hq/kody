@@ -5,9 +5,15 @@ import {
 	invokePackageExport,
 	type PackageInvocationResponse,
 } from '#worker/package-invocations/service.ts'
-import { type EnablementRun } from '#worker/request-context/request-context.ts'
+import {
+	deriveRequestContext,
+	type EnablementRun,
+} from '#worker/request-context/request-context.ts'
+import { sanitizeInvocationErrorMessage } from '#worker/package-invocations/invocation-error-summary.ts'
+import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { recordRunRecord } from '#worker/run-records/service.ts'
 import { type RunRecordLogInput } from '#worker/run-records/types.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type WebhookDeliveryOutcome,
 	type WebhookEndpointRecord,
@@ -37,16 +43,38 @@ export async function recordWebhookDelivery(input: {
 	receivedAt?: string
 	/** Underlying package-invocation error code when the export failed. */
 	invocationErrorCode?: string | null
+	/**
+	 * Bound export's invocation response body. On failure its error message
+	 * (sanitized) is copied into the webhook run's error and logs, so
+	 * Activity shows why the export failed instead of only the HTTP status.
+	 */
+	invocationBody?: unknown
 	logs?: Array<RunRecordLogInput>
 	waitUntil?: (promise: Promise<unknown>) => void
 	requirePersistence?: boolean
 	/** Platform-marked synthetic smoke test (interactive MCP only). */
 	synthetic?: boolean
+	/** Prefer an already-derived request when the caller has one. */
+	request?: RequestContext | null
 }) {
 	const status = input.outcome === 'delivered' ? 'success' : 'error'
+	const failure =
+		status === 'error'
+			? describeWebhookDeliveryFailure({
+					error: input.error ?? null,
+					invocationBody: input.invocationBody,
+				})
+			: null
+	const request =
+		input.request ??
+		(await resolveWebhookDeliveryRequest({
+			env: input.env,
+			endpoint: input.endpoint,
+		}))
 	const record = await recordRunRecord({
 		env: input.env,
 		userId: input.endpoint.userId,
+		request,
 		context: {
 			surface: 'webhook',
 			name: input.endpoint.webhookName,
@@ -66,9 +94,10 @@ export async function recordWebhookDelivery(input: {
 			},
 		},
 		status,
-		error: input.error ?? undefined,
+		error: failure?.error ?? input.error ?? undefined,
 		result: input.result,
-		logs: input.logs,
+		logs:
+			failure?.log != null ? [...(input.logs ?? []), failure.log] : input.logs,
 		startedAt: input.startedAt,
 		waitUntil: input.waitUntil,
 	})
@@ -76,6 +105,81 @@ export async function recordWebhookDelivery(input: {
 		throw new Error('Webhook delivery record was not persisted.')
 	}
 	return record
+}
+
+/**
+ * Request for a webhook delivery run. Prefer an enablement the caller already
+ * chose (the one that invoked); only re-plan when recording a delivery that
+ * never invoked (rejects, missing payload).
+ */
+async function resolveWebhookDeliveryRequest(input: {
+	env: Env
+	endpoint: Pick<WebhookEndpointRecord, 'id' | 'userId' | 'packageId'>
+	enablement?: EnablementRun | null
+}): Promise<RequestContext | null> {
+	try {
+		const enablement =
+			input.enablement ??
+			(
+				await planEnablementRuns({
+					env: input.env,
+					orgId: input.endpoint.userId,
+					packageId: input.endpoint.packageId,
+					trigger: { kind: 'webhook', instanceId: input.endpoint.id },
+				})
+			).runs[0]
+		if (!enablement) return null
+		return await webhookRequestForEnablement({
+			env: input.env,
+			endpoint: input.endpoint,
+			enablement,
+		})
+	} catch {
+		return null
+	}
+}
+
+async function webhookRequestForEnablement(input: {
+	env: Env
+	endpoint: Pick<WebhookEndpointRecord, 'id' | 'userId'>
+	enablement: EnablementRun
+}): Promise<RequestContext> {
+	const user = await resolveBackgroundMcpUser(
+		input.env.APP_DB,
+		input.endpoint.userId,
+	)
+	return deriveRequestContext({
+		user,
+		source: {
+			kind: 'webhook',
+			sourceId: input.endpoint.id,
+			enablement: input.enablement,
+		},
+	})
+}
+
+export function describeWebhookDeliveryFailure(input: {
+	error: string | null
+	invocationBody?: unknown
+}): {
+	error: { name: string; message: string }
+	log: RunRecordLogInput
+} | null {
+	const invocationError = readWebhookInvocationError(input.invocationBody)
+	if (!invocationError.message) return null
+	const detail = sanitizeInvocationErrorMessage(invocationError.message)
+	if (!detail) return null
+	const code = input.error ?? invocationError.code ?? 'invocation_failed'
+	return {
+		error: { name: code, message: `${code}: ${detail}` },
+		log: {
+			level: 'error',
+			message: `Export error: ${detail}`,
+			...(invocationError.code
+				? { fields: { code: invocationError.code } }
+				: {}),
+		},
+	}
 }
 
 export function readWebhookInvocationResult(body: unknown): unknown {
@@ -152,13 +256,22 @@ type WebhookInvocationInput = {
 }
 
 /**
+ * Invocation response plus the request for the enablement that ran. Pass
+ * `request` into {@link recordWebhookDelivery} so started_by matches the
+ * invoke instead of re-planning (which can pick a different first enabler).
+ */
+export type WebhookInvocationDispatch = PackageInvocationResponse & {
+	request: RequestContext | null
+}
+
+/**
  * Run a webhook's bound export as the endpoint's enabler. With no on
  * enablement (paused, off, or never approved) nothing runs and the delivery
  * fails with 409 `enablement_not_on`, carrying the approval link.
  */
 export async function dispatchWebhookInvocation(
 	input: WebhookInvocationInput,
-): Promise<PackageInvocationResponse> {
+): Promise<WebhookInvocationDispatch> {
 	const plan = await planEnablementRuns({
 		env: input.env,
 		orgId: input.endpoint.userId,
@@ -174,21 +287,30 @@ export async function dispatchWebhookInvocation(
 			packageKodyId: input.packageKodyId,
 			plan,
 		})
-		return buildJsonErrorResponse({
-			status: 409,
-			code: 'enablement_not_on',
-			message: notOn.message,
-			idempotencyKey: input.idempotencyKey,
-			...(notOn.approvalUrl
-				? { details: { approvalUrl: notOn.approvalUrl } }
-				: {}),
-		})
+		return {
+			...buildJsonErrorResponse({
+				status: 409,
+				code: 'enablement_not_on',
+				message: notOn.message,
+				idempotencyKey: input.idempotencyKey,
+				...(notOn.approvalUrl
+					? { details: { approvalUrl: notOn.approvalUrl } }
+					: {}),
+			}),
+			request: null,
+		}
 	}
-	return await invokeWebhookExport(
+	const request = await webhookRequestForEnablement({
+		env: input.env,
+		endpoint: input.endpoint,
+		enablement: run,
+	}).catch(() => null)
+	const response = await invokeWebhookExport(
 		input,
 		run,
 		`${input.idempotencyKey}:enablement:${run.id}`,
 	)
+	return { ...response, request }
 }
 
 async function invokeWebhookExport(

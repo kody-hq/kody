@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
+	deleteArtifactsNamespace,
 	ensureArtifactsNamespace,
 	ensureD1Database,
 	ensureR2Bucket,
@@ -194,4 +195,71 @@ test('ensureArtifactsNamespace fails clearly when activation never completes', a
 		'Artifacts namespace kody-pr-42 is still activating after 1s.',
 	)
 	expect(fetcher).toHaveBeenCalledTimes(5)
+})
+
+function deletionInProgress() {
+	return Response.json(
+		{
+			success: false,
+			errors: [
+				{
+					code: 1000,
+					message: 'Namespace deletion is already in progress',
+				},
+			],
+		},
+		{ status: 409 },
+	)
+}
+
+test('deleteArtifactsNamespace treats deletion-in-progress as already gone', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(deletionInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test('deleteArtifactsNamespace treats deletion-in-progress on namespace DELETE as already gone', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(ok([]), deletionInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(2)
+})
+
+test('deleteArtifactsNamespace skips delete while activation is in progress', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(activationInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test('deleteArtifactsNamespace skips namespace DELETE while activation is in progress', async () => {
+	consoleError.mockImplementation(() => {})
+	const fetcher = mockFetch(ok([]), activationInProgress())
+	await expect(
+		deleteArtifactsNamespace({
+			...creds,
+			namespace: 'kody-pr-42',
+			fetcher,
+		}),
+	).resolves.toBeUndefined()
+	expect(fetcher).toHaveBeenCalledTimes(2)
 })

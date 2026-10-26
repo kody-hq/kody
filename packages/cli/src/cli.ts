@@ -230,8 +230,10 @@ export async function runCli(
 	// global git config; skip git-credential (helper must stay fast / offline
 	// while the stored token is valid); skip version/help (no git touch).
 	const head = argv[0]
+	const underNodeTest =
+		process.env.NODE_TEST === '1' || process.env.NODE_TEST === 'true'
 	const skipHelperRefresh =
-		process.env.NODE_TEST === '1' ||
+		underNodeTest ||
 		process.env.KODY_SKIP_GIT_HELPER_REFRESH === '1' ||
 		head === 'git-credential' ||
 		head === 'version' ||
@@ -249,6 +251,31 @@ export async function runCli(
 		} catch {
 			// Ignore refresh failures; the user's command still runs.
 		}
+	}
+	const skipSkillRefresh =
+		underNodeTest ||
+		process.env.KODY_SKIP_SKILL_REFRESH === '1' ||
+		head === 'git-credential' ||
+		head === 'skill' ||
+		head === 'version' ||
+		head === '--version' ||
+		head === '-v' ||
+		head === 'help' ||
+		head === '--help' ||
+		head === '-h' ||
+		head === undefined
+	if (!skipSkillRefresh) {
+		void import('./skill.js')
+			.then(({ scheduleDetachedSkillRefresh }) => {
+				scheduleDetachedSkillRefresh({
+					origin: process.env.KODY_MCP_URL
+						? new URL(process.env.KODY_MCP_URL).origin
+						: undefined,
+				})
+			})
+			.catch(() => {
+				// Ignore schedule failures; the user's command still runs.
+			})
 	}
 	const jsonFlag = argvIncludesJsonFlag(argv)
 	try {

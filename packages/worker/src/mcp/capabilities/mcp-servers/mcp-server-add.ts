@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -90,6 +91,7 @@ export const mcpServerAddCapability = defineDomainCapability(
 				baseUrl: oauth.clientOrigin,
 				bearerToken: args.bearerToken,
 				waitUntil: ctx.waitUntil,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			const error = connection.error
 				? enrichMcpOAuthProviderError(connection.error, oauth)

@@ -110,7 +110,7 @@ non-library caller to find which of our modules imported it.
    modules the app handlers import.
 5. **Keep Zod English-only on the Worker graph.** `import { z } from 'zod'`
    re-exports every file under `zod/v4/locales` unless the locales barrel is
-   trimmed. `patches/zod+4.6.5.patch` keeps only `en` (already applied by Zod's
+   trimmed. `patches/zod+4.6.6.patch` keeps only `en` (already applied by Zod's
    classic entry). Do not import other locale modules on the startup path; when
    bumping Zod, refresh that patch.
 6. **Keep Zod `compile` off the Worker graph.** Zod 4.6+ re-exports `compile`

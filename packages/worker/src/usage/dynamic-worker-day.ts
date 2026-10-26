@@ -34,6 +34,8 @@ export async function recordUniqueDynamicWorkerDay(input: {
 	 * Omit for ad hoc execute; never guess.
 	 */
 	packageId?: string | null
+	/** Present for package-app claims; empty string means anonymous. */
+	packageAppVisitorUserId?: string
 	/** From `usageConnectionKey`; attributes the first claim to a credential. */
 	connectionKey?: string | null
 	now?: Date
@@ -60,6 +62,9 @@ export async function recordUniqueDynamicWorkerDay(input: {
 				surface: input.surface,
 				...(input.packageId?.trim()
 					? { packageId: input.packageId.trim() }
+					: {}),
+				...(input.packageAppVisitorUserId !== undefined
+					? { packageAppVisitorUserId: input.packageAppVisitorUserId }
 					: {}),
 				...(input.connectionKey ? { connectionKey: input.connectionKey } : {}),
 			})

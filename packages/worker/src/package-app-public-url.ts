@@ -9,12 +9,14 @@ import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-c
 
 /**
  * Where a browser should open a hosted package app when it does not need a
- * kody.codes session handoff.
+ * kody.codes session handoff (and the hosted target for `/open` handoff).
  *
- * App-level custom hostnames win. Otherwise this is the per-user `kody.run`
- * subdomain. Org-level custom hostnames are session-gated and are not a public
- * origin. Returns null when this deployment serves package apps inline on the
- * app origin (no `PACKAGE_APP_BASE_URL`).
+ * A verified app-level custom hostname wins (both hostname and certificate
+ * active; lexicographically smallest when several qualify). Pending hostnames
+ * never win. Otherwise this is the per-user `kody.run` subdomain. Org-level
+ * custom hostnames are session-gated and are not a public origin. Returns null
+ * when this deployment serves package apps inline on the app origin (no
+ * `PACKAGE_APP_BASE_URL`).
  */
 export type PublicPackageAppLocation = {
 	hostedUrl: string

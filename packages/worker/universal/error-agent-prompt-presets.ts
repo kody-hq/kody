@@ -1,8 +1,15 @@
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import {
 	buildErrorAgentPrompt,
+	redactErrorAgentPromptText,
 	type ErrorAgentPromptIds,
 } from '#universal/error-agent-prompt.ts'
+import {
+	codexDcrLoginCommand,
+	formatOAuthAuthorizeFailureTime,
+	oauthAuthorizeFetchStatusLabel,
+	type OAuthAuthorizeClientFailure,
+} from '#universal/oauth-authorize-client-failure.ts'
 
 /** Public illustrated 500 — agent cannot see the uncaught failure HTML. */
 export function buildInternalErrorAgentPrompt(input: { path?: string | null }) {
@@ -363,4 +370,65 @@ export function buildMcpAuthorizeErrorAgentPrompt(input: {
 		],
 		docs: ['search({ entity: "guide:oauth" })'],
 	})
+}
+
+/**
+ * Authorize page: the OAuth client itself did not resolve (its metadata
+ * document could not be fetched, or Kody has no registration for it). The
+ * agent reading this is not connected to Kody, so the prompt never points it
+ * at Kody tools; it works on the user's machine instead.
+ */
+export function buildMcpAuthorizeClientFailureAgentPrompt(input: {
+	failure: OAuthAuthorizeClientFailure
+}) {
+	const { failure } = input
+	const origin = (failure.kodyOrigin ?? 'https://kody.codes').replace(
+		/\/+$/,
+		'',
+	)
+	const mcpUrl = `${origin}/mcp`
+	const time = formatOAuthAuthorizeFailureTime(failure.at)
+	const lines: Array<string> = []
+	if (failure.kind === 'metadata_fetch') {
+		const client =
+			failure.client === 'codex'
+				? `Codex (client metadata at ${failure.host})`
+				: failure.client === 'chatgpt'
+					? `ChatGPT (client metadata at ${failure.host})`
+					: `An MCP client that publishes its client metadata at ${failure.host}`
+		lines.push(
+			`I tried to connect an MCP client to Kody (${mcpUrl}) and Kody's authorize page said it could not load the client's details.`,
+			`Client: ${client}`,
+			`What failed: Kody could not download the client's metadata document from ${failure.host} (${oauthAuthorizeFetchStatusLabel(failure)})${time ? ` at ${time}` : ''}. This is a problem on ${failure.host}'s side, not with my Kody account.`,
+		)
+	} else {
+		lines.push(
+			`I tried to connect an MCP client to Kody (${mcpUrl}) and Kody's authorize page said it has no registration for this client.`,
+			'Client: a dynamically registered client (it registered itself with Kody earlier)',
+			`What failed: Kody has no registration for the client_id my app sent${time ? ` (at ${time})` : ''}. My app is reusing a saved registration that Kody no longer has.`,
+		)
+	}
+	lines.push(
+		'You are not connected to Kody yet, so do not use Kody MCP tools. Work on my machine instead:',
+		'1. Find how my client is configured to reach Kody (for Codex: run `codex mcp list` and note the server name).',
+	)
+	if (failure.kind === 'metadata_fetch') {
+		lines.push(
+			'2. Wait a few minutes, then retry the sign-in once (or press Retry on the Kody page).',
+			`3. If it still fails and this is the Codex CLI, sign in with dynamic registration instead: \`${codexDcrLoginCommand}\`. That choice applies to that login only.`,
+			'4. ChatGPT and the Codex app have no switch for this. Tell me to try again later, and keep the Kody connection as it is.',
+			'5. Tell me when to open the new authorize link and approve it.',
+		)
+	} else {
+		lines.push(
+			"2. Clear the client's saved login for Kody and sign in again so it registers a new client. Codex: `codex mcp logout <server>` then `codex mcp login <server>`. Other clients: remove the Kody server and any cached OAuth client info for it (for example mcp-remote keeps it in ~/.mcp-auth), then add " +
+				mcpUrl +
+				' again.',
+			'3. Tell me when to open the new authorize link and approve it.',
+		)
+	}
+	lines.push(
+		'If it still fails, have me email support@kody.codes with the time it happened and the client name. Never ask me to paste credentials (tokens, refresh tokens, client secrets, or passwords) into chat.',
+	)
+	return lines.map((line) => redactErrorAgentPromptText(line)).join('\n')
 }

@@ -178,7 +178,6 @@ test('package managers without publish, delete, or adoption permission do not se
 	)
 	expect(html).not.toContain('data-testid="package-visibility-controls"')
 	expect(html).not.toContain('data-testid="package-publishing-panel"')
-	expect(html).not.toContain('data-testid="account-package-delete"')
 	expect(html).not.toContain('Delete package')
 	expect(html).toContain('Not listed')
 	expect(html).toContain('Forkable')

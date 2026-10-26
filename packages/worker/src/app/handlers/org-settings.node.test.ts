@@ -92,7 +92,7 @@ async function seed() {
 	await ensureOrgsTestSchema(db)
 	await ensureUsersTestSchema({
 		db,
-		columns: ['avatar_key', 'experiments_opt_in'],
+		columns: ['avatar_key'],
 	})
 	const now = '2026-01-01T00:00:00.000Z'
 	for (const [username, person] of Object.entries(people)) {

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -19,7 +20,12 @@ import {
 import * as Sentry from '@sentry/cloudflare'
 import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
+import {
+	getPackageNameLeaf,
+	packageIdLookupDescription,
+	packageKodyIdOptionalInput,
+	packageNameLookupDescription,
+} from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
 import {
@@ -90,8 +96,9 @@ import {
 import { buildUpdatePublicListingHref } from '#universal/update-public-listing.ts'
 
 const inputSchema = z.object({
-	package_id: z.string().min(1).optional(),
-	kody_id: z.string().min(1).optional(),
+	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
+	name: z.string().min(1).optional().describe(packageNameLookupDescription),
+	kody_id: packageKodyIdOptionalInput(),
 	allow_force: z.boolean().optional().default(false),
 	confirm_destructive_overwrite: z
 		.boolean()
@@ -401,7 +408,7 @@ const allowedPackagesPublishNoticeSchema = z
 	.nullable()
 	.optional()
 	.describe(
-		'Warning when this package fills a user credential whose allowed-packages list excludes it. Uses through another package or a one-off execute run are already denied; the package running on its own still works for now. Null/omitted when there is nothing to warn about. Does not block publish.',
+		'Warning when this package fills a user credential whose allowed-packages list excludes it. Uses through another package or a one-off execute run are already denied; a self-authored or adopted package that runs on its own still uses the credential. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
 const artifactsRebuiltSchema = z
@@ -1353,6 +1360,13 @@ export const publishExternalPushCapability = defineDomainCapability(
 				request: requireMcpRequest(ctx.callerContext),
 			})
 			const expectedPackageScope = owner.ownerScope
+			const nameInput = args.name?.trim() || undefined
+			const leftoverKodyIdInput = args.kody_id?.trim() || undefined
+			if (nameInput !== undefined && leftoverKodyIdInput !== undefined) {
+				throw new McpCallerError(
+					'Provide `name` or leftover `kody_id`, not both. Prefer `name`.',
+				)
+			}
 			const { packageId, userId, kodyId, hasApp, name, source } =
 				await resolveOwnedPackageSource({
 					db: ctx.env.APP_DB,
@@ -1360,7 +1374,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 					ownerScope: owner.ownerScope,
 					args: {
 						package_id: args.package_id,
-						kody_id: args.kody_id,
+						kody_id: nameInput ?? leftoverKodyIdInput,
 					},
 				})
 			await authorizePackageWrite(
@@ -1423,7 +1437,11 @@ export const publishExternalPushCapability = defineDomainCapability(
 			} satisfies ExternalPublishSemanticInput
 			const durableParams = {
 				...(args.package_id ? { package_id: args.package_id } : {}),
-				...(args.kody_id ? { kody_id: args.kody_id } : {}),
+				...(nameInput
+					? { name: nameInput }
+					: leftoverKodyIdInput
+						? { kody_id: leftoverKodyIdInput }
+						: {}),
 				allow_force: args.allow_force,
 				confirm_destructive_overwrite: args.confirm_destructive_overwrite,
 				baseline_published_commit: baselinePublishedCommit,

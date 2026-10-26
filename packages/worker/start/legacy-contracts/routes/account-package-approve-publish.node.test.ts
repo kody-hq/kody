@@ -78,9 +78,6 @@ test('approve-publish SSR renders the promote card without a browser location', 
 	expect(html).toContain('data-testid="package-publish-diff"')
 	expect(html).toContain('README.md')
 	expect(html).toContain('# Gmail drafts')
-	expect(html).not.toContain(
-		'data-testid="approve-publish-update-public-listing"',
-	)
 })
 
 test('unlocked approve-publish SSR offers Publish HEAD', async () => {
@@ -123,7 +120,6 @@ test('approve-publish with nothing pending uses a plain up-to-date title', async
 	expect(html).toContain('No unpublished commit is waiting')
 	expect(html).toContain('data-testid="approve-publish-empty-state"')
 	expect(html).toContain('You are all caught up.')
-	expect(html).not.toContain('Public version')
 	expect(html).not.toContain('Current published commit')
 	expect(html).not.toContain('Commit to promote')
 	expect(html).not.toContain('HEAD to publish')

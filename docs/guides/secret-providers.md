@@ -48,17 +48,18 @@ The item's websites are the host allowlist. Empty websites refuse the fetch. The
 request URL must be `https:`.
 
 Ad hoc execute does not need a package grant. Saved packages do:
-`secretProviderLock` returns the Allow URL; grant and revoke on
-`/@<slug>/-/secret-providers`. A package runs in the org that owns it, so a
-collaborator holding a grant uses that org's binding and grants, not their own.
+`resourceLock({ kind: 'secret_provider', provider, ref, package_id })` returns
+the Allow URL; grant and revoke on `/@<slug>/-/secret-providers`. A package runs
+in the org that owns it, so a collaborator holding a grant uses that org's
+binding and grants, not their own.
 
 Search does not crawl vaults. `secretProviderList` returns binding metadata
 only.
 
 ## MCP
 
-Search `secretProviderList` / `secretProviderBind` / `secretProviderLock` first;
-open capability detail for the exact call shape.
+Search `secretProviderList` / `secretProviderBind` / `resourceLock` first; open
+capability detail for the exact call shape.
 
 ## Where to go next
 

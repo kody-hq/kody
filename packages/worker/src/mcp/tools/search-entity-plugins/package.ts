@@ -352,9 +352,6 @@ export const packageSearchEntityPlugin = {
 			const subscriptions = Array.isArray(entry.projection.subscriptions)
 				? entry.projection.subscriptions
 				: []
-			const retrievers = Array.isArray(entry.projection.retrievers)
-				? entry.projection.retrievers
-				: []
 			return {
 				type: 'package',
 				id: entry.record.kodyId,
@@ -383,11 +380,6 @@ export const packageSearchEntityPlugin = {
 						subscription.topic,
 						subscription.handler,
 						subscription.description ?? '',
-					]),
-					...retrievers.flatMap((retriever) => [
-						retriever.key,
-						retriever.name,
-						retriever.description,
 					]),
 					entry.readmeSnippet?.snippet ?? '',
 					...(entry.record.hasApp ? ['app', 'ui', 'remote'] : []),
@@ -440,9 +432,6 @@ export const packageSearchEntityPlugin = {
 					: []
 				const jobs = Array.isArray(entry.projection.jobs)
 					? entry.projection.jobs
-					: []
-				const retrievers = Array.isArray(entry.projection.retrievers)
-					? entry.projection.retrievers
 					: []
 				const subscriptions = Array.isArray(entry.projection.subscriptions)
 					? entry.projection.subscriptions
@@ -526,13 +515,6 @@ export const packageSearchEntityPlugin = {
 							subscription.topic,
 							subscription.handler,
 							subscription.description ?? '',
-						]),
-						...retrievers.flatMap((retriever) => [
-							retriever.key,
-							retriever.name,
-							retriever.description,
-							retriever.exportName,
-							...retriever.scopes,
 						]),
 						...(entry.projection.appEntry ? [entry.projection.appEntry] : []),
 						readmeSnippet,
@@ -758,12 +740,6 @@ export const packageSearchEntityPlugin = {
 		const jobs = Object.keys(detail.manifest.kody.jobs ?? {}).map((name) => ({
 			name,
 		}))
-		const retrievers = Object.entries(
-			detail.manifest.kody.retrievers ?? {},
-		).map(([key, retriever]) => ({
-			key,
-			name: retriever.name,
-		}))
 		const webhooks = (detail.manifest.kody.webhooks ?? []).map((webhook) => ({
 			name: webhook.name,
 			exportName: webhook.export,
@@ -845,17 +821,6 @@ export const packageSearchEntityPlugin = {
 				...jobs.map((job) => `- ${formatMarkdownInlineCode(job.name)}`),
 			)
 		}
-		if (retrievers.length > 0) {
-			lines.push(
-				'',
-				'## Retrievers',
-				'',
-				...retrievers.map(
-					(retriever) =>
-						`- ${formatMarkdownInlineCode(retriever.name)} (${formatMarkdownInlineCode(retriever.key)})`,
-				),
-			)
-		}
 		if (webhooks.length > 0) {
 			lines.push(
 				'',
@@ -932,7 +897,6 @@ export const packageSearchEntityPlugin = {
 				maintain,
 				exports: exportDetails,
 				jobs,
-				retrievers,
 				webhooks,
 				readmeIntent,
 				agentsDocs,

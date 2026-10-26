@@ -15,6 +15,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
@@ -55,9 +56,9 @@ vi.mock('cloudflare:workers', async (importOriginal) => ({
 	},
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('./mailbox-internal-read.ts', () => ({
 	listInternalEmailAttachmentsForMessage: async () => [],
@@ -275,6 +276,7 @@ async function setup() {
 		scope: 'user',
 		name: 'teamToken',
 		value: teamSecretValue,
+		audit: null,
 	})
 	// Bea may use the team secret.
 	const [teamTokenId] = await findCredentialIdsByLegacyName(db, orgId, {

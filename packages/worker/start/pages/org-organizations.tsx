@@ -5,6 +5,7 @@ import {
 	suggestHandle,
 } from '@kody-internal/shared/handle-rules.ts'
 import { permanentHandleInputProps } from '#client/handle-field.ts'
+import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import {
 	usePendingInviteActions,
 	renderPendingInviteActions,
@@ -292,7 +293,9 @@ function CreateOrganizationForm() {
 										setConfirming(false)
 										return
 									}
-									void router.navigate({ href: `/@${result.slug}` })
+									void router.navigate({
+										href: orgOverviewPath(result.slug),
+									})
 								},
 							},
 						)
@@ -499,12 +502,10 @@ function renderOrganizationList(data: AccountOrganizationsLoaderData) {
 					viewer: data.viewer,
 					detail: orgRoleLabel(org.role),
 					pills: [],
-					// Each org opens its overview: a team org's home (which
-					// links Settings, Members, and its sections), the signup
-					// org's workspace overview.
-					href: org.personal
-						? orgOverviewPath(org.slug)
-						: routes.profile.href({ username: org.slug }),
+					// Every org a person belongs to opens its workspace
+					// Overview. Grant-only collaborators have no Overview, so
+					// they open the org home that lists what was shared.
+					href: workspaceHomeHref(org),
 					testId: 'account-organization',
 				}),
 			)}
@@ -743,7 +744,8 @@ function useOrganizationRestore() {
 				{ orgSlug, actorKey },
 				{
 					onSuccess: (result) => {
-						if (isCurrent()) void router.navigate({ href: `/@${result.slug}` })
+						if (isCurrent())
+							void router.navigate({ href: orgOverviewPath(result.slug) })
 					},
 				},
 			)

@@ -16,6 +16,18 @@ function createTestEnv(): Env {
 	return { COOKIE_SECRET: cookieSecret } as Env
 }
 
+test('ignores unrelated cookies without requiring the package-app cookie secret', async () => {
+	await expect(
+		readPackageAppSession({
+			request: new Request('https://owner.kody.run/packages/notes', {
+				headers: { Cookie: 'kody_session=account-session; theme=dark' },
+			}),
+			env: {} as Env,
+			slug: 'notes',
+		}),
+	).resolves.toBeNull()
+})
+
 test('per-app sessions on one host: logout of A leaves B signed in', async () => {
 	resetPackageAppSessionCookieForTests()
 	const env = createTestEnv()

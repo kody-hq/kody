@@ -14,6 +14,7 @@ import {
 	approvePackageSchema,
 } from '#universal/integration-mutations.ts'
 import { connectSecretsSchema } from '../connect-input.ts'
+import { emailClassificationValues } from '#universal/email-message-view.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
@@ -1074,10 +1075,18 @@ export const deleteEmailMessage = createServerFn({ method: 'POST' })
 
 export const classifyEmailMessage = createServerFn({ method: 'POST' })
 	.validator(
-		resourceInput.omit({ search: true }).extend({
-			messageId: z.string().trim().min(1),
-			classification: z.enum(['accepted', 'quarantined']),
-		}),
+		resourceInput
+			.omit({ search: true })
+			.extend({
+				messageId: z.string().trim().min(1),
+				classification: z.enum(emailClassificationValues).optional(),
+				archived: z.boolean().optional(),
+			})
+			.refine(
+				(value) =>
+					value.classification !== undefined || value.archived !== undefined,
+				'Provide classification, archived, or both.',
+			),
 	)
 	.handler(async ({ data }) => {
 		const [
@@ -1099,10 +1108,41 @@ export const classifyEmailMessage = createServerFn({ method: 'POST' })
 						...context,
 						messageId: data.messageId,
 						classification: data.classification,
+						archived: data.archived,
 					}),
 				)
 				return result
 			},
+		)
+	})
+
+export const blockEmailMessageSender = createServerFn({ method: 'POST' })
+	.validator(
+		resourceInput.omit({ search: true }).extend({
+			messageId: z.string().trim().min(1),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ blockAccountEmailSender },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-email.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation(
+			{
+				scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined,
+			},
+			async (context) =>
+				requireOperationResult(
+					await blockAccountEmailSender({
+						...context,
+						messageId: data.messageId,
+					}),
+				),
 		)
 	})
 
@@ -1449,6 +1489,83 @@ export const updateExperiments = createServerFn({ method: 'POST' })
 				await saveExperimentsPreference({
 					...context,
 					experimentsOptIn: data.experimentsOptIn,
+				}),
+			),
+		)
+	})
+
+export const revokeConnectedApp = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			appKey: z.string().trim().min(1).max(300),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedApp },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedApp({ ...context, ...data }),
+			),
+		)
+	})
+
+export const revokeConnectedAppScope = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			appKey: z.string().trim().min(1).max(300),
+			scope: z.string().trim().min(1).max(260),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedAppScope },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedAppScope({ ...context, ...data }),
+			),
+		)
+	})
+
+export const revokeConnectedAppAgent = createServerFn({ method: 'POST' })
+	.validator(z.object({ clientId: z.string().trim().min(1).max(300) }))
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedAppAgent },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedAppAgent({
+					...context,
+					clientId: data.clientId,
 				}),
 			),
 		)

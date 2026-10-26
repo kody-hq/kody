@@ -1,3 +1,4 @@
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import type * as authSession from '#app/auth-session.ts'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as authorizeModule from '#worker/authorization/authorize.ts'
@@ -289,7 +290,10 @@ const {
 	createAccountMcpServersOauthCallbackHandler,
 } = await import('./account-mcp-servers.test-support.ts')
 
-const env = { APP_DB: {} as D1Database } as Env
+const env = {
+	APP_DB: {} as D1Database,
+	AUDIT_DB: createAuditTestDb(),
+} as Env
 const apiUrl = 'https://example.com/account/mcp-servers.json'
 const callbackUrl = 'https://example.com/account/mcp-servers/oauth/callback'
 const userScope = {

@@ -15,7 +15,6 @@ import {
 import type * as entitlementsService from '#worker/entitlements/service.ts'
 import type * as integrationsService from '#worker/integrations/service.ts'
 import type * as packageRepo from '#worker/package-registry/repo.ts'
-import type * as packageRetrievers from '#worker/package-retrievers/service.ts'
 import type * as searchRateLimit from '#worker/search-rate-limit.ts'
 import { type CapabilityContext } from '../types.ts'
 
@@ -78,9 +77,6 @@ const mockModule = vi.hoisted(() => ({
 			.filter(Boolean)
 			.join('\n'),
 	),
-	runPackageRetrievers: vi.fn<typeof packageRetrievers.runPackageRetrievers>(
-		async () => ({ results: [], warnings: [] }),
-	),
 }))
 
 vi.mock('#mcp/capabilities/registry.ts', () => ({
@@ -138,12 +134,6 @@ vi.mock('#mcp/tools/memory-tool-context.ts', () => ({
 	buildMemoryRetrievalQuery: (
 		...args: Parameters<typeof memoryToolContext.buildMemoryRetrievalQuery>
 	) => mockModule.buildMemoryRetrievalQuery(...args),
-}))
-
-vi.mock('#worker/package-retrievers/service.ts', () => ({
-	runPackageRetrievers: (
-		...args: Parameters<typeof packageRetrievers.runPackageRetrievers>
-	) => mockModule.runPackageRetrievers(...args),
 }))
 
 const mockFeatureFlags = vi.hoisted(() => ({
@@ -331,7 +321,6 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 		}),
 	)
 	expect(mockModule.getCapabilityRegistryForContext).toHaveBeenCalledTimes(1)
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledTimes(1)
 
 	mockUserPlan.plan = 'standard'
 	mockFeatureFlags.override = Object.fromEntries(
@@ -367,7 +356,6 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 				'rowAndRegistryLoad',
 				'featureFlags',
 				'loadAndRank',
-				'retrievers',
 				'unaccounted',
 			]),
 		)

@@ -38,14 +38,14 @@
     "diff": "^9.0.0",
     "isomorphic-git": ">=1.40.0 <1.40.8",
     "marked": "^18.0.14",
-    "postal-mime": "^3.0.1",
+    "postal-mime": "^4.0.8",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "remix": "3.0.0",
     "satori": "^0.32.0",
     "tldts": "^7.4.16",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "imports": {
     "#app/*": "./src/app/*",

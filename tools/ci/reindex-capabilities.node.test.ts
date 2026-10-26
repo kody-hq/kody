@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	isRetryableFirstSweepReindexFailure,
 	parseReindexArgs,
 	runCapabilityReindex,
 } from './reindex-capabilities.ts'
@@ -155,6 +156,97 @@ test('runCapabilityReindex retries a first-sweep 401/503 only inside the auth re
 		runCapabilityReindex({ ...base, fetcher: noWindow.fetcher }),
 	).rejects.toThrow('Capability reindex failed with HTTP 401.')
 	expect(noWindow.calls).toHaveLength(1)
+})
+
+test('runCapabilityReindex retries a first-sweep workers.dev 1042 until the script appears', async () => {
+	let clock = 0
+	const timing = {
+		now: () => clock,
+		sleep: async (ms: number) => {
+			clock += ms
+		},
+	}
+	const base = {
+		baseUrl: 'https://kody-pr-4287.example.workers.dev',
+		secret: 's',
+		log: () => {},
+		...timing,
+	}
+	const binding = fakeMaintenanceEndpoint([
+		{
+			status: 530,
+			body: {
+				error: 'workers_dev_script_not_found',
+				code: 1042,
+				retryable: false,
+			},
+		},
+		{ body: { complete: true } },
+	])
+	await expect(
+		runCapabilityReindex({
+			...base,
+			authRetrySeconds: 90,
+			fetcher: binding.fetcher,
+		}),
+	).resolves.toEqual({ sweeps: 1 })
+	expect(binding.calls).toHaveLength(2)
+	expect(clock).toBe(5_000)
+
+	clock = 0
+	const stillMissing = fakeMaintenanceEndpoint([
+		{
+			status: 404,
+			body: { error: 'Cloudflare Error 1042 workers_dev_script_not_found' },
+		},
+	])
+	await expect(
+		runCapabilityReindex({ ...base, fetcher: stillMissing.fetcher }),
+	).rejects.toThrow('Capability reindex failed with HTTP 404.')
+	expect(stillMissing.calls).toHaveLength(1)
+})
+
+test('isRetryableFirstSweepReindexFailure covers secret and workers.dev races', () => {
+	expect(isRetryableFirstSweepReindexFailure(401, 'Unauthorized')).toBe(true)
+	expect(isRetryableFirstSweepReindexFailure(503, 'not configured')).toBe(true)
+	expect(isRetryableFirstSweepReindexFailure(502, 'Bad Gateway')).toBe(true)
+	expect(isRetryableFirstSweepReindexFailure(530, 'origin error')).toBe(true)
+	expect(
+		isRetryableFirstSweepReindexFailure(
+			404,
+			'Cloudflare Error 1042 workers_dev_script_not_found',
+		),
+	).toBe(true)
+	expect(isRetryableFirstSweepReindexFailure(404, 'not found')).toBe(false)
+	expect(isRetryableFirstSweepReindexFailure(500, 'internal')).toBe(false)
+	expect(
+		isRetryableFirstSweepReindexFailure(
+			200,
+			JSON.stringify({
+				complete: false,
+				cursor: { phase: 'capabilities', afterId: 'cap-1042' },
+			}),
+		),
+	).toBe(false)
+})
+
+test('runCapabilityReindex does not retry a successful first sweep whose cursor contains 1042', async () => {
+	const cursor = { phase: 'capabilities', afterId: 'cap-1042' }
+	const endpoint = fakeMaintenanceEndpoint([
+		{ body: { complete: false, cursor } },
+		{ body: { complete: true } },
+	])
+	await expect(
+		runCapabilityReindex({
+			baseUrl: 'https://kody-pr-3.example.workers.dev',
+			secret: 's',
+			authRetrySeconds: 90,
+			fetcher: endpoint.fetcher,
+			log: () => {},
+		}),
+	).resolves.toEqual({ sweeps: 2 })
+	expect(endpoint.calls).toHaveLength(2)
+	expect(endpoint.calls[1]?.body).toEqual({ cursor })
 })
 
 test('parseReindexArgs accepts known phases and omits phases for a full sweep', () => {

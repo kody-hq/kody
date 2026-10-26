@@ -314,6 +314,7 @@ export function AccountMemoriesPage({
 									label="Search memories"
 									placeholder="Search subject, category, tags, summary"
 									value={filters.q ?? ''}
+									disabled={isMutating}
 									onInput={(value) => {
 										return updateFilters({ search: value })
 									}}

@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { decideApprovalBundleItem } from '#app/approval-bundle-decisions.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -36,9 +37,9 @@ import { createApprovalBundle, loadApprovalBundleView } from './service.ts'
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 async function setup() {
 	const t = await setupPackageCredentialMappingFixture({

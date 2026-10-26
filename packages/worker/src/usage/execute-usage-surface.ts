@@ -23,7 +23,6 @@ export function shouldRecordExecuteUsageForRun(input: {
 			case 'app_realtime':
 			case 'job':
 			case 'workflow':
-			case 'retriever':
 			case 'webhook':
 				return false
 			default: {

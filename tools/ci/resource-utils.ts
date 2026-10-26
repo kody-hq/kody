@@ -274,6 +274,14 @@ function isArtifactsNamespaceNotFoundMessage(message: string) {
 	)
 }
 
+function isArtifactsNamespaceDeletionInProgressMessage(message: string) {
+	return /deletion is already in progress/i.test(message)
+}
+
+function isArtifactsNamespaceActivationInProgressMessage(message: string) {
+	return /activation is already in progress/i.test(message)
+}
+
 async function waitForArtifactsNamespaceActivation(input: {
 	accountId: string
 	apiToken: string
@@ -384,7 +392,7 @@ export async function ensureArtifactsNamespace(input: {
 		return { namespace: name }
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
-		if (/activation is already in progress/i.test(message)) {
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
 			return waitForArtifactsNamespaceActivation(input)
 		}
 		if (isArtifactsNamespaceAlreadyExistsMessage(message)) {
@@ -463,6 +471,18 @@ export async function deleteArtifactsNamespace(input: {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
 			return
 		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
+			)
+			return
+		}
 		throw new CloudflareResourceError(
 			'artifacts',
 			input.namespace,
@@ -507,6 +527,18 @@ export async function deleteArtifactsNamespace(input: {
 		const message = error instanceof Error ? error.message : String(error)
 		if (isArtifactsNamespaceNotFoundMessage(message)) {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
+			return
+		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
+			)
 			return
 		}
 		// Namespace DELETE is not always documented; after emptying repos the
@@ -2962,6 +2994,8 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId,
 	auditD1DatabaseName,
 	auditD1DatabaseId,
+	jobsD1DatabaseName,
+	jobsD1DatabaseId,
 	oauthKvId,
 	bundleArtifactsKvId,
 	communityAssetsBucketName,
@@ -2983,6 +3017,9 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId: string
 	auditD1DatabaseName: string
 	auditD1DatabaseId: string
+	/** Required when the target env binds JOBS_DB (production paced backup). */
+	jobsD1DatabaseName?: string
+	jobsD1DatabaseId?: string
 	oauthKvId: string
 	bundleArtifactsKvId: string
 	communityAssetsBucketName: string
@@ -3044,23 +3081,40 @@ export async function writeGeneratedWranglerConfig({
 		)
 	}
 
-	for (const binding of [
+	const requiredD1Bindings: Array<{
+		name: string
+		databaseName: string
+		databaseId: string
+		required: boolean
+	}> = [
 		{
 			name: 'APP_DB',
 			databaseName: d1DatabaseName,
 			databaseId: d1DatabaseId,
+			required: true,
 		},
 		{
 			name: 'AUDIT_DB',
 			databaseName: auditD1DatabaseName,
 			databaseId: auditD1DatabaseId,
+			required: true,
 		},
-	]) {
+	]
+	if (jobsD1DatabaseName && jobsD1DatabaseId) {
+		requiredD1Bindings.push({
+			name: 'JOBS_DB',
+			databaseName: jobsD1DatabaseName,
+			databaseId: jobsD1DatabaseId,
+			required: false,
+		})
+	}
+	for (const binding of requiredD1Bindings) {
 		const entryIndex = d1Databases.findIndex((entry) => {
 			if (!entry || typeof entry !== 'object') return false
 			return (entry as Record<string, unknown>).binding === binding.name
 		})
 		if (entryIndex < 0) {
+			if (!binding.required) continue
 			fail(
 				`wrangler config "${baseConfigPath}" has no ${envName} D1 binding for "${binding.name}".`,
 			)
@@ -3071,6 +3125,15 @@ export async function writeGeneratedWranglerConfig({
 			database_name: binding.databaseName,
 			database_id: binding.databaseId,
 		}
+	}
+	const jobsDbIndex = d1Databases.findIndex((entry) => {
+		if (!entry || typeof entry !== 'object') return false
+		return (entry as Record<string, unknown>).binding === 'JOBS_DB'
+	})
+	if (jobsDbIndex >= 0 && !(jobsD1DatabaseName && jobsD1DatabaseId)) {
+		fail(
+			`wrangler config "${baseConfigPath}" binds JOBS_DB in env.${envName} but writeGeneratedWranglerConfig was not given jobsD1DatabaseName/jobsD1DatabaseId.`,
+		)
 	}
 
 	const kvNamespaces = (targetEnv as Record<string, unknown>).kv_namespaces
@@ -3174,6 +3237,31 @@ export async function writeGeneratedWranglerConfig({
 		if (typeof value === 'string' && value.length > 0) {
 			resolvedVars[key] = value
 		}
+	}
+	// Paced D1 shadow backup: expand DR_D1_PACED_SOURCES with live D1 UUIDs at
+	// deploy time (APP + AUDIT + JOBS). Committed wrangler vars already list
+	// all three; expansion keeps UUIDs aligned with resource bindings.
+	if (resolvedVars.DR_D1_PACED_BACKUP_ENABLED === 'true') {
+		const pacedSources: Array<{
+			binding: string
+			name: string
+			id: string
+		}> = [
+			{ binding: 'APP_DB', name: d1DatabaseName, id: d1DatabaseId },
+			{
+				binding: 'AUDIT_DB',
+				name: auditD1DatabaseName,
+				id: auditD1DatabaseId,
+			},
+		]
+		if (jobsD1DatabaseName && jobsD1DatabaseId) {
+			pacedSources.push({
+				binding: 'JOBS_DB',
+				name: jobsD1DatabaseName,
+				id: jobsD1DatabaseId,
+			})
+		}
+		resolvedVars.DR_D1_PACED_SOURCES = JSON.stringify(pacedSources)
 	}
 	// Deployed preview/production must never carry the local-dev Turnstile
 	// bypass. Local `npm run dev` writes a separate generated config.

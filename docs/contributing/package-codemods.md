@@ -144,10 +144,10 @@ package publish checks to `packageStorage()` **at call sites**:
 - Emits `needsManual` for **parse failures** on scannable module files that
   mention `kody:runtime` and `storage`.
 - **Manifest gate:** when `package.json#kody` declares any non-empty `app`,
-  `jobs`, `subscriptions`, `webhooks`, or `retrievers` surface, every
-  ambient-storage candidate file gets `needsManual` — ambient `storage` and
-  `packageStorage()` use different bucket identities on those execution
-  surfaces, so automatic rewrite risks silent data repointing.
+  `jobs`, `subscriptions`, or `webhooks` surface, every ambient-storage
+  candidate file gets `needsManual` — ambient `storage` and `packageStorage()`
+  use different bucket identities on those execution surfaces, so automatic
+  rewrite risks silent data repointing.
 
 ### `0002-static-first-invocation`
 
@@ -581,6 +581,27 @@ the existing republish path so job/trigger enablements stay as they are. Uses
 `applyMode: 'published-only'`. After apply pages finish, run
 `adminCredentialStampBackfill` to write KV stamps. Leftover cleanup is tracked
 in the linked #3836 cleanup issue.
+
+### `0017-detect-package-app-visitor-authority`
+
+Detect only (writes nothing). Package apps run as their publisher (ADR 0068),
+capped to `kody.app.capabilities`; anything else runs with the visitor's
+authority only through the logged would-break fallback. This scan finds package
+apps that would lean on that fallback:
+
+- `undeclared capability` / `computed capability`: a `kody.<name>()` call
+  missing from `kody.app.capabilities`, or a name picked at run time.
+- `kody.mcp`: an MCP server tool call from the app.
+- `visitor credential`: the app uses credentials, declares no
+  `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,
+  so signed-in visitors get the publisher's credentials.
+- `identity email`: the app reads `email` from `metaGetCurrentUser`, which needs
+  the visitor's `email` consent.
+
+Findings carry fixed messages only. Count flagged apps with
+`adminPackageCodemodScan` (`codemodId`
+`0017-detect-package-app-visitor-authority`) and compare with the live fallback
+count from `adminPackageAppAuthorityFallbackReport`.
 
 ## Engine
 

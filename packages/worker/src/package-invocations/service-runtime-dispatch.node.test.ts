@@ -33,6 +33,9 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceRowForUser: (
 		...args: Parameters<typeof packageSourceModule.loadPackageSourceRowForUser>
 	) => repoMockModule.loadPackageSourceRowForUser(...args),
+	loadPackageSourceRowsForUser: (
+		...args: Parameters<typeof packageSourceModule.loadPackageSourceRowsForUser>
+	) => repoMockModule.loadPackageSourceRowsForUser(...args),
 	loadPackageManifestForSource: (
 		...args: Parameters<typeof packageSourceModule.loadPackageManifestForSource>
 	) => repoMockModule.loadPackageManifestForSource(...args),
@@ -48,11 +51,6 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		repoMockModule.loadPublishedBundleArtifactByIdentity(...args),
 	persistPublishedBundleArtifact: (...args: Array<unknown>) =>
 		repoMockModule.persistPublishedBundleArtifact(...args),
-}))
-
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: (...args: Array<unknown>) =>
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles(...args),
 }))
 
 vi.mock('#mcp/run-kody-registry.ts', () => ({

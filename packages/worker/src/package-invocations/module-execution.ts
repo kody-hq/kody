@@ -6,6 +6,7 @@ import {
 	type RunRecordContext,
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
+import { withRunStartedBy } from '#worker/run-records/service.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import {
@@ -15,6 +16,13 @@ import {
 import { getInternalEmailMessageById } from '#worker/email/mailbox-internal-read.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
+import {
+	CredentialClientError,
+	loadRunCredentialNeeds,
+	openCredentialClient,
+} from '#worker/credentials/credential-client.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { consumeDailyEntitlement } from '#worker/entitlements/service.ts'
 import {
 	budgetLimitErrorCode,
@@ -26,7 +34,10 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
-import { backgroundRunBilledActor } from '#worker/request-context/request-context.ts'
+import {
+	backgroundRunBilledActor,
+	enablementIdOf,
+} from '#worker/request-context/request-context.ts'
 import {
 	automationInvocationsPerDayResource,
 	shouldConsumeAutomationInvocationEntitlement,
@@ -37,10 +48,12 @@ import {
 	resolveInvocationMeteringSurface,
 	resolveInvocationRuntimeName,
 	resolveInvocationRuntimeSurface,
+	sourceRevisionChangedErrorCode,
 	type PackageInvocationActor,
 	type PackageInvocationResponse,
 	type PackageModuleSelector,
 	type PackageRuntimeToolFactories,
+	type PackageSourceRevisionOptions,
 } from './common.ts'
 import {
 	ensureModuleArtifact,
@@ -67,9 +80,10 @@ import {
  *   any sandbox work started. Nothing executed, so keyed callers release
  *   their claim and key-less callers can simply retry.
  * - `pre-execution-denied`: a gate before sandbox work rejected the invoke
- *   (today: daily automation quota). Same release semantics as
+ *   (daily automation quota, a pinned source revision that moved, or a
+ *   missing required executor credential). Same release semantics as
  *   `artifact-unavailable` so a keyed retry can succeed after the UTC day
- *   rolls or the limit rises; do not terminal-store the 429 under the key.
+ *   rolls, the limit rises, or a credential is connected.
  *
  * `logs` / `result` / `error` carry what the registry would otherwise feed
  * its own run-record finish, for keyed callers that own the run record via
@@ -88,7 +102,12 @@ export type SavedPackageModuleRunOutcome =
 			logs: Array<string>
 			error: unknown
 	  }
-	| { kind: 'artifact-unavailable'; response: PackageInvocationResponse }
+	| {
+			kind: 'artifact-unavailable'
+			response: PackageInvocationResponse
+			/** Underlying preparation failure, for the owner's run record. */
+			error: unknown
+	  }
 	| { kind: 'pre-execution-denied'; response: PackageInvocationResponse }
 
 export type SavedPackageModuleRunInput = {
@@ -137,6 +156,61 @@ export type SavedPackageModuleRunInput = {
 	 * that is only known after the artifact loads.
 	 */
 	externalRunRecordHandle?: RunRecordHandle | null
+	/** Report, and optionally pin, the commit this run resolves. */
+	sourceRevision?: PackageSourceRevisionOptions | null
+}
+
+async function requiredExecutorCredentialError(input: {
+	env: Env
+	callerContext: ReturnType<typeof createMcpCallerContext>
+	packageId: string
+	idempotencyKey: string | null
+}): Promise<PackageInvocationResponse | null> {
+	const request = input.callerContext.request
+	if (!request?.actor) return null
+	if (
+		enablementIdOf(request) ||
+		request.credential.kind === 'package-app' ||
+		!(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: request.org.id,
+			request,
+		}))
+	) {
+		return null
+	}
+	const runNeeds = await loadRunCredentialNeeds({
+		env: input.env,
+		orgId: request.org.id,
+		packageIds: [input.packageId],
+		request,
+	})
+	const requiredNeeds = [...runNeeds.values()].filter(
+		(need) => need.supplier === 'executor' && need.required !== false,
+	)
+	if (requiredNeeds.length === 0) return null
+
+	const credentialContext = {
+		env: input.env,
+		callerContext: input.callerContext,
+		binding: newRunCredentialClientBinding(),
+		packageId: input.packageId,
+		runNeeds: async () => runNeeds,
+	}
+	for (const need of requiredNeeds) {
+		try {
+			await openCredentialClient(credentialContext, { key: need.key })
+		} catch (error) {
+			if (!(error instanceof CredentialClientError)) throw error
+			return buildJsonErrorResponse({
+				status: 409,
+				code: 'credential_required',
+				message: `Required credential need "${need.key}" is not connected. Connect need:${need.key} before running this package.`,
+				idempotencyKey: input.idempotencyKey ?? undefined,
+			})
+		}
+	}
+	return null
 }
 
 export async function runSavedPackageModuleOnce(
@@ -165,6 +239,21 @@ export async function runSavedPackageModuleOnce(
 						id: artifact.packageContext.sourceId,
 						userId: input.actor.orgId,
 					})
+		const resolvedPublishedCommit =
+			artifact.publishedCommit ?? repoSource?.published_commit ?? null
+		input.sourceRevision?.onResolved?.(resolvedPublishedCommit)
+		const pinnedCommit = input.sourceRevision?.pinnedCommit ?? null
+		if (pinnedCommit && pinnedCommit !== resolvedPublishedCommit) {
+			return {
+				kind: 'pre-execution-denied',
+				response: buildJsonErrorResponse({
+					status: 409,
+					code: sourceRevisionChangedErrorCode,
+					message: `Package "${input.savedPackage.kodyId}" was republished after this run was queued: it was pinned to commit ${pinnedCommit} but the published commit is now ${resolvedPublishedCommit ?? 'unknown'}. Nothing ran. Create a new workflow to run the current revision.`,
+					idempotencyKey: input.idempotencyKey ?? undefined,
+				}),
+			}
+		}
 		if (
 			shouldConsumeAutomationInvocationEntitlement({
 				actorTokenId: input.actor.sourceId,
@@ -243,6 +332,7 @@ export async function runSavedPackageModuleOnce(
 			},
 			repoContext: repoSource ? createRepoContext(repoSource) : null,
 			source: input.actor.request,
+			resourceEventDepth: input.actor.resourceEventDepth ?? null,
 		})
 		// A run reads org mail only with its person's email:read.
 		const requireRunEmailRead = () =>
@@ -259,42 +349,52 @@ export async function runSavedPackageModuleOnce(
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
 		}
+		const missingCredential = await requiredExecutorCredentialError({
+			env: input.env,
+			callerContext,
+			packageId: packageContext.packageId,
+			idempotencyKey: input.idempotencyKey,
+		})
+		if (missingCredential) {
+			return { kind: 'pre-execution-denied', response: missingCredential }
+		}
 		const externalHandle = input.externalRunRecordHandle ?? null
 		if (externalHandle) {
 			// The caller claimed before the artifact loaded, so its context could
 			// not know the published commit yet; enrich it for the terminal write.
 			externalHandle.context = {
 				...externalHandle.context,
-				publishedCommit:
-					artifact.publishedCommit ?? repoSource?.published_commit ?? null,
+				publishedCommit: resolvedPublishedCommit,
 			}
 		}
 		const runRecord: RunRecordContext | null = externalHandle
 			? externalHandle.context
 			: runtimeSurface == null
 				? null
-				: {
-						packageId: input.savedPackage.id,
-						kodyId: input.savedPackage.kodyId,
-						sourceId: input.savedPackage.sourceId,
-						publishedCommit:
-							artifact.publishedCommit ?? repoSource?.published_commit ?? null,
-						surface: runtimeSurface,
-						name: resolveInvocationRuntimeName({
+				: withRunStartedBy(
+						{
+							packageId: input.savedPackage.id,
+							kodyId: input.savedPackage.kodyId,
+							sourceId: input.savedPackage.sourceId,
+							publishedCommit: resolvedPublishedCommit,
 							surface: runtimeSurface,
-							invocationName: input.invocationName,
-							topic: input.topic,
-						}),
-						invocationId: input.invocationId,
-						idempotencyKey: input.idempotencyKey,
-						metadata: buildSubscriptionInvocationRunMetadata({
-							exportName: input.invocationName,
-							isSubscription: input.moduleSelector.kind === 'subscription',
-							source: input.source,
-							topic: input.topic,
-							params: input.params,
-						}),
-					}
+							name: resolveInvocationRuntimeName({
+								surface: runtimeSurface,
+								invocationName: input.invocationName,
+								topic: input.topic,
+							}),
+							invocationId: input.invocationId,
+							idempotencyKey: input.idempotencyKey,
+							metadata: buildSubscriptionInvocationRunMetadata({
+								exportName: input.invocationName,
+								isSubscription: input.moduleSelector.kind === 'subscription',
+								source: input.source,
+								topic: input.topic,
+								params: input.params,
+							}),
+						},
+						callerContext.request,
+					)
 		executionStarted = true
 		const executionResult = await runBundledModuleWithRegistry(
 			input.env,
@@ -303,6 +403,9 @@ export async function runSavedPackageModuleOnce(
 				mainModule: artifact.mainModule,
 				modules: artifact.modules,
 				dependencies: artifact.dependencies,
+				...(artifact.packageBindingRewrite === undefined
+					? {}
+					: { packageBindingRewrite: artifact.packageBindingRewrite }),
 			},
 			input.params,
 			{
@@ -314,7 +417,7 @@ export async function runSavedPackageModuleOnce(
 				// Keyed callers own their run record (claimed with the ledger row);
 				// the registry must not begin/finish a second one for this run.
 				// Still pass the observed surface so UWD is not inferred as
-				// package_export for subscription / webhook / retriever keyed runs.
+				// package_export for subscription / webhook keyed runs.
 				runRecord: externalHandle ? null : runRecord,
 				runSurface:
 					runRecord?.surface ??
@@ -495,6 +598,7 @@ export async function runSavedPackageModuleOnce(
 						'Package artifact preparation failed before execution. Please retry.',
 					idempotencyKey: input.idempotencyKey ?? undefined,
 				}),
+				error,
 			}
 		}
 		if (isMissingPackageModuleError(error)) {

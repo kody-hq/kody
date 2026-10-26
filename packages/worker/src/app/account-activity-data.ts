@@ -20,6 +20,7 @@ import {
 	type RunLogLevel,
 	type RunRecord,
 	type RunRecordLog,
+	type RunStartedBy,
 	type RunStatus,
 	type RunSurface,
 	runRecordRetentionDays,
@@ -69,6 +70,7 @@ export type AccountActivityRunListItem = {
 	idempotencyKey: string | null
 	entry: ExecuteEntry | null
 	workerId: string | null
+	startedBy: RunStartedBy | null
 }
 
 export type AccountActivityRunLog = {
@@ -214,6 +216,7 @@ function toListItem(run: RunRecord): AccountActivityRunListItem {
 		idempotencyKey: run.idempotencyKey,
 		entry: readExecuteEntry(run.metadata),
 		workerId: readMetadataString(run.metadata, executeWorkerIdMetadataKey),
+		startedBy: run.startedBy,
 	}
 }
 

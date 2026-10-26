@@ -142,6 +142,8 @@ test('usageEventBlobs default actor to org billing id and map automation sources
 		'schedule',
 		'',
 		'',
+		'',
+		'',
 	])
 	expect(
 		usageEventBlobs(

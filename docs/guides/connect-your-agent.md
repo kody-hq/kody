@@ -77,6 +77,15 @@ smoother from a coding agent — Cursor, Claude Code, Codex, Copilot CLI,
 OpenCode, Devin, OpenClaw, Hermes Agent, Muse — because those hosts edit files
 and iterate on code easily. Either kind can be first; the home is the same.
 
+Coding agents with a shell should install the Kody CLI and prefer
+`npx -y @kodycodes/cli@latest execute --local` (Node 22+) so fresh one-off code
+does not spend Worker compute days. After MCP is connected, call `api` with
+`cliCredentialBootstrap` and run the returned `cli_command`, or run
+`npx -y @kodycodes/cli@latest skill install` and follow the hosted `kody-cli`
+skill. Web-only hosts keep using MCP `execute`. Details:
+[Local CLI execute](./local-execute.md)
+(`search({ entity: "guide:local_execute" })`).
+
 ## Step 2 — Make something useful
 
 Once the connection works, Step 2 (`/onboarding/step-2`) is one short prompt you

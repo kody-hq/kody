@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
@@ -95,6 +96,7 @@ export const integrationSaveCapability = defineDomainCapability(
 					? { logoBase64: args.logoBase64 }
 					: {}),
 				waitUntil: ctx.waitUntil,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			return { integration }
 		},

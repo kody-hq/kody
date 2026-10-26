@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as serviceModule from '#worker/package-invocations/service.ts'
 
@@ -21,9 +22,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByUserId: mocks.listSavedPackagesByUserId,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const { dispatchRunErrorSubscriptionEvents, runErrorRecordedTopic } =
 	await import('./package-subscriptions.ts')
@@ -50,6 +51,7 @@ function errorRun(overrides: Record<string, unknown> = {}) {
 		durationMs: 1000,
 		errorName: 'Error',
 		errorMessage: 'boom',
+		startedBy: null,
 		metadataJson: '{}',
 		createdAt: '2026-07-27T12:00:00.000Z',
 		updatedAt: '2026-07-27T12:00:01.000Z',

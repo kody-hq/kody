@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertPackageCanAccessResolvedSecret } from '#mcp/secrets/package-access.ts'
@@ -164,6 +165,7 @@ export const secretSetCapability = defineDomainCapability(
 				})
 				saved = await updateUserSecretForPackage({
 					env: ctx.env,
+					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 					userId: ownerIdFromCaller(ctx.callerContext),
 					userEmail: user.email,
 					packageId: authorityPackageId,
@@ -174,6 +176,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else if (typeof parsed.value === 'string' && parsed.value.length > 0) {
 				saved = await saveSecret({
 					env: ctx.env,
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					userEmail: user.email,
 					scope: parsed.scope,
@@ -190,6 +196,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else {
 				saved = await updateSecret({
 					env: ctx.env,
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					scope: parsed.scope,
 					name: parsed.name,

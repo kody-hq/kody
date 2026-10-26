@@ -21,9 +21,6 @@ export type RemoteExecuteInput = {
 	org?: string
 }
 
-export const credentialFlagRequiresLocalOrMcpMessage =
-	'--credential picks a credential for this run. Cloud execute sends it on POST /v1/execute. Use `execute --local --credential …` when the module must run on this machine.'
-
 /**
  * Cloud (non-`--local`) execute authenticated only with a scoped API token:
  * CapabilityProxy session + `kody.execute`. The module runs in Kody's cloud

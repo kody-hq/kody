@@ -43,9 +43,13 @@ test('compiled OAuth document recovers from malformed and missing client registr
 			await readDocument(authorizationUrl(server.origin, clientId)),
 		).toContain('Invalid OAuth client registration.')
 		await server.seedOAuthClient(clientId, null)
-		expect(
-			await readDocument(authorizationUrl(server.origin, clientId)),
-		).toContain('Invalid client')
+		const missingRegistration = await readDocument(
+			authorizationUrl(server.origin, clientId),
+		)
+		expect(missingRegistration).toContain(
+			'data-failure-kind="missing_registration"',
+		)
+		expect(missingRegistration).toContain('This connection is not registered')
 	} finally {
 		await server.seedOAuthClient(clientId, null)
 	}

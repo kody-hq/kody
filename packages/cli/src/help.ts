@@ -206,14 +206,15 @@ ${orgBlock}
              via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
              body. Exit 0 for \`published\`, \`already_published\` (including
              when \`artifacts_rebuilt\` is true), and \`dispatched\` (poll
-             \`workflowRunList\`). Exit 1 for refusal/rejection statuses
-             (\`checks_failed\`, \`locked\`, \`approval_required\`,
+             \`workflowRunList({ workflow_id })\`). Exit 1 for refusal/rejection
+             statuses (\`checks_failed\`, \`locked\`, \`approval_required\`,
              \`not_fast_forward\`) — the API \`message\` (or a checks summary)
              goes to stderr, like npm. Auth / permission / network failures
              also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the
-             server — prefer \`kody api workflowRunList\` before retrying).
+             server — prefer \`kody api workflowRunList\` with \`workflow_id\`
+             when known before retrying).
              Re-publishing the same commit is safe: an active durable run is
              deduped; a finished publish returns \`already_published\`.
 

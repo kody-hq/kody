@@ -3,13 +3,12 @@ import { type CSSObject } from '@emotion/react'
 import { useId } from 'react'
 import {
 	kodyMarkAspectRatio,
-	kodyMarkLeftEyePathD,
-	kodyMarkNosePathD,
-	kodyMarkOuterPathD,
-	kodyMarkOutlineStrokeWidth,
+	kodyMarkOutlinedLeftEyePathD,
+	kodyMarkOutlinedNosePathD,
+	kodyMarkOutlinedRightEyePathD,
+	kodyMarkOutlinedRingPathD,
 	kodyMarkPathD,
 	kodyMarkPathTransform,
-	kodyMarkRightEyePathD,
 	kodyMarkViewBox,
 } from '../brand/kody-mark-path.ts'
 
@@ -30,9 +29,9 @@ export type KodyMarkProps = {
 }
 
 /**
- * Inline Kody mark. Light mode uses the outlined line-art treatment; dark mode
- * uses the solid fill. Both share the same viewBox and path geometry so theme
- * swaps do not shift the silhouette. Ink follows `currentColor`.
+ * Inline Kody mark. Light mode uses the outlined filled-path treatment; dark
+ * mode uses the solid fill. Both share the same viewBox and silhouette
+ * footprint so theme swaps do not shift layout. Ink follows `currentColor`.
  *
  * Theme switching uses an SVG `<style>` media query (same approach as
  * `favicon.svg`) so `prefers-color-scheme` applies reliably inside SVG.
@@ -47,10 +46,8 @@ export function KodyMark({
 	const width = Math.round(size * kodyMarkAspectRatio)
 	const labelled = title.trim().length > 0
 	const reactId = useId().replace(/:/g, '')
-	const clipId = `kody-mark-clip-${reactId}`
 	const outlinedClass = `kody-mark-outlined-${reactId}`
 	const solidClass = `kody-mark-solid-${reactId}`
-	const strokeWidth = kodyMarkOutlineStrokeWidth * 2
 	const showOutlined = variant === 'outlined' || variant === 'auto'
 	const showSolid = variant === 'solid' || variant === 'auto'
 
@@ -73,36 +70,26 @@ export function KodyMark({
 			) : null}
 			{showOutlined ? (
 				<g className={variant === 'auto' ? outlinedClass : undefined}>
-					<defs>
-						<clipPath id={clipId}>
-							<path transform={kodyMarkPathTransform} d={kodyMarkOuterPathD} />
-						</clipPath>
-					</defs>
-					<g clipPath={`url(#${clipId})`}>
-						<path
-							fill="none"
-							stroke="currentColor"
-							strokeWidth={strokeWidth}
-							strokeLinejoin="round"
-							strokeLinecap="round"
-							transform={kodyMarkPathTransform}
-							d={kodyMarkOuterPathD}
-						/>
-					</g>
 					<path
 						fill="currentColor"
+						fillRule="evenodd"
 						transform={kodyMarkPathTransform}
-						d={kodyMarkLeftEyePathD}
+						d={kodyMarkOutlinedRingPathD}
 					/>
 					<path
 						fill="currentColor"
 						transform={kodyMarkPathTransform}
-						d={kodyMarkRightEyePathD}
+						d={kodyMarkOutlinedLeftEyePathD}
 					/>
 					<path
 						fill="currentColor"
 						transform={kodyMarkPathTransform}
-						d={kodyMarkNosePathD}
+						d={kodyMarkOutlinedRightEyePathD}
+					/>
+					<path
+						fill="currentColor"
+						transform={kodyMarkPathTransform}
+						d={kodyMarkOutlinedNosePathD}
 					/>
 				</g>
 			) : null}

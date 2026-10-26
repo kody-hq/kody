@@ -187,8 +187,15 @@ const messageKeys = [
 	'updatedAt',
 ] as const
 
+/** Snapshots exported before Mailbox schema v6 have no `archivedAt`. */
+const messageKeysWithArchivedAt = [...messageKeys, 'archivedAt'] as const
+
 function parseMessage(row: Record<string, unknown>): MailboxMessageRecord {
-	assertExactKeys(row, messageKeys, 'message')
+	assertExactKeys(
+		row,
+		'archivedAt' in row ? messageKeysWithArchivedAt : messageKeys,
+		'message',
+	)
 	const direction = stringValue(row['direction'], 'message.direction')
 	const processingStatus = stringValue(
 		row['processingStatus'],
@@ -246,6 +253,10 @@ function parseMessage(row: Record<string, unknown>): MailboxMessageRecord {
 			row['classificationReason'],
 			'message.classificationReason',
 		),
+		archivedAt:
+			row['archivedAt'] === undefined
+				? null
+				: nullableTimestamp(row['archivedAt'], 'message.archivedAt'),
 		providerMessageId: nullableString(
 			row['providerMessageId'],
 			'message.providerMessageId',

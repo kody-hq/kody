@@ -1,5 +1,10 @@
 import { type PageOrgScope } from '../page-query-scope.ts'
 import { type QueryClient } from '@tanstack/react-query'
+import {
+	emailMessageMatchesView,
+	manualEmailClassificationReason,
+	type EmailClassification,
+} from '#universal/email-message-view.ts'
 import { type AccountEmailLoaderData } from '#universal/loader-data.ts'
 import {
 	emailKeys,
@@ -10,16 +15,66 @@ import {
 export type EmailMutationOutcome = {
 	ok: true
 	messageId: string
-	classification?: 'accepted' | 'quarantined'
+	classification?: EmailClassification
+	archived?: boolean
 }
 
 export type EmailAction = {
 	orgSlug: string | null
 	messageId: string
 } & (
-	| { action: 'classify'; classification: 'accepted' | 'quarantined' }
+	| {
+			action: 'classify'
+			classification?: EmailClassification
+			archived?: boolean
+			/** Optimistic `archived_at`; the server stamps its own time. */
+			requestedAt: string
+	  }
 	| { action: 'delete' }
 )
+
+export function emailTriageAction(input: {
+	orgSlug: string | null
+	messageId: string
+	classification?: EmailClassification
+	archived?: boolean
+}): Extract<EmailAction, { action: 'classify' }> {
+	return {
+		...input,
+		action: 'classify',
+		requestedAt: new Date().toISOString(),
+	}
+}
+
+type TriageFields = {
+	classification: EmailClassification
+	classification_reason: string | null
+	archived_at: string | null
+}
+
+function triagePatch<T extends TriageFields>(
+	message: T,
+	action: Extract<EmailAction, { action: 'classify' }>,
+): T {
+	return {
+		...message,
+		...(action.classification === undefined
+			? {}
+			: {
+					classification: action.classification,
+					classification_reason: manualEmailClassificationReason(
+						action.classification,
+					),
+				}),
+		...(action.archived === undefined
+			? {}
+			: {
+					archived_at: action.archived
+						? (message.archived_at ?? action.requestedAt)
+						: null,
+				}),
+	}
+}
 
 /** Update known rows only. A newly matching filtered page needs its ordered,
  * paginated server result; guessing an insertion can duplicate or skip rows. */
@@ -28,32 +83,22 @@ export function optimisticEmail(
 	action: EmailAction,
 ): AccountEmailLoaderData {
 	if (action.action === 'delete') return payload
-	const patch = {
-		classification: action.classification,
-		classification_reason:
-			action.classification === 'quarantined' ? 'Reclassified by user.' : null,
-	}
-	const removesRow =
-		payload.classification !== null &&
-		payload.classification !== action.classification
-	const hadRow = payload.messages.some(
-		(message) => message.id === action.messageId,
-	)
+	let removed = 0
+	const messages = payload.messages.flatMap((message) => {
+		if (message.id !== action.messageId) return [message]
+		const patched = triagePatch(message, action)
+		if (emailMessageMatchesView(payload.view, patched)) return [patched]
+		removed += 1
+		return []
+	})
 	return {
 		...payload,
-		messages: payload.messages.flatMap((message) =>
-			message.id !== action.messageId
-				? [message]
-				: removesRow
-					? []
-					: [{ ...message, ...patch }],
-		),
-		total:
-			removesRow && hadRow ? Math.max(0, payload.total - 1) : payload.total,
+		messages,
+		total: Math.max(0, payload.total - removed),
 		// Selection is independent of list filters on the server too.
 		selectedMessage:
 			payload.selectedMessage?.id === action.messageId
-				? { ...payload.selectedMessage, ...patch }
+				? triagePatch(payload.selectedMessage, action)
 				: payload.selectedMessage,
 	}
 }
@@ -117,16 +162,7 @@ export async function publishEmailResponse(
 	if (action.action === 'delete') client.setQueryData(key, null)
 	else
 		client.setQueryData<EmailDetail>(key, (detail) =>
-			detail
-				? {
-						...detail,
-						classification: action.classification,
-						classification_reason:
-							action.classification === 'quarantined'
-								? 'Reclassified by user.'
-								: null,
-					}
-				: detail,
+			detail ? triagePatch(detail, action) : detail,
 		)
 }
 

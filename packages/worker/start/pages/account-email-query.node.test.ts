@@ -36,6 +36,7 @@ const message: AccountEmailMessageDetail = {
 	processing_status: 'stored',
 	classification: 'quarantined',
 	classification_reason: 'Original reason',
+	archived_at: null,
 	sender_classification: null,
 	sender_classification_reason: null,
 	provider_message_id: null,
@@ -78,7 +79,7 @@ const payload = (
 	pageSize: 25,
 	total: 1,
 	query: '',
-	classification: null,
+	view: 'all',
 	...overrides,
 })
 const action: EmailAction = {
@@ -86,13 +87,14 @@ const action: EmailAction = {
 	orgSlug: null,
 	messageId: 'one',
 	classification: 'accepted',
+	requestedAt: '2026-01-02T00:00:00.000Z',
 }
 
 function seed(client: QueryClient, href: string, actor = 'a') {
 	const { list, messageId } = fixtureInput(href)
 	const { selectedMessage, ...data } = payload({
 		query: list.query,
-		classification: list.classification,
+		view: list.view,
 		page: list.page,
 		pageSize: list.pageSize,
 	})
@@ -122,10 +124,7 @@ it('selection reuses the list key, normalizes filters, and isolates actor and or
 	expect(emailKeys.destinations('a')).not.toEqual(emailKeys.destinations('b'))
 })
 it('optimism removes only known filtered rows without inventing page membership', () => {
-	const result = optimisticEmail(
-		payload({ classification: 'quarantined' }),
-		action,
-	)
+	const result = optimisticEmail(payload({ view: 'quarantined' }), action)
 	expect(result.messages).toEqual([])
 	expect(result.total).toBe(0)
 	expect(result.selectedMessage?.classification).toBe('accepted')
@@ -137,6 +136,56 @@ it('optimism removes only known filtered rows without inventing page membership'
 		page: 2,
 	})
 	expect(optimisticEmail(unknown, action)).toEqual(unknown)
+})
+it('optimism hides spam and archived rows from the inbox view and keeps them in matching views', () => {
+	const inbox = payload({ view: 'inbox' })
+	const spam: EmailAction = { ...action, classification: 'spam' }
+	const markedSpam = optimisticEmail(inbox, spam)
+	expect(markedSpam.messages).toEqual([])
+	expect(markedSpam.total).toBe(0)
+	expect(markedSpam.selectedMessage).toMatchObject({
+		classification: 'spam',
+		classification_reason: 'Marked as spam.',
+		archived_at: null,
+	})
+	expect(optimisticEmail(payload({ view: 'spam' }), spam).messages).toEqual([
+		expect.objectContaining({ id: 'one', classification: 'spam' }),
+	])
+
+	const archive: EmailAction = {
+		action: 'classify',
+		orgSlug: null,
+		messageId: 'one',
+		archived: true,
+		requestedAt: '2026-01-03T00:00:00.000Z',
+	}
+	const archived = optimisticEmail(inbox, archive)
+	expect(archived.messages).toEqual([])
+	expect(archived.selectedMessage).toMatchObject({
+		classification: 'quarantined',
+		classification_reason: 'Original reason',
+		archived_at: '2026-01-03T00:00:00.000Z',
+	})
+	const archivedView = payload({
+		view: 'archived',
+		messages: [{ ...message, archived_at: '2026-01-01T00:00:00.000Z' }],
+	})
+	const unarchived = optimisticEmail(archivedView, {
+		...archive,
+		archived: false,
+	})
+	expect(unarchived.messages).toEqual([])
+	expect(unarchived.total).toBe(0)
+	expect(unarchived.selectedMessage?.archived_at).toBeNull()
+})
+it('email search defaults to the inbox view and maps the legacy classification param', () => {
+	expect(emailSearch({}).view).toBe('inbox')
+	expect(emailSearch({ view: 'spam' }).view).toBe('spam')
+	expect(emailSearch({ view: 'bogus' }).view).toBe('inbox')
+	expect(emailSearch({ classification: 'quarantined' }).view).toBe(
+		'quarantined',
+	)
+	expect(emailSearch({ classification: 'accepted' }).view).toBe('inbox')
 })
 it('publishes only the affected entity, preserving concurrent rows, other selections and scopes', async () => {
 	const client = new QueryClient()

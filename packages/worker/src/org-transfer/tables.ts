@@ -37,6 +37,12 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_app_custom_hostnames: keep(
 		'App-level rows bind by package_id (unchanged on transfer), so the hostname follows the moved package. Org-level rows bind by org_id and stay with the source org. created_by_user_id is attribution only.',
 	),
+	package_app_rate_limits: keep(
+		'Rate-limit buckets bind to package ids, which do not change on org transfer.',
+	),
+	package_app_grant_credential_mappings: keep(
+		'Visitor credential mappings follow the person and their app grant, not the package owner.',
+	),
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
 	),
@@ -58,6 +64,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	community_forks: move(
 		'forker_user_id re-pointed for forks that produced a moved package.',
+	),
+	follow_recent_updates: keep(
+		'Recent updates belong to the follower org and its follow rows, which stay with that org.',
 	),
 	follows: keep(
 		'Follow rows stay with the follower org (follower_org_id is not re-pointed). The transfer batch rewrites denormalized target_owner_id and target_name so followers keep watching the same target ids under the destination owner.',
@@ -191,6 +200,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	teams: keep(orgMembershipShape),
 	transactional_email_delivery_index: keep(emailStays),
 	usage_attribution_daily: keep(usageHistory),
+	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
 	usage_rollups: keep(usageHistory),
 	user_email_claims: keep(personOwned),

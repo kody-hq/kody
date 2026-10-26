@@ -11,6 +11,8 @@ import {
 } from '#worker/storage-runner.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as ModuleGraph from './module-graph.ts'
+import type * as PackageAppAuthority from './package-app-authority.ts'
+import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
 import type * as PublishedBundleArtifacts from './published-bundle-artifacts.ts'
 import type * as McpAuthUserContext from '#worker/mcp-auth-user-context.ts'
 import type * as RunRecordsServiceModule from '#worker/run-records/service.ts'
@@ -54,7 +56,7 @@ function createKodyProxyForTest(
 		'runtimeBridge',
 		'mcpServerNamesOrLoader',
 		'identity',
-		`${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
+		`function __kodyCurrentVisitTicket() { return null; }\n${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
 	)(runtimeBridge, mcpServerNames, identity) as Record<string, unknown>
 }
 
@@ -67,7 +69,7 @@ function getViaOwnKeysThenGopd(target: object, name: string): unknown {
 function createWorkflowsProxyForTest(runtimeBridge: unknown) {
 	return new Function(
 		'runtimeBridge',
-		`${extractGeneratedSource(
+		`function __kodyCurrentVisitTicket() { return null; }\n${extractGeneratedSource(
 			'function createWorkflowsProxy(runtimeBridge) {',
 			'\nfunction createAuthenticatedFetchHelper',
 		)}; return createWorkflowsProxy(runtimeBridge);`,
@@ -168,7 +170,13 @@ test('package app kody.mcp supports calls, advertises connected servers, and ded
 	await expect(
 		(withoutNames.mcp as McpNamespace)['home']?.set_pin({ pin: '1234' }),
 	).resolves.toEqual({ ok: true })
-	expect(calls).toEqual([{ name: 'mcp:home:set_pin', args: { pin: '1234' } }])
+	expect(calls).toEqual([
+		{
+			name: 'mcp:home:set_pin',
+			args: { pin: '1234' },
+			visitTicket: null,
+		},
+	])
 	expect(() => withoutNames['mcp:home:set_pin']).toThrow(
 		'MCP server tool "mcp:home:set_pin" is not available as a flat kody function.',
 	)
@@ -204,6 +212,7 @@ test('package app kody.mcp supports calls, advertises connected servers, and ded
 		['1234', '9', '2', '3'].map((pin) => ({
 			name: 'mcp:home:set_pin',
 			args: { pin },
+			visitTicket: null,
 		})),
 	)
 
@@ -223,6 +232,7 @@ test('package app kody.mcp supports calls, advertises connected servers, and ded
 		expect(calls.at(-1)).toEqual({
 			name: 'mcp:home:set_pin',
 			args: { pin: '4', [secretAuthorityArgName]: 'pkg-forged' },
+			visitTicket: null,
 		})
 	} finally {
 		delete (globalThis as unknown as Record<symbol, unknown>)[authoritySymbol]
@@ -302,6 +312,45 @@ test('package app kody.mcp loads server names lazily on first mcp touch', async 
 	expect(advertised).toBeTypeOf('object')
 	await expect(advertised.set_pin({ pin: '2' })).resolves.toEqual({ ok: true })
 	expect(loadCount).toBe(1)
+})
+
+test('package app owned limit and spend helpers use the runtime bridge', async () => {
+	const runtimeBridge = {
+		appRateLimit: vi.fn(async () => ({
+			allowed: false,
+			retryAfterSeconds: 12,
+		})),
+		appSpendGet: vi.fn(async () => ({
+			month: '2026-05',
+			creditsMicroUsd: 2000,
+			days: [],
+		})),
+		callCapability: vi.fn(async () => ({ unexpected: true })),
+	}
+	const proxy = createKodyProxyForTest(runtimeBridge) as Record<
+		string,
+		(args?: unknown) => Promise<unknown>
+	>
+
+	await expect(
+		proxy.appRateLimit!({
+			key: 'task',
+			limit: 1,
+			windowSeconds: 60,
+		}),
+	).resolves.toEqual({ allowed: false, retryAfterSeconds: 12 })
+	await expect(proxy.appSpendGet!({})).resolves.toEqual({
+		month: '2026-05',
+		creditsMicroUsd: 2000,
+		days: [],
+	})
+	expect(runtimeBridge.appRateLimit).toHaveBeenCalledWith({
+		key: 'task',
+		limit: 1,
+		windowSeconds: 60,
+	})
+	expect(runtimeBridge.appSpendGet).toHaveBeenCalledWith()
+	expect(runtimeBridge.callCapability).not.toHaveBeenCalled()
 })
 
 test('package app workflows proxy validates input and forwards to the runtime bridge', async () => {
@@ -430,6 +479,23 @@ vi.mock('#worker/mcp/credential-client-tools.ts', () => ({
 		packageAppRuntimeMock.createCredentialClientKodyTools(
 			...(args as [{ options: { binding: string } }]),
 		),
+}))
+
+vi.mock('./package-app-authority.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof PackageAppAuthority>()
+	return {
+		...actual,
+		loadPackageAppRunsAs: async () => ({
+			status: 'unavailable',
+			reason: 'not-set',
+			message: actual.packageAppRunsAsUnavailableMessages['not-set'],
+		}),
+	}
+})
+
+vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
+	schedulePackageAppAuthorityFallback: () => {},
 }))
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
@@ -796,6 +862,13 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 	expect(packageAppHostSource).toContain(
 		'__kodyRunWithPackageBindingsFn = runtimeModule.__kodyRunWithPackageBindings',
 	)
+	expect(packageAppHostSource).toContain(
+		'__kodyScrubPackageAppSetCookieDomains',
+	)
+	expect(packageAppHostSource).toContain(
+		'package-app-set-cookie-domain-stripped',
+	)
+	expect(packageAppHostSource).toContain('package-app-set-cookie-name-dropped')
 	expect(packageAppHostSource).not.toContain('getSecretAuthority')
 	expect(packageAppHostSource).not.toMatch(
 		/headers\.set\([^)]*x-kody-secret-authority/,
@@ -865,7 +938,8 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 	const createCredentialRuntime = new Function(
 		'runtimeBridge',
 		'call',
-		`${createCredentialClientRuntimeSource()}
+		`function __kodyCurrentVisitTicket() { return null; }
+		${createCredentialClientRuntimeSource()}
 		${extractGeneratedSource(
 			'function createCredentialRuntime(runtimeBridge, call) {',
 			'\nfunction createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {',
@@ -886,6 +960,7 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 		{
 			name: credentialClientToolNames.open,
 			args: { key: 'powersync-jwt' },
+			visitTicket: null,
 		},
 		{
 			name: credentialClientToolNames.sign,
@@ -894,6 +969,7 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 				host: 'powersync.example',
 				operation: { payload: { sub: 'user-1' } },
 			},
+			visitTicket: null,
 		},
 	])
 
@@ -958,39 +1034,6 @@ test('package app runtime bridge credentialClientCall dispatches known tools and
 	await expect(
 		bridge.credentialClientCall({ name: 'credentialClientNope', args: {} }),
 	).rejects.toThrow('Unknown credential client tool "credentialClientNope".')
-})
-
-test('package app credential client binding comes from bridge props so open and sign share it across RPC instances', async () => {
-	const sharedBinding = 'run:shared-across-rpc-instances'
-	packageAppRuntimeMock.credentialClientBindingsSeen.length = 0
-	packageAppRuntimeMock.createCredentialClientKodyTools.mockClear()
-
-	const opener = createPackageAppRuntimeBridgeForTest({
-		credentialClientBinding: sharedBinding,
-	}).bridge
-	const signer = createPackageAppRuntimeBridgeForTest({
-		credentialClientBinding: sharedBinding,
-	}).bridge
-
-	const { credentialClientToolNames } =
-		await import('#worker/mcp/execute-modules/credential-client-source.ts')
-	await opener.credentialClientCall({
-		name: credentialClientToolNames.open,
-		args: { key: 'powersync-jwt' },
-	})
-	await signer.credentialClientCall({
-		name: credentialClientToolNames.sign,
-		args: {
-			handle: 'h-from-props',
-			host: 'powersync.example',
-			operation: {},
-		},
-	})
-
-	expect(packageAppRuntimeMock.credentialClientBindingsSeen).toEqual([
-		sharedBinding,
-		sharedBinding,
-	])
 })
 
 test('buildPackageAppWorker claims the unique Dynamic Worker day with its surface off the stub path, only after acquiring the stub', async () => {
@@ -1076,6 +1119,7 @@ test('package app worker exposes its public mount and records fetch query and re
 
 	expect(loaderWorkerOptions(loader)?.env['__kodyPackageContext']).toEqual({
 		packageId: 'package-public-context',
+		cookiePrefix: '__kapp_1358a8c63e1c_',
 		kodyId: 'renamed-app',
 		sourceId: 'source-1',
 		publishedCommit: 'commit-1',
@@ -1555,6 +1599,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ value: 'granted-value' })
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		buildPackageStorageId('package-1'),
+		undefined,
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1666,31 +1711,50 @@ test('buildPackageAppWorker mints request-bound loopback bindings on every loade
 	// Building (and reusing) the cached options mints nothing by itself.
 	expect(packageAppRuntimeMock.packageAppRuntimeBridge).not.toHaveBeenCalled()
 	expect(loader.get).toHaveBeenCalledTimes(2)
+	type MaterializedRuntime = {
+		props: {
+			credentialClientBinding: string
+			packageBindingToken: string
+		}
+	}
+	type MaterializedWorker = {
+		env: {
+			KODY_RUNTIME: MaterializedRuntime
+			__kodyPackageContext: unknown
+		}
+		modules: Record<string, string>
+	}
 	const [firstId, firstFactory] = loader.get.mock.calls[0] as unknown as [
 		string,
-		() => { env: Record<string, unknown>; modules: Record<string, string> },
+		() => MaterializedWorker,
 	]
 	const [secondId, secondFactory] = loader.get.mock.calls[1] as unknown as [
 		string,
-		() => { env: Record<string, unknown>; modules: Record<string, string> },
+		() => MaterializedWorker,
 	]
 	expect(secondId).toBe(firstId)
 	const first = firstFactory()
 	const second = secondFactory()
 	expect(packageAppRuntimeMock.packageAppRuntimeBridge).toHaveBeenCalledTimes(2)
-	// A fresh binding object per load, carrying the same per-build props.
+	// A fresh binding object per load. Credential binding is per request so
+	// the cached template cannot reuse the first request's run binding.
 	expect(second.env.KODY_RUNTIME).not.toBe(first.env.KODY_RUNTIME)
-	expect(second.env.KODY_RUNTIME).toEqual(first.env.KODY_RUNTIME)
+	expect(second.env.KODY_RUNTIME.props.credentialClientBinding).not.toBe(
+		first.env.KODY_RUNTIME.props.credentialClientBinding,
+	)
+	expect(second.env.KODY_RUNTIME.props.packageBindingToken).toBe(
+		first.env.KODY_RUNTIME.props.packageBindingToken,
+	)
 	expect(second.modules).toBe(first.modules)
 	expect(second.env.__kodyPackageContext).toEqual(
 		first.env.__kodyPackageContext,
 	)
 })
 
-test("buildPackageAppWorker never reuses one visitor's cached build, request context, or credential binding for another", async () => {
-	// The cached build carries bridge and gateway props (request context,
-	// credential client binding). A later request may reuse it only when it
-	// would derive the same identity: same visitor, role, and org.
+test("buildPackageAppWorker never reuses one visitor's request context or credential binding for another", async () => {
+	// Visitors share one worker per app commit per mount. Identity and the
+	// credential binding are rematerialized per request from the visit
+	// ticket, so one visitor cannot resolve another's authority.
 	const { env, loader } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(),
@@ -1732,6 +1796,7 @@ test("buildPackageAppWorker never reuses one visitor's cached build, request con
 			visitor: { userId: string; role: string | null } | null
 			orgSlug: string | null
 			credentialClientBinding: string
+			visitTicket: string | null
 			gatewayProps: {
 				credentialClientBinding?: string | null
 				request: { actor: { userId: string } | null } | null
@@ -1755,17 +1820,21 @@ test("buildPackageAppWorker never reuses one visitor's cached build, request con
 	await serve(visit('person-a', 'owner'))
 
 	const [first, other, demoted, renamed, again] = loads
-	// The same visitor, role, and org reuses the build and its isolate.
+	// Every visitor of this app and mount shares the isolate.
+	expect(new Set(loads.map((load) => load.id)).size).toBe(1)
 	expect(again!.id).toBe(first!.id)
-	expect(again!.bridge.props).toEqual(first!.bridge.props)
-	// Anyone else gets their own build, worker id, and run binding.
-	for (const load of [other!, demoted!, renamed!]) {
-		expect(load.id).not.toBe(first!.id)
+	expect(other!.id).toBe(first!.id)
+	expect(demoted!.id).toBe(first!.id)
+	expect(renamed!.id).toBe(first!.id)
+	// Per-request authority never copies another visitor's identity or binding.
+	for (const load of [other!, demoted!, renamed!, again!]) {
 		expect(load.bridge.props.credentialClientBinding).not.toBe(
 			first!.bridge.props.credentialClientBinding,
 		)
+		expect(load.bridge.props.visitTicket).not.toBe(
+			first!.bridge.props.visitTicket,
+		)
 	}
-	expect(new Set(loads.map((load) => load.id)).size).toBe(4)
 	expect(other!.bridge.props.visitor).toMatchObject({
 		userId: 'person-b',
 		role: 'member',
@@ -1777,7 +1846,100 @@ test("buildPackageAppWorker never reuses one visitor's cached build, request con
 		other!.bridge.props.credentialClientBinding,
 	)
 	expect(demoted!.bridge.props.visitor?.role).toBe('member')
-	expect(renamed!.bridge.props.orgSlug).toBe('renamed-org')
+	expect(renamed!.bridge.props.visitor?.userId).toBe('person-a')
+	expect(first!.bridge.props.visitor).toMatchObject({
+		userId: 'person-a',
+		role: 'owner',
+	})
+})
+
+test('buildPackageAppWorker keeps one worker id per app commit per mount across build cache expiry', async () => {
+	// The cached build expires after a few minutes. A rebuild for the same
+	// package, commit, and mount must land on the same worker id, or every
+	// expiry mints another unique Dynamic Worker day and a cold isolate.
+	const { env, loader } = createPackageAppTestEnv()
+	const secretEnv = {
+		...env,
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+	} as unknown as Env
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	packageAppRuntimeMock.packageAppRuntimeBridge.mockClear()
+	const key = 'stable-across-expiry'
+	type LoadedWorker = {
+		env: { KODY_RUNTIME: { props: { packageBindingToken: string } } }
+		modules: Record<string, string>
+	}
+	const loadOnce = async (input: BuildInput) => {
+		await buildPackageAppWorker(input)
+		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
+			string,
+			() => LoadedWorker,
+		]
+		const worker = factory()
+		return {
+			id,
+			token: worker.env.KODY_RUNTIME.props.packageBindingToken,
+			source: Object.values(worker.modules).join('\n'),
+		}
+	}
+	const start = Date.parse('2026-10-23T12:00:00.000Z')
+	const now = vi.spyOn(Date, 'now').mockReturnValue(start)
+	try {
+		const first = await loadOnce(makeBuildInput(secretEnv, key))
+		// Past the build cache TTL, still the same UTC day: this is a rebuild,
+		// not a cache hit.
+		const buildsBefore =
+			packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mock.calls
+				.length
+		now.mockReturnValue(start + 6 * 60 * 1000)
+		const rebuilt = await loadOnce(makeBuildInput(secretEnv, key))
+		expect(
+			packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mock.calls
+				.length,
+		).toBeGreaterThan(buildsBefore)
+		expect(rebuilt.id).toBe(first.id)
+		// The binding capability stays sealed: 64 hex chars, carried only by the
+		// bridge props and the wrapper module, and matching across the rebuild
+		// so a warm isolate and its bridge always agree.
+		expect(rebuilt.token).toMatch(/^[0-9a-f]{64}$/)
+		expect(rebuilt.token).toBe(first.token)
+		expect(rebuilt.source).toContain(JSON.stringify(rebuilt.token))
+
+		// Another visitor of the same app and commit shares the worker id and
+		// the per-build binding capability. Authority rides the visit ticket.
+		const other = await loadOnce(
+			makeBuildInput(secretEnv, key, {
+				runtime: {
+					callerContext: {
+						user: {
+							userId: 'person-other',
+							email: `${key}@example.com`,
+							displayName: `${key} User`,
+						},
+						request: {
+							...appVisitorRequest(key),
+							actor: { userId: 'person-other', username: 'person-other' },
+							attribution: { kind: 'user', userId: 'person-other' },
+						},
+					},
+				} as never,
+			}),
+		)
+		expect(other.id).toBe(first.id)
+		expect(other.token).toBe(first.token)
+		expect(other.source).toContain(JSON.stringify(first.token))
+
+		// A new UTC day rotates the capability (and so the worker id), which
+		// matches the daily unit Cloudflare bills anyway.
+		now.mockReturnValue(start + 24 * 60 * 60 * 1000)
+		const nextDay = await loadOnce(makeBuildInput(secretEnv, key))
+		expect(nextDay.token).not.toBe(first.token)
+		expect(nextDay.id).not.toBe(first.id)
+	} finally {
+		now.mockRestore()
+	}
 })
 
 test('buildPackageAppWorker passes packageStorage grant ids from root, static, and dynamic deps', async () => {

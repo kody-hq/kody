@@ -190,6 +190,7 @@ export async function storeIdempotentInboundEmail(input: {
 		processingStatus: 'stored' as const,
 		classification,
 		classificationReason,
+		archivedAt: null,
 		providerMessageId: null,
 		deliveryStatus: null,
 		deliveryStatusAt: null,
@@ -455,24 +456,32 @@ export async function recordBoundedEmailRejectionEvent(input: {
 }
 
 /**
- * Reclassify a stored inbound message in its authoritative graph.
+ * Reclassify and/or archive a stored message in its authoritative graph.
+ * `archived: true` stamps `archived_at`, `false` clears it, omitted keeps it.
+ * Returns false when the message is missing (or a newer write won).
  */
 export async function setEmailMessageClassification(input: {
 	env: MailboxEnv
 	db: D1Database
 	userId: OwnerId
 	messageId: string
-	classification: EmailClassification
+	classification?: EmailClassification
 	classificationReason?: string | null
+	archived?: boolean
 	now?: string
 }) {
+	if (input.classification === undefined && input.archived === undefined) {
+		throw new Error('Email message update requires classification or archived.')
+	}
+	const now = input.now ?? nowIso()
 	if (input.userId === systemEmailOwnerId) {
 		return await updateSystemEmailMessageClassification({
 			db: input.db,
 			messageId: input.messageId,
 			classification: input.classification,
 			classificationReason: input.classificationReason,
-			now: input.now,
+			archived: input.archived,
+			now,
 		})
 	}
 	await assertUserEmailGraphAuthority({
@@ -485,9 +494,16 @@ export async function setEmailMessageClassification(input: {
 	}).setMessageClassification({
 		ownerId: input.userId,
 		messageId: input.messageId,
-		classification: input.classification,
-		classificationReason: input.classificationReason ?? null,
-		updatedAt: input.now ?? nowIso(),
+		...(input.classification === undefined
+			? {}
+			: {
+					classification: input.classification,
+					classificationReason: input.classificationReason ?? null,
+				}),
+		...(input.archived === undefined
+			? {}
+			: { archivedAt: input.archived ? now : null }),
+		updatedAt: now,
 	})
 	return result.status === 'accepted'
 }

@@ -116,6 +116,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 		file: 'connections.md',
 		prefixes: [
 			'/account/agents',
+			'/account/connected-apps',
 			'/account/connections',
 			'/@{$orgSlug}/-/agents',
 			'/@{$orgSlug}/-/connections',

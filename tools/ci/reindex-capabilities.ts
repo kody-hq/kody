@@ -28,6 +28,21 @@ const authRetryDelayMs = 5_000
 
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]'])
 
+const workersDevScriptNotFound = /(?:\b1042\b|workers_dev_script_not_found)/i
+
+/** First-sweep failures that usually clear once secrets or the workers.dev route land. */
+export function isRetryableFirstSweepReindexFailure(
+	status: number,
+	body: string,
+) {
+	if (status === 401 || status === 502 || status === 503 || status === 530) {
+		return true
+	}
+	// Only scan failed bodies. A 2xx sweep can include a cursor like
+	// `cap-1042` and must not look like Cloudflare error 1042.
+	return status >= 400 && workersDevScriptNotFound.test(body)
+}
+
 /** The bearer secret must never cross the network in cleartext. */
 function assertSecretSafeOrigin(baseUrl: string) {
 	let parsed: URL
@@ -83,11 +98,14 @@ export async function runCapabilityReindex(options: CapabilityReindexOptions) {
 		log(text)
 		while (
 			sweep === 1 &&
-			(response.status === 401 || response.status === 503) &&
+			isRetryableFirstSweepReindexFailure(response.status, text) &&
 			now() + authRetryDelayMs <= authRetryUntil
 		) {
+			const reason = workersDevScriptNotFound.test(text)
+				? 'the preview workers.dev script may still be binding'
+				: 'the reindex secret may still be propagating'
 			log(
-				`HTTP ${response.status}; the reindex secret may still be propagating. Retrying in ${authRetryDelayMs / 1000}s.`,
+				`HTTP ${response.status}; ${reason}. Retrying in ${authRetryDelayMs / 1000}s.`,
 			)
 			await sleep(authRetryDelayMs)
 			response = await send()

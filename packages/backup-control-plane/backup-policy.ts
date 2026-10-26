@@ -12,6 +12,12 @@ const CLOUDFLARE_ID_PATTERN =
 export type SourceDatabase = {
 	id: string
 	name: string
+	/**
+	 * When false, skip Cloudflare REST D1 export / freshness / seal-full
+	 * prerequisites for this database. Omitted or true keeps REST export on.
+	 * Paced D1 backup uses `DR_D1_PACED_SOURCES` independently.
+	 */
+	restExport?: boolean
 }
 
 export class BackupError extends Error {
@@ -67,7 +73,7 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 	if (trimmed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } objects',
+			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
 		)
 	}
 	let parsed: unknown
@@ -76,31 +82,36 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 	} catch {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } objects',
+			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
 		)
 	}
 	if (!Array.isArray(parsed) || parsed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } objects',
+			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
 		)
 	}
 	const sources: Array<SourceDatabase> = []
 	const ids = new Set<string>()
 	const names = new Set<string>()
 	for (const entry of parsed) {
-		if (
-			entry === null ||
-			typeof entry !== 'object' ||
-			Array.isArray(entry) ||
-			!hasExactKeys(entry as Record<string, unknown>, ['id', 'name'])
-		) {
+		if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
 			throw new BackupError(
 				'invalid-source-databases',
-				'SOURCE_DATABASES entries must be { id, name } objects',
+				'SOURCE_DATABASES entries must be { id, name } or { id, name, restExport } objects',
 			)
 		}
-		const record = entry as { id: unknown; name: unknown }
+		const record = entry as Record<string, unknown>
+		const hasRestExport = Object.hasOwn(record, 'restExport')
+		const allowedKeys = hasRestExport
+			? (['id', 'name', 'restExport'] as const)
+			: (['id', 'name'] as const)
+		if (!hasExactKeys(record, allowedKeys)) {
+			throw new BackupError(
+				'invalid-source-databases',
+				'SOURCE_DATABASES entries must be { id, name } or { id, name, restExport } objects',
+			)
+		}
 		if (
 			typeof record.id !== 'string' ||
 			!CLOUDFLARE_ID_PATTERN.test(record.id) ||
@@ -110,6 +121,12 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 			throw new BackupError(
 				'invalid-source-databases',
 				'SOURCE_DATABASES entries need a UUID id and a non-empty name',
+			)
+		}
+		if (hasRestExport && typeof record.restExport !== 'boolean') {
+			throw new BackupError(
+				'invalid-source-databases',
+				'SOURCE_DATABASES restExport must be a boolean when present',
 			)
 		}
 		const id = record.id
@@ -122,9 +139,28 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 		}
 		ids.add(id.toLowerCase())
 		names.add(name)
-		sources.push({ id, name })
+		const source: SourceDatabase = { id, name }
+		if (hasRestExport) {
+			source.restExport = record.restExport as boolean
+		}
+		sources.push(source)
 	}
 	return sources
+}
+
+/** REST export is on when `restExport` is omitted or true. */
+export function sourceRestExportEnabled(source: SourceDatabase): boolean {
+	return source.restExport !== false
+}
+
+/**
+ * Configured sources that still participate in Cloudflare REST D1 export,
+ * hourly freshness, and seal-full REST prerequisites.
+ */
+export function restExportSourceDatabases(
+	env: BackupEnvironment,
+): Array<SourceDatabase> {
+	return configuredSourceDatabases(env).filter(sourceRestExportEnabled)
 }
 
 export function primarySourceDatabase(env: BackupEnvironment): SourceDatabase {
@@ -422,10 +458,21 @@ export function safeLog(
 	else logger.log(output)
 }
 
+/**
+ * Prefer `BackupError.code`. Across Workflows step RPC the engine often
+ * reconstitutes a terminal failure as a plain `Error` whose message is
+ * `NonRetryableError: [code] …` (see `engineTreatsAsTerminal`); keep parsing
+ * that form for status pages and callers that see the RPC-wrapped message.
+ * Recoverable `export-result-expired` must not rely on catching that throw:
+ * return a durable upload-step result instead (see `runBackupRuntime`).
+ */
 export function errorCode(error: unknown): string {
 	if (error instanceof BackupError) return error.code
 	if (error instanceof Error) {
-		const match = /^\[(?<code>[a-z0-9]+(?:-[a-z0-9]+)*)\] /u.exec(error.message)
+		const match =
+			/^(?:NonRetryableError:\s*)?\[(?<code>[a-z0-9]+(?:-[a-z0-9]+)*)\] /u.exec(
+				error.message,
+			)
 		if (match?.groups?.code) return match.groups.code
 	}
 	return 'unexpected-error'

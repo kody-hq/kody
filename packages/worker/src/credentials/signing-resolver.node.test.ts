@@ -133,6 +133,7 @@ async function setup() {
 			scope: 'user',
 			name: input.name,
 			value: input.value,
+			audit: null,
 		})
 		const row = await db
 			.prepare(

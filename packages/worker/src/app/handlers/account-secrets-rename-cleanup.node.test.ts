@@ -14,6 +14,10 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+const credentialAuditCalls = vi.hoisted(() => ({
+	record: vi.fn(async (_writer: unknown, _change: unknown) => {}),
+}))
+
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn<
 		typeof authenticatedUserModule.readAuthenticatedAppUser
@@ -324,6 +328,11 @@ vi.mock('#worker/orgs/org-audit.ts', () => ({
 	orgAuditWriterFromRequest: () => ({ audit: 'writer' }),
 }))
 
+vi.mock('#worker/credentials/credential-audit.ts', () => ({
+	credentialAuditActions: { renamed: 'credential.renamed' },
+	recordCredentialAudit: credentialAuditCalls.record,
+}))
+
 vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsService>()
 	return {
@@ -556,8 +565,18 @@ test('account secrets save renames opt-in credentials in place without their kin
 	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
 	mockModule.saveSecret.mockClear()
 	mockModule.renameSecret.mockClear()
+	credentialAuditCalls.record.mockClear()
 	const renamed = await save({ name: 'webhook2', allowedHosts: [] })
 	expect(renamed.status).toBe(200)
+	// The provisional rename writes no audit row; one row after the save.
+	expect(mockModule.renameSecret).toHaveBeenCalledWith(
+		expect.objectContaining({ audit: null }),
+	)
+	expect(credentialAuditCalls.record).toHaveBeenCalledTimes(1)
+	expect(credentialAuditCalls.record.mock.lastCall?.[1]).toMatchObject({
+		action: 'credential.renamed',
+		details: { previousName: 'webhook', fields: ['name'] },
+	})
 	expect(mockModule.renameSecret).toHaveBeenCalledWith(
 		expect.objectContaining({
 			fromName: 'webhook',

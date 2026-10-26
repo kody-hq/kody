@@ -30,6 +30,11 @@ export type PackageEventsDispatchQueueMessage = {
 	 * on messages enqueued before the field existed.
 	 */
 	lineage?: RequestLineage
+	/**
+	 * Resource change event chain depth of the emitting run, so a chain that
+	 * passes through a package event keeps counting toward its limit.
+	 */
+	resourceEventDepth?: number
 }
 
 export function parsePackageEventsDispatchQueueMessage(
@@ -75,6 +80,7 @@ export function parsePackageEventsDispatchQueueMessage(
 	}
 	const emittedAt = record['emittedAt']
 	const lineage = parseRequestLineage(record['lineage'])
+	const resourceEventDepth = record['resourceEventDepth']
 	return {
 		userId: userId.trim() as OwnerId,
 		topic: topic.trim(),
@@ -87,5 +93,10 @@ export function parsePackageEventsDispatchQueueMessage(
 			? { emittedAt }
 			: {}),
 		...(lineage ? { lineage } : {}),
+		...(typeof resourceEventDepth === 'number' &&
+		Number.isInteger(resourceEventDepth) &&
+		resourceEventDepth > 0
+			? { resourceEventDepth }
+			: {}),
 	}
 }

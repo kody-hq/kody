@@ -7,11 +7,14 @@ import { isRecord } from './is-record.ts'
  *
  * Layout of the destination backup bucket:
  *
- * - `daily/d1/...` / `weekly/d1/...` — existing signed D1 exports (locked).
+ * - `daily/d1/...` / `weekly/d1/...` — existing signed D1 REST exports (locked).
+ * - `daily/d1-paced/...` / `weekly/d1-paced/...` — sealed paced delta/base
+ *   nights from the non-disruptive worker lane (see backup-d1-paced.ts).
  * - `staging/{day}/...` — mutable per-day staging area the production
- *   exporter writes into. The control plane seals a day by copying the staged
- *   index and dump files into `daily/full/{day}/...` (locked) and signing a
- *   full-backup manifest over their checksums.
+ *   exporter writes into (including `staging/{day}/d1-paced/...`). The control
+ *   plane seals a day by copying the staged index and dump files into
+ *   `daily/full/{day}/...` (locked) and signing a full-backup manifest over
+ *   their checksums.
  * - `blobs/sha256/{hash}` — content-addressed immutable blob store shared by
  *   all days (raw email MIME, community assets, avatars, artifact source
  *   snapshots). Written once, never overwritten; long-retention lock rule.

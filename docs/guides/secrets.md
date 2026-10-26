@@ -5,7 +5,7 @@ summary:
   How Kody lets your agent use your API keys, tokens, and private keys without
   ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders
   resolved at the network boundary, host approval, package approval (website
-  Allow links via `secretLock`), and expiry. Keys are one credential kind; the
+  Allow links via `resourceLock`), and expiry. Keys are one credential kind; the
   Credentials guide covers every kind. Load this when someone asks whether the
   agent can see a key.
 category: platform
@@ -27,7 +27,7 @@ for the locked Gmail drafts loop, written up in
 ## The rule: there is no `secret_get`
 
 The secrets capabilities are `secretList`, `secretSet`, `secretSetMany`,
-`secretLock`, `secretDisconnect`, `secretDelete`, and `secretJwtSign`. No
+`resourceLock`, `secretDisconnect`, `secretDelete`, and `secretJwtSign`. No
 capability returns a secret value. `secretList` returns metadata only: names,
 descriptions, approved hosts, expiry, remaining time to live, `disconnected`
 (value cleared, row kept), and `package_id` for package-scoped secrets.
@@ -36,10 +36,10 @@ hosts, and grants so reconnect with `secretSet` restores the same record.
 `secretDelete` removes the credential and every record of it. Explicit listing
 includes caller-owned package-scoped metadata even from execute; using a package
 secret still requires package context. Search does not return or rank those
-rows. `secretLock` returns grant-status metadata and an `approval_url` for the
-owner to click; it does not apply the grant. External vaults use
-[custom secret providers](./secret-providers.md) (`secretProvider*` capabilities
-and `{{secret/<provider>:<ref>}}` placeholders).
+rows. `resourceLock({ kind: 'secret', name, package_id })` returns grant-status
+metadata and an `approval_url` for the owner to click; it does not apply the
+grant. External vaults use [custom secret providers](./secret-providers.md)
+(`secretProvider*` capabilities and `{{secret/<provider>:<ref>}}` placeholders).
 
 This is why you can hand an agent a job that needs your GitHub token without the
 token ever entering the prompt, the transcript, or the model provider's logs.
@@ -104,9 +104,10 @@ Saving a secret does not by itself let anything use it.
   user secret from package code always needs the grant. Only the account owner
   can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
   `/@<slug>/-/secrets/approve` — a focused Allow page, the same spirit as host
-  approval on `/connect/secrets`. `secretLock` returns that approval URL for the
-  owner to click; it does not change `allowed_packages`. Send the link and wait.
-  Removing a grant is also website-only.
+  approval on `/connect/secrets`.
+  `resourceLock({ kind: 'secret', name, package_id })` returns that approval URL
+  for the owner to click; it does not change `allowed_packages`. Send the link
+  and wait. Removing a grant is also website-only.
 
 Bulk approval URLs (`/@<slug>/-/secrets/approve?package_id=…&names=a,b`) let you
 approve several pending secrets for one package in a click.

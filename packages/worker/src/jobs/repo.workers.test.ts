@@ -90,7 +90,7 @@ async function insertJob(input: {
 			input.id,
 			`source-${input.id}`,
 			`job:${input.id}`,
-			JSON.stringify({ type: 'once', runAt: input.nextRunAt }),
+			JSON.stringify({ type: 'interval', every: '1h' }),
 			'UTC',
 			input.enabled === false ? 0 : 1,
 			input.killSwitchEnabled === true ? 1 : 0,

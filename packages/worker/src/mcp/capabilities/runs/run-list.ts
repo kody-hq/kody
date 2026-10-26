@@ -29,6 +29,7 @@ const runListInputKeys = [
 	'workflow_id',
 	'since',
 	'error_triage',
+	'started_by',
 	'limit',
 	'cursor',
 ] as const
@@ -87,6 +88,13 @@ export const runListInputSchema = z
 				.optional()
 				.describe(
 					'Soft error-triage filter. Defaults to open (hides ignored/resolved noise). Use ignored, resolved, or all to inspect triaged runs.',
+				),
+			started_by: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional exact match on the started-by person id (the actor who started the run or owns the enablement).',
 				),
 			limit: runListLimitSchema,
 			cursor: z
@@ -177,6 +185,7 @@ export const runListCapability = defineDomainCapability(
 					workflowId: args.workflow_id ?? null,
 					since: args.since ?? null,
 					errorTriage: args.error_triage ?? 'open',
+					startedByUserId: args.started_by ?? null,
 				},
 				limit: args.limit ?? null,
 				cursor: args.cursor ?? null,

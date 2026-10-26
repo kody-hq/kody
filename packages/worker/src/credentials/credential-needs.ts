@@ -29,6 +29,8 @@ export const credentialNeedSchema = z.object({
 	 * app it resolves with the approving owner's credentials for visitors.
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
+	supplier: z.enum(['publisher', 'executor']).optional(),
+	required: z.boolean().optional(),
 	/** The dependency that declared an inherited need. */
 	from: z.string().optional(),
 })
@@ -44,18 +46,28 @@ type ManifestCredentials = AuthoredPackageJson['kody']['credentials']
 /** The package's own declared needs, with `provider` defaulted to the key. */
 export function ownCredentialNeeds(
 	credentials: ManifestCredentials,
+	options: { supplierSemanticsEnabled?: boolean } = {},
 ): Array<CredentialNeed> {
 	return Object.entries(credentials ?? {})
-		.map(([key, slot]) => ({
-			key,
-			...(slot.kind ? { kind: slot.kind } : {}),
-			provider: slot.provider ?? key,
-			description: slot.description,
-			multiple: slot.multiple === true,
-			...(slot.ownerCredentialForVisitors
-				? { ownerCredentialForVisitors: true as const }
-				: {}),
-		}))
+		.map(([key, slot]) => {
+			const supplier = slot.ownerCredentialForVisitors
+				? 'publisher'
+				: slot.supplier
+			return {
+				key,
+				...(slot.kind ? { kind: slot.kind } : {}),
+				provider: slot.provider ?? key,
+				description: slot.description,
+				multiple: slot.multiple === true,
+				...(slot.ownerCredentialForVisitors
+					? { ownerCredentialForVisitors: true as const }
+					: {}),
+				...(options.supplierSemanticsEnabled && supplier ? { supplier } : {}),
+				...(options.supplierSemanticsEnabled && supplier === 'executor'
+					? { required: slot.required ?? true }
+					: {}),
+			}
+		})
 		.sort((left, right) => left.key.localeCompare(right.key))
 }
 
@@ -119,11 +131,14 @@ export type DependencyCredentialNeeds = {
 export function mergeCredentialNeeds(input: {
 	own: ReadonlyArray<CredentialNeed>
 	dependencies: ReadonlyArray<DependencyCredentialNeeds>
+	supplierSemanticsEnabled?: boolean
 }): { needs: Array<CredentialNeed>; conflicts: Array<string> } {
 	const byKey = new Map<string, CredentialNeed>()
 	const conflicts: Array<string> = []
 	const describe = (need: CredentialNeed) =>
 		`${describeNeedKind(need.kind)} from provider "${need.provider}" (${need.from ? `declared by ${need.from}` : 'declared by this package'})`
+	const describeSupplier = (need: CredentialNeed) =>
+		need.ownerCredentialForVisitors ? 'publisher' : (need.supplier ?? 'legacy')
 	const add = (need: CredentialNeed) => {
 		const existing = byKey.get(need.key)
 		if (!existing) {
@@ -139,6 +154,51 @@ export function mergeCredentialNeeds(input: {
 			)
 			return
 		}
+		let supplier = describeSupplier(existing)
+		let required = existing.required
+		if (input.supplierSemanticsEnabled) {
+			const incomingSupplier = describeSupplier(need)
+			if (supplier !== incomingSupplier) {
+				const importerTightensToPublisher =
+					!existing.from &&
+					supplier === 'publisher' &&
+					incomingSupplier !== 'publisher'
+				if (!importerTightensToPublisher) {
+					conflicts.push(
+						`kody.credentials.${need.key}: supplier "${supplier}" conflicts with supplier "${incomingSupplier}" from dependency "${need.from ?? 'another dependency'}".`,
+					)
+					return
+				}
+				supplier = 'publisher'
+			}
+			if (supplier === 'executor') {
+				const existingRequired = existing.required ?? true
+				const incomingRequired = need.required ?? true
+				if (
+					existingRequired !== incomingRequired &&
+					(!existing.from || !need.from)
+				) {
+					const ownNeed = existing.from ? need : existing
+					const dependency = existing.from ? existing : need
+					if (ownNeed.required === false && dependency.required !== false) {
+						conflicts.push(
+							`kody.credentials.${need.key}: optional cannot loosen required executor need from dependency "${dependency.from ?? 'another dependency'}".`,
+						)
+						return
+					}
+				} else if (
+					existingRequired !== incomingRequired &&
+					existing.from &&
+					need.from
+				) {
+					conflicts.push(
+						`kody.credentials.${need.key}: required status conflicts with dependency "${need.from}".`,
+					)
+					return
+				}
+				required = existingRequired || incomingRequired
+			}
+		}
 		const kind = mergeCredentialNeedKinds(existing.kind, need.kind)
 		const multiple = need.multiple || existing.multiple
 		byKey.set(need.key, {
@@ -149,6 +209,12 @@ export function mergeCredentialNeeds(input: {
 			...(kind ? { kind } : {}),
 			...(existing.ownerCredentialForVisitors
 				? { ownerCredentialForVisitors: true as const }
+				: {}),
+			...(input.supplierSemanticsEnabled && supplier !== 'legacy'
+				? { supplier: supplier as 'publisher' | 'executor' }
+				: {}),
+			...(input.supplierSemanticsEnabled && supplier === 'executor'
+				? { required: required ?? true }
 				: {}),
 			...(existing.from ? { from: existing.from } : {}),
 		})
@@ -170,7 +236,23 @@ export function mergeCredentialNeeds(input: {
 /** Parses a stored closure; anything unreadable counts as not stored. */
 export function readStoredCredentialNeeds(
 	value: unknown,
+	options: { supplierSemanticsEnabled?: boolean } = {},
 ): Array<CredentialNeed> | null {
 	const parsed = credentialNeedsClosureSchema.safeParse(value)
-	return parsed.success ? parsed.data : null
+	if (!parsed.success) return null
+	if (!options.supplierSemanticsEnabled) {
+		return parsed.data.map(
+			({ supplier: _supplier, required: _required, ...need }) => need,
+		)
+	}
+	return parsed.data.map((need) => {
+		const supplier = need.ownerCredentialForVisitors
+			? 'publisher'
+			: need.supplier
+		return {
+			...need,
+			...(supplier ? { supplier } : {}),
+			...(supplier === 'executor' ? { required: need.required ?? true } : {}),
+		}
+	})
 }

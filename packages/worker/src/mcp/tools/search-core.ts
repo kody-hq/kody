@@ -7,7 +7,6 @@ import {
 	type EmbedTextFn,
 } from '#worker/vectorize/embedding.ts'
 import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
-import { type PackageRetrieverSurfaceResult } from '#worker/package-retrievers/types.ts'
 
 import {
 	buildRecommendedNextStep,
@@ -176,15 +175,6 @@ export async function searchUnified(input: {
 		OptionalSearchRowsResult,
 		'packageRows' | 'userSecretRows' | 'userIntegrationRows'
 	>
-	/**
-	 * Search-scope retriever hits. A promise lets candidate generation and
-	 * embedding start before retrievers settle; results are merged in plugin
-	 * order before hybrid rerank / Jev. An already-resolved array ranks the
-	 * same way.
-	 */
-	retrieverResults?:
-		| Array<PackageRetrieverSurfaceResult>
-		| Promise<Array<PackageRetrieverSurfaceResult>>
 	/** Optional capability domain id; scopes ranked results to that domain's capabilities. */
 	domain?: string
 	embedText?: EmbedTextFn
@@ -217,7 +207,7 @@ export async function searchUnified(input: {
 		? scopeRegistryToDomain(input.registry, domainFilter)
 		: input.registry
 	// Domain scoping is a capability-graph drill-down; user-owned entities
-	// (packages, integrations, secrets, retrievers) have no domain.
+	// (packages, integrations, secrets) have no domain.
 	// Official guides belong to the coding domain and stay in that scope.
 	const optionalRows = domainFilter
 		? {
@@ -226,14 +216,6 @@ export async function searchUnified(input: {
 				userIntegrationRows: [],
 			}
 		: input.optionalRows
-	// Domain drill-down ignores user-owned retrievers. Observe the promise
-	// either way so a caller that hands off an in-flight run does not leak an
-	// unhandled rejection when this search returns before ranking.
-	const retrieverResultsPromise: Promise<Array<PackageRetrieverSurfaceResult>> =
-		domainFilter
-			? Promise.resolve([])
-			: Promise.resolve(input.retrieverResults ?? [])
-	void retrieverResultsPromise.catch(() => {})
 	if (!query) {
 		if (domainFilter) {
 			return buildDomainBrowseResult({
@@ -341,15 +323,7 @@ export async function searchUnified(input: {
 
 	const candidateResults = await Promise.all(
 		searchEntityPlugins.map(async (plugin) => {
-			const waitsForRetrieverResults =
-				'waitsForRetrieverResults' in plugin &&
-				plugin.waitsForRetrieverResults === true
-			const [embedding, retrieverResults] = await Promise.all([
-				queryEmbeddingPromise,
-				waitsForRetrieverResults
-					? retrieverResultsPromise
-					: Promise.resolve([]),
-			])
+			const embedding = await queryEmbeddingPromise
 			const startedAt = performance.now()
 			const candidates =
 				'buildCandidates' in plugin && plugin.buildCandidates
@@ -362,7 +336,6 @@ export async function searchUnified(input: {
 							...(input.userId ? { userId: input.userId } : {}),
 							registry,
 							optionalRows,
-							retrieverResults,
 							queryEmbedding: embedding.queryEmbedding,
 							sharedQueryVector: embedding.sharedQueryVector,
 							...(domainFilter ? { domain: domainFilter } : {}),

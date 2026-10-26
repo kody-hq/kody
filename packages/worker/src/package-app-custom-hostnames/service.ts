@@ -491,70 +491,46 @@ async function insertCustomHostnameRow(input: {
 	const sslRecordsJson = serializeSslValidationRecords(
 		input.sslValidationRecords,
 	)
+	// One explicit-column INSERT for both bindings. Split app/org VALUES
+	// clauses previously drifted (app omitted a placeholder for
+	// check_window_started_at after migration 0175).
 	switch (input.bindingKind) {
-		case 'app': {
-			await input.env.APP_DB.prepare(
-				`INSERT INTO package_app_custom_hostnames (
-						id, hostname, binding_kind, package_id, org_id,
-						cloudflare_hostname_id, cloudflare_zone_id,
-						hostname_status, ssl_status,
-						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at,
-						check_window_started_at
-					) VALUES (?, ?, 'app', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-				.bind(
-					input.id,
-					input.hostname,
-					input.packageId,
-					input.cloudflareHostnameId,
-					input.cloudflareZoneId,
-					input.hostnameStatus,
-					input.sslStatus,
-					ownershipJson,
-					sslRecordsJson,
-					input.createdByUserId,
-					input.now,
-					input.now,
-					input.now,
-				)
-				.run()
-			return
-		}
-		case 'org': {
-			await input.env.APP_DB.prepare(
-				`INSERT INTO package_app_custom_hostnames (
-						id, hostname, binding_kind, package_id, org_id,
-						cloudflare_hostname_id, cloudflare_zone_id,
-						hostname_status, ssl_status,
-						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at,
-						check_window_started_at
-					) VALUES (?, ?, 'org', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-				.bind(
-					input.id,
-					input.hostname,
-					input.orgId,
-					input.cloudflareHostnameId,
-					input.cloudflareZoneId,
-					input.hostnameStatus,
-					input.sslStatus,
-					ownershipJson,
-					sslRecordsJson,
-					input.createdByUserId,
-					input.now,
-					input.now,
-					input.now,
-				)
-				.run()
-			return
-		}
+		case 'app':
+		case 'org':
+			break
 		default: {
 			input.bindingKind satisfies never
 			throw new PackageAppCustomHostnameError('binding_kind is invalid.')
 		}
 	}
+	await input.env.APP_DB.prepare(
+		`INSERT INTO package_app_custom_hostnames (
+				id, hostname, binding_kind, package_id, org_id,
+				cloudflare_hostname_id, cloudflare_zone_id,
+				hostname_status, ssl_status,
+				ownership_verification_json, ssl_validation_records_json,
+				created_by_user_id, created_at, updated_at,
+				check_window_started_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	)
+		.bind(
+			input.id,
+			input.hostname,
+			input.bindingKind,
+			input.packageId,
+			input.orgId,
+			input.cloudflareHostnameId,
+			input.cloudflareZoneId,
+			input.hostnameStatus,
+			input.sslStatus,
+			ownershipJson,
+			sslRecordsJson,
+			input.createdByUserId,
+			input.now,
+			input.now,
+			input.now,
+		)
+		.run()
 }
 
 async function compensateCloudflareDelete(input: {

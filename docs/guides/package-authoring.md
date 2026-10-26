@@ -35,8 +35,8 @@ There are two lanes for writing package source. Pick based on whether you have
 local filesystem and git access:
 
 - **Git lane (coding agents — preferred).** Call
-  `packageGetGitRemote({ create: true, kody_id: '@owner/leaf', description })`
-  (or the name leaf as `kody_id`) to register a stub saved package and mint a
+  `packageGetGitRemote({ create: true, name: '@owner/leaf', description })` (or
+  the name leaf as `name`) to register a stub saved package and mint a
   short-lived authenticated remote in one call (for existing packages, omit
   `create` and pass the scoped name, or `package_id` when the name is not
   known). Run the returned `setup_commands` to clone into a temporary directory
@@ -478,11 +478,10 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with the scoped name (or `package_id`
-   when the name is not known), plus the path, method, and body your handler
-   needs. Confirm `{ status, headers, body, truncated }` and any
-   `packageStorage()` side effects. See
-   [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `packageAppFetch` with `package_id` or leftover `kody_id`
+   (the scoped name), plus the path, method, and body your handler needs.
+   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
+   side effects. See [Package app fetch](../use/package-app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and

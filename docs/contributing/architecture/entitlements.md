@@ -93,10 +93,7 @@ unknown strings, and retired plan names are rejected as validation failures.
 
 Migration `0002-restructure-plan-tiers.sql` maps stored `pro` values to
 `standard`, stored `partner` values to `pro`, and rebuilds both CHECK
-constraints for the current registry. Migration
-`0043-users-entitlement-ladder.sql` introduced the entitlement ladder (now
-`orgs.entitlement_ladder`) and backfilled `legacy` for then-active Stripe
-Standard/Pro subscribers and manual Pro grants.
+constraints for the current registry.
 
 `orgs.stripe_plan` stays nullable because it is Stripe-derived; `max` is
 manual-only — admin-visible, not paid or public — and never written from Stripe
@@ -104,21 +101,19 @@ manual-only — admin-visible, not paid or public — and never written from Str
 
 `orgs.entitlement_ladder` is `'public'` or `'legacy'` (NOT NULL, default
 `'public'`). The public table in `planLimits` is what `/pricing` renders and
-what new Standard/Pro subscribers get. `legacy` keeps the pre-cut Standard/Pro
-ceilings from `legacyPlanLimits` only while the same Stripe subscription
-continues without a plan, price, product, or interval change: same-plan
-auto-renew stays `legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any
-other price/product switch writes `public`. A remaining manual Pro grant without
-a paid Stripe tier still keeps `legacy` until that grant is removed. The
-one-shot backfill in `0043-users-entitlement-ladder.sql` sets `legacy` for those
-accounts. Resubscribing does not restore `legacy`.
-`0044-users-stripe-price-id.sql` introduced `stripe_price_id` (now
-`orgs.stripe_price_id`) so Stripe refresh can detect those subscription changes.
-The first observation of a continuing subscription writes the current price and
-leaves `legacy` in place. Free and `max` always use `planLimits`; the ladder is
-ignored for those plans. Unique-worker-day and Durable Object rows-read numbers
-live on `PlanLimits` for the public table. They are not hard-cut and not billed
-for legacy accounts.
+what new Standard/Pro subscribers get. `legacy` uses the older Standard/Pro
+limits in `legacyPlanLimits` only while the same Stripe subscription continues
+without a plan, price, product, or interval change: same-plan auto-renew stays
+`legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any other price/product
+switch writes `public`. A remaining manual Pro grant without a paid Stripe tier
+still keeps `legacy` until that grant is removed. Resubscribing does not restore
+`legacy`. `orgs.stripe_price_id` records the granting Stripe price so
+subscription refreshes can move an account from `legacy` to `public` when the
+subscription changes. The first observation of a continuing subscription writes
+the current price and leaves `legacy` in place. Free and `max` always use
+`planLimits`; the ladder is ignored for those plans. Unique-worker-day and
+Durable Object rows-read numbers live on `PlanLimits` for the public table. They
+are not hard-cut and not billed for legacy accounts.
 
 `getUserEntitlement` / `getCachedUserEntitlement` return `{ plan, ladder }`.
 Enforcement (`assertWithinEntitlement`, `consumeDailyEntitlement`, storage
@@ -519,29 +514,29 @@ per-user `UserMeter` Durable Object** (`USER_METER` binding). Code lives in
 storage layout and naming are documented in [Data storage](./data-storage.md).
 UserMeter also stores first-seen Dynamic Worker ids per UTC day so usage
 metering can record `dynamic_worker_day` without double-counting, and inbound
-MCP OAuth last-used stamps so Account → Connections can show which host is safe
-to revoke. `PlanLimits.maxUniqueWorkerDaysPerMonth` is the included allotment
-(Free 50, purchasable Pro and retired Standard 350, retired Pro 2,000) shown on
-`/pricing`. `PlanLimits.maxDurableObjectRowsReadPerMonth` is the included
-Durable Object rows-read allotment (Free 0.5B, Pro and retired Standard 5B,
-retired Pro 20B). Those two fields are the credit debit meters. They are not in
-`entitlementResources`, so `assertWithinEntitlement` does not hard-cut them.
-Hourly user warning emails cover approaching (80%) and reached (100%) includes
-only when crossing the include would stop runs: an empty purchasable-Pro wallet
-(`computeIncludeWarningPutsAccessAtRisk` in `universal/usage-presentation.ts`).
-Free and other wallet-less plans never get those mails (the include never
-charges or stops them), and funded wallets get the low-balance and auto-refill
-cap mails instead. `/@<slug>/-/usage` uses the same framing from that module:
-activity (code executions and runs) first, included compute as a bar capped at
-100% with past-include usage shown as dollars on credits, and one credits alarm
-only when the wallet or access is at risk. `/account/usage` 302s to the personal
-org's usage page. `/account/credits` 302s to `/@<slug>/-/credits`, or to usage
-`#credits` when the URL carries `?topup`. Free sees Worker compute and Rows read
-as informational counts only. Usage above an include debits a funded
-purchasable-Pro wallet, stops new compute on an empty one, and is neither
-charged nor stopped on plans without a wallet; see
-[Prepaid credits](#prepaid-credits). Execute and outbound fetches are daily and
-weekly caps; on purchasable Pro they are the include that credits extend.
+MCP OAuth last-used stamps so Account → Agents (`/@<slug>/-/agents`) can show
+which host is safe to revoke. `PlanLimits.maxUniqueWorkerDaysPerMonth` is the
+included allotment (Free 50, purchasable Pro and retired Standard 350, retired
+Pro 2,000) shown on `/pricing`. `PlanLimits.maxDurableObjectRowsReadPerMonth` is
+the included Durable Object rows-read allotment (Free 0.5B, Pro and retired
+Standard 5B, retired Pro 20B). Those two fields are the credit debit meters.
+They are not in `entitlementResources`, so `assertWithinEntitlement` does not
+hard-cut them. Hourly user warning emails cover approaching (80%) and reached
+(100%) includes only when crossing the include would stop runs: an empty
+purchasable-Pro wallet (`computeIncludeWarningPutsAccessAtRisk` in
+`universal/usage-presentation.ts`). Free and other wallet-less plans never get
+those mails (the include never charges or stops them), and funded wallets get
+the low-balance and auto-refill cap mails instead. `/@<slug>/-/usage` uses the
+same framing from that module: activity (code executions and runs) first,
+included compute as a bar capped at 100% with past-include usage shown as
+dollars on credits, and one credits alarm only when the wallet or access is at
+risk. `/account/usage` 302s to the personal org's usage page. `/account/credits`
+302s to `/@<slug>/-/credits`, or to usage `#credits` when the URL carries
+`?topup`. Free sees Worker compute and Rows read as informational counts only.
+Usage above an include debits a funded purchasable-Pro wallet, stops new compute
+on an empty one, and is neither charged nor stopped on plans without a wallet;
+see [Prepaid credits](#prepaid-credits). Execute and outbound fetches are daily
+and weekly caps; on purchasable Pro they are the include that credits extend.
 Durable Object duration is observed (Cloudflare-measured GB-s plus the
 StorageRunner RPC wall-clock proxy) and is not charged. See
 [Usage metering](./usage-metering.md).

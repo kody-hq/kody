@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
@@ -92,6 +96,11 @@ export const deletePackageCapability = defineDomainCapability(
 					userId: owner.ownerUserId,
 					actorUserId: owner.actorUserId,
 					packageId: args.package_id,
+					audit: optionalOrgAuditWriter(
+						ctx.env,
+						ctx.callerContext.request ?? null,
+						orgAuditCauseFromCaller(ctx.callerContext),
+					),
 				})
 			} catch (error) {
 				if (error instanceof PackageStorageCleanupError) {

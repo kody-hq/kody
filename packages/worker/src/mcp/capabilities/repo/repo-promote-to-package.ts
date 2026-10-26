@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
 import { denyProfileBoundPackageCreate } from '#worker/authorization/authorize.ts'
@@ -238,6 +242,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 					expectedPackageScope: packageScope,
 					// The package's first publish: there are no prior needs to change.
 					credentialNeedsApproved: true,
+					requestedByUserId: ctx.callerContext.user?.userId ?? null,
 				})
 			} catch (error) {
 				// publishSession can throw before finalize (no KV snapshot yet)
@@ -306,6 +311,12 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				actorUserId: owner.actorUserId,
 				packageId,
 				sourceId: source.id,
+				firstPublish: true,
+				audit: optionalOrgAuditWriter(
+					ctx.env,
+					ctx.callerContext.request ?? null,
+					orgAuditCauseFromCaller(ctx.callerContext),
+				),
 			}).catch(() => undefined)
 			// Listing is best-effort after publish committed: throwing here
 			// would fail a successful promote, leave the plain-repo row, and

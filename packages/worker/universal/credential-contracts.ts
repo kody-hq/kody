@@ -242,6 +242,8 @@ export type PackageCredentialNeedView = {
 	provider: string
 	description: string
 	multiple: boolean
+	supplier?: 'publisher' | 'executor'
+	required?: boolean
 	from?: string
 	defaults: {
 		org: StoredCredentialMapping | null

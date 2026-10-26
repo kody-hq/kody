@@ -4,6 +4,7 @@ import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-t
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import { buildPackageAppNotFoundMessage } from '#worker/package-runtime/package-app-synthetic.ts'
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { packageAppCustomDomainsFlagKey } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
@@ -207,6 +208,18 @@ test('custom hostnames stay refused and handoff stays on the user subdomain when
 	expect(location.origin).toBe(ownerPackageAppOrigin)
 	expect(location.pathname).toBe('/demo')
 	expect(location.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
+})
+
+test('verified app custom host OAuth uses the configured Kody origin', async () => {
+	configureOrigins()
+	await seedCustomHostnamePackage()
+	await setCustomDomainsFlag(true)
+
+	const response = await workerFetch(
+		`${customOrigin}${packageAppOauthPaths.login}?scope=profile`,
+	)
+	expect(response.status).toBe(302)
+	expect(new URL(response.headers.get('Location') ?? '').origin).toBe(appOrigin)
 })
 
 test('anonymous and signed-in outsiders are not redirected to an app custom hostname', async () => {

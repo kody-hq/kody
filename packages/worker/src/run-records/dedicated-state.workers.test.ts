@@ -221,7 +221,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(13)
+			expect(schemaVersion(state)).toBe(16)
 			verify(state)
 		},
 	)
@@ -360,6 +360,86 @@ test('workflow projections track binding name, idempotency, and active counts', 
 	expect(
 		listed.projections.find((row) => row.id === 'wf-active-2')?.bindingName,
 	).toBe('OTHER_WORKFLOWS')
+})
+
+test('listWorkflowProjections filters by id, packageId, and since', async () => {
+	const userId = uniqueUserId('wf-list-filters')
+	await upsertWorkflow(userId, 'wf-old', {
+		sourceType: 'package',
+		packageId: 'pkg-a',
+		workflowName: 'old',
+		createdAt: '2026-07-01T00:00:00.000Z',
+		updatedAt: '2026-07-01T00:00:00.000Z',
+		status: 'complete',
+		completedAt: '2026-07-01T00:01:00.000Z',
+	})
+	await upsertWorkflow(userId, 'wf-new-a', {
+		sourceType: 'package',
+		packageId: 'pkg-a',
+		workflowName: 'new-a',
+		createdAt: '2026-07-31T12:00:00.000Z',
+		updatedAt: '2026-07-31T12:00:00.000Z',
+		status: 'running',
+	})
+	await upsertWorkflow(userId, 'wf-new-b', {
+		sourceType: 'package',
+		packageId: 'pkg-b',
+		workflowName: 'new-b',
+		createdAt: '2026-07-31T13:00:00.000Z',
+		updatedAt: '2026-07-31T13:00:00.000Z',
+		status: 'queued',
+	})
+
+	const byId = await listWorkflowProjections({
+		env,
+		userId,
+		id: 'wf-new-a',
+		limit: 10,
+	})
+	expect(byId.projections.map((row) => row.id)).toEqual(['wf-new-a'])
+
+	const byPackage = await listWorkflowProjections({
+		env,
+		userId,
+		packageId: 'pkg-a',
+		limit: 10,
+	})
+	expect(byPackage.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-old',
+	])
+
+	const bySince = await listWorkflowProjections({
+		env,
+		userId,
+		since: '2026-07-31T00:00:00.000Z',
+		limit: 10,
+	})
+	expect(bySince.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-new-b',
+	])
+
+	const combined = await listWorkflowProjections({
+		env,
+		userId,
+		packageId: 'pkg-a',
+		since: '2026-07-31T00:00:00.000Z',
+		status: 'running',
+		limit: 10,
+	})
+	expect(combined.projections.map((row) => row.id)).toEqual(['wf-new-a'])
+
+	const byStatuses = await listWorkflowProjections({
+		env,
+		userId,
+		statuses: ['queued', 'running'],
+		limit: 10,
+	})
+	expect(byStatuses.projections.map((row) => row.id).sort()).toEqual([
+		'wf-new-a',
+		'wf-new-b',
+	])
 })
 
 test('reserveWorkflowProjectionSlot serializes concurrent creating, prunes stale, and never overwrites terminal', async () => {
@@ -1005,7 +1085,7 @@ test('export cursors always make progress across phase handoffs and empty tails'
 	}
 })
 
-test('warm schema v7 and v8 objects upgrade to v13 without losing job data', async () => {
+test('warm schema v7 and v8 objects upgrade to v16 without losing job data', async () => {
 	const retiredColumn = ['legacy', 'seeded'].join('_')
 	for (const installedVersion of [7, 8]) {
 		const userId = uniqueUserId(`schema-v${installedVersion}-warm`)
@@ -1083,7 +1163,7 @@ test('warm schema v7 and v8 objects upgrade to v13 without losing job data', asy
 	}
 })
 
-test('warm schema v10 objects backfill denormalized log_count on upgrade to v13', async () => {
+test('warm schema v10 objects backfill denormalized log_count on upgrade to v16', async () => {
 	const userId = uniqueUserId('schema-v10-warm-log-count')
 	await upgradeFromLegacySchema(
 		userId,
@@ -1141,6 +1221,240 @@ test('warm schema v10 objects backfill denormalized log_count on upgrade to v13'
 	expect((await listRunRecords({ env, userId })).runs).toEqual([
 		expect.objectContaining({ logCount: 3 }),
 	])
+})
+
+test('warm schema v16 removes retriever runs, logs, and day counts', async () => {
+	const userId = uniqueUserId('schema-v16-warm-retriever-runs')
+	await upgradeFromLegacySchema(
+		userId,
+		15,
+		(state) => {
+			state.storage.sql.exec(
+				`CREATE TABLE runs (${legacyRunsColumnsDdl},
+					error_triage TEXT, triage_note TEXT, triaged_at TEXT, triaged_by TEXT,
+					started_by_user_id TEXT, started_by_username TEXT,
+					started_by_client TEXT, started_by_label TEXT,
+					log_count INTEGER NOT NULL DEFAULT 0)`,
+			)
+			state.storage.sql.exec(`
+				CREATE TABLE run_logs (
+					run_id TEXT NOT NULL,
+					sequence INTEGER NOT NULL,
+					level TEXT NOT NULL,
+					message TEXT NOT NULL,
+					fields_json TEXT,
+					PRIMARY KEY (run_id, sequence)
+				)
+			`)
+			state.storage.sql.exec(`
+				CREATE TABLE run_day_counts (
+					day TEXT NOT NULL,
+					surface TEXT NOT NULL,
+					status TEXT NOT NULL,
+					count INTEGER NOT NULL DEFAULT 0,
+					PRIMARY KEY (day, surface, status)
+				)
+			`)
+			for (const [id, surface] of [
+				['run-retriever-a', 'retriever'],
+				['run-retriever-b', 'retriever'],
+				['run-keep', 'execute'],
+			] as const) {
+				state.storage.sql.exec(
+					`INSERT INTO runs (
+						id, surface, status, started_at, created_at, updated_at,
+						started_by_user_id, started_by_username,
+						started_by_client, started_by_label
+					) VALUES (?, ?, 'success', ?, ?, ?, 'person-v15', 'alice', 'mcp', 'work')`,
+					id,
+					surface,
+					'2026-07-01T00:00:00.000Z',
+					'2026-07-01T00:00:00.000Z',
+					'2026-07-01T00:00:00.000Z',
+				)
+				state.storage.sql.exec(
+					`INSERT INTO run_logs (run_id, sequence, level, message)
+					VALUES (?, 0, 'info', 'log')`,
+					id,
+				)
+			}
+			state.storage.sql.exec(
+				`INSERT INTO run_day_counts (day, surface, status, count)
+				VALUES ('2026-07-01', 'retriever', 'success', 2),
+					('2026-07-01', 'execute', 'success', 1)`,
+			)
+			state.storage.sql.exec(
+				`INSERT INTO run_log_meta (key, value) VALUES ('run_count', 3)`,
+			)
+		},
+		(state) => {
+			expect(
+				state.storage.sql
+					.exec<{ id: string }>(`SELECT id FROM runs ORDER BY id`)
+					.toArray(),
+			).toEqual([{ id: 'run-keep' }])
+			expect(
+				state.storage.sql
+					.exec<{ run_id: string }>(
+						`SELECT run_id FROM run_logs ORDER BY run_id`,
+					)
+					.toArray(),
+			).toEqual([{ run_id: 'run-keep' }])
+			expect(
+				state.storage.sql
+					.exec<{ surface: string; count: number }>(
+						`SELECT surface, count FROM run_day_counts ORDER BY surface`,
+					)
+					.toArray(),
+			).toEqual([{ surface: 'execute', count: 1 }])
+			expect(
+				state.storage.sql
+					.exec<{
+						started_by_user_id: string
+						started_by_username: string
+						started_by_client: string
+						started_by_label: string
+					}>(
+						`SELECT started_by_user_id, started_by_username,
+							started_by_client, started_by_label
+						FROM runs WHERE id = 'run-keep'`,
+					)
+					.one(),
+			).toEqual({
+				started_by_user_id: 'person-v15',
+				started_by_username: 'alice',
+				started_by_client: 'mcp',
+				started_by_label: 'work',
+			})
+			expect(
+				state.storage.sql
+					.exec<{ value: number }>(
+						`SELECT value FROM run_log_meta WHERE key = 'run_count'`,
+					)
+					.one(),
+			).toEqual({ value: 1 })
+		},
+	)
+})
+
+test('warm schema v14 objects run v15 and v16 migrations', async () => {
+	const userId = uniqueUserId('schema-v14-warm-v15-v16')
+	await upgradeFromLegacySchema(
+		userId,
+		14,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE runs (${legacyRunsColumnsDdl},
+					error_triage TEXT, triage_note TEXT, triaged_at TEXT, triaged_by TEXT,
+					log_count INTEGER NOT NULL DEFAULT 0)
+			`)
+			state.storage.sql.exec(
+				`INSERT INTO runs (
+					id, surface, status, started_at, created_at, updated_at
+				) VALUES ('run-retriever-v14', 'retriever', 'success', ?, ?, ?)`,
+				'2026-07-01T00:00:00.000Z',
+				'2026-07-01T00:00:00.000Z',
+				'2026-07-01T00:00:00.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'runs')).toEqual(
+				expect.arrayContaining([
+					'started_by_user_id',
+					'started_by_username',
+					'started_by_client',
+					'started_by_label',
+				]),
+			)
+			expect(
+				state.storage.sql
+					.exec<{ id: string }>(
+						`SELECT id FROM runs WHERE surface = 'retriever'`,
+					)
+					.toArray(),
+			).toEqual([])
+		},
+	)
+})
+
+test('warm schema v13 workflow projections gain insert-only source revision columns', async () => {
+	const userId = uniqueUserId('schema-v13-warm-wf-revision')
+	await upgradeFromLegacySchema(
+		userId,
+		13,
+		(state) => {
+			state.storage.sql.exec(`
+				CREATE TABLE workflow_projections (
+					id TEXT PRIMARY KEY NOT NULL,
+					binding_name TEXT NOT NULL,
+					source_type TEXT NOT NULL CHECK (source_type IN ('package', 'inline')),
+					package_id TEXT,
+					kody_id TEXT,
+					source_id TEXT,
+					workflow_name TEXT NOT NULL,
+					export_name TEXT,
+					idempotency_key TEXT NOT NULL,
+					run_at TEXT NOT NULL,
+					plan_date TEXT,
+					status TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					completed_at TEXT,
+					last_error TEXT
+				)
+			`)
+			state.storage.sql.exec(
+				`INSERT INTO workflow_projections (
+					id, binding_name, source_type, workflow_name, idempotency_key,
+					run_at, status, created_at, updated_at
+				) VALUES (?, ?, 'package', 'legacy', 'idem-legacy', ?, 'queued', ?, ?)`,
+				'wf-legacy',
+				dynamicBinding,
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+				'2026-07-31T00:00:00.000Z',
+			)
+		},
+		(state) => {
+			expect(columnNames(state, 'workflow_projections')).toEqual(
+				expect.arrayContaining(['enqueued_commit', 'source_revision']),
+			)
+		},
+	)
+	expect(
+		await getWorkflowProjection({
+			env,
+			userId,
+			id: 'wf-legacy',
+		}),
+	).toMatchObject({ enqueuedCommit: null, sourceRevision: null })
+
+	await upsertWorkflow(userId, 'wf-pinned', {
+		sourceType: 'package',
+		status: 'queued',
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'pinned',
+		updatedAt: '2026-07-31T00:00:00.000Z',
+	})
+	// Later status writes carry no provenance and must not erase it.
+	await upsertWorkflow(userId, 'wf-pinned', {
+		sourceType: 'package',
+		status: 'running',
+		enqueuedCommit: null,
+		sourceRevision: null,
+		updatedAt: '2026-07-31T00:00:01.000Z',
+	})
+	expect(
+		await getWorkflowProjection({
+			env,
+			userId,
+			id: 'wf-pinned',
+		}),
+	).toMatchObject({
+		status: 'running',
+		enqueuedCommit: 'commit-a',
+		sourceRevision: 'pinned',
+	})
 })
 
 test('getAdminInsightsSnapshot returns content-free workflow, job, and activation aggregates', async () => {
@@ -1243,7 +1557,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(13)
+	expect(inspection.schemaVersion).toBe(16)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import type * as InfrastructureCodes from '#worker/package-invocations/infrastructure-codes.ts'
 import type * as PackageManifest from '#worker/package-registry/manifest.ts'
@@ -61,10 +62,9 @@ vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
 		mocks.resolveSavedPackage(...args),
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
-		mocks.loadPackageManifestBySourceId(...args),
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#worker/package-registry/manifest.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof PackageManifest>()),
@@ -77,7 +77,6 @@ vi.mock('./repo.ts', () => ({
 		mocks.getWebhookEndpointByKey(...args),
 	getWebhookEndpointByIdForUser: vi.fn(),
 	listWebhookEndpointsForUser: vi.fn(),
-	setWebhookEndpointEnabled: vi.fn(),
 	upsertWebhookEndpointSecret: vi.fn(),
 }))
 
@@ -157,7 +156,6 @@ function mockPackage(
 					userId: ownerIdFromStored('user-1'),
 					packageId: 'pkg-1',
 					webhookName: 'hook',
-					enabled: true,
 				},
 	)
 	mocks.dispatchWebhookInvocation.mockResolvedValue({

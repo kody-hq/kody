@@ -99,13 +99,18 @@ function mapRow(row: Record<string, unknown>): JobRow {
 			row['params_json'] == null ? null : String(row['params_json']),
 			undefined,
 		),
-		schedule: parseJsonWithFallback<JobRecord['schedule']>(
-			String(row['schedule_json']),
-			{
-				type: 'once',
-				runAt: String(row['next_run_at']),
-			},
-		),
+		schedule: (() => {
+			const schedule = parseJsonWithFallback<JobRecord['schedule'] | null>(
+				String(row['schedule_json']),
+				null,
+			)
+			if (!schedule) {
+				throw new Error(
+					`Job "${jobId}" has an invalid schedule_json; expected a cron or interval schedule.`,
+				)
+			}
+			return schedule
+		})(),
 		timezone: String(row['timezone']),
 		enabled: Number(row['enabled']) === 1,
 		killSwitchEnabled: Number(row['kill_switch_enabled']) === 1,
@@ -425,7 +430,6 @@ export async function listStuckSkippedJobRowsPage(
 				AND enabled = 1
 				AND kill_switch_enabled = 0
 				AND (expires_at IS NULL OR expires_at > ?)
-				AND json_extract(schedule_json, '$.type') != 'once'
 				AND last_completed_scheduled_for IS NOT NULL
 				AND last_completed_scheduled_for = COALESCE(retry_scheduled_for, next_run_at)
 			ORDER BY id ASC

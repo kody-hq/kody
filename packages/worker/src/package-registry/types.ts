@@ -1,3 +1,7 @@
+import {
+	parsePackageJobSchedule,
+	type PackageJobSchedule as SharedPackageJobSchedule,
+} from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { communityPackageCategories } from '#universal/community-categories.ts'
@@ -6,22 +10,26 @@ import { credentialFillPlacementViewSchema } from '#universal/credential-fill-pl
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-export const packageJobScheduleSchema = z.union([
-	z.object({
-		type: z.literal('cron'),
-		expression: z.string().min(1),
-	}),
-	z.object({
-		type: z.literal('interval'),
-		every: z.string().min(1),
-	}),
-	z.object({
-		type: z.literal('once'),
-		runAt: z.string().min(1),
-	}),
-])
+/**
+ * Zod wrapper around the shared package-job schedule parser so publish and
+ * `kody dev check` stay on one accept/reject set.
+ */
+export const packageJobScheduleSchema = z
+	.unknown()
+	.transform((schedule, ctx) => {
+		const parsed = parsePackageJobSchedule(schedule)
+		if (!parsed.ok) {
+			ctx.addIssue({
+				code: 'custom',
+				message: parsed.message,
+				fatal: parsed.code === 'once_removed',
+			})
+			return z.NEVER
+		}
+		return parsed.schedule
+	})
 
-export type PackageJobSchedule = z.infer<typeof packageJobScheduleSchema>
+export type PackageJobSchedule = SharedPackageJobSchedule
 
 export const packageJobDefinitionSchema = z.object({
 	entry: z.string().min(1),
@@ -68,6 +76,35 @@ export type PackageAppClientDefinition = z.infer<
 	typeof packageAppClientDefinitionSchema
 >
 
+/**
+ * Slot names land inside `{{secret:NAME}}`-style placeholders, so they use the
+ * placeholder name characters. `@` and `/` stay out: `@me/NAME` and
+ * `{{secret/provider:ref}}` are reference grammar, not names.
+ */
+export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
+
+export const packageAppCapabilityNamePattern = /^[A-Za-z][A-Za-z0-9_]{0,99}$/
+
+/** Lowercase so the consent scope `need:<key>` reads the same everywhere. */
+export const packageAppVisitorNeedKeyPattern = /^[a-z][a-z0-9-]{0,39}$/
+
+export const packageAppVisitorNeedSchema = z
+	.strictObject({
+		/** Plain words for the consent screen: what the app will do. */
+		description: z.string().trim().min(1).max(200),
+		/** A `kody.credentials` key resolved from the visitor's own credentials. */
+		credential: z.string().regex(packageCredentialSlotNamePattern).optional(),
+		/** A Kody capability run as the visitor. */
+		capability: z.string().regex(packageAppCapabilityNamePattern).optional(),
+	})
+	.refine(
+		(need) =>
+			(need.credential === undefined) !== (need.capability === undefined),
+		{
+			message: 'A visitor need names exactly one of credential or capability.',
+		},
+	)
+
 export const packageAppDefinitionSchema = z.object({
 	/**
 	 * Server entry bundled for the package-app isolate. The default export
@@ -89,9 +126,31 @@ export const packageAppDefinitionSchema = z.object({
 	 * (no bundling; content types inferred from the extension).
 	 */
 	assets: z.string().trim().min(1).optional(),
+	/**
+	 * Kody capabilities the app may call as the person it runs as (its
+	 * publisher unless an owner chose someone else). Anything not listed
+	 * never runs with that person's authority.
+	 */
+	capabilities: z
+		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
+		.max(100)
+		.optional(),
+	/**
+	 * What the app may do with a signed-in visitor's own data, by key. Each
+	 * key is its own Sign in with Kody consent scope (`need:<key>`), shown to
+	 * the visitor in plain words. Without consent the app only sees who is
+	 * visiting.
+	 */
+	visitorNeeds: z
+		.record(
+			z.string().regex(packageAppVisitorNeedKeyPattern),
+			packageAppVisitorNeedSchema,
+		)
+		.optional(),
 })
 
 export type PackageAppDefinition = z.infer<typeof packageAppDefinitionSchema>
+export type PackageAppVisitorNeed = z.infer<typeof packageAppVisitorNeedSchema>
 
 export const packageSecretMountDefinitionSchema = z.object({
 	name: z.string().min(1),
@@ -117,13 +176,6 @@ export const packageCredentialKindValues = [
 	'signing',
 ] as const
 export type PackageCredentialKind = (typeof packageCredentialKindValues)[number]
-
-/**
- * Slot names land inside `{{secret:NAME}}`-style placeholders, so they use the
- * placeholder name characters. `@` and `/` stay out: `@me/NAME` and
- * `{{secret/provider:ref}}` are reference grammar, not names.
- */
-export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors takes only true. Omit it to keep app visitors from using the owner’s credential.'
@@ -173,6 +225,10 @@ export const packageCredentialSlotSchema = z.strictObject({
 	ownerCredentialForVisitors: z
 		.literal(true, { error: ownerCredentialForVisitorsValueMessage })
 		.optional(),
+	/** Credential authority when the supplier feature is enabled. */
+	supplier: z.enum(['publisher', 'executor']).optional(),
+	/** Executor needs default to required when omitted. */
+	required: z.boolean().optional(),
 	/**
 	 * Optional fill placement for package-scope secrets this need names.
 	 * Applied on Connect / secretSet insert when no row exists yet, instead of
@@ -188,14 +244,32 @@ export type PackageCredentialSlot = z.infer<typeof packageCredentialSlotSchema>
 export const packageCredentialsSchema = z
 	.record(z.string(), packageCredentialSlotSchema)
 	.superRefine((slots, ctx) => {
-		for (const name of Object.keys(slots)) {
-			if (packageCredentialSlotNamePattern.test(name)) continue
-			ctx.addIssue({
-				code: 'custom',
-				path: [name],
-				message:
-					'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
-			})
+		for (const [name, slot] of Object.entries(slots)) {
+			if (!packageCredentialSlotNamePattern.test(name)) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name],
+					message:
+						'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
+				})
+			}
+			if (slot.required !== undefined && slot.supplier !== 'executor') {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'required'],
+					message: `kody.credentials.${name}.required is only valid with supplier: "executor".`,
+				})
+			}
+			if (
+				slot.ownerCredentialForVisitors === true &&
+				slot.supplier === 'executor'
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'supplier'],
+					message: `kody.credentials.${name} cannot combine ownerCredentialForVisitors with supplier: "executor".`,
+				})
+			}
 		}
 	})
 
@@ -538,25 +612,6 @@ export type PackageEmittedEventDefinition = z.infer<
 	typeof packageEmittedEventDefinitionSchema
 >
 
-export const packageRetrieverScopeValues = ['search', 'context'] as const
-export type PackageRetrieverScope = (typeof packageRetrieverScopeValues)[number]
-
-export const packageRetrieverDefinitionSchema = z.object({
-	export: z.string().min(1),
-	name: z.string().min(1),
-	description: z.string().min(1),
-	scopes: z
-		.array(z.enum(packageRetrieverScopeValues))
-		.min(1)
-		.max(packageRetrieverScopeValues.length),
-	timeoutMs: z.number().int().positive().max(5_000).optional(),
-	maxResults: z.number().int().positive().max(20).optional(),
-})
-
-export type PackageRetrieverDefinition = z.infer<
-	typeof packageRetrieverDefinitionSchema
->
-
 const packageExportConditionSchema = z
 	.object({
 		import: z.string().min(1).optional(),
@@ -710,12 +765,6 @@ export const authoredPackageKodySchema = z.object({
 		.optional(),
 	app: packageAppDefinitionSchema.optional(),
 	jobs: z.record(z.string().min(1), packageJobDefinitionSchema).optional(),
-	retrievers: z
-		.record(
-			z.string().regex(kodyPackageIdPattern),
-			packageRetrieverDefinitionSchema,
-		)
-		.optional(),
 	webhooks: packageWebhooksSchema.optional(),
 })
 

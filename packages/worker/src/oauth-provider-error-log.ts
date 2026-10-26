@@ -1,4 +1,11 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { oauthPaths } from '#universal/oauth-paths.ts'
 import { logAuditEvent } from '#worker/audit-log.ts'
+import {
+	cimdFetchFailureLabel,
+	classifyCimdFetchError,
+} from '#worker/oauth-cimd-last-known-good.ts'
+import { normalizeCimdClientId } from '#worker/oauth-known-cimd-clients.ts'
 
 /**
  * Mirrors `@cloudflare/workers-oauth-provider` `OAuthErrorInternal` without
@@ -32,16 +39,31 @@ export type OAuthProviderErrorReport = {
 	request?: Request
 }
 
+const cimdCategory = 'client-id-metadata-document'
+
+function isTokenEndpointRequest(request: Request | undefined) {
+	if (!request) return false
+	try {
+		return new URL(request.url).pathname === oauthPaths.token
+	} catch {
+		return false
+	}
+}
+
 /**
  * Whether this provider error is a token/refresh failure worth recording.
- * Skips CIMD metadata noise (already warned by the provider), routine
- * request-shape rejects, and protected-resource `invalid_token` (common
- * `/mcp` bearer rejects that would flood logs/audit).
+ * CIMD metadata failures count only at the token endpoint (a refresh or code
+ * exchange that failed because the client's document did not resolve);
+ * authorize and `/mcp` lookups keep the provider's own warning. Skips routine
+ * request-shape rejects and protected-resource `invalid_token` (common `/mcp`
+ * bearer rejects that would flood logs/audit).
  */
 export function shouldReportOAuthProviderError(
-	error: Pick<OAuthProviderErrorReport, 'code' | 'internal'>,
+	error: Pick<OAuthProviderErrorReport, 'code' | 'internal' | 'request'>,
 ) {
-	if (error.internal.category === 'client-id-metadata-document') return false
+	if (error.internal.category === cimdCategory) {
+		return isTokenEndpointRequest(error.request)
+	}
 	if (
 		error.code === 'invalid_token' &&
 		error.internal.category === 'protected-resource'
@@ -88,6 +110,27 @@ export function safeClientIdFromBasicAuthorization(
 	}
 }
 
+/**
+ * Public client_id of the token request being handled, set by
+ * `handleMcpOAuthTokenRequest` before the provider reads the body. The
+ * provider reports refresh and code grant failures to `onError` without the
+ * request (and a consumed body cannot be cloned), so without this every
+ * reported token error lacked its client id. `onError` starts the report
+ * synchronously inside the provider call, so the store is still set.
+ */
+const tokenRequestClientId = new AsyncLocalStorage<string | null>()
+
+export function runWithTokenRequestClientId<Result>(
+	clientId: string | null | undefined,
+	run: () => Result,
+): Result {
+	const trimmed = clientId?.trim()
+	return tokenRequestClientId.run(
+		trimmed && trimmed.length <= 2048 ? trimmed : null,
+		run,
+	)
+}
+
 async function safeClientIdFromRequest(request: Request | undefined) {
 	if (!request) return undefined
 	const fromBasic = safeClientIdFromBasicAuthorization(
@@ -99,6 +142,7 @@ async function safeClientIdFromRequest(request: Request | undefined) {
 		if (!contentType.includes('application/x-www-form-urlencoded')) {
 			return undefined
 		}
+		if (request.bodyUsed) return undefined
 		const clone = request.clone()
 		const body = await clone.text()
 		const params = new URLSearchParams(body)
@@ -112,17 +156,68 @@ async function safeClientIdFromRequest(request: Request | undefined) {
 }
 
 /**
+ * CIMD failures carry the metadata URL (the public client id) and the
+ * provider's fetch/validation message in `internal.detail`. Read only those
+ * two fields, bounded, so the log names the client and why it failed.
+ */
+function cimdFailureDetail(internal: OAuthProviderErrorInternal) {
+	if (internal.category !== cimdCategory) return {}
+	const detail = internal.detail
+	if (typeof detail !== 'object' || detail === null) return {}
+	const { metadataUrl, message } = detail as {
+		metadataUrl?: unknown
+		message?: unknown
+	}
+	const clientId =
+		typeof metadataUrl === 'string' && metadataUrl.length <= 2048
+			? metadataUrl
+			: undefined
+	const normalized = clientId ? normalizeCimdClientId(clientId) : undefined
+	return {
+		...(clientId ? { clientId } : {}),
+		...(normalized
+			? { cimdHost: normalized.host, cimdPath: normalized.path }
+			: {}),
+		...(typeof message === 'string'
+			? {
+					cimdFailure: message.slice(0, 200),
+					cimdError: cimdFetchFailureLabel(
+						classifyCimdFetchError(new Error(message)),
+					),
+				}
+			: {}),
+	}
+}
+
+/** Dedupe: one report per request (the provider may report twice). */
+const reportedRequests = new WeakSet<Request>()
+
+/**
  * Record token/refresh failures with code + internal reason (+ client id when
  * available). Uses the audit-event console.info path; never logs token values,
- * secrets, emails, or `internal.detail`.
+ * secrets, emails, or `internal.detail` beyond the CIMD URL and message.
  */
 export async function reportOAuthProviderError(
 	error: OAuthProviderErrorReport,
 ) {
 	if (!shouldReportOAuthProviderError(error)) return
+	// Read before any await: the store belongs to the token request.
+	const contextClientId = tokenRequestClientId.getStore() ?? undefined
+	if (error.request) {
+		if (reportedRequests.has(error.request)) return
+		reportedRequests.add(error.request)
+	}
 
-	const clientId = await safeClientIdFromRequest(error.request)
-	const reason = oauthProviderErrorAuditReason(error)
+	const cimd = cimdFailureDetail(error.internal)
+	const clientId =
+		cimd.clientId ??
+		contextClientId ??
+		(await safeClientIdFromRequest(error.request))
+	// CIMD failures: `invalid_client:cimd:http_404` (stable, groupable).
+	const reason =
+		error.internal.category === cimdCategory && cimd.cimdError
+			? `${error.code}:cimd:${cimd.cimdError}`
+			: oauthProviderErrorAuditReason(error)
 	const path = error.request ? new URL(error.request.url).pathname : undefined
 
 	console.info(
@@ -134,6 +229,10 @@ export async function reportOAuthProviderError(
 			reason: error.internal.reason,
 			...(clientId ? { clientId } : {}),
 			...(path ? { path } : {}),
+			...(cimd.cimdHost ? { cimdHost: cimd.cimdHost } : {}),
+			...(cimd.cimdPath ? { cimdPath: cimd.cimdPath } : {}),
+			...(cimd.cimdError ? { cimdError: cimd.cimdError } : {}),
+			...(cimd.cimdFailure ? { cimdFailure: cimd.cimdFailure } : {}),
 		}),
 	)
 

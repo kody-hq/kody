@@ -1,5 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as IsolatedArtifactRebuildModule from '#worker/repo/isolated-artifact-rebuild.ts'
 
@@ -10,6 +10,8 @@ const mockModule = vi.hoisted(() => ({
 	createIsolatedArtifactRebuildRunner: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
 	reusePublishedPackageArtifactIfUnchanged: vi.fn(),
+	loadPublishedBundleArtifactsForPackageTargets: vi.fn(),
+	publishedBundleArtifactForPackageTarget: vi.fn(),
 }))
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
@@ -39,6 +41,10 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
 	reusePublishedPackageArtifactIfUnchanged: (...args: Array<unknown>) =>
 		mockModule.reusePublishedPackageArtifactIfUnchanged(...args),
+	loadPublishedBundleArtifactsForPackageTargets: (...args: Array<unknown>) =>
+		mockModule.loadPublishedBundleArtifactsForPackageTargets(...args),
+	publishedBundleArtifactForPackageTarget: (...args: Array<unknown>) =>
+		mockModule.publishedBundleArtifactForPackageTarget(...args),
 }))
 
 const {
@@ -61,6 +67,22 @@ const isolatedEnv = {
 	},
 } as unknown as Env
 
+beforeEach(() => {
+	mockModule.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map(),
+	)
+	mockModule.publishedBundleArtifactForPackageTarget.mockImplementation(
+		(input: {
+			loadedByIdentity: Map<string, null>
+			sourceId: string
+			target: { kind: string; artifactName?: string | null; entryPoint: string }
+		}) =>
+			input.loadedByIdentity.get(
+				`${input.sourceId}:${input.target.kind}:${input.target.artifactName ?? ''}:${input.target.entryPoint}`,
+			) ?? null,
+	)
+})
+
 function setup({
 	targets = sampleTargets,
 	run = vi.fn(async () => ({ ok: true, message: 'rebuilt' })),
@@ -75,6 +97,19 @@ function setup({
 	for (const mock of Object.values(mockModule)) mock.mockReset()
 	mockModule.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(false)
 	mockModule.reusePublishedPackageArtifactIfUnchanged.mockResolvedValue(false)
+	mockModule.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map(),
+	)
+	mockModule.publishedBundleArtifactForPackageTarget.mockImplementation(
+		(input: {
+			loadedByIdentity: Map<string, null>
+			sourceId: string
+			target: { kind: string; artifactName?: string | null; entryPoint: string }
+		}) =>
+			input.loadedByIdentity.get(
+				`${input.sourceId}:${input.target.kind}:${input.target.artifactName ?? ''}:${input.target.entryPoint}`,
+			) ?? null,
+	)
 	mockModule.listPublishedPackageArtifactTargets.mockResolvedValue(targets)
 	if (stageKey) {
 		mockModule.stagePublishedPackageArtifactRebuild.mockResolvedValue({
@@ -206,6 +241,9 @@ test('isolated rebuild skips already-built or unchanged targets and does not sta
 		).toHaveBeenCalledTimes(1)
 		expect(discard).toHaveBeenCalledTimes(1)
 		expect(check).toHaveBeenCalledTimes(3)
+		expect(
+			mockModule.loadPublishedBundleArtifactsForPackageTargets,
+		).toHaveBeenCalledTimes(1)
 	}
 
 	const { run, discard } = setup()

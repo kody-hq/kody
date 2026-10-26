@@ -47,6 +47,7 @@ export function FeaturesMenu(props: Props) {
 	const [open, setOpen] = useState(false)
 	const panel = useRef<HTMLDivElement>(null)
 	const trigger = useRef<HTMLButtonElement>(null)
+	const lastPointerType = useRef<string>('mouse')
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
 		undefined,
 	)
@@ -149,8 +150,14 @@ export function FeaturesMenu(props: Props) {
 		>
 			<button
 				ref={trigger}
+				onPointerDown={(event) => {
+					lastPointerType.current = event.pointerType
+				}}
 				onClick={(event) => {
-					if (event.detail > 0 && window.matchMedia('(hover: hover)').matches) {
+					// Mouse hover devices: suppress the native popover toggle and open
+					// on hover instead. Touch taps must keep toggle behavior even when
+					// the device also reports `(hover: hover)`.
+					if (event.detail > 0 && lastPointerType.current === 'mouse') {
 						event.preventDefault()
 						openOnHover()
 					}

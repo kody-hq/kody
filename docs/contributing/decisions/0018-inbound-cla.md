@@ -60,15 +60,18 @@ How it works:
   [Entity CLA](../../legal/entity-cla.md) when the work is owned by an employer
   or the contributor is signing for an organization.
 - **How they sign.** Read the CLA, then comment on the pull request:
-  `I have read the CLA and I hereby sign the CLA`. The `CLA` workflow, running
-  from `main` on that comment, records the commenter's GitHub username in
-  `.github/cla-signers.json` on `main` and re-runs the check. Signing covers
+  `I have read the CLA and I hereby sign the CLA` from the identity that needs
+  to sign. That exact comment satisfies the `CLA` check for that identity. After
+  the pull request merges, the workflow opens a bot-generated pull request to
+  add the signer to `.github/cla-signers.json`; it dispatches `✅ Validate` and
+  merges the signer pull request only if that check succeeds. Signing covers
   past, present, and future contributions from that identity. Entity CLA
   recording stays a maintainer step.
 - **Enforcement.** The `CLA` workflow reads signers from `main` (never from the
-  pull request head), fails closed on unsigned identities, and comments with the
-  signing steps. It never checks out or runs pull request code to record a
-  signature. Maintainers do not merge a red `CLA` check. There is no
+  pull request head), accepts exact signing comments on the pull request, fails
+  closed on unsigned identities, and comments with the signing steps. The
+  post-merge recorder checks out `main` only; it never checks out or runs pull
+  request code. Maintainers do not merge a red `CLA` check. There is no
   trivial-contribution exception.
 - **Existing commits.** History is not rewritten. People who already contributed
   are asked to sign before the next merge; the CLA text covers prior
@@ -79,8 +82,8 @@ How it works:
 - The Licensor stays one party for FSL, the Apache conversion, relicensing, and
   enforcement.
 - Individual signatures do not need a maintainer to edit the signers file. The
-  recorder is a first-party `issue_comment` job that writes `main` only. Do not
-  replace it with an unmaintained `pull_request_target` signing bot.
+  post-merge `pull_request_target` recorder creates a bot pull request, which
+  must pass `✅ Validate` before its signer changes are merged to `main`.
 - Public package authors keep their own copyright; they never sign this CLA
   unless they also patch this repository. Listings have no license gate (see
   [0043](./0043-repo-visibility-no-community-kind.md)).

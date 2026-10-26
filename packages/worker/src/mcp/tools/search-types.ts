@@ -118,7 +118,6 @@ export type SearchPhaseTimings = {
 	featureFlagsMs?: number
 	formattingMs?: number
 	rowAndRegistryLoadMs?: number
-	retrieversMs?: number
 	queryEmbeddingMs?: number
 	capabilityCandidatesMs?: number
 	packageCandidatesMs?: number
@@ -135,7 +134,7 @@ export type SearchPhaseTimings = {
 	 * Exclusive wall-clock tiles. These do not overlap, so summing them and
 	 * comparing to `durationMs` is how an operator reconciles the published
 	 * phases against tool wall clock. Nested/overlapping detail phases
-	 * (retrievers, memory, candidate plugins) stay beside them and must not
+	 * (memory, candidate plugins) stay beside them and must not
 	 * be added into `exclusiveMs`.
 	 */
 	rateLimitMs?: number
@@ -180,8 +179,6 @@ export type SearchMemoryEnrichmentSettlement = {
 		surfaced: MemoryToolSummary['memories']
 		suppressedCount: number
 		retrievalQuery: string
-		retrieverResults: MemoryToolSummary['retrieverResults']
-		retrieverWarnings: MemoryToolSummary['retrieverWarnings']
 	}
 	warnings: Array<string>
 	phaseTimings: Pick<

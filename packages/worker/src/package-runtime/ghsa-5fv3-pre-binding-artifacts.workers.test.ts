@@ -439,6 +439,7 @@ async function setupRelay() {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -447,6 +448,7 @@ async function setupRelay() {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	expect(
 		await makePublishedBundlesPreBinding(relay.sourceId),

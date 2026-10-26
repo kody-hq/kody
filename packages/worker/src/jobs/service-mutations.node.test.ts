@@ -127,7 +127,7 @@ test('updateJob syncs the job manager alarm without republishing the package sou
 	})
 	for (const schedule of [
 		every15m,
-		{ type: 'once', runAt: '2026-04-17T15:00:00Z' } as const,
+		{ type: 'interval', every: '1h' } as const,
 	]) {
 		const job = await insertJob(env, callerContext, 'Fixture', schedule)
 		expect(job.schedule).toEqual(schedule)
@@ -444,10 +444,7 @@ test('getJobInspection reports alarm state, source code, and artifact gaps', asy
 	const { env, callerContext, userId } = setup({
 		BUNDLE_ARTIFACTS_KV: createBundleArtifactsKv(),
 	})
-	const created = await insertJob(env, callerContext, 'Inspect one job', {
-		type: 'once',
-		runAt: '2026-04-20T18:30:00Z',
-	})
+	const created = await insertJob(env, callerContext, 'Inspect one job')
 	const alarm = {
 		bindingAvailable: true,
 		status: 'out_of_sync',

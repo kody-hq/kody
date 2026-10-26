@@ -398,19 +398,19 @@ connection. User-registered integrations also have
 `/@<slug>/-/integrations/apps`). Endpoints, host allowlists, flow / PKCE /
 exchange style, and credential rotation stay behind an advanced disclosure. Each
 connection also shows a usage grant: **any context** (execute and every package)
-or **specific packages** only. Agents tighten that grant with `integrationLock`
-(switch to packages mode and add a saved package id; unlocking or removing a
-grant is website-only). One-click approval lives at
-`/@<slug>/-/integrations/approve?name=&package_id=`; approving a package while
-the connection is still `any` leaves it `any` so execute stays usable. Rotate
-(`rotateOauthAppCredentials`) stores a new client-secret value on the app, then
-calls `rotateOauthAppClientCredentials` so every sibling connection picks up the
-new client id on the next join. Each connection has a double-checked Disconnect
-control; user-registered integrations also have Delete integration. Both are
-delayed-commit undoable actions: the UI updates immediately, and
-`disconnectIntegration` / `deleteOauthApp` run only after the undo window (or
-when the user leaves). Built-in apps cannot be deleted; disconnect their
-connections instead.
+or **specific packages** only. Agents tighten that grant with
+`resourceLock({ kind: 'integration', name, package_id })` (switch to packages
+mode and add a saved package id; unlocking or removing a grant is website-only).
+One-click approval lives at `/@<slug>/-/integrations/approve?name=&package_id=`;
+approving a package while the connection is still `any` leaves it `any` so
+execute stays usable. Rotate (`rotateOauthAppCredentials`) stores a new
+client-secret value on the app, then calls `rotateOauthAppClientCredentials` so
+every sibling connection picks up the new client id on the next join. Each
+connection has a double-checked Disconnect control; user-registered integrations
+also have Delete integration. Both are delayed-commit undoable actions: the UI
+updates immediately, and `disconnectIntegration` / `deleteOauthApp` run only
+after the undo window (or when the user leaves). Built-in apps cannot be
+deleted; disconnect their connections instead.
 
 ## Capability surface
 
@@ -420,7 +420,7 @@ Domain: `integrations`
 | Capability                                       | Role                                                                               |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                        |
-| `integrationLock`                                | Tighten-only usage lock: packages mode + add a package id; unlock is website-only  |
+| `resourceLock`                                   | Integration package lock (`kind: integration`); tighten-only; website unlock       |
 | `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                           |
 | `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                  |
 | `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                  |

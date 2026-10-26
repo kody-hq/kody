@@ -15,6 +15,7 @@ import {
 	CredentialClientError,
 	type CredentialClientPlacement,
 } from '#worker/credentials/credential-client.ts'
+import { createPackageAppCredentialAuthority } from '#worker/package-runtime/package-app-authority.ts'
 import { withLanding } from './secrets/echo-redaction.ts'
 import { type FetchGatewayProps } from './fetch-gateway.ts'
 
@@ -37,6 +38,15 @@ export async function resolveCredentialClientPlacement(input: {
 			null,
 		binding: input.props.credentialClientBinding,
 		ownerCredentialScope: input.props.ownerCredentialScope ?? null,
+		packageAppAuthority: input.props.packageAppAuthority
+			? createPackageAppCredentialAuthority({
+					env: input.env,
+					scope: input.props.packageAppAuthority.scope,
+					grantScope: input.props.packageAppAuthority.grantScope,
+					visitorRequest: input.props.request,
+					issue: null,
+				})
+			: null,
 		token: input.token,
 		requestUrl: new URL(input.request.url),
 	})

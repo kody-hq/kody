@@ -8,6 +8,7 @@ import {
 	type PackageInvocationResponse,
 	type PackageInvocationTokenScope,
 	type PackageRuntimeToolFactories,
+	type PackageSourceRevisionOptions,
 } from './common.ts'
 import { invokeSavedPackageModule } from './idempotent-module-invocation.ts'
 import { runSavedPackageModuleEphemeral } from './module-execution.ts'
@@ -53,6 +54,8 @@ export async function invokePackageExportWithToolFactories(input: {
 	executorTimeoutMs?: number | null
 	/** Inbound request abort. Caller disconnect finishes the keyed run. */
 	signal?: AbortSignal
+	/** Report, and optionally pin, the commit the invoke resolves. */
+	sourceRevision?: PackageSourceRevisionOptions | null
 }): Promise<PackageInvocationResponse> {
 	const packageIdOrKodyId = input.request.packageIdOrKodyId.trim()
 	if (!packageIdOrKodyId) {
@@ -134,6 +137,7 @@ export async function invokePackageExportWithToolFactories(input: {
 		waitUntil: input.waitUntil,
 		executorTimeoutMs: input.executorTimeoutMs,
 		signal: input.signal,
+		sourceRevision: input.sourceRevision,
 	}
 
 	if (!idempotencyKey) {

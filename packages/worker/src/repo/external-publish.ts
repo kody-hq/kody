@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
@@ -27,6 +28,11 @@ import {
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import {
+	recordPackageAppPublisher,
+	recordPackageAppPublisherUnknown,
+} from '#worker/package-runtime/package-app-authority.ts'
 import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
 
 export type RepoPublishWorkspace = {
@@ -44,6 +50,11 @@ export type FinalizePublishedSourceInput = {
 	allowLockedPublish?: boolean
 	/** Actor who requested the publish; forwarded to listing auto-follow ban checks. */
 	actorUserId?: string
+	/**
+	 * A person published but no one knows who (an Artifacts push picked up by
+	 * reconcile). Package apps stop running as the previous publisher.
+	 */
+	publisherUnknown?: boolean
 }
 
 export async function finalizePublishedEntitySource(
@@ -85,6 +96,21 @@ export async function finalizePublishedEntitySource(
 			files: input.files,
 		})
 		wrotePublishedSnapshot = true
+	}
+	// Before the new code serves, so it never runs as someone the publisher
+	// could not act as.
+	if (input.source.entity_kind === 'package' && input.actorUserId) {
+		await recordPublisherOfPackage({
+			db: input.env.APP_DB,
+			orgId: input.source.user_id,
+			packageId: input.source.entity_id,
+			personId: input.actorUserId,
+		})
+	} else if (input.source.entity_kind === 'package' && input.publisherUnknown) {
+		await recordPackageAppPublisherUnknown({
+			db: input.env.APP_DB,
+			scope: { orgId: input.source.user_id, packageId: input.source.entity_id },
+		})
 	}
 	try {
 		await updateEntitySource(input.env.APP_DB, {
@@ -176,6 +202,15 @@ export async function finalizePublishedEntitySource(
 			// Always pass the published file set so skills indexing runs even
 			// when artifact rebuild is deferred (`rebuildArtifacts: false`).
 			sourceFiles: input.files,
+			firstPublish: !previousPublishedCommit,
+			// A same-commit finalize (a retry or a clean no-op sync) is not a
+			// new publish, so it writes no audit row.
+			audit:
+				previousPublishedCommit === input.publishedCommit
+					? null
+					: optionalOrgAuditWriter(input.env, {
+							userId: input.actorUserId ?? null,
+						}),
 		})
 	} catch (projectionError) {
 		try {
@@ -271,6 +306,26 @@ export async function finalizePublishedEntitySource(
 			error,
 		)
 	}
+}
+
+/** The publisher runs the app by default (ADR 0068 amendment 2026-10-24). */
+async function recordPublisherOfPackage(input: {
+	db: D1Database
+	orgId: OwnerId
+	packageId: string
+	personId: string
+}) {
+	const binding = await loadOrgBindingForOrg(
+		input.db,
+		input.personId,
+		input.orgId,
+	)
+	await recordPackageAppPublisher({
+		db: input.db,
+		scope: { orgId: input.orgId, packageId: input.packageId },
+		personId: input.personId,
+		publisherIsOwner: binding?.role === 'owner',
+	})
 }
 
 export async function publishFromExternalRef(input: {
@@ -455,6 +510,7 @@ export async function publishFromExternalRef(input: {
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,
 		actorUserId: input.requestedByUserId ?? undefined,
+		publisherUnknown: !input.requestedByUserId,
 	})
 	return {
 		status: 'published',

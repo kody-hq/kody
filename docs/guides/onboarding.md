@@ -213,8 +213,8 @@ registration. Otherwise the user brings their own app.
 
 Packages use credentials. Credentials stay on the setup page; send the URL and
 wait until they confirm save. List, set, delete, and sign with the secret’s
-name. `secretLock` returns a website Allow link for package access. The grant is
-written when they confirm that page.
+name. `resourceLock({ kind: 'secret', name, package_id })` returns a website
+Allow link for package access. The grant is written when they confirm that page.
 
 Small win: name a credential they already have and store it as a secret, or skip
 if they have none.

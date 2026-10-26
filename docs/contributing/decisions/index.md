@@ -213,6 +213,17 @@ Open these before proposing a new primitive, surface, or storage home.
   — one server backend (`device_start` / `device_poll`), two entry points
   (`/connect/oauth` + MCP); `device_code` and client secret stay server-side;
   additive `device_authorization_url` + `flow=device`
+- [0078 — Webhook on/off is its enablement](./0078-webhook-on-off-is-its-enablement.md)
+- [0079 — Remove package retrievers](./0079-remove-package-retrievers.md) —
+  remove implicit package execution from search and context enrichment; use
+  explicit `execute` calls for package exports
+- [0080 — One `resourceLock` capability; no per-resource lock capabilities](./0080-one-resource-lock-capability.md)
+  — per-kind permission is checked in the handler (`orgPermission: 'none'`);
+  lock REST paths collapse to `POST /v1/resource-locks`; unlock stays
+  website-only
+- [0081 — Follow Recent updates are the default delivery](./0081-follow-recent-updates-default-delivery.md)
+  — events no enabled subscription handles land in a bounded per-follow Recent
+  updates list (20 per follow, 30 days, zero credits); builds on 0073
 
 ## Historical / UI / implementation
 

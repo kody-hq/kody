@@ -190,9 +190,9 @@ External providers use **`{{secret/<provider>:<ref>}}`** (first `:` after
 1Password Connect 26-char id. `op://…` is a writable synonym that must
 canonicalize to the same grant/cache key. The item's websites are the host
 allowlist; empty websites refuse the fetch. Ad hoc execute does not need a
-package grant; saved packages do (`secretProviderLock` returns the Allow URL).
-Bind and revoke on `/@<slug>/-/secret-providers`. Shared packages use the
-owner's provider binding. Search does not crawl vaults. See
+package grant; saved packages do (`resourceLock` with kind `secret_provider`
+returns the Allow URL). Bind and revoke on `/@<slug>/-/secret-providers`. Shared
+packages use the owner's provider binding. Search does not crawl vaults. See
 [Custom secret providers](../guides/secret-providers.md).
 
 When an API requires Basic Auth derived from two saved secrets, import
@@ -309,12 +309,14 @@ deleting a user secret from package code (`secretSet`, `secretDisconnect`,
 self-authored and adopted packages. Disconnect clears the value but keeps the
 row, placement, and grants; Delete removes the credential. Only the account
 owner can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
-`/@<slug>/-/secrets/approve`. **`secretLock`** returns an approval URL for the
-owner to click (one-click Allow, same spirit as `/connect/secrets`); it does not
-change `allowed_packages`. Send the link and wait. Removing a grant is also
-website-only. `secretSet` cannot change `allowed_packages`. Official OAuth token
-rotation (`createAuthenticatedFetch` 401 retry via `integrationTokenRefresh`)
-persists host-side and does not need that write grant.
+`/@<slug>/-/secrets/approve`.
+**`resourceLock({ kind: 'secret', name, package_id })`** returns an approval URL
+for the owner to click (one-click Allow, same spirit as `/connect/secrets`); it
+does not change `allowed_packages`. Send the link and wait. Removing a grant is
+also website-only. `secretSet` cannot change `allowed_packages`. Official OAuth
+token rotation (`createAuthenticatedFetch` 401 retry via
+`integrationTokenRefresh`) persists host-side and does not need that write
+grant.
 
 Publish and save warn when a package fills a user credential whose
 `allowed_packages` list is non-empty and does not include that package;

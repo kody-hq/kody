@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import {
 	setupPackageCredentialMappingFixture,
@@ -9,9 +10,9 @@ import { credentialMappingProposeCapability } from './credential-mapping-propose
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 async function setup() {
 	const t = await setupPackageCredentialMappingFixture({

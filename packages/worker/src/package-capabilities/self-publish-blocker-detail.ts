@@ -20,7 +20,6 @@ export const selfPublishCapabilityManifestFields = [
 	'subscriptions',
 	'emits',
 	'jobs',
-	'retrievers',
 	'webhooks',
 ] as const
 

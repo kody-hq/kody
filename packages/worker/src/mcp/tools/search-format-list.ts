@@ -24,7 +24,7 @@ export function formatSearchMarkdown(input: {
 	const lines: Array<string> = ['# Search results', '']
 	const hasDomainMatch = input.matches.some((match) => match.type === 'domain')
 	const hasEntityBackedMatch = input.matches.some(
-		(match) => match.type !== 'retriever_result' && match.type !== 'domain',
+		(match) => match.type !== 'domain',
 	)
 	if (hasDomainMatch) {
 		lines.push(
@@ -196,10 +196,6 @@ function formatMatchListItem(match: SearchMatch, index: number) {
 			? ` ${escapeMarkdownText(match.lastAuthFailure.why)} ${escapeMarkdownText(match.lastAuthFailure.doLabel)} at ${formatMarkdownInlineCode(match.lastAuthFailure.reconnectHref)}.`
 			: ''
 		return `${String(index + 1)}. **integration** ${formatMarkdownInlineCode(match.integrationName)} — ${escapeMarkdownText(formatOneLineSentence(match.description))} Entity: ${formatMarkdownInlineCode(entityRef)}${trouble}`
-	}
-	if (match.type === 'retriever_result') {
-		const source = match.source ?? `${match.kodyId}/${match.retrieverKey}`
-		return `${String(index + 1)}. **retriever result** ${escapeMarkdownText(match.title)} — ${escapeMarkdownText(formatOneLineSentence(match.summary))} Source: ${formatMarkdownInlineCode(source)}`
 	}
 	const entityRef = buildEntityRef(match.name, 'secret')
 	return `${String(index + 1)}. **secret** ${formatMarkdownInlineCode(match.name)} — ${escapeMarkdownText(formatOneLineSentence(match.description))} Entity: ${formatMarkdownInlineCode(entityRef)}`

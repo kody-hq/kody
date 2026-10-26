@@ -53,6 +53,7 @@ import {
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
+	forgetPersonalOrgIdForPerson,
 	loadPersonalOrgIdForPerson,
 	mintOwnerId,
 } from '#worker/orgs/personal-org-id.ts'
@@ -748,6 +749,7 @@ export async function convertPersonalOrg(input: {
 		const followsResultIndex = statements.length - 3
 		const results = await db.batch(statements)
 		committed = true
+		forgetPersonalOrgIdForPerson(db, input.personId)
 		await finalizeMcpServerTransfers({
 			env: input.env,
 			fromId: convertedOrgId,

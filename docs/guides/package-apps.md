@@ -24,12 +24,12 @@ export JSDoc stay in [Package authoring](./package-authoring.md)
 A package app is a hosted **Worker entry**. `kody.app.entry` default-exports a
 fetch handler (a function, `{ fetch }`, or a named `fetch` export). Anything
 esbuild can bundle that answers `fetch` is a valid app. The host strips the app
-mount before forwarding, so every entry sees `/notes` for `/<id>/notes` (legacy
-`/packages/<id>/notes` still works). Optional `kody.app.client` and
-`kody.app.assets` add a browser module and static files under `/_assets`.
-`kody:runtime` exposes `packageContext`, `packageStorage()`, and the rest of the
-run. Remix is [Example A](#remix-recipe) — a recipe with its own boilerplate,
-not a host mode.
+mount before forwarding, so every entry sees `/notes` for
+`/<package-name>/notes` (legacy `/packages/<package-name>/notes` still works).
+Optional `kody.app.client` and `kody.app.assets` add a browser module and static
+files under `/_assets`. `kody:runtime` exposes `packageContext`,
+`packageStorage()`, and the rest of the run. Remix is [Example A](#remix-recipe)
+— a recipe with its own boilerplate, not a host mode.
 
 Open a heading with `search({ entity: "guide:package_apps#remix-recipe" })` (or
 another slug below) when you need one recipe.
@@ -145,6 +145,26 @@ export async function loader({ request }: { request: Request }) {
 }
 ```
 
+For a private app that requires the visitor to sign in, set `mode: 'required'`
+and publish the package with private visibility:
+
+```ts
+const auth = createPackageAppAuth({
+	mode: 'required',
+	hostedUrl: packageContext?.hostedUrl,
+})
+```
+
+`mode: 'required'` is the sign-in gate, not the private-app permission check.
+The owner and people with `app:execute` in the owning org can open the private
+app; an Owner can grant a specific person Use on that app (`inviteCreate` with
+`kind: "grant"` and `resource_type: "app"`). Anonymous visitors who open the
+package-app host directly see a session-required page that links back to Kody,
+where they can sign in and open the app. This handoff avoids redirect loops
+because the app's host-only session cookie is not shared with Kody. Signed-in
+visitors without access see the no-access page. The same gate applies to app
+pages, `/_assets`, and realtime.
+
 Platform routes on every package-app host (host root, not under `/{leaf}`):
 
 | Path                                       | Role                               |
@@ -159,10 +179,13 @@ Legacy `/_kody/auth/*` paths remain accepted on the same hosts.
 #### Who is visiting, from server code
 
 The platform checks the visitor's session before your app code runs, then
-removes `Cookie` and `Authorization` from the request it forwards. App server
-code never sees the session cookie, so a server-side `fetch` to `/-/auth/me`
-from app code always returns 401. `/-/auth/me` is for the browser, which sends
-the cookie itself.
+removes Kody's session and ticket cookies from the request it forwards. `Cookie`
+contains only cookies whose names start with the app's
+`packageContext.cookiePrefix` (including the `__Host-` and `__Secure-`
+variants). `Authorization`, `Proxy-Authorization`, and `X-Kody-*` headers are
+always removed. App server code never sees the Kody session cookie, so a
+server-side `fetch` to `/-/auth/me` from app code always returns 401.
+`/-/auth/me` is for the browser, which sends the cookie itself.
 
 On the server, ask the platform instead. `kody.metaGetCurrentUser({})` from
 `kody:runtime` answers for the visitor of the current request:
@@ -189,6 +212,8 @@ export default {
 
 - `user_id` and `username` identify the visitor and are verified by the
   platform. Use `user_id` as the stable key for per-visitor data.
+- `role` is the visitor's role in the owning org, `null` for anyone who is not a
+  member.
 - `org.slug` is the org that owns the app, not the visitor's org.
 - Do not treat `email` or `display_name` from this call as the visitor's inside
   an app request. Request `email` through the OAuth helper above when the app
@@ -198,9 +223,10 @@ export default {
   internet-visible app) gets `user_id` and `username` too, while their Sign in
   with Kody grant for the app is live. Identity is all they get: the request is
   otherwise served exactly like an anonymous visitor, so storage, credentials,
-  and capabilities that need permission fail closed, and usage is metered as
-  anonymous. To give a specific person real access, grant them Use on the app
-  (`inviteCreate` with `kind: "grant"`, `resource_type: "app"`).
+  and capabilities that need permission fail closed. Visitor usage is still
+  attributed to their stable user id, without granting them app access. To give
+  a specific person real access, grant them Use on the app (`inviteCreate` with
+  `kind: "grant"`, `resource_type: "app"`).
 - A visitor who is not signed in has no identity, so the call throws
   "Authenticated MCP user is required". Treat that as signed out.
 
@@ -208,8 +234,12 @@ The same verified identity is on the request your fetch handler receives, in the
 `X-Kody-Visitor` header: JSON with `userId`, `username`, and `role` (the
 visitor's role in the owning org, `null` for anyone who is not a member). The
 platform strips any inbound `X-Kody-*` header before setting it, so it cannot be
-forged, and it is absent for anonymous visitors. The OAuth helper's `getUser`,
-`requireUser`, and `resolveUser` read it in server code; `/-/auth/me` stays the
+forged, and it is absent for anonymous visitors. Visitors of one app share one
+worker isolate per commit per mount; identity and authority travel per request
+(the visitor header plus a short-lived host-signed visit ticket on every bridge
+and gateway call; a warm isolate does not reuse another visitor's ticket), never
+inside the cached worker. The OAuth helper's `getUser`, `requireUser`, and
+`resolveUser` read the visitor header in server code; `/-/auth/me` stays the
 browser's way to ask (it adds avatar and consented email).
 
 Responses to a request that names a visitor are forced `private` so no shared
@@ -221,6 +251,93 @@ org) already owns/can execute, except when requesting `email` without a prior
 email grant. A lapsed or unbound custom domain stops being an allowed redirect
 target. Outstanding access tickets (90s) still gate edge authorization after
 sign-in.
+
+#### Who the app runs as
+
+A package app runs as one person in the owning org: the person who last
+published it, unless an Owner picks someone else with `packageAppRunsAsSet`
+(`username: null` goes back to the publisher). In a personal org with no
+recorded publisher, that is the org owner. That person pays for the app and
+supplies publisher credentials through `credential(key)`. Executor needs use the
+visitor's connected credentials when the app declares them. Visitors bring their
+verified identity. `packageAppRunsAsGet` says who it is, or why the app cannot
+run as anyone.
+
+- The person is checked live on every call. Someone who left the org, or whose
+  account is suspended or deleted, stops the app from acting as them, with an
+  error that says so, until an Owner picks someone else or someone publishes
+  again.
+- A publish with no known person behind it (for example an external push with no
+  requester) clears the recorded publisher, so the app never keeps running as
+  someone who did not ship that code.
+- Authority is capped twice: only the capabilities the app lists in
+  `kody.app.capabilities` run as that person, and only within what that person
+  may do in the org right now.
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "src/index.ts",
+			"capabilities": ["metaMemorySearch"],
+			"visitorNeeds": {
+				"calendar": {
+					"description": "Read your calendar to find a free slot",
+					"credential": "google-calendar"
+				}
+			}
+		}
+	}
+}
+```
+
+`kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
+Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
+consent screen shows the `description`. A need names exactly one of a
+`kody.credentials` key or a capability (run it with
+`kody.visitorNeed({ need: 'calendar', args })`). Capability calls run as the
+visitor and need a live grant that covers the scope, read on every call.
+Credential needs use the supplier declared in `kody.credentials`: executor needs
+resolve only the credential mapping on that visitor's live grant, while
+publisher needs are not available through `credential.visitor()` or
+`kody.visitorNeed()`. Neither path falls back to the runs-as person. Revoking
+the app on **Account > Connected apps** takes effect on the next call.
+
+Executor credential needs use `need:<key>` scopes and are required by default.
+An optional executor need declares `required: false`. The visitor chooses a
+usable credential for each approved need during consent; the credential value
+stays host-side. See
+[Credentials](./credentials.md#choose-who-supplies-a-package-credential) for
+supplier and mapping rules.
+
+When the `package-credential-suppliers` flag is on, published closures store
+supplier metadata. Republish after enabling the flag so served apps see
+`supplier` and `required`. In app code, check the grant before opening a visitor
+credential, and handle the unbound case without trying the publisher's
+credential:
+
+```ts
+import { credential, hasScope } from 'kody:runtime'
+
+if (hasScope(request, 'need:calendar')) {
+	const calendar = await credential.visitor('calendar')
+	// Use the visitor's credential for this request.
+}
+```
+
+`credential.visitor(key)` resolves only the credential selected for that need in
+the visitor's live grant. It does not fall back to publisher credentials,
+visitor defaults, org mappings, or automatic matching. A missing mapping is
+reported as `credential_unbound`. Keep publisher-supplied needs on
+`credential(key)`.
+
+If a bridge call cannot run as the runs-as person (a capability missing from
+`kody.app.capabilities`, for example), the platform may still execute it as the
+visitor and log a `package_app_authority_fallback` event with the app, the call
+name, and the kind of difference. Add what the logs name to the manifest. Admins
+count these per app with `adminPackageAppAuthorityFallbackReport`, and the
+[0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
+lists published apps that will hit them.
 
 `packageAppFetch` exercises the fetch handler without that browser session. Use
 it for handler smoke tests after publish. When the host can run the CLI, prefer
@@ -425,7 +542,6 @@ When the app imports a `@remix-run/ui/<primitive>` module, add
 	"exports": { ".": "./src/index.ts" },
 	"dependencies": { "remix": "3.0.0" },
 	"kody": {
-		"id": "notes",
 		"description": "Notes with a hosted Remix app",
 		"app": {
 			"entry": "./app/router.ts",
@@ -813,7 +929,7 @@ that:
 `kody.app.entry` default-exports a fetch handler (a function, `{ fetch }`, or a
 named `fetch` export). Every entry receives the mount-stripped path (`/` at the
 app root). Publish rejects `kody.app.runtime`: there is no configured runtime
-mode. A leftover field on a published snapshot is ignored.
+mode. Published snapshots that still contain the field serve without it.
 
 The host uses esbuild's JSX defaults unless the root `tsconfig.json` sets
 `compilerOptions.jsx` / `jsxImportSource`. A Remix recipe sets
@@ -1029,11 +1145,13 @@ const sprite = appUrl('assets/sprite.png')
 const callback = appUrl('oauth/callback')
 ```
 
-`hostedUrl` is the public mount URL. `appBasePath` is the origin-relative mount
-(`/<package-name>` on a subdomain). Both come from the current serving username
-and package name leaf, including after a rename or fork. When you pass a
-relative path to `new URL(path, origin)`, give `origin` a trailing slash so
-`assets/sprite.png` stays under the mount.
+`hostedUrl` is the public mount URL. `appBasePath` is the origin-relative mount:
+`/<package-name>` on `{username}.kody.run`, and empty on an app-level custom
+hostname (the app owns `/`). Use the runtime-provided values as-is. On a
+subdomain they follow the current serving username and package name leaf,
+including after a rename or fork. When you pass a relative path to
+`new URL(path, origin)`, give `origin` a trailing slash so `assets/sprite.png`
+stays under the mount.
 
 Files the platform serves for you (the bundled browser client and the
 `kody.app.assets` directory) live under `packageContext.assetBasePath`; see the
@@ -1177,16 +1295,81 @@ scaffolders can depend on them.
 - `packageContext.assetBasePath` — origin-relative `<appBasePath>/_assets`,
   mount-aware like `appBasePath`. Join `assets` files onto it
   (`${assetBasePath}/styles.css`).
+- `packageContext.cookiePrefix` — the prefix reserved for this saved package's
+  cookies. It is derived from the saved package id, so it survives renames and
+  is different for a new package even if it reuses the old name. Local
+  `kody dev` derives it from a placeholder local package id, so local cookies
+  are separate from the saved package's cookies.
 
 `/_assets/*` is reserved: the platform answers it before the fetch handler runs,
 and the handler never sees those paths. A client hash from an older publish
 returns 404 rather than a stale module, so always render the URL from
 `packageContext`.
 
+### Cookies and bringing your own login
+
+Every saved package receives a stable `packageContext.cookiePrefix`, derived
+from its saved package id rather than its name or slug. Use this prefix for
+every cookie your app sets, including `__Host-${cookiePrefix}session` or
+`__Secure-${cookiePrefix}session` names. Kody forwards only those cookies to
+your app and drops every `Set-Cookie` whose name is not app-prefixed; it does
+not forward arbitrary non-Kody cookies. Apps on a shared package-app host still
+share an origin, so client JavaScript can read cookies from sibling apps with
+`document.cookie`; mark session cookies `HttpOnly` and use `Secure` and an
+appropriate `SameSite` value.
+
+You can run your own login and OAuth flow, store your own tokens, and choose how
+to authenticate in app code: import `hasScope` from `kody:runtime`, then use
+`hasScope(request, 'need:<key>')` before calling `credential.visitor('<key>')`
+when the visitor granted that need. Otherwise use your own stored token or
+prompt the visitor to connect. Email consent grants visibility only, not
+permission to send mail. Kody never forwards `Authorization`,
+`Proxy-Authorization`, or `X-Kody-*` headers to package code.
+
 None of `appBasePath`, `assetBasePath`, `hostedUrl`, or `clientModuleUrl` ends
 with a slash, so `${assetBasePath}/styles.css` is always a single-slash join.
 When you resolve relative to a URL that does end with a slash (a service worker
 scope, `new URL('x', base)`), pass the relative path without a leading slash.
+
+### App-owned limits and spend
+
+`kody.appRateLimit({ key, limit, windowSeconds })` is an atomic fixed-window
+limit scoped to this saved package. Bounds are 1–1,000,000 requests, 1–86,400
+seconds, and a key of at most 256 characters. Kody stores a hash of the key, not
+the input value. The limit is app-owned and does not consume or change a
+platform per-visitor limit.
+
+```ts
+const result = await kody.appRateLimit({
+	key: 'daily-export',
+	limit: 40,
+	windowSeconds: 60,
+})
+if (!result.allowed) {
+	return new Response('Try again later', {
+		status: 429,
+		headers: { 'Retry-After': String(result.retryAfterSeconds) },
+	})
+}
+```
+
+The result also includes `remaining` requests in the current window and an
+ISO-8601 `resetAt` timestamp.
+
+`kody.appSpendGet({})` reads only this package's current UTC-month attribution
+from its owning org. It returns the total and daily credit breakdown, split by
+meter; it does not return visitor or IP data. Production attribution is
+recomputed hourly, so recent usage can lag by up to an hour.
+
+```ts
+const monthlyCutoffMicroUsd = 2_000_000
+const spend = await kody.appSpendGet({})
+if (spend.creditsMicroUsd >= monthlyCutoffMicroUsd) {
+	return new Response('This app reached its monthly spend cutoff', {
+		status: 429,
+	})
+}
+```
 
 #### Detecting support
 
@@ -1368,8 +1551,8 @@ old caches on activate.
 - **`packageAppFetch` returns HTTP 500 `"Package app could not be prepared"`** —
   host-setup failed before package code ran (manifest load, worker build, or
   asset prep). The JSON body includes `cause` on synthetic fetches. Publish
-  rejects `kody.app.runtime`; a leftover field on a published snapshot does not
-  brick serve.
+  rejects `kody.app.runtime`; published snapshots that still contain the field
+  serve without it.
 
 Checked-in browser-ready `.js` served from the fetch handler with an explicit
 `Content-Type` is valid; `client` is the pit-of-success path for source you want

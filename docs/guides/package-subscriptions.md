@@ -8,8 +8,9 @@ summary:
   run.error.recorded activity notifiers, integration.auth.failed /
   integration.auth.succeeded reconnect notifiers, mcp.server.disconnected /
   mcp.server.reconnected connection episodes, follow.published / follow.pushed
-  follow notifiers, community.fork.upstream_updated fork notifiers, and repo /
-  package lifecycle topics.
+  follow notifiers, community.fork.upstream_updated fork notifiers, resource
+  change events (credentials, packages, jobs, triggers, membership, memories),
+  and repo / package lifecycle topics.
 category: platform
 ---
 
@@ -685,8 +686,19 @@ Create, list, and remove follows with `followAdd` / `followList` /
 **Follow** on the package or repo page. Each follow chooses its events
 (`published`, `pushed`, or both); a follow only delivers the events it chose.
 The workspace's Follows page (`/@<slug>/-/follows`) lists them with status and
-pause reason. See the
-[follow CLI contract](../contributing/contracts/follow-cli.md).
+pause reason.
+
+When no package subscription in the follower org has an enablement turned on for
+the topic, the event is not lost: after the same access recheck, Kody stores it
+as a **Recent update** on that follow (one entry per published version or per
+coalesced push window, latest 20 per follow, kept 30 days, zero credits). The
+Follows page and the package Follow panel say which selected events nothing
+handles and list those entries; `followList` returns them as `recent_updates`.
+Handled events, events a subscription's filters drop, zero-credit skips, failed
+handlers or incomplete subscription discovery, paused follows, and pushes the
+follower cannot read are not recorded. See
+[decision 0081](../contributing/decisions/0081-follow-recent-updates-default-delivery.md).
+See the [follow CLI contract](../contributing/contracts/follow-cli.md).
 
 ## `follow.pushed`
 
@@ -874,3 +886,63 @@ revert and this event are unavailable once the snapshot is gone.
 
 Use this topic when automation must react to an operator or user undoing a prior
 codemod apply.
+
+## Resource change events
+
+When something in an org changes, Kody sends one event to the org's packages
+that subscribe to its topic. Every event comes from a successful change that the
+org audit log recorded, so a change that is not audited does not emit, and a
+failed or denied change never emits.
+
+| Resource                                             | Topics                                                                                                            |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Credentials (keys, logins, connections, MCP servers) | `credential.created`, `credential.updated`, `credential.deleted`, `credential.rotated`, `credential.disconnected` |
+| Packages                                             | `package.created`, `package.updated`, `package.deleted`, `package.published`                                      |
+| Jobs                                                 | `job.created`, `job.updated`, `job.deleted`                                                                       |
+| Triggers                                             | `trigger.updated` (turned on or off)                                                                              |
+| Org membership                                       | `membership.created`, `membership.updated`, `membership.deleted`                                                  |
+| Memories                                             | `memory.created`, `memory.updated`, `memory.deleted`                                                              |
+
+`credential.rotated` means a credential got a new value. `package.created` is a
+package's first publish, and later publishes are `package.published`. Access
+changes (grants) are `<resource>.updated` with `changed_fields: ['access']`.
+
+```ts
+type ResourceChangeEvent = {
+	event: string // one of the topics above
+	event_id: string
+	resource: {
+		kind: 'credential' | 'package' | 'job' | 'trigger' | 'membership' | 'memory'
+		name: string | null
+		credential_kind?: string | null // credentials only
+	}
+	org: { slug: string | null }
+	changed_fields: Array<string>
+	changes: {
+		role?: { before: unknown; after: unknown }
+		visibility?: { before: unknown; after: unknown }
+		enabled?: { before: unknown; after: unknown }
+		disabled_reason?: { before: unknown; after: unknown }
+	}
+	actor?: { kind: 'person' | 'automation'; username: string | null }
+	occurred_at: string
+}
+```
+
+- **Values.** Only fixed-option fields (`role`, `visibility`, `enabled`,
+  `disabled_reason`) carry before and after values. Every other change sends the
+  changed field name only, never the value. Events never include credential
+  values or internal ids.
+- **Who receives it.** A handler runs once per enablement whose enabler can see
+  the resource, checked at every delivery. Membership events need `member:read`.
+  Memory events reach Owners only, so in a personal org only the memory's owner
+  receives them.
+- **Actor.** `actor` is present only when the enabler can read the org's audit
+  log (`audit:read`), checked again at every delivery.
+- **Loops.** A package never receives an event about a change it made itself,
+  and a chain of events started by package changes stops after 3 hops. When Kody
+  drops an event for either reason, it writes a warning in the package's
+  activity naming the event and why.
+- **Billing.** Like follows, Kody pays for routing. Handler runs count toward
+  the subscribing org's automation limits and credits.
+- **Delivery.** Best effort, once per audited change.

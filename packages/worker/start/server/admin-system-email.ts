@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import { emailMessageViewValues } from '#universal/email-message-view.ts'
 
 export const loadAdminSystemEmail = createServerFn({ method: 'GET' })
 	.validator(
@@ -8,6 +9,7 @@ export const loadAdminSystemEmail = createServerFn({ method: 'GET' })
 			page: z.number().int().positive(),
 			pageSize: z.number().int().positive().max(100),
 			messageId: z.string().nullable(),
+			view: z.enum(emailMessageViewValues),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -38,7 +40,7 @@ export const loadAdminSystemEmail = createServerFn({ method: 'GET' })
 				: 'adminSystemEmailList',
 			reason: payload.selectedMessage
 				? `target_message_id=${payload.selectedMessage.id}`
-				: 'system_email_list',
+				: `system_email_list;view=${payload.view}`,
 		})
 		return {
 			forbidden: false as const,

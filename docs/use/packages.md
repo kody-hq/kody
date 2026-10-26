@@ -9,6 +9,17 @@ A saved package is a repo-backed module rooted at `package.json`. Standard
 package fields describe the package surface, and `package.json#kody` holds the
 Kody-specific metadata.
 
+### Repositories page vs `package` in the API
+
+In the web UI, the workspace list is **Repositories** (`/@slug/-/repositories`).
+It shows plain repositories and packages together. A **repository** is the git
+home; a **package** is a repository with a Kody package manifest. The API, CLI,
+and ids keep names like `packageList`, `packageSave`, and
+`guide:package_authoring`. Looking for Packages in the UI? Open
+**Repositories**. The public catalog at `/community` is titled **Public
+packages**; back links name that page when you leave someone else's listing.
+Your own package pages link back to **Repositories**.
+
 Packages are not integrations or MCP servers. See
 [Packages, integrations, and MCP servers](../guides/packages-integrations-mcp.md)
 when those three look interchangeable.
@@ -22,7 +33,6 @@ Think in terms of:
 - package apps
 - package subscriptions
 - package-owned jobs
-- package-owned retrievers
 - package-owned webhooks
 
 Packages are the saved-entity unit across search, execute, repo editing, and UI
@@ -51,8 +61,7 @@ durable home, packages add runtime. Four concepts make up its state:
 3. **Package storage** — the package's durable StorageRunner (SQLite) bucket,
    reached via `packageStorage()` from `kody:runtime`. This is the durable-data
    primitive for every package surface: exports/invocations, subscriptions,
-   retrievers, jobs, and package apps. Non-secret knobs and runtime state live
-   here.
+   jobs, and package apps. Non-secret knobs and runtime state live here.
 4. **Package jobs** — scheduled execution owned by the package
    (`package.json#kody.jobs`): schedule/execution metadata lives in D1 job rows;
    each job run binds a job-scoped scratch bucket; package config stays keyed by
@@ -111,7 +120,6 @@ Important fields:
   exports (mint a handle with `webhookUrlMint` and register it with
   `webhookUrlApply`; see [Inbound webhooks](./webhooks.md))
 - `kody.jobs` — optional package-owned schedules
-- `kody.retrievers` — optional package-owned search/context retrievers
 
 `package.json` is the manifest.
 
@@ -168,7 +176,11 @@ credentials; opt-in types that a package can declare are described in
   its own key with an explicit `provider`. `description` is required, never
   affects matching, and says why the package wants access. `multiple: true`
   means the package uses several accounts at once. A typical need looks like
-  `"github": { "description": "Read PRs to summarize them" }`.
+  `"github": { "description": "Read PRs to summarize them" }`. When the
+  `package-credential-suppliers` flag is on, a need can also declare
+  `supplier: "publisher"` or `supplier: "executor"`, and executor needs may set
+  `required`. See
+  [Choose who supplies a package credential](../guides/credentials.md#choose-who-supplies-a-package-credential).
 - Publish rejects any other key or a missing required field and names the slot.
   If a later rule rejects a slot in a version that is already published, the
   package still loads with its other slots.
@@ -284,17 +296,26 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
   published `kody:@…` modules and ad hoc / unpublished `--code` / `--file`
   modules both use `credential` / `credentials` from `kody:runtime` with the
   same CapabilityProxy resolution and gateway placement as hosted (secret values
-  never enter local workerd). CLI releases before the
-  [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md)
-  lack the host export and fail at import time — upgrade `@kodycodes/cli`.
+  never enter local workerd). A CLI whose host `kody:runtime` does not export
+  `credential` / `credentials` fails at import time — upgrade `@kodycodes/cli`.
+  See the
+  [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md).
 
 #### Let app visitors use the owner's credential
 
-An internet-visible app runs as its visitor: the signed-in person, or no one for
-a signed-out visitor or someone outside the org. A signed-in member with Use can
-still open org credentials they hold; a signed-out visitor and anyone without
-Use cannot. A need the app fills for every visitor (a shared database, an email
-sender) opts in per slot with `ownerCredentialForVisitors: true`:
+Package apps run as their runs-as person (the publisher, unless an Owner picks
+someone else); see
+[who the app runs as](../guides/package-apps.md#who-the-app-runs-as). That
+person supplies publisher credentials through `credential(key)`. Executor needs
+and `ownerCredentialForVisitors` are documented below and in
+[Credentials](../guides/credentials.md#choose-who-supplies-a-package-credential).
+
+An internet-visible app acts as its visitor for visitor-owned data: the
+signed-in person, or no one for a signed-out visitor or someone outside the org.
+A signed-in member with Use can still open org credentials they hold; a
+signed-out visitor and anyone without Use cannot. A need the app fills for every
+visitor (a shared database, an email sender) opts in per slot with
+`ownerCredentialForVisitors: true`:
 
 ```json
 {
@@ -311,9 +332,9 @@ sender) opts in per slot with `ownerCredentialForVisitors: true`:
 }
 ```
 
-- The flag takes only `true`; omit it to keep today's behavior. There is no
-  package-wide switch, and needs a package imports keep the flag their declaring
-  package gave them.
+- The flag takes only `true`; omit it for per-visitor resolution (default).
+  There is no package-wide switch. Package imports keep the flag from the
+  package that declares each need.
 - It changes the capability fingerprint, so adding it to an internet-visible
   package pauses the publish and asks the owner to approve again. The approval
   page says on that credential that visitors can use it through the app, signed
@@ -428,13 +449,16 @@ exhaustive.
 - Packages may also export non-callable helper modules and values for reuse.
 - Publish typecheck is opt-in through a root `tsconfig.json`. With one, publish
   fails on TypeScript errors in every `.ts` / `.tsx` file reachable from exports
-  (including their `types` targets), jobs, subscription handlers, and
-  retrievers, using that config's compiler options (TypeScript defaults to
-  `strict`). The check has no `node_modules`, so bare imports (npm packages,
-  `remix/*`, `kody:@…`, `node:*`) are typed as `any`; bundling still verifies
-  that they resolve. Without a `tsconfig.json`, publish only checks that job,
-  subscription, and retriever entrypoints default export a function, and the
-  typecheck message says that source files and exports are not typechecked.
+  (including their `types` targets), jobs, and subscription handlers, using that
+  config's compiler options (TypeScript defaults to `strict`). The check has no
+  `node_modules`, so bare imports (npm packages, `remix/*`, `kody:@…`, `node:*`)
+  are typed as `any`; bundling still verifies that they resolve. Without a
+  `tsconfig.json`, publish only checks that job and subscription entrypoints
+  default export a function, and the typecheck message says that source files
+  and exports are not typechecked. Publish (and `kody dev check`, which runs the
+  same checks) is the only typecheck. Running a published export, job, or
+  subscription never typechecks, so a package that published keeps running even
+  when its artifact is rebuilt later.
 - Add JSDoc to every public export. Search Purpose comes from that JSDoc;
   missing comments fall back to `Package export.` See
   [Export JSDoc](../guides/package-authoring.md#export-jsdoc) in the package
@@ -496,8 +520,7 @@ Every saved package owns one durable storage bucket in the org that owns it
 reads the same bucket. One rule per context:
 
 - **Writing a saved package?** Use `packageStorage()` for the package's own data
-  — from package apps, exports, subscriptions, jobs, and workflows. Retrievers
-  can only read granted buckets.
+  — from package apps, exports, subscriptions, jobs, and workflows.
 - **Writing ad hoc `execute` code?** Persist durable state from a saved package
   with `packageStorage()`, or statically import the owning package's export. Ad
   hoc execute has no scratch SQLite helper.
@@ -506,8 +529,8 @@ reads the same bucket. One rule per context:
   `packageStorage()` does the reading and writing.
 
 `packageStorage()` returns `get`/`set`/`list`/`sql`/`delete`/`clear`/`id`,
-writable except in retriever runs, always bound to the declaring package's own
-bucket no matter where the code runs:
+always bound to the declaring package's own bucket no matter where the code
+runs:
 
 - In the package's own export/invocation runtime it is the only way to reach the
   package bucket.
@@ -773,9 +796,25 @@ Recurring schedules belong on a saved package:
   including package exports the job imports. Outbound `fetch` keeps its own
   5-minute deadline and 60s idle timeout
 
-Jobs are part of the package definition. Deferred one-shot work uses
-`workflows.create({ runAt })` from `execute` or package runtime — see
-[Workflows](./workflows.md).
+Jobs are part of the package definition and recur on a cron or interval
+schedule. For a one-shot run at a specific time, use a durable workflow from
+`execute` or package runtime:
+
+```ts
+import { workflows } from 'kody:runtime'
+
+await workflows.create({
+	exportName: './my-export',
+	runAt: '2027-01-01T16:00:00Z',
+	idempotencyKey: 'my-export:2027-01-01',
+	params: {},
+})
+```
+
+From `execute` (outside the package), also pass `packageId`.
+
+See [Workflows](./workflows.md) for `code`-based runs, retries, and run
+inspection.
 
 `jobUpdate` adjusts metadata on an existing job: schedule, timezone, enabled
 state, kill-switch state, params, `expires_at` (UTC ISO auto-disable; null
@@ -1004,24 +1043,23 @@ records it, and then hands you the approval link.
 An agent can make a package internet-visible on its own (self-publish) when the
 capability set the owner would approve is empty, the package and every package
 it depends on declare nothing (no `kody.credentials` slots and no
-`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`,
-`retrievers`, or `webhooks`), and a security audit with verdict `pass` is
-recorded for the current published version. `packageUpdate` (and the settings
-toggle) then turn serving on right away; `packageUpdate` returns
-`self_published: true`. If the audit is missing, the request waits
-(`self_publish_blocker: 'not_audited'`); recording a passing audit with
-`packageSecurityAuditRecord` re-evaluates it and self-publishes then, and so
-does calling `packageUpdate` again. The org activity log records it as
-`package.went_public.self_publish`. A self-published package cannot use any
-credential while it stays public this way, even one it declares later. To give
-it credentials, declare them, publish, turn internet-visible off, and approve
-turning it on again. Agents cannot self-approve a non-empty capability set. When
-anything is declared or listed, `packageUpdate` returns the `approval_url` and a
-`self_publish_blocker` that says why (`unpublished`, `stale_dependencies` (a
-dependency republished since this package was published; publish it again),
-`declares_credentials`, `declares_capabilities`, `not_audited`,
-`audit_concerns`, or `not_permitted` when the caller cannot publish the
-package).
+`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
+`webhooks`), and a security audit with verdict `pass` is recorded for the
+current published version. `packageUpdate` (and the settings toggle) then turn
+serving on right away; `packageUpdate` returns `self_published: true`. If the
+audit is missing, the request waits (`self_publish_blocker: 'not_audited'`);
+recording a passing audit with `packageSecurityAuditRecord` re-evaluates it and
+self-publishes then, and so does calling `packageUpdate` again. The org activity
+log records it as `package.went_public.self_publish`. A self-published package
+cannot use any credential while it stays public this way, even one it declares
+later. To give it credentials, declare them, publish, turn internet-visible off,
+and approve turning it on again. Agents cannot self-approve a non-empty
+capability set. When anything is declared or listed, `packageUpdate` returns the
+`approval_url` and a `self_publish_blocker` that says why (`unpublished`,
+`stale_dependencies` (a dependency republished since this package was published;
+publish it again), `declares_credentials`, `declares_capabilities`,
+`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
+publish the package).
 
 ## Approve many changes at once
 
@@ -1154,14 +1192,14 @@ publish checks run.
    `user.name` from `git_author`. Use that identity for commits; do not invent
    an email.
 
-   To start a **new** package in this lane, pass `create: true` with `kody_id`
-   set to the new `@owner/leaf` name (or the name leaf) and an optional
+   To start a **new** package in this lane, pass `create: true` with `name` set
+   to the new `@owner/leaf` name (or the name leaf) and an optional
    `description` (at most 200 characters; a short public tagline):
 
    ```json
    {
    	"create": true,
-   	"kody_id": "@you/new-package",
+   	"name": "@you/new-package",
    	"description": "What this package is for"
    }
    ```
@@ -1247,19 +1285,22 @@ publish checks run.
    `runList` or Cloudflare Log Explorer. When an interactive publish exceeds the
    inline budget (~35s), the tool returns `status: "dispatched"` with a
    `workflow_id` instead of hanging until the host times out. `dispatched`
-   includes `phase_timings.total_ms` as time-to-dispatch. Poll `workflowRunList`
-   with that `workflow_id` until the run finishes; do not retry the same publish
-   while the run is active.
+   includes `phase_timings.total_ms` as time-to-dispatch. Poll with
+   `workflowRunList({ workflow_id })` (CLI:
+   `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
+   is terminal; do not retry the same publish while the run is active.
 
    If the CLI or client loses the HTTP response (for example
    `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal
-   status, the outcome is unknown until you check. Prefer `workflowRunList`
-   (CLI: `kody api workflowRunList`) for recent `packagePublishExternalPush`
-   runs. Re-calling publish for the **same** commit is safe: an active durable
-   run for that commit is deduped and returns the existing `dispatched` handle;
-   a completed publish returns `already_published` without re-running checks.
-   Connect-phase failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`,
-   `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
+   status, the outcome is unknown until you check. Prefer
+   `workflowRunList({ workflow_id })` when you still have the id; otherwise list
+   recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
+   optionally filtering with `package_id`, `status`, or `since`. Re-calling
+   publish for the **same** commit is safe: an active durable run for that
+   commit is deduped and returns the existing `dispatched` handle; a completed
+   publish returns `already_published` without re-running checks. Connect-phase
+   failures (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`,
+   `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH`, and the CLI's
    `did not connect within …ms` timeout) never reached the server — republish is
    the right next step. The CLI surfaces that distinction as `sent: false` vs
    `sent: "unknown"` on `--json` errors.

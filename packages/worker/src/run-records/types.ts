@@ -2,7 +2,7 @@
  * Run records: the per-user execution history primitive.
  *
  * Every runtime surface (execute, jobs, workflows, package exports, apps,
- * retrievers, subscriptions, inbound webhooks) reports what it ran and
+ * subscriptions, inbound webhooks) reports what it ran and
  * how it ended through one contract. Records live in a per-user `RunLog`
  * Durable Object, not in the shared D1 writer — see
  * `docs/contributing/architecture/run-records.md`.
@@ -16,6 +16,16 @@
  */
 
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RunStartedBy } from './run-started-by.ts'
+
+export type { RunStartedBy, RunStartedByClient } from './run-started-by.ts'
+export {
+	isRunStartedByClient,
+	normalizeRunStartedBy,
+	runStartedByClientFromCredentialKind,
+	runStartedByClientValues,
+	runStartedByFromRequest,
+} from './run-started-by.ts'
 
 export const runSurfaceValues = [
 	'execute',
@@ -25,7 +35,6 @@ export const runSurfaceValues = [
 	'app_realtime',
 	'job',
 	'workflow',
-	'retriever',
 	'webhook',
 ] as const
 
@@ -92,7 +101,6 @@ export function runErrorTriageForPlatformInterrupt(
 		case 'app_fetch':
 		case 'app_realtime':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return null
 		default: {
@@ -138,7 +146,6 @@ export function runPersistenceForSurface(surface: RunSurface): RunPersistence {
 		case 'app_realtime':
 		case 'job':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return 'eager'
 		default: {
@@ -168,6 +175,12 @@ export type RunRecordContext = {
 	sessionId?: string | null
 	idempotencyKey?: string | null
 	parentRunId?: string | null
+	/**
+	 * Who started this run (person + client). Omitted on legacy rows and when
+	 * the caller had no request context. Prefer
+	 * {@link runStartedByFromRequest} at begin/claim sites.
+	 */
+	startedBy?: RunStartedBy | null
 	metadata?: Record<string, unknown> | null
 }
 
@@ -231,6 +244,11 @@ export type RunRecord = {
 	triagedAt: string | null
 	/** User id of whoever last set triage (account owner or agent acting for them). */
 	triagedBy: string | null
+	/**
+	 * Who started this run. `null` for legacy rows recorded before started_by
+	 * existed, or when begin had no request context.
+	 */
+	startedBy: RunStartedBy | null
 	metadata: Record<string, unknown>
 	logCount: number
 }
@@ -275,6 +293,11 @@ export type RunRecordFilter = {
 	 * User-facing `runList` and Activity pass `open` by default.
 	 */
 	errorTriage?: RunErrorTriageFilter | null
+	/**
+	 * Exact match on started-by person id (the actor who started or owns the
+	 * enablement). Omit / `null` means no started-by filter.
+	 */
+	startedByUserId?: string | null
 }
 
 export type RunRecordPage = {
@@ -361,7 +384,6 @@ export function runRecordStaleRunningTtlMsForSurface(
 	switch (surface) {
 		case 'execute':
 		case 'export':
-		case 'retriever':
 		case 'subscription':
 		case 'app_fetch':
 		case 'app_realtime':

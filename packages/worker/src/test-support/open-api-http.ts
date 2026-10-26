@@ -7,6 +7,7 @@ import { cliClientIdMetadataPath } from '#worker/cli-client-metadata.ts'
 import { handleOpenApiRequest } from '#worker/open-api/http-handler.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { applyAllMigrations } from './apply-all-migrations.ts'
+import { createAuditTestDb } from './create-audit-db.ts'
 import { createD1FromSqlite } from './create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from './stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from './user-meter.ts'
@@ -64,6 +65,7 @@ export async function createOpenApiTestHarness(
 		input.oauthExpiresAtUnix ?? Math.floor(Date.now() / 1000) + 3600
 	const env = {
 		APP_DB: db,
+		AUDIT_DB: createAuditTestDb(),
 		COOKIE_SECRET: 'test-cookie-secret',
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 		...userMeter.env,

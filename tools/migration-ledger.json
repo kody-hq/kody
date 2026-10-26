@@ -651,6 +651,38 @@
 		{
 			"filename": "0176-credential-allowed-packages-would-block.sql",
 			"sha256": "a28587dad7ad2e43254029a5e6aed50554b273efd37fd72409cea3c7e125075b"
+		},
+		{
+			"filename": "0177-community-fork-claims.sql",
+			"sha256": "89914e509f92644b3be836258334af9bb6db9e4649cdb38127c3dd672024a1b2"
+		},
+		{
+			"filename": "0178-package-app-publisher-authority.sql",
+			"sha256": "9c068be2ab8baaf73d36f92cde603fed959f63fd2068b3c3a19b61ee3ee08585"
+		},
+		{
+			"filename": "0180-webhook-disabled-to-enablement-off.sql",
+			"sha256": "1d99d037083ddbe3b83e5d37d3f73a3d446c6f6c25cdd58163b2608a69af9fa9"
+		},
+		{
+			"filename": "0181-email-spam-archive.sql",
+			"sha256": "bc29602a884b87d31884621109b6815f34d5f2678578a58652bd84b4fb6ed561"
+		},
+		{
+			"filename": "0182-follow-recent-updates.sql",
+			"sha256": "b10290377c7c50356c0555050ff3ed253991c8098f2991c6812cd787512232e9"
+		},
+		{
+			"filename": "0183-package-app-rate-limits.sql",
+			"sha256": "a422b61e272cb5852e5e5bb2a41aa68cf5ff4800f26a705ce5b93ab5bd199a3b"
+		},
+		{
+			"filename": "0184-package-app-visitor-attribution.sql",
+			"sha256": "1dc06bbd7ea0c17e490f3b7c4830d2ceef00276a48ff48efa2693a84fb0e8e77"
+		},
+		{
+			"filename": "0185-package-app-grant-credential-mappings.sql",
+			"sha256": "329a5f8c01ad0aff394ebd9089e3a08d7ef424d14802a8e9074262bf79775788"
 		}
 	]
 }

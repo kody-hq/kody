@@ -31,8 +31,6 @@ const memoryResultSchema = z.object({
 	surfaced: z.array(z.unknown()),
 	suppressedCount: z.number().int().nonnegative(),
 	retrievalQuery: z.string(),
-	retrieverResults: z.array(z.unknown()).optional(),
-	retrieverWarnings: z.array(z.string()).optional(),
 })
 
 const jevRerankTelemetrySchema = z

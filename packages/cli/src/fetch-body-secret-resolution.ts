@@ -1,7 +1,7 @@
 /**
  * Non-blocking warning when a package fetch sends a body the gateway will
  * still scan for `{{secret:name}}`. Paired with
- * `packages/cli/src/fetch-body-secret-resolution.ts` — keep the two copies
+ * `packages/worker/src/credentials/fetch-body-secret-resolution.ts` — keep the two copies
  * identical. Publish and `kody dev check` both call this; neither fails.
  *
  * Clear cases only. A call is skipped when the init value is not an object

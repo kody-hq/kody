@@ -353,6 +353,7 @@ primitives:
       host strips the app mount before every entry.
     code:
       - packages/worker/src/package-runtime/package-app.ts
+      - packages/worker/src/package-runtime/package-app-authority.ts
       - packages/worker/src/package-runtime/package-app-assets.ts
       - packages/worker/src/package-runtime/package-app-tsconfig.ts
       - packages/worker/src/package-runtime/module-graph-client-bundle.ts
@@ -721,8 +722,8 @@ primitives:
     name: Community listing published dispatch queue
     summary:
       Durable event delivery from first community listing publish to admin
-      packages. Pin-moving republish fan-out to forkers now runs through the
-      follows pipeline alias (community.fork.upstream_updated).
+      packages. Pin-moving republish fan-out to forkers runs through the follows
+      pipeline alias (community.fork.upstream_updated).
     code:
       - packages/worker/src/community/listing-published-dispatch-queue
       - packages/worker/src/community/listing-published-package-subscriptions

@@ -1,4 +1,15 @@
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
+
+/**
+ * What caused a change: the package whose run made it, and how many resource
+ * change events led to that run. Kept in the outbox payload only, so resource
+ * change events never reach the package that caused them and chains stop.
+ */
+export type OrgAuditCause = {
+	packageId: string | null
+	resourceEventDepth: number
+}
 
 export type OrgAuditWriter = {
 	appDb: D1Database
@@ -7,6 +18,13 @@ export type OrgAuditWriter = {
 	actorUsername: string | null
 	credentialKind: string | null
 	credentialId: string | null
+	/** Set when a package run made the change. */
+	cause?: OrgAuditCause | null
+	/**
+	 * The full worker env, when the writer has it: a newly inserted audit row
+	 * then emits its resource change event. Writers without it emit nothing.
+	 */
+	env?: Env
 }
 
 export type OrgAuditOutboxPayload = {
@@ -24,6 +42,8 @@ export type OrgAuditOutboxPayload = {
 	detailsJson: string | null
 	ipHash: string | null
 	createdAt: string
+	/** Outbox only; never written to AUDIT_DB. */
+	cause?: OrgAuditCause | null
 }
 
 export type OrgAuditOutboxPlan = {
@@ -65,6 +85,7 @@ export function buildOrgAuditOutboxPayload(
 		detailsJson: serializeDetails(event),
 		ipHash: null,
 		createdAt,
+		...(writer.cause ? { cause: writer.cause } : {}),
 	}
 }
 
@@ -192,11 +213,50 @@ export async function tryDeliverOrgAuditOutboxPlan(
 		const delivery = await deliverOrgAuditOutboxPayload(writer.db, payload)
 		if (delivery === 'inserted' || delivery === 'already_exists') {
 			await deleteOrgAuditOutboxRow(writer.appDb, plan.outboxId)
+			// Only the delivery that inserted the row emits, so a retried or
+			// concurrent drain never emits the same change twice.
+			if (delivery === 'inserted') {
+				await scheduleResourceChangeEvent(writer.env, payload)
+			}
 			return true
 		}
 		return false
 	} catch {
 		return false
+	}
+}
+
+/**
+ * Emit the resource change event for a newly inserted, successful audit row
+ * after the response. Best-effort: delivery failures are logged in
+ * `resource-events/dispatch.ts` and never fail the change.
+ */
+async function scheduleResourceChangeEvent(
+	env: Env | undefined,
+	payload: OrgAuditOutboxPayload,
+) {
+	if (!env || payload.result !== 'success') return
+	if (!isResourceChangeAuditAction(payload.action)) return
+	const logFailure = (error: unknown) => {
+		console.error('resource-change-event-failed', {
+			action: payload.action,
+			auditId: payload.id,
+			error,
+		})
+	}
+	try {
+		// Loaded lazily so plain Node tools that import the audit outbox (the
+		// CLI OpenAPI generator) do not need the Workers runtime.
+		const { waitUntil } = await import('cloudflare:workers')
+		waitUntil(
+			import('#worker/resource-events/dispatch.ts')
+				.then(({ dispatchResourceChangeEvent }) =>
+					dispatchResourceChangeEvent({ env, payload }),
+				)
+				.catch(logFailure),
+		)
+	} catch (error) {
+		logFailure(error)
 	}
 }
 
@@ -238,7 +298,7 @@ const drainBatchSize = 50
 const drainTimeBudgetMs = 10_000
 
 export async function drainOrgAuditOutbox(input: {
-	env: Pick<Env, 'APP_DB' | 'AUDIT_DB'>
+	env: Pick<Env, 'APP_DB' | 'AUDIT_DB'> & Partial<Env>
 	now?: Date
 	clock?: () => number
 	limit?: number
@@ -260,6 +320,8 @@ export async function drainOrgAuditOutbox(input: {
 		actorUsername: null,
 		credentialKind: null,
 		credentialId: null,
+		// A row the drain delivers still emits its resource change event.
+		env: input.env as Env,
 	}
 	const startedAt = (input.clock ?? Date.now)()
 	const deadline = startedAt + drainTimeBudgetMs

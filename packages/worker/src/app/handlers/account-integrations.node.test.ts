@@ -1,3 +1,4 @@
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as secretsService from '#mcp/secrets/service.ts'
 import type * as IntegrationsCredentials from '#worker/integrations/credentials.ts'
@@ -321,6 +322,7 @@ function createEnv() {
 				}
 			},
 		} as unknown as D1Database,
+		AUDIT_DB: createAuditTestDb(),
 		SECRET_STORE_KEY: 'x'.repeat(32),
 	} as Env
 }
@@ -330,6 +332,11 @@ const tokenFields = /"access_token"\s*:|"refresh_token"\s*:/
 const withEnv = (input: Record<string, unknown>) => ({
 	env: expect.any(Object),
 	...input,
+})
+// Credential writes carry the org audit writer for the signed-in person.
+const withAudit = (input: Record<string, unknown>) => ({
+	...withEnv(input),
+	audit: expect.objectContaining({ credentialKind: expect.any(String) }),
 })
 
 function createHandler() {
@@ -695,7 +702,7 @@ test('integrations API disconnects a connection and deletes a user-lane OAuth ap
 		deleted: true,
 	})
 	expect(mockModule.deleteIntegration).toHaveBeenCalledWith(
-		withEnv({
+		withAudit({
 			userId: 'stable-user-1' as OwnerId,
 			name: 'google-calendar',
 		}),
@@ -722,7 +729,7 @@ test('integrations API disconnects a connection and deletes a user-lane OAuth ap
 		withEnv({ userId: 'stable-user-1' as OwnerId, slug: 'google' }),
 	)
 	expect(mockModule.deleteOauthAppWithConnections).toHaveBeenCalledWith(
-		withEnv({ userId: 'stable-user-1' as OwnerId, slug: 'google' }),
+		withAudit({ userId: 'stable-user-1' as OwnerId, slug: 'google' }),
 	)
 
 	mockModule.getOauthApp.mockResolvedValueOnce(null as never)
@@ -762,7 +769,7 @@ test('integrations API sets usage, returns approval payload, and grants a packag
 	})
 	expect(usageResponse.status).toBe(200)
 	expect(mockModule.setIntegrationUsage).toHaveBeenCalledWith(
-		withEnv({
+		withAudit({
 			userId: 'stable-user-1' as OwnerId,
 			name: 'google',
 			usageMode: 'packages',

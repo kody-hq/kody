@@ -16,6 +16,13 @@ import {
 } from './package-name.ts'
 import { clearCachedPackageAppCustomHostnames } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	packageAuditActions,
+	packageSettingsAuditDetails,
+	readPackageSettingsForAudit,
+	recordPackageAudit,
+} from './package-audit.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
 	kodyPackageIdPattern,
@@ -254,6 +261,12 @@ export async function updateSavedPackage(
 		 * Used so a concurrent clearer cannot be overwritten by a stale writer.
 		 */
 		expectedUpdatedAt?: string
+		/**
+		 * Audits visibility, internet visible, and listing changes. Required so
+		 * a new settings write path cannot skip the audit; metadata refreshes
+		 * pass null.
+		 */
+		audit: OrgAuditWriter | null
 	},
 ) {
 	const assignments: Array<string> = []
@@ -319,6 +332,10 @@ export async function updateSavedPackage(
 		input.hidden !== undefined ||
 		input.isPrivate !== undefined ||
 		input.isInternetVisible !== undefined
+	const settingsBefore =
+		input.audit && changesVisibility
+			? await readPackageSettingsForAudit(db, input)
+			: null
 	const [result] = changesVisibility
 		? await db.batch([
 				update,
@@ -334,6 +351,19 @@ export async function updateSavedPackage(
 	// rejects the new slug for up to the cache TTL.
 	if (changed && input.name !== undefined) {
 		clearCachedPackageAppCustomHostnames(db)
+	}
+	const settingsDetails =
+		changed && settingsBefore
+			? packageSettingsAuditDetails(settingsBefore, input)
+			: null
+	if (settingsDetails) {
+		await recordPackageAudit(input.audit, {
+			orgId: input.userId,
+			packageId: input.packageId,
+			name: input.name ?? settingsBefore!.name,
+			action: packageAuditActions.updated,
+			details: settingsDetails,
+		})
 	}
 	return changed
 }

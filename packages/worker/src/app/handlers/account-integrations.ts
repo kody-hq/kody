@@ -12,6 +12,7 @@ import {
 	setIntegrationUsage,
 } from '#worker/integrations/service.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { type z } from 'zod'
 import {
@@ -37,6 +38,7 @@ export async function setAccountIntegrationUsage(
 		name: input.name,
 		usageMode: input.usageMode,
 		allowedPackageIds,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	if (!updated) {
 		return operationResult({ ok: false, error: 'Connection not found.' }, 404)
@@ -74,6 +76,7 @@ export async function approveAccountIntegrationPackage(
 		userId,
 		name: input.name,
 		packageId: input.packageId,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	if (!updated) {
 		return operationResult({ ok: false, error: 'Connection not found.' }, 404)
@@ -100,6 +103,7 @@ export async function disconnectAccountIntegration(input: {
 			user: input.user.mcpUser,
 		}),
 		name: input.name,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	if (!deleted) {
 		return operationResult({ ok: false, error: 'Connection not found.' }, 404)
@@ -128,6 +132,7 @@ export async function deleteAccountOauthApp(input: {
 		env: input.env,
 		userId,
 		slug: existing.slug,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	if (!result.deleted) {
 		return operationResult({ ok: false, error: 'OAuth app not found.' }, 404)

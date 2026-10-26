@@ -3,9 +3,14 @@ import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
 import { isStorageEstimateReadError } from '#worker/storage-estimate-error.ts'
 import {
+	deriveRequestContext,
+	type RequestSource,
+} from '#worker/request-context/request-context.ts'
+import {
 	type RunRecord,
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type JobExecutionOutcome,
 	type PersistedJobCallerContext,
@@ -124,4 +129,26 @@ export function resolveScheduledJobCallerContext(input: {
 	callerContext: PersistedJobCallerContext | null
 }) {
 	return input.callerContext
+}
+
+/**
+ * Request for a scheduled tick's run record. Prefer the job row's persisted
+ * caller when present; otherwise stamp from the enablement on `source` so
+ * legacy / package-synced rows still record started_by as the enabler.
+ */
+export function resolveScheduledJobRunRequest(input: {
+	callerContext: PersistedJobCallerContext | null
+	source: RequestSource
+}): RequestContext | null {
+	const caller = resolveScheduledJobCallerContext({
+		callerContext: input.callerContext,
+	})
+	const enablement =
+		input.source.kind === 'schedule' ? input.source.enablement : undefined
+	const person = caller?.user ?? enablement?.enabler ?? null
+	if (!person) return null
+	return deriveRequestContext({
+		user: person,
+		source: input.source,
+	})
 }

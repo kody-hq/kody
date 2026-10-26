@@ -1,7 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { adminUserAccountDeleteCapability } from '#mcp/capabilities/admin/admin-user-account-delete.ts'
 import { isUsernameClaimedInIdentity } from '#worker/identity/generated-username.ts'
@@ -23,6 +23,21 @@ import {
 	loadAdminAccountDeletionSummary,
 	readAdminAccountDeletionApproval,
 } from './account-hard-delete.ts'
+
+const lifecycleMocks = vi.hoisted(() => ({
+	scheduleUserDeletedEvent: vi.fn(),
+}))
+
+vi.mock(
+	'#worker/identity/schedule-user-lifecycle-event.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/identity/schedule-user-lifecycle-event.ts')
+		>()),
+		scheduleUserDeletedEvent: (...args: Array<unknown>) =>
+			lifecycleMocks.scheduleUserDeletedEvent(...args),
+	}),
+)
 
 const createdAt = '2026-01-03T00:00:00.000Z'
 
@@ -359,6 +374,7 @@ test('adminUserAccountDelete returns an approval URL and deletes only after appr
 	expect(started.acknowledgementRequired).toBe(true)
 	expect(started.message).toContain('Nothing was deleted')
 	expect(await userCount(appDb, 'ada-lovelace')).toBe(1)
+	lifecycleMocks.scheduleUserDeletedEvent.mockClear()
 	expect(await isUsernameClaimedInIdentity(appDb, 'ada-lovelace')).toBe(true)
 
 	const approvalId =
@@ -386,6 +402,17 @@ test('adminUserAccountDelete returns an approval URL and deletes only after appr
 	})
 	expect(deleted.handle).toBe('ada-lovelace')
 	expect(await userCount(appDb, 'ada-lovelace')).toBe(0)
+	// created_at is read from the row before the hard purge removes it.
+	expect(lifecycleMocks.scheduleUserDeletedEvent).toHaveBeenCalledOnce()
+	expect(lifecycleMocks.scheduleUserDeletedEvent).toHaveBeenCalledWith({
+		env,
+		user: {
+			id: targetId,
+			username: 'ada-lovelace',
+			email: 'ada@example.com',
+		},
+		createdAt,
+	})
 	expect(await isUsernameClaimedInIdentity(appDb, 'ada-lovelace')).toBe(false)
 	expect(await getOrgHandleClaimError('ada-lovelace', appDb)).toBeNull()
 	expect(await userCount(appDb, 'grace-hopper')).toBe(1)

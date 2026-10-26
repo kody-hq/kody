@@ -1,7 +1,7 @@
 /**
  * Stage-2 Jev Score rerank/filter for ranked MCP `search({ query })`.
  *
- * Hybrid lexical+vector recall stays the retriever. Product gate (when the
+ * Hybrid lexical+vector recall provides the initial candidates. Product gate (when the
  * `jev-search-rerank` flag is on): **paid plans only** (standard / pro /
  * max) and only when the post-hybrid pool looks ambiguous
  * ({@link evaluateJevSearchNecessity}). Free and anonymous never call Jev

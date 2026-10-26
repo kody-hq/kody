@@ -43,6 +43,7 @@ const messageRecord = {
 	processingStatus: 'stored' as const,
 	classification: 'accepted' as const,
 	classificationReason: null,
+	archivedAt: null,
 	providerMessageId: null,
 	deliveryStatus: null,
 	deliveryStatusAt: null,
@@ -173,7 +174,7 @@ test('readAccountEmailData reads USER message graph only through owner Mailbox r
 		page: 1,
 		pageSize: 25,
 		query: '',
-		classification: null,
+		view: 'inbox',
 		selectedMessageId: 'msg-1',
 		user: authenticatedUser,
 	})
@@ -190,6 +191,7 @@ test('readAccountEmailData reads USER message graph only through owner Mailbox r
 		expect.objectContaining({
 			env,
 			ownerId: ownerIdFromStored('stable-user-1'),
+			view: 'inbox',
 		}),
 	)
 	expect(mocks.getOwnerEmailMessageById).toHaveBeenCalledWith({
@@ -241,7 +243,7 @@ test('readAccountEmailData uses the org slug for a team inbox and exposes a memb
 		page: 1,
 		pageSize: 25,
 		query: '',
-		classification: null,
+		view: 'inbox',
 		selectedMessageId: 'msg-1',
 		user: {
 			...authenticatedUser,
@@ -284,6 +286,63 @@ test('readAccountEmailData uses the org slug for a team inbox and exposes a memb
 	)
 })
 
+test('readAccountEmailData never offers package approval for a spam sender', async () => {
+	mocks.classifyInboundEmailSender.mockResolvedValue({
+		kind: 'member',
+		actor: { userId: personIdFromStored('c'.repeat(64)), username: 'ada' },
+		role: 'member',
+	})
+	const spam = {
+		...messageRecord,
+		classification: 'spam' as const,
+		classificationReason: 'Marked as spam.',
+	}
+	mocks.listOwnerEmailMessagesPage.mockResolvedValueOnce({
+		total: 1,
+		messages: [spam],
+	})
+	mocks.getOwnerEmailMessageById.mockResolvedValueOnce(spam)
+	mocks.listOwnerEmailAttachmentsForMessage.mockResolvedValueOnce([])
+	mocks.listOwnerEmailDeliveryEvents.mockResolvedValueOnce([])
+	const prepare = vi.fn()
+	const meter = createInMemoryUserMeterEnv()
+	const orgId = ownerIdFromStored('team-org')
+	const result = await readAccountEmailData({
+		env: {
+			APP_DB: { prepare } as unknown as D1Database,
+			APP_BASE_URL: 'https://example.com',
+			COOKIE_SECRET: 'secret',
+			...meter.env,
+		} as Env,
+		page: 1,
+		pageSize: 25,
+		query: '',
+		view: 'spam',
+		selectedMessageId: 'msg-1',
+		user: {
+			...authenticatedUser,
+			request: deriveRequestContext({
+				user: {
+					userId: personIdFromStored('stable-user-1'),
+					username: 'viewer',
+				},
+				source: { kind: 'session' },
+				orgBinding: { org: { id: orgId, slug: 'acme' }, role: 'owner' },
+			}),
+		},
+	})
+	expect(result.view).toBe('spam')
+	expect(result.messages[0]).toMatchObject({
+		classification: 'spam',
+		archived_at: null,
+	})
+	expect(result.selectedMessage?.enable_sender).toBeNull()
+	expect(prepare).not.toHaveBeenCalled()
+	expect(mocks.listOwnerEmailMessagesPage).toHaveBeenCalledWith(
+		expect.objectContaining({ ownerId: orgId, view: 'spam' }),
+	)
+})
+
 test('readAccountEmailData refuses a member without email:read', async () => {
 	mocks.listOwnerEmailMessagesPage.mockClear()
 	const sqlite = new DatabaseSync(':memory:')
@@ -310,7 +369,7 @@ test('readAccountEmailData refuses a member without email:read', async () => {
 			page: 1,
 			pageSize: 25,
 			query: '',
-			classification: null,
+			view: 'inbox',
 			user: {
 				...authenticatedUser,
 				request: deriveRequestContext({
@@ -404,7 +463,7 @@ test('readAccountEmailData shows a team inbox to an unverified owner with email:
 		page: 1,
 		pageSize: 25,
 		query: '',
-		classification: null,
+		view: 'inbox',
 		user: {
 			...authenticatedUser,
 			email: 'ada@example.com',
@@ -477,7 +536,7 @@ test('readAccountEmailData shows a paid team plan instead of the viewer email fr
 		page: 1,
 		pageSize: 25,
 		query: '',
-		classification: null,
+		view: 'inbox',
 		user: {
 			...authenticatedUser,
 			email: 'ada@example.com',
@@ -546,7 +605,7 @@ test('readAccountEmailData hides a personal inbox until the account email is ver
 		page: 1,
 		pageSize: 25,
 		query: '',
-		classification: null,
+		view: 'inbox',
 		user: { ...authenticatedUser, emailVerified: false },
 	})
 	expect(result.emailVerified).toBe(false)

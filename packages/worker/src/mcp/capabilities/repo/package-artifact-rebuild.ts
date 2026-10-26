@@ -11,6 +11,8 @@ import {
 } from '#worker/d1-retry.ts'
 import {
 	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
 	reusePublishedPackageArtifactIfUnchanged,
 	type PublishedPackageArtifactReuseSnapshotCache,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -232,7 +234,22 @@ async function filterTargetsNeedingRebuild(input: {
 	const sharedSnapshot =
 		publishedSnapshot !== undefined ? { publishedSnapshot } : {}
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
+	const loadedByIdentity = hasPublishedRuntimeArtifacts(input.env)
+		? await loadPublishedBundleArtifactsForPackageTargets({
+				env: input.env,
+				userId: input.userId,
+				sourceId: input.sourceId,
+				targets: input.targets,
+			})
+		: null
 	for (const target of input.targets) {
+		const preloaded = loadedByIdentity
+			? publishedBundleArtifactForPackageTarget({
+					sourceId: input.sourceId,
+					target,
+					loadedByIdentity,
+				})
+			: undefined
 		const built = await isPublishedPackageArtifactBuiltForCommit({
 			env: input.env,
 			userId: input.userId,
@@ -240,6 +257,7 @@ async function filterTargetsNeedingRebuild(input: {
 			publishedCommit: input.publishedCommit,
 			target,
 			...sharedSnapshot,
+			...(preloaded !== undefined ? { preloaded } : {}),
 		})
 		if (built) {
 			alreadyBuilt.push(target)
@@ -253,6 +271,7 @@ async function filterTargetsNeedingRebuild(input: {
 			target,
 			snapshotCache,
 			...sharedSnapshot,
+			...(preloaded !== undefined ? { preloaded } : {}),
 		})
 		if (didReuse) {
 			// Reuse copies prior-commit bytes under this tip — that is artifact

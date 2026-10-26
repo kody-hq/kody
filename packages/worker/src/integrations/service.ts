@@ -17,6 +17,14 @@ import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstIntegration } from '#worker/identity/activation-stamps.ts'
 import {
+	allowedPackagesAuditChange,
+	credentialAuditActions,
+	recordCredentialAudit,
+	sameStringSet,
+	type CredentialDetailField,
+} from '#worker/credentials/credential-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
 	getDiscoverablePlatformOauthApp,
 	getPlatformOauthAppBySlug,
 	listDiscoverablePlatformOauthApps,
@@ -291,6 +299,81 @@ async function refreshPlatformIntegrationRequiredHosts(
 	}
 }
 
+/** Comparable OAuth app settings, without timestamps or connection counts. */
+function oauthAppAuditShape(app: JoinedIntegration['app'] | null) {
+	if (!app) return null
+	const settings: Record<string, unknown> = { ...app }
+	delete settings['createdAt']
+	delete settings['updatedAt']
+	delete settings['connectionCount']
+	return JSON.stringify(
+		Object.keys(settings)
+			.sort()
+			.map((key) => [key, settings[key]]),
+	)
+}
+
+/**
+ * Audits an OAuth connection save: created for a new connection, otherwise
+ * a detail edit naming the fields that changed. Token writes audit
+ * separately (`persistIntegrationTokens`).
+ */
+async function auditIntegrationUpsert(input: {
+	db: D1Database
+	audit: OrgAuditWriter | null
+	orgId: string
+	name: string
+	before: UserIntegrationConnection | null
+	/** The connection's OAuth app before the save, to catch app setting edits. */
+	beforeApp?: JoinedIntegration['app'] | null
+}) {
+	if (!input.audit) return
+	const joined = await getJoinedIntegrationByName({
+		db: input.db,
+		userId: input.orgId,
+		name: input.name,
+	})
+	const after = joined?.connection
+	if (!joined || !after) return
+	const credential = {
+		id: after.credentialId,
+		kind: 'integration' as const,
+		name: after.name,
+	}
+	if (!input.before) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.orgId,
+			credential,
+			action: credentialAuditActions.created,
+			details: { fields: [] },
+		})
+		return
+	}
+	const fields: Array<CredentialDetailField> = []
+	if (input.before.description !== after.description) fields.push('description')
+	if (input.before.accountLabel !== after.accountLabel) {
+		fields.push('account_label')
+	}
+	if (!sameStringSet(input.before.scopes, after.scopes)) fields.push('scopes')
+	if (!sameStringSet(input.before.requiredHosts, after.requiredHosts)) {
+		fields.push('hosts')
+	}
+	if (
+		input.beforeApp !== undefined &&
+		oauthAppAuditShape(input.beforeApp) !== oauthAppAuditShape(joined.app)
+	) {
+		// Names the field only. App settings never go into audit details.
+		fields.push('config')
+	}
+	if (fields.length === 0) return
+	await recordCredentialAudit(input.audit, {
+		orgId: input.orgId,
+		credential,
+		action: credentialAuditActions.detailsUpdated,
+		details: { fields },
+	})
+}
+
 export async function upsertIntegration(
 	input: {
 		env: IntegrationWriteEnv
@@ -298,6 +381,7 @@ export async function upsertIntegration(
 		config: IntegrationConfig
 		description?: string | null
 		accountLabel?: string | null
+		audit: OrgAuditWriter | null
 	} & LogoWriteInput,
 ): Promise<IntegrationConfig> {
 	const parsed = integrationConfigSchema.parse(input.config)
@@ -373,6 +457,14 @@ export async function upsertIntegration(
 	if (!saved) {
 		throw new Error(`Failed to upsert integration "${config.name}".`)
 	}
+	await auditIntegrationUpsert({
+		db: input.env.APP_DB,
+		audit: input.audit,
+		orgId: input.userId,
+		name: config.name,
+		before: existing?.connection ?? null,
+		beforeApp: existing?.app ?? null,
+	})
 	return saved
 }
 
@@ -421,6 +513,7 @@ export async function deleteIntegration(input: {
 	env: IntegrationWriteEnv
 	userId: string
 	name: string
+	audit: OrgAuditWriter | null
 }): Promise<boolean> {
 	const name = canonicalIntegrationName(input.name)
 	if (!name) return false
@@ -436,6 +529,16 @@ export async function deleteIntegration(input: {
 		name,
 	})
 	if (!deleted) return false
+	await recordCredentialAudit(input.audit, {
+		orgId: input.userId,
+		credential: {
+			id: existing.connection.credentialId,
+			kind: 'integration',
+			name: existing.connection.name,
+		},
+		action: credentialAuditActions.deleted,
+		details: { fields: [] },
+	})
 	// Platform apps are operator-owned; deleting a built-in connection never
 	// cleans up the shared app row.
 	if (existing.lane === 'user') {
@@ -461,6 +564,7 @@ export async function upsertPlatformIntegration(input: {
 	scopes: Array<string>
 	accountLabel?: string | null
 	description?: string | null
+	audit: OrgAuditWriter | null
 }): Promise<IntegrationConfig> {
 	const app = await getPlatformOauthAppBySlug({
 		db: input.env.APP_DB,
@@ -537,6 +641,14 @@ export async function upsertPlatformIntegration(input: {
 	if (!saved) {
 		throw new Error(`Failed to save platform integration "${name}".`)
 	}
+	await auditIntegrationUpsert({
+		db: input.env.APP_DB,
+		audit: input.audit,
+		orgId: input.userId,
+		name,
+		before: existing?.connection ?? null,
+		beforeApp: existing?.app ?? null,
+	})
 	return saved
 }
 
@@ -870,6 +982,7 @@ export async function deleteOauthAppWithConnections(input: {
 	env: IntegrationWriteEnv
 	userId: string
 	slug: string
+	audit: OrgAuditWriter | null
 }): Promise<{ deleted: boolean; connectionNames: Array<string> }> {
 	const slug = canonicalizeOauthAppSlug(input.slug)
 	if (!slug) return { deleted: false, connectionNames: [] }
@@ -892,7 +1005,18 @@ export async function deleteOauthAppWithConnections(input: {
 			userId: input.userId,
 			name: entry.connection.name,
 		})
-		if (deleted) connectionNames.push(entry.connection.name)
+		if (!deleted) continue
+		connectionNames.push(entry.connection.name)
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: {
+				id: entry.connection.credentialId,
+				kind: 'integration',
+				name: entry.connection.name,
+			},
+			action: credentialAuditActions.deleted,
+			details: { fields: [] },
+		})
 	}
 
 	const deleted = await deleteOauthApp({
@@ -1253,6 +1377,7 @@ export async function setIntegrationUsage(input: {
 	name: string
 	usageMode: IntegrationUsageMode
 	allowedPackageIds?: Array<string>
+	audit: OrgAuditWriter | null
 }): Promise<UserIntegrationConnection | null> {
 	const name = canonicalIntegrationName(input.name)
 	if (!name) return null
@@ -1280,6 +1405,12 @@ export async function setIntegrationUsage(input: {
 		userId: input.userId,
 		name,
 	})
+	await auditIntegrationUsage({
+		audit: input.audit,
+		orgId: input.userId,
+		before: existing.connection,
+		after: saved?.connection ?? null,
+	})
 	return saved?.connection ?? null
 }
 
@@ -1288,6 +1419,7 @@ export async function grantIntegrationPackage(input: {
 	userId: string
 	name: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }): Promise<UserIntegrationConnection | null> {
 	const name = canonicalIntegrationName(input.name)
 	const packageId = input.packageId.trim()
@@ -1319,6 +1451,12 @@ export async function grantIntegrationPackage(input: {
 		userId: input.userId,
 		name,
 	})
+	await auditIntegrationUsage({
+		audit: input.audit,
+		orgId: input.userId,
+		before: existing.connection,
+		after: saved?.connection ?? null,
+	})
 	return saved?.connection ?? null
 }
 
@@ -1332,6 +1470,7 @@ export async function lockIntegrationToPackage(input: {
 	userId: string
 	name: string
 	packageId: string
+	audit: OrgAuditWriter | null
 }): Promise<UserIntegrationConnection> {
 	const name = canonicalIntegrationName(input.name)
 	const packageId = input.packageId.trim()
@@ -1384,5 +1523,31 @@ export async function lockIntegrationToPackage(input: {
 	if (!saved) {
 		throw new Error(`Unable to lock integration "${name}" to a package.`)
 	}
+	await auditIntegrationUsage({
+		audit: input.audit,
+		orgId: input.userId,
+		before: existing.connection,
+		after: saved.connection,
+	})
 	return saved.connection
+}
+
+async function auditIntegrationUsage(input: {
+	audit: OrgAuditWriter | null
+	orgId: string
+	before: UserIntegrationConnection
+	after: UserIntegrationConnection | null
+}) {
+	if (!input.after) return
+	const change = allowedPackagesAuditChange({
+		orgId: input.orgId,
+		credential: {
+			id: input.after.credentialId,
+			kind: 'integration',
+			name: input.after.name,
+		},
+		before: input.before,
+		after: input.after,
+	})
+	if (change) await recordCredentialAudit(input.audit, change)
 }

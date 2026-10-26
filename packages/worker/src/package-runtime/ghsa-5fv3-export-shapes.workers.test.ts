@@ -438,6 +438,7 @@ async function setupVault() {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -446,6 +447,7 @@ async function setupVault() {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, vault }
 }

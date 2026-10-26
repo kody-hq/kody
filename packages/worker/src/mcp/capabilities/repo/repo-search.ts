@@ -5,7 +5,10 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
-import { isRepoSearchInvalidRegexMessage } from '#worker/repo/repo-session-caller-error.ts'
+import {
+	isRepoSearchEmptyPatternMessage,
+	isRepoSearchInvalidRegexMessage,
+} from '#worker/repo/repo-session-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { repoSearchInputSchema, repoSearchOutputSchema } from './repo-shared.ts'
 
@@ -15,7 +18,7 @@ export const repoSearchCapability = defineDomainCapability(
 		name: 'repoSearch',
 		orgPermission: 'package:read',
 		description:
-			'Search within a repo session using rg-style lexical matching over the live session workspace. This is scoped code/file search, not semantic retrieval. When mode=regex, patterns must be valid JavaScript RegExp syntax (not Python/PCRE inline flags).',
+			'Search within a repo session using rg-style lexical matching over the live session workspace. This is scoped code/file search, not semantic retrieval. When mode=regex, patterns must be valid JavaScript RegExp syntax (not Python/PCRE inline flags). Whitespace-only patterns are rejected.',
 		keywords: ['repo', 'search', 'ripgrep', 'regex', 'literal', 'files'],
 		readOnly: true,
 		idempotent: true,
@@ -48,11 +51,12 @@ export const repoSearchCapability = defineDomainCapability(
 					outputMode: args.output_mode,
 				})
 			} catch (error) {
-				// Invalid regex is a caller-correctable input mistake. DO RPC may
-				// lose Error subclass identity, so match the stable message phrase.
-				const invalidRegexMessage = getRepoSearchInvalidRegexMessage(error)
-				if (invalidRegexMessage) {
-					throw new McpCallerError(invalidRegexMessage, { cause: error })
+				// Blank/whitespace-only patterns and invalid regexes are
+				// caller-correctable. DO RPC may lose Error subclass identity, so
+				// match the stable message phrases. KODY-BA.
+				const callerMessage = getRepoSearchCallerMessage(error)
+				if (callerMessage) {
+					throw new McpCallerError(callerMessage, { cause: error })
 				}
 				throw error
 			}
@@ -67,10 +71,12 @@ export const repoSearchCapability = defineDomainCapability(
 	},
 )
 
-function getRepoSearchInvalidRegexMessage(error: unknown) {
+function getRepoSearchCallerMessage(error: unknown) {
 	const match = getErrorCauseChain(error).find(
 		(entry) =>
-			entry instanceof Error && isRepoSearchInvalidRegexMessage(entry.message),
+			entry instanceof Error &&
+			(isRepoSearchInvalidRegexMessage(entry.message) ||
+				isRepoSearchEmptyPatternMessage(entry.message)),
 	)
 	return match instanceof Error ? match.message : null
 }

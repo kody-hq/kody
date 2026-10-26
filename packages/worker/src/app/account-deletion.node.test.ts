@@ -366,10 +366,6 @@ test('deleteUserAccount cascades user-scoped rows for the requested user', async
 		`derived-cache:v1:mcp-oauth-refresh-family:${userAaa}:grant-1`,
 		`derived-cache:v1:mcp-oauth-refresh-replay:${userAaa}:grant-1:hash-1`,
 		`derived-cache:v1:mcp-oauth-refresh-family:${userBbb}:grant-9`,
-		'package-retriever-manifest:v1:user-aaa:pkg-1:abc123',
-		'package-retriever-index-entry:v1:user-aaa:search:pkg-1:notes',
-		'package-retriever-index-entry:v1:user-aaa:context:pkg-1:notes',
-		'package-retriever-index-entry:v1:user-bbb:search:pkg-2:notes',
 		'platform-settings:v1:reserved-usernames',
 		// Leftover unused platform KV key. App code no longer reads or writes
 		// it; account deletion still must leave platform keys alone.
@@ -732,9 +728,6 @@ test('deleteUserAccount cascades user-scoped rows for the requested user', async
 		`derived-cache:v1:mcp-oauth-refresh-replay:${userAaa}:grant-1:hash-1`,
 		`package-codemod-revert:${userAaa}:item-1`,
 		`package-codemod-revert:${userAaa}:item-2`,
-		'package-retriever-index-entry:v1:user-aaa:context:pkg-1:notes',
-		'package-retriever-index-entry:v1:user-aaa:search:pkg-1:notes',
-		'package-retriever-manifest:v1:user-aaa:pkg-1:abc123',
 		'source-manifest-snapshot:v1:src-1:abc123',
 		'source-manifest-snapshot:v1:src-1:old456',
 		'source-snapshot:v1:src-1:abc123',
@@ -763,7 +756,7 @@ test('deleteUserAccount cascades user-scoped rows for the requested user', async
 		platform_feedback: 1,
 	})
 	expect(result).toMatchObject({
-		deletedKvKeys: 26,
+		deletedKvKeys: 23,
 		deletedCommunityAssets: 9,
 		deletedEmailBlobs: 2,
 		deletedVectors: 5,

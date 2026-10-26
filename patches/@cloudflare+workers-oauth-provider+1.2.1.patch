@@ -1,0 +1,153 @@
+diff --git a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.d.ts b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.d.ts
+index b450880..d5d75c5 100644
+--- a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.d.ts
++++ b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.d.ts
+@@ -1112,6 +1112,31 @@ interface OAuthProviderOptions<Env = Cloudflare.Env> {
+    * Defaults to false.
+    */
+   clientIdMetadataDocumentEnabled?: boolean;
++  /**
++   * Operator-pinned Client ID Metadata Documents, keyed by exact client_id URL, or a function
++   * returning the document for a client_id (undefined when not pinned). A pinned client never
++   * triggers a metadata fetch; its document still goes through full CIMD validation.
++   * (Kody patch, modelled on cloudflare/workers-oauth-provider#333.)
++   */
++  clientIdMetadataDocuments?: Readonly<Record<string, unknown>> | ((clientId: string) => unknown);
++  /**
++   * Called when a live metadata fetch (or its Cache API copy) fails. Return a document to
++   * resolve the client from instead (it still goes through full CIMD validation), or
++   * undefined/null to fail as before. (Kody patch.)
++   */
++  clientIdMetadataDocumentFallback?: (input: {
++    env: any;
++    metadataUrl: string;
++    error: unknown;
++  }) => Promise<unknown> | unknown;
++  /**
++   * Called with the raw document each time a fetched or cached document validates. (Kody patch.)
++   */
++  onClientIdMetadataDocumentResolved?: (input: {
++    env: any;
++    metadataUrl: string;
++    document: unknown;
++  }) => void;
+   /**
+    * Prefix for the cookies the consent and upstream helpers set (`<prefix>consent`,
+    * `<prefix>upstream`, `<prefix>approvals`). Must start with `__Host-`, which keeps them
+diff --git a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
+index 5ff842d..2346234 100644
+--- a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
++++ b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
+@@ -637,6 +637,16 @@ function validateClientIdentifierUrl(clientId) {
+ 		if (decodedSegment === "." || decodedSegment === "..") throw new Error("Client Identifier URL must not contain dot path segments");
+ 	}
+ }
++/**
++* Operator-pinned CIMD documents (`clientIdMetadataDocuments`): a record keyed by exact
++* client_id URL, or a function returning the document for a client_id (undefined when not
++* pinned). Pinned documents are never fetched and still pass full validation.
++*/
++function readPinnedClientIdMetadataDocument(pinned, clientId) {
++	if (!pinned) return void 0;
++	if (typeof pinned === "function") return pinned(clientId) ?? void 0;
++	return Object.prototype.hasOwnProperty.call(pinned, clientId) ? pinned[clientId] : void 0;
++}
+ /** Returns whether a client ID has the URL shape this package resolves through CIMD. */
+ function isClientIdMetadataDocumentUrl(clientId) {
+ 	try {
+@@ -805,7 +815,7 @@ async function cacheValidatedDocument(cache, metadataUrl, response, bytes) {
+ * is evicted so the caller re-resolves from origin in the same request;
+ * timeout aborts propagate instead.
+ */
+-async function tryResolveFromCache(cache, metadataUrl, server, signal) {
++async function tryResolveFromCache(cache, metadataUrl, server, signal, onResolved) {
+ 	let cached;
+ 	try {
+ 		cached = await cache?.match(metadataUrl);
+@@ -815,7 +825,9 @@ async function tryResolveFromCache(cache, metadataUrl, server, signal) {
+ 	if (!cached) return void 0;
+ 	try {
+ 		const { value } = await readJsonWithSizeLimit$1(cached, CIMD_MAX_SIZE_BYTES, signal);
+-		return resolveClientIdMetadataDocument(metadataUrl, value, server);
++		const resolved = resolveClientIdMetadataDocument(metadataUrl, value, server);
++		notifyCimdResolved(onResolved, value);
++		return resolved;
+ 	} catch (error) {
+ 		if (signal.aborted) throw error;
+ 		try {
+@@ -828,20 +840,30 @@ async function tryResolveFromCache(cache, metadataUrl, server, signal) {
+ * Fetches, bounds, parses, validates, and negotiates a Client ID Metadata
+ * Document into the single effective client configuration used by OAuth flows.
+ */
+-async function fetchClientIdMetadataDocument(metadataUrl, server) {
++function notifyCimdResolved(onResolved, value) {
++	if (!onResolved) return;
++	try {
++		onResolved(value);
++	} catch {}
++}
++async function fetchClientIdMetadataDocument(metadataUrl, server, onResolved) {
+ 	validateClientIdentifierUrl(metadataUrl);
+ 	const abortController = new AbortController();
+ 	const timeoutId = setTimeout(() => abortController.abort(), CIMD_FETCH_TIMEOUT_MS);
+ 	try {
+ 		const cache = await openCimdCache();
+-		const cachedDocument = await tryResolveFromCache(cache, metadataUrl, server, abortController.signal);
++		const cachedDocument = await tryResolveFromCache(cache, metadataUrl, server, abortController.signal, onResolved);
+ 		if (cachedDocument) return cachedDocument;
+ 		const response = await fetchCimdOrigin(metadataUrl, abortController.signal);
+-		if (!response.ok) throw new Error(`Failed to fetch client metadata: HTTP ${response.status}`);
++		if (!response.ok) {
++			await response.body?.cancel().catch(() => void 0);
++			throw Object.assign(new Error(`Failed to fetch client metadata: HTTP ${response.status}`), { status: response.status });
++		}
+ 		const { value, bytes } = await readJsonWithSizeLimit$1(response, CIMD_MAX_SIZE_BYTES, abortController.signal);
+ 		const resolved = resolveClientIdMetadataDocument(metadataUrl, value, server);
+ 		clearTimeout(timeoutId);
+ 		await cacheValidatedDocument(cache, metadataUrl, response, bytes);
++		notifyCimdResolved(onResolved, value);
+ 		return resolved;
+ 	} catch (error) {
+ 		if (abortController.signal.aborted) throw new Error(`Client metadata fetch timed out after ${CIMD_FETCH_TIMEOUT_MS}ms`);
+@@ -4330,10 +4352,40 @@ var OAuthProviderImpl = class {
+ 				return env.OAUTH_KV.get(clientKey$1, { type: "json" });
+ 			}
+ 			if (!this.hasGlobalFetchStrictlyPublic()) throw new Error(`CIMD is enabled but 'global_fetch_strictly_public' compatibility flag is not set.`);
++			const pinnedDocument = readPinnedClientIdMetadataDocument(this.options.clientIdMetadataDocuments, clientId);
++			if (pinnedDocument !== void 0) try {
++				return resolveClientIdMetadataDocument(clientId, pinnedDocument, this.serverCapabilities);
++			} catch (error) {
++				console.warn(`Pinned CIMD document rejected for ${clientId}:`, error instanceof Error ? error.message : error);
++				throw new CimdFetchError(clientId, error);
++			}
++			const onResolved = this.options.onClientIdMetadataDocumentResolved;
+ 			try {
+-				return await fetchClientIdMetadataDocument(clientId, this.serverCapabilities);
++				return await fetchClientIdMetadataDocument(clientId, this.serverCapabilities, onResolved ? (document) => onResolved({
++					env,
++					metadataUrl: clientId,
++					document
++				}) : void 0);
+ 			} catch (error) {
+ 				console.warn(`CIMD fetch failed for ${clientId}:`, error instanceof Error ? error.message : error);
++				const fallback = this.options.clientIdMetadataDocumentFallback;
++				if (fallback) {
++					let fallbackDocument;
++					try {
++						fallbackDocument = await fallback({
++							env,
++							metadataUrl: clientId,
++							error
++						});
++					} catch (fallbackError) {
++						console.warn(`CIMD fallback failed for ${clientId}:`, fallbackError instanceof Error ? fallbackError.message : fallbackError);
++					}
++					if (fallbackDocument !== void 0 && fallbackDocument !== null) try {
++						return resolveClientIdMetadataDocument(clientId, fallbackDocument, this.serverCapabilities);
++					} catch (validationError) {
++						console.warn(`CIMD fallback document rejected for ${clientId}:`, validationError instanceof Error ? validationError.message : validationError);
++					}
++				}
+ 				throw new CimdFetchError(clientId, error);
+ 			}
+ 		}

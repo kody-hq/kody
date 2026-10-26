@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import {
@@ -10,9 +11,9 @@ import { planEnablementRuns } from './run-gate.ts'
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 async function setup() {
 	const t = await setupPackageCredentialMappingFixture({
@@ -28,6 +29,23 @@ async function setup() {
 			.bind(username, `${username}@example.com`, person.stableUserId)
 			.run()
 	}
+	const owner = await t.db
+		.prepare(
+			`SELECT u.id
+			 FROM org_memberships m
+			 INNER JOIN users u ON u.stable_user_id = m.user_id
+			 WHERE m.org_id = ? AND m.role = 'owner'`,
+		)
+		.bind(t.acmeId)
+		.first<{ id: number }>()
+	await t.db
+		.prepare(
+			`INSERT INTO feature_flag_user_overrides (flag_key, user_id, enabled)
+			 VALUES ('package-credential-suppliers', ?, 1)
+			 ON CONFLICT(flag_key, user_id) DO UPDATE SET enabled = 1`,
+		)
+		.bind(owner!.id)
+		.run()
 	const plan = () =>
 		planEnablementRuns({
 			env: t.env,
@@ -55,6 +73,25 @@ async function setup() {
 	return { ...t, plan, readEnablement, setDeleted }
 }
 
+test('the supplier flag off leaves unmapped trigger runs on the legacy path', async () => {
+	const t = await setup()
+	await t.apply('bea', 'owner', [
+		{ target: daily, needKey: 'chat', credentials: [] },
+	])
+	await t.db
+		.prepare(
+			`DELETE FROM feature_flag_user_overrides
+			WHERE flag_key = 'package-credential-suppliers'`,
+		)
+		.run()
+	const loadNeedsSpy = vi
+		.spyOn(needsClosure, 'loadPublishedCredentialNeeds')
+		.mockClear()
+
+	expect((await t.plan()).runs).toHaveLength(1)
+	expect(loadNeedsSpy).not.toHaveBeenCalled()
+})
+
 test('a trigger mapping naming a credential the enabler cannot use pauses before the run and resumes once it is usable', async () => {
 	const t = await setup()
 	const slack = await t.storeKey('team-slack', 'slack')
@@ -79,6 +116,59 @@ test('a trigger mapping naming a credential the enabler cannot use pauses before
 	expect((await t.readEnablement())?.paused_credential_id).toBe(slack)
 
 	await t.setDeleted(slack, false)
+	expect((await t.plan()).runs).toHaveLength(1)
+	expect(await t.readEnablement()).toMatchObject({
+		state: 'on',
+		paused_reason: null,
+	})
+})
+
+test('a required executor need without a trigger mapping pauses before the run', async () => {
+	const t = await setup()
+	await t.apply('bea', 'owner', [
+		{ target: daily, needKey: 'chat', credentials: [] },
+	])
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		...mappingFixtureNeeds,
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+
+	expect((await t.plan()).runs).toEqual([])
+	expect(await t.readEnablement()).toMatchObject({
+		state: 'paused',
+		paused_reason: 'credential_access',
+		paused_resource_type: 'credential-mapping',
+		paused_resource_id: 'calendar',
+		paused_credential_id: null,
+	})
+})
+
+test('an optional executor need without a trigger mapping does not pause the run', async () => {
+	const t = await setup()
+	await t.apply('bea', 'owner', [
+		{ target: daily, needKey: 'chat', credentials: [] },
+	])
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		...mappingFixtureNeeds,
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: false,
+			multiple: false,
+		},
+	])
+
 	expect((await t.plan()).runs).toHaveLength(1)
 	expect(await t.readEnablement()).toMatchObject({
 		state: 'on',

@@ -23,6 +23,7 @@ import type * as CredentialNeedsApproval from '#worker/credentials/credential-ne
 import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	restoreRepoSessionMockBaseline,
 	checkedPublishState,
 	createDurableObjectState,
@@ -262,21 +263,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
@@ -286,6 +273,7 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	) => mockModule.getSavedPackageById(...args),
 }))
 
+vi.mock('#worker/package-runtime/package-app-authority.ts')
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: vi.fn(async () => undefined),
 }))

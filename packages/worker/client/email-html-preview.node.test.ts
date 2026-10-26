@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	buildAdminEmailHtmlPreviewDocument,
+	emailHtmlPreviewSandbox,
 	stripDangerousEmailHtml,
 } from './email-html-preview.ts'
 
@@ -14,6 +15,7 @@ test('email HTML preview sanitizes scripts and wraps fragments in a safe documen
 	)
 	expect(fragment).toMatch(/^<!DOCTYPE html>/i)
 	expect(fragment).toContain('content="no-referrer"')
+	expect(fragment).toContain('<base target="_blank">')
 	expect(fragment).toContain('<p>Invoice <strong>due</strong></p>')
 
 	const fullDocument = `<!DOCTYPE html>
@@ -23,11 +25,145 @@ test('email HTML preview sanitizes scripts and wraps fragments in a safe documen
 </html>`
 	const preserved = buildAdminEmailHtmlPreviewDocument(fullDocument)
 	expect(preserved).toContain('<title>Newsletter</title>')
-	expect(preserved).toContain('content="no-referrer"')
+	expect(preserved).toContain(
+		'<!DOCTYPE html><meta name="referrer" content="no-referrer"><base target="_blank">\n<html>\n<head><title>',
+	)
 	expect(preserved).not.toMatch(/<html>[\s\S]*<html>/i)
 
 	const scripted = `<html><head></head><body><script>bad()</script><p>ok</p></body></html>`
 	const sanitized = buildAdminEmailHtmlPreviewDocument(scripted)
 	expect(sanitized).toContain('<p>ok</p>')
 	expect(sanitized).not.toMatch(/<script/i)
+})
+
+test('email HTML preview opens every link in a new tab without an opener', () => {
+	const doc = buildAdminEmailHtmlPreviewDocument(
+		`<a href="https://a.example" target="_self">a</a>
+<a href="https://b.example" target='inbox' rel="opener">b</a>
+<A HREF="https://c.example" TARGET=_top REL=opener>c</A>
+<map><area href="https://d.example" target="_parent" rel="opener"></map>
+<a href="https://e.example" data-rel="keep" title="ok">e</a>`,
+	)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).not.toMatch(/\starget\s*=/i)
+	expect(body).not.toMatch(/\srel\s*=/i)
+	expect(doc).toContain('<a href="https://a.example">a</a>')
+	expect(doc).toContain('<A HREF="https://c.example">c</A>')
+	expect(doc).toContain('<area href="https://d.example">')
+	expect(doc).toContain(
+		'<a href="https://e.example" data-rel="keep" title="ok">e</a>',
+	)
+	expect(doc.indexOf('<base target="_blank">')).toBeLessThan(
+		doc.indexOf('<a href'),
+	)
+})
+
+test('email HTML preview reads link attributes like the HTML tokenizer', () => {
+	const doc = buildAdminEmailHtmlPreviewDocument(
+		`<a href="https://x.example/?q=a>b" target="_self" rel="opener">x</a>
+<a title='1 > 0 target=keep' target=_top rel=opener>y</a>
+<a target="_self"href="https://z.example">z</a>
+<a href=https://w.example/a>b target=_top>w</a>
+<abbr target="keep">abbr</abbr>`,
+	)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).toContain('<a href="https://x.example/?q=a>b">x</a>')
+	expect(body).toContain("<a title='1 > 0 target=keep'>y</a>")
+	expect(body).toContain('<a href="https://z.example">z</a>')
+	// Unquoted values end at `>`, so the rest is text, not attributes.
+	expect(body).toContain('<a href=https://w.example/a>b target=_top>w</a>')
+	expect(body).toContain('<abbr target="keep">abbr</abbr>')
+})
+
+test('email HTML preview puts its head tags at the start of the document', () => {
+	const head =
+		'<meta name="referrer" content="no-referrer"><base target="_blank">'
+	const htmlOnly = buildAdminEmailHtmlPreviewDocument(
+		'<html lang="en"><body><a href="https://x.example">x</a></body></html>',
+	)
+	expect(htmlOnly.startsWith(`${head}<html lang="en"><body>`)).toBe(true)
+
+	const doctypeOnly = buildAdminEmailHtmlPreviewDocument(
+		'<!DOCTYPE html><body>x</body>',
+	)
+	expect(doctypeOnly.startsWith(`<!DOCTYPE html>${head}<body>`)).toBe(true)
+
+	// A head lookalike in a comment or attribute must not capture the tags.
+	const decoy = buildAdminEmailHtmlPreviewDocument(
+		'<!DOCTYPE html><!-- <head> --><html><head data-x="<head>"><title>t</title></head><body>x</body></html>',
+	)
+	expect(decoy.startsWith(`<!DOCTYPE html>${head}<!-- <head> -->`)).toBe(true)
+	expect(decoy.split(head)).toHaveLength(2)
+})
+
+test('email HTML preview sandbox allows only popups that escape the sandbox', () => {
+	const tokens = emailHtmlPreviewSandbox.split(/\s+/)
+	expect(tokens.sort()).toEqual([
+		'allow-popups',
+		'allow-popups-to-escape-sandbox',
+	])
+})
+
+test('email HTML preview normalizes links that comments try to hide', () => {
+	// CodeRabbit medium finding: a comment opens a fake quoted attribute so a
+	// naive scanner swallows the real anchor and leaves rel=opener in place.
+	const commentBoundary = `<!-- <a title=' --> <a href="https://attacker.example" rel="opener" target="_blank">open</a> <!-- '> -->`
+	const doc = buildAdminEmailHtmlPreviewDocument(commentBoundary)
+	const body = doc.slice(doc.indexOf('<body>'))
+	expect(body).toContain(
+		`<!-- <a title=' --> <a href="https://attacker.example">open</a> <!-- '> -->`,
+	)
+	expect(body).not.toMatch(/\srel\s*=/i)
+	expect(body).not.toMatch(/\starget\s*=/i)
+
+	const doubleQuoted = `<!-- <a title=" --> <a href="https://attacker.example" rel='opener' target='_blank'>x</a> <!-- "> -->`
+	const doubleDoc = buildAdminEmailHtmlPreviewDocument(doubleQuoted)
+	expect(doubleDoc).toContain('<a href="https://attacker.example">x</a>')
+	expect(doubleDoc).not.toMatch(/rel=['"]opener['"]/i)
+
+	const areaBoundary = `<!-- <area href="/" title=' --> <area href="https://attacker.example" rel="opener" target="_blank"> <!-- '> -->`
+	const areaDoc = buildAdminEmailHtmlPreviewDocument(areaBoundary)
+	expect(areaDoc).toContain('<area href="https://attacker.example">')
+	expect(areaDoc).not.toMatch(/\srel\s*=/i)
+
+	// Link-like text inside another tag's attribute must not be rewritten.
+	const inAttribute = `<div title='<a href="https://x.example" rel="opener" target="_blank">'>keep</div><a href="https://y.example" rel="opener">y</a>`
+	const attrDoc = buildAdminEmailHtmlPreviewDocument(inAttribute)
+	expect(attrDoc).toContain(
+		`<div title='<a href="https://x.example" rel="opener" target="_blank">'>keep</div>`,
+	)
+	expect(attrDoc).toContain('<a href="https://y.example">y</a>')
+})
+
+test('email HTML preview closes comments the way HTML does', () => {
+	const empty = buildAdminEmailHtmlPreviewDocument(
+		`<!--><a href="https://attacker.example" rel="opener" target="_blank">x</a>`,
+	)
+	expect(empty).toContain('<a href="https://attacker.example">x</a>')
+	expect(empty).not.toMatch(/rel=["']opener["']/i)
+
+	const dashEmpty = buildAdminEmailHtmlPreviewDocument(
+		`<!---><a href="https://attacker.example" rel="opener">y</a>`,
+	)
+	expect(dashEmpty).toContain('<a href="https://attacker.example">y</a>')
+
+	const bang = buildAdminEmailHtmlPreviewDocument(
+		`<!-- x --!><a href="https://attacker.example" rel="opener">z</a>`,
+	)
+	expect(bang).toContain('<a href="https://attacker.example">z</a>')
+	expect(bang).not.toMatch(/rel=["']opener["']/i)
+})
+
+test('email HTML preview does not tokenize inside raw-text elements', () => {
+	const styled = buildAdminEmailHtmlPreviewDocument(
+		`<style>a[title='</style><a href="https://attacker.example" rel="opener" target="_blank">x</a><style>']{}</style>`,
+	)
+	expect(styled).toContain('<a href="https://attacker.example">x</a>')
+	expect(styled).not.toMatch(/rel=["']opener["']/i)
+
+	const textarea = buildAdminEmailHtmlPreviewDocument(
+		`<textarea><!--</textarea><a href="https://attacker.example" rel="opener">y</a>`,
+	)
+	expect(textarea).toContain('<a href="https://attacker.example">y</a>')
+	expect(textarea).not.toMatch(/rel=["']opener["']/i)
 })

@@ -223,6 +223,7 @@ async function handleAddAction(input: {
 		baseUrl: oauth.clientOrigin,
 		bearerToken: input.bearerToken?.trim() || undefined,
 		waitUntil,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult(connectionOutcome(input, setting, connection))
 }
@@ -299,6 +300,7 @@ async function handleSetEnabledAction(input: {
 		}),
 		id: setting.id,
 		enabled: input.enabled,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true, selectedServerId: updated.id })
 }
@@ -327,6 +329,7 @@ async function handleSetUsageAction(input: {
 		id: setting.id,
 		usageMode,
 		allowedPackageIds,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true, selectedServerId: updated.id })
 }
@@ -345,6 +348,7 @@ async function handleDeleteAction(input: {
 			user: input.user.mcpUser,
 		}),
 		id: setting.id,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	if (!deleted) {
 		return operationResult({ ok: false, error: 'MCP server not found.' }, 404)

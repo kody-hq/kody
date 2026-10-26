@@ -83,14 +83,19 @@ runs:
       # probe uses only Node built-ins.
       run: node tools/nx-remote-cache-probe.ts --github-env
 
+    # npm ci talks to the public registry even on an Actions cache hit. A
+    # single ECONNRESET used to fail the whole Validate job (seen on E2E
+    # #40035153787 when setup-node restored a 672-byte ~/.npm cache). Retry
+    # only registry transport blips; lockfile/engine errors stay terminal.
+    # The helper is Node built-ins only so it can run before node_modules.
     - name: 📥 Install Dependencies
       shell: bash
       run: |
         if [ "${{ inputs.no_cache }}" = "true" ]; then
           echo "npm-cache=disabled (fresh npm ci --prefer-online)"
-          npm ci --prefer-online
+          node tools/ci/npm-ci-with-retry.ts --prefer-online
         else
-          npm ci
+          node tools/ci/npm-ci-with-retry.ts
         fi
 
     - name: 📝 Prepare worker env

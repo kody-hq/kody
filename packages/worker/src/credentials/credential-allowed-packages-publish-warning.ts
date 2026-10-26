@@ -5,9 +5,9 @@
  *
  * Current runtime behavior (see `assertPackageCanAccessResolvedSecret`): the
  * list is already enforced when the package is reached through another package
- * or a one-off execute run, but a self-authored or adopted package running on
- * its own still uses the credential (issue #4129). The warning tells the owner
- * how to approve or move the use.
+ * or a one-off execute run. A self-authored or adopted package running on its
+ * own still uses the credential (issue #4129); an unadopted community fork
+ * does not. The warning tells the owner how to approve or move the use.
  *
  * Does not change fill, access, publish, or save behavior.
  */
@@ -52,7 +52,7 @@ export function formatCredentialAllowedPackagesPublishWarning(
 	input: CredentialAllowedPackagesPublishWarning,
 ): string {
 	const allowedList = formatAllowedPackagesList(input.allowedEntries)
-	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}. Kody denies this use when ${input.packageDisplayName} is used through another package or imported in a one-off execute run. When ${input.packageDisplayName} runs on its own, Kody still allows it for now because you authored or adopted the package; that exception is planned to go away. To allow it everywhere, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
+	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}. Kody denies this use when ${input.packageDisplayName} is used through another package or imported in a one-off execute run. When ${input.packageDisplayName} runs on its own, Kody allows it for now only if you authored or adopted the package; otherwise Kody denies this use. That authored-or-adopted exception is planned to go away. To allow it everywhere, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
 }
 
 export function formatAllowedPackagesList(

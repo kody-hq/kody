@@ -19,6 +19,7 @@ import {
 	type PackageEventTools,
 } from '#mcp/run-kody-registry.ts'
 import { type RunRecordContext } from '#worker/run-records/types.ts'
+import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isInboundEmailApprovalTopic } from '#universal/credential-contracts.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
@@ -266,6 +267,7 @@ export async function deliverPackageEventWithToolFactories(input: {
 				actorTokenId: `${internalPackageEventSubscriptionTokenId}:${message.source.packageId}`,
 				request: packageEventRequestSource(message),
 				runtimeInvokeDepth: message.invokeDepth,
+				resourceEventDepth: message.resourceEventDepth,
 				toolFactories: input.toolFactories,
 				waitUntil: input.waitUntil,
 			})
@@ -420,6 +422,9 @@ export function createPackageEventToolsWithToolFactories(input: {
 				...(input.callerContext.request
 					? { lineage: requestLineage(input.callerContext.request) }
 					: {}),
+				...(input.callerContext.resourceEventDepth
+					? { resourceEventDepth: input.callerContext.resourceEventDepth }
+					: {}),
 			}
 			const queue = (input.env as Partial<Env>).PACKAGE_EVENTS_DISPATCH_QUEUE
 			let enqueued = false
@@ -473,7 +478,7 @@ export function createPackageEventToolsWithToolFactories(input: {
 	}
 }
 
-type SubscriptionInvocationInput = {
+export type SubscriptionInvocationInput = {
 	env: Env
 	baseUrl: string
 	savedPackage: SavedPackageRecord
@@ -493,6 +498,16 @@ type SubscriptionInvocationInput = {
 	inboundFromAddress?: string | null
 	inboundFromAuthenticated?: boolean
 	runtimeInvokeDepth?: number
+	/** Resource change event chain depth the handler run carries on. */
+	resourceEventDepth?: number
+	/**
+	 * Personalize the event per enabler, from that enabler's access checked
+	 * for this delivery (for example, include the actor only for people who
+	 * can read the audit log). Defaults to `params` for every run.
+	 */
+	paramsForRun?: (run: {
+		access: EffectivePermissions | null
+	}) => Record<string, unknown>
 	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 }
@@ -631,7 +646,14 @@ export async function invokePackageSubscriptionWithToolFactories(
 	let selected: PackageInvocationResponse | null = null
 	for (const run of runs) {
 		const response = await invokeSubscriptionOnce(
-			input,
+			input.paramsForRun
+				? {
+						...input,
+						params: input.paramsForRun({
+							access: plan.access?.get(run.id) ?? null,
+						}),
+					}
+				: input,
 			subscriptionEnablementSource({ request: input.request, sourceId, run }),
 			`${idempotencyKey}:enablement:${run.id}`,
 		)
@@ -666,6 +688,9 @@ async function invokeSubscriptionOnce(
 			sourceId: input.actorTokenId ?? internalEmailSubscriptionTokenId,
 			orgId: input.savedPackage.userId,
 			request,
+			...(input.resourceEventDepth
+				? { resourceEventDepth: input.resourceEventDepth }
+				: {}),
 		},
 		savedPackage: input.savedPackage,
 		invocationName: buildPackageSubscriptionArtifactName(topic),

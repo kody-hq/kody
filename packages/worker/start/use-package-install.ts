@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { type PackageRepoForkAction } from '#universal/package-repo-actions.ts'
 import { installCommunityPackage } from '#start/server/community-mutations'
+import { communityForkStateQuery } from './community-fork-state-query.ts'
 import {
 	type CommunityInstallApiPayload,
 	type CommunityInstallOutcome,
@@ -20,10 +21,39 @@ const resources = [
 	'loadUsagePage',
 ] as const
 
+/**
+ * Live fork state for the viewer; see `communityForkStateQuery` for when it
+ * refetches. Also refetches on a bfcache restore (back/forward without a
+ * remount).
+ */
+function useCommunityForkState(fork: PackageRepoForkAction | null) {
+	const { actorKey } = useRouteContext({ from: '__root__' })
+	const query = useQuery(
+		communityForkStateQuery({
+			actorKey,
+			listingId: fork?.listingId ?? null,
+			enabled: Boolean(fork?.loggedIn),
+		}),
+	)
+	const { refetch } = query
+	useEffect(() => {
+		if (!fork?.loggedIn) return
+		// Back/forward can restore this page from bfcache without a remount.
+		const onPageShow = (event: PageTransitionEvent) => {
+			if (event.persisted) void refetch()
+		}
+		window.addEventListener('pageshow', onPageShow)
+		return () => window.removeEventListener('pageshow', onPageShow)
+	}, [fork?.loggedIn, refetch])
+	return query
+}
+
 export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
 	const reconcile = usePageInvalidation(resources)
+	const forkStateQuery = useCommunityForkState(fork)
+	const liveForkState = forkStateQuery.data ?? null
 	const [confirmed, setConfirmed] = useState(false)
 	const [installMessage, setMessage] = useState<string | null>(null)
 	const [installOutcome, setOutcome] = useState<CommunityInstallOutcome | null>(
@@ -67,13 +97,50 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 				agentPrompt: result.agentPrompt,
 				packageId: result.packageId ?? null,
 				failedChecks: result.failedChecks ?? [],
+				alreadyInstalled: result.alreadyInstalled === true,
 			}
 		},
-		onMutate: () => ({ reconcile }),
-		onSettled: (_data, _error, _variables, context) => context?.reconcile(),
+		onMutate: () => ({ reconcile, refetchForkState: forkStateQuery.refetch }),
+		onSettled: (_data, _error, _variables, context) => {
+			void context?.refetchForkState()
+			return context?.reconcile()
+		},
 	})
+	// When the live read finds a fork the page data does not show yet (it
+	// finished after this page loaded), refresh the page so the full fork
+	// controls (setup prompt, outdated badge) render.
+	const reconciledFor = useRef<string | null>(null)
+	const liveDone =
+		liveForkState &&
+		(liveForkState.state === 'installed' ||
+			liveForkState.state === 'adaptation_required')
+			? liveForkState
+			: null
+	useEffect(() => {
+		if (!liveDone || fork?.viewerInstall) return
+		const key = `${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
+		if (reconciledFor.current === key) return
+		reconciledFor.current = key
+		void reconcile()
+	}, [liveDone, fork?.viewerInstall, fork?.listingId, reconcile])
+	const existingFork =
+		fork?.viewerInstall || !liveDone
+			? null
+			: { targetName: liveDone.targetName, href: liveDone.href }
+	const inProgress =
+		!fork?.viewerInstall && liveForkState?.state === 'in_progress'
+			? { startedAt: liveForkState.startedAt }
+			: null
 	async function install() {
-		if (!fork || !fork.loggedIn || mutation.isPending || installOutcome) return
+		if (
+			!fork ||
+			!fork.loggedIn ||
+			mutation.isPending ||
+			installOutcome ||
+			existingFork ||
+			inProgress
+		)
+			return
 		if (!confirmed) {
 			setConfirmed(true)
 			return
@@ -99,6 +166,8 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		context: {
 			busy: mutation.isPending,
 			confirmed,
+			existingFork,
+			inProgress,
 			onInstall: () => void install(),
 			onDisarm: () => setConfirmed(false),
 		},

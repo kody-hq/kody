@@ -5,7 +5,15 @@
  * credential ids only. A mapping grants nothing: resolution keeps only refs
  * the actor can Use right now.
  */
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	bumpCredentialMappingGeneration,
+	credentialMappingGenerationOf,
+} from './credential-read-generation.ts'
 import { type UsableCredential } from './credential-candidates.ts'
+
+export { bumpCredentialMappingGeneration }
 
 export type CredentialMappingRowTarget =
 	| { target: 'org' }
@@ -85,33 +93,98 @@ function targetColumns(target: CredentialMappingRowTarget) {
 	}
 }
 
+type PendingCredentialMappingRequest = {
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds: ReadonlyArray<string>
+	needKey: string | undefined
+	resolve: (rows: Array<CredentialMappingRow>) => void
+	reject: (error: unknown) => void
+}
+
 /**
- * The package's mappings a viewer can see: the org layer, the viewer's own
- * `mine` layer, and overrides on the given enablements.
+ * Concurrent `loadCredentialMappings` calls against the same `APP_DB` in one
+ * isolate turn share one read per (org, package, person, enablements) scope
+ * (KODY-AZ). Package execute opens `credential(key)` for each need via
+ * `Promise.all`, and each open previously issued its own
+ * `need_key = ?` mapping SELECT; D1 still ran those as sequential spans. A
+ * lone lookup still uses the single-key (or unfiltered) query.
+ *
+ * When a `request` is passed, the first load for a scope reads every mapping
+ * row for that scope and keeps it for the request (KODY-BF). Sequential
+ * `await credential(key)` on a queue consumer then filters in memory instead
+ * of issuing another `need_key = ?` SELECT.
  */
-export async function loadCredentialMappings(input: {
+const pendingCredentialMappingBatches = new WeakMap<
+	D1Database,
+	Array<PendingCredentialMappingRequest>
+>()
+
+const credentialMappingsByRequest = new WeakMap<
+	RequestContext,
+	Map<string, Promise<Array<CredentialMappingRow>>>
+>()
+
+function mappingScopeKey(input: {
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds: ReadonlyArray<string>
+	generation: number
+}) {
+	return `${input.orgId}\0${input.packageId}\0${input.personId ?? ''}\0${[...input.enablementIds].join('\0')}\0${input.generation}`
+}
+
+function rowsForNeedKey(
+	rows: ReadonlyArray<CredentialMappingRow>,
+	needKey: string | undefined,
+) {
+	return needKey === undefined
+		? [...rows]
+		: rows.filter((row) => row.needKey === needKey)
+}
+
+/**
+ * Fresh D1 read of the package's mappings a viewer can see: the org layer,
+ * the viewer's own `mine` layer, and overrides on the given enablements.
+ * Optional `needKey` / `needKeys` narrow the SQL; callers that batch several
+ * keys prefer one unfiltered (or `IN`) read and filter in memory.
+ */
+async function queryCredentialMappings(input: {
 	db: D1Database
 	orgId: string
 	packageId: string
 	personId: string | null
-	enablementIds?: ReadonlyArray<string>
+	enablementIds: ReadonlyArray<string>
 	needKey?: string
+	needKeys?: ReadonlyArray<string>
 }): Promise<Array<CredentialMappingRow>> {
-	const enablementIds = input.enablementIds ?? []
 	const clauses = [`target = 'org'`]
 	const binds: Array<string> = [input.orgId, input.packageId]
 	if (input.personId) {
 		clauses.push(`(target = 'mine' AND person_user_id = ?)`)
 		binds.push(input.personId)
 	}
-	if (enablementIds.length > 0) {
+	if (input.enablementIds.length > 0) {
 		clauses.push(
-			`(target = 'enablement' AND enablement_id IN (${enablementIds.map(() => '?').join(', ')}))`,
+			`(target = 'enablement' AND enablement_id IN (${input.enablementIds.map(() => '?').join(', ')}))`,
 		)
-		binds.push(...enablementIds)
+		binds.push(...input.enablementIds)
 	}
-	const needFilter = input.needKey === undefined ? '' : ' AND need_key = ?'
-	if (input.needKey !== undefined) binds.push(input.needKey)
+	let needFilter = ''
+	const needKeys = input.needKeys
+		? [...new Set(input.needKeys)]
+		: input.needKey !== undefined
+			? [input.needKey]
+			: null
+	if (needKeys && needKeys.length === 1) {
+		needFilter = ' AND need_key = ?'
+		binds.push(needKeys[0]!)
+	} else if (needKeys && needKeys.length > 1) {
+		needFilter = ` AND need_key IN (${needKeys.map(() => '?').join(', ')})`
+		binds.push(...needKeys)
+	}
 	const result = await input.db
 		.prepare(
 			`SELECT need_key, target, person_user_id, enablement_id,
@@ -147,6 +220,133 @@ export async function loadCredentialMappings(input: {
 				updatedAt: row.updated_at,
 			},
 		]
+	})
+}
+
+async function flushCredentialMappingBatch(db: D1Database) {
+	const pending = pendingCredentialMappingBatches.get(db)
+	pendingCredentialMappingBatches.delete(db)
+	if (!pending || pending.length === 0) return
+
+	const byScope = new Map<string, Array<PendingCredentialMappingRequest>>()
+	for (const request of pending) {
+		const key = mappingScopeKey({
+			...request,
+			generation: credentialMappingGenerationOf(db),
+		})
+		const group = byScope.get(key)
+		if (group) group.push(request)
+		else byScope.set(key, [request])
+	}
+
+	await Promise.all(
+		[...byScope.values()].map(async (requests) => {
+			const [first] = requests
+			if (!first) return
+			try {
+				const needKeys = requests.map((request) => request.needKey)
+				const wantsAll = needKeys.some((key) => key === undefined)
+				const uniqueNeedKeys = [
+					...new Set(
+						needKeys.filter((key): key is string => key !== undefined),
+					),
+				]
+				// orgId + packageId + optional personId + enablementIds + need keys.
+				const fixedBinds =
+					2 + (first.personId ? 1 : 0) + first.enablementIds.length
+				const needKeyBindsFit =
+					uniqueNeedKeys.length > 0 &&
+					fixedBinds + uniqueNeedKeys.length <= maxD1BoundParameters
+				const rows = await queryCredentialMappings({
+					db,
+					orgId: first.orgId,
+					packageId: first.packageId,
+					personId: first.personId,
+					enablementIds: first.enablementIds,
+					...(wantsAll || !needKeyBindsFit
+						? {}
+						: uniqueNeedKeys.length === 1
+							? { needKey: uniqueNeedKeys[0] }
+							: { needKeys: uniqueNeedKeys }),
+				})
+				for (const request of requests) {
+					request.resolve(rowsForNeedKey(rows, request.needKey))
+				}
+			} catch (error) {
+				// Isolate failures per scope so one D1 error does not reject
+				// unrelated lookups that share the same microtask flush.
+				for (const request of requests) request.reject(error)
+			}
+		}),
+	)
+}
+
+/**
+ * The package's mappings a viewer can see: the org layer, the viewer's own
+ * `mine` layer, and overrides on the given enablements.
+ *
+ * Pass `request` on credential open / package execute so sequential need-key
+ * lookups share one unfiltered scope read for the execution.
+ */
+export async function loadCredentialMappings(input: {
+	db: D1Database
+	orgId: string
+	packageId: string
+	personId: string | null
+	enablementIds?: ReadonlyArray<string>
+	needKey?: string
+	request?: RequestContext | null
+}): Promise<Array<CredentialMappingRow>> {
+	const enablementIds = input.enablementIds ?? []
+	const scope = {
+		orgId: input.orgId,
+		packageId: input.packageId,
+		personId: input.personId,
+		enablementIds,
+	}
+	if (input.request) {
+		const scopeKey = mappingScopeKey({
+			...scope,
+			generation: credentialMappingGenerationOf(input.db),
+		})
+		let byScope = credentialMappingsByRequest.get(input.request)
+		if (!byScope) {
+			byScope = new Map()
+			credentialMappingsByRequest.set(input.request, byScope)
+		}
+		let allRows = byScope.get(scopeKey)
+		if (!allRows) {
+			allRows = queryCredentialMappings({
+				db: input.db,
+				...scope,
+			})
+			byScope.set(scopeKey, allRows)
+			allRows.catch(() => {
+				if (byScope.get(scopeKey) === allRows) byScope.delete(scopeKey)
+			})
+		}
+		return rowsForNeedKey(await allRows, input.needKey)
+	}
+	const db = input.db
+	return await new Promise<Array<CredentialMappingRow>>((resolve, reject) => {
+		const pending = pendingCredentialMappingBatches.get(db)
+		const request: PendingCredentialMappingRequest = {
+			orgId: input.orgId,
+			packageId: input.packageId,
+			personId: input.personId,
+			enablementIds,
+			needKey: input.needKey,
+			resolve,
+			reject,
+		}
+		if (pending) {
+			pending.push(request)
+			return
+		}
+		pendingCredentialMappingBatches.set(db, [request])
+		queueMicrotask(() => {
+			void flushCredentialMappingBatch(db)
+		})
 	})
 }
 
@@ -241,6 +441,26 @@ export function buildWriteCredentialMappingStatement(input: {
 		)
 }
 
+/**
+ * Run a mapping write and invalidate request-scoped mapping caches after the
+ * statement commits (KODY-BF). Prefer this over `statement.run()` so a
+ * same-request open cannot keep a pre-write snapshot under a premature
+ * generation bump.
+ */
+export async function runCredentialMappingWrite(
+	db: D1Database,
+	statement: D1PreparedStatement,
+) {
+	const result = await statement.run()
+	bumpCredentialMappingGeneration(db)
+	return result
+}
+
+/** Invalidate mapping caches after a batch that included mapping writes. */
+export function noteCredentialMappingWritesCommitted(db: D1Database) {
+	bumpCredentialMappingGeneration(db)
+}
+
 /** The invalid JSON a failed unchanged-guard evaluates. */
 const credentialMappingChangedMarker = 'credential mapping changed'
 
@@ -290,6 +510,7 @@ export async function deleteCredentialMappingsForPackage(input: {
 		)
 		.bind(input.orgId, input.packageId)
 		.run()
+	bumpCredentialMappingGeneration(input.db)
 	return result.meta?.changes ?? 0
 }
 
@@ -305,6 +526,7 @@ export async function deleteCredentialMappingsForMember(input: {
 		)
 		.bind(input.orgId, input.personId)
 		.run()
+	bumpCredentialMappingGeneration(input.db)
 	return result.meta?.changes ?? 0
 }
 

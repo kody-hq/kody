@@ -223,14 +223,14 @@ test('jobUpdate and jobRunNow require authentication and jobUpdate mutates exist
 
 	mockModule.updateJob.mockResolvedValueOnce(
 		job({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		}),
 	)
 	await jobUpdateCapability.handler(
 		{
-			id: 'job-once',
-			schedule: { type: 'once', run_at: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		},
 		ctx,
 	)
@@ -238,8 +238,8 @@ test('jobUpdate and jobRunNow require authentication and jobUpdate mutates exist
 		env,
 		callerContext,
 		body: expect.objectContaining({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-22T18:30:00Z' },
+			id: 'job-interval',
+			schedule: { type: 'interval', every: '2h' },
 		}),
 	})
 	expect(
@@ -359,7 +359,7 @@ test('jobUpdate accepts interval and cron schedule replacements and round-trips 
 	}
 })
 
-test('jobRunNow executes jobs immediately and preserves failed one-off jobs for inspection', async () => {
+test('jobRunNow executes jobs immediately', async () => {
 	const appContext = createMcpCallerContext({
 		source: { kind: 'mcp-oauth' },
 		baseUrl: 'https://example.com',
@@ -392,7 +392,6 @@ test('jobRunNow executes jobs immediately and preserves failed one-off jobs for 
 			],
 		}),
 		execution: { ok: true, result: { ok: true }, logs: ['ran job'] },
-		deletedAfterRun: false,
 	})
 
 	const successResult = await jobRunNowCapability.handler(
@@ -429,34 +428,7 @@ test('jobRunNow executes jobs immediately and preserves failed one-off jobs for 
 			run_history: [],
 		},
 		execution: { ok: true, result: { ok: true }, logs: ['ran job'] },
-		deleted_after_run: false,
 	})
-
-	mockModule.runJobNowViaManager.mockResolvedValueOnce({
-		job: job({
-			id: 'job-once',
-			schedule: { type: 'once', runAt: '2026-04-20T10:00:00.000Z' },
-			lastRunAt: '2026-04-20T10:00:00.000Z',
-			lastRunStatus: 'error',
-			lastRunError: 'boom',
-			lastDurationMs: 5,
-			runCount: 1,
-			errorCount: 1,
-		}),
-		execution: { ok: false, error: 'boom', logs: ['ran job'] },
-		deletedAfterRun: false,
-	})
-	const failedOneOffResult = await jobRunNowCapability.handler(
-		{ id: 'job-once' },
-		{ env, callerContext: appContext },
-	)
-	expect(failedOneOffResult.deleted_after_run).toBe(false)
-	expect(failedOneOffResult.execution).toEqual({
-		ok: false,
-		error: 'boom',
-		logs: ['ran job'],
-	})
-	expect(failedOneOffResult.job.last_run_error).toBe('boom')
 })
 
 test('jobRunNow refuses a caller without job:execute', async () => {
@@ -474,15 +446,15 @@ test('jobRunNow refuses a caller without job:execute', async () => {
 test('job inspection capabilities expose due-now state, history, alarm status, optional source code, and workflow runs', async () => {
 	vi.useFakeTimers()
 	vi.setSystemTime(new Date('2026-04-20T18:30:00.000Z'))
-	const onceSchedule = { type: 'once', runAt: '2026-04-20T18:30:00.000Z' }
+	const recurringSchedule = { type: 'interval', every: '1h' }
 	mockModule.inspectJobsForUser.mockResolvedValue({
-		jobs: [job({ publishedCommit: 'commit-123', schedule: onceSchedule })],
+		jobs: [job({ publishedCommit: 'commit-123', schedule: recurringSchedule })],
 		alarm: alarm(),
 	})
 	mockModule.getJobInspection.mockResolvedValue({
 		job: job({
 			params: { bridgeId: 'ZPGI01117' },
-			schedule: onceSchedule,
+			schedule: recurringSchedule,
 			lastRunAt: '2026-04-20T09:00:00.000Z',
 			lastRunStatus: 'error',
 			lastRunError: 'Timed out',
@@ -604,6 +576,28 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 				updatedAt: '2026-05-03T12:00:01.000Z',
 				completedAt: '2026-05-03T12:00:01.000Z',
 				lastError: null,
+				enqueuedCommit: null,
+				sourceRevision: null,
+			},
+			{
+				id: 'pkgwf-123',
+				userId: ownerIdFromStored('user-123'),
+				sourceType: 'package',
+				packageId: 'pkg-1',
+				kodyId: 'shade-automation',
+				sourceId: 'source-1',
+				workflowName: './sync',
+				exportName: './sync',
+				idempotencyKey: 'pinned-sync',
+				runAt: '2026-05-03T12:00:00.000Z',
+				planDate: null,
+				status: 'queued',
+				createdAt: '2026-05-03T11:59:00.000Z',
+				updatedAt: '2026-05-03T11:59:00.000Z',
+				completedAt: null,
+				lastError: null,
+				enqueuedCommit: 'commit-a',
+				sourceRevision: 'pinned',
 			},
 		])
 		const workflowListResult = await workflowListCapability.handler(
@@ -611,9 +605,74 @@ test('job inspection capabilities expose due-now state, history, alarm status, o
 			ctx,
 		)
 		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
-			expect.objectContaining({ userId: ownerIdFromStored('user-123') }),
+			expect.objectContaining({
+				userId: ownerIdFromStored('user-123'),
+				limit: 5,
+				filter: {
+					workflowId: null,
+					status: null,
+					packageId: null,
+					since: null,
+				},
+			}),
 		)
 		expect(workflowListResult.workflows[0]?.status).toBe('complete')
+		expect(workflowListResult.workflows[0]).toMatchObject({
+			enqueued_commit: null,
+			source_revision: null,
+		})
+		expect(workflowListResult.workflows[1]).toMatchObject({
+			enqueued_commit: 'commit-a',
+			source_revision: 'pinned',
+		})
+
+		mockModule.listWorkflowRunsForUser.mockClear()
+		mockModule.listWorkflowRunsForUser.mockResolvedValue([
+			{
+				id: 'dynwf-123',
+				userId: ownerIdFromStored('user-123'),
+				sourceType: 'inline',
+				packageId: null,
+				kodyId: null,
+				sourceId: null,
+				workflowName: 'inline-code',
+				exportName: null,
+				idempotencyKey: 'execute-smoke',
+				runAt: '2026-05-03T12:00:00.000Z',
+				planDate: null,
+				status: 'complete',
+				createdAt: '2026-05-03T11:59:00.000Z',
+				updatedAt: '2026-05-03T12:00:01.000Z',
+				completedAt: '2026-05-03T12:00:01.000Z',
+				lastError: null,
+				enqueuedCommit: null,
+				sourceRevision: null,
+			},
+		])
+		const filtered = await workflowListCapability.handler(
+			{
+				workflow_id: 'dynwf-123',
+				status: 'complete',
+				package_id: 'pkg-1',
+				since: '2026-05-01T00:00:00.000Z',
+				limit: 3,
+			},
+			ctx,
+		)
+		expect(mockModule.listWorkflowRunsForUser).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: ownerIdFromStored('user-123'),
+				limit: 3,
+				filter: {
+					workflowId: 'dynwf-123',
+					status: 'complete',
+					packageId: 'pkg-1',
+					since: '2026-05-01T00:00:00.000Z',
+				},
+			}),
+		)
+		expect(filtered.workflows).toHaveLength(1)
+		expect(filtered.workflows[0]?.id).toBe('dynwf-123')
 	} finally {
 		vi.useRealTimers()
 	}

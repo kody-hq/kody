@@ -54,8 +54,8 @@ the same subject; it updates the grant.
 ## Package collaborators
 
 For one package, three calls cover teams and members of the owning org. Each
-needs Manage on the package, and `package_id` takes the package id or its kody
-id.
+needs Manage on the package, and `package_id` accepts the saved-package UUID or
+the package name leaf (`@owner/leaf` or `leaf`).
 
 - `packageCollaboratorList` (`{ "package_id": "…" }`) lists everyone who holds a
   grant on the package: teams, members, and outside collaborators, each with

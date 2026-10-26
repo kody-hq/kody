@@ -6,7 +6,7 @@ import { colors } from '#universal/styles/tokens.ts'
 /** The triggers guide section on inbound webhooks (`docs/guides/triggers.md`). */
 export const webhooksDocHref = `${docHref('triggers')}#inbound-webhooks-the-external-http-knock`
 
-export type WebhookIntent = 'mint' | 'rotate' | 'reveal' | 'enable' | 'disable'
+export type WebhookIntent = 'mint' | 'rotate' | 'reveal'
 
 /**
  * Declared count is unique package+name pairs (account index) or unique names
@@ -61,21 +61,18 @@ export function buildPackageWebhooksHref(input: {
 	return `${settingsHref}#${anchor}`
 }
 
-type WebhookStatusInput = Pick<
-	PackageWebhookListItem,
-	'minted' | 'approved' | 'enabled'
->
+type WebhookStatusInput = Pick<PackageWebhookListItem, 'minted' | 'approved'>
 
 export function webhookStatusLabel(webhook: WebhookStatusInput) {
 	if (!webhook.minted) return 'No URL yet'
 	if (!webhook.approved) return 'Needs approval'
-	return webhook.enabled ? 'Active' : 'Disabled'
+	return 'Approved'
 }
 
 export function webhookStatusColor(webhook: WebhookStatusInput) {
 	if (!webhook.minted) return colors.textMuted
 	if (!webhook.approved) return colors.warningText
-	return webhook.enabled ? colors.primary : colors.error
+	return colors.primary
 }
 
 export function webhookModeLabel(
@@ -107,10 +104,6 @@ export function webhookSuccessMessage(
 			return `Webhook URL rotated. The previous URL stays active until the new one receives a delivery, or for 24 hours.${approvalUrl ? approveStillRequired : ''}`
 		case 'reveal':
 			return null
-		case 'enable':
-			return 'Webhook enabled.'
-		case 'disable':
-			return 'Webhook disabled. Deliveries now answer 404.'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)
@@ -126,10 +119,6 @@ export function webhookFailureMessage(intent: WebhookIntent) {
 			return 'Unable to rotate the webhook URL.'
 		case 'reveal':
 			return 'Unable to reveal the webhook URL.'
-		case 'enable':
-			return 'Unable to enable the webhook.'
-		case 'disable':
-			return 'Unable to disable the webhook.'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)

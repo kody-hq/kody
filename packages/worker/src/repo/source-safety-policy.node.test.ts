@@ -18,7 +18,6 @@ vi.mock('./artifacts.ts', () => ({
 const {
 	assertPublishedPackageSourceRepoHead,
 	assertRestorablePackageSourceSnapshot,
-	buildArtifactsOpaqueInternalErrorMessage,
 	buildPublishedCommitHeadMismatchCallerMessage,
 	buildSourceRecoveryProblemMessage,
 	destructiveOverwriteConfirmationField,
@@ -228,14 +227,6 @@ test('opaque Cloudflare Artifacts internals become retry messages, not source-re
 			}),
 		),
 	).toBe(false)
-	expect(
-		isArtifactsOpaqueInternalRetryMessage(
-			buildArtifactsOpaqueInternalErrorMessage({
-				operation: 'repoOpenSession',
-				reason: cloudflareOpaqueInternalErrorMessage,
-			}),
-		),
-	).toBe(true)
 })
 
 test('package source overwrite and private-visibility changes require explicit confirmation', async () => {

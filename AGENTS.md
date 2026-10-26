@@ -18,3 +18,6 @@ Open the page that owns the task:
   [docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
 - Dependency bump or audit fix: reuse an open PR, never open a duplicate
   ([rule](./docs/contributing/dependency-overrides.md#dependency-bump-prs))
+- Never run `wrangler deploy`, `versions upload|deploy`, or `secret put|bulk`
+  against `kody-production` or any production Worker; only the Deploy workflow
+  deploys ([rule](./docs/contributing/rollback.md#ci-only-production-deploys))

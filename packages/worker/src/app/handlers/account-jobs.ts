@@ -81,7 +81,6 @@ export async function runAccountJobNow(input: {
 		runNow: {
 			ok: result.execution.ok,
 			error: result.execution.ok ? null : result.execution.error,
-			deletedAfterRun: result.deletedAfterRun,
 		},
 	})
 }

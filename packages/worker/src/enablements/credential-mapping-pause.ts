@@ -13,11 +13,17 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	listUsableCredentials,
 	liveUsableCredentials,
+	resolveNeedCandidates,
 } from '#worker/credentials/credential-candidates.ts'
+import {
+	loadCredentialMappings,
+	resolveStoredMapping,
+} from '#worker/credentials/credential-mappings.ts'
 import {
 	loadPackageNeeds,
 	mappedCredentialFitsNeed,
 } from '#worker/credentials/credential-need-fit.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { enablementMappingPauseResourceType } from '#universal/credential-contracts.ts'
 import { type EnablementPauseInput } from './repo.ts'
 import { type EnablementPause, type EnablementRecord } from './types.ts'
@@ -67,21 +73,35 @@ export async function checkEnablementMappedCredentials(input: {
 	enablement: EnablementRecord
 }): Promise<EnablementPauseInput | null> {
 	const { packageId } = input.enablement
-	const picks = (
-		await loadTriggerPicks(input.env.APP_DB, input.enablement)
-	).filter((pick) => pick.ids.length > 0)
-	if (picks.length === 0) return null
+	const picks = await loadTriggerPicks(input.env.APP_DB, input.enablement)
+	const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+		db: input.env.APP_DB,
+		orgId: input.request.org.id,
+		request: input.request,
+	})
+	if (!suppliersEnabled && !picks.some((pick) => pick.ids.length > 0)) {
+		return null
+	}
 	const needs = new Map(
 		(
 			await loadPackageNeeds({
 				env: input.env,
 				orgId: input.request.org.id,
 				packageId,
+				request: input.request,
 			})
 		).map((need) => [need.key, need]),
 	)
-	const declared = picks.filter((pick) => needs.has(pick.needKey))
-	if (declared.length === 0) return null
+	const requiredExecutorNeeds = suppliersEnabled
+		? [...needs.values()].filter(
+				(need) => need.supplier === 'executor' && need.required !== false,
+			)
+		: []
+	const picksByNeed = new Map(picks.map((pick) => [pick.needKey, pick]))
+	const declared = picks.filter(
+		(pick) => pick.ids.length > 0 && needs.has(pick.needKey),
+	)
+	if (declared.length === 0 && requiredExecutorNeeds.length === 0) return null
 	const usable = new Map(
 		liveUsableCredentials(
 			await listUsableCredentials({
@@ -90,19 +110,75 @@ export async function checkEnablementMappedCredentials(input: {
 			}),
 		).map((credential) => [credential.id, credential]),
 	)
-	for (const { needKey, ids } of declared) {
-		const need = needs.get(needKey)!
+	const usableCredentials = [...usable.values()]
+	if (requiredExecutorNeeds.length > 0) {
+		const mappings = await loadCredentialMappings({
+			db: input.env.APP_DB,
+			orgId: input.request.org.id,
+			packageId,
+			personId: input.request.actor?.userId ?? null,
+			enablementIds: [input.enablement.id],
+			needKey: undefined,
+			request: input.request,
+		})
+		for (const need of requiredExecutorNeeds) {
+			const rows = mappings.filter((row) => row.needKey === need.key)
+			const mapped = (target: 'enablement' | 'mine') =>
+				rows.find((row) => row.target.target === target)?.credentialIds ?? null
+			const triggerIds =
+				rows.find((row) => row.target.target === 'enablement')?.credentialIds ??
+				null
+			const resolution = resolveStoredMapping({
+				trigger: triggerIds,
+				mine: mapped('mine'),
+				org: null,
+				usable: usableCredentials,
+				accepts: (credential) => mappedCredentialFitsNeed(credential, need),
+			})
+			if (resolution?.status === 'ready') continue
+			if (resolution) {
+				return {
+					reason: 'credential_access',
+					permission: null,
+					resourceType: enablementMappingPauseResourceType,
+					resourceId: need.key,
+					credentialId:
+						resolution.status === 'unusable'
+							? (resolution.unusableIds[0] ?? null)
+							: null,
+				}
+			}
+			if (resolveNeedCandidates(need, usableCredentials).autoPick) continue
+			return {
+				reason: 'credential_access',
+				permission: null,
+				resourceType: enablementMappingPauseResourceType,
+				resourceId: need.key,
+				credentialId: null,
+			}
+		}
+	}
+	const requiredOrMapped = new Map(
+		declared.map((pick) => [pick.needKey, pick.ids]),
+	)
+	for (const need of requiredExecutorNeeds) {
+		if (!requiredOrMapped.has(need.key)) continue
+		requiredOrMapped.set(need.key, picksByNeed.get(need.key)!.ids)
+	}
+	for (const [needKey, ids] of requiredOrMapped) {
+		const need = needs.get(needKey)
+		if (!need) continue
 		const missing = ids.find((id) => {
 			const credential = usable.get(id)
 			return !credential || !mappedCredentialFitsNeed(credential, need)
 		})
-		if (!missing) continue
+		if (!missing && ids.length > 0) continue
 		return {
 			reason: 'credential_access',
 			permission: null,
 			resourceType: enablementMappingPauseResourceType,
 			resourceId: needKey,
-			credentialId: missing,
+			credentialId: missing ?? null,
 		}
 	}
 	return null

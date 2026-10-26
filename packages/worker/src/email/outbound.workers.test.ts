@@ -21,6 +21,7 @@ import {
 	quarantinedInboundReplyErrorCode,
 	quarantinedInboundReplyMessage,
 	QuarantinedInboundReplyError,
+	spamInboundReplyMessage,
 } from './quarantined-inbound-reply.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
@@ -173,8 +174,9 @@ async function writeInboundMailboxMessage(
 		toAddresses: Array<string>
 		subject: string
 		messageIdHeader: string
-		classification?: 'accepted' | 'quarantined'
+		classification?: 'accepted' | 'quarantined' | 'spam'
 		classificationReason?: string | null
+		archivedAt?: string | null
 		updatedAt?: string
 	},
 ) {
@@ -661,6 +663,80 @@ test('sendOutboundEmail refuses replies to quarantined inbound mail until it is 
 	expect(releasedReply.message.toAddresses).toEqual(['recipient@example.com'])
 	expect(providerSends).toBe(2)
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore + 2)
+})
+
+test('sendOutboundEmail refuses replies to spam like quarantine, and archive does not block replies', async () => {
+	await ensureUsageRollupsTestSchema(env.APP_DB)
+	const account = await seedAccount()
+	let providerSends = 0
+	const sendEnv = bindingEnv(async () => {
+		providerSends += 1
+		return { messageId: `provider-spam-${providerSends}` }
+	})
+	const spam = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Cheap watches',
+		messageIdHeader: '<spam@example.com>',
+		classification: 'spam',
+		classificationReason: 'Marked as spam.',
+		updatedAt: '2026-07-01T12:00:00.000Z',
+	})
+	const sendsBefore = await readDailyEmailSendCounter(account.userId)
+	const refused = await rejection(
+		sendAs(account, {
+			env: sendEnv,
+			recipientPolicy: 'reply',
+			replyToMessageId: spam.id,
+			subject: 'Re: Cheap watches',
+			text: 'This should not send.',
+		}),
+	)
+	expect(refused).toBeInstanceOf(QuarantinedInboundReplyError)
+	expect(refused).toMatchObject({
+		code: quarantinedInboundReplyErrorCode,
+		message: spamInboundReplyMessage,
+	})
+	expect(providerSends).toBe(0)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)
+
+	const archivedAt = '2026-07-01T12:00:00.000Z'
+	const archived = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Old thread',
+		messageIdHeader: '<archived@example.com>',
+		classification: 'accepted',
+		archivedAt,
+	})
+	const archivedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: archived.id,
+		subject: 'Re: Old thread',
+		text: 'Archived mail can still be answered.',
+	})
+	expect(archivedReply.status).toBe('sent')
+	expect(providerSends).toBe(1)
+
+	const notSpam = await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).setMessageClassification({
+		ownerId: ownerIdFromStored(account.userId),
+		messageId: spam.id,
+		classification: 'accepted',
+		classificationReason: null,
+		updatedAt: '2026-07-01T12:00:01.000Z',
+	})
+	expect(notSpam).toEqual({ status: 'accepted' })
+	const releasedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: spam.id,
+		subject: 'Re: Cheap watches',
+		text: 'Not spam after all.',
+	})
+	expect(releasedReply.status).toBe('sent')
+	expect(providerSends).toBe(2)
 })
 
 test('sendOutboundEmail preserves reply headers and records failed fallback sends', async () => {

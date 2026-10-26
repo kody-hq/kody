@@ -52,6 +52,7 @@ function activityPage(
 								idempotencyKey: null,
 								entry: null,
 								workerId: null,
+								startedBy: null,
 							},
 						],
 			nextCursor,

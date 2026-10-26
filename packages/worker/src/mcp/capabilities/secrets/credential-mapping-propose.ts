@@ -8,7 +8,7 @@ import { credentialPickSchema } from '#universal/credential-pick-schema.ts'
 import { loadPackageMappingScopeForRequest } from '#worker/credentials/package-mapping-scope-access.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -223,11 +223,7 @@ export const credentialMappingProposeCapability = defineDomainCapability(
 					.min(1)
 					.optional()
 					.describe(packageIdLookupDescription),
-				kodyId: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				kodyId: packageKodyIdOptionalCamelInput(),
 				defaults: needPicksSchema
 					.optional()
 					.describe('Org default mappings, keyed by need key.'),
@@ -284,7 +280,7 @@ export const credentialMappingProposeCapability = defineDomainCapability(
 					),
 			})
 			.refine((input) => Boolean(input.packageId ?? input.kodyId), {
-				message: 'Provide packageId or kodyId.',
+				message: 'Provide packageId or leftover kodyId. Prefer packageId.',
 				path: ['packageId'],
 			}),
 		outputSchema: z.object({

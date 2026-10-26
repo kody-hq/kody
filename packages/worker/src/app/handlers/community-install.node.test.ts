@@ -149,8 +149,8 @@ test('community install POST enforces gates and maps install outcomes', async ()
 			// The acknowledgement is bound to the commit the listing pinned
 			// when the handler checked acknowledgement.
 			expectedPinnedCommit: 'commit-1',
-			// cloudflare:workers waitUntil — defers search-index / retriever
-			// projection work off the install response critical path.
+			// cloudflare:workers waitUntil — defers search-index projection work
+			// off the install response critical path.
 			waitUntil: expect.any(Function),
 		}),
 	)

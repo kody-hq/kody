@@ -174,7 +174,7 @@ function renderTriggerMappings(
 										need,
 										stored: mapping?.override ?? null,
 										inheritLabel: 'Inherits your default',
-										editable,
+										editable: editable && need.supplier !== 'publisher',
 										trigger,
 									})}
 								</td>

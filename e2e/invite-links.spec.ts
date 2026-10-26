@@ -172,7 +172,7 @@ test('addressed invite: listed and revocable on Members, accepted from Waiting',
 	await expect(card).toContainText('Join as Member')
 	await expect(card).toContainText('Links Org')
 	await Promise.all([
-		page.waitForURL(new RegExp(`/@${orgSlug}$`)),
+		page.waitForURL(new RegExp(`/@${orgSlug}/-/overview$`)),
 		card.getByTestId('pending-invite-accept').click(),
 	])
 	await page.goto(`/@${recipient.username}/-/waiting`)

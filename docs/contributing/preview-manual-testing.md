@@ -170,7 +170,7 @@ unless you are an operator with Cloudflare credentials. Create user data through
 supported MCP capabilities with `control-kody execute` / `search`, or use the
 browser UI. For a saved package, use
 `npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead]`.
-Package creation uses `packageGetGitRemote({ create: true, kody_id })` with the
+Package creation uses `packageGetGitRemote({ create: true, name })` with the
 package name leaf or `@owner/leaf`. Website-only reads and mutations use Start
 server functions, not public JSON action URLs. `/session`, `/auth`, and
 `/account/export.json` remain HTTP protocols. Use `control-kody` login rather

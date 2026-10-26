@@ -676,6 +676,8 @@ export async function executeAdminAccountHardDelete(input: {
 			username: target.handle,
 			email: target.email,
 		},
+		// Loaded with the target before the users row was purged.
+		createdAt: target.createdAt,
 	})
 	return { handle: target.handle }
 }

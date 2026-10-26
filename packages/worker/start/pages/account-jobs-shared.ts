@@ -17,7 +17,7 @@ export const viewFilterOptions: Array<{
 export type AccountJobsActionPayload = {
 	ok: true
 	jobId: string
-	runNow?: { ok: boolean; error: string | null; deletedAfterRun: boolean }
+	runNow?: { ok: boolean; error: string | null }
 }
 
 export type PostAccountJobsAction<TInput> = (

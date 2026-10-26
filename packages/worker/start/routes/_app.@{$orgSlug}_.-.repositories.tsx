@@ -57,7 +57,7 @@ function Page() {
 			<AccountPageHeader
 				entity="repositories"
 				title="Repositories"
-				description="Every repository in this workspace, private ones included. Your public profile shows visitors the public ones."
+				description="Every repository in this workspace, private ones included. Packages live here too: a package is a repository with a Kody package manifest. Your public profile shows visitors the public ones."
 				currentHref={href}
 			/>
 			<ProfileRoute

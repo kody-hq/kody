@@ -17,7 +17,10 @@ test('warning copy describes current behavior without a rollout date', () => {
 	expect(message).toContain(
 		'Kody denies this use when @owner/demo is used through another package',
 	)
-	expect(message).toContain('still allows it for now')
+	expect(message).toContain(
+		'allows it for now only if you authored or adopted the package',
+	)
+	expect(message).toContain('otherwise Kody denies this use')
 	expect(message).toContain(
 		'approve: https://kody.codes/@owner/-/secrets/user/RESEND_API_KEY?package_id=pkg-demo&package=demo.',
 	)

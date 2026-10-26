@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 
 const mocks = vi.hoisted(() => ({
 	listSavedPackagesByUserId: vi.fn(),
@@ -11,10 +12,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 		mocks.listSavedPackagesByUserId(...args),
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
-		mocks.loadPackageManifestBySourceId(...args),
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 import {
 	findStaticKodyDependencyCycle,

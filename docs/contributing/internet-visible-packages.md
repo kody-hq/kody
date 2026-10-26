@@ -70,8 +70,8 @@ public themselves when `evaluateSelfPublish`
   published, each still at the commit the snapshot pins (otherwise
   `stale_dependencies`), since only the current publish is read;
 - none of them declares `kody.credentials` (or has a fresh needs closure that
-  does), `secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`,
-  `retrievers`, or `webhooks`;
+  does), `secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
+  `webhooks`;
 - a security audit with verdict `pass` is recorded
   (`packageSecurityAuditRecord`) for the package's current published commit and
   capability fingerprint;
