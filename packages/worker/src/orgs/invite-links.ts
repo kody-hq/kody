@@ -66,9 +66,13 @@ export type StoredInviteLink = {
 	orgId: string
 	tokenHash: string
 	target: InviteLinkTarget
+	/** Membership links only; empty for team and resource links. */
+	teamIds: Array<string>
+	label: string | null
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	status: 'active' | 'revoked'
 	createdByUserId: string
 	expiresAt: string
@@ -79,9 +83,12 @@ export type StoredInviteLink = {
 export type ListedInviteLink = {
 	id: string
 	target: InviteLinkTarget
+	teamIds: Array<string>
+	label: string | null
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	expiresAt: string
 	createdAt: string
 	createdByUserId: string
@@ -112,9 +119,12 @@ export type InviteLinkRow = {
 	resource_type: string | null
 	resource_id: string | null
 	preset: string | null
+	team_ids_json: string | null
+	label: string | null
 	allowed_email_domains_json: string | null
 	max_uses: number | null
 	use_count: number
+	last_used_at: string | null
 	status: string
 	created_by_user_id: string
 	expires_at: string
@@ -132,9 +142,12 @@ const linkColumnNames = [
 	'resource_type',
 	'resource_id',
 	'preset',
+	'team_ids_json',
+	'label',
 	'allowed_email_domains_json',
 	'max_uses',
 	'use_count',
+	'last_used_at',
 	'status',
 	'created_by_user_id',
 	'expires_at',
@@ -208,6 +221,81 @@ function normalizeDomainList(
 	return [...unique].sort()
 }
 
+function normalizeInviteLinkLabel(
+	value: string | null | undefined,
+): string | null {
+	if (value == null) return null
+	const trimmed = value.trim()
+	if (!trimmed) return null
+	if (trimmed.length > 80) {
+		throw new Error('Label must be 80 characters or fewer.')
+	}
+	return trimmed
+}
+
+function parseTeamIdsJson(value: string | null): Array<string> {
+	if (!value) return []
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(value) as unknown
+	} catch {
+		throw new Error('Invite link team list is invalid.')
+	}
+	if (!Array.isArray(parsed)) {
+		throw new Error('Invite link team list is invalid.')
+	}
+	const ids: Array<string> = []
+	for (const entry of parsed) {
+		if (typeof entry !== 'string' || !entry.trim()) {
+			throw new Error('Invite link team list is invalid.')
+		}
+		ids.push(entry.trim())
+	}
+	return ids
+}
+
+function readTeamIdsOrBlock(
+	value: string | null,
+): { ok: true; teamIds: Array<string> } | { ok: false } {
+	try {
+		return { ok: true, teamIds: parseTeamIdsJson(value) }
+	} catch {
+		return { ok: false }
+	}
+}
+
+function normalizeTeamIds(
+	teamIds: ReadonlyArray<string> | null | undefined,
+): Array<string> {
+	if (!teamIds || teamIds.length === 0) return []
+	const unique = new Set<string>()
+	for (const raw of teamIds) {
+		const trimmed = raw.trim()
+		if (!trimmed) continue
+		unique.add(trimmed)
+	}
+	return [...unique]
+}
+
+export async function assertInviteLinkTeamsInOrg(
+	db: D1Database,
+	orgId: string,
+	teamIds: ReadonlyArray<string>,
+) {
+	for (const teamId of teamIds) {
+		const row = await db
+			.prepare(
+				`SELECT id FROM teams
+				 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(teamId, orgId)
+			.first<{ id: string }>()
+		if (!row) {
+			throw new Error('That team was not found in this organization.')
+		}
+	}
+}
+
 /** `null` when the row does not describe a target this code understands. */
 export function rowTarget(
 	row: Pick<
@@ -248,14 +336,19 @@ export function rowToStored(row: InviteLinkRow): StoredInviteLink {
 		throw new Error(`Invite link ${row.id} has status ${row.status}.`)
 	}
 	const domains = readAllowedDomainsOrBlock(row.allowed_email_domains_json)
+	const teams = readTeamIdsOrBlock(row.team_ids_json)
+	const teamIds = target.kind === 'membership' && teams.ok ? teams.teamIds : []
 	return {
 		id: row.id,
 		orgId: row.org_id,
 		tokenHash: row.token_hash,
 		target,
+		teamIds,
+		label: row.label?.trim() ? row.label.trim() : null,
 		allowedEmailDomains: domains.ok ? domains.domains : [],
 		maxUses: row.max_uses,
 		useCount: row.use_count,
+		lastUsedAt: row.last_used_at,
 		status: row.status,
 		createdByUserId: row.created_by_user_id,
 		expiresAt: row.expires_at,
@@ -265,7 +358,10 @@ export function rowToStored(row: InviteLinkRow): StoredInviteLink {
 }
 
 export function rowDomainsBlocked(row: InviteLinkRow) {
-	return !readAllowedDomainsOrBlock(row.allowed_email_domains_json).ok
+	return (
+		!readAllowedDomainsOrBlock(row.allowed_email_domains_json).ok ||
+		!readTeamIdsOrBlock(row.team_ids_json).ok
+	)
 }
 
 /** The org role a recipient who is not yet a member gets, if any. */
@@ -423,6 +519,8 @@ export async function createOrgInviteLink(input: {
 	createdByUserId: string
 	tokenHash: string
 	allowedEmailDomains?: ReadonlyArray<string> | null
+	teamIds?: ReadonlyArray<string> | null
+	label?: string | null
 	maxUses?: number | null
 	expiresAt?: string
 	audit: OrgAuditWriter
@@ -446,6 +544,12 @@ export async function createOrgInviteLink(input: {
 		)
 	}
 	const domains = normalizeDomainList(input.allowedEmailDomains)
+	const label = normalizeInviteLinkLabel(input.label)
+	const teamIds =
+		input.target.kind === 'membership' ? normalizeTeamIds(input.teamIds) : []
+	if (teamIds.length > 0) {
+		await assertInviteLinkTeamsInOrg(input.db, input.orgId, teamIds)
+	}
 	const maxUses =
 		input.maxUses == null || input.maxUses === undefined
 			? null
@@ -465,9 +569,10 @@ export async function createOrgInviteLink(input: {
 		.prepare(
 			`INSERT INTO org_invite_links (
 				id, org_id, token_hash, kind, role, team_id, resource_type,
-				resource_id, preset, allowed_email_domains_json, max_uses,
-				use_count, status, created_by_user_id, expires_at, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?, ?)`,
+				resource_id, preset, team_ids_json, label,
+				allowed_email_domains_json, max_uses, use_count, last_used_at,
+				status, created_by_user_id, expires_at, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 'active', ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -479,6 +584,8 @@ export async function createOrgInviteLink(input: {
 			columns.resourceType,
 			columns.resourceId,
 			columns.preset,
+			teamIds.length > 0 ? JSON.stringify(teamIds) : null,
+			label,
 			domains.length > 0 ? JSON.stringify(domains) : null,
 			maxUses,
 			input.createdByUserId,
@@ -493,12 +600,21 @@ export async function createOrgInviteLink(input: {
 		resourceId: id,
 		details: {
 			...targetAuditDetails(input.target),
+			label,
+			teamIds,
 			maxUses,
 			expiresAt,
 			allowedEmailDomains: domains,
 		},
 	})
-	return { id, expiresAt, allowedEmailDomains: domains, maxUses }
+	return {
+		id,
+		expiresAt,
+		allowedEmailDomains: domains,
+		maxUses,
+		label,
+		teamIds,
+	}
 }
 
 export async function getInviteLinkByTokenHash(
@@ -591,9 +707,12 @@ export async function listActiveOrgInviteLinks(
 			        l.resource_type AS resource_type,
 			        l.resource_id AS resource_id,
 			        l.preset AS preset,
+			        l.team_ids_json AS team_ids_json,
+			        l.label AS label,
 			        l.allowed_email_domains_json AS allowed_email_domains_json,
 			        l.max_uses AS max_uses,
 			        l.use_count AS use_count,
+			        l.last_used_at AS last_used_at,
 			        l.expires_at AS expires_at,
 			        l.created_at AS created_at,
 			        l.created_by_user_id AS created_by_user_id,
@@ -620,9 +739,12 @@ export async function listActiveOrgInviteLinks(
 				| 'resource_type'
 				| 'resource_id'
 				| 'preset'
+				| 'team_ids_json'
+				| 'label'
 				| 'allowed_email_domains_json'
 				| 'max_uses'
 				| 'use_count'
+				| 'last_used_at'
 				| 'expires_at'
 				| 'created_at'
 				| 'created_by_user_id'
@@ -636,13 +758,18 @@ export async function listActiveOrgInviteLinks(
 		if (!target) return []
 		const domains = readAllowedDomainsOrBlock(row.allowed_email_domains_json)
 		if (!domains.ok) return []
+		const teams = readTeamIdsOrBlock(row.team_ids_json)
+		if (!teams.ok) return []
 		return [
 			{
 				id: row.id,
 				target,
+				teamIds: target.kind === 'membership' ? teams.teamIds : [],
+				label: row.label?.trim() ? row.label.trim() : null,
 				allowedEmailDomains: domains.domains,
 				maxUses: row.max_uses,
 				useCount: row.use_count,
+				lastUsedAt: row.last_used_at,
 				expiresAt: row.expires_at,
 				createdAt: row.created_at,
 				createdByUserId: row.created_by_user_id,

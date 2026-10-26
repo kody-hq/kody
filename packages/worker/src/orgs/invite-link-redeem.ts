@@ -70,13 +70,14 @@ async function claimInviteLinkUse(input: {
 	const bumped = await input.db
 		.prepare(
 			`UPDATE org_invite_links
-			 SET use_count = use_count + 1
+			 SET use_count = use_count + 1,
+			     last_used_at = ?
 			 WHERE id = ?
 			   AND status = 'active'
 			   AND expires_at > ?
 			   AND (max_uses IS NULL OR use_count < max_uses)`,
 		)
-		.bind(input.linkId, input.nowIso)
+		.bind(input.nowIso, input.linkId, input.nowIso)
 		.run()
 	if ((bumped.meta?.changes ?? 0) === 0) {
 		await input.db
@@ -444,6 +445,16 @@ async function redeemMembershipLink(
 		invitedByUserId: link.createdByUserId,
 		audit: input.audit,
 	})
+	for (const teamId of link.teamIds) {
+		await addTeamMember({
+			db,
+			orgId: link.orgId,
+			teamId,
+			userId: user.userId,
+			addedByUserId: link.createdByUserId,
+			audit: input.audit,
+		})
+	}
 	if (seatRole(target.role)) {
 		await syncSeatsAfterMembershipChange({
 			db,
@@ -452,7 +463,10 @@ async function redeemMembershipLink(
 		})
 	}
 	if (!alreadyRedeemed) {
-		await recordJoined(input, { role: target.role })
+		await recordJoined(input, {
+			role: target.role,
+			teamIds: link.teamIds,
+		})
 	}
 	return success(false)
 }
