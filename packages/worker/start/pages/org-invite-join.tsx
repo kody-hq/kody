@@ -166,7 +166,7 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 				) : null}
 				{data.alreadyMember ? (
 					<p css={footerCss}>
-						<SiteLink href={copy.openHref} css={getPrimaryButtonCss()}>
+						<SiteLink href={copy.openHref} css={linkButtonCss}>
 							{copy.openLabel}
 						</SiteLink>
 					</p>
@@ -226,10 +226,10 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 					</div>
 				) : (
 					<div css={actionsCss}>
-						<SiteLink href={loginHref} css={getPrimaryButtonCss()}>
+						<SiteLink href={loginHref} css={linkButtonCss}>
 							Sign in to accept
 						</SiteLink>
-						<SiteLink href={signupHref} css={getSecondaryButtonCss()}>
+						<SiteLink href={signupHref} css={linkSecondaryButtonCss}>
 							Create an account
 						</SiteLink>
 					</div>
@@ -348,4 +348,20 @@ const iconButtonCss = {
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: spacing.xs,
+}
+
+const linkButtonCss = {
+	...getPrimaryButtonCss(),
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	textDecoration: 'none',
+}
+
+const linkSecondaryButtonCss = {
+	...getSecondaryButtonCss(),
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	textDecoration: 'none',
 }

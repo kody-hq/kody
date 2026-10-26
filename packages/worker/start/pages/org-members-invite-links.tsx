@@ -11,6 +11,8 @@ import { orgRoleLabel } from '#universal/org-pages.ts'
 import {
 	getDangerPillCss,
 	getPillButtonCss,
+	getSelectCss,
+	getSecondaryButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -35,6 +37,7 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+
 async function copyText(text: string) {
 	try {
 		await navigator.clipboard.writeText(text)
@@ -43,6 +46,7 @@ async function copyText(text: string) {
 		return false
 	}
 }
+
 export function OrgMembersInviteLinks({
 	links,
 	teams,
@@ -58,12 +62,13 @@ export function OrgMembersInviteLinks({
 	queryKey: QueryKey
 	onMessage: (message: string, tone: 'info' | 'error') => void
 }) {
-	const [role, setRole] = useState<'member' | 'billing'>('member'),
-		[label, setLabel] = useState(''),
-		[selectedTeamIds, setSelectedTeamIds] = useState<Array<string>>([]),
-		[domains, setDomains] = useState(''),
-		[maxUses, setMaxUses] = useState(''),
-		[days, setDays] = useState('7')
+	const [formOpen, setFormOpen] = useState(false)
+	const [role, setRole] = useState<'member' | 'billing'>('member')
+	const [label, setLabel] = useState('')
+	const [selectedTeamIds, setSelectedTeamIds] = useState<Array<string>>([])
+	const [domains, setDomains] = useState('')
+	const [maxUses, setMaxUses] = useState('')
+	const [days, setDays] = useState('7')
 	const [copiedLink, setCopiedLink] = useInviteHandoff<{
 		id: string
 		url: string
@@ -82,6 +87,21 @@ export function OrgMembersInviteLinks({
 	const capture = useSubmitterScope()
 	const creating = createMutation.isPending
 	const pending = creating || revokeMutation.isPending
+
+	function resetFormFields() {
+		setRole('member')
+		setLabel('')
+		setSelectedTeamIds([])
+		setDomains('')
+		setMaxUses('')
+		setDays('7')
+	}
+
+	function closeForm() {
+		setFormOpen(false)
+		resetFormFields()
+	}
+
 	function toggleTeam(teamId: string) {
 		setSelectedTeamIds((current) =>
 			current.includes(teamId)
@@ -89,6 +109,7 @@ export function OrgMembersInviteLinks({
 				: [...current, teamId],
 		)
 	}
+
 	async function createLink() {
 		const active = capture()
 		onMessage('', 'info')
@@ -107,15 +128,11 @@ export function OrgMembersInviteLinks({
 			const copied = await copyText(url)
 			if (!active()) return
 			setCopiedLink({ id: result.inviteLink.id, url, revision: clearRevision })
-			setLabel('')
-			setSelectedTeamIds([])
-			setDomains('')
-			setMaxUses('')
-			setDays('7')
+			resetFormFields()
 			onMessage(
 				copied
-					? 'Invite link credential copied to clipboard.'
-					: 'Invite link created. Copy the credential below; it is shown only once.',
+					? 'Invite link copied to clipboard.'
+					: 'Invite link created. Copy it below.',
 				'info',
 			)
 		} catch (error) {
@@ -128,6 +145,7 @@ export function OrgMembersInviteLinks({
 				)
 		}
 	}
+
 	async function revokeLink(linkId: string) {
 		const active = capture()
 		onMessage('', 'info')
@@ -149,8 +167,96 @@ export function OrgMembersInviteLinks({
 	}
 
 	return (
-		<>
-			<AccountManagementPanel title="Invite link">
+		<AccountManagementPanel
+			title="Invite links"
+			description="Share a link so people can join without knowing their email. The full URL is shown once."
+		>
+			{links.length > 0 ? (
+				<ul css={listCss} data-testid="org-invite-links">
+					{links.map((link) => (
+						<li
+							key={link.id}
+							css={rowItemCss}
+							data-testid="org-invite-link"
+							data-invite-link-id={link.id}
+						>
+							<div css={rowCss}>
+								<span aria-hidden="true" css={inviteIconCss}>
+									{renderIcon('link', { size: '1.25rem' })}
+								</span>
+								<span css={rowTextCss}>
+									<span css={rowNameCss}>
+										{link.label?.trim() || `${link.roleLabel} link`}
+									</span>
+									<span css={rowDetailCss}>
+										{link.roleLabel}
+										{link.teamNames.length > 0
+											? ` · Teams ${link.teamNames.join(', ')}`
+											: ''}
+										{' · '}
+										{link.useCount}
+										{link.maxUses != null ? ` / ${link.maxUses}` : ''} uses
+										{link.lastUsedAt
+											? ` · Last used ${formatTimestampDate(link.lastUsedAt)}`
+											: ''}
+										{' · '}Expires {formatTimestampDate(link.expiresAt)} ·
+										Created by{' '}
+										{link.createdByDisplayName?.trim() ||
+											(link.createdByUsername
+												? `@${link.createdByUsername}`
+												: 'Someone')}
+										{link.allowedEmailDomains.length > 0
+											? ` · Domains ${link.allowedEmailDomains.join(', ')}`
+											: ''}
+									</span>
+								</span>
+								<span css={rowActionsCss}>
+									<button
+										type="button"
+										disabled={pending}
+										css={getDangerPillCss({ size: 'sm' })}
+										onClick={() => void revokeLink(link.id)}
+									>
+										{revokeMutation.isPending &&
+										revokeMutation.variables?.linkId === link.id
+											? 'Revoking…'
+											: 'Revoke'}
+									</button>
+								</span>
+							</div>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p css={emptyCss} data-testid="org-invite-links-empty">
+					No active invite links.
+				</p>
+			)}
+
+			{copiedLinkUrl ? (
+				<div css={copiedLinkCss} data-testid="invite-link-url">
+					<code css={copiedLinkCodeCss}>{copiedLinkUrl}</code>
+					<button
+						type="button"
+						css={getPillButtonCss({ size: 'sm' })}
+						onClick={async () => {
+							const active = capture()
+							const copied = await copyText(copiedLinkUrl)
+							if (active())
+								onMessage(
+									copied
+										? 'Invite link copied to clipboard.'
+										: 'Could not copy the link. Select it manually.',
+									copied ? 'info' : 'error',
+								)
+						}}
+					>
+						{renderIcon('copy', { size: '1.05rem' })}Copy again
+					</button>
+				</div>
+			) : null}
+
+			{formOpen ? (
 				<form
 					data-testid="org-invite-link-form"
 					css={formCss}
@@ -164,7 +270,8 @@ export function OrgMembersInviteLinks({
 						<select
 							value={role}
 							aria-label="Invite link role"
-							css={selectCss}
+							data-field-ring
+							css={roleSelectCss}
 							onChange={(event) =>
 								setRole(event.currentTarget.value as typeof role)
 							}
@@ -259,13 +366,12 @@ export function OrgMembersInviteLinks({
 							onChange={(event) => setDays(event.currentTarget.value)}
 						/>
 						<p css={accountFieldNoteCss}>
-							Defaults to 7 days. Maximum 365. Every link expires; there is no
-							never option.
+							Links expire after 7 days by default (up to 365).
 						</p>
 					</label>
 					<p css={accountFieldNoteCss}>
-						The link is a credential: it is shown once and Kody stores only a
-						hash. Copy it now, or use Copy again while this page still shows it.
+						Copy the link now. Kody only stores a hash, so you can&apos;t see it
+						again later.
 					</p>
 					<div css={accountActionsCss}>
 						<button
@@ -277,96 +383,38 @@ export function OrgMembersInviteLinks({
 							{renderIcon('link', { size: '1.05rem' })}
 							{creating ? 'Creating…' : 'Copy invite link'}
 						</button>
-					</div>
-				</form>
-				{copiedLinkUrl ? (
-					<div css={copiedLinkCss} data-testid="invite-link-url">
-						<code css={copiedLinkCodeCss}>{copiedLinkUrl}</code>
 						<button
 							type="button"
-							css={getPillButtonCss({ size: 'sm' })}
-							onClick={async () => {
-								const active = capture()
-								const copied = await copyText(copiedLinkUrl)
-								if (active())
-									onMessage(
-										copied
-											? 'Invite link credential copied to clipboard.'
-											: 'Could not copy the link. Select it manually.',
-										copied ? 'info' : 'error',
-									)
-							}}
+							disabled={creating}
+							css={getSecondaryButtonCss()}
+							onClick={closeForm}
 						>
-							{renderIcon('copy', { size: '1.05rem' })}Copy again
+							Cancel
 						</button>
 					</div>
-				) : null}
-			</AccountManagementPanel>
-			{links.length > 0 ? (
-				<AccountManagementPanel title="Active invite links">
-					<ul css={listCss} data-testid="org-invite-links">
-						{links.map((link) => (
-							<li
-								key={link.id}
-								css={rowItemCss}
-								data-testid="org-invite-link"
-								data-invite-link-id={link.id}
-							>
-								<div css={rowCss}>
-									<span aria-hidden="true" css={inviteIconCss}>
-										{renderIcon('link', { size: '1.25rem' })}
-									</span>
-									<span css={rowTextCss}>
-										<span css={rowNameCss}>
-											{link.label?.trim() || `${link.roleLabel} link`}
-										</span>
-										<span css={rowDetailCss}>
-											{link.roleLabel}
-											{link.teamNames.length > 0
-												? ` · Teams ${link.teamNames.join(', ')}`
-												: ''}
-											{' · '}
-											{link.useCount}
-											{link.maxUses != null ? ` / ${link.maxUses}` : ''} uses
-											{link.lastUsedAt
-												? ` · Last used ${formatTimestampDate(link.lastUsedAt)}`
-												: ''}
-											{' · '}Expires {formatTimestampDate(link.expiresAt)} ·
-											Created by{' '}
-											{link.createdByDisplayName?.trim() ||
-												(link.createdByUsername
-													? `@${link.createdByUsername}`
-													: 'Someone')}
-											{link.allowedEmailDomains.length > 0
-												? ` · Domains ${link.allowedEmailDomains.join(', ')}`
-												: ''}
-										</span>
-									</span>
-									<span css={rowActionsCss}>
-										<button
-											type="button"
-											disabled={pending}
-											css={getDangerPillCss({ size: 'sm' })}
-											onClick={() => void revokeLink(link.id)}
-										>
-											{revokeMutation.isPending &&
-											revokeMutation.variables?.linkId === link.id
-												? 'Revoking…'
-												: 'Revoke'}
-										</button>
-									</span>
-								</div>
-							</li>
-						))}
-					</ul>
-				</AccountManagementPanel>
-			) : null}
-		</>
+				</form>
+			) : (
+				<div css={accountActionsCss}>
+					<button
+						type="button"
+						disabled={pending}
+						css={getPillButtonCss({ size: 'sm' })}
+						data-testid="org-invite-link-open-create"
+						onClick={() => setFormOpen(true)}
+					>
+						{renderIcon('plus', { size: '1.05rem' })}
+						Create invite link
+					</button>
+				</div>
+			)}
+		</AccountManagementPanel>
 	)
 }
+
 const formCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.lg,
+	marginTop: spacing.md,
 }
 
 const teamFieldsetCss: CSSObject = {
@@ -392,15 +440,20 @@ const teamOptionCss: CSSObject = {
 	fontSize: typography.fontSize.sm,
 }
 
-const selectCss: CSSObject = {
-	...accountInputCss,
+const roleSelectCss: CSSObject = {
+	...getSelectCss(),
 	width: 'auto',
 	minWidth: '8rem',
-	padding: '0.45rem 0.7rem',
 	[mq.mobile]: {
 		minWidth: 'min(100%, 8rem)',
 		maxWidth: '100%',
 	},
+}
+
+const emptyCss: CSSObject = {
+	margin: 0,
+	color: colors.textMuted,
+	fontSize: typography.fontSize.sm,
 }
 
 const listCss: CSSObject = {
@@ -435,7 +488,6 @@ const rowTextCss: CSSObject = {
 	gap: '0.15rem',
 	minWidth: 0,
 	flex: '1 1 auto',
-	// Zero basis keeps a long detail beside the icon on a phone row.
 	[mq.mobile]: {
 		flex: '1 1 0%',
 		maxWidth: '100%',
@@ -449,29 +501,23 @@ const rowNameCss: CSSObject = {
 	whiteSpace: 'nowrap' as const,
 	[mq.mobile]: {
 		whiteSpace: 'normal',
-		overflowWrap: 'anywhere',
 	},
 }
 
 const rowDetailCss: CSSObject = {
-	fontSize: typography.fontSize.sm,
 	color: colors.textMuted,
-	minWidth: 0,
-	[mq.mobile]: {
-		overflowWrap: 'anywhere',
-	},
+	fontSize: typography.fontSize.sm,
+	overflowWrap: 'anywhere',
 }
 
 const rowActionsCss: CSSObject = {
 	display: 'flex',
-	flexWrap: 'wrap' as const,
-	gap: spacing.sm,
 	alignItems: 'center',
+	gap: spacing.sm,
 	flexShrink: 0,
 	[mq.mobile]: {
-		flex: '1 0 100%',
-		maxWidth: '100%',
-		minWidth: 0,
+		width: '100%',
+		justifyContent: 'flex-end',
 	},
 }
 
@@ -488,17 +534,21 @@ const inviteIconCss: CSSObject = {
 }
 
 const copiedLinkCss: CSSObject = {
-	display: 'grid',
+	display: 'flex',
+	alignItems: 'center',
 	gap: spacing.sm,
-	marginTop: spacing.lg,
-	padding: spacing.md,
+	flexWrap: 'wrap',
+	marginTop: spacing.md,
+	padding: '0.85rem 1rem',
 	borderRadius: radius.card,
 	border: `1.5px solid ${colors.border}`,
-	backgroundColor: colors.background,
+	backgroundColor: colors.surface,
 }
 
 const copiedLinkCodeCss: CSSObject = {
+	flex: '1 1 12rem',
+	minWidth: 0,
+	overflowWrap: 'anywhere',
+	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.sm,
-	overflowWrap: 'anywhere' as const,
-	color: colors.text,
 }
