@@ -176,7 +176,11 @@ credentials; opt-in types that a package can declare are described in
   its own key with an explicit `provider`. `description` is required, never
   affects matching, and says why the package wants access. `multiple: true`
   means the package uses several accounts at once. A typical need looks like
-  `"github": { "description": "Read PRs to summarize them" }`.
+  `"github": { "description": "Read PRs to summarize them" }`. When the
+  `package-credential-suppliers` flag is on, a need can also declare
+  `supplier: "publisher"` or `supplier: "executor"`, and executor needs may set
+  `required`. See
+  [Choose who supplies a package credential](../guides/credentials.md#choose-who-supplies-a-package-credential).
 - Publish rejects any other key or a missing required field and names the slot.
   If a later rule rejects a slot in a version that is already published, the
   package still loads with its other slots.
@@ -292,18 +296,21 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
   published `kody:@…` modules and ad hoc / unpublished `--code` / `--file`
   modules both use `credential` / `credentials` from `kody:runtime` with the
   same CapabilityProxy resolution and gateway placement as hosted (secret values
-  never enter local workerd). CLI releases before the
-  [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md)
-  lack the host export and fail at import time — upgrade `@kodycodes/cli`.
+  never enter local workerd). A CLI whose host `kody:runtime` does not export
+  `credential` / `credentials` fails at import time — upgrade `@kodycodes/cli`.
+  See the
+  [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md).
 
 #### Let app visitors use the owner's credential
 
-Package apps run as their publisher, whose credentials fill the app's needs for
-every visitor; see
-[who the app runs as](../guides/package-apps.md#who-the-app-runs-as). The flag
-in this section still parses and keeps working while apps move over.
+Package apps run as their runs-as person (the publisher, unless an Owner picks
+someone else); see
+[who the app runs as](../guides/package-apps.md#who-the-app-runs-as). That
+person supplies publisher credentials through `credential(key)`. Executor needs
+and `ownerCredentialForVisitors` are documented below and in
+[Credentials](../guides/credentials.md#choose-who-supplies-a-package-credential).
 
-On that visitor fallback, an internet-visible app acts as its visitor: the
+An internet-visible app acts as its visitor for visitor-owned data: the
 signed-in person, or no one for a signed-out visitor or someone outside the org.
 A signed-in member with Use can still open org credentials they hold; a
 signed-out visitor and anyone without Use cannot. A need the app fills for every
@@ -325,9 +332,9 @@ visitor (a shared database, an email sender) opts in per slot with
 }
 ```
 
-- The flag takes only `true`; omit it to keep today's behavior. There is no
-  package-wide switch, and needs a package imports keep the flag their declaring
-  package gave them.
+- The flag takes only `true`; omit it for per-visitor resolution (default).
+  There is no package-wide switch, and needs a package imports keep the flag
+  their declaring package gave them.
 - It changes the capability fingerprint, so adding it to an internet-visible
   package pauses the publish and asks the owner to approve again. The approval
   page says on that credential that visitors can use it through the app, signed
@@ -1185,14 +1192,14 @@ publish checks run.
    `user.name` from `git_author`. Use that identity for commits; do not invent
    an email.
 
-   To start a **new** package in this lane, pass `create: true` with `kody_id`
-   set to the new `@owner/leaf` name (or the name leaf) and an optional
+   To start a **new** package in this lane, pass `create: true` with `name` set
+   to the new `@owner/leaf` name (or the name leaf) and an optional
    `description` (at most 200 characters; a short public tagline):
 
    ```json
    {
    	"create": true,
-   	"kody_id": "@you/new-package",
+   	"name": "@you/new-package",
    	"description": "What this package is for"
    }
    ```

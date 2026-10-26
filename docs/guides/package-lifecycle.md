@@ -152,10 +152,11 @@ When a normal filesystem and git client are available:
 
 1. Call `packageGetGitRemote`. Scope defaults to write when you have write
    access, otherwise read; pass `scope` explicitly to force either. For a new
-   package, pass `create: true`, `kody_id` set to the `@owner/leaf` name (or the
+   package, pass `create: true`, `name` set to the `@owner/leaf` name (or the
    name leaf), and `description` (at most 200 characters; a short public
-   tagline); for an existing package, omit `create` and pass `kody_id` or
-   `package_id` when the name is not known.
+   tagline); for an existing package, omit `create` and pass `name` or
+   `package_id` when the name is not known. Leftover `kody_id` still accepts the
+   same values.
 2. Run the returned setup commands and clone into a temporary directory. Those
    commands set local git `user.email` and `user.name` from `git_author` (the
    signed-in Kody account). Do not invent a git identity.

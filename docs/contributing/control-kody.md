@@ -145,7 +145,7 @@ the login cookie. `preview` uses
 [`preview-manual-test`](./preview-manual-testing.md) and its own seed.
 
 `package-create` registers a stub saved package on a PR preview through MCP
-`packageGetGitRemote({ create: true, kody_id })`. Pass the package name leaf or
+`packageGetGitRemote({ create: true, name })`. Pass the package name leaf or
 `@owner/leaf` with `--package-name`. It reuses `--origin`, `--email`,
 `--password`, `--cookie-file`, `--json`, and `--org <slug>`. Pass
 `--package-name <leaf-or-@scope/leaf>` (required; `--kody-id` is an alias),

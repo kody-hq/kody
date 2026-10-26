@@ -35,20 +35,20 @@ There are two lanes for writing package source. Pick based on whether you have
 local filesystem and git access:
 
 - **Git lane (coding agents — preferred).** Call
-  `packageGetGitRemote({ create: true, kody_id: '@owner/leaf', description })`
-  (or the name leaf as `kody_id`) to register a stub saved package and mint a
+  `packageGetGitRemote({ create: true, name: '@owner/leaf', description })` (or
+  the name leaf as `name`) to register a stub saved package and mint a
   short-lived authenticated remote in one call (for existing packages, omit
   `create` and pass the scoped name, or `package_id` when the name is not
-  known). Run the returned `setup_commands` to clone into a temporary directory
-  — they set local `git config user.email` / `user.name` from `git_author` (the
-  signed-in Kody account). Do not invent or guess a git identity. Edit normally
-  — binary assets, multi-file refactors, and local build/test loops all work —
-  commit, push, then publish with `packagePublishExternalPush`. If that tool
-  returns `locked`, open the returned `approval_url` so the owner can promote
-  the named commit. Do not treat HEAD as live until `published_commit` moves.
-  When the OAuth token is coarser than the export (Gmail drafts without send),
-  lock after the first publish — see
-  [locked-gmail-drafts.md](./locked-gmail-drafts.md).
+  known). Leftover `kody_id` still accepts the same values. Run the returned
+  `setup_commands` to clone into a temporary directory — they set local
+  `git config user.email` / `user.name` from `git_author` (the signed-in Kody
+  account). Do not invent or guess a git identity. Edit normally — binary
+  assets, multi-file refactors, and local build/test loops all work — commit,
+  push, then publish with `packagePublishExternalPush`. If that tool returns
+  `locked`, open the returned `approval_url` so the owner can promote the named
+  commit. Do not treat HEAD as live until `published_commit` moves. When the
+  OAuth token is coarser than the export (Gmail drafts without send), lock after
+  the first publish — see [locked-gmail-drafts.md](./locked-gmail-drafts.md).
 - **Tool-only lane.** Without local filesystem/git access (MCP-only agents such
   as ChatGPT / Claude / Grok mobile apps), create with `packageSave` (complete
   UTF-8 text file set; no binary files) and edit through repo sessions
@@ -478,11 +478,10 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with the scoped name (or `package_id`
-   when the name is not known), plus the path, method, and body your handler
-   needs. Confirm `{ status, headers, body, truncated }` and any
-   `packageStorage()` side effects. See
-   [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `packageAppFetch` with `package_id` or leftover `kody_id`
+   (the scoped name), plus the path, method, and body your handler needs.
+   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
+   side effects. See [Package app fetch](../use/package-app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and
