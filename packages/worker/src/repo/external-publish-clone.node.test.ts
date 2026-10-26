@@ -123,7 +123,13 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 		'package.json': '{"name":"@kody/x"}',
 		'src/index.ts': 'export const ok = true\n',
 	})
+	expect(gitMocks.listFiles).toHaveBeenCalledTimes(1)
 	await cloned.releaseGitObjects()
+	// After `.git` is gone, glob/collectFiles must use the cached path list —
+	// a live `git.listFiles` would fail without an index (Bugbot on #4374).
+	gitMocks.listFiles.mockImplementation(async () => {
+		throw new Error('git.listFiles must not run after releaseGitObjects')
+	})
 	await expect(
 		cloned.filesystem.readFile('/repo/.git/objects/pack/pack.pack'),
 	).rejects.toMatchObject({ code: 'ENOENT' })
@@ -142,6 +148,31 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 	])
 	await expect(cloned.workspace.glob('repo/src/**/*')).resolves.toEqual([
 		{ path: '/repo/src/index.ts', type: 'file' },
+	])
+	await expect(cloned.collectFiles()).resolves.toEqual({
+		'package.json': '{"name":"@kody/x"}',
+		'src/index.ts': 'export const ok = true\n',
+	})
+})
+
+test('releaseGitObjects warms the path cache before dropping .git', async () => {
+	gitMocks.listFiles.mockClear()
+	gitMocks.listFiles.mockResolvedValueOnce(['only.ts'])
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-head',
+	})
+	await cloned.filesystem.writeFile('/repo/only.ts', 'export {}\n')
+	expect(gitMocks.listFiles).not.toHaveBeenCalled()
+	await cloned.releaseGitObjects()
+	expect(gitMocks.listFiles).toHaveBeenCalledTimes(1)
+	gitMocks.listFiles.mockImplementation(async () => {
+		throw new Error('git.listFiles must not run after releaseGitObjects')
+	})
+	await expect(cloned.workspace.glob('**/*')).resolves.toEqual([
+		{ path: '/repo/only.ts', type: 'file' },
 	])
 })
 

@@ -256,11 +256,17 @@ export async function cloneExternalPublishWorkspace(input: {
 		})
 	}
 
-	const listFiles = async () =>
-		await git.listFiles({
+	// Cache the worktree paths while `.git` still exists. `releaseGitObjects`
+	// drops the index/pack, but checks still glob via this list + worktree reads.
+	let cachedRelativeFiles: Array<string> | null = null
+	const listFiles = async () => {
+		if (cachedRelativeFiles !== null) return cachedRelativeFiles
+		cachedRelativeFiles = await git.listFiles({
 			fs: workspace.fs,
 			dir,
 		})
+		return cachedRelativeFiles
+	}
 	const publishWorkspace = buildPublishWorkspaceFromCheckout({
 		dir,
 		filesystem: workspace.filesystem,
@@ -279,6 +285,9 @@ export async function cloneExternalPublishWorkspace(input: {
 				listFiles,
 			}),
 		releaseGitObjects: async () => {
+			// Warm the path cache before deleting the index so glob/collectFiles
+			// keep working for publish checks after pack memory is freed.
+			await listFiles()
 			try {
 				await workspace.filesystem.rm(`${dir}/.git`, { recursive: true })
 			} catch {
