@@ -179,6 +179,7 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 		options: { detached?: boolean; stdio?: string; windowsHide?: boolean }
 	}> = []
 	let unrefCalls = 0
+	let errorListener: ((...args: Array<unknown>) => void) | null = null
 	scheduleDetachedSkillRefresh({
 		origin: 'https://kody.codes',
 		spawnImpl: (command, args, options) => {
@@ -192,6 +193,10 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 				},
 			})
 			return {
+				on(event, listener) {
+					if (event === 'error') errorListener = listener
+					return this
+				},
 				unref() {
 					unrefCalls += 1
 				},
@@ -209,4 +214,6 @@ test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
 	assert.equal(calls[0]!.options.stdio, 'ignore')
 	assert.equal(calls[0]!.options.windowsHide, true)
 	assert.equal(unrefCalls, 1)
+	assert.ok(errorListener)
+	assert.doesNotThrow(() => errorListener!(new Error('spawn ENOENT')))
 })

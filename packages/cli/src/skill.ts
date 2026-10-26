@@ -1,7 +1,7 @@
 import { spawn, type SpawnOptions } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { createHash, randomBytes } from 'node:crypto'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { defaultMcpUrl } from './defaults.js'
@@ -218,10 +218,24 @@ export async function refreshInstalledSkills(
 		}
 		const currentDigest = sha256Digest(extractSkillBodyForDigest(current))
 		if (currentDigest === hosted.digest) continue
-		await writeFile(target.path, nextBody, 'utf8')
+		await writeFileAtomic(target.path, nextBody)
 		refreshed.push(target)
 	}
 	return refreshed
+}
+
+/** Write then rename so concurrent readers never see a partial skill file. */
+export async function writeFileAtomic(
+	path: string,
+	body: string,
+): Promise<void> {
+	const dir = dirname(path)
+	const temp = join(
+		dir,
+		`.${basename(path)}.${randomBytes(6).toString('hex')}.tmp`,
+	)
+	await writeFile(temp, body, 'utf8')
+	await rename(temp, path)
 }
 
 export function skillRefreshEntryPath(): string {
@@ -232,6 +246,11 @@ export function skillRefreshEntryPath(): string {
  * Spawn a detached child to refresh hosted skills so the parent CLI can exit
  * without waiting on network I/O. Best-effort; spawn failures are ignored.
  */
+type SkillRefreshChild = {
+	unref: () => void
+	on?: (event: string, listener: (...args: Array<unknown>) => void) => unknown
+}
+
 export function scheduleDetachedSkillRefresh(
 	input: {
 		origin?: string
@@ -239,7 +258,7 @@ export function scheduleDetachedSkillRefresh(
 			command: string,
 			args: Array<string>,
 			options: SpawnOptions,
-		) => { unref: () => void }
+		) => SkillRefreshChild
 	} = {},
 ): void {
 	const spawnFn = input.spawnImpl ?? spawn
@@ -257,8 +276,11 @@ export function scheduleDetachedSkillRefresh(
 				KODY_SKIP_SKILL_REFRESH: '1',
 			},
 		})
+		// Async spawn failures emit `error`; without a listener Node can abort
+		// the parent. Ignore them so the user's command still completes.
+		child.on?.('error', () => {})
 		child.unref()
 	} catch {
-		// Ignore spawn failures; the user's command still runs.
+		// Ignore sync spawn failures; the user's command still runs.
 	}
 }
