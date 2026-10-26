@@ -112,20 +112,26 @@ type HostedSkillIndexEntry = {
 	digest: string
 }
 
+/** Bound hosted skill fetches so install/refresh can fall back offline. */
+export const hostedSkillFetchTimeoutMs = 5_000
+
 export async function fetchHostedKodyCliSkill(input: {
 	origin?: string
 	fetchImpl?: typeof fetch
+	timeoutMs?: number
 }): Promise<{ body: string; digest: string; url: string } | null> {
 	const origin = (input.origin ?? agentSkillsOriginFromMcpUrl()).replace(
 		/\/$/,
 		'',
 	)
 	const fetchImpl = input.fetchImpl ?? fetch
+	const timeoutMs = input.timeoutMs ?? hostedSkillFetchTimeoutMs
 	try {
 		const indexResponse = await fetchImpl(
 			`${origin}${hostedAgentSkillsIndexPath}`,
 			{
 				headers: { accept: 'application/json' },
+				signal: AbortSignal.timeout(timeoutMs),
 			},
 		)
 		if (!indexResponse.ok) return null
@@ -136,11 +142,16 @@ export async function fetchHostedKodyCliSkill(input: {
 		if (!entry?.url || !entry.digest) return null
 		const skillResponse = await fetchImpl(entry.url, {
 			headers: { accept: 'text/markdown, text/plain;q=0.9, */*;q=0.8' },
+			signal: AbortSignal.timeout(timeoutMs),
 		})
 		if (!skillResponse.ok) return null
-		const body = await skillResponse.text()
+		const rawBody = await skillResponse.text()
+		const body = rawBody.endsWith('\n') ? rawBody : `${rawBody}\n`
+		// Index and markdown can drift across independent caches; only accept
+		// a body that matches the advertised digest.
+		if (sha256Digest(body) !== entry.digest) return null
 		return {
-			body: body.endsWith('\n') ? body : `${body}\n`,
+			body,
 			digest: entry.digest,
 			url: entry.url,
 		}
@@ -178,13 +189,14 @@ export async function installSkill(input: {
 }
 
 /**
- * Refresh installed skill copies when the hosted digest changed. Best-effort:
- * missing files and network failures are ignored.
+ * Refresh user-level installed skill copies when the hosted digest changed.
+ * Best-effort: missing files and network failures are ignored. Project copies
+ * are left alone so a repo that ships or commits its own skill is not rewritten
+ * by an unrelated CLI command.
  */
 export async function refreshInstalledSkills(
 	input: {
 		home?: string
-		cwd?: string
 		origin?: string
 		fetchImpl?: typeof fetch
 	} = {},
@@ -196,10 +208,7 @@ export async function refreshInstalledSkills(
 	if (!hosted) return []
 	const nextBody = wrapHostedSkillBody(hosted.body)
 	const refreshed: Array<SkillTarget> = []
-	const candidates = [
-		...userSkillTargets(input.home),
-		...projectSkillTargets(input.cwd),
-	]
+	const candidates = userSkillTargets(input.home)
 	for (const target of candidates) {
 		let current: string | null = null
 		try {

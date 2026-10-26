@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
 	extractSkillBodyForDigest,
+	fetchHostedKodyCliSkill,
 	installSkill,
 	projectSkillTargets,
 	refreshInstalledSkills,
@@ -121,7 +122,6 @@ test('refreshInstalledSkills updates stale copies by digest', async () => {
 
 	const refreshed = await refreshInstalledSkills({
 		home,
-		cwd: mkdtempSync(join(tmpdir(), 'kody-skill-refresh-cwd-')),
 		origin: 'https://example.test',
 		fetchImpl,
 	})
@@ -131,11 +131,38 @@ test('refreshInstalledSkills updates stale copies by digest', async () => {
 
 	const second = await refreshInstalledSkills({
 		home,
-		cwd: mkdtempSync(join(tmpdir(), 'kody-skill-refresh-cwd2-')),
 		origin: 'https://example.test',
 		fetchImpl,
 	})
 	assert.equal(second.length, 0)
+})
+
+test('fetchHostedKodyCliSkill rejects a body that does not match the index digest', async () => {
+	const fetchImpl: typeof fetch = async (input) => {
+		const url = String(input)
+		if (url.endsWith('/index.json')) {
+			return new Response(
+				JSON.stringify({
+					skills: [
+						{
+							name: 'kody-cli',
+							url: 'https://example.test/.well-known/agent-skills/kody-cli/SKILL.md',
+							digest: sha256Digest('# expected\n'),
+						},
+					],
+				}),
+				{ status: 200 },
+			)
+		}
+		return new Response('# stale cached body\n', { status: 200 })
+	}
+	assert.equal(
+		await fetchHostedKodyCliSkill({
+			origin: 'https://example.test',
+			fetchImpl,
+		}),
+		null,
+	)
 })
 
 test('bundled skill stub points at the hosted kody-cli skill', () => {
