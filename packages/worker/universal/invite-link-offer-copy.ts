@@ -33,7 +33,10 @@ export function inviteLinkOfferCopy(data: JoinPageData): InviteLinkOfferCopy {
 				satisfied: `You already belong to ${name}.`,
 				subject: name,
 				subjectDetail: `Organization · ${offer.roleLabel}`,
-				notice: null,
+				notice:
+					offer.teamNames.length > 0
+						? `Accepting also adds you to ${offer.teamNames.join(', ')}.`
+						: null,
 				acceptLabel: `Join ${name}`,
 				openHref: orgOverviewPath(data.org.slug),
 				openLabel: `Open ${name}`,

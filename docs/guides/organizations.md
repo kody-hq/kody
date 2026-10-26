@@ -96,13 +96,13 @@ Links last 7 days by default (up to 365; every link expires) and can be limited
 by number of uses. Members links can also carry an optional label, default
 teams, and a verified email domain allowlist. The link is a credential: Kody
 stores only a hash, so the full URL is shown once. Each page lists its active
-links with uses, last used, and expiry, and **Revoke** ends one right away. A
-link also stops working when its org is no longer active, when the team or
-package it points at is deleted, or when the person who made it loses access.
-Someone removed from the org can rejoin with the same membership link while it
-is live (idempotent for people who are already members). Team and package links
-are spent per person, so removing someone is not undone by the link they already
-used.
+links with uses and expiry; the Members page also shows last used. **Revoke**
+ends one right away. A link also stops working when its org is no longer active,
+when the team or package it points at is deleted, or when the person who made it
+loses access. Someone removed from the org can rejoin with the same membership
+link while it is live (idempotent for people who are already members). Team and
+package links are spent per person, so removing someone is not undone by the
+link they already used.
 
 Agents use `inviteLinkCreate`, `inviteLinkList`, `inviteLinkRevoke`, and
 `inviteLinkAccept` (same surfaces as Open API and the CLI). Creating, revoking,

@@ -98,12 +98,19 @@ async function buildOffer(input: {
 }): Promise<OrgInviteJoinOffer | null> {
 	const target = input.link.target
 	switch (target.kind) {
-		case 'membership':
+		case 'membership': {
+			const teamNames: Array<string> = []
+			for (const teamId of input.link.teamIds) {
+				const teamName = await readTeamName(input.db, input.link.orgId, teamId)
+				if (teamName) teamNames.push(teamName)
+			}
 			return {
 				kind: 'membership',
 				role: target.role,
 				roleLabel: orgRoleLabel(target.role),
+				teamNames,
 			}
+		}
 		case 'team': {
 			const teamName = await readTeamName(
 				input.db,

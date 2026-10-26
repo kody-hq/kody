@@ -437,35 +437,53 @@ async function redeemMembershipLink(
 		return success(true)
 	}
 
-	await addOrgMember({
-		db,
-		orgId: link.orgId,
-		userId: user.userId,
-		role: target.role,
-		invitedByUserId: link.createdByUserId,
-		audit: input.audit,
-	})
+	const liveTeamIds: Array<string> = []
 	for (const teamId of link.teamIds) {
-		await addTeamMember({
+		const team = await db
+			.prepare(
+				`SELECT id FROM teams
+				 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(teamId, link.orgId)
+			.first<{ id: string }>()
+		if (team) liveTeamIds.push(team.id)
+	}
+	const writeMembership = async () => {
+		await addOrgMember({
 			db,
 			orgId: link.orgId,
-			teamId,
 			userId: user.userId,
-			addedByUserId: link.createdByUserId,
+			role: target.role,
+			invitedByUserId: link.createdByUserId,
 			audit: input.audit,
 		})
+		for (const teamId of liveTeamIds) {
+			await addTeamMember({
+				db,
+				orgId: link.orgId,
+				teamId,
+				userId: user.userId,
+				addedByUserId: link.createdByUserId,
+				audit: input.audit,
+			})
+		}
+		if (seatRole(target.role)) {
+			await syncSeatsAfterMembershipChange({
+				db,
+				env: input.env,
+				orgId: link.orgId,
+			})
+		}
 	}
-	if (seatRole(target.role)) {
-		await syncSeatsAfterMembershipChange({
-			db,
-			env: input.env,
-			orgId: link.orgId,
-		})
+	if (alreadyRedeemed) {
+		await writeMembership()
+	} else {
+		await withClaimReleasedOnFailure({ ...input, target }, writeMembership)
 	}
 	if (!alreadyRedeemed) {
 		await recordJoined(input, {
 			role: target.role,
-			teamIds: link.teamIds,
+			teamIds: liveTeamIds,
 		})
 	}
 	return success(false)

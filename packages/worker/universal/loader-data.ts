@@ -1384,7 +1384,13 @@ export type OrgMembersLoaderData = {
 
 /** What accepting an invite link gives, as the join page describes it. */
 export type OrgInviteJoinOffer =
-	| { kind: 'membership'; role: 'member' | 'billing'; roleLabel: string }
+	| {
+			kind: 'membership'
+			role: 'member' | 'billing'
+			roleLabel: string
+			/** Live default team names this link still assigns. */
+			teamNames: Array<string>
+	  }
 	| {
 			kind: 'team'
 			teamName: string
