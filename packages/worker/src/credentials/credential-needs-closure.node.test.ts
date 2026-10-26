@@ -366,6 +366,30 @@ test('a dependency that declares the same key with another kind is a conflict', 
 	expect(conflicts).toHaveLength(1)
 })
 
+test('supplierSemanticsEnabled is reused through dependency recursion (KODY-BT)', async () => {
+	mocks.supplierFlag.mockResolvedValue(true)
+	addPackage({
+		name: '@acme/leaf',
+		sourceId: 'src-leaf',
+		commit: 'c1',
+		credentials: { openai: { kind: 'secret', description: 'OpenAI.' } },
+	})
+	addPackage({
+		name: '@acme/mid',
+		sourceId: 'src-mid',
+		commit: 'c1',
+		files: { 'index.ts': "import leaf from 'kody:@acme/leaf'" },
+	})
+	await computeCredentialNeedsClosure({
+		env,
+		userId: 'org-1',
+		manifest: manifest('@acme/root', undefined),
+		files: { 'index.ts': "import mid from 'kody:@acme/mid'" },
+		supplierSemanticsEnabled: false,
+	})
+	expect(mocks.supplierFlag).not.toHaveBeenCalled()
+})
+
 test('a publish that stored no closure is computed from its published source', async () => {
 	addPackage({
 		name: '@acme/connector',

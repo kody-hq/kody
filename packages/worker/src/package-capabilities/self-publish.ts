@@ -81,6 +81,12 @@ async function evaluateTreePackage(
 	env: Env,
 	sourceId: string,
 	pinnedCommit: string,
+	/**
+	 * Shared memo key for the package-credential-suppliers flag across the
+	 * dependency tree (KODY-BT). The flag is per org; without this each
+	 * package re-runs owner lookup + feature-flag reads.
+	 */
+	flagMemo: object,
 ): Promise<TreePackageResult> {
 	const source = await getEntitySourceById(env.APP_DB, sourceId)
 	if (!source?.published_commit) {
@@ -146,6 +152,7 @@ async function evaluateTreePackage(
 		userId: source.user_id,
 		sourceId,
 		fresh: true,
+		request: flagMemo,
 	})
 	if (needs.length > 0) {
 		return {
@@ -248,8 +255,16 @@ export async function evaluateSelfPublish(input: {
 				[dependency.sourceId, dependency.publishedCommit] as const,
 		),
 	])
+	// One memo object for the whole tree so same-org packages share one
+	// package-credential-suppliers evaluation (KODY-BT).
+	const flagMemo = {}
 	for (const [sourceId, commit] of pinned) {
-		const result = await evaluateTreePackage(input.env, sourceId, commit)
+		const result = await evaluateTreePackage(
+			input.env,
+			sourceId,
+			commit,
+			flagMemo,
+		)
 		if (result.blocker) {
 			return {
 				eligible: false,

@@ -80,7 +80,7 @@ async function listUsage(input: {
 	// Shared org/personal/MCP rows load once; package-bound Keys are batched
 	// (KODY-BD). Closures still run per package in parallel, but the suppliers
 	// flag is evaluated once for the org and threaded with `request` so nested
-	// dependency walks share the same memo (Sentry KODY-BW).
+	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT).
 	const supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
 		db: input.env.APP_DB,
 		orgId: input.orgId,
