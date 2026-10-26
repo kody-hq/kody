@@ -78,6 +78,18 @@ test('URL-shaped and nested-header vault examples under status() stay display-on
 	).toBe(true)
 })
 
+test('assigned status arrow returns stay display-only for vault examples', () => {
+	const result = scan(`
+		export const status = () => ({
+			example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
+		})
+	`)
+	expect(result.vaultPlacements).toEqual([other('object', 'example')])
+	expect(
+		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
+	).toBe(true)
+})
+
 test('docs-named body fields and header helpers under fetch stay credential uses', () => {
 	const bodyField = scan(`
 		await fetch('https://api.example.com/v1', {

@@ -519,13 +519,22 @@ export async function publishFromExternalRef(input: {
 					publishedCommit: input.newCommit,
 				})
 			}
+			return {
+				status: 'already_published',
+				published_commit: source.published_commit,
+				checks_rerun: true,
+				message: stamp
+					? 'HEAD was already the published commit; publish checks were re-run because the stored check/stamp used an older checker (or a prior attempt never sealed a success). Checks passed and the stamp was refreshed.'
+					: 'HEAD was already the published commit; publish checks passed, but the stamp refresh could not be persisted. Retry the publish.',
+				...publishNotices,
+			}
 		}
 		return {
 			status: 'already_published',
 			published_commit: source.published_commit,
 			checks_rerun: true,
 			message:
-				'HEAD was already the published commit; publish checks were re-run because the stored check/stamp used an older checker (or a prior attempt never sealed a success). Checks passed and the stamp was refreshed.',
+				'HEAD was already the published commit; publish checks were re-run because the stored check/stamp used an older checker (or a prior attempt never sealed a success). Checks passed.',
 			...publishNotices,
 		}
 	}

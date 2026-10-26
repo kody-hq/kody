@@ -887,7 +887,18 @@ function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
 			ancestor.type === 'FunctionExpression' ||
 			ancestor.type === 'ArrowFunctionExpression'
 		) {
-			return getNodeName(ancestor.id) ?? getNodeName(ancestor.key) ?? null
+			const own = getNodeName(ancestor.id) ?? getNodeName(ancestor.key) ?? null
+			if (own) return own
+			// `const status = () => …` / `status: () => …` — the name sits on
+			// the enclosing declarator or object property, not the function.
+			const holder = ancestors[index - 1]
+			if (holder?.type === 'VariableDeclarator') {
+				return getNodeName(holder.id)
+			}
+			if (holder?.type === 'ObjectProperty') {
+				return getNodeName(holder.key) ?? propertyKey(holder)
+			}
+			continue
 		}
 		if (
 			ancestor.type === 'ObjectMethod' ||
