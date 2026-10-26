@@ -90,6 +90,7 @@ import {
 } from './execution-safety.ts'
 import {
 	computeNextRunAt,
+	computeNextRunAtAfterOccurrence,
 	estimateScheduleMinIntervalMs,
 	formatJobError,
 	isJobExpired,
@@ -1770,10 +1771,10 @@ async function deferClaimedJobWithoutEnablement(input: {
 				now: input.now,
 				retryCount: row.retry_count,
 			})
-		: computeNextRunAt({
+		: computeNextRunAtAfterOccurrence({
 				schedule: row.record.schedule,
 				timezone: row.record.timezone,
-				from: input.now,
+				scheduledFor,
 			})
 	const settled = !scheduledFor
 		? await store.retryClaimedJob({
@@ -2021,6 +2022,7 @@ async function runDueJobsForUserUnderLease(
 					const result = await processDueJobs({
 						jobs: [row.record],
 						now,
+						scheduledFor: row.claimed_scheduled_for,
 						async executeJob() {
 							return scheduledOutcome
 						},
@@ -2361,10 +2363,10 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 	}
 	const updated = applyExecutionOutcome(row.record, outcome, {
 		updatedAt: nowIso,
-		nextRunAt: computeNextRunAt({
+		nextRunAt: computeNextRunAtAfterOccurrence({
 			schedule: row.record.schedule,
 			timezone: row.record.timezone,
-			from: input.now,
+			scheduledFor,
 		}),
 	})
 	const finalized = await jobsData(input.env).finalizeClaimedJob({

@@ -167,6 +167,24 @@ export function computeNextRunAt(input: {
 	return assertNeverJobSchedule(input.schedule)
 }
 
+/**
+ * Advance past a claimed/completed occurrence. Using wall-clock `now` here
+ * drops intermediate cron/interval fires when a tick settles late; advancing
+ * from the occurrence keeps at-most-one catch-up per pass (the next slot after
+ * this one stays due until a later alarm drains it).
+ */
+export function computeNextRunAtAfterOccurrence(input: {
+	schedule: JobSchedule
+	timezone?: string | null
+	scheduledFor: Date | string
+}) {
+	return computeNextRunAt({
+		schedule: input.schedule,
+		timezone: input.timezone,
+		from: input.scheduledFor,
+	})
+}
+
 export function normalizeJobSchedule(schedule: JobSchedule) {
 	switch (schedule.type) {
 		case 'interval':

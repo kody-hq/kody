@@ -2,6 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import {
 	computeNextRunAt,
+	computeNextRunAtAfterOccurrence,
 	estimateScheduleMinIntervalMs,
 	isJobDue,
 	isJobExpired,
@@ -49,6 +50,22 @@ test('job schedule helpers normalize schedules and compute the next run time', (
 			from: '2026-04-17T15:00:00.000Z',
 		}),
 	).toBe('2026-04-17T15:15:00.000Z')
+
+	// Late settle must not skip intermediate hourly firings.
+	expect(
+		computeNextRunAtAfterOccurrence({
+			schedule: { type: 'cron', expression: '0 * * * *' },
+			timezone: 'UTC',
+			scheduledFor: '2026-04-17T10:00:00.000Z',
+		}),
+	).toBe('2026-04-17T11:00:00.000Z')
+	expect(
+		computeNextRunAt({
+			schedule: { type: 'cron', expression: '0 * * * *' },
+			timezone: 'UTC',
+			from: '2026-04-17T15:03:00.000Z',
+		}),
+	).toBe('2026-04-17T16:00:00.000Z')
 })
 
 test('estimateScheduleMinIntervalMs measures interval and cron gaps', () => {

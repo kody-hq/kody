@@ -41,6 +41,7 @@ import {
 	runRecordRetentionEveryNFinishes,
 	runRecordStaleRunningTtlMsBackground,
 	runRecordStaleRunningTtlMsJob,
+	runRecordStaleRunningTtlMsScheduledJob,
 	runRecordStaleRunningTtlMsShortLived,
 	type RunRecordContext,
 	type RunRecordFilter,
@@ -893,11 +894,11 @@ test('cap and stale retention journey', async () => {
 		})
 	}
 
-	// --- idempotent scheduled/queued runs retain auto-ignored interrupt history ---
+	// --- queued deliveries stay auto-ignored; scheduled ticks stay visible and releasable ---
 	{
 		const userId = uniqueUserId('idempotent-platform-interrupt')
 		const staleJobStartedAt = iso(
-			Date.now() - runRecordStaleRunningTtlMsJob - 1_000,
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 1_000,
 		)
 		const staleShortStartedAt = iso(
 			Date.now() - runRecordStaleRunningTtlMsShortLived - 1_000,
@@ -909,6 +910,7 @@ test('cap and stale retention journey', async () => {
 				status: 'running',
 				startedAt: staleJobStartedAt,
 				surface: 'job',
+				jobId: 'job-1',
 				idempotencyKey: scheduledKey,
 			},
 			{
@@ -936,35 +938,55 @@ test('cap and stale retention journey', async () => {
 
 		const page = await listRuns(userId, { errorTriage: 'all' })
 		expect(page.runs).toEqual(
-			Array.from({ length: 3 }, () => expect.objectContaining(autoIgnored)),
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: 'stale-scheduled-job',
+					status: 'error',
+					errorName: runRecordPlatformInterruptedErrorName,
+					errorTriage: null,
+					idempotencyKey: null,
+				}),
+				expect.objectContaining({
+					id: 'stale-subscription-delivery',
+					...autoIgnored,
+				}),
+				expect.objectContaining({
+					id: 'stale-keyed-export',
+					...autoIgnored,
+				}),
+			]),
 		)
 		expect(
 			await summarizeRunRecords({ env, userId, since: iso(0) }),
-		).toMatchObject({ errors: 0, ignored: 3, running: 0 })
+		).toMatchObject({ errors: 1, ignored: 2, running: 0 })
 		expect(
 			(await listRuns(userId, { errorTriage: 'ignored' })).runs,
-		).toHaveLength(3)
+		).toHaveLength(2)
 
+		// Cleared key lets the scheduler claim the occurrence again.
+		const reclaimed = await claimRunRecord({
+			env,
+			userId,
+			context: {
+				surface: 'job',
+				name: 'example-job',
+				jobId: 'job-1',
+				idempotencyKey: scheduledKey,
+			},
+		})
+		expect(reclaimed).toMatchObject({ claimed: true })
+		if (!reclaimed || !reclaimed.claimed) {
+			throw new Error('expected scheduled-job key reclaim after interrupt')
+		}
 		await finishRunRecord({
 			env,
-			handle: handleFor(
-				userId,
-				'stale-scheduled-job',
-				{ surface: 'job', idempotencyKey: scheduledKey },
-				Date.parse(staleJobStartedAt),
-			),
-			status: 'error',
-			error: new Error('package failed after the delayed finish arrived'),
+			handle: reclaimed.handle,
+			status: 'success',
+			result: { recovered: true },
 		})
-		expect((await getRun(userId, 'stale-scheduled-job'))?.run).toMatchObject({
-			status: 'error',
-			errorName: 'Error',
-			errorMessage: 'package failed after the delayed finish arrived',
-			errorTriage: null,
-			triageNote: null,
-			triagedAt: null,
-			triagedBy: null,
-			startedBy: null,
+		expect((await getRun(userId, reclaimed.handle.id))?.run).toMatchObject({
+			status: 'success',
+			idempotencyKey: scheduledKey,
 		})
 		for (const runId of ['stale-subscription-delivery', 'stale-keyed-export']) {
 			expect((await getRun(userId, runId))?.run).toMatchObject(autoIgnored)

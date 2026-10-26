@@ -1,6 +1,6 @@
 import { rescheduleFailedDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { type SchedulerJobOutcomeLog } from './scheduler-logging.ts'
-import { computeNextRunAt, formatJobError } from './schedule.ts'
+import { computeNextRunAtAfterOccurrence, formatJobError } from './schedule.ts'
 import {
 	type JobExecutionOutcome,
 	type JobRecord,
@@ -17,6 +17,12 @@ export type ProcessDueJobsResult = {
 export async function processDueJobs(input: {
 	jobs: Array<JobRecord>
 	now?: Date
+	/**
+	 * Claimed occurrence timestamp. When set, `next_run_at` advances from this
+	 * slot (catch-up), not from wall-clock `now`, so late settles cannot skip
+	 * intermediate firings.
+	 */
+	scheduledFor?: string | null
 	executeJob: (job: JobRecord) => Promise<JobExecutionOutcome>
 }): Promise<ProcessDueJobsResult> {
 	const now = input.now ?? new Date()
@@ -49,12 +55,14 @@ export async function processDueJobs(input: {
 		}
 
 		try {
+			const occurrenceForNext =
+				input.scheduledFor?.trim() || job.nextRunAt || now.toISOString()
 			const updated = applyExecutionOutcome(job, outcome, {
 				updatedAt: now.toISOString(),
-				nextRunAt: computeNextRunAt({
+				nextRunAt: computeNextRunAtAfterOccurrence({
 					schedule: job.schedule,
 					timezone: job.timezone,
-					from: now,
+					scheduledFor: occurrenceForNext,
 				}),
 			})
 			saveJobs.push(updated)

@@ -174,10 +174,12 @@ export async function runJobScheduleWatchdogTick(input: {
 	for (const row of stuckRows) {
 		usersNeedingSync.add(row.user_id)
 		try {
+			// Advance from the stuck occurrence, not wall clock, so late repair
+			// cannot skip intermediate firings (at-most-one catch-up per pass).
 			const nextRunAt = computeNextRunAt({
 				schedule: row.record.schedule,
 				timezone: row.record.timezone,
-				from: now,
+				from: row.next_run_at,
 			})
 			// The pre-extraction watchdog wrapped this in the main worker's
 			// account write lease. Account deletion now serializes through
