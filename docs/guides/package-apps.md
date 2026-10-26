@@ -1147,10 +1147,11 @@ const callback = appUrl('oauth/callback')
 
 `hostedUrl` is the public mount URL. `appBasePath` is the origin-relative mount:
 `/<package-name>` on `{username}.kody.run`, and empty on an app-level custom
-hostname (the app owns `/`). Both come from the current serving username and
-package name leaf, including after a rename or fork. When you pass a relative
-path to `new URL(path, origin)`, give `origin` a trailing slash so
-`assets/sprite.png` stays under the mount.
+hostname (the app owns `/`). Use the runtime-provided values as-is. On a
+subdomain they follow the current serving username and package name leaf,
+including after a rename or fork. When you pass a relative path to
+`new URL(path, origin)`, give `origin` a trailing slash so `assets/sprite.png`
+stays under the mount.
 
 Files the platform serves for you (the bundled browser client and the
 `kody.app.assets` directory) live under `packageContext.assetBasePath`; see the

@@ -333,8 +333,8 @@ visitor (a shared database, an email sender) opts in per slot with
 ```
 
 - The flag takes only `true`; omit it for per-visitor resolution (default).
-  There is no package-wide switch, and needs a package imports keep the flag
-  their declaring package gave them.
+  There is no package-wide switch. Package imports keep the flag from the
+  package that declares each need.
 - It changes the capability fingerprint, so adding it to an internet-visible
   package pauses the publish and asks the owner to approve again. The approval
   page says on that credential that visitors can use it through the app, signed

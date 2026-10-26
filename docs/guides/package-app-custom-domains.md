@@ -13,8 +13,8 @@ category: platform
 A package app normally lives on `*.kody.run`. A paid organization can also serve
 its apps on a hostname it owns, such as `apps.example.com`. Managing hostnames
 requires the `package-app-custom-domains` feature (off by default; experiments
-opt-in). Serving a hostname that is already verified does not depend on that
-flag. Kody uses Cloudflare for SaaS to route the hostname and issue its
+opt-in). Serving a verified hostname requires that feature's global switch to be
+on. Kody uses Cloudflare for SaaS to route the hostname and issue its
 certificate.
 
 There are two kinds of binding:
@@ -22,7 +22,8 @@ There are two kinds of binding:
 - **App** (`binding_kind: "app"`): one internet-visible (public) app, served at
   the root of the hostname, for example `https://apps.example.com/`.
 - **Org** (`binding_kind: "org"`): the organization's private apps, served at
-  `https://apps.example.com/packages/{package-name}`.
+  `https://apps.example.com/{package-name}` (legacy `/packages/{package-name}`
+  still works).
 
 ## Which hostnames are allowed
 
