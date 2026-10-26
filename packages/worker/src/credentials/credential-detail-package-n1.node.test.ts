@@ -4,6 +4,7 @@
  * issue 7810484425). Shared org rows load once; package-bound Keys batch.
  */
 import { DatabaseSync } from 'node:sqlite'
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -110,7 +111,10 @@ async function setup(packageCount: number) {
 	const queries: Array<string> = []
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
-	const db = createD1FromSqlite(sqlite, { queries })
+	const db = createD1FromSqlite(sqlite, {
+		queries,
+		maxBindings: maxD1BoundParameters,
+	})
 	const env = {
 		APP_DB: db,
 		AUDIT_DB: createAuditTestDb(),
@@ -412,10 +416,9 @@ test('loadCredentialDetail usage issues at most one org-owner lookup (KODY-BV)',
 })
 
 test('package-bound Key batch chunks under maxD1BoundParameters (KODY-BD)', async () => {
-	const { maxD1BoundParameters } =
-		await import('@kody-internal/shared/chunk.ts')
 	// Seed enough package ids to force more than one secret IN-list without
-	// burning entitlement quota on saveSecret.
+	// burning entitlement quota on saveSecret. Fixture D1 enforces the
+	// maxD1BoundParameters bind cap so a future unchunked IN-list fails hard.
 	const t = await setup(2)
 	const packageIds = Array.from(
 		{ length: maxD1BoundParameters },
