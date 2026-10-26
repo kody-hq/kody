@@ -2541,6 +2541,8 @@ type AccountJobRecentRun = {
 	status: 'success' | 'error' | 'running'
 	durationMs: number
 	error: string | null
+	/** How the run started: `manual`, `scheduled`, or another stored trigger. */
+	trigger: string
 }
 
 export type AccountJobDetail = AccountJobListItem & {

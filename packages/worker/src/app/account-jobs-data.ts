@@ -11,6 +11,7 @@ import { requirePackageIdFromJobId } from '#worker/jobs/package-job-id.ts'
 import { type JobSchedule, type JobView } from '#worker/jobs/types.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { listRunRecords } from '#worker/run-records/service.ts'
+import { jobRunTriggerFromRecord } from '#worker/run-records/types.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import { highlightJsonValue } from '#app/highlight-code.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
@@ -50,6 +51,8 @@ export type AccountJobRecentRun = {
 	status: 'success' | 'error' | 'running'
 	durationMs: number
 	error: string | null
+	/** How the run started: `manual`, `scheduled`, or another stored trigger. */
+	trigger: string
 }
 
 export type AccountJobSchedule = JobSchedule
@@ -161,6 +164,7 @@ async function loadRecentRunsForJob(input: {
 		status: run.status,
 		durationMs: run.durationMs ?? 0,
 		error: run.errorMessage,
+		trigger: jobRunTriggerFromRecord(run),
 	}))
 }
 

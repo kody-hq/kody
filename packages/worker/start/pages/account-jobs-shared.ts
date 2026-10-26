@@ -20,13 +20,30 @@ export type AccountJobsActionPayload = {
 	runNow?: { ok: boolean; error: string | null }
 }
 
+export type AccountJobsMessageTone = 'info' | 'error'
+
 export type PostAccountJobsAction<TInput> = (
 	input: TInput & {
 		successMessage: (payload: AccountJobsActionPayload) => string | null
+		successTone?: (payload: AccountJobsActionPayload) => AccountJobsMessageTone
 		failureMessage: string
 		afterSuccess?: (payload: AccountJobsActionPayload) => void
 	},
 ) => Promise<void>
+
+/** Copy after Run now finishes (the run is awaited, not merely requested). */
+export function runNowSuccessMessage(payload: AccountJobsActionPayload) {
+	if (payload.runNow && !payload.runNow.ok) {
+		return `Run finished with an error${payload.runNow.error ? `: ${payload.runNow.error}` : '.'}`
+	}
+	return 'Job ran successfully.'
+}
+
+export function runNowSuccessTone(
+	payload: AccountJobsActionPayload,
+): AccountJobsMessageTone {
+	return payload.runNow && !payload.runNow.ok ? 'error' : 'info'
+}
 
 export function emptyJobsMessage(input: {
 	totalCount: number

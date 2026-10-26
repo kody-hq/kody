@@ -49,6 +49,7 @@ import {
 	upsertJobRunObservability,
 } from '#worker/run-records/service.ts'
 import {
+	jobRunTriggerForContext,
 	runPersistenceForContext,
 	runRecordMaxPageSize,
 	type RunRecordHandle,
@@ -511,6 +512,11 @@ async function executePublishedJobArtifact(input: {
 		sourceId: packageContext?.sourceId ?? input.job.sourceId,
 		publishedCommit: source?.published_commit ?? input.job.publishedCommit,
 		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+		metadata: {
+			trigger: jobRunTriggerForContext({
+				idempotencyKey: input.idempotencyKey,
+			}),
+		},
 		...(packageContext
 			? {
 					packageId: packageContext.packageId,
@@ -1843,6 +1849,7 @@ async function executeClaimedScheduledJobRun(input: {
 			kodyId: attribution.kodyId,
 			idempotencyKey,
 			metadata: {
+				trigger: jobRunTriggerForContext({ idempotencyKey }),
 				scheduledFor: input.scheduledFor,
 			},
 		},

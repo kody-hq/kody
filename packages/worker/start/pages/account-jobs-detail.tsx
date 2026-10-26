@@ -31,6 +31,8 @@ import {
 import {
 	type PostAccountJobsAction,
 	formatDurationMs,
+	runNowSuccessMessage,
+	runNowSuccessTone,
 	statusColor,
 	statusLabel,
 } from './account-jobs-shared.ts'
@@ -224,6 +226,7 @@ export function renderAccountJobDetail(input: {
 										'Started',
 										'Finished',
 										'Status',
+										'Trigger',
 										'Duration',
 										'Error',
 										'',
@@ -275,6 +278,14 @@ export function renderAccountJobDetail(input: {
 											}}
 										>
 											{run.status}
+										</td>
+										<td
+											css={{
+												padding: spacing.sm,
+												borderBottom: `1px solid ${colors.border}`,
+											}}
+										>
+											{run.trigger}
 										</td>
 										<td
 											css={{
@@ -360,12 +371,8 @@ export function renderAccountJobDetail(input: {
 					onClick={() =>
 						runJobAction({
 							id: detail.id,
-							successMessage: (payload) => {
-								if (payload.runNow && !payload.runNow.ok) {
-									return `Run finished with an error${payload.runNow.error ? `: ${payload.runNow.error}` : '.'}`
-								}
-								return 'Job run requested.'
-							},
+							successMessage: runNowSuccessMessage,
+							successTone: runNowSuccessTone,
 							failureMessage: 'Unable to run job now.',
 						})
 					}

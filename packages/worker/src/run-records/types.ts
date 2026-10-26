@@ -393,6 +393,38 @@ export function isScheduledJobIdempotencyKey(
 }
 
 /**
+ * How a job surface run was started. Stored on run `metadata.trigger` for new
+ * rows; older rows derive from the scheduled-tick idempotency key.
+ */
+export const jobRunTriggerValues = ['manual', 'scheduled'] as const
+
+export type JobRunTrigger = (typeof jobRunTriggerValues)[number]
+
+export function jobRunTriggerForContext(input: {
+	idempotencyKey?: string | null
+}): JobRunTrigger {
+	return isScheduledJobIdempotencyKey(input.idempotencyKey)
+		? 'scheduled'
+		: 'manual'
+}
+
+/**
+ * Resolve a job run's trigger for UI and APIs. Prefer the stored metadata
+ * value (including any future/non-canonical string); fall back for legacy
+ * rows that only have the scheduled-job idempotency key.
+ */
+export function jobRunTriggerFromRecord(
+	run: Pick<RunRecord, 'idempotencyKey' | 'metadata'>,
+): string {
+	const stored = run.metadata?.trigger
+	if (typeof stored === 'string') {
+		const trimmed = stored.trim()
+		if (trimmed) return trimmed
+	}
+	return jobRunTriggerForContext({ idempotencyKey: run.idempotencyKey })
+}
+
+/**
  * Surface-aware stale-`running` TTL. Workflows keep the long default;
  * sandbox-backed surfaces heal after a few minutes. History only — live job
  * state lives on entity rows, not here.
