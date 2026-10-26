@@ -334,12 +334,24 @@ export type StoredPublishChecksRecord = {
 	version: number
 }
 
+function bundleArtifactsKvSupportsGetPut(env: Env) {
+	if (!hasPublishedRuntimeArtifacts(env)) return false
+	const kv = (env as Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace })
+		.BUNDLE_ARTIFACTS_KV
+	return (
+		kv != null && typeof kv.get === 'function' && typeof kv.put === 'function'
+	)
+}
+
 export async function writePublishedPublishChecksVersion(input: {
 	env: Env
 	sourceId: string
 	publishedCommit: string
 	version?: typeof publishChecksVersion
 }) {
+	// Best-effort: unit stubs may set a truthy BUNDLE_ARTIFACTS_KV without
+	// get/put. Skip rather than throwing after a successful tip advance.
+	if (!bundleArtifactsKvSupportsGetPut(input.env)) return
 	const record: StoredPublishChecksRecord = {
 		version: input.version ?? publishChecksVersion,
 	}
@@ -358,6 +370,7 @@ export async function readPublishedPublishChecksVersion(input: {
 	sourceId: string
 	publishedCommit: string
 }): Promise<number | null> {
+	if (!bundleArtifactsKvSupportsGetPut(input.env)) return null
 	const raw = await getBundleArtifactsKv(input.env).get(
 		buildPublishedPublishChecksKvKey(input),
 		'json',
@@ -377,9 +390,9 @@ export async function publishedPublishChecksAreCurrent(input: {
 	sourceId: string
 	publishedCommit: string
 }): Promise<boolean> {
-	if (!hasPublishedRuntimeArtifacts(input.env)) {
-		// Local / test envs without KV cannot store a version; treat matching
-		// tip as current so unit tests keep a true no-op short-circuit.
+	if (!bundleArtifactsKvSupportsGetPut(input.env)) {
+		// Local / test envs without a real KV cannot store a version; treat
+		// matching tip as current so unit tests keep a true no-op short-circuit.
 		return true
 	}
 	const stored = await readPublishedPublishChecksVersion(input)
