@@ -1891,6 +1891,43 @@ test('fetch gateway idle deadline ignores time the consumer spends not reading',
 	expect(await response.text()).toBe('chunk-1;chunk-2;')
 })
 
+test('fetch gateway leaves angle-bracket example vault placeholders untouched in ordinary body data', async () => {
+	const resolveSpy = vi.spyOn(providerService, 'resolveProviderSecret')
+	const example =
+		'Post this docs line: use {{secret/bwvault:i/<item-uuid>/<field>}} or {{secret/<provider>:<ref>}}'
+	const sent = await expand(
+		new Request('https://api.example.com/messages', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ content: example }),
+		}),
+	)
+	expect(JSON.parse(await sent.text())).toEqual({ content: example })
+	expect(resolveSpy).not.toHaveBeenCalled()
+})
+
+test('fetch gateway still fills a live vault placeholder in a header', async () => {
+	const providerRef = 'i/dddddddd-dddd-4ddd-8ddd-dddddddddddd/password'
+	const canonical = `{{secret/1password:${providerRef}}}`
+	vi.spyOn(providerService, 'getSecretProviderBinding').mockResolvedValue(null)
+	const resolveSpy = vi
+		.spyOn(providerService, 'resolveProviderSecret')
+		.mockResolvedValue({
+			provider: '1password',
+			ref: providerRef,
+			canonicalRef: providerRef,
+			value: 'live-vault-password',
+			hosts: ['api.example.com'],
+		})
+	const sent = await expand(
+		new Request('https://api.example.com/v1', {
+			headers: { Authorization: `Bearer ${canonical}` },
+		}),
+	)
+	expect(sent.headers.get('Authorization')).toBe('Bearer live-vault-password')
+	expect(resolveSpy).toHaveBeenCalledTimes(1)
+})
+
 test('fetch gateway provider placeholders: normalize mixed case, deny wrong host and non-HTTPS without user secrets', async () => {
 	const providerRef = 'i/cccccccc-cccc-4ccc-8ccc-cccccccccccc/password'
 	const providerRequest = (url: string, placeholder: string) =>

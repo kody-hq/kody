@@ -25,6 +25,17 @@ function scan(
 	return scanPackageCredentials({ files: { 'index.ts': source }, slots })
 }
 
+test('angle-bracket example vault references are not counted as placeholders', () => {
+	const result = scan(`
+		export function status() {
+			return { example: '{{secret/bwvault:i/<item-uuid>/<field>}}' }
+		}
+		export const help = 'Use {{secret/<provider>:<ref>}} in fetch.'
+	`)
+	expect(result.placeholders.vault).toBe(0)
+	expect(result.vaultPlacements).toEqual([])
+})
+
 test('counts every placeholder by kind, including ones that match a declared slot', () => {
 	const result = scan(
 		`

@@ -883,6 +883,37 @@ test('computed |scope= fails the stamp gate and manifest-only secretMounts do no
 	expect(mounts.failures).toEqual([])
 })
 
+test('example vault references with angle-bracket markers do not fail the stamp gate', () => {
+	const displayOnly = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			"\treturn { example: '{{secret/bwvault:i/<item-uuid>/<field>}}' }",
+			'}',
+			"export const docs = 'Write {{secret/<provider>:<ref>}} in a fetch header.'",
+		].join('\n'),
+	})
+	expect(displayOnly.failures).toEqual([])
+	expect(displayOnly.keys).toEqual([])
+
+	const liveVaultInFetch = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/11111111-1111-4111-8111-111111111111/password}}' },",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		liveVaultInFetch.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+	expect(liveVaultInFetch.failures[0]?.message).toMatch(
+		/vault placeholder \{\{secret\/provider:ref\}\}/,
+	)
+})
+
 test('isStoredCredentialStamp rejects a dependency pin that is not an object', () => {
 	const stamp = {
 		version: 1,

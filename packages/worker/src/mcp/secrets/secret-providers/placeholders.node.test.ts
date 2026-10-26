@@ -52,6 +52,38 @@ test('provider placeholders split on the first colon after secret/ and leave use
 	expect(containsSecretPlaceholder('plain text')).toBe(false)
 })
 
+test('angle-bracket example markers make provider placeholders inert', () => {
+	for (const text of [
+		'{{secret/<provider>:<ref>}}',
+		'{{secret/bwvault:i/<item-uuid>/<field>}}',
+		'{{secret/1password:i/<item-id>/password}}',
+	]) {
+		expect(parseProviderSecretPlaceholders(text)).toEqual([])
+		expect(containsSecretPlaceholder(text)).toBe(false)
+	}
+	// A live vault token without markers still parses; an example beside it does not.
+	expect(
+		parseProviderSecretPlaceholders(
+			'live {{secret/bwvault:i/11111111-1111-4111-8111-111111111111/password}} and example {{secret/bwvault:i/<item-uuid>/<field>}}',
+		),
+	).toEqual([
+		{
+			provider: 'bwvault',
+			ref: 'i/11111111-1111-4111-8111-111111111111/password',
+			placeholder:
+				'{{secret/bwvault:i/11111111-1111-4111-8111-111111111111/password}}',
+		},
+	])
+	// Bare meta text without angle brackets is still a live placeholder shape.
+	expect(parseProviderSecretPlaceholders('{{secret/provider:ref}}')).toEqual([
+		{
+			provider: 'provider',
+			ref: 'ref',
+			placeholder: '{{secret/provider:ref}}',
+		},
+	])
+})
+
 test('provider placeholder parse keeps the original mixed-case and spaced token', () => {
 	const token =
 		'{{secret/1Password: i/11111111-1111-4111-8111-111111111111/password }}'

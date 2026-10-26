@@ -8,7 +8,9 @@ provider-agnostic.
 ## Grammar
 
 `{{secret/<provider>:<ref>}}` splits on the **first** `:` after `secret/`. The
-`ref` is opaque to core.
+`ref` is opaque to core. Angle-bracket markers such as `<provider>`,
+`<item-id>`, or `<field>` make a token inert documentation (never filled, never
+stamped as a credential use).
 
 - `{{secret/1password:i/<item-id>/password}}` — canonical form (`<item-id>` is a
   UUID or a 1Password Connect 26-char id `^[a-z0-9]{26}$`)
