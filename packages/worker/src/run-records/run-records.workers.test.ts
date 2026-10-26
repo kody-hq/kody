@@ -1105,6 +1105,64 @@ test('cap and stale retention journey', async () => {
 		})
 	}
 
+	// --- late finish must not restore a released scheduled-tick key ---
+	{
+		const userId = uniqueUserId('scheduled-late-finish-fenced')
+		const scheduledKey = 'scheduled-job:job-late:2026-08-21T10:00:00.000Z'
+		const staleStartedAtMs =
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 1_000
+		const handle = handleFor(
+			userId,
+			'scheduled-late-finish',
+			{
+				surface: 'job',
+				name: 'scheduled-late-finish',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+			staleStartedAtMs,
+		)
+		await seedRuns(userId, [
+			{
+				id: handle.id,
+				status: 'running',
+				startedAt: handle.startedAt,
+				surface: 'job',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+		])
+		expect((await getRun(userId, handle.id))?.run).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			idempotencyKey: null,
+		})
+
+		await finishRunRecord({
+			env,
+			handle,
+			status: 'success',
+			result: { completed: true },
+		})
+		expect((await getRun(userId, handle.id))?.run).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			idempotencyKey: null,
+		})
+
+		const reclaimed = await claimRunRecord({
+			env,
+			userId,
+			context: {
+				surface: 'job',
+				name: 'scheduled-late-finish',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+		})
+		expect(reclaimed).toMatchObject({ claimed: true })
+	}
+
 	// --- stale rows become cap-evictable after reconcile ---
 	{
 		const userId = uniqueUserId('stale-cap-evict')

@@ -2798,6 +2798,17 @@ class RunLogBase extends DurableObject<Env> {
 	}): Promise<{ ok: true }> {
 		const previousStatus = this.getRunStatus(input.run.id)
 		const existed = previousStatus != null
+		// Scheduled ticks release their idempotency key on platform interrupt so
+		// the occurrence can be claimed again. A late finish from the stranded
+		// attempt must not restore that key or flip the visible interrupt to
+		// success (non-scheduled surfaces still allow late finishes).
+		if (
+			isScheduledJobIdempotencyKey(input.run.idempotencyKey) &&
+			previousStatus != null &&
+			previousStatus !== 'running'
+		) {
+			return { ok: true }
+		}
 		// One transaction for run upsert + logs + job observability + activation
 		// so a mid-unit SQL failure cannot leave a terminal run that suppresses
 		// missing derived side effects. Alarm / async retention stay outside.
