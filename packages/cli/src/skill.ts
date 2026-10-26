@@ -1,3 +1,4 @@
+import { spawn, type SpawnOptions } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -212,4 +213,42 @@ export async function refreshInstalledSkills(
 		refreshed.push(target)
 	}
 	return refreshed
+}
+
+export function skillRefreshEntryPath(): string {
+	return fileURLToPath(new URL('./skill-refresh.js', import.meta.url))
+}
+
+/**
+ * Spawn a detached child to refresh hosted skills so the parent CLI can exit
+ * without waiting on network I/O. Best-effort; spawn failures are ignored.
+ */
+export function scheduleDetachedSkillRefresh(
+	input: {
+		origin?: string
+		spawnImpl?: (
+			command: string,
+			args: Array<string>,
+			options: SpawnOptions,
+		) => { unref: () => void }
+	} = {},
+): void {
+	const spawnFn = input.spawnImpl ?? spawn
+	const args = [skillRefreshEntryPath()]
+	if (input.origin) {
+		args.push('--origin', input.origin)
+	}
+	try {
+		const child = spawnFn(process.execPath, args, {
+			detached: true,
+			stdio: 'ignore',
+			env: {
+				...process.env,
+				KODY_SKIP_SKILL_REFRESH: '1',
+			},
+		})
+		child.unref()
+	} catch {
+		// Ignore spawn failures; the user's command still runs.
+	}
 }

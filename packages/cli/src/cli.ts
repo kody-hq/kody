@@ -266,15 +266,15 @@ export async function runCli(
 		head === undefined
 	if (!skipSkillRefresh) {
 		void import('./skill.js')
-			.then(({ refreshInstalledSkills }) =>
-				refreshInstalledSkills({
+			.then(({ scheduleDetachedSkillRefresh }) => {
+				scheduleDetachedSkillRefresh({
 					origin: process.env.KODY_MCP_URL
 						? new URL(process.env.KODY_MCP_URL).origin
 						: undefined,
-				}),
-			)
+				})
+			})
 			.catch(() => {
-				// Ignore skill refresh failures; the user's command still runs.
+				// Ignore schedule failures; the user's command still runs.
 			})
 	}
 	const jsonFlag = argvIncludesJsonFlag(argv)

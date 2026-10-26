@@ -9,7 +9,9 @@ import {
 	installSkill,
 	projectSkillTargets,
 	refreshInstalledSkills,
+	scheduleDetachedSkillRefresh,
 	sha256Digest,
+	skillRefreshEntryPath,
 	userSkillTargets,
 	wrapHostedSkillBody,
 } from '../src/skill.js'
@@ -141,4 +143,41 @@ test('bundled skill stub points at the hosted kody-cli skill', () => {
 	assert.match(stub, /\.well-known\/agent-skills\/kody-cli\/SKILL\.md/)
 	assert.match(stub, /execute --local/)
 	assert.match(stub, /cliCredentialBootstrap/)
+})
+
+test('scheduleDetachedSkillRefresh spawns an unrefed child and returns', () => {
+	const calls: Array<{
+		command: string
+		args: Array<string>
+		options: { detached?: boolean; stdio?: string }
+	}> = []
+	let unrefCalls = 0
+	scheduleDetachedSkillRefresh({
+		origin: 'https://kody.codes',
+		spawnImpl: (command, args, options) => {
+			calls.push({
+				command,
+				args: [...args],
+				options: {
+					detached: options.detached === true,
+					stdio: typeof options.stdio === 'string' ? options.stdio : undefined,
+				},
+			})
+			return {
+				unref() {
+					unrefCalls += 1
+				},
+			}
+		},
+	})
+	assert.equal(calls.length, 1)
+	assert.equal(calls[0]!.command, process.execPath)
+	assert.deepEqual(calls[0]!.args, [
+		skillRefreshEntryPath(),
+		'--origin',
+		'https://kody.codes',
+	])
+	assert.equal(calls[0]!.options.detached, true)
+	assert.equal(calls[0]!.options.stdio, 'ignore')
+	assert.equal(unrefCalls, 1)
 })
