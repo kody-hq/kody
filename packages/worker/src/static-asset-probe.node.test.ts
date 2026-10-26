@@ -65,6 +65,7 @@ test('public files and client bundles still probe ASSETS', () => {
 		'/images/brand/kody-mark-outlined-solid-light.png',
 		'/images/brand/kody-logo-outlined.svg',
 		'/images/brand/kody-logo-outlined.png',
+		'/bimi/kody-mark.svg',
 	]
 	expect(
 		probedPaths.filter((pathname) => requestSkipsAssetProbe(pathname)),
