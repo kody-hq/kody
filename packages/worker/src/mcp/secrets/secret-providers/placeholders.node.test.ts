@@ -57,6 +57,7 @@ test('angle-bracket example markers make provider placeholders inert', () => {
 		'{{secret/<provider>:<ref>}}',
 		'{{secret/bwvault:i/<item-uuid>/<field>}}',
 		'{{secret/1password:i/<item-id>/password}}',
+		'{{secret/bwvault:i/%3Citem-uuid%3E/%3Cfield%3E}}',
 	]) {
 		expect(parseProviderSecretPlaceholders(text)).toEqual([])
 		expect(containsSecretPlaceholder(text)).toBe(false)

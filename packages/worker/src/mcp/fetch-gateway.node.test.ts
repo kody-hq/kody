@@ -1906,6 +1906,18 @@ test('fetch gateway leaves angle-bracket example vault placeholders untouched in
 	expect(resolveSpy).not.toHaveBeenCalled()
 })
 
+test('fetch gateway leaves percent-encoded angle-bracket example vault placeholders untouched in a URL path', async () => {
+	const resolveSpy = vi.spyOn(providerService, 'resolveProviderSecret')
+	// Path serialization encodes < > as %3C %3E; inert detection must still win.
+	const examplePath =
+		'/docs/%7B%7Bsecret/bwvault:i/%3Citem-uuid%3E/%3Cfield%3E%7D%7D'
+	const sent = await expand(
+		new Request(`https://api.example.com${examplePath}`),
+	)
+	expect(new URL(sent.url).pathname).toBe(examplePath)
+	expect(resolveSpy).not.toHaveBeenCalled()
+})
+
 test('fetch gateway leaves metavariable {{secret/provider:ref}} untouched in an execute-style message param body', async () => {
 	const resolveSpy = vi.spyOn(providerService, 'resolveProviderSecret')
 	// Same shape as invoking a post-message export with content that documents

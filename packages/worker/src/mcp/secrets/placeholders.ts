@@ -34,7 +34,12 @@ const vaultGrammarMetavariables = new Set([
 ])
 
 export function placeholderHoldsExampleMarkers(token: string) {
-	return examplePlaceholderMarkerPattern.test(token)
+	// URL path serialization may leave `<` / `>` as %3C / %3E even after
+	// placeholder-punctuation decode (which only restores { } : / = , |).
+	const withAngleBrackets = token
+		.replaceAll(/%3C/gi, '<')
+		.replaceAll(/%3E/gi, '>')
+	return examplePlaceholderMarkerPattern.test(withAngleBrackets)
 }
 
 /**
