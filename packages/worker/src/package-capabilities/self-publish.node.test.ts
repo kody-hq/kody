@@ -184,9 +184,9 @@ test('a tree that declares nothing is eligible, checked per package owner with t
 		}),
 	])
 	// Same memo object so same-org packages share one suppliers-flag eval (KODY-BT).
-	expect(rootCall?.[0]).toMatchObject({
-		request: (depCall?.[0] as { request: object }).request,
-	})
+	expect((rootCall?.[0] as { request: object }).request).toBe(
+		(depCall?.[0] as { request: object }).request,
+	)
 })
 
 test('self-publish is blocked when the capability set has entries or the tree declares credentials or capabilities', async () => {

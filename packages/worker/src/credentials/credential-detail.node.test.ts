@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 		packageId: string | null
 		expired: boolean
 	}>,
+	suppliersFlag: vi.fn(async () => false),
 }))
 
 vi.mock('./credential-needs-closure.ts', () => ({
@@ -27,6 +28,12 @@ vi.mock('./credential-needs-closure.ts', () => ({
 		if (input.sourceId === 'broken') throw new Error('closure unreadable')
 		return mocks.needs.get(input.sourceId) ?? []
 	},
+}))
+
+vi.mock('./credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: (
+		...args: Parameters<typeof mocks.suppliersFlag>
+	) => mocks.suppliersFlag(...args),
 }))
 
 vi.mock('./credential-candidates.ts', async (importOriginal) => ({
@@ -84,6 +91,23 @@ function setup() {
 beforeEach(() => {
 	mocks.needs.clear()
 	mocks.usable = []
+	mocks.suppliersFlag.mockReset().mockResolvedValue(false)
+})
+
+test('a suppliers-flag failure marks usage unreadable without failing detail', async () => {
+	const { env } = setup()
+	mocks.suppliersFlag.mockRejectedValue(new Error('flag lookup failed'))
+	const detail = await loadCredentialDetail({
+		env,
+		request: {} as RequestContext,
+		orgId: 'org-1',
+		ownedByViewer: false,
+		credential: item({ id: 'openai-1', name: 'OPENAI', provider: 'openai' }),
+		packages: [pkg('triage'), pkg('digest')],
+	})
+	expect(detail.usage).toEqual([])
+	expect(detail.usageUnreadable).toBe(2)
+	expect(detail.placeholder).toBe('{{secret:OPENAI}}')
 })
 
 test('credential usage respects package locks and package scope', async () => {

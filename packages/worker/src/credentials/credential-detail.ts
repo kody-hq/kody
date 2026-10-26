@@ -80,12 +80,22 @@ async function listUsage(input: {
 	// Shared org/personal/MCP rows load once; package-bound Keys are batched
 	// (KODY-BD). Closures still run per package in parallel, but the suppliers
 	// flag is evaluated once for the org and threaded with `request` so nested
-	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT).
-	const supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
-		db: input.env.APP_DB,
-		orgId: input.orgId,
-		request: input.request,
-	})
+	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT). A flag
+	// failure marks usage unreadable once instead of failing the whole detail.
+	let supplierSemanticsEnabled: boolean
+	try {
+		supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: input.orgId,
+			request: input.request,
+		})
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.usage' },
+			extra: { orgId: input.orgId },
+		})
+		return { usage: [], unreadable: input.packages.length }
+	}
 	const [usableByPackage, needResults] = await Promise.all([
 		listUsableCredentialsByPackage({
 			env: input.env,
