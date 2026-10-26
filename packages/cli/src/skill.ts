@@ -234,14 +234,14 @@ export async function writeFileAtomic(
 		dir,
 		`.${basename(path)}.${randomBytes(6).toString('hex')}.tmp`,
 	)
-	await writeFile(temp, body, 'utf8')
 	try {
+		await writeFile(temp, body, 'utf8')
 		await rename(temp, path)
 	} catch (error) {
 		try {
 			await unlink(temp)
 		} catch {
-			// Best-effort temp cleanup after a failed rename.
+			// Best-effort temp cleanup after a failed write or rename.
 		}
 		throw error
 	}
