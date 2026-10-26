@@ -36,8 +36,12 @@ const mockModule = vi.hoisted(() => ({
 	writePublishedPublishChecksVersion: vi.fn<
 		typeof PublishedRuntimeArtifacts.writePublishedPublishChecksVersion
 	>(async () => undefined),
-	storePublishedCredentialNeeds: vi.fn(async () => null),
-	storePublishedCredentialStamp: vi.fn(async () => null),
+	storePublishedCredentialNeeds: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
+	storePublishedCredentialStamp: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
 	loadLockedSavedPackage: vi.fn<typeof PublishLock.loadLockedSavedPackage>(
 		async () => null,
 	),
