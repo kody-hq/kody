@@ -93,10 +93,7 @@ unknown strings, and retired plan names are rejected as validation failures.
 
 Migration `0002-restructure-plan-tiers.sql` maps stored `pro` values to
 `standard`, stored `partner` values to `pro`, and rebuilds both CHECK
-constraints for the current registry. Migration
-`0043-users-entitlement-ladder.sql` introduced the entitlement ladder (now
-`orgs.entitlement_ladder`) and backfilled `legacy` for then-active Stripe
-Standard/Pro subscribers and manual Pro grants.
+constraints for the current registry.
 
 `orgs.stripe_plan` stays nullable because it is Stripe-derived; `max` is
 manual-only — admin-visible, not paid or public — and never written from Stripe
@@ -104,21 +101,19 @@ manual-only — admin-visible, not paid or public — and never written from Str
 
 `orgs.entitlement_ladder` is `'public'` or `'legacy'` (NOT NULL, default
 `'public'`). The public table in `planLimits` is what `/pricing` renders and
-what new Standard/Pro subscribers get. `legacy` keeps the pre-cut Standard/Pro
-ceilings from `legacyPlanLimits` only while the same Stripe subscription
-continues without a plan, price, product, or interval change: same-plan
-auto-renew stays `legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any
-other price/product switch writes `public`. A remaining manual Pro grant without
-a paid Stripe tier still keeps `legacy` until that grant is removed. The
-one-shot backfill in `0043-users-entitlement-ladder.sql` sets `legacy` for those
-accounts. Resubscribing does not restore `legacy`.
-`0044-users-stripe-price-id.sql` introduced `stripe_price_id` (now
-`orgs.stripe_price_id`) so Stripe refresh can detect those subscription changes.
-The first observation of a continuing subscription writes the current price and
-leaves `legacy` in place. Free and `max` always use `planLimits`; the ladder is
-ignored for those plans. Unique-worker-day and Durable Object rows-read numbers
-live on `PlanLimits` for the public table. They are not hard-cut and not billed
-for legacy accounts.
+what new Standard/Pro subscribers get. `legacy` uses the older Standard/Pro
+limits in `legacyPlanLimits` only while the same Stripe subscription continues
+without a plan, price, product, or interval change: same-plan auto-renew stays
+`legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any other price/product
+switch writes `public`. A remaining manual Pro grant without a paid Stripe tier
+still keeps `legacy` until that grant is removed. Resubscribing does not restore
+`legacy`. `orgs.stripe_price_id` records the granting Stripe price so
+subscription refreshes can move an account from `legacy` to `public` when the
+subscription changes. The first observation of a continuing subscription writes
+the current price and leaves `legacy` in place. Free and `max` always use
+`planLimits`; the ladder is ignored for those plans. Unique-worker-day and
+Durable Object rows-read numbers live on `PlanLimits` for the public table. They
+are not hard-cut and not billed for legacy accounts.
 
 `getUserEntitlement` / `getCachedUserEntitlement` return `{ plan, ladder }`.
 Enforcement (`assertWithinEntitlement`, `consumeDailyEntitlement`, storage
