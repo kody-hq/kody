@@ -403,8 +403,18 @@ export async function publishedPublishChecksAreCurrent(input: {
 		// matching tip as current so unit tests keep a true no-op short-circuit.
 		return true
 	}
-	const stored = await readPublishedPublishChecksVersion(input)
-	return stored === publishChecksVersion
+	try {
+		const stored = await readPublishedPublishChecksVersion(input)
+		return stored === publishChecksVersion
+	} catch (error) {
+		// Fail open to re-check rather than skipping checks on a KV read error.
+		console.warn('publish-checks-version read failed', {
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			error,
+		})
+		return false
+	}
 }
 
 export function buildPublishedBundleArtifactKvKey(input: {
