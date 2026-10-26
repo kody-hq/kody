@@ -7,15 +7,19 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	buildSmoothAreaPath,
-	buildSmoothLinePath,
-	type ChartPoint,
-} from '#client/charts/chart-geometry.ts'
+import { useMemo } from 'react'
+import { areaY, defineChart, lineY, dot } from '@tanstack/charts'
+import { decorative } from '@tanstack/charts/mark/decorative'
+import { Chart } from '@tanstack/charts/react'
+import { scaleLinear } from '@tanstack/charts/scales/linear'
+import { d3Curve } from '@tanstack/charts/d3/shape'
+import { curveMonotoneX } from 'd3-shape'
 import { softColor } from '#client/charts/chart-theme.ts'
 
+const smoothCurve = d3Curve(curveMonotoneX)
+
 type StatCardProps = {
-	/** Unique id prefix for the sparkline gradient. */
+	/** Unique id prefix for the sparkline. */
 	id: string
 	label: string
 	value: string
@@ -24,9 +28,6 @@ type StatCardProps = {
 	/** Optional small trend line rendered along the card bottom. */
 	sparkValues?: Array<number>
 }
-
-const sparkWidth = 220
-const sparkHeight = 44
 
 /**
  * KPI tile with an accent color, a big value, and an optional sparkline.
@@ -102,57 +103,95 @@ export function StatCard(props: StatCardProps) {
 					{sub}
 				</span>
 			) : null}
-			{hasSparkline && sparkValues
-				? renderSparkline(id, color, sparkValues)
-				: null}
+			{hasSparkline && sparkValues ? (
+				<Sparkline id={id} color={color} values={sparkValues} />
+			) : null}
 		</div>
 	)
 }
 
-function renderSparkline(id: string, color: string, values: Array<number>) {
-	const maxValue = Math.max(1, ...values)
-	const points = values.map((value, index): ChartPoint => ({
-		x: (sparkWidth * index) / (values.length - 1),
-		y: sparkHeight - 5 - (sparkHeight - 12) * (value / maxValue),
-	}))
-	const lastPoint = points[points.length - 1]
+function Sparkline({
+	id,
+	color,
+	values,
+}: {
+	id: string
+	color: string
+	values: Array<number>
+}) {
+	const definition = useMemo(() => {
+		const max = Math.max(1, ...values)
+		// Preserve the original 44-unit strip: 7 above the peak, 5 below zero.
+		const baseline = (-max * 5) / 32
+		const rows = values.map((value, index) => ({ value, index }))
+		return defineChart({
+			gradients: [
+				{
+					id: 'spark',
+					x1: 0,
+					x2: 0,
+					y1: 0,
+					y2: 1,
+					stops: [
+						{ offset: 0, color, opacity: 0.25 },
+						{ offset: 1, color, opacity: 0 },
+					],
+				},
+			],
+			marks: [
+				decorative(
+					areaY(rows, {
+						x: 'index',
+						y1: baseline,
+						y2: 'value',
+						fill: 'url(#spark)',
+						fillOpacity: 1,
+						curve: smoothCurve,
+					}),
+				),
+				decorative(
+					lineY(rows, {
+						x: 'index',
+						y: 'value',
+						stroke: color,
+						strokeWidth: 2,
+						strokeOpacity: 0.85,
+						curve: smoothCurve,
+					}),
+				),
+				decorative(
+					dot(rows.slice(-1), { x: 'index', y: 'value', r: 2.5, fill: color }),
+				),
+			],
+			scales: {
+				x: { scale: scaleLinear },
+				y: { scale: scaleLinear().domain([baseline, (max * 39) / 32]) },
+			},
+			guides: false,
+			margin: 0,
+		})
+	}, [color, values])
+
 	return (
-		<svg
-			viewBox={`0 0 ${sparkWidth} ${sparkHeight}`}
+		<div
 			aria-hidden="true"
-			preserveAspectRatio="none"
 			css={{
 				position: 'absolute',
 				insetInlineStart: 0,
 				insetBlockEnd: 0,
 				width: '100%',
 				height: '2.25rem',
-				display: 'block',
 				pointerEvents: 'none',
 			}}
 		>
-			<defs>
-				<linearGradient id={`${id}-spark`} x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stopColor={color} stopOpacity="0.25" />
-					<stop offset="100%" stopColor={color} stopOpacity="0" />
-				</linearGradient>
-			</defs>
-			<path
-				d={buildSmoothAreaPath(points, sparkHeight)}
-				fill={`url(#${id}-spark)`}
+			<Chart
+				definition={definition}
+				height={36}
+				initialWidth={220}
+				idPrefix={id}
+				ariaLabel="Trend"
+				tabIndex={-1}
 			/>
-			<path
-				d={buildSmoothLinePath(points)}
-				fill="none"
-				stroke={color}
-				strokeWidth="2"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				opacity="0.85"
-			/>
-			{lastPoint ? (
-				<circle cx={lastPoint.x} cy={lastPoint.y} r="2.5" fill={color} />
-			) : null}
-		</svg>
+		</div>
 	)
 }

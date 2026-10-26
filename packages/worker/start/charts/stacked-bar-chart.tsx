@@ -1,11 +1,12 @@
 /** @jsxImportSource @emotion/react */
-
-import { buildTicks } from '#client/charts/chart-geometry.ts'
+import { useMemo } from 'react'
+import { defineChart, barY } from '@tanstack/charts'
+import { Chart } from '@tanstack/charts/react'
+import { scaleLinear } from '@tanstack/charts/scales/linear'
+import { scaleBand } from '@tanstack/charts/scales/band'
+import { tooltip } from '@tanstack/charts/tooltip'
 import {
-	chartAxisTextCss,
-	chartGridStroke,
 	chartScrollerNewestFirstCss,
-	chartSvgCss,
 	formatCompactNumber,
 	formatIntegerNumber,
 } from '#client/charts/chart-theme.ts'
@@ -18,7 +19,7 @@ type StackedBarSeries = {
 }
 
 type StackedBarChartProps = {
-	/** Unique id prefix for clip paths (must be unique per page). */
+	/** Unique chart id (must be unique per page). */
 	id: string
 	series: Array<StackedBarSeries>
 	xLabels: Array<string>
@@ -26,139 +27,85 @@ type StackedBarChartProps = {
 	xTickEvery?: number
 	height?: number
 	/**
-	 * ViewBox width. Use a smaller value for charts rendered in narrow
-	 * cards so axis text keeps a readable on-screen size.
+	 * Initial chart width. Use a smaller value for narrow cards to
+	 * reduce the minimum scrollable width.
 	 */
 	viewBoxWidth?: number
 }
 
-const pad = { top: 14, right: 16, bottom: 26, left: 46 }
-
-/**
- * Stacked bar chart with rounded column tops (via per-column clip paths),
- * grid lines, and native hover tooltips.
- */
 export function StackedBarChart(props: StackedBarChartProps) {
 	const { id, series, xLabels, ariaLabel } = props
-	const width = props.viewBoxWidth ?? 720
-	const height = props.height ?? 230
-	const plotWidth = width - pad.left - pad.right
-	const plotHeight = height - pad.top - pad.bottom
-	const baselineY = pad.top + plotHeight
-	const pointCount = Math.max(1, xLabels.length)
-	const columnTotals = xLabels.map((_, index) =>
-		series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0),
-	)
-	const ticks = buildTicks(Math.max(0, ...columnTotals))
-	const topTick = ticks[ticks.length - 1] ?? 1
-	const slotWidth = plotWidth / pointCount
-	const barWidth = Math.min(34, slotWidth * 0.62)
-	const cornerRadius = Math.min(5, barWidth / 2)
-	const heightFor = (value: number) => (plotHeight * value) / topTick
-	const xTickEvery = props.xTickEvery ?? Math.max(1, Math.ceil(pointCount / 6))
+	const definition = useMemo(() => {
+		const rows = series.flatMap((entry, seriesIndex) =>
+			xLabels.map((label, index) => ({
+				index,
+				label,
+				series: entry.label,
+				color: entry.color,
+				value: entry.values[index] ?? 0,
+				key: `${seriesIndex}:${index}`,
+			})),
+		)
+		const max = Math.max(
+			1,
+			...xLabels.map((_, index) =>
+				series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0),
+			),
+		)
+		const every = props.xTickEvery ?? Math.max(1, Math.ceil(xLabels.length / 6))
+		return defineChart({
+			marks: [
+				barY(rows, {
+					x: 'index',
+					y: 'value',
+					z: 'series',
+					key: 'key',
+					fill: (row) => row.color,
+					maxThickness: 34,
+					radius: { end: 5 },
+				}),
+			],
+			scales: {
+				x: {
+					scale: () => scaleBand<number>().padding(0.38),
+					domain: xLabels.map((_, index) => index),
+					axis: {
+						ticks: {
+							values: xLabels
+								.map((_, index) => index)
+								.filter((index) => index % every === 0),
+							format: (index) => xLabels[index] ?? '',
+						},
+					},
+				},
+				y: {
+					scale: scaleLinear,
+					domain: [0, max],
+					nice: true,
+					grid: true,
+					axis: { ticks: { format: formatCompactNumber } },
+				},
+			},
+			tooltip: {
+				use: tooltip,
+				format: (point) =>
+					`${point.datum.label} · ${point.datum.series}: ${formatIntegerNumber(point.datum.value)}`,
+			},
+		})
+	}, [series, xLabels, props.xTickEvery])
 	return (
 		<div css={chartScrollerNewestFirstCss}>
-			<svg
-				viewBox={`0 0 ${width} ${height}`}
-				role="img"
-				aria-label={ariaLabel}
-				css={chartSvgCss(width)}
+			<div
+				css={{ minWidth: (props.viewBoxWidth ?? 720) * 0.85, direction: 'ltr' }}
 			>
-				{ticks.map((tick) => (
-					<g key={tick}>
-						<line
-							x1={pad.left}
-							y1={baselineY - heightFor(tick)}
-							x2={width - pad.right}
-							y2={baselineY - heightFor(tick)}
-							stroke={chartGridStroke}
-							strokeWidth="1"
-							strokeDasharray={tick === 0 ? undefined : '3 5'}
-						/>
-						<text
-							x={pad.left - 8}
-							y={baselineY - heightFor(tick) + 3.5}
-							textAnchor="end"
-							css={chartAxisTextCss}
-						>
-							{formatCompactNumber(tick)}
-						</text>
-					</g>
-				))}
-				{xLabels.map((label, index) => {
-					const total = columnTotals[index] ?? 0
-					const barX = pad.left + slotWidth * index + (slotWidth - barWidth) / 2
-					const barTop = baselineY - heightFor(total)
-					let stackY = baselineY
-					return (
-						<g key={`${label}-${index}`}>
-							{total > 0 ? (
-								<>
-									<clipPath id={`${id}-clip-${index}`}>
-										<rect
-											x={barX}
-											y={barTop}
-											width={barWidth}
-											height={baselineY - barTop}
-											rx={cornerRadius}
-										/>
-									</clipPath>
-									<g clipPath={`url(#${id}-clip-${index})`}>
-										{series.map((entry) => {
-											const segmentHeight = heightFor(entry.values[index] ?? 0)
-											stackY -= segmentHeight
-											return (
-												<rect
-													key={entry.label}
-													x={barX}
-													y={stackY}
-													width={barWidth}
-													height={segmentHeight}
-													fill={entry.color}
-												/>
-											)
-										})}
-									</g>
-								</>
-							) : null}
-							{index % xTickEvery === 0 ? (
-								<text
-									x={barX + barWidth / 2}
-									y={height - 8}
-									textAnchor="middle"
-									css={chartAxisTextCss}
-								>
-									{label}
-								</text>
-							) : null}
-							<rect
-								x={pad.left + slotWidth * index}
-								y={pad.top}
-								width={slotWidth}
-								height={plotHeight}
-								fill="transparent"
-								css={{
-									'&:hover': {
-										fill: 'color-mix(in srgb, var(--color-primary) 7%, transparent)',
-									},
-								}}
-							>
-								<title>
-									{[
-										`${label} — total ${formatIntegerNumber(total)}`,
-										...series
-											.filter((entry) => (entry.values[index] ?? 0) > 0)
-											.map(
-												(entry) =>
-													`${entry.label}: ${formatIntegerNumber(entry.values[index] ?? 0)}`,
-											),
-									].join('\n')}
-								</title>
-							</rect>
-						</g>
-					)
-				})}
-			</svg>
+				<Chart
+					definition={definition}
+					height={props.height ?? 230}
+					initialWidth={props.viewBoxWidth ?? 720}
+					idPrefix={id}
+					ariaLabel={ariaLabel}
+				/>
+			</div>
 		</div>
 	)
 }

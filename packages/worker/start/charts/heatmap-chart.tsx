@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
-
+import { useMemo } from 'react'
+import { cell, defineChart } from '@tanstack/charts'
+import { Chart } from '@tanstack/charts/react'
+import { scaleBand } from '@tanstack/charts/scales/band'
+import { scaleOrdinal } from '@tanstack/charts/scales/ordinal'
+import { tooltip } from '@tanstack/charts/tooltip'
 import {
-	chartAxisTextCss,
 	chartEmptyFill,
 	chartScrollerCss,
-	chartSvgCss,
 	softColor,
 } from '#client/charts/chart-theme.ts'
 
@@ -28,83 +31,79 @@ type HeatmapChartProps = {
 const weekdayRows = [1, 2, 3, 4, 5, 6, 0] as const
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
-const leftPad = 34
-const topPad = 6
-const cellWidth = 24
-const cellHeight = 17
-const cellGap = 3
-const width = leftPad + 24 * (cellWidth + cellGap)
-const height = topPad + 7 * (cellHeight + cellGap) + 20
-
-/**
- * Weekday x hour activity heatmap (UTC) with intensity scaled to the
- * busiest cell.
- */
-export function HeatmapChart(props: HeatmapChartProps) {
-	const { cells, color, ariaLabel, unitLabel } = props
-	const countByCell = new Map<string, number>()
-	let maxCount = 0
-	for (const cell of cells) {
-		countByCell.set(`${cell.weekday}:${cell.hour}`, cell.count)
-		maxCount = Math.max(maxCount, cell.count)
-	}
+export function HeatmapChart({
+	cells,
+	color,
+	ariaLabel,
+	unitLabel,
+}: HeatmapChartProps) {
+	const definition = useMemo(() => {
+		const counts = new Map(
+			cells.map((entry) => [`${entry.weekday}:${entry.hour}`, entry.count]),
+		)
+		const max = Math.max(1, ...cells.map((entry) => entry.count))
+		const rows = weekdayRows.flatMap((weekday) =>
+			Array.from({ length: 24 }, (_, hour) => {
+				const count = counts.get(`${weekday}:${hour}`) ?? 0
+				return {
+					weekday,
+					hour,
+					count,
+					paint:
+						count > 0
+							? softColor(color, 12 + Math.round((count / max) * 78))
+							: chartEmptyFill,
+				}
+			}),
+		)
+		const paints = [...new Set(rows.map((row) => row.paint))]
+		return defineChart({
+			marks: [
+				cell(rows, {
+					x: 'hour',
+					y: 'weekday',
+					color: 'paint',
+					radius: 3.5,
+					inset: 1.5,
+				}),
+			],
+			scales: {
+				x: {
+					scale: scaleBand<number>,
+					domain: Array.from({ length: 24 }, (_, hour) => hour),
+					axis: {
+						ticks: {
+							values: [0, 6, 12, 18],
+							format: (hour) => `${String(hour).padStart(2, '0')}:00`,
+						},
+					},
+				},
+				y: {
+					scale: scaleBand<number>,
+					domain: [...weekdayRows],
+					axis: {
+						ticks: { format: (weekday) => weekdayLabels[weekday] ?? '' },
+					},
+				},
+			},
+			color: { scale: scaleOrdinal(paints, paints) },
+			tooltip: {
+				use: tooltip,
+				format: (point) =>
+					`${weekdayLabels[point.datum.weekday]} ${String(point.datum.hour).padStart(2, '0')}:00 UTC, ${point.datum.count} ${unitLabel}`,
+			},
+		})
+	}, [cells, color, unitLabel])
 	return (
 		<div css={chartScrollerCss}>
-			<svg
-				viewBox={`0 0 ${width} ${height}`}
-				role="img"
-				aria-label={ariaLabel}
-				css={chartSvgCss(width)}
-			>
-				{weekdayRows.map((weekday, rowIndex) => (
-					<text
-						key={weekday}
-						x={leftPad - 8}
-						y={topPad + rowIndex * (cellHeight + cellGap) + cellHeight / 2 + 4}
-						textAnchor="end"
-						css={chartAxisTextCss}
-					>
-						{weekdayLabels[weekday]}
-					</text>
-				))}
-				{Array.from({ length: 24 }, (_, hour) =>
-					hour % 6 === 0 ? (
-						<text
-							key={hour}
-							x={leftPad + hour * (cellWidth + cellGap) + cellWidth / 2}
-							y={height - 4}
-							textAnchor="middle"
-							css={chartAxisTextCss}
-						>
-							{String(hour).padStart(2, '0')}:00
-						</text>
-					) : null,
-				)}
-				{weekdayRows.map((weekday, rowIndex) =>
-					Array.from({ length: 24 }, (_, hour) => {
-						const count = countByCell.get(`${weekday}:${hour}`) ?? 0
-						const intensity =
-							maxCount > 0 && count > 0
-								? 12 + Math.round((count / maxCount) * 78)
-								: 0
-						return (
-							<rect
-								key={`${weekday}-${hour}`}
-								x={leftPad + hour * (cellWidth + cellGap)}
-								y={topPad + rowIndex * (cellHeight + cellGap)}
-								width={cellWidth}
-								height={cellHeight}
-								rx="3.5"
-								fill={
-									intensity > 0 ? softColor(color, intensity) : chartEmptyFill
-								}
-							>
-								<title>{`${weekdayLabels[weekday]} ${String(hour).padStart(2, '0')}:00 UTC — ${count} ${unitLabel}`}</title>
-							</rect>
-						)
-					}),
-				)}
-			</svg>
+			<div css={{ minWidth: 580 }}>
+				<Chart
+					definition={definition}
+					height={166}
+					initialWidth={682}
+					ariaLabel={ariaLabel}
+				/>
+			</div>
 		</div>
 	)
 }
