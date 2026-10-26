@@ -64,9 +64,9 @@ Saved packages keep `--local` and a static `kody:@…` import.
   use scopes), plus `package:write`, `package:create`, and `token:delete` — not
   `search:read`
   ([ADR 0056](../../../docs/contributing/decisions/0056-cli-credential-bootstrap.md)).
-  `whoami` works. Use MCP `search`, or a token with `search:read`. Existing
-  bootstrap tokens minted before `package:create` was added cannot call
-  `packageGetGitRemote` with `create: true` until re-bootstrapped.
+  `whoami` works. Use MCP `search`, or a token with `search:read`. Bootstrap
+  tokens that omit `package:create` cannot call `packageGetGitRemote` with
+  `create: true`; run `cliCredentialBootstrap` again.
 - The module imports `kody:@…`. Keep `--local`. Default bootstrap includes
   `package:execute` and `integration:read` so package-graph and
   `createAuthenticatedFetch` work for saved packages.

@@ -74,7 +74,7 @@ multi-org store as the active org (no re-login).
 
 | Command                                           | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kody install`                                    | Detect running local MCP clients, write their config, and start host OAuth. **Recommended long-term path.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `kody install`                                    | Detect running local MCP clients and write their remote MCP config. The host client starts OAuth when the user connects. **Recommended long-term path.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `kody skill install`                              | Installs the hosted `kody-cli` skill (or the bundled stub offline) into Claude Code / Cursor / Codex / `.agents`. Later CLI runs refresh stale copies by digest.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `kody login`                                      | Browser OAuth (CIMD + PKCE) for the CLI itself. Adds/replaces one org login (browser picker, or `kody login --org acme`) and keeps other org logins.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `kody org list`                                   | Lists logged-in orgs and marks the active one. `--json` for agents.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -90,7 +90,7 @@ multi-org store as the active org (no re-login).
 | `kody search [query]`                             | Calls Kody `search` from the CLI (prefer the host MCP tool). Token-only auth uses Open API `GET /v1/search`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `kody api <operationId>`                          | Thin Open API wrapper matching the MCP `api` tool: `operationId` + flat `--params` JSON. Auth: `--token` / `KODY_API_TOKEN` / stored `auth bootstrap` token. The parsed `/openapi.json` route map is cached under the Kody cache dir keyed by the document's `ETag` and revalidated with `If-None-Match` on each run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `kody package publish`                            | Thin wrapper for `packagePublishExternalPush`. Optional positional `@owner/leaf`, bare leaf name, or package UUID (names are resolved to the package UUID via `packageList`); extra fields via `--params`. Same auth as `kody api`. Prints the API JSON. Exit **0** for `published`, `already_published` (including `artifacts_rebuilt: true`), and `dispatched` (poll `workflowRunList({ workflow_id })`). Exit **1** for refusal/rejection statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`) with the API `message` (or a checks summary) on stderr, like npm. Auth / permission / network failures also exit 1; `--json` adds `{ error, message, sent }` on stdout for network errors (`sent: false` = not sent; `sent: "unknown"` = maybe sent — prefer `kody api workflowRunList` with `workflow_id` when known, otherwise a recent list, before retry). Re-publishing the same commit is safe (durable dedupe / `already_published`). |
-| `kody package collaborators` / `grant` / `revoke` | Who can use one package, and add or remove teams and members of the org (`--org`). `<package>` is `@owner/leaf`, the kody id, or the package id. `grant <package> --team <slug>\|--user <username> [--preset use\|contribute\|manage]` (default `use`) adds or changes a collaborator via `packageCollaboratorSet`; people outside the org are refused. `revoke <package> --team\|--user\|--grant <grant_id>` removes one via `packageCollaboratorRemove`. Needs Manage on the package and a token with `package:manage_access` (`auth bootstrap --scopes …,package:manage_access`). Prints a summary, or JSON with `--json`.                                                                                                                                                                                                                                                                                                                                           |
+| `kody package collaborators` / `grant` / `revoke` | Who can use one package, and add or remove teams and members of the org (`--org`). `<package>` is `@owner/leaf`, the name leaf, or the package id. `grant <package> --team <slug>\|--user <username> [--preset use\|contribute\|manage]` (default `use`) adds or changes a collaborator via `packageCollaboratorSet`; people outside the org are refused. `revoke <package> --team\|--user\|--grant <grant_id>` removes one via `packageCollaboratorRemove`. Needs Manage on the package and a token with `package:manage_access` (`auth bootstrap --scopes …,package:manage_access`). Prints a summary, or JSON with `--json`.                                                                                                                                                                                                                                                                                                                                         |
 | `kody execute`                                    | Calls Kody `execute` from the CLI (`--invoke`, `--code`, `--file`, or stdin via `--file -`). With a scoped API token and no login (or with `--token`), cloud execute goes through CapabilityProxy → `kody.execute` — no `kody login`. Add `--local` to run the module (and static `kody:@…` package modules) on this machine instead. `--credential key=name` (repeatable; `org:name` / `personal:name` / empty `=` for none) picks ADR 0068 credentials for `--local` or a `kody login` MCP session. `--allow-private-network` opts local execution into private and local network access. `--target prod\|mock` (default `prod`) sends CapabilityProxy / search hops to prod or the built-in CLI mock; `--target mock` implies local workerd.                                                                                                                                                                                                                         |
 | `kody dev`                                        | Local testing for unpublished packages. Serves `kody.app.entry` on localhost via workerd with hot reload. Subcommands: `fetch`, `job`, `webhook`, `emit`, `check`. Default `--target mock` (scratch storage, fake credentials). Covers exports, webhooks, schedules (run-once), and subscriptions. See [Local package testing](#local-package-testing-kody-dev).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
@@ -112,7 +112,7 @@ you pass `--token` explicitly):
 ```bash
 # Preferred for agents on MCP (no tokenCreate, no second OAuth):
 # 1. MCP api / kody.cliCredentialBootstrap → { bootstrap_code, cli_command }
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 npx @kodycodes/cli execute --local --file ./task.js
 
 export KODY_API_TOKEN=…   # scopes: local-execute (+ search:read for search)
@@ -136,10 +136,9 @@ npx @kodycodes/cli api usageGet --params '{}'
   `https://api.kody.codes` and `https://kody.codes/mcp`; preview workers pair
   when the API worker name adds `-api`, and loopback hosts pair at any port. For
   a different API origin, use `auth bootstrap --api-url <origin>` or set
-  `KODY_API_TOKEN`. The Open API must accept that OAuth bearer on
-  CapabilityProxy / package-graph
-  ([kody-hq/kody#2812](https://github.com/kody-hq/kody/issues/2812)); until then
-  use bootstrap or a scoped `kody_at_…` token.
+  `KODY_API_TOKEN`. Paired `kody login` OAuth is accepted as Bearer on
+  CapabilityProxy and package-graph. Unpaired API origins need bootstrap or a
+  scoped `kody_at_…` token.
 - Wrong/expired token → 401 with the same agent-first not-authenticated guidance
   (or the OAuth platform-gap message when the bearer is login OAuth).
 - Wrong scopes → the error names the missing scope and the exact command to mint
@@ -153,8 +152,9 @@ npx @kodycodes/cli api usageGet --params '{}'
 
 ## Opt-in scopes
 
-Bootstrap tokens default to least-privilege local-execute scopes (no
-`package:write`, for example). Opt in to more when a task needs them:
+Bootstrap tokens default to local-execute use scopes plus `package:write`,
+`package:create`, and `token:delete`. They do not include `search:read`. Pass
+`--scopes` when a task needs a different set (the list replaces the defaults):
 
 ```bash
 # After `kody login` (mints any scope your org role grants):
@@ -373,7 +373,7 @@ npx @kodycodes/cli login
 npx @kodycodes/cli execute --local --file ./task.js --params '{"to":"me@example.com"}'
 
 # Agents on MCP: bootstrap code → store (no tokenCreate, no second OAuth):
-npx @kodycodes/cli auth bootstrap --code 'kody_bc_…'
+npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 npx @kodycodes/cli execute --local --file ./task.js --params '{"to":"me@example.com"}'
 
 # Or a scoped API token (still wins over login / bootstrap store when set):
@@ -393,10 +393,9 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   never printed, never exchanged via `tokenCreate`). Prefer the env var for API
   tokens so they stay out of shell history and `ps`. The bearer stays in the CLI
   process; the sandbox only talks to a loopback bridge. Host MCP OAuth from
-  other clients is never read. Until
-  [kody-hq/kody#2812](https://github.com/kody-hq/kody/issues/2812) ships,
-  login-only Bearer is rejected by the Open API — use bootstrap or a `kody_at_…`
-  token in that case.
+  other clients is never read. Paired `kody login` OAuth is accepted as Bearer
+  on CapabilityProxy and package-graph. Unpaired API origins need bootstrap or a
+  `kody_at_…` token.
 - **Node.js:** 22 or newer (`package.json` `engines` is `>=22`). Older Node
   fails immediately with that requirement, before workerd is downloaded or
   started.
@@ -420,12 +419,12 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   each runtime call. CapabilityProxy requests go through Node's own
   `node:http(s)` client with one keep-alive connection and a 7-minute idle limit
   for headers and body chunks. Origin's 5-minute deadline for a `fetch` with
-  `{{secret:…}}` placeholders ends that call first, with its own error. Node's
-  default 300-second fetch limit no longer cuts it short. With
-  `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these requests honor `HTTP_PROXY`
-  / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch (Node 22.21 / 24.5 or
-  later; older Node fails with a clear error instead of silently bypassing the
-  proxy). A PR preview's API host is
+  `{{secret:…}}` placeholders ends that call first, with its own error. The
+  client idle timeout is 7 minutes, so Node's default 300-second fetch limit
+  does not apply. With `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these
+  requests honor `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` like Node's own fetch
+  (Node 22.21 / 24.5 or later; older Node fails with a clear error instead of
+  silently bypassing the proxy). A PR preview's API host is
   `https://kody-pr-<n>-api.<subdomain>.workers.dev`; the app origin
   (`kody-pr-<n>`) answers `/v1/*` with an HTML 404.
 - **Errors:** an expired/revoked token or an account without the `local-execute`

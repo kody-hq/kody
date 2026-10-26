@@ -151,14 +151,13 @@ the Cloudflare Worker upload limit (~100 MiB on Free/Pro). A `Content-Length`
 over that limit returns JSON `413 payload_too_large`. See the
 [CLI streaming gateway-fetch contract](../contributing/contracts/cli-streaming-gateway-fetch.md).
 
-From `@kodycodes/cli` 1.13.1, the CLI's CapabilityProxy client waits up to 7
-minutes for origin's reply, so the gateway's 5-minute deadline is what ends a
-slow fetch, with its own error. Older CLIs stop waiting after Node's default 300
-seconds (`UND_ERR_HEADERS_TIMEOUT`) and need a few seconds of margin. With
-`NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these requests still go through
-`HTTP_PROXY` / `HTTPS_PROXY`. A `fetch` without placeholders, and a multipart
-upload that does not need fill, goes straight from local workerd and is not
-subject to this deadline.
+The CLI CapabilityProxy client waits up to 7 minutes for origin's reply, so the
+gateway's 5-minute deadline ends a slow fetch, with its own error.
+`@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
+(`UND_ERR_HEADERS_TIMEOUT`) instead. With `NODE_USE_ENV_PROXY=1` or
+`--use-env-proxy`, these requests still go through `HTTP_PROXY` / `HTTPS_PROXY`.
+A `fetch` without placeholders, and a multipart upload that does not need fill,
+goes straight from local workerd and is not subject to this deadline.
 
 ## Running from a package checkout
 
