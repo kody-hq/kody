@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareEmail from '#app/email/cloudflare-email.ts'
+import { platformFeedbackFollowUpSubject } from './email-threading.ts'
 import { type PlatformFeedbackRecord } from './types.ts'
 
 const sendCloudflareEmail = vi.fn<typeof CloudflareEmail.sendCloudflareEmail>(
@@ -45,6 +46,7 @@ type SentEmail = {
 	subject: string
 	html: string
 	text: string
+	headers?: Record<string, string>
 }
 
 function createKv(order?: Array<string>) {
@@ -72,15 +74,28 @@ function createUserDb(
 		suspended_at?: string | null
 		email_outbound_paused_at?: string | null
 	} | null,
+	options?: { acknowledgementMessageId?: string | null },
 ) {
-	const first = async () =>
-		row && {
-			email: row.email ?? 'ada@example.com',
-			suspended_at: row.suspended_at ?? null,
-			email_outbound_paused_at: row.email_outbound_paused_at ?? null,
-		}
 	return {
-		prepare: () => ({ bind: () => ({ first }) }),
+		prepare: (sql: string) => ({
+			bind: () => ({
+				first: async () => {
+					if (sql.includes('acknowledgement_message_id')) {
+						return {
+							acknowledgement_message_id:
+								options?.acknowledgementMessageId ?? null,
+						}
+					}
+					return (
+						row && {
+							email: row.email ?? 'ada@example.com',
+							suspended_at: row.suspended_at ?? null,
+							email_outbound_paused_at: row.email_outbound_paused_at ?? null,
+						}
+					)
+				},
+			}),
+		}),
 	} as unknown as D1Database
 }
 
@@ -120,6 +135,9 @@ function claimKey(feedbackId: string) {
 }
 
 test('platform feedback outcome emails send once per terminal status, escape summaries, and skip unsafe recipients', async () => {
+	sendCloudflareEmail.mockReset()
+	sendCloudflareEmail.mockResolvedValue({ ok: true })
+
 	const shouldSendCases = [
 		{ didChangeStatus: true, status: 'triaged' as const, expected: false },
 		{ didChangeStatus: false, status: 'resolved' as const, expected: false },
@@ -143,6 +161,7 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 	expect(resolvedEmail.to).toBe('ada@example.com')
 	expect(resolvedEmail.from).toBe('kody@kody.codes')
 	expect(resolvedEmail.subject).toContain('resolved')
+	expect(resolvedEmail.headers).toBeUndefined()
 	expect(resolvedEmail.html).not.toContain('<script>')
 	expect(resolvedEmail.html).toContain(
 		'&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;Setup is confusing',
@@ -165,6 +184,7 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 	).toBe(true)
 	const dismissedEmail = lastSentEmail()
 	expect(dismissedEmail.subject).toContain('update')
+	expect(dismissedEmail.headers).toBeUndefined()
 	expect(dismissedEmail.html).toContain(userMessage)
 	expect(dismissedEmail.text).toContain(userMessage)
 	expect(dismissedEmail.html).toContain(
@@ -191,9 +211,30 @@ test('platform feedback outcome emails send once per terminal status, escape sum
 	expect(sendCloudflareEmail).toHaveBeenCalledTimes(1)
 })
 
+test('platform feedback outcome emails thread to the acknowledgement Message-ID when stored', async () => {
+	sendCloudflareEmail.mockReset()
+	sendCloudflareEmail.mockResolvedValue({ ok: true })
+	const { kv } = createKv()
+	const ackId = '<ack-feedback-thread@email.cf.example>'
+	const env = createEnv({
+		kv,
+		db: createUserDb({}, { acknowledgementMessageId: ackId }),
+	})
+
+	expect(await send(env, { id: 'feedback-threaded' })).toBe(true)
+	const threaded = lastSentEmail()
+	expect(threaded.subject).toBe(platformFeedbackFollowUpSubject)
+	expect(threaded.headers).toEqual({
+		'In-Reply-To': ackId,
+		References: ackId,
+	})
+	expect(threaded.html).toContain('We resolved your feedback')
+})
+
 test('platform feedback outcome emails reserve the KV claim before sending and release it on send failure', async () => {
 	const order: Array<string> = []
 	const { kv, store } = createKv(order)
+	sendCloudflareEmail.mockReset()
 	sendCloudflareEmail.mockImplementation(async () => {
 		order.push('send')
 		throw new Error('smtp down')

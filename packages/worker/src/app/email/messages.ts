@@ -1,4 +1,5 @@
 import { renderTransactionalEmail } from '#app/email/template.ts'
+import { platformFeedbackAcknowledgementSubject } from '#worker/platform-feedback/email-threading.ts'
 import { type PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
 import { ERROR_AGENT_PROMPT_ATTR } from '#universal/error-agent-prompt.ts'
 import { buildBillingFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -804,7 +805,7 @@ export function buildPlatformFeedbackAcknowledgementEmail(input: {
 	const feedbackId = input.feedbackId.trim()
 	return renderTransactionalEmail({
 		appBaseUrl: input.appBaseUrl,
-		subject: 'We got your Kody feedback',
+		subject: platformFeedbackAcknowledgementSubject,
 		preheader: 'Thanks — we have your note and will take a look.',
 		heading: 'We got your feedback',
 		body: [

@@ -60,6 +60,7 @@ type CapturedSend = {
 	html: string
 	text?: string
 	reply_to?: string
+	headers?: Record<string, string>
 }
 
 function createKv(order?: Array<string>) {
@@ -139,6 +140,38 @@ function seedUser(
 		.run(input.stableUserId, input.emailOutboundPausedAt ?? null)
 }
 
+function seedFeedbackRow(
+	sqlite: DatabaseSync,
+	feedback: PlatformFeedbackRecord,
+) {
+	sqlite
+		.prepare(
+			`INSERT INTO platform_feedback (
+				id, submitter_user_id, submitter_username, submitter_email,
+				category, summary, details, status, reviewed_by_user_id,
+				reviewed_at, admin_note, resolution_note, resolution_pr_urls,
+				created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.run(
+			feedback.id,
+			feedback.submitterUserId,
+			feedback.submitterUsername,
+			feedback.submitterEmail,
+			feedback.category,
+			feedback.summary,
+			feedback.details,
+			feedback.status,
+			feedback.reviewedByUserId,
+			feedback.reviewedAt,
+			feedback.adminNote,
+			feedback.resolutionNote,
+			JSON.stringify(feedback.resolutionPrUrls),
+			feedback.createdAt,
+			feedback.updatedAt,
+		)
+}
+
 function createEmailCaptureServer(sent: Array<CapturedSend>, fail = false) {
 	return createMswNodeServer(
 		[
@@ -159,7 +192,7 @@ function createEmailCaptureServer(sent: Array<CapturedSend>, fail = false) {
 					return HttpResponse.json({
 						success: true,
 						result: {
-							message_id: `email_${sent.length}`,
+							message_id: `<ack-${sent.length}@email.cf.example>`,
 							delivered: [body.to],
 							permanent_bounces: [],
 							queued: [],
@@ -214,6 +247,7 @@ test('platform feedback acknowledgement emails send once, skip unsafe recipients
 	using _server = createEmailCaptureServer(sent)
 	const { sqlite, db } = createUsersAndFeedbackDb()
 	seedUser(sqlite, { stableUserId: ownerIdFromStored('user-1') })
+	seedFeedbackRow(sqlite, openFeedback)
 	const { kv, store, puts } = createKv()
 	const env = createEnv({ db, kv })
 
@@ -247,6 +281,14 @@ test('platform feedback acknowledgement emails send once, skip unsafe recipients
 	expect(puts[0]?.options?.expirationTtl).toBe(
 		platformFeedbackAcknowledgementEmailClaimTtlSeconds,
 	)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT acknowledgement_message_id AS message_id
+				 FROM platform_feedback WHERE id = ?`,
+			)
+			.get(openFeedback.id),
+	).toEqual({ message_id: '<ack-1@email.cf.example>' })
 
 	expect(
 		await sendPlatformFeedbackAcknowledgementEmail({

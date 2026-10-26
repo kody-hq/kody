@@ -683,6 +683,10 @@
 		{
 			"filename": "0185-package-app-grant-credential-mappings.sql",
 			"sha256": "329a5f8c01ad0aff394ebd9089e3a08d7ef424d14802a8e9074262bf79775788"
+		},
+		{
+			"filename": "0186-platform-feedback-acknowledgement-message-id.sql",
+			"sha256": "3d5df4e50dc8f43c9f54fcaaacfc7bd956a8e879f5e8180b3685db8e9b831a4a"
 		}
 	]
 }

@@ -2,6 +2,8 @@ import * as Sentry from '@sentry/cloudflare'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { buildPlatformFeedbackAcknowledgementEmail } from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
+import { normalizeRfcMessageId } from './email-threading.ts'
+import { setPlatformFeedbackAcknowledgementMessageId } from './repo.ts'
 import {
 	isPlatformFeedbackSubmitterMailable,
 	readPlatformFeedbackSubmitterMailTarget,
@@ -125,6 +127,28 @@ export async function sendPlatformFeedbackAcknowledgementEmail(input: {
 			error: new Error(sendResult.error ?? 'Cloudflare Email send failed.'),
 		})
 		return false
+	}
+
+	const messageId = normalizeRfcMessageId(sendResult.messageId)
+	if (messageId) {
+		try {
+			await setPlatformFeedbackAcknowledgementMessageId(input.env.APP_DB, {
+				feedbackId: input.feedback.id,
+				messageId,
+			})
+		} catch (error) {
+			console.warn(
+				'platform-feedback-acknowledgement-message-id-persist-failed',
+				{
+					feedbackId: input.feedback.id,
+					error,
+				},
+			)
+		}
+	} else {
+		console.warn('platform-feedback-acknowledgement-message-id-missing', {
+			feedbackId: input.feedback.id,
+		})
 	}
 	return true
 }
