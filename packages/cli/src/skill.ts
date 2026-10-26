@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { defaultMcpUrl } from './defaults.js'
 
 const skillRelativePath = 'skills/kody/SKILL.md'
+/** Hosted well-known skill name; keep in sync with agent-discovery. */
 const hostedSkillName = 'kody-cli'
 const skillFrontmatter = `---
 name: kody
