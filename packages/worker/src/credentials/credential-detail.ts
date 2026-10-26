@@ -80,8 +80,9 @@ async function listUsage(input: {
 	// Shared org/personal/MCP rows load once; package-bound Keys are batched
 	// (KODY-BD). Closures still run per package in parallel, but the suppliers
 	// flag is evaluated once for the org and threaded with `request` so nested
-	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT). A flag
-	// failure marks usage unreadable once instead of failing the whole detail.
+	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT /
+	// KODY-BV). A flag failure marks usage unreadable once instead of failing
+	// the whole detail.
 	let supplierSemanticsEnabled: boolean
 	try {
 		supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
