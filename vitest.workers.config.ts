@@ -33,6 +33,18 @@ const workersMaxWorkers = process.env.CI
 export default mergeConfig(
 	sharedProjectConfig,
 	defineProject({
+		resolve: {
+			// Same stand-in as vite.config.ts: workerd cannot compile WASM at runtime.
+			alias: [
+				{
+					find: /^harfbuzzjs$/,
+					replacement: resolve(
+						rootDir,
+						'packages/worker/src/og/harfbuzz-worker.ts',
+					),
+				},
+			],
+		},
 		plugins: [
 			cloudflareTest({
 				remoteBindings: false,
