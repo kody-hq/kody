@@ -296,7 +296,6 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						key={data.org.slug}
 						data={data}
 						queryKey={queryKey}
-						onMessage={(text, tone) => setMessage({ text, tone })}
 					/>
 					{data.canDelete ? (
 						<AccountManagementPanel title="Delete organization">
