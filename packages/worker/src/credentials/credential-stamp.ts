@@ -1542,7 +1542,7 @@ export function scanCredentialStamp(
 		failures.push({
 			code: 'unstampable_pattern',
 			message:
-				'A vault placeholder {{secret/provider:ref}} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, or call argument) and cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key. Placeholders only in display/help text (for example status() example or description fields) are not credential uses and do not block the stamp.',
+				'A vault placeholder {{secret/provider:ref}} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, call argument, or an object, array, or helper return that can feed one) and cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key. Placeholders only in values returned from status(), help(), docs(), or usage() are display text and do not block the stamp.',
 		})
 	}
 

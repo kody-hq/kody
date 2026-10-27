@@ -64,6 +64,8 @@ export type CredentialOtherContext =
 	| 'url-host'
 	/** A module that did not parse, read as plain text. */
 	| 'unparsed'
+	/** Returned from a status/help/docs/usage function: package help text. */
+	| 'display'
 	| 'other'
 
 /**
@@ -94,11 +96,11 @@ export type CredentialPlacement =
 export type CredentialPlacementType = CredentialPlacement['type']
 
 /**
- * True when a vault placeholder sits where the fetch gateway or a
- * credential-mapped call can resolve it. Display-only sites (status /
- * help / example object fields, bare returns, unused bindings) are false:
- * those strings are documentation, not credential uses, so the stamp gate
- * ignores them even when the token has a concrete provider id and ref.
+ * True when a vault placeholder may reach the fetch gateway or a
+ * credential-mapped call. Fails closed: only display sites (values returned
+ * from status/help/docs/usage), unused bindings, and bindings (whose reads are
+ * recorded separately) are false, so a placeholder parked in an object,
+ * array, or helper return that later feeds a request still fails the stamp.
  */
 export function isVaultCredentialUsePlacement(
 	placement: CredentialPlacement,
@@ -118,22 +120,23 @@ export function isVaultCredentialUsePlacement(
 			return false
 		case 'other':
 			switch (placement.context) {
+				case 'display':
+				case 'unused-binding':
+					return false
 				case 'sdk-option':
 				case 'argument':
 				case 'url-host':
 				case 'unparsed':
-					return true
 				case 'object':
 				case 'return':
 				case 'assignment':
 				case 'array':
 				case 'default-param':
 				case 'comparison':
-				case 'unused-binding':
 				case 'reassigned-binding':
 				case 'template-computed':
 				case 'other':
-					return false
+					return true
 				default: {
 					const exhaustive: never = placement.context
 					return exhaustive
@@ -173,6 +176,7 @@ export const credentialOtherContexts = [
 	'template-computed',
 	'url-host',
 	'unparsed',
+	'display',
 	'other',
 ] as const satisfies ReadonlyArray<CredentialOtherContext>
 
@@ -856,12 +860,7 @@ type ClassifyContext = {
 	binding: (declarator: AstNode) => 'read' | 'reassigned' | 'unused'
 }
 
-/**
- * Object keys that hold documentation / help copy rather than outbound
- * request data. Nested headers or `https://…` examples under these keys are
- * display text — but only when no call/new expression encloses the
- * placeholder (a fetch body field named `description` stays live).
- */
+/** Documentation keys recorded on display placements (labels only). */
 const displayDocumentationPropertyKeys = new Set([
 	'example',
 	'examples',
@@ -914,9 +913,11 @@ function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
 }
 
 /**
- * Display/help sites for vault tokens: documentation property keys, or a
- * return from status/help/docs/usage — and never when a call or `new` encloses
+ * Display/help sites for vault tokens: values returned from a
+ * status/help/docs/usage function, and never when a call or `new` encloses
  * the placeholder (so fetch bodies and request helpers stay stamp-gated).
+ * Documentation-keyed objects elsewhere (`const spec = { description }`) are
+ * not exempt: a later read can feed them into a request.
  */
 function displayOnlyPlacement(
 	ancestors: ReadonlyArray<AstNode>,
@@ -931,15 +932,6 @@ function displayOnlyPlacement(
 			return null
 		}
 	}
-	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
-		const ancestor = ancestors[index]!
-		if (ancestor.type === 'ObjectProperty') {
-			const key = safeIdentifier(propertyKey(ancestor))
-			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
-				return otherPlacement('object', key)
-			}
-		}
-	}
 	const inReturn =
 		ancestors.some((ancestor) => ancestor.type === 'ReturnStatement') ||
 		ancestors.some(
@@ -949,10 +941,19 @@ function displayOnlyPlacement(
 		)
 	if (!inReturn) return null
 	const functionName = enclosingFunctionName(ancestors)?.toLowerCase() ?? null
-	if (functionName && displayReturnFunctionNames.has(functionName)) {
-		return otherPlacement('return')
+	if (!functionName || !displayReturnFunctionNames.has(functionName)) {
+		return null
 	}
-	return null
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (ancestor.type === 'ObjectProperty') {
+			const key = safeIdentifier(propertyKey(ancestor))
+			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
+				return otherPlacement('display', key)
+			}
+		}
+	}
+	return otherPlacement('display')
 }
 
 function classifyPlacement(
