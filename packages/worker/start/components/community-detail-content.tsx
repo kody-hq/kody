@@ -106,6 +106,7 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 				viewerCanManageAccess,
 				active: 'repo',
 				filesHref,
+				installOrg: props.installOrg,
 				description,
 				ownerProfilePublic,
 				iconUrl: markUrl,

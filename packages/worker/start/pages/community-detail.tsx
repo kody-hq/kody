@@ -151,7 +151,7 @@ export function CommunityDetailRoute({
 				<article css={detailArticleCss}>
 					<CommunityDetailContent
 						{...header}
-						installOrg={packageInstall.context.orgPicker?.selected ?? null}
+						installOrg={packageInstall.org}
 						listing={
 							header.listing
 								? {

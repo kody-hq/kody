@@ -25,6 +25,14 @@ export function readCommunitySearchFromHref(href: string) {
 	}
 }
 
+/** Keeps the picked install org (`?org=`) on a site-relative href. */
+export function withInstallOrg(href: string, installOrg?: string | null) {
+	if (!installOrg) return href
+	const url = new URL(href, 'http://localhost')
+	url.searchParams.set('org', installOrg)
+	return `${url.pathname}${url.search}${url.hash}`
+}
+
 export function buildCommunityIndexHref(input?: {
 	query?: string | null
 	sort?: CommunityListingSort

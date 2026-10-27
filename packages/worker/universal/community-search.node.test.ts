@@ -3,6 +3,7 @@ import {
 	buildCommunityIndexHref,
 	parseCommunityListingSort,
 	readCommunitySearchFromHref,
+	withInstallOrg,
 } from './community-search.ts'
 
 test('community search hrefs omit default sort and keep newest with the query', () => {
@@ -46,4 +47,19 @@ test('community search hrefs omit default sort and keep newest with the query', 
 		sort: 'newest',
 		category: 'integrations',
 	})
+})
+
+test('withInstallOrg keeps the picked org on site-relative hrefs', () => {
+	expect(withInstallOrg('/@sample-author/weather-widget', null)).toBe(
+		'/@sample-author/weather-widget',
+	)
+	expect(
+		withInstallOrg(
+			'/@sample-author/weather-widget/tree/main/a.ts',
+			'example-team',
+		),
+	).toBe('/@sample-author/weather-widget/tree/main/a.ts?org=example-team')
+	expect(withInstallOrg('/community?q=weather#top', 'example-team')).toBe(
+		'/community?q=weather&org=example-team#top',
+	)
 })

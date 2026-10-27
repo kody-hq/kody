@@ -14,6 +14,7 @@ import {
 import { renderPackageStatusSignifiers } from './package-status-signifiers.tsx'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
+import { withInstallOrg } from '#universal/community-search.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 
 export type PackageRepoNavActive =
@@ -37,11 +38,15 @@ function renderPackageRepoNav(input: {
 	/** Defaults to true. Pass false only to hide Files intentionally. */
 	showFilesNav?: boolean
 	active: PackageRepoNavActive
+	installOrg?: string | null
 }) {
-	const repoHref = routes.communityPackage.href({
-		username: input.username,
-		kodyId: input.kodyId,
-	})
+	const repoHref = withInstallOrg(
+		routes.communityPackage.href({
+			username: input.username,
+			kodyId: input.kodyId,
+		}),
+		input.installOrg,
+	)
 	const settingsHref = getPackageSettingsHref({
 		username: input.username,
 		kodyId: input.kodyId,
@@ -59,7 +64,7 @@ function renderPackageRepoNav(input: {
 			</SiteLink>
 			{showFilesNav ? (
 				<SiteLink
-					href={input.filesHref}
+					href={withInstallOrg(input.filesHref, input.installOrg)}
 					aria-current={input.active === 'files' ? 'page' : undefined}
 					data-testid="package-repo-nav-files"
 					css={tabCss}
@@ -132,10 +137,12 @@ export function renderPackageRepoChrome(input: {
 	animate?: boolean
 	/** Labeled controls on the tab row; status icons stay in the title. */
 	actions?: ReactNode
+	/** Picked install org (`?org=`), kept on tab and catalog links. */
+	installOrg?: string | null
 }) {
 	const backHref = input.viewerIsOwner
 		? orgResourcePath(input.username, 'repositories')
-		: routes.community.href()
+		: withInstallOrg(routes.community.href(), input.installOrg)
 	const backLabel = input.viewerIsOwner ? 'Repositories' : 'Public packages'
 	const profileHref =
 		input.ownerProfilePublic === false
@@ -204,6 +211,7 @@ export function renderPackageRepoChrome(input: {
 					username: input.username,
 					kodyId: input.kodyId,
 					filesHref: input.filesHref,
+					installOrg: input.installOrg,
 					viewerCanManage: input.viewerCanManage,
 					showCredentialTabs: input.viewerIsOwner && hasPackage,
 					showCollaboratorsTab:

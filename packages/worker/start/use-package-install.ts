@@ -172,6 +172,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		}
 	}
 	return {
+		org,
 		installMessage,
 		installOutcome,
 		context: {
