@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { type CommunityDetailApiPayload } from '../community-types.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
+import { withInstallOrg } from '#universal/community-search.ts'
 import {
 	type CommunityDetailContentProps,
 	CommunityDetailContent,
@@ -62,12 +63,15 @@ export function CommunityDetailRoute({
 		[data.readmeContent, data.readmeFences, data.imageBaseHref],
 	)
 	const agentsDocsHref = data.hasAgentsDocs
-		? getPackageTreeHref({
-				username: data.username,
-				kodyId: data.kodyId,
-				listingId: listingId ?? undefined,
-				relativePath: 'AGENTS.md',
-			})
+		? withInstallOrg(
+				getPackageTreeHref({
+					username: data.username,
+					kodyId: data.kodyId,
+					listingId: listingId ?? undefined,
+					relativePath: 'AGENTS.md',
+				}),
+				packageInstall.org,
+			)
 		: null
 
 	// Capture reconciliation when submitted, so a later navigation cannot move

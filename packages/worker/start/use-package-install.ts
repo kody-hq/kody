@@ -126,11 +126,11 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			: null
 	useEffect(() => {
 		if (!liveDone || fork?.viewerInstall) return
-		const key = `${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
+		const key = `${org ?? 'personal'}:${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
 		if (reconciledFor.current === key) return
 		reconciledFor.current = key
 		void reconcile()
-	}, [liveDone, fork?.viewerInstall, fork?.listingId, reconcile])
+	}, [liveDone, fork?.viewerInstall, fork?.listingId, org, reconcile])
 	const existingFork =
 		fork?.viewerInstall || !liveDone
 			? null
