@@ -85,15 +85,21 @@ package-app surfaces:
     `SameSite=None`, without adding CSRF tokens at the same time.
 11. **Email change requires a verified current address.**
     `POST /account/email-change.json` refuses to start a change when
-    `users.email_verified_at` is null (403, audit reason `email_unverified`). A
-    former-email claim collision at password or social-login signup is a
-    controlled 409 with audit reason `former_email_claimed` (copy tells the
-    person to sign in with the email that account uses now, or release the
-    address from Account settings — never leaking the current email). The owner
-    re-verifies the former address (`POST /account/email-claim-release.json`
-    plus `/verify-email-claim-release`) to drop the claim; that path is rate
-    limited. New accounts get random `stable_user_id` values. Only `users.email`
-    and active `user_email_claims` rows reserve an address; a legacy email-hash
+    `users.email_verified_at` is null (403, audit reason `email_unverified`).
+    Starting a change also requires the current password. The new address must
+    confirm via `/verify-email-change` before `users.email` updates. After that
+    commit, Kody emails the previous address (`email_changed` transactional
+    kind) with a partial mask of the new address, when/IP/UA/country when
+    available, and links to account settings, password reset, and `support@` on
+    the system email domain. A former-email claim collision at password or
+    social-login signup is a controlled 409 with audit reason
+    `former_email_claimed` (copy tells the person to sign in with the email that
+    account uses now, or release the address from Account settings — never
+    leaking the current email). The owner re-verifies the former address
+    (`POST /account/email-claim-release.json` plus
+    `/verify-email-claim-release`) to drop the claim; that path is rate limited.
+    New accounts get random `stable_user_id` values. Only `users.email` and
+    active `user_email_claims` rows reserve an address; a legacy email-hash
     `stable_user_id` reserves nothing and is never recomputed from an email.
 12. **Unverified accounts are reclaimed on a provider-verified social match.**
     When a social login profile presents a verified email that matches

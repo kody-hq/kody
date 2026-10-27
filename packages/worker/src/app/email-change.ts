@@ -5,7 +5,10 @@ import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-po
 import { hashVerificationToken } from '#app/email-verification.ts'
 import { assessAccountEmail } from '#worker/identity/account-email-policy.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
-import { buildEmailChangeEmail } from '#app/email/messages.ts'
+import {
+	buildEmailChangeEmail,
+	buildEmailChangedSecurityEmail,
+} from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { createDb, pendingEmailChangesTable } from '#worker/db.ts'
 import {
@@ -16,6 +19,7 @@ import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { reconcileDestinationsAfterIdentityEmailChange } from '#worker/email/destinations.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { getSystemEmailDomain } from '#worker/email/platform-address.ts'
 
 const emailChangeTokenBytes = 32
 const emailChangeTokenExpiryMs = 24 * 60 * 60 * 1000
@@ -275,5 +279,79 @@ export async function verifyEmailChangeToken(input: {
 		stableUserId,
 		oldEmail: record.email,
 		newEmail,
+	}
+}
+
+/**
+ * Tell the previous login address that the account email changed. Best-effort:
+ * a send failure must not undo a committed change (same pattern as password
+ * reset confirmation). The only commit path is `verifyEmailChangeToken`.
+ */
+export async function notifyFormerAddressOfEmailChange(input: {
+	env: Env
+	requestUrl: string | URL
+	oldEmail: string
+	newEmail: string
+	changedAt?: Date
+	ip?: string | null
+	userAgent?: string | null
+	country?: string | null
+}) {
+	if (normalizeEmail(input.oldEmail) === normalizeEmail(input.newEmail)) {
+		return
+	}
+
+	const emailConfig = getEmailChangeConfig({
+		env: input.env,
+		requestUrl: input.requestUrl,
+	})
+	const accountUrl = new URL('/account', emailConfig.appBaseUrl).toString()
+	const resetPasswordUrl = new URL(
+		'/reset-password',
+		emailConfig.appBaseUrl,
+	).toString()
+	const systemDomain = getSystemEmailDomain(input.env)
+	const supportEmail = systemDomain
+		? `support@${systemDomain}`
+		: 'support@kody.codes'
+	const email = buildEmailChangedSecurityEmail({
+		appBaseUrl: emailConfig.appBaseUrl,
+		oldEmail: input.oldEmail,
+		newEmail: input.newEmail,
+		changedAt: input.changedAt ?? new Date(),
+		accountUrl,
+		resetPasswordUrl,
+		supportEmail,
+		ip: input.ip,
+		userAgent: input.userAgent,
+		country: input.country,
+	})
+
+	try {
+		const sendResult = await sendGatedTransactionalEmail({
+			db: input.env.APP_DB,
+			config: {
+				accountId: input.env.CLOUDFLARE_ACCOUNT_ID,
+				apiBaseUrl: input.env.CLOUDFLARE_API_BASE_URL,
+				apiToken: input.env.CLOUDFLARE_API_TOKEN,
+			},
+			category: 'essential',
+			kind: 'email_changed',
+			message: {
+				to: input.oldEmail,
+				from: emailConfig.fromEmail,
+				subject: email.subject,
+				html: email.html,
+				text: email.text,
+			},
+		})
+		if (!sendResult.ok) {
+			console.warn(
+				'email-changed-security-notice-skipped',
+				sendResult.error ?? 'send skipped',
+			)
+		}
+	} catch (error) {
+		console.warn('email-changed-security-notice-error', error)
 	}
 }

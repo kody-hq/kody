@@ -72,6 +72,89 @@ export function buildEmailChangeEmail(input: {
 	})
 }
 
+/**
+ * Partially mask an address for security notices so the recipient sees that
+ * the login email moved without learning the full new local-part from this
+ * mail alone (they already know the domain in many cases).
+ */
+export function maskEmailAddressForNotice(email: string) {
+	const trimmed = email.trim().toLowerCase()
+	const at = trimmed.indexOf('@')
+	if (at <= 0 || at === trimmed.length - 1) return '***'
+	const local = trimmed.slice(0, at)
+	const domain = trimmed.slice(at + 1)
+	const visible = local.slice(0, 1)
+	return `${visible}***@${domain}`
+}
+
+function formatEmailChangeWhen(changedAt: Date) {
+	return `${changedAt.toISOString().replace(/\.\d{3}Z$/, 'Z')} (UTC)`
+}
+
+function formatEmailChangeRequestContext(input: {
+	ip?: string | null
+	userAgent?: string | null
+	country?: string | null
+}) {
+	const parts: Array<string> = []
+	const ip = input.ip?.trim()
+	if (ip) parts.push(`IP ${ip}`)
+	const country = input.country?.trim()
+	if (country) parts.push(`country ${country}`)
+	const userAgent = input.userAgent?.trim()
+	if (userAgent) {
+		const shortened =
+			userAgent.length > 160 ? `${userAgent.slice(0, 157)}...` : userAgent
+		parts.push(`browser ${shortened}`)
+	}
+	return parts.length > 0 ? parts.join('; ') : null
+}
+
+/** Security notice to the previous login address after an email change commits. */
+export function buildEmailChangedSecurityEmail(input: {
+	appBaseUrl: string
+	oldEmail: string
+	newEmail: string
+	changedAt: Date
+	accountUrl: string
+	resetPasswordUrl: string
+	supportEmail?: string
+	ip?: string | null
+	userAgent?: string | null
+	country?: string | null
+}) {
+	const maskedNew = maskEmailAddressForNotice(input.newEmail)
+	const supportEmail = input.supportEmail?.trim() || 'support@kody.codes'
+	const requestContext = formatEmailChangeRequestContext(input)
+	const body = [
+		`The login email on your Kody account was changed from ${input.oldEmail} to ${maskedNew}.`,
+		`When: ${formatEmailChangeWhen(input.changedAt)}.`,
+	]
+	if (requestContext) {
+		body.push(`Request details: ${requestContext}.`)
+	}
+	body.push(
+		'If this was you, no action is needed. If it was not, secure the account immediately.',
+	)
+
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Your Kody account email was changed',
+		preheader: `Login email moved to ${maskedNew}.`,
+		heading: 'Your account email was changed',
+		body,
+		action: { label: 'Open account settings', url: input.accountUrl },
+		secondaryAction: {
+			label: 'Reset your password',
+			url: input.resetPasswordUrl,
+		},
+		afterAction: [
+			`This wasn't you? Reset your password, review sign-in methods on your account, and email ${supportEmail}.`,
+		],
+		footnote: `We sent this to ${input.oldEmail} because it was the previous login address. Contact ${supportEmail} if you need help recovering access.`,
+	})
+}
+
 export function buildEmailDestinationVerificationEmail(input: {
 	appBaseUrl: string
 	destinationEmail: string

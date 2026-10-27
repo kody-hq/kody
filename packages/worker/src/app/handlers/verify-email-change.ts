@@ -11,7 +11,16 @@ import {
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
-import { verifyEmailChangeToken } from '#app/email-change.ts'
+import {
+	notifyFormerAddressOfEmailChange,
+	verifyEmailChangeToken,
+} from '#app/email-change.ts'
+
+function getRequestCountry(request: Request) {
+	const cf = (request as Request & { cf?: { country?: string } }).cf
+	const country = cf?.country?.trim()
+	return country && country.length > 0 ? country : undefined
+}
 
 function getVerifyEmailChangeError(result: {
 	reason:
@@ -101,6 +110,17 @@ export async function executeVerifyEmailChange({
 		path: '/verify-email-change',
 		reason: `old_email=${result.oldEmail}`,
 	})
+
+	await notifyFormerAddressOfEmailChange({
+		env,
+		requestUrl: request.url,
+		oldEmail: result.oldEmail,
+		newEmail: result.newEmail,
+		ip: requestIp,
+		userAgent: request.headers.get('user-agent'),
+		country: getRequestCountry(request),
+	})
+
 	return {
 		title: 'Email changed',
 		setCookie: setCookie ?? undefined,
