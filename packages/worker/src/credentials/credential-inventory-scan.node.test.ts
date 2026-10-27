@@ -122,6 +122,16 @@ test('status returns the module itself reads or calls are not display-only', () 
 	}
 })
 
+test('calling an unrelated client.status() keeps the own status() return display-only', () => {
+	const result = scan(`
+		export function status() {
+			return { example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }
+		}
+		export const run = (client) => client.status()
+	`)
+	expect(result.vaultPlacements).toEqual([other('display', 'example')])
+})
+
 test('vault refs in separately bound objects that feed a request stay credential uses', () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'

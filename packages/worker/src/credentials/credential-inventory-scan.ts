@@ -686,12 +686,13 @@ function scanParsedModule(
 	const readCount = new Map<Binding, number>()
 	// Display functions the module itself reads or calls (`fetch(status())`,
 	// `this.help()`) can feed a request, so their returns are not exempt.
+	// Member calls count only on `this`; `client.status()` is someone else's.
 	const referencedDisplayNames = new Set<string>()
 	walkAst(parsed, (node, ancestors) => {
 		if (
 			(node.type === 'CallExpression' ||
 				node.type === 'OptionalCallExpression') &&
-			node.callee?.type !== 'Identifier'
+			node.callee?.object?.type === 'ThisExpression'
 		) {
 			const name = getCalleeName(node.callee)?.toLowerCase()
 			if (name && displayReturnFunctionNames.has(name)) {
