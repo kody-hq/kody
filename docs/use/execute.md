@@ -198,8 +198,8 @@ Hosted MCP clients stop waiting after about 60 seconds and surface JSON-RPC
 notifications do not reset that clock. Before that client deadline, hosted
 **execute** returns `inProgress: true` with **`runId`** and **`idempotencyKey`**
 instead of letting the timeout look like a failed mutation with nothing to
-follow. The sandbox keeps running. Poll **`runGet({ run_id })`** with that
-`runId`. Retry **execute** with the same `idempotencyKey` to read the
+follow. The sandbox keeps running. Poll **`runGet({ run_id: runId })`** with
+that `runId`. Retry **execute** with the same `idempotencyKey` to read the
 in-progress or retained result. Do not start a second mutation.
 
 You can omit **`idempotencyKey`**. When Kody can record the run, it assigns one

@@ -20,9 +20,10 @@ also [join the Discord](https://kody.codes/discord).
 The user-facing docs site is [kody.codes/docs](https://kody.codes/docs). Every
 page is also raw markdown (`/docs/<slug>.md`), indexed at
 [kody.codes/llms.txt](https://kody.codes/llms.txt), and available to connected
-agents as `search({ entity: "guide:{id}" })`. Sources, sidebar order, and MCP
-ids live in [`docs/guides`](../guides/README.md). Start with
-[What is Kody?](../guides/what-is-kody.md),
+agents as `search({ entity: "guide:{id}" })`. Sources and MCP ids live in
+[`docs/guides`](../guides/README.md); sidebar order lives in
+[`packages/worker/universal/docs-nav.ts`](../../packages/worker/universal/docs-nav.ts).
+Start with [What is Kody?](../guides/what-is-kody.md),
 [Search and execute](../guides/search-and-execute.md),
 [Connect your agent](../guides/connect-your-agent.md), and
 [Local CLI execute](../guides/local-execute.md).

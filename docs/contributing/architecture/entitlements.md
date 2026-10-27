@@ -851,7 +851,8 @@ reconcile lane, cold-drift correction, and the parity report.
 
 ## Schema
 
-The squashed baseline stores plan columns as they work today:
+The current schema after the squashed baseline and subsequent migrations stores
+plan columns as they work today:
 
 - `orgs.plan` is NOT NULL with DEFAULT `'free'` and CHECK constraints for
   `free`, `standard`, `pro`, and `max`
@@ -859,7 +860,11 @@ The squashed baseline stores plan columns as they work today:
 - `orgs.stripe_price_id` holds the granting Stripe price so a later refresh can
   drop `legacy` on a subscription change
 
-Individual pre-squash plan-column migration files live in Git history only.
+The frozen `0001-squashed-init.sql` baseline still has the older plan CHECK
+values; later migrations (`0002-restructure-plan-tiers.sql`,
+`0043-users-entitlement-ladder.sql`, `0044-users-stripe-price-id.sql`, and the
+orgs backfill) bring the live schema to the shape above. Pre-baseline
+plan-column history lives only in Git.
 
 ## Assigning plans
 
