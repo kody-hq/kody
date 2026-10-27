@@ -9,7 +9,10 @@ import {
 import { ProfileRoute } from '../pages/profile.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { routes } from '#universal/routes.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	getGhostButtonCss,
+	getPillButtonCss,
+} from '#universal/styles/style-primitives.ts'
 const pageQuery = createPageQuery('loadOrgRepositories', loadOrgRepositories, {
 	freshAuthorization: true,
 })
@@ -64,13 +67,24 @@ function Page() {
 				description="Every repository in this workspace, private ones included. Packages live here too: a package is a repository with a Kody package manifest. Your public profile shows visitors the public ones."
 				currentHref={href}
 				actions={
-					<SiteLink
-						href={routes.orgRepositoryNew.href({ orgSlug })}
-						css={getPillButtonCss({ size: 'sm' })}
-						data-testid="repositories-new"
-					>
-						New repository
-					</SiteLink>
+					<>
+						<SiteLink
+							href={routes.community.href(null, {
+								searchParams: new URLSearchParams({ org: orgSlug }),
+							})}
+							css={getGhostButtonCss({ size: 'sm' })}
+							data-testid="repositories-browse-community"
+						>
+							Fork a community package
+						</SiteLink>
+						<SiteLink
+							href={routes.orgRepositoryNew.href({ orgSlug })}
+							css={getPillButtonCss({ size: 'sm' })}
+							data-testid="repositories-new"
+						>
+							New repository
+						</SiteLink>
+					</>
 				}
 			/>
 			<ProfileRoute

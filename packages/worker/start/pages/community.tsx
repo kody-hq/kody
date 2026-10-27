@@ -7,7 +7,12 @@ import { useNavigate } from '@tanstack/react-router'
 import { type CommunityIndexLoaderData } from '#universal/loader-data.ts'
 import { landingArtAttrs } from '../public-assets.ts'
 import { routes } from '#universal/routes.ts'
-import { colors, transitions, typography } from '#universal/styles/tokens.ts'
+import {
+	colors,
+	spacing,
+	transitions,
+	typography,
+} from '#universal/styles/tokens.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -17,8 +22,10 @@ import { mergeCss } from '../components/merge-css.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { CommunityListingsContent } from '../components/community-listings-content.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { CommunityInstallOrgSelect } from '../components/community-install-org-select.tsx'
+import { useCommunityInstallOrg } from '../use-community-install-org.ts'
 export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
-	const { pageLocation } = useMatchedPageScope()
+	const { actorKey, pageLocation } = useMatchedPageScope()
 	const params = new URLSearchParams(pageLocation.searchStr)
 	const searchQuery = params.get('q')?.trim() ?? ''
 	const sort = params.get('sort') === 'newest' ? 'newest' : 'best'
@@ -31,6 +38,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 	}
 	const explainer = resolveEntityExplainer('community')
 	const navigate = useNavigate()
+	const { picker: installOrgPicker } = useCommunityInstallOrg(actorKey != null)
 	return (
 		<section css={communityPageCss}>
 			<header css={communityHeadCss}>
@@ -90,10 +98,22 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						{category ? (
 							<input type="hidden" name="category" value={category} />
 						) : null}
+						{data.installOrg ? (
+							<input type="hidden" name="org" value={data.installOrg} />
+						) : null}
 						<button type="submit" css={getPillButtonCss()}>
 							Search
 						</button>
 					</form>
+					{installOrgPicker ? (
+						<div
+							data-rise
+							style={{ '--rise': '3' } as CSSProperties}
+							css={installOrgRowCss}
+						>
+							<CommunityInstallOrgSelect picker={installOrgPicker} />
+						</div>
+					) : null}
 				</div>
 				<img
 					data-rise
@@ -121,6 +141,10 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 		</section>
 	)
 }
+
+const installOrgRowCss = {
+	marginTop: spacing.md,
+} satisfies CSSObject
 
 /* The route owns its gutters — the app shell leaves redesigned marketing
    paths unpadded. 72rem browse measure. */

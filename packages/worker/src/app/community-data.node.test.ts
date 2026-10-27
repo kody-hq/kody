@@ -15,6 +15,8 @@ import {
 } from './community-data.ts'
 
 const mockModule = vi.hoisted(() => ({
+	getPackageScopeByUserId: vi.fn(),
+	resolveCommunityInstallOwner: vi.fn(),
 	readAuthenticatedAppUser: vi.fn(),
 	listCommunityIndexOverview: vi.fn(),
 	getCommunityCategoryCounts: vi.fn(),
@@ -91,6 +93,11 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 
 vi.mock('#worker/package-registry/user-scope.ts', () => ({
 	getMcpUserPackageScope: mockModule.getMcpUserPackageScope,
+	getPackageScopeByUserId: mockModule.getPackageScopeByUserId,
+}))
+
+vi.mock('#app/community-install-org.ts', () => ({
+	resolveCommunityInstallOwner: mockModule.resolveCommunityInstallOwner,
 }))
 
 const sampleListing = {
@@ -423,4 +430,109 @@ test('loadCommunityDetailData forgets rejected loads so D1 retries can re-read (
 	)
 	expect(recovered?.listing?.id).toBe('listing-github')
 	expect(mockModule.getCommunityListingWithAggregates).toHaveBeenCalledTimes(2)
+})
+
+test('install badges follow the picked org and fall back to personal when it is rejected', async () => {
+	const teamOwnerId = ownerIdFromStored('org-example-team')
+	const loadIndex = (installOrg: string) =>
+		loadCommunityIndexData({} as Env, request(`/community?org=${installOrg}`), {
+			query: '',
+			sort: null,
+			category: null,
+			limit: 50,
+			installOrg,
+		})
+	invalidateCommunityPublicCache()
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(signedInUser())
+	mockModule.listCommunityIndexOverview.mockResolvedValue(sampleOverview())
+	mockModule.getMcpUserPackageScope.mockResolvedValue('burhan')
+	mockModule.getPackageScopeByUserId.mockResolvedValue('example-team')
+	mockModule.listSavedPackagesByIds.mockResolvedValue([])
+	// The personal account forked; the picked org has not.
+	mockModule.listCommunityForksByListingIdsAndUser.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId ? [] : [viewerFork()],
+	)
+	mockModule.listSavedPackagesBySlugs.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId ? [] : [viewerGithubPackage],
+	)
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: true,
+		ownerId: teamOwnerId,
+		orgSlug: 'example-team',
+	})
+	const team = await loadIndex('example-team')
+	expect(team.installOrg).toBe('example-team')
+	expect(team.listings[0]?.viewerInstall).toBeUndefined()
+	expect(mockModule.listCommunityForksByListingIdsAndUser).toHaveBeenCalledWith(
+		undefined,
+		expect.objectContaining({ userId: teamOwnerId }),
+	)
+
+	// A stale or forbidden ?org= renders the personal badges instead.
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: false,
+		status: 403,
+		error: 'nope',
+	})
+	const rejected = await loadIndex('other-team')
+	expect(rejected.installOrg).toBeNull()
+	expect(rejected.listings[0]?.viewerInstall?.status).toBe('installed')
+})
+
+test('detail outdated badge is relative to the picked org', async () => {
+	const teamOwnerId = ownerIdFromStored('org-example-team')
+	invalidateCommunityPublicCache()
+	mockModule.getCommunityListingWithAggregates.mockResolvedValue({
+		...sampleListing,
+		pinnedCommit: 'commit-new',
+	})
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing)
+	mockModule.getEntitySourceById.mockResolvedValue(null)
+	mockModule.getUserSocialRowByUsername.mockResolvedValue({
+		profile_visibility: 'public',
+		stable_user_id: 'owner-mcp-id',
+	})
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(signedInUser())
+	mockModule.getPackageScopeByUserId.mockResolvedValue('example-team')
+	mockModule.listSavedPackagesByIds.mockResolvedValue([])
+	// Only the picked org holds a fork, and it is behind the listing.
+	mockModule.listCommunityForksByListingIdsAndUser.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId
+				? [viewerFork({ originCommit: 'abc1234567890' })]
+				: [],
+	)
+	mockModule.listSavedPackagesBySlugs.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId
+				? [{ ...viewerGithubPackage, name: '@example-team/github' }]
+				: [],
+	)
+	mockModule.resolveListingPinAncestry.mockResolvedValue(false)
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: true,
+		ownerId: teamOwnerId,
+		orgSlug: 'example-team',
+	})
+	const team = await loadCommunityDetailData(
+		{} as Env,
+		request('/community/listing-github?org=example-team'),
+		'listing-github',
+		'example-team',
+	)
+	expect(team?.viewerInstall).toEqual(
+		expect.objectContaining({
+			targetName: '@example-team/github',
+			listingAhead: true,
+		}),
+	)
+
+	const personal = await loadCommunityDetailData(
+		{} as Env,
+		request('/community/listing-github'),
+		'listing-github',
+	)
+	expect(personal?.viewerInstall).toBeNull()
 })

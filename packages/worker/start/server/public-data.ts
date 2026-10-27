@@ -11,6 +11,7 @@ export const loadCommunity = createServerFn({ method: 'GET' })
 			sort: z.string().nullable(),
 			category: z.string().nullable(),
 			limit: z.number().int().positive().max(100),
+			installOrg: z.string().nullable().optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -163,6 +164,8 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				? routes.communityPackageSettings.href(data)
 				: routes.communityPackage.href(data)
 		const request = original
+		const installOrg =
+			new URLSearchParams(data.search ?? '').get('org')?.trim() || null
 		let loaded:
 			| Awaited<ReturnType<typeof loadCommunityPackagePayload>>
 			| Awaited<ReturnType<typeof loadCommunityDetailPayload>>
@@ -175,6 +178,7 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				bindings,
 				request,
 				data.listingId,
+				installOrg,
 			)
 			if (!detail?.listing) throw notFound()
 			const canonical = await resolveCanonicalListingPath({
@@ -202,6 +206,7 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				request,
 				username: data.username,
 				kodyId: data.kodyId,
+				installOrg,
 			})
 		if (loaded.kind === 'redirect') {
 			const isPublic = loaded.shared

@@ -235,6 +235,31 @@ armed state. Logged-out visitors get the same icon as a login link and sign in
 on the first click. While the fork runs, that slot shows a spinner whose tooltip
 names the current stage.
 
+### Choosing an org
+
+When you can create packages in more than one org, a **Fork into** picker sits
+beside the install control. It defaults to your personal workspace and lists
+only orgs where you hold `package:create`. The picked org rides in the page URL
+as `?org=<slug>` (personal drops it), so switching it reloads the **Installed**,
+**Forked**, **Fork outdated**, and **Fork ahead** badges and the open-fork link
+for that org. `/community` shows the same picker and keeps `?org=` on catalog
+card, category, and sort links. Each org's **Repositories** page has a **Fork a
+community package** button that opens `/community?org=<slug>` with that org
+preselected.
+
+The install endpoint takes the same choice as an optional body field:
+
+```json
+{ "acknowledged": true, "org": "example-team" }
+```
+
+Omitting `org` keeps the personal org. A named org must exist for you and pass
+`package:create`; otherwise the endpoint responds `404`
+(`Organization @example-team was not found.`) or `403`
+(`You do not have permission to create packages in @example-team.`) and nothing
+is forked. URL query params and the last-org cookie never change the install
+target; only the body `org` does.
+
 A current fork shows an open icon that links to the fork. An outdated fork shows
 a link-break icon in that slot; the click copies the absorb prompt and opens the
 listing files at the pin. When the fork needs a setup prompt, a clipboard icon

@@ -184,6 +184,11 @@ export type CommunityIndexLoaderData = {
 	query: string | null
 	sort: CommunityListingSort
 	category: CommunityListingCategory | null
+	/**
+	 * Org slug the install badges were read for (`?org=`). Null means the
+	 * viewer's personal org, including when the requested org was rejected.
+	 */
+	installOrg?: string | null
 }
 
 export type CommunityDetailLoaderData = {

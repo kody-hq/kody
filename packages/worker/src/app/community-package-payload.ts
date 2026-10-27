@@ -143,6 +143,7 @@ export async function loadCommunityPackagePayload(input: {
 	request: Request
 	username: string
 	kodyId: string
+	installOrg?: string | null
 }) {
 	const { env, request } = input
 	const page = await loadPackagePage(input)

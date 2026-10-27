@@ -29,12 +29,15 @@ export function buildCommunityIndexHref(input?: {
 	query?: string | null
 	sort?: CommunityListingSort
 	category?: CommunityListingCategory | null
+	/** Org the install badges and Fork target follow (`?org=`). */
+	installOrg?: string | null
 }) {
 	const searchParams = new URLSearchParams()
 	const query = input?.query?.trim() ?? ''
 	if (query.length > 0) searchParams.set('q', query)
 	if (input?.sort === 'newest') searchParams.set('sort', 'newest')
 	if (input?.category) searchParams.set('category', input.category)
+	if (input?.installOrg) searchParams.set('org', input.installOrg)
 	return routes.community.href(
 		null,
 		searchParams.size > 0 ? { searchParams } : undefined,

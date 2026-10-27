@@ -94,3 +94,53 @@ test('fork state follows a fork from in progress to installed so a return visit 
 		href: '/@viewer/demo',
 	})
 })
+
+test('fork state reads the picked org, so a personal fork does not mark another org as installed', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../../migrations/', import.meta.url))
+	const env = { APP_DB: createD1FromSqlite(sqlite) } as Env
+	const teamOwnerId = ownerIdFromStored('b'.repeat(64))
+	mocks.findExistingCommunityFork.mockImplementation(
+		async (input: { userId: string }) =>
+			input.userId === ownerId ? fork : null,
+	)
+	mocks.getSavedPackageById.mockResolvedValue({
+		id: 'package-1',
+		name: '@viewer/demo',
+		sourceId: 'source-1',
+	})
+
+	expect(
+		await loadWebsiteCommunityForkState({
+			env,
+			user,
+			listingId: 'listing-1',
+			ownerId: teamOwnerId,
+		}),
+	).toEqual({ state: 'none' })
+	expect(mocks.findExistingCommunityFork).toHaveBeenLastCalledWith(
+		expect.objectContaining({ userId: teamOwnerId }),
+	)
+
+	// A fork still being created in the picked org shows as in progress there.
+	await acquireCommunityForkClaim(env.APP_DB, {
+		ownerId: teamOwnerId,
+		listingId: 'listing-1',
+	})
+	expect(
+		(
+			await loadWebsiteCommunityForkState({
+				env,
+				user,
+				listingId: 'listing-1',
+				ownerId: teamOwnerId,
+			})
+		).state,
+	).toBe('in_progress')
+
+	// Omitting the org still reads the personal fork.
+	expect(
+		(await loadWebsiteCommunityForkState({ env, user, listingId: 'listing-1' }))
+			.state,
+	).toBe('installed')
+})
