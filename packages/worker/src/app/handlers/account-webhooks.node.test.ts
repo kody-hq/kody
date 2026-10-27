@@ -190,7 +190,6 @@ test('org-bound webhooks payload username is the team org slug, not the person h
 		env: createEnv(),
 		requestUrl: 'https://kody.example/@team-org/-/webhooks',
 		user: {
-			email: owner.email,
 			username: 'personal-handle',
 			mcpUser: {
 				userId: personIdFromStored(personId),
