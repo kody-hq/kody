@@ -96,7 +96,15 @@ export async function loadVisibleCommunityForks(input: {
 			limit,
 		}),
 		countCommunityForksByListingIds(input.env.APP_DB, [input.listingId]),
-		loadViewerPrivateCommunityForks(input),
+		// Fail closed to public forks only if the private lookup errors.
+		loadViewerPrivateCommunityForks(input).catch((error: unknown) => {
+			console.warn(
+				'community-forks-private-lookup-failed',
+				input.listingId,
+				error,
+			)
+			return []
+		}),
 	])
 	const forks = [...privateForks, ...publicForks]
 		.sort(compareForksNewestFirst)
