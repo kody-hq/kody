@@ -26,7 +26,10 @@ import {
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadViewerPrivateCommunityForks } from '#app/community-forks-data.ts'
 import { setRequestDataCacheLookup } from '#app/request-cache.ts'
-import { listCommunityForksByListingIdsAndUser } from '#worker/community/repo.ts'
+import {
+	countCommunityForksByListingIds,
+	listCommunityForksByListingIdsAndUser,
+} from '#worker/community/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
 import { recordServerTiming } from '#worker/request-context.ts'
@@ -443,11 +446,17 @@ async function loadCommunityDetailDataUncached(
 		}),
 	])
 	const viewerInstall = viewerInstalls.get(listing.id) ?? null
+	// Recount public forks fresh when adding private ones: the cached count
+	// can still include a fork that was just hidden, which the private query
+	// now finds too.
 	const viewerListing =
 		viewerPrivateForks.length > 0
 			? {
 					...sourceAheadListing,
-					forkCount: sourceAheadListing.forkCount + viewerPrivateForks.length,
+					forkCount:
+						((await countCommunityForksByListingIds(env.APP_DB, [listing.id]))[
+							listing.id
+						] ?? 0) + viewerPrivateForks.length,
 				}
 			: sourceAheadListing
 	const listingWithHead = viewerInstall
