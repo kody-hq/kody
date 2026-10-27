@@ -43,8 +43,14 @@ export function renderInstallStrip(props: InstallStripProps) {
 				? `Installed as ${props.installOutcome.targetName}.`
 				: `Forked as ${props.installOutcome.targetName}; it needs adaptation before it can run.`
 		: ''
+	const hasVisibleContent = Boolean(
+		props.installOutcome || props.installMessage,
+	)
 	return (
-		<div data-testid="community-install" css={installStripCss}>
+		<div
+			data-testid="community-install"
+			css={hasVisibleContent ? installStripCss : liveRegionOnlyCss}
+		>
 			<p role="status" css={visuallyHiddenCss}>
 				{installAnnouncement}
 			</p>
@@ -277,6 +283,9 @@ export const detailSectionCss = {
 const sectionActionCss = {
 	marginTop: '1.1rem',
 } satisfies CSSObject
+
+/** Keeps the hidden status region out of the parent grid until there is content. */
+const liveRegionOnlyCss = { display: 'contents' } satisfies CSSObject
 
 const installStripCss = {
 	display: 'grid',
