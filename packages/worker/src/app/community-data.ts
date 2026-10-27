@@ -453,16 +453,20 @@ async function loadCommunityDetailDataUncached(
 	// Recount public forks fresh when adding private ones: the cached count
 	// can still include a fork that was just hidden, which the private query
 	// now finds too.
-	const viewerListing =
-		viewerPrivateForks.length > 0
-			? {
-					...sourceAheadListing,
-					forkCount:
-						((await countCommunityForksByListingIds(env.APP_DB, [listing.id]))[
-							listing.id
-						] ?? 0) + viewerPrivateForks.length,
-				}
-			: sourceAheadListing
+	let viewerListing = sourceAheadListing
+	if (viewerPrivateForks.length > 0) {
+		try {
+			const publicCounts = await countCommunityForksByListingIds(env.APP_DB, [
+				listing.id,
+			])
+			viewerListing = {
+				...sourceAheadListing,
+				forkCount: (publicCounts[listing.id] ?? 0) + viewerPrivateForks.length,
+			}
+		} catch (error: unknown) {
+			console.warn('community-detail-public-forks-failed', listing.id, error)
+		}
+	}
 	const listingWithHead = viewerInstall
 		? { ...viewerListing, viewerInstall }
 		: viewerListing
