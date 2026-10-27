@@ -65,6 +65,9 @@ export function buildRepositoryStartPrompt(input: {
 	const ref = `@${input.owner}/${input.name}`
 	const cloneUrl = repositoryCloneUrl(input)
 	const org = input.personal ? '' : ` --org ${input.owner}`
+	const mcpOrg = input.personal
+		? ''
+		: ` connected to @${input.owner} (\`${new URL('/mcp', input.origin).href}?org=${input.owner}\`)`
 	return [
 		`You're working in my Kody repository ${ref}. It's new, empty, and private.`,
 		'',
@@ -72,9 +75,9 @@ export function buildRepositoryStartPrompt(input: {
 		`1. Sign in with \`npx @kodycodes/cli@latest login${org}\`, then run \`npx @kodycodes/cli@latest auth setup-git\` once so git can use my Kody credentials.`,
 		`2. Clone it: \`git clone ${cloneUrl}\``,
 		'3. Commit and `git push` to `main`. Pushes go live right away; there is no publish step for a plain repo.',
-		`4. If this becomes a Kody package (a root package.json with a \`kody\` section), run \`npx @kodycodes/cli@latest dev check\` before you push, then turn it into a package with \`repoPromoteToPackage\` and publish later changes with \`npx @kodycodes/cli@latest package publish${org}\`.`,
+		`4. If this becomes a Kody package (a root package.json with a \`kody\` section), run \`npx @kodycodes/cli@latest dev check\` before you push, then turn it into a package with \`repoPromoteToPackage\` and publish later changes with \`npx @kodycodes/cli@latest package publish ${ref}${org}\`.`,
 		'',
-		`Without a shell, use the Kody MCP server: open a session with \`repoOpenSession\` and \`target: { kind: "repo", name: "${input.name}" }\`, edit files there, then save with \`repoPublishSession\`.`,
+		`Without a shell, use the Kody MCP server${mcpOrg}: open a session with \`repoOpenSession\` and \`target: { kind: "repo", name: "${input.name}" }\`, edit files there, then save with \`repoPublishSession\`.`,
 		'',
 		"If I haven't told you what to build yet, ask me before you write any code.",
 	].join('\n')

@@ -183,6 +183,10 @@ test('creates through repoCreate bound to the chosen owner and returns the agent
 		'git clone https://kody.test/@zeta/launch-site.git',
 	)
 	expect(result.prompt).toContain('login --org zeta')
+	expect(result.prompt).toContain(
+		'package publish @zeta/launch-site --org zeta',
+	)
+	expect(result.prompt).toContain('https://kody.test/mcp?org=zeta')
 	expect(result.prompt).not.toContain('repo-1')
 	expect(result.prompt).not.toContain('git-1')
 })
@@ -196,6 +200,8 @@ test('personal repos skip the --org flag', async () => {
 	if (!result.ok) throw new Error('expected success')
 	expect(result.personal).toBe(true)
 	expect(result.prompt).not.toContain('--org')
+	expect(result.prompt).not.toContain('?org=')
+	expect(result.prompt).toContain('package publish @jane/notes`')
 })
 
 test('owners the viewer is not in, or lacks package:create for, are refused', async () => {
