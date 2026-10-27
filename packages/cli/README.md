@@ -487,8 +487,9 @@ This repo uses
 [semantic-release](https://github.com/semantic-release/semantic-release) the
 same way [match-sorter](https://github.com/kentcdodds/match-sorter) does:
 conventional commits on `main` publish `@kodycodes/cli` with npm provenance
-(`id-token: write`). Version in `package.json` stays
-`0.0.0-semantically-released`.
+(`id-token: write`). A squash-merge subject that omits a conventional prefix
+still publishes a patch when the merge touches `packages/cli`. Version in
+`package.json` stays `0.0.0-semantically-released`.
 
 Trusted publishing for `@kodycodes/cli` is attached to this GitHub repository.
 

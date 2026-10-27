@@ -387,7 +387,8 @@ tests, and builds it. `npm run cli:openapi:check` fails when
 `packages/worker/src/open-api/operations.ts`.
 
 Merges to `main` that change the CLI in a publishable way (conventional `fix` /
-`feat` / `perf`, or a generated route-table diff) publish through
+`feat` / `perf`, a generated route-table diff, or a squash subject without a
+conventional prefix that still touches `packages/cli`) publish through
 [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml).
 The package version in git stays `0.0.0-semantically-released`. Tags are
 `cli-vX.Y.Z` from semantic release. npm trusted publishing for this repository
