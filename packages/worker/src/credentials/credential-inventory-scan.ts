@@ -687,38 +687,14 @@ function scanParsedModule(
 	// Display functions the module itself reads or calls (`fetch(status())`,
 	// `this.help()`) can feed a request, so their returns are not exempt.
 	// Member reads count only on `this`; `client.status()` is someone else's.
-	// Dynamic `this[key]` or destructured `this` could be any of them.
+	// Any other `this` use (aliases, dynamic keys, destructuring, arguments)
+	// could reach any of them, so it marks every display name.
 	const referencedDisplayNames = new Set<string>()
-	const referenceAllDisplayNames = () => {
-		for (const name of displayReturnFunctionNames) {
-			referencedDisplayNames.add(name)
-		}
-	}
 	walkAst(parsed, (node, ancestors) => {
-		if (
-			(node.type === 'MemberExpression' ||
-				node.type === 'OptionalMemberExpression') &&
-			node.object?.type === 'ThisExpression'
-		) {
-			if (node.computed && typeof node.property?.value !== 'string') {
-				referenceAllDisplayNames()
-				return
-			}
-			const name = (
-				node.computed ? String(node.property?.value) : getCalleeName(node)
-			)?.toLowerCase()
-			if (name && displayReturnFunctionNames.has(name)) {
+		if (node.type === 'ThisExpression') {
+			for (const name of thisMemberDisplayNames(node, ancestors)) {
 				referencedDisplayNames.add(name)
 			}
-			return
-		}
-		if (
-			(node.type === 'VariableDeclarator' &&
-				node.init?.type === 'ThisExpression') ||
-			(node.type === 'AssignmentExpression' &&
-				node.right?.type === 'ThisExpression')
-		) {
-			referenceAllDisplayNames()
 			return
 		}
 		if (node.type !== 'Identifier' || !isVariableRead(node, ancestors)) return
@@ -924,6 +900,35 @@ const displayDocumentationPropertyKeys = new Set([
 
 /** Function / method names whose returns are package help, not request builders. */
 const displayReturnFunctionNames = new Set(['status', 'help', 'docs', 'usage'])
+
+function thisMemberDisplayNames(
+	node: AstNode,
+	ancestors: ReadonlyArray<AstNode>,
+): Iterable<string> {
+	let child = node
+	let index = ancestors.length - 1
+	while (index >= 0 && transparentExpressionTypes.has(ancestors[index]!.type)) {
+		child = ancestors[index]!
+		index -= 1
+	}
+	const parent = ancestors[index]
+	if (
+		(parent?.type === 'MemberExpression' ||
+			parent?.type === 'OptionalMemberExpression') &&
+		parent.object === child
+	) {
+		const name = parent.computed
+			? typeof parent.property?.value === 'string'
+				? parent.property.value
+				: null
+			: getNodeName(parent.property)
+		if (name) {
+			const lower = name.toLowerCase()
+			return displayReturnFunctionNames.has(lower) ? [lower] : []
+		}
+	}
+	return displayReturnFunctionNames
+}
 
 function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
 	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
