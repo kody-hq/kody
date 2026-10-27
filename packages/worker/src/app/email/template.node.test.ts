@@ -308,7 +308,8 @@ test('email-changed security notice masks the new address and keeps the this-was
 	expect(maskEmailAddressForNotice('new-login@example.com')).toBe(
 		'n***@example.com',
 	)
-	expect(maskEmailAddressForNotice('A@Example.COM')).toBe('a***@example.com')
+	expect(maskEmailAddressForNotice('Ab@Example.COM')).toBe('a***@example.com')
+	expect(maskEmailAddressForNotice('a@example.com')).toBe('***@example.com')
 	expect(maskEmailAddressForNotice('not-an-email')).toBe('***')
 
 	const email = buildEmailChangedSecurityEmail({

@@ -18,6 +18,22 @@ const mockSendCloudflareEmail = vi.fn(
 	}),
 )
 
+const deferredWork = vi.hoisted(() => new Array<Promise<unknown>>())
+
+vi.mock('cloudflare:workers', async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>()
+	return {
+		...actual,
+		waitUntil: (promise: Promise<unknown>) => {
+			deferredWork.push(promise)
+		},
+	}
+})
+
+async function flushDeferredWork() {
+	await Promise.all(deferredWork.splice(0))
+}
+
 vi.mock('#app/email/cloudflare-email.ts', () => ({
 	sendCloudflareEmail: (
 		...args: Parameters<typeof CloudflareEmail.sendCloudflareEmail>
@@ -130,6 +146,7 @@ test('successful email change notifies the previous address with masked new emai
 		env: createEnv(db),
 		token,
 	})
+	await flushDeferredWork()
 
 	expect(result.ok).toBe(true)
 	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
@@ -168,6 +185,7 @@ test('failed email change does not notify the previous address', async () => {
 		env: createEnv(db),
 		token: 'not-a-real-token',
 	})
+	await flushDeferredWork()
 
 	expect(result.ok).toBe(false)
 	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
@@ -202,6 +220,7 @@ test('security notice send failure does not undo a committed email change', asyn
 		env: createEnv(db),
 		token,
 	})
+	await flushDeferredWork()
 
 	expect(result.ok).toBe(true)
 	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
@@ -211,4 +230,37 @@ test('security notice send failure does not undo a committed email change', asyn
 		'email-changed-security-notice-error',
 		expect.any(Error),
 	)
+})
+
+test('a stalled security notice send does not hold up the success response', async () => {
+	mockSendCloudflareEmail.mockClear()
+	mockSendCloudflareEmail.mockImplementationOnce(() => new Promise(() => {}))
+	const { sqlite, db } = createMigratedDb()
+	const newEmail = 'stalled-notice@example.com'
+	await seedVerifiedUser(sqlite, {
+		id: 1,
+		email: 'stalled-old@example.com',
+		username: 'stalled-old',
+	})
+	const token = 'c'.repeat(64)
+	const tokenHash = await hashVerificationToken(token)
+	sqlite.exec(`
+		INSERT INTO pending_email_changes (user_id, new_email, token_hash, expires_at)
+		VALUES (1, ${quoteSqlString(newEmail)}, ${quoteSqlString(tokenHash)}, ${Date.now() + 60_000});
+	`)
+
+	const result = await executeVerifyEmailChange({
+		request: new Request(
+			`https://kody.codes/verify-email-change?token=${token}`,
+		),
+		env: createEnv(db),
+		token,
+	})
+
+	expect(result.ok).toBe(true)
+	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
+		email: newEmail,
+	})
+	expect(deferredWork).toHaveLength(1)
+	deferredWork.splice(0)
 })

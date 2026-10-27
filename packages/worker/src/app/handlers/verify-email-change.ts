@@ -15,6 +15,7 @@ import {
 	notifyFormerAddressOfEmailChange,
 	verifyEmailChangeToken,
 } from '#app/email-change.ts'
+import { waitUntil } from 'cloudflare:workers'
 
 function getRequestCountry(request: Request) {
 	const cf = (request as Request & { cf?: { country?: string } }).cf
@@ -111,15 +112,19 @@ export async function executeVerifyEmailChange({
 		reason: `old_email=${result.oldEmail}`,
 	})
 
-	await notifyFormerAddressOfEmailChange({
-		env,
-		requestUrl: request.url,
-		oldEmail: result.oldEmail,
-		newEmail: result.newEmail,
-		ip: requestIp,
-		userAgent: request.headers.get('user-agent'),
-		country: getRequestCountry(request),
-	})
+	// The change already committed; a slow security-notice send must not hold
+	// up the success response.
+	waitUntil(
+		notifyFormerAddressOfEmailChange({
+			env,
+			requestUrl: request.url,
+			oldEmail: result.oldEmail,
+			newEmail: result.newEmail,
+			ip: requestIp,
+			userAgent: request.headers.get('user-agent'),
+			country: getRequestCountry(request),
+		}),
+	)
 
 	return {
 		title: 'Email changed',
