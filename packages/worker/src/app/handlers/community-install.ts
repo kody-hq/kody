@@ -75,20 +75,19 @@ export async function installWebsiteCommunityPackage(input: {
 		)
 	}
 
-	const installOwner = await resolveCommunityInstallOwner({
-		env,
-		request,
-		user,
-		orgSlug: parsed.data.org,
-	})
-	if (!installOwner.ok) {
-		return installResult(
-			{ ok: false, error: installOwner.error },
-			installOwner.status,
-		)
-	}
-
 	try {
+		const installOwner = await resolveCommunityInstallOwner({
+			env,
+			request,
+			user,
+			orgSlug: parsed.data.org,
+		})
+		if (!installOwner.ok) {
+			return installResult(
+				{ ok: false, error: installOwner.error },
+				installOwner.status,
+			)
+		}
 		// Only the body `org` picks another org; URL params and the last-org
 		// cookie never redirect an install away from the personal org.
 		const installOwnerId = installOwner.ownerId

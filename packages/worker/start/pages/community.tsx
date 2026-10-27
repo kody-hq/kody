@@ -38,7 +38,10 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 	}
 	const explainer = resolveEntityExplainer('community')
 	const navigate = useNavigate()
-	const { picker: installOrgPicker } = useCommunityInstallOrg(actorKey != null)
+	// Read the org from the URL, not `data`, which can lag a picker switch.
+	const { org: installOrg, picker: installOrgPicker } = useCommunityInstallOrg(
+		actorKey != null,
+	)
 	return (
 		<section css={communityPageCss}>
 			<header css={communityHeadCss}>
@@ -98,8 +101,8 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						{category ? (
 							<input type="hidden" name="category" value={category} />
 						) : null}
-						{data.installOrg ? (
-							<input type="hidden" name="org" value={data.installOrg} />
+						{installOrg ? (
+							<input type="hidden" name="org" value={installOrg} />
 						) : null}
 						<button type="submit" css={getPillButtonCss()}>
 							Search
