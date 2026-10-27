@@ -7,7 +7,7 @@ export type ClaIdentity = {
 	email: string | null
 }
 
-export type ClaSigner = {
+type ClaSigner = {
 	github: string
 	signedAt: string
 	cla: 'individual' | 'entity'
@@ -23,7 +23,7 @@ export type ClaSignersFile = {
 	signers: Array<ClaSigner>
 }
 
-export type ClaMissingIdentity = {
+type ClaMissingIdentity = {
 	identity: ClaIdentity
 	reason: string
 }
@@ -224,7 +224,7 @@ export function applyIndividualClaSigningComments(
 	return { file: updated, recorded }
 }
 
-export function isAllowlistedIdentity(
+function isAllowlistedIdentity(
 	identity: ClaIdentity,
 	signersFile: ClaSignersFile,
 ) {
@@ -249,10 +249,7 @@ export function isAllowlistedIdentity(
 	)
 }
 
-export function hasSignedCla(
-	identity: ClaIdentity,
-	signersFile: ClaSignersFile,
-) {
+function hasSignedCla(identity: ClaIdentity, signersFile: ClaSignersFile) {
 	const login = identity.githubLogin ? normalize(identity.githubLogin) : null
 	if (!login) {
 		return false
