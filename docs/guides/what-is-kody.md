@@ -216,8 +216,9 @@ Concrete examples that combine the blocks:
 - **Get started** — [Connect your agent](./connect-your-agent.md) walks through
   the in-app flow: connect one host, make something useful, then prove it
   travels to a second agent.
-- **Meet the two tools** — [Search and execute](./search-and-execute.md) is the
-  playbook for the MCP surface: find the right thing, then run it.
+- **Meet search and execute** — [Search and execute](./search-and-execute.md) is
+  the playbook for those two doors: find the right thing, then run it. MCP also
+  registers **api** for HTTPS operations ([Open API](./open-api.md)).
 - **See the loop** — [How Kody works](./how-kody-works.md) plays one
   conversation from ad hoc question to owned export to quiet daily email.
 - **Learn the primitives** — [The factory map](./kody-factory.md), then

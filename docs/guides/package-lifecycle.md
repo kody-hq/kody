@@ -47,7 +47,10 @@ owned by its existing capability or package.
 
 Use `execute` when the code is disposable: inspect an API response, test an
 assumption, transform a small result, or run a one-time operation after any
-required confirmation.
+required confirmation. When Node ≥22 and the CLI are available, run that module
+with local CLI execute ([Local CLI execute](./local-execute.md),
+`guide:local_execute`). Do not use hosted MCP `execute` when a local or Open API
+path exists.
 
 Keep the module focused and return structured evidence. Do not treat the
 ephemeral module as the durable source for behavior that must be maintained,

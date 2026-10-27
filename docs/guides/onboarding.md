@@ -100,8 +100,9 @@ heading that page names. When you write the checklist, open
 `search({ entity: "guide:provider_github#pull-request-readiness" })` — check
 runs, commit statuses, reviews, and `mergeable` are separate reads. Then
 `search({ entity: "guide:package_lifecycle" })` and
-`search({ entity: "guide:package_authoring" })`. Smoke-test from execute, then
-save the package they own.
+`search({ entity: "guide:package_authoring" })`. Smoke-test the module (local
+CLI execute when Node ≥22 and the CLI are available;
+`search({ entity: "guide:local_execute" })`), then save the package they own.
 
 ### Ping me when something needs me
 
