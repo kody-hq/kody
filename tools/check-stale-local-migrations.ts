@@ -9,7 +9,9 @@
  * and fails with an error such as `duplicate column name`. This check fails
  * first, naming every recorded migration that is no longer on disk and the
  * reset step. Disposable e2e persist (`.wrangler/state/e2e`) is reset
- * automatically because every e2e run reseeds it. Dev persist may hold
+ * automatically because every e2e run reseeds it. apply-local-app-migrations
+ * runs every binding's stale check before any apply, so a later binding
+ * cannot wipe a database that already migrated. Dev persist may hold
  * unreleased SQL that git cannot recover, so it never rewrites bookkeeping;
  * PR previews heal through tools/ci/rewrite-renamed-preview-migrations.ts
  * instead.

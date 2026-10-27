@@ -31,9 +31,21 @@ test('local migrate and seed target the persist directory Vite opens', () => {
 			['--config', 'packages/jobs-worker/wrangler.jsonc'],
 		],
 	]
+	const checkStart = 1
+	const applyStart = checkStart + bindings.length
+	expect(
+		commands
+			.slice(checkStart, applyStart)
+			.every(
+				(command) => command[0] === 'tools/check-stale-local-migrations.ts',
+			),
+	).toBe(true)
+	expect(
+		commands.slice(applyStart).every((command) => command.includes('apply')),
+	).toBe(true)
 	for (const [index, [binding, migrationsDir, config]] of bindings.entries()) {
-		const check = commands[1 + index * 2]
-		const apply = commands[2 + index * 2]
+		const check = commands[checkStart + index]
+		const apply = commands[applyStart + index]
 		expect(check?.[0]).toBe('tools/check-stale-local-migrations.ts')
 		expect(check).toEqual(
 			expect.arrayContaining([
