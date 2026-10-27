@@ -374,7 +374,7 @@ export function CommunityListingsContent(props: CommunityListingsContentProps) {
 				installOrg,
 			})}
 			{listings.length === 0 ? (
-				renderCommunityEmptyState(query, sort, category)
+				renderCommunityEmptyState(query, sort, category, installOrg)
 			) : groups != null && groups.length > 0 ? (
 				<div data-testid="community-listings-overview" css={overviewCss}>
 					{groups.map((group) => {

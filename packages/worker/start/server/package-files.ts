@@ -102,6 +102,7 @@ export const loadPackageFiles = createServerFn({ method: 'GET' })
 					statusCode: target.shared ? 301 : 302,
 				})
 			}
+			const installOrg = url.searchParams.get('org')?.trim() || null
 			const payload =
 				target.kind === 'package'
 					? await loadAccessiblePackageFilesData({
@@ -111,6 +112,7 @@ export const loadPackageFiles = createServerFn({ method: 'GET' })
 							kodyId: target.kodyId,
 							selectedPath: target.selectedPath,
 							ref: target.ref,
+							installOrg,
 						})
 					: await loadListingFilesData({
 							env: bindings,
@@ -119,6 +121,7 @@ export const loadPackageFiles = createServerFn({ method: 'GET' })
 							packagePath: target.packagePath,
 							selectedPath: target.selectedPath,
 							ref: target.ref,
+							installOrg,
 						})
 			if (!payload) throw notFound()
 			return {

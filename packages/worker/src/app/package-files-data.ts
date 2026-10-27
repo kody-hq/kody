@@ -679,12 +679,15 @@ export async function loadAccessiblePackageFilesData(input: {
 	selectedPath: string
 	ref?: string
 	serverTiming?: Array<ServerTimingEntry>
+	/** Org whose community installs badge the fork control (`?org=`). */
+	installOrg?: string | null
 }): Promise<PackageFilesLoaderData | null> {
 	const page = await loadPackagePage({
 		env: input.env,
 		request: input.request,
 		username: input.username,
 		kodyId: input.kodyId,
+		installOrg: input.installOrg,
 	})
 	if (page.kind !== 'page') return null
 
@@ -792,6 +795,7 @@ export async function loadListingFilesData(input: {
 	serverTiming?: Array<ServerTimingEntry>
 	/** Skips the listing lookup when the URL already names the package. */
 	packagePath?: { username: string; kodyId: string }
+	installOrg?: string | null
 }): Promise<PackageFilesLoaderData | null> {
 	const packagePath =
 		input.packagePath ?? (await resolveListingPackagePath(input))
@@ -804,6 +808,7 @@ export async function loadListingFilesData(input: {
 			selectedPath: input.selectedPath,
 			ref: input.ref,
 			serverTiming: input.serverTiming,
+			installOrg: input.installOrg,
 		})
 		if (data) return data
 	}

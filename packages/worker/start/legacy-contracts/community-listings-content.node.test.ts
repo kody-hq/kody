@@ -248,4 +248,11 @@ test('catalog links keep the picked install org so the detail page forks into it
 		query: null,
 	})
 	expect(personal).not.toContain('org=')
+
+	const empty = await renderCommunityListingsContentHtml({
+		listings: [],
+		query: 'missing',
+		installOrg: 'example-team',
+	})
+	expect(empty).toMatch(/href="\/community\?[^"]*org=example-team/)
 })
