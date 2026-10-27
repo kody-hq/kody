@@ -263,8 +263,17 @@ export async function inviteLinkAlreadySatisfied(
 	const role = await liveMembershipRole(db, link.orgId, userId)
 	const target = link.target
 	switch (target.kind) {
-		case 'membership':
-			return role != null
+		case 'membership': {
+			if (role == null) return false
+			for (const teamId of await liveDefaultTeamIds(
+				db,
+				link.orgId,
+				link.teamIds,
+			)) {
+				if (!(await isLiveTeamMember(db, teamId, userId))) return false
+			}
+			return true
+		}
 		case 'team':
 			return role != null && (await isLiveTeamMember(db, target.teamId, userId))
 		case 'resource':
@@ -451,11 +460,23 @@ async function redeemMembershipLink(
 		orgId: link.orgId,
 	})
 	const liveTeamIds = await liveDefaultTeamIds(db, link.orgId, link.teamIds)
+	const finishMembershipAccess = async () => {
+		await addLiveDefaultTeams(input, liveTeamIds)
+		// Seat sync sits after teams. A prior attempt may have added the
+		// member and then failed before sync; retries must still catch up.
+		if (seatRole(target.role)) {
+			await syncSeatsAfterMembershipChange({
+				db,
+				env: input.env,
+				orgId: link.orgId,
+			})
+		}
+	}
 	// Already in the org: still apply missing default teams. A prior attempt
 	// may have granted membership and then failed mid-team-write; releasing
 	// the claim would leave a member with no redemption and no teams.
 	if (await liveMembershipRole(db, link.orgId, user.userId)) {
-		await addLiveDefaultTeams(input, liveTeamIds)
+		await finishMembershipAccess()
 		return success(true)
 	}
 
@@ -474,7 +495,7 @@ async function redeemMembershipLink(
 		alreadyRedeemed &&
 		(await liveMembershipRole(db, link.orgId, user.userId))
 	) {
-		await addLiveDefaultTeams(input, liveTeamIds)
+		await finishMembershipAccess()
 		return success(true)
 	}
 
@@ -487,14 +508,7 @@ async function redeemMembershipLink(
 			invitedByUserId: link.createdByUserId,
 			audit: input.audit,
 		})
-		await addLiveDefaultTeams(input, liveTeamIds)
-		if (seatRole(target.role)) {
-			await syncSeatsAfterMembershipChange({
-				db,
-				env: input.env,
-				orgId: link.orgId,
-			})
-		}
+		await finishMembershipAccess()
 	}
 	if (alreadyRedeemed) {
 		await writeMembership()

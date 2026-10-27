@@ -28,7 +28,8 @@ const {
 	listActiveOrgInviteLinks,
 	revokeOrgInviteLink,
 } = await import('./invite-links.ts')
-const { redeemOrgInviteLink } = await import('./invite-link-redeem.ts')
+const { inviteLinkAlreadySatisfied, redeemOrgInviteLink } =
+	await import('./invite-link-redeem.ts')
 
 const owner = { id: 1, personId: 'a'.repeat(64) }
 const joiner = { id: 2, personId: 'b'.repeat(64) }
@@ -558,6 +559,14 @@ test('a team write failure after membership still finishes teams on retry', asyn
 	).toBeNull()
 
 	sqlite.exec(`DROP TRIGGER fail_team_members`)
+	mocks.syncSeatsAfterMembershipChange.mockClear()
+	expect(
+		await inviteLinkAlreadySatisfied(
+			db,
+			(await getInviteLinkByTokenHash(db, tokenHash))!,
+			joiner.personId,
+		),
+	).toBe(false)
 	expect(
 		await redeemOrgInviteLink({
 			db,
@@ -580,5 +589,13 @@ test('a team write failure after membership still finishes teams on retry', asyn
 			.bind(joiner.personId)
 			.first<{ ok: number }>(),
 	).toMatchObject({ ok: 1 })
+	expect(mocks.syncSeatsAfterMembershipChange).toHaveBeenCalled()
 	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+	expect(
+		await inviteLinkAlreadySatisfied(
+			db,
+			(await getInviteLinkByTokenHash(db, tokenHash))!,
+			joiner.personId,
+		),
+	).toBe(true)
 })
