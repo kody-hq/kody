@@ -7,7 +7,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 
 const mocks = vi.hoisted(() => ({
 	forkCommunityListing: vi.fn(),
-	denyProfileBoundPackageCreate: vi.fn(),
+	authorizePackageCreate: vi.fn(),
 }))
 
 vi.mock('#worker/community/service.ts', () => ({
@@ -19,8 +19,8 @@ vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
 	const actual = await importOriginal<Record<string, unknown>>()
 	return {
 		...actual,
-		denyProfileBoundPackageCreate: (...args: Array<unknown>) =>
-			mocks.denyProfileBoundPackageCreate(...args),
+		authorizePackageCreate: (...args: Array<unknown>) =>
+			mocks.authorizePackageCreate(...args),
 	}
 })
 
@@ -51,8 +51,8 @@ function createContext(user: { personalOrgId?: string }) {
 
 test('communityFork stores the fork under the personal org when it differs from the person id', async () => {
 	mocks.forkCommunityListing.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.authorizePackageCreate.mockReset()
+	mocks.authorizePackageCreate.mockResolvedValue(undefined)
 	mocks.forkCommunityListing.mockResolvedValue({
 		forkId: 'fork-1',
 		packageId: 'pkg-1',
@@ -86,8 +86,8 @@ test('communityFork stores the fork under the personal org when it differs from 
 
 test('communityFork keeps legacy equal-id personal orgs working', async () => {
 	mocks.forkCommunityListing.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.authorizePackageCreate.mockReset()
+	mocks.authorizePackageCreate.mockResolvedValue(undefined)
 	mocks.forkCommunityListing.mockResolvedValue({
 		forkId: 'fork-1',
 		packageId: 'pkg-1',
@@ -116,8 +116,8 @@ test('communityFork keeps legacy equal-id personal orgs working', async () => {
 
 test('communityFork returns an existing fork with already_forked and a message', async () => {
 	mocks.forkCommunityListing.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockReset()
-	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.authorizePackageCreate.mockReset()
+	mocks.authorizePackageCreate.mockResolvedValue(undefined)
 	mocks.forkCommunityListing.mockResolvedValue({
 		forkId: 'fork-1',
 		packageId: 'pkg-1',

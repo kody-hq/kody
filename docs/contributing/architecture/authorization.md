@@ -55,17 +55,24 @@ synchronous, for callers that already hold the compiled permissions.
    `read` cannot mutate, delete, or publish that package. Handlers that read or
    execute one saved package call `authorize` with `package:read` or
    `package:execute` on `packageResource` (profile `read` and `execute`), and
-   lists filter rows with `checkPermission`. A profile-bound credential cannot
-   create a saved package: `denyProfileBoundPackageCreate` runs from
-   `packageSave` and `packageGetGitRemote` when the package does not exist yet,
-   and from `communityFork` and `repoPromoteToPackage`. Plain repo create stays
-   an org-level `package:create` check. A profile names existing packages only.
+   lists filter rows with `checkPermission`. Creating a saved package goes
+   through `authorizePackageCreate`: `packageSave` and `packageGetGitRemote`
+   when the package does not exist yet, `communityFork`, and
+   `repoPromoteToPackage`. It requires org-level `package:create` (grantable on
+   the org, unlike `package:write`) and refuses a profile-bound credential,
+   because a profile names existing packages only. `packageGetGitRemote` create
+   mode mints a write remote for the package it just created on that check
+   alone; it grants nothing on other packages and stores no grant on the new
+   one. Plain repo create stays an org-level `package:create` check.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any
-resource grant** in the org. A check with a resource requires that resource.
-Personal-org Owners hold every permission, so steps 2 to 4 never deny for them.
-Profiles and the signed-in step are the other denials that can fire.
+resource grant** in the org. A surface that both creates and updates declares a
+list (`packageSave`: `package:write` or `package:create`) and passes on any one;
+the handler then checks the one the call needs. A check with a resource requires
+that resource. Personal-org Owners hold every permission, so steps 2 to 4 never
+deny for them. Profiles and the signed-in step are the other denials that can
+fire.
 
 **Credential resolution** goes through one door,
 `resolveCredential({ orgId, actor, packageStamp, credential })`

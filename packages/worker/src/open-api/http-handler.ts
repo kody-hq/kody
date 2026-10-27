@@ -24,7 +24,11 @@ import {
 	notFound,
 	toApiError,
 } from './errors.ts'
-import { authorizeSurface } from '#worker/authorization/authorize.ts'
+import {
+	authorizeSurface,
+	type SurfacePermission,
+	surfacePermissionList,
+} from '#worker/authorization/authorize.ts'
 import {
 	capabilityProxyObservationEntityId,
 	invokeApiOperation,
@@ -52,18 +56,17 @@ export const openApiDocumentPath = '/openapi.json'
 
 function operationNeedsAccountWriteLease(resolved: {
 	readOnly: boolean
-	permission: string
+	permission: SurfacePermission
 }) {
 	if (!resolved.readOnly) return true
-	const { permission } = resolved
-	if (permission === 'none' || permission.endsWith(':read')) return false
-	return (
-		permission.endsWith(':write') ||
-		permission.endsWith(':delete') ||
-		permission.endsWith(':create') ||
-		permission.endsWith(':use') ||
-		permission.endsWith(':send') ||
-		permission.endsWith(':publish')
+	return surfacePermissionList(resolved.permission).some(
+		(permission) =>
+			permission.endsWith(':write') ||
+			permission.endsWith(':delete') ||
+			permission.endsWith(':create') ||
+			permission.endsWith(':use') ||
+			permission.endsWith(':send') ||
+			permission.endsWith(':publish'),
 	)
 }
 

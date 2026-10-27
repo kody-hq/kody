@@ -7,7 +7,10 @@ import {
 	apiTokenScopes,
 } from '#worker/api-tokens/scopes.ts'
 import { apiTokenIdleTtlDescription } from '#worker/api-tokens/service.ts'
-import { type SurfacePermission } from '#worker/authorization/authorize.ts'
+import {
+	type SurfacePermission,
+	surfacePermissionList,
+} from '#worker/authorization/authorize.ts'
 import { apiErrorCodes } from './errors.ts'
 import {
 	apiOperationUsesQueryInputs,
@@ -55,7 +58,10 @@ type OpenApiOperation = {
 	}
 	responses: Record<string, unknown>
 	security: Array<Record<string, Array<string>>>
-	/** Org permission the caller must hold (`none`: touches no org data). */
+	/**
+	 * Org permission the caller must hold (`none`: touches no org data). A list
+	 * means any one of them; the handler picks per call (create vs update).
+	 */
 	'x-kody-permission': SurfacePermission
 	'x-kody-read-only': boolean
 	'x-kody-feature-flag'?: string
@@ -338,7 +344,9 @@ function describeWithPermission(resolved: ResolvedApiOperation) {
 	const permission =
 		resolved.permission === 'none'
 			? 'none (touches no org data)'
-			: `\`${resolved.permission}\``
+			: surfacePermissionList(resolved.permission)
+					.map((one) => `\`${one}\``)
+					.join(' or ')
 	return `${resolved.description}\n\nOrg permission: ${permission}.`
 }
 

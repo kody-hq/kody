@@ -399,7 +399,7 @@ test('get_git_remote retries remote timeouts and write scope blocks without a re
 	).rejects.toThrow('Stop and report this source recovery problem')
 })
 
-test('get_git_remote create mode still requires write to mint a write remote', async () => {
+test('get_git_remote create mode mints write for the new package from package:create alone', async () => {
 	resetMocks()
 	const stub = stubCreatedPackage()
 	await expect(
@@ -407,24 +407,31 @@ test('get_git_remote create mode still requires write to mint a write remote', a
 			{ name: 'unleashed-wifi', create: true },
 			{ scopes: ['package:create', 'package:read'] },
 		),
+	).resolves.toMatchObject({ created: true, scope: 'write' })
+	expect(stub.createToken).toHaveBeenCalledWith('write', 14_400)
+
+	resetMocks()
+	const readStub = stubCreatedPackage()
+	await expect(
+		getRemote(
+			{ name: 'unleashed-wifi', create: true, scope: 'read' },
+			{ scopes: ['package:create'] },
+		),
 	).resolves.toMatchObject({ created: true, scope: 'read' })
-	expect(stub.createToken).toHaveBeenCalledWith('read', 14_400)
+	expect(readStub.createToken).toHaveBeenCalledWith('read', 14_400)
 
 	resetMocks()
 	stubCreatedPackage()
 	await expect(
 		getRemote(
 			{ name: 'unleashed-wifi', create: true, scope: 'write' },
-			{ scopes: ['package:create', 'package:read'] },
+			{ scopes: ['package:read', 'package:write'] },
 		),
 	).rejects.toMatchObject({
 		code: 'credential_scope',
-		permission: 'package:write',
-		message: expect.stringMatching(
-			/You have read access to package @kentcdodds\/unleashed-wifi, not write[\s\S]*scope: 'read'/,
-		),
+		permission: 'package:create',
 	})
-	// Mint authorize runs before createStub so a denial leaves no orphan.
+	// Create authorize runs before createStub so a denial leaves no orphan.
 	expect(mockModule.createStubSavedPackage).not.toHaveBeenCalled()
 })
 
