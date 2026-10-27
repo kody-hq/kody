@@ -561,15 +561,16 @@ jobs:
             check_run="$(printf '%s' "$check_runs" | jq -r '
               [.check_runs[] | select(.name == "✅ Validate")]
               | if length == 0 then "" else
-                  (sort_by(.created_at) | last
-                    | [.status // "", .conclusion // "", .created_at // ""]
+                  (sort_by(.started_at) | last
+                    | [.status // "", .conclusion // "", .started_at // ""]
                     | @tsv)
                 end
             ')"
             if [ -n "$check_run" ]; then
-              IFS=$'\t' read -r status conclusion created_at <<< "$check_run"
-              created_at_ms="$(date -d "$created_at" +%s%3N)"
-              if [ "$created_at_ms" -ge "$dispatch_started_at" ]; then
+              IFS=$'\t' read -r status conclusion started_at <<< "$check_run"
+              # Check runs expose started_at (no created_at); an empty value
+              # would parse as midnight and never match this dispatch.
+              if [ -n "$started_at" ] && [ "$(date -d "$started_at" +%s%3N)" -ge "$dispatch_started_at" ]; then
                 if [ "$status" = completed ]; then
                   if [ "$conclusion" = success ]; then
                     echo "passed=true" >> "$GITHUB_OUTPUT"
