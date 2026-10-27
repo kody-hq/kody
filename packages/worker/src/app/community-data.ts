@@ -443,6 +443,10 @@ async function loadCommunityDetailDataUncached(
 			env,
 			listingId: listing.id,
 			viewer: user?.mcpUser ?? null,
+		}).catch((error: unknown) => {
+			// A supplementary count must not take the package page down.
+			console.warn('community-detail-private-forks-failed', listing.id, error)
+			return []
 		}),
 	])
 	const viewerInstall = viewerInstalls.get(listing.id) ?? null
