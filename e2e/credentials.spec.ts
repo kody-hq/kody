@@ -55,6 +55,13 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
 		.fill('OAuth')
+	// Repositioning the caret must keep the filtered option list intact.
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.click()
+	await expect(
+		page.getByRole('option', { name: 'Key', exact: true }),
+	).toHaveCount(0)
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
 		.press('Enter')

@@ -924,7 +924,7 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
-		border: `1px solid ${colors.border}`,
+		border: `1px solid ${colors.fieldBorder}`,
 		borderRadius: 'var(--control-radius, 12px)',
 		padding:
 			'var(--control-padding-y, 0.85rem) var(--control-padding-x, 1.05rem)',

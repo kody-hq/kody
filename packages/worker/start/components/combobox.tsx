@@ -117,8 +117,10 @@ export function Combobox(props: ComboboxProps) {
 				autoComplete="off"
 				css={{ ...getSelectCss(), cursor: 'text' }}
 				onClick={() => {
-					setOpen(true)
-					setQuery('')
+					if (!open) {
+						setOpen(true)
+						setQuery('')
+					}
 				}}
 				onFocus={() => {
 					setOpen(true)

@@ -39,14 +39,8 @@ export function EmailTriageBadges({
 	)
 }
 
-export function EmailViewOptions() {
-	return (
-		<>
-			{emailMessageViewValues.map((view) => (
-				<option key={view} value={view}>
-					{emailMessageViewLabel(view)}
-				</option>
-			))}
-		</>
-	)
-}
+export const emailViewOptions = emailMessageViewValues.map((view) => (
+	<option key={view} value={view}>
+		{emailMessageViewLabel(view)}
+	</option>
+))

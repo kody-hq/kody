@@ -281,7 +281,7 @@ const hintCss: CSSObject = {
 }
 const summaryCss: CSSObject = {
 	display: 'grid',
-	gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+	gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 16rem), 1fr))',
 	gap: '0.75rem',
 	marginTop: '0.75rem',
 	'@media (max-width: 600px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
