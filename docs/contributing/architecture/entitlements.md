@@ -6,7 +6,7 @@
 - [Prepaid credits](#prepaid-credits)
 - [Compute rate limits](#compute-rate-limits)
 - [UserMeter](#usermeter)
-- [Schema history](#schema-history)
+- [Schema](#schema)
 - [Assigning plans](#assigning-plans)
 - [Admin limit overrides](#admin-limit-overrides)
 - [Plan lookup](#plan-lookup)
@@ -849,20 +849,17 @@ missing binding fails closed for reserve and read paths.
 `calculateUserD1StorageBytes` is the physical payload recompute used by the
 reconcile lane, cold-drift correction, and the parity report.
 
-## Schema history
+## Schema
 
-The pre-squash plan-column evolution (NULL rows → `'unlimited'` backfill → NOT
-NULL → `'unlimited'` renamed to `'max'` → DEFAULT `'free'` → CHECK constraints)
-is collapsed into the squashed baseline; the individual migration files live in
-Git history only. `0002-restructure-plan-tiers.sql` renames stored `pro` to
-`standard` and `partner` to `pro` (plan and Stripe plan columns, and the
-since-dropped `invites.plan`) and rebuilds both CHECK constraints for `free`,
-`standard`, `pro`, and `max`. `0043-users-entitlement-ladder.sql` introduced the
-entitlement ladder (`public` | `legacy`, default `public`; stored on `orgs`) and
-backfilled `legacy` for then-active Stripe Standard/Pro subscribers and manual
-Pro grants. `0044-users-stripe-price-id.sql` introduced `stripe_price_id`
-(stored on `orgs`) for the granting Stripe price so a later refresh can drop
-`legacy` on a subscription change.
+The squashed baseline stores plan columns as they work today:
+
+- `orgs.plan` is NOT NULL with DEFAULT `'free'` and CHECK constraints for
+  `free`, `standard`, `pro`, and `max`
+- `orgs.entitlement_ladder` is `public` | `legacy` (default `public`)
+- `orgs.stripe_price_id` holds the granting Stripe price so a later refresh can
+  drop `legacy` on a subscription change
+
+Individual pre-squash plan-column migration files live in Git history only.
 
 ## Assigning plans
 

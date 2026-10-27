@@ -15,61 +15,22 @@ started page (`/onboarding`) connects a host, gives that agent access, then
 proves the same home works from a second agent. People with a Kody account can
 also [join the Discord](https://kody.codes/discord).
 
-Read in order for a full tour, or jump to a topic.
+## Catalog
 
-## Docs
-
-The user-facing docs site is [kody.codes/docs](https://kody.codes/docs): an
-introduction, Get started, Concepts, Examples, Packages, Integrations, and
-per-provider connection walkthroughs. Every page is also raw markdown
-(`/docs/<slug>.md`), indexed at
+The user-facing docs site is [kody.codes/docs](https://kody.codes/docs). Every
+page is also raw markdown (`/docs/<slug>.md`), indexed at
 [kody.codes/llms.txt](https://kody.codes/llms.txt), and available to connected
-agents as `search({ entity: "guide:{id}" })`. The pages below are the MCP-level
-reference detail those docs link into.
+agents as `search({ entity: "guide:{id}" })`. Sources, sidebar order, and MCP
+ids live in [`docs/guides`](../guides/README.md). Start with
+[What is Kody?](../guides/what-is-kody.md),
+[Search and execute](../guides/search-and-execute.md),
+[Connect your agent](../guides/connect-your-agent.md), and
+[Local CLI execute](../guides/local-execute.md).
 
-- [What is Kody?](../guides/what-is-kody.md) — the introduction: what Kody is
-  and is not, what you cannot get elsewhere, the building blocks
-- [Search and execute](../guides/search-and-execute.md) — search finds the right
-  thing, then execute runs it
-- [Connect your agent](../guides/connect-your-agent.md) — the three-step Get
-  started flow for people
-- [Shared memory](../guides/memory.md),
-  [Where agent guidance lives](../guides/agent-guidance.md),
-  [Credentials](../guides/credentials.md), [Secrets](../guides/secrets.md),
-  [Custom secret providers](../guides/secret-providers.md), and
-  [Jobs, workflows, and webhooks](../guides/triggers.md) — concept docs for the
-  primitives every connected agent shares
-- [Local CLI execute](../guides/local-execute.md) — shell agents: install with
-  `npx -y @kodycodes/cli@latest`, bootstrap via MCP `api`
-  `cliCredentialBootstrap`, then `execute --local` (Node ≥22); humans:
-  `kody login`
-- [Open API](../guides/open-api.md) — HTTPS api.kody.codes and MCP `api`
-  (including scoped tokens for CI / headless)
-- [Git credential helper](../guides/auth-setup-git.md) — `kody auth setup-git`
-  for persistent HTTPS git auth
-- [API versioning](../guides/api-versioning.md) — additive `/v1` changes and how
-  breaking changes migrate
-- [Flake Hunter](../guides/flake-hunter.md),
-  [Sentry Issues](../guides/sentry-issues.md),
-  [Agent inbox](../guides/agent-inbox.md), and
-  [Purchase thanks](../guides/purchase-thanks.md) — homepage Trigger it cards as
-  worked examples (cron, webhook, email, event)
-- [Connect a provider](https://kody.codes/docs/connect) — verified walkthroughs
-  for connecting Discord, GitHub, Google, and other providers to Kody
-- [How Kody works](../guides/how-kody-works.md) — ask once, save an export,
-  daily email only when something shipped
-- [The Kody factory map](../guides/kody-factory.md) — the primitives your
-  assistant gets and the boundary around local files and processes
-- [Packages, integrations, and MCP servers](../guides/packages-integrations-mcp.md)
-  — when those three look interchangeable
-- [Gmail drafts without send](../guides/locked-gmail-drafts.md) — lock a
-  drafts-only package when Google cannot issue a drafts-only token
-- [Lock an MCP server to a package](../guides/locked-mcp-server.md) — keep
-  `kody.mcp["name"]` off execute and other packages
-- [Connect a home MCP server](../guides/local-mcp-tunnels.md) — run a local MCP
-  process (vault, CLI, or home devices), publish it with Tunnel and Access, and
-  connect it to Kody. Starter:
-  [home-mcp-starter](https://github.com/kody-bot/home-mcp-starter)
+## Field reference
+
+The pages below are the MCP-level field contracts those guides link into.
+
 - [Connect your agent (host notes)](./connect-your-agent.md) — per-host install
   steps and the setup prompt. Machine-readable twin:
   [`/auth.md`](https://kody.codes/auth.md)
@@ -81,21 +42,6 @@ reference detail those docs link into.
   overlays and package imports
 - [Workflows](./workflows.md)
 - [Packages](./packages.md)
-- [Share a package](../guides/package-sharing.md) — grant a person or team
-  access to a package, or invite someone who is not in your org yet
-- [Package subscriptions](../guides/package-subscriptions.md) — jobs, webhooks,
-  email, and follows (`followAdd` / `followList` / `followRemove`)
-- [Ship Agent Skills in a package](../guides/package-skills.md) — put
-  `skills/<name>/SKILL.md` in a package; MCP serving is behind
-  `mcp-skills-extension`
-- [MCP Events from packages](../guides/mcp-events.md) — opt a `kody.emits` topic
-  into ChatGPT (and other webhook MCP clients) behind `mcp-events-extension`
-- [Runtime and efficiency](../guides/platform-efficiency.md) — unique Dynamic
-  Worker days by surface, and how the acting user plus a stable module graph
-  reuse one isolate per UTC day
-- [Offload work that does not fit a Worker isolate](../guides/heavy-work-offload.md)
-  — large npm graphs (PDF.js-class libraries) stay out of the package isolate;
-  the owner operates a container or machine and the package calls it
 - [Public packages](./community-packages.md) — share, browse, and fork published
   packages on the same deployment; public catalogs live at `/@username`
 - [Plain repos](./repos.md) — Artifacts-backed live-at-HEAD storage; promote
@@ -109,8 +55,6 @@ reference detail those docs link into.
   destinations, notify-self sends, and replies
 - [Inbound webhooks](./webhooks.md) — user-owned HTTPS endpoints that dispatch
   provider POSTs to a saved-package export
-- [Package apps](../guides/package-apps.md) — Worker fetch contract, session
-  handoff, `packageAppFetch` smoke, Remix recipe, lean forks
 - [Package app fetch](./package-app-fetch.md) — platform-marked real-surface
   `app_fetch` smoke tests after publish
 - [Synthetic event dispatch](./synthetic-event-dispatch.md) — interactive MCP

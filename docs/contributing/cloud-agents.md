@@ -390,8 +390,8 @@ Merges to `main` that change the CLI in a publishable way (conventional `fix` /
 `feat` / `perf`, or a generated route-table diff) publish through
 [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml).
 The package version in git stays `0.0.0-semantically-released`. Tags are
-`cli-vX.Y.Z`, continuing from `cli-v1.26.3`. npm trusted publishing for this
-repository and workflow is required; the workflow does not read an npm token.
+`cli-vX.Y.Z` from semantic release. npm trusted publishing for this repository
+and workflow is required; the workflow does not read an npm token.
 
 Keep the merge commit (do not squash away the subtree history). Origin-side
 contracts:

@@ -40,10 +40,6 @@ style, tests, MCP capabilities, and runtime architecture.
 - Local CLI execute (when, command, failure):
   [guide:local_execute](../guides/local-execute.md) and
   [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
-  Streaming placeholder-fill hop:
-  [CLI streaming gateway-fetch contract](./contracts/cli-streaming-gateway-fetch.md).
-  Ad hoc `credential()` on local `kody:runtime`:
-  [CLI local credential runtime](./contracts/cli-local-credential-runtime.md).
   Changing `@kodycodes/cli` (it lives in `packages/cli`; merges to `main`
   publish through `.github/workflows/publish-cli.yml`):
   [Changing the CLI](./cloud-agents.md#changing-the-cli)
