@@ -1,22 +1,21 @@
 name: ✍️ CLA
 
 on:
-  pull_request:
+  # pull_request_target (not pull_request): fork PRs get a read-only
+  # GITHUB_TOKEN on pull_request, so the unsigned-instructions comment 403s.
+  # This job checks out the base ref only and never runs PR head code.
+  pull_request_target:
     branches:
       - main
     types:
       - opened
       - reopened
       - synchronize
+      - closed
   issue_comment:
     types:
       - created
       - edited
-  pull_request_target:
-    branches:
-      - main
-    types:
-      - closed
   workflow_dispatch:
 
 permissions:
@@ -24,7 +23,10 @@ permissions:
 
 jobs:
   cla:
-    if: github.event_name == 'pull_request'
+    # opened/reopened/synchronize only; closed drives record-on-merge below.
+    if: >
+      github.event_name == 'pull_request_target' && github.event.action !=
+      'closed'
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: ✍️ CLA
     timeout-minutes: 5
@@ -35,6 +37,7 @@ jobs:
       - name: 📦 Checkout base
         uses: actions/checkout@v6.0.2
         with:
+          # Trusted base branch tip only (never the PR head).
           ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
 
@@ -201,16 +204,24 @@ jobs:
             })
             const headSha = pull.data.head.sha
 
+            // Mirror tools/ci/cla-workflow-events.ts pickClaRerunCandidate /
+            // claRerunEventOrder: check runs on pull_request_target; ignore
+            // skipped dual-trigger / closed-only runs so we re-run the real check.
             async function latestClaRun() {
               const runs = await github.rest.actions.listWorkflowRuns({
                 owner,
                 repo,
                 workflow_id: 'cla.yml',
-                event: 'pull_request',
+                event: 'pull_request_target',
                 head_sha: headSha,
                 per_page: 5,
               })
-              return runs.data.workflow_runs[0] ?? null
+              return (
+                runs.data.workflow_runs.find(
+                  (run) =>
+                    run.status !== 'completed' || run.conclusion !== 'skipped',
+                ) ?? null
+              )
             }
 
             const deadline = Date.now() + 180_000

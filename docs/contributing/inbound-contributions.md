@@ -36,6 +36,11 @@ There is no exception for docs-only or one-line patches.
    only when posted by the pull request author or a commit author on that pull
    request. A bystander's comment does not sign for another contributor.
 
+The check runs on `pull_request_target` so fork pull requests can receive the
+unsigned-instructions comment (`pull_request` is read-only for forks). The job
+still checks out only the base branch tip and never runs pull request head code.
+See [0018 — Inbound CLA](./decisions/0018-inbound-cla.md).
+
 Signing once covers past, present, and future contributions from that GitHub
 identity. Unsigned prior contributors sign the same way before their next merge.
 The workflow reads existing signers from `main`, not from the pull request
