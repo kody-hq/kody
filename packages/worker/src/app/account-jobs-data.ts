@@ -1,6 +1,7 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { boundOrgSlugForUrls } from '#universal/community-links.ts'
 import {
 	buildJobInspectionOutput,
 	buildJobManagerDebugOutput,
@@ -244,7 +245,7 @@ export async function loadAccountJobsData(input: {
 
 	return {
 		ok: true,
-		username: input.user.username,
+		username: boundOrgSlugForUrls(input.user),
 		jobs: inspection.jobs.map((job) => toListItem(job, packagesById)),
 		selectedJob: selectedRecord
 			? await toDetail({

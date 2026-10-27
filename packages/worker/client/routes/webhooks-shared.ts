@@ -1,6 +1,9 @@
+import {
+	packageScopeFromNameOrOwner,
+	packageSettingsHrefFromScope,
+} from '#universal/community-links.ts'
 import { type PackageWebhookListItem } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
-import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 /** The triggers guide section on inbound webhooks (`docs/guides/triggers.md`). */
@@ -40,18 +43,24 @@ export function packageWebhookCardId(input: {
 /**
  * Package settings is where URLs get minted and copied; the account index
  * and any "manage this webhook" link land on the owning package's section
- * (or one webhook's card when the name / endpoint is known).
+ * (or one webhook's card when the name / endpoint is known). Owner always
+ * comes from the package's scoped name (`@owner/kody-id`), not the viewer.
  */
 export function buildPackageWebhooksHref(input: {
-	username: string
-	kodyId: string
+	packageName: string
+	kodyId?: string | null
+	/** Fallback when `packageName` is not scoped (should not happen for saved packages). */
+	ownerUsername?: string | null
 	webhookName?: string | null
 	endpointId?: string | null
 }) {
-	const settingsHref = routes.communityPackageSettings.href({
-		username: input.username,
+	const scope = packageScopeFromNameOrOwner({
+		packageName: input.packageName,
+		ownerUsername: input.ownerUsername,
 		kodyId: input.kodyId,
 	})
+	if (!scope) return '#'
+	const settingsHref = packageSettingsHrefFromScope(scope)
 	const anchor = input.webhookName
 		? packageWebhookCardId({
 				webhookName: input.webhookName,
