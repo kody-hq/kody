@@ -112,8 +112,8 @@ Nightly */5 ticks 00:30–06:10 UTC           02:15 UTC: D1 export Workflow
 Daytime */5 ticks: staging catch-up         Admin UI: drill / production restore
   resume oldest stranded day (≤14 days)     Agent seal API: `/__maintenance/dr-seal`
 06:15 UTC: staging watchdog → Sentry
-Same nightly window: paced D1 walk          REST D1 stays the UI drill /
-  APP_DB + AUDIT_DB + JOBS_DB → d1-paced/…   production-restore path
+Same nightly window: paced D1 walk          Paced backup lane only; REST D1
+  APP_DB + AUDIT_DB + JOBS_DB → d1-paced/…   stays the drill / restore path
 Hourly :45 / Sunday 07:00: paced freshness  GET /__maintenance/dr-paced-status
   and weekly paced restore drill → Sentry
 ```
