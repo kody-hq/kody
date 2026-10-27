@@ -120,7 +120,6 @@
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@mswjs/interceptors": "^0.45.6",
-    "@pitlane/dev": "^0.7.0",
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
     "@tanstack/start-client-core": "^1.170.34",
