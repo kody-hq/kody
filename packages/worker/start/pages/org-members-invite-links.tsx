@@ -196,9 +196,9 @@ export function OrgMembersInviteLinks({
 										{' · '}
 										{link.useCount}
 										{link.maxUses != null ? ` / ${link.maxUses}` : ''} uses
-										{link.lastUsedAt
-											? ` · Last used ${formatTimestampDate(link.lastUsedAt)}`
-											: ''}
+										{link.lastUsedAt ? (
+											<> · Last used {formatTimestampDate(link.lastUsedAt)}</>
+										) : null}
 										{' · '}Expires {formatTimestampDate(link.expiresAt)} ·
 										Created by{' '}
 										{link.createdByDisplayName?.trim() ||
