@@ -573,7 +573,7 @@ export function resolveDocumentHead(
  * Discord cache unfurl images by URL, so a new query value makes them refetch.
  * The OG handlers ignore the param.
  */
-const OG_IMAGE_VERSION = '2'
+const OG_IMAGE_VERSION = '3'
 
 function withOgImageVersion(path: string): string {
 	if (path.startsWith('http://') || path.startsWith('https://')) return path
