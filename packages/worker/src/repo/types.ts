@@ -326,7 +326,18 @@ export type RepoExternalPublishResult =
 			 * cannot keep serving. Omit / false when the snapshot already matches.
 			 */
 			force_artifact_rebuild?: boolean
+			/**
+			 * True when tip already matched HEAD but publish checks were re-run
+			 * because the stored check/stamp version was missing or older than
+			 * the current checker. Omit / false on a true no-op.
+			 */
+			checks_rerun?: boolean
+			/** Present when checks_rerun explains the same-commit revalidation. */
+			message?: string
 			phase_timings?: PublishPhaseTimings
+			/** Names stale static dependents still reading kept or removed mounts. */
+			secret_mount_compat?: string | null
+			allowed_packages_publish_notice?: string | null
 	  }
 	| {
 			status: 'not_fast_forward'

@@ -4,7 +4,7 @@
 		"ship-pr": {
 			"source": "./.agents/skills/ship-pr",
 			"sourceType": "local",
-			"computedHash": "083ee5d5ba5095e3f3bcb901e0644e6290280227de2f1fd30abcb9c1137eb08a"
+			"computedHash": "1b49f763841b2a1fc2da72a6d295de87483f990f450178a06a036a887e6d71da"
 		}
 	}
 }

@@ -1,24 +1,10 @@
-import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { listPackageSubscriptions } from '#worker/package-registry/manifest.ts'
 import {
 	listSavedPackagesByIds,
 	listSavedPackagesByUserId,
 } from '#worker/package-registry/repo.ts'
-import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-
-const topicMapScanConcurrency = 5
-
-async function mapSettledInChunks<T, TResult>(
-	items: ReadonlyArray<T>,
-	mapper: (item: T) => Promise<TResult>,
-) {
-	const results: Array<PromiseSettledResult<TResult>> = []
-	for (const itemChunk of chunkArray(items, topicMapScanConcurrency)) {
-		results.push(...(await Promise.allSettled(itemChunk.map(mapper))))
-	}
-	return results
-}
+import { loadManifestsForSavedPackages } from './saved-package-manifest-discovery.ts'
 
 /**
  * Per-user KV cache of computed topic → package-id lists for package-event
@@ -227,23 +213,11 @@ export async function scanPackageSubscriptionTopicMap(input: {
 	}
 	const byTopic = new Map<string, Set<string>>()
 	let manifestLoadFailures = 0
-	const settled = await mapSettledInChunks(
+	const settled = await loadManifestsForSavedPackages({
+		env: input.env,
+		userId: input.userId,
 		savedPackages,
-		async (savedPackage) => {
-			const loaded = await loadPackageManifestBySourceId({
-				env: input.env as Env,
-				baseUrl: input.baseUrl,
-				userId: input.userId,
-				sourceId: savedPackage.sourceId,
-			})
-			return {
-				packageId: savedPackage.id,
-				topics: listPackageSubscriptions(loaded.manifest).map(
-					(subscription) => subscription.topic,
-				),
-			}
-		},
-	)
+	})
 	for (const [index, result] of settled.entries()) {
 		if (result.status !== 'fulfilled') {
 			manifestLoadFailures += 1
@@ -256,9 +230,11 @@ export async function scanPackageSubscriptionTopicMap(input: {
 			})
 			continue
 		}
-		for (const topic of result.value.topics) {
+		for (const topic of listPackageSubscriptions(result.value.manifest).map(
+			(subscription) => subscription.topic,
+		)) {
 			const packageIds = byTopic.get(topic) ?? new Set<string>()
-			packageIds.add(result.value.packageId)
+			packageIds.add(result.value.savedPackage.id)
 			byTopic.set(topic, packageIds)
 		}
 	}

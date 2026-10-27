@@ -401,10 +401,11 @@ test('public package flow works end-to-end through capability handlers', async (
 		forkerCtx,
 	)
 	const ratedListing = await getListing()
+	// Forks start private, so the public fork count leaves them out.
 	expect(ratedListing).toMatchObject({
 		rating_count: 1,
 		average_stars: 5,
-		fork_count: 1,
+		fork_count: 0,
 	})
 	expect(queuedActivity).toEqual([
 		forkActivity,
@@ -669,10 +670,11 @@ test('one-click install publishes clean listings and keeps unresolvable forks in
 		},
 		installerCtx,
 	)
+	// The installer's fork is private, so the public count stays at zero.
 	expect(
 		await communityGetCapability.handler(
 			{ listing_id: republishedListing.listing_id },
 			installerCtx,
 		),
-	).toMatchObject({ rating_count: 1, average_stars: 5, fork_count: 1 })
+	).toMatchObject({ rating_count: 1, average_stars: 5, fork_count: 0 })
 }, 120_000)

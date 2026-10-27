@@ -3,7 +3,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { buildPackageSubscriptionTopicMapKey } from './subscription-topic-cache.ts'
+import {
+	buildPackageSubscriptionTopicMapKey,
+	refreshPackageSubscriptionTopicMap,
+} from './subscription-topic-cache.ts'
 
 const mocks = vi.hoisted(() => ({
 	listSavedPackagesByUserId: vi.fn(),
@@ -142,6 +145,43 @@ test('discovery over 12 packages issues one entity_sources IN query', async () =
 
 	expect(loaded.discoveryErrors).toEqual([])
 	expect(loaded.subscriptions).toHaveLength(12)
+	expect(store.has(buildPackageSubscriptionTopicMapKey(userId))).toBe(true)
+
+	const sourceQueries = queries.filter((query) =>
+		query.includes('FROM entity_sources'),
+	)
+	expect(sourceQueries).toEqual([
+		'SELECT * FROM entity_sources WHERE id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL',
+	])
+})
+
+test('topic-map refresh over 12 packages issues one entity_sources IN query', async () => {
+	const userId = ownerIdFromStored('user-1')
+	const sqlite = new DatabaseSync(':memory:')
+	createEntitySourcesTable(sqlite)
+	const packages = Array.from({ length: 12 }, (_, index) => {
+		const id = `pkg-${index}`
+		const sourceId = `source-${index}`
+		insertSource(sqlite, { id: sourceId, userId })
+		return savedPackage({ id, sourceId, userId })
+	})
+	mocks.listSavedPackagesByUserId.mockResolvedValue(packages)
+
+	const queries: Array<string> = []
+	const db = createD1FromSqlite(sqlite, { queries })
+	const { kv, store } = createKv()
+	const env = {
+		APP_DB: db,
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as Env
+
+	const refreshed = await refreshPackageSubscriptionTopicMap({
+		env,
+		baseUrl: 'https://heykody.dev',
+		userId,
+	})
+
+	expect(refreshed?.byTopic['repo.pushed']).toHaveLength(12)
 	expect(store.has(buildPackageSubscriptionTopicMapKey(userId))).toBe(true)
 
 	const sourceQueries = queries.filter((query) =>

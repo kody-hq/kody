@@ -184,16 +184,6 @@ export function capabilityProxyForbiddenMessage(input: {
 	)
 }
 
-/** Preferred interactive path for agents already on Kody MCP (ADR 0056). */
-export function cliBootstrapInstructions(
-	lifetime: CliTokenLifetimeAlias = 'short',
-): string {
-	return (
-		`call \`cliCredentialBootstrap\` (MCP \`execute\` with \`kody.cliCredentialBootstrap({ lifetime: "${lifetime}", scopes: [...] })\`, ` +
-		`or MCP \`api\` with operationId \`cliCredentialBootstrap\`) and run the returned \`cli_command\``
-	)
-}
-
 /**
  * Infer short|long from a stored token's absolute expiry. Tokens that can live
  * longer than the `short` absolute max are treated as `long` so
@@ -231,23 +221,6 @@ export function currentStoredTokenLifetimeAlias(
 	loadApiToken: typeof loadStoredApiToken = loadStoredApiToken,
 ): CliTokenLifetimeAlias {
 	return inferCliTokenLifetimeAlias(loadApiToken(apiUrl), nowMs)
-}
-
-/** Alias of {@link notAuthenticatedMessage} (token-only command paths). */
-export function missingApiTokenMessage(purpose: string): string {
-	return notAuthenticatedMessage(purpose)
-}
-
-/** Alias of {@link notAuthenticatedMessage} (`execute --local` paths). */
-export function missingLocalExecuteAuthMessage(
-	purpose: string = 'execute --local',
-): string {
-	return notAuthenticatedMessage(purpose)
-}
-
-/** Alias of {@link notAuthenticatedMessage} (login/session paths). */
-export function missingCliAuthMessage(): string {
-	return notAuthenticatedMessage()
 }
 
 /** 401 when CapabilityProxy rejected a non-`kody_at_` bearer (typically CLI OAuth). */

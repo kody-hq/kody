@@ -13,11 +13,13 @@ const base = absolutizeDocumentHead(
 test('home share variants preserve canonical origin and use the shared variant metadata', () => {
 	const head = homeDocumentHead(base, 'triggers')
 	expect(head?.canonicalUrl).toBe('https://kody.codes/')
-	expect(head?.og?.imageUrl).toBe('https://kody.codes/og/home.png?og=triggers')
-	expect(base.og?.imageUrl).toBe('https://kody.codes/og/home.png')
+	expect(head?.og?.imageUrl).toBe(
+		'https://kody.codes/og/home.png?og=triggers&v=2',
+	)
+	expect(base.og?.imageUrl).toBe('https://kody.codes/og/home.png?v=2')
 	for (const variant of homeOgVariantIds) {
 		expect(homeDocumentHead(base, variant)?.og?.imageUrl).toBe(
-			`https://kody.codes/og/home.png?og=${variant}`,
+			`https://kody.codes/og/home.png?og=${variant}&v=2`,
 		)
 	}
 })

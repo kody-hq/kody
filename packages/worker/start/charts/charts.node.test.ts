@@ -86,13 +86,13 @@ test('activation funnels retain counts and signup shares', () => {
 		createElement(FunnelChart, {
 			ariaLabel: 'Activation',
 			steps: [
-				{ key: 'signup', label: 'Signed up', users: 4, color: '#123456' },
-				{ key: 'active', label: 'Activated', users: 1, color: '#654321' },
+				{ key: 'signup', label: 'Signed up', users: 4000, color: '#123456' },
+				{ key: 'active', label: 'Activated', users: 1000, color: '#654321' },
 			],
 		}),
 	)
 	expect(html).toContain('25% of signups')
-	expect(html).toContain('Activated: 1 users')
+	expect(html).toContain('Activated: 1,000 users')
 	expect(html).not.toMatch(/NaN|Infinity/)
 })
 

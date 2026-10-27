@@ -87,6 +87,30 @@ test('docs and other non-fix/feat types patch-bump when they touch the CLI', () 
 	).toEqual({ version: '1.26.4' })
 })
 
+test('prose squash titles that touch the CLI still patch-bump', () => {
+	expect(
+		planCliRelease({
+			currentVersion: cliBaselineVersion,
+			generatedClientChanged: false,
+			commits: [
+				commit({
+					subject: 'Prefer local CLI execute over hosted MCP',
+					touchesCli: true,
+				}),
+			],
+		}),
+	).toEqual({ version: '1.26.4' })
+	expect(
+		planCliRelease({
+			currentVersion: cliBaselineVersion,
+			generatedClientChanged: false,
+			commits: [
+				commit({ subject: 'Prefer local CLI execute over hosted MCP' }),
+			],
+		}),
+	).toBeNull()
+})
+
 test('unrelated commits and non-fix/feat types that skip the CLI do not publish', () => {
 	expect(
 		planCliRelease({

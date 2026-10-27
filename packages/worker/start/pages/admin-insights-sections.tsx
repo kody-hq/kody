@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { FunnelChart } from '../charts/funnel-chart.tsx'
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { type CSSObject } from '@emotion/react'
 import { type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -233,8 +234,8 @@ export function renderEntitlementPressure(
 						display: 'grid',
 						gap: spacing.xs,
 						padding: spacing.sm,
-						borderRadius: '8px',
-						border: `1px solid ${colors.border}`,
+
+						...surfaceCardCss,
 					}}
 				>
 					<div
@@ -311,8 +312,8 @@ function renderPackageErrorRateSummary(input: {
 				display: 'grid',
 				gap: spacing.xs,
 				padding: spacing.sm,
-				borderRadius: '8px',
-				border: `1px solid ${colors.border}`,
+
+				...surfaceCardCss,
 			}}
 		>
 			<span

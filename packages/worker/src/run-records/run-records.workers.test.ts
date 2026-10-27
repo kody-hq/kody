@@ -41,6 +41,7 @@ import {
 	runRecordRetentionEveryNFinishes,
 	runRecordStaleRunningTtlMsBackground,
 	runRecordStaleRunningTtlMsJob,
+	runRecordStaleRunningTtlMsScheduledJob,
 	runRecordStaleRunningTtlMsShortLived,
 	type RunRecordContext,
 	type RunRecordFilter,
@@ -893,11 +894,11 @@ test('cap and stale retention journey', async () => {
 		})
 	}
 
-	// --- idempotent scheduled/queued runs retain auto-ignored interrupt history ---
+	// --- queued deliveries stay auto-ignored; scheduled ticks stay visible and releasable ---
 	{
 		const userId = uniqueUserId('idempotent-platform-interrupt')
 		const staleJobStartedAt = iso(
-			Date.now() - runRecordStaleRunningTtlMsJob - 1_000,
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 1_000,
 		)
 		const staleShortStartedAt = iso(
 			Date.now() - runRecordStaleRunningTtlMsShortLived - 1_000,
@@ -909,6 +910,7 @@ test('cap and stale retention journey', async () => {
 				status: 'running',
 				startedAt: staleJobStartedAt,
 				surface: 'job',
+				jobId: 'job-1',
 				idempotencyKey: scheduledKey,
 			},
 			{
@@ -936,39 +938,134 @@ test('cap and stale retention journey', async () => {
 
 		const page = await listRuns(userId, { errorTriage: 'all' })
 		expect(page.runs).toEqual(
-			Array.from({ length: 3 }, () => expect.objectContaining(autoIgnored)),
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: 'stale-scheduled-job',
+					status: 'error',
+					errorName: runRecordPlatformInterruptedErrorName,
+					errorTriage: null,
+					idempotencyKey: null,
+				}),
+				expect.objectContaining({
+					id: 'stale-subscription-delivery',
+					...autoIgnored,
+				}),
+				expect.objectContaining({
+					id: 'stale-keyed-export',
+					...autoIgnored,
+				}),
+			]),
 		)
 		expect(
 			await summarizeRunRecords({ env, userId, since: iso(0) }),
-		).toMatchObject({ errors: 0, ignored: 3, running: 0 })
+		).toMatchObject({ errors: 1, ignored: 2, running: 0 })
 		expect(
 			(await listRuns(userId, { errorTriage: 'ignored' })).runs,
-		).toHaveLength(3)
+		).toHaveLength(2)
 
+		// Cleared key lets the scheduler claim the occurrence again.
+		const reclaimed = await claimRunRecord({
+			env,
+			userId,
+			context: {
+				surface: 'job',
+				name: 'example-job',
+				jobId: 'job-1',
+				idempotencyKey: scheduledKey,
+			},
+		})
+		expect(reclaimed).toMatchObject({ claimed: true })
+		if (!reclaimed || !reclaimed.claimed) {
+			throw new Error('expected scheduled-job key reclaim after interrupt')
+		}
 		await finishRunRecord({
 			env,
-			handle: handleFor(
-				userId,
-				'stale-scheduled-job',
-				{ surface: 'job', idempotencyKey: scheduledKey },
-				Date.parse(staleJobStartedAt),
-			),
-			status: 'error',
-			error: new Error('package failed after the delayed finish arrived'),
+			handle: reclaimed.handle,
+			status: 'success',
+			result: { recovered: true },
 		})
-		expect((await getRun(userId, 'stale-scheduled-job'))?.run).toMatchObject({
-			status: 'error',
-			errorName: 'Error',
-			errorMessage: 'package failed after the delayed finish arrived',
-			errorTriage: null,
-			triageNote: null,
-			triagedAt: null,
-			triagedBy: null,
-			startedBy: null,
+		expect((await getRun(userId, reclaimed.handle.id))?.run).toMatchObject({
+			status: 'success',
+			idempotencyKey: scheduledKey,
 		})
 		for (const runId of ['stale-subscription-delivery', 'stale-keyed-export']) {
 			expect((await getRun(userId, runId))?.run).toMatchObject(autoIgnored)
 		}
+	}
+
+	// --- RunLog alarm arms at the scheduled-tick lease, not the job-surface TTL ---
+	{
+		const userId = uniqueUserId('scheduled-job-alarm-lease')
+		const startedAtMs = Date.now() - 60_000
+		await seedRuns(userId, [
+			{
+				id: 'live-scheduled-tick',
+				status: 'running',
+				startedAt: iso(startedAtMs),
+				surface: 'job',
+				jobId: 'job-alarm',
+				idempotencyKey: 'scheduled-job:job-alarm:2026-08-21T10:00:00.000Z',
+			},
+		])
+		await armRetentionOnNextFinish(userId, 1)
+		const beforeArm = Date.now()
+		await finishOk(userId, 'alarm-arm-trigger', { name: 'alarm-arm-trigger' })
+		const alarmAt = await getAlarm(userId)
+		expect(alarmAt).toBeTypeOf('number')
+		const dueAt = startedAtMs + runRecordStaleRunningTtlMsScheduledJob
+		expect(alarmAt).toBeGreaterThanOrEqual(
+			Math.min(dueAt, beforeArm + 1_000) - 100,
+		)
+		expect(alarmAt).toBeLessThan(
+			beforeArm + runRecordStaleRunningTtlMsScheduledJob + 5_000,
+		)
+		expect(alarmAt).toBeLessThan(beforeArm + runRecordStaleRunningTtlMsJob / 2)
+	}
+
+	// --- mid-age non-scheduled job rows must not starve scheduled-tick reconcile ---
+	{
+		const userId = uniqueUserId('scheduled-job-reconcile-page')
+		const midAgeStartedAt = iso(
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 120_000,
+		)
+		const scheduledStartedAt = iso(
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 60_000,
+		)
+		// Matches maxStaleRunningReconcilesPerPass in run-log-do.ts.
+		const midAgeJobCount = 100
+		await seedRuns(userId, [
+			...Array.from({ length: midAgeJobCount }, (_, index) => ({
+				id: `mid-age-job-${index}`,
+				status: 'running' as const,
+				startedAt: midAgeStartedAt,
+				surface: 'job' as const,
+				jobId: `mid-age-${index}`,
+				idempotencyKey: `manual-job:${index}`,
+			})),
+			{
+				id: 'stale-scheduled-behind-page',
+				status: 'running',
+				startedAt: scheduledStartedAt,
+				surface: 'job',
+				jobId: 'job-behind',
+				idempotencyKey: 'scheduled-job:job-behind:2026-08-21T10:00:00.000Z',
+			},
+		])
+		await armRetentionOnNextFinish(userId, midAgeJobCount + 1)
+		await finishOk(userId, 'reconcile-page-trigger', {
+			name: 'reconcile-page-trigger',
+		})
+		expect(
+			(await getRun(userId, 'stale-scheduled-behind-page'))?.run,
+		).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			errorTriage: null,
+			idempotencyKey: null,
+		})
+		expect((await getRun(userId, 'mid-age-job-0'))?.run).toMatchObject({
+			status: 'running',
+		})
 	}
 
 	// --- a real late finish replaces reconciled platform interrupt ---
@@ -1006,6 +1103,66 @@ test('cap and stale retention journey', async () => {
 			errorName: null,
 			metadata: { result: { completed: true } },
 		})
+	}
+
+	// --- late finish must not restore a released scheduled-tick key ---
+	{
+		const userId = uniqueUserId('scheduled-late-finish-fenced')
+		const scheduledKey = 'scheduled-job:job-late:2026-08-21T10:00:00.000Z'
+		const staleStartedAtMs =
+			Date.now() - runRecordStaleRunningTtlMsScheduledJob - 1_000
+		const handle = handleFor(
+			userId,
+			'scheduled-late-finish',
+			{
+				surface: 'job',
+				name: 'scheduled-late-finish',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+			staleStartedAtMs,
+		)
+		await seedRuns(userId, [
+			{
+				id: handle.id,
+				status: 'running',
+				startedAt: handle.startedAt,
+				surface: 'job',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+		])
+		expect((await getRun(userId, handle.id))?.run).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			idempotencyKey: null,
+		})
+
+		expect(
+			await finishRunRecord({
+				env,
+				handle,
+				status: 'success',
+				result: { completed: true },
+			}),
+		).toBe(false)
+		expect((await getRun(userId, handle.id))?.run).toMatchObject({
+			status: 'error',
+			errorName: runRecordPlatformInterruptedErrorName,
+			idempotencyKey: null,
+		})
+
+		const reclaimed = await claimRunRecord({
+			env,
+			userId,
+			context: {
+				surface: 'job',
+				name: 'scheduled-late-finish',
+				jobId: 'job-late',
+				idempotencyKey: scheduledKey,
+			},
+		})
+		expect(reclaimed).toMatchObject({ claimed: true })
 	}
 
 	// --- stale rows become cap-evictable after reconcile ---

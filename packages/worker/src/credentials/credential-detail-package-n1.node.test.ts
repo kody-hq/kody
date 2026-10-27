@@ -4,6 +4,7 @@
  * issue 7810484425). Shared org rows load once; package-bound Keys batch.
  */
 import { DatabaseSync } from 'node:sqlite'
+import { maxD1BoundParameters } from '@kody-internal/shared/chunk.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -32,6 +33,7 @@ import {
 } from './credential-candidates.ts'
 import { loadCredentialDetail } from './credential-detail.ts'
 import * as needsClosure from './credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 
 vi.mock(
 	'#worker/test-support/apply-all-migrations.ts',
@@ -72,6 +74,15 @@ function isPackageBoundSecretListLookup(query: string) {
 	)
 }
 
+function isOrgOwnerLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return (
+		normalized.includes('from org_memberships') &&
+		normalized.includes("m.role = 'owner'") &&
+		normalized.includes('limit 1')
+	)
+}
+
 function credentialItem(
 	overrides: Partial<CredentialListItem> & { id: string; name: string },
 ): CredentialListItem {
@@ -100,7 +111,10 @@ async function setup(packageCount: number) {
 	const queries: Array<string> = []
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
-	const db = createD1FromSqlite(sqlite, { queries })
+	const db = createD1FromSqlite(sqlite, {
+		queries,
+		maxBindings: maxD1BoundParameters,
+	})
 	const env = {
 		APP_DB: db,
 		AUDIT_DB: createAuditTestDb(),
@@ -221,15 +235,27 @@ async function setup(packageCount: number) {
 	}
 
 	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockImplementation(
-		async () => [
-			{
-				key: 'openai',
-				kind: 'secret' as const,
-				provider: 'openai',
-				description: '',
-				multiple: false,
-			},
-		],
+		async (input) => {
+			// Mirror the real closure: resolve the supplier flag when callers
+			// omit a precomputed value (the KODY-BV N+1 path).
+			const supplierSemanticsEnabled =
+				input.supplierSemanticsEnabled ??
+				(await isPackageCredentialSuppliersEnabled({
+					db: input.env.APP_DB,
+					orgId: input.userId,
+					request: input.request,
+				}))
+			void supplierSemanticsEnabled
+			return [
+				{
+					key: 'openai',
+					kind: 'secret' as const,
+					provider: 'openai',
+					description: '',
+					multiple: false,
+				},
+			]
+		},
 	)
 
 	const request = deriveRequestContext({
@@ -350,11 +376,49 @@ test('loadCredentialDetail usage across packages does not scale mcp lookups with
 	expect(t.queries.filter(isPackageBoundSecretListLookup)).toHaveLength(1)
 })
 
+test('loadCredentialDetail usage issues at most one org-owner lookup (KODY-BV)', async () => {
+	const small = await setup(3)
+	small.queries.length = 0
+	await loadCredentialDetail({
+		env: small.env,
+		request: small.request,
+		orgId: small.acmeId,
+		ownedByViewer: true,
+		credential: credentialItem({
+			id: small.orgKeyId,
+			name: 'OPENAI',
+			provider: 'openai',
+		}),
+		packages: small.packages,
+	})
+	const smallOwners = small.queries.filter(isOrgOwnerLookup).length
+
+	const large = await setup(6)
+	large.queries.length = 0
+	const detail = await loadCredentialDetail({
+		env: large.env,
+		request: large.request,
+		orgId: large.acmeId,
+		ownedByViewer: true,
+		credential: credentialItem({
+			id: large.orgKeyId,
+			name: 'OPENAI',
+			provider: 'openai',
+		}),
+		packages: large.packages,
+	})
+	const largeOwners = large.queries.filter(isOrgOwnerLookup).length
+
+	expect(detail.usage).toHaveLength(6)
+	expect(smallOwners).toBe(1)
+	expect(largeOwners).toBe(1)
+	expect(largeOwners).toBe(smallOwners)
+})
+
 test('package-bound Key batch chunks under maxD1BoundParameters (KODY-BD)', async () => {
-	const { maxD1BoundParameters } =
-		await import('@kody-internal/shared/chunk.ts')
 	// Seed enough package ids to force more than one secret IN-list without
-	// burning entitlement quota on saveSecret.
+	// burning entitlement quota on saveSecret. Fixture D1 enforces the
+	// maxD1BoundParameters bind cap so a future unchunked IN-list fails hard.
 	const t = await setup(2)
 	const packageIds = Array.from(
 		{ length: maxD1BoundParameters },

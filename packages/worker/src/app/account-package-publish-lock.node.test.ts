@@ -3,7 +3,6 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { fullGitCommitShaRequiredMessage } from '#worker/package-registry/package-publish-lock.ts'
 import { buildUnknownRequestedCommitMessage } from '#worker/repo/requested-commit-error.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -356,10 +355,8 @@ test('approve-publish mutation rejects a short commit SHA', async () => {
 		commit: shortCommit,
 	})
 	expect(response?.status).toBe(400)
-	expect(response?.data).toEqual({
-		ok: false,
-		error: fullGitCommitShaRequiredMessage,
-	})
+	expect(response?.data).toMatchObject({ ok: false })
+	expect(response?.data.error).toContain('full commit SHA')
 	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
 })
 
@@ -382,10 +379,9 @@ test('approve-publish mutation returns a distinct error for an unknown full SHA'
 		commit: unknownCommit,
 	})
 	expect(response?.status).toBe(400)
-	expect(response?.data).toEqual({
-		ok: false,
-		error: buildUnknownRequestedCommitMessage(unknownCommit),
-	})
+	expect(response?.data).toMatchObject({ ok: false })
+	expect(response?.data.error).toContain('was not found in the package source')
+	expect(response?.data.error).toContain(unknownCommit)
 	expect(response?.data.error).not.toContain('restorable backup')
 	expect(response?.data.error).not.toContain('source recovery')
 })

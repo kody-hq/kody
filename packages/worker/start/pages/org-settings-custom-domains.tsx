@@ -5,7 +5,7 @@ import {
 	deleteOrganizationDomain,
 } from '#start/server/org-settings-mutations'
 import { type CSSObject } from '@emotion/react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { orgDomainMutationOptions } from './org-domain-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
@@ -16,6 +16,7 @@ import {
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
+	AccountManagementMessage,
 	accountFieldCss,
 	accountActionsCss,
 	accountFieldNoteCss,
@@ -37,14 +38,20 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 export function OrgSettingsCustomDomains({
 	data,
 	queryKey,
-	onMessage,
 }: {
 	data: OrgSettingsLoaderData
 	queryKey: QueryKey
-	onMessage: (message: string, tone: 'info' | 'error') => void
 }) {
 	const client = useQueryClient()
 	const capture = useSubmitterScope()
+	const [notice, setNotice] = useState<{
+		text: string
+		tone: 'info' | 'error'
+	} | null>(null)
+	const noticeRef = useRef<HTMLDivElement>(null)
+	useEffect(() => {
+		if (notice) noticeRef.current?.scrollIntoView({ block: 'nearest' })
+	}, [notice])
 	const [hostname, setHostname] = useState('')
 	const [bindingKind, setBindingKind] = useState<'org' | 'app'>('org')
 	const [packageId, setPackageId] = useState('')
@@ -65,19 +72,21 @@ export function OrgSettingsCustomDomains({
 		onSuccess?: () => void,
 	) {
 		const isCurrent = capture()
+		setNotice(null)
 		try {
 			await run()
 			if (!isCurrent()) return
 			onSuccess?.()
-			onMessage(message, 'info')
+			setNotice({ text: message, tone: 'info' })
 		} catch (error) {
 			if (isCurrent())
-				onMessage(
-					error instanceof Error
-						? error.message
-						: 'Unable to update custom domains.',
-					'error',
-				)
+				setNotice({
+					text:
+						error instanceof Error
+							? error.message
+							: 'Unable to update custom domains.',
+					tone: 'error',
+				})
 		}
 	}
 	const domains = data.customDomains
@@ -257,6 +266,13 @@ export function OrgSettingsCustomDomains({
 						</button>
 					</div>
 				</form>
+			) : null}
+			{notice ? (
+				<div ref={noticeRef}>
+					<AccountManagementMessage tone={notice.tone}>
+						{notice.text}
+					</AccountManagementMessage>
+				</div>
 			) : null}
 		</AccountManagementPanel>
 	)

@@ -49,7 +49,7 @@ Prerequisites, install, and `npm run dev` notes. See the
   writes `.tmp/dev-server.log` (printed as `Dev server log: <path>`). Agents
   should call this instead of reconstructing a startup playbook from terminal
   files.
-- `npm run dev` starts the Cloudflare API mock, then Vite (`@pitlane/dev` +
+- `npm run dev` starts the Cloudflare API mock, then Vite (TanStack Start +
   `@cloudflare/vite-plugin`) so origin SSR runs inside workerd with client HMR.
   Jobs and highlight join as Vite auxiliary workers in every serve, including
   `CLOUDFLARE_ENV=test`. Platform and runtime join only outside the test env.

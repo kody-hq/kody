@@ -144,15 +144,15 @@ test.each(['/features/secrets', '/features/integrations'])(
 test('homepage OG variants preserve a clean canonical and reject unknown variants', async () => {
 	const { html, url } = await document('/?og=triggers&utm_source=youtube')
 	contains(html, [
-		`property="og:image" content="${url.origin}/og/home.png?og=triggers"`,
-		`name="twitter:image" content="${url.origin}/og/home.png?og=triggers"`,
+		`property="og:image" content="${url.origin}/og/home.png?og=triggers&amp;v=2"`,
+		`name="twitter:image" content="${url.origin}/og/home.png?og=triggers&amp;v=2"`,
 		'property="og:title" content="Invoke deterministic code from anything"',
 		`rel="canonical" href="${url.origin}/"`,
 	])
 	expect(html).not.toContain(`og:url" content="${url.origin}/?og=`)
 	const { html: unknown } = await document('/?og=nope')
 	expect(unknown).toContain(
-		`property="og:image" content="${url.origin}/og/home.png"`,
+		`property="og:image" content="${url.origin}/og/home.png?v=2"`,
 	)
 	expect(unknown).not.toContain('/og/home.png?og=')
 })

@@ -11,6 +11,7 @@ import { getOgPalette, type OgTheme } from '#worker/og/palette.ts'
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '../../public')
 const publicOgDir = join(publicDir, 'og')
 const publicIconsDir = join(publicDir, 'images', 'icons')
+const publicBrandDir = join(publicDir, 'images', 'brand')
 
 const AGENT_ICON_IDS = landingOrbitAgents.map((agent) => agent.icon)
 
@@ -24,7 +25,8 @@ type OgBinaryAssetCache = {
 	kodyBaseDataUri: string
 	kodyPrimitivesLanternDataUri: string
 	kodyDiscordDataUri: string
-	kodyLogoDataUri: string
+	kodyMarkSolidSvg: string
+	kodyMarkOutlinedSvg: string
 	agentIconSvgs: AgentIconSvgById
 }
 
@@ -47,7 +49,7 @@ function bytesToPngDataUri(bytes: Uint8Array): string {
 	return `data:image/png;base64,${bytesToBase64(bytes)}`
 }
 
-function tintAgentSvg(svg: string, color: string): string {
+function tintSvgFills(svg: string, color: string): string {
 	return svg.replace(/fill="[^"]*"/gi, `fill="${color}"`)
 }
 
@@ -90,7 +92,14 @@ function ensureCache(): OgBinaryAssetCache {
 			readOgAssetFile('kody-primitives-lantern.png'),
 		),
 		kodyDiscordDataUri: bytesToPngDataUri(readOgAssetFile('kody-discord.png')),
-		kodyLogoDataUri: bytesToPngDataUri(readOgAssetFile('kody-logo.png')),
+		kodyMarkSolidSvg: readFileSync(
+			join(publicBrandDir, 'kody-mark-white.svg'),
+			'utf8',
+		),
+		kodyMarkOutlinedSvg: readFileSync(
+			join(publicBrandDir, 'kody-mark-outlined.svg'),
+			'utf8',
+		),
 		agentIconSvgs: loadAgentIconSvgs(),
 	}
 	return cache
@@ -135,13 +144,17 @@ export function getLandingAgentIconDataUri(
 	theme: OgTheme,
 ): string {
 	const svg = ensureCache().agentIconSvgs[icon]
-	return svgToDataUri(tintAgentSvg(svg, getOgPalette(theme).text))
+	return svgToDataUri(tintSvgFills(svg, getOgPalette(theme).text))
 }
 
 export function getKodyDiscordDataUri(): string {
 	return ensureCache().kodyDiscordDataUri
 }
 
-export function getKodyLogoDataUri(): string {
-	return ensureCache().kodyLogoDataUri
+/** Node twin of `getKodyMarkDataUri` in `og-binary-assets.ts`. */
+export function getKodyMarkDataUri(theme: OgTheme): string {
+	const loaded = ensureCache()
+	const svg =
+		theme === 'light' ? loaded.kodyMarkOutlinedSvg : loaded.kodyMarkSolidSvg
+	return svgToDataUri(tintSvgFills(svg, getOgPalette(theme).text))
 }

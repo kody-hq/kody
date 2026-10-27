@@ -44,7 +44,7 @@ import {
 } from './account-management-components.tsx'
 import {
 	EmailTriageBadges,
-	EmailViewOptions,
+	emailViewOptions,
 } from './email-triage-controls.tsx'
 import {
 	RecordTable,
@@ -285,7 +285,7 @@ export function AdminSystemEmailPage({
 										})
 									}}
 								>
-									<EmailViewOptions />
+									{emailViewOptions}
 								</RecordTableSelect>
 							}
 							columns={[

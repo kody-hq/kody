@@ -211,8 +211,11 @@ export type FetchGatewayEnv = Pick<
  * still fills header placeholders but sends the URL and body as written, for
  * a body that quotes the syntax (an issue or chat message) on a host the
  * credential allows; without it that text would be filled with the secret.
- * For merely mentioning the syntax in prose, prefer the inert
- * `{{secret:<name>}}` form, which never resolves.
+ * For merely mentioning the syntax in prose, prefer an inert form:
+ * angle-bracket markers (`{{secret:<name>}}`,
+ * `{{secret/<provider>:<ref>}}`,
+ * `{{secret/bwvault:i/<item-uuid>/<field>}}`) or the grammar metavariable
+ * token `{{secret/provider:ref}}`. Those never resolve.
  */
 export const secretResolutionHeaderName = 'x-kody-secret-resolution'
 

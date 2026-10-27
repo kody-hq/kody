@@ -93,6 +93,59 @@ export type CredentialPlacement =
 
 export type CredentialPlacementType = CredentialPlacement['type']
 
+/**
+ * True when a vault placeholder sits where the fetch gateway or a
+ * credential-mapped call can resolve it. Display-only sites (status /
+ * help / example object fields, bare returns, unused bindings) are false:
+ * those strings are documentation, not credential uses, so the stamp gate
+ * ignores them even when the token has a concrete provider id and ref.
+ */
+export function isVaultCredentialUsePlacement(
+	placement: CredentialPlacement,
+): boolean {
+	switch (placement.type) {
+		case 'header':
+		case 'header-custom':
+		case 'query':
+		case 'basic':
+		case 'path':
+		case 'url':
+		case 'body':
+		case 'signing':
+			return true
+		case 'binding':
+			// Reads of the binding are recorded as their own placements.
+			return false
+		case 'other':
+			switch (placement.context) {
+				case 'sdk-option':
+				case 'argument':
+				case 'url-host':
+				case 'unparsed':
+					return true
+				case 'object':
+				case 'return':
+				case 'assignment':
+				case 'array':
+				case 'default-param':
+				case 'comparison':
+				case 'unused-binding':
+				case 'reassigned-binding':
+				case 'template-computed':
+				case 'other':
+					return false
+				default: {
+					const exhaustive: never = placement.context
+					return exhaustive
+				}
+			}
+		default: {
+			const exhaustive: never = placement
+			return exhaustive
+		}
+	}
+}
+
 export const credentialPlacementTypes = [
 	'header',
 	'query',
@@ -803,6 +856,105 @@ type ClassifyContext = {
 	binding: (declarator: AstNode) => 'read' | 'reassigned' | 'unused'
 }
 
+/**
+ * Object keys that hold documentation / help copy rather than outbound
+ * request data. Nested headers or `https://…` examples under these keys are
+ * display text — but only when no call/new expression encloses the
+ * placeholder (a fetch body field named `description` stays live).
+ */
+const displayDocumentationPropertyKeys = new Set([
+	'example',
+	'examples',
+	'description',
+	'help',
+	'usage',
+	'docs',
+	'documentation',
+	'hint',
+	'hints',
+	'sample',
+	'samples',
+])
+
+/** Function / method names whose returns are package help, not request builders. */
+const displayReturnFunctionNames = new Set(['status', 'help', 'docs', 'usage'])
+
+function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (
+			ancestor.type === 'FunctionDeclaration' ||
+			ancestor.type === 'FunctionExpression' ||
+			ancestor.type === 'ArrowFunctionExpression'
+		) {
+			const own = getNodeName(ancestor.id) ?? getNodeName(ancestor.key) ?? null
+			if (own) return own
+			// `const status = () => …` / `status: () => …` — the name sits on
+			// the enclosing declarator or object property, not the function.
+			const holder = ancestors[index - 1]
+			if (holder?.type === 'VariableDeclarator' && holder.init === ancestor) {
+				return getNodeName(holder.id)
+			}
+			if (holder?.type === 'ObjectProperty' && holder.value === ancestor) {
+				return getNodeName(holder.key) ?? propertyKey(holder)
+			}
+			// Unnamed nested function (default param, callback, etc.): do not
+			// inherit an outer status/help name.
+			return null
+		}
+		if (
+			ancestor.type === 'ObjectMethod' ||
+			ancestor.type === 'ClassMethod' ||
+			ancestor.type === 'ClassPrivateMethod'
+		) {
+			return getNodeName(ancestor.key) ?? getNodeName(ancestor.id) ?? null
+		}
+	}
+	return null
+}
+
+/**
+ * Display/help sites for vault tokens: documentation property keys, or a
+ * return from status/help/docs/usage — and never when a call or `new` encloses
+ * the placeholder (so fetch bodies and request helpers stay stamp-gated).
+ */
+function displayOnlyPlacement(
+	ancestors: ReadonlyArray<AstNode>,
+	node: AstNode,
+): CredentialPlacement | null {
+	for (const ancestor of ancestors) {
+		if (
+			ancestor.type === 'CallExpression' ||
+			ancestor.type === 'OptionalCallExpression' ||
+			ancestor.type === 'NewExpression'
+		) {
+			return null
+		}
+	}
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (ancestor.type === 'ObjectProperty') {
+			const key = safeIdentifier(propertyKey(ancestor))
+			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
+				return otherPlacement('object', key)
+			}
+		}
+	}
+	const inReturn =
+		ancestors.some((ancestor) => ancestor.type === 'ReturnStatement') ||
+		ancestors.some(
+			(ancestor, index) =>
+				ancestor.type === 'ArrowFunctionExpression' &&
+				ancestor.body === (ancestors[index + 1] ?? node),
+		)
+	if (!inReturn) return null
+	const functionName = enclosingFunctionName(ancestors)?.toLowerCase() ?? null
+	if (functionName && displayReturnFunctionNames.has(functionName)) {
+		return otherPlacement('return')
+	}
+	return null
+}
+
 function classifyPlacement(
 	text: string,
 	match: PlaceholderMatch,
@@ -811,6 +963,8 @@ function classifyPlacement(
 	context: ClassifyContext,
 ): CredentialPlacement {
 	if (match.kind === 'secret-basic') return { type: 'basic' }
+	const displayOnly = displayOnlyPlacement(ancestors, node)
+	if (displayOnly) return displayOnly
 	const parent = parentOf(ancestors)
 	if (
 		parent?.node.type === 'VariableDeclarator' &&

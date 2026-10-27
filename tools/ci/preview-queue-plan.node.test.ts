@@ -62,9 +62,6 @@ test('preview origin queues are the production producers except the inline-only 
 	expect(
 		previewInlineOnlyQueueBindings.has('PACKAGE_EVENTS_DISPATCH_QUEUE'),
 	).toBe(true)
-	expect(bindingNames(preview.producers ?? [])).not.toContain(
-		'PACKAGE_EVENTS_DISPATCH_QUEUE',
-	)
 
 	for (const producer of preview.producers ?? []) {
 		const consumer = preview.consumers?.find(

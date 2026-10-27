@@ -19,6 +19,7 @@ import {
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
+	isVaultCredentialUsePlacement,
 	scanPackageCredentials,
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
@@ -1521,7 +1522,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	scanModuleCredentialReferences(files, (path) => ({
+	scanModuleCredentialReferences(files, (_path) => ({
 		add: () => {},
 		named: (name, kind) => {
 			if (packageCredentialSlotNamePattern.test(name)) {
@@ -1531,16 +1532,19 @@ export function scanCredentialStamp(
 		},
 		// Non-literal helper args are refused via 0010 unstampable patterns.
 		computed: () => {},
-		unnamed: (via) => {
-			if (via === 'placeholder') {
-				failures.push({
-					code: 'unstampable_pattern',
-					path,
-					message: `${path}: vault placeholder {{secret/provider:ref}} cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key.`,
-				})
-			}
-		},
+		// Vault placeholders are gated from inventory placements below: only
+		// request / credential-mapped sites fail the stamp. Display strings
+		// (status example/help fields) are not credential uses.
+		unnamed: () => {},
 	}))
+
+	if (scan.vaultPlacements.some(isVaultCredentialUsePlacement)) {
+		failures.push({
+			code: 'unstampable_pattern',
+			message:
+				'A vault placeholder {{secret/provider:ref}} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, or call argument) and cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key. Placeholders only in display/help text (for example status() example or description fields) are not credential uses and do not block the stamp.',
+		})
+	}
 
 	const modulePaths = listScannableModulePaths(files)
 	const parsedModules = new Map(

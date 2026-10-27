@@ -6,6 +6,12 @@ import {
 	accessRevokeCapability,
 } from './access-grants.ts'
 import {
+	inviteLinkAcceptCapability,
+	inviteLinkCreateCapability,
+	inviteLinkListCapability,
+	inviteLinkRevokeCapability,
+} from './invite-links.ts'
+import {
 	inviteAcceptCapability,
 	inviteCreateCapability,
 	inviteRevokeCapability,
@@ -52,6 +58,10 @@ export const accessDomain = defineDomain({
 		inviteCreateCapability,
 		inviteAcceptCapability,
 		inviteRevokeCapability,
+		inviteLinkCreateCapability,
+		inviteLinkListCapability,
+		inviteLinkRevokeCapability,
+		inviteLinkAcceptCapability,
 		orgCreateCapability,
 		orgMemberListCapability,
 		orgMemberUpdateCapability,

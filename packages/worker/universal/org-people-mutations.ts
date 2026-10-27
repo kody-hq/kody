@@ -12,6 +12,8 @@ export const inviteOrganizationMemberSchema = z.object({
 })
 export const createOrganizationInviteLinkSchema = z.object({
 	role: z.enum(['member', 'billing']).optional(),
+	label: z.string().optional(),
+	teamIds: z.array(z.string()).optional(),
 	allowedEmailDomains: z.union([z.string(), z.array(z.string())]).optional(),
 	domains: z.union([z.string(), z.array(z.string())]).optional(),
 	allowedDomains: z.union([z.string(), z.array(z.string())]).optional(),

@@ -127,6 +127,7 @@ import {
 	finalizePublishedEntitySource,
 	publishFromExternalRef as publishExternalRefSource,
 } from './external-publish.ts'
+import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
 import {
 	buildWorkspaceSqliteTooBigCallerMessage,
 	cloneExternalPublishWorkspace,
@@ -4066,6 +4067,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			phaseTimings,
 		})
 		const publishDir = publishClone.dir || externalPublishWorkspaceDir
+		// Checks only need the worktree; drop pack objects before the heavy
+		// phases so this DO does not keep clone + checks memory at once.
+		await publishClone.releaseGitObjects()
 		const checks = await runAuthoringPublishChecks({
 			workspace: publishClone.workspace,
 			manifestPath: resolveRepoWorkspacePath(source.manifest_path, publishDir),
@@ -4134,6 +4138,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					ancestor: previousCommit,
 					descendant: input.newCommit,
 				}),
+			releaseCloneGitObjects: () => publishClone.releaseGitObjects(),
 			allowForce: input.allowForce,
 			destructiveOverwriteConfirmed: input.destructiveOverwriteConfirmed,
 			workspace: publishClone.workspace,
@@ -4234,9 +4239,12 @@ class RepoSessionBase extends DurableObject<Env> {
 						source,
 					),
 				})
+				// Fresh workspace: publish releases the clone's `.git` before
+				// checks to free pack memory, so notes cannot reuse that FS.
+				const noteWorkspace = createEphemeralGitWorkspace()
 				await attachPublishGitNoteBestEffort({
-					filesystem: publishClone.filesystem,
-					dir: publishDir,
+					filesystem: noteWorkspace.filesystem,
+					dir: noteWorkspace.dir,
 					commitOid: input.newCommit,
 					remote: sourceWriteAccess.remote,
 					token: sourceWriteAccess.token,

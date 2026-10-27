@@ -92,7 +92,7 @@ function FunnelRow({ step, total }: { step: FunnelStep; total: number }) {
 				definition={definition}
 				height={10}
 				initialWidth={400}
-				ariaLabel={`${step.label}: ${step.users} users, ${formatPercentShare(share)} of signups`}
+				ariaLabel={`${step.label}: ${formatIntegerNumber(step.users)} users, ${formatPercentShare(share)} of signups`}
 			/>
 		</div>
 	)

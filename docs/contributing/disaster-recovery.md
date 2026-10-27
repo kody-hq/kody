@@ -112,8 +112,8 @@ Nightly */5 ticks 00:30–06:10 UTC           02:15 UTC: D1 export Workflow
 Daytime */5 ticks: staging catch-up         Admin UI: drill / production restore
   resume oldest stranded day (≤14 days)     Agent seal API: `/__maintenance/dr-seal`
 06:15 UTC: staging watchdog → Sentry
-Same nightly window: paced D1 walk          REST D1 stays the UI drill /
-  APP_DB + JOBS_DB → d1-paced/…              production-restore path
+Same nightly window: paced D1 walk          Paced backup lane only; REST D1
+  APP_DB + AUDIT_DB + JOBS_DB → d1-paced/…   stays the drill / restore path
 Hourly :45 / Sunday 07:00: paced freshness  GET /__maintenance/dr-paced-status
   and weekly paced restore drill → Sentry
 ```
@@ -184,8 +184,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `restExport: false` skips that database on REST cron, hourly freshness, and
    seal-full REST prerequisites; the paced walk is independent. **D1 paced walk
    (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
-   same DR S3 credentials are set, the production worker walks APP_DB and
-   JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
+   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
+   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
    same nightly window as non-D1 staging. Staging lives under
    `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
    `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
@@ -194,11 +194,12 @@ Contract: `packages/shared/src/backup-staging.ts`.
    under the isolate limit. The weekly Sunday 07:00 drill rebuilds from the
    sealed chain and compares counts; a mismatch throws so the scheduled lane
    pages Sentry. This lane does not feed the admin UI drill or graduated
-   production restore — those stay on the REST SQL objects.
-   `GET`/`POST /__maintenance/dr-paced-status` (bearer `DR_RESTORE_SECRET`,
-   optional `?day=YYYY-MM-DD`) reports staging/sealed presence per source.
-   `DR_D1_PACED_SOURCES` commits APP_DB + AUDIT_DB + JOBS_DB (deploy still
-   expands live D1 UUIDs from resource bindings).
+   production restore — those stay on the REST SQL objects (APP_DB and JOBS_DB
+   only; AUDIT_DB is paced-only). `GET`/`POST /__maintenance/dr-paced-status`
+   (bearer `DR_RESTORE_SECRET`, optional `?day=YYYY-MM-DD`) reports
+   staging/sealed presence per source. `DR_D1_PACED_SOURCES` commits APP_DB +
+   AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from resource
+   bindings).
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:
@@ -346,13 +347,13 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
   selective export cursor and remain excluded. Incident handling must treat
   in-flight workflow state as lost and restart or reconcile affected workflows.
 - **`AUDIT_DB`** — the separate D1 database containing hashed security audit
-  events with 180-day retention has no cross-account backup lane. This is
-  **accepted-unprotected** operator/security evidence, not user content
-  (confirmed 2026-08-07): losing the retained audit trail in a DR account-loss
-  event is acceptable; new events accumulate again after restore. Revisit only
-  if forensics retention across account loss becomes a requirement. Scheduled
-  job definitions live in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1
-  export; APP_DB does not store them.
+  events with 180-day retention is included in the paced D1 walk
+  (`DR_D1_PACED_SOURCES`) but is **not** on the REST SQL / admin UI drill /
+  graduated production-restore path (those still read only APP_DB and JOBS_DB).
+  Cross-account REST export of AUDIT_DB remains out of scope: paced sealed
+  nights are the backup lane for this evidence. Scheduled job definitions live
+  in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1 export; APP_DB does
+  not store them.
 
 ### Honest gaps
 
@@ -733,7 +734,7 @@ the correctness spec and incident-only fallback:
 | 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                        |
 | 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
 | Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                               |
-| `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                                |
+| `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB, AUDIT_DB, and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                     |
 | Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |
 | 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                             |
 | Hourly `:45`                    | Production worker | Paced D1 freshness: sealed paced night for yesterday (or today after 06:15) must exist for every bound source                                                                                                                                                                  |
@@ -979,9 +980,9 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
   self-retention), invocation idempotency ledger, and workflow projections;
   never-pruned job observability and activation state are backed up
 - Backup of UserMeter (reconciliation/restart is the accepted recovery path)
-- Backup of `AUDIT_DB` hashed audit events (180-day evidence;
-  accepted-unprotected 2026-08-07 — UUID not committed; paced sources are APP_DB
-  and JOBS_DB only)
+- Graduated production restore / admin UI drill of `AUDIT_DB` (paced walk seals
+  APP_DB + AUDIT_DB + JOBS_DB; REST SQL restore still covers APP_DB and JOBS_DB
+  only)
 - Plaintext `SECRET_STORE_KEY` or other credentials inside backup media
 
 ## Provider references

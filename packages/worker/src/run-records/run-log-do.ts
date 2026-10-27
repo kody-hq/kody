@@ -75,6 +75,8 @@ import {
 	runRecordRetentionEmptyBackoffMinMs,
 	runRecordRetentionEveryNFinishes,
 	runRecordStaleRunningTtlMsForSurface,
+	runRecordStaleRunningTtlMsScheduledJob,
+	isScheduledJobIdempotencyKey,
 	runSurfaceValues,
 	workflowProjectionRetentionDays,
 } from './types.ts'
@@ -1756,12 +1758,17 @@ class RunLogBase extends DurableObject<Env> {
 		surface: string
 		startedAt: string
 		nowMs?: number
+		idempotencyKey?: string | null
 	}): boolean {
 		const surface = isRunSurface(input.surface) ? input.surface : 'execute'
 		const startedMs = Date.parse(input.startedAt)
 		if (!Number.isFinite(startedMs)) return false
 		const nowMs = input.nowMs ?? Date.now()
-		return nowMs - startedMs >= runRecordStaleRunningTtlMsForSurface(surface)
+		const ttlMs =
+			surface === 'job' && isScheduledJobIdempotencyKey(input.idempotencyKey)
+				? runRecordStaleRunningTtlMsScheduledJob
+				: runRecordStaleRunningTtlMsForSurface(surface)
+		return nowMs - startedMs >= ttlMs
 	}
 
 	private markRunningInterrupted(input: {
@@ -1778,8 +1785,9 @@ class RunLogBase extends DurableObject<Env> {
 				surface: string
 				started_at: string
 				parent_run_id: string | null
+				job_id: string | null
 			}>(
-				`SELECT status, surface, started_at, parent_run_id
+				`SELECT status, surface, started_at, parent_run_id, job_id
 				FROM runs WHERE id = ? LIMIT 1`,
 				input.id,
 			)
@@ -1797,6 +1805,12 @@ class RunLogBase extends DurableObject<Env> {
 			surface: input.surface,
 			idempotencyKey: input.idempotencyKey,
 		})
+		// Scheduled ticks must be able to claim the occurrence again after a
+		// stranded `running` row is interrupted. Clearing the key keeps the
+		// interrupted attempt as visible history without consuming the slot.
+		const releaseScheduledJobKey = isScheduledJobIdempotencyKey(
+			input.idempotencyKey,
+		)
 		this.ctx.storage.sql.exec(
 			`UPDATE runs
 			SET status = 'error',
@@ -1808,7 +1822,8 @@ class RunLogBase extends DurableObject<Env> {
 				triage_note = ?,
 				triaged_at = ?,
 				triaged_by = ?,
-				updated_at = ?
+				updated_at = ?,
+				idempotency_key = CASE WHEN ? THEN NULL ELSE idempotency_key END
 			WHERE id = ? AND status = 'running'`,
 			finishedAt,
 			durationMs,
@@ -1819,6 +1834,7 @@ class RunLogBase extends DurableObject<Env> {
 			errorTriage ? finishedAt : null,
 			errorTriage ? platformInterruptTriagedBy : null,
 			finishedAt,
+			releaseScheduledJobKey ? 1 : 0,
 			input.id,
 		)
 		this.applyRunDayCountTransition({
@@ -1835,6 +1851,18 @@ class RunLogBase extends DurableObject<Env> {
 				status: 'error',
 			},
 		})
+		const jobId = existing.job_id?.trim() || null
+		if (releaseScheduledJobKey && jobId) {
+			// Surface the missed/interrupted occurrence on jobGet / Activity
+			// counters even when the next claim has not run yet.
+			this.writeJobRunObservabilityOutcome({
+				jobId,
+				status: 'error',
+				ranAt: finishedAt,
+				error: runRecordPlatformInterruptedErrorMessage,
+				durationMs,
+			})
+		}
 		// Row became terminal: age-prune now applies, so any prior idle
 		// conclusion is stale (covers reconcile + heal-on-read callers).
 		this.retentionIdleConfirmed = false
@@ -1846,11 +1874,13 @@ class RunLogBase extends DurableObject<Env> {
 	 * interrupted attempt is useful history. `error` +
 	 * `platform_interrupted` is used because the public status union has no
 	 * dedicated unknown-outcome value; live "is it running?" state must not be
-	 * read from these rows anyway. Idempotent scheduler/queue attempts are
-	 * retained as ignored history because their owners will retry.
+	 * read from these rows anyway. Idempotent queue/subscription deliveries stay
+	 * auto-ignored; scheduled-job keys clear their idempotency so the tick can
+	 * still run and the interrupt stays owner-visible.
 	 *
 	 * TTL is surface-aware: sandbox-backed surfaces (execute/export/…) heal in
-	 * minutes; workflow rows keep the day-scale TTL.
+	 * minutes; scheduled job ticks heal after the execution lease; workflow rows
+	 * keep the day-scale TTL.
 	 */
 	private reconcileStaleRunning() {
 		const nowMs = Date.now()
@@ -1862,6 +1892,13 @@ class RunLogBase extends DurableObject<Env> {
 		).toISOString()
 		const backgroundCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsForSurface('webhook'),
+		).toISOString()
+		// Apply each job-key class cutoff in SQL before LIMIT so mid-age
+		// non-scheduled job rows cannot fill the page ahead of lease-stale
+		// `scheduled-job:…` rows. {@link isStaleRunning} remains the source of
+		// truth inside the loop.
+		const scheduledJobCutoff = new Date(
+			nowMs - runRecordStaleRunningTtlMsScheduledJob,
 		).toISOString()
 		const jobCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsForSurface('job'),
@@ -1881,13 +1918,22 @@ class RunLogBase extends DurableObject<Env> {
 				(surface IN ('execute', 'export', 'subscription', 'app_fetch', 'app_realtime')
 					AND started_at < ?)
 				OR (surface = 'webhook' AND started_at < ?)
-				OR (surface = 'job' AND started_at < ?)
+				OR (
+					surface = 'job' AND (
+						(idempotency_key LIKE 'scheduled-job:%' AND started_at < ?)
+						OR (
+							(idempotency_key IS NULL OR idempotency_key NOT LIKE 'scheduled-job:%')
+							AND started_at < ?
+						)
+					)
+				)
 				OR (surface = 'workflow' AND started_at < ?)
 			)
 			ORDER BY started_at ASC
 			LIMIT ?`,
 			shortLivedCutoff,
 			backgroundCutoff,
+			scheduledJobCutoff,
 			jobCutoff,
 			longLivedCutoff,
 			maxStaleRunningReconcilesPerPass,
@@ -1899,6 +1945,7 @@ class RunLogBase extends DurableObject<Env> {
 					surface: row.surface,
 					startedAt: row.started_at,
 					nowMs,
+					idempotencyKey: row.idempotency_key,
 				})
 			) {
 				continue
@@ -1926,6 +1973,7 @@ class RunLogBase extends DurableObject<Env> {
 			!this.isStaleRunning({
 				surface: run.surface,
 				startedAt: run.startedAt,
+				idempotencyKey: run.idempotencyKey,
 			})
 		) {
 			return run
@@ -2096,6 +2144,24 @@ class RunLogBase extends DurableObject<Env> {
 			consider(
 				Date.parse(row.started_at) +
 					runRecordStaleRunningTtlMsForSurface(surface),
+			)
+		}
+
+		// Scheduled ticks heal on the execution-lease TTL, not the job-surface
+		// TTL. Arm the RunLog alarm at that deadline so a hung tick is
+		// interrupted and re-claimable without waiting six hours.
+		const oldestScheduledJobRunning = this.ctx.storage.sql
+			.exec<{ started_at: string }>(
+				`SELECT MIN(started_at) AS started_at FROM runs
+				WHERE status = 'running'
+					AND surface = 'job'
+					AND idempotency_key LIKE 'scheduled-job:%'`,
+			)
+			.toArray()[0]
+		if (oldestScheduledJobRunning?.started_at) {
+			consider(
+				Date.parse(oldestScheduledJobRunning.started_at) +
+					runRecordStaleRunningTtlMsScheduledJob,
 			)
 		}
 
@@ -2354,13 +2420,33 @@ class RunLogBase extends DurableObject<Env> {
 				surface: input.run.surface,
 			})
 			if (existing) {
-				// Heal stranded `running` owners before refusing the claim so a
-				// keyed retry after an isolate death is not stuck on inProgress
-				// forever. Terminal rows (including reconciled platform
-				// interrupts) still own the key for replay.
-				return {
-					claimed: false,
-					run: this.healStaleRunningRecord(existing),
+				if (
+					existing.status === 'running' &&
+					isScheduledJobIdempotencyKey(existing.idempotencyKey) &&
+					this.isStaleRunning({
+						surface: existing.surface,
+						startedAt: existing.startedAt,
+						idempotencyKey: existing.idempotencyKey,
+					})
+				) {
+					// Release the stranded scheduled-tick key (interrupt + clear
+					// idempotency) so this claim can still execute the occurrence
+					// instead of soft-retrying or replaying a terminal interrupt.
+					this.markRunningInterrupted({
+						id: existing.id,
+						surface: existing.surface,
+						idempotencyKey: existing.idempotencyKey,
+						startedAt: existing.startedAt,
+					})
+				} else {
+					// Heal stranded `running` owners before refusing the claim so a
+					// keyed retry after an isolate death is not stuck on inProgress
+					// forever. Terminal rows (including reconciled platform
+					// interrupts) still own the key for replay.
+					return {
+						claimed: false,
+						run: this.healStaleRunningRecord(existing),
+					}
 				}
 			}
 		}
@@ -2709,9 +2795,20 @@ class RunLogBase extends DurableObject<Env> {
 	async finishRun(input: {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
-	}): Promise<{ ok: true }> {
+	}): Promise<{ ok: true; wrote: boolean }> {
 		const previousStatus = this.getRunStatus(input.run.id)
 		const existed = previousStatus != null
+		// Scheduled ticks release their idempotency key on platform interrupt so
+		// the occurrence can be claimed again. A late finish from the stranded
+		// attempt must not restore that key or flip the visible interrupt to
+		// success (non-scheduled surfaces still allow late finishes).
+		if (
+			isScheduledJobIdempotencyKey(input.run.idempotencyKey) &&
+			previousStatus != null &&
+			previousStatus !== 'running'
+		) {
+			return { ok: true, wrote: false }
+		}
 		// One transaction for run upsert + logs + job observability + activation
 		// so a mid-unit SQL failure cannot leave a terminal run that suppresses
 		// missing derived side effects. Alarm / async retention stay outside.
@@ -2739,7 +2836,7 @@ class RunLogBase extends DurableObject<Env> {
 		this.resetRetentionEmptyBackoff()
 		this.maybeEnforceRetention()
 		await this.ensureRetentionAlarm()
-		return { ok: true }
+		return { ok: true, wrote: true }
 	}
 
 	private findInvocationLedgerRow(
@@ -4740,7 +4837,7 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	finishRun: (input: {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
-	}) => Promise<{ ok: true }>
+	}) => Promise<{ ok: true; wrote: boolean }>
 	listRuns: (input: ListRunsInput) => Promise<RunRecordPage>
 	updateRunErrorTriage: (
 		input: UpdateRunErrorTriageInput,

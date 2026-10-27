@@ -36,13 +36,26 @@ that provider.
 In secret-aware `fetch`:
 
 ```
-{{secret/1password:i/<item-id>/password}}
+{{secret/1password:i/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/password}}
 ```
 
-`<item-id>` is a UUID (Service Account / web) or a 1Password Connect item id
+Item ids are a UUID (Service Account / web) or a 1Password Connect item id
 (`^[a-z0-9]{26}$`). `op://Vault/<item-id>/password` is a writable synonym that
 canonicalizes to the same grant key when the item segment is one of those ids.
 Name-based vault paths are not interpreted in Kody core.
+
+Documentation and status text that _shows_ the syntax may use a realistic
+example ref (a concrete provider id and item UUID). The credential stamp counts
+a vault token as a credential use only when it sits in a request or
+credential-mapped site (fetch URL, header, query, path, body, signing key, SDK
+option, or call argument). Placeholders only in display/help text — for example
+`status()` `example` / `description` / `help` fields — do not block publish.
+Angle-bracket markers (`{{secret/<provider>:<ref>}}`,
+`{{secret/bwvault:i/<item-uuid>/<field>}}`) and the grammar metavariable token
+`{{secret/provider:ref}}` remain inert everywhere the fetch gateway would fill
+them (including message bodies / execute params). A complete token with a
+concrete provider id and ref is still filled when it appears in a secret-aware
+fetch (URL, header, or body).
 
 The item's websites are the host allowlist. Empty websites refuse the fetch. The
 request URL must be `https:`.

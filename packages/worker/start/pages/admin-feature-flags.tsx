@@ -295,7 +295,7 @@ export function AdminFeatureFlagsPage({
 							<div
 								data-testid={`success-metric-${flag.key}`}
 								css={{
-									border: `1px solid ${colors.border}`,
+									border: `1px solid ${colors.borderSubtle}`,
 									borderRadius: '0.75rem',
 									padding: spacing.md,
 									marginBottom: spacing.lg,
@@ -384,7 +384,7 @@ export function AdminFeatureFlagsPage({
 									margin: 0,
 									marginBottom: spacing.lg,
 									padding: spacing.sm,
-									border: `1px solid ${colors.border}`,
+									border: `1px solid ${colors.borderSubtle}`,
 									borderRadius: '0.75rem',
 									background: colors.primarySoftest,
 									color: colors.textMuted,
@@ -547,7 +547,7 @@ export function AdminFeatureFlagsPage({
 												gap: spacing.md,
 												flexWrap: 'wrap',
 												alignItems: 'center',
-												border: `1px solid ${colors.border}`,
+												border: `1px solid ${colors.borderSubtle}`,
 												borderRadius: '0.75rem',
 												padding: spacing.sm,
 											}}
@@ -663,7 +663,7 @@ export function AdminFeatureFlagsPage({
 							<article
 								key={flag.key}
 								css={{
-									border: `1px solid ${colors.border}`,
+									border: `1px solid ${colors.borderSubtle}`,
 									borderRadius: '0.75rem',
 									padding: spacing.md,
 									display: 'grid',

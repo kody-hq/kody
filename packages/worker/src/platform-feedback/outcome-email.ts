@@ -1,6 +1,8 @@
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { buildPlatformFeedbackOutcomeEmail } from '#app/email/messages.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
+import { buildPlatformFeedbackFollowUpMailMeta } from './email-threading.ts'
+import { getPlatformFeedbackAcknowledgementMessageId } from './repo.ts'
 import {
 	isPlatformFeedbackSubmitterMailable,
 	readPlatformFeedbackSubmitterMailTarget,
@@ -86,6 +88,23 @@ export async function sendPlatformFeedbackOutcomeEmail(input: {
 		userMessage: input.userMessage,
 		prUrls: input.prUrls,
 	})
+	let acknowledgementMessageId: string | null = null
+	try {
+		acknowledgementMessageId =
+			await getPlatformFeedbackAcknowledgementMessageId(
+				input.env.APP_DB,
+				input.feedback.id,
+			)
+	} catch (error) {
+		console.warn('platform-feedback-acknowledgement-message-id-lookup-failed', {
+			feedbackId: input.feedback.id,
+			error,
+		})
+	}
+	const followUp = buildPlatformFeedbackFollowUpMailMeta({
+		acknowledgementMessageId,
+		fallbackSubject: email.subject,
+	})
 	let sendResult: Awaited<ReturnType<typeof sendGatedTransactionalEmail>>
 	try {
 		sendResult = await sendGatedTransactionalEmail({
@@ -100,9 +119,10 @@ export async function sendPlatformFeedbackOutcomeEmail(input: {
 			message: {
 				to: submitter.email,
 				from: emailConfig.fromEmail,
-				subject: email.subject,
+				subject: followUp.subject,
 				html: email.html,
 				text: email.text,
+				...(followUp.headers ? { headers: followUp.headers } : {}),
 			},
 		})
 	} catch (error) {

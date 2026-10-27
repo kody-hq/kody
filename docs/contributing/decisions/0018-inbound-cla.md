@@ -67,7 +67,11 @@ How it works:
   merges the signer pull request only if that check succeeds. Signing covers
   past, present, and future contributions from that identity. Entity CLA
   recording stays a maintainer step.
-- **Enforcement.** The `CLA` workflow reads signers from `main` (never from the
+- **Enforcement.** The `CLA` check job uses `pull_request_target` so
+  `GITHUB_TOKEN` can post the signing-instructions comment on fork pull requests
+  (plain `pull_request` is read-only for forks). It still checks out only the
+  base branch tip, treats PR metadata as untrusted input, and never executes
+  pull request head code. The workflow reads signers from `main` (never from the
   pull request head), accepts exact signing comments on the pull request, fails
   closed on unsigned identities, and comments with the signing steps. The
   post-merge recorder checks out `main` only; it never checks out or runs pull
@@ -83,7 +87,10 @@ How it works:
   enforcement.
 - Individual signatures do not need a maintainer to edit the signers file. The
   post-merge `pull_request_target` recorder creates a bot pull request, which
-  must pass `✅ Validate` before its signer changes are merged to `main`.
+  must pass `✅ Validate` before its signer changes are merged to `main`. Do not
+  replace that recorder with an unmaintained signing bot that writes `main` from
+  untrusted PR head. Using `pull_request_target` for the check-and-comment job
+  (base checkout only) is intentional and required for fork PRs.
 - Public package authors keep their own copyright; they never sign this CLA
   unless they also patch this repository. Listings have no license gate (see
   [0043](./0043-repo-visibility-no-community-kind.md)).

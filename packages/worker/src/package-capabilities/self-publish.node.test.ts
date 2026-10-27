@@ -166,22 +166,27 @@ test('a tree that declares nothing is eligible, checked per package owner with t
 			summary: summary(['source-dep']),
 		}),
 	).resolves.toEqual({ eligible: true })
-	expect(mockModule.loadPublishedCredentialNeeds.mock.calls).toEqual([
-		[
-			expect.objectContaining({
-				userId: 'owner-of-source-root',
-				sourceId: 'source-root',
-				fresh: true,
-			}),
-		],
-		[
-			expect.objectContaining({
-				userId: 'owner-of-source-dep',
-				sourceId: 'source-dep',
-				fresh: true,
-			}),
-		],
+	const [rootCall, depCall] = mockModule.loadPublishedCredentialNeeds.mock.calls
+	expect(rootCall).toEqual([
+		expect.objectContaining({
+			userId: 'owner-of-source-root',
+			sourceId: 'source-root',
+			fresh: true,
+			request: expect.any(Object),
+		}),
 	])
+	expect(depCall).toEqual([
+		expect.objectContaining({
+			userId: 'owner-of-source-dep',
+			sourceId: 'source-dep',
+			fresh: true,
+			request: expect.any(Object),
+		}),
+	])
+	// Same memo object so same-org packages share one suppliers-flag eval (KODY-BT).
+	expect((rootCall?.[0] as { request: object }).request).toBe(
+		(depCall?.[0] as { request: object }).request,
+	)
 })
 
 test('self-publish is blocked when the capability set has entries or the tree declares credentials or capabilities', async () => {

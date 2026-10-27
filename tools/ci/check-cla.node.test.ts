@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test } from 'vitest'
 
 import {
@@ -236,4 +237,27 @@ test('multiple CLA signing comments record each new signer only once', () => {
 		},
 	])
 	expect(alreadySigned).toEqual({ file: result.file, recorded: [] })
+})
+
+test('serialized CLA signers file matches the repo formatter', async () => {
+	const signersPath = new URL('../../.github/cla-signers.json', import.meta.url)
+	const source = await readFile(signersPath, 'utf8')
+	expect(serializeClaSignersFile(parseClaSignersFile(source))).toBe(source)
+
+	const serialized = serializeClaSignersFile(
+		signersFile({
+			allowlist: {
+				github: ['kentcdodds'],
+				email: [
+					'me@kentcdodds.com',
+					'me+github@kentcdodds.com',
+					'noreply@anthropic.com',
+				],
+			},
+		}),
+	)
+	expect(serialized).toContain('\t\t"github": ["kentcdodds"],\n')
+	expect(serialized).toContain(
+		'\t\t"email": [\n\t\t\t"me@kentcdodds.com",\n\t\t\t"me+github@kentcdodds.com",\n\t\t\t"noreply@anthropic.com"\n\t\t]\n',
+	)
 })

@@ -1,12 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 
-import {
-	colors,
-	mq,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMemo } from 'react'
 import { areaY, defineChart, lineY, dot } from '@tanstack/charts'
 import { decorative } from '@tanstack/charts/mark/decorative'
@@ -14,7 +9,6 @@ import { Chart } from '@tanstack/charts/react'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { d3Curve } from '@tanstack/charts/d3/shape'
 import { curveMonotoneX } from 'd3-shape'
-import { softColor } from '#client/charts/chart-theme.ts'
 
 const smoothCurve = d3Curve(curveMonotoneX)
 
@@ -46,10 +40,8 @@ export function StatCard(props: StatCardProps) {
 				padding: spacing.lg,
 				// Keep the sub text clear of the sparkline strip.
 				paddingBottom: hasSparkline ? '2.75rem' : spacing.lg,
-				borderRadius: radius.lg,
-				border: `1px solid ${colors.border}`,
-				backgroundColor: colors.surface,
-				backgroundImage: `linear-gradient(140deg, ${softColor(color, 10)}, transparent 55%)`,
+				...surfaceCardCss,
+
 				minHeight: '6.5rem',
 				minWidth: 0,
 				[mq.mobile]: {

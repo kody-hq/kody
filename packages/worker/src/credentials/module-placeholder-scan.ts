@@ -3,6 +3,7 @@
  * placeholder shapes, an AST walk, and the string constants a name can be
  * built from.
  */
+import { isInertExamplePlaceholder } from '#mcp/secrets/placeholders.ts'
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
 
@@ -42,7 +43,10 @@ const completePlaceholderPatterns: Record<
  * Placeholder-shaped text that closes in the same string piece but names
  * nothing, such as help or redaction text (`{{secret:<name>}}`). The gateway
  * never substitutes it. `$`, quotes, and `+` stay out so the text fallback
- * still sees `${name}` and concatenation as computed.
+ * still sees `${name}` and concatenation as computed. Complete tokens that
+ * still hold `<...>` example markers or grammar metavariables only
+ * (`{{secret/provider:ref}}`) are also inert (same rule as
+ * {@link isInertExamplePlaceholder}).
  */
 const prosePlaceholderPattern =
 	/\{\{(?:secret-basic:|secret:|secret\/|integration-token:)[^}$'"`+]*\}\}/y
@@ -60,6 +64,7 @@ export function findPlaceholders(text: string) {
 		complete.pattern.lastIndex = match.index
 		const found = complete.pattern.exec(text)
 		if (found) {
+			if (isInertExamplePlaceholder(found[0]!)) continue
 			placeholders.push(
 				complete.kind
 					? { kind: complete.kind, names: found.slice(1) }
@@ -117,6 +122,7 @@ export function findPlaceholderMatches(text: string) {
 		complete.pattern.lastIndex = match.index
 		const found = complete.pattern.exec(text)
 		if (found) {
+			if (isInertExamplePlaceholder(found[0]!)) continue
 			matches.push({
 				kind: placeholderMatchKindByOpener[opener]!,
 				names: complete.kind ? found.slice(1) : [],

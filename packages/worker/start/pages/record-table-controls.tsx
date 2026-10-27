@@ -1,16 +1,21 @@
 /** @jsxImportSource @emotion/react */
 import { type CSSObject } from '@emotion/react'
-import { useRef, useState, type ReactNode } from 'react'
+import {
+	Children,
+	isValidElement,
+	useId,
+	useRef,
+	useState,
+	type ReactNode,
+} from 'react'
+import { Combobox } from '../components/combobox.tsx'
 import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getAuthInputCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAuthInputCss } from '#universal/styles/style-primitives.ts'
 
 type Slot = ReactNode
 
@@ -78,23 +83,35 @@ export function RecordTableSelect(props: {
 	onChange: (value: string) => void
 	children: Slot
 }) {
+	const id = useId()
+	const options = Children.toArray(props.children).flatMap((child) => {
+		if (!isValidElement<{ value: string; children: ReactNode }>(child))
+			return []
+		return [
+			{
+				id: child.props.value,
+				label: Children.toArray(child.props.children).join(''),
+			},
+		]
+	})
 	return (
-		<select
-			data-field-ring
-			value={props.value}
-			aria-label={props.label}
-			onChange={(event) =>
-				props.onChange((event.currentTarget as HTMLSelectElement).value)
-			}
+		<div
 			css={{
-				...getSelectCss(),
-				width: 'auto',
+				width: `${Math.min(24, Math.max(12, ...options.map((option) => option.label.length))) + 3}ch`,
 				flex: 'none',
 				'@container (max-width: 620px)': { flex: '1 1 8rem' },
 			}}
 		>
-			{props.children}
-		</select>
+			<Combobox
+				id={id}
+				label={props.label}
+				hideLabel
+				value={props.value}
+				placeholder={options.find((option) => option.id === '')?.label}
+				options={options}
+				onChange={props.onChange}
+			/>
+		</div>
 	)
 }
 

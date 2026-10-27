@@ -315,6 +315,10 @@ export type PackageCredentialNeedView = {
 	provider: string
 	description: string
 	multiple: boolean
+	/** Who supplies the need when `package-credential-suppliers` is on. */
+	supplier?: 'publisher' | 'executor'
+	/** Executor needs only. Defaults to required. */
+	required?: boolean
 	/** The dependency that declared an inherited need. */
 	from?: string
 	defaults: {

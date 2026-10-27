@@ -200,12 +200,6 @@ export function buildPackageOwnerNoticeEmail(input: {
 			label: 'Review your packages',
 			url: new URL('/account/packages', input.appBaseUrl).toString(),
 		},
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because you own a Kody package that an upcoming platform change affects.",
 	})

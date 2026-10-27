@@ -62,7 +62,7 @@ import { emailResumeMutationOptions } from './email-resume-mutation.ts'
 import { emailKeys, emailSearch } from './email-resources.ts'
 import {
 	EmailTriageBadges,
-	EmailViewOptions,
+	emailViewOptions,
 } from './email-triage-controls.tsx'
 import {
 	renderEmailVerificationPrompt,
@@ -548,7 +548,7 @@ export function AccountEmailPage({
 										})
 									}}
 								>
-									<EmailViewOptions />
+									{emailViewOptions}
 								</RecordTableSelect>
 							</>
 						}

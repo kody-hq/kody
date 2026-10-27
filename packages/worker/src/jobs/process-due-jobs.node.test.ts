@@ -3,6 +3,32 @@ import { expect, test } from 'vitest'
 import { processDueJobs } from './process-due-jobs.ts'
 import { type JobRecord } from './types.ts'
 
+test('processDueJobs advances next_run_at from the claimed occurrence, not wall clock', async () => {
+	const scheduledFor = '2026-04-12T07:00:00.000Z'
+	const lateNow = new Date('2026-04-12T12:30:00.000Z')
+	const hourly = createCronJob({
+		id: 'hourly-job',
+		schedule: { type: 'cron', expression: '0 * * * *' },
+		nextRunAt: scheduledFor,
+	})
+	const result = await processDueJobs({
+		jobs: [hourly],
+		now: lateNow,
+		scheduledFor,
+		async executeJob() {
+			return {
+				execution: { ok: true, logs: [], result: { ok: true } },
+				startedAt: lateNow.toISOString(),
+				finishedAt: lateNow.toISOString(),
+				durationMs: 0,
+			}
+		},
+	})
+	// Next after the 07:00 occurrence is 08:00, not 13:00 from wall clock.
+	expect(result.saveJobs[0]?.nextRunAt).toBe('2026-04-12T08:00:00.000Z')
+	expect(result.jobOutcomes[0]?.nextRunAt).toBe('2026-04-12T08:00:00.000Z')
+})
+
 function createCronJob(overrides: Partial<JobRecord> = {}): JobRecord {
 	return {
 		version: 1,

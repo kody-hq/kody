@@ -527,11 +527,18 @@ export async function finishRunRecord(input: {
 				errorMessage,
 				updatedAt: finishedAt,
 			})
-			await runLogRpc({ env: input.env, userId: handle.userId }).finishRun({
+			const finishResult = await runLogRpc({
+				env: input.env,
+				userId: handle.userId,
+			}).finishRun({
 				run,
 				logs: normalizeLogs(input.logs),
 			})
-			persistedRun = run
+			// Scheduled late finishes may be fenced (`wrote: false`); do not
+			// treat them as persisted or dispatch run.error for a no-op write.
+			if (finishResult.wrote) {
+				persistedRun = run
+			}
 		}
 	} catch (error) {
 		console.warn('run-record-finish-failed', error)

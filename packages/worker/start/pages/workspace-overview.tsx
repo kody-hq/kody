@@ -21,6 +21,13 @@ import {
 	statusColor,
 	statusLabel,
 } from './account-activity-shared.ts'
+import {
+	dashboardPanelCss,
+	dashboardHeaderCss,
+	dashboardHeadingCss,
+	dashboardLinkCss,
+	dashboardIconCss,
+} from './workspace-dashboard-styles.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 type OverviewData = {
@@ -39,7 +46,11 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 	const activity = `${base}/activity?view=recent&status=all&triage=all`
 	return (
 		<AccountManagementShell layout="dashboard" currentHref={`${base}/overview`}>
-			<div css={dashboardCss} data-testid="workspace-dashboard">
+			<div
+				css={dashboardCss}
+				data-workspace-overview
+				data-testid="workspace-dashboard"
+			>
 				<div css={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
 					<h1 css={{ margin: 0, fontSize: '1.5rem', lineHeight: 1.3 }}>
 						Overview
@@ -54,37 +65,57 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 						{[
 							{
 								label: 'Total runs',
+								icon: 'play' as const,
 								value: data.summary.total,
 								href: activity,
 							},
 							{
 								label: 'Running',
+								icon: 'refresh' as const,
 								value: data.summary.running,
 								href: `${base}/activity?view=recent&status=running&triage=all`,
 							},
 							{
 								label: 'Open errors',
+								icon: 'warning-triangle' as const,
 								hint: 'Untriaged, all retained',
 								value: data.summary.errors,
 								href: `${base}/activity?view=errors&status=error&triage=open`,
 							},
 						].map((item) => (
 							<SiteLink key={item.label} href={item.href} css={metricCss}>
-								<span css={mutedCss}>
-									{item.label}
-									{'hint' in item && item.hint ? (
-										<span css={hintCss}> · {item.hint}</span>
-									) : null}
-								</span>
-								<strong
+								<span
 									css={{
-										fontSize: '1.35rem',
-										fontWeight: 650,
-										lineHeight: 1.2,
+										...dashboardIconCss,
+										...(item.label === 'Open errors' && item.value > 0
+											? {
+													color: colors.danger,
+													background: `color-mix(in srgb, ${colors.danger} 10%, transparent)`,
+												}
+											: {}),
 									}}
 								>
-									{item.value.toLocaleString('en-US')}
-								</strong>
+									{renderIcon(item.icon, { size: '1.15rem' })}
+								</span>
+								<span css={metricCopyCss}>
+									<span css={mutedCss}>
+										{item.label}
+										{'hint' in item && item.hint ? (
+											<span css={hintCss}> · {item.hint}</span>
+										) : null}
+									</span>
+									<strong
+										css={{
+											fontSize: '1.9rem',
+											fontVariantNumeric: 'tabular-nums',
+											letterSpacing: '-0.04em',
+											fontWeight: 650,
+											lineHeight: 1.2,
+										}}
+									>
+										{item.value.toLocaleString('en-US')}
+									</strong>
+								</span>
 							</SiteLink>
 						))}
 					</div>
@@ -99,7 +130,7 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 						<section css={panelCss} aria-labelledby="recent-repositories">
 							<div css={panelHeaderCss}>
 								<h2 id="recent-repositories" css={headingCss}>
-									Recent repositories
+									{renderIcon('box')} Recent repositories
 								</h2>
 								<SiteLink href={`${base}/repositories`} css={moreCss}>
 									View all
@@ -141,7 +172,7 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 						<section css={panelCss} aria-labelledby="recent-activity">
 							<div css={panelHeaderCss}>
 								<h2 id="recent-activity" css={headingCss}>
-									Recent activity
+									{renderIcon('chart')} Recent activity
 								</h2>
 								<SiteLink href={activity} css={moreCss}>
 									View all
@@ -162,7 +193,11 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 													</span>
 												</span>
 												<span
-													css={{ ...statusCss, color: statusColor(run.status) }}
+													css={{
+														...statusCss,
+														color: statusColor(run.status),
+														background: `color-mix(in srgb, ${statusColor(run.status)} 8%, transparent)`,
+													}}
 												>
 													{statusLabel(run.status)}
 												</span>
@@ -178,7 +213,7 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 					<section css={panelCss} aria-labelledby="upcoming-jobs">
 						<div css={panelHeaderCss}>
 							<h2 id="upcoming-jobs" css={headingCss}>
-								Upcoming jobs
+								{renderIcon('clock')} Upcoming jobs
 							</h2>
 							<SiteLink href={`${base}/jobs`} css={moreCss}>
 								View all
@@ -215,23 +250,25 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 	)
 }
 
-const dashboardCss: CSSObject = { display: 'grid', gap: '1rem' }
+const dashboardCss: CSSObject = {
+	display: 'grid',
+	gap: '1.25rem',
+	'& a:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: 3,
+	},
+}
 const columnsCss: CSSObject = {
 	display: 'grid',
 	gridTemplateColumns: 'minmax(0, 1.6fr) minmax(16rem, 1fr)',
 	alignItems: 'start',
-	gap: '0.75rem',
+	gap: '1.25rem',
 	'@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
 }
-const stackCss: CSSObject = { display: 'grid', gap: '0.75rem', minWidth: 0 }
+const stackCss: CSSObject = { display: 'grid', gap: '1.25rem', minWidth: 0 }
 const headingCss: CSSObject = {
-	margin: 0,
-	fontSize: '0.875rem',
-	fontWeight: 650,
-	display: 'flex',
-	alignItems: 'baseline',
+	...dashboardHeadingCss,
 	flexWrap: 'wrap',
-	gap: '0.75rem',
 }
 const mutedCss: CSSObject = {
 	fontSize: '0.8rem',
@@ -244,52 +281,43 @@ const hintCss: CSSObject = {
 }
 const summaryCss: CSSObject = {
 	display: 'grid',
-	gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+	gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 16rem), 1fr))',
 	gap: '0.75rem',
 	marginTop: '0.75rem',
+	'@media (max-width: 600px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+}
+const metricCopyCss: CSSObject = {
+	display: 'grid',
+	gap: '0.35rem',
+	minWidth: 0,
 }
 const metricCss: CSSObject = {
-	display: 'grid',
-	gap: '0.25rem',
-	padding: '0.65rem 0.8rem',
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.5rem',
-	color: colors.text,
-	textDecoration: 'none',
-	background: colors.surface,
-	'&:hover': { borderColor: colors.primary },
-}
-const panelCss: CSSObject = {
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.5rem',
-	background: colors.surface,
-	minWidth: 0,
-	overflow: 'hidden',
-}
-const panelHeaderCss: CSSObject = {
+	...dashboardPanelCss,
 	display: 'flex',
 	alignItems: 'center',
-	justifyContent: 'space-between',
 	gap: '1rem',
-	padding: '0.65rem 0.8rem',
-	borderBottom: `1px solid ${colors.border}`,
+	padding: '1.25rem',
+	color: colors.text,
+	textDecoration: 'none',
+	'&:hover': {
+		borderColor: `color-mix(in srgb, ${colors.primary} 20%, transparent)`,
+	},
+	'@media (max-width: 600px)': { padding: '1rem', gap: '0.75rem' },
 }
-const moreCss: CSSObject = {
-	fontSize: '0.8rem',
-	whiteSpace: 'nowrap',
-	color: colors.primaryText,
-}
+const panelCss = dashboardPanelCss
+const panelHeaderCss = dashboardHeaderCss
+const moreCss = dashboardLinkCss
 const listCss: CSSObject = {
 	listStyle: 'none',
 	margin: 0,
 	padding: 0,
-	'& > li + li': { borderTop: `1px solid ${colors.border}` },
+	'& > li + li': { borderTop: `1px solid ${colors.borderSubtle}` },
 }
 const rowCss: CSSObject = {
 	display: 'flex',
 	gap: '0.75rem',
 	alignItems: 'center',
-	padding: '0.65rem 0.8rem',
+	padding: '1rem 1.25rem',
 	color: colors.text,
 	textDecoration: 'none',
 	'&:hover': { background: colors.primarySoftest },
@@ -301,9 +329,11 @@ const copyCss: CSSObject = {
 	minWidth: 0,
 	overflowWrap: 'anywhere',
 }
-const nameCss: CSSObject = { fontSize: '0.8125rem', fontWeight: 600 }
-const iconCss: CSSObject = { display: 'flex', color: colors.textMuted }
+const nameCss: CSSObject = { fontSize: '0.875rem', fontWeight: 600 }
+const iconCss = dashboardIconCss
 const statusCss: CSSObject = {
+	padding: '0.3rem 0.55rem',
+	borderRadius: '0.5rem',
 	fontSize: '0.8rem',
 	fontWeight: 550,
 	flexShrink: 0,

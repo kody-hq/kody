@@ -18,18 +18,9 @@ export const publishCliSuccessStatuses = [
  */
 export const publishCliAcceptedStatuses = ['dispatched'] as const
 
-/** Refusal / rejection bodies that still arrive as HTTP 2xx with a status. */
-export const publishCliRefusalStatuses = [
-	'not_fast_forward',
-	'checks_failed',
-	'locked',
-	'approval_required',
-] as const
-
 export type PublishCliSuccessStatus = (typeof publishCliSuccessStatuses)[number]
 export type PublishCliAcceptedStatus =
 	(typeof publishCliAcceptedStatuses)[number]
-export type PublishCliRefusalStatus = (typeof publishCliRefusalStatuses)[number]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)

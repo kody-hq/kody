@@ -346,6 +346,14 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
+	communityPackageForks: ({ loaderData, pathname }) => {
+		const page = loaderData?.packageForks
+		if (!page) return titleOnly('Package forks')
+		return {
+			title: `${page.shell.name} forks`,
+			canonicalPath: pathname,
+		}
+	},
 	communityDetailFiles: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')
@@ -473,7 +481,7 @@ const routeDocumentHeads = {
 		const join = loaderData?.orgInviteJoin
 		if (join?.ok) {
 			const name = join.org.displayName?.trim() || join.org.slug
-			return titleOnly(`Join ${name}`)
+			return titleOnly(`You're invited to ${name}`)
 		}
 		return titleOnly('Invite link')
 	},
@@ -559,6 +567,18 @@ export function resolveDocumentHead(
 	return { ...descriptor, description }
 }
 
+/**
+ * Bump when the shared OG renderer changes how every card looks. X, Slack and
+ * Discord cache unfurl images by URL, so a new query value makes them refetch.
+ * The OG handlers ignore the param.
+ */
+const OG_IMAGE_VERSION = '2'
+
+function withOgImageVersion(path: string): string {
+	if (path.startsWith('http://') || path.startsWith('https://')) return path
+	return `${path}${path.includes('?') ? '&' : '?'}v=${OG_IMAGE_VERSION}`
+}
+
 export function absolutizeDocumentHead(
 	descriptor: DocumentHeadDescriptor,
 	origin: string,
@@ -579,7 +599,7 @@ export function absolutizeDocumentHead(
 			? {
 					title: descriptor.og.title,
 					description: descriptor.og.description,
-					imageUrl: toAbsolute(descriptor.og.imagePath),
+					imageUrl: toAbsolute(withOgImageVersion(descriptor.og.imagePath)),
 				}
 			: undefined,
 		links: descriptor.links?.map((link) => ({

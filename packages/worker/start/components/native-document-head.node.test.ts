@@ -17,7 +17,7 @@ test('native route metadata keeps canonical origin, descriptions, social cards a
 	})
 	expect(head.meta).toContainEqual({
 		property: 'og:image',
-		content: 'https://kody.codes/og/feature-packages.png',
+		content: 'https://kody.codes/og/feature-packages.png?v=2',
 	})
 	expect(
 		head.meta.some((entry) => 'name' in entry && entry.name === 'description'),

@@ -24,8 +24,12 @@ import {
 	type CommunityIndexLoaderData,
 } from '#universal/loader-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { loadViewerPrivateCommunityForks } from '#app/community-forks-data.ts'
 import { setRequestDataCacheLookup } from '#app/request-cache.ts'
-import { listCommunityForksByListingIdsAndUser } from '#worker/community/repo.ts'
+import {
+	countCommunityForksByListingIds,
+	listCommunityForksByListingIdsAndUser,
+} from '#worker/community/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { resolveCachedArtifactSourceHead } from '#worker/repo/artifact-head-cache.ts'
 import { recordServerTiming } from '#worker/request-context.ts'
@@ -420,22 +424,52 @@ async function loadCommunityDetailDataUncached(
 	const viewerUserId = user?.request.org.id ?? null
 	const viewerIsOwner =
 		viewerUserId != null && ownerUserId != null && viewerUserId === ownerUserId
-	const viewerInstalls = await loadViewerListingInstalls({
-		env,
-		user: user?.mcpUser ?? null,
-		listings: [
-			{
-				id: listing.id,
-				kodyId: listing.kodyId,
-				name: listing.name,
-				pinnedCommit: listing.pinnedCommit,
-			},
-		],
-	})
+	const [viewerInstalls, viewerPrivateForks] = await Promise.all([
+		loadViewerListingInstalls({
+			env,
+			user: user?.mcpUser ?? null,
+			listings: [
+				{
+					id: listing.id,
+					kodyId: listing.kodyId,
+					name: listing.name,
+					pinnedCommit: listing.pinnedCommit,
+				},
+			],
+		}),
+		// The cached listing counts public forks only; add the private forks
+		// this viewer can read so the count matches the Forks page.
+		loadViewerPrivateCommunityForks({
+			env,
+			listingId: listing.id,
+			viewer: user?.mcpUser ?? null,
+		}).catch((error: unknown) => {
+			// A supplementary count must not take the package page down.
+			console.warn('community-detail-private-forks-failed', listing.id, error)
+			return []
+		}),
+	])
 	const viewerInstall = viewerInstalls.get(listing.id) ?? null
+	// Recount public forks fresh when adding private ones: the cached count
+	// can still include a fork that was just hidden, which the private query
+	// now finds too.
+	let viewerListing = sourceAheadListing
+	if (viewerPrivateForks.length > 0) {
+		try {
+			const publicCounts = await countCommunityForksByListingIds(env.APP_DB, [
+				listing.id,
+			])
+			viewerListing = {
+				...sourceAheadListing,
+				forkCount: (publicCounts[listing.id] ?? 0) + viewerPrivateForks.length,
+			}
+		} catch (error: unknown) {
+			console.warn('community-detail-public-forks-failed', listing.id, error)
+		}
+	}
 	const listingWithHead = viewerInstall
-		? { ...sourceAheadListing, viewerInstall }
-		: sourceAheadListing
+		? { ...viewerListing, viewerInstall }
+		: viewerListing
 	// listingBehind is overlaid on the package-page frame from the owner's
 	// fresh AccountPackageDetail.listingNeedsRepublish (not this public cache).
 	return composeCommunityDetailLoaderData({

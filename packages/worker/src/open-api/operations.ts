@@ -203,6 +203,14 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/access/invites', 'inviteCreate'],
 		['POST', '/v1/access/invites/accept', 'inviteAccept'],
 		['POST', '/v1/access/invites/{invite_id}/revoke', 'inviteRevoke'],
+		['POST', '/v1/access/invite-links', 'inviteLinkCreate'],
+		['GET', '/v1/access/invite-links', 'inviteLinkList'],
+		[
+			'POST',
+			'/v1/access/invite-links/{invite_link_id}/revoke',
+			'inviteLinkRevoke',
+		],
+		['POST', '/v1/access/invite-links/accept', 'inviteLinkAccept'],
 		['POST', '/v1/orgs', 'orgCreate'],
 		['PATCH', '/v1/orgs', 'orgUpdate'],
 		[

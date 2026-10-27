@@ -34,6 +34,14 @@ const mockModule = vi.hoisted(() => ({
 	resolveListingPinAncestry: vi.fn<
 		typeof forkListingRelation.resolveListingPinAncestry
 	>(async () => null),
+	loadViewerPrivateCommunityForks: vi.fn(async () => [] as Array<unknown>),
+	countCommunityForksByListingIds: vi.fn(
+		async () => ({}) as Record<string, number>,
+	),
+}))
+
+vi.mock('#app/community-forks-data.ts', () => ({
+	loadViewerPrivateCommunityForks: mockModule.loadViewerPrivateCommunityForks,
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -55,6 +63,7 @@ vi.mock('#worker/community/service.ts', () => ({
 
 vi.mock('#worker/community/repo.ts', () => ({
 	getCommunityListingById: mockModule.getCommunityListingById,
+	countCommunityForksByListingIds: mockModule.countCommunityForksByListingIds,
 	listCommunityForksByListingIdsAndUser:
 		mockModule.listCommunityForksByListingIdsAndUser,
 }))
@@ -226,6 +235,19 @@ test('community detail overlays viewerInstall for forked listings and omits it w
 
 	const notForked = await loadDetail('/community/listing-github')
 	expect(notForked?.viewerInstall).toBeNull()
+	expect(notForked?.listing?.forkCount).toBe(1)
+
+	invalidateCommunityPublicCache()
+	// Fresh public count (0: the cached fork was just hidden) plus 2 private.
+	mockModule.countCommunityForksByListingIds.mockResolvedValueOnce({
+		'listing-github': 0,
+	})
+	mockModule.loadViewerPrivateCommunityForks.mockResolvedValueOnce([
+		{ forkId: 'private-fork' },
+		{ forkId: 'other-private-fork' },
+	])
+	const withPrivateForks = await loadDetail('/community/listing-github-private')
+	expect(withPrivateForks?.listing?.forkCount).toBe(2)
 
 	invalidateCommunityPublicCache()
 	mockModule.listCommunityForksByListingIdsAndUser.mockResolvedValue([

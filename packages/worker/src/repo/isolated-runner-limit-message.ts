@@ -14,3 +14,20 @@ export function isolatedRunnerResourceLimitAdvice() {
 		`\`search({ entity: "guide:${heavyWorkOffloadGuideId}" })\`.`
 	)
 }
+
+/**
+ * Caller-facing copy when `packagePublishExternalPush` dies on a Durable
+ * Object isolate memory/CPU reset (or DO SQLite SQLITE_NOMEM). Those resets
+ * are deterministic for a given package tip, so the publish path must not
+ * burn retries as if they were deploy-time code-updated blips.
+ */
+export function externalPublishResourceLimitMessage() {
+	return (
+		'packagePublishExternalPush hit the Durable Object isolate memory or ' +
+		'CPU limit while cloning, checking, or rebuilding this package, so ' +
+		'the publish stopped instead of retrying the same limit. That limit ' +
+		'is deterministic for this package tip — shrink the source tree and ' +
+		'dependency graph, or keep the package as a thin orchestrator. ' +
+		isolatedRunnerResourceLimitAdvice()
+	)
+}

@@ -30,6 +30,18 @@ const mockModule = vi.hoisted(() => ({
 	hasPublishedRuntimeArtifacts: vi.fn<
 		typeof PublishedRuntimeArtifacts.hasPublishedRuntimeArtifacts
 	>(() => false),
+	publishedPublishChecksAreCurrent: vi.fn<
+		typeof PublishedRuntimeArtifacts.publishedPublishChecksAreCurrent
+	>(async () => true),
+	writePublishedPublishChecksVersion: vi.fn<
+		typeof PublishedRuntimeArtifacts.writePublishedPublishChecksVersion
+	>(async () => undefined),
+	storePublishedCredentialNeeds: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
+	storePublishedCredentialStamp: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
 	loadLockedSavedPackage: vi.fn<typeof PublishLock.loadLockedSavedPackage>(
 		async () => null,
 	),
@@ -84,6 +96,16 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 			typeof PublishedRuntimeArtifacts.hasPublishedRuntimeArtifacts
 		>
 	) => mockModule.hasPublishedRuntimeArtifacts(...args),
+	publishedPublishChecksAreCurrent: (
+		...args: Parameters<
+			typeof PublishedRuntimeArtifacts.publishedPublishChecksAreCurrent
+		>
+	) => mockModule.publishedPublishChecksAreCurrent(...args),
+	writePublishedPublishChecksVersion: (
+		...args: Parameters<
+			typeof PublishedRuntimeArtifacts.writePublishedPublishChecksVersion
+		>
+	) => mockModule.writePublishedPublishChecksVersion(...args),
 	loadPublishedSourceSnapshot: (...args: Array<unknown>) =>
 		mockModule.loadPublishedSourceSnapshot(...args),
 	writePublishedSourceSnapshot: (
@@ -97,6 +119,30 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 		>
 	) => mockModule.deletePublishedSourceSnapshot(...args),
 }))
+
+vi.mock(
+	'#worker/credentials/credential-needs-closure.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<object>()
+		return {
+			...actual,
+			storePublishedCredentialNeeds: (input: unknown) =>
+				mockModule.storePublishedCredentialNeeds(input),
+		}
+	},
+)
+
+vi.mock(
+	'#worker/credentials/credential-stamp-store.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<object>()
+		return {
+			...actual,
+			storePublishedCredentialStamp: (input: unknown) =>
+				mockModule.storePublishedCredentialStamp(input),
+		}
+	},
+)
 
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: (...args: Array<unknown>) =>
@@ -176,6 +222,10 @@ function setupPublish(sourceOverrides: Record<string, unknown> = {}) {
 		files: { 'package.json': '{}' },
 	})
 	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(false)
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(true)
+	mockModule.writePublishedPublishChecksVersion.mockResolvedValue(undefined)
+	mockModule.storePublishedCredentialNeeds.mockResolvedValue(null)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue(null)
 	mockModule.loadLockedSavedPackage.mockResolvedValue(null)
 	mockModule.requireCredentialNeedsApproval.mockResolvedValue(null)
 	mockModule.getEntitySourceById.mockResolvedValue(source(sourceOverrides))
@@ -302,6 +352,68 @@ test('returns no-op when commit is already current', async () => {
 		}),
 	).resolves.toEqual(alreadyPublished)
 	expect(mockModule.runRepoChecks).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+})
+
+test('same-commit republish re-runs checks when stored checker version is stale', async () => {
+	setupPublish()
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+
+	const result = await publish({
+		newCommit: 'commit-old',
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	expect(result).toMatchObject({
+		status: 'already_published',
+		published_commit: 'commit-old',
+		checks_rerun: true,
+	})
+	expect(result).toEqual(
+		expect.objectContaining({
+			message: expect.stringMatching(/re-run|older checker/i),
+		}),
+	)
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalled()
+	expect(mockModule.writePublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-old',
+		}),
+	)
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+})
+
+test('same-commit republish with stale checker returns checks_failed when checks fail', async () => {
+	setupPublish()
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.runRepoChecks.mockResolvedValue({
+		ok: false,
+		results: [
+			{ kind: 'credential-patterns', ok: false, message: 'stamp failed' },
+		],
+		manifest,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+
+	await expect(
+		publish({
+			newCommit: 'commit-old',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).resolves.toMatchObject({
+		status: 'checks_failed',
+	})
+	expect(mockModule.writePublishedPublishChecksVersion).not.toHaveBeenCalled()
 	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
 })
 

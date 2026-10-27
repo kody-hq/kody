@@ -753,6 +753,8 @@ test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off'
 		s3: client,
 		walkerOpts: fastWalker,
 	})
+	const getTextSpy = vi.spyOn(client, 'getText')
+	const getBytesSpy = vi.spyOn(client, 'getBytes')
 	const drill = await runD1PacedRestoreDrillTick({
 		env,
 		now: new Date('2026-10-25T07:05:00.000Z'),
@@ -765,6 +767,8 @@ test('restore drill exits cheaply when DR_D1_PACED_RESTORE_DRILL_ENABLED is off'
 		sourcesChecked: 0,
 		sourcesOk: 0,
 	})
+	expect(getTextSpy).not.toHaveBeenCalled()
+	expect(getBytesSpy).not.toHaveBeenCalled()
 })
 
 test('paced status reports staging and sealed presence', async () => {

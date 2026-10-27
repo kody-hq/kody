@@ -47,7 +47,10 @@ owned by its existing capability or package.
 
 Use `execute` when the code is disposable: inspect an API response, test an
 assumption, transform a small result, or run a one-time operation after any
-required confirmation.
+required confirmation. When Node ≥22 and the CLI are available, run that module
+with local CLI execute ([Local CLI execute](./local-execute.md),
+`guide:local_execute`). Do not use hosted MCP `execute` when a local or Open API
+path exists.
 
 Keep the module focused and return structured evidence. Do not treat the
 ephemeral module as the durable source for behavior that must be maintained,
@@ -152,10 +155,11 @@ When a normal filesystem and git client are available:
 
 1. Call `packageGetGitRemote`. Scope defaults to write when you have write
    access, otherwise read; pass `scope` explicitly to force either. For a new
-   package, pass `create: true`, `kody_id` set to the `@owner/leaf` name (or the
+   package, pass `create: true`, `name` set to the `@owner/leaf` name (or the
    name leaf), and `description` (at most 200 characters; a short public
-   tagline); for an existing package, omit `create` and pass `kody_id` or
-   `package_id` when the name is not known.
+   tagline); for an existing package, omit `create` and pass `name` or
+   `package_id` when the name is not known. Leftover `kody_id` still accepts the
+   same values.
 2. Run the returned setup commands and clone into a temporary directory. Those
    commands set local git `user.email` and `user.name` from `git_author` (the
    signed-in Kody account). Do not invent a git identity.

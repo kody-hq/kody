@@ -387,11 +387,15 @@ tests, and builds it. `npm run cli:openapi:check` fails when
 `packages/worker/src/open-api/operations.ts`.
 
 Merges to `main` that change the CLI in a publishable way (conventional `fix` /
-`feat` / `perf`, or a generated route-table diff) publish through
+`feat` / `perf`, a generated route-table diff, or a squash subject without a
+conventional prefix that still touches `packages/cli`) publish through
 [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml).
 The package version in git stays `0.0.0-semantically-released`. Tags are
-`cli-vX.Y.Z`, continuing from `cli-v1.26.3`. npm trusted publishing for this
-repository and workflow is required; the workflow does not read an npm token.
+`cli-vX.Y.Z` created by the CLI publish workflow
+([`tools/publish-cli.ts`](../../tools/publish-cli.ts) /
+[`tools/cli-release-plan.ts`](../../tools/cli-release-plan.ts)). npm trusted
+publishing for this repository and workflow is required; the workflow does not
+read an npm token.
 
 Keep the merge commit (do not squash away the subtree history). Origin-side
 contracts:

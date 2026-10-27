@@ -35,6 +35,7 @@ import {
 	statusLabel,
 	viewFilterOptions,
 	type AccountJobsActionPayload,
+	type AccountJobsMessageTone,
 } from './account-jobs-shared.ts'
 import {
 	AccountManagementMessage,
@@ -50,8 +51,6 @@ import {
 } from './record-table.tsx'
 
 const clampedCellCss = recordCellClamp(28)
-
-type MessageTone = 'info' | 'error'
 
 export function AccountJobsPage({
 	payload: savedPayload,
@@ -84,7 +83,7 @@ export function AccountJobsPage({
 	const { username, jobs, selectedJob } = payload
 
 	const [message, setMessage] = useState<string | null>(null)
-	const [messageTone, setMessageTone] = useState<MessageTone>('info')
+	const [messageTone, setMessageTone] = useState<AccountJobsMessageTone>('info')
 	const router = useRouter()
 	const navigate = (href: string) =>
 		void router.navigate({ to: href, resetScroll: false })
@@ -127,7 +126,10 @@ export function AccountJobsPage({
 		})
 	}
 
-	function showMessage(nextMessage: string | null, tone: MessageTone = 'info') {
+	function showMessage(
+		nextMessage: string | null,
+		tone: AccountJobsMessageTone = 'info',
+	) {
 		setMessage(nextMessage)
 		setMessageTone(tone)
 	}
@@ -171,6 +173,7 @@ export function AccountJobsPage({
 	async function postAction(input: {
 		write: () => Promise<AccountJobsActionPayload>
 		successMessage: (payload: AccountJobsActionPayload) => string | null
+		successTone?: (payload: AccountJobsActionPayload) => AccountJobsMessageTone
 		failureMessage: string
 		afterSuccess?: (payload: AccountJobsActionPayload) => void
 	}) {
@@ -180,7 +183,10 @@ export function AccountJobsPage({
 		try {
 			const accepted = await input.write()
 			if (!isCurrent()) return
-			showMessage(input.successMessage(accepted))
+			showMessage(
+				input.successMessage(accepted),
+				input.successTone?.(accepted) ?? 'info',
+			)
 			input.afterSuccess?.(accepted)
 		} catch (error) {
 			if (isCurrent())

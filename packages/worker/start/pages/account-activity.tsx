@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { useInfiniteQuery, hashKey } from '@tanstack/react-query'
 import { activityQuery } from '../activity-query.ts'
@@ -46,12 +47,7 @@ import {
 	type AccountActivityTriageFilter,
 	type AccountActivityViewFilter,
 } from '#universal/account-activity-filters.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 
 const clampedCellCss = recordCellClamp(30)
@@ -230,9 +226,7 @@ export function AccountActivityPage({
 									display: 'grid',
 									gap: spacing.xs,
 									padding: spacing.md,
-									border: `1px solid ${colors.border}`,
-									borderRadius: radius.md,
-									backgroundColor: colors.surface,
+									...surfaceCardCss,
 								}}
 							>
 								<span

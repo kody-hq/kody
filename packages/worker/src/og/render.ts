@@ -5,7 +5,7 @@ import { loadAdditionalOgAsset } from '#worker/og/og-emoji.ts'
 import {
 	ensureOgBinaryAssetsReady,
 	getBricolageGrotesqueLatin700FontData,
-	getKodyLogoDataUri,
+	getKodyMarkDataUri,
 	getKodyPatternDataUri,
 	getWixMadeforTextLatin400FontData,
 	ogYogaWasm,
@@ -22,6 +22,14 @@ export type { OgAssetsFetcher } from '#worker/og/og-image-assets.ts'
 
 export const OG_WIDTH = 1200
 export const OG_HEIGHT = 630
+
+/**
+ * Header mark at the site header's mark-to-wordmark ratio (34px mark beside
+ * 28px type), scaled to the 46px OG wordmark. Width follows the mark viewBox
+ * aspect (807.44 by 593.24).
+ */
+const OG_MARK_HEIGHT = 56
+const OG_MARK_WIDTH = 76
 
 export type SatoriChild = string | SatoriElement
 export type SatoriElement = {
@@ -216,13 +224,13 @@ export function createOgFrame(input: {
 										{
 											type: 'img',
 											props: {
-												src: getKodyLogoDataUri(),
-												width: 64,
-												height: 64,
+												src: getKodyMarkDataUri(theme),
+												width: OG_MARK_WIDTH,
+												height: OG_MARK_HEIGHT,
 												style: {
-													width: 64,
-													height: 64,
-													marginRight: 16,
+													width: OG_MARK_WIDTH,
+													height: OG_MARK_HEIGHT,
+													marginRight: 18,
 												},
 											},
 										},

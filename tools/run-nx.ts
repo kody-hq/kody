@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process'
-import {
-	envWithNodeHeapFloor,
-	isExecutedDirectly,
-	resolveLocalBinary,
-} from './node-runtime.ts'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { envWithNodeHeapFloor, isExecutedDirectly } from './node-runtime.ts'
 import {
 	envWithoutUnusableNxRemoteCache,
 	formatNxRemoteCacheProbe,
@@ -158,6 +156,15 @@ function remoteCacheDegradeMessage(
 	}
 }
 
+// Running nx's JS entry with node avoids the Windows `nx.cmd` shim, which
+// needs a shell and breaks on checkout paths with spaces.
+function resolveNxEntry() {
+	const require = createRequire(import.meta.url)
+	const packageJsonPath = require.resolve('nx/package.json')
+	const { bin } = require(packageJsonPath) as { bin: { nx: string } }
+	return join(dirname(packageJsonPath), bin.nx)
+}
+
 /**
  * Stream stdout/stderr to the parent and wait for `close` so the last pipe
  * chunks are captured before cache-failure classification.
@@ -174,7 +181,7 @@ export function spawnNx(
 	const stderr = forwardTo.stderr ?? process.stderr
 	return new Promise((resolve) => {
 		const chunks: Array<string> = []
-		const child = spawn(resolveLocalBinary('nx'), [...args], {
+		const child = spawn(process.execPath, [resolveNxEntry(), ...args], {
 			env: envWithNodeHeapFloor(env ?? process.env),
 			stdio: ['inherit', 'pipe', 'pipe'],
 		})

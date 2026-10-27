@@ -435,6 +435,10 @@ export const routes = {
 		href: (params: { username: string | number; kodyId: string | number }) =>
 			`/@${segment(params.username)}/${segment(params.kodyId)}/collaborators`,
 	},
+	communityPackageForks: {
+		href: (params: { username: string | number; kodyId: string | number }) =>
+			`/@${segment(params.username)}/${segment(params.kodyId)}/forks`,
+	},
 	communityPackageApproveCredentials: {
 		href: (params: { username: string | number; kodyId: string | number }) =>
 			`/@${segment(params.username)}/${segment(params.kodyId)}/approve-credentials`,

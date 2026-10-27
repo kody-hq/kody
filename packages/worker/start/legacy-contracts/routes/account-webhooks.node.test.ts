@@ -120,3 +120,27 @@ test('webhooks index lists declared webhooks with status and deep-links each row
 	// package settings, which the deep-links above already exercise.
 	expect(html).not.toContain('/@jane/webhooks/')
 })
+
+test('webhook row hrefs use the package owner org even when the viewer belongs to two orgs', async () => {
+	const teamWebhook: PackageWebhookListItem = {
+		...minted,
+		id: 'ci-alerts/github/0a643410-53ff-40ee-aa4a-2f5eb1eb280a',
+		packageId: 'pkg-team',
+		packageKodyId: 'ci-alerts',
+		packageName: '@team-org/ci-alerts',
+		name: 'github',
+		endpointId: '0a643410-53ff-40ee-aa4a-2f5eb1eb280a',
+	}
+	// Page-level username is the signed-in person's personal handle (the
+	// pre-fix antipattern). Links must still follow the package scope.
+	const html = await renderWebhooksPage('/@team-org/-/webhooks', {
+		ok: true,
+		username: 'personal-handle',
+		webhooks: [teamWebhook],
+	})
+
+	expect(html).toContain(
+		'href="/@team-org/ci-alerts/settings#webhook-github-0a643410-53ff-40ee-aa4a-2f5eb1eb280a"',
+	)
+	expect(html).not.toContain('/@personal-handle/ci-alerts/')
+})

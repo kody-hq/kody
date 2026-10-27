@@ -7,6 +7,9 @@ const gitMocks = vi.hoisted(() => ({
 	log: vi.fn(async (..._args: Parameters<typeof git.log>) => [
 		{ oid: 'commit-head' },
 	]),
+	isDescendent: vi.fn(
+		async (..._args: Parameters<typeof git.isDescendent>) => true,
+	),
 	checkout: vi.fn(
 		async (..._args: Parameters<typeof git.checkout>) => undefined,
 	),
@@ -21,6 +24,8 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 		git: {
 			clone: (...args: Parameters<typeof git.clone>) => gitMocks.clone(...args),
 			log: (...args: Parameters<typeof git.log>) => gitMocks.log(...args),
+			isDescendent: (...args: Parameters<typeof git.isDescendent>) =>
+				gitMocks.isDescendent(...args),
 			checkout: (...args: Parameters<typeof git.checkout>) =>
 				gitMocks.checkout(...args),
 			listFiles: (...args: Parameters<typeof git.listFiles>) =>
@@ -62,11 +67,11 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 
 	gitMocks.clone.mockClear()
 	gitMocks.log.mockClear()
+	gitMocks.isDescendent.mockClear()
 	gitMocks.checkout.mockClear()
 	gitMocks.listFiles.mockClear()
-	gitMocks.log
-		.mockResolvedValueOnce([{ oid: 'commit-head' }])
-		.mockResolvedValueOnce([{ oid: 'commit-new' }, { oid: 'commit-old' }])
+	gitMocks.log.mockResolvedValueOnce([{ oid: 'commit-head' }])
+	gitMocks.isDescendent.mockResolvedValueOnce(true)
 
 	const cloned = await cloneExternalPublishWorkspace({
 		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
@@ -97,12 +102,20 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 			descendant: 'commit-new',
 		}),
 	).resolves.toBe(true)
+	expect(gitMocks.isDescendent).toHaveBeenCalledWith(
+		expect.objectContaining({
+			dir: '/repo',
+			oid: 'commit-new',
+			ancestor: 'commit-old',
+		}),
+	)
 
 	await cloned.filesystem.writeFile('/repo/package.json', '{"name":"@kody/x"}')
 	await cloned.filesystem.writeFile(
 		'/repo/src/index.ts',
 		'export const ok = true\n',
 	)
+	await cloned.filesystem.writeFile('/repo/.git/objects/pack/pack.pack', 'pack')
 	await expect(cloned.workspace.readFile('/repo/package.json')).resolves.toBe(
 		'{"name":"@kody/x"}',
 	)
@@ -110,6 +123,19 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 		'package.json': '{"name":"@kody/x"}',
 		'src/index.ts': 'export const ok = true\n',
 	})
+	expect(gitMocks.listFiles).toHaveBeenCalledTimes(1)
+	await cloned.releaseGitObjects()
+	// After `.git` is gone, glob/collectFiles must use the cached path list —
+	// a live `git.listFiles` would fail without an index (Bugbot on #4374).
+	gitMocks.listFiles.mockImplementation(async () => {
+		throw new Error('git.listFiles must not run after releaseGitObjects')
+	})
+	await expect(
+		cloned.filesystem.readFile('/repo/.git/objects/pack/pack.pack'),
+	).rejects.toMatchObject({ code: 'ENOENT' })
+	await expect(cloned.workspace.readFile('/repo/package.json')).resolves.toBe(
+		'{"name":"@kody/x"}',
+	)
 	const globbed = await cloned.workspace.glob('**/*')
 	expect(globbed).toEqual([
 		{ path: '/repo/package.json', type: 'file' },
@@ -123,6 +149,48 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 	await expect(cloned.workspace.glob('repo/src/**/*')).resolves.toEqual([
 		{ path: '/repo/src/index.ts', type: 'file' },
 	])
+	await expect(cloned.collectFiles()).resolves.toEqual({
+		'package.json': '{"name":"@kody/x"}',
+		'src/index.ts': 'export const ok = true\n',
+	})
+})
+
+test('releaseGitObjects warms the path cache before dropping .git', async () => {
+	gitMocks.listFiles.mockClear()
+	gitMocks.listFiles.mockResolvedValueOnce(['only.ts'])
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-head',
+	})
+	await cloned.filesystem.writeFile('/repo/only.ts', 'export {}\n')
+	expect(gitMocks.listFiles).not.toHaveBeenCalled()
+	await cloned.releaseGitObjects()
+	expect(gitMocks.listFiles).toHaveBeenCalledTimes(1)
+	gitMocks.listFiles.mockImplementation(async () => {
+		throw new Error('git.listFiles must not run after releaseGitObjects')
+	})
+	await expect(cloned.workspace.glob('**/*')).resolves.toEqual([
+		{ path: '/repo/only.ts', type: 'file' },
+	])
+})
+
+test('collectFiles refuses trees over the publish snapshot ceiling', async () => {
+	const { externalPublishSnapshotMaxTotalBytes } =
+		await import('./external-publish-clone.ts')
+	gitMocks.listFiles.mockResolvedValueOnce(['big.bin'])
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-head',
+	})
+	await cloned.filesystem.writeFileBytes(
+		'/repo/big.bin',
+		new Uint8Array(externalPublishSnapshotMaxTotalBytes + 1),
+	)
+	await expect(cloned.collectFiles()).rejects.toThrow(/publish snapshot limit/)
 })
 
 test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async () => {

@@ -77,13 +77,6 @@ export type StoreResolution = {
 	fileStorePath?: (mcpUrl: string) => string
 }
 
-export type LoadCredentialsOptions = {
-	/** Prefer this org slug (already normalized). */
-	org?: string
-	backend?: SecretBackend
-	resolution?: StoreResolution
-}
-
 export function accountForMcpUrl(mcpUrl: string): string {
 	return `cli:${new URL(mcpUrl).origin}`
 }

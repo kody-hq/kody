@@ -4,6 +4,12 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
+import {
+	disposableE2ePersistPath,
+	formatDisposableStaleLocalMigrationsReset,
+	isDisposableLocalPersistPath,
+	resolveStaleLocalMigrationsAction,
+} from './check-stale-local-migrations.ts'
 
 const repoRoot = path.resolve(import.meta.dirname, '..')
 const wranglerEnv = { ...process.env, CLOUDFLARE_ENV: 'test' }
@@ -127,4 +133,65 @@ test('a renamed migration fails the local check with the stale name and reset st
 	expect(existsSync(fixture.migrationsDir)).toBe(true)
 	const reset = runStaleCheck(fixture)
 	expect(reset).toMatchObject({ status: 0 })
+}, 120_000)
+
+test('only the e2e persist path is disposable', () => {
+	expect(isDisposableLocalPersistPath(disposableE2ePersistPath)).toBe(true)
+	expect(isDisposableLocalPersistPath(`${disposableE2ePersistPath}/`)).toBe(
+		true,
+	)
+	expect(
+		isDisposableLocalPersistPath(`/tmp/checkout/${disposableE2ePersistPath}`),
+	).toBe(true)
+	expect(isDisposableLocalPersistPath('.wrangler/state')).toBe(false)
+	expect(isDisposableLocalPersistPath('.wrangler/state/v3')).toBe(false)
+	expect(isDisposableLocalPersistPath('.wrangler/state/e2e-backup')).toBe(false)
+})
+
+test('stale e2e persist resets; other persist dirs still fail', () => {
+	expect(
+		resolveStaleLocalMigrationsAction({
+			persistTo: disposableE2ePersistPath,
+			stale: [],
+		}),
+	).toBe('ok')
+	expect(
+		resolveStaleLocalMigrationsAction({
+			persistTo: disposableE2ePersistPath,
+			stale: ['0181-follow-recent-updates.sql'],
+		}),
+	).toBe('reset-disposable')
+	expect(
+		resolveStaleLocalMigrationsAction({
+			persistTo: '.wrangler/state',
+			stale: ['0181-follow-recent-updates.sql'],
+		}),
+	).toBe('fail')
+	expect(
+		formatDisposableStaleLocalMigrationsReset({
+			binding: 'APP_DB',
+			persistTo: disposableE2ePersistPath,
+			stale: ['0181-follow-recent-updates.sql'],
+		}),
+	).toContain('was reset automatically')
+})
+
+test('a renamed migration in disposable e2e persist is reset before apply', async () => {
+	await using fixture = await createLocalD1Fixture()
+	const persistTo = path.join(
+		path.dirname(fixture.persistTo),
+		disposableE2ePersistPath,
+	)
+	const e2eFixture = { ...fixture, persistTo }
+
+	expect(applyMigrations(e2eFixture)).toMatchObject({ status: 0 })
+	await rename(
+		path.join(fixture.migrationsDir, '0002-widget-color.sql'),
+		path.join(fixture.migrationsDir, '0003-widget-color.sql'),
+	)
+	const stale = runStaleCheck(e2eFixture)
+	expect(stale.status).toBe(0)
+	expect(stale.stderr).toContain('was reset automatically')
+	expect(existsSync(persistTo)).toBe(false)
+	expect(applyMigrations(e2eFixture)).toMatchObject({ status: 0 })
 }, 120_000)

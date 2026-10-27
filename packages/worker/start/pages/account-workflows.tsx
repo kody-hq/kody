@@ -7,6 +7,10 @@ import {
 } from '#client/routes/account-workflows-filter.ts'
 import { cancelWorkflowRun } from '#start/server/account-mutations'
 import {
+	packageHrefFromScope,
+	packageScopeFromNameOrOwner,
+} from '#universal/community-links.ts'
+import {
 	type AccountWorkflowListItem,
 	type AccountWorkflowRunStatus,
 	type AccountWorkflowsLoaderData,
@@ -106,17 +110,16 @@ function packageValue(
 	username: string,
 	workflow: Pick<AccountWorkflowListItem, 'sourceType' | 'kodyId'>,
 ) {
-	if (workflow.sourceType !== 'package' || !workflow.kodyId || !username) {
+	if (workflow.sourceType !== 'package' || !workflow.kodyId) {
 		return '—'
 	}
+	const scope = packageScopeFromNameOrOwner({
+		ownerUsername: username,
+		kodyId: workflow.kodyId,
+	})
+	if (!scope) return '—'
 	return (
-		<SiteLink
-			href={routes.communityPackage.href({
-				username,
-				kodyId: workflow.kodyId,
-			})}
-			css={primaryLinkCss}
-		>
+		<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
 			{workflow.kodyId}
 		</SiteLink>
 	)

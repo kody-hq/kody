@@ -21,6 +21,8 @@ limitations.
 
 - Profile / detail: `/@{$username}`, `/@{$username}/$kodyId`,
   `/@{$username}/$kodyId/settings`, `/@{$username}/$kodyId/approve-publish`
+- Forks: `/@{$username}/$kodyId/forks` (public forks plus private ones the
+  viewer can read; the detail Forks count links here and uses the same rule)
 - Raw bytes: `/@{$username}/$kodyId/raw/$ref/$`
 - Org list: `/@{$orgSlug}/-/repositories` (legacy `/@{$orgSlug}/-/packages`
   301s)

@@ -1,7 +1,6 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
-	errorCauseChainIncludes,
 	formatErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
@@ -28,7 +27,10 @@ import {
 	isolatedArtifactRebuildChunkSize,
 } from '#worker/repo/isolated-artifact-rebuild.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
-import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
+import {
+	isDurableObjectIsolateResourceLimitResetError,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
 import { isUserCodeError, UserCodeError } from '#worker/user-code-error.ts'
 
 /**
@@ -42,10 +44,12 @@ export const publishedPackageArtifactRebuildConcurrency =
 	isolatedArtifactRebuildChunkConcurrency
 
 /**
- * Deploy-time DO code resets and other platform isolate resets during
- * staging or target rebuilds are transient. Rebuilds are idempotent
+ * Deploy-time DO code resets and other genuinely transient platform isolate
+ * resets during staging or target rebuilds. Rebuilds are idempotent
  * (already-built targets are skipped), so a short bounded retry recovers
- * without re-running publish. Matches packagePublishExternalPush delays.
+ * without re-running publish. Memory/CPU / SQLITE_NOMEM resource limits are
+ * excluded — they repeat for the same targets. Matches
+ * packagePublishExternalPush delays.
  */
 export const publishedPackageArtifactRebuildRetryDelaysMs = [100, 500] as const
 
@@ -61,11 +65,13 @@ export const publishedPackageArtifactRebuildD1LockRetryDelaysMs = [
 	500, 2_000, 5_000, 10_000,
 ] as const
 
-function isTransientDurableObjectResetError(error: unknown) {
-	return errorCauseChainIncludes(error, isDurableObjectIsolateResetMessage)
-}
-
 function isTransientArtifactRebuildError(error: unknown) {
+	// `isRetryableD1LockError` still matches isolate memory/CPU / SQLITE_NOMEM
+	// (D1 is DO-backed). Those limits are deterministic for the same targets —
+	// do not burn the rebuild retry budget on them.
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		return false
+	}
 	return (
 		isTransientDurableObjectResetError(error) || isRetryableD1LockError(error)
 	)

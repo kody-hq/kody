@@ -56,6 +56,22 @@ An invite waits on the person it is for and shows on the page that sent it:
 Agents use `inviteAccept` with the token and `inviteRevoke` for addressed
 invites.
 
+## How do I invite my whole team?
+
+Use a **Members** invite link when you do not know every email yet, or when many
+people should join with the same role. Prefer addressed `inviteCreate` only when
+you need to invite one known person (and optionally Owner).
+
+1. On the web: open `/@<org>/-/members`, create an invite link (Member by
+   default; optional label, default teams, domains, max uses, expiry), copy the
+   credential once, and share it.
+2. As an agent: call `inviteLinkCreate` (needs `member:write`) in that org, then
+   share the returned URL or tell people to call `inviteLinkAccept` with the
+   token. List with `inviteLinkList`. End a link with `inviteLinkRevoke`.
+3. CLI/Open API: `POST /v1/access/invite-links`, `GET /v1/access/invite-links`,
+   `POST /v1/access/invite-links/accept`, and
+   `POST /v1/access/invite-links/{invite_link_id}/revoke`.
+
 ## Invite links
 
 An invite link lets someone in without knowing their email or username. You make
@@ -64,29 +80,35 @@ you made it:
 
 | Made on                           | Accepting it                                                                               | Who can make it                 |
 | --------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------- |
-| **Members** (team org)            | Joins the org as Member or Billing                                                         | `member:write`                  |
+| **Members** (team org)            | Joins the org as Member or Billing; optional default teams                                 | `member:write`                  |
 | **Teams**, one team (team org)    | Joins that team, and the org as Member if they are not in it yet                           | `team:write` and `member:write` |
 | A package's **Collaborators** tab | Grants the chosen preset on that package; non-members stay outside collaborators (any org) | Manage on the package           |
 
-Opening a link signs the person in or lets them create an account, then shows an
-accept page with what the link gives and who sent it. Nothing happens until they
-choose **Accept**; they can also **Decline**. A signed-in person who opened a
-link sees it on their Waiting page and in the Invites panel on their
-Organizations page until they accept or decline it, or it stops working.
+Opening a link signs the person in or lets them create an account (every signup
+method asks them to choose their own username first), then shows an accept page
+with what the link gives and who sent it. Nothing happens until they choose
+**Accept**; they can also **Decline**. A signed-in person who opened a link sees
+it on their Waiting page and in the Invites panel on their Organizations page
+until they accept or decline it, or it stops working. OAuth keeps the join URL
+through redirects via `redirectTo`.
 
-Links last 7 days by default (up to 365) and can be limited by number of uses;
-Members links can also require a verified email domain. Kody stores only a hash,
-so the link is shown once. Each page lists its active links with uses and
-expiry, and **Revoke** ends one right away. A link also stops working when its
-org is no longer active, when the team or package it points at is deleted, or
-when the person who made it loses access. Someone removed from the org can
-rejoin with the same membership link while it is live. Team and package links
-are spent per person, so removing someone is not undone by the link they already
-used.
+Links last 7 days by default (up to 365; every link expires) and can be limited
+by number of uses. Members links can also carry an optional label, default
+teams, and a verified email domain allowlist. The link is a credential: Kody
+stores only a hash, so the full URL is shown once. Each page lists its active
+links with uses and expiry; the Members page also shows last used. **Revoke**
+ends one right away. A link also stops working when its org is no longer active,
+when the team or package it points at is deleted, or when the person who made it
+loses access. Someone removed from the org can rejoin with the same membership
+link while it is live (idempotent for people who are already members). Team and
+package links are spent per person, so removing someone is not undone by the
+link they already used.
 
-Creating, revoking, and accepting are recorded in the org audit log as
-`invite_link.created`, `invite_link.revoked`, and `invite_link.joined`, with the
-link's kind, team or package, and preset in the details.
+Agents use `inviteLinkCreate`, `inviteLinkList`, `inviteLinkRevoke`, and
+`inviteLinkAccept` (same surfaces as Open API and the CLI). Creating, revoking,
+and accepting are recorded in the org audit log as `invite_link.created`,
+`invite_link.revoked`, and `invite_link.joined`, with the link's kind, team or
+package, label, teams, and preset in the details.
 
 ## Automation runs as the person who turned it on
 

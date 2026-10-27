@@ -78,7 +78,13 @@ export const communityListingAggregatesSchema = z.object({
 	average_stars: z.number().nullable(),
 	rating_count: z.number().int().nonnegative(),
 	average_adaptation_effort: z.number().nullable(),
-	fork_count: z.number().int().nonnegative(),
+	fork_count: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'Public forks only; private or hidden fork copies are not counted.',
+		),
 })
 
 export const communityTrustedFieldSchema = z

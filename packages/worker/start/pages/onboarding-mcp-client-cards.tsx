@@ -297,7 +297,7 @@ const pluginAlternativeCss: CSSObject = {
 
 /* Config snippets: labeled wells with their copy button in the header. */
 const snippetCss: CSSObject = {
-	border: `1.5px solid ${colors.border}`,
+	border: `1px solid color-mix(in srgb, ${colors.border} 65%, ${colors.surface})`,
 	borderRadius: radius.card,
 	backgroundColor: colors.background,
 	overflow: 'hidden' as const,
@@ -311,7 +311,7 @@ const snippetHeadCss: CSSObject = {
 	alignItems: 'center',
 	gap: '0.6rem',
 	padding: '0.5rem 0.6rem 0.5rem 1.1rem',
-	borderBottom: `1px solid ${colors.border}`,
+	borderBottom: `1px solid color-mix(in srgb, ${colors.border} 65%, ${colors.surface})`,
 	'@media (max-width: 720px)': {
 		flexWrap: 'wrap' as const,
 	},

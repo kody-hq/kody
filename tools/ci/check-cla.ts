@@ -91,29 +91,57 @@ export function parseClaSignersFile(raw: string): ClaSignersFile {
 	return file
 }
 
+// Match the repo formatter (oxfmt: printWidth 80, tabWidth 2): an allowlist
+// array stays on one line only while that line fits; otherwise it expands one
+// value per line, which is what JSON.stringify with tab indent produces.
+const formatterPrintWidth = 80
+const allowlistEntryIndentWidth = 4
+
 function compactStringArray(values: ReadonlyArray<string>) {
 	return `[${values.map((value) => JSON.stringify(value)).join(', ')}]`
+}
+
+function compactAllowlistEntryFits(input: {
+	key: string
+	compact: string
+	trailingComma: boolean
+}) {
+	const width =
+		allowlistEntryIndentWidth +
+		`${JSON.stringify(input.key)}: `.length +
+		input.compact.length +
+		(input.trailingComma ? 1 : 0)
+	return width <= formatterPrintWidth
 }
 
 export function serializeClaSignersFile(file: ClaSignersFile) {
 	const placeholderGithub = '__CLA_ALLOWLIST_GITHUB__'
 	const placeholderEmail = '__CLA_ALLOWLIST_EMAIL__'
+	const compactGithub = compactStringArray(file.allowlist.github)
+	const compactEmail = compactStringArray(file.allowlist.email)
+	const githubFits = compactAllowlistEntryFits({
+		key: 'github',
+		compact: compactGithub,
+		trailingComma: true,
+	})
+	const emailFits = compactAllowlistEntryFits({
+		key: 'email',
+		compact: compactEmail,
+		trailingComma: false,
+	})
 	const indented = JSON.stringify(
 		{
 			...file,
-			allowlist: { github: placeholderGithub, email: placeholderEmail },
+			allowlist: {
+				github: githubFits ? placeholderGithub : file.allowlist.github,
+				email: emailFits ? placeholderEmail : file.allowlist.email,
+			},
 		},
 		null,
 		'\t',
 	)
-		.replace(
-			JSON.stringify(placeholderGithub),
-			compactStringArray(file.allowlist.github),
-		)
-		.replace(
-			JSON.stringify(placeholderEmail),
-			compactStringArray(file.allowlist.email),
-		)
+		.replace(JSON.stringify(placeholderGithub), compactGithub)
+		.replace(JSON.stringify(placeholderEmail), compactEmail)
 	return `${indented}\n`
 }
 

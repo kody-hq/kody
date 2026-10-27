@@ -1,8 +1,8 @@
 import { stripOgEmphasis } from '#universal/og-emphasis.ts'
 
-const homeOgImageTitle = 'Your agents\u2019\n**cloud**'
+const homeOgImageTitle = 'The **cloud** for\nyour team\u2019s agents'
 const homeOgImageSubtitle =
-	'You shouldn\u2019t have to start over in every agent.'
+	'One place for the credentials, tools, and workflows for every agent your team members use.'
 
 /**
  * Registry of public pages that get a Satori-generated OG image at
@@ -17,6 +17,11 @@ export type PublicOgPage = {
 	imageTitle: string
 	/** Muted supporting line inside the generated image. */
 	imageSubtitle: string
+	/**
+	 * Heading size in the PNG. Omit for the default display size; set it when
+	 * an authored line would otherwise wrap past its hard break.
+	 */
+	imageTitleFontSize?: number
 	/** `og:title` / `twitter:title` for the page. */
 	ogTitle: string
 	/** `og:description` / `twitter:description` for the page. */
@@ -28,10 +33,12 @@ export type PublicOgPage = {
 export const publicOgPages = {
 	home: {
 		// Locked share card. `**` is accent emphasis in the PNG. The newline is
-		// the 1200×630 break (after "agents'"), not a wording change. Meta uses
+		// the 1200×630 break (after "for"), not a wording change. Meta uses
 		// the same words with the markers removed.
 		imageTitle: homeOgImageTitle,
 		imageSubtitle: homeOgImageSubtitle,
+		// "your team's agents" overflows the title column at the default 78px.
+		imageTitleFontSize: 66,
 		ogTitle: stripOgEmphasis(homeOgImageTitle),
 		ogDescription: homeOgImageSubtitle,
 		path: '/',

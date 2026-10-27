@@ -232,7 +232,7 @@ Declare `kind` only when the package needs a specific shape:
 
 ### Choose who supplies a package credential
 
-When supplier-aware package credentials are enabled, a need can declare
+When the `package-credential-suppliers` flag is on, a need can declare
 `supplier: "publisher"` or `supplier: "executor"`. A publisher need is set by
 the package publisher with an org-level mapping. It cannot be set by a
 per-person or per-trigger mapping, and a visitor cannot resolve it from their
@@ -497,6 +497,7 @@ Every credential error is structured: it has a `code`, a message, and
 | Code                         | Meaning                                                                                 |
 | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `credential_unbound`         | No credential you can use matches the need                                              |
+| `credential_required`        | A required executor need has no connected credential before a direct run                |
 | `credential_ambiguous`       | More than one matches; `options` lists them by name/scope                               |
 | `credential_not_found`       | The named credential is missing or not usable by you                                    |
 | `credential_need_unknown`    | The map names a key no package in the invoked run declares                              |
@@ -569,8 +570,6 @@ use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the
   org instead.
-- A credential picker for visitors of a package app. Apps auto-resolve the
-  signed-in visitor's single match; grant Use to the role that needs it.
 - A `verify` operation on signing credentials for inbound webhooks. Keys verify
   webhooks.
 - Declaring OAuth scopes on a need. A missing scope shows up as a 401 or 403

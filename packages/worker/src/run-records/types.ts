@@ -86,6 +86,10 @@ export const runRecordPlatformInterruptedErrorMessage =
  * queue, or webhook delivery, so retain their interrupted attempt as ignored
  * history instead of an open user-facing failure. Interactive and
  * non-idempotent attempts stay open.
+ *
+ * Scheduled job ticks (`scheduled-job:…`) are the exception: a stranded
+ * `running` row that becomes terminal must stay owner-visible. Soft-ignoring
+ * those rows hid missed slots while the scheduler advanced `next_run_at`.
  */
 export function runErrorTriageForPlatformInterrupt(
 	context: Pick<RunRecordContext, 'surface' | 'idempotencyKey'>,
@@ -93,7 +97,7 @@ export function runErrorTriageForPlatformInterrupt(
 	const idempotencyKey = context.idempotencyKey?.trim()
 	switch (context.surface) {
 		case 'job':
-			return idempotencyKey?.startsWith('scheduled-job:') ? 'ignored' : null
+			return null
 		case 'subscription':
 		case 'export':
 			return idempotencyKey ? 'ignored' : null
@@ -372,6 +376,53 @@ export const runRecordStaleRunningTtlMsBackground = 10 * 60 * 1000
 
 /** Jobs can run longer than a single sandbox invoke; still bound the history row. */
 export const runRecordStaleRunningTtlMsJob = 6 * 60 * 60 * 1000
+
+/**
+ * Scheduled-tick idempotency keys (`scheduled-job:…`) release stranded
+ * `running` rows after the D1 job execution lease (10 minutes). Waiting for
+ * {@link runRecordStaleRunningTtlMsJob} left occurrences soft-retrying for
+ * hours, then a terminal interrupt consumed the key and dropped the slot.
+ * Keep this aligned with `jobExecutionLeaseMs` in shared jobs repo.
+ */
+export const runRecordStaleRunningTtlMsScheduledJob = 10 * 60 * 1_000
+
+export function isScheduledJobIdempotencyKey(
+	idempotencyKey: string | null | undefined,
+): boolean {
+	return Boolean(idempotencyKey?.trim().startsWith('scheduled-job:'))
+}
+
+/**
+ * How a job surface run was started. Stored on run `metadata.trigger` for new
+ * rows; older rows derive from the scheduled-tick idempotency key.
+ */
+export const jobRunTriggerValues = ['manual', 'scheduled'] as const
+
+export type JobRunTrigger = (typeof jobRunTriggerValues)[number]
+
+export function jobRunTriggerForContext(input: {
+	idempotencyKey?: string | null
+}): JobRunTrigger {
+	return isScheduledJobIdempotencyKey(input.idempotencyKey)
+		? 'scheduled'
+		: 'manual'
+}
+
+/**
+ * Resolve a job run's trigger for UI and APIs. Prefer the stored metadata
+ * value (including any future/non-canonical string); fall back for legacy
+ * rows that only have the scheduled-job idempotency key.
+ */
+export function jobRunTriggerFromRecord(
+	run: Pick<RunRecord, 'idempotencyKey' | 'metadata'>,
+): string {
+	const stored = run.metadata?.trigger
+	if (typeof stored === 'string') {
+		const trimmed = stored.trim()
+		if (trimmed) return trimmed
+	}
+	return jobRunTriggerForContext({ idempotencyKey: run.idempotencyKey })
+}
 
 /**
  * Surface-aware stale-`running` TTL. Workflows keep the long default;

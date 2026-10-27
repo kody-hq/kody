@@ -1,7 +1,6 @@
 {
 	"extends": "./tsconfig-worker.json",
 	"compilerOptions": {
-		"types": ["@pitlane/dev/assets"],
 		"paths": {
 			"@modelcontextprotocol/sdk": [
 				"../../node_modules/@modelcontextprotocol/sdk"

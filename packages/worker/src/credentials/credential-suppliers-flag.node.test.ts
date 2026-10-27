@@ -59,6 +59,41 @@ test('evaluates the supplier flag for the publisher owner numeric user id once p
 	)
 })
 
+test('concurrent evaluations for the same org share one in-flight lookup', async () => {
+	const request = new Request('https://app.example.test/concurrent')
+	const db = dbForOwner(42)
+	let resolveFlag: (value: boolean) => void = () => undefined
+	mocks.isFeatureEnabled.mockImplementationOnce(
+		() =>
+			new Promise<boolean>((resolve) => {
+				resolveFlag = resolve
+			}),
+	)
+
+	const pending = Promise.all([
+		isPackageCredentialSuppliersEnabled({
+			db,
+			orgId: 'org-fixture',
+			request,
+		}),
+		isPackageCredentialSuppliersEnabled({
+			db,
+			orgId: 'org-fixture',
+			request,
+		}),
+		isPackageCredentialSuppliersEnabled({
+			db,
+			orgId: 'org-fixture',
+			request,
+		}),
+	])
+	await Promise.resolve()
+	expect(mocks.isFeatureEnabled).toHaveBeenCalledTimes(1)
+	resolveFlag(true)
+	await expect(pending).resolves.toEqual([true, true, true])
+	expect(mocks.isFeatureEnabled).toHaveBeenCalledTimes(1)
+})
+
 test('a missing feature flags table keeps supplier behavior disabled', async () => {
 	const db = dbForOwner(42)
 	mocks.isFeatureEnabled.mockRejectedValue(

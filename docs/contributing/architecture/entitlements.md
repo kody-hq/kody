@@ -6,7 +6,7 @@
 - [Prepaid credits](#prepaid-credits)
 - [Compute rate limits](#compute-rate-limits)
 - [UserMeter](#usermeter)
-- [Schema history](#schema-history)
+- [Schema](#schema)
 - [Assigning plans](#assigning-plans)
 - [Admin limit overrides](#admin-limit-overrides)
 - [Plan lookup](#plan-lookup)
@@ -93,10 +93,7 @@ unknown strings, and retired plan names are rejected as validation failures.
 
 Migration `0002-restructure-plan-tiers.sql` maps stored `pro` values to
 `standard`, stored `partner` values to `pro`, and rebuilds both CHECK
-constraints for the current registry. Migration
-`0043-users-entitlement-ladder.sql` introduced the entitlement ladder (now
-`orgs.entitlement_ladder`) and backfilled `legacy` for then-active Stripe
-Standard/Pro subscribers and manual Pro grants.
+constraints for the current registry.
 
 `orgs.stripe_plan` stays nullable because it is Stripe-derived; `max` is
 manual-only — admin-visible, not paid or public — and never written from Stripe
@@ -104,21 +101,19 @@ manual-only — admin-visible, not paid or public — and never written from Str
 
 `orgs.entitlement_ladder` is `'public'` or `'legacy'` (NOT NULL, default
 `'public'`). The public table in `planLimits` is what `/pricing` renders and
-what new Standard/Pro subscribers get. `legacy` keeps the pre-cut Standard/Pro
-ceilings from `legacyPlanLimits` only while the same Stripe subscription
-continues without a plan, price, product, or interval change: same-plan
-auto-renew stays `legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any
-other price/product switch writes `public`. A remaining manual Pro grant without
-a paid Stripe tier still keeps `legacy` until that grant is removed. The
-one-shot backfill in `0043-users-entitlement-ladder.sql` sets `legacy` for those
-accounts. Resubscribing does not restore `legacy`.
-`0044-users-stripe-price-id.sql` introduced `stripe_price_id` (now
-`orgs.stripe_price_id`) so Stripe refresh can detect those subscription changes.
-The first observation of a continuing subscription writes the current price and
-leaves `legacy` in place. Free and `max` always use `planLimits`; the ladder is
-ignored for those plans. Unique-worker-day and Durable Object rows-read numbers
-live on `PlanLimits` for the public table. They are not hard-cut and not billed
-for legacy accounts.
+what new Standard/Pro subscribers get. `legacy` uses the older Standard/Pro
+limits in `legacyPlanLimits` only while the same Stripe subscription continues
+without a plan, price, product, or interval change: same-plan auto-renew stays
+`legacy`. Cancel, unpaid, Standard↔Pro, month↔year, or any other price/product
+switch writes `public`. A remaining manual Pro grant without a paid Stripe tier
+still keeps `legacy` until that grant is removed. Resubscribing does not restore
+`legacy`. `orgs.stripe_price_id` records the granting Stripe price so
+subscription refreshes can move an account from `legacy` to `public` when the
+subscription changes. The first observation of a continuing subscription writes
+the current price and leaves `legacy` in place. Free and `max` always use
+`planLimits`; the ladder is ignored for those plans. Unique-worker-day and
+Durable Object rows-read numbers live on `PlanLimits` for the public table. They
+are not hard-cut and not billed for legacy accounts.
 
 `getUserEntitlement` / `getCachedUserEntitlement` return `{ plan, ladder }`.
 Enforcement (`assertWithinEntitlement`, `consumeDailyEntitlement`, storage
@@ -854,20 +849,22 @@ missing binding fails closed for reserve and read paths.
 `calculateUserD1StorageBytes` is the physical payload recompute used by the
 reconcile lane, cold-drift correction, and the parity report.
 
-## Schema history
+## Schema
 
-The pre-squash plan-column evolution (NULL rows → `'unlimited'` backfill → NOT
-NULL → `'unlimited'` renamed to `'max'` → DEFAULT `'free'` → CHECK constraints)
-is collapsed into the squashed baseline; the individual migration files live in
-Git history only. `0002-restructure-plan-tiers.sql` renames stored `pro` to
-`standard` and `partner` to `pro` (plan and Stripe plan columns, and the
-since-dropped `invites.plan`) and rebuilds both CHECK constraints for `free`,
-`standard`, `pro`, and `max`. `0043-users-entitlement-ladder.sql` introduced the
-entitlement ladder (`public` | `legacy`, default `public`; stored on `orgs`) and
-backfilled `legacy` for then-active Stripe Standard/Pro subscribers and manual
-Pro grants. `0044-users-stripe-price-id.sql` introduced `stripe_price_id`
-(stored on `orgs`) for the granting Stripe price so a later refresh can drop
-`legacy` on a subscription change.
+The current schema after the squashed baseline and subsequent migrations stores
+plan columns as they work today:
+
+- `orgs.plan` is NOT NULL with DEFAULT `'free'` and CHECK constraints for
+  `free`, `standard`, `pro`, and `max`
+- `orgs.entitlement_ladder` is `public` | `legacy` (default `public`)
+- `orgs.stripe_price_id` holds the granting Stripe price so a later refresh can
+  drop `legacy` on a subscription change
+
+The frozen `0001-squashed-init.sql` baseline still has the older plan CHECK
+values; later migrations (`0002-restructure-plan-tiers.sql`,
+`0043-users-entitlement-ladder.sql`, `0044-users-stripe-price-id.sql`, and the
+orgs backfill) bring the live schema to the shape above. Pre-baseline
+plan-column history lives only in Git.
 
 ## Assigning plans
 

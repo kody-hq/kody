@@ -26,6 +26,7 @@ import { type CredentialFillPlacementView } from '#universal/credential-fill-pla
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import { type PackageForksLoaderData } from '#universal/package-forks.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import {
@@ -1353,13 +1354,23 @@ export type OrgInviteLinkView = {
 	id: string
 	role: 'member' | 'billing'
 	roleLabel: string
+	label: string | null
+	teamIds: Array<string>
+	teamNames: Array<string>
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	expiresAt: string
 	createdAt: string
 	createdByUsername: string | null
 	createdByDisplayName: string | null
+}
+
+export type OrgMembersTeamOption = {
+	id: string
+	slug: string
+	name: string
 }
 
 export type OrgMembersLoaderData = {
@@ -1368,12 +1379,19 @@ export type OrgMembersLoaderData = {
 	members: Array<OrgMemberView>
 	invites: Array<OrgInviteView>
 	inviteLinks: Array<OrgInviteLinkView>
+	teams: Array<OrgMembersTeamOption>
 	canManage: boolean
 }
 
 /** What accepting an invite link gives, as the join page describes it. */
 export type OrgInviteJoinOffer =
-	| { kind: 'membership'; role: 'member' | 'billing'; roleLabel: string }
+	| {
+			kind: 'membership'
+			role: 'member' | 'billing'
+			roleLabel: string
+			/** Live default team names this link still assigns. */
+			teamNames: Array<string>
+	  }
 	| {
 			kind: 'team'
 			teamName: string
@@ -2541,6 +2559,8 @@ type AccountJobRecentRun = {
 	status: 'success' | 'error' | 'running'
 	durationMs: number
 	error: string | null
+	/** How the run started: `manual`, `scheduled`, or another stored trigger. */
+	trigger: string
 }
 
 export type AccountJobDetail = AccountJobListItem & {
@@ -3021,6 +3041,7 @@ export type AppLoaderData = {
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
 	packageCollaborators?: PackageCollaboratorsLoaderData
+	packageForks?: PackageForksLoaderData
 	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	approvalBundle?: ApprovalBundleLoaderData
 	accountSecrets?: AccountSecretsLoaderData

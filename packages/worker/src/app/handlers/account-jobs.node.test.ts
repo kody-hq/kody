@@ -38,6 +38,15 @@ const packageJob = {
 			finishedAt: new Date('2026-07-25T09:00:00.120Z').toISOString(),
 			status: 'success' as const,
 			durationMs: 120,
+			trigger: 'manual' as const,
+		},
+		{
+			startedAt: new Date('2026-07-24T09:00:00.000Z').toISOString(),
+			finishedAt: new Date('2026-07-24T09:00:00.080Z').toISOString(),
+			status: 'success' as const,
+			durationMs: 80,
+			trigger: 'scheduled' as const,
+			idempotencyKey: `scheduled-job:package-job:pkg-1:nightly:2026-07-24T09:00:00.000Z`,
 		},
 	],
 }
@@ -198,30 +207,46 @@ function stubInspection(
 			const jobId = input.filter?.jobId
 			const job = jobs.find((entry) => entry.id === jobId)
 			return {
-				runs: (job?.runHistory ?? []).map((entry, index) => ({
-					id: `${jobId}-run-${index}`,
-					surface: 'job' as const,
-					status: entry.status,
-					name: job?.name ?? null,
-					packageId: null,
-					kodyId: null,
-					sourceId: job?.sourceId ?? null,
-					publishedCommit: job?.publishedCommit ?? null,
-					storageId: job?.storageId ?? null,
-					jobId: jobId ?? null,
-					workflowId: null,
-					invocationId: null,
-					sessionId: null,
-					idempotencyKey: null,
-					parentRunId: null,
-					startedAt: entry.startedAt,
-					finishedAt: entry.finishedAt,
-					durationMs: entry.durationMs,
-					errorName: 'error' in entry ? 'Error' : null,
-					errorMessage: 'error' in entry ? entry.error : null,
-					metadata: {},
-					logCount: 0,
-				})),
+				runs: (job?.runHistory ?? []).map((entry, index) => {
+					const trigger =
+						'trigger' in entry && typeof entry.trigger === 'string'
+							? entry.trigger
+							: null
+					const idempotencyKey =
+						'idempotencyKey' in entry &&
+						typeof entry.idempotencyKey === 'string'
+							? entry.idempotencyKey
+							: null
+					return {
+						id: `${jobId}-run-${index}`,
+						surface: 'job' as const,
+						status: entry.status,
+						name: job?.name ?? null,
+						packageId: null,
+						kodyId: null,
+						sourceId: job?.sourceId ?? null,
+						publishedCommit: job?.publishedCommit ?? null,
+						storageId: job?.storageId ?? null,
+						jobId: jobId ?? null,
+						workflowId: null,
+						invocationId: null,
+						sessionId: null,
+						idempotencyKey,
+						parentRunId: null,
+						startedAt: entry.startedAt,
+						finishedAt: entry.finishedAt,
+						durationMs: entry.durationMs,
+						errorName: 'error' in entry ? 'Error' : null,
+						errorMessage: 'error' in entry ? entry.error : null,
+						errorTriage: null,
+						triageNote: null,
+						triagedAt: null,
+						triagedBy: null,
+						startedBy: null,
+						metadata: trigger ? { trigger } : {},
+						logCount: 0,
+					}
+				}),
 				nextCursor: null,
 			}
 		},
@@ -314,6 +339,14 @@ test('jobs API lists package jobs and selected detail', async () => {
 					status: 'success',
 					durationMs: 120,
 					error: null,
+					trigger: 'manual',
+				}),
+				expect.objectContaining({
+					id: `${packageJob.id}-run-1`,
+					status: 'success',
+					durationMs: 80,
+					error: null,
+					trigger: 'scheduled',
 				}),
 			],
 			storageId: 'storage-1',

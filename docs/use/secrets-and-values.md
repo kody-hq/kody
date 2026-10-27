@@ -188,11 +188,16 @@ External providers use **`{{secret/<provider>:<ref>}}`** (first `:` after
 `secret/`). Canonical 1Password form is
 **`{{secret/1password:i/<item-id>/password}}`** where `<item-id>` is a UUID or a
 1Password Connect 26-char id. `op://…` is a writable synonym that must
-canonicalize to the same grant/cache key. The item's websites are the host
-allowlist; empty websites refuse the fetch. Ad hoc execute does not need a
-package grant; saved packages do (`resourceLock` with kind `secret_provider`
-returns the Allow URL). Bind and revoke on `/@<slug>/-/secret-providers`. Shared
-packages use the owner's provider binding. Search does not crawl vaults. See
+canonicalize to the same grant/cache key. Angle-bracket markers in a token
+(`<provider>`, `<item-id>`, `<field>`, and so on) and the grammar metavariable
+form `{{secret/provider:ref}}` mark documentation examples: the gateway does not
+fill them. Concrete example refs in package `status()` / help display fields are
+not credential uses for the publish stamp (only request and credential-mapped
+sites count). The item's websites are the host allowlist; empty websites refuse
+the fetch. Ad hoc execute does not need a package grant; saved packages do
+(`resourceLock` with kind `secret_provider` returns the Allow URL). Bind and
+revoke on `/@<slug>/-/secret-providers`. Shared packages use the owner's
+provider binding. Search does not crawl vaults. See
 [Custom secret providers](../guides/secret-providers.md).
 
 When an API requires Basic Auth derived from two saved secrets, import

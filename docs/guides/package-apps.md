@@ -24,12 +24,12 @@ export JSDoc stay in [Package authoring](./package-authoring.md)
 A package app is a hosted **Worker entry**. `kody.app.entry` default-exports a
 fetch handler (a function, `{ fetch }`, or a named `fetch` export). Anything
 esbuild can bundle that answers `fetch` is a valid app. The host strips the app
-mount before forwarding, so every entry sees `/notes` for `/<id>/notes` (legacy
-`/packages/<id>/notes` still works). Optional `kody.app.client` and
-`kody.app.assets` add a browser module and static files under `/_assets`.
-`kody:runtime` exposes `packageContext`, `packageStorage()`, and the rest of the
-run. Remix is [Example A](#remix-recipe) — a recipe with its own boilerplate,
-not a host mode.
+mount before forwarding, so every entry sees `/notes` for
+`/<package-name>/notes` (legacy `/packages/<package-name>/notes` still works).
+Optional `kody.app.client` and `kody.app.assets` add a browser module and static
+files under `/_assets`. `kody:runtime` exposes `packageContext`,
+`packageStorage()`, and the rest of the run. Remix is [Example A](#remix-recipe)
+— a recipe with its own boilerplate, not a host mode.
 
 Open a heading with `search({ entity: "guide:package_apps#remix-recipe" })` (or
 another slug below) when you need one recipe.
@@ -258,7 +258,8 @@ A package app runs as one person in the owning org: the person who last
 published it, unless an Owner picks someone else with `packageAppRunsAsSet`
 (`username: null` goes back to the publisher). In a personal org with no
 recorded publisher, that is the org owner. That person pays for the app and
-their credentials fill its `kody.credentials` needs. Visitors bring only their
+supplies publisher credentials through `credential(key)`. Executor needs use the
+visitor's connected credentials when the app declares them. Visitors bring their
 verified identity. `packageAppRunsAsGet` says who it is, or why the app cannot
 run as anyone.
 
@@ -309,10 +310,11 @@ stays host-side. See
 [Credentials](./credentials.md#choose-who-supplies-a-package-credential) for
 supplier and mapping rules.
 
-Supplier-aware credentials are rolling out. Closures published while the flag is
-off do not store supplier metadata, so republish them after enabling the flag.
-In app code, check the grant before opening a visitor credential, and handle the
-unbound case without trying the publisher's credential:
+When the `package-credential-suppliers` flag is on, published closures store
+supplier metadata. Republish after enabling the flag so served apps see
+`supplier` and `required`. In app code, check the grant before opening a visitor
+credential, and handle the unbound case without trying the publisher's
+credential:
 
 ```ts
 import { credential, hasScope } from 'kody:runtime'
@@ -329,12 +331,11 @@ visitor defaults, org mappings, or automatic matching. A missing mapping is
 reported as `credential_unbound`. Keep publisher-supplied needs on
 `credential(key)`.
 
-While apps move over, a call that would fail as the runs-as person (a capability
-missing from `kody.app.capabilities`, for example) still runs as the visitor, as
-it did before, and logs a `package_app_authority_fallback` event with the app,
-the call name, and the kind of difference. Add what the logs name to the
-manifest. Admins count these per app with
-`adminPackageAppAuthorityFallbackReport`, and the
+If a bridge call cannot run as the runs-as person (a capability missing from
+`kody.app.capabilities`, for example), the platform may still execute it as the
+visitor and log a `package_app_authority_fallback` event with the app, the call
+name, and the kind of difference. Add what the logs name to the manifest. Admins
+count these per app with `adminPackageAppAuthorityFallbackReport`, and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 
@@ -541,7 +542,6 @@ When the app imports a `@remix-run/ui/<primitive>` module, add
 	"exports": { ".": "./src/index.ts" },
 	"dependencies": { "remix": "3.0.0" },
 	"kody": {
-		"id": "notes",
 		"description": "Notes with a hosted Remix app",
 		"app": {
 			"entry": "./app/router.ts",
@@ -929,7 +929,7 @@ that:
 `kody.app.entry` default-exports a fetch handler (a function, `{ fetch }`, or a
 named `fetch` export). Every entry receives the mount-stripped path (`/` at the
 app root). Publish rejects `kody.app.runtime`: there is no configured runtime
-mode. A leftover field on a published snapshot is ignored.
+mode. Published snapshots that still contain the field serve without it.
 
 The host uses esbuild's JSX defaults unless the root `tsconfig.json` sets
 `compilerOptions.jsx` / `jsxImportSource`. A Remix recipe sets
@@ -1145,11 +1145,13 @@ const sprite = appUrl('assets/sprite.png')
 const callback = appUrl('oauth/callback')
 ```
 
-`hostedUrl` is the public mount URL. `appBasePath` is the origin-relative mount
-(`/<package-name>` on a subdomain). Both come from the current serving username
-and package name leaf, including after a rename or fork. When you pass a
-relative path to `new URL(path, origin)`, give `origin` a trailing slash so
-`assets/sprite.png` stays under the mount.
+`hostedUrl` is the public mount URL. `appBasePath` is the origin-relative mount:
+`/<package-name>` on `{username}.kody.run`, and empty on an app-level custom
+hostname (the app owns `/`). Use the runtime-provided values as-is. On a
+subdomain they follow the current serving username and package name leaf,
+including after a rename or fork. When you pass a relative path to
+`new URL(path, origin)`, give `origin` a trailing slash so `assets/sprite.png`
+stays under the mount.
 
 Files the platform serves for you (the bundled browser client and the
 `kody.app.assets` directory) live under `packageContext.assetBasePath`; see the
@@ -1549,8 +1551,8 @@ old caches on activate.
 - **`packageAppFetch` returns HTTP 500 `"Package app could not be prepared"`** —
   host-setup failed before package code ran (manifest load, worker build, or
   asset prep). The JSON body includes `cause` on synthetic fetches. Publish
-  rejects `kody.app.runtime`; a leftover field on a published snapshot does not
-  brick serve.
+  rejects `kody.app.runtime`; published snapshots that still contain the field
+  serve without it.
 
 Checked-in browser-ready `.js` served from the fetch handler with an explicit
 `Content-Type` is valid; `client` is the pit-of-success path for source you want
