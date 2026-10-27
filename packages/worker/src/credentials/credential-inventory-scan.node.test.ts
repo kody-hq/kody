@@ -119,6 +119,18 @@ test('status returns the module itself reads or calls are not display-only', () 
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { const url = this.status; return fetch(url()) },
 		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { return fetch(this['status']()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run(key) { return fetch(this[key]()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { const { status } = this; return fetch(status()) },
+		}`,
 	]) {
 		expect(
 			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),

@@ -687,17 +687,38 @@ function scanParsedModule(
 	// Display functions the module itself reads or calls (`fetch(status())`,
 	// `this.help()`) can feed a request, so their returns are not exempt.
 	// Member reads count only on `this`; `client.status()` is someone else's.
+	// Dynamic `this[key]` or destructured `this` could be any of them.
 	const referencedDisplayNames = new Set<string>()
+	const referenceAllDisplayNames = () => {
+		for (const name of displayReturnFunctionNames) {
+			referencedDisplayNames.add(name)
+		}
+	}
 	walkAst(parsed, (node, ancestors) => {
 		if (
 			(node.type === 'MemberExpression' ||
 				node.type === 'OptionalMemberExpression') &&
 			node.object?.type === 'ThisExpression'
 		) {
-			const name = getCalleeName(node)?.toLowerCase()
+			if (node.computed && typeof node.property?.value !== 'string') {
+				referenceAllDisplayNames()
+				return
+			}
+			const name = (
+				node.computed ? String(node.property?.value) : getCalleeName(node)
+			)?.toLowerCase()
 			if (name && displayReturnFunctionNames.has(name)) {
 				referencedDisplayNames.add(name)
 			}
+			return
+		}
+		if (
+			(node.type === 'VariableDeclarator' &&
+				node.init?.type === 'ThisExpression') ||
+			(node.type === 'AssignmentExpression' &&
+				node.right?.type === 'ThisExpression')
+		) {
+			referenceAllDisplayNames()
 			return
 		}
 		if (node.type !== 'Identifier' || !isVariableRead(node, ancestors)) return
