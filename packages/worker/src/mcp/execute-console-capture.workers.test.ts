@@ -228,3 +228,40 @@ test(
 		}
 	},
 )
+
+test(
+	'console overwrites from one run do not leak into the next run on a reused worker',
+	{ timeout: 60_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const userId = ownerIdFromStored('user-console-capture-overwrite')
+		const bundle = await bundleLines(reuseEnv, userId, [
+			"import { kody } from 'kody:runtime'",
+			'export default async function main() {',
+			'\tconst { label, clobber } = await kody.ping_capability({})',
+			'\tconsole.log(label)',
+			"\tif (clobber === 'method') console.log = () => {}",
+			"\tif (clobber === 'object') globalThis.console = { log() {}, warn() {} }",
+			'\treturn label',
+			'}',
+		])
+		const runs = []
+		for (const [label, clobber] of [
+			['clobber-method', 'method'],
+			['after-method', null],
+			['clobber-object', 'object'],
+			['after-object', null],
+		] as const) {
+			const run = await runBundle(reuseEnv, userId, bundle, {
+				ping_capability: async () => ({ label, clobber }),
+			})
+			runs.push({ error: run.error, logs: run.logs })
+		}
+		expect(runs).toEqual([
+			{ error: undefined, logs: ['clobber-method'] },
+			{ error: undefined, logs: ['after-method'] },
+			{ error: undefined, logs: ['clobber-object'] },
+			{ error: undefined, logs: ['after-object'] },
+		])
+	},
+)
