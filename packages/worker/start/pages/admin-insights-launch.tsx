@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { cardCss } from '#universal/styles/style-primitives.ts'
 
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { DonutChart } from '../charts/donut-chart.tsx'
@@ -428,10 +429,7 @@ export function renderOnboardingFunnelSummary(
 		funnel.windows.days28.steps.map((step) => [step.stage, step.users]),
 	)
 	return (
-		<section
-			aria-label="Onboarding funnel"
-			css={{ display: 'grid', gap: spacing.sm }}
-		>
+		<section aria-label="Onboarding funnel" css={cardCss}>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
 				<h2
 					css={{

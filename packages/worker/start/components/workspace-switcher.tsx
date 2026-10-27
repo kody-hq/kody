@@ -157,11 +157,7 @@ function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 	}
 }
 
-/**
- * The organization switcher, drawn where the workspace rail names its
- * organization: the "Workspace" label stays, and the name under it opens
- * the list of organizations to switch to.
- */
+/** The current organization opens the workspace switcher in the rail or drawer. */
 export function WorkspaceSwitcher(
 	props: WorkspaceSwitcherData & { placement: WorkspaceSwitcherPlacement },
 ) {
@@ -190,9 +186,6 @@ export function WorkspaceSwitcher(
 				moveSwitcherFocus(event, document.getElementById(id))
 			}
 		>
-			<span aria-hidden="true" css={eyebrowCss}>
-				Workspace
-			</span>
 			<button
 				type="button"
 				popoverTarget={id}
@@ -245,15 +238,6 @@ const headingCss = {
 	minWidth: 0,
 }
 
-const eyebrowCss = {
-	padding: '0 0.7rem',
-	fontSize: '0.72rem',
-	fontWeight: 650,
-	letterSpacing: '0.06em',
-	textTransform: 'uppercase' as const,
-	color: colors.textMuted,
-}
-
 const triggerCss = {
 	display: 'flex',
 	alignItems: 'center',
@@ -264,8 +248,8 @@ const triggerCss = {
 	padding: '0.3rem 0.5rem 0.3rem 0.4rem',
 	boxSizing: 'border-box' as const,
 	borderRadius: '12px',
-	border: `1.5px solid ${colors.border}`,
-	background: 'transparent',
+	border: `1px solid color-mix(in srgb, ${colors.border} 30%, ${colors.surface})`,
+	background: colors.surface,
 	color: colors.text,
 	// Buttons do not inherit the page face on their own.
 	font: `650 0.875rem/1 ${typography.fontFamily}`,
@@ -273,11 +257,17 @@ const triggerCss = {
 	cursor: 'pointer',
 	transition: `border-color ${transitions.fast}, background-color ${transitions.fast}`,
 	'&[data-open]': {
-		borderColor: colors.textMuted,
+		borderColor: `color-mix(in srgb, ${colors.border} 65%, ${colors.surface})`,
 		backgroundColor: colors.surface,
 	},
+	'&:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: 3,
+	},
 	[hoverMq]: {
-		'&:hover': { borderColor: colors.textMuted },
+		'&:hover': {
+			borderColor: `color-mix(in srgb, ${colors.border} 65%, ${colors.surface})`,
+		},
 	},
 }
 

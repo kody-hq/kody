@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { whereItWentSectionId } from '#universal/org-pages.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useState } from 'react'
@@ -17,12 +18,7 @@ import {
 	type CreditAttributionVisitorRow,
 } from '#universal/credit-attribution.ts'
 import { formatOnCreditsMicroUsd } from '#universal/usage-presentation.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
 	getGhostButtonCss,
@@ -410,9 +406,7 @@ const expandCss = {
 const showAllCss = {
 	marginTop: spacing.sm,
 	padding: `${spacing.xs} ${spacing.md}`,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.md,
-	background: colors.surface,
+	...surfaceCardCss,
 	color: colors.text,
 	cursor: 'pointer',
 	fontSize: typography.fontSize.sm,

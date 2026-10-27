@@ -116,6 +116,10 @@ export function Combobox(props: ComboboxProps) {
 				placeholder={props.placeholder}
 				autoComplete="off"
 				css={{ ...getSelectCss(), cursor: 'text' }}
+				onClick={() => {
+					setOpen(true)
+					setQuery('')
+				}}
 				onFocus={() => {
 					setOpen(true)
 					setQuery('')
@@ -176,7 +180,7 @@ export function Combobox(props: ComboboxProps) {
 					margin: 0,
 					boxSizing: 'border-box',
 					padding: spacing.xs,
-					border: `1px solid ${colors.border}`,
+					border: `1px solid ${colors.borderSubtle}`,
 					borderRadius: radius.md,
 					boxShadow: shadows.md,
 					background: colors.surface,

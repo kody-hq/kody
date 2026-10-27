@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
 import { type CSSObject } from '@emotion/react'
 import { useId, type ReactNode, type MouseEvent } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -221,6 +222,12 @@ const shellCss: CSSObject = {
 
 const paneCss: CSSObject = {
 	...getSurfaceCardCss(),
+	background: colors.surface,
+	boxShadow: `0 2px 8px color-mix(in srgb, ${colors.text} 3%, transparent)`,
+	'@media (prefers-color-scheme: dark)': {
+		...nestedSurfaceDarkCss,
+		boxShadow: `0 2px 8px color-mix(in srgb, ${colors.background} 25%, transparent)`,
+	},
 	padding: 0,
 	minWidth: 0,
 	// Clip only the corners; the table scroller owns overflow so wide rows
@@ -244,7 +251,7 @@ const toolbarCss: CSSObject = {
 	gap: spacing.sm,
 	flexWrap: 'wrap' as const,
 	padding: `0.7rem ${spacing.md}`,
-	borderBottom: `1px solid ${colors.border}`,
+	borderBottom: `1px solid ${colors.borderSubtle}`,
 	'@container (max-width: 620px)': {
 		gap: spacing.xs,
 	},
@@ -282,14 +289,14 @@ const headCellCss: CSSObject = {
 	textTransform: 'uppercase' as const,
 	color: colors.textMuted,
 	padding: `${spacing.xs} ${spacing.md}`,
-	borderBottom: `1px solid ${colors.border}`,
+	borderBottom: `1px solid ${colors.borderSubtle}`,
 	whiteSpace: 'nowrap' as const,
 	backgroundColor: colors.surface,
 }
 
 const cellCss: CSSObject = {
 	padding: `0.55rem ${spacing.md}`,
-	borderBottom: `1px solid ${colors.border}`,
+	borderBottom: `1px solid ${colors.borderSubtle}`,
 	verticalAlign: 'middle' as const,
 	color: colors.text,
 	overflow: 'hidden',
@@ -310,7 +317,7 @@ const cardFallbackCss: CSSObject = {
 		'& table, & tbody, & tr, & td': { display: 'block', width: 'auto' },
 		'& tbody tr[data-record-row]': { padding: 0 },
 		'& tbody tr:not([data-record-row])': {
-			borderBottom: `1px solid ${colors.border}`,
+			borderBottom: `1px solid ${colors.borderSubtle}`,
 			padding: `0.55rem ${spacing.md}`,
 		},
 		'& td': {
@@ -384,7 +391,7 @@ const recordRowCss: CSSObject = {
 		padding: 0,
 		backgroundColor: colors.background,
 		boxShadow: `inset 3px 0 0 ${colors.primary}`,
-		borderBottom: `1px solid ${colors.border}`,
+		borderBottom: `1px solid ${colors.borderSubtle}`,
 		// The editor (datetime-local, combobox, long help text) must not
 		// contribute min-content width back into the table.
 		minWidth: 0,
@@ -410,7 +417,7 @@ export const recordBodyCss: CSSObject = {
 const footerCss: CSSObject = {
 	display: 'grid',
 	padding: spacing.sm,
-	borderTop: `1px solid ${colors.border}`,
+	borderTop: `1px solid ${colors.borderSubtle}`,
 }
 
 export function RecordTable(props: RecordTableProps) {
