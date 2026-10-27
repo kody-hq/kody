@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type * as AuthorizeModule from '#worker/authorization/authorize.ts'
 import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 
@@ -82,7 +83,7 @@ function authorizationError() {
 	return new AuthorizationError({
 		code: 'missing_permission',
 		permission: 'package:create',
-		orgId: 'org-acme',
+		orgId: 'org-acme' as OwnerId,
 		resource: null,
 		message: 'You need package:create in @acme.',
 	})

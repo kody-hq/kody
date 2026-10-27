@@ -43,7 +43,7 @@ export type RepositoryCreated = {
 	prompt: string
 }
 
-export type RepositoryCreateRefused = {
+type RepositoryCreateRefused = {
 	ok: false
 	error: string
 	field: 'name' | 'owner' | null
