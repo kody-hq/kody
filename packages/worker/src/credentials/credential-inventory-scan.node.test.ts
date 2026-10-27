@@ -115,6 +115,10 @@ test('status returns the module itself reads or calls are not display-only', () 
 			help() { return { headers: { Authorization: 'Bearer ${vault}' } } },
 			run() { return fetch('https://api.example.com', this.help()) },
 		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { const url = this.status; return fetch(url()) },
+		}`,
 	]) {
 		expect(
 			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
