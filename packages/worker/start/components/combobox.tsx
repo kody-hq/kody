@@ -90,7 +90,7 @@ export function Combobox(props: ComboboxProps) {
 		setDraft(option.label)
 		setQuery('')
 		setOpen(false)
-		props.onChange(option.id)
+		if (option.id !== props.value) props.onChange(option.id)
 	}
 	return (
 		<div css={{ display: 'grid', gap: spacing.xs, minWidth: 0 }}>

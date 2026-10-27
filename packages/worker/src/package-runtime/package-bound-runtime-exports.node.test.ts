@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -101,7 +101,10 @@ async function loadHostedPackageRuntime(
 	packageId: string,
 	runtime: Record<string, unknown>,
 ) {
-	const root = await mkdtemp(path.join(tmpdir(), 'kody-bound-exports-'))
+	// Resolve macOS temp-directory symlinks so relative and direct imports share one module.
+	const root = await realpath(
+		await mkdtemp(path.join(tmpdir(), 'kody-bound-exports-')),
+	)
 	roots.push(root)
 	const runtimePath = path.join(root, '.__kody_virtual__', 'runtime.js')
 	const packagePath = path.join(root, buildPackageRuntimeModulePath(packageId))

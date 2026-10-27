@@ -54,12 +54,18 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	)
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
-		.selectOption('oauth')
+		.fill('OAuth')
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.press('Enter')
 	await expect(page).toHaveURL(/\/credentials\?kind=oauth$/)
 	await expect(row).toHaveCount(0)
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
-		.selectOption('secret')
+		.fill('Key')
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.press('Enter')
 	await expect(row).toBeVisible()
 	// Do not wait for the search navigation before changing another filter.
 	await page
@@ -67,7 +73,10 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 		.pressSequentially('DEMO')
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
-		.selectOption('oauth')
+		.fill('OAuth')
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.press('Enter')
 	await expect(page).toHaveURL(
 		(url) =>
 			url.searchParams.get('q') === 'DEMO' &&
@@ -76,7 +85,10 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	await expect(row).toHaveCount(0)
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
-		.selectOption('secret')
+		.fill('Key')
+	await page
+		.getByRole('combobox', { name: 'Filter credentials by kind' })
+		.press('Enter')
 	await expect(row).toBeVisible()
 	await page.getByLabel('Search credentials', { exact: true }).fill('')
 	await expect(page).toHaveURL(/\/credentials\?kind=secret$/)

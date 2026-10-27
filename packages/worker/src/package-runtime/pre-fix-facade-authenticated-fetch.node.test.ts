@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path, { dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -227,7 +227,10 @@ const executeRefusal =
  * integration gives an execute caller.
  */
 async function runServed(bundle: string, packageIds: Array<string>) {
-	const root = await mkdtemp(path.join(tmpdir(), 'kody-pre-fix-facade-'))
+	// Resolve macOS temp-directory symlinks so relative and direct imports share one module.
+	const root = await realpath(
+		await mkdtemp(path.join(tmpdir(), 'kody-pre-fix-facade-')),
+	)
 	roots.push(root)
 	await mkdir(path.join(root, '.__kody_virtual__'), { recursive: true })
 	await writeFile(

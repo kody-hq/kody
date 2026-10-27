@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -77,7 +77,10 @@ async function writeTempFiles(
 	cleanupCallbacks: Array<() => Promise<void>>,
 	files: Record<string, string>,
 ) {
-	const dir = await mkdtemp(join(tmpdir(), 'kody-runtime-isolation-'))
+	// Resolve macOS temp-directory symlinks so relative and direct imports share one module.
+	const dir = await realpath(
+		await mkdtemp(join(tmpdir(), 'kody-runtime-isolation-')),
+	)
 	cleanupCallbacks.push(() => rm(dir, { recursive: true, force: true }))
 	const urls: Record<string, string> = {}
 	for (const [relativePath, source] of Object.entries(files)) {
