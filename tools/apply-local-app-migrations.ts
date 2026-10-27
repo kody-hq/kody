@@ -104,8 +104,9 @@ function applyCommand(
  * APP_DB, AUDIT_DB, and JOBS_DB migrations for one local persist directory.
  * Bookkeeping reset stays APP_DB-only; it rewrites pre-squash `d1_migrations`
  * rows before the regular apply. Each apply is preceded by
- * `check-stale-local-migrations.ts`, which fails when the state records a
- * migration name that is no longer on disk (a renamed or deleted file).
+ * `check-stale-local-migrations.ts`, which fails when durable local state
+ * records a migration name that is no longer on disk (a renamed or deleted
+ * file). Disposable e2e persist is reset automatically instead.
  * `0090-teams-credential-org-binding.sql` rewrites API token scopes in SQL.
  * The same map lives in `packages/worker/src/api-tokens/legacy-scope-rewrite.ts`.
  */
