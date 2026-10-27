@@ -404,6 +404,41 @@ async function recordJoined(
 	})
 }
 
+async function liveDefaultTeamIds(
+	db: D1Database,
+	orgId: string,
+	teamIds: ReadonlyArray<string>,
+) {
+	const liveTeamIds: Array<string> = []
+	for (const teamId of teamIds) {
+		const team = await db
+			.prepare(
+				`SELECT id FROM teams
+				 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(teamId, orgId)
+			.first<{ id: string }>()
+		if (team) liveTeamIds.push(team.id)
+	}
+	return liveTeamIds
+}
+
+async function addLiveDefaultTeams(
+	input: RedeemInput<Extract<InviteLinkTarget, { kind: 'membership' }>>,
+	liveTeamIds: ReadonlyArray<string>,
+) {
+	for (const teamId of liveTeamIds) {
+		await addTeamMember({
+			db: input.db,
+			orgId: input.link.orgId,
+			teamId,
+			userId: input.user.userId,
+			addedByUserId: input.link.createdByUserId,
+			audit: input.audit,
+		})
+	}
+}
+
 async function redeemMembershipLink(
 	input: RedeemInput<Extract<InviteLinkTarget, { kind: 'membership' }>>,
 ): Promise<RedeemInviteLinkResult> {
@@ -415,7 +450,12 @@ async function redeemMembershipLink(
 		target,
 		orgId: link.orgId,
 	})
+	const liveTeamIds = await liveDefaultTeamIds(db, link.orgId, link.teamIds)
+	// Already in the org: still apply missing default teams. A prior attempt
+	// may have granted membership and then failed mid-team-write; releasing
+	// the claim would leave a member with no redemption and no teams.
 	if (await liveMembershipRole(db, link.orgId, user.userId)) {
+		await addLiveDefaultTeams(input, liveTeamIds)
 		return success(true)
 	}
 
@@ -434,20 +474,10 @@ async function redeemMembershipLink(
 		alreadyRedeemed &&
 		(await liveMembershipRole(db, link.orgId, user.userId))
 	) {
+		await addLiveDefaultTeams(input, liveTeamIds)
 		return success(true)
 	}
 
-	const liveTeamIds: Array<string> = []
-	for (const teamId of link.teamIds) {
-		const team = await db
-			.prepare(
-				`SELECT id FROM teams
-				 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(teamId, link.orgId)
-			.first<{ id: string }>()
-		if (team) liveTeamIds.push(team.id)
-	}
 	const writeMembership = async () => {
 		await addOrgMember({
 			db,
@@ -457,16 +487,7 @@ async function redeemMembershipLink(
 			invitedByUserId: link.createdByUserId,
 			audit: input.audit,
 		})
-		for (const teamId of liveTeamIds) {
-			await addTeamMember({
-				db,
-				orgId: link.orgId,
-				teamId,
-				userId: user.userId,
-				addedByUserId: link.createdByUserId,
-				audit: input.audit,
-			})
-		}
+		await addLiveDefaultTeams(input, liveTeamIds)
 		if (seatRole(target.role)) {
 			await syncSeatsAfterMembershipChange({
 				db,
@@ -478,7 +499,16 @@ async function redeemMembershipLink(
 	if (alreadyRedeemed) {
 		await writeMembership()
 	} else {
-		await withClaimReleasedOnFailure({ ...input, target }, writeMembership)
+		try {
+			await writeMembership()
+		} catch (error) {
+			// Do not release after a partial grant: membership would remain
+			// while the claim disappears, and retries would skip team writes.
+			if (!(await liveMembershipRole(db, link.orgId, user.userId))) {
+				await releaseClaim({ ...input, target })
+			}
+			throw error
+		}
 	}
 	if (!alreadyRedeemed) {
 		await recordJoined(input, {

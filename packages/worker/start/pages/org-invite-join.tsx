@@ -356,6 +356,9 @@ const linkButtonCss = {
 	alignItems: 'center',
 	justifyContent: 'center',
 	textDecoration: 'none',
+	'&:link, &:visited, &:hover, &:active, &:focus, &:focus-visible': {
+		textDecoration: 'none',
+	},
 }
 
 const linkSecondaryButtonCss = {
@@ -364,4 +367,7 @@ const linkSecondaryButtonCss = {
 	alignItems: 'center',
 	justifyContent: 'center',
 	textDecoration: 'none',
+	'&:link, &:visited, &:hover, &:active, &:focus, &:focus-visible': {
+		textDecoration: 'none',
+	},
 }

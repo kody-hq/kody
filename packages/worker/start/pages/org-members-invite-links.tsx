@@ -442,8 +442,11 @@ const teamOptionCss: CSSObject = {
 
 const roleSelectCss: CSSObject = {
 	...getSelectCss(),
+	// Match the People row Owner select: keep the control compact inside the
+	// form grid (grid items stretch to full width by default).
 	width: 'auto',
 	minWidth: '8rem',
+	justifySelf: 'start',
 	[mq.mobile]: {
 		minWidth: 'min(100%, 8rem)',
 		maxWidth: '100%',

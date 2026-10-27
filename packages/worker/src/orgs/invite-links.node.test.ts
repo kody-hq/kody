@@ -490,3 +490,95 @@ test('existing members rejoin without burning uses, and removed members can rejo
 	// Prior redemption is reused; removing someone does not spend another use.
 	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
 })
+
+test('a team write failure after membership still finishes teams on retry', async () => {
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			 VALUES ('team-eng', ?, 'engineering', 'Engineering', ?, ?)`,
+		)
+		.run(orgId, now, now)
+	const token = generateInviteLinkToken()
+	const tokenHash = await hashInviteLinkToken(token)
+	await createOrgInviteLink({
+		db,
+		orgId,
+		target: { kind: 'membership', role: 'member' },
+		createdByUserId: owner.personId,
+		tokenHash,
+		teamIds: ['team-eng'],
+		audit: createTestOrgAuditWriter({
+			db: auditDb,
+			actorUserId: owner.personId,
+		}),
+	})
+	sqlite.exec(
+		`CREATE TRIGGER fail_team_members BEFORE INSERT ON team_members
+		 BEGIN SELECT RAISE(ABORT, 'team write failed'); END`,
+	)
+	const link = (await getInviteLinkByTokenHash(db, tokenHash))!
+	const audit = () =>
+		createTestOrgAuditWriter({
+			db: auditDb,
+			appDb: db,
+			actorUserId: joiner.personId,
+		})
+	await expect(
+		redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: audit(),
+		}),
+	).rejects.toThrow(/team write failed/)
+	const membership = await db
+		.prepare(
+			`SELECT role FROM org_memberships
+			 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(orgId, joiner.personId)
+		.first<{ role: string }>()
+	expect(membership?.role).toBe('member')
+	// Claim stays while membership exists so retries can finish team writes.
+	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+	expect(
+		await db
+			.prepare(
+				`SELECT 1 AS ok FROM team_members
+				 WHERE team_id = 'team-eng' AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(joiner.personId)
+			.first<{ ok: number }>(),
+	).toBeNull()
+
+	sqlite.exec(`DROP TRIGGER fail_team_members`)
+	expect(
+		await redeemOrgInviteLink({
+			db,
+			env: { APP_DB: db } as Env,
+			link: (await getInviteLinkByTokenHash(db, tokenHash))!,
+			user: {
+				userId: joiner.personId,
+				email: 'bob@partner.org',
+				emailVerified: true,
+			},
+			audit: audit(),
+		}),
+	).toMatchObject({ ok: true, alreadyMember: true })
+	expect(
+		await db
+			.prepare(
+				`SELECT 1 AS ok FROM team_members
+				 WHERE team_id = 'team-eng' AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(joiner.personId)
+			.first<{ ok: number }>(),
+	).toMatchObject({ ok: 1 })
+	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(1)
+})
