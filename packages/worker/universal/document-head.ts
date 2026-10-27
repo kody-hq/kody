@@ -473,7 +473,7 @@ const routeDocumentHeads = {
 		const join = loaderData?.orgInviteJoin
 		if (join?.ok) {
 			const name = join.org.displayName?.trim() || join.org.slug
-			return titleOnly(`Join ${name}`)
+			return titleOnly(`You're invited to ${name}`)
 		}
 		return titleOnly('Invite link')
 	},

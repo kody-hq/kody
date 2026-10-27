@@ -298,7 +298,7 @@ export function OrgMembersInviteLinks({
 							onChange={(event) => setLabel(event.currentTarget.value)}
 						/>
 						<p css={accountFieldNoteCss}>
-							A short name for your team. Shown in the active list only.
+							Helps you tell your links apart. Only admins see it.
 						</p>
 					</label>
 					{teams.length > 0 ? (

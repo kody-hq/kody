@@ -28,7 +28,7 @@ export function inviteLinkOfferCopy(data: JoinPageData): InviteLinkOfferCopy {
 	switch (offer.kind) {
 		case 'membership':
 			return {
-				title: `Join ${name}`,
+				title: `You're invited to ${name}`,
 				description: `${invitedYou} to join ${name} as ${offer.roleLabel}.`,
 				satisfied: `You already belong to ${name}.`,
 				subject: name,

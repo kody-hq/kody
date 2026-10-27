@@ -261,7 +261,10 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 }
 const pageCss: CSSObject = {
 	...stackedPageCss,
+	// Same centered reading column as other public pages (support, verify-email).
+	width: '100%',
 	maxWidth: '36rem',
+	marginInline: 'auto',
 }
 
 const bodyCss: CSSObject = {
