@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { expect, test } from 'vitest'
 
 import {
@@ -75,7 +74,7 @@ test('CLA check allowlists the Licensor, bots, signed humans, and rejects everyo
 		'That signing comment on the pull request satisfies this check.',
 	)
 	expect(formatClaFailure(failing)).toContain(
-		'The signer is recorded on main after the pull request merges.',
+		'The signer is recorded on the cla-signatures branch after the pull request merges.',
 	)
 })
 
@@ -239,11 +238,7 @@ test('multiple CLA signing comments record each new signer only once', () => {
 	expect(alreadySigned).toEqual({ file: result.file, recorded: [] })
 })
 
-test('serialized CLA signers file matches the repo formatter', async () => {
-	const signersPath = new URL('../../.github/cla-signers.json', import.meta.url)
-	const source = await readFile(signersPath, 'utf8')
-	expect(serializeClaSignersFile(parseClaSignersFile(source))).toBe(source)
-
+test('serialized CLA signers file matches the repo formatter', () => {
 	const serialized = serializeClaSignersFile(
 		signersFile({
 			allowlist: {

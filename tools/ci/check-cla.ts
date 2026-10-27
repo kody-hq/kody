@@ -303,7 +303,7 @@ export function formatClaFailure(
 		'Read docs/legal/individual-cla.md (or the Entity CLA if an organization owns the work).',
 		'Comment on the pull request: I have read the CLA and I hereby sign the CLA',
 		'That signing comment on the pull request satisfies this check.',
-		'The signer is recorded on main after the pull request merges. See docs/contributing/inbound-contributions.md.',
+		'The signer is recorded on the cla-signatures branch after the pull request merges. See docs/contributing/inbound-contributions.md.',
 		'',
 		'Missing signatures:',
 		...result.missing.map((entry) => `- ${entry.reason}`),
