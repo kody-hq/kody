@@ -21,6 +21,8 @@ export type PackageRepoNavActive =
 	| 'files'
 	| 'settings'
 	| 'collaborators'
+	/** Forks has no tab of its own; it is reached from the Forks count. */
+	| 'forks'
 	| PackageCredentialsTab
 
 function renderPackageRepoNav(input: {

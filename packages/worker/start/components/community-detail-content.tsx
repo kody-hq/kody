@@ -20,6 +20,7 @@ import {
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
 import { renderPackageRepoChrome } from './package-repo-nav.tsx'
+import { packageForksHref } from '#universal/package-forks.ts'
 import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
@@ -186,7 +187,15 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 						</div>
 						<div>
 							<dt>Forks</dt>
-							<dd data-testid="community-detail-forks">{listing.forkCount}</dd>
+							<dd>
+								<SiteLink
+									href={packageForksHref({ username, kodyId })}
+									data-testid="community-detail-forks"
+									css={detailCategoryLinkCss}
+								>
+									{listing.forkCount}
+								</SiteLink>
+							</dd>
 						</div>
 						<div>
 							<dt>Adaptation effort</dt>

@@ -94,6 +94,13 @@ Profile activity reads stored `community_activity_events` plus public forks from
 `community_forks`. Forks appear only while the forker's saved package copy has
 `is_private = 0`. Ratings are never projected into profile activity.
 
+`fork_count` (catalog cards, listing detail, OG image, MCP) counts **public**
+forks only: the fork's saved package is live, `is_private = 0`, `hidden = 0`,
+and its org is active. Inert forks never count. `/@owner/kody-id/forks` lists
+those plus private or hidden forks the viewer can `package:read`
+(`src/app/community-forks-data.ts`); the package page adds the same private
+forks to its Forks count, so the count and the list always agree.
+
 `community_forks.origin_commit` is the origin SHA the fork last absorbed. It
 starts as HEAD copied at fork time. When that SHA and the listing pin differ,
 the platform walks the **listing origin** Artifacts repo from the absorb marker.

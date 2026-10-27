@@ -195,6 +195,7 @@ import { Route as AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport
 import { Route as AppAtChar123usernameChar125KodyIdApprovePublishRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-publish'
 import { Route as AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport } from './routes/_app.@{$username}_.$kodyId_.collaborators'
 import { Route as AppAtChar123usernameChar125KodyIdCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.credentials'
+import { Route as AppAtChar123usernameChar125KodyIdForksRouteImport } from './routes/_app.@{$username}_.$kodyId_.forks'
 import { Route as AppAtChar123usernameChar125KodyIdMappingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.mappings'
 import { Route as AppAtChar123usernameChar125KodyIdSettingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.settings'
 import { Route as AppAtChar123usernameChar125KodyIdTriggersRouteImport } from './routes/_app.@{$username}_.$kodyId_.triggers'
@@ -1259,6 +1260,12 @@ const AppAtChar123usernameChar125KodyIdCredentialsRoute =
     path: '/@{$username}/$kodyId/credentials',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123usernameChar125KodyIdForksRoute =
+  AppAtChar123usernameChar125KodyIdForksRouteImport.update({
+    id: '/@{$username}_/$kodyId_/forks',
+    path: '/@{$username}/$kodyId/forks',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123usernameChar125KodyIdMappingsRoute =
   AppAtChar123usernameChar125KodyIdMappingsRouteImport.update({
     id: '/@{$username}_/$kodyId_/mappings',
@@ -1882,6 +1889,7 @@ export interface FileRoutesByFullPath {
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -2141,6 +2149,7 @@ export interface FileRoutesByTo {
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -2403,6 +2412,7 @@ export interface FileRoutesById {
   '/_app/@{$username}_/$kodyId_/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/_app/@{$username}_/$kodyId_/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
   '/_app/@{$username}_/$kodyId_/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/_app/@{$username}_/$kodyId_/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/_app/@{$username}_/$kodyId_/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/_app/@{$username}_/$kodyId_/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/_app/@{$username}_/$kodyId_/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -2665,6 +2675,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
     | '/@{$username}/$kodyId/credentials'
+    | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
@@ -2924,6 +2935,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
     | '/@{$username}/$kodyId/credentials'
+    | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
@@ -3185,6 +3197,7 @@ export interface FileRouteTypes {
     | '/_app/@{$username}_/$kodyId_/approve-publish'
     | '/_app/@{$username}_/$kodyId_/collaborators'
     | '/_app/@{$username}_/$kodyId_/credentials'
+    | '/_app/@{$username}_/$kodyId_/forks'
     | '/_app/@{$username}_/$kodyId_/mappings'
     | '/_app/@{$username}_/$kodyId_/settings'
     | '/_app/@{$username}_/$kodyId_/triggers'
@@ -4685,6 +4698,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$username}_/$kodyId_/forks': {
+      id: '/_app/@{$username}_/$kodyId_/forks'
+      path: '/@{$username}/$kodyId/forks'
+      fullPath: '/@{$username}/$kodyId/forks'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdForksRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$username}_/$kodyId_/mappings': {
       id: '/_app/@{$username}_/$kodyId_/mappings'
       path: '/@{$username}/$kodyId/mappings'
@@ -5286,6 +5306,7 @@ interface AppRouteChildren {
   AppAtChar123usernameChar125KodyIdApprovePublishRoute: typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   AppAtChar123usernameChar125KodyIdCollaboratorsRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
   AppAtChar123usernameChar125KodyIdCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  AppAtChar123usernameChar125KodyIdForksRoute: typeof AppAtChar123usernameChar125KodyIdForksRoute
   AppAtChar123usernameChar125KodyIdMappingsRoute: typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   AppAtChar123usernameChar125KodyIdSettingsRoute: typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   AppAtChar123usernameChar125KodyIdTriggersRoute: typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -5446,6 +5467,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123usernameChar125KodyIdCollaboratorsRoute,
   AppAtChar123usernameChar125KodyIdCredentialsRoute:
     AppAtChar123usernameChar125KodyIdCredentialsRoute,
+  AppAtChar123usernameChar125KodyIdForksRoute:
+    AppAtChar123usernameChar125KodyIdForksRoute,
   AppAtChar123usernameChar125KodyIdMappingsRoute:
     AppAtChar123usernameChar125KodyIdMappingsRoute,
   AppAtChar123usernameChar125KodyIdSettingsRoute:

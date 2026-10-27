@@ -24,6 +24,7 @@ import {
 	type CommunityIndexLoaderData,
 } from '#universal/loader-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { loadViewerPrivateCommunityForks } from '#app/community-forks-data.ts'
 import { setRequestDataCacheLookup } from '#app/request-cache.ts'
 import { listCommunityForksByListingIdsAndUser } from '#worker/community/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
@@ -420,22 +421,38 @@ async function loadCommunityDetailDataUncached(
 	const viewerUserId = user?.request.org.id ?? null
 	const viewerIsOwner =
 		viewerUserId != null && ownerUserId != null && viewerUserId === ownerUserId
-	const viewerInstalls = await loadViewerListingInstalls({
-		env,
-		user: user?.mcpUser ?? null,
-		listings: [
-			{
-				id: listing.id,
-				kodyId: listing.kodyId,
-				name: listing.name,
-				pinnedCommit: listing.pinnedCommit,
-			},
-		],
-	})
+	const [viewerInstalls, viewerPrivateForks] = await Promise.all([
+		loadViewerListingInstalls({
+			env,
+			user: user?.mcpUser ?? null,
+			listings: [
+				{
+					id: listing.id,
+					kodyId: listing.kodyId,
+					name: listing.name,
+					pinnedCommit: listing.pinnedCommit,
+				},
+			],
+		}),
+		// The cached listing counts public forks only; add the private forks
+		// this viewer can read so the count matches the Forks page.
+		loadViewerPrivateCommunityForks({
+			env,
+			listingId: listing.id,
+			viewer: user?.mcpUser ?? null,
+		}),
+	])
 	const viewerInstall = viewerInstalls.get(listing.id) ?? null
+	const viewerListing =
+		viewerPrivateForks.length > 0
+			? {
+					...sourceAheadListing,
+					forkCount: sourceAheadListing.forkCount + viewerPrivateForks.length,
+				}
+			: sourceAheadListing
 	const listingWithHead = viewerInstall
-		? { ...sourceAheadListing, viewerInstall }
-		: sourceAheadListing
+		? { ...viewerListing, viewerInstall }
+		: viewerListing
 	// listingBehind is overlaid on the package-page frame from the owner's
 	// fresh AccountPackageDetail.listingNeedsRepublish (not this public cache).
 	return composeCommunityDetailLoaderData({

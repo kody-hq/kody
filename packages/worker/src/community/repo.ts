@@ -2,7 +2,10 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	andActiveOrgSql,
+	andLiveDeletedAtSql,
+} from '#worker/soft-delete/live-sql.ts'
 import { tokenizeSearchText } from '#worker/vectorize/scoring.ts'
 import {
 	emptyCommunityCategoryCounts,
@@ -11,6 +14,7 @@ import {
 	type CommunityCategoryCounts,
 	type CommunityListingCategory,
 } from '#universal/community-categories.ts'
+import { liveGrantForPersonSql } from '#worker/orgs/repo.ts'
 import { CommunityForkClaimLostError } from './errors.ts'
 import { normalizePackageManifestVersion } from './package-version.ts'
 import {
@@ -1231,6 +1235,24 @@ export async function listCommunityForksByListingIdsAndUser(
 	return forks
 }
 
+/**
+ * A fork is listable once its saved package is live in an active org. Inert
+ * forks (no saved package yet) never count.
+ */
+const communityForkPackageJoinSql = `INNER JOIN saved_packages AS sp
+	ON sp.id = f.forked_package_id
+	AND sp.user_id = f.forker_user_id${andLiveDeletedAtSql('sp')}
+INNER JOIN orgs AS o
+	ON o.id = sp.user_id${andActiveOrgSql('o')}`
+
+/** Anyone may see a fork whose package is neither private nor hidden. */
+const publicCommunityForkSql = 'sp.is_private = 0 AND sp.hidden = 0'
+
+/**
+ * Public fork counts only. Private or hidden fork copies stay out so the
+ * public number never reveals them; viewers who can read a private fork get
+ * it added on top (`loadViewerPrivateCommunityForks`).
+ */
 export async function countCommunityForksByListingIds(
 	db: D1Database,
 	listingIds: Array<string>,
@@ -1243,10 +1265,12 @@ export async function countCommunityForksByListingIds(
 		const placeholders = idChunk.map(() => '?').join(', ')
 		const rows = await db
 			.prepare(
-				`SELECT listing_id, COUNT(*) AS fork_count
-				FROM community_forks
-				WHERE listing_id IN (${placeholders})
-				GROUP BY listing_id`,
+				`SELECT f.listing_id AS listing_id, COUNT(*) AS fork_count
+				FROM community_forks AS f
+				${communityForkPackageJoinSql}
+				WHERE f.listing_id IN (${placeholders})
+					AND ${publicCommunityForkSql}
+				GROUP BY f.listing_id`,
 			)
 			.bind(...idChunk)
 			.all<Record<string, unknown>>()
@@ -1255,6 +1279,100 @@ export async function countCommunityForksByListingIds(
 		}
 	}
 	return counts
+}
+
+export type CommunityForkListRow = {
+	forkId: string
+	createdAt: string
+	packageId: string
+	kodyId: string
+	description: string
+	isPrivate: boolean
+	ownerId: string
+	ownerSlug: string
+	ownerDisplayName: string | null
+	ownerAvatarKey: string | null
+	publishedCommit: string | null
+}
+
+const communityForkListSelectSql = `SELECT f.id AS fork_id, f.created_at AS created_at,
+	sp.id AS package_id, sp.kody_id AS kody_id, sp.description AS description,
+	sp.is_private AS is_private, sp.hidden AS hidden, sp.user_id AS owner_id,
+	o.slug AS owner_slug, o.display_name AS owner_display_name,
+	o.avatar_key AS owner_avatar_key, es.published_commit AS published_commit
+FROM community_forks AS f
+${communityForkPackageJoinSql}
+LEFT JOIN entity_sources AS es
+	ON es.id = sp.source_id
+	AND es.user_id = sp.user_id${andLiveDeletedAtSql('es')}`
+
+function mapCommunityForkListRow(
+	row: Record<string, unknown>,
+): CommunityForkListRow {
+	return {
+		forkId: String(row['fork_id']),
+		createdAt: String(row['created_at']),
+		packageId: String(row['package_id']),
+		kodyId: String(row['kody_id']),
+		description: String(row['description'] ?? ''),
+		isPrivate: Number(row['is_private']) === 1 || Number(row['hidden']) === 1,
+		ownerId: String(row['owner_id']),
+		ownerSlug: String(row['owner_slug']),
+		ownerDisplayName:
+			row['owner_display_name'] == null
+				? null
+				: String(row['owner_display_name']),
+		ownerAvatarKey:
+			row['owner_avatar_key'] == null ? null : String(row['owner_avatar_key']),
+		publishedCommit:
+			row['published_commit'] == null ? null : String(row['published_commit']),
+	}
+}
+
+/** Newest public forks of a listing (same predicate as the public count). */
+export async function listPublicCommunityForks(
+	db: D1Database,
+	input: { listingId: string; limit: number },
+): Promise<Array<CommunityForkListRow>> {
+	const rows = await db
+		.prepare(
+			`${communityForkListSelectSql}
+			WHERE f.listing_id = ? AND ${publicCommunityForkSql}
+			ORDER BY f.created_at DESC, f.id ASC
+			LIMIT ?`,
+		)
+		.bind(input.listingId, input.limit)
+		.all<Record<string, unknown>>()
+	return (rows.results ?? []).map(mapCommunityForkListRow)
+}
+
+/**
+ * Private or hidden forks in orgs the person belongs to or holds a grant in.
+ * Only a candidate set: callers must still check `package:read` per fork.
+ */
+export async function listPrivateCommunityForkCandidatesForPerson(
+	db: D1Database,
+	input: { listingId: string; personId: string },
+): Promise<Array<CommunityForkListRow>> {
+	const rows = await db
+		.prepare(
+			`${communityForkListSelectSql}
+			WHERE f.listing_id = ?
+				AND NOT (${publicCommunityForkSql})
+				AND (
+					EXISTS (
+						SELECT 1 FROM org_memberships AS m
+						WHERE m.org_id = sp.user_id
+							AND m.user_id = ?
+							AND m.deleted_at IS NULL
+					)
+					OR EXISTS (${liveGrantForPersonSql('sp.user_id')})
+				)
+			ORDER BY f.created_at DESC, f.id ASC`,
+		)
+		.bind(input.listingId, input.personId, input.personId, input.personId)
+		.all<Record<string, unknown>>()
+	return (rows.results ?? []).map(mapCommunityForkListRow)
 }
 
 export async function listCommunityActivityRowsForAdmin(

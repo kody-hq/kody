@@ -346,6 +346,14 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
+	communityPackageForks: ({ loaderData, pathname }) => {
+		const page = loaderData?.packageForks
+		if (!page) return titleOnly('Package forks')
+		return {
+			title: `${page.shell.name} forks`,
+			canonicalPath: pathname,
+		}
+	},
 	communityDetailFiles: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')

@@ -115,7 +115,7 @@ type OrgAccessRow = {
  * `personId` (bound as two `?` placeholders, in order) holds a live grant in
  * the org named by `orgIdSql`: directly, or through a live team membership.
  */
-function liveGrantForPersonSql(orgIdSql: string): string {
+export function liveGrantForPersonSql(orgIdSql: string): string {
 	return `SELECT 1 FROM grants g
 	        WHERE g.org_id = ${orgIdSql}
 	          AND g.deleted_at IS NULL

@@ -2,6 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureCommunityFlowSchema } from './community-flow-test-schema.ts'
 import {
 	getCommunityListingById,
@@ -19,6 +20,7 @@ import { type CommunityListingStatus } from './types.ts'
 async function createListingsDb() {
 	const sqlite = new DatabaseSync(':memory:')
 	await ensureCommunityFlowSchema(createD1FromSqlite(sqlite))
+	await ensureOrgsTestSchema(createD1FromSqlite(sqlite))
 	const queries: Array<string> = []
 	const db = createD1FromSqlite(sqlite, { queries })
 	return { db, queries }
@@ -79,7 +81,28 @@ test('getCommunityListingsByIds returns public listings in input order with batc
 		adaptation_effort: 2,
 		note: null,
 	})
-	for (const index of [1, 2]) {
+	// Forks 1 and 2 are public copies; fork 3 is private and must not count.
+	for (const index of [1, 2, 3]) {
+		await db
+			.prepare(
+				`INSERT INTO orgs (id, slug, created_at, updated_at)
+				VALUES (?, ?, '2026-10-01', '2026-10-01')`,
+			)
+			.bind(`forker-${index}`, `forker-${index}`)
+			.run()
+		await db
+			.prepare(
+				`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id, is_private)
+				VALUES (?, ?, ?, 'beta', '', ?, ?)`,
+			)
+			.bind(
+				`pkg-fork-b-${index}`,
+				`forker-${index}`,
+				`@forker-${index}/beta`,
+				`src-fork-b-${index}`,
+				index === 3 ? 1 : 0,
+			)
+			.run()
 		await insertCommunityFork(db, {
 			id: `fork-b-${index}`,
 			listing_id: 'listing-b',
