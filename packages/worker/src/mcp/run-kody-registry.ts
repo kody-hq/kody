@@ -49,6 +49,8 @@ import {
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
+	trackRunSecretToolName,
+	trackSecretValueForms,
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import { type BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
@@ -532,11 +534,22 @@ export async function buildKodyToolContext(
 		{},
 		...runtimeHelperKodyToolSets.map(({ tools }) => tools),
 	) as AdditionalKodyTools
+	const trackRunSecretTool = {
+		[trackRunSecretToolName]: async (args: unknown) => {
+			trackSecretValueForms(
+				options?.trackSecretInputValue,
+				isRecord(args) ? args.value : undefined,
+			)
+			return { ok: true }
+		},
+	} satisfies AdditionalKodyTools
+	assertNoCapabilityCollisions(capabilityMap, trackRunSecretTool)
 	return {
 		tools: {
 			...capabilityKodyTools,
 			...runtimeHelperKodyTools,
 			...additionalTools,
+			...trackRunSecretTool,
 		},
 		mcpServers,
 	}

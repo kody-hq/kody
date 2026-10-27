@@ -184,7 +184,12 @@ test("an imported package's createAuthenticatedFetch and oauthClientCredentials 
 	)
 
 	expect(runLevel).toEqual([])
-	expect(calls).toEqual([{ name: 'integrationGet', args: { name: 'svc' } }])
+	// The minted token is registered with the run's redactor through the
+	// same binding.
+	expect(calls).toEqual([
+		{ name: 'integrationGet', args: { name: 'svc' } },
+		{ name: '__kodyTrackRunSecret', args: { value: 'placeholder-only' } },
+	])
 	expect(fetched).toEqual([
 		{
 			url: 'https://api.example.com/v1/me',
