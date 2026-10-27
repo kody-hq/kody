@@ -684,8 +684,26 @@ function scanParsedModule(
 ) {
 	const scopes = collectScopes(parsed, constants)
 	const readCount = new Map<Binding, number>()
+	// Display functions the module itself reads or calls (`fetch(status())`,
+	// `this.help()`) can feed a request, so their returns are not exempt.
+	const referencedDisplayNames = new Set<string>()
 	walkAst(parsed, (node, ancestors) => {
+		if (
+			(node.type === 'CallExpression' ||
+				node.type === 'OptionalCallExpression') &&
+			node.callee?.type !== 'Identifier'
+		) {
+			const name = getCalleeName(node.callee)?.toLowerCase()
+			if (name && displayReturnFunctionNames.has(name)) {
+				referencedDisplayNames.add(name)
+			}
+			return
+		}
 		if (node.type !== 'Identifier' || !isVariableRead(node, ancestors)) return
+		const name = getNodeName(node)?.toLowerCase()
+		if (name && displayReturnFunctionNames.has(name)) {
+			referencedDisplayNames.add(name)
+		}
 		const binding = bindingInScope(scopes, getNodeName(node), ancestors)
 		if (binding) readCount.set(binding, (readCount.get(binding) ?? 0) + 1)
 	})
@@ -734,6 +752,7 @@ function scanParsedModule(
 		const placementFor = (text: string) => (match: PlaceholderMatch) =>
 			classifyPlacement(text, match, node, ancestors, {
 				constants: constantsIn(ancestors),
+				referencedDisplayNames,
 				binding: (declarator) => {
 					const name = getNodeName(declarator.id)
 					const binding = bindingInScope(scopes, name, [
@@ -778,12 +797,17 @@ function scanParsedModule(
 			case 'TemplateElement': {
 				// A piece of a template that does not resolve to one string: the
 				// placeholder sits in a computed value, so only its kind is known.
+				const display = displayOnlyPlacement(
+					ancestors,
+					node,
+					referencedDisplayNames,
+				)
 				recordPlaceholders(
 					templateElementText(node),
 					(match) =>
 						match.kind === 'secret-basic'
 							? { type: 'basic' }
-							: otherPlacement('template-computed'),
+							: (display ?? otherPlacement('template-computed')),
 					scan,
 				)
 				return
@@ -856,6 +880,7 @@ function safeIdentifier(value: string | null) {
 
 type ClassifyContext = {
 	constants: ReadonlyMap<string, string>
+	referencedDisplayNames: ReadonlySet<string>
 	/** Whether the variable a declarator binds is read, reassigned, or unused. */
 	binding: (declarator: AstNode) => 'read' | 'reassigned' | 'unused'
 }
@@ -914,14 +939,16 @@ function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
 
 /**
  * Display/help sites for vault tokens: values returned from a
- * status/help/docs/usage function, and never when a call or `new` encloses
- * the placeholder (so fetch bodies and request helpers stay stamp-gated).
+ * status/help/docs/usage function the module never reads or calls itself, and
+ * never when a call or `new` encloses the placeholder (so fetch bodies and
+ * request helpers stay stamp-gated).
  * Documentation-keyed objects elsewhere (`const spec = { description }`) are
  * not exempt: a later read can feed them into a request.
  */
 function displayOnlyPlacement(
 	ancestors: ReadonlyArray<AstNode>,
 	node: AstNode,
+	referencedDisplayNames: ReadonlySet<string>,
 ): CredentialPlacement | null {
 	for (const ancestor of ancestors) {
 		if (
@@ -941,7 +968,11 @@ function displayOnlyPlacement(
 		)
 	if (!inReturn) return null
 	const functionName = enclosingFunctionName(ancestors)?.toLowerCase() ?? null
-	if (!functionName || !displayReturnFunctionNames.has(functionName)) {
+	if (
+		!functionName ||
+		!displayReturnFunctionNames.has(functionName) ||
+		referencedDisplayNames.has(functionName)
+	) {
 		return null
 	}
 	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
@@ -964,7 +995,11 @@ function classifyPlacement(
 	context: ClassifyContext,
 ): CredentialPlacement {
 	if (match.kind === 'secret-basic') return { type: 'basic' }
-	const displayOnly = displayOnlyPlacement(ancestors, node)
+	const displayOnly = displayOnlyPlacement(
+		ancestors,
+		node,
+		context.referencedDisplayNames,
+	)
 	if (displayOnly) return displayOnly
 	const parent = parentOf(ancestors)
 	if (

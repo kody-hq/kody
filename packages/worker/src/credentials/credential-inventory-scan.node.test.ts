@@ -96,6 +96,32 @@ test('assigned status arrow returns stay display-only for vault examples', () =>
 	expect(directReturn.vaultPlacements).toEqual([other('display')])
 })
 
+test('interpolated status help text with a vault ref stays display-only', () => {
+	const result = scan(`
+		export function status(host) {
+			return \`curl https://\${host}/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}\`
+		}
+	`)
+	expect(result.vaultPlacements).toEqual([other('display')])
+})
+
+test('status returns the module itself reads or calls are not display-only', () => {
+	const vault =
+		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
+	for (const source of [
+		`export function status() { return 'https://api.example.com/?t=${vault}' }
+		export const run = () => fetch(status())`,
+		`export default {
+			help() { return { headers: { Authorization: 'Bearer ${vault}' } } },
+			run() { return fetch('https://api.example.com', this.help()) },
+		}`,
+	]) {
+		expect(
+			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
+		).toBe(true)
+	}
+})
+
 test('vault refs in separately bound objects that feed a request stay credential uses', () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
