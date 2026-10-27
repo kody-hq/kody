@@ -15,7 +15,7 @@ export type PackageForkView = {
 	iconUrl: string | null
 }
 
-export type PackageForksShell = {
+type PackageForksShell = {
 	username: string
 	kodyId: string
 	name: string
