@@ -7,6 +7,7 @@ import {
 	sharedProjectConfig,
 	sharedTestExclude,
 } from './vitest-shared.ts'
+import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
 
 // The pool restarts a Wrangler config read per test file, and each read logs
 // "Using secrets defined in packages/worker/.env" at the default log level.
@@ -33,19 +34,8 @@ const workersMaxWorkers = process.env.CI
 export default mergeConfig(
 	sharedProjectConfig,
 	defineProject({
-		resolve: {
-			// Same stand-in as vite.config.ts: workerd cannot compile WASM at runtime.
-			alias: [
-				{
-					find: /^harfbuzzjs$/,
-					replacement: resolve(
-						rootDir,
-						'packages/worker/src/og/harfbuzz-worker.ts',
-					),
-				},
-			],
-		},
 		plugins: [
+			harfbuzzWorker(),
 			cloudflareTest({
 				remoteBindings: false,
 				wrangler: {

@@ -8,8 +8,8 @@ import callbackWasm from './harfbuzz-callbacks.wasm'
  * workerd forbids compiling WASM at runtime, and the package entry does it
  * twice: it fetches and compiles `hb.wasm`, and `addFunction` compiles a
  * trampoline per JS callback. Here both are static `.wasm` imports, compiled
- * at upload like yoga and resvg. Aliased in `vite.config.ts` and
- * `vitest.workers.config.ts`; Node keeps the real entry.
+ * at upload like yoga and resvg. Wired up by `tools/vite-harfbuzz-worker.ts`
+ * in the Vite and Workers test configs; Node keeps the real entry.
  */
 const callbackSignatures = new Set(
 	WebAssembly.Module.exports(callbackWasm).map((entry) => entry.name),

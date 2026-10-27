@@ -17,6 +17,7 @@ import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.t
 import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules.ts'
 import { inlineCssText } from './tools/vite-inline-css-text.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
+import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
 
 import {
@@ -182,6 +183,7 @@ export default defineConfig(async ({ command }) => {
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
 		},
 		plugins: [
+			harfbuzzWorker(),
 			markdownAsText(),
 			inlineCssText(),
 			cloudflare({
@@ -242,14 +244,6 @@ export default defineConfig(async ({ command }) => {
 				{
 					find: /^#start\/server\/(.*)$/,
 					replacement: path.resolve(root, 'packages/worker/start/server/$1.ts'),
-				},
-				{
-					// satori's shaper entry compiles WASM at runtime, which workerd forbids.
-					find: /^harfbuzzjs$/,
-					replacement: path.resolve(
-						root,
-						'packages/worker/src/og/harfbuzz-worker.ts',
-					),
 				},
 				alias('#app', path.resolve(root, 'packages/worker/src/app')),
 				alias('#client', path.resolve(root, 'packages/worker/client')),
