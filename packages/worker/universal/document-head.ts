@@ -559,6 +559,18 @@ export function resolveDocumentHead(
 	return { ...descriptor, description }
 }
 
+/**
+ * Bump when the shared OG renderer changes how every card looks. X, Slack and
+ * Discord cache unfurl images by URL, so a new query value makes them refetch.
+ * The OG handlers ignore the param.
+ */
+const OG_IMAGE_VERSION = '2'
+
+function withOgImageVersion(path: string): string {
+	if (path.startsWith('http://') || path.startsWith('https://')) return path
+	return `${path}${path.includes('?') ? '&' : '?'}v=${OG_IMAGE_VERSION}`
+}
+
 export function absolutizeDocumentHead(
 	descriptor: DocumentHeadDescriptor,
 	origin: string,
@@ -579,7 +591,7 @@ export function absolutizeDocumentHead(
 			? {
 					title: descriptor.og.title,
 					description: descriptor.og.description,
-					imageUrl: toAbsolute(descriptor.og.imagePath),
+					imageUrl: toAbsolute(withOgImageVersion(descriptor.og.imagePath)),
 				}
 			: undefined,
 		links: descriptor.links?.map((link) => ({

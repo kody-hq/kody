@@ -21,7 +21,8 @@ import {
 export const TITLE_MAX_LENGTH = 60
 const SUBTITLE_MAX_LENGTH = 160
 const PAGE_TITLE_WIDTH = 580
-/** Other pages wrap inside this measure. Home uses the title column so its one-line subtitle fits. */
+const PAGE_TITLE_FONT_SIZE = 78
+/** Other pages wrap inside this measure. Home uses the wider title column for its longer subtitle. */
 const PAGE_SUBTITLE_WIDTH = 560
 
 function ogTextLines(text: string, maxLength: number): Array<string> {
@@ -101,8 +102,8 @@ export function ogTitleChildren(input: {
 }
 
 function pageSubtitleMaxWidth(page: PublicOgPage): number {
-	// Home subtitle sits under a short H1 moniker; keep the title-column
-	// width so the supporting line stays one row in the share card.
+	// Home subtitle runs long under a two-line H1; the full title-column
+	// width keeps it to three rows in the share card.
 	return page.path === '/' ? PAGE_TITLE_WIDTH : PAGE_SUBTITLE_WIDTH
 }
 
@@ -236,7 +237,8 @@ function createPageOgMarkup(input: {
 									props: {
 										style: {
 											fontFamily: 'Bricolage Grotesque',
-											fontSize: 78,
+											fontSize:
+												input.page.imageTitleFontSize ?? PAGE_TITLE_FONT_SIZE,
 											fontWeight: 700,
 											lineHeight: 1.0,
 											letterSpacing: '-0.03em',
