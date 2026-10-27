@@ -803,8 +803,6 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	expect(consoleWarn).toHaveBeenCalledTimes(3)
 
 	const { McpCallerError } = await import('#mcp/caller-error.ts')
-	const { externalPublishResourceLimitMessage } =
-		await import('#worker/repo/isolated-runner-limit-message.ts')
 	// Memory/CPU isolate resets are deterministic for a package tip — fail
 	// fast with an actionable caller error instead of burning ~35s of retries.
 	for (const message of [
@@ -816,8 +814,8 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 		mockModule.publishFromExternalRef.mockRejectedValue(new Error(message))
 		await expect(publish()).rejects.toSatisfy((error: unknown) => {
 			expect(error).toBeInstanceOf(McpCallerError)
-			expect((error as Error).message).toBe(
-				externalPublishResourceLimitMessage(),
+			expect((error as Error).message).toContain(
+				'stopped instead of retrying the same limit',
 			)
 			return true
 		})

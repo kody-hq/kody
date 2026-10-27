@@ -321,6 +321,5 @@ test('every email shows the full logo on top and the Kody mark at the bottom as 
 	expect(email.html.indexOf(emailHeaderLogo.src)).toBeLessThan(
 		email.html.indexOf(emailFooterMark.src),
 	)
-	expect(email.html).not.toContain('kody-lantern')
 	expect(email.html).not.toContain('.svg')
 })

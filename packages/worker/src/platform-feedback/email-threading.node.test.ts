@@ -2,8 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	buildPlatformFeedbackFollowUpMailMeta,
 	normalizeRfcMessageId,
-	platformFeedbackAcknowledgementSubject,
-	platformFeedbackFollowUpSubject,
 } from './email-threading.ts'
 
 test('normalizeRfcMessageId wraps bare ids and rejects unusable values', () => {
@@ -30,19 +28,13 @@ test('follow-up mail meta threads when an acknowledgement Message-ID is stored',
 		fallbackSubject: 'We resolved your Kody feedback',
 	})
 	expect(meta).toEqual({
-		subject: platformFeedbackFollowUpSubject,
+		subject: 'Re: We got your Kody feedback',
 		threaded: true,
 		headers: {
 			'In-Reply-To': '<ack@cf.example>',
 			References: '<ack@cf.example>',
 		},
 	})
-	expect(meta.subject).toBe(`Re: ${platformFeedbackAcknowledgementSubject}`)
-	// Gmail-style threading: same subject base as the ack plus References.
-	expect(meta.subject.replace(/^Re:\s*/i, '')).toBe(
-		platformFeedbackAcknowledgementSubject,
-	)
-	expect(meta.headers?.References).toBe(meta.headers?.['In-Reply-To'])
 })
 
 test('follow-up mail meta falls back when no acknowledgement Message-ID is stored', () => {

@@ -1,7 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareEmail from '#app/email/cloudflare-email.ts'
-import { platformFeedbackFollowUpSubject } from './email-threading.ts'
 import { type PlatformFeedbackRecord } from './types.ts'
 
 const sendCloudflareEmail = vi.fn<typeof CloudflareEmail.sendCloudflareEmail>(
@@ -223,7 +222,7 @@ test('platform feedback outcome emails thread to the acknowledgement Message-ID 
 
 	expect(await send(env, { id: 'feedback-threaded' })).toBe(true)
 	const threaded = lastSentEmail()
-	expect(threaded.subject).toBe(platformFeedbackFollowUpSubject)
+	expect(threaded.subject).toBe('Re: We got your Kody feedback')
 	expect(threaded.headers).toEqual({
 		'In-Reply-To': ackId,
 		References: ackId,
