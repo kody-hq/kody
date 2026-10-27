@@ -25,7 +25,11 @@ limitations.
   viewer can read; the detail Forks count links here and uses the same rule)
 - Raw bytes: `/@{$username}/$kodyId/raw/$ref/$`
 - Org list: `/@{$orgSlug}/-/repositories` (legacy `/@{$orgSlug}/-/packages`
-  301s)
+  301s). Header `New repository` (`data-testid="repositories-new"`) opens
+  `/@{$orgSlug}/-/repositories/new`: owner (personal plus orgs that allow
+  `package:create`) and name, created through `repoCreate`; success shows the
+  agent start prompt (`data-testid="repository-start-prompt"`), `Copy prompt`,
+  and `Open repository`.
 - JSON list: `/account/packages.json`
 - Package header: one primary `Open app` (`data-testid="open-package-app"`).
   Viewers who may run the app get the handoff Open app href under

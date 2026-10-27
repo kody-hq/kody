@@ -247,6 +247,7 @@ import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './route
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId'
 import { Route as AppAtChar123orgSlugChar125McpServersNewRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.new'
 import { Route as AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport } from './routes/_app.@{$orgSlug}_.-.memories_.$memoryId'
+import { Route as AppAtChar123orgSlugChar125RepositoriesNewRouteImport } from './routes/_app.@{$orgSlug}_.-.repositories_.new'
 import { Route as AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.new'
@@ -1566,6 +1567,12 @@ const AppAtChar123orgSlugChar125MemoriesMemoryIdRoute =
     path: '/@{$orgSlug}/-/memories/$memoryId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125RepositoriesNewRoute =
+  AppAtChar123orgSlugChar125RepositoriesNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/repositories_/new',
+    path: '/@{$orgSlug}/-/repositories/new',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125SecretProvidersApproveRoute =
   AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport.update({
     id: '/@{$orgSlug}_/-/secret-providers_/approve',
@@ -1941,6 +1948,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/repositories/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -2201,6 +2209,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/repositories/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -2464,6 +2473,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/_app/@{$orgSlug}_/-/memories_/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/_app/@{$orgSlug}_/-/repositories_/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/_app/@{$orgSlug}_/-/secret-providers_/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -2727,6 +2737,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/mcp-servers/$serverId'
     | '/@{$orgSlug}/-/mcp-servers/new'
     | '/@{$orgSlug}/-/memories/$memoryId'
+    | '/@{$orgSlug}/-/repositories/new'
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
@@ -2987,6 +2998,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/mcp-servers/$serverId'
     | '/@{$orgSlug}/-/mcp-servers/new'
     | '/@{$orgSlug}/-/memories/$memoryId'
+    | '/@{$orgSlug}/-/repositories/new'
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
@@ -3249,6 +3261,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/new'
     | '/_app/@{$orgSlug}_/-/memories_/$memoryId'
+    | '/_app/@{$orgSlug}_/-/repositories_/new'
     | '/_app/@{$orgSlug}_/-/secret-providers_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/new'
@@ -5062,6 +5075,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/repositories_/new': {
+      id: '/_app/@{$orgSlug}_/-/repositories_/new'
+      path: '/@{$orgSlug}/-/repositories/new'
+      fullPath: '/@{$orgSlug}/-/repositories/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125RepositoriesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/secret-providers_/approve': {
       id: '/_app/@{$orgSlug}_/-/secret-providers_/approve'
       path: '/@{$orgSlug}/-/secret-providers/approve'
@@ -5348,6 +5368,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125McpServersServerIdRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   AppAtChar123orgSlugChar125McpServersNewRoute: typeof AppAtChar123orgSlugChar125McpServersNewRoute
   AppAtChar123orgSlugChar125MemoriesMemoryIdRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  AppAtChar123orgSlugChar125RepositoriesNewRoute: typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   AppAtChar123orgSlugChar125SecretProvidersApproveRoute: typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   AppAtChar123orgSlugChar125SecretsApproveRoute: typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   AppAtChar123orgSlugChar125SecretsNewRoute: typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -5530,6 +5551,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125McpServersNewRoute,
   AppAtChar123orgSlugChar125MemoriesMemoryIdRoute:
     AppAtChar123orgSlugChar125MemoriesMemoryIdRoute,
+  AppAtChar123orgSlugChar125RepositoriesNewRoute:
+    AppAtChar123orgSlugChar125RepositoriesNewRoute,
   AppAtChar123orgSlugChar125SecretProvidersApproveRoute:
     AppAtChar123orgSlugChar125SecretProvidersApproveRoute,
   AppAtChar123orgSlugChar125SecretsApproveRoute:

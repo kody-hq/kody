@@ -531,6 +531,7 @@ const orgDocumentHeads = {
 	orgFollows: titleOnly('Follows'),
 	orgOverview: titleOnly('Overview'),
 	orgRepositories: titleOnly('Repositories'),
+	orgRepositoryNew: titleOnly('New repository'),
 	orgSecretProviders: titleOnly('Secret providers'),
 	orgSecrets: titleOnly('Secrets'),
 	orgWaiting: titleOnly('Waiting'),
