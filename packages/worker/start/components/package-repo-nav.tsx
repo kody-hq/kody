@@ -297,6 +297,31 @@ const descriptionCss = {
 	maxWidth: '58ch',
 }
 
+/**
+ * Body under the package tab row. Owns the gap below the tabs and the stack
+ * gap between blocks, so tab pages render bare cards and sections.
+ */
+export function PackageRepoTabPanel(props: { children: ReactNode }) {
+	return (
+		<div data-package-tab-panel css={packageRepoTabPanelCss}>
+			{props.children}
+		</div>
+	)
+}
+
+const packageRepoTabPanelCss = {
+	display: 'grid',
+	alignContent: 'start',
+	gap: spacing.xl,
+	marginTop: spacing.xl,
+	minWidth: 0,
+	'& > *': { marginBlock: 0 },
+	[mq.mobile]: {
+		gap: spacing.lg,
+		marginTop: spacing.lg,
+	},
+}
+
 const navRowCss = {
 	display: 'flex',
 	alignItems: 'center',

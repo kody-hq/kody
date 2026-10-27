@@ -161,36 +161,37 @@ export function CommunityDetailRoute({
 									}
 								: null
 						}
-					/>
-					<PackageFollowPanel />
-					{listingId
-						? renderInstallStrip({ installMessage, installOutcome })
-						: null}
-					{data.readmeContent
-						? renderReadmeSection(readme, agentsDocsHref)
-						: renderEmptyReadme(agentsDocsHref)}
-					{listingId && data.viewerIsAdmin ? (
-						<AdminFeatureSection
-							{...{
-								featured: listing?.featured ?? false,
-								featureState,
-								featureMessage,
-								onToggleFeature: () => void feature(),
-							}}
-						/>
-					) : null}
-					{listingId ? (
-						<ReportDisclosure
-							{...{
-								loggedIn: data.loggedIn,
-								reportReason,
-								reportState,
-								reportMessage,
-								onReasonInput: setReportReason,
-								onSubmitReport: () => void report(),
-							}}
-						/>
-					) : null}
+					>
+						<PackageFollowPanel />
+						{listingId
+							? renderInstallStrip({ installMessage, installOutcome })
+							: null}
+						{data.readmeContent
+							? renderReadmeSection(readme, agentsDocsHref)
+							: renderEmptyReadme(agentsDocsHref)}
+						{listingId && data.viewerIsAdmin ? (
+							<AdminFeatureSection
+								{...{
+									featured: listing?.featured ?? false,
+									featureState,
+									featureMessage,
+									onToggleFeature: () => void feature(),
+								}}
+							/>
+						) : null}
+						{listingId ? (
+							<ReportDisclosure
+								{...{
+									loggedIn: data.loggedIn,
+									reportReason,
+									reportState,
+									reportMessage,
+									onReasonInput: setReportReason,
+									onSubmitReport: () => void report(),
+								}}
+							/>
+						) : null}
+					</CommunityDetailContent>
 				</article>
 			</PackageInstallContext.Provider>
 		</PackageFollowProvider>

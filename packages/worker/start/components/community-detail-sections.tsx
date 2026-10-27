@@ -255,7 +255,6 @@ const missingHeadCss = {
 
 /* Quiet sections in the `.pkg-fork` voice: display-face h2, muted lede. */
 export const detailSectionCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
 	'& h2': {
 		margin: 0,
 		fontSize: 'clamp(1.4rem, 2.4vw, 1.65rem)',
@@ -325,9 +324,7 @@ const mutedTextCss = {
 } satisfies CSSObject
 
 /* README as real prose (no scroll box), h3 subheads per DESIGN.md. */
-const readmeSectionCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
-} satisfies CSSObject
+const readmeSectionCss = {} satisfies CSSObject
 
 const readmeHeadingRowCss = {
 	display: 'flex',
@@ -364,7 +361,6 @@ const readmeProseCss = mergeCss(proseCss, {
 
 /* "Report this listing" tucked in a details disclosure. */
 const reportDisclosureCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
 	'& summary': {
 		cursor: 'pointer',
 		fontWeight: 600,

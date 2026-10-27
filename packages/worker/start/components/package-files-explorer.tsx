@@ -23,9 +23,14 @@ import {
 import { directoryOfPackageFilePath } from '#universal/package-readme-images.ts'
 import { usePackageInstall } from '../use-package-install.ts'
 import { renderInstallStrip } from './community-detail-sections.tsx'
-import { PackageInstallContext } from './package-title-actions.tsx'
-import { renderPackageRepoActions } from './package-title-actions.tsx'
-import { renderPackageRepoChrome } from './package-repo-nav.tsx'
+import {
+	PackageInstallContext,
+	renderPackageRepoActions,
+} from './package-title-actions.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from './package-repo-nav.tsx'
 import { renderIcon } from './icon.tsx'
 import { type PackageFilesLoaderData } from '#universal/loader-data.ts'
 import {
@@ -165,58 +170,62 @@ function PackageFilesExplorerContent({
 					</header>
 				</>
 			)}
-			{installStrip}
-			<div css={layoutCss}>
-				<nav aria-label="Files" css={treeCss}>
-					<div css={treeHeadCss}>
-						<h2 css={treeHeadingCss}>Files</h2>
-						{/* Always rendered so the row keeps its height — appearing and
+			<PackageRepoTabPanel>
+				{installStrip}
+				<div css={layoutCss}>
+					<nav aria-label="Files" css={treeCss}>
+						<div css={treeHeadCss}>
+							<h2 css={treeHeadingCss}>Files</h2>
+							{/* Always rendered so the row keeps its height — appearing and
 							    disappearing shifted the filter and tree below it. */}
-						<button
-							type="button"
-							disabled={expanded.size === 0}
-							css={
-								expanded.size > 0 ? collapseButtonCss : collapseButtonHiddenCss
-							}
-							onClick={collapseAll}
-						>
-							Collapse all
-						</button>
-					</div>
-					<div css={filterWrapCss}>
-						<div css={filterFieldCss}>
-							<span css={filterIconCss}>{searchIcon()}</span>
-							<input
-								type="text"
-								role="searchbox"
-								inputMode="search"
-								autoComplete="off"
-								placeholder="Go to file"
-								aria-label="Filter files"
-								css={filterInputCss}
-								value={query}
-								onChange={(event) => setQuery(event.currentTarget.value)}
-							/>
+							<button
+								type="button"
+								disabled={expanded.size === 0}
+								css={
+									expanded.size > 0
+										? collapseButtonCss
+										: collapseButtonHiddenCss
+								}
+								onClick={collapseAll}
+							>
+								Collapse all
+							</button>
 						</div>
-					</div>
-					<div css={treeScrollCss}>
-						{query.trim()
-							? renderMatches(data, query)
-							: renderTree(
-									data.paths,
-									'',
-									data.selectedPath,
-									data.filesBasePath,
-									expanded,
-									toggleDirectory,
-									0,
-								)}
-					</div>
-				</nav>
-				<section css={contentCss} aria-label="Selected file">
-					{contentNode}
-				</section>
-			</div>
+						<div css={filterWrapCss}>
+							<div css={filterFieldCss}>
+								<span css={filterIconCss}>{searchIcon()}</span>
+								<input
+									type="text"
+									role="searchbox"
+									inputMode="search"
+									autoComplete="off"
+									placeholder="Go to file"
+									aria-label="Filter files"
+									css={filterInputCss}
+									value={query}
+									onChange={(event) => setQuery(event.currentTarget.value)}
+								/>
+							</div>
+						</div>
+						<div css={treeScrollCss}>
+							{query.trim()
+								? renderMatches(data, query)
+								: renderTree(
+										data.paths,
+										'',
+										data.selectedPath,
+										data.filesBasePath,
+										expanded,
+										toggleDirectory,
+										0,
+									)}
+						</div>
+					</nav>
+					<section css={contentCss} aria-label="Selected file">
+						{contentNode}
+					</section>
+				</div>
+			</PackageRepoTabPanel>
 		</article>
 	)
 }
@@ -567,7 +576,6 @@ const titleCss = {
 // Two columns need room for both: below the tablet breakpoint the blob is too
 // narrow to read code in, so the tree moves above it and runs full width.
 const layoutCss = {
-	marginTop: spacing.lg,
 	display: 'grid',
 	gridTemplateColumns: '18.75rem minmax(0, 1fr)',
 	gap: spacing.lg,

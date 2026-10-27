@@ -43,7 +43,10 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import { renderPackageRepoChrome } from '../components/package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from '../components/package-repo-nav.tsx'
 import { routes } from '#universal/routes.ts'
 import {
 	getDangerPillCss,
@@ -476,51 +479,52 @@ export function PackageCollaboratorsRoute({
 				}),
 				iconName: kodyId,
 			})}
-
-			{message ? (
-				<AccountManagementMessage tone={messageTone}>
-					{message}
-				</AccountManagementMessage>
-			) : null}
-			{view ? (
-				<>
-					<AccountManagementPanel
-						title="Who has access"
-						description={
-							view.org.personal
-								? 'You always have full access to your own packages. People you invite show up here once they accept.'
-								: 'Organization owners always have full access.'
-						}
-					>
-						{view.collaborators.length === 0 ? (
-							<p css={mutedCopyCss} data-testid="package-collaborators-empty">
-								Nobody else has been given access to this package yet.
-							</p>
-						) : (
-							<ul css={listCss} data-testid="package-collaborators-list">
-								{view.collaborators.map(renderCollaborator)}
-							</ul>
-						)}
-					</AccountManagementPanel>
-					{view.org.personal ? null : renderAddTeam(view)}
-					{view.org.personal ? null : renderAddMember(view)}
-					{view.org.personal ? (
-						<PackageCollaboratorInvites
-							key={`${actorKey}/${username}/${kodyId}`}
-							view={view}
-							busyKey={busy}
-							postChange={postChange}
+			<PackageRepoTabPanel>
+				{message ? (
+					<AccountManagementMessage tone={messageTone}>
+						{message}
+					</AccountManagementMessage>
+				) : null}
+				{view ? (
+					<>
+						<AccountManagementPanel
+							title="Who has access"
+							description={
+								view.org.personal
+									? 'You always have full access to your own packages. People you invite show up here once they accept.'
+									: 'Organization owners always have full access.'
+							}
+						>
+							{view.collaborators.length === 0 ? (
+								<p css={mutedCopyCss} data-testid="package-collaborators-empty">
+									Nobody else has been given access to this package yet.
+								</p>
+							) : (
+								<ul css={listCss} data-testid="package-collaborators-list">
+									{view.collaborators.map(renderCollaborator)}
+								</ul>
+							)}
+						</AccountManagementPanel>
+						{view.org.personal ? null : renderAddTeam(view)}
+						{view.org.personal ? null : renderAddMember(view)}
+						{view.org.personal ? (
+							<PackageCollaboratorInvites
+								key={`${actorKey}/${username}/${kodyId}`}
+								view={view}
+								busyKey={busy}
+								postChange={postChange}
+							/>
+						) : null}
+						<PackageInviteLinksPanel
+							username={username}
+							kodyId={kodyId}
+							orgSlug={view.org.slug}
+							personal={view.org.personal}
+							actorKey={actorKey}
 						/>
-					) : null}
-					<PackageInviteLinksPanel
-						username={username}
-						kodyId={kodyId}
-						orgSlug={view.org.slug}
-						personal={view.org.personal}
-						actorKey={actorKey}
-					/>
-				</>
-			) : null}
+					</>
+				) : null}
+			</PackageRepoTabPanel>
 		</article>
 	)
 }
