@@ -207,7 +207,8 @@ test('runDaemon retries after a welcome timeout and SIGTERM ends the backoff pro
 	assert.equal(
 		lines.filter(
 			(line) =>
-				line === `Disconnected (${welcomeTimeoutCloseCode}). Reconnecting.`,
+				line ===
+				`Disconnected (${welcomeTimeoutCloseCode} welcome timeout). Reconnecting.`,
 		).length,
 		2,
 	)

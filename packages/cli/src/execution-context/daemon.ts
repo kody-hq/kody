@@ -341,7 +341,9 @@ export async function runDaemon(input: DaemonInput) {
 		try {
 			const closed = await runDaemonConnection(input)
 			if (closed.reason === 'revoked') return
-			input.log(`Disconnected (${closed.code}). Reconnecting.`)
+			input.log(
+				`Disconnected (${closed.code}${closed.reason ? ` ${closed.reason}` : ''}). Reconnecting.`,
+			)
 		} catch (error) {
 			input.log(
 				`Connect failed: ${error instanceof Error ? error.message : String(error)}`,
