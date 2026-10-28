@@ -75,15 +75,16 @@ export async function runAccountJobNow(input: {
 		jobId: id,
 		callerContext: buildCallerContext(input),
 	})
+	const contextRun = result.execution.ok
+		? contextRunFrom((result.execution as { result?: unknown }).result)
+		: null
 	return operationResult({
 		ok: true,
 		jobId: id,
 		runNow: {
 			ok: result.execution.ok,
 			error: result.execution.ok ? null : result.execution.error,
-			contextRun: result.execution.ok
-				? contextRunFrom((result.execution as { result?: unknown }).result)
-				: null,
+			...(contextRun ? { contextRun } : {}),
 		},
 	})
 }
