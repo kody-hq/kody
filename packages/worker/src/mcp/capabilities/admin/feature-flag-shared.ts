@@ -17,6 +17,17 @@ export const adminFeatureFlagOverrideSchema = z.object({
 	updatedAt: z.string(),
 })
 
+export const adminFeatureFlagOrgOverrideSchema = z.object({
+	orgId: z.string(),
+	slug: z.string(),
+	displayName: z.string().nullable(),
+	personal: z.boolean(),
+	enabled: z.boolean(),
+	note: z.string(),
+	updatedByStableUserId: stableUserIdSchema.nullable(),
+	updatedAt: z.string(),
+})
+
 export const featureFlagSuccessMetricSchema = z.object({
 	eventType: z.enum(usageEventTypes),
 	measure: z.enum(['event_count', 'error_rate', 'avg_duration_ms']),
@@ -47,6 +58,8 @@ export const adminFeatureFlagMetricReadoutSchema = z.discriminatedUnion(
 			off: featureFlagMetricCohortSchema,
 			override: featureFlagMetricCohortSchema,
 			overrideUsers: z.number().int().min(0),
+			orgOverride: featureFlagMetricCohortSchema,
+			orgOverrideUsers: z.number().int().min(0),
 			mixedUsers: z.number().int().min(0),
 		}),
 	],
@@ -71,6 +84,7 @@ export const adminFeatureFlagSchema = z.object({
 		})
 		.nullable(),
 	overrides: z.array(adminFeatureFlagOverrideSchema),
+	orgOverrides: z.array(adminFeatureFlagOrgOverrideSchema),
 })
 
 export function assertFeatureFlagKey(key: string): FeatureFlagKey {
@@ -126,4 +140,39 @@ export async function resolveTargetUser(
 		return { dbUserId: row.id, stableUserId: row.stable_user_id }
 	}
 	throw new McpCallerError('Provide either stableUserId or username.')
+}
+
+export async function resolveTargetOrg(
+	db: D1Database,
+	input: { orgId?: string; orgSlug?: string },
+): Promise<{ orgId: string; slug: string }> {
+	if (input.orgId !== undefined && input.orgSlug !== undefined) {
+		throw new McpCallerError('Provide either orgId or orgSlug, not both.')
+	}
+	if (input.orgId === undefined && input.orgSlug === undefined) {
+		throw new McpCallerError('Provide either orgId or orgSlug.')
+	}
+	const byId = input.orgId !== undefined
+	const value = byId
+		? (input.orgId ?? '').trim()
+		: (input.orgSlug ?? '').trim().replace(/^@/, '').toLowerCase()
+	if (!value) {
+		throw new McpCallerError(
+			byId ? 'orgId must not be empty.' : 'orgSlug must not be empty.',
+		)
+	}
+	const row = await db
+		.prepare(
+			`SELECT id, slug FROM orgs WHERE ${byId ? 'id' : 'slug'} = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(value)
+		.first<{ id: string; slug: string }>()
+	if (!row) {
+		throw new McpCallerError(
+			byId
+				? `Organization not found for orgId ${value}.`
+				: `Organization not found for orgSlug "${value}".`,
+		)
+	}
+	return { orgId: row.id, slug: row.slug }
 }

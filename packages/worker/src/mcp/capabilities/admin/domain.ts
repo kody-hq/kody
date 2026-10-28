@@ -11,6 +11,7 @@ import { adminOrgResourceTransferCapability } from './admin-org-resource-transfe
 import { adminOrgRestoreCapability } from './admin-org-restore.ts'
 import { adminCommunityOrphanForksCleanupCapability } from './admin-community-orphan-forks-cleanup.ts'
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
+import { adminFeatureFlagOrgOverrideCapability } from './admin-feature-flag-org-override.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
 import {
 	adminFeatureFlagRepoCheckCapability,
@@ -220,6 +221,7 @@ export const adminDomain = defineDomain({
 		adminFeatureFlagListCapability,
 		adminFeatureFlagSetCapability,
 		adminFeatureFlagOverrideCapability,
+		adminFeatureFlagOrgOverrideCapability,
 		adminFeatureFlagRepoOverrideCapability,
 		adminFeatureFlagRepoCheckCapability,
 		adminReservedUsernameListCapability,
