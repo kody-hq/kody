@@ -50,13 +50,6 @@ async function createSeed(): Promise<PackageCollaboratorsSeed> {
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (grant_id, need_key)
 		);
-		CREATE TABLE IF NOT EXISTS credential_mappings (
-			id TEXT PRIMARY KEY NOT NULL,
-			org_id TEXT NOT NULL,
-			person_user_id TEXT NOT NULL,
-			credential_ids_json TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS visitor_credentials (id TEXT PRIMARY KEY, person_id TEXT);
 	`)
 	mocks.resolveSavedPackage.mockReset()
 	mocks.resolveSavedPackage.mockImplementation(
@@ -290,7 +283,9 @@ test('owner revoke ends the grant, keeps the visitor credentials, and is audited
 		`INSERT INTO package_app_grant_credential_mappings
 		 (grant_id, need_key, credential_ids_json, created_at, updated_at)
 		 VALUES ('g-bob', 'calendar', '["cred-bob"]', 'now', 'now');
-		 INSERT INTO visitor_credentials (id, person_id) VALUES ('cred-bob', '${collaboratorPeople.bob.personId}');`,
+		 INSERT INTO credential_mappings
+		 (id, org_id, package_id, need_key, target, person_user_id, credential_ids_json, created_at, updated_at)
+		 VALUES ('map-bob', 'org-bob', 'bob-package', 'calendar', 'mine', '${collaboratorPeople.bob.personId}', '["cred-bob"]', 'now', 'now');`,
 	)
 	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
 	await expect(
@@ -312,8 +307,15 @@ test('owner revoke ends the grant, keeps the visitor credentials, and is audited
 	expect(listed.total).toBe(2)
 	expect(listed.people.map((person) => person.grant_id)).not.toContain('g-bob')
 	expect(
-		seed.sqlite.prepare(`SELECT id FROM visitor_credentials`).all(),
-	).toEqual([{ id: 'cred-bob' }])
+		seed.sqlite
+			.prepare(`SELECT grant_id FROM package_app_grant_credential_mappings`)
+			.all(),
+	).toEqual([])
+	expect(
+		seed.sqlite
+			.prepare(`SELECT id, credential_ids_json FROM credential_mappings`)
+			.all(),
+	).toEqual([{ id: 'map-bob', credential_ids_json: '["cred-bob"]' }])
 	await expect(
 		packageAppConnectedPersonRevokeCapability.handler(
 			{ package_id: 'demo-package', grant_id: 'g-bob' },
