@@ -207,6 +207,8 @@ export async function recordPackageAppCookieFindings(input: {
 	db: D1Database
 	packageId: string
 	findings: ReadonlyArray<PackageAppCookieFinding>
+	hostname: string
+	pathname: string
 	now: number
 }) {
 	const now = input.now
@@ -227,6 +229,13 @@ export async function recordPackageAppCookieFindings(input: {
 		pending.set(key, { cookieName, reason: finding.reason })
 	}
 	if (pending.size === 0) return
+
+	console.warn('package-app-cookie-httponly', {
+		hostname: input.hostname,
+		pathname: input.pathname,
+		packageId: input.packageId,
+		findings: Array.from(pending.values()),
+	})
 
 	for (const [key, finding] of pending) {
 		packageAppCookieFindingWrites.set(key, now)

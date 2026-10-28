@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { loadPackageCookieWarningsForOwner } from '#worker/app/account-packages-data.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -12,7 +13,7 @@ import {
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 const now = Date.parse('2026-10-22T12:00:00.000Z')
 
-function createMigratedDb() {
+function createMigratedDb(options: { queries?: Array<string> } = {}) {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, migrationsDirectory)
 	sqlite
@@ -22,11 +23,12 @@ function createMigratedDb() {
 			) VALUES (?, ?, ?, ?, ?, ?)`,
 		)
 		.run('pkg-1', 'owner-1', 'demo', 'demo', '', 'source-1')
-	return { sqlite, db: createD1FromSqlite(sqlite) }
+	return { sqlite, db: createD1FromSqlite(sqlite, options) }
 }
 
 test('upserts warning rows and throttles identical writes for one hour', async () => {
 	resetPackageAppCookieFindingWritesForTests()
+	consoleWarn.mockImplementation(() => {})
 	const { sqlite, db } = createMigratedDb()
 	const finding = {
 		cookieName: 'session=do-not-store-this-cookie-value',
@@ -39,6 +41,8 @@ test('upserts warning rows and throttles identical writes for one hour', async (
 			finding,
 			{ cookieName: 'x'.repeat(140), reason: 'missing_httponly' },
 		],
+		hostname: 'app.example',
+		pathname: '/entry',
 		now,
 	})
 	const first = sqlite
@@ -66,6 +70,8 @@ test('upserts warning rows and throttles identical writes for one hour', async (
 		db,
 		packageId: 'pkg-1',
 		findings: [finding],
+		hostname: 'app.example',
+		pathname: '/entry',
 		now: now + 30 * 60 * 1000,
 	})
 	const throttled = sqlite
@@ -80,12 +86,16 @@ test('upserts warning rows and throttles identical writes for one hour', async (
 		db,
 		packageId: 'pkg-1',
 		findings: [finding],
+		hostname: 'app.example',
+		pathname: '/entry',
 		now: afterHour,
 	})
 	await recordPackageAppCookieFindings({
 		db,
 		packageId: 'pkg-1',
 		findings: [{ cookieName: 'session', reason: 'missing_httponly' }],
+		hostname: 'app.example',
+		pathname: '/entry',
 		now: afterHour + 1,
 	})
 	const updated = sqlite
@@ -99,6 +109,55 @@ test('upserts warning rows and throttles identical writes for one hour', async (
 		reason: 'missing_httponly',
 	})
 	resetPackageAppCookieFindingWritesForTests()
+})
+
+test('logs and writes only unthrottled findings', async () => {
+	resetPackageAppCookieFindingWritesForTests()
+	const queries: Array<string> = []
+	const { db } = createMigratedDb({ queries })
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+	const finding = {
+		cookieName: 'session=do-not-log-this-cookie-value',
+		reason: 'added_httponly' as const,
+	}
+
+	try {
+		await recordPackageAppCookieFindings({
+			db,
+			packageId: 'pkg-1',
+			findings: [finding],
+			hostname: 'app.example',
+			pathname: '/entry',
+			now,
+		})
+		await recordPackageAppCookieFindings({
+			db,
+			packageId: 'pkg-1',
+			findings: [finding],
+			hostname: 'app.example',
+			pathname: '/entry',
+			now: now + 30 * 60 * 1000,
+		})
+
+		expect(consoleWarn).toHaveBeenCalledTimes(1)
+		expect(consoleWarn).toHaveBeenCalledWith('package-app-cookie-httponly', {
+			hostname: 'app.example',
+			pathname: '/entry',
+			packageId: 'pkg-1',
+			findings: [{ cookieName: 'session', reason: 'added_httponly' }],
+		})
+		expect(consoleWarn.mock.calls.flat().join(' ')).not.toContain(
+			'do-not-log-this-cookie-value',
+		)
+		expect(
+			queries.filter((query) =>
+				query.startsWith('INSERT INTO package_app_cookie_warnings'),
+			),
+		).toHaveLength(1)
+	} finally {
+		resetPackageAppCookieFindingWritesForTests()
+	}
 })
 
 test('owner warning reads are recent, ordered, capped, and omitted for non-owners', async () => {

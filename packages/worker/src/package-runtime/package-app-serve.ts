@@ -1397,16 +1397,12 @@ export async function servePackageAppRequest(input: {
 			clientReadable: clientReadableCookieNames,
 		})
 		if (enforced.findings.length > 0) {
-			console.warn('package-app-cookie-httponly', {
-				hostname: requestUrl.hostname,
-				pathname: requestUrl.pathname,
-				packageId: savedPackage.id,
-				findings: enforced.findings,
-			})
 			const warningWrite = recordPackageAppCookieFindings({
 				db: env.APP_DB,
 				packageId: savedPackage.id,
 				findings: enforced.findings,
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
 				now: Date.now(),
 			}).catch((error) => {
 				console.warn('package-app-cookie-warning-record-failed', {

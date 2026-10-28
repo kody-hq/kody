@@ -719,21 +719,20 @@ test('package-app serve adds HttpOnly to author auth cookies and records a findi
 		`${prefix}session=x; Path=/; HttpOnly`,
 	])
 	expect(consoleWarn).toHaveBeenCalledWith(
-		'package-app-cookie-httponly',
-		expect.objectContaining({
-			packageId: fixture.savedPackage.id,
-			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
-		}),
-	)
-	expect(consoleWarn).toHaveBeenCalledWith(
 		'package-app-set-cookie-name-dropped',
 		expect.objectContaining({ dropped: ['session'] }),
 	)
 	expect(cookieWarningMock.record).toHaveBeenCalledWith(
 		expect.objectContaining({
 			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/perf-app',
 			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
 		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
 	)
 })
 
@@ -778,18 +777,17 @@ test('package-app serve honors client-readable cookies and protects other auth c
 		{ cookieName: `${prefix}theme-session`, reason: 'missing_httponly' },
 		{ cookieName: `${prefix}sessionToken`, reason: 'added_httponly' },
 	]
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'package-app-cookie-httponly',
-		expect.objectContaining({
-			packageId: fixture.savedPackage.id,
-			findings,
-		}),
-	)
 	expect(cookieWarningMock.record).toHaveBeenCalledWith(
 		expect.objectContaining({
 			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/client-readable-cookie-app',
 			findings,
 		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
 	)
 })
 
