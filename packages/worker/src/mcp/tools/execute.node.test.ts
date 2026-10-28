@@ -1404,8 +1404,16 @@ test('execute returns the server-assigned key with a finished run and does not a
 
 test('execute returns runId when the transport budget hits and keeps the sandbox running', async () => {
 	transportBudgetMock.remainingMs = 0
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'offline' }],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
 	onTestFinished(() => {
 		transportBudgetMock.remainingMs = null
+		routingMock.outcome = null
 	})
 	const handle = transportFollowHandle(
 		'run-follow-budget',
@@ -1429,6 +1437,7 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 		idempotencyKey: 'execute:budget-key',
 		inProgress: true,
 		status: 'running',
+		executionContext: fallback,
 	})
 	expect(response.structuredContent).not.toHaveProperty('error')
 	const text = response.content
@@ -1437,6 +1446,9 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 	expect(text).toContain('Poll runGet')
 	expect(text).toContain('execute:budget-key')
 	expect(text).not.toContain('Error:')
+	expect(text).toContain(
+		'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): offline).',
+	)
 	expect(mockModule.ensureRunRecordStarted).toHaveBeenCalledWith(
 		expect.objectContaining({ handle }),
 	)

@@ -1046,6 +1046,7 @@ export async function runExecuteToolCall(input: {
 				runId: spanned.runId,
 				idempotencyKey: spanned.idempotencyKey,
 				memories: surfacedMemories,
+				executionContext: routed?.kind === 'cloud' ? routed.metadata : null,
 			})
 		}
 		const result = spanned
@@ -1360,13 +1361,18 @@ function buildTransportBudgetFollowResponse(input: {
 	runId: string
 	idempotencyKey: string
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
+	executionContext?: unknown
 }) {
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.executionContext,
+	)
 	const text = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
+			...cloudFallbackContent,
 			...formatSurfacedMemoriesMarkdown(input.memories),
 		]),
 		structuredContent: {
@@ -1377,6 +1383,7 @@ function buildTransportBudgetFollowResponse(input: {
 			inProgress: true as const,
 			status: 'running' as const,
 			...buildMemoryStructuredContent(input.memories),
+			...cloudFallbackFields,
 		},
 		isError: false,
 	}
