@@ -214,6 +214,48 @@ test('runDaemon retries after a welcome timeout and SIGTERM ends the backoff pro
 	)
 })
 
+/** Never emits `close`, like Node's WebSocket closed mid-handshake. */
+class HungSocket extends SilentSocket {
+	override close(code = 1000, reason = '') {
+		this.closed = { code, reason }
+	}
+}
+
+test('a welcome timeout settles even when the socket never emits close', async () => {
+	SilentSocket.instances = []
+	const { input } = await daemonInput({
+		welcomeTimeoutMs: 20,
+		closeSettleMs: 20,
+		WebSocketImpl: HungSocket as unknown as typeof WebSocket,
+	})
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, {
+		code: welcomeTimeoutCloseCode,
+		reason: 'welcome timeout',
+	})
+	assert.deepEqual(SilentSocket.instances[0]!.closed, closed)
+})
+
+test('SIGTERM cancels a pending connect-ticket request', async () => {
+	SilentSocket.instances = []
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		signal: abort.signal,
+		fetchFn: ((_url: URL | string, init?: RequestInit) =>
+			new Promise((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () =>
+					reject(init.signal?.reason),
+				)
+			})) as typeof fetch,
+	})
+	setTimeout(() => abort.abort(), 20)
+	const startedAt = Date.now()
+	await runDaemon(input)
+	const exitMs = Date.now() - startedAt
+	assert.ok(exitMs < 500, `exited ${exitMs}ms after start`)
+	assert.equal(SilentSocket.instances.length, 0)
+})
+
 test('abortableDelay resolves on abort instead of waiting out the delay', async () => {
 	const abort = new AbortController()
 	const started = Date.now()

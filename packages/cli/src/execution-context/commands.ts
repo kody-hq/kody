@@ -162,8 +162,17 @@ export async function runExecutionContextCommand(
 					path: '/v1/execution-contexts',
 				}),
 			)
+		// Names and status are display-only; never fail the chain command on them.
+		const contextMetadata = async () => {
+			if (input.values.json) return new Map<string, ContextSummary>()
+			try {
+				return await contexts()
+			} catch {
+				return new Map<string, ContextSummary>()
+			}
+		}
 		if (sub === 'show' || sub === undefined) {
-			out(input, read, describeChain(current, await contexts()))
+			out(input, read, describeChain(current, await contextMetadata()))
 			return 0
 		}
 		if (sub !== 'add' && sub !== 'remove') {
@@ -205,7 +214,11 @@ export async function runExecutionContextCommand(
 				ifMatch: current.updatedAt ?? null,
 			},
 		})
-		out(input, updated, describeChain(chainOf(updated), await contexts()))
+		out(
+			input,
+			updated,
+			describeChain(chainOf(updated), await contextMetadata()),
+		)
 		return 0
 	}
 	if (input.command === 'daemon') {

@@ -57,6 +57,7 @@ export async function signedFetch(input: {
 	runId?: string
 	headers?: Record<string, string>
 	fetchFn?: typeof fetch
+	signal?: AbortSignal
 }) {
 	const body = input.body ?? ''
 	const signature = await signEcpHttpRequest({
@@ -68,6 +69,7 @@ export async function signedFetch(input: {
 	})
 	return (input.fetchFn ?? fetch)(new URL(input.pathAndQuery, input.apiUrl), {
 		method: input.method,
+		signal: input.signal,
 		headers: {
 			...input.headers,
 			[ecpSignatureHeader]: formatEcpSignatureHeader(signature),
@@ -184,6 +186,7 @@ export async function requestConnectTicket(input: {
 	ecid: string
 	privateKey: EcpCryptoKey
 	fetchFn?: typeof fetch
+	signal?: AbortSignal
 }) {
 	const response = await signedFetch({
 		...input,

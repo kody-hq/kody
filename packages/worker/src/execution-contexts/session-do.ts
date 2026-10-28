@@ -129,6 +129,7 @@ type SocketAttachment = {
 	running: number
 	maxConcurrent: number
 	helloed: boolean
+	welcomed?: boolean
 }
 
 type RunRow = {
@@ -427,7 +428,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			grantVersion: snapshot.grantVersion,
 			limits: { maxFrameBytes: 6 * 1024 * 1024, maxConcurrentRuns: 4 },
 		})
-		if (sent) await this.#touchLastSeen(snapshot.ecid)
+		if (!sent) return
+		try {
+			const attachment = ws.deserializeAttachment() as SocketAttachment
+			attachment.welcomed = true
+			ws.serializeAttachment(attachment)
+		} catch {
+			// Closed before the welcome landed; webSocketClose skips last-seen.
+		}
+		await this.#touchLastSeen(snapshot.ecid)
 	}
 
 	async #touchLastSeen(ecid: string) {
@@ -705,7 +714,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	override async webSocketClose(ws: WebSocket) {
 		const snapshot = this.#snapshot()
-		if (snapshot) await this.#touchLastSeen(snapshot.ecid)
+		const welcomed = (ws.deserializeAttachment() as SocketAttachment | null)
+			?.welcomed
+		if (snapshot && welcomed) await this.#touchLastSeen(snapshot.ecid)
 		try {
 			ws.close(1000, 'closed')
 		} catch {
