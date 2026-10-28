@@ -21,9 +21,15 @@ export function createYoutubeThumbHandler(env: Env) {
 		if (!isYoutubeVideoId(videoId)) {
 			return notFound()
 		}
-		const allowed = await resolveYoutubeWatchAllowedVideoIds({ env })
-		if (!allowed.includes(videoId)) {
-			return notFound()
+		// Explicit and bundled ids are already trusted. Do not make their posters
+		// wait for unrelated remote playlist discovery.
+		const known = await resolveYoutubeWatchAllowedVideoIds({
+			env,
+			loadPlaylists: false,
+		})
+		if (!known.includes(videoId)) {
+			const allowed = await resolveYoutubeWatchAllowedVideoIds({ env })
+			if (!allowed.includes(videoId)) return notFound()
 		}
 
 		try {

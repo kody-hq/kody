@@ -96,3 +96,19 @@ CSS, so moving CSS into the document cannot make its cost disappear. Browser
 results also retain encoded/decoded document sizes, observed paint and hydration
 times, and console error counts. Observed local paint is separate from simulated
 Lighthouse metrics.
+
+Use `release` to verify the fixed Start build with its real asset namespace
+before rebuilding the timing matrix. Set `SOURCE_SHA` to the frozen application
+SHA and use a one-target config with that same `commit`, the checkout root,
+`serverDirectory: "server"` and a free loopback origin:
+
+```sh
+KODY_START_RELEASE=$SOURCE_SHA CLOUDFLARE_ENV=test KODY_WRANGLER_CONFIG=packages/worker/wrangler-local-dev.generated.json npm run build
+node tools/framework-comparison/run-local.mjs release-matrix.json NEW_RELEASE_OUTPUT release
+```
+
+The release check verifies the health SHA through control-kody, three hydrated
+public pages, CSP nonces, native inline CSS, and versioned scripts and fonts. It
+accepts normal 200 and cached 304 font responses. The runner owns server startup
+and cleanup and verifies that build files did not change during the check. This
+is a local release check, without a deploy.

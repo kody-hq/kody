@@ -18,13 +18,17 @@ if (
 	!checks.length ||
 	checks.some(
 		(check) =>
-			!['browser', 'private', 'freshness', 'lighthouse-targets'].includes(
-				check,
-			),
+			![
+				'browser',
+				'private',
+				'freshness',
+				'lighthouse-targets',
+				'release',
+			].includes(check),
 	)
 )
 	throw new Error(
-		'Usage: run-local.mjs CONFIG NEW_OUTPUT_DIRECTORY browser|private|freshness|lighthouse-targets ...',
+		'Usage: run-local.mjs CONFIG NEW_OUTPUT_DIRECTORY browser|private|freshness|lighthouse-targets|release ...',
 	)
 const config = {
 	...JSON.parse(

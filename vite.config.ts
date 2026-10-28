@@ -173,6 +173,22 @@ export default defineConfig(async ({ command }) => {
 				// The late-injected Buffer polyfill is missed by the initial dependency scan.
 				// Prebundle it so first use cannot reload a page with an unfinished form.
 				optimizeDeps: { include: ['buffer'] },
+				build: {
+					rolldownOptions: {
+						output: {
+							codeSplitting: {
+								groups: [
+									{
+										// Router and renderer are required on every hydrated page.
+										name: 'framework',
+										test: /node_modules[\\/]@tanstack[\\/](?:redact|router-core|react-router)[\\/]/,
+										includeDependenciesRecursively: false,
+									},
+								],
+							},
+						},
+					},
+				},
 			},
 			ssr: {
 				optimizeDeps: { noDiscovery: true, include: [] },
@@ -181,6 +197,8 @@ export default defineConfig(async ({ command }) => {
 		},
 		ssr: { noExternal: ['@tanstack/redact'] },
 		build: {
+			// The root owns the shared stylesheet, including on client navigation.
+			cssCodeSplit: false,
 			sourcemap: true,
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
 			rolldownOptions: { output: { chunkFileNames: startChunkFileNames } },
@@ -221,11 +239,14 @@ export default defineConfig(async ({ command }) => {
 					basepath: '/',
 					codeSplittingOptions: {
 						defaultBehavior: [
-							['loader'],
-							['component'],
-							['pendingComponent'],
-							['errorComponent'],
-							['notFoundComponent'],
+							// A matched page needs its loader and view together.
+							[
+								'loader',
+								'component',
+								'pendingComponent',
+								'errorComponent',
+								'notFoundComponent',
+							],
 						],
 					},
 				},

@@ -58,8 +58,11 @@ import { documentForbiddenMessage } from '../document-failure.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { verifySession } from '#start/server/shell'
 import { shellQuery, ensureShellQuery } from '../shell-query.ts'
-import { NOT_FOUND_DOCUMENT_TITLE } from '#universal/document-head.ts'
-import { SiteHeader } from '../components/site-header.tsx'
+import { NOT_FOUND_DOCUMENT_TITLE } from '#universal/document-head-contract.ts'
+import {
+	SiteHeader,
+	preloadSiteHeaderAccountControls,
+} from '../components/site-header.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { visuallyHiddenUntilFocusedCss } from '#universal/styles/style-primitives.ts'
 import { PageHead } from '../components/page-head.tsx'
@@ -165,6 +168,7 @@ export const Route = createRootRouteWithContext<{
 						})
 					: undefined,
 			])
+			if (shell.session) await preloadSiteHeaderAccountControls()
 			abortController.signal.throwIfAborted()
 			return {
 				actorKey: shell.actorKey,

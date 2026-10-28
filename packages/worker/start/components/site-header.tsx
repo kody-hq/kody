@@ -7,12 +7,10 @@ import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
-import { useEffect, useState } from 'react'
-import {
-	PhoneAccountGroups,
-	AccountMenu,
-	type OrganizationSession,
-} from './org-switcher.tsx'
+import { Suspense, useEffect, useState } from 'react'
+import { lazyRouteComponent } from '@tanstack/react-router'
+import { type OrganizationSession } from './org-switcher.tsx'
+
 import {
 	colors,
 	shadows,
@@ -27,6 +25,21 @@ import {
 	siteHeaderBrandMinHeight,
 	siteHeaderNavPaddingBlock,
 } from '#universal/styles/style-primitives.ts'
+
+// Anonymous documents do not use the account controls or their mutation code.
+const AccountMenu = lazyRouteComponent(
+	() => import('./org-switcher.tsx'),
+	'AccountMenu',
+)
+const PhoneAccountGroups = lazyRouteComponent(
+	() => import('./org-switcher.tsx'),
+	'PhoneAccountGroups',
+)
+
+/** Resolve signed-in controls before rendering, including without client scripting. */
+export async function preloadSiteHeaderAccountControls() {
+	await Promise.all([AccountMenu.preload?.(), PhoneAccountGroups.preload?.()])
+}
 
 export type SiteHeaderProps = {
 	focused?: boolean
@@ -104,12 +117,16 @@ export function SiteHeader(props: SiteHeaderProps) {
 								<SiteLink href={workspaceHref} css={navLoginCss}>
 									Workspace
 								</SiteLink>
-								<AccountMenu
-									username={props.username}
-									displayName={props.displayName}
-									avatarUrl={props.avatarUrl}
-									organizations={props.organizationSession?.organizations ?? []}
-								/>
+								<Suspense fallback={null}>
+									<AccountMenu
+										username={props.username}
+										displayName={props.displayName}
+										avatarUrl={props.avatarUrl}
+										organizations={
+											props.organizationSession?.organizations ?? []
+										}
+									/>
+								</Suspense>
 							</>
 						) : (
 							<SiteLink href={props.loginHref} css={navLoginCss}>
@@ -156,12 +173,14 @@ export function SiteHeader(props: SiteHeaderProps) {
 							<SiteLink href={workspaceHref} css={navLoginCss}>
 								Workspace
 							</SiteLink>
-							<AccountMenu
-								organizations={props.organizationSession?.organizations ?? []}
-								username={props.username}
-								displayName={props.displayName}
-								avatarUrl={props.avatarUrl}
-							/>
+							<Suspense fallback={null}>
+								<AccountMenu
+									organizations={props.organizationSession?.organizations ?? []}
+									username={props.username}
+									displayName={props.displayName}
+									avatarUrl={props.avatarUrl}
+								/>
+							</Suspense>
 							{props.showDemoIndicator ? <DemoIndicator /> : null}
 						</>
 					) : (
@@ -214,10 +233,12 @@ export function SiteHeader(props: SiteHeaderProps) {
 						) : null}
 					</div>
 					{props.organizationSession ? (
-						<PhoneAccountGroups
-							session={props.organizationSession}
-							currentPathname={props.currentPathname}
-						/>
+						<Suspense fallback={null}>
+							<PhoneAccountGroups
+								session={props.organizationSession}
+								currentPathname={props.currentPathname}
+							/>
+						</Suspense>
 					) : (
 						<div css={menuGroupCss}>
 							<SiteLink href={props.loginHref}>Log in</SiteLink>

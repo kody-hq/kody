@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute } from '@tanstack/react-router'
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { BrandGuideRoute } from '../pages/brand-guide.tsx'
 
 export const Route = createFileRoute('/brand-guide')({

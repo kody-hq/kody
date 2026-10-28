@@ -1,18 +1,26 @@
+import { type ResolvedDocumentHead } from '#universal/document-head-contract.ts'
 import {
-	absolutizeDocumentHead,
-	resolveDocumentHead,
-	type ResolvedDocumentHead,
-} from '#universal/document-head.ts'
+	getHomeOgVariant,
+	homeOgImagePath,
+} from '#universal/home-og-variants.ts'
 
-/** OG selection changes the share card, not the homepage data cache. */
+/** Apply a share variant to the server's base head without loading the whole page catalog. */
 export function homeDocumentHead(
 	head: ResolvedDocumentHead | undefined,
 	og: unknown,
 ) {
-	if (!head?.canonicalUrl) return head
-	const search = typeof og === 'string' ? `?${new URLSearchParams({ og })}` : ''
-	return absolutizeDocumentHead(
-		resolveDocumentHead('home', '/', undefined, search),
-		new URL(head.canonicalUrl).origin,
-	)
+	const variant = getHomeOgVariant(typeof og === 'string' ? og : undefined)
+	if (!head?.canonicalUrl || !head.og || !variant) return head
+	const image = new URL(homeOgImagePath(variant.id), head.canonicalUrl)
+	const version = new URL(head.og.imageUrl).searchParams.get('v')
+	if (version) image.searchParams.set('v', version)
+	return {
+		...head,
+		description: variant.ogDescription,
+		og: {
+			title: variant.ogTitle,
+			description: variant.ogDescription,
+			imageUrl: image.href,
+		},
+	}
 }

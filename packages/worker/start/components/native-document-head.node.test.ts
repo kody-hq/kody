@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
-import { staticDocumentHead } from './document-head.ts'
+import { staticDocumentHead } from './static-document-head.ts'
 
-test('native route metadata keeps canonical origin, descriptions, social cards and stylesheets', () => {
-	const head = staticDocumentHead('featurePackages')({
+test('native route metadata keeps canonical origin, descriptions, social cards and stylesheets', async () => {
+	const head = await staticDocumentHead('featurePackages')({
 		match: { pathname: '/features/packages', context: {} },
 		matches: [{ loaderData: { canonicalOrigin: 'https://kody.codes' } }],
 		params: {},
@@ -23,8 +23,8 @@ test('native route metadata keeps canonical origin, descriptions, social cards a
 		head.meta.some((entry) => 'name' in entry && entry.name === 'description'),
 	).toBe(true)
 })
-test('metadata uses the selected native resolver and route params without rematching the URL', () => {
-	const head = staticDocumentHead('profile')({
+test('metadata uses the selected native resolver and route params without rematching the URL', async () => {
+	const head = await staticDocumentHead('profile')({
 		match: { pathname: '/another-native-path', context: {} },
 		matches: [{ loaderData: { canonicalOrigin: 'https://kody.codes' } }],
 		params: { username: 'tanner' },

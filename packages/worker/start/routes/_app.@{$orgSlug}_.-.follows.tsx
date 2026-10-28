@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute } from '@tanstack/react-router'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { orgFollowsQuery } from '../follows-query.ts'
 import { OrgFollowsPage } from '../pages/org-follows.tsx'
 
