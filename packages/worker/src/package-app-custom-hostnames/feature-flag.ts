@@ -28,14 +28,21 @@ export async function isPackageAppCustomDomainsEnabled(db: D1Database) {
 
 /**
  * Per-user gate for add/list/sync/delete and org-settings UI. Honors
- * audience (including `experiments_opt_in`) and per-user overrides.
+ * audience (including `experiments_opt_in`), per-user overrides, and the
+ * per-org row for `orgId` (the org whose domains are being managed).
  */
 export async function isPackageAppCustomDomainsEnabledForUser(
 	db: D1Database,
 	userId: number | null,
+	orgId: string | null,
 ) {
 	try {
-		return await isFeatureEnabled(db, packageAppCustomDomainsFlagKey, userId)
+		return await isFeatureEnabled(
+			db,
+			packageAppCustomDomainsFlagKey,
+			userId,
+			orgId ? { orgId } : null,
+		)
 	} catch (error) {
 		if (isMissingFeatureFlagsTable(error)) return false
 		throw error

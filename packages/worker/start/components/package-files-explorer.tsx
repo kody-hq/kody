@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { SkillReadAcknowledgement } from './skill-read-acknowledgement.tsx'
 import { type CSSObject } from '@emotion/react'
-import { type ReactNode, useState, useMemo } from 'react'
+import { type ReactNode, useState, Fragment } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { withInstallOrg } from '#universal/community-search.ts'
 
@@ -74,14 +75,24 @@ function countLines(value: string) {
 export function PackageFilesExplorer(props: {
 	data: PackageFilesLoaderData
 	busy?: boolean
+	hideExplorer?: boolean
+	embedded?: boolean
+	fillHeight?: boolean
+	fileHref?: (path: string) => string
 }) {
 	const install = usePackageInstall(props.data.repoActions?.fork ?? null)
 	return (
 		<PackageInstallContext.Provider value={install.context}>
+			{props.data.skillRead ? (
+				<SkillReadAcknowledgement
+					identity={`${props.data.contentPath}:${props.data.viewedCommit}`}
+					{...props.data.skillRead}
+				/>
+			) : null}
 			<PackageFilesExplorerContent
 				{...props}
 				installOrg={install.org}
-				installStrip={renderInstallStrip(install)}
+				installStrip={props.embedded ? undefined : renderInstallStrip(install)}
 			/>
 		</PackageInstallContext.Provider>
 	)
@@ -92,14 +103,20 @@ function PackageFilesExplorerContent({
 	busy,
 	installStrip,
 	installOrg,
+	embedded,
+	hideExplorer,
+	fillHeight,
+	fileHref,
 }: {
 	data: PackageFilesLoaderData
 	busy?: boolean
+	hideExplorer?: boolean
+	embedded?: boolean
+	fillHeight?: boolean
+	fileHref?: (path: string) => string
 	installStrip?: ReactNode
 	installOrg: string | null
 }) {
-	const fileHref = (path: string) =>
-		withInstallOrg(joinPackageFilesPath(data.filesBasePath, path), installOrg)
 	const [expanded, setExpanded] = useState(
 		() =>
 			new Set([
@@ -136,28 +153,36 @@ function PackageFilesExplorerContent({
 	function collapseAll() {
 		setExpanded(new Set())
 	}
-	const contentNode = useMemo(
-		() =>
-			renderContent(data, (path) =>
-				withInstallOrg(
-					joinPackageFilesPath(data.filesBasePath, path),
-					installOrg,
-				),
-			),
-		[data, installOrg],
-	)
+	const hrefForFile =
+		fileHref ??
+		((path: string) =>
+			withInstallOrg(
+				joinPackageFilesPath(data.filesBasePath, path),
+				installOrg,
+			))
 
+	const Panel = embedded ? Fragment : PackageRepoTabPanel
 	const showRepoChrome = Boolean(data.username && data.kodyId)
 
 	return (
 		<article
-			css={articleCss}
+			css={
+				embedded
+					? {
+							minWidth: 0,
+							minHeight: 0,
+							display: 'flex',
+							flexDirection: 'column',
+							flex: 1,
+						}
+					: articleCss
+			}
 			data-testid="package-files"
 			// The previous file stays on screen while the next one loads, so
 			// assistive tech is told the region is mid-update.
 			aria-busy={busy ? 'true' : undefined}
 		>
-			{showRepoChrome && data.username && data.kodyId ? (
+			{embedded ? null : showRepoChrome && data.username && data.kodyId ? (
 				renderPackageRepoChrome({
 					username: data.username,
 					kodyId: data.kodyId,
@@ -189,62 +214,103 @@ function PackageFilesExplorerContent({
 					</header>
 				</>
 			)}
-			<PackageRepoTabPanel>
+			<Panel>
 				{installStrip}
-				<div css={layoutCss}>
-					<nav aria-label="Files" css={treeCss}>
-						<div css={treeHeadCss}>
-							<h2 css={treeHeadingCss}>Files</h2>
-							{/* Always rendered so the row keeps its height — appearing and
+				<div
+					css={[
+						layoutCss,
+						embedded && {
+							marginTop: 0,
+							gap: '0.75rem',
+							gridTemplateColumns: '14rem minmax(0, 1fr)',
+						},
+						fillHeight && {
+							flex: 1,
+							minHeight: 0,
+							alignItems: 'stretch',
+							'@media (min-width: 901px)': {
+								'& > nav': {
+									position: 'static',
+									minHeight: 0,
+									display: 'flex',
+									flexDirection: 'column',
+								},
+								'& > section': {
+									minHeight: 0,
+									display: 'flex',
+									flexDirection: 'column',
+								},
+							},
+						},
+						hideExplorer && { gridTemplateColumns: 'minmax(0, 1fr)' },
+						{
+							'@media (max-width: 900px)': {
+								gridTemplateColumns: 'minmax(0, 1fr)',
+							},
+						},
+					]}
+				>
+					{!hideExplorer ? (
+						<nav aria-label="Files" css={treeCss}>
+							<div css={treeHeadCss}>
+								<h2 css={treeHeadingCss}>Files</h2>
+								{/* Always rendered so the row keeps its height — appearing and
 							    disappearing shifted the filter and tree below it. */}
-							<button
-								type="button"
-								disabled={expanded.size === 0}
-								css={
-									expanded.size > 0
-										? collapseButtonCss
-										: collapseButtonHiddenCss
-								}
-								onClick={collapseAll}
-							>
-								Collapse all
-							</button>
-						</div>
-						<div css={filterWrapCss}>
-							<div css={filterFieldCss}>
-								<span css={filterIconCss}>{searchIcon()}</span>
-								<input
-									type="text"
-									role="searchbox"
-									inputMode="search"
-									autoComplete="off"
-									placeholder="Go to file"
-									aria-label="Filter files"
-									css={filterInputCss}
-									value={query}
-									onChange={(event) => setQuery(event.currentTarget.value)}
-								/>
+								<button
+									type="button"
+									disabled={expanded.size === 0}
+									css={
+										expanded.size > 0
+											? collapseButtonCss
+											: collapseButtonHiddenCss
+									}
+									onClick={collapseAll}
+									aria-label="Collapse all folders"
+									title="Collapse all folders"
+								>
+									{renderIcon('chevron-up', { size: '14' })}
+								</button>
 							</div>
-						</div>
-						<div css={treeScrollCss}>
-							{query.trim()
-								? renderMatches(data, query, fileHref)
-								: renderTree(
-										data.paths,
-										'',
-										data.selectedPath,
-										fileHref,
-										expanded,
-										toggleDirectory,
-										0,
-									)}
-						</div>
-					</nav>
+							<div css={filterWrapCss}>
+								<div css={filterFieldCss}>
+									<span css={filterIconCss}>{searchIcon()}</span>
+									<input
+										type="text"
+										role="searchbox"
+										inputMode="search"
+										autoComplete="off"
+										placeholder="Go to file"
+										aria-label="Filter files"
+										css={filterInputCss}
+										value={query}
+										onChange={(event) => setQuery(event.currentTarget.value)}
+									/>
+								</div>
+							</div>
+							<div css={treeScrollCss}>
+								{query.trim()
+									? renderMatches(data, query, hrefForFile)
+									: renderTree(
+											data.paths,
+											'',
+											data.selectedPath,
+											hrefForFile,
+											expanded,
+											toggleDirectory,
+											0,
+										)}
+							</div>
+						</nav>
+					) : null}
 					<section css={contentCss} aria-label="Selected file">
-						{contentNode}
+						<FileContent
+							key={data.contentPath ?? data.selectedPath}
+							data={data}
+							fileHref={hrefForFile}
+						/>
 					</section>
 				</div>
-			</PackageRepoTabPanel>
+			</Panel>
 		</article>
 	)
 }
@@ -329,6 +395,14 @@ function renderTree(
 								<span css={chevronSpacerCss} aria-hidden="true" />
 							)}
 							<SiteLink
+								onClick={
+									isDirectory && href === '#'
+										? (event) => {
+												event.preventDefault()
+												toggleDirectory(child.path)
+											}
+										: undefined
+								}
 								href={href}
 								aria-current={current ? 'page' : undefined}
 								css={current ? rowCurrentCss : rowCss}
@@ -357,14 +431,24 @@ function renderTree(
 	)
 }
 
-function renderContent(
-	data: PackageFilesLoaderData,
-	fileHref: (path: string) => string,
-): ReactNode {
+function FileContent({
+	data,
+	fileHref,
+}: {
+	data: PackageFilesLoaderData
+	fileHref: (path: string) => string
+}): ReactNode {
+	const [raw, setRaw] = useState(false)
+
 	if (data.kind === 'directory' && !data.content) {
 		return (
 			<div>
-				<div css={contentToolbarCss}>
+				<div
+					css={[
+						contentToolbarCss,
+						{ padding: '0.4rem 0.65rem', flexShrink: 0 },
+					]}
+				>
 					<div css={contentHeadingWrapCss}>
 						<span css={headingIconCss}>{directoryIcon()}</span>
 						<h2 css={contentHeadingCss}>
@@ -405,8 +489,12 @@ function renderContent(
 	const showTextMeta =
 		Boolean(body) && !isPackageFilesMediaKind(data.contentKind)
 	return (
-		<div>
-			<div css={contentToolbarCss}>
+		<div
+			css={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}
+		>
+			<div
+				css={[contentToolbarCss, { padding: '0.4rem 0.65rem', flexShrink: 0 }]}
+			>
 				<div css={contentHeadingWrapCss}>
 					<span css={headingIconCss}>{fileIcon()}</span>
 					<h2 css={contentHeadingCss} title={heading}>
@@ -421,20 +509,65 @@ function renderContent(
 					) : null}
 				</div>
 				<div css={contentActionsCss}>
+					{data.contentKind === 'markdown' ? (
+						<div
+							role="group"
+							aria-label="File display"
+							css={{ display: 'flex', gap: '2px' }}
+						>
+							{(['Formatted', 'Raw'] as const).map((mode) => (
+								<button
+									key={mode}
+									type="button"
+									aria-pressed={raw === (mode === 'Raw')}
+									onClick={() => setRaw(mode === 'Raw')}
+									css={{
+										background: 'transparent',
+										color: colors.textMuted,
+										border: 0,
+										borderRadius: '3px',
+										padding: '0.25rem 0.4rem',
+										fontSize: '0.75rem',
+										cursor: 'pointer',
+										'&[aria-pressed=true]': {
+											background: colors.background,
+											color: colors.text,
+										},
+									}}
+								>
+									{mode}
+								</button>
+							))}
+						</div>
+					) : null}
 					{data.rawHref ? (
 						<a
 							href={data.rawHref}
+							download={
+								data.rawHref.startsWith('data:')
+									? packageFileBaseName(heading)
+									: undefined
+							}
 							data-testid="package-files-raw-link"
 							aria-label={`View raw ${heading}`}
-							css={rawLinkCss}
+							title={`Open raw ${heading}`}
+							css={{
+								...rawLinkCss,
+								padding: '0.35rem',
+								minHeight: 0,
+								width: '1.75rem',
+								height: '1.75rem',
+								boxSizing: 'border-box',
+							}}
 						>
-							Raw
+							{renderIcon('arrow-up-right', { size: '14' })}
 						</a>
 					) : null}
 					{body &&
 					data.contentKind !== 'binary' &&
 					!isPackageFilesMediaKind(data.contentKind) ? (
 						<CopyTextButton
+							iconOnly
 							value={body}
 							idleLabel="Copy"
 							variant="ghost"
@@ -444,7 +577,15 @@ function renderContent(
 					) : null}
 				</div>
 			</div>
-			{renderFilePreview(data, heading, body)}
+			<div css={{ overflow: 'auto', minHeight: 0, flex: 1 }}>
+				{renderFilePreview(
+					raw ? { ...data, contentKind: 'code' } : data,
+					heading,
+					data.contentKind === 'markdown' && !raw
+						? body.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '')
+						: body,
+				)}
+			</div>
 		</div>
 	)
 }

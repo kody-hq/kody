@@ -3,6 +3,8 @@ import {
 	setAdminGlobalFeatureFlag,
 	setAdminFeatureFlagOverride,
 	clearAdminFeatureFlagOverride,
+	setAdminFeatureFlagOrgOverride,
+	clearAdminFeatureFlagOrgOverride,
 	deleteAdminStaleFeatureFlag,
 } from '#start/server/admin-mutations'
 import {
@@ -47,6 +49,8 @@ type ActionState =
 	| 'saving-global'
 	| 'saving-override'
 	| 'clearing-override'
+	| 'saving-org-override'
+	| 'clearing-org-override'
 	| 'deleting-stale'
 function formatMeasureLabel(measure: FeatureFlagSuccessMetricMeasure): string {
 	switch (measure) {
@@ -135,6 +139,18 @@ export function AdminFeatureFlagsPage({
 		onMutate: () => invalidate,
 		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
 	})
+	const setOrgOverrideMutation = useMutation({
+		gcTime: 0,
+		mutationFn: setAdminFeatureFlagOrgOverride,
+		onMutate: () => invalidate,
+		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
+	})
+	const clearOrgOverrideMutation = useMutation({
+		gcTime: 0,
+		mutationFn: clearAdminFeatureFlagOrgOverride,
+		onMutate: () => invalidate,
+		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
+	})
 	const deleteStaleMutation = useMutation({
 		gcTime: 0,
 		mutationFn: deleteAdminStaleFeatureFlag,
@@ -150,9 +166,13 @@ export function AdminFeatureFlagsPage({
 			? 'saving-override'
 			: clearOverrideMutation.isPending
 				? 'clearing-override'
-				: deleteStaleMutation.isPending
-					? 'deleting-stale'
-					: 'idle'
+				: setOrgOverrideMutation.isPending
+					? 'saving-org-override'
+					: clearOrgOverrideMutation.isPending
+						? 'clearing-org-override'
+						: deleteStaleMutation.isPending
+							? 'deleting-stale'
+							: 'idle'
 
 	async function submitAdminAction(
 		submit: () => Promise<unknown>,
@@ -227,6 +247,29 @@ export function AdminFeatureFlagsPage({
 			if (ok) form.reset()
 		})
 	}
+	function handleAddOrgOverrideSubmit(
+		event: FormEvent<HTMLFormElement>,
+		key: string,
+	) {
+		event.preventDefault()
+		if (!(event.currentTarget instanceof HTMLFormElement)) return
+		const form = event.currentTarget
+		const formData = new FormData(form)
+		const orgSlug = String(formData.get('orgSlug') ?? '')
+			.trim()
+			.replace(/^@/, '')
+		const enabled = String(formData.get('enabled') ?? 'true') === 'true'
+		const note = String(formData.get('note') ?? '').trim()
+		void submitAdminAction(
+			() =>
+				setOrgOverrideMutation.mutateAsync({
+					data: { key, orgSlug, enabled, note: note || null },
+				}),
+			`Saved org override for @${orgSlug} on ${key}.`,
+		).then((ok) => {
+			if (ok) form.reset()
+		})
+	}
 	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
@@ -241,7 +284,7 @@ export function AdminFeatureFlagsPage({
 		>
 			<AdminPageHeader
 				title="Admin feature flags"
-				description="Toggle registry feature flags, set percentage rollouts, and manage per-user overrides."
+				description="Toggle registry feature flags, set percentage rollouts, and manage per-org and per-user overrides."
 				currentHref={currentHref}
 			/>
 
@@ -253,7 +296,7 @@ export function AdminFeatureFlagsPage({
 			<div css={{ display: 'grid', gap: spacing.lg }}>
 				{registryFlags.map((flag) => (
 					<section
-						key={`${flag.key}:${flag.global?.updatedAt ?? 'none'}:${flag.global?.audience ?? 'everyone'}:${flag.overrides.length}`}
+						key={`${flag.key}:${flag.global?.updatedAt ?? 'none'}:${flag.global?.audience ?? 'everyone'}:${flag.overrides.length}:${flag.orgOverrides.length}`}
 						css={cardCss}
 					>
 						<div
@@ -344,8 +387,15 @@ export function AdminFeatureFlagsPage({
 													),
 												},
 												{
+													label: 'Org override (excluded)',
+													value: summarizeMetricCohort(
+														flag.successMetric.measure,
+														flag.metricReadout.orgOverride,
+													),
+												},
+												{
 													label: 'Excluded',
-													value: `${flag.metricReadout.overrideUsers} override · ${flag.metricReadout.mixedUsers} mixed-exposure`,
+													value: `${flag.metricReadout.overrideUsers} override · ${flag.metricReadout.orgOverrideUsers} org override · ${flag.metricReadout.mixedUsers} mixed-exposure`,
 												},
 											]}
 										/>
@@ -358,11 +408,11 @@ export function AdminFeatureFlagsPage({
 										>
 											Window: {flag.metricReadout.windowStart.slice(0, 10)} to{' '}
 											{flag.metricReadout.windowEnd.slice(0, 10)} (current month
-											to date). Override users are excluded from on/off because
-											they are hand-picked (their usage is still shown above).
-											Mixed-exposure users saw both fair values inside the
-											window and are excluded so month-level usage is not
-											mis-attributed across the switch.
+											to date). Override and org override users are excluded
+											from on/off because they are hand-picked (their usage is
+											still shown above). Mixed-exposure users saw both fair
+											values inside the window and are excluded so month-level
+											usage is not mis-attributed across the switch.
 										</p>
 									</>
 								) : flag.metricReadout?.status === 'unavailable' ? (
@@ -521,16 +571,162 @@ export function AdminFeatureFlagsPage({
 								/>
 							) : (
 								<p css={{ margin: 0, color: colors.textMuted }}>
-									No global row yet — saving creates one. Empty rollout means
-									all users when enabled. Audience starts from the flag's
-									registry default; choose Experiments opt-in to limit the flag
-									to `/account/experiments` members.
+									No global row yet. Saving creates one. Empty rollout means all
+									users when enabled. Audience starts from the flag's registry
+									default; choose Experiments opt-in to limit the flag to
+									`/account/experiments` members.
 								</p>
 							)}
 						</form>
 						<AccountManagementPanel
+							title="Organization overrides"
+							description="Turn a flag on or off for every member of an organization while they work in it. Per-user overrides still win."
+						>
+							{flag.orgOverrides.length === 0 ? (
+								<p css={{ margin: 0, color: colors.textMuted }}>
+									No organization overrides.
+								</p>
+							) : (
+								<div css={{ display: 'grid', gap: spacing.sm }}>
+									{flag.orgOverrides.map((orgOverride) => (
+										<div
+											key={`${flag.key}:org:${orgOverride.slug}`}
+											css={{
+												display: 'flex',
+												justifyContent: 'space-between',
+												gap: spacing.md,
+												flexWrap: 'wrap',
+												alignItems: 'center',
+												border: `1px solid ${colors.borderSubtle}`,
+												borderRadius: '0.75rem',
+												padding: spacing.sm,
+											}}
+										>
+											<div>
+												<strong>
+													{orgOverride.displayName ?? `@${orgOverride.slug}`}
+												</strong>
+												<p
+													css={{
+														margin: 0,
+														color: colors.textMuted,
+														fontSize: typography.fontSize.sm,
+													}}
+												>
+													@{orgOverride.slug}
+													{orgOverride.personal
+														? ' · personal'
+														: ' · team'} ·{' '}
+													{orgOverride.enabled ? 'Forced on' : 'Forced off'} ·
+													updated{' '}
+													{formatNullableTimestamp(orgOverride.updatedAt)}
+												</p>
+												{orgOverride.note ? (
+													<p
+														css={{
+															margin: 0,
+															color: colors.textMuted,
+															fontSize: typography.fontSize.sm,
+														}}
+													>
+														{orgOverride.note}
+													</p>
+												) : null}
+											</div>
+											<button
+												type="button"
+												disabled={isMutating}
+												onClick={() =>
+													void submitAdminAction(
+														() =>
+															clearOrgOverrideMutation.mutateAsync({
+																data: {
+																	key: flag.key,
+																	orgSlug: orgOverride.slug,
+																},
+															}),
+														`Removed org override for @${orgOverride.slug}.`,
+													)
+												}
+												css={secondaryButtonCss}
+											>
+												{actionState === 'clearing-org-override'
+													? 'Removing…'
+													: 'Remove'}
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+							<form
+								method="post"
+								onSubmit={(event) =>
+									handleAddOrgOverrideSubmit(event, flag.key)
+								}
+								css={{
+									display: 'grid',
+									gridTemplateColumns:
+										'minmax(0, 1fr) minmax(0, 8rem) minmax(0, 1fr) auto',
+									gap: spacing.md,
+									alignItems: 'end',
+									marginTop: spacing.md,
+									[mq.mobile]: {
+										gridTemplateColumns: 'minmax(0, 1fr)',
+										alignItems: 'stretch',
+									},
+								}}
+							>
+								<label css={fieldCss}>
+									<span css={fieldLabelCss}>Organization handle</span>
+									<input
+										data-field-ring
+										name="orgSlug"
+										type="text"
+										required
+										placeholder="org-handle"
+										disabled={isMutating}
+										css={accountInputCss}
+									/>
+								</label>
+								<label css={fieldCss}>
+									<span css={fieldLabelCss}>State</span>
+									<select
+										data-field-ring
+										name="enabled"
+										defaultValue="true"
+										disabled={isMutating}
+										css={selectCss}
+									>
+										<option value="true">On</option>
+										<option value="false">Off</option>
+									</select>
+								</label>
+								<label css={fieldCss}>
+									<span css={fieldLabelCss}>Note</span>
+									<input
+										data-field-ring
+										name="note"
+										type="text"
+										maxLength={500}
+										placeholder="Why this org has the flag"
+										disabled={isMutating}
+										css={accountInputCss}
+									/>
+								</label>
+								<button
+									type="submit"
+									disabled={isMutating}
+									css={primaryButtonCss}
+								>
+									{actionState === 'saving-org-override'
+										? 'Adding…'
+										: 'Add org override'}
+								</button>
+							</form>
+						</AccountManagementPanel>
+						<AccountManagementPanel
 							title="User overrides"
-							description="Per-user overrides win over global state and percentage rollouts."
+							description="Per-user overrides win over organization overrides, global state, and percentage rollouts."
 						>
 							{flag.overrides.length === 0 ? (
 								<p css={{ margin: 0, color: colors.textMuted }}>
@@ -683,6 +879,9 @@ export function AdminFeatureFlagsPage({
 										<code>{flag.key}</code>
 										<p css={{ margin: 0, color: colors.textMuted }}>
 											{summarizeEffectiveSource(flag)}
+											{flag.orgOverrides.length > 0
+												? ` · ${flag.orgOverrides.length} org override(s)`
+												: ''}
 											{flag.overrides.length > 0
 												? ` · ${flag.overrides.length} override(s)`
 												: ''}

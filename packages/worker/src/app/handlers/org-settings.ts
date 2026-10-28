@@ -34,7 +34,11 @@ async function loadCustomDomainsView(
 	// Same gate as mutations/MCP: audience + per-user overrides. Global-only
 	// would hide the panel for override users who can still add/sync.
 	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(env.APP_DB, actingUserId))
+		!(await isPackageAppCustomDomainsEnabledForUser(
+			env.APP_DB,
+			actingUserId,
+			orgId,
+		))
 	) {
 		return null
 	}
@@ -313,7 +317,11 @@ async function writeOrganizationDomain(
 		)
 	}
 	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(env.APP_DB, user.userId))
+		!(await isPackageAppCustomDomainsEnabledForUser(
+			env.APP_DB,
+			user.userId,
+			access.org.id,
+		))
 	) {
 		return operationResult(
 			{

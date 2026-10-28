@@ -711,6 +711,10 @@
 		{
 			"filename": "0195-credential-fill-placement-opt-ins.sql",
 			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
+		},
+		{
+			"filename": "0197-feature-flag-org-overrides.sql",
+			"sha256": "01798745f6d47a56ca2c5a3ca9799879afe8d49018288b4f3a3ab03be4790c4c"
 		}
 	]
 }

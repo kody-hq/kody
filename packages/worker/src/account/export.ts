@@ -242,7 +242,8 @@ function countRunRecordsExportEntries(
 		runRecords.workflowProjections.length +
 		runRecords.jobRunObservability.length +
 		runRecords.packageRunSuccesses.length +
-		runRecords.activationMilestones.length
+		runRecords.activationMilestones.length +
+		(runRecords.skillReads?.length ?? 0)
 	)
 }
 
@@ -267,6 +268,7 @@ function formatRunRecordsExportSectionItems(page: RunRecordsExportPayload) {
 		...page.activationMilestones.map((activationMilestone) => ({
 			activationMilestone,
 		})),
+		...(page.skillReads ?? []).map((skillRead) => ({ skillRead })),
 	]
 }
 

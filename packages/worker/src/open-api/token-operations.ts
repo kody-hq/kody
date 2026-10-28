@@ -335,6 +335,9 @@ export const tokenOperationDefinitions: Record<
 						ctx.env.APP_DB,
 						connectionProfilesFlagKey,
 						userRow.id,
+						ctx.callerContext.request?.org.id
+							? { orgId: ctx.callerContext.request.org.id }
+							: null,
 					))
 				if (!enabled) {
 					throw new ApiError({

@@ -34,3 +34,12 @@ it('retains video dependencies in a stable key', () => {
 		shellQuery('a', '?youtubeId=second').queryKey,
 	)
 })
+
+it('org pages get their own shell so org feature flag rows apply', () => {
+	expect(shellQuery('a', '', 'team').queryKey).not.toEqual(
+		shellQuery('a', '').queryKey,
+	)
+	expect(shellQuery('a', '', 'team').queryKey).not.toEqual(
+		shellQuery('a', '', 'other').queryKey,
+	)
+})

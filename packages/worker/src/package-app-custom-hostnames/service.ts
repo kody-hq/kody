@@ -254,8 +254,11 @@ function verificationFromCloudflare(
 async function requireCustomDomainsEnabled(
 	db: D1Database,
 	actingUserId: number | null,
+	orgId: string,
 ) {
-	if (!(await isPackageAppCustomDomainsEnabledForUser(db, actingUserId))) {
+	if (
+		!(await isPackageAppCustomDomainsEnabledForUser(db, actingUserId, orgId))
+	) {
 		throw new PackageAppCustomHostnameError(
 			'Package-app custom domains are not enabled for this user.',
 		)
@@ -716,7 +719,11 @@ export async function addPackageAppCustomHostname(input: {
 	packageId?: string
 	sslMethod?: CustomHostnameSslMethod
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
+	await requireCustomDomainsEnabled(
+		input.env.APP_DB,
+		input.actingUserId,
+		input.orgId,
+	)
 	await requirePaidOrgForCustomDomains(input.env.APP_DB, input.orgId)
 	const hostname = normalizeCustomHostname(input.hostname)
 	if (!hostname) {
@@ -920,7 +927,11 @@ export async function listPackageAppCustomHostnames(input: {
 	/** Numeric `users.id` for feature-flag audience evaluation. */
 	actingUserId: number
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
+	await requireCustomDomainsEnabled(
+		input.env.APP_DB,
+		input.actingUserId,
+		input.orgId,
+	)
 	const rows = await listOrgCustomHostnameRows<CustomHostnameRowSql>(
 		input.env.APP_DB,
 		input.orgId,
@@ -939,7 +950,11 @@ export async function syncPackageAppCustomHostname(input: {
 	id?: string
 	now?: Date
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
+	await requireCustomDomainsEnabled(
+		input.env.APP_DB,
+		input.actingUserId,
+		input.orgId,
+	)
 	const row = await loadOwnedCustomHostnameRow(input)
 	const cfId = row.cloudflareHostnameId?.trim()
 	if (!cfId) {
@@ -1002,7 +1017,11 @@ export async function deletePackageAppCustomHostname(input: {
 	hostname?: string
 	id?: string
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
+	await requireCustomDomainsEnabled(
+		input.env.APP_DB,
+		input.actingUserId,
+		input.orgId,
+	)
 	const row = await loadOwnedCustomHostnameRow(input)
 	await removePackageAppCustomHostnameRow({
 		env: input.env,

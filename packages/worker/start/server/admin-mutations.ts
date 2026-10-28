@@ -8,6 +8,8 @@ import {
 	setGlobalFeatureFlagSchema,
 	setFeatureFlagOverrideSchema,
 	clearFeatureFlagOverrideSchema,
+	setFeatureFlagOrgOverrideSchema,
+	clearFeatureFlagOrgOverrideSchema,
 	deleteStaleFlagSchema,
 	reservedUsernamesSchema,
 } from '#universal/admin-setting-mutations.ts'
@@ -46,6 +48,30 @@ export const setAdminFeatureFlagOverride = createServerFn({ method: 'POST' })
 			await import('../../src/admin/feature-flags-operations.ts')
 		return withWebsiteMutation({}, async ({ request, env }) =>
 			setAdminFeatureFlagOverride({ request, env, fields: data }),
+		)
+	})
+
+export const setAdminFeatureFlagOrgOverride = createServerFn({ method: 'POST' })
+	.validator(setFeatureFlagOrgOverrideSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { setAdminFeatureFlagOrgOverride } =
+			await import('../../src/admin/feature-flags-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			setAdminFeatureFlagOrgOverride({ request, env, fields: data }),
+		)
+	})
+
+export const clearAdminFeatureFlagOrgOverride = createServerFn({
+	method: 'POST',
+})
+	.validator(clearFeatureFlagOrgOverrideSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { clearAdminFeatureFlagOrgOverride } =
+			await import('../../src/admin/feature-flags-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			clearAdminFeatureFlagOrgOverride({ request, env, fields: data }),
 		)
 	})
 

@@ -1,11 +1,13 @@
 /** @jsxImportSource @emotion/react */
 
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { tooltipRows } from './tooltip-content.ts'
 import { useMemo } from 'react'
 import { defineChart } from '@tanstack/charts'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from './chart.tsx'
 import { pie, polar, radialArc } from '@tanstack/charts/polar'
 import { tooltip } from '@tanstack/charts/tooltip'
+import { portal } from '@tanstack/charts/tooltip/portal'
 import {
 	chartEmptyFill,
 	formatIntegerNumber,
@@ -24,6 +26,8 @@ type DonutChartProps = {
 	ariaLabel: string
 	/** Text shown when every slice is zero. */
 	emptyText?: string
+	showLegend?: boolean
+	size?: number
 }
 
 export function DonutChart(props: DonutChartProps) {
@@ -59,8 +63,12 @@ export function DonutChart(props: DonutChartProps) {
 					total > 0
 						? {
 								use: tooltip,
-								format: (point) =>
-									`${point.datum.label}: ${formatIntegerNumber(point.datum.value)} (${formatPercentShare(point.datum.fraction)})`,
+								portal,
+								content: (points, context) =>
+									tooltipRows(points, context, (datum) => ({
+										label: datum.label,
+										value: `${formatIntegerNumber(datum.value)} (${formatPercentShare(datum.fraction)})`,
+									})),
 							}
 						: undefined,
 			}),
@@ -78,15 +86,15 @@ export function DonutChart(props: DonutChartProps) {
 			<div
 				css={{
 					position: 'relative',
-					width: '11.25rem',
+					width: props.size ?? 180,
 					maxWidth: '100%',
 					flexShrink: 0,
 				}}
 			>
 				<Chart
 					definition={definition}
-					height={180}
-					initialWidth={180}
+					height={props.size ?? 180}
+					initialWidth={props.size ?? 180}
 					ariaLabel={ariaLabel}
 				/>
 				<div
@@ -114,68 +122,70 @@ export function DonutChart(props: DonutChartProps) {
 					</span>
 				</div>
 			</div>
-			<ul
-				css={{
-					listStyle: 'none',
-					margin: 0,
-					padding: 0,
-					display: 'grid',
-					gap: spacing.xs,
-					minWidth: 0,
-				}}
-			>
-				{total <= 0 ? (
-					<li
-						css={{
-							color: colors.textMuted,
-							fontSize: typography.fontSize.sm,
-						}}
-					>
-						{props.emptyText ?? 'No data yet.'}
-					</li>
-				) : (
-					slices
-						.filter((slice) => slice.value > 0)
-						.map((slice) => (
-							<li
-								key={slice.label}
-								css={{
-									display: 'flex',
-									alignItems: 'center',
-									gap: spacing.sm,
-									fontSize: typography.fontSize.sm,
-									color: colors.text,
-								}}
-							>
-								<span
-									aria-hidden="true"
+			{props.showLegend !== false ? (
+				<ul
+					css={{
+						listStyle: 'none',
+						margin: 0,
+						padding: 0,
+						display: 'grid',
+						gap: spacing.xs,
+						minWidth: 0,
+					}}
+				>
+					{total <= 0 ? (
+						<li
+							css={{
+								color: colors.textMuted,
+								fontSize: typography.fontSize.sm,
+							}}
+						>
+							{props.emptyText ?? 'No data yet.'}
+						</li>
+					) : (
+						slices
+							.filter((slice) => slice.value > 0)
+							.map((slice) => (
+								<li
+									key={slice.label}
 									css={{
-										width: '0.625rem',
-										height: '0.625rem',
-										borderRadius: '999px',
-										backgroundColor: slice.color,
-										flexShrink: 0,
-									}}
-								/>
-								<span css={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-									{slice.label}
-								</span>
-								<span
-									css={{
-										color: colors.textMuted,
-										whiteSpace: 'nowrap',
-										marginLeft: 'auto',
-										paddingLeft: spacing.sm,
-										fontVariantNumeric: 'tabular-nums',
+										display: 'flex',
+										alignItems: 'center',
+										gap: spacing.sm,
+										fontSize: typography.fontSize.sm,
+										color: colors.text,
 									}}
 								>
-									{formatIntegerNumber(slice.value)} ·{' '}
-									{formatPercentShare(slice.value / total)}
-								</span>
-							</li>
-						))
-				)}
-			</ul>
+									<span
+										aria-hidden="true"
+										css={{
+											width: '0.625rem',
+											height: '0.625rem',
+											borderRadius: '999px',
+											backgroundColor: slice.color,
+											flexShrink: 0,
+										}}
+									/>
+									<span css={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+										{slice.label}
+									</span>
+									<span
+										css={{
+											color: colors.textMuted,
+											whiteSpace: 'nowrap',
+											marginLeft: 'auto',
+											paddingLeft: spacing.sm,
+											fontVariantNumeric: 'tabular-nums',
+										}}
+									>
+										{formatIntegerNumber(slice.value)} ·{' '}
+										{formatPercentShare(slice.value / total)}
+									</span>
+								</li>
+							))
+					)}
+				</ul>
+			) : null}
 		</div>
 	)
 }

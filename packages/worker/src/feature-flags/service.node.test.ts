@@ -174,6 +174,9 @@ function createFeatureFlagsTestDb(
 							),
 					)
 				}
+				if (has('from feature_flag_org_overrides')) {
+					return allResults<T>([])
+				}
 				if (has('select distinct flag_key from feature_flag_repo_overrides')) {
 					return allResults<T>(
 						[...new Set(repoOverrides.map((row) => row.flag_key))].map(
@@ -255,6 +258,9 @@ function createFeatureFlagsTestDb(
 						}
 					}
 					return { meta: { changes: before - repoOverrides.length } }
+				}
+				if (normalized.startsWith('delete from feature_flag_org_overrides')) {
+					return { meta: { changes: 0 } }
 				}
 				throw new Error(`Unsupported run query: ${query}`)
 			},
@@ -646,12 +652,14 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 			updatedByStableUserId: null,
 			updatedAt: '2026-06-01T00:00:00.000Z',
 		},
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('retired-repo-flag')).toEqual({
 		key: 'retired-repo-flag',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('repo-push-queue')?.stale).toBe(false)
@@ -659,6 +667,7 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 		key: 'orphan-override',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [
 			{
 				stableUserId: ownerIdFromStored('stable-3'),

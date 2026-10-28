@@ -13,6 +13,20 @@ const mocks = vi.hoisted(() => ({
 	loadOrgUsagePageResult: vi.fn(),
 }))
 
+vi.mock('#app/skill-metrics.ts', () => ({
+	loadSkillMetrics: vi.fn().mockResolvedValue({
+		skillCount: 0,
+		packageCount: 0,
+		instructionReads: 0,
+		supportingFileReads: 0,
+		readers: 0,
+		since: '2026-01-01',
+		topSkills: [],
+		dailyReads: [],
+		skillActivity: [],
+		recentReads: [],
+	}),
+}))
 vi.mock('#worker/run-records/service.ts', () => ({
 	loadWorkspaceRunCharts: mocks.loadWorkspaceRunCharts,
 }))

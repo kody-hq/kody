@@ -154,7 +154,7 @@ Rules:
   stable LOADER id unique_worker_days already meters) once the module graph is
   minted. Older rows may carry `entry: invoke` plus an `invoke` specifier from
   the removed execute shortcut
-  ([ADR 0084](../decisions/0084-execute-takes-code-only.md)); readers keep
+  ([ADR 0085](../decisions/0085-execute-takes-code-only.md)); readers keep
   showing them. Package columns (`package_id`, `published_commit`, …) stay
   first-class. `published_commit` is the bundle that executed, which can trail
   `entity_sources.published_commit` for a short npm-backed republish window

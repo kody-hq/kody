@@ -124,6 +124,13 @@ export const loadPackageFiles = createServerFn({ method: 'GET' })
 							installOrg,
 						})
 			if (!payload) throw notFound()
+			const { packageSkillReadReceipt } =
+				await import('#app/package-skill-reads.ts')
+			payload.skillRead = await packageSkillReadReceipt(
+				bindings,
+				request,
+				payload,
+			)
 			return {
 				kind: 'page' as const,
 				data: payload,

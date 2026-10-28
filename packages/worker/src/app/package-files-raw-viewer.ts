@@ -1,5 +1,8 @@
 import { waitUntil } from 'cloudflare:workers'
-import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import {
+	type McpCallerContext,
+	type McpUserContext,
+} from '@kody-internal/shared/chat.ts'
 import { apiTokenScopeIncludes } from '#worker/api-tokens/scopes.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
@@ -13,7 +16,12 @@ export type PackageFileRawViewer =
 	 * `orgId` is set for org-bound tokens, which only act as the user inside
 	 * that org. User-bound tokens read across the user's orgs (ADR 0070).
 	 */
-	| { kind: 'token'; user: McpUserContext | null; orgId: string | null }
+	| {
+			kind: 'token'
+			user: McpUserContext | null
+			orgId: string | null
+			callerContext?: McpCallerContext
+	  }
 	| { kind: 'invalid'; error: ApiError }
 
 /**
@@ -49,6 +57,7 @@ export async function resolvePackageFileRawViewer(input: {
 				? context.callerContext.user
 				: null,
 			orgId: token.org_binding === 'user' ? null : token.org_id,
+			callerContext: context.callerContext,
 		}
 	} catch (error) {
 		if (error instanceof ApiError) return { kind: 'invalid', error }

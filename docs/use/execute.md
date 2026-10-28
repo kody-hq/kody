@@ -74,7 +74,7 @@ export default (params) => action(params)
 ```
 
 **execute** has no `invoke` field
-([ADR 0084](../contributing/decisions/0084-execute-takes-code-only.md)). A call
+([ADR 0085](../contributing/decisions/0085-execute-takes-code-only.md)). A call
 that still sends `invoke` fails with an error that shows this `code` form for
 its specifier. The CLI `kody execute --invoke kody:@scope/package/export` flag
 is client-side sugar: the CLI writes this module and sends it as `code`.

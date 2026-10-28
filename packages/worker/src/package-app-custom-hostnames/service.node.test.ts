@@ -64,6 +64,18 @@ function createDb() {
 			enabled INTEGER NOT NULL,
 			PRIMARY KEY (flag_key, user_id)
 		);
+		CREATE TABLE feature_flag_org_overrides (
+			flag_key TEXT NOT NULL,
+			org_id TEXT NOT NULL,
+			enabled INTEGER NOT NULL,
+			PRIMARY KEY (flag_key, org_id)
+		);
+		CREATE TABLE org_memberships (
+			org_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			deleted_at TEXT,
+			PRIMARY KEY (org_id, user_id)
+		);
 		INSERT INTO users (id, stable_user_id, experiments_opt_in) VALUES (1, 'person-1', 1);
 	`)
 	sqlite.exec(migrationSql)

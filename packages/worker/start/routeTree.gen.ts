@@ -188,6 +188,7 @@ import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './ro
 import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
 import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
 import { Route as AppAtChar123orgSlugChar125SettingsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings'
+import { Route as AppAtChar123orgSlugChar125SkillsRouteImport } from './routes/_app.@{$orgSlug}_.-.skills'
 import { Route as AppAtChar123orgSlugChar125TeamsRouteImport } from './routes/_app.@{$orgSlug}_.-.teams'
 import { Route as AppAtChar123orgSlugChar125UsageRouteImport } from './routes/_app.@{$orgSlug}_.-.usage'
 import { Route as AppAtChar123orgSlugChar125WaitingRouteImport } from './routes/_app.@{$orgSlug}_.-.waiting'
@@ -1222,6 +1223,12 @@ const AppAtChar123orgSlugChar125SettingsRoute =
     path: '/@{$orgSlug}/-/settings',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125SkillsRoute =
+  AppAtChar123orgSlugChar125SkillsRouteImport.update({
+    id: '/@{$orgSlug}_/-/skills',
+    path: '/@{$orgSlug}/-/skills',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125TeamsRoute =
   AppAtChar123orgSlugChar125TeamsRouteImport.update({
     id: '/@{$orgSlug}_/-/teams',
@@ -1916,6 +1923,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2181,6 +2189,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2449,6 +2458,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/_app/@{$orgSlug}_/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/_app/@{$orgSlug}_/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/_app/@{$orgSlug}_/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/_app/@{$orgSlug}_/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/_app/@{$orgSlug}_/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2717,6 +2727,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2982,6 +2993,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -3249,6 +3261,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/secret-providers'
     | '/_app/@{$orgSlug}_/-/secrets'
     | '/_app/@{$orgSlug}_/-/settings'
+    | '/_app/@{$orgSlug}_/-/skills'
     | '/_app/@{$orgSlug}_/-/teams'
     | '/_app/@{$orgSlug}_/-/usage'
     | '/_app/@{$orgSlug}_/-/waiting'
@@ -4714,6 +4727,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/skills': {
+      id: '/_app/@{$orgSlug}_/-/skills'
+      path: '/@{$orgSlug}/-/skills'
+      fullPath: '/@{$orgSlug}/-/skills'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/teams': {
       id: '/_app/@{$orgSlug}_/-/teams'
       path: '/@{$orgSlug}/-/teams'
@@ -5398,6 +5418,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
   AppAtChar123orgSlugChar125SettingsRoute: typeof AppAtChar123orgSlugChar125SettingsRoute
+  AppAtChar123orgSlugChar125SkillsRoute: typeof AppAtChar123orgSlugChar125SkillsRoute
   AppAtChar123orgSlugChar125TeamsRoute: typeof AppAtChar123orgSlugChar125TeamsRoute
   AppAtChar123orgSlugChar125UsageRoute: typeof AppAtChar123orgSlugChar125UsageRoute
   AppAtChar123orgSlugChar125WaitingRoute: typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -5556,6 +5577,7 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125SecretsRoute,
   AppAtChar123orgSlugChar125SettingsRoute:
     AppAtChar123orgSlugChar125SettingsRoute,
+  AppAtChar123orgSlugChar125SkillsRoute: AppAtChar123orgSlugChar125SkillsRoute,
   AppAtChar123orgSlugChar125TeamsRoute: AppAtChar123orgSlugChar125TeamsRoute,
   AppAtChar123orgSlugChar125UsageRoute: AppAtChar123orgSlugChar125UsageRoute,
   AppAtChar123orgSlugChar125WaitingRoute:
