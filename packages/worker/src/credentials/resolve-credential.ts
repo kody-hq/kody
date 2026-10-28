@@ -66,10 +66,8 @@ import {
 	readFetchFillPlacement,
 	readFetchFillPlacementCredentialId,
 } from './fetch-fill-placement-cache.ts'
-import {
-	type CredentialFillSite,
-	observeFillPlacementWouldBlockSites,
-} from './fill-placement.ts'
+import { enforceFillPlacement } from './fill-placement-enforcement.ts'
+import { type CredentialFillSite } from './fill-placement.ts'
 import { loginCredentialResolver } from './login-resolver.ts'
 import { mcpConnectionResolver } from './mcp-resolver.ts'
 import {
@@ -480,7 +478,7 @@ export function auditResolvedFetchPlacements(
 	if (fillPlacement !== undefined) {
 		const sites = fetchFillSitesOf(input.credential)
 		if (sites.length > 0) {
-			observeFillPlacementWouldBlockSites({
+			enforceFillPlacement({
 				credentialName: fetchCredentialObserveName(input.credential),
 				placement: fillPlacement,
 				sites,
@@ -488,7 +486,13 @@ export function auditResolvedFetchPlacements(
 				env: input.env,
 				credentialId:
 					readFetchFillPlacementCredentialId(input) ??
-					cached.subject.credentialId,
+					cached.subject.credentialId ??
+					null,
+				slot:
+					input.credential.use === 'secret' ||
+					input.credential.use === 'integration-token'
+						? input.credential.name
+						: null,
 			})
 		}
 	}

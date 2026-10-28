@@ -31,6 +31,7 @@ import {
 import { createUnresolvedSecretMessage } from './unresolved-secret.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import * as packageManifestPlacement from '#worker/credentials/package-manifest-fill-placement.ts'
+import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('user-123')
@@ -961,4 +962,46 @@ test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and ski
 		name: 'charlieToken',
 		allowedHosts: ['api.openai.com'],
 	})
+})
+
+test('an owner-saved new credential records its body opt-in; other inserts do not', async () => {
+	const { env } = await createSecretEnv()
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'ownerBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
+		audit: null,
+	})
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'codeBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		audit: null,
+	})
+	const owner = await resolveSecret({
+		env,
+		userId,
+		name: 'ownerBody',
+		scope: 'user',
+	})
+	const code = await resolveSecret({
+		env,
+		userId,
+		name: 'codeBody',
+		scope: 'user',
+	})
+	if (!owner.found || !code.found) throw new Error('expected both credentials')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, owner.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: true })
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, code.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: false })
 })

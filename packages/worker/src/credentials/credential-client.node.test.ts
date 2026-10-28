@@ -67,6 +67,22 @@ import { type CredentialNeed } from './credential-needs.ts'
 import { ownerCredentialForVisitorsRateLimitConfig } from './owner-credential-for-visitors.ts'
 import { insertPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 
+// These cases cover fills the owner has opted in to; enforcement of the
+// opt-in itself is covered in fill-placement-enforcement.node.test.ts.
+vi.mock(
+	'#worker/credentials/fill-placement-opt-ins.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/fill-placement-opt-ins.ts')
+		>()),
+		readFillPlacementOptIn: async () => ({
+			query: true,
+			path: true,
+			body: true,
+		}),
+	}),
+)
+
 const scheduledAudits = vi.hoisted(() => [] as Array<Promise<unknown>>)
 
 vi.mock('cloudflare:workers', async (importOriginal) => ({
@@ -148,6 +164,7 @@ async function setup() {
 		provider?: string | null
 		hosts?: Array<string>
 		inject?: unknown
+		placement?: unknown
 	}) => {
 		const ownerId = input.ownerId ?? acmeId
 		await saveSecret({
@@ -181,6 +198,12 @@ async function setup() {
 				ownerId,
 			)
 			.first<{ id: string }>()
+		if (input.placement !== undefined) {
+			await db
+				.prepare(`UPDATE secret_entries SET placement_json = ? WHERE id = ?`)
+				.bind(JSON.stringify(input.placement), row!.id)
+				.run()
+		}
 		return row!.id
 	}
 	const savePackage = async (input: { ownerId: OwnerId; name: string }) => {
@@ -363,6 +386,7 @@ test('basic and query injects place the value without exposing it', async () => 
 		provider: 'queryco',
 		hosts: ['api.query.example'],
 		inject: { kind: 'query', param: 'api_key' },
+		placement: { query: true },
 	})
 	const request = t.requestAs('bea', 'owner')
 	const ctx = t.contextFor({ request })

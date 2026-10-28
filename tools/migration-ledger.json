@@ -699,6 +699,10 @@
 		{
 			"filename": "0190-grants-execution-context-resource-type.sql",
 			"sha256": "2ee08874e6fa1e1d7256eb642325d36de682ab1fd71ee910903ff4b47f97028d"
+		},
+		{
+			"filename": "0192-credential-fill-placement-opt-ins.sql",
+			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
 		}
 	]
 }

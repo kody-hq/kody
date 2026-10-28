@@ -23,6 +23,7 @@ import {
 	readCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from './fill-placement.ts'
+import { recordOwnerFillPlacementOptIn } from './fill-placement-opt-ins.ts'
 import { loginExchangeSchema } from './login-resolver.ts'
 import {
 	assertOptInCredentialValue,
@@ -390,6 +391,13 @@ export async function updateCredentialFields(input: {
 			details,
 		},
 	})
+	if (setsPlacement && placementOrigin === 'owner') {
+		await recordOwnerFillPlacementOptIn({
+			db: input.db,
+			credentialId: credential.id,
+			placement,
+		})
+	}
 	return { credential, provider, inject, placement }
 }
 

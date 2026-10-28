@@ -13,6 +13,10 @@ import {
 	defaultNewCredentialFillPlacement,
 	readCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
+import {
+	placementNeedsOptIn,
+	recordOwnerFillPlacementOptIn,
+} from '#worker/credentials/fill-placement-opt-ins.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
 import {
 	normalizeAllowedPackages,
@@ -500,6 +504,25 @@ export async function saveSecret(
 					}
 				: {}),
 		})
+		if (
+			existingEntry == null &&
+			placementOriginOnInsert === 'owner' &&
+			placementOnInsert !== undefined &&
+			placementNeedsOptIn(placementOnInsert)
+		) {
+			const insertedId = await readUserSecretEntryId({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name,
+			})
+			if (insertedId) {
+				await recordOwnerFillPlacementOptIn({
+					db: input.env.APP_DB,
+					credentialId: insertedId,
+					placement: placementOnInsert,
+				})
+			}
+		}
 		if (auditsOrgCredential) {
 			const credentialId =
 				existingEntry?.id ??

@@ -45,6 +45,10 @@ export async function listLocations() {
 }
 ```
 
+A passed-in client follows the credential's fill placement, whoever opened it:
+the shared package cannot move the value into a request part the credential does
+not allow.
+
 A caller that imports `@you/payments` inherits the `payments` need. Its package
 page lists it with `from` naming the shared package.
 
