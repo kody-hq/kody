@@ -283,7 +283,9 @@ export function renderIncomplete(
 		currentTab === 'credentials'
 			? view.incomplete
 			: view.incomplete.filter(
-					(item) => incompleteMappingTab(item) === currentTab,
+					(item) =>
+						incompleteMappingTab(item, needs.get(item.needKey)?.supplier) ===
+						currentTab,
 				)
 	const actionableItems = items.filter(
 		(item) => needs.get(item.needKey)?.supplier !== 'executor',
@@ -306,13 +308,19 @@ export function renderIncomplete(
 			</h2>
 			<ul css={listCss}>
 				{actionableItems.map((item) => {
-					const tab = incompleteMappingTab(item)
-					const createUrl = needs.get(item.needKey)?.createUrl
-					const canLink = canLinkNeed(view, needs.get(item.needKey))
+					const need = needs.get(item.needKey)
+					const tab = incompleteMappingTab(item, need?.supplier)
+					const createUrl = need?.createUrl
+					const canLink = canLinkNeed(view, need)
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
 					return (
 						<li key={key} css={{ display: 'grid', gap: spacing.xs }}>
-							<span>{describeIncompleteMapping(item, { canLink })}</span>
+							<span>
+								{describeIncompleteMapping(item, {
+									canLink,
+									supplier: need?.supplier,
+								})}
+							</span>
 							<span css={rowCss}>
 								{tab === currentTab ? null : (
 									<SiteLink

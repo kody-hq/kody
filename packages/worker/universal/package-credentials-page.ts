@@ -187,8 +187,11 @@ export function mappingStatusLabel(
 /** What to do about one incomplete mapping, in a sentence. */
 export function describeIncompleteMapping(
 	item: PackageCredentialsIncomplete,
-	/** False when this viewer cannot edit the mapping that would link a match. */
-	options: { canLink?: boolean } = {},
+	options: {
+		/** False when this viewer cannot edit the mapping that would link a match. */
+		canLink?: boolean
+		supplier?: PackageCredentialNeedView['supplier']
+	} = {},
 ): string {
 	const where =
 		item.where.type === 'default'
@@ -205,7 +208,9 @@ export function describeIncompleteMapping(
 			const names = matches
 				.map((ref) => `“${credentialRefLabel(ref)}”`)
 				.join(', ')
-			const tab = packageCredentialsTabLabel(incompleteMappingTab(item))
+			const tab = packageCredentialsTabLabel(
+				incompleteMappingTab(item, options.supplier),
+			)
 			const match =
 				options.canLink === false
 					? `${names} ${matches.length === 1 ? 'looks like a match' : 'look like matches'}; ask a package manager to link it.`
@@ -226,10 +231,14 @@ export function describeIncompleteMapping(
 }
 
 /** The tab that fixes an incomplete mapping. */
+/** Publisher trigger mappings are read-only, so their fix is the org default in Mappings. */
 export function incompleteMappingTab(
 	item: PackageCredentialsIncomplete,
+	supplier?: PackageCredentialNeedView['supplier'],
 ): PackageCredentialsTab {
-	return item.where.type === 'default' ? 'mappings' : 'triggers'
+	return item.where.type === 'default' || supplier === 'publisher'
+		? 'mappings'
+		: 'triggers'
 }
 
 export function credentialRefHref(orgSlug: string, ref: CredentialRef) {

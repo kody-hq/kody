@@ -249,3 +249,36 @@ test('a publisher possible match sends non-managers to a package manager', async
 	expect(html).toContain('Add a credential')
 	expect(html).not.toContain('cred-raw-id-456<')
 })
+
+test('a publisher trigger possible match routes managers to Mappings', async () => {
+	const match = {
+		id: 'cred-raw-id-789',
+		name: 'Team calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: true },
+		needs: [need('calendar', 'publisher')],
+		triggers: [],
+		locked: [],
+		incomplete: [
+			{
+				needKey: 'calendar',
+				where: { type: 'trigger', trigger: { kind: 'cron', name: 'nightly' } },
+				status: 'unbound',
+				possibleMatches: [match],
+			},
+		],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const html = await renderStartPage(renderCredentialsTab(context))
+	expect(html).toContain('looks like a match; pick it in Default mappings.')
+	expect(html).toContain('href="/@team/repo/mappings"')
+	expect(html).not.toContain('href="/@team/repo/triggers"')
+	expect(await renderStartPage(renderMappingsTab(context))).toContain(
+		'1 mapping needs attention',
+	)
+})
