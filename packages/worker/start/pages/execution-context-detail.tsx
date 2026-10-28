@@ -219,6 +219,8 @@ function OptInControls(props: {
 		setBusy(true)
 		setError(null)
 		try {
+			// Opting back in during the undo window cancels the pending leave.
+			await undoable.undo()
 			await optInAndChain()
 		} catch {
 			setError(unexpectedErrorText)
