@@ -41,8 +41,6 @@ export type SearchObservabilityPoint = {
 	responseTrimmed?: boolean
 	trimmedMatchCount?: number
 	offline?: boolean
-	/** Flag cohort for the Jev search experiment (`on` / `off` / `n/a`). */
-	jevFlagCohort?: 'on' | 'off' | 'n/a'
 	/** Stage-2 Jev outcome; empty when not a ranked list search. */
 	jevOutcome?: string
 	/** Short fallback-error reason; empty when not a Jev fallback-error. */
@@ -103,7 +101,7 @@ export function recordSearchObservabilityEvent(
 				input.task ?? '',
 				input.responseTrimmed ? 'trimmed' : 'intact',
 				input.offline ? 'offline' : 'online',
-				input.jevFlagCohort ?? 'n/a',
+				'n/a', // blob6 reserved (formerly the jev-search-rerank flag cohort); keep positions stable.
 				input.jevOutcome ?? '',
 				input.jevErrorReason ?? '',
 			],

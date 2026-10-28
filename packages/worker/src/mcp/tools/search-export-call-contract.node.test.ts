@@ -144,7 +144,7 @@ test('shouldInlineExportCallContract requires high confidence on post-collapse m
 			{
 				matches: [top, weakSecond],
 				rankedCandidates: rankedTight,
-				jevOutcome: 'skipped-flag-off',
+				jevOutcome: 'skipped-plan',
 				jevMeanConfidence: null,
 			},
 			false,
@@ -220,7 +220,7 @@ test('attachHighConfidenceExportCallContract inlines import and types', () => {
 			makeCandidateFromMatch(weak[0]!, 0.2),
 			makeCandidateFromMatch(makeExportMatch({ kodyId: 'other' }), 0.19),
 		],
-		jevOutcome: 'skipped-flag-off',
+		jevOutcome: 'skipped-plan',
 		jevMeanConfidence: null,
 	})
 	expect(weak[0]).not.toHaveProperty('exportCallContract')

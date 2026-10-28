@@ -1,4 +1,5 @@
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
+import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import {
 	oauthClientCredentials,
 	type OAuthClientCredentialsInput,
@@ -120,8 +121,6 @@ async function authorizeOauthClientCredentialsPackageId(input: {
 export async function runCapabilityProxyOauthClientCredentials(input: {
 	ctx: ApiInvocationContext
 	args: ReadonlyArray<unknown>
-	/** Registers the minted access token with the proxy call's redactor. */
-	trackAccessToken?: (accessToken: string) => void
 }) {
 	const call = parseCapabilityProxyOauthClientCredentialsArgs(input.args)
 	const user = input.ctx.callerContext.user
@@ -158,16 +157,18 @@ export async function runCapabilityProxyOauthClientCredentials(input: {
 				request: input.ctx.callerContext.request,
 				storageContext,
 				claimedPackageId: stampedPackageId,
+				// Same binding as local gatewayFetch, so the sealed token fills there.
+				credentialClientBinding: input.ctx.callerContext.request
+					? capabilityProxyCredentialClientBinding(
+							input.ctx.callerContext.request,
+						)
+					: null,
 			},
 			request: new Request(request, { headers }),
 			...(input.ctx.waitUntil ? { waitUntil: input.ctx.waitUntil } : {}),
 		})
 	}
 
-	return await oauthClientCredentials(oauthInput, {
-		fetch: gatewayFetch,
-		...(input.trackAccessToken
-			? { trackAccessToken: input.trackAccessToken }
-			: {}),
-	})
+	// The gateway seals the token fields, so the result holds no token.
+	return await oauthClientCredentials(oauthInput, { fetch: gatewayFetch })
 }

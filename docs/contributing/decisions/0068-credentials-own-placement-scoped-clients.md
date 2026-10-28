@@ -997,3 +997,37 @@ point inject at a different header or query parameter.
   placement. Placements set from code after 0195 still need the owner opt-in.
 - **Not built.** A per-host path allowlist; it comes later only if abuse shows
   up.
+
+## Amendment 2026-10-27: derived tokens come back sealed
+
+Kent decided on 2026-10-27 that a token Kody derives with a credential is a
+value code must not hold, the same as the credential. Before this,
+`oauthClientCredentials` returned the provider's raw token payload (with a
+best-effort redactor on hosted runs only), `secretJwtSign` returned the signed
+JWT, and a manual token request returned whatever the token endpoint sent.
+
+- **Sealed tokens.** `access_token`, `refresh_token`, and `id_token` in a JSON
+  response to a request the fetch gateway filled a credential into, and the
+  `secretJwtSign` JWT, come back as an integration-token placeholder whose name
+  is the token encrypted by the host (AES-GCM, key derived from
+  `SECRET_STORE_KEY`). Code passes it into a fetch header or body
+  (`Authorization: Bearer ...` keeps working) and the gateway opens it on
+  egress.
+- **Bound.** A sealed token fills only for its org, in the run that received it
+  (the run's credential-client binding, or the CapabilityProxy credential for
+  `--local`), on the registrable domain of the token URL or of any approved host
+  of the credentials filled into the token request (so a token minted on a
+  separate auth domain still reaches the API the credential is approved for,
+  with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
+  `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
+  with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
+  may fill on any host, so existing callers keep working; the result carries a
+  deprecation `warning`, and requiring `send_to_host` is tracked in
+  kody-hq/kody#4456.
+- **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
+  Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
+- **Server-side.** `oauthClientCredentials` runs its token request through the
+  gateway, hosted and `--local`. The `__kodyTrackRunSecret` redactor hop is
+  gone; nothing derived reaches code to redact.
+- **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
+  already runs on the host and does not go through the gateway.

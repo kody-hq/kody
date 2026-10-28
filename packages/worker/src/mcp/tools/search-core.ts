@@ -180,11 +180,9 @@ export async function searchUnified(input: {
 	embedText?: EmbedTextFn
 	/** Include admin-only official guides in ranking. */
 	includeAdminGuides?: boolean
-	/** Widen hybrid recall and run stage-2 Jev when plan + necessity allow. */
-	jevRerankEnabled?: boolean
 	/**
-	 * Paid plan for Jev product gate. Ignored when `jevRerankEnabled` is
-	 * false. Free / anonymous must pass false.
+	 * Paid plan (standard/pro/max): widen hybrid recall and run stage-2 Jev
+	 * when necessity allows. Free / anonymous must pass false.
 	 */
 	jevRerankPlanEligible?: boolean
 	/** Search deadline; stops before Jev and aborts in-flight Score calls. */
@@ -253,11 +251,10 @@ export async function searchUnified(input: {
 	}
 
 	const limit = Math.max(1, input.limit)
-	const jevRerankEnabled = input.jevRerankEnabled === true
 	const jevRerankPlanEligible = input.jevRerankPlanEligible === true
 	const recallLimit = resolveJevSearchRecallLimit({
 		limit,
-		widerRecall: jevRerankEnabled && jevRerankPlanEligible,
+		widerRecall: jevRerankPlanEligible,
 	})
 	const entityDescriptors = buildSearchableEntityDescriptors({
 		registry,
@@ -386,7 +383,6 @@ export async function searchUnified(input: {
 		candidates: hybridReranked,
 		limit,
 		offline,
-		enabled: jevRerankEnabled,
 		planEligible: jevRerankPlanEligible,
 		...(input.signal ? { signal: input.signal } : {}),
 	})
@@ -426,7 +422,7 @@ export async function searchUnified(input: {
 				matches,
 			}),
 			jevRerank: {
-				enabled: jevRerankEnabled,
+				enabled: true,
 				outcome: jevRerank.outcome,
 				candidatesBefore: jevRerank.candidatesBefore,
 				candidatesAfter: jevRerank.candidatesAfter,

@@ -80,6 +80,11 @@ import {
 } from '#worker/credentials/resolve-credential.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
+import {
+	isSealedTokenName,
+	openSealedToken,
+	sealTokenResponse,
+} from '#worker/credentials/sealed-token.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import {
 	pathSegmentEncodedCredentialNames,
@@ -424,6 +429,17 @@ export async function executeGatewayFetch(input: {
 				})
 			}
 			response = deadline.track(upstream)
+			// A token minted with a credential comes back sealed (ADR 0068).
+			if (substitutedValues.length > 0 && input.props.userId) {
+				response = await sealTokenResponse({
+					env: input.env,
+					response,
+					requestUrl: transformed.url,
+					approvedHosts: expanded.approvedHosts,
+					org: input.props.userId,
+					binding: input.props.credentialClientBinding ?? null,
+				})
+			}
 		} catch (error) {
 			throw redactEchoedSecretsInError(
 				asCallerFacingBodyFillError(error),
@@ -642,6 +658,8 @@ export async function expandSecretPlaceholders(input: {
 	 * Used to warn on a 4xx; never includes values.
 	 */
 	pathSegmentEncodedNames: Array<string>
+	/** Approved hosts of the stored secrets this request filled. */
+	approvedHosts: Array<string>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -688,6 +706,7 @@ export async function expandSecretPlaceholders(input: {
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
 			pathSegmentEncodedNames: [],
+			approvedHosts: [],
 		}
 	}
 
@@ -715,6 +734,7 @@ export async function expandSecretPlaceholders(input: {
 	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
+	const approvedHosts: Array<string> = []
 	let referencedAnyCredential = false
 
 	const requestHost = normalizeHost(requestUrl.hostname)
@@ -882,29 +902,55 @@ export async function expandSecretPlaceholders(input: {
 				},
 			]
 		})
-		const referencedIntegrationTokens = dedupeIntegrationTokenNames(
+		const integrationTokenNames = dedupeIntegrationTokenNames(
 			texts.flatMap((value) => parseIntegrationTokenPlaceholders(value)),
-		).flatMap((name) => {
+		)
+		for (const name of integrationTokenNames.filter(isSealedTokenName)) {
 			const placeholder = buildIntegrationTokenPlaceholder(name)
-			const placements = takePendingPlacements(
-				placeholder,
-				placementsByPlaceholder.get(placeholder),
-			)
-			if (placements.length === 0) return []
-			return [
-				{
-					name,
+			if (
+				replacements.has(placeholder) ||
+				!placementsByPlaceholder.has(placeholder)
+			) {
+				continue
+			}
+			const value = await openSealedToken({
+				env: input.env,
+				name,
+				org: requireFetchUserId(batchProps),
+				binding: batchProps.credentialClientBinding ?? null,
+				requestHost,
+				parts: (fillSitesByPlaceholder.get(placeholder) ?? []).map(
+					(site) => site.part,
+				),
+			})
+			referencedAnyCredential = true
+			credentialNamesByPlaceholder.set(placeholder, 'sealed token')
+			replacements.set(placeholder, value)
+			substitutedValues.push(value)
+		}
+		const referencedIntegrationTokens = integrationTokenNames
+			.filter((name) => !isSealedTokenName(name))
+			.flatMap((name) => {
+				const placeholder = buildIntegrationTokenPlaceholder(name)
+				const placements = takePendingPlacements(
 					placeholder,
-					credential: {
-						use: 'integration-token' as const,
+					placementsByPlaceholder.get(placeholder),
+				)
+				if (placements.length === 0) return []
+				return [
+					{
 						name,
-						requestHost,
-						placements,
-						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
+						placeholder,
+						credential: {
+							use: 'integration-token' as const,
+							name,
+							requestHost,
+							placements,
+							fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
+						},
 					},
-				},
-			]
-		})
+				]
+			})
 		const referencedProviderSecrets = dedupeReferencedProviderSecrets(
 			texts.flatMap((value) => parseProviderSecretPlaceholders(value)),
 		).flatMap((referenced) => {
@@ -1104,7 +1150,8 @@ export async function expandSecretPlaceholders(input: {
 				return { referenced, resolved }
 			}),
 		)
-		for (const { referenced, value } of resolvedSecretResults) {
+		for (const { referenced, resolved, value } of resolvedSecretResults) {
+			approvedHosts.push(...resolved.allowedHosts)
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
@@ -1257,6 +1304,7 @@ export async function expandSecretPlaceholders(input: {
 		bodyFillDone,
 		deferRedirectFollow,
 		pathSegmentEncodedNames,
+		approvedHosts,
 	}
 }
 

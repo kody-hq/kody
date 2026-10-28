@@ -1,8 +1,4 @@
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
-import {
-	oauthAccessTokenFromPayload,
-	trackRunSecretToolName,
-} from '#mcp/secrets/execution-secret-redactor.ts'
 import { parseSecretNameOrPlaceholder } from '#mcp/secrets/placeholders.ts'
 import {
 	assertIntegrationHostAllowed,
@@ -251,8 +247,6 @@ export async function oauthClientCredentials(
 		 * origin and secret values never enter local workerd.
 		 */
 		fetch?: typeof globalThis.fetch
-		/** Registers the minted access token with the caller's redactor. */
-		trackAccessToken?: (accessToken: string) => void
 	},
 ): Promise<Record<string, unknown>> {
 	const authStyle = (input.authStyle ?? 'basic') as string
@@ -291,8 +285,7 @@ export async function oauthClientCredentials(
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
 		throw new Error('OAuth client_credentials response was not a JSON object.')
 	}
-	const accessToken = oauthAccessTokenFromPayload(payload)
-	if (accessToken) options?.trackAccessToken?.(accessToken)
+	// The fetch gateway sealed access_token and refresh_token (ADR 0068).
 	return payload as Record<string, unknown>
 }
 
@@ -764,14 +757,7 @@ const __kodyOauthClientCredentials = async (input) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('OAuth client_credentials response was not a JSON object.');
   }
-  // Register the token with the run's redactor so a returned or logged
-  // token never lands in run output. Best effort: hosts without the tool
-  // still return the token unchanged.
-  if (typeof payload.access_token === 'string' && payload.access_token) {
-    try {
-      await ${kodyCallDispatcherName}(${JSON.stringify(trackRunSecretToolName)}, { value: payload.access_token });
-    } catch {}
-  }
+  // The fetch gateway sealed access_token and refresh_token (ADR 0068).
   return payload;
 };
 const createAuthenticatedFetch = async (providerName) =>

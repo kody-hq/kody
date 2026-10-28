@@ -44,6 +44,8 @@ export type CapabilityContext = {
 	 * code cannot clear it. Hosted execute has no `openApiPrincipal`.
 	 */
 	localExecuteHop?: true
+	/** Host-set run binding the fetch gateway checks before filling a sealed token. */
+	credentialClientBinding?: string
 }
 
 export type CapabilityResult = unknown

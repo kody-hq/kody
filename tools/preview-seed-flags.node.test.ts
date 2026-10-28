@@ -19,7 +19,7 @@ test('preview-flag labels become allowlisted seed flag keys', () => {
 
 test('a preview-flag label outside the allowlist fails closed', () => {
 	expect(() =>
-		previewSeedFlagKeysFromLabels(['preview-flag:jev-search-rerank']),
+		previewSeedFlagKeysFromLabels(['preview-flag:execute-invoke']),
 	).toThrow(/not an allowlisted preview seed flag/)
 	expect(() => previewSeedFlagKeysFromLabels(['preview-flag:'])).toThrow(
 		/not an allowlisted preview seed flag/,

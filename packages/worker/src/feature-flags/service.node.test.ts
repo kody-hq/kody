@@ -305,7 +305,6 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'demo-indicator',
-	'jev-search-rerank',
 	'execute-invoke',
 	'connection-profiles',
 	'mcp-skills-extension',
@@ -462,14 +461,14 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 			updatedBy: 7,
 		},
 		{
-			key: 'jev-search-rerank',
+			key: 'connection-profiles',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
 		},
 	])
 	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
-	expect(await enabledFor(db, [7], 'jev-search-rerank')).toEqual([true])
+	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
 	let overrideRuns = 0
@@ -512,7 +511,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
 	expect(db.overrides.has('execute-invoke:7')).toBe(true)
 	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
-	expect(await enabledFor(db, [7], 'jev-search-rerank')).toEqual([true])
+	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 })
 
 test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => {
@@ -597,7 +596,7 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 	}
 	const registryExpectations: Array<[string, Record<string, unknown>]> = [
 		[
-			'jev-search-rerank',
+			'connection-profiles',
 			{ defaultAudience: 'experiments_opt_in', successMetric: executeMetric },
 		],
 		['execute-invoke', { defaultAudience: 'experiments_opt_in' }],

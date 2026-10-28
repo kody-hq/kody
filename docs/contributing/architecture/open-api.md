@@ -261,7 +261,8 @@ module and does not silently hop to `kody.execute`. See
   multipart parts are filled, matching hosted.
 - OAuth client-credentials: `path: ['kody','oauthClientCredentials']` with the
   same argument shape as cloud `oauthClientCredentials(...)`. Origin expands
-  secret placeholders through the fetch gateway.
+  secret placeholders through the fetch gateway, which seals the response's
+  token fields bound to the CapabilityProxy credential (ADR 0068).
 - Credential clients (`credential()` / `credentials()`, ADR 0068): both the CLI
   host `kody:runtime` (ad hoc / unpublished `--code` / `--file`) and the
   package-graph shim open, sign, call MCP tools, and refresh OAuth through
