@@ -988,7 +988,7 @@ point inject at a different header or query parameter.
   stored body field, the one case handles cannot.
 - **Legacy credentials.** A credential with no placement (null) fills headers
   plus each query, path, or body part it was seen filled into before enforcement
-  (`credential_fill_placement_observations`). Migration 0192 copies those parts
+  (`credential_fill_placement_observations`). Migration 0195 copies those parts
   into `observed` opt-ins, so nobody migrates anything by hand.
 - **Not built.** A per-host path allowlist; it comes later only if abuse shows
   up.

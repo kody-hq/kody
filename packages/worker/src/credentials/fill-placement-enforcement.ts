@@ -4,7 +4,7 @@
  * body also need an owner opt-in, because the host may store the value there.
  * A legacy credential with no placement (null) narrows to headers plus the
  * parts it was seen filled into before enforcement (recorded as `observed`
- * opt-ins by migration 0192), so nobody migrates anything by hand.
+ * opt-ins by migration 0195), so nobody migrates anything by hand.
  */
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import {

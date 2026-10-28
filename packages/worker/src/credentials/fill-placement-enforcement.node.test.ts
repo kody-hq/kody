@@ -131,9 +131,9 @@ test('enforcement refuses a part outside the placement and names it', () => {
 	expect(message).toContain('slot "apiKey"')
 })
 
-test('migration 0192 opts legacy credentials in to the parts they were seen filled into', () => {
+test('migration 0195 opts legacy credentials in to the parts they were seen filled into', () => {
 	const migrations = new URL('../../migrations/', import.meta.url)
-	const target = '0192-credential-fill-placement-opt-ins.sql'
+	const target = '0195-credential-fill-placement-opt-ins.sql'
 	const sqlite = new DatabaseSync(':memory:', {
 		enableForeignKeyConstraints: false,
 	})
