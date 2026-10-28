@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { chainCloudOrderError } from './chain-rules.ts'
 import { registrationAuthorizationError } from './errors.ts'
+import { chainIsTooLong } from './store.ts'
 
 test('Kody cloud must be the last chain entry when present', () => {
 	expect(chainCloudOrderError([])).toBeNull()
@@ -30,6 +31,18 @@ test('Kody cloud must be the last chain entry when present', () => {
 			{ kind: 'context', id: 'ec_b' },
 		])?.cloudIndex,
 	).toBe(1)
+})
+
+test('a chain holds at most 3 contexts, and Kody cloud does not count toward the cap', () => {
+	const contexts = (n: number) =>
+		Array.from({ length: n }, (_, i) => ({
+			kind: 'context' as const,
+			id: `ec_${i}`,
+		}))
+	expect(chainIsTooLong([...contexts(3), { kind: 'cloud' }])).toBe(false)
+	expect(chainIsTooLong(contexts(3))).toBe(false)
+	expect(chainIsTooLong([...contexts(4), { kind: 'cloud' }])).toBe(true)
+	expect(chainIsTooLong(contexts(4))).toBe(true)
 })
 
 test('registration with a login that predates execution context permissions names the exact login command', () => {

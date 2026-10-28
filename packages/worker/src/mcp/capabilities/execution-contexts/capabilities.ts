@@ -409,7 +409,7 @@ export const executionChainSetCapability = defineDomainCapability(domain, {
 	idempotent: true,
 	destructive: false,
 	inputSchema: z.object({
-		entries: z.array(chainEntrySchema).max(4),
+		entries: z.array(chainEntrySchema).max(16),
 		strict: z
 			.boolean()
 			.optional()
